@@ -113,9 +113,7 @@ std::shared_ptr<VoxelSceneData> VoxelSceneCacher::GetOrCreate(const VoxelSceneCr
 // ============================================================================
 
 std::shared_ptr<VoxelSceneData> VoxelSceneCacher::Create(const VoxelSceneCreateInfo& ci) {
-    std::cout << "[VoxelSceneCacher::Create] Creating scene data for "
-              << SceneTypeToString(ci.sceneType) << " @ " << ci.resolution
-              << "^3, density=" << ci.density << std::endl;
+    LOG_INFO("[VoxelSceneCacher::Create] Creating scene data for " + SceneTypeToString(ci.sceneType) + " @ " + std::to_string(ci.resolution) + "^3, density=" + std::to_string(ci.density));
 
     if (!IsInitialized()) {
         throw std::runtime_error("[VoxelSceneCacher::Create] Cacher not initialized with device");
@@ -140,11 +138,7 @@ std::shared_ptr<VoxelSceneData> VoxelSceneCacher::Create(const VoxelSceneCreateI
     // Step 5: Upload all data to GPU
     UploadToGPU(*data);
 
-    std::cout << "[VoxelSceneCacher::Create] Scene data created: "
-              << data->nodeCount << " nodes, "
-              << data->brickCount << " bricks, "
-              << data->solidVoxelCount << " voxels, "
-              << (data->totalMemorySize / 1024.0f / 1024.0f) << " MB GPU" << std::endl;
+    LOG_INFO("[VoxelSceneCacher::Create] Scene data created: " + std::to_string(data->nodeCount) + " nodes, " + std::to_string(data->brickCount) + " bricks, " + std::to_string(data->solidVoxelCount) + " voxels, " + std::to_string(data->totalMemorySize / 1024.0f / 1024.0f) + " MB GPU");
 
     return data;
 }
@@ -154,7 +148,7 @@ std::uint64_t VoxelSceneCacher::ComputeKey(const VoxelSceneCreateInfo& ci) const
 }
 
 void VoxelSceneCacher::Cleanup() {
-    std::cout << "[VoxelSceneCacher::Cleanup] Cleaning up cached scene data" << std::endl;
+    LOG_INFO("[VoxelSceneCacher::Cleanup] Cleaning up cached scene data");
 
     // Cleanup all cached entries
     for (auto& [key, entry] : m_entries) {
@@ -177,7 +171,7 @@ void VoxelSceneCacher::Cleanup() {
     // Clear entries
     Clear();
 
-    std::cout << "[VoxelSceneCacher::Cleanup] Cleanup complete" << std::endl;
+    LOG_INFO("[VoxelSceneCacher::Cleanup] Cleanup complete");
 }
 
 // ============================================================================
@@ -217,13 +211,13 @@ bool VoxelSceneCacher::SerializeToFile(const std::filesystem::path& path) const 
     std::lock_guard lock(m_lock);
 
     if (m_entries.empty()) {
-        std::cout << "[VoxelSceneCacher::SerializeToFile] No entries to serialize" << std::endl;
+        LOG_INFO("[VoxelSceneCacher::SerializeToFile] No entries to serialize");
         return true;
     }
 
     std::ofstream out(path, std::ios::binary);
     if (!out) {
-        std::cerr << "[VoxelSceneCacher::SerializeToFile] Failed to open file: " << path << std::endl;
+        LOG_ERROR("[VoxelSceneCacher::SerializeToFile] Failed to open file: " + path.string());
         return false;
     }
 
@@ -234,7 +228,7 @@ bool VoxelSceneCacher::SerializeToFile(const std::filesystem::path& path) const 
     uint32_t entryCount = static_cast<uint32_t>(m_entries.size());
     out.write(reinterpret_cast<const char*>(&entryCount), sizeof(entryCount));
 
-    std::cout << "[VoxelSceneCacher::SerializeToFile] Serializing " << entryCount << " scene entries to " << path << std::endl;
+    LOG_INFO("[VoxelSceneCacher::SerializeToFile] Serializing " + std::to_string(entryCount) + " scene entries to " + path.string());
 
     // Write each entry
     for (const auto& [key, entry] : m_entries) {
@@ -269,25 +263,25 @@ bool VoxelSceneCacher::SerializeToFile(const std::filesystem::path& path) const 
         out.write(reinterpret_cast<const char*>(&data->sceneType), sizeof(data->sceneType));
     }
 
-    std::cout << "[VoxelSceneCacher::SerializeToFile] Serialization complete" << std::endl;
+    LOG_INFO("[VoxelSceneCacher::SerializeToFile] Serialization complete");
     return out.good();
 }
 
 bool VoxelSceneCacher::DeserializeFromFile(const std::filesystem::path& path, void* devicePtr) {
     if (!std::filesystem::exists(path)) {
-        std::cout << "[VoxelSceneCacher::DeserializeFromFile] Cache file not found: " << path << std::endl;
+        LOG_INFO("[VoxelSceneCacher::DeserializeFromFile] Cache file not found: " + path.string());
         return true; // Not an error - just no cached data
     }
 
     auto* vulkanDevice = static_cast<Vixen::Vulkan::Resources::VulkanDevice*>(devicePtr);
     if (!vulkanDevice) {
-        std::cerr << "[VoxelSceneCacher::DeserializeFromFile] Invalid device pointer" << std::endl;
+        LOG_ERROR("[VoxelSceneCacher::DeserializeFromFile] Invalid device pointer");
         return false;
     }
 
     std::ifstream in(path, std::ios::binary);
     if (!in) {
-        std::cerr << "[VoxelSceneCacher::DeserializeFromFile] Failed to open file: " << path << std::endl;
+        LOG_ERROR("[VoxelSceneCacher::DeserializeFromFile] Failed to open file: " + path.string());
         return false;
     }
 
@@ -297,20 +291,19 @@ bool VoxelSceneCacher::DeserializeFromFile(const std::filesystem::path& path, vo
     in.read(reinterpret_cast<char*>(&version), sizeof(version));
 
     if (magic != VOXEL_SCENE_CACHE_MAGIC) {
-        std::cerr << "[VoxelSceneCacher::DeserializeFromFile] Invalid magic number" << std::endl;
+        LOG_ERROR("[VoxelSceneCacher::DeserializeFromFile] Invalid magic number");
         return false;
     }
 
     if (version != VOXEL_SCENE_CACHE_VERSION) {
-        std::cout << "[VoxelSceneCacher::DeserializeFromFile] Version mismatch (got " << version
-                  << ", expected " << VOXEL_SCENE_CACHE_VERSION << "), regenerating" << std::endl;
+        LOG_INFO("[VoxelSceneCacher::DeserializeFromFile] Version mismatch (got " + std::to_string(version) + ", expected " + std::to_string(VOXEL_SCENE_CACHE_VERSION) + "), regenerating");
         return true; // Stale cache - will regenerate on demand
     }
 
     uint32_t entryCount = 0;
     in.read(reinterpret_cast<char*>(&entryCount), sizeof(entryCount));
 
-    std::cout << "[VoxelSceneCacher::DeserializeFromFile] Loading " << entryCount << " scene entries from " << path << std::endl;
+    LOG_INFO("[VoxelSceneCacher::DeserializeFromFile] Loading " + std::to_string(entryCount) + " scene entries from " + path.string());
 
     std::lock_guard lock(m_lock);
 
@@ -327,7 +320,7 @@ bool VoxelSceneCacher::DeserializeFromFile(const std::filesystem::path& path, vo
 
         // Validate key matches computed hash
         if (ci.ComputeHash() != key) {
-            std::cerr << "[VoxelSceneCacher::DeserializeFromFile] Key mismatch for entry " << i << std::endl;
+            LOG_ERROR("[VoxelSceneCacher::DeserializeFromFile] Key mismatch for entry " + std::to_string(i));
             return false;
         }
 
@@ -352,13 +345,12 @@ bool VoxelSceneCacher::DeserializeFromFile(const std::filesystem::path& path, vo
         in.read(reinterpret_cast<char*>(&data->sceneType), sizeof(data->sceneType));
 
         if (!in) {
-            std::cerr << "[VoxelSceneCacher::DeserializeFromFile] Read error at entry " << i << std::endl;
+            LOG_ERROR("[VoxelSceneCacher::DeserializeFromFile] Read error at entry " + std::to_string(i));
             return false;
         }
 
         // Re-upload CPU data to GPU
-        std::cout << "[VoxelSceneCacher::DeserializeFromFile] Re-uploading entry " << i
-                  << " (" << SceneTypeToString(ci.sceneType) << " @ " << ci.resolution << "^3) to GPU" << std::endl;
+        LOG_INFO("[VoxelSceneCacher::DeserializeFromFile] Re-uploading entry " + std::to_string(i) + " (" + SceneTypeToString(ci.sceneType) + " @ " + std::to_string(ci.resolution) + "^3) to GPU");
         UploadToGPU(*data);
 
         // Store in cache
@@ -369,7 +361,7 @@ bool VoxelSceneCacher::DeserializeFromFile(const std::filesystem::path& path, vo
         m_entries.emplace(key, std::move(entry));
     }
 
-    std::cout << "[VoxelSceneCacher::DeserializeFromFile] Loaded " << entryCount << " entries" << std::endl;
+    LOG_INFO("[VoxelSceneCacher::DeserializeFromFile] Loaded " + std::to_string(entryCount) + " entries");
     return true;
 }
 
@@ -378,8 +370,7 @@ bool VoxelSceneCacher::DeserializeFromFile(const std::filesystem::path& path, vo
 // ============================================================================
 
 void VoxelSceneCacher::GenerateScene(const VoxelSceneCreateInfo& ci, VoxelSceneData& data) {
-    std::cout << "[VoxelSceneCacher::GenerateScene] Generating " << SceneTypeToString(ci.sceneType)
-              << " @ " << ci.resolution << "^3" << std::endl;
+    LOG_INFO("[VoxelSceneCacher::GenerateScene] Generating " + SceneTypeToString(ci.sceneType) + " @ " + std::to_string(ci.resolution) + "^3");
 
     // Get scene type as string for factory lookup
     std::string sceneTypeName = SceneTypeToString(ci.sceneType);
@@ -387,8 +378,7 @@ void VoxelSceneCacher::GenerateScene(const VoxelSceneCreateInfo& ci, VoxelSceneD
     // Create generator from factory
     auto generator = SceneGeneratorFactory::Create(sceneTypeName);
     if (!generator) {
-        std::cout << "[VoxelSceneCacher::GenerateScene] Unknown scene type '" << sceneTypeName
-                  << "', falling back to 'cornell'" << std::endl;
+        LOG_DEBUG("[VoxelSceneCacher::GenerateScene] Unknown scene type '" + sceneTypeName + "', falling back to 'cornell'");
         generator = SceneGeneratorFactory::Create("cornell");
         if (!generator) {
             throw std::runtime_error("[VoxelSceneCacher::GenerateScene] Failed to create scene generator");
@@ -408,8 +398,7 @@ void VoxelSceneCacher::GenerateScene(const VoxelSceneCreateInfo& ci, VoxelSceneD
     // Count solid voxels
     data.solidVoxelCount = m_cachedGrid->CountSolidVoxels();
 
-    std::cout << "[VoxelSceneCacher::GenerateScene] Generated " << data.solidVoxelCount
-              << " solid voxels (" << m_cachedGrid->GetDensityPercent() << "% density)" << std::endl;
+    LOG_INFO("[VoxelSceneCacher::GenerateScene] Generated " + std::to_string(data.solidVoxelCount) + " solid voxels (" + std::to_string(m_cachedGrid->GetDensityPercent()) + "% density)");
 
     // Create material palette matching VoxelGridNode's palette
     // Cornell Box material palette (IDs 0-20)
@@ -474,7 +463,7 @@ void VoxelSceneCacher::GenerateScene(const VoxelSceneCreateInfo& ci, VoxelSceneD
 // ============================================================================
 
 void VoxelSceneCacher::BuildOctree(VoxelSceneData& data) {
-    std::cout << "[VoxelSceneCacher::BuildOctree] Building ESVO octree..." << std::endl;
+    LOG_INFO("[VoxelSceneCacher::BuildOctree] Building ESVO octree...");
 
     if (!m_cachedGrid) {
         throw std::runtime_error("[VoxelSceneCacher::BuildOctree] No cached grid - call GenerateScene first");
@@ -523,7 +512,7 @@ void VoxelSceneCacher::BuildOctree(VoxelSceneData& data) {
         }
     }
 
-    std::cout << "[VoxelSceneCacher::BuildOctree] Creating " << requests.size() << " voxel entities..." << std::endl;
+    LOG_INFO("[VoxelSceneCacher::BuildOctree] Creating " + std::to_string(requests.size()) + " voxel entities...");
 
     // Batch create entities
     constexpr size_t BATCH_SIZE = 10000;
@@ -544,8 +533,7 @@ void VoxelSceneCacher::BuildOctree(VoxelSceneData& data) {
     int resolutionLevels = static_cast<int>(std::ceil(std::log2(resolution)));
     int maxLevels = resolutionLevels;
 
-    std::cout << "[VoxelSceneCacher::BuildOctree] Creating LaineKarrasOctree: maxLevels=" << maxLevels
-              << ", brickDepth=" << brickDepth << std::endl;
+    LOG_INFO("[VoxelSceneCacher::BuildOctree] Creating LaineKarrasOctree: maxLevels=" + std::to_string(maxLevels) + ", brickDepth=" + std::to_string(brickDepth));
 
     m_octree = std::make_unique<Vixen::SVO::LaineKarrasOctree>(*m_voxelWorld, nullptr, maxLevels, brickDepth);
     m_octree->rebuild(*m_voxelWorld, worldMin, worldMax);
@@ -635,9 +623,7 @@ void VoxelSceneCacher::BuildOctree(VoxelSceneData& data) {
     data.configCPU.localToWorld = translateMat * scaleMat;
     data.configCPU.worldToLocal = glm::inverse(data.configCPU.localToWorld);
 
-    std::cout << "[VoxelSceneCacher::BuildOctree] Built ESVO octree: "
-              << data.nodeCount << " nodes, "
-              << data.brickCount << " bricks" << std::endl;
+    LOG_INFO("[VoxelSceneCacher::BuildOctree] Built ESVO octree: " + std::to_string(data.nodeCount) + " nodes, " + std::to_string(data.brickCount) + " bricks");
 }
 
 // ============================================================================
@@ -645,15 +631,15 @@ void VoxelSceneCacher::BuildOctree(VoxelSceneData& data) {
 // ============================================================================
 
 void VoxelSceneCacher::CompressData(VoxelSceneData& data) {
-    std::cout << "[VoxelSceneCacher::CompressData] Compressing colors/normals..." << std::endl;
+    LOG_INFO("[VoxelSceneCacher::CompressData] Compressing colors/normals...");
 
     if (!m_octree) {
-        std::cout << "[VoxelSceneCacher::CompressData] No octree - skipping compression" << std::endl;
+        LOG_DEBUG("[VoxelSceneCacher::CompressData] No octree - skipping compression");
         return;
     }
 
     if (!m_octree->hasCompressedData()) {
-        std::cout << "[VoxelSceneCacher::CompressData] Octree has no compressed data" << std::endl;
+        LOG_DEBUG("[VoxelSceneCacher::CompressData] Octree has no compressed data");
         return;
     }
 
@@ -663,7 +649,7 @@ void VoxelSceneCacher::CompressData(VoxelSceneData& data) {
         const uint64_t* colorData = m_octree->getCompressedColorData();
         data.compressedColorsCPU.resize(colorSize);
         std::memcpy(data.compressedColorsCPU.data(), colorData, colorSize);
-        std::cout << "[VoxelSceneCacher::CompressData] Copied " << colorSize << " bytes compressed colors" << std::endl;
+        LOG_DEBUG("[VoxelSceneCacher::CompressData] Copied " + std::to_string(colorSize) + " bytes compressed colors");
     }
 
     // Copy compressed normal data
@@ -672,7 +658,7 @@ void VoxelSceneCacher::CompressData(VoxelSceneData& data) {
         const void* normalData = m_octree->getCompressedNormalData();
         data.compressedNormalsCPU.resize(normalSize);
         std::memcpy(data.compressedNormalsCPU.data(), normalData, normalSize);
-        std::cout << "[VoxelSceneCacher::CompressData] Copied " << normalSize << " bytes compressed normals" << std::endl;
+        LOG_DEBUG("[VoxelSceneCacher::CompressData] Copied " + std::to_string(normalSize) + " bytes compressed normals");
     }
 }
 
@@ -681,7 +667,7 @@ void VoxelSceneCacher::CompressData(VoxelSceneData& data) {
 // ============================================================================
 
 void VoxelSceneCacher::BuildBrickGridLookup(VoxelSceneData& data) {
-    std::cout << "[VoxelSceneCacher::BuildBrickGridLookup] Building brick lookup table..." << std::endl;
+    LOG_INFO("[VoxelSceneCacher::BuildBrickGridLookup] Building brick lookup table...");
 
     const uint32_t brickSize = 8;  // 8x8x8 bricks
     const uint32_t bricksPerAxis = data.resolution / brickSize;
@@ -691,13 +677,13 @@ void VoxelSceneCacher::BuildBrickGridLookup(VoxelSceneData& data) {
     data.brickGridLookupCPU.resize(totalGridSlots, 0xFFFFFFFF);
 
     if (!m_octree) {
-        std::cout << "[VoxelSceneCacher::BuildBrickGridLookup] No octree - creating empty lookup" << std::endl;
+        LOG_DEBUG("[VoxelSceneCacher::BuildBrickGridLookup] No octree - creating empty lookup");
         return;
     }
 
     const auto* octreeData = m_octree->getOctree();
     if (!octreeData || !octreeData->root) {
-        std::cout << "[VoxelSceneCacher::BuildBrickGridLookup] No octree root - creating empty lookup" << std::endl;
+        LOG_DEBUG("[VoxelSceneCacher::BuildBrickGridLookup] No octree root - creating empty lookup");
         return;
     }
 
@@ -722,8 +708,7 @@ void VoxelSceneCacher::BuildBrickGridLookup(VoxelSceneData& data) {
         }
     }
 
-    std::cout << "[VoxelSceneCacher::BuildBrickGridLookup] Populated "
-              << populatedCount << " / " << totalGridSlots << " slots" << std::endl;
+    LOG_INFO("[VoxelSceneCacher::BuildBrickGridLookup] Populated " + std::to_string(populatedCount) + " / " + std::to_string(totalGridSlots) + " slots");
 }
 
 // ============================================================================
@@ -731,7 +716,7 @@ void VoxelSceneCacher::BuildBrickGridLookup(VoxelSceneData& data) {
 // ============================================================================
 
 void VoxelSceneCacher::UploadToGPU(VoxelSceneData& data) {
-    std::cout << "[VoxelSceneCacher::UploadToGPU] Uploading data to GPU..." << std::endl;
+    LOG_INFO("[VoxelSceneCacher::UploadToGPU] Uploading data to GPU...");
 
     if (!m_device || !m_device->device) {
         throw std::runtime_error("[VoxelSceneCacher::UploadToGPU] Device not initialized");
@@ -764,7 +749,7 @@ void VoxelSceneCacher::UploadToGPU(VoxelSceneData& data) {
     if (data.brickGridLookupSize > 0) totalSize += alignSize(data.brickGridLookupSize, alignment);
 
     if (totalSize == 0) {
-        std::cout << "[VoxelSceneCacher::UploadToGPU] No data to upload" << std::endl;
+        LOG_DEBUG("[VoxelSceneCacher::UploadToGPU] No data to upload");
         return;
     }
 
@@ -811,8 +796,9 @@ void VoxelSceneCacher::UploadToGPU(VoxelSceneData& data) {
                           &data.configCPU});
     }
     if (data.brickGridLookupSize > 0) {
+        // Note: TRANSFER_SRC_BIT needed for VoxelAABBConverterNode::DownloadBufferToHost()
         buffers.push_back({&data.brickGridLookupBuffer, data.brickGridLookupSize,
-                          VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                          VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                           data.brickGridLookupCPU.data()});
     }
 
@@ -887,8 +873,7 @@ void VoxelSceneCacher::UploadToGPU(VoxelSceneData& data) {
         }
     }
 
-    std::cout << "[VoxelSceneCacher::UploadToGPU] Uploaded " << buffers.size()
-              << " buffers, total " << (combinedMemReq.size / 1024.0f) << " KB" << std::endl;
+    LOG_INFO("[VoxelSceneCacher::UploadToGPU] Uploaded " + std::to_string(buffers.size()) + " buffers, total " + std::to_string(combinedMemReq.size / 1024.0f) + " KB");
 }
 
 VkBuffer VoxelSceneCacher::CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage) {

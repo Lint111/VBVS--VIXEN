@@ -202,11 +202,11 @@ void CameraNode::UpdateCameraData(float aspectRatio) {
     // DEBUG: Log camera state once
     static bool loggedCamera = false;
     if (!loggedCamera) {
-        std::cout << "[CameraNode] Camera params: yaw=" << yaw << ", pitch=" << pitch << std::endl;
-        std::cout << "[CameraNode] Camera position: (" << cameraPosition.x << ", " << cameraPosition.y << ", " << cameraPosition.z << ")" << std::endl;
-        std::cout << "[CameraNode] forward = (" << forward.x << ", " << forward.y << ", " << forward.z << ")" << std::endl;
-        std::cout << "[CameraNode] right = (" << right.x << ", " << right.y << ", " << right.z << ")" << std::endl;
-        std::cout << "[CameraNode] up = (" << up.x << ", " << up.y << ", " << up.z << ")" << std::endl;
+        NODE_LOG_DEBUG("[CameraNode] Camera params: yaw=" + std::to_string(yaw) + ", pitch=" + std::to_string(pitch));
+        NODE_LOG_DEBUG("[CameraNode] Camera position: (" + std::to_string(cameraPosition.x) + ", " + std::to_string(cameraPosition.y) + ", " + std::to_string(cameraPosition.z) + ")");
+        NODE_LOG_DEBUG("[CameraNode] forward = (" + std::to_string(forward.x) + ", " + std::to_string(forward.y) + ", " + std::to_string(forward.z) + ")");
+        NODE_LOG_DEBUG("[CameraNode] right = (" + std::to_string(right.x) + ", " + std::to_string(right.y) + ", " + std::to_string(right.z) + ")");
+        NODE_LOG_DEBUG("[CameraNode] up = (" + std::to_string(up.x) + ", " + std::to_string(up.y) + ", " + std::to_string(up.z) + ")");
         loggedCamera = true;
     }
 }

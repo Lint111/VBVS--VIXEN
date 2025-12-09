@@ -96,34 +96,6 @@ private:
     Vixen::Vulkan::Resources::VulkanDevice* vulkanDevice = nullptr;
     VkCommandPool commandPool = VK_NULL_HANDLE;
 
-    // Octree SSBO buffers
-    VkBuffer octreeNodesBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory octreeNodesMemory = VK_NULL_HANDLE;
-    VkBuffer octreeBricksBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory octreeBricksMemory = VK_NULL_HANDLE;
-    VkBuffer octreeMaterialsBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory octreeMaterialsMemory = VK_NULL_HANDLE;
-
-    // Octree config UBO (scale parameters for shader)
-    VkBuffer octreeConfigBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory octreeConfigMemory = VK_NULL_HANDLE;
-
-    // DXT compressed color buffer (shader binding 6)
-    // 32 DXT1 blocks per brick, 8 bytes (uvec2) per block = 256 bytes/brick
-    VkBuffer compressedColorBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory compressedColorMemory = VK_NULL_HANDLE;
-
-    // DXT compressed normal buffer (shader binding 7)
-    // 32 DXT blocks per brick, 16 bytes (uvec4) per block = 512 bytes/brick
-    VkBuffer compressedNormalBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory compressedNormalMemory = VK_NULL_HANDLE;
-
-    // Brick grid lookup buffer - maps (brickX, brickY, brickZ) to brick index
-    // Size: bricksPerAxis^3 * sizeof(uint32_t)
-    // Used by hardware RT shaders for compressed buffer access
-    VkBuffer brickGridLookupBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory brickGridLookupMemory = VK_NULL_HANDLE;
-
     // Debug capture resource (owns buffer, implements IDebugCapture)
     std::unique_ptr<Debug::DebugCaptureResource> debugCaptureResource_;
 

@@ -139,3 +139,64 @@ fpsLogger.MaybeLog(frameNumber);  // Logs every N frames
 
 - [[Overview]] - Library index
 - [[RenderGraph]] - Uses logging for node lifecycle
+# Related Pages
+
+## 8. Logging Macros Reference
+
+### 8.1 Node Classes (inherit from NodeInstance)
+
+```cpp
+#include "Core/NodeLogging.h"
+
+NODE_LOG_DEBUG("message");
+NODE_LOG_INFO("message");
+NODE_LOG_WARNING("message");
+NODE_LOG_ERROR("message");
+NODE_LOG_CRITICAL("message");
+```
+
+### 8.2 ILoggable Classes (TypedCacher, DeviceRegistry, etc.)
+
+```cpp
+#include "ILoggable.h"
+
+LOG_DEBUG("message");
+LOG_INFO("message");
+LOG_WARNING("message");
+LOG_ERROR("message");
+```
+
+### 8.3 RenderGraph Class
+
+```cpp
+// Defined locally in RenderGraph.cpp
+GRAPH_LOG_DEBUG("message");
+GRAPH_LOG_INFO("message");
+GRAPH_LOG_WARNING("message");
+GRAPH_LOG_ERROR("message");
+GRAPH_LOG_CRITICAL("message");  // Also outputs to std::cerr
+```
+
+---
+
+## 9. Refactor Status (December 2025)
+
+All major libraries now use proper logging instead of std::cout/cerr:
+
+| Library | Status | Notes |
+|---------|--------|-------|
+| RenderGraph | ✅ Complete | NODE_LOG_*, GRAPH_LOG_* |
+| CashSystem | ✅ Complete | LOG_* via TypedCacher |
+| VulkanResources | ✅ Complete | ILoggable added to VulkanSwapChain, VulkanLayerAndExtension |
+| Profiler | ✅ Complete | LOG_* with TODO for ILoggable |
+| SVO | ✅ Complete | Utility classes use std::cerr |
+| Application | ✅ Complete | Intentional user-facing output only |
+
+**Remaining std::cerr usage** (by design):
+- `SceneGenerator.cpp` - Utility class, no logger context
+- `VoxelOctree.cpp` - Utility class, no logger context
+- `CommandBufferUtility.cpp` - Standalone function
+- `Logger.cpp` - Logger itself uses fprintf
+
+---
+

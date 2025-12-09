@@ -170,9 +170,9 @@ size_t ProfilerSystem::RunTestBatch(
         const auto& config = configs[i];
 
         // Log progress
-        std::cout << "[Profiler] Running test " << (i + 1) << "/" << configs.size()
-                  << ": " << config.pipeline << "/" << config.shader << "/"
-                  << config.voxelResolution << std::endl;
+        // TODO: Migrate to LOG_INFO when ProfilerSystem inherits from ILoggable
+        // LOG_INFO("[Profiler] Running test " + std::to_string(i + 1) + "/" + std::to_string(configs.size()) +
+        //          ": " + config.pipeline + "/" + config.shader + "/" + std::to_string(config.voxelResolution));
 
         StartTestRun(config);
 

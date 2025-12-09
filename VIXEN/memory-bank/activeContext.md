@@ -2,7 +2,7 @@
 
 **Last Updated**: December 8, 2025
 **Current Branch**: `claude/phase-k-hardware-rt`
-**Status**: Cache Persistence COMPLETE - Ready for Phase L (Benchmark Data Collection)
+**Status**: Logging Refactor COMPLETE - All std::cout/cerr converted to proper logging macros
 
 ---
 
@@ -87,6 +87,47 @@ How do different Vulkan ray tracing pipeline architectures affect performance, b
 - [ ] Aggregate statistics across runs
 - [ ] Generate comparison charts
 - [ ] Validate against hypothesis
+
+---
+
+## Recent Completion
+
+### Logging Refactor Phase 2 (December 8, 2025) ✅
+
+Extended logging refactor to cover CashSystem library and fix compile errors from previous session:
+
+**Build Fixes:**
+- Fixed `logger/ILoggable.h` include paths → `ILoggable.h`
+- Fixed duplicate constructor in VulkanLayerAndExtension (header vs cpp)
+- Fixed lambda capture issues in MainCacher.h (LOG_* macros need `this`)
+- Added GRAPH_LOG_CRITICAL macro to RenderGraph.cpp
+- Added missing `voxelSceneData_` member to AccelerationStructureNode.h
+- Fixed `std::filesystem::path + string` concatenation in BenchmarkMain.cpp
+- Fixed SDI binding reference for outputImage (use literal 0)
+
+**CashSystem Cachers Converted (11 files):**
+1. shader_module_cacher.cpp - TypedCacher-based → LOG_* macros
+2. shader_compilation_cacher.cpp - TypedCacher-based → LOG_* macros
+3. pipeline_cacher.cpp - TypedCacher-based → LOG_* macros
+4. pipeline_layout_cacher.cpp - TypedCacher-based → LOG_* macros
+5. descriptor_cacher.cpp - TypedCacher-based → LOG_* macros
+6. SamplerCacher.cpp - TypedCacher-based → LOG_* macros
+7. TextureCacher.cpp - TypedCacher-based → LOG_* macros
+8. MeshCacher.cpp - TypedCacher-based → LOG_* macros
+9. RenderPassCacher.cpp - TypedCacher-based → LOG_* macros
+10. DescriptorSetLayoutCacher.cpp - TypedCacher-based → LOG_* macros
+11. device_identifier.cpp - Added ILoggable to DeviceRegistry class
+
+**VulkanResources Converted (3 files):**
+- VulkanLayerAndExtension - Added ILoggable inheritance
+- VulkanSwapChain - Added ILoggable inheritance
+- CommandBufferUtility.cpp - Kept fprintf for standalone function
+
+**Summary:**
+- ~150+ additional std::cout/cerr statements converted
+- All TypedCacher classes now use LOG_* macros
+- Terminal output is now clean (only intentional user-facing messages)
+- Build passes with only PDB warnings
 
 ---
 

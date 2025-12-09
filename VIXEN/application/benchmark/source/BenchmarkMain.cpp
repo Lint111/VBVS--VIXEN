@@ -24,6 +24,7 @@
 #include <Profiler/BenchmarkConfig.h>
 #include <VulkanGlobalNames.h>
 #include <iostream>
+#include <Logger.h>
 
 // Initialize global Vulkan extension/layer lists for windowed benchmark mode.
 // These are required by InstanceNode and DeviceNode when running with a window.
@@ -58,13 +59,17 @@ int main(int argc, char* argv[]) {
     using namespace Vixen::Benchmark;
     using namespace Vixen::Profiler;
 
+    // Create logger for benchmark main
+    auto mainLogger = std::make_shared<Vixen::Log::Logger>("BenchmarkMain", true);
+    mainLogger->SetTerminalOutput(true);
+
     // Parse command line arguments
     auto opts = ParseCommandLine(argc, argv);
 
     // Handle parse errors
     if (opts.hasError) {
-        std::cerr << "Error: " << opts.parseError << "\n";
-        std::cerr << "Use --help for usage information\n";
+        mainLogger->Error("Error: " + opts.parseError);
+        mainLogger->Error("Use --help for usage information");
         return 1;
     }
 
@@ -84,10 +89,12 @@ int main(int argc, char* argv[]) {
     if (opts.saveConfig) {
         BenchmarkSuiteConfig config = opts.BuildSuiteConfig();
         if (config.SaveToFile(opts.saveConfigPath)) {
-            std::cout << "Configuration saved to: " << opts.saveConfigPath << "\n";
+            mainLogger->Info("Configuration saved to: " + opts.saveConfigPath.string());
+            std::cout << "Configuration saved to: " << opts.saveConfigPath << "\n";  // User-facing output
             return 0;
         } else {
-            std::cerr << "Error: Failed to save configuration to: " << opts.saveConfigPath << "\n";
+            mainLogger->Error("Failed to save configuration to: " + opts.saveConfigPath.string());
+            std::cerr << "Error: Failed to save configuration to: " << opts.saveConfigPath << "\n";  // User-facing error
             return 1;
         }
     }
@@ -95,7 +102,11 @@ int main(int argc, char* argv[]) {
     // Validate CLI options
     auto errors = opts.Validate();
     if (!errors.empty()) {
-        std::cerr << "Configuration errors:\n";
+        mainLogger->Error("Configuration errors:");
+        for (const auto& error : errors) {
+            mainLogger->Error("  - " + error);
+        }
+        std::cerr << "Configuration errors:\n";  // User-facing error
         for (const auto& error : errors) {
             std::cerr << "  - " << error << "\n";
         }
@@ -109,7 +120,11 @@ int main(int argc, char* argv[]) {
     // Validate suite configuration
     auto configErrors = config.Validate();
     if (!configErrors.empty()) {
-        std::cerr << "Suite configuration errors:\n";
+        mainLogger->Error("Suite configuration errors:");
+        for (const auto& error : configErrors) {
+            mainLogger->Error("  - " + error);
+        }
+        std::cerr << "Suite configuration errors:\n";  // User-facing error
         for (const auto& error : configErrors) {
             std::cerr << "  - " << error << "\n";
         }
@@ -131,7 +146,8 @@ int main(int argc, char* argv[]) {
     uint32_t total = results.GetTotalCount();
 
     if (total == 0) {
-        std::cerr << "Error: No tests were executed\n";
+        mainLogger->Error("No tests were executed");
+        std::cerr << "Error: No tests were executed\n";  // User-facing error
         return 1;
     }
 

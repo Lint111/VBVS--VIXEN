@@ -101,11 +101,6 @@ void AccelerationStructureNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("Building acceleration structures for " +
                   std::to_string(aabbData->aabbCount) + " AABBs");
 
-    // Load RTX extension functions (still needed for cacher)
-    if (!LoadRTXFunctions()) {
-        throw std::runtime_error("[AccelerationStructureNode] Failed to load RTX extension functions");
-    }
-
     // ========================================================================
     // Build BLAS/TLAS via cacher (the only path now)
     // ========================================================================
@@ -137,53 +132,6 @@ void AccelerationStructureNode::CleanupImpl(TypedCleanupContext& ctx) {
     NODE_LOG_INFO("AccelerationStructureNode cleanup");
     DestroyAccelerationStructures();
 }
-
-// ============================================================================
-// RTX FUNCTION LOADING
-// ============================================================================
-
-bool AccelerationStructureNode::LoadRTXFunctions() {
-    VkDevice device = vulkanDevice_->device;
-
-    vkGetAccelerationStructureBuildSizesKHR_ =
-        (PFN_vkGetAccelerationStructureBuildSizesKHR)vkGetDeviceProcAddr(
-            device, "vkGetAccelerationStructureBuildSizesKHR");
-
-    vkCreateAccelerationStructureKHR_ =
-        (PFN_vkCreateAccelerationStructureKHR)vkGetDeviceProcAddr(
-            device, "vkCreateAccelerationStructureKHR");
-
-    vkDestroyAccelerationStructureKHR_ =
-        (PFN_vkDestroyAccelerationStructureKHR)vkGetDeviceProcAddr(
-            device, "vkDestroyAccelerationStructureKHR");
-
-    vkCmdBuildAccelerationStructuresKHR_ =
-        (PFN_vkCmdBuildAccelerationStructuresKHR)vkGetDeviceProcAddr(
-            device, "vkCmdBuildAccelerationStructuresKHR");
-
-    vkGetAccelerationStructureDeviceAddressKHR_ =
-        (PFN_vkGetAccelerationStructureDeviceAddressKHR)vkGetDeviceProcAddr(
-            device, "vkGetAccelerationStructureDeviceAddressKHR");
-
-    vkGetBufferDeviceAddressKHR_ =
-        (PFN_vkGetBufferDeviceAddressKHR)vkGetDeviceProcAddr(
-            device, "vkGetBufferDeviceAddressKHR");
-
-    bool success =
-        vkGetAccelerationStructureBuildSizesKHR_ &&
-        vkCreateAccelerationStructureKHR_ &&
-        vkDestroyAccelerationStructureKHR_ &&
-        vkCmdBuildAccelerationStructuresKHR_ &&
-        vkGetAccelerationStructureDeviceAddressKHR_ &&
-        vkGetBufferDeviceAddressKHR_;
-
-    if (!success) {
-        NODE_LOG_ERROR("Failed to load one or more RTX extension functions");
-    }
-
-    return success;
-}
-
 
 void AccelerationStructureNode::DestroyAccelerationStructures() {
     if (!vulkanDevice_) {

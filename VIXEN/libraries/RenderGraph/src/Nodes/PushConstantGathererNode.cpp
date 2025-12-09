@@ -114,6 +114,7 @@ static size_t ExtractTypedResource(
     }
 
     // Log lookup failure for debugging
+    // Note: Using stderr for lower-level utility function outside of node context
     std::cerr << "[ExtractTypedResource] Lookup FAILED: baseType=" << static_cast<int>(typeInfo.baseType)
               << ", vecSize=" << typeInfo.vecSize << ", arraySize=" << typeInfo.arraySize
               << ", key=(baseType=" << static_cast<int>(typeInfo.baseType)
@@ -202,12 +203,12 @@ PushConstantGathererNode::PushConstantGathererNode(
 
 void PushConstantGathererNode::PreRegisterPushConstantFields(const std::shared_ptr<ShaderManagement::ShaderDataBundle>& shaderBundle) {
     if (!shaderBundle || !shaderBundle->reflectionData) {
-        std::cout << "[PushConstantGatherer] No shader bundle or reflection data for pre-registration\n";
+        NODE_LOG_DEBUG("[PushConstantGatherer] No shader bundle or reflection data for pre-registration");
         return;
     }
 
     if (shaderBundle->reflectionData->pushConstants.empty()) {
-        std::cout << "[PushConstantGatherer] No push constants in shader\n";
+        NODE_LOG_DEBUG("[PushConstantGatherer] No push constants in shader");
         return;
     }
 
@@ -227,16 +228,16 @@ void PushConstantGathererNode::PreRegisterPushConstantFields(const std::shared_p
 
         pushConstantFields_.push_back(fieldInfo);
 
-        std::cout << "[PushConstantGatherer] Pre-registered field: " << member.name
-                  << " (offset=" << member.offset << ", size=" << member.type.sizeInBytes << ")\n";
+        NODE_LOG_DEBUG("[PushConstantGatherer] Pre-registered field: " + member.name
+                  + " (offset=" + std::to_string(member.offset) + ", size=" + std::to_string(member.type.sizeInBytes) + ")");
     }
 
     // Set variadic constraints - fields are OPTIONAL
     // Min = 0 (all fields can use defaults), Max = field count
     if (!pushConstantFields_.empty()) {
         SetVariadicInputConstraints(0, pushConstantFields_.size());
-        std::cout << "[PushConstantGatherer] Variadic constraints: min=0, max=" << pushConstantFields_.size()
-                  << " (fields are optional, missing fields use zero defaults)\n";
+        NODE_LOG_DEBUG("[PushConstantGatherer] Variadic constraints: min=0, max=" + std::to_string(pushConstantFields_.size())
+                  + " (fields are optional, missing fields use zero defaults)");
     }
 }
 

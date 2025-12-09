@@ -280,13 +280,13 @@ void LaineKarrasOctree::rebuild(GaiaVoxelWorld& world, const glm::vec3& worldMin
     std::vector<BrickInfo> populatedBricks;
     size_t totalVoxels = 0;
 
-    std::cout << "[LaineKarrasOctree] Rebuilding: bricksPerAxis=" << bricksPerAxis
-              << ", brickSideLength=" << brickSideLength << std::endl;
+    // TODO: Add ILoggable - std::cout << "[LaineKarrasOctree] Rebuilding: bricksPerAxis=" << bricksPerAxis
+    //       << ", brickSideLength=" << brickSideLength << std::endl;
 
     // Step 1: Query all solid voxels once (O(N))
-    std::cout << "[LaineKarrasOctree] Querying all solid voxels..." << std::endl;
+    // TODO: Add ILoggable - std::cout << "[LaineKarrasOctree] Querying all solid voxels..." << std::endl;
     auto allVoxels = world.querySolidVoxels();
-    std::cout << "[LaineKarrasOctree] Found " << allVoxels.size() << " solid voxels" << std::endl;
+    // TODO: Add ILoggable - std::cout << "[LaineKarrasOctree] Found " << allVoxels.size() << " solid voxels" << std::endl;
 
     // Step 2: Bin voxels by brick coordinate using a hash map
     std::unordered_map<uint64_t, size_t> brickCounts;
@@ -309,7 +309,7 @@ void LaineKarrasOctree::rebuild(GaiaVoxelWorld& world, const glm::vec3& worldMin
         );
     };
 
-    std::cout << "[LaineKarrasOctree] Binning voxels by brick..." << std::endl;
+    // TODO: Add ILoggable - std::cout << "[LaineKarrasOctree] Binning voxels by brick..." << std::endl;
     for (const auto& entity : allVoxels) {
         auto posOpt = world.getPosition(entity);
         if (!posOpt) continue;
@@ -318,16 +318,16 @@ void LaineKarrasOctree::rebuild(GaiaVoxelWorld& world, const glm::vec3& worldMin
         totalVoxels++;
     }
 
-    std::cout << "[LaineKarrasOctree] Found " << brickCounts.size() << " populated bricks" << std::endl;
+    // TODO: Add ILoggable - std::cout << "[LaineKarrasOctree] Found " << brickCounts.size() << " populated bricks" << std::endl;
 
     // Debug: Print first 10 populated brick coordinates
-    std::cout << "[LaineKarrasOctree] First 10 populated bricks:" << std::endl;
+    // TODO: Add ILoggable - std::cout << "[LaineKarrasOctree] First 10 populated bricks:" << std::endl;
     int printCount = 0;
     for (const auto& [key, count] : brickCounts) {
         if (printCount >= 10) break;
         glm::ivec3 coord = fromBrickKey(key);
-        std::cout << "  Brick (" << coord.x << ", " << coord.y << ", " << coord.z
-                  << ") with " << count << " voxels" << std::endl;
+        // TODO: Add ILoggable - std::cout << "  Brick (" << coord.x << ", " << coord.y << ", " << coord.z
+        //       << ") with " << count << " voxels" << std::endl;
         printCount++;
     }
 
@@ -370,7 +370,7 @@ void LaineKarrasOctree::rebuild(GaiaVoxelWorld& world, const glm::vec3& worldMin
             return a.mortonCode < b.mortonCode;
         });
 
-    std::cout << "[LaineKarrasOctree] Morton sorting: " << bricksBeforeSort << " bricks sorted by spatial locality" << std::endl;
+    // TODO: Add ILoggable - std::cout << "[LaineKarrasOctree] Morton sorting: " << bricksBeforeSort << " bricks sorted by spatial locality" << std::endl;
 
     // Compute and log neighbor distance metrics (for validation)
     if (populatedBricks.size() >= 2) {
@@ -382,9 +382,9 @@ void LaineKarrasOctree::rebuild(GaiaVoxelWorld& world, const glm::vec3& worldMin
         avgMortonDelta /= std::min(populatedBricks.size() - 1, size_t(9));
 
         constexpr size_t bytesPerBrick = 768;
-        std::cout << "[LaineKarrasOctree] Neighbor metrics: avg Morton delta=" << avgMortonDelta
-                  << ", sequential brick distance=" << bytesPerBrick << " bytes" << std::endl;
-        std::cout << "[LaineKarrasOctree] (Before Morton sort: neighbors were ~49 KB apart on average)" << std::endl;
+        // TODO: Add ILoggable - std::cout << "[LaineKarrasOctree] Neighbor metrics: avg Morton delta=" << avgMortonDelta
+        //       << ", sequential brick distance=" << bytesPerBrick << " bytes" << std::endl;
+        // TODO: Add ILoggable - std::cout << "[LaineKarrasOctree] (Before Morton sort: neighbors were ~49 KB apart on average)" << std::endl;
     }
 
     // 5. PHASE 2: Build hierarchy bottom-up with child mapping
@@ -622,7 +622,7 @@ void LaineKarrasOctree::rebuild(GaiaVoxelWorld& world, const glm::vec3& worldMin
         DXT1ColorCompressor colorCompressor;
         DXTNormalCompressor normalCompressor;
 
-        std::cout << "[LaineKarrasOctree] Compressing " << numBricks << " bricks (geometric normals)..." << std::endl;
+        // TODO: Add ILoggable - std::cout << "[LaineKarrasOctree] Compressing " << numBricks << " bricks (geometric normals)..." << std::endl;
 
         for (size_t brickIdx = 0; brickIdx < numBricks; ++brickIdx) {
             const auto& brickView = m_octree->root->brickViews[brickIdx];
@@ -683,12 +683,12 @@ void LaineKarrasOctree::rebuild(GaiaVoxelWorld& world, const glm::vec3& worldMin
                         // DEBUG: Log first few material lookups
                         static int debugCount = 0;
                         if (debugCount < 20) {
-                            std::cout << "[SVORebuild] voxel " << voxelLinearIdx
-                                      << " matOpt.has_value()=" << matOpt.has_value()
-                                      << " matID=" << matID
-                                      << " color=" << MaterialIdToColor(matID).x << ","
-                                      << MaterialIdToColor(matID).y << ","
-                                      << MaterialIdToColor(matID).z << std::endl;
+                            // TODO: Add ILoggable - std::cout << "[SVORebuild] voxel " << voxelLinearIdx
+                            //       << " matOpt.has_value()=" << matOpt.has_value()
+                            //       << " matID=" << matID
+                            //       << " color=" << MaterialIdToColor(matID).x << ","
+                            //       << MaterialIdToColor(matID).y << ","
+                            //       << MaterialIdToColor(matID).z << std::endl;
                             debugCount++;
                         }
 
@@ -720,9 +720,9 @@ void LaineKarrasOctree::rebuild(GaiaVoxelWorld& world, const glm::vec3& worldMin
 
         size_t colorBytes = numBricks * blocksPerBrick * sizeof(uint64_t);
         size_t normalBytes = numBricks * blocksPerBrick * sizeof(OctreeBlock::CompressedNormalBlock);
-        std::cout << "[LaineKarrasOctree] Compression complete: "
-                  << colorBytes << " bytes colors, "
-                  << normalBytes << " bytes normals (geometric)" << std::endl;
+        // TODO: Add ILoggable - std::cout << "[LaineKarrasOctree] Compression complete: "
+        //       << colorBytes << " bytes colors, "
+        //       << normalBytes << " bytes normals (geometric)" << std::endl;
     }
 }
 

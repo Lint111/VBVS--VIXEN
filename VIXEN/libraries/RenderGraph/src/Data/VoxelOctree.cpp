@@ -251,7 +251,7 @@ uint32_t SparseVoxelOctree::BuildRecursiveESVO(
     ESVONode& node = esvoNodes_[nodeIndex];
 
     if (depth == 0) {
-        std::cout << "[BuildRecursiveESVO] Created root node at index " << nodeIndex << std::endl;
+        std::cerr << "[BuildRecursiveESVO] Created root node at index " << nodeIndex << std::endl;
     }
 
     // If we've reached brick level (depth 4) or minimum size (8³), this is a leaf
@@ -261,7 +261,7 @@ uint32_t SparseVoxelOctree::BuildRecursiveESVO(
         node.SetBrickOffset(brickOffset);
         // No children, so childMask stays 0 (leaf indicator)
         if (depth == 0) {
-            std::cout << "[BuildRecursiveESVO] Root is leaf! brickOffset=" << brickOffset << std::endl;
+            std::cerr << "[BuildRecursiveESVO] Root is leaf! brickOffset=" << brickOffset << std::endl;
         }
         return nodeIndex;
     }
@@ -316,23 +316,23 @@ uint32_t SparseVoxelOctree::BuildRecursiveESVO(
     }
 
     if (depth == 0) {
-        std::cout << "[BuildRecursiveESVO] Root node finished: childMask=0x" << std::hex
+        std::cerr << "[BuildRecursiveESVO] Root node finished: childMask=0x" << std::hex
                   << static_cast<int>(node.GetChildMask()) << std::dec << ", childCount=" << node.GetChildCount()
                   << ", descriptor0=0x" << std::hex << node.descriptor0 << std::dec << std::endl;
     }
 
     // DEBUG: Log leaf node bricks
     if ((depth >= 4 || size <= 8) && depth < 6) {
-        std::cout << "[BuildRecursiveESVO] Created leaf at depth=" << depth << ", size=" << size
+        std::cerr << "[BuildRecursiveESVO] Created leaf at depth=" << depth << ", size=" << size
                   << ", origin=(" << origin.x << "," << origin.y << "," << origin.z << ")" << std::endl;
         // Check first few voxels in the brick
         if (esvoNodes_.size() > 0 && esvoNodes_.back().GetBrickOffset() < bricks_.size()) {
             const auto& brick = bricks_[esvoNodes_.back().GetBrickOffset()];
-            std::cout << "  First 8 voxels: ";
+            std::cerr << "  First 8 voxels: ";
             for (int i = 0; i < 8; ++i) {
-                std::cout << static_cast<int>(brick.voxels[0][0][i]) << " ";
+                std::cerr << static_cast<int>(brick.voxels[0][0][i]) << " ";
             }
-            std::cout << std::endl;
+            std::cerr << std::endl;
         }
     }
 
@@ -444,7 +444,7 @@ void SparseVoxelOctree::BuildESVOWithMortonCurve(
     std::vector<NodeInfo> currentLevel;
     std::vector<NodeInfo> nextLevel;
 
-    std::cout << "[BFS ESVO] Starting breadth-first build..." << std::endl;
+    std::cerr << "[BFS ESVO] Starting breadth-first build..." << std::endl;
 
     // Level 0: Root node
     if (!IsRegionEmpty(voxelData, glm::ivec3(0, 0, 0), gridSize)) {
@@ -458,14 +458,14 @@ void SparseVoxelOctree::BuildESVOWithMortonCurve(
         root.childSlot = 0;
         currentLevel.push_back(root);
     } else {
-        std::cout << "[BFS ESVO] Empty grid - no octree needed" << std::endl;
+        std::cerr << "[BFS ESVO] Empty grid - no octree needed" << std::endl;
         return;
     }
 
     // Build level by level
     uint32_t currentDepth = 0;
     while (!currentLevel.empty() && currentDepth < 5) {  // Process levels 0..4 (depth 5 would be beyond bricks)
-        std::cout << "[BFS ESVO] Level " << currentDepth << ": processing " << currentLevel.size() << " nodes" << std::endl;
+        std::cerr << "[BFS ESVO] Level " << currentDepth << ": processing " << currentLevel.size() << " nodes" << std::endl;
 
         // Process each node in current level (nodes already allocated with explicit indices)
         for (size_t i = 0; i < currentLevel.size(); ++i) {
@@ -475,7 +475,7 @@ void SparseVoxelOctree::BuildESVOWithMortonCurve(
 
             // DEBUG: Print when processing root children
             if (currentDepth == 1 && nodeInfo.parentIndex == 0) {
-                std::cout << "[BFS ESVO] Processing root child at index " << nodeIndex
+                std::cerr << "[BFS ESVO] Processing root child at index " << nodeIndex
                           << " (parent=" << nodeInfo.parentIndex << ", slot=" << (int)nodeInfo.childSlot
                           << ", origin=" << nodeInfo.origin.x << "," << nodeInfo.origin.y << "," << nodeInfo.origin.z << ")"
                           << std::endl;
@@ -550,7 +550,7 @@ void SparseVoxelOctree::BuildESVOWithMortonCurve(
 
                     // DEBUG: Print root children placement
                     if (currentDepth == 0) {
-                        std::cout << "[BFS ESVO] Root child octant " << (int)meta.slot
+                        std::cerr << "[BFS ESVO] Root child octant " << (int)meta.slot
                                   << " will be built at index " << childNodeIndex
                                   << " (base=" << childBaseOffset << ", origin="
                                   << meta.origin.x << "," << meta.origin.y << "," << meta.origin.z << ")"
@@ -597,11 +597,11 @@ void SparseVoxelOctree::BuildESVOWithMortonCurve(
         currentDepth++;
     }
 
-    std::cout << "[BFS ESVO] Build complete: " << esvoNodes_.size() << " nodes allocated" << std::endl;
+    std::cerr << "[BFS ESVO] Build complete: " << esvoNodes_.size() << " nodes allocated" << std::endl;
 
     // Debug: Print root node
     if (!esvoNodes_.empty()) {
-        std::cout << "[BFS ESVO] Root node: descriptor0=0x" << std::hex
+        std::cerr << "[BFS ESVO] Root node: descriptor0=0x" << std::hex
                   << esvoNodes_[0].descriptor0 << ", descriptor1=0x" << esvoNodes_[0].descriptor1
                   << std::dec << ", childMask=" << (int)esvoNodes_[0].GetChildMask()
                   << ", childCount=" << esvoNodes_[0].GetChildCount() << std::endl;
@@ -633,7 +633,7 @@ void SparseVoxelOctree::BuildESVOWithMortonCurve(
             bool existsRaw = (rawChildBits & (1u << (7 - child))) != 0;
             if (existsHost != existsRaw) {
                 anyError = true;
-                std::cout << "[ESVO VALIDATION] EXISTENCE BIT MISMATCH node=" << nodeIndex
+                std::cerr << "[ESVO VALIDATION] EXISTENCE BIT MISMATCH node=" << nodeIndex
                           << " child=" << child << " hostHas=" << existsHost
                           << " rawHas=" << existsRaw << " d0=0x" << std::hex << d0 << std::dec << std::endl;
             }
@@ -645,7 +645,7 @@ void SparseVoxelOctree::BuildESVOWithMortonCurve(
             bool isLeafDirect = (child >= 7) ? true : ((nonLeafMask & (1u << child)) == 0);
             if (isLeafHost != isLeafDirect) {
                 anyError = true;
-                std::cout << "[ESVO VALIDATION] LEAF FLAG MISMATCH node=" << nodeIndex
+                std::cerr << "[ESVO VALIDATION] LEAF FLAG MISMATCH node=" << nodeIndex
                           << " child=" << child << " hostLeaf=" << isLeafHost
                           << " directLeaf=" << isLeafDirect << " nonLeafMask=0x"
                           << std::hex << (int)nonLeafMask << " d0=0x" << d0 << std::dec << std::endl;
@@ -656,13 +656,13 @@ void SparseVoxelOctree::BuildESVOWithMortonCurve(
                 uint32_t expectedIndex = childBase + child;
                 if (expectedIndex >= esvoNodes_.size()) {
                     anyError = true;
-                    std::cout << "[ESVO VALIDATION] OUT-OF-RANGE child pointer node=" << nodeIndex
+                    std::cerr << "[ESVO VALIDATION] OUT-OF-RANGE child pointer node=" << nodeIndex
                               << " child=" << child << " expectedIndex=" << expectedIndex << std::endl;
                 }
             }
         }
         if (anyError) {
-            std::cout << "[ESVO VALIDATION] Descriptor issues detected for node " << nodeIndex << std::endl;
+            std::cerr << "[ESVO VALIDATION] Descriptor issues detected for node " << nodeIndex << std::endl;
         }
     };
 
@@ -843,12 +843,12 @@ void SparseVoxelOctree::ClearMaterials() {
 
 void SparseVoxelOctree::CheckForSymmetry() const {
     if (esvoNodes_.empty()) {
-        std::cout << "=== Symmetry Check: No ESVO nodes ===" << std::endl;
+        std::cerr << "=== Symmetry Check: No ESVO nodes ===" << std::endl;
         return;
     }
 
-    std::cout << "=== Symmetry Check ===" << std::endl;
-    std::cout << "Root child mask: 0x" << std::hex << (int)esvoNodes_[0].GetChildMask() << std::dec << std::endl;
+    std::cerr << "=== Symmetry Check ===" << std::endl;
+    std::cerr << "Root child mask: 0x" << std::hex << (int)esvoNodes_[0].GetChildMask() << std::dec << std::endl;
 
     // Check if we have symmetrical children (e.g., both left and right walls)
     uint8_t childMask = esvoNodes_[0].GetChildMask();
@@ -862,21 +862,21 @@ void SparseVoxelOctree::CheckForSymmetry() const {
         bool right = childMask & (1 << (i + 4)); // x=1 half
         if (left && right) {
             symmetricalPairs++;
-            std::cout << "Found symmetrical pair in octants " << i << " and " << (i + 4) << std::endl;
+            std::cerr << "Found symmetrical pair in octants " << i << " and " << (i + 4) << std::endl;
         }
     }
 
-    std::cout << "Total symmetrical pairs: " << symmetricalPairs << std::endl;
+    std::cerr << "Total symmetrical pairs: " << symmetricalPairs << std::endl;
 
     // Check first level children
     uint32_t childOffset = esvoNodes_[0].GetChildOffset();
-    std::cout << "Root child offset: " << childOffset << std::endl;
+    std::cerr << "Root child offset: " << childOffset << std::endl;
 
     for (int i = 0; i < 8; ++i) {
         if (childMask & (1 << i)) {
             uint32_t childIndex = childOffset + i;
             if (childIndex < esvoNodes_.size()) {
-                std::cout << "  Child " << i << " at index " << childIndex
+                std::cerr << "  Child " << i << " at index " << childIndex
                           << " has childMask=0x" << std::hex << (int)esvoNodes_[childIndex].GetChildMask() << std::dec
                           << std::endl;
             }

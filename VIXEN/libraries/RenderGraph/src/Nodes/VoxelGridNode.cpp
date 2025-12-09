@@ -167,36 +167,45 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
                       std::to_string(reinterpret_cast<uint64_t>(debugCaptureResource_->GetBuffer())));
     }
 
-    // Output resources
-    std::cout << "!!!! [VoxelGridNode::CompileImpl] OUTPUTTING NEW RESOURCES !!!!" << std::endl;
-    std::cout << "  NEW octreeNodesBuffer=" << octreeNodesBuffer << ", octreeBricksBuffer=" << octreeBricksBuffer
-              << ", octreeMaterialsBuffer=" << octreeMaterialsBuffer << ", octreeConfigBuffer=" << octreeConfigBuffer << std::endl;
+    // Output octree buffers from cached scene data
+    VkBuffer octreeNodesBuffer = cachedSceneData_->esvoNodesBuffer;
+    VkBuffer octreeBricksBuffer = cachedSceneData_->brickDataBuffer;
+    VkBuffer octreeMaterialsBuffer = cachedSceneData_->materialsBuffer;
+    VkBuffer octreeConfigBuffer = cachedSceneData_->octreeConfigBuffer;
 
-    // Output octree buffers
+    // Output resources
+    NODE_LOG_DEBUG("[VoxelGridNode::CompileImpl] OUTPUTTING NEW RESOURCES");
+    NODE_LOG_DEBUG("  NEW octreeNodesBuffer=" + std::to_string(reinterpret_cast<uint64_t>(octreeNodesBuffer)) + ", octreeBricksBuffer=" + std::to_string(reinterpret_cast<uint64_t>(octreeBricksBuffer))
+              + ", octreeMaterialsBuffer=" + std::to_string(reinterpret_cast<uint64_t>(octreeMaterialsBuffer)) + ", octreeConfigBuffer=" + std::to_string(reinterpret_cast<uint64_t>(octreeConfigBuffer)));
+
     ctx.Out(VoxelGridNodeConfig::OCTREE_NODES_BUFFER, octreeNodesBuffer);
     ctx.Out(VoxelGridNodeConfig::OCTREE_BRICKS_BUFFER, octreeBricksBuffer);
     ctx.Out(VoxelGridNodeConfig::OCTREE_MATERIALS_BUFFER, octreeMaterialsBuffer);
     ctx.Out(VoxelGridNodeConfig::OCTREE_CONFIG_BUFFER, octreeConfigBuffer);
 
     // Output compressed buffers (optional - only if compression is enabled)
+    VkBuffer compressedColorBuffer = cachedSceneData_->compressedColorsBuffer;
+    VkBuffer compressedNormalBuffer = cachedSceneData_->compressedNormalsBuffer;
+    VkBuffer brickGridLookupBuffer = cachedSceneData_->brickGridLookupBuffer;
+
     if (compressedColorBuffer != VK_NULL_HANDLE) {
         ctx.Out(VoxelGridNodeConfig::COMPRESSED_COLOR_BUFFER, compressedColorBuffer);
-        std::cout << "  COMPRESSED_COLOR_BUFFER=" << compressedColorBuffer << std::endl;
+        NODE_LOG_DEBUG("  COMPRESSED_COLOR_BUFFER=" + std::to_string(reinterpret_cast<uint64_t>(compressedColorBuffer)));
     }
     if (compressedNormalBuffer != VK_NULL_HANDLE) {
         ctx.Out(VoxelGridNodeConfig::COMPRESSED_NORMAL_BUFFER, compressedNormalBuffer);
-        std::cout << "  COMPRESSED_NORMAL_BUFFER=" << compressedNormalBuffer << std::endl;
+        NODE_LOG_DEBUG("  COMPRESSED_NORMAL_BUFFER=" + std::to_string(reinterpret_cast<uint64_t>(compressedNormalBuffer)));
     }
     if (brickGridLookupBuffer != VK_NULL_HANDLE) {
         ctx.Out(VoxelGridNodeConfig::BRICK_GRID_LOOKUP_BUFFER, brickGridLookupBuffer);
-        std::cout << "  BRICK_GRID_LOOKUP_BUFFER=" << brickGridLookupBuffer << std::endl;
+        NODE_LOG_DEBUG("  BRICK_GRID_LOOKUP_BUFFER=" + std::to_string(reinterpret_cast<uint64_t>(brickGridLookupBuffer)));
     }
 
     // Output cached scene data for downstream nodes (AccelerationStructureNode)
     // This provides readonly access to the complete scene for building AS
     if (cachedSceneData_) {
         ctx.Out(VoxelGridNodeConfig::VOXEL_SCENE_DATA, cachedSceneData_.get());
-        std::cout << "  VOXEL_SCENE_DATA=" << cachedSceneData_.get() << std::endl;
+        NODE_LOG_DEBUG("  VOXEL_SCENE_DATA=" + std::to_string(reinterpret_cast<uint64_t>(cachedSceneData_.get())));
     }
 
     // Output debug capture buffer with IDebugCapture interface attached
@@ -205,23 +214,19 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
         ctx.OutWithInterface(VoxelGridNodeConfig::DEBUG_CAPTURE_BUFFER,
                             debugCaptureResource_->GetBuffer(),
                             static_cast<Debug::IDebugCapture*>(debugCaptureResource_.get()));
-        std::cout << "  DEBUG_CAPTURE_BUFFER=" << debugCaptureResource_->GetBuffer() << std::endl;
+        NODE_LOG_DEBUG("  DEBUG_CAPTURE_BUFFER=" + std::to_string(reinterpret_cast<uint64_t>(debugCaptureResource_->GetBuffer())));
     }
 
-    std::cout << "!!!! [VoxelGridNode::CompileImpl] OUTPUTS SET !!!!" << std::endl;
+    NODE_LOG_DEBUG("[VoxelGridNode::CompileImpl] OUTPUTS SET");
 
     NODE_LOG_INFO("Uploaded octree buffers successfully");
 
     // Print memory summary for Week 3 benchmarking
     if (memoryLogger_) {
-        std::cout << "\n========================================\n";
-        std::cout << "[VoxelGridNode] GPU MEMORY SUMMARY\n";
-        std::cout << "========================================\n";
-        std::cout << memoryLogger_->GetMemorySummary();
-        std::cout << "Total GPU Memory: " << memoryLogger_->GetTotalTrackedMemoryMB() << " MB\n";
-        std::cout << "========================================\n" << std::flush;
+        NODE_LOG_INFO("GPU MEMORY SUMMARY:\n" + memoryLogger_->GetMemorySummary() +
+                     "Total GPU Memory: " + std::to_string(static_cast<int>(memoryLogger_->GetTotalTrackedMemoryMB())) + " MB");
     } else {
-        std::cout << "[VoxelGridNode] WARNING: memoryLogger_ is null, cannot print memory summary\n" << std::flush;
+        NODE_LOG_WARNING("[VoxelGridNode] WARNING: memoryLogger_ is null, cannot print memory summary");
     }
 
     NODE_LOG_DEBUG("[VoxelGridNode::CompileImpl] COMPLETED");
@@ -233,24 +238,28 @@ void VoxelGridNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // When swapchain recompiles, descriptor gatherer re-queries these outputs
 
     NODE_LOG_INFO("=== VoxelGridNode::ExecuteImpl START ===");
-    NODE_LOG_INFO("  octreeNodesBuffer handle: " + std::to_string(reinterpret_cast<uint64_t>(octreeNodesBuffer)));
-    NODE_LOG_INFO("  octreeBricksBuffer handle: " + std::to_string(reinterpret_cast<uint64_t>(octreeBricksBuffer)));
-    NODE_LOG_INFO("  octreeMaterialsBuffer handle: " + std::to_string(reinterpret_cast<uint64_t>(octreeMaterialsBuffer)));
 
-    ctx.Out(VoxelGridNodeConfig::OCTREE_NODES_BUFFER, octreeNodesBuffer);
-    ctx.Out(VoxelGridNodeConfig::OCTREE_BRICKS_BUFFER, octreeBricksBuffer);
-    ctx.Out(VoxelGridNodeConfig::OCTREE_MATERIALS_BUFFER, octreeMaterialsBuffer);
-    ctx.Out(VoxelGridNodeConfig::OCTREE_CONFIG_BUFFER, octreeConfigBuffer);
+    // Buffers are stored in cachedSceneData_, accessed directly for output
+    if (cachedSceneData_) {
+        NODE_LOG_INFO("  octreeNodesBuffer handle: " + std::to_string(reinterpret_cast<uint64_t>(cachedSceneData_->esvoNodesBuffer)));
+        NODE_LOG_INFO("  octreeBricksBuffer handle: " + std::to_string(reinterpret_cast<uint64_t>(cachedSceneData_->brickDataBuffer)));
+        NODE_LOG_INFO("  octreeMaterialsBuffer handle: " + std::to_string(reinterpret_cast<uint64_t>(cachedSceneData_->materialsBuffer)));
 
-    // Re-output compressed buffers (optional)
-    if (compressedColorBuffer != VK_NULL_HANDLE) {
-        ctx.Out(VoxelGridNodeConfig::COMPRESSED_COLOR_BUFFER, compressedColorBuffer);
-    }
-    if (compressedNormalBuffer != VK_NULL_HANDLE) {
-        ctx.Out(VoxelGridNodeConfig::COMPRESSED_NORMAL_BUFFER, compressedNormalBuffer);
-    }
-    if (brickGridLookupBuffer != VK_NULL_HANDLE) {
-        ctx.Out(VoxelGridNodeConfig::BRICK_GRID_LOOKUP_BUFFER, brickGridLookupBuffer);
+        ctx.Out(VoxelGridNodeConfig::OCTREE_NODES_BUFFER, cachedSceneData_->esvoNodesBuffer);
+        ctx.Out(VoxelGridNodeConfig::OCTREE_BRICKS_BUFFER, cachedSceneData_->brickDataBuffer);
+        ctx.Out(VoxelGridNodeConfig::OCTREE_MATERIALS_BUFFER, cachedSceneData_->materialsBuffer);
+        ctx.Out(VoxelGridNodeConfig::OCTREE_CONFIG_BUFFER, cachedSceneData_->octreeConfigBuffer);
+
+        // Re-output compressed buffers (optional)
+        if (cachedSceneData_->compressedColorsBuffer != VK_NULL_HANDLE) {
+            ctx.Out(VoxelGridNodeConfig::COMPRESSED_COLOR_BUFFER, cachedSceneData_->compressedColorsBuffer);
+        }
+        if (cachedSceneData_->compressedNormalsBuffer != VK_NULL_HANDLE) {
+            ctx.Out(VoxelGridNodeConfig::COMPRESSED_NORMAL_BUFFER, cachedSceneData_->compressedNormalsBuffer);
+        }
+        if (cachedSceneData_->brickGridLookupBuffer != VK_NULL_HANDLE) {
+            ctx.Out(VoxelGridNodeConfig::BRICK_GRID_LOOKUP_BUFFER, cachedSceneData_->brickGridLookupBuffer);
+        }
     }
 
     // Re-output cached scene data for downstream nodes
@@ -272,115 +281,13 @@ void VoxelGridNode::ExecuteImpl(TypedExecuteContext& ctx) {
 }
 
 void VoxelGridNode::DestroyOctreeBuffers() {
-    if (!vulkanDevice) return;
-
-    // If using cached data, just release the shared_ptr - cacher owns the resources
+    // Cacher owns all GPU resources. We only release the shared_ptr reference.
+    // When cachedSceneData_ is destroyed, the cacher decrements its reference count
+    // and manages resource cleanup automatically.
     if (cachedSceneData_) {
         NODE_LOG_DEBUG("VoxelGridNode: Releasing cached scene data (cacher owns resources)");
         cachedSceneData_.reset();
-        // Reset all buffer handles (we don't own them)
-        octreeNodesBuffer = VK_NULL_HANDLE;
-        octreeBricksBuffer = VK_NULL_HANDLE;
-        octreeMaterialsBuffer = VK_NULL_HANDLE;
-        octreeConfigBuffer = VK_NULL_HANDLE;
-        compressedColorBuffer = VK_NULL_HANDLE;
-        compressedNormalBuffer = VK_NULL_HANDLE;
-        brickGridLookupBuffer = VK_NULL_HANDLE;
         LogCleanupProgress("cached scene data released");
-        return;  // Don't destroy anything - cacher manages resources
-    }
-
-    // Legacy path: manually destroy buffers we own
-
-    // Destroy nodes buffer and memory
-    if (octreeNodesBuffer != VK_NULL_HANDLE) {
-        vkDestroyBuffer(vulkanDevice->device, octreeNodesBuffer, nullptr);
-        octreeNodesBuffer = VK_NULL_HANDLE;
-        LogCleanupProgress("octreeNodesBuffer destroyed");
-    }
-
-    if (octreeNodesMemory != VK_NULL_HANDLE) {
-        vkFreeMemory(vulkanDevice->device, octreeNodesMemory, nullptr);
-        octreeNodesMemory = VK_NULL_HANDLE;
-        LogCleanupProgress("octreeNodesMemory freed");
-    }
-
-    // Destroy bricks buffer and memory
-    if (octreeBricksBuffer != VK_NULL_HANDLE) {
-        vkDestroyBuffer(vulkanDevice->device, octreeBricksBuffer, nullptr);
-        octreeBricksBuffer = VK_NULL_HANDLE;
-        LogCleanupProgress("octreeBricksBuffer destroyed");
-    }
-
-    if (octreeBricksMemory != VK_NULL_HANDLE) {
-        vkFreeMemory(vulkanDevice->device, octreeBricksMemory, nullptr);
-        octreeBricksMemory = VK_NULL_HANDLE;
-        LogCleanupProgress("octreeBricksMemory freed");
-    }
-
-    // Destroy materials buffer and memory
-    if (octreeMaterialsBuffer != VK_NULL_HANDLE) {
-        vkDestroyBuffer(vulkanDevice->device, octreeMaterialsBuffer, nullptr);
-        octreeMaterialsBuffer = VK_NULL_HANDLE;
-        LogCleanupProgress("octreeMaterialsBuffer destroyed");
-    }
-
-    if (octreeMaterialsMemory != VK_NULL_HANDLE) {
-        vkFreeMemory(vulkanDevice->device, octreeMaterialsMemory, nullptr);
-        octreeMaterialsMemory = VK_NULL_HANDLE;
-        LogCleanupProgress("octreeMaterialsMemory freed");
-    }
-
-    // Destroy config buffer and memory
-    if (octreeConfigBuffer != VK_NULL_HANDLE) {
-        vkDestroyBuffer(vulkanDevice->device, octreeConfigBuffer, nullptr);
-        octreeConfigBuffer = VK_NULL_HANDLE;
-        LogCleanupProgress("octreeConfigBuffer destroyed");
-    }
-
-    if (octreeConfigMemory != VK_NULL_HANDLE) {
-        vkFreeMemory(vulkanDevice->device, octreeConfigMemory, nullptr);
-        octreeConfigMemory = VK_NULL_HANDLE;
-        LogCleanupProgress("octreeConfigMemory freed");
-    }
-
-    // Destroy compressed color buffer and memory
-    if (compressedColorBuffer != VK_NULL_HANDLE) {
-        vkDestroyBuffer(vulkanDevice->device, compressedColorBuffer, nullptr);
-        compressedColorBuffer = VK_NULL_HANDLE;
-        LogCleanupProgress("compressedColorBuffer destroyed");
-    }
-
-    if (compressedColorMemory != VK_NULL_HANDLE) {
-        vkFreeMemory(vulkanDevice->device, compressedColorMemory, nullptr);
-        compressedColorMemory = VK_NULL_HANDLE;
-        LogCleanupProgress("compressedColorMemory freed");
-    }
-
-    // Destroy compressed normal buffer and memory
-    if (compressedNormalBuffer != VK_NULL_HANDLE) {
-        vkDestroyBuffer(vulkanDevice->device, compressedNormalBuffer, nullptr);
-        compressedNormalBuffer = VK_NULL_HANDLE;
-        LogCleanupProgress("compressedNormalBuffer destroyed");
-    }
-
-    if (compressedNormalMemory != VK_NULL_HANDLE) {
-        vkFreeMemory(vulkanDevice->device, compressedNormalMemory, nullptr);
-        compressedNormalMemory = VK_NULL_HANDLE;
-        LogCleanupProgress("compressedNormalMemory freed");
-    }
-
-    // Destroy brick grid lookup buffer and memory
-    if (brickGridLookupBuffer != VK_NULL_HANDLE) {
-        vkDestroyBuffer(vulkanDevice->device, brickGridLookupBuffer, nullptr);
-        brickGridLookupBuffer = VK_NULL_HANDLE;
-        LogCleanupProgress("brickGridLookupBuffer destroyed");
-    }
-
-    if (brickGridLookupMemory != VK_NULL_HANDLE) {
-        vkFreeMemory(vulkanDevice->device, brickGridLookupMemory, nullptr);
-        brickGridLookupMemory = VK_NULL_HANDLE;
-        LogCleanupProgress("brickGridLookupMemory freed");
     }
 }
 
@@ -477,38 +384,19 @@ void VoxelGridNode::CreateSceneViaCacher() {
         throw std::runtime_error("[VoxelGridNode] Failed to get or create cached scene data");
     }
 
-    // Extract buffer handles from cached data for outputs
-    octreeNodesBuffer = cachedSceneData_->esvoNodesBuffer;
-    octreeBricksBuffer = cachedSceneData_->brickDataBuffer;
-    octreeMaterialsBuffer = cachedSceneData_->materialsBuffer;
-    octreeConfigBuffer = cachedSceneData_->octreeConfigBuffer;
-    compressedColorBuffer = cachedSceneData_->compressedColorsBuffer;
-    compressedNormalBuffer = cachedSceneData_->compressedNormalsBuffer;
-    brickGridLookupBuffer = cachedSceneData_->brickGridLookupBuffer;
-
-    // Note: Memory is owned by cachedSceneData_, not these individual members
-    // We set the memory handles to NULL_HANDLE to indicate we don't own them
-    octreeNodesMemory = VK_NULL_HANDLE;
-    octreeBricksMemory = VK_NULL_HANDLE;
-    octreeMaterialsMemory = VK_NULL_HANDLE;
-    octreeConfigMemory = VK_NULL_HANDLE;
-    compressedColorMemory = VK_NULL_HANDLE;
-    compressedNormalMemory = VK_NULL_HANDLE;
-    brickGridLookupMemory = VK_NULL_HANDLE;
-
     NODE_LOG_INFO("VoxelGridNode: Scene created via cacher: " +
                   std::to_string(cachedSceneData_->nodeCount) + " nodes, " +
                   std::to_string(cachedSceneData_->brickCount) + " bricks, " +
                   std::to_string(cachedSceneData_->solidVoxelCount) + " voxels");
 
-    std::cout << "[VoxelGridNode] Scene created via cacher:" << std::endl;
-    std::cout << "  esvoNodesBuffer=" << octreeNodesBuffer << std::endl;
-    std::cout << "  brickDataBuffer=" << octreeBricksBuffer << std::endl;
-    std::cout << "  materialsBuffer=" << octreeMaterialsBuffer << std::endl;
-    std::cout << "  octreeConfigBuffer=" << octreeConfigBuffer << std::endl;
-    std::cout << "  compressedColorsBuffer=" << compressedColorBuffer << std::endl;
-    std::cout << "  compressedNormalsBuffer=" << compressedNormalBuffer << std::endl;
-    std::cout << "  brickGridLookupBuffer=" << brickGridLookupBuffer << std::endl;
+    NODE_LOG_DEBUG("[VoxelGridNode] Scene created via cacher:");
+    NODE_LOG_DEBUG("  esvoNodesBuffer=" + std::to_string(reinterpret_cast<uint64_t>(cachedSceneData_->esvoNodesBuffer)));
+    NODE_LOG_DEBUG("  brickDataBuffer=" + std::to_string(reinterpret_cast<uint64_t>(cachedSceneData_->brickDataBuffer)));
+    NODE_LOG_DEBUG("  materialsBuffer=" + std::to_string(reinterpret_cast<uint64_t>(cachedSceneData_->materialsBuffer)));
+    NODE_LOG_DEBUG("  octreeConfigBuffer=" + std::to_string(reinterpret_cast<uint64_t>(cachedSceneData_->octreeConfigBuffer)));
+    NODE_LOG_DEBUG("  compressedColorsBuffer=" + std::to_string(reinterpret_cast<uint64_t>(cachedSceneData_->compressedColorsBuffer)));
+    NODE_LOG_DEBUG("  compressedNormalsBuffer=" + std::to_string(reinterpret_cast<uint64_t>(cachedSceneData_->compressedNormalsBuffer)));
+    NODE_LOG_DEBUG("  brickGridLookupBuffer=" + std::to_string(reinterpret_cast<uint64_t>(cachedSceneData_->brickGridLookupBuffer)));
 }
 
 } // namespace Vixen::RenderGraph

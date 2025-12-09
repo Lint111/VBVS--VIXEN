@@ -76,89 +76,12 @@ protected:
     void CleanupImpl(TypedCleanupContext& ctx) override;
 
 private:
-    // ===== BLAS Building =====
-
-    /**
-     * @brief Build bottom-level acceleration structure from AABBs
-     *
-     * Creates BLAS with VK_GEOMETRY_TYPE_AABBS_KHR geometry type.
-     * This enables procedural intersection via intersection shaders.
-     *
-     * @param aabbData AABB buffer and count from VoxelAABBConverterNode
-     * @return true if BLAS was built successfully
-     */
-    bool BuildBLAS(const VoxelAABBData& aabbData);
-
-    /**
-     * @brief Query BLAS build size requirements
-     */
-    VkAccelerationStructureBuildSizesInfoKHR QueryBLASBuildSizes(
-        const VkAccelerationStructureGeometryKHR& geometry,
-        uint32_t primitiveCount
-    );
-
-    // ===== TLAS Building =====
-
-    /**
-     * @brief Build top-level acceleration structure with single instance
-     *
-     * Creates TLAS containing one instance of the BLAS with identity transform.
-     *
-     * @return true if TLAS was built successfully
-     */
-    bool BuildTLAS();
-
-    /**
-     * @brief Create instance buffer for TLAS
-     *
-     * Contains VkAccelerationStructureInstanceKHR with:
-     * - Identity transform matrix
-     * - Reference to BLAS device address
-     * - Custom index for shader SBT lookup
-     */
-    bool CreateInstanceBuffer();
-
-    /**
-     * @brief Query TLAS build size requirements
-     */
-    VkAccelerationStructureBuildSizesInfoKHR QueryTLASBuildSizes(uint32_t instanceCount);
-
-    // ===== Helper Functions =====
-
-    /**
-     * @brief Create buffer with device address support
-     */
-    bool CreateBuffer(
-        VkDeviceSize size,
-        VkBufferUsageFlags usage,
-        VkMemoryPropertyFlags properties,
-        VkBuffer& buffer,
-        VkDeviceMemory& memory
-    );
-
-    /**
-     * @brief Get device address of a buffer
-     */
-    VkDeviceAddress GetBufferDeviceAddress(VkBuffer buffer);
-
-    /**
-     * @brief Get device address of an acceleration structure
-     */
-    VkDeviceAddress GetAccelerationStructureDeviceAddress(VkAccelerationStructureKHR accel);
-
     /**
      * @brief Cleanup all acceleration structure resources
      */
     void DestroyAccelerationStructures();
 
-    // ===== Extension Function Pointers =====
-
-    /**
-     * @brief Load RTX extension function pointers
-     *
-     * These functions are not part of Vulkan core and must be loaded dynamically.
-     */
-    bool LoadRTXFunctions();
+    // ===== Cacher Registration Helper =====
 
     // Device reference
     Vixen::Vulkan::Resources::VulkanDevice* vulkanDevice_ = nullptr;
@@ -172,19 +95,11 @@ private:
     bool allowUpdate_ = false;
     bool allowCompaction_ = false;
 
-    // RTX Extension function pointers
-    PFN_vkGetAccelerationStructureBuildSizesKHR vkGetAccelerationStructureBuildSizesKHR_ = nullptr;
-    PFN_vkCreateAccelerationStructureKHR vkCreateAccelerationStructureKHR_ = nullptr;
-    PFN_vkDestroyAccelerationStructureKHR vkDestroyAccelerationStructureKHR_ = nullptr;
-    PFN_vkCmdBuildAccelerationStructuresKHR vkCmdBuildAccelerationStructuresKHR_ = nullptr;
-    PFN_vkGetAccelerationStructureDeviceAddressKHR vkGetAccelerationStructureDeviceAddressKHR_ = nullptr;
-    PFN_vkGetBufferDeviceAddressKHR vkGetBufferDeviceAddressKHR_ = nullptr;
-
     // CashSystem integration - cached during Compile()
     CashSystem::AccelerationStructureCacher* accelStructCacher_ = nullptr;
     std::shared_ptr<CashSystem::CachedAccelerationStructure> cachedAccelStruct_;
 
-    // VoxelSceneData from VoxelGridNode (for cacher integration)
+    // Scene data from input (non-owning reference)
     CashSystem::VoxelSceneData* voxelSceneData_ = nullptr;
 
     // Cacher registration helper

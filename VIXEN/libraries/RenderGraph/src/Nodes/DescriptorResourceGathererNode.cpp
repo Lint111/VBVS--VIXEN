@@ -46,17 +46,17 @@ void DescriptorResourceGathererNode::SetupImpl(VariadicSetupContext& ctx) {
 }
 
 void DescriptorResourceGathererNode::CompileImpl(VariadicCompileContext& ctx) {
-    std::cerr << "[DescriptorResourceGathererNode::Compile] START for " << GetInstanceName() << std::endl;
+    NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Compile] START for " + GetInstanceName());
 
     // Get shader bundle to discover expected descriptor layout
     auto shaderBundle = ctx.In(DescriptorResourceGathererNodeConfig::SHADER_DATA_BUNDLE);
     if (!shaderBundle) {
-        std::cerr << "[DescriptorResourceGathererNode::Compile] ERROR: No shader bundle for " << GetInstanceName()
-                  << " - ensure ShaderLibraryNode is connected via SHADER_DATA_BUNDLE slot" << std::endl;
+        NODE_LOG_ERROR("[DescriptorResourceGathererNode::Compile] ERROR: No shader bundle for " + GetInstanceName()
+                  + " - ensure ShaderLibraryNode is connected via SHADER_DATA_BUNDLE slot");
         return;
     }
     if (!shaderBundle->descriptorLayout) {
-        std::cerr << "[DescriptorResourceGathererNode::Compile] ERROR: Shader bundle has no descriptor layout for " << GetInstanceName() << std::endl;
+        NODE_LOG_ERROR("[DescriptorResourceGathererNode::Compile] ERROR: Shader bundle has no descriptor layout for " + GetInstanceName());
         return;
     }
 
@@ -129,11 +129,11 @@ void DescriptorResourceGathererNode::CompileImpl(VariadicCompileContext& ctx) {
 
     // Call base validation (type checks, null checks)
     if (!ValidateVariadicInputsImpl(ctx)) {
-        std::cerr << "[DescriptorResourceGathererNode::Compile] ERROR: Variadic input validation failed for " << GetInstanceName() << std::endl;
+        NODE_LOG_ERROR("[DescriptorResourceGathererNode::Compile] ERROR: Variadic input validation failed for " + GetInstanceName());
         return;
     }
-    std::cerr << "[DescriptorResourceGathererNode::Compile] Validation passed for " << GetInstanceName()
-              << ", bindings.size()=" << layoutSpec->bindings.size() << std::endl;
+    NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Compile] Validation passed for " + GetInstanceName()
+              + ", bindings.size()=" + std::to_string(layoutSpec->bindings.size()));
 
     // Find max binding to size output array
     uint32_t maxBinding = 0;
@@ -235,8 +235,8 @@ void DescriptorResourceGathererNode::ExecuteImpl(VariadicExecuteContext& ctx) {
 
         // Bounds check - binding must be within resourceArray_ range
         if (binding >= resourceArray_.size()) {
-            std::cerr << "[DescriptorResourceGathererNode::Execute] ERROR: Binding " << binding
-                      << " out of range (resourceArray_.size()=" << resourceArray_.size() << ")" << std::endl;
+            NODE_LOG_ERROR("[DescriptorResourceGathererNode::Execute] ERROR: Binding " + std::to_string(binding)
+                      + " out of range (resourceArray_.size()=" + std::to_string(resourceArray_.size()) + ")");
             continue;
         }
 
@@ -381,15 +381,15 @@ bool DescriptorResourceGathererNode::ValidateVariadicInputsImpl(VariadicCompileC
     size_t inputCount = ctx.InVariadicCount();
     bool allValid = true;
 
-    std::cerr << "[ValidateVariadicInputsImpl] Checking " << inputCount << " slots for " << GetInstanceName() << std::endl;
+    NODE_LOG_DEBUG("[ValidateVariadicInputsImpl] Checking " + std::to_string(inputCount) + " slots for " + GetInstanceName());
     for (size_t i = 0; i < inputCount; ++i) {
         const auto* slotInfo = ctx.InVariadicSlot(i);
-        std::cerr << "  slot[" << i << "]: binding=" << (slotInfo ? slotInfo->binding : -1)
-                  << " name='" << (slotInfo ? slotInfo->slotName : "NULL") << "'"
-                  << " descType=" << (slotInfo ? (int)slotInfo->descriptorType : -1)
-                  << " state=" << (slotInfo ? (int)slotInfo->state : -1)
-                  << " role=" << (slotInfo ? static_cast<int>(slotInfo->slotRole) : -1)
-                  << " hasFieldExtract=" << (slotInfo ? slotInfo->hasFieldExtraction : false) << std::endl;
+        NODE_LOG_DEBUG("  slot[" + std::to_string(i) + "]: binding=" + std::to_string(slotInfo ? slotInfo->binding : UINT32_MAX)
+                  + " name='" + std::string(slotInfo ? slotInfo->slotName : "NULL") + "'"
+                  + " descType=" + std::to_string(slotInfo ? (int)slotInfo->descriptorType : -1)
+                  + " state=" + std::to_string(slotInfo ? (int)slotInfo->state : -1)
+                  + " role=" + std::to_string(slotInfo ? static_cast<int>(slotInfo->slotRole) : -1)
+                  + " hasFieldExtract=" + std::to_string(slotInfo ? slotInfo->hasFieldExtraction : false));
         if (!ValidateSingleInput(ctx, i)) {
             allValid = false;
         }
@@ -437,9 +437,9 @@ bool DescriptorResourceGathererNode::ValidateSingleInput(VariadicCompileContext&
     VkDescriptorType expectedType = slotInfo->descriptorType;
 
     if (!ValidateResourceType(res, expectedType)) {
-        std::cerr << "[ValidateSingleInput] FAILED: slot " << slotIndex
-                  << " (" << slotInfo->slotName << ") binding=" << slotInfo->binding
-                  << " expectedType=" << expectedType << " resource=" << (res ? "valid" : "NULL") << std::endl;
+        NODE_LOG_ERROR("[ValidateSingleInput] FAILED: slot " + std::to_string(slotIndex)
+                  + " (" + slotInfo->slotName + ") binding=" + std::to_string(slotInfo->binding)
+                  + " expectedType=" + std::to_string(expectedType) + " resource=" + std::string(res ? "valid" : "NULL"));
         return false;
     }
 
@@ -687,9 +687,9 @@ bool DescriptorResourceGathererNode::CheckUsageCompatibility(
 
         default:
             // Unknown descriptor type - log error for debugging
-            std::cerr << "[CheckUsageCompatibility] ERROR: Unhandled VkDescriptorType=" << descriptorType
-                      << " for ResourceType=" << static_cast<int>(resType)
-                      << " with usage=" << static_cast<uint32_t>(usage) << std::endl;
+            NODE_LOG_ERROR("[CheckUsageCompatibility] ERROR: Unhandled VkDescriptorType=" + std::to_string(descriptorType)
+                      + " for ResourceType=" + std::to_string(static_cast<int>(resType))
+                      + " with usage=" + std::to_string(static_cast<uint32_t>(usage)));
             return false;
     }
 }
@@ -729,8 +729,8 @@ bool DescriptorResourceGathererNode::IsResourceTypeCompatibleWithDescriptor(
 
         default:
             // Unknown descriptor type - log error for debugging
-            std::cerr << "[IsResourceTypeCompatibleWithDescriptor] ERROR: Unhandled VkDescriptorType=" << descriptorType
-                      << " for ResourceType=" << static_cast<int>(resType) << std::endl;
+            NODE_LOG_ERROR("[IsResourceTypeCompatibleWithDescriptor] ERROR: Unhandled VkDescriptorType=" + std::to_string(descriptorType)
+                      + " for ResourceType=" + std::to_string(static_cast<int>(resType)));
             return false;
     }
 }

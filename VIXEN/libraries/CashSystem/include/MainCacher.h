@@ -118,8 +118,7 @@ public:
         };
         m_nameToDeviceDependency[nameStr] = isDeviceDependent;
 
-        std::cout << "[MainCacher::RegisterCacher] Registered " << name
-                  << (isDeviceDependent ? " (device-dependent)" : " (global)") << std::endl;
+        LOG_INFO("[MainCacher::RegisterCacher] Registered " + std::string(name) + (isDeviceDependent ? " (device-dependent)" : " (global)"));
     }
 
     /**
@@ -184,12 +183,12 @@ public:
             std::filesystem::path cacheFile = cacheDir / (cacheName + ".cache");
 
             if (std::filesystem::exists(cacheFile)) {
-                std::cout << "[MainCacher] Lazy-loading cache for " << cacheName << " from " << cacheFile << std::endl;
+                LOG_DEBUG("[MainCacher] Lazy-loading cache for " + cacheName + " from " + cacheFile.string());
                 bool loaded = typedCacher->DeserializeFromFile(cacheFile, deviceRegistry.GetDevice());
                 if (loaded) {
-                    std::cout << "[MainCacher] Successfully lazy-loaded " << cacheName << std::endl;
+                    LOG_DEBUG("[MainCacher] Successfully lazy-loaded " + cacheName);
                 } else {
-                    std::cout << "[MainCacher] Failed to lazy-load " << cacheName << " (will recreate)" << std::endl;
+                    LOG_DEBUG("[MainCacher] Failed to lazy-load " + cacheName + " (will recreate)");
                 }
             }
         }
@@ -621,13 +620,13 @@ private:
     
     // Global cache management
     bool SaveGlobalCaches(const std::filesystem::path& directory) const {
-        std::cout << "[MainCacher] Saving global caches to " << directory << std::endl;
+        LOG_INFO("[MainCacher] Saving global caches to " + directory.string());
 
         // Save manifest
         auto manifestPath = directory / "manifest.txt";
         std::ofstream manifest(manifestPath);
         if (!manifest) {
-            std::cerr << "[MainCacher] Failed to create global cacher manifest" << std::endl;
+            LOG_ERROR("[MainCacher] Failed to create global cacher manifest");
             return false;
         }
 
@@ -638,7 +637,7 @@ private:
             }
         }
         manifest.close();
-        std::cout << "[MainCacher] Saved global cacher manifest with " << m_globalCachers.size() << " entries" << std::endl;
+        LOG_INFO("[MainCacher] Saved global cacher manifest with " + std::to_string(m_globalCachers.size()) + " entries");
 
         // Launch parallel save for each global cacher
         std::vector<std::future<bool>> futures;
@@ -651,14 +650,10 @@ private:
                 // Capture raw pointer for thread safety (cacher is owned by m_globalCachers which is stable)
                 CacherBase* cacherPtr = cacher.get();
 
+                LOG_DEBUG("[MainCacher] Launching async save for " + cacheName);
                 futures.push_back(std::async(std::launch::async,
-                    [cacherPtr, cacheName, cacheFile]() {
-                        std::cout << "[MainCacher] Saving global " << cacheName << " to " << cacheFile << std::endl;
-                        bool saved = cacherPtr->SerializeToFile(cacheFile);
-                        if (!saved) {
-                            std::cerr << "[MainCacher] Failed to save global " << cacheName << std::endl;
-                        }
-                        return saved;
+                    [cacherPtr, cacheFile]() {
+                        return cacherPtr->SerializeToFile(cacheFile);
                     }
                 ));
             }
@@ -670,15 +665,15 @@ private:
             success &= future.get();
         }
 
-        std::cout << "[MainCacher] Global cache save " << (success ? "succeeded" : "failed") << std::endl;
+        LOG_INFO("[MainCacher] Global cache save " + std::string(success ? "succeeded" : "failed"));
         return success;
     }
 
     bool LoadGlobalCaches(const std::filesystem::path& directory) {
-        std::cout << "[MainCacher] Loading global caches from " << directory << std::endl;
+        LOG_INFO("[MainCacher] Loading global caches from " + directory.string());
 
         if (!std::filesystem::exists(directory)) {
-            std::cout << "[MainCacher] No global cache directory found" << std::endl;
+            LOG_DEBUG("[MainCacher] No global cache directory found");
             return true;  // Not an error
         }
 
@@ -695,14 +690,10 @@ private:
                     // Capture raw pointer for thread safety (cacher is owned by m_globalCachers which is stable)
                     CacherBase* cacherPtr = cacher.get();
 
+                    LOG_DEBUG("[MainCacher] Launching async load for " + cacheName);
                     futures.push_back(std::async(std::launch::async,
-                        [cacherPtr, cacheName, cacheFile]() {
-                            std::cout << "[MainCacher] Loading global " << cacheName << " from " << cacheFile << std::endl;
-                            bool loaded = cacherPtr->DeserializeFromFile(cacheFile, nullptr);
-                            if (!loaded) {
-                                std::cerr << "[MainCacher] Failed to load global " << cacheName << std::endl;
-                            }
-                            return loaded;
+                        [cacherPtr, cacheFile]() {
+                            return cacherPtr->DeserializeFromFile(cacheFile, nullptr);
                         }
                     ));
                 }
@@ -715,7 +706,7 @@ private:
             success &= future.get();
         }
 
-        std::cout << "[MainCacher] Global cache load " << (success ? "succeeded" : "failed") << std::endl;
+        LOG_INFO("[MainCacher] Global cache load " + std::string(success ? "succeeded" : "failed"));
         return success;
     }
     

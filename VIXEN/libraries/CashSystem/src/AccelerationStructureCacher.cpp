@@ -12,6 +12,7 @@
 #include <cstring>
 #include <stdexcept>
 #include <bit>
+#include <sstream>
 
 namespace CashSystem {
 
@@ -147,8 +148,7 @@ std::shared_ptr<CachedAccelerationStructure> AccelerationStructureCacher::GetOrC
 // ============================================================================
 
 std::shared_ptr<CachedAccelerationStructure> AccelerationStructureCacher::Create(const AccelStructCreateInfo& ci) {
-    std::cout << "[AccelerationStructureCacher::Create] Creating acceleration structure for scene key "
-              << ci.sceneDataKey << std::endl;
+    LOG_INFO("[AccelerationStructureCacher::Create] Creating acceleration structure for scene key " + std::to_string(ci.sceneDataKey));
 
     if (!IsInitialized()) {
         throw std::runtime_error("[AccelerationStructureCacher::Create] Cacher not initialized with device");
@@ -167,7 +167,7 @@ std::shared_ptr<CachedAccelerationStructure> AccelerationStructureCacher::Create
     ConvertToAABBs(*ci.sceneData, cached->aabbData);
 
     if (cached->aabbData.aabbCount == 0) {
-        std::cout << "[AccelerationStructureCacher::Create] No AABBs to build AS from" << std::endl;
+        LOG_INFO("[AccelerationStructureCacher::Create] No AABBs to build AS from");
         return cached;
     }
 
@@ -177,8 +177,7 @@ std::shared_ptr<CachedAccelerationStructure> AccelerationStructureCacher::Create
     // Step 3: Build TLAS containing single BLAS instance
     BuildTLAS(ci, cached->accelStruct);
 
-    std::cout << "[AccelerationStructureCacher::Create] Created AS with "
-              << cached->accelStruct.primitiveCount << " primitives" << std::endl;
+    LOG_INFO("[AccelerationStructureCacher::Create] Created AS with " + std::to_string(cached->accelStruct.primitiveCount) + " primitives");
 
     return cached;
 }
@@ -188,7 +187,7 @@ std::uint64_t AccelerationStructureCacher::ComputeKey(const AccelStructCreateInf
 }
 
 void AccelerationStructureCacher::Cleanup() {
-    std::cout << "[AccelerationStructureCacher::Cleanup] Cleaning up cached acceleration structures" << std::endl;
+    LOG_INFO("[AccelerationStructureCacher::Cleanup] Cleaning up cached acceleration structures");
 
     // Cleanup all cached entries
     for (auto& [key, entry] : m_entries) {
@@ -206,7 +205,7 @@ void AccelerationStructureCacher::Cleanup() {
     // Clear entries
     Clear();
 
-    std::cout << "[AccelerationStructureCacher::Cleanup] Cleanup complete" << std::endl;
+    LOG_INFO("[AccelerationStructureCacher::Cleanup] Cleanup complete");
 }
 
 // ============================================================================
@@ -269,10 +268,7 @@ void AccelerationStructureCacher::LoadRTFunctions() {
     m_rtFunctionsLoaded = true;
 
     // Log which functions were loaded
-    std::cout << "[AccelerationStructureCacher] RT functions loaded: "
-              << "createAS=" << (vkCreateAccelerationStructureKHR ? "yes" : "no")
-              << ", buildAS=" << (vkCmdBuildAccelerationStructuresKHR ? "yes" : "no")
-              << std::endl;
+    LOG_DEBUG("[AccelerationStructureCacher] RT functions loaded: createAS=" + std::string(vkCreateAccelerationStructureKHR ? "yes" : "no") + ", buildAS=" + std::string(vkCmdBuildAccelerationStructuresKHR ? "yes" : "no"));
 }
 
 VkBuildAccelerationStructureFlagsKHR AccelerationStructureCacher::GetBuildFlags(const AccelStructCreateInfo& ci) const {
@@ -313,13 +309,13 @@ uint32_t AccelerationStructureCacher::FindMemoryType(uint32_t typeFilter, VkMemo
 // ============================================================================
 
 void AccelerationStructureCacher::ConvertToAABBs(const VoxelSceneData& sceneData, VoxelAABBData& aabbData) {
-    std::cout << "[AccelerationStructureCacher::ConvertToAABBs] Converting voxels to AABBs..." << std::endl;
+    LOG_INFO("[AccelerationStructureCacher::ConvertToAABBs] Converting voxels to AABBs...");
 
     aabbData.gridResolution = sceneData.resolution;
     aabbData.voxelSize = 1.0f;
 
     if (sceneData.esvoNodesCPU.empty() || sceneData.brickDataCPU.empty()) {
-        std::cout << "[AccelerationStructureCacher::ConvertToAABBs] No ESVO data - 0 AABBs" << std::endl;
+        LOG_DEBUG("[AccelerationStructureCacher::ConvertToAABBs] No ESVO data - 0 AABBs");
         aabbData.aabbCount = 0;
         return;
     }
@@ -412,7 +408,7 @@ void AccelerationStructureCacher::ConvertToAABBs(const VoxelSceneData& sceneData
     }
 
     aabbData.aabbCount = static_cast<uint32_t>(aabbs.size());
-    std::cout << "[AccelerationStructureCacher::ConvertToAABBs] Generated " << aabbData.aabbCount << " AABBs" << std::endl;
+    LOG_INFO("[AccelerationStructureCacher::ConvertToAABBs] Generated " + std::to_string(aabbData.aabbCount) + " AABBs");
 
     if (aabbData.aabbCount == 0) {
         return;
@@ -504,10 +500,7 @@ void AccelerationStructureCacher::ConvertToAABBs(const VoxelSceneData& sceneData
         UploadBufferData(aabbData.brickMappingBuffer, brickMappings.data(), aabbData.brickMappingBufferSize);
     }
 
-    std::cout << "[AccelerationStructureCacher::ConvertToAABBs] Uploaded AABB buffers ("
-              << (aabbData.aabbBufferSize / 1024.0f) << " KB AABBs, "
-              << (aabbData.materialIdBufferSize / 1024.0f) << " KB materials, "
-              << (aabbData.brickMappingBufferSize / 1024.0f) << " KB mappings)" << std::endl;
+    LOG_INFO("[AccelerationStructureCacher::ConvertToAABBs] Uploaded AABB buffers (" + std::to_string(aabbData.aabbBufferSize / 1024.0f) + " KB AABBs, " + std::to_string(aabbData.materialIdBufferSize / 1024.0f) + " KB materials, " + std::to_string(aabbData.brickMappingBufferSize / 1024.0f) + " KB mappings)");
 }
 
 // ============================================================================
@@ -515,15 +508,15 @@ void AccelerationStructureCacher::ConvertToAABBs(const VoxelSceneData& sceneData
 // ============================================================================
 
 void AccelerationStructureCacher::BuildBLAS(const AccelStructCreateInfo& ci, VoxelAABBData& aabbData, AccelerationStructureData& asData) {
-    std::cout << "[AccelerationStructureCacher::BuildBLAS] Building BLAS..." << std::endl;
+    LOG_INFO("[AccelerationStructureCacher::BuildBLAS] Building BLAS...");
 
     if (!vkCreateAccelerationStructureKHR || !vkGetAccelerationStructureBuildSizesKHR || !vkCmdBuildAccelerationStructuresKHR) {
-        std::cout << "[AccelerationStructureCacher::BuildBLAS] RT extension not available - skipping BLAS build" << std::endl;
+        LOG_WARNING("[AccelerationStructureCacher::BuildBLAS] RT extension not available - skipping BLAS build");
         return;
     }
 
     if (aabbData.aabbCount == 0) {
-        std::cout << "[AccelerationStructureCacher::BuildBLAS] No AABBs - skipping BLAS build" << std::endl;
+        LOG_INFO("[AccelerationStructureCacher::BuildBLAS] No AABBs - skipping BLAS build");
         return;
     }
 
@@ -568,8 +561,7 @@ void AccelerationStructureCacher::BuildBLAS(const AccelStructCreateInfo& ci, Vox
         &sizeInfo
     );
 
-    std::cout << "[AccelerationStructureCacher::BuildBLAS] BLAS sizes: AS=" << sizeInfo.accelerationStructureSize
-              << ", build=" << sizeInfo.buildScratchSize << std::endl;
+    LOG_DEBUG("[AccelerationStructureCacher::BuildBLAS] BLAS sizes: AS=" + std::to_string(sizeInfo.accelerationStructureSize) + ", build=" + std::to_string(sizeInfo.buildScratchSize));
 
     // Create BLAS buffer
     {
@@ -700,8 +692,9 @@ void AccelerationStructureCacher::BuildBLAS(const AccelStructCreateInfo& ci, Vox
 
     asData.primitiveCount = primitiveCount;
 
-    std::cout << "[AccelerationStructureCacher::BuildBLAS] BLAS built successfully, address=0x"
-              << std::hex << asData.blasDeviceAddress << std::dec << std::endl;
+    std::ostringstream oss;
+    oss << "[AccelerationStructureCacher::BuildBLAS] BLAS built successfully, address=0x" << std::hex << asData.blasDeviceAddress;
+    LOG_INFO(oss.str());
 }
 
 // ============================================================================
@@ -709,15 +702,15 @@ void AccelerationStructureCacher::BuildBLAS(const AccelStructCreateInfo& ci, Vox
 // ============================================================================
 
 void AccelerationStructureCacher::BuildTLAS(const AccelStructCreateInfo& ci, AccelerationStructureData& asData) {
-    std::cout << "[AccelerationStructureCacher::BuildTLAS] Building TLAS..." << std::endl;
+    LOG_INFO("[AccelerationStructureCacher::BuildTLAS] Building TLAS...");
 
     if (!vkCreateAccelerationStructureKHR || !vkCmdBuildAccelerationStructuresKHR) {
-        std::cout << "[AccelerationStructureCacher::BuildTLAS] RT extension not available - skipping TLAS build" << std::endl;
+        LOG_WARNING("[AccelerationStructureCacher::BuildTLAS] RT extension not available - skipping TLAS build");
         return;
     }
 
     if (asData.blas == VK_NULL_HANDLE) {
-        std::cout << "[AccelerationStructureCacher::BuildTLAS] No BLAS - skipping TLAS build" << std::endl;
+        LOG_INFO("[AccelerationStructureCacher::BuildTLAS] No BLAS - skipping TLAS build");
         return;
     }
 
@@ -900,8 +893,9 @@ void AccelerationStructureCacher::BuildTLAS(const AccelStructCreateInfo& ci, Acc
     addressInfo.accelerationStructure = asData.tlas;
     asData.tlasDeviceAddress = vkGetAccelerationStructureDeviceAddressKHR(m_device->device, &addressInfo);
 
-    std::cout << "[AccelerationStructureCacher::BuildTLAS] TLAS built successfully, address=0x"
-              << std::hex << asData.tlasDeviceAddress << std::dec << std::endl;
+    std::ostringstream oss2;
+    oss2 << "[AccelerationStructureCacher::BuildTLAS] TLAS built successfully, address=0x" << std::hex << asData.tlasDeviceAddress;
+    LOG_INFO(oss2.str());
 }
 
 // ============================================================================

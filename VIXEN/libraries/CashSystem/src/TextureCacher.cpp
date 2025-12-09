@@ -6,7 +6,6 @@
 #include "VulkanDevice.h"
 #include <fstream>
 #include <sstream>
-#include <iostream>
 
 using namespace Vixen::Hash;
 
@@ -140,7 +139,7 @@ bool TextureCacher::SerializeToFile(const std::filesystem::path& path) const {
 
     std::ofstream file(path, std::ios::binary);
     if (!file.is_open()) {
-        std::cerr << "[TextureCacher::SerializeToFile] Failed to open file: " << path << std::endl;
+        LOG_ERROR("SerializeToFile: Failed to open file: " + path.string());
         return false;
     }
 
@@ -193,7 +192,7 @@ bool TextureCacher::SerializeToFile(const std::filesystem::path& path) const {
         }
     }
 
-    std::cout << "[TextureCacher::SerializeToFile] Serialized " << cacheSize << " textures to " << path << std::endl;
+    LOG_INFO("SerializeToFile: Serialized " + std::to_string(cacheSize) + " textures to " + path.string());
     return true;
 }
 
@@ -203,7 +202,7 @@ bool TextureCacher::DeserializeFromFile(const std::filesystem::path& path, void*
 
     std::ifstream file(path, std::ios::binary);
     if (!file.is_open()) {
-        std::cerr << "[TextureCacher::DeserializeFromFile] Failed to open file: " << path << std::endl;
+        LOG_ERROR("DeserializeFromFile: Failed to open file: " + path.string());
         return false;
     }
 
@@ -211,7 +210,7 @@ bool TextureCacher::DeserializeFromFile(const std::filesystem::path& path, void*
     uint32_t version = 0;
     file.read(reinterpret_cast<char*>(&version), sizeof(version));
     if (version != 1) {
-        std::cerr << "[TextureCacher::DeserializeFromFile] Unsupported version: " << version << std::endl;
+        LOG_ERROR("DeserializeFromFile: Unsupported version: " + std::to_string(version));
         return false;
     }
 
@@ -219,7 +218,7 @@ bool TextureCacher::DeserializeFromFile(const std::filesystem::path& path, void*
     uint32_t cacheSize = 0;
     file.read(reinterpret_cast<char*>(&cacheSize), sizeof(cacheSize));
 
-    std::cout << "[TextureCacher::DeserializeFromFile] Loading " << cacheSize << " textures from " << path << std::endl;
+    LOG_INFO("DeserializeFromFile: Loading " + std::to_string(cacheSize) + " textures from " + path.string());
 
     // Deserialize each texture metadata
     for (uint32_t i = 0; i < cacheSize; ++i) {
@@ -261,8 +260,7 @@ bool TextureCacher::DeserializeFromFile(const std::filesystem::path& path, void*
         // This deserialization validates the file format and prepares metadata
     }
 
-    std::cout << "[TextureCacher::DeserializeFromFile] Texture metadata validated" << std::endl;
-    std::cout << "  Note: Texture resources will be recreated on-demand" << std::endl;
+    LOG_INFO("DeserializeFromFile: Texture metadata validated (resources will be recreated on-demand)");
 
     (void)device;  // Device used when recreating resources on-demand
     return true;

@@ -17,17 +17,17 @@
 }
 
 void VulkanSwapChain::Destroy(VkDevice device, VkInstance instance) {
-    std::cout << "[VulkanSwapChain::Destroy] Called with device=" << device
-              << ", instance=" << instance << std::endl;
-    std::cout << "[VulkanSwapChain::Destroy] Current surface=" << scPublicVars.surface
-              << ", swapchain=" << scPublicVars.swapChain << std::endl;
+    LOG_INFO("[VulkanSwapChain::Destroy] Called with device=" + std::to_string(reinterpret_cast<uint64_t>(device))
+              + ", instance=" + std::to_string(reinterpret_cast<uint64_t>(instance)));
+    LOG_INFO("[VulkanSwapChain::Destroy] Current surface=" + std::to_string(reinterpret_cast<uint64_t>(scPublicVars.surface))
+              + ", swapchain=" + std::to_string(reinterpret_cast<uint64_t>(scPublicVars.swapChain)));
 
     // Ensure extension pointers are loaded before attempting destruction
     // This is safe to call multiple times - it just reloads the function pointers
     if (instance != VK_NULL_HANDLE && device != VK_NULL_HANDLE) {
         // Only load if not already loaded (check one representative pointer)
         if (fpDestroySwapchainKHR == nullptr || fpDestroySurfaceKHR == nullptr) {
-            std::cout << "[VulkanSwapChain::Destroy] Loading extension pointers" << std::endl;
+            LOG_INFO("[VulkanSwapChain::Destroy] Loading extension pointers");
             CreateSwapChainExtensions(instance, device);
         }
     }
@@ -45,7 +45,7 @@ void VulkanSwapChain::Destroy(VkDevice device, VkInstance instance) {
     // Clear internal vectors
     CleanUp();
 
-    std::cout << "[VulkanSwapChain::Destroy] Cleanup complete" << std::endl;
+    LOG_INFO("[VulkanSwapChain::Destroy] Cleanup complete");
 }
 
 void VulkanSwapChain::CleanUp() {
@@ -114,12 +114,12 @@ void VulkanSwapChain::DestroySurface(VkInstance instance)
 {
     // Destroy surface (only called during final cleanup)
     if(scPublicVars.surface != VK_NULL_HANDLE) {
-        std::cout << "  Destroying VkSurfaceKHR" << std::endl;
+        LOG_INFO("Destroying VkSurfaceKHR");
         if (fpDestroySurfaceKHR) {
             fpDestroySurfaceKHR(instance, scPublicVars.surface, nullptr);
             scPublicVars.surface = VK_NULL_HANDLE;
         } else {
-            std::cerr << "ERROR: fpDestroySurfaceKHR is null!" << std::endl;
+            LOG_ERROR("ERROR: fpDestroySurfaceKHR is null!");
         }
     }
 }
@@ -186,13 +186,13 @@ VkResult VulkanSwapChain::CreateSurface(VkInstance instance, HWND hwnd, HINSTANC
 
 uint32_t VulkanSwapChain::GetGraphicsQueueWithPresentationSupport(VkPhysicalDevice gpu, uint32_t queueFamilyCount, const std::vector<VkQueueFamilyProperties>& queueProps)
 {
-    std::cout << "[GetGraphicsQueue] ENTRY - surface = " << std::hex << (uint64_t)scPublicVars.surface << std::dec << std::endl;
-    std::cout << "[GetGraphicsQueue] fpGetPhysicalDeviceSurfaceSupportKHR = " << std::hex << (void*)fpGetPhysicalDeviceSurfaceSupportKHR << std::dec << std::endl;
+    LOG_INFO("[GetGraphicsQueue] ENTRY - surface = " + std::to_string(reinterpret_cast<uint64_t>(scPublicVars.surface)));
+    LOG_INFO("[GetGraphicsQueue] fpGetPhysicalDeviceSurfaceSupportKHR = " + std::to_string(reinterpret_cast<uint64_t>(fpGetPhysicalDeviceSurfaceSupportKHR)));
 
     // Iterate each queue and get presentation status for each
     VkBool32* supportPresent = (VkBool32*)malloc(sizeof(VkBool32) * queueFamilyCount);
     for (uint32_t i = 0; i < queueFamilyCount; i++) {
-        std::cout << "[GetGraphicsQueue] Checking queue " << i << " - surface = " << std::hex << (uint64_t)scPublicVars.surface << std::dec << std::endl;
+        LOG_INFO("[GetGraphicsQueue] Checking queue " + std::to_string(i) + " - surface = " + std::to_string(reinterpret_cast<uint64_t>(scPublicVars.surface)));
         fpGetPhysicalDeviceSurfaceSupportKHR(gpu, i, scPublicVars.surface, &supportPresent[i]);
     }
 
@@ -242,10 +242,10 @@ void VulkanSwapChain::GetSurfaceCapabilitiesAndPresentMode(VkPhysicalDevice gpu,
     // If surface capabilities returned zeros, the window might not be ready yet
     if (scPrivateVars.surfCapabilities.maxImageExtent.width == 0 ||
         scPrivateVars.surfCapabilities.maxImageExtent.height == 0) {
-        std::cerr << "ERROR: Surface capabilities returned invalid dimensions!" << std::endl;
-        std::cerr << "Window dimensions: " << width << "x" << height << std::endl;
-        std::cerr << "Surface capabilities: " << scPrivateVars.surfCapabilities.maxImageExtent.width
-                  << "x" << scPrivateVars.surfCapabilities.maxImageExtent.height << std::endl;
+        LOG_ERROR("ERROR: Surface capabilities returned invalid dimensions!");
+        LOG_ERROR("Window dimensions: " + std::to_string(width) + "x" + std::to_string(height));
+        LOG_ERROR("Surface capabilities: " + std::to_string(scPrivateVars.surfCapabilities.maxImageExtent.width)
+                  + "x" + std::to_string(scPrivateVars.surfCapabilities.maxImageExtent.height));
         exit(-1);
     }
 
@@ -279,27 +279,27 @@ void VulkanSwapChain::ManagePresentMode()
     // Fallback to FIFO which is guaranteed to be supported
     scPrivateVars.swapChainPresentMode = VK_PRESENT_MODE_FIFO_KHR;
 
-    std::cout << "[ManagePresentMode] Available present modes: ";
+    std::string modesStr = "[ManagePresentMode] Available present modes: ";
     for (size_t i = 0; i < scPrivateVars.presentModeCount; i++) {
-        std::cout << scPrivateVars.presentModes[i] << " ";
+        modesStr += std::to_string(scPrivateVars.presentModes[i]) + " ";
     }
-    std::cout << std::endl;
+    LOG_INFO(modesStr);
 
     for (size_t i = 0; i < scPrivateVars.presentModeCount; i++) {
         if(scPrivateVars.presentModes[i] == VK_PRESENT_MODE_IMMEDIATE_KHR) {
             scPrivateVars.swapChainPresentMode = VK_PRESENT_MODE_IMMEDIATE_KHR;
-            std::cout << "[ManagePresentMode] Selected IMMEDIATE mode (uncapped FPS)" << std::endl;
+            LOG_INFO("[ManagePresentMode] Selected IMMEDIATE mode (uncapped FPS)");
             break;
         }
 
         if(scPrivateVars.presentModes[i] == VK_PRESENT_MODE_MAILBOX_KHR) {
             scPrivateVars.swapChainPresentMode = VK_PRESENT_MODE_MAILBOX_KHR;
-            std::cout << "[ManagePresentMode] Selected MAILBOX mode" << std::endl;
+            LOG_INFO("[ManagePresentMode] Selected MAILBOX mode");
         }
     }
 
     if (scPrivateVars.swapChainPresentMode == VK_PRESENT_MODE_FIFO_KHR) {
-        std::cout << "[ManagePresentMode] Using FIFO mode (V-Sync enabled)" << std::endl;
+        LOG_INFO("[ManagePresentMode] Using FIFO mode (V-Sync enabled)");
     }
 
     // Determine the number of images

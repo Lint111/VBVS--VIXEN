@@ -9,6 +9,7 @@
 #include <typeindex>
 #include <typeinfo>
 #include "CacherBase.h"
+#include "ILoggable.h"
 
 // Forward declarations for type safety
 namespace Vixen::Vulkan::Resources {
@@ -107,10 +108,10 @@ private:
 
 /**
  * @brief Device registry entry for multi-device caching
- * 
+ *
  * Encapsulates a complete caching system for a single Vulkan device
  */
-class DeviceRegistry {
+class DeviceRegistry : public ILoggable {
     friend class MainCacher;  // MainCacher needs access to m_deviceCachers
 
 public:

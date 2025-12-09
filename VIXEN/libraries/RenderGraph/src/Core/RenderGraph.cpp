@@ -12,6 +12,7 @@
 #define GRAPH_LOG_INFO(msg) do { if (mainLogger) mainLogger->Info(msg); } while(0)
 #define GRAPH_LOG_WARNING(msg) do { if (mainLogger) mainLogger->Warning(msg); } while(0)
 #define GRAPH_LOG_ERROR(msg) do { if (mainLogger) mainLogger->Error(msg); } while(0)
+#define GRAPH_LOG_CRITICAL(msg) do { if (mainLogger) mainLogger->Error(msg); std::cerr << msg << std::endl; } while(0)
 
 namespace Vixen::RenderGraph {
 
@@ -234,14 +235,7 @@ void RenderGraph::ConnectNodes(
     // But NOT OK for many outputs to connect to one input (multiple drivers)
     Resource* existingInput = toNode->GetInput(inputIdx, 0);
     if (existingInput != nullptr) {
-        std::cerr << "\n=== FATAL ERROR: Duplicate Connection Detected ===\n";
-        std::cerr << "Attempting to connect: " << fromNode->GetInstanceName()
-                  << "[output " << outputIdx << "] -> "
-                  << toNode->GetInstanceName() << "[input " << inputIdx << "]\n";
-        std::cerr << "But input slot " << inputIdx << " of " << toNode->GetInstanceName()
-                  << " is ALREADY CONNECTED to another output.\n";
-        std::cerr << "Multiple outputs cannot drive the same input slot.\n";
-        std::cerr << "==============================================\n";
+        GRAPH_LOG_CRITICAL("\n=== FATAL ERROR: Duplicate Connection Detected ===\nAttempting to connect: " + fromNode->GetInstanceName() + "[output " + std::to_string(outputIdx) + "] -> " + toNode->GetInstanceName() + "[input " + std::to_string(inputIdx) + "]\nBut input slot " + std::to_string(inputIdx) + " of " + toNode->GetInstanceName() + " is ALREADY CONNECTED to another output.\nMultiple outputs cannot drive the same input slot.\n==============================================");
         std::exit(1);  // Terminate immediately
     }
 
@@ -422,7 +416,7 @@ void RenderGraph::Compile() {
     GRAPH_LOG_INFO("[RenderGraph::Compile] Phase: Validation...");
     std::string errorMessage;
     if (!Validate(errorMessage)) {
-        std::cerr << "[RenderGraph::Compile] VALIDATION FAILED: " << errorMessage << std::endl;
+        GRAPH_LOG_ERROR("[RenderGraph::Compile] VALIDATION FAILED: " + errorMessage);
         throw std::runtime_error("Graph validation failed: " + errorMessage);
     }
 

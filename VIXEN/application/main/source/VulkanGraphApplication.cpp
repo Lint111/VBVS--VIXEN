@@ -88,49 +88,47 @@ VulkanGraphApplication* VulkanGraphApplication::GetInstance() {
 }
 
 void VulkanGraphApplication::Initialize() {
-    std::cout << "[DEBUG] VulkanGraphApplication::Initialize() - START\n" << std::flush;
+    mainLogger->Debug("VulkanGraphApplication::Initialize() - START");
     mainLogger->Info("VulkanGraphApplication Initialize START");
 
-    std::cout << "[DEBUG] About to call VulkanApplicationBase::Initialize()\n" << std::flush;
+    mainLogger->Debug("About to call VulkanApplicationBase::Initialize()");
     // Initialize base Vulkan core (instance, device)
     VulkanApplicationBase::Initialize();
-    std::cout << "[DEBUG] VulkanApplicationBase::Initialize() returned\n" << std::flush;
+    mainLogger->Debug("VulkanApplicationBase::Initialize() returned");
 
     mainLogger->Info("VulkanGraphApplication Base initialized");
 
-    
-    std::cout << "[DEBUG] Instance exported globally\n" << std::flush;
-
+    mainLogger->Debug("Instance exported globally");
     mainLogger->Info("VulkanGraphApplication Instance exported globally");
 
-    std::cout << "[DEBUG] Creating node type registry\n" << std::flush;
+    mainLogger->Debug("Creating node type registry");
     // Create node type registry
     nodeRegistry = std::make_unique<NodeTypeRegistry>();
-    std::cout << "[DEBUG] Node type registry created\n" << std::flush;
+    mainLogger->Debug("Node type registry created");
 
-    std::cout << "[DEBUG] About to register node types\n" << std::flush;
+    mainLogger->Debug("About to register node types");
     // Register all node types
     RegisterNodeTypes();
-    std::cout << "[DEBUG] Node types registered\n" << std::flush;
+    mainLogger->Debug("Node types registered");
 
-    std::cout << "[DEBUG] Creating MessageBus\n" << std::flush;
+    mainLogger->Debug("Creating MessageBus");
     // Create render graph
     // Create a MessageBus for event-driven coordination and inject into RenderGraph
     messageBus = std::make_unique<Vixen::EventBus::MessageBus>();
-    std::cout << "[DEBUG] MessageBus created\n" << std::flush;
+    mainLogger->Debug("MessageBus created");
 
-    std::cout << "[DEBUG] Initializing MainCacher\n" << std::flush;
+    mainLogger->Debug("Initializing MainCacher");
     // Initialize MainCacher and connect it to MessageBus for device invalidation events
     auto& mainCacher = CashSystem::MainCacher::Instance();
-    std::cout << "[DEBUG] MainCacher instance obtained\n" << std::flush;
+    mainLogger->Debug("MainCacher instance obtained");
     mainCacher.Initialize(messageBus.get());
-    std::cout << "[DEBUG] MainCacher initialized\n" << std::flush;
+    mainLogger->Debug("MainCacher initialized");
     mainLogger->Info("MainCacher initialized and subscribed to device invalidation events");
 
     // NOTE: Cache loading will happen automatically when devices request cached resources
     // This is because we need VulkanDevice to be created first before we can load caches
 
-    std::cout << "[DEBUG] Creating RenderGraph\n" << std::flush;
+    mainLogger->Debug("Creating RenderGraph");
     // Create RenderGraph with all dependencies (registry, messageBus, logger, mainCacher)
     renderGraph = std::make_unique<RenderGraph>(
         nodeRegistry.get(),
@@ -138,9 +136,9 @@ void VulkanGraphApplication::Initialize() {
         mainLogger.get(),
         &mainCacher
     );
-    std::cout << "[DEBUG] RenderGraph created\n" << std::flush;
+    mainLogger->Debug("RenderGraph created");
 
-    std::cout << "[DEBUG] Subscribing to WindowCloseEvent\n" << std::flush;
+    mainLogger->Debug("Subscribing to WindowCloseEvent");
     // Subscribe to shutdown events
     messageBus->Subscribe(
         Vixen::EventBus::WindowCloseEvent::TYPE,
@@ -149,9 +147,9 @@ void VulkanGraphApplication::Initialize() {
             return true;
         }
     );
-    std::cout << "[DEBUG] WindowCloseEvent subscription complete\n" << std::flush;
+    mainLogger->Debug("WindowCloseEvent subscription complete");
 
-    std::cout << "[DEBUG] Subscribing to ShutdownAckEvent\n" << std::flush;
+    mainLogger->Debug("Subscribing to ShutdownAckEvent");
     messageBus->Subscribe(
         Vixen::EventBus::ShutdownAckEvent::TYPE,
         [this](const Vixen::EventBus::BaseEventMessage& msg) -> bool {
@@ -168,13 +166,13 @@ void VulkanGraphApplication::Initialize() {
             return true;
         }
     );
-    std::cout << "[DEBUG] ShutdownAckEvent subscription complete\n" << std::flush;
+    mainLogger->Debug("ShutdownAckEvent subscription complete");
 
     if (mainLogger) {
         mainLogger->Info("RenderGraph created successfully");
     }
 
-    std::cout << "[DEBUG] Registering physics loop\n" << std::flush;
+    mainLogger->Debug("Registering physics loop");
     // Phase 0.4: Register loops with the graph
     // Physics loop at 60Hz with multiple-step catchup
     physicsLoopID = renderGraph->RegisterLoop(LoopConfig{
@@ -183,13 +181,13 @@ void VulkanGraphApplication::Initialize() {
         LoopCatchupMode::MultipleSteps,
         0.25  // Max 250ms catchup
     });
-    std::cout << "[DEBUG] Physics loop registered with ID: " << physicsLoopID << "\n" << std::flush;
+    mainLogger->Debug("Physics loop registered with ID: " + std::to_string(physicsLoopID));
     mainLogger->Info("Registered PhysicsLoop (60Hz) with ID: " + std::to_string(physicsLoopID));
 
     if (mainLogger) {
         mainLogger->Info("VulkanGraphApplication initialized successfully");
     }
-    std::cout << "[DEBUG] VulkanGraphApplication::Initialize() - COMPLETE\n" << std::flush;
+    mainLogger->Debug("VulkanGraphApplication::Initialize() - COMPLETE");
 }
 
 void VulkanGraphApplication::Prepare() {
@@ -1138,8 +1136,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Connect ray marching resources to descriptor gatherer using VoxelRayMarchNames.h bindings
     // Binding 0: outputImage - Transient (Execute-only), others are Persistent (Dependency|Execute)
     // Binding 0: outputImage (swapchain image view) - changes per frame
+    // Note: outputImage is not in SDI (writeonly image) so we use literal binding index 0
     batch.ConnectVariadic(swapChainNode, SwapChainNodeConfig::CURRENT_FRAME_IMAGE_VIEW,
-                          descriptorGatherer, VoxelRayMarch::outputImage::BINDING,
+                          descriptorGatherer, 0,  // outputImage at binding 0
                           SlotRole::Execute);
 
     // Binding 1: octreeNodes (SSBO) - octree node data

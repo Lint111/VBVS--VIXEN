@@ -6,7 +6,6 @@
 #include <sstream>
 #include <stdexcept>
 #include <vulkan/vulkan.h>
-#include <iostream>
 #include <fstream>
 #include <filesystem>
 #include <shared_mutex>
@@ -15,7 +14,7 @@
 namespace CashSystem {
 
 void MeshCacher::Cleanup() {
-    std::cout << "[MeshCacher::Cleanup] Cleaning up " << m_entries.size() << " cached meshes" << std::endl;
+    LOG_INFO("Cleaning up " + std::to_string(m_entries.size()) + " cached meshes");
 
     // Destroy all cached Vulkan resources
     if (GetDevice()) {
@@ -23,8 +22,7 @@ void MeshCacher::Cleanup() {
             if (entry.resource) {
                 // Destroy vertex buffer
                 if (entry.resource->vertexBuffer != VK_NULL_HANDLE) {
-                    std::cout << "[MeshCacher::Cleanup] Destroying vertex buffer: "
-                              << reinterpret_cast<uint64_t>(entry.resource->vertexBuffer) << std::endl;
+                    LOG_DEBUG("Destroying vertex buffer: " + std::to_string(reinterpret_cast<uint64_t>(entry.resource->vertexBuffer)));
                     vkDestroyBuffer(GetDevice()->device, entry.resource->vertexBuffer, nullptr);
                     entry.resource->vertexBuffer = VK_NULL_HANDLE;
                 }
@@ -37,8 +35,7 @@ void MeshCacher::Cleanup() {
 
                 // Destroy index buffer
                 if (entry.resource->indexBuffer != VK_NULL_HANDLE) {
-                    std::cout << "[MeshCacher::Cleanup] Destroying index buffer: "
-                              << reinterpret_cast<uint64_t>(entry.resource->indexBuffer) << std::endl;
+                    LOG_DEBUG("Destroying index buffer: " + std::to_string(reinterpret_cast<uint64_t>(entry.resource->indexBuffer)));
                     vkDestroyBuffer(GetDevice()->device, entry.resource->indexBuffer, nullptr);
                     entry.resource->indexBuffer = VK_NULL_HANDLE;
                 }
@@ -59,7 +56,7 @@ void MeshCacher::Cleanup() {
     // Clear the cache entries after destroying resources
     Clear();
 
-    std::cout << "[MeshCacher::Cleanup] Cleanup complete" << std::endl;
+    LOG_INFO("Cleanup complete");
 }
 
 std::shared_ptr<MeshWrapper> MeshCacher::GetOrCreate(const MeshCreateParams& ci) {
@@ -73,30 +70,24 @@ std::shared_ptr<MeshWrapper> MeshCacher::GetOrCreate(const MeshCreateParams& ci)
         std::shared_lock rlock(m_lock);
         auto it = m_entries.find(key);
         if (it != m_entries.end()) {
-            std::cout << "[MeshCacher::GetOrCreate] CACHE HIT for " << resourceName
-                      << " (key=" << key
-                      << ", vertexBuffer=" << reinterpret_cast<uint64_t>(it->second.resource->vertexBuffer)
-                      << ", vertices=" << it->second.resource->vertexCount
-                      << ", indices=" << it->second.resource->indexCount << ")" << std::endl;
+            LOG_DEBUG("CACHE HIT for " + resourceName + " (key=" + std::to_string(key) + ", vertices=" + std::to_string(it->second.resource->vertexCount) + ", indices=" + std::to_string(it->second.resource->indexCount) + ")");
             return it->second.resource;
         }
         auto pit = m_pending.find(key);
         if (pit != m_pending.end()) {
-            std::cout << "[MeshCacher::GetOrCreate] CACHE PENDING for " << resourceName
-                      << " (key=" << key << "), waiting..." << std::endl;
+            LOG_DEBUG("CACHE PENDING for " + resourceName + " (key=" + std::to_string(key) + "), waiting...");
             return pit->second.get();
         }
     }
 
-    std::cout << "[MeshCacher::GetOrCreate] CACHE MISS for " << resourceName
-              << " (key=" << key << "), creating new mesh..." << std::endl;
+    LOG_DEBUG("CACHE MISS for " + resourceName + " (key=" + std::to_string(key) + "), creating new mesh...");
 
     // Call parent implementation which will invoke Create()
     return TypedCacher<MeshWrapper, MeshCreateParams>::GetOrCreate(ci);
 }
 
 std::shared_ptr<MeshWrapper> MeshCacher::Create(const MeshCreateParams& ci) {
-    std::cout << "[MeshCacher::Create] CACHE MISS - Creating new mesh" << std::endl;
+    LOG_DEBUG("Creating new mesh");
 
     auto wrapper = std::make_shared<MeshWrapper>();
 
@@ -112,16 +103,14 @@ std::shared_ptr<MeshWrapper> MeshCacher::Create(const MeshCreateParams& ci) {
     if (ci.vertexDataPtr && ci.vertexDataSize > 0) {
         wrapper->vertexData.resize(ci.vertexDataSize / sizeof(float));
         std::memcpy(wrapper->vertexData.data(), ci.vertexDataPtr, ci.vertexDataSize);
-        std::cout << "[MeshCacher::Create] Cached " << wrapper->vertexData.size()
-                  << " vertex floats (" << ci.vertexDataSize << " bytes)" << std::endl;
+        LOG_DEBUG("Cached " + std::to_string(wrapper->vertexData.size()) + " vertex floats (" + std::to_string(ci.vertexDataSize) + " bytes)");
     }
 
     // Cache CPU-side index data
     if (ci.indexDataPtr && ci.indexDataSize > 0) {
         wrapper->indexData.resize(ci.indexDataSize / sizeof(uint32_t));
         std::memcpy(wrapper->indexData.data(), ci.indexDataPtr, ci.indexDataSize);
-        std::cout << "[MeshCacher::Create] Cached " << wrapper->indexData.size()
-                  << " indices (" << ci.indexDataSize << " bytes)" << std::endl;
+        LOG_DEBUG("Cached " + std::to_string(wrapper->indexData.size()) + " indices (" + std::to_string(ci.indexDataSize) + " bytes)");
     }
 
     // Create vertex buffer
@@ -137,8 +126,7 @@ std::shared_ptr<MeshWrapper> MeshCacher::Create(const MeshCreateParams& ci) {
         // Upload vertex data
         UploadData(wrapper->vertexMemory, ci.vertexDataPtr, ci.vertexDataSize);
 
-        std::cout << "[MeshCacher::Create] Vertex buffer created: "
-                  << reinterpret_cast<uint64_t>(wrapper->vertexBuffer) << std::endl;
+        LOG_DEBUG("Vertex buffer created: " + std::to_string(reinterpret_cast<uint64_t>(wrapper->vertexBuffer)));
     }
 
     // Create index buffer (if indices provided)
@@ -154,8 +142,7 @@ std::shared_ptr<MeshWrapper> MeshCacher::Create(const MeshCreateParams& ci) {
         // Upload index data
         UploadData(wrapper->indexMemory, ci.indexDataPtr, ci.indexDataSize);
 
-        std::cout << "[MeshCacher::Create] Index buffer created: "
-                  << reinterpret_cast<uint64_t>(wrapper->indexBuffer) << std::endl;
+        LOG_DEBUG("Index buffer created: " + std::to_string(reinterpret_cast<uint64_t>(wrapper->indexBuffer)));
     }
 
     return wrapper;
@@ -196,12 +183,11 @@ std::uint64_t MeshCacher::ComputeKey(const MeshCreateParams& ci) const {
 }
 
 bool MeshCacher::SerializeToFile(const std::filesystem::path& path) const {
-    std::cout << "[MeshCacher::SerializeToFile] Serializing " << m_entries.size()
-              << " mesh entries to " << path << std::endl;
+    LOG_INFO("SerializeToFile: Serializing " + std::to_string(m_entries.size()) + " mesh entries to " + path.string());
 
     std::ofstream ofs(path, std::ios::binary);
     if (!ofs) {
-        std::cout << "[MeshCacher::SerializeToFile] Failed to open file for writing" << std::endl;
+        LOG_ERROR("SerializeToFile: Failed to open file for writing");
         return false;
     }
 
@@ -243,21 +229,21 @@ bool MeshCacher::SerializeToFile(const std::filesystem::path& path) const {
         }
     }
 
-    std::cout << "[MeshCacher::SerializeToFile] Serialization complete" << std::endl;
+    LOG_INFO("SerializeToFile: Serialization complete");
     return true;
 }
 
 bool MeshCacher::DeserializeFromFile(const std::filesystem::path& path, void* device) {
-    std::cout << "[MeshCacher::DeserializeFromFile] Deserializing from " << path << std::endl;
+    LOG_INFO("DeserializeFromFile: Deserializing from " + path.string());
 
     if (!std::filesystem::exists(path)) {
-        std::cout << "[MeshCacher::DeserializeFromFile] Cache file does not exist" << std::endl;
+        LOG_INFO("DeserializeFromFile: Cache file does not exist");
         return false;
     }
 
     std::ifstream ifs(path, std::ios::binary);
     if (!ifs) {
-        std::cout << "[MeshCacher::DeserializeFromFile] Failed to open file for reading" << std::endl;
+        LOG_ERROR("DeserializeFromFile: Failed to open file for reading");
         return false;
     }
 
@@ -265,8 +251,7 @@ bool MeshCacher::DeserializeFromFile(const std::filesystem::path& path, void* de
     uint32_t count = 0;
     ifs.read(reinterpret_cast<char*>(&count), sizeof(count));
 
-    std::cout << "[MeshCacher::DeserializeFromFile] Loading " << count
-              << " mesh metadata entries" << std::endl;
+    LOG_INFO("DeserializeFromFile: Loading " + std::to_string(count) + " mesh metadata entries");
 
     // Note: We deserialize metadata and CPU-side data.
     // Vulkan buffers will be recreated on-demand via GetOrCreate() when parameters match.
@@ -305,15 +290,13 @@ bool MeshCacher::DeserializeFromFile(const std::filesystem::path& path, void* de
                      indexDataCount * sizeof(uint32_t));
         }
 
-        std::cout << "[MeshCacher::DeserializeFromFile] Loaded mesh metadata for key " << key
-                  << " (" << sourceIdentifier << ", "
-                  << vertexCount << " vertices, " << indexCount << " indices)" << std::endl;
+        LOG_DEBUG("Loaded mesh metadata for key " + std::to_string(key) + " (" + sourceIdentifier + ", " + std::to_string(vertexCount) + " vertices, " + std::to_string(indexCount) + " indices)");
 
         // Note: Could optionally pre-populate cache with deserialized data here
         // For now, we just log it. Buffers will be recreated on-demand.
     }
 
-    std::cout << "[MeshCacher::DeserializeFromFile] Deserialization complete (buffers will be created on-demand)" << std::endl;
+    LOG_INFO("DeserializeFromFile: Deserialization complete (buffers will be created on-demand)");
     return true;
 }
 

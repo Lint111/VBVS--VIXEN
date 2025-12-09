@@ -31,7 +31,7 @@ bool ArgMatches(const char* arg, const char* shortForm, const char* longForm) {
 // Get next argument value safely
 const char* GetNextArg(int argc, char* argv[], int& i, const char* argName) {
     if (i + 1 >= argc) {
-        std::cerr << "Error: " << argName << " requires a value\n";
+        std::cerr << "Error: " << argName << " requires a value\n";  // User-facing error - keep as is
         return nullptr;
     }
     return argv[++i];

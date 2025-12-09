@@ -6,7 +6,6 @@
 #include <sstream>
 #include <stdexcept>
 #include <vulkan/vulkan.h>
-#include <iostream>
 #include <fstream>
 #include <filesystem>
 #include <shared_mutex>
@@ -14,15 +13,14 @@
 namespace CashSystem {
 
 void RenderPassCacher::Cleanup() {
-    std::cout << "[RenderPassCacher::Cleanup] Cleaning up " << m_entries.size() << " cached render passes" << std::endl;
+    LOG_INFO("Cleaning up " + std::to_string(m_entries.size()) + " cached render passes");
 
     // Destroy all cached Vulkan resources
     if (GetDevice()) {
         for (auto& [key, entry] : m_entries) {
             if (entry.resource) {
                 if (entry.resource->renderPass != VK_NULL_HANDLE) {
-                    std::cout << "[RenderPassCacher::Cleanup] Destroying VkRenderPass: "
-                              << reinterpret_cast<uint64_t>(entry.resource->renderPass) << std::endl;
+                    LOG_DEBUG("Destroying VkRenderPass: " + std::to_string(reinterpret_cast<uint64_t>(entry.resource->renderPass)));
                     vkDestroyRenderPass(GetDevice()->device, entry.resource->renderPass, nullptr);
                     entry.resource->renderPass = VK_NULL_HANDLE;
                 }
@@ -33,7 +31,7 @@ void RenderPassCacher::Cleanup() {
     // Clear the cache entries after destroying resources
     Clear();
 
-    std::cout << "[RenderPassCacher::Cleanup] Cleanup complete" << std::endl;
+    LOG_INFO("Cleanup complete");
 }
 
 std::shared_ptr<RenderPassWrapper> RenderPassCacher::GetOrCreate(const RenderPassCreateParams& ci) {
@@ -46,30 +44,24 @@ std::shared_ptr<RenderPassWrapper> RenderPassCacher::GetOrCreate(const RenderPas
         std::shared_lock rlock(m_lock);
         auto it = m_entries.find(key);
         if (it != m_entries.end()) {
-            std::cout << "[RenderPassCacher::GetOrCreate] CACHE HIT for render pass " << renderPassName
-                      << " (key=" << key << ", VkRenderPass="
-                      << reinterpret_cast<uint64_t>(it->second.resource->renderPass) << ")" << std::endl;
+            LOG_DEBUG("CACHE HIT for render pass " + renderPassName + " (key=" + std::to_string(key) + ")");
             return it->second.resource;
         }
         auto pit = m_pending.find(key);
         if (pit != m_pending.end()) {
-            std::cout << "[RenderPassCacher::GetOrCreate] CACHE PENDING for render pass " << renderPassName
-                      << " (key=" << key << "), waiting..." << std::endl;
+            LOG_DEBUG("CACHE PENDING for render pass " + renderPassName + " (key=" + std::to_string(key) + "), waiting...");
             return pit->second.get();
         }
     }
 
-    std::cout << "[RenderPassCacher::GetOrCreate] CACHE MISS for render pass " << renderPassName
-              << " (key=" << key << "), creating new resource..." << std::endl;
+    LOG_DEBUG("CACHE MISS for render pass " + renderPassName + " (key=" + std::to_string(key) + "), creating new resource...");
 
     // Call parent implementation which will invoke Create()
     return TypedCacher<RenderPassWrapper, RenderPassCreateParams>::GetOrCreate(ci);
 }
 
 std::shared_ptr<RenderPassWrapper> RenderPassCacher::Create(const RenderPassCreateParams& ci) {
-    std::cout << "[RenderPassCacher::Create] CACHE MISS - Creating new render pass: "
-              << "color=" << ci.colorFormat
-              << (ci.hasDepth ? (", depth=" + std::to_string(ci.depthFormat)) : "") << std::endl;
+    LOG_DEBUG("Creating new render pass: color=" + std::to_string(ci.colorFormat) + (ci.hasDepth ? (", depth=" + std::to_string(ci.depthFormat)) : ""));
 
     auto wrapper = std::make_shared<RenderPassWrapper>();
     wrapper->colorFormat = ci.colorFormat;
@@ -155,8 +147,7 @@ std::shared_ptr<RenderPassWrapper> RenderPassCacher::Create(const RenderPassCrea
                                  std::to_string(result) + ")");
     }
 
-    std::cout << "[RenderPassCacher::Create] VkRenderPass created: "
-              << reinterpret_cast<uint64_t>(wrapper->renderPass) << std::endl;
+    LOG_DEBUG("VkRenderPass created: " + std::to_string(reinterpret_cast<uint64_t>(wrapper->renderPass)));
 
     return wrapper;
 }
@@ -189,11 +180,11 @@ std::uint64_t RenderPassCacher::ComputeKey(const RenderPassCreateParams& ci) con
 }
 
 bool RenderPassCacher::SerializeToFile(const std::filesystem::path& path) const {
-    std::cout << "[RenderPassCacher::SerializeToFile] Serializing " << m_entries.size() << " render pass configs to " << path << std::endl;
+    LOG_INFO("SerializeToFile: Serializing " + std::to_string(m_entries.size()) + " render pass configs to " + path.string());
 
     std::ofstream ofs(path, std::ios::binary);
     if (!ofs) {
-        std::cout << "[RenderPassCacher::SerializeToFile] Failed to open file for writing" << std::endl;
+        LOG_ERROR("SerializeToFile: Failed to open file for writing");
         return false;
     }
 
@@ -213,21 +204,21 @@ bool RenderPassCacher::SerializeToFile(const std::filesystem::path& path) const 
         ofs.write(reinterpret_cast<const char*>(&w->hasDepth), sizeof(w->hasDepth));
     }
 
-    std::cout << "[RenderPassCacher::SerializeToFile] Serialization complete" << std::endl;
+    LOG_INFO("SerializeToFile: Serialization complete");
     return true;
 }
 
 bool RenderPassCacher::DeserializeFromFile(const std::filesystem::path& path, void* device) {
-    std::cout << "[RenderPassCacher::DeserializeFromFile] Deserializing render pass configs from " << path << std::endl;
+    LOG_INFO("DeserializeFromFile: Deserializing render pass configs from " + path.string());
 
     if (!std::filesystem::exists(path)) {
-        std::cout << "[RenderPassCacher::DeserializeFromFile] Cache file does not exist" << std::endl;
+        LOG_INFO("DeserializeFromFile: Cache file does not exist");
         return false;
     }
 
     std::ifstream ifs(path, std::ios::binary);
     if (!ifs) {
-        std::cout << "[RenderPassCacher::DeserializeFromFile] Failed to open file for reading" << std::endl;
+        LOG_ERROR("DeserializeFromFile: Failed to open file for reading");
         return false;
     }
 
@@ -235,7 +226,7 @@ bool RenderPassCacher::DeserializeFromFile(const std::filesystem::path& path, vo
     uint32_t count = 0;
     ifs.read(reinterpret_cast<char*>(&count), sizeof(count));
 
-    std::cout << "[RenderPassCacher::DeserializeFromFile] Loading " << count << " render pass metadata entries" << std::endl;
+    LOG_INFO("DeserializeFromFile: Loading " + std::to_string(count) + " render pass metadata entries");
 
     // Note: We only deserialize metadata. VkRenderPass handles will be recreated on-demand
     // via GetOrCreate() when the parameters match. This approach ensures driver compatibility.
@@ -252,11 +243,10 @@ bool RenderPassCacher::DeserializeFromFile(const std::filesystem::path& path, vo
 
         // We don't pre-create VkRenderPass handles from cache file
         // They will be created on first GetOrCreate() call with matching params
-        std::cout << "[RenderPassCacher::DeserializeFromFile] Loaded metadata for key " << key
-                  << " (color=" << colorFormat << ", depth=" << depthFormat << ")" << std::endl;
+        LOG_DEBUG("Loaded metadata for key " + std::to_string(key) + " (color=" + std::to_string(colorFormat) + ", depth=" + std::to_string(depthFormat) + ")");
     }
 
-    std::cout << "[RenderPassCacher::DeserializeFromFile] Deserialization complete (handles will be created on-demand)" << std::endl;
+    LOG_INFO("DeserializeFromFile: Deserialization complete (handles will be created on-demand)");
     return true;
 }
 

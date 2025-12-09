@@ -7,7 +7,6 @@
 #include <stdexcept>
 #include <cstring>
 #include <vulkan/vulkan.h>
-#include <iostream>
 #include <shared_mutex>
 
 // Namespace alias for nested namespace
@@ -45,21 +44,17 @@ std::shared_ptr<ShaderModuleWrapper> ShaderModuleCacher::GetOrCreate(const Shade
         std::shared_lock rlock(m_lock);
         auto it = m_entries.find(key);
         if (it != m_entries.end()) {
-            std::cout << "[ShaderModuleCacher::GetOrCreate] CACHE HIT for " << ci.shaderName
-                      << " (key=" << key << ", VkShaderModule="
-                      << reinterpret_cast<uint64_t>(it->second.resource->shaderModule) << ")" << std::endl;
+            LOG_DEBUG("CACHE HIT for " + ci.shaderName + " (key=" + std::to_string(key) + ")");
             return it->second.resource;
         }
         auto pit = m_pending.find(key);
         if (pit != m_pending.end()) {
-            std::cout << "[ShaderModuleCacher::GetOrCreate] CACHE PENDING for " << ci.shaderName
-                      << " (key=" << key << "), waiting..." << std::endl;
+            LOG_DEBUG("CACHE PENDING for " + ci.shaderName + " (key=" + std::to_string(key) + "), waiting...");
             return pit->second.get();
         }
     }
 
-    std::cout << "[ShaderModuleCacher::GetOrCreate] CACHE MISS for " << ci.shaderName
-              << " (key=" << key << "), creating new resource..." << std::endl;
+    LOG_DEBUG("CACHE MISS for " + ci.shaderName + " (key=" + std::to_string(key) + "), creating new resource...");
 
     // Call parent implementation which will invoke Create()
     return TypedCacher<ShaderModuleWrapper, ShaderModuleCreateParams>::GetOrCreate(ci);
@@ -72,10 +67,7 @@ std::shared_ptr<ShaderModuleWrapper> ShaderModuleCacher::GetOrCreateShaderModule
     VkShaderStageFlagBits stage,
     const std::string& shaderName)
 {
-    std::cout << "[ShaderModuleCacher] GetOrCreateShaderModule ENTRY: " << shaderName << std::endl;
-    std::cout << "[ShaderModuleCacher]   sourcePath=" << sourcePath << std::endl;
-    std::cout << "[ShaderModuleCacher]   entryPoint=" << entryPoint << std::endl;
-    std::cout << "[ShaderModuleCacher]   stage=" << stage << std::endl;
+    LOG_DEBUG("GetOrCreateShaderModule: " + shaderName + ", source=" + sourcePath + ", stage=" + std::to_string(stage));
 
     ShaderModuleCreateParams params;
     params.sourcePath = sourcePath;
@@ -85,15 +77,12 @@ std::shared_ptr<ShaderModuleWrapper> ShaderModuleCacher::GetOrCreateShaderModule
     params.shaderName = shaderName.empty() ? sourcePath : shaderName;
     params.sourceChecksum = ComputeSourceChecksum(sourcePath);
 
-    std::cout << "[ShaderModuleCacher]   checksum=" << params.sourceChecksum << std::endl;
-
     uint64_t key = ComputeKey(params);
-    std::cout << "[ShaderModuleCacher]   cache_key=" << key << std::endl;
+    LOG_DEBUG("cache_key=" + std::to_string(key) + ", checksum=" + params.sourceChecksum);
 
     auto result = GetOrCreate(params);
 
-    std::cout << "[ShaderModuleCacher] GetOrCreateShaderModule EXIT: VkShaderModule="
-              << reinterpret_cast<uint64_t>(result->shaderModule) << std::endl;
+    LOG_DEBUG("GetOrCreateShaderModule complete: VkShaderModule=" + std::to_string(reinterpret_cast<uint64_t>(result->shaderModule)));
 
     return result;
 }
@@ -105,20 +94,11 @@ std::shared_ptr<ShaderModuleWrapper> ShaderModuleCacher::GetOrCreateFromSpirv(
     VkShaderStageFlagBits stage,
     const std::string& shaderName)
 {
-    std::cout << "[ShaderModuleCacher] GetOrCreateFromSpirv ENTRY: " << shaderName << std::endl;
-    std::cout << "[ShaderModuleCacher]   SPIR-V size=" << spirvCode.size() << " uint32_t words" << std::endl;
-    std::cout << "[ShaderModuleCacher]   entryPoint=" << entryPoint << std::endl;
-    std::cout << "[ShaderModuleCacher]   stage=" << stage << std::endl;
+    LOG_DEBUG("GetOrCreateFromSpirv: " + shaderName + ", SPIR-V size=" + std::to_string(spirvCode.size()) + " words, stage=" + std::to_string(stage));
 
     // Debug: Check SPIR-V header (first 5 words)
-    if (spirvCode.size() >= 5) {
-        std::cout << "[ShaderModuleCacher]   SPIR-V header: magic=" << std::hex << spirvCode[0]
-                  << " version=" << spirvCode[1]
-                  << " generator=" << spirvCode[2]
-                  << " bound=" << spirvCode[3]
-                  << " schema=" << spirvCode[4] << std::dec << std::endl;
-    } else {
-        std::cout << "[ShaderModuleCacher]   ERROR: SPIR-V too small (< 5 words)" << std::endl;
+    if (spirvCode.size() < 5) {
+        LOG_ERROR("SPIR-V too small (< 5 words)");
     }
 
     // Compute hash of SPIR-V code for cache key
@@ -143,22 +123,19 @@ std::shared_ptr<ShaderModuleWrapper> ShaderModuleCacher::GetOrCreateFromSpirv(
     params.sourceChecksum = spirvChecksum;
 
     uint64_t key = ComputeKey(params);
-    std::cout << "[ShaderModuleCacher]   cache_key=" << key << std::endl;
+    LOG_DEBUG("cache_key=" + std::to_string(key));
 
     // Check cache first
     {
         std::shared_lock rlock(m_lock);
         auto it = m_entries.find(key);
         if (it != m_entries.end()) {
-            std::cout << "[ShaderModuleCacher] CACHE HIT for SPIR-V " << shaderName
-                      << " (key=" << key << ", VkShaderModule="
-                      << reinterpret_cast<uint64_t>(it->second.resource->shaderModule) << ")" << std::endl;
+            LOG_DEBUG("CACHE HIT for SPIR-V " + shaderName + " (key=" + std::to_string(key) + ")");
             return it->second.resource;
         }
     }
 
-    std::cout << "[ShaderModuleCacher] CACHE MISS for SPIR-V " << shaderName
-              << " (key=" << key << "), creating new VkShaderModule..." << std::endl;
+    LOG_DEBUG("CACHE MISS for SPIR-V " + shaderName + " (key=" + std::to_string(key) + "), creating new VkShaderModule...");
 
     // Create wrapper directly from SPIR-V
     auto wrapper = std::make_shared<ShaderModuleWrapper>();
@@ -184,12 +161,11 @@ std::shared_ptr<ShaderModuleWrapper> ShaderModuleCacher::GetOrCreateFromSpirv(
         );
 
         if (result != VK_SUCCESS) {
-            std::cout << "[ShaderModuleCacher] FAILED to create VkShaderModule from SPIR-V (VkResult=" << result << ")" << std::endl;
+            LOG_ERROR("FAILED to create VkShaderModule from SPIR-V (VkResult=" + std::to_string(result) + ")");
             throw std::runtime_error("Failed to create shader module from SPIR-V: " + shaderName);
         }
 
-        std::cout << "[ShaderModuleCacher] VkShaderModule created from SPIR-V: "
-                  << reinterpret_cast<uint64_t>(wrapper->shaderModule) << std::endl;
+        LOG_DEBUG("VkShaderModule created from SPIR-V: " + std::to_string(reinterpret_cast<uint64_t>(wrapper->shaderModule)));
     }
 
     // Cache the result
@@ -201,14 +177,13 @@ std::shared_ptr<ShaderModuleWrapper> ShaderModuleCacher::GetOrCreateFromSpirv(
         m_entries[key] = std::move(entry);
     }
 
-    std::cout << "[ShaderModuleCacher] GetOrCreateFromSpirv EXIT: VkShaderModule="
-              << reinterpret_cast<uint64_t>(wrapper->shaderModule) << std::endl;
+    LOG_DEBUG("GetOrCreateFromSpirv complete: VkShaderModule=" + std::to_string(reinterpret_cast<uint64_t>(wrapper->shaderModule)));
 
     return wrapper;
 }
 
 std::shared_ptr<ShaderModuleWrapper> ShaderModuleCacher::Create(const ShaderModuleCreateParams& ci) {
-    std::cout << "[ShaderModuleCacher::Create] CACHE MISS - Creating new shader module: " << ci.shaderName << std::endl;
+    LOG_DEBUG("Creating new shader module: " + ci.shaderName);
 
     auto wrapper = std::make_shared<ShaderModuleWrapper>();
     wrapper->shaderName = ci.shaderName;
@@ -218,9 +193,9 @@ std::shared_ptr<ShaderModuleWrapper> ShaderModuleCacher::Create(const ShaderModu
     wrapper->macroDefinitions = ci.macroDefinitions;
 
     // Load/compile SPIR-V bytecode
-    std::cout << "[ShaderModuleCacher::Create] Loading SPIR-V bytecode..." << std::endl;
+    LOG_DEBUG("Loading SPIR-V bytecode...");
     CompileShader(ci, *wrapper);
-    std::cout << "[ShaderModuleCacher::Create] SPIR-V loaded: " << wrapper->spirvCode.size() << " uint32_t words" << std::endl;
+    LOG_DEBUG("SPIR-V loaded: " + std::to_string(wrapper->spirvCode.size()) + " uint32_t words");
 
     // Create VkShaderModule from SPIR-V
     if (!wrapper->spirvCode.empty() && GetDevice()) {
@@ -237,15 +212,14 @@ std::shared_ptr<ShaderModuleWrapper> ShaderModuleCacher::Create(const ShaderModu
         );
 
         if (result != VK_SUCCESS) {
-            std::cout << "[ShaderModuleCacher::Create] FAILED to create VkShaderModule (VkResult=" << result << ")" << std::endl;
+            LOG_ERROR("FAILED to create VkShaderModule (VkResult=" + std::to_string(result) + ")");
             throw std::runtime_error("Failed to create shader module: " + wrapper->shaderName);
         }
 
-        std::cout << "[ShaderModuleCacher::Create] VkShaderModule created: "
-                  << reinterpret_cast<uint64_t>(wrapper->shaderModule) << std::endl;
+        LOG_DEBUG("VkShaderModule created: " + std::to_string(reinterpret_cast<uint64_t>(wrapper->shaderModule)));
     }
 
-    std::cout << "[ShaderModuleCacher::Create] Shader module creation complete" << std::endl;
+    LOG_DEBUG("Shader module creation complete");
     return wrapper;
 }
 
@@ -287,7 +261,7 @@ void ShaderModuleCacher::CompileShader(const ShaderModuleCreateParams& ci, Shade
         }
     }
 
-    std::cout << "[ShaderModuleCacher::CompileShader] Resolved SPIR-V path: " << spirvPath << std::endl;
+    LOG_DEBUG("Resolved SPIR-V path: " + spirvPath);
 
     try {
         std::ifstream file(spirvPath, std::ios::binary | std::ios::ate);
@@ -295,7 +269,7 @@ void ShaderModuleCacher::CompileShader(const ShaderModuleCreateParams& ci, Shade
             size_t fileSize = static_cast<size_t>(file.tellg());
             file.seekg(0);
 
-            std::cout << "[ShaderModuleCacher::CompileShader] File opened, size: " << fileSize << " bytes" << std::endl;
+            LOG_DEBUG("File opened, size: " + std::to_string(fileSize) + " bytes");
 
             // Read as bytes and convert to uint32_t
             std::vector<char> buffer(fileSize);
@@ -305,26 +279,25 @@ void ShaderModuleCacher::CompileShader(const ShaderModuleCreateParams& ci, Shade
             wrapper.spirvCode.resize(fileSize / sizeof(uint32_t));
             std::memcpy(wrapper.spirvCode.data(), buffer.data(), fileSize);
 
-            std::cout << "[ShaderModuleCacher::CompileShader] SPIR-V loaded successfully" << std::endl;
+            LOG_DEBUG("SPIR-V loaded successfully");
         } else {
-            std::cout << "[ShaderModuleCacher::CompileShader] FAILED to open file: " << spirvPath << std::endl;
+            LOG_ERROR("FAILED to open file: " + spirvPath);
             throw std::runtime_error("Failed to open SPIR-V file: " + spirvPath);
         }
     } catch (const std::exception& e) {
-        std::cout << "[ShaderModuleCacher::CompileShader] EXCEPTION: " << e.what() << std::endl;
+        LOG_ERROR("EXCEPTION: " + std::string(e.what()));
         throw std::runtime_error("Shader compilation failed for " + ci.shaderName + ": " + e.what());
     }
 }
 
 void ShaderModuleCacher::Cleanup() {
-    std::cout << "[ShaderModuleCacher::Cleanup] Cleaning up " << m_entries.size() << " cached shader modules" << std::endl;
+    LOG_INFO("Cleaning up " + std::to_string(m_entries.size()) + " cached shader modules");
 
     // Destroy all cached VkShaderModule handles
     if (GetDevice()) {
         for (auto& [key, entry] : m_entries) {
             if (entry.resource && entry.resource->shaderModule != VK_NULL_HANDLE) {
-                std::cout << "[ShaderModuleCacher::Cleanup] Destroying VkShaderModule: "
-                          << reinterpret_cast<uint64_t>(entry.resource->shaderModule) << std::endl;
+                LOG_DEBUG("Destroying VkShaderModule: " + std::to_string(reinterpret_cast<uint64_t>(entry.resource->shaderModule)));
                 vkDestroyShaderModule(GetDevice()->device, entry.resource->shaderModule, nullptr);
                 entry.resource->shaderModule = VK_NULL_HANDLE;
             }
@@ -334,18 +307,18 @@ void ShaderModuleCacher::Cleanup() {
     // Clear the cache entries after destroying resources
     Clear();
 
-    std::cout << "[ShaderModuleCacher::Cleanup] Cleanup complete" << std::endl;
+    LOG_INFO("Cleanup complete");
 }
 
 bool ShaderModuleCacher::SerializeToFile(const std::filesystem::path& path) const {
     try {
         std::ofstream file(path, std::ios::binary);
         if (!file.is_open()) {
-            std::cerr << "[ShaderModuleCacher::SerializeToFile] Failed to open file: " << path << std::endl;
+            LOG_ERROR("SerializeToFile: Failed to open file: " + path.string());
             return false;
         }
 
-        std::cout << "[ShaderModuleCacher::SerializeToFile] Saving " << m_entries.size() << " shader modules to " << path << std::endl;
+        LOG_INFO("SerializeToFile: Saving " + std::to_string(m_entries.size()) + " shader modules to " + path.string());
 
         // Write header: version + entry count
         uint32_t version = 1;
@@ -405,11 +378,11 @@ bool ShaderModuleCacher::SerializeToFile(const std::filesystem::path& path) cons
         }
 
         file.close();
-        std::cout << "[ShaderModuleCacher::SerializeToFile] Successfully saved cache" << std::endl;
+        LOG_INFO("SerializeToFile: Successfully saved cache");
         return true;
 
     } catch (const std::exception& e) {
-        std::cerr << "[ShaderModuleCacher::SerializeToFile] Exception: " << e.what() << std::endl;
+        LOG_ERROR("SerializeToFile: Exception: " + std::string(e.what()));
         return false;
     }
 }
@@ -417,17 +390,17 @@ bool ShaderModuleCacher::SerializeToFile(const std::filesystem::path& path) cons
 bool ShaderModuleCacher::DeserializeFromFile(const std::filesystem::path& path, void* device) {
     try {
         if (!std::filesystem::exists(path)) {
-            std::cout << "[ShaderModuleCacher::DeserializeFromFile] Cache file doesn't exist: " << path << std::endl;
+            LOG_INFO("DeserializeFromFile: Cache file doesn't exist: " + path.string());
             return true;  // Not an error, just no cache to load
         }
 
         std::ifstream file(path, std::ios::binary);
         if (!file.is_open()) {
-            std::cerr << "[ShaderModuleCacher::DeserializeFromFile] Failed to open file: " << path << std::endl;
+            LOG_ERROR("DeserializeFromFile: Failed to open file: " + path.string());
             return false;
         }
 
-        std::cout << "[ShaderModuleCacher::DeserializeFromFile] Loading cache from " << path << std::endl;
+        LOG_INFO("DeserializeFromFile: Loading cache from " + path.string());
 
         // Read header
         uint32_t version = 0;
@@ -436,11 +409,11 @@ bool ShaderModuleCacher::DeserializeFromFile(const std::filesystem::path& path, 
         file.read(reinterpret_cast<char*>(&entryCount), sizeof(entryCount));
 
         if (version != 1) {
-            std::cerr << "[ShaderModuleCacher::DeserializeFromFile] Unsupported cache version: " << version << std::endl;
+            LOG_ERROR("DeserializeFromFile: Unsupported cache version: " + std::to_string(version));
             return false;
         }
 
-        std::cout << "[ShaderModuleCacher::DeserializeFromFile] Loading " << entryCount << " shader modules" << std::endl;
+        LOG_INFO("DeserializeFromFile: Loading " + std::to_string(entryCount) + " shader modules");
 
         // Read each entry
         for (uint32_t i = 0; i < entryCount; ++i) {
@@ -519,8 +492,7 @@ bool ShaderModuleCacher::DeserializeFromFile(const std::filesystem::path& path, 
                 );
 
                 if (result != VK_SUCCESS) {
-                    std::cerr << "[ShaderModuleCacher::DeserializeFromFile] Failed to recreate VkShaderModule for "
-                              << ci.shaderName << std::endl;
+                    LOG_ERROR("DeserializeFromFile: Failed to recreate VkShaderModule for " + ci.shaderName);
                     continue;  // Skip this entry
                 }
             }
@@ -536,12 +508,11 @@ bool ShaderModuleCacher::DeserializeFromFile(const std::filesystem::path& path, 
         }
 
         file.close();
-        std::cout << "[ShaderModuleCacher::DeserializeFromFile] Successfully loaded " << m_entries.size()
-                  << " shader modules from cache" << std::endl;
+        LOG_INFO("DeserializeFromFile: Successfully loaded " + std::to_string(m_entries.size()) + " shader modules from cache");
         return true;
 
     } catch (const std::exception& e) {
-        std::cerr << "[ShaderModuleCacher::DeserializeFromFile] Exception: " << e.what() << std::endl;
+        LOG_ERROR("DeserializeFromFile: Exception: " + std::string(e.what()));
         return false;
     }
 }

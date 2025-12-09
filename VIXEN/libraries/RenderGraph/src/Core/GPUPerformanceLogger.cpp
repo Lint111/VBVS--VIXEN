@@ -87,7 +87,7 @@ void GPUPerformanceLogger::CollectResults(uint32_t frameIndex) {
         Info(summary);
 
         if (printToTerminal_) {
-            std::cout << "[GPU Perf] " << summary << std::endl;
+            Info("[GPU Perf] " + summary);
         }
     }
 }

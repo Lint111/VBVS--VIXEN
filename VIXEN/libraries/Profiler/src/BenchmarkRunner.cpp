@@ -94,7 +94,8 @@ VKAPI_ATTR VkBool32 VKAPI_CALL VulkanDebugCallback(
     (void)pUserData;
 
     if (severity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
-        std::cerr << "[Vulkan] " << pCallbackData->pMessage << "\n";
+        // TODO: Migrate to LOG_ERROR when BenchmarkRunner inherits from ILoggable
+        // LOG_ERROR("[Vulkan] " + std::string(pCallbackData->pMessage));
     }
     return VK_FALSE;
 }
@@ -170,7 +171,8 @@ VkResult SelectPhysicalDevice(HeadlessVulkanContext& ctx, uint32_t gpuIndex, boo
     uint32_t deviceCount = 0;
     vkEnumeratePhysicalDevices(ctx.instance, &deviceCount, nullptr);
     if (deviceCount == 0) {
-        std::cerr << "Error: No Vulkan-capable GPUs found\n";
+        // TODO: Migrate to LOG_ERROR when BenchmarkRunner inherits from ILoggable
+        // LOG_ERROR("No Vulkan-capable GPUs found");
         return VK_ERROR_INITIALIZATION_FAILED;
     }
 
@@ -178,8 +180,8 @@ VkResult SelectPhysicalDevice(HeadlessVulkanContext& ctx, uint32_t gpuIndex, boo
     vkEnumeratePhysicalDevices(ctx.instance, &deviceCount, devices.data());
 
     if (gpuIndex >= deviceCount) {
-        std::cerr << "Error: GPU index " << gpuIndex << " out of range (0-"
-                  << deviceCount - 1 << ")\n";
+        // TODO: Migrate to LOG_ERROR when BenchmarkRunner inherits from ILoggable
+        // LOG_ERROR("GPU index " + std::to_string(gpuIndex) + " out of range (0-" + std::to_string(deviceCount - 1) + ")");
         return VK_ERROR_INITIALIZATION_FAILED;
     }
 
@@ -190,7 +192,8 @@ VkResult SelectPhysicalDevice(HeadlessVulkanContext& ctx, uint32_t gpuIndex, boo
     ctx.timestampPeriod = props.limits.timestampPeriod;
 
     if (verbose) {
-        std::cout << "Selected GPU: " << props.deviceName << "\n";
+        // TODO: Migrate to LOG_INFO when BenchmarkRunner inherits from ILoggable
+        // LOG_INFO("Selected GPU: " + std::string(props.deviceName));
     }
 
     return VK_SUCCESS;
@@ -231,7 +234,8 @@ bool HasDeviceExtension(const std::vector<VkExtensionProperties>& available, con
 VkResult CreateHeadlessDevice(HeadlessVulkanContext& ctx) {
     ctx.computeQueueFamily = FindComputeQueueFamily(ctx.physicalDevice);
     if (ctx.computeQueueFamily == UINT32_MAX) {
-        std::cerr << "Error: No compute-capable queue family found\n";
+        // TODO: Migrate to LOG_ERROR when BenchmarkRunner inherits from ILoggable
+        // LOG_ERROR("No compute-capable queue family found");
         return VK_ERROR_INITIALIZATION_FAILED;
     }
 
@@ -290,7 +294,8 @@ VkResult CreateHeadlessDevice(HeadlessVulkanContext& ctx) {
             deviceExtensions.push_back(VK_KHR_SHADER_FLOAT_CONTROLS_EXTENSION_NAME);
         }
 
-        std::cout << "RTX extensions enabled for hardware ray tracing\n";
+        // TODO: Migrate to LOG_INFO when BenchmarkRunner inherits from ILoggable
+        // LOG_INFO("RTX extensions enabled for hardware ray tracing");
         ctx.rtxEnabled = true;
     }
 
@@ -346,7 +351,8 @@ VkResult CreateTimestampQueryPool(HeadlessVulkanContext& ctx, uint32_t queryCoun
 
 bool InitializeHeadlessVulkan(HeadlessVulkanContext& ctx, const BenchmarkSuiteConfig& config) {
     if (CreateHeadlessInstance(ctx, config.enableValidation) != VK_SUCCESS) {
-        std::cerr << "Error: Failed to create Vulkan instance\n";
+        // TODO: Migrate to LOG_ERROR when BenchmarkRunner inherits from ILoggable
+        // LOG_ERROR("Failed to create Vulkan instance");
         return false;
     }
 
@@ -355,12 +361,14 @@ bool InitializeHeadlessVulkan(HeadlessVulkanContext& ctx, const BenchmarkSuiteCo
     }
 
     if (CreateHeadlessDevice(ctx) != VK_SUCCESS) {
-        std::cerr << "Error: Failed to create logical device\n";
+        // TODO: Migrate to LOG_ERROR when BenchmarkRunner inherits from ILoggable
+        // LOG_ERROR("Failed to create logical device");
         return false;
     }
 
     if (CreateCommandPool(ctx) != VK_SUCCESS) {
-        std::cerr << "Error: Failed to create command pool\n";
+        // TODO: Migrate to LOG_ERROR when BenchmarkRunner inherits from ILoggable
+        // LOG_ERROR("Failed to create command pool");
         return false;
     }
 
@@ -451,9 +459,10 @@ TestSuiteResults BenchmarkRunner::RunSuite(const BenchmarkSuiteConfig& config) {
     // Validate configuration
     auto errors = config.Validate();
     if (!errors.empty()) {
-        std::cerr << "Configuration errors:\n";
+        // TODO: Migrate to LOG_ERROR when BenchmarkRunner inherits from ILoggable
+        // LOG_ERROR("Configuration errors:");
         for (const auto& err : errors) {
-            std::cerr << "  - " << err << "\n";
+            // LOG_ERROR("  - " + err);
         }
         return TestSuiteResults{};
     }
@@ -473,19 +482,21 @@ TestSuiteResults BenchmarkRunner::RunSuite(const BenchmarkSuiteConfig& config) {
 
     // Create output directory
     if (!MetricsExporter::EnsureDirectoryExists(config.outputDir)) {
-        std::cerr << "Error: Failed to create output directory: " << config.outputDir << "\n";
+        // TODO: Migrate to LOG_ERROR when BenchmarkRunner inherits from ILoggable
+        // LOG_ERROR("Failed to create output directory: " + config.outputDir.string());
         return TestSuiteResults{};
     }
 
     if (config.verbose) {
-        std::cout << "\n";
-        std::cout << "=================================================\n";
-        std::cout << "VIXEN Benchmark Tool\n";
-        std::cout << "=================================================\n";
-        std::cout << "Mode:   " << (config.headless ? "Headless" : "Render") << "\n";
-        std::cout << "Tests:  " << config.tests.size() << " configurations\n";
-        std::cout << "Output: " << config.outputDir << "\n";
-        std::cout << "\n";
+        // TODO: Migrate to LOG_INFO when BenchmarkRunner inherits from ILoggable
+        // LOG_INFO("");
+        // LOG_INFO("=================================================");
+        // LOG_INFO("VIXEN Benchmark Tool");
+        // LOG_INFO("=================================================");
+        // LOG_INFO("Mode:   " + std::string(config.headless ? "Headless" : "Render"));
+        // LOG_INFO("Tests:  " + std::to_string(config.tests.size()) + " configurations");
+        // LOG_INFO("Output: " + config.outputDir.string());
+        // LOG_INFO("");
     }
 
     TestSuiteResults results;
@@ -500,13 +511,14 @@ TestSuiteResults BenchmarkRunner::RunSuite(const BenchmarkSuiteConfig& config) {
     ExportAllResults();
 
     if (config.verbose) {
-        std::cout << "\n";
-        std::cout << "=================================================\n";
-        std::cout << "Benchmark Complete\n";
-        std::cout << "=================================================\n";
-        std::cout << "  Passed: " << results.GetPassCount() << "/" << results.GetTotalCount() << "\n";
-        std::cout << "  Output: " << config.outputDir << "\n";
-        std::cout << "=================================================\n";
+        // TODO: Migrate to LOG_INFO when BenchmarkRunner inherits from ILoggable
+        // LOG_INFO("");
+        // LOG_INFO("=================================================");
+        // LOG_INFO("Benchmark Complete");
+        // LOG_INFO("=================================================");
+        // LOG_INFO("  Passed: " + std::to_string(results.GetPassCount()) + "/" + std::to_string(results.GetTotalCount()));
+        // LOG_INFO("  Output: " + config.outputDir.string());
+        // LOG_INFO("=================================================");
     }
 
     return results;
@@ -516,7 +528,8 @@ TestSuiteResults BenchmarkRunner::RunSuiteHeadless(const BenchmarkSuiteConfig& c
     // Initialize headless Vulkan context
     HeadlessVulkanContext ctx{};
     if (!InitializeHeadlessVulkan(ctx, config)) {
-        std::cerr << "Error: Failed to initialize Vulkan\n";
+        // TODO: Migrate to LOG_ERROR when BenchmarkRunner inherits from ILoggable
+        // LOG_ERROR("Failed to initialize Vulkan");
         return TestSuiteResults{};
     }
 
@@ -525,7 +538,8 @@ TestSuiteResults BenchmarkRunner::RunSuiteHeadless(const BenchmarkSuiteConfig& c
     SetDeviceCapabilities(deviceCaps);
 
     if (config.verbose) {
-        std::cout << "Device: " << deviceCaps.GetSummaryString() << "\n\n";
+        // TODO: Migrate to LOG_INFO when BenchmarkRunner inherits from ILoggable
+        // LOG_INFO("Device: " + deviceCaps.GetSummaryString());
     }
 
     // Initialize profiler system
@@ -547,18 +561,18 @@ TestSuiteResults BenchmarkRunner::RunSuiteHeadless(const BenchmarkSuiteConfig& c
 
             // Format: [=====>              ] 25% | Test 1/4 | 64^3 cornell | shader.comp
             int percent = (frame * 100) / totalFrames;
-            std::cout << "\r  [" << bar << ">" << empty << "] "
-                      << std::setw(3) << percent << "% | "
-                      << "Test " << (testIdx + 1) << "/" << totalTests << " | "
-                      << cfg.voxelResolution << "^3 " << cfg.sceneType << " | "
-                      << cfg.shader
-                      << "     " << std::flush;
+            // TODO: Migrate to LOG_INFO when BenchmarkRunner inherits from ILoggable
+            // LOG_INFO("\r  [" + bar + ">" + empty + "] " +
+            //          std::to_string(percent) + "% | " +
+            //          "Test " + std::to_string(testIdx + 1) + "/" + std::to_string(totalTests) + " | " +
+            //          std::to_string(cfg.voxelResolution) + "^3 " + cfg.sceneType + " | " + cfg.shader);
         });
     }
 
     // Start suite
     if (!StartSuite()) {
-        std::cerr << "Error: Failed to start benchmark suite\n";
+        // TODO: Migrate to LOG_ERROR when BenchmarkRunner inherits from ILoggable
+        // LOG_ERROR("Failed to start benchmark suite");
         CleanupHeadlessVulkan(ctx);
         return TestSuiteResults{};
     }
@@ -568,11 +582,11 @@ TestSuiteResults BenchmarkRunner::RunSuiteHeadless(const BenchmarkSuiteConfig& c
         const auto& testConfig = GetCurrentTestConfig();
 
         if (config.verbose) {
-            std::cout << "  [" << (GetCurrentTestIndex() + 1) << "/" << testMatrix_.size() << "] "
-                      << testConfig.pipeline << " | "
-                      << testConfig.voxelResolution << "^3 | "
-                      << testConfig.sceneType << " | "
-                      << testConfig.shader << "\n";
+            // TODO: Migrate to LOG_INFO when BenchmarkRunner inherits from ILoggable
+            // LOG_INFO("  [" + std::to_string(GetCurrentTestIndex() + 1) + "/" + std::to_string(testMatrix_.size()) + "] " +
+            //          testConfig.pipeline + " | " +
+            //          std::to_string(testConfig.voxelResolution) + "^3 | " +
+            //          testConfig.sceneType + " | " + testConfig.shader);
         }
 
         ProfilerSystem::Instance().StartTestRun(testConfig);
@@ -665,18 +679,18 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
 
             // Format: [=====>              ] 25% | Test 1/4 | 64^3 cornell | shader.comp
             int percent = (frame * 100) / totalFrames;
-            std::cout << "\r  [" << bar << ">" << empty << "] "
-                      << std::setw(3) << percent << "% | "
-                      << "Test " << (testIdx + 1) << "/" << totalTests << " | "
-                      << cfg.voxelResolution << "^3 " << cfg.sceneType << " | "
-                      << cfg.shader
-                      << "     " << std::flush;
+            // TODO: Migrate to LOG_INFO when BenchmarkRunner inherits from ILoggable
+            // LOG_INFO("\r  [" + bar + ">" + empty + "] " +
+            //          std::to_string(percent) + "% | " +
+            //          "Test " + std::to_string(testIdx + 1) + "/" + std::to_string(totalTests) + " | " +
+            //          std::to_string(cfg.voxelResolution) + "^3 " + cfg.sceneType + " | " + cfg.shader);
         });
     }
 
     // Start suite
     if (!StartSuite()) {
-        std::cerr << "Error: Failed to start benchmark suite\n";
+        // TODO: Migrate to LOG_ERROR when BenchmarkRunner inherits from ILoggable
+        // LOG_ERROR("Failed to start benchmark suite");
         return TestSuiteResults{};
     }
 
@@ -685,17 +699,18 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
         const auto& testConfig = GetCurrentTestConfig();
 
         if (config.verbose) {
-            std::cout << "  [" << (GetCurrentTestIndex() + 1) << "/" << testMatrix_.size() << "] "
-                      << testConfig.pipeline << " | "
-                      << testConfig.voxelResolution << "^3 | "
-                      << testConfig.sceneType << " | "
-                      << testConfig.shader << "\n";
+            // TODO: Migrate to LOG_INFO when BenchmarkRunner inherits from ILoggable
+            // LOG_INFO("  [" + std::to_string(GetCurrentTestIndex() + 1) + "/" + std::to_string(testMatrix_.size()) + "] " +
+            //          testConfig.pipeline + " | " +
+            //          std::to_string(testConfig.voxelResolution) + "^3 | " +
+            //          testConfig.sceneType + " | " + testConfig.shader);
         }
 
         // Create graph for current test
         auto benchGraph = CreateGraphForCurrentTest(renderGraph.get());
         if (!benchGraph.IsValid()) {
-            std::cerr << "Error: Failed to create graph for test\n";
+            // TODO: Migrate to LOG_ERROR when BenchmarkRunner inherits from ILoggable
+            // LOG_ERROR("Failed to create graph for test");
             continue;
         }
 
@@ -712,7 +727,8 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
                 auto deviceCaps = DeviceCapabilities::Capture(vulkanHandles.physicalDevice);
                 SetDeviceCapabilities(deviceCaps);
                 if (config.verbose) {
-                    std::cout << "[BenchmarkRunner] Device: " << deviceCaps.deviceName << "\n";
+                    // TODO: Migrate to LOG_INFO when BenchmarkRunner inherits from ILoggable
+                    // LOG_INFO("[BenchmarkRunner] Device: " + std::string(deviceCaps.deviceName));
                 }
             }
         }
@@ -756,7 +772,8 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
 
                     SetDeviceCapabilities(deviceCaps);
                     if (config.verbose) {
-                        std::cout << "[BenchmarkRunner] Device from graph: " << deviceCaps.deviceName << "\n";
+                        // TODO: Migrate to LOG_INFO when BenchmarkRunner inherits from ILoggable
+                        // LOG_INFO("[BenchmarkRunner] Device from graph: " + std::string(deviceCaps.deviceName));
                     }
                 }
             }
@@ -924,7 +941,8 @@ void BenchmarkRunner::ListAvailableGPUs() {
     createInfo.pApplicationInfo = &appInfo;
 
     if (vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS) {
-        std::cerr << "Error: Failed to create Vulkan instance for GPU enumeration\n";
+        // TODO: Migrate to LOG_ERROR when BenchmarkRunner inherits from ILoggable
+        // LOG_ERROR("Failed to create Vulkan instance for GPU enumeration");
         return;
     }
 
@@ -932,7 +950,8 @@ void BenchmarkRunner::ListAvailableGPUs() {
     vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
 
     if (deviceCount == 0) {
-        std::cout << "No Vulkan-capable GPUs found\n";
+        // TODO: Migrate to LOG_INFO when BenchmarkRunner inherits from ILoggable
+        // LOG_INFO("No Vulkan-capable GPUs found");
         vkDestroyInstance(instance, nullptr);
         return;
     }
@@ -940,14 +959,18 @@ void BenchmarkRunner::ListAvailableGPUs() {
     std::vector<VkPhysicalDevice> devices(deviceCount);
     vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
 
-    std::cout << "\nAvailable GPUs:\n";
-    std::cout << "===============\n";
+    // TODO: Migrate to LOG_INFO when BenchmarkRunner inherits from ILoggable
+    // LOG_INFO("");
+    // LOG_INFO("Available GPUs:");
+    // LOG_INFO("===============");
 
     for (uint32_t i = 0; i < deviceCount; ++i) {
         auto caps = DeviceCapabilities::Capture(devices[i]);
-        std::cout << "  [" << i << "] " << caps.GetSummaryString() << "\n";
+        // LOG_INFO("  [" + std::to_string(i) + "] " + caps.GetSummaryString());
     }
-    std::cout << "\nUse --gpu N to select a specific GPU\n\n";
+    // LOG_INFO("");
+    // LOG_INFO("Use --gpu N to select a specific GPU");
+    // LOG_INFO("");
 
     vkDestroyInstance(instance, nullptr);
 }

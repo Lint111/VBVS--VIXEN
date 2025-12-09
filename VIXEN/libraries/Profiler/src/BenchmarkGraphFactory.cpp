@@ -726,31 +726,30 @@ FragmentPipelineNodes BenchmarkGraphFactory::BuildFragmentPipeline(
     FragmentPipelineNodes nodes{};
 
     // Create fragment pipeline nodes
-    std::cerr << "  [FragPipe] Creating shaderLib..." << std::endl;
+    // TODO: Migrate to LOG_DEBUG when BenchmarkGraphFactory inherits from ILoggable
+    // LOG_DEBUG("  [FragPipe] Creating shaderLib...");
     nodes.shaderLib = graph->AddNode<RG::ShaderLibraryNodeType>("benchmark_fragment_shader_lib");
-    std::cerr << "  [FragPipe] Creating descriptorGatherer..." << std::endl;
+    // LOG_DEBUG("  [FragPipe] Creating descriptorGatherer...");
     nodes.descriptorGatherer = graph->AddNode<RG::DescriptorResourceGathererNodeType>("benchmark_fragment_desc_gatherer");
-    std::cerr << "  [FragPipe] Creating pushConstantGatherer..." << std::endl;
+    // LOG_DEBUG("  [FragPipe] Creating pushConstantGatherer...");
     nodes.pushConstantGatherer = graph->AddNode<RG::PushConstantGathererNodeType>("benchmark_fragment_pc_gatherer");
-    std::cerr << "  [FragPipe] Creating descriptorSet..." << std::endl;
+    // LOG_DEBUG("  [FragPipe] Creating descriptorSet...");
     nodes.descriptorSet = graph->AddNode<RG::DescriptorSetNodeType>("benchmark_fragment_descriptors");
-    std::cerr << "  [FragPipe] Creating renderPass..." << std::endl; std::cerr.flush();
-    std::cerr << "  [FragPipe] Graph ptr: " << (void*)graph << std::endl;
-
-    std::cerr.flush();
+    // LOG_DEBUG("  [FragPipe] Creating renderPass...");
+    // LOG_DEBUG("  [FragPipe] Graph ptr: " + std::to_string(reinterpret_cast<uintptr_t>(graph)));
     nodes.renderPass = graph->AddNode<RG::RenderPassNodeType>("benchmark_render_pass");
-    std::cerr << "  [FragPipe] RenderPass created!" << std::endl;
-    std::cerr << "  [FragPipe] RenderPass created. Creating framebuffer..." << std::endl; std::cerr.flush();
+    // LOG_DEBUG("  [FragPipe] RenderPass created!");
+    // LOG_DEBUG("  [FragPipe] RenderPass created. Creating framebuffer...");
     nodes.framebuffer = graph->AddNode<RG::FramebufferNodeType>("benchmark_framebuffer");
-    std::cerr << "  [FragPipe] Creating graphics pipeline..." << std::endl;
+    // LOG_DEBUG("  [FragPipe] Creating graphics pipeline...");
     nodes.pipeline = graph->AddNode<RG::GraphicsPipelineNodeType>("benchmark_graphics_pipeline");
-    std::cerr << "  [FragPipe] Creating drawCommand (GeometryRenderNode)..." << std::endl;
+    // LOG_DEBUG("  [FragPipe] Creating drawCommand (GeometryRenderNode)...");
     nodes.drawCommand = graph->AddNode<RG::GeometryRenderNodeType>("benchmark_draw_command");
 
-    std::cerr << "  [FragPipe] Configuring parameters..." << std::endl;
+    // LOG_DEBUG("  [FragPipe] Configuring parameters...");
     // Configure parameters
     ConfigureFragmentPipelineParams(graph, nodes, infra, vertexShaderPath, fragmentShaderPath);
-    std::cerr << "  [FragPipe] Done!" << std::endl;
+    // LOG_DEBUG("  [FragPipe] Done!");
 
     return nodes;
 }
@@ -1030,38 +1029,39 @@ BenchmarkGraph BenchmarkGraphFactory::BuildFragmentRayMarchGraph(
     } else if (config.shaderGroup.size() == 1) {
         fragmentShader = config.shaderGroup[0];  // Only fragment specified
     }
-    std::cerr << "[Fragment] Using shaders: " << vertexShader << " + " << fragmentShader << std::endl;
+    // TODO: Migrate to LOG_DEBUG when BenchmarkGraphFactory inherits from ILoggable
+    // LOG_DEBUG("[Fragment] Using shaders: " + vertexShader + " + " + fragmentShader);
 
     // Build all subgraphs
-    std::cerr << "[Fragment] Building infrastructure..." << std::endl;
+    // LOG_DEBUG("[Fragment] Building infrastructure...");
     result.infra = BuildInfrastructure(graph, width, height, true);
 
-    std::cerr << "[Fragment] Building fragment pipeline..." << std::endl;
+    // LOG_DEBUG("[Fragment] Building fragment pipeline...");
     result.fragment = BuildFragmentPipeline(
         graph, result.infra,
         vertexShader,           // Full-screen triangle vertex shader
         fragmentShader          // Fragment shader ray marching
     );
 
-    std::cerr << "[Fragment] Building ray march scene..." << std::endl;
+    // LOG_DEBUG("[Fragment] Building ray march scene...");
     result.rayMarch = BuildRayMarchScene(graph, result.infra, scene);
 
-    std::cerr << "[Fragment] Building output..." << std::endl;
+    // LOG_DEBUG("[Fragment] Building output...");
     result.output = BuildOutput(graph, result.infra, false);
 
-    std::cerr << "[Fragment] Registering shaders..." << std::endl;
+    // LOG_DEBUG("[Fragment] Registering shaders...");
     // Register shader builder for vertex + fragment shaders
     RegisterFragmentShader(graph, result.fragment, vertexShader, fragmentShader);
 
-    std::cerr << "[Fragment] Wiring variadic resources..." << std::endl;
+    // LOG_DEBUG("[Fragment] Wiring variadic resources...");
     // Wire variadic resources (descriptors and push constants)
     WireFragmentVariadicResources(graph, result.infra, result.fragment, result.rayMarch);
 
-    std::cerr << "[Fragment] Connecting subgraphs..." << std::endl;
+    // LOG_DEBUG("[Fragment] Connecting subgraphs...");
     // Connect subgraphs
     ConnectFragmentRayMarch(graph, result.infra, result.fragment, result.rayMarch, result.output);
 
-    std::cerr << "[Fragment] Build complete!" << std::endl;
+    // LOG_DEBUG("[Fragment] Build complete!");
     return result;
 }
 
