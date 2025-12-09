@@ -5,6 +5,16 @@
 
 namespace Vixen::RenderGraph {
 
+/**
+ * @brief Mouse capture modes for InputNode
+ * Controls how the mouse cursor behaves during input polling.
+ */
+enum class MouseCaptureMode {
+    CenterLock,  ///< Mouse locked to window center (FPS-style camera control)
+    Free,        ///< Mouse moves freely (GUI/editor mode)
+    Disabled     ///< No mouse capture at all (benchmark/headless mode)
+};
+
 // Compile-time slot counts
 namespace InputNodeCounts {
     static constexpr size_t INPUTS = 1;   // HWND
@@ -24,7 +34,9 @@ namespace InputNodeCounts {
  *   - HWND (::HWND) - Windows window handle for input polling
  * Outputs: 1
  *   - INPUT_STATE (InputStatePtr) - Polling interface for camera/gameplay
- * Parameters: None
+ * Parameters:
+ *   - enabled (bool): Enable/disable input polling (default: true)
+ *   - mouse_capture_mode (int): MouseCaptureMode enum value (default: CenterLock)
  */
 CONSTEXPR_NODE_CONFIG(InputNodeConfig,
                       InputNodeCounts::INPUTS,
@@ -41,6 +53,10 @@ CONSTEXPR_NODE_CONFIG(InputNodeConfig,
     OUTPUT_SLOT(INPUT_STATE, InputStatePtr, 0,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
+
+    // ===== PARAMETERS =====
+    static constexpr const char* PARAM_ENABLED = "enabled";           // bool: Enable input polling
+    static constexpr const char* PARAM_MOUSE_CAPTURE_MODE = "mouse_capture_mode";  // int: MouseCaptureMode enum
 
     // Constructor for runtime descriptor initialization
     InputNodeConfig() {

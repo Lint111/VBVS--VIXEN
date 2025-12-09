@@ -2,11 +2,33 @@
 
 **Last Updated**: December 9, 2025
 **Current Branch**: `claude/phase-k-hardware-rt`
-**Status**: Frame Capture Feature COMPLETE - Ready for runtime testing
+**Status**: Input QoL Features COMPLETE - Build verified
 
 ---
 
 ## Current State
+
+### InputNode QoL Features Complete ✅ (December 9, 2025)
+
+Added configurable input behavior for different use cases:
+
+| Parameter | Type | Values | Description |
+|-----------|------|--------|-------------|
+| `enabled` | bool | true/false | Enable/disable all input polling |
+| `mouse_capture_mode` | int | 0-2 | MouseCaptureMode enum value |
+
+**MouseCaptureMode enum:**
+- `CenterLock` (0) - Mouse locked to window center (FPS camera)
+- `Free` (1) - Mouse moves freely (GUI/editor mode)
+- `Disabled` (2) - No mouse capture (benchmark/headless)
+
+**Files Modified:**
+- `libraries/RenderGraph/include/Data/Nodes/InputNodeConfig.h` - Added MouseCaptureMode enum + parameters
+- `libraries/RenderGraph/include/Nodes/InputNode.h` - Added member variables
+- `libraries/RenderGraph/src/Nodes/InputNode.cpp` - Parameter reading + conditional logic
+- `libraries/Profiler/src/BenchmarkGraphFactory.cpp` - Set Disabled mode for benchmarks
+
+---
 
 ### Frame Capture Feature Complete ✅ (December 9, 2025)
 

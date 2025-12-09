@@ -626,6 +626,16 @@ void BenchmarkGraphFactory::ConfigureRayMarchSceneParams(
         voxelGrid->SetParameter(RG::VoxelGridNodeConfig::PARAM_RESOLUTION, scene.resolution);
         voxelGrid->SetParameter(RG::VoxelGridNodeConfig::PARAM_SCENE_TYPE, scene.sceneType);
     }
+
+    // Input parameters: Disable mouse capture for benchmarks (headless mode)
+    auto* input = static_cast<RG::InputNode*>(graph->GetInstance(nodes.input));
+    if (input) {
+        // Keep keyboard polling enabled for manual frame capture ('C' key)
+        input->SetParameter(RG::InputNodeConfig::PARAM_ENABLED, true);
+        // Disable mouse capture - not needed for benchmark automated runs
+        input->SetParameter(RG::InputNodeConfig::PARAM_MOUSE_CAPTURE_MODE,
+                            static_cast<int>(RG::MouseCaptureMode::Disabled));
+    }
 }
 
 void BenchmarkGraphFactory::ConfigureOutputParams(

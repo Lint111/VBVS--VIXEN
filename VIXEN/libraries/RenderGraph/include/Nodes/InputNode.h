@@ -90,6 +90,10 @@ private:
     // Key state tracking (only track keys we care about)
     std::unordered_map<EventBus::KeyCode, KeyState> keyStates;
 
+    // Configuration parameters
+    bool enabled_ = true;                                       // Enable/disable input polling
+    MouseCaptureMode mouseCaptureMode_ = MouseCaptureMode::CenterLock;  // Mouse capture behavior
+
     // Mouse state
     int32_t lastMouseX = 0;
     int32_t lastMouseY = 0;

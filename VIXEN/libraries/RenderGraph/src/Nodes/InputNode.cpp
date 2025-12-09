@@ -58,6 +58,15 @@ void InputNode::SetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_INFO("[InputNode] Setup");
     lastFrameTime = std::chrono::steady_clock::now();
     mouseCaptured = false;
+
+    // Read parameters
+    enabled_ = GetParameterValue<bool>(InputNodeConfig::PARAM_ENABLED, true);
+    int captureMode = GetParameterValue<int>(InputNodeConfig::PARAM_MOUSE_CAPTURE_MODE,
+                                              static_cast<int>(MouseCaptureMode::CenterLock));
+    mouseCaptureMode_ = static_cast<MouseCaptureMode>(captureMode);
+
+    NODE_LOG_INFO("[InputNode] enabled=" + std::to_string(enabled_) +
+                  ", mouse_capture_mode=" + std::to_string(captureMode));
 }
 
 void InputNode::CompileImpl(TypedCompileContext& ctx) {
@@ -73,8 +82,16 @@ void InputNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // Calculate delta time
     UpdateDeltaTime();
 
-    // Enable mouse capture on first frame
-    if (!mouseCaptured && hwnd) {
+    // If disabled, output empty state and skip polling
+    if (!enabled_) {
+        inputState_.BeginFrame();
+        inputState_.deltaTime = deltaTime;
+        ctx.Out(InputNodeConfig::INPUT_STATE, &inputState_);
+        return;
+    }
+
+    // Initialize mouse capture based on capture mode
+    if (!mouseCaptured && hwnd && mouseCaptureMode_ == MouseCaptureMode::CenterLock) {
         InitializeMouseCapture();
     }
 
@@ -91,8 +108,8 @@ void InputNode::ExecuteImpl(TypedExecuteContext& ctx) {
     PublishKeyEvents();
     // PublishMouseEvents() disabled - all input via InputState polling
 
-    // Re-center mouse for continuous movement
-    if (mouseCaptured && hwnd) {
+    // Re-center mouse for continuous movement (only in CenterLock mode)
+    if (mouseCaptured && hwnd && mouseCaptureMode_ == MouseCaptureMode::CenterLock) {
         RecenterMouse();
     }
 
