@@ -964,6 +964,17 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
         ProfilerSystem::Instance().EndTestRun(!userRequestedClose);
         ClearCurrentGraph();
 
+        // Wait for GPU to finish all pending work before destroying resources
+        // This prevents crashes when ESC is pressed during frame rendering
+        auto* deviceNode = dynamic_cast<RG::DeviceNode*>(
+            renderGraph->GetInstanceByName("benchmark_device"));
+        if (deviceNode && deviceNode->GetDevice()) {
+            VkDevice device = deviceNode->GetDevice()->device;
+            if (device != VK_NULL_HANDLE) {
+                vkDeviceWaitIdle(device);
+            }
+        }
+
         // Cleanup frame capture before device destruction
         // (FrameCapture holds Vulkan handles created on this device)
         if (frameCapture_) {
