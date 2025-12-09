@@ -1771,12 +1771,12 @@ void BenchmarkGraphFactory::RegisterComputeShader(
         ShaderManagement::ShaderBundleBuilder builder;
 
         // Shader name is used directly as filename
-        // Extract program name from shader filename - KEEP extension to avoid collisions
-        // VoxelRayMarch.comp -> VoxelRayMarch_Compute (different from VoxelRayMarch.frag -> VoxelRayMarch_Fragment)
+        // Extract program name with pipeline suffix for unique SDI naming
+        // VoxelRayMarch.comp -> VoxelRayMarch_Compute_ (SDI generates VoxelRayMarch_Compute_Names.h)
         std::string programName = shaderName;
         auto dotPos = programName.rfind('.');
         if (dotPos != std::string::npos) {
-            programName = programName.substr(0, dotPos) + "_Compute";
+            programName = programName.substr(0, dotPos) + "_Compute_";
         }
 
         // Search paths for shader source
@@ -1842,12 +1842,12 @@ void BenchmarkGraphFactory::RegisterFragmentShader(
         [vertexShaderName, fragmentShaderName](int vulkanVer, int spirvVer) {
         ShaderManagement::ShaderBundleBuilder builder;
 
-        // Extract program name from fragment shader - add _Fragment suffix to avoid collisions
-        // VoxelRayMarch.frag -> VoxelRayMarch_Fragment (different from VoxelRayMarch.comp -> VoxelRayMarch_Compute)
+        // Extract program name with pipeline suffix for unique SDI naming
+        // VoxelRayMarch.frag -> VoxelRayMarch_Fragment_ (SDI generates VoxelRayMarch_Fragment_Names.h)
         std::string programName = fragmentShaderName;
         auto dotPos = programName.rfind('.');
         if (dotPos != std::string::npos) {
-            programName = programName.substr(0, dotPos) + "_Fragment";
+            programName = programName.substr(0, dotPos) + "_Fragment_";
         }
 
         // Helper to find shader file
@@ -1924,12 +1924,12 @@ void BenchmarkGraphFactory::RegisterRTXShader(
         [raygenShader, missShader, closestHitShader, intersectionShader](int vulkanVer, int spirvVer) {
         ShaderManagement::ShaderBundleBuilder builder;
 
-        // Extract program name from raygen shader - add _RayTracing suffix to avoid collisions
-        // VoxelRT.rgen -> VoxelRT_RayTracing (different from compute/fragment variants)
+        // Extract program name with pipeline suffix for unique SDI naming
+        // VoxelRT.rgen -> VoxelRT_RayTracing_ (SDI generates VoxelRT_RayTracing_Names.h)
         std::string programName = raygenShader;
         auto dotPos = programName.rfind('.');
         if (dotPos != std::string::npos) {
-            programName = programName.substr(0, dotPos) + "_RayTracing";
+            programName = programName.substr(0, dotPos) + "_RayTracing_";
         }
 
         // Helper to find shader file

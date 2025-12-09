@@ -57,9 +57,11 @@ int getBrickESVOScale() {
 
 // Generate ray direction from UV coordinates using perspective projection
 // uv: normalized screen coordinates [0,1]^2
+// Note: Vulkan has (0,0) at top-left, so we flip Y to match camera convention
 vec3 getRayDir(vec2 uv) {
     float tanHalfFov = tan(radians(pc.fov * 0.5));
     vec2 ndc = uv * 2.0 - 1.0;  // Convert to [-1,1]
+    ndc.y = -ndc.y;  // Vulkan Y-flip: (0,0) is top-left, we want bottom-left convention
 
     vec3 rayDir = pc.cameraDir +
                   pc.cameraRight * ndc.x * tanHalfFov * pc.aspect +
