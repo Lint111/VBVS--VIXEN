@@ -31,6 +31,7 @@ enum class KeyCode : uint32_t {
     D = 0x44,  // 'D'
     Q = 0x51,  // 'Q'
     E = 0x45,  // 'E'
+    C = 0x43,  // 'C' - Frame capture trigger
 
     // Special keys
     Space = 0x20,

@@ -1297,6 +1297,10 @@ void BenchmarkGraphFactory::ConnectHardwareRT(
     batch.Connect(hardwareRT.aabbConverter, RG::VoxelAABBConverterNodeConfig::AABB_DATA,
                   hardwareRT.accelerationStructure, RG::AccelerationStructureNodeConfig::AABB_DATA);
 
+    // VoxelGrid -> AccelerationStructureNode (cached scene data for cacher integration)
+    batch.Connect(rayMarch.voxelGrid, RG::VoxelGridNodeConfig::VOXEL_SCENE_DATA,
+                  hardwareRT.accelerationStructure, RG::AccelerationStructureNodeConfig::VOXEL_SCENE_DATA);
+
     // Device -> ShaderLibraryNode (for RT shaders)
     batch.Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   hardwareRT.shaderLib, RG::ShaderLibraryNodeConfig::VULKAN_DEVICE_IN);

@@ -1,12 +1,49 @@
 # Active Context
 
-**Last Updated**: December 8, 2025
+**Last Updated**: December 9, 2025
 **Current Branch**: `claude/phase-k-hardware-rt`
-**Status**: Logging Refactor COMPLETE - All std::cout/cerr converted to proper logging macros
+**Status**: Frame Capture Feature COMPLETE - Ready for runtime testing
 
 ---
 
 ## Current State
+
+### Frame Capture Feature Complete ✅ (December 9, 2025)
+
+Debug frame capture during benchmark tests for artifact identification:
+
+| Capture Type | Resolution | Trigger |
+|--------------|------------|---------|
+| **Automatic** | Quarter (half W×H) | Mid-frame of each test |
+| **Manual** | Full resolution | 'C' keypress |
+
+**Output:** `{output_dir}/debug_images/{test_name}_frame{N}.png`
+
+**Files Created:**
+- `libraries/Profiler/include/Profiler/FrameCapture.h` - Frame capture class
+- `libraries/Profiler/src/FrameCapture.cpp` - Vulkan readback + stb_image_write PNG save
+
+**Files Modified:**
+- `libraries/EventBus/include/InputEvents.h:34` - Added `KeyCode::C`
+- `libraries/RenderGraph/include/Nodes/InputNode.h:45` - Added `GetInputState()` getter
+- `libraries/RenderGraph/src/Nodes/InputNode.cpp` - Track 'C' key, renamed `inputState` → `inputState_`
+- `libraries/Profiler/include/Profiler/BenchmarkRunner.h` - Added FrameCapture member
+- `libraries/Profiler/src/BenchmarkRunner.cpp:797-893` - Capture integration in frame loop
+- `libraries/Profiler/CMakeLists.txt` - Added FrameCapture.cpp + stb include path
+- `libraries/Profiler/src/BenchmarkGraphFactory.cpp:1299` - Fixed VOXEL_SCENE_DATA connection
+
+**Build Status:** Profiler library builds successfully. Benchmark exe needs rebuild (was running during session).
+
+**To test:**
+```bash
+taskkill /F /IM vixen_benchmark.exe
+cmake --build build --config Debug --target vixen_benchmark
+./binaries/vixen_benchmark.exe --config ./application/benchmark/benchmark_config.json --render
+# Press 'C' during render to capture full-res frame
+# Check debug_images/ folder for mid-frame auto-captures
+```
+
+---
 
 ### All Shader Variants Complete ✅
 

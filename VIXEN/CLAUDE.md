@@ -32,6 +32,7 @@
       <file trigger="code-review">rules/code-review.md</file>
       <file trigger="building,testing">rules/commands.md</file>
       <file trigger="agent-launch">rules/agents.md</file>
+      <file trigger="feature,complex-problem">rules/collaborative-development.md</file>
     </task-relevant>
     <situational description="Load when condition arises">
       <file trigger="new-conversation">rules/session.md</file>

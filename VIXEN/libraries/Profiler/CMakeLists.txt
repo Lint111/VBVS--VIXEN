@@ -20,6 +20,7 @@ add_library(Profiler STATIC
     src/SceneInfo.cpp
     src/ProfilerSystem.cpp
     src/VulkanIntegration.cpp
+    src/FrameCapture.cpp
 )
 
 # ============================================================================
@@ -30,6 +31,8 @@ target_include_directories(Profiler
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
+    PRIVATE
+        ${CMAKE_BINARY_DIR}/_deps/stb-src  # For stb_image_write.h and stb_image_resize2.h
 )
 
 # ============================================================================

@@ -29,6 +29,7 @@
 #include <Nodes/InputNode.h>
 #include <Nodes/PresentNode.h>
 #include <Nodes/DebugBufferReaderNode.h>
+#include <InputEvents.h>  // For KeyCode::C (frame capture trigger)
 #include <Nodes/ConstantNode.h>
 #include <Nodes/ConstantNodeType.h>
 
@@ -794,6 +795,24 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
 
         ProfilerSystem::Instance().StartTestRun(testConfig);
 
+        // Initialize frame capture if not already done
+        if (!frameCapture_ && vulkanHandles.IsValid()) {
+            frameCapture_ = std::make_unique<FrameCapture>();
+            bool captureInitialized = frameCapture_->Initialize(
+                vulkanHandles.device,
+                vulkanHandles.physicalDevice,
+                vulkanHandles.graphicsQueue,
+                vulkanHandles.graphicsQueueFamily,
+                testConfig.screenWidth,
+                testConfig.screenHeight
+            );
+            if (!captureInitialized) {
+                std::cerr << "[BenchmarkRunner] Warning: Frame capture initialization failed" << std::endl;
+                frameCapture_.reset();
+            }
+        }
+        midFrameCaptured_ = false;  // Reset for this test
+
         // Frame timing variables
         auto profilingStartTime = std::chrono::high_resolution_clock::now();
 
@@ -824,6 +843,56 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
             VkResult result = renderGraph->RenderFrame();
             if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
                 // Non-fatal warning
+            }
+
+            // ============================================================
+            // Frame capture for debugging (before timing measurement)
+            // ============================================================
+            if (frameCapture_ && frameCapture_->IsInitialized()) {
+                // Get swapchain node for image access
+                auto* swapchainNode = dynamic_cast<RG::SwapChainNode*>(
+                    renderGraph->GetInstanceByName("benchmark_swapchain"));
+                
+                // Get input node for 'C' key capture trigger
+                auto* inputNode = dynamic_cast<RG::InputNode*>(
+                    renderGraph->GetInstanceByName("benchmark_input"));
+
+                if (swapchainNode) {
+                    const auto* swapchainVars = swapchainNode->GetSwapchainPublic();
+                    uint32_t imageIndex = swapchainNode->GetCurrentImageIndex();
+
+                    // Automatic mid-frame capture (quarter resolution)
+                    uint32_t midFrame = totalFrames / 2;
+                    if (frame == midFrame && !midFrameCaptured_) {
+                        CaptureConfig captureConfig;
+                        captureConfig.outputPath = outputDirectory_;
+                        captureConfig.testName = testConfig.testId;
+                        captureConfig.frameNumber = frame;
+                        captureConfig.resolution = CaptureResolution::Quarter;
+
+                        auto captureResult = frameCapture_->Capture(swapchainVars, imageIndex, captureConfig);
+                        midFrameCaptured_ = true;
+                        if (config.verbose && captureResult.success) {
+                            std::cout << "  [Capture] Mid-frame saved: " << captureResult.savedPath << std::endl;
+                        }
+                    }
+
+                    // Manual capture on 'C' key (full resolution)
+                    if (inputNode) {
+                        if (inputNode->GetInputState().IsKeyPressed(Vixen::EventBus::KeyCode::C)) {
+                            CaptureConfig captureConfig;
+                            captureConfig.outputPath = outputDirectory_;
+                            captureConfig.testName = testConfig.testId;
+                            captureConfig.frameNumber = frame;
+                            captureConfig.resolution = CaptureResolution::Full;
+
+                            auto captureResult = frameCapture_->Capture(swapchainVars, imageIndex, captureConfig);
+                            if (captureResult.success) {
+                                std::cout << "  [Capture] Manual capture saved: " << captureResult.savedPath << std::endl;
+                            }
+                        }
+                    }
+                }
             }
 
             // CPU frame timing end
@@ -894,6 +963,13 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
 
         ProfilerSystem::Instance().EndTestRun(!userRequestedClose);
         ClearCurrentGraph();
+
+        // Cleanup frame capture before device destruction
+        // (FrameCapture holds Vulkan handles created on this device)
+        if (frameCapture_) {
+            frameCapture_->Cleanup();
+            frameCapture_.reset();
+        }
 
         // Reset graph for next test (this destroys window, triggering WindowCloseEvent)
         renderGraph.reset();

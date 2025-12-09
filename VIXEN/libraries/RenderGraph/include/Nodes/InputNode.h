@@ -43,6 +43,9 @@ public:
     );
     ~InputNode() override = default;
 
+    /// Get the current input state (updated each frame)
+    const InputState& GetInputState() const { return inputState_; }
+
 protected:
     void SetupImpl(TypedSetupContext& ctx) override;
     void CompileImpl(TypedCompileContext& ctx) override;
@@ -98,7 +101,7 @@ private:
     float deltaTime = 0.0f;
 
     // Modern polling interface (GLFW/SDL2 style)
-    InputState inputState;  // Updated once per frame, output to consumers
+    InputState inputState_;  // Updated once per frame, output to consumers
 };
 
 } // namespace Vixen::RenderGraph
