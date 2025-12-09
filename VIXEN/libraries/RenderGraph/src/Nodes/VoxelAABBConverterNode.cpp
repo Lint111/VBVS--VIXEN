@@ -54,6 +54,13 @@ void VoxelAABBConverterNode::SetupImpl(TypedSetupContext& ctx) {
 
 void VoxelAABBConverterNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_DEBUG("[VoxelAABBConverterNode::CompileImpl] ENTERED");
+
+    // Enable terminal output for debugging RT sparse issue
+    if (nodeLogger) {
+        nodeLogger->SetEnabled(true);
+        nodeLogger->SetTerminalOutput(true);
+    }
+
     NODE_LOG_INFO("=== VoxelAABBConverterNode::CompileImpl START ===");
 
     // Get device

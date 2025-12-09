@@ -838,6 +838,22 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
 
             renderGraph->UpdateTime();
             renderGraph->ProcessEvents();
+
+            // Check for ESC/close request after processing events (before rendering)
+            // WindowCloseEvent from InputNode sets shouldClose via subscription callback
+            if (shouldClose) {
+                // Wait for GPU before breaking out of frame loop
+                auto* deviceNode = dynamic_cast<RG::DeviceNode*>(
+                    renderGraph->GetInstanceByName("benchmark_device"));
+                if (deviceNode && deviceNode->GetDevice()) {
+                    VkDevice device = deviceNode->GetDevice()->device;
+                    if (device != VK_NULL_HANDLE) {
+                        vkDeviceWaitIdle(device);
+                    }
+                }
+                break;
+            }
+
             renderGraph->RecompileDirtyNodes();
 
             VkResult result = renderGraph->RenderFrame();

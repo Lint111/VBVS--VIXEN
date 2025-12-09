@@ -26,6 +26,7 @@
       <file>rules/communication.md</file>
       <file>rules/engineering.md</file>
       <file>rules/obsidian-first.md</file>
+      <file>rules/logging.md</file>
     </always>
     <task-relevant description="Load when task matches">
       <file trigger="coding">rules/workflow.md</file>
@@ -53,6 +54,7 @@
 - communication: {from rules/communication.md}
 - engineering: {from rules/engineering.md}
 - obsidian-first: {from rules/obsidian-first.md}
+- logging: {from rules/logging.md}
 - [task-relevant]: {from loaded files}
 ```
   </display-format>

@@ -106,7 +106,7 @@ private:
     void RegisterAccelerationStructureCacher();
 
     // GetOrCreate helper - builds params and calls cacher
-    void CreateAccelStructViaCacher(const VoxelAABBData& aabbData);
+    void CreateAccelStructViaCacher(VoxelAABBData& aabbData);
 };
 
 } // namespace Vixen::RenderGraph

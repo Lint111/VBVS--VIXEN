@@ -190,7 +190,7 @@ void AccelerationStructureNode::RegisterAccelerationStructureCacher() {
 // CACHER GET-OR-CREATE
 // ============================================================================
 
-void AccelerationStructureNode::CreateAccelStructViaCacher(const VoxelAABBData& aabbData) {
+void AccelerationStructureNode::CreateAccelStructViaCacher(VoxelAABBData& aabbData) {
     if (!accelStructCacher_) {
         throw std::runtime_error("[AccelerationStructureNode] AccelerationStructureCacher not registered");
     }
@@ -223,12 +223,16 @@ void AccelerationStructureNode::CreateAccelStructViaCacher(const VoxelAABBData& 
     CashSystem::AccelStructCreateInfo params;
     params.sceneData = nonOwningSceneData;
     params.sceneDataKey = sceneDataKey;
+    // Cast VoxelAABBData between namespaces - structs are identical
+    // Vixen::RenderGraph::VoxelAABBData == CashSystem::VoxelAABBData (same fields)
+    params.precomputedAABBData = reinterpret_cast<CashSystem::VoxelAABBData*>(&aabbData);
     params.preferFastTrace = preferFastTrace_;
     params.allowUpdate = allowUpdate_;
     params.allowCompaction = allowCompaction_;
 
     NODE_LOG_INFO("AccelerationStructureNode: Requesting AS via cacher: sceneKey=" +
                   std::to_string(sceneDataKey) +
+                  ", precomputedAABBs=" + std::to_string(aabbData.aabbCount) +
                   ", fastTrace=" + std::to_string(preferFastTrace_) +
                   ", update=" + std::to_string(allowUpdate_) +
                   ", compact=" + std::to_string(allowCompaction_));

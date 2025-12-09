@@ -23,14 +23,14 @@
     },
     "pipelines": {
       "compute": {
-        "enabled": true,
+        "enabled": false,
         "shader_groups": [
           ["VoxelRayMarch.comp"],
           ["VoxelRayMarch_Compressed.comp"]
         ]
       },
       "fragment": {
-        "enabled": true,
+        "enabled": false,
         "shader_groups": [
           ["Fullscreen.vert", "VoxelRayMarch.frag"],
           ["Fullscreen.vert", "VoxelRayMarch_Compressed.frag"]

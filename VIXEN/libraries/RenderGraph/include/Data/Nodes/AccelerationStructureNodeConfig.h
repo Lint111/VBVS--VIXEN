@@ -1,12 +1,7 @@
 #pragma once
 #include "Data/Core/ResourceConfig.h"
-#include "Data/Nodes/VoxelAABBConverterNodeConfig.h"
+#include "Data/Nodes/VoxelAABBConverterNodeConfig.h"  // Includes CashSystem types
 #include "VulkanDevice.h"
-
-// Forward declaration for CashSystem cached scene data
-namespace CashSystem {
-    struct VoxelSceneData;
-}
 
 namespace Vixen::RenderGraph {
 
@@ -16,42 +11,10 @@ using RTXCapabilities = Vixen::Vulkan::Resources::RTXCapabilities;
 // ============================================================================
 // ACCELERATION STRUCTURE DATA (Phase K - Hardware RT)
 // ============================================================================
+// Use type from CashSystem to avoid duplication.
+// The cacher owns the BLAS/TLAS build logic and data structures.
 
-/**
- * @brief Acceleration structure handles for ray tracing
- *
- * Contains both BLAS (geometry) and TLAS (instances) for the scene.
- * BLAS: Built from voxel AABBs (procedural geometry)
- * TLAS: Contains single instance of the BLAS (static scene)
- */
-struct AccelerationStructureData {
-    // Bottom-Level Acceleration Structure (geometry)
-    VkAccelerationStructureKHR blas = VK_NULL_HANDLE;
-    VkBuffer blasBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory blasMemory = VK_NULL_HANDLE;
-    VkDeviceAddress blasDeviceAddress = 0;
-
-    // Top-Level Acceleration Structure (instances)
-    VkAccelerationStructureKHR tlas = VK_NULL_HANDLE;
-    VkBuffer tlasBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory tlasMemory = VK_NULL_HANDLE;
-    VkDeviceAddress tlasDeviceAddress = 0;
-
-    // Instance buffer (for TLAS)
-    VkBuffer instanceBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory instanceMemory = VK_NULL_HANDLE;
-
-    // Scratch buffer (temporary, needed during build)
-    VkBuffer scratchBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory scratchMemory = VK_NULL_HANDLE;
-
-    // Metadata
-    uint32_t primitiveCount = 0;  // Number of AABBs in BLAS
-
-    bool IsValid() const {
-        return blas != VK_NULL_HANDLE && tlas != VK_NULL_HANDLE;
-    }
-};
+using AccelerationStructureData = CashSystem::AccelerationStructureData;
 
 // ============================================================================
 // NODE CONFIG

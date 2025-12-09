@@ -154,17 +154,25 @@ std::shared_ptr<CachedAccelerationStructure> AccelerationStructureCacher::Create
         throw std::runtime_error("[AccelerationStructureCacher::Create] Cacher not initialized with device");
     }
 
-    if (!ci.sceneData) {
-        throw std::runtime_error("[AccelerationStructureCacher::Create] Scene data is null");
-    }
-
     // Load RT extension functions on first use
     LoadRTFunctions();
 
     auto cached = std::make_shared<CachedAccelerationStructure>();
 
-    // Step 1: Convert scene voxels to AABBs
-    ConvertToAABBs(*ci.sceneData, cached->aabbData);
+    // Step 1: Get AABB data (prefer pre-computed from VoxelAABBConverterNode)
+    if (ci.precomputedAABBData && ci.precomputedAABBData->IsValid()) {
+        // Use pre-computed AABB data from VoxelAABBConverterNode
+        // Copy the data (we don't own the source buffers, just need references for BLAS build)
+        cached->aabbData = *ci.precomputedAABBData;
+        LOG_INFO("[AccelerationStructureCacher::Create] Using pre-computed AABBs: " +
+                  std::to_string(cached->aabbData.aabbCount) + " AABBs");
+    } else if (ci.sceneData) {
+        // Fallback: Convert scene voxels to AABBs (legacy path)
+        LOG_INFO("[AccelerationStructureCacher::Create] Converting scene data to AABBs (fallback path)");
+        ConvertToAABBs(*ci.sceneData, cached->aabbData);
+    } else {
+        throw std::runtime_error("[AccelerationStructureCacher::Create] Neither precomputedAABBData nor sceneData provided");
+    }
 
     if (cached->aabbData.aabbCount == 0) {
         LOG_INFO("[AccelerationStructureCacher::Create] No AABBs to build AS from");
@@ -329,6 +337,15 @@ void AccelerationStructureCacher::ConvertToAABBs(const VoxelSceneData& sceneData
     constexpr size_t VOXELS_PER_BRICK = 512;  // 8x8x8
     constexpr int BRICK_SIZE = 8;
 
+    // Enable logging for this section to debug RT sparse issue
+    SetLoggerEnabled(true);
+    SetLoggerTerminalOutput(true);
+
+    LOG_INFO("[ConvertToAABBs] brickCount=" + std::to_string(brickCount) +
+              ", brickDataSize=" + std::to_string(sceneData.brickDataCPU.size()) +
+              ", brickGridLookupSize=" + std::to_string(sceneData.brickGridLookupCPU.size()) +
+              ", bricksPerAxis=" + std::to_string(sceneData.configCPU.bricksPerAxis));
+
     // Temporary CPU arrays
     std::vector<VoxelAABB> aabbs;
     std::vector<uint32_t> materialIds;
@@ -348,6 +365,7 @@ void AccelerationStructureCacher::ConvertToAABBs(const VoxelSceneData& sceneData
     const float voxelWorldSize = worldGridSize / static_cast<float>(sceneData.resolution);
 
     // Iterate all bricks and emit AABBs for solid voxels
+    size_t bricksFound = 0, bricksSkipped = 0, totalSolidVoxels = 0;
     for (size_t brickIdx = 0; brickIdx < brickCount; ++brickIdx) {
         // Find brick grid coordinates by searching brickGridLookup
         int brickX = -1, brickY = -1, brickZ = -1;
@@ -368,7 +386,11 @@ void AccelerationStructureCacher::ConvertToAABBs(const VoxelSceneData& sceneData
             brickZ = static_cast<int>(brickIdx / (bricksPerAxis * bricksPerAxis));
         }
 
-        if (brickX < 0) continue;  // Brick not found in lookup
+        if (brickX < 0) {
+            bricksSkipped++;
+            continue;  // Brick not found in lookup
+        }
+        bricksFound++;
 
         // Brick world origin
         const float brickOriginX = static_cast<float>(brickX * BRICK_SIZE) * voxelWorldSize;
@@ -385,6 +407,7 @@ void AccelerationStructureCacher::ConvertToAABBs(const VoxelSceneData& sceneData
                     const uint32_t materialId = brickVoxels[localIdx];
 
                     if (materialId == 0) continue;  // Empty voxel
+                    totalSolidVoxels++;
 
                     // Compute world-space AABB
                     const float minX = brickOriginX + static_cast<float>(lx) * voxelWorldSize;
@@ -408,7 +431,14 @@ void AccelerationStructureCacher::ConvertToAABBs(const VoxelSceneData& sceneData
     }
 
     aabbData.aabbCount = static_cast<uint32_t>(aabbs.size());
-    LOG_INFO("[AccelerationStructureCacher::ConvertToAABBs] Generated " + std::to_string(aabbData.aabbCount) + " AABBs");
+    LOG_INFO("[ConvertToAABBs] Generated " + std::to_string(aabbData.aabbCount) + " AABBs" +
+             " (bricksFound=" + std::to_string(bricksFound) +
+             ", bricksSkipped=" + std::to_string(bricksSkipped) +
+             ", solidVoxels=" + std::to_string(totalSolidVoxels) + ")");
+
+    // Disable debug logging after this section
+    SetLoggerTerminalOutput(false);
+    SetLoggerEnabled(false);
 
     if (aabbData.aabbCount == 0) {
         return;

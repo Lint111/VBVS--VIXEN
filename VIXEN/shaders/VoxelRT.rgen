@@ -59,6 +59,7 @@ void main() {
     // Compute UV coordinates (0-1 range, centered)
     vec2 uv = (vec2(pixelCoords) + 0.5) / vec2(imageSize);
     vec2 ndc = uv * 2.0 - 1.0;  // -1 to 1
+    ndc.y = -ndc.y;  // Vulkan Y-flip: match compute shader convention
 
     // Generate ray direction from camera parameters (world space)
     // FOV is in degrees from CameraNode, must convert to radians
@@ -69,21 +70,11 @@ void main() {
         ndc.y * tanHalfFov * pc.cameraUp
     );
 
-    // Transform ray from world space to local voxel space
-    // This matches how compute shader transforms rays before octree traversal
-    vec3 rayOriginWorld = pc.cameraPos;
-
-    // Transform origin: world -> local [0,1] -> voxel [0, resolution]
-    // worldToLocal transforms to normalized [0,1] space
-    // We need to scale to voxel space [0, resolution] to match AABB coordinates
-    vec3 rayOriginLocal = (octreeConfig.worldToLocal * vec4(rayOriginWorld, 1.0)).xyz;
-    vec3 rayDirLocal = normalize(mat3(octreeConfig.worldToLocal) * rayDirWorld);
-
-    // Scale from [0,1] to voxel coordinates [0, resolution]
-    // AABBs are generated in voxel space with voxelSize = 1.0
-    float resolution = float(1 << octreeConfig.userMaxLevels);  // 2^userMaxLevels
-    rayOriginLocal *= resolution;
-    // Direction doesn't need scaling (normalized direction is scale-invariant)
+    // Ray stays in WORLD SPACE - AABBs from AccelerationStructureCacher are in world space
+    // World space is [0, worldGridSize] where worldGridSize = 10.0 (from VoxelSceneCacher)
+    // This differs from compute shader which transforms to ESVO [1,2] space for octree traversal
+    vec3 rayOrigin = pc.cameraPos;
+    vec3 rayDir = rayDirWorld;
 
     float tMin = 0.001;
     float tMax = 10000.0;
@@ -91,7 +82,7 @@ void main() {
     // Initialize payload
     hitColor = vec3(0.0);
 
-    // Trace ray in local voxel space
+    // Trace ray in world space (AABBs are in world space [0, worldGridSize])
     traceRayEXT(
         topLevelAS,           // Acceleration structure
         gl_RayFlagsOpaqueEXT, // Ray flags
@@ -99,9 +90,9 @@ void main() {
         0,                    // SBT record offset
         0,                    // SBT record stride
         0,                    // Miss index
-        rayOriginLocal,       // Ray origin (local voxel space)
+        rayOrigin,            // Ray origin (world space)
         tMin,                 // Min distance
-        rayDirLocal,          // Ray direction (local space)
+        rayDir,               // Ray direction (world space)
         tMax,                 // Max distance
         0                     // Payload location
     );

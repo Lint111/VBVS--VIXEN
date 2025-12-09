@@ -209,23 +209,23 @@ bool handleLeafHit(TraversalState state, RayCoefficients coef,
 
     uint childPointer = getChildPointer(parentDescriptor);
     uint totalInternalChildren = bitCount(validMask & ~leafMask);
-    uint leafChildrenBeforeMe = bitCount(leafMask & ((1u << localChildIdx) - 1u));
+    uint leafChildrenBeforeMe = countLeavesBefore(validMask, leafMask, localChildIdx);
     uint leafDescriptorIndex = childPointer + totalInternalChildren + leafChildrenBeforeMe;
 
     uvec2 leafDescriptor = fetchESVONode(leafDescriptorIndex);
     uint brickIndex = getContourPointer(leafDescriptor);
 
-    if (brickIndex == 0u || brickIndex >= 0xFFFFFFu) {
+    // Note: brickIndex 0 IS valid - only reject SVO_INVALID_INDEX (0xFFFFFF)
+    if (brickIndex == SVO_INVALID_INDEX) {
         return false;
     }
 
-    vec3 hitPos12 = rayStartWorld;
-    hitPos12 = worldToNormalized(hitPos12);
-    float hitT_esvo = state.t_min;
+    // Use coef.normOrigin directly (already in [1,2] space) - matches compressed shader logic
+    float tHit = state.t_min;
     vec3 rayDirLocal = mat3(octreeConfig.worldToLocal) * rayDir;
-    hitPos12 = hitPos12 + rayDirLocal * hitT_esvo;
-    hitPos12 = clamp(hitPos12, vec3(1.0), vec3(2.0) - vec3(0.00001));
+    vec3 hitPos12 = coef.normOrigin + rayDirLocal * tHit;
 
+    // Compute posInBrick using shared helper (handles mirroring correctly)
     vec3 posInBrick = computePosInBrick(hitPos12, state.pos, state.scale_exp2, coef.octant_mask, BRICK_SIZE_VAL);
     posInBrick = clamp(posInBrick, vec3(0.0), vec3(float(BRICK_SIZE_VAL) - 0.001));
 
@@ -235,7 +235,7 @@ bool handleLeafHit(TraversalState state, RayCoefficients coef,
     if (marchBrickFromPos(rayDir, posInBrick, brickIndex, brickHitColor, brickHitNormal, axisMask, hitBrickLocalPos)) {
         hitColor = brickHitColor;
         hitNormal = brickHitNormal;
-        hitT = tBias + hitT_esvo;
+        hitT = tBias + tHit;
         return true;
     }
 

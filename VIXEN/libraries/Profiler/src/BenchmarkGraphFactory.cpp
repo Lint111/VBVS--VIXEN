@@ -1149,7 +1149,13 @@ void BenchmarkGraphFactory::ConfigureHardwareRTParams(
         // Set scene type and resolution to match VoxelGridNode (critical for correct AABB generation)
         aabbConverter->SetParameter("scene_type", scene.sceneType);
         aabbConverter->SetParameter(RG::VoxelAABBConverterNodeConfig::PARAM_GRID_RESOLUTION, static_cast<uint32_t>(scene.resolution));
-        aabbConverter->SetParameter(RG::VoxelAABBConverterNodeConfig::PARAM_VOXEL_SIZE, 1.0f);
+
+        // Calculate voxel size to match world space [0, worldGridSize]
+        // VoxelRT.rgen traces rays in world space, so AABBs must be in world space too
+        // worldGridSize = 10.0 (from VoxelSceneCacher), resolution varies (64, 128, 256)
+        constexpr float WORLD_GRID_SIZE = 10.0f;
+        const float voxelWorldSize = WORLD_GRID_SIZE / static_cast<float>(scene.resolution);
+        aabbConverter->SetParameter(RG::VoxelAABBConverterNodeConfig::PARAM_VOXEL_SIZE, voxelWorldSize);
     }
 
     // Configure acceleration structure parameters

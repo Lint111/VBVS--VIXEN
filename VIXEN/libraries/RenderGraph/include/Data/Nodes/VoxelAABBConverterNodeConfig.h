@@ -1,7 +1,7 @@
 #pragma once
 #include "Data/Core/ResourceConfig.h"
 #include "VulkanDevice.h"
-#include <glm/glm.hpp>
+#include <AccelerationStructureCacher.h>  // CashSystem types
 
 namespace Vixen::RenderGraph {
 
@@ -10,64 +10,12 @@ using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 // ============================================================================
 // VOXEL AABB DATA STRUCTURES (Phase K - Hardware RT)
 // ============================================================================
+// Use types from CashSystem to avoid duplication.
+// The cacher owns the AABB extraction logic and data structures.
 
-/**
- * @brief Single voxel AABB for acceleration structure building
- *
- * Layout matches VkAabbPositionsKHR (6 floats, tightly packed)
- */
-struct VoxelAABB {
-    glm::vec3 min;  // Minimum corner (x, y, z)
-    glm::vec3 max;  // Maximum corner (x+1, y+1, z+1)
-};
-static_assert(sizeof(VoxelAABB) == 24, "VoxelAABB must be 24 bytes for VkAabbPositionsKHR");
-
-/**
- * @brief Brick mapping entry for compressed RTX shaders
- *
- * Maps each AABB primitive to its brick and local voxel position.
- * Used by VoxelRT_Compressed.rchit to access compressed color/normal buffers.
- *
- * Packed as uvec2 in shader: (brickIndex, localVoxelIdx)
- * - brickIndex: Index into compressed buffer arrays (compressedColors, compressedNormals)
- * - localVoxelIdx: Linear index within brick (0-511 for 8x8x8 brick)
- */
-struct VoxelBrickMapping {
-    uint32_t brickIndex;      // Index into compressed buffer arrays
-    uint32_t localVoxelIdx;   // Position within brick (0-511)
-};
-static_assert(sizeof(VoxelBrickMapping) == 8, "VoxelBrickMapping must be 8 bytes for uvec2");
-
-/**
- * @brief Complete AABB data output from VoxelAABBConverterNode
- *
- * Single struct containing all data needed for AccelerationStructureNode
- */
-struct VoxelAABBData {
-    VkBuffer aabbBuffer = VK_NULL_HANDLE;           // Buffer containing VoxelAABB array
-    VkDeviceMemory aabbBufferMemory = VK_NULL_HANDLE;
-    uint32_t aabbCount = 0;                         // Number of AABBs (solid voxels)
-    VkDeviceSize aabbBufferSize = 0;                // Total buffer size in bytes
-
-    // Material ID buffer - one uint32 per AABB, indexed by gl_PrimitiveID
-    VkBuffer materialIdBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory materialIdBufferMemory = VK_NULL_HANDLE;
-    VkDeviceSize materialIdBufferSize = 0;
-
-    // Brick mapping buffer - one VoxelBrickMapping per AABB, indexed by gl_PrimitiveID
-    // Used by compressed RTX shaders to access DXT-compressed color/normal buffers
-    VkBuffer brickMappingBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory brickMappingBufferMemory = VK_NULL_HANDLE;
-    VkDeviceSize brickMappingBufferSize = 0;
-
-    // Original grid info for SVO lookup in shaders
-    uint32_t gridResolution = 0;                    // Original grid size (e.g., 128)
-    float voxelSize = 1.0f;                         // Size of each voxel in world units
-
-    bool IsValid() const {
-        return aabbBuffer != VK_NULL_HANDLE && aabbCount > 0;
-    }
-};
+using VoxelAABB = CashSystem::VoxelAABB;
+using VoxelBrickMapping = CashSystem::VoxelBrickMapping;
+using VoxelAABBData = CashSystem::VoxelAABBData;
 
 // ============================================================================
 // NODE CONFIG

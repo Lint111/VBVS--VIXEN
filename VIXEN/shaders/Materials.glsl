@@ -20,7 +20,7 @@ vec3 getMaterialColor(uint matID) {
     if (matID == 1u) return vec3(1.0, 0.0, 0.0);       // Red (left wall)
     if (matID == 2u) return vec3(0.0, 1.0, 0.0);       // Green (right wall)
     if (matID == 3u) return vec3(0.9, 0.9, 0.9);       // Light gray (white wall)
-    if (matID == 4u) return vec3(1.0, 0.8, 0.0);       // Yellow/Gold
+    if (matID == 4u) return vec3(0.85, 0.85, 0.85);    // Floor (white/light gray)
     if (matID == 5u) return vec3(0.95, 0.95, 0.95);    // White (ceiling)
     if (matID == 6u) return vec3(0.8, 0.8, 0.8);       // Medium gray (floor light)
     if (matID == 7u) return vec3(0.4, 0.4, 0.4);       // Darker gray (floor dark)

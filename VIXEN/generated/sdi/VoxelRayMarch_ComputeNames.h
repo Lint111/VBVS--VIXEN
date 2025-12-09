@@ -2,14 +2,14 @@
 // Shader-Specific Names Header
 // ============================================================================
 //
-// Program: VoxelRayMarch_Compressed
-// UUID: ed2c35a6e764d8b1
-// Generated: 2025-12-09 18:21:08
+// Program: VoxelRayMarch_Compute
+// UUID: db426427d16f4d1d
+// Generated: 2025-12-09 18:43:51
 //
 // This file provides shader-specific constexpr constants and type aliases
 // that map to the generic .si.h interface.
 //
-// Usage: #include "VoxelRayMarch_CompressedNames.h"
+// Usage: #include "VoxelRayMarch_ComputeNames.h"
 //
 // DO NOT MODIFY THIS FILE MANUALLY - it will be regenerated.
 //
@@ -17,12 +17,12 @@
 
 #pragma once
 
-#include "ed2c35a6e764d8b1-SDI.h"
+#include "db426427d16f4d1d-SDI.h"
 
-namespace VoxelRayMarch_Compressed {
+namespace VoxelRayMarch_Compute {
 
 // Reference to generic SDI namespace
-namespace SDI = ShaderInterface::ed2c35a6e764d8b1;
+namespace SDI = ShaderInterface::db426427d16f4d1d;
 
 // Forward declare push constant type to prevent error messages
 using pc = SDI::pc;
@@ -31,6 +31,9 @@ using pc = SDI::pc;
 // Descriptor Binding Aliases
 // ============================================================================
 
+// outputImage (Set 0, Binding 0)
+using outputImage = SDI::Set0::Binding0;
+constexpr const char* outputImage_name = "outputImage";
 // esvoNodes (Set 0, Binding 1)
 using esvoNodes = SDI::Set0::Binding1;
 constexpr const char* esvoNodes_name = "esvoNodes";
@@ -46,12 +49,6 @@ constexpr const char* traceWriteIndex_name = "traceWriteIndex";
 // octreeConfig (Set 0, Binding 5)
 using octreeConfig = SDI::Set0::Binding5;
 constexpr const char* octreeConfig_name = "octreeConfig";
-// compressedColors (Set 0, Binding 6)
-using compressedColors = SDI::Set0::Binding6;
-constexpr const char* compressedColors_name = "compressedColors";
-// compressedNormals (Set 0, Binding 7)
-using compressedNormals = SDI::Set0::Binding7;
-constexpr const char* compressedNormals_name = "compressedNormals";
 
 // ============================================================================
 // Push Constant Member Aliases (With Metadata)
@@ -75,4 +72,4 @@ constexpr const char* cameraRight_name = "cameraRight";
 using debugMode = SDI::pc::DataType::pc_7;
 constexpr const char* debugMode_name = "debugMode";
 
-} // namespace VoxelRayMarch_Compressed
+} // namespace VoxelRayMarch_Compute

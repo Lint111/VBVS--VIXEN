@@ -283,17 +283,22 @@ void InputNode::PollMouse() {
 // ====== Event Publishing ======
 
 void InputNode::PublishKeyEvents() {
-    // Modern input system: Only handle ESC for application exit
+    // Modern input system: ESC publishes WindowCloseEvent for graceful shutdown
     // All other keyboard input is polled via InputState.keyDown/keyPressed/keyReleased
     // No continuous KeyEvent publishing to avoid event flooding and render stalls
 
-    // Check ESC specifically
+    // Check ESC specifically - publish WindowCloseEvent instead of PostQuitMessage
+    // This allows BenchmarkRunner and other higher-level systems to handle shutdown gracefully
     auto escIt = keyStates.find(EventBus::KeyCode::Escape);
     if (escIt != keyStates.end()) {
         const auto& escState = escIt->second;
-        // ESC just pressed: exit application
+        // ESC just pressed: request graceful exit via event
         if (!escState.wasDown && escState.isDown) {
-            PostQuitMessage(0);
+            if (GetMessageBus()) {
+                auto closeEvent = std::make_unique<EventBus::WindowCloseEvent>(instanceId);
+                GetMessageBus()->Publish(std::move(closeEvent));
+                NODE_LOG_INFO("[InputNode] ESC pressed - published WindowCloseEvent for graceful shutdown");
+            }
             return;
         }
     }

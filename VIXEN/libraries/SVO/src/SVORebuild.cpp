@@ -71,7 +71,7 @@ static glm::vec3 MaterialIdToColor(uint32_t matID) {
         case 1:  return glm::vec3(1.0f, 0.0f, 0.0f);      // Red (left wall)
         case 2:  return glm::vec3(0.0f, 1.0f, 0.0f);      // Green (right wall)
         case 3:  return glm::vec3(0.9f, 0.9f, 0.9f);      // Light gray (white wall)
-        case 4:  return glm::vec3(1.0f, 0.8f, 0.0f);      // Yellow/Gold
+        case 4:  return glm::vec3(0.85f, 0.85f, 0.85f);   // Floor (white/light gray)
         case 5:  return glm::vec3(0.95f, 0.95f, 0.95f);   // White (ceiling)
         case 6:  return glm::vec3(0.8f, 0.8f, 0.8f);      // Medium gray (floor light)
         case 7:  return glm::vec3(0.4f, 0.4f, 0.4f);      // Darker gray (floor dark)

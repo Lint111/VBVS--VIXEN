@@ -159,7 +159,12 @@ struct AccelStructCreateInfo {
     uint64_t sceneDataKey = 0;
 
     // Pointer to cached scene data (must be valid during Create())
+    // Only used if precomputedAABBData is null (fallback to ConvertToAABBs from sceneData)
     std::shared_ptr<VoxelSceneData> sceneData;
+
+    // Pre-computed AABB data from VoxelAABBConverterNode (preferred path)
+    // If non-null, skips ConvertToAABBs and uses this AABB buffer directly
+    VoxelAABBData* precomputedAABBData = nullptr;
 
     // Build flags
     bool preferFastTrace = true;    // VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR

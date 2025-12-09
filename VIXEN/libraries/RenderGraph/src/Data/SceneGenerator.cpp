@@ -418,14 +418,18 @@ void CornellBoxSceneGenerator::GenerateWalls(VoxelGrid& grid) {
 void CornellBoxSceneGenerator::GenerateCheckerFloor(VoxelGrid& grid) {
     uint32_t res = grid.GetResolution();
     uint32_t checkerSize = res / 8;  // 8x8 checker grid
+    uint32_t wallThickness = std::max(1u, res / 24);  // Match wall thickness from GenerateWalls
 
     if (checkerSize == 0) checkerSize = 1;
 
+    // Cover the entire floor thickness with checkerboard pattern
     for (uint32_t x = 0; x < res; ++x) {
         for (uint32_t z = 0; z < res; ++z) {
             bool isLight = ((x / checkerSize) + (z / checkerSize)) % 2 == 0;
             uint8_t material = isLight ? 6 : 7;  // Light gray / dark gray
-            grid.Set(x, 0, z, material);
+            for (uint32_t y = 0; y < wallThickness; ++y) {
+                grid.Set(x, y, z, material);
+            }
         }
     }
 }

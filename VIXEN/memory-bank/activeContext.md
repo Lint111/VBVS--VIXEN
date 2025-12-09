@@ -1,12 +1,72 @@
 # Active Context
 
-**Last Updated**: December 9, 2025
+**Last Updated**: December 9, 2025 (Session 3)
 **Current Branch**: `claude/phase-k-hardware-rt`
-**Status**: Input QoL Features COMPLETE - Build verified
+**Status**: HW RT Pipeline WORKING - All pipelines rendering correctly
 
 ---
 
 ## Current State
+
+### Hardware RT Pipeline Fixes ✅ (December 9, 2025 - Session 3)
+
+Critical fixes for Hardware RT sparse rendering issue:
+
+| Issue | Root Cause | Fix | Status |
+|-------|------------|-----|--------|
+| **HW RT sparse voxels** | Rays in voxel space, AABBs in world space | Keep rays in world space, match AABB coords | ✅ Fixed |
+| **Voxel size mismatch** | voxelSize=1.0 creates [0,res] not [0,10] world | `voxelWorldSize = worldGridSize / resolution` | ✅ Fixed |
+| **AABB data flow** | Cacher regenerated AABBs instead of using node's | Added precomputedAABBData to AccelStructCreateInfo | ✅ Fixed |
+| **ESC freeze** | PostQuitMessage during frame loop | Publish WindowCloseEvent, check after ProcessEvents | ✅ Fixed |
+| **Orange artifact** | DEBUG_MATERIAL_ID enabled in compressed frag | Disabled debug flag | ✅ Fixed |
+
+**Key Insight:** AABBs from VoxelAABBConverterNode (61,192 for Cornell @ res=64) must use world-space coordinates [0, worldGridSize=10], and rays in VoxelRT.rgen must NOT be transformed to voxel space.
+
+### Type Consolidation ✅
+
+Removed duplicate struct definitions - RenderGraph now uses CashSystem types:
+
+| Type | Now Aliased To |
+|------|----------------|
+| `VoxelAABB` | `CashSystem::VoxelAABB` |
+| `VoxelBrickMapping` | `CashSystem::VoxelBrickMapping` |
+| `VoxelAABBData` | `CashSystem::VoxelAABBData` |
+| `AccelerationStructureData` | `CashSystem::AccelerationStructureData` |
+
+### Previous Fixes ✅ (Sessions 1-2)
+
+| Issue | Root Cause | Fix | Status |
+|-------|------------|-----|--------|
+| **Upside-down scenes** | Vulkan UV (0,0) at top-left | Added `ndc.y = -ndc.y` in `getRayDir()` | ✅ Fixed |
+| **SDI naming collision** | Same program name for all pipelines | Added `_Compute_`, `_Fragment_`, `_RayTracing_` suffixes | ✅ Fixed |
+| **Dark materials** | `brickMaterialData` stored only 0/1 | Store actual material ID from Material component | ✅ Fixed |
+| **Empty brick corner** | Wrong leaf count formula in uncompressed shaders | Use `countLeavesBefore(validMask, leafMask, idx)` | ✅ Fixed |
+| **Yellow floor** | Material ID 4 mapped to yellow instead of gray | Changed mat 4 to `(0.85, 0.85, 0.85)` | ✅ Fixed |
+
+**Files Modified:**
+- `shaders/RayGeneration.glsl:64` - Vulkan Y-flip
+- `libraries/Profiler/src/BenchmarkGraphFactory.cpp` - SDI naming suffixes
+- `libraries/SVO/src/SVORebuild.cpp:645-656` - Store actual material IDs
+- `libraries/SVO/src/SVORebuild.cpp:74` - Material ID 4 color fix
+- `libraries/Profiler/src/BenchmarkRunner.cpp:967-976` - vkDeviceWaitIdle on ESC
+- `shaders/Materials.glsl:23` - Material ID 4 color (yellow → gray)
+- `shaders/VoxelRayMarch.comp:246` - Leaf count formula fix
+- `shaders/VoxelRayMarch.comp:252-256` - Brick index 0 validation fix
+- `shaders/VoxelRayMarch.comp:257-264` - posInBrick calculation (use coef.normOrigin)
+- `shaders/VoxelRayMarch.frag:212` - Leaf count formula fix
+- `shaders/VoxelRayMarch.frag:218-221` - Brick index 0 validation fix
+- `shaders/VoxelRayMarch.frag:222-229` - posInBrick calculation (use coef.normOrigin)
+- `shaders/VoxelRayMarch_Compressed.comp:17` - Disable DEBUG_MATERIAL_ID
+
+**Commits Created:**
+1. `40a643e` - Frame capture feature
+2. `04ba64a` - InputNode mouse capture mode
+3. `1a37138` - SDI naming + projection Y-flip
+4. `994d4fe` - Store actual material IDs in brickMaterialData
+5. `dd45d26` - Shader Y-flip in RayGeneration.glsl + improved SDI naming
+6. `782fd8d` - vkDeviceWaitIdle before cleanup on ESC exit
+
+---
 
 ### InputNode QoL Features Complete ✅ (December 9, 2025)
 
@@ -206,6 +266,16 @@ Extended logging refactor to cover CashSystem library and fix compile errors fro
 - [ ] Validate/refute hypothesis
 
 ### Deferred Tasks (Post-Benchmark)
+
+#### Architecture: VoxelAABBCacher (High Priority)
+- [ ] **Create VoxelAABBCacher** - Specialized cacher for AABB extraction
+  - Pattern: Each node has its own cacher (like VoxelGridNode → VoxelSceneCacher)
+  - VoxelAABBConverterNode → VoxelAABBCacher
+  - Remove `precomputedAABBData` hack from AccelStructCreateInfo
+  - Key: Cacher.GetOrCreate() returns cached VoxelAABBData, node just passes it along
+  - AccelerationStructureCacher focuses only on BLAS/TLAS building
+
+#### Other Deferred Tasks
 - [ ] BuildHybridGraph() - Combine compute + fragment approaches
 - [ ] GLSL shader counter queries (avg_voxels_per_ray, cache_line_hits)
 - [ ] VK_KHR_performance_query (hardware bandwidth measurement)
@@ -214,15 +284,17 @@ Extended logging refactor to cover CashSystem library and fix compile errors fro
 - [ ] GPU integration test (requires running Vulkan application)
 - [ ] Node-specific hook registration (O(1) dispatch vs O(N) broadcast)
 - [ ] Window resolution bug - render resolution vs window size mismatch
-- [ ] Brick index lookup buffer consumption in VoxelAABBConverterNode
 - [ ] **Unified Parameter/Resource Type System** - Merge `NodeParameterManager` with compile-time resource system
   - Current: Two separate type registries (`PARAMETER_TYPES` macro vs `RESOURCE_TYPE_REGISTRY`)
   - Goal: Single registry handles both slots AND parameters
   - Benefit: Any type valid in ResourceTypeTraits automatically usable as parameter
   - Files: `ParameterDataTypes.h`, `ResourceTypeTraits.h`, `NodeParameterManager.h`
+
+#### Completed
 - [x] ~~Create SceneDataCacher in CashSystem library~~ - VoxelSceneCacher + AccelerationStructureCacher DONE
 - [x] ~~Cache persistence (serialization/deserialization)~~ - Binary format with GPU re-upload DONE
 - [x] ~~Remove legacy `#if 0` blocks~~ - ~1450 lines removed from VoxelGridNode + AccelerationStructureNode
+- [x] ~~Type consolidation~~ - RenderGraph uses CashSystem types via aliases
 
 ---
 
