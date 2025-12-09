@@ -215,6 +215,11 @@ Extended logging refactor to cover CashSystem library and fix compile errors fro
 - [ ] Node-specific hook registration (O(1) dispatch vs O(N) broadcast)
 - [ ] Window resolution bug - render resolution vs window size mismatch
 - [ ] Brick index lookup buffer consumption in VoxelAABBConverterNode
+- [ ] **Unified Parameter/Resource Type System** - Merge `NodeParameterManager` with compile-time resource system
+  - Current: Two separate type registries (`PARAMETER_TYPES` macro vs `RESOURCE_TYPE_REGISTRY`)
+  - Goal: Single registry handles both slots AND parameters
+  - Benefit: Any type valid in ResourceTypeTraits automatically usable as parameter
+  - Files: `ParameterDataTypes.h`, `ResourceTypeTraits.h`, `NodeParameterManager.h`
 - [x] ~~Create SceneDataCacher in CashSystem library~~ - VoxelSceneCacher + AccelerationStructureCacher DONE
 - [x] ~~Cache persistence (serialization/deserialization)~~ - Binary format with GPU re-upload DONE
 - [x] ~~Remove legacy `#if 0` blocks~~ - ~1450 lines removed from VoxelGridNode + AccelerationStructureNode

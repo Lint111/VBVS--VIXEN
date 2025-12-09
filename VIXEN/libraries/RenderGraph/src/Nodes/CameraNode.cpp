@@ -92,6 +92,9 @@ void CameraNode::CompileImpl(TypedCompileContext& ctx) {
         farPlane
     );
 
+    // Vulkan Y-flip: Vulkan's clip space has Y pointing down, unlike OpenGL
+    projection[1][1] *= -1.0f;
+
     glm::vec3 target = cameraPosition + forward;
     glm::mat4 view = glm::lookAt(cameraPosition, target, glm::vec3(0.0f, 1.0f, 0.0f));
 
@@ -167,6 +170,10 @@ void CameraNode::UpdateCameraData(float aspectRatio) {
         nearPlane,
         farPlane
     );
+
+    // Vulkan Y-flip: Vulkan's clip space has Y pointing down, unlike OpenGL
+    // This flips the projection to match OpenGL conventions used in our shaders
+    projection[1][1] *= -1.0f;
 
     // ORBIT MODE: Camera orbits around orbitCenter
     // yaw/pitch control the orbit angle, camera looks at orbitCenter
