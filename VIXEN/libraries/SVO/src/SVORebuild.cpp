@@ -632,22 +632,27 @@ void LaineKarrasOctree::rebuild(GaiaVoxelWorld& world, const glm::vec3& worldMin
             // Performance: O(512 * 6) = 3,072 neighbor checks, done once per brick
             std::array<glm::vec3, 512> geometricNormals = precomputeGeometricNormals(brickView, brickSize);
 
-            // Populate brickMaterialData for occupancy checks in shader (binding 2)
-            // This is required because the compressed shader still uses the uncompressed
-            // brickData buffer to determine if a voxel is active before decoding DXT.
+            // Populate brickMaterialData with actual material IDs for uncompressed rendering
+            // Compressed shader uses this for occupancy check (voxelData != 0u)
+            // Uncompressed shader uses matID = voxelData & 0xFFu to get material color
             size_t materialBaseIdx = brickIdx * 512;
             int occupiedCount = 0;
             for (int i = 0; i < 512; ++i) {
                 int x = i & 7;
                 int y = (i >> 3) & 7;
                 int z = (i >> 6) & 7;
-                
+
                 auto entity = brickView.getEntity(x, y, z);
-                // Use 1 for occupied, 0 for empty.
-                // The shader checks (voxelData != 0u) for hit.
-                uint32_t val = (entity != gaia::ecs::Entity()) ? 1u : 0u;
-                m_octree->root->brickMaterialData[materialBaseIdx + i] = val;
-                if (val != 0) occupiedCount++;
+                if (entity == gaia::ecs::Entity()) {
+                    // Empty voxel - shader checks (voxelData != 0u)
+                    m_octree->root->brickMaterialData[materialBaseIdx + i] = 0u;
+                } else {
+                    // Get actual material ID for uncompressed shader coloring
+                    auto matOpt = brickView.getComponentValue<Material>(i);
+                    uint32_t matID = matOpt.has_value() ? matOpt.value() : 1u;  // Default to mat 1 if no component
+                    m_octree->root->brickMaterialData[materialBaseIdx + i] = matID;
+                    occupiedCount++;
+                }
             }
 
             for (int blockIdx = 0; blockIdx < static_cast<int>(blocksPerBrick); ++blockIdx) {
