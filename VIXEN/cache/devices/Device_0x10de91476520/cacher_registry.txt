@@ -1,6 +1,5 @@
 ShaderModuleCacher
 VoxelSceneCacher
-RenderPassCacher
+VoxelAABBCacher
+AccelerationStructureCacher
 DescriptorCacher
-PipelineCacher
-PipelineLayoutCacher

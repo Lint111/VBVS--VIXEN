@@ -6,6 +6,7 @@
     "headless": false,
     "verbose": true,
     "validation": false,
+    "machine_name": null,
     "export": {
       "csv": true,
       "json": true
@@ -23,14 +24,14 @@
     },
     "pipelines": {
       "compute": {
-        "enabled": false,
+        "enabled": true,
         "shader_groups": [
           ["VoxelRayMarch.comp"],
           ["VoxelRayMarch_Compressed.comp"]
         ]
       },
       "fragment": {
-        "enabled": false,
+        "enabled": true,
         "shader_groups": [
           ["Fullscreen.vert", "VoxelRayMarch.frag"],
           ["Fullscreen.vert", "VoxelRayMarch_Compressed.frag"]

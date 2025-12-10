@@ -186,5 +186,9 @@
     "gtest-adapter.debugConfig": {
         "args": []
     },
-    "testMate.cpp.test.advancedExecutables": []
+    "testMate.cpp.test.advancedExecutables": [],
+    "workbench.editorAssociations": {
+        "*.xlsx": "default",
+        "*.xls": "default"
+    }
 }
