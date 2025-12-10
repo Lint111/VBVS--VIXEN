@@ -21,6 +21,7 @@ add_library(Profiler STATIC
     src/ProfilerSystem.cpp
     src/VulkanIntegration.cpp
     src/FrameCapture.cpp
+    src/TesterPackage.cpp
 )
 
 # ============================================================================
@@ -48,6 +49,7 @@ target_link_libraries(Profiler
     PRIVATE
         VulkanResources
         ShaderManagement
+        miniz
 )
 
 # ============================================================================

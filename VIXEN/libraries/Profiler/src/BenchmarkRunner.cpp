@@ -3,6 +3,7 @@
 #include "Profiler/BenchmarkGraphFactory.h"
 #include "Profiler/ProfilerSystem.h"
 #include "Profiler/VulkanIntegration.h"
+#include "Profiler/TesterPackage.h"
 #include <iomanip>
 #include <Core/RenderGraph.h>
 #include <Core/NodeTypeRegistry.h>
@@ -510,6 +511,40 @@ TestSuiteResults BenchmarkRunner::RunSuite(const BenchmarkSuiteConfig& config) {
 
     // Export final results
     ExportAllResults();
+
+    // Create ZIP package for tester sharing if requested
+    if (config.createPackage) {
+        TesterPackage packager;
+        if (!config.testerName.empty()) {
+            packager.SetTesterName(config.testerName);
+        }
+
+        // Package to same directory as results
+        auto packageResult = packager.CreatePackage(
+            config.outputDir,
+            config.outputDir,
+            deviceCapabilities_
+        );
+
+        if (packageResult.success) {
+            std::cout << "\n";
+            std::cout << "=================================================\n";
+            std::cout << "Tester Package Created\n";
+            std::cout << "=================================================\n";
+            std::cout << "  File: " << packageResult.packagePath.string() << "\n";
+            std::cout << "  Files: " << packageResult.filesIncluded << "\n";
+            std::cout << "  Size: " << (packageResult.compressedSizeBytes / 1024) << " KB";
+            if (packageResult.originalSizeBytes > 0) {
+                float ratio = 100.0f * (1.0f - float(packageResult.compressedSizeBytes) / float(packageResult.originalSizeBytes));
+                std::cout << " (" << std::fixed << std::setprecision(0) << ratio << "% compression)";
+            }
+            std::cout << "\n";
+            std::cout << "=================================================\n";
+            std::cout << "\nSend this ZIP file for aggregation.\n";
+        } else {
+            std::cerr << "Warning: Failed to create package: " << packageResult.errorMessage << "\n";
+        }
+    }
 
     if (config.verbose) {
         // TODO: Migrate to LOG_INFO when BenchmarkRunner inherits from ILoggable

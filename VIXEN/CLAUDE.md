@@ -84,3 +84,27 @@
   <directory name="memory-bank">Session persistence files</directory>
   <directory name=".claude/skills">Skill definitions including project-rules</directory>
 </project-structure>
+
+---
+
+<workarounds id="claude-code-bugs">
+
+  <workaround id="file-path-bug">
+    <title>Windows File Paths</title>
+    <symptom>Edit tool fails with "File has been unexpectedly modified"</symptom>
+    <cause>Claude Code fails to recognize already-read files with relative paths</cause>
+    <solution>
+      Always use complete absolute Windows paths with drive letters:
+      - ✅ C:\cpp\VBVS--VIXEN\VIXEN\libraries\Profiler\src\BenchmarkConfig.cpp
+      - ❌ libraries/Profiler/src/BenchmarkConfig.cpp
+      - ❌ ./libraries/Profiler/src/BenchmarkConfig.cpp
+    </solution>
+  </workaround>
+
+  <workaround id="mcp-fallback">
+    <title>MCP Filesystem Fallback</title>
+    <symptom>Native Edit/Write tools fail repeatedly despite correct paths</symptom>
+    <solution>Use mcp__filesystem__edit_file or mcp__filesystem__write_file as fallback</solution>
+  </workaround>
+
+</workarounds>
