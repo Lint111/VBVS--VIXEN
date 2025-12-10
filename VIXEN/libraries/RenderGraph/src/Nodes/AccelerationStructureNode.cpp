@@ -4,7 +4,6 @@
 #include "Core/RenderGraph.h"
 #include "MainCacher.h"
 #include "AccelerationStructureCacher.h"
-#include "VoxelSceneCacher.h"  // For CashSystem::VoxelSceneData
 #include <cstring>
 
 namespace Vixen::RenderGraph {
@@ -30,7 +29,7 @@ AccelerationStructureNode::AccelerationStructureNode(
     NodeType* nodeType
 ) : TypedNode<AccelerationStructureNodeConfig>(instanceName, nodeType)
 {
-    NODE_LOG_INFO("AccelerationStructureNode constructor (Phase K)");
+    NODE_LOG_INFO("AccelerationStructureNode constructor (Phase K - using AccelerationStructureCacher)");
 }
 
 void AccelerationStructureNode::SetupImpl(TypedSetupContext& ctx) {
@@ -83,27 +82,16 @@ void AccelerationStructureNode::CompileImpl(TypedCompileContext& ctx) {
     // Register AccelerationStructureCacher with CashSystem (idempotent)
     RegisterAccelerationStructureCacher();
 
-    // Get AABB data
+    // Get AABB data from VoxelAABBConverterNode (via VoxelAABBCacher)
     VoxelAABBData* aabbData = ctx.In(AccelerationStructureNodeConfig::AABB_DATA);
     if (!aabbData || !aabbData->IsValid()) {
-        throw std::runtime_error("[AccelerationStructureNode] AABB_DATA is null or invalid");
+        throw std::runtime_error("[AccelerationStructureNode] AABB_DATA is null or invalid - connect VoxelAABBConverterNode.AABB_DATA");
     }
-
-    // Get VoxelSceneData (required for cacher integration)
-    voxelSceneData_ = ctx.In(AccelerationStructureNodeConfig::VOXEL_SCENE_DATA);
-    if (!voxelSceneData_) {
-        throw std::runtime_error("[AccelerationStructureNode] VOXEL_SCENE_DATA is required - connect VoxelGridNode.VOXEL_SCENE_DATA");
-    }
-    NODE_LOG_INFO("AccelerationStructureNode: Received VoxelSceneData with " +
-                  std::to_string(voxelSceneData_->nodeCount) + " nodes, " +
-                  std::to_string(voxelSceneData_->brickCount) + " bricks");
 
     NODE_LOG_INFO("Building acceleration structures for " +
                   std::to_string(aabbData->aabbCount) + " AABBs");
 
-    // ========================================================================
-    // Build BLAS/TLAS via cacher (the only path now)
-    // ========================================================================
+    // Build BLAS/TLAS via cacher
     if (!accelStructCacher_) {
         throw std::runtime_error("[AccelerationStructureNode] AccelerationStructureCacher not registered - cannot proceed");
     }
@@ -148,7 +136,6 @@ void AccelerationStructureNode::DestroyAccelerationStructures() {
         return;
     }
 
-    // Note: Legacy manual cleanup removed - AccelerationStructureCacher handles resource lifecycle
     NODE_LOG_INFO("Cleanup complete (resources managed by AccelerationStructureCacher)");
 }
 
@@ -195,49 +182,22 @@ void AccelerationStructureNode::CreateAccelStructViaCacher(VoxelAABBData& aabbDa
         throw std::runtime_error("[AccelerationStructureNode] AccelerationStructureCacher not registered");
     }
 
-    if (!voxelSceneData_) {
-        throw std::runtime_error("[AccelerationStructureNode] VoxelSceneData not provided - cannot use cacher");
-    }
-
-    // Build cache parameters from node config
-    // NOTE: We need to create a shared_ptr for the cacher's AccelStructCreateInfo.
-    // Since the VoxelSceneData is owned by VoxelGridNode's cachedSceneData_ (shared_ptr),
-    // we create a non-owning shared_ptr using aliasing constructor with empty deleter.
-    // This is safe because:
-    // 1. VoxelGridNode's cachedSceneData_ keeps the data alive for the node lifetime
-    // 2. The cacher only needs the data during Create() - it doesn't store the shared_ptr
-    auto nonOwningSceneData = std::shared_ptr<CashSystem::VoxelSceneData>(
-        std::shared_ptr<CashSystem::VoxelSceneData>{},  // empty control block
-        voxelSceneData_  // managed pointer (non-owning)
-    );
-
-    // Compute scene data key from the scene metadata
-    // We reconstruct the key from the stored metadata in VoxelSceneData
-    CashSystem::VoxelSceneCreateInfo sceneParams;
-    sceneParams.sceneType = voxelSceneData_->sceneType;
-    sceneParams.resolution = voxelSceneData_->resolution;
-    sceneParams.density = 0.5f;  // Default density (not stored in VoxelSceneData)
-    sceneParams.seed = 42;       // Default seed (not stored in VoxelSceneData)
-    uint64_t sceneDataKey = sceneParams.ComputeHash();
-
+    // Build cache parameters - simplified API: just AABB data + build flags
+    // AABB extraction is now handled by VoxelAABBCacher, not AccelerationStructureCacher
     CashSystem::AccelStructCreateInfo params;
-    params.sceneData = nonOwningSceneData;
-    params.sceneDataKey = sceneDataKey;
-    // Cast VoxelAABBData between namespaces - structs are identical
-    // Vixen::RenderGraph::VoxelAABBData == CashSystem::VoxelAABBData (same fields)
-    params.precomputedAABBData = reinterpret_cast<CashSystem::VoxelAABBData*>(&aabbData);
+    // Cast VoxelAABBData between namespaces - structs are identical (both alias CashSystem::VoxelAABBData)
+    params.aabbData = reinterpret_cast<CashSystem::VoxelAABBData*>(&aabbData);
     params.preferFastTrace = preferFastTrace_;
     params.allowUpdate = allowUpdate_;
     params.allowCompaction = allowCompaction_;
 
-    NODE_LOG_INFO("AccelerationStructureNode: Requesting AS via cacher: sceneKey=" +
-                  std::to_string(sceneDataKey) +
-                  ", precomputedAABBs=" + std::to_string(aabbData.aabbCount) +
+    NODE_LOG_INFO("AccelerationStructureNode: Requesting AS via cacher: aabbCount=" +
+                  std::to_string(aabbData.aabbCount) +
                   ", fastTrace=" + std::to_string(preferFastTrace_) +
                   ", update=" + std::to_string(allowUpdate_) +
                   ", compact=" + std::to_string(allowCompaction_));
 
-    // Call GetOrCreate - cacher handles AABB conversion and BLAS/TLAS build
+    // Call GetOrCreate - cacher builds BLAS/TLAS from pre-extracted AABBs
     cachedAccelStruct_ = accelStructCacher_->GetOrCreate(params);
 
     if (!cachedAccelStruct_ || !cachedAccelStruct_->accelStruct.IsValid()) {

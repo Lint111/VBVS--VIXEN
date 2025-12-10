@@ -2,16 +2,8 @@
 #include "AccelerationStructureCacher.h"
 #include "VulkanDevice.h"
 
-// SVO library for ESVO node parsing and complete types for unique_ptr
-#include "SVOTypes.h"
-#include "LaineKarrasOctree.h"
-#include "GaiaVoxelWorld.h"
-#include "Data/SceneGenerator.h"
-
-#include <iostream>
 #include <cstring>
 #include <stdexcept>
-#include <bit>
 #include <sstream>
 
 namespace CashSystem {
@@ -131,8 +123,10 @@ void AccelerationStructureData::Cleanup(VkDevice device) {
 // ============================================================================
 
 void CachedAccelerationStructure::Cleanup(VkDevice device) {
-    aabbData.Cleanup(device);
+    // aabbDataRef is NOT owned by this struct - don't clean it up
+    // Only clean up the acceleration structure resources we own
     accelStruct.Cleanup(device);
+    aabbDataRef = nullptr;
 }
 
 // ============================================================================
@@ -148,10 +142,14 @@ std::shared_ptr<CachedAccelerationStructure> AccelerationStructureCacher::GetOrC
 // ============================================================================
 
 std::shared_ptr<CachedAccelerationStructure> AccelerationStructureCacher::Create(const AccelStructCreateInfo& ci) {
-    LOG_INFO("[AccelerationStructureCacher::Create] Creating acceleration structure for scene key " + std::to_string(ci.sceneDataKey));
+    LOG_INFO("[AccelerationStructureCacher::Create] Creating acceleration structure");
 
     if (!IsInitialized()) {
         throw std::runtime_error("[AccelerationStructureCacher::Create] Cacher not initialized with device");
+    }
+
+    if (!ci.aabbData || !ci.aabbData->IsValid()) {
+        throw std::runtime_error("[AccelerationStructureCacher::Create] AABB data is required and must be valid");
     }
 
     // Load RT extension functions on first use
@@ -159,33 +157,25 @@ std::shared_ptr<CachedAccelerationStructure> AccelerationStructureCacher::Create
 
     auto cached = std::make_shared<CachedAccelerationStructure>();
 
-    // Step 1: Get AABB data (prefer pre-computed from VoxelAABBConverterNode)
-    if (ci.precomputedAABBData && ci.precomputedAABBData->IsValid()) {
-        // Use pre-computed AABB data from VoxelAABBConverterNode
-        // Copy the data (we don't own the source buffers, just need references for BLAS build)
-        cached->aabbData = *ci.precomputedAABBData;
-        LOG_INFO("[AccelerationStructureCacher::Create] Using pre-computed AABBs: " +
-                  std::to_string(cached->aabbData.aabbCount) + " AABBs");
-    } else if (ci.sceneData) {
-        // Fallback: Convert scene voxels to AABBs (legacy path)
-        LOG_INFO("[AccelerationStructureCacher::Create] Converting scene data to AABBs (fallback path)");
-        ConvertToAABBs(*ci.sceneData, cached->aabbData);
-    } else {
-        throw std::runtime_error("[AccelerationStructureCacher::Create] Neither precomputedAABBData nor sceneData provided");
-    }
+    // Store reference to AABB data (owned by VoxelAABBCacher, not us)
+    cached->aabbDataRef = ci.aabbData;
 
-    if (cached->aabbData.aabbCount == 0) {
+    LOG_INFO("[AccelerationStructureCacher::Create] Using AABB data with " +
+             std::to_string(ci.aabbData->aabbCount) + " AABBs");
+
+    if (ci.aabbData->aabbCount == 0) {
         LOG_INFO("[AccelerationStructureCacher::Create] No AABBs to build AS from");
         return cached;
     }
 
-    // Step 2: Build BLAS from AABBs
-    BuildBLAS(ci, cached->aabbData, cached->accelStruct);
+    // Build BLAS from AABBs
+    BuildBLAS(ci, *ci.aabbData, cached->accelStruct);
 
-    // Step 3: Build TLAS containing single BLAS instance
+    // Build TLAS containing single BLAS instance
     BuildTLAS(ci, cached->accelStruct);
 
-    LOG_INFO("[AccelerationStructureCacher::Create] Created AS with " + std::to_string(cached->accelStruct.primitiveCount) + " primitives");
+    LOG_INFO("[AccelerationStructureCacher::Create] Created AS with " +
+             std::to_string(cached->accelStruct.primitiveCount) + " primitives");
 
     return cached;
 }
@@ -220,26 +210,18 @@ void AccelerationStructureCacher::Cleanup() {
 // SERIALIZATION
 // ============================================================================
 // Note: AccelerationStructureCacher deliberately does not persist to disk.
-// Reasons:
-// 1. VkAccelerationStructureKHR objects are device-specific (cannot serialize)
-// 2. VoxelSceneData is already cached/serialized by VoxelSceneCacher
-// 3. AABB conversion from cached scene data is fast (CPU iteration only)
-// 4. BLAS/TLAS must be rebuilt per-device anyway
-//
-// The cacher provides VALUE via in-memory caching during a single benchmark run
-// (avoiding repeated BLAS/TLAS builds for same scene). Cross-session persistence
-// is handled by VoxelSceneCacher at the scene data level.
+// VkAccelerationStructureKHR objects are device-specific and must be rebuilt.
+// AABB data is cached by VoxelAABBCacher separately.
 // ============================================================================
 
 bool AccelerationStructureCacher::SerializeToFile(const std::filesystem::path& path) const {
-    // No-op: AS is device-specific and rebuilt from cached VoxelSceneData
-    // (Intentional design - see comment block above)
+    (void)path;
     return true;
 }
 
 bool AccelerationStructureCacher::DeserializeFromFile(const std::filesystem::path& path, void* device) {
-    // No-op: AS will be rebuilt on-demand when requested via GetOrCreate()
-    // (Intentional design - see comment block above)
+    (void)path;
+    (void)device;
     return true;
 }
 
@@ -275,8 +257,9 @@ void AccelerationStructureCacher::LoadRTFunctions() {
 
     m_rtFunctionsLoaded = true;
 
-    // Log which functions were loaded
-    LOG_DEBUG("[AccelerationStructureCacher] RT functions loaded: createAS=" + std::string(vkCreateAccelerationStructureKHR ? "yes" : "no") + ", buildAS=" + std::string(vkCmdBuildAccelerationStructuresKHR ? "yes" : "no"));
+    LOG_DEBUG("[AccelerationStructureCacher] RT functions loaded: createAS=" +
+              std::string(vkCreateAccelerationStructureKHR ? "yes" : "no") +
+              ", buildAS=" + std::string(vkCmdBuildAccelerationStructuresKHR ? "yes" : "no"));
 }
 
 VkBuildAccelerationStructureFlagsKHR AccelerationStructureCacher::GetBuildFlags(const AccelStructCreateInfo& ci) const {
@@ -313,231 +296,10 @@ uint32_t AccelerationStructureCacher::FindMemoryType(uint32_t typeFilter, VkMemo
 }
 
 // ============================================================================
-// CONVERT TO AABBs - Iterate ESVO leaf nodes to generate AABBs
-// ============================================================================
-
-void AccelerationStructureCacher::ConvertToAABBs(const VoxelSceneData& sceneData, VoxelAABBData& aabbData) {
-    LOG_INFO("[AccelerationStructureCacher::ConvertToAABBs] Converting voxels to AABBs...");
-
-    aabbData.gridResolution = sceneData.resolution;
-    aabbData.voxelSize = 1.0f;
-
-    if (sceneData.esvoNodesCPU.empty() || sceneData.brickDataCPU.empty()) {
-        LOG_DEBUG("[AccelerationStructureCacher::ConvertToAABBs] No ESVO data - 0 AABBs");
-        aabbData.aabbCount = 0;
-        return;
-    }
-
-    // Parse ESVO nodes to find leaf voxels
-    const auto* esvoNodes = reinterpret_cast<const Vixen::SVO::ChildDescriptor*>(sceneData.esvoNodesCPU.data());
-    const size_t nodeCount = sceneData.esvoNodesCPU.size() / sizeof(Vixen::SVO::ChildDescriptor);
-
-    const auto* brickData = reinterpret_cast<const uint32_t*>(sceneData.brickDataCPU.data());
-    const size_t brickCount = sceneData.brickCount;
-    constexpr size_t VOXELS_PER_BRICK = 512;  // 8x8x8
-    constexpr int BRICK_SIZE = 8;
-
-    // Enable logging for this section to debug RT sparse issue
-    SetLoggerEnabled(true);
-    SetLoggerTerminalOutput(true);
-
-    LOG_INFO("[ConvertToAABBs] brickCount=" + std::to_string(brickCount) +
-              ", brickDataSize=" + std::to_string(sceneData.brickDataCPU.size()) +
-              ", brickGridLookupSize=" + std::to_string(sceneData.brickGridLookupCPU.size()) +
-              ", bricksPerAxis=" + std::to_string(sceneData.configCPU.bricksPerAxis));
-
-    // Temporary CPU arrays
-    std::vector<VoxelAABB> aabbs;
-    std::vector<uint32_t> materialIds;
-    std::vector<VoxelBrickMapping> brickMappings;
-
-    // Reserve based on solid voxel count estimate
-    aabbs.reserve(sceneData.solidVoxelCount);
-    materialIds.reserve(sceneData.solidVoxelCount);
-    brickMappings.reserve(sceneData.solidVoxelCount);
-
-    // Use brick grid lookup if available
-    const bool haveLookup = !sceneData.brickGridLookupCPU.empty();
-    const uint32_t bricksPerAxis = sceneData.configCPU.bricksPerAxis;
-
-    // World scale factor (grid is normalized to [0, WORLD_GRID_SIZE])
-    const float worldGridSize = sceneData.configCPU.worldGridSize;
-    const float voxelWorldSize = worldGridSize / static_cast<float>(sceneData.resolution);
-
-    // Iterate all bricks and emit AABBs for solid voxels
-    size_t bricksFound = 0, bricksSkipped = 0, totalSolidVoxels = 0;
-    for (size_t brickIdx = 0; brickIdx < brickCount; ++brickIdx) {
-        // Find brick grid coordinates by searching brickGridLookup
-        int brickX = -1, brickY = -1, brickZ = -1;
-        if (haveLookup) {
-            // Reverse lookup: find grid coord that maps to this brickIdx
-            for (uint32_t idx = 0; idx < sceneData.brickGridLookupCPU.size(); ++idx) {
-                if (sceneData.brickGridLookupCPU[idx] == brickIdx) {
-                    brickX = idx % bricksPerAxis;
-                    brickY = (idx / bricksPerAxis) % bricksPerAxis;
-                    brickZ = idx / (bricksPerAxis * bricksPerAxis);
-                    break;
-                }
-            }
-        } else {
-            // Fallback: assume linear ordering
-            brickX = static_cast<int>(brickIdx % bricksPerAxis);
-            brickY = static_cast<int>((brickIdx / bricksPerAxis) % bricksPerAxis);
-            brickZ = static_cast<int>(brickIdx / (bricksPerAxis * bricksPerAxis));
-        }
-
-        if (brickX < 0) {
-            bricksSkipped++;
-            continue;  // Brick not found in lookup
-        }
-        bricksFound++;
-
-        // Brick world origin
-        const float brickOriginX = static_cast<float>(brickX * BRICK_SIZE) * voxelWorldSize;
-        const float brickOriginY = static_cast<float>(brickY * BRICK_SIZE) * voxelWorldSize;
-        const float brickOriginZ = static_cast<float>(brickZ * BRICK_SIZE) * voxelWorldSize;
-
-        // Iterate voxels in this brick
-        const uint32_t* brickVoxels = brickData + brickIdx * VOXELS_PER_BRICK;
-
-        for (int lz = 0; lz < BRICK_SIZE; ++lz) {
-            for (int ly = 0; ly < BRICK_SIZE; ++ly) {
-                for (int lx = 0; lx < BRICK_SIZE; ++lx) {
-                    const size_t localIdx = lz * BRICK_SIZE * BRICK_SIZE + ly * BRICK_SIZE + lx;
-                    const uint32_t materialId = brickVoxels[localIdx];
-
-                    if (materialId == 0) continue;  // Empty voxel
-                    totalSolidVoxels++;
-
-                    // Compute world-space AABB
-                    const float minX = brickOriginX + static_cast<float>(lx) * voxelWorldSize;
-                    const float minY = brickOriginY + static_cast<float>(ly) * voxelWorldSize;
-                    const float minZ = brickOriginZ + static_cast<float>(lz) * voxelWorldSize;
-
-                    VoxelAABB aabb;
-                    aabb.min = glm::vec3(minX, minY, minZ);
-                    aabb.max = glm::vec3(minX + voxelWorldSize, minY + voxelWorldSize, minZ + voxelWorldSize);
-                    aabbs.push_back(aabb);
-
-                    materialIds.push_back(materialId);
-
-                    VoxelBrickMapping mapping;
-                    mapping.brickIndex = static_cast<uint32_t>(brickIdx);
-                    mapping.localVoxelIdx = static_cast<uint32_t>(localIdx);
-                    brickMappings.push_back(mapping);
-                }
-            }
-        }
-    }
-
-    aabbData.aabbCount = static_cast<uint32_t>(aabbs.size());
-    LOG_INFO("[ConvertToAABBs] Generated " + std::to_string(aabbData.aabbCount) + " AABBs" +
-             " (bricksFound=" + std::to_string(bricksFound) +
-             ", bricksSkipped=" + std::to_string(bricksSkipped) +
-             ", solidVoxels=" + std::to_string(totalSolidVoxels) + ")");
-
-    // Disable debug logging after this section
-    SetLoggerTerminalOutput(false);
-    SetLoggerEnabled(false);
-
-    if (aabbData.aabbCount == 0) {
-        return;
-    }
-
-    // Upload AABB buffer to GPU
-    {
-        aabbData.aabbBufferSize = aabbs.size() * sizeof(VoxelAABB);
-
-        VkBufferCreateInfo bufferInfo{};
-        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        bufferInfo.size = aabbData.aabbBufferSize;
-        bufferInfo.usage = VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
-                          VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
-                          VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-        vkCreateBuffer(m_device->device, &bufferInfo, nullptr, &aabbData.aabbBuffer);
-
-        VkMemoryRequirements memReq;
-        vkGetBufferMemoryRequirements(m_device->device, aabbData.aabbBuffer, &memReq);
-
-        VkMemoryAllocateFlagsInfo allocFlagsInfo{};
-        allocFlagsInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO;
-        allocFlagsInfo.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
-
-        VkMemoryAllocateInfo allocInfo{};
-        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        allocInfo.pNext = &allocFlagsInfo;
-        allocInfo.allocationSize = memReq.size;
-        allocInfo.memoryTypeIndex = FindMemoryType(memReq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-        vkAllocateMemory(m_device->device, &allocInfo, nullptr, &aabbData.aabbBufferMemory);
-        vkBindBufferMemory(m_device->device, aabbData.aabbBuffer, aabbData.aabbBufferMemory, 0);
-
-        // Upload via staging
-        UploadBufferData(aabbData.aabbBuffer, aabbs.data(), aabbData.aabbBufferSize);
-    }
-
-    // Upload material ID buffer
-    {
-        aabbData.materialIdBufferSize = materialIds.size() * sizeof(uint32_t);
-
-        VkBufferCreateInfo bufferInfo{};
-        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        bufferInfo.size = aabbData.materialIdBufferSize;
-        bufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-        vkCreateBuffer(m_device->device, &bufferInfo, nullptr, &aabbData.materialIdBuffer);
-
-        VkMemoryRequirements memReq;
-        vkGetBufferMemoryRequirements(m_device->device, aabbData.materialIdBuffer, &memReq);
-
-        VkMemoryAllocateInfo allocInfo{};
-        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        allocInfo.allocationSize = memReq.size;
-        allocInfo.memoryTypeIndex = FindMemoryType(memReq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-        vkAllocateMemory(m_device->device, &allocInfo, nullptr, &aabbData.materialIdBufferMemory);
-        vkBindBufferMemory(m_device->device, aabbData.materialIdBuffer, aabbData.materialIdBufferMemory, 0);
-
-        UploadBufferData(aabbData.materialIdBuffer, materialIds.data(), aabbData.materialIdBufferSize);
-    }
-
-    // Upload brick mapping buffer
-    {
-        aabbData.brickMappingBufferSize = brickMappings.size() * sizeof(VoxelBrickMapping);
-
-        VkBufferCreateInfo bufferInfo{};
-        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        bufferInfo.size = aabbData.brickMappingBufferSize;
-        bufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-        vkCreateBuffer(m_device->device, &bufferInfo, nullptr, &aabbData.brickMappingBuffer);
-
-        VkMemoryRequirements memReq;
-        vkGetBufferMemoryRequirements(m_device->device, aabbData.brickMappingBuffer, &memReq);
-
-        VkMemoryAllocateInfo allocInfo{};
-        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        allocInfo.allocationSize = memReq.size;
-        allocInfo.memoryTypeIndex = FindMemoryType(memReq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-        vkAllocateMemory(m_device->device, &allocInfo, nullptr, &aabbData.brickMappingBufferMemory);
-        vkBindBufferMemory(m_device->device, aabbData.brickMappingBuffer, aabbData.brickMappingBufferMemory, 0);
-
-        UploadBufferData(aabbData.brickMappingBuffer, brickMappings.data(), aabbData.brickMappingBufferSize);
-    }
-
-    LOG_INFO("[AccelerationStructureCacher::ConvertToAABBs] Uploaded AABB buffers (" + std::to_string(aabbData.aabbBufferSize / 1024.0f) + " KB AABBs, " + std::to_string(aabbData.materialIdBufferSize / 1024.0f) + " KB materials, " + std::to_string(aabbData.brickMappingBufferSize / 1024.0f) + " KB mappings)");
-}
-
-// ============================================================================
 // BUILD BLAS - Create bottom-level acceleration structure from AABBs
 // ============================================================================
 
-void AccelerationStructureCacher::BuildBLAS(const AccelStructCreateInfo& ci, VoxelAABBData& aabbData, AccelerationStructureData& asData) {
+void AccelerationStructureCacher::BuildBLAS(const AccelStructCreateInfo& ci, const VoxelAABBData& aabbData, AccelerationStructureData& asData) {
     LOG_INFO("[AccelerationStructureCacher::BuildBLAS] Building BLAS...");
 
     if (!vkCreateAccelerationStructureKHR || !vkGetAccelerationStructureBuildSizesKHR || !vkCmdBuildAccelerationStructuresKHR) {
@@ -591,7 +353,9 @@ void AccelerationStructureCacher::BuildBLAS(const AccelStructCreateInfo& ci, Vox
         &sizeInfo
     );
 
-    LOG_DEBUG("[AccelerationStructureCacher::BuildBLAS] BLAS sizes: AS=" + std::to_string(sizeInfo.accelerationStructureSize) + ", build=" + std::to_string(sizeInfo.buildScratchSize));
+    LOG_DEBUG("[AccelerationStructureCacher::BuildBLAS] BLAS sizes: AS=" +
+              std::to_string(sizeInfo.accelerationStructureSize) +
+              ", build=" + std::to_string(sizeInfo.buildScratchSize));
 
     // Create BLAS buffer
     {
@@ -756,14 +520,13 @@ void AccelerationStructureCacher::BuildTLAS(const AccelStructCreateInfo& ci, Acc
     instance.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
     instance.accelerationStructureReference = asData.blasDeviceAddress;
 
-    // Create and upload instance buffer
+    // Create instance buffer with host-visible memory for direct upload
     {
         VkBufferCreateInfo bufferInfo{};
         bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
         bufferInfo.size = sizeof(VkAccelerationStructureInstanceKHR);
         bufferInfo.usage = VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
-                          VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
-                          VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+                          VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
         bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
         vkCreateBuffer(m_device->device, &bufferInfo, nullptr, &asData.instanceBuffer);
@@ -779,12 +542,19 @@ void AccelerationStructureCacher::BuildTLAS(const AccelStructCreateInfo& ci, Acc
         allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         allocInfo.pNext = &allocFlagsInfo;
         allocInfo.allocationSize = memReq.size;
-        allocInfo.memoryTypeIndex = FindMemoryType(memReq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        allocInfo.memoryTypeIndex = FindMemoryType(
+            memReq.memoryTypeBits,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+        );
 
         vkAllocateMemory(m_device->device, &allocInfo, nullptr, &asData.instanceMemory);
         vkBindBufferMemory(m_device->device, asData.instanceBuffer, asData.instanceMemory, 0);
 
-        UploadBufferData(asData.instanceBuffer, &instance, sizeof(instance));
+        // Direct upload (host-visible memory)
+        void* mappedData;
+        vkMapMemory(m_device->device, asData.instanceMemory, 0, sizeof(instance), 0, &mappedData);
+        std::memcpy(mappedData, &instance, sizeof(instance));
+        vkUnmapMemory(m_device->device, asData.instanceMemory);
     }
 
     // Get instance buffer device address
@@ -854,12 +624,6 @@ void AccelerationStructureCacher::BuildTLAS(const AccelStructCreateInfo& ci, Acc
         vkBindBufferMemory(m_device->device, asData.tlasBuffer, asData.tlasMemory, 0);
     }
 
-    // Reuse scratch buffer if large enough, otherwise recreate
-    if (asData.scratchBuffer == VK_NULL_HANDLE || sizeInfo.buildScratchSize > 0) {
-        // Note: In production, would reuse/resize scratch buffer
-        // For simplicity, we keep the BLAS scratch buffer
-    }
-
     // Get scratch buffer address (reusing from BLAS build)
     VkBufferDeviceAddressInfo scratchAddressInfo{};
     scratchAddressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
@@ -923,96 +687,9 @@ void AccelerationStructureCacher::BuildTLAS(const AccelStructCreateInfo& ci, Acc
     addressInfo.accelerationStructure = asData.tlas;
     asData.tlasDeviceAddress = vkGetAccelerationStructureDeviceAddressKHR(m_device->device, &addressInfo);
 
-    std::ostringstream oss2;
-    oss2 << "[AccelerationStructureCacher::BuildTLAS] TLAS built successfully, address=0x" << std::hex << asData.tlasDeviceAddress;
-    LOG_INFO(oss2.str());
-}
-
-// ============================================================================
-// HELPER - Upload data to GPU buffer via staging
-// ============================================================================
-
-void AccelerationStructureCacher::UploadBufferData(VkBuffer buffer, const void* srcData, VkDeviceSize size) {
-    if (size == 0 || !srcData) {
-        return;
-    }
-
-    // Create command pool if needed
-    if (m_buildCommandPool == VK_NULL_HANDLE) {
-        VkCommandPoolCreateInfo poolInfo{};
-        poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-        poolInfo.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
-        poolInfo.queueFamilyIndex = m_device->graphicsQueueIndex;
-        vkCreateCommandPool(m_device->device, &poolInfo, nullptr, &m_buildCommandPool);
-    }
-
-    // Create staging buffer
-    VkBufferCreateInfo stagingInfo{};
-    stagingInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    stagingInfo.size = size;
-    stagingInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-    stagingInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-    VkBuffer stagingBuffer;
-    vkCreateBuffer(m_device->device, &stagingInfo, nullptr, &stagingBuffer);
-
-    VkMemoryRequirements stagingMemReq;
-    vkGetBufferMemoryRequirements(m_device->device, stagingBuffer, &stagingMemReq);
-
-    VkMemoryAllocateInfo stagingAllocInfo{};
-    stagingAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    stagingAllocInfo.allocationSize = stagingMemReq.size;
-    stagingAllocInfo.memoryTypeIndex = FindMemoryType(
-        stagingMemReq.memoryTypeBits,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
-    );
-
-    VkDeviceMemory stagingMemory;
-    vkAllocateMemory(m_device->device, &stagingAllocInfo, nullptr, &stagingMemory);
-    vkBindBufferMemory(m_device->device, stagingBuffer, stagingMemory, 0);
-
-    // Copy data to staging buffer
-    void* mappedData;
-    vkMapMemory(m_device->device, stagingMemory, 0, size, 0, &mappedData);
-    std::memcpy(mappedData, srcData, size);
-    vkUnmapMemory(m_device->device, stagingMemory);
-
-    // Record and submit copy command
-    VkCommandBufferAllocateInfo cmdAllocInfo{};
-    cmdAllocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    cmdAllocInfo.commandPool = m_buildCommandPool;
-    cmdAllocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    cmdAllocInfo.commandBufferCount = 1;
-
-    VkCommandBuffer cmdBuffer;
-    vkAllocateCommandBuffers(m_device->device, &cmdAllocInfo, &cmdBuffer);
-
-    VkCommandBufferBeginInfo beginInfo{};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-    vkBeginCommandBuffer(cmdBuffer, &beginInfo);
-
-    VkBufferCopy copyRegion{};
-    copyRegion.srcOffset = 0;
-    copyRegion.dstOffset = 0;
-    copyRegion.size = size;
-    vkCmdCopyBuffer(cmdBuffer, stagingBuffer, buffer, 1, &copyRegion);
-
-    vkEndCommandBuffer(cmdBuffer);
-
-    VkSubmitInfo submitInfo{};
-    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &cmdBuffer;
-
-    vkQueueSubmit(m_device->queue, 1, &submitInfo, VK_NULL_HANDLE);
-    vkQueueWaitIdle(m_device->queue);
-
-    // Cleanup staging resources
-    vkFreeCommandBuffers(m_device->device, m_buildCommandPool, 1, &cmdBuffer);
-    vkDestroyBuffer(m_device->device, stagingBuffer, nullptr);
-    vkFreeMemory(m_device->device, stagingMemory, nullptr);
+    std::ostringstream oss;
+    oss << "[AccelerationStructureCacher::BuildTLAS] TLAS built successfully, address=0x" << std::hex << asData.tlasDeviceAddress;
+    LOG_INFO(oss.str());
 }
 
 } // namespace CashSystem

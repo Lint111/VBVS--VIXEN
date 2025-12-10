@@ -2,6 +2,7 @@
 #include "Data/Core/ResourceConfig.h"
 #include "VulkanDevice.h"
 #include <AccelerationStructureCacher.h>  // CashSystem types
+#include <VoxelSceneCacher.h>             // CashSystem::VoxelSceneData
 
 namespace Vixen::RenderGraph {
 
@@ -22,7 +23,7 @@ using VoxelAABBData = CashSystem::VoxelAABBData;
 // ============================================================================
 
 namespace VoxelAABBConverterNodeCounts {
-    static constexpr size_t INPUTS = 4;  // Added BRICK_GRID_LOOKUP_BUFFER
+    static constexpr size_t INPUTS = 5;  // +VOXEL_SCENE_DATA (from VoxelGridNode)
     static constexpr size_t OUTPUTS = 4;  // AABB_DATA + AABB_BUFFER + MATERIAL_ID_BUFFER + BRICK_MAPPING_BUFFER
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -31,9 +32,9 @@ namespace VoxelAABBConverterNodeCounts {
  * @brief Configuration for VoxelAABBConverterNode
  *
  * Converts sparse voxel octree to AABB buffer for BLAS construction.
- * Iterates octree leaf nodes and emits one AABB per solid voxel.
+ * Uses VoxelAABBCacher for caching and GPU buffer management.
  *
- * Inputs: 4 (VULKAN_DEVICE_IN, COMMAND_POOL, OCTREE_NODES_BUFFER, BRICK_GRID_LOOKUP_BUFFER)
+ * Inputs: 5 (VULKAN_DEVICE_IN, COMMAND_POOL, OCTREE_NODES_BUFFER, BRICK_GRID_LOOKUP_BUFFER, VOXEL_SCENE_DATA)
  * Outputs: 4 (AABB_DATA, AABB_BUFFER, MATERIAL_ID_BUFFER, BRICK_MAPPING_BUFFER)
  */
 CONSTEXPR_NODE_CONFIG(VoxelAABBConverterNodeConfig,
@@ -58,7 +59,7 @@ CONSTEXPR_NODE_CONFIG(VoxelAABBConverterNodeConfig,
     // Octree nodes buffer from VoxelGridNode
     // Contains esvoNodes for traversal to find solid voxels
     INPUT_SLOT(OCTREE_NODES_BUFFER, VkBuffer, 2,
-        SlotNullability::Required,
+        SlotNullability::Optional,  // Optional now - cacher uses VoxelSceneData
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
@@ -68,6 +69,14 @@ CONSTEXPR_NODE_CONFIG(VoxelAABBConverterNodeConfig,
     // Optional: only used for compressed RTX shader paths
     INPUT_SLOT(BRICK_GRID_LOOKUP_BUFFER, VkBuffer, 3,
         SlotNullability::Optional,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
+    // Cached scene data from VoxelGridNode (via VoxelSceneCacher)
+    // Required for cacher integration - contains brick data for AABB extraction
+    INPUT_SLOT(VOXEL_SCENE_DATA, CashSystem::VoxelSceneData*, 4,
+        SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
@@ -113,6 +122,9 @@ CONSTEXPR_NODE_CONFIG(VoxelAABBConverterNodeConfig,
         BufferDescriptor brickGridLookupDesc{};
         INIT_INPUT_DESC(BRICK_GRID_LOOKUP_BUFFER, "brick_grid_lookup_buffer", ResourceLifetime::Persistent, brickGridLookupDesc);
 
+        HandleDescriptor voxelSceneDataDesc{"CashSystem::VoxelSceneData*"};
+        INIT_INPUT_DESC(VOXEL_SCENE_DATA, "voxel_scene_data", ResourceLifetime::Persistent, voxelSceneDataDesc);
+
         HandleDescriptor aabbDataDesc{"VoxelAABBData"};
         INIT_OUTPUT_DESC(AABB_DATA, "aabb_data", ResourceLifetime::Persistent, aabbDataDesc);
 
@@ -132,6 +144,7 @@ CONSTEXPR_NODE_CONFIG(VoxelAABBConverterNodeConfig,
     static_assert(COMMAND_POOL_Slot::index == 1);
     static_assert(OCTREE_NODES_BUFFER_Slot::index == 2);
     static_assert(BRICK_GRID_LOOKUP_BUFFER_Slot::index == 3);
+    static_assert(VOXEL_SCENE_DATA_Slot::index == 4);
     static_assert(AABB_DATA_Slot::index == 0);
     static_assert(AABB_BUFFER_Slot::index == 1);
     static_assert(MATERIAL_ID_BUFFER_Slot::index == 2);

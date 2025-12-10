@@ -1301,6 +1301,10 @@ void BenchmarkGraphFactory::ConnectHardwareRT(
     batch.Connect(rayMarch.voxelGrid, RG::VoxelGridNodeConfig::BRICK_GRID_LOOKUP_BUFFER,
                   hardwareRT.aabbConverter, RG::VoxelAABBConverterNodeConfig::BRICK_GRID_LOOKUP_BUFFER);
 
+    // VoxelGrid -> VoxelAABBConverterNode (cached scene data for VoxelAABBCacher)
+    batch.Connect(rayMarch.voxelGrid, RG::VoxelGridNodeConfig::VOXEL_SCENE_DATA,
+                  hardwareRT.aabbConverter, RG::VoxelAABBConverterNodeConfig::VOXEL_SCENE_DATA);
+
     // Device -> AccelerationStructureNode
     batch.Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   hardwareRT.accelerationStructure, RG::AccelerationStructureNodeConfig::VULKAN_DEVICE_IN);
@@ -1312,10 +1316,6 @@ void BenchmarkGraphFactory::ConnectHardwareRT(
     // VoxelAABBConverterNode -> AccelerationStructureNode
     batch.Connect(hardwareRT.aabbConverter, RG::VoxelAABBConverterNodeConfig::AABB_DATA,
                   hardwareRT.accelerationStructure, RG::AccelerationStructureNodeConfig::AABB_DATA);
-
-    // VoxelGrid -> AccelerationStructureNode (cached scene data for cacher integration)
-    batch.Connect(rayMarch.voxelGrid, RG::VoxelGridNodeConfig::VOXEL_SCENE_DATA,
-                  hardwareRT.accelerationStructure, RG::AccelerationStructureNodeConfig::VOXEL_SCENE_DATA);
 
     // Device -> ShaderLibraryNode (for RT shaders)
     batch.Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,

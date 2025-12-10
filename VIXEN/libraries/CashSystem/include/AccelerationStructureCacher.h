@@ -2,13 +2,11 @@
 
 #include "TypedCacher.h"
 #include "MainCacher.h"
-#include "VoxelSceneCacher.h"
+#include "VoxelAABBCacher.h"  // VoxelAABBData, VoxelAABB, VoxelBrickMapping
 
 #include <vulkan/vulkan.h>
-#include <glm/glm.hpp>
 
 #include <cstdint>
-#include <vector>
 #include <memory>
 
 // Forward declarations
@@ -19,71 +17,7 @@ namespace Vixen::Vulkan::Resources {
 namespace CashSystem {
 
 // ============================================================================
-// VOXEL AABB STRUCTURES (matching VoxelAABBConverterNodeConfig.h)
-// ============================================================================
-
-/**
- * @brief Single voxel AABB for acceleration structure building
- *
- * Layout matches VkAabbPositionsKHR (6 floats, tightly packed)
- */
-struct VoxelAABB {
-    glm::vec3 min;  // Minimum corner (x, y, z)
-    glm::vec3 max;  // Maximum corner (x+1, y+1, z+1)
-};
-static_assert(sizeof(VoxelAABB) == 24, "VoxelAABB must be 24 bytes for VkAabbPositionsKHR");
-
-/**
- * @brief Brick mapping entry for compressed RTX shaders
- *
- * Maps each AABB primitive to its brick and local voxel position.
- * Packed as uvec2 in shader: (brickIndex, localVoxelIdx)
- */
-struct VoxelBrickMapping {
-    uint32_t brickIndex;      // Index into compressed buffer arrays
-    uint32_t localVoxelIdx;   // Position within brick (0-511)
-};
-static_assert(sizeof(VoxelBrickMapping) == 8, "VoxelBrickMapping must be 8 bytes for uvec2");
-
-// ============================================================================
-// VOXEL AABB DATA (from VoxelAABBConverterNode)
-// ============================================================================
-
-/**
- * @brief Complete AABB data for acceleration structure building
- *
- * Contains GPU buffers for AABBs, material IDs, and brick mappings.
- */
-struct VoxelAABBData {
-    // AABB buffer - VkAabbPositionsKHR array
-    VkBuffer aabbBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory aabbBufferMemory = VK_NULL_HANDLE;
-    uint32_t aabbCount = 0;
-    VkDeviceSize aabbBufferSize = 0;
-
-    // Material ID buffer - one uint32 per AABB, indexed by gl_PrimitiveID
-    VkBuffer materialIdBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory materialIdBufferMemory = VK_NULL_HANDLE;
-    VkDeviceSize materialIdBufferSize = 0;
-
-    // Brick mapping buffer - one VoxelBrickMapping per AABB
-    VkBuffer brickMappingBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory brickMappingBufferMemory = VK_NULL_HANDLE;
-    VkDeviceSize brickMappingBufferSize = 0;
-
-    // Grid info for SVO lookup
-    uint32_t gridResolution = 0;
-    float voxelSize = 1.0f;
-
-    bool IsValid() const noexcept {
-        return aabbBuffer != VK_NULL_HANDLE && aabbCount > 0;
-    }
-
-    void Cleanup(VkDevice device);
-};
-
-// ============================================================================
-// ACCELERATION STRUCTURE DATA (from AccelerationStructureNode)
+// ACCELERATION STRUCTURE DATA
 // ============================================================================
 
 /**
@@ -127,18 +61,20 @@ struct AccelerationStructureData {
 // ============================================================================
 
 /**
- * @brief Combined AABB + Acceleration Structure data
+ * @brief Acceleration Structure data with reference to AABB source
  *
- * Contains all data needed for hardware ray tracing:
- * - VoxelAABBData: Geometry primitives and mappings
- * - AccelerationStructureData: BLAS/TLAS for ray queries
+ * Contains BLAS/TLAS for ray queries. The aabbData is a reference
+ * to externally-owned data from VoxelAABBCacher - not managed here.
  */
 struct CachedAccelerationStructure {
-    VoxelAABBData aabbData;
+    // Reference to AABB data (owned by VoxelAABBCacher, not cleaned up here)
+    const VoxelAABBData* aabbDataRef = nullptr;
+
+    // Acceleration structure data (owned by this struct)
     AccelerationStructureData accelStruct;
 
     bool IsValid() const noexcept {
-        return aabbData.IsValid() && accelStruct.IsValid();
+        return aabbDataRef != nullptr && aabbDataRef->IsValid() && accelStruct.IsValid();
     }
 
     void Cleanup(VkDevice device);
@@ -151,20 +87,12 @@ struct CachedAccelerationStructure {
 /**
  * @brief Creation parameters for cached acceleration structure
  *
- * Key: Scene data key + build flags.
- * Same scene with different build flags produces different AS.
+ * Key: AABB data pointer + build flags.
+ * Same AABB data with different build flags produces different AS.
  */
 struct AccelStructCreateInfo {
-    // Key to VoxelSceneCacher entry (from VoxelSceneCreateInfo::ComputeHash())
-    uint64_t sceneDataKey = 0;
-
-    // Pointer to cached scene data (must be valid during Create())
-    // Only used if precomputedAABBData is null (fallback to ConvertToAABBs from sceneData)
-    std::shared_ptr<VoxelSceneData> sceneData;
-
-    // Pre-computed AABB data from VoxelAABBConverterNode (preferred path)
-    // If non-null, skips ConvertToAABBs and uses this AABB buffer directly
-    VoxelAABBData* precomputedAABBData = nullptr;
+    // AABB data from VoxelAABBCacher (required - must be valid during Create())
+    VoxelAABBData* aabbData = nullptr;
 
     // Build flags
     bool preferFastTrace = true;    // VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR
@@ -175,7 +103,8 @@ struct AccelStructCreateInfo {
      * @brief Compute hash for cache key
      */
     uint64_t ComputeHash() const noexcept {
-        uint64_t hash = sceneDataKey;
+        // Use AABB buffer address as key (unique per AABB data instance)
+        uint64_t hash = aabbData ? reinterpret_cast<uint64_t>(aabbData->aabbBuffer) : 0;
         hash = hash * 31 + (preferFastTrace ? 1 : 0);
         hash = hash * 31 + (allowUpdate ? 2 : 0);
         hash = hash * 31 + (allowCompaction ? 4 : 0);
@@ -183,7 +112,7 @@ struct AccelStructCreateInfo {
     }
 
     bool operator==(const AccelStructCreateInfo& other) const noexcept {
-        return sceneDataKey == other.sceneDataKey &&
+        return aabbData == other.aabbData &&
                preferFastTrace == other.preferFastTrace &&
                allowUpdate == other.allowUpdate &&
                allowCompaction == other.allowCompaction;
@@ -197,12 +126,13 @@ struct AccelStructCreateInfo {
 /**
  * @brief Cacher for acceleration structures
  *
- * Caches the AABB conversion + BLAS/TLAS build pipeline.
- * Key: (sceneDataKey, buildFlags)
+ * Builds BLAS/TLAS from pre-extracted AABB data (from VoxelAABBCacher).
+ * Key: (aabbBuffer address, buildFlags)
  *
  * Thread-safe via TypedCacher's shared_mutex.
  *
  * @note This cacher is device-dependent (Vulkan RT extension).
+ * @note AABB extraction is now handled by VoxelAABBCacher, not here.
  */
 class AccelerationStructureCacher : public TypedCacher<CachedAccelerationStructure, AccelStructCreateInfo> {
 public:
@@ -212,7 +142,7 @@ public:
     /**
      * @brief Get or create cached acceleration structure
      *
-     * @param ci Creation parameters including scene data reference
+     * @param ci Creation parameters including AABB data reference
      * @return Shared pointer to cached acceleration structure
      */
     std::shared_ptr<CachedAccelerationStructure> GetOrCreate(const AccelStructCreateInfo& ci);
@@ -236,14 +166,9 @@ private:
     // ===== Helper methods =====
 
     /**
-     * @brief Convert scene voxels to AABB primitives
-     */
-    void ConvertToAABBs(const VoxelSceneData& sceneData, VoxelAABBData& aabbData);
-
-    /**
      * @brief Build BLAS from AABB buffer
      */
-    void BuildBLAS(const AccelStructCreateInfo& ci, VoxelAABBData& aabbData, AccelerationStructureData& asData);
+    void BuildBLAS(const AccelStructCreateInfo& ci, const VoxelAABBData& aabbData, AccelerationStructureData& asData);
 
     /**
      * @brief Build TLAS containing single BLAS instance
@@ -259,11 +184,6 @@ private:
      * @brief Get VkBuildAccelerationStructureFlagsKHR from create info
      */
     VkBuildAccelerationStructureFlagsKHR GetBuildFlags(const AccelStructCreateInfo& ci) const;
-
-    /**
-     * @brief Upload data to GPU buffer via staging buffer
-     */
-    void UploadBufferData(VkBuffer buffer, const void* srcData, VkDeviceSize size);
 
     // Command pool for AS builds
     VkCommandPool m_buildCommandPool = VK_NULL_HANDLE;
