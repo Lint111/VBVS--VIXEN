@@ -27,7 +27,7 @@ Fast-access reference for Claude Code. Read this file first for any documentatio
 | Task | File |
 |------|------|
 | Create a new node | [[../templates/Node-Documentation]] |
-| Add logging | [[../04-Development/Logging]] |
+| Add logging | [[../Libraries/Logger]] |
 | Write tests | [[../04-Development/Testing]] |
 | Coding standards | [[../04-Development/Coding-Standards]] |
 
@@ -65,6 +65,15 @@ Fast-access reference for Claude Code. Read this file first for any documentatio
 | `memory-bank/progress.md` | What's done, what's left |
 | [[../05-Progress/Current-Status]] | Detailed status |
 | [[../05-Progress/Phase-History]] | Project timeline |
+
+---
+
+## Analysis
+
+| Topic | File |
+|-------|------|
+| Benchmark data summary | [[../Analysis/Benchmark-Data-Summary]] |
+| Data quality report | [[../Analysis/Data-Quality-Report]] |
 
 ---
 

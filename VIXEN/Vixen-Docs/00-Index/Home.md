@@ -10,7 +10,7 @@ created: 2025-12-06
 **Vulkan Interactive eXample Engine** - A graph-based Vulkan rendering engine with voxel ray tracing research capabilities.
 
 > [!info] Current Status
-> **Phase J COMPLETE** (December 6, 2025) - All 4 shader variants working (compute/fragment x compressed/uncompressed). **Next: Phase K - Hardware RT**
+> **Phase K/L COMPLETE** (December 10, 2025) - All 6 shader variants working (compute/fragment/RT x compressed/uncompressed). Data pipeline ready. **Next: Multi-tester data collection**
 
 ---
 
@@ -116,7 +116,7 @@ Project status and roadmap tracking.
 | DXT Compression | 5.3:1 ratio | 5:1 ratio |
 | Test Coverage | 40% | 40% |
 | Nodes Implemented | 19+ | 20+ |
-| Shader Variants | 4 (compute/fragment x compressed/uncompressed) | 6 |
+| Shader Variants | 6 (compute/fragment/RT x compressed/uncompressed) | 6 |
 
 ---
 
@@ -152,5 +152,5 @@ Project status and roadmap tracking.
 
 ---
 
-*Last updated: 2025-12-06*
+*Last updated: 2025-12-10*
 

@@ -3,12 +3,86 @@ title: Phase History
 aliases: [Completed Phases, Historical Progress]
 tags: [progress, history, archive]
 created: 2025-12-08
-updated: 2025-12-08
+updated: 2025-12-10
 ---
 
 # Phase History
 
 Archived progress from completed phases. See [[Current-Status]] for active work.
+
+---
+
+## Phase L: Data Pipeline (December 10, 2025) ✅ COMPLETE
+
+### Summary
+Data visualization infrastructure for benchmark analysis and multi-tester coordination.
+
+### Key Components
+| Component | Purpose |
+|-----------|---------|
+| aggregate_results.py | JSON → Excel aggregation with normalized schema |
+| generate_charts.py | 9 chart types (FPS, frame time, heatmaps) |
+| refresh_visualizations.py | Master pipeline orchestration |
+| TesterPackage | Automatic ZIP packaging for benchmark results |
+
+### Key Findings (RTX 3060 Laptop GPU, 144 tests)
+| Pipeline | FPS @ 256³ | VRAM | Notes |
+|----------|------------|------|-------|
+| Compute | 80-130 | 320 MB | Best general performance |
+| Fragment | 100-130 | 319 MB | Graphics integration |
+| Hardware RT | ~40 | 1098 MB | 3.4x VRAM overhead |
+
+### TesterPackage Feature
+- CLI: `--tester "Name"`, `--no-package`
+- Creates: `VIXEN_benchmark_YYYYMMDD_HHMMSS_<GPU>.zip`
+- Contents: JSON results, debug_images/, system_info.json
+
+### Commits
+- `8c2a358` - feat(Profiler): Add automatic ZIP packaging for benchmark results
+- `e43232c` - feat(data-pipeline): Implement Phase L data visualization pipeline
+
+---
+
+## Phase K Sessions 3-5 (December 9-10, 2025) ✅ COMPLETE
+
+### Session 5: Tester Package (December 10)
+Added miniz dependency, TesterPackage class for ZIP creation with system_info.json metadata.
+
+### Session 4: Data Visualization (December 10)
+Created aggregate_results.py, generate_charts.py. Analyzed 144 benchmarks.
+
+### Session 3: HW RT Sparse Fix (December 9)
+| Issue | Root Cause | Fix |
+|-------|------------|-----|
+| HW RT sparse voxels | Rays in voxel space, AABBs in world space | Keep rays in world space |
+| Voxel size mismatch | voxelSize=1.0 creates [0,res] not [0,10] | `voxelWorldSize = worldGridSize / resolution` |
+| AABB data flow | Cacher regenerated AABBs | Added precomputedAABBData to AccelStructCreateInfo |
+| ESC freeze | PostQuitMessage during frame loop | WindowCloseEvent pattern |
+| Orange artifact | DEBUG_MATERIAL_ID enabled | Disabled debug flag |
+
+### Type Consolidation
+RenderGraph now uses CashSystem types via aliases:
+- `VoxelAABB` → `CashSystem::VoxelAABB`
+- `VoxelBrickMapping` → `CashSystem::VoxelBrickMapping`
+- `AccelerationStructureData` → `CashSystem::AccelerationStructureData`
+
+### Sessions 1-2: Visual Fixes (December 8-9)
+| Issue | Root Cause | Fix |
+|-------|------------|-----|
+| Upside-down scenes | Vulkan UV (0,0) at top-left | `ndc.y = -ndc.y` in getRayDir() |
+| SDI naming collision | Same program name | Added `_Compute_`, `_Fragment_`, `_RayTracing_` suffixes |
+| Dark materials | brickMaterialData stored 0/1 | Store actual material ID |
+| Empty brick corner | Wrong leaf count formula | Use `countLeavesBefore()` |
+| Yellow floor | Material ID 4 = yellow | Changed to gray (0.85) |
+
+### InputNode QoL Features
+- MouseCaptureMode enum: CenterLock, Free, Disabled
+- Parameters: `enabled`, `mouse_capture_mode`
+
+### Frame Capture Feature
+- Automatic: Quarter-res mid-frame captures
+- Manual: 'C' keypress full-res capture
+- Output: `{output_dir}/debug_images/{test_name}_frame{N}.png`
 
 ---
 
