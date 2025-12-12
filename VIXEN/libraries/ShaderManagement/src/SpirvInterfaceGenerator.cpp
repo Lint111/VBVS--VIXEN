@@ -470,7 +470,17 @@ std::string SpirvInterfaceGenerator::GenerateStructDefinitions(
     code << "// ============================================================================\n";
     code << "\n";
 
+    // Track emitted struct names to avoid duplicates (safety check)
+    // This handles any edge cases where duplicates slip through MergeReflectionData
+    std::set<std::string> emittedStructs;
+
     for (const auto& structDef : data.structDefinitions) {
+        // Skip if already emitted (deduplication)
+        if (emittedStructs.count(structDef.name) > 0) {
+            continue;
+        }
+        emittedStructs.insert(structDef.name);
+
         code << GenerateStructDefinition(structDef);
         code << "\n";
     }
@@ -820,6 +830,120 @@ uint32_t SdiFileManager::CleanupOrphans() {
     }
 
     return count;
+}
+
+std::string SdiFileManager::ExtractSdiUuidFromInclude(const std::string& includeLine) {
+    // Look for pattern: #include "XXXXXXXXXXXXXXXX-SDI.h"
+    size_t startQuote = includeLine.find('"');
+    if (startQuote == std::string::npos) return "";
+
+    size_t endQuote = includeLine.find('"', startQuote + 1);
+    if (endQuote == std::string::npos) return "";
+
+    std::string filename = includeLine.substr(startQuote + 1, endQuote - startQuote - 1);
+
+    // Check if it ends with -SDI.h
+    const std::string suffix = "-SDI.h";
+    if (filename.size() <= suffix.size()) return "";
+    if (filename.substr(filename.size() - suffix.size()) != suffix) return "";
+
+    // Extract UUID (everything before -SDI.h)
+    return filename.substr(0, filename.size() - suffix.size());
+}
+
+std::unordered_set<std::string> SdiFileManager::GetReferencedUuids() const {
+    std::unordered_set<std::string> referencedUuids;
+
+    if (!std::filesystem::exists(sdiDirectory_)) {
+        return referencedUuids;
+    }
+
+    // Scan all naming files (*Names.h) and extract referenced UUIDs
+    for (const auto& entry : std::filesystem::directory_iterator(sdiDirectory_)) {
+        if (!entry.is_regular_file()) continue;
+
+        std::string filename = entry.path().filename().string();
+
+        // Check if it's a naming file (ends with Names.h but not -SDI.h)
+        if (filename.size() > 7 &&
+            filename.substr(filename.size() - 7) == "Names.h" &&
+            filename.find("-SDI.h") == std::string::npos) {
+
+            // Read the file and find #include "*-SDI.h" lines
+            std::ifstream file(entry.path());
+            if (file.is_open()) {
+                std::string line;
+                while (std::getline(file, line)) {
+                    if (line.find("#include") != std::string::npos &&
+                        line.find("-SDI.h") != std::string::npos) {
+                        std::string uuid = ExtractSdiUuidFromInclude(line);
+                        if (!uuid.empty()) {
+                            referencedUuids.insert(uuid);
+                        }
+                    }
+                }
+                file.close();
+            }
+        }
+    }
+
+    return referencedUuids;
+}
+
+uint32_t SdiFileManager::CleanupOrphanedSdis(
+    bool verbose,
+    std::vector<std::string>* outReferencedUuids,
+    std::vector<std::filesystem::path>* outOrphanedFiles
+) {
+    if (!std::filesystem::exists(sdiDirectory_)) {
+        return 0;
+    }
+
+    // Step 1: Get all UUIDs referenced by naming files
+    std::unordered_set<std::string> referencedUuids = GetReferencedUuids();
+
+    if (outReferencedUuids) {
+        outReferencedUuids->clear();
+        outReferencedUuids->reserve(referencedUuids.size());
+        for (const auto& uuid : referencedUuids) {
+            outReferencedUuids->push_back(uuid);
+        }
+    }
+
+    // Step 2: Find orphaned SDI files
+    std::vector<std::filesystem::path> orphanedSdis;
+
+    for (const auto& entry : std::filesystem::directory_iterator(sdiDirectory_)) {
+        if (!entry.is_regular_file()) continue;
+
+        std::string filename = entry.path().filename().string();
+
+        // Check if it's an SDI file (ends with -SDI.h)
+        const std::string suffix = "-SDI.h";
+        if (filename.size() > suffix.size() &&
+            filename.substr(filename.size() - suffix.size()) == suffix) {
+
+            std::string uuid = filename.substr(0, filename.size() - suffix.size());
+
+            if (referencedUuids.find(uuid) == referencedUuids.end()) {
+                orphanedSdis.push_back(entry.path());
+            }
+        }
+    }
+
+    // Step 3: Delete orphaned SDI files
+    uint32_t removed = 0;
+    for (const auto& orphan : orphanedSdis) {
+        std::error_code ec;
+        if (std::filesystem::remove(orphan, ec)) {
+            ++removed;
+            if (outOrphanedFiles) {
+                outOrphanedFiles->push_back(orphan);
+            }
+        }
+    }
+
+    return removed;
 }
 
 uint32_t SdiFileManager::DeleteAll() {

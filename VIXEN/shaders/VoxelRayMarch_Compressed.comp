@@ -14,7 +14,7 @@
 // ============================================================================
 
 // Debug flags - Set to 1 to enable specific debug visualization
-#define DEBUG_MATERIAL_ID 1
+#define DEBUG_MATERIAL_ID 0
 #define DEBUG_BRICK_INDEX 0
 #define DEBUG_POS_IN_BRICK 0
 #define DEBUG_VOXEL_COORD 0

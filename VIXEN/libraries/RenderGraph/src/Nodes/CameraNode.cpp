@@ -92,6 +92,9 @@ void CameraNode::CompileImpl(TypedCompileContext& ctx) {
         farPlane
     );
 
+    // Vulkan Y-flip: Vulkan's clip space has Y pointing down, unlike OpenGL
+    projection[1][1] *= -1.0f;
+
     glm::vec3 target = cameraPosition + forward;
     glm::mat4 view = glm::lookAt(cameraPosition, target, glm::vec3(0.0f, 1.0f, 0.0f));
 
@@ -168,6 +171,10 @@ void CameraNode::UpdateCameraData(float aspectRatio) {
         farPlane
     );
 
+    // Vulkan Y-flip: Vulkan's clip space has Y pointing down, unlike OpenGL
+    // This flips the projection to match OpenGL conventions used in our shaders
+    projection[1][1] *= -1.0f;
+
     // ORBIT MODE: Camera orbits around orbitCenter
     // yaw/pitch control the orbit angle, camera looks at orbitCenter
     // Camera position is computed from orbit parameters
@@ -202,11 +209,11 @@ void CameraNode::UpdateCameraData(float aspectRatio) {
     // DEBUG: Log camera state once
     static bool loggedCamera = false;
     if (!loggedCamera) {
-        std::cout << "[CameraNode] Camera params: yaw=" << yaw << ", pitch=" << pitch << std::endl;
-        std::cout << "[CameraNode] Camera position: (" << cameraPosition.x << ", " << cameraPosition.y << ", " << cameraPosition.z << ")" << std::endl;
-        std::cout << "[CameraNode] forward = (" << forward.x << ", " << forward.y << ", " << forward.z << ")" << std::endl;
-        std::cout << "[CameraNode] right = (" << right.x << ", " << right.y << ", " << right.z << ")" << std::endl;
-        std::cout << "[CameraNode] up = (" << up.x << ", " << up.y << ", " << up.z << ")" << std::endl;
+        NODE_LOG_DEBUG("[CameraNode] Camera params: yaw=" + std::to_string(yaw) + ", pitch=" + std::to_string(pitch));
+        NODE_LOG_DEBUG("[CameraNode] Camera position: (" + std::to_string(cameraPosition.x) + ", " + std::to_string(cameraPosition.y) + ", " + std::to_string(cameraPosition.z) + ")");
+        NODE_LOG_DEBUG("[CameraNode] forward = (" + std::to_string(forward.x) + ", " + std::to_string(forward.y) + ", " + std::to_string(forward.z) + ")");
+        NODE_LOG_DEBUG("[CameraNode] right = (" + std::to_string(right.x) + ", " + std::to_string(right.y) + ", " + std::to_string(right.z) + ")");
+        NODE_LOG_DEBUG("[CameraNode] up = (" + std::to_string(up.x) + ", " + std::to_string(up.y) + ", " + std::to_string(up.z) + ")");
         loggedCamera = true;
     }
 }

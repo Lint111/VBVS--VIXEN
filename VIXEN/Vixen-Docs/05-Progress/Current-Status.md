@@ -3,7 +3,7 @@ title: Current Status
 aliases: [Active Work, Current Focus]
 tags: [progress, status, active]
 created: 2025-12-06
-updated: 2025-12-06
+updated: 2025-12-10
 related:
   - "[[Overview]]"
   - "[[Roadmap]]"
@@ -14,54 +14,68 @@ related:
 
 Active development focus, recent changes, and immediate priorities.
 
-**Last Updated:** 2025-12-06
+**Last Updated:** 2025-12-10
 
 ---
 
 ## 1. Active Phase
 
-### Phase J: Fragment Shader Pipeline - COMPLETE
+### Phase L: Data Pipeline - COMPLETE ✅
 
-**Status:** COMPLETE (December 6, 2025)
+**Status:** Infrastructure complete, awaiting tester benchmark submissions
 
-**Achievements:**
-- Fragment shader ray marching working with push constants
-- All 4 shader variants functional:
-  - VoxelRayMarch.comp (compute, uncompressed)
-  - VoxelRayMarch_Compressed.comp (compute, compressed)
-  - VoxelRayMarch.frag (fragment, uncompressed)
-  - VoxelRayMarch_Compressed.frag (fragment, compressed)
-- Push constant support: 64-byte camera data pipeline
-- GeometryRenderNode: SetPushConstants() implementation
+**Branch:** `claude/phase-k-hardware-rt`
+
+**Completed:**
+- Data visualization pipeline (JSON → Excel → Charts)
+- 144 benchmark tests analyzed (RTX 3060 Laptop GPU)
+- Automatic ZIP packaging for tester submissions
+- Multi-tester folder organization and workflow
+
+**Awaiting:**
+- Benchmark submissions from additional machines
 
 ---
 
 ## 2. Recent Accomplishments
 
-### Week 2 (Dec 2-6, 2025)
+### Session 5 (Dec 10, 2025) - Tester Package Feature
+- miniz dependency added via FetchContent
+- TesterPackage class for ZIP creation with system_info.json
+- CLI: `--tester "Name"`, `--no-package` options
 
-| Accomplishment | Details |
-|----------------|---------|
-| Fragment pipeline | VoxelRayMarch.frag, VoxelRayMarch_Compressed.frag |
-| Push constants | 64-byte camera data working |
-| GPU performance | 1,700 Mrays/sec achieved |
-| 8 shader bugs fixed | Brick-level leaf, DDA signs, ESVO scale, etc. |
-| GPUTimestampQuery | Per-frame timing measurement |
-| GPUPerformanceLogger | Rolling statistics with auto-logging |
+### Session 4 (Dec 10, 2025) - Data Visualization Pipeline
+- aggregate_results.py, generate_charts.py created
+- 9 chart types generated (FPS, frame time, heatmaps)
+- Key findings: Compute 80-130 fps, Fragment 100-130 fps, HW RT ~40 fps
 
-### Week 1 (Nov 25 - Dec 1, 2025)
+### Session 3 (Dec 9, 2025) - HW RT Sparse Fix
+| Issue | Root Cause | Fix |
+|-------|------------|-----|
+| HW RT sparse voxels | Coordinate space mismatch | World-space AABBs |
+| ESC freeze | PostQuitMessage timing | WindowCloseEvent pattern |
 
-| Accomplishment | Details |
-|----------------|---------|
-| ESVO traversal | Complete CPU implementation |
-| Brick DDA | 3D voxel traversal |
-| EntityBrickView | Zero-storage pattern (16 bytes) |
-| rebuild() API | Single-call octree construction |
-| 217 tests passing | SVO test suite complete |
+### Sessions 1-2 (Dec 8-9, 2025) - Visual Fixes
+| Issue | Root Cause | Fix |
+|-------|------------|-----|
+| Grey colors in RT compressed | Dangling pointer | Two-pass componentStorage |
+| Dark grey scenes | Missing material IDs | Added ranges 30-61 |
+| Upside-down scenes | Vulkan UV coords | Y-flip in getRayDir() |
 
 ---
 
-## 3. Test Results
+## 3. Material ID Ranges (Documented)
+
+| Scene Type | Material IDs | Colors |
+|------------|--------------|--------|
+| Cornell Box | 1-20 | Red, green, white walls, cubes, lights |
+| Noise/Tunnel | 30-40 | Stone variants, stalactites, ore |
+| Cityscape | 50-61 | Asphalt, concrete, glass |
+| Unknown | * | HSV color wheel fallback |
+
+---
+
+## 4. Test Results
 
 ### Current Pass/Fail
 
@@ -74,99 +88,86 @@ Active development focus, recent changes, and immediate priorities.
 | test_cornell_box | 7 | 2 | 0 |
 | test_benchmark_config | 44 | 0 | 0 |
 | test_benchmark_graph | 87 | 0 | 0 |
+| test_profiler | 131 | 0 | 0 |
 | **Total** | **~470** | **2** | **0** |
 
-### Skipped Tests
+### RT Benchmark Tests
 
-| Test | Reason |
+- All 24 RT benchmark configurations pass
+- No black screens or flickering
+- Colors render correctly for all scene types
+
+---
+
+## 5. Current Descriptor Bindings (VoxelRT_Compressed)
+
+| Binding | Resource | Type |
+|---------|----------|------|
+| 0 | outputImage | STORAGE_IMAGE |
+| 1 | topLevelAS | ACCELERATION_STRUCTURE_KHR |
+| 2 | aabbBuffer | STORAGE_BUFFER |
+| 3 | materialIdBuffer | STORAGE_BUFFER |
+| 5 | octreeConfig | UNIFORM_BUFFER |
+| 6 | compressedColors | STORAGE_BUFFER |
+| 7 | compressedNormals | STORAGE_BUFFER |
+| 8 | brickMapping | STORAGE_BUFFER |
+
+---
+
+## 6. Modified Files (Session 2)
+
+| File | Change |
 |------|--------|
-| CornellBox_AxisParallelRay_X | Floating-point precision |
-| CornellBox_AxisParallelRay_Z | Floating-point precision |
+| `VoxelGridNode.cpp:163-204` | Fixed dangling pointer with two-pass approach |
+| `SVORebuild.cpp:68-120` | Added material colors for all scene types |
+| `shaders/Materials.glsl` | **NEW** - Unified material color definitions |
+| `shaders/VoxelRT_Compressed.rchit` | Include Materials.glsl |
+| `shaders/VoxelRT.rchit` | Include Materials.glsl |
+| `shaders/VoxelRayMarch.comp` | Include Materials.glsl |
+| `shaders/VoxelRayMarch.frag` | Include Materials.glsl |
 
 ---
 
-## 4. Modified Files (This Session)
+## 7. Known Issues
 
-| File | Changes |
-|------|---------|
-| `shaders/VoxelRayMarch.frag` | New fragment shader |
-| `shaders/VoxelRayMarch_Compressed.frag` | New fragment shader |
-| `libraries/RenderGraph/src/Nodes/GeometryRenderNode.cpp` | Push constant wiring |
-| `libraries/Profiler/src/BenchmarkConfig.cpp` | Config enhancements |
-| `libraries/Profiler/src/BenchmarkGraphFactory.cpp` | Graph factory updates |
-| `documentation/ArchitecturalPhases-Checkpoint.md` | Phase documentation |
+### DXT Compression Artifact (Expected Behavior)
 
----
-
-## 5. Known Issues
-
-### Active Bugs
-
-| Issue | Severity | Status |
-|-------|----------|--------|
-| Axis-parallel ray precision | Low | Workaround in place |
-| Compressed shader variable perf | Medium | Under investigation |
+Color bleeding at wall boundaries is inherent to DXT:
+- 16 voxels share 2 reference colors per block
+- When block spans material boundary, colors interpolate
+- Present in all compressed pipelines (compute, fragment, RT)
+- Uncompressed pipelines don't have this artifact
 
 ### Technical Debt
 
 | Item | Priority | Notes |
 |------|----------|-------|
-| Unity build conflicts | Low | DXT1Compressor syntax |
-| Missing HW RT pipeline | Medium | Phase K target |
+| Brick index mismatch | Low | Lookup buffer created, consumption deferred |
+| Window resolution bug | Low | Render resolution vs window size |
 
 ---
 
-## 6. Next Steps
+## 8. Next Steps
 
 ### Immediate Priorities
 
-1. **Phase K: Hardware RT Pipeline** - VK_KHR_ray_tracing_pipeline implementation
-2. **Benchmark system completion** - 180-config test matrix execution
-3. **Research data collection** - Performance metrics for paper
+1. **Phase K completion** - Final testing and validation
+2. **Benchmark data collection** - 180-config test matrix execution
+3. **Research paper data** - Performance metrics across all pipelines
 
-### This Week
+### Shader Variants Status
 
-| Task | Priority | Estimate |
-|------|----------|----------|
-| Phase K design doc | High | 2 hours |
-| Enable RT extensions | High | 2 days |
-| BLAS/TLAS setup | Medium | 1 week |
-
-### Phase K Goals
-
-- Implement hardware ray tracing pipeline
-- Build BLAS from octree structure
-- Create ray generation/closest hit shaders
-- Compare performance vs compute/fragment pipelines
+| Pipeline | Uncompressed | Compressed |
+|----------|--------------|------------|
+| Compute | ✅ VoxelRayMarch.comp | ✅ VoxelRayMarch_Compressed.comp |
+| Fragment | ✅ VoxelRayMarch.frag | ✅ VoxelRayMarch_Compressed.frag |
+| Hardware RT | ✅ VoxelRT.rgen/rmiss/rchit/rint | ✅ VoxelRT_Compressed.rchit |
 
 ---
 
-## 7. Session Metrics
-
-### Time Investment
-
-| Activity | Hours |
-|----------|-------|
-| Fragment shader implementation | 3 |
-| Push constant wiring | 2 |
-| Bug fixes | 4 |
-| Documentation | 2 |
-| **Total** | **11** |
-
-### Code Changes
-
-| Metric | Value |
-|--------|-------|
-| Files Modified | 12 |
-| Lines Added | ~1,200 |
-| Lines Removed | ~400 |
-| New Tests | 0 |
-
----
-
-## 8. Related Pages
+## 9. Related Pages
 
 - [[Overview]] - Progress overview
 - [[Roadmap]] - Future plans
 - [[Phase-History]] - Past milestones
-- [[../04-Development/Build-System|Build System]] - Building VIXEN
+- [[../03-Research/Hardware-RT|Hardware RT]] - Implementation details

@@ -31,7 +31,7 @@ bool ArgMatches(const char* arg, const char* shortForm, const char* longForm) {
 // Get next argument value safely
 const char* GetNextArg(int argc, char* argv[], int& i, const char* argName) {
     if (i + 1 >= argc) {
-        std::cerr << "Error: " << argName << " requires a value\n";
+        std::cerr << "Error: " << argName << " requires a value\n";  // User-facing error - keep as is
         return nullptr;
     }
     return argv[++i];
@@ -345,6 +345,29 @@ BenchmarkCLIOptions ParseCommandLine(int argc, char* argv[]) {
             continue;
         }
 
+        // Package output options
+        if (ArgMatches(arg, nullptr, "--package")) {
+            opts.createPackage = true;
+            continue;
+        }
+
+        if (ArgMatches(arg, nullptr, "--no-package")) {
+            opts.createPackage = false;
+            continue;
+        }
+
+        // Tester name for package
+        if (ArgMatches(arg, nullptr, "--tester")) {
+            const char* val = GetNextArg(argc, argv, i, "--tester");
+            if (!val) {
+                opts.hasError = true;
+                opts.parseError = "--tester requires a name";
+                return opts;
+            }
+            opts.testerName = val;
+            continue;
+        }
+
         // Unknown argument
         opts.hasError = true;
         opts.parseError = "Unknown argument: " + std::string(arg);
@@ -519,6 +542,8 @@ Output Format:
       --csv-only          Export only CSV format
       --json-only         Export only JSON format
       --save-config FILE  Save current config to JSON file and exit
+      --no-package        Skip ZIP package creation (package is created by default)
+      --tester NAME       Tester name to include in package metadata
 
 Debug Options:
       --verbose           Enable detailed logging
@@ -637,6 +662,10 @@ Vixen::Profiler::BenchmarkSuiteConfig BenchmarkCLIOptions::BuildSuiteConfig() co
 
     // Apply overrides to all tests
     config.ApplyOverrides();
+
+    // Copy package settings
+    config.createPackage = createPackage;
+    config.testerName = testerName;
 
     return config;
 }

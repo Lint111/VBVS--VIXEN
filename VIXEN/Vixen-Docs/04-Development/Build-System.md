@@ -80,7 +80,7 @@ cmake --build build --config Debug --target test_rebuild_hierarchy test_cornell_
 ## 3. Project Structure
 
 ```mermaid
-graph TD
+flowchart TD
     subgraph Libraries
         CORE[Core]
         LOG[Logger]
@@ -117,6 +117,18 @@ graph TD
     VIXEN --> PR
     VIXEN --> SVO
     BENCH --> PR
+    class CORE internal-link
+    class LOG internal-link
+    class EB internal-link
+    class VR internal-link
+    class CS internal-link
+    class SM internal-link
+    class RG internal-link
+    class VC internal-link
+    class GVW internal-link
+    class SVO internal-link
+    class VD internal-link
+    class PR internal-link
 ```
 
 ---

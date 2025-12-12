@@ -18,7 +18,7 @@ Block-based texture compression for voxel data achieving 5.3:1 memory reduction.
 ## 1. Compression Overview
 
 ```mermaid
-graph LR
+flowchart LR
     subgraph Input
         C[Color: 512 voxels x 4 bytes]
         N[Normals: 512 voxels x 4 bytes]

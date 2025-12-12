@@ -74,6 +74,10 @@ struct BenchmarkCLIOptions {
     bool saveConfig = false;                    // Save current config to file and exit
     std::filesystem::path saveConfigPath;       // Path to save config to
 
+    // Package output
+    bool createPackage = true;                  // Create ZIP package for tester sharing (default: ON)
+    std::string testerName;                     // Optional tester name for package
+
     // Help flag
     bool showHelp = false;
 

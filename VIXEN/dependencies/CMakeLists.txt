@@ -226,4 +226,31 @@ endif()
 
 message(STATUS "nlohmann/json fetched - available to all libraries")
 
+# ============================================================================
+# miniz - Single-file ZIP/deflate compression library
+# ============================================================================
+
+FetchContent_Declare(
+    miniz
+    GIT_REPOSITORY https://github.com/richgel999/miniz.git
+    GIT_TAG        3.0.2
+    GIT_SHALLOW    TRUE
+)
+
+# miniz builds as a library by default
+FetchContent_MakeAvailable(miniz)
+
+# Organize in Dependencies folder
+if(TARGET miniz)
+    set_target_properties(miniz PROPERTIES FOLDER "Dependencies")
+    # Suppress warnings from miniz
+    target_compile_options(miniz PRIVATE
+        $<$<CXX_COMPILER_ID:MSVC>:/W0>
+        $<$<CXX_COMPILER_ID:GNU>:-w>
+        $<$<CXX_COMPILER_ID:Clang>:-w>
+    )
+endif()
+
+message(STATUS "miniz fetched - ZIP compression available to all libraries")
+
 message(STATUS "Dependencies configured - all third-party libraries fetched")

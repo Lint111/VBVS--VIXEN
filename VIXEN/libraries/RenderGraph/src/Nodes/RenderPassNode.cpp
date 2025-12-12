@@ -17,13 +17,12 @@ namespace Vixen::RenderGraph {
 std::unique_ptr<NodeInstance> RenderPassNodeType::CreateInstance(
     const std::string& instanceName
 ) const {
-    std::cerr << "    [RenderPassNodeType::CreateInstance] START" << std::endl;
-    std::cerr.flush();
+    // Note: Cannot use NODE_LOG macros here as nodeLogger is not yet initialized
+    // These are trace messages for factory creation
     auto result = std::make_unique<RenderPassNode>(
         instanceName,
         const_cast<RenderPassNodeType*>(this)
     );
-    std::cerr << "    [RenderPassNodeType::CreateInstance] END" << std::endl;
     return result;
 }
 

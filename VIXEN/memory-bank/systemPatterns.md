@@ -400,7 +400,7 @@ TEST_F(ResourceBudgetManagerTest, SetBudget) {
 
 ---
 
-### 17. shared_ptr<T> Support Pattern (November 15, 2025 - Phase H)
+### 17. shared_ptr< T > Support Pattern (November 15, 2025 - Phase H)
 **Purpose**: Enable shared ownership semantics for complex resources (ShaderDataBundle, reflection data)
 
 **Implementation**:
@@ -1510,6 +1510,101 @@ vkGetQueryPoolResults(device, pool, 0, queriesToRead, ...);
 - `libraries/VulkanResources/include/GPUTimestampQuery.h`
 - `libraries/RenderGraph/include/Core/GPUPerformanceLogger.h`
 - `libraries/RenderGraph/src/Nodes/ComputeDispatchNode.cpp`
+
+---
+
+## Cache Persistence Pattern (December 2025 - Phase K)
+
+### 26. Binary Cache Serialization Pattern
+**Classes**: `VoxelSceneCacher`, `MainCacher`, `RenderGraph`
+
+**Implementation**:
+```cpp
+// VoxelSceneCacher::SerializeToFile()
+void SerializeToFile(const std::filesystem::path& path) {
+    std::ofstream file(path, std::ios::binary);
+
+    // 1. Magic number for file validation
+    uint32_t magic = 0x56534341;  // "VSCA"
+    file.write(reinterpret_cast<const char*>(&magic), sizeof(magic));
+
+    // 2. Version for forward compatibility
+    uint32_t version = 1;
+    file.write(reinterpret_cast<const char*>(&version), sizeof(version));
+
+    // 3. Cache key for lookup on load
+    file.write(reinterpret_cast<const char*>(&key_), sizeof(key_));
+
+    // 4. CreateInfo for re-creation if needed
+    file.write(reinterpret_cast<const char*>(&createInfo_), sizeof(createInfo_));
+
+    // 5. Serialize CPU vectors (size + data pattern)
+    auto writeVector = [&](const auto& vec) {
+        size_t size = vec.size();
+        file.write(reinterpret_cast<const char*>(&size), sizeof(size));
+        file.write(reinterpret_cast<const char*>(vec.data()),
+                   size * sizeof(typename std::decay_t<decltype(vec)>::value_type));
+    };
+
+    writeVector(octreeNodesCPU_);
+    writeVector(brickDataCPU_);
+    writeVector(brickLookupCPU_);
+    writeVector(compressedColorsCPU_);
+    writeVector(compressedNormalsCPU_);
+    writeVector(materialsCPU_);
+
+    // 6. OctreeConfig and metadata
+    file.write(reinterpret_cast<const char*>(&octreeConfig_), sizeof(octreeConfig_));
+}
+
+// VoxelSceneCacher::DeserializeFromFile()
+bool DeserializeFromFile(const std::filesystem::path& path) {
+    std::ifstream file(path, std::ios::binary);
+
+    // Validate magic
+    uint32_t magic;
+    file.read(reinterpret_cast<char*>(&magic), sizeof(magic));
+    if (magic != 0x56534341) return false;
+
+    // Read version, key, createInfo, vectors...
+    // ...
+
+    // Re-upload to GPU (GPU handles are not serialized)
+    UploadToGPU();
+    return true;
+}
+```
+
+**RenderGraph Integration**:
+```cpp
+// CRITICAL: SaveAllAsync() MUST be called BEFORE ExecuteCleanup()
+void RenderGraph::Clear() {
+    // Save caches while resources still exist
+    if (mainCacher_) {
+        mainCacher_->SaveAllAsync();  // Serializes CPU data
+    }
+
+    // Now destroy GPU resources
+    ExecuteCleanup();  // Destroys VkBuffers, etc.
+}
+```
+
+**Key Design Decisions**:
+1. **CPU-only serialization**: GPU handles (VkBuffer) are recreated on load via UploadToGPU()
+2. **Order-critical Clear()**: SaveAllAsync() before ExecuteCleanup() ensures data exists when serializing
+3. **Magic + version**: Enables file validation and forward compatibility
+4. **Atomic write pattern**: Write to temp file, then rename (not shown but recommended)
+
+**Cache Location**:
+```
+cache/devices/Device_<hash>/VoxelSceneCacher.cache
+```
+
+**Purpose**: Persist voxel scene data between benchmark runs, avoiding rebuild of identical scenes
+
+**Location**:
+- `libraries/CashSystem/src/VoxelSceneCacher.cpp`
+- `libraries/RenderGraph/src/Core/RenderGraph.cpp`
 
 ---
 

@@ -2,6 +2,7 @@
 #include "VulkanApplicationBase.h"
 #include "VulkanGraphApplication.h"
 #include "VulkanGlobalNames.h"
+#include <Logger.h>
 
 // Initialize global Vulkan extension/layer lists (defined inline in VulkanGlobalNames.h)
 static bool initGlobalNames = []() {
@@ -31,37 +32,40 @@ static bool initGlobalNames = []() {
 }();
 
 int main(int argc, char** argv) {
-    std::cout << "[main] Starting VulkanGraphApplication..." << std::endl;
+    // Create main logger for application-level diagnostics
+    auto mainLogger = std::make_shared<Vixen::Log::Logger>("main", true);
+    mainLogger->SetTerminalOutput(true);
+    mainLogger->Info("Starting VulkanGraphApplication...");
 
     try {
         VulkanApplicationBase* appObj = VulkanGraphApplication::GetInstance();
 
-        std::cout << "[main] Calling Initialize..." << std::endl;
+        mainLogger->Info("Calling Initialize...");
         appObj -> Initialize();
 
-        std::cout << "[main] Calling Prepare..." << std::endl;
+        mainLogger->Info("Calling Prepare...");
         appObj -> Prepare();
 
-        std::cout << "[main] Entering render loop..." << std::endl;
+        mainLogger->Info("Entering render loop...");
         bool isWindowOpen = true;
         while(isWindowOpen) {
             appObj -> Update();
             isWindowOpen = appObj->Render();
         }
 
-        std::cout << "[main] Cleaning up..." << std::endl;
+        mainLogger->Info("Cleaning up...");
         appObj -> DeInitialize();
-        std::cout << "[main] DeInitialize complete" << std::endl;
+        mainLogger->Info("DeInitialize complete");
     }
     catch(const std::exception& e) {
-        std::cerr << "[main] Exception caught: " << e.what() << std::endl;
+        mainLogger->Error(std::string("Exception caught: ") + e.what());
         return -1;
     }
     catch(...) {
-        std::cerr << "[main] Unknown exception caught!" << std::endl;
+        mainLogger->Error("Unknown exception caught!");
         return -1;
     }
 
-    std::cout << "[main] Exiting normally" << std::endl;
+    mainLogger->Info("Exiting normally");
     return 0;
 }

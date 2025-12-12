@@ -17,7 +17,7 @@ VIXEN uses a compile-time type system based on `std::variant` with macro-generat
 ## 1. Resource Variant Architecture
 
 ```mermaid
-graph TD
+flowchart TD
     subgraph Type Registry [RESOURCE_TYPE_REGISTRY Macro]
         M[Macro Definition]
     end
@@ -148,7 +148,7 @@ class MyNode : public TypedNode<MyNodeConfig> {
 ### 4.1 Storage Modes
 
 ```mermaid
-graph LR
+flowchart LR
     subgraph Value Mode
         V[std::any]
         V --> |Copy Semantics| VM[Value stored]

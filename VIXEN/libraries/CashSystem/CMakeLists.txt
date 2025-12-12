@@ -32,6 +32,9 @@ target_link_libraries(CashSystem PUBLIC
     EventBus  # For device invalidation event subscription
     ShaderManagement  # For ShaderDataBundle and reflection data
     VulkanResources  # For Vulkan device and resource abstractions
+    SVO  # For LaineKarrasOctree, SVOTypes, EntityBrickView
+    RenderGraph  # For SceneGeneratorFactory, VoxelGrid
+    GaiaVoxelWorld  # For GaiaVoxelWorld and VoxelComponents
 )
 
 # Link Vulkan (conditional on build mode)

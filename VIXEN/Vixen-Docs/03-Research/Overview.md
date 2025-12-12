@@ -24,7 +24,7 @@ VIXEN serves as a voxel ray tracing research platform for comparative pipeline a
 ## 2. Test Matrix
 
 ```mermaid
-graph TD
+flowchart TD
     subgraph Pipelines [4 Pipelines]
         P1[Compute Shader]
         P2[Fragment Shader]

@@ -20,7 +20,7 @@ Sparse Voxel Octree implementing the ESVO algorithm (Laine & Karras 2010) with e
 ## 1. Architecture
 
 ```mermaid
-graph TB
+flowchart TB
     subgraph Data Layer
         VC[VoxelComponents]
         GVW[GaiaVoxelWorld]
@@ -45,6 +45,8 @@ graph TB
     style GVW fill:#4a9eff
     style LKO fill:#26de81
     style VRM fill:#ff9f43
+    class VC internal-link
+    class GVW internal-link
 ```
 
 ---
@@ -113,12 +115,14 @@ stateDiagram-v2
 ## 4. Child Descriptor Format
 
 ```mermaid
-graph LR
+flowchart LR
     subgraph 32-bit Descriptor
         CP[Child Pointer: 17 bits]
         VM[Valid Mask: 8 bits]
         LM[Leaf Mask: 8 bits]
     end
+    class VC internal-link
+    class GVW internal-link
 ```
 
 | Field | Bits | Description |
@@ -175,12 +179,12 @@ layout(binding = 5) uniform OctreeConfig {
 
 ## 7. Code References
 
-| Component | Location |
-|-----------|----------|
-| LaineKarrasOctree | `libraries/SVO/src/LaineKarrasOctree.cpp` |
-| EntityBrickView | `libraries/SVO/include/EntityBrickView.h` |
-| SVOTypes.glsl | `shaders/SVOTypes.glsl` |
-| VoxelRayMarch.comp | `shaders/VoxelRayMarch.comp` |
+| Component          | Location                                  |
+| ------------------ | ----------------------------------------- |
+| LaineKarrasOctree  | `libraries/SVO/src/LaineKarrasOctree.cpp` |
+| EntityBrickView    | `libraries/SVO/include/EntityBrickView.h` |
+| SVOTypes.glsl      | `shaders/SVOTypes.glsl`                   |
+| VoxelRayMarch.comp | `shaders/VoxelRayMarch.comp`              |
 
 ---
 

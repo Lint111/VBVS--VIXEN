@@ -141,6 +141,12 @@ struct BenchmarkSuiteConfig {
     /// Export results as JSON
     bool exportJSON = true;
 
+    /// Create ZIP package for tester sharing (default: ON)
+    bool createPackage = true;
+
+    /// Tester name for package metadata
+    std::string testerName;
+
     /**
      * @brief Generate test configurations from matrix settings
      *

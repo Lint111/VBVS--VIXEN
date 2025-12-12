@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Headers.h>
+#include "ILoggable.h"
 
 namespace Vixen::Vulkan::Resources {
 
@@ -11,7 +12,7 @@ struct LayerProperties {
     std::vector<VkExtensionProperties> extensions;
 };
 
-class VulkanLayerAndExtension {
+class VulkanLayerAndExtension : public ILoggable {
 public:
     VulkanLayerAndExtension();
     ~VulkanLayerAndExtension();

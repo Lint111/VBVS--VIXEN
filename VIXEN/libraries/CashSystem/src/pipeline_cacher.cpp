@@ -7,7 +7,6 @@
 #include <sstream>
 #include <stdexcept>
 #include <vulkan/vulkan.h>
-#include <iostream>
 #include <fstream>
 #include <filesystem>
 #include <shared_mutex>
@@ -15,27 +14,25 @@
 namespace CashSystem {
 
 void PipelineCacher::Cleanup() {
-    std::cout << "[PipelineCacher::Cleanup] Cleaning up " << m_entries.size() << " cached pipelines" << std::endl;
+    LOG_INFO("Cleaning up " + std::to_string(m_entries.size()) + " cached pipelines");
 
     // Destroy all cached Vulkan resources
     if (GetDevice()) {
         for (auto& [key, entry] : m_entries) {
             if (entry.resource) {
                 if (entry.resource->pipeline != VK_NULL_HANDLE) {
-                    std::cout << "[PipelineCacher::Cleanup] Destroying VkPipeline: "
-                              << reinterpret_cast<uint64_t>(entry.resource->pipeline) << std::endl;
+                    LOG_DEBUG("Destroying VkPipeline: " + std::to_string(reinterpret_cast<uint64_t>(entry.resource->pipeline)));
                     vkDestroyPipeline(GetDevice()->device, entry.resource->pipeline, nullptr);
                     entry.resource->pipeline = VK_NULL_HANDLE;
                 }
                 // Pipeline layout is owned by PipelineLayoutCacher (shared resource)
                 if (entry.resource->pipelineLayoutWrapper) {
-                    std::cout << "[PipelineCacher::Cleanup] Releasing shared pipeline layout wrapper" << std::endl;
+                    LOG_DEBUG("Releasing shared pipeline layout wrapper");
                     entry.resource->pipelineLayoutWrapper.reset();
                 }
                 // Don't destroy individual caches if they're pointing to m_globalCache
                 if (entry.resource->cache != VK_NULL_HANDLE && entry.resource->cache != m_globalCache) {
-                    std::cout << "[PipelineCacher::Cleanup] Destroying VkPipelineCache: "
-                              << reinterpret_cast<uint64_t>(entry.resource->cache) << std::endl;
+                    LOG_DEBUG("Destroying VkPipelineCache: " + std::to_string(reinterpret_cast<uint64_t>(entry.resource->cache)));
                     vkDestroyPipelineCache(GetDevice()->device, entry.resource->cache, nullptr);
                     entry.resource->cache = VK_NULL_HANDLE;
                 }
@@ -44,7 +41,7 @@ void PipelineCacher::Cleanup() {
 
         // Destroy global cache
         if (m_globalCache != VK_NULL_HANDLE) {
-            std::cout << "[PipelineCacher::Cleanup] Destroying global pipeline cache" << std::endl;
+            LOG_DEBUG("Destroying global pipeline cache");
             vkDestroyPipelineCache(GetDevice()->device, m_globalCache, nullptr);
             m_globalCache = VK_NULL_HANDLE;
         }
@@ -53,7 +50,7 @@ void PipelineCacher::Cleanup() {
     // Clear the cache entries after destroying resources
     Clear();
 
-    std::cout << "[PipelineCacher::Cleanup] Cleanup complete" << std::endl;
+    LOG_INFO("Cleanup complete");
 }
 
 std::shared_ptr<PipelineWrapper> PipelineCacher::GetOrCreate(const PipelineCreateParams& ci) {
@@ -65,21 +62,17 @@ std::shared_ptr<PipelineWrapper> PipelineCacher::GetOrCreate(const PipelineCreat
         std::shared_lock rlock(m_lock);
         auto it = m_entries.find(key);
         if (it != m_entries.end()) {
-            std::cout << "[PipelineCacher::GetOrCreate] CACHE HIT for pipeline " << pipelineName
-                      << " (key=" << key << ", VkPipeline="
-                      << reinterpret_cast<uint64_t>(it->second.resource->pipeline) << ")" << std::endl;
+            LOG_DEBUG("CACHE HIT for pipeline " + pipelineName + " (key=" + std::to_string(key) + ")");
             return it->second.resource;
         }
         auto pit = m_pending.find(key);
         if (pit != m_pending.end()) {
-            std::cout << "[PipelineCacher::GetOrCreate] CACHE PENDING for pipeline " << pipelineName
-                      << " (key=" << key << "), waiting..." << std::endl;
+            LOG_DEBUG("CACHE PENDING for pipeline " + pipelineName + " (key=" + std::to_string(key) + "), waiting...");
             return pit->second.get();
         }
     }
 
-    std::cout << "[PipelineCacher::GetOrCreate] CACHE MISS for pipeline " << pipelineName
-              << " (key=" << key << "), creating new resource..." << std::endl;
+    LOG_DEBUG("CACHE MISS for pipeline " + pipelineName + " (key=" + std::to_string(key) + "), creating new resource...");
 
     // Call parent implementation which will invoke Create()
     return TypedCacher<PipelineWrapper, PipelineCreateParams>::GetOrCreate(ci);
@@ -94,7 +87,7 @@ std::shared_ptr<PipelineWrapper> PipelineCacher::GetOrCreatePipeline(
     VkCullModeFlags cullMode,
     VkPolygonMode polygonMode)
 {
-    std::cout << "[PipelineCacher] GetOrCreatePipeline ENTRY: " << vertexShaderKey << " + " << fragmentShaderKey << std::endl;
+    LOG_DEBUG("GetOrCreatePipeline: " + vertexShaderKey + " + " + fragmentShaderKey);
 
     PipelineCreateParams params;
     params.vertexShaderKey = vertexShaderKey;
@@ -109,8 +102,7 @@ std::shared_ptr<PipelineWrapper> PipelineCacher::GetOrCreatePipeline(
 }
 
 std::shared_ptr<PipelineWrapper> PipelineCacher::Create(const PipelineCreateParams& ci) {
-    std::cout << "[PipelineCacher::Create] CACHE MISS - Creating new pipeline: "
-              << ci.vertexShaderKey << " + " << ci.fragmentShaderKey << std::endl;
+    LOG_DEBUG("Creating new pipeline: " + ci.vertexShaderKey + " + " + ci.fragmentShaderKey);
 
     auto wrapper = std::make_shared<PipelineWrapper>();
     wrapper->vertexShaderKey = ci.vertexShaderKey;
@@ -124,15 +116,14 @@ std::shared_ptr<PipelineWrapper> PipelineCacher::Create(const PipelineCreatePara
     wrapper->topology = ci.topology;
 
     // Create pipeline components
-    std::cout << "[PipelineCacher::Create] Creating pipeline cache..." << std::endl;
+    LOG_DEBUG("Creating pipeline cache...");
     CreatePipelineCache(ci, *wrapper);
-    std::cout << "[PipelineCacher::Create] Creating pipeline layout..." << std::endl;
+    LOG_DEBUG("Creating pipeline layout...");
     CreatePipelineLayout(ci, *wrapper);
-    std::cout << "[PipelineCacher::Create] Creating VkPipeline..." << std::endl;
+    LOG_DEBUG("Creating VkPipeline...");
     CreatePipeline(ci, *wrapper);
 
-    std::cout << "[PipelineCacher::Create] VkPipeline created: "
-              << reinterpret_cast<uint64_t>(wrapper->pipeline) << std::endl;
+    LOG_DEBUG("VkPipeline created: " + std::to_string(reinterpret_cast<uint64_t>(wrapper->pipeline)));
 
     return wrapper;
 }
@@ -154,7 +145,7 @@ std::uint64_t PipelineCacher::ComputeKey(const PipelineCreateParams& ci) const {
     const std::string keyString = keyStream.str();
     std::uint64_t hash = std::hash<std::string>{}(keyString);
 
-    std::cout << "[PipelineCacher::ComputeKey] keyString=\"" << keyString << "\" hash=" << hash << std::endl;
+    LOG_DEBUG("ComputeKey: hash=" + std::to_string(hash));
 
     return hash;
 }
@@ -171,8 +162,7 @@ void PipelineCacher::CreatePipeline(const PipelineCreateParams& ci, PipelineWrap
         throw std::runtime_error("PipelineCacher::CreatePipeline: No shader stages provided");
     }
 
-    std::cout << "[PipelineCacher::CreatePipeline] Using " << shaderStages.size()
-              << " shader stages" << std::endl;
+    LOG_DEBUG("CreatePipeline: Using " + std::to_string(shaderStages.size()) + " shader stages");
 
     // Vertex input state
     VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
@@ -277,20 +267,19 @@ void PipelineCacher::CreatePipelineLayout(const PipelineCreateParams& ci, Pipeli
 
     // ===== Explicit Path: Use provided wrapper (transparent) =====
     if (ci.pipelineLayoutWrapper) {
-        std::cout << "[PipelineCacher] Using explicitly provided VkPipelineLayout: "
-                  << reinterpret_cast<uint64_t>(ci.pipelineLayoutWrapper->layout) << std::endl;
+        LOG_DEBUG("Using explicitly provided VkPipelineLayout: " + std::to_string(reinterpret_cast<uint64_t>(ci.pipelineLayoutWrapper->layout)));
         wrapper.pipelineLayoutWrapper = ci.pipelineLayoutWrapper;
         return;
     }
 
     // ===== Convenience Path: Create from descriptor set layout =====
-    std::cout << "[PipelineCacher] No layout wrapper provided, using convenience path (PipelineLayoutCacher)" << std::endl;
+    LOG_DEBUG("No layout wrapper provided, using convenience path (PipelineLayoutCacher)");
 
     // Get PipelineLayoutCacher from MainCacher (register if needed)
     auto& mainCacher = MainCacher::Instance();
 
     if (!mainCacher.IsRegistered(typeid(PipelineLayoutWrapper))) {
-        std::cout << "[PipelineCacher] Registering PipelineLayoutCacher" << std::endl;
+        LOG_DEBUG("Registering PipelineLayoutCacher");
         mainCacher.RegisterCacher<
             PipelineLayoutCacher,
             PipelineLayoutWrapper,
@@ -324,8 +313,7 @@ void PipelineCacher::CreatePipelineLayout(const PipelineCreateParams& ci, Pipeli
         throw std::runtime_error("PipelineCacher: Failed to create/get pipeline layout");
     }
 
-    std::cout << "[PipelineCacher] Using shared VkPipelineLayout: "
-              << reinterpret_cast<uint64_t>(wrapper.pipelineLayoutWrapper->layout) << std::endl;
+    LOG_DEBUG("Using shared VkPipelineLayout: " + std::to_string(reinterpret_cast<uint64_t>(wrapper.pipelineLayoutWrapper->layout)));
 }
 
 void PipelineCacher::CreatePipelineCache(const PipelineCreateParams& ci, PipelineWrapper& wrapper) {
@@ -360,7 +348,7 @@ void PipelineCacher::CreatePipelineCache(const PipelineCreateParams& ci, Pipelin
 
 bool PipelineCacher::SerializeToFile(const std::filesystem::path& path) const {
     if (!GetDevice()) {
-        std::cerr << "[PipelineCacher] Cannot serialize: no device available" << std::endl;
+        LOG_ERROR("Cannot serialize: no device available");
         return false;
     }
 
@@ -373,7 +361,7 @@ bool PipelineCacher::SerializeToFile(const std::filesystem::path& path) const {
     }
 
     if (caches.empty()) {
-        std::cout << "[PipelineCacher] No pipeline caches to serialize" << std::endl;
+        LOG_INFO("No pipeline caches to serialize");
         return true;
     }
 
@@ -384,7 +372,7 @@ bool PipelineCacher::SerializeToFile(const std::filesystem::path& path) const {
     VkPipelineCache mergedCache = VK_NULL_HANDLE;
     VkResult result = vkCreatePipelineCache(GetDevice()->device, &mergedCacheInfo, nullptr, &mergedCache);
     if (result != VK_SUCCESS) {
-        std::cerr << "[PipelineCacher] Failed to create merged cache: " << result << std::endl;
+        LOG_ERROR("Failed to create merged cache: " + std::to_string(result));
         return false;
     }
 
@@ -392,7 +380,7 @@ bool PipelineCacher::SerializeToFile(const std::filesystem::path& path) const {
     result = vkMergePipelineCaches(GetDevice()->device, mergedCache,
                                    static_cast<uint32_t>(caches.size()), caches.data());
     if (result != VK_SUCCESS) {
-        std::cerr << "[PipelineCacher] Failed to merge pipeline caches: " << result << std::endl;
+        LOG_ERROR("Failed to merge pipeline caches: " + std::to_string(result));
         vkDestroyPipelineCache(GetDevice()->device, mergedCache, nullptr);
         return false;
     }
@@ -401,7 +389,7 @@ bool PipelineCacher::SerializeToFile(const std::filesystem::path& path) const {
     size_t cacheSize = 0;
     result = vkGetPipelineCacheData(GetDevice()->device, mergedCache, &cacheSize, nullptr);
     if (result != VK_SUCCESS || cacheSize == 0) {
-        std::cerr << "[PipelineCacher] Failed to get cache size: " << result << std::endl;
+        LOG_ERROR("Failed to get cache size: " + std::to_string(result));
         vkDestroyPipelineCache(GetDevice()->device, mergedCache, nullptr);
         return false;
     }
@@ -410,7 +398,7 @@ bool PipelineCacher::SerializeToFile(const std::filesystem::path& path) const {
     std::vector<uint8_t> cacheData(cacheSize);
     result = vkGetPipelineCacheData(GetDevice()->device, mergedCache, &cacheSize, cacheData.data());
     if (result != VK_SUCCESS) {
-        std::cerr << "[PipelineCacher] Failed to get cache data: " << result << std::endl;
+        LOG_ERROR("Failed to get cache data: " + std::to_string(result));
         vkDestroyPipelineCache(GetDevice()->device, mergedCache, nullptr);
         return false;
     }
@@ -421,7 +409,7 @@ bool PipelineCacher::SerializeToFile(const std::filesystem::path& path) const {
     // Write cache data to file
     std::ofstream file(path, std::ios::binary);
     if (!file) {
-        std::cerr << "[PipelineCacher] Failed to open file for writing: " << path << std::endl;
+        LOG_ERROR("Failed to open file for writing: " + path.string());
         return false;
     }
 
@@ -437,31 +425,30 @@ bool PipelineCacher::SerializeToFile(const std::filesystem::path& path) const {
     file.write(reinterpret_cast<const char*>(cacheData.data()), cacheSize);
 
     if (!file) {
-        std::cerr << "[PipelineCacher] Failed to write cache data to file" << std::endl;
+        LOG_ERROR("Failed to write cache data to file");
         return false;
     }
 
-    std::cout << "[PipelineCacher] Serialized " << caches.size() << " pipeline caches ("
-              << cacheSize << " bytes) to " << path << std::endl;
+    LOG_INFO("Serialized " + std::to_string(caches.size()) + " pipeline caches (" + std::to_string(cacheSize) + " bytes) to " + path.string());
     return true;
 }
 
 bool PipelineCacher::DeserializeFromFile(const std::filesystem::path& path, void* device) {
     // Not an error if cache file doesn't exist yet
     if (!std::filesystem::exists(path)) {
-        std::cout << "[PipelineCacher] No cache file found at " << path << " (first run)" << std::endl;
+        LOG_INFO("No cache file found at " + path.string() + " (first run)");
         return true;
     }
 
     if (!GetDevice()) {
-        std::cerr << "[PipelineCacher] Cannot deserialize: no device available" << std::endl;
+        LOG_ERROR("Cannot deserialize: no device available");
         return false;
     }
 
     // Open cache file
     std::ifstream file(path, std::ios::binary);
     if (!file) {
-        std::cerr << "[PipelineCacher] Failed to open cache file: " << path << std::endl;
+        LOG_ERROR("Failed to open cache file: " + path.string());
         return false;
     }
 
@@ -469,7 +456,7 @@ bool PipelineCacher::DeserializeFromFile(const std::filesystem::path& path, void
     uint32_t version = 0;
     file.read(reinterpret_cast<char*>(&version), sizeof(version));
     if (!file || version != 1) {
-        std::cerr << "[PipelineCacher] Unsupported cache version: " << version << std::endl;
+        LOG_ERROR("Unsupported cache version: " + std::to_string(version));
         return false;
     }
 
@@ -477,7 +464,7 @@ bool PipelineCacher::DeserializeFromFile(const std::filesystem::path& path, void
     uint64_t cacheSize = 0;
     file.read(reinterpret_cast<char*>(&cacheSize), sizeof(cacheSize));
     if (!file || cacheSize == 0) {
-        std::cerr << "[PipelineCacher] Invalid cache size in file" << std::endl;
+        LOG_ERROR("Invalid cache size in file");
         return false;
     }
 
@@ -485,7 +472,7 @@ bool PipelineCacher::DeserializeFromFile(const std::filesystem::path& path, void
     std::vector<uint8_t> cacheData(cacheSize);
     file.read(reinterpret_cast<char*>(cacheData.data()), cacheSize);
     if (!file) {
-        std::cerr << "[PipelineCacher] Failed to read cache data from file" << std::endl;
+        LOG_ERROR("Failed to read cache data from file");
         return false;
     }
 
@@ -497,13 +484,12 @@ bool PipelineCacher::DeserializeFromFile(const std::filesystem::path& path, void
 
     VkResult result = vkCreatePipelineCache(GetDevice()->device, &cacheInfo, nullptr, &m_globalCache);
     if (result != VK_SUCCESS) {
-        std::cerr << "[PipelineCacher] Failed to create pipeline cache from file: " << result << std::endl;
+        LOG_ERROR("Failed to create pipeline cache from file: " + std::to_string(result));
         m_globalCache = VK_NULL_HANDLE;
         return false;
     }
 
-    std::cout << "[PipelineCacher] Loaded pipeline cache from " << path
-              << " (" << cacheSize << " bytes)" << std::endl;
+    LOG_INFO("Loaded pipeline cache from " + path.string() + " (" + std::to_string(cacheSize) + " bytes)");
     return true;
 }
 

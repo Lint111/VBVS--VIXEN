@@ -46,17 +46,17 @@ void DescriptorResourceGathererNode::SetupImpl(VariadicSetupContext& ctx) {
 }
 
 void DescriptorResourceGathererNode::CompileImpl(VariadicCompileContext& ctx) {
-    std::cerr << "[DescriptorResourceGathererNode::Compile] START for " << GetInstanceName() << std::endl;
+    NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Compile] START for " + GetInstanceName());
 
     // Get shader bundle to discover expected descriptor layout
     auto shaderBundle = ctx.In(DescriptorResourceGathererNodeConfig::SHADER_DATA_BUNDLE);
     if (!shaderBundle) {
-        std::cerr << "[DescriptorResourceGathererNode::Compile] ERROR: No shader bundle for " << GetInstanceName()
-                  << " - ensure ShaderLibraryNode is connected via SHADER_DATA_BUNDLE slot" << std::endl;
+        NODE_LOG_ERROR("[DescriptorResourceGathererNode::Compile] ERROR: No shader bundle for " + GetInstanceName()
+                  + " - ensure ShaderLibraryNode is connected via SHADER_DATA_BUNDLE slot");
         return;
     }
     if (!shaderBundle->descriptorLayout) {
-        std::cerr << "[DescriptorResourceGathererNode::Compile] ERROR: Shader bundle has no descriptor layout for " << GetInstanceName() << std::endl;
+        NODE_LOG_ERROR("[DescriptorResourceGathererNode::Compile] ERROR: Shader bundle has no descriptor layout for " + GetInstanceName());
         return;
     }
 
@@ -129,11 +129,11 @@ void DescriptorResourceGathererNode::CompileImpl(VariadicCompileContext& ctx) {
 
     // Call base validation (type checks, null checks)
     if (!ValidateVariadicInputsImpl(ctx)) {
-        std::cerr << "[DescriptorResourceGathererNode::Compile] ERROR: Variadic input validation failed for " << GetInstanceName() << std::endl;
+        NODE_LOG_ERROR("[DescriptorResourceGathererNode::Compile] ERROR: Variadic input validation failed for " + GetInstanceName());
         return;
     }
-    std::cerr << "[DescriptorResourceGathererNode::Compile] Validation passed for " << GetInstanceName()
-              << ", bindings.size()=" << layoutSpec->bindings.size() << std::endl;
+    NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Compile] Validation passed for " + GetInstanceName()
+              + ", bindings.size()=" + std::to_string(layoutSpec->bindings.size()));
 
     // Find max binding to size output array
     uint32_t maxBinding = 0;
@@ -197,6 +197,11 @@ void DescriptorResourceGathererNode::ExecuteImpl(VariadicExecuteContext& ctx) {
             continue;
         }
 
+        // Skip uninitialized slots (created by vector resize, not by ConnectVariadic)
+        if (slotInfo->binding == UINT32_MAX) {
+            continue;
+        }
+
         uint8_t roleVal = static_cast<uint8_t>(slotInfo->slotRole);
         bool hasExec = HasExecute(slotInfo->slotRole);
         NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Execute] Slot " + std::to_string(i) +
@@ -230,8 +235,8 @@ void DescriptorResourceGathererNode::ExecuteImpl(VariadicExecuteContext& ctx) {
 
         // Bounds check - binding must be within resourceArray_ range
         if (binding >= resourceArray_.size()) {
-            std::cerr << "[DescriptorResourceGathererNode::Execute] ERROR: Binding " << binding
-                      << " out of range (resourceArray_.size()=" << resourceArray_.size() << ")" << std::endl;
+            NODE_LOG_ERROR("[DescriptorResourceGathererNode::Execute] ERROR: Binding " + std::to_string(binding)
+                      + " out of range (resourceArray_.size()=" + std::to_string(resourceArray_.size()) + ")");
             continue;
         }
 
@@ -301,8 +306,8 @@ void DescriptorResourceGathererNode::ValidateTentativeSlotsAgainstShader(Variadi
     // Validate and update all tentative slots against shader requirements
     for (size_t i = 0; i < variadicCount; ++i) {
         const auto* slotInfo = ctx.InVariadicSlot(i);
-        if (!slotInfo || slotInfo->state != SlotState::Tentative) {
-            continue;  // Skip non-tentative slots
+        if (!slotInfo || slotInfo->binding == UINT32_MAX || slotInfo->state != SlotState::Tentative) {
+            continue;  // Skip null, uninitialized, or non-tentative slots
         }
 
         ValidateSingleSlotAgainstShader(ctx, i, slotInfo, layoutSpec);
@@ -376,13 +381,15 @@ bool DescriptorResourceGathererNode::ValidateVariadicInputsImpl(VariadicCompileC
     size_t inputCount = ctx.InVariadicCount();
     bool allValid = true;
 
-    std::cerr << "[ValidateVariadicInputsImpl] Checking " << inputCount << " slots for " << GetInstanceName() << std::endl;
+    NODE_LOG_DEBUG("[ValidateVariadicInputsImpl] Checking " + std::to_string(inputCount) + " slots for " + GetInstanceName());
     for (size_t i = 0; i < inputCount; ++i) {
         const auto* slotInfo = ctx.InVariadicSlot(i);
-        std::cerr << "  slot[" << i << "]: binding=" << (slotInfo ? slotInfo->binding : -1)
-                  << " name='" << (slotInfo ? slotInfo->slotName : "NULL") << "'"
-                  << " descType=" << (slotInfo ? (int)slotInfo->descriptorType : -1)
-                  << " state=" << (slotInfo ? (int)slotInfo->state : -1) << std::endl;
+        NODE_LOG_DEBUG("  slot[" + std::to_string(i) + "]: binding=" + std::to_string(slotInfo ? slotInfo->binding : UINT32_MAX)
+                  + " name='" + std::string(slotInfo ? slotInfo->slotName : "NULL") + "'"
+                  + " descType=" + std::to_string(slotInfo ? (int)slotInfo->descriptorType : -1)
+                  + " state=" + std::to_string(slotInfo ? (int)slotInfo->state : -1)
+                  + " role=" + std::to_string(slotInfo ? static_cast<int>(slotInfo->slotRole) : -1)
+                  + " hasFieldExtract=" + std::to_string(slotInfo ? slotInfo->hasFieldExtraction : false));
         if (!ValidateSingleInput(ctx, i)) {
             allValid = false;
         }
@@ -395,6 +402,11 @@ bool DescriptorResourceGathererNode::ValidateSingleInput(VariadicCompileContext&
     const auto* slotInfo = ctx.InVariadicSlot(slotIndex);
     if (!slotInfo) {
         return true;  // Skip null slots
+    }
+
+    // Skip uninitialized slots (created by vector resize, not by ConnectVariadic)
+    if (slotInfo->binding == UINT32_MAX) {
+        return true;  // Uninitialized slots are expected to be skipped
     }
 
     // Skip Invalid slots (already marked as failed during ValidateTentativeSlotsAgainstShader)
@@ -412,14 +424,22 @@ bool DescriptorResourceGathererNode::ValidateSingleInput(VariadicCompileContext&
         return true;
     }
 
-    // Validate resource type against expected descriptor type
+    // Skip slots with empty name and no resource - these are placeholder slots from
+    // incomplete wiring that should not cause validation failure
     Resource* res = ctx.InVariadicResource(slotIndex);
+    if (!res && slotInfo->slotName.empty()) {
+        NODE_LOG_DEBUG("[ValidateSingleInput] Skipping empty placeholder slot " +
+                      std::to_string(slotIndex) + " at binding " + std::to_string(slotInfo->binding));
+        return true;
+    }
+
+    // Validate resource type against expected descriptor type
     VkDescriptorType expectedType = slotInfo->descriptorType;
 
     if (!ValidateResourceType(res, expectedType)) {
-        std::cerr << "[ValidateSingleInput] FAILED: slot " << slotIndex
-                  << " (" << slotInfo->slotName << ") binding=" << slotInfo->binding
-                  << " expectedType=" << expectedType << " resource=" << (res ? "valid" : "NULL") << std::endl;
+        NODE_LOG_ERROR("[ValidateSingleInput] FAILED: slot " + std::to_string(slotIndex)
+                  + " (" + slotInfo->slotName + ") binding=" + std::to_string(slotInfo->binding)
+                  + " expectedType=" + std::to_string(expectedType) + " resource=" + std::string(res ? "valid" : "NULL"));
         return false;
     }
 
@@ -464,6 +484,13 @@ void DescriptorResourceGathererNode::GatherResources(VariadicCompileContext& ctx
 bool DescriptorResourceGathererNode::ProcessSlot(size_t slotIndex, const VariadicSlotInfo* slotInfo) {
     if (!slotInfo) {
         NODE_LOG_DEBUG("[DescriptorResourceGathererNode::ProcessSlot] WARNING: Null slot at index " + std::to_string(slotIndex));
+        return false;
+    }
+
+    // Skip uninitialized slots (created by vector resize, not by ConnectVariadic)
+    // These have binding = UINT32_MAX as sentinel value
+    if (slotInfo->binding == UINT32_MAX) {
+        NODE_LOG_DEBUG("[DescriptorResourceGathererNode::ProcessSlot] Skipping uninitialized slot " + std::to_string(slotIndex));
         return false;
     }
 
@@ -654,7 +681,15 @@ bool DescriptorResourceGathererNode::CheckUsageCompatibility(
             // Samplers are separate resources - check ResourceType
             return resType == ResourceType::Buffer;  // VkSampler registered as Buffer type
 
+        case VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR:
+            // Acceleration structures (RTX) - must be AccelerationStructure type
+            return resType == ResourceType::AccelerationStructure;
+
         default:
+            // Unknown descriptor type - log error for debugging
+            NODE_LOG_ERROR("[CheckUsageCompatibility] ERROR: Unhandled VkDescriptorType=" + std::to_string(descriptorType)
+                      + " for ResourceType=" + std::to_string(static_cast<int>(resType))
+                      + " with usage=" + std::to_string(static_cast<uint32_t>(usage)));
             return false;
     }
 }
@@ -688,7 +723,14 @@ bool DescriptorResourceGathererNode::IsResourceTypeCompatibleWithDescriptor(
         case VK_DESCRIPTOR_TYPE_SAMPLER:
             return resType == ResourceType::Buffer;  // VkSampler uses Buffer ResourceType
 
+        case VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR:
+            // Acceleration structures (RTX) - must be AccelerationStructure type
+            return resType == ResourceType::AccelerationStructure;
+
         default:
+            // Unknown descriptor type - log error for debugging
+            NODE_LOG_ERROR("[IsResourceTypeCompatibleWithDescriptor] ERROR: Unhandled VkDescriptorType=" + std::to_string(descriptorType)
+                      + " for ResourceType=" + std::to_string(static_cast<int>(resType)));
             return false;
     }
 }

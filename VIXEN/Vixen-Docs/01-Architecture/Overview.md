@@ -19,7 +19,7 @@ VIXEN uses a **graph-based rendering architecture** with compile-time type safet
 ## 1. System Diagram
 
 ```mermaid
-graph TB
+flowchart TB
     subgraph Application Layer
         VA[VulkanApplication]
         VGA[VulkanGraphApplication]
@@ -68,6 +68,8 @@ graph TB
     style RG fill:#4a9eff
     style TN fill:#26de81
     style RV fill:#ff9f43
+    class RG internal-link
+    class EB internal-link
 ```
 
 ---
@@ -123,7 +125,7 @@ stateDiagram-v2
 
 **Key File:** `libraries/RenderGraph/include/Core/NodeInstance.h`
 
-### 3.3 TypedNode<Config>
+### 3.3 TypedNode< Config >
 
 Template base providing compile-time slot validation.
 
@@ -185,10 +187,12 @@ class NodeInstance {
 ### 5.2 EventBus Invalidation
 
 ```mermaid
-graph LR
+flowchart LR
     WR[WindowResize] --> SC[SwapChainInvalidated]
     SC --> FB[FramebufferDirty]
     FB --> RC[Recompile]
+    class RG internal-link
+    class EB internal-link
 ```
 
 ### 5.3 Handle-Based Access

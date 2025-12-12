@@ -3,11 +3,14 @@
 #include "Profiler/BenchmarkGraphFactory.h"
 #include "Profiler/ProfilerSystem.h"
 #include "Profiler/VulkanIntegration.h"
+#include "Profiler/TesterPackage.h"
 #include <iomanip>
 #include <Core/RenderGraph.h>
 #include <Core/NodeTypeRegistry.h>
 #include <MessageBus.h>
 #include <Message.h>
+#include <MainCacher.h>
+#include <Logger.h>
 
 // Node type registrations for graph building
 #include <Nodes/InstanceNode.h>
@@ -27,6 +30,7 @@
 #include <Nodes/InputNode.h>
 #include <Nodes/PresentNode.h>
 #include <Nodes/DebugBufferReaderNode.h>
+#include <InputEvents.h>  // For KeyCode::C (frame capture trigger)
 #include <Nodes/ConstantNode.h>
 #include <Nodes/ConstantNodeType.h>
 
@@ -35,6 +39,12 @@
 #include <Nodes/FramebufferNode.h>
 #include <Nodes/GraphicsPipelineNode.h>
 #include <Nodes/GeometryRenderNode.h>
+
+// Hardware ray tracing nodes (Phase K)
+#include <Nodes/VoxelAABBConverterNode.h>
+#include <Nodes/AccelerationStructureNode.h>
+#include <Nodes/RayTracingPipelineNode.h>
+#include <Nodes/TraceRaysNode.h>
 
 #include <vulkan/vulkan.h>
 #include <fstream>
@@ -65,6 +75,7 @@ struct HeadlessVulkanContext {
     VkDebugUtilsMessengerEXT debugMessenger = VK_NULL_HANDLE;
     VkQueryPool timestampQueryPool = VK_NULL_HANDLE;
     float timestampPeriod = 0.0f;
+    bool rtxEnabled = false;  // Phase K: Hardware RT support
 
     bool IsValid() const {
         return instance != VK_NULL_HANDLE &&
@@ -85,7 +96,8 @@ VKAPI_ATTR VkBool32 VKAPI_CALL VulkanDebugCallback(
     (void)pUserData;
 
     if (severity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
-        std::cerr << "[Vulkan] " << pCallbackData->pMessage << "\n";
+        // TODO: Migrate to LOG_ERROR when BenchmarkRunner inherits from ILoggable
+        // LOG_ERROR("[Vulkan] " + std::string(pCallbackData->pMessage));
     }
     return VK_FALSE;
 }
@@ -161,7 +173,8 @@ VkResult SelectPhysicalDevice(HeadlessVulkanContext& ctx, uint32_t gpuIndex, boo
     uint32_t deviceCount = 0;
     vkEnumeratePhysicalDevices(ctx.instance, &deviceCount, nullptr);
     if (deviceCount == 0) {
-        std::cerr << "Error: No Vulkan-capable GPUs found\n";
+        // TODO: Migrate to LOG_ERROR when BenchmarkRunner inherits from ILoggable
+        // LOG_ERROR("No Vulkan-capable GPUs found");
         return VK_ERROR_INITIALIZATION_FAILED;
     }
 
@@ -169,8 +182,8 @@ VkResult SelectPhysicalDevice(HeadlessVulkanContext& ctx, uint32_t gpuIndex, boo
     vkEnumeratePhysicalDevices(ctx.instance, &deviceCount, devices.data());
 
     if (gpuIndex >= deviceCount) {
-        std::cerr << "Error: GPU index " << gpuIndex << " out of range (0-"
-                  << deviceCount - 1 << ")\n";
+        // TODO: Migrate to LOG_ERROR when BenchmarkRunner inherits from ILoggable
+        // LOG_ERROR("GPU index " + std::to_string(gpuIndex) + " out of range (0-" + std::to_string(deviceCount - 1) + ")");
         return VK_ERROR_INITIALIZATION_FAILED;
     }
 
@@ -181,7 +194,8 @@ VkResult SelectPhysicalDevice(HeadlessVulkanContext& ctx, uint32_t gpuIndex, boo
     ctx.timestampPeriod = props.limits.timestampPeriod;
 
     if (verbose) {
-        std::cout << "Selected GPU: " << props.deviceName << "\n";
+        // TODO: Migrate to LOG_INFO when BenchmarkRunner inherits from ILoggable
+        // LOG_INFO("Selected GPU: " + std::string(props.deviceName));
     }
 
     return VK_SUCCESS;
@@ -209,10 +223,21 @@ uint32_t FindComputeQueueFamily(VkPhysicalDevice device) {
     return UINT32_MAX;
 }
 
+// Helper to check if an extension is available
+bool HasDeviceExtension(const std::vector<VkExtensionProperties>& available, const char* name) {
+    for (const auto& ext : available) {
+        if (std::strcmp(ext.extensionName, name) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 VkResult CreateHeadlessDevice(HeadlessVulkanContext& ctx) {
     ctx.computeQueueFamily = FindComputeQueueFamily(ctx.physicalDevice);
     if (ctx.computeQueueFamily == UINT32_MAX) {
-        std::cerr << "Error: No compute-capable queue family found\n";
+        // TODO: Migrate to LOG_ERROR when BenchmarkRunner inherits from ILoggable
+        // LOG_ERROR("No compute-capable queue family found");
         return VK_ERROR_INITIALIZATION_FAILED;
     }
 
@@ -230,13 +255,60 @@ VkResult CreateHeadlessDevice(HeadlessVulkanContext& ctx) {
     std::vector<VkExtensionProperties> availableExtensions(extensionCount);
     vkEnumerateDeviceExtensionProperties(ctx.physicalDevice, nullptr, &extensionCount, availableExtensions.data());
 
-    for (const auto& ext : availableExtensions) {
-        if (std::strcmp(ext.extensionName, VK_EXT_MEMORY_BUDGET_EXTENSION_NAME) == 0) {
-            deviceExtensions.push_back(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);
+    // Enable memory budget if available
+    if (HasDeviceExtension(availableExtensions, VK_EXT_MEMORY_BUDGET_EXTENSION_NAME)) {
+        deviceExtensions.push_back(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);
+    }
+
+    // Enable RTX extensions if available (Phase K - Hardware RT)
+    bool rtxAvailable =
+        HasDeviceExtension(availableExtensions, VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME) &&
+        HasDeviceExtension(availableExtensions, VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME) &&
+        HasDeviceExtension(availableExtensions, VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME) &&
+        HasDeviceExtension(availableExtensions, VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME);
+
+    // Feature chain for RTX
+    VkPhysicalDeviceBufferDeviceAddressFeatures bufferDeviceAddressFeatures{};
+    bufferDeviceAddressFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES;
+    bufferDeviceAddressFeatures.bufferDeviceAddress = VK_TRUE;
+
+    VkPhysicalDeviceAccelerationStructureFeaturesKHR accelStructFeatures{};
+    accelStructFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR;
+    accelStructFeatures.pNext = &bufferDeviceAddressFeatures;
+    accelStructFeatures.accelerationStructure = VK_TRUE;
+
+    VkPhysicalDeviceRayTracingPipelineFeaturesKHR rtPipelineFeatures{};
+    rtPipelineFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR;
+    rtPipelineFeatures.pNext = &accelStructFeatures;
+    rtPipelineFeatures.rayTracingPipeline = VK_TRUE;
+
+    if (rtxAvailable) {
+        deviceExtensions.push_back(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
+        deviceExtensions.push_back(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME);
+        deviceExtensions.push_back(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME);
+        deviceExtensions.push_back(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME);
+
+        // Also need SPIRV 1.4 for RT shaders
+        if (HasDeviceExtension(availableExtensions, VK_KHR_SPIRV_1_4_EXTENSION_NAME)) {
+            deviceExtensions.push_back(VK_KHR_SPIRV_1_4_EXTENSION_NAME);
         }
+        if (HasDeviceExtension(availableExtensions, VK_KHR_SHADER_FLOAT_CONTROLS_EXTENSION_NAME)) {
+            deviceExtensions.push_back(VK_KHR_SHADER_FLOAT_CONTROLS_EXTENSION_NAME);
+        }
+
+        // TODO: Migrate to LOG_INFO when BenchmarkRunner inherits from ILoggable
+        // LOG_INFO("RTX extensions enabled for hardware ray tracing");
+        ctx.rtxEnabled = true;
     }
 
     VkPhysicalDeviceFeatures deviceFeatures{};
+
+    VkPhysicalDeviceFeatures2 deviceFeatures2{};
+    deviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+    deviceFeatures2.features = deviceFeatures;
+    if (rtxAvailable) {
+        deviceFeatures2.pNext = &rtPipelineFeatures;
+    }
 
     VkDeviceCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
@@ -244,7 +316,13 @@ VkResult CreateHeadlessDevice(HeadlessVulkanContext& ctx) {
     createInfo.pQueueCreateInfos = &queueCreateInfo;
     createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
     createInfo.ppEnabledExtensionNames = deviceExtensions.data();
-    createInfo.pEnabledFeatures = &deviceFeatures;
+
+    if (rtxAvailable) {
+        createInfo.pNext = &deviceFeatures2;
+        createInfo.pEnabledFeatures = nullptr;  // Must be null when using pNext features
+    } else {
+        createInfo.pEnabledFeatures = &deviceFeatures;
+    }
 
     VkResult result = vkCreateDevice(ctx.physicalDevice, &createInfo, nullptr, &ctx.device);
     if (result != VK_SUCCESS) {
@@ -275,7 +353,8 @@ VkResult CreateTimestampQueryPool(HeadlessVulkanContext& ctx, uint32_t queryCoun
 
 bool InitializeHeadlessVulkan(HeadlessVulkanContext& ctx, const BenchmarkSuiteConfig& config) {
     if (CreateHeadlessInstance(ctx, config.enableValidation) != VK_SUCCESS) {
-        std::cerr << "Error: Failed to create Vulkan instance\n";
+        // TODO: Migrate to LOG_ERROR when BenchmarkRunner inherits from ILoggable
+        // LOG_ERROR("Failed to create Vulkan instance");
         return false;
     }
 
@@ -284,12 +363,14 @@ bool InitializeHeadlessVulkan(HeadlessVulkanContext& ctx, const BenchmarkSuiteCo
     }
 
     if (CreateHeadlessDevice(ctx) != VK_SUCCESS) {
-        std::cerr << "Error: Failed to create logical device\n";
+        // TODO: Migrate to LOG_ERROR when BenchmarkRunner inherits from ILoggable
+        // LOG_ERROR("Failed to create logical device");
         return false;
     }
 
     if (CreateCommandPool(ctx) != VK_SUCCESS) {
-        std::cerr << "Error: Failed to create command pool\n";
+        // TODO: Migrate to LOG_ERROR when BenchmarkRunner inherits from ILoggable
+        // LOG_ERROR("Failed to create command pool");
         return false;
     }
 
@@ -350,6 +431,12 @@ void RegisterAllNodeTypes(Vixen::RenderGraph::NodeTypeRegistry& registry) {
     registry.Register<GraphicsPipelineNodeType>();
     registry.Register<GeometryRenderNodeType>();
 
+    // RTX nodes
+    registry.Register<VoxelAABBConverterNodeType>();
+    registry.Register<AccelerationStructureNodeType>();
+    registry.Register<RayTracingPipelineNodeType>();
+    registry.Register<TraceRaysNodeType>();
+
     // Scene/utility nodes
     registry.Register<CameraNodeType>();
     registry.Register<VoxelGridNodeType>();
@@ -374,9 +461,10 @@ TestSuiteResults BenchmarkRunner::RunSuite(const BenchmarkSuiteConfig& config) {
     // Validate configuration
     auto errors = config.Validate();
     if (!errors.empty()) {
-        std::cerr << "Configuration errors:\n";
+        // TODO: Migrate to LOG_ERROR when BenchmarkRunner inherits from ILoggable
+        // LOG_ERROR("Configuration errors:");
         for (const auto& err : errors) {
-            std::cerr << "  - " << err << "\n";
+            // LOG_ERROR("  - " + err);
         }
         return TestSuiteResults{};
     }
@@ -396,19 +484,21 @@ TestSuiteResults BenchmarkRunner::RunSuite(const BenchmarkSuiteConfig& config) {
 
     // Create output directory
     if (!MetricsExporter::EnsureDirectoryExists(config.outputDir)) {
-        std::cerr << "Error: Failed to create output directory: " << config.outputDir << "\n";
+        // TODO: Migrate to LOG_ERROR when BenchmarkRunner inherits from ILoggable
+        // LOG_ERROR("Failed to create output directory: " + config.outputDir.string());
         return TestSuiteResults{};
     }
 
     if (config.verbose) {
-        std::cout << "\n";
-        std::cout << "=================================================\n";
-        std::cout << "VIXEN Benchmark Tool\n";
-        std::cout << "=================================================\n";
-        std::cout << "Mode:   " << (config.headless ? "Headless" : "Render") << "\n";
-        std::cout << "Tests:  " << config.tests.size() << " configurations\n";
-        std::cout << "Output: " << config.outputDir << "\n";
-        std::cout << "\n";
+        // TODO: Migrate to LOG_INFO when BenchmarkRunner inherits from ILoggable
+        // LOG_INFO("");
+        // LOG_INFO("=================================================");
+        // LOG_INFO("VIXEN Benchmark Tool");
+        // LOG_INFO("=================================================");
+        // LOG_INFO("Mode:   " + std::string(config.headless ? "Headless" : "Render"));
+        // LOG_INFO("Tests:  " + std::to_string(config.tests.size()) + " configurations");
+        // LOG_INFO("Output: " + config.outputDir.string());
+        // LOG_INFO("");
     }
 
     TestSuiteResults results;
@@ -422,14 +512,49 @@ TestSuiteResults BenchmarkRunner::RunSuite(const BenchmarkSuiteConfig& config) {
     // Export final results
     ExportAllResults();
 
+    // Create ZIP package for tester sharing if requested
+    if (config.createPackage) {
+        TesterPackage packager;
+        if (!config.testerName.empty()) {
+            packager.SetTesterName(config.testerName);
+        }
+
+        // Package to same directory as results
+        auto packageResult = packager.CreatePackage(
+            config.outputDir,
+            config.outputDir,
+            deviceCapabilities_
+        );
+
+        if (packageResult.success) {
+            std::cout << "\n";
+            std::cout << "=================================================\n";
+            std::cout << "Tester Package Created\n";
+            std::cout << "=================================================\n";
+            std::cout << "  File: " << packageResult.packagePath.string() << "\n";
+            std::cout << "  Files: " << packageResult.filesIncluded << "\n";
+            std::cout << "  Size: " << (packageResult.compressedSizeBytes / 1024) << " KB";
+            if (packageResult.originalSizeBytes > 0) {
+                float ratio = 100.0f * (1.0f - float(packageResult.compressedSizeBytes) / float(packageResult.originalSizeBytes));
+                std::cout << " (" << std::fixed << std::setprecision(0) << ratio << "% compression)";
+            }
+            std::cout << "\n";
+            std::cout << "=================================================\n";
+            std::cout << "\nSend this ZIP file for aggregation.\n";
+        } else {
+            std::cerr << "Warning: Failed to create package: " << packageResult.errorMessage << "\n";
+        }
+    }
+
     if (config.verbose) {
-        std::cout << "\n";
-        std::cout << "=================================================\n";
-        std::cout << "Benchmark Complete\n";
-        std::cout << "=================================================\n";
-        std::cout << "  Passed: " << results.GetPassCount() << "/" << results.GetTotalCount() << "\n";
-        std::cout << "  Output: " << config.outputDir << "\n";
-        std::cout << "=================================================\n";
+        // TODO: Migrate to LOG_INFO when BenchmarkRunner inherits from ILoggable
+        // LOG_INFO("");
+        // LOG_INFO("=================================================");
+        // LOG_INFO("Benchmark Complete");
+        // LOG_INFO("=================================================");
+        // LOG_INFO("  Passed: " + std::to_string(results.GetPassCount()) + "/" + std::to_string(results.GetTotalCount()));
+        // LOG_INFO("  Output: " + config.outputDir.string());
+        // LOG_INFO("=================================================");
     }
 
     return results;
@@ -439,7 +564,8 @@ TestSuiteResults BenchmarkRunner::RunSuiteHeadless(const BenchmarkSuiteConfig& c
     // Initialize headless Vulkan context
     HeadlessVulkanContext ctx{};
     if (!InitializeHeadlessVulkan(ctx, config)) {
-        std::cerr << "Error: Failed to initialize Vulkan\n";
+        // TODO: Migrate to LOG_ERROR when BenchmarkRunner inherits from ILoggable
+        // LOG_ERROR("Failed to initialize Vulkan");
         return TestSuiteResults{};
     }
 
@@ -448,7 +574,8 @@ TestSuiteResults BenchmarkRunner::RunSuiteHeadless(const BenchmarkSuiteConfig& c
     SetDeviceCapabilities(deviceCaps);
 
     if (config.verbose) {
-        std::cout << "Device: " << deviceCaps.GetSummaryString() << "\n\n";
+        // TODO: Migrate to LOG_INFO when BenchmarkRunner inherits from ILoggable
+        // LOG_INFO("Device: " + deviceCaps.GetSummaryString());
     }
 
     // Initialize profiler system
@@ -470,18 +597,18 @@ TestSuiteResults BenchmarkRunner::RunSuiteHeadless(const BenchmarkSuiteConfig& c
 
             // Format: [=====>              ] 25% | Test 1/4 | 64^3 cornell | shader.comp
             int percent = (frame * 100) / totalFrames;
-            std::cout << "\r  [" << bar << ">" << empty << "] "
-                      << std::setw(3) << percent << "% | "
-                      << "Test " << (testIdx + 1) << "/" << totalTests << " | "
-                      << cfg.voxelResolution << "^3 " << cfg.sceneType << " | "
-                      << cfg.shader
-                      << "     " << std::flush;
+            // TODO: Migrate to LOG_INFO when BenchmarkRunner inherits from ILoggable
+            // LOG_INFO("\r  [" + bar + ">" + empty + "] " +
+            //          std::to_string(percent) + "% | " +
+            //          "Test " + std::to_string(testIdx + 1) + "/" + std::to_string(totalTests) + " | " +
+            //          std::to_string(cfg.voxelResolution) + "^3 " + cfg.sceneType + " | " + cfg.shader);
         });
     }
 
     // Start suite
     if (!StartSuite()) {
-        std::cerr << "Error: Failed to start benchmark suite\n";
+        // TODO: Migrate to LOG_ERROR when BenchmarkRunner inherits from ILoggable
+        // LOG_ERROR("Failed to start benchmark suite");
         CleanupHeadlessVulkan(ctx);
         return TestSuiteResults{};
     }
@@ -491,11 +618,11 @@ TestSuiteResults BenchmarkRunner::RunSuiteHeadless(const BenchmarkSuiteConfig& c
         const auto& testConfig = GetCurrentTestConfig();
 
         if (config.verbose) {
-            std::cout << "  [" << (GetCurrentTestIndex() + 1) << "/" << testMatrix_.size() << "] "
-                      << testConfig.pipeline << " | "
-                      << testConfig.voxelResolution << "^3 | "
-                      << testConfig.sceneType << " | "
-                      << testConfig.shader << "\n";
+            // TODO: Migrate to LOG_INFO when BenchmarkRunner inherits from ILoggable
+            // LOG_INFO("  [" + std::to_string(GetCurrentTestIndex() + 1) + "/" + std::to_string(testMatrix_.size()) + "] " +
+            //          testConfig.pipeline + " | " +
+            //          std::to_string(testConfig.voxelResolution) + "^3 | " +
+            //          testConfig.sceneType + " | " + testConfig.shader);
         }
 
         ProfilerSystem::Instance().StartTestRun(testConfig);
@@ -542,12 +669,21 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
     // Create message bus for event coordination
     auto messageBus = std::make_unique<Vixen::EventBus::MessageBus>();
 
+    // Get global MainCacher instance for cache persistence
+    auto& mainCacher = CashSystem::MainCacher::Instance();
+    mainCacher.Initialize(messageBus.get());
+
+    // Create logger for RenderGraph (kept as unique_ptr for lifetime management)
+    // Use global ::Logger (exposed via 'using Vixen::Log::Logger;' in Logger.h)
+    auto graphLogger = std::make_unique<::Logger>("BenchmarkGraph", false);
+    graphLogger->SetTerminalOutput(false);  // Set to true for debugging
+
     // Create render graph
     auto renderGraph = std::make_unique<RG::RenderGraph>(
         nodeRegistry.get(),
         messageBus.get(),
-        nullptr,  // No logger
-        nullptr   // No cache
+        graphLogger.get(),
+        &mainCacher
     );
 
     // Subscribe to window close events
@@ -579,18 +715,18 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
 
             // Format: [=====>              ] 25% | Test 1/4 | 64^3 cornell | shader.comp
             int percent = (frame * 100) / totalFrames;
-            std::cout << "\r  [" << bar << ">" << empty << "] "
-                      << std::setw(3) << percent << "% | "
-                      << "Test " << (testIdx + 1) << "/" << totalTests << " | "
-                      << cfg.voxelResolution << "^3 " << cfg.sceneType << " | "
-                      << cfg.shader
-                      << "     " << std::flush;
+            // TODO: Migrate to LOG_INFO when BenchmarkRunner inherits from ILoggable
+            // LOG_INFO("\r  [" + bar + ">" + empty + "] " +
+            //          std::to_string(percent) + "% | " +
+            //          "Test " + std::to_string(testIdx + 1) + "/" + std::to_string(totalTests) + " | " +
+            //          std::to_string(cfg.voxelResolution) + "^3 " + cfg.sceneType + " | " + cfg.shader);
         });
     }
 
     // Start suite
     if (!StartSuite()) {
-        std::cerr << "Error: Failed to start benchmark suite\n";
+        // TODO: Migrate to LOG_ERROR when BenchmarkRunner inherits from ILoggable
+        // LOG_ERROR("Failed to start benchmark suite");
         return TestSuiteResults{};
     }
 
@@ -599,17 +735,18 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
         const auto& testConfig = GetCurrentTestConfig();
 
         if (config.verbose) {
-            std::cout << "  [" << (GetCurrentTestIndex() + 1) << "/" << testMatrix_.size() << "] "
-                      << testConfig.pipeline << " | "
-                      << testConfig.voxelResolution << "^3 | "
-                      << testConfig.sceneType << " | "
-                      << testConfig.shader << "\n";
+            // TODO: Migrate to LOG_INFO when BenchmarkRunner inherits from ILoggable
+            // LOG_INFO("  [" + std::to_string(GetCurrentTestIndex() + 1) + "/" + std::to_string(testMatrix_.size()) + "] " +
+            //          testConfig.pipeline + " | " +
+            //          std::to_string(testConfig.voxelResolution) + "^3 | " +
+            //          testConfig.sceneType + " | " + testConfig.shader);
         }
 
         // Create graph for current test
         auto benchGraph = CreateGraphForCurrentTest(renderGraph.get());
         if (!benchGraph.IsValid()) {
-            std::cerr << "Error: Failed to create graph for test\n";
+            // TODO: Migrate to LOG_ERROR when BenchmarkRunner inherits from ILoggable
+            // LOG_ERROR("Failed to create graph for test");
             continue;
         }
 
@@ -626,7 +763,8 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
                 auto deviceCaps = DeviceCapabilities::Capture(vulkanHandles.physicalDevice);
                 SetDeviceCapabilities(deviceCaps);
                 if (config.verbose) {
-                    std::cout << "[BenchmarkRunner] Device: " << deviceCaps.deviceName << "\n";
+                    // TODO: Migrate to LOG_INFO when BenchmarkRunner inherits from ILoggable
+                    // LOG_INFO("[BenchmarkRunner] Device: " + std::string(deviceCaps.deviceName));
                 }
             }
         }
@@ -670,7 +808,8 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
 
                     SetDeviceCapabilities(deviceCaps);
                     if (config.verbose) {
-                        std::cout << "[BenchmarkRunner] Device from graph: " << deviceCaps.deviceName << "\n";
+                        // TODO: Migrate to LOG_INFO when BenchmarkRunner inherits from ILoggable
+                        // LOG_INFO("[BenchmarkRunner] Device from graph: " + std::string(deviceCaps.deviceName));
                     }
                 }
             }
@@ -690,6 +829,24 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
         }
 
         ProfilerSystem::Instance().StartTestRun(testConfig);
+
+        // Initialize frame capture if not already done
+        if (!frameCapture_ && vulkanHandles.IsValid()) {
+            frameCapture_ = std::make_unique<FrameCapture>();
+            bool captureInitialized = frameCapture_->Initialize(
+                vulkanHandles.device,
+                vulkanHandles.physicalDevice,
+                vulkanHandles.graphicsQueue,
+                vulkanHandles.graphicsQueueFamily,
+                testConfig.screenWidth,
+                testConfig.screenHeight
+            );
+            if (!captureInitialized) {
+                std::cerr << "[BenchmarkRunner] Warning: Frame capture initialization failed" << std::endl;
+                frameCapture_.reset();
+            }
+        }
+        midFrameCaptured_ = false;  // Reset for this test
 
         // Frame timing variables
         auto profilingStartTime = std::chrono::high_resolution_clock::now();
@@ -716,11 +873,77 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
 
             renderGraph->UpdateTime();
             renderGraph->ProcessEvents();
+
+            // Check for ESC/close request after processing events (before rendering)
+            // WindowCloseEvent from InputNode sets shouldClose via subscription callback
+            if (shouldClose) {
+                // Wait for GPU before breaking out of frame loop
+                auto* deviceNode = dynamic_cast<RG::DeviceNode*>(
+                    renderGraph->GetInstanceByName("benchmark_device"));
+                if (deviceNode && deviceNode->GetDevice()) {
+                    VkDevice device = deviceNode->GetDevice()->device;
+                    if (device != VK_NULL_HANDLE) {
+                        vkDeviceWaitIdle(device);
+                    }
+                }
+                break;
+            }
+
             renderGraph->RecompileDirtyNodes();
 
             VkResult result = renderGraph->RenderFrame();
             if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
                 // Non-fatal warning
+            }
+
+            // ============================================================
+            // Frame capture for debugging (before timing measurement)
+            // ============================================================
+            if (frameCapture_ && frameCapture_->IsInitialized()) {
+                // Get swapchain node for image access
+                auto* swapchainNode = dynamic_cast<RG::SwapChainNode*>(
+                    renderGraph->GetInstanceByName("benchmark_swapchain"));
+                
+                // Get input node for 'C' key capture trigger
+                auto* inputNode = dynamic_cast<RG::InputNode*>(
+                    renderGraph->GetInstanceByName("benchmark_input"));
+
+                if (swapchainNode) {
+                    const auto* swapchainVars = swapchainNode->GetSwapchainPublic();
+                    uint32_t imageIndex = swapchainNode->GetCurrentImageIndex();
+
+                    // Automatic mid-frame capture (quarter resolution)
+                    uint32_t midFrame = totalFrames / 2;
+                    if (frame == midFrame && !midFrameCaptured_) {
+                        CaptureConfig captureConfig;
+                        captureConfig.outputPath = outputDirectory_;
+                        captureConfig.testName = testConfig.testId;
+                        captureConfig.frameNumber = frame;
+                        captureConfig.resolution = CaptureResolution::Quarter;
+
+                        auto captureResult = frameCapture_->Capture(swapchainVars, imageIndex, captureConfig);
+                        midFrameCaptured_ = true;
+                        if (config.verbose && captureResult.success) {
+                            std::cout << "  [Capture] Mid-frame saved: " << captureResult.savedPath << std::endl;
+                        }
+                    }
+
+                    // Manual capture on 'C' key (full resolution)
+                    if (inputNode) {
+                        if (inputNode->GetInputState().IsKeyPressed(Vixen::EventBus::KeyCode::C)) {
+                            CaptureConfig captureConfig;
+                            captureConfig.outputPath = outputDirectory_;
+                            captureConfig.testName = testConfig.testId;
+                            captureConfig.frameNumber = frame;
+                            captureConfig.resolution = CaptureResolution::Full;
+
+                            auto captureResult = frameCapture_->Capture(swapchainVars, imageIndex, captureConfig);
+                            if (captureResult.success) {
+                                std::cout << "  [Capture] Manual capture saved: " << captureResult.savedPath << std::endl;
+                            }
+                        }
+                    }
+                }
             }
 
             // CPU frame timing end
@@ -792,6 +1015,24 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
         ProfilerSystem::Instance().EndTestRun(!userRequestedClose);
         ClearCurrentGraph();
 
+        // Wait for GPU to finish all pending work before destroying resources
+        // This prevents crashes when ESC is pressed during frame rendering
+        auto* deviceNode = dynamic_cast<RG::DeviceNode*>(
+            renderGraph->GetInstanceByName("benchmark_device"));
+        if (deviceNode && deviceNode->GetDevice()) {
+            VkDevice device = deviceNode->GetDevice()->device;
+            if (device != VK_NULL_HANDLE) {
+                vkDeviceWaitIdle(device);
+            }
+        }
+
+        // Cleanup frame capture before device destruction
+        // (FrameCapture holds Vulkan handles created on this device)
+        if (frameCapture_) {
+            frameCapture_->Cleanup();
+            frameCapture_.reset();
+        }
+
         // Reset graph for next test (this destroys window, triggering WindowCloseEvent)
         renderGraph.reset();
 
@@ -815,8 +1056,8 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
         renderGraph = std::make_unique<RG::RenderGraph>(
             nodeRegistry.get(),
             messageBus.get(),
-            nullptr,
-            nullptr
+            graphLogger.get(),
+            &mainCacher
         );
     }
 
@@ -838,7 +1079,8 @@ void BenchmarkRunner::ListAvailableGPUs() {
     createInfo.pApplicationInfo = &appInfo;
 
     if (vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS) {
-        std::cerr << "Error: Failed to create Vulkan instance for GPU enumeration\n";
+        // TODO: Migrate to LOG_ERROR when BenchmarkRunner inherits from ILoggable
+        // LOG_ERROR("Failed to create Vulkan instance for GPU enumeration");
         return;
     }
 
@@ -846,7 +1088,8 @@ void BenchmarkRunner::ListAvailableGPUs() {
     vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
 
     if (deviceCount == 0) {
-        std::cout << "No Vulkan-capable GPUs found\n";
+        // TODO: Migrate to LOG_INFO when BenchmarkRunner inherits from ILoggable
+        // LOG_INFO("No Vulkan-capable GPUs found");
         vkDestroyInstance(instance, nullptr);
         return;
     }
@@ -854,14 +1097,18 @@ void BenchmarkRunner::ListAvailableGPUs() {
     std::vector<VkPhysicalDevice> devices(deviceCount);
     vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
 
-    std::cout << "\nAvailable GPUs:\n";
-    std::cout << "===============\n";
+    // TODO: Migrate to LOG_INFO when BenchmarkRunner inherits from ILoggable
+    // LOG_INFO("");
+    // LOG_INFO("Available GPUs:");
+    // LOG_INFO("===============");
 
     for (uint32_t i = 0; i < deviceCount; ++i) {
         auto caps = DeviceCapabilities::Capture(devices[i]);
-        std::cout << "  [" << i << "] " << caps.GetSummaryString() << "\n";
+        // LOG_INFO("  [" + std::to_string(i) + "] " + caps.GetSummaryString());
     }
-    std::cout << "\nUse --gpu N to select a specific GPU\n\n";
+    // LOG_INFO("");
+    // LOG_INFO("Use --gpu N to select a specific GPU");
+    // LOG_INFO("");
 
     vkDestroyInstance(instance, nullptr);
 }

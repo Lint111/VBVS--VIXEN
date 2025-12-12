@@ -151,7 +151,8 @@ const VoxelGrid* VoxelDataCache::GetOrGenerate(
     if (!GetEnabledFlag()) {
         auto generator = SceneGeneratorFactory::Create(sceneType);
         if (!generator) {
-            std::cout << "[VoxelDataCache] ERROR: Unknown scene type: " << sceneType << std::endl;
+            // Logging would require logger context; use stderr for now
+            std::cerr << "[VoxelDataCache] ERROR: Unknown scene type: " << sceneType << std::endl;
             return nullptr;
         }
         // Return nullptr to signal caller should generate fresh
@@ -168,19 +169,19 @@ const VoxelGrid* VoxelDataCache::GetOrGenerate(
     auto it = cache.find(key);
     if (it != cache.end()) {
         GetHits()++;
-        std::cout << "[VoxelDataCache] HIT: " << sceneType << " @ " << resolution
+        std::cerr << "[VoxelDataCache] HIT: " << sceneType << " @ " << resolution
                   << "^3 (hits=" << GetHits() << ", misses=" << GetMisses() << ")" << std::endl;
         return it->second.get();
     }
 
     // Cache miss - generate new data
     GetMisses()++;
-    std::cout << "[VoxelDataCache] MISS: Generating " << sceneType << " @ " << resolution
+    std::cerr << "[VoxelDataCache] MISS: Generating " << sceneType << " @ " << resolution
               << "^3..." << std::endl;
 
     auto generator = SceneGeneratorFactory::Create(sceneType);
     if (!generator) {
-        std::cout << "[VoxelDataCache] ERROR: Unknown scene type: " << sceneType << std::endl;
+        std::cerr << "[VoxelDataCache] ERROR: Unknown scene type: " << sceneType << std::endl;
         return nullptr;
     }
 
@@ -188,7 +189,7 @@ const VoxelGrid* VoxelDataCache::GetOrGenerate(
     auto grid = std::make_unique<VoxelGrid>(resolution);
     generator->Generate(*grid, params);
 
-    std::cout << "[VoxelDataCache] Generated " << sceneType << " @ " << resolution
+    std::cerr << "[VoxelDataCache] Generated " << sceneType << " @ " << resolution
               << "^3, density=" << grid->GetDensityPercent() << "%" << std::endl;
 
     // Store in cache and return pointer
@@ -201,7 +202,7 @@ const VoxelGrid* VoxelDataCache::GetOrGenerate(
 void VoxelDataCache::Clear() {
     std::lock_guard<std::mutex> lock(GetMutex());
     auto [hits, misses] = GetStats();
-    std::cout << "[VoxelDataCache] Clearing cache (final stats: hits=" << hits
+    std::cerr << "[VoxelDataCache] Clearing cache (final stats: hits=" << hits
               << ", misses=" << misses << ")" << std::endl;
     GetCache().clear();
     GetHits() = 0;
@@ -224,7 +225,7 @@ size_t VoxelDataCache::GetMemoryUsage() {
 
 void VoxelDataCache::SetEnabled(bool enabled) {
     GetEnabledFlag() = enabled;
-    std::cout << "[VoxelDataCache] Caching " << (enabled ? "enabled" : "disabled") << std::endl;
+    std::cerr << "[VoxelDataCache] Caching " << (enabled ? "enabled" : "disabled") << std::endl;
 }
 
 bool VoxelDataCache::IsEnabled() {
@@ -417,14 +418,18 @@ void CornellBoxSceneGenerator::GenerateWalls(VoxelGrid& grid) {
 void CornellBoxSceneGenerator::GenerateCheckerFloor(VoxelGrid& grid) {
     uint32_t res = grid.GetResolution();
     uint32_t checkerSize = res / 8;  // 8x8 checker grid
+    uint32_t wallThickness = std::max(1u, res / 24);  // Match wall thickness from GenerateWalls
 
     if (checkerSize == 0) checkerSize = 1;
 
+    // Cover the entire floor thickness with checkerboard pattern
     for (uint32_t x = 0; x < res; ++x) {
         for (uint32_t z = 0; z < res; ++z) {
             bool isLight = ((x / checkerSize) + (z / checkerSize)) % 2 == 0;
             uint8_t material = isLight ? 6 : 7;  // Light gray / dark gray
-            grid.Set(x, 0, z, material);
+            for (uint32_t y = 0; y < wallThickness; ++y) {
+                grid.Set(x, y, z, material);
+            }
         }
     }
 }

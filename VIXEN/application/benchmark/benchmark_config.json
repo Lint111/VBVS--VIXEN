@@ -6,14 +6,15 @@
     "headless": false,
     "verbose": true,
     "validation": false,
+    "machine_name": null,
     "export": {
       "csv": true,
       "json": true
     }
   },
   "profiling": {
-    "warmup_frames": 100,
-    "measurement_frames": 300
+    "warmup_frames": 50,
+    "measurement_frames": 100
   },
   "matrix": {
     "global": {
@@ -23,22 +24,24 @@
     },
     "pipelines": {
       "compute": {
-        "enabled": false,
+        "enabled": true,
         "shader_groups": [
           ["VoxelRayMarch.comp"],
-          ["VoxelRayMarch_Optimized.comp"]
+          ["VoxelRayMarch_Compressed.comp"]
         ]
       },
       "fragment": {
         "enabled": true,
         "shader_groups": [
-          ["Fullscreen.vert", "VoxelRayMarch.frag"]
+          ["Fullscreen.vert", "VoxelRayMarch.frag"],
+          ["Fullscreen.vert", "VoxelRayMarch_Compressed.frag"]
         ]
       },
       "hardware_rt": {
-        "enabled": false,
+        "enabled": true,
         "shader_groups": [
-          ["ray_march_rt.rgen", "ray_march_rt.rmiss", "ray_march_rt.rchit"]
+          ["VoxelRT.rgen", "VoxelRT.rmiss", "VoxelRT.rchit"],
+          ["VoxelRT.rgen", "VoxelRT.rmiss", "VoxelRT_Compressed.rchit"]
         ]
       }
     }

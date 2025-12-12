@@ -5,7 +5,6 @@
 #include "ShaderPreprocessor.h"
 #include <fstream>
 #include <functional>
-#include <iostream>
 
 using namespace Vixen::Hash;
 
@@ -51,7 +50,7 @@ bool ShaderCompilationCacher::SerializeToFile(const std::filesystem::path& path)
 
     std::ofstream file(path, std::ios::binary);
     if (!file.is_open()) {
-        std::cerr << "[ShaderCompilationCacher::SerializeToFile] Failed to open file: " << path << std::endl;
+        LOG_ERROR("SerializeToFile: Failed to open file: " + path.string());
         return false;
     }
 
@@ -112,7 +111,7 @@ bool ShaderCompilationCacher::SerializeToFile(const std::filesystem::path& path)
         }
     }
 
-    std::cout << "[ShaderCompilationCacher::SerializeToFile] Serialized " << cacheSize << " compiled shaders to " << path << std::endl;
+    LOG_INFO("SerializeToFile: Serialized " + std::to_string(cacheSize) + " compiled shaders to " + path.string());
     return true;
 }
 
@@ -122,7 +121,7 @@ bool ShaderCompilationCacher::DeserializeFromFile(const std::filesystem::path& p
 
     std::ifstream file(path, std::ios::binary);
     if (!file.is_open()) {
-        std::cerr << "[ShaderCompilationCacher::DeserializeFromFile] Failed to open file: " << path << std::endl;
+        LOG_ERROR("DeserializeFromFile: Failed to open file: " + path.string());
         return false;
     }
 
@@ -130,7 +129,7 @@ bool ShaderCompilationCacher::DeserializeFromFile(const std::filesystem::path& p
     uint32_t version = 0;
     file.read(reinterpret_cast<char*>(&version), sizeof(version));
     if (version != 1) {
-        std::cerr << "[ShaderCompilationCacher::DeserializeFromFile] Unsupported version: " << version << std::endl;
+        LOG_ERROR("DeserializeFromFile: Unsupported version: " + std::to_string(version));
         return false;
     }
 
@@ -138,7 +137,7 @@ bool ShaderCompilationCacher::DeserializeFromFile(const std::filesystem::path& p
     uint32_t cacheSize = 0;
     file.read(reinterpret_cast<char*>(&cacheSize), sizeof(cacheSize));
 
-    std::cout << "[ShaderCompilationCacher::DeserializeFromFile] Loading " << cacheSize << " compiled shaders from " << path << std::endl;
+    LOG_INFO("DeserializeFromFile: Loading " + std::to_string(cacheSize) + " compiled shaders from " + path.string());
 
     // Deserialize each compiled shader
     for (uint32_t i = 0; i < cacheSize; ++i) {
@@ -218,7 +217,7 @@ bool ShaderCompilationCacher::DeserializeFromFile(const std::filesystem::path& p
         m_entries.emplace(key, std::move(entry));
     }
 
-    std::cout << "[ShaderCompilationCacher::DeserializeFromFile] Loaded " << cacheSize << " compiled shaders" << std::endl;
+    LOG_INFO("DeserializeFromFile: Loaded " + std::to_string(cacheSize) + " compiled shaders");
 
     (void)device;  // Device not needed for device-independent SPIR-V
     return true;
@@ -255,7 +254,7 @@ void ShaderCompilationCacher::CompileShader(const ShaderCompilationParams& ci, C
         case VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT:    stage = ShaderManagement::ShaderStage::TessControl; break;
         case VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT: stage = ShaderManagement::ShaderStage::TessEval; break;
         default:
-            std::cerr << "[ShaderCompilationCacher] Unsupported shader stage: " << ci.stage << std::endl;
+            LOG_ERROR("Unsupported shader stage: " + std::to_string(ci.stage));
             wrapper.spirvCode = {};
             return;
     }
@@ -276,8 +275,7 @@ void ShaderCompilationCacher::CompileShader(const ShaderCompilationParams& ci, C
     if (result.success) {
         wrapper.spirvCode = std::move(result.spirv);
     } else {
-        std::cerr << "[ShaderCompilationCacher] Compilation failed for " << ci.sourcePath << std::endl;
-        std::cerr << result.GetFullLog() << std::endl;
+        LOG_ERROR("Compilation failed for " + ci.sourcePath + ": " + result.GetFullLog());
         wrapper.spirvCode = {};
     }
 }

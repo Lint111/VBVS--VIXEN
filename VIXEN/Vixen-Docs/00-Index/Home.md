@@ -10,30 +10,44 @@ created: 2025-12-06
 **Vulkan Interactive eXample Engine** - A graph-based Vulkan rendering engine with voxel ray tracing research capabilities.
 
 > [!info] Current Status
-> **Phase J COMPLETE** (December 6, 2025) - All 4 shader variants working (compute/fragment x compressed/uncompressed). **Next: Phase K - Hardware RT**
+> **Phase K/L COMPLETE** (December 10, 2025) - All 6 shader variants working (compute/fragment/RT x compressed/uncompressed). Data pipeline ready. **Next: Multi-tester data collection**
 
 ---
 
 ## Quick Navigation
 
 ```mermaid
-graph LR
-    A[Home] --> B[Architecture]
-    A --> C[Implementation]
-    A --> D[Research]
-    A --> E[Development]
-    A --> F[Progress]
-    A --> L[Libraries]
+flowchart LR
+    A[Home] --> B[01-Architecture/Overview]
+    A --> C[02-Implementation/Overview]
+    A --> D[03-Research/Overview]
+    A --> E[04-Development/Overview]
+    A --> F[05-Progress/Overview]
+    A --> L[Libraries/Overview]
 
     B --> B1[RenderGraph]
-    B --> B2[Vulkan Pipeline]
-    B --> B3[Type System]
+    B --> B2[VulkanResources]
+    B --> B3[01-Architecture/Type-System]
 
-    C --> C1[SVO System]
-    C --> C2[Ray Marching]
-    C --> C3[Shaders]
+    C --> C1[SVO]
+    C --> C2[02-Implementation/Ray-Marching]
+    C --> C3[02-Implementation/Shaders]
 
-    L --> L1[All 14 Libraries]
+    L --> L1[Libraries/Overview]
+
+    class B internal-link
+    class C internal-link
+    class D internal-link
+    class E internal-link
+    class F internal-link
+    class L internal-link
+    class B1 internal-link
+    class B2 internal-link
+    class B3 internal-link
+    class C1 internal-link
+    class C2 internal-link
+    class C3 internal-link
+    class L1 internal-link
 
     style A fill:#4a9eff
     style B fill:#ff9f43
@@ -43,6 +57,9 @@ graph LR
     style F fill:#20bf6b
     style L fill:#3498db
 ```
+
+> [!tip] Clickable Diagram
+> Click any node above to navigate directly to that section. See [[04-Development/Mermaid-Clickable-Links|Mermaid Clickable Links Guide]] for syntax details.
 
 ---
 
@@ -81,6 +98,7 @@ Build system, testing, and coding standards.
 - [[04-Development/Testing|Testing]] - GoogleTest framework
 - [[04-Development/Coding-Standards|Coding Standards]] - C++23 guidelines
 - [[04-Development/Profiling|Profiling]] - GPU performance measurement
+- [[04-Development/Mermaid-Clickable-Links|Mermaid Clickable Links]] - Making diagrams navigable
 
 ### [[05-Progress/Overview|Progress]]
 Project status and roadmap tracking.
@@ -98,7 +116,7 @@ Project status and roadmap tracking.
 | DXT Compression | 5.3:1 ratio | 5:1 ratio |
 | Test Coverage | 40% | 40% |
 | Nodes Implemented | 19+ | 20+ |
-| Shader Variants | 4 (compute/fragment x compressed/uncompressed) | 6 |
+| Shader Variants | 6 (compute/fragment/RT x compressed/uncompressed) | 6 |
 
 ---
 
@@ -134,4 +152,5 @@ Project status and roadmap tracking.
 
 ---
 
-*Last updated: 2025-12-06*
+*Last updated: 2025-12-10*
+

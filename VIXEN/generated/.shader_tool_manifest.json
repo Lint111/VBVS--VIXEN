@@ -2,7 +2,21 @@
   "files": [
     "43bded93fcbc37f9_stage32.spv",
     "VoxelRayMarch.json",
-    "89d176cd6eac7adf_stage32.spv"
+    "89d176cd6eac7adf_stage32.spv",
+    "822d58f12e851240_stage256.spv",
+    "822d58f12e851240_stage1024.spv",
+    "822d58f12e851240_stage4096.spv",
+    "822d58f12e851240_stage2048.spv",
+    "2744040dfb644549_stage4096.spv",
+    "VoxelRT.json",
+    "2744040dfb644549_stage1024.spv",
+    "2744040dfb644549_stage256.spv",
+    "2744040dfb644549_stage2048.spv",
+    "4f3ab9145d1784fb_stage256.spv",
+    "4f3ab9145d1784fb_stage2048.spv",
+    "4f3ab9145d1784fb_stage4096.spv",
+    "4f3ab9145d1784fb_stage1024.spv",
+    "VoxelRT_Compressed.json"
   ],
   "version": 1
 }

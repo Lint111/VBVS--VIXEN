@@ -67,6 +67,10 @@ set(RENDERGRAPH_DATA_NODE_CONFIGS
     include/Data/Nodes/TextureLoaderNodeConfig.h
     include/Data/Nodes/VertexBufferNodeConfig.h
     include/Data/Nodes/VoxelGridNodeConfig.h
+    include/Data/Nodes/VoxelAABBConverterNodeConfig.h
+    include/Data/Nodes/AccelerationStructureNodeConfig.h
+    include/Data/Nodes/RayTracingPipelineNodeConfig.h
+    include/Data/Nodes/TraceRaysNodeConfig.h
     include/Data/Nodes/WindowNodeConfig.h
 )
 
@@ -159,6 +163,10 @@ set(RENDERGRAPH_NODE_HEADERS
     include/Nodes/TextureLoaderNode.h
     include/Nodes/VertexBufferNode.h
     include/Nodes/VoxelGridNode.h
+    include/Nodes/VoxelAABBConverterNode.h
+    include/Nodes/AccelerationStructureNode.h
+    include/Nodes/RayTracingPipelineNode.h
+    include/Nodes/TraceRaysNode.h
     include/Nodes/WindowNode.h
 )
 
@@ -189,6 +197,10 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/TextureLoaderNode.cpp
     src/Nodes/VertexBufferNode.cpp
     src/Nodes/VoxelGridNode.cpp
+    src/Nodes/VoxelAABBConverterNode.cpp
+    src/Nodes/AccelerationStructureNode.cpp
+    src/Nodes/RayTracingPipelineNode.cpp
+    src/Nodes/TraceRaysNode.cpp
     src/Nodes/WindowNode.cpp
 )
 
@@ -238,9 +250,13 @@ target_include_directories(RenderGraph
         $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/application/main/include>
         # Generated SDI headers - priority order:
         #   1. Dev-time: Tool-generated SDI files in source tree
-        #   2. Build-time: CMake-generated SDI files
+        #   2. Build-time: CMake-generated SDI files (main app)
+        #   3. Build-time: CMake-generated SDI files (benchmark app)
+        #   4. Binaries: Pre-built SDI files in binaries/generated/sdi
         $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/generated/sdi>
         $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/application/main/generated/sdi>
+        $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/application/benchmark/generated/sdi>
+        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/binaries/generated/sdi>
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
 )

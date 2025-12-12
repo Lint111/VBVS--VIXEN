@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Headers.h"
+#include "ILoggable.h"
 
 class VulkanApplication;
 class VulkanApplicationBase;
@@ -100,9 +101,9 @@ struct SwapChainPublicVariables {
     
 };
 
-class VulkanSwapChain {
+class VulkanSwapChain : public ILoggable {
     public:
-        VulkanSwapChain() {};
+        VulkanSwapChain() { InitializeLogger("VulkanSwapChain"); };
         ~VulkanSwapChain() {};
 
 

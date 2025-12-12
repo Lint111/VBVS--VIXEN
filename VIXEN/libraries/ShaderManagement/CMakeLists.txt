@@ -57,6 +57,10 @@ endif()
 # Link to project-level hash provider for consistent hashing behavior
 target_link_libraries(ShaderManagement PRIVATE ProjectHash)
 
+# Link to nlohmann_json for serialization (ShaderBundleSerializer, FileManifest)
+# Already fetched in dependencies/CMakeLists.txt
+target_link_libraries(ShaderManagement PUBLIC nlohmann_json::nlohmann_json)
+
 # Link to EventBus for shader events
 target_link_libraries(ShaderManagement PUBLIC EventBus)
 
@@ -156,21 +160,8 @@ set_target_properties(ShaderManagement PROPERTIES FOLDER "Libraries")
 
 # Skip tools in trimmed build mode (require runtime compilation)
 if(NOT VULKAN_TRIMMED_BUILD_ACTIVE)
-    # Fetch nlohmann_json for shader_tool
-    FetchContent_Declare(
-        nlohmann_json
-        GIT_REPOSITORY https://github.com/nlohmann/json.git
-        GIT_TAG        v3.11.3
-        GIT_SHALLOW    TRUE
-    )
-    FetchContent_MakeAvailable(nlohmann_json)
-
-    # Organize nlohmann_json in Dependencies folder
-    if(TARGET nlohmann_json)
-        set_target_properties(nlohmann_json PROPERTIES FOLDER "Dependencies")
-    endif()
-
     # Add tools subdirectory (shader_tool executable)
+    # nlohmann_json is available via dependencies/CMakeLists.txt
     add_subdirectory(tools)
     message(STATUS "ShaderManagement: Building shader tools")
 else()

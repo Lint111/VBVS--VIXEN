@@ -26,8 +26,7 @@ std::shared_ptr<ComputePipelineWrapper> ComputePipelineCacher::GetOrCreate(
 std::shared_ptr<ComputePipelineWrapper> ComputePipelineCacher::Create(
     const ComputePipelineCreateParams& ci
 ) {
-    std::cout << "[ComputePipelineCacher::Create] Creating compute pipeline for shader: "
-              << ci.shaderKey << std::endl;
+    LOG_INFO("[ComputePipelineCacher::Create] Creating compute pipeline for shader: " + ci.shaderKey);
 
     auto wrapper = std::make_shared<ComputePipelineWrapper>();
     wrapper->shaderKey = ci.shaderKey;
@@ -42,7 +41,7 @@ std::shared_ptr<ComputePipelineWrapper> ComputePipelineCacher::Create(
     // 2. Create compute pipeline
     CreateComputePipeline(ci, *wrapper);
 
-    std::cout << "[ComputePipelineCacher::Create] Compute pipeline created successfully" << std::endl;
+    LOG_INFO("[ComputePipelineCacher::Create] Compute pipeline created successfully");
     return wrapper;
 }
 
@@ -57,13 +56,12 @@ std::uint64_t ComputePipelineCacher::ComputeKey(const ComputePipelineCreateParam
 }
 
 void ComputePipelineCacher::Cleanup() {
-    std::cout << "[ComputePipelineCacher::Cleanup] Cleaning up compute pipelines" << std::endl;
+    LOG_INFO("[ComputePipelineCacher::Cleanup] Cleaning up compute pipelines");
 
     // Destroy all cached pipelines
     for (auto& [key, entry] : m_entries) {
         if (entry.resource && entry.resource->pipeline != VK_NULL_HANDLE) {
-            std::cout << "[ComputePipelineCacher::Cleanup] Destroying pipeline: "
-                      << entry.resource->shaderKey << std::endl;
+            LOG_DEBUG("[ComputePipelineCacher::Cleanup] Destroying pipeline: " + entry.resource->shaderKey);
             vkDestroyPipeline(m_device->device, entry.resource->pipeline, nullptr);
             entry.resource->pipeline = VK_NULL_HANDLE;
         }
@@ -74,7 +72,7 @@ void ComputePipelineCacher::Cleanup() {
 
     // Destroy global cache if we own it (shouldn't happen - should be shared)
     if (m_globalCache != VK_NULL_HANDLE) {
-        std::cout << "[ComputePipelineCacher::Cleanup] WARNING: Destroying owned pipeline cache (should be shared)" << std::endl;
+        LOG_WARNING("[ComputePipelineCacher::Cleanup] WARNING: Destroying owned pipeline cache (should be shared)");
         vkDestroyPipelineCache(m_device->device, m_globalCache, nullptr);
         m_globalCache = VK_NULL_HANDLE;
     }
@@ -94,12 +92,12 @@ void ComputePipelineCacher::CreatePipelineLayout(
     // Use explicit pipelineLayoutWrapper if provided
     if (ci.pipelineLayoutWrapper) {
         wrapper.pipelineLayoutWrapper = ci.pipelineLayoutWrapper;
-        std::cout << "[ComputePipelineCacher::CreatePipelineLayout] Using provided pipeline layout" << std::endl;
+        LOG_DEBUG("[ComputePipelineCacher::CreatePipelineLayout] Using provided pipeline layout");
         return;
     }
 
     // Convenience fallback: Create layout from descriptor set layout + push constants
-    std::cout << "[ComputePipelineCacher::CreatePipelineLayout] Using convenience fallback to create pipeline layout" << std::endl;
+    LOG_DEBUG("[ComputePipelineCacher::CreatePipelineLayout] Using convenience fallback to create pipeline layout");
 
     // Get PipelineLayoutCacher from MainCacher
     auto& mainCacher = MainCacher::Instance();
@@ -120,7 +118,7 @@ void ComputePipelineCacher::CreatePipelineLayout(
     // Get or create the layout through PipelineLayoutCacher
     wrapper.pipelineLayoutWrapper = layoutCacher->GetOrCreate(layoutParams);
 
-    std::cout << "[ComputePipelineCacher::CreatePipelineLayout] Created pipeline layout via fallback" << std::endl;
+    LOG_DEBUG("[ComputePipelineCacher::CreatePipelineLayout] Created pipeline layout via fallback");
 }
 
 void ComputePipelineCacher::CreateComputePipeline(
@@ -176,8 +174,7 @@ void ComputePipelineCacher::CreateComputePipeline(
 
     wrapper.cache = cacheToUse;
 
-    std::cout << "[ComputePipelineCacher::CreateComputePipeline] Created VkPipeline: "
-              << reinterpret_cast<uint64_t>(wrapper.pipeline) << std::endl;
+    LOG_DEBUG("[ComputePipelineCacher::CreateComputePipeline] Created VkPipeline: " + std::to_string(reinterpret_cast<uint64_t>(wrapper.pipeline)));
 }
 
 // ============================================================================
@@ -189,8 +186,8 @@ bool ComputePipelineCacher::SerializeToFile(const std::filesystem::path& path) c
     // Better approach: serialize shader keys + layout keys, recompile on load
     // Pipeline cache (VkPipelineCache) can be serialized separately for warm starts
 
-    std::cout << "[ComputePipelineCacher::SerializeToFile] Compute pipeline serialization deferred" << std::endl;
-    std::cout << "  Recommendation: Serialize pipeline cache (VkPipelineCache) instead" << std::endl;
+    LOG_DEBUG("[ComputePipelineCacher::SerializeToFile] Compute pipeline serialization deferred");
+    LOG_DEBUG("  Recommendation: Serialize pipeline cache (VkPipelineCache) instead");
 
     // TODO: Optionally serialize VkPipelineCache data for warm startup
     return true;  // Return success (nothing to serialize currently)
@@ -200,8 +197,8 @@ bool ComputePipelineCacher::DeserializeFromFile(const std::filesystem::path& pat
     // Compute pipelines are recreated on demand from shader modules
     // Pipeline cache (VkPipelineCache) deserialization provides warm startup
 
-    std::cout << "[ComputePipelineCacher::DeserializeFromFile] Compute pipeline deserialization deferred" << std::endl;
-    std::cout << "  Recommendation: Deserialize pipeline cache (VkPipelineCache) instead" << std::endl;
+    LOG_DEBUG("[ComputePipelineCacher::DeserializeFromFile] Compute pipeline deserialization deferred");
+    LOG_DEBUG("  Recommendation: Deserialize pipeline cache (VkPipelineCache) instead");
 
     // TODO: Optionally deserialize VkPipelineCache data for warm startup
     return true;  // Return success (nothing to deserialize currently)

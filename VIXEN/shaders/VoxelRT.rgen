@@ -1,0 +1,102 @@
+#version 460
+#extension GL_EXT_ray_tracing : require
+
+// ============================================================================
+// VoxelRT.rgen - Ray Generation Shader (Phase K: Hardware Ray Tracing)
+// ============================================================================
+// Generates primary camera rays and dispatches them via traceRayEXT.
+// Results are written to the output storage image.
+//
+// COORDINATE SPACE: Rays are transformed to local voxel space [0, resolution]
+// to match the AABB coordinates. This aligns with compute shader behavior.
+// ============================================================================
+
+// Output image (format unspecified - matches swapchain dynamically)
+layout(binding = 0) uniform writeonly image2D outputImage;
+
+// Acceleration structure (TLAS)
+layout(binding = 1) uniform accelerationStructureEXT topLevelAS;
+
+// OctreeConfigUBO - matches compute shader binding 5
+// Contains world<->local transformation matrices for proper coordinate handling
+layout(std140, binding = 5) uniform OctreeConfigUBO {
+    int esvoMaxScale;
+    int userMaxLevels;
+    int brickDepthLevels;
+    int brickSize;
+    int minESVOScale;
+    int brickESVOScale;
+    int bricksPerAxis;
+    int _padding1;
+    vec3 gridMin;
+    float _padding2;
+    vec3 gridMax;
+    float _padding3;
+    mat4 localToWorld;
+    mat4 worldToLocal;
+} octreeConfig;
+
+// Push constants (same as compute shader)
+layout(push_constant) uniform PushConstants {
+    vec3 cameraPos;
+    float time;
+    vec3 cameraDir;
+    float fov;
+    vec3 cameraUp;
+    float aspect;
+    vec3 cameraRight;
+    int debugMode;
+} pc;
+
+// Ray payload - data passed between shaders
+layout(location = 0) rayPayloadEXT vec3 hitColor;
+
+void main() {
+    // Get pixel coordinates
+    ivec2 pixelCoords = ivec2(gl_LaunchIDEXT.xy);
+    ivec2 imageSize = ivec2(gl_LaunchSizeEXT.xy);
+
+    // Compute UV coordinates (0-1 range, centered)
+    vec2 uv = (vec2(pixelCoords) + 0.5) / vec2(imageSize);
+    vec2 ndc = uv * 2.0 - 1.0;  // -1 to 1
+    ndc.y = -ndc.y;  // Vulkan Y-flip: match compute shader convention
+
+    // Generate ray direction from camera parameters (world space)
+    // FOV is in degrees from CameraNode, must convert to radians
+    float tanHalfFov = tan(radians(pc.fov) * 0.5);
+    vec3 rayDirWorld = normalize(
+        pc.cameraDir +
+        ndc.x * pc.aspect * tanHalfFov * pc.cameraRight +
+        ndc.y * tanHalfFov * pc.cameraUp
+    );
+
+    // Ray stays in WORLD SPACE - AABBs from AccelerationStructureCacher are in world space
+    // World space is [0, worldGridSize] where worldGridSize = 10.0 (from VoxelSceneCacher)
+    // This differs from compute shader which transforms to ESVO [1,2] space for octree traversal
+    vec3 rayOrigin = pc.cameraPos;
+    vec3 rayDir = rayDirWorld;
+
+    float tMin = 0.001;
+    float tMax = 10000.0;
+
+    // Initialize payload
+    hitColor = vec3(0.0);
+
+    // Trace ray in world space (AABBs are in world space [0, worldGridSize])
+    traceRayEXT(
+        topLevelAS,           // Acceleration structure
+        gl_RayFlagsOpaqueEXT, // Ray flags
+        0xFF,                 // Cull mask
+        0,                    // SBT record offset
+        0,                    // SBT record stride
+        0,                    // Miss index
+        rayOrigin,            // Ray origin (world space)
+        tMin,                 // Min distance
+        rayDir,               // Ray direction (world space)
+        tMax,                 // Max distance
+        0                     // Payload location
+    );
+
+    // Write result to output image
+    imageStore(outputImage, pixelCoords, vec4(hitColor, 1.0));
+}

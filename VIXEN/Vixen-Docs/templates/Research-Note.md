@@ -24,7 +24,7 @@ Context and motivation for this research.
 Explanation with diagram:
 
 ```mermaid
-graph LR
+flowchart LR
     A[Input] --> B[Process]
     B --> C[Output]
 ```

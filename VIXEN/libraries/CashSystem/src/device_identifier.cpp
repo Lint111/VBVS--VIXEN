@@ -4,7 +4,6 @@
 #include "VulkanDevice.h"
 #include "VixenHash.h"
 #include <sstream>
-#include <iostream>
 #include <fstream>
 #include <filesystem>
 #include <future>
@@ -70,6 +69,7 @@ std::uint64_t DeviceIdentifier::GenerateDeviceHash(const Vixen::Vulkan::Resource
 // DeviceRegistry implementation
 DeviceRegistry::DeviceRegistry(const DeviceIdentifier& deviceId)
     : m_deviceId(deviceId), m_device(nullptr), m_initialized(false) {
+    InitializeLogger("DeviceRegistry");
 }
 
 void DeviceRegistry::Initialize(Vixen::Vulkan::Resources::VulkanDevice* device) {
@@ -89,7 +89,7 @@ bool DeviceRegistry::SaveAll(const std::filesystem::path& directory) const {
     auto manifestPath = directory / "cacher_registry.txt";
     std::ofstream manifest(manifestPath);
     if (!manifest) {
-        std::cerr << "[DeviceRegistry] Failed to create manifest file" << std::endl;
+        LOG_ERROR("Failed to create manifest file");
         return false;
     }
 
@@ -99,7 +99,7 @@ bool DeviceRegistry::SaveAll(const std::filesystem::path& directory) const {
         }
     }
     manifest.close();
-    std::cout << "[DeviceRegistry] Saved cacher manifest with " << m_deviceCachers.size() << " entries" << std::endl;
+    LOG_INFO("Saved cacher manifest with " + std::to_string(m_deviceCachers.size()) + " entries");
 
     // Launch parallel save for each cacher
     std::vector<std::future<bool>> futures;
@@ -110,12 +110,8 @@ bool DeviceRegistry::SaveAll(const std::filesystem::path& directory) const {
             auto cacheFile = directory / (cacheName + ".cache");
 
             futures.push_back(std::async(std::launch::async,
-                [&cacher, cacheName, cacheFile]() {
-                    std::cout << "[DeviceRegistry] Saving " << cacheName << " to " << cacheFile << std::endl;
+                [&cacher, cacheFile]() {
                     bool saved = cacher->SerializeToFile(cacheFile);
-                    if (!saved) {
-                        std::cerr << "[DeviceRegistry] Failed to save " << cacheName << std::endl;
-                    }
                     return saved;
                 }
             ));
@@ -133,7 +129,7 @@ bool DeviceRegistry::SaveAll(const std::filesystem::path& directory) const {
 
 bool DeviceRegistry::LoadAll(const std::filesystem::path& directory) {
     if (!std::filesystem::exists(directory)) {
-        std::cout << "[DeviceRegistry] No cache directory found at " << directory << std::endl;
+        LOG_INFO("No cache directory found at " + directory.string());
         return true;  // Not an error - just no caches to load
     }
 
@@ -146,7 +142,7 @@ bool DeviceRegistry::LoadAll(const std::filesystem::path& directory) {
         std::ifstream manifest(manifestPath);
         if (manifest) {
             std::string cacherName;
-            std::cout << "[DeviceRegistry] Pre-creating cachers from manifest..." << std::endl;
+            LOG_DEBUG("Pre-creating cachers from manifest...");
 
             while (std::getline(manifest, cacherName)) {
                 // Trim whitespace
@@ -154,7 +150,7 @@ bool DeviceRegistry::LoadAll(const std::filesystem::path& directory) {
                 cacherName.erase(cacherName.find_last_not_of(" \t\r\n") + 1);
 
                 if (!cacherName.empty()) {
-                    std::cout << "[DeviceRegistry] Found cacher in manifest: " << cacherName << std::endl;
+                    LOG_DEBUG("Found cacher in manifest: " + cacherName);
 
                     // Create cacher instance using MainCacher's factory system
                     auto& mainCacher = MainCacher::Instance();
@@ -163,16 +159,16 @@ bool DeviceRegistry::LoadAll(const std::filesystem::path& directory) {
                     if (!createdCacher) {
                         // Not an error - cacher may not be registered yet
                         // Deserialization will happen lazily on first GetCacher() call
-                        std::cout << "[DeviceRegistry] Cacher not registered yet (will lazy-load): " << cacherName << std::endl;
+                        LOG_DEBUG("Cacher not registered yet (will lazy-load): " + cacherName);
                     }
                 }
             }
             manifest.close();
 
-            std::cout << "[DeviceRegistry] Pre-created " << m_deviceCachers.size() << " cachers from manifest" << std::endl;
+            LOG_INFO("Pre-created " + std::to_string(m_deviceCachers.size()) + " cachers from manifest");
         }
     } else {
-        std::cout << "[DeviceRegistry] No manifest found (legacy or first run)" << std::endl;
+        LOG_INFO("No manifest found (legacy or first run)");
     }
 
     // Launch parallel load for each cacher
@@ -180,20 +176,14 @@ bool DeviceRegistry::LoadAll(const std::filesystem::path& directory) {
 
     for (auto& cacher : m_deviceCachers) {
         if (cacher) {
-            auto cacheName = std::string(cacher->name());
-            auto cacheFile = directory / (cacheName + ".cache");
+            auto cacheFile = directory / (std::string(cacher->name()) + ".cache");
 
             futures.push_back(std::async(std::launch::async,
-                [&cacher, cacheName, cacheFile, this]() {
+                [&cacher, cacheFile, this]() {
                     if (std::filesystem::exists(cacheFile)) {
-                        std::cout << "[DeviceRegistry] Loading " << cacheName << " from " << cacheFile << std::endl;
                         bool loaded = cacher->DeserializeFromFile(cacheFile, m_device);
-                        if (!loaded) {
-                            std::cerr << "[DeviceRegistry] Failed to load " << cacheName << std::endl;
-                        }
                         return loaded;
                     } else {
-                        std::cout << "[DeviceRegistry] No cache file for " << cacheName << " (first run)" << std::endl;
                         return true;  // Not an error
                     }
                 }

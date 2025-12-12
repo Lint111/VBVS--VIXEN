@@ -8,6 +8,7 @@
 #include "BenchmarkGraphFactory.h"
 #include "ProfilerGraphAdapter.h"
 #include "BenchmarkConfig.h"
+#include "FrameCapture.h"
 #include <vulkan/vulkan.h>
 #include <string>
 #include <vector>
@@ -324,6 +325,10 @@ private:
     /// @param physicalDevice Vulkan physical device
     /// @param metrics FrameMetrics to populate with VRAM data
     void CollectVRAMUsage(VkPhysicalDevice physicalDevice, FrameMetrics& metrics) const;
+
+    // Frame capture for debugging
+    std::unique_ptr<FrameCapture> frameCapture_;
+    bool midFrameCaptured_ = false;  // Track if mid-frame capture done for current test
 };
 
 } // namespace Vixen::Profiler

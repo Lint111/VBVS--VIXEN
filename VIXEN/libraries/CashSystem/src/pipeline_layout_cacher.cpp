@@ -2,7 +2,6 @@
 #include "PipelineLayoutCacher.h"
 #include "VulkanDevice.h"
 #include "VixenHash.h"
-#include <iostream>
 #include <sstream>
 #include <stdexcept>
 
@@ -16,20 +15,17 @@ std::shared_ptr<PipelineLayoutWrapper> PipelineLayoutCacher::GetOrCreate(const P
         std::shared_lock rlock(m_lock);
         auto it = m_entries.find(key);
         if (it != m_entries.end()) {
-            std::cout << "[PipelineLayoutCacher::GetOrCreate] CACHE HIT for layout " << ci.layoutKey
-                      << " (key=" << key << ", VkPipelineLayout="
-                      << reinterpret_cast<uint64_t>(it->second.resource->layout) << ")" << std::endl;
+            LOG_DEBUG("CACHE HIT for layout " + ci.layoutKey + " (key=" + std::to_string(key) + ")");
             return it->second.resource;
         }
         auto pit = m_pending.find(key);
         if (pit != m_pending.end()) {
-            std::cout << "[PipelineLayoutCacher::GetOrCreate] CACHE PENDING for layout " << ci.layoutKey << std::endl;
+            LOG_DEBUG("CACHE PENDING for layout " + ci.layoutKey);
             return pit->second.get();
         }
     }
 
-    std::cout << "[PipelineLayoutCacher::GetOrCreate] CACHE MISS for layout " << ci.layoutKey
-              << " (key=" << key << "), creating new resource..." << std::endl;
+    LOG_DEBUG("CACHE MISS for layout " + ci.layoutKey + " (key=" + std::to_string(key) + "), creating new resource...");
 
     // Call parent implementation
     return TypedCacher<PipelineLayoutWrapper, PipelineLayoutCreateParams>::GetOrCreate(ci);
@@ -40,7 +36,7 @@ std::shared_ptr<PipelineLayoutWrapper> PipelineLayoutCacher::Create(const Pipeli
         throw std::runtime_error("PipelineLayoutCacher: No device available");
     }
 
-    std::cout << "[PipelineLayoutCacher::Create] Creating pipeline layout: " << ci.layoutKey << std::endl;
+    LOG_DEBUG("Creating pipeline layout: " + ci.layoutKey);
 
     auto wrapper = std::make_shared<PipelineLayoutWrapper>();
     wrapper->descriptorSetLayout = ci.descriptorSetLayout;
@@ -66,8 +62,7 @@ std::shared_ptr<PipelineLayoutWrapper> PipelineLayoutCacher::Create(const Pipeli
         throw std::runtime_error("PipelineLayoutCacher: Failed to create pipeline layout");
     }
 
-    std::cout << "[PipelineLayoutCacher::Create] Created VkPipelineLayout: "
-              << reinterpret_cast<uint64_t>(wrapper->layout) << std::endl;
+    LOG_DEBUG("Created VkPipelineLayout: " + std::to_string(reinterpret_cast<uint64_t>(wrapper->layout)));
 
     return wrapper;
 }
@@ -85,19 +80,18 @@ std::uint64_t PipelineLayoutCacher::ComputeKey(const PipelineLayoutCreateParams&
     const std::string keyString = keyStream.str();
     std::uint64_t hash = std::hash<std::string>{}(keyString);
 
-    std::cout << "[PipelineLayoutCacher::ComputeKey] keyString=\"" << keyString << "\" hash=" << hash << std::endl;
+    LOG_DEBUG("ComputeKey: hash=" + std::to_string(hash));
 
     return hash;
 }
 
 void PipelineLayoutCacher::Cleanup() {
-    std::cout << "[PipelineLayoutCacher::Cleanup] Cleaning up " << m_entries.size() << " cached layouts" << std::endl;
+    LOG_INFO("Cleaning up " + std::to_string(m_entries.size()) + " cached layouts");
 
     if (GetDevice()) {
         for (auto& [key, entry] : m_entries) {
             if (entry.resource && entry.resource->layout != VK_NULL_HANDLE) {
-                std::cout << "[PipelineLayoutCacher::Cleanup] Destroying VkPipelineLayout: "
-                          << reinterpret_cast<uint64_t>(entry.resource->layout) << std::endl;
+                LOG_DEBUG("Destroying VkPipelineLayout: " + std::to_string(reinterpret_cast<uint64_t>(entry.resource->layout)));
                 vkDestroyPipelineLayout(GetDevice()->device, entry.resource->layout, nullptr);
                 entry.resource->layout = VK_NULL_HANDLE;
             }
@@ -105,7 +99,7 @@ void PipelineLayoutCacher::Cleanup() {
     }
 
     Clear();
-    std::cout << "[PipelineLayoutCacher::Cleanup] Cleanup complete" << std::endl;
+    LOG_INFO("Cleanup complete");
 }
 
 bool PipelineLayoutCacher::SerializeToFile(const std::filesystem::path& path) const {

@@ -34,6 +34,12 @@
 #include <Nodes/GraphicsPipelineNode.h>
 #include <Nodes/GeometryRenderNode.h>
 
+// Hardware ray tracing node types (Phase K)
+#include <Nodes/VoxelAABBConverterNode.h>
+#include <Nodes/AccelerationStructureNode.h>
+#include <Nodes/RayTracingPipelineNode.h>
+#include <Nodes/TraceRaysNode.h>
+
 // Node configs
 #include <Data/Nodes/InstanceNodeConfig.h>
 #include <Data/Nodes/WindowNodeConfig.h>
@@ -58,9 +64,18 @@
 #include <Data/Nodes/GraphicsPipelineNodeConfig.h>
 #include <Data/Nodes/GeometryRenderNodeConfig.h>
 
+// Hardware ray tracing node configs (Phase K)
+#include <Data/Nodes/VoxelAABBConverterNodeConfig.h>
+#include <Data/Nodes/AccelerationStructureNodeConfig.h>
+#include <Data/Nodes/RayTracingPipelineNodeConfig.h>
+#include <Data/Nodes/TraceRaysNodeConfig.h>
+
 // Data types
 #include <Data/CameraData.h>
 #include <Data/InputState.h>
+
+// SDI (Shader-Driven Interface) generated headers for type-safe binding references
+#include "VoxelRTNames.h"
 
 #include <filesystem>
 #include <stdexcept>
@@ -611,6 +626,16 @@ void BenchmarkGraphFactory::ConfigureRayMarchSceneParams(
         voxelGrid->SetParameter(RG::VoxelGridNodeConfig::PARAM_RESOLUTION, scene.resolution);
         voxelGrid->SetParameter(RG::VoxelGridNodeConfig::PARAM_SCENE_TYPE, scene.sceneType);
     }
+
+    // Input parameters: Disable mouse capture for benchmarks (headless mode)
+    auto* input = static_cast<RG::InputNode*>(graph->GetInstance(nodes.input));
+    if (input) {
+        // Keep keyboard polling enabled for manual frame capture ('C' key)
+        input->SetParameter(RG::InputNodeConfig::PARAM_ENABLED, true);
+        // Disable mouse capture - not needed for benchmark automated runs
+        input->SetParameter(RG::InputNodeConfig::PARAM_MOUSE_CAPTURE_MODE,
+                            static_cast<int>(RG::MouseCaptureMode::Disabled));
+    }
 }
 
 void BenchmarkGraphFactory::ConfigureOutputParams(
@@ -711,31 +736,30 @@ FragmentPipelineNodes BenchmarkGraphFactory::BuildFragmentPipeline(
     FragmentPipelineNodes nodes{};
 
     // Create fragment pipeline nodes
-    std::cerr << "  [FragPipe] Creating shaderLib..." << std::endl;
+    // TODO: Migrate to LOG_DEBUG when BenchmarkGraphFactory inherits from ILoggable
+    // LOG_DEBUG("  [FragPipe] Creating shaderLib...");
     nodes.shaderLib = graph->AddNode<RG::ShaderLibraryNodeType>("benchmark_fragment_shader_lib");
-    std::cerr << "  [FragPipe] Creating descriptorGatherer..." << std::endl;
+    // LOG_DEBUG("  [FragPipe] Creating descriptorGatherer...");
     nodes.descriptorGatherer = graph->AddNode<RG::DescriptorResourceGathererNodeType>("benchmark_fragment_desc_gatherer");
-    std::cerr << "  [FragPipe] Creating pushConstantGatherer..." << std::endl;
+    // LOG_DEBUG("  [FragPipe] Creating pushConstantGatherer...");
     nodes.pushConstantGatherer = graph->AddNode<RG::PushConstantGathererNodeType>("benchmark_fragment_pc_gatherer");
-    std::cerr << "  [FragPipe] Creating descriptorSet..." << std::endl;
+    // LOG_DEBUG("  [FragPipe] Creating descriptorSet...");
     nodes.descriptorSet = graph->AddNode<RG::DescriptorSetNodeType>("benchmark_fragment_descriptors");
-    std::cerr << "  [FragPipe] Creating renderPass..." << std::endl; std::cerr.flush();
-    std::cerr << "  [FragPipe] Graph ptr: " << (void*)graph << std::endl;
-
-    std::cerr.flush();
+    // LOG_DEBUG("  [FragPipe] Creating renderPass...");
+    // LOG_DEBUG("  [FragPipe] Graph ptr: " + std::to_string(reinterpret_cast<uintptr_t>(graph)));
     nodes.renderPass = graph->AddNode<RG::RenderPassNodeType>("benchmark_render_pass");
-    std::cerr << "  [FragPipe] RenderPass created!" << std::endl;
-    std::cerr << "  [FragPipe] RenderPass created. Creating framebuffer..." << std::endl; std::cerr.flush();
+    // LOG_DEBUG("  [FragPipe] RenderPass created!");
+    // LOG_DEBUG("  [FragPipe] RenderPass created. Creating framebuffer...");
     nodes.framebuffer = graph->AddNode<RG::FramebufferNodeType>("benchmark_framebuffer");
-    std::cerr << "  [FragPipe] Creating graphics pipeline..." << std::endl;
+    // LOG_DEBUG("  [FragPipe] Creating graphics pipeline...");
     nodes.pipeline = graph->AddNode<RG::GraphicsPipelineNodeType>("benchmark_graphics_pipeline");
-    std::cerr << "  [FragPipe] Creating drawCommand (GeometryRenderNode)..." << std::endl;
+    // LOG_DEBUG("  [FragPipe] Creating drawCommand (GeometryRenderNode)...");
     nodes.drawCommand = graph->AddNode<RG::GeometryRenderNodeType>("benchmark_draw_command");
 
-    std::cerr << "  [FragPipe] Configuring parameters..." << std::endl;
+    // LOG_DEBUG("  [FragPipe] Configuring parameters...");
     // Configure parameters
     ConfigureFragmentPipelineParams(graph, nodes, infra, vertexShaderPath, fragmentShaderPath);
-    std::cerr << "  [FragPipe] Done!" << std::endl;
+    // LOG_DEBUG("  [FragPipe] Done!");
 
     return nodes;
 }
@@ -1015,91 +1039,473 @@ BenchmarkGraph BenchmarkGraphFactory::BuildFragmentRayMarchGraph(
     } else if (config.shaderGroup.size() == 1) {
         fragmentShader = config.shaderGroup[0];  // Only fragment specified
     }
-    std::cerr << "[Fragment] Using shaders: " << vertexShader << " + " << fragmentShader << std::endl;
+    // TODO: Migrate to LOG_DEBUG when BenchmarkGraphFactory inherits from ILoggable
+    // LOG_DEBUG("[Fragment] Using shaders: " + vertexShader + " + " + fragmentShader);
 
     // Build all subgraphs
-    std::cerr << "[Fragment] Building infrastructure..." << std::endl;
+    // LOG_DEBUG("[Fragment] Building infrastructure...");
     result.infra = BuildInfrastructure(graph, width, height, true);
 
-    std::cerr << "[Fragment] Building fragment pipeline..." << std::endl;
+    // LOG_DEBUG("[Fragment] Building fragment pipeline...");
     result.fragment = BuildFragmentPipeline(
         graph, result.infra,
         vertexShader,           // Full-screen triangle vertex shader
         fragmentShader          // Fragment shader ray marching
     );
 
-    std::cerr << "[Fragment] Building ray march scene..." << std::endl;
+    // LOG_DEBUG("[Fragment] Building ray march scene...");
     result.rayMarch = BuildRayMarchScene(graph, result.infra, scene);
 
-    std::cerr << "[Fragment] Building output..." << std::endl;
+    // LOG_DEBUG("[Fragment] Building output...");
     result.output = BuildOutput(graph, result.infra, false);
 
-    std::cerr << "[Fragment] Registering shaders..." << std::endl;
+    // LOG_DEBUG("[Fragment] Registering shaders...");
     // Register shader builder for vertex + fragment shaders
     RegisterFragmentShader(graph, result.fragment, vertexShader, fragmentShader);
 
-    std::cerr << "[Fragment] Wiring variadic resources..." << std::endl;
+    // LOG_DEBUG("[Fragment] Wiring variadic resources...");
     // Wire variadic resources (descriptors and push constants)
     WireFragmentVariadicResources(graph, result.infra, result.fragment, result.rayMarch);
 
-    std::cerr << "[Fragment] Connecting subgraphs..." << std::endl;
+    // LOG_DEBUG("[Fragment] Connecting subgraphs...");
     // Connect subgraphs
     ConnectFragmentRayMarch(graph, result.infra, result.fragment, result.rayMarch, result.output);
 
-    std::cerr << "[Fragment] Build complete!" << std::endl;
+    // LOG_DEBUG("[Fragment] Build complete!");
     return result;
 }
 
 //==============================================================================
-// Hardware RT Pipeline (Stub)
+// Hardware RT Pipeline (Phase K)
 //==============================================================================
 
-BenchmarkGraph BenchmarkGraphFactory::BuildHardwareRTGraph(
-    RG::RenderGraph* /*graph*/,
-    const TestConfiguration& /*config*/,
-    uint32_t /*width*/,
-    uint32_t /*height*/)
+HardwareRTNodes BenchmarkGraphFactory::BuildHardwareRT(
+    RG::RenderGraph* graph,
+    const InfrastructureNodes& infra)
 {
-    // TODO: Implement when VK_KHR_ray_tracing_pipeline support is added
-    //
-    // Implementation requirements:
-    // 1. VK_KHR_ray_tracing_pipeline extension
-    //    - Check device support via vkGetPhysicalDeviceFeatures2 with
-    //      VkPhysicalDeviceRayTracingPipelineFeaturesKHR
-    //
-    // 2. VK_KHR_acceleration_structure extension
-    //    - Required for building bottom-level (BLAS) and top-level (TLAS)
-    //      acceleration structures
-    //
-    // 3. New node types needed:
-    //    - AccelerationStructureNode: Builds BLAS from voxel geometry
-    //    - TopLevelASNode: Builds TLAS from BLAS instances
-    //    - RTShaderLibraryNode: Ray gen, closest hit, miss shaders
-    //    - ShaderBindingTableNode: SBT management
-    //    - RayTracingPipelineNode: VkRayTracingPipelineCreateInfoKHR
-    //    - RayTraceDispatchNode: vkCmdTraceRaysKHR
-    //
-    // 4. Shader types:
-    //    - Ray generation shader (.rgen): Camera ray generation
-    //    - Closest hit shader (.rchit): Surface shading
-    //    - Miss shader (.rmiss): Background color
-    //    - Optional: Any hit, intersection shaders for transparency
-    //
-    // 5. Memory requirements:
-    //    - Scratch buffers for AS building
-    //    - AS storage buffers
-    //    - SBT buffer
-    //
-    // 6. Comparison metrics:
-    //    - Hardware RT vs software ray marching performance
-    //    - Memory overhead of acceleration structures
-    //    - Build time for AS vs octree
+    if (!graph) {
+        throw std::invalid_argument("BenchmarkGraphFactory::BuildHardwareRT: graph is null");
+    }
 
-    throw std::runtime_error(
-        "BuildHardwareRTGraph: Hardware ray tracing pipeline not yet implemented. "
-        "Requires VK_KHR_ray_tracing_pipeline and VK_KHR_acceleration_structure extensions. "
-        "See implementation notes in BenchmarkGraphFactory.cpp for requirements."
+    if (!infra.IsValid()) {
+        throw std::invalid_argument("BenchmarkGraphFactory::BuildHardwareRT: infrastructure nodes invalid");
+    }
+
+    HardwareRTNodes nodes{};
+
+    // Create hardware RT nodes (following same pattern as compute/fragment pipelines)
+
+    // ShaderLibraryNode: Compiles and manages RT shaders
+    nodes.shaderLib = graph->AddNode<RG::ShaderLibraryNodeType>("benchmark_rt_shader_lib");
+
+    // DescriptorResourceGathererNode: Gathers descriptor resources from variadic connections
+    nodes.descriptorGatherer = graph->AddNode<RG::DescriptorResourceGathererNodeType>("benchmark_rt_desc_gatherer");
+
+    // PushConstantGathererNode: Gathers camera push constants for ray tracing
+    nodes.pushConstantGatherer = graph->AddNode<RG::PushConstantGathererNodeType>("benchmark_rt_pc_gatherer");
+
+    // DescriptorSetNode: Creates descriptor set layout and descriptor sets
+    nodes.descriptorSet = graph->AddNode<RG::DescriptorSetNodeType>("benchmark_rt_descriptors");
+
+    // VoxelAABBConverterNode: Extracts AABBs from voxel grid for BLAS
+    nodes.aabbConverter = graph->AddNode<RG::VoxelAABBConverterNodeType>("benchmark_aabb_converter");
+
+    // AccelerationStructureNode: Builds BLAS + TLAS
+    nodes.accelerationStructure = graph->AddNode<RG::AccelerationStructureNodeType>("benchmark_accel_structure");
+
+    // RayTracingPipelineNode: Creates RT pipeline + SBT
+    nodes.rtPipeline = graph->AddNode<RG::RayTracingPipelineNodeType>("benchmark_rt_pipeline");
+
+    // TraceRaysNode: Dispatches vkCmdTraceRaysKHR
+    nodes.traceRays = graph->AddNode<RG::TraceRaysNodeType>("benchmark_trace_rays");
+
+    // DEBUG: Enable logging for RT descriptor nodes to diagnose black screen issues
+    // TODO: Remove after fixing RT rendering
+    auto* descSetInst = graph->GetInstance(nodes.descriptorSet);
+    if (descSetInst && descSetInst->GetLogger()) {
+        descSetInst->GetLogger()->SetEnabled(true);
+        descSetInst->GetLogger()->SetTerminalOutput(true);
+    }
+    auto* descGathererInst = graph->GetInstance(nodes.descriptorGatherer);
+    if (descGathererInst && descGathererInst->GetLogger()) {
+        descGathererInst->GetLogger()->SetEnabled(true);
+        descGathererInst->GetLogger()->SetTerminalOutput(true);
+    }
+
+    return nodes;
+}
+
+void BenchmarkGraphFactory::ConfigureHardwareRTParams(
+    RG::RenderGraph* graph,
+    const HardwareRTNodes& nodes,
+    const SceneInfo& scene,
+    uint32_t width,
+    uint32_t height)
+{
+    // Configure AABB converter parameters
+    auto* aabbConverter = static_cast<RG::VoxelAABBConverterNode*>(
+        graph->GetInstance(nodes.aabbConverter));
+    if (aabbConverter) {
+        // Set scene type and resolution to match VoxelGridNode (critical for correct AABB generation)
+        aabbConverter->SetParameter("scene_type", scene.sceneType);
+        aabbConverter->SetParameter(RG::VoxelAABBConverterNodeConfig::PARAM_GRID_RESOLUTION, static_cast<uint32_t>(scene.resolution));
+
+        // Calculate voxel size to match world space [0, worldGridSize]
+        // VoxelRT.rgen traces rays in world space, so AABBs must be in world space too
+        // worldGridSize = 10.0 (from VoxelSceneCacher), resolution varies (64, 128, 256)
+        constexpr float WORLD_GRID_SIZE = 10.0f;
+        const float voxelWorldSize = WORLD_GRID_SIZE / static_cast<float>(scene.resolution);
+        aabbConverter->SetParameter(RG::VoxelAABBConverterNodeConfig::PARAM_VOXEL_SIZE, voxelWorldSize);
+    }
+
+    // Configure acceleration structure parameters
+    auto* accelStructure = static_cast<RG::AccelerationStructureNode*>(
+        graph->GetInstance(nodes.accelerationStructure));
+    if (accelStructure) {
+        accelStructure->SetParameter(RG::AccelerationStructureNodeConfig::PARAM_PREFER_FAST_TRACE, true);
+        accelStructure->SetParameter(RG::AccelerationStructureNodeConfig::PARAM_ALLOW_UPDATE, false);
+        accelStructure->SetParameter(RG::AccelerationStructureNodeConfig::PARAM_ALLOW_COMPACTION, false);
+    }
+
+    // Configure RT pipeline parameters
+    auto* rtPipeline = static_cast<RG::RayTracingPipelineNode*>(
+        graph->GetInstance(nodes.rtPipeline));
+    if (rtPipeline) {
+        rtPipeline->SetParameter(RG::RayTracingPipelineNodeConfig::PARAM_MAX_RAY_RECURSION, 1u);
+        rtPipeline->SetParameter(RG::RayTracingPipelineNodeConfig::PARAM_OUTPUT_WIDTH, width);
+        rtPipeline->SetParameter(RG::RayTracingPipelineNodeConfig::PARAM_OUTPUT_HEIGHT, height);
+        // Shaders are now provided via ShaderLibraryNode -> SHADER_DATA_BUNDLE connection
+    }
+
+    // Configure trace rays parameters
+    auto* traceRays = static_cast<RG::TraceRaysNode*>(
+        graph->GetInstance(nodes.traceRays));
+    if (traceRays) {
+        traceRays->SetParameter(RG::TraceRaysNodeConfig::PARAM_WIDTH, width);
+        traceRays->SetParameter(RG::TraceRaysNodeConfig::PARAM_HEIGHT, height);
+        traceRays->SetParameter(RG::TraceRaysNodeConfig::PARAM_DEPTH, 1u);
+    }
+}
+
+void BenchmarkGraphFactory::ConnectHardwareRT(
+    RG::RenderGraph* graph,
+    const InfrastructureNodes& infra,
+    const HardwareRTNodes& hardwareRT,
+    const RayMarchNodes& rayMarch,
+    const OutputNodes& output)
+{
+    if (!graph) {
+        throw std::invalid_argument("BenchmarkGraphFactory::ConnectHardwareRT: graph is null");
+    }
+
+    RG::ConnectionBatch batch(graph);
+
+    //--------------------------------------------------------------------------
+    // Infrastructure Connections (same as compute/fragment pipelines)
+    //--------------------------------------------------------------------------
+
+    // Instance -> Device
+    batch.Connect(infra.instance, RG::InstanceNodeConfig::INSTANCE,
+                  infra.device, RG::DeviceNodeConfig::INSTANCE_IN);
+
+    // Device -> Window (VkInstance passthrough)
+    batch.Connect(infra.device, RG::DeviceNodeConfig::INSTANCE_OUT,
+                  infra.window, RG::WindowNodeConfig::INSTANCE);
+
+    // Window -> SwapChain
+    batch.Connect(infra.window, RG::WindowNodeConfig::HWND_OUT,
+                  infra.swapchain, RG::SwapChainNodeConfig::HWND)
+         .Connect(infra.window, RG::WindowNodeConfig::HINSTANCE_OUT,
+                  infra.swapchain, RG::SwapChainNodeConfig::HINSTANCE)
+         .Connect(infra.window, RG::WindowNodeConfig::WIDTH_OUT,
+                  infra.swapchain, RG::SwapChainNodeConfig::WIDTH)
+         .Connect(infra.window, RG::WindowNodeConfig::HEIGHT_OUT,
+                  infra.swapchain, RG::SwapChainNodeConfig::HEIGHT);
+
+    // Window -> Input
+    if (rayMarch.input.IsValid()) {
+        batch.Connect(infra.window, RG::WindowNodeConfig::HWND_OUT,
+                      rayMarch.input, RG::InputNodeConfig::HWND_IN);
+    }
+
+    // Device -> SwapChain
+    batch.Connect(infra.device, RG::DeviceNodeConfig::INSTANCE_OUT,
+                  infra.swapchain, RG::SwapChainNodeConfig::INSTANCE)
+         .Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  infra.swapchain, RG::SwapChainNodeConfig::VULKAN_DEVICE_IN);
+
+    // Device -> FrameSync
+    batch.Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  infra.frameSync, RG::FrameSyncNodeConfig::VULKAN_DEVICE);
+
+    // FrameSync -> SwapChain
+    batch.Connect(infra.frameSync, RG::FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                  infra.swapchain, RG::SwapChainNodeConfig::CURRENT_FRAME_INDEX)
+         .Connect(infra.frameSync, RG::FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
+                  infra.swapchain, RG::SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
+         .Connect(infra.frameSync, RG::FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
+                  infra.swapchain, RG::SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY)
+         .Connect(infra.frameSync, RG::FrameSyncNodeConfig::PRESENT_FENCES_ARRAY,
+                  infra.swapchain, RG::SwapChainNodeConfig::PRESENT_FENCES_ARRAY);
+
+    // Device -> CommandPool
+    batch.Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  infra.commandPool, RG::CommandPoolNodeConfig::VULKAN_DEVICE_IN);
+
+    //--------------------------------------------------------------------------
+    // Ray March Scene Connections (VoxelGrid + Camera)
+    //--------------------------------------------------------------------------
+
+    // Device -> Camera
+    batch.Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  rayMarch.camera, RG::CameraNodeConfig::VULKAN_DEVICE_IN);
+
+    // SwapChain -> Camera
+    batch.Connect(infra.swapchain, RG::SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+                  rayMarch.camera, RG::CameraNodeConfig::SWAPCHAIN_PUBLIC)
+         .Connect(infra.swapchain, RG::SwapChainNodeConfig::IMAGE_INDEX,
+                  rayMarch.camera, RG::CameraNodeConfig::IMAGE_INDEX);
+
+    // Input -> Camera
+    if (rayMarch.input.IsValid()) {
+        batch.Connect(rayMarch.input, RG::InputNodeConfig::INPUT_STATE,
+                      rayMarch.camera, RG::CameraNodeConfig::INPUT_STATE);
+    }
+
+    // Device -> VoxelGrid
+    batch.Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  rayMarch.voxelGrid, RG::VoxelGridNodeConfig::VULKAN_DEVICE_IN);
+
+    // CommandPool -> VoxelGrid
+    batch.Connect(infra.commandPool, RG::CommandPoolNodeConfig::COMMAND_POOL,
+                  rayMarch.voxelGrid, RG::VoxelGridNodeConfig::COMMAND_POOL);
+
+    //--------------------------------------------------------------------------
+    // Hardware RT Pipeline Connections
+    //--------------------------------------------------------------------------
+
+    // Device -> VoxelAABBConverterNode
+    batch.Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  hardwareRT.aabbConverter, RG::VoxelAABBConverterNodeConfig::VULKAN_DEVICE_IN);
+
+    // CommandPool -> VoxelAABBConverterNode
+    batch.Connect(infra.commandPool, RG::CommandPoolNodeConfig::COMMAND_POOL,
+                  hardwareRT.aabbConverter, RG::VoxelAABBConverterNodeConfig::COMMAND_POOL);
+
+    // VoxelGrid -> VoxelAABBConverterNode (octree nodes buffer for AABB extraction)
+    batch.Connect(rayMarch.voxelGrid, RG::VoxelGridNodeConfig::OCTREE_NODES_BUFFER,
+                  hardwareRT.aabbConverter, RG::VoxelAABBConverterNodeConfig::OCTREE_NODES_BUFFER);
+
+    // VoxelGrid -> VoxelAABBConverterNode (brick grid lookup for compressed color access)
+    // Optional: only needed for compressed RTX shaders to map grid coords to brick indices
+    batch.Connect(rayMarch.voxelGrid, RG::VoxelGridNodeConfig::BRICK_GRID_LOOKUP_BUFFER,
+                  hardwareRT.aabbConverter, RG::VoxelAABBConverterNodeConfig::BRICK_GRID_LOOKUP_BUFFER);
+
+    // VoxelGrid -> VoxelAABBConverterNode (cached scene data for VoxelAABBCacher)
+    batch.Connect(rayMarch.voxelGrid, RG::VoxelGridNodeConfig::VOXEL_SCENE_DATA,
+                  hardwareRT.aabbConverter, RG::VoxelAABBConverterNodeConfig::VOXEL_SCENE_DATA);
+
+    // Device -> AccelerationStructureNode
+    batch.Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  hardwareRT.accelerationStructure, RG::AccelerationStructureNodeConfig::VULKAN_DEVICE_IN);
+
+    // CommandPool -> AccelerationStructureNode
+    batch.Connect(infra.commandPool, RG::CommandPoolNodeConfig::COMMAND_POOL,
+                  hardwareRT.accelerationStructure, RG::AccelerationStructureNodeConfig::COMMAND_POOL);
+
+    // VoxelAABBConverterNode -> AccelerationStructureNode
+    batch.Connect(hardwareRT.aabbConverter, RG::VoxelAABBConverterNodeConfig::AABB_DATA,
+                  hardwareRT.accelerationStructure, RG::AccelerationStructureNodeConfig::AABB_DATA);
+
+    // Device -> ShaderLibraryNode (for RT shaders)
+    batch.Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  hardwareRT.shaderLib, RG::ShaderLibraryNodeConfig::VULKAN_DEVICE_IN);
+
+    // Device -> DescriptorSetNode
+    batch.Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  hardwareRT.descriptorSet, RG::DescriptorSetNodeConfig::VULKAN_DEVICE_IN);
+
+    // Device -> RayTracingPipelineNode
+    batch.Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  hardwareRT.rtPipeline, RG::RayTracingPipelineNodeConfig::VULKAN_DEVICE_IN);
+
+    // Shader -> DescriptorResourceGatherer
+    batch.Connect(hardwareRT.shaderLib, RG::ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  hardwareRT.descriptorGatherer, RG::DescriptorResourceGathererNodeConfig::SHADER_DATA_BUNDLE);
+
+    // DescriptorResourceGatherer -> DescriptorSetNode
+    batch.Connect(hardwareRT.descriptorGatherer, RG::DescriptorResourceGathererNodeConfig::DESCRIPTOR_RESOURCES,
+                  hardwareRT.descriptorSet, RG::DescriptorSetNodeConfig::DESCRIPTOR_RESOURCES);
+
+    // Shader -> DescriptorSetNode
+    batch.Connect(hardwareRT.shaderLib, RG::ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  hardwareRT.descriptorSet, RG::DescriptorSetNodeConfig::SHADER_DATA_BUNDLE);
+
+    // SwapChain -> DescriptorSetNode (image count and image index)
+    batch.Connect(infra.swapchain, RG::SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+                  hardwareRT.descriptorSet, RG::DescriptorSetNodeConfig::SWAPCHAIN_IMAGE_COUNT,
+                  &SwapChainPublicVariables::swapChainImageCount);
+    batch.Connect(infra.swapchain, RG::SwapChainNodeConfig::IMAGE_INDEX,
+                  hardwareRT.descriptorSet, RG::DescriptorSetNodeConfig::IMAGE_INDEX);
+
+    // DescriptorSetNode -> RayTracingPipelineNode (descriptor set layout)
+    batch.Connect(hardwareRT.descriptorSet, RG::DescriptorSetNodeConfig::DESCRIPTOR_SET_LAYOUT,
+                  hardwareRT.rtPipeline, RG::RayTracingPipelineNodeConfig::DESCRIPTOR_SET_LAYOUT);
+
+    // AccelerationStructureNode -> RayTracingPipelineNode
+    batch.Connect(hardwareRT.accelerationStructure, RG::AccelerationStructureNodeConfig::ACCELERATION_STRUCTURE_DATA,
+                  hardwareRT.rtPipeline, RG::RayTracingPipelineNodeConfig::ACCELERATION_STRUCTURE_DATA);
+
+    // ShaderLibraryNode -> RayTracingPipelineNode (compiled RT shader bundle)
+    batch.Connect(hardwareRT.shaderLib, RG::ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  hardwareRT.rtPipeline, RG::RayTracingPipelineNodeConfig::SHADER_DATA_BUNDLE);
+
+    // ShaderLibraryNode -> PushConstantGathererNode (for reflection data)
+    batch.Connect(hardwareRT.shaderLib, RG::ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  hardwareRT.pushConstantGatherer, RG::PushConstantGathererNodeConfig::SHADER_DATA_BUNDLE);
+
+    // PushConstantGathererNode -> TraceRaysNode (camera push constants and ranges)
+    batch.Connect(hardwareRT.pushConstantGatherer, RG::PushConstantGathererNodeConfig::PUSH_CONSTANT_DATA,
+                  hardwareRT.traceRays, RG::TraceRaysNodeConfig::PUSH_CONSTANT_DATA);
+
+    batch.Connect(hardwareRT.pushConstantGatherer, RG::PushConstantGathererNodeConfig::PUSH_CONSTANT_RANGES,
+                  hardwareRT.traceRays, RG::TraceRaysNodeConfig::PUSH_CONSTANT_RANGES);
+
+    // ShaderLibraryNode -> TraceRaysNode (shader data bundle for reflection metadata)
+    batch.Connect(hardwareRT.shaderLib, RG::ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  hardwareRT.traceRays, RG::TraceRaysNodeConfig::SHADER_DATA_BUNDLE);
+
+    // DescriptorSetNode -> TraceRaysNode (descriptor sets for binding)
+    batch.Connect(hardwareRT.descriptorSet, RG::DescriptorSetNodeConfig::DESCRIPTOR_SETS,
+                  hardwareRT.traceRays, RG::TraceRaysNodeConfig::DESCRIPTOR_SETS);
+
+    // Device -> TraceRaysNode
+    batch.Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  hardwareRT.traceRays, RG::TraceRaysNodeConfig::VULKAN_DEVICE_IN);
+
+    // CommandPool -> TraceRaysNode
+    batch.Connect(infra.commandPool, RG::CommandPoolNodeConfig::COMMAND_POOL,
+                  hardwareRT.traceRays, RG::TraceRaysNodeConfig::COMMAND_POOL);
+
+    // RayTracingPipelineNode -> TraceRaysNode
+    batch.Connect(hardwareRT.rtPipeline, RG::RayTracingPipelineNodeConfig::RT_PIPELINE_DATA,
+                  hardwareRT.traceRays, RG::TraceRaysNodeConfig::RT_PIPELINE_DATA);
+
+    // AccelerationStructureNode -> TraceRaysNode
+    batch.Connect(hardwareRT.accelerationStructure, RG::AccelerationStructureNodeConfig::ACCELERATION_STRUCTURE_DATA,
+                  hardwareRT.traceRays, RG::TraceRaysNodeConfig::ACCELERATION_STRUCTURE_DATA);
+
+    // SwapChain -> TraceRaysNode
+    batch.Connect(infra.swapchain, RG::SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+                  hardwareRT.traceRays, RG::TraceRaysNodeConfig::SWAPCHAIN_INFO)
+         .Connect(infra.swapchain, RG::SwapChainNodeConfig::IMAGE_INDEX,
+                  hardwareRT.traceRays, RG::TraceRaysNodeConfig::IMAGE_INDEX);
+
+    // FrameSync -> TraceRaysNode
+    batch.Connect(infra.frameSync, RG::FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                  hardwareRT.traceRays, RG::TraceRaysNodeConfig::CURRENT_FRAME_INDEX)
+         .Connect(infra.frameSync, RG::FrameSyncNodeConfig::IN_FLIGHT_FENCE,
+                  hardwareRT.traceRays, RG::TraceRaysNodeConfig::IN_FLIGHT_FENCE)
+         .Connect(infra.frameSync, RG::FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
+                  hardwareRT.traceRays, RG::TraceRaysNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
+         .Connect(infra.frameSync, RG::FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
+                  hardwareRT.traceRays, RG::TraceRaysNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
+
+    // Camera -> TraceRaysNode (push constants for camera data)
+    // Push constant data would be wired via variadic resources or direct connection
+    // For now, the CameraNode outputs CAMERA_DATA which TraceRaysNode can use
+    // Note: This may need variadic wiring similar to compute pipeline
+
+    //--------------------------------------------------------------------------
+    // Output Connections
+    //--------------------------------------------------------------------------
+
+    // Device -> Present
+    batch.Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  output.present, RG::PresentNodeConfig::VULKAN_DEVICE_IN);
+
+    // SwapChain -> Present
+    batch.Connect(infra.swapchain, RG::SwapChainNodeConfig::SWAPCHAIN_HANDLE,
+                  output.present, RG::PresentNodeConfig::SWAPCHAIN)
+         .Connect(infra.swapchain, RG::SwapChainNodeConfig::IMAGE_INDEX,
+                  output.present, RG::PresentNodeConfig::IMAGE_INDEX);
+
+    // TraceRaysNode -> Present (render complete semaphore)
+    batch.Connect(hardwareRT.traceRays, RG::TraceRaysNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+                  output.present, RG::PresentNodeConfig::RENDER_COMPLETE_SEMAPHORE);
+
+    // FrameSync -> Present (present fences)
+    batch.Connect(infra.frameSync, RG::FrameSyncNodeConfig::PRESENT_FENCES_ARRAY,
+                  output.present, RG::PresentNodeConfig::PRESENT_FENCE_ARRAY);
+
+    // Register all connections atomically
+    batch.RegisterAll();
+}
+
+BenchmarkGraph BenchmarkGraphFactory::BuildHardwareRTGraph(
+    RG::RenderGraph* graph,
+    const TestConfiguration& config,
+    uint32_t width,
+    uint32_t height)
+{
+    if (!graph) {
+        throw std::invalid_argument("BenchmarkGraphFactory::BuildHardwareRTGraph: graph is null");
+    }
+
+    BenchmarkGraph result{};
+    result.pipelineType = PipelineType::HardwareRT;
+
+    // Create scene info from config
+    SceneInfo scene = SceneInfo::FromResolutionAndDensity(
+        config.voxelResolution,
+        0.0f,  // Density computed from scene data, not config
+        MapSceneType(config.sceneType),
+        config.testId
     );
+
+    // Build all subgraphs
+    result.infra = BuildInfrastructure(graph, width, height, true);
+    result.rayMarch = BuildRayMarchScene(graph, result.infra, scene);
+    result.hardwareRT = BuildHardwareRT(graph, result.infra);
+    result.output = BuildOutput(graph, result.infra, false);
+
+    // Configure hardware RT parameters (including scene type for AABB converter)
+    ConfigureHardwareRTParams(graph, result.hardwareRT, scene, width, height);
+
+    // Determine if compressed RTX shaders should be used
+    // Check config.shader OR config.shaderGroup for "Compressed" suffix
+    bool useCompressed = false;
+    if (!config.shader.empty() &&
+        config.shader.find("Compressed") != std::string::npos) {
+        useCompressed = true;
+    }
+    // Also check shaderGroup (array of RT shaders: [rgen, rmiss, rchit, rint])
+    for (const auto& shaderName : config.shaderGroup) {
+        if (shaderName.find("Compressed") != std::string::npos) {
+            useCompressed = true;
+            break;
+        }
+    }
+
+    // Register RT shaders (raygen, miss, closest hit, intersection)
+    // Only the closest-hit shader differs between compressed/uncompressed
+    // since it's the only one that reads color/normal data
+    std::string closestHitShader = useCompressed ? "VoxelRT_Compressed.rchit" : "VoxelRT.rchit";
+
+    RegisterRTXShader(graph, result.hardwareRT,
+        "VoxelRT.rgen",      // Ray generation shader (shared)
+        "VoxelRT.rmiss",     // Miss shader (shared)
+        closestHitShader,    // Closest hit shader (compressed or uncompressed)
+        "VoxelRT.rint");     // Intersection shader (shared)
+
+    // Wire variadic resources (camera -> push constants, swapchain -> output image)
+    // Pass useCompressed to conditionally wire bindings 6-7 for compressed shaders
+    WireHardwareRTVariadicResources(graph, result.infra, result.hardwareRT, result.rayMarch, useCompressed);
+
+    // Connect all subgraphs
+    ConnectHardwareRT(graph, result.infra, result.hardwareRT, result.rayMarch, result.output);
+
+    return result;
 }
 
 //==============================================================================
@@ -1371,11 +1777,12 @@ void BenchmarkGraphFactory::RegisterComputeShader(
         ShaderManagement::ShaderBundleBuilder builder;
 
         // Shader name is used directly as filename
-        // Extract program name from shader filename (remove extension)
+        // Extract program name with pipeline suffix for unique SDI naming
+        // VoxelRayMarch.comp -> VoxelRayMarch_Compute_ (SDI generates VoxelRayMarch_Compute_Names.h)
         std::string programName = shaderName;
         auto dotPos = programName.rfind('.');
         if (dotPos != std::string::npos) {
-            programName = programName.substr(0, dotPos);
+            programName = programName.substr(0, dotPos) + "_Compute_";
         }
 
         // Search paths for shader source
@@ -1441,11 +1848,12 @@ void BenchmarkGraphFactory::RegisterFragmentShader(
         [vertexShaderName, fragmentShaderName](int vulkanVer, int spirvVer) {
         ShaderManagement::ShaderBundleBuilder builder;
 
-        // Extract program name from fragment shader (remove extension)
+        // Extract program name with pipeline suffix for unique SDI naming
+        // VoxelRayMarch.frag -> VoxelRayMarch_Fragment_ (SDI generates VoxelRayMarch_Fragment_Names.h)
         std::string programName = fragmentShaderName;
         auto dotPos = programName.rfind('.');
         if (dotPos != std::string::npos) {
-            programName = programName.substr(0, dotPos);
+            programName = programName.substr(0, dotPos) + "_Fragment_";
         }
 
         // Helper to find shader file
@@ -1491,6 +1899,100 @@ void BenchmarkGraphFactory::RegisterFragmentShader(
 #endif
                .AddStageFromFile(ShaderManagement::ShaderStage::Vertex, vertexPath, "main")
                .AddStageFromFile(ShaderManagement::ShaderStage::Fragment, fragmentPath, "main");
+
+        return builder;
+    });
+}
+
+void BenchmarkGraphFactory::RegisterRTXShader(
+    RG::RenderGraph* graph,
+    const HardwareRTNodes& hardwareRT,
+    const std::string& raygenShader,
+    const std::string& missShader,
+    const std::string& closestHitShader,
+    const std::string& intersectionShader)
+{
+    if (!graph) {
+        throw std::invalid_argument("BenchmarkGraphFactory::RegisterRTXShader: graph is null");
+    }
+
+    // Get the shader library node
+    auto* shaderLibNode = static_cast<RG::ShaderLibraryNode*>(
+        graph->GetInstance(hardwareRT.shaderLib));
+
+    if (!shaderLibNode) {
+        throw std::runtime_error("BenchmarkGraphFactory::RegisterRTXShader: "
+                                "shader library node not found");
+    }
+
+    // Capture shader names by value for the lambda
+    shaderLibNode->RegisterShaderBuilder(
+        [raygenShader, missShader, closestHitShader, intersectionShader](int vulkanVer, int spirvVer) {
+        ShaderManagement::ShaderBundleBuilder builder;
+
+        // Extract program name with pipeline suffix for unique SDI naming
+        // VoxelRT.rgen -> VoxelRT_RayTracing_ (SDI generates VoxelRT_RayTracing_Names.h)
+        std::string programName = raygenShader;
+        auto dotPos = programName.rfind('.');
+        if (dotPos != std::string::npos) {
+            programName = programName.substr(0, dotPos) + "_RayTracing_";
+        }
+
+        // Helper to find shader file
+        auto findShader = [](const std::string& shaderName) -> std::filesystem::path {
+            std::vector<std::filesystem::path> possiblePaths = {
+#ifdef VIXEN_SHADER_SOURCE_DIR
+                std::string(VIXEN_SHADER_SOURCE_DIR) + "/" + shaderName,
+#endif
+                std::string("shaders/") + shaderName,
+                std::string("../shaders/") + shaderName,
+                shaderName
+            };
+
+            for (const auto& path : possiblePaths) {
+                if (std::filesystem::exists(path)) {
+                    return path;
+                }
+            }
+            return {};
+        };
+
+        auto raygenPath = findShader(raygenShader);
+        auto missPath = findShader(missShader);
+        auto closestHitPath = findShader(closestHitShader);
+        auto intersectionPath = findShader(intersectionShader);
+
+        if (raygenPath.empty()) {
+            throw std::runtime_error(
+                std::string("Raygen shader not found: ") + raygenShader);
+        }
+        if (missPath.empty()) {
+            throw std::runtime_error(
+                std::string("Miss shader not found: ") + missShader);
+        }
+        if (closestHitPath.empty()) {
+            throw std::runtime_error(
+                std::string("Closest hit shader not found: ") + closestHitShader);
+        }
+        if (intersectionPath.empty()) {
+            throw std::runtime_error(
+                std::string("Intersection shader not found: ") + intersectionShader);
+        }
+
+        // Configure builder with include paths and all RT stages
+        builder.SetProgramName(programName)
+               .SetPipelineType(ShaderManagement::PipelineTypeConstraint::RayTracing)
+               .SetTargetVulkanVersion(vulkanVer)
+               .SetTargetSpirvVersion(spirvVer)
+               .AddIncludePath("shaders")
+               .AddIncludePath("../shaders")
+#ifdef VIXEN_SHADER_SOURCE_DIR
+               .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
+#endif
+               .AddStageFromFile(ShaderManagement::ShaderStage::RayGen, raygenPath, "main")
+               .AddStageFromFile(ShaderManagement::ShaderStage::Miss, missPath, "main")
+               .AddStageFromFile(ShaderManagement::ShaderStage::ClosestHit, closestHitPath, "main")
+               .AddStageFromFile(ShaderManagement::ShaderStage::Intersection, intersectionPath, "main");
 
         return builder;
     });
@@ -1611,6 +2113,153 @@ void BenchmarkGraphFactory::WireFragmentVariadicResources(
             rayMarch.input, RG::InputNodeConfig::INPUT_STATE,
             fragment.pushConstantGatherer, PC_DEBUG_MODE,
             &InputState::debugMode, SlotRole::Execute);
+    }
+
+    // Register all connections atomically
+    batch.RegisterAll();
+}
+
+void BenchmarkGraphFactory::WireHardwareRTVariadicResources(
+    RG::RenderGraph* graph,
+    const InfrastructureNodes& infra,
+    const HardwareRTNodes& hardwareRT,
+    const RayMarchNodes& rayMarch,
+    bool useCompressed)
+{
+    if (!graph) {
+        throw std::invalid_argument("BenchmarkGraphFactory::WireHardwareRTVariadicResources: graph is null");
+    }
+
+    // Local using declarations for cleaner code
+    using RG::SlotRole;
+    using RG::CameraData;
+    using RG::InputState;
+
+    RG::ConnectionBatch batch(graph);
+
+
+    // Connect camera data to push constants using field extraction
+    batch.ConnectVariadic(
+        rayMarch.camera, RG::CameraNodeConfig::CAMERA_DATA,
+        hardwareRT.pushConstantGatherer, VoxelRT::cameraPos::BINDING,
+        &CameraData::cameraPos, SlotRole::Execute);
+
+    // Note: time field (PC_TIME) not connected - will be zero (no animation)
+
+    batch.ConnectVariadic(
+        rayMarch.camera, RG::CameraNodeConfig::CAMERA_DATA,
+        hardwareRT.pushConstantGatherer, VoxelRT::cameraDir::BINDING,
+        &CameraData::cameraDir, SlotRole::Execute);
+
+    batch.ConnectVariadic(
+        rayMarch.camera, RG::CameraNodeConfig::CAMERA_DATA,
+        hardwareRT.pushConstantGatherer, VoxelRT::fov::BINDING,
+        &CameraData::fov, SlotRole::Execute);
+
+    batch.ConnectVariadic(
+        rayMarch.camera, RG::CameraNodeConfig::CAMERA_DATA,
+        hardwareRT.pushConstantGatherer, VoxelRT::cameraUp::BINDING,
+        &CameraData::cameraUp, SlotRole::Execute);
+
+    batch.ConnectVariadic(
+        rayMarch.camera, RG::CameraNodeConfig::CAMERA_DATA,
+        hardwareRT.pushConstantGatherer, VoxelRT::aspect::BINDING,
+        &CameraData::aspect, SlotRole::Execute);
+
+    batch.ConnectVariadic(
+        rayMarch.camera, RG::CameraNodeConfig::CAMERA_DATA,
+        hardwareRT.pushConstantGatherer, VoxelRT::cameraRight::BINDING,
+        &CameraData::cameraRight, SlotRole::Execute);
+
+    // Connect debugMode from input node (if valid)
+    if (rayMarch.input.IsValid()) {
+        batch.ConnectVariadic(
+            rayMarch.input, RG::InputNodeConfig::INPUT_STATE,
+            hardwareRT.pushConstantGatherer, VoxelRT::debugMode::BINDING,
+            &InputState::debugMode, SlotRole::Execute);
+    }
+
+    //--------------------------------------------------------------------------
+    // VoxelRT.rgen Descriptor Bindings (SDI-driven)
+    //--------------------------------------------------------------------------
+    // Bindings are derived from VoxelRTNames.h (generated from shader reflection)
+    // This ensures compile-time validation that bindings match the shader.
+    //
+    // NOTE: RT shader descriptor bindings require special handling:
+    // - Output image: Bound via DescriptorResourceGatherer from swapchain
+    // - TLAS: Bound via DescriptorResourceGatherer from AccelerationStructureNode
+
+    // Binding 0: outputImage (swapchain storage image) - Execute only (changes per frame)
+    // SDI reference: VoxelRT::outputImage::BINDING
+    batch.ConnectVariadic(
+        infra.swapchain, RG::SwapChainNodeConfig::CURRENT_FRAME_IMAGE_VIEW,
+        hardwareRT.descriptorGatherer, VoxelRT::outputImage::BINDING,
+        SlotRole::Execute);
+
+    // Binding 1: topLevelAS (acceleration structure) - Dependency + Execute
+    // SDI reference: VoxelRT::topLevelAS::BINDING
+    // TLAS is static (built once during compile), so Dependency is primary role
+    batch.ConnectVariadic(
+        hardwareRT.accelerationStructure, RG::AccelerationStructureNodeConfig::TLAS_HANDLE,
+        hardwareRT.descriptorGatherer, VoxelRT::topLevelAS::BINDING,
+        SlotRole::Dependency | SlotRole::Execute);
+
+    // Binding 2: aabbBuffer (SSBO) - Dependency + Execute
+    // AABB buffer for intersection shader to look up actual voxel bounds
+    // SDI reference: VoxelRT::aabbBuffer::BINDING
+    batch.ConnectVariadic(
+        hardwareRT.aabbConverter, RG::VoxelAABBConverterNodeConfig::AABB_BUFFER,
+        hardwareRT.descriptorGatherer, VoxelRT::aabbBuffer::BINDING,
+        SlotRole::Dependency | SlotRole::Execute);
+
+    // Binding 3: materialIdBuffer (SSBO) - Dependency + Execute
+    // Material ID buffer for closest-hit shader to get voxel colors
+    // SDI reference: VoxelRT::materialIdBuffer::BINDING
+    batch.ConnectVariadic(
+        hardwareRT.aabbConverter, RG::VoxelAABBConverterNodeConfig::MATERIAL_ID_BUFFER,
+        hardwareRT.descriptorGatherer, VoxelRT::materialIdBuffer::BINDING,
+        SlotRole::Dependency | SlotRole::Execute);
+
+    // Binding 5: OctreeConfigUBO (UBO) - Dependency + Execute
+    // Contains world<->local transformation matrices for coordinate space alignment
+    // This matches compute shader binding 5, ensuring RTX rays are in the same
+    // coordinate space as the AABB geometry.
+    // SDI reference: VoxelRT::octreeConfig::BINDING
+    batch.ConnectVariadic(
+        rayMarch.voxelGrid, RG::VoxelGridNodeConfig::OCTREE_CONFIG_BUFFER,
+        hardwareRT.descriptorGatherer, VoxelRT::octreeConfig::BINDING,
+        SlotRole::Dependency | SlotRole::Execute);
+
+    //--------------------------------------------------------------------------
+    // Compressed Buffer Bindings (VoxelRT_Compressed.rchit only)
+    //--------------------------------------------------------------------------
+    // Only wire compressed bindings when using compressed shader.
+    // The uncompressed shader doesn't declare bindings 6-8, and wiring them
+    // would cause DescriptorResourceGathererNode::Execute to fail with
+    // "Binding X out of range" errors.
+    if (useCompressed) {
+        constexpr uint32_t BINDING_COMPRESSED_COLOR = 6;
+        constexpr uint32_t BINDING_COMPRESSED_NORMAL = 7;
+        constexpr uint32_t BINDING_BRICK_MAPPING = 8;
+
+        // Binding 6: compressedColors (DXT1 color blocks) - Dependency + Execute
+        batch.ConnectVariadic(
+            rayMarch.voxelGrid, RG::VoxelGridNodeConfig::COMPRESSED_COLOR_BUFFER,
+            hardwareRT.descriptorGatherer, BINDING_COMPRESSED_COLOR,
+            SlotRole::Dependency | SlotRole::Execute);
+
+        // Binding 7: compressedNormals (DXT normal blocks) - Dependency + Execute
+        batch.ConnectVariadic(
+            rayMarch.voxelGrid, RG::VoxelGridNodeConfig::COMPRESSED_NORMAL_BUFFER,
+            hardwareRT.descriptorGatherer, BINDING_COMPRESSED_NORMAL,
+            SlotRole::Dependency | SlotRole::Execute);
+
+        // Binding 8: brickMapping (SSBO) - Maps gl_PrimitiveID to (brickIndex, localVoxelIdx)
+        // Required for compressed RTX shaders to access DXT-compressed color/normal buffers
+        batch.ConnectVariadic(
+            hardwareRT.aabbConverter, RG::VoxelAABBConverterNodeConfig::BRICK_MAPPING_BUFFER,
+            hardwareRT.descriptorGatherer, BINDING_BRICK_MAPPING,
+            SlotRole::Dependency | SlotRole::Execute);
     }
 
     // Register all connections atomically

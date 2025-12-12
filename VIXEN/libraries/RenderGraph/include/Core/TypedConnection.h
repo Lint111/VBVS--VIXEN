@@ -251,12 +251,20 @@ public:
             tgtNode->AddDependency(srcNode);
 
             // Create placeholder resource so validation passes
+            // NOTE: Must be heap-allocated with stable lifetime - the placeholder pointer
+            // is stored in the node and accessed during validation, which happens after
+            // this function returns. A stack variable would be a dangling pointer.
             using FieldResourceType = std::remove_reference_t<FieldType>;
-            Resource placeholderRes = Resource::Create<FieldResourceType>(
-                typename ResourceTypeTraits<FieldResourceType>::DescriptorT{});
-            // Set with default value
-            placeholderRes.SetHandle<FieldResourceType>(FieldResourceType{});
-            tgtNode->SetInput(targetSlot.index, arrayIndex, &placeholderRes);
+            static std::vector<std::unique_ptr<Resource>> placeholderResources;
+
+            auto placeholderPtr = std::make_unique<Resource>(Resource::Create<FieldResourceType>(
+                typename ResourceTypeTraits<FieldResourceType>::DescriptorT{}));
+            placeholderPtr->SetHandle<FieldResourceType>(FieldResourceType{});
+
+            Resource* placeholderRes = placeholderPtr.get();
+            placeholderResources.push_back(std::move(placeholderPtr));
+
+            tgtNode->SetInput(targetSlot.index, arrayIndex, placeholderRes);
         }
 
         // Register callback with graph to execute after source node compiles

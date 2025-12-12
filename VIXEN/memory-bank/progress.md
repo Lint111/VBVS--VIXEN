@@ -1,8 +1,64 @@
 # Progress
 
-## Current State: Phase J COMPLETE - All Fragment Shader Variants Done (Dec 2025)
+## Current State: Phase L COMPLETE - Data Pipeline (Dec 2025)
 
-**Last Updated**: December 6, 2025 (Phase J FULLY COMPLETE - both uncompressed and compressed variants)
+**Last Updated**: December 10, 2025 (Phase L Data Pipeline COMPLETE - Awaiting tester benchmark submissions)
+
+---
+
+## Phase L: Data Pipeline - COMPLETE
+
+### Summary
+Built complete data visualization and aggregation infrastructure for benchmark analysis. TesterPackage feature enables easy benchmark sharing.
+
+### Completed (December 10, 2025)
+
+| Task | Status | Notes |
+|------|--------|-------|
+| L.1: JSON Export | COMPLETE | Per-test results in benchmark_results/ |
+| L.2: Excel Aggregation | COMPLETE | aggregate_results.py → data/benchmarks.xlsx |
+| L.3: Chart Generation | COMPLETE | generate_charts.py → 9 chart types |
+| L.4: Multi-Tester Support | COMPLETE | Folder organization, pack/unpack |
+| L.5: TesterPackage | COMPLETE | Automatic ZIP with system_info.json |
+| L.6: Analysis Reports | COMPLETE | Benchmark-Data-Summary.md, Data-Quality-Report.md |
+
+### Key Findings (RTX 3060 Laptop GPU, 144 tests)
+
+| Pipeline | FPS @ 256³ | VRAM | Notes |
+|----------|------------|------|-------|
+| Compute | 80-130 | 320 MB | Best general performance |
+| Fragment | 100-130 | 319 MB | Graphics integration |
+| Hardware RT | ~40 | 1098 MB | 3.4x VRAM overhead |
+
+### Data Gaps Identified
+- `avg_voxels_per_ray` = 0.0 (shader instrumentation needed)
+- `ray_throughput_mrays` = 0.0 for Fragment/HW RT
+- No GPU utilization monitoring
+
+### Next Steps
+1. **BLOCKED**: Collect benchmarks from additional machines (awaiting tester submissions)
+2. **Phase M: Analysis & Paper** - Statistical analysis when data available
+
+---
+
+## Phase K: Hardware RT - COMPLETE
+
+### Summary
+Full VK_KHR_ray_tracing_pipeline implementation with all visual fixes.
+
+### Sessions (December 8-10, 2025)
+
+| Session | Focus | Key Fixes |
+|---------|-------|-----------|
+| Session 1-2 | Visual fixes | Y-flip, SDI naming, material IDs |
+| Session 3 | HW RT sparse | World-space AABBs, ESC freeze |
+| Session 4-5 | Data pipeline | Charts, TesterPackage |
+
+### Commits
+- `8c2a358` - TesterPackage ZIP packaging
+- `e43232c` - Data visualization pipeline
+- `60e0ce7` - HW RT sparse rendering fix
+- `782fd8d` - vkDeviceWaitIdle on ESC exit
 
 ---
 
@@ -50,9 +106,9 @@ Implemented complete Profiler library for automated benchmark data collection. A
 - **Metrics**: Frame time, GPU time, ray throughput, VRAM usage, device info, shader counters
 
 ### Next Steps
-1. **Phase K: Hardware RT** - VK_KHR_ray_tracing_pipeline implementation
-2. **Phase III: Research Analysis** - Run 180-configuration matrix
-3. **Phase IV: Optimization** - Performance improvements from data
+1. ~~**Phase K: Hardware RT** - VK_KHR_ray_tracing_pipeline implementation~~ ✅ COMPLETE
+2. **Phase L: Benchmark Data Collection** - Run 180-configuration matrix
+3. **Phase M: Analysis & Paper** - Performance analysis from data
 
 ---
 
@@ -106,12 +162,84 @@ Fragment pipeline renders voxels with proper camera control. Both compute and fr
 |----------|--------------|------------|
 | Compute | ✅ VoxelRayMarch.comp | ✅ VoxelRayMarch_Compressed.comp |
 | Fragment | ✅ VoxelRayMarch.frag | ✅ VoxelRayMarch_Compressed.frag |
-| Hardware RT | ⏳ Phase K | ⏳ Phase K |
+| Hardware RT | ✅ VoxelRT.rgen/rmiss/rchit/rint | ✅ VoxelRT_Compressed.rchit |
 
 **Files Modified:**
 - `shaders/VoxelRayMarch_Compressed.frag` (NEW)
 - `libraries/Profiler/src/BenchmarkConfig.cpp` (added compressed variant to fragment pipeline)
 - `libraries/Profiler/src/BenchmarkGraphFactory.cpp` (wired bindings 6-7 for compressed buffers)
+
+---
+
+## Phase K: Hardware RT Integration + Cache Persistence - COMPLETE
+
+### Summary
+Implemented complete Hardware RT pipeline with VoxelSceneCacher integration and cache persistence for benchmark acceleration. All 24 RT benchmark tests passing.
+
+### Completed (December 8, 2025)
+
+| Task | Status | Notes |
+|------|--------|-------|
+| K.1: VoxelSceneCacher | COMPLETE | Scene generation, octree building, DXT compression, GPU buffers |
+| K.2: AccelerationStructureCacher | COMPLETE | AABB conversion, BLAS/TLAS creation, device addresses |
+| K.3: Node Integration | COMPLETE | VoxelGridNode + AccelerationStructureNode use cachers exclusively |
+| K.4: Cache Persistence | COMPLETE | Binary serialization to disk, re-upload on load |
+| K.5: BenchmarkRunner Integration | COMPLETE | MainCacher + Logger passed to RenderGraph |
+
+### Cache Persistence Implementation
+
+**Serialization Flow:**
+```
+RenderGraph::Clear()
+    → SaveAllAsync() [BEFORE ExecuteCleanup]
+        → VoxelSceneCacher::SerializeToFile()
+            → Write magic (0x56534341 "VSCA") + version (1)
+            → Write key, CreateInfo
+            → Write CPU vectors (octree nodes, bricks, brick lookup, colors, normals, materials)
+            → Write OctreeConfig + metadata
+        → File: cache/devices/Device_<id>/VoxelSceneCacher.cache (~4.6 MB)
+```
+
+**Deserialization Flow:**
+```
+RenderGraph::GeneratePipelines()
+    → LoadAllAsync()
+        → VoxelSceneCacher::DeserializeFromFile()
+            → Read + validate magic/version
+            → Restore CPU vectors
+            → UploadToGPU() [re-creates GPU buffers]
+        → CACHE HIT on subsequent GetOrCreate()
+```
+
+**Key Changes:**
+- `RenderGraph::Clear()` calls `SaveAllAsync()` BEFORE `ExecuteCleanup()` (line order critical)
+- Uses `GRAPH_LOG` macros for logging (not `std::cout`)
+- BenchmarkRunner creates `MainCacher::Instance()` and `::Logger` (global scope)
+- DeviceRegistry stores device-dependent cachers
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `libraries/RenderGraph/src/Core/RenderGraph.cpp` | SaveAllAsync() before ExecuteCleanup() |
+| `libraries/CashSystem/src/VoxelSceneCacher.cpp` | Binary serialization/deserialization |
+| `libraries/Profiler/src/BenchmarkRunner.cpp` | MainCacher + Logger initialization |
+| `libraries/RenderGraph/src/Nodes/VoxelGridNode.cpp` | Cacher integration |
+| `libraries/RenderGraph/src/Nodes/AccelerationStructureNode.cpp` | Cacher integration |
+
+### Test Results
+- **24/24 RT benchmark tests passing**
+- **~470 total tests passing** across all suites
+- Cache hits verified during benchmark transitions
+- All pipelines (Compute, Fragment, Hardware RT) rendering correctly
+
+### Cache Location
+```
+cache/
+└── devices/
+    └── Device_<hash>/
+        └── VoxelSceneCacher.cache  (~4.6 MB)
+```
 
 ---
 

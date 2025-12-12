@@ -50,12 +50,23 @@ InputNode::InputNode(
     keyStates[KeyCode::Key7] = KeyState{};
     keyStates[KeyCode::Key8] = KeyState{};
     keyStates[KeyCode::Key9] = KeyState{};
+    // Frame capture key
+    keyStates[KeyCode::C] = KeyState{};
 }
 
 void InputNode::SetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_INFO("[InputNode] Setup");
     lastFrameTime = std::chrono::steady_clock::now();
     mouseCaptured = false;
+
+    // Read parameters
+    enabled_ = GetParameterValue<bool>(InputNodeConfig::PARAM_ENABLED, true);
+    int captureMode = GetParameterValue<int>(InputNodeConfig::PARAM_MOUSE_CAPTURE_MODE,
+                                              static_cast<int>(MouseCaptureMode::CenterLock));
+    mouseCaptureMode_ = static_cast<MouseCaptureMode>(captureMode);
+
+    NODE_LOG_INFO("[InputNode] enabled=" + std::to_string(enabled_) +
+                  ", mouse_capture_mode=" + std::to_string(captureMode));
 }
 
 void InputNode::CompileImpl(TypedCompileContext& ctx) {
@@ -71,8 +82,16 @@ void InputNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // Calculate delta time
     UpdateDeltaTime();
 
-    // Enable mouse capture on first frame
-    if (!mouseCaptured && hwnd) {
+    // If disabled, output empty state and skip polling
+    if (!enabled_) {
+        inputState_.BeginFrame();
+        inputState_.deltaTime = deltaTime;
+        ctx.Out(InputNodeConfig::INPUT_STATE, &inputState_);
+        return;
+    }
+
+    // Initialize mouse capture based on capture mode
+    if (!mouseCaptured && hwnd && mouseCaptureMode_ == MouseCaptureMode::CenterLock) {
         InitializeMouseCapture();
     }
 
@@ -89,51 +108,51 @@ void InputNode::ExecuteImpl(TypedExecuteContext& ctx) {
     PublishKeyEvents();
     // PublishMouseEvents() disabled - all input via InputState polling
 
-    // Re-center mouse for continuous movement
-    if (mouseCaptured && hwnd) {
+    // Re-center mouse for continuous movement (only in CenterLock mode)
+    if (mouseCaptured && hwnd && mouseCaptureMode_ == MouseCaptureMode::CenterLock) {
         RecenterMouse();
     }
 
     // Modern polling interface: Populate InputState and output it
     PopulateInputState();
-    ctx.Out(InputNodeConfig::INPUT_STATE, &inputState);
+    ctx.Out(InputNodeConfig::INPUT_STATE, &inputState_);
 }
 
 void InputNode::PopulateInputState() {
     // Clear per-frame state (pressed/released flags, but NOT mouseDelta)
-    inputState.BeginFrame();
+    inputState_.BeginFrame();
 
     // Update frame timing
-    inputState.deltaTime = deltaTime;
+    inputState_.deltaTime = deltaTime;
 
     // Copy keyboard state
     for (const auto& [key, state] : keyStates) {
-        inputState.keyDown[key] = state.isDown;
+        inputState_.keyDown[key] = state.isDown;
 
         // Just pressed: down this frame, but not last frame
         if (state.isDown && !state.wasDown) {
-            inputState.keyPressed[key] = true;
+            inputState_.keyPressed[key] = true;
         }
 
         // Just released: up this frame, but was down last frame
         if (!state.isDown && state.wasDown) {
-            inputState.keyReleased[key] = true;
+            inputState_.keyReleased[key] = true;
         }
     }
 
     // Update debug mode based on number key presses (0-9)
     // debugMode persists until another number is pressed
     using EventBus::KeyCode;
-    if (inputState.IsKeyPressed(KeyCode::Key0)) inputState.debugMode = 0;
-    else if (inputState.IsKeyPressed(KeyCode::Key1)) inputState.debugMode = 1;
-    else if (inputState.IsKeyPressed(KeyCode::Key2)) inputState.debugMode = 2;
-    else if (inputState.IsKeyPressed(KeyCode::Key3)) inputState.debugMode = 3;
-    else if (inputState.IsKeyPressed(KeyCode::Key4)) inputState.debugMode = 4;
-    else if (inputState.IsKeyPressed(KeyCode::Key5)) inputState.debugMode = 5;
-    else if (inputState.IsKeyPressed(KeyCode::Key6)) inputState.debugMode = 6;
-    else if (inputState.IsKeyPressed(KeyCode::Key7)) inputState.debugMode = 7;
-    else if (inputState.IsKeyPressed(KeyCode::Key8)) inputState.debugMode = 8;
-    else if (inputState.IsKeyPressed(KeyCode::Key9)) inputState.debugMode = 9;
+    if (inputState_.IsKeyPressed(KeyCode::Key0)) inputState_.debugMode = 0;
+    else if (inputState_.IsKeyPressed(KeyCode::Key1)) inputState_.debugMode = 1;
+    else if (inputState_.IsKeyPressed(KeyCode::Key2)) inputState_.debugMode = 2;
+    else if (inputState_.IsKeyPressed(KeyCode::Key3)) inputState_.debugMode = 3;
+    else if (inputState_.IsKeyPressed(KeyCode::Key4)) inputState_.debugMode = 4;
+    else if (inputState_.IsKeyPressed(KeyCode::Key5)) inputState_.debugMode = 5;
+    else if (inputState_.IsKeyPressed(KeyCode::Key6)) inputState_.debugMode = 6;
+    else if (inputState_.IsKeyPressed(KeyCode::Key7)) inputState_.debugMode = 7;
+    else if (inputState_.IsKeyPressed(KeyCode::Key8)) inputState_.debugMode = 8;
+    else if (inputState_.IsKeyPressed(KeyCode::Key9)) inputState_.debugMode = 9;
 
     // Get current mouse position and calculate delta
     POINT cursorPos;
@@ -141,20 +160,20 @@ void InputNode::PopulateInputState() {
         // Calculate this frame's mouse movement delta
         float deltaX = static_cast<float>(cursorPos.x - lastMouseX);
         float deltaY = static_cast<float>(cursorPos.y - lastMouseY);
-        inputState.mouseDelta = glm::vec2(deltaX, deltaY);
+        inputState_.mouseDelta = glm::vec2(deltaX, deltaY);
 
         // Store position for next frame's delta calculation
         lastMouseX = cursorPos.x;
         lastMouseY = cursorPos.y;
 
         // Update current position in input state
-        inputState.mousePosition = glm::vec2(cursorPos.x, cursorPos.y);
+        inputState_.mousePosition = glm::vec2(cursorPos.x, cursorPos.y);
     }
 
     // Mouse buttons (query current state)
-    inputState.mouseButtons[0] = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
-    inputState.mouseButtons[1] = (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0;
-    inputState.mouseButtons[2] = (GetAsyncKeyState(VK_MBUTTON) & 0x8000) != 0;
+    inputState_.mouseButtons[0] = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
+    inputState_.mouseButtons[1] = (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0;
+    inputState_.mouseButtons[2] = (GetAsyncKeyState(VK_MBUTTON) & 0x8000) != 0;
 }
 
 void InputNode::CleanupImpl(TypedCleanupContext& ctx) {
@@ -264,17 +283,22 @@ void InputNode::PollMouse() {
 // ====== Event Publishing ======
 
 void InputNode::PublishKeyEvents() {
-    // Modern input system: Only handle ESC for application exit
+    // Modern input system: ESC publishes WindowCloseEvent for graceful shutdown
     // All other keyboard input is polled via InputState.keyDown/keyPressed/keyReleased
     // No continuous KeyEvent publishing to avoid event flooding and render stalls
 
-    // Check ESC specifically
+    // Check ESC specifically - publish WindowCloseEvent instead of PostQuitMessage
+    // This allows BenchmarkRunner and other higher-level systems to handle shutdown gracefully
     auto escIt = keyStates.find(EventBus::KeyCode::Escape);
     if (escIt != keyStates.end()) {
         const auto& escState = escIt->second;
-        // ESC just pressed: exit application
+        // ESC just pressed: request graceful exit via event
         if (!escState.wasDown && escState.isDown) {
-            PostQuitMessage(0);
+            if (GetMessageBus()) {
+                auto closeEvent = std::make_unique<EventBus::WindowCloseEvent>(instanceId);
+                GetMessageBus()->Publish(std::move(closeEvent));
+                NODE_LOG_INFO("[InputNode] ESC pressed - published WindowCloseEvent for graceful shutdown");
+            }
             return;
         }
     }
@@ -294,8 +318,8 @@ void InputNode::PublishMouseEvents() {
     }
 
     // Use delta from inputState (calculated in PopulateInputState)
-    float deltaX = inputState.mouseDelta.x;
-    float deltaY = inputState.mouseDelta.y;
+    float deltaX = inputState_.mouseDelta.x;
+    float deltaY = inputState_.mouseDelta.y;
     float deltaMagnitude = std::sqrt(deltaX * deltaX + deltaY * deltaY);
 
     // DISABLED: Continuous MouseMoveEvent causes event flooding and stuttering

@@ -156,7 +156,7 @@ bool DescriptorCacher::SerializeToFile(const std::filesystem::path& path) const 
 
     std::ofstream file(path, std::ios::binary);
     if (!file.is_open()) {
-        std::cerr << "[DescriptorCacher::SerializeToFile] Failed to open file: " << path << std::endl;
+        LOG_ERROR("SerializeToFile: Failed to open file: " + path.string());
         return false;
     }
 
@@ -202,7 +202,7 @@ bool DescriptorCacher::SerializeToFile(const std::filesystem::path& path) const 
         }
     }
 
-    std::cout << "[DescriptorCacher::SerializeToFile] Serialized " << cacheSize << " descriptor layouts to " << path << std::endl;
+    LOG_INFO("SerializeToFile: Serialized " + std::to_string(cacheSize) + " descriptor layouts to " + path.string());
     return true;
 }
 
@@ -212,7 +212,7 @@ bool DescriptorCacher::DeserializeFromFile(const std::filesystem::path& path, vo
 
     std::ifstream file(path, std::ios::binary);
     if (!file.is_open()) {
-        std::cerr << "[DescriptorCacher::DeserializeFromFile] Failed to open file: " << path << std::endl;
+        LOG_ERROR("DeserializeFromFile: Failed to open file: " + path.string());
         return false;
     }
 
@@ -220,7 +220,7 @@ bool DescriptorCacher::DeserializeFromFile(const std::filesystem::path& path, vo
     uint32_t version = 0;
     file.read(reinterpret_cast<char*>(&version), sizeof(version));
     if (version != 1) {
-        std::cerr << "[DescriptorCacher::DeserializeFromFile] Unsupported version: " << version << std::endl;
+        LOG_ERROR("DeserializeFromFile: Unsupported version: " + std::to_string(version));
         return false;
     }
 
@@ -228,7 +228,7 @@ bool DescriptorCacher::DeserializeFromFile(const std::filesystem::path& path, vo
     uint32_t cacheSize = 0;
     file.read(reinterpret_cast<char*>(&cacheSize), sizeof(cacheSize));
 
-    std::cout << "[DescriptorCacher::DeserializeFromFile] Loading " << cacheSize << " descriptor layouts from " << path << std::endl;
+    LOG_INFO("DeserializeFromFile: Loading " + std::to_string(cacheSize) + " descriptor layouts from " + path.string());
 
     // Deserialize metadata (actual descriptor resources must be recreated on-demand)
     for (uint32_t i = 0; i < cacheSize; ++i) {
@@ -263,8 +263,7 @@ bool DescriptorCacher::DeserializeFromFile(const std::filesystem::path& path, vo
         // This deserialization just validates the file format
     }
 
-    std::cout << "[DescriptorCacher::DeserializeFromFile] Descriptor layout metadata validated" << std::endl;
-    std::cout << "  Note: Descriptor resources will be recreated on-demand" << std::endl;
+    LOG_INFO("DeserializeFromFile: Descriptor layout metadata validated (resources will be recreated on-demand)");
 
     (void)device;  // Device used when recreating resources on-demand
     return true;

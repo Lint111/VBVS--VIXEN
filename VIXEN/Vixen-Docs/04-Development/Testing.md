@@ -17,7 +17,7 @@ GoogleTest framework with VS Code integration and LCOV coverage visualization.
 ## 1. Test Organization
 
 ```mermaid
-graph TD
+flowchart TD
     subgraph Core Libraries
         EB[EventBus Tests]
         LOG[Logger Tests]
@@ -41,6 +41,7 @@ graph TD
         BC[BenchmarkConfig]
         BG[BenchmarkGraph]
     end
+    class RM internal-link
 ```
 
 ---

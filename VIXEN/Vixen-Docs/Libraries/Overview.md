@@ -18,7 +18,7 @@ VIXEN is organized into 14 static libraries with modern CMake target-based depen
 ## 1. Library Dependency Graph
 
 ```mermaid
-graph TD
+flowchart TD
     subgraph Foundation
         C[Core]
         L[Logger]
@@ -71,10 +71,28 @@ graph TD
     SVO --> VD
     PR --> RG
 
+    class C internal-link
+    class L internal-link
+    class EB internal-link
+    class RM internal-link
+    class VR internal-link
+    class CS internal-link
+    class SM internal-link
+    class RG internal-link
+    class VC internal-link
+    class GA internal-link
+    class GVW internal-link
+    class VD internal-link
+    class SVO internal-link
+    class PR internal-link
+
     style RG fill:#4a9eff
     style SVO fill:#26de81
     style VR fill:#ff9f43
 ```
+
+> [!tip] Clickable Diagram
+> Click any library node to navigate to its documentation.
 
 ---
 
@@ -224,3 +242,4 @@ Libraries are built in dependency order by CMake:
 - [[../01-Architecture/Overview|Architecture Overview]] - System architecture
 - [[../02-Implementation/Overview|Implementation Overview]] - Implementation details
 - [[../04-Development/Build-System|Build System]] - CMake configuration
+

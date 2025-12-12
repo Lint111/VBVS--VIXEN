@@ -219,6 +219,18 @@ private:
         std::vector<VkDescriptorBufferInfo>& bufferInfos,
         std::vector<VkWriteDescriptorSet>& writes
     );
+    void HandleAccelerationStructure(
+        const ::ShaderManagement::SpirvDescriptorBinding& binding,
+        const DescriptorHandleVariant& resourceVariant,
+        VkWriteDescriptorSet& write,
+        std::vector<VkWriteDescriptorSetAccelerationStructureKHR>& accelInfos,
+        std::vector<VkAccelerationStructureKHR>& accelHandles,
+        std::vector<VkWriteDescriptorSet>& writes
+    );
+
+    // Storage for acceleration structure write info (must persist until vkUpdateDescriptorSets completes)
+    std::vector<VkWriteDescriptorSetAccelerationStructureKHR> perFrameAccelInfos;
+    std::vector<VkAccelerationStructureKHR> perFrameAccelHandles;
 };
 
 } // namespace Vixen::RenderGraph

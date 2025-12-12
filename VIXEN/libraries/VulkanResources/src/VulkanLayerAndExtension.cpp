@@ -17,7 +17,7 @@ VkDebugReportCallbackCreateInfoEXT VulkanLayerAndExtension::dbgReportCreateInfo 
 };
 
 VulkanLayerAndExtension::VulkanLayerAndExtension() {
-	// constructor
+	InitializeLogger("VulkanLayerAndExtension");
 }
 
 VulkanLayerAndExtension::~VulkanLayerAndExtension() {
@@ -50,14 +50,14 @@ VkResult VulkanLayerAndExtension::GetInstanceLayerProperties() {
 	} while (result == VK_INCOMPLETE);
 
 	// query all extensions for each layer and store it.
-	std::cout << "\nInstanced Layers" << std::endl;
-	std::cout << "================" << std::endl;
+	LOG_INFO("\nInstanced Layers");
+	LOG_INFO("================");
 	for (auto& globalLayerProp : layerProperties) {
 		//print layer name and its properties
 
-		std::cout << "\n" << globalLayerProp.description <<
-					 "\n\t|\n\t\\ --- [Layer Name] --> " <<
-					 globalLayerProp.layerName << "\n";
+		LOG_INFO("\n" + std::string(globalLayerProp.description) +
+					 "\n\t|\n\t\\ --- [Layer Name] --> " +
+					 globalLayerProp.layerName + "\n");
 
 		LayerProperties layerProps;
 		layerProps.properties = globalLayerProp;
@@ -73,8 +73,8 @@ VkResult VulkanLayerAndExtension::GetInstanceLayerProperties() {
 
 		// print extension name for each instance layer
 		for (auto j : layerProps.extensions) {
-			std::cout << "\t\t|\n\t\t|--- [LayerExtension] --> " <<				
-				j.extensionName << "\n";
+			LOG_INFO("\t\t|\n\t\t|--- [LayerExtension] --> " +
+				std::string(j.extensionName) + "\n");
 		}
 	}
 	return result;
@@ -135,8 +135,8 @@ VkResult VulkanLayerAndExtension::GetExtentionProperties(LayerProperties& layerP
 VkResult VulkanLayerAndExtension::GetDeviceExtentionProperties(const VkPhysicalDevice* const gpu, VulkanInstance& instance) {
 	VkResult result; // result status
 
-	std::cout << "\nDevice Extensions" << std::endl;
-	std::cout << "=================" << std::endl;
+	LOG_INFO("\nDevice Extensions");
+	LOG_INFO("=================");
 	std::vector<LayerProperties>* instanceLayerProp = &instance.layerExtension.layerPropertyList;
 	
 	for (auto& globalLayerProp : *instanceLayerProp) {
@@ -166,10 +166,10 @@ VkBool32 VulkanLayerAndExtension::AreLayersSupported(std::vector<const char*>& l
 		}
 
 		if(!isSupported) {
-			std::cout << "No Layer support found, removed from layer: " << layerNames[i] << std::endl;
+			LOG_INFO("No Layer support found, removed from layer: " + std::string(layerNames[i]));
 			unsupportedLayerNames.push_back(layerNames[i]);
 		} else {
-			std::cout << "Layer support found, keep the layer: " << layerNames[i] << std::endl;
+			LOG_INFO("Layer support found, keep the layer: " + std::string(layerNames[i]));
 		}
 	}
 
@@ -190,11 +190,11 @@ VkResult VulkanLayerAndExtension::CreateDebugReportCallBack(VkInstance instance)
 	vkGetInstanceProcAddr(instance, "vkCreateDebugReportCallbackEXT");
 
 	if(!dbgCreateDebugReportCallback) {
-		std::cerr << "GetProcAddr: Unable to find vkCreateDebugReportCallbackEXT function." << std::endl;
+		LOG_ERROR("GetProcAddr: Unable to find vkCreateDebugReportCallbackEXT function.");
 		return VK_ERROR_INITIALIZATION_FAILED;
 	}
 
-	std::cout << "GetProcAddr: Found vkCreateDebugReportCallbackEXT function." << std::endl;
+	LOG_INFO("GetProcAddr: Found vkCreateDebugReportCallbackEXT function.");
 
 
 
@@ -202,11 +202,11 @@ VkResult VulkanLayerAndExtension::CreateDebugReportCallBack(VkInstance instance)
 	vkGetInstanceProcAddr(instance, "vkDestroyDebugReportCallbackEXT");
 
 	if(!dbgDestroyDebugReportCallback) {
-		std::cerr << "GetProcAddr: Unable to find vkDestroyDebugReportCallbackEXT function." << std::endl;
+		LOG_ERROR("GetProcAddr: Unable to find vkDestroyDebugReportCallbackEXT function.");
 		return VK_ERROR_INITIALIZATION_FAILED;
 	}
 
-	std::cout << "GetProcAddr: Found vkDestroyDebugReportCallbackEXT function." << std::endl;
+	LOG_INFO("GetProcAddr: Found vkDestroyDebugReportCallbackEXT function.");
 
 	//define the debug report control structure
 	// provide the references of 'debugFunction'
@@ -226,8 +226,8 @@ VkResult VulkanLayerAndExtension::CreateDebugReportCallBack(VkInstance instance)
 										 &DebugReportCallback);
 
 	if (result == VK_SUCCESS) {
-		std::cout << "Debug Callback: Successfully created." << std::endl;
-	} 
+		LOG_INFO("Debug Callback: Successfully created.");
+	}
 	return result;
 }
 
@@ -242,30 +242,27 @@ uint32_t VulkanLayerAndExtension::DebugFunction(
 	void* pUserData) {
 
 	if(msgFlags & VK_DEBUG_REPORT_ERROR_BIT_EXT) {
-		std::cout << "[VK_DEBUG_REPORT] ERROR: [" << pLayerPrefix << "] Code " 
-				  << msgCode << " : " << pMsg << std::endl;
+		std::string msg = "[VK_DEBUG_REPORT] ERROR: [" + std::string(pLayerPrefix) + "] Code "
+				  + std::to_string(msgCode) + " : " + pMsg;
 	} else if (msgFlags & VK_DEBUG_REPORT_WARNING_BIT_EXT) {
-		std::cout << "[VK_DEBUG_REPORT] WARNING: [" << pLayerPrefix << "] Code " 
-				  << msgCode << " : " << pMsg << std::endl;
+		std::string msg = "[VK_DEBUG_REPORT] WARNING: [" + std::string(pLayerPrefix) + "] Code "
+				  + std::to_string(msgCode) + " : " + pMsg;
 	} else if( msgFlags & VK_DEBUG_REPORT_INFORMATION_BIT_EXT) {
-		std::cout << "[VK_DEBUG_REPORT] INFO: [" << pLayerPrefix << "] Code " 
-				  << msgCode << " : " << pMsg << std::endl;
+		std::string msg = "[VK_DEBUG_REPORT] INFO: [" + std::string(pLayerPrefix) + "] Code "
+				  + std::to_string(msgCode) + " : " + pMsg;
 	} else if (msgFlags & VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT) {
-		std::cout << "[VK_DEBUG_REPORT] PERFORMANCE: [" << pLayerPrefix << "] Code " 
-				  << msgCode << " : " << pMsg << std::endl;
-	} else if (msgFlags & VK_DEBUG_REPORT_INFORMATION_BIT_EXT) {
-		std::cout << "[VK_DEBUG_REPORT] INFO: [" << pLayerPrefix << "] Code " 
-				  << msgCode << " : " << pMsg << std::endl;
+		std::string msg = "[VK_DEBUG_REPORT] PERFORMANCE: [" + std::string(pLayerPrefix) + "] Code "
+				  + std::to_string(msgCode) + " : " + pMsg;
 	} else if (msgFlags & VK_DEBUG_REPORT_DEBUG_BIT_EXT) {
-		std::cout << "[VK_DEBUG_REPORT] DEBUG: [" << pLayerPrefix << "] Code " 
-				  << msgCode << " : " << pMsg << std::endl;
+		std::string msg = "[VK_DEBUG_REPORT] DEBUG: [" + std::string(pLayerPrefix) + "] Code "
+				  + std::to_string(msgCode) + " : " + pMsg;
 	} else {
-		std::cout << "[VK_DEBUG_REPORT] UNKNOWN REPORT: [" << pLayerPrefix << "] Code " 
-				  << msgCode << " : " << pMsg << std::endl;
+		std::string msg = "[VK_DEBUG_REPORT] UNKNOWN REPORT: [" + std::string(pLayerPrefix) + "] Code "
+				  + std::to_string(msgCode) + " : " + pMsg;
 
 		return VK_FALSE;
 	}
-	
+
 	return VK_SUCCESS;
 }
 

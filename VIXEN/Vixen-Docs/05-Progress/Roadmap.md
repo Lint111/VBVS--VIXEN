@@ -42,36 +42,61 @@ timeline
 
 ## 2. Phase Details
 
-### Phase K: Hardware Ray Tracing (January-February 2026)
+### Phase K: Hardware Ray Tracing ✅ COMPLETE (December 2025)
 
 **Goal:** Implement VK_KHR_ray_tracing_pipeline for voxel octrees
 
-**Tasks:**
-| Task | Estimate | Dependencies |
-|------|----------|--------------|
-| Enable RT extensions | 2 days | None |
-| Build BLAS from octree | 1 week | Extension working |
-| Build TLAS | 3 days | BLAS complete |
-| Ray generation shader | 3 days | TLAS complete |
-| Closest hit shader | 3 days | Ray gen working |
-| Performance comparison | 1 week | All shaders |
+**Status:** All tasks complete. HW RT pipeline rendering correctly with both uncompressed and compressed shaders.
 
-**Deliverables:**
-- Hardware RT pipeline working
-- BLAS/TLAS from octree
-- Performance comparison vs compute shader
+**Completed Tasks:**
+| Task | Status |
+|------|--------|
+| Enable RT extensions | ✅ Done |
+| Build BLAS from octree (AABB) | ✅ Done |
+| Build TLAS | ✅ Done |
+| Ray generation shader | ✅ Done |
+| Closest hit shader (uncompressed + compressed) | ✅ Done |
+| Performance comparison infrastructure | ✅ Done |
 
-**Risk:** Hardware RT may be slower for fine voxels (hardware optimized for triangles)
+**Key Files:**
+- `shaders/VoxelRT.rgen`, `VoxelRT.rmiss`, `VoxelRT.rchit`
+- `shaders/VoxelRT_Compressed.rchit`
+- `libraries/RenderGraph/src/Nodes/AccelerationStructureNode.cpp`
+
+### Phase L: Data Collection & Aggregation (December 2025)
+
+**Goal:** Build data pipeline for benchmark collection and analysis
+
+**Status:** Implementation COMPLETE. Data gathering in progress.
+
+**Completed Tasks:**
+| Task | Status |
+|------|--------|
+| JSON export per benchmark test | ✅ Done |
+| Excel aggregation script | ✅ Done |
+| Chart generation pipeline | ✅ Done |
+| Multi-tester folder organization | ✅ Done |
+| ZIP pack/unpack for transport | ✅ Done |
+| Obsidian chart embedding | ✅ Done |
+
+**Data Pipeline:**
+```
+benchmark_results/*.json → aggregate_results.py → data/benchmarks.xlsx
+                                                         ↓
+Vixen-Docs/Assets/charts/*.png ← generate_charts.py ←────┘
+```
+
+**Next:** Run full 180-config test matrix across multiple machines
 
 ---
 
-### Phase L: Hybrid Pipeline (February-March 2026)
+### Phase M: Hybrid Pipeline (February-March 2026)
 
 **Goal:** Combine hardware RT with compute for optimal performance
 
 **Concept:**
 ```mermaid
-graph LR
+flowchart LR
     RT[Hardware RT] --> |Coarse Hit| CS[Compute DDA]
     CS --> |Voxel Color| OUT[Output]
 
@@ -94,7 +119,7 @@ graph LR
 
 ---
 
-### Phase M: Research Publication (April-May 2026)
+### Phase N: Research Publication (April-May 2026)
 
 **Goal:** Academic paper on 4-way pipeline comparison
 
@@ -116,7 +141,7 @@ graph LR
 
 ## 3. Extended Roadmap
 
-### Phase N: GigaVoxels Streaming (June-July 2026)
+### Phase O: GigaVoxels Streaming (June-July 2026)
 
 **Goal:** Out-of-core voxel streaming for 10x larger scenes
 
@@ -126,7 +151,7 @@ graph LR
 - Predictive prefetching
 - 128x memory reduction target
 
-### Phase N+1: Advanced GI (August-September 2026)
+### Phase P: Advanced GI (August-September 2026)
 
 **Goal:** Global illumination via voxel cone tracing
 
@@ -173,16 +198,18 @@ graph LR
 ## 6. Dependencies
 
 ```mermaid
-graph TD
+flowchart TD
     PH[Phase H - SVO] --> PI[Phase I - Profiling]
     PI --> PJ[Phase J - Fragment]
     PJ --> PK[Phase K - Hardware RT]
-    PK --> PL[Phase L - Hybrid]
-    PL --> PM[Phase M - Paper]
-    PM --> PN[Phase N - GigaVoxels]
+    PK --> PL[Phase L - Data Pipeline]
+    PL --> PM[Phase M - Hybrid]
+    PM --> PN[Phase N - Paper]
+    PN --> PO[Phase O - GigaVoxels]
 
-    style PK fill:#ff9f43
-    style PM fill:#26de81
+    style PK fill:#26de81
+    style PL fill:#26de81
+    style PM fill:#ff9f43
 ```
 
 ---

@@ -120,7 +120,7 @@ GPU performance measurement and benchmark runner.
 ### 4.1 Feature Development
 
 ```mermaid
-graph LR
+flowchart LR
     BR[Create Branch] --> CODE[Write Code]
     CODE --> TEST[Write Tests]
     TEST --> BUILD[Build]

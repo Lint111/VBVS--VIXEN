@@ -43,6 +43,9 @@ public:
     );
     ~InputNode() override = default;
 
+    /// Get the current input state (updated each frame)
+    const InputState& GetInputState() const { return inputState_; }
+
 protected:
     void SetupImpl(TypedSetupContext& ctx) override;
     void CompileImpl(TypedCompileContext& ctx) override;
@@ -87,6 +90,10 @@ private:
     // Key state tracking (only track keys we care about)
     std::unordered_map<EventBus::KeyCode, KeyState> keyStates;
 
+    // Configuration parameters
+    bool enabled_ = true;                                       // Enable/disable input polling
+    MouseCaptureMode mouseCaptureMode_ = MouseCaptureMode::CenterLock;  // Mouse capture behavior
+
     // Mouse state
     int32_t lastMouseX = 0;
     int32_t lastMouseY = 0;
@@ -98,7 +105,7 @@ private:
     float deltaTime = 0.0f;
 
     // Modern polling interface (GLFW/SDL2 style)
-    InputState inputState;  // Updated once per frame, output to consumers
+    InputState inputState_;  // Updated once per frame, output to consumers
 };
 
 } // namespace Vixen::RenderGraph

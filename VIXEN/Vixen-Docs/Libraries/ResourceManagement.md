@@ -14,7 +14,7 @@ Resource wrapper `RM<T>` providing std::optional-like interface with state track
 
 ---
 
-## 1. RM<T> Overview
+## 1. RM< T > Overview
 
 ```cpp
 #include <ResourceManagement/RM.h>

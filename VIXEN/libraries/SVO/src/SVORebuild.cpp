@@ -53,6 +53,73 @@ using namespace Vixen::VoxelData::Compression;
 namespace Vixen::SVO {
 
 // ============================================================================
+// Material-to-Color Mapping (Single Source of Truth)
+// ============================================================================
+// Converts material IDs to RGB colors for DXT compression when Color component
+// is not explicitly set on voxel entities. This allows VoxelGridNode to store
+// only Material IDs while still getting proper colors in compressed buffers.
+//
+// Material ID ranges by scene type:
+//   Cornell Box: 1-20
+//   Noise/Tunnel: 30-40
+//   Cityscape: 50-61
+//
+// NOTE: Keep in sync with shader getMaterialColor() in VoxelRT_Compressed.rchit
+static glm::vec3 MaterialIdToColor(uint32_t matID) {
+    switch (matID) {
+        // Cornell Box materials (1-20)
+        case 1:  return glm::vec3(1.0f, 0.0f, 0.0f);      // Red (left wall)
+        case 2:  return glm::vec3(0.0f, 1.0f, 0.0f);      // Green (right wall)
+        case 3:  return glm::vec3(0.9f, 0.9f, 0.9f);      // Light gray (white wall)
+        case 4:  return glm::vec3(0.85f, 0.85f, 0.85f);   // Floor (white/light gray)
+        case 5:  return glm::vec3(0.95f, 0.95f, 0.95f);   // White (ceiling)
+        case 6:  return glm::vec3(0.8f, 0.8f, 0.8f);      // Medium gray (floor light)
+        case 7:  return glm::vec3(0.4f, 0.4f, 0.4f);      // Darker gray (floor dark)
+        case 10: return glm::vec3(0.8f, 0.6f, 0.2f);      // Tan/wooden (left cube)
+        case 11: return glm::vec3(0.6f, 0.8f, 0.9f);      // Light blue (right cube)
+        case 20: return glm::vec3(1.0f, 0.98f, 0.9f);     // Warm white (ceiling light)
+
+        // Noise/Tunnel materials (30-40) - earth/stone tones
+        case 30: return glm::vec3(0.5f, 0.45f, 0.4f);     // Stone (brown-gray)
+        case 31: return glm::vec3(0.6f, 0.55f, 0.5f);     // Stalactite (lighter stone)
+        case 32: return glm::vec3(0.55f, 0.5f, 0.45f);    // Stalagmite
+        case 33: return glm::vec3(0.52f, 0.48f, 0.42f);   // Stone variant
+        case 34: return glm::vec3(0.48f, 0.44f, 0.38f);   // Stone variant
+        case 35: return glm::vec3(0.45f, 0.42f, 0.36f);   // Stone variant
+        case 36: return glm::vec3(0.58f, 0.52f, 0.46f);   // Stone variant
+        case 37: return glm::vec3(0.62f, 0.56f, 0.48f);   // Stone variant
+        case 38: return glm::vec3(0.65f, 0.58f, 0.5f);    // Stone variant
+        case 39: return glm::vec3(0.68f, 0.6f, 0.52f);    // Stone variant
+        case 40: return glm::vec3(0.8f, 0.6f, 0.2f);      // Ore (golden)
+
+        // Cityscape materials (50-61)
+        case 50: return glm::vec3(0.2f, 0.2f, 0.22f);     // Asphalt (dark gray)
+        case 60: return glm::vec3(0.6f, 0.58f, 0.55f);    // Concrete (light gray)
+        case 61: return glm::vec3(0.7f, 0.85f, 0.95f);    // Glass (light blue tint)
+
+        default:
+            // Use HSV-based color wheel for unknown materials (more visible than dark grey)
+            {
+                float hue = static_cast<float>(matID % 256) / 256.0f;
+                float h = hue * 6.0f;
+                int i = static_cast<int>(h);
+                float f = h - static_cast<float>(i);
+                float p = 0.8f * 0.3f;  // v * (1 - s)
+                float q = 0.8f * (1.0f - 0.7f * f);
+                float t = 0.8f * (1.0f - 0.7f * (1.0f - f));
+                switch (i % 6) {
+                    case 0: return glm::vec3(0.8f, t, p);
+                    case 1: return glm::vec3(q, 0.8f, p);
+                    case 2: return glm::vec3(p, 0.8f, t);
+                    case 3: return glm::vec3(p, q, 0.8f);
+                    case 4: return glm::vec3(t, p, 0.8f);
+                    default: return glm::vec3(0.8f, p, q);
+                }
+            }
+    }
+}
+
+// ============================================================================
 // Geometric Normal Computation (Phase B.1)
 // ============================================================================
 // Computes surface normals from voxel topology using 6-neighbor gradient method.
@@ -213,13 +280,13 @@ void LaineKarrasOctree::rebuild(GaiaVoxelWorld& world, const glm::vec3& worldMin
     std::vector<BrickInfo> populatedBricks;
     size_t totalVoxels = 0;
 
-    std::cout << "[LaineKarrasOctree] Rebuilding: bricksPerAxis=" << bricksPerAxis
-              << ", brickSideLength=" << brickSideLength << std::endl;
+    // TODO: Add ILoggable - std::cout << "[LaineKarrasOctree] Rebuilding: bricksPerAxis=" << bricksPerAxis
+    //       << ", brickSideLength=" << brickSideLength << std::endl;
 
     // Step 1: Query all solid voxels once (O(N))
-    std::cout << "[LaineKarrasOctree] Querying all solid voxels..." << std::endl;
+    // TODO: Add ILoggable - std::cout << "[LaineKarrasOctree] Querying all solid voxels..." << std::endl;
     auto allVoxels = world.querySolidVoxels();
-    std::cout << "[LaineKarrasOctree] Found " << allVoxels.size() << " solid voxels" << std::endl;
+    // TODO: Add ILoggable - std::cout << "[LaineKarrasOctree] Found " << allVoxels.size() << " solid voxels" << std::endl;
 
     // Step 2: Bin voxels by brick coordinate using a hash map
     std::unordered_map<uint64_t, size_t> brickCounts;
@@ -242,7 +309,7 @@ void LaineKarrasOctree::rebuild(GaiaVoxelWorld& world, const glm::vec3& worldMin
         );
     };
 
-    std::cout << "[LaineKarrasOctree] Binning voxels by brick..." << std::endl;
+    // TODO: Add ILoggable - std::cout << "[LaineKarrasOctree] Binning voxels by brick..." << std::endl;
     for (const auto& entity : allVoxels) {
         auto posOpt = world.getPosition(entity);
         if (!posOpt) continue;
@@ -251,16 +318,16 @@ void LaineKarrasOctree::rebuild(GaiaVoxelWorld& world, const glm::vec3& worldMin
         totalVoxels++;
     }
 
-    std::cout << "[LaineKarrasOctree] Found " << brickCounts.size() << " populated bricks" << std::endl;
+    // TODO: Add ILoggable - std::cout << "[LaineKarrasOctree] Found " << brickCounts.size() << " populated bricks" << std::endl;
 
     // Debug: Print first 10 populated brick coordinates
-    std::cout << "[LaineKarrasOctree] First 10 populated bricks:" << std::endl;
+    // TODO: Add ILoggable - std::cout << "[LaineKarrasOctree] First 10 populated bricks:" << std::endl;
     int printCount = 0;
     for (const auto& [key, count] : brickCounts) {
         if (printCount >= 10) break;
         glm::ivec3 coord = fromBrickKey(key);
-        std::cout << "  Brick (" << coord.x << ", " << coord.y << ", " << coord.z
-                  << ") with " << count << " voxels" << std::endl;
+        // TODO: Add ILoggable - std::cout << "  Brick (" << coord.x << ", " << coord.y << ", " << coord.z
+        //       << ") with " << count << " voxels" << std::endl;
         printCount++;
     }
 
@@ -303,7 +370,7 @@ void LaineKarrasOctree::rebuild(GaiaVoxelWorld& world, const glm::vec3& worldMin
             return a.mortonCode < b.mortonCode;
         });
 
-    std::cout << "[LaineKarrasOctree] Morton sorting: " << bricksBeforeSort << " bricks sorted by spatial locality" << std::endl;
+    // TODO: Add ILoggable - std::cout << "[LaineKarrasOctree] Morton sorting: " << bricksBeforeSort << " bricks sorted by spatial locality" << std::endl;
 
     // Compute and log neighbor distance metrics (for validation)
     if (populatedBricks.size() >= 2) {
@@ -315,9 +382,9 @@ void LaineKarrasOctree::rebuild(GaiaVoxelWorld& world, const glm::vec3& worldMin
         avgMortonDelta /= std::min(populatedBricks.size() - 1, size_t(9));
 
         constexpr size_t bytesPerBrick = 768;
-        std::cout << "[LaineKarrasOctree] Neighbor metrics: avg Morton delta=" << avgMortonDelta
-                  << ", sequential brick distance=" << bytesPerBrick << " bytes" << std::endl;
-        std::cout << "[LaineKarrasOctree] (Before Morton sort: neighbors were ~49 KB apart on average)" << std::endl;
+        // TODO: Add ILoggable - std::cout << "[LaineKarrasOctree] Neighbor metrics: avg Morton delta=" << avgMortonDelta
+        //       << ", sequential brick distance=" << bytesPerBrick << " bytes" << std::endl;
+        // TODO: Add ILoggable - std::cout << "[LaineKarrasOctree] (Before Morton sort: neighbors were ~49 KB apart on average)" << std::endl;
     }
 
     // 5. PHASE 2: Build hierarchy bottom-up with child mapping
@@ -555,7 +622,7 @@ void LaineKarrasOctree::rebuild(GaiaVoxelWorld& world, const glm::vec3& worldMin
         DXT1ColorCompressor colorCompressor;
         DXTNormalCompressor normalCompressor;
 
-        std::cout << "[LaineKarrasOctree] Compressing " << numBricks << " bricks (geometric normals)..." << std::endl;
+        // TODO: Add ILoggable - std::cout << "[LaineKarrasOctree] Compressing " << numBricks << " bricks (geometric normals)..." << std::endl;
 
         for (size_t brickIdx = 0; brickIdx < numBricks; ++brickIdx) {
             const auto& brickView = m_octree->root->brickViews[brickIdx];
@@ -565,22 +632,27 @@ void LaineKarrasOctree::rebuild(GaiaVoxelWorld& world, const glm::vec3& worldMin
             // Performance: O(512 * 6) = 3,072 neighbor checks, done once per brick
             std::array<glm::vec3, 512> geometricNormals = precomputeGeometricNormals(brickView, brickSize);
 
-            // Populate brickMaterialData for occupancy checks in shader (binding 2)
-            // This is required because the compressed shader still uses the uncompressed
-            // brickData buffer to determine if a voxel is active before decoding DXT.
+            // Populate brickMaterialData with actual material IDs for uncompressed rendering
+            // Compressed shader uses this for occupancy check (voxelData != 0u)
+            // Uncompressed shader uses matID = voxelData & 0xFFu to get material color
             size_t materialBaseIdx = brickIdx * 512;
             int occupiedCount = 0;
             for (int i = 0; i < 512; ++i) {
                 int x = i & 7;
                 int y = (i >> 3) & 7;
                 int z = (i >> 6) & 7;
-                
+
                 auto entity = brickView.getEntity(x, y, z);
-                // Use 1 for occupied, 0 for empty.
-                // The shader checks (voxelData != 0u) for hit.
-                uint32_t val = (entity != gaia::ecs::Entity()) ? 1u : 0u;
-                m_octree->root->brickMaterialData[materialBaseIdx + i] = val;
-                if (val != 0) occupiedCount++;
+                if (entity == gaia::ecs::Entity()) {
+                    // Empty voxel - shader checks (voxelData != 0u)
+                    m_octree->root->brickMaterialData[materialBaseIdx + i] = 0u;
+                } else {
+                    // Get actual material ID for uncompressed shader coloring
+                    auto matOpt = brickView.getComponentValue<Material>(i);
+                    uint32_t matID = matOpt.has_value() ? matOpt.value() : 1u;  // Default to mat 1 if no component
+                    m_octree->root->brickMaterialData[materialBaseIdx + i] = matID;
+                    occupiedCount++;
+                }
             }
 
             for (int blockIdx = 0; blockIdx < static_cast<int>(blocksPerBrick); ++blockIdx) {
@@ -604,9 +676,29 @@ void LaineKarrasOctree::rebuild(GaiaVoxelWorld& world, const glm::vec3& worldMin
                         continue;
                     }
 
-                    // Color: still from entity component (user-defined)
+                    // Color: from entity component, or derive from Material if not set
                     auto colorOpt = brickView.getComponentValue<Color>(voxelLinearIdx);
-                    blockColors[texelIdx] = colorOpt.value_or(glm::vec3(0.5f));
+                    if (colorOpt.has_value()) {
+                        blockColors[texelIdx] = colorOpt.value();
+                    } else {
+                        // Derive color from Material ID (single source of truth)
+                        auto matOpt = brickView.getComponentValue<Material>(voxelLinearIdx);
+                        uint32_t matID = matOpt.has_value() ? matOpt.value() : 0;
+
+                        // DEBUG: Log first few material lookups
+                        static int debugCount = 0;
+                        if (debugCount < 20) {
+                            // TODO: Add ILoggable - std::cout << "[SVORebuild] voxel " << voxelLinearIdx
+                            //       << " matOpt.has_value()=" << matOpt.has_value()
+                            //       << " matID=" << matID
+                            //       << " color=" << MaterialIdToColor(matID).x << ","
+                            //       << MaterialIdToColor(matID).y << ","
+                            //       << MaterialIdToColor(matID).z << std::endl;
+                            debugCount++;
+                        }
+
+                        blockColors[texelIdx] = MaterialIdToColor(matID);
+                    }
 
                     // Phase B.1: Use pre-computed geometric normal from voxel topology
                     // This replaces entity Normal component with topology-derived normal
@@ -633,9 +725,9 @@ void LaineKarrasOctree::rebuild(GaiaVoxelWorld& world, const glm::vec3& worldMin
 
         size_t colorBytes = numBricks * blocksPerBrick * sizeof(uint64_t);
         size_t normalBytes = numBricks * blocksPerBrick * sizeof(OctreeBlock::CompressedNormalBlock);
-        std::cout << "[LaineKarrasOctree] Compression complete: "
-                  << colorBytes << " bytes colors, "
-                  << normalBytes << " bytes normals (geometric)" << std::endl;
+        // TODO: Add ILoggable - std::cout << "[LaineKarrasOctree] Compression complete: "
+        //       << colorBytes << " bytes colors, "
+        //       << normalBytes << " bytes normals (geometric)" << std::endl;
     }
 }
 

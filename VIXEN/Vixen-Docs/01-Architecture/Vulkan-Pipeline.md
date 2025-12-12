@@ -18,7 +18,7 @@ VIXEN's Vulkan integration follows a node-based approach where each Vulkan opera
 ## 1. Render Pipeline Flow
 
 ```mermaid
-graph TD
+flowchart TD
     subgraph Initialization
         W[WindowNode] --> |HWND| SC
         D[DeviceNode] --> |VkDevice| SC[SwapChainNode]
@@ -84,7 +84,7 @@ sequenceDiagram
 ## 3. Swapchain Management
 
 ```mermaid
-graph LR
+flowchart LR
     subgraph SwapChain [Swapchain - 3 Images]
         I0[Image 0]
         I1[Image 1]
@@ -111,7 +111,7 @@ graph LR
 ### 3.1 Swapchain Invalidation
 
 ```mermaid
-graph TD
+flowchart TD
     WR[Window Resize] --> SCI[SwapChain Invalidated]
     SCI --> FB[Framebuffer Dirty]
     SCI --> DB[DepthBuffer Dirty]
@@ -136,7 +136,7 @@ VkDescriptorSetLayoutBinding bindings[] = {
 ### 4.2 Per-Frame Descriptor Sets
 
 ```mermaid
-graph LR
+flowchart LR
     subgraph Pool [Descriptor Pool]
         DS0[Set Frame 0]
         DS1[Set Frame 1]

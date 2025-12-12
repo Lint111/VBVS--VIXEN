@@ -18,10 +18,10 @@ Type-safe resource caching system with virtual cleanup architecture. Eliminates 
 ## 1. Architecture
 
 ```mermaid
-graph TB
+flowchart TB
     subgraph CashSystem
         MC[MainCacher]
-        TC[TypedCacher<T>]
+        TC[TypedCacher]
     end
 
     subgraph Cachers
@@ -34,6 +34,8 @@ graph TB
         RPC[RenderPassCacher]
         FBC[FramebufferCacher]
         IC[ImageCacher]
+        VSC[VoxelSceneCacher]
+        ASC[AccelerationStructureCacher]
     end
 
     MC --> TC
@@ -46,9 +48,13 @@ graph TB
     TC --> RPC
     TC --> FBC
     TC --> IC
+    TC --> VSC
+    TC --> ASC
 
     style MC fill:#4a9eff
     style TC fill:#26de81
+    style VSC fill:#ff9f43
+    style ASC fill:#ff9f43
 ```
 
 ---
@@ -70,7 +76,7 @@ auto& pipelineCacher = cacher.GetPipelineCacher();
 cacher.Cleanup(device);
 ```
 
-### 2.2 TypedCacher<T>
+### 2.2 TypedCacher < T >
 
 Template base class with hash-based key deduplication.
 
@@ -139,9 +145,117 @@ VkPipelineLayout layout = layoutCacher.GetOrCreate(
 VkPipelineLayout layout = layoutCacher.GetOrCreateFromShaders(shaderModules);
 ```
 
+### 3.4 VoxelSceneCacher (NEW)
+
+Caches complete voxel scene data including octree, compressed colors/normals, and GPU buffers.
+
+```cpp
+auto& sceneCacher = MainCacher::GetInstance().GetVoxelSceneCacher();
+VoxelSceneCreateInfo ci{
+    .sceneType = SceneType::Cornell,
+    .resolution = 256,
+    .density = 0.5f
+};
+auto sceneData = sceneCacher.GetOrCreate(ci);
+// Returns shared_ptr<VoxelSceneData> with all CPU + GPU buffers
+```
+
+**Key:** `hash(sceneType, resolution, density)`
+**Cached:** Octree nodes, brick data, materials, compressed colors/normals, OctreeConfig UBO, brick grid lookup
+
+### 3.5 AccelerationStructureCacher (NEW)
+
+Caches hardware RT acceleration structures built from voxel scene data.
+
+```cpp
+auto& asCacher = MainCacher::GetInstance().GetAccelerationStructureCacher();
+AccelStructCreateInfo ci{
+    .sceneData = sceneDataPtr,  // From VoxelSceneCacher
+    .device = device,
+    .physicalDevice = physicalDevice
+};
+auto accelStruct = asCacher.GetOrCreate(ci);
+// Returns shared_ptr<CachedAccelerationStructure> with BLAS/TLAS
+```
+
+**Key:** `hash(sceneData pointer, buildFlags)`
+**Cached:** AABBs, BLAS, TLAS, instance buffer, device addresses
+
 ---
 
-## 4. Cleanup Flow
+## 4. Cache Persistence
+
+VoxelSceneCacher supports binary serialization for cross-session cache reuse.
+
+### 4.1 Serialization Format
+
+```
++------------------+
+| Magic (4 bytes)  |  0x56534341 "VSCA"
++------------------+
+| Version (4 bytes)|  Currently: 1
++------------------+
+| Key (8 bytes)    |  Cache lookup key
++------------------+
+| CreateInfo       |  SceneType, resolution, density
++------------------+
+| Octree Nodes     |  size + data
++------------------+
+| Brick Data       |  size + data
++------------------+
+| Brick Lookup     |  size + data
++------------------+
+| Colors (DXT1)    |  size + data
++------------------+
+| Normals (DXT)    |  size + data
++------------------+
+| Materials        |  size + data
++------------------+
+| OctreeConfig     |  UBO data
++------------------+
+```
+
+### 4.2 File Location
+
+```
+cache/devices/Device_<hash>/VoxelSceneCacher.cache
+```
+
+Typical size: ~4.6 MB for 256^3 resolution scenes.
+
+### 4.3 Serialization Trigger
+
+```cpp
+// RenderGraph::Clear() - Order is critical
+void RenderGraph::Clear() {
+    // 1. Save BEFORE cleanup destroys resources
+    if (mainCacher_) {
+        mainCacher_->SaveAllAsync();
+    }
+
+    // 2. Now safe to destroy GPU resources
+    ExecuteCleanup();
+}
+```
+
+### 4.4 Deserialization Flow
+
+```cpp
+// On load, GPU buffers are re-created
+bool DeserializeFromFile(path) {
+    // Read CPU data from file
+    ReadVectors(octreeNodes, bricks, colors, ...);
+
+    // Re-upload to GPU
+    UploadToGPU();  // Creates new VkBuffers
+
+    return true;
+}
+```
+
+---
+
+## 5. Cleanup Flow
 
 ```mermaid
 sequenceDiagram
@@ -160,9 +274,9 @@ sequenceDiagram
 
 ---
 
-## 5. Key Patterns
+## 6. Key Patterns
 
-### 5.1 Hash-Based Deduplication
+### 6.1 Hash-Based Deduplication
 
 ```cpp
 // Multiple nodes requesting same shader get same VkShaderModule
@@ -171,7 +285,7 @@ auto module2 = shaderCacher.GetOrCreate(key, createFn);  // Returns cached
 assert(module1 == module2);  // Same handle
 ```
 
-### 5.2 Virtual Cleanup
+### 6.2 Virtual Cleanup
 
 ```cpp
 class TypedCacher {
@@ -191,10 +305,10 @@ void ShaderModuleCacher::Cleanup(VkDevice device) {
 
 ---
 
-## 6. Integration
+## 7. Integration
 
 ```mermaid
-graph LR
+flowchart LR
     GPN[GraphicsPipelineNode] --> PC[PipelineCacher]
     CPN[ComputePipelineNode] --> PC
     SLN[ShaderLibraryNode] --> SMC[ShaderModuleCacher]
@@ -206,7 +320,7 @@ graph LR
 
 ---
 
-## 7. Code References
+## 8. Code References
 
 | File | Purpose |
 |------|---------|
@@ -214,11 +328,16 @@ graph LR
 | `libraries/CashSystem/include/TypedCacher.h` | Template base |
 | `libraries/CashSystem/include/ShaderModuleCacher.h` | Shader caching |
 | `libraries/CashSystem/include/PipelineCacher.h` | Pipeline caching |
+| `libraries/CashSystem/include/VoxelSceneCacher.h` | Voxel scene data caching |
+| `libraries/CashSystem/src/VoxelSceneCacher.cpp` | Scene generation + compression |
+| `libraries/CashSystem/include/AccelerationStructureCacher.h` | RT accel struct caching |
+| `libraries/CashSystem/src/AccelerationStructureCacher.cpp` | BLAS/TLAS building |
 
 ---
 
-## 8. Related Pages
+## 9. Related Pages
 
 - [[Overview]] - Library index
 - [[VulkanResources]] - Vulkan resource management
 - [[RenderGraph]] - Node cacher integration
+- [[../04-Development/SceneDataCacher-Design|SceneDataCacher Design]] - VoxelSceneCacher + AccelerationStructureCacher design doc

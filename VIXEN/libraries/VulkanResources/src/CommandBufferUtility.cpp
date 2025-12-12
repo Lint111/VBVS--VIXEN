@@ -1,11 +1,13 @@
 #include "CommandBufferUtility.h"
 #include <fstream>
+#include <cstdio>
 
 void* ReadFile(const char* filePath, size_t* outSize) {
     std::ifstream file(filePath, std::ios::ate | std::ios::binary);
 
     if (!file.is_open()) {
-        std::cerr << "Failed to open file: " << filePath << std::endl;
+        // Use fprintf to stderr since this is a utility function not part of a loggable class
+        fprintf(stderr, "Failed to open file: %s\n", filePath);
         *outSize = 0;
         return nullptr;
     }

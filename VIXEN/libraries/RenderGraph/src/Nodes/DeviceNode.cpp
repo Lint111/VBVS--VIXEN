@@ -232,8 +232,56 @@ void DeviceNode::CreateLogicalDevice() {
     NODE_LOG_INFO("[DeviceNode] Memory heaps: " + std::to_string(vulkanDevice->gpuMemoryProperties.memoryHeapCount));
     NODE_LOG_INFO("[DeviceNode] Memory types: " + std::to_string(vulkanDevice->gpuMemoryProperties.memoryTypeCount));
 
-    // Create logical device
-    auto createResult = vulkanDevice->CreateDevice(deviceLayers, deviceExtensions);
+    // Phase K: Auto-enable RTX extensions if available
+    auto allExtensions = deviceExtensions;
+    auto rtxExtensions = VulkanDevice::GetRTXExtensions();
+
+    // Check which RTX extensions are available
+    uint32_t extCount = 0;
+    vkEnumerateDeviceExtensionProperties(selectedGPU, nullptr, &extCount, nullptr);
+    std::vector<VkExtensionProperties> availableExts(extCount);
+    vkEnumerateDeviceExtensionProperties(selectedGPU, nullptr, &extCount, availableExts.data());
+
+    auto hasExt = [&availableExts](const char* name) {
+        for (const auto& ext : availableExts) {
+            if (strcmp(ext.extensionName, name) == 0) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    bool rtxAvailable = true;
+    for (const auto& rtxExt : rtxExtensions) {
+        if (!hasExt(rtxExt)) {
+            rtxAvailable = false;
+            NODE_LOG_INFO("[DeviceNode] RTX extension not available: " + std::string(rtxExt));
+            break;
+        }
+    }
+
+    if (rtxAvailable) {
+        NODE_LOG_INFO("[DeviceNode] RTX extensions available - enabling hardware ray tracing");
+        for (const auto& rtxExt : rtxExtensions) {
+            // Avoid duplicates
+            bool alreadyAdded = false;
+            for (const auto& existingExt : allExtensions) {
+                if (strcmp(existingExt, rtxExt) == 0) {
+                    alreadyAdded = true;
+                    break;
+                }
+            }
+            if (!alreadyAdded) {
+                allExtensions.push_back(rtxExt);
+                NODE_LOG_INFO("[DeviceNode]   + " + std::string(rtxExt));
+            }
+        }
+    } else {
+        NODE_LOG_INFO("[DeviceNode] RTX extensions not available - hardware RT disabled");
+    }
+
+    // Create logical device with all extensions
+    auto createResult = vulkanDevice->CreateDevice(deviceLayers, allExtensions);
     if (!createResult) {
         NODE_LOG_ERROR("[DeviceNode] ERROR: Failed to create logical device: " + createResult.error().toString());
         return;
@@ -245,6 +293,15 @@ void DeviceNode::CreateLogicalDevice() {
     NODE_LOG_INFO("[DeviceNode] Logical device created successfully");
     NODE_LOG_INFO("[DeviceNode] Device handle: " + std::to_string(reinterpret_cast<uint64_t>(vulkanDevice->device)));
     NODE_LOG_INFO("[DeviceNode] Queue handle: " + std::to_string(reinterpret_cast<uint64_t>(vulkanDevice->queue)));
+
+    if (vulkanDevice->IsRTXEnabled()) {
+        NODE_LOG_INFO("[DeviceNode] RTX enabled: YES");
+        const auto& caps = vulkanDevice->GetRTXCapabilities();
+        NODE_LOG_INFO("[DeviceNode]   Max ray recursion: " + std::to_string(caps.maxRayRecursionDepth));
+        NODE_LOG_INFO("[DeviceNode]   Max geometry count: " + std::to_string(caps.maxGeometryCount));
+    } else {
+        NODE_LOG_INFO("[DeviceNode] RTX enabled: NO");
+    }
 }
 
 void DeviceNode::PublishDeviceMetadata() {

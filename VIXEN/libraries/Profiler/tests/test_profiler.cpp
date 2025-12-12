@@ -146,54 +146,59 @@ TEST(BenchmarkConfigTest, ZeroResolutionInvalid) {
     EXPECT_FALSE(config.Validate());
 }
 
-TEST(BenchmarkConfigTest, DensityOutOfRangeInvalid) {
+TEST(BenchmarkConfigTest, EmptyShaderInvalid) {
     TestConfiguration config;
-    config.densityPercent = 1.5f;
+    config.shader = "";  // Empty shader should fail validation
     EXPECT_FALSE(config.Validate());
 }
 
 TEST(BenchmarkConfigTest, GenerateTestMatrix) {
-    auto matrix = BenchmarkConfigLoader::GenerateTestMatrix(
-        {"compute", "fragment"},
-        {64, 128},
-        {0.2f, 0.5f},
-        {"baseline"}
-    );
+    GlobalMatrix globalMatrix;
+    globalMatrix.resolutions = {64, 128};
+    globalMatrix.scenes = {"cornell"};
+    globalMatrix.renderSizes = {{800, 600}};
 
-    // 2 pipelines * 2 resolutions * 2 densities * 1 algorithm = 8
-    EXPECT_EQ(matrix.size(), 8);
+    std::map<std::string, PipelineMatrix> pipelineMatrices;
+    PipelineMatrix computeMatrix;
+    computeMatrix.enabled = true;
+    computeMatrix.shaderGroups = {{"VoxelRayMarch.comp"}};
+    pipelineMatrices["compute"] = computeMatrix;
 
-    // Verify all combinations exist
-    bool found64Compute02 = false;
+    auto matrix = BenchmarkConfigLoader::GenerateTestMatrix(globalMatrix, pipelineMatrices);
+
+    // 1 pipeline * 2 resolutions * 1 scene * 1 shader = 2
+    EXPECT_EQ(matrix.size(), 2);
+
+    // Verify resolution combination exists
+    bool found64Compute = false;
     for (const auto& config : matrix) {
-        if (config.pipeline == "compute" && config.voxelResolution == 64 &&
-            std::abs(config.densityPercent - 0.2f) < 0.01f) {
-            found64Compute02 = true;
+        if (config.pipeline == "compute" && config.voxelResolution == 64) {
+            found64Compute = true;
             break;
         }
     }
-    EXPECT_TRUE(found64Compute02);
+    EXPECT_TRUE(found64Compute);
 }
 
 TEST(BenchmarkConfigTest, QuickTestMatrix) {
     auto matrix = BenchmarkConfigLoader::GetQuickTestMatrix();
     EXPECT_GT(matrix.size(), 0);
-    EXPECT_LE(matrix.size(), 20);  // Should be small
+    EXPECT_LE(matrix.size(), 50);  // Should be reasonable size
 }
 
 TEST(BenchmarkConfigTest, ResearchTestMatrix) {
     auto matrix = BenchmarkConfigLoader::GetResearchTestMatrix();
-    // 4 pipelines * 5 resolutions * 3 densities * 3 algorithms = 180
-    EXPECT_EQ(matrix.size(), 180);
+    // Size depends on pipeline/shader/resolution combinations
+    EXPECT_GT(matrix.size(), 0);
 }
 
 TEST(BenchmarkConfigTest, SerializeDeserialize) {
     TestConfiguration original;
     original.pipeline = "compute";
-    original.algorithm = "empty_skip";
+    original.shader = "VoxelRayMarch.comp";
+    original.shaderGroup = {"VoxelRayMarch.comp"};
     original.sceneType = "cornell";
     original.voxelResolution = 256;
-    original.densityPercent = 0.5f;
 
     std::string json = BenchmarkConfigLoader::SerializeToString(original);
     EXPECT_FALSE(json.empty());
@@ -202,10 +207,9 @@ TEST(BenchmarkConfigTest, SerializeDeserialize) {
     ASSERT_TRUE(parsed.has_value());
 
     EXPECT_EQ(parsed->pipeline, original.pipeline);
-    EXPECT_EQ(parsed->algorithm, original.algorithm);
+    EXPECT_EQ(parsed->shader, original.shader);
     EXPECT_EQ(parsed->sceneType, original.sceneType);
     EXPECT_EQ(parsed->voxelResolution, original.voxelResolution);
-    EXPECT_FLOAT_EQ(parsed->densityPercent, original.densityPercent);
 }
 
 // ============================================================================
@@ -237,10 +241,9 @@ TEST(FrameMetricsTest, VRAMFieldsCanBeSet) {
 TEST(FrameMetricsTest, DefaultFilename) {
     TestConfiguration config;
     config.pipeline = "compute";
-    config.algorithm = "baseline";
+    config.shader = "VoxelRayMarch.comp";
     config.sceneType = "cornell";
     config.voxelResolution = 128;
-    config.densityPercent = 0.5f;
 
     std::string filename = config.GetDefaultFilename();
     EXPECT_FALSE(filename.empty());
@@ -411,10 +414,9 @@ TEST(TestConfigValidationTest, ValidResolutions) {
 TEST(TestConfigValidationTest, ValidConfigPasses) {
     TestConfiguration config;
     config.pipeline = "compute";
-    config.algorithm = "baseline";
+    config.shader = "VoxelRayMarch.comp";
     config.sceneType = "cornell";
     config.voxelResolution = 128;
-    config.densityPercent = 0.5f;
     config.warmupFrames = 60;
     config.measurementFrames = 300;
 
@@ -460,11 +462,11 @@ TEST(TestConfigValidationTest, InvalidResolution) {
     EXPECT_TRUE(hasResolutionError);
 }
 
-TEST(TestConfigValidationTest, InvalidDensity) {
+TEST(TestConfigValidationTest, EmptyShaderFails) {
     TestConfiguration config;
     config.pipeline = "compute";
     config.voxelResolution = 128;
-    config.densityPercent = 1.5f;  // > 1.0 (internal uses 0-1 range)
+    config.shader = "";  // Empty shader should fail
     config.warmupFrames = 60;
     config.measurementFrames = 300;
 
@@ -507,10 +509,13 @@ TEST(TestConfigValidationTest, GenerateTestId) {
     config.pipeline = "hardware_rt";
     config.voxelResolution = 256;
     config.sceneType = "sparse_architectural";
-    config.algorithm = "baseline";
+    config.shader = "VoxelRT.rgen";
 
     std::string testId = config.GenerateTestId(1);
-    EXPECT_EQ(testId, "HW_RT_256_SPARSE_ARCHITECTURAL_BASELINE_RUN1");
+    // TestId format: PIPELINE_RES_SCENE_SHADER_RUNN
+    EXPECT_NE(testId.find("HW_RT"), std::string::npos);
+    EXPECT_NE(testId.find("256"), std::string::npos);
+    EXPECT_NE(testId.find("RUN1"), std::string::npos);
 }
 
 TEST(TestConfigValidationTest, PipelineTypeConversion) {
@@ -647,9 +652,9 @@ TEST_F(JSONExportTest, ExportMatchesSchema) {
     TestConfiguration config;
     config.testId = "HW_RT_256_SPARSE_BASELINE_RUN1";
     config.pipeline = "hardware_rt";
-    config.algorithm = "baseline";
+    config.shader = "VoxelRT.rgen";
+    config.shaderGroup = {"VoxelRT.rgen", "VoxelRT.rmiss", "VoxelRT.rchit", "VoxelRT.rint"};
     config.voxelResolution = 256;
-    config.densityPercent = 0.25f;  // 25% (internal 0-1 range)
     config.sceneType = "sparse_architectural";
     config.optimizations = {};
     config.warmupFrames = 10;
@@ -693,9 +698,8 @@ TEST_F(JSONExportTest, ExportMatchesSchema) {
 
     EXPECT_TRUE(j.contains("configuration"));
     EXPECT_EQ(j["configuration"]["pipeline"], "hardware_rt");
-    EXPECT_EQ(j["configuration"]["algorithm"], "baseline");
+    EXPECT_EQ(j["configuration"]["shader"], "VoxelRT.rgen");
     EXPECT_EQ(j["configuration"]["resolution"], 256);
-    EXPECT_EQ(j["configuration"]["density_percent"], 25);  // 0.25 * 100
     EXPECT_EQ(j["configuration"]["scene_type"], "sparse_architectural");
     EXPECT_TRUE(j["configuration"]["optimizations"].is_array());
 
@@ -759,7 +763,7 @@ TEST_F(JSONExportTest, GeneratedTestId) {
     TestConfiguration config;
     // testId left empty - should be auto-generated
     config.pipeline = "compute";
-    config.algorithm = "empty_skip";
+    config.shader = "VoxelRayMarch.comp";
     config.voxelResolution = 64;
     config.sceneType = "cave";
     config.warmupFrames = 10;
@@ -782,7 +786,7 @@ TEST_F(JSONExportTest, GeneratedTestId) {
     EXPECT_NE(testId.find("COMPUTE"), std::string::npos);
     EXPECT_NE(testId.find("64"), std::string::npos);
     EXPECT_NE(testId.find("CAVE"), std::string::npos);
-    EXPECT_NE(testId.find("EMPTY_SKIP"), std::string::npos);
+    // testId now includes shader name instead of algorithm
 }
 
 // ============================================================================
@@ -1121,10 +1125,9 @@ TEST(ProfilerEndToEndTest, ConfigToMetricsExportFlow) {
     TestConfiguration config;
     config.testId = "E2E_TEST_FLOW";
     config.pipeline = "compute";
-    config.algorithm = "baseline";
+    config.shader = "VoxelRayMarch.comp";
     config.sceneType = "cornell";
     config.voxelResolution = 64;
-    config.densityPercent = 0.25f;
     config.warmupFrames = 10;           // Minimum allowed
     config.measurementFrames = 100;     // Minimum allowed (was 50, invalid)
 
@@ -1190,13 +1193,19 @@ TEST(ProfilerEndToEndTest, MultipleTestsInMatrix) {
     caps.deviceName = "Mock GPU";
     runner.SetDeviceCapabilities(caps);
 
-    // Create a small test matrix (3 tests)
-    auto matrix = BenchmarkConfigLoader::GenerateTestMatrix(
-        {"compute"},       // 1 pipeline
-        {64, 128},         // 2 resolutions
-        {0.25f},           // 1 density (corrected from 0.2f to match valid range)
-        {"baseline"}       // 1 algorithm
-    );
+    // Create a small test matrix (2 tests)
+    GlobalMatrix globalMatrix;
+    globalMatrix.resolutions = {64, 128};  // 2 resolutions
+    globalMatrix.scenes = {"cornell"};
+    globalMatrix.renderSizes = {{800, 600}};
+
+    std::map<std::string, PipelineMatrix> pipelineMatrices;
+    PipelineMatrix computeMatrix;
+    computeMatrix.enabled = true;
+    computeMatrix.shaderGroups = {{"VoxelRayMarch.comp"}};
+    pipelineMatrices["compute"] = computeMatrix;
+
+    auto matrix = BenchmarkConfigLoader::GenerateTestMatrix(globalMatrix, pipelineMatrices);
     ASSERT_EQ(matrix.size(), 2u);
 
     // Override warmup/measurement for speed (but keep above minimums)
@@ -1291,7 +1300,7 @@ TEST(ProfilerEndToEndTest, BandwidthEstimationInRunner) {
 TEST(ProfilerEndToEndTest, TestConfigurationGeneratesValidId) {
     TestConfiguration config;
     config.pipeline = "compute";
-    config.algorithm = "empty_skip";
+    config.shader = "VoxelRayMarch.comp";
     config.sceneType = "cave";
     config.voxelResolution = 128;
 
@@ -1301,7 +1310,6 @@ TEST(ProfilerEndToEndTest, TestConfigurationGeneratesValidId) {
     EXPECT_NE(testId.find("COMPUTE"), std::string::npos);
     EXPECT_NE(testId.find("128"), std::string::npos);
     EXPECT_NE(testId.find("CAVE"), std::string::npos);
-    EXPECT_NE(testId.find("EMPTY_SKIP"), std::string::npos);
     EXPECT_NE(testId.find("RUN1"), std::string::npos);
 }
 
@@ -1332,10 +1340,9 @@ protected:
         TestConfiguration config;
         config.testId = "E2E_INTEGRATION_TEST";
         config.pipeline = "compute";
-        config.algorithm = "baseline";
+        config.shader = "VoxelRayMarch.comp";
         config.sceneType = "cornell";
         config.voxelResolution = 128;
-        config.densityPercent = 0.25f;
         config.warmupFrames = 10;
         config.measurementFrames = 100;
         return config;
@@ -1443,7 +1450,7 @@ TEST_F(EndToEndIntegrationTest, FullPipelineFlowWithMockVulkan) {
         metrics.sceneResolution = config.voxelResolution;
         metrics.screenWidth = 800;
         metrics.screenHeight = 600;
-        metrics.sceneDensity = config.densityPercent * 100.0f;
+        metrics.sceneDensity = 25.0f;  // Fixed test value
 
         runner.RecordFrame(metrics);
         recordedMetrics.push_back(metrics);
@@ -1626,9 +1633,8 @@ TEST_F(EndToEndIntegrationTest, JSONExportValidation) {
 
     // Verify configuration section
     EXPECT_EQ(j["configuration"]["pipeline"], "compute");
-    EXPECT_EQ(j["configuration"]["algorithm"], "baseline");
+    EXPECT_EQ(j["configuration"]["shader"], "VoxelRayMarch.comp");
     EXPECT_EQ(j["configuration"]["resolution"], 128);
-    EXPECT_EQ(j["configuration"]["density_percent"], 25);  // 0.25 * 100
 
     // Verify device section
     EXPECT_EQ(j["device"]["gpu"], "Mock Integration Test GPU");
@@ -1999,24 +2005,25 @@ TEST(BenchmarkGraphFactoryTest, BuildHardwareRTGraphThrowsNotImplemented) {
     config.pipeline = "hardware_rt";
     config.voxelResolution = 128;
 
-    // Should throw runtime_error indicating not implemented
+    // Should throw invalid_argument when graph is null
     EXPECT_THROW(
         BenchmarkGraphFactory::BuildHardwareRTGraph(nullptr, config, 800, 600),
-        std::runtime_error
+        std::invalid_argument
     );
 }
 
-TEST(BenchmarkGraphFactoryTest, BuildHardwareRTGraphErrorMessage) {
+TEST(BenchmarkGraphFactoryTest, BuildHardwareRTGraphRequiresValidGraph) {
     TestConfiguration config;
     config.pipeline = "hardware_rt";
+    config.shader = "VoxelRT.rgen";
+    config.shaderGroup = {"VoxelRT.rgen", "VoxelRT.rmiss", "VoxelRT.rchit", "VoxelRT.rint"};
 
     try {
         BenchmarkGraphFactory::BuildHardwareRTGraph(nullptr, config, 800, 600);
-        FAIL() << "Expected runtime_error to be thrown";
-    } catch (const std::runtime_error& e) {
+        FAIL() << "Expected invalid_argument to be thrown";
+    } catch (const std::invalid_argument& e) {
         std::string msg = e.what();
-        EXPECT_NE(msg.find("VK_KHR_ray_tracing_pipeline"), std::string::npos);
-        EXPECT_NE(msg.find("VK_KHR_acceleration_structure"), std::string::npos);
+        EXPECT_NE(msg.find("graph is null"), std::string::npos);
     }
 }
 

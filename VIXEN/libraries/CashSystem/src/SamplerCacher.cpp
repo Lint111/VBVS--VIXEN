@@ -6,7 +6,6 @@
 #include <sstream>
 #include <stdexcept>
 #include <vulkan/vulkan.h>
-#include <iostream>
 #include <fstream>
 #include <filesystem>
 #include <shared_mutex>
@@ -14,15 +13,14 @@
 namespace CashSystem {
 
 void SamplerCacher::Cleanup() {
-    std::cout << "[SamplerCacher::Cleanup] Cleaning up " << m_entries.size() << " cached samplers" << std::endl;
+    LOG_INFO("Cleaning up " + std::to_string(m_entries.size()) + " cached samplers");
 
     // Destroy all cached Vulkan samplers
     if (GetDevice()) {
         for (auto& [key, entry] : m_entries) {
             if (entry.resource) {
                 if (entry.resource->resource != VK_NULL_HANDLE) {
-                    std::cout << "[SamplerCacher::Cleanup] Destroying VkSampler: "
-                              << reinterpret_cast<uint64_t>(entry.resource->resource) << std::endl;
+                    LOG_DEBUG("Destroying VkSampler: " + std::to_string(reinterpret_cast<uint64_t>(entry.resource->resource)));
                     vkDestroySampler(GetDevice()->device, entry.resource->resource, nullptr);
                     entry.resource->resource = VK_NULL_HANDLE;
                 }
@@ -33,7 +31,7 @@ void SamplerCacher::Cleanup() {
     // Clear the cache entries after destroying resources
     Clear();
 
-    std::cout << "[SamplerCacher::Cleanup] Cleanup complete" << std::endl;
+    LOG_INFO("Cleanup complete");
 }
 
 std::shared_ptr<SamplerWrapper> SamplerCacher::GetOrCreate(const SamplerCreateParams& ci) {
@@ -52,28 +50,24 @@ std::shared_ptr<SamplerWrapper> SamplerCacher::GetOrCreate(const SamplerCreatePa
         std::shared_lock rlock(m_lock);
         auto it = m_entries.find(key);
         if (it != m_entries.end()) {
-            std::cout << "[SamplerCacher::GetOrCreate] CACHE HIT for " << resourceName
-                      << " (key=" << key << ", VkSampler="
-                      << reinterpret_cast<uint64_t>(it->second.resource->resource) << ")" << std::endl;
+            LOG_DEBUG("CACHE HIT for " + resourceName + " (key=" + std::to_string(key) + ")");
             return it->second.resource;
         }
         auto pit = m_pending.find(key);
         if (pit != m_pending.end()) {
-            std::cout << "[SamplerCacher::GetOrCreate] CACHE PENDING for " << resourceName
-                      << " (key=" << key << "), waiting..." << std::endl;
+            LOG_DEBUG("CACHE PENDING for " + resourceName + " (key=" + std::to_string(key) + "), waiting...");
             return pit->second.get();
         }
     }
 
-    std::cout << "[SamplerCacher::GetOrCreate] CACHE MISS for " << resourceName
-              << " (key=" << key << "), creating new sampler..." << std::endl;
+    LOG_DEBUG("CACHE MISS for " + resourceName + " (key=" + std::to_string(key) + "), creating new sampler...");
 
     // Call parent implementation which will invoke Create()
     return TypedCacher<SamplerWrapper, SamplerCreateParams>::GetOrCreate(ci);
 }
 
 std::shared_ptr<SamplerWrapper> SamplerCacher::Create(const SamplerCreateParams& ci) {
-    std::cout << "[SamplerCacher::Create] Creating new sampler" << std::endl;
+    LOG_DEBUG("Creating new sampler");
 
     auto wrapper = std::make_shared<SamplerWrapper>();
 
@@ -112,8 +106,7 @@ std::shared_ptr<SamplerWrapper> SamplerCacher::Create(const SamplerCreateParams&
                                  std::to_string(result) + ")");
     }
 
-    std::cout << "[SamplerCacher::Create] VkSampler created: "
-              << reinterpret_cast<uint64_t>(wrapper->resource) << std::endl;
+    LOG_DEBUG("VkSampler created: " + std::to_string(reinterpret_cast<uint64_t>(wrapper->resource)));
 
     return wrapper;
 }
@@ -141,12 +134,11 @@ std::uint64_t SamplerCacher::ComputeKey(const SamplerCreateParams& ci) const {
 }
 
 bool SamplerCacher::SerializeToFile(const std::filesystem::path& path) const {
-    std::cout << "[SamplerCacher::SerializeToFile] Serializing " << m_entries.size()
-              << " sampler configs to " << path << std::endl;
+    LOG_INFO("SerializeToFile: Serializing " + std::to_string(m_entries.size()) + " sampler configs to " + path.string());
 
     std::ofstream ofs(path, std::ios::binary);
     if (!ofs) {
-        std::cout << "[SamplerCacher::SerializeToFile] Failed to open file for writing" << std::endl;
+        LOG_ERROR("SerializeToFile: Failed to open file for writing");
         return false;
     }
 
@@ -171,30 +163,30 @@ bool SamplerCacher::SerializeToFile(const std::filesystem::path& path) const {
         ofs.write(reinterpret_cast<const char*>(&w->compareOp), sizeof(w->compareOp));
     }
 
-    std::cout << "[SamplerCacher::SerializeToFile] Serialization complete" << std::endl;
+    LOG_INFO("SerializeToFile: Serialization complete");
     return true;
 }
 
 bool SamplerCacher::DeserializeFromFile(const std::filesystem::path& path, void* device) {
     try {
         if (!std::filesystem::exists(path)) {
-            std::cout << "[SamplerCacher::DeserializeFromFile] Cache file doesn't exist: " << path << std::endl;
+            LOG_INFO("DeserializeFromFile: Cache file doesn't exist: " + path.string());
             return true;  // Not an error, just no cache to load
         }
 
         std::ifstream ifs(path, std::ios::binary);
         if (!ifs) {
-            std::cerr << "[SamplerCacher::DeserializeFromFile] Failed to open file: " << path << std::endl;
+            LOG_ERROR("DeserializeFromFile: Failed to open file: " + path.string());
             return false;
         }
 
-        std::cout << "[SamplerCacher::DeserializeFromFile] Loading cache from " << path << std::endl;
+        LOG_INFO("DeserializeFromFile: Loading cache from " + path.string());
 
         // Read entry count
         uint32_t count = 0;
         ifs.read(reinterpret_cast<char*>(&count), sizeof(count));
 
-        std::cout << "[SamplerCacher::DeserializeFromFile] Loading " << count << " samplers" << std::endl;
+        LOG_INFO("DeserializeFromFile: Loading " + std::to_string(count) + " samplers");
 
         // Read each entry and recreate VkSampler
         for (uint32_t i = 0; i < count; ++i) {
@@ -249,12 +241,11 @@ bool SamplerCacher::DeserializeFromFile(const std::filesystem::path& path, void*
 
                 VkResult result = vkCreateSampler(GetDevice()->device, &createInfo, nullptr, &wrapper->resource);
                 if (result != VK_SUCCESS) {
-                    std::cerr << "[SamplerCacher::DeserializeFromFile] Failed to recreate VkSampler" << std::endl;
+                    LOG_ERROR("DeserializeFromFile: Failed to recreate VkSampler");
                     continue;  // Skip this entry
                 }
 
-                std::cout << "[SamplerCacher::DeserializeFromFile] Recreated VkSampler: "
-                          << reinterpret_cast<uint64_t>(wrapper->resource) << std::endl;
+                LOG_DEBUG("DeserializeFromFile: Recreated VkSampler: " + std::to_string(reinterpret_cast<uint64_t>(wrapper->resource)));
             }
 
             // Insert into cache (KEY STEP - enables cache hits after deserialization)
@@ -278,12 +269,11 @@ bool SamplerCacher::DeserializeFromFile(const std::filesystem::path& path, void*
         }
 
         ifs.close();
-        std::cout << "[SamplerCacher::DeserializeFromFile] Successfully loaded " << m_entries.size()
-                  << " samplers from cache" << std::endl;
+        LOG_INFO("DeserializeFromFile: Successfully loaded " + std::to_string(m_entries.size()) + " samplers from cache");
         return true;
 
     } catch (const std::exception& e) {
-        std::cerr << "[SamplerCacher::DeserializeFromFile] Exception: " << e.what() << std::endl;
+        LOG_ERROR("DeserializeFromFile: Exception: " + std::string(e.what()));
         return false;
     }
 }

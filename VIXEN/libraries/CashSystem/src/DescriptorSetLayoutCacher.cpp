@@ -1,7 +1,6 @@
 #include "pch.h"
 #include "DescriptorSetLayoutCacher.h"
 #include "VulkanDevice.h"  // For Vixen::Vulkan::Resources::VulkanDevice
-#include <iostream>
 #include <sstream>
 #include <functional>
 
@@ -19,13 +18,12 @@ std::shared_ptr<DescriptorSetLayoutWrapper> DescriptorSetLayoutCacher::GetOrCrea
         std::shared_lock rlock(m_lock);
         auto it = m_entries.find(key);
         if (it != m_entries.end()) {
-            std::cout << "[DescriptorSetLayoutCacher] CACHE HIT for layout: " << ci.layoutKey << std::endl;
+            LOG_DEBUG("CACHE HIT for layout: " + ci.layoutKey);
             return it->second.resource;
         }
     }
 
-    std::cout << "[DescriptorSetLayoutCacher] CACHE MISS - Creating new layout for key: "
-              << ci.layoutKey << std::endl;
+    LOG_DEBUG("CACHE MISS - Creating new layout for key: " + ci.layoutKey);
 
     // Call parent implementation which will invoke Create()
     return TypedCacher<DescriptorSetLayoutWrapper, DescriptorSetLayoutCreateParams>::GetOrCreate(ci);
@@ -35,7 +33,7 @@ std::shared_ptr<DescriptorSetLayoutWrapper> DescriptorSetLayoutCacher::Create(
     const DescriptorSetLayoutCreateParams& ci
 ) {
     if (!ci.device) {
-        std::cerr << "[DescriptorSetLayoutCacher] Error: No device provided" << std::endl;
+        LOG_ERROR("Error: No device provided");
         return nullptr;
     }
 
@@ -46,17 +44,15 @@ std::shared_ptr<DescriptorSetLayoutWrapper> DescriptorSetLayoutCacher::Create(
     if (ci.shaderBundle) {
         // Mode 1: Extract from ShaderDataBundle
         wrapper->bindings = ExtractBindingsFromBundle(*ci.shaderBundle, ci.descriptorSetIndex);
-        std::cout << "[DescriptorSetLayoutCacher] Extracted " << wrapper->bindings.size()
-                  << " bindings from shader bundle (set " << ci.descriptorSetIndex << ")" << std::endl;
+        LOG_DEBUG("Extracted " + std::to_string(wrapper->bindings.size()) + " bindings from shader bundle (set " + std::to_string(ci.descriptorSetIndex) + ")");
     } else {
         // Mode 2: Use manual bindings
         wrapper->bindings = ci.manualBindings;
-        std::cout << "[DescriptorSetLayoutCacher] Using " << wrapper->bindings.size()
-                  << " manual bindings" << std::endl;
+        LOG_DEBUG("Using " + std::to_string(wrapper->bindings.size()) + " manual bindings");
     }
 
     if (wrapper->bindings.empty()) {
-        std::cout << "[DescriptorSetLayoutCacher] Warning: No bindings found - creating empty layout" << std::endl;
+        LOG_WARNING("No bindings found - creating empty layout");
     }
 
     // Create VkDescriptorSetLayout
@@ -73,12 +69,11 @@ std::shared_ptr<DescriptorSetLayoutWrapper> DescriptorSetLayoutCacher::Create(
     );
 
     if (result != VK_SUCCESS) {
-        std::cerr << "[DescriptorSetLayoutCacher] Failed to create descriptor set layout: "
-                  << result << std::endl;
+        LOG_ERROR("Failed to create descriptor set layout: " + std::to_string(result));
         return nullptr;
     }
 
-    std::cout << "[DescriptorSetLayoutCacher] Successfully created VkDescriptorSetLayout" << std::endl;
+    LOG_DEBUG("Successfully created VkDescriptorSetLayout");
     return wrapper;
 }
 
@@ -90,14 +85,13 @@ std::uint64_t DescriptorSetLayoutCacher::ComputeKey(const DescriptorSetLayoutCre
 }
 
 void DescriptorSetLayoutCacher::Cleanup() {
-    std::cout << "[DescriptorSetLayoutCacher] Cleanup: Destroying " << m_entries.size()
-              << " descriptor set layouts" << std::endl;
+    LOG_INFO("Cleanup: Destroying " + std::to_string(m_entries.size()) + " descriptor set layouts");
 
     for (auto& [key, entry] : m_entries) {
         if (entry.resource && entry.resource->layout != VK_NULL_HANDLE) {
             // Note: We don't have direct access to VkDevice here
             // In production, store device pointer or use deferred cleanup
-            std::cout << "[DescriptorSetLayoutCacher] Warning: Skipping VkDescriptorSetLayout cleanup - device required" << std::endl;
+            LOG_WARNING("Skipping VkDescriptorSetLayout cleanup - device required");
         }
     }
 
@@ -121,15 +115,14 @@ std::vector<VkDescriptorSetLayoutBinding> DescriptorSetLayoutCacher::ExtractBind
     std::vector<VkDescriptorSetLayoutBinding> vkBindings;
 
     if (!bundle.reflectionData) {
-        std::cerr << "[DescriptorSetLayoutCacher] Error: No reflection data in bundle" << std::endl;
+        LOG_ERROR("Error: No reflection data in bundle");
         return vkBindings;
     }
 
     // Get bindings for the requested set
     auto descriptorSet = bundle.GetDescriptorSet(setIndex);
     if (descriptorSet.empty()) {
-        std::cout << "[DescriptorSetLayoutCacher] Warning: No bindings found for set "
-                  << setIndex << std::endl;
+        LOG_WARNING("No bindings found for set " + std::to_string(setIndex));
         return vkBindings;
     }
 
@@ -145,12 +138,7 @@ std::vector<VkDescriptorSetLayoutBinding> DescriptorSetLayoutCacher::ExtractBind
 
         vkBindings.push_back(vkBinding);
 
-        std::cout << "[DescriptorSetLayoutCacher]   Binding " << vkBinding.binding
-                  << ": " << spirvBinding.name
-                  << " (type=" << vkBinding.descriptorType
-                  << ", count=" << vkBinding.descriptorCount
-                  << ", stages=0x" << std::hex << vkBinding.stageFlags << std::dec << ")"
-                  << std::endl;
+        LOG_DEBUG("Binding " + std::to_string(vkBinding.binding) + ": " + spirvBinding.name + " (type=" + std::to_string(vkBinding.descriptorType) + ", count=" + std::to_string(vkBinding.descriptorCount) + ")");
     }
 
     return vkBindings;
@@ -164,12 +152,10 @@ VkDescriptorSetLayout BuildDescriptorSetLayoutFromReflection(
     uint32_t setIndex
 ) {
     if (!device) {
-        std::cerr << "[BuildDescriptorSetLayoutFromReflection] Error: No device provided" << std::endl;
         return VK_NULL_HANDLE;
     }
 
     if (!bundle.reflectionData) {
-        std::cerr << "[BuildDescriptorSetLayoutFromReflection] Error: No reflection data" << std::endl;
         return VK_NULL_HANDLE;
     }
 
@@ -198,8 +184,6 @@ VkDescriptorSetLayout BuildDescriptorSetLayoutFromReflection(
     VkResult result = vkCreateDescriptorSetLayout(device->device, &layoutInfo, nullptr, &layout);
 
     if (result != VK_SUCCESS) {
-        std::cerr << "[BuildDescriptorSetLayoutFromReflection] Failed to create layout: "
-                  << result << std::endl;
         return VK_NULL_HANDLE;
     }
 
@@ -224,13 +208,6 @@ std::vector<VkPushConstantRange> ExtractPushConstantsFromReflection(
         vkRange.offset = spirvRange.offset;
         vkRange.size = spirvRange.size;
         vkRanges.push_back(vkRange);
-
-        std::cout << "[ExtractPushConstantsFromReflection] Push constant: "
-                  << spirvRange.name
-                  << " (offset=" << vkRange.offset
-                  << ", size=" << vkRange.size
-                  << ", stages=0x" << std::hex << vkRange.stageFlags << std::dec << ")"
-                  << std::endl;
     }
 
     return vkRanges;
@@ -244,15 +221,12 @@ std::vector<VkDescriptorPoolSize> CalculateDescriptorPoolSizes(
     std::vector<VkDescriptorPoolSize> poolSizes;
 
     if (!bundle.reflectionData) {
-        std::cerr << "[CalculateDescriptorPoolSizes] Error: No reflection data in bundle" << std::endl;
         return poolSizes;
     }
 
     // Get bindings for the requested set
     auto descriptorSet = bundle.GetDescriptorSet(setIndex);
     if (descriptorSet.empty()) {
-        std::cout << "[CalculateDescriptorPoolSizes] Warning: No bindings found for set "
-                  << setIndex << std::endl;
         return poolSizes;
     }
 
@@ -269,11 +243,6 @@ std::vector<VkDescriptorPoolSize> CalculateDescriptorPoolSizes(
         poolSize.type = type;
         poolSize.descriptorCount = count * maxSets;  // Scale by number of sets
         poolSizes.push_back(poolSize);
-
-        std::cout << "[CalculateDescriptorPoolSizes] Pool size: type=" << type
-                  << ", count=" << poolSize.descriptorCount
-                  << " (per-set=" << count << ", maxSets=" << maxSets << ")"
-                  << std::endl;
     }
 
     return poolSizes;

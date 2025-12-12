@@ -58,7 +58,9 @@ public:
         { // fast path read
             std::shared_lock rlock(m_lock);
             auto it = m_entries.find(key);
-            if (it != m_entries.end()) return it->second.resource;
+            if (it != m_entries.end()) {
+                return it->second.resource;
+            }
             auto pit = m_pending.find(key);
             if (pit != m_pending.end()) return pit->second.get();
         }
@@ -66,7 +68,9 @@ public:
         // try to create
         std::unique_lock wlock(m_lock);
         auto it = m_entries.find(key);
-        if (it != m_entries.end()) return it->second.resource;
+        if (it != m_entries.end()) {
+            return it->second.resource;
+        }
         auto pit = m_pending.find(key);
         if (pit != m_pending.end()) return pit->second.get();
 

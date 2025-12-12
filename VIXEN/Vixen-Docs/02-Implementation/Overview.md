@@ -19,7 +19,7 @@ Detailed implementation guides for VIXEN's core systems. Each section includes c
 ## 1. Library Structure
 
 ```mermaid
-graph TD
+flowchart TD
     subgraph Core Libraries
         C[Core]
         L[Logger]
@@ -68,6 +68,18 @@ graph TD
     style RG fill:#4a9eff
     style SVO fill:#26de81
     style PR fill:#ff9f43
+    class C internal-link
+    class L internal-link
+    class EB internal-link
+    class VR internal-link
+    class CS internal-link
+    class RG internal-link
+    class SM internal-link
+    class VC internal-link
+    class GVW internal-link
+    class SVO internal-link
+    class VD internal-link
+    class PR internal-link
 ```
 
 > **See:** [[../Libraries/Overview|Libraries Overview]] for complete library documentation.

@@ -23,7 +23,7 @@ Archetypes group entities by their component composition. Entities with identica
 - Faster queries
 
 ```mermaid
-graph TB
+flowchart TB
     subgraph Archetype 1: Density Only
         E1[Entity 1]
         E2[Entity 2]

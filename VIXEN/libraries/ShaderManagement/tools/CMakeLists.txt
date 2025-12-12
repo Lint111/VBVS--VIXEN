@@ -22,8 +22,13 @@ install(TARGETS sdi_tool
 )
 
 # Export the target for use in parent build
+# Output to predictable location (no Debug/Release subfolder) for easy developer access
 set_target_properties(sdi_tool PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+    RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/bin"
+    RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/bin"
+    RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO "${CMAKE_BINARY_DIR}/bin"
+    RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL "${CMAKE_BINARY_DIR}/bin"
 )
 
 # Make sdi_tool available as a target for dependent projects

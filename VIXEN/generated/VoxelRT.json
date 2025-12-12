@@ -1,0 +1,34 @@
+{
+  "descriptorInterfaceHash": "2744040dfb644549",
+  "pipelineType": 3,
+  "programName": "VoxelRT",
+  "sdiHeaderPath": "generated/sdi\\2744040dfb644549-SDI.h",
+  "sdiNamespace": "ShaderInterface::2744040dfb644549",
+  "stages": [
+    {
+      "entryPoint": "main",
+      "spirvFile": "C:\\cpp\\VBVS--VIXEN\\VIXEN\\generated\\2744040dfb644549_stage256.spv",
+      "spirvSize": 1230,
+      "stage": 256
+    },
+    {
+      "entryPoint": "main",
+      "spirvFile": "C:\\cpp\\VBVS--VIXEN\\VIXEN\\generated\\2744040dfb644549_stage2048.spv",
+      "spirvSize": 358,
+      "stage": 2048
+    },
+    {
+      "entryPoint": "main",
+      "spirvFile": "C:\\cpp\\VBVS--VIXEN\\VIXEN\\generated\\2744040dfb644549_stage1024.spv",
+      "spirvSize": 1478,
+      "stage": 1024
+    },
+    {
+      "entryPoint": "main",
+      "spirvFile": "C:\\cpp\\VBVS--VIXEN\\VIXEN\\generated\\2744040dfb644549_stage4096.spv",
+      "spirvSize": 1430,
+      "stage": 4096
+    }
+  ],
+  "uuid": "2744040dfb644549"
+}
