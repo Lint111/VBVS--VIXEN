@@ -1,33 +1,38 @@
 # Active Context
 
-**Last Updated**: December 10, 2025
-**Current Branch**: `claude/phase-k-hardware-rt`
-**Status**: Phase L Complete - Awaiting tester benchmark submissions
+**Last Updated**: December 13, 2025
+**Current Branch**: `main`
+**Status**: Sprint 2 "Data Collection Polish" Complete
 
 ---
 
 ## Current State
 
-### Phase L: Data Pipeline ✅ COMPLETE
+### Sprint 2: Data Collection Polish ✅ COMPLETE
 
-Data visualization and tester coordination infrastructure:
+Tester experience and data quality improvements:
 
-| Component | Status |
-|-----------|--------|
-| aggregate_results.py | ✅ JSON → Excel aggregation |
-| generate_charts.py | ✅ 9 chart types |
-| TesterPackage | ✅ Automatic ZIP packaging |
-| Multi-tester workflow | ✅ Pack/unpack commands |
+| Task | Status | Description |
+|------|--------|-------------|
+| #40 | ✅ | Increase warmup frames to 100 |
+| #47 | ✅ | Show config file source feedback |
+| #36 | ✅ | Auto-open results folder after completion |
+| #48 | ✅ | Improve ZIP package completion visibility |
+| #49 | ✅ | Validate --tester name parameter |
 
-**Tester Workflow:**
+**New CLI Features:**
 ```bash
-vixen_benchmark.exe --quick              # Creates ZIP automatically
-vixen_benchmark.exe --tester "JohnDoe"   # Add tester name to metadata
+vixen_benchmark.exe --quick              # Creates ZIP, auto-opens folder
+vixen_benchmark.exe --tester "JohnDoe"   # Validated tester name
+vixen_benchmark.exe --no-open            # Disable auto-open (CI mode)
 ```
 
-**Package Contents:** JSON results, debug_images/, system_info.json
-
-**Blocking:** Awaiting benchmark submissions from additional machines.
+**Improvements:**
+- Warmup frames: 60 → 100 (filters frame 75 spike)
+- Measurement frames: 100 → 300 (better statistics)
+- Prominent "BENCHMARK COMPLETE" banner with NEXT STEPS
+- Config source feedback at startup
+- --tester validation with special character warning
 
 ---
 
@@ -75,7 +80,7 @@ cmake --build build --config Debug --parallel 16
 **Medium:**
 - [ ] Add GPU utilization monitoring (NVML integration)
 - [ ] Measure BLAS/TLAS build time in AccelerationStructureNode
-- [ ] Increase warmup frames to 100 (filter frame 75 spike)
+- [x] ~~Increase warmup frames to 100 (filter frame 75 spike)~~ (Sprint 2 #40)
 
 **Low:**
 - [ ] Add 3 iterations per config for statistical robustness
@@ -85,7 +90,7 @@ cmake --build build --config Debug --parallel 16
 
 ### Vault Maintenance
 - [ ] Review existing Vixen-Docs for outdated documentation
-- [ ] Document TesterPackage workflow in Vixen-Docs/04-Development/
+- [x] ~~Document TesterPackage workflow~~ (see HacknPlan-Integration.md)
 
 ### Phase M - Analysis & Paper
 - [ ] Statistical analysis of results

@@ -274,7 +274,7 @@ In HacknPlan descriptions, reference vault docs:
 // List in-progress tasks
 mcp__hacknplan__list_work_items({ projectId: 230809, stageId: 2 })
 
-// Create task
+// Create task (auto-assigns to you by default)
 mcp__hacknplan__create_work_item({
   projectId: 230809,
   title: "[Component] Description",
@@ -282,7 +282,10 @@ mcp__hacknplan__create_work_item({
   boardId: 649644,
   stageId: 1,  // Planned
   importanceLevelId: 3,  // Normal
-  estimatedCost: 4  // hours
+  estimatedCost: 4,  // hours
+  startDate: "2025-12-13",  // Planned start
+  endDate: "2025-12-15",    // Planned end
+  dueDate: "2025-12-16"     // Due date
 })
 
 // Move to In Progress
@@ -292,11 +295,77 @@ mcp__hacknplan__update_work_item({
   stageId: 2
 })
 
-// Complete task
+// Log work session (adds comment + updates loggedCost)
+mcp__hacknplan__log_work_session({
+  projectId: 230809,
+  workItemId: 123,
+  hours: 2.5,
+  description: "Implemented feature X, wrote unit tests",
+  date: "2025-12-13"  // Optional, defaults to today
+})
+
+// Complete task with logged hours
 mcp__hacknplan__update_work_item({
   projectId: 230809,
   workItemId: 123,
   stageId: 4,
-  isCompleted: true
+  isCompleted: true,
+  loggedCost: 6  // Total hours spent
+})
+
+// Assign work item to specific users
+mcp__hacknplan__assign_work_item({
+  projectId: 230809,
+  workItemId: 123,
+  userIds: [230909]  // Lior Yaari
+})
+
+// Quick assign to yourself
+mcp__hacknplan__assign_work_item_to_me({
+  projectId: 230809,
+  workItemId: 123
 })
 ```
+
+---
+
+## Time Tracking
+
+HacknPlan API doesn't have dedicated time tracking endpoints, but the MCP provides workarounds:
+
+### Logging Work Sessions
+
+Use `log_work_session` to record time spent. This:
+1. Adds a structured comment with date, duration, and description
+2. Automatically increments `loggedCost` on the work item
+
+```javascript
+mcp__hacknplan__log_work_session({
+  projectId: 230809,
+  workItemId: 123,
+  hours: 3,
+  description: "Debugged validation layer errors, fixed sync issues",
+  updateLoggedCost: true  // default: true
+})
+```
+
+### Estimated vs Actual
+
+| Field | Description |
+|-------|-------------|
+| `estimatedCost` | Planned hours (set on create) |
+| `loggedCost` | Actual hours worked (updated via log_work_session or update_work_item) |
+
+---
+
+## Date Fields
+
+Work items support three date types:
+
+| Field | Use For |
+|-------|---------|
+| `startDate` | When work is planned to begin |
+| `endDate` | When work is planned to complete |
+| `dueDate` | Hard deadline |
+
+All dates use ISO format: `2025-12-13`

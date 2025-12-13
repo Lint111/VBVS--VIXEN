@@ -356,6 +356,11 @@ BenchmarkCLIOptions ParseCommandLine(int argc, char* argv[]) {
             continue;
         }
 
+        if (ArgMatches(arg, nullptr, "--no-open")) {
+            opts.openResultsFolder = false;
+            continue;
+        }
+
         // Tester name for package
         if (ArgMatches(arg, nullptr, "--tester")) {
             const char* val = GetNextArg(argc, argv, i, "--tester");
@@ -364,7 +369,25 @@ BenchmarkCLIOptions ParseCommandLine(int argc, char* argv[]) {
                 opts.parseError = "--tester requires a name";
                 return opts;
             }
-            opts.testerName = val;
+            std::string name = Trim(val);
+            if (name.empty()) {
+                opts.hasError = true;
+                opts.parseError = "--tester name cannot be empty";
+                return opts;
+            }
+            // Warn about characters that might cause filename issues
+            bool hasSpecialChars = false;
+            for (char c : name) {
+                if (!std::isalnum(static_cast<unsigned char>(c)) && c != '_' && c != '-' && c != ' ') {
+                    hasSpecialChars = true;
+                    break;
+                }
+            }
+            if (hasSpecialChars) {
+                std::cerr << "Warning: --tester name contains special characters that may cause filename issues.\n";
+                std::cerr << "         Recommended format: letters, numbers, spaces, underscores, hyphens only.\n";
+            }
+            opts.testerName = name;
             continue;
         }
 
@@ -543,7 +566,8 @@ Output Format:
       --json-only         Export only JSON format
       --save-config FILE  Save current config to JSON file and exit
       --no-package        Skip ZIP package creation (package is created by default)
-      --tester NAME       Tester name to include in package metadata
+      --no-open           Don't auto-open results folder after completion
+      --tester NAME       Tester name for package (e.g., "John_Doe" or "TeamAlpha")
 
 Debug Options:
       --verbose           Enable detailed logging
@@ -618,15 +642,30 @@ Vixen::Profiler::BenchmarkSuiteConfig BenchmarkCLIOptions::BuildSuiteConfig() co
         searchPaths.push_back(exeDir / "../application/benchmark/benchmark_config.json");
     }
 
+    std::filesystem::path loadedConfigPath;
     for (const auto& path : searchPaths) {
         if (std::filesystem::exists(path)) {
             config = BenchmarkSuiteConfig::LoadFromFile(path);
             if (!config.tests.empty() || !config.pipelineMatrices.empty()) {
                 // Successfully loaded config, generate tests from matrix
                 config.GenerateTestsFromMatrix();
+                loadedConfigPath = std::filesystem::absolute(path);
                 break;
             }
         }
+    }
+
+    // Show config source feedback
+    if (!loadedConfigPath.empty()) {
+        std::cout << "[Config] Loaded: " << loadedConfigPath.string() << "\n";
+    } else {
+        std::cout << "[Config] WARNING: No config file found, using built-in defaults\n";
+        std::cout << "         Searched: ";
+        for (size_t i = 0; i < searchPaths.size(); ++i) {
+            if (i > 0) std::cout << ", ";
+            std::cout << searchPaths[i].string();
+        }
+        std::cout << "\n";
     }
 
     // Override with CLI values (only when explicitly provided or no config loaded)

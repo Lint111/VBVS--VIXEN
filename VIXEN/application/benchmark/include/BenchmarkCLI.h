@@ -78,6 +78,9 @@ struct BenchmarkCLIOptions {
     bool createPackage = true;                  // Create ZIP package for tester sharing (default: ON)
     std::string testerName;                     // Optional tester name for package
 
+    // Post-run behavior
+    bool openResultsFolder = true;              // Auto-open results folder after completion (default: ON)
+
     // Help flag
     bool showHelp = false;
 

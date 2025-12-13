@@ -196,7 +196,7 @@ struct TestConfiguration {
     uint32_t voxelResolution = 128;         // SVO resolution (64, 128, 256, 512)
     uint32_t screenWidth = 800;             // Render target width
     uint32_t screenHeight = 600;            // Render target height
-    uint32_t warmupFrames = 60;
+    uint32_t warmupFrames = 100;    // Filter frame 75 spike observed in data
     uint32_t measurementFrames = 300;
     std::vector<std::string> optimizations; // List of enabled optimizations
 

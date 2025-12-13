@@ -26,6 +26,10 @@
 #include <iostream>
 #include <Logger.h>
 
+#ifdef _WIN32
+#include <shellapi.h>  // For ShellExecuteW
+#endif
+
 // Initialize global Vulkan extension/layer lists for windowed benchmark mode.
 // These are required by InstanceNode and DeviceNode when running with a window.
 // Headless mode doesn't need these (creates its own minimal instance).
@@ -150,6 +154,18 @@ int main(int argc, char* argv[]) {
         std::cerr << "Error: No tests were executed\n";  // User-facing error
         return 1;
     }
+
+    // Auto-open results folder (Windows only, unless --no-open specified)
+#ifdef _WIN32
+    if (opts.openResultsFolder) {
+        auto outputPath = std::filesystem::absolute(runner.GetOutputDirectory());
+        if (std::filesystem::exists(outputPath)) {
+            std::wstring pathW = outputPath.wstring();
+            ShellExecuteW(nullptr, L"explore", pathW.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+            mainLogger->Info("Opened results folder: " + outputPath.string());
+        }
+    }
+#endif
 
     return (passed == total) ? 0 : 1;
 }

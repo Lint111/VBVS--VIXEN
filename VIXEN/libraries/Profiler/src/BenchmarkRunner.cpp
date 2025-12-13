@@ -528,19 +528,32 @@ TestSuiteResults BenchmarkRunner::RunSuite(const BenchmarkSuiteConfig& config) {
 
         if (packageResult.success) {
             std::cout << "\n";
-            std::cout << "=================================================\n";
-            std::cout << "Tester Package Created\n";
-            std::cout << "=================================================\n";
-            std::cout << "  File: " << packageResult.packagePath.string() << "\n";
-            std::cout << "  Files: " << packageResult.filesIncluded << "\n";
-            std::cout << "  Size: " << (packageResult.compressedSizeBytes / 1024) << " KB";
+            std::cout << "\n";
+            std::cout << "##################################################\n";
+            std::cout << "##                                              ##\n";
+            std::cout << "##            BENCHMARK COMPLETE!               ##\n";
+            std::cout << "##                                              ##\n";
+            std::cout << "##################################################\n";
+            std::cout << "\n";
+            std::cout << "  Package: " << packageResult.packagePath.filename().string() << "\n";
+            std::cout << "  Size:    " << (packageResult.compressedSizeBytes / 1024) << " KB";
             if (packageResult.originalSizeBytes > 0) {
                 float ratio = 100.0f * (1.0f - float(packageResult.compressedSizeBytes) / float(packageResult.originalSizeBytes));
-                std::cout << " (" << std::fixed << std::setprecision(0) << ratio << "% compression)";
+                std::cout << " (" << std::fixed << std::setprecision(0) << ratio << "% smaller)";
             }
             std::cout << "\n";
-            std::cout << "=================================================\n";
-            std::cout << "\nSend this ZIP file for aggregation.\n";
+            std::cout << "  Files:   " << packageResult.filesIncluded << " included\n";
+            std::cout << "\n";
+            std::cout << "--------------------------------------------------\n";
+            std::cout << "  NEXT STEPS:\n";
+            std::cout << "--------------------------------------------------\n";
+            std::cout << "  1. Find the ZIP file at:\n";
+            std::cout << "     " << packageResult.packagePath.string() << "\n";
+            std::cout << "\n";
+            std::cout << "  2. Send this ZIP to the benchmark coordinator\n";
+            std::cout << "\n";
+            std::cout << "##################################################\n";
+            std::cout << "\n";
         } else {
             std::cerr << "Warning: Failed to create package: " << packageResult.errorMessage << "\n";
         }

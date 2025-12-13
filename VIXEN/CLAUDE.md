@@ -87,6 +87,38 @@
 
 ---
 
+<mcp-delegation id="context-optimization" priority="HIGH">
+
+  <principle>
+    MCP tools bloat conversation context. DELEGATE to specialized agents.
+    Main conversation should NEVER directly invoke HacknPlan or Obsidian MCP tools.
+  </principle>
+
+  <delegation-table>
+    | MCP Tool Prefix | Agent | Model | Purpose |
+    |-----------------|-------|-------|---------|
+    | `mcp__hacknplan__*` | hacknplan-manager | Haiku | Tasks, sprints, time logging |
+    | `mcp__obsidian-vault__*` | obsidian-manager | Haiku | Vault docs, search |
+    | `mcp__hacknplan-obsidian-glue__*` | obsidian-manager | Haiku | Cross-references |
+  </delegation-table>
+
+  <workflow>
+    1. User requests HacknPlan/Obsidian operation
+    2. Launch appropriate agent via Task tool
+    3. Agent handles MCP internally
+    4. Report summary to user (not raw MCP output)
+  </workflow>
+
+  <example>
+    User: "Log 2 hours on the shader task"
+    ❌ WRONG: Call mcp__hacknplan__log_work_session directly
+    ✅ RIGHT: Task(hacknplan-manager, "Log 2 hours on shader task")
+  </example>
+
+</mcp-delegation>
+
+---
+
 <workarounds id="claude-code-bugs">
 
   <workaround id="file-path-bug">
@@ -99,12 +131,6 @@
       - ❌ libraries/Profiler/src/BenchmarkConfig.cpp
       - ❌ ./libraries/Profiler/src/BenchmarkConfig.cpp
     </solution>
-  </workaround>
-
-  <workaround id="mcp-fallback">
-    <title>MCP Filesystem Fallback</title>
-    <symptom>Native Edit/Write tools fail repeatedly despite correct paths</symptom>
-    <solution>Use mcp__filesystem__edit_file or mcp__filesystem__write_file as fallback</solution>
   </workaround>
 
 </workarounds>

@@ -97,7 +97,7 @@ private:
 
     FrameMetrics lastFrameMetrics_;
     uint64_t totalFramesCollected_ = 0;
-    uint32_t warmupFrames_ = 60;
+    uint32_t warmupFrames_ = 100;  // Filter frame 75 spike
 
     std::chrono::high_resolution_clock::time_point profilingStartTime_;
     std::chrono::high_resolution_clock::time_point frameStartTime_;
