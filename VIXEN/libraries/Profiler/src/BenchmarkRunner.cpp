@@ -617,12 +617,14 @@ TestSuiteResults BenchmarkRunner::RunSuiteHeadless(const BenchmarkSuiteConfig& c
     while (BeginNextTest()) {
         const auto& testConfig = GetCurrentTestConfig();
 
+        // Always show minimal progress (Test X/Y) so testers know it's running
+        std::cout << "Test " << (GetCurrentTestIndex() + 1) << "/" << testMatrix_.size()
+                  << " - " << testConfig.pipeline << "..." << std::flush;
+
         if (config.verbose) {
-            // TODO: Migrate to LOG_INFO when BenchmarkRunner inherits from ILoggable
-            // LOG_INFO("  [" + std::to_string(GetCurrentTestIndex() + 1) + "/" + std::to_string(testMatrix_.size()) + "] " +
-            //          testConfig.pipeline + " | " +
-            //          std::to_string(testConfig.voxelResolution) + "^3 | " +
-            //          testConfig.sceneType + " | " + testConfig.shader);
+            // Verbose mode: show full details on new line
+            std::cout << "\n  " << testConfig.sceneType << " | "
+                      << testConfig.voxelResolution << "^3 | " << testConfig.shader << std::endl;
         }
 
         ProfilerSystem::Instance().StartTestRun(testConfig);
@@ -649,6 +651,11 @@ TestSuiteResults BenchmarkRunner::RunSuiteHeadless(const BenchmarkSuiteConfig& c
 
         FinalizeCurrentTest();
         ProfilerSystem::Instance().EndTestRun(true);
+
+        // Complete progress line (only newline if not verbose, since verbose already printed newline)
+        if (!config.verbose) {
+            std::cout << " Done" << std::endl;
+        }
     }
 
     // Cleanup
@@ -734,12 +741,14 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
     while (BeginNextTest() && !shouldClose) {
         const auto& testConfig = GetCurrentTestConfig();
 
+        // Always show minimal progress (Test X/Y) so testers know it's running
+        std::cout << "Test " << (GetCurrentTestIndex() + 1) << "/" << testMatrix_.size()
+                  << " - " << testConfig.pipeline << "..." << std::flush;
+
         if (config.verbose) {
-            // TODO: Migrate to LOG_INFO when BenchmarkRunner inherits from ILoggable
-            // LOG_INFO("  [" + std::to_string(GetCurrentTestIndex() + 1) + "/" + std::to_string(testMatrix_.size()) + "] " +
-            //          testConfig.pipeline + " | " +
-            //          std::to_string(testConfig.voxelResolution) + "^3 | " +
-            //          testConfig.sceneType + " | " + testConfig.shader);
+            // Verbose mode: show full details on new line
+            std::cout << "\n  " << testConfig.sceneType << " | "
+                      << testConfig.voxelResolution << "^3 | " << testConfig.shader << std::endl;
         }
 
         // Create graph for current test
@@ -1008,6 +1017,11 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
         }
 
         FinalizeCurrentTest();
+
+        // Complete progress line (only newline if not verbose, since verbose already printed newline)
+        if (!config.verbose) {
+            std::cout << " Done" << std::endl;
+        }
 
         // Save user-initiated close state before graph destruction
         bool userRequestedClose = shouldClose;

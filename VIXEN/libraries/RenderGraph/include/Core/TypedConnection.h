@@ -883,14 +883,16 @@ private:
                     // PreExecute hook runs BEFORE the target node's Execute() - only populate if this is the target node
                     if (executingNode != variadicAsNodeInstance) return;
 
-                    std::cout << "[ConnectVariadic PreExecute Hook] Refreshing Execute-role resource for binding "
-                              << bindingIndex << std::endl;
+                    // Debug output disabled for clean benchmark output
+                    // std::cout << "[ConnectVariadic PreExecute Hook] Refreshing Execute-role resource for binding "
+                    //           << bindingIndex << std::endl;
 
                     // Fetch fresh resource from source node
                     Resource* sourceRes = sourceNodeInst->GetOutput(static_cast<uint8_t>(sourceSlotIndex), 0);
                     if (!sourceRes || !sourceRes->IsValid()) {
-                        std::cout << "[ConnectVariadic PreExecute Hook] WARNING: Source output " << sourceSlotIndex
-                                  << " is null or invalid for binding " << bindingIndex << "\n";
+                        // Only log warnings, not routine operations
+                        // std::cout << "[ConnectVariadic PreExecute Hook] WARNING: Source output " << sourceSlotIndex
+                        //           << " is null or invalid for binding " << bindingIndex << "\n";
                         return;
                     }
 
@@ -902,8 +904,8 @@ private:
                         updatedSlot.resourceType = sourceRes->GetType();
                         variadicNodePtr->UpdateVariadicSlot(bindingIndex, updatedSlot, bundleIndex);
 
-                        std::cout << "[ConnectVariadic PreExecute Hook] Resource refreshed for binding "
-                                  << bindingIndex << " (fieldExtraction=" << (updatedSlot.hasFieldExtraction ? "yes" : "no") << ")\n";
+                        // std::cout << "[ConnectVariadic PreExecute Hook] Resource refreshed for binding "
+                        //           << bindingIndex << " (fieldExtraction=" << (updatedSlot.hasFieldExtraction ? "yes" : "no") << ")\n";
                     }
                 },
                 std::string(hookDescription) + " (PreExecute refresh)"

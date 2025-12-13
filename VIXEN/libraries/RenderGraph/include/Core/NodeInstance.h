@@ -328,10 +328,11 @@ public:
     virtual void Setup() {
         try {
             ResetInputsUsedInCompile();
-            std::cout << "[NodeInstance::Setup] Executing PreSetup hook for: " << GetInstanceName() << std::endl;
+            // Debug output disabled for clean benchmark output
+            // std::cout << "[NodeInstance::Setup] Executing PreSetup hook for: " << GetInstanceName() << std::endl;
             ExecuteNodeHook(NodeLifecyclePhase::PreSetup);
             SetupImpl();
-            std::cout << "[NodeInstance::Setup] Executing PostSetup hook for: " << GetInstanceName() << std::endl;
+            // std::cout << "[NodeInstance::Setup] Executing PostSetup hook for: " << GetInstanceName() << std::endl;
             ExecuteNodeHook(NodeLifecyclePhase::PostSetup);
         } catch (const std::exception& e) {
             std::cerr << "[NodeInstance::Setup] EXCEPTION in node '" << GetInstanceName() << "': " << e.what() << std::endl;

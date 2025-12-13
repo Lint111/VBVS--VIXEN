@@ -136,6 +136,20 @@ if(USE_PRECOMPILED_HEADERS)
 endif()
 
 # ============================================================================
+# Runtime DLL Dependencies
+# ============================================================================
+# Copy TBB DLL to output directory (required by SVO library)
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET vixen_benchmark POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb>
+            $<TARGET_FILE_DIR:vixen_benchmark>
+        COMMENT "Copying TBB DLL for vixen_benchmark"
+    )
+    message(STATUS "vixen_benchmark: TBB DLL will be copied to output directory")
+endif()
+
+# ============================================================================
 # Installation
 # ============================================================================
 

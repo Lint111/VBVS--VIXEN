@@ -43,10 +43,10 @@ void ComputeDispatchNode::SetupImpl(TypedSetupContext& ctx) {
     // Graph-scope initialization only (no input access)
     NODE_LOG_INFO("[ComputeDispatchNode::SetupImpl] Graph-scope initialization");
 
-    // Create specialized performance logger (disabled by default)
+    // Create specialized performance logger (enabled for benchmarking, terminal output disabled)
     perfLogger_ = std::make_shared<ComputePerformanceLogger>(instanceName);
-    perfLogger_->SetEnabled(true);  // Enable manually when needed for debugging
-    perfLogger_->SetTerminalOutput(true);  // Print to terminal
+    perfLogger_->SetEnabled(true);  // Enabled for benchmark data collection
+    perfLogger_->SetTerminalOutput(false);  // Disabled for clean terminal output
 
     // Register to node logger hierarchy for shared ownership
     if (nodeLogger) {
@@ -112,9 +112,9 @@ void ComputeDispatchNode::CompileImpl(TypedCompileContext& ctx) {
     // Use MAX_FRAMES_IN_FLIGHT (4) to match FrameSyncNode's currentFrameIndex range
     constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 4;  // Must match FrameSyncNodeConfig
     gpuPerfLogger_ = std::make_shared<GPUPerformanceLogger>(instanceName, vulkanDevice, MAX_FRAMES_IN_FLIGHT);
-    gpuPerfLogger_->SetEnabled(true);
+    gpuPerfLogger_->SetEnabled(true);  // Enabled for benchmark data collection
     gpuPerfLogger_->SetLogFrequency(120);  // Log every 120 frames (~2 seconds at 60fps)
-    gpuPerfLogger_->SetPrintToTerminal(true);
+    gpuPerfLogger_->SetPrintToTerminal(false);  // Disabled for clean terminal output
 
     if (nodeLogger) {
         nodeLogger->AddChild(gpuPerfLogger_);

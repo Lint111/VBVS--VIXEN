@@ -121,10 +121,10 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
         throw std::runtime_error("[VoxelGridNode] COMMAND_POOL is null");
     }
 
-    // Create memory tracking logger for Week 3 benchmarking
+    // Create memory tracking logger (enabled for benchmarking, terminal output disabled)
     memoryLogger_ = std::make_shared<GPUPerformanceLogger>("VoxelGrid_Memory", vulkanDevice, 1);
-    memoryLogger_->SetEnabled(true);
-    memoryLogger_->SetTerminalOutput(true);
+    memoryLogger_->SetEnabled(true);  // Enabled for benchmark data collection
+    memoryLogger_->SetTerminalOutput(false);  // Disabled for clean terminal output
     if (nodeLogger) {
         nodeLogger->AddChild(memoryLogger_);
     }
