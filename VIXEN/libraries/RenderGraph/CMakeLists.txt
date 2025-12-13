@@ -205,6 +205,25 @@ set(RENDERGRAPH_NODE_SOURCES
 )
 
 # ============================================================================
+# Debug Infrastructure
+# ============================================================================
+
+set(RENDERGRAPH_DEBUG_HEADERS
+    include/Debug/DebugCaptureResource.h
+    include/Debug/DebugRaySample.h
+    include/Debug/IDebugBuffer.h
+    include/Debug/IDebugCapture.h
+    include/Debug/IExportable.h
+    include/Debug/RayTraceBuffer.h
+    include/Debug/ShaderCountersBuffer.h
+)
+
+set(RENDERGRAPH_DEBUG_SOURCES
+    src/Debug/RayTraceBuffer.cpp
+    src/Debug/ShaderCountersBuffer.cpp
+)
+
+# ============================================================================
 # Event Types
 # ============================================================================
 
@@ -224,6 +243,8 @@ add_library(RenderGraph STATIC
     ${RENDERGRAPH_CORE_SOURCES}
     ${RENDERGRAPH_NODE_HEADERS}
     ${RENDERGRAPH_NODE_SOURCES}
+    ${RENDERGRAPH_DEBUG_HEADERS}
+    ${RENDERGRAPH_DEBUG_SOURCES}
     ${RENDERGRAPH_EVENT_HEADERS}
 )
 
@@ -314,6 +335,8 @@ source_group("Core\\Headers" FILES ${RENDERGRAPH_CORE_HEADERS})
 source_group("Core\\Sources" FILES ${RENDERGRAPH_CORE_SOURCES})
 source_group("Nodes\\Headers" FILES ${RENDERGRAPH_NODE_HEADERS})
 source_group("Nodes\\Sources" FILES ${RENDERGRAPH_NODE_SOURCES})
+source_group("Debug\\Headers" FILES ${RENDERGRAPH_DEBUG_HEADERS})
+source_group("Debug\\Sources" FILES ${RENDERGRAPH_DEBUG_SOURCES})
 source_group("EventTypes" FILES ${RENDERGRAPH_EVENT_HEADERS})
 
 # ============================================================================

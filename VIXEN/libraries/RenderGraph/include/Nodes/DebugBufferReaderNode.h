@@ -5,7 +5,8 @@
 #include "Core/NodeLogging.h"
 #include "Data/Nodes/DebugBufferReaderNodeConfig.h"
 #include "Debug/DebugRaySample.h"
-#include "Debug/DebugCaptureBuffer.h"
+#include "Debug/RayTraceBuffer.h"
+#include "Debug/IDebugCapture.h"
 #include <memory>
 #include <vector>
 #include <string>

@@ -150,21 +150,20 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
     // 256 rays = ~790KB buffer, reasonable for debug capture
     constexpr uint32_t RAY_TRACE_CAPACITY = 256;
     constexpr uint32_t DEBUG_BINDING_INDEX = 4;  // Matches shader binding 4
-    debugCaptureResource_ = std::make_unique<Debug::DebugCaptureResource>(
+    debugCaptureResource_ = Debug::DebugCaptureResource::CreateRayTrace(
         vulkanDevice->device,
         *vulkanDevice->gpu,  // VulkanDevice stores VkPhysicalDevice* as 'gpu'
         RAY_TRACE_CAPACITY,
         "RayTraversal",
-        DEBUG_BINDING_INDEX,
-        true  // hostVisible for direct readback
+        DEBUG_BINDING_INDEX
     );
 
-    if (!debugCaptureResource_->IsValid()) {
+    if (!debugCaptureResource_ || !debugCaptureResource_->IsValid()) {
         NODE_LOG_DEBUG("[VoxelGridNode::CompileImpl] WARNING: Failed to create ray trace buffer");
     } else {
         NODE_LOG_DEBUG("[VoxelGridNode::CompileImpl] Created ray trace buffer: " +
                       std::to_string(RAY_TRACE_CAPACITY) + " rays, buffer=" +
-                      std::to_string(reinterpret_cast<uint64_t>(debugCaptureResource_->GetBuffer())));
+                      std::to_string(reinterpret_cast<uint64_t>(debugCaptureResource_->GetVkBuffer())));
     }
 
     // Output octree buffers from cached scene data
@@ -212,9 +211,9 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
     // When connected with SlotRole::Debug, the gatherer will auto-collect it
     if (debugCaptureResource_ && debugCaptureResource_->IsValid()) {
         ctx.OutWithInterface(VoxelGridNodeConfig::DEBUG_CAPTURE_BUFFER,
-                            debugCaptureResource_->GetBuffer(),
+                            debugCaptureResource_->GetVkBuffer(),
                             static_cast<Debug::IDebugCapture*>(debugCaptureResource_.get()));
-        NODE_LOG_DEBUG("  DEBUG_CAPTURE_BUFFER=" + std::to_string(reinterpret_cast<uint64_t>(debugCaptureResource_->GetBuffer())));
+        NODE_LOG_DEBUG("  DEBUG_CAPTURE_BUFFER=" + std::to_string(reinterpret_cast<uint64_t>(debugCaptureResource_->GetVkBuffer())));
     }
 
     NODE_LOG_DEBUG("[VoxelGridNode::CompileImpl] OUTPUTS SET");
@@ -269,10 +268,10 @@ void VoxelGridNode::ExecuteImpl(TypedExecuteContext& ctx) {
 
     // Re-output debug capture buffer (with interface)
     if (debugCaptureResource_ && debugCaptureResource_->IsValid()) {
-        // Reset write index before each frame to allow fresh capture
-        debugCaptureResource_->ResetWriteIndex();
+        // Reset buffer before each frame to allow fresh capture
+        debugCaptureResource_->Reset();
         ctx.OutWithInterface(VoxelGridNodeConfig::DEBUG_CAPTURE_BUFFER,
-                            debugCaptureResource_->GetBuffer(),
+                            debugCaptureResource_->GetVkBuffer(),
                             static_cast<Debug::IDebugCapture*>(debugCaptureResource_.get()));
     }
 

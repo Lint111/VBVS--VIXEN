@@ -2,37 +2,30 @@
 
 **Last Updated**: December 13, 2025
 **Current Branch**: `main`
-**Status**: Sprint 2 "Data Collection Polish" Complete
+**Status**: IDebugBuffer Refactor Phase 1 Complete
 
 ---
 
 ## Current State
 
-### Sprint 2: Data Collection Polish ✅ COMPLETE
+### IDebugBuffer Refactor (#58) - Phase 1 Complete ✅
 
-Tester experience and data quality improvements:
+Consolidated debug buffer infrastructure for polymorphic buffer types:
 
-| Task | Status | Description |
-|------|--------|-------------|
-| #40 | ✅ | Increase warmup frames to 100 |
-| #47 | ✅ | Show config file source feedback |
-| #36 | ✅ | Auto-open results folder after completion |
-| #48 | ✅ | Improve ZIP package completion visibility |
-| #49 | ✅ | Validate --tester name parameter |
+| File | Purpose |
+|------|---------|
+| `IDebugBuffer.h` | GPU buffer interface |
+| `IExportable.h` | Pure serialization |
+| `RayTraceBuffer.h/.cpp` | Per-ray traversal |
+| `ShaderCountersBuffer.h/.cpp` | Atomic counters |
+| `DebugCaptureResource.h` | Polymorphic wrapper |
 
-**New CLI Features:**
-```bash
-vixen_benchmark.exe --quick              # Creates ZIP, auto-opens folder
-vixen_benchmark.exe --tester "JohnDoe"   # Validated tester name
-vixen_benchmark.exe --no-open            # Disable auto-open (CI mode)
-```
+**Key Changes:**
+- `IDebugCapture::GetBuffer()` returns `IDebugBuffer*` (polymorphic)
+- Factory methods: `DebugCaptureResource::CreateRayTrace()`, `CreateCounters()`
+- Removed: `DebugCaptureBuffer.h`, `IDebugExportable.h`
 
-**Improvements:**
-- Warmup frames: 60 → 100 (filters frame 75 spike)
-- Measurement frames: 100 → 300 (better statistics)
-- Prominent "BENCHMARK COMPLETE" banner with NEXT STEPS
-- Config source feedback at startup
-- --tester validation with special character warning
+**Next (Phase 2):** Enable shader counters, wire to BenchmarkRunner for real `avgVoxelsPerRay`
 
 ---
 
@@ -60,17 +53,24 @@ cmake --build build --config Debug --parallel 16
 
 | Purpose | Location |
 |---------|----------|
+| Debug buffer interface | `libraries/RenderGraph/include/Debug/IDebugBuffer.h` |
+| Ray trace buffer | `libraries/RenderGraph/include/Debug/RayTraceBuffer.h` |
+| Shader counters | `libraries/RenderGraph/include/Debug/ShaderCountersBuffer.h` |
 | Benchmark config | `application/benchmark/benchmark_config.json` |
 | Graph factory | `libraries/Profiler/src/BenchmarkGraphFactory.cpp` |
-| RT shaders | `shaders/VoxelRT*.rgen/rmiss/rchit/rint` |
 | Compute shaders | `shaders/VoxelRayMarch*.comp` |
-| Fragment shaders | `shaders/VoxelRayMarch*.frag` |
-| Material colors | `shaders/Materials.glsl` |
-| Data pipeline | `scripts/aggregate_results.py`, `scripts/generate_charts.py` |
 
 ---
 
 ## Active Todo List
+
+### IDebugBuffer Refactor (#58)
+- [x] Phase 1: Create polymorphic IDebugBuffer interface
+- [x] Phase 1: Create RayTraceBuffer and ShaderCountersBuffer
+- [x] Phase 1: Refactor DebugCaptureResource to use factory pattern
+- [ ] Phase 2: Enable ENABLE_SHADER_COUNTERS in shaders
+- [ ] Phase 2: Wire ShaderCountersBuffer to BenchmarkRunner
+- [ ] Phase 2: Replace hardcoded avgVoxelsPerRay with real measurement
 
 ### Data Quality Improvements
 **Critical:**

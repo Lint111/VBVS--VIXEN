@@ -1,5 +1,5 @@
 #include "Nodes/DebugBufferReaderNode.h"
-#include "Debug/IDebugExportable.h"
+#include "Debug/IExportable.h"
 #include "Debug/IDebugCapture.h"
 #include "VulkanDevice.h"
 #include <cstring>
@@ -101,31 +101,44 @@ void DebugBufferReaderNode::ExecuteImpl(TypedExecuteContext& ctx) {
         vkWaitForFences(vkDevice, 1, &inFlightFence, VK_TRUE, UINT64_MAX);
     }
 
-    // Get the capture buffer from the interface
-    Debug::DebugCaptureBuffer* captureBuffer = debugCapture->GetCaptureBuffer();
-    if (captureBuffer == nullptr || !captureBuffer->IsValid()) {
-        NODE_LOG_WARNING("Debug capture buffer is invalid - skipping readback");
+    // Get the debug buffer from the interface (polymorphic)
+    Debug::IDebugBuffer* debugBuffer = debugCapture->GetBuffer();
+    if (debugBuffer == nullptr || !debugBuffer->IsValid()) {
+        NODE_LOG_WARNING("Debug buffer is invalid - skipping readback");
         return;
     }
 
-    // Read ray traces from the capture buffer
-    uint32_t traceCount = captureBuffer->ReadRayTraces(vkDevice);
-    if (traceCount == 0) {
-        NODE_LOG_INFO("No ray traces captured this frame for '%s'", debugCapture->GetDebugName().c_str());
+    // Handle based on buffer type
+    if (debugBuffer->GetType() == Debug::DebugBufferType::RayTrace) {
+        auto* rayTraceBuffer = static_cast<Debug::RayTraceBuffer*>(debugBuffer);
+
+        // Read ray traces from the capture buffer
+        uint32_t traceCount = rayTraceBuffer->Read(vkDevice);
+        if (traceCount == 0) {
+            NODE_LOG_INFO("No ray traces captured this frame for '%s'", debugCapture->GetDebugName().c_str());
+            return;
+        }
+
+        // Copy traces to our local storage
+        auto traces = rayTraceBuffer->GetRayTraces();
+        rayTraces.assign(traces.begin(), traces.end());
+        totalTracesInBuffer = traceCount;
+
+        // Log ring buffer status
+        if (rayTraceBuffer->HasWrapped()) {
+            NODE_LOG_INFO("Read %u ray traces from '%s' (ring buffer wrapped, %u total writes)",
+                          traceCount, debugCapture->GetDebugName().c_str(), rayTraceBuffer->GetTotalWrites());
+        } else {
+            NODE_LOG_INFO("Read %u ray traces from '%s' (binding %u)",
+                          traceCount, debugCapture->GetDebugName().c_str(), debugCapture->GetBindingIndex());
+        }
+    } else if (debugBuffer->GetType() == Debug::DebugBufferType::ShaderCounters) {
+        // TODO: Handle ShaderCountersBuffer type
+        NODE_LOG_INFO("ShaderCounters buffer type - aggregation not yet implemented");
         return;
-    }
-
-    // Copy traces to our local storage
-    rayTraces = captureBuffer->rayTraces;
-    totalTracesInBuffer = traceCount;
-
-    // Log ring buffer status
-    if (captureBuffer->HasWrapped()) {
-        NODE_LOG_INFO("Read %u ray traces from '%s' (ring buffer wrapped, %u total writes)",
-                      traceCount, debugCapture->GetDebugName().c_str(), captureBuffer->GetTotalWrites());
     } else {
-        NODE_LOG_INFO("Read %u ray traces from '%s' (binding %u)",
-                      traceCount, debugCapture->GetDebugName().c_str(), debugCapture->GetBindingIndex());
+        NODE_LOG_WARNING("Unknown debug buffer type: %s", debugBuffer->GetTypeName());
+        return;
     }
 
     // Export if auto-export enabled

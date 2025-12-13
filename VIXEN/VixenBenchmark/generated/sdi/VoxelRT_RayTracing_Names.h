@@ -4,7 +4,7 @@
 //
 // Program: VoxelRT_RayTracing_
 // UUID: 4f3ab9145d1784fb
-// Generated: 2025-12-13 20:18:05
+// Generated: 2025-12-13 21:14:47
 //
 // This file provides shader-specific constexpr constants and type aliases
 // that map to the generic .si.h interface.

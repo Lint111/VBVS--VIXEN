@@ -30,6 +30,10 @@ bld/
 
 # Build results
 [Dd]ebug/
+# But not our source code Debug directories
+!libraries/**/Debug/
+!libraries/**/include/Debug/
+!libraries/**/src/Debug/
 [Dd]ebugPublic/
 [Rr]elease/
 [Rr]eleases/

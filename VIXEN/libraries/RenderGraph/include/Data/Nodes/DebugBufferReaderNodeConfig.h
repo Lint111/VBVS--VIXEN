@@ -4,7 +4,7 @@
 
 // Forward declarations
 namespace Vixen::RenderGraph::Debug {
-    struct DebugCaptureBuffer;
+    class IDebugBuffer;
     class IDebugCapture;
 }
 
@@ -14,7 +14,7 @@ namespace Vixen::RenderGraph {
 using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 
 // Type alias for debug types
-using DebugCaptureBuffer = Debug::DebugCaptureBuffer;
+using IDebugBuffer = Debug::IDebugBuffer;
 using IDebugCapture = Debug::IDebugCapture;
 
 // Compile-time slot counts
