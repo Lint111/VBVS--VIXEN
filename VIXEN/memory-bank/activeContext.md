@@ -74,43 +74,17 @@ cmake --build build --config Debug --parallel 16
 
 ### Data Quality Improvements
 **Critical:**
-- [ ] Fix `avg_voxels_per_ray` shader instrumentation (currently 0.0)
+- [ ] Fix `avg_voxels_per_ray` shader instrumentation (currently 0.0) → Phase 2 above
 - [ ] Add ray throughput measurement for Fragment/HW RT pipelines
 
 **Medium:**
 - [ ] Add GPU utilization monitoring (NVML integration)
 - [ ] Measure BLAS/TLAS build time in AccelerationStructureNode
-- [x] ~~Increase warmup frames to 100 (filter frame 75 spike)~~ (Sprint 2 #40)
-
-**Low:**
-- [ ] Add 3 iterations per config for statistical robustness
-- [ ] Add cache hit rate counters in shaders
-- [ ] Add 512³ resolution tests (Compute/Fragment only)
-- [ ] Create `benchmark_schema.json` for validation
-
-### Vault Maintenance
-- [ ] Review existing Vixen-Docs for outdated documentation
-- [x] ~~Document TesterPackage workflow~~ (see HacknPlan-Integration.md)
-
-### Phase M - Analysis & Paper
-- [ ] Statistical analysis of results
-- [ ] Performance comparison charts
-- [ ] Write findings section
-- [ ] Validate/refute hypothesis
 
 ### Deferred Tasks (Post-Benchmark)
-
-**Architecture: VoxelAABBCacher (High Priority)**
-- [ ] Create VoxelAABBCacher - Specialized cacher for AABB extraction
-  - VoxelAABBConverterNode → VoxelAABBCacher
-  - Remove `precomputedAABBData` hack from AccelStructCreateInfo
-
-**Other Deferred:**
-- [ ] BuildHybridGraph() - Combine compute + fragment approaches
-- [ ] GLSL shader counter queries
-- [ ] VK_KHR_performance_query (hardware bandwidth)
-- [ ] Nsight Graphics validation
-- [ ] Unified Parameter/Resource Type System
+- [ ] VoxelAABBCacher extraction
+- [ ] BuildHybridGraph() implementation
+- [ ] VK_KHR_performance_query integration
 
 ---
 
@@ -118,19 +92,16 @@ cmake --build build --config Debug --parallel 16
 
 | Hash | Description |
 |------|-------------|
-| `8c2a358` | feat(Profiler): Add automatic ZIP packaging for benchmark results |
-| `e43232c` | feat(data-pipeline): Implement Phase L data visualization pipeline |
-| `8cabefc` | refactor(CashSystem): Extract VoxelAABBCacher from AccelerationStructureCacher |
-| `60e0ce7` | fix(RT): Fix HW RT sparse rendering and consolidate CashSystem types |
-| `782fd8d` | fix(Benchmark): Add vkDeviceWaitIdle before cleanup on ESC exit |
+| `54c3104` | fix(benchmark): GPU metrics for FRAGMENT/HW_RT + standalone package |
+| `5faefa8` | docs(session): Session summary 2025-12-13 |
+| `4bf55e7` | feat(benchmark): Sprint 2 Data Collection Polish |
+| `a645df0` | fix(benchmark): TBB DLL copy and clean terminal output |
 
 ---
 
 ## Historical Sessions
 
 **Archived to:** `Vixen-Docs/05-Progress/Phase-History.md`
-
-Includes: Phase K HW RT fixes, Sessions 1-5 details, InputNode QoL, Frame Capture, Type Consolidation, Logging Refactor.
 
 ---
 
