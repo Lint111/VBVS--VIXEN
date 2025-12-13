@@ -1786,13 +1786,14 @@ void BenchmarkGraphFactory::RegisterComputeShader(
         }
 
         // Search paths for shader source
+        // Check relative paths FIRST for portability, fall back to compile-time path
         std::vector<std::filesystem::path> possiblePaths = {
+            std::string("shaders/") + shaderName,
+            std::string("../shaders/") + shaderName,
+            shaderName,
 #ifdef VIXEN_SHADER_SOURCE_DIR
             std::string(VIXEN_SHADER_SOURCE_DIR) + "/" + shaderName,
 #endif
-            std::string("shaders/") + shaderName,
-            std::string("../shaders/") + shaderName,
-            shaderName
         };
 
         std::filesystem::path shaderPath;
@@ -1857,14 +1858,15 @@ void BenchmarkGraphFactory::RegisterFragmentShader(
         }
 
         // Helper to find shader file
+        // Check relative paths FIRST for portability, fall back to compile-time path
         auto findShader = [](const std::string& shaderName) -> std::filesystem::path {
             std::vector<std::filesystem::path> possiblePaths = {
+                std::string("shaders/") + shaderName,
+                std::string("../shaders/") + shaderName,
+                shaderName,
 #ifdef VIXEN_SHADER_SOURCE_DIR
                 std::string(VIXEN_SHADER_SOURCE_DIR) + "/" + shaderName,
 #endif
-                std::string("shaders/") + shaderName,
-                std::string("../shaders/") + shaderName,
-                shaderName
             };
 
             for (const auto& path : possiblePaths) {
@@ -1939,14 +1941,15 @@ void BenchmarkGraphFactory::RegisterRTXShader(
         }
 
         // Helper to find shader file
+        // Check relative paths FIRST for portability, fall back to compile-time path
         auto findShader = [](const std::string& shaderName) -> std::filesystem::path {
             std::vector<std::filesystem::path> possiblePaths = {
+                std::string("shaders/") + shaderName,
+                std::string("../shaders/") + shaderName,
+                shaderName,
 #ifdef VIXEN_SHADER_SOURCE_DIR
                 std::string(VIXEN_SHADER_SOURCE_DIR) + "/" + shaderName,
 #endif
-                std::string("shaders/") + shaderName,
-                std::string("../shaders/") + shaderName,
-                shaderName
             };
 
             for (const auto& path : possiblePaths) {

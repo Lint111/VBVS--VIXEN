@@ -1,0 +1,23 @@
+{
+  "name": "Quick Metrics Test",
+  "description": "Single test to verify metrics fix",
+  "output": {
+    "directory": "./results/quick_test",
+    "csv_prefix": "quick_metrics",
+    "export_raw_frames": false
+  },
+  "global_settings": {
+    "warmup_frames": 1,
+    "measurement_frames": 3,
+    "frame_time_limit_ms": 50
+  },
+  "tests": [
+    {
+      "id": "compute_only",
+      "name": "COMPUTE Quick",
+      "shader_group": "COMPUTE",
+      "scene_resolution": 64,
+      "render_resolution": "256x256"
+    }
+  ]
+}

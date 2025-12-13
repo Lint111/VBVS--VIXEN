@@ -144,6 +144,25 @@ void PrintHelp();
 void PrintVersion();
 
 /**
+ * @brief Get the user's Downloads folder path
+ *
+ * On Windows: Uses SHGetKnownFolderPath(FOLDERID_Downloads)
+ * Fallback: Returns executable directory if detection fails
+ *
+ * @return Path to Downloads folder
+ */
+std::filesystem::path GetDownloadsFolder();
+
+/**
+ * @brief Get default output directory for benchmark results
+ *
+ * Returns: Downloads/VIXEN_Benchmarks/ (or fallback)
+ *
+ * @return Path to default output directory
+ */
+std::filesystem::path GetDefaultOutputDirectory();
+
+/**
  * @brief Parse comma-separated list of uint32_t values
  *
  * @param str Input string like "32,64,128,256"

@@ -103,6 +103,23 @@ void GeometryRenderNode::CompileImpl(TypedCompileContext& ctx) {
 
     // Phase 0.2: Semaphores now managed by FrameSyncNode (per-flight pattern)
     // No need to create per-swapchain-image semaphores anymore
+
+    // Create GPU performance logger with per-frame query pools
+    constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 4;  // Must match FrameSyncNodeConfig
+    gpuPerfLogger_ = std::make_shared<GPUPerformanceLogger>(instanceName, vulkanDevice, MAX_FRAMES_IN_FLIGHT);
+    gpuPerfLogger_->SetEnabled(true);  // Enabled for benchmark data collection
+    gpuPerfLogger_->SetLogFrequency(120);  // Log every 120 frames (~2 seconds at 60fps)
+    gpuPerfLogger_->SetPrintToTerminal(false);  // Disabled for clean terminal output
+
+    if (nodeLogger) {
+        nodeLogger->AddChild(gpuPerfLogger_);
+    }
+
+    if (gpuPerfLogger_->IsTimingSupported()) {
+        NODE_LOG_INFO("[GeometryRenderNode] GPU performance timing enabled");
+    } else {
+        NODE_LOG_WARNING("[GeometryRenderNode] GPU timing not supported on this device");
+    }
 }
 
 void GeometryRenderNode::ExecuteImpl(TypedExecuteContext& ctx) {
@@ -138,6 +155,11 @@ void GeometryRenderNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // Phase 0.4: Reset fence before submitting (fence was already waited on by FrameSyncNode)
     vkResetFences(device->device, 1, &inFlightFence);
 
+    // Collect GPU performance results for this frame-in-flight (after fence wait)
+    if (gpuPerfLogger_) {
+        gpuPerfLogger_->CollectResults(currentFrameIndex);
+    }
+
     // Guard against invalid image index (swapchain out of date)
     if (imageIndex == UINT32_MAX || imageIndex >= commandBuffers.size()) {
         NODE_LOG_WARNING("GeometryRenderNode: Invalid image index - skipping frame");
@@ -165,9 +187,12 @@ void GeometryRenderNode::ExecuteImpl(TypedExecuteContext& ctx) {
     }
 
     // Phase 0.3: Only re-record if dirty
+    // Note: When GPU performance logging is enabled, we always re-record to capture timestamps
     VkCommandBuffer cmdBuffer = commandBuffers.GetValue(imageIndex);
-    if (commandBuffers.IsDirty(imageIndex)) {
-        RecordDrawCommands(ctx, cmdBuffer, imageIndex);
+    bool needsRecording = commandBuffers.IsDirty(imageIndex) ||
+                          (gpuPerfLogger_ && gpuPerfLogger_->IsEnabled());
+    if (needsRecording) {
+        RecordDrawCommands(ctx, cmdBuffer, imageIndex, currentFrameIndex);
         commandBuffers.MarkReady(imageIndex);
     }
 
@@ -200,6 +225,11 @@ void GeometryRenderNode::ExecuteImpl(TypedExecuteContext& ctx) {
 }
 
 void GeometryRenderNode::CleanupImpl(TypedCleanupContext& ctx) {
+    // Release GPU resources (QueryPools) while device is still valid
+    if (gpuPerfLogger_) {
+        gpuPerfLogger_->ReleaseGPUResources();
+    }
+
     // Free command buffers
     if (!commandBuffers.empty() && commandPool != VK_NULL_HANDLE && device) {
         // Extract raw command buffer handles for vkFreeCommandBuffers
@@ -221,7 +251,7 @@ void GeometryRenderNode::CleanupImpl(TypedCleanupContext& ctx) {
     // Phase 0.2: Semaphores now managed by FrameSyncNode - no cleanup needed here
 }
 
-void GeometryRenderNode::RecordDrawCommands(Context& ctx, VkCommandBuffer cmdBuffer, uint32_t framebufferIndex) {
+void GeometryRenderNode::RecordDrawCommands(Context& ctx, VkCommandBuffer cmdBuffer, uint32_t framebufferIndex, uint32_t frameIndex) {
     // Begin command buffer
     BeginCommandBuffer(cmdBuffer);
 
@@ -246,6 +276,16 @@ void GeometryRenderNode::RecordDrawCommands(Context& ctx, VkCommandBuffer cmdBuf
     }
     VkFramebuffer currentFramebuffer = framebuffers[framebufferIndex];
 
+    // Begin GPU timing frame (reset queries for this frame) - CRITICAL for timing to work
+    if (gpuPerfLogger_) {
+        gpuPerfLogger_->BeginFrame(cmdBuffer, frameIndex);
+    }
+
+    // Record GPU timing start (before render pass for accurate timing)
+    if (gpuPerfLogger_) {
+        gpuPerfLogger_->RecordDispatchStart(cmdBuffer, frameIndex);
+    }
+
     // Begin render pass with clear
     BeginRenderPassWithClear(cmdBuffer, renderPass, currentFramebuffer,
                             swapchainInfo->Extent.width, swapchainInfo->Extent.height);
@@ -267,6 +307,12 @@ void GeometryRenderNode::RecordDrawCommands(Context& ctx, VkCommandBuffer cmdBuf
 
     // End render pass
     vkCmdEndRenderPass(cmdBuffer);
+
+    // Record GPU timing end (after render pass)
+    if (gpuPerfLogger_) {
+        gpuPerfLogger_->RecordDispatchEnd(cmdBuffer, frameIndex,
+            swapchainInfo->Extent.width, swapchainInfo->Extent.height);
+    }
 
     // End command buffer
     EndCommandBuffer(cmdBuffer);

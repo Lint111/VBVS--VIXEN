@@ -1,0 +1,42 @@
+{
+  "name": "Metrics Validation Test",
+  "description": "Quick test to verify avg_voxels_per_ray and ray_throughput fixes",
+  "output": {
+    "directory": "./results/metrics_test",
+    "csv_prefix": "metrics_validation",
+    "export_raw_frames": false
+  },
+  "global_settings": {
+    "warmup_frames": 2,
+    "measurement_frames": 5,
+    "frame_time_limit_ms": 100
+  },
+  "test_matrix": {
+    "scene_resolutions": [64],
+    "render_resolutions": ["256x256"],
+    "shader_groups": ["COMPUTE", "FRAGMENT", "HW_RT"]
+  },
+  "tests": [
+    {
+      "id": "compute_metrics",
+      "name": "COMPUTE Metrics Check",
+      "shader_group": "COMPUTE",
+      "scene_resolution": 64,
+      "render_resolution": "256x256"
+    },
+    {
+      "id": "fragment_metrics",
+      "name": "FRAGMENT Metrics Check",
+      "shader_group": "FRAGMENT",
+      "scene_resolution": 64,
+      "render_resolution": "256x256"
+    },
+    {
+      "id": "hw_rt_metrics",
+      "name": "HW_RT Metrics Check",
+      "shader_group": "HW_RT",
+      "scene_resolution": 64,
+      "render_resolution": "256x256"
+    }
+  ]
+}

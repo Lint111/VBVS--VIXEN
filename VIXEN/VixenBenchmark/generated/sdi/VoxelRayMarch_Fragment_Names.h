@@ -2,14 +2,14 @@
 // Shader-Specific Names Header
 // ============================================================================
 //
-// Program: VoxelRayMarch_Compute_
-// UUID: db426427d16f4d1d
-// Generated: 2025-12-13 19:55:55
+// Program: VoxelRayMarch_Fragment_
+// UUID: d646771a588ed6cf
+// Generated: 2025-12-13 20:15:34
 //
 // This file provides shader-specific constexpr constants and type aliases
 // that map to the generic .si.h interface.
 //
-// Usage: #include "VoxelRayMarch_Compute_Names.h"
+// Usage: #include "VoxelRayMarch_Fragment_Names.h"
 //
 // DO NOT MODIFY THIS FILE MANUALLY - it will be regenerated.
 //
@@ -17,12 +17,12 @@
 
 #pragma once
 
-#include "db426427d16f4d1d-SDI.h"
+#include "d646771a588ed6cf-SDI.h"
 
-namespace VoxelRayMarch_Compute_ {
+namespace VoxelRayMarch_Fragment_ {
 
 // Reference to generic SDI namespace
-namespace SDI = ShaderInterface::db426427d16f4d1d;
+namespace SDI = ShaderInterface::d646771a588ed6cf;
 
 // Forward declare push constant type to prevent error messages
 using pc = SDI::pc;
@@ -31,9 +31,6 @@ using pc = SDI::pc;
 // Descriptor Binding Aliases
 // ============================================================================
 
-// outputImage (Set 0, Binding 0)
-using outputImage = SDI::Set0::Binding0;
-constexpr const char* outputImage_name = "outputImage";
 // esvoNodes (Set 0, Binding 1)
 using esvoNodes = SDI::Set0::Binding1;
 constexpr const char* esvoNodes_name = "esvoNodes";
@@ -72,4 +69,4 @@ constexpr const char* cameraRight_name = "cameraRight";
 using debugMode = SDI::pc::DataType::pc_7;
 constexpr const char* debugMode_name = "debugMode";
 
-} // namespace VoxelRayMarch_Compute_
+} // namespace VoxelRayMarch_Fragment_

@@ -386,6 +386,12 @@ endif()
 # (See RenderGraph/tests/CMakeLists.txt for test configuration)
 
 # ============================================================================
+# Benchmark Packaging
+# ============================================================================
+# Creates portable benchmark distribution folder
+include(cmake/BenchmarkPackage.cmake)
+
+# ============================================================================
 # Visual Studio Solution Organization
 # ============================================================================
 # Set VIXEN as the startup project in Visual Studio

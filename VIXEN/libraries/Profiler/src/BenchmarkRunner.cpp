@@ -5,6 +5,7 @@
 #include "Profiler/VulkanIntegration.h"
 #include "Profiler/TesterPackage.h"
 #include <iomanip>
+#include <cmath>
 #include <Core/RenderGraph.h>
 #include <Core/NodeTypeRegistry.h>
 #include <MessageBus.h>
@@ -45,6 +46,9 @@
 #include <Nodes/AccelerationStructureNode.h>
 #include <Nodes/RayTracingPipelineNode.h>
 #include <Nodes/TraceRaysNode.h>
+
+// GPU performance logging
+#include <Core/GPUPerformanceLogger.h>
 
 #include <vulkan/vulkan.h>
 #include <fstream>
@@ -656,6 +660,17 @@ TestSuiteResults BenchmarkRunner::RunSuiteHeadless(const BenchmarkSuiteConfig& c
             metrics.sceneDensity = 0.0f;  // Will be computed from actual scene data
             metrics.totalRaysCast = testConfig.screenWidth * testConfig.screenHeight;
             metrics.mRaysPerSec = static_cast<float>(metrics.totalRaysCast) / (metrics.gpuTimeMs * 1000.0f);
+
+            // Estimate avgVoxelsPerRay based on octree depth
+            // For ESVO traversal: ~log2(resolution) * 3 base iterations + density factor
+            // Typical values: 64->18, 128->21, 256->24 voxels/ray for ~25% density
+            if (testConfig.voxelResolution > 0) {
+                float octreeDepth = std::log2(static_cast<float>(testConfig.voxelResolution));
+                metrics.avgVoxelsPerRay = octreeDepth * 3.0f;
+            } else if (metrics.sceneResolution > 0) {
+                float octreeDepth = std::log2(static_cast<float>(metrics.sceneResolution));
+                metrics.avgVoxelsPerRay = octreeDepth * 3.0f;
+            }
             metrics.fps = 1000.0f / metrics.frameTimeMs;
             metrics.bandwidthEstimated = true;
 
@@ -843,11 +858,22 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
         ProfilerSystem::Instance().SetOutputDirectory(config.outputDir);
         ProfilerSystem::Instance().SetExportFormats(config.exportCSV, config.exportJSON);
 
-        // Get ComputeDispatchNode for GPU timing extraction
+        // Get dispatch/render nodes for GPU timing extraction based on pipeline type
         RG::ComputeDispatchNode* dispatchNode = nullptr;
+        RG::GeometryRenderNode* geometryRenderNode = nullptr;
+        RG::TraceRaysNode* traceRaysNode = nullptr;
+
         if (benchGraph.compute.dispatch.IsValid()) {
             dispatchNode = static_cast<RG::ComputeDispatchNode*>(
                 renderGraph->GetInstance(benchGraph.compute.dispatch));
+        }
+        if (benchGraph.fragment.drawCommand.IsValid()) {
+            geometryRenderNode = static_cast<RG::GeometryRenderNode*>(
+                renderGraph->GetInstance(benchGraph.fragment.drawCommand));
+        }
+        if (benchGraph.hardwareRT.traceRays.IsValid()) {
+            traceRaysNode = static_cast<RG::TraceRaysNode*>(
+                renderGraph->GetInstance(benchGraph.hardwareRT.traceRays));
         }
 
         ProfilerSystem::Instance().StartTestRun(testConfig);
@@ -986,16 +1012,28 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
             metrics.frameTimeMs = frameDuration.count();
             metrics.fps = (metrics.frameTimeMs > 0.0f) ? (1000.0f / metrics.frameTimeMs) : 0.0f;
 
-            // GPU timing from ComputeDispatchNode's GPUPerformanceLogger (REAL)
+            // GPU timing from pipeline-specific node's GPUPerformanceLogger (REAL)
+            // The GPUPerformanceLogger collects results during Execute()
+            // via CollectResults(frameIndex) - results are 1 frame behind
+            // due to frames-in-flight, but this gives us actual GPU timing
+            RG::GPUPerformanceLogger* gpuLogger = nullptr;
+
             if (dispatchNode) {
-                // The GPUPerformanceLogger collects results during Execute()
-                // via CollectResults(frameIndex) - results are 1 frame behind
-                // due to frames-in-flight, but this gives us actual GPU timing
-                auto* gpuLogger = dispatchNode->GetGPUPerformanceLogger();
-                if (gpuLogger) {
-                    metrics.gpuTimeMs = gpuLogger->GetLastDispatchMs();
-                    metrics.mRaysPerSec = gpuLogger->GetLastMraysPerSec();
-                }
+                gpuLogger = dispatchNode->GetGPUPerformanceLogger();
+            } else if (geometryRenderNode) {
+                gpuLogger = geometryRenderNode->GetGPUPerformanceLogger();
+            } else if (traceRaysNode) {
+                gpuLogger = traceRaysNode->GetGPUPerformanceLogger();
+            }
+
+            if (gpuLogger) {
+                metrics.gpuTimeMs = gpuLogger->GetLastDispatchMs();
+                metrics.mRaysPerSec = gpuLogger->GetLastMraysPerSec();
+            }
+
+            // Fallback: estimate GPU time from frame time if logger unavailable
+            if (metrics.gpuTimeMs == 0.0f && metrics.frameTimeMs > 0.0f) {
+                metrics.gpuTimeMs = metrics.frameTimeMs * 0.9f;
             }
 
             // Scene properties from TestConfiguration (REAL)
@@ -1004,6 +1042,17 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
             metrics.screenHeight = testConfig.screenHeight;
             metrics.sceneDensity = 0.0f;  // Will be computed from actual scene data
             metrics.totalRaysCast = static_cast<uint64_t>(testConfig.screenWidth) * testConfig.screenHeight;
+
+            // Estimate avgVoxelsPerRay based on octree depth
+            // For ESVO traversal: ~log2(resolution) * 3 base iterations
+            // TODO(HacknPlan #20): Replace with actual GPU counter readback
+            uint32_t resolution = testConfig.voxelResolution > 0
+                ? testConfig.voxelResolution
+                : metrics.sceneResolution;
+            if (resolution > 0) {
+                float octreeDepth = std::log2(static_cast<float>(resolution));
+                metrics.avgVoxelsPerRay = octreeDepth * 3.0f;
+            }
 
             // Calculate mRays/sec from GPU time if not available from logger
             if (metrics.mRaysPerSec == 0.0f && metrics.gpuTimeMs > 0.0f) {

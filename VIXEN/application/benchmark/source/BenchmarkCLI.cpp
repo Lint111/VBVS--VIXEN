@@ -9,9 +9,65 @@
 
 #ifdef _WIN32
 #include <Windows.h>
+#include <ShlObj.h>  // For SHGetKnownFolderPath
+#include <KnownFolders.h>  // For FOLDERID_Downloads
+#pragma comment(lib, "Shell32.lib")
 #endif
 
 namespace Vixen::Benchmark {
+
+//==============================================================================
+// Downloads Folder Detection
+//==============================================================================
+
+std::filesystem::path GetDownloadsFolder() {
+#ifdef _WIN32
+    PWSTR path = nullptr;
+    HRESULT hr = SHGetKnownFolderPath(FOLDERID_Downloads, 0, nullptr, &path);
+    if (SUCCEEDED(hr) && path != nullptr) {
+        std::filesystem::path downloadsPath(path);
+        CoTaskMemFree(path);
+        return downloadsPath;
+    }
+
+    // Fallback: try environment variable
+    const char* userProfile = std::getenv("USERPROFILE");
+    if (userProfile) {
+        std::filesystem::path fallback = std::filesystem::path(userProfile) / "Downloads";
+        if (std::filesystem::exists(fallback)) {
+            return fallback;
+        }
+    }
+
+    // Last resort: use exe directory
+    char exePath[MAX_PATH];
+    if (GetModuleFileNameA(nullptr, exePath, MAX_PATH) > 0) {
+        return std::filesystem::path(exePath).parent_path();
+    }
+
+    return std::filesystem::current_path();
+#else
+    // Linux/Mac: use XDG_DOWNLOAD_DIR or fallback to ~/Downloads
+    const char* xdgDownload = std::getenv("XDG_DOWNLOAD_DIR");
+    if (xdgDownload && std::filesystem::exists(xdgDownload)) {
+        return xdgDownload;
+    }
+
+    const char* home = std::getenv("HOME");
+    if (home) {
+        std::filesystem::path downloadsPath = std::filesystem::path(home) / "Downloads";
+        if (std::filesystem::exists(downloadsPath)) {
+            return downloadsPath;
+        }
+    }
+
+    return std::filesystem::current_path();
+#endif
+}
+
+std::filesystem::path GetDefaultOutputDirectory() {
+    return GetDownloadsFolder() / "VIXEN_Benchmarks";
+}
 
 namespace {
 
@@ -537,7 +593,7 @@ Usage: vixen_benchmark [options]
 
 Configuration:
   -c, --config FILE       JSON configuration file (default: benchmark_config.json)
-  -o, --output DIR        Output directory for results (default: ./benchmark_results)
+  -o, --output DIR        Output directory for results (default: Downloads/VIXEN_Benchmarks)
 
 Test Parameters:
   -i, --iterations N      Measurement frames per test (default: 100)
@@ -595,12 +651,15 @@ Examples:
   vixen_benchmark --full --output ./research_results --verbose
 
 Output:
-  Results are exported to the output directory in CSV and/or JSON format.
-  Each test configuration generates a separate file with metrics including:
-  - Frame time (CPU/GPU)
-  - Memory bandwidth
-  - Rays per second
-  - VRAM usage
+  By default, results are saved to your Downloads folder:
+    Downloads/VIXEN_Benchmarks/VIXEN_benchmark_<date>_<time>_<gpu>.zip
+
+  The ZIP package contains:
+  - benchmark_results.json (detailed per-frame metrics)
+  - system_info.json (hardware details)
+  - debug_images/ (screenshots if captured)
+
+  Metrics include: frame time, GPU time, rays/sec, VRAM usage, bandwidth.
 
 )";
 }
@@ -668,10 +727,19 @@ Vixen::Profiler::BenchmarkSuiteConfig BenchmarkCLIOptions::BuildSuiteConfig() co
         std::cout << "\n";
     }
 
-    // Override with CLI values (only when explicitly provided or no config loaded)
+    // Set output directory: CLI override > config file > Downloads folder default
     if (!outputDirectory.empty() && outputDirectory != "./benchmark_results") {
+        // CLI explicitly provided output directory
         config.outputDir = outputDirectory;
+    } else if (config.outputDir == "./benchmark_results" || config.outputDir.empty()) {
+        // No override and config uses default - switch to Downloads folder
+        config.outputDir = GetDefaultOutputDirectory();
     }
+    // else: config file specified a custom path, keep it
+
+    // Print output directory for user visibility
+    std::cout << "[Output] Results will be saved to: " << std::filesystem::absolute(config.outputDir).string() << "\n";
+
     config.exportCSV = exportCSV;
     config.exportJSON = exportJSON;
 

@@ -3,6 +3,7 @@
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
 #include "Core/NodeLogging.h"
+#include "Core/GPUPerformanceLogger.h"
 #include "Data/Nodes/TraceRaysNodeConfig.h"
 #include "Data/Nodes/FrameSyncNodeConfig.h"
 #include <memory>
@@ -100,6 +101,16 @@ private:
 
     // RTX function pointers
     PFN_vkCmdTraceRaysKHR vkCmdTraceRaysKHR_ = nullptr;
+
+    // GPU performance metrics (timestamp queries)
+    std::shared_ptr<GPUPerformanceLogger> gpuPerfLogger_;
+
+public:
+    /// Get GPU performance logger for external metrics extraction
+    /// @return Pointer to GPUPerformanceLogger, or nullptr if not initialized
+    GPUPerformanceLogger* GetGPUPerformanceLogger() const {
+        return gpuPerfLogger_.get();
+    }
 };
 
 } // namespace Vixen::RenderGraph

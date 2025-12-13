@@ -1,0 +1,23 @@
+{
+  "name": "Fragment Metrics Debug",
+  "description": "Test FRAGMENT pipeline metrics collection",
+  "output": {
+    "directory": "./results/fragment_debug",
+    "csv_prefix": "fragment_debug",
+    "export_raw_frames": false
+  },
+  "global_settings": {
+    "warmup_frames": 1,
+    "measurement_frames": 3,
+    "frame_time_limit_ms": 50
+  },
+  "tests": [
+    {
+      "id": "fragment_test",
+      "name": "FRAGMENT Debug",
+      "shader_group": "FRAGMENT",
+      "scene_resolution": 64,
+      "render_resolution": "256x256"
+    }
+  ]
+}

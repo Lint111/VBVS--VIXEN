@@ -3,6 +3,7 @@
 #include "Core/NodeType.h"
 #include "Core/PerFrameResources.h"
 #include "Core/StatefulContainer.h"
+#include "Core/GPUPerformanceLogger.h"
 #include "Data/Nodes/GeometryRenderNodeConfig.h"
 #include <memory>
 #include <vector>
@@ -52,7 +53,7 @@ public:
     ~GeometryRenderNode() override = default;
 
     // Record draw commands for a specific framebuffer
-    void RecordDrawCommands(Context& ctx, VkCommandBuffer cmdBuffer, uint32_t framebufferIndex);
+    void RecordDrawCommands(Context& ctx, VkCommandBuffer cmdBuffer, uint32_t framebufferIndex, uint32_t frameIndex);
 
 protected:
     // Command recording helpers (extracted from RecordDrawCommands)
@@ -105,6 +106,16 @@ private:
     VkPipeline lastPipeline = VK_NULL_HANDLE;
     VkBuffer lastVertexBuffer = VK_NULL_HANDLE;
     VkDescriptorSet lastDescriptorSet = VK_NULL_HANDLE;
+
+    // GPU performance metrics (timestamp queries)
+    std::shared_ptr<GPUPerformanceLogger> gpuPerfLogger_;
+
+public:
+    /// Get GPU performance logger for external metrics extraction
+    /// @return Pointer to GPUPerformanceLogger, or nullptr if not initialized
+    GPUPerformanceLogger* GetGPUPerformanceLogger() const {
+        return gpuPerfLogger_.get();
+    }
 };
 
 } // namespace Vixen::RenderGraph

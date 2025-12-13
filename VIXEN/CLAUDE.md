@@ -27,6 +27,7 @@
       <file>rules/engineering.md</file>
       <file>rules/obsidian-first.md</file>
       <file>rules/logging.md</file>
+      <file>rules/hacknplan-workflow.md</file>
     </always>
     <task-relevant description="Load when task matches">
       <file trigger="coding">rules/workflow.md</file>
@@ -55,6 +56,7 @@
 - engineering: {from rules/engineering.md}
 - obsidian-first: {from rules/obsidian-first.md}
 - logging: {from rules/logging.md}
+- hacknplan-workflow: Task tracking | Stage updates | Time logging
 - [task-relevant]: {from loaded files}
 ```
   </display-format>

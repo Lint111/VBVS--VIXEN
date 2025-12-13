@@ -95,6 +95,23 @@ void TraceRaysNode::CompileImpl(TypedCompileContext& ctx) {
         throw std::runtime_error("[TraceRaysNode] Failed to allocate command buffers");
     }
 
+    // Create GPU performance logger with per-frame query pools
+    constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 4;  // Must match FrameSyncNodeConfig
+    gpuPerfLogger_ = std::make_shared<GPUPerformanceLogger>(instanceName, vulkanDevice_, MAX_FRAMES_IN_FLIGHT);
+    gpuPerfLogger_->SetEnabled(true);  // Enabled for benchmark data collection
+    gpuPerfLogger_->SetLogFrequency(120);  // Log every 120 frames (~2 seconds at 60fps)
+    gpuPerfLogger_->SetPrintToTerminal(false);  // Disabled for clean terminal output
+
+    if (nodeLogger) {
+        nodeLogger->AddChild(gpuPerfLogger_);
+    }
+
+    if (gpuPerfLogger_->IsTimingSupported()) {
+        NODE_LOG_INFO("[TraceRaysNode] GPU performance timing enabled");
+    } else {
+        NODE_LOG_WARNING("[TraceRaysNode] GPU timing not supported on this device");
+    }
+
     NODE_LOG_INFO("=== TraceRaysNode::CompileImpl COMPLETE ===");
     NODE_LOG_DEBUG("[TraceRaysNode::CompileImpl] COMPLETED");
 }
@@ -146,6 +163,11 @@ void TraceRaysNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // Reset fence before submitting (fence was already waited on by FrameSyncNode)
     // This matches ComputeDispatchNode pattern exactly
     vkResetFences(device, 1, &inFlightFence);
+
+    // Collect GPU performance results for this frame-in-flight (after fence wait)
+    if (gpuPerfLogger_) {
+        gpuPerfLogger_->CollectResults(currentFrame);
+    }
 
     // Guard against invalid image index (matches ComputeDispatchNode)
     if (imageIndex == UINT32_MAX || imageIndex >= commandBuffers_.size()) {
@@ -241,6 +263,16 @@ void TraceRaysNode::ExecuteImpl(TypedExecuteContext& ctx) {
 
     VkStridedDeviceAddressRegionKHR callableRegion{};
 
+    // Begin GPU timing frame (reset queries for this frame) - CRITICAL for timing to work
+    if (gpuPerfLogger_) {
+        gpuPerfLogger_->BeginFrame(cmdBuffer, currentFrame);
+    }
+
+    // Record GPU timing start
+    if (gpuPerfLogger_) {
+        gpuPerfLogger_->RecordDispatchStart(cmdBuffer, currentFrame);
+    }
+
     // Dispatch rays
     vkCmdTraceRaysKHR_(
         cmdBuffer,
@@ -252,6 +284,11 @@ void TraceRaysNode::ExecuteImpl(TypedExecuteContext& ctx) {
         height_,
         depth_
     );
+
+    // Record GPU timing end
+    if (gpuPerfLogger_) {
+        gpuPerfLogger_->RecordDispatchEnd(cmdBuffer, currentFrame, width_, height_);
+    }
 
     // Transition image to PRESENT_SRC
     barrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
@@ -298,6 +335,14 @@ void TraceRaysNode::ExecuteImpl(TypedExecuteContext& ctx) {
 
 void TraceRaysNode::CleanupImpl(TypedCleanupContext& ctx) {
     NODE_LOG_INFO("TraceRaysNode cleanup");
+
+    // Release GPU resources (QueryPools) while device is still valid.
+    // Logger objects stay alive for parent log extraction, but their
+    // VkQueryPool handles must be destroyed before VkDevice cleanup.
+    if (gpuPerfLogger_) {
+        gpuPerfLogger_->ReleaseGPUResources();
+    }
+
     DestroyResources();
 }
 

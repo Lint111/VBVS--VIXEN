@@ -114,4 +114,7 @@ benchmark_results_test/
 **/*tests*/**
 **/*test*/**
 
+# any device specific cacher folders
+**/cache/devices/
+
 

@@ -1,0 +1,82 @@
+{
+  "suite": {
+    "name": "VIXEN Performance Suite",
+    "output_dir": "./benchmark_results",
+    "gpu_index": 0,
+    "headless": false,
+    "verbose": true,
+    "validation": false,
+    "machine_name": null,
+    "export": {
+      "csv": true,
+      "json": true
+    }
+  },
+  "profiling": {
+    "warmup_frames": 100,
+    "measurement_frames": 300
+  },
+  "matrix": {
+    "global": {
+      "resolutions": [64, 128, 256],
+      "render_sizes": [[1280, 720], [1920, 1080]],
+      "scenes": ["cornell", "noise", "tunnels", "cityscape"]
+    },
+    "pipelines": {
+      "compute": {
+        "enabled": true,
+        "shader_groups": [
+          ["VoxelRayMarch.comp"],
+          ["VoxelRayMarch_Compressed.comp"]
+        ]
+      },
+      "fragment": {
+        "enabled": true,
+        "shader_groups": [
+          ["Fullscreen.vert", "VoxelRayMarch.frag"],
+          ["Fullscreen.vert", "VoxelRayMarch_Compressed.frag"]
+        ]
+      },
+      "hardware_rt": {
+        "enabled": true,
+        "shader_groups": [
+          ["VoxelRT.rgen", "VoxelRT.rmiss", "VoxelRT.rchit"],
+          ["VoxelRT.rgen", "VoxelRT.rmiss", "VoxelRT_Compressed.rchit"]
+        ]
+      }
+    }
+  },
+  "scenes": {
+    "cornell": {
+      "type": "procedural",
+      "generator": "cornell",
+      "params": {}
+    },
+    "noise": {
+      "type": "procedural",
+      "generator": "noise",
+      "params": {
+        "octaves": 4,
+        "persistence": 0.5,
+        "scale": 0.1
+      }
+    },
+    "tunnels": {
+      "type": "procedural",
+      "generator": "tunnels",
+      "params": {
+        "cell_count": 8,
+        "wall_thickness": 0.3
+      }
+    },
+    "cityscape": {
+      "type": "procedural",
+      "generator": "cityscape",
+      "params": {
+        "density": 0.4,
+        "height_variance": 0.8,
+        "block_size": 8
+      }
+    }
+  }
+}

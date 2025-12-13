@@ -2,35 +2,25 @@
 #extension GL_GOOGLE_include_directive : require
 
 // ============================================================================
-// VoxelRayMarch_Compressed.comp - DXT Compressed Voxel Ray Marching (Refactored)
+// VoxelRayMarch.frag - ESVO Fragment Shader Ray Marching
 // ============================================================================
-// Reads voxel color/normal from DXT-compressed brick buffers.
-// Uses shared include files for ESVO traversal algorithm.
-//
-// Compression layout per brick (8x8x8 = 512 voxels = 32 DXT blocks):
-//   Color:  32 blocks * 8 bytes  = 256 bytes (was 1536 bytes @ 3 floats/voxel)
-//   Normal: 32 blocks * 16 bytes = 512 bytes (was 1536 bytes @ 3 floats/voxel)
-//   Total:  768 bytes per brick (was 3072 bytes) = 4:1 compression
+// Full-screen fragment shader for ESVO octree ray marching.
+// Uses same traversal algorithm as VoxelRayMarch.comp with shared includes.
+// Paired with Fullscreen.vert (fullscreen triangle).
 // ============================================================================
-
-// Debug flags - Set to 1 to enable specific debug visualization
-#define DEBUG_MATERIAL_ID 0
-#define DEBUG_BRICK_INDEX 0
-#define DEBUG_POS_IN_BRICK 0
-#define DEBUG_VOXEL_COORD 0
-#define DEBUG_COMPRESSED_RAW 0
-#define DEBUG_FIRST_VOXEL 0
 
 #include "SVOTypes.glsl"
-#include "Compression.glsl"
+#include "Materials.glsl"
 
-layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+// Fragment shader inputs from Fullscreen.vert
+layout(location = 0) in vec2 fragUV;  // [0,1] texture coordinates
+
+// Fragment shader output
+layout(location = 0) out vec4 outColor;
 
 // ============================================================================
-// BUFFER BINDINGS (Must be defined BEFORE includes)
+// BUFFER BINDINGS (Same as compute shader)
 // ============================================================================
-
-layout(binding = 0) uniform writeonly image2D outputImage;
 
 layout(std430, binding = 1) readonly buffer ESVOBuffer {
     uvec2 esvoNodes[];
@@ -40,14 +30,8 @@ layout(std430, binding = 2) readonly buffer BrickBuffer {
     uint brickData[];
 };
 
-// DXT1 compressed colors - 32 blocks per brick, 8 bytes (uvec2) per block
-layout(std430, binding = 6) readonly buffer CompressedColorBuffer {
-    uvec2 compressedColors[];
-};
-
-// DXT compressed normals - 32 blocks per brick, 16 bytes (uvec4) per block
-layout(std430, binding = 7) readonly buffer CompressedNormalBuffer {
-    uvec4 compressedNormals[];
+layout(std430, binding = 3) readonly buffer MaterialBuffer {
+    Material materials[];
 };
 
 layout(std430, binding = 4) buffer RayTraceBuffer {
@@ -76,17 +60,7 @@ layout(std140, binding = 5) uniform OctreeConfigUBO {
 } octreeConfig;
 
 // ============================================================================
-// SHADER COUNTERS (Performance Metrics)
-// ============================================================================
-// Shader counter buffer requires CPU-side binding via DescriptorResourceGatherer.
-// Set ENABLE_SHADER_COUNTERS when ShaderCountersBuffer is bound at binding 8.
-// TODO(HacknPlan #20): Add counter buffer binding in ComputeDispatchNode
-// #define ENABLE_SHADER_COUNTERS
-#define SHADER_COUNTERS_BINDING 8
-#include "ShaderCounters.glsl"
-
-// ============================================================================
-// PUSH CONSTANTS
+// PUSH CONSTANTS (Same as compute shader)
 // ============================================================================
 
 #define DEBUG_MODE_NORMAL 0
@@ -96,8 +70,6 @@ layout(std140, binding = 5) uniform OctreeConfigUBO {
 #define DEBUG_MODE_T_SPAN 4
 #define DEBUG_MODE_NORMALS 5
 #define DEBUG_MODE_POSITION 6
-#define DEBUG_MODE_BRICKS 7
-#define DEBUG_MODE_MATERIALS 8
 
 layout(push_constant) uniform PushConstants {
     vec3 cameraPos;
@@ -122,56 +94,12 @@ layout(push_constant) uniform PushConstants {
 #include "Lighting.glsl"
 
 // ============================================================================
-// ADDITIONAL DEBUG FLAGS
+// BRICK DDA (Same as compute shader)
 // ============================================================================
 
-#define DEBUG_OCTANT_MASK 0
-#define DEBUG_ISOLATE_OCTANT 0
-#define DEBUG_ONLY_OCTANT 0
-#define DEBUG_FORCE_OCTANT_ZERO 0
-#define DEBUG_LOCAL_NORM 0
-#define DEBUG_BRICK_COORD 0
-#define DEBUG_RAY_BRICK_LOOKUP 0
-#define DEBUG_BYPASS_ESVO 0
-#define DEBUG_AXIS_PARALLEL 0
-
-// ============================================================================
-// COMPRESSED BUFFER ACCESS FUNCTIONS
-// ============================================================================
-
-uvec2 loadColorBlock(uint brickIndex, int voxelLinearIdx) {
-    int blockIdx = voxelLinearIdx >> 4;
-    return compressedColors[brickIndex * 32u + uint(blockIdx)];
-}
-
-void loadNormalBlocks(uint brickIndex, int voxelLinearIdx, out uvec2 blockA, out uvec2 blockB) {
-    int blockIdx = voxelLinearIdx >> 4;
-    uvec4 packed = compressedNormals[brickIndex * 32u + uint(blockIdx)];
-    blockA = packed.xy;
-    blockB = packed.zw;
-}
-
-vec3 getCompressedVoxelColor(uint brickIndex, int voxelLinearIdx) {
-    uvec2 block = loadColorBlock(brickIndex, voxelLinearIdx);
-    int texelIdx = voxelLinearIdx & 15;
-    return decodeDXT1Color(block, texelIdx);
-}
-
-vec3 getCompressedVoxelNormal(uint brickIndex, int voxelLinearIdx) {
-    uvec2 blockA, blockB;
-    loadNormalBlocks(brickIndex, voxelLinearIdx, blockA, blockB);
-    int texelIdx = voxelLinearIdx & 15;
-    return normalize(decodeDXTNormal(blockA, blockB, texelIdx));
-}
-
-// ============================================================================
-// COMPRESSED BRICK DDA
-// ============================================================================
-
-bool marchBrickFromPosCompressed(vec3 rayDir, vec3 posInBrick, uint brickIndex,
-                                  out vec3 hitColor, out vec3 hitNormal, out uint axisMask) {
-    int BRICK_SIZE_VAL = octreeConfig.brickSize;
-
+bool marchBrickFromPos(vec3 rayDir, vec3 posInBrick, uint brickIndex,
+                       out vec3 hitColor, out vec3 hitNormal, out uint axisMask,
+                       out vec3 hitBrickLocalPos) {
     ivec3 currentVoxel = ivec3(floor(posInBrick));
     currentVoxel = clamp(currentVoxel, ivec3(0), ivec3(7));
 
@@ -180,6 +108,7 @@ bool marchBrickFromPosCompressed(vec3 rayDir, vec3 posInBrick, uint brickIndex,
     if (step.y == 0) step.y = 1;
     if (step.z == 0) step.z = 1;
 
+    int BRICK_SIZE_VAL = octreeConfig.brickSize;
     if ((posInBrick.x <= 0.001 && rayDir.x < 0.0) || (posInBrick.x >= float(BRICK_SIZE_VAL)-0.001 && rayDir.x > 0.0) ||
         (posInBrick.y <= 0.001 && rayDir.y < 0.0) || (posInBrick.y >= float(BRICK_SIZE_VAL)-0.001 && rayDir.y > 0.0) ||
         (posInBrick.z <= 0.001 && rayDir.z < 0.0) || (posInBrick.z >= float(BRICK_SIZE_VAL)-0.001 && rayDir.z > 0.0)) {
@@ -210,35 +139,25 @@ bool marchBrickFromPosCompressed(vec3 rayDir, vec3 posInBrick, uint brickIndex,
     }
 
     axisMask = 0u;
-    const int MAX_STEPS = 64;
+    const int MAX_STEPS = 300;
     for (int i = 0; i < MAX_STEPS; i++) {
         if (any(lessThan(currentVoxel, ivec3(0))) || any(greaterThanEqual(currentVoxel, ivec3(8)))) {
             break;
         }
 
-        int voxelLinearIdx = currentVoxel.z * 64 + currentVoxel.y * 8 + currentVoxel.x;
-        uint voxelData = brickData[brickIndex * 512u + uint(voxelLinearIdx)];
+        uint voxelLinearIdx = uint(currentVoxel.z * 64 + currentVoxel.y * 8 + currentVoxel.x);
+        uint voxelData = brickData[brickIndex * 512u + voxelLinearIdx];
 
         if (voxelData != 0u) {
-#if DEBUG_MATERIAL_ID
-            uint matId = voxelData;
-            if (matId == 1u) hitColor = vec3(0.9, 0.1, 0.1);
-            else if (matId == 2u) hitColor = vec3(0.1, 0.9, 0.1);
-            else if (matId == 3u) hitColor = vec3(0.9, 0.9, 0.9);
-            else if (matId == 4u) hitColor = vec3(0.8, 0.8, 0.8);
-            else if (matId == 5u) hitColor = vec3(0.85, 0.85, 0.85);
-            else if (matId == 6u) hitColor = vec3(0.7, 0.7, 0.7);
-            else if (matId == 7u) hitColor = vec3(0.3, 0.3, 0.3);
-            else if (matId == 10u) hitColor = vec3(0.8, 0.6, 0.4);
-            else if (matId == 11u) hitColor = vec3(0.4, 0.6, 0.8);
-            else if (matId == 20u) hitColor = vec3(1.0, 1.0, 0.8);
-            else hitColor = vec3(float(matId) / 25.0, 0.5, 1.0 - float(matId) / 25.0);
-#else
-            hitColor = getCompressedVoxelColor(brickIndex, voxelLinearIdx);
-#endif
-            hitNormal = getCompressedVoxelNormal(brickIndex, voxelLinearIdx);
+            uint matID = voxelData & 0xFFu;
+            hitColor = getMaterialColor(matID);
 
-            if (axisMask == 0u) {
+            hitNormal = vec3(0.0);
+            if (axisMask == 1u) hitNormal.x = -float(step.x);
+            else if (axisMask == 2u) hitNormal.y = -float(step.y);
+            else hitNormal.z = -float(step.z);
+
+            if (i == 0) {
                 vec3 absRayDir = abs(rayDir);
                 if (absRayDir.x > absRayDir.y && absRayDir.x > absRayDir.z) {
                     hitNormal = vec3(-sign(rayDir.x), 0.0, 0.0);
@@ -247,14 +166,9 @@ bool marchBrickFromPosCompressed(vec3 rayDir, vec3 posInBrick, uint brickIndex,
                 } else {
                     hitNormal = vec3(0.0, 0.0, -sign(rayDir.z));
                 }
-            } else {
-                vec3 ddaNormal = vec3(0.0);
-                if (axisMask == 1u) ddaNormal.x = -float(step.x);
-                else if (axisMask == 2u) ddaNormal.y = -float(step.y);
-                else ddaNormal.z = -float(step.z);
-                hitNormal = normalize(hitNormal + ddaNormal * 0.5);
             }
 
+            hitBrickLocalPos = vec3(currentVoxel) + vec3(0.5);
             return true;
         }
 
@@ -277,14 +191,14 @@ bool marchBrickFromPosCompressed(vec3 rayDir, vec3 posInBrick, uint brickIndex,
 }
 
 // ============================================================================
-// LEAF HIT HANDLING - COMPRESSED VERSION
+// LEAF HIT HANDLING
 // ============================================================================
 
-bool handleLeafHitCompressed(TraversalState state, RayCoefficients coef,
-                             vec3 rayStartWorld, vec3 rayDir, float tBias,
-                             uvec2 parentDescriptor, uint validMask, uint leafMask, uint parentNodeIndex,
-                             inout StackEntry stack[STACK_SIZE],
-                             out vec3 hitColor, out vec3 hitNormal, out float hitT) {
+bool handleLeafHit(TraversalState state, RayCoefficients coef,
+                   vec3 rayStartWorld, vec3 rayDir, float tBias,
+                   uvec2 parentDescriptor, uint validMask, uint leafMask, uint parentNodeIndex,
+                   inout StackEntry stack[STACK_SIZE],
+                   out vec3 hitColor, out vec3 hitNormal, out float hitT) {
 
     int BRICK_SIZE_VAL = octreeConfig.brickSize;
 
@@ -295,41 +209,33 @@ bool handleLeafHitCompressed(TraversalState state, RayCoefficients coef,
 
     uint childPointer = getChildPointer(parentDescriptor);
     uint totalInternalChildren = bitCount(validMask & ~leafMask);
-    uint leafsBefore = countLeavesBefore(validMask, leafMask, localChildIdx);
-    uint leafDescriptorIndex = childPointer + totalInternalChildren + leafsBefore;
+    uint leafChildrenBeforeMe = countLeavesBefore(validMask, leafMask, localChildIdx);
+    uint leafDescriptorIndex = childPointer + totalInternalChildren + leafChildrenBeforeMe;
 
     uvec2 leafDescriptor = fetchESVONode(leafDescriptorIndex);
-    uint brickIndex = getBrickIndex(leafDescriptor);
+    uint brickIndex = getContourPointer(leafDescriptor);
+
+    // Note: brickIndex 0 IS valid - only reject SVO_INVALID_INDEX (0xFFFFFF)
     if (brickIndex == SVO_INVALID_INDEX) {
         return false;
     }
 
+    // Use coef.normOrigin directly (already in [1,2] space) - matches compressed shader logic
     float tHit = state.t_min;
-
     vec3 rayDirLocal = mat3(octreeConfig.worldToLocal) * rayDir;
     vec3 hitPos12 = coef.normOrigin + rayDirLocal * tHit;
 
-    vec3 hitPosMirrored = hitPos12;
-    if ((coef.octant_mask & 1) == 0) hitPosMirrored.x = 3.0 - hitPosMirrored.x;
-    if ((coef.octant_mask & 2) == 0) hitPosMirrored.y = 3.0 - hitPosMirrored.y;
-    if ((coef.octant_mask & 4) == 0) hitPosMirrored.z = 3.0 - hitPosMirrored.z;
+    // Compute posInBrick using shared helper (handles mirroring correctly)
+    vec3 posInBrick = computePosInBrick(hitPos12, state.pos, state.scale_exp2, coef.octant_mask, BRICK_SIZE_VAL);
+    posInBrick = clamp(posInBrick, vec3(0.0), vec3(float(BRICK_SIZE_VAL) - 0.001));
 
-    vec3 offsetMirrored = hitPosMirrored - state.pos;
-    vec3 posInBrickMirrored = (offsetMirrored / state.scale_exp2) * float(BRICK_SIZE_VAL);
-
-    vec3 posInBrick = posInBrickMirrored;
-    if ((coef.octant_mask & 1) == 0) posInBrick.x = float(BRICK_SIZE_VAL) - posInBrick.x;
-    if ((coef.octant_mask & 2) == 0) posInBrick.y = float(BRICK_SIZE_VAL) - posInBrick.y;
-    if ((coef.octant_mask & 4) == 0) posInBrick.z = float(BRICK_SIZE_VAL) - posInBrick.z;
-
-    posInBrick = clamp(posInBrick, vec3(0.0), vec3(float(BRICK_SIZE_VAL)));
-
+    vec3 brickHitColor, brickHitNormal;
     uint axisMask;
-    bool ddaHit = marchBrickFromPosCompressed(rayDir, posInBrick, brickIndex,
-                                               hitColor, hitNormal, axisMask);
-
-    if (ddaHit) {
-        hitT = tHit + tBias;
+    vec3 hitBrickLocalPos;
+    if (marchBrickFromPos(rayDir, posInBrick, brickIndex, brickHitColor, brickHitNormal, axisMask, hitBrickLocalPos)) {
+        hitColor = brickHitColor;
+        hitNormal = brickHitNormal;
+        hitT = tBias + tHit;
         return true;
     }
 
@@ -340,7 +246,7 @@ bool handleLeafHitCompressed(TraversalState state, RayCoefficients coef,
 // MAIN TRAVERSAL LOOP
 // ============================================================================
 
-bool traverseOctree(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMax,
+bool traverseOctree(vec3 rayOrigin, vec3 rayDir,
                     out vec3 hitColor, out vec3 hitNormal, out float hitT,
                     inout DebugRaySample debugInfo) {
 
@@ -355,8 +261,6 @@ bool traverseOctree(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMax,
     vec2 gridT = rayAABBIntersection(rayOriginLocal, rayDirLocal, vec3(0.0), vec3(1.0));
     if (gridT.y < 0.0) {
         debugInfo.exitCode = DEBUG_EXIT_INVALID_SPAN;
-        debugInfo.tMin = gridT.x;
-        debugInfo.tMax = gridT.y;
         return false;
     }
 
@@ -366,7 +270,6 @@ bool traverseOctree(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMax,
     float tEntryWorld = 0.0;
     if (rayStartsInside) {
         rayStartWorld = rayOrigin;
-        tEntryWorld = 0.0;
     } else {
         vec3 entryPointLocal = rayOriginLocal + rayDirLocal * (gridT.x + EPSILON);
         rayStartWorld = (octreeConfig.localToWorld * vec4(entryPointLocal, 1.0)).xyz;
@@ -380,16 +283,8 @@ bool traverseOctree(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMax,
     TraversalState state = initTraversalState(coef, stack, rayStartsInside);
     snapshotTraversalState(state, coef, debugInfo);
 
-    ivec2 pixelCoords = ivec2(debugInfo.pixel);
-    bool isTracing = beginRayTrace(pixelCoords);
-
     if (state.t_min >= state.t_max) {
-        snapshotTraversalState(state, coef, debugInfo);
         debugInfo.exitCode = DEBUG_EXIT_INVALID_SPAN;
-        debugInfo.iterationCount = 0u;
-        recordTraceStep(TRACE_STEP_MISS, state.parentPtr, state.scale, uint(state.idx),
-                        state.pos, state.t_min, state.t_max, uvec2(0u));
-        endRayTrace(false);
         return false;
     }
 
@@ -408,17 +303,10 @@ bool traverseOctree(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMax,
                                isLeaf, tv_max, tx_center, ty_center, tz_center)) {
 
             if (isLeaf) {
-                recordTraceStep(TRACE_STEP_BRICK_ENTER, state.parentPtr, state.scale, uint(state.idx),
-                                state.pos, state.t_min, tv_max, parent_descriptor);
-
                 float tBias = tEntryWorld;
-                if (handleLeafHitCompressed(state, coef, rayStartWorld, rayDir, tBias,
-                                            parent_descriptor, validMask, leafMask, state.parentPtr,
-                                            stack, hitColor, hitNormal, hitT)) {
-                    recordTraceStep(TRACE_STEP_HIT, state.parentPtr, state.scale, uint(state.idx),
-                                    state.pos, state.t_min, tv_max, parent_descriptor);
-                    endRayTrace(true);
-
+                if (handleLeafHit(state, coef, rayStartWorld, rayDir, tBias,
+                                  parent_descriptor, validMask, leafMask, state.parentPtr,
+                                  stack, hitColor, hitNormal, hitT)) {
                     snapshotTraversalState(state, coef, debugInfo);
                     debugInfo.hitFlag = 1u;
                     debugInfo.exitCode = DEBUG_EXIT_HIT;
@@ -426,18 +314,11 @@ bool traverseOctree(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMax,
                     return true;
                 }
 
-                recordTraceStep(TRACE_STEP_BRICK_EXIT, state.parentPtr, state.scale, uint(state.idx),
-                                state.pos, state.t_min, tv_max, parent_descriptor);
-
                 state.t_min = tv_max;
                 snapshotTraversalState(state, coef, debugInfo);
             } else {
                 executePushPhase(state, coef, stack, validMask, leafMask, childPointer,
                                  tv_max, tx_center, ty_center, tz_center);
-
-                recordTraceStep(TRACE_STEP_PUSH, state.parentPtr, state.scale, uint(state.idx),
-                                state.pos, state.t_min, state.t_max, parent_descriptor);
-
                 snapshotTraversalState(state, coef, debugInfo);
                 continue;
             }
@@ -445,10 +326,6 @@ bool traverseOctree(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMax,
 
         int step_mask;
         int advanceResult = executeAdvancePhase(state, coef, step_mask);
-
-        recordTraceStep(TRACE_STEP_ADVANCE, state.parentPtr, state.scale, uint(state.idx),
-                        state.pos, state.t_min, state.t_max, parent_descriptor);
-
         debugInfo.lastStepMask = uint(step_mask);
         snapshotTraversalState(state, coef, debugInfo);
 
@@ -460,26 +337,14 @@ bool traverseOctree(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMax,
 
         if (advanceResult == 1) {
             int popResult = executePopPhase(state, coef, stack, step_mask);
-
-            recordTraceStep(TRACE_STEP_POP, state.parentPtr, state.scale, uint(state.idx),
-                            state.pos, state.t_min, state.t_max, uvec2(0u));
-
             snapshotTraversalState(state, coef, debugInfo);
             if (popResult == 1) {
-                recordTraceStep(TRACE_STEP_MISS, state.parentPtr, state.scale, uint(state.idx),
-                                state.pos, state.t_min, state.t_max, uvec2(0u));
-                endRayTrace(false);
-
                 debugInfo.exitCode = DEBUG_EXIT_STACK;
                 debugInfo.iterationCount = uint(iter + 1);
                 return false;
             }
         }
     }
-
-    recordTraceStep(TRACE_STEP_MISS, state.parentPtr, state.scale, uint(state.idx),
-                    state.pos, state.t_min, state.t_max, uvec2(0u));
-    endRayTrace(false);
 
     debugInfo.exitCode = DEBUG_EXIT_NO_HIT;
     debugInfo.iterationCount = uint(iter);
@@ -491,21 +356,14 @@ bool traverseOctree(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMax,
 // ============================================================================
 
 void main() {
-    ivec2 pixelCoords = ivec2(gl_GlobalInvocationID.xy);
-    ivec2 imageSize = imageSize(outputImage);
-
-    if (pixelCoords.x >= imageSize.x || pixelCoords.y >= imageSize.y) {
-        return;
-    }
-
-    vec2 uv = (vec2(pixelCoords) + 0.5) / vec2(imageSize);
     vec3 rayOrigin = pc.cameraPos;
-    vec3 rayDir = getRayDir(uv);
+    vec3 rayDir = getRayDir(fragUV);
 
     vec3 color = vec3(0.0);
     float hitT = 0.0;
+
     DebugRaySample debugSample;
-    debugSample.pixel = uvec2(pixelCoords);
+    debugSample.pixel = uvec2(gl_FragCoord.xy);
     debugSample.rayDir = rayDir;
     debugSample.octantMask = 0u;
     debugSample.hitFlag = 0u;
@@ -520,38 +378,24 @@ void main() {
     debugSample.posMirrored = vec3(0.0);
     debugSample.localNorm = vec3(0.0);
 
-    vec3 gridMin = octreeConfig.gridMin;
-    vec3 gridMax = octreeConfig.gridMax;
-
     vec3 rayOriginLocal = (octreeConfig.worldToLocal * vec4(rayOrigin, 1.0)).xyz;
     vec3 rayDirLocal = mat3(octreeConfig.worldToLocal) * rayDir;
-
     vec2 gridT = rayAABBIntersection(rayOriginLocal, rayDirLocal, vec3(0.0), vec3(1.0));
 
-    // Record ray start for metrics
-    recordRayStart();
-
-    bool hit = false;
     if (gridT.y >= 0.0) {
         vec3 hitColor, hitNormal;
-
-        hit = traverseOctree(rayOrigin, rayDir, vec3(0.0), vec3(1.0),
-                                  hitColor, hitNormal, hitT, debugSample);
+        bool hit = traverseOctree(rayOrigin, rayDir, hitColor, hitNormal, hitT, debugSample);
 
         if (hit) {
             color = computeLighting(hitColor, hitNormal, rayDir);
         } else {
-            color = vec3(0.5, 0.7, 1.0) * (1.0 - uv.y * 0.5);
+            color = vec3(0.5, 0.7, 1.0) * (1.0 - fragUV.y * 0.5);
         }
     } else {
-        color = vec3(0.5, 0.7, 1.0) * (1.0 - uv.y * 0.5);
+        color = vec3(0.5, 0.7, 1.0) * (1.0 - fragUV.y * 0.5);
     }
 
-    // Record traversal metrics
-    bool earlyTermination = (debugSample.iterationCount >= 500u);
-    recordVoxelSteps(debugSample.iterationCount);
-    recordRayEnd(hit, earlyTermination);
-
+    // Debug visualization modes
     if (pc.debugMode > 0) {
         switch (pc.debugMode) {
             case DEBUG_MODE_OCTANT:
@@ -590,5 +434,5 @@ void main() {
         }
     }
 
-    imageStore(outputImage, pixelCoords, vec4(color, 1.0));
+    outColor = vec4(color, 1.0);
 }
