@@ -148,22 +148,27 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
     // Create ray trace buffer for per-ray traversal capture
     // Each ray captures up to 64 steps * 48 bytes + 16 byte header = 3088 bytes/ray
     // 256 rays = ~790KB buffer, reasonable for debug capture
+    // Uses RayTraceBuffer directly - has conversion_type = VkBuffer for auto descriptor extraction
     constexpr uint32_t RAY_TRACE_CAPACITY = 256;
-    constexpr uint32_t DEBUG_BINDING_INDEX = 4;  // Matches shader binding 4
-    debugCaptureResource_ = Debug::DebugCaptureResource::CreateRayTrace(
-        vulkanDevice->device,
-        *vulkanDevice->gpu,  // VulkanDevice stores VkPhysicalDevice* as 'gpu'
-        RAY_TRACE_CAPACITY,
-        "RayTraversal",
-        DEBUG_BINDING_INDEX
-    );
-
-    if (!debugCaptureResource_ || !debugCaptureResource_->IsValid()) {
+    debugCaptureResource_ = std::make_unique<Debug::RayTraceBuffer>(RAY_TRACE_CAPACITY);
+    if (!debugCaptureResource_->Create(vulkanDevice->device, *vulkanDevice->gpu)) {
         NODE_LOG_DEBUG("[VoxelGridNode::CompileImpl] WARNING: Failed to create ray trace buffer");
+        debugCaptureResource_.reset();
     } else {
         NODE_LOG_DEBUG("[VoxelGridNode::CompileImpl] Created ray trace buffer: " +
                       std::to_string(RAY_TRACE_CAPACITY) + " rays, buffer=" +
                       std::to_string(reinterpret_cast<uint64_t>(debugCaptureResource_->GetVkBuffer())));
+    }
+
+    // Create shader counters buffer for avgVoxelsPerRay metrics
+    // Uses ShaderCountersBuffer directly - has conversion_type = VkBuffer for auto descriptor extraction
+    shaderCountersResource_ = std::make_unique<Debug::ShaderCountersBuffer>();
+    if (!shaderCountersResource_->Create(vulkanDevice->device, *vulkanDevice->gpu)) {
+        NODE_LOG_DEBUG("[VoxelGridNode::CompileImpl] WARNING: Failed to create shader counters buffer");
+        shaderCountersResource_.reset();
+    } else {
+        NODE_LOG_DEBUG("[VoxelGridNode::CompileImpl] Created shader counters buffer: " +
+                      std::to_string(reinterpret_cast<uint64_t>(shaderCountersResource_->GetVkBuffer())));
     }
 
     // Output octree buffers from cached scene data
@@ -207,13 +212,17 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
         NODE_LOG_DEBUG("  VOXEL_SCENE_DATA=" + std::to_string(reinterpret_cast<uint64_t>(cachedSceneData_.get())));
     }
 
-    // Output debug capture buffer with IDebugCapture interface attached
-    // When connected with SlotRole::Debug, the gatherer will auto-collect it
+    // Output debug capture buffer (wrapper type handles descriptor extraction)
     if (debugCaptureResource_ && debugCaptureResource_->IsValid()) {
-        ctx.OutWithInterface(VoxelGridNodeConfig::DEBUG_CAPTURE_BUFFER,
-                            debugCaptureResource_->GetVkBuffer(),
-                            static_cast<Debug::IDebugCapture*>(debugCaptureResource_.get()));
+        ctx.Out(VoxelGridNodeConfig::DEBUG_CAPTURE_BUFFER, debugCaptureResource_.get());
         NODE_LOG_DEBUG("  DEBUG_CAPTURE_BUFFER=" + std::to_string(reinterpret_cast<uint64_t>(debugCaptureResource_->GetVkBuffer())));
+    }
+
+    // Output shader counters buffer for avgVoxelsPerRay metrics
+    // Uses wrapper type with conversion_type = VkBuffer for automatic descriptor extraction
+    if (shaderCountersResource_ && shaderCountersResource_->IsValid()) {
+        ctx.Out(VoxelGridNodeConfig::SHADER_COUNTERS_BUFFER, shaderCountersResource_.get());
+        NODE_LOG_DEBUG("  SHADER_COUNTERS_BUFFER=" + std::to_string(reinterpret_cast<uint64_t>(shaderCountersResource_->GetVkBuffer())));
     }
 
     NODE_LOG_DEBUG("[VoxelGridNode::CompileImpl] OUTPUTS SET");
@@ -266,13 +275,18 @@ void VoxelGridNode::ExecuteImpl(TypedExecuteContext& ctx) {
         ctx.Out(VoxelGridNodeConfig::VOXEL_SCENE_DATA, cachedSceneData_.get());
     }
 
-    // Re-output debug capture buffer (with interface)
+    // Re-output debug capture buffer (wrapper type handles descriptor extraction)
     if (debugCaptureResource_ && debugCaptureResource_->IsValid()) {
         // Reset buffer before each frame to allow fresh capture
-        debugCaptureResource_->Reset();
-        ctx.OutWithInterface(VoxelGridNodeConfig::DEBUG_CAPTURE_BUFFER,
-                            debugCaptureResource_->GetVkBuffer(),
-                            static_cast<Debug::IDebugCapture*>(debugCaptureResource_.get()));
+        debugCaptureResource_->Reset(vulkanDevice->device);
+        ctx.Out(VoxelGridNodeConfig::DEBUG_CAPTURE_BUFFER, debugCaptureResource_.get());
+    }
+
+    // Re-output shader counters buffer (wrapper type handles descriptor extraction)
+    if (shaderCountersResource_ && shaderCountersResource_->IsValid()) {
+        // Reset counters before each frame
+        shaderCountersResource_->Reset(vulkanDevice->device);
+        ctx.Out(VoxelGridNodeConfig::SHADER_COUNTERS_BUFFER, shaderCountersResource_.get());
     }
 
     NODE_LOG_INFO("=== VoxelGridNode::ExecuteImpl END ===");
@@ -294,6 +308,25 @@ void VoxelGridNode::LogCleanupProgress(const std::string& stage) {
     NODE_LOG_DEBUG("[VoxelGridNode::Cleanup] " + stage);
 }
 
+const Debug::GPUShaderCounters* VoxelGridNode::ReadShaderCounters() {
+    if (!vulkanDevice || vulkanDevice->device == VK_NULL_HANDLE) {
+        return nullptr;
+    }
+
+    if (!shaderCountersResource_ || !shaderCountersResource_->IsValid()) {
+        return nullptr;
+    }
+
+    // Read data from GPU (uses mapped memory, so fast)
+    uint32_t count = shaderCountersResource_->Read(vulkanDevice->device);
+    if (count == 0) {
+        return nullptr;
+    }
+
+    // Return pointer to the counter data
+    return &shaderCountersResource_->GetCounters();
+}
+
 void VoxelGridNode::CleanupImpl(TypedCleanupContext& ctx) {
     NODE_LOG_INFO("[VoxelGridNode::CleanupImpl] Destroying octree buffers");
 
@@ -313,9 +346,19 @@ void VoxelGridNode::CleanupImpl(TypedCleanupContext& ctx) {
     vkDeviceWaitIdle(vulkanDevice->device);
     DestroyOctreeBuffers();
 
-    // Clean up debug capture resource (it owns its own Vulkan resources)
+    // Clean up debug capture resource
+    if (debugCaptureResource_ && debugCaptureResource_->IsValid()) {
+        debugCaptureResource_->Destroy(vulkanDevice->device);
+    }
     debugCaptureResource_.reset();
     LogCleanupProgress("debugCaptureResource destroyed");
+
+    // Clean up shader counters resource
+    if (shaderCountersResource_ && shaderCountersResource_->IsValid()) {
+        shaderCountersResource_->Destroy(vulkanDevice->device);
+    }
+    shaderCountersResource_.reset();
+    LogCleanupProgress("shaderCountersResource destroyed");
 
     NODE_LOG_INFO("[VoxelGridNode::CleanupImpl] Cleanup complete");
 }

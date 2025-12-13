@@ -4,7 +4,8 @@
 #include "Core/NodeType.h"
 #include "Core/NodeLogging.h"
 #include "Data/Nodes/VoxelGridNodeConfig.h"
-#include "Debug/DebugCaptureResource.h"
+#include "Debug/RayTraceBuffer.h"
+#include "Debug/ShaderCountersBuffer.h"
 #include "Core/GPUPerformanceLogger.h"
 #include <memory>
 #include <vector>
@@ -66,6 +67,16 @@ public:
     );
     ~VoxelGridNode() override = default;
 
+    /**
+     * @brief Read shader counters from GPU after frame execution
+     *
+     * Call this after ExecuteAll() to get the accumulated counter data.
+     * Returns nullptr if counters are not available or buffer is invalid.
+     *
+     * @return Pointer to GPUShaderCounters or nullptr
+     */
+    const Debug::GPUShaderCounters* ReadShaderCounters();
+
 protected:
     void SetupImpl(TypedSetupContext& ctx) override;
     void CompileImpl(TypedCompileContext& ctx) override;
@@ -96,8 +107,13 @@ private:
     Vixen::Vulkan::Resources::VulkanDevice* vulkanDevice = nullptr;
     VkCommandPool commandPool = VK_NULL_HANDLE;
 
-    // Debug capture resource (owns buffer, implements IDebugCapture)
-    std::unique_ptr<Debug::DebugCaptureResource> debugCaptureResource_;
+    // Debug capture resource for ray tracing debug data
+    // Uses RayTraceBuffer directly (has conversion_type = VkBuffer for auto descriptor extraction)
+    std::unique_ptr<Debug::RayTraceBuffer> debugCaptureResource_;
+
+    // Shader counters resource for avgVoxelsPerRay metrics
+    // Uses ShaderCountersBuffer directly (has conversion_type = VkBuffer for auto descriptor extraction)
+    std::unique_ptr<Debug::ShaderCountersBuffer> shaderCountersResource_;
 
     // Parameters
     uint32_t resolution = 128;

@@ -1,6 +1,5 @@
 #include "Debug/ShaderCountersBuffer.h"
 #include <cstring>
-#include <algorithm>
 
 namespace Vixen::RenderGraph::Debug {
 
@@ -8,11 +7,9 @@ namespace Vixen::RenderGraph::Debug {
 // Constructor / Destructor
 // ============================================================================
 
-ShaderCountersBuffer::ShaderCountersBuffer(uint32_t entryCount)
-    : capacity_(entryCount)
-    , bufferSize_(CalculateBufferSize(entryCount))
-{
-    counters_.reserve(capacity_);
+ShaderCountersBuffer::ShaderCountersBuffer(uint32_t /*capacity*/) {
+    // capacity parameter is unused - kept for API compatibility
+    counters_.Clear();
 }
 
 ShaderCountersBuffer::~ShaderCountersBuffer() {
@@ -27,17 +24,11 @@ ShaderCountersBuffer::~ShaderCountersBuffer() {
 ShaderCountersBuffer::ShaderCountersBuffer(ShaderCountersBuffer&& other) noexcept
     : buffer_(other.buffer_)
     , memory_(other.memory_)
-    , bufferSize_(other.bufferSize_)
-    , capacity_(other.capacity_)
-    , isHostVisible_(other.isHostVisible_)
-    , counters_(std::move(other.counters_))
-    , readCount_(other.readCount_)
+    , counters_(other.counters_)
 {
     other.buffer_ = VK_NULL_HANDLE;
     other.memory_ = VK_NULL_HANDLE;
-    other.bufferSize_ = 0;
-    other.capacity_ = 0;
-    other.readCount_ = 0;
+    other.counters_.Clear();
 }
 
 ShaderCountersBuffer& ShaderCountersBuffer::operator=(ShaderCountersBuffer&& other) noexcept {
@@ -45,17 +36,11 @@ ShaderCountersBuffer& ShaderCountersBuffer::operator=(ShaderCountersBuffer&& oth
         // Note: Caller responsible for calling Destroy() on this before move
         buffer_ = other.buffer_;
         memory_ = other.memory_;
-        bufferSize_ = other.bufferSize_;
-        capacity_ = other.capacity_;
-        isHostVisible_ = other.isHostVisible_;
-        counters_ = std::move(other.counters_);
-        readCount_ = other.readCount_;
+        counters_ = other.counters_;
 
         other.buffer_ = VK_NULL_HANDLE;
         other.memory_ = VK_NULL_HANDLE;
-        other.bufferSize_ = 0;
-        other.capacity_ = 0;
-        other.readCount_ = 0;
+        other.counters_.Clear();
     }
     return *this;
 }
@@ -69,14 +54,12 @@ bool ShaderCountersBuffer::Create(VkDevice device, VkPhysicalDevice physicalDevi
         return false;
     }
 
-    if (capacity_ == 0) {
-        return false;
-    }
+    constexpr VkDeviceSize bufferSize = sizeof(GPUShaderCounters);
 
     // Create buffer
     VkBufferCreateInfo bufferInfo{};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    bufferInfo.size = bufferSize_;
+    bufferInfo.size = bufferSize;
     bufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
@@ -120,19 +103,10 @@ bool ShaderCountersBuffer::Create(VkDevice device, VkPhysicalDevice physicalDevi
         return false;
     }
 
-    isHostVisible_ = true;
-
-    // Initialize buffer header
+    // Initialize buffer to zero
     void* data = nullptr;
-    if (vkMapMemory(device, memory_, 0, bufferSize_, 0, &data) == VK_SUCCESS) {
-        // Zero entire buffer
-        std::memset(data, 0, bufferSize_);
-
-        // Set header
-        auto* header = static_cast<ShaderCountersHeader*>(data);
-        header->entryCount = 0;
-        header->capacity = capacity_;
-
+    if (vkMapMemory(device, memory_, 0, bufferSize, 0, &data) == VK_SUCCESS) {
+        std::memset(data, 0, bufferSize);
         vkUnmapMemory(device, memory_);
     }
 
@@ -150,9 +124,7 @@ void ShaderCountersBuffer::Destroy(VkDevice device) {
         memory_ = VK_NULL_HANDLE;
     }
 
-    bufferSize_ = 0;
-    counters_.clear();
-    readCount_ = 0;
+    counters_.Clear();
 }
 
 // ============================================================================
@@ -160,64 +132,40 @@ void ShaderCountersBuffer::Destroy(VkDevice device) {
 // ============================================================================
 
 bool ShaderCountersBuffer::Reset(VkDevice device) {
-    if (!IsValid() || !isHostVisible_) {
+    if (!IsValid()) {
         return false;
     }
 
     void* data = nullptr;
-    if (vkMapMemory(device, memory_, 0, bufferSize_, 0, &data) != VK_SUCCESS) {
+    if (vkMapMemory(device, memory_, 0, sizeof(GPUShaderCounters), 0, &data) != VK_SUCCESS) {
         return false;
     }
 
     // Zero entire buffer
-    std::memset(data, 0, bufferSize_);
-
-    // Reset header
-    auto* header = static_cast<ShaderCountersHeader*>(data);
-    header->entryCount = 0;
-    header->capacity = capacity_;
-
+    std::memset(data, 0, sizeof(GPUShaderCounters));
     vkUnmapMemory(device, memory_);
 
-    // Clear CPU-side data
-    counters_.clear();
-    readCount_ = 0;
+    // Clear CPU-side cache
+    counters_.Clear();
 
     return true;
 }
 
 uint32_t ShaderCountersBuffer::Read(VkDevice device) {
-    if (!IsValid() || !isHostVisible_) {
+    if (!IsValid()) {
         return 0;
     }
 
     void* data = nullptr;
-    if (vkMapMemory(device, memory_, 0, bufferSize_, 0, &data) != VK_SUCCESS) {
+    if (vkMapMemory(device, memory_, 0, sizeof(GPUShaderCounters), 0, &data) != VK_SUCCESS) {
         return 0;
     }
 
-    // Read header
-    const auto* header = static_cast<const ShaderCountersHeader*>(data);
-    uint32_t entryCount = std::min(header->entryCount, capacity_);
-
-    // Read counter entries
-    counters_.clear();
-    counters_.reserve(entryCount);
-
-    if (entryCount > 0) {
-        const auto* entries = reinterpret_cast<const ShaderCounters*>(
-            static_cast<const uint8_t*>(data) + sizeof(ShaderCountersHeader)
-        );
-
-        for (uint32_t i = 0; i < entryCount; ++i) {
-            counters_.push_back(entries[i]);
-        }
-    }
-
+    // Copy GPU data to CPU cache
+    std::memcpy(&counters_, data, sizeof(GPUShaderCounters));
     vkUnmapMemory(device, memory_);
 
-    readCount_ = entryCount;
-    return readCount_;
+    return counters_.HasData() ? 1 : 0;
 }
 
 std::any ShaderCountersBuffer::GetData() const {
@@ -225,24 +173,7 @@ std::any ShaderCountersBuffer::GetData() const {
 }
 
 std::any ShaderCountersBuffer::GetDataPtr() const {
-    if (counters_.empty()) {
-        return static_cast<const std::vector<ShaderCounters>*>(nullptr);
-    }
     return &counters_;
-}
-
-// ============================================================================
-// Counter-specific methods
-// ============================================================================
-
-ShaderCounters ShaderCountersBuffer::GetAggregatedCounters() const {
-    ShaderCounters aggregated;
-
-    for (const auto& counter : counters_) {
-        aggregated.Accumulate(counter);
-    }
-
-    return aggregated;
 }
 
 // ============================================================================

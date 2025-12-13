@@ -37,6 +37,20 @@ namespace Vixen::RenderGraph::Debug {
 class RayTraceBuffer : public IDebugBuffer {
 public:
     /**
+     * @brief Conversion type declaration for compile-time type system
+     *
+     * Enables the RenderGraph type system to recognize RayTraceBuffer
+     * as a wrapper around VkBuffer without explicit registration.
+     * See CompileTimeResourceSystem.h for the conversion_type pattern.
+     */
+    using conversion_type = VkBuffer;
+
+    /**
+     * @brief Implicit conversion to VkBuffer for descriptor binding
+     */
+    operator VkBuffer() const { return buffer_; }
+
+    /**
      * @brief Construct buffer with specified capacity
      * @param rayCapacity Maximum number of rays to capture
      */

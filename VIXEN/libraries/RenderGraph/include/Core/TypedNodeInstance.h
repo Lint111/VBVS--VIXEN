@@ -211,14 +211,18 @@ public:
         /**
          * @brief Set output value and attach an interface to the resource
          *
-         * Use this when an output resource needs to expose an interface
-         * (e.g., IDebugCapture for debug buffers). The interface can be
-         * retrieved later via Resource::GetInterface<T>().
+         * @deprecated Use ctx.Out() with wrapper types that have conversion_type instead.
+         * Wrapper types (e.g., ShaderCountersBuffer, RayTraceBuffer) now declare their
+         * conversion target via `using conversion_type = VkBuffer;` and the type system
+         * handles descriptor extraction automatically. No separate interface attachment needed.
          *
-         * Example:
-         *   ctx.OutWithInterface(Config::DEBUG_BUFFER, buffer.buffer, &debugCapture);
+         * Example (old):
+         *   ctx.OutWithInterface(Config::DEBUG_BUFFER, buffer.GetVkBuffer(), &debugCapture);
+         * Example (new):
+         *   ctx.Out(Config::DEBUG_BUFFER, bufferPtr);  // Wrapper type handles extraction
          */
         template<typename SlotType, typename U, typename InterfaceType>
+        [[deprecated("Use ctx.Out() with wrapper types that have conversion_type instead")]]
         void OutWithInterface(SlotType slot, U&& value, InterfaceType* iface) {
             static_assert(SlotType::index < ConfigType::OUTPUT_COUNT, "Output index out of bounds");
             typedNode->EnsureOutputSlot(SlotType::index, this->taskIndex);

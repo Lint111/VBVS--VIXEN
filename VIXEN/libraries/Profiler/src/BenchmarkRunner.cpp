@@ -1043,15 +1043,37 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
             metrics.sceneDensity = 0.0f;  // Will be computed from actual scene data
             metrics.totalRaysCast = static_cast<uint64_t>(testConfig.screenWidth) * testConfig.screenHeight;
 
-            // Estimate avgVoxelsPerRay based on octree depth
-            // For ESVO traversal: ~log2(resolution) * 3 base iterations
-            // TODO(HacknPlan #20): Replace with actual GPU counter readback
-            uint32_t resolution = testConfig.voxelResolution > 0
-                ? testConfig.voxelResolution
-                : metrics.sceneResolution;
-            if (resolution > 0) {
-                float octreeDepth = std::log2(static_cast<float>(resolution));
-                metrics.avgVoxelsPerRay = octreeDepth * 3.0f;
+            // Try to get real avgVoxelsPerRay from GPU shader counters
+            // If shader counters are available, use real data; otherwise estimate
+            bool gotRealCounters = false;
+            auto* voxelGridNode = dynamic_cast<RG::VoxelGridNode*>(
+                renderGraph->GetInstanceByName("benchmark_voxelgrid"));
+            if (voxelGridNode) {
+                // Read shader counters from GPU - this is fast (mapped memory)
+                const auto* shaderCounters = voxelGridNode->ReadShaderCounters();
+                if (shaderCounters && shaderCounters->HasData()) {
+                    metrics.avgVoxelsPerRay = shaderCounters->GetAvgVoxelsPerRay();
+                    metrics.shaderCounters.totalVoxelsTraversed = shaderCounters->totalVoxelsTraversed;
+                    metrics.shaderCounters.totalRaysCast = shaderCounters->totalRaysCast;
+                    metrics.shaderCounters.totalNodesVisited = shaderCounters->totalNodesVisited;
+                    metrics.shaderCounters.totalLeafNodesVisited = shaderCounters->totalLeafNodesVisited;
+                    metrics.shaderCounters.totalEmptySpaceSkipped = shaderCounters->totalEmptySpaceSkipped;
+                    metrics.shaderCounters.rayHitCount = shaderCounters->rayHitCount;
+                    metrics.shaderCounters.rayMissCount = shaderCounters->rayMissCount;
+                    metrics.shaderCounters.earlyTerminations = shaderCounters->earlyTerminations;
+                    gotRealCounters = true;
+                }
+            }
+
+            // Fallback: Estimate avgVoxelsPerRay based on octree depth
+            if (!gotRealCounters) {
+                uint32_t resolution = testConfig.voxelResolution > 0
+                    ? testConfig.voxelResolution
+                    : metrics.sceneResolution;
+                if (resolution > 0) {
+                    float octreeDepth = std::log2(static_cast<float>(resolution));
+                    metrics.avgVoxelsPerRay = octreeDepth * 3.0f;
+                }
             }
 
             // Calculate mRays/sec from GPU time if not available from logger

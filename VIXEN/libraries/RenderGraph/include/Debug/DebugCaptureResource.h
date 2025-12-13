@@ -14,34 +14,26 @@ namespace Vixen::RenderGraph::Debug {
 /**
  * @brief A debug capture resource that owns a polymorphic debug buffer
  *
- * This class combines:
- * - IDebugBuffer implementation (RayTraceBuffer or ShaderCountersBuffer)
- * - IDebugCapture interface (for graph detection)
- * - Ownership and lifecycle management
+ * @deprecated Use RayTraceBuffer or ShaderCountersBuffer directly instead.
+ * These concrete types now have `using conversion_type = VkBuffer;` which
+ * enables the type system to handle descriptor extraction automatically.
+ * No wrapper class needed.
  *
- * Use this when you want to create a debug buffer that can be:
- * 1. Bound to a shader SSBO
- * 2. Automatically detected by the render graph
- * 3. Routed to debug reader nodes
- *
- * Example usage in VoxelGridNode:
+ * Example (new pattern):
  * @code
- * // Create a ray trace capture resource:
- * auto debugResource = DebugCaptureResource::CreateRayTrace(
- *     device, physicalDevice, 2048, "ray_traversal", 4);
+ * // Use concrete type directly:
+ * auto rayBuffer = std::make_unique<RayTraceBuffer>(2048);
+ * rayBuffer->Create(device, physicalDevice);
  *
- * // Or create a shader counters resource:
- * auto countersResource = DebugCaptureResource::CreateCounters(
- *     device, physicalDevice, 1024, "shader_counters", 6);
- *
- * // Bind to descriptor set
- * VkDescriptorBufferInfo bufferInfo{debugResource->GetVkBuffer(), 0, debugResource->GetBufferSize()};
- *
- * // Output for debug reader:
- * ctx.Out(VoxelGridNodeConfig::DEBUG_CAPTURE, debugResource.get());
+ * // Output uses wrapper type's conversion_type for descriptor extraction:
+ * ctx.Out(VoxelGridNodeConfig::DEBUG_CAPTURE_BUFFER, rayBuffer.get());
  * @endcode
+ *
+ * This class remains for backward compatibility but should not be used
+ * in new code.
  */
-class DebugCaptureResource : public IDebugCapture {
+class [[deprecated("Use RayTraceBuffer or ShaderCountersBuffer directly")]]
+DebugCaptureResource : public IDebugCapture {
 public:
     /**
      * @brief Create a ray trace capture resource

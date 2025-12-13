@@ -27,6 +27,7 @@
 #include <any>
 #include <cassert>
 #include <memory>  // For std::shared_ptr
+#include <functional>  // For std::function (wrapper extraction)
 #include "BoolVector.h"  // Include BoolVector wrapper
 
 // Forward declarations (same as PassThroughStorage.h)
@@ -203,8 +204,54 @@ struct TypeToTag {
 template<typename T>
 using TypeToTag_t = typename TypeToTag<T>::type;
 
+// ============================================================================
+// CONVERSION TYPE DETECTION
+// ============================================================================
+
+/**
+ * @brief Concept to detect if a type declares a conversion_type typedef
+ *
+ * Wrapper types that convert to registered types should declare:
+ *   using conversion_type = VkBuffer;  // or VkImage, etc.
+ *
+ * This enables the type system to recursively validate the conversion target
+ * without requiring explicit registration of every wrapper type.
+ *
+ * Example:
+ * @code
+ * class ShaderCountersBuffer : public IDebugBuffer {
+ * public:
+ *     using conversion_type = VkBuffer;  // Declares: "I wrap a VkBuffer"
+ *     operator VkBuffer() const { return buffer_; }
+ * };
+ * @endcode
+ */
+template<typename T>
+concept HasConversionType = requires { typename T::conversion_type; };
+
+/**
+ * @brief Extract the conversion target type from a wrapper
+ *
+ * Primary template returns void (no conversion).
+ * Specialization extracts T::conversion_type when available.
+ */
+template<typename T, typename = void>
+struct ConversionTypeOf { using type = void; };
+
+template<typename T>
+struct ConversionTypeOf<T, std::void_t<typename T::conversion_type>> {
+    using type = typename T::conversion_type;
+};
+
+template<typename T>
+using ConversionTypeOf_t = typename ConversionTypeOf<T>::type;
+
+// ============================================================================
+// RECURSIVE COMPILE-TIME VALIDATION
+// ============================================================================
+
 // Recursive compile-time validation
-// Handles: direct types, pointers, vectors, variants, and nested combinations
+// Handles: direct types, pointers, vectors, variants, conversions, and nested combinations
 template<typename T>
 struct IsValidTypeImpl {
     using Bare = std::remove_cv_t<std::remove_reference_t<T>>;
@@ -295,24 +342,43 @@ struct IsValidTypeImpl {
         }
     }
 
+    // Helper: validate conversion target type (recursive)
+    template<typename WrapperType>
+    static constexpr bool validate_conversion_target() {
+        using Target = ConversionTypeOf_t<WrapperType>;
+        if constexpr (std::is_same_v<Target, void>) {
+            return false;  // No conversion_type declared
+        } else {
+            return IsValidTypeImpl<Target>::value;  // Recurse into target type
+        }
+    }
+
+    // Check if Clean has a conversion_type typedef
+    static constexpr bool has_conversion_type = HasConversionType<Clean>;
+
     // Check if Bare is a raw pointer
     static constexpr bool is_pointer = std::is_pointer_v<Bare>;
 
     static constexpr bool value = []() constexpr {
-        // Check original type first (early exit if registered)
+        // Priority 1: Check original type first (early exit if registered)
         if constexpr (IsRegisteredType<T>::value) {
             return true;
         }
-        // Check both pointer type (Bare) and depointed type (Clean)
+        // Priority 2: Check both pointer type (Bare) and depointed type (Clean)
         else if constexpr (IsRegisteredType<Bare>::value || IsRegisteredType<Clean>::value) {
             return true;
         }
-        // Raw pointers to any class/struct are valid as passthrough types
+        // Priority 3: Raw pointers to any class/struct are valid as passthrough types
         // This allows interface pointers (e.g., IDebugCapture*) without explicit registration
         else if constexpr (is_pointer && (std::is_class_v<Clean> || std::is_void_v<Clean>)) {
             return true;
         }
-        // Only decompose if not directly registered
+        // Priority 4: Wrapper types with conversion_type - validate target recursively
+        // Example: ShaderCountersBuffer has conversion_type = VkBuffer
+        else if constexpr (has_conversion_type) {
+            return validate_conversion_target<Clean>();
+        }
+        // Priority 5: Container decomposition - validate element types
         else if constexpr (is_vector) {
             return validate_vector_element<Clean>();
         } else if constexpr (is_array) {
@@ -594,6 +660,8 @@ public:
     void SetHandle(T&& value) {
         static_assert(IsValidType_v<T>, "Type not registered");
         using Tag = TypeToTag_t<T>;
+        using CleanT = std::remove_cvref_t<T>;
+
         // For reference types: pass directly to preserve address
         // For value types: forward to enable move semantics
         if constexpr (std::is_lvalue_reference_v<T>) {
@@ -601,9 +669,30 @@ public:
         } else {
             storage_.Set(std::forward<T>(value), Tag{});
         }
+
         // Automatically deduce and set the correct ResourceType
         type_ = DeduceResourceType<T>();
         isSet_ = true;
+
+        // Capture descriptor extraction function for wrapper types
+        // This enables GetDescriptorHandle() to extract the underlying handle
+        // from wrapper types without knowing the concrete type at extraction time
+        if constexpr (HasConversionType<CleanT>) {
+            using ConversionTarget = ConversionTypeOf_t<CleanT>;
+            // Capture extractor that returns DescriptorHandleVariant
+            // Works for any conversion_type that's in DescriptorHandleVariant
+            descriptorExtractor_ = [this]() -> DescriptorHandleVariant {
+                try {
+                    auto* wrapper = storage_.Get(PtrTag<CleanT>{});
+                    if (wrapper) {
+                        // Use the conversion operator to get the target type
+                        ConversionTarget converted = static_cast<ConversionTarget>(*wrapper);
+                        return DescriptorHandleVariant{converted};
+                    }
+                } catch (...) {}
+                return DescriptorHandleVariant{std::monostate{}};
+            };
+        }
     }
 
     // GetHandle - natural C++ types
@@ -743,6 +832,15 @@ public:
         try { return DescriptorHandleVariant{GetHandle<SwapChainPublicVariables*>()}; } catch (...) {}
         try { return DescriptorHandleVariant{GetHandle<ImageSamplerPair>()}; } catch (...) {}
 
+        // Try wrapper type extraction (captured at SetHandle time)
+        // This handles types with conversion_type (e.g., ShaderCountersBuffer -> VkBuffer)
+        if (descriptorExtractor_) {
+            auto extracted = descriptorExtractor_();
+            if (!std::holds_alternative<std::monostate>(extracted)) {
+                return extracted;
+            }
+        }
+
         // If nothing matched, return empty monostate
         return DescriptorHandleVariant{std::monostate{}};
     }
@@ -804,6 +902,13 @@ private:
         size_t typeHash = 0;
     };
     std::vector<InterfaceEntry> interfaces_;
+
+    // Wrapper type extraction function
+    // Captured at SetHandle time when wrapper types with conversion_type are stored
+    // This enables GetDescriptorHandle() to extract underlying handles without
+    // knowing the concrete wrapper type at extraction time
+    // Returns DescriptorHandleVariant containing the conversion_type value
+    std::function<DescriptorHandleVariant()> descriptorExtractor_;
 };
 
 // ============================================================================

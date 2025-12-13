@@ -8,110 +8,140 @@
 #include <vector>
 #include <span>
 #include <any>
+#include <algorithm>
 
 namespace Vixen::RenderGraph::Debug {
 
 /**
- * @brief Shader performance counter data collected from GPU
+ * @brief GPU-side shader counter data matching GLSL layout
  *
- * This struct matches the GLSL layout for shader counters.
- * Must be std430-compatible (4-byte aligned members).
- *
- * GLSL equivalent:
+ * This struct MUST match the GLSL layout in ShaderCounters.glsl:
  * @code
- * struct ShaderCounters {
- *     uint iterations;    // Ray march iterations
- *     uint boundsChecks;  // Bounds check operations
- *     uint maxDepth;      // Maximum tree depth reached
- *     uint nodeAccesses;  // Node memory accesses
- * };
+ * layout(std430, binding = N) buffer ShaderCountersBuffer {
+ *     uint totalVoxelsTraversed;
+ *     uint totalRaysCast;
+ *     uint totalNodesVisited;
+ *     uint totalLeafNodesVisited;
+ *     uint totalEmptySpaceSkipped;
+ *     uint rayHitCount;
+ *     uint rayMissCount;
+ *     uint earlyTerminations;
+ *     uint _padding[8];
+ * } shaderCounters;
  * @endcode
+ *
+ * All counters are atomically incremented by shader invocations.
+ * Total buffer size: 64 bytes (16 uint32_t values)
  */
-struct ShaderCounters {
-    uint32_t iterations = 0;      ///< Ray march iterations
-    uint32_t boundsChecks = 0;    ///< Bounds check operations
-    uint32_t maxDepth = 0;        ///< Maximum tree depth reached
-    uint32_t nodeAccesses = 0;    ///< Node memory accesses
+struct GPUShaderCounters {
+    uint32_t totalVoxelsTraversed = 0;    ///< Total voxels traversed across all rays
+    uint32_t totalRaysCast = 0;           ///< Total rays cast this frame
+    uint32_t totalNodesVisited = 0;       ///< Octree nodes visited
+    uint32_t totalLeafNodesVisited = 0;   ///< Leaf nodes (bricks) visited
+    uint32_t totalEmptySpaceSkipped = 0;  ///< Voxels skipped via empty-space
+    uint32_t rayHitCount = 0;             ///< Rays that hit geometry
+    uint32_t rayMissCount = 0;            ///< Rays that missed
+    uint32_t earlyTerminations = 0;       ///< Rays that hit max iterations
+    uint32_t _padding[8] = {0};           ///< Cache line alignment
 
     /**
      * @brief Reset all counters to zero
      */
     void Clear() {
-        iterations = 0;
-        boundsChecks = 0;
-        maxDepth = 0;
-        nodeAccesses = 0;
+        totalVoxelsTraversed = 0;
+        totalRaysCast = 0;
+        totalNodesVisited = 0;
+        totalLeafNodesVisited = 0;
+        totalEmptySpaceSkipped = 0;
+        rayHitCount = 0;
+        rayMissCount = 0;
+        earlyTerminations = 0;
+        std::fill(std::begin(_padding), std::end(_padding), 0u);
     }
 
     /**
-     * @brief Accumulate counters from another instance
+     * @brief Check if counters contain valid data
      */
-    void Accumulate(const ShaderCounters& other) {
-        iterations += other.iterations;
-        boundsChecks += other.boundsChecks;
-        maxDepth = std::max(maxDepth, other.maxDepth);
-        nodeAccesses += other.nodeAccesses;
+    bool HasData() const {
+        return totalRaysCast > 0;
+    }
+
+    /**
+     * @brief Calculate average voxels traversed per ray
+     */
+    float GetAvgVoxelsPerRay() const {
+        return totalRaysCast > 0
+            ? static_cast<float>(totalVoxelsTraversed) / static_cast<float>(totalRaysCast)
+            : 0.0f;
+    }
+
+    /**
+     * @brief Calculate ray hit rate (0.0 - 1.0)
+     */
+    float GetHitRate() const {
+        return totalRaysCast > 0
+            ? static_cast<float>(rayHitCount) / static_cast<float>(totalRaysCast)
+            : 0.0f;
     }
 };
 
-// Ensure struct is std430 compatible (no padding)
-static_assert(sizeof(ShaderCounters) == 16, "ShaderCounters must be 16 bytes for GPU alignment");
-static_assert(alignof(ShaderCounters) == 4, "ShaderCounters must be 4-byte aligned");
-
-/**
- * @brief GPU buffer header for shader counters
- *
- * Placed at the start of the buffer before counter entries.
- */
-struct ShaderCountersHeader {
-    uint32_t entryCount = 0;      ///< Number of valid entries
-    uint32_t capacity = 0;        ///< Maximum entries buffer can hold
-    uint32_t _padding[2] = {0};   ///< Align to 16 bytes
-};
-
-static_assert(sizeof(ShaderCountersHeader) == 16, "ShaderCountersHeader must be 16 bytes");
+// Ensure struct matches GLSL layout exactly: 64 bytes
+static_assert(sizeof(GPUShaderCounters) == 64, "GPUShaderCounters must be 64 bytes to match GLSL layout");
+static_assert(alignof(GPUShaderCounters) == 4, "GPUShaderCounters must be 4-byte aligned");
 
 /**
  * @brief GPU buffer for collecting shader performance counters
  *
  * This class manages a HOST_VISIBLE | HOST_COHERENT Vulkan buffer for
- * accumulating shader performance metrics (iterations, bounds checks,
- * tree depth, node accesses) that are written by compute shaders.
+ * accumulating shader performance metrics via GPU atomics.
  *
  * Implements IDebugBuffer interface for polymorphic usage with
  * DebugBufferReaderNode.
  *
- * Buffer layout:
- * - [0..15]: ShaderCountersHeader (16 bytes)
- * - [16..]: ShaderCounters[] array (16 bytes each)
+ * Buffer layout: Single GPUShaderCounters struct (64 bytes)
+ * - No header, no array - shaders atomicAdd directly to fields
+ * - Must be zeroed before dispatch via Reset()
+ * - Read back after GPU work completes
  *
  * Usage:
  * @code
- * // Create buffer
- * ShaderCountersBuffer buffer(1024);  // 1024 entries
+ * // Create buffer (capacity param is unused, kept for API compat)
+ * ShaderCountersBuffer buffer;
  * buffer.Create(device, physicalDevice);
  *
- * // Bind to descriptor set (binding N)
+ * // Bind to descriptor set at binding 6 (matches SHADER_COUNTERS_BINDING)
  * VkDescriptorBufferInfo bufferInfo{buffer.GetVkBuffer(), 0, buffer.GetBufferSize()};
  *
- * // Before dispatch
+ * // Before dispatch - zero the counters
  * buffer.Reset(device);
  *
  * // After dispatch (wait for GPU first)
- * uint32_t count = buffer.Read(device);
- * auto counters = buffer.GetCounters();
- * for (const auto& c : counters) {
- *     // Process metrics...
- * }
+ * buffer.Read(device);
+ * const auto& counters = buffer.GetCounters();
+ * float avgVoxels = counters.GetAvgVoxelsPerRay();
  * @endcode
  */
 class ShaderCountersBuffer : public IDebugBuffer {
 public:
     /**
-     * @brief Construct buffer with specified capacity
-     * @param entryCount Maximum number of ShaderCounters entries
+     * @brief Conversion type declaration for compile-time type system
+     *
+     * Enables the RenderGraph type system to recognize ShaderCountersBuffer
+     * as a wrapper around VkBuffer without explicit registration.
+     * See CompileTimeResourceSystem.h for the conversion_type pattern.
      */
-    explicit ShaderCountersBuffer(uint32_t entryCount = 1024);
+    using conversion_type = VkBuffer;
+
+    /**
+     * @brief Implicit conversion to VkBuffer for descriptor binding
+     */
+    operator VkBuffer() const { return buffer_; }
+
+    /**
+     * @brief Construct buffer
+     * @param capacity Unused, kept for API compatibility with DebugCaptureResource factory
+     */
+    explicit ShaderCountersBuffer(uint32_t capacity = 1);
 
     ~ShaderCountersBuffer() override;
 
@@ -149,13 +179,24 @@ public:
     const char* GetTypeName() const override { return "ShaderCounters"; }
 
     VkBuffer GetVkBuffer() const override { return buffer_; }
-    VkDeviceSize GetBufferSize() const override { return bufferSize_; }
+    VkDeviceSize GetBufferSize() const override { return sizeof(GPUShaderCounters); }
     bool IsValid() const override { return buffer_ != VK_NULL_HANDLE && memory_ != VK_NULL_HANDLE; }
-    bool IsHostVisible() const override { return isHostVisible_; }
+    bool IsHostVisible() const override { return true; }
 
+    /**
+     * @brief Zero the GPU buffer before dispatch
+     */
     bool Reset(VkDevice device) override;
+
+    /**
+     * @brief Read counters from GPU to CPU-side cache
+     * @return 1 if data was read successfully, 0 otherwise
+     */
     uint32_t Read(VkDevice device) override;
 
+    /**
+     * @brief Get the counter data as std::any (contains GPUShaderCounters)
+     */
     std::any GetData() const override;
 
 protected:
@@ -167,49 +208,27 @@ public:
     // =========================================================================
 
     /**
-     * @brief Get read-only view of counter entries
-     * @return Span of ShaderCounters (empty if no data read yet)
+     * @brief Get the counter data (read from GPU after Read() call)
      */
-    std::span<const ShaderCounters> GetCounters() const {
-        return std::span<const ShaderCounters>(counters_.data(), counters_.size());
-    }
+    const GPUShaderCounters& GetCounters() const { return counters_; }
 
     /**
-     * @brief Get the configured capacity (max entries)
+     * @brief Check if counters have valid data
      */
-    uint32_t GetCapacity() const { return capacity_; }
+    bool HasData() const { return counters_.HasData(); }
 
     /**
-     * @brief Get number of entries read in last Read() call
+     * @brief Get average voxels per ray (convenience accessor)
      */
-    uint32_t GetReadCount() const { return readCount_; }
-
-    /**
-     * @brief Calculate required buffer size for given entry count
-     */
-    static VkDeviceSize CalculateBufferSize(uint32_t entryCount) {
-        return sizeof(ShaderCountersHeader) + sizeof(ShaderCounters) * entryCount;
-    }
-
-    /**
-     * @brief Get aggregated statistics from all entries
-     * @return ShaderCounters with accumulated values
-     */
-    ShaderCounters GetAggregatedCounters() const;
+    float GetAvgVoxelsPerRay() const { return counters_.GetAvgVoxelsPerRay(); }
 
 private:
     // Vulkan resources
     VkBuffer buffer_ = VK_NULL_HANDLE;
     VkDeviceMemory memory_ = VK_NULL_HANDLE;
-    VkDeviceSize bufferSize_ = 0;
 
-    // Configuration
-    uint32_t capacity_ = 0;
-    bool isHostVisible_ = true;
-
-    // CPU-side data after readback
-    std::vector<ShaderCounters> counters_;
-    uint32_t readCount_ = 0;
+    // CPU-side cache of counter data
+    GPUShaderCounters counters_;
 
     // Helper to find suitable memory type
     static uint32_t FindMemoryType(
@@ -218,25 +237,5 @@ private:
         VkMemoryPropertyFlags properties
     );
 };
-
-/**
- * @brief Factory function for creating ShaderCountersBuffer
- *
- * Convenience function that creates and initializes buffer in one call.
- *
- * @param device Vulkan device
- * @param physicalDevice Physical device
- * @param entryCount Maximum number of entries (default: 1024)
- * @return Configured buffer (check IsValid() for success)
- */
-inline ShaderCountersBuffer CreateShaderCountersBuffer(
-    VkDevice device,
-    VkPhysicalDevice physicalDevice,
-    uint32_t entryCount = 1024
-) {
-    ShaderCountersBuffer buffer(entryCount);
-    buffer.Create(device, physicalDevice);
-    return buffer;
-}
 
 } // namespace Vixen::RenderGraph::Debug
