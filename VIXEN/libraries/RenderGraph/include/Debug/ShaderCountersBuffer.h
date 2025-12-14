@@ -67,13 +67,20 @@ struct GPUShaderCounters {
     }
 
     /**
-     * @brief Calculate average voxels traversed per ray
+     * @brief Calculate average octree iterations (node visits) per ray
+     *
+     * NOTE: This counts ESVO traversal iterations, not individual voxels.
+     * Each iteration is a PUSH/ADVANCE/POP in the octree traversal.
+     * For brick-level voxel counting, a separate counter would be needed.
      */
-    float GetAvgVoxelsPerRay() const {
+    float GetAvgIterationsPerRay() const {
         return totalRaysCast > 0
             ? static_cast<float>(totalVoxelsTraversed) / static_cast<float>(totalRaysCast)
             : 0.0f;
     }
+
+    /// @deprecated Use GetAvgIterationsPerRay() - name is misleading
+    float GetAvgVoxelsPerRay() const { return GetAvgIterationsPerRay(); }
 
     /**
      * @brief Calculate ray hit rate (0.0 - 1.0)
@@ -218,9 +225,12 @@ public:
     bool HasData() const { return counters_.HasData(); }
 
     /**
-     * @brief Get average voxels per ray (convenience accessor)
+     * @brief Get average iterations per ray (convenience accessor)
      */
-    float GetAvgVoxelsPerRay() const { return counters_.GetAvgVoxelsPerRay(); }
+    float GetAvgIterationsPerRay() const { return counters_.GetAvgIterationsPerRay(); }
+
+    /// @deprecated Use GetAvgIterationsPerRay()
+    float GetAvgVoxelsPerRay() const { return GetAvgIterationsPerRay(); }
 
 private:
     // Vulkan resources

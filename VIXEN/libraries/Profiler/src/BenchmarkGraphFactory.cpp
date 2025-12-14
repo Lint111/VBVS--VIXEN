@@ -1631,9 +1631,11 @@ void BenchmarkGraphFactory::WireVariadicResources(
     constexpr uint32_t BINDING_MATERIALS = 3;
     constexpr uint32_t BINDING_TRACE_WRITE_INDEX = 4;
     constexpr uint32_t BINDING_OCTREE_CONFIG = 5;
-    // Compressed shader bindings (VoxelRayMarch_Compressed.comp only)
+    // Compressed shader bindings (VoxelRayMarch_Compressed.comp)
     constexpr uint32_t BINDING_COMPRESSED_COLOR = 6;
     constexpr uint32_t BINDING_COMPRESSED_NORMAL = 7;
+    // Both uncompressed and compressed shaders use binding 8 for ShaderCounters
+    constexpr uint32_t BINDING_SHADER_COUNTERS = 8;
 
     // Binding 0: outputImage (swapchain storage image) - Execute only (changes per frame)
     batch.ConnectVariadic(
@@ -1680,6 +1682,13 @@ void BenchmarkGraphFactory::WireVariadicResources(
     batch.ConnectVariadic(
         rayMarch.voxelGrid, RG::VoxelGridNodeConfig::COMPRESSED_NORMAL_BUFFER,
         compute.descriptorGatherer, BINDING_COMPRESSED_NORMAL,
+        SlotRole::Dependency | SlotRole::Execute);
+
+    // Binding 8: ShaderCounters for avgVoxelsPerRay metrics
+    // Both VoxelRayMarch.comp and VoxelRayMarch_Compressed.comp use binding 8 for shader counters
+    batch.ConnectVariadic(
+        rayMarch.voxelGrid, RG::VoxelGridNodeConfig::SHADER_COUNTERS_BUFFER,
+        compute.descriptorGatherer, BINDING_SHADER_COUNTERS,
         SlotRole::Dependency | SlotRole::Execute);
 
     //--------------------------------------------------------------------------

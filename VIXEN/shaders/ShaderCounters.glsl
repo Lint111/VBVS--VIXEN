@@ -2,14 +2,17 @@
 // ShaderCounters.glsl - GPU-side atomic counters for performance metrics
 // ============================================================================
 // Provides atomic counter buffer for collecting ray traversal statistics.
-// CPU readback via MetricsCollector extracts avgVoxelsPerRay, etc.
+// CPU readback via MetricsCollector extracts avgIterationsPerRay, etc.
+//
+// NOTE: "iterations" refers to ESVO traversal loop iterations (PUSH/ADVANCE/POP),
+// not individual voxels. Each iteration visits one octree node.
 //
 // Usage:
 //   1. Define ENABLE_SHADER_COUNTERS before including this file
 //   2. Bind counter buffer at binding slot SHADER_COUNTERS_BINDING
 //   3. Call initShaderCounters() once per frame from thread (0,0)
 //   4. Call recordRayStart() at ray cast begin
-//   5. Call recordVoxelStep() for each voxel/node tested
+//   5. Call recordVoxelStep() for each octree node visited
 //   6. Call recordRayEnd(hit) when ray completes
 // ============================================================================
 
@@ -25,7 +28,7 @@
 
 // Counter buffer layout - matches ShaderCounters struct in FrameMetrics.h
 layout(std430, binding = SHADER_COUNTERS_BINDING) buffer ShaderCountersBuffer {
-    uint totalVoxelsTraversed;    // Atomic: total voxels/nodes tested
+    uint totalVoxelsTraversed;    // Atomic: total ESVO iterations (node visits)
     uint totalRaysCast;           // Atomic: total rays cast
     uint totalNodesVisited;       // Atomic: octree nodes visited
     uint totalLeafNodesVisited;   // Atomic: leaf nodes (bricks) visited

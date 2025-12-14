@@ -1047,9 +1047,25 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
             // If shader counters are available, use real data; otherwise estimate
             bool gotRealCounters = false;
             auto* voxelGridNode = dynamic_cast<RG::VoxelGridNode*>(
-                renderGraph->GetInstanceByName("benchmark_voxelgrid"));
+                renderGraph->GetInstanceByName("benchmark_voxel_grid"));
             if (voxelGridNode) {
-                // Read shader counters from GPU - this is fast (mapped memory)
+                // Wait for GPU to finish before reading counter buffer
+                // Uses the same pattern as DebugBufferReaderNode: wait on in-flight fence
+                // This ensures the compute shader has finished writing to the counter buffer
+                auto* frameSyncNode = dynamic_cast<RG::FrameSyncNode*>(
+                    renderGraph->GetInstanceByName("benchmark_frame_sync"));
+                auto* deviceNode = dynamic_cast<RG::DeviceNode*>(
+                    renderGraph->GetInstanceByName("benchmark_device"));
+
+                if (frameSyncNode && deviceNode && deviceNode->GetDevice()) {
+                    VkDevice device = deviceNode->GetDevice()->device;
+                    VkFence inFlightFence = frameSyncNode->GetCurrentInFlightFence();
+                    if (device != VK_NULL_HANDLE && inFlightFence != VK_NULL_HANDLE) {
+                        vkWaitForFences(device, 1, &inFlightFence, VK_TRUE, UINT64_MAX);
+                    }
+                }
+
+                // Read shader counters from GPU - uses mapped memory
                 const auto* shaderCounters = voxelGridNode->ReadShaderCounters();
                 if (shaderCounters && shaderCounters->HasData()) {
                     metrics.avgVoxelsPerRay = shaderCounters->GetAvgVoxelsPerRay();

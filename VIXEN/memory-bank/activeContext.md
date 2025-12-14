@@ -1,31 +1,47 @@
 # Active Context
 
-**Last Updated**: December 13, 2025
+**Last Updated**: December 14, 2025
 **Current Branch**: `main`
-**Status**: IDebugBuffer Refactor Phase 1 Complete
+**Status**: Shader Counters Working - Real avgIterationsPerRay Data
 
 ---
 
 ## Current State
 
-### IDebugBuffer Refactor (#58) - Phase 1 Complete ✅
+### Shader Counters Integration - Complete ✅
 
-Consolidated debug buffer infrastructure for polymorphic buffer types:
+Real GPU performance metrics now flowing from shader to JSON output:
 
-| File | Purpose |
-|------|---------|
-| `IDebugBuffer.h` | GPU buffer interface |
-| `IExportable.h` | Pure serialization |
-| `RayTraceBuffer.h/.cpp` | Per-ray traversal |
-| `ShaderCountersBuffer.h/.cpp` | Atomic counters |
-| `DebugCaptureResource.h` | Polymorphic wrapper |
+| Metric | Before | After |
+|--------|--------|-------|
+| `avg_voxels_per_ray` | ~18 (estimate) | ~1.14 (real) |
+| Source | `octreeDepth * 3.0f` | GPU atomic counters |
 
-**Key Changes:**
-- `IDebugCapture::GetBuffer()` returns `IDebugBuffer*` (polymorphic)
-- Factory methods: `DebugCaptureResource::CreateRayTrace()`, `CreateCounters()`
-- Removed: `DebugCaptureBuffer.h`, `IDebugExportable.h`
+**Key Insight**: Metric measures ESVO traversal iterations (node visits), not individual voxels. Renamed to `avgIterationsPerRay` internally; JSON key kept for backward compatibility.
 
-**Next (Phase 2):** Enable shader counters, wire to BenchmarkRunner for real `avgVoxelsPerRay`
+### Wrapper Pointer Type Fix (#60) - Complete ✅
+
+Fixed `Resource::SetHandle` to extract VkBuffer from wrapper pointer types:
+
+**Problem:** `SetHandle<ShaderCountersBuffer*>` didn't capture `descriptorExtractor_` because `HasConversionType` checked the pointer type, not the pointee.
+
+**Solution:** Check pointee type for `conversion_type` and handle pointer dereferencing:
+```cpp
+using PointeeT = std::conditional_t<std::is_pointer_v<CleanT>,
+                                    std::remove_pointer_t<CleanT>,
+                                    CleanT>;
+if constexpr (HasConversionType<PointeeT>) { ... }
+```
+
+**Files Modified:**
+- `CompileTimeResourceSystem.h` - SetHandle wrapper extraction fix
+- `VoxelGridNodeConfig.h` - Reverted to wrapper types (no slot split)
+- `VoxelGridNode.cpp` - Output wrapper pointers directly
+- `ShaderCountersBuffer.h` - Renamed `GetAvgIterationsPerRay()`
+- `VoxelRayMarch.comp` - Enabled SHADER_COUNTERS at binding 8
+- `VoxelRayMarch_Compressed.comp` - Enabled SHADER_COUNTERS at binding 8
+- `FrameSyncNode.h` - Added `GetCurrentInFlightFence()` accessor
+- `BenchmarkRunner.cpp` - Fence sync before counter readback
 
 ---
 
@@ -38,7 +54,7 @@ cmake --build build --config Debug --parallel 16
 
 ### Run Benchmarks
 ```bash
-./binaries/vixen_benchmark.exe --config ./application/benchmark/benchmark_config.json --render -i 100 -w 10
+./binaries/vixen_benchmark.exe --render --quick --no-package --no-open
 ```
 
 ### Test Commands
@@ -53,38 +69,22 @@ cmake --build build --config Debug --parallel 16
 
 | Purpose | Location |
 |---------|----------|
-| Debug buffer interface | `libraries/RenderGraph/include/Debug/IDebugBuffer.h` |
-| Ray trace buffer | `libraries/RenderGraph/include/Debug/RayTraceBuffer.h` |
+| Resource type system | `libraries/RenderGraph/include/Data/Core/CompileTimeResourceSystem.h` |
 | Shader counters | `libraries/RenderGraph/include/Debug/ShaderCountersBuffer.h` |
-| Benchmark config | `application/benchmark/benchmark_config.json` |
-| Graph factory | `libraries/Profiler/src/BenchmarkGraphFactory.cpp` |
-| Compute shaders | `shaders/VoxelRayMarch*.comp` |
+| Frame sync | `libraries/RenderGraph/include/Nodes/FrameSyncNode.h` |
+| VoxelGrid node | `libraries/RenderGraph/src/Nodes/VoxelGridNode.cpp` |
+| Benchmark runner | `libraries/Profiler/src/BenchmarkRunner.cpp` |
+| Compute shaders | `VixenBenchmark/shaders/VoxelRayMarch*.comp` |
 
 ---
 
-## Active Todo List
+## Active HacknPlan Tasks
 
-### IDebugBuffer Refactor (#58)
-- [x] Phase 1: Create polymorphic IDebugBuffer interface
-- [x] Phase 1: Create RayTraceBuffer and ShaderCountersBuffer
-- [x] Phase 1: Refactor DebugCaptureResource to use factory pattern
-- [ ] Phase 2: Enable ENABLE_SHADER_COUNTERS in shaders
-- [ ] Phase 2: Wire ShaderCountersBuffer to BenchmarkRunner
-- [ ] Phase 2: Replace hardcoded avgVoxelsPerRay with real measurement
-
-### Data Quality Improvements
-**Critical:**
-- [ ] Fix `avg_voxels_per_ray` shader instrumentation (currently 0.0) → Phase 2 above
-- [ ] Add ray throughput measurement for Fragment/HW RT pipelines
-
-**Medium:**
-- [ ] Add GPU utilization monitoring (NVML integration)
-- [ ] Measure BLAS/TLAS build time in AccelerationStructureNode
-
-### Deferred Tasks (Post-Benchmark)
-- [ ] VoxelAABBCacher extraction
-- [ ] BuildHybridGraph() implementation
-- [ ] VK_KHR_performance_query integration
+| # | Title | Status |
+|---|-------|--------|
+| 60 | Fix wrapper pointer type extraction | Completed |
+| 58 | IDebugBuffer Refactor | Completed |
+| 59 | conversion_type pattern | Completed |
 
 ---
 
@@ -92,16 +92,18 @@ cmake --build build --config Debug --parallel 16
 
 | Hash | Description |
 |------|-------------|
+| `4a265b6` | feat(RenderGraph): Add conversion_type pattern for wrapper types |
+| `f765b99` | docs(session): IDebugBuffer refactor session summary |
+| `8f76d07` | refactor(RenderGraph): Consolidate debug buffer infrastructure |
 | `54c3104` | fix(benchmark): GPU metrics for FRAGMENT/HW_RT + standalone package |
-| `5faefa8` | docs(session): Session summary 2025-12-13 |
-| `4bf55e7` | feat(benchmark): Sprint 2 Data Collection Polish |
-| `a645df0` | fix(benchmark): TBB DLL copy and clean terminal output |
 
 ---
 
-## Historical Sessions
+## Next Steps
 
-**Archived to:** `Vixen-Docs/05-Progress/Phase-History.md`
+1. **Commit current changes** - Shader counters + wrapper extraction fix
+2. **Verify different scenes** - Test with non-Cornell scenes for varied avgIterationsPerRay
+3. **Add brick-level voxel counting** - Current metric is node visits, not individual voxels
 
 ---
 

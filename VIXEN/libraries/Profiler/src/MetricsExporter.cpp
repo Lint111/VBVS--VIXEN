@@ -81,6 +81,8 @@ void MetricsExporter::ExportToJSON(
         f["bandwidth_write_gbps"] = frame.bandwidthWriteGB;
         f["ray_throughput_mrays"] = frame.mRaysPerSec;
         f["vram_mb"] = frame.vramUsageMB;
+        // NOTE: This is actually iterations (ESVO node visits), not voxels
+        // Kept as avg_voxels_per_ray for backward compatibility
         f["avg_voxels_per_ray"] = frame.avgVoxelsPerRay;
         framesArray.push_back(f);
     }

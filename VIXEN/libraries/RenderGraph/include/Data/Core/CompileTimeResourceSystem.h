@@ -677,21 +677,46 @@ public:
         // Capture descriptor extraction function for wrapper types
         // This enables GetDescriptorHandle() to extract the underlying handle
         // from wrapper types without knowing the concrete type at extraction time
-        if constexpr (HasConversionType<CleanT>) {
-            using ConversionTarget = ConversionTypeOf_t<CleanT>;
-            // Capture extractor that returns DescriptorHandleVariant
-            // Works for any conversion_type that's in DescriptorHandleVariant
-            descriptorExtractor_ = [this]() -> DescriptorHandleVariant {
-                try {
-                    auto* wrapper = storage_.Get(PtrTag<CleanT>{});
-                    if (wrapper) {
-                        // Use the conversion operator to get the target type
-                        ConversionTarget converted = static_cast<ConversionTarget>(*wrapper);
-                        return DescriptorHandleVariant{converted};
-                    }
-                } catch (...) {}
-                return DescriptorHandleVariant{std::monostate{}};
-            };
+        //
+        // For pointer types (T*), check the pointee type for conversion_type
+        // This allows ShaderCountersBuffer* to extract VkBuffer via ShaderCountersBuffer::conversion_type
+        using PointeeT = std::conditional_t<std::is_pointer_v<CleanT>,
+                                            std::remove_pointer_t<CleanT>,
+                                            CleanT>;
+        if constexpr (HasConversionType<PointeeT>) {
+            using ConversionTarget = ConversionTypeOf_t<PointeeT>;
+            // Only capture extractor if ConversionTarget is a valid descriptor type
+            // This is enforced at compile time by DescriptorHandleVariant construction
+            constexpr bool isDescriptorType =
+                std::is_same_v<ConversionTarget, VkBuffer> ||
+                std::is_same_v<ConversionTarget, VkImageView> ||
+                std::is_same_v<ConversionTarget, VkSampler> ||
+                std::is_same_v<ConversionTarget, VkBufferView> ||
+                std::is_same_v<ConversionTarget, VkImage> ||
+                std::is_same_v<ConversionTarget, VkAccelerationStructureKHR>;
+
+            if constexpr (isDescriptorType) {
+                descriptorExtractor_ = [this]() -> DescriptorHandleVariant {
+                    try {
+                        if constexpr (std::is_pointer_v<CleanT>) {
+                            // For pointer types: get the pointer, then dereference
+                            auto** wrapperPtr = storage_.Get(PtrTag<CleanT>{});
+                            if (wrapperPtr && *wrapperPtr) {
+                                ConversionTarget converted = static_cast<ConversionTarget>(**wrapperPtr);
+                                return DescriptorHandleVariant{converted};
+                            }
+                        } else {
+                            // For value types: get pointer to value
+                            auto* wrapper = storage_.Get(PtrTag<CleanT>{});
+                            if (wrapper) {
+                                ConversionTarget converted = static_cast<ConversionTarget>(*wrapper);
+                                return DescriptorHandleVariant{converted};
+                            }
+                        }
+                    } catch (...) {}
+                    return DescriptorHandleVariant{std::monostate{}};
+                };
+            }
         }
     }
 

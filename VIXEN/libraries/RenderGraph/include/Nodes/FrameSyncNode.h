@@ -53,6 +53,21 @@ public:
 
     ~FrameSyncNode() override = default;
 
+    /**
+     * @brief Get the current frame's in-flight fence for external synchronization
+     *
+     * This allows external code (like BenchmarkRunner) to wait on the fence
+     * before reading GPU data (shader counters, etc.).
+     *
+     * @return Current frame's VkFence or VK_NULL_HANDLE if not created
+     */
+    VkFence GetCurrentInFlightFence() const {
+        if (currentFrameIndex < frameSyncData.size()) {
+            return frameSyncData[currentFrameIndex].inFlightFence;
+        }
+        return VK_NULL_HANDLE;
+    }
+
 protected:
     // Template method pattern - override *Impl() methods
     void SetupImpl(TypedSetupContext& ctx) override;

@@ -22,9 +22,12 @@ using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 // Compile-time slot counts
 namespace VoxelGridNodeCounts {
     static constexpr size_t INPUTS = 2;
-    static constexpr size_t OUTPUTS = 11;  // +SHADER_COUNTERS_BUFFER for avgVoxelsPerRay metrics
+    static constexpr size_t OUTPUTS = 10;  // Slots 0-9: 3 octree + debug + config + 2 compressed + brick grid + scene data + shader counters
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
+// NOTE: Wrapper types (RayTraceBuffer*, ShaderCountersBuffer*) are used for slots
+// that need both descriptor binding AND CPU readback. The Resource system
+// automatically extracts VkBuffer via conversion_type for descriptor binding.
 
 /**
  * @brief Configuration for VoxelGridNode
@@ -66,8 +69,9 @@ CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
-    // Debug capture buffer - ray tracing debug data
-    // Uses wrapper type with conversion_type = VkBuffer for automatic descriptor extraction
+    // Debug capture buffer - wrapper type with conversion_type = VkBuffer
+    // Resource system automatically extracts VkBuffer for descriptor binding
+    // Node also provides ReadDebugCapture() for CPU-side access
     OUTPUT_SLOT(DEBUG_CAPTURE_BUFFER, Debug::RayTraceBuffer*, 3,
         SlotNullability::Optional,
         SlotMutability::WriteOnly);
@@ -107,13 +111,15 @@ CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
         SlotNullability::Optional,
         SlotMutability::WriteOnly);
 
-    // Shader counters buffer - GPU atomic counters for avgVoxelsPerRay metrics
-    // 64-byte GPUShaderCounters struct matching GLSL layout (binding 6 for uncompressed, 8 for compressed)
-    // Counters are atomically incremented by shader invocations and read back by CPU
-    // Uses wrapper type with conversion_type = VkBuffer for automatic descriptor extraction
+    // Shader counters buffer - wrapper type with conversion_type = VkBuffer
+    // Resource system automatically extracts VkBuffer for descriptor binding
+    // Node also provides ReadShaderCounters() for CPU-side access
     OUTPUT_SLOT(SHADER_COUNTERS_BUFFER, Debug::ShaderCountersBuffer*, 9,
         SlotNullability::Optional,
         SlotMutability::WriteOnly);
+
+    // Slot index verification: 0-9 = 10 slots total
+    static_assert(VoxelGridNodeCounts::OUTPUTS == 10, "OUTPUT slot count mismatch");
 
     // ===== PARAMETERS =====
     static constexpr const char* PARAM_RESOLUTION = "resolution";
@@ -188,6 +194,7 @@ CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
     // Automated config validation
     VALIDATE_NODE_CONFIG(VoxelGridNodeConfig, VoxelGridNodeCounts);
 
+    // Index validations - verify slot indices are contiguous (0-9)
     static_assert(VULKAN_DEVICE_IN_Slot::index == 0, "VULKAN_DEVICE_IN must be at index 0");
     static_assert(COMMAND_POOL_Slot::index == 1, "COMMAND_POOL must be at index 1");
     static_assert(OCTREE_NODES_BUFFER_Slot::index == 0, "OCTREE_NODES_BUFFER must be at index 0");
@@ -201,19 +208,19 @@ CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
     static_assert(VOXEL_SCENE_DATA_Slot::index == 8, "VOXEL_SCENE_DATA must be at index 8");
     static_assert(SHADER_COUNTERS_BUFFER_Slot::index == 9, "SHADER_COUNTERS_BUFFER must be at index 9");
 
-    // Type validations
+    // Type validations - wrapper types use conversion_type for descriptor extraction
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
     static_assert(std::is_same_v<COMMAND_POOL_Slot::Type, VkCommandPool>);
     static_assert(std::is_same_v<OCTREE_NODES_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<OCTREE_BRICKS_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<OCTREE_MATERIALS_BUFFER_Slot::Type, VkBuffer>);
-    static_assert(std::is_same_v<DEBUG_CAPTURE_BUFFER_Slot::Type, Debug::RayTraceBuffer*>);
+    static_assert(std::is_same_v<DEBUG_CAPTURE_BUFFER_Slot::Type, Debug::RayTraceBuffer*>);  // Wrapper with conversion_type = VkBuffer
     static_assert(std::is_same_v<OCTREE_CONFIG_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<COMPRESSED_COLOR_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<COMPRESSED_NORMAL_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<BRICK_GRID_LOOKUP_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<VOXEL_SCENE_DATA_Slot::Type, CashSystem::VoxelSceneData*>);
-    static_assert(std::is_same_v<SHADER_COUNTERS_BUFFER_Slot::Type, Debug::ShaderCountersBuffer*>);
+    static_assert(std::is_same_v<SHADER_COUNTERS_BUFFER_Slot::Type, Debug::ShaderCountersBuffer*>);  // Wrapper with conversion_type = VkBuffer
 };
 
 } // namespace Vixen::RenderGraph

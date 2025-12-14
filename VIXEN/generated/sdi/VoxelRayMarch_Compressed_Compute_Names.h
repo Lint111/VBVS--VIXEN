@@ -3,8 +3,8 @@
 // ============================================================================
 //
 // Program: VoxelRayMarch_Compressed_Compute_
-// UUID: a507325d3b324224
-// Generated: 2025-12-13 19:55:52
+// UUID: cbd494da9d2f3ee1
+// Generated: 2025-12-14 00:51:17
 //
 // This file provides shader-specific constexpr constants and type aliases
 // that map to the generic .si.h interface.
@@ -17,12 +17,12 @@
 
 #pragma once
 
-#include "a507325d3b324224-SDI.h"
+#include "cbd494da9d2f3ee1-SDI.h"
 
 namespace VoxelRayMarch_Compressed_Compute_ {
 
 // Reference to generic SDI namespace
-namespace SDI = ShaderInterface::a507325d3b324224;
+namespace SDI = ShaderInterface::cbd494da9d2f3ee1;
 
 // Forward declare push constant type to prevent error messages
 using pc = SDI::pc;
@@ -52,6 +52,9 @@ constexpr const char* compressedColors_name = "compressedColors";
 // compressedNormals (Set 0, Binding 7)
 using compressedNormals = SDI::Set0::Binding7;
 constexpr const char* compressedNormals_name = "compressedNormals";
+// shaderCounters (Set 0, Binding 8)
+using shaderCounters = SDI::Set0::Binding8;
+constexpr const char* shaderCounters_name = "shaderCounters";
 
 // ============================================================================
 // Push Constant Member Aliases (With Metadata)

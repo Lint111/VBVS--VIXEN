@@ -79,9 +79,8 @@ layout(std140, binding = 5) uniform OctreeConfigUBO {
 // SHADER COUNTERS (Performance Metrics)
 // ============================================================================
 // Shader counter buffer requires CPU-side binding via DescriptorResourceGatherer.
-// Set ENABLE_SHADER_COUNTERS when ShaderCountersBuffer is bound at binding 8.
-// TODO(HacknPlan #20): Add counter buffer binding in ComputeDispatchNode
-// #define ENABLE_SHADER_COUNTERS
+// Both uncompressed and compressed shaders use binding 8 for ShaderCounters.
+#define ENABLE_SHADER_COUNTERS
 #define SHADER_COUNTERS_BINDING 8
 #include "ShaderCounters.glsl"
 

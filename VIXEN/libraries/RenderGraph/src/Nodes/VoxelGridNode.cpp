@@ -212,17 +212,18 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
         NODE_LOG_DEBUG("  VOXEL_SCENE_DATA=" + std::to_string(reinterpret_cast<uint64_t>(cachedSceneData_.get())));
     }
 
-    // Output debug capture buffer (wrapper type handles descriptor extraction)
+    // Output debug capture buffer (wrapper with conversion_type = VkBuffer)
+    // Resource system automatically extracts VkBuffer for descriptor binding
     if (debugCaptureResource_ && debugCaptureResource_->IsValid()) {
         ctx.Out(VoxelGridNodeConfig::DEBUG_CAPTURE_BUFFER, debugCaptureResource_.get());
-        NODE_LOG_DEBUG("  DEBUG_CAPTURE_BUFFER=" + std::to_string(reinterpret_cast<uint64_t>(debugCaptureResource_->GetVkBuffer())));
+        NODE_LOG_DEBUG("  DEBUG_CAPTURE_BUFFER (wrapper)=" + std::to_string(reinterpret_cast<uint64_t>(debugCaptureResource_->GetVkBuffer())));
     }
 
-    // Output shader counters buffer for avgVoxelsPerRay metrics
-    // Uses wrapper type with conversion_type = VkBuffer for automatic descriptor extraction
+    // Output shader counters buffer (wrapper with conversion_type = VkBuffer)
+    // Resource system automatically extracts VkBuffer for descriptor binding
     if (shaderCountersResource_ && shaderCountersResource_->IsValid()) {
         ctx.Out(VoxelGridNodeConfig::SHADER_COUNTERS_BUFFER, shaderCountersResource_.get());
-        NODE_LOG_DEBUG("  SHADER_COUNTERS_BUFFER=" + std::to_string(reinterpret_cast<uint64_t>(shaderCountersResource_->GetVkBuffer())));
+        NODE_LOG_DEBUG("  SHADER_COUNTERS_BUFFER (wrapper)=" + std::to_string(reinterpret_cast<uint64_t>(shaderCountersResource_->GetVkBuffer())));
     }
 
     NODE_LOG_DEBUG("[VoxelGridNode::CompileImpl] OUTPUTS SET");
@@ -275,14 +276,14 @@ void VoxelGridNode::ExecuteImpl(TypedExecuteContext& ctx) {
         ctx.Out(VoxelGridNodeConfig::VOXEL_SCENE_DATA, cachedSceneData_.get());
     }
 
-    // Re-output debug capture buffer (wrapper type handles descriptor extraction)
+    // Re-output debug capture buffer (wrapper with conversion_type = VkBuffer)
     if (debugCaptureResource_ && debugCaptureResource_->IsValid()) {
         // Reset buffer before each frame to allow fresh capture
         debugCaptureResource_->Reset(vulkanDevice->device);
         ctx.Out(VoxelGridNodeConfig::DEBUG_CAPTURE_BUFFER, debugCaptureResource_.get());
     }
 
-    // Re-output shader counters buffer (wrapper type handles descriptor extraction)
+    // Re-output shader counters buffer (wrapper with conversion_type = VkBuffer)
     if (shaderCountersResource_ && shaderCountersResource_->IsValid()) {
         // Reset counters before each frame
         shaderCountersResource_->Reset(vulkanDevice->device);
