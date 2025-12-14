@@ -421,6 +421,9 @@ REGISTER_COMPILE_TIME_TYPE(ImageSamplerPair);
 // DESCRIPTOR RESOURCE ENTRY (For inter-node communication with metadata)
 // ============================================================================
 
+// Forward declare Resource for DescriptorResourceEntry (inside namespace)
+class Resource;
+
 // Forward declare IDebugCapture for DescriptorResourceEntry
 namespace Debug { class IDebugCapture; }
 
@@ -430,21 +433,30 @@ enum class SlotRole : uint8_t;
 /**
  * @brief Descriptor resource entry with metadata
  *
- * Wraps a DescriptorHandleVariant with:
+ * Stores Resource* pointer with:
  * - SlotRole: Execution phase information (Dependency vs Execute)
  * - IDebugCapture*: Optional debug capture interface
  *
- * This consolidates all per-binding metadata into a single struct,
- * eliminating the need for parallel arrays.
+ * Implements lazy handle extraction: GetHandle() extracts the descriptor handle
+ * at bind time from the Resource, preventing stale pointer issues when source
+ * nodes recompile and destroy their resources.
  */
 struct DescriptorResourceEntry {
-    DescriptorHandleVariant handle;
+    Resource* resource = nullptr;  // Lazy handle extraction via Resource pointer
     SlotRole slotRole = static_cast<SlotRole>(0);  // Default to no role flags
     Debug::IDebugCapture* debugCapture = nullptr;  // Non-owning, set if resource is debug-capturable
 
     DescriptorResourceEntry() = default;
-    explicit DescriptorResourceEntry(DescriptorHandleVariant h, SlotRole role = static_cast<SlotRole>(0), Debug::IDebugCapture* dbg = nullptr)
-        : handle(std::move(h)), slotRole(role), debugCapture(dbg) {}
+    explicit DescriptorResourceEntry(Resource* res, SlotRole role = static_cast<SlotRole>(0), Debug::IDebugCapture* dbg = nullptr)
+        : resource(res), slotRole(role), debugCapture(dbg) {}
+
+    /**
+     * @brief Extract descriptor handle lazily at bind time
+     * 
+     * Returns current handle from Resource::GetDescriptorHandle().
+     * This ensures we always use the latest handle, never stale values.
+     */
+    DescriptorHandleVariant GetHandle() const;
 };
 
 // ============================================================================
@@ -966,6 +978,11 @@ private:
     // Returns DescriptorHandleVariant containing the conversion_type value
     std::function<DescriptorHandleVariant()> descriptorExtractor_;
 };
+
+inline DescriptorHandleVariant DescriptorResourceEntry::GetHandle() const {
+    return resource ? resource->GetDescriptorHandle()
+                    : DescriptorHandleVariant{std::monostate{}};
+}
 
 // ============================================================================
 // RESOURCE DESCRIPTOR WITH METADATA

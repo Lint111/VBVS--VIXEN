@@ -411,6 +411,55 @@ void RenderGraph::ExecuteCleanup() {
     GRAPH_LOG_INFO("[RenderGraph::ExecuteCleanup] Cleanup complete");
 }
 
+void RenderGraph::RegisterExternalCleanup(
+    const std::string& dependencyNodeName,
+    std::function<void()> cleanupCallback,
+    const std::string& externalSystemName
+) {
+    // Find the dependency node's handle
+    NodeInstance* depNode = GetInstanceByName(dependencyNodeName);
+    if (!depNode) {
+        GRAPH_LOG_ERROR("[RenderGraph::RegisterExternalCleanup] Dependency node '" +
+                       dependencyNodeName + "' not found for external system '" +
+                       externalSystemName + "'");
+        return;
+    }
+
+    // Find index of dependency node
+    uint32_t depIndex = UINT32_MAX;
+    for (size_t i = 0; i < instances.size(); ++i) {
+        if (instances[i].get() == depNode) {
+            depIndex = static_cast<uint32_t>(i);
+            break;
+        }
+    }
+
+    if (depIndex == UINT32_MAX) {
+        GRAPH_LOG_ERROR("[RenderGraph::RegisterExternalCleanup] Failed to find index for node '" +
+                       dependencyNodeName + "'");
+        return;
+    }
+
+    NodeHandle depHandle = CreateHandle(depIndex);
+
+    // Generate unique handle for external cleanup node
+    // Use high index range to avoid collision with graph nodes
+    static uint32_t externalCleanupCounter = 0x80000000; // Start at max/2 to avoid graph node handles
+    NodeHandle externalHandle;
+    externalHandle.index = externalCleanupCounter++;
+
+    // Register in cleanup stack with dependency
+    cleanupStack.Register(
+        externalHandle,
+        "External:" + externalSystemName,
+        std::move(cleanupCallback),
+        {depHandle} // Depends on the graph node
+    );
+
+    GRAPH_LOG_INFO("[RenderGraph::RegisterExternalCleanup] Registered external cleanup '" +
+                  externalSystemName + "' with dependency on '" + dependencyNodeName + "'");
+}
+
 void RenderGraph::RegisterPostNodeCompileCallback(PostNodeCompileCallback callback) {
     postNodeCompileCallbacks.push_back(std::move(callback));
 }

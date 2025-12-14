@@ -305,7 +305,7 @@ void DescriptorSetNode::ExecuteImpl(TypedExecuteContext& ctx) {
                   " - Received DESCRIPTOR_RESOURCES with " + std::to_string(descriptorResources.size()) + " entries:");
     for (size_t i = 0; i < descriptorResources.size(); ++i) {
         const auto& entry = descriptorResources[i];
-        const auto& variant = entry.handle;
+        const auto variant = entry.GetHandle();  // Lazy extraction
         NODE_LOG_DEBUG("  Binding " + std::to_string(i) + ": " +
                       (std::holds_alternative<std::monostate>(variant) ? "monostate" :
                        std::holds_alternative<VkImageView>(variant) ? "VkImageView" :
@@ -353,10 +353,11 @@ void DescriptorSetNode::ExecuteImpl(TypedExecuteContext& ctx) {
         // Show binding 0 (outputImage) status
         if (!descriptorResources.empty()) {
             const auto& entry0 = descriptorResources[0];
+            const auto variant0 = entry0.GetHandle();  // Lazy extraction
             NODE_LOG_INFO("  Binding 0 (outputImage): " +
-                std::string(std::holds_alternative<std::monostate>(entry0.handle) ? "monostate" :
-                std::holds_alternative<VkImageView>(entry0.handle) ? "VkImageView" :
-                std::holds_alternative<VkBuffer>(entry0.handle) ? "VkBuffer" : "other") +
+                std::string(std::holds_alternative<std::monostate>(variant0) ? "monostate" :
+                std::holds_alternative<VkImageView>(variant0) ? "VkImageView" :
+                std::holds_alternative<VkBuffer>(variant0) ? "VkBuffer" : "other") +
                 ", role=" + std::to_string(static_cast<uint8_t>(entry0.slotRole)));
         }
     }
@@ -376,7 +377,7 @@ VkSampler DescriptorSetNode::FindSamplerResource(
 ) {
     // First check the binding index itself
     if (targetBinding < descriptorResources.size()) {
-        const auto& handle = descriptorResources[targetBinding].handle;
+        const auto handle = descriptorResources[targetBinding].GetHandle();  // Lazy extraction
         if (std::holds_alternative<VkSampler>(handle)) {
             return std::get<VkSampler>(handle);
         }
@@ -385,7 +386,7 @@ VkSampler DescriptorSetNode::FindSamplerResource(
     // Search all resources for a sampler (for combined image samplers)
     // The gatherer may have placed it elsewhere due to overwriting
     for (size_t i = 0; i < descriptorResources.size(); ++i) {
-        const auto& handle = descriptorResources[i].handle;
+        const auto handle = descriptorResources[i].GetHandle();  // Lazy extraction
         if (std::holds_alternative<VkSampler>(handle)) {
             // Found a sampler - assume it's for this combined sampler binding
             // TODO: Better tracking of which sampler belongs to which binding
@@ -434,7 +435,7 @@ bool DescriptorSetNode::ValidateAndFilterBinding(
     }
 
     // THEN check resource variant - only after role filtering
-    const auto& resourceVariant = entry.handle;
+    const auto resourceVariant = entry.GetHandle();  // Lazy extraction
 
     NODE_LOG_DEBUG("[ValidateAndFilterBinding] Binding " + std::to_string(binding.binding) +
                   " (" + binding.name + ") resource type: " +
@@ -646,7 +647,7 @@ void DescriptorSetNode::HandleCombinedImageSampler(
 
         // Try to get sampler array from next slot
         if (bindingIdx + 1 < descriptorResources.size()) {
-            const auto& nextHandle = descriptorResources[bindingIdx + 1].handle;
+            const auto nextHandle = descriptorResources[bindingIdx + 1].GetHandle();  // Lazy extraction
             if (std::holds_alternative<std::vector<VkSampler>>(nextHandle)) {
                 samplerArray = std::get<std::vector<VkSampler>>(nextHandle);
             }
@@ -761,8 +762,9 @@ std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
 
         NODE_LOG_DEBUG("[BuildDescriptorWrites] Binding " + std::to_string(binding.binding) + " passed filter, processing...");
 
-        // Extract handle from entry
-        const auto& resourceVariant = descriptorResources[binding.binding].handle;
+        // Extract handle lazily from entry (GetHandle() queries current Resource state)
+        const auto& resourceEntry = descriptorResources[binding.binding];
+        const auto resourceVariant = resourceEntry.GetHandle();
 
         // Initialize write descriptor
         VkWriteDescriptorSet write{};

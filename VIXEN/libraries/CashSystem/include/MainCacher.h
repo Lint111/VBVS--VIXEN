@@ -67,6 +67,12 @@ public:
      */
     void Initialize(Vixen::EventBus::MessageBus* messageBus = nullptr);
 
+       /**
+     * @brief Shutdown and unsubscribe from message bus
+     * Call this before MessageBus is destroyed to prevent use-after-free
+     */
+    void Shutdown();
+
     /**
      * @brief Cleanup device-independent (global) caches
      *

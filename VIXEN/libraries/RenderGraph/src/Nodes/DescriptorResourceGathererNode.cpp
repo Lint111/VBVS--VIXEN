@@ -244,13 +244,10 @@ void DescriptorResourceGathererNode::ExecuteImpl(VariadicExecuteContext& ctx) {
         }
 
         NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Execute] Updated transient resource at binding " + std::to_string(binding) +
-                      " (slot " + std::to_string(i) + "), variant type: " +
-                      (std::holds_alternative<std::monostate>(variant) ? "monostate" :
-                       std::holds_alternative<VkImageView>(variant) ? "VkImageView" :
-                       std::holds_alternative<VkBuffer>(variant) ? "VkBuffer" :
-                       std::holds_alternative<VkSampler>(variant) ? "VkSampler" : "unknown"));
+                      " (slot " + std::to_string(i) + "), resource=" + (freshResource ? "valid" : "null"));
 
-        resourceArray_[binding].handle = variant;
+        // Store transient resource pointer (lazy extraction deferred to bind time)
+        resourceArray_[binding].resource = freshResource;
     }
 
     if (hasTransients) {
@@ -262,10 +259,7 @@ void DescriptorResourceGathererNode::ExecuteImpl(VariadicExecuteContext& ctx) {
         for (size_t i = 0; i < resourceArray_.size(); ++i) {
             const auto& entry = resourceArray_[i];
             NODE_LOG_DEBUG("  Binding " + std::to_string(i) + ": " +
-                          (std::holds_alternative<std::monostate>(entry.handle) ? "monostate" :
-                           std::holds_alternative<VkImageView>(entry.handle) ? "VkImageView" :
-                           std::holds_alternative<VkBuffer>(entry.handle) ? "VkBuffer" :
-                           std::holds_alternative<VkSampler>(entry.handle) ? "VkSampler" : "unknown"));
+                          (entry.resource ? "resource" : "null"));
         }
     } else {
         NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Execute] No Execute-role resources found - skipping output");
@@ -546,19 +540,16 @@ bool DescriptorResourceGathererNode::ProcessSlot(size_t slotIndex, const Variadi
 void DescriptorResourceGathererNode::InitializeExecuteOnlySlot(size_t slotIndex, uint32_t binding, SlotRole role) {
     // Initialize placeholder entry to prevent accessing uninitialized memory
     // This ensures resourceArray_[binding] exists even before Execute phase
-    // slotRole already set by ProcessSlot, just initialize handle
-    resourceArray_[binding].handle = std::monostate{};
+    // slotRole already set by ProcessSlot, initialize resource pointer to null
+    resourceArray_[binding].resource = nullptr;
     NODE_LOG_DEBUG("[DescriptorResourceGathererNode::InitializeExecuteOnlySlot] Recorded role for Execute-only slot " + std::to_string(slotIndex) + " (binding=" + std::to_string(binding) + ", role=" + std::to_string(static_cast<uint8_t>(role)) + ") - placeholder initialized, resource will be gathered in Execute phase");
 }
 
 void DescriptorResourceGathererNode::StoreFieldExtractionResource(size_t slotIndex, uint32_t binding, size_t fieldOffset, Resource* resource) {
     NODE_LOG_DEBUG("[DescriptorResourceGathererNode::StoreFieldExtractionResource] Extracting field at offset " + std::to_string(fieldOffset) + " from struct for binding " + std::to_string(binding));
 
-    // Extract handle from resource and store in entry
-    auto handle = resource->GetDescriptorHandle();
-
-    // Store handle - downstream nodes will handle field extraction if needed
-    resourceArray_[binding].handle = handle;
+    // Store resource pointer - GetHandle() will extract lazily at bind time
+    resourceArray_[binding].resource = resource;
 
     NODE_LOG_DEBUG("[DescriptorResourceGathererNode::StoreFieldExtractionResource] Stored handle with field at offset " + std::to_string(fieldOffset) + " for binding " + std::to_string(binding) + " (downstream will extract)");
 }
@@ -579,11 +570,12 @@ const void* DescriptorResourceGathererNode::ExtractRawPointerFromVariant(T&& str
 }
 
 void DescriptorResourceGathererNode::StoreRegularResource(size_t slotIndex, uint32_t binding, const std::string& slotName, SlotRole role, Resource* resource) {
-    // Extract handle from resource and store in entry
-    auto handle = resource->GetDescriptorHandle();
-    resourceArray_[binding].handle = handle;
+    // Store Resource* pointer instead of extracting handle snapshot
+    // GetHandle() will be called lazily at bind time in DescriptorSetNode
+    resourceArray_[binding].resource = resource;
+    resourceArray_[binding].slotRole = role;
 
-    NODE_LOG_DEBUG("[DescriptorResourceGathererNode::StoreRegularResource] Gathered resource for binding " + std::to_string(binding) + " (" + slotName + "), variant index=" + std::to_string(handle.index()) + ", role=" + std::to_string(static_cast<int>(role)));
+    NODE_LOG_DEBUG("[DescriptorResourceGathererNode::StoreRegularResource] Gathered resource for binding " + std::to_string(binding) + " (" + slotName + "), resource=" + (resource ? "valid" : "null") + ", role=" + std::to_string(static_cast<int>(role)));
 }
 
 bool DescriptorResourceGathererNode::ValidateResourceType(Resource* res, VkDescriptorType expectedType) {

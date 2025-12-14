@@ -42,9 +42,18 @@ MainCacher::~MainCacher() {
     // Cleanup global caches if not already done
     CleanupGlobalCaches();
 
-    // Unsubscribe from message bus
+    // Unsubscribe from message bus (defensive - should have been called in Shutdown())
     if (m_messageBus && m_deviceInvalidationSubscription != 0) {
         m_messageBus->Unsubscribe(m_deviceInvalidationSubscription);
+    }
+}
+
+void MainCacher::Shutdown() {
+    // Unsubscribe from message bus BEFORE it destructs
+    if (m_messageBus && m_deviceInvalidationSubscription != 0) {
+        m_messageBus->Unsubscribe(m_deviceInvalidationSubscription);
+        m_messageBus = nullptr;
+        m_deviceInvalidationSubscription = 0;
     }
 }
 

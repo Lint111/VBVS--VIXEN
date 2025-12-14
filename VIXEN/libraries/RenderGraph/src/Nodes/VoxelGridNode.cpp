@@ -152,24 +152,42 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
     // NOTE: These buffers are REQUIRED by shaders (binding 4 and 8) - failure to create them
     // will cause VK_ERROR_DEVICE_LOST when the shader tries to access null buffers.
     constexpr uint32_t RAY_TRACE_CAPACITY = 256;
-    debugCaptureResource_ = std::make_unique<Debug::RayTraceBuffer>(RAY_TRACE_CAPACITY);
-    if (!debugCaptureResource_->Create(vulkanDevice->device, *vulkanDevice->gpu)) {
-        NODE_LOG_ERROR("[VoxelGridNode::CompileImpl] FATAL: Failed to create ray trace buffer (binding 4)");
-        throw std::runtime_error("[VoxelGridNode] Failed to create ray trace buffer - shader binding 4 would be null");
+
+    // Reuse existing RayTraceBuffer wrapper if possible to maintain stable pointers for lambdas
+    if (!debugCaptureResource_) {
+        debugCaptureResource_ = std::make_unique<Debug::RayTraceBuffer>(RAY_TRACE_CAPACITY);
     }
-    NODE_LOG_DEBUG("[VoxelGridNode::CompileImpl] Created ray trace buffer: " +
-                  std::to_string(RAY_TRACE_CAPACITY) + " rays, buffer=" +
-                  std::to_string(reinterpret_cast<uint64_t>(debugCaptureResource_->GetVkBuffer())));
+
+    if (debugCaptureResource_->IsValid()) {
+        debugCaptureResource_->Reset(vulkanDevice->device);
+        NODE_LOG_DEBUG("[VoxelGridNode::CompileImpl] Reused existing ray trace buffer");
+    } else {
+        if (!debugCaptureResource_->Create(vulkanDevice->device, *vulkanDevice->gpu)) {
+            NODE_LOG_ERROR("[VoxelGridNode::CompileImpl] FATAL: Failed to create ray trace buffer (binding 4)");
+            throw std::runtime_error("[VoxelGridNode] Failed to create ray trace buffer - shader binding 4 would be null");
+        }
+        NODE_LOG_DEBUG("[VoxelGridNode::CompileImpl] Created ray trace buffer: " +
+                      std::to_string(RAY_TRACE_CAPACITY) + " rays, buffer=" +
+                      std::to_string(reinterpret_cast<uint64_t>(debugCaptureResource_->GetVkBuffer())));
+    }
 
     // Create shader counters buffer for avgVoxelsPerRay metrics
     // Uses ShaderCountersBuffer directly - has conversion_type = VkBuffer for auto descriptor extraction
-    shaderCountersResource_ = std::make_unique<Debug::ShaderCountersBuffer>();
-    if (!shaderCountersResource_->Create(vulkanDevice->device, *vulkanDevice->gpu)) {
-        NODE_LOG_ERROR("[VoxelGridNode::CompileImpl] FATAL: Failed to create shader counters buffer (binding 8)");
-        throw std::runtime_error("[VoxelGridNode] Failed to create shader counters buffer - shader binding 8 would be null");
+    if (!shaderCountersResource_) {
+        shaderCountersResource_ = std::make_unique<Debug::ShaderCountersBuffer>();
     }
-    NODE_LOG_DEBUG("[VoxelGridNode::CompileImpl] Created shader counters buffer: " +
-                  std::to_string(reinterpret_cast<uint64_t>(shaderCountersResource_->GetVkBuffer())));
+
+    if (shaderCountersResource_->IsValid()) {
+        shaderCountersResource_->Reset(vulkanDevice->device);
+        NODE_LOG_DEBUG("[VoxelGridNode::CompileImpl] Reused existing shader counters buffer");
+    } else {
+        if (!shaderCountersResource_->Create(vulkanDevice->device, *vulkanDevice->gpu)) {
+            NODE_LOG_ERROR("[VoxelGridNode::CompileImpl] FATAL: Failed to create shader counters buffer (binding 8)");
+            throw std::runtime_error("[VoxelGridNode] Failed to create shader counters buffer - shader binding 8 would be null");
+        }
+        NODE_LOG_DEBUG("[VoxelGridNode::CompileImpl] Created shader counters buffer: " +
+                      std::to_string(reinterpret_cast<uint64_t>(shaderCountersResource_->GetVkBuffer())));
+    }
 
     // Output octree buffers from cached scene data
     VkBuffer octreeNodesBuffer = cachedSceneData_->esvoNodesBuffer;
@@ -384,14 +402,18 @@ void VoxelGridNode::CleanupImpl(TypedCleanupContext& ctx) {
     if (debugCaptureResource_ && debugCaptureResource_->IsValid()) {
         debugCaptureResource_->Destroy(vulkanDevice->device);
     }
-    debugCaptureResource_.reset();
+    // DO NOT reset the unique_ptr here. We want to keep the wrapper object alive
+    // so that any lambdas capturing the raw pointer remain valid (even if buffer is null).
+    // The wrapper will be reused in CompileImpl.
+    // debugCaptureResource_.reset(); 
     LogCleanupProgress("debugCaptureResource destroyed");
 
     // Clean up shader counters resource
     if (shaderCountersResource_ && shaderCountersResource_->IsValid()) {
         shaderCountersResource_->Destroy(vulkanDevice->device);
     }
-    shaderCountersResource_.reset();
+    // DO NOT reset the unique_ptr here.
+    // shaderCountersResource_.reset();
     LogCleanupProgress("shaderCountersResource destroyed");
 
     NODE_LOG_INFO("[VoxelGridNode::CleanupImpl] Cleanup complete");

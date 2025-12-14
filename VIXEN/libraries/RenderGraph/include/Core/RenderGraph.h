@@ -265,6 +265,33 @@ public:
      */
     std::string GetDeviceCleanupNodeName() const;
 
+    /**
+     * @brief Register an external cleanup callback with dependency on a graph node
+     *
+     * Allows external systems (e.g., BenchmarkRunner, FrameCapture) to register
+     * cleanup callbacks that execute in dependency order with graph nodes.
+     *
+     * The callback will be executed BEFORE the dependency node's cleanup,
+     * ensuring correct resource destruction order.
+     *
+     * @param dependencyNodeName Name of the node this cleanup depends on (e.g., "benchmark_device")
+     * @param cleanupCallback Function to execute during graph cleanup
+     * @param externalSystemName Identifier for debugging (e.g., "FrameCapture")
+     *
+     * @example
+     * // In BenchmarkRunner: cleanup FrameCapture before DeviceNode
+     * renderGraph->RegisterExternalCleanup(
+     *     "benchmark_device",
+     *     [this]() { frameCapture_->Cleanup(); },
+     *     "FrameCapture"
+     * );
+     */
+    void RegisterExternalCleanup(
+        const std::string& dependencyNodeName,
+        std::function<void()> cleanupCallback,
+        const std::string& externalSystemName
+    );
+
     // ====== Time Management ======
 
     /**

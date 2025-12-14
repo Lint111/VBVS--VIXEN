@@ -147,10 +147,8 @@ void FrameCapture::Cleanup() {
         return;
     }
 
-    // Wait for any pending operations
-    if (fence_ != VK_NULL_HANDLE) {
-        vkWaitForFences(device_, 1, &fence_, VK_TRUE, UINT64_MAX);
-    }
+    // Note: We do not wait on the fence here because Capture() is synchronous
+    // and waiting on an unsignaled fence (e.g. if Capture was never called) causes a hang.
 
     DestroyStagingBuffer();
 
@@ -165,6 +163,7 @@ void FrameCapture::Cleanup() {
         commandBuffer_ = VK_NULL_HANDLE;  // Freed with pool
     }
 
+    device_ = VK_NULL_HANDLE;
     initialized_ = false;
 }
 
@@ -221,7 +220,7 @@ bool FrameCapture::CreateStagingBuffer(VkDeviceSize size) {
     return true;
 }
 
-void FrameCapture::DestroyStagingBuffer() {
+void FrameCapture::DestroyStagingBuffer() {    
     if (stagingBuffer_ != VK_NULL_HANDLE) {
         vkDestroyBuffer(device_, stagingBuffer_, nullptr);
         stagingBuffer_ = VK_NULL_HANDLE;

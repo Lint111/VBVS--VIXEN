@@ -723,14 +723,6 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
     auto graphLogger = std::make_unique<::Logger>("BenchmarkGraph", false);
     graphLogger->SetTerminalOutput(false);  // Set to true for debugging
 
-    // Create render graph
-    auto renderGraph = std::make_unique<RG::RenderGraph>(
-        nodeRegistry.get(),
-        messageBus.get(),
-        graphLogger.get(),
-        &mainCacher
-    );
-
     // Subscribe to window close events
     bool shouldClose = false;
     messageBus->Subscribe(
@@ -778,6 +770,14 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
     // Run each test
     while (BeginNextTest() && !shouldClose) {
         const auto& testConfig = GetCurrentTestConfig();
+
+        // Create render graph for this test iteration
+        auto renderGraph = std::make_unique<RG::RenderGraph>(
+            nodeRegistry.get(),
+            messageBus.get(),
+            graphLogger.get(),
+            &mainCacher
+        );
 
         // Always show minimal progress (Test X/Y) so testers know it's running
         std::cout << "Test " << (GetCurrentTestIndex() + 1) << "/" << testMatrix_.size()
@@ -906,7 +906,7 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
 
         // Initialize frame capture if not already done
         if (!frameCapture_ && vulkanHandles.IsValid()) {
-            frameCapture_ = std::make_unique<FrameCapture>();
+            frameCapture_ = std::make_shared<FrameCapture>();
             bool captureInitialized = frameCapture_->Initialize(
                 vulkanHandles.device,
                 vulkanHandles.physicalDevice,
@@ -918,6 +918,18 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
             if (!captureInitialized) {
                 std::cerr << "[BenchmarkRunner] Warning: Frame capture initialization failed" << std::endl;
                 frameCapture_.reset();
+            } else {
+                // Register cleanup with graph dependency system
+                // Shared ownership ensures FrameCapture lives until cleanup executes
+                renderGraph->RegisterExternalCleanup(
+                    "benchmark_device",
+                    [capture = frameCapture_]() {
+                        if (capture) {
+                            capture->Cleanup();
+                        }
+                    },
+                    "FrameCapture"
+                );
             }
         }
         midFrameCaptured_ = false;  // Reset for this test
@@ -1172,15 +1184,11 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
             }
         }
 
-        // Cleanup frame capture before device destruction
-        // (FrameCapture holds Vulkan handles created on this device)
-        if (frameCapture_) {
-            frameCapture_->Cleanup();
-            frameCapture_.reset();
-        }
-
+        // FrameCapture cleanup happens automatically via RegisterExternalCleanup
         // Reset graph for next test (this destroys window, triggering WindowCloseEvent)
+        if (config.verbose) std::cout << "[BenchmarkRunner] Resetting RenderGraph..." << std::endl;
         renderGraph.reset();
+        if (config.verbose) std::cout << "[BenchmarkRunner] RenderGraph reset." << std::endl;
 
         // Drain any pending window messages from graph destruction
 #ifdef _WIN32
@@ -1206,6 +1214,14 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
             &mainCacher
         );
     }
+
+    // FrameCapture cleanup is handled automatically by RenderGraph dependency system
+    // No manual cleanup needed here
+
+    // Shutdown mainCacher BEFORE messageBus destructs
+    // mainCacher is a global singleton that destructs during static deinitialization
+    // messageBus is local and destructs when this function returns
+    CashSystem::MainCacher::Instance().Shutdown();
 
     ProfilerSystem::Instance().Shutdown();
 
