@@ -163,6 +163,13 @@ public:
     /// Finalize current test and prepare for next
     void FinalizeCurrentTest();
 
+    /// Collect results from current test without advancing to next
+    /// Used for multi-run collection
+    TestRunResults CollectCurrentTestResults();
+
+    /// Reset current test for another run (clears frames, resets state to warmup)
+    void ResetCurrentTestForRerun();
+
     /// Abort current suite execution
     void AbortSuite();
 

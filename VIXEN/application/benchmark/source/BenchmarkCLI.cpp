@@ -224,6 +224,29 @@ BenchmarkCLIOptions ParseCommandLine(int argc, char* argv[]) {
             continue;
         }
 
+        // Runs per config (for statistical robustness)
+        if (ArgMatches(arg, nullptr, "--runs")) {
+            const char* val = GetNextArg(argc, argv, i, "--runs");
+            if (!val) {
+                opts.hasError = true;
+                opts.parseError = "--runs requires a number";
+                return opts;
+            }
+            try {
+                opts.runsPerConfig = static_cast<uint32_t>(std::stoul(val));
+                if (opts.runsPerConfig < 1 || opts.runsPerConfig > 100) {
+                    opts.hasError = true;
+                    opts.parseError = "--runs must be between 1 and 100";
+                    return opts;
+                }
+            } catch (const std::exception&) {
+                opts.hasError = true;
+                opts.parseError = "Invalid value for --runs: " + std::string(val);
+                return opts;
+            }
+            continue;
+        }
+
         // Resolutions
         if (ArgMatches(arg, "-r", "--resolutions")) {
             const char* val = GetNextArg(argc, argv, i, "--resolutions");
@@ -598,6 +621,7 @@ Configuration:
 Test Parameters:
   -i, --iterations N      Measurement frames per test (default: 100)
   -w, --warmup N          Warmup frames before measurement (default: 10)
+      --runs N            Run each config N times for statistical robustness (default: 1)
   -r, --resolutions LIST  Comma-separated voxel resolutions (e.g., 32,64,128,256)
   -d, --densities LIST    Comma-separated scene densities 0-100 (e.g., 10,30,50,70,90)
   -p, --pipelines LIST    Comma-separated pipeline types: compute,fragment,hardware_rt
@@ -761,6 +785,9 @@ Vixen::Profiler::BenchmarkSuiteConfig BenchmarkCLIOptions::BuildSuiteConfig() co
     // Copy frame overrides (only if provided via CLI)
     if (warmupFrames) config.warmupFramesOverride = warmupFrames;
     if (measurementFrames) config.measurementFramesOverride = measurementFrames;
+
+    // Copy multi-run setting
+    config.runsPerConfig = runsPerConfig;
 
     // Generate test configurations (if not already loaded from file)
     if (config.tests.empty()) {

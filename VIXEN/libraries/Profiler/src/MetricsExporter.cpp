@@ -350,6 +350,117 @@ void MetricsExporter::ExportToJSON(
     file << j.dump(2);
 }
 
+void MetricsExporter::ExportMultiRunToJSON(
+    const std::filesystem::path& filepath,
+    const MultiRunResults& multiRun,
+    const DeviceCapabilities& device) {
+
+    using json = nlohmann::json;
+
+    // Helper to convert CrossRunStats to JSON
+    auto crossRunStatsToJson = [](const CrossRunStats& stats) -> json {
+        json j;
+        j["mean"] = stats.mean;
+        j["stddev"] = stats.stddev;
+        j["min"] = stats.min;
+        j["max"] = stats.max;
+        return j;
+    };
+
+    json j;
+
+    // Use first run's config for top-level info
+    const auto& config = multiRun.config;
+
+    // Top-level fields (Section 5.2 schema)
+    j["test_id"] = config.testId.empty()
+        ? config.GenerateTestId(1)
+        : config.testId;
+    j["timestamp"] = GetISO8601Timestamp();
+
+    // Configuration block
+    j["configuration"]["pipeline"] = config.pipeline;
+    j["configuration"]["shader"] = config.shader;
+    j["configuration"]["resolution"] = config.voxelResolution;
+    j["configuration"]["scene_type"] = config.sceneType;
+    j["configuration"]["screen_width"] = config.screenWidth;
+    j["configuration"]["screen_height"] = config.screenHeight;
+    if (!config.optimizations.empty()) {
+        j["configuration"]["optimizations"] = config.optimizations;
+    }
+
+    // Device block
+    j["device"]["gpu"] = device.deviceName;
+    j["device"]["driver"] = device.driverVersion;
+    j["device"]["vram_gb"] = static_cast<double>(device.totalVRAM_MB) / 1024.0;
+    j["device"]["bandwidth_estimated"] = !device.timestampSupported;
+
+    // Multi-run statistics block
+    j["multi_run"]["run_count"] = multiRun.GetRunCount();
+    if (multiRun.frameTimeMean.HasData()) {
+        j["multi_run"]["frame_time"] = crossRunStatsToJson(multiRun.frameTimeMean);
+    }
+    if (multiRun.fpsMean.HasData()) {
+        j["multi_run"]["fps"] = crossRunStatsToJson(multiRun.fpsMean);
+    }
+    if (multiRun.bandwidthMean.HasData()) {
+        j["multi_run"]["bandwidth"] = crossRunStatsToJson(multiRun.bandwidthMean);
+    }
+    if (multiRun.avgVoxelsPerRay.HasData()) {
+        j["multi_run"]["avg_voxels_per_ray"] = crossRunStatsToJson(multiRun.avgVoxelsPerRay);
+    }
+
+    // Individual runs (optional, for detailed analysis)
+    json runsArray = json::array();
+    for (size_t i = 0; i < multiRun.runs.size(); ++i) {
+        const auto& run = multiRun.runs[i];
+        json runJson;
+        runJson["run_index"] = i;
+        runJson["frames_collected"] = run.frames.size();
+        runJson["valid"] = run.IsValid();
+
+        // Summary stats from this run
+        if (run.aggregates.count("frame_time_ms")) {
+            runJson["frame_time_mean"] = run.aggregates.at("frame_time_ms").mean;
+        }
+        if (run.aggregates.count("fps")) {
+            runJson["fps_mean"] = run.aggregates.at("fps").mean;
+        }
+
+        runsArray.push_back(runJson);
+    }
+    j["runs"] = runsArray;
+
+    // Frames array - aggregate from first run for backward compatibility
+    if (!multiRun.runs.empty()) {
+        const auto& firstRun = multiRun.runs[0];
+        j["frames"] = json::array();  // Placeholder - could include first run's frames
+
+        // Statistics from first run (for backward compat)
+        if (firstRun.aggregates.count("frame_time_ms")) {
+            const auto& ft = firstRun.aggregates.at("frame_time_ms");
+            j["statistics"]["frame_time_mean"] = ft.mean;
+            j["statistics"]["frame_time_stddev"] = ft.stddev;
+            j["statistics"]["frame_time_p99"] = ft.p99;
+        }
+        if (firstRun.aggregates.count("fps")) {
+            j["statistics"]["fps_mean"] = firstRun.aggregates.at("fps").mean;
+        }
+
+        // Validation from first run
+        j["validation"]["valid"] = firstRun.validation.valid;
+        j["validation"]["error_count"] = firstRun.validation.errorCount;
+        j["validation"]["warning_count"] = firstRun.validation.warningCount;
+    }
+
+    std::ofstream file(filepath);
+    if (!file.is_open()) {
+        throw std::runtime_error("Failed to open JSON file: " + filepath.string());
+    }
+
+    file << j.dump(2);
+}
+
 void MetricsExporter::SetEnabledColumns(const std::vector<std::string>& columns) {
     enabledColumns_ = columns;
 }

@@ -44,6 +44,7 @@ struct BenchmarkCLIOptions {
     // Test parameters (command-line overrides)
     std::optional<uint32_t> measurementFrames;
     std::optional<uint32_t> warmupFrames;
+    uint32_t runsPerConfig = 1;  // Number of times to run each config (for statistical robustness)
     std::vector<uint32_t> resolutions;
     std::vector<float> densities;
     std::vector<std::string> pipelines;

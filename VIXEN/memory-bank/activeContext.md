@@ -2,46 +2,36 @@
 
 **Last Updated**: December 14, 2025
 **Current Branch**: `main`
-**Status**: Shader Counters Working - Real avgIterationsPerRay Data
+**Status**: Tasks #55, #56 Complete - Ready for Task #4 (Benchmark Matrix)
 
 ---
 
 ## Current State
 
-### Shader Counters Integration - Complete ✅
+### Sprint 2 Progress - All Config Tasks Complete ✅
 
-Real GPU performance metrics now flowing from shader to JSON output:
+| Task | Title | Status | Impact |
+|------|-------|--------|--------|
+| #40 | Warmup frames to 100 | ✅ Done | Config already set |
+| #39 | BLAS/TLAS build time | ✅ Done | New JSON fields |
+| #44 | Cache hit rate counters | ✅ Done | New JSON field |
+| #55 | Multi-run iterations | ✅ Done | `--runs N` flag, cross-run stats |
+| #56 | 512x512 resolution | ✅ Done | Added to resolutions array |
+| #4 | Run benchmark matrix | ⏳ Ready | No longer blocked |
 
-| Metric | Before | After |
-|--------|--------|-------|
-| `avg_voxels_per_ray` | ~18 (estimate) | ~1.14 (real) |
-| Source | `octreeDepth * 3.0f` | GPU atomic counters |
+### Session 3 Changes
 
-**Key Insight**: Metric measures ESVO traversal iterations (node visits), not individual voxels. Renamed to `avgIterationsPerRay` internally; JSON key kept for backward compatibility.
+**Task #56:**
+- Added `512` to `resolutions` in `benchmark_config.json`
+- Updated `GlobalMatrix::resolutions` default in `BenchmarkConfig.h`
 
-### Wrapper Pointer Type Fix (#60) - Complete ✅
-
-Fixed `Resource::SetHandle` to extract VkBuffer from wrapper pointer types:
-
-**Problem:** `SetHandle<ShaderCountersBuffer*>` didn't capture `descriptorExtractor_` because `HasConversionType` checked the pointer type, not the pointee.
-
-**Solution:** Check pointee type for `conversion_type` and handle pointer dereferencing:
-```cpp
-using PointeeT = std::conditional_t<std::is_pointer_v<CleanT>,
-                                    std::remove_pointer_t<CleanT>,
-                                    CleanT>;
-if constexpr (HasConversionType<PointeeT>) { ... }
-```
-
-**Files Modified:**
-- `CompileTimeResourceSystem.h` - SetHandle wrapper extraction fix
-- `VoxelGridNodeConfig.h` - Reverted to wrapper types (no slot split)
-- `VoxelGridNode.cpp` - Output wrapper pointers directly
-- `ShaderCountersBuffer.h` - Renamed `GetAvgIterationsPerRay()`
-- `VoxelRayMarch.comp` - Enabled SHADER_COUNTERS at binding 8
-- `VoxelRayMarch_Compressed.comp` - Enabled SHADER_COUNTERS at binding 8
-- `FrameSyncNode.h` - Added `GetCurrentInFlightFence()` accessor
-- `BenchmarkRunner.cpp` - Fence sync before counter readback
+**Task #55:**
+- Added `--runs N` CLI flag (1-100)
+- `CrossRunStats` struct for mean/stddev/min/max across runs
+- `MultiRunResults` struct with `ComputeStatistics()`
+- `ExportMultiRunToJSON()` for multi-run output
+- Updated `benchmark_schema.json` with `$defs/cross_run_stats` and `multi_run` block
+- `CollectCurrentTestResults()` and `ResetCurrentTestForRerun()` helpers
 
 ---
 
@@ -54,7 +44,11 @@ cmake --build build --config Debug --parallel 16
 
 ### Run Benchmarks
 ```bash
+# Quick test (single run)
 ./binaries/vixen_benchmark.exe --render --quick --no-package --no-open
+
+# Full matrix with multi-run
+./binaries/vixen_benchmark.exe --render --runs 3 --no-open
 ```
 
 ### Test Commands
@@ -69,12 +63,12 @@ cmake --build build --config Debug --parallel 16
 
 | Purpose | Location |
 |---------|----------|
-| Resource type system | `libraries/RenderGraph/include/Data/Core/CompileTimeResourceSystem.h` |
-| Shader counters | `libraries/RenderGraph/include/Debug/ShaderCountersBuffer.h` |
-| Frame sync | `libraries/RenderGraph/include/Nodes/FrameSyncNode.h` |
-| VoxelGrid node | `libraries/RenderGraph/src/Nodes/VoxelGridNode.cpp` |
+| Benchmark schema | `application/benchmark/benchmark_schema.json` |
+| CLI parsing | `application/benchmark/source/BenchmarkCLI.cpp` |
+| Suite config | `libraries/Profiler/include/Profiler/BenchmarkConfig.h` |
+| Multi-run results | `libraries/Profiler/include/Profiler/TestSuiteResults.h` |
+| Metrics export | `libraries/Profiler/src/MetricsExporter.cpp` |
 | Benchmark runner | `libraries/Profiler/src/BenchmarkRunner.cpp` |
-| Compute shaders | `VixenBenchmark/shaders/VoxelRayMarch*.comp` |
 
 ---
 
@@ -82,9 +76,7 @@ cmake --build build --config Debug --parallel 16
 
 | # | Title | Status |
 |---|-------|--------|
-| 60 | Fix wrapper pointer type extraction | Completed |
-| 58 | IDebugBuffer Refactor | Completed |
-| 59 | conversion_type pattern | Completed |
+| 4 | Run 180-config benchmark | Ready |
 
 ---
 
@@ -92,18 +84,17 @@ cmake --build build --config Debug --parallel 16
 
 | Hash | Description |
 |------|-------------|
-| `4a265b6` | feat(RenderGraph): Add conversion_type pattern for wrapper types |
-| `f765b99` | docs(session): IDebugBuffer refactor session summary |
-| `8f76d07` | refactor(RenderGraph): Consolidate debug buffer infrastructure |
-| `54c3104` | fix(benchmark): GPU metrics for FRAGMENT/HW_RT + standalone package |
+| `bfe7e8d` | feat(benchmark): Sprint 2 data collection polish (#61) |
+| `c1f9400` | fix(RenderGraph): Enable shader counters with wrapper type extraction (#60) |
+| `4a265b6` | feat(RenderGraph): Add conversion_type pattern for wrapper types (#59) |
 
 ---
 
 ## Next Steps
 
-1. **Commit current changes** - Shader counters + wrapper extraction fix
-2. **Verify different scenes** - Test with non-Cornell scenes for varied avgIterationsPerRay
-3. **Add brick-level voxel counting** - Current metric is node visits, not individual voxels
+1. **Commit current changes** - Tasks #55 and #56
+2. **Build standalone package** - Clean state for distribution
+3. **Task #4** (16h) - Run full benchmark matrix
 
 ---
 

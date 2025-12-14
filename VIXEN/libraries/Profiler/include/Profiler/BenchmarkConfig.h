@@ -77,7 +77,7 @@ struct RenderSize {
 
 /// Global matrix parameters (shared across all pipelines)
 struct GlobalMatrix {
-    std::vector<uint32_t> resolutions = {64, 128, 256};         // SVO resolutions
+    std::vector<uint32_t> resolutions = {64, 128, 256, 512};    // SVO resolutions
     std::vector<RenderSize> renderSizes = {{1280, 720}};        // Screen resolutions
     std::vector<std::string> scenes = {"cornell"};              // Scene identifiers (shared by all pipelines)
 };
@@ -113,6 +113,10 @@ struct BenchmarkSuiteConfig {
 
     /// Number of measurement frames (can override per-test settings)
     std::optional<uint32_t> measurementFramesOverride;
+
+    /// Number of times to run each configuration (for statistical robustness)
+    /// When > 1, results include cross-run mean, stddev, min, max
+    uint32_t runsPerConfig = 1;
 
     /// Global matrix parameters (resolutions, screen sizes)
     GlobalMatrix globalMatrix;

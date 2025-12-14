@@ -1474,6 +1474,55 @@ void BenchmarkRunner::FinalizeCurrentTest() {
     state_ = BenchmarkState::Idle;
 }
 
+TestRunResults BenchmarkRunner::CollectCurrentTestResults() {
+    TestRunResults results;
+
+    if (currentFrames_.empty()) {
+        return results;
+    }
+
+    // Compute aggregates
+    auto aggregates = ComputeAggregates();
+
+    // Create test results
+    results.config = currentConfig_;
+    results.frames = currentFrames_;  // Copy, don't move
+    results.aggregates = std::move(aggregates);
+    results.startTime = testStartTime_;
+    results.endTime = std::chrono::system_clock::now();
+    results.blasBuildTimeMs = currentBlasBuildTimeMs_;
+    results.tlasBuildTimeMs = currentTlasBuildTimeMs_;
+
+    // Run sanity checks on collected data
+    MetricsSanityChecker checker;
+    results.validation = checker.Validate(results.frames, results.config);
+
+    // Also validate aggregates
+    auto aggregateValidation = checker.ValidateAggregates(results.aggregates);
+    for (const auto& check : aggregateValidation.checks) {
+        results.validation.checks.push_back(check);
+        switch (check.severity) {
+            case SanityCheckSeverity::Info: results.validation.infoCount++; break;
+            case SanityCheckSeverity::Warning: results.validation.warningCount++; break;
+            case SanityCheckSeverity::Error:
+                results.validation.errorCount++;
+                results.validation.valid = false;
+                break;
+        }
+    }
+
+    return results;
+}
+
+void BenchmarkRunner::ResetCurrentTestForRerun() {
+    currentFrames_.clear();
+    currentFrame_ = 0;
+    testStartTime_ = std::chrono::system_clock::now();
+    midFrameCaptured_ = false;
+    InitializeStatsTrackers();
+    state_ = BenchmarkState::Warmup;
+}
+
 void BenchmarkRunner::AbortSuite() {
     state_ = BenchmarkState::Idle;
     currentFrames_.clear();

@@ -3,6 +3,7 @@
 #include "FrameMetrics.h"
 #include "DeviceCapabilities.h"
 #include "MetricsSanityChecker.h"
+#include "TestSuiteResults.h"
 #include <vector>
 #include <string>
 #include <map>
@@ -61,6 +62,12 @@ public:
         const ValidationResult& validation,
         float blasBuildTimeMs,
         float tlasBuildTimeMs);
+
+    /// Export multi-run results to JSON file (includes cross-run statistics)
+    void ExportMultiRunToJSON(
+        const std::filesystem::path& filepath,
+        const MultiRunResults& multiRun,
+        const DeviceCapabilities& device);
 
     /// Set which columns to include in CSV export
     /// Default: all columns

@@ -3,6 +3,31 @@
   "$id": "https://vixen-engine.dev/schemas/benchmark-result.json",
   "title": "VIXEN Benchmark Result",
   "description": "Schema for VIXEN voxel renderer benchmark output files",
+  "$defs": {
+    "cross_run_stats": {
+      "type": "object",
+      "description": "Statistics aggregated across multiple runs",
+      "properties": {
+        "mean": {
+          "type": "number",
+          "description": "Mean of per-run values"
+        },
+        "stddev": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Standard deviation across runs"
+        },
+        "min": {
+          "type": "number",
+          "description": "Minimum value across runs"
+        },
+        "max": {
+          "type": "number",
+          "description": "Maximum value across runs"
+        }
+      }
+    }
+  },
   "type": "object",
   "required": ["test_id", "timestamp", "configuration", "device", "frames", "statistics", "validation"],
   "properties": {
@@ -206,6 +231,33 @@
           "type": "number",
           "minimum": 0,
           "description": "Mean read bandwidth in GB/s"
+        }
+      }
+    },
+    "multi_run": {
+      "type": "object",
+      "description": "Cross-run statistics when --runs N > 1 (optional, only present for multi-run benchmarks)",
+      "properties": {
+        "run_count": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Number of runs aggregated"
+        },
+        "frame_time": {
+          "$ref": "#/$defs/cross_run_stats",
+          "description": "Statistics of per-run mean frame times"
+        },
+        "fps": {
+          "$ref": "#/$defs/cross_run_stats",
+          "description": "Statistics of per-run mean FPS"
+        },
+        "bandwidth": {
+          "$ref": "#/$defs/cross_run_stats",
+          "description": "Statistics of per-run mean bandwidth"
+        },
+        "avg_voxels_per_ray": {
+          "$ref": "#/$defs/cross_run_stats",
+          "description": "Statistics of per-run mean voxels per ray"
         }
       }
     },

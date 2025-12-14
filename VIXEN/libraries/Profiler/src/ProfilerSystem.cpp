@@ -3,6 +3,7 @@
 #include <Logger.h>
 #include <iostream>
 #include <ctime>
+#include <cmath>
 
 namespace Vixen::Profiler {
 
@@ -230,6 +231,84 @@ void TestSuiteResults::AddTestRun(const TestRunResults& results) {
     results_.push_back(results);
 }
 
+void TestSuiteResults::AddMultiRun(const MultiRunResults& results) {
+    multiRunResults_.push_back(results);
+    // Also flatten into results_ for backward compatibility
+    for (const auto& run : results.runs) {
+        results_.push_back(run);
+    }
+}
+
+// Helper to compute standard statistics from a vector of values
+static CrossRunStats ComputeCrossRunStats(const std::vector<double>& values) {
+    CrossRunStats stats;
+    if (values.empty()) return stats;
+
+    stats.runCount = static_cast<uint32_t>(values.size());
+
+    // Compute mean
+    double sum = 0.0;
+    for (double v : values) sum += v;
+    stats.mean = sum / values.size();
+
+    // Compute min, max
+    stats.min = values[0];
+    stats.max = values[0];
+    for (double v : values) {
+        if (v < stats.min) stats.min = v;
+        if (v > stats.max) stats.max = v;
+    }
+
+    // Compute stddev
+    if (values.size() > 1) {
+        double sumSqDiff = 0.0;
+        for (double v : values) {
+            double diff = v - stats.mean;
+            sumSqDiff += diff * diff;
+        }
+        stats.stddev = std::sqrt(sumSqDiff / (values.size() - 1));  // Sample stddev
+    }
+
+    return stats;
+}
+
+void MultiRunResults::ComputeStatistics() {
+    if (runs.empty()) return;
+
+    std::vector<double> frameTimeMeans, fpsMeans, bandwidthMeans, avgVoxelsMeans;
+
+    for (const auto& run : runs) {
+        // Extract mean frame time from aggregates
+        auto ftIt = run.aggregates.find("frame_time_ms");
+        if (ftIt != run.aggregates.end()) {
+            frameTimeMeans.push_back(ftIt->second.mean);
+        }
+
+        // Extract mean FPS from aggregates
+        auto fpsIt = run.aggregates.find("fps");
+        if (fpsIt != run.aggregates.end()) {
+            fpsMeans.push_back(fpsIt->second.mean);
+        }
+
+        // Extract mean bandwidth from aggregates
+        auto bwIt = run.aggregates.find("bandwidth_read_gb");
+        if (bwIt != run.aggregates.end()) {
+            bandwidthMeans.push_back(bwIt->second.mean);
+        }
+
+        // Extract mean avg_voxels_per_ray from aggregates
+        auto voxIt = run.aggregates.find("avg_voxels_per_ray");
+        if (voxIt != run.aggregates.end()) {
+            avgVoxelsMeans.push_back(voxIt->second.mean);
+        }
+    }
+
+    frameTimeMean = ComputeCrossRunStats(frameTimeMeans);
+    fpsMean = ComputeCrossRunStats(fpsMeans);
+    bandwidthMean = ComputeCrossRunStats(bandwidthMeans);
+    avgVoxelsPerRay = ComputeCrossRunStats(avgVoxelsMeans);
+}
+
 double TestSuiteResults::GetTotalDurationSeconds() const {
     double total = 0.0;
     for (const auto& result : results_) {
@@ -344,6 +423,7 @@ void TestSuiteResults::ExportSummary(const std::string& filepath) const {
 
 void TestSuiteResults::Clear() {
     results_.clear();
+    multiRunResults_.clear();
     suiteName_ = "Benchmark Suite";
 }
 
