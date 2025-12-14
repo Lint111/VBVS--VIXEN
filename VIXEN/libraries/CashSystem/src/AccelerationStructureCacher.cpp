@@ -301,6 +301,7 @@ uint32_t AccelerationStructureCacher::FindMemoryType(uint32_t typeFilter, VkMemo
 
 void AccelerationStructureCacher::BuildBLAS(const AccelStructCreateInfo& ci, const VoxelAABBData& aabbData, AccelerationStructureData& asData) {
     LOG_INFO("[AccelerationStructureCacher::BuildBLAS] Building BLAS...");
+    auto buildStart = std::chrono::high_resolution_clock::now();
 
     if (!vkCreateAccelerationStructureKHR || !vkGetAccelerationStructureBuildSizesKHR || !vkCmdBuildAccelerationStructuresKHR) {
         LOG_WARNING("[AccelerationStructureCacher::BuildBLAS] RT extension not available - skipping BLAS build");
@@ -486,8 +487,13 @@ void AccelerationStructureCacher::BuildBLAS(const AccelStructCreateInfo& ci, con
 
     asData.primitiveCount = primitiveCount;
 
+    // Measure build time
+    auto buildEnd = std::chrono::high_resolution_clock::now();
+    asData.blasBuildTimeMs = std::chrono::duration<float, std::milli>(buildEnd - buildStart).count();
+
     std::ostringstream oss;
-    oss << "[AccelerationStructureCacher::BuildBLAS] BLAS built successfully, address=0x" << std::hex << asData.blasDeviceAddress;
+    oss << "[AccelerationStructureCacher::BuildBLAS] BLAS built successfully, address=0x" << std::hex << asData.blasDeviceAddress
+        << ", time=" << std::fixed << std::setprecision(2) << asData.blasBuildTimeMs << "ms";
     LOG_INFO(oss.str());
 }
 
@@ -497,6 +503,7 @@ void AccelerationStructureCacher::BuildBLAS(const AccelStructCreateInfo& ci, con
 
 void AccelerationStructureCacher::BuildTLAS(const AccelStructCreateInfo& ci, AccelerationStructureData& asData) {
     LOG_INFO("[AccelerationStructureCacher::BuildTLAS] Building TLAS...");
+    auto buildStart = std::chrono::high_resolution_clock::now();
 
     if (!vkCreateAccelerationStructureKHR || !vkCmdBuildAccelerationStructuresKHR) {
         LOG_WARNING("[AccelerationStructureCacher::BuildTLAS] RT extension not available - skipping TLAS build");
@@ -687,8 +694,13 @@ void AccelerationStructureCacher::BuildTLAS(const AccelStructCreateInfo& ci, Acc
     addressInfo.accelerationStructure = asData.tlas;
     asData.tlasDeviceAddress = vkGetAccelerationStructureDeviceAddressKHR(m_device->device, &addressInfo);
 
+    // Measure build time
+    auto buildEnd = std::chrono::high_resolution_clock::now();
+    asData.tlasBuildTimeMs = std::chrono::duration<float, std::milli>(buildEnd - buildStart).count();
+
     std::ostringstream oss;
-    oss << "[AccelerationStructureCacher::BuildTLAS] TLAS built successfully, address=0x" << std::hex << asData.tlasDeviceAddress;
+    oss << "[AccelerationStructureCacher::BuildTLAS] TLAS built successfully, address=0x" << std::hex << asData.tlasDeviceAddress
+        << ", time=" << std::fixed << std::setprecision(2) << asData.tlasBuildTimeMs << "ms";
     LOG_INFO(oss.str());
 }
 

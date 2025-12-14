@@ -68,6 +68,9 @@ public:
     );
     ~AccelerationStructureNode() override = default;
 
+    /// Get acceleration structure data (after Compile)
+    const AccelerationStructureData& GetAccelData() const { return accelData_; }
+
 protected:
     void SetupImpl(TypedSetupContext& ctx) override;
     void CompileImpl(TypedCompileContext& ctx) override;

@@ -164,4 +164,21 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/benchmark_config.json)
     )
 endif()
 
+# Install benchmark schema for data validation
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/benchmark_schema.json)
+    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/benchmark_schema.json
+        DESTINATION bin
+    )
+endif()
+
+# Copy schema to binaries folder for development use
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/benchmark_schema.json)
+    add_custom_command(TARGET vixen_benchmark POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${CMAKE_CURRENT_SOURCE_DIR}/benchmark_schema.json
+            $<TARGET_FILE_DIR:vixen_benchmark>
+        COMMENT "Copying benchmark_schema.json to output directory"
+    )
+endif()
+
 message(STATUS "VIXEN Benchmark: Configured headless compute benchmark tool")

@@ -14,6 +14,8 @@ add_library(Profiler STATIC
     src/DeviceCapabilities.cpp
     src/MetricsCollector.cpp
     src/MetricsExporter.cpp
+    src/MetricsSanityChecker.cpp
+    src/NVMLWrapper.cpp
     src/BenchmarkConfig.cpp
     src/BenchmarkRunner.cpp
     src/BenchmarkGraphFactory.cpp

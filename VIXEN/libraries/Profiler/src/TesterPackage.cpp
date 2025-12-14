@@ -278,6 +278,21 @@ TesterPackage::PackageResult TesterPackage::CreatePackage(
     totalOriginalSize += systemInfo.size();
     result.filesIncluded++;
 
+    // Add benchmark schema for data validation (reference for consumers)
+    std::string schemaReference = R"({
+  "$comment": "VIXEN Benchmark Schema Reference",
+  "schema_url": "https://github.com/VIXEN-Engine/VIXEN/blob/main/application/benchmark/benchmark_schema.json",
+  "description": "Full JSON Schema for benchmark result validation available at schema_url"
+})";
+    status = mz_zip_writer_add_mem(&zip, "schema_reference.json",
+                                    schemaReference.data(), schemaReference.size(),
+                                    MZ_BEST_COMPRESSION);
+    if (status) {
+        totalOriginalSize += schemaReference.size();
+        result.filesIncluded++;
+    }
+    // Non-critical if this fails, continue
+
     // Finalize ZIP
     status = mz_zip_writer_finalize_archive(&zip);
     if (!status) {

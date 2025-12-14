@@ -110,6 +110,246 @@ void MetricsExporter::ExportToJSON(
     file << j.dump(2);
 }
 
+void MetricsExporter::ExportToJSON(
+    const std::filesystem::path& filepath,
+    const TestConfiguration& config,
+    const DeviceCapabilities& device,
+    const std::vector<FrameMetrics>& frames,
+    const std::map<std::string, AggregateStats>& aggregates,
+    const ValidationResult& validation) {
+
+    EnsureDirectoryExists(filepath.parent_path());
+
+    nlohmann::json j;
+
+    // Test identification (Section 5.2 schema)
+    j["test_id"] = config.testId.empty() ? config.GenerateTestId() : config.testId;
+    j["timestamp"] = GetISO8601Timestamp();
+
+    // Configuration block
+    j["configuration"]["pipeline"] = config.pipeline;
+    j["configuration"]["shader"] = config.shader;
+    j["configuration"]["resolution"] = config.voxelResolution;
+    j["configuration"]["scene_type"] = config.sceneType;
+    j["configuration"]["screen_width"] = config.screenWidth;
+    j["configuration"]["screen_height"] = config.screenHeight;
+    j["configuration"]["optimizations"] = config.optimizations;
+
+    // Device info block
+    j["device"]["gpu"] = device.deviceName;
+    j["device"]["driver"] = device.driverVersion;
+    j["device"]["vram_gb"] = device.totalVRAM_MB / 1024.0;
+
+    // Check if any frame has estimated bandwidth
+    bool anyBandwidthEstimated = false;
+    for (const auto& frame : frames) {
+        if (frame.bandwidthEstimated) {
+            anyBandwidthEstimated = true;
+            break;
+        }
+    }
+    if (anyBandwidthEstimated) {
+        j["device"]["bandwidth_estimated"] = true;
+    }
+
+    // Frame data array (Section 5.2 schema)
+    nlohmann::json framesArray = nlohmann::json::array();
+    for (const auto& frame : frames) {
+        nlohmann::json f;
+        f["frame_num"] = frame.frameNumber;
+        f["frame_time_ms"] = frame.frameTimeMs;
+        f["fps"] = frame.fps;
+        f["bandwidth_read_gbps"] = frame.bandwidthReadGB;
+        f["bandwidth_write_gbps"] = frame.bandwidthWriteGB;
+        f["ray_throughput_mrays"] = frame.mRaysPerSec;
+        f["vram_mb"] = frame.vramUsageMB;
+        f["avg_voxels_per_ray"] = frame.avgVoxelsPerRay;
+        // NVML GPU utilization metrics (when available)
+        if (frame.nvmlAvailable) {
+            f["gpu_utilization"] = frame.gpuUtilization;
+            f["memory_utilization"] = frame.memoryUtilization;
+            f["gpu_temperature_c"] = frame.gpuTemperature;
+            f["gpu_power_w"] = frame.gpuPowerW;
+        }
+        // SVO cache hit rate (when shader counters available)
+        if (frame.HasShaderCounters()) {
+            float cacheHitRate = frame.shaderCounters.GetOverallCacheHitRate();
+            if (cacheHitRate > 0.0f) {
+                f["cache_hit_rate"] = cacheHitRate;
+            }
+        }
+        framesArray.push_back(f);
+    }
+    j["frames"] = framesArray;
+
+    // Statistics block (Section 5.2 schema)
+    if (aggregates.count("frame_time_ms")) {
+        const auto& ft = aggregates.at("frame_time_ms");
+        j["statistics"]["frame_time_mean"] = ft.mean;
+        j["statistics"]["frame_time_stddev"] = ft.stddev;
+        j["statistics"]["frame_time_p99"] = ft.p99;
+    }
+    if (aggregates.count("fps")) {
+        j["statistics"]["fps_mean"] = aggregates.at("fps").mean;
+    }
+    if (aggregates.count("bandwidth_read_gb")) {
+        j["statistics"]["bandwidth_mean"] = aggregates.at("bandwidth_read_gb").mean;
+    }
+
+    // Validation block - sanity check results
+    j["validation"]["valid"] = validation.valid;
+    j["validation"]["error_count"] = validation.errorCount;
+    j["validation"]["warning_count"] = validation.warningCount;
+
+    if (!validation.checks.empty()) {
+        nlohmann::json checksArray = nlohmann::json::array();
+        for (const auto& check : validation.checks) {
+            nlohmann::json c;
+            c["check"] = check.checkName;
+            c["metric"] = check.metric;
+            c["message"] = check.message;
+            c["severity"] = SeverityToString(check.severity);
+            if (check.affectedFrames > 0) {
+                c["affected_frames"] = check.affectedFrames;
+                c["failure_rate"] = check.failureRate;
+            }
+            checksArray.push_back(c);
+        }
+        j["validation"]["checks"] = checksArray;
+    }
+
+    std::ofstream file(filepath);
+    if (!file.is_open()) {
+        throw std::runtime_error("Failed to open JSON file: " + filepath.string());
+    }
+
+    file << j.dump(2);
+}
+
+void MetricsExporter::ExportToJSON(
+    const std::filesystem::path& filepath,
+    const TestConfiguration& config,
+    const DeviceCapabilities& device,
+    const std::vector<FrameMetrics>& frames,
+    const std::map<std::string, AggregateStats>& aggregates,
+    const ValidationResult& validation,
+    float blasBuildTimeMs,
+    float tlasBuildTimeMs) {
+
+    EnsureDirectoryExists(filepath.parent_path());
+
+    nlohmann::json j;
+
+    // Test identification (Section 5.2 schema)
+    j["test_id"] = config.testId.empty() ? config.GenerateTestId() : config.testId;
+    j["timestamp"] = GetISO8601Timestamp();
+
+    // Configuration block
+    j["configuration"]["pipeline"] = config.pipeline;
+    j["configuration"]["shader"] = config.shader;
+    j["configuration"]["resolution"] = config.voxelResolution;
+    j["configuration"]["scene_type"] = config.sceneType;
+    j["configuration"]["screen_width"] = config.screenWidth;
+    j["configuration"]["screen_height"] = config.screenHeight;
+    j["configuration"]["optimizations"] = config.optimizations;
+
+    // BLAS/TLAS build timing (hardware_rt only)
+    if (blasBuildTimeMs > 0.0f || tlasBuildTimeMs > 0.0f) {
+        j["configuration"]["blas_build_time_ms"] = blasBuildTimeMs;
+        j["configuration"]["tlas_build_time_ms"] = tlasBuildTimeMs;
+    }
+
+    // Device info block
+    j["device"]["gpu"] = device.deviceName;
+    j["device"]["driver"] = device.driverVersion;
+    j["device"]["vram_gb"] = device.totalVRAM_MB / 1024.0;
+
+    // Check if any frame has estimated bandwidth
+    bool anyBandwidthEstimated = false;
+    for (const auto& frame : frames) {
+        if (frame.bandwidthEstimated) {
+            anyBandwidthEstimated = true;
+            break;
+        }
+    }
+    if (anyBandwidthEstimated) {
+        j["device"]["bandwidth_estimated"] = true;
+    }
+
+    // Frame data array (Section 5.2 schema)
+    nlohmann::json framesArray = nlohmann::json::array();
+    for (const auto& frame : frames) {
+        nlohmann::json f;
+        f["frame_num"] = frame.frameNumber;
+        f["frame_time_ms"] = frame.frameTimeMs;
+        f["fps"] = frame.fps;
+        f["bandwidth_read_gbps"] = frame.bandwidthReadGB;
+        f["bandwidth_write_gbps"] = frame.bandwidthWriteGB;
+        f["ray_throughput_mrays"] = frame.mRaysPerSec;
+        f["vram_mb"] = frame.vramUsageMB;
+        f["avg_voxels_per_ray"] = frame.avgVoxelsPerRay;
+        // NVML GPU utilization metrics (when available)
+        if (frame.nvmlAvailable) {
+            f["gpu_utilization"] = frame.gpuUtilization;
+            f["memory_utilization"] = frame.memoryUtilization;
+            f["gpu_temperature_c"] = frame.gpuTemperature;
+            f["gpu_power_w"] = frame.gpuPowerW;
+        }
+        // SVO cache hit rate (when shader counters available)
+        if (frame.HasShaderCounters()) {
+            float cacheHitRate = frame.shaderCounters.GetOverallCacheHitRate();
+            if (cacheHitRate > 0.0f) {
+                f["cache_hit_rate"] = cacheHitRate;
+            }
+        }
+        framesArray.push_back(f);
+    }
+    j["frames"] = framesArray;
+
+    // Statistics block (Section 5.2 schema)
+    if (aggregates.count("frame_time_ms")) {
+        const auto& ft = aggregates.at("frame_time_ms");
+        j["statistics"]["frame_time_mean"] = ft.mean;
+        j["statistics"]["frame_time_stddev"] = ft.stddev;
+        j["statistics"]["frame_time_p99"] = ft.p99;
+    }
+    if (aggregates.count("fps")) {
+        j["statistics"]["fps_mean"] = aggregates.at("fps").mean;
+    }
+    if (aggregates.count("bandwidth_read_gb")) {
+        j["statistics"]["bandwidth_mean"] = aggregates.at("bandwidth_read_gb").mean;
+    }
+
+    // Validation block - sanity check results
+    j["validation"]["valid"] = validation.valid;
+    j["validation"]["error_count"] = validation.errorCount;
+    j["validation"]["warning_count"] = validation.warningCount;
+
+    if (!validation.checks.empty()) {
+        nlohmann::json checksArray = nlohmann::json::array();
+        for (const auto& check : validation.checks) {
+            nlohmann::json c;
+            c["check"] = check.checkName;
+            c["metric"] = check.metric;
+            c["message"] = check.message;
+            c["severity"] = SeverityToString(check.severity);
+            if (check.affectedFrames > 0) {
+                c["affected_frames"] = check.affectedFrames;
+                c["failure_rate"] = check.failureRate;
+            }
+            checksArray.push_back(c);
+        }
+        j["validation"]["checks"] = checksArray;
+    }
+
+    std::ofstream file(filepath);
+    if (!file.is_open()) {
+        throw std::runtime_error("Failed to open JSON file: " + filepath.string());
+    }
+
+    file << j.dump(2);
+}
+
 void MetricsExporter::SetEnabledColumns(const std::vector<std::string>& columns) {
     enabledColumns_ = columns;
 }

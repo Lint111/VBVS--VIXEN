@@ -49,6 +49,10 @@ struct AccelerationStructureData {
     // Metadata
     uint32_t primitiveCount = 0;
 
+    // Build timing (measured during creation)
+    float blasBuildTimeMs = 0.0f;
+    float tlasBuildTimeMs = 0.0f;
+
     bool IsValid() const noexcept {
         return blas != VK_NULL_HANDLE && tlas != VK_NULL_HANDLE;
     }

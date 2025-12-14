@@ -2,6 +2,7 @@
 
 #include "FrameMetrics.h"
 #include "DeviceCapabilities.h"
+#include "MetricsSanityChecker.h"
 #include <vector>
 #include <string>
 #include <map>
@@ -33,13 +34,33 @@ public:
         const std::vector<FrameMetrics>& frames,
         const std::map<std::string, AggregateStats>& aggregates);
 
-    /// Export frame metrics to JSON file
+    /// Export frame metrics to JSON file (without validation)
     void ExportToJSON(
         const std::filesystem::path& filepath,
         const TestConfiguration& config,
         const DeviceCapabilities& device,
         const std::vector<FrameMetrics>& frames,
         const std::map<std::string, AggregateStats>& aggregates);
+
+    /// Export frame metrics to JSON file with validation results
+    void ExportToJSON(
+        const std::filesystem::path& filepath,
+        const TestConfiguration& config,
+        const DeviceCapabilities& device,
+        const std::vector<FrameMetrics>& frames,
+        const std::map<std::string, AggregateStats>& aggregates,
+        const ValidationResult& validation);
+
+    /// Export frame metrics to JSON file with validation and AS build timing
+    void ExportToJSON(
+        const std::filesystem::path& filepath,
+        const TestConfiguration& config,
+        const DeviceCapabilities& device,
+        const std::vector<FrameMetrics>& frames,
+        const std::map<std::string, AggregateStats>& aggregates,
+        const ValidationResult& validation,
+        float blasBuildTimeMs,
+        float tlasBuildTimeMs);
 
     /// Set which columns to include in CSV export
     /// Default: all columns

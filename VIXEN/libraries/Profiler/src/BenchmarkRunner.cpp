@@ -4,6 +4,8 @@
 #include "Profiler/ProfilerSystem.h"
 #include "Profiler/VulkanIntegration.h"
 #include "Profiler/TesterPackage.h"
+#include "Profiler/MetricsSanityChecker.h"
+#include "Profiler/NVMLWrapper.h"
 #include <iomanip>
 #include <cmath>
 #include <Core/RenderGraph.h>
@@ -505,6 +507,14 @@ TestSuiteResults BenchmarkRunner::RunSuite(const BenchmarkSuiteConfig& config) {
         // LOG_INFO("");
     }
 
+    // Initialize NVML for GPU utilization monitoring (optional - gracefully fails on AMD)
+    auto& nvml = NVMLWrapper::Instance();
+    if (nvml.Initialize()) {
+        if (config.verbose) {
+            std::cout << "[NVML] GPU monitoring enabled: " << nvml.GetDeviceName(0) << std::endl;
+        }
+    }
+
     TestSuiteResults results;
 
     if (config.headless) {
@@ -789,6 +799,22 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
 
         // Compile the graph
         renderGraph->Compile();
+
+        // Capture BLAS/TLAS build timing for hardware_rt pipeline
+        if (testConfig.pipeline == "hardware_rt") {
+            auto* asNode = dynamic_cast<RG::AccelerationStructureNode*>(
+                renderGraph->GetInstanceByName("benchmark_accel_structure"));
+            if (asNode) {
+                const auto& asData = asNode->GetAccelData();
+                currentBlasBuildTimeMs_ = asData.blasBuildTimeMs;
+                currentTlasBuildTimeMs_ = asData.tlasBuildTimeMs;
+                if (config.verbose) {
+                    std::cout << "  [AS Build] BLAS: " << std::fixed << std::setprecision(2)
+                              << currentBlasBuildTimeMs_ << "ms, TLAS: "
+                              << currentTlasBuildTimeMs_ << "ms" << std::endl;
+                }
+            }
+        }
 
         // Initialize profiler from graph
         VulkanHandles vulkanHandles;
@@ -1077,6 +1103,12 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
                     metrics.shaderCounters.rayHitCount = shaderCounters->rayHitCount;
                     metrics.shaderCounters.rayMissCount = shaderCounters->rayMissCount;
                     metrics.shaderCounters.earlyTerminations = shaderCounters->earlyTerminations;
+                    // Copy per-level cache statistics
+                    for (size_t i = 0; i < Vixen::Profiler::ShaderCounters::MAX_SVO_LEVELS; ++i) {
+                        metrics.shaderCounters.nodeVisitsPerLevel[i] = shaderCounters->nodeVisitsPerLevel[i];
+                        metrics.shaderCounters.cacheHitsPerLevel[i] = shaderCounters->cacheHitsPerLevel[i];
+                        metrics.shaderCounters.cacheMissesPerLevel[i] = shaderCounters->cacheMissesPerLevel[i];
+                    }
                     gotRealCounters = true;
                 }
             }
@@ -1308,6 +1340,10 @@ bool BenchmarkRunner::BeginNextTest() {
     currentFrame_ = 0;
     testStartTime_ = std::chrono::system_clock::now();
 
+    // Reset AS timing (will be populated during graph compilation for hardware_rt)
+    currentBlasBuildTimeMs_ = 0.0f;
+    currentTlasBuildTimeMs_ = 0.0f;
+
     // Initialize stats trackers
     InitializeStatsTrackers();
 
@@ -1348,6 +1384,19 @@ void BenchmarkRunner::RecordFrame(const FrameMetrics& metrics) {
             adjustedMetrics.bandwidthEstimated = true;
         }
 
+        // Sample NVML GPU utilization if available
+        auto& nvml = NVMLWrapper::Instance();
+        if (nvml.IsAvailable()) {
+            auto util = nvml.GetUtilization(0);
+            if (util.valid) {
+                adjustedMetrics.gpuUtilization = util.gpuUtilization;
+                adjustedMetrics.memoryUtilization = util.memoryUtilization;
+                adjustedMetrics.gpuTemperature = util.temperature;
+                adjustedMetrics.gpuPowerW = util.powerUsageW;
+                adjustedMetrics.nvmlAvailable = true;
+            }
+        }
+
         currentFrames_.push_back(adjustedMetrics);
         UpdateStats(adjustedMetrics);
 
@@ -1383,6 +1432,32 @@ void BenchmarkRunner::FinalizeCurrentTest() {
     results.aggregates = std::move(aggregates);
     results.startTime = testStartTime_;
     results.endTime = std::chrono::system_clock::now();
+    results.blasBuildTimeMs = currentBlasBuildTimeMs_;
+    results.tlasBuildTimeMs = currentTlasBuildTimeMs_;
+
+    // Run sanity checks on collected data
+    MetricsSanityChecker checker;
+    results.validation = checker.Validate(results.frames, results.config);
+
+    // Also validate aggregates
+    auto aggregateValidation = checker.ValidateAggregates(results.aggregates);
+    for (const auto& check : aggregateValidation.checks) {
+        results.validation.checks.push_back(check);
+        switch (check.severity) {
+            case SanityCheckSeverity::Info: results.validation.infoCount++; break;
+            case SanityCheckSeverity::Warning: results.validation.warningCount++; break;
+            case SanityCheckSeverity::Error:
+                results.validation.errorCount++;
+                results.validation.valid = false;
+                break;
+        }
+    }
+
+    // Log validation warnings/errors
+    if (results.validation.warningCount > 0 || results.validation.errorCount > 0) {
+        std::cout << "  [Validation] " << results.validation.errorCount << " errors, "
+                  << results.validation.warningCount << " warnings" << std::endl;
+    }
 
     // Add to suite
     suiteResults_.AddTestRun(results);
@@ -1415,7 +1490,7 @@ const TestConfiguration& BenchmarkRunner::GetCurrentTestConfig() const {
 void BenchmarkRunner::ExportAllResults() {
     MetricsExporter exporter;
 
-    // Export each test result
+    // Export each test result with validation
     for (size_t i = 0; i < suiteResults_.GetAllResults().size(); ++i) {
         const auto& result = suiteResults_.GetAllResults()[i];
         std::string filename = result.config.testId.empty()
@@ -1424,7 +1499,8 @@ void BenchmarkRunner::ExportAllResults() {
 
         auto filepath = outputDirectory_ / (filename + ".json");
         exporter.ExportToJSON(filepath, result.config, deviceCapabilities_,
-                              result.frames, result.aggregates);
+                              result.frames, result.aggregates, result.validation,
+                              result.blasBuildTimeMs, result.tlasBuildTimeMs);
     }
 
     // Export suite summary
@@ -1436,7 +1512,8 @@ void BenchmarkRunner::ExportTestResults(const TestRunResults& results, const std
     MetricsExporter exporter;
     auto filepath = outputDirectory_ / filename;
     exporter.ExportToJSON(filepath, results.config, deviceCapabilities_,
-                          results.frames, results.aggregates);
+                          results.frames, results.aggregates, results.validation,
+                          results.blasBuildTimeMs, results.tlasBuildTimeMs);
 }
 
 float BenchmarkRunner::EstimateBandwidth(uint64_t raysCast, float frameTimeSeconds) const {

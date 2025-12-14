@@ -1,0 +1,273 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://vixen-engine.dev/schemas/benchmark-result.json",
+  "title": "VIXEN Benchmark Result",
+  "description": "Schema for VIXEN voxel renderer benchmark output files",
+  "type": "object",
+  "required": ["test_id", "timestamp", "configuration", "device", "frames", "statistics", "validation"],
+  "properties": {
+    "test_id": {
+      "type": "string",
+      "description": "Unique identifier for this test run",
+      "pattern": "^[a-z0-9_]+$",
+      "examples": ["compute_cornell_64_voxelraymarch_none_1"]
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when test was run"
+    },
+    "configuration": {
+      "type": "object",
+      "description": "Test configuration parameters",
+      "required": ["pipeline", "shader", "resolution", "scene_type", "screen_width", "screen_height"],
+      "properties": {
+        "pipeline": {
+          "type": "string",
+          "enum": ["compute", "fragment", "hardware_rt"],
+          "description": "Rendering pipeline type"
+        },
+        "shader": {
+          "type": "string",
+          "description": "Shader filename used for rendering",
+          "examples": ["VoxelRayMarch.comp", "VoxelRayMarch_Compressed.comp", "VoxelRT.rchit"]
+        },
+        "resolution": {
+          "type": "integer",
+          "minimum": 16,
+          "maximum": 2048,
+          "description": "Voxel grid resolution (cubic)",
+          "examples": [64, 128, 256, 512]
+        },
+        "scene_type": {
+          "type": "string",
+          "enum": ["cornell", "noise", "tunnels", "cityscape", "custom"],
+          "description": "Scene/voxel data type"
+        },
+        "screen_width": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Render target width in pixels"
+        },
+        "screen_height": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Render target height in pixels"
+        },
+        "optimizations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of enabled optimizations",
+          "examples": [["brick_pooling", "lod"], []]
+        },
+        "blas_build_time_ms": {
+          "type": "number",
+          "minimum": 0,
+          "description": "BLAS (Bottom-Level Acceleration Structure) build time in milliseconds (hardware_rt only)"
+        },
+        "tlas_build_time_ms": {
+          "type": "number",
+          "minimum": 0,
+          "description": "TLAS (Top-Level Acceleration Structure) build time in milliseconds (hardware_rt only)"
+        }
+      }
+    },
+    "device": {
+      "type": "object",
+      "description": "GPU and driver information",
+      "required": ["gpu", "driver", "vram_gb"],
+      "properties": {
+        "gpu": {
+          "type": "string",
+          "description": "GPU device name",
+          "examples": ["NVIDIA GeForce RTX 3060 Laptop GPU", "AMD Radeon RX 7900 XTX"]
+        },
+        "driver": {
+          "type": "string",
+          "description": "GPU driver version string"
+        },
+        "vram_gb": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Total VRAM in gigabytes"
+        },
+        "bandwidth_estimated": {
+          "type": "boolean",
+          "description": "True if bandwidth values are estimated (no hardware counters available)"
+        }
+      }
+    },
+    "frames": {
+      "type": "array",
+      "description": "Per-frame metrics during measurement period",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["frame_num", "frame_time_ms", "fps"],
+        "properties": {
+          "frame_num": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Frame index (0-indexed from start of measurement)"
+          },
+          "frame_time_ms": {
+            "type": "number",
+            "minimum": 0,
+            "description": "CPU frame time in milliseconds"
+          },
+          "fps": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Frames per second (1000 / frame_time_ms)"
+          },
+          "bandwidth_read_gbps": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Memory read bandwidth in GB/s"
+          },
+          "bandwidth_write_gbps": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Memory write bandwidth in GB/s"
+          },
+          "ray_throughput_mrays": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Ray throughput in million rays per second"
+          },
+          "vram_mb": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Current VRAM usage in megabytes"
+          },
+          "avg_voxels_per_ray": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Average octree node iterations per ray (ESVO traversal depth)"
+          },
+          "gpu_utilization": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100,
+            "description": "GPU compute utilization percentage (NVML, NVIDIA only)"
+          },
+          "memory_utilization": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100,
+            "description": "GPU memory controller utilization percentage (NVML)"
+          },
+          "gpu_temperature_c": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "GPU temperature in Celsius (NVML)"
+          },
+          "gpu_power_w": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "GPU power usage in watts (NVML)"
+          },
+          "cache_hit_rate": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "SVO node access cache locality rate (0.0-1.0, higher is better)"
+          }
+        }
+      }
+    },
+    "statistics": {
+      "type": "object",
+      "description": "Aggregate statistics over all measurement frames",
+      "properties": {
+        "frame_time_mean": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Mean frame time in milliseconds"
+        },
+        "frame_time_stddev": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Standard deviation of frame time"
+        },
+        "frame_time_p99": {
+          "type": "number",
+          "minimum": 0,
+          "description": "99th percentile frame time"
+        },
+        "fps_mean": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Mean FPS over measurement period"
+        },
+        "bandwidth_mean": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Mean read bandwidth in GB/s"
+        }
+      }
+    },
+    "validation": {
+      "type": "object",
+      "description": "Sanity check results for data quality",
+      "required": ["valid", "error_count", "warning_count"],
+      "properties": {
+        "valid": {
+          "type": "boolean",
+          "description": "True if no validation errors (warnings allowed)"
+        },
+        "error_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of validation errors"
+        },
+        "warning_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of validation warnings"
+        },
+        "checks": {
+          "type": "array",
+          "description": "Individual check results (only present if issues found)",
+          "items": {
+            "type": "object",
+            "required": ["check", "metric", "message", "severity"],
+            "properties": {
+              "check": {
+                "type": "string",
+                "description": "Check identifier",
+                "examples": ["negative_frame_time", "low_fps", "missing_bandwidth"]
+              },
+              "metric": {
+                "type": "string",
+                "description": "Metric name that failed the check"
+              },
+              "message": {
+                "type": "string",
+                "description": "Human-readable description of the issue"
+              },
+              "severity": {
+                "type": "string",
+                "enum": ["info", "warning", "error"],
+                "description": "Severity level of the check result"
+              },
+              "affected_frames": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Number of frames affected by this issue"
+              },
+              "failure_rate": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "description": "Percentage of frames failing this check (0.0-1.0)"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

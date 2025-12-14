@@ -26,14 +26,19 @@ namespace Vixen::RenderGraph::Debug {
  *     uint rayHitCount;
  *     uint rayMissCount;
  *     uint earlyTerminations;
+ *     uint nodeVisitsPerLevel[16];
+ *     uint cacheHitsPerLevel[16];
+ *     uint cacheMissesPerLevel[16];
  *     uint _padding[8];
  * } shaderCounters;
  * @endcode
  *
  * All counters are atomically incremented by shader invocations.
- * Total buffer size: 64 bytes (16 uint32_t values)
+ * Total buffer size: 256 bytes (64 uint32_t values)
  */
 struct GPUShaderCounters {
+    static constexpr size_t MAX_SVO_LEVELS = 16;
+
     uint32_t totalVoxelsTraversed = 0;    ///< Total voxels traversed across all rays
     uint32_t totalRaysCast = 0;           ///< Total rays cast this frame
     uint32_t totalNodesVisited = 0;       ///< Octree nodes visited
@@ -42,6 +47,12 @@ struct GPUShaderCounters {
     uint32_t rayHitCount = 0;             ///< Rays that hit geometry
     uint32_t rayMissCount = 0;            ///< Rays that missed
     uint32_t earlyTerminations = 0;       ///< Rays that hit max iterations
+
+    // Per-level SVO statistics (for cache locality analysis)
+    uint32_t nodeVisitsPerLevel[MAX_SVO_LEVELS] = {};   ///< Node visits per octree level
+    uint32_t cacheHitsPerLevel[MAX_SVO_LEVELS] = {};    ///< Consecutive/sibling accesses
+    uint32_t cacheMissesPerLevel[MAX_SVO_LEVELS] = {};  ///< Random accesses
+
     uint32_t _padding[8] = {0};           ///< Cache line alignment
 
     /**
@@ -56,6 +67,9 @@ struct GPUShaderCounters {
         rayHitCount = 0;
         rayMissCount = 0;
         earlyTerminations = 0;
+        std::fill(std::begin(nodeVisitsPerLevel), std::end(nodeVisitsPerLevel), 0u);
+        std::fill(std::begin(cacheHitsPerLevel), std::end(cacheHitsPerLevel), 0u);
+        std::fill(std::begin(cacheMissesPerLevel), std::end(cacheMissesPerLevel), 0u);
         std::fill(std::begin(_padding), std::end(_padding), 0u);
     }
 
@@ -90,10 +104,32 @@ struct GPUShaderCounters {
             ? static_cast<float>(rayHitCount) / static_cast<float>(totalRaysCast)
             : 0.0f;
     }
+
+    /**
+     * @brief Get cache hit rate for a specific SVO level (0.0-1.0)
+     */
+    float GetCacheHitRateForLevel(size_t level) const {
+        if (level >= MAX_SVO_LEVELS) return 0.0f;
+        uint32_t total = cacheHitsPerLevel[level] + cacheMissesPerLevel[level];
+        return total > 0 ? static_cast<float>(cacheHitsPerLevel[level]) / static_cast<float>(total) : 0.0f;
+    }
+
+    /**
+     * @brief Get overall cache hit rate across all levels (0.0-1.0)
+     */
+    float GetOverallCacheHitRate() const {
+        uint32_t totalHits = 0, totalMisses = 0;
+        for (size_t i = 0; i < MAX_SVO_LEVELS; ++i) {
+            totalHits += cacheHitsPerLevel[i];
+            totalMisses += cacheMissesPerLevel[i];
+        }
+        uint32_t total = totalHits + totalMisses;
+        return total > 0 ? static_cast<float>(totalHits) / static_cast<float>(total) : 0.0f;
+    }
 };
 
-// Ensure struct matches GLSL layout exactly: 64 bytes
-static_assert(sizeof(GPUShaderCounters) == 64, "GPUShaderCounters must be 64 bytes to match GLSL layout");
+// Ensure struct matches GLSL layout exactly: 256 bytes (8 + 16*3 + 8 = 64 uint32_t values)
+static_assert(sizeof(GPUShaderCounters) == 256, "GPUShaderCounters must be 256 bytes to match GLSL layout");
 static_assert(alignof(GPUShaderCounters) == 4, "GPUShaderCounters must be 4-byte aligned");
 
 /**

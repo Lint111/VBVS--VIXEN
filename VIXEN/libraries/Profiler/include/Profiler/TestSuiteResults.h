@@ -2,6 +2,7 @@
 
 #include "FrameMetrics.h"
 #include "DeviceCapabilities.h"
+#include "MetricsSanityChecker.h"
 #include <vector>
 #include <string>
 #include <map>
@@ -16,12 +17,22 @@ struct TestRunResults {
     std::map<std::string, AggregateStats> aggregates;
     std::chrono::system_clock::time_point startTime;
     std::chrono::system_clock::time_point endTime;
+    ValidationResult validation;  // Sanity check results
+
+    // Acceleration structure build timing (hardware_rt pipeline only)
+    float blasBuildTimeMs = 0.0f;
+    float tlasBuildTimeMs = 0.0f;
 
     /// Get duration of this test run
     double GetDurationSeconds() const;
 
-    /// Check if test completed successfully (has measurement frames)
-    bool IsValid() const { return frames.size() >= config.measurementFrames; }
+    /// Check if test completed successfully (has measurement frames and passes validation)
+    bool IsValid() const {
+        return frames.size() >= config.measurementFrames && validation.IsValid();
+    }
+
+    /// Check if test completed with warnings but no errors
+    bool HasWarnings() const { return validation.warningCount > 0; }
 };
 
 /// Aggregated results from a complete test suite (multiple configurations)

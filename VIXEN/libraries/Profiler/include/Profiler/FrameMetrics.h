@@ -73,6 +73,13 @@ struct ShaderCounters {
     /// Rays terminated early (e.g., max depth, max iterations)
     uint64_t earlyTerminations = 0;
 
+    /// Per-level SVO node visit statistics (for cache locality analysis)
+    /// MAX_SVO_LEVELS = 16 to match shader definition
+    static constexpr size_t MAX_SVO_LEVELS = 16;
+    uint64_t nodeVisitsPerLevel[MAX_SVO_LEVELS] = {};      ///< Node visits per octree level
+    uint64_t cacheHitsPerLevel[MAX_SVO_LEVELS] = {};       ///< Consecutive/sibling accesses (cache-friendly)
+    uint64_t cacheMissesPerLevel[MAX_SVO_LEVELS] = {};     ///< Random accesses (cache-unfriendly)
+
     /// Compute derived metrics
     float GetAvgVoxelsPerRay() const {
         return totalRaysCast > 0 ? static_cast<float>(totalVoxelsTraversed) / totalRaysCast : 0.0f;
@@ -91,6 +98,32 @@ struct ShaderCounters {
         return totalPotential > 0 ? static_cast<float>(totalEmptySpaceSkipped) / totalPotential : 0.0f;
     }
 
+    /// Get cache hit rate for a specific SVO level (0.0-1.0)
+    float GetCacheHitRateForLevel(size_t level) const {
+        if (level >= MAX_SVO_LEVELS) return 0.0f;
+        uint64_t total = cacheHitsPerLevel[level] + cacheMissesPerLevel[level];
+        return total > 0 ? static_cast<float>(cacheHitsPerLevel[level]) / total : 0.0f;
+    }
+
+    /// Get overall cache hit rate across all levels (0.0-1.0)
+    float GetOverallCacheHitRate() const {
+        uint64_t totalHits = 0, totalMisses = 0;
+        for (size_t i = 0; i < MAX_SVO_LEVELS; ++i) {
+            totalHits += cacheHitsPerLevel[i];
+            totalMisses += cacheMissesPerLevel[i];
+        }
+        uint64_t total = totalHits + totalMisses;
+        return total > 0 ? static_cast<float>(totalHits) / total : 0.0f;
+    }
+
+    /// Get the deepest SVO level that had any visits
+    int GetMaxActiveLevel() const {
+        for (int i = MAX_SVO_LEVELS - 1; i >= 0; --i) {
+            if (nodeVisitsPerLevel[i] > 0) return i;
+        }
+        return -1;
+    }
+
     /// Reset all counters to zero (call at frame start)
     void Reset() {
         totalVoxelsTraversed = 0;
@@ -101,6 +134,12 @@ struct ShaderCounters {
         rayHitCount = 0;
         rayMissCount = 0;
         earlyTerminations = 0;
+        // Reset per-level stats
+        for (size_t i = 0; i < MAX_SVO_LEVELS; ++i) {
+            nodeVisitsPerLevel[i] = 0;
+            cacheHitsPerLevel[i] = 0;
+            cacheMissesPerLevel[i] = 0;
+        }
     }
 
     /// Check if counters contain valid data (at least one ray was cast)
@@ -134,6 +173,13 @@ struct FrameMetrics {
 
     // Bandwidth estimation info
     bool bandwidthEstimated = false;    // True if bandwidth is estimated (no HW counters)
+
+    // GPU utilization metrics (from NVML when available)
+    uint32_t gpuUtilization = 0;        // GPU compute utilization (0-100%)
+    uint32_t memoryUtilization = 0;     // Memory controller utilization (0-100%)
+    uint32_t gpuTemperature = 0;        // GPU temperature in Celsius
+    uint32_t gpuPowerW = 0;             // GPU power usage in watts
+    bool nvmlAvailable = false;         // True if NVML metrics are valid
 
     // GPU shader counters (when available)
     // These require GPU-side atomic counters and readback - see ShaderCounters documentation

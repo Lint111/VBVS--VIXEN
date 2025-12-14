@@ -329,6 +329,10 @@ private:
     // Frame capture for debugging
     std::unique_ptr<FrameCapture> frameCapture_;
     bool midFrameCaptured_ = false;  // Track if mid-frame capture done for current test
+
+    // Acceleration structure build timing (captured during graph setup)
+    float currentBlasBuildTimeMs_ = 0.0f;
+    float currentTlasBuildTimeMs_ = 0.0f;
 };
 
 } // namespace Vixen::Profiler

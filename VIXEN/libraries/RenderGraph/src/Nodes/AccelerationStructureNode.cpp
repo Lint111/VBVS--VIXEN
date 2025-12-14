@@ -220,6 +220,8 @@ void AccelerationStructureNode::CreateAccelStructViaCacher(VoxelAABBData& aabbDa
     accelData_.scratchBuffer = src.scratchBuffer;
     accelData_.scratchMemory = src.scratchMemory;
     accelData_.primitiveCount = src.primitiveCount;
+    accelData_.blasBuildTimeMs = src.blasBuildTimeMs;
+    accelData_.tlasBuildTimeMs = src.tlasBuildTimeMs;
 
     NODE_LOG_INFO("AccelerationStructureNode: AS created via cacher: " +
                   std::to_string(accelData_.primitiveCount) + " primitives");
