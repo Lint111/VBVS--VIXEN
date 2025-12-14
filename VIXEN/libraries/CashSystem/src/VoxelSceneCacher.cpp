@@ -589,7 +589,10 @@ void VoxelSceneCacher::BuildOctree(VoxelSceneData& data) {
     std::memcpy(data.brickDataCPU.data(), sparseBrickData.data(), data.brickDataCPU.size());
     data.brickCount = static_cast<uint32_t>(brickViews.size());
 
-    // Setup OctreeConfig
+    // Setup OctreeConfig - zero-initialize first to ensure padding fields
+    // are zero (Release builds don't zero-initialize, causing GPU hangs from garbage UBO data)
+    std::memset(&data.configCPU, 0, sizeof(OctreeConfig));
+
     data.configCPU.esvoMaxScale = 22;
     data.configCPU.userMaxLevels = maxLevels;
     data.configCPU.brickDepthLevels = brickDepth;

@@ -171,7 +171,7 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/benchmark_schema.json)
     )
 endif()
 
-# Copy schema to binaries folder for development use
+# Copy schema and config to binaries folder for development use
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/benchmark_schema.json)
     add_custom_command(TARGET vixen_benchmark POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -181,4 +181,118 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/benchmark_schema.json)
     )
 endif()
 
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/benchmark_config.json)
+    add_custom_command(TARGET vixen_benchmark POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${CMAKE_CURRENT_SOURCE_DIR}/benchmark_config.json
+            $<TARGET_FILE_DIR:vixen_benchmark>
+        COMMENT "Copying benchmark_config.json to output directory"
+    )
+endif()
+
+# ============================================================================
+# Standalone Benchmark Package Target
+# ============================================================================
+# Creates VixenBenchmark/ directory with all required files for distribution
+# Usage: cmake --build build --config Release --target benchmark_package
+#
+# This target:
+# - Copies vixen_benchmark.exe to VixenBenchmark/
+# - Copies TBB DLL (correct Debug/Release version based on build config)
+# - Copies benchmark_config.json and benchmark_schema.json
+# - Copies shader sources for runtime compilation
+# - Creates README.txt with usage instructions
+
+set(BENCHMARK_PACKAGE_DIR "${CMAKE_SOURCE_DIR}/VixenBenchmark")
+
+# Create the package target
+add_custom_target(benchmark_package
+    DEPENDS vixen_benchmark
+    COMMENT "Creating standalone benchmark package in VixenBenchmark/"
+)
+
+# Create directories and copy all files in one command block
+add_custom_command(TARGET benchmark_package POST_BUILD
+    # Create directories
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${BENCHMARK_PACKAGE_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${BENCHMARK_PACKAGE_DIR}/shaders"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${BENCHMARK_PACKAGE_DIR}/cache"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${BENCHMARK_PACKAGE_DIR}/generated"
+    # Copy executable
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:vixen_benchmark>"
+        "${BENCHMARK_PACKAGE_DIR}/"
+    # Copy config files
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/benchmark_config.json"
+        "${BENCHMARK_PACKAGE_DIR}/"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/benchmark_schema.json"
+        "${BENCHMARK_PACKAGE_DIR}/"
+    COMMENT "Copying benchmark executable and config files"
+)
+
+# Copy TBB DLL only for Debug builds (Release links statically)
+# Use generator expression to only execute copy when file is a DLL
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET benchmark_package POST_BUILD
+        COMMAND ${CMAKE_COMMAND}
+            "-DSRC=$<TARGET_FILE:TBB::tbb>"
+            "-DDST=${BENCHMARK_PACKAGE_DIR}/"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CopyIfDll.cmake"
+        COMMENT "Copying TBB DLL if needed ($<CONFIG>)"
+    )
+endif()
+
+# Copy shader sources for runtime compilation
+add_custom_command(TARGET benchmark_package POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_SOURCE_DIR}/shaders"
+        "${BENCHMARK_PACKAGE_DIR}/shaders"
+    COMMENT "Copying shader sources"
+)
+
+# Generate README for the package (written at configure time, copied at build time)
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/README_package.txt" [=[
+VIXEN Benchmark Tool - Standalone Package
+==========================================
+
+Usage:
+  vixen_benchmark.exe [options]
+
+Quick Start:
+  vixen_benchmark.exe --quick --render    # Quick visual test (12 configs)
+  vixen_benchmark.exe --quick --headless  # Quick headless test
+  vixen_benchmark.exe --full --render     # Full matrix (180 configs)
+
+Options:
+  --help              Show all options
+  --list-gpus         List available GPUs
+  --runs N            Run each config N times for statistical robustness
+  --config FILE       Use custom JSON configuration
+  --output DIR        Output directory for results
+
+Results are saved to: Downloads/VIXEN_Benchmarks/
+
+Package Contents:
+  vixen_benchmark.exe   - Benchmark executable
+  tbb12*.dll            - Threading Building Blocks library
+  benchmark_config.json - Default test configuration
+  benchmark_schema.json - JSON schema for result validation
+  shaders/              - GLSL shader sources (compiled at runtime)
+  cache/                - Shader compilation cache (auto-populated)
+  generated/            - Generated files (auto-populated)
+]=])
+
+add_custom_command(TARGET benchmark_package POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_BINARY_DIR}/README_package.txt"
+        "${BENCHMARK_PACKAGE_DIR}/README.txt"
+    COMMENT "Creating README.txt"
+)
+
+# Set folder for Visual Studio
+set_target_properties(benchmark_package PROPERTIES FOLDER "Application")
+
 message(STATUS "VIXEN Benchmark: Configured headless compute benchmark tool")
+message(STATUS "VIXEN Benchmark: Use 'cmake --build build --config Release --target benchmark_package' to create standalone package")

@@ -562,6 +562,14 @@ public:
 
     bool IsEmpty() const { return mode_ == Mode::Empty; }
 
+    // Clear all storage and reset to empty state
+    void Clear() {
+        valueStorage_.reset();
+        refPtr_ = nullptr;
+        constRefPtr_ = nullptr;
+        mode_ = Mode::Empty;
+    }
+
 private:
     std::any valueStorage_;  // Type-erased value storage (for Mode::Value)
     void* refPtr_ = nullptr;  // For Mode::Reference and Mode::Pointer
@@ -599,6 +607,29 @@ public:
     // Allow moving
     Resource(Resource&&) noexcept = default;
     Resource& operator=(Resource&&) noexcept = default;
+
+    /**
+     * @brief Clear resource handle and invalidate descriptor extractor
+     *
+     * CRITICAL: Must be called BEFORE destroying wrapper objects that were
+     * stored via SetHandle with conversion_type pattern. The descriptor extractor
+     * lambda captures a pointer to the wrapper object - if the wrapper is freed
+     * before Clear() is called, subsequent GetDescriptorHandle() calls will
+     * access freed memory (undefined behavior).
+     *
+     * Usage in CleanupImpl:
+     *   // First clear the output resources to invalidate extractors
+     *   Resource* res = GetOutput(MyConfig::DEBUG_BUFFER, 0);
+     *   if (res) res->Clear();
+     *   // Now safe to destroy the wrapper
+     *   debugBuffer_.reset();
+     */
+    void Clear() {
+        storage_.Clear();
+        descriptorExtractor_ = nullptr;
+        interfaces_.clear();
+        isSet_ = false;
+    }
 
     // Type-to-ResourceType mapping for automatic type deduction
     // Handles all descriptor handle types from DescriptorHandleVariant

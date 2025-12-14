@@ -78,8 +78,9 @@ layout(std140, binding = 5) uniform OctreeConfigUBO {
 // ============================================================================
 // SHADER COUNTERS (Performance Metrics)
 // ============================================================================
-// Shader counter buffer requires CPU-side binding via DescriptorResourceGatherer.
-// Both uncompressed and compressed shaders use binding 8 for ShaderCounters.
+// Shader counter buffer for collecting ray traversal statistics.
+// Enabled by default - ShaderCountersBuffer bound at binding 8 by VoxelGridNode.
+// Counters are atomically incremented by each invocation and read back by CPU.
 #define ENABLE_SHADER_COUNTERS
 #define SHADER_COUNTERS_BINDING 8
 #include "ShaderCounters.glsl"

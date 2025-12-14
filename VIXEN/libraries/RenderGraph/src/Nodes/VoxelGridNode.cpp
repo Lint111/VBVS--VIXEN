@@ -149,27 +149,27 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
     // Each ray captures up to 64 steps * 48 bytes + 16 byte header = 3088 bytes/ray
     // 256 rays = ~790KB buffer, reasonable for debug capture
     // Uses RayTraceBuffer directly - has conversion_type = VkBuffer for auto descriptor extraction
+    // NOTE: These buffers are REQUIRED by shaders (binding 4 and 8) - failure to create them
+    // will cause VK_ERROR_DEVICE_LOST when the shader tries to access null buffers.
     constexpr uint32_t RAY_TRACE_CAPACITY = 256;
     debugCaptureResource_ = std::make_unique<Debug::RayTraceBuffer>(RAY_TRACE_CAPACITY);
     if (!debugCaptureResource_->Create(vulkanDevice->device, *vulkanDevice->gpu)) {
-        NODE_LOG_DEBUG("[VoxelGridNode::CompileImpl] WARNING: Failed to create ray trace buffer");
-        debugCaptureResource_.reset();
-    } else {
-        NODE_LOG_DEBUG("[VoxelGridNode::CompileImpl] Created ray trace buffer: " +
-                      std::to_string(RAY_TRACE_CAPACITY) + " rays, buffer=" +
-                      std::to_string(reinterpret_cast<uint64_t>(debugCaptureResource_->GetVkBuffer())));
+        NODE_LOG_ERROR("[VoxelGridNode::CompileImpl] FATAL: Failed to create ray trace buffer (binding 4)");
+        throw std::runtime_error("[VoxelGridNode] Failed to create ray trace buffer - shader binding 4 would be null");
     }
+    NODE_LOG_DEBUG("[VoxelGridNode::CompileImpl] Created ray trace buffer: " +
+                  std::to_string(RAY_TRACE_CAPACITY) + " rays, buffer=" +
+                  std::to_string(reinterpret_cast<uint64_t>(debugCaptureResource_->GetVkBuffer())));
 
     // Create shader counters buffer for avgVoxelsPerRay metrics
     // Uses ShaderCountersBuffer directly - has conversion_type = VkBuffer for auto descriptor extraction
     shaderCountersResource_ = std::make_unique<Debug::ShaderCountersBuffer>();
     if (!shaderCountersResource_->Create(vulkanDevice->device, *vulkanDevice->gpu)) {
-        NODE_LOG_DEBUG("[VoxelGridNode::CompileImpl] WARNING: Failed to create shader counters buffer");
-        shaderCountersResource_.reset();
-    } else {
-        NODE_LOG_DEBUG("[VoxelGridNode::CompileImpl] Created shader counters buffer: " +
-                      std::to_string(reinterpret_cast<uint64_t>(shaderCountersResource_->GetVkBuffer())));
+        NODE_LOG_ERROR("[VoxelGridNode::CompileImpl] FATAL: Failed to create shader counters buffer (binding 8)");
+        throw std::runtime_error("[VoxelGridNode] Failed to create shader counters buffer - shader binding 8 would be null");
     }
+    NODE_LOG_DEBUG("[VoxelGridNode::CompileImpl] Created shader counters buffer: " +
+                  std::to_string(reinterpret_cast<uint64_t>(shaderCountersResource_->GetVkBuffer())));
 
     // Output octree buffers from cached scene data
     VkBuffer octreeNodesBuffer = cachedSceneData_->esvoNodesBuffer;
@@ -246,10 +246,18 @@ void VoxelGridNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // Re-output persistent resources every frame for variadic connections
     // When swapchain recompiles, descriptor gatherer re-queries these outputs
 
+    // Skip execution if resources were cleaned up (pending recompile)
+    // This guards against dispatching with null/invalid buffer handles
+    if (!cachedSceneData_ || !shaderCountersResource_ || !debugCaptureResource_) {
+        NODE_LOG_DEBUG("[VoxelGridNode::ExecuteImpl] Skipping - resources not available (pending recompile)");
+        return;
+    }
+
     NODE_LOG_INFO("=== VoxelGridNode::ExecuteImpl START ===");
 
     // Buffers are stored in cachedSceneData_, accessed directly for output
-    if (cachedSceneData_) {
+    // Validate buffer handles before outputting (guards against destroyed buffers)
+    if (cachedSceneData_ && cachedSceneData_->esvoNodesBuffer != VK_NULL_HANDLE) {
         NODE_LOG_INFO("  octreeNodesBuffer handle: " + std::to_string(reinterpret_cast<uint64_t>(cachedSceneData_->esvoNodesBuffer)));
         NODE_LOG_INFO("  octreeBricksBuffer handle: " + std::to_string(reinterpret_cast<uint64_t>(cachedSceneData_->brickDataBuffer)));
         NODE_LOG_INFO("  octreeMaterialsBuffer handle: " + std::to_string(reinterpret_cast<uint64_t>(cachedSceneData_->materialsBuffer)));
@@ -269,6 +277,9 @@ void VoxelGridNode::ExecuteImpl(TypedExecuteContext& ctx) {
         if (cachedSceneData_->brickGridLookupBuffer != VK_NULL_HANDLE) {
             ctx.Out(VoxelGridNodeConfig::BRICK_GRID_LOOKUP_BUFFER, cachedSceneData_->brickGridLookupBuffer);
         }
+    } else {
+        NODE_LOG_WARNING("[VoxelGridNode::ExecuteImpl] Core buffers are null - skipping output");
+        return;
     }
 
     // Re-output cached scene data for downstream nodes
@@ -346,6 +357,28 @@ void VoxelGridNode::CleanupImpl(TypedCleanupContext& ctx) {
 
     vkDeviceWaitIdle(vulkanDevice->device);
     DestroyOctreeBuffers();
+
+    // CRITICAL FIX: Clear output Resources BEFORE destroying wrapper objects.
+    // The Resource objects contain descriptorExtractor_ lambdas that capture
+    // pointers to our wrapper objects (debugCaptureResource_, shaderCountersResource_).
+    // If we destroy the wrappers without clearing Resources first, those lambdas
+    // will hold dangling pointers, causing use-after-free when downstream nodes
+    // call GetDescriptorHandle() during recompilation.
+    //
+    // This fixes validation errors:
+    //   "vkUpdateDescriptorSets(): Invalid VkBuffer Object" (stale handles)
+    //   "storage buffer descriptor using buffer VkBuffer 0x0" (freed memory)
+    constexpr uint32_t DEBUG_CAPTURE_INDEX = VoxelGridNodeConfig::DEBUG_CAPTURE_BUFFER_Slot::index;
+    constexpr uint32_t SHADER_COUNTERS_INDEX = VoxelGridNodeConfig::SHADER_COUNTERS_BUFFER_Slot::index;
+
+    if (Resource* debugRes = GetOutput(DEBUG_CAPTURE_INDEX, 0)) {
+        debugRes->Clear();
+        NODE_LOG_DEBUG("[VoxelGridNode::CleanupImpl] Cleared DEBUG_CAPTURE_BUFFER resource");
+    }
+    if (Resource* countersRes = GetOutput(SHADER_COUNTERS_INDEX, 0)) {
+        countersRes->Clear();
+        NODE_LOG_DEBUG("[VoxelGridNode::CleanupImpl] Cleared SHADER_COUNTERS_BUFFER resource");
+    }
 
     // Clean up debug capture resource
     if (debugCaptureResource_ && debugCaptureResource_->IsValid()) {

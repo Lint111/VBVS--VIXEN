@@ -204,15 +204,18 @@ void DescriptorResourceGathererNode::ExecuteImpl(VariadicExecuteContext& ctx) {
 
         uint8_t roleVal = static_cast<uint8_t>(slotInfo->slotRole);
         bool hasExec = HasExecute(slotInfo->slotRole);
+        bool hasDep = HasDependency(slotInfo->slotRole);
         NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Execute] Slot " + std::to_string(i) +
                       " (binding=" + std::to_string(slotInfo->binding) + "): role=" + std::to_string(roleVal) +
                       " (Dependency=" + std::to_string(roleVal & static_cast<uint8_t>(SlotRole::Dependency)) +
                       ", Execute=" + std::to_string(roleVal & static_cast<uint8_t>(SlotRole::Execute)) +
                       "), hasExecute=" + (hasExec ? "YES" : "NO"));
 
-        if (!hasExec) {
-            continue;  // Skip Dependency-only slots (already gathered in Compile)
-        }
+        // CRITICAL FIX: Refresh ALL slots every frame, not just Execute-role.
+        // Dependency-role slots can become stale if source node was recompiled
+        // between initial Compile and current Execute (e.g., swapchain resize).
+        // Previously only Execute-role slots were refreshed, causing stale VkBuffer
+        // handles from destroyed buffers to be used in vkUpdateDescriptorSets.
 
         hasTransients = true;
 

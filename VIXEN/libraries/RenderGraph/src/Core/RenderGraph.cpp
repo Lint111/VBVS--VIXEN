@@ -121,6 +121,9 @@ RenderGraph::~RenderGraph() {
         if (deviceSyncSubscription != 0) {
             messageBus->Unsubscribe(deviceSyncSubscription);
         }
+        if (windowCloseSubscription != 0) {
+            messageBus->Unsubscribe(windowCloseSubscription);
+        }
     }
 
     // Flush deferred destructions before cleanup
@@ -346,7 +349,10 @@ void RenderGraph::Clear() {
 }
 
 void RenderGraph::HandleWindowClose() {
-    GRAPH_LOG_INFO("[RenderGraph] Received WindowCloseEvent - initiating graceful cleanup");
+    // Defensive: validate mainLogger before any logging (guards against use-after-free)
+    if (mainLogger && reinterpret_cast<uintptr_t>(mainLogger) > 0x10000) {
+        GRAPH_LOG_INFO("[RenderGraph] Received WindowCloseEvent - initiating graceful cleanup");
+    }
 
     // Wait for GPU to finish all work before cleanup
     for (const auto& inst : instances) {
@@ -879,6 +885,10 @@ void RenderGraph::GeneratePipelines() {
         for (auto& callback : postNodeCompileCallbacks) {
             callback(instance);
         }
+
+        // Execute lifecycle hooks for PostCompile phase
+        // This includes ConnectVariadic PostCompile hooks that populate slot resources
+        lifecycleHooks.ExecuteNodeHooks(NodeLifecyclePhase::PostCompile, instance);
 
         instance->SetState(NodeState::Compiled);
     }
