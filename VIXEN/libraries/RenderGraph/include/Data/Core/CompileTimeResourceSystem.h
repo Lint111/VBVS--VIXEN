@@ -254,6 +254,80 @@ template<typename T>
 using ConversionTypeOf_t = typename ConversionTypeOf<T>::type;
 
 // ============================================================================
+// INCOMPLETE TYPE DETECTION (SFINAE GUARD)
+// ============================================================================
+/**
+ * @brief Detect if a type is complete (fully defined) vs incomplete (forward-declared)
+ *
+ * CRITICAL: This is used to catch the case where a wrapper type with conversion_type
+ * is forward-declared instead of fully included. When forward-declared:
+ * - HasConversionType_v<T> silently returns false (SFINAE selects primary template)
+ * - descriptorExtractor_ is NOT captured
+ * - GetDescriptorHandle() returns stale handles → validation errors
+ *
+ * See: HacknPlan #61 - 10 hours debugging due to this silent failure
+ *
+ * Usage: static_assert(IsCompleteType_v<T>, "Type must be complete (include full header, not forward declaration)");
+ */
+template<typename T, typename = void>
+struct IsCompleteType : std::false_type {};
+
+template<typename T>
+struct IsCompleteType<T, std::void_t<decltype(sizeof(T))>> : std::true_type {};
+
+template<typename T>
+inline constexpr bool IsCompleteType_v = IsCompleteType<T>::value;
+
+/**
+ * @brief Check if a class type LOOKS like it should be a wrapper (heuristic)
+ *
+ * This is a heuristic to help catch misuse. A type is "wrapper-like" if:
+ * - It's a class/struct type
+ * - It's NOT a Vulkan handle (VkBuffer, etc.)
+ * - It's NOT a fundamental type
+ * - It's being passed as a pointer (T*)
+ *
+ * If a wrapper-like incomplete type is passed, we emit a compile error suggesting
+ * the user check their includes.
+ */
+template<typename T>
+inline constexpr bool IsVulkanHandle_v =
+    std::is_same_v<T, VkBuffer> ||
+    std::is_same_v<T, VkImageView> ||
+    std::is_same_v<T, VkImage> ||
+    std::is_same_v<T, VkSampler> ||
+    std::is_same_v<T, VkBufferView> ||
+    std::is_same_v<T, VkCommandPool> ||
+    std::is_same_v<T, VkCommandBuffer> ||
+    std::is_same_v<T, VkDescriptorSet> ||
+    std::is_same_v<T, VkDescriptorPool> ||
+    std::is_same_v<T, VkDescriptorSetLayout> ||
+    std::is_same_v<T, VkPipeline> ||
+    std::is_same_v<T, VkPipelineLayout> ||
+    std::is_same_v<T, VkPipelineCache> ||
+    std::is_same_v<T, VkRenderPass> ||
+    std::is_same_v<T, VkFramebuffer> ||
+    std::is_same_v<T, VkShaderModule> ||
+    std::is_same_v<T, VkFence> ||
+    std::is_same_v<T, VkSemaphore> ||
+    std::is_same_v<T, VkEvent> ||
+    std::is_same_v<T, VkQueryPool> ||
+    std::is_same_v<T, VkDeviceMemory> ||
+    std::is_same_v<T, VkInstance> ||
+    std::is_same_v<T, VkPhysicalDevice> ||
+    std::is_same_v<T, VkDevice> ||
+    std::is_same_v<T, VkQueue> ||
+    std::is_same_v<T, VkSurfaceKHR> ||
+    std::is_same_v<T, VkSwapchainKHR> ||
+    std::is_same_v<T, VkAccelerationStructureKHR>;
+
+template<typename T>
+inline constexpr bool IsWrapperLikeType_v =
+    std::is_class_v<T> &&
+    !IsVulkanHandle_v<T> &&
+    !std::is_fundamental_v<T>;
+
+// ============================================================================
 // RECURSIVE COMPILE-TIME VALIDATION
 // ============================================================================
 
@@ -750,8 +824,51 @@ public:
         using PointeeT = std::conditional_t<std::is_pointer_v<CleanT>,
                                             std::remove_pointer_t<CleanT>,
                                             CleanT>;
+
+        // ============================================================================
+        // SFINAE GUARD: Detect incomplete types that might be missing conversion_type
+        // ============================================================================
+        // When a class type is forward-declared instead of fully defined, SFINAE causes
+        // HasConversionType_v to silently return false, even if the class HAS conversion_type.
+        // This leads to mysterious validation errors at runtime. See HacknPlan #61.
+        //
+        // We check:
+        // 1. If CleanT is NOT a Vulkan handle (VkBuffer, VkPipeline, etc.)
+        //    Note: Vulkan handles ARE pointer types (VkXxx_T*) so we must exclude them first
+        // 2. If passing a pointer to a class type (T* where T is a class)
+        // 3. If that class type is incomplete (forward-declared)
+        //
+        // If incomplete, we static_assert with a helpful message.
+        if constexpr (!IsVulkanHandle_v<CleanT> && std::is_pointer_v<CleanT> && std::is_class_v<PointeeT>) {
+            // For pointer-to-class types (excluding Vulkan handles), verify the pointee is complete
+            static_assert(IsCompleteType_v<PointeeT>,
+                "\n\n"
+                "================================================================================\n"
+                "COMPILE ERROR: Incomplete type passed to Resource::SetHandle()\n"
+                "================================================================================\n"
+                "\n"
+                "The type pointed to is forward-declared, not fully defined.\n"
+                "If this type has 'using conversion_type = VkBuffer/VkImageView/etc',\n"
+                "the SFINAE detection will SILENTLY FAIL, causing:\n"
+                "  - descriptorExtractor_ not being captured\n"
+                "  - GetDescriptorHandle() returning stale handles\n"
+                "  - 'Invalid VkBuffer Object' validation errors at runtime\n"
+                "\n"
+                "FIX: Include the full header in your NodeConfig.h file:\n"
+                "  #include \"Path/To/YourWrapper.h\"  // NOT forward declaration!\n"
+                "\n"
+                "See: HacknPlan #61, Vixen-Docs/01-Architecture/Type-System/conversion_type-Pattern.md\n"
+                "================================================================================\n"
+            );
+        }
+
         // Use the type trait (more reliable than inline requires)
         constexpr bool hasConversion = HasConversionType_v<PointeeT>;
+
+        // Runtime debug check: For wrapper-like types without conversion_type, we can't easily
+        // distinguish intentional (e.g., VulkanDevice*) from accidental (missing typedef).
+        // The compile-time IsCompleteType_v check above catches the forward-declaration case.
+        // For complete types without conversion_type, trust that it's intentional.
 
         if constexpr (HasConversionType_v<PointeeT>) {
             using ConversionTarget = ConversionTypeOf_t<PointeeT>;
