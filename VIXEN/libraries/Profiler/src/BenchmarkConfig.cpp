@@ -3,8 +3,198 @@
 #include <fstream>
 #include <sstream>
 #include <set>
+#include <cstdint>
+#include <iostream>
+
+// Platform-specific headers for memory queries
+#ifdef _WIN32
+#include <windows.h>
+#elif __linux__
+#include <sys/sysinfo.h>
+#include <unistd.h>
+#elif __APPLE__
+#include <sys/types.h>
+#include <sys/sysctl.h>
+#endif
+
+#include <vulkan/vulkan.h>
 
 namespace Vixen::Profiler {
+
+namespace {
+
+/// Estimate GPU memory requirements for a test configuration
+/// @param resolution Voxel grid resolution (e.g., 512)
+/// @param screenWidth Screen width in pixels
+/// @param screenHeight Screen height in pixels
+/// @return Estimated GPU memory in bytes
+uint64_t EstimateGPUMemory(uint32_t resolution, uint32_t screenWidth, uint32_t screenHeight) {
+    // Calculate voxel grid size
+    uint64_t voxelCount = static_cast<uint64_t>(resolution) * resolution * resolution;
+
+    // Laine-Karras SVO uses ~5 bytes per voxel on average
+    // Add safety margin of 1.5x for worst-case scenarios
+    uint64_t voxelGridMemory = voxelCount * 5 * 3 / 2;
+
+    // Swapchain images (assume 3 images, RGBA8)
+    uint64_t swapchainMemory = static_cast<uint64_t>(screenWidth) * screenHeight * 4 * 3;
+
+    // Additional buffers:
+    // - Descriptor sets and uniforms: ~50 MB
+    // - Shader counter buffers: ~1 MB
+    // - Command buffers and misc: ~50 MB
+    uint64_t additionalBuffers = 100 * 1024 * 1024;
+
+    // Staging buffers for data upload (1.2x voxel grid size)
+    uint64_t stagingMemory = voxelGridMemory * 12 / 10;
+
+    return voxelGridMemory + swapchainMemory + additionalBuffers + stagingMemory;
+}
+
+/// Estimate host memory requirements for a test configuration
+/// @param resolution Voxel grid resolution
+/// @param screenWidth Screen width in pixels
+/// @param screenHeight Screen height in pixels
+/// @return Estimated host memory in bytes
+uint64_t EstimateHostMemory(uint32_t resolution, uint32_t screenWidth, uint32_t screenHeight) {
+    // Voxel grid construction on CPU before upload
+    uint64_t voxelCount = static_cast<uint64_t>(resolution) * resolution * resolution;
+    uint64_t voxelBuildMemory = voxelCount * 8; // More memory during construction
+
+    // Frame capture buffers
+    uint64_t frameCaptureMemory = static_cast<uint64_t>(screenWidth) * screenHeight * 4;
+
+    // Metrics collection and storage
+    uint64_t metricsMemory = 50 * 1024 * 1024; // ~50 MB
+
+    return voxelBuildMemory + frameCaptureMemory + metricsMemory;
+}
+
+/// Get available GPU memory in bytes
+/// @param gpuIndex GPU index to query (0 = first GPU)
+/// @return Available GPU memory in bytes, or 0 if query fails
+uint64_t GetAvailableGPUMemory(uint32_t gpuIndex) {
+    // Create temporary Vulkan instance to query GPU memory
+    VkApplicationInfo appInfo{};
+    appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+    appInfo.pApplicationName = "VIXEN Memory Query";
+    appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
+    appInfo.apiVersion = VK_API_VERSION_1_3;
+
+    VkInstanceCreateInfo createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+    createInfo.pApplicationInfo = &appInfo;
+
+    VkInstance instance = VK_NULL_HANDLE;
+    VkResult result = vkCreateInstance(&createInfo, nullptr, &instance);
+    if (result != VK_SUCCESS || instance == VK_NULL_HANDLE) {
+        return 0;
+    }
+
+    // Enumerate physical devices
+    uint32_t deviceCount = 0;
+    vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
+    if (deviceCount == 0 || gpuIndex >= deviceCount) {
+        vkDestroyInstance(instance, nullptr);
+        return 0;
+    }
+
+    std::vector<VkPhysicalDevice> devices(deviceCount);
+    vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
+
+    VkPhysicalDevice physicalDevice = devices[gpuIndex];
+
+    // Query memory properties
+    VkPhysicalDeviceMemoryProperties memProps;
+    vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProps);
+
+    // Sum up device-local heap sizes
+    uint64_t totalVRAM = 0;
+    for (uint32_t i = 0; i < memProps.memoryHeapCount; ++i) {
+        if (memProps.memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) {
+            totalVRAM += memProps.memoryHeaps[i].size;
+        }
+    }
+
+    vkDestroyInstance(instance, nullptr);
+
+    // Return 80% of total VRAM as available (conservative estimate)
+    return totalVRAM * 8 / 10;
+}
+
+/// Get available host (system) memory in bytes
+/// @return Available system memory in bytes, or 0 if query fails
+uint64_t GetAvailableHostMemory() {
+#ifdef _WIN32
+    MEMORYSTATUSEX memStatus;
+    memStatus.dwLength = sizeof(memStatus);
+    if (GlobalMemoryStatusEx(&memStatus)) {
+        // Return 70% of available physical memory (conservative)
+        return memStatus.ullAvailPhys * 7 / 10;
+    }
+#elif __linux__
+    struct sysinfo si;
+    if (sysinfo(&si) == 0) {
+        // Return 70% of free memory (conservative)
+        return static_cast<uint64_t>(si.freeram) * si.mem_unit * 7 / 10;
+    }
+#elif __APPLE__
+    uint64_t memSize = 0;
+    size_t len = sizeof(memSize);
+    if (sysctlbyname("hw.memsize", &memSize, &len, NULL, 0) == 0) {
+        // Get free memory - on macOS we use a conservative 50%
+        return memSize / 2;
+    }
+#endif
+    return 0; // Unknown platform or query failed
+}
+
+/// Check if a test configuration would exceed available memory
+/// @param resolution Voxel grid resolution
+/// @param screenWidth Screen width
+/// @param screenHeight Screen height
+/// @param gpuIndex GPU index
+/// @param verbose Print memory info if true
+/// @return true if test should be skipped
+bool ShouldSkipTestForMemory(uint32_t resolution, uint32_t screenWidth, uint32_t screenHeight,
+                              uint32_t gpuIndex, bool verbose) {
+    uint64_t estimatedGPU = EstimateGPUMemory(resolution, screenWidth, screenHeight);
+    uint64_t estimatedHost = EstimateHostMemory(resolution, screenWidth, screenHeight);
+
+    uint64_t availableGPU = GetAvailableGPUMemory(gpuIndex);
+    uint64_t availableHost = GetAvailableHostMemory();
+
+    // Convert to GB for logging
+    double estimatedGPU_GB = estimatedGPU / (1024.0 * 1024.0 * 1024.0);
+    double estimatedHost_GB = estimatedHost / (1024.0 * 1024.0 * 1024.0);
+    double availableGPU_GB = availableGPU / (1024.0 * 1024.0 * 1024.0);
+    double availableHost_GB = availableHost / (1024.0 * 1024.0 * 1024.0);
+
+    bool exceedsGPU = (availableGPU > 0) && (estimatedGPU > availableGPU);
+    bool exceedsHost = (availableHost > 0) && (estimatedHost > availableHost);
+
+    if (exceedsGPU || exceedsHost) {
+        if (verbose) {
+            std::cout << "  [SKIP] Resolution " << resolution << "^3 @ "
+                      << screenWidth << "x" << screenHeight << " - ";
+            if (exceedsGPU) {
+                std::cout << "GPU memory exceeded (need " << estimatedGPU_GB
+                          << " GB, have " << availableGPU_GB << " GB)";
+            }
+            if (exceedsHost) {
+                if (exceedsGPU) std::cout << ", ";
+                std::cout << "Host memory exceeded (need " << estimatedHost_GB
+                          << " GB, have " << availableHost_GB << " GB)";
+            }
+            std::cout << std::endl;
+        }
+        return true;
+    }
+
+    return false;
+}
+
+} // anonymous namespace
 
 std::optional<TestConfiguration> BenchmarkConfigLoader::LoadFromFile(const std::filesystem::path& filepath) {
     std::ifstream file(filepath);
@@ -314,6 +504,11 @@ TestConfiguration BenchmarkConfigLoader::ParseConfigObject(const void* jsonObjec
 void BenchmarkSuiteConfig::GenerateTestsFromMatrix() {
     tests.clear();
     uint32_t runNumber = 1;
+    uint32_t skippedCount = 0;
+
+    if (verbose) {
+        std::cout << "\n[Benchmark] Generating test matrix with memory checks..." << std::endl;
+    }
 
     // Generate tests from matrix configuration
     for (const auto& [pipelineName, pipelineMatrix] : pipelineMatrices) {
@@ -323,6 +518,14 @@ void BenchmarkSuiteConfig::GenerateTestsFromMatrix() {
 
         for (uint32_t resolution : globalMatrix.resolutions) {
             for (const auto& renderSize : globalMatrix.renderSizes) {
+                // Check if this resolution would exceed available memory
+                if (ShouldSkipTestForMemory(resolution, renderSize.width, renderSize.height,
+                                            gpuIndex, verbose)) {
+                    // Skip all tests with this resolution/render size combo
+                    skippedCount += globalMatrix.scenes.size() * pipelineMatrix.shaderGroups.size();
+                    continue;
+                }
+
                 for (const auto& sceneName : globalMatrix.scenes) {
                     for (const auto& shaderGroup : pipelineMatrix.shaderGroups) {
                         TestConfiguration test;
@@ -339,6 +542,14 @@ void BenchmarkSuiteConfig::GenerateTestsFromMatrix() {
                 }
             }
         }
+    }
+
+    if (verbose && skippedCount > 0) {
+        std::cout << "[Benchmark] Skipped " << skippedCount
+                  << " test(s) due to insufficient memory" << std::endl;
+    }
+    if (verbose) {
+        std::cout << "[Benchmark] Generated " << tests.size() << " test(s)" << std::endl;
     }
 
     ApplyOverrides();
