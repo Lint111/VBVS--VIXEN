@@ -21,6 +21,7 @@
 #include "ResourceTypes.h"
 #include "ResourceTypeTraits.h"  // Include for StripContainer
 #include "Data/VariantDescriptors.h"
+#include "Debug/DescriptorResourceTracker.h"  // Debug tracking for resources
 #include <variant>
 #include <type_traits>
 #include <cstdint>
@@ -226,9 +227,6 @@ using TypeToTag_t = typename TypeToTag<T>::type;
  * };
  * @endcode
  */
-template<typename T>
-concept HasConversionType = requires { typename T::conversion_type; };
-
 /**
  * @brief Extract the conversion target type from a wrapper
  *
@@ -242,6 +240,15 @@ template<typename T>
 struct ConversionTypeOf<T, std::void_t<typename T::conversion_type>> {
     using type = typename T::conversion_type;
 };
+
+// Type trait for checking if a type has conversion_type
+// Derived from ConversionTypeOf to ensure consistent behavior
+template<typename T>
+inline constexpr bool HasConversionType_v = !std::is_same_v<typename ConversionTypeOf<T>::type, void>;
+
+// Keep concept for backward compatibility
+template<typename T>
+concept HasConversionType = HasConversionType_v<T>;
 
 template<typename T>
 using ConversionTypeOf_t = typename ConversionTypeOf<T>::type;
@@ -433,28 +440,45 @@ enum class SlotRole : uint8_t;
 /**
  * @brief Descriptor resource entry with metadata
  *
- * Stores Resource* pointer with:
+ * Hybrid storage for both Resources and wrapper types:
+ * - DescriptorHandleVariant: Cached handle (wrappers) or lazily extracted (Resources)
+ * - Resource*: Source for lazy extraction (null for wrapper types)
  * - SlotRole: Execution phase information (Dependency vs Execute)
  * - IDebugCapture*: Optional debug capture interface
+ * - Debug::DescriptorResourceDebugMetadata: Tracking metadata (zero-cost in Release)
  *
- * Implements lazy handle extraction: GetHandle() extracts the descriptor handle
- * at bind time from the Resource, preventing stale pointer issues when source
- * nodes recompile and destroy their resources.
+ * Supports two patterns:
+ * 1. True Resources: resource != null, GetHandle() extracts fresh handle
+ * 2. Wrapper types (conversion_type): resource == null, GetHandle() returns cached handle
  */
 struct DescriptorResourceEntry {
-    Resource* resource = nullptr;  // Lazy handle extraction via Resource pointer
-    SlotRole slotRole = static_cast<SlotRole>(0);  // Default to no role flags
-    Debug::IDebugCapture* debugCapture = nullptr;  // Non-owning, set if resource is debug-capturable
+    DescriptorHandleVariant handle;               // Cached or lazily extracted handle
+    Resource* resource = nullptr;                 // Source Resource (null for wrappers)
+    SlotRole slotRole = static_cast<SlotRole>(0); // Default to no role flags
+    Debug::IDebugCapture* debugCapture = nullptr; // Non-owning, set if resource is debug-capturable
+    uint32_t bindingIndex = UINT32_MAX;           // Shader binding index for tracking
+    Debug::DescriptorResourceDebugMetadata debugMetadata;  // Tracking metadata (zero in Release)
 
     DescriptorResourceEntry() = default;
-    explicit DescriptorResourceEntry(Resource* res, SlotRole role = static_cast<SlotRole>(0), Debug::IDebugCapture* dbg = nullptr)
-        : resource(res), slotRole(role), debugCapture(dbg) {}
+    explicit DescriptorResourceEntry(DescriptorHandleVariant h, Resource* res = nullptr, SlotRole role = static_cast<SlotRole>(0), Debug::IDebugCapture* dbg = nullptr, uint32_t binding = UINT32_MAX)
+        : handle(std::move(h)), resource(res), slotRole(role), debugCapture(dbg), bindingIndex(binding) {
+        // Initialize debug metadata with tracking ID
+        debugMetadata.Initialize("DescriptorResourceEntry");
+#if VIXEN_DEBUG_DESCRIPTOR_TRACKING
+        // Record initial handle value
+        debugMetadata.RecordOriginalHandle(Debug::GetHandleValueForTracking(handle));
+        TRACK_RESOURCE_CREATED(debugMetadata.trackingId, binding,
+                              Debug::GetHandleValueForTracking(handle),
+                              Debug::GetHandleTypeNameForTracking(handle),
+                              "DescriptorResourceEntry::ctor");
+#endif
+    }
 
     /**
-     * @brief Extract descriptor handle lazily at bind time
-     * 
-     * Returns current handle from Resource::GetDescriptorHandle().
-     * This ensures we always use the latest handle, never stale values.
+     * @brief Extract descriptor handle (lazy for Resources, cached for wrappers)
+     *
+     * If resource pointer exists, extracts fresh handle from Resource::GetDescriptorHandle().
+     * Otherwise returns cached handle (for wrapper types with conversion_type).
      */
     DescriptorHandleVariant GetHandle() const;
 };
@@ -726,7 +750,10 @@ public:
         using PointeeT = std::conditional_t<std::is_pointer_v<CleanT>,
                                             std::remove_pointer_t<CleanT>,
                                             CleanT>;
-        if constexpr (HasConversionType<PointeeT>) {
+        // Use the type trait (more reliable than inline requires)
+        constexpr bool hasConversion = HasConversionType_v<PointeeT>;
+
+        if constexpr (HasConversionType_v<PointeeT>) {
             using ConversionTarget = ConversionTypeOf_t<PointeeT>;
             // Only capture extractor if ConversionTarget is a valid descriptor type
             // This is enforced at compile time by DescriptorHandleVariant construction
@@ -739,13 +766,27 @@ public:
                 std::is_same_v<ConversionTarget, VkAccelerationStructureKHR>;
 
             if constexpr (isDescriptorType) {
+#if VIXEN_DEBUG_DESCRIPTOR_TRACKING
+                // Track extractor creation
+                TRACK_EXTRACTOR_CREATED(resourceTrackingId_, 0, debugName_);
+#endif
+
                 descriptorExtractor_ = [this]() -> DescriptorHandleVariant {
                     try {
                         if constexpr (std::is_pointer_v<CleanT>) {
-                            // For pointer types: get the pointer, then dereference
-                            auto** wrapperPtr = storage_.Get(PtrTag<CleanT>{});
-                            if (wrapperPtr && *wrapperPtr) {
-                                ConversionTarget converted = static_cast<ConversionTarget>(**wrapperPtr);
+                            // For pointer types (e.g., ShaderCountersBuffer*):
+                            // - SetHandle stored the pointer using PtrTag<PointeeT> (e.g., PtrTag<ShaderCountersBuffer>)
+                            // - storage_.Get(PtrTag<PointeeT>{}) returns PointeeT* (e.g., ShaderCountersBuffer*)
+                            // - We dereference once to get the wrapper object, then apply conversion
+                            auto* wrapperPtr = storage_.Get(PtrTag<PointeeT>{});
+                            if (wrapperPtr) {
+                                ConversionTarget converted = static_cast<ConversionTarget>(*wrapperPtr);
+#if VIXEN_DEBUG_DESCRIPTOR_TRACKING
+                                TRACK_EXTRACTOR_CALLED(resourceTrackingId_, 0,
+                                                      reinterpret_cast<uint64_t>(converted),
+                                                      "ConversionTarget",
+                                                      "descriptorExtractor_");
+#endif
                                 return DescriptorHandleVariant{converted};
                             }
                         } else {
@@ -753,10 +794,18 @@ public:
                             auto* wrapper = storage_.Get(PtrTag<CleanT>{});
                             if (wrapper) {
                                 ConversionTarget converted = static_cast<ConversionTarget>(*wrapper);
+#if VIXEN_DEBUG_DESCRIPTOR_TRACKING
+                                TRACK_EXTRACTOR_CALLED(resourceTrackingId_, 0,
+                                                      reinterpret_cast<uint64_t>(converted),
+                                                      "ConversionTarget",
+                                                      "descriptorExtractor_");
+#endif
                                 return DescriptorHandleVariant{converted};
                             }
                         }
-                    } catch (...) {}
+                    } catch (...) {
+                        // Exception during extraction - return empty
+                    }
                     return DescriptorHandleVariant{std::monostate{}};
                 };
             }
@@ -882,14 +931,44 @@ public:
                 break;
         }
 
+        // CRITICAL: Try wrapper type extraction FIRST for PassThroughStorage
+        // This handles types with conversion_type (e.g., ShaderCountersBuffer -> VkBuffer)
+        // Must come before GetHandle<VkBuffer>() attempts because Debug builds return
+        // T{} (null) instead of throwing when the type doesn't match, causing null
+        // handles to be returned before reaching the extractor.
+        if (descriptorExtractor_) {
+            auto extracted = descriptorExtractor_();
+            if (!std::holds_alternative<std::monostate>(extracted)) {
+                return extracted;
+            }
+        }
+
         // Fallback: Try all types in safe order (simple → complex)
-        // Single handle types first
-        try { return DescriptorHandleVariant{GetHandle<VkBuffer>()}; } catch (...) {}
-        try { return DescriptorHandleVariant{GetHandle<VkImageView>()}; } catch (...) {}
-        try { return DescriptorHandleVariant{GetHandle<VkSampler>()}; } catch (...) {}
-        try { return DescriptorHandleVariant{GetHandle<VkBufferView>()}; } catch (...) {}
-        try { return DescriptorHandleVariant{GetHandle<VkImage>()}; } catch (...) {}
-        try { return DescriptorHandleVariant{GetHandle<VkAccelerationStructureKHR>()}; } catch (...) {}
+        // Single handle types first - only return if handle is valid (non-null)
+        try {
+            auto buf = GetHandle<VkBuffer>();
+            if (buf != VK_NULL_HANDLE) return DescriptorHandleVariant{buf};
+        } catch (...) {}
+        try {
+            auto view = GetHandle<VkImageView>();
+            if (view != VK_NULL_HANDLE) return DescriptorHandleVariant{view};
+        } catch (...) {}
+        try {
+            auto sampler = GetHandle<VkSampler>();
+            if (sampler != VK_NULL_HANDLE) return DescriptorHandleVariant{sampler};
+        } catch (...) {}
+        try {
+            auto bufView = GetHandle<VkBufferView>();
+            if (bufView != VK_NULL_HANDLE) return DescriptorHandleVariant{bufView};
+        } catch (...) {}
+        try {
+            auto img = GetHandle<VkImage>();
+            if (img != VK_NULL_HANDLE) return DescriptorHandleVariant{img};
+        } catch (...) {}
+        try {
+            auto accel = GetHandle<VkAccelerationStructureKHR>();
+            if (accel != VK_NULL_HANDLE) return DescriptorHandleVariant{accel};
+        } catch (...) {}
         // Vector types (descriptor arrays)
         try { return DescriptorHandleVariant{GetHandle<std::vector<VkBuffer>>()}; } catch (...) {}
         try { return DescriptorHandleVariant{GetHandle<std::vector<VkImageView>>()}; } catch (...) {}
@@ -899,15 +978,6 @@ public:
         // Pointer and composite types LAST
         try { return DescriptorHandleVariant{GetHandle<SwapChainPublicVariables*>()}; } catch (...) {}
         try { return DescriptorHandleVariant{GetHandle<ImageSamplerPair>()}; } catch (...) {}
-
-        // Try wrapper type extraction (captured at SetHandle time)
-        // This handles types with conversion_type (e.g., ShaderCountersBuffer -> VkBuffer)
-        if (descriptorExtractor_) {
-            auto extracted = descriptorExtractor_();
-            if (!std::holds_alternative<std::monostate>(extracted)) {
-                return extracted;
-            }
-        }
 
         // If nothing matched, return empty monostate
         return DescriptorHandleVariant{std::monostate{}};
@@ -977,11 +1047,72 @@ private:
     // knowing the concrete wrapper type at extraction time
     // Returns DescriptorHandleVariant containing the conversion_type value
     std::function<DescriptorHandleVariant()> descriptorExtractor_;
+
+#if VIXEN_DEBUG_DESCRIPTOR_TRACKING
+    // Debug tracking
+    Debug::TrackingId resourceTrackingId_ = Debug::GenerateTrackingId();
+    std::string debugName_;  // Optional debug name for tracking
+#endif
+
+public:
+    // Debug tracking accessors
+#if VIXEN_DEBUG_DESCRIPTOR_TRACKING
+    Debug::TrackingId GetTrackingId() const { return resourceTrackingId_; }
+    void SetDebugName(std::string_view name) { debugName_ = name; }
+    std::string_view GetDebugName() const { return debugName_; }
+#else
+    Debug::TrackingId GetTrackingId() const { return 0; }
+    void SetDebugName(std::string_view) {}
+    std::string_view GetDebugName() const { return ""; }
+#endif
 };
 
 inline DescriptorHandleVariant DescriptorResourceEntry::GetHandle() const {
-    return resource ? resource->GetDescriptorHandle()
-                    : DescriptorHandleVariant{std::monostate{}};
+    // Hybrid extraction: prefer Resource* (lazy), fallback to cached handle
+    // For wrapper types with conversion_type, GetDescriptorHandle() uses the
+    // descriptorExtractor_ lambda to extract the underlying handle. If the
+    // wrapper's internal buffer is null/invalid, this returns monostate.
+    // In that case, fall back to the cached handle from Compile time.
+    DescriptorHandleVariant result;
+    std::string_view extractionSource;
+
+    if (resource) {
+        auto extracted = resource->GetDescriptorHandle();
+        // Only use extracted value if it's not monostate
+        // This handles the case where wrapper's internal buffer became invalid
+        if (!std::holds_alternative<std::monostate>(extracted)) {
+            result = extracted;
+            extractionSource = "Resource::GetDescriptorHandle";
+        } else {
+            // Fall through to cached handle if extraction failed
+            result = handle;
+            extractionSource = "cached_handle(extraction_failed)";
+        }
+    } else {
+        result = handle;
+        extractionSource = "cached_handle";
+    }
+
+#if VIXEN_DEBUG_DESCRIPTOR_TRACKING
+    // Record extraction event
+    const_cast<Debug::DescriptorResourceDebugMetadata&>(debugMetadata).RecordExtraction(
+        Debug::GetHandleValueForTracking(result));
+
+    TRACK_HANDLE_EXTRACTED(debugMetadata.trackingId, bindingIndex,
+                          Debug::GetHandleValueForTracking(result),
+                          Debug::GetHandleTypeNameForTracking(result),
+                          "DescriptorResourceEntry::GetHandle",
+                          extractionSource);
+
+    // Check for handle mismatch
+    if (debugMetadata.wasModified) {
+        std::cout << "[TRACKING WARNING] Handle mismatch detected for binding " << bindingIndex
+                  << " - original=0x" << std::hex << debugMetadata.originalHandleValue
+                  << ", extracted=0x" << debugMetadata.lastExtractedValue << std::dec << std::endl;
+    }
+#endif
+
+    return result;
 }
 
 // ============================================================================

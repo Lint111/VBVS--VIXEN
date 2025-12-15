@@ -1,5 +1,6 @@
 #include "Debug/ShaderCountersBuffer.h"
 #include <cstring>
+#include <iostream>  // For destruction tracking
 
 namespace Vixen::RenderGraph::Debug {
 

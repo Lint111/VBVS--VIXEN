@@ -2,11 +2,19 @@
 #include "Data/Core/ResourceConfig.h"
 #include "VulkanDevice.h"
 
-// Forward declarations for debug capture
+// CRITICAL: Full includes required for wrapper types with conversion_type
+// The Resource::SetHandle() template uses HasConversionType_v<T> to detect
+// wrapper types that convert to VkBuffer/VkImageView/etc. This SFINAE check
+// requires the full class definition to see the conversion_type typedef.
+// Forward declarations cause HasConversionType_v to return false, which breaks
+// descriptor extraction in DescriptorResourceGathererNode.
+// See: CompileTimeResourceSystem.h HasConversionType_v, HacknPlan #61
+#include "Debug/ShaderCountersBuffer.h"
+#include "Debug/RayTraceBuffer.h"
+
+// Forward declarations for non-wrapper types (don't need conversion_type detection)
 namespace Vixen::RenderGraph::Debug {
     class IDebugCapture;
-    class ShaderCountersBuffer;
-    class RayTraceBuffer;
 }
 
 // Forward declaration for CashSystem cached scene data

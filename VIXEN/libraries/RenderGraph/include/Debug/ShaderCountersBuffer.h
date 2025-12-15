@@ -214,6 +214,9 @@ public:
      */
     void Destroy(VkDevice device);
 
+    // Debug: track VkBuffer destruction
+    VkBuffer GetDebugBuffer() const { return buffer_; }  // For tracking
+
     // =========================================================================
     // IDebugBuffer interface
     // =========================================================================

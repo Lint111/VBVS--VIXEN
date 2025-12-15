@@ -5,6 +5,7 @@
 #include "Core/RenderGraph.h"
 #include "Core/NodeLogging.h"
 #include "VulkanDevice.h"  // For device limits validation
+#include "Debug/DescriptorResourceTracker.h"  // Debug tracking
 #include <map>  // For descriptor type counting
 
 namespace Vixen::RenderGraph {
@@ -243,11 +244,32 @@ void DescriptorResourceGathererNode::ExecuteImpl(VariadicExecuteContext& ctx) {
             continue;
         }
 
-        NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Execute] Updated transient resource at binding " + std::to_string(binding) +
-                      " (slot " + std::to_string(i) + "), resource=" + (freshResource ? "valid" : "null"));
+        // For Execute-only slots (transients like swapchain image):
+        // - These have NO Compile-phase Resource (resource pointer is null)
+        // - freshResource IS the source of truth, use its handle directly
+        //
+        // For Dependency+Execute slots (wrapper types like ShaderCountersBuffer):
+        // - Compile-phase Resource has the descriptorExtractor_ lambda
+        // - freshResource is a DIFFERENT Resource object without the extractor
+        // - Use the ORIGINAL resource's extractor to get the current handle
+        //
+        // The key insight: wrapper objects are re-used across frames (same pointer),
+        // so the Compile-phase extractor still points to valid data.
+        Resource* originalResource = resourceArray_[binding].resource;
 
-        // Store transient resource pointer (lazy extraction deferred to bind time)
-        resourceArray_[binding].resource = freshResource;
+        DescriptorHandleVariant handle;
+        if (originalResource) {
+            // Use original Resource's extractor (preserves wrapper type extraction)
+            handle = originalResource->GetDescriptorHandle();
+        } else {
+            // Execute-only slot: no Compile-phase resource, use freshResource directly
+            handle = freshResource ? freshResource->GetDescriptorHandle() : DescriptorHandleVariant{std::monostate{}};
+        }
+        resourceArray_[binding].handle = handle;
+
+        NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Execute] Updated binding " + std::to_string(binding) +
+                      " (slot " + std::to_string(i) + "), used " + (originalResource ? "original" : "fresh") + " resource" +
+                      ", handle variant index=" + std::to_string(handle.index()));
     }
 
     if (hasTransients) {
@@ -548,10 +570,26 @@ void DescriptorResourceGathererNode::InitializeExecuteOnlySlot(size_t slotIndex,
 void DescriptorResourceGathererNode::StoreFieldExtractionResource(size_t slotIndex, uint32_t binding, size_t fieldOffset, Resource* resource) {
     NODE_LOG_DEBUG("[DescriptorResourceGathererNode::StoreFieldExtractionResource] Extracting field at offset " + std::to_string(fieldOffset) + " from struct for binding " + std::to_string(binding));
 
-    // Store resource pointer - GetHandle() will extract lazily at bind time
+    // Hybrid storage: extract handle AND store resource pointer
+    auto handle = resource ? resource->GetDescriptorHandle() : DescriptorHandleVariant{std::monostate{}};
+    resourceArray_[binding].handle = handle;
     resourceArray_[binding].resource = resource;
+    resourceArray_[binding].bindingIndex = binding;
 
-    NODE_LOG_DEBUG("[DescriptorResourceGathererNode::StoreFieldExtractionResource] Stored handle with field at offset " + std::to_string(fieldOffset) + " for binding " + std::to_string(binding) + " (downstream will extract)");
+    // Initialize debug metadata
+    resourceArray_[binding].debugMetadata.Initialize("field_extraction_offset_" + std::to_string(fieldOffset));
+#if VIXEN_DEBUG_DESCRIPTOR_TRACKING
+    resourceArray_[binding].debugMetadata.RecordOriginalHandle(
+        Debug::GetHandleValueForTracking(handle));
+
+    TRACK_HANDLE_STORED(resourceArray_[binding].debugMetadata.trackingId,
+                       binding,
+                       Debug::GetHandleValueForTracking(handle),
+                       Debug::GetHandleTypeNameForTracking(handle),
+                       GetInstanceName() + "::StoreFieldExtractionResource");
+#endif
+
+    NODE_LOG_DEBUG("[DescriptorResourceGathererNode::StoreFieldExtractionResource] Stored handle with field at offset " + std::to_string(fieldOffset) + " for binding " + std::to_string(binding) + ", handle variant index=" + std::to_string(handle.index()));
 }
 
 template<typename T>
@@ -570,12 +608,38 @@ const void* DescriptorResourceGathererNode::ExtractRawPointerFromVariant(T&& str
 }
 
 void DescriptorResourceGathererNode::StoreRegularResource(size_t slotIndex, uint32_t binding, const std::string& slotName, SlotRole role, Resource* resource) {
-    // Store Resource* pointer instead of extracting handle snapshot
-    // GetHandle() will be called lazily at bind time in DescriptorSetNode
+    // Hybrid storage: extract handle AND store Resource* pointer
+    // - handle: used for wrapper types (conversion_type), cached value
+    // - resource: used for true Resources, lazy extraction via GetDescriptorHandle()
+    auto handle = resource ? resource->GetDescriptorHandle() : DescriptorHandleVariant{std::monostate{}};
+
+    // Store with full debug tracking
+    resourceArray_[binding].handle = handle;
     resourceArray_[binding].resource = resource;
     resourceArray_[binding].slotRole = role;
+    resourceArray_[binding].bindingIndex = binding;
 
-    NODE_LOG_DEBUG("[DescriptorResourceGathererNode::StoreRegularResource] Gathered resource for binding " + std::to_string(binding) + " (" + slotName + "), resource=" + (resource ? "valid" : "null") + ", role=" + std::to_string(static_cast<int>(role)));
+    // Initialize debug metadata with source information
+    resourceArray_[binding].debugMetadata.Initialize(slotName);
+#if VIXEN_DEBUG_DESCRIPTOR_TRACKING
+    resourceArray_[binding].debugMetadata.RecordOriginalHandle(
+        Debug::GetHandleValueForTracking(handle));
+
+    TRACK_HANDLE_STORED(resourceArray_[binding].debugMetadata.trackingId,
+                       binding,
+                       Debug::GetHandleValueForTracking(handle),
+                       Debug::GetHandleTypeNameForTracking(handle),
+                       GetInstanceName() + "::StoreRegularResource");
+#endif
+
+    std::string debugLog = "[DescriptorResourceGathererNode::StoreRegularResource] Gathered resource for binding " +
+                  std::to_string(binding) + " (" + slotName + "), resource=" + (resource ? "valid" : "null") +
+                  ", handle variant index=" + std::to_string(handle.index()) +
+                  ", role=" + std::to_string(static_cast<int>(role));
+#if VIXEN_DEBUG_DESCRIPTOR_TRACKING
+    debugLog += ", trackingId=" + std::to_string(resourceArray_[binding].debugMetadata.trackingId);
+#endif
+    NODE_LOG_DEBUG(debugLog);
 }
 
 bool DescriptorResourceGathererNode::ValidateResourceType(Resource* res, VkDescriptorType expectedType) {

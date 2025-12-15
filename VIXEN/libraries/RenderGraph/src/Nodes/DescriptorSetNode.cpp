@@ -6,6 +6,7 @@
 #include "MainCacher.h"
 #include "DescriptorCacher.h"
 #include "DescriptorSetLayoutCacher.h"  // Phase 5: Helper functions
+#include "Debug/DescriptorResourceTracker.h"  // Debug tracking
 #include <ShaderDataBundle.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -332,6 +333,17 @@ void DescriptorSetNode::ExecuteImpl(TypedExecuteContext& ctx) {
                                                          perFrameImageInfos[i], perFrameBufferInfos[i],
                                                          SlotRole::Dependency);
             if (!dependencyWrites.empty()) {
+                std::cout << "[vkUpdateDescriptorSets-Dependency] About to update " << dependencyWrites.size() << " descriptors for frame " << i << std::endl;
+                std::cout << "  bufferInfos[" << i << "] data()=" << reinterpret_cast<uint64_t>(perFrameBufferInfos[i].data())
+                          << ", size=" << perFrameBufferInfos[i].size() << ", capacity=" << perFrameBufferInfos[i].capacity() << std::endl;
+                for (size_t w = 0; w < dependencyWrites.size(); w++) {
+                    const auto& dw = dependencyWrites[w];
+                    if (dw.pBufferInfo) {
+                        std::cout << "  write[" << w << "] binding=" << dw.dstBinding
+                                  << ", pBufferInfo=" << reinterpret_cast<uint64_t>(dw.pBufferInfo)
+                                  << ", VkBuffer=" << reinterpret_cast<uint64_t>(dw.pBufferInfo->buffer) << std::endl;
+                    }
+                }
                 vkUpdateDescriptorSets(GetDevice()->device, static_cast<uint32_t>(dependencyWrites.size()), dependencyWrites.data(), 0, nullptr);
                 NODE_LOG_DEBUG("[DescriptorSetNode::Execute] Bound " + std::to_string(dependencyWrites.size()) + " Dependency descriptor(s) for frame " + std::to_string(i));
             }
@@ -674,7 +686,8 @@ void DescriptorSetNode::HandleBuffer(
     const DescriptorHandleVariant& resourceVariant,
     VkWriteDescriptorSet& write,
     std::vector<VkDescriptorBufferInfo>& bufferInfos,
-    std::vector<VkWriteDescriptorSet>& writes
+    std::vector<VkWriteDescriptorSet>& writes,
+    const DescriptorResourceEntry* entry  // Optional: for tracking
 ) {
     if (std::holds_alternative<VkBuffer>(resourceVariant)) {
         VkBuffer buffer = std::get<VkBuffer>(resourceVariant);
@@ -682,9 +695,22 @@ void DescriptorSetNode::HandleBuffer(
         bufferInfo.buffer = buffer;
         bufferInfo.offset = 0;
         bufferInfo.range = VK_WHOLE_SIZE;
+        size_t oldCap = bufferInfos.capacity();
         bufferInfos.push_back(bufferInfo);
         write.pBufferInfo = &bufferInfos.back();
+        if (bufferInfos.capacity() != oldCap) {
+            std::cout << "[HandleBuffer] WARNING: bufferInfos reallocated! " << oldCap << " -> " << bufferInfos.capacity() << std::endl;
+        }
         writes.push_back(write);
+
+#if VIXEN_DEBUG_DESCRIPTOR_TRACKING
+        // Track the binding event with full context
+        Debug::TrackingId trackingId = entry ? entry->debugMetadata.trackingId : 0;
+        TRACK_HANDLE_BOUND(trackingId, binding.binding,
+                         reinterpret_cast<uint64_t>(buffer),
+                         "VkBuffer",
+                         GetInstanceName() + "::HandleBuffer");
+#endif
     }
 }
 
@@ -741,8 +767,12 @@ std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
     // CRITICAL: Reserve space to prevent reallocation during iteration
     // When vectors reallocate, all pointers (write.pImageInfo, write.pBufferInfo, pNext) become invalid
     // Reserve enough space for worst-case: all bindings could be image descriptors
+    size_t oldBufSize = bufferInfos.size();
+    size_t oldBufCap = bufferInfos.capacity();
     imageInfos.reserve(imageInfos.size() + descriptorBindings.size());
     bufferInfos.reserve(bufferInfos.size() + descriptorBindings.size());
+    std::cout << "[BuildDescriptorWrites] bufferInfos: size=" << oldBufSize << "->" << bufferInfos.size()
+              << ", capacity=" << oldBufCap << "->" << bufferInfos.capacity() << std::endl;
     // Also clear and reserve acceleration structure storage (uses member vectors)
     perFrameAccelInfos.clear();
     perFrameAccelHandles.clear();
@@ -765,6 +795,13 @@ std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
         // Extract handle lazily from entry (GetHandle() queries current Resource state)
         const auto& resourceEntry = descriptorResources[binding.binding];
         const auto resourceVariant = resourceEntry.GetHandle();
+
+        // Debug: print what handle we're about to use
+        if (std::holds_alternative<VkBuffer>(resourceVariant)) {
+            VkBuffer buf = std::get<VkBuffer>(resourceVariant);
+            std::cout << "[BuildDescriptorWrites] binding=" << binding.binding
+                      << ", VkBuffer=" << reinterpret_cast<uint64_t>(buf) << std::endl;
+        }
 
         // Initialize write descriptor
         VkWriteDescriptorSet write{};
@@ -795,7 +832,7 @@ std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
 
             case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
             case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
-                HandleBuffer(binding, resourceVariant, write, bufferInfos, writes);
+                HandleBuffer(binding, resourceVariant, write, bufferInfos, writes, &resourceEntry);
                 break;
 
             case VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR:

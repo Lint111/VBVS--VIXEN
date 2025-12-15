@@ -217,7 +217,8 @@ private:
         const DescriptorHandleVariant& resourceVariant,
         VkWriteDescriptorSet& write,
         std::vector<VkDescriptorBufferInfo>& bufferInfos,
-        std::vector<VkWriteDescriptorSet>& writes
+        std::vector<VkWriteDescriptorSet>& writes,
+        const DescriptorResourceEntry* entry = nullptr  // Optional: for tracking
     );
     void HandleAccelerationStructure(
         const ::ShaderManagement::SpirvDescriptorBinding& binding,
