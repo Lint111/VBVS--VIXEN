@@ -354,9 +354,68 @@ concept CustomValidation = requires(T& t) {
 ### Descriptor Caching
 Extend `descriptorExtractor_` to cache descriptors for hot paths.
 
+---
+
+## CRITICAL: Header Inclusion Requirements
+
+> **WARNING: Forward Declarations Break SFINAE Detection**
+>
+> Wrapper types with `conversion_type` **MUST be fully included** (not forward-declared) in node config headers. Forward declarations cause `HasConversionType_v` to silently return `false`.
+
+### The Problem (HacknPlan #61 - 10 hours debugging)
+
+```cpp
+// NodeConfig.h - BROKEN
+namespace Debug {
+    class ShaderCountersBuffer;  // Forward declaration only!
+}
+
+// Later, when SetHandle<ShaderCountersBuffer*>() is called:
+// HasConversionType_v<ShaderCountersBuffer> → FALSE (class incomplete)
+// descriptorExtractor_ lambda NOT captured
+// GetDescriptorHandle() returns stale handles
+// vkUpdateDescriptorSets fails with "Invalid VkBuffer"
+```
+
+### The Fix
+
+```cpp
+// NodeConfig.h - CORRECT
+#include "Debug/ShaderCountersBuffer.h"  // Full definition!
+
+// Now HasConversionType_v<ShaderCountersBuffer> → TRUE
+// descriptorExtractor_ captured correctly
+// GetDescriptorHandle() extracts fresh VkBuffer
+```
+
+### Why This Is Hard to Debug
+
+1. **SFINAE fails silently** - no compile error, no runtime error
+2. **Symptom mismatch** - garbage handles suggest memory corruption
+3. **Multiple indirection layers** - cause in SetHandle, symptom in vkUpdateDescriptorSets
+4. **Template instantiation depends on include chain visibility**
+
+### Checklist for New Wrapper Types
+
+When creating a wrapper with `conversion_type`:
+
+- [ ] Declare `using conversion_type = VkBuffer/VkImageView/etc`
+- [ ] Implement `operator conversion_type() const`
+- [ ] **Include full header in ALL NodeConfig.h files that use the wrapper**
+- [ ] Add `static_assert(HasConversionType_v<WrapperType>)` at usage site
+- [ ] Test with validation layers enabled
+
+### Reference
+
+- Debug session: [[DescriptorResourceRefactor-DebugSession]]
+- Troubleshooting: `.claude/skills/project-rules/rules/troubleshooting.md`
+
+---
+
 ## See Also
 
 - [[RenderGraph-System]] - Overall render graph architecture
 - [[CompileTimeResourceSystem]] - Full compile-time system documentation
 - [[ShaderCountersBuffer]] - Complete implementation walkthrough
 - [[Concepts-and-Constraints]] - C++20/23 concepts guide
+- [[DescriptorResourceRefactor-DebugSession]] - Debug session for SFINAE issue

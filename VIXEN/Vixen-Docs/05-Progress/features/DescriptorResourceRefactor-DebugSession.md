@@ -1,144 +1,161 @@
 # Descriptor Resource Refactor - Debug Session Summary
 
-## Status: IN PROGRESS (BLOCKED)
+## Status: RESOLVED ✅
 **HacknPlan Task:** #61
-**Date:** 2025-12-14
-**Duration:** ~4 hours of debugging
-**Related Tasks:** #79 (redundant hook execution), #80 (hook de-duplication)
+**Date:** 2025-12-14 to 2025-12-15
+**Duration:** ~10 hours over 2 days
+**Related Tasks:** #77, #78 (cleanup crashes), #79, #80 (hook de-duplication)
 
 ---
 
-## HANDOFF FOR NEXT AGENT
+## RESOLUTION SUMMARY
 
-### Current State
-Validation errors persist. The stored VkBuffer values are **correct** when traced through `BuildDescriptorWrites`, but validation reports **different** invalid handles.
+### Root Cause
+`HasConversionType_v<T>` type trait failed to detect `conversion_type` typedef on `ShaderCountersBuffer` and `RayTraceBuffer` wrapper classes.
 
-### Key Evidence
-```
-[HandleBuffer] binding=4, VkBuffer=1820012101744 (0x1A7C0AB0C70)
-vkUpdateDescriptorSets(): Invalid VkBuffer Object 0x1a7c12cc070  <-- DIFFERENT!
-```
-
-The addresses are close but not identical, suggesting:
-1. Multiple descriptor sets being updated (trace one, error from another)
-2. Wrapper object destruction timing issue
-3. Memory corruption or stale validation cache
-
-### What Was Tried
-1. Fixed Execute-phase resource replacement (preserves original Resource with extractor)
-2. Verified PostCompile hooks fire AFTER CompileImpl (correct timing)
-3. Verified vector reservation prevents reallocation (not the cause)
-4. Added extensive debug tracing to HandleBuffer, BuildDescriptorWrites, vkUpdateDescriptorSets
-
-### Recommended Next Steps
-1. **Add Vulkan debug names** to descriptor sets to identify which one fails
-2. **Add destructor logging** to ShaderCountersBuffer and RayTraceBuffer
-3. **Verify wrapper lifecycle** - are they destroyed between PostCompile and descriptor update?
-4. **Check for multiple DescriptorSetNodes** - are there multiple being updated?
-
-### Files With Debug Output (CLEANUP NEEDED)
-- `CompileTimeResourceSystem.h` - SetHandle, GetDescriptorHandle
-- `DescriptorResourceGathererNode.cpp` - StoreRegularResource
-- `DescriptorSetNode.cpp` - HandleBuffer, BuildDescriptorWrites, vkUpdateDescriptorSets
-
----
-
-## Issue Overview
-
-Runtime validation errors in VIXEN benchmark: invalid VkBuffer handles at bindings 4 and 8 (wrapper types).
-
-**Error Pattern:**
-```
-vkUpdateDescriptorSets(): pDescriptorWrites[3].pBufferInfo[0].buffer Invalid VkBuffer
-vkUpdateDescriptorSets(): pDescriptorWrites[5].pBufferInfo[0].buffer Invalid VkBuffer
-```
-
-Note: `pDescriptorWrites[3]` = binding 4 (traceWriteIndex/RayTraceBuffer)
-      `pDescriptorWrites[5]` = binding 8 (shaderCounters/ShaderCountersBuffer)
-
----
-
-## Root Cause Chain (Chronological Discovery)
-
-### 1. Initial Symptom
-Wrapper types (`ShaderCountersBuffer*`, `RayTraceBuffer*`) returned VK_NULL_HANDLE when `GetDescriptorHandle()` was called.
-
-### 2. First Red Herring: Debug Build Exception Swallowing
-Debug builds return `T{}` (null) instead of throwing when type extraction fails.
-**Fix:** Added null check before returning from GetHandle<VkBuffer>().
-
-### 3. Second Red Herring: MSVC Concept Caching Bug
-The `HasConversionType` concept evaluated to `false` even when `conversion_type` existed.
-**Fix:** Changed to inline `requires` expression in `SetHandle`:
+**Why:** In `VoxelGridNodeConfig.h:6-10`, both classes were **forward-declared** instead of fully included:
 ```cpp
-if constexpr (requires { typename PointeeT::conversion_type; }) {
-    // Create extractor
+// BROKEN - forward declaration
+namespace Vixen::RenderGraph::Debug {
+    class ShaderCountersBuffer;  // Only declares, doesn't define
+    class RayTraceBuffer;
 }
 ```
 
-### 4. Third Red Herring: Execute-Phase Resource Replacement
-`DescriptorResourceGathererNode::ExecuteImpl` was replacing resource pointers with fresh Resources that lacked extractors.
-**Fix:** Preserve original Resource pointer, use its extractor for handle extraction.
+When `Resource::SetHandle<Debug::ShaderCountersBuffer*>()` was called, the SFINAE check `std::void_t<typename T::conversion_type>` couldn't see the `conversion_type` typedef because the class was incomplete. The primary template (returning `false`) was selected **silently** - no compile error.
 
-### 5. Current Mystery: Handle Mismatch
-Stored VkBuffer values are correct when printed, but validation reports different invalid handles.
+Result: `descriptorExtractor_` lambda was never captured, and `GetDescriptorHandle()` returned stale cached handles instead of extracting fresh VkBuffer values.
 
----
+### Fix Applied
+Changed `VoxelGridNodeConfig.h` to include full headers:
+```cpp
+// FIXED - full includes for wrapper types with conversion_type
+#include "Debug/ShaderCountersBuffer.h"
+#include "Debug/RayTraceBuffer.h"
+```
 
-## Investigation Findings
+### Files Modified
+| File | Change |
+|------|--------|
+| `VoxelGridNodeConfig.h:5-13` | Full includes instead of forward-declarations |
+| `CompileTimeResourceSystem.h:934-939` | Removed debug cout |
+| `VoxelGridNode.cpp:242-246` | Updated comment documenting fix |
+| `troubleshooting.md` | Added SFINAE detection checklist |
 
-### PostCompile Hook Timing
-- Hooks fire AFTER source node's `CompileImpl()` completes (correct)
-- Hooks execute TWICE (once in NodeInstance::Compile, once in GeneratePipelines) - redundant but harmless
-- Created backlog task #79 to remove redundancy
-
-### Vector Reallocation
-- Reserve is working correctly (capacity increases before push_back)
-- No reallocation warnings triggered
-- Not the cause of invalid handles
-
-### Handle Storage
-- `StoreRegularResource` stores correct VkBuffer values
-- `BuildDescriptorWrites` retrieves correct VkBuffer values
-- `HandleBuffer` stores correct pBufferInfo pointer
-- Yet validation reports different invalid handles
+### Verification
+- Build succeeded
+- Benchmark runs without "Invalid VkBuffer" validation errors
+- Resource tracker shows `ExtractorCalled` events confirming extractors work
 
 ---
 
-## Files Modified
+## Why This Bug Was Hard to Debug (~10 hours)
 
-| File | Changes |
-|------|---------|
-| `CompileTimeResourceSystem.h` | Type traits fix, SetHandle/GetDescriptorHandle debug output |
-| `DescriptorResourceGathererNode.cpp` | Execute-phase fix, StoreRegularResource debug output |
-| `DescriptorSetNode.cpp` | HandleBuffer/BuildDescriptorWrites debug output |
-| `VoxelGridNode.cpp` | static_assert for conversion_type |
+### 1. Symptom vs Cause Mismatch
+**Symptom:** "Invalid VkBuffer Object 0xd500000000d5" in vkUpdateDescriptorSets
+**Assumed Cause:** Resource lifetime/cleanup timing issue
+**Actual Cause:** C++ template metaprogramming SFINAE failure due to header inclusion order
+
+The garbage-looking handle values (0xd500000000d5) suggested memory corruption or use-after-free, leading investigation down wrong paths for most of Day 1.
+
+### 2. SFINAE Fails Silently
+When `std::void_t<typename T::conversion_type>` fails because T is forward-declared, the primary template (returning `false`) is selected **silently**:
+- No compile error
+- No runtime error
+- No warning
+- Just wrong behavior
+
+### 3. Multiple Layers of Indirection
+Handle extraction path:
+```
+ctx.Out() → Resource::SetHandle() → HasConversionType_v → descriptorExtractor_ capture
+         → GetDescriptorHandle() → DescriptorResourceEntry::GetHandle() → vkUpdateDescriptorSets
+```
+Bug was in layer 3 (HasConversionType_v), symptoms appeared in layer 6 (vkUpdateDescriptorSets).
+
+### 4. Debug Infrastructure Created Mid-Investigation
+Had to create `DescriptorResourceTracker.h` (400+ lines) to trace handle values through the entire pipeline. This was necessary but added ~2 hours of debug infrastructure work.
+
+### 5. Template Instantiation Point Not Obvious
+The template `SetHandle<T>()` is instantiated where called (VoxelGridNode.cpp), but its behavior depends on what headers are visible at that point, which depends on include chains through VoxelGridNodeConfig.h.
+
+### 6. Red Herrings
+Before finding root cause, several partial issues were identified and fixed:
+- Debug build exception swallowing (GetHandle returns T{} not throw)
+- MSVC concept caching (switched to inline requires)
+- Execute-phase resource replacement (preserving original Resource)
+- Cleanup order issues (Resource::Clear() before wrapper destruction)
+
+Each seemed like "the fix" until testing revealed the error persisted.
 
 ---
 
-## Artifacts Created
+## Prevention for Future
 
-1. **Debugging skill:** `.claude/skills/debugging-known-issues/skill.md`
-   - Known issues catalog
-   - Debugging methodology
-   - Prevention strategies
+### Pattern: Wrapper Types with conversion_type
+Any class with `using conversion_type = VkBuffer/VkImageView/etc` that's used in node config slots **MUST be fully included** (not forward-declared) in the config header.
 
-2. **Backlog tasks:**
-   - #79: Remove redundant PostCompile hook execution (1h estimate)
-   - #80: Add hook de-duplication (2h estimate)
+### Troubleshooting Checklist (Added to rules/troubleshooting.md)
+When seeing "Invalid VkHandle" errors with wrapper types:
+1. Check if wrapper declares `conversion_type`
+2. Check if wrapper is forward-declared vs fully included where used
+3. Add `static_assert(HasConversionType_v<WrapperType>)` to verify detection
+4. Check for `ExtractorCreated` events in DescriptorResourceTracker output
 
 ---
 
-## Why This Was Hard to Debug
+## Debug Infrastructure Created
 
-1. **Multiple layers of indirection** - Resource → Wrapper → VkBuffer
-2. **MSVC-specific bugs** - Concept caching required workaround
-3. **Red herrings** - 3 partial fixes before finding current mystery
-4. **Insufficient observability** - No built-in lifecycle tracing
-5. **Handle mismatch** - Traced handles don't match validation errors
+### DescriptorResourceTracker.h
+Location: `libraries/RenderGraph/include/Debug/DescriptorResourceTracker.h`
+
+Comprehensive tracking system for descriptor resources:
+```cpp
+// Enable via VIXEN_DEBUG_DESCRIPTOR_TRACKING (auto in Debug)
+TRACK_RESOURCE_CREATED(id, binding, handle, type, node);
+TRACK_EXTRACTOR_CREATED(id, binding, node);
+TRACK_EXTRACTOR_CALLED(id, binding, handle, type, node);
+TRACK_HANDLE_EXTRACTED(id, binding, handle, type, node, info);
+TRACK_HANDLE_BOUND(id, binding, handle, type, node);
+
+DUMP_RESOURCE_TRACKING();  // Dump all events
+DUMP_BINDING_TRACKING(8);  // Dump events for binding 8
+```
+
+This infrastructure will be valuable for future descriptor-related debugging.
+
+---
+
+## Investigation Timeline
+
+### Day 1 (2025-12-14) - 4 hours
+- Initial validation errors observed
+- Fixed Execute-phase resource replacement
+- Investigated PostCompile hook timing
+- Created #79 (redundant hooks) and #80 (hook de-duplication)
+- Created debugging skill
+- **Blocked:** Handles still invalid
+
+### Day 2 (2025-12-15) - 6 hours
+- Created DescriptorResourceTracker.h
+- Traced handle values through entire pipeline
+- Discovered handle mismatch between stored and invalid values
+- Root cause identified: HasConversionType_v returning false
+- Traced to forward-declaration in VoxelGridNodeConfig.h
+- Fix applied and verified
+- Documentation updated
+
+---
+
+## Related Issues Fixed During Investigation
+
+| Task | Issue | Fix |
+|------|-------|-----|
+| #77 | QueryPool cleanup crash | Release before graph destruction |
+| #78 | Shared state cleanup crash | Guard against null device |
 
 ---
 
 ## Tags
 
-#debugging #vulkan #descriptor-management #render-graph #wrapper-types #blocked
+#debugging #vulkan #descriptor-management #render-graph #wrapper-types #sfinae #templates #resolved
