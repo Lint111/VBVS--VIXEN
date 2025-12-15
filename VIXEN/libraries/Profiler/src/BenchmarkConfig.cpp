@@ -27,14 +27,37 @@ namespace {
 /// @param resolution Voxel grid resolution (e.g., 512)
 /// @param screenWidth Screen width in pixels
 /// @param screenHeight Screen height in pixels
+/// @param isCompressed Whether shader uses DXT-compressed data
 /// @return Estimated GPU memory in bytes
-uint64_t EstimateGPUMemory(uint32_t resolution, uint32_t screenWidth, uint32_t screenHeight) {
-    // Calculate voxel grid size
+uint64_t EstimateGPUMemory(uint32_t resolution, uint32_t screenWidth, uint32_t screenHeight, bool isCompressed) {
+    // Calculate octree structure sizes
     uint64_t voxelCount = static_cast<uint64_t>(resolution) * resolution * resolution;
 
-    // Laine-Karras SVO uses ~5 bytes per voxel on average
-    // Add safety margin of 1.5x for worst-case scenarios
-    uint64_t voxelGridMemory = voxelCount * 5 * 3 / 2;
+    // Brick count: Each brick is 8x8x8 = 512 voxels
+    // For a fully populated octree, bricks ≈ voxels / 512
+    // Add 1.5x safety margin for sparse structure overhead (hierarchy nodes)
+    uint64_t brickCount = (voxelCount / 512) * 3 / 2;
+
+    // ChildDescriptor hierarchy: 8 bytes per node
+    // Approximate hierarchy size: 1/7 of leaf nodes (octree property)
+    uint64_t hierarchyMemory = (brickCount / 7) * 8;
+
+    // Brick data memory depends on compression
+    uint64_t brickDataMemory;
+    if (isCompressed) {
+        // DXT-compressed bricks:
+        // - Color: 256 bytes/brick (32 DXT1 blocks × 8 bytes)
+        // - Normal: 512 bytes/brick (32 DXT blocks × 16 bytes)
+        // - Total: 768 bytes/brick
+        brickDataMemory = brickCount * 768;
+    } else {
+        // Uncompressed bricks:
+        // - Material data: 512 voxels × 4 bytes (uint32_t) = 2048 bytes/brick
+        // - With safety margin: 3072 bytes/brick
+        brickDataMemory = brickCount * 3072;
+    }
+
+    uint64_t voxelGridMemory = hierarchyMemory + brickDataMemory;
 
     // Swapchain images (assume 3 images, RGBA8)
     uint64_t swapchainMemory = static_cast<uint64_t>(screenWidth) * screenHeight * 4 * 3;
@@ -153,12 +176,17 @@ uint64_t GetAvailableHostMemory() {
 /// @param resolution Voxel grid resolution
 /// @param screenWidth Screen width
 /// @param screenHeight Screen height
+/// @param shaderName Shader file name (to detect compression)
 /// @param gpuIndex GPU index
 /// @param verbose Print memory info if true
 /// @return true if test should be skipped
 bool ShouldSkipTestForMemory(uint32_t resolution, uint32_t screenWidth, uint32_t screenHeight,
-                              uint32_t gpuIndex, bool verbose) {
-    uint64_t estimatedGPU = EstimateGPUMemory(resolution, screenWidth, screenHeight);
+                              const std::string& shaderName, uint32_t gpuIndex, bool verbose) {
+    // Detect if shader uses DXT compression
+    bool isCompressed = (shaderName.find("_Compressed") != std::string::npos ||
+                         shaderName.find("Compressed") != std::string::npos);
+
+    uint64_t estimatedGPU = EstimateGPUMemory(resolution, screenWidth, screenHeight, isCompressed);
     uint64_t estimatedHost = EstimateHostMemory(resolution, screenWidth, screenHeight);
 
     uint64_t availableGPU = GetAvailableGPUMemory(gpuIndex);
@@ -176,7 +204,8 @@ bool ShouldSkipTestForMemory(uint32_t resolution, uint32_t screenWidth, uint32_t
     if (exceedsGPU || exceedsHost) {
         if (verbose) {
             std::cout << "  [SKIP] Resolution " << resolution << "^3 @ "
-                      << screenWidth << "x" << screenHeight << " - ";
+                      << screenWidth << "x" << screenHeight
+                      << " [" << (isCompressed ? "compressed" : "uncompressed") << "] - ";
             if (exceedsGPU) {
                 std::cout << "GPU memory exceeded (need " << estimatedGPU_GB
                           << " GB, have " << availableGPU_GB << " GB)";
@@ -518,16 +547,18 @@ void BenchmarkSuiteConfig::GenerateTestsFromMatrix() {
 
         for (uint32_t resolution : globalMatrix.resolutions) {
             for (const auto& renderSize : globalMatrix.renderSizes) {
-                // Check if this resolution would exceed available memory
-                if (ShouldSkipTestForMemory(resolution, renderSize.width, renderSize.height,
-                                            gpuIndex, verbose)) {
-                    // Skip all tests with this resolution/render size combo
-                    skippedCount += globalMatrix.scenes.size() * pipelineMatrix.shaderGroups.size();
-                    continue;
-                }
-
                 for (const auto& sceneName : globalMatrix.scenes) {
                     for (const auto& shaderGroup : pipelineMatrix.shaderGroups) {
+                        // Get shader name for memory estimation
+                        std::string shaderName = shaderGroup.empty() ? "" : shaderGroup.back();
+
+                        // Check if this test would exceed available memory
+                        if (ShouldSkipTestForMemory(resolution, renderSize.width, renderSize.height,
+                                                    shaderName, gpuIndex, verbose)) {
+                            skippedCount++;
+                            continue;
+                        }
+
                         TestConfiguration test;
                         test.pipeline = pipelineName;
                         test.voxelResolution = resolution;
@@ -535,7 +566,7 @@ void BenchmarkSuiteConfig::GenerateTestsFromMatrix() {
                         test.screenHeight = renderSize.height;
                         test.sceneType = sceneName;
                         test.shaderGroup = shaderGroup;
-                        test.shader = shaderGroup.empty() ? "" : shaderGroup.back();
+                        test.shader = shaderName;
                         test.testId = test.GenerateTestId(runNumber++);
                         tests.push_back(test);
                     }
