@@ -68,6 +68,16 @@ Fast-access reference for Claude Code. Read this file first for any documentatio
 
 ---
 
+## Project Management & Integration
+
+| Topic | File |
+|-------|------|
+| HacknPlan integration guide | [[../04-Development/HacknPlan-Integration]] |
+| Session workflow integration | [[../04-Development/Session-Workflow-Integration]] |
+| MCP Sync Engine design | [[../05-Progress/mcp-development/glue-sync-engine]] |
+
+---
+
 ## Analysis
 
 | Topic | File |

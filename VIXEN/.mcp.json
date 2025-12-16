@@ -13,16 +13,6 @@
         "EXCEL_MCP_PAGING_CELLS_LIMIT": "4000"
       }
     },
-    "hacknplan": {
-      "type": "stdio",
-      "command": "node",
-      "args": [
-        "C:/cpp/hacknplan-mcp/src/index.js"
-      ],
-      "env": {
-        "HACKNPLAN_API_KEY": "${HACKNPLAN_API_KEY}"
-      }
-    },
     "hacknplan-obsidian-glue": {
       "type": "stdio",
       "command": "node",
@@ -31,6 +21,17 @@
       ],
       "env": {
         "GLUE_CONFIG_PATH": "C:/cpp/hacknplan-obsidian-glue/glue-config.json"
+      }
+    },
+    "hacknplan": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "C:/cpp/hacknplan-mcp/dist/index.js"
+      ],
+      "env": {
+        "HACKNPLAN_API_KEY": "${HACKNPLAN_API_KEY}",
+        "HACKNPLAN_DEFAULT_PROJECT": "230809"
       }
     }
   }
