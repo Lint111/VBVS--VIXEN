@@ -2,8 +2,8 @@
 // SPIRV Descriptor Interface (SDI)
 // ============================================================================
 //
-// UUID: 64100954032505e4
-// Generated: 2025-12-15 13:43:48
+// UUID: 4f3ab9145d1784fb
+// Generated: 2025-12-16 17:06:29
 //
 // This file provides compile-time type-safe access to shader resources.
 // It is automatically generated from SPIRV reflection data.
@@ -21,119 +21,21 @@
 #include <glm/glm.hpp>
 
 namespace ShaderInterface {
-namespace _64100954032505e4 {
+namespace _4f3ab9145d1784fb {
 
 // ============================================================================
 // Shader Struct Definitions
 // ============================================================================
 
 /**
- * @brief ESVOBuffer
- * Size: 0 bytes
- * Alignment: 16 bytes
- * Layout VixenHash: 0xb9224cc8281c62e (for runtime discovery)
- */
-struct ESVOBuffer {
-    // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0xb9224cc8281c62eULL;
-
-    // Member metadata structs
-    struct pc_0 {
-        static constexpr const char* TYPE = "uint32_t";
-        static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 4;
-        static constexpr uint32_t BINDING = 0;
-    };
-
-};
-
-/**
- * @brief BrickBuffer
- * Size: 0 bytes
- * Alignment: 16 bytes
- * Layout VixenHash: 0x541cbd85094c043f (for runtime discovery)
- */
-struct BrickBuffer {
-    // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x541cbd85094c043fULL;
-
-    // Member metadata structs
-    struct pc_0 {
-        static constexpr const char* TYPE = "uint32_t";
-        static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 4;
-        static constexpr uint32_t BINDING = 0;
-    };
-
-};
-
-/**
- * @brief MaterialBuffer
- * Size: 0 bytes
- * Alignment: 16 bytes
- * Layout VixenHash: 0xecdc8a9c9d1897d (for runtime discovery)
- */
-struct MaterialBuffer {
-    // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0xecdc8a9c9d1897dULL;
-
-    // Member metadata structs
-    struct pc_0 {
-        static constexpr const char* TYPE = "Material";
-        static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 32;
-        static constexpr uint32_t BINDING = 0;
-    };
-
-};
-
-/**
- * @brief RayTraceBuffer
- * Size: 0 bytes
- * Alignment: 16 bytes
- * Layout VixenHash: 0x8ed615a294c7256 (for runtime discovery)
- */
-struct RayTraceBuffer {
-    // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x8ed615a294c7256ULL;
-
-    // Member metadata structs
-    struct pc_0 {
-        static constexpr const char* TYPE = "int32_t";
-        static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 4;
-        static constexpr uint32_t BINDING = 0;
-    };
-    struct pc_1 {
-        static constexpr const char* TYPE = "int32_t";
-        static constexpr uint32_t OFFSET = 4;
-        static constexpr uint32_t SIZE = 4;
-        static constexpr uint32_t BINDING = 1;
-    };
-    struct pc_2 {
-        static constexpr const char* TYPE = "uint32_t";
-        static constexpr uint32_t OFFSET = 8;
-        static constexpr uint32_t SIZE = 4;
-        static constexpr uint32_t BINDING = 2;
-    };
-    struct pc_3 {
-        static constexpr const char* TYPE = "uint32_t";
-        static constexpr uint32_t OFFSET = 16;
-        static constexpr uint32_t SIZE = 4;
-        static constexpr uint32_t BINDING = 3;
-    };
-
-};
-
-/**
  * @brief OctreeConfigUBO
- * Size: 448 bytes
+ * Size: 192 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0xb8d6a2d8c44624cb (for runtime discovery)
+ * Layout VixenHash: 0x4fee79a93d9682ba (for runtime discovery)
  */
 struct OctreeConfigUBO {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0xb8d6a2d8c44624cbULL;
+    static constexpr uint64_t LAYOUT_HASH = 0x4fee79a93d9682baULL;
 
     // Member metadata structs
     struct pc_0 {
@@ -220,97 +122,105 @@ struct OctreeConfigUBO {
         static constexpr uint32_t SIZE = 64;
         static constexpr uint32_t BINDING = 13;
     };
-    struct pc_14 {
+
+};
+
+/**
+ * @brief MaterialIdBuffer
+ * Size: 0 bytes
+ * Alignment: 16 bytes
+ * Layout VixenHash: 0x36671aadcdb33fe2 (for runtime discovery)
+ */
+struct MaterialIdBuffer {
+    // Phase H: Discovery system layout hash
+    static constexpr uint64_t LAYOUT_HASH = 0x36671aadcdb33fe2ULL;
+
+    // Member metadata structs
+    struct pc_0 {
         static constexpr const char* TYPE = "uint32_t";
-        static constexpr uint32_t OFFSET = 192;
+        static constexpr uint32_t OFFSET = 0;
         static constexpr uint32_t SIZE = 4;
-        static constexpr uint32_t BINDING = 14;
+        static constexpr uint32_t BINDING = 0;
     };
 
 };
 
 /**
- * @brief ShaderCountersBuffer
+ * @brief CompressedColorBuffer
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0x8119eb2b4c9fdcad (for runtime discovery)
+ * Layout VixenHash: 0x12076e44dfa527aa (for runtime discovery)
  */
-struct ShaderCountersBuffer {
+struct CompressedColorBuffer {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x8119eb2b4c9fdcadULL;
+    static constexpr uint64_t LAYOUT_HASH = 0x12076e44dfa527aaULL;
 
     // Member metadata structs
     struct pc_0 {
-        static constexpr const char* TYPE = "int32_t";
+        static constexpr const char* TYPE = "uint32_t";
         static constexpr uint32_t OFFSET = 0;
         static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t BINDING = 0;
     };
-    struct pc_1 {
-        static constexpr const char* TYPE = "int32_t";
-        static constexpr uint32_t OFFSET = 4;
-        static constexpr uint32_t SIZE = 4;
-        static constexpr uint32_t BINDING = 1;
-    };
-    struct pc_2 {
-        static constexpr const char* TYPE = "int32_t";
-        static constexpr uint32_t OFFSET = 8;
-        static constexpr uint32_t SIZE = 4;
-        static constexpr uint32_t BINDING = 2;
-    };
-    struct pc_3 {
-        static constexpr const char* TYPE = "int32_t";
-        static constexpr uint32_t OFFSET = 12;
-        static constexpr uint32_t SIZE = 4;
-        static constexpr uint32_t BINDING = 3;
-    };
-    struct pc_4 {
-        static constexpr const char* TYPE = "int32_t";
-        static constexpr uint32_t OFFSET = 16;
-        static constexpr uint32_t SIZE = 4;
-        static constexpr uint32_t BINDING = 4;
-    };
-    struct pc_5 {
-        static constexpr const char* TYPE = "int32_t";
-        static constexpr uint32_t OFFSET = 20;
-        static constexpr uint32_t SIZE = 4;
-        static constexpr uint32_t BINDING = 5;
-    };
-    struct pc_6 {
-        static constexpr const char* TYPE = "int32_t";
-        static constexpr uint32_t OFFSET = 24;
-        static constexpr uint32_t SIZE = 4;
-        static constexpr uint32_t BINDING = 6;
-    };
-    struct pc_7 {
-        static constexpr const char* TYPE = "int32_t";
-        static constexpr uint32_t OFFSET = 28;
-        static constexpr uint32_t SIZE = 4;
-        static constexpr uint32_t BINDING = 7;
-    };
-    struct pc_8 {
+
+};
+
+/**
+ * @brief CompressedNormalBuffer
+ * Size: 0 bytes
+ * Alignment: 16 bytes
+ * Layout VixenHash: 0x6b97afbc1e44419a (for runtime discovery)
+ */
+struct CompressedNormalBuffer {
+    // Phase H: Discovery system layout hash
+    static constexpr uint64_t LAYOUT_HASH = 0x6b97afbc1e44419aULL;
+
+    // Member metadata structs
+    struct pc_0 {
         static constexpr const char* TYPE = "uint32_t";
-        static constexpr uint32_t OFFSET = 32;
+        static constexpr uint32_t OFFSET = 0;
         static constexpr uint32_t SIZE = 4;
-        static constexpr uint32_t BINDING = 8;
+        static constexpr uint32_t BINDING = 0;
     };
-    struct pc_9 {
+
+};
+
+/**
+ * @brief BrickMappingBuffer
+ * Size: 0 bytes
+ * Alignment: 16 bytes
+ * Layout VixenHash: 0x4eddda9a7a46b181 (for runtime discovery)
+ */
+struct BrickMappingBuffer {
+    // Phase H: Discovery system layout hash
+    static constexpr uint64_t LAYOUT_HASH = 0x4eddda9a7a46b181ULL;
+
+    // Member metadata structs
+    struct pc_0 {
         static constexpr const char* TYPE = "uint32_t";
-        static constexpr uint32_t OFFSET = 96;
+        static constexpr uint32_t OFFSET = 0;
         static constexpr uint32_t SIZE = 4;
-        static constexpr uint32_t BINDING = 9;
+        static constexpr uint32_t BINDING = 0;
     };
-    struct pc_10 {
-        static constexpr const char* TYPE = "uint32_t";
-        static constexpr uint32_t OFFSET = 160;
-        static constexpr uint32_t SIZE = 4;
-        static constexpr uint32_t BINDING = 10;
-    };
-    struct pc_11 {
-        static constexpr const char* TYPE = "uint32_t";
-        static constexpr uint32_t OFFSET = 224;
-        static constexpr uint32_t SIZE = 4;
-        static constexpr uint32_t BINDING = 11;
+
+};
+
+/**
+ * @brief AABBBuffer
+ * Size: 0 bytes
+ * Alignment: 16 bytes
+ * Layout VixenHash: 0xa8c3b1a1b95734c6 (for runtime discovery)
+ */
+struct AABBBuffer {
+    // Phase H: Discovery system layout hash
+    static constexpr uint64_t LAYOUT_HASH = 0xa8c3b1a1b95734c6ULL;
+
+    // Member metadata structs
+    struct pc_0 {
+        static constexpr const char* TYPE = "AABB";
+        static constexpr uint32_t OFFSET = 0;
+        static constexpr uint32_t SIZE = 24;
+        static constexpr uint32_t BINDING = 0;
     };
 
 };
@@ -324,7 +234,7 @@ namespace Set0 {
     /**
      * @brief outputImage
      * Type: STORAGE_IMAGE
-     * Stages: COMPUTE
+     * Stages: ALL
      * Count: 1
      */
     struct Binding0 {
@@ -332,73 +242,27 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 0;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
         static constexpr uint32_t COUNT = 1;
-        static constexpr VkShaderStageFlags STAGES = VK_SHADER_STAGE_COMPUTE_BIT;
+        static constexpr VkShaderStageFlags STAGES = VK_SHADER_STAGE_ALL;
     };
 
     /**
-     * @brief 
-     * Type: STORAGE_BUFFER
-     * Stages: COMPUTE
+     * @brief topLevelAS
+     * Type: ACCELERATION_STRUCTURE_KHR
+     * Stages: ALL
      * Count: 1
      */
     struct Binding1 {
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 1;
-        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
         static constexpr uint32_t COUNT = 1;
-        static constexpr VkShaderStageFlags STAGES = VK_SHADER_STAGE_COMPUTE_BIT;
-        using DataType = ESVOBuffer;
-    };
-
-    /**
-     * @brief 
-     * Type: STORAGE_BUFFER
-     * Stages: COMPUTE
-     * Count: 1
-     */
-    struct Binding2 {
-        static constexpr uint32_t SET = 0;
-        static constexpr uint32_t BINDING = 2;
-        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        static constexpr uint32_t COUNT = 1;
-        static constexpr VkShaderStageFlags STAGES = VK_SHADER_STAGE_COMPUTE_BIT;
-        using DataType = BrickBuffer;
-    };
-
-    /**
-     * @brief 
-     * Type: STORAGE_BUFFER
-     * Stages: COMPUTE
-     * Count: 1
-     */
-    struct Binding3 {
-        static constexpr uint32_t SET = 0;
-        static constexpr uint32_t BINDING = 3;
-        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        static constexpr uint32_t COUNT = 1;
-        static constexpr VkShaderStageFlags STAGES = VK_SHADER_STAGE_COMPUTE_BIT;
-        using DataType = MaterialBuffer;
-    };
-
-    /**
-     * @brief 
-     * Type: STORAGE_BUFFER
-     * Stages: COMPUTE
-     * Count: 1
-     */
-    struct Binding4 {
-        static constexpr uint32_t SET = 0;
-        static constexpr uint32_t BINDING = 4;
-        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        static constexpr uint32_t COUNT = 1;
-        static constexpr VkShaderStageFlags STAGES = VK_SHADER_STAGE_COMPUTE_BIT;
-        using DataType = RayTraceBuffer;
+        static constexpr VkShaderStageFlags STAGES = VK_SHADER_STAGE_ALL;
     };
 
     /**
      * @brief octreeConfig
      * Type: UNIFORM_BUFFER
-     * Stages: COMPUTE
+     * Stages: ALL
      * Count: 1
      */
     struct Binding5 {
@@ -406,14 +270,59 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 5;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         static constexpr uint32_t COUNT = 1;
-        static constexpr VkShaderStageFlags STAGES = VK_SHADER_STAGE_COMPUTE_BIT;
+        static constexpr VkShaderStageFlags STAGES = VK_SHADER_STAGE_ALL;
         using DataType = OctreeConfigUBO;
     };
 
     /**
-     * @brief shaderCounters
+     * @brief materialIdBuffer
      * Type: STORAGE_BUFFER
-     * Stages: COMPUTE
+     * Stages: ALL
+     * Count: 1
+     */
+    struct Binding3 {
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 3;
+        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr VkShaderStageFlags STAGES = VK_SHADER_STAGE_ALL;
+        using DataType = MaterialIdBuffer;
+    };
+
+    /**
+     * @brief 
+     * Type: STORAGE_BUFFER
+     * Stages: ALL
+     * Count: 1
+     */
+    struct Binding6 {
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 6;
+        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr VkShaderStageFlags STAGES = VK_SHADER_STAGE_ALL;
+        using DataType = CompressedColorBuffer;
+    };
+
+    /**
+     * @brief 
+     * Type: STORAGE_BUFFER
+     * Stages: ALL
+     * Count: 1
+     */
+    struct Binding7 {
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 7;
+        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr VkShaderStageFlags STAGES = VK_SHADER_STAGE_ALL;
+        using DataType = CompressedNormalBuffer;
+    };
+
+    /**
+     * @brief 
+     * Type: STORAGE_BUFFER
+     * Stages: ALL
      * Count: 1
      */
     struct Binding8 {
@@ -421,8 +330,23 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 8;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
-        static constexpr VkShaderStageFlags STAGES = VK_SHADER_STAGE_COMPUTE_BIT;
-        using DataType = ShaderCountersBuffer;
+        static constexpr VkShaderStageFlags STAGES = VK_SHADER_STAGE_ALL;
+        using DataType = BrickMappingBuffer;
+    };
+
+    /**
+     * @brief aabbBuffer
+     * Type: STORAGE_BUFFER
+     * Stages: ALL
+     * Count: 1
+     */
+    struct Binding2 {
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 2;
+        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr VkShaderStageFlags STAGES = VK_SHADER_STAGE_ALL;
+        using DataType = AABBBuffer;
     };
 
 } // namespace Set0
@@ -497,7 +421,7 @@ struct PushConstants {
  * @brief pc
  * Offset: 0 bytes
  * Size: 64 bytes
- * Stages: COMPUTE
+ * Stages: ALL
  */
 struct pc {
     static constexpr uint32_t OFFSET = 0;
@@ -511,8 +435,8 @@ struct pc {
 // ============================================================================
 
 struct Metadata {
-    static constexpr const char* PROGRAM_NAME = "VoxelRayMarch_Compute_";
-    static constexpr const char* INTERFACE_HASH = "c15302f613da0f43";
+    static constexpr const char* PROGRAM_NAME = "VoxelRT_RayTracing_";
+    static constexpr const char* INTERFACE_HASH = "f0e3df2eb7a6875f";
     static constexpr uint32_t NUM_DESCRIPTOR_SETS = 1;
     static constexpr uint32_t NUM_PUSH_CONSTANTS = 1;
     static constexpr uint32_t NUM_VERTEX_INPUTS = 0;

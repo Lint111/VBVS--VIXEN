@@ -2,14 +2,14 @@
 // Shader-Specific Names Header
 // ============================================================================
 //
-// Program: VoxelRayMarch_Compute_
-// UUID: 64100954032505e4
-// Generated: 2025-12-16 17:03:10
+// Program: VoxelRayMarch_Fragment_
+// UUID: d646771a588ed6cf
+// Generated: 2025-12-16 17:06:13
 //
 // This file provides shader-specific constexpr constants and type aliases
 // that map to the generic .si.h interface.
 //
-// Usage: #include "VoxelRayMarch_Compute_Names.h"
+// Usage: #include "VoxelRayMarch_Fragment_Names.h"
 //
 // DO NOT MODIFY THIS FILE MANUALLY - it will be regenerated.
 //
@@ -17,12 +17,12 @@
 
 #pragma once
 
-#include "64100954032505e4-SDI.h"
+#include "d646771a588ed6cf-SDI.h"
 
-namespace VoxelRayMarch_Compute_ {
+namespace VoxelRayMarch_Fragment_ {
 
 // Reference to generic SDI namespace
-namespace SDI = ShaderInterface::_64100954032505e4;
+namespace SDI = ShaderInterface::d646771a588ed6cf;
 
 // Forward declare push constant type to prevent error messages
 using pc = SDI::pc;
@@ -31,9 +31,6 @@ using pc = SDI::pc;
 // Descriptor Binding Aliases
 // ============================================================================
 
-// outputImage (Set 0, Binding 0)
-using outputImage = SDI::Set0::Binding0;
-constexpr const char* outputImage_name = "outputImage";
 // esvoNodes (Set 0, Binding 1)
 using esvoNodes = SDI::Set0::Binding1;
 constexpr const char* esvoNodes_name = "esvoNodes";
@@ -49,9 +46,6 @@ constexpr const char* traceWriteIndex_name = "traceWriteIndex";
 // octreeConfig (Set 0, Binding 5)
 using octreeConfig = SDI::Set0::Binding5;
 constexpr const char* octreeConfig_name = "octreeConfig";
-// shaderCounters (Set 0, Binding 8)
-using shaderCounters = SDI::Set0::Binding8;
-constexpr const char* shaderCounters_name = "shaderCounters";
 
 // ============================================================================
 // Push Constant Member Aliases (With Metadata)
@@ -75,4 +69,4 @@ constexpr const char* cameraRight_name = "cameraRight";
 using debugMode = SDI::pc::DataType::pc_7;
 constexpr const char* debugMode_name = "debugMode";
 
-} // namespace VoxelRayMarch_Compute_
+} // namespace VoxelRayMarch_Fragment_

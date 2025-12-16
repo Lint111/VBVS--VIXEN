@@ -2,8 +2,8 @@
 // SPIRV Descriptor Interface (SDI)
 // ============================================================================
 //
-// UUID: 64100954032505e4
-// Generated: 2025-12-15 13:43:48
+// UUID: 34a12cefc2702caa
+// Generated: 2025-12-15 13:43:52
 //
 // This file provides compile-time type-safe access to shader resources.
 // It is automatically generated from SPIRV reflection data.
@@ -21,7 +21,7 @@
 #include <glm/glm.hpp>
 
 namespace ShaderInterface {
-namespace _64100954032505e4 {
+namespace _34a12cefc2702caa {
 
 // ============================================================================
 // Shader Struct Definitions
@@ -62,26 +62,6 @@ struct BrickBuffer {
         static constexpr const char* TYPE = "uint32_t";
         static constexpr uint32_t OFFSET = 0;
         static constexpr uint32_t SIZE = 4;
-        static constexpr uint32_t BINDING = 0;
-    };
-
-};
-
-/**
- * @brief MaterialBuffer
- * Size: 0 bytes
- * Alignment: 16 bytes
- * Layout VixenHash: 0xecdc8a9c9d1897d (for runtime discovery)
- */
-struct MaterialBuffer {
-    // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0xecdc8a9c9d1897dULL;
-
-    // Member metadata structs
-    struct pc_0 {
-        static constexpr const char* TYPE = "Material";
-        static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 32;
         static constexpr uint32_t BINDING = 0;
     };
 
@@ -230,6 +210,46 @@ struct OctreeConfigUBO {
 };
 
 /**
+ * @brief CompressedColorBuffer
+ * Size: 0 bytes
+ * Alignment: 16 bytes
+ * Layout VixenHash: 0x12076e44dfa527aa (for runtime discovery)
+ */
+struct CompressedColorBuffer {
+    // Phase H: Discovery system layout hash
+    static constexpr uint64_t LAYOUT_HASH = 0x12076e44dfa527aaULL;
+
+    // Member metadata structs
+    struct pc_0 {
+        static constexpr const char* TYPE = "uint32_t";
+        static constexpr uint32_t OFFSET = 0;
+        static constexpr uint32_t SIZE = 4;
+        static constexpr uint32_t BINDING = 0;
+    };
+
+};
+
+/**
+ * @brief CompressedNormalBuffer
+ * Size: 0 bytes
+ * Alignment: 16 bytes
+ * Layout VixenHash: 0x6b97afbc1e44419a (for runtime discovery)
+ */
+struct CompressedNormalBuffer {
+    // Phase H: Discovery system layout hash
+    static constexpr uint64_t LAYOUT_HASH = 0x6b97afbc1e44419aULL;
+
+    // Member metadata structs
+    struct pc_0 {
+        static constexpr const char* TYPE = "uint32_t";
+        static constexpr uint32_t OFFSET = 0;
+        static constexpr uint32_t SIZE = 4;
+        static constexpr uint32_t BINDING = 0;
+    };
+
+};
+
+/**
  * @brief ShaderCountersBuffer
  * Size: 0 bytes
  * Alignment: 16 bytes
@@ -371,21 +391,6 @@ namespace Set0 {
      * Stages: COMPUTE
      * Count: 1
      */
-    struct Binding3 {
-        static constexpr uint32_t SET = 0;
-        static constexpr uint32_t BINDING = 3;
-        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        static constexpr uint32_t COUNT = 1;
-        static constexpr VkShaderStageFlags STAGES = VK_SHADER_STAGE_COMPUTE_BIT;
-        using DataType = MaterialBuffer;
-    };
-
-    /**
-     * @brief 
-     * Type: STORAGE_BUFFER
-     * Stages: COMPUTE
-     * Count: 1
-     */
     struct Binding4 {
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 4;
@@ -408,6 +413,36 @@ namespace Set0 {
         static constexpr uint32_t COUNT = 1;
         static constexpr VkShaderStageFlags STAGES = VK_SHADER_STAGE_COMPUTE_BIT;
         using DataType = OctreeConfigUBO;
+    };
+
+    /**
+     * @brief 
+     * Type: STORAGE_BUFFER
+     * Stages: COMPUTE
+     * Count: 1
+     */
+    struct Binding6 {
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 6;
+        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr VkShaderStageFlags STAGES = VK_SHADER_STAGE_COMPUTE_BIT;
+        using DataType = CompressedColorBuffer;
+    };
+
+    /**
+     * @brief 
+     * Type: STORAGE_BUFFER
+     * Stages: COMPUTE
+     * Count: 1
+     */
+    struct Binding7 {
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 7;
+        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr VkShaderStageFlags STAGES = VK_SHADER_STAGE_COMPUTE_BIT;
+        using DataType = CompressedNormalBuffer;
     };
 
     /**
@@ -511,8 +546,8 @@ struct pc {
 // ============================================================================
 
 struct Metadata {
-    static constexpr const char* PROGRAM_NAME = "VoxelRayMarch_Compute_";
-    static constexpr const char* INTERFACE_HASH = "c15302f613da0f43";
+    static constexpr const char* PROGRAM_NAME = "VoxelRayMarch_Compressed_Compute_";
+    static constexpr const char* INTERFACE_HASH = "abb7ec454ef2a898";
     static constexpr uint32_t NUM_DESCRIPTOR_SETS = 1;
     static constexpr uint32_t NUM_PUSH_CONSTANTS = 1;
     static constexpr uint32_t NUM_VERTEX_INPUTS = 0;

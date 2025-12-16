@@ -67,13 +67,13 @@ flowchart LR
 
 ### 2.1 Phase Details
 
-| Phase | Description |
-|-------|-------------|
-| **Validate** | Check all inputs connected, verify no cycles (DAG property) |
-| **AnalyzeDependencies** | Build directed graph, topological sort for execution order |
-| **AllocateResources** | Analyze resource lifetimes, allocate Vulkan resources |
-| **GeneratePipelines** | Group instances by type, create shared pipelines |
-| **BuildExecutionOrder** | Finalize execution order list |
+| Phase                   | Description                                                 |
+| ----------------------- | ----------------------------------------------------------- |
+| **Validate**            | Check all inputs connected, verify no cycles (DAG property) |
+| **AnalyzeDependencies** | Build directed graph, topological sort for execution order  |
+| **AllocateResources**   | Analyze resource lifetimes, allocate Vulkan resources       |
+| **GeneratePipelines**   | Group instances by type, create shared pipelines            |
+| **BuildExecutionOrder** | Finalize execution order list                               |
 
 ---
 

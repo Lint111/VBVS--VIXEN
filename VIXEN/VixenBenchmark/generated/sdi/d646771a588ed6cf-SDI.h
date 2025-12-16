@@ -2,8 +2,8 @@
 // SPIRV Descriptor Interface (SDI)
 // ============================================================================
 //
-// UUID: 64100954032505e4
-// Generated: 2025-12-15 13:43:48
+// UUID: d646771a588ed6cf
+// Generated: 2025-12-16 17:03:28
 //
 // This file provides compile-time type-safe access to shader resources.
 // It is automatically generated from SPIRV reflection data.
@@ -21,7 +21,7 @@
 #include <glm/glm.hpp>
 
 namespace ShaderInterface {
-namespace _64100954032505e4 {
+namespace d646771a588ed6cf {
 
 // ============================================================================
 // Shader Struct Definitions
@@ -229,92 +229,6 @@ struct OctreeConfigUBO {
 
 };
 
-/**
- * @brief ShaderCountersBuffer
- * Size: 0 bytes
- * Alignment: 16 bytes
- * Layout VixenHash: 0x8119eb2b4c9fdcad (for runtime discovery)
- */
-struct ShaderCountersBuffer {
-    // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x8119eb2b4c9fdcadULL;
-
-    // Member metadata structs
-    struct pc_0 {
-        static constexpr const char* TYPE = "int32_t";
-        static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 4;
-        static constexpr uint32_t BINDING = 0;
-    };
-    struct pc_1 {
-        static constexpr const char* TYPE = "int32_t";
-        static constexpr uint32_t OFFSET = 4;
-        static constexpr uint32_t SIZE = 4;
-        static constexpr uint32_t BINDING = 1;
-    };
-    struct pc_2 {
-        static constexpr const char* TYPE = "int32_t";
-        static constexpr uint32_t OFFSET = 8;
-        static constexpr uint32_t SIZE = 4;
-        static constexpr uint32_t BINDING = 2;
-    };
-    struct pc_3 {
-        static constexpr const char* TYPE = "int32_t";
-        static constexpr uint32_t OFFSET = 12;
-        static constexpr uint32_t SIZE = 4;
-        static constexpr uint32_t BINDING = 3;
-    };
-    struct pc_4 {
-        static constexpr const char* TYPE = "int32_t";
-        static constexpr uint32_t OFFSET = 16;
-        static constexpr uint32_t SIZE = 4;
-        static constexpr uint32_t BINDING = 4;
-    };
-    struct pc_5 {
-        static constexpr const char* TYPE = "int32_t";
-        static constexpr uint32_t OFFSET = 20;
-        static constexpr uint32_t SIZE = 4;
-        static constexpr uint32_t BINDING = 5;
-    };
-    struct pc_6 {
-        static constexpr const char* TYPE = "int32_t";
-        static constexpr uint32_t OFFSET = 24;
-        static constexpr uint32_t SIZE = 4;
-        static constexpr uint32_t BINDING = 6;
-    };
-    struct pc_7 {
-        static constexpr const char* TYPE = "int32_t";
-        static constexpr uint32_t OFFSET = 28;
-        static constexpr uint32_t SIZE = 4;
-        static constexpr uint32_t BINDING = 7;
-    };
-    struct pc_8 {
-        static constexpr const char* TYPE = "uint32_t";
-        static constexpr uint32_t OFFSET = 32;
-        static constexpr uint32_t SIZE = 4;
-        static constexpr uint32_t BINDING = 8;
-    };
-    struct pc_9 {
-        static constexpr const char* TYPE = "uint32_t";
-        static constexpr uint32_t OFFSET = 96;
-        static constexpr uint32_t SIZE = 4;
-        static constexpr uint32_t BINDING = 9;
-    };
-    struct pc_10 {
-        static constexpr const char* TYPE = "uint32_t";
-        static constexpr uint32_t OFFSET = 160;
-        static constexpr uint32_t SIZE = 4;
-        static constexpr uint32_t BINDING = 10;
-    };
-    struct pc_11 {
-        static constexpr const char* TYPE = "uint32_t";
-        static constexpr uint32_t OFFSET = 224;
-        static constexpr uint32_t SIZE = 4;
-        static constexpr uint32_t BINDING = 11;
-    };
-
-};
-
 // ============================================================================
 // Descriptor Bindings
 // ============================================================================
@@ -322,23 +236,9 @@ struct ShaderCountersBuffer {
 namespace Set0 {
 
     /**
-     * @brief outputImage
-     * Type: STORAGE_IMAGE
-     * Stages: COMPUTE
-     * Count: 1
-     */
-    struct Binding0 {
-        static constexpr uint32_t SET = 0;
-        static constexpr uint32_t BINDING = 0;
-        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-        static constexpr uint32_t COUNT = 1;
-        static constexpr VkShaderStageFlags STAGES = VK_SHADER_STAGE_COMPUTE_BIT;
-    };
-
-    /**
      * @brief 
      * Type: STORAGE_BUFFER
-     * Stages: COMPUTE
+     * Stages: FRAGMENT
      * Count: 1
      */
     struct Binding1 {
@@ -346,14 +246,14 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 1;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
-        static constexpr VkShaderStageFlags STAGES = VK_SHADER_STAGE_COMPUTE_BIT;
+        static constexpr VkShaderStageFlags STAGES = VK_SHADER_STAGE_FRAGMENT_BIT;
         using DataType = ESVOBuffer;
     };
 
     /**
      * @brief 
      * Type: STORAGE_BUFFER
-     * Stages: COMPUTE
+     * Stages: FRAGMENT
      * Count: 1
      */
     struct Binding2 {
@@ -361,14 +261,14 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 2;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
-        static constexpr VkShaderStageFlags STAGES = VK_SHADER_STAGE_COMPUTE_BIT;
+        static constexpr VkShaderStageFlags STAGES = VK_SHADER_STAGE_FRAGMENT_BIT;
         using DataType = BrickBuffer;
     };
 
     /**
      * @brief 
      * Type: STORAGE_BUFFER
-     * Stages: COMPUTE
+     * Stages: FRAGMENT
      * Count: 1
      */
     struct Binding3 {
@@ -376,14 +276,14 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 3;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
-        static constexpr VkShaderStageFlags STAGES = VK_SHADER_STAGE_COMPUTE_BIT;
+        static constexpr VkShaderStageFlags STAGES = VK_SHADER_STAGE_FRAGMENT_BIT;
         using DataType = MaterialBuffer;
     };
 
     /**
      * @brief 
      * Type: STORAGE_BUFFER
-     * Stages: COMPUTE
+     * Stages: FRAGMENT
      * Count: 1
      */
     struct Binding4 {
@@ -391,14 +291,14 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 4;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
-        static constexpr VkShaderStageFlags STAGES = VK_SHADER_STAGE_COMPUTE_BIT;
+        static constexpr VkShaderStageFlags STAGES = VK_SHADER_STAGE_FRAGMENT_BIT;
         using DataType = RayTraceBuffer;
     };
 
     /**
      * @brief octreeConfig
      * Type: UNIFORM_BUFFER
-     * Stages: COMPUTE
+     * Stages: FRAGMENT
      * Count: 1
      */
     struct Binding5 {
@@ -406,23 +306,8 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 5;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         static constexpr uint32_t COUNT = 1;
-        static constexpr VkShaderStageFlags STAGES = VK_SHADER_STAGE_COMPUTE_BIT;
+        static constexpr VkShaderStageFlags STAGES = VK_SHADER_STAGE_FRAGMENT_BIT;
         using DataType = OctreeConfigUBO;
-    };
-
-    /**
-     * @brief shaderCounters
-     * Type: STORAGE_BUFFER
-     * Stages: COMPUTE
-     * Count: 1
-     */
-    struct Binding8 {
-        static constexpr uint32_t SET = 0;
-        static constexpr uint32_t BINDING = 8;
-        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        static constexpr uint32_t COUNT = 1;
-        static constexpr VkShaderStageFlags STAGES = VK_SHADER_STAGE_COMPUTE_BIT;
-        using DataType = ShaderCountersBuffer;
     };
 
 } // namespace Set0
@@ -497,7 +382,7 @@ struct PushConstants {
  * @brief pc
  * Offset: 0 bytes
  * Size: 64 bytes
- * Stages: COMPUTE
+ * Stages: FRAGMENT
  */
 struct pc {
     static constexpr uint32_t OFFSET = 0;
@@ -511,8 +396,8 @@ struct pc {
 // ============================================================================
 
 struct Metadata {
-    static constexpr const char* PROGRAM_NAME = "VoxelRayMarch_Compute_";
-    static constexpr const char* INTERFACE_HASH = "c15302f613da0f43";
+    static constexpr const char* PROGRAM_NAME = "VoxelRayMarch_Fragment_";
+    static constexpr const char* INTERFACE_HASH = "0201b1bd17f82efa";
     static constexpr uint32_t NUM_DESCRIPTOR_SETS = 1;
     static constexpr uint32_t NUM_PUSH_CONSTANTS = 1;
     static constexpr uint32_t NUM_VERTEX_INPUTS = 0;

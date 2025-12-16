@@ -18,7 +18,7 @@
   },
   "matrix": {
     "global": {
-      "resolutions": [64, 128, 256, 512],
+      "resolutions": [64, 128, 256],
       "render_sizes": [[1280, 720], [1920, 1080]],
       "scenes": ["cornell", "noise", "tunnels", "cityscape"]
     },

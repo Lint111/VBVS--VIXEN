@@ -54,6 +54,11 @@ build/*
 benchmark_results/
 benchmark_results/*
 
+# Data directories with benchmark results and large files
+data/
+data/*
+!data/templates/
+
 # Binaries and generated logs
 binaries/
 vulkan_app_log.txt
