@@ -54,12 +54,17 @@ Returns:
 
 **Goal**: Implement dependency graph analysis to identify blocking work items
 
+**IMPORTANT:** Dependencies are a **premium HacknPlan feature**. The implementation MUST support:
+1. **Premium Mode**: Use real dependency API endpoints
+2. **Fallback Mode**: Parse dependency markers from task descriptions (e.g., "Blocked by: #123, #456")
+
 **Expected Function Signature:**
 ```typescript
 get_blockers({
   projectId?: number,
   workItemId?: number | string,  // Optional - analyze specific item or all
-  includeIndirect?: boolean       // Default: false - transitive dependencies
+  includeIndirect?: boolean,      // Default: false - transitive dependencies
+  useFallbackParser?: boolean     // Default: true - parse description markers if API fails
 })
 
 Returns:
@@ -70,7 +75,8 @@ Returns:
     item: WorkItem,
     prerequisites: WorkItem[],
     depth: number
-  }
+  },
+  source: 'api' | 'description-markers'  // How dependencies were detected
 }
 ```
 
@@ -84,10 +90,29 @@ Returns:
    ```
 
 2. **Add `get_blockers()` to `src/tools/queries.ts`:**
-   - Fetch dependencies using `ctx.httpRequest()`
-   - Build dependency graph (Map<workItemId, predecessorIds[]>)
+
+   **Two-Mode Implementation:**
+
+   **A. Premium Mode (Dependency API):**
+   - Try `GET /projects/{projectId}/workitems/{workItemId}/dependencies` first
+   - If successful, build graph from API response
+   - Mark source as 'api'
+
+   **B. Fallback Mode (Description Parser):**
+   - If API returns 403/404/premium error, fall back to description parsing
+   - Parse patterns from work item descriptions:
+     - `Blocked by: #123` or `Blocked by #123`
+     - `Depends on: #456, #789` or `Depends on #456, #789`
+     - `Prerequisites: #101, #102`
+     - `Requires: #123`
+   - Build dependency graph from parsed markers
+   - Mark source as 'description-markers'
+
+   **Graph Processing (Both Modes):**
+   - Build adjacency graph (Map<workItemId, predecessorIds[]>)
    - Find all incomplete prerequisites
    - Implement critical path calculation (BFS/DFS)
+   - Handle circular dependencies gracefully
    - Return slim work items for token efficiency
 
 3. **Update `src/tools/queries.ts` export:**
@@ -99,11 +124,18 @@ Returns:
    ```
 
 4. **Add test coverage in `src/tool-integration.test.ts`:**
-   - Basic blocker detection (simple chain: A → B → C)
-   - Indirect dependency analysis (`includeIndirect: true`)
-   - Critical path calculation (specific `workItemId`)
-   - Empty dependency graph (no blockers)
-   - Tool registry verification
+   - **API Mode Tests:**
+     - Basic blocker detection (simple chain: A → B → C)
+     - Indirect dependency analysis (`includeIndirect: true`)
+     - Critical path calculation (specific `workItemId`)
+     - Empty dependency graph (no blockers)
+   - **Fallback Mode Tests:**
+     - Description parsing with various marker patterns
+     - Mixed markers (multiple patterns in one description)
+     - Invalid/malformed markers (graceful handling)
+     - No markers found (empty result)
+   - **Tool Registry:**
+     - Verify get_blockers registered
 
 5. **Build and test:**
    ```bash
@@ -219,6 +251,54 @@ src/tools/
 
 ---
 
+## Dependency Fallback Parser (Premium Feature Workaround)
+
+**Why This Matters:**
+Dependencies are a premium HacknPlan feature. Users without premium can use structured markers in task descriptions as a workaround.
+
+**Supported Marker Patterns:**
+```typescript
+// Regex patterns to match (case-insensitive):
+const patterns = [
+  /Blocked by:?\s*#(\d+(?:\s*,\s*#\d+)*)/gi,
+  /Depends on:?\s*#(\d+(?:\s*,\s*#\d+)*)/gi,
+  /Prerequisites?:?\s*#(\d+(?:\s*,\s*#\d+)*)/gi,
+  /Requires?:?\s*#(\d+(?:\s*,\s*#\d+)*)/gi,
+];
+```
+
+**Example Task Descriptions:**
+```markdown
+# Task #123: Implement shader system
+Blocked by: #101, #102
+Requires proper device initialization.
+
+# Task #456: Add ray marching
+Depends on #123
+Prerequisites: #101
+This needs the shader system first.
+```
+
+**Parser Algorithm:**
+1. Fetch all work items for project
+2. For each item, extract description
+3. Apply regex patterns to find dependency markers
+4. Parse comma-separated task IDs
+5. Validate IDs exist in project
+6. Build dependency graph from markers
+
+**Error Handling:**
+- Invalid task IDs → skip with warning
+- Malformed markers → skip gracefully
+- No markers found → return empty dependency set
+- API 403/404 → automatically fall back to parser
+
+**Configuration:**
+- `useFallbackParser: true` (default) - Auto-fallback on API failure
+- `useFallbackParser: false` - Fail if API unavailable (premium-only mode)
+
+---
+
 ## Watch Out For
 
 1. **TypeScript Type Safety**
@@ -230,18 +310,28 @@ src/tools/
    - Handle circular dependencies gracefully
    - Use Set to track visited nodes (prevent infinite loops)
    - Consider max depth limit for critical path
+   - **NEW:** Support both API and description-parser sources
 
-3. **Token Efficiency**
+3. **Premium Feature Detection**
+   - Catch 403 Forbidden (no premium access)
+   - Catch 404 Not Found (endpoint doesn't exist on free tier)
+   - Gracefully fall back to description parser
+   - Include `source` field in response to indicate method used
+
+4. **Token Efficiency**
    - Always return slim work items for collections
    - Cache user ID (fetch once, reuse)
    - Aggregate statistics server-side
+   - **NEW:** Description parser must fetch all items - cache results
 
-4. **Testing Patterns**
+5. **Testing Patterns**
    - Wrap async mock functions: `(async () => { ... }) as any`
    - Always provide complete getMetadata mock
    - Test empty results (no dependencies, no blockers)
+   - **NEW:** Test both API mode and fallback mode
+   - **NEW:** Mock API 403 errors to trigger fallback
 
-5. **Commit Hygiene**
+6. **Commit Hygiene**
    - One feature per commit (atomic changes)
    - Include build status in commit message
    - Reference design element #3
@@ -335,19 +425,34 @@ GET /projects/{projectId}/workitems/{workItemId}/dependencies
 ## Commit Message Template
 
 ```
-feat(mcp): Implement get_blockers dependency analysis (Task #9)
+feat(mcp): Implement get_blockers dependency analysis with fallback (Task #9)
 
 Add smart query function to analyze dependency graphs and identify
-blocking work items with optional critical path calculation.
+blocking work items with premium API + free-tier fallback support.
 
 **Implementation:**
 - New function: get_blockers() in src/tools/queries.ts
+- **Dual-mode operation:**
+  - Premium Mode: Uses HacknPlan dependency API
+  - Fallback Mode: Parses description markers (Blocked by, Depends on, etc.)
 - Dependency graph traversal with cycle detection
 - Critical path calculation for specific work items
 - Support for transitive dependency analysis (includeIndirect)
 - Returns slim work items for token efficiency
 
+**Fallback Parser:**
+- Supports multiple marker patterns:
+  - "Blocked by: #123, #456"
+  - "Depends on: #789"
+  - "Prerequisites: #101"
+  - "Requires: #102"
+- Graceful error handling for malformed markers
+- Automatic fallback on 403/404 API errors
+- Includes 'source' field in response ('api' or 'description-markers')
+
 **Algorithm:**
+- Try premium API first
+- On failure (403/404), fall back to description parsing
 - Build adjacency graph (Map<workItemId, predecessorIds[]>)
 - Traverse graph using BFS/DFS
 - Track visited nodes to prevent infinite loops
@@ -355,11 +460,11 @@ blocking work items with optional critical path calculation.
 - Calculate critical path depth
 
 **Test Coverage:**
-- Basic blocker detection (simple chain)
+- API Mode: Basic blocker detection, indirect deps, critical path
+- Fallback Mode: Pattern parsing, mixed markers, malformed markers
 - Circular dependency handling
-- Indirect dependency analysis (includeIndirect: true)
-- Critical path calculation (specific workItemId)
 - Empty dependency graph (no blockers)
+- Premium feature detection (403/404 handling)
 
 **Build Status:**
 - TypeScript compilation: ✓ PASS
