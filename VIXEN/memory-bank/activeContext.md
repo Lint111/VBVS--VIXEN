@@ -1,14 +1,14 @@
 # Active Context
 
-**Last Updated**: December 14, 2025
+**Last Updated**: December 16, 2025
 **Current Branch**: `main`
-**Status**: Critical Bug Fixes Complete - Ready for Task #4 (Benchmark Matrix)
+**Status**: Memory Guards Implemented - Ready for Release Testing
 
 ---
 
 ## Current State
 
-### Sprint 2 Progress - All Tasks Complete ✅
+### Sprint 2 Progress + Memory Guards ✅
 
 | Task | Title | Status | Impact |
 |------|-------|--------|--------|
@@ -19,7 +19,31 @@
 | #56 | 512x512 resolution | ✅ Done | Added to resolutions array |
 | #77 | FrameCapture crash fix | ✅ Done | ESC cleanup crash resolved |
 | #78 | MainCacher crash fix | ✅ Done | Use-after-free resolved |
+| NEW | Memory OOM guards | ✅ Done | Prevents benchmark crashes |
 | #4 | Run benchmark matrix | ⏳ Ready | No longer blocked |
+
+### Session 5 Changes (Memory Guard Implementation)
+
+**Memory OOM Guards - Prevent Benchmark Crashes:**
+- **Purpose:** Estimate and check GPU/host memory requirements before running tests
+- **Solution:**
+  - Added comprehensive memory estimation functions in `BenchmarkConfig.cpp`
+  - `EstimateGPUMemory()` - Shader-aware calculations (compressed vs uncompressed)
+  - `EstimateHostMemory()` - System RAM for voxel construction
+  - `GetAvailableGPUMemory()` - Vulkan API queries for VRAM
+  - `GetAvailableHostMemory()` - Platform-specific (Windows/Linux/macOS)
+  - `ShouldSkipTestForMemory()` - Conservative safety margins (80% GPU, 70% host)
+- **Memory Calculations:**
+  - **Compressed shaders**: DXT1 color (256B/brick) + DXT normal (512B/brick) = 768B/brick
+  - **Uncompressed shaders**: Material data with safety margin = 3072B/brick
+  - Includes octree hierarchy, swapchain images, staging buffers, descriptors
+- **Files Modified:**
+  - `libraries/Profiler/src/BenchmarkConfig.cpp:533-575` (+244 lines)
+- **Testing:**
+  - ✅ Built successfully (Debug + Release)
+  - ✅ Benchmark runs without crashes on RTX 3060 (6GB VRAM)
+  - ✅ Verbose logging shows memory checks: "Generating test matrix with memory checks..."
+  - ✅ Generated 192 tests with no false-positive skips
 
 ### Session 4 Changes (Critical Stability Fixes)
 
@@ -111,10 +135,11 @@ cmake --build build --config Debug --parallel 16
 
 | Hash | Description |
 |------|-------------|
-| TBD | fix(Profiler,CashSystem): Critical cleanup crashes (#77, #78) |
-| `bfe7e8d` | feat(benchmark): Sprint 2 data collection polish (#61) |
-| `c1f9400` | fix(RenderGraph): Enable shader counters with wrapper type extraction (#60) |
-| `4a265b6` | feat(RenderGraph): Add conversion_type pattern for wrapper types (#59) |
+| `8b4c6ae` | feat(Profiler): Add memory checks to prevent benchmark OOM crashes |
+| `8205e87` | feat(Profiler): Improve memory estimation (shader-aware compressed/uncompressed) |
+| `b5b65ac` | feat(Profiler): Add memory checks to skip tests exceeding available memory |
+| `5c0154f` | feat(RenderGraph): Add compile-time SFINAE guard for wrapper types (#61) |
+| `4b5ed69` | docs: Update documentation for SFINAE/conversion_type debugging (#61) |
 
 ---
 
@@ -142,9 +167,10 @@ renderGraph->RegisterExternalCleanup(
 
 ## Next Steps
 
-1. **Commit current changes** - Tasks #77, #78 (critical stability fixes)
-2. **Build standalone package** - Clean state for distribution
-3. **Task #4** (16h) - Run full benchmark matrix (now stable)
+1. ✅ **Memory guards merged** - Commit `8b4c6ae` merged to main
+2. **Create HacknPlan task** - Document memory guard implementation
+3. **Build standalone package** - Release build ready for distribution
+4. **Task #4** (16h) - Run full benchmark matrix (stable, OOM-protected)
 
 ---
 
