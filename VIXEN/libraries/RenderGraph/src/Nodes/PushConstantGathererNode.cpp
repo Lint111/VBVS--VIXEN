@@ -10,6 +10,11 @@
 #include <iostream>
 #include <unordered_map>
 
+// Disable verbose push constant debug output for clean benchmark/production builds
+#ifndef VIXEN_ENABLE_PUSHCONSTANT_LOGS
+#define VIXEN_ENABLE_PUSHCONSTANT_LOGS 0
+#endif
+
 using namespace RenderGraph::NodeHelpers;
 
 namespace Vixen::RenderGraph {
@@ -113,6 +118,7 @@ static size_t ExtractTypedResource(
         return it->second(resource, typeInfo, dest, destSize);
     }
 
+#if VIXEN_ENABLE_PUSHCONSTANT_LOGS
     // Log lookup failure for debugging
     // Note: Using stderr for lower-level utility function outside of node context
     std::cerr << "[ExtractTypedResource] Lookup FAILED: baseType=" << static_cast<int>(typeInfo.baseType)
@@ -121,6 +127,7 @@ static size_t ExtractTypedResource(
               << ", dim1=" << (typeInfo.baseType == BaseType::Matrix ? typeInfo.columns : typeInfo.vecSize)
               << ", dim2=" << (typeInfo.baseType == BaseType::Matrix ? typeInfo.rows : static_cast<uint32_t>(typeInfo.arraySize))
               << ", dim3=" << (typeInfo.baseType == BaseType::Matrix ? typeInfo.arraySize : 0) << ")\n";
+#endif
 
     return 0;  // Unsupported type combination
 }

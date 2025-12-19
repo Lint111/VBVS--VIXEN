@@ -11,6 +11,12 @@
 #include <vector>
 #include <functional>
 
+// Disable verbose ConnectVariadic debug output for clean benchmark/production builds
+// Enable only when debugging descriptor binding issues
+#ifndef VIXEN_ENABLE_CONNECTVARIADIC_LOGS
+#define VIXEN_ENABLE_CONNECTVARIADIC_LOGS 0
+#endif
+
 namespace Vixen::RenderGraph {
 
 // Forward declare PassThroughStorage for type checking
@@ -523,11 +529,15 @@ public:
             bindingValue = bindingRef.binding;
         }
         
+#if VIXEN_ENABLE_CONNECTVARIADIC_LOGS
         std::cout << "[ConnectVariadic] Queuing variadic connection for binding " << bindingValue << std::endl;
+#endif
 
         // Defer the variadic connection via lambda (applied during RegisterAll)
         variadicConnections.push_back([=]() {
+#if VIXEN_ENABLE_CONNECTVARIADIC_LOGS
             std::cout << "[ConnectVariadic] Creating tentative slot for binding " << bindingValue << std::endl;
+#endif
 
             // Get the variadic node instance
             NodeInstance* node = graph->GetInstance(variadicNode);
@@ -571,8 +581,10 @@ public:
             RegisterVariadicResourcePopulationHook(variadicNodePtr, sourceNodeInst, sourceSlot.index,
                                                   bindingIndex, bundleIndex, "ConnectVariadic resource population");
 
+#if VIXEN_ENABLE_CONNECTVARIADIC_LOGS
             std::cout << "[ConnectVariadic] Created tentative slot at binding " << bindingIndex
                       << " (state=Tentative, will validate during Compile)" << std::endl;
+#endif
         });
 
         return *this;
@@ -633,13 +645,17 @@ public:
             slotName = bindingRef.name;
         }
         
+#if VIXEN_ENABLE_CONNECTVARIADIC_LOGS
         std::cout << "[ConnectVariadic] Storing field extraction lambda for PostSetup execution at binding "
                   << bindingValue << std::endl;
+#endif
 
         // Store lambda in variadicConnections to be executed during RegisterAll (before compilation)
         variadicConnections.push_back([=]() {
+#if VIXEN_ENABLE_CONNECTVARIADIC_LOGS
             std::cout << "[ConnectVariadic] Executing field extraction lambda - creating tentative slot at binding "
                       << bindingValue << std::endl;
+#endif
 
             // Validate types at compile-time
             using SourceType = typename SourceSlot::Type;
@@ -726,8 +742,10 @@ public:
             RegisterVariadicResourcePopulationHook(variadicNodePtr, sourceNodeInst, sourceSlot.index,
                                                   bindingIndex, bundleIndex, "ConnectVariadic field extraction resource population");
 
+#if VIXEN_ENABLE_CONNECTVARIADIC_LOGS
             std::cout << "[ConnectVariadic] Created tentative slot with field extraction at binding "
                       << bindingIndex << " (resource will be populated in PostCompile)" << std::endl;
+#endif
         });
 
         return *this;
@@ -755,8 +773,10 @@ private:
     SlotRole DetermineVariadicSlotRole(NodeInstance* sourceNodeInst, size_t sourceSlotIndex, SlotRole slotRoleOverride) {
         if (slotRoleOverride != SlotRole::Output) {
             // User provided explicit SlotRole - use it
+#if VIXEN_ENABLE_CONNECTVARIADIC_LOGS
             std::cout << "[ConnectVariadic] Using explicit SlotRole override: "
                       << static_cast<int>(slotRoleOverride) << "\n";
+#endif
             return slotRoleOverride;
         }
 
@@ -764,10 +784,14 @@ private:
         // Transient outputs need both Dependency (for initial setup) and Execute (for per-frame refresh)
         const ResourceDescriptor* outputDesc = sourceNodeInst->GetNodeType()->GetOutputDescriptor(static_cast<uint32_t>(sourceSlotIndex));
         if (outputDesc && outputDesc->lifetime == ResourceLifetime::Transient) {
+#if VIXEN_ENABLE_CONNECTVARIADIC_LOGS
             std::cout << "[ConnectVariadic] Detected transient output - marking slot as Dependency|Execute\n";
+#endif
             return SlotRole::Dependency | SlotRole::Execute;
         } else {
+#if VIXEN_ENABLE_CONNECTVARIADIC_LOGS
             std::cout << "[ConnectVariadic] Marking slot as Dependency (static resource)\n";
+#endif
             return SlotRole::Dependency;
         }
     }
@@ -793,8 +817,10 @@ private:
     ) {
         // Only register dependency if slot has Dependency role
         if (HasDependency(slotRole)) {
+#if VIXEN_ENABLE_CONNECTVARIADIC_LOGS
             std::cout << "[ConnectVariadic] Adding dependency: " << variadicNode->GetInstanceName()
                       << " -> " << sourceNodeInst->GetInstanceName() << std::endl;
+#endif
             variadicNode->AddDependency(sourceNodeInst);
         }
 
@@ -804,8 +830,10 @@ private:
         edge.sourceOutputIndex = static_cast<uint32_t>(sourceSlotIndex);
         edge.targetInputIndex = bindingIndex;
         graph->GetTopology().AddEdge(edge);
+#if VIXEN_ENABLE_CONNECTVARIADIC_LOGS
         std::cout << "[ConnectVariadic] Added topology edge for binding "
                     << bindingIndex << std::endl;
+#endif
     }
 
     /**
@@ -833,7 +861,9 @@ private:
         // Check slot role to determine which hooks to register
         const VariadicSlotInfo* tentativeSlot = variadicNodePtr->GetVariadicSlotInfo(bindingIndex, bundleIndex);
         if (!tentativeSlot) {
+#if VIXEN_ENABLE_CONNECTVARIADIC_LOGS
             std::cout << "[ConnectVariadic] WARNING: No slot info found for binding " << bindingIndex << "\n";
+#endif
             return;
         }
 
@@ -848,14 +878,18 @@ private:
                 [=](NodeInstance* compiledNode) {
                     if (compiledNode != sourceNodeInst) return;
 
+#if VIXEN_ENABLE_CONNECTVARIADIC_LOGS
                     std::cout << "[ConnectVariadic PostCompile Hook] Populating Dependency-role resource for binding "
                               << bindingIndex << std::endl;
+#endif
 
                     Resource* sourceRes = sourceNodeInst->GetOutput(static_cast<uint8_t>(sourceSlotIndex), 0);
                     if (!sourceRes || !sourceRes->IsValid()) {
+#if VIXEN_ENABLE_CONNECTVARIADIC_LOGS
                         std::cout << "[ConnectVariadic PostCompile Hook] WARNING: Source output " << sourceSlotIndex
                                   << " not yet available or invalid for binding " << bindingIndex
                                   << " (source node may not be fully compiled yet)\n";
+#endif
                         return;
                     }
 
@@ -866,8 +900,10 @@ private:
                         updatedSlot.resourceType = sourceRes->GetType();
                         variadicNodePtr->UpdateVariadicSlot(bindingIndex, updatedSlot, bundleIndex);
 
+#if VIXEN_ENABLE_CONNECTVARIADIC_LOGS
                         std::cout << "[ConnectVariadic PostCompile Hook] Resource populated for binding "
                                   << bindingIndex << " with type " << static_cast<int>(updatedSlot.resourceType) << std::endl;
+#endif
                     }
                 },
                 hookDescription

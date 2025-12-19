@@ -118,6 +118,30 @@ InfrastructureNodes BenchmarkGraphFactory::BuildInfrastructure(
     // Configure parameters
     ConfigureInfrastructureParams(graph, nodes, width, height, enableValidation);
 
+    // Enable critical infrastructure node logging for debugging initialization failures
+    // This ensures device/instance creation errors are visible in tester builds
+    if (auto* instanceNode = static_cast<RG::InstanceNode*>(graph->GetInstance(nodes.instance))) {
+        auto logger = instanceNode->GetLogger();
+        if (logger) {
+            logger->SetEnabled(true);
+            logger->SetTerminalOutput(true);
+        }
+    }
+    if (auto* deviceNode = static_cast<RG::DeviceNode*>(graph->GetInstance(nodes.device))) {
+        auto logger = deviceNode->GetLogger();
+        if (logger) {
+            logger->SetEnabled(true);
+            logger->SetTerminalOutput(true);
+        }
+    }
+    if (auto* commandPoolNode = static_cast<RG::CommandPoolNode*>(graph->GetInstance(nodes.commandPool))) {
+        auto logger = commandPoolNode->GetLogger();
+        if (logger) {
+            logger->SetEnabled(true);
+            logger->SetTerminalOutput(true);
+        }
+    }
+
     return nodes;
 }
 

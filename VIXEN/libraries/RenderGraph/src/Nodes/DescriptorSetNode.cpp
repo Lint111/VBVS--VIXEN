@@ -16,6 +16,11 @@
 // Event subscription
 #include "EventTypes/RenderGraphEvents.h"
 
+// Disable verbose BuildDescriptorWrites debug output for clean benchmark/production builds
+#ifndef VIXEN_ENABLE_DESCRIPTOR_WRITE_LOGS
+#define VIXEN_ENABLE_DESCRIPTOR_WRITE_LOGS 0
+#endif
+
 namespace Vixen::RenderGraph {
 
 // ===== NODE TYPE =====
@@ -771,8 +776,10 @@ std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
     size_t oldBufCap = bufferInfos.capacity();
     imageInfos.reserve(imageInfos.size() + descriptorBindings.size());
     bufferInfos.reserve(bufferInfos.size() + descriptorBindings.size());
+#if VIXEN_ENABLE_DESCRIPTOR_WRITE_LOGS
     std::cout << "[BuildDescriptorWrites] bufferInfos: size=" << oldBufSize << "->" << bufferInfos.size()
               << ", capacity=" << oldBufCap << "->" << bufferInfos.capacity() << std::endl;
+#endif
     // Also clear and reserve acceleration structure storage (uses member vectors)
     perFrameAccelInfos.clear();
     perFrameAccelHandles.clear();
@@ -796,12 +803,14 @@ std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
         const auto& resourceEntry = descriptorResources[binding.binding];
         const auto resourceVariant = resourceEntry.GetHandle();
 
+#if VIXEN_ENABLE_DESCRIPTOR_WRITE_LOGS
         // Debug: print what handle we're about to use
         if (std::holds_alternative<VkBuffer>(resourceVariant)) {
             VkBuffer buf = std::get<VkBuffer>(resourceVariant);
             std::cout << "[BuildDescriptorWrites] binding=" << binding.binding
                       << ", VkBuffer=" << reinterpret_cast<uint64_t>(buf) << std::endl;
         }
+#endif
 
         // Initialize write descriptor
         VkWriteDescriptorSet write{};
