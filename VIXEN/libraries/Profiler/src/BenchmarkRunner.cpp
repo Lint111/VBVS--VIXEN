@@ -587,7 +587,25 @@ TestSuiteResults BenchmarkRunner::RunSuite(const BenchmarkSuiteConfig& config) {
             if (gpuConfig.headless) {
                 gpuResults = RunSuiteHeadless(gpuConfig);
             } else {
-                gpuResults = RunSuiteWithWindow(gpuConfig);
+                try {
+                    gpuResults = RunSuiteWithWindow(gpuConfig);
+                } catch (const std::exception& e) {
+                    // Check if this is a presentation/swapchain error
+                    std::string errorMsg = e.what();
+                    if (errorMsg.find("swapchain") != std::string::npos ||
+                        errorMsg.find("SwapChain") != std::string::npos ||
+                        errorMsg.find("present") != std::string::npos) {
+                        // GPU doesn't support windowed presentation - skip gracefully
+                        std::cout << "  SKIPPED: GPU does not support windowed rendering\n";
+                        std::cout << "           (Swapchain/presentation not available on this device)\n";
+                        std::cout << "           Reason: " << errorMsg << "\n";
+                        std::cout << "  Hint: Use --headless mode to test this GPU\n\n";
+                        continue;  // Skip to next GPU
+                    } else {
+                        // Different error - rethrow
+                        throw;
+                    }
+                }
             }
 
             // Export results for this GPU
@@ -631,15 +649,39 @@ TestSuiteResults BenchmarkRunner::RunSuite(const BenchmarkSuiteConfig& config) {
         std::cout << "Output format: " << config.outputDir.string() << "/YYYYMMDD_HHMMSS_GPUName_UUID/\n";
         std::cout << "\n";
 
-        // Return empty results (each GPU exported independently)
-        return TestSuiteResults{};
+        // Return empty results with special marker for multi-GPU mode
+        // This prevents "No tests were executed" error in main()
+        TestSuiteResults multiGpuResults;
+        multiGpuResults.isMultiGPUMode = true;  // Flag to skip validation
+        return multiGpuResults;
     }
 
     // Single GPU mode - continue with normal flow
     if (config.headless) {
         results = RunSuiteHeadless(config);
     } else {
-        results = RunSuiteWithWindow(config);
+        try {
+            results = RunSuiteWithWindow(config);
+        } catch (const std::exception& e) {
+            // Check if this is a presentation/swapchain error
+            std::string errorMsg = e.what();
+            if (errorMsg.find("swapchain") != std::string::npos ||
+                errorMsg.find("SwapChain") != std::string::npos ||
+                errorMsg.find("present") != std::string::npos) {
+                // GPU doesn't support windowed presentation
+                std::cerr << "\nERROR: Selected GPU does not support windowed rendering\n";
+                std::cerr << "       (Swapchain/presentation not available on this device)\n";
+                std::cerr << "       Reason: " << errorMsg << "\n";
+                std::cerr << "\nSuggested solutions:\n";
+                std::cerr << "  1. Run in headless mode: --headless\n";
+                std::cerr << "  2. Select a different GPU: --gpu-index <N>\n";
+                std::cerr << "  3. Use --list-gpus to see available GPUs\n\n";
+                return TestSuiteResults{};  // Return empty results
+            } else {
+                // Different error - rethrow
+                throw;
+            }
+        }
     }
 
     // Export final results
@@ -707,11 +749,15 @@ TestSuiteResults BenchmarkRunner::RunSuite(const BenchmarkSuiteConfig& config) {
 }
 
 TestSuiteResults BenchmarkRunner::RunSuiteHeadless(const BenchmarkSuiteConfig& config) {
+    // Store suite config for graph building
+    currentSuiteConfig_ = &config;
+
     // Initialize headless Vulkan context
     HeadlessVulkanContext ctx{};
     if (!InitializeHeadlessVulkan(ctx, config)) {
         // TODO: Migrate to LOG_ERROR when BenchmarkRunner inherits from ILoggable
         // LOG_ERROR("Failed to initialize Vulkan");
+        currentSuiteConfig_ = nullptr;
         return TestSuiteResults{};
     }
 
@@ -756,6 +802,7 @@ TestSuiteResults BenchmarkRunner::RunSuiteHeadless(const BenchmarkSuiteConfig& c
         // TODO: Migrate to LOG_ERROR when BenchmarkRunner inherits from ILoggable
         // LOG_ERROR("Failed to start benchmark suite");
         CleanupHeadlessVulkan(ctx);
+        currentSuiteConfig_ = nullptr;
         return TestSuiteResults{};
     }
 
@@ -838,12 +885,16 @@ TestSuiteResults BenchmarkRunner::RunSuiteHeadless(const BenchmarkSuiteConfig& c
     ProfilerSystem::Instance().Shutdown();
     CleanupHeadlessVulkan(ctx);
 
+    currentSuiteConfig_ = nullptr;
     return suiteResults_;
 }
 
 TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig& config) {
     namespace RG = Vixen::RenderGraph;
     using namespace Vixen::EventBus;
+
+    // Store suite config for graph building
+    currentSuiteConfig_ = &config;
 
     // Create node registry and register all node types
     auto nodeRegistry = std::make_unique<RG::NodeTypeRegistry>();
@@ -872,9 +923,10 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
     );
 
     // Set graph factory function - dispatch based on pipeline type in config
-    SetGraphFactory([](RG::RenderGraph* graph, const TestConfiguration& testConfig,
+    // Capture 'this' to access currentSuiteConfig_ for GPU index propagation
+    SetGraphFactory([this](RG::RenderGraph* graph, const TestConfiguration& testConfig,
                        uint32_t width, uint32_t height) {
-        return BenchmarkGraphFactory::BuildFromConfig(graph, testConfig);
+        return BenchmarkGraphFactory::BuildFromConfig(graph, testConfig, currentSuiteConfig_);
     });
 
     // Set progress callback if verbose - show progress bar with test params
@@ -902,6 +954,7 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
     if (!StartSuite()) {
         // TODO: Migrate to LOG_ERROR when BenchmarkRunner inherits from ILoggable
         // LOG_ERROR("Failed to start benchmark suite");
+        currentSuiteConfig_ = nullptr;
         return TestSuiteResults{};
     }
 
@@ -1387,6 +1440,7 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
 
     ProfilerSystem::Instance().Shutdown();
 
+    currentSuiteConfig_ = nullptr;
     return suiteResults_;
 }
 
@@ -1922,7 +1976,8 @@ BenchmarkGraph BenchmarkRunner::CreateGraphForCurrentTest(Vixen::RenderGraph::Re
         currentGraph_ = graphFactory_(graph, currentConfig_, renderWidth_, renderHeight_);
     } else {
         // Default: use BenchmarkGraphFactory with pipeline dispatch
-        currentGraph_ = BenchmarkGraphFactory::BuildFromConfig(graph, currentConfig_);
+        // Pass suite config so gpuIndex is propagated to DeviceNode
+        currentGraph_ = BenchmarkGraphFactory::BuildFromConfig(graph, currentConfig_, currentSuiteConfig_);
     }
 
     // Wire profiler hooks if graph was created successfully

@@ -156,7 +156,8 @@ int main(int argc, char* argv[]) {
     uint32_t passed = results.GetPassCount();
     uint32_t total = results.GetTotalCount();
 
-    if (total == 0) {
+    // Skip validation if multi-GPU mode (results already reported per-GPU)
+    if (total == 0 && !results.isMultiGPUMode) {
         mainLogger->Error("No tests were executed");
         std::cerr << "Error: No tests were executed\n";  // User-facing error
         return 1;

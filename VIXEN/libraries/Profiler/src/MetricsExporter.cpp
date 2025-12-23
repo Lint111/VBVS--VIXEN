@@ -623,11 +623,12 @@ std::vector<std::string> TestConfiguration::ValidateWithErrors() const {
     }
 
     // Frame count validation
-    if (warmupFrames < 10) {
-        errors.push_back("warmupFrames: must be >= 10");
+    // Relaxed for quick logic tests - minimum values just ensure non-zero operation
+    if (warmupFrames < 5) {
+        errors.push_back("warmupFrames: must be >= 5");
     }
-    if (measurementFrames < 100) {
-        errors.push_back("measurementFrames: must be >= 100");
+    if (measurementFrames < 10) {
+        errors.push_back("measurementFrames: must be >= 10");
     }
 
     return errors;

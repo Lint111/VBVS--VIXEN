@@ -295,6 +295,7 @@ private:
     std::vector<TestConfiguration> testMatrix_;
     DeviceCapabilities deviceCapabilities_;
     BandwidthEstimationConfig bandwidthConfig_;
+    const BenchmarkSuiteConfig* currentSuiteConfig_ = nullptr;  // Active suite config for graph building
 
     // Callbacks
     FrameCallback frameCallback_;

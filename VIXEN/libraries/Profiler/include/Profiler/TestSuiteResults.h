@@ -145,6 +145,12 @@ public:
     /// Clear all results
     void Clear();
 
+    /// Check if this is multi-GPU mode (results exported per-GPU, not centralized)
+    bool IsMultiGPUMode() const { return isMultiGPUMode_; }
+
+    // Public field for multi-GPU mode flag (set by BenchmarkRunner)
+    bool isMultiGPUMode = false;
+
 private:
     DeviceCapabilities deviceCapabilities_;
     std::vector<TestRunResults> results_;           ///< Single-run results (or flattened multi-run)
@@ -152,6 +158,7 @@ private:
     std::string suiteName_ = "Benchmark Suite";
     std::chrono::system_clock::time_point suiteStartTime_;
     std::chrono::system_clock::time_point suiteEndTime_;
+    bool isMultiGPUMode_ = false;  ///< Flag indicating multi-GPU mode (results per-GPU, not centralized)
 };
 
 } // namespace Vixen::Profiler

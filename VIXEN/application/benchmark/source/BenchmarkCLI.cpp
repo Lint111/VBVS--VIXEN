@@ -700,29 +700,33 @@ Vixen::Profiler::BenchmarkSuiteConfig BenchmarkCLIOptions::BuildSuiteConfig() co
     BenchmarkSuiteConfig config;
 
     // Try to load from config file first (either explicit or default)
-    // Search paths: explicit path, CWD, exe directory (for running from binaries/)
+    // If user provides --config, ONLY search for that file (fail if not found)
+    // If no --config, search default locations for benchmark_config.json
     std::vector<std::filesystem::path> searchPaths;
-    if (hasConfigFile) {
-        searchPaths.push_back(configPath);
-    }
 
-    // Get exe directory for relative searches
-    std::filesystem::path exeDir;
+    if (hasConfigFile) {
+        // User explicitly specified config - only try this file
+        searchPaths.push_back(configPath);
+    } else {
+        // No explicit config - search default locations
+        // Get exe directory for relative searches
+        std::filesystem::path exeDir;
 #ifdef _WIN32
-    char exePath[MAX_PATH];
-    if (GetModuleFileNameA(nullptr, exePath, MAX_PATH) > 0) {
-        exeDir = std::filesystem::path(exePath).parent_path();
-    }
+        char exePath[MAX_PATH];
+        if (GetModuleFileNameA(nullptr, exePath, MAX_PATH) > 0) {
+            exeDir = std::filesystem::path(exePath).parent_path();
+        }
 #endif
 
-    // Search relative to CWD
-    searchPaths.push_back("benchmark_config.json");
-    searchPaths.push_back("./application/benchmark/benchmark_config.json");
+        // Search relative to CWD
+        searchPaths.push_back("benchmark_config.json");
+        searchPaths.push_back("./application/benchmark/benchmark_config.json");
 
-    // Search relative to exe directory (handles running from binaries/)
-    if (!exeDir.empty()) {
-        searchPaths.push_back(exeDir / "benchmark_config.json");
-        searchPaths.push_back(exeDir / "../application/benchmark/benchmark_config.json");
+        // Search relative to exe directory (handles running from binaries/)
+        if (!exeDir.empty()) {
+            searchPaths.push_back(exeDir / "benchmark_config.json");
+            searchPaths.push_back(exeDir / "../application/benchmark/benchmark_config.json");
+        }
     }
 
     std::filesystem::path loadedConfigPath;
@@ -742,13 +746,22 @@ Vixen::Profiler::BenchmarkSuiteConfig BenchmarkCLIOptions::BuildSuiteConfig() co
     if (!loadedConfigPath.empty()) {
         std::cout << "[Config] Loaded: " << loadedConfigPath.string() << "\n";
     } else {
-        std::cout << "[Config] WARNING: No config file found, using built-in defaults\n";
-        std::cout << "         Searched: ";
-        for (size_t i = 0; i < searchPaths.size(); ++i) {
-            if (i > 0) std::cout << ", ";
-            std::cout << searchPaths[i].string();
+        if (hasConfigFile) {
+            // User explicitly specified config but it wasn't found - this is an error
+            std::cerr << "[Config] ERROR: Config file not found: " << configPath.string() << "\n";
+            std::cerr << "                File does not exist or failed to load\n";
+            // Return empty config which will fail validation
+            return config;
+        } else {
+            // No explicit config, default search failed - use built-in defaults
+            std::cout << "[Config] WARNING: No config file found, using built-in defaults\n";
+            std::cout << "         Searched: ";
+            for (size_t i = 0; i < searchPaths.size(); ++i) {
+                if (i > 0) std::cout << ", ";
+                std::cout << searchPaths[i].string();
+            }
+            std::cout << "\n";
         }
-        std::cout << "\n";
     }
 
     // Set output directory: CLI override > config file > Downloads folder default
