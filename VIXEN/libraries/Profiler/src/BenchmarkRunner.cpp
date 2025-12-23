@@ -579,6 +579,9 @@ TestSuiteResults BenchmarkRunner::RunSuite(const BenchmarkSuiteConfig& config) {
 
             std::cout << "Output directory: " << gpuOutputDir.string() << "\n";
 
+            // Set output directory BEFORE running tests so results write to correct location
+            SetOutputDirectory(gpuConfig.outputDir);
+
             // Run suite for this GPU
             TestSuiteResults gpuResults;
             if (gpuConfig.headless) {
@@ -587,8 +590,7 @@ TestSuiteResults BenchmarkRunner::RunSuite(const BenchmarkSuiteConfig& config) {
                 gpuResults = RunSuiteWithWindow(gpuConfig);
             }
 
-            // Export results for this GPU - update output directory first!
-            SetOutputDirectory(gpuConfig.outputDir);
+            // Export results for this GPU
             ExportAllResults();
 
             // Create ZIP package for this GPU if requested
