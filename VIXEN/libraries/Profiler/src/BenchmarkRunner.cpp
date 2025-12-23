@@ -528,7 +528,6 @@ TestSuiteResults BenchmarkRunner::RunSuite(const BenchmarkSuiteConfig& config) {
     TestSuiteResults results;
 
     // Multi-GPU iteration: Run entire benchmark suite once per GPU
-    std::cout << "[DEBUG] config.runOnAllGPUs = " << (config.runOnAllGPUs ? "true" : "false") << "\n";
     if (config.runOnAllGPUs) {
         auto gpuList = EnumerateAvailableGPUs();
 
