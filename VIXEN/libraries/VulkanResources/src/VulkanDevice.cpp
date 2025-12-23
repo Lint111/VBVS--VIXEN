@@ -120,6 +120,20 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
 
     VK_CHECK(vkCreateDevice(*gpu, &deviceInfo, nullptr, &device), "Failed to create logical device");
 
+    // Initialize capability graph
+    capabilityGraph_.BuildStandardCapabilities();
+
+    // Convert extension names to strings for capability graph
+    std::vector<std::string> extensionStrings;
+    extensionStrings.reserve(extensions.size());
+    for (const char* ext : extensions) {
+        extensionStrings.emplace_back(ext);
+    }
+    Vixen::DeviceExtensionCapability::SetAvailableExtensions(extensionStrings);
+
+    // Invalidate graph to force recheck with new extensions
+    capabilityGraph_.InvalidateAll();
+
     // Check if RTX was enabled and cache capabilities
     rtxEnabled_ = HasExtension(extensions, VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME) &&
                   HasExtension(extensions, VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME);

@@ -31,20 +31,27 @@
 #endif
 
 // Initialize global Vulkan extension/layer lists for windowed benchmark mode.
-// These are required by InstanceNode and DeviceNode when running with a window.
+// These are requested by InstanceNode and DeviceNode when running with a window.
 // Headless mode doesn't need these (creates its own minimal instance).
+//
+// Extension Classification:
+// - REQUIRED: Swapchain (VK_KHR_SWAPCHAIN) - absolutely necessary for windowed mode
+// - OPTIONAL: Maintenance extensions - provide enhanced features but gracefully degrade if unavailable
+//
+// DeviceNode validates all extensions and only enables those that are available (see DeviceNode.cpp:252-263).
+// Optional extensions are skipped with warnings if not supported by the GPU.
 static bool initGlobalNames = []() {
     deviceExtensionNames = {
-        VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-        VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME,
-        VK_KHR_MAINTENANCE_6_EXTENSION_NAME,
+        VK_KHR_SWAPCHAIN_EXTENSION_NAME,                // REQUIRED for windowed mode
+        VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME,  // OPTIONAL: Enhanced swapchain features
+        VK_KHR_MAINTENANCE_6_EXTENSION_NAME,            // OPTIONAL: General maintenance features
     };
 
     instanceExtensionNames = {
-        VK_KHR_SURFACE_EXTENSION_NAME,
-        VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME,
-        VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME,
-        VK_KHR_WIN32_SURFACE_EXTENSION_NAME
+        VK_KHR_SURFACE_EXTENSION_NAME,                          // REQUIRED for surface creation
+        VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME,            // OPTIONAL: Enhanced surface features
+        VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME,       // OPTIONAL: Extended capability queries
+        VK_KHR_WIN32_SURFACE_EXTENSION_NAME                     // REQUIRED on Windows platform
 #ifdef _DEBUG
         , VK_EXT_DEBUG_REPORT_EXTENSION_NAME
 #endif

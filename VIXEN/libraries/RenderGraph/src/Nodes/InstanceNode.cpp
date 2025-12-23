@@ -1,6 +1,7 @@
 #include "Nodes/InstanceNode.h"
 #include "Core/RenderGraph.h"
 #include "Core/NodeLogging.h"
+#include "CapabilityGraph.h"
 #include <iostream>
 #include <stdexcept>
 
@@ -79,6 +80,10 @@ void InstanceNode::CompileImpl(TypedCompileContext& ctx) {
         DestroyVulkanInstance();
     }
 
+    // Validate and filter extensions/layers before creating instance
+    ValidateAndFilterExtensions();
+    ValidateAndFilterLayers();
+
     // Create Vulkan instance
     CreateVulkanInstance();
 
@@ -147,12 +152,92 @@ void InstanceNode::DestroyVulkanInstance() {
     }
 }
 
-void InstanceNode::EnumerateAvailableLayers() {
-    // TODO: Implement layer enumeration for validation
+void InstanceNode::ValidateAndFilterExtensions() {
+    // Enumerate available instance extensions
+    uint32_t extensionCount = 0;
+    vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, nullptr);
+
+    std::vector<VkExtensionProperties> availableExtensions(extensionCount);
+    vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, availableExtensions.data());
+
+    NODE_LOG_INFO("[InstanceNode] Found " + std::to_string(extensionCount) + " available instance extensions");
+
+    // Filter requested extensions - only enable those that are available
+    std::vector<const char*> validatedExtensions;
+    validatedExtensions.reserve(enabledExtensions.size());
+
+    for (const char* requestedExt : enabledExtensions) {
+        bool found = false;
+        for (const auto& availableExt : availableExtensions) {
+            if (strcmp(requestedExt, availableExt.extensionName) == 0) {
+                found = true;
+                break;
+            }
+        }
+
+        if (found) {
+            validatedExtensions.push_back(requestedExt);
+            NODE_LOG_DEBUG("[InstanceNode]   ✓ " + std::string(requestedExt) + " (available)");
+        } else {
+            NODE_LOG_WARNING("[InstanceNode]   ✗ " + std::string(requestedExt) + " (NOT AVAILABLE - skipping)");
+        }
+    }
+
+    // Replace enabled extensions with validated list
+    enabledExtensions = validatedExtensions;
+    NODE_LOG_INFO("[InstanceNode] Enabled " + std::to_string(enabledExtensions.size()) + " instance extensions");
+
+    // Populate capability graph with available instance extensions
+    std::vector<std::string> availableExtStrings;
+    availableExtStrings.reserve(availableExtensions.size());
+    for (const auto& ext : availableExtensions) {
+        availableExtStrings.emplace_back(ext.extensionName);
+    }
+    Vixen::InstanceExtensionCapability::SetAvailableExtensions(availableExtStrings);
 }
 
-void InstanceNode::EnumerateAvailableExtensions() {
-    // TODO: Implement extension enumeration for validation
+void InstanceNode::ValidateAndFilterLayers() {
+    // Enumerate available instance layers
+    uint32_t layerCount = 0;
+    vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
+
+    std::vector<VkLayerProperties> availableLayers(layerCount);
+    vkEnumerateInstanceLayerProperties(&layerCount, availableLayers.data());
+
+    NODE_LOG_INFO("[InstanceNode] Found " + std::to_string(layerCount) + " available instance layers");
+
+    // Filter requested layers - only enable those that are available
+    std::vector<const char*> validatedLayers;
+    validatedLayers.reserve(enabledLayers.size());
+
+    for (const char* requestedLayer : enabledLayers) {
+        bool found = false;
+        for (const auto& availableLayer : availableLayers) {
+            if (strcmp(requestedLayer, availableLayer.layerName) == 0) {
+                found = true;
+                break;
+            }
+        }
+
+        if (found) {
+            validatedLayers.push_back(requestedLayer);
+            NODE_LOG_DEBUG("[InstanceNode]   ✓ " + std::string(requestedLayer) + " (available)");
+        } else {
+            NODE_LOG_WARNING("[InstanceNode]   ✗ " + std::string(requestedLayer) + " (NOT AVAILABLE - skipping)");
+        }
+    }
+
+    // Replace enabled layers with validated list
+    enabledLayers = validatedLayers;
+    NODE_LOG_INFO("[InstanceNode] Enabled " + std::to_string(enabledLayers.size()) + " instance layers");
+
+    // Populate capability graph with available instance layers
+    std::vector<std::string> availableLayerStrings;
+    availableLayerStrings.reserve(availableLayers.size());
+    for (const auto& layer : availableLayers) {
+        availableLayerStrings.emplace_back(layer.layerName);
+    }
+    Vixen::InstanceLayerCapability::SetAvailableLayers(availableLayerStrings);
 }
 
 } // namespace Vixen::RenderGraph

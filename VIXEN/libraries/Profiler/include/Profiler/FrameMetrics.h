@@ -5,6 +5,11 @@
 #include <vector>
 #include <chrono>
 
+// Forward declarations
+namespace Vixen::Vulkan::Resources {
+    class VulkanDevice;
+}
+
 namespace Vixen::Profiler {
 
 /**
@@ -246,6 +251,10 @@ struct TestConfiguration {
     uint32_t measurementFrames = 300;
     std::vector<std::string> optimizations; // List of enabled optimizations
 
+    /// GPU capabilities required to run this test (e.g., {"RTXSupport", "SwapchainMaintenance3"})
+    /// Empty vector means no capability requirements (test runs on any GPU)
+    std::vector<std::string> requiredCapabilities;
+
     /// Generate default output filename
     std::string GetDefaultFilename() const;
 
@@ -261,6 +270,11 @@ struct TestConfiguration {
 
     /// Check if resolution is a valid power of 2 (32, 64, 128, 256, 512)
     static bool IsValidResolution(uint32_t resolution);
+
+    /// Check if test can run on device with given capabilities
+    /// @param device VulkanDevice to check capabilities against
+    /// @return true if device has all required capabilities, false otherwise
+    bool CanRunOnDevice(const Vixen::Vulkan::Resources::VulkanDevice* device) const;
 };
 
 } // namespace Vixen::Profiler

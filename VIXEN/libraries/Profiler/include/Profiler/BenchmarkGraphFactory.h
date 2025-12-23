@@ -198,7 +198,8 @@ public:
         RG::RenderGraph* graph,
         uint32_t width,
         uint32_t height,
-        bool enableValidation = true
+        bool enableValidation = true,
+        uint32_t gpuIndex = 0
     );
 
     /**
@@ -333,7 +334,8 @@ public:
         RG::RenderGraph* graph,
         const TestConfiguration& config,
         uint32_t width,
-        uint32_t height
+        uint32_t height,
+        const BenchmarkSuiteConfig* suiteConfig = nullptr
     );
 
     //==========================================================================
@@ -506,7 +508,8 @@ public:
         RG::RenderGraph* graph,
         const TestConfiguration& config,
         uint32_t width,
-        uint32_t height
+        uint32_t height,
+        const BenchmarkSuiteConfig* suiteConfig = nullptr
     );
 
     /**
@@ -535,7 +538,8 @@ public:
         RG::RenderGraph* graph,
         const TestConfiguration& config,
         uint32_t width,
-        uint32_t height
+        uint32_t height,
+        const BenchmarkSuiteConfig* suiteConfig = nullptr
     );
 
     // Hybrid pipeline (compute + fragment stages)
@@ -552,7 +556,8 @@ private:
         const InfrastructureNodes& nodes,
         uint32_t width,
         uint32_t height,
-        bool enableValidation
+        bool enableValidation,
+        uint32_t gpuIndex = 0
     );
 
     static void ConfigureComputePipelineParams(

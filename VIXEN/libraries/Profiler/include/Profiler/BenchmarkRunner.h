@@ -328,6 +328,19 @@ private:
     std::map<std::string, AggregateStats> ComputeAggregates() const;
     void ReportProgress();
 
+    // Multi-GPU enumeration
+    struct GPUInfo {
+        uint32_t index;
+        std::string name;
+    };
+    static std::vector<GPUInfo> EnumerateAvailableGPUs();
+
+    /// Generate unique benchmark folder name with timestamp, GPU name, and UUID
+    /// Format: YYYYMMDD_HHMMSS_GPUName_UUID
+    /// @param gpuName Sanitized GPU device name
+    /// @param sessionUuid Optional UUID for the benchmark session (shared across all GPUs in a run)
+    static std::string GenerateBenchmarkFolderName(const std::string& gpuName, const std::string& sessionUuid = "");
+
     /// Collect VRAM usage via VK_EXT_memory_budget
     /// @param physicalDevice Vulkan physical device
     /// @param metrics FrameMetrics to populate with VRAM data

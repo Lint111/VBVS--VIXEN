@@ -99,7 +99,8 @@ InfrastructureNodes BenchmarkGraphFactory::BuildInfrastructure(
     RG::RenderGraph* graph,
     uint32_t width,
     uint32_t height,
-    bool enableValidation)
+    bool enableValidation,
+    uint32_t gpuIndex)
 {
     if (!graph) {
         throw std::invalid_argument("BenchmarkGraphFactory::BuildInfrastructure: graph is null");
@@ -116,7 +117,7 @@ InfrastructureNodes BenchmarkGraphFactory::BuildInfrastructure(
     nodes.frameSync = graph->AddNode<RG::FrameSyncNodeType>("benchmark_frame_sync");
 
     // Configure parameters
-    ConfigureInfrastructureParams(graph, nodes, width, height, enableValidation);
+    ConfigureInfrastructureParams(graph, nodes, width, height, enableValidation, gpuIndex);
 
     // Enable critical infrastructure node logging for debugging initialization failures
     // This ensures device/instance creation errors are visible in tester builds
@@ -491,7 +492,7 @@ BenchmarkGraph BenchmarkGraphFactory::BuildFromConfig(
         case PipelineType::Compute: {
             // Build compute ray march graph with config dimensions
             auto benchGraph = BuildComputeRayMarchGraph(
-                graph, config, config.screenWidth, config.screenHeight);
+                graph, config, config.screenWidth, config.screenHeight, suiteConfig);
 
             // Register shader from config - shader name is used directly as filename
             RegisterComputeShader(graph, benchGraph.compute, config.shader);
@@ -509,7 +510,7 @@ BenchmarkGraph BenchmarkGraphFactory::BuildFromConfig(
         case PipelineType::Fragment: {
             // Build fragment ray march graph
             auto benchGraph = BuildFragmentRayMarchGraph(
-                graph, config, config.screenWidth, config.screenHeight);
+                graph, config, config.screenWidth, config.screenHeight, suiteConfig);
 
             // TODO: Register fragment shader variant if needed
             // The fragment pipeline uses different shader registration
@@ -518,7 +519,7 @@ BenchmarkGraph BenchmarkGraphFactory::BuildFromConfig(
         }
 
         case PipelineType::HardwareRT:
-            return BuildHardwareRTGraph(graph, config, config.screenWidth, config.screenHeight);
+            return BuildHardwareRTGraph(graph, config, config.screenWidth, config.screenHeight, suiteConfig);
 
         case PipelineType::Hybrid:
             throw std::invalid_argument(
@@ -535,7 +536,8 @@ BenchmarkGraph BenchmarkGraphFactory::BuildComputeRayMarchGraph(
     RG::RenderGraph* graph,
     const TestConfiguration& config,
     uint32_t width,
-    uint32_t height)
+    uint32_t height,
+    const BenchmarkSuiteConfig* suiteConfig)
 {
     if (!graph) {
         throw std::invalid_argument("BenchmarkGraphFactory::BuildComputeRayMarchGraph: graph is null");
@@ -554,7 +556,8 @@ BenchmarkGraph BenchmarkGraphFactory::BuildComputeRayMarchGraph(
     );
 
     // Build all subgraphs
-    result.infra = BuildInfrastructure(graph, width, height, true);
+    uint32_t gpuIndex = (suiteConfig ? suiteConfig->gpuIndex : 0);
+    result.infra = BuildInfrastructure(graph, width, height, true, gpuIndex);
     result.compute = BuildComputePipeline(graph, result.infra, config.shader);
     result.rayMarch = BuildRayMarchScene(graph, result.infra, scene);
     result.output = BuildOutput(graph, result.infra, false);
@@ -580,7 +583,8 @@ void BenchmarkGraphFactory::ConfigureInfrastructureParams(
     const InfrastructureNodes& nodes,
     uint32_t width,
     uint32_t height,
-    bool /*enableValidation*/)
+    bool /*enableValidation*/,
+    uint32_t gpuIndex)
 {
     // Window parameters
     auto* window = static_cast<RG::WindowNode*>(graph->GetInstance(nodes.window));
@@ -589,10 +593,10 @@ void BenchmarkGraphFactory::ConfigureInfrastructureParams(
         window->SetParameter(RG::WindowNodeConfig::PARAM_HEIGHT, height);
     }
 
-    // Device parameters (GPU index = 0)
+    // Device parameters - use configured GPU index
     auto* device = static_cast<RG::DeviceNode*>(graph->GetInstance(nodes.device));
     if (device) {
-        device->SetParameter(RG::DeviceNodeConfig::PARAM_GPU_INDEX, 0u);
+        device->SetParameter(RG::DeviceNodeConfig::PARAM_GPU_INDEX, gpuIndex);
     }
 
     // Note: InstanceNode validation is configured via builder function registration
@@ -1036,7 +1040,8 @@ BenchmarkGraph BenchmarkGraphFactory::BuildFragmentRayMarchGraph(
     RG::RenderGraph* graph,
     const TestConfiguration& config,
     uint32_t width,
-    uint32_t height)
+    uint32_t height,
+    const BenchmarkSuiteConfig* suiteConfig)
 {
     if (!graph) {
         throw std::invalid_argument("BenchmarkGraphFactory::BuildFragmentRayMarchGraph: graph is null");
@@ -1068,7 +1073,8 @@ BenchmarkGraph BenchmarkGraphFactory::BuildFragmentRayMarchGraph(
 
     // Build all subgraphs
     // LOG_DEBUG("[Fragment] Building infrastructure...");
-    result.infra = BuildInfrastructure(graph, width, height, true);
+    uint32_t gpuIndex = (suiteConfig ? suiteConfig->gpuIndex : 0);
+    result.infra = BuildInfrastructure(graph, width, height, true, gpuIndex);
 
     // LOG_DEBUG("[Fragment] Building fragment pipeline...");
     result.fragment = BuildFragmentPipeline(
@@ -1470,7 +1476,8 @@ BenchmarkGraph BenchmarkGraphFactory::BuildHardwareRTGraph(
     RG::RenderGraph* graph,
     const TestConfiguration& config,
     uint32_t width,
-    uint32_t height)
+    uint32_t height,
+    const BenchmarkSuiteConfig* suiteConfig)
 {
     if (!graph) {
         throw std::invalid_argument("BenchmarkGraphFactory::BuildHardwareRTGraph: graph is null");
@@ -1488,7 +1495,22 @@ BenchmarkGraph BenchmarkGraphFactory::BuildHardwareRTGraph(
     );
 
     // Build all subgraphs
-    result.infra = BuildInfrastructure(graph, width, height, true);
+    uint32_t gpuIndex = (suiteConfig ? suiteConfig->gpuIndex : 0);
+    result.infra = BuildInfrastructure(graph, width, height, true, gpuIndex);
+
+    // Check RTX capability before building hardware RT pipeline
+    auto* deviceNode = static_cast<RG::DeviceNode*>(graph->GetInstance(result.infra.device));
+    if (deviceNode) {
+        auto* vulkanDevice = deviceNode->GetVulkanDevice();
+        if (vulkanDevice && !vulkanDevice->HasCapability("RTXSupport")) {
+            throw std::runtime_error(
+                "Cannot build hardware ray tracing graph: GPU does not support RTX. "
+                "Required capability 'RTXSupport' is not available on this device. "
+                "Use 'compute' or 'fragment' pipeline type instead."
+            );
+        }
+    }
+
     result.rayMarch = BuildRayMarchScene(graph, result.infra, scene);
     result.hardwareRT = BuildHardwareRT(graph, result.infra);
     result.output = BuildOutput(graph, result.infra, false);

@@ -8,12 +8,16 @@
 #include "Profiler/NVMLWrapper.h"
 #include <iomanip>
 #include <cmath>
+#include <chrono>
+#include <random>
+#include <sstream>
 #include <Core/RenderGraph.h>
 #include <Core/NodeTypeRegistry.h>
 #include <MessageBus.h>
 #include <Message.h>
 #include <MainCacher.h>
 #include <Logger.h>
+#include "VulkanDevice.h"
 
 // Node type registrations for graph building
 #include <Nodes/InstanceNode.h>
@@ -82,6 +86,7 @@ struct HeadlessVulkanContext {
     VkQueryPool timestampQueryPool = VK_NULL_HANDLE;
     float timestampPeriod = 0.0f;
     bool rtxEnabled = false;  // Phase K: Hardware RT support
+    std::unique_ptr<Vixen::Vulkan::Resources::VulkanDevice> vulkanDevice;  // Capability graph access
 
     bool IsValid() const {
         return instance != VK_NULL_HANDLE &&
@@ -336,6 +341,11 @@ VkResult CreateHeadlessDevice(HeadlessVulkanContext& ctx) {
     }
 
     vkGetDeviceQueue(ctx.device, ctx.computeQueueFamily, 0, &ctx.computeQueue);
+
+    // Initialize VulkanDevice wrapper for capability graph access
+    ctx.vulkanDevice = std::make_unique<Vixen::Vulkan::Resources::VulkanDevice>(&ctx.physicalDevice);
+    // Note: VulkanDevice will build its capability graph during construction
+
     return VK_SUCCESS;
 }
 
@@ -517,6 +527,112 @@ TestSuiteResults BenchmarkRunner::RunSuite(const BenchmarkSuiteConfig& config) {
 
     TestSuiteResults results;
 
+    // Multi-GPU iteration: Run entire benchmark suite once per GPU
+    if (config.runOnAllGPUs) {
+        auto gpuList = EnumerateAvailableGPUs();
+
+        if (gpuList.empty()) {
+            std::cerr << "Error: No GPUs found for multi-GPU benchmarking\n";
+            return TestSuiteResults{};
+        }
+
+        // Generate session UUID (shared across all GPUs in this run)
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_int_distribution<uint32_t> dis(0, 0xFFFFFFFF);
+        uint32_t sessionUuidInt = dis(gen);
+        std::ostringstream sessionUuidStream;
+        sessionUuidStream << std::hex << std::setfill('0') << std::setw(8) << sessionUuidInt;
+        std::string sessionUuid = sessionUuidStream.str();
+
+        std::cout << "\n";
+        std::cout << "=================================================\n";
+        std::cout << "Multi-GPU Benchmarking Mode\n";
+        std::cout << "=================================================\n";
+        std::cout << "Running entire benchmark suite on " << gpuList.size() << " GPU(s)\n";
+        std::cout << "Each GPU will execute all " << config.tests.size() << " test(s)\n";
+        std::cout << "Each GPU will have its own output folder and ZIP package\n";
+        std::cout << "Session UUID: " << sessionUuid << " (shared across all GPUs)\n";
+        std::cout << "\n";
+
+        uint32_t totalTests = 0;
+        uint32_t totalPassed = 0;
+
+        // Run suite on each GPU with separate output directories
+        for (size_t i = 0; i < gpuList.size(); ++i) {
+            const auto& gpu = gpuList[i];
+
+            std::cout << "\n";
+            std::cout << "--------------------------------------------------\n";
+            std::cout << "GPU " << gpu.index << ": " << gpu.name << " (" << (i + 1) << " of " << gpuList.size() << ")\n";
+            std::cout << "--------------------------------------------------\n";
+
+            // Create unique benchmark folder name with shared session UUID: YYYYMMDD_HHMMSS_GPUName_UUID
+            std::string benchmarkFolderName = GenerateBenchmarkFolderName(gpu.name, sessionUuid);
+            std::filesystem::path gpuOutputDir = config.outputDir / benchmarkFolderName;
+
+            // Create modified config for this GPU
+            BenchmarkSuiteConfig gpuConfig = config;
+            gpuConfig.gpuIndex = gpu.index;
+            gpuConfig.runOnAllGPUs = false;  // Prevent recursive iteration
+            gpuConfig.outputDir = gpuOutputDir;  // Separate output folder per GPU
+
+            std::cout << "Output directory: " << gpuOutputDir.string() << "\n";
+
+            // Run suite for this GPU
+            TestSuiteResults gpuResults;
+            if (gpuConfig.headless) {
+                gpuResults = RunSuiteHeadless(gpuConfig);
+            } else {
+                gpuResults = RunSuiteWithWindow(gpuConfig);
+            }
+
+            // Export results for this GPU
+            ExportAllResults();
+
+            // Create ZIP package for this GPU if requested
+            if (gpuConfig.createPackage) {
+                TesterPackage packager;
+                if (!gpuConfig.testerName.empty()) {
+                    packager.SetTesterName(gpuConfig.testerName);
+                }
+
+                auto packageResult = packager.CreatePackage(
+                    gpuConfig.outputDir,
+                    gpuConfig.outputDir,
+                    deviceCapabilities_
+                );
+
+                if (packageResult.success) {
+                    std::cout << "  Package: " << packageResult.packagePath.filename().string()
+                              << " (" << (packageResult.compressedSizeBytes / 1024) << " KB)\n";
+                } else {
+                    std::cerr << "  Warning: Failed to create package: " << packageResult.errorMessage << "\n";
+                }
+            }
+
+            // Track aggregate stats for summary
+            totalTests += gpuResults.GetTotalCount();
+            totalPassed += gpuResults.GetPassCount();
+
+            std::cout << "GPU " << gpu.index << " (" << gpu.name << ") completed: "
+                      << gpuResults.GetPassCount() << "/" << gpuResults.GetTotalCount() << " tests passed\n";
+        }
+
+        std::cout << "\n";
+        std::cout << "=================================================\n";
+        std::cout << "Multi-GPU Benchmarking Complete\n";
+        std::cout << "=================================================\n";
+        std::cout << "Total tests across all GPUs: " << totalTests << "\n";
+        std::cout << "Passed: " << totalPassed << "\n";
+        std::cout << "Output format: " << config.outputDir.string() << "/YYYYMMDD_HHMMSS_GPUName_UUID/\n";
+        std::cout << "\n";
+
+        // Return empty results (each GPU exported independently)
+        return TestSuiteResults{};
+    }
+
+    // Single GPU mode - continue with normal flow
     if (config.headless) {
         results = RunSuiteHeadless(config);
     } else {
@@ -643,6 +759,25 @@ TestSuiteResults BenchmarkRunner::RunSuiteHeadless(const BenchmarkSuiteConfig& c
     // Run each test
     while (BeginNextTest()) {
         const auto& testConfig = GetCurrentTestConfig();
+
+        // Check GPU capabilities before running test
+        if (ctx.vulkanDevice && !testConfig.CanRunOnDevice(ctx.vulkanDevice.get())) {
+            // GPU doesn't support required capabilities - skip this test
+            std::cout << "Test " << (GetCurrentTestIndex() + 1) << "/" << testMatrix_.size()
+                      << " - " << testConfig.pipeline << "... SKIPPED" << std::endl;
+            if (config.verbose) {
+                std::cout << "  [Capability Check] Test requires capabilities not available on this GPU:" << std::endl;
+                for (const auto& cap : testConfig.requiredCapabilities) {
+                    if (!ctx.vulkanDevice->HasCapability(cap)) {
+                        std::cout << "    ✗ " << cap << " (not available)" << std::endl;
+                    }
+                }
+            }
+
+            // Skip to next test without running this one
+            FinalizeCurrentTest();  // Mark as complete (will show in results as skipped)
+            continue;  // Move to next test
+        }
 
         // Always show minimal progress (Test X/Y) so testers know it's running
         std::cout << "Test " << (GetCurrentTestIndex() + 1) << "/" << testMatrix_.size()
@@ -799,6 +934,30 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
 
         // Compile the graph
         renderGraph->Compile();
+
+        // Check GPU capabilities before running test
+        auto* capCheckDeviceNode = dynamic_cast<RG::DeviceNode*>(
+            renderGraph->GetInstanceByName("benchmark_device"));
+        if (capCheckDeviceNode) {
+            auto* vulkanDevice = capCheckDeviceNode->GetVulkanDevice();
+            if (vulkanDevice && !testConfig.CanRunOnDevice(vulkanDevice)) {
+                // GPU doesn't support required capabilities - skip this test
+                std::cout << " SKIPPED" << std::endl;
+                if (config.verbose) {
+                    std::cout << "  [Capability Check] Test requires capabilities not available on this GPU:" << std::endl;
+                    for (const auto& cap : testConfig.requiredCapabilities) {
+                        if (!vulkanDevice->HasCapability(cap)) {
+                            std::cout << "    ✗ " << cap << " (not available)" << std::endl;
+                        }
+                    }
+                }
+
+                // Skip to next test without running this one
+                FinalizeCurrentTest();  // Mark as complete (will show in results as skipped)
+                renderGraph.reset();    // Clean up graph
+                continue;  // Move to next test
+            }
+        }
 
         // Capture BLAS/TLAS build timing for hardware_rt pipeline
         if (testConfig.pipeline == "hardware_rt") {
@@ -1226,6 +1385,95 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
     ProfilerSystem::Instance().Shutdown();
 
     return suiteResults_;
+}
+
+std::string BenchmarkRunner::GenerateBenchmarkFolderName(const std::string& gpuName, const std::string& sessionUuid) {
+    // Get current timestamp
+    auto now = std::chrono::system_clock::now();
+    auto time_t_now = std::chrono::system_clock::to_time_t(now);
+    std::tm tm_now;
+
+#ifdef _WIN32
+    localtime_s(&tm_now, &time_t_now);
+#else
+    localtime_r(&time_t_now, &tm_now);
+#endif
+
+    // Format: YYYYMMDD_HHMMSS
+    std::ostringstream timestamp;
+    timestamp << std::setfill('0')
+              << std::setw(4) << (tm_now.tm_year + 1900)
+              << std::setw(2) << (tm_now.tm_mon + 1)
+              << std::setw(2) << tm_now.tm_mday
+              << "_"
+              << std::setw(2) << tm_now.tm_hour
+              << std::setw(2) << tm_now.tm_min
+              << std::setw(2) << tm_now.tm_sec;
+
+    // Use provided session UUID or generate a new one
+    std::string uuidStr;
+    if (sessionUuid.empty()) {
+        // Generate short UUID (8 hex characters for readability)
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_int_distribution<uint32_t> dis(0, 0xFFFFFFFF);
+        uint32_t uuid = dis(gen);
+
+        std::ostringstream oss;
+        oss << std::hex << std::setfill('0') << std::setw(8) << uuid;
+        uuidStr = oss.str();
+    } else {
+        uuidStr = sessionUuid;
+    }
+
+    // Combine: YYYYMMDD_HHMMSS_GPUName_UUID
+    return timestamp.str() + "_" + gpuName + "_" + uuidStr;
+}
+
+std::vector<BenchmarkRunner::GPUInfo> BenchmarkRunner::EnumerateAvailableGPUs() {
+    VkInstance instance = VK_NULL_HANDLE;
+
+    VkApplicationInfo appInfo{};
+    appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+    appInfo.pApplicationName = "GPU Enumeration";
+    appInfo.apiVersion = VK_API_VERSION_1_0;
+
+    VkInstanceCreateInfo createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+    createInfo.pApplicationInfo = &appInfo;
+
+    if (vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS) {
+        // Failed to create instance - return empty list
+        return {};
+    }
+
+    uint32_t deviceCount = 0;
+    vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
+
+    std::vector<GPUInfo> gpuList;
+    if (deviceCount > 0) {
+        std::vector<VkPhysicalDevice> devices(deviceCount);
+        vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
+
+        gpuList.reserve(deviceCount);
+        for (uint32_t i = 0; i < deviceCount; ++i) {
+            VkPhysicalDeviceProperties props{};
+            vkGetPhysicalDeviceProperties(devices[i], &props);
+
+            // Sanitize device name for filesystem (replace spaces with underscores, remove special chars)
+            std::string deviceName = props.deviceName;
+            for (char& c : deviceName) {
+                if (c == ' ' || c == '/' || c == '\\' || c == ':' || c == '*' || c == '?' || c == '"' || c == '<' || c == '>' || c == '|') {
+                    c = '_';
+                }
+            }
+
+            gpuList.push_back({i, deviceName});
+        }
+    }
+
+    vkDestroyInstance(instance, nullptr);
+    return gpuList;
 }
 
 void BenchmarkRunner::ListAvailableGPUs() {

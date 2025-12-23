@@ -58,8 +58,8 @@ private:
 
     // Helper methods
     void CreateVulkanInstance();
-    void EnumerateAvailableLayers();
-    void EnumerateAvailableExtensions();
+    void ValidateAndFilterExtensions();
+    void ValidateAndFilterLayers();
     void DestroyVulkanInstance();
 };
 

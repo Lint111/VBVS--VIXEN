@@ -90,6 +90,18 @@ public:
     /// Add results from a multi-run configuration
     void AddMultiRun(const MultiRunResults& results);
 
+    /// Merge results from another test suite (for multi-GPU benchmarking)
+    void Merge(const TestSuiteResults& other) {
+        // Merge all test runs
+        for (const auto& result : other.GetAllResults()) {
+            results_.push_back(result);
+        }
+        // Merge multi-run results if present
+        for (const auto& multiRun : other.GetMultiRunResults()) {
+            multiRunResults_.push_back(multiRun);
+        }
+    }
+
     /// Get all test run results (single-run mode, or flattened multi-run)
     const std::vector<TestRunResults>& GetAllResults() const { return results_; }
 

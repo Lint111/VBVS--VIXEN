@@ -3,6 +3,7 @@
 #include "Headers.h"
 #include "VulkanLayerAndExtension.h"
 #include "error/VulkanError.h"
+#include "CapabilityGraph.h"
 
 namespace Vixen::Vulkan::Resources {
 
@@ -90,6 +91,28 @@ public:
      */
     const RTXCapabilities& GetRTXCapabilities() const { return rtxCapabilities_; }
 
+    // ===== Capability Graph (Unified GPU Capability System) =====
+
+    /**
+     * @brief Get the capability graph for this device
+     * @return Reference to the device's capability graph
+     *
+     * Use this to query any GPU capability:
+     * - device.GetCapabilityGraph().IsCapabilityAvailable("RTXSupport")
+     * - device.GetCapabilityGraph().IsCapabilityAvailable("SwapchainMaintenance3")
+     */
+    Vixen::CapabilityGraph& GetCapabilityGraph() { return capabilityGraph_; }
+    const Vixen::CapabilityGraph& GetCapabilityGraph() const { return capabilityGraph_; }
+
+    /**
+     * @brief Convenient shorthand to check if a capability is available
+     * @param capabilityName Name of the capability (e.g., "RTXSupport", "SwapchainMaintenance3")
+     * @return true if capability exists and is available
+     */
+    bool HasCapability(const std::string& capabilityName) const {
+        return capabilityGraph_.IsCapabilityAvailable(capabilityName);
+    }
+
     struct DeviceFeatureMapping {
         const char* extensionName;
         VkStructureType structType;
@@ -107,6 +130,9 @@ private:
     // RTX state
     bool rtxEnabled_ = false;
     RTXCapabilities rtxCapabilities_;
+
+    // Capability graph (initialized in CreateDevice)
+    Vixen::CapabilityGraph capabilityGraph_;
 
 };
 

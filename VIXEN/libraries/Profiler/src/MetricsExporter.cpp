@@ -1,4 +1,5 @@
 #include "Profiler/MetricsExporter.h"
+#include "VulkanDevice.h"
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include <sstream>
@@ -673,6 +674,26 @@ bool TestConfiguration::IsValidResolution(uint32_t resolution) {
     // Valid resolutions are powers of 2: 32, 64, 128, 256, 512
     return resolution == 32 || resolution == 64 || resolution == 128 ||
            resolution == 256 || resolution == 512;
+}
+
+bool TestConfiguration::CanRunOnDevice(const Vixen::Vulkan::Resources::VulkanDevice* device) const {
+    if (!device) {
+        return false;  // Null device - cannot run
+    }
+
+    // If no required capabilities specified, test can run on any device
+    if (requiredCapabilities.empty()) {
+        return true;
+    }
+
+    // Check all required capabilities
+    for (const auto& capability : requiredCapabilities) {
+        if (!device->HasCapability(capability)) {
+            return false;  // Missing required capability
+        }
+    }
+
+    return true;  // All required capabilities available
 }
 
 } // namespace Vixen::Profiler

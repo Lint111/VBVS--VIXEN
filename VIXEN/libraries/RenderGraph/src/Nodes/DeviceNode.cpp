@@ -232,15 +232,13 @@ void DeviceNode::CreateLogicalDevice() {
     NODE_LOG_INFO("[DeviceNode] Memory heaps: " + std::to_string(vulkanDevice->gpuMemoryProperties.memoryHeapCount));
     NODE_LOG_INFO("[DeviceNode] Memory types: " + std::to_string(vulkanDevice->gpuMemoryProperties.memoryTypeCount));
 
-    // Phase K: Auto-enable RTX extensions if available
-    auto allExtensions = deviceExtensions;
-    auto rtxExtensions = VulkanDevice::GetRTXExtensions();
-
-    // Check which RTX extensions are available
+    // Enumerate all available device extensions
     uint32_t extCount = 0;
     vkEnumerateDeviceExtensionProperties(selectedGPU, nullptr, &extCount, nullptr);
     std::vector<VkExtensionProperties> availableExts(extCount);
     vkEnumerateDeviceExtensionProperties(selectedGPU, nullptr, &extCount, availableExts.data());
+
+    NODE_LOG_INFO("[DeviceNode] Found " + std::to_string(extCount) + " available device extensions");
 
     auto hasExt = [&availableExts](const char* name) {
         for (const auto& ext : availableExts) {
@@ -250,6 +248,24 @@ void DeviceNode::CreateLogicalDevice() {
         }
         return false;
     };
+
+    // Validate base device extensions - only enable those that are available
+    std::vector<const char*> allExtensions;
+    allExtensions.reserve(deviceExtensions.size());
+
+    for (const char* requestedExt : deviceExtensions) {
+        if (hasExt(requestedExt)) {
+            allExtensions.push_back(requestedExt);
+            NODE_LOG_DEBUG("[DeviceNode]   ✓ " + std::string(requestedExt) + " (available)");
+        } else {
+            NODE_LOG_WARNING("[DeviceNode]   ✗ " + std::string(requestedExt) + " (NOT AVAILABLE - skipping)");
+        }
+    }
+
+    NODE_LOG_INFO("[DeviceNode] Validated " + std::to_string(allExtensions.size()) + " base device extensions");
+
+    // Phase K: Auto-enable RTX extensions if available
+    auto rtxExtensions = VulkanDevice::GetRTXExtensions();
 
     bool rtxAvailable = true;
     for (const auto& rtxExt : rtxExtensions) {

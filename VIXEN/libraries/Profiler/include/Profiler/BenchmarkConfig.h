@@ -127,8 +127,12 @@ struct BenchmarkSuiteConfig {
     /// Scene definitions (name -> definition)
     std::map<std::string, SceneDefinition> sceneDefinitions;
 
-    /// GPU index to use (0 = first GPU)
+    /// GPU index to use (0 = first GPU) - ignored if runOnAllGPUs is true
     uint32_t gpuIndex = 0;
+
+    /// Run benchmark suite on ALL available GPUs (GPU becomes outermost loop)
+    /// When true, entire benchmark suite runs once per GPU with results separated by GPU metadata
+    bool runOnAllGPUs = false;
 
     /// Enable headless mode (no window, compute-only)
     bool headless = true;
