@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "lastSaved": "2025-12-23T14:14:29.590Z",
+  "entries": [
+    {
+      "projectId": 230809,
+      "workItemId": 166,
+      "startedAtMs": 1766496269546,
+      "lastActivityAtMs": 1766496269546,
+      "accumulatedHours": 0,
+      "status": "active"
+    },
+    {
+      "projectId": 230809,
+      "workItemId": 167,
+      "startedAtMs": 1766496412962,
+      "lastActivityAtMs": 1766496412962,
+      "accumulatedHours": 0,
+      "status": "active"
+    },
+    {
+      "projectId": 230809,
+      "workItemId": 168,
+      "startedAtMs": 1766496627041,
+      "lastActivityAtMs": 1766496627041,
+      "accumulatedHours": 0,
+      "status": "active"
+    }
+  ]
+}

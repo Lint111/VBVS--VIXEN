@@ -3,6 +3,7 @@
     "name": "VIXEN Performance Suite",
     "output_dir": "./benchmark_results",
     "gpu_index": 0,
+    "run_on_all_gpus": true,
     "headless": false,
     "verbose": true,
     "validation": false,

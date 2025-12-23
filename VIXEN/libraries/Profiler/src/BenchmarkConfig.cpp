@@ -604,6 +604,7 @@ BenchmarkSuiteConfig BenchmarkSuiteConfig::LoadFromFile(const std::filesystem::p
             if (suite.contains("name")) config.suiteName = suite["name"].get<std::string>();
             if (suite.contains("output_dir")) config.outputDir = suite["output_dir"].get<std::string>();
             if (suite.contains("gpu_index")) config.gpuIndex = suite["gpu_index"].get<uint32_t>();
+            if (suite.contains("run_on_all_gpus")) config.runOnAllGPUs = suite["run_on_all_gpus"].get<bool>();
             if (suite.contains("headless")) config.headless = suite["headless"].get<bool>();
             if (suite.contains("verbose")) config.verbose = suite["verbose"].get<bool>();
             if (suite.contains("validation")) config.enableValidation = suite["validation"].get<bool>();
@@ -738,6 +739,7 @@ bool BenchmarkSuiteConfig::SaveToFile(const std::filesystem::path& filepath) con
     j["suite"]["name"] = suiteName;
     j["suite"]["output_dir"] = outputDir.string();
     j["suite"]["gpu_index"] = gpuIndex;
+    j["suite"]["run_on_all_gpus"] = runOnAllGPUs;
     j["suite"]["headless"] = headless;
     j["suite"]["verbose"] = verbose;
     j["suite"]["validation"] = enableValidation;
