@@ -772,8 +772,10 @@ Vixen::Profiler::BenchmarkSuiteConfig BenchmarkCLIOptions::BuildSuiteConfig() co
         config.globalMatrix.renderSizes = {{renderWidth, renderHeight}};
     }
 
-    // Copy GPU selection
+    // Copy GPU selection (but don't override runOnAllGPUs from config file)
+    // When runOnAllGPUs is true, gpuIndex is ignored anyway
     config.gpuIndex = gpuIndex;
+    // NOTE: config.runOnAllGPUs is preserved from LoadFromFile() - don't override it
 
     // Copy execution mode - only override if explicitly set via CLI
     if (headlessExplicitlySet) {
