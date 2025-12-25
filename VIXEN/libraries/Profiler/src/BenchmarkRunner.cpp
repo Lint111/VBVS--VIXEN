@@ -584,6 +584,7 @@ TestSuiteResults BenchmarkRunner::RunSuite(const BenchmarkSuiteConfig& config) {
 
             // Run suite for this GPU
             TestSuiteResults gpuResults;
+            bool gpuSkipped = false;
             if (gpuConfig.headless) {
                 gpuResults = RunSuiteHeadless(gpuConfig);
             } else {
@@ -600,12 +601,17 @@ TestSuiteResults BenchmarkRunner::RunSuite(const BenchmarkSuiteConfig& config) {
                         std::cout << "           (Swapchain/presentation not available on this device)\n";
                         std::cout << "           Reason: " << errorMsg << "\n";
                         std::cout << "  Hint: Use --headless mode to test this GPU\n\n";
-                        continue;  // Skip to next GPU
+                        gpuSkipped = true;
                     } else {
                         // Different error - rethrow
                         throw;
                     }
                 }
+            }
+
+            // Skip export/packaging if GPU was skipped
+            if (gpuSkipped) {
+                continue;
             }
 
             // Export results for this GPU
