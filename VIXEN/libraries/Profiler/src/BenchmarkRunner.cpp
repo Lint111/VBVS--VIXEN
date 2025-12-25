@@ -1047,25 +1047,6 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
             }
         }
 
-        // Check if test exceeds available VRAM
-        uint64_t estimatedVRAM = testConfig.EstimateVRAMUsage();
-        uint64_t availableVRAM = deviceCapabilities_.totalVRAM_MB;
-        if (estimatedVRAM > availableVRAM) {
-            // Test would likely crash due to insufficient VRAM - skip it
-            std::cout << " SKIPPED (Insufficient VRAM)" << std::endl;
-            if (config.verbose) {
-                std::cout << "  [Memory Check] Test requires " << estimatedVRAM << " MB VRAM" << std::endl;
-                std::cout << "                 Available: " << availableVRAM << " MB" << std::endl;
-                std::cout << "                 Config: " << testConfig.voxelResolution << "³ "
-                          << testConfig.pipeline << " " << testConfig.sceneType << std::endl;
-            }
-
-            // Skip to next test without running this one
-            FinalizeCurrentTest();  // Mark as complete (will show in results as skipped)
-            renderGraph.reset();    // Clean up graph
-            continue;  // Move to next test
-        }
-
         // Capture BLAS/TLAS build timing for hardware_rt pipeline
         if (testConfig.pipeline == "hardware_rt") {
             auto* asNode = dynamic_cast<RG::AccelerationStructureNode*>(
@@ -1146,6 +1127,25 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
 
         // Update suite results with device capabilities (StartSuite was called before device detection)
         suiteResults_.SetDeviceCapabilities(deviceCapabilities_);
+
+        // Check if test exceeds available VRAM (NOW that capabilities are populated)
+        uint64_t estimatedVRAM = testConfig.EstimateVRAMUsage();
+        uint64_t availableVRAM = deviceCapabilities_.totalVRAM_MB;
+        if (estimatedVRAM > availableVRAM) {
+            // Test would likely crash due to insufficient VRAM - skip it
+            std::cout << " SKIPPED (Insufficient VRAM)" << std::endl;
+            if (config.verbose) {
+                std::cout << "  [Memory Check] Test requires " << estimatedVRAM << " MB VRAM" << std::endl;
+                std::cout << "                 Available: " << availableVRAM << " MB" << std::endl;
+                std::cout << "                 Config: " << testConfig.voxelResolution << "³ "
+                          << testConfig.pipeline << " " << testConfig.sceneType << std::endl;
+            }
+
+            // Skip to next test without running this one
+            FinalizeCurrentTest();  // Mark as complete (will show in results as skipped)
+            renderGraph.reset();    // Clean up graph
+            continue;  // Move to next test
+        }
 
         ProfilerSystem::Instance().SetOutputDirectory(config.outputDir);
         ProfilerSystem::Instance().SetExportFormats(config.exportCSV, config.exportJSON);
