@@ -994,17 +994,18 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
     while (BeginNextTest() && !shouldClose) {
         const auto& testConfig = GetCurrentTestConfig();
 
-        // Create render graph for this test iteration
-        auto renderGraph = std::make_unique<RG::RenderGraph>(
-            nodeRegistry.get(),
-            messageBus.get(),
-            graphLogger.get(),
-            &mainCacher
-        );
+        try {
+            // Create render graph for this test iteration
+            auto renderGraph = std::make_unique<RG::RenderGraph>(
+                nodeRegistry.get(),
+                messageBus.get(),
+                graphLogger.get(),
+                &mainCacher
+            );
 
-        // Always show minimal progress (Test X/Y) so testers know it's running
-        std::cout << "Test " << (GetCurrentTestIndex() + 1) << "/" << testMatrix_.size()
-                  << " - " << testConfig.pipeline << "..." << std::flush;
+            // Always show minimal progress (Test X/Y) so testers know it's running
+            std::cout << "Test " << (GetCurrentTestIndex() + 1) << "/" << testMatrix_.size()
+                      << " - " << testConfig.pipeline << "..." << std::flush;
 
         if (config.verbose) {
             // Verbose mode: show full details on new line
@@ -1467,18 +1468,51 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
         }
 #endif
 
-        // Reset shouldClose - programmatic window destruction is not a user close request
-        // Only preserve if user actually clicked close button during the test
-        shouldClose = userRequestedClose;
+            // Reset shouldClose - programmatic window destruction is not a user close request
+            // Only preserve if user actually clicked close button during the test
+            shouldClose = userRequestedClose;
 
-        if (shouldClose) break;  // User requested exit, don't start next test
+            if (shouldClose) break;  // User requested exit, don't start next test
 
-        renderGraph = std::make_unique<RG::RenderGraph>(
-            nodeRegistry.get(),
-            messageBus.get(),
-            graphLogger.get(),
-            &mainCacher
-        );
+            renderGraph = std::make_unique<RG::RenderGraph>(
+                nodeRegistry.get(),
+                messageBus.get(),
+                graphLogger.get(),
+                &mainCacher
+            );
+
+        } catch (const std::exception& e) {
+            // Test execution failed (likely swapchain/presentation error)
+            std::string errorMsg = e.what();
+
+            std::cout << " FAILED" << std::endl;
+            std::cout << "  [Test Execution Error] " << errorMsg << std::endl;
+
+            // Finalize current test with whatever data we collected (may be partial)
+            FinalizeCurrentTest();
+
+            // Check if this is a fatal GPU error that should stop the suite
+            if (errorMsg.find("swapchain") != std::string::npos ||
+                errorMsg.find("SwapChain") != std::string::npos ||
+                errorMsg.find("present") != std::string::npos ||
+                errorMsg.find("acquire") != std::string::npos) {
+                // GPU presentation failure - likely won't recover
+                std::cout << "  [GPU Error] GPU presentation failure detected" << std::endl;
+                std::cout << "              Stopping suite execution for this GPU" << std::endl;
+                std::cout << "  Hint: This GPU may not support windowed rendering" << std::endl;
+
+                // Export partial results before exiting
+                suiteResults_.SetEndTime(std::chrono::system_clock::now());
+                ExportAllResults();
+
+                // Return early with partial results
+                currentSuiteConfig_ = nullptr;
+                return suiteResults_;
+            }
+
+            // For other errors, continue to next test
+            std::cout << "  Continuing to next test..." << std::endl;
+        }
     }
 
     // FrameCapture cleanup is handled automatically by RenderGraph dependency system

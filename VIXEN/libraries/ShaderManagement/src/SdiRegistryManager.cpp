@@ -3,24 +3,10 @@
 #include <sstream>
 #include <iomanip>
 #include <algorithm>
-#include <chrono>
 
 namespace ShaderManagement {
 
 namespace {
-
-/**
- * @brief Get current timestamp as string
- */
-std::string GetTimestamp() {
-    auto now = std::chrono::system_clock::now();
-    auto time = std::chrono::system_clock::to_time_t(now);
-    std::tm timeInfo;
-    localtime_s(&timeInfo, &time);
-    std::ostringstream oss;
-    oss << std::put_time(&timeInfo, "%Y-%m-%d %H:%M:%S");
-    return oss.str();
-}
 
 /**
  * @brief Sanitize name for C++ identifier
@@ -325,7 +311,6 @@ std::string SdiRegistryManager::GenerateRegistryToString() const {
     code << "//   - Convenient namespace aliases\n";
     code << "//   - Reduced compilation time (only active shaders)\n";
     code << "//\n";
-    code << "// Generated: " << GetTimestamp() << "\n";
     code << "// Active Shaders: " << activeCount << "\n";
     code << "//\n";
     code << "// DO NOT MODIFY THIS FILE MANUALLY - it will be regenerated.\n";

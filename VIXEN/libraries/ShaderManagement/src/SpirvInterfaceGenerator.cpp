@@ -3,27 +3,12 @@
 #include <fstream>
 #include <sstream>
 #include <iomanip>
-#include <chrono>
-#include <ctime>
 #include <algorithm>
 #include <set>
 
 namespace ShaderManagement {
 
 namespace {
-
-/**
- * @brief Get current timestamp as string
- */
-std::string GetTimestamp() {
-    auto now = std::chrono::system_clock::now();
-    auto time = std::chrono::system_clock::to_time_t(now);
-    std::tm timeInfo;
-    localtime_s(&timeInfo, &time);
-    std::ostringstream oss;
-    oss << std::put_time(&timeInfo, "%Y-%m-%d %H:%M:%S");
-    return oss.str();
-}
 
 /**
  * @brief Convert descriptor type to string constant name
@@ -274,7 +259,6 @@ std::string SpirvInterfaceGenerator::GenerateNamesHeader(
         code << "//\n";
         code << "// Program: " << programName << "\n";
         code << "// UUID: " << uuid << "\n";
-        code << "// Generated: " << GetTimestamp() << "\n";
         code << "//\n";
         code << "// This file provides shader-specific constexpr constants and type aliases\n";
         code << "// that map to the generic .si.h interface.\n";
@@ -417,7 +401,6 @@ std::string SpirvInterfaceGenerator::GenerateHeader(
     code << "// ============================================================================\n";
     code << "//\n";
     code << "// UUID: " << uuid << "\n";
-    code << "// Generated: " << GetTimestamp() << "\n";
     code << "//\n";
     code << "// This file provides compile-time type-safe access to shader resources.\n";
     code << "// It is automatically generated from SPIRV reflection data.\n";
