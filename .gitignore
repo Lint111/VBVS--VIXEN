@@ -35,3 +35,21 @@
 *.vcxproj
 /VIXEN/build
 VIXEN/gatherer_test.txt
+
+# Cache directories
+.cache/
+cache/
+
+# Local settings
+*.local.json
+
+# Logs
+*.log
+log.txt
+logs/
+
+# Temporary files
+NUL
+*.tmp
+*.bak
+*~

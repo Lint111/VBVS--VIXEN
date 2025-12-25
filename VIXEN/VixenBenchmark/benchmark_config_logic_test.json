@@ -1,0 +1,57 @@
+{
+  "suite": {
+    "name": "VIXEN Logic Test - Minimal Matrix",
+    "output_dir": "./benchmark_results",
+    "gpu_index": 0,
+    "run_on_all_gpus": true,
+    "headless": false,
+    "verbose": true,
+    "validation": false,
+    "machine_name": null,
+    "export": {
+      "csv": true,
+      "json": true
+    }
+  },
+  "profiling": {
+    "warmup_frames": 10,
+    "measurement_frames": 30
+  },
+  "matrix": {
+    "global": {
+      "resolutions": [64],
+      "render_sizes": [[1280, 720]],
+      "scenes": ["cornell"]
+    },
+    "pipelines": {
+      "compute": {
+        "enabled": true,
+        "shader_groups": [
+          ["VoxelRayMarch.comp"],
+          ["VoxelRayMarch_Compressed.comp"]
+        ]
+      },
+      "fragment": {
+        "enabled": true,
+        "shader_groups": [
+          ["Fullscreen.vert", "VoxelRayMarch.frag"],
+          ["Fullscreen.vert", "VoxelRayMarch_Compressed.frag"]
+        ]
+      },
+      "hardware_rt": {
+        "enabled": true,
+        "shader_groups": [
+          ["VoxelRT.rgen", "VoxelRT.rmiss", "VoxelRT.rchit"],
+          ["VoxelRT.rgen", "VoxelRT.rmiss", "VoxelRT_Compressed.rchit"]
+        ]
+      }
+    }
+  },
+  "scenes": {
+    "cornell": {
+      "type": "procedural",
+      "generator": "cornell",
+      "params": {}
+    }
+  }
+}
