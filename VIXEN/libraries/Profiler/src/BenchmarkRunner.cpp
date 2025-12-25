@@ -1482,7 +1482,7 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
             );
 
         } catch (const std::exception& e) {
-            // Test execution failed (likely swapchain/presentation error)
+            // Test execution failed - cleanup and continue to next test
             std::string errorMsg = e.what();
 
             std::cout << " FAILED" << std::endl;
@@ -1491,26 +1491,36 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
             // Finalize current test with whatever data we collected (may be partial)
             FinalizeCurrentTest();
 
-            // Check if this is a fatal GPU error that should stop the suite
-            if (errorMsg.find("swapchain") != std::string::npos ||
-                errorMsg.find("SwapChain") != std::string::npos ||
-                errorMsg.find("present") != std::string::npos ||
-                errorMsg.find("acquire") != std::string::npos) {
-                // GPU presentation failure - likely won't recover
-                std::cout << "  [GPU Error] GPU presentation failure detected" << std::endl;
-                std::cout << "              Stopping suite execution for this GPU" << std::endl;
-                std::cout << "  Hint: This GPU may not support windowed rendering" << std::endl;
+            // End profiler test run (mark as failed)
+            ProfilerSystem::Instance().EndTestRun(false);
+            ClearCurrentGraph();
 
-                // Export partial results before exiting
-                suiteResults_.SetEndTime(std::chrono::system_clock::now());
-                ExportAllResults();
+            // Classify error type for user feedback
+            bool isSwapchainError = (errorMsg.find("swapchain") != std::string::npos ||
+                                     errorMsg.find("SwapChain") != std::string::npos ||
+                                     errorMsg.find("present") != std::string::npos ||
+                                     errorMsg.find("acquire") != std::string::npos);
 
-                // Return early with partial results
-                currentSuiteConfig_ = nullptr;
-                return suiteResults_;
+            if (isSwapchainError) {
+                std::cout << "  [GPU Error] Presentation/swapchain failure (GPU may not support windowed rendering)" << std::endl;
             }
 
-            // For other errors, continue to next test
+            // Drain message queue from failed window
+#ifdef _WIN32
+            MSG msg;
+            while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
+                if (msg.message != WM_QUIT) {
+                    TranslateMessage(&msg);
+                    DispatchMessageW(&msg);
+                }
+            }
+#endif
+
+            // Reset shouldClose flag - this was a test failure, not user abort
+            shouldClose = false;
+
+            // renderGraph will be destroyed when exiting try block scope
+            // Continue to next test - don't abort suite
             std::cout << "  Continuing to next test..." << std::endl;
         }
     }
