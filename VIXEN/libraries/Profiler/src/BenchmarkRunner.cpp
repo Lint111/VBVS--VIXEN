@@ -782,6 +782,9 @@ TestSuiteResults BenchmarkRunner::RunSuiteHeadless(const BenchmarkSuiteConfig& c
     ProfilerSystem::Instance().SetOutputDirectory(config.outputDir);
     ProfilerSystem::Instance().SetExportFormats(config.exportCSV, config.exportJSON);
 
+    // Copy captured capabilities to BenchmarkRunner for VRAM checks
+    deviceCapabilities_ = ProfilerSystem::Instance().GetDeviceCapabilities();
+
     // Set progress callback if verbose - show progress bar with test params
     if (config.verbose) {
         SetProgressCallback([this](uint32_t testIdx, uint32_t totalTests,
