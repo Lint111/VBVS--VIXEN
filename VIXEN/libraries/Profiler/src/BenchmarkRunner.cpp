@@ -835,6 +835,25 @@ TestSuiteResults BenchmarkRunner::RunSuiteHeadless(const BenchmarkSuiteConfig& c
             continue;  // Move to next test
         }
 
+        // Check if test exceeds available VRAM
+        uint64_t estimatedVRAM = testConfig.EstimateVRAMUsage();
+        uint64_t availableVRAM = deviceCapabilities_.totalVRAM_MB;
+        if (estimatedVRAM > availableVRAM) {
+            // Test would likely crash due to insufficient VRAM - skip it
+            std::cout << "Test " << (GetCurrentTestIndex() + 1) << "/" << testMatrix_.size()
+                      << " - " << testConfig.pipeline << "... SKIPPED (Insufficient VRAM)" << std::endl;
+            if (config.verbose) {
+                std::cout << "  [Memory Check] Test requires " << estimatedVRAM << " MB VRAM" << std::endl;
+                std::cout << "                 Available: " << availableVRAM << " MB" << std::endl;
+                std::cout << "                 Config: " << testConfig.voxelResolution << "³ "
+                          << testConfig.pipeline << " " << testConfig.sceneType << std::endl;
+            }
+
+            // Skip to next test without running this one
+            FinalizeCurrentTest();  // Mark as complete (will show in results as skipped)
+            continue;  // Move to next test
+        }
+
         // Always show minimal progress (Test X/Y) so testers know it's running
         std::cout << "Test " << (GetCurrentTestIndex() + 1) << "/" << testMatrix_.size()
                   << " - " << testConfig.pipeline << "..." << std::flush;
@@ -886,6 +905,10 @@ TestSuiteResults BenchmarkRunner::RunSuiteHeadless(const BenchmarkSuiteConfig& c
             std::cout << " Done" << std::endl;
         }
     }
+
+    // Export final results (including partial results if crashed mid-suite)
+    suiteResults_.SetEndTime(std::chrono::system_clock::now());
+    ExportAllResults();
 
     // Cleanup
     ProfilerSystem::Instance().Shutdown();
@@ -1019,6 +1042,25 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
                 renderGraph.reset();    // Clean up graph
                 continue;  // Move to next test
             }
+        }
+
+        // Check if test exceeds available VRAM
+        uint64_t estimatedVRAM = testConfig.EstimateVRAMUsage();
+        uint64_t availableVRAM = deviceCapabilities_.totalVRAM_MB;
+        if (estimatedVRAM > availableVRAM) {
+            // Test would likely crash due to insufficient VRAM - skip it
+            std::cout << " SKIPPED (Insufficient VRAM)" << std::endl;
+            if (config.verbose) {
+                std::cout << "  [Memory Check] Test requires " << estimatedVRAM << " MB VRAM" << std::endl;
+                std::cout << "                 Available: " << availableVRAM << " MB" << std::endl;
+                std::cout << "                 Config: " << testConfig.voxelResolution << "³ "
+                          << testConfig.pipeline << " " << testConfig.sceneType << std::endl;
+            }
+
+            // Skip to next test without running this one
+            FinalizeCurrentTest();  // Mark as complete (will show in results as skipped)
+            renderGraph.reset();    // Clean up graph
+            continue;  // Move to next test
         }
 
         // Capture BLAS/TLAS build timing for hardware_rt pipeline
@@ -1439,6 +1481,10 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
     // FrameCapture cleanup is handled automatically by RenderGraph dependency system
     // No manual cleanup needed here
 
+    // Export final results (including partial results if crashed mid-suite)
+    suiteResults_.SetEndTime(std::chrono::system_clock::now());
+    ExportAllResults();
+
     // Shutdown mainCacher BEFORE messageBus destructs
     // mainCacher is a global singleton that destructs during static deinitialization
     // messageBus is local and destructs when this function returns
@@ -1794,6 +1840,16 @@ void BenchmarkRunner::FinalizeCurrentTest() {
         ? currentConfig_.GenerateTestId(currentTestIndex_ + 1)
         : currentConfig_.testId;
     ExportTestResults(results, filename + ".json");
+
+    // Periodic crash recovery: export suite summary every 10 tests
+    // This ensures partial results are preserved if process crashes
+    constexpr uint32_t kSummaryExportInterval = 10;
+    if ((currentTestIndex_ + 1) % kSummaryExportInterval == 0) {
+        // Set interim end time for partial summary
+        suiteResults_.SetEndTime(std::chrono::system_clock::now());
+        auto summaryPath = outputDirectory_ / "suite_summary.json";
+        suiteResults_.ExportSummary(summaryPath.string());
+    }
 
     // Prepare for next test
     currentFrames_.clear();

@@ -697,4 +697,82 @@ bool TestConfiguration::CanRunOnDevice(const Vixen::Vulkan::Resources::VulkanDev
     return true;  // All required capabilities available
 }
 
+uint64_t TestConfiguration::EstimateVRAMUsage() const {
+    // Base memory calculation for voxel data
+    // Each voxel: 4 bytes color + 4 bytes normal = 8 bytes (compressed) or more for uncompressed
+    uint64_t voxelCount = static_cast<uint64_t>(voxelResolution) * voxelResolution * voxelResolution;
+    uint64_t baseVoxelMemory = 0;
+
+    // Check if using compressed format (estimate based on shader name/optimizations)
+    bool isCompressed = false;
+    for (const auto& opt : optimizations) {
+        if (opt.find("compress") != std::string::npos || opt.find("Compress") != std::string::npos) {
+            isCompressed = true;
+            break;
+        }
+    }
+    if (shader.find("Compress") != std::string::npos || shader.find("compress") != std::string::npos) {
+        isCompressed = true;
+    }
+
+    // Voxel data memory estimate
+    if (isCompressed) {
+        // Compressed: ~8 bytes per voxel (color + normal packed)
+        baseVoxelMemory = (voxelCount * 8) / (1024 * 1024);  // Convert to MB
+    } else {
+        // Uncompressed: ~16 bytes per voxel (full color + normal)
+        baseVoxelMemory = (voxelCount * 16) / (1024 * 1024);
+    }
+
+    // SVO structure overhead (~30% for octree nodes)
+    uint64_t svoOverhead = baseVoxelMemory * 30 / 100;
+
+    // Render target memory (screen buffer)
+    uint64_t renderTargetMemory = (static_cast<uint64_t>(screenWidth) * screenHeight * 4) / (1024 * 1024);
+
+    // Pipeline-specific overhead
+    uint64_t pipelineOverhead = 0;
+    PipelineType ptype = ParsePipelineType(pipeline);
+
+    switch (ptype) {
+        case PipelineType::HardwareRT:
+            // Hardware RT requires BLAS + TLAS structures
+            // BLAS: ~100-150% of base voxel memory (AABB per voxel + acceleration structure)
+            // TLAS: ~10% additional
+            // Based on real-world data: 256³ HW_RT uses ~1743MB
+            pipelineOverhead = baseVoxelMemory * 160 / 100;  // 160% overhead for RT structures
+            break;
+
+        case PipelineType::Fragment:
+            // Fragment pipeline needs vertex buffers, framebuffers
+            // ~20% overhead
+            pipelineOverhead = baseVoxelMemory * 20 / 100;
+            break;
+
+        case PipelineType::Compute:
+            // Compute pipeline minimal overhead (just dispatch buffers)
+            // ~10% overhead
+            pipelineOverhead = baseVoxelMemory * 10 / 100;
+            break;
+
+        default:
+            pipelineOverhead = baseVoxelMemory * 15 / 100;
+            break;
+    }
+
+    // Scene complexity factor (some scenes more complex than others)
+    uint64_t sceneComplexityFactor = 0;
+    if (sceneType == "cityscape" || sceneType == "tunnels") {
+        // More complex scenes use ~10-15% more memory
+        sceneComplexityFactor = (baseVoxelMemory + svoOverhead) * 12 / 100;
+    }
+
+    // Total estimate with safety margin (10%)
+    uint64_t totalEstimate = baseVoxelMemory + svoOverhead + renderTargetMemory +
+                             pipelineOverhead + sceneComplexityFactor;
+    uint64_t safetyMargin = totalEstimate * 10 / 100;
+
+    return totalEstimate + safetyMargin;
+}
+
 } // namespace Vixen::Profiler

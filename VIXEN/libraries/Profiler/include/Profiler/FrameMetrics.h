@@ -275,6 +275,11 @@ struct TestConfiguration {
     /// @param device VulkanDevice to check capabilities against
     /// @return true if device has all required capabilities, false otherwise
     bool CanRunOnDevice(const Vixen::Vulkan::Resources::VulkanDevice* device) const;
+
+    /// Estimate VRAM usage in MB for this test configuration
+    /// Based on resolution, pipeline type, and scene complexity
+    /// @return Estimated VRAM usage in MB
+    uint64_t EstimateVRAMUsage() const;
 };
 
 } // namespace Vixen::Profiler
