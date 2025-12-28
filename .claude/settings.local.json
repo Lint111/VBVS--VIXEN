@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(./vixen_benchmark.exe:*)",
-      "Bash(tasklist:*)"
-    ]
-  }
-}
