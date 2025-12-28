@@ -2,7 +2,7 @@
 #include "Data/Core/ResourceConfig.h"
 #include "Data/Nodes/RayTracingPipelineNodeConfig.h"
 #include "ShaderDataBundle.h"
-#include "VulkanDevice.h"
+#include "VulkanDeviceFwd.h"
 #include "VulkanSwapChain.h"
 
 namespace Vixen::RenderGraph {

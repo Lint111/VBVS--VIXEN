@@ -36,6 +36,13 @@ endif()
 # Export target
 add_library(Core::Core ALIAS Core)
 
+# Precompiled headers
+if(USE_PRECOMPILED_HEADERS)
+    target_precompile_headers(Core PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/CoreHeaders.h"
+    )
+endif()
+
 # Tests
 if(BUILD_TESTING)
     if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests)

@@ -157,11 +157,13 @@ void SwapChainNode::ExecuteImpl(TypedExecuteContext& ctx) {
 
     // Phase 0.7: Now that we know which image we got, wait for presentation to finish with it
     // This ensures the presentation engine has released the image before we start rendering to it
+    // NOTE: We wait here but don't reset - PresentNode resets the fence right before reuse
+    // to avoid race condition where vkQueuePresentKHR still owns the fence after signaling
     if (currentImageIndex != UINT32_MAX && !presentFencesArray.empty()) {
         VkFence presentFence = presentFencesArray[currentImageIndex];
         if (presentFence != VK_NULL_HANDLE && GetDevice() != nullptr) {
             vkWaitForFences(GetDevice()->device, 1, &presentFence, VK_TRUE, UINT64_MAX);
-            vkResetFences(GetDevice()->device, 1, &presentFence);
+            // Fence reset moved to PresentNode to avoid ownership violation
         }
     }
 

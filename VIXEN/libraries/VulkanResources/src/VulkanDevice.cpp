@@ -100,10 +100,25 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
 
     vkGetPhysicalDeviceFeatures(*gpu, &deviceFeatures);
 
-    // When using VkPhysicalDeviceFeatures2 in pNext, features go in deviceFeatures2.features, not pEnabledFeatures
-    deviceFeatures2.features.samplerAnisotropy = deviceFeatures.samplerAnisotropy;
-    // Required for storage image writes without format specifier (shader uses layout(binding=0) without format)
-    deviceFeatures2.features.shaderStorageImageWriteWithoutFormat = deviceFeatures.shaderStorageImageWriteWithoutFormat;
+    // Validate and enable device features
+    // CRITICAL: shaderStorageImageWriteWithoutFormat is required for compute shaders
+    if (!deviceFeatures.shaderStorageImageWriteWithoutFormat) {
+        throw std::runtime_error(
+            "GPU does not support shaderStorageImageWriteWithoutFormat - "
+            "required for format-less storage image writes in compute shaders. "
+            "This feature is unavailable on older integrated GPUs (Intel HD 4000-5000 era).");
+    }
+    deviceFeatures2.features.shaderStorageImageWriteWithoutFormat = VK_TRUE;
+
+    // OPTIONAL: samplerAnisotropy - enable if supported, warn if not
+    if (deviceFeatures.samplerAnisotropy) {
+        deviceFeatures2.features.samplerAnisotropy = VK_TRUE;
+    } else {
+        // Log warning but continue - anisotropic filtering is optional
+        // This may occur on very old hardware or emulated/virtualized GPUs
+        std::cerr << "[VulkanDevice] WARNING: Anisotropic filtering not supported on this GPU - textures will use standard filtering" << std::endl;
+        deviceFeatures2.features.samplerAnisotropy = VK_FALSE;
+    }
 
     // Create the logical device representation
     VkDeviceCreateInfo deviceInfo = {};

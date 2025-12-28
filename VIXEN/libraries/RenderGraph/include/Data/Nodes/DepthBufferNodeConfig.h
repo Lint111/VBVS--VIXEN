@@ -2,7 +2,7 @@
 
 #include "Data/Core/ResourceConfig.h"
 #include "Core/NodeInstance.h"  // For DepthFormat enum
-#include "VulkanDevice.h"
+#include "VulkanDeviceFwd.h"
 #include "Data/Core/CompileTimeResourceSystem.h"
 
 namespace Vixen::RenderGraph {

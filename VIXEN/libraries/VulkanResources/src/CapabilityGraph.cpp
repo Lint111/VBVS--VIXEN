@@ -85,6 +85,10 @@ void CapabilityGraph::BuildStandardCapabilities() {
     auto maintenance1 = CreateCapability<DeviceExtensionCapability>(
         "DeviceExt:VK_KHR_maintenance1", VK_KHR_MAINTENANCE_1_EXTENSION_NAME);
 
+    // VK_EXT_swapchain_maintenance1 - specific extension for present fences and scaling
+    auto swapchainMaintenance1Ext = CreateCapability<DeviceExtensionCapability>(
+        "DeviceExt:VK_EXT_swapchain_maintenance1", VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME);
+
     auto maintenance2 = CreateCapability<DeviceExtensionCapability>(
         "DeviceExt:VK_KHR_maintenance2", VK_KHR_MAINTENANCE_2_EXTENSION_NAME);
 
@@ -157,10 +161,12 @@ void CapabilityGraph::BuildStandardCapabilities() {
     rtxSupport->AddDependency(bufferDeviceAddress);
     RegisterCapability(rtxSupport);
 
-    // Swapchain Maintenance 1 (swapchain + maintenance1)
+    // SwapchainMaintenance1 - the VK_EXT_swapchain_maintenance1 extension for present fences
+    // Note: This is VK_EXT_swapchain_maintenance1, NOT VK_KHR_maintenance1
+    // The extension provides present fences via VkSwapchainPresentFenceInfoEXT
     auto swapchainMaint1 = std::make_shared<CompositeCapability>("SwapchainMaintenance1");
     swapchainMaint1->AddDependency(swapchain);
-    swapchainMaint1->AddDependency(maintenance1);
+    swapchainMaint1->AddDependency(swapchainMaintenance1Ext);  // Correct: VK_EXT_swapchain_maintenance1
     RegisterCapability(swapchainMaint1);
 
     // Swapchain Maintenance 2 (swapchain + maintenance1 + maintenance2)

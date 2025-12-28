@@ -69,3 +69,8 @@
 #include <cassert>
 #include <cstdint>
 #include <cstring>
+
+// ============================================================================
+// Third Party - GLM (used by ResourceExtractor and shader push constants)
+// ============================================================================
+#include <glm/glm.hpp>

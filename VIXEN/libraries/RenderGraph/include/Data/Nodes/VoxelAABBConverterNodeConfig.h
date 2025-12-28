@@ -1,6 +1,6 @@
 #pragma once
 #include "Data/Core/ResourceConfig.h"
-#include "VulkanDevice.h"
+#include "VulkanDeviceFwd.h"
 #include <AccelerationStructureCacher.h>  // CashSystem types
 #include <VoxelSceneCacher.h>             // CashSystem::VoxelSceneData
 

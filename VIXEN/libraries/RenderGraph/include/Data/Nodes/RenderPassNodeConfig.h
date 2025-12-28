@@ -2,7 +2,7 @@
 
 #include "Data/Core/ResourceConfig.h"
 #include "Core/NodeInstance.h"
-#include "VulkanDevice.h"
+#include "VulkanDeviceFwd.h"
 
 namespace Vixen::RenderGraph {
 

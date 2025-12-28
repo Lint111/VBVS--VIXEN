@@ -98,18 +98,28 @@ void FrameSyncNode::CompileImpl(TypedCompileContext& ctx) {
         }
     }
 
-    // Phase 0.7: Create per-IMAGE present fences (VK_KHR_swapchain_maintenance1)
+    // Phase 0.7: Create per-IMAGE present fences (VK_EXT_swapchain_maintenance1)
     // These track when the presentation engine has finished with each swapchain image
-    presentFences.resize(imageCount);
+    // CRITICAL: Only create fences if the extension is actually enabled on the device
+    // If extension is not available, leave array empty (downstream nodes check .empty())
+    if (device->HasCapability("SwapchainMaintenance1")) {
+        presentFences.resize(imageCount);
 
-    VkFenceCreateInfo presentFenceInfo{};
-    presentFenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    presentFenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;  // Start signaled (no wait on first use)
+        VkFenceCreateInfo presentFenceInfo{};
+        presentFenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+        presentFenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;  // Start signaled (no wait on first use)
 
-    for (uint32_t i = 0; i < imageCount; i++) {
-        if (vkCreateFence(device->device, &presentFenceInfo, nullptr, &presentFences[i]) != VK_SUCCESS) {
-            throw std::runtime_error("Failed to create present fence for image " + std::to_string(i));
+        for (uint32_t i = 0; i < imageCount; i++) {
+            if (vkCreateFence(device->device, &presentFenceInfo, nullptr, &presentFences[i]) != VK_SUCCESS) {
+                throw std::runtime_error("Failed to create present fence for image " + std::to_string(i));
+            }
         }
+
+        NODE_LOG_INFO("Created " + std::to_string(presentFences.size()) + " present fences (VK_EXT_swapchain_maintenance1 enabled)");
+    } else {
+        // Extension not available - leave presentFences empty
+        // SwapChainNode and PresentNode will skip fence logic when array is empty
+        NODE_LOG_INFO("VK_EXT_swapchain_maintenance1 not available - skipping present fence creation");
     }
 
     isCreated = true;
@@ -127,7 +137,6 @@ void FrameSyncNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("Synchronization primitives created successfully");
     NODE_LOG_INFO("Created " + std::to_string(imageAvailableSemaphores.size()) + " imageAvailable semaphores (per-flight)");
     NODE_LOG_INFO("Created " + std::to_string(renderCompleteSemaphores.size()) + " renderComplete semaphores (per-image)");
-    NODE_LOG_INFO("Created " + std::to_string(presentFences.size()) + " present fences (per-image, VK_KHR_swapchain_maintenance1)");
 }
 
 void FrameSyncNode::ExecuteImpl(TypedExecuteContext& ctx) {

@@ -1,6 +1,6 @@
 #pragma once
 #include "Data/Core/ResourceConfig.h"
-#include "VulkanDevice.h"
+#include "VulkanDeviceFwd.h"
 #include "Data/InputState.h"
 #include "Data/CameraData.h"
 

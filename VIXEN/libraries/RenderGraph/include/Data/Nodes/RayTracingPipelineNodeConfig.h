@@ -1,7 +1,7 @@
 #pragma once
 #include "Data/Core/ResourceConfig.h"
 #include "Data/Nodes/AccelerationStructureNodeConfig.h"
-#include "VulkanDevice.h"
+#include "VulkanDeviceFwd.h"
 #include <memory>
 
 // Forward declare ShaderDataBundle

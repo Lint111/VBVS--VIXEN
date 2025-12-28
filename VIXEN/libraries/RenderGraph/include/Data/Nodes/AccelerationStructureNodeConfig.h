@@ -1,7 +1,7 @@
 #pragma once
 #include "Data/Core/ResourceConfig.h"
 #include "Data/Nodes/VoxelAABBConverterNodeConfig.h"  // Includes CashSystem types
-#include "VulkanDevice.h"
+#include "VulkanDeviceFwd.h"
 
 namespace Vixen::RenderGraph {
 

@@ -1,11 +1,11 @@
 #pragma once
 
 #include "Data/Core/ResourceConfig.h"
-#include "VulkanDevice.h"
+#include "VulkanDeviceFwd.h"
 
 namespace Vixen::RenderGraph {
 
-// Type alias for VulkanDevice (use VulkanDevice* explicitly in slots)
+// Type alias for VulkanDevice (forward declared - use VulkanDevice* in slots)
 using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 
 /**

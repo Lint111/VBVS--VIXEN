@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Data/Core/ResourceConfig.h"
-#include "VulkanDevice.h"
+#include "VulkanDeviceFwd.h"
 // TEMPORARILY REMOVED - using VulkanShader directly for MVP
 // #include <ShaderManagement/ShaderProgram.h>
 

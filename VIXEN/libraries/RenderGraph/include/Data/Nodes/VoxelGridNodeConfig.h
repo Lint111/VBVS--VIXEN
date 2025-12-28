@@ -1,6 +1,6 @@
 #pragma once
 #include "Data/Core/ResourceConfig.h"
-#include "VulkanDevice.h"
+#include "VulkanDeviceFwd.h"
 
 // CRITICAL: Full includes required for wrapper types with conversion_type
 // The Resource::SetHandle() template uses HasConversionType_v<T> to detect

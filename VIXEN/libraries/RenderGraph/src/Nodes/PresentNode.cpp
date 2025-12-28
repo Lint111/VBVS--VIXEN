@@ -86,21 +86,28 @@ VkResult PresentNode::Present(Context& ctx) {
         throw std::runtime_error("PresentNode: No present function available");
     }
 
-    VkSwapchainPresentFenceInfoEXT presentFenceInfo{};
-    presentFenceInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_FENCE_INFO_EXT;
-    presentFenceInfo.pNext = nullptr;
-    if (presentFenceArray.empty()) {
-        presentFenceInfo.swapchainCount = 0;
-        presentFenceInfo.pFences = nullptr;
-    } else {
-        presentFenceInfo.swapchainCount = 1;
-        presentFenceInfo.pFences = &presentFenceArray[imageIndex];
-    }
-
     // Setup present info
     VkPresentInfoKHR presentInfo{};
     presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-    presentInfo.pNext = &presentFenceInfo;
+    presentInfo.pNext = nullptr;
+
+    // VK_EXT_swapchain_maintenance1: Chain present fence info only when extension is available
+    // The presentFenceArray is only populated when the extension is enabled (checked in FrameSyncNode)
+    VkSwapchainPresentFenceInfoEXT presentFenceInfo{};
+    if (!presentFenceArray.empty()) {
+        // CRITICAL: Reset fence immediately before reuse to avoid race condition
+        // SwapChainNode waits on the fence, but vkQueuePresentKHR may still own it after signaling
+        // Per Vulkan spec: "vkResetFences must not be called on a fence in use by a queue operation"
+        // Resetting here (right before present) ensures previous present operation has released ownership
+        VkFence fenceToReset = presentFenceArray[imageIndex];
+        vkResetFences(device->device, 1, &fenceToReset);
+
+        presentFenceInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_FENCE_INFO_EXT;
+        presentFenceInfo.pNext = nullptr;
+        presentFenceInfo.swapchainCount = 1;
+        presentFenceInfo.pFences = &presentFenceArray[imageIndex];
+        presentInfo.pNext = &presentFenceInfo;
+    }
     presentInfo.swapchainCount = 1;
     presentInfo.pSwapchains = &swapchain;
     presentInfo.pImageIndices = &imageIndex;

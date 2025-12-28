@@ -98,6 +98,17 @@ if(BUILD_TESTING)
 endif()
 
 # ============================================================================
+# Precompiled Headers
+# ============================================================================
+
+if(USE_PRECOMPILED_HEADERS)
+    target_precompile_headers(Profiler PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/ProfilerHeaders.h"
+    )
+    message(STATUS "Profiler: Precompiled headers enabled (using ProfilerHeaders.h)")
+endif()
+
+# ============================================================================
 # Installation
 # ============================================================================
 

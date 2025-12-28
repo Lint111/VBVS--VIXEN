@@ -3,6 +3,7 @@
 #include "Core/NodeType.h"
 #include "Core/TypedNodeInstance.h"
 #include "Data/Nodes/DepthBufferNodeConfig.h"
+#include "VulkanDevice.h"  // Full definition needed for inline member access
 
 namespace Vixen::RenderGraph {
 

@@ -53,6 +53,13 @@ build/
 build/*
 benchmark_results/
 benchmark_results/*
+VixenBenchmark/
+VixenBenchmark/*
+
+tools/
+tools/*
+
+
 
 # Data directories with benchmark results and large files
 data/
@@ -101,6 +108,10 @@ build/**/CMakeFiles/
 .claude_code/
 *.claude
 .claudesync/
+
+# Cache directories
+.cache/
+../.cache/
 
 # Transient / generated files that should not be committed
 build_output.txt
