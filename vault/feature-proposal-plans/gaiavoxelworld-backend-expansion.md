@@ -1554,6 +1554,721 @@ Result: Fully feasible!
 
 ---
 
+#### 2.8.8 Structural Integrity, Rigid Bodies & Animated Voxels
+
+**Problem Statement:** Not all voxels should simulate continuously:
+1. **Player-built structures** should be stable (not fall apart)
+2. **Rigid objects** (boulders, trees) should behave as solid bodies
+3. **Animated objects** (grass, flags) should sway without moving voxels
+4. **Bonded vs unbonded** voxels need different physics
+
+**Key Insight:** Use a **state machine** with multiple simulation modes.
+
+---
+
+##### 2.8.8.1 Voxel State Machine
+
+**States:**
+
+```cpp
+enum class VoxelSimulationState : uint8_t {
+    // STABLE STATES (no bandwidth cost)
+    Frozen,        // Never simulates (bedrock, distant chunks)
+    Sleeping,      // Structurally stable, wakes on impact (player house)
+    Static,        // Permanently static (placed blocks)
+
+    // ACTIVE STATES (bandwidth cost)
+    Active,        // Fully simulating (falling sand, flowing water)
+    RigidBody,     // Part of bonded structure (boulder, tree)
+    Animated,      // Procedurally animated (grass, flags)
+};
+
+struct VoxelSimState {
+    uint16_t materialID;
+    uint8_t temperature;
+    uint8_t pressure;
+    glm::vec3 velocity;
+
+    // NEW: Simulation state
+    VoxelSimulationState simState;  // 1 byte
+    uint32_t structureID;           // If part of rigid body/structure (4 bytes)
+    uint16_t bondFlags;             // Which neighbors bonded (6 bits used)
+};
+```
+
+**State Transitions:**
+
+```
+         [Player builds]
+Frozen ──────────────────→ Sleeping ──[Impact]──→ Active
+  ↑                           ↑                       │
+  │                           │                       │
+  └──[Distance > 100m]────────┴───[Settled]───────────┘
+
+         [Connect to structure]
+Active ────────────────────────────→ RigidBody
+  ↑                                      │
+  │                                      │
+  └────────[Structure breaks]────────────┘
+
+         [Place animated block]
+Static ────────────────────────────→ Animated
+  ↑                                      │
+  │                                      │
+  └────────[Stop animation]──────────────┘
+```
+
+---
+
+##### 2.8.8.2 Structural Bonding System
+
+**Concept:** Voxels bond together to form stable structures (like Teardown).
+
+**Bond Graph:**
+
+```cpp
+// New file: GaiaVoxelWorld/include/VoxelBonds.h
+
+struct VoxelBond {
+    uint64_t voxelA;    // Morton key
+    uint64_t voxelB;    // Morton key
+    float strength;     // Bond strength (0-1)
+    uint8_t axis;       // 0=X, 1=Y, 2=Z
+};
+
+class StructuralIntegritySystem {
+public:
+    /**
+     * Bond two voxels together.
+     * Called when player places adjacent blocks.
+     */
+    void createBond(uint64_t voxelA, uint64_t voxelB, float strength = 1.0f) {
+        bonds_.push_back({voxelA, voxelB, strength, getAxis(voxelA, voxelB)});
+
+        // Update bond flags (6-neighbor connectivity)
+        updateBondFlags(voxelA);
+        updateBondFlags(voxelB);
+    }
+
+    /**
+     * Check if structure is stable (has support path to ground).
+     * Uses flood-fill to find connected components.
+     */
+    bool isStructureStable(uint64_t voxel) {
+        // Find all connected voxels
+        auto connectedVoxels = floodFillBonds(voxel);
+
+        // Check if any voxel touches ground
+        for (uint64_t v : connectedVoxels) {
+            glm::ivec3 pos = mortonToPos(v);
+            if (pos.y == 0) return true; // Touches ground
+        }
+
+        return false; // Floating structure!
+    }
+
+    /**
+     * Break bond if stress exceeds strength.
+     * Called during explosions, impacts, etc.
+     */
+    void applyStress(uint64_t voxelA, uint64_t voxelB, float stress) {
+        for (auto& bond : bonds_) {
+            if ((bond.voxelA == voxelA && bond.voxelB == voxelB) ||
+                (bond.voxelA == voxelB && bond.voxelB == voxelA)) {
+
+                bond.strength -= stress;
+
+                if (bond.strength <= 0.0f) {
+                    // Bond broken!
+                    removeBond(bond);
+
+                    // Check if structure still stable
+                    if (!isStructureStable(voxelA)) {
+                        // Structure lost support → start falling
+                        wakeStructure(voxelA);
+                    }
+                }
+            }
+        }
+    }
+
+private:
+    std::vector<VoxelBond> bonds_;
+
+    std::unordered_set<uint64_t> floodFillBonds(uint64_t startVoxel) {
+        std::unordered_set<uint64_t> visited;
+        std::queue<uint64_t> queue;
+        queue.push(startVoxel);
+
+        while (!queue.empty()) {
+            uint64_t current = queue.front();
+            queue.pop();
+
+            if (visited.contains(current)) continue;
+            visited.insert(current);
+
+            // Find all bonded neighbors
+            for (const auto& bond : bonds_) {
+                uint64_t neighbor = 0;
+                if (bond.voxelA == current) neighbor = bond.voxelB;
+                if (bond.voxelB == current) neighbor = bond.voxelA;
+
+                if (neighbor != 0 && !visited.contains(neighbor)) {
+                    queue.push(neighbor);
+                }
+            }
+        }
+
+        return visited;
+    }
+
+    void wakeStructure(uint64_t voxel) {
+        // Wake all connected voxels
+        auto structure = floodFillBonds(voxel);
+        for (uint64_t v : structure) {
+            auto& state = getVoxelState(v);
+            state.simState = VoxelSimulationState::Active;
+            markActive(v);
+        }
+    }
+};
+```
+
+**Example: Player Builds House**
+
+```cpp
+// Player places blocks
+world.createVoxel(glm::vec3(0, 0, 0), WoodMaterial); // Foundation
+world.createVoxel(glm::vec3(0, 1, 0), WoodMaterial); // Wall
+world.createVoxel(glm::vec3(0, 2, 0), WoodMaterial); // Wall
+world.createVoxel(glm::vec3(1, 2, 0), WoodMaterial); // Roof
+
+// System auto-bonds adjacent blocks
+structuralSystem.createBond(morton(0,0,0), morton(0,1,0), 1.0f);
+structuralSystem.createBond(morton(0,1,0), morton(0,2,0), 1.0f);
+structuralSystem.createBond(morton(0,2,0), morton(1,2,0), 1.0f);
+
+// Mark as sleeping (stable delta)
+for (auto voxel : houseVoxels) {
+    state.simState = VoxelSimulationState::Sleeping;
+}
+
+// Later: Explosion removes foundation
+world.destroyVoxel(morton(0,0,0));
+
+// System detects lost support
+if (!structuralSystem.isStructureStable(morton(0,1,0))) {
+    // Wake entire structure → starts falling!
+    structuralSystem.wakeStructure(morton(0,1,0));
+}
+
+// Result: House collapses realistically (Teardown-style)
+```
+
+---
+
+##### 2.8.8.3 Rigid Body Extraction
+
+**Concept:** Convert bonded voxel structures into rigid bodies for efficient physics simulation.
+
+**Why?** Simulating 10,000 bonded voxels individually = expensive. Simulating 1 rigid body with 10,000 voxels = cheap!
+
+**Architecture:**
+
+```cpp
+// New file: GaiaVoxelWorld/include/VoxelRigidBodies.h
+
+struct VoxelRigidBody {
+    uint32_t structureID;               // Unique ID
+    std::vector<uint64_t> voxels;       // Morton keys of all voxels
+
+    // Physics properties (computed from voxels)
+    float mass;                         // Sum of voxel masses
+    glm::vec3 centerOfMass;             // Weighted average
+    glm::mat3 inertiaTensor;            // For rotation
+
+    // Simulation state
+    glm::vec3 position;                 // COM position
+    glm::quat orientation;              // Rotation
+    glm::vec3 linearVelocity;
+    glm::vec3 angularVelocity;
+
+    // Bounding volume (for collision)
+    AABB localBounds;                   // In body space
+    AABB worldBounds;                   // In world space
+};
+
+class RigidBodyExtractor {
+public:
+    /**
+     * Extract rigid body from bonded structure.
+     * Called when structure becomes unstable (starts falling).
+     */
+    VoxelRigidBody extractRigidBody(const std::unordered_set<uint64_t>& voxels) {
+        VoxelRigidBody body;
+        body.structureID = nextStructureID_++;
+        body.voxels = std::vector(voxels.begin(), voxels.end());
+
+        // Compute mass and center of mass
+        float totalMass = 0.0f;
+        glm::vec3 com(0);
+        for (uint64_t voxel : voxels) {
+            glm::vec3 pos = mortonToWorldPos(voxel);
+            float voxelMass = getMaterialDensity(voxel);
+            totalMass += voxelMass;
+            com += pos * voxelMass;
+        }
+        body.mass = totalMass;
+        body.centerOfMass = com / totalMass;
+
+        // Compute inertia tensor (for rotation)
+        body.inertiaTensor = computeInertiaTensor(voxels, body.centerOfMass);
+
+        // Compute bounds
+        body.localBounds = computeAABB(voxels);
+
+        // Initialize state
+        body.position = body.centerOfMass;
+        body.orientation = glm::quat(1, 0, 0, 0); // Identity
+        body.linearVelocity = glm::vec3(0);
+        body.angularVelocity = glm::vec3(0);
+
+        return body;
+    }
+
+    /**
+     * Simulate rigid body (much cheaper than per-voxel simulation).
+     */
+    void simulateRigidBody(VoxelRigidBody& body, float deltaTime) {
+        // Apply gravity
+        body.linearVelocity += glm::vec3(0, -9.8f, 0) * deltaTime;
+
+        // Update position
+        body.position += body.linearVelocity * deltaTime;
+
+        // Update rotation
+        glm::quat spin(0, body.angularVelocity.x, body.angularVelocity.y, body.angularVelocity.z);
+        body.orientation += 0.5f * spin * body.orientation * deltaTime;
+        body.orientation = glm::normalize(body.orientation);
+
+        // Update world bounds
+        body.worldBounds = transformAABB(body.localBounds, body.position, body.orientation);
+
+        // Check collision with terrain
+        checkTerrainCollision(body);
+    }
+
+    /**
+     * Check collision between rigid body and simulated voxels.
+     */
+    void checkTerrainCollision(VoxelRigidBody& body) {
+        // For each voxel in rigid body
+        for (uint64_t voxel : body.voxels) {
+            // Transform to world space
+            glm::vec3 localPos = mortonToWorldPos(voxel) - body.centerOfMass;
+            glm::vec3 worldPos = body.position + body.orientation * localPos;
+
+            // Check if overlapping terrain voxel
+            uint64_t terrainKey = worldPosToMorton(worldPos);
+            if (isTerrainVoxel(terrainKey)) {
+                // Collision! Resolve
+                resolveCollision(body, terrainKey);
+
+                // Maybe break rigid body if impact too hard
+                if (glm::length(body.linearVelocity) > 10.0f) {
+                    breakRigidBody(body);
+                }
+            }
+        }
+    }
+
+    /**
+     * Break rigid body back into simulated voxels.
+     * Called on high-impact collision.
+     */
+    void breakRigidBody(VoxelRigidBody& body) {
+        // Convert back to individual active voxels
+        for (uint64_t voxel : body.voxels) {
+            auto& state = getVoxelState(voxel);
+            state.simState = VoxelSimulationState::Active;
+            state.velocity = body.linearVelocity; // Inherit velocity
+            markActive(voxel);
+        }
+
+        // Remove rigid body
+        removeRigidBody(body.structureID);
+    }
+
+private:
+    uint32_t nextStructureID_ = 1;
+    std::unordered_map<uint32_t, VoxelRigidBody> rigidBodies_;
+};
+```
+
+**Performance:**
+
+```
+Bonded structure: 10,000 voxels
+Per-voxel simulation: 10,000 updates/frame = expensive
+Rigid body simulation: 1 update/frame = cheap!
+
+Speedup: 10,000x for stable structures
+```
+
+---
+
+##### 2.8.8.4 Stable Objects in Unstable Environments
+
+**Problem:** Boulder (rigid) sitting in sand (simulated). How to handle?
+
+**Solution:** **Collision Carving** - Rigid body "carves out" space in simulation grid.
+
+```cpp
+class RigidBodySimulationIntegration {
+public:
+    /**
+     * Carve rigid body out of simulation grid.
+     * Prevents sand from simulating into boulder's space.
+     */
+    void carveRigidBodySpace(const VoxelRigidBody& body) {
+        // For each voxel in rigid body's world bounds
+        for (int x = body.worldBounds.min.x; x < body.worldBounds.max.x; ++x) {
+            for (int y = body.worldBounds.min.y; y < body.worldBounds.max.y; ++y) {
+                for (int z = body.worldBounds.min.z; z < body.worldBounds.max.z; ++z) {
+                    uint64_t key = worldPosToMorton(glm::vec3(x, y, z));
+
+                    // Check if this position is inside rigid body
+                    if (isInsideRigidBody(glm::vec3(x, y, z), body)) {
+                        // Mark as occupied by rigid body
+                        auto& state = getVoxelState(key);
+                        state.simState = VoxelSimulationState::RigidBody;
+                        state.structureID = body.structureID;
+
+                        // Deactivate simulation for this voxel
+                        markInactive(key);
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Update simulation around moving rigid body.
+     */
+    void updateRigidBodyCarving(VoxelRigidBody& body, const AABB& previousBounds) {
+        // 1. Free voxels that rigid body left
+        for (int x = previousBounds.min.x; x < previousBounds.max.x; ++x) {
+            for (int y = previousBounds.min.y; y < previousBounds.max.y; ++y) {
+                for (int z = previousBounds.min.z; z < previousBounds.max.z; ++z) {
+                    uint64_t key = worldPosToMorton(glm::vec3(x, y, z));
+
+                    // If no longer inside rigid body
+                    if (!isInsideRigidBody(glm::vec3(x, y, z), body)) {
+                        auto& state = getVoxelState(key);
+                        if (state.structureID == body.structureID) {
+                            // Free this space for simulation
+                            state.simState = VoxelSimulationState::Active;
+                            state.structureID = 0;
+
+                            // Wake neighbors (sand can flow in)
+                            wakeNeighbors(key);
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. Carve new space
+        carveRigidBodySpace(body);
+    }
+};
+
+// Example: Boulder rolling down sand dune
+VoxelRigidBody boulder = extractRigidBody(boulderVoxels);
+
+while (boulder.linearVelocity.y < 0) { // Falling
+    // Simulate boulder (rigid body physics)
+    simulateRigidBody(boulder, deltaTime);
+
+    // Update carving (clear path, block space)
+    AABB previousBounds = boulder.worldBounds;
+    updateRigidBodyCarving(boulder, previousBounds);
+
+    // Sand voxels automatically flow into cleared space
+    // (handled by cellular automata simulation)
+}
+
+// Result: Boulder rolls through sand, leaving a trail
+```
+
+---
+
+##### 2.8.8.5 Animated Voxels (Grass, Flags, etc.)
+
+**Problem:** Grass swaying in wind - do we move voxels or regenerate?
+
+**Answer:** **Procedural Regeneration** - Don't move voxels, regenerate them each frame from animation curve.
+
+**Why?**
+- Moving voxels creates gaps (looks bad)
+- Moving voxels is expensive (delete + create every frame)
+- Procedural is cheaper and looks better
+
+**Architecture:**
+
+```cpp
+// New file: GaiaVoxelWorld/include/VoxelAnimation.h
+
+struct AnimationCurve {
+    enum class Type {
+        Sine,         // Smooth oscillation (grass sway)
+        Perlin,       // Organic noise (tree branches)
+        Bezier,       // Custom curve (flag flutter)
+        Physics       // Spring simulation (dangling rope)
+    };
+
+    Type type;
+    float frequency;      // Oscillations per second
+    float amplitude;      // Max displacement (voxels)
+    glm::vec3 direction;  // Primary motion axis
+    float phase;          // Offset (for variety)
+};
+
+struct AnimatedVoxelRegion {
+    AABB baseRegion;                    // Original region (at rest)
+    AnimationCurve curve;               // How it moves
+    uint16_t baseMaterialID;            // Material when static
+
+    // Generator function: basePos → currentPos
+    std::function<glm::vec3(glm::vec3, float)> animationFunc;
+};
+
+class VoxelAnimationSystem {
+public:
+    /**
+     * Register animated region (e.g., grass patch).
+     */
+    uint32_t registerAnimation(
+        const AABB& region,
+        const AnimationCurve& curve,
+        uint16_t materialID) {
+
+        AnimatedVoxelRegion anim;
+        anim.baseRegion = region;
+        anim.curve = curve;
+        anim.baseMaterialID = materialID;
+
+        // Create animation function based on curve type
+        anim.animationFunc = createAnimationFunc(curve);
+
+        animations_.push_back(anim);
+        return animations_.size() - 1;
+    }
+
+    /**
+     * Update animated voxels (called every frame).
+     * DOES NOT MOVE VOXELS - regenerates them at new positions!
+     */
+    void updateAnimations(float currentTime) {
+        for (auto& anim : animations_) {
+            // 1. Clear previous frame's voxels (mark as inactive)
+            clearAnimatedRegion(anim);
+
+            // 2. Generate new voxels at animated positions
+            for (int x = anim.baseRegion.min.x; x < anim.baseRegion.max.x; ++x) {
+                for (int y = anim.baseRegion.min.y; y < anim.baseRegion.max.y; ++y) {
+                    for (int z = anim.baseRegion.min.z; z < anim.baseRegion.max.z; ++z) {
+                        glm::vec3 basePos(x, y, z);
+
+                        // Compute animated position
+                        glm::vec3 animPos = anim.animationFunc(basePos, currentTime);
+
+                        // Create voxel at animated position
+                        uint64_t key = worldPosToMorton(animPos);
+                        createAnimatedVoxel(key, anim.baseMaterialID);
+                    }
+                }
+            }
+        }
+    }
+
+private:
+    std::vector<AnimatedVoxelRegion> animations_;
+
+    std::function<glm::vec3(glm::vec3, float)> createAnimationFunc(
+        const AnimationCurve& curve) {
+
+        switch (curve.type) {
+            case AnimationCurve::Type::Sine:
+                return [=](glm::vec3 basePos, float time) {
+                    // Sine wave (grass sway)
+                    float offset = sin(time * curve.frequency + basePos.x * 0.1f + curve.phase);
+                    return basePos + curve.direction * curve.amplitude * offset;
+                };
+
+            case AnimationCurve::Type::Perlin:
+                return [=](glm::vec3 basePos, float time) {
+                    // Perlin noise (organic motion)
+                    float noise = perlin3D(basePos * 0.1f + glm::vec3(time * curve.frequency));
+                    return basePos + curve.direction * curve.amplitude * noise;
+                };
+
+            case AnimationCurve::Type::Physics:
+                return [=](glm::vec3 basePos, float time) {
+                    // Spring physics (rope, cloth)
+                    // ... physics simulation ...
+                    return basePos; // Placeholder
+                };
+
+            default:
+                return [](glm::vec3 basePos, float time) { return basePos; };
+        }
+    }
+
+    void clearAnimatedRegion(const AnimatedVoxelRegion& anim) {
+        // Mark all voxels in animated region as inactive
+        // (Will be regenerated this frame at new positions)
+    }
+};
+
+// Example: Grass patch
+AnimationCurve grassSway{
+    .type = AnimationCurve::Type::Sine,
+    .frequency = 2.0f,      // 2 sways per second
+    .amplitude = 0.3f,      // 0.3 voxels displacement
+    .direction = glm::vec3(1, 0, 0), // Sway in X direction
+    .phase = 0.0f
+};
+
+AABB grassPatch{
+    .min = glm::vec3(0, 0, 0),
+    .max = glm::vec3(10, 3, 10)  // 10×3×10 grass blades
+};
+
+animSystem.registerAnimation(grassPatch, grassSway, GrassMaterialID);
+
+// Every frame:
+animSystem.updateAnimations(currentTime);
+
+// Result: Grass sways smoothly, no voxels actually moved!
+```
+
+**Optimization: Implicit Animated Voxels**
+
+For better performance, don't materialize animated voxels at all - just store the animation and generate on-demand during rendering:
+
+```cpp
+// Don't create actual voxel entities
+// Instead, shader samples animation function during ray-casting
+
+// GLSL shader
+vec3 sampleAnimatedVoxel(vec3 worldPos, float time) {
+    // Check if worldPos is inside animated region
+    for (int i = 0; i < animatedRegionCount; ++i) {
+        if (isInsideAABB(worldPos, animatedRegions[i].bounds)) {
+            // Compute base position (reverse animation)
+            vec3 basePos = inverseAnimation(worldPos, time, animatedRegions[i].curve);
+
+            // Check if basePos was originally occupied
+            if (wasVoxelAtBase(basePos, animatedRegions[i])) {
+                return animatedRegions[i].color; // Hit!
+            }
+        }
+    }
+
+    return vec3(0); // Miss
+}
+
+// Result: Zero voxel creation overhead!
+// Grass is purely a shader effect
+```
+
+---
+
+##### 2.8.8.6 Hybrid Approach: Dynamic State Switching
+
+**Best Practice:** Voxels switch between states dynamically based on conditions.
+
+```cpp
+void updateVoxelState(uint64_t voxel, VoxelSimState& state) {
+    switch (state.simState) {
+        case VoxelSimulationState::Sleeping:
+            // Check if should wake (impact, neighbor movement)
+            if (hasActiveNeighbor(voxel) || recentlyImpacted(voxel)) {
+                state.simState = VoxelSimulationState::Active;
+                markActive(voxel);
+            }
+            break;
+
+        case VoxelSimulationState::Active:
+            // Check if should sleep (settled, bonded)
+            if (isSettled(state) && hasSupportBelow(voxel)) {
+                state.simState = VoxelSimulationState::Sleeping;
+                markInactive(voxel);
+            }
+
+            // Check if should become rigid body (bonded to structure)
+            if (isPartOfBondedStructure(voxel)) {
+                auto structure = extractRigidBody(getBondedVoxels(voxel));
+                state.simState = VoxelSimulationState::RigidBody;
+                state.structureID = structure.structureID;
+            }
+            break;
+
+        case VoxelSimulationState::RigidBody:
+            // Check if rigid body broke (impact, explosion)
+            auto& body = getRigidBody(state.structureID);
+            if (body.broken) {
+                state.simState = VoxelSimulationState::Active;
+                state.structureID = 0;
+                state.velocity = body.linearVelocity; // Inherit
+                markActive(voxel);
+            }
+            break;
+
+        // ... other states ...
+    }
+}
+```
+
+---
+
+##### 2.8.8.7 Bandwidth Impact
+
+**State Distribution (Typical):**
+
+```
+512³ chunk (134M voxels):
+- Frozen (distant): 80% = 107M voxels → 0 bandwidth
+- Sleeping (stable): 15% = 20M voxels → 0 bandwidth (until woken)
+- Static (terrain): 4% = 5.4M voxels → 0 bandwidth
+- Active (falling): 0.5% = 670K voxels → 40 MB/s
+- RigidBody (structures): 0.4% = 536K voxels → 5 MB/s (just rigid bodies, not voxels!)
+- Animated (grass): 0.1% = 134K voxels → 0 bandwidth (procedural shader)
+
+Total bandwidth: ~45 MB/s (vs 804 GB/s naive!)
+Reduction: 17,866x
+```
+
+**Key Insight:** Most voxels spend most of their time sleeping/frozen!
+
+---
+
+##### 2.8.8.8 Summary Table
+
+| Feature | Approach | Bandwidth | Quality |
+|---------|----------|-----------|---------|
+| **Player-built house** | Sleeping → bonds → wake on impact | 0 (until impacted) | Perfect |
+| **Falling structure** | Extract rigid body → physics sim | 5 MB/s (1 body vs 10K voxels) | Perfect |
+| **Boulder in sand** | Rigid body + collision carving | 5 MB/s | Perfect |
+| **Grass swaying** | Procedural shader (implicit) | 0 | Perfect |
+| **Tree in wind** | Animated region (regenerate) | 2 MB/s | Perfect |
+| **Sand flowing** | Active cellular automata | 40 MB/s | Perfect |
+
+**Total:** ~52 MB/s for fully dynamic world with structures, physics, and animation!
+
+---
+
 ### 2.9 Industry-Standard Optimizations
 
 **Concept:** Additional optimizations used in production voxel engines.
