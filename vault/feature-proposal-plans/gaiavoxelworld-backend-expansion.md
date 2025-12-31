@@ -982,7 +982,579 @@ auto voxel = implicit.evaluate(glm::vec3(50, 0, 0));
 
 ---
 
-### 2.8 Industry-Standard Optimizations
+### 2.8 Fully Simulated Voxel World (Noita-Style Falling Sand)
+
+**Concept:** Every voxel is actively simulated with physics, chemistry, and interactions—inspired by Noita's "every pixel simulated" approach, but extended to 3D with lossy optimizations for performance.
+
+**Research Foundation:** Cellular automata, falling sand games (Powder Toy, Noita), lossy compression for simulation state.
+
+**Key Challenge:** Bandwidth explosion in 3D.
+
+**Bandwidth Reality Check:**
+
+| Scenario | Voxel Count | Update Rate | Bandwidth | Feasible? |
+|----------|-------------|-------------|-----------|-----------|
+| Noita (2D) | 3.7M pixels | 60 FPS | 1.8 GB/s | ✅ Yes |
+| Naive 512³ (all active) | 134M voxels | 60 FPS | **804 GB/s** | ❌ **NO** (16x over RAM bandwidth!) |
+| Sparse 512³ (1% active) | 1.3M voxels | 60 FPS | 8 GB/s | ✅ Yes |
+| Chunked (32³ active) | 32K voxels | 60 FPS | 192 MB/s | ✅ **Excellent** |
+
+**Conclusion:** We MUST use sparse, lossy, chunked simulation to achieve Noita-style behavior in 3D.
+
+---
+
+#### 2.8.1 Lossy Simulation Architecture
+
+**Core Idea:** Accept approximations to reduce computational load by 100-1000x.
+
+**Lossy Optimizations:**
+
+1. **Spatial Quantization (Coarsen distant chunks)**
+   ```cpp
+   // Near player: Full resolution (1 voxel = 1cm)
+   // 10m away: 2x2x2 mega-voxels (8 voxels → 1 simulated unit)
+   // 50m away: 4x4x4 mega-voxels (64 voxels → 1)
+   // 100m+ away: Frozen (no simulation)
+
+   float getSimulationResolution(float distanceToPlayer) {
+       if (distanceToPlayer < 10.0f) return 1.0f;  // Full res
+       if (distanceToPlayer < 50.0f) return 2.0f;  // Half res
+       if (distanceToPlayer < 100.0f) return 4.0f; // Quarter res
+       return 0.0f; // Frozen
+   }
+   ```
+
+2. **Temporal Quantization (Update less frequently)**
+   ```cpp
+   // Near player: Every frame (60 FPS)
+   // 10m away: Every 2 frames (30 FPS)
+   // 50m away: Every 10 frames (6 FPS)
+   // 100m+ away: Frozen
+
+   int getUpdateFrequency(float distanceToPlayer) {
+       if (distanceToPlayer < 10.0f) return 1;   // Every frame
+       if (distanceToPlayer < 50.0f) return 2;   // 30 FPS
+       if (distanceToPlayer < 100.0f) return 10; // 6 FPS
+       return 0; // Frozen
+   }
+   ```
+
+3. **State Compression (Reduce data per voxel)**
+   ```cpp
+   // Full state (for rendering): 100 bytes
+   struct VoxelRenderState {
+       glm::vec3 color;     // 12 bytes
+       glm::vec3 normal;    // 12 bytes
+       float density;       // 4 bytes
+       uint32_t material;   // 4 bytes
+       // ... etc (100 bytes total)
+   };
+
+   // Simulation state (lossy): 16 bytes
+   struct VoxelSimState {
+       uint16_t materialID;    // 2 bytes (65K material types)
+       uint8_t temperature;    // 1 byte (0-255°C, lossy!)
+       uint8_t pressure;       // 1 byte (lossy!)
+       glm::vec3 velocity;     // 12 bytes (could quantize to 6 bytes)
+       // Total: 16 bytes (6.25x compression!)
+   };
+   ```
+
+4. **Activity-Based Sparse Simulation**
+   ```cpp
+   // Only simulate voxels that are "active"
+   // Active = recently changed, has velocity, is falling, etc.
+
+   struct ActiveVoxelSet {
+       std::unordered_set<uint64_t> activeVoxels; // Morton keys
+
+       void markActive(uint64_t mortonKey) {
+           activeVoxels.insert(mortonKey);
+       }
+
+       void simulate() {
+           // Only simulate active voxels!
+           for (uint64_t key : activeVoxels) {
+               simulateVoxel(key);
+
+               // Mark as inactive if settled
+               if (isSettled(key)) {
+                   activeVoxels.erase(key);
+               }
+           }
+       }
+   };
+
+   // Typical: 1% of voxels are active
+   // 134M × 0.01 = 1.34M active voxels
+   // Bandwidth: 1.34M × 16 bytes × 60 FPS = 1.3 GB/s ✅
+   ```
+
+5. **Aggregate Materials (Homogeneous regions)**
+   ```cpp
+   // Instead of simulating 1000 water voxels individually,
+   // simulate them as a single "water blob" with mass
+
+   struct MaterialBlob {
+       uint32_t materialID;
+       uint32_t voxelCount;
+       glm::vec3 centerOfMass;
+       glm::vec3 velocity;
+       AABB bounds;
+   };
+
+   // 1000 voxels → 1 blob (1000x reduction!)
+   ```
+
+---
+
+#### 2.8.2 Cellular Automata Rules (Noita-Style)
+
+**Physics Rules (Falling Sand):**
+
+```cpp
+// New file: GaiaVoxelWorld/include/VoxelPhysics.h
+
+enum class MaterialPhysics {
+    Static,      // Stone, metal (doesn't move)
+    Powder,      // Sand, gravel (falls, piles up)
+    Liquid,      // Water, lava (flows, settles flat)
+    Gas,         // Steam, smoke (rises)
+    Plasma       // Fire (consumes fuel, rises)
+};
+
+struct MaterialProperties {
+    MaterialPhysics physics;
+    float density;           // kg/m³
+    float friction;          // 0-1
+    float viscosity;         // For liquids
+    float flammability;      // 0-1
+    float meltingPoint;      // °C
+    uint16_t materialID;
+};
+
+class VoxelPhysicsSimulator {
+public:
+    /**
+     * Simulate single voxel (cellular automaton rules).
+     * Called for each active voxel every frame.
+     */
+    void simulateVoxel(uint64_t mortonKey, VoxelSimState& state) {
+        auto props = getMaterialProperties(state.materialID);
+
+        switch (props.physics) {
+            case MaterialPhysics::Powder:
+                simulatePowder(mortonKey, state, props);
+                break;
+            case MaterialPhysics::Liquid:
+                simulateLiquid(mortonKey, state, props);
+                break;
+            case MaterialPhysics::Gas:
+                simulateGas(mortonKey, state, props);
+                break;
+            // ... etc
+        }
+    }
+
+private:
+    void simulatePowder(uint64_t key, VoxelSimState& state,
+                        const MaterialProperties& props) {
+        // Check voxel below
+        uint64_t belowKey = getMortonBelow(key);
+
+        if (isEmpty(belowKey)) {
+            // Fall straight down
+            moveVoxel(key, belowKey);
+        } else if (isDenser(belowKey, props.density)) {
+            // Try diagonal fall (Noita-style)
+            uint64_t diagLeft = getMortonBelowLeft(key);
+            uint64_t diagRight = getMortonBelowRight(key);
+
+            if (isEmpty(diagLeft)) {
+                moveVoxel(key, diagLeft);
+            } else if (isEmpty(diagRight)) {
+                moveVoxel(key, diagRight);
+            }
+            // Else: settled (mark as inactive)
+        }
+    }
+
+    void simulateLiquid(uint64_t key, VoxelSimState& state,
+                        const MaterialProperties& props) {
+        // Liquids fall AND spread horizontally
+
+        // 1. Try to fall
+        uint64_t belowKey = getMortonBelow(key);
+        if (isEmpty(belowKey) || isLighterLiquid(belowKey, props)) {
+            moveVoxel(key, belowKey);
+            return;
+        }
+
+        // 2. Spread horizontally (flow)
+        int flowDistance = computeFlowDistance(key, props.viscosity);
+        for (int i = 1; i <= flowDistance; ++i) {
+            uint64_t leftKey = getMortonLeft(key, i);
+            uint64_t rightKey = getMortonRight(key, i);
+
+            if (isEmpty(leftKey) && isEmpty(rightKey)) {
+                // Split (lossy: pick one direction randomly)
+                if (rand() % 2) moveVoxel(key, leftKey);
+                else moveVoxel(key, rightKey);
+                return;
+            } else if (isEmpty(leftKey)) {
+                moveVoxel(key, leftKey);
+                return;
+            } else if (isEmpty(rightKey)) {
+                moveVoxel(key, rightKey);
+                return;
+            }
+        }
+
+        // Settled
+    }
+
+    void simulateGas(uint64_t key, VoxelSimState& state,
+                     const MaterialProperties& props) {
+        // Gases rise and disperse
+
+        uint64_t aboveKey = getMortonAbove(key);
+        if (isEmpty(aboveKey) || isHeavierGas(aboveKey, props)) {
+            moveVoxel(key, aboveKey);
+        } else {
+            // Disperse randomly (lossy: disappear after N frames)
+            state.temperature--; // Decay counter
+            if (state.temperature == 0) {
+                removeVoxel(key);
+            }
+        }
+    }
+};
+```
+
+**Chemical Reactions:**
+
+```cpp
+struct Reaction {
+    uint16_t reactant1;      // Material A
+    uint16_t reactant2;      // Material B
+    uint16_t product;        // Result material
+    uint8_t minTemperature;  // Activation energy
+    float probability;       // Per-frame chance (lossy!)
+};
+
+// Example reactions:
+// Wood + Fire → Fire + Smoke
+// Water + Lava → Stone + Steam
+// Gunpowder + Fire → Fire + Explosion
+
+void checkReactions(uint64_t key, VoxelSimState& state) {
+    // Check 6 neighbors for reactions
+    for (int axis = 0; axis < 3; ++axis) {
+        for (int dir = -1; dir <= 1; dir += 2) {
+            uint64_t neighborKey = getMortonNeighbor(key, axis, dir);
+            auto neighbor = getVoxelState(neighborKey);
+
+            for (const auto& reaction : reactions) {
+                if (state.materialID == reaction.reactant1 &&
+                    neighbor.materialID == reaction.reactant2 &&
+                    state.temperature >= reaction.minTemperature) {
+
+                    // Lossy: Probabilistic reaction
+                    if (randomFloat() < reaction.probability) {
+                        state.materialID = reaction.product;
+                        markActive(key);
+                        markActive(neighborKey);
+                    }
+                }
+            }
+        }
+    }
+}
+```
+
+---
+
+#### 2.8.3 GPU-Accelerated Simulation
+
+**Idea:** Offload cellular automata to GPU compute shaders (1000x parallelism!).
+
+```glsl
+// New file: shaders/VoxelSimulation.comp.glsl
+
+#version 450
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
+
+// Simulation state buffers
+layout(std430, set = 0, binding = 0) buffer SimulationState {
+    VoxelSimState voxels[]; // Current state
+};
+
+layout(std430, set = 0, binding = 1) buffer SimulationStateNext {
+    VoxelSimState voxelsNext[]; // Next state (double-buffered)
+};
+
+layout(std430, set = 0, binding = 2) buffer ActiveVoxelList {
+    uint activeVoxels[];    // Morton keys of active voxels
+    uint activeCount;
+};
+
+uniform MaterialProperties materials[65536]; // All material types
+
+void main() {
+    // Get voxel index from active list
+    uint idx = gl_GlobalInvocationID.x;
+    if (idx >= activeCount) return;
+
+    uint64_t mortonKey = activeVoxels[idx];
+    VoxelSimState state = voxels[mortonKey];
+    MaterialProperties props = materials[state.materialID];
+
+    // Simulate based on physics type
+    VoxelSimState nextState = state;
+
+    switch (props.physics) {
+        case PHYSICS_POWDER:
+            nextState = simulatePowderGPU(mortonKey, state, props);
+            break;
+        case PHYSICS_LIQUID:
+            nextState = simulateLiquidGPU(mortonKey, state, props);
+            break;
+        // ... etc
+    }
+
+    // Write to next state buffer
+    voxelsNext[mortonKey] = nextState;
+
+    // Mark neighbors as active if state changed significantly
+    if (stateChanged(state, nextState)) {
+        markNeighborsActive(mortonKey);
+    }
+}
+
+VoxelSimState simulatePowderGPU(uint64_t key, VoxelSimState state,
+                                 MaterialProperties props) {
+    // Check below
+    uint64_t belowKey = getMortonBelow(key);
+    VoxelSimState below = voxels[belowKey];
+
+    if (below.materialID == 0) { // Empty
+        // Move down
+        state.velocity.y -= 9.8; // Gravity
+        return state; // Movement handled by separate pass
+    }
+
+    // Settled
+    state.velocity = vec3(0);
+    return state;
+}
+```
+
+**Performance:**
+
+```
+GPU: RTX 4090
+CUDA cores: 16,384
+Voxels simulated: 1.3M active voxels
+Parallelism: 16,384 voxels in parallel
+Time per update: 1.3M / 16,384 = 79 batches
+Batch time: ~10μs (memory-bound)
+Total: 79 × 10μs = 0.79ms per frame
+
+Result: 60 FPS with 1.3M active voxels! ✅
+```
+
+---
+
+#### 2.8.4 Chunk-Based Simulation (Scalability)
+
+**Idea:** Only simulate chunks near the player, freeze distant chunks.
+
+```cpp
+struct SimulationChunk {
+    glm::ivec3 chunkOrigin;          // World position (512³ chunks)
+    uint32_t activeVoxelCount;       // How many voxels are active
+    SimulationState state;           // Frozen, Simulating, etc.
+
+    // Lossy: Store only active voxels
+    std::vector<uint64_t> activeVoxelKeys;  // Morton keys
+    std::vector<VoxelSimState> activeStates;
+};
+
+class ChunkedSimulator {
+public:
+    void update(const glm::vec3& playerPos) {
+        // 1. Determine which chunks to simulate
+        auto activeChunks = getChunksInRadius(playerPos, simulationRadius_);
+
+        // 2. Simulate each chunk (can parallelize!)
+        for (auto& chunk : activeChunks) {
+            float distance = glm::distance(playerPos,
+                                           glm::vec3(chunk.chunkOrigin) * 512.0f);
+
+            // Lossy: Coarser simulation for distant chunks
+            int updateFreq = getUpdateFrequency(distance);
+            if (frameCounter_ % updateFreq == 0) {
+                simulateChunk(chunk, distance);
+            }
+        }
+
+        // 3. Freeze distant chunks
+        freezeDistantChunks(playerPos, simulationRadius_ * 2.0f);
+
+        frameCounter_++;
+    }
+
+private:
+    void simulateChunk(SimulationChunk& chunk, float distance) {
+        // Lossy: Reduce resolution for distant chunks
+        int megaVoxelSize = getSimulationResolution(distance);
+
+        if (megaVoxelSize == 1) {
+            // Full resolution simulation
+            for (size_t i = 0; i < chunk.activeVoxelCount; ++i) {
+                simulateVoxel(chunk.activeVoxelKeys[i],
+                              chunk.activeStates[i]);
+            }
+        } else {
+            // Mega-voxel simulation (coarser)
+            simulateMegaVoxels(chunk, megaVoxelSize);
+        }
+    }
+};
+```
+
+**Bandwidth With Chunking:**
+
+```
+Active chunks: 4 (32³ voxels each)
+Total active voxels: 4 × 32³ = 131,072 voxels
+Active (moving) voxels: 1% = 1,310 voxels
+
+Bandwidth per frame:
+1,310 voxels × 16 bytes = 20 KB/frame
+@ 60 FPS: 1.2 MB/s
+
+Result: Trivial bandwidth! ✅✅✅
+```
+
+---
+
+#### 2.8.5 Integration with GaiaVoxelWorld
+
+**Architecture:**
+
+```cpp
+class GaiaVoxelWorld {
+    // Existing: Rendering state (100 bytes/voxel)
+    gaia::ecs::World renderWorld_;
+
+    // NEW: Simulation state (16 bytes/voxel, sparse)
+    std::unique_ptr<VoxelPhysicsSimulator> simulator_;
+    std::unordered_map<uint64_t, VoxelSimState> simStates_;
+
+public:
+    /**
+     * Enable voxel simulation.
+     * @param simulationRadius Radius around player to simulate (in voxels)
+     */
+    void enableSimulation(float simulationRadius = 512.0f) {
+        simulator_ = std::make_unique<VoxelPhysicsSimulator>();
+        simulator_->setSimulationRadius(simulationRadius);
+    }
+
+    /**
+     * Update simulation (call every frame).
+     * @param deltaTime Time since last frame
+     * @param playerPos Player position (for chunking)
+     */
+    void updateSimulation(float deltaTime, const glm::vec3& playerPos) {
+        if (!simulator_) return;
+
+        // 1. Simulate active voxels
+        simulator_->update(simStates_, playerPos, deltaTime);
+
+        // 2. Sync simulation state → render state (lossy!)
+        // Only update render entities that changed
+        for (const auto& [mortonKey, simState] : simStates_) {
+            if (simState.isDirty) {
+                syncToRenderWorld(mortonKey, simState);
+                simState.isDirty = false;
+            }
+        }
+    }
+
+private:
+    void syncToRenderWorld(uint64_t mortonKey, const VoxelSimState& simState) {
+        // Find or create entity for this voxel
+        auto entity = getEntityByMorton(mortonKey);
+        if (!entity.valid()) {
+            // Voxel moved here, create new entity
+            glm::vec3 pos = mortonToWorldPos(mortonKey);
+            entity = createVoxel(pos);
+        }
+
+        // Update render properties from sim state
+        auto material = getMaterialProperties(simState.materialID);
+        setComponent<Color>(entity, material.color);
+        setComponent<Density>(entity, material.density);
+
+        // Temperature affects color (lossy: simple ramp)
+        if (simState.temperature > 100) {
+            // Glowing hot
+            float glow = (simState.temperature - 100) / 155.0f;
+            auto color = getComponentValue<Color>(entity).value();
+            color = glm::mix(color, glm::vec3(1, 0.5, 0), glow);
+            setComponent<Color>(entity, color);
+        }
+    }
+};
+```
+
+---
+
+#### 2.8.6 Lossy Compression Summary
+
+**Compression Techniques:**
+
+| Technique | Reduction | Quality Loss |
+|-----------|-----------|--------------|
+| Active voxel culling | 100x (1% active) | None (perfect for settled voxels) |
+| State compression | 6.25x (16 bytes vs 100) | Minimal (quantized temp/pressure) |
+| Spatial coarsening | 8x (2x2x2 mega-voxels) | Low (distant chunks blurred) |
+| Temporal coarsening | 10x (update every 10 frames) | Low (distant chunks laggy) |
+| Material aggregation | 1000x (blob instead of voxels) | Medium (lost individual voxel detail) |
+| **Combined** | **500,000x** | **Imperceptible to player** |
+
+**Bandwidth:**
+
+```
+Naive 512³: 804 GB/s ❌
+With active culling (1%): 8 GB/s ⚠️
+With chunking (32³): 192 MB/s ✅
+With all optimizations: 1.2 MB/s ✅✅✅
+
+Result: Fully feasible!
+```
+
+---
+
+#### 2.8.7 Noita Comparison
+
+| Feature | Noita (2D) | Proposed (3D) | Notes |
+|---------|------------|---------------|-------|
+| **Grid Size** | 2560×1440 (3.7M) | 512³ (134M) | 36x more voxels |
+| **Active Pixels/Voxels** | ~1M (30%) | ~1.3M (1%) | Similar active count! |
+| **Update Rate** | 60 FPS | 60 FPS (near), 6 FPS (far) | Lossy temporal |
+| **Bandwidth** | 1.8 GB/s | 1.2 MB/s (with optimizations) | **1,500x more efficient!** |
+| **Simulation** | CPU (single-threaded) | GPU compute | Massively parallel |
+| **Physics** | Falling sand, liquids, fire | Same + 3D gravity | Full Noita feature set |
+| **Reactions** | Wood burns, water extinguishes | Same | Chemical reactions |
+| **Quality** | Pixel-perfect | Lossy (distant chunks) | Imperceptible loss |
+
+---
+
+### 2.9 Industry-Standard Optimizations
 
 **Concept:** Additional optimizations used in production voxel engines.
 
@@ -1015,7 +1587,7 @@ auto voxel = implicit.evaluate(glm::vec3(50, 0, 0));
 
 ---
 
-### 2.9 GigaVoxels GPU-Driven Usage-Based Caching
+### 2.10 GigaVoxels GPU-Driven Usage-Based Caching
 
 **Concept:** Implement GigaVoxels research paper techniques for GPU-driven demand streaming, usage-based cache replacement, and sparse voxel octree ray-casting.
 
@@ -1428,7 +2000,7 @@ void GigaVoxelsCache::updateCache(uint32_t currentFrame, uint32_t maxBricksPerFr
    - Save octree structure to disk
    - Stream bricks from archive on GPU request
 
-### 2.9.1 Extending Existing ESVO for GigaVoxels
+### 2.10.1 Extending Existing ESVO for GigaVoxels
 
 **Context:** VIXEN already has a complete ESVO (Efficient Sparse Voxel Octrees) implementation based on Laine & Karras (2010). This section explains how to modify the existing ESVO structure to support GigaVoxels features.
 
@@ -1468,7 +2040,7 @@ struct ChildDescriptor {
 
 ---
 
-### 2.9.2 Concrete Modifications to ESVO
+### 2.10.2 Concrete Modifications to ESVO
 
 #### Modification 1: Extended ChildDescriptor for Virtual Bricks
 
@@ -1866,7 +2438,7 @@ private:
 
 ---
 
-### 2.9.3 Migration Path: ESVO → GigaVoxels
+### 2.10.3 Migration Path: ESVO → GigaVoxels
 
 **Phase 1: Backward-Compatible Extension (2 weeks)**
 1. Add `BrickPoolIndirection` structure (optional member)
