@@ -1428,10 +1428,488 @@ void GigaVoxelsCache::updateCache(uint32_t currentFrame, uint32_t maxBricksPerFr
    - Save octree structure to disk
    - Stream bricks from archive on GPU request
 
+### 2.9.1 Extending Existing ESVO for GigaVoxels
+
+**Context:** VIXEN already has a complete ESVO (Efficient Sparse Voxel Octrees) implementation based on Laine & Karras (2010). This section explains how to modify the existing ESVO structure to support GigaVoxels features.
+
+**Existing ESVO Architecture (from `libraries/SVO/`):**
+
+```cpp
+// Current: libraries/SVO/include/SVOTypes.h
+struct ChildDescriptor {
+    // Hierarchy (32 bits)
+    uint32_t childPointer  : 15;  // Offset to first child
+    uint32_t farBit        : 1;   // Indirect reference flag
+    uint32_t validMask     : 8;   // Which children exist
+    uint32_t leafMask      : 8;   // Which children are leaves
+
+    // Brick/Contour data (32 bits)
+    uint32_t contourPointer : 24; // Brick index OR contour offset
+    uint32_t contourMask    : 8;  // Brick flags OR contour mask
+};
+```
+
+**Compatibility Analysis:**
+
+| ESVO Feature | GigaVoxels Requirement | Compatibility |
+|--------------|------------------------|---------------|
+| 64-bit `ChildDescriptor` | Needs brick pointer field | ✅ **Perfect fit** - `contourPointer` can be brick pool slot |
+| Hierarchical octree | Sparse voxel octree structure | ✅ **Direct match** |
+| Brick storage at leaves | Virtual brick pool | ✅ **Excellent foundation** |
+| ESVO traversal (PUSH/ADVANCE/POP) | GPU ray-casting | ✅ **Already implemented** |
+| Entity references | Usage tracking | ✅ **Compatible** - `gaia::ecs::Entity` IDs |
+| Contour system | Mipmap pyramid | ⚠️ **Needs extension** - contours are single-LOD |
+
+**Verdict:** ESVO is an **excellent foundation** for GigaVoxels! Primary modifications needed:
+1. Extend `ChildDescriptor` for brick pool indirection
+2. Add mipmap pyramid storage
+3. Integrate GPU usage tracking into ESVO traversal shaders
+4. Build cache management on top of existing brick system
+
+---
+
+### 2.9.2 Concrete Modifications to ESVO
+
+#### Modification 1: Extended ChildDescriptor for Virtual Bricks
+
+**Current:**
+```cpp
+struct ChildDescriptor {
+    uint32_t contourPointer : 24; // Direct brick index
+    uint32_t contourMask    : 8;  // Flags
+};
+```
+
+**GigaVoxels Extension:**
+```cpp
+struct ChildDescriptor {
+    // ... hierarchy fields unchanged ...
+
+    // Brick data (32 bits) - EXTENDED INTERPRETATION
+    uint32_t brickPointer : 24; // Now: Virtual brick ID (not pool slot!)
+    uint32_t brickFlags   : 8;  // Flags:
+                                 //   Bit 0: inVRAM (1 = loaded, 0 = missing)
+                                 //   Bit 1-3: mipLevel (0-7)
+                                 //   Bit 4: isDirty (needs flush to disk)
+                                 //   Bit 5-7: reserved
+};
+```
+
+**Key Changes:**
+- `brickPointer` is now a **virtual brick ID**, not a physical pool slot
+- Indirection table maps `brickPointer` → pool slot
+- `inVRAM` flag indicates if brick is currently cached
+- `mipLevel` enables per-brick LOD tracking
+
+**Backward Compatibility:**
+- Old ESVO files: Set `inVRAM=1`, `mipLevel=0` (all bricks at full resolution)
+- New GigaVoxels mode: `inVRAM` updated by cache manager
+
+---
+
+#### Modification 2: Brick Pool Indirection Table
+
+**New Structure:**
+```cpp
+// New file: libraries/SVO/include/BrickPoolIndirection.h
+
+struct BrickPoolIndirection {
+    /**
+     * Maps virtual brick ID → physical pool slot.
+     * Updated by GigaVoxels cache manager.
+     */
+    std::unordered_map<uint32_t, uint32_t> virtualToPhysical;
+
+    /**
+     * Reverse map: pool slot → virtual brick ID.
+     * Used during eviction to update ChildDescriptors.
+     */
+    std::vector<uint32_t> physicalToVirtual;
+
+    /**
+     * Get physical pool slot for virtual brick ID.
+     * Returns INVALID_SLOT if brick not loaded.
+     */
+    static constexpr uint32_t INVALID_SLOT = 0xFFFFFFu;
+
+    uint32_t getPoolSlot(uint32_t virtualBrickID) const {
+        auto it = virtualToPhysical.find(virtualBrickID);
+        return (it != virtualToPhysical.end()) ? it->second : INVALID_SLOT;
+    }
+
+    /**
+     * Allocate pool slot for virtual brick.
+     * Called by cache manager during brick loading.
+     */
+    void mapBrick(uint32_t virtualBrickID, uint32_t poolSlot) {
+        virtualToPhysical[virtualBrickID] = poolSlot;
+        physicalToVirtual[poolSlot] = virtualBrickID;
+    }
+
+    /**
+     * Free pool slot (brick evicted).
+     */
+    void unmapBrick(uint32_t virtualBrickID) {
+        auto it = virtualToPhysical.find(virtualBrickID);
+        if (it != virtualToPhysical.end()) {
+            uint32_t poolSlot = it->second;
+            physicalToVirtual[poolSlot] = INVALID_SLOT;
+            virtualToPhysical.erase(it);
+        }
+    }
+};
+```
+
+**Integration with ESVO:**
+```cpp
+// libraries/SVO/include/ISVOStructure.h - ADD MEMBER
+
+class ISVOStructure {
+    // ... existing members ...
+
+    // NEW: GigaVoxels indirection (optional, only if streaming enabled)
+    std::unique_ptr<BrickPoolIndirection> brickIndirection_;
+
+public:
+    // Enable GigaVoxels mode
+    void enableStreaming(uint32_t brickPoolCapacity) {
+        brickIndirection_ = std::make_unique<BrickPoolIndirection>();
+        brickIndirection_->physicalToVirtual.resize(brickPoolCapacity,
+                                                     BrickPoolIndirection::INVALID_SLOT);
+    }
+
+    // Check if brick is cached
+    bool isBrickCached(uint32_t virtualBrickID) const {
+        if (!brickIndirection_) return true; // Non-streaming mode
+        return brickIndirection_->getPoolSlot(virtualBrickID) !=
+               BrickPoolIndirection::INVALID_SLOT;
+    }
+};
+```
+
+---
+
+#### Modification 3: GPU Shader Integration
+
+**Current ESVO Traversal:** `shaders/ESVOTraversal.glsl`
+
+**GigaVoxels Extension:**
+```glsl
+// shaders/GigaVoxels-ESVO-Traversal.glsl
+
+// EXISTING ESVO bindings (unchanged)
+layout(std430, set = 0, binding = 0) buffer OctreeNodes {
+    ChildDescriptor nodes[];
+};
+
+// NEW: GigaVoxels bindings
+layout(std430, set = 0, binding = 1) buffer BrickIndirectionTable {
+    uint virtualToPhysical[]; // Virtual brick ID → pool slot
+};
+
+layout(std430, set = 0, binding = 2) buffer BrickPool {
+    VoxelData bricks[]; // Flat array: poolSlot * 512 + localOffset
+};
+
+layout(std430, set = 0, binding = 3) buffer UsageCounters {
+    uint usageCounters[]; // GPU usage tracking
+};
+
+layout(std430, set = 0, binding = 4) buffer RequestQueue {
+    uint requestQueueSize;
+    uint requestedBricks[MAX_REQUESTS];
+};
+
+// MODIFIED: ESVO PUSH phase with GigaVoxels brick access
+void executePushPhase(inout TraversalState state, int childIdx) {
+    // ... EXISTING ESVO PUSH logic (stack save, bounds calc, etc.) ...
+
+    ChildDescriptor desc = nodes[state.descriptorIndex];
+
+    // NEW: Check if this is a brick leaf
+    if (desc.isLeaf(childIdx)) {
+        uint virtualBrickID = desc.brickPointer;
+        uint brickFlags = desc.brickFlags;
+        bool inVRAM = (brickFlags & 0x01) != 0;
+
+        if (inVRAM) {
+            // Brick is cached - access via indirection
+            uint poolSlot = virtualToPhysical[virtualBrickID];
+
+            // GIGAVOXELS: Track brick usage
+            atomicAdd(usageCounters[poolSlot], 1);
+
+            // Sample brick data
+            vec3 localPos = (ray.origin + ray.dir * t) - state.pos;
+            VoxelData voxel = sampleBrick(poolSlot, localPos);
+
+            if (voxel.density > 0.0) {
+                // Hit!
+                imageStore(outputImage, ivec2(gl_GlobalInvocationID.xy),
+                          vec4(voxel.color, 1.0));
+                return;
+            }
+        } else {
+            // Brick not loaded - request it!
+            uint requestIdx = atomicAdd(requestQueueSize, 1);
+            if (requestIdx < MAX_REQUESTS) {
+                requestedBricks[requestIdx] = virtualBrickID;
+            }
+
+            // GIGAVOXELS: Graceful degradation
+            // Sample parent brick's mipmap (if available)
+            uint parentMipLevel = (brickFlags >> 1) & 0x07;
+            if (parentMipLevel < 7) {
+                // Try parent LOD
+                uint parentBrickID = getParentBrickID(virtualBrickID);
+                uint parentSlot = virtualToPhysical[parentBrickID];
+                if (parentSlot != INVALID_SLOT) {
+                    VoxelData coarseLOD = sampleBrickCoarse(parentSlot, localPos * 2.0);
+                    imageStore(outputImage, ivec2(gl_GlobalInvocationID.xy),
+                              vec4(coarseLOD.color * 0.5, 1.0)); // Dimmed for LOD
+                    return;
+                }
+            }
+        }
+    }
+
+    // ... EXISTING ESVO ADVANCE/POP logic ...
+}
+```
+
+---
+
+#### Modification 4: Mipmap Pyramid Generation
+
+**New Builder Extension:**
+```cpp
+// libraries/SVO/src/SVOBuilder.cpp - ADD METHOD
+
+void SVOBuilder::buildMipmapPyramid(
+    const std::vector<ChildDescriptor>& baseOctree,
+    std::vector<MipmapLevel>& outMipmap) {
+
+    outMipmap.resize(8); // 8 LOD levels (0 = full res, 7 = 1/128 res)
+
+    // Level 0: Copy base octree
+    outMipmap[0].bricks = baseOctree; // Full resolution
+
+    // Levels 1-7: Downsample
+    for (int level = 1; level < 8; ++level) {
+        const auto& prevLevel = outMipmap[level - 1];
+        auto& currLevel = outMipmap[level];
+
+        // For each brick in previous level, create downsampled version
+        for (size_t i = 0; i < prevLevel.bricks.size(); i += 8) {
+            // Downsample 8 child bricks into 1 parent brick
+            ChildDescriptor parentDesc = downsampleBricks(
+                std::span(&prevLevel.bricks[i], 8));
+
+            currLevel.bricks.push_back(parentDesc);
+        }
+    }
+}
+
+ChildDescriptor SVOBuilder::downsampleBricks(std::span<const ChildDescriptor> children) {
+    // Average voxel data from 8 children
+    // This is similar to mipmap generation for textures
+
+    ChildDescriptor parent{};
+    parent.childPointer = 0; // No children (this is a leaf at this LOD)
+    parent.validMask = 0xFF; // All slots valid (downsampled)
+    parent.leafMask = 0xFF;  // All slots are leaves
+
+    // For each of the 512 voxels in parent brick (8³)
+    for (int z = 0; z < 8; ++z) {
+        for (int y = 0; y < 8; ++y) {
+            for (int x = 0; x < 8; ++x) {
+                // Sample from 2³ voxels in child bricks
+                glm::vec3 avgColor(0);
+                float avgDensity = 0.0f;
+                int sampleCount = 0;
+
+                for (int dz = 0; dz < 2; ++dz) {
+                    for (int dy = 0; dy < 2; ++dy) {
+                        for (int dx = 0; dx < 2; ++dx) {
+                            int childX = x * 2 + dx;
+                            int childY = y * 2 + dy;
+                            int childZ = z * 2 + dz;
+
+                            // Determine which child brick
+                            int childIdx = (childZ / 8) * 4 + (childY / 8) * 2 + (childX / 8);
+                            int localX = childX % 8;
+                            int localY = childY % 8;
+                            int localZ = childZ % 8;
+
+                            // Get voxel from child brick
+                            VoxelData voxel = getVoxelFromBrick(children[childIdx],
+                                                                 localX, localY, localZ);
+
+                            avgColor += voxel.color;
+                            avgDensity += voxel.density;
+                            sampleCount++;
+                        }
+                    }
+                }
+
+                // Average samples
+                VoxelData downsampled;
+                downsampled.color = avgColor / float(sampleCount);
+                downsampled.density = avgDensity / float(sampleCount);
+
+                // Store in parent brick
+                setVoxelInBrick(parent, x, y, z, downsampled);
+            }
+        }
+    }
+
+    return parent;
+}
+```
+
+---
+
+#### Modification 5: Cache Manager Integration
+
+**New Class:**
+```cpp
+// libraries/SVO/include/GigaVoxelsCacheManager.h
+
+class GigaVoxelsCacheManager {
+public:
+    /**
+     * Initialize cache with ESVO structure.
+     */
+    void initialize(
+        ISVOStructure* svoStructure,
+        BrickPoolIndirection* indirection,
+        uint32_t brickPoolCapacity) {
+
+        svo_ = svoStructure;
+        indirection_ = indirection;
+        capacity_ = brickPoolCapacity;
+    }
+
+    /**
+     * Update cache based on GPU usage data.
+     * Reads usage counters from GPU, evicts LRU bricks, loads requested bricks.
+     */
+    void updateCache(
+        VkCommandBuffer cmd,
+        const std::vector<uint32_t>& gpuUsageCounts,
+        const std::vector<uint32_t>& gpuRequestedBricks,
+        uint32_t currentFrame) {
+
+        // Step 1: Update usage timestamps
+        for (auto& [virtualBrickID, entry] : brickCache_) {
+            uint32_t poolSlot = indirection_->getPoolSlot(virtualBrickID);
+            if (poolSlot != BrickPoolIndirection::INVALID_SLOT &&
+                gpuUsageCounts[poolSlot] > 0) {
+                entry.lastUsedFrame = currentFrame;
+                entry.usageCount += gpuUsageCounts[poolSlot];
+            }
+        }
+
+        // Step 2: Evict LRU bricks to make room
+        for (uint32_t requestedBrickID : gpuRequestedBricks) {
+            if (indirection_->getPoolSlot(requestedBrickID) !=
+                BrickPoolIndirection::INVALID_SLOT) {
+                continue; // Already loaded
+            }
+
+            // Find LRU brick
+            uint32_t lruBrickID = findLRUBrick(currentFrame);
+            uint32_t freedSlot = indirection_->getPoolSlot(lruBrickID);
+
+            // Evict LRU brick
+            indirection_->unmapBrick(lruBrickID);
+
+            // Update ChildDescriptor inVRAM flag
+            updateBrickFlags(lruBrickID, /*inVRAM=*/false);
+
+            // Load new brick into freed slot
+            loadBrickIntoSlot(requestedBrickID, freedSlot);
+
+            // Map new brick
+            indirection_->mapBrick(requestedBrickID, freedSlot);
+
+            // Update ChildDescriptor inVRAM flag
+            updateBrickFlags(requestedBrickID, /*inVRAM=*/true);
+
+            brickCache_[requestedBrickID] = {
+                .lastUsedFrame = currentFrame,
+                .usageCount = 0,
+                .isLoaded = true
+            };
+        }
+    }
+
+private:
+    ISVOStructure* svo_;
+    BrickPoolIndirection* indirection_;
+    uint32_t capacity_;
+
+    struct CacheEntry {
+        uint32_t lastUsedFrame;
+        uint32_t usageCount;
+        bool isLoaded;
+    };
+    std::unordered_map<uint32_t, CacheEntry> brickCache_;
+
+    void updateBrickFlags(uint32_t virtualBrickID, bool inVRAM) {
+        // Find ChildDescriptor containing this brick
+        // (requires reverse map: brick ID → descriptor index)
+        // Update brickFlags field
+    }
+};
+```
+
+---
+
+### 2.9.3 Migration Path: ESVO → GigaVoxels
+
+**Phase 1: Backward-Compatible Extension (2 weeks)**
+1. Add `BrickPoolIndirection` structure (optional member)
+2. Add `inVRAM` flag to `ChildDescriptor.brickFlags` (bit 0)
+3. Add `enableStreaming()` API to `ISVOStructure`
+4. Default behavior: `inVRAM=1` for all bricks (non-streaming mode)
+5. **Result:** ESVO works identically, GigaVoxels infrastructure ready
+
+**Phase 2: GPU Usage Tracking (2 weeks)**
+1. Add GPU buffer bindings to ESVO traversal shaders
+2. Implement atomic usage counters in PUSH phase
+3. Add CPU readback pipeline (usage counters → staging buffer)
+4. **Result:** GPU reports which bricks it accessed
+
+**Phase 3: Mipmap Pyramid (3 weeks)**
+1. Extend `SVOBuilder` to generate 8 LOD levels
+2. Modify `ChildDescriptor.brickFlags` to encode `mipLevel` (bits 1-3)
+3. Implement mipmap fallback in shaders (sample parent LOD if missing)
+4. **Result:** Graceful degradation for missing bricks
+
+**Phase 4: Cache Manager (3 weeks)**
+1. Implement `GigaVoxelsCacheManager` (LRU eviction)
+2. Integrate with ESVO's `ISVOStructure` interface
+3. Add `updateCache()` call in main render loop
+4. **Result:** Streaming brick pool with usage-based replacement
+
+**Phase 5: Optimization & Polish (2 weeks)**
+1. Double-buffering for usage counters (hide latency)
+2. Async brick loading (background threads)
+3. Compression for brick data (DXT compression)
+4. **Result:** Production-ready GigaVoxels implementation
+
+**Total Migration Effort:** 12 weeks (vs 10-12 weeks for building from scratch)
+
+**Key Advantage:** Can develop incrementally, testing at each phase without breaking existing ESVO functionality.
+
+---
+
 **Research References:**
 - Crassin et al., "GigaVoxels: Ray-Guided Streaming for Efficient and Detailed Voxel Rendering", I3D 2009
 - Crassin et al., "Octree-Based Sparse Voxelization Using the GPU Hardware Rasterizer", OpenGL Insights 2012
 - Kämpe et al., "High Resolution Sparse Voxel DAGs", SIGGRAPH 2013
+- **Laine, S., & Karras, T.**, "Efficient Sparse Voxel Octrees", IEEE TVCG 2010 (VIXEN's current ESVO base)
 
 ---
 
