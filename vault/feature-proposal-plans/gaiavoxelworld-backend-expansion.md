@@ -2269,7 +2269,647 @@ Reduction: 17,866x
 
 ---
 
-### 2.9 Industry-Standard Optimizations
+#### 2.8.9 Sparse Force Fields (System Decoupling via Force Distribution)
+
+**Concept:** Decouple simulation systems using sparse 3D force fields as a shared communication layer. Instead of direct voxel-to-voxel or voxel-to-rigid-body interactions, all systems write forces to fields and read forces from fields.
+
+**Key Insight:** Think of it as an **event bus for physics** - but instead of discrete events, it's continuous force distribution across 3D space.
+
+**Problem with Direct Interactions:**
+
+```cpp
+// BAD: Direct voxel-to-voxel interactions (O(N²) worst case)
+for (Voxel a : activeVoxels) {
+    for (Voxel b : neighbors(a)) {
+        applyForce(a, b); // N × 6 neighbors = 6N interactions
+    }
+}
+
+// BAD: Rigid body checking all neighboring voxels
+RigidBody boulder(10,000 voxels);
+for (Voxel v : boulder.voxels) {
+    for (Voxel neighbor : getNeighbors(v)) {
+        checkCollision(v, neighbor); // 10K × 6 = 60K checks!
+    }
+}
+```
+
+**Solution: Sparse Force Fields**
+
+```cpp
+// GOOD: Write-read pattern via force fields
+// 1. Systems WRITE forces to fields
+windSystem.addForce(position, kineticField, windForce);
+explosionSystem.addForce(position, pressureField, blastForce);
+frictionSystem.addForce(position, frictionField, dragForce);
+
+// 2. Systems READ forces from fields
+Vector3 netForce = kineticField.sample(position) +
+                   pressureField.sample(position) +
+                   thermalField.sample(position);
+
+// 3. Apply to object (rigid body, voxel, etc.)
+applyForce(object, netForce);
+```
+
+---
+
+##### 2.8.9.1 Force Field Architecture
+
+**Field Types:**
+
+```cpp
+// New file: GaiaVoxelWorld/include/ForceFields.h
+
+enum class ForceFieldType {
+    Kinetic,       // Velocity/momentum (wind, currents)
+    Pressure,      // Compression/expansion (explosions, sound)
+    Thermal,       // Heat transfer (fire, cooling)
+    Friction,      // Drag/resistance (air resistance, fluid viscosity)
+    Gravity,       // Gravitational (usually uniform, but can be local)
+    Magnetic,      // Magnetic fields (for advanced effects)
+};
+
+struct ForceFieldCell {
+    glm::vec3 force;      // Force vector (N - Newtons)
+    float magnitude;      // Scalar magnitude (for thermal, pressure)
+    float decay;          // Time decay rate (0-1 per second)
+    uint32_t lastUpdate;  // Frame number of last write
+};
+
+class SparseForceField {
+public:
+    /**
+     * Sparse 3D force field.
+     * Only stores cells with non-zero forces.
+     * Resolution independent of voxel grid (typically coarser).
+     */
+    SparseForceField(float cellSize, float decayRate)
+        : cellSize_(cellSize), decayRate_(decayRate) {}
+
+    /**
+     * Add force to field at world position.
+     * Multiple writes to same cell accumulate.
+     */
+    void addForce(const glm::vec3& worldPos, const glm::vec3& force, float magnitude = 0.0f) {
+        uint64_t cellKey = worldPosToCellKey(worldPos);
+
+        auto& cell = cells_[cellKey];
+        cell.force += force;
+        cell.magnitude += magnitude;
+        cell.lastUpdate = currentFrame_;
+    }
+
+    /**
+     * Sample force from field at world position.
+     * Trilinearly interpolates between neighboring cells.
+     */
+    glm::vec3 sampleForce(const glm::vec3& worldPos) const {
+        // Get 8 neighboring cells for trilinear interpolation
+        glm::ivec3 baseCell = glm::floor(worldPos / cellSize_);
+
+        glm::vec3 totalForce(0);
+        float totalWeight = 0.0f;
+
+        for (int dx = 0; dx <= 1; ++dx) {
+            for (int dy = 0; dy <= 1; ++dy) {
+                for (int dz = 0; dz <= 1; ++dz) {
+                    glm::ivec3 cellPos = baseCell + glm::ivec3(dx, dy, dz);
+                    uint64_t cellKey = cellPosToKey(cellPos);
+
+                    auto it = cells_.find(cellKey);
+                    if (it != cells_.end()) {
+                        // Trilinear interpolation weight
+                        glm::vec3 cellCenter = glm::vec3(cellPos) * cellSize_;
+                        glm::vec3 offset = worldPos - cellCenter;
+                        float weight = (1.0f - abs(offset.x / cellSize_)) *
+                                      (1.0f - abs(offset.y / cellSize_)) *
+                                      (1.0f - abs(offset.z / cellSize_));
+
+                        totalForce += it->second.force * weight;
+                        totalWeight += weight;
+                    }
+                }
+            }
+        }
+
+        return (totalWeight > 0.0f) ? totalForce / totalWeight : glm::vec3(0);
+    }
+
+    /**
+     * Sample force across volume (for rigid bodies).
+     * Returns net force and torque.
+     */
+    struct VolumeForceResult {
+        glm::vec3 netForce;      // Total linear force
+        glm::vec3 netTorque;     // Total torque around center
+        glm::vec3 centerOfForce; // Where force is concentrated
+    };
+
+    VolumeForceResult sampleVolume(const AABB& volume, const glm::vec3& centerOfMass) const {
+        VolumeForceResult result{};
+
+        // Sample at regular intervals across volume
+        int sampleCountX = std::max(1, (int)(volume.size().x / cellSize_));
+        int sampleCountY = std::max(1, (int)(volume.size().y / cellSize_));
+        int sampleCountZ = std::max(1, (int)(volume.size().z / cellSize_));
+
+        for (int x = 0; x < sampleCountX; ++x) {
+            for (int y = 0; y < sampleCountY; ++y) {
+                for (int z = 0; z < sampleCountZ; ++z) {
+                    glm::vec3 samplePos = volume.min + glm::vec3(
+                        x / (float)sampleCountX,
+                        y / (float)sampleCountY,
+                        z / (float)sampleCountZ
+                    ) * volume.size();
+
+                    glm::vec3 localForce = sampleForce(samplePos);
+                    result.netForce += localForce;
+
+                    // Compute torque: r × F
+                    glm::vec3 r = samplePos - centerOfMass;
+                    result.netTorque += glm::cross(r, localForce);
+                }
+            }
+        }
+
+        // Normalize by sample count
+        int totalSamples = sampleCountX * sampleCountY * sampleCountZ;
+        result.netForce /= totalSamples;
+        result.netTorque /= totalSamples;
+
+        return result;
+    }
+
+    /**
+     * Update field (decay forces over time).
+     */
+    void update(float deltaTime) {
+        currentFrame_++;
+
+        // Decay forces
+        for (auto it = cells_.begin(); it != cells_.end();) {
+            auto& cell = it->second;
+
+            // Exponential decay
+            cell.force *= std::exp(-decayRate_ * deltaTime);
+            cell.magnitude *= std::exp(-decayRate_ * deltaTime);
+
+            // Remove if force negligible
+            if (glm::length(cell.force) < 0.01f && cell.magnitude < 0.01f) {
+                it = cells_.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
+
+    /**
+     * Clear field (reset all forces).
+     */
+    void clear() {
+        cells_.clear();
+    }
+
+    /**
+     * Get active cell count (for debugging).
+     */
+    size_t getActiveCellCount() const {
+        return cells_.size();
+    }
+
+private:
+    float cellSize_;     // Size of each force field cell (in voxels)
+    float decayRate_;    // Force decay per second
+    uint32_t currentFrame_ = 0;
+
+    // Sparse storage: only cells with non-zero forces
+    std::unordered_map<uint64_t, ForceFieldCell> cells_;
+
+    uint64_t worldPosToCellKey(const glm::vec3& worldPos) const {
+        glm::ivec3 cellPos = glm::floor(worldPos / cellSize_);
+        return cellPosToKey(cellPos);
+    }
+
+    uint64_t cellPosToKey(const glm::ivec3& cellPos) const {
+        // Morton encoding for spatial coherence
+        return mortonEncode(cellPos.x, cellPos.y, cellPos.z);
+    }
+};
+```
+
+---
+
+##### 2.8.9.2 Force Field System Manager
+
+**Orchestrates multiple field types:**
+
+```cpp
+class ForceFieldSystem {
+public:
+    /**
+     * Initialize force fields with resolution.
+     * @param cellSize Size of force field cells (typically 4-8 voxels)
+     */
+    void initialize(float cellSize = 4.0f) {
+        fields_[ForceFieldType::Kinetic] = std::make_unique<SparseForceField>(cellSize, 0.5f); // Fast decay
+        fields_[ForceFieldType::Pressure] = std::make_unique<SparseForceField>(cellSize, 2.0f); // Medium decay
+        fields_[ForceFieldType::Thermal] = std::make_unique<SparseForceField>(cellSize, 0.1f); // Slow decay
+        fields_[ForceFieldType::Friction] = std::make_unique<SparseForceField>(cellSize, 1.0f); // Fast decay
+        fields_[ForceFieldType::Gravity] = std::make_unique<SparseForceField>(cellSize, 0.0f); // No decay
+    }
+
+    /**
+     * Add force to specific field type.
+     */
+    void addForce(ForceFieldType type, const glm::vec3& worldPos, const glm::vec3& force, float magnitude = 0.0f) {
+        fields_[type]->addForce(worldPos, force, magnitude);
+    }
+
+    /**
+     * Sample combined forces from all fields.
+     */
+    glm::vec3 sampleCombinedForce(const glm::vec3& worldPos) const {
+        glm::vec3 totalForce(0);
+        for (const auto& [type, field] : fields_) {
+            totalForce += field->sampleForce(worldPos);
+        }
+        return totalForce;
+    }
+
+    /**
+     * Sample specific field type.
+     */
+    glm::vec3 sampleForce(ForceFieldType type, const glm::vec3& worldPos) const {
+        return fields_.at(type)->sampleForce(worldPos);
+    }
+
+    /**
+     * Sample forces across rigid body volume.
+     */
+    SparseForceField::VolumeForceResult sampleVolume(
+        ForceFieldType type,
+        const AABB& volume,
+        const glm::vec3& centerOfMass) const {
+        return fields_.at(type)->sampleVolume(volume, centerOfMass);
+    }
+
+    /**
+     * Update all fields (decay over time).
+     */
+    void update(float deltaTime) {
+        for (auto& [type, field] : fields_) {
+            field->update(deltaTime);
+        }
+    }
+
+    /**
+     * Get statistics for debugging.
+     */
+    struct FieldStats {
+        size_t kineticCells;
+        size_t pressureCells;
+        size_t thermalCells;
+        size_t frictionCells;
+        size_t totalCells;
+    };
+
+    FieldStats getStats() const {
+        FieldStats stats{};
+        stats.kineticCells = fields_.at(ForceFieldType::Kinetic)->getActiveCellCount();
+        stats.pressureCells = fields_.at(ForceFieldType::Pressure)->getActiveCellCount();
+        stats.thermalCells = fields_.at(ForceFieldType::Thermal)->getActiveCellCount();
+        stats.frictionCells = fields_.at(ForceFieldType::Friction)->getActiveCellCount();
+        stats.totalCells = stats.kineticCells + stats.pressureCells + stats.thermalCells + stats.frictionCells;
+        return stats;
+    }
+
+private:
+    std::unordered_map<ForceFieldType, std::unique_ptr<SparseForceField>> fields_;
+};
+```
+
+---
+
+##### 2.8.9.3 Integration Examples
+
+**Example 1: Wind System**
+
+```cpp
+class WindSystem {
+public:
+    void update(ForceFieldSystem& forceFields, float deltaTime) {
+        // Generate wind forces
+        for (const auto& windZone : windZones_) {
+            // Add kinetic forces across wind zone
+            for (int x = windZone.min.x; x < windZone.max.x; x += 4) {
+                for (int y = windZone.min.y; y < windZone.max.y; y += 4) {
+                    for (int z = windZone.min.z; z < windZone.max.z; z += 4) {
+                        glm::vec3 pos(x, y, z);
+
+                        // Wind varies with noise
+                        glm::vec3 windForce = windZone.baseDirection * windZone.strength;
+                        windForce += perlin3D(pos * 0.1f + glm::vec3(time_)) * windZone.turbulence;
+
+                        forceFields.addForce(ForceFieldType::Kinetic, pos, windForce);
+                    }
+                }
+            }
+        }
+    }
+
+private:
+    struct WindZone {
+        AABB bounds;
+        glm::vec3 baseDirection;
+        float strength;
+        float turbulence;
+    };
+    std::vector<WindZone> windZones_;
+    float time_ = 0.0f;
+};
+```
+
+**Example 2: Rigid Body Reading Wind**
+
+```cpp
+void simulateRigidBody(VoxelRigidBody& body, const ForceFieldSystem& forceFields, float deltaTime) {
+    // Sample kinetic field across rigid body volume
+    auto windForce = forceFields.sampleVolume(
+        ForceFieldType::Kinetic,
+        body.worldBounds,
+        body.centerOfMass
+    );
+
+    // Apply linear force (drag from wind)
+    body.linearVelocity += (windForce.netForce / body.mass) * deltaTime;
+
+    // Apply torque (wind causes rotation)
+    body.angularVelocity += (body.inverseInertiaTensor * windForce.netTorque) * deltaTime;
+
+    // Result: Rigid body sways in wind without checking individual voxels!
+}
+```
+
+**Example 3: Explosion**
+
+```cpp
+void createExplosion(const glm::vec3& center, float radius, float strength, ForceFieldSystem& forceFields) {
+    // Write pressure field
+    for (int x = -radius; x <= radius; x += 4) {
+        for (int y = -radius; y <= radius; y += 4) {
+            for (int z = -radius; z <= radius; z += 4) {
+                glm::vec3 offset(x, y, z);
+                float distance = glm::length(offset);
+
+                if (distance < radius) {
+                    glm::vec3 pos = center + offset;
+
+                    // Radial force (outward from explosion)
+                    glm::vec3 direction = glm::normalize(offset);
+                    float falloff = 1.0f - (distance / radius); // Linear falloff
+                    glm::vec3 force = direction * strength * falloff;
+
+                    forceFields.addForce(ForceFieldType::Pressure, pos, force, strength * falloff);
+                }
+            }
+        }
+    }
+}
+
+// All nearby objects respond automatically:
+// - Rigid bodies: Sample volume → apply force
+// - Active voxels: Sample position → add velocity
+// - Sleeping voxels: Sample pressure → wake if > threshold
+```
+
+**Example 4: Sliding Sand Creates Friction**
+
+```cpp
+void simulateSandVoxel(uint64_t voxel, VoxelSimState& state, ForceFieldSystem& forceFields) {
+    // Sand is falling
+    if (state.velocity.y < 0) {
+        glm::vec3 pos = mortonToWorldPos(voxel);
+
+        // Add friction to field (affects neighbors)
+        glm::vec3 frictionForce = -state.velocity * 0.5f; // Proportional to velocity
+        forceFields.addForce(ForceFieldType::Friction, pos, frictionForce);
+
+        // Sand also reads friction from field
+        glm::vec3 externalFriction = forceFields.sampleForce(ForceFieldType::Friction, pos);
+        state.velocity += externalFriction * deltaTime;
+    }
+}
+
+// Result: Avalanche creates friction field → wakes sleeping voxels → chain reaction
+```
+
+**Example 5: Fire Creates Thermal Field**
+
+```cpp
+void simulateFireVoxel(uint64_t voxel, VoxelSimState& state, ForceFieldSystem& forceFields) {
+    glm::vec3 pos = mortonToWorldPos(voxel);
+
+    // Fire adds heat to thermal field
+    float heatOutput = 100.0f; // °C per second
+    forceFields.addForce(ForceFieldType::Thermal, pos, glm::vec3(0), heatOutput);
+
+    // Check neighbors for ignition
+    for (int axis = 0; axis < 3; ++axis) {
+        for (int dir = -1; dir <= 1; dir += 2) {
+            glm::vec3 neighborPos = pos + glm::vec3(axis == 0 ? dir : 0,
+                                                     axis == 1 ? dir : 0,
+                                                     axis == 2 ? dir : 0);
+
+            // Sample thermal field at neighbor
+            float neighborTemp = forceFields.sampleForce(ForceFieldType::Thermal, neighborPos).x; // magnitude
+
+            // Ignite if hot enough
+            if (neighborTemp > 50.0f) { // Ignition threshold
+                uint64_t neighborKey = worldPosToMorton(neighborPos);
+                auto& neighborState = getVoxelState(neighborKey);
+
+                if (neighborState.materialID == WoodMaterialID) {
+                    neighborState.materialID = FireMaterialID; // Wood → Fire
+                    markActive(neighborKey);
+                }
+            }
+        }
+    }
+}
+
+// Result: Fire spreads via thermal field, not direct voxel checks
+```
+
+---
+
+##### 2.8.9.4 Performance Characteristics
+
+**Bandwidth Analysis:**
+
+```
+Force field resolution: 4³ voxel cells (64 voxels per cell)
+512³ chunk: 134M voxels / 64 = 2.1M potential cells
+
+Typical active cells:
+- Kinetic (wind): 10% of chunk = 210K cells
+- Pressure (explosions): 1% = 21K cells (localized)
+- Thermal (fire): 0.5% = 10.5K cells (sparse)
+- Friction (sliding): 0.5% = 10.5K cells (sparse)
+
+Cell size: 16 bytes (vec3 force + float magnitude + metadata)
+
+Memory:
+210K × 16 = 3.4 MB (kinetic)
+21K × 16 = 336 KB (pressure)
+10.5K × 16 = 168 KB (thermal)
+10.5K × 16 = 168 KB (friction)
+
+Total: ~4 MB for all force fields
+
+Bandwidth per frame (with decay updates):
+4 MB × 60 FPS = 240 MB/s
+
+But: Most cells unchanged → update only active
+Active cells (~10% change per frame): 24 MB/s
+
+Result: Trivial bandwidth cost!
+```
+
+**Speedup vs Direct Interactions:**
+
+```
+Rigid body (10K voxels) vs neighbors (60K voxel-voxel checks):
+- Direct: 60K collision checks = expensive
+- Force field: Sample ~156 cells (10K voxels / 64) = cheap!
+
+Speedup: 60K / 156 = 384x faster!
+```
+
+---
+
+##### 2.8.9.5 Benefits Summary
+
+| Benefit | Description | Impact |
+|---------|-------------|--------|
+| **Decoupling** | Systems don't know about each other | Maintainable, composable |
+| **O(1) interactions** | Write to field, read from field | No N² complexity |
+| **Multi-scale** | Rigid body samples entire volume at once | 384x faster than per-voxel |
+| **Lossy by design** | Coarse resolution (4³ cells) | Invisible quality loss |
+| **Sparse storage** | Only active cells stored | ~4 MB total memory |
+| **System composition** | Wind + explosion + fire all coexist | Emergent interactions |
+| **Bandwidth efficient** | 24 MB/s for all force fields | Negligible cost |
+
+---
+
+##### 2.8.9.6 Advanced: GPU Force Field Propagation
+
+**Concept:** Propagate forces on GPU using compute shaders (diffusion, advection).
+
+```glsl
+// Compute shader: Force field diffusion
+#version 450
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
+
+layout(std430, set = 0, binding = 0) buffer ForceFieldCells {
+    vec4 cells[]; // xyz = force, w = magnitude
+};
+
+uniform float diffusionRate;
+uniform float deltaTime;
+
+void main() {
+    ivec3 cellPos = ivec3(gl_GlobalInvocationID.xyz);
+    uint cellIdx = cellPosToIndex(cellPos);
+
+    vec4 currentCell = cells[cellIdx];
+
+    // Diffuse forces to neighbors (heat equation)
+    vec4 neighborSum = vec4(0);
+    for (int dx = -1; dx <= 1; ++dx) {
+        for (int dy = -1; dy <= 1; ++dy) {
+            for (int dz = -1; dz <= 1; ++dz) {
+                if (dx == 0 && dy == 0 && dz == 0) continue;
+
+                ivec3 neighborPos = cellPos + ivec3(dx, dy, dz);
+                uint neighborIdx = cellPosToIndex(neighborPos);
+                neighborSum += cells[neighborIdx];
+            }
+        }
+    }
+
+    // Laplacian diffusion
+    vec4 laplacian = neighborSum / 26.0 - currentCell;
+    cells[cellIdx] += laplacian * diffusionRate * deltaTime;
+
+    // Decay
+    cells[cellIdx] *= exp(-decayRate * deltaTime);
+}
+```
+
+**Result:** Forces naturally propagate through space (wind currents, heat diffusion, pressure waves).
+
+---
+
+##### 2.8.9.7 Integration with Existing Systems
+
+**Update Flow:**
+
+```cpp
+// Main simulation loop
+void updateSimulation(float deltaTime, const glm::vec3& playerPos) {
+    // 1. Clear previous frame's transient forces (keep persistent ones)
+    forceFields.update(deltaTime); // Decay forces
+
+    // 2. Systems WRITE to force fields
+    windSystem.update(forceFields, deltaTime);
+    explosionSystem.update(forceFields, deltaTime);
+    frictionSystem.update(forceFields, deltaTime);
+    thermalSystem.update(forceFields, deltaTime);
+
+    // 3. Systems READ from force fields and apply
+    // Rigid bodies
+    for (auto& body : rigidBodies) {
+        auto forces = forceFields.sampleVolume(ForceFieldType::Kinetic, body.worldBounds, body.centerOfMass);
+        body.linearVelocity += (forces.netForce / body.mass) * deltaTime;
+        body.angularVelocity += (body.inverseInertiaTensor * forces.netTorque) * deltaTime;
+    }
+
+    // Active voxels
+    for (uint64_t voxel : activeVoxels) {
+        auto& state = getVoxelState(voxel);
+        glm::vec3 pos = mortonToWorldPos(voxel);
+
+        // Sample combined forces
+        glm::vec3 netForce = forceFields.sampleCombinedForce(pos);
+
+        // Apply to voxel
+        state.velocity += netForce * deltaTime;
+
+        // Cellular automata simulation
+        simulateVoxel(voxel, state);
+    }
+
+    // Sleeping voxels (check if should wake)
+    for (uint64_t voxel : sleepingVoxels) {
+        glm::vec3 pos = mortonToWorldPos(voxel);
+
+        // Check pressure field (explosion nearby?)
+        float pressure = forceFields.sampleForce(ForceFieldType::Pressure, pos).length();
+        if (pressure > wakeThreshold) {
+            wakeVoxel(voxel);
+        }
+    }
+
+    // 4. Propagate forces on GPU (optional advanced feature)
+    forceFields.propagateOnGPU(deltaTime);
+}
+```
+
+---
+
+### 2.10 Industry-Standard Optimizations
 
 **Concept:** Additional optimizations used in production voxel engines.
 
@@ -2302,7 +2942,7 @@ Reduction: 17,866x
 
 ---
 
-### 2.10 GigaVoxels GPU-Driven Usage-Based Caching
+### 2.11 GigaVoxels GPU-Driven Usage-Based Caching
 
 **Concept:** Implement GigaVoxels research paper techniques for GPU-driven demand streaming, usage-based cache replacement, and sparse voxel octree ray-casting.
 
@@ -2715,7 +3355,7 @@ void GigaVoxelsCache::updateCache(uint32_t currentFrame, uint32_t maxBricksPerFr
    - Save octree structure to disk
    - Stream bricks from archive on GPU request
 
-### 2.10.1 Extending Existing ESVO for GigaVoxels
+### 2.11.1 Extending Existing ESVO for GigaVoxels
 
 **Context:** VIXEN already has a complete ESVO (Efficient Sparse Voxel Octrees) implementation based on Laine & Karras (2010). This section explains how to modify the existing ESVO structure to support GigaVoxels features.
 
@@ -2755,7 +3395,7 @@ struct ChildDescriptor {
 
 ---
 
-### 2.10.2 Concrete Modifications to ESVO
+### 2.11.2 Concrete Modifications to ESVO
 
 #### Modification 1: Extended ChildDescriptor for Virtual Bricks
 
@@ -3153,7 +3793,7 @@ private:
 
 ---
 
-### 2.10.3 Migration Path: ESVO → GigaVoxels
+### 2.11.3 Migration Path: ESVO → GigaVoxels
 
 **Phase 1: Backward-Compatible Extension (2 weeks)**
 1. Add `BrickPoolIndirection` structure (optional member)
