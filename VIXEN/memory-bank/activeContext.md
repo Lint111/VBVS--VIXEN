@@ -1,108 +1,196 @@
-# Active Context
+# Active Context - Sprint 4 Resource Manager
 
-**Last Updated**: January 1, 2026
-**Current Focus**: Production Phase - 11 Sprint Roadmap
-
----
-
-## Current State
-
-### Production Phase Entered
-
-VIXEN has transitioned from research/prototype phase to full production development.
-
-| Item | Value |
-|------|-------|
-| Master Document | `Vixen-Docs/05-Progress/Production-Roadmap-2026.md` |
-| HacknPlan Project | 230809 |
-| Sprint Boards | 651780-651790 (11 boards) |
-| Total Tasks | 107 |
-| Total Effort | 1,422 hours |
-
-### Sprint Status Summary
-
-| Sprint | Focus | Status |
-|--------|-------|--------|
-| 1.1 | Critical Bug Fixes | COMPLETE |
-| 1.2 | Build Optimization | COMPLETE |
-| 1.3 | CashSystem Robustness | Pending |
-| 2.1 | Benchmark Data Collection | COMPLETE |
-| 2.2 | Hybrid Pipeline | DEFERRED |
-| 2.3 | Paper Writing & Submission | AWAITING FEEDBACK |
-| 3.1-3.4 | Timeline Execution System | Q2-Q4 2026 |
-| 4.1-4.5 | GaiaVoxelWorld Physics | Q1 2026-Q1 2027 |
-
-### Research Paper (ARCHIVED CONTEXT)
-
-| Metric | Value |
-|--------|-------|
-| Document | `Vixen-Docs/03-Research/VIXEN-Research-Paper-V4.docx` |
-| Data Version | V4 (1,125 tests, 6 GPUs) |
-| Status | Draft complete, awaiting feedback |
-| HW RT speedup | 2.1-3.6x over compute |
-| Hypotheses contradicted | 3 of 5 |
+**Last Updated:** 2026-01-01
+**Branch:** `production/sprint-4-resource-manager`
+**Status:** Build PASSING | Tests PASSING (95 tests)
 
 ---
 
-## Active Workstreams
+## Current Position
 
-### Workstream 0: Resource Manager Integration (NEXT)
-- **Board**: 651780
-- **Goal**: Complete ResourceBudgetManager integration across all data flow
-- **Tasks**: 15 tasks, 192h estimated
+**Phase A: Foundation** - COMPLETE (5/5 tasks)
+**Phase B: Resource Lifetime** - IN PROGRESS (1/3 tasks done)
+**Phase B+: GPU Aliasing** - PENDING (0/3 tasks)
 
-### Workstream 1: Infrastructure Hardening (IN PROGRESS)
-- Sprint 1.1, 1.2: COMPLETE
-- Sprint 1.3 (CashSystem Robustness): PENDING
-- **Board**: 651783
+### Just Completed
+- B.1: Reference counting for shared resources (`2ce0880`)
 
-### Workstream 2: Research Publication (BLOCKED)
-- **Status**: Awaiting feedback on paper draft
-- **Next**: Revisions based on review, then submission
-
-### Workstream 3: Timeline Execution System (Q2-Q4 2026)
-- MultiDispatchNode, TaskQueue, WaveScheduler
-- TimelineNode (graph-in-graph composition)
-- Auto synchronization, Multi-GPU support
-
-### Workstream 4: GaiaVoxelWorld Physics (Q1 2026-Q1 2027)
-- Cellular Automata (100M voxels/sec target)
-- Soft Body Physics (Gram-Schmidt solver)
-- GPU Procedural Generation
-- Skin Width SVO optimization
-- VR Integration (90 FPS target)
+### Next Task
+- **B.2: Lifetime scope tracking** - START HERE
 
 ---
 
-## Key Files
+## Session Commits (This Session)
 
-| Purpose | Location |
-|---------|----------|
-| Master Roadmap | `Vixen-Docs/05-Progress/Production-Roadmap-2026.md` |
-| Workstream Details | `Vixen-Docs/05-Progress/workstreams/` |
-| Research Paper | `Vixen-Docs/03-Research/VIXEN-Research-Paper-V4.docx` |
-| Benchmark Data | `data/finalized/benchmarks_research_v4.xlsx` |
-
----
-
-## HacknPlan Integration
-
-All production tasks tracked in HacknPlan:
-
-| Sprint | Board ID | Tasks | Hours |
-|--------|----------|-------|-------|
-| Sprint 4 | 651780 | 15 | 192h |
-| Sprint 5 | 651783 | 21 | 148h |
-| Sprint 6 | 651785 | 20 | 232h |
-| Sprint 7 | 651786 | 11 | 224h |
-| Sprint 8 | 651784 | 6 | 72h |
-| Sprint 9 | 651788 | 5 | 72h |
-| Sprint 10 | 651782 | 6 | 92h |
-| Sprint 11 | 651781 | 6 | 104h |
-| Sprint 12 | 651787 | 6 | 100h |
-| Sprint 13 | 651789 | 4 | 62h |
-| Sprint 14 | 651790 | 7 | 124h |
+| Hash | Description |
+|------|-------------|
+| `2ce0880` | feat(RenderGraph): Add shared resource reference counting (Phase B.1) |
+| `0c33531` | feat(RenderGraph): Add BudgetBridge for Host-Device staging coordination |
+| `37d74ee` | feat(RenderGraph): implement Sprint 4 Phase A memory management foundation |
 
 ---
 
-**Next Action**: Begin Sprint 4 (Resource Manager Integration) or Sprint 1.3 (CashSystem Robustness) based on priority.
+## Key Files Created This Sprint
+
+### Phase A (Foundation) - COMPLETE
+| File | Purpose |
+|------|---------|
+| `include/Core/IMemoryAllocator.h` | Abstract allocator interface |
+| `include/Core/DirectAllocator.h` | Non-VMA fallback allocator |
+| `src/Core/DirectAllocator.cpp` | DirectAllocator implementation |
+| `include/Core/VMAAllocator.h` | VMA-backed allocator |
+| `src/Core/VMAAllocator.cpp` | VMAAllocator implementation |
+| `include/Core/HostBudgetManager.h` | CPU-side budget (frame stack, persistent stack, heap) |
+| `src/Core/HostBudgetManager.cpp` | HostBudgetManager implementation |
+| `include/Core/DeviceBudgetManager.h` | GPU-side budget with IMemoryAllocator |
+| `src/Core/DeviceBudgetManager.cpp` | DeviceBudgetManager implementation |
+| `include/Core/BudgetBridge.h` | Host-Device staging coordination |
+| `src/Core/BudgetBridge.cpp` | BudgetBridge implementation |
+
+### Phase B.1 (Reference Counting) - COMPLETE
+| File | Purpose |
+|------|---------|
+| `include/Core/SharedResource.h` | RefCountBase, SharedBuffer, SharedImage, SharedResourcePtr, SharedResourceFactory |
+
+### Enhanced Files
+| File | Change |
+|------|--------|
+| `include/Core/DeferredDestruction.h` | Added `AddGeneric()` for lambda-based cleanup |
+
+---
+
+## B.2 Implementation Plan (NEXT TASK)
+
+**Goal:** Group resources by lifetime scope for bulk release
+
+### Design
+```cpp
+class LifetimeScope {
+    std::string name_;
+    LifetimeScope* parent_;
+    std::vector<SharedBufferPtr> buffers_;
+    std::vector<SharedImagePtr> images_;
+
+public:
+    SharedBufferPtr CreateBuffer(request, factory);
+    SharedImagePtr CreateImage(request, factory);
+    void EndScope();  // Releases all resources in this scope
+};
+
+class LifetimeScopeManager {
+    std::stack<LifetimeScope*> scopeStack_;
+    LifetimeScope frameScope_;
+
+public:
+    void BeginFrame();
+    void EndFrame();  // Releases frame scope
+    LifetimeScope& BeginScope(name);
+    void EndScope();
+    LifetimeScope& CurrentScope();
+};
+```
+
+### Files to Create
+1. `include/Core/LifetimeScope.h` - Scope classes
+2. Add tests to `test_resource_management.cpp`
+
+### Integration Points
+- Works with `SharedResourcePtr` from B.1
+- Uses `DeferredDestructionQueue` for cleanup
+- Integrates with `SharedResourceFactory`
+
+---
+
+## All Remaining Tasks
+
+### Phase B (Resource Lifetime)
+- [ ] **B.2: Lifetime scope tracking** <- START HERE
+- [ ] B.3: Automatic cleanup integration
+
+### Phase B+ (GPU Aliasing) - Added scope
+- [ ] B+.1: Add aliasing flags to IMemoryAllocator/VMAAllocator
+- [ ] B+.2: Aliasing-aware budget tracking in DeviceBudgetManager
+- [ ] B+.3: Integration tests with aliased allocations
+
+### Phase C (SlotTask Integration)
+- [ ] C.1: Mandatory budget manager in ExecuteParallel
+- [ ] C.2: Budget enforcement in task execution
+- [ ] C.3: Actual vs estimated tracking
+
+### Phase D (Dashboard & Testing)
+- [ ] D.1: Resource usage dashboard
+- [ ] D.2: Budget warning callbacks
+- [ ] D.3: Thread-safe unit tests
+- [ ] D.4: VMA integration tests
+
+---
+
+## Build & Test Commands
+
+```bash
+# Build RenderGraph and tests
+cmake --build build --config Debug --target RenderGraph test_resource_management --parallel 16
+
+# Run resource management tests (currently 95 passing)
+./build/libraries/RenderGraph/tests/Debug/test_resource_management.exe --gtest_brief=1
+```
+
+---
+
+## Architecture Summary
+
+```
+Application Layer
+    |
+    v
+LifetimeScopeManager (B.2 - TODO)
+    |-- LifetimeScope (groups SharedBufferPtr/SharedImagePtr)
+    v
+SharedResourceFactory (B.1 - DONE)
+    |-- Creates SharedBufferPtr / SharedImagePtr
+    v
+BudgetBridge (A.5 - DONE)
+    |-- Staging quota reservation
+    |-- Upload tracking (fence/frame based)
+    v
++------------------+-------------------+
+| HostBudgetManager| DeviceBudgetManager|
+| (A.4 - DONE)     | (A.4 - DONE)       |
+| - Frame stack    | - IMemoryAllocator |
+| - Persistent stk | - Staging quota    |
+| - Heap fallback  | - Budget tracking  |
++------------------+-------------------+
+    |
+    v
+IMemoryAllocator (A.2 - DONE)
+    |-- VMAAllocator (A.3) - GPU memory via VMA
+    |-- DirectAllocator (A.5) - Fallback/testing
+    v
+ResourceBudgetManager (A.1 - DONE) - Thread-safe budget tracking
+    v
+DeferredDestructionQueue - Safe GPU resource cleanup
+```
+
+---
+
+## Important Notes for Next Agent
+
+1. **Pre-commit hook**: Always run `/pre-commit-review` before committing
+2. **Test count**: Currently 95 tests - verify count increases with new tests
+3. **SharedResourcePtr requirements**: Requires both `destructionQueue` AND `frameCounter` or neither (debug assertion added)
+4. **VMA null handles**: VMAAllocator factory returns nullptr if Vulkan handles are null
+5. **Callback under lock**: BudgetBridge callback is invoked while holding lock - documented in header
+
+---
+
+## HacknPlan Status
+
+Sprint 4 Phase A tasks: COMPLETE
+Sprint 4 Phase B tasks: IN PROGRESS (B.1 done)
+
+See `Vixen-Docs/05-Progress/features/Sprint4-ResourceManager-Integration.md` for full plan.
+
+---
+
+*Generated: 2026-01-01*
+*By: Claude Code (session-summary skill)*
