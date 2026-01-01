@@ -2,11 +2,12 @@
 """
 Pre-commit gate hook for VIXEN project.
 
-This hook is triggered ONLY for 'git commit' commands (filtered by matcher).
+This hook is triggered for ALL Bash commands, but only acts on 'git commit'.
 
 Behavior:
-- If approval marker exists: Allow commit and clean up marker
-- If no marker: Deny commit with message to run /pre-commit-review
+- Non-commit commands: Allow (exit 0 with no output)
+- Commit with approval marker: Allow and clean up marker
+- Commit without marker: Deny with message to run /pre-commit-review
 
 The pre-commit-review skill creates the marker after review passes,
 then performs the commit itself.
@@ -21,6 +22,14 @@ def main():
     try:
         # Read input from stdin (required by hook protocol)
         input_data = json.load(sys.stdin)
+
+        # Get the command being executed
+        tool_input = input_data.get("tool_input", {})
+        command = tool_input.get("command", "")
+
+        # Only act on git commit commands
+        if not command.startswith("git commit"):
+            sys.exit(0)  # Allow all non-commit commands
 
         # Check if pre-commit review approved this
         if os.path.exists(MARKER_FILE):
