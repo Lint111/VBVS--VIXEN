@@ -116,6 +116,7 @@ set(RENDERGRAPH_CORE_HEADERS
     include/Core/RenderGraph.h
     include/Core/ResourceBudgetManager.h
     include/Core/ResourceDependencyTracker.h
+    include/Core/SharedResource.h
     include/Core/SlotTask.h
     include/Core/StatefulContainer.h
     include/Core/Timer.h

@@ -99,6 +99,35 @@ public:
     }
 
     /**
+     * @brief Add generic destruction function for deferred execution
+     *
+     * More flexible than the Vulkan-specific overload. Use for resources
+     * that need custom cleanup logic (e.g., allocator-managed buffers).
+     *
+     * @param destructorFunc Function to call when destruction occurs
+     * @param currentFrame Current frame number
+     *
+     * Example:
+     * ```cpp
+     * queue.AddGeneric([allocator, buffer]() {
+     *     allocator->FreeBuffer(buffer);
+     * }, frameNumber);
+     * ```
+     */
+    void AddGeneric(std::function<void()> destructorFunc, uint64_t currentFrame) {
+        if (!destructorFunc) {
+            return;
+        }
+
+        PendingDestruction pending(std::move(destructorFunc), currentFrame);
+        queue.push(pending);
+
+#ifdef _DEBUG
+        totalQueued++;
+#endif
+    }
+
+    /**
      * @brief Process deferred destructions for current frame
      *
      * Destroys resources that were submitted >= maxFramesInFlight frames ago.

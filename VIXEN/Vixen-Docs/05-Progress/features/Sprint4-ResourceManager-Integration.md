@@ -50,18 +50,38 @@ HostBudgetManager
 
 ## Phase Breakdown
 
-### Phase A: Foundation (28h)
+### Phase A: Foundation (28h) - COMPLETE
 - A.1: ✅ Thread safety for ResourceBudgetManager (2h)
 - A.2: ✅ Create IMemoryAllocator interface (2h)
 - A.3: ✅ Implement VMAAllocator (2h)
 - A.4: ✅ Split budget manager (Host vs Device) (2h)
-- A.5: Communication bridge
+- A.5: ✅ DirectAllocator fallback implementation (2h)
+
+**Status:** All foundation work complete. IMemoryAllocator abstraction, thread-safe budget manager, and DirectAllocator fallback implemented.
 
 ### Phase B: Allocation Tracking (32h)
 - B.1: TrackedAllocation<T> RAII wrapper
 - B.2: Migrate BufferHelpers to VMA
 - B.3: Migrate 15 node allocation sites
 - B.4: Per-heap budget tracking
+
+### Phase B+: GPU Memory Aliasing (12h) - NEW SCOPE
+
+Added during Phase A completion - aliasing is GPU-side and belongs in DeviceBudgetManager.
+
+| Task | Description | Est |
+|------|-------------|-----|
+| B+.1 | Add aliasing flags to IMemoryAllocator/VMAAllocator | 4h |
+| B+.2 | Aliasing-aware budget tracking in DeviceBudgetManager | 4h |
+| B+.3 | Integration tests with actual aliased allocations | 4h |
+
+**Rationale:** Resource aliasing (temporal memory reuse) is primarily a Vulkan/GPU concern. VMA already supports `VMA_ALLOCATION_CREATE_CAN_ALIAS_BIT`. This scope extends DeviceBudgetManager to expose and track aliased allocations.
+
+**Design Notes:**
+- Aliased resources share physical memory but have distinct lifecycle tracking
+- Budget manager must track peak usage, not sum of aliased allocations
+- VMAAllocator will expose aliasing flags through IMemoryAllocator interface
+- Aliasing scope: per-frame, per-pass, or manual barriers
 
 ### Phase C: SlotTask Integration (16h)
 - C.1: Mandatory budget manager in ExecuteParallel

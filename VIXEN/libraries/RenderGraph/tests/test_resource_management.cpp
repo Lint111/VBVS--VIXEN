@@ -22,6 +22,7 @@
 #include "Core/HostBudgetManager.h"
 #include "Core/DeviceBudgetManager.h"
 #include "Core/BudgetBridge.h"
+#include "Core/SharedResource.h"
 
 #include <atomic>
 #include <chrono>
@@ -1362,6 +1363,335 @@ TEST_F(BudgetBridgeTest, CreateWithNullManagers) {
 
     standaloneBridge.ReleaseStagingQuota(10 * 1024 * 1024);
     EXPECT_EQ(standaloneBridge.GetStagingQuotaUsed(), 0);
+}
+
+// ============================================================================
+// RefCountBase Tests
+// ============================================================================
+
+class RefCountBaseTest : public ::testing::Test {};
+
+TEST_F(RefCountBaseTest, InitialRefCount) {
+    RefCountBase ref;
+    EXPECT_EQ(ref.GetRefCount(), 1);
+    EXPECT_TRUE(ref.IsUnique());
+}
+
+TEST_F(RefCountBaseTest, AddRefIncrementsCount) {
+    RefCountBase ref;
+    EXPECT_EQ(ref.AddRef(), 2);
+    EXPECT_EQ(ref.GetRefCount(), 2);
+    EXPECT_FALSE(ref.IsUnique());
+
+    EXPECT_EQ(ref.AddRef(), 3);
+    EXPECT_EQ(ref.GetRefCount(), 3);
+}
+
+TEST_F(RefCountBaseTest, ReleaseDecrementsCount) {
+    RefCountBase ref;
+    ref.AddRef();  // Now 2
+    ref.AddRef();  // Now 3
+
+    EXPECT_EQ(ref.Release(), 2);
+    EXPECT_EQ(ref.Release(), 1);
+    EXPECT_TRUE(ref.IsUnique());
+    EXPECT_EQ(ref.Release(), 0);  // Would trigger destruction
+}
+
+TEST_F(RefCountBaseTest, ConcurrentRefCounting) {
+    RefCountBase ref;
+    constexpr int numThreads = 8;
+    constexpr int opsPerThread = 1000;
+
+    std::vector<std::thread> threads;
+    for (int t = 0; t < numThreads; ++t) {
+        threads.emplace_back([&ref]() {
+            for (int i = 0; i < opsPerThread; ++i) {
+                ref.AddRef();
+            }
+        });
+    }
+
+    for (auto& t : threads) {
+        t.join();
+    }
+
+    // Initial 1 + (numThreads * opsPerThread) = expected count
+    EXPECT_EQ(ref.GetRefCount(), 1 + numThreads * opsPerThread);
+}
+
+TEST_F(RefCountBaseTest, MoveTransfersOwnership) {
+    RefCountBase ref1;
+    ref1.AddRef();  // Now 2
+
+    RefCountBase ref2 = std::move(ref1);
+
+    EXPECT_EQ(ref2.GetRefCount(), 2);
+    EXPECT_EQ(ref1.GetRefCount(), 0);  // Moved-from state
+}
+
+// ============================================================================
+// SharedBuffer Tests (Header-Only, No Real Vulkan)
+// ============================================================================
+
+class SharedBufferTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        allocator_ = MemoryAllocatorFactory::CreateDirectAllocator(
+            VK_NULL_HANDLE, VK_NULL_HANDLE, nullptr);
+    }
+
+    std::unique_ptr<IMemoryAllocator> allocator_;
+};
+
+TEST_F(SharedBufferTest, CreateWithInvalidAllocation) {
+    // Create SharedBuffer with empty allocation
+    BufferAllocation emptyAlloc{};
+    SharedBuffer buffer(emptyAlloc, allocator_.get());
+
+    EXPECT_FALSE(buffer.IsValid());
+    EXPECT_EQ(buffer.GetBuffer(), VK_NULL_HANDLE);
+    EXPECT_EQ(buffer.GetRefCount(), 1);
+}
+
+TEST_F(SharedBufferTest, RefCountOperations) {
+    BufferAllocation alloc{};
+    SharedBuffer buffer(alloc, allocator_.get());
+
+    EXPECT_EQ(buffer.GetRefCount(), 1);
+    EXPECT_TRUE(buffer.IsUnique());
+
+    buffer.AddRef();
+    EXPECT_EQ(buffer.GetRefCount(), 2);
+    EXPECT_FALSE(buffer.IsUnique());
+
+    buffer.Release();
+    EXPECT_EQ(buffer.GetRefCount(), 1);
+    EXPECT_TRUE(buffer.IsUnique());
+}
+
+TEST_F(SharedBufferTest, ResourceScope) {
+    BufferAllocation alloc{};
+
+    SharedBuffer transient(alloc, allocator_.get(), ResourceScope::Transient);
+    EXPECT_EQ(transient.GetScope(), ResourceScope::Transient);
+
+    SharedBuffer persistent(alloc, allocator_.get(), ResourceScope::Persistent);
+    EXPECT_EQ(persistent.GetScope(), ResourceScope::Persistent);
+
+    SharedBuffer shared(alloc, allocator_.get(), ResourceScope::Shared);
+    EXPECT_EQ(shared.GetScope(), ResourceScope::Shared);
+}
+
+TEST_F(SharedBufferTest, MoveSemantics) {
+    BufferAllocation alloc{};
+    alloc.size = 1024;
+
+    SharedBuffer buffer1(alloc, allocator_.get());
+    buffer1.AddRef();  // 2 refs
+
+    SharedBuffer buffer2 = std::move(buffer1);
+
+    EXPECT_EQ(buffer2.GetSize(), 1024);
+    EXPECT_EQ(buffer2.GetRefCount(), 2);
+    EXPECT_EQ(buffer1.GetRefCount(), 0);  // Moved-from
+}
+
+// ============================================================================
+// SharedResourcePtr Tests
+// ============================================================================
+
+class SharedResourcePtrTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        allocator_ = MemoryAllocatorFactory::CreateDirectAllocator(
+            VK_NULL_HANDLE, VK_NULL_HANDLE, nullptr);
+        frameCounter_ = 0;
+    }
+
+    std::unique_ptr<IMemoryAllocator> allocator_;
+    DeferredDestructionQueue destructionQueue_;
+    uint64_t frameCounter_;
+};
+
+TEST_F(SharedResourcePtrTest, DefaultConstruction) {
+    SharedBufferPtr ptr;
+    EXPECT_FALSE(ptr);
+    EXPECT_EQ(ptr.Get(), nullptr);
+    EXPECT_EQ(ptr.UseCount(), 0);
+}
+
+TEST_F(SharedResourcePtrTest, ConstructWithResource) {
+    BufferAllocation alloc{};
+    auto* buffer = new SharedBuffer(alloc, allocator_.get());
+
+    SharedBufferPtr ptr(buffer, &destructionQueue_, &frameCounter_);
+
+    EXPECT_TRUE(ptr);
+    EXPECT_EQ(ptr.Get(), buffer);
+    EXPECT_EQ(ptr.UseCount(), 1);
+    EXPECT_TRUE(ptr.IsUnique());
+}
+
+TEST_F(SharedResourcePtrTest, CopyAddsReference) {
+    BufferAllocation alloc{};
+    auto* buffer = new SharedBuffer(alloc, allocator_.get());
+
+    SharedBufferPtr ptr1(buffer, &destructionQueue_, &frameCounter_);
+    SharedBufferPtr ptr2 = ptr1;  // Copy
+
+    EXPECT_EQ(ptr1.Get(), ptr2.Get());
+    EXPECT_EQ(ptr1.UseCount(), 2);
+    EXPECT_EQ(ptr2.UseCount(), 2);
+    EXPECT_FALSE(ptr1.IsUnique());
+}
+
+TEST_F(SharedResourcePtrTest, MoveTransfersOwnership) {
+    BufferAllocation alloc{};
+    auto* buffer = new SharedBuffer(alloc, allocator_.get());
+
+    SharedBufferPtr ptr1(buffer, &destructionQueue_, &frameCounter_);
+    SharedBufferPtr ptr2 = std::move(ptr1);
+
+    EXPECT_FALSE(ptr1);  // Moved-from is null
+    EXPECT_TRUE(ptr2);
+    EXPECT_EQ(ptr2.Get(), buffer);
+    EXPECT_EQ(ptr2.UseCount(), 1);
+}
+
+TEST_F(SharedResourcePtrTest, ResetReleasesResource) {
+    BufferAllocation alloc{};
+    auto* buffer = new SharedBuffer(alloc, allocator_.get());
+
+    SharedBufferPtr ptr(buffer, &destructionQueue_, &frameCounter_);
+    EXPECT_EQ(ptr.UseCount(), 1);
+
+    ptr.Reset();
+
+    EXPECT_FALSE(ptr);
+    // Empty allocation = nothing to queue (QueueDestruction skips invalid allocations)
+    EXPECT_EQ(destructionQueue_.GetPendingCount(), 0);
+}
+
+TEST_F(SharedResourcePtrTest, LastRefQueuesDestruction) {
+    // Create a "valid" allocation (has buffer handle even though it's not real)
+    BufferAllocation alloc{};
+    alloc.buffer = reinterpret_cast<VkBuffer>(0x12345678);  // Fake handle for testing
+    alloc.size = 1024;
+
+    auto* buffer = new SharedBuffer(alloc, allocator_.get());
+
+    {
+        SharedBufferPtr ptr1(buffer, &destructionQueue_, &frameCounter_);
+        SharedBufferPtr ptr2 = ptr1;  // 2 refs
+
+        EXPECT_EQ(destructionQueue_.GetPendingCount(), 0);
+    }
+    // Both ptrs destroyed, last one queues destruction for valid allocation
+
+    EXPECT_EQ(destructionQueue_.GetPendingCount(), 1);
+}
+
+TEST_F(SharedResourcePtrTest, Swap) {
+    BufferAllocation alloc1{}, alloc2{};
+    alloc1.size = 100;
+    alloc2.size = 200;
+
+    auto* buffer1 = new SharedBuffer(alloc1, allocator_.get());
+    auto* buffer2 = new SharedBuffer(alloc2, allocator_.get());
+
+    SharedBufferPtr ptr1(buffer1, &destructionQueue_, &frameCounter_);
+    SharedBufferPtr ptr2(buffer2, &destructionQueue_, &frameCounter_);
+
+    ptr1.Swap(ptr2);
+
+    EXPECT_EQ(ptr1->GetSize(), 200);
+    EXPECT_EQ(ptr2->GetSize(), 100);
+}
+
+// ============================================================================
+// SharedResourceFactory Tests
+// ============================================================================
+
+class SharedResourceFactoryTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        allocator_ = MemoryAllocatorFactory::CreateDirectAllocator(
+            VK_NULL_HANDLE, VK_NULL_HANDLE, nullptr);
+        frameCounter_ = 0;
+    }
+
+    std::unique_ptr<IMemoryAllocator> allocator_;
+    DeferredDestructionQueue destructionQueue_;
+    uint64_t frameCounter_;
+};
+
+TEST_F(SharedResourceFactoryTest, CreateBufferWithNullAllocator) {
+    SharedResourceFactory factory(nullptr, &destructionQueue_, &frameCounter_);
+
+    BufferAllocationRequest request{.size = 1024};
+    auto buffer = factory.CreateBuffer(request);
+
+    EXPECT_FALSE(buffer);  // Should fail with null allocator
+}
+
+TEST_F(SharedResourceFactoryTest, CreateBufferWithInvalidDevice) {
+    SharedResourceFactory factory(allocator_.get(), &destructionQueue_, &frameCounter_);
+
+    BufferAllocationRequest request{.size = 1024};
+    auto buffer = factory.CreateBuffer(request);
+
+    // DirectAllocator with null device returns error
+    EXPECT_FALSE(buffer);
+}
+
+// ============================================================================
+// DeferredDestructionQueue AddGeneric Tests
+// ============================================================================
+
+class DeferredDestructionGenericTest : public ::testing::Test {};
+
+TEST_F(DeferredDestructionGenericTest, AddGenericQueuesFunction) {
+    DeferredDestructionQueue queue;
+    bool destructorCalled = false;
+
+    queue.AddGeneric([&destructorCalled]() {
+        destructorCalled = true;
+    }, 0);
+
+    EXPECT_EQ(queue.GetPendingCount(), 1);
+    EXPECT_FALSE(destructorCalled);
+
+    queue.ProcessFrame(3, 3);  // After 3 frames
+
+    EXPECT_EQ(queue.GetPendingCount(), 0);
+    EXPECT_TRUE(destructorCalled);
+}
+
+TEST_F(DeferredDestructionGenericTest, AddGenericWithNullFunction) {
+    DeferredDestructionQueue queue;
+
+    queue.AddGeneric(nullptr, 0);
+
+    EXPECT_EQ(queue.GetPendingCount(), 0);  // Null function ignored
+}
+
+TEST_F(DeferredDestructionGenericTest, MultipleGenericDestructions) {
+    DeferredDestructionQueue queue;
+    int callCount = 0;
+
+    for (int i = 0; i < 5; ++i) {
+        queue.AddGeneric([&callCount]() {
+            callCount++;
+        }, i);
+    }
+
+    EXPECT_EQ(queue.GetPendingCount(), 5);
+
+    queue.Flush();
+
+    EXPECT_EQ(queue.GetPendingCount(), 0);
+    EXPECT_EQ(callCount, 5);
 }
 
 // ============================================================================
