@@ -21,6 +21,7 @@
 #include "Core/VMAAllocator.h"
 #include "Core/HostBudgetManager.h"
 #include "Core/DeviceBudgetManager.h"
+#include "Core/BudgetBridge.h"
 
 #include <atomic>
 #include <chrono>
@@ -1148,6 +1149,219 @@ TEST_F(DeviceBudgetManagerTest, ConcurrentStagingQuota) {
     // After all threads complete, quota should be 0
     EXPECT_EQ(manager.GetStagingQuotaUsed(), 0);
     EXPECT_GT(successCount.load(), 0);
+}
+
+// ============================================================================
+// BudgetBridge Tests
+// ============================================================================
+
+class BudgetBridgeTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        // Create managers for bridge
+        HostBudgetManager::Config hostConfig{};
+        hostConfig.frameStackSize = 1024 * 1024;
+        hostConfig.heapBudget = 10 * 1024 * 1024;
+        hostBudget_ = std::make_unique<HostBudgetManager>(hostConfig);
+
+        DeviceBudgetManager::Config deviceConfig{};
+        deviceConfig.stagingQuota = 256 * 1024 * 1024;  // 256 MB
+        deviceBudget_ = std::make_unique<DeviceBudgetManager>(nullptr, VK_NULL_HANDLE, deviceConfig);
+
+        // Create bridge with custom config
+        BudgetBridge::Config bridgeConfig{};
+        bridgeConfig.maxStagingQuota = 256 * 1024 * 1024;  // 256 MB
+        bridgeConfig.stagingWarningThreshold = 200 * 1024 * 1024;  // 200 MB
+        bridgeConfig.maxPendingUploads = 100;
+        bridgeConfig.framesToKeepPending = 3;
+
+        bridge_ = std::make_unique<BudgetBridge>(
+            hostBudget_.get(), deviceBudget_.get(), bridgeConfig);
+    }
+
+    std::unique_ptr<HostBudgetManager> hostBudget_;
+    std::unique_ptr<DeviceBudgetManager> deviceBudget_;
+    std::unique_ptr<BudgetBridge> bridge_;
+};
+
+TEST_F(BudgetBridgeTest, InitialState) {
+    EXPECT_EQ(bridge_->GetStagingQuotaUsed(), 0);
+    EXPECT_EQ(bridge_->GetAvailableStagingQuota(), 256 * 1024 * 1024);
+    EXPECT_EQ(bridge_->GetPendingUploadCount(), 0);
+    EXPECT_EQ(bridge_->GetPendingUploadBytes(), 0);
+    EXPECT_FALSE(bridge_->IsStagingNearLimit());
+}
+
+TEST_F(BudgetBridgeTest, ReserveStagingQuota) {
+    EXPECT_TRUE(bridge_->ReserveStagingQuota(10 * 1024 * 1024));  // 10 MB
+    EXPECT_EQ(bridge_->GetStagingQuotaUsed(), 10 * 1024 * 1024);
+    EXPECT_EQ(bridge_->GetAvailableStagingQuota(), 246 * 1024 * 1024);
+}
+
+TEST_F(BudgetBridgeTest, ReleaseStagingQuota) {
+    bridge_->ReserveStagingQuota(50 * 1024 * 1024);  // 50 MB
+    bridge_->ReleaseStagingQuota(20 * 1024 * 1024);  // Release 20 MB
+
+    EXPECT_EQ(bridge_->GetStagingQuotaUsed(), 30 * 1024 * 1024);
+}
+
+TEST_F(BudgetBridgeTest, StagingQuotaExceeded) {
+    // Reserve 200 MB
+    EXPECT_TRUE(bridge_->ReserveStagingQuota(200 * 1024 * 1024));
+
+    // Try to reserve another 100 MB (would exceed 256 MB limit)
+    EXPECT_FALSE(bridge_->ReserveStagingQuota(100 * 1024 * 1024));
+
+    // Original reservation should still be intact
+    EXPECT_EQ(bridge_->GetStagingQuotaUsed(), 200 * 1024 * 1024);
+}
+
+TEST_F(BudgetBridgeTest, StagingNearLimit) {
+    // Reserve 200 MB (at warning threshold)
+    bridge_->ReserveStagingQuota(200 * 1024 * 1024);
+    EXPECT_TRUE(bridge_->IsStagingNearLimit());
+
+    // Release some
+    bridge_->ReleaseStagingQuota(50 * 1024 * 1024);
+    EXPECT_FALSE(bridge_->IsStagingNearLimit());
+}
+
+TEST_F(BudgetBridgeTest, RecordUpload) {
+    // Reserve quota and record upload
+    bridge_->ReserveStagingQuota(10 * 1024 * 1024);
+    bridge_->RecordUpload(10 * 1024 * 1024, 1);
+
+    EXPECT_EQ(bridge_->GetPendingUploadCount(), 1);
+    EXPECT_EQ(bridge_->GetPendingUploadBytes(), 10 * 1024 * 1024);
+}
+
+TEST_F(BudgetBridgeTest, ProcessCompletedUploadsFence) {
+    // Record multiple uploads with different fence values
+    bridge_->ReserveStagingQuota(30 * 1024 * 1024);
+    bridge_->RecordUpload(10 * 1024 * 1024, 1);
+    bridge_->RecordUpload(10 * 1024 * 1024, 2);
+    bridge_->RecordUpload(10 * 1024 * 1024, 3);
+
+    EXPECT_EQ(bridge_->GetPendingUploadCount(), 3);
+
+    // Process with fence value 2 - should complete uploads 1 and 2
+    uint64_t reclaimed = bridge_->ProcessCompletedUploads(2);
+
+    EXPECT_EQ(reclaimed, 20 * 1024 * 1024);
+    EXPECT_EQ(bridge_->GetPendingUploadCount(), 1);
+    EXPECT_EQ(bridge_->GetPendingUploadBytes(), 10 * 1024 * 1024);
+    EXPECT_EQ(bridge_->GetStagingQuotaUsed(), 10 * 1024 * 1024);
+
+    // Complete the last one
+    reclaimed = bridge_->ProcessCompletedUploads(3);
+    EXPECT_EQ(reclaimed, 10 * 1024 * 1024);
+    EXPECT_EQ(bridge_->GetPendingUploadCount(), 0);
+}
+
+TEST_F(BudgetBridgeTest, ProcessCompletedUploadsFrameBased) {
+    // Record uploads
+    bridge_->ReserveStagingQuota(20 * 1024 * 1024);
+    bridge_->RecordUpload(10 * 1024 * 1024, 0);
+
+    // Advance frames (framesToKeepPending = 3)
+    // At frame 4, upload from frame 0 should be considered complete
+    uint64_t reclaimed = bridge_->ProcessCompletedUploads(4, true);
+
+    EXPECT_EQ(reclaimed, 10 * 1024 * 1024);
+    EXPECT_EQ(bridge_->GetPendingUploadCount(), 0);
+}
+
+TEST_F(BudgetBridgeTest, UploadCompleteCallback) {
+    uint64_t callbackBytes = 0;
+    bridge_->SetUploadCompleteCallback([&callbackBytes](uint64_t bytes) {
+        callbackBytes += bytes;
+    });
+
+    bridge_->ReserveStagingQuota(10 * 1024 * 1024);
+    bridge_->RecordUpload(10 * 1024 * 1024, 1);
+    bridge_->ProcessCompletedUploads(1);
+
+    EXPECT_EQ(callbackBytes, 10 * 1024 * 1024);
+}
+
+TEST_F(BudgetBridgeTest, SetStagingQuotaLimit) {
+    // Initially 256 MB
+    EXPECT_EQ(bridge_->GetAvailableStagingQuota(), 256 * 1024 * 1024);
+
+    // Increase to 512 MB
+    bridge_->SetStagingQuotaLimit(512 * 1024 * 1024);
+
+    // Note: Config update but available quota tracks against used
+    auto config = bridge_->GetConfig();
+    EXPECT_EQ(config.maxStagingQuota, 512 * 1024 * 1024);
+}
+
+TEST_F(BudgetBridgeTest, MaxPendingUploadsDropsOldest) {
+    // Create bridge with small max pending limit
+    BudgetBridge::Config config{};
+    config.maxStagingQuota = 256 * 1024 * 1024;
+    config.maxPendingUploads = 3;
+
+    auto testBridge = std::make_unique<BudgetBridge>(
+        hostBudget_.get(), deviceBudget_.get(), config);
+
+    // Reserve quota for 4 uploads
+    testBridge->ReserveStagingQuota(4 * 1024 * 1024);
+
+    // Record 4 uploads (limit is 3)
+    testBridge->RecordUpload(1024 * 1024, 1);
+    testBridge->RecordUpload(1024 * 1024, 2);
+    testBridge->RecordUpload(1024 * 1024, 3);
+    testBridge->RecordUpload(1024 * 1024, 4);  // Should drop oldest
+
+    EXPECT_EQ(testBridge->GetPendingUploadCount(), 3);
+    // Oldest (fence 1) was dropped and its staging released
+    EXPECT_EQ(testBridge->GetPendingUploadBytes(), 3 * 1024 * 1024);
+}
+
+TEST_F(BudgetBridgeTest, ConcurrentStagingReservation) {
+    constexpr int numThreads = 4;
+    constexpr int reservationsPerThread = 50;
+    constexpr uint64_t reserveSize = 1024 * 1024;  // 1 MB
+
+    std::atomic<int> successCount{0};
+    std::atomic<int> failCount{0};
+
+    std::vector<std::thread> threads;
+    for (int t = 0; t < numThreads; ++t) {
+        threads.emplace_back([this, &successCount, &failCount]() {
+            for (int i = 0; i < reservationsPerThread; ++i) {
+                if (bridge_->ReserveStagingQuota(reserveSize)) {
+                    successCount.fetch_add(1, std::memory_order_relaxed);
+                    bridge_->ReleaseStagingQuota(reserveSize);
+                } else {
+                    failCount.fetch_add(1, std::memory_order_relaxed);
+                }
+            }
+        });
+    }
+
+    for (auto& t : threads) {
+        t.join();
+    }
+
+    // After all threads, staging should be 0
+    EXPECT_EQ(bridge_->GetStagingQuotaUsed(), 0);
+    EXPECT_GT(successCount.load(), 0);
+}
+
+TEST_F(BudgetBridgeTest, CreateWithNullManagers) {
+    // Bridge should work without host/device managers (standalone mode)
+    BudgetBridge::Config config{};
+    config.maxStagingQuota = 100 * 1024 * 1024;
+
+    BudgetBridge standaloneBridge(nullptr, nullptr, config);
+
+    EXPECT_TRUE(standaloneBridge.ReserveStagingQuota(10 * 1024 * 1024));
+    EXPECT_EQ(standaloneBridge.GetStagingQuotaUsed(), 10 * 1024 * 1024);
+
+    standaloneBridge.ReleaseStagingQuota(10 * 1024 * 1024);
+    EXPECT_EQ(standaloneBridge.GetStagingQuotaUsed(), 0);
 }
 
 // ============================================================================

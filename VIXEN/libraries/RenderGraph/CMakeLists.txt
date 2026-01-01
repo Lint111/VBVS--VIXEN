@@ -93,6 +93,7 @@ set(RENDERGRAPH_DATA_NODE_CONFIGS
 # ============================================================================
 
 set(RENDERGRAPH_CORE_HEADERS
+    include/Core/BudgetBridge.h
     include/Core/ComputePerformanceLogger.h
     include/Core/DeferredDestruction.h
     include/Core/DeviceBudgetManager.h
@@ -131,6 +132,7 @@ set(RENDERGRAPH_DATA_CORE_SOURCES
 )
 
 set(RENDERGRAPH_CORE_SOURCES
+    src/Core/BudgetBridge.cpp
     src/Core/DeviceBudgetManager.cpp
     src/Core/DirectAllocator.cpp
     src/Core/GPUPerformanceLogger.cpp
