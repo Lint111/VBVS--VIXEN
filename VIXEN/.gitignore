@@ -137,4 +137,22 @@ benchmark_results_test/
 # any device specific cacher folders
 **/cache/devices/
 
+# Microsoft Office temporary files
+~$*.docx
+~$*.doc
+~$*.xlsx
+~$*.xls
+~$*.pptx
+
+# Backup files (keep local only)
+*-BACKUP.docx
+*-BACKUP.xlsx
+
+# Generated submission PDFs
+GW25*_Draft.pdf
+GW25*.pdf
+
+# Working notes (local only)
+PROPOSED-PAPER-IMPROVEMENTS.md
+
 
