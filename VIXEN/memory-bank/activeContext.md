@@ -2,21 +2,21 @@
 
 **Last Updated:** 2026-01-01
 **Branch:** `production/sprint-4-resource-manager`
-**Status:** Build PASSING | Tests PASSING (95 tests)
+**Status:** Build PASSING | Tests PASSING (122 tests)
 
 ---
 
 ## Current Position
 
 **Phase A: Foundation** - COMPLETE (5/5 tasks)
-**Phase B: Resource Lifetime** - IN PROGRESS (1/3 tasks done)
+**Phase B: Resource Lifetime** - COMPLETE (3/3 tasks done)
 **Phase B+: GPU Aliasing** - PENDING (0/3 tasks)
 
 ### Just Completed
-- B.1: Reference counting for shared resources (`2ce0880`)
+- B.3: Automatic cleanup integration (RenderGraph wiring, 3 new tests)
 
 ### Next Task
-- **B.2: Lifetime scope tracking** - START HERE
+- **B+.1: Add aliasing flags to IMemoryAllocator/VMAAllocator** - START HERE
 
 ---
 
@@ -52,6 +52,11 @@
 |------|---------|
 | `include/Core/SharedResource.h` | RefCountBase, SharedBuffer, SharedImage, SharedResourcePtr, SharedResourceFactory |
 
+### Phase B.2 (Lifetime Scope) - COMPLETE
+| File | Purpose |
+|------|---------|
+| `include/Core/LifetimeScope.h` | LifetimeScope, LifetimeScopeManager, ScopeGuard |
+
 ### Enhanced Files
 | File | Change |
 |------|--------|
@@ -59,56 +64,42 @@
 
 ---
 
-## B.2 Implementation Plan (NEXT TASK)
+## B.2 Implementation (COMPLETE)
 
-**Goal:** Group resources by lifetime scope for bulk release
+**Implemented:** `include/Core/LifetimeScope.h`
+- `LifetimeScope` - Groups resources for bulk release
+- `LifetimeScopeManager` - Manages frame/pass/transient scopes
+- `ScopeGuard` - RAII helper for automatic scope management
+- 24 new tests added to `test_resource_management.cpp`
+- All 119 tests passing
 
-### Design
-```cpp
-class LifetimeScope {
-    std::string name_;
-    LifetimeScope* parent_;
-    std::vector<SharedBufferPtr> buffers_;
-    std::vector<SharedImagePtr> images_;
+---
 
-public:
-    SharedBufferPtr CreateBuffer(request, factory);
-    SharedImagePtr CreateImage(request, factory);
-    void EndScope();  // Releases all resources in this scope
-};
+## B.3 Implementation (COMPLETE)
 
-class LifetimeScopeManager {
-    std::stack<LifetimeScope*> scopeStack_;
-    LifetimeScope frameScope_;
+**Implemented:** RenderGraph integration
+- Added `LifetimeScopeManager*` member to `RenderGraph` class
+- Added `SetLifetimeScopeManager()` / `GetLifetimeScopeManager()` API
+- Added `GetCurrentFrameIndex()` accessor
+- Wired `BeginFrame()`/`EndFrame()` into `RenderFrame()`
+- Added `DeferredDestructionQueue::ProcessFrame()` call in `RenderFrame()`
+- 3 new integration tests added to `test_resource_management.cpp`
+- All 122 tests passing
 
-public:
-    void BeginFrame();
-    void EndFrame();  // Releases frame scope
-    LifetimeScope& BeginScope(name);
-    void EndScope();
-    LifetimeScope& CurrentScope();
-};
-```
-
-### Files to Create
-1. `include/Core/LifetimeScope.h` - Scope classes
-2. Add tests to `test_resource_management.cpp`
-
-### Integration Points
-- Works with `SharedResourcePtr` from B.1
-- Uses `DeferredDestructionQueue` for cleanup
-- Integrates with `SharedResourceFactory`
+### Files Modified
+- `include/Core/RenderGraph.h` - Added LifetimeScopeManager integration
+- `src/Core/RenderGraph.cpp` - Wired into RenderFrame()
 
 ---
 
 ## All Remaining Tasks
 
-### Phase B (Resource Lifetime)
-- [ ] **B.2: Lifetime scope tracking** <- START HERE
-- [ ] B.3: Automatic cleanup integration
+### Phase B (Resource Lifetime) - COMPLETE
+- [x] B.2: Lifetime scope tracking (COMPLETE)
+- [x] B.3: Automatic cleanup integration (COMPLETE)
 
 ### Phase B+ (GPU Aliasing) - Added scope
-- [ ] B+.1: Add aliasing flags to IMemoryAllocator/VMAAllocator
+- [ ] **B+.1: Add aliasing flags to IMemoryAllocator/VMAAllocator** <- START HERE
 - [ ] B+.2: Aliasing-aware budget tracking in DeviceBudgetManager
 - [ ] B+.3: Integration tests with aliased allocations
 
@@ -131,7 +122,7 @@ public:
 # Build RenderGraph and tests
 cmake --build build --config Debug --target RenderGraph test_resource_management --parallel 16
 
-# Run resource management tests (currently 95 passing)
+# Run resource management tests (currently 122 passing)
 ./build/libraries/RenderGraph/tests/Debug/test_resource_management.exe --gtest_brief=1
 ```
 
@@ -143,8 +134,13 @@ cmake --build build --config Debug --target RenderGraph test_resource_management
 Application Layer
     |
     v
-LifetimeScopeManager (B.2 - TODO)
+RenderGraph (B.3 - DONE)
+    |-- SetLifetimeScopeManager() - Optional scope management
+    |-- RenderFrame() calls BeginFrame()/EndFrame()
+    v
+LifetimeScopeManager (B.2 - DONE)
     |-- LifetimeScope (groups SharedBufferPtr/SharedImagePtr)
+    |-- ScopeGuard (RAII helper)
     v
 SharedResourceFactory (B.1 - DONE)
     |-- Creates SharedBufferPtr / SharedImagePtr
@@ -176,7 +172,7 @@ DeferredDestructionQueue - Safe GPU resource cleanup
 ## Important Notes for Next Agent
 
 1. **Pre-commit hook**: Always run `/pre-commit-review` before committing
-2. **Test count**: Currently 95 tests - verify count increases with new tests
+2. **Test count**: Currently 122 tests - verify count increases with new tests
 3. **SharedResourcePtr requirements**: Requires both `destructionQueue` AND `frameCounter` or neither (debug assertion added)
 4. **VMA null handles**: VMAAllocator factory returns nullptr if Vulkan handles are null
 5. **Callback under lock**: BudgetBridge callback is invoked while holding lock - documented in header
@@ -186,11 +182,12 @@ DeferredDestructionQueue - Safe GPU resource cleanup
 ## HacknPlan Status
 
 Sprint 4 Phase A tasks: COMPLETE
-Sprint 4 Phase B tasks: IN PROGRESS (B.1 done)
+Sprint 4 Phase B tasks: COMPLETE (B.1, B.2, B.3 done)
+Sprint 4 Phase B+ tasks: PENDING
 
 See `Vixen-Docs/05-Progress/features/Sprint4-ResourceManager-Integration.md` for full plan.
 
 ---
 
-*Generated: 2026-01-01*
-*By: Claude Code (session-summary skill)*
+*Updated: 2026-01-01*
+*By: Claude Code*

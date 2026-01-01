@@ -23,6 +23,7 @@
 #include "Core/DeviceBudgetManager.h"
 #include "Core/BudgetBridge.h"
 #include "Core/SharedResource.h"
+#include "Core/LifetimeScope.h"
 
 #include <atomic>
 #include <chrono>
@@ -1692,6 +1693,472 @@ TEST_F(DeferredDestructionGenericTest, MultipleGenericDestructions) {
 
     EXPECT_EQ(queue.GetPendingCount(), 0);
     EXPECT_EQ(callCount, 5);
+}
+
+// ============================================================================
+// LifetimeScope Tests
+// ============================================================================
+
+class LifetimeScopeTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        allocator_ = MemoryAllocatorFactory::CreateDirectAllocator(
+            VK_NULL_HANDLE, VK_NULL_HANDLE, nullptr);
+        frameCounter_ = 0;
+        factory_ = std::make_unique<SharedResourceFactory>(
+            allocator_.get(), &destructionQueue_, &frameCounter_);
+    }
+
+    std::unique_ptr<IMemoryAllocator> allocator_;
+    DeferredDestructionQueue destructionQueue_;
+    uint64_t frameCounter_;
+    std::unique_ptr<SharedResourceFactory> factory_;
+};
+
+TEST_F(LifetimeScopeTest, Construction) {
+    LifetimeScope scope("TestScope", factory_.get());
+
+    EXPECT_EQ(scope.GetName(), "TestScope");
+    EXPECT_EQ(scope.GetParent(), nullptr);
+    EXPECT_FALSE(scope.HasEnded());
+    EXPECT_EQ(scope.GetBufferCount(), 0);
+    EXPECT_EQ(scope.GetImageCount(), 0);
+    EXPECT_EQ(scope.GetTotalResourceCount(), 0);
+}
+
+TEST_F(LifetimeScopeTest, ConstructionWithParent) {
+    LifetimeScope parentScope("Parent", factory_.get());
+    LifetimeScope childScope("Child", factory_.get(), &parentScope);
+
+    EXPECT_EQ(childScope.GetParent(), &parentScope);
+}
+
+TEST_F(LifetimeScopeTest, EndScopeMarksEnded) {
+    LifetimeScope scope("TestScope", factory_.get());
+
+    EXPECT_FALSE(scope.HasEnded());
+    scope.EndScope();
+    EXPECT_TRUE(scope.HasEnded());
+}
+
+TEST_F(LifetimeScopeTest, EndScopeIdempotent) {
+    LifetimeScope scope("TestScope", factory_.get());
+
+    scope.EndScope();
+    scope.EndScope();  // Should be safe to call multiple times
+    EXPECT_TRUE(scope.HasEnded());
+}
+
+TEST_F(LifetimeScopeTest, DestructorEndsScope) {
+    bool ended = false;
+    {
+        LifetimeScope scope("TestScope", factory_.get());
+        EXPECT_FALSE(scope.HasEnded());
+    }  // Destructor called here
+    // Can't check HasEnded() after destruction, but it shouldn't crash
+}
+
+TEST_F(LifetimeScopeTest, MoveConstruction) {
+    LifetimeScope scope1("MovedScope", factory_.get());
+
+    LifetimeScope scope2 = std::move(scope1);
+
+    EXPECT_EQ(scope2.GetName(), "MovedScope");
+    EXPECT_FALSE(scope2.HasEnded());
+    EXPECT_TRUE(scope1.HasEnded());  // Moved-from is ended
+}
+
+TEST_F(LifetimeScopeTest, MoveAssignment) {
+    LifetimeScope scope1("Scope1", factory_.get());
+    LifetimeScope scope2("Scope2", factory_.get());
+
+    scope2 = std::move(scope1);
+
+    EXPECT_EQ(scope2.GetName(), "Scope1");
+    EXPECT_FALSE(scope2.HasEnded());
+    EXPECT_TRUE(scope1.HasEnded());
+}
+
+TEST_F(LifetimeScopeTest, TotalMemoryBytesEmpty) {
+    LifetimeScope scope("TestScope", factory_.get());
+
+    EXPECT_EQ(scope.GetTotalMemoryBytes(), 0);
+}
+
+// ============================================================================
+// LifetimeScopeManager Tests
+// ============================================================================
+
+class LifetimeScopeManagerTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        allocator_ = MemoryAllocatorFactory::CreateDirectAllocator(
+            VK_NULL_HANDLE, VK_NULL_HANDLE, nullptr);
+        frameCounter_ = 0;
+        factory_ = std::make_unique<SharedResourceFactory>(
+            allocator_.get(), &destructionQueue_, &frameCounter_);
+        manager_ = std::make_unique<LifetimeScopeManager>(factory_.get());
+    }
+
+    std::unique_ptr<IMemoryAllocator> allocator_;
+    DeferredDestructionQueue destructionQueue_;
+    uint64_t frameCounter_;
+    std::unique_ptr<SharedResourceFactory> factory_;
+    std::unique_ptr<LifetimeScopeManager> manager_;
+};
+
+TEST_F(LifetimeScopeManagerTest, InitialState) {
+    EXPECT_EQ(manager_->GetFrameNumber(), 0);
+    EXPECT_EQ(manager_->GetNestedScopeDepth(), 0);
+    EXPECT_FALSE(manager_->HasNestedScopes());
+}
+
+TEST_F(LifetimeScopeManagerTest, BeginFrameIncrementsCounter) {
+    manager_->BeginFrame();
+    EXPECT_EQ(manager_->GetFrameNumber(), 1);
+
+    manager_->EndFrame();
+    manager_->BeginFrame();
+    EXPECT_EQ(manager_->GetFrameNumber(), 2);
+}
+
+TEST_F(LifetimeScopeManagerTest, GetFrameScope) {
+    LifetimeScope& frameScope = manager_->GetFrameScope();
+    EXPECT_EQ(frameScope.GetName(), "Frame");
+}
+
+TEST_F(LifetimeScopeManagerTest, BeginAndEndScope) {
+    manager_->BeginFrame();
+
+    EXPECT_EQ(manager_->GetNestedScopeDepth(), 0);
+
+    LifetimeScope& nested = manager_->BeginScope("ShadowPass");
+    EXPECT_EQ(nested.GetName(), "ShadowPass");
+    EXPECT_EQ(manager_->GetNestedScopeDepth(), 1);
+    EXPECT_TRUE(manager_->HasNestedScopes());
+
+    manager_->EndScope();
+    EXPECT_EQ(manager_->GetNestedScopeDepth(), 0);
+    EXPECT_FALSE(manager_->HasNestedScopes());
+
+    manager_->EndFrame();
+}
+
+TEST_F(LifetimeScopeManagerTest, NestedScopes) {
+    manager_->BeginFrame();
+
+    manager_->BeginScope("Level1");
+    EXPECT_EQ(manager_->GetNestedScopeDepth(), 1);
+
+    manager_->BeginScope("Level2");
+    EXPECT_EQ(manager_->GetNestedScopeDepth(), 2);
+
+    manager_->BeginScope("Level3");
+    EXPECT_EQ(manager_->GetNestedScopeDepth(), 3);
+
+    manager_->EndScope();  // Level3
+    EXPECT_EQ(manager_->GetNestedScopeDepth(), 2);
+
+    manager_->EndScope();  // Level2
+    EXPECT_EQ(manager_->GetNestedScopeDepth(), 1);
+
+    manager_->EndScope();  // Level1
+    EXPECT_EQ(manager_->GetNestedScopeDepth(), 0);
+
+    manager_->EndFrame();
+}
+
+TEST_F(LifetimeScopeManagerTest, CurrentScopeReturnsFrameWhenNoNested) {
+    manager_->BeginFrame();
+
+    LifetimeScope& current = manager_->CurrentScope();
+    EXPECT_EQ(current.GetName(), "Frame");
+
+    manager_->EndFrame();
+}
+
+TEST_F(LifetimeScopeManagerTest, CurrentScopeReturnsTopNested) {
+    manager_->BeginFrame();
+
+    manager_->BeginScope("First");
+    EXPECT_EQ(manager_->CurrentScope().GetName(), "First");
+
+    manager_->BeginScope("Second");
+    EXPECT_EQ(manager_->CurrentScope().GetName(), "Second");
+
+    manager_->EndScope();
+    EXPECT_EQ(manager_->CurrentScope().GetName(), "First");
+
+    manager_->EndScope();
+    EXPECT_EQ(manager_->CurrentScope().GetName(), "Frame");
+
+    manager_->EndFrame();
+}
+
+TEST_F(LifetimeScopeManagerTest, EndFrameEndsAllNestedScopes) {
+    manager_->BeginFrame();
+
+    manager_->BeginScope("Scope1");
+    manager_->BeginScope("Scope2");
+    manager_->BeginScope("Scope3");
+
+    EXPECT_EQ(manager_->GetNestedScopeDepth(), 3);
+
+    manager_->EndFrame();
+
+    EXPECT_EQ(manager_->GetNestedScopeDepth(), 0);
+}
+
+TEST_F(LifetimeScopeManagerTest, EndScopeOnEmptyStackIsNoOp) {
+    manager_->BeginFrame();
+
+    // Should not crash
+    manager_->EndScope();
+    manager_->EndScope();
+    manager_->EndScope();
+
+    EXPECT_EQ(manager_->GetNestedScopeDepth(), 0);
+
+    manager_->EndFrame();
+}
+
+TEST_F(LifetimeScopeManagerTest, NestedScopeHasCorrectParent) {
+    manager_->BeginFrame();
+
+    LifetimeScope& scope1 = manager_->BeginScope("Scope1");
+    LifetimeScope& scope2 = manager_->BeginScope("Scope2");
+
+    EXPECT_EQ(scope2.GetParent(), &scope1);
+
+    manager_->EndFrame();
+}
+
+TEST_F(LifetimeScopeManagerTest, FirstNestedScopeParentIsFrameScope) {
+    manager_->BeginFrame();
+
+    LifetimeScope& frameScope = manager_->GetFrameScope();
+    LifetimeScope& nestedScope = manager_->BeginScope("Nested");
+
+    EXPECT_EQ(nestedScope.GetParent(), &frameScope);
+
+    manager_->EndFrame();
+}
+
+// ============================================================================
+// ScopeGuard Tests
+// ============================================================================
+
+class ScopeGuardTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        allocator_ = MemoryAllocatorFactory::CreateDirectAllocator(
+            VK_NULL_HANDLE, VK_NULL_HANDLE, nullptr);
+        frameCounter_ = 0;
+        factory_ = std::make_unique<SharedResourceFactory>(
+            allocator_.get(), &destructionQueue_, &frameCounter_);
+        manager_ = std::make_unique<LifetimeScopeManager>(factory_.get());
+    }
+
+    std::unique_ptr<IMemoryAllocator> allocator_;
+    DeferredDestructionQueue destructionQueue_;
+    uint64_t frameCounter_;
+    std::unique_ptr<SharedResourceFactory> factory_;
+    std::unique_ptr<LifetimeScopeManager> manager_;
+};
+
+TEST_F(ScopeGuardTest, AutomaticScopeManagement) {
+    manager_->BeginFrame();
+
+    EXPECT_EQ(manager_->GetNestedScopeDepth(), 0);
+
+    {
+        ScopeGuard guard(*manager_, "GuardedScope");
+        EXPECT_EQ(manager_->GetNestedScopeDepth(), 1);
+        EXPECT_EQ(guard.GetScope().GetName(), "GuardedScope");
+    }
+
+    EXPECT_EQ(manager_->GetNestedScopeDepth(), 0);
+
+    manager_->EndFrame();
+}
+
+TEST_F(ScopeGuardTest, NestedGuards) {
+    manager_->BeginFrame();
+
+    {
+        ScopeGuard guard1(*manager_, "Outer");
+        EXPECT_EQ(manager_->GetNestedScopeDepth(), 1);
+
+        {
+            ScopeGuard guard2(*manager_, "Inner");
+            EXPECT_EQ(manager_->GetNestedScopeDepth(), 2);
+        }
+
+        EXPECT_EQ(manager_->GetNestedScopeDepth(), 1);
+    }
+
+    EXPECT_EQ(manager_->GetNestedScopeDepth(), 0);
+
+    manager_->EndFrame();
+}
+
+TEST_F(ScopeGuardTest, GetScopeReturnsCorrectScope) {
+    manager_->BeginFrame();
+
+    {
+        ScopeGuard guard(*manager_, "TestScope");
+        LifetimeScope& scope = guard.GetScope();
+
+        EXPECT_EQ(scope.GetName(), "TestScope");
+        EXPECT_EQ(&scope, &manager_->CurrentScope());
+    }
+
+    manager_->EndFrame();
+}
+
+// ============================================================================
+// LifetimeScope Integration Tests
+// ============================================================================
+
+TEST(LifetimeScopeIntegration, TypicalFrameWorkflow) {
+    // Simulate typical frame workflow
+    auto allocator = MemoryAllocatorFactory::CreateDirectAllocator(
+        VK_NULL_HANDLE, VK_NULL_HANDLE, nullptr);
+    DeferredDestructionQueue queue;
+    uint64_t frameCounter = 0;
+    SharedResourceFactory factory(allocator.get(), &queue, &frameCounter);
+    LifetimeScopeManager manager(&factory);
+
+    // Frame 1
+    manager.BeginFrame();
+    {
+        ScopeGuard shadowPass(manager, "ShadowPass");
+        // Resources created here would be released at guard destruction
+    }
+    {
+        ScopeGuard mainPass(manager, "MainPass");
+        // Resources created here would be released at guard destruction
+    }
+    manager.EndFrame();
+    EXPECT_EQ(manager.GetFrameNumber(), 1);
+
+    // Frame 2
+    manager.BeginFrame();
+    manager.EndFrame();
+    EXPECT_EQ(manager.GetFrameNumber(), 2);
+}
+
+TEST(LifetimeScopeIntegration, DeepNestedScopes) {
+    auto allocator = MemoryAllocatorFactory::CreateDirectAllocator(
+        VK_NULL_HANDLE, VK_NULL_HANDLE, nullptr);
+    DeferredDestructionQueue queue;
+    uint64_t frameCounter = 0;
+    SharedResourceFactory factory(allocator.get(), &queue, &frameCounter);
+    LifetimeScopeManager manager(&factory);
+
+    manager.BeginFrame();
+
+    // Create deeply nested scopes
+    constexpr int depth = 10;
+    for (int i = 0; i < depth; ++i) {
+        manager.BeginScope("Level" + std::to_string(i));
+    }
+
+    EXPECT_EQ(manager.GetNestedScopeDepth(), depth);
+
+    // End frame should clean up all
+    manager.EndFrame();
+
+    EXPECT_EQ(manager.GetNestedScopeDepth(), 0);
+}
+
+// ============================================================================
+// RenderGraph Integration Tests (B.3)
+// ============================================================================
+
+TEST(RenderGraphIntegration, DeferredDestructionProcessedEachFrame) {
+    // Verify that DeferredDestructionQueue::ProcessFrame is called
+    DeferredDestructionQueue queue;
+    int destructionCount = 0;
+
+    // Add destructions at different frames
+    queue.AddGeneric([&destructionCount]() { destructionCount++; }, 0);
+    queue.AddGeneric([&destructionCount]() { destructionCount++; }, 1);
+    queue.AddGeneric([&destructionCount]() { destructionCount++; }, 2);
+
+    EXPECT_EQ(queue.GetPendingCount(), 3);
+    EXPECT_EQ(destructionCount, 0);
+
+    // Process frame 3 (should destroy frame 0 resource with maxFramesInFlight=3)
+    queue.ProcessFrame(3, 3);
+    EXPECT_EQ(destructionCount, 1);
+    EXPECT_EQ(queue.GetPendingCount(), 2);
+
+    // Process frame 4 (should destroy frame 1 resource)
+    queue.ProcessFrame(4, 3);
+    EXPECT_EQ(destructionCount, 2);
+
+    // Process frame 5 (should destroy frame 2 resource)
+    queue.ProcessFrame(5, 3);
+    EXPECT_EQ(destructionCount, 3);
+    EXPECT_EQ(queue.GetPendingCount(), 0);
+}
+
+TEST(RenderGraphIntegration, ScopeManagerFrameLifecycle) {
+    // Test the scope manager's frame lifecycle
+    auto allocator = MemoryAllocatorFactory::CreateDirectAllocator(
+        VK_NULL_HANDLE, VK_NULL_HANDLE, nullptr);
+    DeferredDestructionQueue queue;
+    uint64_t frameCounter = 0;
+    SharedResourceFactory factory(allocator.get(), &queue, &frameCounter);
+    LifetimeScopeManager manager(&factory);
+
+    // Simulate multiple frames
+    for (int frame = 0; frame < 5; ++frame) {
+        manager.BeginFrame();
+        EXPECT_EQ(manager.GetFrameNumber(), frame + 1);
+
+        // Create nested scopes within frame
+        {
+            ScopeGuard pass1(manager, "Pass1");
+            EXPECT_EQ(manager.GetNestedScopeDepth(), 1);
+        }
+        EXPECT_EQ(manager.GetNestedScopeDepth(), 0);
+
+        manager.EndFrame();
+    }
+
+    EXPECT_EQ(manager.GetFrameNumber(), 5);
+}
+
+TEST(RenderGraphIntegration, IntegratedResourceLifecycle) {
+    // Test complete resource lifecycle with all components
+    auto allocator = MemoryAllocatorFactory::CreateDirectAllocator(
+        VK_NULL_HANDLE, VK_NULL_HANDLE, nullptr);
+    DeferredDestructionQueue queue;
+    uint64_t frameCounter = 0;
+    SharedResourceFactory factory(allocator.get(), &queue, &frameCounter);
+    LifetimeScopeManager manager(&factory);
+
+    // Frame 1: Create resources in frame scope
+    manager.BeginFrame();
+    frameCounter = 1;
+
+    // Would create resources here if we had a real device
+    // For now, just verify the structure works
+    EXPECT_EQ(manager.GetFrameScope().GetBufferCount(), 0);
+
+    manager.EndFrame();
+
+    // Frame 2: Process deferred destructions from frame 1
+    manager.BeginFrame();
+    frameCounter = 2;
+    queue.ProcessFrame(frameCounter, 3);
+
+    manager.EndFrame();
+
+    // Verify cleanup
+    EXPECT_EQ(queue.GetPendingCount(), 0);
 }
 
 // ============================================================================

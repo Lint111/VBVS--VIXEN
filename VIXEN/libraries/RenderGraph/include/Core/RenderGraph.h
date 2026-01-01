@@ -9,6 +9,7 @@
 #include "CleanupStack.h"
 #include "Core/ResourceDependencyTracker.h"
 #include "Core/DeferredDestruction.h"
+#include "Core/LifetimeScope.h"
 #include "EventTypes/RenderGraphEvents.h"
 #include "MessageBus.h"
 #include "Message.h"
@@ -390,6 +391,43 @@ public:
     DeferredDestructionQueue* GetDeferredDestructionQueue() { return &deferredDestruction; }
     const DeferredDestructionQueue* GetDeferredDestructionQueue() const { return &deferredDestruction; }
 
+    // ====== Lifetime Scope Management (Sprint 4 Phase B) ======
+
+    /**
+     * @brief Set the lifetime scope manager for per-frame resource management
+     *
+     * When set, the RenderGraph will call BeginFrame()/EndFrame() on the manager
+     * during RenderFrame(), enabling automatic per-frame resource cleanup.
+     *
+     * @param manager Pointer to LifetimeScopeManager (must outlive RenderGraph)
+     *
+     * Example:
+     * ```cpp
+     * // Application setup
+     * SharedResourceFactory factory(&allocator, &queue, &frameCounter);
+     * LifetimeScopeManager scopeManager(&factory);
+     * renderGraph->SetLifetimeScopeManager(&scopeManager);
+     *
+     * // In render loop - automatic BeginFrame/EndFrame
+     * renderGraph->RenderFrame();  // Scope management happens internally
+     * ```
+     */
+    void SetLifetimeScopeManager(LifetimeScopeManager* manager) { scopeManager_ = manager; }
+
+    /**
+     * @brief Get the current lifetime scope manager
+     * @return Pointer to LifetimeScopeManager, or nullptr if not set
+     */
+    LifetimeScopeManager* GetLifetimeScopeManager() { return scopeManager_; }
+    const LifetimeScopeManager* GetLifetimeScopeManager() const { return scopeManager_; }
+
+    /**
+     * @brief Get the current frame index
+     *
+     * Useful for frame-based resource tracking and deferred destruction.
+     */
+    uint64_t GetCurrentFrameIndex() const { return globalFrameIndex; }
+
     /**
      * @brief Mark a node as needing recompilation
      * 
@@ -531,6 +569,9 @@ private:
 
     // Lifecycle hook system
     GraphLifecycleHooks lifecycleHooks;
+
+    // Sprint 4 Phase B: Lifetime scope management (optional, externally provided)
+    LifetimeScopeManager* scopeManager_ = nullptr;
 
     // Compilation phases
     void AnalyzeDependencies();

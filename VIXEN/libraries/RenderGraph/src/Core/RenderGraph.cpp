@@ -567,6 +567,19 @@ VkResult RenderGraph::RenderFrame() {
         return VK_SUCCESS;
     }
 
+    // ========================================================================
+    // Sprint 4 Phase B: Per-frame resource lifecycle management
+    // ========================================================================
+
+    // Process deferred destructions from previous frames
+    // Resources queued N frames ago are now safe to destroy
+    deferredDestruction.ProcessFrame(globalFrameIndex);
+
+    // Begin new frame scope if lifetime manager is configured
+    if (scopeManager_) {
+        scopeManager_->BeginFrame();
+    }
+
     // The render graph orchestrates the frame by calling specialized nodes:
     //
     // 1. SwapChainNode - Acquires next swapchain image (internally manages semaphores)
@@ -618,6 +631,18 @@ VkResult RenderGraph::RenderFrame() {
             }
         }
     }
+
+    // ========================================================================
+    // Sprint 4 Phase B: End frame scope and cleanup
+    // ========================================================================
+
+    // End frame scope - releases all frame-scoped resources
+    if (scopeManager_) {
+        scopeManager_->EndFrame();
+    }
+
+    // Increment frame counter for next frame
+    globalFrameIndex++;
 
     return VK_SUCCESS;
 }
