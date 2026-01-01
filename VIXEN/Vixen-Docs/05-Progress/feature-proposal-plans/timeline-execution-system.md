@@ -1,10 +1,16 @@
 ---
-tags: [feature, proposal, architecture]
+tags: [feature, proposal, architecture, archived]
 created: 2025-12-30
-status: proposal
+status: archived
 priority: critical
 complexity: high
+consolidated-into: Production-Roadmap-2026.md
 ---
+
+> [!NOTE] Consolidated
+> This proposal has been consolidated into the master roadmap.
+> See: [[Production-Roadmap-2026]] for implementation schedule and prioritization.
+> This file is retained for detailed implementation notes.
 
 # Feature Proposal: Timeline Execution System & Composable Application State
 

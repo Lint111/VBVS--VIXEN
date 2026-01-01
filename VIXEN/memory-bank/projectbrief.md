@@ -6,10 +6,10 @@ VIXEN - Vulkan Interactive eXample Engine
 ## Overview
 A learning-focused Vulkan graphics engine implementing a **graph-based rendering architecture** on Windows. The project has evolved from chapter-based Vulkan fundamentals to a production-quality render graph system with compile-time type safety, resource variant architecture, and event-driven invalidation.
 
-**NEW (November 2025)**: VIXEN is now being extended as a **voxel ray tracing research platform** for comparative pipeline analysis, targeting academic paper publication (May 2026).
+**STATUS (January 2026)**: VIXEN has entered **PRODUCTION PHASE** with a comprehensive 11-sprint development roadmap totaling 1,422 hours of planned work. Research paper complete (V4), now tracked in HacknPlan project 230809 with 107 tasks across boards 651780-651790.
 
-## Current Focus: RenderGraph System
-The core architecture is a **node-based render graph** where rendering operations are modular, composable nodes connected into a directed acyclic graph (DAG).
+## Current Focus: Production Development
+The core architecture is a **node-based render graph** where rendering operations are modular, composable nodes connected into a directed acyclic graph (DAG). Active development follows the **Production-Roadmap-2026.md** master document.
 
 ### Key Achievements
 1. **Variant Resource System** - 29+ Vulkan types with macro-based registry, zero-overhead type safety
@@ -34,15 +34,19 @@ The core architecture is a **node-based render graph** where rendering operation
 4. **Performance** - Zero-overhead abstractions, cache-friendly compilation
 5. **Learning Platform** - Document architectural decisions for educational value
 
-### Research Goals (NEW - November 2025)
-6. **Comparative Analysis** - Measure performance differences between 4 ray tracing/marching pipelines
-7. **Academic Contribution** - Publish findings in graphics/rendering conference (May 2026 target)
-8. **Reproducible Results** - Automated testing framework for 180 configuration matrix
+### Research Goals (COMPLETE - December 2025)
+6. **Comparative Analysis** - COMPLETE: 1,125 tests across 6 GPUs comparing 4 pipelines
+7. **Academic Contribution** - Paper draft V4 complete, awaiting feedback (Sprints 2.1-2.3)
+8. **Reproducible Results** - Automated 180-configuration test matrix COMPLETE
 9. **Open Source Research** - All code, data, and analysis tools publicly available
 
-**Research Question**: How do different Vulkan pipeline architectures (compute shader ray marching, fragment shader ray marching, hardware ray tracing, hybrid) affect rendering performance, GPU bandwidth utilization, and scalability for data-driven voxel rendering?
+**Research Paper Status**: V4 draft complete with 1,125 benchmark tests across 6 GPUs. HW RT achieves 2.1-3.6x speedup over compute. 3 of 5 original hypotheses contradicted by data.
 
-**Bibliography**: 24 research papers compiled in `C:\Users\liory\Docs\Performance comparison on rendering methods for voxel data.pdf` covering voxel rendering, ray tracing, sparse voxel octrees, and GPU optimization techniques.
+### Production Goals (NEW - January 2026)
+10. **Timeline Execution System** - Multi-dispatch, wave scheduling, graph-in-graph composition (Q2-Q4 2026)
+11. **Multi-GPU Support** - Distribute work across multiple GPUs with automatic load balancing
+12. **GaiaVoxelWorld Physics** - 100M voxel physics simulation with VR integration (Q1 2026 - Q1 2027)
+13. **Infrastructure Hardening** - Memory safety, build optimization, CashSystem robustness
 
 ## Scope
 ### Completed Systems ✅
@@ -62,25 +66,18 @@ The core architecture is a **node-based render graph** where rendering operation
 - **Synchronization** - Frame-in-flight, two-tier sync (fences/semaphores), present fences
 - **Phase G Complete** - SlotRole bitwise flags, deferred descriptor binding, generalized architecture
 
-### In Progress 🔨
-- **Phase K: Hardware Ray Tracing** - NEXT (VK_KHR_ray_tracing_pipeline)
-  - BLAS/TLAS acceleration structures
-  - Ray generation and closest hit shaders
-  - Performance comparison vs compute/fragment pipelines
+### In Progress 🔨 (Production Sprints)
+- **Sprint 4: Resource Manager Integration** - Board 651780 (15 tasks, 192h)
+- **Sprint 5: CashSystem Robustness** - Board 651783 (21 tasks, 148h)
+- See `Vixen-Docs/05-Progress/Production-Roadmap-2026.md` for complete sprint breakdown
 
-### Recently Completed ✅
-- **Phase J: Fragment Shader Pipeline** - COMPLETE (December 6, 2025)
-  - All 4 shader variants working (compute/fragment x compressed/uncompressed)
-  - Push constant support in GeometryRenderNode
-  - VoxelRayMarch_Compressed.frag created
-- **Phase H: Voxel Infrastructure** - COMPLETE (1,700 Mrays/sec achieved)
-  - Week 1: GaiaVoxelWorld, VoxelComponents, EntityBrickView, LaineKarrasOctree
-  - Week 2: GPUTimestampQuery, GPUPerformanceLogger, 8 shader bugs fixed
-  - Week 3: DXT Compression (5.3:1 reduction), Phase C bug fixes
-  - Week 4: Morton unification, SVOManager refactor, LOD system
-- **Phase I: Performance Profiling** - COMPLETE
-  - ProfilerSystem, BenchmarkRunner, MetricsExporter
-  - 131 profiler tests passing
+### Completed Research Phases ✅
+- **Phase K: Hardware Ray Tracing** - COMPLETE (December 2025)
+- **Phase L: Data Pipeline** - COMPLETE (1,125 tests collected)
+- **Research Paper V4** - COMPLETE (awaiting feedback)
+- **Sprints 1.1, 1.2, 2.1** - COMPLETE (Infrastructure Hardening + Benchmark Data)
+- **Sprint 2.2** - DEFERRED (Hybrid Pipeline not required for initial publication)
+- **Sprint 2.3** - AWAITING FEEDBACK (Paper submission pending review)
 
 ### Future Enhancements 🚀
 - **Parallelization** - Wave-based execution for multi-threaded rendering

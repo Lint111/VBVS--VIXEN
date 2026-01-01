@@ -119,6 +119,9 @@ build_*.txt
 final_build.txt
 app_output.txt
 vulkan_app_log.txt
+audit.log
+log.txt
+*.log
 nul
 temp/
 benchmark_results/

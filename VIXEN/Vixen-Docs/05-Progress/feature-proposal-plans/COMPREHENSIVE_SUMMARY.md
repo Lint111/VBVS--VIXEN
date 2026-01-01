@@ -1,8 +1,20 @@
+---
+tags: [feature, proposal, voxel, archived]
+created: 2026-01-01
+status: archived
+consolidated-into: Production-Roadmap-2026.md
+---
+
+> [!NOTE] Consolidated
+> This proposal has been consolidated into the master roadmap.
+> See: [[Production-Roadmap-2026]] for implementation schedule and prioritization.
+> This file is retained for detailed implementation notes.
+
 # GaiaVoxelWorld Backend Expansion - Comprehensive Summary
 
 **Date:** 2026-01-01
 **Version:** 2.4
-**Status:** Proposal Complete - Ready for Implementation
+**Status:** ARCHIVED - Consolidated into Production-Roadmap-2026.md
 
 ---
 

@@ -1,58 +1,76 @@
 # Active Context
 
-**Last Updated**: December 31, 2025
-**Current Focus**: Research Paper V4 Complete
+**Last Updated**: January 1, 2026
+**Current Focus**: Production Phase - 11 Sprint Roadmap
 
 ---
 
 ## Current State
 
-### Research Paper ✅ COMPLETE (V4)
+### Production Phase Entered
+
+VIXEN has transitioned from research/prototype phase to full production development.
 
 | Item | Value |
 |------|-------|
-| Document | `Vixen-Docs/03-Research/VIXEN-Research-Paper-Draft.md` |
-| Word Doc | `Vixen-Docs/03-Research/VIXEN-Research-Paper-V4.docx` |
-| Data Version | V4 (1125 tests, 6 GPUs) |
-| New GPU | RTX 3070 Laptop added |
-| Appendix Structure | Unified A-E naming |
+| Master Document | `Vixen-Docs/05-Progress/Production-Roadmap-2026.md` |
+| HacknPlan Project | 230809 |
+| Sprint Boards | 651780-651790 (11 boards) |
+| Total Tasks | 107 |
+| Total Effort | 1,422 hours |
 
-### Key Statistics (V4)
+### Sprint Status Summary
+
+| Sprint | Focus | Status |
+|--------|-------|--------|
+| 1.1 | Critical Bug Fixes | COMPLETE |
+| 1.2 | Build Optimization | COMPLETE |
+| 1.3 | CashSystem Robustness | Pending |
+| 2.1 | Benchmark Data Collection | COMPLETE |
+| 2.2 | Hybrid Pipeline | DEFERRED |
+| 2.3 | Paper Writing & Submission | AWAITING FEEDBACK |
+| 3.1-3.4 | Timeline Execution System | Q2-Q4 2026 |
+| 4.1-4.5 | GaiaVoxelWorld Physics | Q1 2026-Q1 2027 |
+
+### Research Paper (ARCHIVED CONTEXT)
 
 | Metric | Value |
 |--------|-------|
-| Total tests | 1125 |
-| GPUs tested | 6 |
-| HW RT mean/median | 1757 / 1699 FPS |
-| Compute mean/median | 485 / 223 FPS |
-| HW RT speedup | 2.1-3.6× |
-| HW RT cross-scene CV | 4.0% |
-| Compute cross-scene CV | 12.9% |
+| Document | `Vixen-Docs/03-Research/VIXEN-Research-Paper-V4.docx` |
+| Data Version | V4 (1,125 tests, 6 GPUs) |
+| Status | Draft complete, awaiting feedback |
+| HW RT speedup | 2.1-3.6x over compute |
 | Hypotheses contradicted | 3 of 5 |
 
 ---
 
-## Session Summary (Dec 31)
+## Active Workstreams
 
-### Accomplished
-1. ✅ Integrated RTX 3070 Laptop data (144 new tests)
-2. ✅ Regenerated all charts with V4 data
-3. ✅ Updated markdown draft with expanded sections 4.5-4.8
-4. ✅ Updated Word document with all V4 changes
-5. ✅ Unified appendix naming (Addendum → Appendix A-E)
-6. ✅ Added Appendix C: Benchmark Configuration
-7. ✅ Fixed figure numbering (9-12)
-8. ✅ Cleaned temp files and intermediate working files
-9. ✅ Updated .gitignore for Word temp files
+### Workstream 0: Resource Manager Integration (NEXT)
+- **Board**: 651780
+- **Goal**: Complete ResourceBudgetManager integration across all data flow
+- **Tasks**: 15 tasks, 192h estimated
 
-### Appendix Structure (Final)
-| Appendix | Content |
-|----------|---------|
-| A | Benchmark Evolution (V1 → V4) |
-| B | Critical Reflection |
-| C | Benchmark Configuration |
-| D | Scene Renders |
-| E | Glossary of Terms |
+### Workstream 1: Infrastructure Hardening (IN PROGRESS)
+- Sprint 1.1, 1.2: COMPLETE
+- Sprint 1.3 (CashSystem Robustness): PENDING
+- **Board**: 651783
+
+### Workstream 2: Research Publication (BLOCKED)
+- **Status**: Awaiting feedback on paper draft
+- **Next**: Revisions based on review, then submission
+
+### Workstream 3: Timeline Execution System (Q2-Q4 2026)
+- MultiDispatchNode, TaskQueue, WaveScheduler
+- TimelineNode (graph-in-graph composition)
+- Auto synchronization, Multi-GPU support
+
+### Workstream 4: GaiaVoxelWorld Physics (Q1 2026-Q1 2027)
+- Cellular Automata (100M voxels/sec target)
+- Soft Body Physics (Gram-Schmidt solver)
+- GPU Procedural Generation
+- Skin Width SVO optimization
+- VR Integration (90 FPS target)
 
 ---
 
@@ -60,12 +78,31 @@
 
 | Purpose | Location |
 |---------|----------|
-| Paper (markdown) | `Vixen-Docs/03-Research/VIXEN-Research-Paper-Draft.md` |
-| Paper (Word) | `Vixen-Docs/03-Research/VIXEN-Research-Paper-V4.docx` |
-| V4 Excel data | `data/finalized/benchmarks_research_v4.xlsx` |
-| Charts | `Vixen-Docs/03-Research/charts/` |
-| Scene Images | `Vixen-Docs/03-Research/scene_images/` |
+| Master Roadmap | `Vixen-Docs/05-Progress/Production-Roadmap-2026.md` |
+| Workstream Details | `Vixen-Docs/05-Progress/workstreams/` |
+| Research Paper | `Vixen-Docs/03-Research/VIXEN-Research-Paper-V4.docx` |
+| Benchmark Data | `data/finalized/benchmarks_research_v4.xlsx` |
 
 ---
 
-**Status**: Ready for commit
+## HacknPlan Integration
+
+All production tasks tracked in HacknPlan:
+
+| Sprint | Board ID | Tasks | Hours |
+|--------|----------|-------|-------|
+| Sprint 4 | 651780 | 15 | 192h |
+| Sprint 5 | 651783 | 21 | 148h |
+| Sprint 6 | 651785 | 20 | 232h |
+| Sprint 7 | 651786 | 11 | 224h |
+| Sprint 8 | 651784 | 6 | 72h |
+| Sprint 9 | 651788 | 5 | 72h |
+| Sprint 10 | 651782 | 6 | 92h |
+| Sprint 11 | 651781 | 6 | 104h |
+| Sprint 12 | 651787 | 6 | 100h |
+| Sprint 13 | 651789 | 4 | 62h |
+| Sprint 14 | 651790 | 7 | 124h |
+
+---
+
+**Next Action**: Begin Sprint 4 (Resource Manager Integration) or Sprint 1.3 (CashSystem Robustness) based on priority.

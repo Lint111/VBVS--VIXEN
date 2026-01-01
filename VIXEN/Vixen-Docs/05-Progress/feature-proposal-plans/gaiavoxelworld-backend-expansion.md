@@ -1,11 +1,17 @@
 ---
-tags: [feature, proposal, architecture, voxel, backend]
+tags: [feature, proposal, architecture, voxel, backend, archived]
 created: 2025-12-31
-status: proposal
+status: archived
 priority: critical
 complexity: very-high
 related: [GaiaVoxelWorld, timeline-execution-system]
+consolidated-into: Production-Roadmap-2026.md
 ---
+
+> [!NOTE] Consolidated
+> This proposal has been consolidated into the master roadmap.
+> See: [[Production-Roadmap-2026]] for implementation schedule and prioritization.
+> This file is retained for detailed implementation notes.
 
 # Feature Proposal: GaiaVoxelWorld Backend Expansion & Optimization
 
