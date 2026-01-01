@@ -1,0 +1,37 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uvx --from office-word-mcp-server word_mcp_server:*)",
+      "Bash(.venv/Scripts/python.exe:*)",
+      "Bash(.venv/Scripts/pip.exe install:*)",
+      "Bash(code-executor-mcp:*)",
+      "Bash(winget install:*)",
+      "mcp__code-executor__health",
+      "Bash(PYTHON_SANDBOX_READY=true timeout 5 npx:*)",
+      "mcp__code-executor__executePython",
+      "Bash(cmd /c \"tasklist | findstr 784\")",
+      "Bash(MCP_CONFIG_PATH=\"C:/cpp/VBVS--VIXEN/VIXEN/.claude/code-executor-config.json\" HEALTH_CHECK_PORT=3001 PYTHON_SANDBOX_READY=true timeout 15 npx -y code-executor-mcp:*)",
+      "Bash(PYTHON_SANDBOX_READY=true timeout 20 npx:*)",
+      "Bash(netstat:*)",
+      "Bash(tasklist /FI \"IMAGENAME eq node.exe\")",
+      "Bash(claude config list:*)",
+      "Bash(claude --version:*)",
+      "Bash(C:/cpp/VBVS--VIXEN/VIXEN/tools/.venv/Scripts/python.exe:*)",
+      "Bash(tasklist:*)",
+      "Bash(C:/cpp/VBVS--VIXEN/VIXEN/tools/.venv/Scripts/pip.exe install python-docx --quiet)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash(git commit*)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"C:/cpp/VBVS--VIXEN/VIXEN/.claude/hooks/pre-commit-gate.py\""
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "extraKnownMarketplaces": {
+    "anthropic-plugins": {
+      "source": {
+        "source": "github",
+        "repo": "anthropics/claude-code"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "agent-sdk-dev@anthropic-plugins": true,
+    "claude-opus-4-5-migration@anthropic-plugins": true,
+    "code-review@anthropic-plugins": true,
+    "commit-commands@anthropic-plugins": true,
+    "explanatory-output-style@anthropic-plugins": true,
+    "feature-dev@anthropic-plugins": true,
+    "hookify@anthropic-plugins": true,
+    "pr-review-toolkit@anthropic-plugins": true,
+    "ralph-wiggum@anthropic-plugins": true,
+    "security-guidance@anthropic-plugins": true
+  },
+  "installedPluginVersions": {
+    "agent-sdk-dev@anthropic-plugins": "0.0.0",
+    "claude-opus-4-5-migration@anthropic-plugins": "1.0.0",
+    "code-review@anthropic-plugins": "1.0.0",
+    "commit-commands@anthropic-plugins": "1.0.0",
+    "explanatory-output-style@anthropic-plugins": "1.0.0",
+    "feature-dev@anthropic-plugins": "1.0.0",
+    "hookify@anthropic-plugins": "0.1.0",
+    "pr-review-toolkit@anthropic-plugins": "1.0.0",
+    "ralph-wiggum@anthropic-plugins": "1.0.0",
+    "security-guidance@anthropic-plugins": "1.0.0"
+  }
+}

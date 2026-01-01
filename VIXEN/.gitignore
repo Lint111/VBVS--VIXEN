@@ -104,10 +104,15 @@ build/**/CMakeFiles/
 
 
 # Claude Code files
-.claude/
 .claude_code/
-*.claude
 .claudesync/
+
+# Ignore .claude except for hooks and settings we want to track
+.claude/*
+!.claude/hooks/
+!.claude/settings.json
+!.claude/settings.local.json
+.claude/hooks/.pre-commit-approved
 
 # Cache directories
 .cache/
