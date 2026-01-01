@@ -1,7 +1,10 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
+#include <mutex>
 #include <optional>
+#include <shared_mutex>
 #include <string>
 #include <unordered_map>
 #include <vulkan/vulkan.h>
@@ -48,7 +51,47 @@ struct BudgetResourceUsage {
 };
 
 /**
- * @brief Phase F.1: Resource Budget Manager
+ * @brief Thread-safe atomic usage counters for fast-path operations
+ */
+struct AtomicResourceUsage {
+    std::atomic<uint64_t> currentBytes{0};
+    std::atomic<uint64_t> peakBytes{0};
+    std::atomic<uint32_t> allocationCount{0};
+
+    AtomicResourceUsage() = default;
+
+    // Non-copyable due to atomics, but movable for map insertion
+    AtomicResourceUsage(const AtomicResourceUsage& other)
+        : currentBytes(other.currentBytes.load(std::memory_order_relaxed))
+        , peakBytes(other.peakBytes.load(std::memory_order_relaxed))
+        , allocationCount(other.allocationCount.load(std::memory_order_relaxed)) {}
+
+    AtomicResourceUsage& operator=(const AtomicResourceUsage& other) {
+        if (this != &other) {
+            currentBytes.store(other.currentBytes.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            peakBytes.store(other.peakBytes.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            allocationCount.store(other.allocationCount.load(std::memory_order_relaxed), std::memory_order_relaxed);
+        }
+        return *this;
+    }
+
+    void Reset() {
+        currentBytes.store(0, std::memory_order_relaxed);
+        peakBytes.store(0, std::memory_order_relaxed);
+        allocationCount.store(0, std::memory_order_relaxed);
+    }
+
+    BudgetResourceUsage ToUsage() const {
+        BudgetResourceUsage usage;
+        usage.currentBytes = currentBytes.load(std::memory_order_acquire);
+        usage.peakBytes = peakBytes.load(std::memory_order_acquire);
+        usage.allocationCount = allocationCount.load(std::memory_order_acquire);
+        return usage;
+    }
+};
+
+/**
+ * @brief Phase F.1: Resource Budget Manager (Thread-Safe)
  *
  * Tracks and enforces resource usage limits for:
  * - Host memory (system RAM)
@@ -62,6 +105,7 @@ struct BudgetResourceUsage {
  * - Warning thresholds for approaching limits
  * - Optional strict enforcement (fail allocations over budget)
  * - Query available budget before allocation
+ * - Thread-safe for concurrent allocation/deallocation
  */
 class ResourceBudgetManager {
 public:
@@ -108,18 +152,25 @@ public:
     void ResetUsage(const std::string& customType);
 
 private:
+    // Thread synchronization
+    mutable std::shared_mutex mutex_;  // Protects budget maps and ensures consistency
+
     // Standard resource type budgets
     std::unordered_map<BudgetResourceType, ResourceBudget> budgets_;
-    std::unordered_map<BudgetResourceType, BudgetResourceUsage> usage_;
+    std::unordered_map<BudgetResourceType, AtomicResourceUsage> usage_;
 
     // Custom/user-defined resource budgets
     std::unordered_map<std::string, ResourceBudget> customBudgets_;
-    std::unordered_map<std::string, BudgetResourceUsage> customUsage_;
+    std::unordered_map<std::string, AtomicResourceUsage> customUsage_;
 
-    // Internal helpers
-    bool TryAllocateImpl(const ResourceBudget* budget, BudgetResourceUsage* usage, uint64_t bytes);
-    void RecordAllocationImpl(BudgetResourceUsage* usage, uint64_t bytes);
-    void RecordDeallocationImpl(BudgetResourceUsage* usage, uint64_t bytes);
+    // Internal helpers (caller must hold appropriate lock)
+    bool TryAllocateImpl(const ResourceBudget* budget, AtomicResourceUsage* usage, uint64_t bytes);
+    void RecordAllocationImpl(AtomicResourceUsage* usage, uint64_t bytes);
+    void RecordDeallocationImpl(AtomicResourceUsage* usage, uint64_t bytes);
+
+    // Get or create usage entry (caller must hold exclusive lock)
+    AtomicResourceUsage* GetOrCreateUsage(BudgetResourceType type);
+    AtomicResourceUsage* GetOrCreateUsage(const std::string& customType);
 };
 
 } // namespace Vixen::RenderGraph
