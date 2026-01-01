@@ -2073,6 +2073,187 @@ TEST(LifetimeScopeIntegration, DeepNestedScopes) {
 }
 
 // ============================================================================
+// Memory Aliasing Tests (Phase B+)
+// ============================================================================
+
+class AliasingTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        allocator_ = MemoryAllocatorFactory::CreateDirectAllocator(
+            VK_NULL_HANDLE, VK_NULL_HANDLE, nullptr);
+    }
+
+    std::unique_ptr<IMemoryAllocator> allocator_;
+};
+
+TEST_F(AliasingTest, AllowAliasingFlagDefault) {
+    BufferAllocationRequest request{};
+    EXPECT_FALSE(request.allowAliasing);
+
+    ImageAllocationRequest imageRequest{};
+    EXPECT_FALSE(imageRequest.allowAliasing);
+}
+
+TEST_F(AliasingTest, BufferAllocationCanAliasFlagSet) {
+    BufferAllocationRequest request{
+        .size = 1024,
+        .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+        .allowAliasing = true
+    };
+
+    EXPECT_TRUE(request.allowAliasing);
+}
+
+TEST_F(AliasingTest, ImageAllocationCanAliasFlagSet) {
+    ImageAllocationRequest request{};
+    request.allowAliasing = true;
+
+    EXPECT_TRUE(request.allowAliasing);
+}
+
+TEST_F(AliasingTest, AliasedBufferRequestStructure) {
+    AliasedBufferRequest request{
+        .size = 512,
+        .usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+        .sourceAllocation = reinterpret_cast<AllocationHandle>(0x12345678),
+        .offsetInAllocation = 256,
+        .debugName = "AliasedBuffer"
+    };
+
+    EXPECT_EQ(request.size, 512);
+    EXPECT_EQ(request.offsetInAllocation, 256);
+    EXPECT_NE(request.sourceAllocation, nullptr);
+}
+
+TEST_F(AliasingTest, AliasedImageRequestStructure) {
+    AliasedImageRequest request{};
+    request.sourceAllocation = reinterpret_cast<AllocationHandle>(0x87654321);
+    request.offsetInAllocation = 1024;
+    request.debugName = "AliasedImage";
+
+    EXPECT_NE(request.sourceAllocation, nullptr);
+    EXPECT_EQ(request.offsetInAllocation, 1024);
+}
+
+TEST_F(AliasingTest, BufferAllocationResultHasAliasingFlags) {
+    BufferAllocation alloc{};
+    EXPECT_FALSE(alloc.canAlias);
+    EXPECT_FALSE(alloc.isAliased);
+
+    alloc.canAlias = true;
+    alloc.isAliased = true;
+    EXPECT_TRUE(alloc.canAlias);
+    EXPECT_TRUE(alloc.isAliased);
+}
+
+TEST_F(AliasingTest, ImageAllocationResultHasAliasingFlags) {
+    ImageAllocation alloc{};
+    EXPECT_FALSE(alloc.canAlias);
+    EXPECT_FALSE(alloc.isAliased);
+
+    alloc.canAlias = true;
+    alloc.isAliased = true;
+    EXPECT_TRUE(alloc.canAlias);
+    EXPECT_TRUE(alloc.isAliased);
+}
+
+TEST_F(AliasingTest, SupportsAliasingNullHandle) {
+    EXPECT_FALSE(allocator_->SupportsAliasing(nullptr));
+}
+
+TEST_F(AliasingTest, CreateAliasedBufferNullSource) {
+    AliasedBufferRequest request{
+        .size = 1024,
+        .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+        .sourceAllocation = nullptr
+    };
+
+    auto result = allocator_->CreateAliasedBuffer(request);
+    EXPECT_FALSE(result.has_value());
+    EXPECT_EQ(result.error(), AllocationError::InvalidParameters);
+}
+
+TEST_F(AliasingTest, CreateAliasedImageNullSource) {
+    AliasedImageRequest request{};
+    request.sourceAllocation = nullptr;
+
+    auto result = allocator_->CreateAliasedImage(request);
+    EXPECT_FALSE(result.has_value());
+    EXPECT_EQ(result.error(), AllocationError::InvalidParameters);
+}
+
+// ============================================================================
+// DeviceBudgetManager Aliasing Tests
+// ============================================================================
+
+class DeviceBudgetManagerAliasingTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        auto allocator = MemoryAllocatorFactory::CreateDirectAllocator(
+            VK_NULL_HANDLE, VK_NULL_HANDLE, nullptr);
+        DeviceBudgetManager::Config config{};
+        config.deviceMemoryBudget = 1024 * 1024 * 1024;  // 1 GB
+        manager_ = std::make_unique<DeviceBudgetManager>(
+            std::move(allocator), VK_NULL_HANDLE, config);
+    }
+
+    std::unique_ptr<DeviceBudgetManager> manager_;
+};
+
+TEST_F(DeviceBudgetManagerAliasingTest, InitialAliasedCountIsZero) {
+    EXPECT_EQ(manager_->GetAliasedAllocationCount(), 0);
+}
+
+TEST_F(DeviceBudgetManagerAliasingTest, SupportsAliasingNullHandle) {
+    EXPECT_FALSE(manager_->SupportsAliasing(nullptr));
+}
+
+TEST_F(DeviceBudgetManagerAliasingTest, CreateAliasedBufferNullSource) {
+    AliasedBufferRequest request{
+        .size = 1024,
+        .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+        .sourceAllocation = nullptr
+    };
+
+    auto result = manager_->CreateAliasedBuffer(request);
+    EXPECT_FALSE(result.has_value());
+    EXPECT_EQ(manager_->GetAliasedAllocationCount(), 0);
+}
+
+TEST_F(DeviceBudgetManagerAliasingTest, CreateAliasedImageNullSource) {
+    AliasedImageRequest request{};
+    request.sourceAllocation = nullptr;
+
+    auto result = manager_->CreateAliasedImage(request);
+    EXPECT_FALSE(result.has_value());
+    EXPECT_EQ(manager_->GetAliasedAllocationCount(), 0);
+}
+
+TEST_F(DeviceBudgetManagerAliasingTest, FreeAliasedBufferInvalidates) {
+    BufferAllocation alloc{};
+    alloc.buffer = reinterpret_cast<VkBuffer>(0x12345678);
+    alloc.isAliased = true;
+    alloc.size = 1024;
+
+    manager_->FreeAliasedBuffer(alloc);
+
+    EXPECT_EQ(alloc.buffer, VK_NULL_HANDLE);
+    EXPECT_EQ(alloc.size, 0);
+}
+
+TEST_F(DeviceBudgetManagerAliasingTest, FreeAliasedImageInvalidates) {
+    ImageAllocation alloc{};
+    alloc.image = reinterpret_cast<VkImage>(0x87654321);
+    alloc.isAliased = true;
+    alloc.size = 2048;
+
+    manager_->FreeAliasedImage(alloc);
+
+    EXPECT_EQ(alloc.image, VK_NULL_HANDLE);
+    EXPECT_EQ(alloc.size, 0);
+}
+
+// ============================================================================
 // RenderGraph Integration Tests (B.3)
 // ============================================================================
 

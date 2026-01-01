@@ -116,6 +116,10 @@ VMAAllocator::AllocateBuffer(const BufferAllocationRequest& request) {
         allocInfo.flags |= VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
     }
 
+    if (request.allowAliasing) {
+        allocInfo.flags |= VMA_ALLOCATION_CREATE_CAN_ALIAS_BIT;
+    }
+
     VkBuffer buffer = VK_NULL_HANDLE;
     VmaAllocation allocation = nullptr;
     VmaAllocationInfo allocationInfo{};
@@ -149,7 +153,9 @@ VMAAllocator::AllocateBuffer(const BufferAllocationRequest& request) {
         allocationRecords_[static_cast<void*>(allocation)] = AllocationRecord{
             .vmaAllocation = allocation,
             .size = allocationInfo.size,
-            .isMapped = (allocationInfo.pMappedData != nullptr)
+            .isMapped = (allocationInfo.pMappedData != nullptr),
+            .canAlias = request.allowAliasing,
+            .isAliased = false
         };
     }
 
@@ -163,7 +169,9 @@ VMAAllocator::AllocateBuffer(const BufferAllocationRequest& request) {
         .allocation = static_cast<AllocationHandle>(allocation),
         .size = allocationInfo.size,
         .offset = allocationInfo.offset,
-        .mappedData = allocationInfo.pMappedData
+        .mappedData = allocationInfo.pMappedData,
+        .canAlias = request.allowAliasing,
+        .isAliased = false
     };
 }
 
@@ -243,6 +251,10 @@ VMAAllocator::AllocateImage(const ImageAllocationRequest& request) {
         allocInfo.flags |= VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
     }
 
+    if (request.allowAliasing) {
+        allocInfo.flags |= VMA_ALLOCATION_CREATE_CAN_ALIAS_BIT;
+    }
+
     VkImage image = VK_NULL_HANDLE;
     VmaAllocation allocation = nullptr;
     VmaAllocationInfo allocationInfo{};
@@ -276,7 +288,9 @@ VMAAllocator::AllocateImage(const ImageAllocationRequest& request) {
         allocationRecords_[static_cast<void*>(allocation)] = AllocationRecord{
             .vmaAllocation = allocation,
             .size = allocationInfo.size,
-            .isMapped = false
+            .isMapped = false,
+            .canAlias = request.allowAliasing,
+            .isAliased = false
         };
     }
 
@@ -288,7 +302,9 @@ VMAAllocator::AllocateImage(const ImageAllocationRequest& request) {
     return ImageAllocation{
         .image = image,
         .allocation = static_cast<AllocationHandle>(allocation),
-        .size = allocationInfo.size
+        .size = allocationInfo.size,
+        .canAlias = request.allowAliasing,
+        .isAliased = false
     };
 }
 
@@ -445,6 +461,152 @@ VMAAllocator::AllocationRecord* VMAAllocator::GetRecord(AllocationHandle handle)
 const VMAAllocator::AllocationRecord* VMAAllocator::GetRecord(AllocationHandle handle) const {
     auto it = allocationRecords_.find(handle);
     return it != allocationRecords_.end() ? &it->second : nullptr;
+}
+
+// ============================================================================
+// Aliased Allocations (Sprint 4 Phase B+)
+// ============================================================================
+
+std::expected<BufferAllocation, AllocationError>
+VMAAllocator::CreateAliasedBuffer(const AliasedBufferRequest& request) {
+    if (!allocator_) {
+        return std::unexpected(AllocationError::Unknown);
+    }
+
+    if (request.size == 0 || !request.sourceAllocation) {
+        return std::unexpected(AllocationError::InvalidParameters);
+    }
+
+    // Verify source allocation supports aliasing
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto* record = GetRecord(request.sourceAllocation);
+        if (!record || !record->canAlias) {
+            return std::unexpected(AllocationError::InvalidParameters);
+        }
+
+        // Verify size fits within source allocation
+        if (request.offsetInAllocation + request.size > record->size) {
+            return std::unexpected(AllocationError::InvalidParameters);
+        }
+    }
+
+    // Create buffer without allocating new memory
+    VkBufferCreateInfo bufferInfo{};
+    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bufferInfo.size = request.size;
+    bufferInfo.usage = request.usage;
+    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    VkBuffer buffer = VK_NULL_HANDLE;
+    VkResult result = vkCreateBuffer(device_, &bufferInfo, nullptr, &buffer);
+    if (result != VK_SUCCESS) {
+        return std::unexpected(AllocationError::Unknown);
+    }
+
+    // Bind to existing allocation's memory
+    VmaAllocation sourceVma = static_cast<VmaAllocation>(request.sourceAllocation);
+    VmaAllocationInfo sourceInfo{};
+    vmaGetAllocationInfo(allocator_, sourceVma, &sourceInfo);
+
+    result = vkBindBufferMemory(device_, buffer, sourceInfo.deviceMemory,
+                                 sourceInfo.offset + request.offsetInAllocation);
+    if (result != VK_SUCCESS) {
+        vkDestroyBuffer(device_, buffer, nullptr);
+        return std::unexpected(AllocationError::Unknown);
+    }
+
+    // Set debug name if provided
+    if (!request.debugName.empty() && device_ != VK_NULL_HANDLE) {
+        VkDebugUtilsObjectNameInfoEXT nameInfo{};
+        nameInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
+        nameInfo.objectType = VK_OBJECT_TYPE_BUFFER;
+        nameInfo.objectHandle = reinterpret_cast<uint64_t>(buffer);
+        nameInfo.pObjectName = std::string(request.debugName).c_str();
+        // Note: vkSetDebugUtilsObjectNameEXT may not be available
+    }
+
+    // Note: Aliased buffers share the source allocation, don't count separately in budget
+    // The memory was already counted when the source was allocated
+
+    return BufferAllocation{
+        .buffer = buffer,
+        .allocation = request.sourceAllocation,  // Share source allocation handle
+        .size = request.size,
+        .offset = request.offsetInAllocation,
+        .mappedData = nullptr,  // Mapping must go through source
+        .canAlias = true,
+        .isAliased = true
+    };
+}
+
+std::expected<ImageAllocation, AllocationError>
+VMAAllocator::CreateAliasedImage(const AliasedImageRequest& request) {
+    if (!allocator_) {
+        return std::unexpected(AllocationError::Unknown);
+    }
+
+    if (!request.sourceAllocation) {
+        return std::unexpected(AllocationError::InvalidParameters);
+    }
+
+    // Verify source allocation supports aliasing
+    VkDeviceSize sourceSize = 0;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto* record = GetRecord(request.sourceAllocation);
+        if (!record || !record->canAlias) {
+            return std::unexpected(AllocationError::InvalidParameters);
+        }
+        sourceSize = record->size;
+    }
+
+    // Create image without allocating new memory
+    VkImage image = VK_NULL_HANDLE;
+    VkResult result = vkCreateImage(device_, &request.createInfo, nullptr, &image);
+    if (result != VK_SUCCESS) {
+        return std::unexpected(AllocationError::Unknown);
+    }
+
+    // Get memory requirements
+    VkMemoryRequirements memReq;
+    vkGetImageMemoryRequirements(device_, image, &memReq);
+
+    // Verify size fits
+    if (request.offsetInAllocation + memReq.size > sourceSize) {
+        vkDestroyImage(device_, image, nullptr);
+        return std::unexpected(AllocationError::InvalidParameters);
+    }
+
+    // Bind to existing allocation's memory
+    VmaAllocation sourceVma = static_cast<VmaAllocation>(request.sourceAllocation);
+    VmaAllocationInfo sourceInfo{};
+    vmaGetAllocationInfo(allocator_, sourceVma, &sourceInfo);
+
+    result = vkBindImageMemory(device_, image, sourceInfo.deviceMemory,
+                                sourceInfo.offset + request.offsetInAllocation);
+    if (result != VK_SUCCESS) {
+        vkDestroyImage(device_, image, nullptr);
+        return std::unexpected(AllocationError::Unknown);
+    }
+
+    return ImageAllocation{
+        .image = image,
+        .allocation = request.sourceAllocation,
+        .size = memReq.size,
+        .canAlias = true,
+        .isAliased = true
+    };
+}
+
+bool VMAAllocator::SupportsAliasing(AllocationHandle allocation) const {
+    if (!allocation) {
+        return false;
+    }
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto* record = GetRecord(allocation);
+    return record && record->canAlias;
 }
 
 // Factory implementation

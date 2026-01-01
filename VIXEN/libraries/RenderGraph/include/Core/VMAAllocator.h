@@ -57,6 +57,15 @@ public:
 
     void FreeImage(ImageAllocation& allocation) override;
 
+    // Aliased allocations (Sprint 4 Phase B+)
+    [[nodiscard]] std::expected<BufferAllocation, AllocationError>
+    CreateAliasedBuffer(const AliasedBufferRequest& request) override;
+
+    [[nodiscard]] std::expected<ImageAllocation, AllocationError>
+    CreateAliasedImage(const AliasedImageRequest& request) override;
+
+    [[nodiscard]] bool SupportsAliasing(AllocationHandle allocation) const override;
+
     [[nodiscard]] void* MapBuffer(const BufferAllocation& allocation) override;
     void UnmapBuffer(const BufferAllocation& allocation) override;
 
@@ -100,6 +109,8 @@ private:
         VmaAllocation vmaAllocation = nullptr;
         VkDeviceSize size = 0;
         bool isMapped = false;
+        bool canAlias = false;     // Created with allowAliasing=true
+        bool isAliased = false;    // This is an aliased resource (doesn't own memory)
     };
 
     VkDevice device_ = VK_NULL_HANDLE;

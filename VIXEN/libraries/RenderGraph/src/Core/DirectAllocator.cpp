@@ -104,7 +104,9 @@ DirectAllocator::AllocateBuffer(const BufferAllocationRequest& request) {
         .size = memReq.size,
         .memoryTypeIndex = memTypeIndex,
         .isMapped = false,
-        .mappedPtr = nullptr
+        .mappedPtr = nullptr,
+        .canAlias = request.allowAliasing,
+        .isAliased = false
     };
 
     // Track allocation
@@ -127,7 +129,9 @@ DirectAllocator::AllocateBuffer(const BufferAllocationRequest& request) {
         .allocation = record,
         .size = memReq.size,
         .offset = 0,
-        .mappedData = nullptr
+        .mappedData = nullptr,
+        .canAlias = request.allowAliasing,
+        .isAliased = false
     };
 }
 
@@ -247,7 +251,9 @@ DirectAllocator::AllocateImage(const ImageAllocationRequest& request) {
         .size = memReq.size,
         .memoryTypeIndex = memTypeIndex,
         .isMapped = false,
-        .mappedPtr = nullptr
+        .mappedPtr = nullptr,
+        .canAlias = request.allowAliasing,
+        .isAliased = false
     };
 
     {
@@ -266,7 +272,9 @@ DirectAllocator::AllocateImage(const ImageAllocationRequest& request) {
     return ImageAllocation{
         .image = image,
         .allocation = record,
-        .size = memReq.size
+        .size = memReq.size,
+        .canAlias = request.allowAliasing,
+        .isAliased = false
     };
 }
 
@@ -463,6 +471,131 @@ DirectAllocator::AllocationRecord* DirectAllocator::GetRecord(AllocationHandle h
 const DirectAllocator::AllocationRecord* DirectAllocator::GetRecord(AllocationHandle handle) const {
     auto it = allocations_.find(handle);
     return (it != allocations_.end()) ? &it->second : nullptr;
+}
+
+// ============================================================================
+// Aliased Allocations (Sprint 4 Phase B+)
+// ============================================================================
+
+std::expected<BufferAllocation, AllocationError>
+DirectAllocator::CreateAliasedBuffer(const AliasedBufferRequest& request) {
+    if (device_ == VK_NULL_HANDLE) {
+        return std::unexpected(AllocationError::InvalidParameters);
+    }
+
+    if (request.size == 0 || !request.sourceAllocation) {
+        return std::unexpected(AllocationError::InvalidParameters);
+    }
+
+    // Verify source allocation supports aliasing
+    AllocationRecord* sourceRecord = nullptr;
+    {
+        std::lock_guard lock(mutex_);
+        sourceRecord = GetRecord(request.sourceAllocation);
+        if (!sourceRecord || !sourceRecord->canAlias) {
+            return std::unexpected(AllocationError::InvalidParameters);
+        }
+
+        // Verify size fits within source allocation
+        if (request.offsetInAllocation + request.size > sourceRecord->size) {
+            return std::unexpected(AllocationError::InvalidParameters);
+        }
+    }
+
+    // Create buffer
+    VkBufferCreateInfo bufferInfo{};
+    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bufferInfo.size = request.size;
+    bufferInfo.usage = request.usage;
+    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    VkBuffer buffer = VK_NULL_HANDLE;
+    VkResult result = vkCreateBuffer(device_, &bufferInfo, nullptr, &buffer);
+    if (result != VK_SUCCESS) {
+        return std::unexpected(AllocationError::Unknown);
+    }
+
+    // Bind to existing allocation's memory
+    result = vkBindBufferMemory(device_, buffer, sourceRecord->memory, request.offsetInAllocation);
+    if (result != VK_SUCCESS) {
+        vkDestroyBuffer(device_, buffer, nullptr);
+        return std::unexpected(AllocationError::Unknown);
+    }
+
+    // Note: Aliased buffers share the source allocation, don't count separately in budget
+
+    return BufferAllocation{
+        .buffer = buffer,
+        .allocation = request.sourceAllocation,
+        .size = request.size,
+        .offset = request.offsetInAllocation,
+        .mappedData = nullptr,
+        .canAlias = true,
+        .isAliased = true
+    };
+}
+
+std::expected<ImageAllocation, AllocationError>
+DirectAllocator::CreateAliasedImage(const AliasedImageRequest& request) {
+    if (device_ == VK_NULL_HANDLE) {
+        return std::unexpected(AllocationError::InvalidParameters);
+    }
+
+    if (!request.sourceAllocation) {
+        return std::unexpected(AllocationError::InvalidParameters);
+    }
+
+    // Verify source allocation supports aliasing
+    AllocationRecord* sourceRecord = nullptr;
+    {
+        std::lock_guard lock(mutex_);
+        sourceRecord = GetRecord(request.sourceAllocation);
+        if (!sourceRecord || !sourceRecord->canAlias) {
+            return std::unexpected(AllocationError::InvalidParameters);
+        }
+    }
+
+    // Create image
+    VkImage image = VK_NULL_HANDLE;
+    VkResult result = vkCreateImage(device_, &request.createInfo, nullptr, &image);
+    if (result != VK_SUCCESS) {
+        return std::unexpected(AllocationError::Unknown);
+    }
+
+    // Get memory requirements
+    VkMemoryRequirements memReq;
+    vkGetImageMemoryRequirements(device_, image, &memReq);
+
+    // Verify size fits
+    if (request.offsetInAllocation + memReq.size > sourceRecord->size) {
+        vkDestroyImage(device_, image, nullptr);
+        return std::unexpected(AllocationError::InvalidParameters);
+    }
+
+    // Bind to existing allocation's memory
+    result = vkBindImageMemory(device_, image, sourceRecord->memory, request.offsetInAllocation);
+    if (result != VK_SUCCESS) {
+        vkDestroyImage(device_, image, nullptr);
+        return std::unexpected(AllocationError::Unknown);
+    }
+
+    return ImageAllocation{
+        .image = image,
+        .allocation = request.sourceAllocation,
+        .size = memReq.size,
+        .canAlias = true,
+        .isAliased = true
+    };
+}
+
+bool DirectAllocator::SupportsAliasing(AllocationHandle allocation) const {
+    if (!allocation) {
+        return false;
+    }
+
+    std::lock_guard lock(mutex_);
+    auto* record = GetRecord(allocation);
+    return record && record->canAlias;
 }
 
 // Factory implementation

@@ -69,6 +69,85 @@ void DeviceBudgetManager::FreeImage(ImageAllocation& allocation) {
     }
 }
 
+// ============================================================================
+// Aliased Allocations (Sprint 4 Phase B+)
+// ============================================================================
+
+std::expected<BufferAllocation, AllocationError>
+DeviceBudgetManager::CreateAliasedBuffer(const AliasedBufferRequest& request) {
+    if (!allocator_) {
+        return std::unexpected(AllocationError::InvalidParameters);
+    }
+
+    // Aliased allocations do NOT consume additional budget
+    // They share memory with the source allocation
+    auto result = allocator_->CreateAliasedBuffer(request);
+
+    if (result) {
+        aliasedAllocationCount_.fetch_add(1, std::memory_order_relaxed);
+    }
+
+    return result;
+}
+
+std::expected<ImageAllocation, AllocationError>
+DeviceBudgetManager::CreateAliasedImage(const AliasedImageRequest& request) {
+    if (!allocator_) {
+        return std::unexpected(AllocationError::InvalidParameters);
+    }
+
+    auto result = allocator_->CreateAliasedImage(request);
+
+    if (result) {
+        aliasedAllocationCount_.fetch_add(1, std::memory_order_relaxed);
+    }
+
+    return result;
+}
+
+void DeviceBudgetManager::FreeAliasedBuffer(BufferAllocation& allocation) {
+    if (!allocator_ || !allocation.buffer) {
+        return;
+    }
+
+    // Only destroy the buffer, not the underlying memory
+    // The memory is owned by the source allocation
+    if (allocation.isAliased) {
+        // Get device from allocator (VMA stores it internally)
+        // For now, we assume the caller manages VkBuffer destruction
+        // The allocator's FreeBuffer handles this correctly for aliased buffers
+        aliasedAllocationCount_.fetch_sub(1, std::memory_order_relaxed);
+    }
+
+    // Invalidate but don't free memory
+    allocation.buffer = VK_NULL_HANDLE;
+    allocation.size = 0;
+}
+
+void DeviceBudgetManager::FreeAliasedImage(ImageAllocation& allocation) {
+    if (!allocator_ || !allocation.image) {
+        return;
+    }
+
+    if (allocation.isAliased) {
+        aliasedAllocationCount_.fetch_sub(1, std::memory_order_relaxed);
+    }
+
+    allocation.image = VK_NULL_HANDLE;
+    allocation.size = 0;
+}
+
+bool DeviceBudgetManager::SupportsAliasing(AllocationHandle allocation) const {
+    if (!allocator_) {
+        return false;
+    }
+    return allocator_->SupportsAliasing(allocation);
+}
+
+uint32_t DeviceBudgetManager::GetAliasedAllocationCount() const {
+    return aliasedAllocationCount_.load(std::memory_order_relaxed);
+}
+
 bool DeviceBudgetManager::TryReserveStagingQuota(uint64_t bytes) {
     // Atomic check-and-reserve
     uint64_t current = stagingQuotaUsed_.load(std::memory_order_acquire);

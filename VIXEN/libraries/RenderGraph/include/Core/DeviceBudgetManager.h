@@ -110,6 +110,55 @@ public:
     void FreeImage(ImageAllocation& allocation);
 
     // =========================================================================
+    // Aliased Allocations (Sprint 4 Phase B+)
+    // =========================================================================
+
+    /**
+     * @brief Create a buffer aliased with an existing allocation
+     *
+     * Aliased resources share memory with the source allocation and do NOT
+     * consume additional budget. The caller is responsible for ensuring
+     * non-overlapping lifetimes and proper synchronization.
+     *
+     * @param request Aliased buffer parameters
+     * @return Aliased buffer allocation or error
+     */
+    [[nodiscard]] std::expected<BufferAllocation, AllocationError>
+    CreateAliasedBuffer(const AliasedBufferRequest& request);
+
+    /**
+     * @brief Create an image aliased with an existing allocation
+     *
+     * @param request Aliased image parameters
+     * @return Aliased image allocation or error
+     */
+    [[nodiscard]] std::expected<ImageAllocation, AllocationError>
+    CreateAliasedImage(const AliasedImageRequest& request);
+
+    /**
+     * @brief Free an aliased buffer
+     *
+     * Destroys the buffer but does NOT free the underlying memory
+     * (which belongs to the source allocation).
+     */
+    void FreeAliasedBuffer(BufferAllocation& allocation);
+
+    /**
+     * @brief Free an aliased image
+     */
+    void FreeAliasedImage(ImageAllocation& allocation);
+
+    /**
+     * @brief Check if an allocation supports aliasing
+     */
+    [[nodiscard]] bool SupportsAliasing(AllocationHandle allocation) const;
+
+    /**
+     * @brief Get count of active aliased allocations
+     */
+    [[nodiscard]] uint32_t GetAliasedAllocationCount() const;
+
+    // =========================================================================
     // Staging Buffer Management
     // =========================================================================
 
@@ -204,6 +253,9 @@ private:
 
     // Staging quota tracking
     std::atomic<uint64_t> stagingQuotaUsed_{0};
+
+    // Aliased allocation tracking (Sprint 4 Phase B+)
+    std::atomic<uint32_t> aliasedAllocationCount_{0};
 
     // Internal helpers
     static BudgetResourceType HeapTypeToBudgetType(DeviceHeapType heapType);

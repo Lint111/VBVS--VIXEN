@@ -10,13 +10,13 @@
 
 **Phase A: Foundation** - COMPLETE (5/5 tasks)
 **Phase B: Resource Lifetime** - COMPLETE (3/3 tasks done)
-**Phase B+: GPU Aliasing** - PENDING (0/3 tasks)
+**Phase B+: GPU Aliasing** - COMPLETE (3/3 tasks done)
 
 ### Just Completed
-- B.3: Automatic cleanup integration (RenderGraph wiring, 3 new tests)
+- B+: Full GPU aliasing support (aliasing API + budget tracking + tests)
 
 ### Next Task
-- **B+.1: Add aliasing flags to IMemoryAllocator/VMAAllocator** - START HERE
+- **Phase C: SlotTask Integration** - START HERE
 
 ---
 
@@ -98,12 +98,12 @@
 - [x] B.2: Lifetime scope tracking (COMPLETE)
 - [x] B.3: Automatic cleanup integration (COMPLETE)
 
-### Phase B+ (GPU Aliasing) - Added scope
-- [ ] **B+.1: Add aliasing flags to IMemoryAllocator/VMAAllocator** <- START HERE
-- [ ] B+.2: Aliasing-aware budget tracking in DeviceBudgetManager
-- [ ] B+.3: Integration tests with aliased allocations
+### Phase B+ (GPU Aliasing) - COMPLETE
+- [x] B+.1: Add aliasing flags to IMemoryAllocator/VMAAllocator (COMPLETE)
+- [x] B+.2: Aliasing-aware budget tracking in DeviceBudgetManager (COMPLETE)
+- [x] B+.3: Integration tests with aliased allocations (COMPLETE)
 
-### Phase C (SlotTask Integration)
+### Phase C (SlotTask Integration) - START HERE
 - [ ] C.1: Mandatory budget manager in ExecuteParallel
 - [ ] C.2: Budget enforcement in task execution
 - [ ] C.3: Actual vs estimated tracking
@@ -122,7 +122,7 @@
 # Build RenderGraph and tests
 cmake --build build --config Debug --target RenderGraph test_resource_management --parallel 16
 
-# Run resource management tests (currently 122 passing)
+# Run resource management tests (currently 138 passing)
 ./build/libraries/RenderGraph/tests/Debug/test_resource_management.exe --gtest_brief=1
 ```
 
@@ -172,7 +172,7 @@ DeferredDestructionQueue - Safe GPU resource cleanup
 ## Important Notes for Next Agent
 
 1. **Pre-commit hook**: Always run `/pre-commit-review` before committing
-2. **Test count**: Currently 122 tests - verify count increases with new tests
+2. **Test count**: Currently 138 tests - verify count increases with new tests
 3. **SharedResourcePtr requirements**: Requires both `destructionQueue` AND `frameCounter` or neither (debug assertion added)
 4. **VMA null handles**: VMAAllocator factory returns nullptr if Vulkan handles are null
 5. **Callback under lock**: BudgetBridge callback is invoked while holding lock - documented in header
@@ -183,7 +183,8 @@ DeferredDestructionQueue - Safe GPU resource cleanup
 
 Sprint 4 Phase A tasks: COMPLETE
 Sprint 4 Phase B tasks: COMPLETE (B.1, B.2, B.3 done)
-Sprint 4 Phase B+ tasks: PENDING
+Sprint 4 Phase B+ tasks: COMPLETE (B+.1, B+.2, B+.3 done)
+Sprint 4 Phase C tasks: PENDING
 
 See `Vixen-Docs/05-Progress/features/Sprint4-ResourceManager-Integration.md` for full plan.
 

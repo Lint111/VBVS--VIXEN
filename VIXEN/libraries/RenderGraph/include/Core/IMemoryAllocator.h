@@ -60,7 +60,8 @@ struct BufferAllocationRequest {
     VkBufferUsageFlags usage = 0;
     MemoryLocation location = MemoryLocation::DeviceLocal;
     std::string_view debugName;
-    bool dedicated = false;  // Request dedicated allocation (large buffers)
+    bool dedicated = false;   // Request dedicated allocation (large buffers)
+    bool allowAliasing = false;  // Allow this allocation to be aliased with other resources
 };
 
 /**
@@ -71,6 +72,7 @@ struct ImageAllocationRequest {
     MemoryLocation location = MemoryLocation::DeviceLocal;
     std::string_view debugName;
     bool dedicated = false;
+    bool allowAliasing = false;  // Allow this allocation to be aliased with other resources
 };
 
 /**
@@ -83,6 +85,31 @@ struct ImageAllocationRequest {
 using AllocationHandle = void*;
 
 /**
+ * @brief Request to create a buffer aliased with an existing allocation
+ *
+ * Used for memory aliasing where multiple non-overlapping-lifetime resources
+ * share the same memory backing. The source allocation must have been created
+ * with allowAliasing = true.
+ */
+struct AliasedBufferRequest {
+    VkDeviceSize size = 0;
+    VkBufferUsageFlags usage = 0;
+    AllocationHandle sourceAllocation = nullptr;  // Existing allocation to alias
+    VkDeviceSize offsetInAllocation = 0;          // Offset within source allocation
+    std::string_view debugName;
+};
+
+/**
+ * @brief Request to create an image aliased with an existing allocation
+ */
+struct AliasedImageRequest {
+    VkImageCreateInfo createInfo{};
+    AllocationHandle sourceAllocation = nullptr;  // Existing allocation to alias
+    VkDeviceSize offsetInAllocation = 0;          // Offset within source allocation
+    std::string_view debugName;
+};
+
+/**
  * @brief Result of a buffer allocation
  */
 struct BufferAllocation {
@@ -91,6 +118,8 @@ struct BufferAllocation {
     VkDeviceSize size = 0;
     VkDeviceSize offset = 0;       // Offset within larger allocation (suballocation)
     void* mappedData = nullptr;    // Non-null if persistently mapped
+    bool canAlias = false;         // True if this allocation supports aliasing
+    bool isAliased = false;        // True if this is an aliased resource (doesn't own memory)
 
     explicit operator bool() const { return buffer != VK_NULL_HANDLE; }
 };
@@ -102,6 +131,8 @@ struct ImageAllocation {
     VkImage image = VK_NULL_HANDLE;
     AllocationHandle allocation = nullptr;
     VkDeviceSize size = 0;
+    bool canAlias = false;         // True if this allocation supports aliasing
+    bool isAliased = false;        // True if this is an aliased resource (doesn't own memory)
 
     explicit operator bool() const { return image != VK_NULL_HANDLE; }
 };
@@ -192,6 +223,43 @@ public:
      * @param allocation The allocation to free (invalidated after call)
      */
     virtual void FreeImage(ImageAllocation& allocation) = 0;
+
+    // =========================================================================
+    // Aliased Allocations (Sprint 4 Phase B+)
+    // =========================================================================
+
+    /**
+     * @brief Create a buffer that aliases memory from an existing allocation
+     *
+     * Memory aliasing allows multiple resources with non-overlapping lifetimes
+     * to share the same memory backing, reducing memory usage.
+     *
+     * IMPORTANT: The source allocation must have been created with allowAliasing=true.
+     * The caller is responsible for ensuring non-overlapping resource lifetimes
+     * and proper synchronization (memory barriers) between aliased resources.
+     *
+     * @param request Aliased buffer parameters including source allocation
+     * @return Aliased buffer allocation or error
+     */
+    [[nodiscard]] virtual std::expected<BufferAllocation, AllocationError>
+    CreateAliasedBuffer(const AliasedBufferRequest& request) = 0;
+
+    /**
+     * @brief Create an image that aliases memory from an existing allocation
+     *
+     * @param request Aliased image parameters including source allocation
+     * @return Aliased image allocation or error
+     */
+    [[nodiscard]] virtual std::expected<ImageAllocation, AllocationError>
+    CreateAliasedImage(const AliasedImageRequest& request) = 0;
+
+    /**
+     * @brief Check if an allocation supports aliasing
+     *
+     * @param allocation Allocation handle to check
+     * @return true if the allocation was created with allowAliasing=true
+     */
+    [[nodiscard]] virtual bool SupportsAliasing(AllocationHandle allocation) const = 0;
 
     // =========================================================================
     // Memory Mapping
