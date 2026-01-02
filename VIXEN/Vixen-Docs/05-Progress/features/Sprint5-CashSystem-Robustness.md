@@ -29,88 +29,56 @@ Sprint 5 focuses on hardening the CashSystem library:
 
 ## Phase 1: Critical Safety (P0) - 20h
 
-### 1.1 VoxelAABBConverterNode Pointer Safety (4h)
+### 1.1 VoxelAABBConverterNode Pointer Safety (4h) ✅ COMPLETE
 
 **HacknPlan:** #185
 
-**Current State (from analysis):**
-- `AccelerationStructureCacher.h:75` uses `const VoxelAABBData* aabbDataRef = nullptr;`
-- Raw pointer pattern with documented non-ownership
-- Currently safe but fragile - no lifetime validation
+**Solution:** Removed raw pointer dependency entirely. CachedAccelerationStructure now stores `sourceAABBCount` (metadata) instead of `aabbDataRef` (dangling pointer risk).
 
-**Tasks:**
-- [ ] Replace raw pointer with `std::shared_ptr<const VoxelAABBData>` or `std::weak_ptr`
-- [ ] Add lifetime assertion in debug builds
-- [ ] Update `CachedAccelerationStructure` cleanup logic
-- [ ] Add null-check before dereference in all usage sites
+**Changes:**
+- `AccelerationStructureCacher.h`: Replaced `const VoxelAABBData* aabbDataRef` with `uint32_t sourceAABBCount`
+- `AccelerationStructureCacher.cpp`: Updated `Create()` and `Cleanup()` to use count instead of pointer
+- `IsValid()` now checks `sourceAABBCount > 0` instead of dereferencing external pointer
 
-**Files:**
-- `libraries/CashSystem/include/AccelerationStructureCacher.h:75`
-- `libraries/CashSystem/src/AccelerationStructureCacher.cpp:126-161`
+**Files Changed:**
+- `libraries/CashSystem/include/AccelerationStructureCacher.h:75-81`
+- `libraries/CashSystem/src/AccelerationStructureCacher.cpp:126-130, 158-161`
 
-### 1.2 VK_CHECK Macro Definition (4h)
+### 1.2 VK_CHECK Macro Definition (4h) ✅ COMPLETE
 
 **HacknPlan:** #214, #247
 
-**Current State:**
-- Some files check `!= VK_SUCCESS` manually
-- No centralized macro
+**Solution:** Added `VK_CHECK_LOG` and `VK_CHECK_RESULT` macros to `VulkanError.h`.
 
-**Tasks:**
-- [ ] Create `VK_CHECK(result)` macro in `VulkanResources/include/VK_CHECK.h`
-- [ ] Support file/line info for debugging
-- [ ] Log error via Logger (not std::cerr)
-- [ ] Optional: throw exception or return error
-
-**Proposed Implementation:**
+**Implementation:**
 ```cpp
-#define VK_CHECK(result) \
+#define VK_CHECK_LOG(expr, msg) \
     do { \
-        VkResult _r = (result); \
-        if (_r != VK_SUCCESS) { \
-            LOG_ERROR("Vulkan error: " + VkResultToString(_r) + \
-                      " at " + __FILE__ + ":" + std::to_string(__LINE__)); \
+        VkResult _vk_result = (expr); \
+        if (_vk_result != VK_SUCCESS) { \
+            fprintf(stderr, "[VK_ERROR] %s: %s (VkResult: %d) at %s:%d\n", \
+                    msg, VulkanError::resultToString(_vk_result).c_str(), \
+                    static_cast<int>(_vk_result), __FILE__, __LINE__); \
+            assert(false && "Vulkan call failed"); \
         } \
     } while(0)
 ```
 
-### 1.3 Apply VK_CHECK to All Cachers (12h)
+**Files Changed:**
+- `libraries/VulkanResources/include/error/VulkanError.h` (+50 lines)
+
+### 1.3 Apply VK_CHECK to All Cachers (12h) ✅ COMPLETE
 
 **HacknPlan:** #184
 
-**Unchecked Vulkan Calls (from analysis):**
+**Solution:** Applied VK_CHECK_LOG to 46 Vulkan calls across 3 files.
 
-| File | Line | Call |
-|------|------|------|
-| AccelerationStructureCacher.cpp | 320 | `vkGetBufferDeviceAddressKHR()` |
-| AccelerationStructureCacher.cpp | 370 | `vkCreateBuffer()` (BLAS) |
-| AccelerationStructureCacher.cpp | 385 | `vkAllocateMemory()` (BLAS) |
-| AccelerationStructureCacher.cpp | 397 | `vkCreateBuffer()` (scratch) |
-| AccelerationStructureCacher.cpp | 412 | `vkAllocateMemory()` (scratch) |
-| AccelerationStructureCacher.cpp | 423 | `vkCreateAccelerationStructureKHR()` |
-| AccelerationStructureCacher.cpp | 450 | `vkCreateCommandPool()` |
-| AccelerationStructureCacher.cpp | 461 | `vkAllocateCommandBuffers()` |
-| AccelerationStructureCacher.cpp | 539 | `vkCreateBuffer()` (instance) |
-| AccelerationStructureCacher.cpp | 557 | `vkAllocateMemory()` (instance) |
-| AccelerationStructureCacher.cpp | 615 | `vkCreateBuffer()` (TLAS) |
-| AccelerationStructureCacher.cpp | 630 | `vkAllocateMemory()` (TLAS) |
-| VoxelAABBCacher.cpp | 249 | `vkCreateBuffer()` (AABB) |
-| VoxelAABBCacher.cpp | 264 | `vkAllocateMemory()` (AABB) |
-| VoxelAABBCacher.cpp | 280 | `vkCreateBuffer()` (material ID) |
-| VoxelAABBCacher.cpp | 290 | `vkAllocateMemory()` (material ID) |
-| VoxelAABBCacher.cpp | 306 | `vkCreateBuffer()` (brick mapping) |
-| VoxelAABBCacher.cpp | 316 | `vkAllocateMemory()` (brick mapping) |
-| VoxelAABBCacher.cpp | 352 | `vkCreateCommandPool()` |
-| VoxelAABBCacher.cpp | 363 | `vkCreateBuffer()` (staging) |
-| VoxelAABBCacher.cpp | 377 | `vkAllocateMemory()` (staging) |
+**Files Changed:**
+- `AccelerationStructureCacher.cpp` - 24 calls wrapped (BLAS, TLAS, scratch, instance buffers)
+- `VoxelAABBCacher.cpp` - 18 calls wrapped (AABB, material ID, brick mapping, staging)
+- `VoxelSceneCacher.cpp` - 4 calls wrapped (staging buffer uploads)
 
-**Files to Update:**
-- `libraries/CashSystem/src/AccelerationStructureCacher.cpp` (~12 calls)
-- `libraries/CashSystem/src/VoxelAABBCacher.cpp` (~9 calls)
-- `libraries/CashSystem/src/MeshCacher.cpp` (verify existing checks)
-- `libraries/CashSystem/src/CacherAllocationHelpers.cpp` (verify)
-- `libraries/CashSystem/src/DescriptorSetLayoutCacher.cpp` (verify)
-- `libraries/CashSystem/src/pipeline_cacher.cpp` (verify)
+**Note:** MeshCacher.cpp and CacherAllocationHelpers.cpp already have inline VkResult checks.
 
 ---
 

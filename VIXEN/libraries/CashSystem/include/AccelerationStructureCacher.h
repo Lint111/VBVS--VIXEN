@@ -65,20 +65,21 @@ struct AccelerationStructureData {
 // ============================================================================
 
 /**
- * @brief Acceleration Structure data with reference to AABB source
+ * @brief Cached Acceleration Structure (BLAS + TLAS)
  *
- * Contains BLAS/TLAS for ray queries. The aabbData is a reference
- * to externally-owned data from VoxelAABBCacher - not managed here.
+ * Contains BLAS/TLAS for ray queries. Self-contained after creation -
+ * no external dependencies. Stores metadata (AABB count) from source
+ * data for validation, but does not retain pointer to source.
  */
 struct CachedAccelerationStructure {
-    // Reference to AABB data (owned by VoxelAABBCacher, not cleaned up here)
-    const VoxelAABBData* aabbDataRef = nullptr;
-
     // Acceleration structure data (owned by this struct)
     AccelerationStructureData accelStruct;
 
+    // Metadata from source AABB data (stored at creation, no pointer dependency)
+    uint32_t sourceAABBCount = 0;
+
     bool IsValid() const noexcept {
-        return aabbDataRef != nullptr && aabbDataRef->IsValid() && accelStruct.IsValid();
+        return sourceAABBCount > 0 && accelStruct.IsValid();
     }
 
     void Cleanup(VkDevice device);

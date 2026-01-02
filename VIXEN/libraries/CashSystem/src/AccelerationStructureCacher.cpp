@@ -124,10 +124,9 @@ void AccelerationStructureData::Cleanup(VkDevice device) {
 // ============================================================================
 
 void CachedAccelerationStructure::Cleanup(VkDevice device) {
-    // aabbDataRef is NOT owned by this struct - don't clean it up
     // Only clean up the acceleration structure resources we own
     accelStruct.Cleanup(device);
-    aabbDataRef = nullptr;
+    sourceAABBCount = 0;
 }
 
 // ============================================================================
@@ -158,8 +157,8 @@ std::shared_ptr<CachedAccelerationStructure> AccelerationStructureCacher::Create
 
     auto cached = std::make_shared<CachedAccelerationStructure>();
 
-    // Store reference to AABB data (owned by VoxelAABBCacher, not us)
-    cached->aabbDataRef = ci.aabbData;
+    // Store AABB count for IsValid() check (no pointer dependency)
+    cached->sourceAABBCount = ci.aabbData->aabbCount;
 
     LOG_INFO("[AccelerationStructureCacher::Create] Using AABB data with " +
              std::to_string(ci.aabbData->aabbCount) + " AABBs");
