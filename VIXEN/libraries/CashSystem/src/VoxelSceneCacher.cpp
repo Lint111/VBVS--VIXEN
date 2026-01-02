@@ -915,39 +915,25 @@ void VoxelSceneCacher::UploadBufferData(VkBuffer buffer, const void* srcData, Vk
         }
     }
 
-    // Create staging buffer
-    VkBufferCreateInfo stagingInfo{};
-    stagingInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    stagingInfo.size = size;
-    stagingInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-    stagingInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-    VkBuffer stagingBuffer;
-    VK_CHECK_LOG(vkCreateBuffer(m_device->device, &stagingInfo, nullptr, &stagingBuffer), "Create staging buffer");
-
-    VkMemoryRequirements stagingMemReq;
-    vkGetBufferMemoryRequirements(m_device->device, stagingBuffer, &stagingMemReq);
-
-    uint32_t stagingMemTypeIndex = CacherAllocationHelpers::FindMemoryType(
-        m_device->gpuMemoryProperties,
-        stagingMemReq.memoryTypeBits,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+    // Allocate staging buffer via AllocateBufferTracked (host-visible)
+    auto stagingAlloc = AllocateBufferTracked(
+        size,
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        "VoxelScene_staging"
     );
-
-    VkMemoryAllocateInfo stagingAllocInfo{};
-    stagingAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    stagingAllocInfo.allocationSize = stagingMemReq.size;
-    stagingAllocInfo.memoryTypeIndex = stagingMemTypeIndex;
-
-    VkDeviceMemory stagingMemory;
-    VK_CHECK_LOG(vkAllocateMemory(m_device->device, &stagingAllocInfo, nullptr, &stagingMemory), "Allocate staging memory");
-    VK_CHECK_LOG(vkBindBufferMemory(m_device->device, stagingBuffer, stagingMemory, 0), "Bind staging buffer memory");
+    if (!stagingAlloc) {
+        throw std::runtime_error("[VoxelSceneCacher::UploadBufferData] Failed to allocate staging buffer");
+    }
 
     // Copy data to staging buffer
-    void* mappedData;
-    VK_CHECK_LOG(vkMapMemory(m_device->device, stagingMemory, 0, size, 0, &mappedData), "Map staging memory");
+    void* mappedData = MapBufferTracked(*stagingAlloc);
+    if (!mappedData) {
+        FreeBufferTracked(*stagingAlloc);
+        throw std::runtime_error("[VoxelSceneCacher::UploadBufferData] Failed to map staging buffer");
+    }
     std::memcpy(mappedData, srcData, size);
-    vkUnmapMemory(m_device->device, stagingMemory);
+    UnmapBufferTracked(*stagingAlloc);
 
     // Record and submit copy command
     VkCommandBufferAllocateInfo cmdAllocInfo{};
@@ -969,7 +955,7 @@ void VoxelSceneCacher::UploadBufferData(VkBuffer buffer, const void* srcData, Vk
     copyRegion.srcOffset = 0;
     copyRegion.dstOffset = 0;  // Offset is handled by buffer binding
     copyRegion.size = size;
-    vkCmdCopyBuffer(cmdBuffer, stagingBuffer, buffer, 1, &copyRegion);
+    vkCmdCopyBuffer(cmdBuffer, stagingAlloc->buffer, buffer, 1, &copyRegion);
 
     vkEndCommandBuffer(cmdBuffer);
 
@@ -983,8 +969,7 @@ void VoxelSceneCacher::UploadBufferData(VkBuffer buffer, const void* srcData, Vk
 
     // Cleanup staging resources
     vkFreeCommandBuffers(m_device->device, m_transferCommandPool, 1, &cmdBuffer);
-    vkDestroyBuffer(m_device->device, stagingBuffer, nullptr);
-    vkFreeMemory(m_device->device, stagingMemory, nullptr);
+    FreeBufferTracked(*stagingAlloc);
 }
 
 } // namespace CashSystem

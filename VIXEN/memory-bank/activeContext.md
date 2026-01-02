@@ -153,6 +153,20 @@ ResourceScope GetResourceScope() const {
 
 ## HacknPlan Status
 
+Todos
+  ☒ Phase 2.4: Content Hash Cache Keys
+  ☐ Phase 2.3: Allocator Migration + Batched Uploads
+  ☒ 2.3.0 Migrate VoxelAABBCacher to AllocateBufferTracked
+  ☒ Fix exception safety in UploadToGPU
+  ☐ Pre-commit review - re-verify after fix
+  ☐ 2.3.0 Migrate VoxelSceneCacher to AllocateBufferTracked
+  ☐ 2.3.0 Migrate AccelerationStructureCacher to AllocateBufferTracked
+  ☐ 2.3.0 Migrate MeshCacher to AllocateBufferTracked
+  ☐ 2.3.1 Pass allocator from nodes to cachers during registration
+  ☐ 2.3.2 Create StagingBufferPool
+  ☐ 2.3.3 Create BatchedUploader
+  ☐ 2.3.4 TypedCacher integration
+
 Sprint 4 tasks updated 2026-01-02:
 - 5 tasks marked COMPLETE
 - 3 tasks remain PENDING
