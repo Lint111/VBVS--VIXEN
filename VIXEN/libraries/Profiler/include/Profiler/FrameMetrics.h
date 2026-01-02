@@ -186,6 +186,15 @@ struct FrameMetrics {
     uint32_t gpuPowerW = 0;             // GPU power usage in watts
     bool nvmlAvailable = false;         // True if NVML metrics are valid
 
+    // Resource management metrics (from DeviceBudgetManager when available)
+    uint32_t allocationCount = 0;       // Number of active GPU allocations
+    uint32_t aliasedAllocationCount = 0; // Number of aliased (memory-sharing) allocations
+    uint64_t trackedAllocatedBytes = 0; // Total tracked allocated bytes
+    uint64_t stagingQuotaUsed = 0;      // Staging buffer quota usage
+    float budgetUtilization = 0.0f;     // Device memory utilization (0.0-1.0)
+    bool isOverBudget = false;          // True if allocation exceeds budget
+    bool budgetManagerAvailable = false; // True if DeviceBudgetManager metrics are valid
+
     // GPU shader counters (when available)
     // These require GPU-side atomic counters and readback - see ShaderCounters documentation
     ShaderCounters shaderCounters;

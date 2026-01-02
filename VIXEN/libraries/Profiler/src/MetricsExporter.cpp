@@ -548,11 +548,17 @@ void MetricsExporter::WriteCSVDataRows(std::ofstream& file, const std::vector<Fr
             else if (col == "bandwidth_read_gb") file << frame.bandwidthReadGB;
             else if (col == "bandwidth_write_gb") file << frame.bandwidthWriteGB;
             else if (col == "vram_mb") file << frame.vramUsageMB;
+            else if (col == "vram_budget_mb") file << frame.vramBudgetMB;
             else if (col == "mrays_per_sec") file << frame.mRaysPerSec;
             else if (col == "fps") file << frame.fps;
             else if (col == "scene_resolution") file << frame.sceneResolution;
             else if (col == "screen_width") file << frame.screenWidth;
             else if (col == "screen_height") file << frame.screenHeight;
+            // Resource management metrics (Sprint 4 Phase D)
+            else if (col == "allocation_count") file << frame.allocationCount;
+            else if (col == "aliased_count") file << frame.aliasedAllocationCount;
+            else if (col == "tracked_bytes") file << frame.trackedAllocatedBytes;
+            else if (col == "budget_utilization") file << frame.budgetUtilization;
 
             first = false;
         }

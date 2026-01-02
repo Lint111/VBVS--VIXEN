@@ -1,4 +1,5 @@
 #include "Profiler/MetricsCollector.h"
+#include "Memory/DeviceBudgetManager.h"
 #include <cstring>
 #include <vector>
 
@@ -127,6 +128,9 @@ void MetricsCollector::OnFrameEnd(uint32_t frameIndex) {
     // Collect VRAM usage (VK_EXT_memory_budget)
     CollectVRAMUsage();
 
+    // Collect resource management metrics (DeviceBudgetManager)
+    CollectResourceMetrics();
+
     // Calculate CPU frame time
     lastFrameMetrics_.frameNumber = totalFramesCollected_;
     lastFrameMetrics_.frameTimeMs = frameDuration.count();
@@ -230,6 +234,44 @@ void MetricsCollector::CollectVRAMUsage() {
     lastFrameMetrics_.vramBudgetMB = totalBudget / (1024 * 1024);
 }
 
+void MetricsCollector::CollectResourceMetrics() {
+    if (!budgetManager_) {
+        // Reset resource metrics when no budget manager
+        lastFrameMetrics_.allocationCount = 0;
+        lastFrameMetrics_.aliasedAllocationCount = 0;
+        lastFrameMetrics_.trackedAllocatedBytes = 0;
+        lastFrameMetrics_.stagingQuotaUsed = 0;
+        lastFrameMetrics_.budgetUtilization = 0.0f;
+        lastFrameMetrics_.isOverBudget = false;
+        lastFrameMetrics_.budgetManagerAvailable = false;
+        return;
+    }
+
+    lastFrameMetrics_.budgetManagerAvailable = true;
+
+    // Get device memory stats from budget manager
+    auto deviceStats = budgetManager_->GetStats();
+    lastFrameMetrics_.trackedAllocatedBytes = deviceStats.usedDeviceMemory;
+    lastFrameMetrics_.stagingQuotaUsed = deviceStats.stagingQuotaUsed;
+
+    // Calculate utilization ratio
+    if (deviceStats.totalDeviceMemory > 0) {
+        lastFrameMetrics_.budgetUtilization =
+            static_cast<float>(deviceStats.usedDeviceMemory) /
+            static_cast<float>(deviceStats.totalDeviceMemory);
+    } else {
+        lastFrameMetrics_.budgetUtilization = 0.0f;
+    }
+
+    // Get allocator stats for allocation counts
+    auto allocatorStats = budgetManager_->GetAllocatorStats();
+    lastFrameMetrics_.allocationCount = allocatorStats.allocationCount;
+    lastFrameMetrics_.aliasedAllocationCount = budgetManager_->GetAliasedAllocationCount();
+
+    // Check budget status
+    lastFrameMetrics_.isOverBudget = budgetManager_->IsOverBudget();
+}
+
 void MetricsCollector::UpdateRollingStats(const FrameMetrics& metrics) {
     rollingStats_["frame_time"].AddSample(metrics.frameTimeMs);
     rollingStats_["gpu_time"].AddSample(metrics.gpuTimeMs);
@@ -237,6 +279,12 @@ void MetricsCollector::UpdateRollingStats(const FrameMetrics& metrics) {
     rollingStats_["fps"].AddSample(metrics.fps);
     rollingStats_["vram_usage"].AddSample(static_cast<float>(metrics.vramUsageMB));
     rollingStats_["vram_budget"].AddSample(static_cast<float>(metrics.vramBudgetMB));
+
+    // Add resource management metrics to rolling stats
+    if (metrics.budgetManagerAvailable) {
+        rollingStats_["allocation_count"].AddSample(static_cast<float>(metrics.allocationCount));
+        rollingStats_["budget_utilization"].AddSample(metrics.budgetUtilization * 100.0f);
+    }
 }
 
 } // namespace Vixen::Profiler

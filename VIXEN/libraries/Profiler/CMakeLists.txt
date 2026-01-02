@@ -51,6 +51,7 @@ target_link_libraries(Profiler
     PRIVATE
         VulkanResources
         ShaderManagement
+        ResourceManagement  # Sprint 4 Phase D: For DeviceBudgetManager metrics
         miniz
 )
 

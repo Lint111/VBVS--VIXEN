@@ -9,6 +9,11 @@
 #include <string>
 #include <memory>
 
+// Forward declaration
+namespace ResourceManagement {
+    class DeviceBudgetManager;
+}
+
 namespace Vixen::Profiler {
 
 /// Callback type for extracting metrics from nodes before cleanup
@@ -81,6 +86,15 @@ public:
     /// Check if still in warmup period
     bool IsWarmingUp() const { return totalFramesCollected_ < warmupFrames_; }
 
+    /// Set budget manager for resource metrics collection
+    /// @param budgetManager Pointer to DeviceBudgetManager (can be nullptr to disable)
+    void SetBudgetManager(ResourceManagement::DeviceBudgetManager* budgetManager) {
+        budgetManager_ = budgetManager;
+    }
+
+    /// Get current budget manager
+    ResourceManagement::DeviceBudgetManager* GetBudgetManager() const { return budgetManager_; }
+
 private:
     struct PerFrameData;
     std::unique_ptr<PerFrameData[]> frameData_;
@@ -102,8 +116,12 @@ private:
     std::chrono::high_resolution_clock::time_point profilingStartTime_;
     std::chrono::high_resolution_clock::time_point frameStartTime_;
 
+    // Sprint 4 Phase D: Budget manager for resource metrics
+    ResourceManagement::DeviceBudgetManager* budgetManager_ = nullptr;
+
     void CollectGPUResults(uint32_t frameIndex);
     void CollectVRAMUsage();
+    void CollectResourceMetrics();
     void UpdateRollingStats(const FrameMetrics& metrics);
 };
 

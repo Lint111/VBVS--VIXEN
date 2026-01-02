@@ -85,8 +85,10 @@ public:
 private:
     std::vector<std::string> enabledColumns_ = {
         "frame", "timestamp_ms", "frame_time_ms", "gpu_time_ms",
-        "bandwidth_read_gb", "bandwidth_write_gb", "vram_mb",
-        "mrays_per_sec", "fps", "scene_resolution", "screen_width", "screen_height"
+        "bandwidth_read_gb", "bandwidth_write_gb", "vram_mb", "vram_budget_mb",
+        "mrays_per_sec", "fps", "scene_resolution", "screen_width", "screen_height",
+        // Resource management metrics
+        "allocation_count", "aliased_count", "tracked_bytes", "budget_utilization"
     };
 
     void WriteCSVHeader(std::ofstream& file, const TestConfiguration& config,
