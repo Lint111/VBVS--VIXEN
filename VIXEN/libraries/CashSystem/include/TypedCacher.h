@@ -14,6 +14,10 @@
 #include <cstdint>
 #include <typeindex>
 
+#ifdef _DEBUG
+#include "VixenHash.h"  // For collision detection
+#endif
+
 // Forward declarations for type safety
 namespace Vixen::Vulkan::Resources {
     class VulkanDevice;
@@ -57,6 +61,11 @@ public:
     // Typed convenience API — callers should use this
     PtrT GetOrCreate(const CreateInfoT& ci) {
         auto key = ComputeKey(ci);
+
+#ifdef _DEBUG
+        // Collision detection: check if same key maps to different content
+        CheckCollision(key, ci);
+#endif
 
         { // fast path read
             std::shared_lock rlock(m_lock);
@@ -173,6 +182,48 @@ protected:
     // Device context and initialization tracking
     Vixen::Vulkan::Resources::VulkanDevice* m_device;
     bool m_initialized;
+
+#ifdef _DEBUG
+    // Collision detection: maps cache key -> content hash of CreateInfo
+    // If same key appears with different content hash, we have a collision
+    mutable std::unordered_map<std::uint64_t, std::uint64_t> m_debugContentHashes;
+    mutable std::mutex m_debugMutex;
+
+    /**
+     * @brief Compute content hash of CreateInfo for collision detection
+     *
+     * Uses raw bytes of the struct. This won't catch all collisions
+     * (e.g., if CreateInfo contains pointers), but catches most cases.
+     */
+    std::uint64_t ComputeContentHash(const CreateInfoT& ci) const {
+        return ::Vixen::Hash::ComputeHash64(&ci, sizeof(CreateInfoT));
+    }
+
+    /**
+     * @brief Check for hash collisions in debug builds
+     *
+     * Logs an error if the same cache key maps to different CreateInfo content.
+     * This indicates a bug in ComputeKey() implementation.
+     */
+    void CheckCollision(std::uint64_t key, const CreateInfoT& ci) const {
+        std::uint64_t contentHash = ComputeContentHash(ci);
+
+        std::lock_guard<std::mutex> lock(m_debugMutex);
+        auto it = m_debugContentHashes.find(key);
+        if (it != m_debugContentHashes.end()) {
+            if (it->second != contentHash) {
+                // COLLISION DETECTED!
+                LOG_ERROR("[" + std::string(name()) + "] HASH COLLISION DETECTED! "
+                          "Key=" + std::to_string(key) +
+                          " has different content (existing hash=" + std::to_string(it->second) +
+                          ", new hash=" + std::to_string(contentHash) + "). "
+                          "This indicates a bug in ComputeKey() implementation.");
+            }
+        } else {
+            m_debugContentHashes[key] = contentHash;
+        }
+    }
+#endif
 
     // Sprint 4 Phase D: Budget manager for tracked allocations
     ResourceManagement::DeviceBudgetManager* m_budgetManager = nullptr;

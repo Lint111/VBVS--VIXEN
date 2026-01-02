@@ -1,8 +1,7 @@
 #include "pch.h"
 #include "PipelineLayoutCacher.h"
+#include "CacheKeyHasher.h"
 #include "VulkanDevice.h"
-#include "VixenHash.h"
-#include <sstream>
 #include <stdexcept>
 
 namespace CashSystem {
@@ -68,18 +67,26 @@ std::shared_ptr<PipelineLayoutWrapper> PipelineLayoutCacher::Create(const Pipeli
 }
 
 std::uint64_t PipelineLayoutCacher::ComputeKey(const PipelineLayoutCreateParams& ci) const {
-    // Key is based on descriptor set layout handle + push constant ranges
-    std::ostringstream keyStream;
-    keyStream << reinterpret_cast<uint64_t>(ci.descriptorSetLayout) << "|";
-    keyStream << ci.pushConstantRanges.size();
+    // Use CacheKeyHasher for deterministic, binary hashing
+    // NOTE: Still uses descriptor set layout handle as we don't have access to
+    // the layout's CreateInfo here. Two layouts with identical content but
+    // different handles will have different keys - this is a known limitation.
+    // TODO: Store DescriptorSetLayoutCreateInfo in PipelineLayoutCreateParams
+    // to enable true content-based hashing.
+    CacheKeyHasher hasher;
 
+    // Hash descriptor set layout handle
+    hasher.Add(reinterpret_cast<uint64_t>(ci.descriptorSetLayout));
+
+    // Hash push constant ranges (content-based)
+    hasher.Add(static_cast<uint32_t>(ci.pushConstantRanges.size()));
     for (const auto& range : ci.pushConstantRanges) {
-        keyStream << "|" << range.stageFlags << ":" << range.offset << ":" << range.size;
+        hasher.Add(range.stageFlags);
+        hasher.Add(range.offset);
+        hasher.Add(range.size);
     }
 
-    const std::string keyString = keyStream.str();
-    std::uint64_t hash = std::hash<std::string>{}(keyString);
-
+    uint64_t hash = hasher.Finalize();
     LOG_DEBUG("ComputeKey: hash=" + std::to_string(hash));
 
     return hash;

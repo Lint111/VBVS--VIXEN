@@ -1,9 +1,8 @@
 #include "pch.h"
 #include "RenderPassCacher.h"
+#include "CacheKeyHasher.h"
 #include "MainCacher.h"
 #include "VulkanDevice.h"
-#include "VixenHash.h"
-#include <sstream>
 #include <stdexcept>
 #include <vulkan/vulkan.h>
 #include <fstream>
@@ -153,30 +152,28 @@ std::shared_ptr<RenderPassWrapper> RenderPassCacher::Create(const RenderPassCrea
 }
 
 std::uint64_t RenderPassCacher::ComputeKey(const RenderPassCreateParams& ci) const {
-    // Combine all parameters into a unique key
-    std::ostringstream keyStream;
-    keyStream << static_cast<int>(ci.colorFormat) << "|"
-              << static_cast<int>(ci.samples) << "|"
-              << static_cast<int>(ci.colorLoadOp) << "|"
-              << static_cast<int>(ci.colorStoreOp) << "|"
-              << static_cast<int>(ci.initialLayout) << "|"
-              << static_cast<int>(ci.finalLayout) << "|"
-              << ci.hasDepth << "|";
+    // Use CacheKeyHasher for deterministic, binary hashing
+    CacheKeyHasher hasher;
+    hasher.Add(static_cast<int32_t>(ci.colorFormat))
+          .Add(static_cast<int32_t>(ci.samples))
+          .Add(static_cast<int32_t>(ci.colorLoadOp))
+          .Add(static_cast<int32_t>(ci.colorStoreOp))
+          .Add(static_cast<int32_t>(ci.initialLayout))
+          .Add(static_cast<int32_t>(ci.finalLayout))
+          .Add(ci.hasDepth);
 
     if (ci.hasDepth) {
-        keyStream << static_cast<int>(ci.depthFormat) << "|"
-                  << static_cast<int>(ci.depthLoadOp) << "|"
-                  << static_cast<int>(ci.depthStoreOp) << "|";
+        hasher.Add(static_cast<int32_t>(ci.depthFormat))
+              .Add(static_cast<int32_t>(ci.depthLoadOp))
+              .Add(static_cast<int32_t>(ci.depthStoreOp));
     }
 
-    keyStream << static_cast<int>(ci.srcStageMask) << "|"
-              << static_cast<int>(ci.dstStageMask) << "|"
-              << static_cast<int>(ci.srcAccessMask) << "|"
-              << static_cast<int>(ci.dstAccessMask);
+    hasher.Add(static_cast<int32_t>(ci.srcStageMask))
+          .Add(static_cast<int32_t>(ci.dstStageMask))
+          .Add(static_cast<int32_t>(ci.srcAccessMask))
+          .Add(static_cast<int32_t>(ci.dstAccessMask));
 
-    // Use standard hash function
-    const std::string keyString = keyStream.str();
-    return std::hash<std::string>{}(keyString);
+    return hasher.Finalize();
 }
 
 bool RenderPassCacher::SerializeToFile(const std::filesystem::path& path) const {

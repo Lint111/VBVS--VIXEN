@@ -1,7 +1,7 @@
 #include "pch.h"
 #include "ShaderModuleCacher.h"
+#include "CacheKeyHasher.h"
 #include "VulkanDevice.h"
-#include "VixenHash.h"  // Project-wide hash library (Vixen::Hash namespace)
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
@@ -224,20 +224,19 @@ std::shared_ptr<ShaderModuleWrapper> ShaderModuleCacher::Create(const ShaderModu
 }
 
 std::uint64_t ShaderModuleCacher::ComputeKey(const ShaderModuleCreateParams& ci) const {
-    // Combine all parameters into a unique key
-    std::ostringstream keyStream;
-    keyStream << ci.sourcePath << "|"
-              << ci.entryPoint << "|"
-              << ci.stage << "|"
-              << ci.sourceChecksum << "|";
-    
+    // Use CacheKeyHasher for deterministic, binary hashing
+    CacheKeyHasher hasher;
+    hasher.Add(ci.sourcePath)
+          .Add(ci.entryPoint)
+          .Add(static_cast<uint32_t>(ci.stage))
+          .Add(ci.sourceChecksum);
+
+    hasher.Add(static_cast<uint32_t>(ci.macroDefinitions.size()));
     for (const auto& macro : ci.macroDefinitions) {
-        keyStream << macro << ",";
+        hasher.Add(macro);
     }
-    
-    // Use hash function to create 64-bit key
-    const std::string keyString = keyStream.str();
-    return std::hash<std::string>{}(keyString);
+
+    return hasher.Finalize();
 }
 
 std::string ShaderModuleCacher::ComputeSourceChecksum(const std::string& sourcePath) const {

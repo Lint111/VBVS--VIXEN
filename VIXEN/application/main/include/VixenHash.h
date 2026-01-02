@@ -13,6 +13,34 @@
 namespace Vixen {
 namespace Hash {
 
+// FNV-1a hash constants (standard 64-bit)
+constexpr uint64_t FNV_OFFSET_BASIS = 14695981039346656037ULL;
+constexpr uint64_t FNV_PRIME = 1099511628211ULL;
+
+/**
+ * @brief Compute 64-bit FNV-1a hash
+ *
+ * Fast, deterministic, non-cryptographic hash suitable for cache keys.
+ * Use this for uint64_t keys (e.g., CashSystem cachers).
+ *
+ * @param data Pointer to data
+ * @param len Length in bytes
+ * @return 64-bit hash
+ */
+inline uint64_t ComputeHash64(const void* data, size_t len) {
+    uint64_t hash = FNV_OFFSET_BASIS;
+    const uint8_t* bytes = static_cast<const uint8_t*>(data);
+    for (size_t i = 0; i < len; ++i) {
+        hash ^= bytes[i];
+        hash *= FNV_PRIME;
+    }
+    return hash;
+}
+
+inline uint64_t ComputeHash64(const std::vector<uint8_t>& data) {
+    return ComputeHash64(data.data(), data.size());
+}
+
 inline std::string ToHex(const unsigned char* bytes, size_t len) {
     std::ostringstream oss;
     oss << std::hex << std::setfill('0');

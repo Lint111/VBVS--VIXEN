@@ -1,9 +1,8 @@
 #include "pch.h"
 #include "ComputePipelineCacher.h"
+#include "CacheKeyHasher.h"
 #include "PipelineLayoutCacher.h"
 #include "VulkanDevice.h"
-#include <iostream>
-#include <sstream>
 #include <stdexcept>
 
 namespace CashSystem {
@@ -46,13 +45,14 @@ std::shared_ptr<ComputePipelineWrapper> ComputePipelineCacher::Create(
 }
 
 std::uint64_t ComputePipelineCacher::ComputeKey(const ComputePipelineCreateParams& ci) const {
-    // Hash based on shader key, layout key, and workgroup size
-    size_t hash = std::hash<std::string>{}(ci.shaderKey);
-    hash ^= std::hash<std::string>{}(ci.layoutKey) << 1;
-    hash ^= std::hash<uint32_t>{}(ci.workgroupSizeX) << 2;
-    hash ^= std::hash<uint32_t>{}(ci.workgroupSizeY) << 3;
-    hash ^= std::hash<uint32_t>{}(ci.workgroupSizeZ) << 4;
-    return static_cast<std::uint64_t>(hash);
+    // Use CacheKeyHasher for deterministic, binary hashing
+    CacheKeyHasher hasher;
+    hasher.Add(ci.shaderKey)
+          .Add(ci.layoutKey)
+          .Add(ci.workgroupSizeX)
+          .Add(ci.workgroupSizeY)
+          .Add(ci.workgroupSizeZ);
+    return hasher.Finalize();
 }
 
 void ComputePipelineCacher::Cleanup() {

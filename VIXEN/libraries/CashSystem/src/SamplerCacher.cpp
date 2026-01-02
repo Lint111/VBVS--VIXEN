@@ -1,8 +1,8 @@
 #include "pch.h"
 #include "SamplerCacher.h"
+#include "CacheKeyHasher.h"
 #include "MainCacher.h"
 #include "VulkanDevice.h"
-#include "VixenHash.h"
 #include <sstream>
 #include <stdexcept>
 #include <vulkan/vulkan.h>
@@ -112,25 +112,24 @@ std::shared_ptr<SamplerWrapper> SamplerCacher::Create(const SamplerCreateParams&
 }
 
 std::uint64_t SamplerCacher::ComputeKey(const SamplerCreateParams& ci) const {
-    // Combine all parameters into a unique key string
-    std::ostringstream keyStream;
-    keyStream << static_cast<int>(ci.minFilter) << "|"
-              << static_cast<int>(ci.magFilter) << "|"
-              << static_cast<int>(ci.addressModeU) << "|"
-              << static_cast<int>(ci.addressModeV) << "|"
-              << static_cast<int>(ci.addressModeW) << "|"
-              << ci.maxAnisotropy << "|"
-              << static_cast<int>(ci.compareEnable) << "|"
-              << static_cast<int>(ci.compareOp) << "|"
-              << ci.mipLodBias << "|"
-              << ci.minLod << "|"
-              << ci.maxLod << "|"
-              << static_cast<int>(ci.borderColor) << "|"
-              << static_cast<int>(ci.unnormalizedCoordinates);
+    // Use CacheKeyHasher for deterministic, binary hashing
+    // Note: floats are quantized to avoid floating-point instability
+    CacheKeyHasher hasher;
+    hasher.Add(static_cast<int32_t>(ci.minFilter))
+          .Add(static_cast<int32_t>(ci.magFilter))
+          .Add(static_cast<int32_t>(ci.addressModeU))
+          .Add(static_cast<int32_t>(ci.addressModeV))
+          .Add(static_cast<int32_t>(ci.addressModeW))
+          .Add(static_cast<uint32_t>(ci.maxAnisotropy * 100.0f))  // Quantize float
+          .Add(static_cast<int32_t>(ci.compareEnable))
+          .Add(static_cast<int32_t>(ci.compareOp))
+          .Add(static_cast<int32_t>(ci.mipLodBias * 1000.0f))     // Quantize float
+          .Add(static_cast<int32_t>(ci.minLod * 1000.0f))         // Quantize float
+          .Add(static_cast<int32_t>(ci.maxLod * 1000.0f))         // Quantize float
+          .Add(static_cast<int32_t>(ci.borderColor))
+          .Add(static_cast<int32_t>(ci.unnormalizedCoordinates));
 
-    // Use standard hash function (matching PipelineCacher pattern)
-    const std::string keyString = keyStream.str();
-    return std::hash<std::string>{}(keyString);
+    return hasher.Finalize();
 }
 
 bool SamplerCacher::SerializeToFile(const std::filesystem::path& path) const {

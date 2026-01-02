@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "ShaderCompilationCacher.h"
+#include "CacheKeyHasher.h"
 #include "VixenHash.h"
 #include "ShaderCompiler.h"
 #include "ShaderPreprocessor.h"
@@ -28,21 +29,26 @@ std::shared_ptr<CompiledShaderWrapper> ShaderCompilationCacher::Create(const Sha
 }
 
 std::uint64_t ShaderCompilationCacher::ComputeKey(const ShaderCompilationParams& ci) const {
-    // Build key string from all compilation parameters
-    std::string keyString = ci.sourcePath + "|" + ci.entryPoint + "|" + ci.sourceChecksum + "|" + ci.compilerVersion;
+    // Use CacheKeyHasher for deterministic, binary hashing
+    CacheKeyHasher hasher;
+    hasher.Add(ci.sourcePath)
+          .Add(ci.entryPoint)
+          .Add(ci.sourceChecksum)
+          .Add(ci.compilerVersion);
 
+    hasher.Add(static_cast<uint32_t>(ci.macroDefinitions.size()));
     for (const auto& macro : ci.macroDefinitions) {
-        keyString += "|" + macro;
+        hasher.Add(macro);
     }
 
+    hasher.Add(static_cast<uint32_t>(ci.compileFlags.size()));
     for (const auto& flag : ci.compileFlags) {
-        keyString += "|" + flag;
+        hasher.Add(flag);
     }
 
-    keyString += "|" + std::to_string(static_cast<uint32_t>(ci.stage));
+    hasher.Add(static_cast<uint32_t>(ci.stage));
 
-    // Use std::hash (good enough for now, deterministic)
-    return std::hash<std::string>{}(keyString);
+    return hasher.Finalize();
 }
 
 bool ShaderCompilationCacher::SerializeToFile(const std::filesystem::path& path) const {

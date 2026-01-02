@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "DescriptorCacher.h"
+#include "CacheKeyHasher.h"
 #include "VixenHash.h"
 #include "DescriptorLayoutSpec.h"
 #include <sstream>
@@ -95,17 +96,18 @@ std::shared_ptr<DescriptorWrapper> DescriptorCacher::Create(const DescriptorCrea
 }
 
 std::uint64_t DescriptorCacher::ComputeKey(const DescriptorCreateParams& ci) const {
-    // Create unique key based on layout hash and pool configuration
-    std::ostringstream keyStream;
-    keyStream << ci.layoutHash << "|"
-              << ci.maxSets << "|";
-    
+    // Use CacheKeyHasher for deterministic, binary hashing
+    CacheKeyHasher hasher;
+    hasher.Add(ci.layoutHash)
+          .Add(ci.maxSets);
+
+    hasher.Add(static_cast<uint32_t>(ci.poolSizes.size()));
     for (const auto& poolSize : ci.poolSizes) {
-        keyStream << poolSize.type << ":" << poolSize.descriptorCount << ",";
+        hasher.Add(static_cast<uint32_t>(poolSize.type));
+        hasher.Add(poolSize.descriptorCount);
     }
-    
-    const std::string keyString = keyStream.str();
-    return std::hash<std::string>{}(keyString);
+
+    return hasher.Finalize();
 }
 
 void DescriptorCacher::CalculatePoolSizes(const ShaderManagement::DescriptorLayoutSpec* spec, 
