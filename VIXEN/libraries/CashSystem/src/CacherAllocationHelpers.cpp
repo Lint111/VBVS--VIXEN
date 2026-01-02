@@ -188,7 +188,15 @@ uint32_t CacherAllocationHelpers::FindMemoryType(
 ) {
     VkPhysicalDeviceMemoryProperties memProperties;
     vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
+    return FindMemoryType(memProperties, typeFilter, properties);
+}
 
+uint32_t CacherAllocationHelpers::FindMemoryType(
+    const VkPhysicalDeviceMemoryProperties& memProperties,
+    uint32_t typeFilter,
+    VkMemoryPropertyFlags properties
+) {
+    // Primary search: exact match of all requested properties
     for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
         if ((typeFilter & (1 << i)) &&
             (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
@@ -196,14 +204,8 @@ uint32_t CacherAllocationHelpers::FindMemoryType(
         }
     }
 
-    // Fallback: find any matching memory type
-    for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
-        if (typeFilter & (1 << i)) {
-            return i;
-        }
-    }
-
-    return 0;  // Default to first type
+    // Throw on failure - cachers expect this behavior for proper error handling
+    throw std::runtime_error("[CacherAllocationHelpers::FindMemoryType] Failed to find suitable memory type");
 }
 
 void* CacherAllocationHelpers::MapBuffer(

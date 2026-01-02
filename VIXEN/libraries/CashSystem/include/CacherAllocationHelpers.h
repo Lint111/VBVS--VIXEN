@@ -87,6 +87,41 @@ public:
         ResourceManagement::BufferAllocation& allocation
     );
 
+    /**
+     * @brief Find suitable memory type for allocation
+     *
+     * Consolidated utility to replace duplicate implementations in cachers.
+     * Uses cached memory properties from VulkanDevice when available.
+     *
+     * @param physicalDevice Physical device for memory properties query
+     * @param typeFilter Memory type bits from vkGetBufferMemoryRequirements
+     * @param properties Required memory property flags
+     * @return Memory type index
+     * @throws std::runtime_error if no suitable memory type found
+     */
+    static uint32_t FindMemoryType(
+        VkPhysicalDevice physicalDevice,
+        uint32_t typeFilter,
+        VkMemoryPropertyFlags properties
+    );
+
+    /**
+     * @brief Find memory type using cached properties from VulkanDevice
+     *
+     * More efficient version using pre-cached memory properties.
+     *
+     * @param memProperties Cached memory properties from VulkanDevice
+     * @param typeFilter Memory type bits from vkGetBufferMemoryRequirements
+     * @param properties Required memory property flags
+     * @return Memory type index
+     * @throws std::runtime_error if no suitable memory type found
+     */
+    static uint32_t FindMemoryType(
+        const VkPhysicalDeviceMemoryProperties& memProperties,
+        uint32_t typeFilter,
+        VkMemoryPropertyFlags properties
+    );
+
 private:
     /**
      * @brief Direct Vulkan buffer allocation (no budget tracking)
@@ -104,15 +139,6 @@ private:
     static void FreeBufferDirect(
         Vixen::Vulkan::Resources::VulkanDevice* device,
         ResourceManagement::BufferAllocation& allocation
-    );
-
-    /**
-     * @brief Find suitable memory type for allocation
-     */
-    static uint32_t FindMemoryType(
-        VkPhysicalDevice physicalDevice,
-        uint32_t typeFilter,
-        VkMemoryPropertyFlags properties
     );
 };
 

@@ -846,7 +846,8 @@ void VoxelSceneCacher::UploadToGPU(VoxelSceneData& data) {
     combinedMemReq.size = currentOffset;
 
     // Find device-local memory type
-    uint32_t memoryTypeIndex = FindMemoryType(
+    uint32_t memoryTypeIndex = CacherAllocationHelpers::FindMemoryType(
+        m_device->gpuMemoryProperties,
         combinedMemReq.memoryTypeBits,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
     );
@@ -896,19 +897,6 @@ VkBuffer VoxelSceneCacher::CreateBuffer(VkDeviceSize size, VkBufferUsageFlags us
     return buffer;
 }
 
-uint32_t VoxelSceneCacher::FindMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) {
-    const VkPhysicalDeviceMemoryProperties& memProperties = m_device->gpuMemoryProperties;
-
-    for (uint32_t i = 0; i < memProperties.memoryTypeCount; ++i) {
-        if ((typeFilter & (1 << i)) &&
-            (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
-            return i;
-        }
-    }
-
-    throw std::runtime_error("[VoxelSceneCacher::FindMemoryType] Failed to find suitable memory type");
-}
-
 void VoxelSceneCacher::UploadBufferData(VkBuffer buffer, const void* srcData, VkDeviceSize size, VkDeviceSize offset) {
     if (size == 0 || !srcData) {
         return;
@@ -940,7 +928,8 @@ void VoxelSceneCacher::UploadBufferData(VkBuffer buffer, const void* srcData, Vk
     VkMemoryRequirements stagingMemReq;
     vkGetBufferMemoryRequirements(m_device->device, stagingBuffer, &stagingMemReq);
 
-    uint32_t stagingMemTypeIndex = FindMemoryType(
+    uint32_t stagingMemTypeIndex = CacherAllocationHelpers::FindMemoryType(
+        m_device->gpuMemoryProperties,
         stagingMemReq.memoryTypeBits,
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
     );

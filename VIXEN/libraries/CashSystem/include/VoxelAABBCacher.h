@@ -211,11 +211,6 @@ private:
         const std::vector<VoxelBrickMapping>& brickMappings);
 
     /**
-     * @brief Find memory type index for buffer requirements
-     */
-    uint32_t FindMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
-
-    /**
      * @brief Upload data to GPU buffer via staging buffer
      */
     void UploadBufferData(VkBuffer buffer, const void* srcData, VkDeviceSize size);

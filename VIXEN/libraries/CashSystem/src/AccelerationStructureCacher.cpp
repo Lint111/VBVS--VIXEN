@@ -282,19 +282,6 @@ VkBuildAccelerationStructureFlagsKHR AccelerationStructureCacher::GetBuildFlags(
     return flags;
 }
 
-uint32_t AccelerationStructureCacher::FindMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) {
-    const VkPhysicalDeviceMemoryProperties& memProperties = m_device->gpuMemoryProperties;
-
-    for (uint32_t i = 0; i < memProperties.memoryTypeCount; ++i) {
-        if ((typeFilter & (1 << i)) &&
-            (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
-            return i;
-        }
-    }
-
-    throw std::runtime_error("[AccelerationStructureCacher::FindMemoryType] Failed to find suitable memory type");
-}
-
 // ============================================================================
 // BUILD BLAS - Create bottom-level acceleration structure from AABBs
 // ============================================================================
@@ -380,7 +367,7 @@ void AccelerationStructureCacher::BuildBLAS(const AccelStructCreateInfo& ci, con
         allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         allocInfo.pNext = &allocFlagsInfo;
         allocInfo.allocationSize = memReq.size;
-        allocInfo.memoryTypeIndex = FindMemoryType(memReq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        allocInfo.memoryTypeIndex = CacherAllocationHelpers::FindMemoryType(m_device->gpuMemoryProperties, memReq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
         VK_CHECK_LOG(vkAllocateMemory(m_device->device, &allocInfo, nullptr, &asData.blasMemory), "Allocate BLAS memory");
         VK_CHECK_LOG(vkBindBufferMemory(m_device->device, asData.blasBuffer, asData.blasMemory, 0), "Bind BLAS buffer memory");
@@ -407,7 +394,7 @@ void AccelerationStructureCacher::BuildBLAS(const AccelStructCreateInfo& ci, con
         allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         allocInfo.pNext = &allocFlagsInfo;
         allocInfo.allocationSize = memReq.size;
-        allocInfo.memoryTypeIndex = FindMemoryType(memReq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        allocInfo.memoryTypeIndex = CacherAllocationHelpers::FindMemoryType(m_device->gpuMemoryProperties, memReq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
         VK_CHECK_LOG(vkAllocateMemory(m_device->device, &allocInfo, nullptr, &asData.scratchMemory), "Allocate scratch memory");
         VK_CHECK_LOG(vkBindBufferMemory(m_device->device, asData.scratchBuffer, asData.scratchMemory, 0), "Bind scratch buffer memory");
@@ -549,7 +536,8 @@ void AccelerationStructureCacher::BuildTLAS(const AccelStructCreateInfo& ci, Acc
         allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         allocInfo.pNext = &allocFlagsInfo;
         allocInfo.allocationSize = memReq.size;
-        allocInfo.memoryTypeIndex = FindMemoryType(
+        allocInfo.memoryTypeIndex = CacherAllocationHelpers::FindMemoryType(
+            m_device->gpuMemoryProperties,
             memReq.memoryTypeBits,
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
         );
@@ -625,7 +613,7 @@ void AccelerationStructureCacher::BuildTLAS(const AccelStructCreateInfo& ci, Acc
         allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         allocInfo.pNext = &allocFlagsInfo;
         allocInfo.allocationSize = memReq.size;
-        allocInfo.memoryTypeIndex = FindMemoryType(memReq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        allocInfo.memoryTypeIndex = CacherAllocationHelpers::FindMemoryType(m_device->gpuMemoryProperties, memReq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
         VK_CHECK_LOG(vkAllocateMemory(m_device->device, &allocInfo, nullptr, &asData.tlasMemory), "Allocate TLAS memory");
         VK_CHECK_LOG(vkBindBufferMemory(m_device->device, asData.tlasBuffer, asData.tlasMemory, 0), "Bind TLAS buffer memory");

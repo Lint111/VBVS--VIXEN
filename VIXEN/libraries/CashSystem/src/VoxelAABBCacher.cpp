@@ -260,7 +260,7 @@ void VoxelAABBCacher::UploadToGPU(
         allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         allocInfo.pNext = &allocFlagsInfo;
         allocInfo.allocationSize = memReq.size;
-        allocInfo.memoryTypeIndex = FindMemoryType(memReq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        allocInfo.memoryTypeIndex = CacherAllocationHelpers::FindMemoryType(m_device->gpuMemoryProperties, memReq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
         VK_CHECK_LOG(vkAllocateMemory(m_device->device, &allocInfo, nullptr, &aabbData.aabbBufferMemory), "Allocate AABB memory");
         VK_CHECK_LOG(vkBindBufferMemory(m_device->device, aabbData.aabbBuffer, aabbData.aabbBufferMemory, 0), "Bind AABB buffer memory");
@@ -286,7 +286,7 @@ void VoxelAABBCacher::UploadToGPU(
         VkMemoryAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         allocInfo.allocationSize = memReq.size;
-        allocInfo.memoryTypeIndex = FindMemoryType(memReq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        allocInfo.memoryTypeIndex = CacherAllocationHelpers::FindMemoryType(m_device->gpuMemoryProperties, memReq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
         VK_CHECK_LOG(vkAllocateMemory(m_device->device, &allocInfo, nullptr, &aabbData.materialIdBufferMemory), "Allocate material ID memory");
         VK_CHECK_LOG(vkBindBufferMemory(m_device->device, aabbData.materialIdBuffer, aabbData.materialIdBufferMemory, 0), "Bind material ID buffer memory");
@@ -312,7 +312,7 @@ void VoxelAABBCacher::UploadToGPU(
         VkMemoryAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         allocInfo.allocationSize = memReq.size;
-        allocInfo.memoryTypeIndex = FindMemoryType(memReq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        allocInfo.memoryTypeIndex = CacherAllocationHelpers::FindMemoryType(m_device->gpuMemoryProperties, memReq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
         VK_CHECK_LOG(vkAllocateMemory(m_device->device, &allocInfo, nullptr, &aabbData.brickMappingBufferMemory), "Allocate brick mapping memory");
         VK_CHECK_LOG(vkBindBufferMemory(m_device->device, aabbData.brickMappingBuffer, aabbData.brickMappingBufferMemory, 0), "Bind brick mapping buffer memory");
@@ -324,19 +324,6 @@ void VoxelAABBCacher::UploadToGPU(
              std::to_string(aabbData.aabbBufferSize / 1024.0f) + " KB AABBs, " +
              std::to_string(aabbData.materialIdBufferSize / 1024.0f) + " KB materials, " +
              std::to_string(aabbData.brickMappingBufferSize / 1024.0f) + " KB mappings");
-}
-
-uint32_t VoxelAABBCacher::FindMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) {
-    const VkPhysicalDeviceMemoryProperties& memProperties = m_device->gpuMemoryProperties;
-
-    for (uint32_t i = 0; i < memProperties.memoryTypeCount; ++i) {
-        if ((typeFilter & (1 << i)) &&
-            (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
-            return i;
-        }
-    }
-
-    throw std::runtime_error("[VoxelAABBCacher::FindMemoryType] Failed to find suitable memory type");
 }
 
 void VoxelAABBCacher::UploadBufferData(VkBuffer buffer, const void* srcData, VkDeviceSize size) {
@@ -369,7 +356,8 @@ void VoxelAABBCacher::UploadBufferData(VkBuffer buffer, const void* srcData, VkD
     VkMemoryAllocateInfo stagingAllocInfo{};
     stagingAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     stagingAllocInfo.allocationSize = stagingMemReq.size;
-    stagingAllocInfo.memoryTypeIndex = FindMemoryType(
+    stagingAllocInfo.memoryTypeIndex = CacherAllocationHelpers::FindMemoryType(
+        m_device->gpuMemoryProperties,
         stagingMemReq.memoryTypeBits,
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
     );

@@ -118,15 +118,32 @@ struct BufferAllocation {
 - `libraries/ResourceManagement/src/Memory/DirectAllocator.cpp` (+20 lines)
 - `libraries/ResourceManagement/src/Memory/VMAAllocator.cpp` (+15 lines)
 
-### 2.2 Replace Duplicate Code with VulkanBufferAllocator (4h)
+### 2.2 Replace Duplicate Code with VulkanBufferAllocator (4h) ✅ COMPLETE
 
 **HacknPlan:** #187
 
-**Files with buffer allocation to refactor:**
-- `AccelerationStructureCacher.cpp` - BLAS, TLAS, scratch, instance buffers
-- `VoxelAABBCacher.cpp` - AABB, material, brick mapping, staging buffers
-- `MeshCacher.cpp` - vertex, index buffers
-- `CacherAllocationHelpers.cpp` - already partially extracted
+**Solution:** Consolidated duplicate `FindMemoryType` implementations into `CacherAllocationHelpers`.
+
+**Changes Made:**
+- Made `FindMemoryType` public in `CacherAllocationHelpers.h`
+- Added overload taking `VkPhysicalDeviceMemoryProperties&` for cached lookups
+- Removed duplicate implementations from:
+  - `VoxelAABBCacher` (header + cpp)
+  - `VoxelSceneCacher` (header + cpp)
+  - `AccelerationStructureCacher` (header + cpp)
+- Updated all call sites to use `CacherAllocationHelpers::FindMemoryType(m_device->gpuMemoryProperties, ...)`
+
+**Files Changed:**
+- `libraries/CashSystem/include/CacherAllocationHelpers.h` (+15 lines, new public API)
+- `libraries/CashSystem/src/CacherAllocationHelpers.cpp` (+10 lines, new overload)
+- `libraries/CashSystem/include/VoxelAABBCacher.h` (-4 lines)
+- `libraries/CashSystem/src/VoxelAABBCacher.cpp` (-12 lines, +4 lines)
+- `libraries/CashSystem/include/VoxelSceneCacher.h` (-4 lines)
+- `libraries/CashSystem/src/VoxelSceneCacher.cpp` (-12 lines, +2 lines)
+- `libraries/CashSystem/include/AccelerationStructureCacher.h` (-4 lines)
+- `libraries/CashSystem/src/AccelerationStructureCacher.cpp` (-12 lines, +4 lines)
+
+**Note:** Full refactor to use `TypedCacher::AllocateBufferTracked()` deferred - would require changing data structures (VkBuffer+VkDeviceMemory → BufferAllocation).
 
 ### 2.3 Implement Batched Buffer Uploads (8h)
 

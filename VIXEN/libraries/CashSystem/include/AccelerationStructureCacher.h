@@ -181,11 +181,6 @@ private:
     void BuildTLAS(const AccelStructCreateInfo& ci, AccelerationStructureData& asData);
 
     /**
-     * @brief Find memory type index for buffer requirements
-     */
-    uint32_t FindMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
-
-    /**
      * @brief Get VkBuildAccelerationStructureFlagsKHR from create info
      */
     VkBuildAccelerationStructureFlagsKHR GetBuildFlags(const AccelStructCreateInfo& ci) const;
