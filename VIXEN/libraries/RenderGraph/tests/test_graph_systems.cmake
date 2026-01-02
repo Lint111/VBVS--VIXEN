@@ -62,3 +62,38 @@ endif()
 # MOVED to libraries/ResourceManagement/tests/test_resource_management.cpp
 # The test now lives with the ResourceManagement library.
 message(STATUS "⊗ test_resource_management moved to ResourceManagement library")
+
+# ---------------------------------------------------------------------------
+# SlotTask Manager Tests (Phase C)
+# ---------------------------------------------------------------------------
+# Validates budget-aware task execution:
+# - Task generation
+# - Sequential and parallel execution
+# - Dynamic throttling with budget constraints
+# - Memory estimation tracking
+
+message(STATUS "Configuring test_slot_task (trimmed build compatible)")
+
+if(TARGET GTest::gtest_main)
+    add_executable(test_slot_task
+        test_slot_task.cpp
+    )
+
+    target_include_directories(test_slot_task PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../include
+    )
+
+    target_link_libraries(test_slot_task PRIVATE
+        GTest::gtest_main
+        RenderGraph
+        ResourceManagement
+    )
+
+    set_target_properties(test_slot_task PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+    gtest_discover_tests(test_slot_task)
+
+    message(STATUS "✓ test_slot_task configured (Phase C budget-aware execution)")
+else()
+    message(STATUS "⊗ test_slot_task skipped (GoogleTest not available)")
+endif()

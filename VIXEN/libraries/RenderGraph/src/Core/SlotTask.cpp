@@ -177,10 +177,47 @@ uint32_t SlotTaskManager::ExecuteParallel(
     size_t taskIdx = 0;
 
     while (taskIdx < tasks.size()) {
-        // Launch up to 'parallelism' tasks concurrently
+        // Phase C.2: Dynamic budget check before each batch
+        uint32_t batchParallelism = parallelism;
+        if (budgetManager) {
+            // Re-evaluate available budget before launching batch
+            uint64_t availableMemory = budgetManager->GetAvailableBytes(BudgetResourceType::HostMemory);
+
+            // Calculate memory needed for next batch
+            uint64_t batchMemory = 0;
+            for (uint32_t p = 0; p < parallelism && (taskIdx + p) < tasks.size(); ++p) {
+                batchMemory += tasks[taskIdx + p].estimatedMemoryBytes;
+            }
+
+            // If insufficient memory, reduce batch size
+            if (availableMemory < batchMemory && availableMemory > 0) {
+                // Find how many tasks we can actually fit
+                uint64_t runningTotal = 0;
+                batchParallelism = 0;
+                for (uint32_t p = 0; p < parallelism && (taskIdx + p) < tasks.size(); ++p) {
+                    uint64_t taskMem = tasks[taskIdx + p].estimatedMemoryBytes;
+                    if (runningTotal + taskMem <= availableMemory) {
+                        runningTotal += taskMem;
+                        batchParallelism++;
+                    } else {
+                        break;
+                    }
+                }
+
+                // If we had to reduce parallelism, count as throttled
+                if (batchParallelism < parallelism) {
+                    lastStats_.tasksThrottled += (parallelism - batchParallelism);
+                }
+
+                // Ensure at least 1 task runs (progress guarantee)
+                batchParallelism = std::max(1u, batchParallelism);
+            }
+        }
+
+        // Launch up to 'batchParallelism' tasks concurrently
         futures.clear();
 
-        for (uint32_t p = 0; p < parallelism && taskIdx < tasks.size(); ++p, ++taskIdx) {
+        for (uint32_t p = 0; p < batchParallelism && taskIdx < tasks.size(); ++p, ++taskIdx) {
             auto& task = tasks[taskIdx];
             task.status = TaskStatus::Running;
 
