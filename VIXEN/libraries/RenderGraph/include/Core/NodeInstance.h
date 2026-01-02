@@ -8,7 +8,7 @@
 #include "LoopManager.h"
 #include "INodeWiring.h"
 #include "SlotTask.h"
-#include "ResourceBudgetManager.h"
+#include "Memory/ResourceBudgetManager.h"
 #include "GraphLifecycleHooks.h"
 #include "NodeContext.h"
 #include <string>

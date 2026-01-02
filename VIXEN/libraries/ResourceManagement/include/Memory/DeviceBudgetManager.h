@@ -1,10 +1,10 @@
 #pragma once
 
-#include "Core/IMemoryAllocator.h"
-#include "Core/ResourceBudgetManager.h"
+#include "Memory/IMemoryAllocator.h"
+#include "Memory/ResourceBudgetManager.h"
 #include <memory>
 
-namespace Vixen::RenderGraph {
+namespace ResourceManagement {
 
 /**
  * @brief GPU memory heap type for tracking
@@ -262,4 +262,4 @@ private:
     DeviceHeapType MemoryLocationToHeapType(MemoryLocation location) const;
 };
 
-} // namespace Vixen::RenderGraph
+} // namespace ResourceManagement

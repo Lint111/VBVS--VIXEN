@@ -1,50 +1,33 @@
 #pragma once
 
-#include "Core/IMemoryAllocator.h"
-#include "Core/ResourceBudgetManager.h"
-
-// Forward declare VMA types to avoid including vk_mem_alloc.h in header
-// VMA implementation is in the .cpp file
-struct VmaAllocator_T;
-typedef VmaAllocator_T* VmaAllocator;
-struct VmaAllocation_T;
-typedef VmaAllocation_T* VmaAllocation;
-
+#include "Memory/IMemoryAllocator.h"
+#include "Memory/ResourceBudgetManager.h"
 #include <mutex>
 #include <unordered_map>
 
-namespace Vixen::RenderGraph {
+namespace ResourceManagement {
 
 /**
- * @brief VMA-backed memory allocator for production use
+ * @brief Direct Vulkan memory allocator (no VMA)
  *
- * Uses Vulkan Memory Allocator (VMA) for efficient GPU memory management.
- * Features:
- * - Suballocation from larger memory blocks
- * - Memory defragmentation support
- * - Optimal memory type selection
- * - Dedicated allocations for large resources
- * - Budget tracking integration with ResourceBudgetManager
+ * Simple allocator that wraps vkAllocateMemory directly.
+ * Use for testing or as fallback when VMA is unavailable.
  *
- * Thread-safe: Yes (VMA is thread-safe, plus internal tracking mutex)
+ * Limitations:
+ * - No suballocation (one vkAllocateMemory per buffer/image)
+ * - No memory defragmentation
+ * - Higher memory overhead for small allocations
+ *
+ * Thread-safe: Yes (internal mutex protects allocation tracking)
  */
-class VMAAllocator : public IMemoryAllocator {
+class DirectAllocator : public IMemoryAllocator {
 public:
-    /**
-     * @brief Create VMA allocator
-     *
-     * @param instance Vulkan instance
-     * @param physicalDevice Physical device for memory properties
-     * @param device Logical device for allocations
-     * @param budgetManager Optional budget manager for tracking
-     */
-    VMAAllocator(
-        VkInstance instance,
+    DirectAllocator(
         VkPhysicalDevice physicalDevice,
         VkDevice device,
         ResourceBudgetManager* budgetManager = nullptr);
 
-    ~VMAAllocator() override;
+    ~DirectAllocator() override;
 
     // IMemoryAllocator interface
     [[nodiscard]] std::expected<BufferAllocation, AllocationError>
@@ -58,6 +41,7 @@ public:
     void FreeImage(ImageAllocation& allocation) override;
 
     // Aliased allocations (Sprint 4 Phase B+)
+    // Note: DirectAllocator has limited aliasing support (basic implementation)
     [[nodiscard]] std::expected<BufferAllocation, AllocationError>
     CreateAliasedBuffer(const AliasedBufferRequest& request) override;
 
@@ -80,49 +64,41 @@ public:
         VkDeviceSize size) override;
 
     [[nodiscard]] AllocationStats GetStats() const override;
-    [[nodiscard]] std::string_view GetName() const override { return "VMAAllocator"; }
+    [[nodiscard]] std::string_view GetName() const override { return "DirectAllocator"; }
 
     void SetBudgetManager(ResourceBudgetManager* budgetManager) override;
     [[nodiscard]] ResourceBudgetManager* GetBudgetManager() const override;
 
-    /**
-     * @brief Get the underlying VMA allocator handle
-     *
-     * Use for advanced operations not exposed through IMemoryAllocator.
-     * @return VMA allocator handle
-     */
-    [[nodiscard]] VmaAllocator GetVmaAllocator() const { return allocator_; }
-
-    /**
-     * @brief Check if allocator was successfully initialized
-     * @return true if VMA allocator is valid
-     */
-    [[nodiscard]] bool IsValid() const { return allocator_ != nullptr; }
-
 private:
     /**
-     * @brief Internal record tracking VMA allocation metadata
+     * @brief Internal allocation record
      *
-     * Stored alongside VmaAllocation to track size for budget reporting.
+     * Stored as AllocationHandle (void*) in BufferAllocation/ImageAllocation
      */
     struct AllocationRecord {
-        VmaAllocation vmaAllocation = nullptr;
+        VkDeviceMemory memory = VK_NULL_HANDLE;
         VkDeviceSize size = 0;
+        uint32_t memoryTypeIndex = 0;
         bool isMapped = false;
+        void* mappedPtr = nullptr;
         bool canAlias = false;     // Created with allowAliasing=true
         bool isAliased = false;    // This is an aliased resource (doesn't own memory)
     };
 
-    VkDevice device_ = VK_NULL_HANDLE;
-    VmaAllocator allocator_ = nullptr;
+    VkPhysicalDevice physicalDevice_;
+    VkDevice device_;
+    VkPhysicalDeviceMemoryProperties memProperties_;
     ResourceBudgetManager* budgetManager_ = nullptr;
 
     mutable std::mutex mutex_;
-    std::unordered_map<void*, AllocationRecord> allocationRecords_;
+    std::unordered_map<AllocationHandle, AllocationRecord> allocations_;
+    AllocationStats stats_;
 
     // Helper methods
+    uint32_t FindMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) const;
+    VkMemoryPropertyFlags GetMemoryProperties(MemoryLocation location) const;
     AllocationRecord* GetRecord(AllocationHandle handle);
     const AllocationRecord* GetRecord(AllocationHandle handle) const;
 };
 
-} // namespace Vixen::RenderGraph
+} // namespace ResourceManagement

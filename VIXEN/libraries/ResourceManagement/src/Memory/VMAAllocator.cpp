@@ -12,9 +12,9 @@
 
 #include <vk_mem_alloc.h>
 
-#include "Core/VMAAllocator.h"
+#include "Memory/VMAAllocator.h"
 
-namespace Vixen::RenderGraph {
+namespace ResourceManagement {
 
 VMAAllocator::VMAAllocator(
     VkInstance instance,
@@ -623,4 +623,4 @@ std::unique_ptr<IMemoryAllocator> MemoryAllocatorFactory::CreateVMAAllocator(
     return allocator;
 }
 
-} // namespace Vixen::RenderGraph
+} // namespace ResourceManagement

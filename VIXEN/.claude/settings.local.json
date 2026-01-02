@@ -19,7 +19,8 @@
       "Bash(C:/cpp/VBVS--VIXEN/VIXEN/tools/.venv/Scripts/python.exe:*)",
       "Bash(tasklist:*)",
       "Bash(C:/cpp/VBVS--VIXEN/VIXEN/tools/.venv/Scripts/pip.exe install python-docx --quiet)",
-      "Bash(./build/libraries/RenderGraph/tests/Debug/test_resource_management.exe:*)"
+      "Bash(./build/libraries/RenderGraph/tests/Debug/test_resource_management.exe:*)",
+      "Bash(./build/libraries/ResourceManagement/tests/Debug/test_resource_management.exe:*)"
     ]
   },
   "hooks": {

@@ -9,7 +9,7 @@
 #include <unordered_map>
 #include <vulkan/vulkan.h>
 
-namespace Vixen::RenderGraph {
+namespace ResourceManagement {
 
 /**
  * @brief Resource type categories for budget tracking
@@ -173,4 +173,4 @@ private:
     AtomicResourceUsage* GetOrCreateUsage(const std::string& customType);
 };
 
-} // namespace Vixen::RenderGraph
+} // namespace ResourceManagement

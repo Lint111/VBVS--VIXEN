@@ -1,4 +1,4 @@
-#include "Core/ResourceBudgetManager.h"
+#include "Memory/ResourceBudgetManager.h"
 #include <algorithm>
 #include <limits>
 
@@ -9,7 +9,7 @@
 #include <sys/sysinfo.h>
 #endif
 
-namespace Vixen::RenderGraph {
+namespace ResourceManagement {
 
 // Budget configuration
 void ResourceBudgetManager::SetBudget(BudgetResourceType type, const ResourceBudget& budget) {
@@ -311,4 +311,4 @@ void ResourceBudgetManager::RecordDeallocationImpl(AtomicResourceUsage* usage, u
     }
 }
 
-} // namespace Vixen::RenderGraph
+} // namespace ResourceManagement

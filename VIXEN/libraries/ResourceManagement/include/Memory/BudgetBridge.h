@@ -1,11 +1,11 @@
 #pragma once
 
-#include "Core/HostBudgetManager.h"
-#include "Core/DeviceBudgetManager.h"
+#include "Memory/HostBudgetManager.h"
+#include "Memory/DeviceBudgetManager.h"
 #include <functional>
 #include <queue>
 
-namespace Vixen::RenderGraph {
+namespace ResourceManagement {
 
 /**
  * @brief Pending upload tracking info
@@ -189,4 +189,4 @@ private:
     std::atomic<uint64_t> currentFrame_{0};
 };
 
-} // namespace Vixen::RenderGraph
+} // namespace ResourceManagement

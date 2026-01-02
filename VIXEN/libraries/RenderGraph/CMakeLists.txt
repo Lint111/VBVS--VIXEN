@@ -20,19 +20,8 @@ if(TARGET magic_enum)
     set_target_properties(magic_enum PROPERTIES FOLDER "Dependencies")
 endif()
 
-# Fetch VulkanMemoryAllocator (VMA) for efficient GPU memory management
-FetchContent_Declare(
-    VulkanMemoryAllocator
-    GIT_REPOSITORY https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator
-    GIT_TAG v3.1.0
-    GIT_SHALLOW TRUE
-)
-FetchContent_MakeAvailable(VulkanMemoryAllocator)
-
-# Organize VMA in Dependencies folder
-if(TARGET VulkanMemoryAllocator)
-    set_target_properties(VulkanMemoryAllocator PROPERTIES FOLDER "Dependencies")
-endif()
+# VMA (Vulkan Memory Allocator) - now provided by dependencies/CMakeLists.txt
+# Linked transitively through ResourceManagement
 
 # ============================================================================
 # Data Headers (Build-Independent)
@@ -93,18 +82,13 @@ set(RENDERGRAPH_DATA_NODE_CONFIGS
 # ============================================================================
 
 set(RENDERGRAPH_CORE_HEADERS
-    include/Core/BudgetBridge.h
+    # Note: Memory/Lifetime headers moved to ResourceManagement library
     include/Core/ComputePerformanceLogger.h
-    include/Core/DeferredDestruction.h
-    include/Core/DeviceBudgetManager.h
-    include/Core/DirectAllocator.h
     include/Core/FieldExtractor.h
     include/Core/GPUPerformanceLogger.h
     include/Core/GraphLifecycleHooks.h
     include/Core/GraphTopology.h
-    include/Core/HostBudgetManager.h
     include/Core/IGraphCompilable.h
-    include/Core/IMemoryAllocator.h
     include/Core/INodeWiring.h
     include/Core/InstanceGroup.h
     include/Core/LoopManager.h
@@ -114,17 +98,14 @@ set(RENDERGRAPH_CORE_HEADERS
     include/Core/NodeTypeRegistry.h
     include/Core/PerFrameResources.h
     include/Core/RenderGraph.h
-    include/Core/ResourceBudgetManager.h
     include/Core/ResourceDependencyTracker.h
-    include/Core/SharedResource.h
     include/Core/SlotTask.h
-    include/Core/StatefulContainer.h
+    # Note: StatefulContainer.h moved to ResourceManagement library
     include/Core/Timer.h
     include/Core/TypedConnection.h
     include/Core/TypedNodeInstance.h
     include/Core/UnknownTypeRegistry.h
     include/Core/VariadicTypedNode.h
-    include/Core/VMAAllocator.h
 )
 
 set(RENDERGRAPH_DATA_CORE_SOURCES
@@ -133,24 +114,19 @@ set(RENDERGRAPH_DATA_CORE_SOURCES
 )
 
 set(RENDERGRAPH_CORE_SOURCES
-    src/Core/BudgetBridge.cpp
-    src/Core/DeviceBudgetManager.cpp
-    src/Core/DirectAllocator.cpp
+    # Note: Memory/Lifetime sources moved to ResourceManagement library
     src/Core/GPUPerformanceLogger.cpp
     src/Core/GraphLifecycleHooks.cpp
     src/Core/GraphTopology.cpp
-    src/Core/HostBudgetManager.cpp
     src/Core/LoopManager.cpp
     src/Core/NodeInstance.cpp
     src/Core/NodeType.cpp
     src/Core/NodeTypeRegistry.cpp
     src/Core/PerFrameResources.cpp
     src/Core/RenderGraph.cpp
-    src/Core/ResourceBudgetManager.cpp
     src/Core/ResourceDependencyTracker.cpp
     src/Core/SlotTask.cpp
     src/Core/Timer.cpp
-    src/Core/VMAAllocator.cpp
 )
 
 # ============================================================================
@@ -318,12 +294,11 @@ target_link_libraries(RenderGraph
         VulkanResources
         Logger
         EventBus
-        ResourceManagement
+        ResourceManagement     # Includes VMA transitively
         CashSystem
         ShaderManagement
-        SVO                    # New SVO library for Laine-Karras ESVO octrees
+        SVO                    # Laine-Karras ESVO octrees
         magic_enum::magic_enum
-        VulkanMemoryAllocator  # GPU memory management (VMA)
 )
 
 # ============================================================================

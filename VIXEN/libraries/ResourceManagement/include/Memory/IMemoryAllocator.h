@@ -8,7 +8,7 @@
 #include <string_view>
 #include <vulkan/vulkan.h>
 
-namespace Vixen::RenderGraph {
+namespace ResourceManagement {
 
 // Forward declarations
 class ResourceBudgetManager;
@@ -373,4 +373,4 @@ struct MemoryAllocatorFactory {
         ResourceBudgetManager* budgetManager = nullptr);
 };
 
-} // namespace Vixen::RenderGraph
+} // namespace ResourceManagement

@@ -1,13 +1,13 @@
 #pragma once
 
-#include "Core/IMemoryAllocator.h"
-#include "Core/DeferredDestruction.h"
+#include "Memory/IMemoryAllocator.h"
+#include "Lifetime/DeferredDestruction.h"
 #include <memory>
 #include <atomic>
 #include <functional>
 #include <cassert>
 
-namespace Vixen::RenderGraph {
+namespace ResourceManagement {
 
 /**
  * @brief Shared resource ownership scope
@@ -19,6 +19,33 @@ enum class ResourceScope : uint8_t {
     Persistent,     // Survives across frames, manually released
     Shared          // Reference counted, destroyed when last ref drops
 };
+
+/**
+ * @brief Map SlotScope value to appropriate ResourceScope
+ *
+ * Uses existing SlotScope metadata to determine memory lifetime,
+ * avoiding duplicate scope logic. Call this when creating resources
+ * to leverage the graph's existing scope information.
+ *
+ * Takes uint8_t to be namespace-agnostic (SlotScope lives in RenderGraph).
+ *
+ * Mapping:
+ * - InstanceLevel (2) → Transient (task-local resources, can be aliased)
+ * - TaskLevel (1)     → Transient (per-task config, short-lived)
+ * - NodeLevel (0)     → Persistent (shared across all tasks)
+ *
+ * @param slotScopeValue The slot scope value from node config
+ * @return Corresponding resource scope for memory management
+ */
+inline ResourceScope SlotScopeToResourceScope(uint8_t slotScopeValue) {
+    // SlotScope values: NodeLevel=0, TaskLevel=1, InstanceLevel=2
+    switch (slotScopeValue) {
+        case 2:  return ResourceScope::Transient;   // InstanceLevel
+        case 1:  return ResourceScope::Transient;   // TaskLevel
+        case 0:  return ResourceScope::Persistent;  // NodeLevel
+        default: return ResourceScope::Transient;
+    }
+}
 
 /**
  * @brief Thread-safe intrusive reference count base
@@ -517,4 +544,4 @@ private:
     uint64_t* frameCounter_;
 };
 
-} // namespace Vixen::RenderGraph
+} // namespace ResourceManagement

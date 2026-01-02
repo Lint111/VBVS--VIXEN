@@ -1,13 +1,13 @@
 #pragma once
 
-#include "Core/SharedResource.h"
+#include "Lifetime/SharedResource.h"
 #include <vector>
 #include <string>
 #include <string_view>
 #include <stack>
 #include <cassert>
 
-namespace Vixen::RenderGraph {
+namespace ResourceManagement {
 
 /**
  * @brief Groups resources for bulk lifetime management
@@ -479,4 +479,4 @@ private:
     LifetimeScope& scope_;
 };
 
-} // namespace Vixen::RenderGraph
+} // namespace ResourceManagement

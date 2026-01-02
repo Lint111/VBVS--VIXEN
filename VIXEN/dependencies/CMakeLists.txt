@@ -253,4 +253,24 @@ endif()
 
 message(STATUS "miniz fetched - ZIP compression available to all libraries")
 
+# ============================================================================
+# VulkanMemoryAllocator (VMA) - GPU Memory Management
+# ============================================================================
+
+FetchContent_Declare(
+    VulkanMemoryAllocator
+    GIT_REPOSITORY https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator
+    GIT_TAG v3.1.0
+    GIT_SHALLOW TRUE
+)
+
+FetchContent_MakeAvailable(VulkanMemoryAllocator)
+
+# Organize in Dependencies folder
+if(TARGET VulkanMemoryAllocator)
+    set_target_properties(VulkanMemoryAllocator PROPERTIES FOLDER "Dependencies")
+endif()
+
+message(STATUS "VulkanMemoryAllocator (VMA) fetched - GPU memory management available")
+
 message(STATUS "Dependencies configured - all third-party libraries fetched")

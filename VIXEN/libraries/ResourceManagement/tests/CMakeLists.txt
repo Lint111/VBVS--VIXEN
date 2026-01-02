@@ -1,15 +1,30 @@
 cmake_minimum_required(VERSION 3.15)
 project(ResourceManagementTests)
 
-add_executable(test_resourcemanagement_basic test_resourcemanagement_basic.cpp)
-if(TARGET ResourceManagement)
-    target_link_libraries(test_resourcemanagement_basic PRIVATE GTest::gtest_main ResourceManagement)
-else()
-    target_link_libraries(test_resourcemanagement_basic PRIVATE GTest::gtest_main)
-endif()
+# ============================================================================
+# Basic State Tests (original)
+# ============================================================================
 
-# Visual Studio solution folder organization
+add_executable(test_resourcemanagement_basic test_resourcemanagement_basic.cpp)
+target_link_libraries(test_resourcemanagement_basic PRIVATE
+    GTest::gtest_main
+    ResourceManagement
+)
 set_target_properties(test_resourcemanagement_basic PROPERTIES FOLDER "Tests/ResourceManagement Tests")
 
-# Temporarily disabled - GTest not configured
-# gtest_discover_tests(test_resourcemanagement_basic)
+# ============================================================================
+# Resource Management Tests (memory, budget, lifetime)
+# ============================================================================
+
+add_executable(test_resource_management test_resource_management.cpp)
+target_link_libraries(test_resource_management PRIVATE
+    GTest::gtest_main
+    ResourceManagement
+    RenderGraph  # For SlotTask and StatefulContainer tests
+)
+set_target_properties(test_resource_management PROPERTIES FOLDER "Tests/ResourceManagement Tests")
+
+# Register tests with CTest
+include(GoogleTest)
+gtest_discover_tests(test_resourcemanagement_basic)
+gtest_discover_tests(test_resource_management)

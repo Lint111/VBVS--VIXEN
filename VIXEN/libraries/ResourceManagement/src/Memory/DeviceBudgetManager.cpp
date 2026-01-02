@@ -1,6 +1,6 @@
-#include "Core/DeviceBudgetManager.h"
+#include "Memory/DeviceBudgetManager.h"
 
-namespace Vixen::RenderGraph {
+namespace ResourceManagement {
 
 DeviceBudgetManager::DeviceBudgetManager(
     std::shared_ptr<IMemoryAllocator> allocator,
@@ -275,4 +275,4 @@ DeviceHeapType DeviceBudgetManager::MemoryLocationToHeapType(MemoryLocation loca
     }
 }
 
-} // namespace Vixen::RenderGraph
+} // namespace ResourceManagement

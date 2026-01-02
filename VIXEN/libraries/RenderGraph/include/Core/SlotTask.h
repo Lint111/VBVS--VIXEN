@@ -1,16 +1,26 @@
 #pragma once
 
 #include "Data/Core/ResourceConfig.h"
+#include "Lifetime/SharedResource.h"  // For ResourceScope and SlotScopeToResourceScope
 #include <cstdint>
 #include <functional>
 #include <vector>
 #include <optional>
 
+// Forward declaration from ResourceManagement namespace
+namespace ResourceManagement {
+    class ResourceBudgetManager;
+    enum class ResourceScope : uint8_t;
+    ResourceScope SlotScopeToResourceScope(uint8_t slotScopeValue);
+}
+
 namespace Vixen::RenderGraph {
 
 // Forward declarations
 class NodeInstance;
-class ResourceBudgetManager;
+using ResourceManagement::ResourceBudgetManager;
+using ResourceManagement::ResourceScope;
+using ResourceManagement::SlotScopeToResourceScope;
 
 /**
  * @brief Task execution status
@@ -59,6 +69,18 @@ struct SlotTaskContext {
 
     // Helper: Get element index for single-element tasks
     uint32_t GetElementIndex() const { return arrayStartIndex; }
+
+    /**
+     * @brief Get the memory lifetime scope for this task's resources
+     *
+     * Maps the task's SlotScope to ResourceScope for memory management.
+     * Use this when creating resources to ensure proper lifetime tracking.
+     *
+     * @return ResourceScope (Transient for task-local, Persistent for shared)
+     */
+    ResourceScope GetResourceScope() const {
+        return SlotScopeToResourceScope(static_cast<uint8_t>(resourceScope));
+    }
 };
 
 /**
@@ -153,20 +175,49 @@ public:
         ResourceBudgetManager* budgetManager
     ) const;
 
-    // Statistics
+    // Statistics (Phase C: Enhanced with budget tracking)
     struct ExecutionStats {
         uint32_t totalTasks = 0;
         uint32_t completedTasks = 0;
         uint32_t failedTasks = 0;
         uint32_t skippedTasks = 0;
         uint64_t totalExecutionTimeMs = 0;
+
+        // Phase C.3: Budget tracking
+        uint64_t totalEstimatedMemory = 0;   // Sum of task estimates
+        uint64_t totalActualMemory = 0;      // Sum of actual usage (if reported)
+        uint32_t tasksOverBudget = 0;        // Tasks that exceeded estimate
+        uint32_t tasksThrottled = 0;         // Tasks delayed due to budget
+        uint32_t actualParallelism = 0;      // Parallelism level used
     };
 
     ExecutionStats GetLastExecutionStats() const { return lastStats_; }
     void ResetStats() { lastStats_ = ExecutionStats{}; }
 
+    /**
+     * @brief Report actual memory usage for a completed task
+     *
+     * Call after task completion to track actual vs estimated memory.
+     * Used to improve future parallelism calculations.
+     *
+     * @param taskIndex Index of the completed task
+     * @param actualBytes Actual memory used
+     */
+    void ReportActualMemory(uint32_t taskIndex, uint64_t actualBytes);
+
+    /**
+     * @brief Get memory estimation accuracy for last execution
+     *
+     * @return Ratio of actual/estimated (1.0 = perfect, >1.0 = underestimated)
+     */
+    float GetEstimationAccuracy() const;
+
 private:
     ExecutionStats lastStats_;
+
+    // Phase C.3: Per-task memory tracking
+    std::vector<uint64_t> estimatedMemoryUsage_;  // Estimated per task
+    std::vector<uint64_t> actualMemoryUsage_;     // Actual per task (reported)
 };
 
 } // namespace Vixen::RenderGraph

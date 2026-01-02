@@ -3,7 +3,7 @@
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
 #include "Core/NodeLogging.h"
-#include "Core/StatefulContainer.h"
+#include "State/StatefulContainer.h"
 #include "Core/GPUPerformanceLogger.h"
 #include "Data/Nodes/ComputeDispatchNodeConfig.h"
 

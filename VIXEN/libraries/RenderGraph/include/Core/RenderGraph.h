@@ -8,8 +8,8 @@
 #include "Data/Core/CompileTimeResourceSystem.h"
 #include "CleanupStack.h"
 #include "Core/ResourceDependencyTracker.h"
-#include "Core/DeferredDestruction.h"
-#include "Core/LifetimeScope.h"
+#include "Lifetime/DeferredDestruction.h"
+#include "Lifetime/LifetimeScope.h"
 #include "EventTypes/RenderGraphEvents.h"
 #include "MessageBus.h"
 #include "Message.h"
@@ -30,6 +30,11 @@ namespace Vixen::Vulkan::Resources {
 }
 
 namespace Vixen::RenderGraph {
+
+// Import types from ResourceManagement namespace
+using ResourceManagement::DeferredDestructionQueue;
+using ResourceManagement::LifetimeScopeManager;
+using ResourceManagement::ResourceBudgetManager;
 
 // NodeHandle defined in CleanupStack.h (included transitively)
 

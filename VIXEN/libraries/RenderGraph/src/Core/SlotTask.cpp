@@ -1,9 +1,11 @@
 #include "Headers.h"
 #include "Core/SlotTask.h"
 #include "Core/NodeInstance.h"
-#include "Core/ResourceBudgetManager.h"
+#include "Memory/ResourceBudgetManager.h"
 
 namespace Vixen::RenderGraph {
+
+using ResourceManagement::BudgetResourceType;
 
 // Generate tasks from array slot
 std::vector<SlotTaskContext> SlotTaskManager::GenerateTasks(
@@ -89,6 +91,19 @@ uint32_t SlotTaskManager::ExecuteSequential(
 
     lastStats_ = ExecutionStats{};
     lastStats_.totalTasks = static_cast<uint32_t>(tasks.size());
+    lastStats_.actualParallelism = 1;  // Sequential = 1
+
+    // Phase C.3: Initialize memory tracking
+    estimatedMemoryUsage_.clear();
+    estimatedMemoryUsage_.resize(tasks.size(), 0);
+    actualMemoryUsage_.clear();
+    actualMemoryUsage_.resize(tasks.size(), 0);
+
+    // Store per-task estimates and calculate total
+    for (size_t i = 0; i < tasks.size(); ++i) {
+        estimatedMemoryUsage_[i] = tasks[i].estimatedMemoryBytes;
+        lastStats_.totalEstimatedMemory += tasks[i].estimatedMemoryBytes;
+    }
 
     for (auto& task : tasks) {
         task.status = TaskStatus::Running;
@@ -140,6 +155,19 @@ uint32_t SlotTaskManager::ExecuteParallel(
     auto startTime = std::chrono::high_resolution_clock::now();
     lastStats_ = ExecutionStats{};
     lastStats_.totalTasks = static_cast<uint32_t>(tasks.size());
+    lastStats_.actualParallelism = parallelism;
+
+    // Phase C.3: Initialize memory tracking
+    estimatedMemoryUsage_.clear();
+    estimatedMemoryUsage_.resize(tasks.size(), 0);
+    actualMemoryUsage_.clear();
+    actualMemoryUsage_.resize(tasks.size(), 0);
+
+    // Store per-task estimates and calculate total
+    for (size_t i = 0; i < tasks.size(); ++i) {
+        estimatedMemoryUsage_[i] = tasks[i].estimatedMemoryBytes;
+        lastStats_.totalEstimatedMemory += tasks[i].estimatedMemoryBytes;
+    }
 
     // Simple parallel execution using futures
     std::vector<std::future<bool>> futures;
@@ -235,6 +263,42 @@ uint32_t SlotTaskManager::CalculateOptimalParallelism(
     uint32_t optimalParallelism = std::min(memoryBasedParallelism, hwConcurrency);
 
     return std::max(1u, optimalParallelism);
+}
+
+// Phase C.3: Report actual memory usage for a completed task
+void SlotTaskManager::ReportActualMemory(uint32_t taskIndex, uint64_t actualBytes) {
+    if (taskIndex >= actualMemoryUsage_.size()) {
+        return;
+    }
+
+    actualMemoryUsage_[taskIndex] = actualBytes;
+    lastStats_.totalActualMemory += actualBytes;
+
+    // Check if task exceeded its estimate
+    if (taskIndex < estimatedMemoryUsage_.size()) {
+        uint64_t estimated = estimatedMemoryUsage_[taskIndex];
+        if (estimated > 0 && actualBytes > estimated) {
+            lastStats_.tasksOverBudget++;
+        }
+    }
+}
+
+// Phase C.3: Get memory estimation accuracy
+float SlotTaskManager::GetEstimationAccuracy() const {
+    if (lastStats_.totalEstimatedMemory == 0) {
+        return 1.0f;  // No estimates = perfect (vacuously true)
+    }
+
+    if (lastStats_.totalActualMemory == 0) {
+        return 0.0f;  // No actual data reported
+    }
+
+    // Ratio of actual/estimated
+    // > 1.0 means underestimated (actual was larger)
+    // < 1.0 means overestimated (actual was smaller)
+    // = 1.0 means perfect estimation
+    return static_cast<float>(lastStats_.totalActualMemory) /
+           static_cast<float>(lastStats_.totalEstimatedMemory);
 }
 
 } // namespace Vixen::RenderGraph

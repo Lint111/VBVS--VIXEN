@@ -1,8 +1,8 @@
-#include "Core/HostBudgetManager.h"
+#include "Memory/HostBudgetManager.h"
 #include <cassert>
 #include <cstring>
 
-namespace Vixen::RenderGraph {
+namespace ResourceManagement {
 
 HostBudgetManager::HostBudgetManager(const Config& config)
     : config_(config)
@@ -311,4 +311,4 @@ void HostBudgetManager::AssertValid(const HostAllocation& allocation) const {
 }
 #endif
 
-} // namespace Vixen::RenderGraph
+} // namespace ResourceManagement

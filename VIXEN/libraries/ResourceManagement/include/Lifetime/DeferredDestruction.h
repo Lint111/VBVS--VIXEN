@@ -5,7 +5,7 @@
 #include <functional>
 #include <cstdint>
 
-namespace Vixen::RenderGraph {
+namespace ResourceManagement {
 
 /**
  * @brief Pending resource destruction
@@ -249,4 +249,4 @@ private:
 #endif
 };
 
-} // namespace Vixen::RenderGraph
+} // namespace ResourceManagement

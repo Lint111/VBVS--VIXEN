@@ -1,11 +1,11 @@
 #pragma once
 
-#include "Core/ResourceBudgetManager.h"
+#include "Memory/ResourceBudgetManager.h"
 #include <memory>
 #include <span>
 #include <vector>
 
-namespace Vixen::RenderGraph {
+namespace ResourceManagement {
 
 /**
  * @brief Allocation scope for host memory
@@ -311,4 +311,4 @@ private:
     void UpdatePeakUsage(std::atomic<size_t>& peak, size_t currentUsage);
 };
 
-} // namespace Vixen::RenderGraph
+} // namespace ResourceManagement

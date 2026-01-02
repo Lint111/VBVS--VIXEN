@@ -2,15 +2,18 @@
 #include <vector>
 #include <cstdint>
 
-namespace Vixen::RenderGraph {
+namespace ResourceManagement {
 
 /**
- * @brief State tracking for resources
+ * @brief Simple state tracking for container entries
  *
- * Tracks lifecycle state of resources (dirty, ready, etc.)
+ * Tracks lifecycle state of container elements (dirty, ready, etc.)
  * Used for cache invalidation, lazy updates, and resource management.
+ *
+ * Note: This is simpler than ResourceState bitflags - use ContainerState
+ * for simple dirty-tracking, ResourceState for complex state combinations.
  */
-enum class ResourceState : uint8_t {
+enum class ContainerState : uint8_t {
     Dirty = 0,      // Needs update/re-recording
     Ready = 1,      // Up-to-date and usable
     Stale = 2,      // Marked for deletion/rebuild
@@ -43,10 +46,10 @@ public:
      */
     struct Entry {
         T value = {};
-        ResourceState state = ResourceState::Dirty;
+        ContainerState state = ContainerState::Dirty;
 
         Entry() = default;
-        explicit Entry(const T& val, ResourceState s = ResourceState::Dirty)
+        explicit Entry(const T& val, ContainerState s = ContainerState::Dirty)
             : value(val), state(s) {}
 
         // Implicit conversion to T for convenience
@@ -74,35 +77,35 @@ public:
     const T& GetValue(size_t index) const { return entries[index].value; }
 
     // State queries
-    ResourceState GetState(size_t index) const { return entries[index].state; }
-    bool IsDirty(size_t index) const { return entries[index].state == ResourceState::Dirty; }
-    bool IsReady(size_t index) const { return entries[index].state == ResourceState::Ready; }
-    bool IsStale(size_t index) const { return entries[index].state == ResourceState::Stale; }
-    bool IsInvalid(size_t index) const { return entries[index].state == ResourceState::Invalid; }
+    ContainerState GetState(size_t index) const { return entries[index].state; }
+    bool IsDirty(size_t index) const { return entries[index].state == ContainerState::Dirty; }
+    bool IsReady(size_t index) const { return entries[index].state == ContainerState::Ready; }
+    bool IsStale(size_t index) const { return entries[index].state == ContainerState::Stale; }
+    bool IsInvalid(size_t index) const { return entries[index].state == ContainerState::Invalid; }
 
     // State mutations
-    void MarkDirty(size_t index) { entries[index].state = ResourceState::Dirty; }
-    void MarkReady(size_t index) { entries[index].state = ResourceState::Ready; }
-    void MarkStale(size_t index) { entries[index].state = ResourceState::Stale; }
-    void MarkInvalid(size_t index) { entries[index].state = ResourceState::Invalid; }
+    void MarkDirty(size_t index) { entries[index].state = ContainerState::Dirty; }
+    void MarkReady(size_t index) { entries[index].state = ContainerState::Ready; }
+    void MarkStale(size_t index) { entries[index].state = ContainerState::Stale; }
+    void MarkInvalid(size_t index) { entries[index].state = ContainerState::Invalid; }
 
     // Batch state operations
     void MarkAllDirty() {
         for (auto& entry : entries) {
-            entry.state = ResourceState::Dirty;
+            entry.state = ContainerState::Dirty;
         }
     }
 
     void MarkAllReady() {
         for (auto& entry : entries) {
-            entry.state = ResourceState::Ready;
+            entry.state = ContainerState::Ready;
         }
     }
 
     // Check if any entry is dirty
     bool AnyDirty() const {
         for (const auto& entry : entries) {
-            if (entry.state == ResourceState::Dirty) return true;
+            if (entry.state == ContainerState::Dirty) return true;
         }
         return false;
     }
@@ -111,7 +114,7 @@ public:
     size_t CountDirty() const {
         size_t count = 0;
         for (const auto& entry : entries) {
-            if (entry.state == ResourceState::Dirty) count++;
+            if (entry.state == ContainerState::Dirty) count++;
         }
         return count;
     }
@@ -126,4 +129,12 @@ private:
     std::vector<Entry> entries;
 };
 
-} // namespace Vixen::RenderGraph
+} // namespace ResourceManagement
+
+// Backwards compatibility: alias in RenderGraph namespace
+namespace Vixen::RenderGraph {
+    using ResourceManagement::ContainerState;
+    using ResourceManagement::StatefulContainer;
+    // Deprecated alias for old code
+    using ResourceState = ResourceManagement::ContainerState;
+}

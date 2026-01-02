@@ -1,8 +1,8 @@
-#include "Core/DirectAllocator.h"
+#include "Memory/DirectAllocator.h"
 #include <stdexcept>
 #include <cstring>
 
-namespace Vixen::RenderGraph {
+namespace ResourceManagement {
 
 DirectAllocator::DirectAllocator(
     VkPhysicalDevice physicalDevice,
@@ -609,4 +609,4 @@ std::unique_ptr<IMemoryAllocator> MemoryAllocatorFactory::CreateDirectAllocator(
 
 // Note: CreateVMAAllocator is implemented in VMAAllocator.cpp
 
-} // namespace Vixen::RenderGraph
+} // namespace ResourceManagement

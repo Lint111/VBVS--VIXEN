@@ -1,6 +1,6 @@
-#include "Core/BudgetBridge.h"
+#include "Memory/BudgetBridge.h"
 
-namespace Vixen::RenderGraph {
+namespace ResourceManagement {
 
 BudgetBridge::BudgetBridge(
     HostBudgetManager* hostBudget,
@@ -186,4 +186,4 @@ void BudgetBridge::SetStagingQuotaLimit(uint64_t newLimit) {
     }
 }
 
-} // namespace Vixen::RenderGraph
+} // namespace ResourceManagement
