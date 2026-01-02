@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "VoxelAABBCacher.h"
 #include "VulkanDevice.h"
+#include "error/VulkanError.h"
 
 #include <cstring>
 #include <stdexcept>
@@ -246,7 +247,7 @@ void VoxelAABBCacher::UploadToGPU(
                           VK_BUFFER_USAGE_TRANSFER_DST_BIT;
         bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-        vkCreateBuffer(m_device->device, &bufferInfo, nullptr, &aabbData.aabbBuffer);
+        VK_CHECK_LOG(vkCreateBuffer(m_device->device, &bufferInfo, nullptr, &aabbData.aabbBuffer), "Create AABB buffer");
 
         VkMemoryRequirements memReq;
         vkGetBufferMemoryRequirements(m_device->device, aabbData.aabbBuffer, &memReq);
@@ -261,8 +262,8 @@ void VoxelAABBCacher::UploadToGPU(
         allocInfo.allocationSize = memReq.size;
         allocInfo.memoryTypeIndex = FindMemoryType(memReq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-        vkAllocateMemory(m_device->device, &allocInfo, nullptr, &aabbData.aabbBufferMemory);
-        vkBindBufferMemory(m_device->device, aabbData.aabbBuffer, aabbData.aabbBufferMemory, 0);
+        VK_CHECK_LOG(vkAllocateMemory(m_device->device, &allocInfo, nullptr, &aabbData.aabbBufferMemory), "Allocate AABB memory");
+        VK_CHECK_LOG(vkBindBufferMemory(m_device->device, aabbData.aabbBuffer, aabbData.aabbBufferMemory, 0), "Bind AABB buffer memory");
 
         UploadBufferData(aabbData.aabbBuffer, aabbs.data(), aabbData.aabbBufferSize);
     }
@@ -277,7 +278,7 @@ void VoxelAABBCacher::UploadToGPU(
         bufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
         bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-        vkCreateBuffer(m_device->device, &bufferInfo, nullptr, &aabbData.materialIdBuffer);
+        VK_CHECK_LOG(vkCreateBuffer(m_device->device, &bufferInfo, nullptr, &aabbData.materialIdBuffer), "Create material ID buffer");
 
         VkMemoryRequirements memReq;
         vkGetBufferMemoryRequirements(m_device->device, aabbData.materialIdBuffer, &memReq);
@@ -287,8 +288,8 @@ void VoxelAABBCacher::UploadToGPU(
         allocInfo.allocationSize = memReq.size;
         allocInfo.memoryTypeIndex = FindMemoryType(memReq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-        vkAllocateMemory(m_device->device, &allocInfo, nullptr, &aabbData.materialIdBufferMemory);
-        vkBindBufferMemory(m_device->device, aabbData.materialIdBuffer, aabbData.materialIdBufferMemory, 0);
+        VK_CHECK_LOG(vkAllocateMemory(m_device->device, &allocInfo, nullptr, &aabbData.materialIdBufferMemory), "Allocate material ID memory");
+        VK_CHECK_LOG(vkBindBufferMemory(m_device->device, aabbData.materialIdBuffer, aabbData.materialIdBufferMemory, 0), "Bind material ID buffer memory");
 
         UploadBufferData(aabbData.materialIdBuffer, materialIds.data(), aabbData.materialIdBufferSize);
     }
@@ -303,7 +304,7 @@ void VoxelAABBCacher::UploadToGPU(
         bufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
         bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-        vkCreateBuffer(m_device->device, &bufferInfo, nullptr, &aabbData.brickMappingBuffer);
+        VK_CHECK_LOG(vkCreateBuffer(m_device->device, &bufferInfo, nullptr, &aabbData.brickMappingBuffer), "Create brick mapping buffer");
 
         VkMemoryRequirements memReq;
         vkGetBufferMemoryRequirements(m_device->device, aabbData.brickMappingBuffer, &memReq);
@@ -313,8 +314,8 @@ void VoxelAABBCacher::UploadToGPU(
         allocInfo.allocationSize = memReq.size;
         allocInfo.memoryTypeIndex = FindMemoryType(memReq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-        vkAllocateMemory(m_device->device, &allocInfo, nullptr, &aabbData.brickMappingBufferMemory);
-        vkBindBufferMemory(m_device->device, aabbData.brickMappingBuffer, aabbData.brickMappingBufferMemory, 0);
+        VK_CHECK_LOG(vkAllocateMemory(m_device->device, &allocInfo, nullptr, &aabbData.brickMappingBufferMemory), "Allocate brick mapping memory");
+        VK_CHECK_LOG(vkBindBufferMemory(m_device->device, aabbData.brickMappingBuffer, aabbData.brickMappingBufferMemory, 0), "Bind brick mapping buffer memory");
 
         UploadBufferData(aabbData.brickMappingBuffer, brickMappings.data(), aabbData.brickMappingBufferSize);
     }
@@ -349,7 +350,7 @@ void VoxelAABBCacher::UploadBufferData(VkBuffer buffer, const void* srcData, VkD
         poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
         poolInfo.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
         poolInfo.queueFamilyIndex = m_device->graphicsQueueIndex;
-        vkCreateCommandPool(m_device->device, &poolInfo, nullptr, &m_transferCommandPool);
+        VK_CHECK_LOG(vkCreateCommandPool(m_device->device, &poolInfo, nullptr, &m_transferCommandPool), "Create command pool (transfer)");
     }
 
     // Create staging buffer
@@ -360,7 +361,7 @@ void VoxelAABBCacher::UploadBufferData(VkBuffer buffer, const void* srcData, VkD
     stagingInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
     VkBuffer stagingBuffer;
-    vkCreateBuffer(m_device->device, &stagingInfo, nullptr, &stagingBuffer);
+    VK_CHECK_LOG(vkCreateBuffer(m_device->device, &stagingInfo, nullptr, &stagingBuffer), "Create staging buffer");
 
     VkMemoryRequirements stagingMemReq;
     vkGetBufferMemoryRequirements(m_device->device, stagingBuffer, &stagingMemReq);
@@ -374,12 +375,12 @@ void VoxelAABBCacher::UploadBufferData(VkBuffer buffer, const void* srcData, VkD
     );
 
     VkDeviceMemory stagingMemory;
-    vkAllocateMemory(m_device->device, &stagingAllocInfo, nullptr, &stagingMemory);
-    vkBindBufferMemory(m_device->device, stagingBuffer, stagingMemory, 0);
+    VK_CHECK_LOG(vkAllocateMemory(m_device->device, &stagingAllocInfo, nullptr, &stagingMemory), "Allocate staging memory");
+    VK_CHECK_LOG(vkBindBufferMemory(m_device->device, stagingBuffer, stagingMemory, 0), "Bind staging buffer memory");
 
     // Copy data to staging buffer
     void* mappedData;
-    vkMapMemory(m_device->device, stagingMemory, 0, size, 0, &mappedData);
+    VK_CHECK_LOG(vkMapMemory(m_device->device, stagingMemory, 0, size, 0, &mappedData), "Map staging memory");
     std::memcpy(mappedData, srcData, size);
     vkUnmapMemory(m_device->device, stagingMemory);
 
@@ -391,13 +392,13 @@ void VoxelAABBCacher::UploadBufferData(VkBuffer buffer, const void* srcData, VkD
     cmdAllocInfo.commandBufferCount = 1;
 
     VkCommandBuffer cmdBuffer;
-    vkAllocateCommandBuffers(m_device->device, &cmdAllocInfo, &cmdBuffer);
+    VK_CHECK_LOG(vkAllocateCommandBuffers(m_device->device, &cmdAllocInfo, &cmdBuffer), "Allocate command buffers (transfer)");
 
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
-    vkBeginCommandBuffer(cmdBuffer, &beginInfo);
+    VK_CHECK_LOG(vkBeginCommandBuffer(cmdBuffer, &beginInfo), "Begin command buffer (transfer)");
 
     VkBufferCopy copyRegion{};
     copyRegion.srcOffset = 0;
@@ -405,14 +406,14 @@ void VoxelAABBCacher::UploadBufferData(VkBuffer buffer, const void* srcData, VkD
     copyRegion.size = size;
     vkCmdCopyBuffer(cmdBuffer, stagingBuffer, buffer, 1, &copyRegion);
 
-    vkEndCommandBuffer(cmdBuffer);
+    VK_CHECK_LOG(vkEndCommandBuffer(cmdBuffer), "End command buffer (transfer)");
 
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &cmdBuffer;
 
-    vkQueueSubmit(m_device->queue, 1, &submitInfo, VK_NULL_HANDLE);
+    VK_CHECK_LOG(vkQueueSubmit(m_device->queue, 1, &submitInfo, VK_NULL_HANDLE), "Queue submit (transfer)");
     vkQueueWaitIdle(m_device->queue);
 
     // Cleanup staging resources

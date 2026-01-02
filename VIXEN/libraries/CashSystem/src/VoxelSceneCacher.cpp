@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "VoxelSceneCacher.h"
 #include "VulkanDevice.h"
+#include "error/VulkanError.h"
 
 // SVO library integration
 #include "LaineKarrasOctree.h"
@@ -934,7 +935,7 @@ void VoxelSceneCacher::UploadBufferData(VkBuffer buffer, const void* srcData, Vk
     stagingInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
     VkBuffer stagingBuffer;
-    vkCreateBuffer(m_device->device, &stagingInfo, nullptr, &stagingBuffer);
+    VK_CHECK_LOG(vkCreateBuffer(m_device->device, &stagingInfo, nullptr, &stagingBuffer), "Create staging buffer");
 
     VkMemoryRequirements stagingMemReq;
     vkGetBufferMemoryRequirements(m_device->device, stagingBuffer, &stagingMemReq);
@@ -950,12 +951,12 @@ void VoxelSceneCacher::UploadBufferData(VkBuffer buffer, const void* srcData, Vk
     stagingAllocInfo.memoryTypeIndex = stagingMemTypeIndex;
 
     VkDeviceMemory stagingMemory;
-    vkAllocateMemory(m_device->device, &stagingAllocInfo, nullptr, &stagingMemory);
-    vkBindBufferMemory(m_device->device, stagingBuffer, stagingMemory, 0);
+    VK_CHECK_LOG(vkAllocateMemory(m_device->device, &stagingAllocInfo, nullptr, &stagingMemory), "Allocate staging memory");
+    VK_CHECK_LOG(vkBindBufferMemory(m_device->device, stagingBuffer, stagingMemory, 0), "Bind staging buffer memory");
 
     // Copy data to staging buffer
     void* mappedData;
-    vkMapMemory(m_device->device, stagingMemory, 0, size, 0, &mappedData);
+    VK_CHECK_LOG(vkMapMemory(m_device->device, stagingMemory, 0, size, 0, &mappedData), "Map staging memory");
     std::memcpy(mappedData, srcData, size);
     vkUnmapMemory(m_device->device, stagingMemory);
 

@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "AccelerationStructureCacher.h"
 #include "VulkanDevice.h"
+#include "error/VulkanError.h"
 
 #include <cstring>
 #include <stdexcept>
@@ -367,7 +368,7 @@ void AccelerationStructureCacher::BuildBLAS(const AccelStructCreateInfo& ci, con
                           VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
         bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-        vkCreateBuffer(m_device->device, &bufferInfo, nullptr, &asData.blasBuffer);
+        VK_CHECK_LOG(vkCreateBuffer(m_device->device, &bufferInfo, nullptr, &asData.blasBuffer), "Create BLAS buffer");
 
         VkMemoryRequirements memReq;
         vkGetBufferMemoryRequirements(m_device->device, asData.blasBuffer, &memReq);
@@ -382,8 +383,8 @@ void AccelerationStructureCacher::BuildBLAS(const AccelStructCreateInfo& ci, con
         allocInfo.allocationSize = memReq.size;
         allocInfo.memoryTypeIndex = FindMemoryType(memReq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-        vkAllocateMemory(m_device->device, &allocInfo, nullptr, &asData.blasMemory);
-        vkBindBufferMemory(m_device->device, asData.blasBuffer, asData.blasMemory, 0);
+        VK_CHECK_LOG(vkAllocateMemory(m_device->device, &allocInfo, nullptr, &asData.blasMemory), "Allocate BLAS memory");
+        VK_CHECK_LOG(vkBindBufferMemory(m_device->device, asData.blasBuffer, asData.blasMemory, 0), "Bind BLAS buffer memory");
     }
 
     // Create scratch buffer
@@ -394,7 +395,7 @@ void AccelerationStructureCacher::BuildBLAS(const AccelStructCreateInfo& ci, con
         bufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
         bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-        vkCreateBuffer(m_device->device, &bufferInfo, nullptr, &asData.scratchBuffer);
+        VK_CHECK_LOG(vkCreateBuffer(m_device->device, &bufferInfo, nullptr, &asData.scratchBuffer), "Create scratch buffer");
 
         VkMemoryRequirements memReq;
         vkGetBufferMemoryRequirements(m_device->device, asData.scratchBuffer, &memReq);
@@ -409,8 +410,8 @@ void AccelerationStructureCacher::BuildBLAS(const AccelStructCreateInfo& ci, con
         allocInfo.allocationSize = memReq.size;
         allocInfo.memoryTypeIndex = FindMemoryType(memReq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-        vkAllocateMemory(m_device->device, &allocInfo, nullptr, &asData.scratchMemory);
-        vkBindBufferMemory(m_device->device, asData.scratchBuffer, asData.scratchMemory, 0);
+        VK_CHECK_LOG(vkAllocateMemory(m_device->device, &allocInfo, nullptr, &asData.scratchMemory), "Allocate scratch memory");
+        VK_CHECK_LOG(vkBindBufferMemory(m_device->device, asData.scratchBuffer, asData.scratchMemory, 0), "Bind scratch buffer memory");
     }
 
     // Create acceleration structure
@@ -420,7 +421,7 @@ void AccelerationStructureCacher::BuildBLAS(const AccelStructCreateInfo& ci, con
     createInfo.size = sizeInfo.accelerationStructureSize;
     createInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
 
-    vkCreateAccelerationStructureKHR(m_device->device, &createInfo, nullptr, &asData.blas);
+    VK_CHECK_LOG(vkCreateAccelerationStructureKHR(m_device->device, &createInfo, nullptr, &asData.blas), "Create BLAS");
 
     // Get scratch buffer device address
     VkBufferDeviceAddressInfo scratchAddressInfo{};
@@ -447,7 +448,7 @@ void AccelerationStructureCacher::BuildBLAS(const AccelStructCreateInfo& ci, con
         poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
         poolInfo.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
         poolInfo.queueFamilyIndex = m_device->graphicsQueueIndex;
-        vkCreateCommandPool(m_device->device, &poolInfo, nullptr, &m_buildCommandPool);
+        VK_CHECK_LOG(vkCreateCommandPool(m_device->device, &poolInfo, nullptr, &m_buildCommandPool), "Create command pool (BLAS)");
     }
 
     // Allocate and record command buffer
@@ -458,15 +459,15 @@ void AccelerationStructureCacher::BuildBLAS(const AccelStructCreateInfo& ci, con
     cmdAllocInfo.commandBufferCount = 1;
 
     VkCommandBuffer cmdBuffer;
-    vkAllocateCommandBuffers(m_device->device, &cmdAllocInfo, &cmdBuffer);
+    VK_CHECK_LOG(vkAllocateCommandBuffers(m_device->device, &cmdAllocInfo, &cmdBuffer), "Allocate command buffers (BLAS)");
 
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
-    vkBeginCommandBuffer(cmdBuffer, &beginInfo);
+    VK_CHECK_LOG(vkBeginCommandBuffer(cmdBuffer, &beginInfo), "Begin command buffer (BLAS)");
     vkCmdBuildAccelerationStructuresKHR(cmdBuffer, 1, &buildInfo, &pRangeInfo);
-    vkEndCommandBuffer(cmdBuffer);
+    VK_CHECK_LOG(vkEndCommandBuffer(cmdBuffer), "End command buffer (BLAS)");
 
     // Submit and wait
     VkSubmitInfo submitInfo{};
@@ -474,7 +475,7 @@ void AccelerationStructureCacher::BuildBLAS(const AccelStructCreateInfo& ci, con
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &cmdBuffer;
 
-    vkQueueSubmit(m_device->queue, 1, &submitInfo, VK_NULL_HANDLE);
+    VK_CHECK_LOG(vkQueueSubmit(m_device->queue, 1, &submitInfo, VK_NULL_HANDLE), "Queue submit (BLAS)");
     vkQueueWaitIdle(m_device->queue);
 
     vkFreeCommandBuffers(m_device->device, m_buildCommandPool, 1, &cmdBuffer);
@@ -536,7 +537,7 @@ void AccelerationStructureCacher::BuildTLAS(const AccelStructCreateInfo& ci, Acc
                           VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
         bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-        vkCreateBuffer(m_device->device, &bufferInfo, nullptr, &asData.instanceBuffer);
+        VK_CHECK_LOG(vkCreateBuffer(m_device->device, &bufferInfo, nullptr, &asData.instanceBuffer), "Create instance buffer");
 
         VkMemoryRequirements memReq;
         vkGetBufferMemoryRequirements(m_device->device, asData.instanceBuffer, &memReq);
@@ -554,12 +555,12 @@ void AccelerationStructureCacher::BuildTLAS(const AccelStructCreateInfo& ci, Acc
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
         );
 
-        vkAllocateMemory(m_device->device, &allocInfo, nullptr, &asData.instanceMemory);
-        vkBindBufferMemory(m_device->device, asData.instanceBuffer, asData.instanceMemory, 0);
+        VK_CHECK_LOG(vkAllocateMemory(m_device->device, &allocInfo, nullptr, &asData.instanceMemory), "Allocate instance memory");
+        VK_CHECK_LOG(vkBindBufferMemory(m_device->device, asData.instanceBuffer, asData.instanceMemory, 0), "Bind instance buffer memory");
 
         // Direct upload (host-visible memory)
         void* mappedData;
-        vkMapMemory(m_device->device, asData.instanceMemory, 0, sizeof(instance), 0, &mappedData);
+        VK_CHECK_LOG(vkMapMemory(m_device->device, asData.instanceMemory, 0, sizeof(instance), 0, &mappedData), "Map instance memory");
         std::memcpy(mappedData, &instance, sizeof(instance));
         vkUnmapMemory(m_device->device, asData.instanceMemory);
     }
@@ -612,7 +613,7 @@ void AccelerationStructureCacher::BuildTLAS(const AccelStructCreateInfo& ci, Acc
                           VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
         bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-        vkCreateBuffer(m_device->device, &bufferInfo, nullptr, &asData.tlasBuffer);
+        VK_CHECK_LOG(vkCreateBuffer(m_device->device, &bufferInfo, nullptr, &asData.tlasBuffer), "Create TLAS buffer");
 
         VkMemoryRequirements memReq;
         vkGetBufferMemoryRequirements(m_device->device, asData.tlasBuffer, &memReq);
@@ -627,8 +628,8 @@ void AccelerationStructureCacher::BuildTLAS(const AccelStructCreateInfo& ci, Acc
         allocInfo.allocationSize = memReq.size;
         allocInfo.memoryTypeIndex = FindMemoryType(memReq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-        vkAllocateMemory(m_device->device, &allocInfo, nullptr, &asData.tlasMemory);
-        vkBindBufferMemory(m_device->device, asData.tlasBuffer, asData.tlasMemory, 0);
+        VK_CHECK_LOG(vkAllocateMemory(m_device->device, &allocInfo, nullptr, &asData.tlasMemory), "Allocate TLAS memory");
+        VK_CHECK_LOG(vkBindBufferMemory(m_device->device, asData.tlasBuffer, asData.tlasMemory, 0), "Bind TLAS buffer memory");
     }
 
     // Get scratch buffer address (reusing from BLAS build)
@@ -644,7 +645,7 @@ void AccelerationStructureCacher::BuildTLAS(const AccelStructCreateInfo& ci, Acc
     createInfo.size = sizeInfo.accelerationStructureSize;
     createInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
 
-    vkCreateAccelerationStructureKHR(m_device->device, &createInfo, nullptr, &asData.tlas);
+    VK_CHECK_LOG(vkCreateAccelerationStructureKHR(m_device->device, &createInfo, nullptr, &asData.tlas), "Create TLAS");
 
     // Update build info
     buildInfo.dstAccelerationStructure = asData.tlas;
@@ -667,15 +668,15 @@ void AccelerationStructureCacher::BuildTLAS(const AccelStructCreateInfo& ci, Acc
     cmdAllocInfo.commandBufferCount = 1;
 
     VkCommandBuffer cmdBuffer;
-    vkAllocateCommandBuffers(m_device->device, &cmdAllocInfo, &cmdBuffer);
+    VK_CHECK_LOG(vkAllocateCommandBuffers(m_device->device, &cmdAllocInfo, &cmdBuffer), "Allocate command buffers (TLAS)");
 
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
-    vkBeginCommandBuffer(cmdBuffer, &beginInfo);
+    VK_CHECK_LOG(vkBeginCommandBuffer(cmdBuffer, &beginInfo), "Begin command buffer (TLAS)");
     vkCmdBuildAccelerationStructuresKHR(cmdBuffer, 1, &buildInfo, &pRangeInfo);
-    vkEndCommandBuffer(cmdBuffer);
+    VK_CHECK_LOG(vkEndCommandBuffer(cmdBuffer), "End command buffer (TLAS)");
 
     // Submit and wait
     VkSubmitInfo submitInfo{};
@@ -683,7 +684,7 @@ void AccelerationStructureCacher::BuildTLAS(const AccelStructCreateInfo& ci, Acc
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &cmdBuffer;
 
-    vkQueueSubmit(m_device->queue, 1, &submitInfo, VK_NULL_HANDLE);
+    VK_CHECK_LOG(vkQueueSubmit(m_device->queue, 1, &submitInfo, VK_NULL_HANDLE), "Queue submit (TLAS)");
     vkQueueWaitIdle(m_device->queue);
 
     vkFreeCommandBuffers(m_device->device, m_buildCommandPool, 1, &cmdBuffer);

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cassert>
+#include <cstdio>
 #include <expected>
 #include <string>
 #include <vulkan/vulkan.h>
@@ -124,5 +126,53 @@ using VulkanStatus = std::expected<void, VulkanError>;
     do { \
         if (!(result)) { \
             return std::unexpected((result).error()); \
+        } \
+    } while(0)
+
+/**
+ * @brief Log-only variant for functions that don't return VulkanResult
+ *
+ * Logs error to stderr and asserts in debug builds, but does NOT
+ * change control flow. Use VK_CHECK when possible; this is for
+ * legacy code that can't easily be refactored.
+ *
+ * Usage:
+ * @code
+ * void legacyFunction() {
+ *     VK_CHECK_LOG(vkCreateBuffer(...), "Failed to create buffer");
+ *     // Continues even on error - caller must handle null/invalid state
+ * }
+ * @endcode
+ */
+#define VK_CHECK_LOG(expr, msg) \
+    do { \
+        VkResult _vk_result = (expr); \
+        if (_vk_result != VK_SUCCESS) { \
+            fprintf(stderr, "[VK_ERROR] %s: %s (VkResult: %d) at %s:%d\n", \
+                    msg, VulkanError::resultToString(_vk_result).c_str(), \
+                    static_cast<int>(_vk_result), __FILE__, __LINE__); \
+            assert(false && "Vulkan call failed - see stderr for details"); \
+        } \
+    } while(0)
+
+/**
+ * @brief Variant that stores result for conditional handling
+ *
+ * Usage:
+ * @code
+ * VkResult result;
+ * VK_CHECK_RESULT(result, vkCreateBuffer(...), "Buffer creation");
+ * if (result != VK_SUCCESS) {
+ *     // Handle error case
+ * }
+ * @endcode
+ */
+#define VK_CHECK_RESULT(outResult, expr, msg) \
+    do { \
+        outResult = (expr); \
+        if (outResult != VK_SUCCESS) { \
+            fprintf(stderr, "[VK_ERROR] %s: %s (VkResult: %d) at %s:%d\n", \
+                    msg, VulkanError::resultToString(outResult).c_str(), \
+                    static_cast<int>(outResult), __FILE__, __LINE__); \
         } \
     } while(0)
