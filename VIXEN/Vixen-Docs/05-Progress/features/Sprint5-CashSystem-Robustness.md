@@ -84,52 +84,39 @@ Sprint 5 focuses on hardening the CashSystem library:
 
 ## Phase 2: Code Consolidation (P1) - 24h
 
-### 2.1 Extract VulkanBufferAllocator Class (8h)
+### 2.1 Extract VulkanBufferAllocator Class (8h) ✅ COMPLETE
 
 **HacknPlan:** #188, #251
 
-**Current Pattern (duplicated everywhere):**
+**Note:** VulkanBufferAllocator already exists as `DirectAllocator` and `VMAAllocator` in `libraries/ResourceManagement/`. This task became adding device address support.
+
+**Changes Made:**
+- Added `VkDeviceAddress deviceAddress` field to `BufferAllocation` struct (`IMemoryAllocator.h:121`)
+- `DirectAllocator`: Added `VkMemoryAllocateFlagsInfo` with `VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT` when buffer uses `VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT`
+- `VMAAllocator`: Added `VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT` flag
+- Both allocators now retrieve device address via `vkGetBufferDeviceAddress` after buffer creation
+- Aliased buffer creation also supports device address retrieval
+
+**API (existing, now enhanced):**
 ```cpp
-VkBufferCreateInfo bufferInfo{};
-bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-bufferInfo.size = size;
-bufferInfo.usage = usage;
-vkCreateBuffer(...);
-vkGetBufferMemoryRequirements(...);
-// Find memory type...
-VkMemoryAllocateInfo allocInfo{};
-vkAllocateMemory(...);
-vkBindBufferMemory(...);
-```
+// IMemoryAllocator interface
+std::expected<BufferAllocation, AllocationError>
+AllocateBuffer(const BufferAllocationRequest& request);
 
-**Tasks:**
-- [ ] Create `VulkanBufferAllocator` class in `libraries/CashSystem/include/`
-- [ ] Support: DeviceLocal, HostVisible, HostCached memory types
-- [ ] Support: DeviceAddress flag for RT buffers
-- [ ] Integrate with `DeviceBudgetManager` from Sprint 4
-- [ ] Return `BufferAllocation` struct (buffer, memory, size, mapped ptr)
-
-**Proposed API:**
-```cpp
-class VulkanBufferAllocator {
-public:
-    struct Allocation {
-        VkBuffer buffer;
-        VkDeviceMemory memory;
-        VkDeviceSize size;
-        void* mappedPtr = nullptr;  // If host-visible
-        VkDeviceAddress deviceAddress = 0;  // If device-address enabled
-    };
-
-    std::expected<Allocation, AllocationError> AllocateDeviceLocal(
-        VkDeviceSize size, VkBufferUsageFlags usage, bool deviceAddress = false);
-
-    std::expected<Allocation, AllocationError> AllocateHostVisible(
-        VkDeviceSize size, VkBufferUsageFlags usage);
-
-    void Free(Allocation& alloc);
+// BufferAllocation now includes:
+struct BufferAllocation {
+    VkBuffer buffer;
+    VkDeviceSize size;
+    void* mappedData;           // If host-visible
+    VkDeviceAddress deviceAddress;  // If device-address enabled (for RT buffers)
+    // ... other fields
 };
 ```
+
+**Files Changed:**
+- `libraries/ResourceManagement/include/Memory/IMemoryAllocator.h` (+1 field)
+- `libraries/ResourceManagement/src/Memory/DirectAllocator.cpp` (+20 lines)
+- `libraries/ResourceManagement/src/Memory/VMAAllocator.cpp` (+15 lines)
 
 ### 2.2 Replace Duplicate Code with VulkanBufferAllocator (4h)
 

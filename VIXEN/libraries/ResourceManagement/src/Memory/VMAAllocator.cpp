@@ -37,7 +37,8 @@ VMAAllocator::VMAAllocator(
     vulkanFunctions.vkGetDeviceProcAddr = vkGetDeviceProcAddr;
 
     VmaAllocatorCreateInfo allocatorInfo{};
-    allocatorInfo.flags = VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT;
+    allocatorInfo.flags = VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT |
+                          VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
     allocatorInfo.vulkanApiVersion = VK_API_VERSION_1_3;
     allocatorInfo.physicalDevice = physicalDevice;
     allocatorInfo.device = device;
@@ -164,12 +165,22 @@ VMAAllocator::AllocateBuffer(const BufferAllocationRequest& request) {
         budgetManager_->RecordAllocation(BudgetResourceType::DeviceMemory, allocationInfo.size);
     }
 
+    // Get device address if needed (for RT buffers)
+    VkDeviceAddress deviceAddress = 0;
+    if (request.usage & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) {
+        VkBufferDeviceAddressInfo addressInfo{};
+        addressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
+        addressInfo.buffer = buffer;
+        deviceAddress = vkGetBufferDeviceAddress(device_, &addressInfo);
+    }
+
     return BufferAllocation{
         .buffer = buffer,
         .allocation = static_cast<AllocationHandle>(allocation),
         .size = allocationInfo.size,
         .offset = allocationInfo.offset,
         .mappedData = allocationInfo.pMappedData,
+        .deviceAddress = deviceAddress,
         .canAlias = request.allowAliasing,
         .isAliased = false
     };
@@ -529,12 +540,22 @@ VMAAllocator::CreateAliasedBuffer(const AliasedBufferRequest& request) {
     // Note: Aliased buffers share the source allocation, don't count separately in budget
     // The memory was already counted when the source was allocated
 
+    // Get device address if usage requires it
+    VkDeviceAddress deviceAddress = 0;
+    if (request.usage & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) {
+        VkBufferDeviceAddressInfo addressInfo{};
+        addressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
+        addressInfo.buffer = buffer;
+        deviceAddress = vkGetBufferDeviceAddress(device_, &addressInfo);
+    }
+
     return BufferAllocation{
         .buffer = buffer,
         .allocation = request.sourceAllocation,  // Share source allocation handle
         .size = request.size,
         .offset = request.offsetInAllocation,
         .mappedData = nullptr,  // Mapping must go through source
+        .deviceAddress = deviceAddress,
         .canAlias = true,
         .isAliased = true
     };

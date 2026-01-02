@@ -118,6 +118,7 @@ struct BufferAllocation {
     VkDeviceSize size = 0;
     VkDeviceSize offset = 0;       // Offset within larger allocation (suballocation)
     void* mappedData = nullptr;    // Non-null if persistently mapped
+    VkDeviceAddress deviceAddress = 0;  // Non-zero if VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT enabled
     bool canAlias = false;         // True if this allocation supports aliasing
     bool isAliased = false;        // True if this is an aliased resource (doesn't own memory)
 

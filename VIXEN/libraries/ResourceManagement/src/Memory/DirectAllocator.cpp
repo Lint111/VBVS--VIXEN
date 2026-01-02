@@ -75,11 +75,22 @@ DirectAllocator::AllocateBuffer(const BufferAllocationRequest& request) {
         return std::unexpected(AllocationError::OutOfDeviceMemory);
     }
 
+    // Check if buffer requires device address (for RT buffers)
+    const bool needsDeviceAddress = (request.usage & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) != 0;
+
     // Allocate memory
     VkMemoryAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     allocInfo.allocationSize = memReq.size;
     allocInfo.memoryTypeIndex = memTypeIndex;
+
+    // Enable device address if needed
+    VkMemoryAllocateFlagsInfo flagsInfo{};
+    if (needsDeviceAddress) {
+        flagsInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO;
+        flagsInfo.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
+        allocInfo.pNext = &flagsInfo;
+    }
 
     VkDeviceMemory memory = VK_NULL_HANDLE;
     result = vkAllocateMemory(device_, &allocInfo, nullptr, &memory);
@@ -96,6 +107,15 @@ DirectAllocator::AllocateBuffer(const BufferAllocationRequest& request) {
         vkFreeMemory(device_, memory, nullptr);
         vkDestroyBuffer(device_, buffer, nullptr);
         return std::unexpected(AllocationError::Unknown);
+    }
+
+    // Get device address if needed
+    VkDeviceAddress deviceAddress = 0;
+    if (needsDeviceAddress) {
+        VkBufferDeviceAddressInfo addressInfo{};
+        addressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
+        addressInfo.buffer = buffer;
+        deviceAddress = vkGetBufferDeviceAddress(device_, &addressInfo);
     }
 
     // Create allocation record
@@ -130,6 +150,7 @@ DirectAllocator::AllocateBuffer(const BufferAllocationRequest& request) {
         .size = memReq.size,
         .offset = 0,
         .mappedData = nullptr,
+        .deviceAddress = deviceAddress,
         .canAlias = request.allowAliasing,
         .isAliased = false
     };
@@ -524,12 +545,22 @@ DirectAllocator::CreateAliasedBuffer(const AliasedBufferRequest& request) {
 
     // Note: Aliased buffers share the source allocation, don't count separately in budget
 
+    // Get device address if usage requires it
+    VkDeviceAddress deviceAddress = 0;
+    if (request.usage & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) {
+        VkBufferDeviceAddressInfo addressInfo{};
+        addressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
+        addressInfo.buffer = buffer;
+        deviceAddress = vkGetBufferDeviceAddress(device_, &addressInfo);
+    }
+
     return BufferAllocation{
         .buffer = buffer,
         .allocation = request.sourceAllocation,
         .size = request.size,
         .offset = request.offsetInAllocation,
         .mappedData = nullptr,
+        .deviceAddress = deviceAddress,
         .canAlias = true,
         .isAliased = true
     };
