@@ -142,9 +142,9 @@ void VoxelAABBConverterNode::CompileImpl(TypedCompileContext& ctx) {
 
     // Output the AABB data
     ctx.Out(VoxelAABBConverterNodeConfig::AABB_DATA, cachedAABBData_.get());
-    ctx.Out(VoxelAABBConverterNodeConfig::AABB_BUFFER, cachedAABBData_->aabbBuffer);
-    ctx.Out(VoxelAABBConverterNodeConfig::MATERIAL_ID_BUFFER, cachedAABBData_->materialIdBuffer);
-    ctx.Out(VoxelAABBConverterNodeConfig::BRICK_MAPPING_BUFFER, cachedAABBData_->brickMappingBuffer);
+    ctx.Out(VoxelAABBConverterNodeConfig::AABB_BUFFER, cachedAABBData_->GetAABBBuffer());
+    ctx.Out(VoxelAABBConverterNodeConfig::MATERIAL_ID_BUFFER, cachedAABBData_->GetMaterialIdBuffer());
+    ctx.Out(VoxelAABBConverterNodeConfig::BRICK_MAPPING_BUFFER, cachedAABBData_->GetBrickMappingBuffer());
 
     NODE_LOG_INFO("=== VoxelAABBConverterNode::CompileImpl COMPLETE ===");
     NODE_LOG_DEBUG("[VoxelAABBConverterNode::CompileImpl] COMPLETED");
@@ -155,9 +155,9 @@ void VoxelAABBConverterNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // Just pass through the cached data pointers
     if (cachedAABBData_) {
         ctx.Out(VoxelAABBConverterNodeConfig::AABB_DATA, cachedAABBData_.get());
-        ctx.Out(VoxelAABBConverterNodeConfig::AABB_BUFFER, cachedAABBData_->aabbBuffer);
-        ctx.Out(VoxelAABBConverterNodeConfig::MATERIAL_ID_BUFFER, cachedAABBData_->materialIdBuffer);
-        ctx.Out(VoxelAABBConverterNodeConfig::BRICK_MAPPING_BUFFER, cachedAABBData_->brickMappingBuffer);
+        ctx.Out(VoxelAABBConverterNodeConfig::AABB_BUFFER, cachedAABBData_->GetAABBBuffer());
+        ctx.Out(VoxelAABBConverterNodeConfig::MATERIAL_ID_BUFFER, cachedAABBData_->GetMaterialIdBuffer());
+        ctx.Out(VoxelAABBConverterNodeConfig::BRICK_MAPPING_BUFFER, cachedAABBData_->GetBrickMappingBuffer());
     }
 }
 

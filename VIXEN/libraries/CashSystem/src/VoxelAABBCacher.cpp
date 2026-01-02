@@ -66,10 +66,12 @@ std::uint64_t VoxelAABBCacher::ComputeKey(const VoxelAABBCreateInfo& ci) const {
 void VoxelAABBCacher::Cleanup() {
     LOG_INFO("[VoxelAABBCacher::Cleanup] Cleaning up cached AABB data");
 
-    // Cleanup all cached entries
+    // Free all cached buffer allocations via FreeBufferTracked
     for (auto& [key, entry] : m_entries) {
         if (entry.resource) {
-            entry.resource->Cleanup(m_device->device);
+            FreeBufferTracked(entry.resource->aabbAllocation);
+            FreeBufferTracked(entry.resource->materialIdAllocation);
+            FreeBufferTracked(entry.resource->brickMappingAllocation);
         }
     }
 
@@ -234,96 +236,68 @@ void VoxelAABBCacher::UploadToGPU(
         return;
     }
 
-    // Create AABB buffer
-    {
-        aabbData.aabbBufferSize = aabbs.size() * sizeof(VoxelAABB);
+    // Compute sizes upfront
+    const VkDeviceSize aabbSize = aabbs.size() * sizeof(VoxelAABB);
+    const VkDeviceSize materialSize = materialIds.size() * sizeof(uint32_t);
+    const VkDeviceSize mappingSize = brickMappings.size() * sizeof(VoxelBrickMapping);
 
-        VkBufferCreateInfo bufferInfo{};
-        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        bufferInfo.size = aabbData.aabbBufferSize;
-        bufferInfo.usage = VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
-                          VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
-                          VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
-                          VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    // Allocate all buffers first, then upload - ensures exception safety
+    // If any allocation fails, we clean up all previous allocations before throwing
 
-        VK_CHECK_LOG(vkCreateBuffer(m_device->device, &bufferInfo, nullptr, &aabbData.aabbBuffer), "Create AABB buffer");
-
-        VkMemoryRequirements memReq;
-        vkGetBufferMemoryRequirements(m_device->device, aabbData.aabbBuffer, &memReq);
-
-        VkMemoryAllocateFlagsInfo allocFlagsInfo{};
-        allocFlagsInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO;
-        allocFlagsInfo.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
-
-        VkMemoryAllocateInfo allocInfo{};
-        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        allocInfo.pNext = &allocFlagsInfo;
-        allocInfo.allocationSize = memReq.size;
-        allocInfo.memoryTypeIndex = CacherAllocationHelpers::FindMemoryType(m_device->gpuMemoryProperties, memReq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-        VK_CHECK_LOG(vkAllocateMemory(m_device->device, &allocInfo, nullptr, &aabbData.aabbBufferMemory), "Allocate AABB memory");
-        VK_CHECK_LOG(vkBindBufferMemory(m_device->device, aabbData.aabbBuffer, aabbData.aabbBufferMemory, 0), "Bind AABB buffer memory");
-
-        UploadBufferData(aabbData.aabbBuffer, aabbs.data(), aabbData.aabbBufferSize);
+    // 1. Allocate AABB buffer (device-local with device address for RT)
+    auto aabbAlloc = AllocateBufferTracked(
+        aabbSize,
+        VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+        VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        "VoxelAABB_aabbs"
+    );
+    if (!aabbAlloc) {
+        throw std::runtime_error("[VoxelAABBCacher::UploadToGPU] Failed to allocate AABB buffer");
     }
 
-    // Create material ID buffer
-    {
-        aabbData.materialIdBufferSize = materialIds.size() * sizeof(uint32_t);
-
-        VkBufferCreateInfo bufferInfo{};
-        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        bufferInfo.size = aabbData.materialIdBufferSize;
-        bufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-        VK_CHECK_LOG(vkCreateBuffer(m_device->device, &bufferInfo, nullptr, &aabbData.materialIdBuffer), "Create material ID buffer");
-
-        VkMemoryRequirements memReq;
-        vkGetBufferMemoryRequirements(m_device->device, aabbData.materialIdBuffer, &memReq);
-
-        VkMemoryAllocateInfo allocInfo{};
-        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        allocInfo.allocationSize = memReq.size;
-        allocInfo.memoryTypeIndex = CacherAllocationHelpers::FindMemoryType(m_device->gpuMemoryProperties, memReq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-        VK_CHECK_LOG(vkAllocateMemory(m_device->device, &allocInfo, nullptr, &aabbData.materialIdBufferMemory), "Allocate material ID memory");
-        VK_CHECK_LOG(vkBindBufferMemory(m_device->device, aabbData.materialIdBuffer, aabbData.materialIdBufferMemory, 0), "Bind material ID buffer memory");
-
-        UploadBufferData(aabbData.materialIdBuffer, materialIds.data(), aabbData.materialIdBufferSize);
+    // 2. Allocate material ID buffer (device-local)
+    auto materialAlloc = AllocateBufferTracked(
+        materialSize,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        "VoxelAABB_materials"
+    );
+    if (!materialAlloc) {
+        FreeBufferTracked(*aabbAlloc);
+        throw std::runtime_error("[VoxelAABBCacher::UploadToGPU] Failed to allocate material ID buffer");
     }
 
-    // Create brick mapping buffer
-    {
-        aabbData.brickMappingBufferSize = brickMappings.size() * sizeof(VoxelBrickMapping);
-
-        VkBufferCreateInfo bufferInfo{};
-        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        bufferInfo.size = aabbData.brickMappingBufferSize;
-        bufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-        VK_CHECK_LOG(vkCreateBuffer(m_device->device, &bufferInfo, nullptr, &aabbData.brickMappingBuffer), "Create brick mapping buffer");
-
-        VkMemoryRequirements memReq;
-        vkGetBufferMemoryRequirements(m_device->device, aabbData.brickMappingBuffer, &memReq);
-
-        VkMemoryAllocateInfo allocInfo{};
-        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        allocInfo.allocationSize = memReq.size;
-        allocInfo.memoryTypeIndex = CacherAllocationHelpers::FindMemoryType(m_device->gpuMemoryProperties, memReq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-        VK_CHECK_LOG(vkAllocateMemory(m_device->device, &allocInfo, nullptr, &aabbData.brickMappingBufferMemory), "Allocate brick mapping memory");
-        VK_CHECK_LOG(vkBindBufferMemory(m_device->device, aabbData.brickMappingBuffer, aabbData.brickMappingBufferMemory, 0), "Bind brick mapping buffer memory");
-
-        UploadBufferData(aabbData.brickMappingBuffer, brickMappings.data(), aabbData.brickMappingBufferSize);
+    // 3. Allocate brick mapping buffer (device-local)
+    auto mappingAlloc = AllocateBufferTracked(
+        mappingSize,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        "VoxelAABB_mappings"
+    );
+    if (!mappingAlloc) {
+        FreeBufferTracked(*aabbAlloc);
+        FreeBufferTracked(*materialAlloc);
+        throw std::runtime_error("[VoxelAABBCacher::UploadToGPU] Failed to allocate brick mapping buffer");
     }
+
+    // All allocations succeeded - now upload data
+    // Upload can still throw, but allocations are tracked via aabbData after assignment
+    aabbData.aabbAllocation = *aabbAlloc;
+    aabbData.materialIdAllocation = *materialAlloc;
+    aabbData.brickMappingAllocation = *mappingAlloc;
+
+    // Upload buffer data (if upload fails, Cleanup() will handle freeing via aabbData)
+    UploadBufferData(aabbData.aabbAllocation.buffer, aabbs.data(), aabbSize);
+    UploadBufferData(aabbData.materialIdAllocation.buffer, materialIds.data(), materialSize);
+    UploadBufferData(aabbData.brickMappingAllocation.buffer, brickMappings.data(), mappingSize);
 
     LOG_INFO("[VoxelAABBCacher::UploadToGPU] Uploaded buffers: " +
-             std::to_string(aabbData.aabbBufferSize / 1024.0f) + " KB AABBs, " +
-             std::to_string(aabbData.materialIdBufferSize / 1024.0f) + " KB materials, " +
-             std::to_string(aabbData.brickMappingBufferSize / 1024.0f) + " KB mappings");
+             std::to_string(aabbData.aabbAllocation.size / 1024.0f) + " KB AABBs, " +
+             std::to_string(aabbData.materialIdAllocation.size / 1024.0f) + " KB materials, " +
+             std::to_string(aabbData.brickMappingAllocation.size / 1024.0f) + " KB mappings");
 }
 
 void VoxelAABBCacher::UploadBufferData(VkBuffer buffer, const void* srcData, VkDeviceSize size) {
@@ -340,37 +314,25 @@ void VoxelAABBCacher::UploadBufferData(VkBuffer buffer, const void* srcData, VkD
         VK_CHECK_LOG(vkCreateCommandPool(m_device->device, &poolInfo, nullptr, &m_transferCommandPool), "Create command pool (transfer)");
     }
 
-    // Create staging buffer
-    VkBufferCreateInfo stagingInfo{};
-    stagingInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    stagingInfo.size = size;
-    stagingInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-    stagingInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-    VkBuffer stagingBuffer;
-    VK_CHECK_LOG(vkCreateBuffer(m_device->device, &stagingInfo, nullptr, &stagingBuffer), "Create staging buffer");
-
-    VkMemoryRequirements stagingMemReq;
-    vkGetBufferMemoryRequirements(m_device->device, stagingBuffer, &stagingMemReq);
-
-    VkMemoryAllocateInfo stagingAllocInfo{};
-    stagingAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    stagingAllocInfo.allocationSize = stagingMemReq.size;
-    stagingAllocInfo.memoryTypeIndex = CacherAllocationHelpers::FindMemoryType(
-        m_device->gpuMemoryProperties,
-        stagingMemReq.memoryTypeBits,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+    // Allocate staging buffer via AllocateBufferTracked (host-visible)
+    auto stagingAlloc = AllocateBufferTracked(
+        size,
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        "VoxelAABB_staging"
     );
-
-    VkDeviceMemory stagingMemory;
-    VK_CHECK_LOG(vkAllocateMemory(m_device->device, &stagingAllocInfo, nullptr, &stagingMemory), "Allocate staging memory");
-    VK_CHECK_LOG(vkBindBufferMemory(m_device->device, stagingBuffer, stagingMemory, 0), "Bind staging buffer memory");
+    if (!stagingAlloc) {
+        throw std::runtime_error("[VoxelAABBCacher::UploadBufferData] Failed to allocate staging buffer");
+    }
 
     // Copy data to staging buffer
-    void* mappedData;
-    VK_CHECK_LOG(vkMapMemory(m_device->device, stagingMemory, 0, size, 0, &mappedData), "Map staging memory");
+    void* mappedData = MapBufferTracked(*stagingAlloc);
+    if (!mappedData) {
+        FreeBufferTracked(*stagingAlloc);
+        throw std::runtime_error("[VoxelAABBCacher::UploadBufferData] Failed to map staging buffer");
+    }
     std::memcpy(mappedData, srcData, size);
-    vkUnmapMemory(m_device->device, stagingMemory);
+    UnmapBufferTracked(*stagingAlloc);
 
     // Record and submit copy command
     VkCommandBufferAllocateInfo cmdAllocInfo{};
@@ -392,7 +354,7 @@ void VoxelAABBCacher::UploadBufferData(VkBuffer buffer, const void* srcData, VkD
     copyRegion.srcOffset = 0;
     copyRegion.dstOffset = 0;
     copyRegion.size = size;
-    vkCmdCopyBuffer(cmdBuffer, stagingBuffer, buffer, 1, &copyRegion);
+    vkCmdCopyBuffer(cmdBuffer, stagingAlloc->buffer, buffer, 1, &copyRegion);
 
     VK_CHECK_LOG(vkEndCommandBuffer(cmdBuffer), "End command buffer (transfer)");
 
@@ -406,8 +368,7 @@ void VoxelAABBCacher::UploadBufferData(VkBuffer buffer, const void* srcData, VkD
 
     // Cleanup staging resources
     vkFreeCommandBuffers(m_device->device, m_transferCommandPool, 1, &cmdBuffer);
-    vkDestroyBuffer(m_device->device, stagingBuffer, nullptr);
-    vkFreeMemory(m_device->device, stagingMemory, nullptr);
+    FreeBufferTracked(*stagingAlloc);
 }
 
 } // namespace CashSystem

@@ -112,9 +112,19 @@ std::optional<BufferAllocation> CacherAllocationHelpers::AllocateBufferDirect(
     VkMemoryRequirements memRequirements;
     vkGetBufferMemoryRequirements(vkDevice, buffer, &memRequirements);
 
-    // Allocate memory
+    // Check if buffer requires device address (for RT/AS buffers)
+    const bool needsDeviceAddress = (usage & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) != 0;
+
+    // Allocate memory with device address flag if needed
+    VkMemoryAllocateFlagsInfo flagsInfo{};
+    if (needsDeviceAddress) {
+        flagsInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO;
+        flagsInfo.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
+    }
+
     VkMemoryAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    allocInfo.pNext = needsDeviceAddress ? &flagsInfo : nullptr;
     allocInfo.allocationSize = memRequirements.size;
     allocInfo.memoryTypeIndex = FindMemoryType(physicalDevice, memRequirements.memoryTypeBits, memoryFlags);
 
@@ -131,6 +141,15 @@ std::optional<BufferAllocation> CacherAllocationHelpers::AllocateBufferDirect(
         return std::nullopt;
     }
 
+    // Get device address if needed
+    VkDeviceAddress deviceAddress = 0;
+    if (needsDeviceAddress) {
+        VkBufferDeviceAddressInfo addressInfo{};
+        addressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
+        addressInfo.buffer = buffer;
+        deviceAddress = vkGetBufferDeviceAddress(vkDevice, &addressInfo);
+    }
+
     // Create record to track memory for freeing later
     auto* record = new DirectAllocationRecord{
         .memory = memory,
@@ -144,6 +163,7 @@ std::optional<BufferAllocation> CacherAllocationHelpers::AllocateBufferDirect(
         .size = memRequirements.size,
         .offset = 0,
         .mappedData = nullptr,
+        .deviceAddress = deviceAddress,
         .canAlias = false,
         .isAliased = false
     };

@@ -10,44 +10,9 @@
 namespace CashSystem {
 
 // ============================================================================
-// VOXEL AABB DATA - CLEANUP
+// Note: VoxelAABBData::Cleanup() removed - cleanup now handled by VoxelAABBCacher
+// via FreeBufferTracked() using the allocator infrastructure.
 // ============================================================================
-
-void VoxelAABBData::Cleanup(VkDevice device) {
-    if (device == VK_NULL_HANDLE) {
-        return;
-    }
-
-    if (aabbBuffer != VK_NULL_HANDLE) {
-        vkDestroyBuffer(device, aabbBuffer, nullptr);
-        aabbBuffer = VK_NULL_HANDLE;
-    }
-    if (aabbBufferMemory != VK_NULL_HANDLE) {
-        vkFreeMemory(device, aabbBufferMemory, nullptr);
-        aabbBufferMemory = VK_NULL_HANDLE;
-    }
-    if (materialIdBuffer != VK_NULL_HANDLE) {
-        vkDestroyBuffer(device, materialIdBuffer, nullptr);
-        materialIdBuffer = VK_NULL_HANDLE;
-    }
-    if (materialIdBufferMemory != VK_NULL_HANDLE) {
-        vkFreeMemory(device, materialIdBufferMemory, nullptr);
-        materialIdBufferMemory = VK_NULL_HANDLE;
-    }
-    if (brickMappingBuffer != VK_NULL_HANDLE) {
-        vkDestroyBuffer(device, brickMappingBuffer, nullptr);
-        brickMappingBuffer = VK_NULL_HANDLE;
-    }
-    if (brickMappingBufferMemory != VK_NULL_HANDLE) {
-        vkFreeMemory(device, brickMappingBufferMemory, nullptr);
-        brickMappingBufferMemory = VK_NULL_HANDLE;
-    }
-
-    aabbCount = 0;
-    aabbBufferSize = 0;
-    materialIdBufferSize = 0;
-    brickMappingBufferSize = 0;
-}
 
 // ============================================================================
 // ACCELERATION STRUCTURE DATA - CLEANUP
@@ -301,10 +266,15 @@ void AccelerationStructureCacher::BuildBLAS(const AccelStructCreateInfo& ci, con
     }
 
     // Get AABB buffer device address
-    VkBufferDeviceAddressInfo aabbAddressInfo{};
-    aabbAddressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
-    aabbAddressInfo.buffer = aabbData.aabbBuffer;
-    VkDeviceAddress aabbDeviceAddress = vkGetBufferDeviceAddressKHR(m_device->device, &aabbAddressInfo);
+    // Use device address from allocation (already computed during allocation)
+    VkDeviceAddress aabbDeviceAddress = aabbData.GetAABBDeviceAddress();
+    if (aabbDeviceAddress == 0) {
+        // Fallback: query device address if not stored in allocation
+        VkBufferDeviceAddressInfo aabbAddressInfo{};
+        aabbAddressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
+        aabbAddressInfo.buffer = aabbData.GetAABBBuffer();
+        aabbDeviceAddress = vkGetBufferDeviceAddressKHR(m_device->device, &aabbAddressInfo);
+    }
 
     // Setup AABB geometry
     VkAccelerationStructureGeometryAabbsDataKHR aabbsData{};

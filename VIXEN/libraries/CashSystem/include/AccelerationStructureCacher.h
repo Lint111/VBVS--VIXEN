@@ -109,7 +109,7 @@ struct AccelStructCreateInfo {
      */
     uint64_t ComputeHash() const noexcept {
         // Use AABB buffer address as key (unique per AABB data instance)
-        uint64_t hash = aabbData ? reinterpret_cast<uint64_t>(aabbData->aabbBuffer) : 0;
+        uint64_t hash = aabbData ? reinterpret_cast<uint64_t>(aabbData->GetAABBBuffer()) : 0;
         hash = hash * 31 + (preferFastTrace ? 1 : 0);
         hash = hash * 31 + (allowUpdate ? 2 : 0);
         hash = hash * 31 + (allowCompaction ? 4 : 0);
@@ -132,7 +132,7 @@ struct AccelStructCreateInfo {
  * @brief Cacher for acceleration structures
  *
  * Builds BLAS/TLAS from pre-extracted AABB data (from VoxelAABBCacher).
- * Key: (aabbBuffer address, buildFlags)
+ * Key: (AABB buffer address, buildFlags)
  *
  * Thread-safe via TypedCacher's shared_mutex.
  *

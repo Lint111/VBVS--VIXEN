@@ -3,6 +3,7 @@
 #include "TypedCacher.h"
 #include "MainCacher.h"
 #include "VoxelSceneCacher.h"
+#include "Memory/IMemoryAllocator.h"
 
 #include <vulkan/vulkan.h>
 #include <glm/glm.hpp>
@@ -54,33 +55,38 @@ static_assert(sizeof(VoxelBrickMapping) == 8, "VoxelBrickMapping must be 8 bytes
  *
  * Contains GPU buffers for AABBs, material IDs, and brick mappings.
  * Created and managed by VoxelAABBCacher.
+ *
+ * Uses BufferAllocation for proper memory management via allocator infrastructure.
  */
 struct VoxelAABBData {
     // AABB buffer - VkAabbPositionsKHR array
-    VkBuffer aabbBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory aabbBufferMemory = VK_NULL_HANDLE;
+    ResourceManagement::BufferAllocation aabbAllocation{};
     uint32_t aabbCount = 0;
-    VkDeviceSize aabbBufferSize = 0;
 
     // Material ID buffer - one uint32 per AABB, indexed by gl_PrimitiveID
-    VkBuffer materialIdBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory materialIdBufferMemory = VK_NULL_HANDLE;
-    VkDeviceSize materialIdBufferSize = 0;
+    ResourceManagement::BufferAllocation materialIdAllocation{};
 
     // Brick mapping buffer - one VoxelBrickMapping per AABB
-    VkBuffer brickMappingBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory brickMappingBufferMemory = VK_NULL_HANDLE;
-    VkDeviceSize brickMappingBufferSize = 0;
+    ResourceManagement::BufferAllocation brickMappingAllocation{};
 
     // Grid info for SVO lookup
     uint32_t gridResolution = 0;
     float voxelSize = 1.0f;
 
+    // ===== Convenience accessors for backward compatibility =====
+    VkBuffer GetAABBBuffer() const noexcept { return aabbAllocation.buffer; }
+    VkBuffer GetMaterialIdBuffer() const noexcept { return materialIdAllocation.buffer; }
+    VkBuffer GetBrickMappingBuffer() const noexcept { return brickMappingAllocation.buffer; }
+    VkDeviceSize GetAABBBufferSize() const noexcept { return aabbAllocation.size; }
+    VkDeviceSize GetMaterialIdBufferSize() const noexcept { return materialIdAllocation.size; }
+    VkDeviceSize GetBrickMappingBufferSize() const noexcept { return brickMappingAllocation.size; }
+    VkDeviceAddress GetAABBDeviceAddress() const noexcept { return aabbAllocation.deviceAddress; }
+
     bool IsValid() const noexcept {
-        return aabbBuffer != VK_NULL_HANDLE && aabbCount > 0;
+        return aabbAllocation.buffer != VK_NULL_HANDLE && aabbCount > 0;
     }
 
-    void Cleanup(VkDevice device);
+    // Note: Cleanup now handled by cacher via FreeBufferTracked()
 };
 
 // ============================================================================
