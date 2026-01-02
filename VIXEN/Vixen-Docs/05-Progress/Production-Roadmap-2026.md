@@ -33,7 +33,7 @@ This roadmap organizes VIXEN development into **4 major workstreams** spanning Q
 **Branch:** `production/sprint-4-resource-manager`
 **Goal:** Complete integration of resource tracking across entire application.
 
-### Sprint 4: Resource Manager Foundation ✅ PHASE A-C COMPLETE
+### Sprint 4: Resource Manager Foundation ✅ COMPLETE
 
 **Completed 2026-01-02:**
 
@@ -52,6 +52,9 @@ This roadmap organizes VIXEN development into **4 major workstreams** spanning Q
 | C.1 | Budget parameter in ExecuteParallel | ✅ Done | `SlotTask.h` |
 | C.2 | Dynamic throttling | ✅ Done | `SlotTask.cpp` |
 | C.3 | Memory estimation tracking | ✅ Done | `SlotTask.cpp` |
+| D.1 | RenderGraph budget integration | ✅ Done | `MainCacher.cpp`, TypedCachers |
+| D.2 | Resource usage dashboard | ✅ Done | `MetricsCollector.cpp`, `MetricsExporter.cpp` |
+| D.3 | ResourceManagement API docs | ✅ Done | `Vixen-Docs/Libraries/ResourceManagement.md` |
 
 **Library Restructure Complete:**
 ```
@@ -75,13 +78,9 @@ libraries/ResourceManagement/
 - [x] SlotTask budget-aware parallel execution with dynamic throttling
 - [x] SlotScopeToResourceScope bridging function
 
-### Remaining Sprint 4 Tasks
+### Sprint 4 Complete
 
-| Task | Effort | Priority | Status |
-|------|--------|----------|--------|
-| Integrate budget tracking in node allocations | 16h | P1 | 🔲 Pending |
-| Create resource usage dashboard | 8h | P2 | 🔲 Pending |
-| Document ResourceManagement API | 4h | P2 | 🔲 Pending |
+All Sprint 4 tasks completed. Ready for merge to main and Sprint 5 (CashSystem Robustness).
 
 ---
 
@@ -454,6 +453,8 @@ graph LR
 | 2026-01-02 | Sprint 4 Phase A-C complete: ResourceManagement library restructured |
 | 2026-01-02 | Added dynamic budget throttling to SlotTask (Phase C.2) |
 | 2026-01-02 | 156 tests passing (138 ResourceManagement + 18 SlotTask) |
+| 2026-01-02 | Sprint 4 Phase D complete: RenderGraph integration, Profiler dashboard, API docs |
+| 2026-01-02 | **Sprint 4 COMPLETE** - Ready for merge to main |
 
 ---
 
