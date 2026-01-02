@@ -2,7 +2,7 @@
 
 **Date:** 2026-01-02
 **Branch:** `production/sprint-5-cashsystem-robustness`
-**Last Commit:** `338a4e4` - refactor(CashSystem): Update AABB data handling to use BufferAllocation
+**Last Commit:** `a917523` - refactor(CashSystem): Migrate VoxelSceneCacher staging buffer to AllocateBufferTracked
 
 ---
 
@@ -48,29 +48,41 @@ data.allocation2 = *alloc2;
 FreeBufferTracked(data.allocation1);
 ```
 
+### Phase 2.3.0: VoxelSceneCacher Staging Buffer ✅
+
+**File Modified:** `CashSystem/src/VoxelSceneCacher.cpp`
+
+**Changes:**
+- `UploadBufferData()` now uses `AllocateBufferTracked()` for staging buffer
+- Uses `MapBufferTracked()`/`UnmapBufferTracked()` for memory operations
+- `FreeBufferTracked()` for cleanup
+
+**Note:** Main scene buffers still use shared memory pattern (7 buffers bound to single VkDeviceMemory at offsets). This is intentional optimization - not migrated.
+
 ---
 
 ## Remaining Tasks
 
 ### Phase 2.3.0: Migrate Remaining Cachers
 
-#### 1. VoxelSceneCacher (2 direct allocations)
-- **File:** `CashSystem/src/VoxelSceneCacher.cpp`
-- **Pattern:** Same as VoxelAABBCacher - replace raw Vulkan allocs with `AllocateBufferTracked()`
-- **Note:** May have simpler buffer requirements (no device address)
-
-#### 2. AccelerationStructureCacher (4 direct allocations)
+#### 1. AccelerationStructureCacher (4 direct allocations) - REQUIRES HEADER CHANGES
 - **File:** `CashSystem/src/AccelerationStructureCacher.cpp`
-- **Buffers to migrate:**
-  - BLAS buffer
-  - TLAS buffer
-  - Scratch buffer
-  - Instance buffer
-- **Note:** These require device address support (already in allocator)
+- **Header:** `CashSystem/include/AccelerationStructureCacher.h`
+- **Buffers to migrate in `AccelerationStructureData`:**
+  - blasBuffer + blasMemory → BufferAllocation
+  - tlasBuffer + tlasMemory → BufferAllocation
+  - scratchBuffer + scratchMemory → BufferAllocation (temp, freed after build)
+  - instanceBuffer + instanceMemory → BufferAllocation (host-visible)
+- **Note:** All need device address support (already handled by allocator when `VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT` in usage)
+- **Complexity:** Medium - need to update struct, BuildBLAS(), BuildTLAS(), and Cleanup()
 
-#### 3. MeshCacher (1 direct allocation)
+#### 2. MeshCacher (2 direct allocations) - REQUIRES HEADER CHANGES
 - **File:** `CashSystem/src/MeshCacher.cpp`
-- **Pattern:** Straightforward migration
+- **Buffers to migrate:**
+  - vertexBuffer + vertexMemory
+  - indexBuffer + indexMemory
+- **Note:** Uses host-visible memory, has `CreateBuffer()` helper that can be refactored
+- **Header change:** `MeshWrapper` struct needs to use `BufferAllocation` instead of raw VkBuffer/VkDeviceMemory
 
 ### Phase 2.3.1: Pass Allocator from Nodes to Cachers
 
