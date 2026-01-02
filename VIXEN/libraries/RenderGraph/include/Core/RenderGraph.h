@@ -10,6 +10,7 @@
 #include "Core/ResourceDependencyTracker.h"
 #include "Lifetime/DeferredDestruction.h"
 #include "Lifetime/LifetimeScope.h"
+#include "Memory/DeviceBudgetManager.h"
 #include "EventTypes/RenderGraphEvents.h"
 #include "MessageBus.h"
 #include "Message.h"
@@ -35,6 +36,7 @@ namespace Vixen::RenderGraph {
 using ResourceManagement::DeferredDestructionQueue;
 using ResourceManagement::LifetimeScopeManager;
 using ResourceManagement::ResourceBudgetManager;
+using ResourceManagement::DeviceBudgetManager;
 
 // NodeHandle defined in CleanupStack.h (included transitively)
 
@@ -351,6 +353,24 @@ public:
     const ResourceBudgetManager* GetBudgetManager() const { return budgetManager.get(); }
 
     /**
+     * @brief Set the device budget manager for GPU allocation tracking
+     *
+     * Application creates and configures DeviceBudgetManager, graph owns shared_ptr.
+     * When set, budget manager is wired to MainCacher for tracked allocations.
+     *
+     * @param manager Shared pointer to DeviceBudgetManager
+     */
+    void SetDeviceBudgetManager(std::shared_ptr<DeviceBudgetManager> manager);
+
+    /**
+     * @brief Get device budget manager for GPU allocation tracking
+     *
+     * @return Pointer to DeviceBudgetManager, or nullptr if not configured
+     */
+    DeviceBudgetManager* GetDeviceBudgetManager() { return deviceBudgetManager_.get(); }
+    const DeviceBudgetManager* GetDeviceBudgetManager() const { return deviceBudgetManager_.get(); }
+
+    /**
      * @brief Process pending events from the message bus
      * 
      * Should be called once per frame, typically before RenderFrame().
@@ -571,6 +591,9 @@ private:
 
     // Phase F: Resource budget manager (optional)
     std::unique_ptr<ResourceBudgetManager> budgetManager;
+
+    // Sprint 4 Phase D: Device budget manager for GPU allocations (optional, externally provided)
+    std::shared_ptr<DeviceBudgetManager> deviceBudgetManager_;
 
     // Lifecycle hook system
     GraphLifecycleHooks lifecycleHooks;

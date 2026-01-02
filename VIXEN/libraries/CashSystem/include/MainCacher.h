@@ -34,6 +34,10 @@ namespace Vixen::EventBus {
     using EventSubscriptionID = uint32_t;
 }
 
+namespace ResourceManagement {
+    class DeviceBudgetManager;
+}
+
 namespace CashSystem {
 
 // Forward declarations for cacher types
@@ -563,17 +567,33 @@ public:
     CacheStats GetStats() const {
         std::shared_lock deviceLock(m_deviceRegistriesMutex);
         std::shared_lock globalLock(m_globalRegistryMutex);
-        
+
         CacheStats stats;
         stats.globalCaches = m_globalCachers.size();
         stats.deviceRegistries = m_deviceRegistries.size();
-        
+
         for (const auto& [deviceId, registry] : m_deviceRegistries) {
             stats.totalDeviceCaches += registry.GetCacheSize();
         }
-        
+
         return stats;
     }
+
+    /**
+     * @brief Set budget manager for GPU allocation tracking
+     *
+     * Propagates the budget manager to all existing device registries.
+     * Cachers can access this via DeviceRegistry::GetBudgetManager().
+     *
+     * @param manager DeviceBudgetManager pointer (externally owned)
+     */
+    void SetBudgetManager(ResourceManagement::DeviceBudgetManager* manager);
+
+    /**
+     * @brief Get current budget manager
+     * @return DeviceBudgetManager pointer, or nullptr if not configured
+     */
+    ResourceManagement::DeviceBudgetManager* GetBudgetManager() const { return m_budgetManager; }
 
     /**
      * @brief Create a cacher instance by name (for manifest-based deserialization)
@@ -619,6 +639,9 @@ private:
     // Event bus integration for device invalidation
     Vixen::EventBus::MessageBus* m_messageBus = nullptr;
     Vixen::EventBus::EventSubscriptionID m_deviceInvalidationSubscription = 0;
+
+    // Sprint 4 Phase D: Budget manager for GPU allocation tracking
+    ResourceManagement::DeviceBudgetManager* m_budgetManager = nullptr;
 
     // Device registry management (private overload)
     DeviceRegistry& GetOrCreateDeviceRegistry(const DeviceIdentifier& deviceId);

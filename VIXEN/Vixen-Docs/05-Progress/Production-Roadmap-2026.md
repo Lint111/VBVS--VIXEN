@@ -28,39 +28,60 @@ This roadmap organizes VIXEN development into **4 major workstreams** spanning Q
 
 ---
 
-## Workstream 0: Resource Manager Integration (Q1 2026)
+## Workstream 0: Resource Manager Integration (Q1 2026) 🟢 IN PROGRESS
 
-**Branch:** `Graph-Based-Application-Management` (partially merged)
+**Branch:** `production/sprint-4-resource-manager`
 **Goal:** Complete integration of resource tracking across entire application.
 
-### Sprint 0.1: Resource Manager Full Integration (3 weeks)
+### Sprint 4: Resource Manager Foundation ✅ PHASE A-C COMPLETE
 
-The ResourceBudgetManager (Phase F.1) exists but needs complete integration throughout the codebase to track all data flow through stack, heap, and GPU.
+**Completed 2026-01-02:**
 
-| Task | Effort | Priority | Related Files |
-|------|--------|----------|---------------|
-| Audit current ResourceBudgetManager integration | 4h | P0 | `ResourceBudgetManager.h/.cpp` |
-| Integrate budget tracking in all node allocations | 16h | P0 | All node `.cpp` files |
-| Add GPU memory tracking via VMA or manual | 8h | P1 | `VulkanDevice.cpp`, `VulkanBufferAllocator.cpp` |
-| Add stack/heap tracking hooks | 8h | P1 | Core infrastructure |
-| Create resource usage dashboarding | 8h | P2 | New `ResourceDashboard.h/.cpp` |
-| Unit tests for resource tracking | 8h | P0 | `test_resource_budget_manager.cpp` |
+| Phase | Task | Status | Key Files |
+|-------|------|--------|-----------|
+| A.1 | IMemoryAllocator interface | ✅ Done | `IMemoryAllocator.h` |
+| A.2 | VMAAllocator implementation | ✅ Done | `VMAAllocator.h/.cpp` |
+| A.3 | DirectAllocator fallback | ✅ Done | `DirectAllocator.h/.cpp` |
+| A.4 | ResourceBudgetManager | ✅ Done | `ResourceBudgetManager.h` |
+| A.5 | DeviceBudgetManager facade | ✅ Done | `DeviceBudgetManager.h/.cpp` |
+| A.6 | BudgetBridge host↔device | ✅ Done | `BudgetBridge.h/.cpp` |
+| B.1 | SharedResource refcounting | ✅ Done | `SharedResource.h` |
+| B.2 | LifetimeScope management | ✅ Done | `LifetimeScope.h` |
+| B.3 | RenderGraph integration | ✅ Done | `RenderGraph.h/.cpp` |
+| B+ | GPU memory aliasing | ✅ Done | VMA aliasing support |
+| C.1 | Budget parameter in ExecuteParallel | ✅ Done | `SlotTask.h` |
+| C.2 | Dynamic throttling | ✅ Done | `SlotTask.cpp` |
+| C.3 | Memory estimation tracking | ✅ Done | `SlotTask.cpp` |
+
+**Library Restructure Complete:**
+```
+libraries/ResourceManagement/
+├── include/
+│   ├── State/           # RM<T>, ResourceState, StatefulContainer
+│   ├── Memory/          # IMemoryAllocator, Budget managers, VMA
+│   └── Lifetime/        # SharedResource, LifetimeScope, DeferredDestruction
+├── src/Memory/          # Allocator implementations
+└── tests/               # 138 tests passing
+```
+
+**Test Coverage:** 156 tests (138 ResourceManagement + 18 SlotTask)
 
 **Success Metrics:**
-- [ ] All GPU allocations tracked by ResourceBudgetManager
-- [ ] Budget warnings triggered at configured thresholds
-- [ ] Resource usage visible in benchmark output
-- [ ] Zero memory leaks detected by tracking system
+- [x] IMemoryAllocator abstraction with VMA + Direct implementations
+- [x] ResourceBudgetManager with soft/hard limits
+- [x] SharedResource intrusive refcounting with deferred destruction
+- [x] LifetimeScope for frame-based resource management
+- [x] GPU memory aliasing support via VMA
+- [x] SlotTask budget-aware parallel execution with dynamic throttling
+- [x] SlotScopeToResourceScope bridging function
 
-### Sprint 0.2: SlotTask Integration (2 weeks)
+### Remaining Sprint 4 Tasks
 
-From Phase F.2 - ensure SlotTask system is fully integrated with budget manager.
-
-| Task | Effort | Priority | Related Files |
-|------|--------|----------|---------------|
-| Audit SlotTask budget integration | 4h | P1 | `SlotTask.h` |
-| Add parallel task budget coordination | 8h | P1 | `SlotTaskManager.h/.cpp` |
-| Test concurrent allocation tracking | 4h | P0 | Tests |
+| Task | Effort | Priority | Status |
+|------|--------|----------|--------|
+| Integrate budget tracking in node allocations | 16h | P1 | 🔲 Pending |
+| Create resource usage dashboard | 8h | P2 | 🔲 Pending |
+| Document ResourceManagement API | 4h | P2 | 🔲 Pending |
 
 ---
 
@@ -430,6 +451,9 @@ graph LR
 | 2026-01-01 | Created 11 HacknPlan sprint boards (651780-651790) |
 | 2026-01-01 | Added 107 tasks totaling 1,422 hours |
 | 2026-01-01 | Migrated orphaned tasks to correct sprint boards |
+| 2026-01-02 | Sprint 4 Phase A-C complete: ResourceManagement library restructured |
+| 2026-01-02 | Added dynamic budget throttling to SlotTask (Phase C.2) |
+| 2026-01-02 | 156 tests passing (138 ResourceManagement + 18 SlotTask) |
 
 ---
 

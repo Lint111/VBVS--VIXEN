@@ -57,6 +57,18 @@ void MainCacher::Shutdown() {
     }
 }
 
+void MainCacher::SetBudgetManager(ResourceManagement::DeviceBudgetManager* manager) {
+    m_budgetManager = manager;
+
+    // Propagate to all existing device registries
+    std::lock_guard lock(m_deviceRegistriesMutex);
+    for (auto& [deviceId, registry] : m_deviceRegistries) {
+        registry.SetBudgetManager(manager);
+    }
+
+    LOG_INFO("[MainCacher] Budget manager " + std::string(manager ? "configured" : "cleared"));
+}
+
 void MainCacher::Initialize(::Vixen::EventBus::MessageBus* messageBus) {
     // Initialize logger (from ILoggable)
     InitializeLogger("CashSystem", false);  // Disabled by default, enable as needed
@@ -108,6 +120,10 @@ DeviceRegistry& MainCacher::GetOrCreateDeviceRegistry(::Vixen::Vulkan::Resources
     // Initialize the new registry with the device pointer
     if (inserted && device) {
         newIt->second.Initialize(device);
+        // Propagate budget manager to new registry
+        if (m_budgetManager) {
+            newIt->second.SetBudgetManager(m_budgetManager);
+        }
     }
 
     return newIt->second;

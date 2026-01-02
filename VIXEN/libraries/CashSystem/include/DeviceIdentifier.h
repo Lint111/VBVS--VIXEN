@@ -16,6 +16,10 @@ namespace Vixen::Vulkan::Resources {
     class VulkanDevice;
 }
 
+namespace ResourceManagement {
+    class DeviceBudgetManager;
+}
+
 namespace CashSystem {
 
 /**
@@ -175,16 +179,31 @@ public:
      */
     size_t GetCacheSize() const noexcept { return m_deviceCachers.size(); }
 
+    /**
+     * @brief Set budget manager for GPU allocation tracking
+     * @param manager DeviceBudgetManager pointer (externally owned)
+     */
+    void SetBudgetManager(ResourceManagement::DeviceBudgetManager* manager) { m_budgetManager = manager; }
+
+    /**
+     * @brief Get budget manager for GPU allocation tracking
+     * @return DeviceBudgetManager pointer, or nullptr if not configured
+     */
+    ResourceManagement::DeviceBudgetManager* GetBudgetManager() const { return m_budgetManager; }
+
 private:
     DeviceIdentifier m_deviceId;
     Vixen::Vulkan::Resources::VulkanDevice* m_device;
     bool m_initialized;
-    
+
+    // Sprint 4 Phase D: Budget manager for GPU allocation tracking
+    ResourceManagement::DeviceBudgetManager* m_budgetManager = nullptr;
+
     // TypeRegistry will be embedded here for device-specific type registration
     // This maintains the type-safe caching but per-device
     // For now, we'll use a placeholder until we refactor TypeRegistry
     std::vector<std::unique_ptr<CacherBase>> m_deviceCachers;
-    
+
     void OnInitialize();
 };
 

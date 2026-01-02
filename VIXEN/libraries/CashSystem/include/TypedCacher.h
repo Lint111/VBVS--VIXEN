@@ -2,6 +2,9 @@
 
 #include "CacherBase.h"
 #include "ILoggable.h"
+#include "CacherAllocationHelpers.h"
+#include "Memory/DeviceBudgetManager.h"
+#include "Memory/IMemoryAllocator.h"
 
 #include <shared_mutex>
 #include <unordered_map>
@@ -170,9 +173,97 @@ protected:
     // Device context and initialization tracking
     Vixen::Vulkan::Resources::VulkanDevice* m_device;
     bool m_initialized;
-    
+
+    // Sprint 4 Phase D: Budget manager for tracked allocations
+    ResourceManagement::DeviceBudgetManager* m_budgetManager = nullptr;
+
     // Hook for derived classes to perform initialization
     virtual void OnInitialize() {}
+
+public:
+    /**
+     * @brief Set budget manager for GPU allocation tracking
+     * @param manager DeviceBudgetManager pointer (externally owned)
+     */
+    void SetBudgetManager(ResourceManagement::DeviceBudgetManager* manager) {
+        m_budgetManager = manager;
+    }
+
+    /**
+     * @brief Get budget manager for GPU allocation tracking
+     * @return DeviceBudgetManager pointer, or nullptr if not configured
+     */
+    ResourceManagement::DeviceBudgetManager* GetBudgetManager() const {
+        return m_budgetManager;
+    }
+
+protected:
+    /**
+     * @brief Allocate buffer using budget-tracked allocator if available
+     *
+     * Falls back to direct Vulkan allocation if no budget manager configured.
+     * This provides backward compatibility while enabling budget tracking.
+     *
+     * @param size Buffer size in bytes
+     * @param usage Vulkan buffer usage flags
+     * @param memoryFlags Vulkan memory property flags
+     * @param debugName Optional debug name for the allocation
+     * @return BufferAllocation on success, or empty optional on failure
+     *
+     * @note When budget manager is available:
+     *   - Uses IMemoryAllocator for tracked allocation
+     *   - allocation.buffer is valid, allocation.memory may be VK_NULL_HANDLE (managed by allocator)
+     * @note When no budget manager:
+     *   - Uses direct Vulkan calls (vkCreateBuffer + vkAllocateMemory)
+     *   - allocation.buffer and allocation.memory are both valid
+     */
+    std::optional<ResourceManagement::BufferAllocation> AllocateBufferTracked(
+        VkDeviceSize size,
+        VkBufferUsageFlags usage,
+        VkMemoryPropertyFlags memoryFlags,
+        const char* debugName = nullptr
+    ) {
+        return CacherAllocationHelpers::AllocateBuffer(
+            m_budgetManager, m_device, size, usage, memoryFlags, debugName);
+    }
+
+    /**
+     * @brief Free buffer using appropriate path based on how it was allocated
+     *
+     * @param allocation The allocation to free
+     * @note Safe to call with invalid/empty allocation
+     */
+    void FreeBufferTracked(ResourceManagement::BufferAllocation& allocation) {
+        CacherAllocationHelpers::FreeBuffer(m_budgetManager, m_device, allocation);
+    }
+
+    /**
+     * @brief Map buffer memory for CPU access
+     *
+     * Works with both budget-tracked and direct allocations.
+     *
+     * @param allocation Buffer allocation to map
+     * @return Mapped pointer or nullptr on failure
+     */
+    void* MapBufferTracked(ResourceManagement::BufferAllocation& allocation) {
+        return CacherAllocationHelpers::MapBuffer(m_budgetManager, m_device, allocation);
+    }
+
+    /**
+     * @brief Unmap previously mapped buffer memory
+     *
+     * @param allocation Buffer allocation to unmap
+     */
+    void UnmapBufferTracked(ResourceManagement::BufferAllocation& allocation) {
+        CacherAllocationHelpers::UnmapBuffer(m_budgetManager, m_device, allocation);
+    }
+
+    /**
+     * @brief Helper to convert VkMemoryPropertyFlags to MemoryLocation
+     */
+    static ResourceManagement::MemoryLocation MemoryFlagsToLocation(VkMemoryPropertyFlags flags) {
+        return CacherAllocationHelpers::MemoryFlagsToLocation(flags);
+    }
 };
 
 } // namespace CashSystem

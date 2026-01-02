@@ -464,6 +464,16 @@ void RenderGraph::RegisterPostNodeCompileCallback(PostNodeCompileCallback callba
     postNodeCompileCallbacks.push_back(std::move(callback));
 }
 
+void RenderGraph::SetDeviceBudgetManager(std::shared_ptr<DeviceBudgetManager> manager) {
+    deviceBudgetManager_ = std::move(manager);
+
+    // Propagate to MainCacher for cacher-level allocation tracking
+    GetMainCacher().SetBudgetManager(deviceBudgetManager_.get());
+
+    GRAPH_LOG_INFO("[RenderGraph] DeviceBudgetManager " +
+        std::string(deviceBudgetManager_ ? "configured" : "cleared"));
+}
+
 void RenderGraph::Compile() {
     GRAPH_LOG_INFO("[RenderGraph::Compile] Starting compilation...");
 
