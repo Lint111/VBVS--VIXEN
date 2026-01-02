@@ -24,7 +24,19 @@ target_link_libraries(test_resource_management PRIVATE
 )
 set_target_properties(test_resource_management PROPERTIES FOLDER "Tests/ResourceManagement Tests")
 
+# ============================================================================
+# Budget Manager Integration Tests
+# ============================================================================
+
+add_executable(test_budget_manager_integration test_budget_manager_integration.cpp)
+target_link_libraries(test_budget_manager_integration PRIVATE
+    GTest::gtest_main
+    ResourceManagement
+)
+set_target_properties(test_budget_manager_integration PROPERTIES FOLDER "Tests/ResourceManagement Tests")
+
 # Register tests with CTest
 include(GoogleTest)
 gtest_discover_tests(test_resourcemanagement_basic)
 gtest_discover_tests(test_resource_management)
+gtest_discover_tests(test_budget_manager_integration)

@@ -4,6 +4,7 @@
 #include "Core/NodeType.h"
 #include "Data/Nodes/DeviceNodeConfig.h"
 #include "VulkanDevice.h"
+#include "DeviceIdentifier.h"  // For DeviceRegistry
 #include <memory>
 #include <vector>
 
@@ -87,6 +88,7 @@ private:
     void EnumeratePhysicalDevices();
     void SelectPhysicalDevice();
     void CreateLogicalDevice();
+    void CreateDeviceBudgetManager(CashSystem::DeviceRegistry& deviceRegistry);  // Create allocator + budget manager for device
     void PublishDeviceMetadata();  // Publish device capabilities via EventBus
 };
 

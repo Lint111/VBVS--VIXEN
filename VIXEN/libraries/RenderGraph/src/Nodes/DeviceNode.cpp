@@ -9,6 +9,8 @@
 #include "PipelineLayoutCacher.h"
 #include "DescriptorSetLayoutCacher.h"
 #include "TextureCacher.h"
+#include "Memory/DirectAllocator.h"
+#include "Memory/DeviceBudgetManager.h"
 extern std::vector<const char*> deviceExtensionNames;
 extern std::vector<const char*> layerNames;
 
@@ -108,6 +110,10 @@ void DeviceNode::CompileImpl(TypedCompileContext& ctx) {
     auto& mainCacher = GetOwningGraph()->GetMainCacher();
     auto& deviceRegistry = mainCacher.GetOrCreateDeviceRegistry(vulkanDevice.get());
     NODE_LOG_INFO("[DeviceNode] Registered device with MainCacher");
+
+    // Create memory allocator and budget manager for THIS device
+    // Must be after GetOrCreateDeviceRegistry so we can set it on the specific registry
+    CreateDeviceBudgetManager(deviceRegistry);
 
     // NOTE: Cache loading will happen AFTER graph compilation completes
     // This ensures all nodes have registered their cachers first
@@ -421,6 +427,73 @@ void DeviceNode::PublishDeviceMetadata() {
     messageBus->Publish(std::move(metadataEvent));
 
     NODE_LOG_INFO("[DeviceNode] Device metadata published successfully");
+}
+
+void DeviceNode::CreateDeviceBudgetManager(CashSystem::DeviceRegistry& deviceRegistry) {
+    if (!vulkanDevice || !vulkanDevice->device) {
+        NODE_LOG_WARNING("[DeviceNode] Cannot create budget manager - device not created");
+        return;
+    }
+
+    // Create DirectAllocator for THIS specific device (simple allocator, no VMA)
+    auto allocator = std::make_shared<ResourceManagement::DirectAllocator>(
+        *vulkanDevice->gpu,     // VkPhysicalDevice (dereference pointer)
+        vulkanDevice->device    // VkDevice
+    );
+
+    NODE_LOG_INFO("[DeviceNode] Created DirectAllocator for device: " +
+                  std::string(vulkanDevice->gpuProperties.deviceName));
+
+    // Query device VRAM to configure budget
+    uint64_t deviceLocalMemory = 0;
+    for (uint32_t i = 0; i < vulkanDevice->gpuMemoryProperties.memoryHeapCount; ++i) {
+        const auto& heap = vulkanDevice->gpuMemoryProperties.memoryHeaps[i];
+        if (heap.flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) {
+            deviceLocalMemory += heap.size;
+        }
+    }
+
+    // Configure budget manager based on actual device memory
+    // Use 90% of VRAM as budget to leave headroom for system/driver
+    // Warning threshold at 80%
+    ResourceManagement::DeviceBudgetManager::Config budgetConfig{};
+    budgetConfig.deviceMemoryBudget = static_cast<uint64_t>(deviceLocalMemory * 0.9);
+    budgetConfig.deviceMemoryWarning = static_cast<uint64_t>(deviceLocalMemory * 0.8);
+    budgetConfig.stagingQuota = std::min(
+        static_cast<uint64_t>(256 * 1024 * 1024),  // Max 256 MB
+        deviceLocalMemory / 16  // Or 6.25% of VRAM if smaller
+    );
+    budgetConfig.strictBudget = false;  // Allow over-budget (warn only)
+
+    NODE_LOG_INFO("[DeviceNode] Device VRAM: " + std::to_string(deviceLocalMemory / (1024 * 1024)) + " MB");
+    NODE_LOG_INFO("[DeviceNode] Budget: " + std::to_string(budgetConfig.deviceMemoryBudget / (1024 * 1024)) + " MB (90%)");
+    NODE_LOG_INFO("[DeviceNode] Warning threshold: " + std::to_string(budgetConfig.deviceMemoryWarning / (1024 * 1024)) + " MB (80%)");
+
+    // Create DeviceBudgetManager wrapping the allocator for THIS device
+    auto budgetManager = std::make_shared<ResourceManagement::DeviceBudgetManager>(
+        allocator,
+        *vulkanDevice->gpu,     // VkPhysicalDevice (dereference pointer)
+        budgetConfig
+    );
+
+    NODE_LOG_INFO("[DeviceNode] Created DeviceBudgetManager with staging quota: " +
+                  std::to_string(budgetConfig.stagingQuota / (1024 * 1024)) + " MB");
+
+    // Store budget manager in RenderGraph (for lifetime management)
+    // This also propagates to MainCacher for backwards compatibility
+    GetOwningGraph()->SetDeviceBudgetManager(budgetManager);
+
+    // Set budget manager on THIS specific DeviceRegistry
+    // This ensures per-device budget tracking for multi-GPU scenarios
+    deviceRegistry.SetBudgetManager(budgetManager.get());
+
+    NODE_LOG_INFO("[DeviceNode] Budget manager connected to DeviceRegistry");
+
+    // Log initial stats
+    auto stats = budgetManager->GetStats();
+    NODE_LOG_INFO("[DeviceNode] Device memory: " +
+                  std::to_string(stats.totalDeviceMemory / (1024 * 1024)) + " MB total, " +
+                  std::to_string(stats.availableDeviceMemory / (1024 * 1024)) + " MB available");
 }
 
 } // namespace Vixen::RenderGraph
