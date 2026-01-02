@@ -207,21 +207,9 @@ void AccelerationStructureNode::CreateAccelStructViaCacher(VoxelAABBData& aabbDa
     // Extract handles from cached data - copy fields manually between namespaced structs
     // CashSystem::AccelerationStructureData -> Vixen::RenderGraph::AccelerationStructureData
     const auto& src = cachedAccelStruct_->accelStruct;
-    accelData_.blas = src.blas;
-    accelData_.blasBuffer = src.blasBuffer;
-    accelData_.blasMemory = src.blasMemory;
-    accelData_.blasDeviceAddress = src.blasDeviceAddress;
-    accelData_.tlas = src.tlas;
-    accelData_.tlasBuffer = src.tlasBuffer;
-    accelData_.tlasMemory = src.tlasMemory;
-    accelData_.tlasDeviceAddress = src.tlasDeviceAddress;
-    accelData_.instanceBuffer = src.instanceBuffer;
-    accelData_.instanceMemory = src.instanceMemory;
-    accelData_.scratchBuffer = src.scratchBuffer;
-    accelData_.scratchMemory = src.scratchMemory;
-    accelData_.primitiveCount = src.primitiveCount;
-    accelData_.blasBuildTimeMs = src.blasBuildTimeMs;
-    accelData_.tlasBuildTimeMs = src.tlasBuildTimeMs;
+    // Copy all acceleration structure data at once
+    // Note: BufferAllocation members are now used instead of raw VkBuffer/VkDeviceMemory
+    accelData_ = src;
 
     NODE_LOG_INFO("AccelerationStructureNode: AS created via cacher: " +
                   std::to_string(accelData_.primitiveCount) + " primitives");

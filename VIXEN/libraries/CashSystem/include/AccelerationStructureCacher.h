@@ -3,6 +3,7 @@
 #include "TypedCacher.h"
 #include "MainCacher.h"
 #include "VoxelAABBCacher.h"  // VoxelAABBData, VoxelAABB, VoxelBrickMapping
+#include "Memory/IMemoryAllocator.h"
 
 #include <vulkan/vulkan.h>
 
@@ -24,27 +25,24 @@ namespace CashSystem {
  * @brief Acceleration structure handles for ray tracing
  *
  * Contains both BLAS (geometry) and TLAS (instances) for the scene.
+ * Uses BufferAllocation for proper memory management via allocator infrastructure.
  */
 struct AccelerationStructureData {
     // Bottom-Level Acceleration Structure (geometry)
     VkAccelerationStructureKHR blas = VK_NULL_HANDLE;
-    VkBuffer blasBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory blasMemory = VK_NULL_HANDLE;
+    ResourceManagement::BufferAllocation blasAllocation{};
     VkDeviceAddress blasDeviceAddress = 0;
 
     // Top-Level Acceleration Structure (instances)
     VkAccelerationStructureKHR tlas = VK_NULL_HANDLE;
-    VkBuffer tlasBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory tlasMemory = VK_NULL_HANDLE;
+    ResourceManagement::BufferAllocation tlasAllocation{};
     VkDeviceAddress tlasDeviceAddress = 0;
 
-    // Instance buffer (for TLAS)
-    VkBuffer instanceBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory instanceMemory = VK_NULL_HANDLE;
+    // Instance buffer (for TLAS, host-visible)
+    ResourceManagement::BufferAllocation instanceAllocation{};
 
-    // Scratch buffer (temporary, needed during build)
-    VkBuffer scratchBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory scratchMemory = VK_NULL_HANDLE;
+    // Scratch buffer (temporary, needed during build, freed after)
+    ResourceManagement::BufferAllocation scratchAllocation{};
 
     // Metadata
     uint32_t primitiveCount = 0;
@@ -53,11 +51,17 @@ struct AccelerationStructureData {
     float blasBuildTimeMs = 0.0f;
     float tlasBuildTimeMs = 0.0f;
 
+    // ===== Convenience accessors for backward compatibility =====
+    VkBuffer GetBLASBuffer() const noexcept { return blasAllocation.buffer; }
+    VkBuffer GetTLASBuffer() const noexcept { return tlasAllocation.buffer; }
+    VkBuffer GetInstanceBuffer() const noexcept { return instanceAllocation.buffer; }
+    VkBuffer GetScratchBuffer() const noexcept { return scratchAllocation.buffer; }
+
     bool IsValid() const noexcept {
         return blas != VK_NULL_HANDLE && tlas != VK_NULL_HANDLE;
     }
 
-    void Cleanup(VkDevice device);
+    // Note: Cleanup now handled by cacher via FreeBufferTracked()
 };
 
 // ============================================================================
@@ -82,7 +86,7 @@ struct CachedAccelerationStructure {
         return sourceAABBCount > 0 && accelStruct.IsValid();
     }
 
-    void Cleanup(VkDevice device);
+    // Note: Cleanup now handled by AccelerationStructureCacher via FreeBufferTracked()
 };
 
 // ============================================================================

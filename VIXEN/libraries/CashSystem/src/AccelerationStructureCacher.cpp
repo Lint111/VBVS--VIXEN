@@ -15,84 +15,10 @@ namespace CashSystem {
 // ============================================================================
 
 // ============================================================================
-// ACCELERATION STRUCTURE DATA - CLEANUP
+// Note: AccelerationStructureData::Cleanup() and CachedAccelerationStructure::Cleanup()
+// removed - cleanup now handled by AccelerationStructureCacher via FreeBufferTracked()
+// using the allocator infrastructure. AS handles (blas/tlas) still destroyed directly.
 // ============================================================================
-
-void AccelerationStructureData::Cleanup(VkDevice device) {
-    if (device == VK_NULL_HANDLE) {
-        return;
-    }
-
-    // Load destroy function if needed
-    auto destroyAS = reinterpret_cast<PFN_vkDestroyAccelerationStructureKHR>(
-        vkGetDeviceProcAddr(device, "vkDestroyAccelerationStructureKHR")
-    );
-
-    if (destroyAS) {
-        if (blas != VK_NULL_HANDLE) {
-            destroyAS(device, blas, nullptr);
-            blas = VK_NULL_HANDLE;
-        }
-        if (tlas != VK_NULL_HANDLE) {
-            destroyAS(device, tlas, nullptr);
-            tlas = VK_NULL_HANDLE;
-        }
-    }
-
-    // Destroy BLAS resources
-    if (blasBuffer != VK_NULL_HANDLE) {
-        vkDestroyBuffer(device, blasBuffer, nullptr);
-        blasBuffer = VK_NULL_HANDLE;
-    }
-    if (blasMemory != VK_NULL_HANDLE) {
-        vkFreeMemory(device, blasMemory, nullptr);
-        blasMemory = VK_NULL_HANDLE;
-    }
-
-    // Destroy TLAS resources
-    if (tlasBuffer != VK_NULL_HANDLE) {
-        vkDestroyBuffer(device, tlasBuffer, nullptr);
-        tlasBuffer = VK_NULL_HANDLE;
-    }
-    if (tlasMemory != VK_NULL_HANDLE) {
-        vkFreeMemory(device, tlasMemory, nullptr);
-        tlasMemory = VK_NULL_HANDLE;
-    }
-
-    // Destroy instance buffer
-    if (instanceBuffer != VK_NULL_HANDLE) {
-        vkDestroyBuffer(device, instanceBuffer, nullptr);
-        instanceBuffer = VK_NULL_HANDLE;
-    }
-    if (instanceMemory != VK_NULL_HANDLE) {
-        vkFreeMemory(device, instanceMemory, nullptr);
-        instanceMemory = VK_NULL_HANDLE;
-    }
-
-    // Destroy scratch buffer
-    if (scratchBuffer != VK_NULL_HANDLE) {
-        vkDestroyBuffer(device, scratchBuffer, nullptr);
-        scratchBuffer = VK_NULL_HANDLE;
-    }
-    if (scratchMemory != VK_NULL_HANDLE) {
-        vkFreeMemory(device, scratchMemory, nullptr);
-        scratchMemory = VK_NULL_HANDLE;
-    }
-
-    blasDeviceAddress = 0;
-    tlasDeviceAddress = 0;
-    primitiveCount = 0;
-}
-
-// ============================================================================
-// CACHED ACCELERATION STRUCTURE - CLEANUP
-// ============================================================================
-
-void CachedAccelerationStructure::Cleanup(VkDevice device) {
-    // Only clean up the acceleration structure resources we own
-    accelStruct.Cleanup(device);
-    sourceAABBCount = 0;
-}
 
 // ============================================================================
 // ACCELERATION STRUCTURE CACHER - PUBLIC API
@@ -152,10 +78,38 @@ std::uint64_t AccelerationStructureCacher::ComputeKey(const AccelStructCreateInf
 void AccelerationStructureCacher::Cleanup() {
     LOG_INFO("[AccelerationStructureCacher::Cleanup] Cleaning up cached acceleration structures");
 
+    // Load destroy function for acceleration structures
+    auto destroyAS = reinterpret_cast<PFN_vkDestroyAccelerationStructureKHR>(
+        vkGetDeviceProcAddr(m_device->device, "vkDestroyAccelerationStructureKHR")
+    );
+
     // Cleanup all cached entries
     for (auto& [key, entry] : m_entries) {
         if (entry.resource) {
-            entry.resource->Cleanup(m_device->device);
+            auto& asData = entry.resource->accelStruct;
+
+            // Destroy acceleration structure handles
+            if (destroyAS) {
+                if (asData.blas != VK_NULL_HANDLE) {
+                    destroyAS(m_device->device, asData.blas, nullptr);
+                    asData.blas = VK_NULL_HANDLE;
+                }
+                if (asData.tlas != VK_NULL_HANDLE) {
+                    destroyAS(m_device->device, asData.tlas, nullptr);
+                    asData.tlas = VK_NULL_HANDLE;
+                }
+            }
+
+            // Free buffer allocations via FreeBufferTracked
+            FreeBufferTracked(asData.blasAllocation);
+            FreeBufferTracked(asData.tlasAllocation);
+            FreeBufferTracked(asData.instanceAllocation);
+            FreeBufferTracked(asData.scratchAllocation);
+
+            asData.blasDeviceAddress = 0;
+            asData.tlasDeviceAddress = 0;
+            asData.primitiveCount = 0;
+            entry.resource->sourceAABBCount = 0;
         }
     }
 
@@ -315,75 +269,49 @@ void AccelerationStructureCacher::BuildBLAS(const AccelStructCreateInfo& ci, con
               std::to_string(sizeInfo.accelerationStructureSize) +
               ", build=" + std::to_string(sizeInfo.buildScratchSize));
 
-    // Create BLAS buffer
-    {
-        VkBufferCreateInfo bufferInfo{};
-        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        bufferInfo.size = sizeInfo.accelerationStructureSize;
-        bufferInfo.usage = VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR |
-                          VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
-        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-        VK_CHECK_LOG(vkCreateBuffer(m_device->device, &bufferInfo, nullptr, &asData.blasBuffer), "Create BLAS buffer");
-
-        VkMemoryRequirements memReq;
-        vkGetBufferMemoryRequirements(m_device->device, asData.blasBuffer, &memReq);
-
-        VkMemoryAllocateFlagsInfo allocFlagsInfo{};
-        allocFlagsInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO;
-        allocFlagsInfo.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
-
-        VkMemoryAllocateInfo allocInfo{};
-        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        allocInfo.pNext = &allocFlagsInfo;
-        allocInfo.allocationSize = memReq.size;
-        allocInfo.memoryTypeIndex = CacherAllocationHelpers::FindMemoryType(m_device->gpuMemoryProperties, memReq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-        VK_CHECK_LOG(vkAllocateMemory(m_device->device, &allocInfo, nullptr, &asData.blasMemory), "Allocate BLAS memory");
-        VK_CHECK_LOG(vkBindBufferMemory(m_device->device, asData.blasBuffer, asData.blasMemory, 0), "Bind BLAS buffer memory");
+    // Allocate BLAS buffer via AllocateBufferTracked
+    auto blasAlloc = AllocateBufferTracked(
+        sizeInfo.accelerationStructureSize,
+        VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        "AccelStruct_BLAS"
+    );
+    if (!blasAlloc) {
+        throw std::runtime_error("[AccelerationStructureCacher::BuildBLAS] Failed to allocate BLAS buffer");
     }
+    asData.blasAllocation = *blasAlloc;
 
-    // Create scratch buffer
-    {
-        VkBufferCreateInfo bufferInfo{};
-        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        bufferInfo.size = sizeInfo.buildScratchSize;
-        bufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
-        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-        VK_CHECK_LOG(vkCreateBuffer(m_device->device, &bufferInfo, nullptr, &asData.scratchBuffer), "Create scratch buffer");
-
-        VkMemoryRequirements memReq;
-        vkGetBufferMemoryRequirements(m_device->device, asData.scratchBuffer, &memReq);
-
-        VkMemoryAllocateFlagsInfo allocFlagsInfo{};
-        allocFlagsInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO;
-        allocFlagsInfo.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
-
-        VkMemoryAllocateInfo allocInfo{};
-        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        allocInfo.pNext = &allocFlagsInfo;
-        allocInfo.allocationSize = memReq.size;
-        allocInfo.memoryTypeIndex = CacherAllocationHelpers::FindMemoryType(m_device->gpuMemoryProperties, memReq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-        VK_CHECK_LOG(vkAllocateMemory(m_device->device, &allocInfo, nullptr, &asData.scratchMemory), "Allocate scratch memory");
-        VK_CHECK_LOG(vkBindBufferMemory(m_device->device, asData.scratchBuffer, asData.scratchMemory, 0), "Bind scratch buffer memory");
+    // Allocate scratch buffer via AllocateBufferTracked
+    auto scratchAlloc = AllocateBufferTracked(
+        sizeInfo.buildScratchSize,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        "AccelStruct_scratch"
+    );
+    if (!scratchAlloc) {
+        FreeBufferTracked(asData.blasAllocation);
+        throw std::runtime_error("[AccelerationStructureCacher::BuildBLAS] Failed to allocate scratch buffer");
     }
+    asData.scratchAllocation = *scratchAlloc;
 
     // Create acceleration structure
     VkAccelerationStructureCreateInfoKHR createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR;
-    createInfo.buffer = asData.blasBuffer;
+    createInfo.buffer = asData.blasAllocation.buffer;
     createInfo.size = sizeInfo.accelerationStructureSize;
     createInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
 
     VK_CHECK_LOG(vkCreateAccelerationStructureKHR(m_device->device, &createInfo, nullptr, &asData.blas), "Create BLAS");
 
-    // Get scratch buffer device address
-    VkBufferDeviceAddressInfo scratchAddressInfo{};
-    scratchAddressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
-    scratchAddressInfo.buffer = asData.scratchBuffer;
-    VkDeviceAddress scratchAddress = vkGetBufferDeviceAddressKHR(m_device->device, &scratchAddressInfo);
+    // Get scratch buffer device address (use stored address from allocation)
+    VkDeviceAddress scratchAddress = asData.scratchAllocation.deviceAddress;
+    if (scratchAddress == 0) {
+        // Fallback: query device address if not stored
+        VkBufferDeviceAddressInfo scratchAddressInfo{};
+        scratchAddressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
+        scratchAddressInfo.buffer = asData.scratchAllocation.buffer;
+        scratchAddress = vkGetBufferDeviceAddressKHR(m_device->device, &scratchAddressInfo);
+    }
 
     // Update build info with destination and scratch
     buildInfo.dstAccelerationStructure = asData.blas;
@@ -484,49 +412,36 @@ void AccelerationStructureCacher::BuildTLAS(const AccelStructCreateInfo& ci, Acc
     instance.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
     instance.accelerationStructureReference = asData.blasDeviceAddress;
 
-    // Create instance buffer with host-visible memory for direct upload
-    {
-        VkBufferCreateInfo bufferInfo{};
-        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        bufferInfo.size = sizeof(VkAccelerationStructureInstanceKHR);
-        bufferInfo.usage = VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
-                          VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
-        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-        VK_CHECK_LOG(vkCreateBuffer(m_device->device, &bufferInfo, nullptr, &asData.instanceBuffer), "Create instance buffer");
-
-        VkMemoryRequirements memReq;
-        vkGetBufferMemoryRequirements(m_device->device, asData.instanceBuffer, &memReq);
-
-        VkMemoryAllocateFlagsInfo allocFlagsInfo{};
-        allocFlagsInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO;
-        allocFlagsInfo.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
-
-        VkMemoryAllocateInfo allocInfo{};
-        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        allocInfo.pNext = &allocFlagsInfo;
-        allocInfo.allocationSize = memReq.size;
-        allocInfo.memoryTypeIndex = CacherAllocationHelpers::FindMemoryType(
-            m_device->gpuMemoryProperties,
-            memReq.memoryTypeBits,
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
-        );
-
-        VK_CHECK_LOG(vkAllocateMemory(m_device->device, &allocInfo, nullptr, &asData.instanceMemory), "Allocate instance memory");
-        VK_CHECK_LOG(vkBindBufferMemory(m_device->device, asData.instanceBuffer, asData.instanceMemory, 0), "Bind instance buffer memory");
-
-        // Direct upload (host-visible memory)
-        void* mappedData;
-        VK_CHECK_LOG(vkMapMemory(m_device->device, asData.instanceMemory, 0, sizeof(instance), 0, &mappedData), "Map instance memory");
-        std::memcpy(mappedData, &instance, sizeof(instance));
-        vkUnmapMemory(m_device->device, asData.instanceMemory);
+    // Allocate instance buffer via AllocateBufferTracked (host-visible for direct upload)
+    auto instanceAlloc = AllocateBufferTracked(
+        sizeof(VkAccelerationStructureInstanceKHR),
+        VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        "AccelStruct_instance"
+    );
+    if (!instanceAlloc) {
+        throw std::runtime_error("[AccelerationStructureCacher::BuildTLAS] Failed to allocate instance buffer");
     }
+    asData.instanceAllocation = *instanceAlloc;
 
-    // Get instance buffer device address
-    VkBufferDeviceAddressInfo instanceAddressInfo{};
-    instanceAddressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
-    instanceAddressInfo.buffer = asData.instanceBuffer;
-    VkDeviceAddress instanceAddress = vkGetBufferDeviceAddressKHR(m_device->device, &instanceAddressInfo);
+    // Direct upload via MapBufferTracked
+    void* mappedData = MapBufferTracked(asData.instanceAllocation);
+    if (!mappedData) {
+        FreeBufferTracked(asData.instanceAllocation);
+        throw std::runtime_error("[AccelerationStructureCacher::BuildTLAS] Failed to map instance buffer");
+    }
+    std::memcpy(mappedData, &instance, sizeof(instance));
+    UnmapBufferTracked(asData.instanceAllocation);
+
+    // Get instance buffer device address (use stored address from allocation)
+    VkDeviceAddress instanceAddress = asData.instanceAllocation.deviceAddress;
+    if (instanceAddress == 0) {
+        // Fallback: query device address if not stored
+        VkBufferDeviceAddressInfo instanceAddressInfo{};
+        instanceAddressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
+        instanceAddressInfo.buffer = asData.instanceAllocation.buffer;
+        instanceAddress = vkGetBufferDeviceAddressKHR(m_device->device, &instanceAddressInfo);
+    }
 
     // Setup geometry
     VkAccelerationStructureGeometryInstancesDataKHR instancesData{};
@@ -561,44 +476,33 @@ void AccelerationStructureCacher::BuildTLAS(const AccelStructCreateInfo& ci, Acc
         &sizeInfo
     );
 
-    // Create TLAS buffer
-    {
-        VkBufferCreateInfo bufferInfo{};
-        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        bufferInfo.size = sizeInfo.accelerationStructureSize;
-        bufferInfo.usage = VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR |
-                          VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
-        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-        VK_CHECK_LOG(vkCreateBuffer(m_device->device, &bufferInfo, nullptr, &asData.tlasBuffer), "Create TLAS buffer");
-
-        VkMemoryRequirements memReq;
-        vkGetBufferMemoryRequirements(m_device->device, asData.tlasBuffer, &memReq);
-
-        VkMemoryAllocateFlagsInfo allocFlagsInfo{};
-        allocFlagsInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO;
-        allocFlagsInfo.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
-
-        VkMemoryAllocateInfo allocInfo{};
-        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        allocInfo.pNext = &allocFlagsInfo;
-        allocInfo.allocationSize = memReq.size;
-        allocInfo.memoryTypeIndex = CacherAllocationHelpers::FindMemoryType(m_device->gpuMemoryProperties, memReq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-        VK_CHECK_LOG(vkAllocateMemory(m_device->device, &allocInfo, nullptr, &asData.tlasMemory), "Allocate TLAS memory");
-        VK_CHECK_LOG(vkBindBufferMemory(m_device->device, asData.tlasBuffer, asData.tlasMemory, 0), "Bind TLAS buffer memory");
+    // Allocate TLAS buffer via AllocateBufferTracked
+    auto tlasAlloc = AllocateBufferTracked(
+        sizeInfo.accelerationStructureSize,
+        VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        "AccelStruct_TLAS"
+    );
+    if (!tlasAlloc) {
+        FreeBufferTracked(asData.instanceAllocation);
+        throw std::runtime_error("[AccelerationStructureCacher::BuildTLAS] Failed to allocate TLAS buffer");
     }
+    asData.tlasAllocation = *tlasAlloc;
 
-    // Get scratch buffer address (reusing from BLAS build)
-    VkBufferDeviceAddressInfo scratchAddressInfo{};
-    scratchAddressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
-    scratchAddressInfo.buffer = asData.scratchBuffer;
-    VkDeviceAddress scratchAddress = vkGetBufferDeviceAddressKHR(m_device->device, &scratchAddressInfo);
+    // Get scratch buffer address (reusing from BLAS build, use stored address)
+    VkDeviceAddress scratchAddress = asData.scratchAllocation.deviceAddress;
+    if (scratchAddress == 0) {
+        // Fallback: query device address if not stored
+        VkBufferDeviceAddressInfo scratchAddressInfo{};
+        scratchAddressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
+        scratchAddressInfo.buffer = asData.scratchAllocation.buffer;
+        scratchAddress = vkGetBufferDeviceAddressKHR(m_device->device, &scratchAddressInfo);
+    }
 
     // Create acceleration structure
     VkAccelerationStructureCreateInfoKHR createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR;
-    createInfo.buffer = asData.tlasBuffer;
+    createInfo.buffer = asData.tlasAllocation.buffer;
     createInfo.size = sizeInfo.accelerationStructureSize;
     createInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
 
