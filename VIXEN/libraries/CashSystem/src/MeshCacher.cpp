@@ -16,40 +16,24 @@ namespace CashSystem {
 void MeshCacher::Cleanup() {
     LOG_INFO("Cleaning up " + std::to_string(m_entries.size()) + " cached meshes");
 
-    // Destroy all cached Vulkan resources
-    if (GetDevice()) {
-        for (auto& [key, entry] : m_entries) {
-            if (entry.resource) {
-                // Destroy vertex buffer
-                if (entry.resource->vertexBuffer != VK_NULL_HANDLE) {
-                    LOG_DEBUG("Destroying vertex buffer: " + std::to_string(reinterpret_cast<uint64_t>(entry.resource->vertexBuffer)));
-                    vkDestroyBuffer(GetDevice()->device, entry.resource->vertexBuffer, nullptr);
-                    entry.resource->vertexBuffer = VK_NULL_HANDLE;
-                }
-
-                // Free vertex memory
-                if (entry.resource->vertexMemory != VK_NULL_HANDLE) {
-                    vkFreeMemory(GetDevice()->device, entry.resource->vertexMemory, nullptr);
-                    entry.resource->vertexMemory = VK_NULL_HANDLE;
-                }
-
-                // Destroy index buffer
-                if (entry.resource->indexBuffer != VK_NULL_HANDLE) {
-                    LOG_DEBUG("Destroying index buffer: " + std::to_string(reinterpret_cast<uint64_t>(entry.resource->indexBuffer)));
-                    vkDestroyBuffer(GetDevice()->device, entry.resource->indexBuffer, nullptr);
-                    entry.resource->indexBuffer = VK_NULL_HANDLE;
-                }
-
-                // Free index memory
-                if (entry.resource->indexMemory != VK_NULL_HANDLE) {
-                    vkFreeMemory(GetDevice()->device, entry.resource->indexMemory, nullptr);
-                    entry.resource->indexMemory = VK_NULL_HANDLE;
-                }
-
-                // Clear cached CPU data
-                entry.resource->vertexData.clear();
-                entry.resource->indexData.clear();
+    // Free all cached Vulkan resources via allocator infrastructure
+    for (auto& [key, entry] : m_entries) {
+        if (entry.resource) {
+            // Free vertex allocation
+            if (entry.resource->vertexAllocation.buffer != VK_NULL_HANDLE) {
+                LOG_DEBUG("Freeing vertex buffer: " + std::to_string(reinterpret_cast<uint64_t>(entry.resource->vertexAllocation.buffer)));
+                FreeBufferTracked(entry.resource->vertexAllocation);
             }
+
+            // Free index allocation
+            if (entry.resource->indexAllocation.buffer != VK_NULL_HANDLE) {
+                LOG_DEBUG("Freeing index buffer: " + std::to_string(reinterpret_cast<uint64_t>(entry.resource->indexAllocation.buffer)));
+                FreeBufferTracked(entry.resource->indexAllocation);
+            }
+
+            // Clear cached CPU data
+            entry.resource->vertexData.clear();
+            entry.resource->indexData.clear();
         }
     }
 
@@ -113,36 +97,57 @@ std::shared_ptr<MeshWrapper> MeshCacher::Create(const MeshCreateParams& ci) {
         LOG_DEBUG("Cached " + std::to_string(wrapper->indexData.size()) + " indices (" + std::to_string(ci.indexDataSize) + " bytes)");
     }
 
-    // Create vertex buffer
+    // Create vertex buffer via allocator infrastructure
     if (ci.vertexDataSize > 0) {
-        CreateBuffer(
+        auto vertexAlloc = AllocateBufferTracked(
             ci.vertexDataSize,
             VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
             ci.vertexMemoryFlags,
-            wrapper->vertexBuffer,
-            wrapper->vertexMemory
+            "Mesh_vertex"
         );
+        if (!vertexAlloc) {
+            throw std::runtime_error("MeshCacher: Failed to allocate vertex buffer");
+        }
+        wrapper->vertexAllocation = *vertexAlloc;
 
-        // Upload vertex data
-        UploadData(wrapper->vertexMemory, ci.vertexDataPtr, ci.vertexDataSize);
+        // Upload vertex data via MapBufferTracked
+        void* mappedData = MapBufferTracked(wrapper->vertexAllocation);
+        if (!mappedData) {
+            FreeBufferTracked(wrapper->vertexAllocation);
+            throw std::runtime_error("MeshCacher: Failed to map vertex buffer");
+        }
+        std::memcpy(mappedData, ci.vertexDataPtr, ci.vertexDataSize);
+        UnmapBufferTracked(wrapper->vertexAllocation);
 
-        LOG_DEBUG("Vertex buffer created: " + std::to_string(reinterpret_cast<uint64_t>(wrapper->vertexBuffer)));
+        LOG_DEBUG("Vertex buffer created: " + std::to_string(reinterpret_cast<uint64_t>(wrapper->vertexAllocation.buffer)));
     }
 
     // Create index buffer (if indices provided)
     if (ci.indexDataSize > 0) {
-        CreateBuffer(
+        auto indexAlloc = AllocateBufferTracked(
             ci.indexDataSize,
             VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
             ci.indexMemoryFlags,
-            wrapper->indexBuffer,
-            wrapper->indexMemory
+            "Mesh_index"
         );
+        if (!indexAlloc) {
+            // Clean up vertex allocation on failure
+            FreeBufferTracked(wrapper->vertexAllocation);
+            throw std::runtime_error("MeshCacher: Failed to allocate index buffer");
+        }
+        wrapper->indexAllocation = *indexAlloc;
 
-        // Upload index data
-        UploadData(wrapper->indexMemory, ci.indexDataPtr, ci.indexDataSize);
+        // Upload index data via MapBufferTracked
+        void* mappedData = MapBufferTracked(wrapper->indexAllocation);
+        if (!mappedData) {
+            FreeBufferTracked(wrapper->indexAllocation);
+            FreeBufferTracked(wrapper->vertexAllocation);
+            throw std::runtime_error("MeshCacher: Failed to map index buffer");
+        }
+        std::memcpy(mappedData, ci.indexDataPtr, ci.indexDataSize);
+        UnmapBufferTracked(wrapper->indexAllocation);
 
-        LOG_DEBUG("Index buffer created: " + std::to_string(reinterpret_cast<uint64_t>(wrapper->indexBuffer)));
+        LOG_DEBUG("Index buffer created: " + std::to_string(reinterpret_cast<uint64_t>(wrapper->indexAllocation.buffer)));
     }
 
     return wrapper;
@@ -298,90 +303,6 @@ bool MeshCacher::DeserializeFromFile(const std::filesystem::path& path, void* de
 
     LOG_INFO("DeserializeFromFile: Deserialization complete (buffers will be created on-demand)");
     return true;
-}
-
-void MeshCacher::CreateBuffer(
-    VkDeviceSize size,
-    VkBufferUsageFlags usage,
-    VkMemoryPropertyFlags memoryFlags,
-    VkBuffer& buffer,
-    VkDeviceMemory& memory
-) {
-    // Create buffer
-    VkBufferCreateInfo bufferInfo{};
-    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    bufferInfo.pNext = nullptr;
-    bufferInfo.size = size;
-    bufferInfo.usage = usage;
-    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    bufferInfo.queueFamilyIndexCount = 0;
-    bufferInfo.pQueueFamilyIndices = nullptr;
-    bufferInfo.flags = 0;
-
-    VkResult result = vkCreateBuffer(GetDevice()->device, &bufferInfo, nullptr, &buffer);
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("MeshCacher: Failed to create buffer (VkResult: " +
-                                 std::to_string(result) + ")");
-    }
-
-    // Get memory requirements
-    VkMemoryRequirements memRequirements;
-    vkGetBufferMemoryRequirements(GetDevice()->device, buffer, &memRequirements);
-
-    // Allocate memory
-    VkMemoryAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.pNext = nullptr;
-    allocInfo.allocationSize = memRequirements.size;
-
-    // Find suitable memory type
-    auto memoryTypeIndex = GetDevice()->MemoryTypeFromProperties(
-        memRequirements.memoryTypeBits,
-        memoryFlags
-    );
-
-    if (!memoryTypeIndex.has_value()) {
-        vkDestroyBuffer(GetDevice()->device, buffer, nullptr);
-        throw std::runtime_error("MeshCacher: Failed to find suitable memory type for buffer");
-    }
-
-    allocInfo.memoryTypeIndex = memoryTypeIndex.value();
-
-    result = vkAllocateMemory(GetDevice()->device, &allocInfo, nullptr, &memory);
-    if (result != VK_SUCCESS) {
-        vkDestroyBuffer(GetDevice()->device, buffer, nullptr);
-        throw std::runtime_error("MeshCacher: Failed to allocate buffer memory (VkResult: " +
-                                 std::to_string(result) + ")");
-    }
-
-    // Bind buffer to memory
-    result = vkBindBufferMemory(GetDevice()->device, buffer, memory, 0);
-    if (result != VK_SUCCESS) {
-        vkFreeMemory(GetDevice()->device, memory, nullptr);
-        vkDestroyBuffer(GetDevice()->device, buffer, nullptr);
-        throw std::runtime_error("MeshCacher: Failed to bind buffer memory (VkResult: " +
-                                 std::to_string(result) + ")");
-    }
-}
-
-void MeshCacher::UploadData(
-    VkDeviceMemory memory,
-    const void* data,
-    VkDeviceSize size
-) {
-    // Map memory
-    void* mappedData;
-    VkResult result = vkMapMemory(GetDevice()->device, memory, 0, size, 0, &mappedData);
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("MeshCacher: Failed to map buffer memory (VkResult: " +
-                                 std::to_string(result) + ")");
-    }
-
-    // Copy data
-    std::memcpy(mappedData, data, static_cast<size_t>(size));
-
-    // Unmap memory
-    vkUnmapMemory(GetDevice()->device, memory);
 }
 
 } // namespace CashSystem

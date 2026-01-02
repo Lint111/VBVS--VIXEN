@@ -2,6 +2,7 @@
 
 #include "Headers.h"
 #include "TypedCacher.h"
+#include "Memory/IMemoryAllocator.h"
 #include <cstdint>
 #include <string>
 #include <memory>
@@ -12,15 +13,14 @@ namespace CashSystem {
 /**
  * @brief Resource wrapper for Mesh (Vertex + Index Buffers)
  *
- * Stores VkBuffer handles, VkDeviceMemory, and cached CPU-side data.
+ * Stores BufferAllocation handles and cached CPU-side data.
+ * Uses BufferAllocation for proper memory management via allocator infrastructure.
  * Key benefit: Caches BOTH Vulkan buffers AND parsed vertex/index arrays.
  */
 struct MeshWrapper {
-    // Vulkan resources
-    VkBuffer vertexBuffer = VK_NULL_HANDLE;
-    VkBuffer indexBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory vertexMemory = VK_NULL_HANDLE;
-    VkDeviceMemory indexMemory = VK_NULL_HANDLE;
+    // Vulkan resources via allocator infrastructure
+    ResourceManagement::BufferAllocation vertexAllocation{};
+    ResourceManagement::BufferAllocation indexAllocation{};
 
     // Cached CPU-side data (key benefit of caching)
     std::vector<float> vertexData;      // Interleaved vertex data
@@ -33,6 +33,10 @@ struct MeshWrapper {
 
     // Cache identification (for debugging/logging)
     std::string sourceIdentifier;  // File path or hash of procedural data
+
+    // Accessors for compatibility
+    [[nodiscard]] VkBuffer GetVertexBuffer() const { return vertexAllocation.buffer; }
+    [[nodiscard]] VkBuffer GetIndexBuffer() const { return indexAllocation.buffer; }
 };
 
 /**
@@ -97,8 +101,8 @@ struct MeshCreateParams {
  *
  * // Get or create cached resource
  * auto wrapper = cacher->GetOrCreate(params);
- * VkBuffer vertexBuffer = wrapper->vertexBuffer;
- * VkBuffer indexBuffer = wrapper->indexBuffer;
+ * VkBuffer vertexBuffer = wrapper->GetVertexBuffer();
+ * VkBuffer indexBuffer = wrapper->GetIndexBuffer();
  * ```
  */
 class MeshCacher : public TypedCacher<MeshWrapper, MeshCreateParams> {
@@ -121,22 +125,6 @@ protected:
 
     // Resource cleanup
     void Cleanup() override;
-
-private:
-    // Helper functions
-    void CreateBuffer(
-        VkDeviceSize size,
-        VkBufferUsageFlags usage,
-        VkMemoryPropertyFlags memoryFlags,
-        VkBuffer& buffer,
-        VkDeviceMemory& memory
-    );
-
-    void UploadData(
-        VkDeviceMemory memory,
-        const void* data,
-        VkDeviceSize size
-    );
 };
 
 } // namespace CashSystem

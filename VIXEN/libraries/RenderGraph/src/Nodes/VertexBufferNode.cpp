@@ -124,12 +124,12 @@ void VertexBufferNode::CreateMeshBuffers() {
     cacheParams.indexMemoryFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 
     cachedMeshWrapper = cacher->GetOrCreate(cacheParams);
-    if (!cachedMeshWrapper || cachedMeshWrapper->vertexBuffer == VK_NULL_HANDLE) {
+    if (!cachedMeshWrapper || cachedMeshWrapper->GetVertexBuffer() == VK_NULL_HANDLE) {
         throw std::runtime_error("VertexBufferNode: Failed to create mesh");
     }
 
-    vertexBuffer = cachedMeshWrapper->vertexBuffer;
-    indexBuffer = cachedMeshWrapper->indexBuffer;
+    vertexBuffer = cachedMeshWrapper->GetVertexBuffer();
+    indexBuffer = cachedMeshWrapper->GetIndexBuffer();
 
     NODE_LOG_DEBUG("VertexBufferNode: Mesh created (vertex=" +
                    std::to_string(reinterpret_cast<uint64_t>(vertexBuffer)) + ")");
