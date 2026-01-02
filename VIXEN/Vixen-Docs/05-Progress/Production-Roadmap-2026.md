@@ -113,25 +113,52 @@ All Sprint 4 tasks completed. Ready for merge to main and Sprint 5 (CashSystem R
 
 **Completed:** Build times reduced as targeted.
 
-### Sprint 1.3: CashSystem Robustness (3 weeks)
+### Sprint 1.3 (Sprint 5): CashSystem Robustness (3 weeks) 🟢 IN PROGRESS
 
+**Branch:** `production/sprint-5-cashsystem-robustness`
 **Goal:** Memory safety and code consolidation.
+**Progress:** 60h of 104h complete (58%)
 
-| Phase | Task | Priority |
-|-------|------|----------|
-| 1 | Fix dangling shared_ptr in VoxelAABBConverterNode | P0 |
-| 1 | Add VK_CHECK macro for all Vulkan calls | P0 |
-| 2 | Extract VulkanBufferAllocator class | P1 |
-| 2 | Implement batched buffer uploads | P1 |
-| 2 | Fix cache key to use content hash | P1 |
-| 3 | Consolidate AccelerationStructureData types | P2 |
-| 3 | Fix scratch buffer TLAS lifecycle | P2 |
-| 4 | Unit tests for all changes | P0 |
+| Phase | Task | Priority | Status |
+|-------|------|----------|--------|
+| **Phase 1: Critical Safety (20h)** | | | ✅ COMPLETE |
+| 1.1 | Fix dangling shared_ptr in VoxelAABBConverterNode | P0 | ✅ Done |
+| 1.2 | Add VK_CHECK macro for all Vulkan calls | P0 | ✅ Done |
+| 1.3 | Apply VK_CHECK to all cachers (46 call sites) | P0 | ✅ Done |
+| **Phase 2: Code Consolidation (24h)** | | | ✅ COMPLETE |
+| 2.1 | Extract VulkanBufferAllocator class (device address support) | P1 | ✅ Done |
+| 2.2 | Replace duplicate FindMemoryType code | P1 | ✅ Done |
+| 2.3 | Migrate AccelerationStructureCacher to AllocateBufferTracked | P1 | ✅ Done (commit 855ea26, -237 lines) |
+| 2.3 | Migrate MeshCacher to AllocateBufferTracked | P1 | ✅ Done (commit 24f18df, -91 lines) |
+| 2.3 | Wire DeviceBudgetManager to cacher infrastructure | P1 | ✅ Done (commit 1a4fb91, +620 lines, 12 tests) |
+| 2.4 | Fix cache key to use content hash | P1 | ✅ Done (already implemented) |
+| **Phase 2.5: Upload Infrastructure (16h)** | | | ✅ COMPLETE |
+| 2.5.1 | Create StagingBufferPool | P1 | ✅ Done (StagingBufferPool.h/.cpp) |
+| 2.5.2 | Create BatchedUploader | P1 | ✅ Done (BatchedUploader.h/.cpp) |
+| 2.5.3 | Migrate VoxelSceneCacher to BatchedUploader | P1 | ✅ Done (TypedCacher base class) |
+| 2.5.4 | Migrate VoxelAABBCacher to BatchedUploader | P1 | ✅ Done (TypedCacher base class) |
+| **Phase 3: TLAS Lifecycle (8h)** | | | ⏳ Pending |
+| 3.1 | Consolidate AccelerationStructureData types | P2 | ⏳ Pending |
+| 3.2 | Fix scratch buffer TLAS lifecycle | P2 | ⏳ Pending |
+| **Phase 4: Testing (28h)** | | | ⏳ Pending |
+| 4.1 | Lifetime/safety tests for shared_ptr fix | P0 | ⏳ Pending |
+| 4.2 | Unit tests for VulkanBufferAllocator | P0 | ⏳ Pending |
+| 4.3 | Integration tests for cacher chain | P0 | ⏳ Pending |
+| 4.4 | General unit tests | P0 | ⏳ Pending |
 
 **Success Metrics:**
-- [ ] No shared_ptr aliasing with no-op deleters
-- [ ] VK_CHECK on all Vulkan calls
-- [ ] 90%+ test coverage for VulkanBufferAllocator
+- [x] No shared_ptr aliasing with no-op deleters
+- [x] VK_CHECK on all Vulkan calls (46 sites wrapped)
+- [x] DeviceBudgetManager integrated with 12 integration tests
+- [x] Data flow complete: DeviceNode → DirectAllocator → DeviceBudgetManager → TypedCacher
+- [x] StagingBufferPool and BatchedUploader implemented
+- [x] Centralized uploader pattern in TypedCacher base class
+- [ ] 90%+ test coverage for buffer allocation
+
+**Key Commits (2026-01-02):**
+- `855ea26` - AccelerationStructureCacher exception safety + AllocateBufferTracked migration
+- `24f18df` - MeshCacher migration to AllocateBufferTracked (-91 lines)
+- `1a4fb91` - DeviceBudgetManager wiring to cacher infrastructure (+620 lines)
 
 ---
 
@@ -455,6 +482,13 @@ graph LR
 | 2026-01-02 | 156 tests passing (138 ResourceManagement + 18 SlotTask) |
 | 2026-01-02 | Sprint 4 Phase D complete: RenderGraph integration, Profiler dashboard, API docs |
 | 2026-01-02 | **Sprint 4 COMPLETE** - Ready for merge to main |
+| 2026-01-02 | **Sprint 5 Phase 1 COMPLETE** - Memory safety fixes (VK_CHECK, shared_ptr) |
+| 2026-01-02 | **Sprint 5 Phase 2 COMPLETE** - Cacher consolidation (-328 lines), DeviceBudgetManager wiring (+620 lines, 12 tests) |
+| 2026-01-02 | Sprint 5 progress: 44h/104h (42%) - Data flow complete end-to-end |
+| 2026-01-03 | **Sprint 5 Phase 2.5 COMPLETE** - BatchedUploader + StagingBufferPool implementation |
+| 2026-01-03 | Centralized uploader in TypedCacher::GetUploader() - VoxelSceneCacher, VoxelAABBCacher migrated |
+| 2026-01-03 | Removed blocking vkQueueWaitIdle patterns from cachers |
+| 2026-01-03 | Sprint 5 progress: 60h/104h (58%) - Upload infrastructure complete |
 
 ---
 

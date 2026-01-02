@@ -75,11 +75,8 @@ void VoxelAABBCacher::Cleanup() {
         }
     }
 
-    // Destroy command pool
-    if (m_transferCommandPool != VK_NULL_HANDLE && m_device) {
-        vkDestroyCommandPool(m_device->device, m_transferCommandPool, nullptr);
-        m_transferCommandPool = VK_NULL_HANDLE;
-    }
+    // Release BatchedUploader (handles its own cleanup)
+    ReleaseUploader();
 
     // Clear entries
     Clear();
@@ -289,86 +286,33 @@ void VoxelAABBCacher::UploadToGPU(
     aabbData.materialIdAllocation = *materialAlloc;
     aabbData.brickMappingAllocation = *mappingAlloc;
 
-    // Upload buffer data (if upload fails, Cleanup() will handle freeing via aabbData)
-    UploadBufferData(aabbData.aabbAllocation.buffer, aabbs.data(), aabbSize);
-    UploadBufferData(aabbData.materialIdAllocation.buffer, materialIds.data(), materialSize);
-    UploadBufferData(aabbData.brickMappingAllocation.buffer, brickMappings.data(), mappingSize);
+    // Upload buffer data via BatchedUploader (Sprint 5 Phase 2.5.2)
+    // Get or create uploader from base class
+    auto* uploader = GetUploader(8);  // Typically 3 buffers
+    if (!uploader) {
+        throw std::runtime_error("[VoxelAABBCacher::UploadToGPU] DeviceBudgetManager not configured - required for BatchedUploader");
+    }
 
-    LOG_INFO("[VoxelAABBCacher::UploadToGPU] Uploaded buffers: " +
+    // Queue all uploads (non-blocking)
+    auto handle1 = uploader->Upload(aabbs.data(), aabbSize, aabbData.aabbAllocation.buffer, 0);
+    auto handle2 = uploader->Upload(materialIds.data(), materialSize, aabbData.materialIdAllocation.buffer, 0);
+    auto handle3 = uploader->Upload(brickMappings.data(), mappingSize, aabbData.brickMappingAllocation.buffer, 0);
+
+    if (handle1 == ResourceManagement::InvalidUploadHandle ||
+        handle2 == ResourceManagement::InvalidUploadHandle ||
+        handle3 == ResourceManagement::InvalidUploadHandle) {
+        throw std::runtime_error("[VoxelAABBCacher::UploadToGPU] Failed to queue uploads");
+    }
+
+    // Flush all queued uploads in a single batch and wait for completion
+    uploader->WaitIdle();
+
+    LOG_INFO("[VoxelAABBCacher::UploadToGPU] Uploaded buffers (via BatchedUploader): " +
              std::to_string(aabbData.aabbAllocation.size / 1024.0f) + " KB AABBs, " +
              std::to_string(aabbData.materialIdAllocation.size / 1024.0f) + " KB materials, " +
              std::to_string(aabbData.brickMappingAllocation.size / 1024.0f) + " KB mappings");
 }
 
-void VoxelAABBCacher::UploadBufferData(VkBuffer buffer, const void* srcData, VkDeviceSize size) {
-    if (size == 0 || !srcData) {
-        return;
-    }
-
-    // Create command pool if needed
-    if (m_transferCommandPool == VK_NULL_HANDLE) {
-        VkCommandPoolCreateInfo poolInfo{};
-        poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-        poolInfo.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
-        poolInfo.queueFamilyIndex = m_device->graphicsQueueIndex;
-        VK_CHECK_LOG(vkCreateCommandPool(m_device->device, &poolInfo, nullptr, &m_transferCommandPool), "Create command pool (transfer)");
-    }
-
-    // Allocate staging buffer via AllocateBufferTracked (host-visible)
-    auto stagingAlloc = AllocateBufferTracked(
-        size,
-        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-        "VoxelAABB_staging"
-    );
-    if (!stagingAlloc) {
-        throw std::runtime_error("[VoxelAABBCacher::UploadBufferData] Failed to allocate staging buffer");
-    }
-
-    // Copy data to staging buffer
-    void* mappedData = MapBufferTracked(*stagingAlloc);
-    if (!mappedData) {
-        FreeBufferTracked(*stagingAlloc);
-        throw std::runtime_error("[VoxelAABBCacher::UploadBufferData] Failed to map staging buffer");
-    }
-    std::memcpy(mappedData, srcData, size);
-    UnmapBufferTracked(*stagingAlloc);
-
-    // Record and submit copy command
-    VkCommandBufferAllocateInfo cmdAllocInfo{};
-    cmdAllocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    cmdAllocInfo.commandPool = m_transferCommandPool;
-    cmdAllocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    cmdAllocInfo.commandBufferCount = 1;
-
-    VkCommandBuffer cmdBuffer;
-    VK_CHECK_LOG(vkAllocateCommandBuffers(m_device->device, &cmdAllocInfo, &cmdBuffer), "Allocate command buffers (transfer)");
-
-    VkCommandBufferBeginInfo beginInfo{};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-    VK_CHECK_LOG(vkBeginCommandBuffer(cmdBuffer, &beginInfo), "Begin command buffer (transfer)");
-
-    VkBufferCopy copyRegion{};
-    copyRegion.srcOffset = 0;
-    copyRegion.dstOffset = 0;
-    copyRegion.size = size;
-    vkCmdCopyBuffer(cmdBuffer, stagingAlloc->buffer, buffer, 1, &copyRegion);
-
-    VK_CHECK_LOG(vkEndCommandBuffer(cmdBuffer), "End command buffer (transfer)");
-
-    VkSubmitInfo submitInfo{};
-    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &cmdBuffer;
-
-    VK_CHECK_LOG(vkQueueSubmit(m_device->queue, 1, &submitInfo, VK_NULL_HANDLE), "Queue submit (transfer)");
-    vkQueueWaitIdle(m_device->queue);
-
-    // Cleanup staging resources
-    vkFreeCommandBuffers(m_device->device, m_transferCommandPool, 1, &cmdBuffer);
-    FreeBufferTracked(*stagingAlloc);
-}
+// NOTE: UploadBufferData removed - replaced by BatchedUploader in UploadToGPU (Sprint 5 Phase 2.5.2)
 
 } // namespace CashSystem

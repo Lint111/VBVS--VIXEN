@@ -158,11 +158,8 @@ void VoxelSceneCacher::Cleanup() {
         }
     }
 
-    // Destroy transfer command pool if created
-    if (m_transferCommandPool != VK_NULL_HANDLE && m_device) {
-        vkDestroyCommandPool(m_device->device, m_transferCommandPool, nullptr);
-        m_transferCommandPool = VK_NULL_HANDLE;
-    }
+    // Release BatchedUploader (handles its own cleanup)
+    ReleaseUploader();
 
     // Clear temporary build data
     m_cachedGrid.reset();
@@ -871,14 +868,27 @@ void VoxelSceneCacher::UploadToGPU(VoxelSceneData& data) {
         }
     }
 
-    // Upload data via staging buffer
+    // Upload data via BatchedUploader (Sprint 5 Phase 2.5.2)
+    // Get or create uploader from base class
+    auto* uploader = GetUploader(static_cast<uint32_t>(buffers.size() + 4));
+    if (!uploader) {
+        throw std::runtime_error("[VoxelSceneCacher::UploadToGPU] DeviceBudgetManager not configured - required for BatchedUploader");
+    }
+
+    // Queue all uploads (non-blocking)
     for (size_t i = 0; i < buffers.size(); ++i) {
         if (buffers[i].cpuData && buffers[i].size > 0) {
-            UploadBufferData(*buffers[i].buffer, buffers[i].cpuData, buffers[i].size, bufferMemReqs[i].second);
+            auto handle = uploader->Upload(buffers[i].cpuData, buffers[i].size, *buffers[i].buffer, 0);
+            if (handle == ResourceManagement::InvalidUploadHandle) {
+                throw std::runtime_error("[VoxelSceneCacher::UploadToGPU] Failed to queue upload for buffer");
+            }
         }
     }
 
-    LOG_INFO("[VoxelSceneCacher::UploadToGPU] Uploaded " + std::to_string(buffers.size()) + " buffers, total " + std::to_string(combinedMemReq.size / 1024.0f) + " KB");
+    // Flush all queued uploads in a single batch and wait for completion
+    uploader->WaitIdle();
+
+    LOG_INFO("[VoxelSceneCacher::UploadToGPU] Uploaded " + std::to_string(buffers.size()) + " buffers, total " + std::to_string(combinedMemReq.size / 1024.0f) + " KB (via BatchedUploader)");
 }
 
 VkBuffer VoxelSceneCacher::CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage) {
@@ -897,79 +907,6 @@ VkBuffer VoxelSceneCacher::CreateBuffer(VkDeviceSize size, VkBufferUsageFlags us
     return buffer;
 }
 
-void VoxelSceneCacher::UploadBufferData(VkBuffer buffer, const void* srcData, VkDeviceSize size, VkDeviceSize offset) {
-    if (size == 0 || !srcData) {
-        return;
-    }
-
-    // Create command pool if needed
-    if (m_transferCommandPool == VK_NULL_HANDLE) {
-        VkCommandPoolCreateInfo poolInfo{};
-        poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-        poolInfo.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
-        poolInfo.queueFamilyIndex = m_device->graphicsQueueIndex;
-
-        VkResult result = vkCreateCommandPool(m_device->device, &poolInfo, nullptr, &m_transferCommandPool);
-        if (result != VK_SUCCESS) {
-            throw std::runtime_error("[VoxelSceneCacher::UploadBufferData] Failed to create command pool");
-        }
-    }
-
-    // Allocate staging buffer via AllocateBufferTracked (host-visible)
-    auto stagingAlloc = AllocateBufferTracked(
-        size,
-        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-        "VoxelScene_staging"
-    );
-    if (!stagingAlloc) {
-        throw std::runtime_error("[VoxelSceneCacher::UploadBufferData] Failed to allocate staging buffer");
-    }
-
-    // Copy data to staging buffer
-    void* mappedData = MapBufferTracked(*stagingAlloc);
-    if (!mappedData) {
-        FreeBufferTracked(*stagingAlloc);
-        throw std::runtime_error("[VoxelSceneCacher::UploadBufferData] Failed to map staging buffer");
-    }
-    std::memcpy(mappedData, srcData, size);
-    UnmapBufferTracked(*stagingAlloc);
-
-    // Record and submit copy command
-    VkCommandBufferAllocateInfo cmdAllocInfo{};
-    cmdAllocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    cmdAllocInfo.commandPool = m_transferCommandPool;
-    cmdAllocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    cmdAllocInfo.commandBufferCount = 1;
-
-    VkCommandBuffer cmdBuffer;
-    vkAllocateCommandBuffers(m_device->device, &cmdAllocInfo, &cmdBuffer);
-
-    VkCommandBufferBeginInfo beginInfo{};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-    vkBeginCommandBuffer(cmdBuffer, &beginInfo);
-
-    VkBufferCopy copyRegion{};
-    copyRegion.srcOffset = 0;
-    copyRegion.dstOffset = 0;  // Offset is handled by buffer binding
-    copyRegion.size = size;
-    vkCmdCopyBuffer(cmdBuffer, stagingAlloc->buffer, buffer, 1, &copyRegion);
-
-    vkEndCommandBuffer(cmdBuffer);
-
-    VkSubmitInfo submitInfo{};
-    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &cmdBuffer;
-
-    vkQueueSubmit(m_device->queue, 1, &submitInfo, VK_NULL_HANDLE);
-    vkQueueWaitIdle(m_device->queue);
-
-    // Cleanup staging resources
-    vkFreeCommandBuffers(m_device->device, m_transferCommandPool, 1, &cmdBuffer);
-    FreeBufferTracked(*stagingAlloc);
-}
+// NOTE: UploadBufferData removed - replaced by BatchedUploader in UploadToGPU (Sprint 5 Phase 2.5.2)
 
 } // namespace CashSystem

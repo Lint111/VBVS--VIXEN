@@ -5,6 +5,8 @@
 #include "VoxelSceneCacher.h"
 #include "Memory/IMemoryAllocator.h"
 
+// Note: BatchedUploader included via TypedCacher.h (Sprint 5 Phase 2.5.2)
+
 #include <vulkan/vulkan.h>
 #include <glm/glm.hpp>
 
@@ -216,13 +218,7 @@ private:
         const std::vector<uint32_t>& materialIds,
         const std::vector<VoxelBrickMapping>& brickMappings);
 
-    /**
-     * @brief Upload data to GPU buffer via staging buffer
-     */
-    void UploadBufferData(VkBuffer buffer, const void* srcData, VkDeviceSize size);
-
-    // Command pool for transfers (created on first use)
-    VkCommandPool m_transferCommandPool = VK_NULL_HANDLE;
+    // Note: BatchedUploader is in TypedCacher base class via GetUploader()
 };
 
 // ============================================================================

@@ -8,6 +8,8 @@
 #include "GaiaVoxelWorld.h"
 #include "Data/SceneGenerator.h"
 
+// Note: BatchedUploader included via TypedCacher.h (Sprint 5 Phase 2.5.2)
+
 #include <vulkan/vulkan.h>
 #include <glm/glm.hpp>
 
@@ -331,15 +333,8 @@ private:
      */
     VkBuffer CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage);
 
-    /**
-     * @brief Upload data to buffer via staging buffer
-     */
-    void UploadBufferData(VkBuffer buffer, const void* data, VkDeviceSize size, VkDeviceSize offset);
-
-    // Command pool for transfers (created on first use)
-    VkCommandPool m_transferCommandPool = VK_NULL_HANDLE;
-
     // Temporary build data (cleared after Create() completes)
+    // Note: BatchedUploader is now in TypedCacher base class via GetUploader()
     std::unique_ptr<VIXEN::RenderGraph::VoxelGrid> m_cachedGrid;
     std::unique_ptr<Vixen::GaiaVoxel::GaiaVoxelWorld> m_voxelWorld;
     std::unique_ptr<Vixen::SVO::LaineKarrasOctree> m_octree;

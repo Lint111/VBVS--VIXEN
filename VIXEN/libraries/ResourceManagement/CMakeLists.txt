@@ -24,6 +24,8 @@ add_library(ResourceManagement STATIC
     include/Memory/HostBudgetManager.h
     include/Memory/DeviceBudgetManager.h
     include/Memory/BudgetBridge.h
+    include/Memory/StagingBufferPool.h
+    include/Memory/BatchedUploader.h
 
     src/Memory/DirectAllocator.cpp
     src/Memory/VMAAllocator.cpp
@@ -31,6 +33,8 @@ add_library(ResourceManagement STATIC
     src/Memory/HostBudgetManager.cpp
     src/Memory/DeviceBudgetManager.cpp
     src/Memory/BudgetBridge.cpp
+    src/Memory/StagingBufferPool.cpp
+    src/Memory/BatchedUploader.cpp
 
     # Lifetime Management (header-only with inline implementations)
     include/Lifetime/DeferredDestruction.h
@@ -98,6 +102,8 @@ source_group("Memory\\Headers" FILES
     include/Memory/HostBudgetManager.h
     include/Memory/DeviceBudgetManager.h
     include/Memory/BudgetBridge.h
+    include/Memory/StagingBufferPool.h
+    include/Memory/BatchedUploader.h
 )
 
 source_group("Memory\\Sources" FILES
@@ -107,6 +113,8 @@ source_group("Memory\\Sources" FILES
     src/Memory/HostBudgetManager.cpp
     src/Memory/DeviceBudgetManager.cpp
     src/Memory/BudgetBridge.cpp
+    src/Memory/StagingBufferPool.cpp
+    src/Memory/BatchedUploader.cpp
 )
 
 source_group("Lifetime" FILES

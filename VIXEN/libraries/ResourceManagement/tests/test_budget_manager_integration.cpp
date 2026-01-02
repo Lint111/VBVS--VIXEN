@@ -55,6 +55,12 @@ public:
         };
 
         allocations_[handle] = request.size;
+
+        // Record allocation with budget manager (like real allocators do)
+        if (budgetManager_) {
+            budgetManager_->RecordAllocation(BudgetResourceType::DeviceMemory, request.size);
+        }
+
         return result;
     }
 
@@ -64,6 +70,11 @@ public:
         uint64_t handle = reinterpret_cast<uint64_t>(allocation.allocation);
         auto it = allocations_.find(handle);
         if (it != allocations_.end()) {
+            // Record deallocation with budget manager (like real allocators do)
+            if (budgetManager_) {
+                budgetManager_->RecordDeallocation(BudgetResourceType::DeviceMemory, it->second);
+            }
+
             totalAllocated_ -= it->second;
             allocationCount_--;
             allocations_.erase(it);
@@ -529,3 +540,302 @@ TEST(AllocatorAccessTest, GetAllocatorName) {
 
     EXPECT_EQ(budgetManager.GetAllocatorName(), "MockAllocator");
 }
+
+// ============================================================================
+// StagingBufferPool Tests
+// ============================================================================
+
+#include "Memory/StagingBufferPool.h"
+
+class StagingBufferPoolTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        mockAllocator_ = std::make_shared<MockAllocator>();
+
+        DeviceBudgetManager::Config config{
+            .deviceMemoryBudget = 1024ULL * 1024 * 1024,  // 1 GB
+            .stagingQuota = 1024 * 1024 * 100,            // 100 MB staging
+            .strictBudget = false
+        };
+
+        budgetManager_ = std::make_unique<DeviceBudgetManager>(
+            mockAllocator_, VK_NULL_HANDLE, config);
+    }
+
+    void TearDown() override {
+        pool_.reset();
+        budgetManager_.reset();
+        mockAllocator_.reset();
+    }
+
+    std::shared_ptr<MockAllocator> mockAllocator_;
+    std::unique_ptr<DeviceBudgetManager> budgetManager_;
+    std::unique_ptr<StagingBufferPool> pool_;
+};
+
+TEST_F(StagingBufferPoolTest, AcquireAndRelease) {
+    StagingBufferPool::Config poolConfig{
+        .minBufferSize = 1024,           // 1 KB min
+        .maxBufferSize = 1024 * 1024,    // 1 MB max
+        .maxPooledBuffersPerBucket = 4,
+        .maxTotalPooledBytes = 1024 * 1024 * 10  // 10 MB max pool
+    };
+
+    pool_ = std::make_unique<StagingBufferPool>(budgetManager_.get(), poolConfig);
+
+    // Acquire a buffer
+    auto acquisition = pool_->AcquireBuffer(4096);
+    ASSERT_TRUE(acquisition.has_value());
+    StagingBufferHandle handle = acquisition->handle;
+    VkBuffer buffer = acquisition->buffer;
+    VkDeviceSize bufSize = acquisition->size;
+    EXPECT_NE(handle, InvalidStagingHandle);
+    EXPECT_NE(buffer, VK_NULL_HANDLE);
+    EXPECT_GE(bufSize, static_cast<VkDeviceSize>(4096));
+
+    // Stats should reflect active buffer
+    auto stats = pool_->GetStats();
+    EXPECT_EQ(stats.activeBuffers, 1u);
+    EXPECT_GT(stats.activeBytes, 0u);
+
+    // Release the buffer
+    pool_->ReleaseBuffer(handle);
+
+    // Stats should now show pooled buffer
+    stats = pool_->GetStats();
+    EXPECT_EQ(stats.activeBuffers, 0u);
+    EXPECT_GT(stats.totalPooledBuffers, 0u);
+}
+
+TEST_F(StagingBufferPoolTest, BufferReuse) {
+    StagingBufferPool::Config poolConfig{
+        .minBufferSize = 1024,
+        .maxBufferSize = 1024 * 1024,
+        .maxPooledBuffersPerBucket = 4,
+        .maxTotalPooledBytes = 1024 * 1024 * 10
+    };
+
+    pool_ = std::make_unique<StagingBufferPool>(budgetManager_.get(), poolConfig);
+
+    // Acquire and release a buffer
+    auto first = pool_->AcquireBuffer(2048);
+    ASSERT_TRUE(first.has_value());
+    VkBuffer originalBuffer = first->buffer;
+    pool_->ReleaseBuffer(first->handle);
+
+    // Second acquire should reuse the buffer
+    auto second = pool_->AcquireBuffer(2048);
+    ASSERT_TRUE(second.has_value());
+
+    // Should get the same buffer back (reuse from pool)
+    EXPECT_EQ(second->buffer, originalBuffer);
+
+    auto stats = pool_->GetStats();
+    EXPECT_EQ(stats.poolHits, 1);
+
+    pool_->ReleaseBuffer(second->handle);
+}
+
+TEST_F(StagingBufferPoolTest, SizeClassBucketing) {
+    StagingBufferPool::Config poolConfig{
+        .minBufferSize = 1024,           // 1 KB = bucket 0
+        .maxBufferSize = 1024 * 1024,    // 1 MB max
+        .maxPooledBuffersPerBucket = 4,
+        .maxTotalPooledBytes = 1024 * 1024 * 50
+    };
+
+    pool_ = std::make_unique<StagingBufferPool>(budgetManager_.get(), poolConfig);
+
+    // Request 1.5KB - should round up to 2KB bucket
+    auto smallBuf = pool_->AcquireBuffer(1536);
+    ASSERT_TRUE(smallBuf.has_value());
+    VkDeviceSize smallSize = smallBuf->size;
+    EXPECT_GE(smallSize, VkDeviceSize{2048});  // Rounded to bucket size
+
+    // Request 5KB - should round up to 8KB bucket
+    auto mediumBuf = pool_->AcquireBuffer(5000);
+    ASSERT_TRUE(mediumBuf.has_value());
+    VkDeviceSize mediumSize = mediumBuf->size;
+    EXPECT_GE(mediumSize, VkDeviceSize{8192});  // Rounded to bucket size
+
+    pool_->ReleaseBuffer(smallBuf->handle);
+    pool_->ReleaseBuffer(mediumBuf->handle);
+}
+
+TEST_F(StagingBufferPoolTest, ClearPool) {
+    StagingBufferPool::Config poolConfig{
+        .minBufferSize = 1024,
+        .maxBufferSize = 1024 * 1024,
+        .maxPooledBuffersPerBucket = 4,
+        .maxTotalPooledBytes = 1024 * 1024 * 10
+    };
+
+    pool_ = std::make_unique<StagingBufferPool>(budgetManager_.get(), poolConfig);
+
+    // Acquire and release several buffers to populate pool
+    for (int i = 0; i < 5; ++i) {
+        auto buf = pool_->AcquireBuffer(4096);
+        ASSERT_TRUE(buf.has_value());
+        pool_->ReleaseBuffer(buf->handle);
+    }
+
+    auto stats = pool_->GetStats();
+    EXPECT_GT(stats.totalPooledBuffers, 0u);
+
+    // Clear the pool
+    pool_->Clear();
+
+    stats = pool_->GetStats();
+    EXPECT_EQ(stats.totalPooledBuffers, 0u);
+    EXPECT_EQ(stats.totalPooledBytes, 0u);
+}
+
+TEST_F(StagingBufferPoolTest, TrimPool) {
+    StagingBufferPool::Config poolConfig{
+        .minBufferSize = 1024,
+        .maxBufferSize = 1024 * 1024,
+        .maxPooledBuffersPerBucket = 10,  // Allow more pooled
+        .maxTotalPooledBytes = 1024 * 1024 * 50
+    };
+
+    pool_ = std::make_unique<StagingBufferPool>(budgetManager_.get(), poolConfig);
+
+    // Populate pool with buffers
+    std::vector<StagingBufferHandle> handles;
+    for (int i = 0; i < 10; ++i) {
+        auto buf = pool_->AcquireBuffer(32 * 1024);  // 32KB each
+        ASSERT_TRUE(buf.has_value());
+        handles.push_back(buf->handle);
+    }
+
+    for (auto h : handles) {
+        pool_->ReleaseBuffer(h);
+    }
+
+    auto beforeStats = pool_->GetStats();
+    EXPECT_GT(beforeStats.totalPooledBytes, 0u);
+
+    // Trim to smaller size
+    uint64_t freed = pool_->Trim(100 * 1024);  // Trim to 100KB
+    EXPECT_GT(freed, 0u);
+
+    auto afterStats = pool_->GetStats();
+    EXPECT_LE(afterStats.totalPooledBytes, 100 * 1024u);
+}
+
+TEST_F(StagingBufferPoolTest, ConcurrentAcquireRelease) {
+    StagingBufferPool::Config poolConfig{
+        .minBufferSize = 1024,
+        .maxBufferSize = 1024 * 1024,
+        .maxPooledBuffersPerBucket = 16,
+        .maxTotalPooledBytes = 1024 * 1024 * 100
+    };
+
+    pool_ = std::make_unique<StagingBufferPool>(budgetManager_.get(), poolConfig);
+
+    constexpr int numThreads = 4;
+    constexpr int opsPerThread = 50;
+    std::vector<std::thread> threads;
+    std::atomic<int> successCount{0};
+
+    for (int t = 0; t < numThreads; ++t) {
+        threads.emplace_back([&, t]() {
+            for (int i = 0; i < opsPerThread; ++i) {
+                VkDeviceSize size = ((t * 1024) + (i * 512)) % (64 * 1024) + 1024;
+                auto buf = pool_->AcquireBuffer(size);
+                if (buf) {
+                    successCount++;
+                    // Simulate some work
+                    std::this_thread::yield();
+                    pool_->ReleaseBuffer(buf->handle);
+                }
+            }
+        });
+    }
+
+    for (auto& thread : threads) {
+        thread.join();
+    }
+
+    EXPECT_EQ(successCount.load(), numThreads * opsPerThread);
+
+    auto stats = pool_->GetStats();
+    EXPECT_EQ(stats.activeBuffers, 0);  // All released
+    EXPECT_EQ(stats.totalAcquisitions, numThreads * opsPerThread);
+    EXPECT_EQ(stats.totalReleases, numThreads * opsPerThread);
+}
+
+TEST_F(StagingBufferPoolTest, ReleaseAndDestroy) {
+    StagingBufferPool::Config poolConfig{
+        .minBufferSize = 1024,
+        .maxBufferSize = 1024 * 1024,
+        .maxPooledBuffersPerBucket = 4,
+        .maxTotalPooledBytes = 1024 * 1024 * 10
+    };
+
+    pool_ = std::make_unique<StagingBufferPool>(budgetManager_.get(), poolConfig);
+
+    // Acquire a buffer
+    auto buf = pool_->AcquireBuffer(8192);
+    ASSERT_TRUE(buf.has_value());
+
+    // Release and destroy (don't return to pool)
+    pool_->ReleaseAndDestroy(buf->handle);
+
+    // Pool should be empty
+    auto stats = pool_->GetStats();
+    EXPECT_EQ(stats.totalPooledBuffers, 0u);
+    EXPECT_EQ(stats.activeBuffers, 0);
+}
+
+TEST_F(StagingBufferPoolTest, StatsAccuracy) {
+    StagingBufferPool::Config poolConfig{
+        .minBufferSize = 1024,
+        .maxBufferSize = 1024 * 1024,
+        .maxPooledBuffersPerBucket = 4,
+        .maxTotalPooledBytes = 1024 * 1024 * 10
+    };
+
+    pool_ = std::make_unique<StagingBufferPool>(budgetManager_.get(), poolConfig);
+
+    // Initial stats should be zero
+    auto stats = pool_->GetStats();
+    EXPECT_EQ(stats.totalAcquisitions, 0u);
+    EXPECT_EQ(stats.poolHits, 0u);
+    EXPECT_EQ(stats.poolMisses, 0u);
+
+    // First acquisition - should be a miss (no pooled buffers)
+    auto buf1 = pool_->AcquireBuffer(4096);
+    ASSERT_TRUE(buf1.has_value());
+
+    stats = pool_->GetStats();
+    EXPECT_EQ(stats.totalAcquisitions, 1u);
+    EXPECT_EQ(stats.poolMisses, 1u);
+    EXPECT_EQ(stats.poolHits, 0u);
+
+    // Release and re-acquire - should be a hit
+    pool_->ReleaseBuffer(buf1->handle);
+    auto buf2 = pool_->AcquireBuffer(4096);
+    ASSERT_TRUE(buf2.has_value());
+
+    stats = pool_->GetStats();
+    EXPECT_EQ(stats.totalAcquisitions, 2u);
+    EXPECT_EQ(stats.poolHits, 1u);
+    EXPECT_EQ(stats.poolMisses, 1u);
+    EXPECT_FLOAT_EQ(stats.hitRate, 0.5f);
+
+    pool_->ReleaseBuffer(buf2->handle);
+}
+
+// ============================================================================
+// BatchedUploader Tests
+// ============================================================================
+// NOTE: BatchedUploader requires actual Vulkan device/queue for testing.
+// Full integration tests are in the application-level test suite.
+// The StagingBufferPool tests above cover the buffer pooling logic.
+// BatchedUploader adds:
+// - Command buffer batching (Vulkan-dependent)
+// - Timeline semaphore completion tracking (Vulkan-dependent)
+// - Deadline-based flush (uses std::chrono, tested via integration)
+//
+// See: application/tests/test_batched_upload_integration.cpp (future)
