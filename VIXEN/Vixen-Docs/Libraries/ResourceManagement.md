@@ -1,23 +1,52 @@
 ---
 title: ResourceManagement Library
-aliases: [ResourceManagement, RM, Resource Wrapper]
-tags: [library, resources, state-management]
+aliases: [ResourceManagement, RM, DeviceBudgetManager, Memory Allocator]
+tags: [library, resources, state-management, memory, gpu, vulkan]
 created: 2025-12-06
+updated: 2026-01-02
 related:
   - "[[Overview]]"
   - "[[RenderGraph]]"
+  - "[[Profiler]]"
 ---
 
 # ResourceManagement Library
 
-Resource wrapper `RM<T>` providing std::optional-like interface with state tracking, generation tracking, and metadata storage.
+GPU memory management and resource lifecycle library for VIXEN. Provides state-tracked resources, budget-aware allocation, and lifetime scoping.
 
 ---
 
-## 1. RM< T > Overview
+## Library Structure
+
+```
+ResourceManagement/
+├── State/                   # Resource state tracking
+│   ├── RM.h                 # RM<T> wrapper with state flags
+│   ├── ResourceState.h      # State enum (Ready, Outdated, etc.)
+│   └── StatefulContainer.h  # Stateful container base
+├── Memory/                  # GPU memory allocation
+│   ├── DeviceBudgetManager.h # Main API for GPU memory
+│   ├── IMemoryAllocator.h   # Allocator interface
+│   ├── VMAAllocator.h       # VMA-backed allocator
+│   ├── DirectAllocator.h    # Simple vkAllocateMemory wrapper
+│   ├── ResourceBudgetManager.h # Budget tracking
+│   └── BudgetBridge.h       # RenderGraph integration
+└── Lifetime/                # Resource lifetime management
+    ├── LifetimeScope.h      # Bulk resource lifecycle
+    ├── SharedResource.h     # Reference-counted resources
+    └── DeferredDestruction.h # Zero-stutter hot-reload
+```
+
+---
+
+## 1. State Subsystem (RM< T >)
+
+Resource wrapper providing std::optional-like interface with state tracking.
+
+### 1.1 Quick Start
 
 ```cpp
-#include <ResourceManagement/RM.h>
+#include <State/RM.h>
 using namespace ResourceManagement;
 
 RM<VkPipeline> pipeline;
@@ -34,25 +63,7 @@ if (pipeline.Has(ResourceState::Outdated)) {
 }
 ```
 
----
-
-## 2. Resource States
-
-```mermaid
-stateDiagram-v2
-    [*] --> Uninitialized
-    Uninitialized --> Ready: Set()
-    Ready --> Outdated: MarkOutdated()
-    Outdated --> Ready: Set() / MarkReady()
-    Ready --> Locked: Lock()
-    Locked --> Ready: Unlock()
-    Ready --> Pending: async operation
-    Pending --> Ready: complete
-    Pending --> Failed: error
-    Ready --> [*]: Reset()
-```
-
-### 2.1 State Flags
+### 1.2 Resource States
 
 | State | Value | Description |
 |-------|-------|-------------|
@@ -64,45 +75,20 @@ stateDiagram-v2
 | `Pending` | 16 | Async operation in progress |
 | `Failed` | 32 | Operation failed |
 
----
+### 1.3 State Diagram
 
-## 3. Usage Patterns
-
-### 3.1 Optional-Like Access
-
-```cpp
-RM<VkPipeline> pipeline;
-
-// Check before access
-if (pipeline.Ready()) {
-    VkPipeline p = pipeline.Value();
-}
-
-// Value or default
-VkPipeline p = pipeline.ValueOr(VK_NULL_HANDLE);
-
-// Operator bool
-if (pipeline) {
-    // Safe to use
-}
+```mermaid
+stateDiagram-v2
+    [*] --> Uninitialized
+    Uninitialized --> Ready: Set()
+    Ready --> Outdated: MarkOutdated()
+    Outdated --> Ready: Set() / MarkReady()
+    Ready --> Locked: Lock()
+    Locked --> Ready: Unlock()
+    Ready --> [*]: Reset()
 ```
 
-### 3.2 State-Based Cleanup
-
-```cpp
-void SwapChainNode::OnWindowResize() {
-    swapchainResource.MarkOutdated();
-}
-
-void SwapChainNode::Compile() {
-    if (swapchainResource.Has(ResourceState::Outdated)) {
-        vkDestroySwapchainKHR(device, swapchainResource.Value(), nullptr);
-        swapchainResource.Set(createNewSwapchain());
-    }
-}
-```
-
-### 3.3 Generation Tracking
+### 1.4 Generation Tracking
 
 ```cpp
 // Track when dependencies change
@@ -116,83 +102,283 @@ void PipelineNode::Compile() {
 }
 ```
 
-### 3.4 Metadata Storage
+---
+
+## 2. Memory Subsystem (DeviceBudgetManager)
+
+Budget-tracked GPU memory allocation with VMA backend.
+
+### 2.1 DeviceBudgetManager (Main API)
+
+Primary interface for GPU memory allocation:
 
 ```cpp
-RM<VkImage> textureResource;
-textureResource.SetMetadata("file_path", std::string("/textures/diffuse.png"));
-textureResource.SetMetadata("mip_levels", uint32_t(8));
+#include <Memory/DeviceBudgetManager.h>
+using namespace ResourceManagement;
 
-// Retrieve
-std::string path = textureResource.GetMetadata<std::string>("file_path");
-uint32_t mips = textureResource.GetMetadataOr<uint32_t>("mip_levels", 1);
+// Create with VMA allocator
+auto allocator = std::make_shared<VMAAllocator>(device, instance, physicalDevice);
+DeviceBudgetManager budgetManager(allocator, physicalDevice, {
+    .deviceMemoryBudget = 0,          // Auto-detect from GPU
+    .stagingQuota = 256 * 1024 * 1024 // 256 MB staging limit
+});
+
+// Allocate buffer
+BufferAllocationRequest request{
+    .size = 1024 * 1024,
+    .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+    .location = MemoryLocation::DeviceLocal,
+    .debugName = "MyBuffer"
+};
+auto result = budgetManager.AllocateBuffer(request);
+if (result) {
+    BufferAllocation buffer = *result;
+    // Use buffer.buffer, buffer.mappedData, etc.
+}
+
+// Check budget
+if (budgetManager.IsOverBudget()) {
+    // Handle memory pressure
+}
+```
+
+### 2.2 Memory Aliasing (Phase B+)
+
+Resources can share memory when lifetimes don't overlap:
+
+```cpp
+// Create source allocation with aliasing enabled
+BufferAllocationRequest sourceRequest{
+    .size = 64 * 1024 * 1024,  // 64 MB
+    .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+    .location = MemoryLocation::DeviceLocal,
+    .allowAliasing = true  // Required for aliasing
+};
+auto sourceBuffer = budgetManager.AllocateBuffer(sourceRequest);
+
+// Create aliased buffer (shares memory, zero additional budget cost)
+AliasedBufferRequest aliasRequest{
+    .sourceAllocation = sourceBuffer->allocation,
+    .size = 16 * 1024 * 1024,
+    .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+    .offset = 0
+};
+auto aliasedBuffer = budgetManager.CreateAliasedBuffer(aliasRequest);
+```
+
+### 2.3 Statistics & Monitoring
+
+```cpp
+// Get comprehensive stats
+DeviceMemoryStats stats = budgetManager.GetStats();
+// stats.totalDeviceMemory    - Total GPU VRAM
+// stats.usedDeviceMemory     - Currently used
+// stats.stagingQuotaUsed     - Staging buffer usage
+// stats.fragmentationRatio   - Memory fragmentation
+
+// Get allocator stats
+AllocationStats allocStats = budgetManager.GetAllocatorStats();
+// allocStats.allocationCount - Active allocations
+// allocStats.totalAllocatedBytes - Total allocated
+
+// Aliasing info
+uint32_t aliasedCount = budgetManager.GetAliasedAllocationCount();
+
+// Budget status
+bool nearLimit = budgetManager.IsNearBudgetLimit();
+bool overBudget = budgetManager.IsOverBudget();
+```
+
+### 2.4 Staging Buffer Quota
+
+Throttles upload operations to prevent memory spikes:
+
+```cpp
+uint64_t uploadSize = 32 * 1024 * 1024;  // 32 MB
+
+// Reserve quota before upload
+if (budgetManager.TryReserveStagingQuota(uploadSize)) {
+    // Perform upload...
+
+    // Release when complete
+    budgetManager.ReleaseStagingQuota(uploadSize);
+}
+```
+
+### 2.5 IMemoryAllocator Interface
+
+Abstraction for pluggable allocators:
+
+| Allocator | Purpose |
+|-----------|---------|
+| `VMAAllocator` | Production allocator (VMA backend) |
+| `DirectAllocator` | Simple vkAllocateMemory wrapper |
+| MockAllocator | Unit testing without Vulkan |
+
+```cpp
+// IMemoryAllocator methods
+auto buffer = allocator->AllocateBuffer(request);
+allocator->FreeBuffer(allocation);
+auto stats = allocator->GetStats();
 ```
 
 ---
 
-## 4. API Reference
+## 3. Lifetime Subsystem
 
-### 4.1 Value Access
+### 3.1 LifetimeScope
+
+Groups resources for bulk cleanup:
+
+```cpp
+#include <Lifetime/LifetimeScope.h>
+
+// Create scope with factory
+LifetimeScope passScope("ShadowPass", &factory);
+
+// Resources tracked automatically
+auto buffer = passScope.CreateBuffer(request);
+auto image = passScope.CreateImage(imageRequest);
+
+// All resources released together
+passScope.EndScope();
+```
+
+### 3.2 DeferredDestructionQueue
+
+Zero-stutter hot-reload by deferring resource destruction:
+
+```cpp
+#include <Lifetime/DeferredDestruction.h>
+
+DeferredDestructionQueue deferredQueue;
+
+// In hot-reload handler (don't block!)
+deferredQueue.Add(device, oldPipeline, currentFrame, vkDestroyPipeline);
+deferredQueue.Add(device, oldImage, currentFrame, vkDestroyImage);
+
+// In main loop (before rendering)
+deferredQueue.ProcessFrame(currentFrame);  // Destroys after N frames
+```
+
+### 3.3 SharedResource
+
+Reference-counted Vulkan resources:
+
+```cpp
+#include <Lifetime/SharedResource.h>
+
+SharedResourceFactory factory(budgetManager);
+
+// Create shared buffer
+auto sharedBuffer = factory.CreateBuffer(request);
+sharedBuffer->AddRef();  // Increment reference
+
+// When done
+sharedBuffer->Release();  // Decrement, destroy when zero
+```
+
+---
+
+## 4. RenderGraph Integration
+
+### 4.1 BudgetBridge
+
+Connects DeviceBudgetManager to RenderGraph:
+
+```cpp
+#include <Memory/BudgetBridge.h>
+
+// In RenderGraph setup
+auto bridge = std::make_shared<BudgetBridge>(budgetManager);
+renderGraph.SetBudgetBridge(bridge);
+
+// RenderGraph now uses budget-tracked allocation
+```
+
+### 4.2 Cacher Integration
+
+TypedCacher and MainCacher use AllocateBufferTracked:
+
+```cpp
+// In cacher implementation
+BufferAllocation allocation = AllocateBufferTracked(request);
+// Budget automatically tracked
+```
+
+---
+
+## 5. Profiler Integration (D.2)
+
+MetricsCollector exports resource metrics:
+
+```cpp
+// Connect budget manager to profiler
+metricsCollector.SetBudgetManager(&budgetManager);
+
+// FrameMetrics now includes:
+// - allocationCount
+// - aliasedAllocationCount
+// - trackedAllocatedBytes
+// - stagingQuotaUsed
+// - budgetUtilization (0.0-1.0)
+// - isOverBudget
+```
+
+CSV export columns:
+- `allocation_count`, `aliased_count`, `tracked_bytes`, `budget_utilization`
+
+---
+
+## 6. API Quick Reference
+
+### DeviceBudgetManager
+
+| Method | Description |
+|--------|-------------|
+| `AllocateBuffer(request)` | Allocate GPU buffer |
+| `FreeBuffer(allocation)` | Free buffer |
+| `AllocateImage(request)` | Allocate GPU image |
+| `FreeImage(allocation)` | Free image |
+| `CreateAliasedBuffer(request)` | Create memory-sharing buffer |
+| `GetStats()` | Get memory statistics |
+| `GetAllocatorStats()` | Get allocation statistics |
+| `GetAliasedAllocationCount()` | Count aliased allocations |
+| `IsOverBudget()` | Check if over budget |
+| `IsNearBudgetLimit()` | Check if approaching limit |
+| `TryReserveStagingQuota(bytes)` | Reserve staging quota |
+| `ReleaseStagingQuota(bytes)` | Release staging quota |
+
+### RM< T >
 
 | Method | Description |
 |--------|-------------|
 | `Ready()` | Check if ready for use |
 | `Value()` | Get value (throws if not ready) |
 | `ValueOr(default)` | Get value or default |
-| `operator*()` | Unsafe value access |
-| `operator->()` | Pointer access |
-| `operator bool()` | Ready check |
-
-### 4.2 Mutation
-
-| Method | Description |
-|--------|-------------|
 | `Set(value)` | Set value, mark ready |
 | `Reset()` | Clear value and state |
-
-### 4.3 State Management
-
-| Method | Description |
-|--------|-------------|
 | `Has(state)` | Check for state flag |
-| `GetState()` | Get current state |
-| `SetState(state)` | Replace state |
-| `AddState(flags)` | Add state flags |
-| `RemoveState(flags)` | Remove state flags |
 | `MarkOutdated()` | Mark needs update |
-| `MarkReady()` | Mark ready for use |
-| `Lock()` / `Unlock()` | Modification control |
-
-### 4.4 Generation
-
-| Method | Description |
-|--------|-------------|
 | `GetGeneration()` | Get change counter |
-| `IncrementGeneration()` | Manual increment |
-
-### 4.5 Metadata
-
-| Method | Description |
-|--------|-------------|
-| `SetMetadata<T>(key, value)` | Store metadata |
-| `GetMetadata<T>(key)` | Get metadata (throws) |
-| `GetMetadataOr<T>(key, default)` | Get or default |
-| `HasMetadata(key)` | Check existence |
-| `RemoveMetadata(key)` | Remove key |
-| `ClearMetadata()` | Clear all metadata |
 
 ---
 
-## 5. Code References
+## 7. Code References
 
 | File | Purpose |
 |------|---------|
-| `libraries/ResourceManagement/include/RM.h` | RM<T> template |
-| `libraries/ResourceManagement/include/ResourceState.h` | State enum |
+| `include/Memory/DeviceBudgetManager.h` | Main GPU memory API |
+| `include/Memory/IMemoryAllocator.h` | Allocator interface |
+| `include/Memory/VMAAllocator.h` | VMA implementation |
+| `include/State/RM.h` | Resource wrapper |
+| `include/Lifetime/LifetimeScope.h` | Bulk lifecycle management |
+| `include/Lifetime/DeferredDestruction.h` | Deferred destruction queue |
 
 ---
 
-## 6. Related Pages
+## Related Pages
 
 - [[Overview]] - Library index
-- [[RenderGraph]] - Resource management in nodes
+- [[RenderGraph]] - Uses DeviceBudgetManager via BudgetBridge
+- [[Profiler]] - Exports resource metrics
