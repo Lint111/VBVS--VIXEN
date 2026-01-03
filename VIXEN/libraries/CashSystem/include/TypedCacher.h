@@ -228,27 +228,26 @@ protected:
     }
 #endif
 
-    // Sprint 4 Phase D: Budget manager for tracked allocations
-    ResourceManagement::DeviceBudgetManager* m_budgetManager = nullptr;
-
     // Hook for derived classes to perform initialization
     virtual void OnInitialize() {}
 
 public:
     /**
      * @brief Set budget manager for GPU allocation tracking
-     * @param manager DeviceBudgetManager pointer (externally owned)
+     * @deprecated Budget manager is now accessed via m_device->GetBudgetManager()
+     * @param manager Ignored - budget manager comes from VulkanDevice
      */
-    void SetBudgetManager(ResourceManagement::DeviceBudgetManager* manager) {
-        m_budgetManager = manager;
+    [[deprecated("Budget manager is accessed via VulkanDevice - this method is a no-op")]]
+    void SetBudgetManager(ResourceManagement::DeviceBudgetManager* /*manager*/) {
+        // No-op: budget manager comes from VulkanDevice
     }
 
     /**
      * @brief Get budget manager for GPU allocation tracking
-     * @return DeviceBudgetManager pointer, or nullptr if not configured
+     * @return DeviceBudgetManager pointer from VulkanDevice, or nullptr if not configured
      */
     ResourceManagement::DeviceBudgetManager* GetBudgetManager() const {
-        return m_budgetManager;
+        return m_device ? m_device->GetBudgetManager() : nullptr;
     }
 
     // Note: Upload API moved to VulkanDevice (Sprint 5 Phase 2.5.3)
@@ -281,7 +280,7 @@ protected:
         const char* debugName = nullptr
     ) {
         return CacherAllocationHelpers::AllocateBuffer(
-            m_budgetManager, m_device, size, usage, memoryFlags, debugName);
+            GetBudgetManager(), m_device, size, usage, memoryFlags, debugName);
     }
 
     /**
@@ -291,7 +290,7 @@ protected:
      * @note Safe to call with invalid/empty allocation
      */
     void FreeBufferTracked(ResourceManagement::BufferAllocation& allocation) {
-        CacherAllocationHelpers::FreeBuffer(m_budgetManager, m_device, allocation);
+        CacherAllocationHelpers::FreeBuffer(GetBudgetManager(), m_device, allocation);
     }
 
     /**
@@ -303,7 +302,7 @@ protected:
      * @return Mapped pointer or nullptr on failure
      */
     void* MapBufferTracked(ResourceManagement::BufferAllocation& allocation) {
-        return CacherAllocationHelpers::MapBuffer(m_budgetManager, m_device, allocation);
+        return CacherAllocationHelpers::MapBuffer(GetBudgetManager(), m_device, allocation);
     }
 
     /**
@@ -312,7 +311,7 @@ protected:
      * @param allocation Buffer allocation to unmap
      */
     void UnmapBufferTracked(ResourceManagement::BufferAllocation& allocation) {
-        CacherAllocationHelpers::UnmapBuffer(m_budgetManager, m_device, allocation);
+        CacherAllocationHelpers::UnmapBuffer(GetBudgetManager(), m_device, allocation);
     }
 
     /**

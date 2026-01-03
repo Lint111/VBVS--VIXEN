@@ -181,23 +181,29 @@ public:
 
     /**
      * @brief Set budget manager for GPU allocation tracking
-     * @param manager DeviceBudgetManager pointer (externally owned)
+     * @deprecated Budget manager is now accessed via VulkanDevice - this method is a no-op
+     * @param manager Ignored - budget manager comes from VulkanDevice
      */
-    void SetBudgetManager(ResourceManagement::DeviceBudgetManager* manager) { m_budgetManager = manager; }
+    [[deprecated("Budget manager is accessed via VulkanDevice - this method is a no-op")]]
+    void SetBudgetManager(ResourceManagement::DeviceBudgetManager* /*manager*/) {
+        // No-op: budget manager comes from VulkanDevice
+    }
 
     /**
      * @brief Get budget manager for GPU allocation tracking
-     * @return DeviceBudgetManager pointer, or nullptr if not configured
+     * @deprecated Budget manager should be accessed via VulkanDevice::GetBudgetManager()
+     * @return Budget manager from VulkanDevice, or nullptr if device not initialized
      */
-    ResourceManagement::DeviceBudgetManager* GetBudgetManager() const { return m_budgetManager; }
+    [[deprecated("Budget manager is accessed via VulkanDevice::GetBudgetManager()")]]
+    ResourceManagement::DeviceBudgetManager* GetBudgetManager() const;
 
 private:
     DeviceIdentifier m_deviceId;
     Vixen::Vulkan::Resources::VulkanDevice* m_device;
     bool m_initialized;
 
-    // Sprint 4 Phase D: Budget manager for GPU allocation tracking
-    ResourceManagement::DeviceBudgetManager* m_budgetManager = nullptr;
+    // Note: Budget manager is now owned by VulkanDevice (Sprint 5 Phase 2.5.3)
+    // Access via m_device->GetBudgetManager() instead
 
     // TypeRegistry will be embedded here for device-specific type registration
     // This maintains the type-safe caching but per-device

@@ -17,6 +17,20 @@ set_target_properties(test_registration_api PROPERTIES FOLDER "Tests/CashSystem 
 
 gtest_discover_tests(test_registration_api)
 
+# Phase 3 TLAS Lifecycle tests (Sprint 5)
+add_executable(test_tlas_phase3
+    test_tlas_phase3.cpp
+)
+target_compile_features(test_tlas_phase3 PRIVATE cxx_std_23)
+if(TARGET CashSystem)
+    target_link_libraries(test_tlas_phase3 PRIVATE GTest::gtest_main CashSystem Logger VulkanResources glm::glm)
+else()
+    target_link_libraries(test_tlas_phase3 PRIVATE GTest::gtest_main Logger glm::glm)
+endif()
+
+set_target_properties(test_tlas_phase3 PROPERTIES FOLDER "Tests/CashSystem Tests")
+gtest_discover_tests(test_tlas_phase3)
+
 # Basic CashSystem functionality tests
 # TODO: Update these tests to use new registration-by-type API
 # add_executable(test_cashsystem_basic

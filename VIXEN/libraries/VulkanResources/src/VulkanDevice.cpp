@@ -4,6 +4,12 @@
 #include "Memory/BatchedUploader.h"
 #include "Memory/DeviceBudgetManager.h"
 
+// Update infrastructure (Sprint 5 Phase 3.5)
+#include "Updates/BatchedUpdater.h"
+
+// Allocation infrastructure (Sprint 5 Phase 3.5)
+#include "Memory/IMemoryAllocator.h"
+
 using namespace Vixen::Vulkan::Resources;
 
 VulkanDevice::VulkanDevice(VkPhysicalDevice* physicalDevice) {
@@ -382,4 +388,88 @@ ResourceManagement::DeviceBudgetManager* VulkanDevice::GetBudgetManager() const 
 
 bool VulkanDevice::HasUploadSupport() const {
     return uploader_ != nullptr && budgetManager_ != nullptr;
+}
+
+// ============================================================================
+// Update Infrastructure (Sprint 5 Phase 3.5)
+// ============================================================================
+
+void VulkanDevice::SetUpdater(std::unique_ptr<ResourceManagement::BatchedUpdater> updater) {
+    updater_ = std::move(updater);
+}
+
+void VulkanDevice::QueueUpdate(ResourceManagement::UpdateRequestPtr request) {
+    if (!updater_ || !request) {
+        return;
+    }
+    updater_->Queue(std::move(request));
+}
+
+uint32_t VulkanDevice::RecordUpdates(VkCommandBuffer cmd, uint32_t imageIndex) {
+    if (!updater_ || !cmd) {
+        return 0;
+    }
+    return updater_->RecordAll(cmd, imageIndex);
+}
+
+bool VulkanDevice::HasUpdateSupport() const {
+    return updater_ != nullptr;
+}
+
+// ============================================================================
+// Allocation Infrastructure (Sprint 5 Phase 3.5)
+// ============================================================================
+
+std::optional<ResourceManagement::BufferAllocation> VulkanDevice::AllocateBuffer(
+    const ResourceManagement::BufferAllocationRequest& request) {
+
+    auto* allocator = GetAllocator();
+    if (!allocator) {
+        return std::nullopt;
+    }
+
+    auto result = allocator->AllocateBuffer(request);
+    if (result.has_value()) {
+        return *result;
+    }
+    return std::nullopt;
+}
+
+void VulkanDevice::FreeBuffer(ResourceManagement::BufferAllocation& allocation) {
+    auto* allocator = GetAllocator();
+    if (allocator && allocation.buffer != VK_NULL_HANDLE) {
+        allocator->FreeBuffer(allocation);
+    }
+}
+
+void* VulkanDevice::MapBuffer(ResourceManagement::BufferAllocation& allocation) {
+    // Check if already persistently mapped
+    if (allocation.mappedData) {
+        return allocation.mappedData;
+    }
+
+    auto* allocator = GetAllocator();
+    if (!allocator) {
+        return nullptr;
+    }
+    return allocator->MapBuffer(allocation);
+}
+
+void VulkanDevice::UnmapBuffer(ResourceManagement::BufferAllocation& allocation) {
+    // Don't unmap if persistently mapped
+    if (allocation.mappedData) {
+        return;
+    }
+
+    auto* allocator = GetAllocator();
+    if (allocator) {
+        allocator->UnmapBuffer(allocation);
+    }
+}
+
+ResourceManagement::IMemoryAllocator* VulkanDevice::GetAllocator() const {
+    if (!budgetManager_) {
+        return nullptr;
+    }
+    return budgetManager_->GetAllocator();
 }

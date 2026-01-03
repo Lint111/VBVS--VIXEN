@@ -2,6 +2,7 @@
 #include "DeviceIdentifier.h"
 #include "MainCacher.h"
 #include "VulkanDevice.h"
+#include "Memory/DeviceBudgetManager.h"
 #include "VixenHash.h"
 #include <sstream>
 #include <fstream>
@@ -202,6 +203,10 @@ bool DeviceRegistry::LoadAll(const std::filesystem::path& directory) {
 
 void DeviceRegistry::OnInitialize() {
     // Hook for derived classes - default no-op
+}
+
+ResourceManagement::DeviceBudgetManager* DeviceRegistry::GetBudgetManager() const {
+    return m_device ? m_device->GetBudgetManager() : nullptr;
 }
 
 } // namespace CashSystem

@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "RM.h"
+#include "State/RM.h"
 #include <string>
 
 using namespace ResourceManagement;

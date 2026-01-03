@@ -12,6 +12,7 @@
 #include "Memory/DirectAllocator.h"
 #include "Memory/DeviceBudgetManager.h"
 #include "Memory/BatchedUploader.h"
+#include "Updates/BatchedUpdater.h"
 extern std::vector<const char*> deviceExtensionNames;
 extern std::vector<const char*> layerNames;
 
@@ -509,6 +510,21 @@ void DeviceNode::CreateDeviceBudgetManager(CashSystem::DeviceRegistry& deviceReg
 
     vulkanDevice->SetUploader(std::move(uploader));
     NODE_LOG_INFO("[DeviceNode] BatchedUploader created and connected to VulkanDevice");
+
+    // Sprint 5 Phase 3.5: Create BatchedUpdater for per-frame GPU updates (TLAS rebuilds, etc.)
+    // Initial frame count = 3 (typical), will be resized by SwapChainNode if different
+    constexpr uint32_t initialFrameCount = 3;
+    ResourceManagement::BatchedUpdater::Config updaterConfig;
+    updaterConfig.sortByPriority = true;
+    updaterConfig.insertBarriers = true;
+
+    auto updater = std::make_unique<ResourceManagement::BatchedUpdater>(
+        initialFrameCount,
+        updaterConfig
+    );
+
+    vulkanDevice->SetUpdater(std::move(updater));
+    NODE_LOG_INFO("[DeviceNode] BatchedUpdater created and connected to VulkanDevice");
 
     // Log initial stats
     auto stats = budgetManager->GetStats();

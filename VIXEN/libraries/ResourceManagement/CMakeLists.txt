@@ -27,6 +27,11 @@ add_library(ResourceManagement STATIC
     include/Memory/StagingBufferPool.h
     include/Memory/BatchedUploader.h
 
+    # Updates (Phase 3.5: Generalized Update API)
+    include/Updates/UpdateRequest.h
+    include/Updates/BatchedUpdater.h
+    src/Updates/BatchedUpdater.cpp
+
     src/Memory/DirectAllocator.cpp
     src/Memory/VMAAllocator.cpp
     src/Memory/ResourceBudgetManager.cpp
@@ -121,6 +126,12 @@ source_group("Lifetime" FILES
     include/Lifetime/DeferredDestruction.h
     include/Lifetime/SharedResource.h
     include/Lifetime/LifetimeScope.h
+)
+
+source_group("Updates" FILES
+    include/Updates/UpdateRequest.h
+    include/Updates/BatchedUpdater.h
+    src/Updates/BatchedUpdater.cpp
 )
 
 # ------------------------------------------------------------------------------

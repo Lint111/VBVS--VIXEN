@@ -1,106 +1,108 @@
-# Active Context - Sprint 4 Resource Manager
+# Active Context - Sprint 5 CashSystem Robustness
 
-**Last Updated:** 2026-01-02
-**Branch:** `production/sprint-4-resource-manager`
-**Status:** Build PASSING | Tests PASSING (156 tests)
+**Last Updated:** 2026-01-03
+**Branch:** `production/sprint-5-cashsystem-robustness`
+**Status:** Build PASSING | Tests PASSING (20 budget manager integration tests)
 
 ---
 
 ## Current Position
 
-**Phase A: Foundation** - COMPLETE (6/6 tasks)
-**Phase B: Resource Lifetime** - COMPLETE (3/3 tasks)
-**Phase B+: GPU Aliasing** - COMPLETE (3/3 tasks)
-**Phase C: SlotTask Integration** - COMPLETE (3/3 tasks)
+**Phase 1: Memory Safety** - COMPLETE
+**Phase 2: Cacher Consolidation** - COMPLETE
+**Phase 2.5: Upload Infrastructure** - COMPLETE
 
-### Just Completed (2026-01-02)
-- Library restructure: ResourceManagement now has State/Memory/Lifetime subdirs
-- Phase C.2: Dynamic budget throttling in ExecuteParallel
-- Phase C.3: Memory estimation tracking (ReportActualMemory, GetEstimationAccuracy)
-- 18 new SlotTask tests added
+### Just Completed (2026-01-03)
+
+#### Phase 2.5.1-2.5.2: BatchedUploader Infrastructure
+- Created `StagingBufferPool` class for reusable staging buffers
+- Created `BatchedUploader` class with timeline semaphore tracking
+- Migrated VoxelSceneCacher and VoxelAABBCacher to use BatchedUploader
+
+#### Phase 2.5.3: Upload API Centralization (Architectural Refactor)
+- Moved BatchedUploader ownership from TypedCacher to VulkanDevice
+- VulkanDevice now exposes `Upload()`, `WaitAllUploads()`, `HasUploadSupport()`
+- DeviceNode creates and wires BatchedUploader during initialization
+- Cachers use `m_device->Upload()` - zero knowledge of staging mechanics
+- Verified all cachers use `AllocateBufferTracked` for budget tracking
 
 ### Next Task
-- **Phase D: Dashboard & Testing** - OR move to Sprint 5
+- **Phase 3: TLAS Lifecycle** - Track TLAS instances, rebuild triggers, budget-aware reconstruction
 
 ---
 
-## Session Commits (2026-01-02)
+## Session Commits (2026-01-03)
 
 | Hash | Description |
 |------|-------------|
-| `0c7803d` | refactor(ResourceManagement): Restructure library with State/Memory/Lifetime subdirs |
-| `1a9b942` | feat(SlotTask): Add dynamic budget throttling (Phase C complete) |
+| `e3ffb56` | feat(CashSystem): Add BatchedUploader and migrate cachers to centralized upload pattern |
+| `e76f9b7` | refactor(VulkanDevice): Centralize upload API - move BatchedUploader from TypedCacher to VulkanDevice |
 
 ---
 
-## Library Structure (Post-Restructure)
+## Architecture (Post-Refactor)
 
+### Upload Data Flow
 ```
+DeviceNode
+    ├── Creates DirectAllocator
+    ├── Creates DeviceBudgetManager
+    ├── Creates BatchedUploader
+    └── Sets all on VulkanDevice
+
+VulkanDevice (Single Owner)
+    ├── Owns BatchedUploader (unique_ptr)
+    ├── Owns DeviceBudgetManager (shared_ptr)
+    └── Exposes Upload() / WaitAllUploads()
+
+Cachers
+    └── Call m_device->Upload() (no staging knowledge)
+```
+
+### Key Files
+```
+libraries/VulkanResources/
+├── include/VulkanDevice.h      # Upload(), WaitAllUploads(), HasUploadSupport()
+└── src/VulkanDevice.cpp        # Upload API implementation
+
 libraries/ResourceManagement/
-├── include/
-│   ├── State/           # RM<T>, ResourceState, StatefulContainer
-│   ├── Memory/          # IMemoryAllocator, Budget managers, VMA
-│   └── Lifetime/        # SharedResource, LifetimeScope, DeferredDestruction
-├── src/Memory/          # Allocator implementations
-└── tests/               # 138 tests
-```
+├── include/Memory/BatchedUploader.h
+├── include/Memory/StagingBufferPool.h
+├── src/Memory/BatchedUploader.cpp
+└── src/Memory/StagingBufferPool.cpp
 
-```
-libraries/RenderGraph/
-├── include/Core/SlotTask.h  # Budget-aware task execution
-├── src/Core/SlotTask.cpp    # Dynamic throttling
-└── tests/test_slot_task.cpp # 18 tests
+libraries/CashSystem/
+├── include/TypedCacher.h       # AllocateBufferTracked (budget-tracked)
+├── src/VoxelSceneCacher.cpp    # Uses m_device->Upload()
+└── src/VoxelAABBCacher.cpp     # Uses m_device->Upload()
 ```
 
 ---
 
-## Phase C Implementation (COMPLETE)
+## Cacher Migration Status
 
-### C.1: Budget parameter in ExecuteParallel ✅
-- `ResourceBudgetManager* budgetManager` parameter exists
-
-### C.2: Dynamic throttling ✅
-- Re-evaluates budget before each batch
-- Reduces parallelism when memory constrained
-- Tracks `tasksThrottled` counter
-- Ensures at least 1 task runs (progress guarantee)
-
-### C.3: Memory estimation tracking ✅
-- `estimatedMemoryUsage_` / `actualMemoryUsage_` vectors
-- `ReportActualMemory(taskIndex, actualBytes)` API
-- `GetEstimationAccuracy()` returns actual/estimated ratio
-- `tasksOverBudget` counter tracks tasks exceeding estimates
+| Cacher | Allocation | Upload Method | Status |
+|--------|------------|---------------|--------|
+| VoxelSceneCacher | AllocateBufferTracked | m_device->Upload() | ✅ Complete |
+| VoxelAABBCacher | AllocateBufferTracked | m_device->Upload() | ✅ Complete |
+| MeshCacher | AllocateBufferTracked | Direct memcpy (HOST_VISIBLE) | ✅ No migration needed |
+| AccelerationStructureCacher | AllocateBufferTracked | Direct memcpy + AS builds | ✅ No migration needed |
+| TextureCacher | TODO | TODO (fallback only) | ⏳ Future |
 
 ---
 
-## All Phase Status
+## Sprint 5 Progress
 
-| Phase | Description | Status | Tests |
+| Phase | Description | Status | Hours |
 |-------|-------------|--------|-------|
-| A.1 | IMemoryAllocator interface | ✅ Done | ~20 |
-| A.2 | VMAAllocator implementation | ✅ Done | ~10 |
-| A.3 | DirectAllocator fallback | ✅ Done | ~5 |
-| A.4 | ResourceBudgetManager | ✅ Done | ~30 |
-| A.5 | DeviceBudgetManager facade | ✅ Done | ~10 |
-| A.6 | BudgetBridge coordination | ✅ Done | ~5 |
-| B.1 | SharedResource refcounting | ✅ Done | ~25 |
-| B.2 | LifetimeScope management | ✅ Done | ~24 |
-| B.3 | RenderGraph integration | ✅ Done | ~3 |
-| B+ | GPU memory aliasing | ✅ Done | ~16 |
-| C.1-3 | SlotTask budget integration | ✅ Done | 18 |
-| **Total** | - | **13/13** | **156** |
-
----
-
-## Remaining Sprint 4 Tasks (Optional)
-
-| Task | Effort | Priority | Notes |
-|------|--------|----------|-------|
-| Integrate budget tracking in node allocations | 16h | P1 | Could skip for now |
-| Create resource usage dashboard | 8h | P2 | Could defer |
-| Document ResourceManagement API | 4h | P2 | Could defer |
-
-**Recommendation:** Core functionality complete. Consider moving to Sprint 5 (CashSystem) or completing dashboard for observability.
+| 1 | Memory Safety (VK_CHECK, shared_ptr) | ✅ Complete | 8h |
+| 2 | Cacher Consolidation (-328 lines) | ✅ Complete | 16h |
+| 2.3 | DeviceBudgetManager Wiring | ✅ Complete | 8h |
+| 2.5.1 | StagingBufferPool | ✅ Complete | 4h |
+| 2.5.2 | BatchedUploader | ✅ Complete | 4h |
+| 2.5.3 | Upload API Centralization | ✅ Complete | 3h |
+| 3 | TLAS Lifecycle | ⏳ Pending | 16h est |
+| **Total** | - | **60h / 104h (58%)** | - |
 
 ---
 
@@ -110,69 +112,38 @@ libraries/RenderGraph/
 # Build everything
 cmake --build build --config Debug --parallel 16
 
-# Run ResourceManagement tests (138 passing)
-./build/libraries/ResourceManagement/tests/Debug/test_resource_management.exe --gtest_brief=1
-
-# Run SlotTask tests (18 passing)
-./build/libraries/RenderGraph/tests/Debug/test_slot_task.exe --gtest_brief=1
+# Run budget manager integration tests (20 passing)
+./build/libraries/ResourceManagement/tests/Debug/test_budget_manager_integration.exe --gtest_brief=1
 ```
 
 ---
 
 ## Key APIs
 
-### SlotTask Budget Integration
+### VulkanDevice Upload API (Sprint 5 Phase 2.5.3)
 ```cpp
-// Execute with budget awareness
-uint32_t success = taskManager.ExecuteParallel(
-    tasks,
-    taskFunction,
-    &budgetManager,  // Budget manager for throttling
-    maxParallelism   // 0 = auto-calculate
-);
+// Queue upload (non-blocking)
+auto handle = m_device->Upload(data, size, dstBuffer, dstOffset);
 
-// Report actual memory for accuracy tracking
-taskManager.ReportActualMemory(taskIndex, actualBytes);
+// Wait for all uploads
+m_device->WaitAllUploads();
 
-// Get estimation accuracy
-float accuracy = taskManager.GetEstimationAccuracy();
-// > 1.0 = underestimated, < 1.0 = overestimated
+// Check if upload infrastructure ready
+if (m_device->HasUploadSupport()) { ... }
 ```
 
-### SlotScope to ResourceScope Mapping
+### Budget-Tracked Allocation (TypedCacher)
 ```cpp
-ResourceScope GetResourceScope() const {
-    return SlotScopeToResourceScope(static_cast<uint8_t>(resourceScope));
-}
-// NodeLevel (0) → Persistent
-// TaskLevel (1) → Transient
-// InstanceLevel (2) → Transient
+// All cachers use this for tracked allocations
+auto alloc = AllocateBufferTracked(size, usage, memFlags, "debugName");
+
+// Direct memory access for HOST_VISIBLE
+void* mapped = MapBufferTracked(alloc);
+std::memcpy(mapped, data, size);
+UnmapBufferTracked(alloc);
 ```
 
 ---
 
-## HacknPlan Status
-
-Todos
-  ☒ Phase 2.4: Content Hash Cache Keys
-  ☐ Phase 2.3: Allocator Migration + Batched Uploads
-  ☒ 2.3.0 Migrate VoxelAABBCacher to AllocateBufferTracked
-  ☒ Fix exception safety in UploadToGPU
-  ☐ Pre-commit review - re-verify after fix
-  ☐ 2.3.0 Migrate VoxelSceneCacher to AllocateBufferTracked
-  ☐ 2.3.0 Migrate AccelerationStructureCacher to AllocateBufferTracked
-  ☐ 2.3.0 Migrate MeshCacher to AllocateBufferTracked
-  ☐ 2.3.1 Pass allocator from nodes to cachers during registration
-  ☐ 2.3.2 Create StagingBufferPool
-  ☐ 2.3.3 Create BatchedUploader
-  ☐ 2.3.4 TypedCacher integration
-
-Sprint 4 tasks updated 2026-01-02:
-- 5 tasks marked COMPLETE
-- 3 tasks remain PENDING
-- 8 hours logged
-
----
-
-*Updated: 2026-01-02*
+*Updated: 2026-01-03*
 *By: Claude Code*

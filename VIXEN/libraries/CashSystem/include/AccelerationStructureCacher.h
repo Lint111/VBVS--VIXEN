@@ -5,6 +5,11 @@
 #include "VoxelAABBCacher.h"  // VoxelAABBData, VoxelAABB, VoxelBrickMapping
 #include "Memory/IMemoryAllocator.h"
 
+// Sprint 5 Phase 3: Dynamic TLAS support
+#include "TLASInstanceManager.h"
+#include "DynamicTLAS.h"
+#include "CacheKeyHasher.h"
+
 #include <vulkan/vulkan.h>
 
 #include <cstdint>
@@ -16,6 +21,24 @@ namespace Vixen::Vulkan::Resources {
 }
 
 namespace CashSystem {
+
+// ============================================================================
+// ACCELERATION STRUCTURE BUILD MODE (Sprint 5 Phase 3)
+// ============================================================================
+
+/**
+ * @brief Build mode for acceleration structures
+ *
+ * Determines how BLAS/TLAS are built and cached:
+ * - Static: Build once, cache both BLAS and TLAS (current behavior)
+ * - Dynamic: Cache BLAS, rebuild TLAS per-frame from mutable instances
+ * - SubScene: Cache multiple BLAS regions, rebuild TLAS incrementally
+ */
+enum class ASBuildMode : uint8_t {
+    Static,     ///< Build BLAS+TLAS once, no updates (default, current behavior)
+    Dynamic,    ///< Cache BLAS only, manage TLAS per-frame from instances
+    SubScene    ///< Cache per-region BLAS, incremental TLAS rebuild (future)
+};
 
 // ============================================================================
 // ACCELERATION STRUCTURE DATA
@@ -69,21 +92,38 @@ struct AccelerationStructureData {
 // ============================================================================
 
 /**
- * @brief Cached Acceleration Structure (BLAS + TLAS)
+ * @brief Cached Acceleration Structure (BLAS + optional dynamic TLAS)
  *
  * Contains BLAS/TLAS for ray queries. Self-contained after creation -
  * no external dependencies. Stores metadata (AABB count) from source
  * data for validation, but does not retain pointer to source.
+ *
+ * For Dynamic/SubScene modes, also holds TLASInstanceManager and DynamicTLAS.
  */
 struct CachedAccelerationStructure {
     // Acceleration structure data (owned by this struct)
+    // For Static mode: contains both BLAS and TLAS
+    // For Dynamic/SubScene modes: contains BLAS only, TLAS is in dynamicTLAS
     AccelerationStructureData accelStruct;
 
     // Metadata from source AABB data (stored at creation, no pointer dependency)
     uint32_t sourceAABBCount = 0;
 
+    // Build mode used for this structure (Sprint 5 Phase 3)
+    ASBuildMode buildMode = ASBuildMode::Static;
+
+    // Dynamic TLAS support (Sprint 5 Phase 3)
+    // These are populated only when buildMode != Static
+    std::unique_ptr<TLASInstanceManager> instanceManager;
+    std::unique_ptr<DynamicTLAS> dynamicTLAS;
+
     bool IsValid() const noexcept {
-        return sourceAABBCount > 0 && accelStruct.IsValid();
+        if (buildMode == ASBuildMode::Static) {
+            return sourceAABBCount > 0 && accelStruct.IsValid();
+        } else {
+            // Dynamic mode: BLAS must be valid, TLAS is managed separately
+            return sourceAABBCount > 0 && accelStruct.blas != VK_NULL_HANDLE;
+        }
     }
 
     // Note: Cleanup now handled by AccelerationStructureCacher via FreeBufferTracked()
@@ -96,7 +136,7 @@ struct CachedAccelerationStructure {
 /**
  * @brief Creation parameters for cached acceleration structure
  *
- * Key: AABB data pointer + build flags.
+ * Key: AABB data pointer + build flags + build mode.
  * Same AABB data with different build flags produces different AS.
  */
 struct AccelStructCreateInfo {
@@ -108,23 +148,45 @@ struct AccelStructCreateInfo {
     bool allowUpdate = false;       // VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR
     bool allowCompaction = true;    // VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR
 
+    // ===== Sprint 5 Phase 3: Dynamic TLAS support =====
+
+    // Build mode (default: Static for backward compatibility)
+    ASBuildMode buildMode = ASBuildMode::Static;
+
+    // For Dynamic/SubScene modes: max instance capacity
+    uint32_t maxInstances = 1024;
+
+    // For Dynamic/SubScene modes: swapchain image count (from SwapChainNode)
+    // Only used when buildMode != Static
+    uint32_t imageCount = 0;
+
     /**
-     * @brief Compute hash for cache key
+     * @brief Compute hash for cache key using CacheKeyHasher
      */
     uint64_t ComputeHash() const noexcept {
-        // Use AABB buffer address as key (unique per AABB data instance)
-        uint64_t hash = aabbData ? reinterpret_cast<uint64_t>(aabbData->GetAABBBuffer()) : 0;
-        hash = hash * 31 + (preferFastTrace ? 1 : 0);
-        hash = hash * 31 + (allowUpdate ? 2 : 0);
-        hash = hash * 31 + (allowCompaction ? 4 : 0);
-        return hash;
+        CacheKeyHasher hasher;
+
+        // AABB buffer address as key (unique per AABB data instance)
+        uint64_t aabbPtr = aabbData ? reinterpret_cast<uint64_t>(aabbData->GetAABBBuffer()) : 0;
+        hasher.Add(aabbPtr);
+
+        // Build flags
+        hasher.Add(preferFastTrace);
+        hasher.Add(allowUpdate);
+        hasher.Add(allowCompaction);
+
+        // Build mode (Sprint 5 Phase 3)
+        hasher.Add(buildMode);
+
+        return hasher.Finalize();
     }
 
     bool operator==(const AccelStructCreateInfo& other) const noexcept {
         return aabbData == other.aabbData &&
                preferFastTrace == other.preferFastTrace &&
                allowUpdate == other.allowUpdate &&
-               allowCompaction == other.allowCompaction;
+               allowCompaction == other.allowCompaction &&
+               buildMode == other.buildMode;
     }
 };
 
@@ -155,6 +217,32 @@ public:
      * @return Shared pointer to cached acceleration structure
      */
     std::shared_ptr<CachedAccelerationStructure> GetOrCreate(const AccelStructCreateInfo& ci);
+
+    // ===== Dynamic Mode Update API (Phase 3.5) =====
+
+    /**
+     * @brief Queue TLAS update for a Dynamic mode acceleration structure
+     *
+     * For Dynamic/SubScene mode entries, queues a TLAS rebuild via the
+     * generalized update API (m_device->QueueUpdate). Does nothing for
+     * Static mode entries.
+     *
+     * @param cached Cached acceleration structure (must be Dynamic mode)
+     * @param imageIndex Swapchain image index for this frame
+     *
+     * @note Call device->RecordUpdates(cmd, imageIndex) to record the commands
+     */
+    void QueueTLASUpdate(CachedAccelerationStructure* cached, uint32_t imageIndex);
+
+    /**
+     * @brief Queue TLAS update by cache key
+     *
+     * Convenience overload that looks up the cached entry by key.
+     *
+     * @param cacheKey Key returned by AccelStructCreateInfo::ComputeHash()
+     * @param imageIndex Swapchain image index for this frame
+     */
+    void QueueTLASUpdate(uint64_t cacheKey, uint32_t imageIndex);
 
     // ===== TypedCacher interface =====
     std::string_view name() const noexcept override { return "AccelerationStructureCacher"; }

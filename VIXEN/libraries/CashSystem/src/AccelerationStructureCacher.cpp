@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "AccelerationStructureCacher.h"
+#include "TLASUpdateRequest.h"
 #include "VulkanDevice.h"
 #include "error/VulkanError.h"
 
@@ -29,11 +30,72 @@ std::shared_ptr<CachedAccelerationStructure> AccelerationStructureCacher::GetOrC
 }
 
 // ============================================================================
+// DYNAMIC MODE UPDATE API (Phase 3.5)
+// ============================================================================
+
+void AccelerationStructureCacher::QueueTLASUpdate(CachedAccelerationStructure* cached, uint32_t imageIndex) {
+    if (!cached) {
+        LOG_WARNING("[AccelerationStructureCacher::QueueTLASUpdate] Null cached structure");
+        return;
+    }
+
+    // Static mode doesn't use dynamic updates
+    if (cached->buildMode == ASBuildMode::Static) {
+        return;
+    }
+
+    // Dynamic/SubScene mode requires both components
+    if (!cached->dynamicTLAS || !cached->instanceManager) {
+        LOG_WARNING("[AccelerationStructureCacher::QueueTLASUpdate] Dynamic mode but missing TLAS/manager");
+        return;
+    }
+
+    if (!m_device) {
+        LOG_ERROR("[AccelerationStructureCacher::QueueTLASUpdate] No device set");
+        return;
+    }
+
+    // Create update request (device for loading RT function pointers)
+    auto request = std::make_unique<TLASUpdateRequest>(
+        m_device,
+        cached->dynamicTLAS.get(),
+        cached->instanceManager.get(),
+        cached->instanceManager->GetDirtyLevel(),
+        imageIndex
+    );
+
+    // Queue via device's generalized update API
+    m_device->QueueUpdate(std::move(request));
+
+    LOG_DEBUG("[AccelerationStructureCacher::QueueTLASUpdate] Queued TLAS update for frame " +
+              std::to_string(imageIndex));
+}
+
+void AccelerationStructureCacher::QueueTLASUpdate(uint64_t cacheKey, uint32_t imageIndex) {
+    // Look up cached entry by key
+    std::shared_lock lock(m_lock);
+    auto it = m_entries.find(cacheKey);
+    if (it == m_entries.end() || !it->second.resource) {
+        LOG_WARNING("[AccelerationStructureCacher::QueueTLASUpdate] Cache key not found: " +
+                    std::to_string(cacheKey));
+        return;
+    }
+
+    // Unlock before calling the other overload (which may log)
+    CachedAccelerationStructure* cached = it->second.resource.get();
+    lock.unlock();
+
+    QueueTLASUpdate(cached, imageIndex);
+}
+
+// ============================================================================
 // ACCELERATION STRUCTURE CACHER - TYPEDCACHER IMPLEMENTATION
 // ============================================================================
 
 std::shared_ptr<CachedAccelerationStructure> AccelerationStructureCacher::Create(const AccelStructCreateInfo& ci) {
-    LOG_INFO("[AccelerationStructureCacher::Create] Creating acceleration structure");
+    LOG_INFO("[AccelerationStructureCacher::Create] Creating acceleration structure, mode=" +
+             std::string(ci.buildMode == ASBuildMode::Static ? "Static" :
+                        ci.buildMode == ASBuildMode::Dynamic ? "Dynamic" : "SubScene"));
 
     if (!IsInitialized()) {
         throw std::runtime_error("[AccelerationStructureCacher::Create] Cacher not initialized with device");
@@ -43,12 +105,18 @@ std::shared_ptr<CachedAccelerationStructure> AccelerationStructureCacher::Create
         throw std::runtime_error("[AccelerationStructureCacher::Create] AABB data is required and must be valid");
     }
 
+    // Validate Dynamic/SubScene mode requirements
+    if (ci.buildMode != ASBuildMode::Static && ci.imageCount == 0) {
+        throw std::runtime_error("[AccelerationStructureCacher::Create] imageCount required for Dynamic/SubScene mode");
+    }
+
     // Load RT extension functions on first use
     LoadRTFunctions();
 
     auto cached = std::make_shared<CachedAccelerationStructure>();
 
-    // Store AABB count for IsValid() check (no pointer dependency)
+    // Store build mode and AABB count
+    cached->buildMode = ci.buildMode;
     cached->sourceAABBCount = ci.aabbData->aabbCount;
 
     LOG_INFO("[AccelerationStructureCacher::Create] Using AABB data with " +
@@ -59,11 +127,39 @@ std::shared_ptr<CachedAccelerationStructure> AccelerationStructureCacher::Create
         return cached;
     }
 
-    // Build BLAS from AABBs
+    // Build BLAS from AABBs (always needed)
     BuildBLAS(ci, *ci.aabbData, cached->accelStruct);
 
-    // Build TLAS containing single BLAS instance
-    BuildTLAS(ci, cached->accelStruct);
+    // Mode-specific TLAS handling
+    if (ci.buildMode == ASBuildMode::Static) {
+        // Static mode: Build TLAS with single instance (existing behavior)
+        BuildTLAS(ci, cached->accelStruct);
+    } else {
+        // Dynamic/SubScene mode: Create instance manager and dynamic TLAS
+        cached->instanceManager = std::make_unique<TLASInstanceManager>();
+
+        cached->dynamicTLAS = std::make_unique<DynamicTLAS>();
+        DynamicTLAS::Config tlasConfig;
+        tlasConfig.maxInstances = ci.maxInstances;
+        tlasConfig.preferFastTrace = ci.preferFastTrace;
+        tlasConfig.allowUpdate = ci.allowUpdate;
+
+        // DynamicTLAS uses VulkanDevice's centralized allocation API
+        if (!cached->dynamicTLAS->Initialize(m_device, ci.imageCount, tlasConfig)) {
+            throw std::runtime_error("[AccelerationStructureCacher::Create] Failed to initialize DynamicTLAS");
+        }
+
+        // Add initial instance pointing to our BLAS
+        TLASInstanceManager::Instance initialInstance;
+        initialInstance.blasKey = ci.ComputeHash();
+        initialInstance.blasAddress = cached->accelStruct.blasDeviceAddress;
+        // Identity transform (default)
+        cached->instanceManager->AddInstance(initialInstance);
+
+        LOG_INFO("[AccelerationStructureCacher::Create] Initialized Dynamic TLAS with " +
+                 std::to_string(ci.maxInstances) + " max instances, " +
+                 std::to_string(ci.imageCount) + " frames");
+    }
 
     LOG_INFO("[AccelerationStructureCacher::Create] Created AS with " +
              std::to_string(cached->accelStruct.primitiveCount) + " primitives");
@@ -87,6 +183,13 @@ void AccelerationStructureCacher::Cleanup() {
     for (auto& [key, entry] : m_entries) {
         if (entry.resource) {
             auto& asData = entry.resource->accelStruct;
+
+            // Cleanup Dynamic TLAS resources first (if present)
+            if (entry.resource->dynamicTLAS) {
+                entry.resource->dynamicTLAS->Cleanup(nullptr);
+                entry.resource->dynamicTLAS.reset();
+            }
+            entry.resource->instanceManager.reset();
 
             // Destroy acceleration structure handles
             if (destroyAS) {

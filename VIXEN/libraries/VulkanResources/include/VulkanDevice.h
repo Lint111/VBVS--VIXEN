@@ -6,11 +6,17 @@
 #include "CapabilityGraph.h"
 #include <memory>
 
-// Forward declarations for upload infrastructure (Sprint 5 Phase 2.5.3)
+// Forward declarations for upload/update/allocation infrastructure (Sprint 5)
 namespace ResourceManagement {
     class BatchedUploader;
+    class BatchedUpdater;
     class DeviceBudgetManager;
+    class IMemoryAllocator;
+    class UpdateRequestBase;
+    struct BufferAllocation;
+    struct BufferAllocationRequest;
     using UploadHandle = uint64_t;
+    using UpdateRequestPtr = std::unique_ptr<UpdateRequestBase>;
     // Note: InvalidUploadHandle defined in BatchedUploader.h (included in .cpp)
 }
 
@@ -189,6 +195,90 @@ public:
      */
     bool HasUploadSupport() const;
 
+    // ===== Update Infrastructure (Sprint 5 Phase 3.5) =====
+
+    /**
+     * @brief Set the batched updater for this device
+     *
+     * Called by DeviceNode during initialization. The updater handles
+     * per-frame GPU operations like TLAS rebuilds with automatic batching.
+     *
+     * @param updater Unique ownership of the updater
+     */
+    void SetUpdater(std::unique_ptr<ResourceManagement::BatchedUpdater> updater);
+
+    /**
+     * @brief Queue a GPU update request
+     *
+     * Queues an update (TLAS rebuild, buffer write, etc.) for later recording.
+     * The request's imageIndex determines which frame queue it goes to.
+     *
+     * @param request Update request (ownership transferred)
+     */
+    void QueueUpdate(ResourceManagement::UpdateRequestPtr request);
+
+    /**
+     * @brief Record all pending updates for a frame
+     *
+     * Records update commands into the provided command buffer.
+     * Call this during the Execute phase's command buffer recording.
+     *
+     * @param cmd Active command buffer in recording state
+     * @param imageIndex Frame index to record
+     * @return Number of updates recorded
+     */
+    uint32_t RecordUpdates(VkCommandBuffer cmd, uint32_t imageIndex);
+
+    /**
+     * @brief Check if update infrastructure is ready
+     * @return true if updater is configured
+     */
+    bool HasUpdateSupport() const;
+
+    // ===== Allocation Infrastructure (Sprint 5 Phase 3.5) =====
+
+    /**
+     * @brief Allocate a GPU buffer via centralized allocator
+     *
+     * All buffer allocations should go through this API for:
+     * - Consistent budget tracking
+     * - Unified memory management
+     * - Debug naming
+     *
+     * @param request Allocation request with size, usage, location
+     * @return BufferAllocation on success, or nullopt on failure
+     */
+    [[nodiscard]] std::optional<ResourceManagement::BufferAllocation> AllocateBuffer(
+        const ResourceManagement::BufferAllocationRequest& request);
+
+    /**
+     * @brief Free a buffer allocated via AllocateBuffer()
+     *
+     * @param allocation The allocation to free
+     */
+    void FreeBuffer(ResourceManagement::BufferAllocation& allocation);
+
+    /**
+     * @brief Map a buffer for CPU access
+     *
+     * @param allocation Buffer to map
+     * @return Mapped pointer, or nullptr on failure
+     */
+    [[nodiscard]] void* MapBuffer(ResourceManagement::BufferAllocation& allocation);
+
+    /**
+     * @brief Unmap a previously mapped buffer
+     *
+     * @param allocation Buffer to unmap
+     */
+    void UnmapBuffer(ResourceManagement::BufferAllocation& allocation);
+
+    /**
+     * @brief Get the memory allocator
+     * @return Allocator pointer, or nullptr if not configured
+     */
+    ResourceManagement::IMemoryAllocator* GetAllocator() const;
+
 private:
     // Helper to append a feature struct to the pNext chain
     inline void* AppendToPNext(void** chainEnd, void* featureStruct);
@@ -205,6 +295,9 @@ private:
     // Upload infrastructure (Sprint 5 Phase 2.5.3)
     std::unique_ptr<ResourceManagement::BatchedUploader> uploader_;
     std::shared_ptr<ResourceManagement::DeviceBudgetManager> budgetManager_;
+
+    // Update infrastructure (Sprint 5 Phase 3.5)
+    std::unique_ptr<ResourceManagement::BatchedUpdater> updater_;
 
 };
 

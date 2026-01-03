@@ -581,19 +581,19 @@ public:
 
     /**
      * @brief Set budget manager for GPU allocation tracking
-     *
-     * Propagates the budget manager to all existing device registries.
-     * Cachers can access this via DeviceRegistry::GetBudgetManager().
-     *
-     * @param manager DeviceBudgetManager pointer (externally owned)
+     * @deprecated Budget manager is now accessed via VulkanDevice - this method is a no-op
+     * @param manager Ignored - budget manager comes from VulkanDevice
      */
-    void SetBudgetManager(ResourceManagement::DeviceBudgetManager* manager);
+    [[deprecated("Budget manager is accessed via VulkanDevice - this method is a no-op")]]
+    void SetBudgetManager(ResourceManagement::DeviceBudgetManager* /*manager*/);
 
     /**
      * @brief Get current budget manager
-     * @return DeviceBudgetManager pointer, or nullptr if not configured
+     * @deprecated Budget manager should be accessed via VulkanDevice::GetBudgetManager()
+     * @return nullptr - budget manager is now owned by VulkanDevice
      */
-    ResourceManagement::DeviceBudgetManager* GetBudgetManager() const { return m_budgetManager; }
+    [[deprecated("Budget manager is accessed via VulkanDevice::GetBudgetManager()")]]
+    ResourceManagement::DeviceBudgetManager* GetBudgetManager() const { return nullptr; }
 
     /**
      * @brief Create a cacher instance by name (for manifest-based deserialization)
@@ -640,8 +640,8 @@ private:
     Vixen::EventBus::MessageBus* m_messageBus = nullptr;
     Vixen::EventBus::EventSubscriptionID m_deviceInvalidationSubscription = 0;
 
-    // Sprint 4 Phase D: Budget manager for GPU allocation tracking
-    ResourceManagement::DeviceBudgetManager* m_budgetManager = nullptr;
+    // Note: Budget manager is now owned by VulkanDevice (Sprint 5 Phase 2.5.3)
+    // Access via VulkanDevice::GetBudgetManager() instead of MainCacher
 
     // Device registry management (private overload)
     DeviceRegistry& GetOrCreateDeviceRegistry(const DeviceIdentifier& deviceId);
