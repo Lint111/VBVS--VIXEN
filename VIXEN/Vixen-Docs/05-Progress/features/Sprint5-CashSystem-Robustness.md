@@ -1,10 +1,10 @@
 ---
 title: Sprint 5 - CashSystem Robustness
 aliases: [Sprint 5, CashSystem Robustness]
-tags: [sprint, cashsystem, memory-safety, vulkan]
+tags: [sprint, cashsystem, memory-safety, vulkan, complete]
 created: 2026-01-02
-updated: 2026-01-02
-status: in-progress
+updated: 2026-01-03
+status: complete
 priority: P0
 hacknplan-board: 651783
 ---

@@ -1,10 +1,10 @@
 #pragma once
 
 #include "Message.h"
+#include "PreAllocatedQueue.h"
 #include <functional>
 #include <vector>
 #include <list>
-#include <queue>
 #include <mutex>
 #include <unordered_map>
 #include <memory>
@@ -211,6 +211,35 @@ public:
      */
     size_t GetExpectedCapacity() const { return expectedCapacity; }
 
+    // ========================================================================
+    // Pre-Allocation (Sprint 5.5)
+    // ========================================================================
+
+    /**
+     * @brief Pre-allocate message queue storage
+     *
+     * Call during setup phase to prevent heap allocations during frame execution.
+     * Should be called with expected maximum messages per frame.
+     *
+     * Heuristic: nodeCount * 3 events per node is a good starting point.
+     *
+     * @param capacity Number of message slots to pre-allocate
+     */
+    void Reserve(size_t capacity);
+
+    /**
+     * @brief Get current queue capacity (pre-allocated slots)
+     */
+    size_t GetQueueCapacity() const;
+
+    /**
+     * @brief Get number of times queue had to grow during runtime
+     *
+     * If this is > 0, Reserve() was called with too small a capacity.
+     * Use this to tune pre-allocation size.
+     */
+    size_t GetQueueGrowthCount() const;
+
 private:
     enum class FilterMode : uint8_t { All = 0, Type = 1, Category = 2 };
 
@@ -224,7 +253,7 @@ private:
 
     void DispatchMessage(const BaseEventMessage& message);
 
-    std::queue<std::unique_ptr<BaseEventMessage>> messageQueue;
+    PreAllocatedQueue<std::unique_ptr<BaseEventMessage>> messageQueue_;
     mutable std::mutex queueMutex;
 
     // Owning storage for subscriptions

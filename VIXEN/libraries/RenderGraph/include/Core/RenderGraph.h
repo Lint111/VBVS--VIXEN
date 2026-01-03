@@ -392,6 +392,16 @@ public:
     EventBus::MessageBus* GetMessageBus() const { return messageBus; }
 
     /**
+     * @brief Pre-allocate EventBus queue based on graph complexity
+     *
+     * Called automatically during Compile() using heuristic: nodeCount × 3.
+     * Can also be called manually after adding nodes for explicit control.
+     *
+     * @param eventsPerNode Heuristic multiplier (default: 3 events per node)
+     */
+    void PreAllocateEventBus(size_t eventsPerNode = 3);
+
+    /**
      * @brief Get the main cacher instance (for nodes to register and access caches)
      *
      * Nodes can use this to register cachers during Setup/Compile and access them.
@@ -608,6 +618,9 @@ private:
     void BuildExecutionOrder();
     void ComputeDependentCounts();
     void RecursiveCleanup(NodeInstance* node, std::set<NodeInstance*>& cleaned);
+
+    // Pre-allocation (Sprint 5.5)
+    void PreAllocateResources();
 
     // Event handling
     void HandleRenderPause(const EventTypes::RenderPauseEvent& msg);

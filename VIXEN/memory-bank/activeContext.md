@@ -1,8 +1,8 @@
-# Active Context - Sprint 5 CashSystem Robustness
+# Active Context - Sprint 5.5 Pre-Allocation Hardening
 
 **Last Updated:** 2026-01-03
-**Branch:** `production/sprint-5-preallocation-hardening`
-**Status:** Build PASSING | Sprint 5 COMPLETE (104h/104h - 100%) | Ready for merge to main
+**Branch:** `main` (Sprint 5 merged)
+**Status:** Build PASSING | Sprint 5 ✅ COMPLETE | Sprint 5.5 NEXT
 
 ---
 
@@ -31,8 +31,27 @@
 - Ready for merge to main branch
 
 ### Next Actions
-- Merge `production/sprint-5-preallocation-hardening` → `main`
-- Begin Sprint 6 planning
+- ✅ Merged Sprint 5 to `main`
+- ✅ Architecture critique analysis complete
+- Begin Sprint 5.5: Pre-Allocation Hardening (16h)
+
+---
+
+## Sprint 5.5: Pre-Allocation Hardening (NEXT)
+
+**Board:** 651953
+**Source:** ARCHITECTURE_CRITIQUE_2026-01-03.md
+
+| Task ID | Task | Hours | Priority |
+|---------|------|-------|----------|
+| #302 | EventBus Queue Pre-Allocation | 4h | HIGH |
+| #301 | Command Buffer Pool Sizing | 4h | MEDIUM |
+| #300 | Deferred Destruction Pool Pre-Sizing | 4h | MEDIUM |
+| #299 | Allocation Tracker Full Instrumentation | 4h | MEDIUM |
+
+**Total:** 16h
+
+**Recommended Start:** #302 EventBus Queue Pre-Allocation (highest priority)
 
 ---
 

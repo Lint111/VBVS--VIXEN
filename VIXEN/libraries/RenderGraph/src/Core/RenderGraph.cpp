@@ -2,6 +2,7 @@
 #include "Core/IGraphCompilable.h"
 #include "Nodes/SwapChainNode.h"
 #include "Nodes/PresentNode.h"
+#include "Nodes/CommandPoolNode.h"  // Sprint 5.5: Pre-allocation
 #include "VulkanDevice.h"
 #include "Message.h"  // FrameStartEvent, FrameEndEvent
 #include <algorithm>
@@ -478,6 +479,9 @@ void RenderGraph::SetDeviceBudgetManager(std::shared_ptr<DeviceBudgetManager> ma
 void RenderGraph::Compile() {
     GRAPH_LOG_INFO("[RenderGraph::Compile] Starting compilation...");
 
+    // Pre-allocate EventBus based on graph complexity (Sprint 5.5)
+    PreAllocateEventBus();
+
     // Validation
     GRAPH_LOG_INFO("[RenderGraph::Compile] Phase: Validation...");
     std::string errorMessage;
@@ -522,6 +526,10 @@ void RenderGraph::Compile() {
 
     // Hook: PostCompilation
     lifecycleHooks.ExecuteGraphHooks(GraphLifecyclePhase::PostCompilation, this);
+
+    // Phase 6: Pre-allocate resources based on node requirements (Sprint 5.5)
+    GRAPH_LOG_INFO("[RenderGraph::Compile] Phase: PreAllocateResources...");
+    PreAllocateResources();
 
     GRAPH_LOG_INFO("[RenderGraph::Compile] Compilation complete!");
     isCompiled = true;
@@ -1603,6 +1611,88 @@ NodeInstance* RenderGraph::GetNodeByName(const std::string& name) const {
         return nullptr;
     }
     return instances[handle.index].get();
+}
+
+// ============================================================================
+// Pre-Allocation (Sprint 5.5)
+// ============================================================================
+
+void RenderGraph::PreAllocateEventBus(size_t eventsPerNode) {
+    if (!messageBus) {
+        return;  // No message bus configured
+    }
+
+    // Calculate expected events based on node count
+    // Heuristic: each node typically generates ~3 events per frame
+    // (setup, execution, cleanup phases)
+    size_t nodeCount = instances.size();
+    size_t expectedEvents = nodeCount * eventsPerNode;
+
+    // Ensure minimum capacity
+    constexpr size_t MIN_CAPACITY = 256;
+    expectedEvents = std::max(expectedEvents, MIN_CAPACITY);
+
+    // Pre-allocate the queue
+    messageBus->Reserve(expectedEvents);
+
+    GRAPH_LOG_INFO("[RenderGraph] EventBus pre-allocated for " +
+        std::to_string(expectedEvents) + " messages (" +
+        std::to_string(nodeCount) + " nodes × " +
+        std::to_string(eventsPerNode) + " events/node, min " +
+        std::to_string(MIN_CAPACITY) + ")");
+}
+
+void RenderGraph::PreAllocateResources() {
+    // Aggregate pre-allocation requirements from all nodes
+    NodeInstance::PreAllocationRequirements totalRequirements{};
+
+    for (const auto& instance : instances) {
+        auto nodeReqs = instance->GetPreAllocationRequirements();
+        totalRequirements += nodeReqs;
+    }
+
+    GRAPH_LOG_INFO("[RenderGraph] Aggregated pre-allocation requirements: " +
+        std::to_string(totalRequirements.commandBufferCount) + " command buffers, " +
+        std::to_string(totalRequirements.descriptorSetCount) + " descriptor sets");
+
+    // Find CommandPoolNodes and pre-allocate command buffers
+    if (totalRequirements.commandBufferCount > 0) {
+        // Find all CommandPoolNode instances
+        for (const auto& instance : instances) {
+            CommandPoolNode* cmdPoolNode = dynamic_cast<CommandPoolNode*>(instance.get());
+            if (cmdPoolNode) {
+                // Pre-allocate command buffers in this pool
+                // For now, allocate all requirements to the first pool found
+                // Future: Could distribute based on queue family or usage hints
+                cmdPoolNode->PreAllocateCommandBuffers(totalRequirements.commandBufferCount);
+
+                GRAPH_LOG_INFO("[RenderGraph] Pre-allocated " +
+                    std::to_string(totalRequirements.commandBufferCount) +
+                    " command buffers in pool '" + cmdPoolNode->GetInstanceName() + "'");
+
+                // Only pre-allocate in first pool for simplicity
+                // Multi-pool support would require tracking which nodes use which pool
+                break;
+            }
+        }
+    }
+
+    // Pre-allocate deferred destruction queue
+    // Heuristic: nodeCount * 5 resources per node * 3 frames in flight
+    constexpr size_t RESOURCES_PER_NODE = 5;
+    constexpr size_t FRAMES_IN_FLIGHT = 3;
+    size_t deferredCapacity = instances.size() * RESOURCES_PER_NODE * FRAMES_IN_FLIGHT;
+    constexpr size_t MIN_DEFERRED_CAPACITY = 64;  // Reasonable minimum
+
+    deferredCapacity = std::max(deferredCapacity, MIN_DEFERRED_CAPACITY);
+    deferredDestruction.PreReserve(deferredCapacity);
+
+    GRAPH_LOG_INFO("[RenderGraph] Pre-reserved deferred destruction queue: " +
+        std::to_string(deferredCapacity) + " slots (" +
+        std::to_string(instances.size()) + " nodes × " +
+        std::to_string(RESOURCES_PER_NODE) + " resources × " +
+        std::to_string(FRAMES_IN_FLIGHT) + " frames, min " +
+        std::to_string(MIN_DEFERRED_CAPACITY) + ")");
 }
 
 } // namespace Vixen::RenderGraph

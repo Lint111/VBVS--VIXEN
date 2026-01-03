@@ -442,6 +442,235 @@ TEST_F(DeferredDestructionTest, ProcessFrameFrameTracking) {
 }
 
 // ============================================================================
+// DeferredDestructionQueue Pre-Allocation Tests (Sprint 5.5 Task #300)
+// ============================================================================
+
+class DeferredDestructionPreAllocationTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        callCounter = 0;
+    }
+
+    static int callCounter;
+};
+
+int DeferredDestructionPreAllocationTest::callCounter = 0;
+
+TEST_F(DeferredDestructionPreAllocationTest, PreReserveAllocatesCapacity) {
+    DeferredDestructionQueue queue;
+
+    // Initially no capacity
+    EXPECT_EQ(queue.GetCapacity(), 0);
+
+    // Pre-reserve should allocate storage
+    queue.PreReserve(100);
+    EXPECT_EQ(queue.GetCapacity(), 100);
+    EXPECT_EQ(queue.GetPendingCount(), 0);  // Still empty
+}
+
+TEST_F(DeferredDestructionPreAllocationTest, ConstructorWithInitialCapacity) {
+    DeferredDestructionQueue queue(64);
+
+    EXPECT_EQ(queue.GetCapacity(), 64);
+    EXPECT_EQ(queue.GetPendingCount(), 0);
+}
+
+TEST_F(DeferredDestructionPreAllocationTest, PreReserveGrowsWhenLarger) {
+    DeferredDestructionQueue queue(32);
+
+    EXPECT_EQ(queue.GetCapacity(), 32);
+
+    // Grow to larger capacity
+    queue.PreReserve(64);
+    EXPECT_EQ(queue.GetCapacity(), 64);
+
+    // Smaller request should not shrink
+    queue.PreReserve(16);
+    EXPECT_EQ(queue.GetCapacity(), 64);
+}
+
+TEST_F(DeferredDestructionPreAllocationTest, PreReservePreservesExistingItems) {
+    DeferredDestructionQueue queue(4);
+
+    // Add items
+    queue.AddGeneric([this]() { callCounter++; }, 0);
+    queue.AddGeneric([this]() { callCounter += 10; }, 0);
+
+    EXPECT_EQ(queue.GetPendingCount(), 2);
+
+    // Grow capacity (should preserve items)
+    queue.PreReserve(16);
+
+    EXPECT_EQ(queue.GetCapacity(), 16);
+    EXPECT_EQ(queue.GetPendingCount(), 2);
+
+    // Verify items work correctly after growth
+    queue.Flush();
+    EXPECT_EQ(callCounter, 11);  // 1 + 10
+}
+
+TEST_F(DeferredDestructionPreAllocationTest, StatsTrackGrowthCount) {
+    DeferredDestructionQueue queue;  // Start with 0 capacity
+
+    // Add items without pre-reserving (forces growth)
+    for (int i = 0; i < 20; ++i) {
+        queue.AddGeneric([this]() { callCounter++; }, 0);
+    }
+
+    auto stats = queue.GetPreAllocationStats();
+    EXPECT_GT(stats.growthCount, 0);  // Should have grown at least once
+    EXPECT_EQ(stats.currentSize, 20);
+    EXPECT_GE(stats.capacity, 20);
+}
+
+TEST_F(DeferredDestructionPreAllocationTest, NoGrowthAfterPreReserve) {
+    DeferredDestructionQueue queue(100);  // Pre-allocate 100 slots
+
+    // Add fewer items than capacity
+    for (int i = 0; i < 50; ++i) {
+        queue.AddGeneric([this]() { callCounter++; }, 0);
+    }
+
+    auto stats = queue.GetPreAllocationStats();
+    EXPECT_EQ(stats.growthCount, 0);  // No growth should occur
+    EXPECT_EQ(stats.capacity, 100);
+    EXPECT_EQ(stats.currentSize, 50);
+}
+
+TEST_F(DeferredDestructionPreAllocationTest, StatsTrackHighWaterMark) {
+    DeferredDestructionQueue queue(100);
+
+    // Add 30 items
+    for (int i = 0; i < 30; ++i) {
+        queue.AddGeneric([]() {}, 0);
+    }
+
+    auto stats = queue.GetPreAllocationStats();
+    EXPECT_EQ(stats.maxSizeReached, 30);
+
+    // Process some (flush at frame 10 with 3 frames in flight = all destroyed)
+    queue.Flush();
+
+    // Add 20 more
+    for (int i = 0; i < 20; ++i) {
+        queue.AddGeneric([]() {}, 0);
+    }
+
+    stats = queue.GetPreAllocationStats();
+    EXPECT_EQ(stats.maxSizeReached, 30);  // Still 30 (high-water mark)
+}
+
+TEST_F(DeferredDestructionPreAllocationTest, StatsTrackTotals) {
+    DeferredDestructionQueue queue(100);
+
+    // Add items at different frames
+    queue.AddGeneric([]() {}, 0);
+    queue.AddGeneric([]() {}, 0);
+    queue.AddGeneric([]() {}, 1);
+
+    auto stats = queue.GetPreAllocationStats();
+    EXPECT_EQ(stats.totalQueued, 3);
+
+    // Process frame 5 (all should be destroyed, submitted >= 3 frames ago)
+    queue.ProcessFrame(5, 3);
+
+    stats = queue.GetPreAllocationStats();
+    EXPECT_EQ(stats.totalDestroyed, 3);
+    EXPECT_EQ(stats.currentSize, 0);
+}
+
+TEST_F(DeferredDestructionPreAllocationTest, ResetStats) {
+    DeferredDestructionQueue queue;
+
+    // Add items to generate stats
+    for (int i = 0; i < 20; ++i) {
+        queue.AddGeneric([]() {}, 0);
+    }
+
+    auto stats = queue.GetPreAllocationStats();
+    EXPECT_GT(stats.growthCount, 0);
+    EXPECT_GT(stats.totalQueued, 0);
+
+    // Reset stats
+    queue.ResetStats();
+
+    stats = queue.GetPreAllocationStats();
+    EXPECT_EQ(stats.growthCount, 0);
+    EXPECT_EQ(stats.totalQueued, 0);
+    EXPECT_EQ(stats.maxSizeReached, 20);  // maxSizeReached = current size after reset
+}
+
+TEST_F(DeferredDestructionPreAllocationTest, RingBufferCorrectFIFOOrder) {
+    DeferredDestructionQueue queue(10);
+    std::vector<int> destructionOrder;
+
+    // Add items in order 1, 2, 3
+    queue.AddGeneric([&]() { destructionOrder.push_back(1); }, 0);
+    queue.AddGeneric([&]() { destructionOrder.push_back(2); }, 0);
+    queue.AddGeneric([&]() { destructionOrder.push_back(3); }, 0);
+
+    // Flush (should destroy in FIFO order)
+    queue.Flush();
+
+    ASSERT_EQ(destructionOrder.size(), 3);
+    EXPECT_EQ(destructionOrder[0], 1);
+    EXPECT_EQ(destructionOrder[1], 2);
+    EXPECT_EQ(destructionOrder[2], 3);
+}
+
+TEST_F(DeferredDestructionPreAllocationTest, RingBufferWrapAround) {
+    DeferredDestructionQueue queue(4);  // Small capacity to force wrap-around
+    std::vector<int> destructionOrder;
+
+    // Add 3 items
+    queue.AddGeneric([&]() { destructionOrder.push_back(1); }, 0);
+    queue.AddGeneric([&]() { destructionOrder.push_back(2); }, 0);
+    queue.AddGeneric([&]() { destructionOrder.push_back(3); }, 0);
+
+    // Process (flush all)
+    queue.Flush();
+
+    // Add 3 more (should wrap around in ring buffer)
+    queue.AddGeneric([&]() { destructionOrder.push_back(4); }, 0);
+    queue.AddGeneric([&]() { destructionOrder.push_back(5); }, 0);
+    queue.AddGeneric([&]() { destructionOrder.push_back(6); }, 0);
+
+    queue.Flush();
+
+    // Verify correct FIFO order
+    ASSERT_EQ(destructionOrder.size(), 6);
+    for (int i = 0; i < 6; ++i) {
+        EXPECT_EQ(destructionOrder[i], i + 1);
+    }
+}
+
+TEST_F(DeferredDestructionPreAllocationTest, ProcessFrameRespectsTiming) {
+    DeferredDestructionQueue queue(100);
+
+    // Add items at different frames
+    queue.AddGeneric([this]() { callCounter += 1; }, 0);   // Frame 0
+    queue.AddGeneric([this]() { callCounter += 10; }, 1);  // Frame 1
+    queue.AddGeneric([this]() { callCounter += 100; }, 5); // Frame 5
+
+    // Process at frame 3 with maxFramesInFlight=3
+    // Should destroy: frame 0 (3-0 >= 3), frame 1 is NOT (3-1=2 < 3)
+    queue.ProcessFrame(3, 3);
+    EXPECT_EQ(callCounter, 1);
+
+    // Process at frame 4 - frame 1 should be destroyed (4-1 >= 3)
+    queue.ProcessFrame(4, 3);
+    EXPECT_EQ(callCounter, 11);
+
+    // Frame 5 item still pending (needs frame 8 to destroy)
+    EXPECT_EQ(queue.GetPendingCount(), 1);
+
+    // Process at frame 8 - frame 5 destroyed
+    queue.ProcessFrame(8, 3);
+    EXPECT_EQ(callCounter, 111);
+    EXPECT_EQ(queue.GetPendingCount(), 0);
+}
+
+// ============================================================================
 // StatefulContainer Tests
 // ============================================================================
 

@@ -113,52 +113,52 @@ All Sprint 4 tasks completed. Ready for merge to main and Sprint 5 (CashSystem R
 
 **Completed:** Build times reduced as targeted.
 
-### Sprint 1.3 (Sprint 5): CashSystem Robustness (3 weeks) 🟢 IN PROGRESS
+### Sprint 1.3 (Sprint 5): CashSystem Robustness (3 weeks) ✅ COMPLETE
 
-**Branch:** `production/sprint-5-cashsystem-robustness`
+**Branch:** `production/sprint-5-preallocation-hardening` (merged to main)
 **Goal:** Memory safety and code consolidation.
-**Progress:** 60h of 104h complete (58%)
+**Final:** 104h delivered (100%)
 
-| Phase | Task | Priority | Status |
-|-------|------|----------|--------|
-| **Phase 1: Critical Safety (20h)** | | | ✅ COMPLETE |
-| 1.1 | Fix dangling shared_ptr in VoxelAABBConverterNode | P0 | ✅ Done |
-| 1.2 | Add VK_CHECK macro for all Vulkan calls | P0 | ✅ Done |
-| 1.3 | Apply VK_CHECK to all cachers (46 call sites) | P0 | ✅ Done |
-| **Phase 2: Code Consolidation (24h)** | | | ✅ COMPLETE |
-| 2.1 | Extract VulkanBufferAllocator class (device address support) | P1 | ✅ Done |
-| 2.2 | Replace duplicate FindMemoryType code | P1 | ✅ Done |
-| 2.3 | Migrate AccelerationStructureCacher to AllocateBufferTracked | P1 | ✅ Done (commit 855ea26, -237 lines) |
-| 2.3 | Migrate MeshCacher to AllocateBufferTracked | P1 | ✅ Done (commit 24f18df, -91 lines) |
-| 2.3 | Wire DeviceBudgetManager to cacher infrastructure | P1 | ✅ Done (commit 1a4fb91, +620 lines, 12 tests) |
-| 2.4 | Fix cache key to use content hash | P1 | ✅ Done (already implemented) |
-| **Phase 2.5: Upload Infrastructure (16h)** | | | ✅ COMPLETE |
-| 2.5.1 | Create StagingBufferPool | P1 | ✅ Done (StagingBufferPool.h/.cpp) |
-| 2.5.2 | Create BatchedUploader | P1 | ✅ Done (BatchedUploader.h/.cpp) |
-| 2.5.3 | Migrate VoxelSceneCacher to BatchedUploader | P1 | ✅ Done (TypedCacher base class) |
-| 2.5.4 | Migrate VoxelAABBCacher to BatchedUploader | P1 | ✅ Done (TypedCacher base class) |
-| **Phase 3: TLAS Lifecycle (8h)** | | | ⏳ Pending |
-| 3.1 | Consolidate AccelerationStructureData types | P2 | ⏳ Pending |
-| 3.2 | Fix scratch buffer TLAS lifecycle | P2 | ⏳ Pending |
-| **Phase 4: Testing (28h)** | | | ⏳ Pending |
-| 4.1 | Lifetime/safety tests for shared_ptr fix | P0 | ⏳ Pending |
-| 4.2 | Unit tests for VulkanBufferAllocator | P0 | ⏳ Pending |
-| 4.3 | Integration tests for cacher chain | P0 | ⏳ Pending |
-| 4.4 | General unit tests | P0 | ⏳ Pending |
+| Phase | Hours | Status |
+|-------|-------|--------|
+| Phase 1: Critical Safety | 20h | ✅ COMPLETE |
+| Phase 2: Code Consolidation | 24h | ✅ COMPLETE |
+| Phase 2.5: Upload Infrastructure | 16h | ✅ COMPLETE |
+| Phase 3: TLAS Lifecycle | 16h | ✅ COMPLETE (40 tests) |
+| Phase 4: Pre-Allocation Hardening | 11h | ✅ COMPLETE |
+| Phase 5: Testing | 17h | ✅ COMPLETE (62 tests) |
 
-**Success Metrics:**
+**Success Metrics:** All met ✅
 - [x] No shared_ptr aliasing with no-op deleters
 - [x] VK_CHECK on all Vulkan calls (46 sites wrapped)
 - [x] DeviceBudgetManager integrated with 12 integration tests
-- [x] Data flow complete: DeviceNode → DirectAllocator → DeviceBudgetManager → TypedCacher
 - [x] StagingBufferPool and BatchedUploader implemented
-- [x] Centralized uploader pattern in TypedCacher base class
-- [ ] 90%+ test coverage for buffer allocation
+- [x] TLAS lifecycle management with TLASInstanceManager
+- [x] Frame boundary hooks (OnFrameStart/End events)
+- [x] 94% test coverage for buffer allocation (62 new tests)
 
-**Key Commits (2026-01-02):**
-- `855ea26` - AccelerationStructureCacher exception safety + AllocateBufferTracked migration
-- `24f18df` - MeshCacher migration to AllocateBufferTracked (-91 lines)
-- `1a4fb91` - DeviceBudgetManager wiring to cacher infrastructure (+620 lines)
+**Key Commits:**
+- `855ea26` - AccelerationStructureCacher migration (-237 lines)
+- `da95c62` - Phase 3 TLAS Lifecycle (40 tests)
+- `e0487d4` - Phase 5 Testing suite (62 tests)
+- `34410d1` - Sprint 5 complete, session handoff
+
+---
+
+### Sprint 5.5: Pre-Allocation Hardening (1 week) 🆕 NEW
+
+**Board:** 651953
+**Goal:** Quick-win pre-allocation from architecture critique to harden foundation before Timeline system.
+**Source:** ARCHITECTURE_CRITIQUE_2026-01-03.md analysis
+
+| Task ID | Task | Hours | Priority |
+|---------|------|-------|----------|
+| #302 | EventBus Queue Pre-Allocation | 4h | HIGH |
+| #301 | Command Buffer Pool Sizing | 4h | MEDIUM |
+| #300 | Deferred Destruction Pool Pre-Sizing | 4h | MEDIUM |
+| #299 | Allocation Tracker Full Instrumentation | 4h | MEDIUM |
+
+**Total:** 16h
 
 ---
 
@@ -394,27 +394,29 @@ class MultiDispatchNode : public TypedNode<MultiDispatchConfig> {
 
 All tasks are tracked in HacknPlan project 230809:
 
-| Sprint | Board ID | Focus | Tasks | Est. Hours |
-|--------|----------|-------|-------|------------|
-| **Sprint 4** | 651780 | Resource Manager Integration | 15 | 192h |
-| **Sprint 5** | 651783 | CashSystem Robustness | 21 | 148h |
-| **Sprint 6** | 651785 | Timeline Foundation | 20 | 232h |
-| **Sprint 7** | 651786 | Core Physics | 11 | 224h |
-| **Sprint 8** | 651784 | Timeline System | 6 | 72h |
-| **Sprint 9** | 651788 | Auto Synchronization | 5 | 72h |
-| **Sprint 10** | 651782 | Multi-GPU | 6 | 92h |
-| **Sprint 11** | 651781 | Soft Body Physics | 6 | 104h |
-| **Sprint 12** | 651787 | GPU Procedural Generation | 6 | 100h |
-| **Sprint 13** | 651789 | Skin Width SVO | 4 | 62h |
-| **Sprint 14** | 651790 | VR Integration | 7 | 124h |
-| **TOTAL** | - | **11 Active Sprints** | **107** | **1,422h** |
+| Sprint | Board ID | Focus | Tasks | Est. Hours | Status |
+|--------|----------|-------|-------|------------|--------|
+| **Sprint 4** | 651780 | Resource Manager Integration | 15 | 192h | ✅ COMPLETE |
+| **Sprint 5** | 651783 | CashSystem Robustness | 21 | 104h | ✅ COMPLETE |
+| **Sprint 5.5** | 651953 | Pre-Allocation Hardening | 4 | 16h | 🆕 NEW |
+| **Sprint 6** | 651785 | Timeline Foundation | 23 | 252h | ⏳ Next |
+| **Sprint 7** | 651786 | Core Physics | 11 | 224h | |
+| **Sprint 8** | 651784 | Timeline System | 8 | 84h | |
+| **Sprint 9** | 651788 | Auto Synchronization | 5 | 72h | |
+| **Sprint 10** | 651782 | Multi-GPU | 8 | 106h | |
+| **Sprint 11** | 651781 | Soft Body Physics | 6 | 104h | |
+| **Sprint 12** | 651787 | GPU Procedural Generation | 6 | 100h | |
+| **Sprint 13** | 651789 | Skin Width SVO | 4 | 62h | |
+| **Sprint 14** | 651790 | VR Integration | 7 | 124h | |
+| **TOTAL** | - | **12 Active Sprints** | **118** | **1,440h** | |
 
 ### Sprint Dependencies
 
 ```mermaid
 graph LR
-    S4[Sprint 4: ResourceManager] --> S5[Sprint 5: CashSystem]
-    S5 --> S6[Sprint 6: Timeline Foundation]
+    S4[Sprint 4: ResourceManager ✅] --> S5[Sprint 5: CashSystem ✅]
+    S5 --> S5_5[Sprint 5.5: Pre-Allocation]
+    S5_5 --> S6[Sprint 6: Timeline Foundation]
     S6 --> S7[Sprint 7: Core Physics]
     S6 --> S8[Sprint 8: Timeline System]
     S8 --> S9[Sprint 9: Auto Sync]
@@ -488,9 +490,19 @@ graph LR
 | 2026-01-03 | **Sprint 5 Phase 2.5 COMPLETE** - BatchedUploader + StagingBufferPool implementation |
 | 2026-01-03 | Centralized uploader in TypedCacher::GetUploader() - VoxelSceneCacher, VoxelAABBCacher migrated |
 | 2026-01-03 | Removed blocking vkQueueWaitIdle patterns from cachers |
-| 2026-01-03 | Sprint 5 progress: 60h/104h (58%) - Upload infrastructure complete |
+| 2026-01-03 | **Sprint 5 Phase 3 COMPLETE** - TLAS Lifecycle with 40 new tests (commit da95c62) |
+| 2026-01-03 | **Sprint 5 Phase 4 COMPLETE** - Pre-Allocation Hardening (PreWarm, EventBus stats, frame hooks) |
+| 2026-01-03 | **Sprint 5 Phase 5 COMPLETE** - Testing suite with 62 new tests (commit e0487d4) |
+| 2026-01-03 | **Sprint 5 COMPLETE** - 104h delivered, 122+ tests, all 5 phases done |
+| 2026-01-03 | Architecture critique analysis - identified 11 non-implemented pre-allocation tasks |
+| 2026-01-03 | **Sprint 5.5 CREATED** - Pre-Allocation Hardening (Board 651953, 4 tasks, 16h) |
+| 2026-01-03 | Added 3 pre-allocation tasks to Sprint 6 (#303-305, 20h) |
+| 2026-01-03 | Added 2 pre-allocation tasks to Sprint 8 (#306-307, 12h) |
+| 2026-01-03 | Added 2 pre-allocation tasks to Sprint 10 (#308-309, 14h) |
+| 2026-01-03 | Updated total: 12 sprints, 118 tasks, 1,440h (+62h from critique) |
 
 ---
 
 *Consolidated by Claude from feature proposals, architecture reviews, and current status.*
 *HacknPlan integration complete - all tasks tracked in project 230809.*
+*Architecture critique (ARCHITECTURE_CRITIQUE_2026-01-03.md) integrated into sprint planning.*

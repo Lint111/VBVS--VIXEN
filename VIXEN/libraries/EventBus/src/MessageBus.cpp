@@ -10,6 +10,8 @@ namespace Vixen::EventBus {
 
 MessageBus::MessageBus() {
     UpdateWarningThreshold();
+    // Pre-allocate default capacity (can be increased via Reserve())
+    messageQueue_.Reserve(expectedCapacity);
 }
 
 MessageBus::~MessageBus() = default;
@@ -121,8 +123,8 @@ void MessageBus::Publish(std::unique_ptr<BaseEventMessage> message) {
     size_t currentSize = 0;
     {
         std::lock_guard<std::mutex> lock(queueMutex);
-        messageQueue.push(std::move(message));
-        currentSize = messageQueue.size();
+        messageQueue_.Push(std::move(message));
+        currentSize = messageQueue_.Size();
     }
 
     {
@@ -130,7 +132,7 @@ void MessageBus::Publish(std::unique_ptr<BaseEventMessage> message) {
         stats.totalPublished++;
         stats.currentQueueSize = currentSize;
 
-        // Track high-water mark
+        // Track high-water mark (also tracked in PreAllocatedQueue)
         if (currentSize > stats.maxQueueSizeReached) {
             stats.maxQueueSizeReached = currentSize;
         }
@@ -154,17 +156,17 @@ void MessageBus::PublishImmediate(const BaseEventMessage& message) {
 
 void MessageBus::ProcessMessages() {
     // Swap queue to minimize lock time
-    std::queue<std::unique_ptr<BaseEventMessage>> localQueue;
+    PreAllocatedQueue<std::unique_ptr<BaseEventMessage>> localQueue;
     {
         std::lock_guard<std::mutex> lock(queueMutex);
-        localQueue.swap(messageQueue);
+        localQueue.Swap(messageQueue_);
     }
 
     size_t processed = 0;
 
     // Process all messages
-    while (!localQueue.empty()) {
-        auto& message = localQueue.front();
+    while (!localQueue.Empty()) {
+        auto& message = localQueue.Front();
 
         if (loggingEnabled) {
             std::cout << "[MessageBus] Processing message type " << message->type
@@ -173,7 +175,7 @@ void MessageBus::ProcessMessages() {
         }
 
         DispatchMessage(*message);
-        localQueue.pop();
+        localQueue.Pop();
         processed++;
     }
 
@@ -255,9 +257,9 @@ void MessageBus::DispatchMessage(const BaseEventMessage& message) {
 
 void MessageBus::ClearQueue() {
     std::lock_guard<std::mutex> lock(queueMutex);
-    
-    size_t discarded = messageQueue.size();
-    messageQueue = {};
+
+    size_t discarded = messageQueue_.Size();
+    messageQueue_.Clear();
 
     if (loggingEnabled && discarded > 0) {
         std::cout << "[MessageBus] Cleared " << discarded << " queued messages\n";
@@ -271,7 +273,7 @@ void MessageBus::ClearQueue() {
 
 size_t MessageBus::GetQueuedCount() const {
     std::lock_guard<std::mutex> lock(queueMutex);
-    return messageQueue.size();
+    return messageQueue_.Size();
 }
 
 MessageBus::Stats MessageBus::GetStats() const {
@@ -335,6 +337,36 @@ void MessageBus::CheckCapacityWarning(size_t currentSize) {
                   << " warnings this session, max reached: "
                   << stats.maxQueueSizeReached << ")\n";
     }
+}
+
+// ============================================================================
+// Pre-Allocation (Sprint 5.5)
+// ============================================================================
+
+void MessageBus::Reserve(size_t capacity) {
+    std::lock_guard<std::mutex> lock(queueMutex);
+    messageQueue_.Reserve(capacity);
+
+    // Also update expected capacity for warning thresholds
+    if (capacity > expectedCapacity) {
+        expectedCapacity = capacity;
+        UpdateWarningThreshold();
+    }
+
+    if (loggingEnabled) {
+        std::cout << "[MessageBus] Queue pre-allocated for " << capacity
+                  << " messages (actual capacity: " << messageQueue_.Capacity() << ")\n";
+    }
+}
+
+size_t MessageBus::GetQueueCapacity() const {
+    std::lock_guard<std::mutex> lock(queueMutex);
+    return messageQueue_.Capacity();
+}
+
+size_t MessageBus::GetQueueGrowthCount() const {
+    std::lock_guard<std::mutex> lock(queueMutex);
+    return messageQueue_.GetGrowthCount();
 }
 
 } // namespace Vixen::EventBus

@@ -158,6 +158,44 @@ public:
     size_t GetInputMemoryFootprint() const { return inputMemoryFootprint; }
     void SetInputMemoryFootprint(size_t size) { inputMemoryFootprint = size; }
 
+    // ========================================================================
+    // Pre-Allocation Requirements (Sprint 5.5)
+    // ========================================================================
+
+    /**
+     * @brief Pre-allocation requirements for zero-allocation runtime
+     *
+     * Nodes return this from GetPreAllocationRequirements() during graph
+     * compilation. The graph aggregates requirements and pre-allocates
+     * pools to prevent runtime allocations.
+     */
+    struct PreAllocationRequirements {
+        uint32_t commandBufferCount = 0;    ///< Command buffers needed from pool
+        uint32_t descriptorSetCount = 0;    ///< Descriptor sets needed (future)
+        size_t stagingBufferBytes = 0;      ///< Staging buffer space needed (future)
+
+        PreAllocationRequirements& operator+=(const PreAllocationRequirements& other) {
+            commandBufferCount += other.commandBufferCount;
+            descriptorSetCount += other.descriptorSetCount;
+            stagingBufferBytes += other.stagingBufferBytes;
+            return *this;
+        }
+    };
+
+    /**
+     * @brief Get pre-allocation requirements for this node
+     *
+     * Override in nodes that allocate Vulkan resources at runtime.
+     * Called during graph compilation to determine pool sizes.
+     *
+     * Default: Returns zero requirements (no pre-allocation needed).
+     *
+     * @return Pre-allocation requirements for this node instance
+     */
+    virtual PreAllocationRequirements GetPreAllocationRequirements() const {
+        return PreAllocationRequirements{};
+    }
+
     // Cleanup registration helper
     /**
      * @brief Register cleanup with automatic dependency resolution
