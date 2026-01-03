@@ -4,6 +4,8 @@
 #include "Core/RenderGraph.h"
 #include "MainCacher.h"
 #include "AccelerationStructureCacher.h"
+#include "DynamicTLAS.h"
+#include "TLASInstanceManager.h"
 #include <cstring>
 
 namespace Vixen::RenderGraph {
@@ -43,6 +45,8 @@ void AccelerationStructureNode::SetupImpl(TypedSetupContext& ctx) {
     allowCompaction_ = GetParameterValue<bool>(
         AccelerationStructureNodeConfig::PARAM_ALLOW_COMPACTION, false);
 
+    // Note: BUILD_MODE is read during CompileImpl since ctx.In() is only available there
+
     NODE_LOG_INFO("AccelerationStructure setup: preferFastTrace=" +
                   std::to_string(preferFastTrace_) +
                   ", allowUpdate=" + std::to_string(allowUpdate_) +
@@ -54,6 +58,11 @@ void AccelerationStructureNode::SetupImpl(TypedSetupContext& ctx) {
 void AccelerationStructureNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_DEBUG("[AccelerationStructureNode::CompileImpl] ENTERED");
     NODE_LOG_INFO("=== AccelerationStructureNode::CompileImpl START ===");
+
+    // Read build mode (optional input, defaults to Static)
+    // For optional slots, ctx.In() returns default-initialized value if not connected
+    buildMode_ = ctx.In(AccelerationStructureNodeConfig::BUILD_MODE);
+    NODE_LOG_INFO("Build mode: " + std::string(IsDynamicMode() ? "Dynamic" : "Static"));
 
     // Get device
     VulkanDevice* devicePtr = ctx.In(AccelerationStructureNodeConfig::VULKAN_DEVICE_IN);
@@ -98,22 +107,55 @@ void AccelerationStructureNode::CompileImpl(TypedCompileContext& ctx) {
     CreateAccelStructViaCacher(*aabbData);
     NODE_LOG_INFO("AccelerationStructureNode: AS created via cacher");
 
-    // Output the acceleration structure data
+    // Output the acceleration structure data (BLAS always valid from cacher)
     ctx.Out(AccelerationStructureNodeConfig::ACCELERATION_STRUCTURE_DATA, &accelData_);
-    // Output TLAS handle separately for variadic descriptor wiring
-    ctx.Out(AccelerationStructureNodeConfig::TLAS_HANDLE, accelData_.tlas);
+
+    // For static mode: output TLAS handle from cached data
+    // For dynamic mode: TLAS handle is per-frame (output during Execute)
+    if (!IsDynamicMode()) {
+        ctx.Out(AccelerationStructureNodeConfig::TLAS_HANDLE, accelData_.tlas);
+        NODE_LOG_INFO("Static mode: TLAS handle output during Compile");
+    } else {
+        // Initialize DynamicTLAS for per-frame rebuilds
+        // For now, use a default imageCount of 3 (typical swapchain size)
+        // TODO: Get imageCount from SwapChainNode via IMAGE_INDEX slot connection metadata
+        InitializeDynamicTLAS(3);
+        NODE_LOG_INFO("Dynamic mode: DynamicTLAS initialized, TLAS handle output per-frame");
+    }
 
     NODE_LOG_INFO("=== AccelerationStructureNode::CompileImpl COMPLETE ===");
     NODE_LOG_INFO("BLAS address: 0x" + std::to_string(accelData_.blasDeviceAddress));
-    NODE_LOG_INFO("TLAS address: 0x" + std::to_string(accelData_.tlasDeviceAddress));
+    if (!IsDynamicMode()) {
+        NODE_LOG_INFO("TLAS address: 0x" + std::to_string(accelData_.tlasDeviceAddress));
+    }
     NODE_LOG_DEBUG("[AccelerationStructureNode::CompileImpl] COMPLETED");
 }
 
 void AccelerationStructureNode::ExecuteImpl(TypedExecuteContext& ctx) {
-    // Acceleration structures are static (built during compile)
-    // Just pass through the cached data pointer and TLAS handle
+    // Pass through BLAS data (always valid from cacher)
     ctx.Out(AccelerationStructureNodeConfig::ACCELERATION_STRUCTURE_DATA, &accelData_);
-    ctx.Out(AccelerationStructureNodeConfig::TLAS_HANDLE, accelData_.tlas);
+
+    if (!IsDynamicMode()) {
+        // Static mode: pass through cached TLAS handle
+        ctx.Out(AccelerationStructureNodeConfig::TLAS_HANDLE, accelData_.tlas);
+    } else {
+        // Dynamic mode: get per-frame TLAS from DynamicTLAS
+        if (!dynamicTLAS_ || !instanceManager_) {
+            NODE_LOG_ERROR("Dynamic mode but DynamicTLAS not initialized!");
+            ctx.Out(AccelerationStructureNodeConfig::TLAS_HANDLE, VK_NULL_HANDLE);
+            return;
+        }
+
+        // Get image index from input (optional, defaults to 0 if not connected)
+        uint32_t imageIndex = ctx.In(AccelerationStructureNodeConfig::IMAGE_INDEX);
+
+        // Update instances and rebuild TLAS if dirty
+        dynamicTLAS_->UpdateInstances(imageIndex, *instanceManager_);
+
+        // Get the per-frame TLAS handle
+        VkAccelerationStructureKHR tlasHandle = dynamicTLAS_->GetTLAS(imageIndex);
+        ctx.Out(AccelerationStructureNodeConfig::TLAS_HANDLE, tlasHandle);
+    }
 }
 
 void AccelerationStructureNode::CleanupImpl(TypedCleanupContext& ctx) {
@@ -124,6 +166,16 @@ void AccelerationStructureNode::CleanupImpl(TypedCleanupContext& ctx) {
 void AccelerationStructureNode::DestroyAccelerationStructures() {
     if (!vulkanDevice_) {
         return;
+    }
+
+    // Cleanup dynamic TLAS if used
+    if (dynamicTLAS_) {
+        NODE_LOG_DEBUG("AccelerationStructureNode: Cleaning up DynamicTLAS");
+        dynamicTLAS_->Cleanup();
+        dynamicTLAS_.reset();
+    }
+    if (instanceManager_) {
+        instanceManager_.reset();
     }
 
     // If using cached data, just release the shared_ptr - cacher owns the resources
@@ -213,6 +265,48 @@ void AccelerationStructureNode::CreateAccelStructViaCacher(VoxelAABBData& aabbDa
 
     NODE_LOG_INFO("AccelerationStructureNode: AS created via cacher: " +
                   std::to_string(accelData_.primitiveCount) + " primitives");
+}
+
+// ============================================================================
+// DYNAMIC TLAS INITIALIZATION
+// ============================================================================
+
+void AccelerationStructureNode::InitializeDynamicTLAS(uint32_t imageCount) {
+    if (!vulkanDevice_) {
+        throw std::runtime_error("[AccelerationStructureNode] Device not set for dynamic TLAS");
+    }
+
+    // Create instance manager
+    instanceManager_ = std::make_unique<CashSystem::TLASInstanceManager>();
+
+    // Add the BLAS from the cached acceleration structure as default instance
+    if (cachedAccelStruct_ && cachedAccelStruct_->accelStruct.IsValid()) {
+        CashSystem::TLASInstanceManager::Instance instance{};
+        instance.blasKey = 0;  // Default key for the primary BLAS
+        instance.blasAddress = accelData_.blasDeviceAddress;
+        instance.transform = glm::mat3x4(1.0f);  // Identity transform
+        instance.customIndex = 0;
+        instance.mask = 0xFF;
+        instance.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
+
+        instanceManager_->AddInstance(instance);
+        NODE_LOG_INFO("DynamicTLAS: Added BLAS instance with address 0x" +
+                      std::to_string(accelData_.blasDeviceAddress));
+    }
+
+    // Create and initialize DynamicTLAS
+    dynamicTLAS_ = std::make_unique<CashSystem::DynamicTLAS>();
+
+    CashSystem::DynamicTLAS::Config config{};
+    config.maxInstances = 1024;
+    config.preferFastTrace = preferFastTrace_;
+    config.allowUpdate = allowUpdate_;
+
+    if (!dynamicTLAS_->Initialize(vulkanDevice_, imageCount, config)) {
+        throw std::runtime_error("[AccelerationStructureNode] Failed to initialize DynamicTLAS");
+    }
+
+    NODE_LOG_INFO("DynamicTLAS initialized with " + std::to_string(imageCount) + " frame buffers");
 }
 
 } // namespace Vixen::RenderGraph

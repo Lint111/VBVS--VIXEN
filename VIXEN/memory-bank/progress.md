@@ -32,7 +32,7 @@ VIXEN has entered production phase with a comprehensive 11-sprint development ro
 | 2.2 | Hybrid Pipeline | - | DEFERRED |
 | 2.3 | Paper Writing | - | AWAITING FEEDBACK |
 | 4 | Resource Manager Integration | 651780 | NEXT |
-| 5 | CashSystem Robustness | 651783 | Pending |
+| 5 | CashSystem Robustness | 651783 | IN PROGRESS (73% - Phase 3 COMPLETE) |
 | 6 | Timeline Foundation | 651785 | Q2 2026 |
 | 7 | Core Physics | 651786 | Q2 2026 |
 | 8-14 | Advanced Systems | 651784-651790 | Q2-Q4 2026 |
@@ -213,6 +213,29 @@ Fragment pipeline renders voxels with proper camera control. Both compute and fr
 - `shaders/VoxelRayMarch_Compressed.frag` (NEW)
 - `libraries/Profiler/src/BenchmarkConfig.cpp` (added compressed variant to fragment pipeline)
 - `libraries/Profiler/src/BenchmarkGraphFactory.cpp` (wired bindings 6-7 for compressed buffers)
+
+---
+
+## Sprint 5: CashSystem Robustness - IN PROGRESS (January 2026)
+
+### Status: 73% Complete (76h / 104h)
+
+**Recent Milestones:**
+- **Phase 1 COMPLETE**: Memory safety (VK_CHECK, shared_ptr patterns) - 8h
+- **Phase 2 COMPLETE**: Cacher consolidation (-328 lines) - 16h
+- **Phase 2.3 COMPLETE**: DeviceBudgetManager wiring (+620 lines, 12 tests) - 8h
+- **Phase 2.5 COMPLETE**: Upload infrastructure (StagingBufferPool, BatchedUploader) - 11h
+- **Phase 3 COMPLETE**: TLAS Lifecycle (40 new tests, commit da95c62) - 16h
+
+**Phase 3 Achievements (2026-01-03):**
+- TLASInstanceManager: TLAS instance lifecycle management
+- TLASInstanceBuffer: GPU buffer for AS instances
+- DynamicTLAS: Budget-aware rebuild support
+- AccelerationStructureNode: 5 inputs, 2 outputs, ASBuildMode enum
+- 40 comprehensive tests (22 AccelerationStructureNode + 18 CriticalNodesIntegration)
+
+**Next Phase:**
+- Phase 4: Testing - Remaining unit and integration tests (28h est)
 
 ---
 

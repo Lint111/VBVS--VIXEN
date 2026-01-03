@@ -147,9 +147,14 @@ namespace ShaderManagement {
     struct CompiledProgram;
 }
 
+namespace CashSystem {
+    enum class ASBuildMode : uint8_t;
+}
+
 // Register types from other namespaces (must be at global scope relative to IsRegisteredType)
 template<> struct Vixen::RenderGraph::IsRegisteredType<::ShaderManagement::ShaderDataBundle> : std::true_type {};
 template<> struct Vixen::RenderGraph::IsRegisteredType<::ShaderManagement::CompiledProgram> : std::true_type {};
+template<> struct Vixen::RenderGraph::IsRegisteredType<::CashSystem::ASBuildMode> : std::true_type {};
 
 namespace Vixen::RenderGraph {  // Reopen namespace
 

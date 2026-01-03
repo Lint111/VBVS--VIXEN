@@ -13,6 +13,8 @@ namespace Vixen::Vulkan::Resources {
 namespace CashSystem {
     class AccelerationStructureCacher;
     struct CachedAccelerationStructure;
+    class DynamicTLAS;
+    class TLASInstanceManager;
 }
 
 namespace Vixen::RenderGraph {
@@ -101,11 +103,20 @@ private:
     CashSystem::AccelerationStructureCacher* accelStructCacher_ = nullptr;
     std::shared_ptr<CashSystem::CachedAccelerationStructure> cachedAccelStruct_;
 
+    // Dynamic TLAS mode (Sprint 5 Phase 3)
+    ASBuildMode buildMode_ = ASBuildMode::Static;
+    std::unique_ptr<CashSystem::DynamicTLAS> dynamicTLAS_;
+    std::unique_ptr<CashSystem::TLASInstanceManager> instanceManager_;
+
     // Cacher registration helper
     void RegisterAccelerationStructureCacher();
 
     // GetOrCreate helper - builds params and calls cacher
     void CreateAccelStructViaCacher(VoxelAABBData& aabbData);
+
+    // Dynamic mode helpers
+    bool IsDynamicMode() const { return buildMode_ == ASBuildMode::Dynamic; }
+    void InitializeDynamicTLAS(uint32_t imageCount);
 };
 
 } // namespace Vixen::RenderGraph

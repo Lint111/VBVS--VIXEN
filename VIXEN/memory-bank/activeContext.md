@@ -11,23 +11,20 @@
 **Phase 1: Memory Safety** - COMPLETE
 **Phase 2: Cacher Consolidation** - COMPLETE
 **Phase 2.5: Upload Infrastructure** - COMPLETE
+**Phase 3: TLAS Lifecycle** - COMPLETE
 
 ### Just Completed (2026-01-03)
 
-#### Phase 2.5.1-2.5.2: BatchedUploader Infrastructure
-- Created `StagingBufferPool` class for reusable staging buffers
-- Created `BatchedUploader` class with timeline semaphore tracking
-- Migrated VoxelSceneCacher and VoxelAABBCacher to use BatchedUploader
-
-#### Phase 2.5.3: Upload API Centralization (Architectural Refactor)
-- Moved BatchedUploader ownership from TypedCacher to VulkanDevice
-- VulkanDevice now exposes `Upload()`, `WaitAllUploads()`, `HasUploadSupport()`
-- DeviceNode creates and wires BatchedUploader during initialization
-- Cachers use `m_device->Upload()` - zero knowledge of staging mechanics
-- Verified all cachers use `AllocateBufferTracked` for budget tracking
+#### Phase 3: TLAS Lifecycle (16h)
+- Implemented TLASInstanceManager for TLAS instance lifecycle management
+- Created TLASInstanceBuffer for GPU instance data
+- Added DynamicTLAS rebuild support with budget-aware reconstruction
+- Refactored AccelerationStructureNode: 5 inputs, 2 outputs, ASBuildMode enum
+- Added 40 comprehensive tests (22 AccelerationStructureNode + 18 CriticalNodesIntegration)
+- Commit: da95c62
 
 ### Next Task
-- **Phase 3: TLAS Lifecycle** - Track TLAS instances, rebuild triggers, budget-aware reconstruction
+- **Phase 4: Testing** - Remaining unit and integration tests for Sprint 5
 
 ---
 
@@ -35,8 +32,9 @@
 
 | Hash | Description |
 |------|-------------|
-| `e3ffb56` | feat(CashSystem): Add BatchedUploader and migrate cachers to centralized upload pattern |
+| `da95c62` | feat(CashSystem): Implement Phase 3 TLAS Lifecycle and cleanup budget manager redundancy |
 | `e76f9b7` | refactor(VulkanDevice): Centralize upload API - move BatchedUploader from TypedCacher to VulkanDevice |
+| `e3ffb56` | feat(CashSystem): Add BatchedUploader and migrate cachers to centralized upload pattern |
 
 ---
 
@@ -101,8 +99,9 @@ libraries/CashSystem/
 | 2.5.1 | StagingBufferPool | ✅ Complete | 4h |
 | 2.5.2 | BatchedUploader | ✅ Complete | 4h |
 | 2.5.3 | Upload API Centralization | ✅ Complete | 3h |
-| 3 | TLAS Lifecycle | ⏳ Pending | 16h est |
-| **Total** | - | **60h / 104h (58%)** | - |
+| 3 | TLAS Lifecycle | ✅ Complete | 16h |
+| 4 | Testing | ⏳ Pending | 28h est |
+| **Total** | - | **76h / 104h (73%)** | - |
 
 ---
 

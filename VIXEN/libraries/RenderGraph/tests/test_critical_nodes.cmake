@@ -138,3 +138,21 @@ set_target_properties(test_descriptor_resource_gatherer_node PROPERTIES FOLDER "
 gtest_discover_tests(test_descriptor_resource_gatherer_node)
 
 message(STATUS "[RenderGraph Tests] Added: test_descriptor_resource_gatherer_node")
+
+# AccelerationStructureNode Tests (Phase 3.4)
+add_executable(test_acceleration_structure_node
+    Nodes/test_acceleration_structure_node.cpp
+)
+
+# Link against library targets including CashSystem for ASBuildMode
+target_link_libraries(test_acceleration_structure_node PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+if(TARGET CashSystem)
+    target_link_libraries(test_acceleration_structure_node PRIVATE CashSystem)
+endif()
+
+
+# Visual Studio solution folder organization
+set_target_properties(test_acceleration_structure_node PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_acceleration_structure_node)
+
+message(STATUS "[RenderGraph Tests] Added: test_acceleration_structure_node (Phase 3.4)")
