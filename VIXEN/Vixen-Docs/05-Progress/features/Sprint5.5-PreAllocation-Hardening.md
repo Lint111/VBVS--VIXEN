@@ -3,8 +3,8 @@ title: Sprint 5.5 - Pre-Allocation Hardening
 aliases: [Sprint 5.5, Pre-Allocation Hardening]
 tags: [sprint, pre-allocation, memory, infrastructure]
 created: 2026-01-03
-updated: 2026-01-03
-status: planned
+updated: 2026-01-04
+status: complete
 priority: P1
 hacknplan-board: 651953
 source: ARCHITECTURE_CRITIQUE_2026-01-03.md
@@ -14,7 +14,7 @@ source: ARCHITECTURE_CRITIQUE_2026-01-03.md
 
 **Board:** 651953
 **Goal:** Quick-win pre-allocation from architecture critique to harden foundation before Timeline system.
-**Status:** 🆕 PLANNED
+**Status:** ✅ COMPLETE (16h/16h - 100%)
 
 ---
 
@@ -33,102 +33,95 @@ The critique identified that while Sprint 5 completed:
 - ✅ EventBus statistics logging (Phase 4.2)
 - ✅ Frame boundary hooks (Phase 4.4)
 
-The following remained unimplemented:
-- ❌ EventBus queue capacity pre-allocation
-- ❌ Command buffer pool sizing
-- ❌ Deferred destruction pool pre-sizing
-- ❌ Full allocation tracker instrumentation
+The following were implemented in Sprint 5.5:
+- ✅ EventBus queue capacity pre-allocation (#302)
+- ✅ Command buffer pool sizing (#301)
+- ✅ Deferred destruction pool pre-sizing (#300)
+- ✅ Full allocation tracker instrumentation (#299)
 
 ---
 
 ## Tasks
 
-### #302: EventBus Queue Pre-Allocation (4h) - HIGH
+### #302: EventBus Queue Pre-Allocation (4h) ✅ COMPLETE
 
 **Problem:** EventBus event queue can reallocate during frame execution.
 
-**Solution:**
-```cpp
-class EventBus {
-    std::vector<Event> eventQueue;
-    static constexpr size_t INITIAL_CAPACITY = 1024;
+**Solution Implemented:**
+- Created `PreAllocatedQueue<T>` ring buffer template (`PreAllocatedQueue.h`)
+- Replaced `std::queue` with pre-allocatable queue in MessageBus
+- Auto-reserves based on node count heuristic (nodes × 3)
+- Growth fallback with stats tracking for capacity tuning
 
-    EventBus(size_t expectedEventRate = INITIAL_CAPACITY) {
-        eventQueue.reserve(expectedEventRate);
-    }
-};
-
-// In RenderGraph::Setup()
-size_t expectedEvents = nodes.size() * 3;  // Heuristic
-eventBus->PreAllocate(expectedEvents);
-```
-
-**Files to Change:**
+**Files Changed:**
+- `libraries/EventBus/include/PreAllocatedQueue.h` (NEW)
 - `libraries/EventBus/include/MessageBus.h`
+- `libraries/EventBus/src/MessageBus.cpp`
 - `libraries/RenderGraph/src/Core/RenderGraph.cpp`
 
 ---
 
-### #301: Command Buffer Pool Sizing (4h) - MEDIUM
+### #301: Command Buffer Pool Sizing (4h) ✅ COMPLETE
 
 **Problem:** Command buffers allocated per-frame without pre-sizing.
 
-**Solution:**
-- Add `GetCommandBufferEstimate()` to nodes
-- Pre-size command buffer pool in CommandPoolNode based on node count
+**Solution Implemented:**
+- Added `PreAllocationRequirements` struct to `NodeInstance`
+- Added `PreAllocateCommandBuffers()` to `CommandPoolNode`
+- Added `AcquireCommandBuffer()` / `ReleaseAllCommandBuffers()` pool API
+- Growth fallback with warning logging for capacity tuning
 
-**Files to Change:**
+**Files Changed:**
 - `libraries/RenderGraph/include/Core/NodeInstance.h`
+- `libraries/RenderGraph/include/Nodes/CommandPoolNode.h`
 - `libraries/RenderGraph/src/Nodes/CommandPoolNode.cpp`
-
----
-
-### #300: Deferred Destruction Pool Pre-Sizing (4h) - MEDIUM
-
-**Problem:** DeferredDestruction queue grows dynamically during cleanup.
-
-**Solution:**
-```cpp
-class DeferredDestruction {
-    std::vector<std::unique_ptr<Resource>> slots;
-
-    void PreReserve(size_t maxResourcesPerFrame) {
-        slots.reserve(maxResourcesPerFrame);
-    }
-};
-
-// In RenderGraph::Setup()
-size_t maxResources = nodes.size() * 5;  // Heuristic
-deferredDestruction.PreReserve(maxResources);
-```
-
-**Files to Change:**
-- `libraries/ResourceManagement/include/Lifetime/DeferredDestruction.h`
 - `libraries/RenderGraph/src/Core/RenderGraph.cpp`
 
 ---
 
-### #299: Allocation Tracker Full Instrumentation (4h) - MEDIUM
+### #300: Deferred Destruction Pool Pre-Sizing (4h) ✅ COMPLETE
+
+**Problem:** DeferredDestruction queue grows dynamically during cleanup.
+
+**Solution Implemented:**
+- Converted `std::queue<PendingDestruction>` to pre-allocatable ring buffer
+- Added `PreReserve(capacity)` for setup-time allocation
+- Fixed unsigned underflow bug in `ProcessFrame()`
+- Added `PreAllocationStats` for capacity tuning (capacity, growthCount, maxSizeReached)
+- Heuristic: nodeCount × 5 resources × 3 frames in flight
+
+**Files Changed:**
+- `libraries/ResourceManagement/include/Lifetime/DeferredDestruction.h`
+- `libraries/RenderGraph/src/Core/RenderGraph.cpp`
+
+**Tests Added:** 12 new tests for pre-allocation functionality
+
+---
+
+### #299: Allocation Tracker Full Instrumentation (4h) ✅ COMPLETE
 
 **Problem:** Allocation tracking design doc exists (Phase 4.3) but not fully implemented.
 
-**Solution:**
-- Add `AllocationSnapshot` struct to `IMemoryAllocator`
-- Log deltas between Setup and Execute phases
-- Warn if runtime allocations exceed threshold
+**Solution Implemented:**
+- Frame tracking already existed (`OnFrameStart`/`OnFrameEnd`, `GetLastFrameDelta`)
+- Added `exceededThreshold` flag to `FrameAllocationDelta`
+- Added `warningCallback` to `DeviceBudgetManager::Config`
+- Replaced `std::cerr` with callback-based warning mechanism (logging rule fix)
 
-**Files to Change:**
-- `libraries/ResourceManagement/include/Memory/IMemoryAllocator.h`
+**Files Changed:**
+- `libraries/ResourceManagement/include/Memory/DeviceBudgetManager.h`
 - `libraries/ResourceManagement/src/Memory/DeviceBudgetManager.cpp`
+
+**Tests Added:** 7 new tests for frame allocation tracking
 
 ---
 
 ## Success Metrics
 
-- [ ] EventBus handles 1K+ events without reallocation
-- [ ] Command buffer pool pre-sized to node count
-- [ ] Deferred destruction queue bounded
-- [ ] Allocation delta logged between Setup and Execute
+- [x] EventBus handles 1K+ events without reallocation (PreAllocatedQueue)
+- [x] Command buffer pool pre-sized to node count (PreAllocateCommandBuffers)
+- [x] Deferred destruction queue bounded (PreReserve ring buffer)
+- [x] Allocation delta logged between Setup and Execute (warningCallback)
 
 ---
 
@@ -154,3 +147,13 @@ deferredDestruction.PreReserve(maxResources);
 |------|--------|
 | 2026-01-03 | Sprint created from architecture critique analysis |
 | 2026-01-03 | 4 tasks created in HacknPlan (Board 651953) |
+| 2026-01-04 | Tasks #302, #301, #300 complete - pre-allocation infrastructure |
+| 2026-01-04 | Task #299 complete - allocation tracker with callback warnings |
+| 2026-01-04 | Sprint 5.5 COMPLETE: 16h/16h (100%), 19 new tests |
+
+## Commits
+
+| Hash | Description |
+|------|-------------|
+| `3fdb9a7` | feat(Sprint5.5): Pre-allocation hardening - Tasks #300, #301, #302 |
+| `e01d8a2` | feat(Sprint5.5): Allocation tracker full instrumentation - Task #299 |

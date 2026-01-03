@@ -145,20 +145,41 @@ All Sprint 4 tasks completed. Ready for merge to main and Sprint 5 (CashSystem R
 
 ---
 
-### Sprint 5.5: Pre-Allocation Hardening (1 week) 🆕 NEW
+### Sprint 5.5: Pre-Allocation Hardening (1 week) ✅ COMPLETE
 
 **Board:** 651953
 **Goal:** Quick-win pre-allocation from architecture critique to harden foundation before Timeline system.
 **Source:** ARCHITECTURE_CRITIQUE_2026-01-03.md analysis
+**Completed:** 2026-01-04
 
-| Task ID | Task | Hours | Priority |
-|---------|------|-------|----------|
-| #302 | EventBus Queue Pre-Allocation | 4h | HIGH |
-| #301 | Command Buffer Pool Sizing | 4h | MEDIUM |
-| #300 | Deferred Destruction Pool Pre-Sizing | 4h | MEDIUM |
-| #299 | Allocation Tracker Full Instrumentation | 4h | MEDIUM |
+| Task ID | Task | Hours | Status |
+|---------|------|-------|--------|
+| #302 | EventBus Queue Pre-Allocation | 4h | ✅ COMPLETE |
+| #301 | Command Buffer Pool Sizing | 4h | ✅ COMPLETE |
+| #300 | Deferred Destruction Pool Pre-Sizing | 4h | ✅ COMPLETE |
+| #299 | Allocation Tracker Full Instrumentation | 4h | ✅ COMPLETE |
 
-**Total:** 16h
+**Total:** 16h/16h (100%)
+
+**Key Deliverables:**
+- `PreAllocatedQueue<T>` ring buffer for EventBus
+- `CommandPoolNode` pre-allocation pool API
+- `DeferredDestructionQueue` ring buffer with stats
+- `warningCallback` for allocation threshold alerts
+- 19 new tests
+
+**Commits:**
+- `3fdb9a7` - Tasks #300, #301, #302
+- `e01d8a2` - Task #299
+
+---
+
+### Sprint 6: Timeline Foundation (NEXT)
+
+**Goal:** Build foundational Timeline system for parallel execution.
+**Status:** 🆕 PLANNING
+
+See [[Sprint6-Timeline-Foundation]] for detailed planning.
 
 ---
 
