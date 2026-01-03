@@ -2,6 +2,7 @@
 #include "VoxelAABBCacher.h"
 #include "VulkanDevice.h"
 #include "error/VulkanError.h"
+#include "Memory/BatchedUploader.h"  // For InvalidUploadHandle
 
 #include <cstring>
 #include <stdexcept>
@@ -75,8 +76,7 @@ void VoxelAABBCacher::Cleanup() {
         }
     }
 
-    // Release BatchedUploader (handles its own cleanup)
-    ReleaseUploader();
+    // Note: BatchedUploader now owned by VulkanDevice - no cleanup needed here
 
     // Clear entries
     Clear();
@@ -286,17 +286,16 @@ void VoxelAABBCacher::UploadToGPU(
     aabbData.materialIdAllocation = *materialAlloc;
     aabbData.brickMappingAllocation = *mappingAlloc;
 
-    // Upload buffer data via BatchedUploader (Sprint 5 Phase 2.5.2)
-    // Get or create uploader from base class
-    auto* uploader = GetUploader(8);  // Typically 3 buffers
-    if (!uploader) {
-        throw std::runtime_error("[VoxelAABBCacher::UploadToGPU] DeviceBudgetManager not configured - required for BatchedUploader");
+    // Upload buffer data via VulkanDevice (Sprint 5 Phase 2.5.3)
+    // Centralized upload API hides staging/batching mechanics
+    if (!m_device->HasUploadSupport()) {
+        throw std::runtime_error("[VoxelAABBCacher::UploadToGPU] Upload infrastructure not configured");
     }
 
     // Queue all uploads (non-blocking)
-    auto handle1 = uploader->Upload(aabbs.data(), aabbSize, aabbData.aabbAllocation.buffer, 0);
-    auto handle2 = uploader->Upload(materialIds.data(), materialSize, aabbData.materialIdAllocation.buffer, 0);
-    auto handle3 = uploader->Upload(brickMappings.data(), mappingSize, aabbData.brickMappingAllocation.buffer, 0);
+    auto handle1 = m_device->Upload(aabbs.data(), aabbSize, aabbData.aabbAllocation.buffer, 0);
+    auto handle2 = m_device->Upload(materialIds.data(), materialSize, aabbData.materialIdAllocation.buffer, 0);
+    auto handle3 = m_device->Upload(brickMappings.data(), mappingSize, aabbData.brickMappingAllocation.buffer, 0);
 
     if (handle1 == ResourceManagement::InvalidUploadHandle ||
         handle2 == ResourceManagement::InvalidUploadHandle ||
@@ -305,7 +304,7 @@ void VoxelAABBCacher::UploadToGPU(
     }
 
     // Flush all queued uploads in a single batch and wait for completion
-    uploader->WaitIdle();
+    m_device->WaitAllUploads();
 
     LOG_INFO("[VoxelAABBCacher::UploadToGPU] Uploaded buffers (via BatchedUploader): " +
              std::to_string(aabbData.aabbAllocation.size / 1024.0f) + " KB AABBs, " +

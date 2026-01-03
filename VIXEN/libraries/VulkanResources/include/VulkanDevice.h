@@ -4,6 +4,15 @@
 #include "VulkanLayerAndExtension.h"
 #include "error/VulkanError.h"
 #include "CapabilityGraph.h"
+#include <memory>
+
+// Forward declarations for upload infrastructure (Sprint 5 Phase 2.5.3)
+namespace ResourceManagement {
+    class BatchedUploader;
+    class DeviceBudgetManager;
+    using UploadHandle = uint64_t;
+    // Note: InvalidUploadHandle defined in BatchedUploader.h (included in .cpp)
+}
 
 namespace Vixen::Vulkan::Resources {
 
@@ -121,6 +130,65 @@ public:
 
     std::vector<std::unique_ptr<uint8_t[]>> deviceFeatureStorage; // to hold extension feature structures
 
+    // ===== Upload Infrastructure (Sprint 5 Phase 2.5.3) =====
+
+    /**
+     * @brief Set the batched uploader for this device
+     *
+     * Called by DeviceNode during initialization. The uploader handles
+     * all CPU→GPU data transfers with automatic batching and staging buffer management.
+     *
+     * @param uploader Unique ownership of the uploader
+     */
+    void SetUploader(std::unique_ptr<ResourceManagement::BatchedUploader> uploader);
+
+    /**
+     * @brief Set the budget manager for this device
+     *
+     * Called by DeviceNode during initialization. The budget manager tracks
+     * GPU memory usage and enforces allocation quotas.
+     *
+     * @param manager Shared ownership of the budget manager
+     */
+    void SetBudgetManager(std::shared_ptr<ResourceManagement::DeviceBudgetManager> manager);
+
+    /**
+     * @brief Upload data to a GPU buffer
+     *
+     * Queues data for upload via staging buffer. Non-blocking - the upload
+     * is batched with other pending uploads for efficiency.
+     *
+     * @param data Source data pointer (copied immediately to staging)
+     * @param size Size in bytes
+     * @param dstBuffer Destination GPU buffer
+     * @param dstOffset Offset in destination buffer (default: 0)
+     * @return Upload handle for tracking completion
+     */
+    [[nodiscard]] ResourceManagement::UploadHandle Upload(
+        const void* data,
+        VkDeviceSize size,
+        VkBuffer dstBuffer,
+        VkDeviceSize dstOffset = 0);
+
+    /**
+     * @brief Wait for all pending uploads to complete
+     *
+     * Flushes pending uploads and blocks until GPU finishes all transfers.
+     */
+    void WaitAllUploads();
+
+    /**
+     * @brief Get the budget manager for this device
+     * @return Budget manager pointer, or nullptr if not configured
+     */
+    ResourceManagement::DeviceBudgetManager* GetBudgetManager() const;
+
+    /**
+     * @brief Check if upload infrastructure is ready
+     * @return true if uploader and budget manager are configured
+     */
+    bool HasUploadSupport() const;
+
 private:
     // Helper to append a feature struct to the pNext chain
     inline void* AppendToPNext(void** chainEnd, void* featureStruct);
@@ -133,6 +201,10 @@ private:
 
     // Capability graph (initialized in CreateDevice)
     Vixen::CapabilityGraph capabilityGraph_;
+
+    // Upload infrastructure (Sprint 5 Phase 2.5.3)
+    std::unique_ptr<ResourceManagement::BatchedUploader> uploader_;
+    std::shared_ptr<ResourceManagement::DeviceBudgetManager> budgetManager_;
 
 };
 

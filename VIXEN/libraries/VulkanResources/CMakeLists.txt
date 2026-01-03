@@ -84,6 +84,7 @@ target_link_libraries(VulkanResources
         gli  # Needed for GLITextureLoader
     PRIVATE
         stb  # Needed for STBTextureLoader (header-only)
+        ResourceManagement  # Sprint 5 Phase 2.5.3: Upload infrastructure
 )
 
 # ============================================================================

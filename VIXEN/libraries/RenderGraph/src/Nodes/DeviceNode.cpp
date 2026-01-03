@@ -11,6 +11,7 @@
 #include "TextureCacher.h"
 #include "Memory/DirectAllocator.h"
 #include "Memory/DeviceBudgetManager.h"
+#include "Memory/BatchedUploader.h"
 extern std::vector<const char*> deviceExtensionNames;
 extern std::vector<const char*> layerNames;
 
@@ -487,7 +488,27 @@ void DeviceNode::CreateDeviceBudgetManager(CashSystem::DeviceRegistry& deviceReg
     // This ensures per-device budget tracking for multi-GPU scenarios
     deviceRegistry.SetBudgetManager(budgetManager.get());
 
-    NODE_LOG_INFO("[DeviceNode] Budget manager connected to DeviceRegistry");
+    // Sprint 5 Phase 2.5.3: Set budget manager on VulkanDevice for centralized access
+    vulkanDevice->SetBudgetManager(budgetManager);
+
+    NODE_LOG_INFO("[DeviceNode] Budget manager connected to DeviceRegistry and VulkanDevice");
+
+    // Sprint 5 Phase 2.5.3: Create BatchedUploader and set on VulkanDevice
+    // This provides the centralized device.Upload() API for all cachers
+    ResourceManagement::BatchedUploader::Config uploaderConfig;
+    uploaderConfig.maxPendingUploads = 64;
+    uploaderConfig.flushDeadline = std::chrono::milliseconds{16};  // 1 frame at 60fps
+
+    auto uploader = std::make_unique<ResourceManagement::BatchedUploader>(
+        vulkanDevice->device,
+        vulkanDevice->queue,
+        vulkanDevice->graphicsQueueIndex,
+        budgetManager.get(),
+        uploaderConfig
+    );
+
+    vulkanDevice->SetUploader(std::move(uploader));
+    NODE_LOG_INFO("[DeviceNode] BatchedUploader created and connected to VulkanDevice");
 
     // Log initial stats
     auto stats = budgetManager->GetStats();

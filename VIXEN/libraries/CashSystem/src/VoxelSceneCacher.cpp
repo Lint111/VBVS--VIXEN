@@ -2,6 +2,7 @@
 #include "VoxelSceneCacher.h"
 #include "VulkanDevice.h"
 #include "error/VulkanError.h"
+#include "Memory/BatchedUploader.h"  // For InvalidUploadHandle
 
 // SVO library integration
 #include "LaineKarrasOctree.h"
@@ -158,8 +159,7 @@ void VoxelSceneCacher::Cleanup() {
         }
     }
 
-    // Release BatchedUploader (handles its own cleanup)
-    ReleaseUploader();
+    // Note: BatchedUploader now owned by VulkanDevice - no cleanup needed here
 
     // Clear temporary build data
     m_cachedGrid.reset();
@@ -868,17 +868,16 @@ void VoxelSceneCacher::UploadToGPU(VoxelSceneData& data) {
         }
     }
 
-    // Upload data via BatchedUploader (Sprint 5 Phase 2.5.2)
-    // Get or create uploader from base class
-    auto* uploader = GetUploader(static_cast<uint32_t>(buffers.size() + 4));
-    if (!uploader) {
-        throw std::runtime_error("[VoxelSceneCacher::UploadToGPU] DeviceBudgetManager not configured - required for BatchedUploader");
+    // Upload data via VulkanDevice (Sprint 5 Phase 2.5.3)
+    // Centralized upload API hides staging/batching mechanics
+    if (!m_device->HasUploadSupport()) {
+        throw std::runtime_error("[VoxelSceneCacher::UploadToGPU] Upload infrastructure not configured");
     }
 
     // Queue all uploads (non-blocking)
     for (size_t i = 0; i < buffers.size(); ++i) {
         if (buffers[i].cpuData && buffers[i].size > 0) {
-            auto handle = uploader->Upload(buffers[i].cpuData, buffers[i].size, *buffers[i].buffer, 0);
+            auto handle = m_device->Upload(buffers[i].cpuData, buffers[i].size, *buffers[i].buffer, 0);
             if (handle == ResourceManagement::InvalidUploadHandle) {
                 throw std::runtime_error("[VoxelSceneCacher::UploadToGPU] Failed to queue upload for buffer");
             }
@@ -886,7 +885,7 @@ void VoxelSceneCacher::UploadToGPU(VoxelSceneData& data) {
     }
 
     // Flush all queued uploads in a single batch and wait for completion
-    uploader->WaitIdle();
+    m_device->WaitAllUploads();
 
     LOG_INFO("[VoxelSceneCacher::UploadToGPU] Uploaded " + std::to_string(buffers.size()) + " buffers, total " + std::to_string(combinedMemReq.size / 1024.0f) + " KB (via BatchedUploader)");
 }

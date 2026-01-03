@@ -1,5 +1,9 @@
 #include "VulkanDevice.h"
 
+// Upload infrastructure (Sprint 5 Phase 2.5.3)
+#include "Memory/BatchedUploader.h"
+#include "Memory/DeviceBudgetManager.h"
+
 using namespace Vixen::Vulkan::Resources;
 
 VulkanDevice::VulkanDevice(VkPhysicalDevice* physicalDevice) {
@@ -340,4 +344,42 @@ RTXCapabilities VulkanDevice::CheckRTXSupport() const {
     caps.maxPrimitiveCount = accelStructProps.maxPrimitiveCount;
 
     return caps;
+}
+
+// ============================================================================
+// Upload Infrastructure (Sprint 5 Phase 2.5.3)
+// ============================================================================
+
+void VulkanDevice::SetUploader(std::unique_ptr<ResourceManagement::BatchedUploader> uploader) {
+    uploader_ = std::move(uploader);
+}
+
+void VulkanDevice::SetBudgetManager(std::shared_ptr<ResourceManagement::DeviceBudgetManager> manager) {
+    budgetManager_ = std::move(manager);
+}
+
+ResourceManagement::UploadHandle VulkanDevice::Upload(
+    const void* data,
+    VkDeviceSize size,
+    VkBuffer dstBuffer,
+    VkDeviceSize dstOffset) {
+
+    if (!uploader_) {
+        return ResourceManagement::InvalidUploadHandle;
+    }
+    return uploader_->Upload(data, size, dstBuffer, dstOffset);
+}
+
+void VulkanDevice::WaitAllUploads() {
+    if (uploader_) {
+        uploader_->WaitIdle();
+    }
+}
+
+ResourceManagement::DeviceBudgetManager* VulkanDevice::GetBudgetManager() const {
+    return budgetManager_.get();
+}
+
+bool VulkanDevice::HasUploadSupport() const {
+    return uploader_ != nullptr && budgetManager_ != nullptr;
 }

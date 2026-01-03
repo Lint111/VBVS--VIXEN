@@ -5,7 +5,8 @@
 #include "CacherAllocationHelpers.h"
 #include "Memory/DeviceBudgetManager.h"
 #include "Memory/IMemoryAllocator.h"
-#include "Memory/BatchedUploader.h"
+// Note: BatchedUploader now owned by VulkanDevice (Sprint 5 Phase 2.5.3)
+// Access via m_device->Upload() instead of GetUploader()
 
 #include <mutex>
 #include <shared_mutex>
@@ -230,11 +231,6 @@ protected:
     // Sprint 4 Phase D: Budget manager for tracked allocations
     ResourceManagement::DeviceBudgetManager* m_budgetManager = nullptr;
 
-    // Sprint 5 Phase 2.5.2: BatchedUploader for non-blocking GPU uploads
-    // Created lazily by GetUploader() when first needed (thread-safe via once_flag)
-    mutable std::unique_ptr<ResourceManagement::BatchedUploader> m_uploader;
-    mutable std::once_flag m_uploaderInitFlag;
-
     // Hook for derived classes to perform initialization
     virtual void OnInitialize() {}
 
@@ -255,54 +251,8 @@ public:
         return m_budgetManager;
     }
 
-    /**
-     * @brief Get or create BatchedUploader for GPU data uploads
-     *
-     * Lazily creates the uploader on first call (thread-safe). Requires:
-     * - DeviceBudgetManager to be configured (SetBudgetManager)
-     * - Device to be initialized (Initialize)
-     *
-     * @param maxPendingUploads Optional max pending uploads (default: 64)
-     * @return BatchedUploader pointer, or nullptr if requirements not met
-     *
-     * Usage:
-     * @code
-     * if (auto* uploader = GetUploader()) {
-     *     uploader->Upload(data, size, destBuffer);
-     *     uploader->WaitIdle();
-     * }
-     * @endcode
-     */
-    ResourceManagement::BatchedUploader* GetUploader(uint32_t maxPendingUploads = 64) const {
-        // Thread-safe lazy initialization
-        std::call_once(m_uploaderInitFlag, [this, maxPendingUploads]() {
-            if (!m_budgetManager || !m_device) {
-                return;  // Leave m_uploader as nullptr
-            }
-
-            ResourceManagement::BatchedUploader::Config config;
-            config.maxPendingUploads = maxPendingUploads;
-            config.flushDeadline = std::chrono::milliseconds{100};
-
-            m_uploader = std::make_unique<ResourceManagement::BatchedUploader>(
-                m_device->device,
-                m_device->queue,
-                m_device->graphicsQueueIndex,
-                m_budgetManager,
-                config
-            );
-        });
-        return m_uploader.get();
-    }
-
-    /**
-     * @brief Release the BatchedUploader
-     *
-     * Call during cleanup to release the uploader and its resources.
-     */
-    void ReleaseUploader() {
-        m_uploader.reset();
-    }
+    // Note: Upload API moved to VulkanDevice (Sprint 5 Phase 2.5.3)
+    // Use m_device->Upload() and m_device->WaitAllUploads() instead
 
 protected:
     /**
