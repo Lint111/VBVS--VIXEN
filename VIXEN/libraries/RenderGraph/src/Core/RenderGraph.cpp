@@ -3,6 +3,7 @@
 #include "Nodes/SwapChainNode.h"
 #include "Nodes/PresentNode.h"
 #include "VulkanDevice.h"
+#include "Message.h"  // FrameStartEvent, FrameEndEvent
 #include <algorithm>
 #include <stdexcept>
 #include <unordered_set>
@@ -590,6 +591,12 @@ VkResult RenderGraph::RenderFrame() {
         scopeManager_->BeginFrame();
     }
 
+    // Publish FrameStartEvent for allocation tracking and other frame-aware systems
+    if (messageBus) {
+        messageBus->Publish(std::make_unique<EventBus::FrameStartEvent>(0, globalFrameIndex));
+        messageBus->ProcessMessages();  // Process immediately so listeners capture state
+    }
+
     // The render graph orchestrates the frame by calling specialized nodes:
     //
     // 1. SwapChainNode - Acquires next swapchain image (internally manages semaphores)
@@ -645,6 +652,12 @@ VkResult RenderGraph::RenderFrame() {
     // ========================================================================
     // Sprint 4 Phase B: End frame scope and cleanup
     // ========================================================================
+
+    // Publish FrameEndEvent for allocation tracking and other frame-aware systems
+    if (messageBus) {
+        messageBus->Publish(std::make_unique<EventBus::FrameEndEvent>(0, globalFrameIndex));
+        messageBus->ProcessMessages();  // Process frame events before cleanup
+    }
 
     // End frame scope - releases all frame-scoped resources
     if (scopeManager_) {

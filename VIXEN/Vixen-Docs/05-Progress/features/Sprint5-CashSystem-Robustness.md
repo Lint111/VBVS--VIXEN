@@ -11,9 +11,9 @@ hacknplan-board: 651783
 
 # Sprint 5: CashSystem Robustness
 
-**Branch:** `production/sprint-5-cashsystem-robustness`
+**Branch:** `production/sprint-5-preallocation-hardening`
 **Goal:** Memory safety, error handling, and code consolidation for CashSystem.
-**Status:** 🟢 Phase 1 + Phase 2 + Phase 2.5 + Phase 3 COMPLETE (76h of 104h completed - 73%)
+**Status:** 🟢 Phase 1-4 COMPLETE (87h of 104h completed - 84%) | 🟡 Phase 5 (Testing) PENDING (17h)
 
 ---
 
@@ -410,9 +410,201 @@ class AccelerationStructureNodeConfig {
 
 ---
 
-## Phase 4: Testing (P0) - 28h
+## Phase 4: Pre-Allocation Hardening (P2) - 11h
 
-### 4.1 Lifetime/Safety Tests for shared_ptr Fix (4h)
+**Target:** Establish allocation lifecycle tracking and prevention of frame-boundary allocation surprises.
+
+### 4.1 StagingBufferPool PreWarm Integration (1h) ✅ COMPLETE
+
+**HacknPlan:** #250
+
+**Objective:** Eliminate first-frame stalls from lazy staging pool initialization.
+
+**Implementation:**
+- Added `PreWarm()` and `PreWarmDefaults()` methods to `BatchedUploader`
+- PreWarmDefaults() allocates: 4×64KB + 2×1MB + 2×16MB staging buffers
+- Called in `DeviceNode::CompileImpl()` after uploader creation
+
+**Files Changed:**
+- `libraries/ResourceManagement/include/Memory/BatchedUploader.h` (+2 methods)
+- `libraries/ResourceManagement/src/Memory/BatchedUploader.cpp` (+35 lines)
+- `libraries/RenderGraph/src/Nodes/DeviceNode.cpp` (+1 line call)
+
+**Acceptance Criteria:**
+- ✅ PreWarm called during DeviceNode compilation
+- ✅ First cacher allocation uses pre-warmed buffer
+- ✅ No allocation latency spike on frame 0
+
+---
+
+### 4.2 EventBus Statistics Logging (2h) ✅ COMPLETE
+
+**HacknPlan:** #251
+
+**Objective:** Surface queue capacity issues early via logging.
+
+**Implementation:**
+- Extended `MessageBus::Stats` struct with capacity tracking fields
+- Added `SetExpectedCapacity()` to configure warning threshold (default 1024)
+- Warning logged when queue exceeds 80% of expected capacity
+- High-water mark tracking via `maxQueueSizeReached`
+- Warning resets when queue is drained (allows repeated warnings per frame)
+
+**Files Changed:**
+- `libraries/EventBus/include/MessageBus.h` (+15 lines)
+- `libraries/EventBus/src/MessageBus.cpp` (+45 lines)
+
+**API Addition:**
+```cpp
+struct Stats {
+    // ... existing fields ...
+    size_t maxQueueSizeReached = 0;    // High-water mark
+    uint32_t capacityWarningCount = 0; // Times queue exceeded warning threshold
+};
+
+void SetExpectedCapacity(size_t capacity);  // Default 1024
+size_t GetExpectedCapacity() const;
+```
+
+**Logging:**
+```
+[WARN] MessageBus queue approaching capacity (820/1024 messages, 1 warnings this session, max reached: 820)
+```
+
+**Acceptance Criteria:**
+- ✅ MessageBus tracks high-water mark
+- ✅ Warning logged when capacity > 80%
+- ✅ Statistics accessible via GetStats()
+
+---
+
+### 4.3 Allocation Tracking Design Doc (4h) ✅ COMPLETE
+
+**HacknPlan:** #252
+
+**Objective:** Define allocation measurement strategy and scope boundaries before implementation.
+
+**Deliverable:** `Vixen-Docs/01-Architecture/AllocationTracking.md`
+
+**Document Contents:**
+1. **Measurement Strategy** - Scope (GPU only), granularity (top-level systems), frequency (per-frame)
+2. **Frame Allocation Measurement** - OnFrameStart/OnFrameEnd hooks, FrameAllocationDelta struct
+3. **Scope Boundaries** - IN: DeviceBudgetManager, StagingBufferPool, all cachers; OUT: CPU containers
+4. **Implementation Details** - DeviceBudgetManager extensions, integration points, logging format
+5. **Future Extensions** - CPU tracking, per-component budgets, predictive forecasting
+
+**Files Created:**
+- `Vixen-Docs/01-Architecture/AllocationTracking.md` (+180 lines)
+
+**Acceptance Criteria:**
+- ✅ Document defines measurement scope clearly
+- ✅ Frame allocation measurement approach documented
+- ✅ Design includes extension points for CPU tracking
+
+---
+
+### 4.4 Budget Manager Frame Boundary Hooks (4h) ✅ COMPLETE
+
+**HacknPlan:** #253
+
+**Objective:** Enable per-frame allocation measurement and reporting via event-driven architecture.
+
+**Implementation:**
+- Added `OnFrameStart()` and `OnFrameEnd()` methods to `DeviceBudgetManager`
+- **Event-driven**: DeviceBudgetManager auto-subscribes to `FrameStartEvent`/`FrameEndEvent` when MessageBus provided
+- Added `FrameStartEvent` and `FrameEndEvent` message types in EventBus
+- Added `FrameLifecycle` EventCategory bits (40-42)
+- RenderGraph publishes events - no direct manager access needed
+
+**Files Changed:**
+- `libraries/EventBus/include/Message.h` (+50 lines - event types)
+- `libraries/ResourceManagement/CMakeLists.txt` (+3 lines - EventBus dependency)
+- `libraries/ResourceManagement/include/Memory/DeviceBudgetManager.h` (+60 lines)
+- `libraries/ResourceManagement/src/Memory/DeviceBudgetManager.cpp` (+130 lines)
+
+**API:**
+```cpp
+// Event types (Message.h)
+struct FrameStartEvent : public BaseEventMessage {
+    uint64_t frameNumber;
+};
+struct FrameEndEvent : public BaseEventMessage {
+    uint64_t frameNumber;
+};
+
+// DeviceBudgetManager config
+struct Config {
+    // ... existing fields ...
+    Vixen::EventBus::MessageBus* messageBus = nullptr;  // Optional
+};
+
+// Methods (can be called directly or via events)
+void OnFrameStart();
+void OnFrameEnd();
+const FrameAllocationDelta& GetLastFrameDelta() const;
+void SetFrameDeltaWarningThreshold(uint64_t threshold);
+```
+
+**Architecture:**
+```
+RenderGraph → Publish(FrameStartEvent) → MessageBus → DeviceBudgetManager::OnFrameStart()
+                                                    → StagingBufferPool (future)
+                                                    → Profiler (future)
+```
+
+**Acceptance Criteria:**
+- ✅ OnFrameStart() captures allocation snapshot
+- ✅ OnFrameEnd() calculates delta
+- ✅ GetLastFrameDelta() returns accurate frame allocation metrics
+- ✅ Warning logged if threshold exceeded (configurable)
+- ✅ Event-driven decoupling via MessageBus
+
+---
+
+## Deferred Tasks (Sprint 6+)
+
+### EventBus Message Pool (8h) - Sprint 6
+
+**HacknPlan:** #254
+
+**Objective:** Pre-allocate message object pool to eliminate EventBus allocations.
+
+**Scope:**
+- Object pool for message instances
+- Per-priority-level queue management
+- Integration with MessageBus reallocation tracking
+
+---
+
+### Descriptor Pre-Declaration (12h) - Sprint 6
+
+**HacknPlan:** #255
+
+**Objective:** Declare descriptor requirements upfront to prevent frame-boundary pool expansions.
+
+**Scope:**
+- Descriptor count prediction from render graph
+- Pre-allocate descriptor pool at graph compile time
+- Validation against actual usage
+
+---
+
+### CommandBufferPool (16h) - Sprint 6+
+
+**HacknPlan:** #256
+
+**Objective:** Reusable command buffer pool to reduce allocation pressure.
+
+**Scope:**
+- Per-queue command buffer reuse
+- Automatic reset between frames
+- Integration with Vulkan timeline semaphores
+
+---
+
+## Phase 5: Testing (P0) - 28h
+
+### 5.1 Lifetime/Safety Tests for shared_ptr Fix (4h)
 
 **HacknPlan:** #190
 
@@ -421,7 +613,7 @@ class AccelerationStructureNodeConfig {
 - [ ] Test: VoxelAABBData cleanup doesn't crash with live AS
 - [ ] Test: Weak pointer correctly invalidates
 
-### 4.2 Unit Tests for VulkanBufferAllocator (8h)
+### 5.2 Unit Tests for VulkanBufferAllocator (8h)
 
 **HacknPlan:** #192
 
@@ -432,7 +624,7 @@ class AccelerationStructureNodeConfig {
 - [ ] Error handling for OOM
 - [ ] Integration with DeviceBudgetManager
 
-### 4.3 Integration Tests for Cacher Chain (8h)
+### 5.3 Integration Tests for Cacher Chain (8h)
 
 **HacknPlan:** #191
 
@@ -441,7 +633,7 @@ class AccelerationStructureNodeConfig {
 - [ ] Hot-reload: shader change doesn't corrupt AS
 - [ ] Resource cleanup on scene change
 
-### 4.4 General Unit Tests (8h)
+### 5.4 General Unit Tests (8h)
 
 **HacknPlan:** #244
 
@@ -525,3 +717,8 @@ graph TD
 | 2026-01-03 | Phase 2.5.4 COMPLETE: Migrated VoxelAABBCacher to BatchedUploader via TypedCacher base |
 | 2026-01-03 | Established centralized uploader pattern - ready for future cachers (TextureCacher, etc.) |
 | 2026-01-03 | Phase 3 COMPLETE: TLAS Lifecycle management with 40 new tests (commit da95c62) |
+| 2026-01-03 | Phase 4.1 COMPLETE: StagingBufferPool PreWarm integration (4×64KB + 2×1MB + 2×16MB) |
+| 2026-01-03 | Phase 4.2 COMPLETE: EventBus/MessageBus statistics logging with capacity warnings |
+| 2026-01-03 | Phase 4.3 COMPLETE: AllocationTracking design document created |
+| 2026-01-03 | Phase 4.4 COMPLETE: DeviceBudgetManager frame boundary hooks (OnFrameStart/End) |
+| 2026-01-03 | Phase 4.4 ENHANCED: Event-driven frame tracking (FrameStartEvent/FrameEndEvent in MessageBus) |

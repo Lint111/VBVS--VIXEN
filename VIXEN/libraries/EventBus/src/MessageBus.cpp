@@ -8,7 +8,10 @@
 
 namespace Vixen::EventBus {
 
-MessageBus::MessageBus() = default;
+MessageBus::MessageBus() {
+    UpdateWarningThreshold();
+}
+
 MessageBus::~MessageBus() = default;
 
 EventSubscriptionID MessageBus::Subscribe(MessageType type, MessageHandler handler) {
@@ -115,16 +118,26 @@ void MessageBus::UnsubscribeAll() {
 }
 
 void MessageBus::Publish(std::unique_ptr<BaseEventMessage> message) {
+    size_t currentSize = 0;
     {
         std::lock_guard<std::mutex> lock(queueMutex);
         messageQueue.push(std::move(message));
+        currentSize = messageQueue.size();
     }
 
     {
         std::lock_guard<std::mutex> lock(statsMutex);
         stats.totalPublished++;
-        stats.currentQueueSize = messageQueue.size();
+        stats.currentQueueSize = currentSize;
+
+        // Track high-water mark
+        if (currentSize > stats.maxQueueSizeReached) {
+            stats.maxQueueSizeReached = currentSize;
+        }
     }
+
+    // Check capacity warning (outside stats lock to avoid deadlock with logging)
+    CheckCapacityWarning(currentSize);
 }
 
 void MessageBus::PublishImmediate(const BaseEventMessage& message) {
@@ -170,6 +183,9 @@ void MessageBus::ProcessMessages() {
         stats.totalProcessed += processed;
         stats.currentQueueSize = 0;
     }
+
+    // Reset warning flag when queue is drained, allowing future warnings
+    warningLoggedThisSession = false;
 }
 
 void MessageBus::DispatchMessage(const BaseEventMessage& message) {
@@ -266,6 +282,7 @@ MessageBus::Stats MessageBus::GetStats() const {
 void MessageBus::ResetStats() {
     std::lock_guard<std::mutex> lock(statsMutex);
     stats = {};
+    warningLoggedThisSession = false;  // Allow warnings again after reset
 
     if (loggingEnabled) {
         std::cout << "[MessageBus] Statistics reset\n";
@@ -276,6 +293,47 @@ void MessageBus::SetLoggingEnabled(bool enabled) {
     loggingEnabled = enabled;
     if (enabled) {
         std::cout << "[MessageBus] Logging enabled\n";
+    }
+}
+
+void MessageBus::SetExpectedCapacity(size_t capacity) {
+    expectedCapacity = capacity;
+    UpdateWarningThreshold();
+    warningLoggedThisSession = false;  // Reset warning state for new capacity
+
+    if (loggingEnabled) {
+        std::cout << "[MessageBus] Expected capacity set to " << capacity
+                  << " (warning threshold: " << warningThreshold << ")\n";
+    }
+}
+
+void MessageBus::UpdateWarningThreshold() {
+    // 80% threshold for warnings
+    warningThreshold = static_cast<size_t>(expectedCapacity * 0.8);
+}
+
+void MessageBus::CheckCapacityWarning(size_t currentSize) {
+    // Only warn once per session to avoid log spam
+    if (warningLoggedThisSession) {
+        return;
+    }
+
+    if (currentSize >= warningThreshold) {
+        warningLoggedThisSession = true;
+
+        // Increment warning counter (needs lock)
+        {
+            std::lock_guard<std::mutex> lock(statsMutex);
+            stats.capacityWarningCount++;
+        }
+
+        // Log warning - this appears regardless of loggingEnabled setting
+        // because capacity warnings are important for pre-allocation tuning
+        std::cerr << "[WARN] MessageBus queue approaching capacity ("
+                  << currentSize << "/" << expectedCapacity
+                  << " messages, " << stats.capacityWarningCount
+                  << " warnings this session, max reached: "
+                  << stats.maxQueueSizeReached << ")\n";
     }
 }
 

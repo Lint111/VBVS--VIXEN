@@ -243,6 +243,31 @@ public:
      */
     [[nodiscard]] const Config& GetConfig() const { return config_; }
 
+    // =========================================================================
+    // Pre-Allocation (Sprint 5 Phase 4.1)
+    // =========================================================================
+
+    /**
+     * @brief Pre-warm the staging buffer pool
+     *
+     * Allocates staging buffers upfront to avoid runtime allocation during
+     * first frame uploads. Call during device initialization.
+     *
+     * @param sizes Array of buffer sizes to pre-allocate
+     * @param count Number of sizes in the array
+     */
+    void PreWarm(const VkDeviceSize* sizes, size_t count);
+
+    /**
+     * @brief Pre-warm with default sizes for typical upload patterns
+     *
+     * Pre-allocates buffers for common upload sizes:
+     * - Small (64 KB): 4 buffers - small constant/uniform updates
+     * - Medium (1 MB): 2 buffers - texture mipmaps, mesh data
+     * - Large (16 MB): 2 buffers - large textures, AS instance buffers
+     */
+    void PreWarmDefaults();
+
 private:
     /**
      * @brief Pending upload record

@@ -90,7 +90,12 @@ enum class EventCategory : uint64_t {
 
     // Shader Events (32-39)
     ShaderEvents        = 1ULL << 32,
-    ShaderHotReload     = 1ULL << 33
+    ShaderHotReload     = 1ULL << 33,
+
+    // Frame Lifecycle (40-47)
+    FrameLifecycle      = 1ULL << 40,
+    FrameStart          = 1ULL << 41,
+    FrameEnd            = 1ULL << 42
 };
 
 constexpr EventCategory operator|(EventCategory a, EventCategory b) {
@@ -428,6 +433,54 @@ struct DeviceMetadataEvent : public BaseEventMessage {
         return std::count_if(availableDevices.begin(), availableDevices.end(),
             [](const DeviceInfo& d) { return !d.isDiscreteGPU; });
     }
+};
+
+// ============================================================================
+// Frame Lifecycle Events
+// ============================================================================
+
+/**
+ * @brief Frame start event
+ *
+ * Published at the beginning of each frame by RenderGraph.
+ * Systems subscribe to capture allocation snapshots, reset per-frame counters, etc.
+ *
+ * Usage:
+ * - DeviceBudgetManager: Captures allocation snapshot for delta tracking
+ * - StagingBufferPool: Resets per-frame statistics
+ * - Profiler: Starts frame timing
+ */
+struct FrameStartEvent : public BaseEventMessage {
+    static constexpr MessageType TYPE = AUTO_MESSAGE_TYPE();
+    static constexpr EventCategory CATEGORY = EventCategory::FrameLifecycle | EventCategory::FrameStart;
+
+    uint64_t frameNumber;
+
+    FrameStartEvent(SenderID sender, uint64_t frame)
+        : BaseEventMessage(CATEGORY, TYPE, sender)
+        , frameNumber(frame) {}
+};
+
+/**
+ * @brief Frame end event
+ *
+ * Published at the end of each frame by RenderGraph.
+ * Systems subscribe to calculate deltas, log statistics, etc.
+ *
+ * Usage:
+ * - DeviceBudgetManager: Calculates frame allocation delta
+ * - StagingBufferPool: Reports chunk usage statistics
+ * - Profiler: Ends frame timing
+ */
+struct FrameEndEvent : public BaseEventMessage {
+    static constexpr MessageType TYPE = AUTO_MESSAGE_TYPE();
+    static constexpr EventCategory CATEGORY = EventCategory::FrameLifecycle | EventCategory::FrameEnd;
+
+    uint64_t frameNumber;
+
+    FrameEndEvent(SenderID sender, uint64_t frame)
+        : BaseEventMessage(CATEGORY, TYPE, sender)
+        , frameNumber(frame) {}
 };
 
 } // namespace Vixen::EventBus

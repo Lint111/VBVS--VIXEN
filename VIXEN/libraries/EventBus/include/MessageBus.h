@@ -175,6 +175,10 @@ public:
         std::unordered_map<MessageType, uint64_t> publishedByType;
         uint64_t categoryFilterHits = 0;
         uint64_t typeFilterHits = 0;
+
+        // Capacity tracking (for pre-allocation diagnostics)
+        size_t maxQueueSizeReached = 0;    // High-water mark
+        uint32_t capacityWarningCount = 0; // Times queue exceeded warning threshold
     };
 
     /**
@@ -191,6 +195,21 @@ public:
      * @brief Enable/disable debug logging
      */
     void SetLoggingEnabled(bool enabled);
+
+    /**
+     * @brief Set expected queue capacity for warning thresholds
+     *
+     * When queue size exceeds 80% of this value, a warning is logged.
+     * Default is 1024 messages.
+     *
+     * @param capacity Expected maximum queue capacity
+     */
+    void SetExpectedCapacity(size_t capacity);
+
+    /**
+     * @brief Get the expected capacity setting
+     */
+    size_t GetExpectedCapacity() const { return expectedCapacity; }
 
 private:
     enum class FilterMode : uint8_t { All = 0, Type = 1, Category = 2 };
@@ -226,6 +245,14 @@ private:
     mutable std::mutex statsMutex;
 
     bool loggingEnabled = false;
+
+    // Capacity tracking
+    size_t expectedCapacity = 1024;  // Default expected capacity
+    size_t warningThreshold = 0;     // 80% of expectedCapacity (cached)
+    bool warningLoggedThisSession = false;  // Avoid spamming warnings
+
+    void UpdateWarningThreshold();
+    void CheckCapacityWarning(size_t currentSize);
 };
 
 } // namespace Vixen::EventBus

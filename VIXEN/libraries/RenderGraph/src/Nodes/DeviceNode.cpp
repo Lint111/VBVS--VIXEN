@@ -508,6 +508,10 @@ void DeviceNode::CreateDeviceBudgetManager(CashSystem::DeviceRegistry& deviceReg
         uploaderConfig
     );
 
+    // Sprint 5 Phase 4.1: Pre-warm staging buffer pool to avoid first-frame allocations
+    uploader->PreWarmDefaults();
+    NODE_LOG_INFO("[DeviceNode] StagingBufferPool pre-warmed with default sizes");
+
     vulkanDevice->SetUploader(std::move(uploader));
     NODE_LOG_INFO("[DeviceNode] BatchedUploader created and connected to VulkanDevice");
 

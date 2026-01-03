@@ -3,6 +3,14 @@
 #include "Memory/IMemoryAllocator.h"
 #include "Memory/ResourceBudgetManager.h"
 #include <memory>
+#include <functional>
+
+// Forward declaration to avoid header dependency
+namespace Vixen::EventBus {
+    class MessageBus;
+    struct BaseEventMessage;
+    using EventSubscriptionID = uint32_t;
+}
 
 namespace ResourceManagement {
 
@@ -26,6 +34,26 @@ struct DeviceMemoryStats {
     uint64_t stagingQuotaUsed = 0;      // Staging buffer usage
     uint64_t stagingQuotaMax = 0;       // Staging buffer limit
     float fragmentationRatio = 0.0f;    // Memory fragmentation
+};
+
+/**
+ * @brief Snapshot of allocation state at a point in time
+ */
+struct AllocationSnapshot {
+    uint64_t totalAllocated = 0;
+    uint64_t stagingInUse = 0;
+    uint32_t allocationCount = 0;
+};
+
+/**
+ * @brief Per-frame allocation delta for tracking frame-boundary allocations
+ */
+struct FrameAllocationDelta {
+    uint64_t allocatedThisFrame = 0;    // Bytes allocated since OnFrameStart
+    uint64_t freedThisFrame = 0;        // Bytes freed since OnFrameStart
+    int64_t netDelta = 0;               // allocated - freed (can be negative)
+    float utilizationPercent = 0.0f;    // Current budget utilization
+    bool hadAllocations = false;        // True if any allocations occurred
 };
 
 /**
@@ -53,6 +81,10 @@ public:
         uint64_t deviceMemoryWarning = 0; // Warning threshold
         uint64_t stagingQuota = 256 * 1024 * 1024; // 256 MB staging buffer quota
         bool strictBudget = false;        // Fail allocations over budget
+
+        // Optional MessageBus for event-driven frame tracking
+        // If provided, manager auto-subscribes to FrameStartEvent/FrameEndEvent
+        Vixen::EventBus::MessageBus* messageBus = nullptr;
     };
 
     /**
@@ -67,7 +99,7 @@ public:
         VkPhysicalDevice physicalDevice = VK_NULL_HANDLE,
         const Config& config = Config{});
 
-    ~DeviceBudgetManager() = default;
+    ~DeviceBudgetManager();
 
     // Non-copyable (owns allocator reference)
     DeviceBudgetManager(const DeviceBudgetManager&) = delete;
@@ -186,6 +218,42 @@ public:
     [[nodiscard]] uint64_t GetAvailableStagingQuota() const;
 
     // =========================================================================
+    // Frame Boundary Tracking
+    // =========================================================================
+
+    /**
+     * @brief Call at the start of each frame to capture allocation snapshot
+     *
+     * Must be paired with OnFrameEnd() to calculate frame delta.
+     */
+    void OnFrameStart();
+
+    /**
+     * @brief Call at the end of each frame to calculate allocation delta
+     *
+     * Calculates the difference between current state and OnFrameStart snapshot.
+     * If delta is non-zero and warning threshold is set, logs a warning.
+     */
+    void OnFrameEnd();
+
+    /**
+     * @brief Get the allocation delta from the last completed frame
+     *
+     * Returns the delta calculated by the most recent OnFrameEnd() call.
+     */
+    [[nodiscard]] const FrameAllocationDelta& GetLastFrameDelta() const;
+
+    /**
+     * @brief Set threshold for frame allocation warnings
+     *
+     * If allocations in a single frame exceed this threshold, a warning is logged.
+     * Set to 0 to disable warnings.
+     *
+     * @param threshold Bytes threshold for warning (0 = disabled)
+     */
+    void SetFrameDeltaWarningThreshold(uint64_t threshold);
+
+    // =========================================================================
     // Statistics & Monitoring
     // =========================================================================
 
@@ -257,9 +325,25 @@ private:
     // Aliased allocation tracking (Sprint 4 Phase B+)
     std::atomic<uint32_t> aliasedAllocationCount_{0};
 
+    // Frame boundary tracking (Sprint 5 Phase 4)
+    AllocationSnapshot frameStartSnapshot_{};
+    FrameAllocationDelta lastFrameDelta_{};
+    uint64_t frameNumber_ = 0;
+    uint64_t frameDeltaWarningThreshold_ = 0;  // 0 = disabled
+
+    // Event-driven frame tracking (Sprint 5 Phase 4.4)
+    Vixen::EventBus::MessageBus* messageBus_ = nullptr;
+    Vixen::EventBus::EventSubscriptionID frameStartSubscription_ = 0;
+    Vixen::EventBus::EventSubscriptionID frameEndSubscription_ = 0;
+
     // Internal helpers
     static BudgetResourceType HeapTypeToBudgetType(DeviceHeapType heapType);
     DeviceHeapType MemoryLocationToHeapType(MemoryLocation location) const;
+    AllocationSnapshot CaptureSnapshot() const;
+    void SubscribeToFrameEvents();
+    void UnsubscribeFromFrameEvents();
+    bool HandleFrameStartEvent(const Vixen::EventBus::BaseEventMessage& msg);
+    bool HandleFrameEndEvent(const Vixen::EventBus::BaseEventMessage& msg);
 };
 
 } // namespace ResourceManagement

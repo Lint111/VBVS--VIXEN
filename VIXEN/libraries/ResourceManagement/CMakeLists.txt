@@ -86,6 +86,11 @@ else()
     message(FATAL_ERROR "VulkanMemoryAllocator target not found - ensure dependencies/CMakeLists.txt is included first")
 endif()
 
+# EventBus (optional dependency for event-driven frame tracking)
+if(TARGET EventBus)
+    target_link_libraries(ResourceManagement PUBLIC EventBus)
+endif()
+
 # ------------------------------------------------------------------------------
 # Visual Studio Organization
 # ------------------------------------------------------------------------------

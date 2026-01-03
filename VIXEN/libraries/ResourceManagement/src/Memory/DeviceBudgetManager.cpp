@@ -1,4 +1,7 @@
 #include "Memory/DeviceBudgetManager.h"
+#include "MessageBus.h"
+#include "Message.h"
+#include <iostream>
 
 namespace ResourceManagement {
 
@@ -36,6 +39,16 @@ DeviceBudgetManager::DeviceBudgetManager(
     if (allocator_) {
         allocator_->SetBudgetManager(&budgetTracker_);
     }
+
+    // Subscribe to frame events if MessageBus provided
+    messageBus_ = config_.messageBus;
+    if (messageBus_) {
+        SubscribeToFrameEvents();
+    }
+}
+
+DeviceBudgetManager::~DeviceBudgetManager() {
+    UnsubscribeFromFrameEvents();
 }
 
 std::expected<BufferAllocation, AllocationError>
@@ -273,6 +286,136 @@ DeviceHeapType DeviceBudgetManager::MemoryLocationToHeapType(MemoryLocation loca
         default:
             return DeviceHeapType::DeviceLocal;
     }
+}
+
+// ============================================================================
+// Frame Boundary Tracking (Sprint 5 Phase 4)
+// ============================================================================
+
+AllocationSnapshot DeviceBudgetManager::CaptureSnapshot() const {
+    AllocationSnapshot snapshot{};
+
+    // Get usage from budget tracker
+    auto usage = budgetTracker_.GetUsage(BudgetResourceType::DeviceMemory);
+    snapshot.totalAllocated = usage.currentBytes;
+    snapshot.allocationCount = usage.allocationCount;
+
+    // Staging quota
+    snapshot.stagingInUse = stagingQuotaUsed_.load(std::memory_order_acquire);
+
+    return snapshot;
+}
+
+void DeviceBudgetManager::OnFrameStart() {
+    frameStartSnapshot_ = CaptureSnapshot();
+}
+
+void DeviceBudgetManager::OnFrameEnd() {
+    ++frameNumber_;
+
+    // Capture current state
+    AllocationSnapshot currentSnapshot = CaptureSnapshot();
+
+    // Calculate delta
+    lastFrameDelta_ = {};
+
+    // Calculate allocated this frame (only if increased)
+    if (currentSnapshot.totalAllocated > frameStartSnapshot_.totalAllocated) {
+        lastFrameDelta_.allocatedThisFrame =
+            currentSnapshot.totalAllocated - frameStartSnapshot_.totalAllocated;
+    }
+
+    // Calculate freed this frame (only if decreased)
+    if (currentSnapshot.totalAllocated < frameStartSnapshot_.totalAllocated) {
+        lastFrameDelta_.freedThisFrame =
+            frameStartSnapshot_.totalAllocated - currentSnapshot.totalAllocated;
+    }
+
+    // Net delta (can be negative if more freed than allocated)
+    lastFrameDelta_.netDelta =
+        static_cast<int64_t>(currentSnapshot.totalAllocated) -
+        static_cast<int64_t>(frameStartSnapshot_.totalAllocated);
+
+    // Calculate utilization
+    auto budget = budgetTracker_.GetBudget(BudgetResourceType::DeviceMemory);
+    if (budget && budget->maxBytes > 0) {
+        lastFrameDelta_.utilizationPercent =
+            (static_cast<float>(currentSnapshot.totalAllocated) / static_cast<float>(budget->maxBytes)) * 100.0f;
+    }
+
+    // Mark if any allocations occurred
+    lastFrameDelta_.hadAllocations =
+        (currentSnapshot.allocationCount != frameStartSnapshot_.allocationCount) ||
+        (lastFrameDelta_.netDelta != 0);
+
+    // Log warning if threshold exceeded
+    if (frameDeltaWarningThreshold_ > 0 &&
+        lastFrameDelta_.allocatedThisFrame > frameDeltaWarningThreshold_) {
+
+        float allocMB = static_cast<float>(lastFrameDelta_.allocatedThisFrame) / (1024.0f * 1024.0f);
+        float thresholdMB = static_cast<float>(frameDeltaWarningThreshold_) / (1024.0f * 1024.0f);
+
+        std::cerr << "[WARN] Frame " << frameNumber_
+                  << " allocation exceeded threshold: " << allocMB
+                  << " MB > " << thresholdMB << " MB limit"
+                  << " (utilization: " << lastFrameDelta_.utilizationPercent << "%)\n";
+    }
+}
+
+const FrameAllocationDelta& DeviceBudgetManager::GetLastFrameDelta() const {
+    return lastFrameDelta_;
+}
+
+void DeviceBudgetManager::SetFrameDeltaWarningThreshold(uint64_t threshold) {
+    frameDeltaWarningThreshold_ = threshold;
+}
+
+// ============================================================================
+// Event-Driven Frame Tracking
+// ============================================================================
+
+void DeviceBudgetManager::SubscribeToFrameEvents() {
+    if (!messageBus_) return;
+
+    // Subscribe to FrameStartEvent
+    frameStartSubscription_ = messageBus_->Subscribe(
+        Vixen::EventBus::FrameStartEvent::TYPE,
+        [this](const Vixen::EventBus::BaseEventMessage& msg) {
+            return HandleFrameStartEvent(msg);
+        }
+    );
+
+    // Subscribe to FrameEndEvent
+    frameEndSubscription_ = messageBus_->Subscribe(
+        Vixen::EventBus::FrameEndEvent::TYPE,
+        [this](const Vixen::EventBus::BaseEventMessage& msg) {
+            return HandleFrameEndEvent(msg);
+        }
+    );
+}
+
+void DeviceBudgetManager::UnsubscribeFromFrameEvents() {
+    if (!messageBus_) return;
+
+    if (frameStartSubscription_ != 0) {
+        messageBus_->Unsubscribe(frameStartSubscription_);
+        frameStartSubscription_ = 0;
+    }
+
+    if (frameEndSubscription_ != 0) {
+        messageBus_->Unsubscribe(frameEndSubscription_);
+        frameEndSubscription_ = 0;
+    }
+}
+
+bool DeviceBudgetManager::HandleFrameStartEvent(const Vixen::EventBus::BaseEventMessage& /*msg*/) {
+    OnFrameStart();
+    return false;  // Don't consume, allow other listeners
+}
+
+bool DeviceBudgetManager::HandleFrameEndEvent(const Vixen::EventBus::BaseEventMessage& /*msg*/) {
+    OnFrameEnd();
+    return false;  // Don't consume, allow other listeners
 }
 
 } // namespace ResourceManagement

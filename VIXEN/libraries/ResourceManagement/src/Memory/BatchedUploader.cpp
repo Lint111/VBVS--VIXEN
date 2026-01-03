@@ -513,4 +513,33 @@ void BatchedUploader::SetStatus(UploadHandle handle, UploadStatus status) {
     uploadStatus_[handle] = status;
 }
 
+// ============================================================================
+// Pre-Allocation (Sprint 5 Phase 4.1)
+// ============================================================================
+
+void BatchedUploader::PreWarm(const VkDeviceSize* sizes, size_t count) {
+    if (!stagingPool_ || !sizes || count == 0) {
+        return;
+    }
+    stagingPool_->PreWarm(sizes, count);
+}
+
+void BatchedUploader::PreWarmDefaults() {
+    // Default sizes for typical VIXEN upload patterns:
+    // - Small (64 KB): Constant buffers, uniform updates, small textures
+    // - Medium (1 MB): Texture mipmaps, mesh vertex/index data
+    // - Large (16 MB): Large textures, acceleration structure instance buffers
+    constexpr VkDeviceSize defaultSizes[] = {
+        64 * 1024,          // 64 KB x 4
+        64 * 1024,
+        64 * 1024,
+        64 * 1024,
+        1024 * 1024,        // 1 MB x 2
+        1024 * 1024,
+        16 * 1024 * 1024,   // 16 MB x 2
+        16 * 1024 * 1024
+    };
+    PreWarm(defaultSizes, sizeof(defaultSizes) / sizeof(defaultSizes[0]));
+}
+
 } // namespace ResourceManagement
