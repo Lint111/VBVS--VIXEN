@@ -35,8 +35,20 @@ target_link_libraries(test_budget_manager_integration PRIVATE
 )
 set_target_properties(test_budget_manager_integration PROPERTIES FOLDER "Tests/ResourceManagement Tests")
 
+# ============================================================================
+# VulkanBufferAllocator Unit Tests (Sprint 5 Phase 5.2)
+# ============================================================================
+
+add_executable(test_vulkan_buffer_allocator test_vulkan_buffer_allocator.cpp)
+target_link_libraries(test_vulkan_buffer_allocator PRIVATE
+    GTest::gtest_main
+    ResourceManagement
+)
+set_target_properties(test_vulkan_buffer_allocator PROPERTIES FOLDER "Tests/ResourceManagement Tests")
+
 # Register tests with CTest
 include(GoogleTest)
 gtest_discover_tests(test_resourcemanagement_basic)
 gtest_discover_tests(test_resource_management)
 gtest_discover_tests(test_budget_manager_integration)
+gtest_discover_tests(test_vulkan_buffer_allocator)

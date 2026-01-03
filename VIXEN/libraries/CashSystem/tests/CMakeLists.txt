@@ -31,6 +31,34 @@ endif()
 set_target_properties(test_tlas_phase3 PROPERTIES FOLDER "Tests/CashSystem Tests")
 gtest_discover_tests(test_tlas_phase3)
 
+# Phase 5.1 Lifetime/Safety tests (Sprint 5)
+add_executable(test_lifetime_safety
+    test_lifetime_safety.cpp
+)
+target_compile_features(test_lifetime_safety PRIVATE cxx_std_23)
+if(TARGET CashSystem)
+    target_link_libraries(test_lifetime_safety PRIVATE GTest::gtest_main CashSystem Logger VulkanResources)
+else()
+    target_link_libraries(test_lifetime_safety PRIVATE GTest::gtest_main Logger)
+endif()
+
+set_target_properties(test_lifetime_safety PROPERTIES FOLDER "Tests/CashSystem Tests")
+gtest_discover_tests(test_lifetime_safety)
+
+# Phase 5.3 Cacher Chain Integration tests (Sprint 5)
+add_executable(test_cacher_chain_integration
+    test_cacher_chain_integration.cpp
+)
+target_compile_features(test_cacher_chain_integration PRIVATE cxx_std_23)
+if(TARGET CashSystem)
+    target_link_libraries(test_cacher_chain_integration PRIVATE GTest::gtest_main CashSystem Logger VulkanResources glm::glm)
+else()
+    target_link_libraries(test_cacher_chain_integration PRIVATE GTest::gtest_main Logger glm::glm)
+endif()
+
+set_target_properties(test_cacher_chain_integration PROPERTIES FOLDER "Tests/CashSystem Tests")
+gtest_discover_tests(test_cacher_chain_integration)
+
 # Basic CashSystem functionality tests
 # TODO: Update these tests to use new registration-by-type API
 # add_executable(test_cashsystem_basic

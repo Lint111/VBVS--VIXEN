@@ -138,9 +138,24 @@ benchmark_results_test/
 .smart-env/
 
 
-# any folder that has the world "tests" in its name
-**/*tests*/**
-**/*test*/**
+# Test build outputs (but NOT source files)
+# Ignore test binaries and artifacts
+**/tests/**/Debug/
+**/tests/**/Release/
+**/tests/**/*.exe
+**/tests/**/*.obj
+**/tests/**/*.pdb
+**/tests/**/*.ilk
+**/test/**/Debug/
+**/test/**/Release/
+**/test/**/*.exe
+**/test/**/*.obj
+**/test/**/*.pdb
+**/test/**/*.ilk
+
+# Test/benchmark result outputs
+test_results*/
+benchmark_results/
 
 # any device specific cacher folders
 **/cache/devices/
