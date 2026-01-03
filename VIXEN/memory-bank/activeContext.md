@@ -1,8 +1,8 @@
 # Active Context - Sprint 5 CashSystem Robustness
 
 **Last Updated:** 2026-01-03
-**Branch:** `production/sprint-5-cashsystem-robustness`
-**Status:** Build PASSING | Tests PASSING (20 budget manager integration tests)
+**Branch:** `production/sprint-5-preallocation-hardening`
+**Status:** Build PASSING | Sprint 84% Complete (87h/104h)
 
 ---
 
@@ -12,19 +12,27 @@
 **Phase 2: Cacher Consolidation** - COMPLETE
 **Phase 2.5: Upload Infrastructure** - COMPLETE
 **Phase 3: TLAS Lifecycle** - COMPLETE
+**Phase 4: Pre-Allocation Hardening** - COMPLETE
 
 ### Just Completed (2026-01-03)
 
-#### Phase 3: TLAS Lifecycle (16h)
-- Implemented TLASInstanceManager for TLAS instance lifecycle management
-- Created TLASInstanceBuffer for GPU instance data
-- Added DynamicTLAS rebuild support with budget-aware reconstruction
-- Refactored AccelerationStructureNode: 5 inputs, 2 outputs, ASBuildMode enum
-- Added 40 comprehensive tests (22 AccelerationStructureNode + 18 CriticalNodesIntegration)
-- Commit: da95c62
+#### Phase 4: Pre-Allocation Hardening (11h)
+- **4.1 StagingBufferPool PreWarm** - Pre-warms 4×64KB + 2×1MB + 2×16MB staging buffers
+- **4.2 EventBus Statistics Logging** - MessageBus capacity tracking with 80% warning threshold
+- **4.3 Allocation Tracking Design Doc** - Created `01-Architecture/AllocationTracking.md`
+- **4.4 Budget Manager Frame Hooks** - Event-driven `OnFrameStart()`/`OnFrameEnd()` via MessageBus
+- Commit: 55f4551
+
+#### Key Architecture Addition
+```
+RenderGraph::RenderFrame()
+    ├─► Publish(FrameStartEvent) → MessageBus → DeviceBudgetManager::OnFrameStart()
+    │   [render frame]
+    └─► Publish(FrameEndEvent)   → MessageBus → DeviceBudgetManager::OnFrameEnd()
+```
 
 ### Next Task
-- **Phase 4: Testing** - Remaining unit and integration tests for Sprint 5
+- **Phase 5: Testing** (17h) - Lifetime/safety tests, unit tests, integration tests
 
 ---
 
@@ -32,6 +40,8 @@
 
 | Hash | Description |
 |------|-------------|
+| `55f4551` | feat(ResourceManagement): Event-driven frame allocation tracking |
+| `79891bd` | feat(RenderGraph): Complete Phase 3 TLAS Lifecycle with 40 new tests |
 | `da95c62` | feat(CashSystem): Implement Phase 3 TLAS Lifecycle and cleanup budget manager redundancy |
 | `e76f9b7` | refactor(VulkanDevice): Centralize upload API - move BatchedUploader from TypedCacher to VulkanDevice |
 | `e3ffb56` | feat(CashSystem): Add BatchedUploader and migrate cachers to centralized upload pattern |
