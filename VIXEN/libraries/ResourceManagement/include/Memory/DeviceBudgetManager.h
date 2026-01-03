@@ -54,6 +54,7 @@ struct FrameAllocationDelta {
     int64_t netDelta = 0;               // allocated - freed (can be negative)
     float utilizationPercent = 0.0f;    // Current budget utilization
     bool hadAllocations = false;        // True if any allocations occurred
+    bool exceededThreshold = false;     // True if allocatedThisFrame > warning threshold
 };
 
 /**
@@ -85,6 +86,10 @@ public:
         // Optional MessageBus for event-driven frame tracking
         // If provided, manager auto-subscribes to FrameStartEvent/FrameEndEvent
         Vixen::EventBus::MessageBus* messageBus = nullptr;
+
+        // Optional callback for allocation warnings (frame delta threshold exceeded)
+        // If not provided, warnings are silently tracked in FrameAllocationDelta
+        std::function<void(const std::string&)> warningCallback = nullptr;
     };
 
     /**

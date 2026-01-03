@@ -1,7 +1,7 @@
 #include "Memory/DeviceBudgetManager.h"
 #include "MessageBus.h"
 #include "Message.h"
-#include <iostream>
+#include <sstream>
 
 namespace ResourceManagement {
 
@@ -316,8 +316,8 @@ void DeviceBudgetManager::OnFrameEnd() {
     // Capture current state
     AllocationSnapshot currentSnapshot = CaptureSnapshot();
 
-    // Calculate delta
-    lastFrameDelta_ = {};
+    // Calculate delta (reset all fields including exceededThreshold)
+    lastFrameDelta_ = FrameAllocationDelta{};
 
     // Calculate allocated this frame (only if increased)
     if (currentSnapshot.totalAllocated > frameStartSnapshot_.totalAllocated) {
@@ -348,17 +348,26 @@ void DeviceBudgetManager::OnFrameEnd() {
         (currentSnapshot.allocationCount != frameStartSnapshot_.allocationCount) ||
         (lastFrameDelta_.netDelta != 0);
 
-    // Log warning if threshold exceeded
+    // Report warning if threshold exceeded
     if (frameDeltaWarningThreshold_ > 0 &&
         lastFrameDelta_.allocatedThisFrame > frameDeltaWarningThreshold_) {
 
-        float allocMB = static_cast<float>(lastFrameDelta_.allocatedThisFrame) / (1024.0f * 1024.0f);
-        float thresholdMB = static_cast<float>(frameDeltaWarningThreshold_) / (1024.0f * 1024.0f);
+        // Mark that threshold was exceeded (for programmatic checking)
+        lastFrameDelta_.exceededThreshold = true;
 
-        std::cerr << "[WARN] Frame " << frameNumber_
-                  << " allocation exceeded threshold: " << allocMB
-                  << " MB > " << thresholdMB << " MB limit"
-                  << " (utilization: " << lastFrameDelta_.utilizationPercent << "%)\n";
+        // Call warning callback if provided
+        if (config_.warningCallback) {
+            float allocMB = static_cast<float>(lastFrameDelta_.allocatedThisFrame) / (1024.0f * 1024.0f);
+            float thresholdMB = static_cast<float>(frameDeltaWarningThreshold_) / (1024.0f * 1024.0f);
+
+            std::ostringstream msg;
+            msg << "Frame " << frameNumber_
+                << " allocation exceeded threshold: " << allocMB
+                << " MB > " << thresholdMB << " MB limit"
+                << " (utilization: " << lastFrameDelta_.utilizationPercent << "%)";
+
+            config_.warningCallback(msg.str());
+        }
     }
 }
 
