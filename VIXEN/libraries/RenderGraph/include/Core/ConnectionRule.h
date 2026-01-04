@@ -487,4 +487,50 @@ public:
     [[nodiscard]] std::string_view Name() const override { return "AccumulationConnectionRule"; }
 };
 
+// ============================================================================
+// VARIADIC CONNECTION RULE
+// ============================================================================
+
+/**
+ * @brief Rule for variadic (slot-to-binding) connections
+ *
+ * Handles connections where:
+ * - Source is a static output slot
+ * - Target is a shader binding (SlotKind::Binding)
+ *
+ * This is the connection rule equivalent of ConnectVariadic() in TypedConnection.h.
+ * It validates the connection and prepares context for the VariadicTypedNode infrastructure.
+ *
+ * Matches when:
+ * - Target is a binding slot (SlotKind::Binding)
+ * - Target is NOT accumulation (those go to AccumulationConnectionRule)
+ *
+ * Validation:
+ * - Source is an output slot
+ * - Target has valid binding index
+ * - If field extraction: source lifetime is Persistent
+ *
+ * Resolution:
+ * - Prepares context for IVariadicNode::UpdateVariadicSlot()
+ * - Actual wiring delegated to caller (uses existing VariadicTypedNode infrastructure)
+ *
+ * Migration note:
+ * - Currently works alongside existing ConnectVariadic() in TypedConnection.h
+ * - Future: unified Connect() API will use this rule via ConnectionRuleRegistry
+ */
+class VariadicConnectionRule : public ConnectionRule {
+public:
+    [[nodiscard]] bool CanHandle(
+        const SlotInfo& source,
+        const SlotInfo& target) const override;
+
+    [[nodiscard]] ConnectionResult Validate(const ConnectionContext& ctx) const override;
+
+    ConnectionResult Resolve(ConnectionContext& ctx) const override;
+
+    [[nodiscard]] uint32_t Priority() const override { return 25; }  // Lower than Direct (50)
+
+    [[nodiscard]] std::string_view Name() const override { return "VariadicConnectionRule"; }
+};
+
 } // namespace Vixen::RenderGraph

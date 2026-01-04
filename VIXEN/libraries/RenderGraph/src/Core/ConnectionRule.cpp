@@ -38,9 +38,10 @@ void ConnectionRuleRegistry::SortByPriority() {
 ConnectionRuleRegistry ConnectionRuleRegistry::CreateDefault() {
     ConnectionRuleRegistry registry;
     // Register rules in priority order (registry sorts by priority descending)
+    // Priority: Accumulation (100) > Direct (50) > Variadic (25)
     registry.RegisterRule(std::make_unique<AccumulationConnectionRule>());  // Priority 100
     registry.RegisterRule(std::make_unique<DirectConnectionRule>());        // Priority 50
-    // Note: VariadicConnectionRule will be added in subsequent task
+    registry.RegisterRule(std::make_unique<VariadicConnectionRule>());      // Priority 25
     return registry;
 }
 
@@ -302,6 +303,99 @@ ConnectionResult AccumulationConnectionRule::Resolve(ConnectionContext& ctx) con
     // 1. Gets/creates AccumulationState for target slot
     // 2. Adds entry to state
     // 3. During compile: validates count/duplicates, sorts, and flattens
+
+    ConnectionResult result;
+    result.success = true;
+
+    return result;
+}
+
+// ============================================================================
+// VARIADIC CONNECTION RULE IMPLEMENTATION
+// ============================================================================
+
+bool VariadicConnectionRule::CanHandle(
+    const SlotInfo& source,
+    const SlotInfo& target) const {
+
+    (void)source;  // Source type doesn't affect whether we can handle
+
+    // We only handle binding targets (variadic connections)
+    if (!target.IsBinding()) {
+        return false;
+    }
+
+    // Don't handle accumulation bindings - those go to AccumulationConnectionRule
+    if (target.IsAccumulation()) {
+        return false;
+    }
+
+    return true;
+}
+
+ConnectionResult VariadicConnectionRule::Validate(const ConnectionContext& ctx) const {
+    // Verify we have the expected context
+    if (!ctx.sourceNode) {
+        return ConnectionResult::Error("Source node is null");
+    }
+
+    if (!ctx.targetNode) {
+        return ConnectionResult::Error("Target node is null");
+    }
+
+    const auto& sourceSlot = ctx.sourceSlot;
+    const auto& targetSlot = ctx.targetSlot;
+
+    // Validate: Source must be an output
+    if (!sourceSlot.IsOutput()) {
+        return ConnectionResult::Error("Source slot must be an output slot");
+    }
+
+    // Validate: Target must be a binding
+    if (!targetSlot.IsBinding()) {
+        return ConnectionResult::Error("Target must be a binding slot for variadic connection");
+    }
+
+    // Validate: Binding index must be valid
+    if (targetSlot.binding == UINT32_MAX) {
+        return ConnectionResult::Error("Invalid binding index");
+    }
+
+    // Note: Type validation is more permissive for bindings
+    // The shader reflection system validates descriptor types at compile time
+    // Here we just ensure the connection is structurally valid
+
+    // If field extraction is present, the caller should have validated
+    // that the source has Persistent lifetime (done in TypedConnection.h)
+
+    return ConnectionResult::Success();
+}
+
+ConnectionResult VariadicConnectionRule::Resolve(ConnectionContext& ctx) const {
+    // First validate
+    auto validationResult = Validate(ctx);
+    if (!validationResult.success) {
+        return validationResult;
+    }
+
+    // Get the graph for connection wiring
+    if (!ctx.graph) {
+        return ConnectionResult::Error("Graph context not set");
+    }
+
+    // For variadic connections, the actual wiring is complex:
+    // 1. Cast target node to IVariadicNode
+    // 2. Create VariadicSlotInfo (or use SlotInfo in future)
+    // 3. Call UpdateVariadicSlot()
+    // 4. Register PostCompile/PreExecute hooks
+    //
+    // Currently this is done by TypedConnection.h::ConnectVariadic()
+    // This rule validates and prepares context. The unified Connect API
+    // will use this rule for validation, then delegate to existing infrastructure.
+    //
+    // Migration path:
+    // 1. (Current) VariadicConnectionRule validates, ConnectVariadic() wires
+    // 2. (Future) Unified Connect() uses rule + internal wiring logic
 
     ConnectionResult result;
     result.success = true;

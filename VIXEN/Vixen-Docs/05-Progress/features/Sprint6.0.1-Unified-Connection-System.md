@@ -414,6 +414,29 @@ struct AccumulationConfig {
 
 ---
 
+## Migration Candidates
+
+Nodes to migrate from current patterns to unified connection system:
+
+### Variadic → Accumulation Candidates
+
+| Node | Current | Proposed | Rationale |
+|------|---------|----------|-----------|
+| `BoolOpNode` | `BoolVector` input (pre-gathered) | `ACCUMULATION_INPUT_SLOT(INPUTS, bool, ...)` | Known type (bool), no slot discovery needed. Direct connection of individual bool outputs. |
+
+**Key Distinction:**
+- **Variadic**: For dynamically discovered slots (shader reflection), type validated against external metadata
+- **Accumulation**: For statically typed slots that accept multiple connections, type known at compile time
+
+### Nodes Using Variadic (Keep Variadic)
+
+| Node | Rationale |
+|------|-----------|
+| `DescriptorResourceGathererNode` | Slots discovered from shader reflection, types from shader bundle |
+| `PushConstantGathererNode` | Slots discovered from shader reflection, types from shader bundle |
+
+---
+
 ## Related Documents
 
 - [[Sprint6-Timeline-Foundation]] - Parent sprint

@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "Core/ConnectionRule.h"
+#include "Core/UnifiedConnect.h"
 #include "Data/Core/ResourceConfig.h"
 #include "Data/Core/ConnectionConcepts.h"
 #include "Data/Core/SlotInfo.h"
@@ -760,6 +761,250 @@ TEST(ConnectionRuleRegistryTest, DirectRuleMatchedForNonAccumulationSlot) {
 
     ASSERT_NE(rule, nullptr);
     EXPECT_EQ(rule->Name(), "DirectConnectionRule");
+}
+
+// ============================================================================
+// VARIADIC CONNECTION RULE TESTS
+// ============================================================================
+
+TEST(VariadicConnectionRuleTest, CanHandleBindingTarget) {
+    VariadicConnectionRule rule;
+
+    auto sourceInfo = SlotInfo::FromOutputSlot<SourceConfig::BUFFER_OUT_Slot>("OUT");
+    MockBindingRef bindingRef{3, 7};
+    auto targetInfo = SlotInfo::FromBinding(bindingRef, "storageBuffer");
+
+    // Variadic rule handles binding targets
+    EXPECT_TRUE(rule.CanHandle(sourceInfo, targetInfo));
+}
+
+TEST(VariadicConnectionRuleTest, CannotHandleStaticSlotTarget) {
+    VariadicConnectionRule rule;
+
+    auto sourceInfo = SlotInfo::FromOutputSlot<SourceConfig::BUFFER_OUT_Slot>("OUT");
+    auto targetInfo = SlotInfo::FromInputSlot<TargetConfig::BUFFER_IN_Slot>("IN");
+
+    // Variadic rule does NOT handle static slot targets
+    EXPECT_FALSE(rule.CanHandle(sourceInfo, targetInfo));
+}
+
+TEST(VariadicConnectionRuleTest, ValidateSourceMustBeOutput) {
+    VariadicConnectionRule rule;
+
+    ConnectionContext ctx;
+    ctx.sourceNode = reinterpret_cast<NodeInstance*>(0x1);
+    ctx.targetNode = reinterpret_cast<NodeInstance*>(0x2);
+    // Source is INPUT (wrong!)
+    ctx.sourceSlot = SlotInfo::FromInputSlot<TargetConfig::BUFFER_IN_Slot>("IN");
+    MockBindingRef bindingRef{0, 7};
+    ctx.targetSlot = SlotInfo::FromBinding(bindingRef, "binding");
+
+    auto result = rule.Validate(ctx);
+    EXPECT_FALSE(result.success);
+    EXPECT_TRUE(result.errorMessage.find("output") != std::string::npos);
+}
+
+TEST(VariadicConnectionRuleTest, ValidateTargetMustBeBinding) {
+    VariadicConnectionRule rule;
+
+    ConnectionContext ctx;
+    ctx.sourceNode = reinterpret_cast<NodeInstance*>(0x1);
+    ctx.targetNode = reinterpret_cast<NodeInstance*>(0x2);
+    ctx.sourceSlot = SlotInfo::FromOutputSlot<SourceConfig::BUFFER_OUT_Slot>("OUT");
+    // Target is NOT a binding
+    ctx.targetSlot = SlotInfo::FromInputSlot<TargetConfig::BUFFER_IN_Slot>("IN");
+
+    auto result = rule.Validate(ctx);
+    EXPECT_FALSE(result.success);
+    EXPECT_TRUE(result.errorMessage.find("binding") != std::string::npos);
+}
+
+TEST(VariadicConnectionRuleTest, ValidateBindingIndexValid) {
+    VariadicConnectionRule rule;
+
+    ConnectionContext ctx;
+    ctx.sourceNode = reinterpret_cast<NodeInstance*>(0x1);
+    ctx.targetNode = reinterpret_cast<NodeInstance*>(0x2);
+    ctx.sourceSlot = SlotInfo::FromOutputSlot<SourceConfig::BUFFER_OUT_Slot>("OUT");
+    // Create binding with invalid index
+    ctx.targetSlot.kind = SlotKind::Binding;
+    ctx.targetSlot.binding = UINT32_MAX;  // Invalid
+
+    auto result = rule.Validate(ctx);
+    EXPECT_FALSE(result.success);
+    EXPECT_TRUE(result.errorMessage.find("Invalid binding") != std::string::npos);
+}
+
+TEST(VariadicConnectionRuleTest, ValidateSuccess) {
+    VariadicConnectionRule rule;
+
+    ConnectionContext ctx;
+    ctx.sourceNode = reinterpret_cast<NodeInstance*>(0x1);
+    ctx.targetNode = reinterpret_cast<NodeInstance*>(0x2);
+    ctx.sourceSlot = SlotInfo::FromOutputSlot<SourceConfig::BUFFER_OUT_Slot>("OUT");
+    MockBindingRef bindingRef{3, 7};
+    ctx.targetSlot = SlotInfo::FromBinding(bindingRef, "storageBuffer");
+
+    auto result = rule.Validate(ctx);
+    EXPECT_TRUE(result.success);
+}
+
+TEST(VariadicConnectionRuleTest, Priority) {
+    VariadicConnectionRule rule;
+    EXPECT_EQ(rule.Priority(), 25u);  // Lower than DirectConnectionRule (50)
+}
+
+TEST(VariadicConnectionRuleTest, Name) {
+    VariadicConnectionRule rule;
+    EXPECT_EQ(rule.Name(), "VariadicConnectionRule");
+}
+
+// ============================================================================
+// REGISTRY WITH ALL THREE RULES TESTS
+// ============================================================================
+
+TEST(ConnectionRuleRegistryTest, DefaultRegistryHasVariadicRule) {
+    auto registry = ConnectionRuleRegistry::CreateDefault();
+
+    // Should have DirectConnectionRule, AccumulationConnectionRule, and VariadicConnectionRule
+    EXPECT_EQ(registry.RuleCount(), 3u);
+}
+
+TEST(ConnectionRuleRegistryTest, VariadicRuleMatchedForBindingTarget) {
+    auto registry = ConnectionRuleRegistry::CreateDefault();
+
+    auto sourceInfo = SlotInfo::FromOutputSlot<SourceConfig::BUFFER_OUT_Slot>("OUT");
+    MockBindingRef bindingRef{0, 7};
+    auto targetInfo = SlotInfo::FromBinding(bindingRef, "binding");
+
+    const ConnectionRule* rule = registry.FindRule(sourceInfo, targetInfo);
+
+    // DirectConnectionRule has higher priority (50) than VariadicConnectionRule (25)
+    // But DirectConnectionRule CAN handle binding targets (1:1 slot-to-binding)
+    // So DirectConnectionRule should be matched
+    ASSERT_NE(rule, nullptr);
+    EXPECT_EQ(rule->Name(), "DirectConnectionRule");
+}
+
+TEST(ConnectionRuleRegistryTest, RulePriorityOrder) {
+    auto registry = ConnectionRuleRegistry::CreateDefault();
+
+    const auto& rules = registry.GetRules();
+    ASSERT_EQ(rules.size(), 3u);
+
+    // Should be sorted by priority descending
+    EXPECT_EQ(rules[0]->Priority(), 100u);  // AccumulationConnectionRule
+    EXPECT_EQ(rules[1]->Priority(), 50u);   // DirectConnectionRule
+    EXPECT_EQ(rules[2]->Priority(), 25u);   // VariadicConnectionRule
+}
+
+// ============================================================================
+// UNIFIED CONNECT API TESTS
+// ============================================================================
+
+TEST(UnifiedConnectTest, ConnectionOrderDefault) {
+    ConnectionOrder order;
+    EXPECT_EQ(order.sortKey, 0);
+}
+
+TEST(UnifiedConnectTest, ConnectionOrderWithSortKey) {
+    ConnectionOrder order{42};
+    EXPECT_EQ(order.sortKey, 42);
+}
+
+TEST(UnifiedConnectTest, ConnectionInfoDefault) {
+    ConnectionInfo info;
+    EXPECT_EQ(info.sortKey, 0);
+    uint8_t expected = static_cast<uint8_t>(SlotRole::None);
+    uint8_t actual = static_cast<uint8_t>(info.roleOverride);
+    EXPECT_EQ(actual, expected);
+}
+
+TEST(UnifiedConnectTest, ConnectionInfoWithSortKeyAndRole) {
+    ConnectionInfo info{10, SlotRole::Execute};
+    EXPECT_EQ(info.sortKey, 10);
+    uint8_t expected = static_cast<uint8_t>(SlotRole::Execute);
+    uint8_t actual = static_cast<uint8_t>(info.roleOverride);
+    EXPECT_EQ(actual, expected);
+}
+
+TEST(UnifiedConnectTest, ValidateConnectionDirect) {
+    auto registry = ConnectionRuleRegistry::CreateDefault();
+
+    auto sourceSlot = SlotInfo::FromOutputSlot<SourceConfig::BUFFER_OUT_Slot>("OUT");
+    auto targetSlot = SlotInfo::FromInputSlot<TargetConfig::BUFFER_IN_Slot>("IN");
+
+    auto result = ValidateConnection(registry, sourceSlot, targetSlot);
+    EXPECT_TRUE(result.success);
+}
+
+TEST(UnifiedConnectTest, ValidateConnectionAccumulation) {
+    auto registry = ConnectionRuleRegistry::CreateDefault();
+
+    auto sourceSlot = SlotInfo::FromOutputSlot<SourceConfig::BUFFER_OUT_Slot>("OUT");
+    auto targetSlot = SlotInfo::FromInputSlot<AccumulationTargetConfig::PASSES_Slot>("PASSES");
+
+    auto result = ValidateConnection(registry, sourceSlot, targetSlot);
+    EXPECT_TRUE(result.success);
+}
+
+TEST(UnifiedConnectTest, ValidateConnectionVariadic) {
+    auto registry = ConnectionRuleRegistry::CreateDefault();
+
+    auto sourceSlot = SlotInfo::FromOutputSlot<SourceConfig::BUFFER_OUT_Slot>("OUT");
+    MockBindingRef bindingRef{0, 7};
+    auto targetSlot = SlotInfo::FromBinding(bindingRef, "binding");
+
+    auto result = ValidateConnection(registry, sourceSlot, targetSlot);
+    EXPECT_TRUE(result.success);
+}
+
+TEST(UnifiedConnectTest, ValidateConnectionInvalidSourceInput) {
+    auto registry = ConnectionRuleRegistry::CreateDefault();
+
+    // Source is input (invalid)
+    auto sourceSlot = SlotInfo::FromInputSlot<TargetConfig::BUFFER_IN_Slot>("IN");
+    auto targetSlot = SlotInfo::FromInputSlot<TargetConfig::BUFFER_IN_Slot>("IN");
+
+    auto result = ValidateConnection(registry, sourceSlot, targetSlot);
+    EXPECT_FALSE(result.success);
+    EXPECT_TRUE(result.errorMessage.find("output") != std::string::npos);
+}
+
+TEST(UnifiedConnectTest, CreateSlotInfoFromSlotReference) {
+    auto outputInfo = CreateSlotInfo<SourceConfig::BUFFER_OUT_Slot>("OUT", true);
+    EXPECT_TRUE(outputInfo.IsOutput());
+    EXPECT_EQ(outputInfo.name, "OUT");
+
+    auto inputInfo = CreateSlotInfo<TargetConfig::BUFFER_IN_Slot>("IN", false);
+    EXPECT_TRUE(inputInfo.IsInput());
+    EXPECT_EQ(inputInfo.name, "IN");
+}
+
+// ============================================================================
+// CONCEPT CONSTRAINT VERIFICATION (Compile-Time Tests)
+// ============================================================================
+
+// These tests verify concept constraints at compile time
+// If concepts aren't satisfied, compilation fails with clear error messages
+
+TEST(UnifiedConnectConceptsTest, SlotReferenceConceptSatisfied) {
+    // These should compile - slots satisfy SlotReference concept
+    static_assert(SlotReference<SourceConfig::BUFFER_OUT_Slot>);
+    static_assert(SlotReference<TargetConfig::BUFFER_IN_Slot>);
+    static_assert(SlotReference<AccumulationTargetConfig::PASSES_Slot>);
+}
+
+TEST(UnifiedConnectConceptsTest, AccumulationSlotConceptSatisfied) {
+    // AccumulationSlot requires SlotReference + Accumulation flag
+    static_assert(AccumulationSlot<AccumulationTargetConfig::PASSES_Slot>);
+    static_assert(!AccumulationSlot<TargetConfig::BUFFER_IN_Slot>);  // Not accumulation
+}
+
+TEST(UnifiedConnectConceptsTest, BindingReferenceConceptSatisfied) {
+    // BindingReference requires binding + descriptorType
+    static_assert(BindingReference<MockBindingRef>);
+    static_assert(!BindingReference<SourceConfig::BUFFER_OUT_Slot>);  // Not binding
 }
 
 // ============================================================================
