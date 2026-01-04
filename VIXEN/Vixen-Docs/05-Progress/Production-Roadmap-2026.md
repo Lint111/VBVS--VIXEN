@@ -174,10 +174,76 @@ All Sprint 4 tasks completed. Ready for merge to main and Sprint 5 (CashSystem R
 
 ---
 
-### Sprint 6: Timeline Foundation (NEXT)
+### Sprint 6: Timeline Foundation (NEXT) 🟢 IN PROGRESS
 
+**Branch:** `production/sprint-6-timeline-foundation`
+**Board:** 651785
 **Goal:** Build foundational Timeline system for parallel execution.
-**Status:** 🆕 PLANNING
+**Status:** 🟢 Sprint 6.0.1 IN PROGRESS
+
+---
+
+#### Sprint 6.0.1: Unified Connection System (76h) - PREREQUISITE
+
+**Design Element:** #35
+**Goal:** Single Connect() API for all connection types. Slot metadata determines behavior.
+
+| Task ID | Task | Hours | Priority | Status |
+|---------|------|-------|----------|--------|
+| #324 | SlotFlags Infrastructure | 8h | HIGH | ⏳ Planned |
+| #320 | Type Traits + Concepts | 4h | HIGH | ⏳ Planned |
+| #316 | ConnectionRule Base + Registry | 12h | HIGH | ⏳ Planned |
+| #323 | DirectConnectionRule | 4h | HIGH | ⏳ Planned |
+| #321 | AccumulationConnectionRule | 12h | HIGH | ⏳ Planned |
+| #319 | VariadicConnectionRule Refactor | 8h | HIGH | ⏳ Planned |
+| #322 | Unified Connect API | 8h | HIGH | ⏳ Planned |
+| #317 | Migrate Existing Variadic Nodes | 8h | MEDIUM | ⏳ Planned |
+| #318 | Tests + Documentation | 12h | HIGH | ⏳ Planned |
+
+**Key Deliverables:**
+- `SlotFlags` enum (Accumulation, MultiConnect, ExplicitOrder)
+- `ConnectionRule` base class + registry
+- Type traits: `is_slot_ref_v<T>`, `is_binding_ref_v<T>`
+- Single `Connect()` API with type-based dispatch
+- Deprecated `ConnectVariadic()` wrapper
+
+See [[Sprint6.0.1-Unified-Connection-System]] for detailed design.
+
+---
+
+#### Phase 1: MultiDispatchNode (56h)
+
+| Task ID | Task | Hours | Priority | Status |
+|---------|------|-------|----------|--------|
+| #313 | DispatchPass Structure | 8h | HIGH | ⏳ Planned |
+| #312 | MultiDispatchNode Core | 16h | HIGH | ⏳ Planned |
+| #314 | Pipeline Statistics | 8h | MEDIUM | ⏳ Planned |
+| #311 | Integration Tests | 16h | HIGH | ⏳ Planned |
+| #310 | Documentation & Examples | 8h | MEDIUM | ⏳ Planned |
+
+**Dependencies:** #313 → #312 → #314, #312 → #311 → #310
+
+#### Phase 2: TaskQueue System (72h) - PLANNED
+
+| Task ID | Task | Hours | Priority |
+|---------|------|-------|----------|
+| - | TaskQueue Template | 16h | HIGH |
+| - | Budget-Aware Dequeue | 16h | HIGH |
+| - | QueueableDispatchNode | 16h | MEDIUM |
+| - | Stress Tests | 16h | HIGH |
+| - | Documentation | 8h | MEDIUM |
+
+#### Phase 3: WaveScheduler (84h) - PLANNED
+
+| Task ID | Task | Hours | Priority |
+|---------|------|-------|----------|
+| - | ResourceAccessTracker | 16h | HIGH |
+| - | Wave Computation Algorithm | 16h | HIGH |
+| - | Parallel Wave Execution | 24h | HIGH |
+| - | Performance Tests | 16h | HIGH |
+| - | Documentation | 12h | MEDIUM |
+
+**Total Sprint 6:** 212h (15 tasks)
 
 See [[Sprint6-Timeline-Foundation]] for detailed planning.
 
@@ -521,6 +587,11 @@ graph LR
 | 2026-01-03 | Added 2 pre-allocation tasks to Sprint 8 (#306-307, 12h) |
 | 2026-01-03 | Added 2 pre-allocation tasks to Sprint 10 (#308-309, 14h) |
 | 2026-01-03 | Updated total: 12 sprints, 118 tasks, 1,440h (+62h from critique) |
+| 2026-01-04 | **Sprint 6 Phase 1 STARTED** - Created HacknPlan tasks #310-314 (56h) |
+| 2026-01-04 | Sprint 6: MultiDispatchNode phase detailed breakdown added |
+| 2026-01-04 | **Sprint 6.0.1 CREATED** - Unified Connection System prerequisite (9 tasks, 76h) |
+| 2026-01-04 | Design Element #35: Unified Connection System architecture |
+| 2026-01-04 | Feature plan: [[Sprint6.0.1-Unified-Connection-System]] |
 
 ---
 

@@ -175,6 +175,66 @@ else()
 endif()
 
 # ===========================================================================
+# Connection Concepts Test (Sprint 6.0.1)
+# ===========================================================================
+# This test validates C++20 concepts for the unified connection system:
+# - SlotReference, BindingReference, AccumulationSlot concepts
+# - ConnectionMetadata concept and helper types
+# - Legacy type trait wrappers
+# Tests are primarily compile-time (static_assert).
+
+if(TARGET GTest::gtest_main)
+    add_executable(test_connection_concepts
+        test_connection_concepts.cpp
+    )
+
+    # Link against the RenderGraph library target - includes propagate automatically
+    target_link_libraries(test_connection_concepts PRIVATE
+        GTest::gtest_main
+        RenderGraph
+    )
+
+    # Visual Studio solution folder organization
+    set_target_properties(test_connection_concepts PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+    gtest_discover_tests(test_connection_concepts)
+
+    message(STATUS "✓ test_connection_concepts configured (Sprint 6.0.1)")
+else()
+    message(STATUS "⊗ test_connection_concepts skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
+# Connection Rule Test (Sprint 6.0.1)
+# ===========================================================================
+# This test validates the ConnectionRule system:
+# - SlotDescriptor and BindingDescriptor creation
+# - ConnectionRuleRegistry rule matching
+# - DirectConnectionRule validation logic
+# Tests use GoogleTest framework.
+
+if(TARGET GTest::gtest_main)
+    add_executable(test_connection_rule
+        test_connection_rule.cpp
+    )
+
+    # Link against the RenderGraph library target
+    target_link_libraries(test_connection_rule PRIVATE
+        GTest::gtest_main
+        RenderGraph
+    )
+
+    # Visual Studio solution folder organization
+    set_target_properties(test_connection_rule PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+    gtest_discover_tests(test_connection_rule)
+
+    message(STATUS "✓ test_connection_rule configured (Sprint 6.0.1)")
+else()
+    message(STATUS "⊗ test_connection_rule skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
 # Voxel Systems Tests - CONSOLIDATED (Phase H)
 # ===========================================================================
 # Validates voxel infrastructure:

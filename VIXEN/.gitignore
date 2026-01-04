@@ -66,6 +66,10 @@ data/
 data/*
 !data/templates/
 
+# Exception: Keep RenderGraph Data/ folder (contains node configs)
+!libraries/*/include/Data/
+!libraries/*/include/Data/**
+
 # Binaries and generated logs
 binaries/
 vulkan_app_log.txt

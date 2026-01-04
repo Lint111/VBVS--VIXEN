@@ -1,8 +1,8 @@
-# Active Context - Sprint 6 Planning
+# Active Context - Sprint 6 Phase 1
 
 **Last Updated:** 2026-01-04
-**Branch:** `main`
-**Status:** Build PASSING | Sprint 5 ✅ | Sprint 5.5 ✅ | Sprint 6 PLANNING
+**Branch:** `production/sprint-6-timeline-foundation`
+**Status:** Build PASSING | Sprint 5 ✅ | Sprint 5.5 ✅ | Sprint 6 Phase 1 🟢 IN PROGRESS
 
 ---
 
@@ -39,18 +39,76 @@
 
 ---
 
-## Sprint 6: Timeline Foundation (NEXT)
+## Sprint 6.0.1: Unified Connection System 🟢 ACTIVE
 
-**Goal:** Build foundational Timeline system for parallel execution.
-**Status:** 🆕 PLANNING
+**Goal:** Single Connect() API for all connection types.
+**Board:** 651785
+**Design Element:** #35
+**Status:** 🟢 PLANNING
 
-**Source:** Workstream 3 in Production Roadmap - Timeline Execution System
+### Prerequisite for MultiDispatchNode
 
-**Planning:** Use `/collaborative-development` workflow to:
-1. Analyze Timeline requirements from roadmap
-2. Break into implementable tasks
-3. Create HacknPlan tasks with design elements
-4. Document in Obsidian
+MultiDispatchNode requires Accumulation connection support. Current system has:
+- Multiple APIs: `Connect()`, `ConnectVariadic()`, (proposed `ConnectAccumulate()`)
+- Implicit behavior based on API choice
+
+### Unified System Design
+
+1. **SlotFlags** in slot definition → behavior
+2. **Type traits** → `is_slot_ref_v<T>` vs `is_binding_ref_v<T>`
+3. **ConnectionRule** pattern → extensible without API changes
+4. **Single `Connect()`** → graph infers intent from types
+
+### Tasks (76h)
+
+| Task ID | Task | Hours |
+|---------|------|-------|
+| #324 | SlotFlags Infrastructure | 8h |
+| #320 | Type Traits + Concepts | 4h |
+| #316 | ConnectionRule Base + Registry | 12h |
+| #323 | DirectConnectionRule | 4h |
+| #321 | AccumulationConnectionRule | 12h |
+| #319 | VariadicConnectionRule Refactor | 8h |
+| #322 | Unified Connect API | 8h |
+| #317 | Migrate Existing Nodes | 8h |
+| #318 | Tests + Documentation | 12h |
+
+---
+
+## Sprint 6: Timeline Foundation - Phase 1 (BLOCKED by 6.0.1)
+
+**Goal:** Build MultiDispatchNode for multi-pass compute sequences.
+**Board:** 651785
+**Status:** ⏸️ BLOCKED (waiting for Unified Connection System)
+
+### Phase 1 Tasks (56h)
+
+| Task ID | Task | Hours | Priority | Status |
+|---------|------|-------|----------|--------|
+| #313 | DispatchPass Structure | 8h | HIGH | ⏳ Planned |
+| #312 | MultiDispatchNode Core | 16h | HIGH | ⏳ Planned |
+| #314 | Pipeline Statistics | 8h | MEDIUM | ⏳ Planned |
+| #311 | Integration Tests | 16h | HIGH | ⏳ Planned |
+| #310 | Documentation & Examples | 8h | MEDIUM | ⏳ Planned |
+
+### Implementation Order
+1. **#313** DispatchPass Structure - Define pass descriptor struct
+2. **#312** MultiDispatchNode Core - Node implementation with QueueDispatch/QueueBarrier
+3. **#314** Pipeline Statistics - MetricsCollector integration
+4. **#311** Integration Tests - 3-pass compute sequence tests
+5. **#310** Documentation - Obsidian docs + examples
+
+### Target Files
+```
+libraries/RenderGraph/
+├── include/Nodes/
+│   ├── DispatchPass.h          # NEW - Task #313
+│   └── MultiDispatchNode.h     # NEW - Task #312
+├── src/Nodes/
+│   └── MultiDispatchNode.cpp   # NEW - Task #312
+└── tests/
+    └── test_multi_dispatch_node.cpp  # NEW - Task #311
+```
 
 ---
 

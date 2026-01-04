@@ -30,6 +30,7 @@ endif()
 set(RENDERGRAPH_DATA_CORE_HEADERS
     include/Data/BasicDataTypes.h
     include/Data/DeviceHandles.h
+    include/Data/DispatchPass.h
     include/Data/LayerAndExtensionRequirementData.h
     include/Data/ParameterDataTypes.h
     include/Data/VariantDescriptors.h
@@ -49,6 +50,7 @@ set(RENDERGRAPH_DATA_NODE_CONFIGS
     include/Data/Nodes/CommandPoolNodeConfig.h
     include/Data/Nodes/ComputeDispatchNodeConfig.h
     include/Data/Nodes/ComputePipelineNodeConfig.h
+    include/Data/Nodes/MultiDispatchNodeConfig.h
     include/Data/Nodes/ConstantNodeConfig.h
     include/Data/Nodes/DepthBufferNodeConfig.h
     include/Data/Nodes/DescriptorResourceGathererNodeConfig.h
@@ -84,6 +86,7 @@ set(RENDERGRAPH_DATA_NODE_CONFIGS
 set(RENDERGRAPH_CORE_HEADERS
     # Note: Memory/Lifetime headers moved to ResourceManagement library
     include/Core/ComputePerformanceLogger.h
+    include/Core/ConnectionRule.h
     include/Core/FieldExtractor.h
     include/Core/GPUPerformanceLogger.h
     include/Core/GraphLifecycleHooks.h
@@ -115,6 +118,7 @@ set(RENDERGRAPH_DATA_CORE_SOURCES
 
 set(RENDERGRAPH_CORE_SOURCES
     # Note: Memory/Lifetime sources moved to ResourceManagement library
+    src/Core/ConnectionRule.cpp
     src/Core/GPUPerformanceLogger.cpp
     src/Core/GraphLifecycleHooks.cpp
     src/Core/GraphTopology.cpp
@@ -139,6 +143,7 @@ set(RENDERGRAPH_NODE_HEADERS
     include/Nodes/CommandPoolNode.h
     include/Nodes/ComputeDispatchNode.h
     include/Nodes/ComputePipelineNode.h
+    include/Nodes/MultiDispatchNode.h
     include/Nodes/ConstantNode.h
     include/Nodes/ConstantNodeType.h
     include/Nodes/DebugBufferReaderNode.h
@@ -177,6 +182,7 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/CommandPoolNode.cpp
     src/Nodes/ComputeDispatchNode.cpp
     src/Nodes/ComputePipelineNode.cpp
+    src/Nodes/MultiDispatchNode.cpp
     src/Nodes/DebugBufferReaderNode.cpp
     src/Nodes/DepthBufferNode.cpp
     src/Nodes/DescriptorResourceGathererNode.cpp

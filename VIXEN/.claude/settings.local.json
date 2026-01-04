@@ -25,7 +25,12 @@
       "Bash(./build/libraries/ResourceManagement/tests/Debug/test_budget_manager_integration.exe:*)",
       "Bash(./build/libraries/CashSystem/tests/Debug/test_registration_api.exe:*)",
       "Bash(./build/libraries/CashSystem/tests/Debug/test_tlas_phase3.exe:*)",
-      "Bash(./build/libraries/RenderGraph/tests/Debug/test_acceleration_structure_node.exe:*)"
+      "Bash(./build/libraries/RenderGraph/tests/Debug/test_acceleration_structure_node.exe:*)",
+      "Bash(./build/libraries/RenderGraph/tests/Debug/test_array_type_validation.exe:*)",
+      "Bash(./build/libraries/RenderGraph/tests/Debug/test_field_extraction.exe:*)",
+      "Bash(./build/libraries/RenderGraph/tests/Debug/test_resource_gatherer.exe:*)",
+      "Bash(./build/libraries/RenderGraph/tests/Debug/test_connection_rule.exe:*)",
+      "Bash(./build/libraries/RenderGraph/tests/Debug/test_connection_concepts.exe:*)"
     ]
   },
   "hooks": {
