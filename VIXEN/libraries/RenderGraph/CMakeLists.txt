@@ -80,13 +80,40 @@ set(RENDERGRAPH_DATA_NODE_CONFIGS
 )
 
 # ============================================================================
+# Connection System (Sprint 6.0.1)
+# ============================================================================
+
+set(RENDERGRAPH_CONNECTION_HEADERS
+    include/Connection/ConnectionTypes.h
+    include/Connection/ConnectionRule.h
+    include/Connection/ConnectionRuleRegistry.h
+    include/Connection/ConnectionPipeline.h
+    include/Connection/ConnectionModifier.h
+    include/Connection/Rules/DirectConnectionRule.h
+    include/Connection/Rules/AccumulationConnectionRule.h
+    include/Connection/Rules/VariadicConnectionRule.h
+    include/Connection/Modifiers/FieldExtractionModifier.h
+    include/Connection/Modifiers/SlotRoleModifier.h
+    include/Connection/Modifiers/DebugTagModifier.h
+    include/Connection/Modifiers/AccumulationSortConfig.h
+)
+
+set(RENDERGRAPH_CONNECTION_SOURCES
+    src/Connection/ConnectionRuleRegistry.cpp
+    src/Connection/ConnectionPipeline.cpp
+    src/Connection/Rules/DirectConnectionRule.cpp
+    src/Connection/Rules/AccumulationConnectionRule.cpp
+    src/Connection/Rules/VariadicConnectionRule.cpp
+)
+
+# ============================================================================
 # Core Implementation Headers
 # ============================================================================
 
 set(RENDERGRAPH_CORE_HEADERS
     # Note: Memory/Lifetime headers moved to ResourceManagement library
+    # Note: ConnectionRule moved to Connection/ folder (Sprint 6.0.1)
     include/Core/ComputePerformanceLogger.h
-    include/Core/ConnectionRule.h
     include/Core/FieldExtractor.h
     include/Core/GPUPerformanceLogger.h
     include/Core/GraphLifecycleHooks.h
@@ -118,7 +145,7 @@ set(RENDERGRAPH_DATA_CORE_SOURCES
 
 set(RENDERGRAPH_CORE_SOURCES
     # Note: Memory/Lifetime sources moved to ResourceManagement library
-    src/Core/ConnectionRule.cpp
+    # Note: ConnectionRule.cpp split into Connection/ folder
     src/Core/GPUPerformanceLogger.cpp
     src/Core/GraphLifecycleHooks.cpp
     src/Core/GraphTopology.cpp
@@ -246,6 +273,8 @@ add_library(RenderGraph STATIC
     ${RENDERGRAPH_DATA_CORE_HEADERS}
     ${RENDERGRAPH_DATA_CORE_SOURCES}
     ${RENDERGRAPH_DATA_NODE_CONFIGS}
+    ${RENDERGRAPH_CONNECTION_HEADERS}
+    ${RENDERGRAPH_CONNECTION_SOURCES}
     ${RENDERGRAPH_CORE_HEADERS}
     ${RENDERGRAPH_CORE_SOURCES}
     ${RENDERGRAPH_NODE_HEADERS}
@@ -338,6 +367,8 @@ endif()
 source_group("Data\\Core\\Headers" FILES ${RENDERGRAPH_DATA_CORE_HEADERS})
 source_group("Data\\Core\\Sources" FILES ${RENDERGRAPH_DATA_CORE_SOURCES})
 source_group("Data\\Nodes" FILES ${RENDERGRAPH_DATA_NODE_CONFIGS})
+source_group("Connection\\Headers" FILES ${RENDERGRAPH_CONNECTION_HEADERS})
+source_group("Connection\\Sources" FILES ${RENDERGRAPH_CONNECTION_SOURCES})
 source_group("Core\\Headers" FILES ${RENDERGRAPH_CORE_HEADERS})
 source_group("Core\\Sources" FILES ${RENDERGRAPH_CORE_SOURCES})
 source_group("Nodes\\Headers" FILES ${RENDERGRAPH_NODE_HEADERS})

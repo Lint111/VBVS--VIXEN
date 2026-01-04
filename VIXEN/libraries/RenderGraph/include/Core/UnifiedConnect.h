@@ -21,7 +21,7 @@
  * - For full Connect() API: include after TypedConnection.h
  */
 
-#include "Core/ConnectionRule.h"
+#include "Connection/ConnectionRuleRegistry.h"  // Includes ConnectionRule.h, ConnectionTypes.h
 #include "Data/Core/ConnectionConcepts.h"
 #include "Data/Core/SlotInfo.h"
 #include <concepts>

@@ -198,7 +198,10 @@ SlotRole descriptorRole = SlotRole::Dependency | SlotRole::Execute;
 
 ## 6. Connection API
 
-### 6.1 Basic Connection
+> [!info] Unified Connection System
+> As of Sprint 6.0.1, all connection types use a single `Connect()` API. See [[../05-Progress/features/Sprint6.0.1-Unified-Connection-System|Sprint 6.0.1]] for detailed design.
+
+### 6.1 Direct Connection (1:1)
 
 ```cpp
 RenderGraph graph(device, &registry);
@@ -206,18 +209,44 @@ auto windowNode = graph.AddNode(WindowNodeType, "MainWindow");
 auto deviceNode = graph.AddNode(DeviceNodeType, "Device");
 auto swapNode = graph.AddNode(SwapChainNodeType, "SwapChain");
 
-// Connect nodes
-graph.ConnectNodes(windowNode, WindowNodeConfig::WINDOW_HANDLE,
-                   swapNode, SwapChainNodeConfig::WINDOW);
-graph.ConnectNodes(deviceNode, DeviceNodeConfig::DEVICE,
-                   swapNode, SwapChainNodeConfig::DEVICE);
+// Connect nodes using unified API
+batch.Connect(windowNode, WindowNodeConfig::WINDOW_HANDLE,
+              swapNode, SwapChainNodeConfig::WINDOW);
+batch.Connect(deviceNode, DeviceNodeConfig::DEVICE,
+              swapNode, SwapChainNodeConfig::DEVICE);
 ```
 
-### 6.2 Variadic Connection
+### 6.2 Variadic Connection (Discovered Slots)
 
 ```cpp
-// For nodes with dynamic slot counts
-TypedConnection::ConnectVariadic(sourceNode, destNode, slotMappings);
+// For nodes with shader-discovered slots (e.g., descriptor bindings)
+batch.Connect(sourceNode, SourceConfig::OUTPUT,
+              gathererNode, ShaderBinding::esvoNodes);
+```
+
+### 6.3 Accumulation Connection (Multi-Connect)
+
+```cpp
+// Multiple sources to single array slot with explicit ordering
+batch.Connect(pass1, PassConfig::OUTPUT,
+              multiDispatch, MultiDispatchConfig::DISPATCH_PASSES,
+              ConnectionMeta{}.With<AccumulationSortConfig>(0));
+
+batch.Connect(pass2, PassConfig::OUTPUT,
+              multiDispatch, MultiDispatchConfig::DISPATCH_PASSES,
+              ConnectionMeta{}.With<AccumulationSortConfig>(1));
+```
+
+### 6.4 Connection Modifiers
+
+```cpp
+// Composable modifiers for advanced connection behavior
+batch.Connect(source, SourceConfig::STRUCT_OUTPUT,
+              target, TargetConfig::INPUT,
+              ConnectionMeta{}
+                  .With<FieldExtractionModifier>(&MyStruct::field)
+                  .With<SlotRoleModifier>(SlotRole::Execute)
+                  .With<DebugTagModifier>("custom-label"));
 ```
 
 ---
@@ -260,3 +289,4 @@ void RenderGraph::Execute(VkCommandBuffer cmd) {
 - [[Vulkan-Pipeline]] - Vulkan resource management
 - [[Type-System]] - Compile-time type safety
 - [[../02-Implementation/Shaders|Shaders]] - Shader integration
+- [[../05-Progress/features/Sprint6.0.1-Unified-Connection-System|Unified Connection System]] - Connection API design

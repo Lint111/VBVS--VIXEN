@@ -2,26 +2,14 @@
 
 #include "TypedNodeInstance.h"
 #include "Data/Core/CompileTimeResourceSystem.h"
+#include "Data/Core/SlotInfo.h"  // SlotState previously lived here; now unified in Data/Core/SlotInfo.h
 #include "IGraphCompilable.h"
 #include <vector>
 
 namespace Vixen::RenderGraph {
 
-/**
- * @brief Slot state lifecycle tracking
- *
- * Tracks the validation state of variadic slots through the compilation pipeline:
- * - Tentative: Created during ConnectVariadic, not yet validated
- * - Validated: Type-checked during Compile phase
- * - Compiled: Finalized with Vulkan resources created
- * - Invalid: Validation failed, slot cannot be used
- */
-enum class SlotState {
-    Tentative,    // Created during connection, unvalidated
-    Validated,    // Type-checked during Compile
-    Compiled,     // Finalized with resources
-    Invalid       // Validation failed
-};
+// SlotState is now defined in Data/Core/SlotInfo.h (Sprint 6.0.1 unification)
+// See SlotInfo.h for documentation
 
 /**
  * @brief Variadic slot metadata (per-bundle)

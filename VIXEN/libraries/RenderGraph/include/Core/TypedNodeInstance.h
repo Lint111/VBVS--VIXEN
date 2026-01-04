@@ -166,9 +166,13 @@ public:
          *
          * Phase H: Broadcast semantics - if producer outputs once during Compile (taskIndex=0)
          * but consumer reads during Execute with varying taskIndex, fall back to taskIndex=0.
+         *
+         * Sprint 6.0.1: Accumulation slot support
+         * - For regular slots: returns SlotType::Type
+         * - For accumulation slots: returns std::vector<SlotType::Type>
          */
         template<typename SlotType>
-        typename SlotType::Type In(SlotType slot) const {
+        auto In(SlotType slot) const {
             static_assert(SlotType::index < ConfigType::INPUT_COUNT, "Input index out of bounds");
 
             // Try current taskIndex first
@@ -180,8 +184,19 @@ public:
                 res = typedNode->NodeInstance::GetInput(SlotType::index, 0);
             }
 
-            if (!res) return typename SlotType::Type{};
-            return res->GetHandle<typename SlotType::Type>();
+            // Sprint 6.0.1: Handle accumulation slots differently
+            if constexpr (SlotType::isAccumulation) {
+                // Accumulation slot: storage is vector<T>, return vector<T>
+                using ElementType = typename SlotType::Type;
+                using VectorType = std::vector<ElementType>;
+
+                if (!res) return VectorType{};
+                return res->GetHandle<VectorType>();
+            } else {
+                // Regular slot: return T directly
+                if (!res) return typename SlotType::Type{};
+                return res->GetHandle<typename SlotType::Type>();
+            }
         }
 
         /**

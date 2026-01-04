@@ -13,7 +13,15 @@
 #include <array>
 #include <vector>
 
-#include "Core/ConnectionRule.h"
+// Connection system includes
+#include "Connection/ConnectionTypes.h"
+#include "Connection/ConnectionRuleRegistry.h"
+#include "Connection/ConnectionPipeline.h"
+#include "Connection/ConnectionModifier.h"
+#include "Connection/Rules/DirectConnectionRule.h"
+#include "Connection/Rules/AccumulationConnectionRule.h"
+#include "Connection/Rules/VariadicConnectionRule.h"
+#include "Connection/Modifiers/FieldExtractionModifier.h"
 #include "Core/UnifiedConnect.h"
 #include "Data/Core/ResourceConfig.h"
 #include "Data/Core/ConnectionConcepts.h"
@@ -1005,6 +1013,419 @@ TEST(UnifiedConnectConceptsTest, BindingReferenceConceptSatisfied) {
     // BindingReference requires binding + descriptorType
     static_assert(BindingReference<MockBindingRef>);
     static_assert(!BindingReference<SourceConfig::BUFFER_OUT_Slot>);  // Not binding
+}
+
+// ============================================================================
+// ACCUMULATION TYPE HELPERS TESTS
+// ============================================================================
+
+// Include TypedConnection.h for AccumulatedType
+#include "Core/TypedConnection.h"
+
+TEST(AccumulationTypeTest, AccumulatedTypeForBool) {
+    using AccType = AccumulatedType_t<bool>;
+    static_assert(std::is_same_v<AccType, std::vector<bool>>);
+}
+
+TEST(AccumulationTypeTest, AccumulatedTypeForVkBuffer) {
+    using AccType = AccumulatedType_t<VkBuffer>;
+    static_assert(std::is_same_v<AccType, std::vector<VkBuffer>>);
+}
+
+TEST(AccumulationTypeTest, AccumulatedTypeForStruct) {
+    struct TestStruct { int x; };
+    using AccType = AccumulatedType_t<TestStruct>;
+    static_assert(std::is_same_v<AccType, std::vector<TestStruct>>);
+}
+
+// ============================================================================
+// ACCUMULATION SLOT COMPILE-TIME TESTS
+// ============================================================================
+
+// Test config with bool accumulation slot
+struct BoolAccumulationConfig : public ResourceConfigBase<1, 0> {
+    ACCUMULATION_INPUT_SLOT(INPUTS, bool, 0,
+        SlotNullability::Required,
+        SlotRole::Dependency);
+};
+
+TEST(AccumulationSlotTest, BoolAccumulationSlotFlags) {
+    // Verify the slot has correct flags
+    static_assert(BoolAccumulationConfig::INPUTS_Slot::isAccumulation);
+    static_assert(BoolAccumulationConfig::INPUTS_Slot::isMultiConnect);
+    static_assert(HasAccumulation(BoolAccumulationConfig::INPUTS_Slot::flags));
+    static_assert(HasMultiConnect(BoolAccumulationConfig::INPUTS_Slot::flags));
+}
+
+TEST(AccumulationSlotTest, BoolAccumulationSlotType) {
+    // The slot's element type is bool
+    using ElementType = typename BoolAccumulationConfig::INPUTS_Slot::Type;
+    static_assert(std::is_same_v<ElementType, bool>);
+}
+
+TEST(AccumulationSlotTest, AccumulationSlotInfo) {
+    auto info = SlotInfo::FromInputSlot<BoolAccumulationConfig::INPUTS_Slot>("INPUTS");
+
+    EXPECT_TRUE(info.IsAccumulation());
+    EXPECT_TRUE(info.IsMultiConnect());
+    EXPECT_TRUE(info.IsInput());
+    EXPECT_FALSE(info.IsOutput());
+}
+
+// ============================================================================
+// ACCUMULATION ENTRY TESTS (Sprint 6.0.1)
+// ============================================================================
+
+TEST(AccumulationEntryTest, DefaultValues) {
+    AccumulationEntry entry;
+
+    EXPECT_EQ(entry.sourceOutputIndex, 0u);
+    EXPECT_EQ(entry.sortKey, 0);
+    uint8_t expected = static_cast<uint8_t>(SlotRole::None);
+    uint8_t actual = static_cast<uint8_t>(entry.roleOverride);
+    EXPECT_EQ(actual, expected);
+}
+
+TEST(AccumulationEntryTest, WithSortKey) {
+    AccumulationEntry entry;
+    entry.sortKey = 42;
+    entry.sourceOutputIndex = 5;
+
+    EXPECT_EQ(entry.sortKey, 42);
+    EXPECT_EQ(entry.sourceOutputIndex, 5u);
+}
+
+// ============================================================================
+// PENDING ACCUMULATION STATE TESTS
+// ============================================================================
+
+TEST(AccumulationStateTest, AddEntries) {
+    AccumulationState state;
+
+    AccumulationEntry entry1;
+    entry1.sortKey = 2;
+    state.entries.push_back(entry1);
+
+    AccumulationEntry entry2;
+    entry2.sortKey = 1;
+    state.entries.push_back(entry2);
+
+    EXPECT_EQ(state.entries.size(), 2u);
+}
+
+TEST(AccumulationStateTest, SortBySortKey) {
+    AccumulationState state;
+
+    AccumulationEntry entry1;
+    entry1.sortKey = 3;
+    state.entries.push_back(entry1);
+
+    AccumulationEntry entry2;
+    entry2.sortKey = 1;
+    state.entries.push_back(entry2);
+
+    AccumulationEntry entry3;
+    entry3.sortKey = 2;
+    state.entries.push_back(entry3);
+
+    // Sort as done in RegisterAll()
+    std::sort(state.entries.begin(), state.entries.end(),
+        [](const AccumulationEntry& a, const AccumulationEntry& b) {
+            return a.sortKey < b.sortKey;
+        });
+
+    EXPECT_EQ(state.entries[0].sortKey, 1);
+    EXPECT_EQ(state.entries[1].sortKey, 2);
+    EXPECT_EQ(state.entries[2].sortKey, 3);
+}
+
+// ============================================================================
+// CONNECTION PIPELINE TESTS (Sprint 6.0.1 Phase 2)
+// ============================================================================
+
+// Mock modifier for testing pipeline phases
+class MockModifier : public ConnectionModifier {
+public:
+    std::vector<std::string> phaseCalls;
+    ConnectionResult preValResult = ConnectionResult::Success();
+    ConnectionResult preResResult = ConnectionResult::Success();
+    ConnectionResult postResResult = ConnectionResult::Success();
+    uint32_t testPriority = 50;
+
+    [[nodiscard]] ConnectionResult PreValidation(const ConnectionContext& /*ctx*/) override {
+        phaseCalls.push_back("PreValidation");
+        return preValResult;
+    }
+
+    ConnectionResult PreResolve(ConnectionContext& /*ctx*/) override {
+        phaseCalls.push_back("PreResolve");
+        return preResResult;
+    }
+
+    ConnectionResult PostResolve(ConnectionContext& /*ctx*/) override {
+        phaseCalls.push_back("PostResolve");
+        return postResResult;
+    }
+
+    [[nodiscard]] uint32_t Priority() const override { return testPriority; }
+    [[nodiscard]] std::string_view Name() const override { return "MockModifier"; }
+};
+
+TEST(ConnectionPipelineTest, EmptyPipelineExecutesRule) {
+    ConnectionPipeline pipeline;
+    DirectConnectionRule rule;
+
+    ConnectionContext ctx;
+    ctx.sourceNode = reinterpret_cast<NodeInstance*>(0x1);
+    ctx.targetNode = reinterpret_cast<NodeInstance*>(0x2);
+    ctx.graph = reinterpret_cast<RenderGraph*>(0x3);  // Placeholder for Resolve()
+    ctx.sourceSlot = SlotInfo::FromOutputSlot<SourceConfig::BUFFER_OUT_Slot>("OUT");
+    ctx.targetSlot = SlotInfo::FromInputSlot<TargetConfig::BUFFER_IN_Slot>("IN");
+
+    auto result = pipeline.Execute(ctx, rule);
+    EXPECT_TRUE(result.success);
+}
+
+TEST(ConnectionPipelineTest, ModifierPhaseOrderCorrect) {
+    ConnectionPipeline pipeline;
+    auto mod = std::make_unique<MockModifier>();
+    auto* modPtr = mod.get();
+    pipeline.AddModifier(std::move(mod));
+
+    DirectConnectionRule rule;
+
+    ConnectionContext ctx;
+    ctx.sourceNode = reinterpret_cast<NodeInstance*>(0x1);
+    ctx.targetNode = reinterpret_cast<NodeInstance*>(0x2);
+    ctx.graph = reinterpret_cast<RenderGraph*>(0x3);  // Placeholder for Resolve()
+    ctx.sourceSlot = SlotInfo::FromOutputSlot<SourceConfig::BUFFER_OUT_Slot>("OUT");
+    ctx.targetSlot = SlotInfo::FromInputSlot<TargetConfig::BUFFER_IN_Slot>("IN");
+
+    auto result = pipeline.Execute(ctx, rule);
+    EXPECT_TRUE(result.success);
+
+    // Verify phase order: PreValidation → PreResolve → PostResolve
+    ASSERT_EQ(modPtr->phaseCalls.size(), 3u);
+    EXPECT_EQ(modPtr->phaseCalls[0], "PreValidation");
+    EXPECT_EQ(modPtr->phaseCalls[1], "PreResolve");
+    EXPECT_EQ(modPtr->phaseCalls[2], "PostResolve");
+}
+
+TEST(ConnectionPipelineTest, PreValidationFailureStopsPipeline) {
+    ConnectionPipeline pipeline;
+    auto mod = std::make_unique<MockModifier>();
+    mod->preValResult = ConnectionResult::Error("PreValidation failed");
+    auto* modPtr = mod.get();
+    pipeline.AddModifier(std::move(mod));
+
+    DirectConnectionRule rule;
+
+    ConnectionContext ctx;
+    ctx.sourceNode = reinterpret_cast<NodeInstance*>(0x1);
+    ctx.targetNode = reinterpret_cast<NodeInstance*>(0x2);
+    ctx.sourceSlot = SlotInfo::FromOutputSlot<SourceConfig::BUFFER_OUT_Slot>("OUT");
+    ctx.targetSlot = SlotInfo::FromInputSlot<TargetConfig::BUFFER_IN_Slot>("IN");
+
+    auto result = pipeline.Execute(ctx, rule);
+    EXPECT_FALSE(result.success);
+    EXPECT_TRUE(result.errorMessage.find("PreValidation") != std::string::npos);
+
+    // Only PreValidation should have been called
+    ASSERT_EQ(modPtr->phaseCalls.size(), 1u);
+    EXPECT_EQ(modPtr->phaseCalls[0], "PreValidation");
+}
+
+TEST(ConnectionPipelineTest, PreResolveFailureStopsPipeline) {
+    ConnectionPipeline pipeline;
+    auto mod = std::make_unique<MockModifier>();
+    mod->preResResult = ConnectionResult::Error("PreResolve failed");
+    auto* modPtr = mod.get();
+    pipeline.AddModifier(std::move(mod));
+
+    DirectConnectionRule rule;
+
+    ConnectionContext ctx;
+    ctx.sourceNode = reinterpret_cast<NodeInstance*>(0x1);
+    ctx.targetNode = reinterpret_cast<NodeInstance*>(0x2);
+    ctx.sourceSlot = SlotInfo::FromOutputSlot<SourceConfig::BUFFER_OUT_Slot>("OUT");
+    ctx.targetSlot = SlotInfo::FromInputSlot<TargetConfig::BUFFER_IN_Slot>("IN");
+
+    auto result = pipeline.Execute(ctx, rule);
+    EXPECT_FALSE(result.success);
+    EXPECT_TRUE(result.errorMessage.find("PreResolve") != std::string::npos);
+
+    // PreValidation and PreResolve should have been called
+    ASSERT_EQ(modPtr->phaseCalls.size(), 2u);
+}
+
+TEST(ConnectionPipelineTest, MultipleModifiersPriorityOrder) {
+    ConnectionPipeline pipeline;
+
+    auto mod1 = std::make_unique<MockModifier>();
+    mod1->testPriority = 100;  // Higher priority, runs first
+    auto* mod1Ptr = mod1.get();
+
+    auto mod2 = std::make_unique<MockModifier>();
+    mod2->testPriority = 50;   // Lower priority, runs second
+    auto* mod2Ptr = mod2.get();
+
+    // Add in reverse order to verify sorting
+    pipeline.AddModifier(std::move(mod2));
+    pipeline.AddModifier(std::move(mod1));
+
+    DirectConnectionRule rule;
+
+    ConnectionContext ctx;
+    ctx.sourceNode = reinterpret_cast<NodeInstance*>(0x1);
+    ctx.targetNode = reinterpret_cast<NodeInstance*>(0x2);
+    ctx.graph = reinterpret_cast<RenderGraph*>(0x3);  // Placeholder for Resolve()
+    ctx.sourceSlot = SlotInfo::FromOutputSlot<SourceConfig::BUFFER_OUT_Slot>("OUT");
+    ctx.targetSlot = SlotInfo::FromInputSlot<TargetConfig::BUFFER_IN_Slot>("IN");
+
+    auto result = pipeline.Execute(ctx, rule);
+    EXPECT_TRUE(result.success);
+
+    // Both modifiers should have all 3 phases called
+    EXPECT_EQ(mod1Ptr->phaseCalls.size(), 3u);
+    EXPECT_EQ(mod2Ptr->phaseCalls.size(), 3u);
+}
+
+TEST(ConnectionPipelineTest, ModifierCount) {
+    ConnectionPipeline pipeline;
+    EXPECT_EQ(pipeline.ModifierCount(), 0u);
+    EXPECT_FALSE(pipeline.HasModifiers());
+
+    pipeline.AddModifier(std::make_unique<MockModifier>());
+    EXPECT_EQ(pipeline.ModifierCount(), 1u);
+    EXPECT_TRUE(pipeline.HasModifiers());
+
+    pipeline.AddModifier(std::make_unique<MockModifier>());
+    EXPECT_EQ(pipeline.ModifierCount(), 2u);
+
+    pipeline.Clear();
+    EXPECT_EQ(pipeline.ModifierCount(), 0u);
+    EXPECT_FALSE(pipeline.HasModifiers());
+}
+
+TEST(ConnectionContextTest, EffectiveTypeOverride) {
+    ConnectionContext ctx;
+    ctx.sourceSlot.resourceType = ResourceType::Buffer;
+
+    // Without override, returns source slot's type
+    EXPECT_EQ(ctx.GetEffectiveSourceType(), ResourceType::Buffer);
+    EXPECT_FALSE(ctx.hasEffectiveTypeOverride);
+
+    // Set effective type
+    ctx.SetEffectiveResourceType(ResourceType::ImageView);
+    EXPECT_TRUE(ctx.hasEffectiveTypeOverride);
+    EXPECT_EQ(ctx.GetEffectiveSourceType(), ResourceType::ImageView);
+}
+
+TEST(ConnectionContextTest, SourceLifetime) {
+    ConnectionContext ctx;
+
+    // Default is Transient
+    EXPECT_EQ(ctx.sourceLifetime, ResourceLifetime::Transient);
+    EXPECT_FALSE(ctx.IsPersistentSource());
+
+    // Set to Persistent
+    ctx.sourceLifetime = ResourceLifetime::Persistent;
+    EXPECT_TRUE(ctx.IsPersistentSource());
+}
+
+// ============================================================================
+// FIELD EXTRACTION MODIFIER TESTS
+// ============================================================================
+
+TEST(FieldExtractionModifierTest, Construction) {
+    FieldExtractionModifier mod(64, 8, ResourceType::Buffer);
+
+    EXPECT_EQ(mod.GetFieldOffset(), 64u);
+    EXPECT_EQ(mod.GetFieldSize(), 8u);
+    EXPECT_EQ(mod.GetFieldType(), ResourceType::Buffer);
+    EXPECT_EQ(mod.Name(), "FieldExtractionModifier");
+    EXPECT_EQ(mod.Priority(), 75u);
+}
+
+TEST(FieldExtractionModifierTest, PreValidationRejectsTransient) {
+    FieldExtractionModifier mod(0, 8, ResourceType::ImageView);
+
+    ConnectionContext ctx;
+    ctx.sourceLifetime = ResourceLifetime::Transient;
+
+    auto result = mod.PreValidation(ctx);
+    EXPECT_FALSE(result.success);
+    EXPECT_TRUE(result.errorMessage.find("Persistent") != std::string::npos);
+}
+
+TEST(FieldExtractionModifierTest, PreValidationAcceptsPersistent) {
+    FieldExtractionModifier mod(0, 8, ResourceType::ImageView);
+
+    ConnectionContext ctx;
+    ctx.sourceLifetime = ResourceLifetime::Persistent;
+
+    auto result = mod.PreValidation(ctx);
+    EXPECT_TRUE(result.success);
+}
+
+TEST(FieldExtractionModifierTest, PreResolveSetsEffectiveType) {
+    FieldExtractionModifier mod(32, 4, ResourceType::Buffer);
+
+    ConnectionContext ctx;
+    ctx.sourceSlot.resourceType = ResourceType::PassThroughStorage;  // Struct type
+
+    auto result = mod.PreResolve(ctx);
+    EXPECT_TRUE(result.success);
+
+    // Effective type should be the field type
+    EXPECT_EQ(ctx.GetEffectiveSourceType(), ResourceType::Buffer);
+    EXPECT_TRUE(ctx.hasEffectiveTypeOverride);
+
+    // Slot info should be updated
+    EXPECT_EQ(ctx.sourceSlot.fieldOffset, 32u);
+    EXPECT_EQ(ctx.sourceSlot.fieldSize, 4u);
+    EXPECT_TRUE(ctx.sourceSlot.hasFieldExtraction);
+}
+
+TEST(FieldExtractionModifierTest, FullPipelineWithPersistentSource) {
+    ConnectionPipeline pipeline;
+    pipeline.AddModifier(std::make_unique<FieldExtractionModifier>(16, 8, ResourceType::ImageView));
+
+    DirectConnectionRule rule;
+
+    ConnectionContext ctx;
+    ctx.sourceNode = reinterpret_cast<NodeInstance*>(0x1);
+    ctx.targetNode = reinterpret_cast<NodeInstance*>(0x2);
+    ctx.graph = reinterpret_cast<RenderGraph*>(0x3);
+    ctx.sourceLifetime = ResourceLifetime::Persistent;  // Required for field extraction
+    ctx.sourceSlot = SlotInfo::FromOutputSlot<SourceConfig::BUFFER_OUT_Slot>("OUT");
+    ctx.targetSlot = SlotInfo::FromInputSlot<TargetConfig::BUFFER_IN_Slot>("IN");
+
+    auto result = pipeline.Execute(ctx, rule);
+    EXPECT_TRUE(result.success);
+
+    // Verify extraction was applied
+    EXPECT_TRUE(ctx.sourceSlot.hasFieldExtraction);
+    EXPECT_EQ(ctx.sourceSlot.fieldOffset, 16u);
+}
+
+TEST(FieldExtractionModifierTest, FullPipelineRejectsTransient) {
+    ConnectionPipeline pipeline;
+    pipeline.AddModifier(std::make_unique<FieldExtractionModifier>(16, 8, ResourceType::ImageView));
+
+    DirectConnectionRule rule;
+
+    ConnectionContext ctx;
+    ctx.sourceNode = reinterpret_cast<NodeInstance*>(0x1);
+    ctx.targetNode = reinterpret_cast<NodeInstance*>(0x2);
+    ctx.graph = reinterpret_cast<RenderGraph*>(0x3);
+    ctx.sourceLifetime = ResourceLifetime::Transient;  // Should fail
+    ctx.sourceSlot = SlotInfo::FromOutputSlot<SourceConfig::BUFFER_OUT_Slot>("OUT");
+    ctx.targetSlot = SlotInfo::FromInputSlot<TargetConfig::BUFFER_IN_Slot>("IN");
+
+    auto result = pipeline.Execute(ctx, rule);
+    EXPECT_FALSE(result.success);
+    EXPECT_TRUE(result.errorMessage.find("FieldExtractionModifier") != std::string::npos);
 }
 
 // ============================================================================

@@ -154,18 +154,27 @@ enum class SlotRole : uint8_t {
 
 ## 6. Connection API
 
+> **Note:** As of Sprint 6.0.1, RenderGraph uses a unified connection system. All connection types (Direct, Variadic, Accumulation) use the same `Connect()` API.
+
 ```cpp
 RenderGraph graph(device, &registry);
 auto windowNode = graph.AddNode(WindowNodeType, "MainWindow");
 auto deviceNode = graph.AddNode(DeviceNodeType, "Device");
 auto swapNode = graph.AddNode(SwapChainNodeType, "SwapChain");
 
-// Connect nodes
-graph.ConnectNodes(windowNode, WindowNodeConfig::WINDOW_HANDLE,
-                   swapNode, SwapChainNodeConfig::WINDOW);
-graph.ConnectNodes(deviceNode, DeviceNodeConfig::DEVICE,
-                   swapNode, SwapChainNodeConfig::DEVICE);
+// Connect nodes using unified API
+batch.Connect(windowNode, WindowNodeConfig::WINDOW_HANDLE,
+              swapNode, SwapChainNodeConfig::WINDOW);
+batch.Connect(deviceNode, DeviceNodeConfig::DEVICE,
+              swapNode, SwapChainNodeConfig::DEVICE);
+
+// Advanced: Multi-connect with modifiers
+batch.Connect(source, SourceConfig::OUTPUT,
+              target, TargetConfig::ARRAY_INPUT,
+              ConnectionMeta{}.With<AccumulationSortConfig>(0));
 ```
+
+For detailed connection system architecture, see [[../01-Architecture/RenderGraph-System#6. Connection API|Connection API]] and [[../05-Progress/features/Sprint6.0.1-Unified-Connection-System|Sprint 6.0.1]].
 
 ---
 
