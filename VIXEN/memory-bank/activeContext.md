@@ -2,7 +2,7 @@
 
 **Last Updated:** 2026-01-06
 **Branch:** `production/sprint-6-timeline-foundation`
-**Status:** Build PASSING | Sprint 6.0.1 + 6.0.2 COMPLETE | Sprint 6.1 READY
+**Status:** Build PASSING | Sprint 6.0.1 + 6.0.2 COMPLETE | Sprint 6.1 IN PROGRESS (2/5 tasks complete)
 
 ---
 
@@ -12,7 +12,7 @@
 **Sprint 5.5: Pre-Allocation Hardening** - COMPLETE (16h)
 **Sprint 6.0.1: Unified Connection System** - COMPLETE (118h)
 **Sprint 6.0.2: Accumulation Slot Refactor** - COMPLETE (3h)
-**Sprint 6.1: MultiDispatchNode** - READY TO START (56h estimated)
+**Sprint 6.1: MultiDispatchNode** - IN PROGRESS (14h logged / 56h estimated, 25% complete)
 
 ### Just Completed (2026-01-06)
 
@@ -63,12 +63,13 @@ ACCUMULATION_INPUT_SLOT_V2(INPUTS, std::vector<bool>, bool, 1, ..., SlotStorageS
 
 ---
 
-## Sprint 6.1: MultiDispatchNode - READY TO START
+## Sprint 6.1: MultiDispatchNode - IN PROGRESS
 
 **Goal:** Parallel compute dispatches with group-level accumulation
-**Tasks:** #310-#314
+**Tasks:** #310-#314 (2/5 complete)
 **Estimated:** 56 hours
-**Status:** Prerequisites complete, design ready
+**Logged:** 14 hours (25% complete)
+**Status:** Core infrastructure complete, tests pending
 
 ### Implementation Phases (56h)
 
@@ -102,13 +103,35 @@ ACCUMULATION_INPUT_SLOT_V2(INPUTS, std::vector<bool>, bool, 1, ..., SlotStorageS
 
 ### HacknPlan Tasks
 
-| Task ID | Task | Hours | Status |
-|---------|------|-------|--------|
-| #310 | MultiDispatchNode Core | 16h | Planned |
-| #311 | Group Accumulation System | 12h | Planned |
-| #312 | Parallel Dispatch | 12h | Planned |
-| #313 | Test Coverage | 8h | Planned |
-| #314 | Documentation | 8h | Planned |
+| Task ID | Task | Hours Est | Hours Logged | Status |
+|---------|------|-----------|--------------|--------|
+| #313 | DispatchPass Structure | 8h | 1.5h | ✅ COMPLETE |
+| #312 | MultiDispatchNode Core | 16h | 12.5h | ✅ COMPLETE |
+| #311 | Integration Tests | 16h | 0h | Planned |
+| #310 | Documentation & Examples | 8h | 0h | Planned |
+| #314 | Pipeline Statistics | 8h | 0h | Planned |
+
+### Completed (2026-01-06)
+
+**Task #313: DispatchPass Structure (1.5h)** - COMPLETE
+- Added `groupId` field to DispatchPass for group-based dispatch
+- File: [DispatchPass.h:56-58](libraries/RenderGraph/include/Data/DispatchPass.h#L56-L58)
+
+**Task #312: MultiDispatchNode Core (12.5h)** - COMPLETE
+
+**Phase 1: Infrastructure (6h)**
+- GROUP_INPUTS accumulation slot (V2 API with Value storage)
+- DispatchPass type registration in compile-time resource system
+- GroupKeyModifier for partitioning by member pointer
+- Files: GroupKeyModifier.h (new), MultiDispatchNodeConfig.h (+29), CompileTimeResourceSystem.h (+5)
+- Commit: `2b1b2d1`
+
+**Phase 2: Group Dispatch Implementation (6.5h)**
+- CompileImpl: Reads GROUP_INPUTS, partitions by groupId into groupedDispatches_ map
+- ExecuteImpl: Per-group dispatch with auto-barriers between/within groups
+- Backward compatible: QueueDispatch() API still works (legacy mode)
+- Files: MultiDispatchNode.h/cpp (+96 lines)
+- Commit: `b509ef6`
 
 ---
 
