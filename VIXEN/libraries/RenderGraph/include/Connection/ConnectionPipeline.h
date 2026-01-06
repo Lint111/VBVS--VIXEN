@@ -15,12 +15,16 @@ namespace Vixen::RenderGraph {
 /**
  * @brief Orchestrates modifier execution around base rule
  *
- * Executes the 3-phase modifier lifecycle:
- * 1. All modifiers' PreValidation (in priority order)
- * 2. Base rule Validate()
- * 3. All modifiers' PreResolve (in priority order)
+ * Executes the 5-phase pipeline:
+ * 1. All modifiers' PreValidation (guards + context transformation)
+ * 2. Base rule Validate() (uses transformed context for type checking)
+ * 3. All modifiers' PreResolve (final prep before resolution)
  * 4. Base rule Resolve()
- * 5. All modifiers' PostResolve (in priority order)
+ * 5. All modifiers' PostResolve (cleanup, metrics)
+ *
+ * NOTE: PreValidation can modify context. Modifiers like FieldExtractionModifier
+ * set effectiveResourceType in PreValidation so that Rule.Validate() uses the
+ * correct type for type checking.
  *
  * If any step fails, execution stops and error is returned.
  */

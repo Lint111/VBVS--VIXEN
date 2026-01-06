@@ -30,7 +30,10 @@
       "Bash(./build/libraries/RenderGraph/tests/Debug/test_field_extraction.exe:*)",
       "Bash(./build/libraries/RenderGraph/tests/Debug/test_resource_gatherer.exe:*)",
       "Bash(./build/libraries/RenderGraph/tests/Debug/test_connection_rule.exe:*)",
-      "Bash(./build/libraries/RenderGraph/tests/Debug/test_connection_concepts.exe:*)"
+      "Bash(./build/libraries/RenderGraph/tests/Debug/test_connection_concepts.exe:*)",
+      "Bash(powershell -Command \"\\(Get-Content ''application\\\\main\\\\source\\\\VulkanGraphApplication.cpp''\\) -replace ''RG::ConnectionMeta'', ''ConnectionMeta'' | Set-Content ''application\\\\main\\\\source\\\\VulkanGraphApplication.cpp''\")",
+      "Bash(powershell -Command \"\\(Get-Content ''application\\\\main\\\\source\\\\VulkanGraphApplication.cpp''\\) -replace ''\\\\.With\\\\\\(\\\\\\(ExtractField'', ''.With\\(ExtractField'' -replace ''\\\\\\)\\\\\\)\\\\\\);  // Mark as Execute-only'', ''\\)\\);  // Mark as Execute-only'' | Set-Content ''application\\\\main\\\\source\\\\VulkanGraphApplication.cpp''\")",
+      "Bash(powershell -Command \"$content = Get-Content ''application\\\\main\\\\source\\\\VulkanGraphApplication.cpp'' -Raw; $content = $content -replace ''ConnectionMeta\\\\{\\\\}\\\\.With\\\\\\('', ''''; $content = $content -replace ''\\\\\\)\\\\\\);  // Mark as Execute-only'', ''\\);  // Mark as Execute-only''; $content | Set-Content ''application\\\\main\\\\source\\\\VulkanGraphApplication.cpp''\")"
     ]
   },
   "hooks": {

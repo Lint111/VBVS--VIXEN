@@ -6,6 +6,9 @@
 #include <Core/NodeInstance.h>
 #include <Core/GraphLifecycleHooks.h>
 #include <Data/Core/ResourceConfig.h>  // SlotRole
+#include <Connection/ConnectionModifier.h>  // ConnectionMeta
+#include <Connection/Modifiers/FieldExtractionModifier.h>  // ExtractField
+#include <Connection/Modifiers/SlotRoleModifier.h>  // SlotRoleModifier
 
 // Shader management
 #include <ShaderBundleBuilder.h>
@@ -80,6 +83,7 @@
 #include <filesystem>
 #include <stdexcept>
 #include <unordered_set>
+
 
 // Use namespace alias to avoid RenderGraph class/namespace ambiguity
 namespace RG = Vixen::RenderGraph;
@@ -399,7 +403,7 @@ void BenchmarkGraphFactory::ConnectComputeRayMarch(
     // SwapChain -> Descriptor Set (image count metadata)
     batch.Connect(infra.swapchain, RG::SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
                   compute.descriptorSet, RG::DescriptorSetNodeConfig::SWAPCHAIN_IMAGE_COUNT,
-                  &SwapChainPublicVariables::swapChainImageCount);
+                  RG::ConnectionMeta{}.With(RG::ExtractField(&SwapChainPublicVariables::swapChainImageCount)));
 
     batch.Connect(infra.swapchain, RG::SwapChainNodeConfig::IMAGE_INDEX,
                   compute.descriptorSet, RG::DescriptorSetNodeConfig::IMAGE_INDEX);
@@ -888,7 +892,7 @@ void BenchmarkGraphFactory::ConnectFragmentRayMarch(
     // SwapChain -> Descriptor Set (image count and image index)
     batch.Connect(infra.swapchain, RG::SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
                   fragment.descriptorSet, RG::DescriptorSetNodeConfig::SWAPCHAIN_IMAGE_COUNT,
-                  &SwapChainPublicVariables::swapChainImageCount);
+                  RG::ConnectionMeta{}.With(RG::ExtractField(&SwapChainPublicVariables::swapChainImageCount)));
     batch.Connect(infra.swapchain, RG::SwapChainNodeConfig::IMAGE_INDEX,
                   fragment.descriptorSet, RG::DescriptorSetNodeConfig::IMAGE_INDEX);
 
@@ -1374,7 +1378,7 @@ void BenchmarkGraphFactory::ConnectHardwareRT(
     // SwapChain -> DescriptorSetNode (image count and image index)
     batch.Connect(infra.swapchain, RG::SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
                   hardwareRT.descriptorSet, RG::DescriptorSetNodeConfig::SWAPCHAIN_IMAGE_COUNT,
-                  &SwapChainPublicVariables::swapChainImageCount);
+                  RG::ConnectionMeta{}.With(RG::ExtractField(&SwapChainPublicVariables::swapChainImageCount)));
     batch.Connect(infra.swapchain, RG::SwapChainNodeConfig::IMAGE_INDEX,
                   hardwareRT.descriptorSet, RG::DescriptorSetNodeConfig::IMAGE_INDEX);
 
@@ -1684,58 +1688,58 @@ void BenchmarkGraphFactory::WireVariadicResources(
     constexpr uint32_t BINDING_SHADER_COUNTERS = 8;
 
     // Binding 0: outputImage (swapchain storage image) - Execute only (changes per frame)
-    batch.ConnectVariadic(
+    batch.Connect(
         infra.swapchain, RG::SwapChainNodeConfig::CURRENT_FRAME_IMAGE_VIEW,
         compute.descriptorGatherer, BINDING_OUTPUT_IMAGE,
-        SlotRole::Execute);
+        RG::ConnectionMeta{}.With(std::unique_ptr<RG::SlotRoleModifier>(new RG::SlotRoleModifier(RG::SlotRole::Execute))));
 
     // Binding 1: esvoNodes (SSBO) - Dependency + Execute
-    batch.ConnectVariadic(
+    batch.Connect(
         rayMarch.voxelGrid, RG::VoxelGridNodeConfig::OCTREE_NODES_BUFFER,
         compute.descriptorGatherer, BINDING_ESVO_NODES,
-        SlotRole::Dependency | SlotRole::Execute);
+        RG::ConnectionMeta{}.With(std::unique_ptr<RG::SlotRoleModifier>(new RG::SlotRoleModifier(RG::SlotRole::Dependency | RG::SlotRole::Execute))));
 
     // Binding 2: brickData (SSBO) - Dependency + Execute
-    batch.ConnectVariadic(
+    batch.Connect(
         rayMarch.voxelGrid, RG::VoxelGridNodeConfig::OCTREE_BRICKS_BUFFER,
         compute.descriptorGatherer, BINDING_BRICK_DATA,
-        SlotRole::Dependency | SlotRole::Execute);
+        RG::ConnectionMeta{}.With(std::unique_ptr<RG::SlotRoleModifier>(new RG::SlotRoleModifier(RG::SlotRole::Dependency | RG::SlotRole::Execute))));
 
     // Binding 3: materials (SSBO) - Dependency + Execute
-    batch.ConnectVariadic(
+    batch.Connect(
         rayMarch.voxelGrid, RG::VoxelGridNodeConfig::OCTREE_MATERIALS_BUFFER,
         compute.descriptorGatherer, BINDING_MATERIALS,
-        SlotRole::Dependency | SlotRole::Execute);
+        RG::ConnectionMeta{}.With(std::unique_ptr<RG::SlotRoleModifier>(new RG::SlotRoleModifier(RG::SlotRole::Dependency | RG::SlotRole::Execute))));
 
     // Binding 4: traceWriteIndex (SSBO) - Debug capture buffer
-    batch.ConnectVariadic(
+    batch.Connect(
         rayMarch.voxelGrid, RG::VoxelGridNodeConfig::DEBUG_CAPTURE_BUFFER,
         compute.descriptorGatherer, BINDING_TRACE_WRITE_INDEX,
-        SlotRole::Dependency | SlotRole::Execute | SlotRole::Debug);
+        RG::ConnectionMeta{}.With(std::unique_ptr<RG::SlotRoleModifier>(new RG::SlotRoleModifier(RG::SlotRole::Dependency | RG::SlotRole::Execute | RG::SlotRole::Debug))));
 
     // Binding 5: octreeConfig (UBO) - Scale and depth parameters
-    batch.ConnectVariadic(
+    batch.Connect(
         rayMarch.voxelGrid, RG::VoxelGridNodeConfig::OCTREE_CONFIG_BUFFER,
         compute.descriptorGatherer, BINDING_OCTREE_CONFIG,
-        SlotRole::Dependency | SlotRole::Execute);
+        RG::ConnectionMeta{}.With(std::unique_ptr<RG::SlotRoleModifier>(new RG::SlotRoleModifier(RG::SlotRole::Dependency | RG::SlotRole::Execute))));
 
     // Binding 6-7: Compressed buffers (optional - only used by VoxelRayMarch_Compressed.comp)
-    batch.ConnectVariadic(
+    batch.Connect(
         rayMarch.voxelGrid, RG::VoxelGridNodeConfig::COMPRESSED_COLOR_BUFFER,
         compute.descriptorGatherer, BINDING_COMPRESSED_COLOR,
-        SlotRole::Dependency | SlotRole::Execute);
+        RG::ConnectionMeta{}.With(std::unique_ptr<RG::SlotRoleModifier>(new RG::SlotRoleModifier(RG::SlotRole::Dependency | RG::SlotRole::Execute))));
 
-    batch.ConnectVariadic(
+    batch.Connect(
         rayMarch.voxelGrid, RG::VoxelGridNodeConfig::COMPRESSED_NORMAL_BUFFER,
         compute.descriptorGatherer, BINDING_COMPRESSED_NORMAL,
-        SlotRole::Dependency | SlotRole::Execute);
+        RG::ConnectionMeta{}.With(std::unique_ptr<RG::SlotRoleModifier>(new RG::SlotRoleModifier(RG::SlotRole::Dependency | RG::SlotRole::Execute))));
 
     // Binding 8: ShaderCounters for avgVoxelsPerRay metrics
     // Both VoxelRayMarch.comp and VoxelRayMarch_Compressed.comp use binding 8 for shader counters
-    batch.ConnectVariadic(
+    batch.Connect(
         rayMarch.voxelGrid, RG::VoxelGridNodeConfig::SHADER_COUNTERS_BUFFER,
         compute.descriptorGatherer, BINDING_SHADER_COUNTERS,
-        SlotRole::Dependency | SlotRole::Execute);
+        RG::ConnectionMeta{}.With(std::unique_ptr<RG::SlotRoleModifier>(new RG::SlotRoleModifier(RG::SlotRole::Dependency | RG::SlotRole::Execute))));
 
     //--------------------------------------------------------------------------
     // VoxelRayMarch.comp Push Constants
@@ -1760,45 +1764,59 @@ void BenchmarkGraphFactory::WireVariadicResources(
     (void)PC_TIME;
 
     // Connect camera data to push constants using field extraction
-    batch.ConnectVariadic(
+    batch.Connect(
         rayMarch.camera, RG::CameraNodeConfig::CAMERA_DATA,
         compute.pushConstantGatherer, PC_CAMERA_POS,
-        &CameraData::cameraPos, SlotRole::Execute);
+        RG::ConnectionMeta{}
+        .With(ExtractField(&CameraData::cameraPos))
+        .With(std::unique_ptr<RG::SlotRoleModifier>(new RG::SlotRoleModifier(RG::SlotRole::Execute))));
 
     // Note: time field (PC_TIME) not connected - will be zero (no animation)
     // TODO: Connect actual time source when animation is needed
 
-    batch.ConnectVariadic(
+    batch.Connect(
         rayMarch.camera, RG::CameraNodeConfig::CAMERA_DATA,
         compute.pushConstantGatherer, PC_CAMERA_DIR,
-        &CameraData::cameraDir, SlotRole::Execute);
+        RG::ConnectionMeta{}
+        .With(ExtractField(&CameraData::cameraDir))
+        .With(std::unique_ptr<RG::SlotRoleModifier>(new RG::SlotRoleModifier(RG::SlotRole::Execute))));
 
-    batch.ConnectVariadic(
+    batch.Connect(
         rayMarch.camera, RG::CameraNodeConfig::CAMERA_DATA,
         compute.pushConstantGatherer, PC_FOV,
-        &CameraData::fov, SlotRole::Execute);
+        RG::ConnectionMeta{}
+        .With(ExtractField(&CameraData::fov))
+        .With(std::unique_ptr<RG::SlotRoleModifier>(new RG::SlotRoleModifier(RG::SlotRole::Execute))));
 
-    batch.ConnectVariadic(
+    batch.Connect(
         rayMarch.camera, RG::CameraNodeConfig::CAMERA_DATA,
         compute.pushConstantGatherer, PC_CAMERA_UP,
-        &CameraData::cameraUp, SlotRole::Execute);
+        RG::ConnectionMeta{}
+        .With(ExtractField(&CameraData::cameraUp))
+        .With(std::unique_ptr<RG::SlotRoleModifier>(new RG::SlotRoleModifier(RG::SlotRole::Execute))));
 
-    batch.ConnectVariadic(
+    batch.Connect(
         rayMarch.camera, RG::CameraNodeConfig::CAMERA_DATA,
         compute.pushConstantGatherer, PC_ASPECT,
-        &CameraData::aspect, SlotRole::Execute);
+        RG::ConnectionMeta{}
+        .With(ExtractField(&CameraData::aspect))
+        .With(std::unique_ptr<RG::SlotRoleModifier>(new RG::SlotRoleModifier(RG::SlotRole::Execute))));
 
-    batch.ConnectVariadic(
+    batch.Connect(
         rayMarch.camera, RG::CameraNodeConfig::CAMERA_DATA,
         compute.pushConstantGatherer, PC_CAMERA_RIGHT,
-        &CameraData::cameraRight, SlotRole::Execute);
+        RG::ConnectionMeta{}
+        .With(ExtractField(&CameraData::cameraRight))
+        .With(std::unique_ptr<RG::SlotRoleModifier>(new RG::SlotRoleModifier(RG::SlotRole::Execute))));
 
     // Connect debugMode from input node (if valid)
     if (rayMarch.input.IsValid()) {
-        batch.ConnectVariadic(
+        batch.Connect(
             rayMarch.input, RG::InputNodeConfig::INPUT_STATE,
-            compute.pushConstantGatherer, PC_DEBUG_MODE,
-            &InputState::debugMode, SlotRole::Execute);
+            compute.pushConstantGatherer, PC_DEBUG_MODE,            
+            RG::ConnectionMeta{}
+            .With(ExtractField(&InputState::debugMode))
+            .With(std::unique_ptr<RG::SlotRoleModifier>(new RG::SlotRoleModifier(RG::SlotRole::Execute))));
     }
 
     // Register all connections atomically
@@ -2085,42 +2103,42 @@ void BenchmarkGraphFactory::WireFragmentVariadicResources(
     constexpr uint32_t BINDING_COMPRESSED_NORMAL = 7;
 
     // Connect voxel grid buffers to descriptor gatherer
-    batch.ConnectVariadic(
+    batch.Connect(
         rayMarch.voxelGrid, RG::VoxelGridNodeConfig::OCTREE_NODES_BUFFER,
         fragment.descriptorGatherer, BINDING_ESVO_NODES,
-        SlotRole::Dependency | SlotRole::Execute);
+        RG::ConnectionMeta{}.With(std::unique_ptr<RG::SlotRoleModifier>(new RG::SlotRoleModifier(RG::SlotRole::Dependency | RG::SlotRole::Execute))));
 
-    batch.ConnectVariadic(
+    batch.Connect(
         rayMarch.voxelGrid, RG::VoxelGridNodeConfig::OCTREE_BRICKS_BUFFER,
         fragment.descriptorGatherer, BINDING_BRICK_DATA,
-        SlotRole::Dependency | SlotRole::Execute);
+        RG::ConnectionMeta{}.With(std::unique_ptr<RG::SlotRoleModifier>(new RG::SlotRoleModifier(RG::SlotRole::Dependency | RG::SlotRole::Execute))));
 
-    batch.ConnectVariadic(
+    batch.Connect(
         rayMarch.voxelGrid, RG::VoxelGridNodeConfig::OCTREE_MATERIALS_BUFFER,
         fragment.descriptorGatherer, BINDING_MATERIALS,
-        SlotRole::Dependency | SlotRole::Execute);
+        RG::ConnectionMeta{}.With(std::unique_ptr<RG::SlotRoleModifier>(new RG::SlotRoleModifier(RG::SlotRole::Dependency | RG::SlotRole::Execute))));
 
-    batch.ConnectVariadic(
+    batch.Connect(
         rayMarch.voxelGrid, RG::VoxelGridNodeConfig::DEBUG_CAPTURE_BUFFER,
         fragment.descriptorGatherer, BINDING_DEBUG_CAPTURE,
-        SlotRole::Dependency | SlotRole::Execute);
+        RG::ConnectionMeta{}.With(std::unique_ptr<RG::SlotRoleModifier>(new RG::SlotRoleModifier(RG::SlotRole::Dependency | RG::SlotRole::Execute))));
 
-    batch.ConnectVariadic(
+    batch.Connect(
         rayMarch.voxelGrid, RG::VoxelGridNodeConfig::OCTREE_CONFIG_BUFFER,
         fragment.descriptorGatherer, BINDING_OCTREE_CONFIG,
-        SlotRole::Dependency | SlotRole::Execute);
+        RG::ConnectionMeta{}.With(std::unique_ptr<RG::SlotRoleModifier>(new RG::SlotRoleModifier(RG::SlotRole::Dependency | RG::SlotRole::Execute))));
 
     // Compressed buffer bindings (optional - only used by VoxelRayMarch_Compressed.frag)
     // These are marked Optional so uncompressed shader works without them
-    batch.ConnectVariadic(
+    batch.Connect(
         rayMarch.voxelGrid, RG::VoxelGridNodeConfig::COMPRESSED_COLOR_BUFFER,
         fragment.descriptorGatherer, BINDING_COMPRESSED_COLOR,
-        SlotRole::Dependency | SlotRole::Execute);
+        RG::ConnectionMeta{}.With(std::unique_ptr<RG::SlotRoleModifier>(new RG::SlotRoleModifier(RG::SlotRole::Dependency | RG::SlotRole::Execute))));
 
-    batch.ConnectVariadic(
+    batch.Connect(
         rayMarch.voxelGrid, RG::VoxelGridNodeConfig::COMPRESSED_NORMAL_BUFFER,
         fragment.descriptorGatherer, BINDING_COMPRESSED_NORMAL,
-        SlotRole::Dependency | SlotRole::Execute);
+        RG::ConnectionMeta{}.With(std::unique_ptr<RG::SlotRoleModifier>(new RG::SlotRoleModifier(RG::SlotRole::Dependency | RG::SlotRole::Execute))));
 
     // Push constant binding indices
     constexpr uint32_t PC_CAMERA_POS = 0;
@@ -2135,42 +2153,56 @@ void BenchmarkGraphFactory::WireFragmentVariadicResources(
     (void)PC_TIME;  // Suppress unused warning
 
     // Connect camera data to push constants using field extraction
-    batch.ConnectVariadic(
+    batch.Connect(
         rayMarch.camera, RG::CameraNodeConfig::CAMERA_DATA,
         fragment.pushConstantGatherer, PC_CAMERA_POS,
-        &CameraData::cameraPos, SlotRole::Execute);
+        RG::ConnectionMeta{}
+        .With(ExtractField(&CameraData::cameraPos))
+        .With(std::unique_ptr<RG::SlotRoleModifier>(new RG::SlotRoleModifier(RG::SlotRole::Execute))));
 
-    batch.ConnectVariadic(
+    batch.Connect(
         rayMarch.camera, RG::CameraNodeConfig::CAMERA_DATA,
         fragment.pushConstantGatherer, PC_CAMERA_DIR,
-        &CameraData::cameraDir, SlotRole::Execute);
+        RG::ConnectionMeta{}
+        .With(ExtractField(&CameraData::cameraDir))
+        .With(std::unique_ptr<RG::SlotRoleModifier>(new RG::SlotRoleModifier(RG::SlotRole::Execute))));
 
-    batch.ConnectVariadic(
+    batch.Connect(
         rayMarch.camera, RG::CameraNodeConfig::CAMERA_DATA,
         fragment.pushConstantGatherer, PC_FOV,
-        &CameraData::fov, SlotRole::Execute);
+        RG::ConnectionMeta{}
+        .With(ExtractField(&CameraData::fov))
+        .With(std::unique_ptr<RG::SlotRoleModifier>(new RG::SlotRoleModifier(RG::SlotRole::Execute))));
 
-    batch.ConnectVariadic(
+    batch.Connect(
         rayMarch.camera, RG::CameraNodeConfig::CAMERA_DATA,
         fragment.pushConstantGatherer, PC_CAMERA_UP,
-        &CameraData::cameraUp, SlotRole::Execute);
+        RG::ConnectionMeta{}
+        .With(ExtractField(&CameraData::cameraUp))
+        .With(std::unique_ptr<RG::SlotRoleModifier>(new RG::SlotRoleModifier(RG::SlotRole::Execute))));
 
-    batch.ConnectVariadic(
+    batch.Connect(
         rayMarch.camera, RG::CameraNodeConfig::CAMERA_DATA,
         fragment.pushConstantGatherer, PC_ASPECT,
-        &CameraData::aspect, SlotRole::Execute);
+        RG::ConnectionMeta{}
+        .With(ExtractField(&CameraData::aspect))
+        .With(std::unique_ptr<RG::SlotRoleModifier>(new RG::SlotRoleModifier(RG::SlotRole::Execute))));
 
-    batch.ConnectVariadic(
+    batch.Connect(
         rayMarch.camera, RG::CameraNodeConfig::CAMERA_DATA,
         fragment.pushConstantGatherer, PC_CAMERA_RIGHT,
-        &CameraData::cameraRight, SlotRole::Execute);
+        RG::ConnectionMeta{}
+        .With(ExtractField(&CameraData::cameraRight))
+        .With(std::unique_ptr<RG::SlotRoleModifier>(new RG::SlotRoleModifier(RG::SlotRole::Execute))));
 
     // Connect debugMode from input node (if valid)
     if (rayMarch.input.IsValid()) {
-        batch.ConnectVariadic(
+        batch.Connect(
             rayMarch.input, RG::InputNodeConfig::INPUT_STATE,
             fragment.pushConstantGatherer, PC_DEBUG_MODE,
-            &InputState::debugMode, SlotRole::Execute);
+            RG::ConnectionMeta{}
+            .With(ExtractField(&InputState::debugMode))
+            .With(std::unique_ptr<RG::SlotRoleModifier>(new RG::SlotRoleModifier(RG::SlotRole::Execute))));
     }
 
     // Register all connections atomically
@@ -2197,44 +2229,58 @@ void BenchmarkGraphFactory::WireHardwareRTVariadicResources(
 
 
     // Connect camera data to push constants using field extraction
-    batch.ConnectVariadic(
+    batch.Connect(
         rayMarch.camera, RG::CameraNodeConfig::CAMERA_DATA,
         hardwareRT.pushConstantGatherer, VoxelRT::cameraPos::BINDING,
-        &CameraData::cameraPos, SlotRole::Execute);
+        RG::ConnectionMeta{}
+        .With(ExtractField(&CameraData::cameraPos))
+        .With(std::unique_ptr<RG::SlotRoleModifier>(new RG::SlotRoleModifier(RG::SlotRole::Execute))));
 
     // Note: time field (PC_TIME) not connected - will be zero (no animation)
 
-    batch.ConnectVariadic(
+    batch.Connect(
         rayMarch.camera, RG::CameraNodeConfig::CAMERA_DATA,
         hardwareRT.pushConstantGatherer, VoxelRT::cameraDir::BINDING,
-        &CameraData::cameraDir, SlotRole::Execute);
+        RG::ConnectionMeta{}
+        .With(ExtractField(&CameraData::cameraDir))
+        .With(std::unique_ptr<RG::SlotRoleModifier>(new RG::SlotRoleModifier(RG::SlotRole::Execute))));
 
-    batch.ConnectVariadic(
+    batch.Connect(
         rayMarch.camera, RG::CameraNodeConfig::CAMERA_DATA,
         hardwareRT.pushConstantGatherer, VoxelRT::fov::BINDING,
-        &CameraData::fov, SlotRole::Execute);
+        RG::ConnectionMeta{}
+        .With(ExtractField(&CameraData::fov))
+        .With(std::unique_ptr<RG::SlotRoleModifier>(new RG::SlotRoleModifier(RG::SlotRole::Execute))));
 
-    batch.ConnectVariadic(
+    batch.Connect(
         rayMarch.camera, RG::CameraNodeConfig::CAMERA_DATA,
         hardwareRT.pushConstantGatherer, VoxelRT::cameraUp::BINDING,
-        &CameraData::cameraUp, SlotRole::Execute);
+        RG::ConnectionMeta{}
+        .With(ExtractField(&CameraData::cameraUp))
+        .With(std::unique_ptr<RG::SlotRoleModifier>(new RG::SlotRoleModifier(RG::SlotRole::Execute))));
 
-    batch.ConnectVariadic(
+    batch.Connect(
         rayMarch.camera, RG::CameraNodeConfig::CAMERA_DATA,
         hardwareRT.pushConstantGatherer, VoxelRT::aspect::BINDING,
-        &CameraData::aspect, SlotRole::Execute);
+        RG::ConnectionMeta{}
+        .With(ExtractField(&CameraData::aspect))
+        .With(std::unique_ptr<RG::SlotRoleModifier>(new RG::SlotRoleModifier(RG::SlotRole::Execute))));
 
-    batch.ConnectVariadic(
+    batch.Connect(
         rayMarch.camera, RG::CameraNodeConfig::CAMERA_DATA,
         hardwareRT.pushConstantGatherer, VoxelRT::cameraRight::BINDING,
-        &CameraData::cameraRight, SlotRole::Execute);
+        RG::ConnectionMeta{}
+        .With(ExtractField(&CameraData::cameraRight))
+        .With(std::unique_ptr<RG::SlotRoleModifier>(new RG::SlotRoleModifier(RG::SlotRole::Execute))));
 
     // Connect debugMode from input node (if valid)
     if (rayMarch.input.IsValid()) {
-        batch.ConnectVariadic(
+        batch.Connect(
             rayMarch.input, RG::InputNodeConfig::INPUT_STATE,
             hardwareRT.pushConstantGatherer, VoxelRT::debugMode::BINDING,
-            &InputState::debugMode, SlotRole::Execute);
+            RG::ConnectionMeta{}
+            .With(ExtractField(&InputState::debugMode))
+            .With(std::unique_ptr<RG::SlotRoleModifier>(new RG::SlotRoleModifier(RG::SlotRole::Execute))));
     }
 
     //--------------------------------------------------------------------------
@@ -2249,44 +2295,49 @@ void BenchmarkGraphFactory::WireHardwareRTVariadicResources(
 
     // Binding 0: outputImage (swapchain storage image) - Execute only (changes per frame)
     // SDI reference: VoxelRT::outputImage::BINDING
-    batch.ConnectVariadic(
+    batch.Connect(
         infra.swapchain, RG::SwapChainNodeConfig::CURRENT_FRAME_IMAGE_VIEW,
         hardwareRT.descriptorGatherer, VoxelRT::outputImage::BINDING,
-        SlotRole::Execute);
+        RG::ConnectionMeta{}
+        .With(std::unique_ptr<RG::SlotRoleModifier>(new RG::SlotRoleModifier(RG::SlotRole::Execute))));
 
     // Binding 1: topLevelAS (acceleration structure) - Dependency + Execute
     // SDI reference: VoxelRT::topLevelAS::BINDING
     // TLAS is static (built once during compile), so Dependency is primary role
-    batch.ConnectVariadic(
+    batch.Connect(
         hardwareRT.accelerationStructure, RG::AccelerationStructureNodeConfig::TLAS_HANDLE,
         hardwareRT.descriptorGatherer, VoxelRT::topLevelAS::BINDING,
-        SlotRole::Dependency | SlotRole::Execute);
+        RG::ConnectionMeta{}
+        .With(std::unique_ptr<RG::SlotRoleModifier>(new RG::SlotRoleModifier(RG::SlotRole::Dependency | RG::SlotRole::Execute))));
 
     // Binding 2: aabbBuffer (SSBO) - Dependency + Execute
     // AABB buffer for intersection shader to look up actual voxel bounds
     // SDI reference: VoxelRT::aabbBuffer::BINDING
-    batch.ConnectVariadic(
+    batch.Connect(
         hardwareRT.aabbConverter, RG::VoxelAABBConverterNodeConfig::AABB_BUFFER,
         hardwareRT.descriptorGatherer, VoxelRT::aabbBuffer::BINDING,
-        SlotRole::Dependency | SlotRole::Execute);
+        RG::ConnectionMeta{}
+        .With(std::unique_ptr<RG::SlotRoleModifier>(new RG::SlotRoleModifier(RG::SlotRole::Dependency | RG::SlotRole::Execute))));
 
     // Binding 3: materialIdBuffer (SSBO) - Dependency + Execute
     // Material ID buffer for closest-hit shader to get voxel colors
     // SDI reference: VoxelRT::materialIdBuffer::BINDING
-    batch.ConnectVariadic(
+    batch.Connect(
         hardwareRT.aabbConverter, RG::VoxelAABBConverterNodeConfig::MATERIAL_ID_BUFFER,
         hardwareRT.descriptorGatherer, VoxelRT::materialIdBuffer::BINDING,
-        SlotRole::Dependency | SlotRole::Execute);
+        RG::ConnectionMeta{}
+        .With(std::unique_ptr<RG::SlotRoleModifier>(new RG::SlotRoleModifier(RG::SlotRole::Dependency | RG::SlotRole::Execute))));
 
     // Binding 5: OctreeConfigUBO (UBO) - Dependency + Execute
     // Contains world<->local transformation matrices for coordinate space alignment
     // This matches compute shader binding 5, ensuring RTX rays are in the same
     // coordinate space as the AABB geometry.
     // SDI reference: VoxelRT::octreeConfig::BINDING
-    batch.ConnectVariadic(
+    batch.Connect(
         rayMarch.voxelGrid, RG::VoxelGridNodeConfig::OCTREE_CONFIG_BUFFER,
         hardwareRT.descriptorGatherer, VoxelRT::octreeConfig::BINDING,
-        SlotRole::Dependency | SlotRole::Execute);
+        RG::ConnectionMeta{}
+        .With(std::unique_ptr<RG::SlotRoleModifier>(new RG::SlotRoleModifier(RG::SlotRole::Dependency | RG::SlotRole::Execute))));
 
     //--------------------------------------------------------------------------
     // Compressed Buffer Bindings (VoxelRT_Compressed.rchit only)
@@ -2301,23 +2352,26 @@ void BenchmarkGraphFactory::WireHardwareRTVariadicResources(
         constexpr uint32_t BINDING_BRICK_MAPPING = 8;
 
         // Binding 6: compressedColors (DXT1 color blocks) - Dependency + Execute
-        batch.ConnectVariadic(
+        batch.Connect(
             rayMarch.voxelGrid, RG::VoxelGridNodeConfig::COMPRESSED_COLOR_BUFFER,
             hardwareRT.descriptorGatherer, BINDING_COMPRESSED_COLOR,
-            SlotRole::Dependency | SlotRole::Execute);
+            RG::ConnectionMeta{}
+            .With(std::unique_ptr<RG::SlotRoleModifier>(new RG::SlotRoleModifier(RG::SlotRole::Dependency | RG::SlotRole::Execute))));
 
         // Binding 7: compressedNormals (DXT normal blocks) - Dependency + Execute
-        batch.ConnectVariadic(
+        batch.Connect(
             rayMarch.voxelGrid, RG::VoxelGridNodeConfig::COMPRESSED_NORMAL_BUFFER,
             hardwareRT.descriptorGatherer, BINDING_COMPRESSED_NORMAL,
-            SlotRole::Dependency | SlotRole::Execute);
+            RG::ConnectionMeta{}
+            .With(std::unique_ptr<RG::SlotRoleModifier>(new RG::SlotRoleModifier(RG::SlotRole::Dependency | RG::SlotRole::Execute))));
 
         // Binding 8: brickMapping (SSBO) - Maps gl_PrimitiveID to (brickIndex, localVoxelIdx)
         // Required for compressed RTX shaders to access DXT-compressed color/normal buffers
-        batch.ConnectVariadic(
+        batch.Connect(
             hardwareRT.aabbConverter, RG::VoxelAABBConverterNodeConfig::BRICK_MAPPING_BUFFER,
             hardwareRT.descriptorGatherer, BINDING_BRICK_MAPPING,
-            SlotRole::Dependency | SlotRole::Execute);
+            RG::ConnectionMeta{}
+            .With(std::unique_ptr<RG::SlotRoleModifier>(new RG::SlotRoleModifier(RG::SlotRole::Dependency | RG::SlotRole::Execute))));
     }
 
     // Register all connections atomically

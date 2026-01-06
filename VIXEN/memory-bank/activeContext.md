@@ -1,164 +1,155 @@
 # Active Context - Sprint 6 Phase 1
 
-**Last Updated:** 2026-01-04
+**Last Updated:** 2026-01-06
 **Branch:** `production/sprint-6-timeline-foundation`
-**Status:** Build PASSING | Sprint 5 ✅ | Sprint 5.5 ✅ | Sprint 6 Phase 1 🟢 IN PROGRESS
+**Status:** Build PASSING | Sprint 6.0.1 COMPLETE | Sprint 6.0.2 DESIGN COMPLETE
 
 ---
 
 ## Current Position
 
-**Sprint 5: CashSystem Robustness** - ✅ COMPLETE (104h)
-**Sprint 5.5: Pre-Allocation Hardening** - ✅ COMPLETE (16h)
-**Sprint 6: Timeline Foundation** - 🆕 PLANNING
+**Sprint 5: CashSystem Robustness** - COMPLETE (104h)
+**Sprint 5.5: Pre-Allocation Hardening** - COMPLETE (16h)
+**Sprint 6.0.1: Unified Connection System** - COMPLETE (118h)
+**Sprint 6.0.2: Accumulation Slot Refactor** - DESIGN COMPLETE, READY TO IMPLEMENT
+**Sprint 6.1: MultiDispatchNode** - READY TO START (after 6.0.2)
 
-### Just Completed (2026-01-04)
+### Just Completed (2026-01-06)
 
-#### Sprint 5.5: Pre-Allocation Hardening (16h) ✅ COMPLETE
+#### Sprint 6.0.1: Unified Connection System (118h) - COMPLETE
 
-| Task ID | Task | Status |
-|---------|------|--------|
-| #302 | EventBus Queue Pre-Allocation | ✅ COMPLETE |
-| #301 | Command Buffer Pool Sizing | ✅ COMPLETE |
-| #300 | Deferred Destruction Pool Pre-Sizing | ✅ COMPLETE |
-| #299 | Allocation Tracker Full Instrumentation | ✅ COMPLETE |
+**Key Achievement:** Single `Connect()` API for all connection types.
 
-**Key Deliverables:**
-- `PreAllocatedQueue<T>` ring buffer template (EventBus)
-- `CommandPoolNode` pre-allocation pool API
-- `DeferredDestructionQueue` ring buffer with stats
-- `warningCallback` for allocation threshold alerts
-- 19 new tests
+| Phase | Tasks | Hours | Status |
+|-------|-------|-------|--------|
+| Phase 1: Infrastructure | 6.0.1.1-6.0.1.9 | 68h | DONE |
+| Phase 2: Unified API | 6.0.1.10-6.0.1.19 | 50h | DONE |
 
 **Commits:**
-- `3fdb9a7` - Tasks #300, #301, #302
-- `e01d8a2` - Task #299
+- `c3ad535` - Unified Connection System infrastructure
+- `e7d79a2` - VariadicConnectionRule + UnifiedConnect API
+- `e37d5bb` - Complete unified Connect() API with modifiers
 
-### Next Actions
-- Sprint 6: Timeline Foundation planning via collaborative workflow
+**Technical Achievements:**
+- Unified `Connect()` API (Direct, Variadic, Accumulation)
+- 3-phase ConnectionModifier pipeline
+- Fluent `ConnectionMeta{}.With<Modifier>()` API
+- **NEW:** Variadic modifier API (eliminates `ConnectionMeta{}` boilerplate)
+- 102 tests passing
+
+#### BoolOpNode Bug Fix
+
+Fixed element type vs container type confusion in accumulation slot:
+- `BoolOpNodeConfig.h`: Changed `BoolVector` to `bool` (element type)
+- `BoolOpNode.cpp`: Fixed `ctx.In()` usage with proxy reference handling
+
+#### Accumulation Slot Design (Sprint 6.0.2 Prep)
+
+Created design document: `Vixen-Docs/05-Progress/features/accumulation-slot-proper-design.md`
+
+**Design Decisions:**
+- Container-type first design (explicit `std::vector<T>`)
+- Storage strategy enum: Value, Reference, Span
+- Compile-time validations
+- Runtime warnings for large copies
+- 3 hours estimated implementation
+
+**HacknPlan Task:** #337 - Refactor Accumulation Slot System
 
 ---
 
-## Sprint 6.0.1: Unified Connection System 🟢 ACTIVE
+## Sprint 6.0.2: Accumulation Slot Refactor - READY
 
-**Goal:** Single Connect() API for all connection types.
+**Goal:** Fix type system lie in accumulation slots
+**Task:** #337
+**Estimated:** 3 hours
+**Status:** DESIGN COMPLETE
+
+### Implementation Plan
+
+1. Add `SlotStorageStrategy` enum to `ResourceConfig.h`
+2. Create `ACCUMULATION_INPUT_SLOT_V2` macro with container type
+3. Update `BoolOpNodeConfig` to use new macro
+4. Simplify `TypedNodeInstance::In()` (remove special-case)
+5. Add runtime validations for ref/value strategy
+6. Update tests (3 test files)
+7. Deprecate old macro
+
+### Target Files
+
+```
+libraries/RenderGraph/
++-- include/Data/Core/ResourceConfig.h    # Add V2 macro
++-- include/Data/Nodes/BoolOpNodeConfig.h  # Migrate to V2
++-- include/Core/TypedNodeInstance.h       # Simplify In()
++-- tests/test_connection_rule.cpp         # Update tests
++-- tests/test_connection_concepts.cpp     # Update tests
+```
+
+---
+
+## Sprint 6.1: MultiDispatchNode - QUEUED
+
+**Goal:** Build MultiDispatchNode for multi-pass compute sequences
 **Board:** 651785
 **Design Element:** #35
-**Status:** 🟢 PLANNING
-
-### Prerequisite for MultiDispatchNode
-
-MultiDispatchNode requires Accumulation connection support. Current system has:
-- Multiple APIs: `Connect()`, `ConnectVariadic()`, (proposed `ConnectAccumulate()`)
-- Implicit behavior based on API choice
-
-### Unified System Design
-
-1. **SlotFlags** in slot definition → behavior
-2. **Type traits** → `is_slot_ref_v<T>` vs `is_binding_ref_v<T>`
-3. **ConnectionRule** pattern → extensible without API changes
-4. **Single `Connect()`** → graph infers intent from types
-
-### Tasks (76h)
-
-| Task ID | Task | Hours |
-|---------|------|-------|
-| #324 | SlotFlags Infrastructure | 8h |
-| #320 | Type Traits + Concepts | 4h |
-| #316 | ConnectionRule Base + Registry | 12h |
-| #323 | DirectConnectionRule | 4h |
-| #321 | AccumulationConnectionRule | 12h |
-| #319 | VariadicConnectionRule Refactor | 8h |
-| #322 | Unified Connect API | 8h |
-| #317 | Migrate Existing Nodes | 8h |
-| #318 | Tests + Documentation | 12h |
-
----
-
-## Sprint 6: Timeline Foundation - Phase 1 (BLOCKED by 6.0.1)
-
-**Goal:** Build MultiDispatchNode for multi-pass compute sequences.
-**Board:** 651785
-**Status:** ⏸️ BLOCKED (waiting for Unified Connection System)
+**Status:** BLOCKED (wait for Sprint 6.0.2)
 
 ### Phase 1 Tasks (56h)
 
-| Task ID | Task | Hours | Priority | Status |
-|---------|------|-------|----------|--------|
-| #313 | DispatchPass Structure | 8h | HIGH | ⏳ Planned |
-| #312 | MultiDispatchNode Core | 16h | HIGH | ⏳ Planned |
-| #314 | Pipeline Statistics | 8h | MEDIUM | ⏳ Planned |
-| #311 | Integration Tests | 16h | HIGH | ⏳ Planned |
-| #310 | Documentation & Examples | 8h | MEDIUM | ⏳ Planned |
-
-### Implementation Order
-1. **#313** DispatchPass Structure - Define pass descriptor struct
-2. **#312** MultiDispatchNode Core - Node implementation with QueueDispatch/QueueBarrier
-3. **#314** Pipeline Statistics - MetricsCollector integration
-4. **#311** Integration Tests - 3-pass compute sequence tests
-5. **#310** Documentation - Obsidian docs + examples
-
-### Target Files
-```
-libraries/RenderGraph/
-├── include/Nodes/
-│   ├── DispatchPass.h          # NEW - Task #313
-│   └── MultiDispatchNode.h     # NEW - Task #312
-├── src/Nodes/
-│   └── MultiDispatchNode.cpp   # NEW - Task #312
-└── tests/
-    └── test_multi_dispatch_node.cpp  # NEW - Task #311
-```
+| Task ID | Task | Hours | Status |
+|---------|------|-------|--------|
+| #313 | DispatchPass Structure | 8h | Planned |
+| #312 | MultiDispatchNode Core | 16h | Planned |
+| #314 | Pipeline Statistics | 8h | Planned |
+| #311 | Integration Tests | 16h | Planned |
+| #310 | Documentation & Examples | 8h | Planned |
 
 ---
 
-## Session Commits (2026-01-04)
+## Architecture (Post-Sprint 6.0.1)
 
-| Hash | Description |
-|------|-------------|
-| `e01d8a2` | feat(Sprint5.5): Allocation tracker full instrumentation - Task #299 |
-| `3fdb9a7` | feat(Sprint5.5): Pre-allocation hardening - Tasks #300, #301, #302 |
+### Connection System (Complete)
 
----
-
-## Architecture (Post-Sprint 5.5)
-
-### Pre-Allocation Infrastructure
 ```
-RenderGraph::Compile()
-    ├── PreAllocateEventBus()          # nodes × 3 events
-    └── PreAllocateResources()
-        ├── Aggregate node requirements
-        ├── CommandPoolNode::PreAllocateCommandBuffers()
-        └── DeferredDestruction::PreReserve()
+Connect() API
+    +-- Type detection via C++20 concepts
+    |   +-- SlotReference<T> -> Direct/Accumulation
+    |   +-- BindingReference<T> -> Variadic
+    +-- ConnectionRuleRegistry
+    |   +-- DirectConnectionRule
+    |   +-- VariadicConnectionRule
+    |   +-- AccumulationConnectionRule
+    +-- ConnectionPipeline (3-phase)
+    |   +-- PreValidation (modifiers)
+    |   +-- Rule Validation + Resolve
+    |   +-- PostResolve (modifiers)
 
-MessageBus
-    └── PreAllocatedQueue<T>           # Ring buffer, zero-alloc runtime
+Modifiers (stackable):
+    +-- AccumulationSortConfig - Explicit ordering
+    +-- SlotRoleModifier - Role override
+    +-- FieldExtractionModifier - Struct field access
+    +-- DebugTagModifier - Debug metadata
 
-DeferredDestructionQueue
-    └── Ring buffer with stats         # capacity, growthCount, maxSizeReached
-
-DeviceBudgetManager
-    └── warningCallback                # Frame allocation alerts
+Variadic API (NEW):
+    Connect(src, slot, tgt, slot, mod1, mod2, ...)
+    -> 80% less boilerplate
 ```
 
-### Key Files (Sprint 5.5)
-```
-libraries/EventBus/
-├── include/PreAllocatedQueue.h        # NEW - Ring buffer template
-├── include/MessageBus.h               # Reserve(), GetQueueCapacity()
-└── src/MessageBus.cpp                 # PreAllocatedQueue integration
+### Files Added (Sprint 6.0.1)
 
-libraries/RenderGraph/
-├── include/Core/NodeInstance.h        # PreAllocationRequirements
-├── include/Nodes/CommandPoolNode.h    # Pool API
-├── src/Core/RenderGraph.cpp           # PreAllocateResources()
-└── src/Nodes/CommandPoolNode.cpp      # Pool implementation
-
-libraries/ResourceManagement/
-├── include/Lifetime/DeferredDestruction.h  # Ring buffer + stats
-└── include/Memory/DeviceBudgetManager.h    # warningCallback
-```
+- `Connection/ConnectionTypes.h` - Core type definitions
+- `Connection/ConnectionRule.h` - Rule base class
+- `Connection/ConnectionRuleRegistry.h` - Registry
+- `Connection/ConnectionModifier.h` - Modifier interface
+- `Connection/ConnectionPipeline.h` - 3-phase pipeline
+- `Connection/Rules/DirectConnectionRule.h`
+- `Connection/Rules/VariadicConnectionRule.h`
+- `Connection/Rules/AccumulationConnectionRule.h`
+- `Connection/Modifiers/FieldExtractionModifier.h`
+- `Connection/Modifiers/AccumulationSortConfig.h`
+- `Connection/Modifiers/SlotRoleModifier.h`
+- `Connection/Modifiers/DebugTagModifier.h`
 
 ---
 
@@ -169,6 +160,32 @@ libraries/ResourceManagement/
 | Sprint 4 | 156 | 156 |
 | Sprint 5 | 62 | 218 |
 | Sprint 5.5 | 19 | 237 |
+| Sprint 6.0.1 | 102 | 339 |
+
+---
+
+## Uncommitted Work
+
+**Staged:**
+- Variadic API implementation
+- Research documents (3)
+- BoolOpNode fix (partial)
+
+**Unstaged:**
+- BoolOpNode.cpp additional fixes
+- BoolOpNodeConfig.h additional fixes
+
+**Untracked:**
+- `accumulation-slot-proper-design.md`
+
+### Recommended Action
+
+```bash
+# Commit Sprint 6.0.1 completion
+git add .
+git commit -m "feat(Sprint6.0.1): Variadic API + BoolOpNode fix + Accumulation design"
+git push
+```
 
 ---
 
@@ -178,11 +195,14 @@ libraries/ResourceManagement/
 # Build everything
 cmake --build build --config Debug --parallel 16
 
+# Run connection tests (102 passing)
+./build/libraries/RenderGraph/tests/Debug/test_connection_rule.exe --gtest_brief=1
+
 # Run resource management tests (157 passing)
 ./build/libraries/ResourceManagement/tests/Debug/test_resource_management.exe --gtest_brief=1
 ```
 
 ---
 
-*Updated: 2026-01-04*
+*Updated: 2026-01-06*
 *By: Claude Code*

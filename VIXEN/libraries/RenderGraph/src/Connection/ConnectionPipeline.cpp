@@ -25,7 +25,10 @@ ConnectionResult ConnectionPipeline::Execute(ConnectionContext& ctx, const Conne
         }
     }
 
-    // Phase 1: All modifiers' PreValidation
+    // Phase 1: All modifiers' PreValidation (guards + context transformation)
+    // NOTE: Modifiers can modify context here (e.g., FieldExtractionModifier
+    // sets effectiveResourceType so type checking in Validate() uses the
+    // extracted field's type, not the source struct's type).
     for (const auto& mod : modifiers_) {
         auto result = mod->PreValidation(ctx);
         if (!result.success) {
@@ -35,13 +38,13 @@ ConnectionResult ConnectionPipeline::Execute(ConnectionContext& ctx, const Conne
         // Skip results are success - modifier just doesn't apply, continue
     }
 
-    // Phase 2: Base rule validation
+    // Phase 2: Base rule validation (uses transformed context)
     auto validationResult = rule.Validate(ctx);
     if (!validationResult.success) {
         return validationResult;
     }
 
-    // Phase 3: All modifiers' PreResolve
+    // Phase 3: All modifiers' PreResolve (final prep before resolution)
     for (const auto& mod : modifiers_) {
         auto result = mod->PreResolve(ctx);
         if (!result.success) {

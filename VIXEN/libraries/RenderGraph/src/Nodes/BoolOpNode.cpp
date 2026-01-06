@@ -41,8 +41,9 @@ void BoolOpNode::CompileImpl(TypedCompileContext& ctx) {
 }
 
 void BoolOpNode::ExecuteImpl(TypedExecuteContext& ctx) {
-    // Read vector of bools from INPUTS slot
-    std::vector<bool> inputs = ctx.In(BoolOpNodeConfig::INPUTS);
+    // Read vector of bools from INPUTS slot (accumulation slot returns std::vector<ElementType>)
+    // Element type is bool, so we get std::vector<bool>
+    const auto& inputs = ctx.In(BoolOpNodeConfig::INPUTS);
 
     if (inputs.empty()) {
         NODE_LOG_ERROR("BoolOpNode has no inputs");
@@ -69,9 +70,9 @@ void BoolOpNode::ExecuteImpl(TypedExecuteContext& ctx) {
             break;
     }
 
-    // Process each input
+    // Process each input (std::vector<bool> returns proxy reference, convert to bool)
     for (size_t index = 0; index < inputs.size(); index++) {
-        bool inputValue = inputs[index];
+        bool inputValue = static_cast<bool>(inputs[index]);
 
         switch (operation) {
             case BoolOp::AND:

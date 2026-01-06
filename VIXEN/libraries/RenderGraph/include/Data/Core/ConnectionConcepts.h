@@ -71,9 +71,9 @@ concept SlotReference = requires {
 };
 
 /**
- * @brief Concept for binding references from shader metadata
+ * @brief Concept for binding references from shader metadata (instance members)
  *
- * Satisfied by types that reference shader descriptor bindings.
+ * Satisfied by types that reference shader descriptor bindings with instance members.
  * Used for variadic connections where the target is a shader binding
  * rather than a static slot.
  *
@@ -91,13 +91,47 @@ concept SlotReference = requires {
  * ```
  */
 template<typename T>
-concept BindingReference = requires(T t) {
-    // Must have binding index
+concept BindingReferenceInstance = requires(T t) {
+    // Must have binding index (instance member)
     { t.binding } -> std::convertible_to<uint32_t>;
 
     // Must have descriptor type (VkDescriptorType is uint32_t enum)
     { t.descriptorType } -> std::convertible_to<uint32_t>;
 };
+
+/**
+ * @brief Concept for SDI-style binding references (static constexpr members)
+ *
+ * Sprint 6.0.1: Support for SDI-generated shader binding types.
+ * SDI types use uppercase static constexpr members: BINDING, DESCRIPTOR_TYPE
+ *
+ * Example of satisfying type (from SDI generator):
+ * ```cpp
+ * struct Binding1 {
+ *     static constexpr uint32_t SET = 0;
+ *     static constexpr uint32_t BINDING = 1;
+ *     static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+ * };
+ * ```
+ */
+template<typename T>
+concept BindingReferenceStatic = requires {
+    // Must have static binding index
+    { T::BINDING } -> std::convertible_to<uint32_t>;
+
+    // Must have static descriptor type
+    { T::DESCRIPTOR_TYPE } -> std::convertible_to<uint32_t>;
+};
+
+/**
+ * @brief Combined concept for any valid binding reference
+ *
+ * Accepts either instance-based (lowercase members) or static-based (uppercase members).
+ * This enables the unified Connect() API to work with both legacy binding types
+ * and SDI-generated shader binding types.
+ */
+template<typename T>
+concept BindingReference = BindingReferenceInstance<T> || BindingReferenceStatic<T>;
 
 /**
  * @brief Concept for accumulation-enabled slots

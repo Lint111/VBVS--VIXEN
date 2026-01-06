@@ -3,6 +3,7 @@
 #include "NodeInstance.h"
 #include "Data/Core/ResourceConfig.h"
 #include "Data/Core/CompileTimeResourceSystem.h"
+#include "Data/Core/ConnectionConcepts.h"  // For Iterable concept (Sprint 6.0.2)
 #include <future>
 #include <vector>
 
@@ -184,14 +185,24 @@ public:
                 res = typedNode->NodeInstance::GetInput(SlotType::index, 0);
             }
 
-            // Sprint 6.0.1: Handle accumulation slots differently
+            // Sprint 6.0.1-6.0.2: Handle accumulation slots
+            // V1 (old): SlotType::Type is element type (bool), wrap in vector
+            // V2 (new): SlotType::Type is container type (std::vector<bool>), no wrapping
             if constexpr (SlotType::isAccumulation) {
-                // Accumulation slot: storage is vector<T>, return vector<T>
-                using ElementType = typename SlotType::Type;
-                using VectorType = std::vector<ElementType>;
+                using SlotTypeRaw = typename SlotType::Type;
 
-                if (!res) return VectorType{};
-                return res->GetHandle<VectorType>();
+                // Sprint 6.0.2: Check if type is already a container (V2 macro)
+                // If iterable, it's already a container - no wrapping needed
+                if constexpr (Iterable<SlotTypeRaw>) {
+                    // V2: Type is already container (std::vector<T>)
+                    if (!res) return SlotTypeRaw{};
+                    return res->GetHandle<SlotTypeRaw>();
+                } else {
+                    // V1: Type is element, wrap in vector (backward compat)
+                    using VectorType = std::vector<SlotTypeRaw>;
+                    if (!res) return VectorType{};
+                    return res->GetHandle<VectorType>();
+                }
             } else {
                 // Regular slot: return T directly
                 if (!res) return typename SlotType::Type{};

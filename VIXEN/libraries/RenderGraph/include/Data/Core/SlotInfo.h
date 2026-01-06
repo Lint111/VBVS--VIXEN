@@ -186,9 +186,10 @@ struct SlotInfo {
     // ========================================================================
 
     /**
-     * @brief Create SlotInfo from shader binding reference
+     * @brief Create SlotInfo from shader binding reference (instance members)
      *
      * For variadic connections where target is a shader-discovered binding.
+     * Handles types with lowercase instance members (binding, descriptorType).
      */
     template<typename BindingRefType>
         requires requires(BindingRefType b) {
@@ -200,6 +201,41 @@ struct SlotInfo {
 
         result.binding = ref.binding;
         result.descriptorType = static_cast<VkDescriptorType>(ref.descriptorType);
+        result.name = bindingName;
+        result.kind = SlotKind::Binding;
+        result.state = SlotState::Tentative;  // Bindings need validation
+
+        // Default behavioral fields for bindings
+        result.role = SlotRole::Dependency;
+        result.nullability = SlotNullability::Required;
+        result.mutability = SlotMutability::ReadOnly;
+        result.scope = SlotScope::NodeLevel;
+        result.flags = SlotFlags::None;
+
+        return result;
+    }
+
+    /**
+     * @brief Create SlotInfo from SDI-style binding type (static members)
+     *
+     * Sprint 6.0.1: For SDI-generated shader binding types with uppercase
+     * static constexpr members (BINDING, DESCRIPTOR_TYPE).
+     *
+     * Usage:
+     * @code
+     * SlotInfo info = SlotInfo::FromBindingType<VoxelRayMarch::esvoNodes>("esvoNodes");
+     * @endcode
+     */
+    template<typename BindingType>
+        requires requires {
+            { BindingType::BINDING } -> std::convertible_to<uint32_t>;
+            { BindingType::DESCRIPTOR_TYPE } -> std::convertible_to<uint32_t>;
+        }
+    static SlotInfo FromBindingType(std::string_view bindingName = "") {
+        SlotInfo result{};
+
+        result.binding = BindingType::BINDING;
+        result.descriptorType = static_cast<VkDescriptorType>(BindingType::DESCRIPTOR_TYPE);
         result.name = bindingName;
         result.kind = SlotKind::Binding;
         result.state = SlotState::Tentative;  // Bindings need validation

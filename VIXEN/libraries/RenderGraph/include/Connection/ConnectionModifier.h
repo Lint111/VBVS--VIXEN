@@ -28,34 +28,161 @@ class ConnectionRule;
 /**
  * @brief Stackable modifier for cross-cutting connection concerns
  *
- * Modifiers wrap ConnectionRule execution with 3-phase lifecycle:
- * 1. PreValidation - Guards, preconditions, early rejection
- * 2. PreResolve - Context transformation before rule executes
- * 3. PostResolve - Post-processing, hook registration, metrics
+ * Modifiers wrap ConnectionRule execution with a 3-phase lifecycle pipeline
+ * that enables orthogonal features to work with ANY connection type
+ * (Direct, Variadic, Accumulation) without creating N×M rule subclasses.
  *
- * This enables orthogonal features like field extraction to work with
- * ANY connection type (Direct, Variadic, Accumulation) without creating
- * N×M rule subclasses.
+ * ## 3-Phase Pipeline Lifecycle
  *
- * Example modifiers:
- * - FieldExtractionModifier: Validates Persistent lifetime, calculates offset
- * - DebugRegistrationModifier: Registers connections for visualization
- * - MetricsModifier: Tracks connection statistics
+ * ### Phase 1: PreValidation
+ * **When:** Before the ConnectionRule's Validate() method runs
+ * **Purpose:** Guards, preconditions, context transformation for validation
+ * **State Available:** Source/target SlotInfo, nodes, graph
+ * **Can Modify:** SlotInfo (roles, types, effective types)
+ * **Return:** Success (continue), Error (abort), Skip (ignore this modifier)
+ *
+ * **Use cases:**
+ * - Field extraction: Set effectiveResourceType before validation
+ * - Role override: Modify SlotRole before dependency checking
+ * - Early rejection: Validate preconditions (e.g., Persistent lifetime required)
+ *
+ * **Example:**
+ * @code
+ * ConnectionResult PreValidation(ConnectionContext& ctx) override {
+ *     // FieldExtractionModifier: Require Persistent lifetime
+ *     if (ctx.sourceSlot.lifetime != SlotLifetime::Persistent) {
+ *         return ConnectionResult::Error("Field extraction requires Persistent slot");
+ *     }
+ *
+ *     // Transform type for validation
+ *     ctx.effectiveResourceType = fieldType_;
+ *     return ConnectionResult::Success();
+ * }
+ * @endcode
+ *
+ * ### Phase 2: PreResolve
+ * **When:** After validation passes, before ConnectionRule's Resolve() method
+ * **Purpose:** Final context transformation before rule execution
+ * **State Available:** Validated connection context
+ * **Can Modify:** Context fields (offsets, metadata)
+ * **Return:** Success (continue), Error (abort)
+ *
+ * **Use cases:**
+ * - Offset calculation: Compute field offset for variadic binding
+ * - Type transformation: Finalize type conversions
+ * - Metadata preparation: Set up execution-time data
+ *
+ * **Example:**
+ * @code
+ * ConnectionResult PreResolve(ConnectionContext& ctx) override {
+ *     // Calculate field offset for GPU shader
+ *     ctx.fieldOffset = CalculateFieldOffset(structType_, fieldPtr_);
+ *     return ConnectionResult::Success();
+ * }
+ * @endcode
+ *
+ * ### Phase 3: PostResolve
+ * **When:** After ConnectionRule's Resolve() completes successfully
+ * **Purpose:** Post-processing, hook registration, metrics collection
+ * **State Available:** Finalized connection (edge registered)
+ * **Can Modify:** Debug state, metrics, hooks
+ * **Return:** Success (finalize), Error (report failure but don't undo edge)
+ *
+ * **Use cases:**
+ * - Debug registration: Add connection to visualization graph
+ * - Metrics: Track connection statistics
+ * - Callback setup: Register execution-time hooks
+ *
+ * **Example:**
+ * @code
+ * ConnectionResult PostResolve(ConnectionContext& ctx) override {
+ *     // Register for debug visualization
+ *     debugGraph->AddConnection(ctx.sourceNode, ctx.targetNode, debugTag_);
+ *     return ConnectionResult::Success();
+ * }
+ * @endcode
+ *
+ * ## Modifier Ordering and Priority
+ *
+ * Modifiers execute in priority order (higher = first) within each phase.
+ * Default priority is 50. Use Priority() to control execution order:
+ *
+ * @code
+ * uint32_t Priority() const override { return 100; }  // Run before default
+ * @endcode
+ *
+ * **Execution flow:**
+ * 1. Sort modifiers by priority (descending)
+ * 2. PreValidation phase: For each modifier, call PreValidation()
+ * 3. ConnectionRule::Validate() (base rule validation)
+ * 4. PreResolve phase: For each modifier, call PreResolve()
+ * 5. ConnectionRule::Resolve() (register edge)
+ * 6. PostResolve phase: For each modifier, call PostResolve()
+ *
+ * If any phase returns Error, the pipeline aborts immediately.
+ *
+ * ## Built-in Modifiers
+ *
+ * **Generic Modifiers** (work with any connection type):
+ * - `FieldExtractionModifier`: Extract struct field for variadic binding
+ * - `SlotRoleModifier`: Override dependency/execute role
+ * - `DebugTagModifier`: Add debug metadata for visualization
+ *
+ * **RuleConfig Modifiers** (rule-specific, self-validating):
+ * - `AccumulationSortConfig`: Set sort key for accumulation ordering
+ *
+ * ## Creating Custom Modifiers
+ *
+ * Derive from ConnectionModifier and override relevant phases:
+ *
+ * @code
+ * class MetricsModifier : public ConnectionModifier {
+ * public:
+ *     explicit MetricsModifier(MetricsCollector* collector)
+ *         : collector_(collector) {}
+ *
+ *     // Track connection in metrics
+ *     ConnectionResult PostResolve(ConnectionContext& ctx) override {
+ *         collector_->RecordConnection(ctx.sourceNode, ctx.targetNode);
+ *         return ConnectionResult::Success();
+ *     }
+ *
+ *     std::string_view Name() const override { return "MetricsModifier"; }
+ *
+ * private:
+ *     MetricsCollector* collector_;
+ * };
+ * @endcode
+ *
+ * Usage:
+ * @code
+ * batch.Connect(src, SrcConfig::OUT, tgt, TgtConfig::IN,
+ *               ConnectionMeta{}.With<MetricsModifier>(&metricsCollector));
+ * @endcode
+ *
+ * ## See Also
+ *
+ * - ConnectionPipeline: Orchestrates modifier execution
+ * - ConnectionRule: Base rule validation and resolution
+ * - RuleConfig: Self-validating rule-specific modifiers
  */
 class ConnectionModifier {
 public:
     virtual ~ConnectionModifier() = default;
 
     /**
-     * @brief Phase 1: Pre-validation checks (before rule validates)
+     * @brief Phase 1: Pre-validation (guards + context transformation)
      *
-     * Use for: Guards, preconditions, early rejection.
+     * Use for: Guards, preconditions, early rejection, AND context transformation.
      * Called BEFORE the base rule's Validate() method.
      *
-     * @param ctx Connection context (may be inspected, not modified)
+     * Modifiers that need to transform the context for validation (e.g.,
+     * FieldExtractionModifier setting effectiveResourceType) should do so here.
+     *
+     * @param ctx Connection context (may be modified)
      * @return Success to continue, Error to reject connection
      */
-    [[nodiscard]] virtual ConnectionResult PreValidation(const ConnectionContext& ctx) {
+    [[nodiscard]] virtual ConnectionResult PreValidation(ConnectionContext& ctx) {
         return ConnectionResult::Success();
     }
 
@@ -158,7 +285,7 @@ public:
      * If the matched rule's type is not in ValidRuleTypes(), logs warning
      * and returns Skip() to gracefully ignore this config.
      */
-    [[nodiscard]] ConnectionResult PreValidation(const ConnectionContext& ctx) override final {
+    [[nodiscard]] ConnectionResult PreValidation(ConnectionContext& ctx) override final {
         if (!matchedRule_) {
             return ConnectionResult::Skip("RuleConfig: No matched rule set");
         }
@@ -175,7 +302,7 @@ public:
             return ConnectionResult::Skip("RuleConfig type mismatch");
         }
 
-        return ApplyConfig(const_cast<ConnectionContext&>(ctx));
+        return ApplyConfig(ctx);
     }
 
 protected:

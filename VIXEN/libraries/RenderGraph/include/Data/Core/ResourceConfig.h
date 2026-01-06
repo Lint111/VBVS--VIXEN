@@ -162,6 +162,40 @@ enum class SlotScope : uint8_t {
     InstanceLevel   // Parameterized input - array size drives task count
 };
 
+/**
+ * @brief Storage strategy for accumulation slots (Sprint 6.0.2)
+ *
+ * Determines how accumulated data is stored and validated.
+ *
+ * - Value: Elements are copied into the container (default, safe)
+ *   - Validates: None (always safe)
+ *   - Warning: Logs if total copy size > 1KB
+ *
+ * - Reference: Elements are stored as references (zero-copy, requires Persistent sources)
+ *   - Validates: Source slot must have Persistent lifetime
+ *   - Compile Error: If connected source is Transient
+ *
+ * - Span: Elements are stored as std::span (view, requires Persistent sources)
+ *   - Validates: Source slot must have Persistent lifetime
+ *   - Compile Error: If connected source is Transient
+ *
+ * Usage:
+ * ```cpp
+ * ACCUMULATION_INPUT_SLOT_V2(PASSES, std::vector<DispatchPass>, DispatchPass, 0,
+ *     SlotNullability::Required, SlotRole::Dependency,
+ *     SlotStorageStrategy::Value);  // Copies DispatchPass elements
+ *
+ * ACCUMULATION_INPUT_SLOT_V2(LARGE_BUFFERS, std::vector<VkBuffer>, VkBuffer, 1,
+ *     SlotNullability::Required, SlotRole::Dependency,
+ *     SlotStorageStrategy::Reference);  // Requires Persistent source
+ * ```
+ */
+enum class SlotStorageStrategy : uint8_t {
+    Value      = 0,  // Copy elements (safe, may warn if large)
+    Reference  = 1,  // Store references (zero-copy, requires Persistent)
+    Span       = 2   // Store std::span (view, requires Persistent)
+};
+
 // ====================================================================
 // SPRINT 6.0.1: UNIFIED CONNECTION SYSTEM - SlotFlags Infrastructure
 // ====================================================================
@@ -319,6 +353,9 @@ struct AccumulationConfig {
  *
  * Sprint 6.0.1 Extensions:
  * - SlotFlags for accumulation/multi-connect behavior
+ *
+ * Sprint 6.0.2 Extensions:
+ * - SlotStorageStrategy for accumulation slots (Value/Reference/Span)
  */
 template<
     typename T,
@@ -327,7 +364,8 @@ template<
     SlotRole Role = SlotRole::Dependency,
     SlotMutability Mutability = SlotMutability::ReadOnly,
     SlotScope Scope = SlotScope::NodeLevel,
-    SlotFlags Flags = SlotFlags::None
+    SlotFlags Flags = SlotFlags::None,
+    SlotStorageStrategy StorageStrategy = SlotStorageStrategy::Value
 >
 struct ResourceSlot {
     using Type = T;
@@ -346,6 +384,9 @@ struct ResourceSlot {
 
     // Sprint 6.0.1: Connection flags
     static constexpr SlotFlags flags = Flags;
+
+    // Sprint 6.0.2: Storage strategy for accumulation
+    static constexpr SlotStorageStrategy storageStrategy = StorageStrategy;
 
     // Helper accessors for flags
     static constexpr bool isAccumulation = HasAccumulation(Flags);
@@ -720,6 +761,71 @@ ResourceDescriptor MakeDescriptor(
         ::Vixen::RenderGraph::SlotScope::NodeLevel, \
         ::Vixen::RenderGraph::SlotFlags::Accumulation | ::Vixen::RenderGraph::SlotFlags::MultiConnect \
     )
+
+// ====================================================================
+// SPRINT 6.0.2: PROPER ACCUMULATION SLOT SYSTEM
+// ====================================================================
+
+/**
+ * @brief Proper accumulation input slot with container type and storage strategy (Sprint 6.0.2)
+ *
+ * Declares an accumulation slot using explicit container types (e.g., std::vector<T>)
+ * instead of element types. This eliminates the type system lie where slots declare
+ * element types but return containers at runtime.
+ *
+ * Parameters:
+ * - SlotName: Name of the slot (e.g., PASSES, INPUTS)
+ * - ContainerType: Full container type (e.g., std::vector<bool>, std::vector<DispatchPass>)
+ * - ElementType: Element type for validation (e.g., bool, DispatchPass)
+ * - Index: Slot index
+ * - Nullability: SlotNullability::Required or Optional
+ * - Role: SlotRole::Dependency, Execute, etc.
+ * - StorageStrategy: SlotStorageStrategy::Value, Reference, or Span
+ *
+ * Storage Strategies:
+ * - Value: Copies elements into container (safe, warns if >1KB total)
+ * - Reference: Stores references (zero-copy, requires Persistent sources)
+ * - Span: Stores std::span view (zero-copy, requires Persistent sources)
+ *
+ * Example:
+ * ```cpp
+ * // Value strategy (copies booleans)
+ * ACCUMULATION_INPUT_SLOT_V2(INPUTS, std::vector<bool>, bool, 1,
+ *     SlotNullability::Required,
+ *     SlotRole::Dependency,
+ *     SlotStorageStrategy::Value);
+ *
+ * // Reference strategy (requires Persistent sources)
+ * ACCUMULATION_INPUT_SLOT_V2(LARGE_BUFFERS, std::vector<VkBuffer>, VkBuffer, 2,
+ *     SlotNullability::Required,
+ *     SlotRole::Dependency,
+ *     SlotStorageStrategy::Reference);
+ * ```
+ *
+ * Compile-time Validations:
+ * - Container type must satisfy Iterable concept
+ * - Container's iterable_value_t must match ElementType
+ * - Reference/Span strategies validate Persistent requirement at connection time
+ */
+#define ACCUMULATION_INPUT_SLOT_V2(SlotName, ContainerType, ElementType, Index, Nullability, Role, StorageStrategy) \
+    using SlotName##_Slot = ::Vixen::RenderGraph::ResourceSlot< \
+        ContainerType, \
+        Index, \
+        Nullability, \
+        Role, \
+        ::Vixen::RenderGraph::SlotMutability::ReadOnly, \
+        ::Vixen::RenderGraph::SlotScope::NodeLevel, \
+        ::Vixen::RenderGraph::SlotFlags::Accumulation | ::Vixen::RenderGraph::SlotFlags::MultiConnect, \
+        StorageStrategy \
+    >; \
+    static constexpr SlotName##_Slot SlotName{}; \
+    /* Compile-time validation: Container must be iterable */ \
+    static_assert(::Vixen::RenderGraph::Iterable<ContainerType>, \
+        "Accumulation slot container type must satisfy Iterable concept"); \
+    /* Compile-time validation: Container element type must be convertible to declared element type */ \
+    /* Note: Uses convertible_to instead of is_same to handle std::vector<bool> proxy references */ \
+    static_assert(std::convertible_to<::Vixen::RenderGraph::iterable_value_t<ContainerType>, ElementType>, \
+        "Container's element type must be convertible to declared ElementType (handles proxy types like std::vector<bool>)")
 
 /**
  * @brief Output slot with Phase F metadata (manual index)

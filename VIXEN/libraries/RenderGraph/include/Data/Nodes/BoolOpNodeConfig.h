@@ -2,6 +2,7 @@
 #include "Data/Core/ResourceConfig.h"
 #include "Data/Core/CompileTimeResourceSystem.h"  // For BoolVector typedef
 #include "Data/Core/BoolVector.h"
+#include "Data/Core/ConnectionConcepts.h"  // For Iterable concept and iterable_value_t
 
 namespace Vixen::RenderGraph::Data {
     struct BoolVector;
@@ -57,11 +58,12 @@ CONSTEXPR_NODE_CONFIG(BoolOpNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    INPUT_SLOT(INPUTS, BoolVector, 1,
+    // Sprint 6.0.2: Proper accumulation slot using container type
+    // Collects bool elements into std::vector<bool> using Value strategy (copies)
+    ACCUMULATION_INPUT_SLOT_V2(INPUTS, std::vector<bool>, bool, 1,
         SlotNullability::Required,
         SlotRole::Dependency,
-        SlotMutability::ReadOnly,
-        SlotScope::NodeLevel);
+        SlotStorageStrategy::Value);
 
     // ===== OUTPUTS (1) =====
     OUTPUT_SLOT(OUTPUT, bool, 0,
@@ -93,7 +95,7 @@ CONSTEXPR_NODE_CONFIG(BoolOpNodeConfig,
 
     // Type validations
     static_assert(std::is_same_v<OPERATION_Slot::Type, BoolOp>);
-    static_assert(std::is_same_v<INPUTS_Slot::Type, BoolVector>);
+    static_assert(std::is_same_v<INPUTS_Slot::Type, std::vector<bool>>);  // Sprint 6.0.2: Container type (not element type)
     static_assert(std::is_same_v<OUTPUT_Slot::Type, bool>);
 
     

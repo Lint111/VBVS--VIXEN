@@ -3,6 +3,8 @@
 #include "MeshData.h"
 #include "Logger.h"
 #include "Core/TypedConnection.h"  // Typed slot connection helpers
+#include "Connection/ConnectionModifier.h"  // ConnectionMeta
+#include "Connection/Modifiers/FieldExtractionModifier.h"  // ExtractField
 #include "CommandBufferUtility.h"  // MVP: File reading utility
 #include "MainCacher.h"  // Cache system initialization
 #include "Core/LoopManager.h"  // Phase 0.4: Loop system
@@ -1103,80 +1105,80 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     // Connect push constant fields to push constant gatherer using member extraction
     // CameraNode now outputs a CameraData struct, so we can extract individual fields
-    batch.ConnectVariadic(cameraNode, CameraNodeConfig::CAMERA_DATA,
+    batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
                           pushConstantGatherer, VoxelRayMarch::cameraPos::BINDING,  // vec3 cameraPos
-                          &CameraData::cameraPos, SlotRole::Execute);  // Mark as Execute-only
+                          ExtractField(&CameraData::cameraPos, SlotRole::Execute));  // Mark as Execute-only
 
     // Note: time field (index 1) NOT connected - will be filled with zero by gatherer
     // This will trigger a warning log but shader will receive valid (zero) value
     // TODO: Connect actual time source when animation is needed
 
-    batch.ConnectVariadic(cameraNode, CameraNodeConfig::CAMERA_DATA,
+    batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
                           pushConstantGatherer, VoxelRayMarch::cameraDir::BINDING,  // vec3 cameraDir
-                          &CameraData::cameraDir, SlotRole::Execute);  // Mark as Execute-only
-    batch.ConnectVariadic(cameraNode, CameraNodeConfig::CAMERA_DATA,
+                          ExtractField(&CameraData::cameraDir, SlotRole::Execute));  // Mark as Execute-only
+    batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
                           pushConstantGatherer, VoxelRayMarch::fov::BINDING,  // float fov
-                          &CameraData::fov, SlotRole::Execute);  // Mark as Execute-only
-    batch.ConnectVariadic(cameraNode, CameraNodeConfig::CAMERA_DATA,
+                          ExtractField(&CameraData::fov, SlotRole::Execute));  // Mark as Execute-only
+    batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
                           pushConstantGatherer, VoxelRayMarch::cameraUp::BINDING,  // vec3 cameraUp
-                          &CameraData::cameraUp , SlotRole::Execute);  // Mark as Execute-only
-    batch.ConnectVariadic(cameraNode, CameraNodeConfig::CAMERA_DATA,
+                          ExtractField(&CameraData::cameraUp, SlotRole::Execute));  // Mark as Execute-only
+    batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
                           pushConstantGatherer, VoxelRayMarch::aspect::BINDING,  // float aspect
-                          &CameraData::aspect, SlotRole::Execute);  // Mark as Execute-only
-    batch.ConnectVariadic(cameraNode, CameraNodeConfig::CAMERA_DATA,
+                          ExtractField(&CameraData::aspect, SlotRole::Execute));  // Mark as Execute-only
+    batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
                           pushConstantGatherer, VoxelRayMarch::cameraRight::BINDING,  // vec3 cameraRight
-                          &CameraData::cameraRight, SlotRole::Execute);  // Mark as Execute-only
+                          ExtractField(&CameraData::cameraRight, SlotRole::Execute));  // Mark as Execute-only
 
     // Connect debugMode from InputState to push constant gatherer for debug visualization
     // Press 0-9 keys to switch between visualization modes at runtime
-    batch.ConnectVariadic(inputNode, InputNodeConfig::INPUT_STATE,
+    batch.Connect(inputNode, InputNodeConfig::INPUT_STATE,
                           pushConstantGatherer, VoxelRayMarch::debugMode::BINDING,  // int debugMode
-                          &InputState::debugMode, SlotRole::Execute);  // Mark as Execute-only
+                          ExtractField(&InputState::debugMode, SlotRole::Execute));  // Mark as Execute-only
 
     // Connect ray marching resources to descriptor gatherer using VoxelRayMarchNames.h bindings
     // Binding 0: outputImage - Transient (Execute-only), others are Persistent (Dependency|Execute)
     // Binding 0: outputImage (swapchain image view) - changes per frame
     // Note: outputImage is not in SDI (writeonly image) so we use literal binding index 0
-    batch.ConnectVariadic(swapChainNode, SwapChainNodeConfig::CURRENT_FRAME_IMAGE_VIEW,
+    batch.Connect(swapChainNode, SwapChainNodeConfig::CURRENT_FRAME_IMAGE_VIEW,
                           descriptorGatherer, 0,  // outputImage at binding 0
-                          SlotRole::Execute);
+                          SlotRoleModifier(SlotRole::Execute)));
 
     // Binding 1: octreeNodes (SSBO) - octree node data
-    batch.ConnectVariadic(voxelGridNode, VoxelGridNodeConfig::OCTREE_NODES_BUFFER,
+    batch.Connect(voxelGridNode, VoxelGridNodeConfig::OCTREE_NODES_BUFFER,
                           descriptorGatherer, VoxelRayMarch::esvoNodes::BINDING,
-                          SlotRole::Dependency | SlotRole::Execute);
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute)));
                           
 
     // Binding 2: voxelBricks (SSBO) - voxel brick data
-    batch.ConnectVariadic(voxelGridNode, VoxelGridNodeConfig::OCTREE_BRICKS_BUFFER,
+    batch.Connect(voxelGridNode, VoxelGridNodeConfig::OCTREE_BRICKS_BUFFER,
                           descriptorGatherer, VoxelRayMarch::brickData::BINDING,
-                          SlotRole::Dependency | SlotRole::Execute);
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute)));
 
     // Binding 3: materialPalette (SSBO) - material data
-    batch.ConnectVariadic(voxelGridNode, VoxelGridNodeConfig::OCTREE_MATERIALS_BUFFER,
+    batch.Connect(voxelGridNode, VoxelGridNodeConfig::OCTREE_MATERIALS_BUFFER,
                           descriptorGatherer, VoxelRayMarch::materials::BINDING,
-                          SlotRole::Dependency | SlotRole::Execute);
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute)));
 
-    batch.ConnectVariadic(voxelGridNode, VoxelGridNodeConfig::DEBUG_CAPTURE_BUFFER,
+    batch.Connect(voxelGridNode, VoxelGridNodeConfig::DEBUG_CAPTURE_BUFFER,
                           descriptorGatherer, VoxelRayMarch::traceWriteIndex::BINDING,
-                          SlotRole::Dependency | SlotRole::Execute | SlotRole::Debug);
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute | SlotRole::Debug)));
 
     // Binding 5: octreeConfig (UBO) - octree scale parameters
     // TODO: Add VoxelRayMarch::octreeConfig to VoxelRayMarchNames.h after regenerating SDI
-    batch.ConnectVariadic(voxelGridNode, VoxelGridNodeConfig::OCTREE_CONFIG_BUFFER,
+    batch.Connect(voxelGridNode, VoxelGridNodeConfig::OCTREE_CONFIG_BUFFER,
                           descriptorGatherer, 5,  // Binding 5 (hardcoded until SDI regenerated)
-                          SlotRole::Dependency | SlotRole::Execute);
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute)));
 
 #if USE_COMPRESSED_SHADER
     // Compressed shader variant requires DXT compressed buffers at bindings 6 and 7
     // Binding 6: compressedColors (DXT1) - 8 bytes/block, 32 blocks/brick = 256 bytes/brick
     // Binding 7: compressedNormals (DXT) - 16 bytes/block, 32 blocks/brick = 512 bytes/brick
-    batch.ConnectVariadic(voxelGridNode, VoxelGridNodeConfig::COMPRESSED_COLOR_BUFFER,
+    batch.Connect(voxelGridNode, VoxelGridNodeConfig::COMPRESSED_COLOR_BUFFER,
                           descriptorGatherer, 6,  // Binding 6: CompressedColorBuffer
-                          SlotRole::Dependency | SlotRole::Execute);
-    batch.ConnectVariadic(voxelGridNode, VoxelGridNodeConfig::COMPRESSED_NORMAL_BUFFER,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute)));
+    batch.Connect(voxelGridNode, VoxelGridNodeConfig::COMPRESSED_NORMAL_BUFFER,
                           descriptorGatherer, 7,  // Binding 7: CompressedNormalBuffer
-                          SlotRole::Dependency | SlotRole::Execute);
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute)));
 
     if (mainLogger && mainLogger->IsEnabled()) {
         mainLogger->Info("[BuildRenderGraph] Connected compressed buffers: binding 6 (colors), binding 7 (normals)");
@@ -1187,7 +1189,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Extract imageCount metadata using field extraction, DESCRIPTOR_RESOURCES provides actual bindings
     batch.Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
                   computeDescriptorSet, DescriptorSetNodeConfig::SWAPCHAIN_IMAGE_COUNT,
-                  &SwapChainPublicVariables::swapChainImageCount)
+                  ExtractField(&SwapChainPublicVariables::swapChainImageCount)))
          .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
                   computeDescriptorSet, DescriptorSetNodeConfig::IMAGE_INDEX)
          // REMOVED DUPLICATE: descriptorGatherer -> computeDescriptorSet DESCRIPTOR_RESOURCES (already connected at line 919-920)

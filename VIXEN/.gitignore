@@ -118,6 +118,11 @@ build/**/CMakeFiles/
 !.claude/settings.local.json
 .claude/hooks/.pre-commit-approved
 
+# Node/npm artifacts (Claude Code should be installed globally, not per-project)
+node_modules/
+package.json
+package-lock.json
+
 # Cache directories
 .cache/
 ../.cache/

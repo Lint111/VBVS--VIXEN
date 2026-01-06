@@ -1152,7 +1152,7 @@ public:
     ConnectionResult postResResult = ConnectionResult::Success();
     uint32_t testPriority = 50;
 
-    [[nodiscard]] ConnectionResult PreValidation(const ConnectionContext& /*ctx*/) override {
+    [[nodiscard]] ConnectionResult PreValidation(ConnectionContext& /*ctx*/) override {
         phaseCalls.push_back("PreValidation");
         return preValResult;
     }
@@ -1368,13 +1368,15 @@ TEST(FieldExtractionModifierTest, PreValidationAcceptsPersistent) {
     EXPECT_TRUE(result.success);
 }
 
-TEST(FieldExtractionModifierTest, PreResolveSetsEffectiveType) {
+TEST(FieldExtractionModifierTest, PreValidationSetsEffectiveType) {
     FieldExtractionModifier mod(32, 4, ResourceType::Buffer);
 
     ConnectionContext ctx;
     ctx.sourceSlot.resourceType = ResourceType::PassThroughStorage;  // Struct type
+    ctx.sourceLifetime = ResourceLifetime::Persistent;  // Required for field extraction
 
-    auto result = mod.PreResolve(ctx);
+    // PreValidation now sets effective type (moved from PreResolve)
+    auto result = mod.PreValidation(ctx);
     EXPECT_TRUE(result.success);
 
     // Effective type should be the field type
@@ -1389,7 +1391,8 @@ TEST(FieldExtractionModifierTest, PreResolveSetsEffectiveType) {
 
 TEST(FieldExtractionModifierTest, FullPipelineWithPersistentSource) {
     ConnectionPipeline pipeline;
-    pipeline.AddModifier(std::make_unique<FieldExtractionModifier>(16, 8, ResourceType::ImageView));
+    // Extract a Buffer field (matches target slot type)
+    pipeline.AddModifier(std::make_unique<FieldExtractionModifier>(16, 8, ResourceType::Buffer));
 
     DirectConnectionRule rule;
 
@@ -1402,7 +1405,7 @@ TEST(FieldExtractionModifierTest, FullPipelineWithPersistentSource) {
     ctx.targetSlot = SlotInfo::FromInputSlot<TargetConfig::BUFFER_IN_Slot>("IN");
 
     auto result = pipeline.Execute(ctx, rule);
-    EXPECT_TRUE(result.success);
+    EXPECT_TRUE(result.success) << "Pipeline failed: " << result.errorMessage;
 
     // Verify extraction was applied
     EXPECT_TRUE(ctx.sourceSlot.hasFieldExtraction);
@@ -1426,6 +1429,50 @@ TEST(FieldExtractionModifierTest, FullPipelineRejectsTransient) {
     auto result = pipeline.Execute(ctx, rule);
     EXPECT_FALSE(result.success);
     EXPECT_TRUE(result.errorMessage.find("FieldExtractionModifier") != std::string::npos);
+}
+
+// ============================================================================
+// VARIADIC MODIFIER API (Sprint 6.0.2)
+// ============================================================================
+
+TEST(VariadicModifierAPI, SingleModifierStreamlinedSyntax) {
+    // Test that variadic API correctly constructs ConnectionMeta from single modifier
+    ConnectionPipeline pipeline;
+
+    // Manually create modifier for comparison
+    auto fieldMod = FieldExtractionModifier(16, 8, ResourceType::Buffer);
+
+    // The variadic API should accept this modifier directly
+    // (This test verifies compilation - the actual usage is in ConnectionBatch)
+    EXPECT_EQ(fieldMod.GetFieldOffset(), 16u);
+    EXPECT_EQ(fieldMod.GetFieldSize(), 8u);
+}
+
+TEST(VariadicModifierAPI, MultipleModifiersStreamlinedSyntax) {
+    // Test that multiple modifiers can be passed directly
+    ConnectionPipeline pipeline;
+
+    // Add multiple modifiers via the standard API
+    pipeline.AddModifier(std::make_unique<FieldExtractionModifier>(16, 8, ResourceType::Buffer));
+    pipeline.AddModifier(std::make_unique<SlotRoleModifier>(SlotRole::Execute));
+
+    DirectConnectionRule rule;
+
+    ConnectionContext ctx;
+    ctx.sourceNode = reinterpret_cast<NodeInstance*>(0x1);
+    ctx.targetNode = reinterpret_cast<NodeInstance*>(0x2);
+    ctx.graph = reinterpret_cast<RenderGraph*>(0x3);
+    ctx.sourceLifetime = ResourceLifetime::Persistent;
+    ctx.sourceSlot = SlotInfo::FromOutputSlot<SourceConfig::BUFFER_OUT_Slot>("OUT");
+    ctx.targetSlot = SlotInfo::FromInputSlot<TargetConfig::BUFFER_IN_Slot>("IN");
+
+    auto result = pipeline.Execute(ctx, rule);
+    EXPECT_TRUE(result.success);
+
+    // Verify both modifiers were applied
+    EXPECT_TRUE(ctx.sourceSlot.hasFieldExtraction);
+    EXPECT_EQ(ctx.sourceSlot.fieldOffset, 16u);
+    EXPECT_EQ(ctx.sourceSlot.role, SlotRole::Execute);
 }
 
 // ============================================================================

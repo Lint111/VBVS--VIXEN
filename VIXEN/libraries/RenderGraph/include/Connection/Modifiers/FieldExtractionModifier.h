@@ -47,36 +47,18 @@ public:
     {}
 
     /**
-     * @brief PreValidation: Check source has Persistent lifetime
+     * @brief PreValidation: Transform context and validate source lifetime
      *
-     * Field extraction requires a stable memory address. Transient resources
-     * may be reallocated, invalidating the extracted pointer.
+     * Sets effectiveResourceType to the extracted field's type so that
+     * Rule.Validate() uses the correct type for type checking.
+     *
+     * Also validates source has Persistent lifetime (stable address).
      */
-    [[nodiscard]] ConnectionResult PreValidation(const ConnectionContext& ctx) override {
-        if (!ctx.IsPersistentSource()) {
-            return ConnectionResult::Error(
-                "Field extraction requires Persistent lifetime source. "
-                "Transient resources may be reallocated between frames.");
-        }
-        return ConnectionResult::Success();
-    }
-
-    /**
-     * @brief PreResolve: Set effective resource type for type checking
-     *
-     * The rule should use the field's type, not the source struct's type,
-     * when validating compatibility with the target slot.
-     *
-     * Also enforces that field extraction metadata on the source slot is
-     * effectively write-once: multiple FieldExtractionModifiers on the same
-     * connection must agree on offset/size or the connection fails.
-     */
-    ConnectionResult PreResolve(ConnectionContext& ctx) override {
-        // Set the effective type to the extracted field's type
+    [[nodiscard]] ConnectionResult PreValidation(ConnectionContext& ctx) override {
+        // Set the effective type to the extracted field's type BEFORE validation
         ctx.SetEffectiveResourceType(fieldType_);
 
-        // Update source slot info with extraction details.
-        // If another modifier already set extraction, ensure it is consistent.
+        // Update source slot info with extraction details
         auto& sourceSlot = ctx.sourceSlot;
         if (sourceSlot.hasFieldExtraction) {
             const bool sameOffset = (sourceSlot.fieldOffset == fieldOffset_);
@@ -86,13 +68,27 @@ public:
                     "Multiple FieldExtractionModifiers with conflicting field "
                     "offset/size applied to the same connection.");
             }
-            // Idempotent: same configuration is allowed; nothing more to do.
-            return ConnectionResult::Success();
+            // Idempotent: same configuration is allowed
+        } else {
+            sourceSlot.fieldOffset = fieldOffset_;
+            sourceSlot.fieldSize = fieldSize_;
+            sourceSlot.hasFieldExtraction = true;
         }
 
-        sourceSlot.fieldOffset = fieldOffset_;
-        sourceSlot.fieldSize = fieldSize_;
-        sourceSlot.hasFieldExtraction = true;
+        // Validate source has Persistent lifetime (stable address for extraction)
+        if (!ctx.IsPersistentSource()) {
+            return ConnectionResult::Error(
+                "Field extraction requires Persistent lifetime source. "
+                "Transient resources may be reallocated between frames.");
+        }
+
+        return ConnectionResult::Success();
+    }
+
+    /**
+     * @brief PreResolve: No-op (transformation done in PreValidation)
+     */
+    ConnectionResult PreResolve(ConnectionContext& ctx) override {
         return ConnectionResult::Success();
     }
 

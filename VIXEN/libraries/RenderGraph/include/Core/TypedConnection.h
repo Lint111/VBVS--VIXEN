@@ -167,8 +167,13 @@ public:
      * Type compatibility is checked at compile-time. Rule selection is
      * automatic based on slot types. Customize via ConnectionMeta modifiers.
      *
+     * Supports three target types:
+     * 1. Static slots (from node configs) - detected by TargetSlot::index
+     * 2. SDI binding types (from shader reflection) - detected by TargetSlot::BINDING
+     * 3. Legacy binding refs (instance members) - detected by t.binding
+     *
      * @tparam SourceSlot Output slot type (from node config)
-     * @tparam TargetSlot Input slot or binding type (from node config or shader)
+     * @tparam TargetSlot Input slot, SDI binding type, or legacy binding ref
      * @param sourceNode Handle to source node
      * @param sourceSlot Output slot constant
      * @param targetNode Handle to target node
@@ -193,20 +198,40 @@ public:
         pending.context.sourceSlot = SlotInfo::FromOutputSlot<SourceSlot>("");
         pending.context.sourceSlot.index = SourceSlot::index;
 
-        // Build target SlotInfo - handle both static slots and bindings
-        if constexpr (requires { TargetSlot::binding; }) {
-            // Target is a binding reference (variadic connection)
+        // Build target SlotInfo - handle static slots, SDI bindings, legacy bindings, and raw integers
+        if constexpr (requires { TargetSlot::BINDING; TargetSlot::DESCRIPTOR_TYPE; }) {
+            // Target is an SDI-style binding type (uppercase static members)
+            // Usage: batch.Connect(src, slot, tgt, VoxelRayMarch::esvoNodes{}, meta)
+            pending.context.targetSlot = SlotInfo::FromBindingType<TargetSlot>("");
+        } else if constexpr (requires { TargetSlot::binding; }) {
+            // Target is a legacy binding reference (lowercase instance members)
             pending.context.targetSlot = SlotInfo::FromBinding(targetSlot, TargetSlot::name);
-        } else {
+        } else if constexpr (std::is_integral_v<TargetSlot>) {
+            // Target is a raw binding index (uint32_t, int, etc.)
+            // Used by deprecated ConnectVariadic - prefer SDI binding types for new code
+            pending.context.targetSlot = SlotInfo{};
+            pending.context.targetSlot.binding = static_cast<uint32_t>(targetSlot);
+            pending.context.targetSlot.kind = SlotKind::Binding;
+            pending.context.targetSlot.state = SlotState::Tentative;
+            pending.context.targetSlot.descriptorType = VK_DESCRIPTOR_TYPE_MAX_ENUM;
+        } else if constexpr (requires { TargetSlot::index; }) {
             // Target is a static slot
             pending.context.targetSlot = SlotInfo::FromInputSlot<TargetSlot>("");
             pending.context.targetSlot.index = TargetSlot::index;
 
-            // Compile-time type check for static slot connections
-            static_assert(
-                AreTypesCompatible_v<typename SourceSlot::Type, typename TargetSlot::Type>,
-                "TYPE MISMATCH: Source output slot type is incompatible with target input slot type."
-            );
+            // NOTE: Type checking moved to runtime to support field extraction.
+            // When ConnectionMeta contains FieldExtractionModifier, the source type
+            // differs from what's actually connected. Runtime validation in
+            // the connection pipeline will catch type mismatches.
+            //
+            // For direct connections without field extraction, consider using
+            // ConnectDirect() (if added) which can provide compile-time type safety.
+        } else {
+            static_assert(sizeof(TargetSlot) == 0,
+                "TARGET TYPE ERROR: TargetSlot must be either a static slot (with ::index), "
+                "an SDI binding type (with ::BINDING, ::DESCRIPTOR_TYPE), "
+                "a legacy binding reference (with .binding, .descriptorType), "
+                "or an integral binding index (uint32_t)");
         }
 
         // Find matching rule
@@ -218,6 +243,60 @@ public:
         // Store for RegisterAll
         pendingConnections_.push_back(std::move(pending));
         return *this;
+    }
+
+    /**
+     * @brief Streamlined connection with implicit modifier construction
+     *
+     * Accepts modifiers directly without ConnectionMeta{} boilerplate.
+     * Enables cleaner syntax for common case (1-3 modifiers).
+     *
+     * Examples:
+     * @code
+     * // Single modifier - no ConnectionMeta{}
+     * batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
+     *               gatherer, VoxelRayMarch::cameraPos::BINDING,
+     *               ExtractField(&CameraData::cameraPos, SlotRole::Execute));
+     *
+     * // Multiple modifiers - comma-separated
+     * batch.Connect(nodeA, ConfigA::OUTPUT,
+     *               nodeB, ConfigB::INPUT,
+     *               ExtractField(&MyStruct::field),
+     *               SlotRoleModifier(SlotRole::Execute));
+     * @endcode
+     *
+     * @tparam SourceSlot Output slot type (from node config)
+     * @tparam TargetSlot Input slot, SDI binding type, or legacy binding ref
+     * @tparam Modifiers Variadic modifier types (must derive from ConnectionModifier)
+     * @param sourceNode Handle to source node
+     * @param sourceSlot Output slot constant
+     * @param targetNode Handle to target node
+     * @param targetSlot Input slot or binding constant
+     * @param modifiers Modifiers to apply (ExtractField, SlotRoleModifier, etc.)
+     */
+    template<typename SourceSlot, typename TargetSlot, typename... Modifiers>
+        requires (sizeof...(Modifiers) > 0) &&  // At least one modifier
+                 (std::derived_from<std::remove_cvref_t<Modifiers>, ConnectionModifier> && ...)
+    ConnectionBatch& Connect(
+        NodeHandle sourceNode,
+        SourceSlot sourceSlot,
+        NodeHandle targetNode,
+        TargetSlot targetSlot,
+        Modifiers&&... modifiers
+    ) {
+        // Construct ConnectionMeta from modifiers
+        ConnectionMeta meta;
+
+        // Fold expression to move each modifier into meta
+        ([&meta, &modifiers] {
+            using ModType = std::remove_cvref_t<decltype(modifiers)>;
+            meta.modifiers.push_back(
+                std::make_unique<ModType>(std::forward<decltype(modifiers)>(modifiers))
+            );
+        }(), ...);
+
+        // Delegate to existing Connect() with constructed meta
+        return Connect(sourceNode, sourceSlot, targetNode, targetSlot, std::move(meta));
     }
 
     // ========================================================================
