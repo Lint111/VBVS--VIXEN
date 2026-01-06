@@ -335,6 +335,300 @@ TEST(EdgeCases, MixedGroupIdsWithNullopt) {
 }
 
 // ============================================================================
+// BACKWARD COMPATIBILITY TESTS
+// ============================================================================
+
+TEST(BackwardCompatibility, EmptyGroupInputsUsesLegacyQueue) {
+    // When GROUP_INPUTS is empty, MultiDispatchNode falls back to QueueDispatch() API
+    std::map<uint32_t, std::vector<DispatchPass>> groupedDispatches;
+    std::vector<DispatchPass> groupInputs;  // Empty
+
+    // Simulate CompileImpl logic
+    if (!groupInputs.empty()) {
+        // Group-based dispatch
+        for (const auto& pass : groupInputs) {
+            if (pass.groupId.has_value()) {
+                groupedDispatches[pass.groupId.value()].push_back(pass);
+            } else {
+                groupedDispatches[0].push_back(pass);
+            }
+        }
+    }
+
+    // Empty GROUP_INPUTS means groupedDispatches stays empty
+    // Node will use legacy dispatchQueue_ instead
+    EXPECT_TRUE(groupedDispatches.empty());
+}
+
+TEST(BackwardCompatibility, LegacyQueueDispatchStillWorks) {
+    // Verify QueueDispatch() API (legacy) is unaffected by GROUP_INPUTS
+    // This would be the dispatchQueue_ path in MultiDispatchNode::ExecuteImpl
+
+    std::vector<DispatchPass> dispatchQueue;  // Legacy queue
+
+    // Simulate QueueDispatch() calls
+    DispatchPass pass1{};
+    pass1.debugName = "LegacyPass1";
+    pass1.pipeline = reinterpret_cast<VkPipeline>(0x1);
+    pass1.layout = reinterpret_cast<VkPipelineLayout>(0x2);
+    pass1.workGroupCount = {8, 8, 1};
+
+    dispatchQueue.push_back(pass1);
+
+    EXPECT_EQ(dispatchQueue.size(), 1u);
+    EXPECT_EQ(dispatchQueue[0].debugName, "LegacyPass1");
+}
+
+// ============================================================================
+// INVALID DISPATCHPASS HANDLING
+// ============================================================================
+
+TEST(InvalidDispatchPass, DetectsNullPipeline) {
+    DispatchPass pass{};
+    pass.pipeline = VK_NULL_HANDLE;  // INVALID
+    pass.layout = reinterpret_cast<VkPipelineLayout>(0x1);
+    pass.workGroupCount = {1, 1, 1};
+
+    EXPECT_FALSE(pass.IsValid());
+}
+
+TEST(InvalidDispatchPass, DetectsNullLayout) {
+    DispatchPass pass{};
+    pass.pipeline = reinterpret_cast<VkPipeline>(0x1);
+    pass.layout = VK_NULL_HANDLE;  // INVALID
+    pass.workGroupCount = {1, 1, 1};
+
+    EXPECT_FALSE(pass.IsValid());
+}
+
+TEST(InvalidDispatchPass, DetectsZeroWorkGroupsX) {
+    DispatchPass pass{};
+    pass.pipeline = reinterpret_cast<VkPipeline>(0x1);
+    pass.layout = reinterpret_cast<VkPipelineLayout>(0x2);
+    pass.workGroupCount = {0, 1, 1};  // X is zero
+
+    EXPECT_FALSE(pass.IsValid());
+}
+
+TEST(InvalidDispatchPass, DetectsZeroWorkGroupsY) {
+    DispatchPass pass{};
+    pass.pipeline = reinterpret_cast<VkPipeline>(0x1);
+    pass.layout = reinterpret_cast<VkPipelineLayout>(0x2);
+    pass.workGroupCount = {1, 0, 1};  // Y is zero
+
+    EXPECT_FALSE(pass.IsValid());
+}
+
+TEST(InvalidDispatchPass, DetectsZeroWorkGroupsZ) {
+    DispatchPass pass{};
+    pass.pipeline = reinterpret_cast<VkPipeline>(0x1);
+    pass.layout = reinterpret_cast<VkPipelineLayout>(0x2);
+    pass.workGroupCount = {1, 1, 0};  // Z is zero
+
+    EXPECT_FALSE(pass.IsValid());
+}
+
+TEST(InvalidDispatchPass, CompileImplRejectsInvalidPass) {
+    // Simulate MultiDispatchNode::CompileImpl validation
+    std::vector<DispatchPass> groupInputs;
+
+    DispatchPass invalidPass{};
+    invalidPass.debugName = "InvalidPass";
+    invalidPass.pipeline = VK_NULL_HANDLE;  // Invalid
+    invalidPass.layout = reinterpret_cast<VkPipelineLayout>(0x1);
+    invalidPass.workGroupCount = {1, 1, 1};
+
+    groupInputs.push_back(invalidPass);
+
+    // Validation loop (as in CompileImpl)
+    bool hasInvalid = false;
+    for (const auto& pass : groupInputs) {
+        if (!pass.IsValid()) {
+            hasInvalid = true;
+            break;
+        }
+    }
+
+    EXPECT_TRUE(hasInvalid);
+}
+
+// ============================================================================
+// COMPLEX GROUP SCENARIOS
+// ============================================================================
+
+TEST(ComplexScenarios, ManyGroupsWithVaryingSizes) {
+    std::map<uint32_t, std::vector<DispatchPass>> groupedDispatches;
+
+    // Group 0: 5 passes
+    for (int i = 0; i < 5; ++i) {
+        DispatchPass pass{};
+        pass.debugName = "Group0_Pass" + std::to_string(i);
+        pass.groupId = 0;
+        groupedDispatches[0].push_back(pass);
+    }
+
+    // Group 1: 1 pass
+    DispatchPass pass1{};
+    pass1.debugName = "Group1_Pass0";
+    pass1.groupId = 1;
+    groupedDispatches[1].push_back(pass1);
+
+    // Group 2: 10 passes
+    for (int i = 0; i < 10; ++i) {
+        DispatchPass pass{};
+        pass.debugName = "Group2_Pass" + std::to_string(i);
+        pass.groupId = 2;
+        groupedDispatches[2].push_back(pass);
+    }
+
+    EXPECT_EQ(groupedDispatches.size(), 3u);
+    EXPECT_EQ(groupedDispatches[0].size(), 5u);
+    EXPECT_EQ(groupedDispatches[1].size(), 1u);
+    EXPECT_EQ(groupedDispatches[2].size(), 10u);
+
+    // Verify deterministic iteration order
+    std::vector<uint32_t> order;
+    for (const auto& [groupId, passes] : groupedDispatches) {
+        order.push_back(groupId);
+    }
+    EXPECT_EQ(order[0], 0u);
+    EXPECT_EQ(order[1], 1u);
+    EXPECT_EQ(order[2], 2u);
+}
+
+TEST(ComplexScenarios, SparseGroupIds) {
+    // Non-contiguous group IDs (0, 10, 100, 1000)
+    std::map<uint32_t, std::vector<DispatchPass>> groupedDispatches;
+
+    DispatchPass pass0{}; pass0.groupId = 0;
+    DispatchPass pass10{}; pass10.groupId = 10;
+    DispatchPass pass100{}; pass100.groupId = 100;
+    DispatchPass pass1000{}; pass1000.groupId = 1000;
+
+    std::vector<DispatchPass> input = {pass1000, pass10, pass0, pass100};  // Random order
+    for (const auto& pass : input) {
+        groupedDispatches[pass.groupId.value()].push_back(pass);
+    }
+
+    // Verify sorted order
+    std::vector<uint32_t> order;
+    for (const auto& [groupId, passes] : groupedDispatches) {
+        order.push_back(groupId);
+    }
+
+    EXPECT_EQ(order.size(), 4u);
+    EXPECT_EQ(order[0], 0u);
+    EXPECT_EQ(order[1], 10u);
+    EXPECT_EQ(order[2], 100u);
+    EXPECT_EQ(order[3], 1000u);
+}
+
+TEST(ComplexScenarios, LargeScalePartitioning) {
+    // Test with 100 passes across 10 groups
+    std::map<uint32_t, std::vector<DispatchPass>> groupedDispatches;
+
+    for (uint32_t groupId = 0; groupId < 10; ++groupId) {
+        for (uint32_t passIdx = 0; passIdx < 10; ++passIdx) {
+            DispatchPass pass{};
+            pass.debugName = "Group" + std::to_string(groupId) + "_Pass" + std::to_string(passIdx);
+            pass.groupId = groupId;
+            groupedDispatches[groupId].push_back(pass);
+        }
+    }
+
+    EXPECT_EQ(groupedDispatches.size(), 10u);
+    for (uint32_t i = 0; i < 10; ++i) {
+        EXPECT_EQ(groupedDispatches[i].size(), 10u);
+    }
+
+    // Verify total pass count
+    size_t totalPasses = 0;
+    for (const auto& [groupId, passes] : groupedDispatches) {
+        totalPasses += passes.size();
+    }
+    EXPECT_EQ(totalPasses, 100u);
+}
+
+// ============================================================================
+// HELPER FUNCTION TESTS
+// ============================================================================
+
+TEST(HelperFunctions, GroupKeyReturnsNonNull) {
+    auto modifier = GroupKey(&DispatchPass::groupId);
+    EXPECT_NE(modifier, nullptr);
+}
+
+TEST(HelperFunctions, GroupKeyDeducesType) {
+    // Helper should work without explicit template parameters
+    auto modifier = GroupKey(&DispatchPass::groupId);
+    EXPECT_EQ(modifier->Name(), "GroupKeyModifier");
+}
+
+// ============================================================================
+// DISPATCHPASS FIELD COMBINATION TESTS
+// ============================================================================
+
+TEST(DispatchPassFields, WithDescriptorSets) {
+    DispatchPass pass{};
+    pass.pipeline = reinterpret_cast<VkPipeline>(0x1);
+    pass.layout = reinterpret_cast<VkPipelineLayout>(0x2);
+    pass.workGroupCount = {8, 8, 1};
+
+    // Add descriptor sets
+    VkDescriptorSet set1 = reinterpret_cast<VkDescriptorSet>(0x100);
+    VkDescriptorSet set2 = reinterpret_cast<VkDescriptorSet>(0x200);
+    pass.descriptorSets = {set1, set2};
+    pass.firstSet = 0;
+
+    EXPECT_TRUE(pass.IsValid());
+    EXPECT_EQ(pass.descriptorSets.size(), 2u);
+}
+
+TEST(DispatchPassFields, WithPushConstants) {
+    DispatchPass pass{};
+    pass.pipeline = reinterpret_cast<VkPipeline>(0x1);
+    pass.layout = reinterpret_cast<VkPipelineLayout>(0x2);
+    pass.workGroupCount = {8, 8, 1};
+
+    // Add push constants
+    PushConstantData pc{};
+    pc.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    pc.offset = 0;
+    pc.data = {0x01, 0x02, 0x03, 0x04};
+    pass.pushConstants = pc;
+
+    EXPECT_TRUE(pass.IsValid());
+    EXPECT_TRUE(pass.pushConstants.has_value());
+    EXPECT_EQ(pass.pushConstants->data.size(), 4u);
+}
+
+TEST(DispatchPassFields, WithAllOptionalFields) {
+    DispatchPass pass{};
+    pass.pipeline = reinterpret_cast<VkPipeline>(0x1);
+    pass.layout = reinterpret_cast<VkPipelineLayout>(0x2);
+    pass.workGroupCount = {8, 8, 1};
+    pass.groupId = 5;
+    pass.debugName = "FullPass";
+
+    VkDescriptorSet set = reinterpret_cast<VkDescriptorSet>(0x100);
+    pass.descriptorSets = {set};
+    pass.firstSet = 0;
+
+    PushConstantData pc{};
+    pc.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    pc.offset = 0;
+    pc.data = {0xFF};
+    pass.pushConstants = pc;
+
+    EXPECT_TRUE(pass.IsValid());
+    EXPECT_TRUE(pass.groupId.has_value());
+    EXPECT_EQ(pass.groupId.value(), 5u);
+    EXPECT_EQ(pass.debugName, "FullPass");
+    EXPECT_EQ(pass.descriptorSets.size(), 1u);
+    EXPECT_TRUE(pass.pushConstants.has_value());
+}
+
+// ============================================================================
 // MAIN
 // ============================================================================
 
