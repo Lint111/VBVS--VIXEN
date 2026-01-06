@@ -131,6 +131,7 @@ set(RENDERGRAPH_CORE_HEADERS
     include/Core/ResourceDependencyTracker.h
     include/Core/SlotTask.h
     # Note: StatefulContainer.h moved to ResourceManagement library
+    include/Core/TaskQueue.h  # Sprint 6.2: Task #339 - Budget-aware task queue
     include/Core/Timer.h
     include/Core/TypedConnection.h
     include/Core/TypedNodeInstance.h
@@ -157,6 +158,7 @@ set(RENDERGRAPH_CORE_SOURCES
     src/Core/RenderGraph.cpp
     src/Core/ResourceDependencyTracker.cpp
     src/Core/SlotTask.cpp
+    src/Core/TaskQueue.cpp  # Sprint 6.2: Task #339 - Template instantiations
     src/Core/Timer.cpp
 )
 
