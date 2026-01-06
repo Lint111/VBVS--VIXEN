@@ -264,6 +264,53 @@ else()
 endif()
 
 # ===========================================================================
+# Sprint 6.2: TaskQueue Budget-Aware System Tests
+# ===========================================================================
+# Tests for TaskQueue template and MultiDispatchNode integration
+# - Budget enforcement (strict/lenient modes)
+# - Priority-based scheduling
+# - Overflow protection
+# - TaskBudget configuration and presets
+# - Integration with MultiDispatchNode
+# - Backward compatibility with Sprint 6.1
+
+if(TARGET GTest::gtest_main)
+    # Unit tests for TaskQueue template
+    add_executable(test_task_queue
+        test_task_queue.cpp
+    )
+
+    target_link_libraries(test_task_queue PRIVATE
+        GTest::gtest_main
+        RenderGraph
+    )
+
+    set_target_properties(test_task_queue PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+    gtest_discover_tests(test_task_queue)
+
+    message(STATUS "✓ test_task_queue configured (Sprint 6.2)")
+
+    # Integration tests for MultiDispatchNode + TaskQueue
+    add_executable(test_multidispatch_integration
+        test_multidispatch_integration.cpp
+    )
+
+    target_link_libraries(test_multidispatch_integration PRIVATE
+        GTest::gtest_main
+        RenderGraph
+    )
+
+    set_target_properties(test_multidispatch_integration PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+    gtest_discover_tests(test_multidispatch_integration)
+
+    message(STATUS "✓ test_multidispatch_integration configured (Sprint 6.2)")
+else()
+    message(STATUS "⊗ Sprint 6.2 tests skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
 # Voxel Systems Tests - CONSOLIDATED (Phase H)
 # ===========================================================================
 # Validates voxel infrastructure:
