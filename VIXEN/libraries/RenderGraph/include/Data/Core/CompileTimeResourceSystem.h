@@ -39,6 +39,10 @@ namespace Vixen::RenderGraph::Data {
     struct BoolVector;
 }
 
+namespace Vixen::RenderGraph {
+    struct DispatchPass;  // Sprint 6.1: Forward declare for GROUP_INPUTS
+}
+
 namespace ShaderManagement {
     struct CompiledProgram;
     struct ShaderDataBundle;
@@ -129,6 +133,9 @@ REGISTER_COMPILE_TIME_TYPE(glm::mat4x3);
 REGISTER_COMPILE_TIME_TYPE(bool);
 REGISTER_COMPILE_TIME_TYPE(PFN_vkQueuePresentKHR);
 REGISTER_COMPILE_TIME_TYPE(Vixen::RenderGraph::Data::BoolVector);
+
+// Sprint 6.1: Register DispatchPass for GROUP_INPUTS accumulation slot
+REGISTER_COMPILE_TIME_TYPE(Vixen::RenderGraph::DispatchPass);
 
 // Forward declare types defined later in this file
 struct ImageSamplerPair;  // Full definition below, after descriptor variant section

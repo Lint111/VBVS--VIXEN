@@ -53,6 +53,10 @@ struct DispatchPass {
     // Debug/profiling
     std::string debugName;
 
+    // Sprint 6.1: Group-based dispatch support
+    // When set, this pass belongs to a specific group for partitioned processing
+    std::optional<uint32_t> groupId;
+
     // Validation helpers
     [[nodiscard]] bool IsValid() const {
         return pipeline != VK_NULL_HANDLE &&

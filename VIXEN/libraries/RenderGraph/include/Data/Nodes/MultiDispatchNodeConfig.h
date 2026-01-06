@@ -2,6 +2,7 @@
 
 #include "Core/TypedNodeInstance.h"
 #include "Data/Core/CompileTimeResourceSystem.h"
+#include "Data/DispatchPass.h"  // Sprint 6.1: For GROUP_INPUTS accumulation slot
 
 using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 
@@ -12,7 +13,7 @@ namespace Vixen::RenderGraph {
 // ============================================================================
 
 namespace MultiDispatchNodeCounts {
-    static constexpr size_t INPUTS = 5;
+    static constexpr size_t INPUTS = 6;  // Sprint 6.1: Added GROUP_INPUTS
     static constexpr size_t OUTPUTS = 2;
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -108,6 +109,26 @@ CONSTEXPR_NODE_CONFIG(MultiDispatchNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
+    /**
+     * @brief Sprint 6.1: Accumulation slot for group-partitioned dispatch passes
+     *
+     * Collects DispatchPass elements and partitions them by group ID.
+     * Each group gets its own dispatch execution with accumulated data.
+     *
+     * Usage with GroupKeyModifier:
+     * @code
+     * batch.Connect(passGenerator, PassGenConfig::DISPATCH_PASS,
+     *               multiDispatch, MultiDispatchNodeConfig::GROUP_INPUTS,
+     *               GroupKey(&DispatchPass::groupId));
+     * @endcode
+     *
+     * Storage: Value strategy (copies passes - safe for cross-frame use)
+     */
+    ACCUMULATION_INPUT_SLOT_V2(GROUP_INPUTS, std::vector<DispatchPass>, DispatchPass, 5,
+        SlotNullability::Optional,
+        SlotRole::Dependency,
+        SlotStorageStrategy::Value);
+
     // ===== OUTPUTS (2) =====
 
     /**
@@ -145,6 +166,11 @@ CONSTEXPR_NODE_CONFIG(MultiDispatchNodeConfig,
             ResourceLifetime::Transient, uint32Desc);
         INIT_INPUT_DESC(CURRENT_FRAME_INDEX, "current_frame_index",
             ResourceLifetime::Transient, uint32Desc);
+
+        // Sprint 6.1: Initialize GROUP_INPUTS accumulation slot
+        HandleDescriptor dispatchPassVecDesc{"std::vector<DispatchPass>"};
+        INIT_INPUT_DESC(GROUP_INPUTS, "group_inputs",
+            ResourceLifetime::Transient, dispatchPassVecDesc);
 
         // Initialize output descriptors
         HandleDescriptor cmdBufferDesc{"VkCommandBuffer"};
