@@ -1,13 +1,16 @@
 ---
 title: MultiDispatchNode - Group-Based Compute Dispatch
-aliases: [MultiDispatch, Group Dispatch, Batch Dispatch]
-tags: [rendergraph, compute, vulkan, sprint-6-1]
+aliases: [MultiDispatch, Group Dispatch, Batch Dispatch, Budget-Aware Dispatch]
+tags: [rendergraph, compute, vulkan, sprint-6-1, sprint-6-2, taskqueue]
 created: 2026-01-06
-sprint: Sprint 6.1
+updated: 2026-01-06
+sprint: Sprint 6.2
 related:
   - "[[RenderGraph]]"
+  - "[[RenderGraph/TaskQueue]]"
   - "[[../05-Progress/features/accumulation-slot-proper-design]]"
   - "[[../05-Progress/features/variadic-modifier-api]]"
+  - "[[../05-Progress/features/Sprint6.2-TaskQueue-System]]"
 ---
 
 # MultiDispatchNode - Group-Based Compute Dispatch
@@ -551,9 +554,268 @@ if (group0Stats) {
 
 ---
 
+## Sprint 6.2: Budget-Aware Task Scheduling
+
+**Sprint:** 6.2 - Phase 2 Timeline Foundation
+**Status:** ✅ Complete (2026-01-06)
+
+Sprint 6.2 integrates `TaskQueue<DispatchPass>` into MultiDispatchNode, replacing the basic `std::deque` with a priority-based scheduler that supports GPU time budgets.
+
+### Key Changes
+
+**Replaced:**
+```cpp
+std::deque<DispatchPass> dispatchQueue_;  // Sprint 6.1
+```
+
+**With:**
+```cpp
+TaskQueue<DispatchPass> taskQueue_;  // Sprint 6.2
+```
+
+### New API: TryQueueDispatch()
+
+Budget-aware dispatch queuing with priority support:
+
+```cpp
+bool TryQueueDispatch(
+    DispatchPass&& pass,
+    uint64_t estimatedCostNs,  // GPU time estimate
+    uint8_t priority = 128      // 0 (low) to 255 (high)
+) -> bool;
+```
+
+**Returns:**
+- `true` if task accepted
+- `false` if rejected (strict mode only)
+
+**Example:**
+```cpp
+DispatchPass prefilter = createPrefilter();
+bool accepted = multiDispatch->TryQueueDispatch(
+    std::move(prefilter),
+    5'000'000,  // 5ms GPU time estimate
+    200         // High priority
+);
+
+if (!accepted) {
+    LOG_WARNING("Prefilter rejected: frame budget exhausted");
+}
+```
+
+### Backward Compatibility
+
+**QueueDispatch() unchanged:**
+```cpp
+size_t QueueDispatch(DispatchPass&& pass);  // Sprint 6.1 API - still works!
+```
+
+**Implementation:** Internally calls `EnqueueUnchecked()` with zero cost:
+```cpp
+// Sprint 6.2 implementation (backward compatible)
+size_t MultiDispatchNode::QueueDispatch(DispatchPass&& pass) {
+    TaskQueue::TaskSlot slot;
+    slot.data = std::move(pass);
+    slot.estimatedCostNs = 0;   // Zero-cost = bypass budget
+    slot.priority = 128;         // Default priority
+
+    taskQueue_.EnqueueUnchecked(std::move(slot));
+    return taskQueue_.GetQueuedCount() - 1;
+}
+```
+
+**Zero-cost tasks bypass budget checks** - ensures 100% Sprint 6.1 compatibility.
+
+### Configuration Parameters
+
+#### FRAME_BUDGET_NS (uint32_t, default: 16'666'666)
+
+Frame budget in nanoseconds. Default is 16.67ms (60 FPS).
+
+**Note:** Uses `uint32_t` due to parameter system limitations. Max value ~4.29 seconds is sufficient for realistic frame budgets (<1 second).
+
+**Example:**
+```cpp
+multiDispatch->SetParameter("frameBudgetNs", 16'666'666);  // 16.67ms (60 FPS)
+multiDispatch->SetParameter("frameBudgetNs", 33'333'333);  // 33.33ms (30 FPS)
+```
+
+#### BUDGET_OVERFLOW_MODE (string, default: "strict")
+
+Controls behavior when tasks exceed budget:
+
+| Mode | Behavior | Use Case |
+|------|----------|----------|
+| `"strict"` | Reject over-budget tasks | Fixed frame time targets |
+| `"lenient"` | Accept with warning callback | Graceful degradation, debugging |
+
+**Example:**
+```cpp
+multiDispatch->SetParameter("budgetOverflowMode", "strict");   // Reject over-budget
+multiDispatch->SetParameter("budgetOverflowMode", "lenient");  // Accept with warning
+```
+
+### Budget Management API
+
+#### SetBudget()
+
+Configure frame budget programmatically:
+
+```cpp
+void SetBudget(const TaskBudget& budget);
+```
+
+**Example:**
+```cpp
+// Using constexpr presets
+multiDispatch->SetBudget(BudgetPresets::FPS60_Strict);
+multiDispatch->SetBudget(BudgetPresets::FPS120_Lenient);
+
+// Custom budget
+TaskBudget custom{10'000'000, BudgetOverflowMode::Strict};
+multiDispatch->SetBudget(custom);
+```
+
+#### GetRemainingBudget()
+
+Query available budget capacity:
+
+```cpp
+[[nodiscard]] uint64_t GetRemainingBudget() const;
+```
+
+**Returns:** Nanoseconds remaining (0 if exhausted)
+
+**Example:**
+```cpp
+if (multiDispatch->GetRemainingBudget() < 2'000'000) {
+    LOG_WARNING("Less than 2ms budget remaining");
+}
+```
+
+#### GetBudget()
+
+Retrieve current budget configuration:
+
+```cpp
+[[nodiscard]] const TaskBudget& GetBudget() const;
+```
+
+**Example:**
+```cpp
+const TaskBudget& budget = multiDispatch->GetBudget();
+LOG_INFO("Budget: {}ns, mode={}", budget.gpuTimeBudgetNs,
+         budget.IsStrict() ? "strict" : "lenient");
+```
+
+### Priority-Based Execution
+
+Tasks execute from highest (255) to lowest (0) priority. Equal priorities preserve insertion order (stable sort).
+
+**Example:**
+```cpp
+// Queue tasks with different priorities
+multiDispatch->TryQueueDispatch(prefilter, 2ms, 200);   // High priority
+multiDispatch->TryQueueDispatch(mainPass, 10ms, 128);   // Medium priority
+multiDispatch->TryQueueDispatch(postfilter, 3ms, 100);  // Low priority
+
+// Execution order:
+// 1. prefilter  (priority 200)
+// 2. mainPass   (priority 128)
+// 3. postfilter (priority 100)
+```
+
+### Strict vs Lenient Mode Behavior
+
+#### Strict Mode Example
+
+```cpp
+multiDispatch->SetBudget(TaskBudget{10'000'000, BudgetOverflowMode::Strict});
+
+bool ok1 = multiDispatch->TryQueueDispatch(pass1, 6'000'000, 255);  // Accepted (6ms)
+bool ok2 = multiDispatch->TryQueueDispatch(pass2, 5'000'000, 128);  // REJECTED (would exceed 10ms)
+
+EXPECT_TRUE(ok1);
+EXPECT_FALSE(ok2);  // Task rejected, not queued
+EXPECT_EQ(multiDispatch->GetQueueSize(), 1);  // Only pass1 queued
+```
+
+#### Lenient Mode Example
+
+```cpp
+multiDispatch->SetBudget(TaskBudget{10'000'000, BudgetOverflowMode::Lenient});
+
+// Set warning callback (via TaskQueue API)
+multiDispatch->GetTaskQueue().SetWarningCallback(
+    [](uint64_t newTotal, uint64_t budget, uint64_t taskCost) {
+        LOG_WARNING("Budget overflow: {}ns total (budget: {}ns), task: {}ns",
+                    newTotal, budget, taskCost);
+    }
+);
+
+bool ok1 = multiDispatch->TryQueueDispatch(pass1, 6'000'000, 255);   // Accepted
+bool ok2 = multiDispatch->TryQueueDispatch(pass2, 10'000'000, 128);  // Accepted + WARNING
+
+EXPECT_TRUE(ok1);
+EXPECT_TRUE(ok2);  // Both accepted in lenient mode
+EXPECT_EQ(multiDispatch->GetQueueSize(), 2);
+```
+
+### Migration Guide (Sprint 6.1 → 6.2)
+
+#### Pattern 1: No Changes Required
+
+If using basic `QueueDispatch()`, no code changes needed:
+
+```cpp
+// Sprint 6.1 code - works in Sprint 6.2 unchanged
+multiDispatch->QueueDispatch(std::move(pass1));
+multiDispatch->QueueDispatch(std::move(pass2));
+// Zero-cost bypass = always accepted
+```
+
+#### Pattern 2: Add Budget Awareness
+
+Opt-in to budget enforcement:
+
+```cpp
+// Sprint 6.2: Budget-aware queuing
+multiDispatch->SetBudget(BudgetPresets::FPS60_Strict);
+
+bool ok = multiDispatch->TryQueueDispatch(pass1, 5'000'000, 200);
+if (!ok) {
+    handleRejection();  // Task was rejected due to budget
+}
+```
+
+#### Pattern 3: Priority-Based Scheduling
+
+Control execution order:
+
+```cpp
+// High-priority critical passes execute first
+multiDispatch->TryQueueDispatch(criticalPass, 3ms, 255);   // Priority 255
+multiDispatch->TryQueueDispatch(optionalPass, 2ms, 50);    // Priority 50
+// criticalPass executes before optionalPass
+```
+
+### Integration with Sprint 6.3 (Future)
+
+Sprint 6.2 provides the foundation for Sprint 6.3's runtime capacity tracking:
+
+- **Sprint 6.2:** Estimate-based budgets (pre-execution)
+- **Sprint 6.3:** Measured runtime costs (post-execution feedback)
+- **Future:** Adaptive scheduling based on historical performance
+
+See [[../05-Progress/feature-proposal-plans/timeline-capacity-tracker|Timeline Capacity Tracker]] for Sprint 6.3 proposal.
+
+---
+
 ## Testing
 
-See [test_group_dispatch.cpp](../../libraries/RenderGraph/tests/test_group_dispatch.cpp) for comprehensive test coverage:
+### Sprint 6.1 Tests
+
+See [test_group_dispatch.cpp](../../libraries/RenderGraph/tests/test_group_dispatch.cpp):
 - GroupKeyModifier validation (4 tests)
 - DispatchPass validation (5 tests)
 - Group partitioning logic (4 tests)
@@ -562,21 +824,59 @@ See [test_group_dispatch.cpp](../../libraries/RenderGraph/tests/test_group_dispa
 - Complex scenarios (3 tests)
 - Helper functions (2 tests)
 - Field combinations (3 tests)
-- **Statistics API (5 tests)** - Sprint 6.1: Task #314
+- Statistics API (5 tests)
 
-**Total: 41 tests, all passing (0ms execution)**
+**Sprint 6.1 Total: 41 tests, all passing**
+
+### Sprint 6.2 Tests
+
+See [test_task_queue.cpp](../../libraries/RenderGraph/tests/test_task_queue.cpp):
+- Strict mode budget enforcement (8 tests)
+- Lenient mode with warnings (6 tests)
+- Budget API (remaining budget, exhaustion, queries) (5 tests)
+- TaskBudget structure (constructors, helpers, presets) (4 tests)
+- Integration (Clear(), EnqueueUnchecked(), ExecuteWithMetadata()) (3 tests)
+- Overflow protection (2 tests)
+
+**Sprint 6.2 Unit Tests: 28 tests, all passing**
+
+See [test_multidispatch_integration.cpp](../../libraries/RenderGraph/tests/test_multidispatch_integration.cpp):
+- Backward compatibility (QueueDispatch zero-cost bypass) (2 tests)
+- Budget enforcement (strict/lenient modes) (4 tests)
+- Priority-based execution order (2 tests)
+- Warning callbacks (2 tests)
+- Budget exhaustion (2 tests)
+- Configuration presets (1 test)
+- Edge cases (empty queue, mid-frame budget changes) (2 tests)
+
+**Sprint 6.2 Integration Tests: 15 tests, all passing**
+
+**Combined Total: 84 tests across 3 test files, all passing**
 
 ---
 
 ## Related Documentation
 
+### Core Documentation
+
 - [[RenderGraph]] - Main RenderGraph documentation
-- [[../05-Progress/features/accumulation-slot-proper-design|Accumulation Slot Design]] - V2 accumulation slots
+- [[RenderGraph/TaskQueue]] - TaskQueue template (Sprint 6.2)
+- [[../01-Architecture/RenderGraph-System|RenderGraph System Architecture]] - System architecture
+
+### Sprint Documentation
+
+- [[../05-Progress/features/Sprint6.2-TaskQueue-System|Sprint 6.2: TaskQueue System]] - Implementation details
+- [[../05-Progress/features/accumulation-slot-proper-design|Accumulation Slot Design]] - V2 accumulation slots (Sprint 6.1)
 - [[../05-Progress/features/variadic-modifier-api|Variadic Modifier API]] - Sprint 6.0.1 unified Connect()
+- [[../05-Progress/feature-proposal-plans/timeline-capacity-tracker|Timeline Capacity Tracker]] - Sprint 6.3 proposal
+
+### Future Enhancements
+
 - [[../05-Progress/features/sort-modifier-strategy-pattern|Sort Modifier Pattern]] - Future sorting enhancement
 
 ---
 
-**Last Updated:** 2026-01-06 (Sprint 6.1)
+**Created:** 2026-01-06
+**Last Updated:** 2026-01-06 (Sprint 6.2)
 **Status:** ✅ Implemented and tested
-**Test Coverage:** 36 unit tests, all passing
+**Test Coverage:** 84 tests (41 Sprint 6.1, 28 Sprint 6.2 unit, 15 Sprint 6.2 integration), all passing
