@@ -115,6 +115,11 @@ CONSTEXPR_NODE_CONFIG(MultiDispatchNodeConfig,
      * Collects DispatchPass elements and partitions them by group ID.
      * Each group gets its own dispatch execution with accumulated data.
      *
+     * **Semantics:** Compile-time-only. Data is read and partitioned during
+     * CompileImpl and cached in groupedDispatches_ map. This matches the
+     * lifecycle of other compile-time resources (command buffers, etc.).
+     * Use QueueDispatch() API for per-frame dynamic dispatch queuing.
+     *
      * Usage with GroupKeyModifier:
      * @code
      * batch.Connect(passGenerator, PassGenConfig::DISPATCH_PASS,

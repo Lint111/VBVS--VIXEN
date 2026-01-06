@@ -9,7 +9,7 @@
 
 #include <vector>
 #include <deque>
-#include <unordered_map>  // Sprint 6.1: For groupedDispatches_
+#include <map>  // Sprint 6.1: For groupedDispatches_ (deterministic ordering)
 
 namespace Vixen::RenderGraph {
 
@@ -179,7 +179,8 @@ private:
     // Sprint 6.1: Group-based dispatch support
     // Maps group ID -> vector of dispatch passes for that group
     // Empty map means no GROUP_INPUTS connected (fall back to dispatchQueue_)
-    std::unordered_map<uint32_t, std::vector<DispatchPass>> groupedDispatches_;
+    // Using std::map (not unordered_map) for deterministic group execution order
+    std::map<uint32_t, std::vector<DispatchPass>> groupedDispatches_;
 
     // Configuration
     bool autoBarriers_ = true;

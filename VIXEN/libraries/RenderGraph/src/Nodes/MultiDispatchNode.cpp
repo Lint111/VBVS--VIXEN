@@ -165,6 +165,18 @@ void MultiDispatchNode::CompileImpl(TypedCompileContext& ctx) {
 
         groupedDispatches_.clear();
 
+        // Validate all passes before partitioning
+        for (const auto& pass : groupInputs) {
+            if (!pass.IsValid()) {
+                throw std::runtime_error("[MultiDispatchNode::CompileImpl] Invalid pass in GROUP_INPUTS: '" +
+                    pass.debugName + "' (pipeline=" + std::to_string(reinterpret_cast<uint64_t>(pass.pipeline)) +
+                    ", layout=" + std::to_string(reinterpret_cast<uint64_t>(pass.layout)) +
+                    ", workGroups=" + std::to_string(pass.workGroupCount.x) + "x" +
+                    std::to_string(pass.workGroupCount.y) + "x" + std::to_string(pass.workGroupCount.z) + ")");
+            }
+        }
+
+        // Partition by group ID
         for (const auto& pass : groupInputs) {
             if (pass.groupId.has_value()) {
                 uint32_t groupId = pass.groupId.value();

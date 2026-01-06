@@ -19,6 +19,13 @@ namespace Vixen::RenderGraph {
  * Extracts a group ID from each element in an accumulation slot, enabling
  * MultiDispatchNode to partition and process data per-group.
  *
+ * **Current Limitation (Sprint 6.1):**
+ * This modifier currently serves as a declaration/validation point indicating
+ * grouping intent. The actual group key extraction is hard-coded in
+ * MultiDispatchNode::CompileImpl for DispatchPass::groupId. Future work will
+ * make this fully generic by having CompileImpl retrieve and use the stored
+ * extractor function from connection metadata.
+ *
  * Example usage:
  * ```cpp
  * // Partition DispatchPass elements by their groupId field
