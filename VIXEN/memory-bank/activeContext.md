@@ -2,7 +2,7 @@
 
 **Last Updated:** 2026-01-06
 **Branch:** `production/sprint-6-timeline-foundation`
-**Status:** Build PASSING | Sprint 6.0.1 COMPLETE | Sprint 6.0.2 DESIGN COMPLETE
+**Status:** Build PASSING | Sprint 6.0.1 + 6.0.2 COMPLETE | Sprint 6.1 READY
 
 ---
 
@@ -11,8 +11,8 @@
 **Sprint 5: CashSystem Robustness** - COMPLETE (104h)
 **Sprint 5.5: Pre-Allocation Hardening** - COMPLETE (16h)
 **Sprint 6.0.1: Unified Connection System** - COMPLETE (118h)
-**Sprint 6.0.2: Accumulation Slot Refactor** - DESIGN COMPLETE, READY TO IMPLEMENT
-**Sprint 6.1: MultiDispatchNode** - READY TO START (after 6.0.2)
+**Sprint 6.0.2: Accumulation Slot Refactor** - COMPLETE (3h)
+**Sprint 6.1: MultiDispatchNode** - READY TO START (56h estimated)
 
 ### Just Completed (2026-01-06)
 
@@ -37,73 +37,78 @@
 - **NEW:** Variadic modifier API (eliminates `ConnectionMeta{}` boilerplate)
 - 102 tests passing
 
-#### BoolOpNode Bug Fix
+#### Sprint 6.0.2: Accumulation Slot Refactor (3h) - COMPLETE
 
-Fixed element type vs container type confusion in accumulation slot:
-- `BoolOpNodeConfig.h`: Changed `BoolVector` to `bool` (element type)
-- `BoolOpNode.cpp`: Fixed `ctx.In()` usage with proxy reference handling
+**Commit:** `73c8d36` - Sprint 6.0.1 + 6.0.2 complete
 
-#### Accumulation Slot Design (Sprint 6.0.2 Prep)
+**Problem Solved:** Type system lie (element type declared, container type returned)
 
-Created design document: `Vixen-Docs/05-Progress/features/accumulation-slot-proper-design.md`
+**Solution:**
+- Added `SlotStorageStrategy` enum (Value/Reference/Span)
+- Created `ACCUMULATION_INPUT_SLOT_V2` macro with container types
+- Updated `TypedNodeInstance::In()` for V1/V2 dispatch via `Iterable` concept
+- Migrated `BoolOpNode` to V2 API
 
-**Design Decisions:**
-- Container-type first design (explicit `std::vector<T>`)
-- Storage strategy enum: Value, Reference, Span
-- Compile-time validations
-- Runtime warnings for large copies
-- 3 hours estimated implementation
+**Key Changes:**
+```cpp
+// Old V1 (element type - type system lie)
+ACCUMULATION_INPUT_SLOT(INPUTS, bool, 1, ...)  // Type = bool, wraps at runtime
 
-**HacknPlan Task:** #337 - Refactor Accumulation Slot System
+// New V2 (container type - honest)
+ACCUMULATION_INPUT_SLOT_V2(INPUTS, std::vector<bool>, bool, 1, ..., SlotStorageStrategy::Value)
+// Type = std::vector<bool>, no runtime magic
+```
+
+**Status:** Build PASSING, tests passing, backward compatible
 
 ---
 
-## Sprint 6.0.2: Accumulation Slot Refactor - READY
+## Sprint 6.1: MultiDispatchNode - READY TO START
 
-**Goal:** Fix type system lie in accumulation slots
-**Task:** #337
-**Estimated:** 3 hours
-**Status:** DESIGN COMPLETE
+**Goal:** Parallel compute dispatches with group-level accumulation
+**Tasks:** #310-#314
+**Estimated:** 56 hours
+**Status:** Prerequisites complete, design ready
 
-### Implementation Plan
+### Implementation Phases (56h)
 
-1. Add `SlotStorageStrategy` enum to `ResourceConfig.h`
-2. Create `ACCUMULATION_INPUT_SLOT_V2` macro with container type
-3. Update `BoolOpNodeConfig` to use new macro
-4. Simplify `TypedNodeInstance::In()` (remove special-case)
-5. Add runtime validations for ref/value strategy
-6. Update tests (3 test files)
-7. Deprecate old macro
+**Phase 1: Core Infrastructure (16h)**
+1. MultiDispatchNodeConfig - Slot configuration
+2. GroupKey Modifier - Partition data by key
+3. MultiDispatchNode - Node implementation
 
-### Target Files
+**Phase 2: Dispatch Management (12h)**
+4. GroupDispatchContext - Per-group execution context
+5. Parallel Dispatch - Thread-safe group execution
 
-```
-libraries/RenderGraph/
-+-- include/Data/Core/ResourceConfig.h    # Add V2 macro
-+-- include/Data/Nodes/BoolOpNodeConfig.h  # Migrate to V2
-+-- include/Core/TypedNodeInstance.h       # Simplify In()
-+-- tests/test_connection_rule.cpp         # Update tests
-+-- tests/test_connection_concepts.cpp     # Update tests
-```
+**Phase 3: Testing & Validation (16h)**
+6. Unit Tests - Core functionality
+7. Integration Tests - Real-world scenarios
 
----
+**Phase 4: Documentation (12h)**
+8. API Documentation - User guide
+9. Examples - Reference implementations
 
-## Sprint 6.1: MultiDispatchNode - QUEUED
+### Prerequisites ✅
+- ✅ Accumulation slots (V2 API complete)
+- ✅ Storage strategies (Value/Reference/Span)
+- ✅ Connection modifiers (3-phase pipeline)
+- ✅ Variadic API (streamlined syntax)
 
-**Goal:** Build MultiDispatchNode for multi-pass compute sequences
-**Board:** 651785
-**Design Element:** #35
-**Status:** BLOCKED (wait for Sprint 6.0.2)
+### Key Design Decisions
+1. **Group Key Extraction:** Member pointer (like FieldExtraction)
+2. **Dispatch Ordering:** Sequential first, parallel as optimization
+3. **Resource Sharing:** Reference via Persistent slots
 
-### Phase 1 Tasks (56h)
+### HacknPlan Tasks
 
 | Task ID | Task | Hours | Status |
 |---------|------|-------|--------|
-| #313 | DispatchPass Structure | 8h | Planned |
-| #312 | MultiDispatchNode Core | 16h | Planned |
-| #314 | Pipeline Statistics | 8h | Planned |
-| #311 | Integration Tests | 16h | Planned |
-| #310 | Documentation & Examples | 8h | Planned |
+| #310 | MultiDispatchNode Core | 16h | Planned |
+| #311 | Group Accumulation System | 12h | Planned |
+| #312 | Parallel Dispatch | 12h | Planned |
+| #313 | Test Coverage | 8h | Planned |
+| #314 | Documentation | 8h | Planned |
 
 ---
 
