@@ -6,6 +6,7 @@
 
 #include <stdexcept>
 #include <chrono>
+#include <sstream>  // Sprint 6.1: Task #314 - For enhanced logging
 
 namespace Vixen::RenderGraph {
 
@@ -238,13 +239,28 @@ void MultiDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
     ctx.Out(MultiDispatchNodeConfig::COMMAND_BUFFER, cmdBuffer);
     ctx.Out(MultiDispatchNodeConfig::VULKAN_DEVICE_OUT, vulkanDevice_);
 
-    // Log stats periodically
+    // Log stats periodically (Sprint 6.1: Task #314 - Enhanced with per-group stats)
     static int logCounter = 0;
     if (logCounter++ % 60 == 0 && stats_.dispatchCount > 0) {
-        NODE_LOG_INFO("[MultiDispatchNode] Frame " + std::to_string(currentFrameIndex) +
-            ": " + std::to_string(stats_.dispatchCount) + " dispatches, " +
-            std::to_string(stats_.barrierCount) + " barriers, " +
-            std::to_string(stats_.recordTimeMs) + "ms record time");
+        std::ostringstream oss;
+        oss << "[MultiDispatchNode] Frame " << currentFrameIndex
+            << ": " << stats_.dispatchCount << " dispatches, "
+            << stats_.barrierCount << " barriers, "
+            << stats_.recordTimeMs << "ms record time";
+
+        // Sprint 6.1: Task #314 - Log per-group breakdown if available
+        if (!stats_.groupStats.empty()) {
+            oss << " | " << stats_.groupStats.size() << " groups: ";
+            bool first = true;
+            for (const auto& [groupId, groupStat] : stats_.groupStats) {
+                if (!first) oss << ", ";
+                oss << "G" << groupId << "(" << groupStat.dispatchCount << "d/"
+                    << groupStat.recordTimeMs << "ms)";
+                first = false;
+            }
+        }
+
+        NODE_LOG_INFO(oss.str());
     }
 
     // Clear queue for next frame
@@ -275,6 +291,9 @@ void MultiDispatchNode::RecordDispatches(VkCommandBuffer cmdBuffer) {
 
         bool firstGroup = true;
         for (const auto& [groupId, passes] : groupedDispatches_) {
+            // Sprint 6.1: Task #314 - Start timing this group
+            auto groupStartTime = std::chrono::high_resolution_clock::now();
+
             // Insert barrier between groups (if auto-barriers enabled and not first group)
             if (autoBarriers_ && !firstGroup) {
                 InsertAutoBarrier(cmdBuffer);
@@ -285,6 +304,9 @@ void MultiDispatchNode::RecordDispatches(VkCommandBuffer cmdBuffer) {
 
             NODE_LOG_DEBUG("[MultiDispatchNode] Recording group " + std::to_string(groupId) +
                 " with " + std::to_string(passes.size()) + " dispatches");
+
+            // Sprint 6.1: Task #314 - Initialize group stats
+            GroupDispatchStats groupStats{};
 
             // Record all passes in this group
             for (size_t i = 0; i < passes.size(); ++i) {
@@ -333,13 +355,29 @@ void MultiDispatchNode::RecordDispatches(VkCommandBuffer cmdBuffer) {
                     pass.workGroupCount.z
                 );
 
-                // Update statistics
+                // Update overall statistics
                 ++stats_.dispatchCount;
                 stats_.totalWorkGroups += pass.TotalWorkGroups();
+
+                // Sprint 6.1: Task #314 - Update group statistics
+                ++groupStats.dispatchCount;
+                groupStats.totalWorkGroups += pass.TotalWorkGroups();
 
                 NODE_LOG_DEBUG("[MultiDispatchNode] Group " + std::to_string(groupId) +
                     ", pass " + std::to_string(i) + ": " + pass.debugName);
             }
+
+            // Sprint 6.1: Task #314 - Measure group recording time
+            auto groupEndTime = std::chrono::high_resolution_clock::now();
+            groupStats.recordTimeMs = std::chrono::duration<double, std::milli>(
+                groupEndTime - groupStartTime).count();
+
+            // Sprint 6.1: Task #314 - Store group statistics
+            stats_.groupStats[groupId] = groupStats;
+
+            NODE_LOG_DEBUG("[MultiDispatchNode] Group " + std::to_string(groupId) +
+                " complete: " + std::to_string(groupStats.dispatchCount) + " dispatches, " +
+                std::to_string(groupStats.recordTimeMs) + "ms");
         }
 
         NODE_LOG_DEBUG("[MultiDispatchNode] Recorded " +

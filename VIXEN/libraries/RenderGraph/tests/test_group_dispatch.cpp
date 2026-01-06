@@ -294,6 +294,145 @@ TEST(MultiDispatchStats, Accumulation) {
 }
 
 // ============================================================================
+// SPRINT 6.1: TASK #314 - PER-GROUP STATISTICS TESTS
+// ============================================================================
+
+TEST(GroupDispatchStats, DefaultInitialization) {
+    GroupDispatchStats stats{};
+
+    EXPECT_EQ(stats.dispatchCount, 0u);
+    EXPECT_EQ(stats.totalWorkGroups, 0u);
+    EXPECT_DOUBLE_EQ(stats.recordTimeMs, 0.0);
+}
+
+TEST(GroupDispatchStats, Accumulation) {
+    GroupDispatchStats stats{};
+
+    // Simulate recording dispatches within a group
+    stats.dispatchCount += 5;
+    stats.totalWorkGroups += 128;
+    stats.recordTimeMs = 0.75;
+
+    EXPECT_EQ(stats.dispatchCount, 5u);
+    EXPECT_EQ(stats.totalWorkGroups, 128u);
+    EXPECT_DOUBLE_EQ(stats.recordTimeMs, 0.75);
+}
+
+TEST(MultiDispatchStats, PerGroupStatistics) {
+    MultiDispatchStats stats{};
+
+    // Add statistics for multiple groups
+    GroupDispatchStats group0{};
+    group0.dispatchCount = 3;
+    group0.totalWorkGroups = 64;
+    group0.recordTimeMs = 0.5;
+    stats.groupStats[0] = group0;
+
+    GroupDispatchStats group1{};
+    group1.dispatchCount = 5;
+    group1.totalWorkGroups = 128;
+    group1.recordTimeMs = 0.8;
+    stats.groupStats[1] = group1;
+
+    GroupDispatchStats group2{};
+    group2.dispatchCount = 2;
+    group2.totalWorkGroups = 32;
+    group2.recordTimeMs = 0.3;
+    stats.groupStats[2] = group2;
+
+    // Verify GetGroupCount()
+    EXPECT_EQ(stats.GetGroupCount(), 3u);
+
+    // Verify GetGroupStats() retrieves correct data
+    const auto* g0 = stats.GetGroupStats(0);
+    ASSERT_NE(g0, nullptr);
+    EXPECT_EQ(g0->dispatchCount, 3u);
+    EXPECT_EQ(g0->totalWorkGroups, 64u);
+    EXPECT_DOUBLE_EQ(g0->recordTimeMs, 0.5);
+
+    const auto* g1 = stats.GetGroupStats(1);
+    ASSERT_NE(g1, nullptr);
+    EXPECT_EQ(g1->dispatchCount, 5u);
+    EXPECT_EQ(g1->totalWorkGroups, 128u);
+    EXPECT_DOUBLE_EQ(g1->recordTimeMs, 0.8);
+
+    const auto* g2 = stats.GetGroupStats(2);
+    ASSERT_NE(g2, nullptr);
+    EXPECT_EQ(g2->dispatchCount, 2u);
+    EXPECT_EQ(g2->totalWorkGroups, 32u);
+    EXPECT_DOUBLE_EQ(g2->recordTimeMs, 0.3);
+
+    // Verify GetGroupStats() returns nullptr for non-existent group
+    const auto* gNull = stats.GetGroupStats(999);
+    EXPECT_EQ(gNull, nullptr);
+}
+
+TEST(MultiDispatchStats, EmptyGroupStats) {
+    MultiDispatchStats stats{};
+
+    // When no groups are present (legacy mode)
+    EXPECT_EQ(stats.GetGroupCount(), 0u);
+    EXPECT_TRUE(stats.groupStats.empty());
+
+    // GetGroupStats should return nullptr for any group ID
+    EXPECT_EQ(stats.GetGroupStats(0), nullptr);
+    EXPECT_EQ(stats.GetGroupStats(1), nullptr);
+}
+
+TEST(MultiDispatchStats, OverallVsPerGroupStats) {
+    MultiDispatchStats stats{};
+
+    // Overall stats
+    stats.dispatchCount = 10;
+    stats.barrierCount = 2;
+    stats.totalWorkGroups = 224;
+    stats.recordTimeMs = 1.6;
+
+    // Per-group stats (should sum to overall)
+    GroupDispatchStats g0{};
+    g0.dispatchCount = 3;
+    g0.totalWorkGroups = 64;
+    g0.recordTimeMs = 0.5;
+    stats.groupStats[0] = g0;
+
+    GroupDispatchStats g1{};
+    g1.dispatchCount = 5;
+    g1.totalWorkGroups = 128;
+    g1.recordTimeMs = 0.8;
+    stats.groupStats[1] = g1;
+
+    GroupDispatchStats g2{};
+    g2.dispatchCount = 2;
+    g2.totalWorkGroups = 32;
+    g2.recordTimeMs = 0.3;
+    stats.groupStats[2] = g2;
+
+    // Verify overall stats are independent (sum logic is application-specific)
+    EXPECT_EQ(stats.dispatchCount, 10u);
+    EXPECT_EQ(stats.totalWorkGroups, 224u);
+    EXPECT_DOUBLE_EQ(stats.recordTimeMs, 1.6);
+
+    // Verify group count
+    EXPECT_EQ(stats.GetGroupCount(), 3u);
+
+    // Verify per-group stats are accessible
+    uint32_t sumDispatches = 0;
+    uint64_t sumWorkGroups = 0;
+    double sumTime = 0.0;
+
+    for (const auto& [groupId, groupStat] : stats.groupStats) {
+        sumDispatches += groupStat.dispatchCount;
+        sumWorkGroups += groupStat.totalWorkGroups;
+        sumTime += groupStat.recordTimeMs;
+    }
+
+    // Per-group sums should match overall
+    EXPECT_EQ(sumDispatches, stats.dispatchCount);
+    EXPECT_EQ(sumWorkGroups, stats.totalWorkGroups);
+    EXPECT_NEAR(sumTime, stats.recordTimeMs, 0.01);  // Allow small floating-point error
+}
+
+// ============================================================================
 // EDGE CASES
 // ============================================================================
 

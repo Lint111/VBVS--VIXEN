@@ -431,12 +431,28 @@ batch.Connect(generator2, Gen2Config::PASSES,
 
 ### MultiDispatchStats
 
+**Sprint 6.1: Task #314 - Enhanced with per-group statistics**
+
 ```cpp
+struct GroupDispatchStats {
+    uint32_t dispatchCount = 0;      // Number of dispatches in this group
+    uint64_t totalWorkGroups = 0;    // Sum of work groups in this group
+    double recordTimeMs = 0.0;       // CPU time to record this group's commands
+};
+
 struct MultiDispatchStats {
-    uint32_t dispatchCount = 0;      // Number of dispatches recorded
+    // Overall statistics
+    uint32_t dispatchCount = 0;      // Total number of dispatches recorded
     uint32_t barrierCount = 0;       // Number of barriers inserted
-    uint64_t totalWorkGroups = 0;    // Sum of all work groups
-    double recordTimeMs = 0.0;       // CPU time to record commands
+    uint64_t totalWorkGroups = 0;    // Sum of all work groups across all groups
+    double recordTimeMs = 0.0;       // Total CPU time to record commands
+
+    // Per-group statistics (Sprint 6.1: Task #314)
+    std::map<uint32_t, GroupDispatchStats> groupStats;  // group ID -> statistics
+
+    // Helper methods
+    [[nodiscard]] uint32_t GetGroupCount() const;
+    [[nodiscard]] const GroupDispatchStats* GetGroupStats(uint32_t groupId) const;
 };
 ```
 
@@ -447,7 +463,42 @@ const auto& stats = multiDispatchNode->GetStats();
 std::cout << "Recorded " << stats.dispatchCount << " dispatches\n";
 std::cout << "Inserted " << stats.barrierCount << " barriers\n";
 std::cout << "Total work groups: " << stats.totalWorkGroups << "\n";
+std::cout << "Record time: " << stats.recordTimeMs << "ms\n";
 ```
+
+#### Per-Group Statistics (Sprint 6.1: Task #314)
+
+```cpp
+const auto& stats = multiDispatchNode->GetStats();
+
+// Check if group-based dispatch was used
+if (stats.GetGroupCount() > 0) {
+    std::cout << "Group breakdown (" << stats.GetGroupCount() << " groups):\n";
+
+    for (const auto& [groupId, groupStat] : stats.groupStats) {
+        std::cout << "  Group " << groupId << ": "
+                  << groupStat.dispatchCount << " dispatches, "
+                  << groupStat.totalWorkGroups << " work groups, "
+                  << groupStat.recordTimeMs << "ms\n";
+    }
+}
+
+// Query specific group
+const auto* group0Stats = stats.GetGroupStats(0);
+if (group0Stats) {
+    std::cout << "Group 0 recorded " << group0Stats->dispatchCount << " dispatches\n";
+}
+```
+
+#### Example Output
+
+```
+[MultiDispatchNode] Frame 120: 10 dispatches, 2 barriers, 1.6ms record time | 3 groups: G0(3d/0.5ms), G1(5d/0.8ms), G2(2d/0.3ms)
+```
+
+**Statistics are reset every frame after ExecuteImpl.**
+
+**Note:** Per-group statistics are only populated when using GROUP_INPUTS. When using the legacy QueueDispatch() API, `groupStats` will be empty.
 
 ---
 
@@ -470,10 +521,12 @@ std::cout << "Total work groups: " << stats.totalWorkGroups << "\n";
 
 ### Future Enhancements
 
+**Completed in Sprint 6.1:**
+- ✅ Per-group statistics (dispatch count, work groups per group) - Task #314
+
 **Planned for Sprint 6.2+:**
-- Per-group statistics (dispatch count, work groups per group)
 - Custom barrier strategies
-- Group-level timestamping for profiling
+- Group-level GPU timestamping for profiling
 - Generic group key extraction
 
 ---
@@ -509,8 +562,9 @@ See [test_group_dispatch.cpp](../../libraries/RenderGraph/tests/test_group_dispa
 - Complex scenarios (3 tests)
 - Helper functions (2 tests)
 - Field combinations (3 tests)
+- **Statistics API (5 tests)** - Sprint 6.1: Task #314
 
-**Total: 36 tests, all passing (0ms execution)**
+**Total: 41 tests, all passing (0ms execution)**
 
 ---
 

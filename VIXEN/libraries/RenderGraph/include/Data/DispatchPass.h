@@ -6,6 +6,7 @@
 #include <string>
 #include <optional>
 #include <cstdint>
+#include <map>  // Sprint 6.1: Task #314 - Per-group statistics
 
 namespace Vixen::RenderGraph {
 
@@ -90,15 +91,52 @@ struct DispatchBarrier {
 };
 
 /**
+ * @brief Per-group dispatch statistics
+ *
+ * Sprint 6.1: Task #314 - Pipeline Statistics
+ * Tracks performance metrics for a single dispatch group.
+ */
+struct GroupDispatchStats {
+    uint32_t dispatchCount = 0;          // Number of dispatches in this group
+    uint64_t totalWorkGroups = 0;        // Sum of work groups in this group
+    double recordTimeMs = 0.0;           // CPU time to record this group's commands
+};
+
+/**
  * @brief Statistics for multi-dispatch execution
  *
  * Collected during ExecuteImpl for performance monitoring.
+ * Sprint 6.1: Task #314 adds per-group statistics breakdown.
  */
 struct MultiDispatchStats {
-    uint32_t dispatchCount = 0;          // Number of dispatches recorded
+    // Overall statistics
+    uint32_t dispatchCount = 0;          // Total number of dispatches recorded
     uint32_t barrierCount = 0;           // Number of barriers inserted
-    uint64_t totalWorkGroups = 0;        // Sum of all work groups
-    double recordTimeMs = 0.0;           // CPU time to record commands
+    uint64_t totalWorkGroups = 0;        // Sum of all work groups across all groups
+    double recordTimeMs = 0.0;           // Total CPU time to record commands
+
+    // Per-group statistics (Sprint 6.1: Task #314)
+    // Maps group ID -> statistics for that group
+    // Empty when GROUP_INPUTS not connected (legacy mode)
+    std::map<uint32_t, GroupDispatchStats> groupStats;
+
+    /**
+     * @brief Get number of dispatch groups
+     * @return Number of groups with recorded statistics
+     */
+    [[nodiscard]] uint32_t GetGroupCount() const {
+        return static_cast<uint32_t>(groupStats.size());
+    }
+
+    /**
+     * @brief Get statistics for a specific group
+     * @param groupId Group identifier
+     * @return Pointer to group stats, or nullptr if group not found
+     */
+    [[nodiscard]] const GroupDispatchStats* GetGroupStats(uint32_t groupId) const {
+        auto it = groupStats.find(groupId);
+        return (it != groupStats.end()) ? &it->second : nullptr;
+    }
 };
 
 } // namespace Vixen::RenderGraph
