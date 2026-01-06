@@ -9,6 +9,7 @@
 
 #include <vector>
 #include <deque>
+#include <unordered_map>  // Sprint 6.1: For groupedDispatches_
 
 namespace Vixen::RenderGraph {
 
@@ -174,6 +175,11 @@ private:
 
     // Barrier queue (indices where barriers should be inserted)
     std::vector<std::pair<size_t, DispatchBarrier>> barrierQueue_;
+
+    // Sprint 6.1: Group-based dispatch support
+    // Maps group ID -> vector of dispatch passes for that group
+    // Empty map means no GROUP_INPUTS connected (fall back to dispatchQueue_)
+    std::unordered_map<uint32_t, std::vector<DispatchPass>> groupedDispatches_;
 
     // Configuration
     bool autoBarriers_ = true;

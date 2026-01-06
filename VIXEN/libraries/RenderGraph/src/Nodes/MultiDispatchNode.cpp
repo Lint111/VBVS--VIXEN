@@ -76,6 +76,7 @@ void MultiDispatchNode::QueueBarrier(DispatchBarrier&& barrier) {
 void MultiDispatchNode::ClearQueue() {
     dispatchQueue_.clear();
     barrierQueue_.clear();
+    groupedDispatches_.clear();  // Sprint 6.1: Clear group map
     stats_ = MultiDispatchStats{};
 }
 
@@ -152,6 +153,40 @@ void MultiDispatchNode::CompileImpl(TypedCompileContext& ctx) {
 
     NODE_LOG_INFO("[MultiDispatchNode::CompileImpl] Allocated " +
         std::to_string(imageCount) + " command buffers successfully");
+
+    // Sprint 6.1: Read GROUP_INPUTS and partition by group ID
+    // GROUP_INPUTS is optional - if not connected, groupedDispatches_ stays empty
+    // and we fall back to QueueDispatch() API
+    const auto& groupInputs = ctx.In(MultiDispatchNodeConfig::GROUP_INPUTS);
+
+    if (!groupInputs.empty()) {
+        NODE_LOG_INFO("[MultiDispatchNode::CompileImpl] Partitioning " +
+            std::to_string(groupInputs.size()) + " dispatch passes by group ID");
+
+        groupedDispatches_.clear();
+
+        for (const auto& pass : groupInputs) {
+            if (pass.groupId.has_value()) {
+                uint32_t groupId = pass.groupId.value();
+                groupedDispatches_[groupId].push_back(pass);
+
+                NODE_LOG_DEBUG("[MultiDispatchNode] Group " + std::to_string(groupId) +
+                    ": Added dispatch '" + pass.debugName + "'");
+            } else {
+                // No group ID - add to group 0 as default
+                groupedDispatches_[0].push_back(pass);
+
+                NODE_LOG_DEBUG("[MultiDispatchNode] Group 0 (default): Added dispatch '" +
+                    pass.debugName + "'");
+            }
+        }
+
+        NODE_LOG_INFO("[MultiDispatchNode::CompileImpl] Created " +
+            std::to_string(groupedDispatches_.size()) + " dispatch groups");
+    } else {
+        NODE_LOG_DEBUG(std::string("[MultiDispatchNode::CompileImpl] No GROUP_INPUTS connected, ") +
+            "using QueueDispatch() API");
+    }
 }
 
 // ============================================================================
@@ -220,15 +255,98 @@ void MultiDispatchNode::RecordDispatches(VkCommandBuffer cmdBuffer) {
             "Failed to begin command buffer");
     }
 
-    // Sort barriers by insertion index
-    std::sort(barrierQueue_.begin(), barrierQueue_.end(),
-        [](const auto& a, const auto& b) { return a.first < b.first; });
+    // Sprint 6.1: Check if using group-based dispatch or legacy queue
+    if (!groupedDispatches_.empty()) {
+        // GROUP-BASED DISPATCH: Process each group independently
+        NODE_LOG_DEBUG("[MultiDispatchNode] Recording " +
+            std::to_string(groupedDispatches_.size()) + " dispatch groups");
 
-    size_t barrierIdx = 0;
+        bool firstGroup = true;
+        for (const auto& [groupId, passes] : groupedDispatches_) {
+            // Insert barrier between groups (if auto-barriers enabled and not first group)
+            if (autoBarriers_ && !firstGroup) {
+                InsertAutoBarrier(cmdBuffer);
+                ++stats_.barrierCount;
+                NODE_LOG_DEBUG("[MultiDispatchNode] Inserted barrier between groups");
+            }
+            firstGroup = false;
 
-    // Record each dispatch
-    for (size_t i = 0; i < dispatchQueue_.size(); ++i) {
-        const auto& pass = dispatchQueue_[i];
+            NODE_LOG_DEBUG("[MultiDispatchNode] Recording group " + std::to_string(groupId) +
+                " with " + std::to_string(passes.size()) + " dispatches");
+
+            // Record all passes in this group
+            for (size_t i = 0; i < passes.size(); ++i) {
+                const auto& pass = passes[i];
+
+                // Insert barrier between passes within group (if enabled and not first pass)
+                if (autoBarriers_ && i > 0) {
+                    InsertAutoBarrier(cmdBuffer);
+                    ++stats_.barrierCount;
+                }
+
+                // Bind pipeline
+                vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pass.pipeline);
+
+                // Bind descriptor sets
+                if (!pass.descriptorSets.empty()) {
+                    vkCmdBindDescriptorSets(
+                        cmdBuffer,
+                        VK_PIPELINE_BIND_POINT_COMPUTE,
+                        pass.layout,
+                        pass.firstSet,
+                        static_cast<uint32_t>(pass.descriptorSets.size()),
+                        pass.descriptorSets.data(),
+                        0, nullptr
+                    );
+                }
+
+                // Push constants
+                if (pass.pushConstants.has_value()) {
+                    const auto& pc = pass.pushConstants.value();
+                    vkCmdPushConstants(
+                        cmdBuffer,
+                        pass.layout,
+                        pc.stageFlags,
+                        pc.offset,
+                        static_cast<uint32_t>(pc.data.size()),
+                        pc.data.data()
+                    );
+                }
+
+                // Dispatch
+                vkCmdDispatch(
+                    cmdBuffer,
+                    pass.workGroupCount.x,
+                    pass.workGroupCount.y,
+                    pass.workGroupCount.z
+                );
+
+                // Update statistics
+                ++stats_.dispatchCount;
+                stats_.totalWorkGroups += pass.TotalWorkGroups();
+
+                NODE_LOG_DEBUG("[MultiDispatchNode] Group " + std::to_string(groupId) +
+                    ", pass " + std::to_string(i) + ": " + pass.debugName);
+            }
+        }
+
+        NODE_LOG_DEBUG("[MultiDispatchNode] Recorded " +
+            std::to_string(stats_.dispatchCount) + " total dispatches across " +
+            std::to_string(groupedDispatches_.size()) + " groups");
+    } else {
+        // LEGACY QUEUE-BASED DISPATCH: Process dispatchQueue_ (backward compatibility)
+        NODE_LOG_DEBUG("[MultiDispatchNode] Recording " +
+            std::to_string(dispatchQueue_.size()) + " queued dispatches (legacy mode)");
+
+        // Sort barriers by insertion index
+        std::sort(barrierQueue_.begin(), barrierQueue_.end(),
+            [](const auto& a, const auto& b) { return a.first < b.first; });
+
+        size_t barrierIdx = 0;
+
+        // Record each dispatch
+        for (size_t i = 0; i < dispatchQueue_.size(); ++i) {
+            const auto& pass = dispatchQueue_[i];
 
         // Insert any barriers scheduled before this dispatch
         while (barrierIdx < barrierQueue_.size() &&
@@ -292,12 +410,13 @@ void MultiDispatchNode::RecordDispatches(VkCommandBuffer cmdBuffer) {
             std::to_string(pass.workGroupCount.z) + "]");
     }
 
-    // Insert any remaining barriers
-    while (barrierIdx < barrierQueue_.size()) {
-        RecordBarrier(cmdBuffer, barrierQueue_[barrierIdx].second);
-        ++barrierIdx;
-        ++stats_.barrierCount;
-    }
+        // Insert any remaining barriers
+        while (barrierIdx < barrierQueue_.size()) {
+            RecordBarrier(cmdBuffer, barrierQueue_[barrierIdx].second);
+            ++barrierIdx;
+            ++stats_.barrierCount;
+        }
+    }  // End of legacy queue-based dispatch
 
     // End command buffer
     result = vkEndCommandBuffer(cmdBuffer);

@@ -1,411 +1,344 @@
-# VIXEN
+# VIXEN - Vulkan Interactive eXample Engine
 
-**Vulkan-based Industrial-grade eXperimental ENgine for Voxel Ray Tracing**
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![C++23](https://img.shields.io/badge/C%2B%2B-23-blue.svg)](https://en.cppreference.com/w/cpp/23)
+[![Vulkan](https://img.shields.io/badge/Vulkan-1.4.321.1-red.svg)](https://www.vulkan.org/)
 
-A production-quality research platform for voxel rendering using modern Vulkan 1.3, featuring a graph-based rendering architecture with compile-time type safety.
-
----
-
-## Overview
-
-VIXEN is a high-performance voxel rendering engine built on Vulkan 1.3, designed for both production use and voxel ray tracing research. The engine features a sophisticated graph-based rendering architecture comparable to Unity HDRP, Unreal RDG, and Frostbite FrameGraph.
-
-**Key Characteristics:**
-- **Graph-Based Rendering**: DAG architecture with automatic dependency resolution
-- **Type Safety**: Compile-time type checking via C++23 templates and concepts
-- **Research Platform**: ESVO (Efficient Sparse Voxel Octrees) ray tracing implementation
-- **Production Quality**: Comprehensive testing, budget-aware resource management, extensive documentation
-
----
+A production-quality Vulkan graphics engine featuring a **graph-based rendering architecture** with compile-time type safety, event-driven invalidation, and a comprehensive caching system. Currently being extended as a **voxel ray tracing research platform** for comparative pipeline analysis targeting academic publication (May 2026).
 
 ## Key Features
 
-### RenderGraph System
-- **Node-based architecture** with 30+ specialized node types (Device, SwapChain, ComputeDispatch, etc.)
-- **Unified connection system** supporting Direct, Variadic, and Accumulation connections
-- **Compile-time slot validation** via `TypedNode<Config>` template pattern
-- **Automatic resource lifetime management** with graph-owned resources
-- **Event-driven invalidation** through EventBus for decoupled node communication
+### Graph-Based Rendering Architecture
+- **Node-Based Render Graph** - Modular, composable rendering operations connected into a directed acyclic graph (DAG)
+- **Compile-Time Type Safety** - `TypedNode<Config>` API with `In()`/`Out()` methods eliminates runtime type errors
+- **Variant Resource System** - 29+ Vulkan types with macro-based registry, zero-overhead abstractions
+- **Event-Driven Invalidation** - Decoupled node communication (WindowResize → SwapChainInvalidated → Framebuffer rebuild)
+- **Protected API Enforcement** - Nodes use high-level typed API, graph manages low-level wiring
 
-### Resource Management
-- **Budget-aware allocation** with soft/hard memory limits (DeviceBudgetManager)
-- **VMA integration** with DirectAllocator fallback for maximum compatibility
-- **Intrusive refcounting** (SharedResource) with deferred destruction
-- **GPU memory aliasing** support for transient resource optimization
-- **Frame-scoped resource management** (LifetimeScope)
+### Advanced Infrastructure
+- **Resource Management** - Budget-aware allocation with VMA integration, intrusive refcounting, frame-scoped lifetimes
+- **Persistent Cache System** - 9 cachers with async save/load, lazy deserialization (SamplerCacher, ShaderModuleCacher, PipelineCacher, etc.)
+- **Testing Framework** - 156+ passing tests, GoogleTest suites across all libraries
+- **Logging System** - Hierarchical logger with per-node debug output (NODE_LOG_* macros)
+- **Lifecycle Hooks** - 14 total hooks (6 graph phases + 8 node phases) for fine-grained control
+- **Unified Connection System** - Single Connect() API with C++20 concepts for Direct, Variadic, and Accumulation connections
+- **Frame-in-Flight Synchronization** - CPU-GPU pacing with two-tier sync (fences + semaphores)
 
-### Voxel Rendering
-- **ESVO ray tracing** with compute shader implementation
-- **SVO (Sparse Voxel Octree)** data structures optimized for GPU traversal
-- **Multi-pipeline comparison** (4 rendering pipelines benchmarked)
-- **Procedural voxel generation** with stable delta storage
+### Shader Management
+- **SPIRV Reflection** - Automatic descriptor layout generation from shader reflection
+- **SDI Generation** - Type-safe UBO struct definitions with content-hash UUID system
+- **Data-Driven Pipelines** - Zero hardcoded shader assumptions, all from reflection
+- **Descriptor Automation** - Pool sizing, layout creation, binding from SPIRV metadata
+- **Push Constants** - Automatic extraction and propagation
 
-### Development Infrastructure
-- **156+ passing tests** across all libraries (Google Test)
-- **Hierarchical logging system** with per-node debug output
-- **CMake-based build system** with modern target-based dependencies
-- **Comprehensive documentation** (90+ Obsidian docs in `Vixen-Docs/`)
+### Research Capabilities (Voxel Ray Tracing)
+- **4 Pipeline Architectures** - Compute shader, fragment shader, hardware RT, hybrid implementations
+- **Sparse Voxel Octree** - Hybrid pointer-based + brick map with 9:1 compression
+- **Test Matrix** - 180 configurations (4 pipelines × 5 resolutions × 3 densities × 3 algorithms)
+- **Performance Profiling** - VkQueryPool timestamps, bandwidth monitoring, CSV export
+- **Procedural Scenes** - Cornell Box (10% density), Cave System (50%), Urban Grid (90%)
 
----
-
-## Architecture
-
-### Three Core Pillars
-
-1. **Compile-Time Type Safety**: Template-based node system eliminates runtime type errors
-2. **Clear Resource Ownership**: Graph owns resources, nodes access via raw pointers
-3. **Event-Driven Invalidation**: EventBus decouples nodes for maintainability
-
-### System Diagram
-
-```
-Application Layer
-  └─ VulkanGraphApplication
-      └─ RenderGraph (orchestrator)
-          ├─ NodeRegistry (node types)
-          ├─ EventBus (communication)
-          ├─ NodeInstance (base class)
-          │   └─ TypedNode<Config> (type-safe wrapper)
-          │       └─ Concrete Nodes (30+ implementations)
-          ├─ Resource System
-          │   ├─ ResourceVariant (type-safe variant)
-          │   ├─ SharedResource (refcounting)
-          │   └─ ResourceBudgetManager (allocation tracking)
-          └─ Vulkan Backend
-              ├─ VulkanDevice
-              ├─ SwapChain
-              ├─ Pipeline Management
-              └─ Descriptor Sets
-```
-
-### Library Structure (17 Libraries)
-
-**Foundation:**
-- `Core` - Fundamental types and utilities
-- `Logger` - Hierarchical logging with per-component debug output
-
-**Communication:**
-- `EventBus` - Event-driven node communication with pre-allocated queue
-- `ResourceManagement` - Memory budgets, lifetime scopes, state tracking
-
-**Vulkan:**
-- `VulkanResources` - Vulkan object wrappers and RAII
-- `CashSystem` - Acceleration structure caching and TLAS management
-- `ShaderManagement` - SPIR-V reflection and shader bundle system
-
-**Rendering:**
-- `RenderGraph` - Core graph system with 30+ node types
-
-**Voxel:**
-- `SVO` - Sparse Voxel Octree implementation
-- `VoxelData` - Voxel data structures
-- `VoxelComponents` - Component-based voxel system
-- `GaiaArchetypes` - ECS archetype system
-- `GaiaVoxelWorld` - Voxel world management
-
-**Tools:**
-- `Profiler` - Performance metrics and benchmarking
-- `MemoryManager` - (deprecated, migrated to ResourceManagement)
-
-See [Vixen-Docs/Libraries/Overview.md](Vixen-Docs/Libraries/Overview.md) for detailed dependency graph.
-
----
-
-## Technology Stack
-
-- **Language**: C++23 (MSVC 2022)
-- **Graphics API**: Vulkan 1.3
-- **Build System**: CMake 3.22+
-- **Platform**: Windows 11 (primary), Linux (planned)
-- **Testing**: Google Test
-- **Dependencies**:
-  - Vulkan SDK 1.3+
-  - GLM (mathematics)
-  - STB (image loading)
-  - SPIRV-Reflect (shader reflection)
-  - nlohmann/json (configuration)
-  - Intel TBB (parallel algorithms)
-  - Gaia ECS (voxel components)
-
----
-
-## Building
+## Quick Start
 
 ### Prerequisites
+- **Windows 10/11** (x64)
+- **Visual Studio 2022+** with C++ support (MSVC compiler)
+- **CMake 3.21+**
+- **Vulkan SDK 1.4.321.1** (install to `C:/VulkanSDK/1.4.321.1`)
 
-- Windows 11 / Windows 10
-- Visual Studio 2022 (MSVC v143)
-- CMake 3.22+
-- Vulkan SDK 1.3+ (C:/VulkanSDK/ or environment variable)
-- Git
-
-### Quick Build
+### Build Instructions
 
 ```bash
 # Clone repository
-git clone <repository-url>
+git clone https://github.com/lioryaari/VIXEN.git
 cd VIXEN
 
-# Configure with CMake
-cmake -B build -DCMAKE_BUILD_TYPE=Debug
+# Generate build files
+cmake -B build
 
-# Build (parallel, 16 threads)
-cmake --build build --config Debug --parallel 16
+# Build Debug configuration
+cmake --build build --config Debug
 
-# Run tests
-cd build/libraries/RenderGraph/tests/Debug
-./test_*.exe --gtest_brief=1
+# Build Release configuration
+cmake --build build --config Release
+
+# Run executable
+./binaries/VIXEN.exe
 ```
 
-### Build Targets
+### Alternative: Visual Studio
 
-- **Libraries**: All 17 static libraries (built automatically)
-- **Tests**: Per-library test executables (156+ tests)
-- **Application**: `VulkanGraphApplication` (main executable)
-- **Benchmarks**: `VixenBenchmark` (performance analysis)
+```bash
+# Generate VS solution
+cmake -B build
 
-See [CLAUDE.md](CLAUDE.md) for detailed build commands and troubleshooting.
-
----
-
-## Project Structure
-
-```
-VIXEN/
-├── libraries/              # 17 static libraries
-│   ├── RenderGraph/        # Core graph system (largest)
-│   ├── SVO/                # Voxel octree implementation
-│   ├── ResourceManagement/ # Budget-aware allocation
-│   ├── CashSystem/         # Acceleration structure caching
-│   └── ...                 # 13 more libraries
-├── application/            # VulkanGraphApplication executable
-├── shaders/                # GLSL compute/fragment shaders
-├── Vixen-Docs/             # Obsidian vault (90+ docs)
-│   ├── 00-Index/           # Quick lookup index
-│   ├── 01-Architecture/    # System design docs
-│   ├── 02-Implementation/  # How-to guides
-│   ├── 03-Research/        # ESVO, algorithms, papers
-│   ├── 04-Development/     # Standards, testing, logging
-│   ├── 05-Progress/        # Session notes, roadmap
-│   └── Libraries/          # Per-library documentation
-├── tests/                  # Integration tests
-├── tools/                  # Python utilities (data analysis)
-├── .claude/                # Claude Code configuration
-│   └── skills/             # Project-specific skills
-├── CMakeLists.txt          # Root CMake configuration
-├── CLAUDE.md               # AI assistant instructions
-└── README.md               # This file
+# Open in Visual Studio
+start build/VIXEN.sln
 ```
 
----
+## Architecture Overview
 
-## Documentation
+### Render Graph System
 
-VIXEN uses an **Obsidian vault** ([Vixen-Docs/](Vixen-Docs/)) as the primary documentation source.
+```
+┌─────────────────────────────────────────┐
+│          RenderGraph                    │  ← Graph orchestrator
+│  - Compilation phases                   │
+│  - Resource ownership                   │
+│  - Execution ordering                   │
+└──────────────┬──────────────────────────┘
+               │
+    ┌──────────┼──────────┬────────────────────┐
+    │          │          │                    │
+    ▼          ▼          ▼                    ▼
+┌────────────────┐  ┌──────────┐  ┌──────────────────┐  ┌──────────┐
+│  NodeInstance  │  │ Resource │  │  EventBus        │  │ Topology │
+│  (Base class)  │  │ (Variant)│  │  (Invalidation)  │  │  (DAG)   │
+└───────┬────────┘  └──────────┘  └──────────────────┘  └──────────┘
+        │
+        ▼
+┌───────────────────────┐
+│ TypedNode<ConfigType> │  ← Template with compile-time type safety
+└───────┬───────────────┘
+        │
+        ▼
+┌───────────────────────┐
+│  Concrete Nodes       │  ← SwapChainNode, FramebufferNode, PipelineNode
+│  (30+ implementations)│
+└───────────────────────┘
+```
 
-### Quick Access
+### Key Design Patterns
 
-- **Start Here**: [Quick-Lookup.md](Vixen-Docs/00-Index/Quick-Lookup.md) - Fast navigation index
-- **Architecture**: [Overview.md](Vixen-Docs/01-Architecture/Overview.md) - System design
-- **RenderGraph**: [RenderGraph-System.md](Vixen-Docs/01-Architecture/RenderGraph-System.md) - Core graph architecture
-- **Libraries**: [Libraries/Overview.md](Vixen-Docs/Libraries/Overview.md) - Library catalog
-- **Roadmap**: [Production-Roadmap-2026.md](Vixen-Docs/05-Progress/Production-Roadmap-2026.md) - Development plan
+#### 1. Typed Node Pattern
+```cpp
+// Config defines slots with compile-time types
+struct MyNodeConfig {
+    INPUT_SLOT(ALBEDO, VkImage, SlotMode::SINGLE);
+    OUTPUT_SLOT(FRAMEBUFFER, VkFramebuffer, SlotMode::SINGLE);
+};
 
-### Documentation Organization
+// Node uses typed API
+class MyNode : public TypedNode<MyNodeConfig> {
+    void Compile() override {
+        VkImage albedo = In(MyNodeConfig::ALBEDO);  // Compile-time type check
+        Out(MyNodeConfig::FRAMEBUFFER, myFB);       // Compile-time type check
+    }
+};
+```
 
-| Folder | Content |
-|--------|---------|
-| `00-Index/` | Quick lookup, navigation |
-| `01-Architecture/` | System design, patterns |
-| `02-Implementation/` | How-to guides, tutorials |
-| `03-Research/` | ESVO, algorithms, papers |
-| `04-Development/` | Standards, testing, workflows |
-| `05-Progress/` | Session notes, sprint tracking |
-| `Libraries/` | Per-library documentation |
-| `templates/` | Documentation templates |
+#### 2. Resource Variant Pattern
+```cpp
+// Single macro registration
+REGISTER_RESOURCE_TYPE(VkImage, ImageDescriptor)
 
----
+// Auto-generates type-safe access
+template<typename T>
+T Resource::GetHandle() { return std::get<T>(handleVariant); }
+```
+
+#### 3. Event-Driven Invalidation
+```cpp
+// Node subscribes to events
+void SwapChainNode::Setup() override {
+    eventBus->Subscribe(EventType::WindowResize, this);
+}
+
+// Node handles event, marks dirty, cascades
+void SwapChainNode::OnEvent(const Event& event) override {
+    if (event.type == EventType::WindowResize) {
+        SetDirty(true);
+        eventBus->Emit(SwapChainInvalidatedEvent{});  // Cascade
+    }
+}
+```
 
 ## Current Status
 
-**Branch**: `production/sprint-6-timeline-foundation`
-**Phase**: Sprint 6.0.1 - Unified Connection System (COMPLETE)
-**Status**: ✅ Infrastructure hardening complete, Timeline system foundation in progress
+**Branch**: `production/sprint-6-timeline-foundation` | **Tests**: 156+ passing
 
-### Recently Completed
+### Recently Completed (2026 Q1) ✅
+- **Sprint 4: Resource Manager Integration** - Budget-aware allocation, VMA/DirectAllocator, SharedResource refcounting
+- **Sprint 5: CashSystem Robustness** - Memory safety, TLAS lifecycle, staging buffer pool, 62 new tests
+- **Sprint 5.5: Pre-Allocation Hardening** - EventBus queue, command pools, deferred destruction ring buffers
+- **Sprint 6.0.1: Unified Connection System** - Single Connect() API with C++20 concepts, 102 connection tests
 
-**Sprint 5.5: Pre-Allocation Hardening** (16h, ✅ COMPLETE)
-- `PreAllocatedQueue<T>` ring buffer for EventBus
-- Command buffer pool sizing API
-- Deferred destruction pool with ring buffer
-- Allocation tracker instrumentation
+### In Progress 🟢
+- **Sprint 6 Phase 1: MultiDispatchNode** - Multi-pass compute shader support for Timeline system
+- **Phase 2-3: TaskQueue & WaveScheduler** - Wave-based parallel execution
 
-**Sprint 6.0.1: Unified Connection System** (126h, ✅ COMPLETE)
-- Single `Connect()` API for all connection types (Direct, Variadic, Accumulation)
-- C++20 concepts for type-safe slot resolution
-- ConnectionRule registry with extensible modifier system
-- 102 passing tests for connection infrastructure
+### 2026 Roadmap
+- **Q1-Q2**: Timeline Execution System (parallel execution, multi-GPU, automatic synchronization)
+- **Q2-Q4**: GaiaVoxelWorld Physics (cellular automata, soft body, GPU procedural generation)
+- **Research**: Paper draft complete, awaiting feedback for May 2026 submission
 
-### In Progress
+See [Production-Roadmap-2026.md](Vixen-Docs/05-Progress/Production-Roadmap-2026.md) for full roadmap (1,440h tracked).
 
-**Sprint 6: Timeline Foundation** (212h estimated)
-- Phase 0: Unified Connection System (✅ COMPLETE)
-- Phase 1: MultiDispatchNode (56h, 🟢 IN PROGRESS)
-- Phase 2: TaskQueue System (72h, ⏳ PLANNED)
-- Phase 3: WaveScheduler (84h, ⏳ PLANNED)
+## Node Catalog (30+ Nodes)
 
-### Test Status
+### Core Rendering Nodes
+- **WindowNode** - Window surface management
+- **DeviceNode** - Vulkan device selection and creation
+- **SwapChainNode** - Presentation swapchain management
+- **RenderPassNode** - Render pass creation
+- **FramebufferNode** - Framebuffer management
+- **GraphicsPipelineNode** - Graphics pipeline creation
+- **ComputePipelineNode** - Compute pipeline creation
+- **DescriptorSetNode** - Descriptor set allocation and binding
 
-- **Total Tests**: 156+ passing (as of 2026-01-06)
-- **ResourceManagement**: 138 tests
-- **RenderGraph**: 102 tests (connection system)
-- **CashSystem**: 62 tests
-- **Coverage**: ~85% for critical paths
+### Resource Nodes
+- **CommandPoolNode** - Command buffer allocation
+- **VertexBufferNode** - Vertex data management
+- **DepthBufferNode** - Depth/stencil buffer
+- **TextureLoaderNode** - Texture loading and upload
+- **ShaderLibraryNode** - SPIRV compilation and reflection
 
----
+### Execution Nodes
+- **GeometryRenderNode** - Geometry rendering pass
+- **ComputeDispatchNode** - Generic compute shader dispatch
+- **PresentNode** - Swapchain presentation
+- **FrameSyncNode** - Frame-in-flight synchronization
 
-## Roadmap Highlights
+### Utility Nodes
+- **ConstantNode** - Constant value outputs
+- **LoopBridgeNode** - Multi-rate loop integration
+- **BoolOpNode** - Boolean logic operations
+- **CameraNode** - View/projection matrix generation
+- **VoxelGridNode** - 3D voxel grid data structure
 
-### 2026 Q1: Infrastructure Hardening
-- ✅ Resource Manager Integration (Sprint 4)
-- ✅ CashSystem Robustness (Sprint 5)
-- ✅ Pre-Allocation Hardening (Sprint 5.5)
-- ✅ Unified Connection System (Sprint 6.0.1)
-- 🟢 Timeline Foundation (Sprint 6)
+## Research Focus: Voxel Ray Tracing
 
-### 2026 Q2-Q4: Timeline Execution System
-- MultiDispatchNode for multi-pass compute
-- Wave-based parallel execution
-- Graph-in-graph composable pipelines
-- Automatic synchronization (barriers/semaphores)
-- Multi-GPU distribution
+### Research Question
+How do different Vulkan ray tracing/marching pipeline architectures affect rendering performance, GPU bandwidth utilization, and scalability for data-driven voxel rendering?
 
-### 2026-2027: GaiaVoxelWorld Physics
-- Cellular automata (100M voxels/second)
-- Soft body physics (Gram-Schmidt solver)
-- GPU procedural generation
-- Skin Width SVO optimization
-- VR integration (90 FPS target)
+### Four Pipeline Architectures
+1. **Compute Shader Ray Marching** - Full GPU parallelism, custom traversal algorithms
+2. **Fragment Shader Ray Marching** - Rasterization pipeline, different GPU utilization
+3. **Hardware Ray Tracing** - VK_KHR_acceleration_structure, BLAS/TLAS for voxels
+4. **Hybrid Pipeline** - RTX for fast initial hit + ray marching for materials
 
-### Research Publication
-- 📝 Paper draft complete (4-pipeline comparison)
-- ⏳ Awaiting feedback before submission
-- Target: ACM SIGGRAPH / IEEE Visualization
+### Test Matrix (180 Configurations)
+- **4 pipelines** × **5 resolutions** (512², 1024², 1920×1080, 2560×1440, 3840×2160)
+- **3 densities** (10%, 50%, 90%)
+- **3 algorithms** (DDA, Empty Space Skip, BlockWalk)
 
-See [Production-Roadmap-2026.md](Vixen-Docs/05-Progress/Production-Roadmap-2026.md) for complete roadmap (1,440h tracked).
+### Test Scenes
+- **Cornell Box** (64³, 10% density) - Baseline, simple lighting
+- **Perlin Noise Cave** (128³, 50% density) - Organic structures
+- **Urban Grid** (256³, 90% density) - Worst-case stress test
 
----
+### Performance Metrics
+- Frame time (CPU)
+- GPU time (timestamps)
+- Bandwidth (R/W)
+- VRAM usage
+- Ray throughput
+- Voxel traversal efficiency
 
-## Development Workflow
+### Expected Contributions
+- First comprehensive Vulkan-specific comparison
+- Reproducible results with open-source implementation
+- Academic paper (May 2026)
+- Extended research with hybrid RTX pipeline (August 2026)
 
-### Project Rules
+## Documentation
 
-VIXEN enforces strict development standards via the `project-rules` skill:
+**📚 Primary Documentation**: [Vixen-Docs/](Vixen-Docs/) Obsidian vault with 90+ organized documents
 
-- **Communication**: Maximum signal, minimum noise - no filler phrases
-- **Engineering**: Fix root causes, not symptoms - no quick hacks
-- **Obsidian-First**: Check documentation vault before code search
-- **Logging**: Use hierarchical Logger system, never `std::cout`
-- **HacknPlan**: All work tracked in project management system
+### Quick Links
 
-See [.claude/skills/project-rules/](-.claude/skills/project-rules/) for full rule definitions.
+**Start Here**:
+- [Quick Lookup Index](Vixen-Docs/00-Index/Quick-Lookup.md) - Fast navigation
+- [Architecture Overview](Vixen-Docs/01-Architecture/Overview.md) - System design
+- [RenderGraph System](Vixen-Docs/01-Architecture/RenderGraph-System.md) - Core architecture
 
-### Branch Strategy
+**Implementation**:
+- [Create a Node](Vixen-Docs/templates/Node-Documentation.md) - Node template
+- [Logging Guide](Vixen-Docs/Libraries/Logger.md) - Hierarchical logging
+- [Testing Guide](Vixen-Docs/04-Development/Testing.md) - Test framework
 
-- `main` - Stable production branch
-- `production/sprint-X-*` - Sprint-specific feature branches
-- Merge to `main` after sprint completion and testing
+**Libraries**:
+- [Overview](Vixen-Docs/Libraries/Overview.md) - 17 libraries with dependencies
+- [RenderGraph](Vixen-Docs/Libraries/RenderGraph.md) - 30+ nodes
+- [ResourceManagement](Vixen-Docs/Libraries/ResourceManagement.md) - Budget-aware allocation
+- [CashSystem](Vixen-Docs/Libraries/CashSystem.md) - AS caching
 
-### Testing Requirements
+**Progress**:
+- [Roadmap 2026](Vixen-Docs/05-Progress/Production-Roadmap-2026.md) - 1,440h plan
+- [Sprint 6.0.1](Vixen-Docs/05-Progress/features/Sprint6.0.1-Unified-Connection-System.md) - Latest
 
-- All new features must include tests
-- Tests must pass before merge
-- Integration tests for multi-component features
-- Performance tests for critical paths
-
-### Documentation Requirements
-
-- Update Obsidian docs for new features
-- Add architectural decisions to `01-Architecture/`
-- Update roadmap for completed work
-- Session summaries in `05-Progress/`
-
----
-
-## Contributing
-
-VIXEN is currently a research project. External contributions are not yet accepted, but the codebase is structured for future open-source release.
-
-### Code Style
-
-- C++23 features encouraged (concepts, ranges, etc.)
-- Modern CMake (target-based, no global variables)
-- RAII resource management (no manual cleanup)
-- Prefer `std::expected` over exceptions for error handling
-- Absolute paths in tools (Windows: `C:\...` format)
-
-### Commit Messages
-
-Format: `type(scope): description`
-
-Types: `feat`, `fix`, `refactor`, `docs`, `test`, `perf`
-Scopes: Library names (`RenderGraph`, `SVO`, `CashSystem`)
-
-Example: `feat(RenderGraph): Add MultiDispatchNode for multi-pass compute`
-
-All commits include co-authorship footer:
-```
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
-
-Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
-```
-
----
-
-## License
-
-**Proprietary** - All rights reserved. Not licensed for public use or redistribution.
-
----
-
-## Project Management
-
-- **Issue Tracking**: HacknPlan (Project 230809)
-- **Sprint Boards**: 12 active sprints (651780-651790)
-- **Time Tracking**: Logged per task via HacknPlan API
-- **Design Elements**: Linked to Obsidian vault via glue layer
-
----
+**Build**: [CLAUDE.md](CLAUDE.md) - Commands, troubleshooting
 
 ## Performance Characteristics
 
-| Aspect | Current | Target (Timeline System) |
-|--------|---------|--------------------------|
-| Threading | Single-threaded | Wave-based parallel |
-| Node Capacity | 100-200 | 500+ |
-| Virtual Dispatch | ~2-5ns per call | Devirtualized for 1000+ nodes |
-| Resource Aliasing | None | Transient memory optimization |
-| Frame Time | 16ms (60 FPS) | 11ms (90 FPS for VR) |
+### Current Capacity
+- **Node Count**: 100-200 nodes per graph
+- **Build Time**: Clean 60-90s, Incremental 5-10s (with optimizations)
+- **Cache Performance**: CACHE HIT confirmed for shaders, pipelines, samplers
+- **Frame Rate**: Target 60 FPS with 4 frames in flight
 
----
+### Optimization Features
+- **Precompiled Headers** - 2-3× build speedup
+- **Persistent Cache** - 9 cachers with lazy deserialization
+- **Zero-Overhead Abstractions** - std::variant, templates, no virtual dispatch in hot paths
+- **Stateful Command Buffers** - Only re-record when dirty
 
-## Links
+## Contributing
 
-- **Documentation**: [Vixen-Docs/00-Index/Quick-Lookup.md](Vixen-Docs/00-Index/Quick-Lookup.md)
-- **Architecture**: [Vixen-Docs/01-Architecture/Overview.md](Vixen-Docs/01-Architecture/Overview.md)
-- **Roadmap**: [Vixen-Docs/05-Progress/Production-Roadmap-2026.md](Vixen-Docs/05-Progress/Production-Roadmap-2026.md)
-- **Build Instructions**: [CLAUDE.md](CLAUDE.md)
+This project is currently in research phase focusing on voxel ray tracing comparative analysis. Contributions welcome after May 2026 publication.
 
----
+For questions or collaboration inquiries, please open an issue.
+
+## License
+
+MIT License - see [LICENSE](LICENSE) file for details.
+
+Copyright (c) 2025 Lior Yaari
 
 ## Acknowledgments
 
-- **Vulkan SDK**: Khronos Group
-- **ESVO Algorithm**: Based on research by Laine & Karras (NVIDIA)
-- **Gaia ECS**: Richard Biely
-- **Development**: Powered by Claude Sonnet 4.5 AI assistant
+### Research Bibliography
+Based on 24 research papers covering voxel rendering, ray tracing, sparse voxel octrees, and GPU optimization techniques. Key references:
+
+- [1] Nousiainen - Voxel rendering baseline
+- [5] Voetter - Vulkan volumetric rendering
+- [6] Aleksandrov - SVO baseline architecture
+- [16] Derin - BlockWalk empty space skipping
+- [22] Molenaar - SVDAG compression
+
+Full bibliography available in project documentation.
+
+### Technologies
+- **Vulkan** - Khronos Group
+- **SPIRV-Reflect** - Shader reflection library
+- **GoogleTest** - Testing framework
+- **glslang** - GLSL to SPIRV compiler
+
+## Roadmap
+
+### 2026 Q1: Infrastructure Hardening (✅→🟢)
+- ✅ Sprint 4: Resource Manager (192h)
+- ✅ Sprint 5: CashSystem Robustness (104h)
+- ✅ Sprint 5.5: Pre-Allocation (16h)
+- ✅ Sprint 6.0.1: Unified Connections (126h)
+- 🟢 Sprint 6: Timeline Foundation (212h, in progress)
+
+### 2026 Q2-Q4: Timeline Execution
+- MultiDispatchNode, wave-based parallel execution
+- Graph-in-graph composable pipelines
+- Automatic synchronization
+- Multi-GPU distribution
+
+### 2026-2027: GaiaVoxelWorld Physics
+- Cellular automata, soft body physics
+- GPU procedural generation, VR integration
+
+### Research
+- ✅ Paper draft complete
+- ⏳ Awaiting feedback for May 2026 submission
 
 ---
 
-*Last Updated: 2026-01-06*
-*Version: Sprint 6.0.1 Complete*
+**Status**: Active development, research phase, production-quality architecture
+
+**Contact**: [Open an issue for questions or collaboration]
