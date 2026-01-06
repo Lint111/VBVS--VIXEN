@@ -235,6 +235,35 @@ else()
 endif()
 
 # ===========================================================================
+# Sprint 6.1: Group-Based Dispatch Tests
+# ===========================================================================
+# Tests for MultiDispatchNode GROUP_INPUTS and GroupKeyModifier
+# - GroupKeyModifier validation and metadata storage
+# - DispatchPass validation (IsValid())
+# - Group partitioning logic
+# - Deterministic ordering (std::map)
+# - Backward compatibility with QueueDispatch()
+
+if(TARGET GTest::gtest_main)
+    add_executable(test_group_dispatch
+        test_group_dispatch.cpp
+    )
+
+    target_link_libraries(test_group_dispatch PRIVATE
+        GTest::gtest_main
+        RenderGraph
+    )
+
+    set_target_properties(test_group_dispatch PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+    gtest_discover_tests(test_group_dispatch)
+
+    message(STATUS "✓ test_group_dispatch configured (Sprint 6.1)")
+else()
+    message(STATUS "⊗ test_group_dispatch skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
 # Voxel Systems Tests - CONSOLIDATED (Phase H)
 # ===========================================================================
 # Validates voxel infrastructure:

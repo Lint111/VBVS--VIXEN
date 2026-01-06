@@ -97,17 +97,17 @@ public:
      */
     [[nodiscard]] ConnectionResult PreValidation(ConnectionContext& ctx) override {
         // Verify target slot is an accumulation slot
-        if (!ctx.targetSlot.isAccumulation) {
+        if (!ctx.targetSlot.IsAccumulation()) {
             return ConnectionResult::Error(
                 "GroupKeyModifier requires an accumulation slot target. "
                 "Target slot must have SlotFlags::Accumulation set."
             );
         }
 
-        // Store extractor in context for runtime use
-        ctx.metadata["groupKeyExtractor"] = keyExtractor_;
-        ctx.metadata["groupKeyExtractsOptional"] = extractsOptional_;
-        ctx.metadata["groupKeyFieldOffset"] = fieldOffset_;
+        // Sprint 6.1: Extractor function is stored but not yet used generically.
+        // MultiDispatchNode::CompileImpl hard-codes extraction of DispatchPass::groupId.
+        // Future work will make this generic by reading keyExtractor_ from context.
+        // For now, this modifier serves as a validation-only marker indicating grouping intent.
 
         return ConnectionResult::Success();
     }
