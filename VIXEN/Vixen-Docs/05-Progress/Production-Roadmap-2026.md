@@ -223,27 +223,101 @@ See [[Sprint6.0.1-Unified-Connection-System]] for detailed design.
 
 **Dependencies:** #313 → #312 → #314, #312 → #311 → #310
 
-#### Phase 2: TaskQueue System (72h) - PLANNED
+#### Sprint 6.1: MultiDispatchNode (56h) ✅ COMPLETE
+
+**Design Element:** #36
+**Goal:** Group-based dispatch with pipeline statistics
+**Status:** ✅ Complete (2026-01-04)
+
+**Key Deliverables:**
+- GroupKeyModifier for dispatch pass grouping
+- Per-group pipeline statistics tracking
+- 41 tests passing
+- Full documentation
+
+See [[Sprint6.1-MultiDispatchNode]] for implementation details.
+
+---
+
+#### Sprint 6.2: TaskQueue System (72h) 🟢 IN PROGRESS
+
+**Design Element:** #37
+**Goal:** Budget-aware task queue with priority scheduling
+**Status:** 🟢 Tasks #339, #342 Complete (50% progress)
+
+| Task ID | Task | Hours | Priority | Status |
+|---------|------|-------|----------|--------|
+| #339 | TaskQueue Template | 16h | HIGH | ✅ Complete |
+| #342 | Budget-Aware Dequeue | 16h | HIGH | ✅ Complete |
+| #341 | MultiDispatchNode Integration | 16h | HIGH | ⏳ Planned |
+| #343 | Stress Tests | 16h | HIGH | ⏳ Planned |
+| #340 | Documentation | 8h | MEDIUM | ⏳ Planned |
+
+**Completed (36h/72h):**
+- [x] TaskQueue<T> template with priority sorting
+- [x] TaskBudget structure (strict/lenient modes)
+- [x] Budget validation and overflow protection
+- [x] 28 unit tests written
+- [x] Feature documentation
+
+**Remaining:**
+- [ ] MultiDispatchNode integration with TaskQueue
+- [ ] Backward compatibility testing
+- [ ] Stress testing (1000 tasks)
+- [ ] API documentation completion
+
+See [[Sprint6.2-TaskQueue-System]] for detailed status.
+
+---
+
+#### Sprint 6.3: Timeline Capacity Tracker (48h) - PROPOSED 🆕
+
+**Design Element:** #38 (NEW)
+**Goal:** Runtime performance tracking and adaptive scheduling
+**Status:** ⏳ Proposed - Feature plan complete
+**Proposal:** [[timeline-capacity-tracker]]
+
+| Task ID | Task | Hours | Priority | Status |
+|---------|------|-------|----------|--------|
+| TBD | Core Measurement Infrastructure | 14h | HIGH | ⏳ Planned |
+| TBD | Feedback Loop & Learning | 10h | HIGH | ⏳ Planned |
+| TBD | Adaptive Scheduling | 14h | HIGH | ⏳ Planned |
+| TBD | Tests & Documentation | 10h | MEDIUM | ⏳ Planned |
+
+**Key Features:**
+- Measure actual GPU/CPU time (vs. estimates)
+- Learn from measurements to improve predictions
+- Suggest additional tasks when capacity available
+- Identify bottlenecks (GPU vs. CPU)
+- Integrate with TaskQueue for adaptive scheduling
+
+**Success Metrics:**
+- +30-50% GPU utilization through adaptation
+- ±10% prediction accuracy after 50 frames
+- Stable framerates with graceful degradation
+
+**Dependencies:**
+- Sprint 6.2 Complete (TaskQueue foundation)
+- GPUTimestampQuery operational ✅
+- Profiler::Timer operational ✅
+
+**Rationale:** Bridges gap between static budget planning (Sprint 6.2) and dynamic runtime execution. Enables self-tuning performance management and adaptive quality adjustment.
+
+See [[timeline-capacity-tracker]] for comprehensive proposal.
+
+---
+
+#### Sprint 6.4: WaveScheduler (84h) - PLANNED
 
 | Task ID | Task | Hours | Priority |
 |---------|------|-------|----------|
-| - | TaskQueue Template | 16h | HIGH |
-| - | Budget-Aware Dequeue | 16h | HIGH |
-| - | QueueableDispatchNode | 16h | MEDIUM |
-| - | Stress Tests | 16h | HIGH |
-| - | Documentation | 8h | MEDIUM |
+| TBD | ResourceAccessTracker | 16h | HIGH |
+| TBD | Wave Computation Algorithm | 16h | HIGH |
+| TBD | Parallel Wave Execution | 24h | HIGH |
+| TBD | Performance Tests | 16h | HIGH |
+| TBD | Documentation | 12h | MEDIUM |
 
-#### Phase 3: WaveScheduler (84h) - PLANNED
-
-| Task ID | Task | Hours | Priority |
-|---------|------|-------|----------|
-| - | ResourceAccessTracker | 16h | HIGH |
-| - | Wave Computation Algorithm | 16h | HIGH |
-| - | Parallel Wave Execution | 24h | HIGH |
-| - | Performance Tests | 16h | HIGH |
-| - | Documentation | 12h | MEDIUM |
-
-**Total Sprint 6:** 212h (15 tasks)
+**Total Sprint 6:** 260h (19 tasks)
 
 See [[Sprint6-Timeline-Foundation]] for detailed planning.
 

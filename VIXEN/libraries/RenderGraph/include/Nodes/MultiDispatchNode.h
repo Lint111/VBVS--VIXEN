@@ -3,12 +3,12 @@
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
 #include "Core/NodeLogging.h"
+#include "Core/TaskQueue.h"  // Sprint 6.2: Task #341
 #include "State/StatefulContainer.h"
 #include "Data/DispatchPass.h"
 #include "Data/Nodes/MultiDispatchNodeConfig.h"
 
 #include <vector>
-#include <deque>
 #include <map>  // Sprint 6.1: For groupedDispatches_ (deterministic ordering)
 
 namespace Vixen::RenderGraph {
@@ -87,16 +87,34 @@ public:
     // =========================================================================
 
     /**
-     * @brief Queue a compute dispatch for execution
+     * @brief Queue a compute dispatch for execution (backward compatible)
      *
-     * Adds a dispatch pass to the queue. All queued passes are recorded
-     * to the command buffer during ExecuteImpl, then the queue is cleared.
+     * Adds a dispatch pass to the queue with zero-cost estimate (no budget checking).
+     * All queued passes are recorded to the command buffer during ExecuteImpl, then
+     * the queue is cleared.
+     *
+     * **Backward Compatibility:** Sprint 6.1 code uses this method. Zero-cost tasks
+     * always accepted regardless of budget. Use TryQueueDispatch() for budget awareness.
      *
      * @param pass Dispatch pass descriptor (moved)
      * @return Index of the queued pass (for barrier insertion)
      * @throws std::runtime_error if pass is invalid or queue is full
      */
     size_t QueueDispatch(DispatchPass&& pass);
+
+    /**
+     * @brief Queue a dispatch with budget checking (Sprint 6.2)
+     *
+     * Attempts to enqueue a dispatch pass with cost estimation. Returns false
+     * if task would exceed frame budget (strict mode) or triggers warning callback
+     * (lenient mode).
+     *
+     * @param pass Dispatch pass descriptor (moved)
+     * @param estimatedCostNs Estimated GPU time in nanoseconds
+     * @param priority Execution priority (0=lowest, 255=highest)
+     * @return true if task accepted, false if rejected (strict mode only)
+     */
+    bool TryQueueDispatch(DispatchPass&& pass, uint64_t estimatedCostNs, uint8_t priority = 128);
 
     /**
      * @brief Queue an explicit barrier between passes
@@ -121,13 +139,31 @@ public:
      * @brief Get current queue size
      * @return Number of queued dispatches
      */
-    [[nodiscard]] size_t GetQueueSize() const { return dispatchQueue_.size(); }
+    [[nodiscard]] size_t GetQueueSize() const { return taskQueue_.GetQueuedCount(); }
 
     /**
      * @brief Get execution statistics from last frame
      * @return Statistics from most recent ExecuteImpl
      */
     [[nodiscard]] const MultiDispatchStats& GetStats() const { return stats_; }
+
+    /**
+     * @brief Set budget for task queue (Sprint 6.2)
+     *
+     * @param budget Budget configuration (time, memory, overflow mode)
+     */
+    void SetBudget(const TaskBudget& budget) { taskQueue_.SetBudget(budget); }
+
+    /**
+     * @brief Get current budget configuration
+     */
+    [[nodiscard]] const TaskBudget& GetBudget() const { return taskQueue_.GetBudget(); }
+
+    /**
+     * @brief Get remaining budget capacity
+     * @return Nanoseconds remaining (0 if exhausted)
+     */
+    [[nodiscard]] uint64_t GetRemainingBudget() const { return taskQueue_.GetRemainingBudget(); }
 
 protected:
     // =========================================================================
@@ -170,15 +206,15 @@ private:
     // Per-swapchain-image command buffers
     StatefulContainer<VkCommandBuffer> commandBuffers_;
 
-    // Dispatch queue (cleared after each frame)
-    std::deque<DispatchPass> dispatchQueue_;
+    // Sprint 6.2: Budget-aware task queue (replaces dispatchQueue_)
+    TaskQueue<DispatchPass> taskQueue_;
 
     // Barrier queue (indices where barriers should be inserted)
     std::vector<std::pair<size_t, DispatchBarrier>> barrierQueue_;
 
     // Sprint 6.1: Group-based dispatch support
     // Maps group ID -> vector of dispatch passes for that group
-    // Empty map means no GROUP_INPUTS connected (fall back to dispatchQueue_)
+    // Empty map means no GROUP_INPUTS connected (fall back to taskQueue_)
     // Using std::map (not unordered_map) for deterministic group execution order
     std::map<uint32_t, std::vector<DispatchPass>> groupedDispatches_;
 

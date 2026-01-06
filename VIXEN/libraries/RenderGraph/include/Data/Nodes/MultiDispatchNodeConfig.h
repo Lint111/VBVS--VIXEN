@@ -62,6 +62,12 @@ CONSTEXPR_NODE_CONFIG(MultiDispatchNodeConfig,
     /// Enable per-pass timestamp queries for profiling
     static constexpr const char* ENABLE_TIMESTAMPS = "enableTimestamps";
 
+    /// Sprint 6.2: Frame budget for TaskQueue (nanoseconds, default 16.67ms for 60 FPS)
+    static constexpr const char* FRAME_BUDGET_NS = "frameBudgetNs";
+
+    /// Sprint 6.2: Budget overflow mode ("strict" or "lenient")
+    static constexpr const char* BUDGET_OVERFLOW_MODE = "budgetOverflowMode";
+
     // ===== INPUTS (5) =====
 
     /**

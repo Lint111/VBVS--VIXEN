@@ -4,7 +4,7 @@
  * @file TaskQueue.h
  * @brief Budget-aware priority task queue for RenderGraph timeline execution
  *
- * Sprint 6.2: TaskQueue System - Task #339
+ * Sprint 6.2: TaskQueue System - Tasks #339, #342
  * Design Element: #37 TaskQueue System
  *
  * Provides a generic template for budget-constrained task scheduling with
@@ -13,12 +13,14 @@
  *
  * Key Features:
  * - Budget-aware enqueue (rejects tasks that would exceed frame budget)
+ * - Strict/lenient overflow modes (reject vs warn+accept)
  * - Priority-based execution (higher priority = earlier execution)
  * - Stable sorting (preserves insertion order for equal priorities)
  * - O(1) total cost queries (cached, not computed)
  * - Overflow-safe arithmetic
  *
  * @see DispatchPass for primary TTaskData type
+ * @see TaskBudget for budget configuration
  * @see SlotTaskManager for similar budget-aware execution pattern
  */
 
@@ -26,7 +28,11 @@
 #include <cstdint>
 #include <functional>
 #include <limits>
+#include <optional>
+#include <string>
 #include <vector>
+
+#include "Data/TaskBudget.h"
 
 namespace Vixen::RenderGraph {
 
@@ -40,8 +46,16 @@ namespace Vixen::RenderGraph {
  *
  * Usage:
  * @code
+ * // Option 1: Simple budget (strict mode by default)
  * TaskQueue<DispatchPass> queue;
  * queue.SetFrameBudget(16'666'666);  // 16.67ms in nanoseconds
+ *
+ * // Option 2: Full TaskBudget configuration
+ * TaskBudget budget(16'666'666, BudgetOverflowMode::Lenient);
+ * queue.SetBudget(budget);
+ *
+ * // Option 3: Use presets
+ * queue.SetBudget(BudgetPresets::FPS60_Strict);
  *
  * TaskQueue<DispatchPass>::TaskSlot slot;
  * slot.data = myDispatch;
@@ -49,7 +63,7 @@ namespace Vixen::RenderGraph {
  * slot.estimatedCostNs = 100'000;  // 0.1ms
  *
  * if (queue.TryEnqueue(std::move(slot))) {
- *     // Task accepted within budget
+ *     // Task accepted within budget (or lenient mode)
  * }
  *
  * queue.Execute([&](const DispatchPass& pass) {
@@ -71,6 +85,14 @@ public:
         uint32_t insertionOrder = 0;         ///< Internal: for stable sort tie-breaking
     };
 
+    /**
+     * @brief Warning callback signature for lenient mode overflow
+     *
+     * Called when task exceeds budget in lenient mode.
+     * Parameters: (newTotalCostNs, budgetNs, taskCostNs)
+     */
+    using WarningCallback = std::function<void(uint64_t, uint64_t, uint64_t)>;
+
     TaskQueue() = default;
     ~TaskQueue() = default;
 
@@ -83,48 +105,114 @@ public:
     TaskQueue& operator=(TaskQueue&&) noexcept = default;
 
     /**
-     * @brief Set the frame budget for this queue
+     * @brief Set budget configuration
+     *
+     * @param budget Budget constraints and overflow policy
+     */
+    void SetBudget(const TaskBudget& budget) {
+        budget_ = budget;
+    }
+
+    /**
+     * @brief Set the frame budget for this queue (strict mode)
+     *
+     * Convenience method that creates a TaskBudget with strict overflow mode.
      *
      * @param budgetNs Maximum total GPU time in nanoseconds (default: 16.67ms)
      */
     void SetFrameBudget(uint64_t budgetNs) {
-        frameBudgetNs_ = budgetNs;
+        budget_.gpuTimeBudgetNs = budgetNs;
+        budget_.overflowMode = BudgetOverflowMode::Strict;
     }
 
     /**
-     * @brief Get the current frame budget
+     * @brief Get the current budget configuration
+     * @return TaskBudget structure with all budget parameters
+     */
+    [[nodiscard]] const TaskBudget& GetBudget() const {
+        return budget_;
+    }
+
+    /**
+     * @brief Get the current frame budget (time component only)
      * @return Frame budget in nanoseconds
      */
     [[nodiscard]] uint64_t GetFrameBudget() const {
-        return frameBudgetNs_;
+        return budget_.gpuTimeBudgetNs;
+    }
+
+    /**
+     * @brief Set warning callback for lenient mode overflow
+     *
+     * Called when task exceeds budget in lenient mode.
+     * Use for logging or telemetry.
+     *
+     * @param callback Function to call on overflow (nullptr to disable)
+     */
+    void SetWarningCallback(WarningCallback callback) {
+        warningCallback_ = std::move(callback);
     }
 
     /**
      * @brief Attempt to enqueue a task within budget constraints
      *
+     * Behavior depends on overflow mode:
+     * - **Strict**: Rejects tasks that would exceed budget (returns false)
+     * - **Lenient**: Accepts all tasks, calls warning callback on overflow (returns true)
+     *
      * Edge cases handled:
-     * - Zero budget: All tasks rejected
+     * - Zero budget: All tasks rejected (strict), accepted with warning (lenient)
      * - Overflow protection: Checked arithmetic prevents wrap-around
-     * - Zero-cost tasks: Always accepted if budget > 0
+     * - Zero-cost tasks: Always accepted regardless of budget
      *
      * @param slot Task slot to enqueue (moved on success)
-     * @return true if task accepted, false if would exceed budget
+     * @return true if task accepted, false if rejected (strict mode only)
      */
     bool TryEnqueue(TaskSlot&& slot) {
-        // Zero budget = reject everything
-        if (frameBudgetNs_ == 0) {
-            return false;
+        const uint64_t budgetNs = budget_.gpuTimeBudgetNs;
+        const uint64_t taskCost = slot.estimatedCostNs;
+
+        // Zero budget handling
+        if (budgetNs == 0) {
+            if (budget_.IsStrict()) {
+                return false;  // Strict: reject
+            } else {
+                // Lenient: accept with warning
+                if (warningCallback_) {
+                    warningCallback_(taskCost, 0, taskCost);
+                }
+                EnqueueUnchecked(std::move(slot));
+                return true;
+            }
         }
 
         // Overflow-safe addition check
-        const uint64_t taskCost = slot.estimatedCostNs;
         if (taskCost > std::numeric_limits<uint64_t>::max() - totalEstimatedCostNs_) {
-            return false;  // Would overflow
+            if (budget_.IsStrict()) {
+                return false;  // Would overflow - reject in strict mode
+            } else {
+                // Lenient: clamp to max and accept with warning
+                if (warningCallback_) {
+                    warningCallback_(std::numeric_limits<uint64_t>::max(), budgetNs, taskCost);
+                }
+                EnqueueUnchecked(std::move(slot));
+                return true;
+            }
         }
 
         const uint64_t newTotal = totalEstimatedCostNs_ + taskCost;
-        if (newTotal > frameBudgetNs_) {
-            return false;  // Would exceed budget
+
+        // Budget exceeded check
+        if (newTotal > budgetNs) {
+            if (budget_.IsStrict()) {
+                return false;  // Strict: reject
+            } else {
+                // Lenient: accept with warning
+                if (warningCallback_) {
+                    warningCallback_(newTotal, budgetNs, taskCost);
+                }
+                // Fall through to accept task
+            }
         }
 
         // Accept task
@@ -237,13 +325,14 @@ public:
 
     /**
      * @brief Get remaining budget capacity
-     * @return Nanoseconds remaining before budget exhausted
+     * @return Nanoseconds remaining before budget exhausted (0 if over budget)
      */
     [[nodiscard]] uint64_t GetRemainingBudget() const {
-        if (totalEstimatedCostNs_ >= frameBudgetNs_) {
+        const uint64_t budgetNs = budget_.gpuTimeBudgetNs;
+        if (totalEstimatedCostNs_ >= budgetNs) {
             return 0;
         }
-        return frameBudgetNs_ - totalEstimatedCostNs_;
+        return budgetNs - totalEstimatedCostNs_;
     }
 
     /**
@@ -259,7 +348,7 @@ public:
      * @return true if total cost >= frame budget
      */
     [[nodiscard]] bool IsBudgetExhausted() const {
-        return totalEstimatedCostNs_ >= frameBudgetNs_;
+        return totalEstimatedCostNs_ >= budget_.gpuTimeBudgetNs;
     }
 
     /**
@@ -297,9 +386,10 @@ private:
     std::vector<TaskSlot> slots_;
     uint32_t activeCount_ = 0;
     uint64_t totalEstimatedCostNs_ = 0;
-    uint64_t frameBudgetNs_ = 16'666'666;  // Default: 16.67ms (60 FPS target)
+    TaskBudget budget_{16'666'666, BudgetOverflowMode::Strict};  // Default: 60 FPS strict
     uint32_t nextInsertionOrder_ = 0;
     bool needsSort_ = false;
+    WarningCallback warningCallback_;  // Optional: for lenient mode warnings
 };
 
 // Forward declaration for explicit instantiation

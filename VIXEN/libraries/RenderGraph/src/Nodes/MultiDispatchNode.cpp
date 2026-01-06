@@ -47,18 +47,64 @@ size_t MultiDispatchNode::QueueDispatch(DispatchPass&& pass) {
     }
 
     // Check queue limit
-    if (dispatchQueue_.size() >= MultiDispatchNodeConfig::MAX_DISPATCHES_PER_FRAME) {
+    if (taskQueue_.GetQueuedCount() >= MultiDispatchNodeConfig::MAX_DISPATCHES_PER_FRAME) {
         throw std::runtime_error("[MultiDispatchNode::QueueDispatch] Queue full (" +
             std::to_string(MultiDispatchNodeConfig::MAX_DISPATCHES_PER_FRAME) + " max)");
     }
 
-    size_t index = dispatchQueue_.size();
-    dispatchQueue_.push_back(std::move(pass));
+    // Sprint 6.2: Use EnqueueUnchecked for backward compatibility (no budget checking)
+    // Zero-cost estimate = always accepted regardless of budget
+    size_t index = taskQueue_.GetQueuedCount();
+    std::string debugName = pass.debugName;  // Capture before move
+
+    TaskQueue<DispatchPass>::TaskSlot slot;
+    slot.data = std::move(pass);
+    slot.estimatedCostNs = 0;  // Zero cost = backward compatible
+    slot.priority = 128;        // Default priority
+
+    taskQueue_.EnqueueUnchecked(std::move(slot));
 
     NODE_LOG_DEBUG("[MultiDispatchNode] Queued dispatch #" + std::to_string(index) +
-        ": " + dispatchQueue_.back().debugName);
+        ": " + debugName);
 
     return index;
+}
+
+bool MultiDispatchNode::TryQueueDispatch(DispatchPass&& pass, uint64_t estimatedCostNs, uint8_t priority) {
+    // Validate pass
+    if (!pass.IsValid()) {
+        NODE_LOG_ERROR("[MultiDispatchNode::TryQueueDispatch] Invalid dispatch pass: " +
+            (pass.debugName.empty() ? "(unnamed)" : pass.debugName));
+        return false;
+    }
+
+    // Check queue limit
+    if (taskQueue_.GetQueuedCount() >= MultiDispatchNodeConfig::MAX_DISPATCHES_PER_FRAME) {
+        NODE_LOG_ERROR("[MultiDispatchNode::TryQueueDispatch] Queue full (" +
+            std::to_string(MultiDispatchNodeConfig::MAX_DISPATCHES_PER_FRAME) + " max)");
+        return false;
+    }
+
+    // Sprint 6.2: Budget-aware enqueue
+    std::string debugName = pass.debugName;  // Capture before move
+
+    TaskQueue<DispatchPass>::TaskSlot slot;
+    slot.data = std::move(pass);
+    slot.estimatedCostNs = estimatedCostNs;
+    slot.priority = priority;
+
+    bool accepted = taskQueue_.TryEnqueue(std::move(slot));
+
+    if (accepted) {
+        NODE_LOG_DEBUG("[MultiDispatchNode] Budget-aware enqueue: " + debugName +
+            " (cost=" + std::to_string(estimatedCostNs) + "ns, priority=" + std::to_string(priority) + ")");
+    } else {
+        NODE_LOG_WARNING("[MultiDispatchNode] Budget-aware enqueue rejected: " + debugName +
+            " (cost=" + std::to_string(estimatedCostNs) + "ns, remaining=" +
+            std::to_string(taskQueue_.GetRemainingBudget()) + "ns)");
+    }
+
+    return accepted;
 }
 
 void MultiDispatchNode::QueueBarrier(DispatchBarrier&& barrier) {
@@ -68,14 +114,14 @@ void MultiDispatchNode::QueueBarrier(DispatchBarrier&& barrier) {
     }
 
     // Barrier applies before the next dispatch (current queue size)
-    size_t insertIndex = dispatchQueue_.size();
+    size_t insertIndex = taskQueue_.GetQueuedCount();
     barrierQueue_.emplace_back(insertIndex, std::move(barrier));
 
     NODE_LOG_DEBUG("[MultiDispatchNode] Queued barrier at index " + std::to_string(insertIndex));
 }
 
 void MultiDispatchNode::ClearQueue() {
-    dispatchQueue_.clear();
+    taskQueue_.Clear();          // Sprint 6.2: Clear TaskQueue
     barrierQueue_.clear();
     groupedDispatches_.clear();  // Sprint 6.1: Clear group map
     stats_ = MultiDispatchStats{};
@@ -92,8 +138,24 @@ void MultiDispatchNode::SetupImpl(TypedSetupContext& ctx) {
     autoBarriers_ = GetParameterValue<bool>(MultiDispatchNodeConfig::AUTO_BARRIERS, true);
     enableTimestamps_ = GetParameterValue<bool>(MultiDispatchNodeConfig::ENABLE_TIMESTAMPS, false);
 
+    // Sprint 6.2: Read budget configuration parameters
+    // Note: Using uint32_t as parameter system doesn't support uint64_t
+    // Max value ~4.29s is sufficient for frame budgets
+    uint32_t frameBudgetNs = GetParameterValue<uint32_t>(
+        MultiDispatchNodeConfig::FRAME_BUDGET_NS, 16'666'666u);
+    std::string overflowModeStr = GetParameterValue<std::string>(
+        MultiDispatchNodeConfig::BUDGET_OVERFLOW_MODE, "strict");
+
+    BudgetOverflowMode mode = (overflowModeStr == "lenient")
+        ? BudgetOverflowMode::Lenient
+        : BudgetOverflowMode::Strict;
+
+    taskQueue_.SetBudget(TaskBudget{static_cast<uint64_t>(frameBudgetNs), mode});
+
     NODE_LOG_INFO("[MultiDispatchNode] autoBarriers=" + std::to_string(autoBarriers_) +
-        ", enableTimestamps=" + std::to_string(enableTimestamps_));
+        ", enableTimestamps=" + std::to_string(enableTimestamps_) +
+        ", frameBudgetNs=" + std::to_string(frameBudgetNs) +
+        ", budgetMode=" + overflowModeStr);
 }
 
 // ============================================================================
@@ -384,9 +446,10 @@ void MultiDispatchNode::RecordDispatches(VkCommandBuffer cmdBuffer) {
             std::to_string(stats_.dispatchCount) + " total dispatches across " +
             std::to_string(groupedDispatches_.size()) + " groups");
     } else {
-        // LEGACY QUEUE-BASED DISPATCH: Process dispatchQueue_ (backward compatibility)
+        // LEGACY QUEUE-BASED DISPATCH: Process taskQueue_ (backward compatibility)
+        // Sprint 6.2: Updated to use TaskQueue with priority execution
         NODE_LOG_DEBUG("[MultiDispatchNode] Recording " +
-            std::to_string(dispatchQueue_.size()) + " queued dispatches (legacy mode)");
+            std::to_string(taskQueue_.GetQueuedCount()) + " queued dispatches (legacy mode)");
 
         // Sort barriers by insertion index
         std::sort(barrierQueue_.begin(), barrierQueue_.end(),
@@ -394,71 +457,75 @@ void MultiDispatchNode::RecordDispatches(VkCommandBuffer cmdBuffer) {
 
         size_t barrierIdx = 0;
 
-        // Record each dispatch
-        for (size_t i = 0; i < dispatchQueue_.size(); ++i) {
-            const auto& pass = dispatchQueue_[i];
+        // Sprint 6.2: Execute TaskQueue with priority-based ordering
+        size_t dispatchIndex = 0;
+        taskQueue_.ExecuteWithMetadata([&](const TaskQueue<DispatchPass>::TaskSlot& slot) {
+            const auto& pass = slot.data;
 
-        // Insert any barriers scheduled before this dispatch
-        while (barrierIdx < barrierQueue_.size() &&
-               barrierQueue_[barrierIdx].first <= i) {
-            RecordBarrier(cmdBuffer, barrierQueue_[barrierIdx].second);
-            ++barrierIdx;
-            ++stats_.barrierCount;
-        }
+            // Insert any barriers scheduled before this dispatch
+            while (barrierIdx < barrierQueue_.size() &&
+                   barrierQueue_[barrierIdx].first <= dispatchIndex) {
+                RecordBarrier(cmdBuffer, barrierQueue_[barrierIdx].second);
+                ++barrierIdx;
+                ++stats_.barrierCount;
+            }
 
-        // Insert automatic barrier between passes (if enabled and not first pass)
-        if (autoBarriers_ && i > 0) {
-            InsertAutoBarrier(cmdBuffer);
-            ++stats_.barrierCount;
-        }
+            // Insert automatic barrier between passes (if enabled and not first pass)
+            if (autoBarriers_ && dispatchIndex > 0) {
+                InsertAutoBarrier(cmdBuffer);
+                ++stats_.barrierCount;
+            }
 
-        // Bind pipeline
-        vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pass.pipeline);
+            // Bind pipeline
+            vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pass.pipeline);
 
-        // Bind descriptor sets
-        if (!pass.descriptorSets.empty()) {
-            vkCmdBindDescriptorSets(
+            // Bind descriptor sets
+            if (!pass.descriptorSets.empty()) {
+                vkCmdBindDescriptorSets(
+                    cmdBuffer,
+                    VK_PIPELINE_BIND_POINT_COMPUTE,
+                    pass.layout,
+                    pass.firstSet,
+                    static_cast<uint32_t>(pass.descriptorSets.size()),
+                    pass.descriptorSets.data(),
+                    0, nullptr
+                );
+            }
+
+            // Push constants
+            if (pass.pushConstants.has_value()) {
+                const auto& pc = pass.pushConstants.value();
+                vkCmdPushConstants(
+                    cmdBuffer,
+                    pass.layout,
+                    pc.stageFlags,
+                    pc.offset,
+                    static_cast<uint32_t>(pc.data.size()),
+                    pc.data.data()
+                );
+            }
+
+            // Dispatch
+            vkCmdDispatch(
                 cmdBuffer,
-                VK_PIPELINE_BIND_POINT_COMPUTE,
-                pass.layout,
-                pass.firstSet,
-                static_cast<uint32_t>(pass.descriptorSets.size()),
-                pass.descriptorSets.data(),
-                0, nullptr
+                pass.workGroupCount.x,
+                pass.workGroupCount.y,
+                pass.workGroupCount.z
             );
-        }
 
-        // Push constants
-        if (pass.pushConstants.has_value()) {
-            const auto& pc = pass.pushConstants.value();
-            vkCmdPushConstants(
-                cmdBuffer,
-                pass.layout,
-                pc.stageFlags,
-                pc.offset,
-                static_cast<uint32_t>(pc.data.size()),
-                pc.data.data()
-            );
-        }
+            // Update statistics
+            ++stats_.dispatchCount;
+            stats_.totalWorkGroups += pass.TotalWorkGroups();
 
-        // Dispatch
-        vkCmdDispatch(
-            cmdBuffer,
-            pass.workGroupCount.x,
-            pass.workGroupCount.y,
-            pass.workGroupCount.z
-        );
+            NODE_LOG_DEBUG("[MultiDispatchNode] Recorded dispatch #" + std::to_string(dispatchIndex) +
+                ": " + pass.debugName + " [priority=" + std::to_string(slot.priority) +
+                ", cost=" + std::to_string(slot.estimatedCostNs) + "ns] [" +
+                std::to_string(pass.workGroupCount.x) + "x" +
+                std::to_string(pass.workGroupCount.y) + "x" +
+                std::to_string(pass.workGroupCount.z) + "]");
 
-        // Update statistics
-        ++stats_.dispatchCount;
-        stats_.totalWorkGroups += pass.TotalWorkGroups();
-
-        NODE_LOG_DEBUG("[MultiDispatchNode] Recorded dispatch #" + std::to_string(i) +
-            ": " + pass.debugName + " [" +
-            std::to_string(pass.workGroupCount.x) + "x" +
-            std::to_string(pass.workGroupCount.y) + "x" +
-            std::to_string(pass.workGroupCount.z) + "]");
-    }
+            ++dispatchIndex;
+        });  // End TaskQueue::ExecuteWithMetadata lambda
 
         // Insert any remaining barriers
         while (barrierIdx < barrierQueue_.size()) {
