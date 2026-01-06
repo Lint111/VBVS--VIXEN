@@ -113,11 +113,12 @@ class NodeInstance {
 
 ### 4.3 Rendering Nodes
 
-| Node | Purpose |
-|------|---------|
-| `GeometryRenderNode` | Draw call recording |
-| `ComputeDispatchNode` | Compute shader dispatch |
-| `PresentNode` | vkQueuePresentKHR |
+| Node | Purpose | Documentation |
+|------|---------|---------------|
+| `GeometryRenderNode` | Draw call recording | - |
+| `ComputeDispatchNode` | Single compute dispatch | - |
+| **`MultiDispatchNode`** | **Multi-dispatch with group-based partitioning** | **[[MultiDispatchNode\|Sprint 6.1]]** |
+| `PresentNode` | vkQueuePresentKHR | - |
 
 ---
 

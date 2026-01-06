@@ -1,0 +1,528 @@
+---
+title: MultiDispatchNode - Group-Based Compute Dispatch
+aliases: [MultiDispatch, Group Dispatch, Batch Dispatch]
+tags: [rendergraph, compute, vulkan, sprint-6-1]
+created: 2026-01-06
+sprint: Sprint 6.1
+related:
+  - "[[RenderGraph]]"
+  - "[[../05-Progress/features/accumulation-slot-proper-design]]"
+  - "[[../05-Progress/features/variadic-modifier-api]]"
+---
+
+# MultiDispatchNode - Group-Based Compute Dispatch
+
+**Type ID:** 108
+**Sprint:** 6.1
+**Purpose:** Efficiently record multiple compute dispatches with optional group-based partitioning
+
+---
+
+## Overview
+
+`MultiDispatchNode` records multiple compute dispatches into a single command buffer. Sprint 6.1 adds **group-based dispatch**, allowing dispatches to be partitioned by group ID and processed independently with automatic barrier insertion.
+
+### Key Features
+
+- **Multiple dispatch recording** - Record N dispatches in single command buffer
+- **Group-based partitioning** (Sprint 6.1) - Partition by `groupId` for independent processing
+- **Automatic barriers** - Insert memory/execution barriers between groups
+- **Backward compatible** - Legacy `QueueDispatch()` API still works
+- **Statistics tracking** - Dispatch count, barrier count, work group totals
+
+---
+
+## API Overview
+
+### Two Usage Patterns
+
+#### Pattern 1: GROUP_INPUTS (Sprint 6.1 - Recommended)
+
+```cpp
+// Generator creates dispatch passes
+batch.Connect(passGenerator, PassGenConfig::DISPATCH_PASS,
+              multiDispatch, MultiDispatchConfig::GROUP_INPUTS,
+              GroupKey(&DispatchPass::groupId));
+```
+
+**When to use:** Multiple passes known at compile-time, need grouping
+
+#### Pattern 2: QueueDispatch() (Legacy)
+
+```cpp
+// Imperative dispatch queuing
+void MyNode::Execute() {
+    multiDispatch->QueueDispatch(pass1);
+    multiDispatch->QueueDispatch(pass2);
+}
+```
+
+**When to use:** Dynamic dispatches at runtime, no grouping needed
+
+---
+
+## Configuration Slots
+
+### Inputs
+
+| Slot | Type | Required | Purpose |
+|------|------|----------|---------|
+| `VULKAN_DEVICE_IN` | `VulkanDevice*` | ✅ | Device for command pool |
+| `COMMAND_POOL` | `VkCommandPool` | ✅ | Pool for command buffer allocation |
+| `SWAPCHAIN` | `VkSwapchainKHR` | ✅ | Swapchain for frame count |
+| `IMAGE_INDEX` | `uint32_t` | ✅ | Current frame image index |
+| `CURRENT_FRAME_INDEX` | `uint32_t` | ✅ | Current frame-in-flight index |
+| `GROUP_INPUTS` | `std::vector<DispatchPass>` | ❌ | **Sprint 6.1:** Accumulation slot for grouped passes |
+
+### Outputs
+
+| Slot | Type | Purpose |
+|------|------|---------|
+| `COMMAND_BUFFER` | `VkCommandBuffer` | Recorded command buffer with all dispatches |
+| `VULKAN_DEVICE_OUT` | `VulkanDevice*` | Passthrough for downstream nodes |
+
+---
+
+## GROUP_INPUTS Slot (Sprint 6.1)
+
+### Concept
+
+`GROUP_INPUTS` is an **accumulation slot** that collects `DispatchPass` elements from multiple sources. Each pass can have an optional `groupId` field. Passes are partitioned by group ID and processed independently.
+
+### Lifecycle
+
+**Compile-time only.** Data is read during `CompileImpl()` and cached in `groupedDispatches_` map. Use `QueueDispatch()` for per-frame dynamic dispatch.
+
+### Type Definition
+
+```cpp
+ACCUMULATION_INPUT_SLOT_V2(
+    GROUP_INPUTS,
+    std::vector<DispatchPass>,  // Container type
+    DispatchPass,                // Element type
+    5,                           // Slot index
+    SlotNullability::Optional,   // Not required
+    SlotRole::Dependency,        // Affects compile order
+    SlotStorageStrategy::Value   // Copies passes (safe for cross-frame use)
+);
+```
+
+### Storage Strategy: Value vs Reference
+
+| Strategy | Behavior | When to Use |
+|----------|----------|-------------|
+| **Value** | Copies `DispatchPass` data | Safe for cross-frame persistence (GROUP_INPUTS uses this) |
+| **Reference** | Stores pointer to source data | Source data must outlive usage |
+| **Span** | Non-owning view | Temporary iteration only |
+
+**Why Value for GROUP_INPUTS:** DispatchPass data is read once at compile-time and cached. Copying ensures source nodes can be destroyed without affecting MultiDispatchNode.
+
+---
+
+## GroupKeyModifier
+
+### Purpose
+
+Partition accumulated `DispatchPass` elements by extracting a group ID from each element.
+
+### Syntax
+
+```cpp
+batch.Connect(generator, GeneratorConfig::OUTPUT,
+              multiDispatch, MultiDispatchConfig::GROUP_INPUTS,
+              GroupKey(&DispatchPass::groupId));
+```
+
+### How It Works
+
+1. **PreValidation:** Verifies target slot is accumulation slot
+2. **Runtime (CompileImpl):** Extracts `groupId` from each `DispatchPass`
+3. **Partitioning:** Builds `std::map<uint32_t, vector<DispatchPass>>`
+4. **Execution:** Records each group independently with barriers between groups
+
+### Supported Field Types
+
+```cpp
+// Optional uint32_t (preferred)
+std::optional<uint32_t> DispatchPass::groupId;
+GroupKey(&DispatchPass::groupId);
+
+// Plain uint32_t (always has group)
+uint32_t MyStruct::groupIndex;
+GroupKey(&MyStruct::groupIndex);
+```
+
+### Current Limitation (Sprint 6.1)
+
+**GroupKeyModifier stores extractor function but doesn't use it yet.** MultiDispatchNode hard-codes extraction of `DispatchPass::groupId`. Future work will make this generic by reading the extractor from connection metadata.
+
+---
+
+## DispatchPass Structure
+
+### Definition
+
+```cpp
+struct DispatchPass {
+    // Required fields
+    VkPipeline pipeline;           ///< Compute pipeline to bind
+    VkPipelineLayout layout;       ///< Pipeline layout for binding
+    glm::uvec3 workGroupCount;     ///< Dispatch dimensions (X, Y, Z)
+
+    // Optional fields
+    std::vector<VkDescriptorSet> descriptorSets;  ///< Descriptor sets to bind
+    uint32_t firstSet = 0;                         ///< First set number
+    std::optional<PushConstantData> pushConstants; ///< Push constant data
+    std::string debugName;                         ///< Debug label
+
+    // Sprint 6.1: Group-based dispatch
+    std::optional<uint32_t> groupId;               ///< Group ID for partitioning
+
+    // Validation
+    [[nodiscard]] bool IsValid() const {
+        return pipeline != VK_NULL_HANDLE &&
+               layout != VK_NULL_HANDLE &&
+               workGroupCount.x > 0 &&
+               workGroupCount.y > 0 &&
+               workGroupCount.z > 0;
+    }
+
+    // Helpers
+    [[nodiscard]] uint64_t TotalWorkGroups() const {
+        return static_cast<uint64_t>(workGroupCount.x) *
+               workGroupCount.y * workGroupCount.z;
+    }
+};
+```
+
+### Field Descriptions
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `pipeline` | ✅ | VkPipeline handle - must not be VK_NULL_HANDLE |
+| `layout` | ✅ | VkPipelineLayout for descriptor/push constant binding |
+| `workGroupCount` | ✅ | Dispatch dimensions - all must be > 0 |
+| `descriptorSets` | ❌ | Descriptor sets to bind (if any) |
+| `firstSet` | ❌ | Starting set index (default: 0) |
+| `pushConstants` | ❌ | Push constant data (if pipeline uses it) |
+| `debugName` | ❌ | Debug label for profiling/debugging |
+| `groupId` | ❌ | Group ID for partitioned processing |
+
+### Validation
+
+`IsValid()` checks:
+- ✅ `pipeline != VK_NULL_HANDLE`
+- ✅ `layout != VK_NULL_HANDLE`
+- ✅ `workGroupCount.x > 0`
+- ✅ `workGroupCount.y > 0`
+- ✅ `workGroupCount.z > 0`
+
+Optional fields (`groupId`, `descriptorSets`, `pushConstants`) do not affect validity.
+
+---
+
+## Group-Based Dispatch Logic
+
+### Partitioning Algorithm
+
+```cpp
+// MultiDispatchNode::CompileImpl()
+std::map<uint32_t, std::vector<DispatchPass>> groupedDispatches_;
+
+for (const auto& pass : groupInputs) {
+    if (pass.groupId.has_value()) {
+        groupedDispatches_[pass.groupId.value()].push_back(pass);
+    } else {
+        groupedDispatches_[0].push_back(pass);  // Default: group 0
+    }
+}
+```
+
+### Default Group Behavior
+
+**Passes without `groupId`** (nullopt) are assigned to **group 0**.
+
+```cpp
+DispatchPass pass1{};
+pass1.groupId = std::nullopt;  // Goes to group 0
+
+DispatchPass pass2{};
+pass2.groupId = 0;  // Also goes to group 0
+
+DispatchPass pass3{};
+pass3.groupId = 5;  // Goes to group 5
+```
+
+Result: Group 0 contains `pass1` and `pass2`, Group 5 contains `pass3`.
+
+### Deterministic Ordering
+
+`std::map` guarantees **deterministic iteration order** (sorted by key).
+
+```cpp
+groupedDispatches_[5] = {...};  // Insert order: 5, 1, 10, 3
+groupedDispatches_[1] = {...};
+groupedDispatches_[10] = {...};
+groupedDispatches_[3] = {...};
+
+// Iteration order: 1, 3, 5, 10 (always sorted)
+```
+
+**Why this matters:** Ensures groups execute in predictable order for debugging and profiling.
+
+---
+
+## Execution Flow
+
+### Group-Based Path (Sprint 6.1)
+
+```cpp
+// MultiDispatchNode::ExecuteImpl()
+if (!groupedDispatches_.empty()) {
+    for (const auto& [groupId, passes] : groupedDispatches_) {
+        // Insert barrier between groups (if not first)
+        if (autoBarriers_ && !firstGroup) {
+            InsertAutoBarrier(cmdBuffer);
+        }
+
+        // Record all passes in this group
+        for (const auto& pass : passes) {
+            vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pass.pipeline);
+
+            if (!pass.descriptorSets.empty()) {
+                vkCmdBindDescriptorSets(cmdBuffer, ...);
+            }
+
+            if (pass.pushConstants.has_value()) {
+                vkCmdPushConstants(cmdBuffer, ...);
+            }
+
+            vkCmdDispatch(cmdBuffer, pass.workGroupCount.x, pass.workGroupCount.y, pass.workGroupCount.z);
+        }
+    }
+}
+```
+
+### Legacy Path (Backward Compatible)
+
+```cpp
+// MultiDispatchNode::ExecuteImpl()
+else {
+    // Use dispatchQueue_ (legacy QueueDispatch() API)
+    for (const auto& pass : dispatchQueue_) {
+        // Same recording logic as group-based
+    }
+}
+```
+
+**Fallback condition:** `groupedDispatches_.empty()` (no GROUP_INPUTS connected)
+
+---
+
+## Barrier Insertion
+
+### Automatic Barriers
+
+When `autoBarriers_` is enabled (default):
+- **Between groups:** Full memory/execution barrier
+- **Within group:** Barrier between passes
+
+### Barrier Configuration
+
+```cpp
+VkMemoryBarrier barrier{};
+barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+vkCmdPipelineBarrier(
+    cmdBuffer,
+    VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+    VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+    0, 1, &barrier, 0, nullptr, 0, nullptr
+);
+```
+
+**Purpose:** Ensures writes from previous pass/group are visible to next pass/group.
+
+---
+
+## Usage Examples
+
+### Example 1: Multi-Pass Blur
+
+```cpp
+// Generator node creates 3 dispatch passes for horizontal, vertical, and final blur
+class BlurPassGenerator : public TypedNode<BlurGenConfig> {
+    void CompileImpl(TypedCompileContext& ctx) override {
+        std::vector<DispatchPass> passes;
+
+        // Horizontal blur pass (group 0)
+        DispatchPass hBlur{};
+        hBlur.pipeline = horizontalBlurPipeline_;
+        hBlur.layout = blurLayout_;
+        hBlur.workGroupCount = {width / 16, height / 16, 1};
+        hBlur.groupId = 0;
+        hBlur.debugName = "HorizontalBlur";
+        passes.push_back(hBlur);
+
+        // Vertical blur pass (group 1)
+        DispatchPass vBlur{};
+        vBlur.pipeline = verticalBlurPipeline_;
+        vBlur.layout = blurLayout_;
+        vBlur.workGroupCount = {width / 16, height / 16, 1};
+        vBlur.groupId = 1;
+        vBlur.debugName = "VerticalBlur";
+        passes.push_back(vBlur);
+
+        // Output blur passes
+        ctx.Out(BlurGenConfig::DISPATCH_PASS) = passes;
+    }
+};
+
+// Connect to MultiDispatchNode
+batch.Connect(blurGen, BlurGenConfig::DISPATCH_PASS,
+              multiDispatch, MultiDispatchConfig::GROUP_INPUTS,
+              GroupKey(&DispatchPass::groupId));
+```
+
+**Result:**
+- Group 0: Horizontal blur (1 pass)
+- Group 1: Vertical blur (1 pass)
+- Barrier inserted between groups
+
+### Example 2: Dynamic Dispatch (Legacy)
+
+```cpp
+void MyNode::ExecuteImpl(TypedExecuteContext& ctx) {
+    auto* multiDispatch = graph->GetNode<MultiDispatchNode>("dispatcher");
+
+    // Queue dispatches dynamically
+    for (int i = 0; i < dynamicCount; ++i) {
+        DispatchPass pass{};
+        pass.pipeline = computePipelines_[i];
+        pass.layout = pipelineLayout_;
+        pass.workGroupCount = CalculateWorkGroups(i);
+        pass.debugName = "DynamicPass_" + std::to_string(i);
+
+        multiDispatch->QueueDispatch(pass);
+    }
+}
+```
+
+### Example 3: Mixed Sources
+
+```cpp
+// Multiple generators contribute to same GROUP_INPUTS
+batch.Connect(generator1, Gen1Config::PASSES,
+              multiDispatch, MultiDispatchConfig::GROUP_INPUTS,
+              GroupKey(&DispatchPass::groupId));
+
+batch.Connect(generator2, Gen2Config::PASSES,
+              multiDispatch, MultiDispatchConfig::GROUP_INPUTS,
+              GroupKey(&DispatchPass::groupId));
+```
+
+**Result:** All passes from both generators are accumulated and partitioned by `groupId`.
+
+---
+
+## Statistics
+
+### MultiDispatchStats
+
+```cpp
+struct MultiDispatchStats {
+    uint32_t dispatchCount = 0;      // Number of dispatches recorded
+    uint32_t barrierCount = 0;       // Number of barriers inserted
+    uint64_t totalWorkGroups = 0;    // Sum of all work groups
+    double recordTimeMs = 0.0;       // CPU time to record commands
+};
+```
+
+### Access
+
+```cpp
+const auto& stats = multiDispatchNode->GetStats();
+std::cout << "Recorded " << stats.dispatchCount << " dispatches\n";
+std::cout << "Inserted " << stats.barrierCount << " barriers\n";
+std::cout << "Total work groups: " << stats.totalWorkGroups << "\n";
+```
+
+---
+
+## Limitations & Future Work
+
+### Current Limitations (Sprint 6.1)
+
+1. **Hard-coded group key extraction**
+   - GroupKeyModifier stores extractor but doesn't use it
+   - MultiDispatchNode hard-codes `DispatchPass::groupId`
+   - **Future:** Generic extraction using stored function
+
+2. **No sorting within groups**
+   - Passes within a group maintain insertion order
+   - **Future:** AccumulationSortModifier (see [sort-modifier-strategy-pattern](../05-Progress/features/sort-modifier-strategy-pattern.md))
+
+3. **Fixed barrier strategy**
+   - Always inserts full memory barrier
+   - **Future:** Configurable barrier types per group
+
+### Future Enhancements
+
+**Planned for Sprint 6.2+:**
+- Per-group statistics (dispatch count, work groups per group)
+- Custom barrier strategies
+- Group-level timestamping for profiling
+- Generic group key extraction
+
+---
+
+## Best Practices
+
+### ✅ Do
+
+- **Use GROUP_INPUTS for compile-time passes** - Known passes at compile time
+- **Use QueueDispatch() for runtime passes** - Dynamic dispatch counts
+- **Always validate passes** - Call `pass.IsValid()` before queuing
+- **Use meaningful debugName** - Helps with profiling and debugging
+- **Group related passes** - Minimize barrier overhead
+- **Use deterministic group IDs** - Predictable execution order
+
+### ❌ Don't
+
+- **Don't mix GROUP_INPUTS and QueueDispatch()** - Choose one pattern per node
+- **Don't forget work group count** - Must be > 0 in all dimensions
+- **Don't assume nullopt means no group** - It means group 0
+- **Don't rely on insertion order across groups** - Use explicit group IDs
+
+---
+
+## Testing
+
+See [test_group_dispatch.cpp](../../libraries/RenderGraph/tests/test_group_dispatch.cpp) for comprehensive test coverage:
+- GroupKeyModifier validation (4 tests)
+- DispatchPass validation (5 tests)
+- Group partitioning logic (4 tests)
+- Backward compatibility (2 tests)
+- Invalid pass handling (6 tests)
+- Complex scenarios (3 tests)
+- Helper functions (2 tests)
+- Field combinations (3 tests)
+
+**Total: 36 tests, all passing (0ms execution)**
+
+---
+
+## Related Documentation
+
+- [[RenderGraph]] - Main RenderGraph documentation
+- [[../05-Progress/features/accumulation-slot-proper-design|Accumulation Slot Design]] - V2 accumulation slots
+- [[../05-Progress/features/variadic-modifier-api|Variadic Modifier API]] - Sprint 6.0.1 unified Connect()
+- [[../05-Progress/features/sort-modifier-strategy-pattern|Sort Modifier Pattern]] - Future sorting enhancement
+
+---
+
+**Last Updated:** 2026-01-06 (Sprint 6.1)
+**Status:** ✅ Implemented and tested
+**Test Coverage:** 36 unit tests, all passing
