@@ -958,6 +958,237 @@ class TimelineNode : public TypedNode<TimelineConfig> {
 
 ---
 
+## Architecture Review Findings (2026-01-07)
+
+**Status:** Architecture review complete by architecture-critic agent
+**Reviewer:** Agent a15e365
+**Decision:** GO with modifications
+
+### Critical Issues Identified
+
+1. **Context Access Pattern** (🔴 Blocker)
+   - **Issue:** Original proposal assumed `ctx.GetCapacityTracker()` exists in ExecuteContext - it doesn't
+   - **Fix:** Use member pointer pattern in MultiDispatchNode: `TimelineCapacityTracker* capacityTracker_`
+   - **Impact:** 1h to revise proposal, 0h implementation impact
+
+2. **GPUPerformanceLogger Duplication** (🔴 Blocker)
+   - **Issue:** Proposed functionality duplicates existing GPUPerformanceLogger (rolling stats, GPU timing, history)
+   - **Fix:** Compose GPUPerformanceLogger internally instead of duplicating code
+   - **Impact:** Saves ~8h implementation time, cleaner architecture
+
+3. **Query Management Overlap** (🟡 Major)
+   - **Issue:** Both ProfilerSystem and TimelineCapacityTracker use GPUTimestampQuery - risk of conflicts
+   - **Fix:** Create GPUQueryManager to coordinate query pool access
+   - **Impact:** +12h for new infrastructure, prevents future bugs
+
+4. **Oscillation Risk** (🟡 Major)
+   - **Issue:** Aggressive scaling (±20%) with 2-frame GPU latency can cause frame time oscillation
+   - **Fix:** Implement damped hysteresis (±10% max, 5% deadband) in Phase 1
+   - **Impact:** +2h Phase 1, prevents debugging unstable behavior later
+
+### User Decisions
+
+**Date:** 2026-01-07
+**Approach:**
+- ✅ Compose GPUPerformanceLogger (reuse existing timing infrastructure)
+- ✅ Create GPUQueryManager (shared query pool coordinator)
+- ✅ Include damped hysteresis in Phase 1 (safer default behavior)
+- ✅ Thorough implementation (100h total, includes comprehensive testing)
+
+### Key Architecture Changes
+
+| Original Proposal | Revised Design | Rationale |
+|-------------------|----------------|-----------|
+| Direct GPU timestamp management | Compose GPUPerformanceLogger | Reuses existing rolling stats, history tracking |
+| Separate query pool per system | GPUQueryManager coordination | Prevents query index conflicts |
+| Context access: `ctx.GetCapacityTracker()` | Member pointer: `capacityTracker_` | ExecuteContext doesn't support custom accessors |
+| ±20% task count scaling | ±10% damped with 5% deadband | Prevents oscillation with 2-frame latency |
+| 80h estimate | 100h revised | +12h GPUQueryManager, +8h comprehensive tests |
+
+---
+
+## Revised Implementation Plan
+
+**Total Effort:** 100 hours (was 80h)
+**Phases:** 6 (was 3)
+**New Infrastructure:** GPUQueryManager for query coordination
+
+### Phase 0: Query Infrastructure (NEW) - 12h
+
+**Motivation:** Both ProfilerSystem and TimelineCapacityTracker need GPU timestamp queries. Unify management to prevent conflicts.
+
+**Subtask 0.1: GPUQueryManager Core (8h)**
+- Create `libraries/RenderGraph/include/Core/GPUQueryManager.h`
+- Shared query pool coordinator
+- API: `AllocateQuerySlot()`, `WriteTimestamp()`, `ReadResult()`
+- Per-device, frames-in-flight aware
+- Files: GPUQueryManager.h/cpp
+- Tests: Query slot allocation, multi-consumer coordination
+
+**Subtask 0.2: Integration with Existing Systems (4h)**
+- Refactor GPUPerformanceLogger to use GPUQueryManager
+- Refactor ProfilerSystem to use GPUQueryManager
+- Verify no query index conflicts
+- Files: GPUPerformanceLogger.cpp, ProfilerSystem.cpp
+- Tests: Both systems active simultaneously
+
+### Phase 1: Core Measurement (REVISED) - 24h
+
+**Key Change:** Composes GPUPerformanceLogger instead of duplicating functionality.
+
+**Subtask 1.1: TimelineCapacityTracker Foundation (8h)**
+- Create `libraries/RenderGraph/include/Core/TimelineCapacityTracker.h`
+- DeviceTimeline, SystemTimeline structs
+- Config with hysteresis: threshold=0.90f, damping=0.1f, deadband=0.05f
+- **Compose GPUPerformanceLogger** for timing (delegation, not duplication)
+- BeginFrame/EndFrame lifecycle
+- Files: TimelineCapacityTracker.h/cpp
+- Tests: Frame lifecycle, configuration
+
+**Subtask 1.2: Measurement Recording (6h)**
+- RecordGPUTime() delegates to GPUPerformanceLogger
+- RecordCPUTime() uses Timer utility
+- Accumulation into DeviceTimeline.measuredNs
+- Compute utilization, remainingNs
+- Files: TimelineCapacityTracker.cpp
+- Tests: Measurement accumulation, utilization calculation
+
+**Subtask 1.3: History & Statistics (6h)**
+- Rolling history deque (configurable depth, max 300 frames)
+- GetAverageGPUUtilization(), GetLastFrameUtilization()
+- GetBottleneck() identification (GPU/CPU/Transfer)
+- Files: TimelineCapacityTracker.cpp
+- Tests: History tracking, bottleneck detection
+
+**Subtask 1.4: Damped Hysteresis System (4h)**
+- ComputeTaskCountScale() with proportional control
+- Deadband (±5%) prevents micro-adjustments
+- Clamp to ±10% max change per frame
+- Files: TimelineCapacityTracker.cpp
+- Tests: Oscillation prevention, stability tests
+
+### Phase 2: TaskQueue Integration - 16h
+
+**Subtask 2.1: TaskQueue Extensions (6h)**
+- Add `SetCapacityTracker(TimelineCapacityTracker*)` to TaskQueue
+- Add `RecordActualCost(taskIndex, actualNs)` callback
+- Member pointer storage (raw pointer, not shared_ptr)
+- Files: TaskQueue.h, TaskQueue.cpp
+- Tests: Capacity tracker linking, actual cost recording
+
+**Subtask 2.2: MultiDispatchNode Integration (10h)**
+- Add `TimelineCapacityTracker* capacityTracker_` member (member pointer pattern)
+- Input slot: `CAPACITY_TRACKER` (Optional<TimelineCapacityTracker*>)
+- CompileImpl: Link tracker to taskQueue via `SetCapacityTracker()`
+- ExecuteImpl:
+  - Call `BeginFrame()` at frame start
+  - Record CPU timing (uses existing Timer code)
+  - Add GPU timestamp writes in `ExecuteWithMetadata` lambda
+  - Call `RecordGPUTime()` with measured GPU time
+  - Call `RecordCPUTime()` with measured CPU time
+  - Call `EndFrame()` at frame end
+- Files: MultiDispatchNode.h, MultiDispatchNode.cpp, MultiDispatchNodeConfig.h
+- Tests: GPU/CPU timing integration, capacity tracker wiring
+
+### Phase 3: Feedback Loop - 16h
+
+**Subtask 3.1: Prediction Error Tracking (8h)**
+- Track estimate vs. actual for each task
+- Compute error percentage: `(actual - estimate) / estimate`
+- Rolling average prediction error
+- GetPredictionAccuracy() API
+- Files: TimelineCapacityTracker.h/cpp
+- Tests: Error computation, accuracy tracking
+
+**Subtask 3.2: Estimate Adjustment (8h)**
+- TaskQueue receives feedback: `UpdateEstimate(taskId, newEstimateNs)`
+- Exponential moving average: `estimate = 0.8 * estimate + 0.2 * actual`
+- Only update if task executes 3+ times (stability threshold)
+- Files: TaskQueue.cpp, TimelineCapacityTracker.cpp
+- Tests: Estimate convergence, stability threshold
+
+### Phase 4: Adaptive Scheduling - 20h
+
+**Subtask 4.1: Capacity Queries (6h)**
+- `CanScheduleMoreWork()` - checks if < 90% utilized
+- `GetRecommendedTaskCount()` - applies ComputeTaskCountScale()
+- `GetSuggestedAdditionalBudget()` - returns remaining nanoseconds
+- Files: TimelineCapacityTracker.h/cpp
+- Tests: Capacity thresholds, task count recommendations
+
+**Subtask 4.2: RenderGraph Lifecycle Integration (8h)**
+- GraphLifecycleHooks PreExecute: call BeginFrame()
+- GraphLifecycleHooks PostExecute: call EndFrame()
+- RenderGraph owns/references TimelineCapacityTracker
+- Files: RenderGraph.h/cpp, GraphLifecycleHooks.cpp
+- Tests: Frame boundary integration, lifecycle correctness
+
+**Subtask 4.3: Adaptive Task Scheduling (6h)**
+- MultiDispatchNode checks `CanScheduleMoreWork()` before frame
+- If true + optional tasks available: enqueue additional passes
+- If false + over budget: skip lowest-priority tasks
+- Files: MultiDispatchNode.cpp
+- Tests: Dynamic task count, frame drop prevention
+
+### Phase 5: Documentation & Polish - 12h
+
+**Subtask 5.1: API Documentation (4h)**
+- TimelineCapacityTracker.md in Libraries/RenderGraph/
+- Integration guide with MultiDispatchNode
+- Configuration presets
+- Files: Vixen-Docs/Libraries/RenderGraph/TimelineCapacityTracker.md
+
+**Subtask 5.2: Update Related Docs (4h)**
+- Update MultiDispatchNode.md with Sprint 6.3 section
+- Update RenderGraph-System.md with capacity tracking
+- Update Production-Roadmap-2026.md
+- Files: Vixen-Docs/Libraries/MultiDispatchNode.md, etc.
+
+**Subtask 5.3: Example Usage (4h)**
+- Add capacity tracking to BenchmarkGraphFactory
+- Example: Adaptive quality scaling based on GPU capacity
+- Files: libraries/Profiler/src/BenchmarkGraphFactory.cpp
+
+---
+
+## Implementation Summary
+
+| Phase | Hours | Key Deliverables |
+|-------|-------|------------------|
+| Phase 0: Query Infrastructure | 12h | GPUQueryManager, no query conflicts |
+| Phase 1: Core Measurement | 24h | TimelineCapacityTracker with damping, composes GPUPerformanceLogger |
+| Phase 2: TaskQueue Integration | 16h | MultiDispatchNode measures GPU/CPU time via member pointer |
+| Phase 3: Feedback Loop | 16h | Prediction error tracking, estimate adjustment |
+| Phase 4: Adaptive Scheduling | 20h | Dynamic task count based on capacity |
+| Phase 5: Documentation | 12h | Complete API docs, examples |
+| **TOTAL** | **100h** | Full adaptive timeline system |
+
+### Dependencies
+
+```
+Phase 0 (GPUQueryManager)
+    ↓
+Phase 1 (Core Measurement) ← composes GPUPerformanceLogger
+    ↓
+Phase 2 (TaskQueue Integration) ← requires Phase 1 complete
+    ↓
+Phase 3 (Feedback Loop) ← requires Phase 2 data
+    ↓
+Phase 4 (Adaptive Scheduling) ← requires Phase 3 feedback
+    ↓
+Phase 5 (Documentation) ← requires all phases complete
+```
+
+### Risk Mitigation
+
+- **Frame synchronization:** Unit tests with simulated 2-frame GPU latency
+- **Oscillation:** Damped hysteresis in Phase 1, stability tests with varying workloads
+- **Query conflicts:** GPUQueryManager prevents index collisions via slot allocation
+- **Memory pressure:** History capped at 300 frames (90KB max)
+- **Backward compatibility:** TaskQueue's existing APIs unchanged, new methods are additive
+
+---
+
 ## 13. Conclusion
 
 TimelineCapacityTracker bridges the gap between static budget planning and dynamic runtime adaptation. By measuring actual execution times and learning from predictions, it enables:

@@ -129,12 +129,28 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
         throw std::runtime_error("[VoxelGridNode] COMMAND_POOL is null");
     }
 
-    // Create memory tracking logger (enabled for benchmarking, terminal output disabled)
-    memoryLogger_ = std::make_shared<GPUPerformanceLogger>("VoxelGrid_Memory", vulkanDevice, 1);
-    memoryLogger_->SetEnabled(true);  // Enabled for benchmark data collection
-    memoryLogger_->SetTerminalOutput(false);  // Disabled for clean terminal output
-    if (nodeLogger) {
-        nodeLogger->AddChild(memoryLogger_);
+    // Create GPU performance logger using centralized GPUQueryManager from VulkanDevice
+    // Sprint 6.3 Phase 0: All nodes share the same query manager to prevent slot conflicts
+    auto* queryMgrPtr = static_cast<GPUQueryManager*>(vulkanDevice->GetQueryManager());
+    if (queryMgrPtr) {
+        // Wrap raw pointer in shared_ptr with no-op deleter (VulkanDevice owns the manager)
+        auto queryManager = std::shared_ptr<GPUQueryManager>(queryMgrPtr, [](GPUQueryManager*){});
+
+        memoryLogger_ = std::make_shared<GPUPerformanceLogger>("VoxelGrid_Memory", queryManager);
+        memoryLogger_->SetEnabled(true);
+        memoryLogger_->SetTerminalOutput(false);
+
+        if (nodeLogger) {
+            nodeLogger->AddChild(memoryLogger_);
+        }
+
+        if (memoryLogger_->IsTimingSupported()) {
+            NODE_LOG_INFO("[VoxelGrid_Memory] GPU performance timing enabled");
+        } else {
+            NODE_LOG_WARNING("[VoxelGrid_Memory] GPU timing not supported on this device");
+        }
+    } else {
+        NODE_LOG_WARNING("[VoxelGrid_Memory] GPUQueryManager not available from VulkanDevice");
     }
 
     // Register VoxelSceneCacher with CashSystem (idempotent)
@@ -366,12 +382,8 @@ void VoxelGridNode::CleanupImpl(TypedCleanupContext& ctx) {
     NODE_LOG_INFO("[VoxelGridNode::CleanupImpl] Destroying octree buffers");
 
     // CRITICAL: Release GPU resources (QueryPools) BEFORE device operations.
-    // The logger object stays alive for parent log extraction, but its
-    // VkQueryPool handles must be destroyed while VkDevice is still valid.
-    if (memoryLogger_) {
-        memoryLogger_->ReleaseGPUResources();
-    }
-    LogCleanupProgress("memoryLogger GPU resources released");
+    // GPU resources (QueryPools) will be automatically released by GPUQueryManager destructor
+    LogCleanupProgress("memoryLogger GPU resources will auto-release");
 
     if (!vulkanDevice) {
         NODE_LOG_DEBUG("[VoxelGridNode::CleanupImpl] Device unavailable, skipping cleanup");

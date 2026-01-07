@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Logger.h"
-#include "GPUTimestampQuery.h"
+#include "Core/GPUQueryManager.h"
 #include <chrono>
 #include <deque>
 #include <sstream>
@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <numeric>
 #include <unordered_map>
+#include <memory>
 
 namespace Vixen::RenderGraph {
 
@@ -17,12 +18,16 @@ using namespace Vixen::Vulkan::Resources;
 /**
  * @brief GPU performance metrics logger with per-frame timing
  *
- * Tracks GPU dispatch timing and ray throughput (Mrays/sec) using per-frame query pools.
- * Properly handles multiple frames-in-flight by tracking which frame's results to read.
+ * Tracks GPU dispatch timing and ray throughput (Mrays/sec) using GPUQueryManager
+ * for coordinated query pool access. Properly handles multiple frames-in-flight.
  *
  * Usage:
  * @code
- * auto gpuLogger = std::make_shared<GPUPerformanceLogger>("RayMarching", device, 3);
+ * // Create shared query manager (typically owned by RenderGraph or Application)
+ * auto queryMgr = std::make_shared<GPUQueryManager>(device, 3, 8);
+ *
+ * // Create logger with manager
+ * auto gpuLogger = std::make_shared<GPUPerformanceLogger>("RayMarching", queryMgr);
  * nodeLogger->AddChild(gpuLogger);
  *
  * // Each frame in ExecuteImpl:
@@ -41,14 +46,13 @@ using namespace Vixen::Vulkan::Resources;
 class GPUPerformanceLogger : public Logger {
 public:
     /**
-     * @brief Construct GPU performance logger
+     * @brief Construct GPU performance logger with GPUQueryManager
      * @param name Logger name (suffixed with "_GPUPerf")
-     * @param device Vulkan device for query pools
-     * @param framesInFlight Number of frames-in-flight (typically 2-3)
+     * @param queryManager Shared query manager for coordinated GPU queries
      * @param rollingWindowSize Number of frames for rolling average (default 60)
      */
-    GPUPerformanceLogger(const std::string& name, VulkanDevice* device,
-                         uint32_t framesInFlight = 3, size_t rollingWindowSize = 60);
+    GPUPerformanceLogger(const std::string& name, std::shared_ptr<GPUQueryManager> queryManager,
+                         size_t rollingWindowSize = 60);
     ~GPUPerformanceLogger() override = default;
 
     // ========================================================================
@@ -129,19 +133,16 @@ public:
 
     void SetLogFrequency(uint32_t frames) { logFrequency_ = frames; }
     void SetPrintToTerminal(bool enable) { printToTerminal_ = enable; }
-    bool IsTimingSupported() const { return query_ && query_->IsTimestampSupported(); }
+    bool IsTimingSupported() const { return queryManager_ && queryManager_->IsTimestampSupported(); }
 
     /**
-     * @brief Release GPU resources (QueryPools) while device is still valid.
-     *
-     * Call this during cleanup phase BEFORE the VkDevice is destroyed.
-     * The logger object remains valid for log extraction, but GPU timing
-     * will no longer function after this call.
+     * @brief Get the query slot handle allocated by this logger
      */
-    void ReleaseGPUResources() { query_.reset(); }
+    GPUQueryManager::QuerySlotHandle GetQuerySlot() const { return querySlot_; }
 
 private:
-    std::unique_ptr<GPUTimestampQuery> query_;
+    std::shared_ptr<GPUQueryManager> queryManager_;
+    GPUQueryManager::QuerySlotHandle querySlot_ = GPUQueryManager::INVALID_SLOT;
 
     // Per-frame dispatch dimensions (stored when RecordDispatchEnd called)
     struct FrameDispatchInfo {

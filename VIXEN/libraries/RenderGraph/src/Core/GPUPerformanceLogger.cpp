@@ -3,24 +3,32 @@
 
 namespace Vixen::RenderGraph {
 
-GPUPerformanceLogger::GPUPerformanceLogger(const std::string& name, VulkanDevice* device,
-                                           uint32_t framesInFlight, size_t rollingWindowSize)
+GPUPerformanceLogger::GPUPerformanceLogger(const std::string& name, std::shared_ptr<GPUQueryManager> queryManager,
+                                           size_t rollingWindowSize)
     : Logger(name + "_GPUPerf", true)
+    , queryManager_(queryManager)
     , rollingWindowSize_(rollingWindowSize)
 {
-    if (device && framesInFlight > 0) {
-        query_ = std::make_unique<GPUTimestampQuery>(device, framesInFlight, 4);
-        frameDispatchInfo_.resize(framesInFlight);
+    if (queryManager_) {
+        // Allocate a query slot from the shared manager
+        querySlot_ = queryManager_->AllocateQuerySlot(name + "_GPUPerf");
 
-        if (query_->IsTimestampSupported()) {
-            Info("GPU timestamp queries enabled (period: " +
-                 std::to_string(query_->GetTimestampPeriod()) + " ns/tick, " +
-                 std::to_string(framesInFlight) + " frames-in-flight)");
+        if (querySlot_ == GPUQueryManager::INVALID_SLOT) {
+            Warning("Failed to allocate GPU query slot - GPU timing disabled");
         } else {
-            Warning("GPU timestamp queries NOT supported on this device");
+            frameDispatchInfo_.resize(queryManager_->GetFrameCount());
+
+            if (queryManager_->IsTimestampSupported()) {
+                Info("GPU timestamp queries enabled (period: " +
+                     std::to_string(queryManager_->GetTimestampPeriod()) + " ns/tick, " +
+                     std::to_string(queryManager_->GetFrameCount()) + " frames-in-flight, slot " +
+                     std::to_string(querySlot_) + ")");
+            } else {
+                Warning("GPU timestamp queries NOT supported on this device");
+            }
         }
     } else {
-        Warning("No Vulkan device provided - GPU timing disabled");
+        Warning("No GPUQueryManager provided - GPU timing disabled");
     }
 }
 
@@ -29,14 +37,15 @@ GPUPerformanceLogger::GPUPerformanceLogger(const std::string& name, VulkanDevice
 // ============================================================================
 
 void GPUPerformanceLogger::BeginFrame(VkCommandBuffer cmdBuffer, uint32_t frameIndex) {
-    if (query_) {
-        query_->ResetQueries(cmdBuffer, frameIndex);
+    if (queryManager_ && querySlot_ != GPUQueryManager::INVALID_SLOT) {
+        queryManager_->BeginFrame(cmdBuffer, frameIndex);
     }
 }
 
 void GPUPerformanceLogger::RecordDispatchStart(VkCommandBuffer cmdBuffer, uint32_t frameIndex) {
-    if (query_ && query_->IsTimestampSupported()) {
-        query_->WriteTimestamp(cmdBuffer, frameIndex, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0);
+    if (queryManager_ && querySlot_ != GPUQueryManager::INVALID_SLOT && queryManager_->IsTimestampSupported()) {
+        // Write start timestamp for this slot
+        queryManager_->WriteTimestamp(cmdBuffer, frameIndex, querySlot_, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT);
     }
 }
 
@@ -47,8 +56,9 @@ void GPUPerformanceLogger::RecordDispatchEnd(VkCommandBuffer cmdBuffer, uint32_t
         frameDispatchInfo_[frameIndex].height = dispatchHeight;
     }
 
-    if (query_ && query_->IsTimestampSupported()) {
-        query_->WriteTimestamp(cmdBuffer, frameIndex, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 1);
+    if (queryManager_ && querySlot_ != GPUQueryManager::INVALID_SLOT && queryManager_->IsTimestampSupported()) {
+        // Write end timestamp for this slot
+        queryManager_->WriteTimestamp(cmdBuffer, frameIndex, querySlot_, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
     }
 }
 
@@ -57,13 +67,13 @@ void GPUPerformanceLogger::RecordDispatchEnd(VkCommandBuffer cmdBuffer, uint32_t
 // ============================================================================
 
 void GPUPerformanceLogger::CollectResults(uint32_t frameIndex) {
-    if (!query_ || !query_->IsTimestampSupported()) {
+    if (!queryManager_ || querySlot_ == GPUQueryManager::INVALID_SLOT || !queryManager_->IsTimestampSupported()) {
         return;
     }
 
-    // Read results for this frame (timestamps were written in previous submission)
-    if (!query_->ReadResults(frameIndex)) {
-        return;  // No results ready yet (first few frames, or query unavailable)
+    // Try to read timestamps for this slot
+    if (!queryManager_->TryReadTimestamps(frameIndex, querySlot_)) {
+        return;  // No results ready yet (first few frames, or timestamps not written)
     }
 
     // Get dispatch dimensions for this frame
@@ -73,9 +83,18 @@ void GPUPerformanceLogger::CollectResults(uint32_t frameIndex) {
         height = frameDispatchInfo_[frameIndex].height;
     }
 
-    // Calculate timing
-    lastDispatchMs_ = query_->GetElapsedMs(frameIndex, 0, 1);
-    lastMraysPerSec_ = query_->CalculateMraysPerSec(frameIndex, 0, 1, width, height);
+    // Calculate timing from query manager
+    lastDispatchMs_ = queryManager_->GetElapsedMs(frameIndex, querySlot_);
+
+    // Calculate Mrays/sec
+    uint64_t elapsedNs = queryManager_->GetElapsedNs(frameIndex, querySlot_);
+    if (elapsedNs > 0 && width > 0 && height > 0) {
+        uint64_t totalRays = static_cast<uint64_t>(width) * static_cast<uint64_t>(height);
+        double elapsedSec = static_cast<double>(elapsedNs) / 1'000'000'000.0;
+        lastMraysPerSec_ = static_cast<float>(totalRays / 1'000'000.0 / elapsedSec);
+    } else {
+        lastMraysPerSec_ = 0.0f;
+    }
 
     // Update rolling statistics
     UpdateRollingStats();

@@ -116,6 +116,7 @@ set(RENDERGRAPH_CORE_HEADERS
     include/Core/ComputePerformanceLogger.h
     include/Core/FieldExtractor.h
     include/Core/GPUPerformanceLogger.h
+    include/Core/GPUQueryManager.h  # Sprint 6.3: Task #344 - Query pool coordinator
     include/Core/GraphLifecycleHooks.h
     include/Core/GraphTopology.h
     include/Core/IGraphCompilable.h
@@ -132,6 +133,7 @@ set(RENDERGRAPH_CORE_HEADERS
     include/Core/SlotTask.h
     # Note: StatefulContainer.h moved to ResourceManagement library
     include/Core/TaskQueue.h  # Sprint 6.2: Task #339 - Budget-aware task queue
+    include/Core/TimelineCapacityTracker.h  # Sprint 6.3: Task #344 - Timeline capacity tracker
     include/Core/Timer.h
     include/Core/TypedConnection.h
     include/Core/TypedNodeInstance.h
@@ -148,6 +150,7 @@ set(RENDERGRAPH_CORE_SOURCES
     # Note: Memory/Lifetime sources moved to ResourceManagement library
     # Note: ConnectionRule.cpp split into Connection/ folder
     src/Core/GPUPerformanceLogger.cpp
+    src/Core/GPUQueryManager.cpp  # Sprint 6.3: Task #344 - Query pool coordinator
     src/Core/GraphLifecycleHooks.cpp
     src/Core/GraphTopology.cpp
     src/Core/LoopManager.cpp
@@ -158,6 +161,7 @@ set(RENDERGRAPH_CORE_SOURCES
     src/Core/RenderGraph.cpp
     src/Core/ResourceDependencyTracker.cpp
     src/Core/SlotTask.cpp
+    src/Core/TimelineCapacityTracker.cpp  # Sprint 6.3: Task #344 - Timeline capacity tracker
     src/Core/TaskQueue.cpp  # Sprint 6.2: Task #339 - Template instantiations
     src/Core/Timer.cpp
 )

@@ -189,5 +189,13 @@ GW25*.pdf
 PROPOSED-PAPER-IMPROVEMENTS.md
 
 # Pre Commit generated files
-.pre-commit-review-*.md 
+.pre-commit-review-*.md
+
+# Sprint planning artifacts (should be in Obsidian/HacknPlan)
+.SPRINT-*
+SPRINT-*-CREATION-REPORT.md
+SPRINT-*-FILES.txt
+SPRINT-*-QUICK-REFERENCE.md
+.hacknplan-sprint-*.md
+.hacknplan-sprint-*.json
 

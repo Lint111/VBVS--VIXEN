@@ -279,6 +279,48 @@ public:
      */
     ResourceManagement::IMemoryAllocator* GetAllocator() const;
 
+    // ===== GPU Query Infrastructure (Sprint 6.3 Phase 0) =====
+
+    /**
+     * @brief Initialize the GPU query manager for this device
+     *
+     * Called by DeviceNode during initialization. The query manager coordinates
+     * GPU timestamp queries across multiple consumers (ProfilerSystem, nodes, etc.)
+     * to prevent query slot conflicts.
+     *
+     * @param framesInFlight Number of frames in flight (typically 2-4)
+     * @param maxConsumers Maximum number of query consumers (default 16)
+     */
+    void InitializeQueryManager(uint32_t framesInFlight, uint32_t maxConsumers = 16);
+
+    /**
+     * @brief Get the GPU query manager for this device
+     * @return Query manager pointer, or nullptr if not initialized
+     *
+     * Returns void* to avoid circular dependency (VulkanResources <-> RenderGraph).
+     * Cast to RenderGraph::GPUQueryManager* in RenderGraph code.
+     */
+    [[nodiscard]] void* GetQueryManager() const;
+
+    /**
+     * @brief Check if GPU query infrastructure is ready
+     * @return true if query manager is initialized and timestamp queries are supported
+     */
+    [[nodiscard]] bool HasQuerySupport() const;
+
+    /**
+     * @brief Internal method to set query manager (called by DeviceNode)
+     *
+     * Uses template to avoid circular dependency. DeviceNode passes GPUQueryManager
+     * which is stored as void* internally.
+     *
+     * @param manager Shared pointer to query manager
+     */
+    template<typename T>
+    void SetQueryManagerInternal(std::shared_ptr<T> manager) {
+        queryManager_ = std::static_pointer_cast<void>(manager);
+    }
+
 private:
     // Helper to append a feature struct to the pNext chain
     inline void* AppendToPNext(void** chainEnd, void* featureStruct);
@@ -298,6 +340,11 @@ private:
 
     // Update infrastructure (Sprint 5 Phase 3.5)
     std::unique_ptr<ResourceManagement::BatchedUpdater> updater_;
+
+    // GPU query infrastructure (Sprint 6.3 Phase 0)
+    // Stored as void* to avoid circular dependency (VulkanResources <-> RenderGraph)
+    // Actual type: std::shared_ptr<RenderGraph::GPUQueryManager>
+    std::shared_ptr<void> queryManager_;
 
 };
 

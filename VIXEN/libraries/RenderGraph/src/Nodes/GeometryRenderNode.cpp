@@ -104,21 +104,29 @@ void GeometryRenderNode::CompileImpl(TypedCompileContext& ctx) {
     // Phase 0.2: Semaphores now managed by FrameSyncNode (per-flight pattern)
     // No need to create per-swapchain-image semaphores anymore
 
-    // Create GPU performance logger with per-frame query pools
-    constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 4;  // Must match FrameSyncNodeConfig
-    gpuPerfLogger_ = std::make_shared<GPUPerformanceLogger>(instanceName, vulkanDevice, MAX_FRAMES_IN_FLIGHT);
-    gpuPerfLogger_->SetEnabled(true);  // Enabled for benchmark data collection
-    gpuPerfLogger_->SetLogFrequency(120);  // Log every 120 frames (~2 seconds at 60fps)
-    gpuPerfLogger_->SetPrintToTerminal(false);  // Disabled for clean terminal output
+    // Create GPU performance logger using centralized GPUQueryManager from VulkanDevice
+    // Sprint 6.3 Phase 0: All nodes share the same query manager to prevent slot conflicts
+    auto* queryMgrPtr = static_cast<GPUQueryManager*>(vulkanDevice->GetQueryManager());
+    if (queryMgrPtr) {
+        // Wrap raw pointer in shared_ptr with no-op deleter (VulkanDevice owns the manager)
+        auto queryManager = std::shared_ptr<GPUQueryManager>(queryMgrPtr, [](GPUQueryManager*){});
 
-    if (nodeLogger) {
-        nodeLogger->AddChild(gpuPerfLogger_);
-    }
+        gpuPerfLogger_ = std::make_shared<GPUPerformanceLogger>(instanceName, queryManager);
+        gpuPerfLogger_->SetEnabled(true);
+        gpuPerfLogger_->SetLogFrequency(120);
+        gpuPerfLogger_->SetPrintToTerminal(false);
 
-    if (gpuPerfLogger_->IsTimingSupported()) {
-        NODE_LOG_INFO("[GeometryRenderNode] GPU performance timing enabled");
+        if (nodeLogger) {
+            nodeLogger->AddChild(gpuPerfLogger_);
+        }
+
+        if (gpuPerfLogger_->IsTimingSupported()) {
+            NODE_LOG_INFO("[GeometryRenderNode] GPU performance timing enabled");
+        } else {
+            NODE_LOG_WARNING("[GeometryRenderNode] GPU timing not supported on this device");
+        }
     } else {
-        NODE_LOG_WARNING("[GeometryRenderNode] GPU timing not supported on this device");
+        NODE_LOG_WARNING("[GeometryRenderNode] GPUQueryManager not available from VulkanDevice");
     }
 }
 
@@ -225,10 +233,7 @@ void GeometryRenderNode::ExecuteImpl(TypedExecuteContext& ctx) {
 }
 
 void GeometryRenderNode::CleanupImpl(TypedCleanupContext& ctx) {
-    // Release GPU resources (QueryPools) while device is still valid
-    if (gpuPerfLogger_) {
-        gpuPerfLogger_->ReleaseGPUResources();
-    }
+    // GPU resources (QueryPools) will be automatically released by GPUQueryManager destructor
 
     // Free command buffers
     if (!commandBuffers.empty() && commandPool != VK_NULL_HANDLE && device) {

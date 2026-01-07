@@ -94,30 +94,59 @@ ACCUMULATION_INPUT_SLOT_V2(INPUTS, std::vector<bool>, bool, 1, ..., SlotStorageS
 
 ---
 
-## Sprint 6.3: Timeline Capacity Tracker - PENDING
+## Sprint 6.3: Timeline Capacity Tracker - READY FOR IMPLEMENTATION
 
 **Goal:** Real-time budget monitoring and capacity planning
-**Tasks:** TBD (requires collaborative workflow planning)
-**Status:** Awaiting collaborative workflow setup
+**Tasks:** Task #344 (parent) + 16 subtasks created
+**Estimated:** 100 hours across 16 subtasks (6-7 week timeline)
+**Status:** Collaborative planning complete, implementation can begin
 
-### Implementation Phases (56h)
+**Subtask Documentation:**
+- SPRINT-6-3-QUICK-REFERENCE.md (quick lookup guide)
+- .hacknplan-sprint-6-3-subtasks.md (detailed specs for HacknPlan)
+- .hacknplan-sprint-6-3-import.json (batch import format)
+- SPRINT-6-3-CREATION-REPORT.md (complete handoff docs)
 
-**Phase 1: Core Infrastructure (16h)**
-1. MultiDispatchNodeConfig - Slot configuration
-2. GroupKey Modifier - Partition data by key
-3. MultiDispatchNode - Node implementation
+### Architecture Review Complete (2026-01-07)
 
-**Phase 2: Dispatch Management (12h)**
-4. GroupDispatchContext - Per-group execution context
-5. Parallel Dispatch - Thread-safe group execution
+**Reviewer:** architecture-critic agent (a15e365)
+**Decision:** GO with modifications
+**Key Changes:**
+- Compose GPUPerformanceLogger (eliminate duplication, -8h implementation)
+- Create GPUQueryManager for query coordination (+12h new infrastructure)
+- Use member pointer pattern in MultiDispatchNode (not context accessor)
+- Include damped hysteresis in Phase 1 (±10% max, 5% deadband)
+- 6 phases total (was 3 phases)
 
-**Phase 3: Testing & Validation (16h)**
-6. Unit Tests - Core functionality
-7. Integration Tests - Real-world scenarios
+### Implementation Phases (100h)
 
-**Phase 4: Documentation (12h)**
-8. API Documentation - User guide
-9. Examples - Reference implementations
+**Phase 0: Query Infrastructure (12h) - NEW**
+1. GPUQueryManager Core (8h) - Shared query pool coordinator
+2. Integration with GPUPerformanceLogger + ProfilerSystem (4h)
+
+**Phase 1: Core Measurement (24h) - REVISED**
+1. TimelineCapacityTracker foundation with damped hysteresis (8h)
+2. Measurement recording (composes GPUPerformanceLogger) (6h)
+3. History & statistics (6h)
+4. Damped hysteresis system (±10%, 5% deadband) (4h)
+
+**Phase 2: TaskQueue Integration (16h)**
+1. TaskQueue extensions (SetCapacityTracker, RecordActualCost) (6h)
+2. MultiDispatchNode integration with member pointer (10h)
+
+**Phase 3: Feedback Loop (16h)**
+1. Prediction error tracking (8h)
+2. Estimate adjustment (exponential moving average) (8h)
+
+**Phase 4: Adaptive Scheduling (20h)**
+1. Capacity queries (CanScheduleMoreWork, GetRecommendedTaskCount) (6h)
+2. RenderGraph lifecycle integration (8h)
+3. Adaptive task scheduling (6h)
+
+**Phase 5: Documentation & Polish (12h)**
+1. API documentation (TimelineCapacityTracker.md) (4h)
+2. Update related docs (MultiDispatchNode.md, etc.) (4h)
+3. Example usage (BenchmarkGraphFactory) (4h)
 
 ### Prerequisites ✅
 - ✅ Accumulation slots (V2 API complete)

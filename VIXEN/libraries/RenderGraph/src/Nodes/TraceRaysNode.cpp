@@ -95,21 +95,29 @@ void TraceRaysNode::CompileImpl(TypedCompileContext& ctx) {
         throw std::runtime_error("[TraceRaysNode] Failed to allocate command buffers");
     }
 
-    // Create GPU performance logger with per-frame query pools
-    constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 4;  // Must match FrameSyncNodeConfig
-    gpuPerfLogger_ = std::make_shared<GPUPerformanceLogger>(instanceName, vulkanDevice_, MAX_FRAMES_IN_FLIGHT);
-    gpuPerfLogger_->SetEnabled(true);  // Enabled for benchmark data collection
-    gpuPerfLogger_->SetLogFrequency(120);  // Log every 120 frames (~2 seconds at 60fps)
-    gpuPerfLogger_->SetPrintToTerminal(false);  // Disabled for clean terminal output
+    // Create GPU performance logger using centralized GPUQueryManager from VulkanDevice
+    // Sprint 6.3 Phase 0: All nodes share the same query manager to prevent slot conflicts
+    auto* queryMgrPtr = static_cast<GPUQueryManager*>(vulkanDevice_->GetQueryManager());
+    if (queryMgrPtr) {
+        // Wrap raw pointer in shared_ptr with no-op deleter (VulkanDevice owns the manager)
+        auto queryManager = std::shared_ptr<GPUQueryManager>(queryMgrPtr, [](GPUQueryManager*){});
 
-    if (nodeLogger) {
-        nodeLogger->AddChild(gpuPerfLogger_);
-    }
+        gpuPerfLogger_ = std::make_shared<GPUPerformanceLogger>(instanceName, queryManager);
+        gpuPerfLogger_->SetEnabled(true);
+        gpuPerfLogger_->SetLogFrequency(120);
+        gpuPerfLogger_->SetPrintToTerminal(false);
 
-    if (gpuPerfLogger_->IsTimingSupported()) {
-        NODE_LOG_INFO("[TraceRaysNode] GPU performance timing enabled");
+        if (nodeLogger) {
+            nodeLogger->AddChild(gpuPerfLogger_);
+        }
+
+        if (gpuPerfLogger_->IsTimingSupported()) {
+            NODE_LOG_INFO("[TraceRaysNode] GPU performance timing enabled");
+        } else {
+            NODE_LOG_WARNING("[TraceRaysNode] GPU timing not supported on this device");
+        }
     } else {
-        NODE_LOG_WARNING("[TraceRaysNode] GPU timing not supported on this device");
+        NODE_LOG_WARNING("[TraceRaysNode] GPUQueryManager not available from VulkanDevice");
     }
 
     NODE_LOG_INFO("=== TraceRaysNode::CompileImpl COMPLETE ===");
@@ -337,11 +345,8 @@ void TraceRaysNode::CleanupImpl(TypedCleanupContext& ctx) {
     NODE_LOG_INFO("TraceRaysNode cleanup");
 
     // Release GPU resources (QueryPools) while device is still valid.
-    // Logger objects stay alive for parent log extraction, but their
-    // VkQueryPool handles must be destroyed before VkDevice cleanup.
-    if (gpuPerfLogger_) {
-        gpuPerfLogger_->ReleaseGPUResources();
-    }
+    // GPU resources (QueryPools) will be automatically released by GPUQueryManager destructor
+    // Logger object stays alive for parent log extraction.
 
     DestroyResources();
 }
