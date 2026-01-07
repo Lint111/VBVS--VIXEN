@@ -36,6 +36,9 @@
 
 namespace Vixen::RenderGraph {
 
+// Forward declarations
+class TimelineCapacityTracker;
+
 /**
  * @brief Budget-aware priority task queue
  *
@@ -362,6 +365,54 @@ public:
         slots_.reserve(capacity);
     }
 
+    // =========================================================================
+    // Sprint 6.3: Capacity Tracker Integration (Phase 2.1)
+    // =========================================================================
+
+    /**
+     * @brief Link capacity tracker for feedback loop
+     *
+     * Enables recording of actual task execution times for adaptive scheduling.
+     * TaskQueue delegates measurement recording to the tracker after execution.
+     *
+     * @param tracker Pointer to TimelineCapacityTracker (nullptr to disable)
+     */
+    void SetCapacityTracker(TimelineCapacityTracker* tracker) {
+        capacityTracker_ = tracker;
+    }
+
+    /**
+     * @brief Get linked capacity tracker
+     * @return Pointer to tracker (nullptr if not set)
+     */
+    [[nodiscard]] TimelineCapacityTracker* GetCapacityTracker() const {
+        return capacityTracker_;
+    }
+
+    /**
+     * @brief Record actual execution cost for a task (feedback loop)
+     *
+     * Called after task execution with measured GPU/CPU time.
+     * Updates capacity tracker for learning and adaptive scheduling.
+     *
+     * @param slotIndex Index of executed slot (0-based)
+     * @param actualNs Measured execution time in nanoseconds
+     */
+    void RecordActualCost(uint32_t slotIndex, uint64_t actualNs);
+
+    /**
+     * @brief Check if task fits in measured remaining capacity
+     *
+     * Uses TimelineCapacityTracker's actual remaining budget instead of
+     * estimated budget. More accurate than TryEnqueue() if tracker is linked.
+     *
+     * Falls back to estimate-based check if no tracker is linked.
+     *
+     * @param slot Task slot to check
+     * @return true if task fits in actual remaining capacity
+     */
+    [[nodiscard]] bool CanEnqueueWithMeasuredBudget(const TaskSlot& slot) const;
+
 private:
     /**
      * @brief Sort tasks by priority (descending), stable for equal priorities
@@ -390,6 +441,9 @@ private:
     uint32_t nextInsertionOrder_ = 0;
     bool needsSort_ = false;
     WarningCallback warningCallback_;  // Optional: for lenient mode warnings
+
+    // Sprint 6.3: Capacity tracker integration (Phase 2.1)
+    TimelineCapacityTracker* capacityTracker_ = nullptr;  // Optional: for feedback loop
 };
 
 // Forward declaration for explicit instantiation

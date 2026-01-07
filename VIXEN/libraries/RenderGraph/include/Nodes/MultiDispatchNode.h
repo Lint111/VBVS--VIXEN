@@ -4,12 +4,15 @@
 #include "Core/NodeType.h"
 #include "Core/NodeLogging.h"
 #include "Core/TaskQueue.h"  // Sprint 6.2: Task #341
+#include "Core/GPUQueryManager.h"  // Sprint 6.3: Phase 2.2
+#include "Core/TimelineCapacityTracker.h"  // Sprint 6.3: Phase 2.2
 #include "State/StatefulContainer.h"
 #include "Data/DispatchPass.h"
 #include "Data/Nodes/MultiDispatchNodeConfig.h"
 
 #include <vector>
 #include <map>  // Sprint 6.1: For groupedDispatches_ (deterministic ordering)
+#include <memory>  // Sprint 6.3: For shared_ptr
 
 namespace Vixen::RenderGraph {
 
@@ -165,6 +168,47 @@ public:
      */
     [[nodiscard]] uint64_t GetRemainingBudget() const { return taskQueue_.GetRemainingBudget(); }
 
+    /**
+     * @brief Set GPU query manager for timing measurements (Phase 2.2)
+     *
+     * Links query manager for timestamp-based GPU timing. Must be set before
+     * SetupImpl to allocate query slots.
+     *
+     * @param queryManager Shared pointer to GPUQueryManager
+     */
+    void SetGPUQueryManager(std::shared_ptr<GPUQueryManager> queryManager) {
+        queryManager_ = std::move(queryManager);
+    }
+
+    /**
+     * @brief Set capacity tracker for feedback loop (Phase 2.2)
+     *
+     * Links TimelineCapacityTracker for recording actual GPU times and
+     * feeding measurements back to TaskQueue for adaptive scheduling.
+     *
+     * @param tracker Pointer to TimelineCapacityTracker (must outlive this node)
+     */
+    void SetCapacityTracker(TimelineCapacityTracker* tracker) {
+        capacityTracker_ = tracker;
+        taskQueue_.SetCapacityTracker(tracker);
+    }
+
+    /**
+     * @brief Get GPU query manager
+     * @return Pointer to GPUQueryManager, or nullptr if not set
+     */
+    [[nodiscard]] GPUQueryManager* GetGPUQueryManager() const {
+        return queryManager_.get();
+    }
+
+    /**
+     * @brief Get capacity tracker
+     * @return Pointer to TimelineCapacityTracker, or nullptr if not set
+     */
+    [[nodiscard]] TimelineCapacityTracker* GetCapacityTracker() const {
+        return capacityTracker_;
+    }
+
 protected:
     // =========================================================================
     // NODE LIFECYCLE
@@ -224,6 +268,19 @@ private:
 
     // Statistics
     MultiDispatchStats stats_;
+
+    // Sprint 6.3: Phase 2.2 - GPU timing integration
+    std::shared_ptr<GPUQueryManager> queryManager_;
+    GPUQueryManager::QuerySlotHandle querySlot_ = GPUQueryManager::INVALID_SLOT;
+    TimelineCapacityTracker* capacityTracker_ = nullptr;  // External ownership
+
+    // Per-frame timing data
+    struct FrameTimingData {
+        uint32_t frameIndex = UINT32_MAX;
+        bool timestampsWritten = false;
+        uint64_t lastMeasuredGPUTimeNs = 0;
+    };
+    StatefulContainer<FrameTimingData> frameTimingData_;
 };
 
 } // namespace Vixen::RenderGraph

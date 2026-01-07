@@ -217,6 +217,24 @@ void MultiDispatchNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[MultiDispatchNode::CompileImpl] Allocated " +
         std::to_string(imageCount) + " command buffers successfully");
 
+    // Sprint 6.3: Phase 2.2 - Allocate GPU query slot for timing
+    if (queryManager_ && querySlot_ == GPUQueryManager::INVALID_SLOT) {
+        querySlot_ = queryManager_->AllocateQuerySlot("MultiDispatchNode_" + GetInstanceName());
+        if (querySlot_ != GPUQueryManager::INVALID_SLOT) {
+            NODE_LOG_INFO("[MultiDispatchNode::CompileImpl] Allocated GPU query slot: " +
+                std::to_string(querySlot_));
+        } else {
+            NODE_LOG_WARNING("[MultiDispatchNode::CompileImpl] Failed to allocate GPU query slot");
+        }
+    }
+
+    // Initialize per-frame timing data
+    frameTimingData_.resize(imageCount);
+    for (uint32_t i = 0; i < imageCount; ++i) {
+        frameTimingData_[i] = FrameTimingData{};
+        frameTimingData_.MarkDirty(i);
+    }
+
     // Sprint 6.1: Read GROUP_INPUTS and partition by group ID
     // GROUP_INPUTS is optional - if not connected, groupedDispatches_ stays empty
     // and we fall back to QueueDispatch() API
@@ -279,6 +297,45 @@ void MultiDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
         return;
     }
 
+    // Sprint 6.3: Phase 2.2 - Read previous frame's timing results
+    if (queryManager_ && querySlot_ != GPUQueryManager::INVALID_SLOT) {
+        auto& timingData = frameTimingData_.GetValue(imageIndex);
+
+        // If timestamps were written in previous frame for this image, read results
+        if (timingData.timestampsWritten && timingData.frameIndex != UINT32_MAX) {
+            uint32_t framesInFlight = queryManager_->GetFrameCount();
+            uint32_t queryFrameIndex = timingData.frameIndex % framesInFlight;
+
+            if (queryManager_->TryReadTimestamps(queryFrameIndex, querySlot_)) {
+                uint64_t elapsedNs = queryManager_->GetElapsedNs(queryFrameIndex, querySlot_);
+                timingData.lastMeasuredGPUTimeNs = elapsedNs;
+
+                // Record to TimelineCapacityTracker
+                if (capacityTracker_) {
+                    capacityTracker_->RecordGPUTime(elapsedNs);
+                    NODE_LOG_DEBUG("[MultiDispatchNode] Recorded GPU time: " +
+                        std::to_string(elapsedNs / 1'000'000) + "ms to TimelineCapacityTracker");
+                }
+
+                // Record to TaskQueue for all executed tasks
+                // Average the measured time across all tasks (simplified feedback)
+                size_t taskCount = stats_.dispatchCount > 0 ? stats_.dispatchCount : 1;
+                uint64_t avgCostPerTask = elapsedNs / taskCount;
+
+                for (size_t i = 0; i < taskCount; ++i) {
+                    taskQueue_.RecordActualCost(i, avgCostPerTask);
+                }
+
+                NODE_LOG_DEBUG("[MultiDispatchNode] Recorded " + std::to_string(taskCount) +
+                    " task costs (avg " + std::to_string(avgCostPerTask / 1'000'000) + "ms each)");
+            }
+        }
+
+        // Mark as not written yet for this frame
+        timingData.timestampsWritten = false;
+        timingData.frameIndex = currentFrameIndex;
+    }
+
     // Reset statistics
     stats_ = MultiDispatchStats{};
 
@@ -288,8 +345,32 @@ void MultiDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // Measure recording time
     auto startTime = std::chrono::high_resolution_clock::now();
 
+    // Sprint 6.3: Phase 2.2 - Write start timestamp if query manager available
+    if (queryManager_ && querySlot_ != GPUQueryManager::INVALID_SLOT) {
+        uint32_t framesInFlight = queryManager_->GetFrameCount();
+        uint32_t queryFrameIndex = currentFrameIndex % framesInFlight;
+
+        // Begin frame and write start timestamp
+        queryManager_->BeginFrame(cmdBuffer, queryFrameIndex);
+        queryManager_->WriteTimestamp(cmdBuffer, queryFrameIndex, querySlot_,
+            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT);
+    }
+
     // Record all queued dispatches
     RecordDispatches(cmdBuffer);
+
+    // Sprint 6.3: Phase 2.2 - Write end timestamp
+    if (queryManager_ && querySlot_ != GPUQueryManager::INVALID_SLOT) {
+        uint32_t framesInFlight = queryManager_->GetFrameCount();
+        uint32_t queryFrameIndex = currentFrameIndex % framesInFlight;
+
+        queryManager_->WriteTimestamp(cmdBuffer, queryFrameIndex, querySlot_,
+            VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
+
+        // Mark that timestamps were written for this frame
+        auto& timingData = frameTimingData_.GetValue(imageIndex);
+        timingData.timestampsWritten = true;
+    }
 
     auto endTime = std::chrono::high_resolution_clock::now();
     stats_.recordTimeMs = std::chrono::duration<double, std::milli>(
@@ -599,6 +680,13 @@ void MultiDispatchNode::RecordBarrier(
 
 void MultiDispatchNode::CleanupImpl(TypedCleanupContext& ctx) {
     NODE_LOG_INFO("[MultiDispatchNode::CleanupImpl] Cleaning up resources");
+
+    // Sprint 6.3: Phase 2.2 - Free GPU query slot
+    if (queryManager_ && querySlot_ != GPUQueryManager::INVALID_SLOT) {
+        queryManager_->FreeQuerySlot(querySlot_);
+        querySlot_ = GPUQueryManager::INVALID_SLOT;
+        NODE_LOG_INFO("[MultiDispatchNode::CleanupImpl] Freed GPU query slot");
+    }
 
     // Clear queues
     ClearQueue();

@@ -16,6 +16,7 @@
 #include <limits>
 
 #include "Core/TaskQueue.h"
+#include "Core/TimelineCapacityTracker.h"
 #include "Data/TaskBudget.h"
 #include "Data/DispatchPass.h"
 
@@ -393,4 +394,176 @@ TEST_F(TaskQueueTest, ExecuteWithMetadataProvidesCostInformation) {
     ASSERT_EQ(executedCosts.size(), 2u);
     EXPECT_EQ(executedCosts[0], 100'000u);  // Priority 255 first
     EXPECT_EQ(executedCosts[1], 200'000u);  // Priority 128 second
+}
+
+// ============================================================================
+// SPRINT 6.3: CAPACITY TRACKER INTEGRATION (PHASE 2.1)
+// ============================================================================
+
+TEST_F(TaskQueueTest, CapacityTrackerLinking) {
+    TestQueue queue;
+    TimelineCapacityTracker tracker;
+
+    // Initially no tracker
+    EXPECT_EQ(queue.GetCapacityTracker(), nullptr);
+
+    // Link tracker
+    queue.SetCapacityTracker(&tracker);
+    EXPECT_EQ(queue.GetCapacityTracker(), &tracker);
+
+    // Unlink tracker
+    queue.SetCapacityTracker(nullptr);
+    EXPECT_EQ(queue.GetCapacityTracker(), nullptr);
+}
+
+TEST_F(TaskQueueTest, RecordActualCostWithoutTracker) {
+    TestQueue queue;
+    queue.SetFrameBudget(10'000'000);
+
+    auto slot = CreateSlot(1'000'000);
+    queue.TryEnqueue(std::move(slot));
+
+    // Should not crash without tracker
+    queue.RecordActualCost(0, 500'000);
+}
+
+TEST_F(TaskQueueTest, RecordActualCostWithTracker) {
+    TestQueue queue;
+    TimelineCapacityTracker tracker;
+    queue.SetFrameBudget(16'666'666);
+    queue.SetCapacityTracker(&tracker);
+
+    tracker.BeginFrame();
+
+    // Enqueue and record actual cost
+    auto slot = CreateSlot(2'000'000);  // Estimated: 2ms
+    queue.TryEnqueue(std::move(slot));
+
+    // Record actual execution time
+    queue.RecordActualCost(0, 1'500'000);  // Actual: 1.5ms
+
+    // Verify tracker received the measurement
+    const auto& timeline = tracker.GetCurrentTimeline();
+    EXPECT_EQ(timeline.gpuQueues[0].measuredNs, 1'500'000);
+    EXPECT_EQ(timeline.gpuQueues[0].taskCount, 1);
+}
+
+TEST_F(TaskQueueTest, RecordActualCostInvalidIndex) {
+    TestQueue queue;
+    TimelineCapacityTracker tracker;
+    queue.SetCapacityTracker(&tracker);
+
+    tracker.BeginFrame();
+
+    // Record with invalid index (no tasks enqueued)
+    queue.RecordActualCost(0, 1'000'000);  // Should not crash
+
+    // Verify tracker did not receive invalid measurement
+    const auto& timeline = tracker.GetCurrentTimeline();
+    EXPECT_EQ(timeline.gpuQueues[0].measuredNs, 0);
+}
+
+TEST_F(TaskQueueTest, CanEnqueueWithMeasuredBudgetNoTracker) {
+    TestQueue queue;
+    queue.SetFrameBudget(10'000'000);  // 10ms budget
+
+    // Without tracker, falls back to estimate-based check
+    auto slot1 = CreateSlot(5'000'000);  // 5ms
+    EXPECT_TRUE(queue.CanEnqueueWithMeasuredBudget(slot1));
+
+    // Enqueue first task
+    queue.TryEnqueue(std::move(slot1));
+
+    // Check second task (would exceed budget)
+    auto slot2 = CreateSlot(6'000'000);  // 6ms
+    EXPECT_FALSE(queue.CanEnqueueWithMeasuredBudget(slot2));  // 5ms + 6ms > 10ms
+}
+
+TEST_F(TaskQueueTest, CanEnqueueWithMeasuredBudgetWithTracker) {
+    TestQueue queue;
+    TimelineCapacityTracker tracker;
+    queue.SetFrameBudget(16'666'666);  // 16.67ms budget
+    queue.SetCapacityTracker(&tracker);
+
+    tracker.BeginFrame();
+
+    // Simulate actual GPU usage (8ms consumed)
+    tracker.RecordGPUTime(8'000'000);
+
+    // Check if we can enqueue a 5ms task
+    auto slot1 = CreateSlot(5'000'000);  // 5ms
+    EXPECT_TRUE(queue.CanEnqueueWithMeasuredBudget(slot1));  // 8ms + 5ms = 13ms < 16.67ms
+
+    // Check if we can enqueue a 10ms task
+    auto slot2 = CreateSlot(10'000'000);  // 10ms
+    EXPECT_FALSE(queue.CanEnqueueWithMeasuredBudget(slot2));  // 8ms + 10ms = 18ms > 16.67ms
+}
+
+TEST_F(TaskQueueTest, CanEnqueueWithMeasuredBudgetLenientMode) {
+    TestQueue queue;
+    TimelineCapacityTracker tracker;
+
+    TaskBudget budget(10'000'000, BudgetOverflowMode::Lenient);
+    queue.SetBudget(budget);
+    queue.SetCapacityTracker(&tracker);
+
+    tracker.BeginFrame();
+
+    // Consume all budget
+    tracker.RecordGPUTime(10'000'000);
+
+    // In lenient mode, should still accept tasks
+    auto slot = CreateSlot(5'000'000);
+    EXPECT_TRUE(queue.CanEnqueueWithMeasuredBudget(slot));
+}
+
+TEST_F(TaskQueueTest, CapacityTrackerFeedbackLoop) {
+    TestQueue queue;
+    TimelineCapacityTracker tracker;
+    queue.SetFrameBudget(16'666'666);
+    queue.SetCapacityTracker(&tracker);
+
+    tracker.BeginFrame();
+
+    // Enqueue 3 tasks
+    queue.TryEnqueue(CreateSlot(2'000'000, 255));
+    queue.TryEnqueue(CreateSlot(3'000'000, 200));
+    queue.TryEnqueue(CreateSlot(1'000'000, 100));
+
+    // Execute and record actual costs
+    uint32_t slotIndex = 0;
+    queue.ExecuteWithMetadata([&](const TestSlot& slot) {
+        // Simulate actual execution being slightly different from estimate
+        uint64_t actualCost = slot.estimatedCostNs + 100'000;  // +0.1ms overhead
+        queue.RecordActualCost(slotIndex++, actualCost);
+    });
+
+    // Verify all measurements recorded
+    const auto& timeline = tracker.GetCurrentTimeline();
+    // Total: (2+0.1) + (3+0.1) + (1+0.1) = 6.3ms
+    EXPECT_EQ(timeline.gpuQueues[0].measuredNs, 6'300'000);
+    EXPECT_EQ(timeline.gpuQueues[0].taskCount, 3);
+}
+
+TEST_F(TaskQueueTest, MeasuredBudgetMoreAccurateThanEstimate) {
+    TestQueue queue;
+    TimelineCapacityTracker tracker;
+    queue.SetFrameBudget(10'000'000);  // 10ms budget
+    queue.SetCapacityTracker(&tracker);
+
+    tracker.BeginFrame();
+
+    // Estimate says 8ms used, but actual was only 5ms
+    auto slot1 = CreateSlot(8'000'000);  // Estimated: 8ms
+    queue.TryEnqueue(std::move(slot1));
+    queue.RecordActualCost(0, 5'000'000);  // Actual: 5ms
+
+    // Check if we can enqueue a 4ms task
+    auto slot2 = CreateSlot(4'000'000);  // 4ms
+
+    // With measured budget: 5ms + 4ms = 9ms < 10ms ✅
+    EXPECT_TRUE(queue.CanEnqueueWithMeasuredBudget(slot2));
+
+    // Without measured budget (estimate-based): 8ms + 4ms = 12ms > 10ms ❌
+    EXPECT_FALSE(queue.GetRemainingBudget() >= 4'000'000);
 }

@@ -20,6 +20,7 @@
 #include <algorithm>
 
 #include "Core/TaskQueue.h"
+#include "Core/TimelineCapacityTracker.h"  // Sprint 6.3: Phase 2.2
 #include "Data/TaskBudget.h"
 #include "Data/DispatchPass.h"
 
@@ -451,4 +452,240 @@ TEST_F(MultiDispatchIntegration, MultipleWarningsInLenientMode) {
     }
 
     EXPECT_EQ(warningCount, 5) << "Callback fires once per over-budget task";
+}
+
+// ============================================================================
+// PHASE 2.2: TIMELINE CAPACITY TRACKER INTEGRATION TESTS
+// ============================================================================
+
+/**
+ * @brief Test: TimelineCapacityTracker can be linked to TaskQueue
+ *
+ * Validates that SetCapacityTracker() correctly links the tracker
+ * and GetCapacityTracker() returns the same pointer.
+ */
+TEST_F(MultiDispatchIntegration, LinkCapacityTracker) {
+    DispatchQueue queue;
+    TimelineCapacityTracker tracker;
+
+    // Initially no tracker linked
+    EXPECT_EQ(queue.GetCapacityTracker(), nullptr);
+
+    // Link tracker
+    queue.SetCapacityTracker(&tracker);
+    EXPECT_EQ(queue.GetCapacityTracker(), &tracker);
+
+    // Unlink tracker
+    queue.SetCapacityTracker(nullptr);
+    EXPECT_EQ(queue.GetCapacityTracker(), nullptr);
+}
+
+/**
+ * @brief Test: RecordActualCost with linked tracker
+ *
+ * Validates that RecordActualCost() delegates to TimelineCapacityTracker
+ * when a tracker is linked.
+ */
+TEST_F(MultiDispatchIntegration, RecordActualCostWithTracker) {
+    DispatchQueue queue;
+    TimelineCapacityTracker tracker;
+    tracker.BeginFrame();
+
+    queue.SetCapacityTracker(&tracker);
+    queue.SetBudget(BudgetPresets::FPS60_Strict);
+
+    // Enqueue tasks
+    SimulateTryQueueDispatch(queue, CreateValidDispatch("Pass1"), 2'000'000);
+    SimulateTryQueueDispatch(queue, CreateValidDispatch("Pass2"), 3'000'000);
+
+    // Record actual costs (simulating GPU measurements)
+    queue.RecordActualCost(0, 1'500'000);  // Pass1 faster than estimate
+    queue.RecordActualCost(1, 4'000'000);  // Pass2 slower than estimate
+
+    // Verify tracker received measurements
+    tracker.EndFrame();
+    const auto& timeline = tracker.GetCurrentTimeline();
+
+    EXPECT_GT(timeline.gpuQueues[0].measuredNs, 0) << "Tracker should have recorded GPU time";
+}
+
+/**
+ * @brief Test: RecordActualCost without tracker (safe no-op)
+ *
+ * Validates that RecordActualCost() safely no-ops when no tracker is linked.
+ */
+TEST_F(MultiDispatchIntegration, RecordActualCostWithoutTracker) {
+    DispatchQueue queue;
+    queue.SetBudget(BudgetPresets::FPS60_Strict);
+
+    SimulateTryQueueDispatch(queue, CreateValidDispatch("Pass1"), 2'000'000);
+
+    // Should not crash without tracker
+    EXPECT_NO_THROW(queue.RecordActualCost(0, 1'500'000));
+}
+
+/**
+ * @brief Test: RecordActualCost with invalid slot index
+ *
+ * Validates that RecordActualCost() handles invalid indices gracefully.
+ */
+TEST_F(MultiDispatchIntegration, RecordActualCostInvalidIndex) {
+    DispatchQueue queue;
+    TimelineCapacityTracker tracker;
+    tracker.BeginFrame();
+
+    queue.SetCapacityTracker(&tracker);
+    queue.SetBudget(BudgetPresets::FPS60_Strict);
+
+    SimulateTryQueueDispatch(queue, CreateValidDispatch("Pass1"), 2'000'000);
+
+    // Invalid index should not crash
+    EXPECT_NO_THROW(queue.RecordActualCost(999, 1'000'000));
+
+    tracker.EndFrame();
+}
+
+/**
+ * @brief Test: CanEnqueueWithMeasuredBudget vs TryEnqueue
+ *
+ * Validates that CanEnqueueWithMeasuredBudget() uses actual measured
+ * capacity while TryEnqueue() uses estimate-based capacity.
+ *
+ * Tests within the same frame - CanEnqueueWithMeasuredBudget looks at
+ * current frame's measured time from the tracker.
+ */
+TEST_F(MultiDispatchIntegration, MeasuredBudgetVsEstimateBudget) {
+    DispatchQueue queue;
+    TimelineCapacityTracker tracker;
+    tracker.SetGPUBudget(16'666'666);  // 60 FPS
+    tracker.BeginFrame();
+
+    queue.SetCapacityTracker(&tracker);
+    queue.SetBudget(TaskBudget{16'666'666, BudgetOverflowMode::Strict});
+
+    // Enqueue first task with optimistic estimate
+    TaskSlot slot1;
+    slot1.data = CreateValidDispatch("Pass1");
+    slot1.estimatedCostNs = 5'000'000;  // Estimate: 5ms
+    slot1.priority = 128;
+
+    EXPECT_TRUE(queue.TryEnqueue(std::move(slot1)));
+
+    // Record actual cost (much slower than estimate - consumes most budget)
+    tracker.RecordGPUTime(14'000'000);  // Actual: 14ms (only 2.67ms remaining)
+
+    // Check second task - measured budget is more restrictive
+    TaskSlot slot2;
+    slot2.data = CreateValidDispatch("Pass2");
+    slot2.estimatedCostNs = 5'000'000;  // Estimate: 5ms
+    slot2.priority = 128;
+
+    // TryEnqueue uses estimate-based budget: 5ms used, 11.67ms remaining
+    // Would accept a 5ms task based on estimates
+    uint64_t estimateRemaining = queue.GetRemainingBudget();
+    EXPECT_GT(estimateRemaining, 5'000'000) << "Estimate-based has room";
+
+    // But CanEnqueueWithMeasuredBudget uses measured budget: 14ms used, 2.67ms remaining
+    // Should reject 5ms task in strict mode
+    EXPECT_FALSE(queue.CanEnqueueWithMeasuredBudget(slot2))
+        << "Measured budget check should fail (14ms used, only 2.67ms remaining)";
+
+    // A smaller task should still fit
+    TaskSlot slot3;
+    slot3.data = CreateValidDispatch("SmallPass");
+    slot3.estimatedCostNs = 2'000'000;  // 2ms
+    slot3.priority = 128;
+    EXPECT_TRUE(queue.CanEnqueueWithMeasuredBudget(slot3))
+        << "Small task should fit in measured remaining capacity";
+}
+
+/**
+ * @brief Test: Complete feedback loop integration
+ *
+ * Validates the single-frame feedback cycle:
+ * 1. Enqueue tasks with estimates
+ * 2. Execute tasks
+ * 3. Record actual costs via RecordActualCost
+ * 4. Tracker receives measurements and detects over-budget
+ *
+ * Note: Cross-frame adaptive learning is Phase 3 scope.
+ */
+TEST_F(MultiDispatchIntegration, CompleteFeedbackLoop) {
+    DispatchQueue queue;
+    TimelineCapacityTracker tracker;
+    tracker.SetGPUBudget(16'666'666);  // 60 FPS
+
+    queue.SetCapacityTracker(&tracker);
+    queue.SetFrameBudget(16'666'666);
+
+    // ========================================================================
+    // FRAME 1: Optimistic estimates vs actual over-budget execution
+    // ========================================================================
+    tracker.BeginFrame();
+
+    // Enqueue 3 tasks with optimistic estimates
+    EXPECT_TRUE(SimulateTryQueueDispatch(queue, CreateValidDispatch("Pass1"), 5'000'000));   // Est: 5ms
+    EXPECT_TRUE(SimulateTryQueueDispatch(queue, CreateValidDispatch("Pass2"), 5'000'000));   // Est: 5ms
+    EXPECT_TRUE(SimulateTryQueueDispatch(queue, CreateValidDispatch("Pass3"), 5'000'000));   // Est: 5ms
+
+    EXPECT_EQ(queue.GetQueuedCount(), 3);
+    EXPECT_EQ(queue.GetRemainingBudget(), 1'666'666) << "15ms estimated, 1.67ms remaining";
+
+    // Execute and record actual costs (slower than estimates)
+    auto executionOrder = ExecuteAndCollectOrder(queue);
+    EXPECT_EQ(executionOrder.size(), 3);
+
+    // Record actual costs - these are slower than estimates
+    queue.RecordActualCost(0, 6'000'000);   // Actual: 6ms (est: 5ms)
+    queue.RecordActualCost(1, 7'000'000);   // Actual: 7ms (est: 5ms)
+    queue.RecordActualCost(2, 5'500'000);   // Actual: 5.5ms (est: 5ms)
+    // Total actual: 18.5ms (over budget by 1.83ms!)
+
+    // Verify tracker received all measurements
+    const auto& timeline = tracker.GetCurrentTimeline();
+    EXPECT_EQ(timeline.gpuQueues[0].measuredNs, 18'500'000)
+        << "Tracker should sum all recorded GPU times";
+    EXPECT_EQ(timeline.gpuQueues[0].taskCount, 3) << "3 tasks recorded";
+
+    // Check remaining budget based on actual measurements
+    uint64_t measuredRemaining = tracker.GetGPURemainingBudget();
+    EXPECT_EQ(measuredRemaining, 0) << "Over budget - no remaining capacity";
+
+    tracker.EndFrame();
+
+    // Verify over-budget detection
+    EXPECT_TRUE(tracker.IsOverBudget()) << "Frame should be marked over budget";
+
+    // Verify history recorded the over-budget frame
+    const auto& history = tracker.GetHistory();
+    EXPECT_GE(history.size(), 1) << "History should have at least one frame";
+    EXPECT_GT(history.back().gpuQueues[0].measuredNs, 16'666'666)
+        << "History should record over-budget GPU time";
+}
+
+/**
+ * @brief Test: Tracker feedback without TaskQueue execution
+ *
+ * Validates that tracker can receive measurements even when TaskQueue
+ * isn't executing (e.g., direct GPU timing from MultiDispatchNode).
+ */
+TEST_F(MultiDispatchIntegration, TrackerFeedbackWithoutQueueExecution) {
+    TimelineCapacityTracker tracker;
+    tracker.SetGPUBudget(16'666'666);
+
+    tracker.BeginFrame();
+
+    // Record GPU time directly (as MultiDispatchNode would do)
+    tracker.RecordGPUTime(12'000'000);  // 12ms
+
+    tracker.EndFrame();
+
+    const auto& timeline = tracker.GetCurrentTimeline();
+    EXPECT_EQ(timeline.gpuQueues[0].measuredNs, 12'000'000);
+
+    // Utilization = 12ms / 16.666666ms ≈ 0.72
+    // Use EXPECT_NEAR for floating point comparisons
+    float expectedUtilization = 12'000'000.0f / 16'666'666.0f;  // ~0.72
+    EXPECT_NEAR(timeline.gpuQueues[0].utilization, expectedUtilization, 0.001f);
+    EXPECT_FALSE(tracker.IsOverBudget());
 }
