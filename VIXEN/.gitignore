@@ -116,8 +116,7 @@ build/**/CMakeFiles/
 # Ignore .claude except for hooks and settings we want to track
 .claude/*
 !.claude/hooks/
-!.claude/settings.json
-!.claude/settings.local.json
+.claude/settings.json
 .claude/hooks/.pre-commit-approved
 
 # Node/npm artifacts (Claude Code should be installed globally, not per-project)
@@ -189,4 +188,6 @@ GW25*.pdf
 # Working notes (local only)
 PROPOSED-PAPER-IMPROVEMENTS.md
 
+# Pre Commit generated files
+.pre-commit-review-*.md 
 

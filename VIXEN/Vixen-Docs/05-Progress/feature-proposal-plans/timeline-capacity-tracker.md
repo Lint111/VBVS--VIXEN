@@ -1,12 +1,14 @@
 ---
 tags: [feature, proposal, architecture, active]
 created: 2026-01-06
-status: active
+status: implementation-ready
+updated: 2026-01-07
 priority: high
 complexity: medium
 sprint: Sprint 6.3
 design-element: 38
-parent-work-item: 338
+work-item: 344
+parent-work-item: 344
 related:
   - "[[timeline-execution-system]]"
   - "[[Sprint6.2-TaskQueue-System]]"
@@ -39,6 +41,16 @@ related:
 - **Multi-Device Awareness:** Identify bottlenecks (GPU vs. CPU vs. Transfer)
 
 **Key Benefit:** Transform static budget enforcement into dynamic, self-tuning performance management.
+
+---
+
+## HacknPlan Integration
+
+**Task:** #344 - Sprint 6.3: Timeline Capacity Tracker
+**Design Element:** #38 - Timeline Capacity Tracker (System)
+**Sprint Board:** 651785 (Sprint 6 - Timeline Foundation)
+**Estimate:** 80 hours
+**Status:** Planning phase
 
 ---
 
