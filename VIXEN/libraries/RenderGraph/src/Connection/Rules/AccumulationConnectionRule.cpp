@@ -122,14 +122,8 @@ ConnectionResult AccumulationConnectionRule::Validate(const ConnectionContext& c
 }
 
 ConnectionResult AccumulationConnectionRule::Resolve(ConnectionContext& ctx) const {
-    if (!IsValidNodePtr(ctx.sourceNode) || !IsValidNodePtr(ctx.targetNode)) {
-        return ConnectionResult::Success();  // Skip placeholder nodes in tests
-    }
-
-    // Register dependency
-    ctx.targetNode->AddDependency(ctx.sourceNode);
-
-    // If accumulation state is provided, add entry to it
+    // Add entry to accumulation state FIRST (doesn't require real nodes)
+    // This allows unit tests with mock node pointers to still test entry storage
     if (ctx.accumulationState) {
         auto* state = static_cast<AccumulationState*>(ctx.accumulationState);
 
@@ -142,6 +136,13 @@ ConnectionResult AccumulationConnectionRule::Resolve(ConnectionContext& ctx) con
         entry.storageMode = AccumulationStorage::ByValue;  // Default
 
         state->AddEntry(std::move(entry));
+    }
+
+    // Register dependency only if we have real nodes and not in test mode
+    if (!ctx.skipDependencyRegistration &&
+        IsValidNodePtr(ctx.sourceNode) &&
+        IsValidNodePtr(ctx.targetNode)) {
+        ctx.targetNode->AddDependency(ctx.sourceNode);
     }
 
     return ConnectionResult::Success();

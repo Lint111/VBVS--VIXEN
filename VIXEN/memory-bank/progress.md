@@ -35,7 +35,7 @@ VIXEN has entered production phase with a comprehensive 11-sprint development ro
 | 5 | CashSystem Robustness | 651783 | IN PROGRESS (73% - Phase 3 COMPLETE) |
 | 6.1 | MultiDispatchNode | - | COMPLETE (56h) |
 | 6.2 | TaskQueue System | - | COMPLETE (72h) |
-| 6.3 | Timeline Capacity Tracker | 651785 | PENDING |
+| 6.3 | Timeline Capacity System | 651785 | COMPLETE |
 | 7 | Core Physics | 651786 | Q2 2026 |
 | 8-14 | Advanced Systems | 651784-651790 | Q2-Q4 2026 |
 
@@ -50,6 +50,47 @@ VIXEN has entered production phase with a comprehensive 11-sprint development ro
 
 ### Master Document
 All production planning consolidated in: `Vixen-Docs/05-Progress/Production-Roadmap-2026.md`
+
+---
+
+## Sprint 6.3: Timeline Capacity System - COMPLETE (January 2026)
+
+### Status: 100% Complete
+
+**Completion Date**: 2026-01-09
+
+**Sprint 6.3 Achievements:**
+- GPUQueryManager infrastructure for timestamp queries
+- TimelineCapacityTracker with damped hysteresis (±10% max, 5% deadband)
+- TaskQueue integration with capacity tracking
+- PredictionErrorTracker with bias correction
+- TaskProfile + TaskProfileRegistry for calibration
+- CalibrationStore for cross-session persistence (JSON)
+- Event-driven architecture (FrameStart/End, BudgetOverrun/Available)
+- ScopedSubscriptions RAII helper class
+
+**Additional Fixes (2026-01-09):**
+- Fixed SEH exception in accumulation + field extraction tests
+- Added `skipDependencyRegistration` flag to ConnectionContext
+- **Accumulation Slot Semantics Enforcement:**
+  - Removed Role parameter from ACCUMULATION_INPUT_SLOT macros
+  - Accumulation slots ALWAYS use SlotRole::Execute
+  - Result lifetime is Transient (rebuilt each frame)
+  - Source can be Persistent (enables field extraction)
+
+**Test Summary:**
+| Component | Tests | Status |
+|-----------|-------|--------|
+| GPUQueryManager | 35 | ✅ PASS |
+| TimelineCapacityTracker | 47 | ✅ PASS |
+| TaskQueue | 35 | ✅ PASS |
+| MultiDispatchIntegration | 22 | ✅ PASS |
+| PredictionErrorTracker | 27 | ✅ PASS |
+| TaskProfile + CalibrationStore | 56 | ✅ PASS |
+| ConnectionRule (incl. accumulation) | 109 | ✅ PASS |
+
+**Next Phase:**
+- Sprint 7: MultiDispatchNode GPU Timing Integration
 
 ---
 

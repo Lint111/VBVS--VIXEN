@@ -1,6 +1,6 @@
 # Sprint 6.3: Timeline Capacity System
 
-**Status**: IN PROGRESS (January 2026)
+**Status**: ✅ COMPLETE (January 2026)
 **Board**: 651785
 **Design Element**: #38 Timeline Capacity Tracker
 
@@ -160,13 +160,33 @@ Decoupled: RenderGraph no longer orchestrates subsystem lifecycles
 - `RenderGraph.cpp` - `InitializeEventDrivenSystems()` subscribes new systems
 - `RenderGraph.cpp` - `RenderFrame()` skips direct calls when event-driven
 
-### Phase 7: Persistence & Polish 🔲 PLANNED
+### Phase 7: Persistence & Polish ✅ COMPLETE
 
 | Sub-phase | Status | Description |
 |-----------|--------|-------------|
-| 7.1 | 🔲 | CalibrationStore (JSON save/load for TaskProfiles) |
-| 7.2 | 🔲 | Hardware fingerprint detection |
-| 7.3 | 🔲 | Documentation and examples |
+| 7.1 | ✅ | CalibrationStore (JSON save/load for TaskProfiles) |
+| 7.2 | ✅ | Hardware fingerprint detection |
+| 7.3 | ✅ | Documentation and examples |
+
+**Phase 7.1 Implementation (2026-01-08)**:
+- Added `ApplicationInitializedEvent` and `ApplicationShuttingDownEvent` to Message.h
+- Refactored `CalibrationStore` to be fully autonomous (event-driven)
+  - Subscribes to `DeviceMetadataEvent` → configures GPU + loads calibration
+  - Subscribes to `ApplicationShuttingDownEvent` → saves calibration
+- Integrated into `VulkanGraphApplication` with zero orchestration needed
+- Added 6 new event-driven tests (13 total CalibrationStore tests)
+- All 56 TaskProfile/CalibrationStore tests passing
+
+**Phase 7.2 Implementation (2026-01-08)**:
+- Added `driverVersion` to `DeviceInfo` struct in Message.h
+- Extended `GPUIdentifier` with driver version tracking
+- CalibrationStore now detects driver version changes and warns during Load()
+- `HasDriverVersionMismatch()` API for consumers to check recalibration need
+
+**Phase 7.3 Documentation (2026-01-08)**:
+- API documentation in CalibrationStore.h header
+- Usage examples inline in header
+- Sprint documentation updated
 
 ---
 
@@ -201,6 +221,13 @@ Decoupled: RenderGraph no longer orchestrates subsystem lifecycles
 | `EventBus/Message.h` | +80 | Budget event types |
 | `EventBus/MessageBus.h` | +100 | ScopedSubscriptions class |
 
+### Phase 7 Files
+
+| File | Lines | Purpose |
+|------|-------|---------|
+| `Core/CalibrationStore.h` | ~460 | Event-driven JSON persistence |
+| `EventBus/Message.h` | +60 | ApplicationInitialized/ShuttingDown events |
+
 ### Test Files
 
 | File | Tests | Purpose |
@@ -210,7 +237,7 @@ Decoupled: RenderGraph no longer orchestrates subsystem lifecycles
 | `test_task_queue.cpp` | 35 | TaskQueue tests (incl. Phase 2.1) |
 | `test_multidispatch_integration.cpp` | 22 | Phase 2.2 integration tests |
 | `test_prediction_error_tracker.cpp` | 27 | Phase 3.1 error tracking tests |
-| `test_task_profile.cpp` | 12 | Phase 3.2 TaskProfile tests |
+| `test_task_profile.cpp` | 56 | Phase 3.2 TaskProfile + Phase 7.1 CalibrationStore tests |
 
 ---
 
@@ -218,13 +245,13 @@ Decoupled: RenderGraph no longer orchestrates subsystem lifecycles
 
 | Component | Tests | Status |
 |-----------|-------|--------|
-| GPUQueryManager | 15 | ✅ PASS |
+| GPUQueryManager | 35 | ✅ PASS |
 | TimelineCapacityTracker | 47 | ✅ PASS |
 | TaskQueue | 35 | ✅ PASS |
 | MultiDispatchIntegration | 22 | ✅ PASS |
 | PredictionErrorTracker | 27 | ✅ PASS |
-| TaskProfile | 12 | ✅ PASS |
-| **Total** | **158** | ✅ ALL PASS |
+| TaskProfile + CalibrationStore | 56 | ✅ PASS |
+| **Total** | **222** | ✅ ALL PASS |
 
 ---
 
@@ -342,11 +369,56 @@ class GPUQueryManager {
 
 ## Next Steps
 
-1. **Phase 6.1**: LifetimeScopeManager event subscriptions
-2. **Phase 6.2**: DeferredDestructionQueue event subscriptions
-3. **Phase 6.3**: GPUQueryManager event subscriptions
-4. **Phase 6.4**: Remove direct calls from RenderGraph
-5. **Phase 7**: CalibrationStore persistence (optional)
+### Sprint 6.3 Completion Summary
+
+All phases complete:
+- [x] Phase 0: GPUQueryManager Infrastructure
+- [x] Phase 1: TimelineCapacityTracker Foundation
+- [x] Phase 2: TaskQueue Integration
+- [x] Phase 3: Prediction & Calibration
+- [x] Phase 4: Event-Driven Architecture
+- [x] Phase 5: System Decoupling Analysis
+- [x] Phase 6: Frame Lifecycle Decoupling
+- [x] Phase 7: Persistence & Polish
+
+### Additional Fixes (2026-01-08)
+
+- Fixed VulkanGraphApplication.cpp syntax errors (extra parentheses in SlotRoleModifier calls)
+- Fixed ExtractField API to return modifier directly (not unique_ptr) for variadic template compatibility
+- Added 2-argument ExtractField overload for combined field extraction + slot role override
+
+### Additional Fixes (2026-01-09)
+
+**Accumulation + Field Extraction Pipeline Fix:**
+- Fixed SEH exception (access violation) in accumulation + field extraction tests
+- Root cause: `AccumulationConnectionRule::Resolve` was calling `AddDependency` on mock node pointers
+- Added `skipDependencyRegistration` flag to `ConnectionContext` for test control
+- Reordered `Resolve` to add accumulation entry FIRST (before dependency registration)
+
+**Accumulation Slot Semantics Enforcement:**
+- Removed `Role` parameter from `ACCUMULATION_INPUT_SLOT` and `ACCUMULATION_INPUT_SLOT_V2` macros
+- Accumulation slots now ALWAYS use `SlotRole::Execute` (hardcoded, not configurable)
+- Rationale:
+  - Accumulated vector is rebuilt each frame (reset semantics)
+  - No dependency propagation needed - consumer processes fresh data each cycle
+  - Source changes don't need to trigger target rebuild
+- Result lifetime is always **Transient** (ephemeral, don't cache across frames)
+- Source lifetime can still be Persistent (enables field extraction) or Transient
+
+**Files Modified:**
+- `ConnectionTypes.h` - Added `skipDependencyRegistration` flag
+- `AccumulationConnectionRule.cpp` - Reordered operations in Resolve
+- `ResourceConfig.h` - Updated macros, added documentation
+- `MultiDispatchNodeConfig.h`, `BoolOpNodeConfig.h` - Removed Role arguments
+- `test_connection_rule.cpp`, `test_connection_concepts.cpp` - Updated test configs
+
+**Test Results:** 109 tests pass (including new `AccumulationSlotForcesExecuteRole` test)
+
+### Potential Next Sprints
+
+1. **Sprint 7: MultiDispatchNode GPU Timing Integration** - Wire actual GPU timestamps into TaskProfiles
+2. **Sprint 8: Adaptive LOD System** - Use TaskProfile pressure valves for LOD decisions
+3. **Sprint 9: Full Event-Driven Decoupling** - Convert remaining direct calls to event subscriptions
 
 ---
 

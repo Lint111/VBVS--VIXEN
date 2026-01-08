@@ -5,15 +5,15 @@
 
 /**
  * @file CalibrationStore.h
- * @brief File persistence for TaskProfile calibration data
+ * @brief Event-driven file persistence for TaskProfile calibration data
  *
- * Sprint 6.3: Phase 3.2c - Persistence Layer
+ * Sprint 6.3: Phase 7.1 - Persistence Layer (Event-Driven)
  * Design Element: #38 Timeline Capacity Tracker
  *
- * Provides JSON file I/O for TaskProfileRegistry:
- * - Save calibration data after sessions
- * - Load previous calibration on startup
- * - Per-application/per-GPU calibration files
+ * CalibrationStore is an autonomous component that:
+ * - Subscribes to DeviceMetadataEvent to configure GPU identity and load data
+ * - Subscribes to ApplicationShuttingDownEvent to save data
+ * - Manages its own lifecycle without external orchestration
  *
  * File format:
  * {
@@ -28,6 +28,8 @@
  */
 
 #include "TaskProfileRegistry.h"
+#include "MessageBus.h"
+#include "Message.h"
 #include <nlohmann/json.hpp>
 #include <string>
 #include <filesystem>
@@ -40,14 +42,22 @@ namespace Vixen::RenderGraph {
 
 /**
  * @brief GPU identification for calibration file selection
+ *
+ * Identifies GPU hardware for cross-session calibration persistence.
+ * Driver version is tracked to invalidate calibration when drivers change
+ * (timing characteristics may differ between driver versions).
  */
 struct GPUIdentifier {
     std::string name;
     uint32_t vendorId = 0;
     uint32_t deviceId = 0;
+    uint32_t driverVersion = 0;  // Phase 7.2: Driver version tracking
 
     /**
      * @brief Generate filename-safe identifier
+     *
+     * Does NOT include driver version - same GPU uses same file.
+     * Driver version mismatch is handled during Load().
      */
     [[nodiscard]] std::string ToFilename() const {
         std::string safe = name;
@@ -59,6 +69,27 @@ struct GPUIdentifier {
         }
         // Add vendor/device IDs for uniqueness
         return safe + "_" + std::to_string(vendorId) + "_" + std::to_string(deviceId);
+    }
+
+    /**
+     * @brief Check if hardware matches (ignoring driver version)
+     */
+    [[nodiscard]] bool SameHardware(const GPUIdentifier& other) const {
+        return vendorId == other.vendorId && deviceId == other.deviceId;
+    }
+
+    /**
+     * @brief Check if driver version matches
+     */
+    [[nodiscard]] bool SameDriver(const GPUIdentifier& other) const {
+        return driverVersion == other.driverVersion;
+    }
+
+    /**
+     * @brief Full equality (hardware + driver)
+     */
+    [[nodiscard]] bool operator==(const GPUIdentifier& other) const {
+        return SameHardware(other) && SameDriver(other);
     }
 };
 
@@ -72,18 +103,28 @@ struct CalibrationStoreResult {
 };
 
 /**
- * @brief File persistence for calibration data
+ * @brief Event-driven file persistence for calibration data
+ *
+ * CalibrationStore is autonomous - it subscribes to lifecycle events and
+ * manages its own load/save timing. No external orchestration required.
  *
  * Usage:
  * @code
+ * // Create store with dependencies
+ * CalibrationStore store("calibration", registry, messageBus);
+ *
+ * // That's it! The store handles:
+ * // - DeviceMetadataEvent → SetGPU() + Load()
+ * // - ApplicationShuttingDownEvent → Save()
+ * @endcode
+ *
+ * Manual API (for testing or explicit control):
+ * @code
  * CalibrationStore store("calibration");
+ * store.SetRegistry(&registry);
  * store.SetGPU({"RTX 3080", 4318, 8710});
- *
- * // On startup
- * store.Load(registry);
- *
- * // After session (or periodically)
- * store.Save(registry);
+ * store.Load();   // Manual load
+ * store.Save();   // Manual save
  * @endcode
  */
 class CalibrationStore {
@@ -91,23 +132,127 @@ public:
     static constexpr uint32_t CURRENT_VERSION = 1;
 
     /**
-     * @brief Construct with base directory
+     * @brief Construct autonomous CalibrationStore (event-driven)
+     *
+     * Subscribes to lifecycle events automatically:
+     * - DeviceMetadataEvent: configures GPU and loads calibration
+     * - ApplicationShuttingDownEvent: saves calibration
+     *
+     * @param baseDir Directory for calibration files (created if needed)
+     * @param registry TaskProfileRegistry to load/save (non-owning)
+     * @param messageBus Event bus for subscriptions (non-owning)
+     */
+    CalibrationStore(
+        const std::filesystem::path& baseDir,
+        TaskProfileRegistry& registry,
+        EventBus::MessageBus* messageBus
+    )
+        : baseDir_(baseDir)
+        , registry_(&registry)
+    {
+        if (messageBus) {
+            SubscribeToEvents(messageBus);
+        }
+    }
+
+    /**
+     * @brief Construct with base directory only (manual mode)
+     *
+     * Use SetRegistry() and SetGPU() before Load()/Save().
+     * Call SubscribeToEvents() if you want event-driven behavior.
      *
      * @param baseDir Directory for calibration files (created if needed)
      */
     explicit CalibrationStore(const std::filesystem::path& baseDir)
         : baseDir_(baseDir) {}
 
+    ~CalibrationStore() = default;
+
+    // Non-copyable (owns subscriptions)
+    CalibrationStore(const CalibrationStore&) = delete;
+    CalibrationStore& operator=(const CalibrationStore&) = delete;
+
+    // Movable
+    CalibrationStore(CalibrationStore&&) noexcept = default;
+    CalibrationStore& operator=(CalibrationStore&&) noexcept = default;
+
+    // =========================================================================
+    // Event Subscription (Autonomous Mode)
+    // =========================================================================
+
+    /**
+     * @brief Subscribe to lifecycle events for autonomous operation
+     *
+     * After calling this, the store handles load/save automatically:
+     * - DeviceMetadataEvent → SetGPU() + Load()
+     * - ApplicationShuttingDownEvent → Save()
+     *
+     * @param messageBus Event bus (non-owning, must outlive CalibrationStore)
+     */
+    void SubscribeToEvents(EventBus::MessageBus* messageBus) {
+        if (!messageBus) return;
+
+        subscriptions_.SetBus(messageBus);
+
+        // Subscribe to DeviceMetadataEvent - configure GPU and load
+        subscriptions_.Subscribe<EventBus::DeviceMetadataEvent>(
+            [this](const EventBus::DeviceMetadataEvent& e) {
+                const auto& device = e.GetSelectedDevice();
+                gpu_ = GPUIdentifier{
+                    device.deviceName,
+                    device.vendorID,
+                    device.deviceID,
+                    device.driverVersion  // Phase 7.2: Capture driver version
+                };
+                gpuConfigured_ = true;
+                if (registry_) {
+                    Load();
+                }
+            }
+        );
+
+        // Subscribe to ApplicationShuttingDownEvent - save on shutdown
+        subscriptions_.Subscribe<EventBus::ApplicationShuttingDownEvent>(
+            [this](const EventBus::ApplicationShuttingDownEvent&) {
+                if (registry_ && gpuConfigured_) {
+                    Save();
+                }
+            }
+        );
+    }
+
+    /**
+     * @brief Unsubscribe from events (automatic on destruction)
+     */
+    void UnsubscribeFromEvents() {
+        subscriptions_.UnsubscribeAll();
+    }
+
+    // =========================================================================
+    // Manual Configuration (for testing or explicit control)
+    // =========================================================================
+
+    /**
+     * @brief Set TaskProfileRegistry reference
+     *
+     * Required for Load()/Save() operations.
+     * Not needed if constructed with registry parameter.
+     */
+    void SetRegistry(TaskProfileRegistry* registry) {
+        registry_ = registry;
+    }
+
     /**
      * @brief Set GPU identifier for file selection
      *
      * Calibration files are per-GPU since timing characteristics vary.
-     * Call this before Save/Load operations.
+     * Not needed if using event-driven mode (DeviceMetadataEvent sets this).
      *
      * @param gpu GPU identification
      */
     void SetGPU(const GPUIdentifier& gpu) {
         gpu_ = gpu;
+        gpuConfigured_ = true;
     }
 
     /**
@@ -118,15 +263,35 @@ public:
     }
 
     /**
+     * @brief Check if GPU is configured
+     */
+    [[nodiscard]] bool IsGPUConfigured() const {
+        return gpuConfigured_;
+    }
+
+    // =========================================================================
+    // Core Operations
+    // =========================================================================
+
+    /**
      * @brief Save registry state to JSON file
      *
      * Saves to: {baseDir}/{gpuFilename}.json
      *
-     * @param registry Registry to save
      * @return Operation result
      */
-    CalibrationStoreResult Save(const TaskProfileRegistry& registry) {
+    CalibrationStoreResult Save() {
         CalibrationStoreResult result;
+
+        if (!registry_) {
+            result.message = "No TaskProfileRegistry configured";
+            return result;
+        }
+
+        if (!gpuConfigured_) {
+            result.message = "GPU not configured - cannot determine file path";
+            return result;
+        }
 
         try {
             // Ensure directory exists
@@ -143,10 +308,11 @@ public:
             j["gpuName"] = gpu_.name;
             j["gpuVendorId"] = gpu_.vendorId;
             j["gpuDeviceId"] = gpu_.deviceId;
+            j["gpuDriverVersion"] = gpu_.driverVersion;  // Phase 7.2
             j["timestamp"] = GetISOTimestamp();
 
             // Save profiles via registry
-            registry.SaveState(j);
+            registry_->SaveState(j);
 
             // Write to file
             std::ofstream file(filePath);
@@ -159,7 +325,7 @@ public:
             file.close();
 
             result.success = true;
-            result.profileCount = registry.GetTaskCount();
+            result.profileCount = registry_->GetTaskCount();
             result.message = "Saved " + std::to_string(result.profileCount) +
                            " profiles to " + filePath.string();
         }
@@ -167,6 +333,7 @@ public:
             result.message = std::string("Save failed: ") + e.what();
         }
 
+        lastResult_ = result;
         return result;
     }
 
@@ -176,11 +343,20 @@ public:
      * Loads from: {baseDir}/{gpuFilename}.json
      * If file doesn't exist, returns success with 0 profiles.
      *
-     * @param registry Registry to load into
      * @return Operation result
      */
-    CalibrationStoreResult Load(TaskProfileRegistry& registry) {
+    CalibrationStoreResult Load() {
         CalibrationStoreResult result;
+
+        if (!registry_) {
+            result.message = "No TaskProfileRegistry configured";
+            return result;
+        }
+
+        if (!gpuConfigured_) {
+            result.message = "GPU not configured - cannot determine file path";
+            return result;
+        }
 
         try {
             auto filePath = GetFilePath();
@@ -189,6 +365,7 @@ public:
             if (!std::filesystem::exists(filePath)) {
                 result.success = true;
                 result.message = "No calibration file found (first run): " + filePath.string();
+                lastResult_ = result;
                 return result;
             }
 
@@ -212,19 +389,47 @@ public:
                 return result;
             }
 
+            // Phase 7.2: Driver version check
+            uint32_t savedDriverVersion = j.value("gpuDriverVersion", 0u);
+            if (savedDriverVersion != 0 && gpu_.driverVersion != 0 &&
+                savedDriverVersion != gpu_.driverVersion) {
+                // Driver version changed - profiles may be inaccurate
+                // We still load them but mark them as needing recalibration
+                driverVersionMismatch_ = true;
+                // Note: Could clear profiles here, but we prefer to use them as starting estimates
+            }
+
             // Load profiles
-            result.profileCount = registry.LoadState(j);
+            result.profileCount = registry_->LoadState(j);
 
             result.success = true;
+            std::string driverNote = driverVersionMismatch_ ?
+                " (driver version changed - recalibration recommended)" : "";
             result.message = "Loaded " + std::to_string(result.profileCount) +
-                           " profiles from " + filePath.string();
+                           " profiles from " + filePath.string() + driverNote;
         }
         catch (const std::exception& e) {
             result.message = std::string("Load failed: ") + e.what();
         }
 
+        lastResult_ = result;
         return result;
     }
+
+    // Legacy API for backward compatibility (takes registry as parameter)
+    CalibrationStoreResult Save(const TaskProfileRegistry& registry) {
+        registry_ = const_cast<TaskProfileRegistry*>(&registry);
+        return Save();
+    }
+
+    CalibrationStoreResult Load(TaskProfileRegistry& registry) {
+        registry_ = &registry;
+        return Load();
+    }
+
+    // =========================================================================
+    // File Management
+    // =========================================================================
 
     /**
      * @brief Delete calibration file for current GPU
@@ -274,6 +479,24 @@ public:
         return files;
     }
 
+    /**
+     * @brief Get last operation result (for diagnostics)
+     */
+    [[nodiscard]] const CalibrationStoreResult& GetLastResult() const {
+        return lastResult_;
+    }
+
+    /**
+     * @brief Check if driver version changed since calibration was saved
+     *
+     * Phase 7.2: Hardware fingerprint detection.
+     * If true, profiles were loaded from a different driver version
+     * and may need recalibration for accurate timing estimates.
+     */
+    [[nodiscard]] bool HasDriverVersionMismatch() const {
+        return driverVersionMismatch_;
+    }
+
 private:
     [[nodiscard]] static std::string GetISOTimestamp() {
         auto now = std::chrono::system_clock::now();
@@ -285,6 +508,11 @@ private:
 
     std::filesystem::path baseDir_;
     GPUIdentifier gpu_;
+    bool gpuConfigured_ = false;
+    bool driverVersionMismatch_ = false;  // Phase 7.2: Track driver changes
+    TaskProfileRegistry* registry_ = nullptr;
+    EventBus::ScopedSubscriptions subscriptions_;
+    CalibrationStoreResult lastResult_;
 };
 
 } // namespace Vixen::RenderGraph

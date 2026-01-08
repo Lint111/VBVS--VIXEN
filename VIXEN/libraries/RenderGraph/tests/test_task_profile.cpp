@@ -798,3 +798,201 @@ TEST_F(CalibrationStoreTest, GetFilePath) {
     EXPECT_EQ(path.extension(), ".json");
     EXPECT_TRUE(path.string().find("Test_GPU") != std::string::npos);
 }
+
+// ============================================================================
+// Event-Driven CalibrationStore Tests (Sprint 6.3 Phase 7.1)
+// ============================================================================
+
+#include "MessageBus.h"
+
+class EventDrivenCalibrationStoreTest : public ::testing::Test {
+protected:
+    std::filesystem::path testDir;
+    std::unique_ptr<Vixen::EventBus::MessageBus> messageBus;
+    TaskProfileRegistry registry;
+
+    void SetUp() override {
+        testDir = std::filesystem::temp_directory_path() / "vixen_event_calibration_test";
+        std::filesystem::create_directories(testDir);
+
+        messageBus = std::make_unique<Vixen::EventBus::MessageBus>();
+
+        // Register factories
+        registry.RegisterFactory("SimpleTaskProfile", []() {
+            return std::make_unique<SimpleTaskProfile>();
+        });
+    }
+
+    void TearDown() override {
+        std::filesystem::remove_all(testDir);
+    }
+
+    // Helper to create DeviceMetadataEvent
+    std::unique_ptr<Vixen::EventBus::DeviceMetadataEvent> MakeDeviceEvent() {
+        Vixen::EventBus::DeviceInfo deviceInfo{};
+        deviceInfo.deviceName = "Test_GPU_EventDriven";
+        deviceInfo.vendorID = 1234;
+        deviceInfo.deviceID = 5678;
+        deviceInfo.deviceIndex = 0;
+        std::vector<Vixen::EventBus::DeviceInfo> devices = {deviceInfo};
+        return std::make_unique<Vixen::EventBus::DeviceMetadataEvent>(0, devices, 0, nullptr);
+    }
+};
+
+TEST_F(EventDrivenCalibrationStoreTest, AutonomousConstructor) {
+    // Create store with all dependencies - should subscribe automatically
+    CalibrationStore store(testDir, registry, messageBus.get());
+
+    // GPU should not be configured yet (no event received)
+    EXPECT_FALSE(store.IsGPUConfigured());
+}
+
+TEST_F(EventDrivenCalibrationStoreTest, DeviceMetadataEventConfiguresGPU) {
+    CalibrationStore store(testDir, registry, messageBus.get());
+
+    // Publish DeviceMetadataEvent
+    auto event = MakeDeviceEvent();
+    messageBus->PublishImmediate(*event);
+
+    // GPU should now be configured
+    EXPECT_TRUE(store.IsGPUConfigured());
+    EXPECT_EQ(store.GetGPU().name, "Test_GPU_EventDriven");
+    EXPECT_EQ(store.GetGPU().vendorId, 1234u);
+    EXPECT_EQ(store.GetGPU().deviceId, 5678u);
+}
+
+TEST_F(EventDrivenCalibrationStoreTest, DeviceMetadataEventLoadsCalibration) {
+    // First, manually create a calibration file
+    {
+        CalibrationStore setupStore(testDir);
+        setupStore.SetGPU({"Test_GPU_EventDriven", 1234, 5678});
+        setupStore.SetRegistry(&registry);
+
+        auto profile = std::make_unique<SimpleTaskProfile>("eventTask", "test");
+        profile->SetWorkUnits(5);
+        profile->RecordMeasurement(1'000'000);
+        registry.RegisterTask(std::move(profile));
+
+        auto result = setupStore.Save();
+        ASSERT_TRUE(result.success) << result.message;
+    }
+
+    // Clear registry
+    registry.Clear();
+    EXPECT_EQ(registry.GetTaskCount(), 0u);
+
+    // Create autonomous store
+    CalibrationStore store(testDir, registry, messageBus.get());
+
+    // Publish DeviceMetadataEvent - should trigger load
+    auto event = MakeDeviceEvent();
+    messageBus->PublishImmediate(*event);
+
+    // Profile should be loaded
+    EXPECT_EQ(registry.GetTaskCount(), 1u);
+    auto* loaded = registry.GetProfile("eventTask");
+    ASSERT_NE(loaded, nullptr);
+    EXPECT_EQ(loaded->GetWorkUnits(), 5);
+}
+
+TEST_F(EventDrivenCalibrationStoreTest, ShutdownEventSavesCalibration) {
+    // Use unique subdir to avoid file collisions with other tests
+    auto shutdownTestDir = testDir / "shutdown_test";
+    // Clean up from any previous test runs
+    std::filesystem::remove_all(shutdownTestDir);
+    std::filesystem::create_directories(shutdownTestDir);
+
+    // Use a completely fresh registry for this test
+    TaskProfileRegistry localRegistry;
+    localRegistry.RegisterFactory("SimpleTaskProfile", []() {
+        return std::make_unique<SimpleTaskProfile>();
+    });
+
+    // Use unique GPU identifier for this test
+    GPUIdentifier shutdownGpu{"Shutdown_Test_GPU", 7777, 8888};
+
+    CalibrationStore store(shutdownTestDir);
+    store.SetRegistry(&localRegistry);
+    store.SetGPU(shutdownGpu);
+
+    // Add a profile with specific workUnits (use 3, within default bounds of [-5,+5])
+    auto profile = std::make_unique<SimpleTaskProfile>("shutdownTask", "test");
+    profile->SetWorkUnits(3);
+    profile->RecordMeasurement(2'000'000);
+    localRegistry.RegisterTask(std::move(profile));
+
+    // Verify workUnits before save
+    EXPECT_EQ(localRegistry.GetProfile("shutdownTask")->GetWorkUnits(), 3);
+
+    // Subscribe to events for the save trigger
+    store.SubscribeToEvents(messageBus.get());
+
+    // Publish ApplicationShuttingDownEvent - should trigger save
+    Vixen::EventBus::ApplicationShuttingDownEvent shutdownEvent(0);
+    messageBus->PublishImmediate(shutdownEvent);
+
+    // Verify file was created at expected path
+    auto expectedPath = shutdownTestDir / "Shutdown_Test_GPU_7777_8888.json";
+    EXPECT_TRUE(std::filesystem::exists(expectedPath)) << "Expected file at: " << expectedPath.string();
+    EXPECT_TRUE(store.Exists());
+
+    // Verify contents by loading into fresh registry
+    TaskProfileRegistry verifyRegistry;
+    verifyRegistry.RegisterFactory("SimpleTaskProfile", []() {
+        return std::make_unique<SimpleTaskProfile>();
+    });
+
+    CalibrationStore verifyStore(shutdownTestDir);
+    verifyStore.SetGPU(shutdownGpu);
+    auto result = verifyStore.Load(verifyRegistry);
+    EXPECT_TRUE(result.success) << result.message;
+    EXPECT_EQ(result.profileCount, 1u);
+
+    auto* verified = verifyRegistry.GetProfile("shutdownTask");
+    ASSERT_NE(verified, nullptr);
+    EXPECT_EQ(verified->GetWorkUnits(), 3);
+}
+
+TEST_F(EventDrivenCalibrationStoreTest, FullLifecycle) {
+    // Simulate full application lifecycle
+
+    // 1. Create store at app startup
+    CalibrationStore store(testDir, registry, messageBus.get());
+
+    // 2. Device is selected, metadata event fires
+    auto deviceEvent = MakeDeviceEvent();
+    messageBus->PublishImmediate(*deviceEvent);
+
+    // No existing file, so registry should be empty
+    EXPECT_EQ(registry.GetTaskCount(), 0u);
+
+    // 3. App runs, profiles are created/updated
+    auto profile = std::make_unique<SimpleTaskProfile>("lifecycleTask", "test");
+    profile->SetWorkUnits(3);
+    profile->RecordMeasurement(500'000);
+    registry.RegisterTask(std::move(profile));
+
+    // 4. App shuts down
+    Vixen::EventBus::ApplicationShuttingDownEvent shutdownEvent(0);
+    messageBus->PublishImmediate(shutdownEvent);
+
+    // 5. Verify data persisted
+    EXPECT_TRUE(store.Exists());
+    auto lastResult = store.GetLastResult();
+    EXPECT_TRUE(lastResult.success);
+    EXPECT_EQ(lastResult.profileCount, 1u);
+}
+
+TEST_F(EventDrivenCalibrationStoreTest, ManualModeStillWorks) {
+    // Verify manual API (without events) still functions
+    CalibrationStore store(testDir);
+    store.SetRegistry(&registry);
+    store.SetGPU({"Manual_GPU", 9999, 8888});
+
+    auto profile = std::make_unique<SimpleTaskProfile>("manualTask", "test");
+    registry.RegisterTask(std::move(profile));
+
+    auto result = store.Save();
+    EXPECT_TRUE(result.success);
+    EXPECT_TRUE(store.Exists());
+}

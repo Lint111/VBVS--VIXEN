@@ -1,8 +1,8 @@
-# Active Context - Sprint 6 Phase 2
+# Active Context - Sprint 6 Phase 3
 
-**Last Updated:** 2026-01-07
+**Last Updated:** 2026-01-09
 **Branch:** `production/sprint-6-timeline-foundation`
-**Status:** Build PASSING | Sprint 6.2 COMPLETE (72h) | Preparing Sprint 6.3
+**Status:** Build PASSING | Sprint 6.3 COMPLETE | Accumulation semantics enforced
 
 ---
 
@@ -14,9 +14,38 @@
 **Sprint 6.0.2: Accumulation Slot Refactor** - COMPLETE (3h)
 **Sprint 6.1: MultiDispatchNode** - COMPLETE (56h)
 **Sprint 6.2: TaskQueue System** - COMPLETE (72h)
-**Sprint 6.3: Timeline Capacity Tracker** - PENDING
+**Sprint 6.3: Timeline Capacity System** - COMPLETE (All 7 phases + additional fixes)
 
-### Just Completed (2026-01-07)
+### Just Completed (2026-01-09)
+
+#### Sprint 6.3: Timeline Capacity System - COMPLETE
+
+**Key Achievement:** Adaptive scheduling infrastructure + accumulation semantics enforcement.
+
+**Phases Completed:**
+- Phase 0: GPUQueryManager Infrastructure
+- Phase 1: TimelineCapacityTracker Foundation
+- Phase 2: TaskQueue Integration
+- Phase 3: Prediction & Calibration
+- Phase 4: Event-Driven Architecture
+- Phase 5: System Decoupling Analysis
+- Phase 6: Frame Lifecycle Decoupling
+- Phase 7: Persistence & Polish (CalibrationStore)
+
+**Additional Fixes (2026-01-09):**
+- Fixed SEH exception in accumulation + field extraction tests
+- Added `skipDependencyRegistration` flag to ConnectionContext
+- **Accumulation Slot Semantics:**
+  - Removed Role parameter from ACCUMULATION_INPUT_SLOT macros
+  - Accumulation slots now ALWAYS use SlotRole::Execute
+  - Result lifetime is Transient (rebuilt each frame)
+  - Source lifetime can be Persistent (enables field extraction)
+
+**Test Results:** 222+ tests passing (TimelineCapacityTracker + connection tests)
+
+---
+
+### Previously Completed (2026-01-07)
 
 #### Sprint 6.2: TaskQueue System (72h) - COMPLETE
 
@@ -29,12 +58,6 @@
 | #341: MultiDispatchNode Integration | 16h | DONE |
 | #342: Budget-Aware Dequeue | 16h | DONE |
 | #343: Stress Tests | 16h | DONE |
-
-**Commits:**
-- `6ecbcad` - TaskQueue template foundation
-- `86157d4` - Budget-aware system (Tasks #339, #342, #341)
-- `3bfc528` - Integration tests (15 tests passing)
-- `1e6e890` - API documentation (TaskQueue.md, 495 lines)
 
 **Technical Achievements:**
 - Priority-based task scheduling with stable sort
@@ -94,12 +117,11 @@ ACCUMULATION_INPUT_SLOT_V2(INPUTS, std::vector<bool>, bool, 1, ..., SlotStorageS
 
 ---
 
-## Sprint 6.3: Timeline Capacity Tracker - READY FOR IMPLEMENTATION
+## Sprint 6.3: Timeline Capacity Tracker - COMPLETE
 
 **Goal:** Real-time budget monitoring and capacity planning
-**Tasks:** Task #344 (parent) + 16 subtasks created
-**Estimated:** 100 hours across 16 subtasks (6-7 week timeline)
-**Status:** Collaborative planning complete, implementation can begin
+**Tasks:** Task #344 (parent) + phases
+**Status:** ✅ ALL PHASES COMPLETE (2026-01-09)
 
 **Subtask Documentation:**
 - SPRINT-6-3-QUICK-REFERENCE.md (quick lookup guide)

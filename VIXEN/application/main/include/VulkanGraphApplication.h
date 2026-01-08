@@ -4,6 +4,7 @@
 #include "Core/RenderGraph.h"
 #include "Core/NodeTypeRegistry.h"
 #include "Core/TypedConnection.h"
+#include "Core/CalibrationStore.h"  // Sprint 6.3: Persistence
 #include "error/VulkanError.h"
 #include "Time/EngineTime.h"
 #include "MessageBus.h"
@@ -121,6 +122,8 @@ private:
     std::unique_ptr<RenderGraph> renderGraph;        // Render graph instance
     // Owned message bus for cross-system event dispatch (injected into RenderGraph)
     std::unique_ptr<Vixen::EventBus::MessageBus> messageBus;
+    // Sprint 6.3: Calibration persistence for TaskProfiles
+    std::unique_ptr<Vixen::RenderGraph::CalibrationStore> calibrationStore;
 
     // ====== Application State ======
     uint32_t currentFrame;                           // Current frame index

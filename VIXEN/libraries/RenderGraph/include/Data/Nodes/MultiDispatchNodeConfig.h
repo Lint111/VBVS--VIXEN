@@ -137,7 +137,6 @@ CONSTEXPR_NODE_CONFIG(MultiDispatchNodeConfig,
      */
     ACCUMULATION_INPUT_SLOT_V2(GROUP_INPUTS, std::vector<DispatchPass>, DispatchPass, 5,
         SlotNullability::Optional,
-        SlotRole::Dependency,
         SlotStorageStrategy::Value);
 
     // ===== OUTPUTS (2) =====

@@ -51,8 +51,7 @@ struct StandardConfig : public ResourceConfigBase<2, 1> {
 struct TestAccumulationConfig : public ResourceConfigBase<1, 0> {
     // Accumulation slot using PassThroughStorage (valid resource type)
     ACCUMULATION_INPUT_SLOT(PASSES, PassThroughStorage, 0,
-        SlotNullability::Required,
-        SlotRole::Dependency);
+        SlotNullability::Required);
 };
 
 // ============================================================================

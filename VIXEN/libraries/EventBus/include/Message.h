@@ -82,6 +82,7 @@ enum class EventCategory : uint64_t {
     LightingChange      = 1ULL << 18,
     SceneChange         = 1ULL << 19,
     MaterialChange      = 1ULL << 20,
+    ApplicationLifecycle = 1ULL << 21,  // Sprint 6.3: App startup/shutdown
 
     // Graph Management (24-31)
     GraphManagement     = 1ULL << 24,
@@ -366,6 +367,7 @@ struct DeviceInfo {
     std::string deviceName;         // GPU name (e.g., "NVIDIA GeForce RTX 3060")
     uint32_t vendorID;              // Vendor ID (0x10DE = NVIDIA, 0x1002 = AMD, 0x8086 = Intel)
     uint32_t deviceID;              // Device ID
+    uint32_t driverVersion = 0;     // Driver version (vendor-specific encoding)
     bool isDiscreteGPU;             // true if discrete GPU, false if integrated
 
     // Device index in system
@@ -543,6 +545,55 @@ struct BudgetAvailableEvent : public BaseEventMessage {
         , utilization(util)
         , threshold(thresh)
         , remainingNs(remaining) {}
+};
+
+// ============================================================================
+// Application Lifecycle Events (Sprint 6.3)
+// ============================================================================
+
+/**
+ * @brief Application initialized event
+ *
+ * Published after VulkanGraphApplication::Initialize() completes successfully.
+ * Systems subscribe to this to perform post-initialization setup:
+ * - CalibrationStore: Load calibration data from disk
+ * - TaskProfileRegistry: Subscribe to budget events
+ * - Profiler: Start session recording
+ *
+ * Contains GPU info for systems that need hardware-specific behavior.
+ */
+struct ApplicationInitializedEvent : public BaseEventMessage {
+    static constexpr MessageType TYPE = AUTO_MESSAGE_TYPE();
+    static constexpr EventCategory CATEGORY = EventCategory::ApplicationLifecycle | EventCategory::ApplicationState;
+
+    std::string gpuName;
+    uint32_t gpuVendorId;
+    uint32_t gpuDeviceId;
+
+    ApplicationInitializedEvent(SenderID sender, const std::string& gpu, uint32_t vendor, uint32_t device)
+        : BaseEventMessage(CATEGORY, TYPE, sender)
+        , gpuName(gpu)
+        , gpuVendorId(vendor)
+        , gpuDeviceId(device) {}
+};
+
+/**
+ * @brief Application shutting down event
+ *
+ * Published at the START of VulkanGraphApplication::DeInitialize().
+ * Systems subscribe to this to persist state before shutdown:
+ * - CalibrationStore: Save calibration data to disk
+ * - Profiler: Write session data
+ * - Cache systems: Flush pending writes
+ *
+ * This is published BEFORE any cleanup occurs, so all systems are still valid.
+ */
+struct ApplicationShuttingDownEvent : public BaseEventMessage {
+    static constexpr MessageType TYPE = AUTO_MESSAGE_TYPE();
+    static constexpr EventCategory CATEGORY = EventCategory::ApplicationLifecycle | EventCategory::ApplicationState;
+
+    ApplicationShuttingDownEvent(SenderID sender)
+        : BaseEventMessage(CATEGORY, TYPE, sender) {}
 };
 
 } // namespace Vixen::EventBus

@@ -749,14 +749,22 @@ ResourceDescriptor MakeDescriptor(
  *
  * Pre-configured with Accumulation | MultiConnect flags.
  * Use for slots that gather data from multiple source nodes.
+ *
+ * IMPORTANT: Accumulation slots are ALWAYS Execute role (never Dependency):
+ * - The accumulated vector is rebuilt each frame (reset semantics)
+ * - No dependency propagation needed - consumer processes fresh data each cycle
+ * - Source changes don't need to trigger target rebuild
+ *
+ * Result Lifetime: Always Transient - the accumulated vector is ephemeral.
+ * Do not cache accumulated data across frames.
  */
-#define ACCUMULATION_INPUT_SLOT(SlotName, SlotType, Index, Nullability, Role) \
+#define ACCUMULATION_INPUT_SLOT(SlotName, SlotType, Index, Nullability) \
     INPUT_SLOT_FLAGS( \
         SlotName, \
         SlotType, \
         Index, \
         Nullability, \
-        Role, \
+        ::Vixen::RenderGraph::SlotRole::Execute, \
         ::Vixen::RenderGraph::SlotMutability::ReadOnly, \
         ::Vixen::RenderGraph::SlotScope::NodeLevel, \
         ::Vixen::RenderGraph::SlotFlags::Accumulation | ::Vixen::RenderGraph::SlotFlags::MultiConnect \
@@ -773,13 +781,20 @@ ResourceDescriptor MakeDescriptor(
  * instead of element types. This eliminates the type system lie where slots declare
  * element types but return containers at runtime.
  *
+ * IMPORTANT: Accumulation slots are ALWAYS Execute role (never Dependency):
+ * - The accumulated vector is rebuilt each frame (reset semantics)
+ * - No dependency propagation needed - consumer processes fresh data each cycle
+ * - Source changes don't need to trigger target rebuild
+ *
+ * Result Lifetime: Always Transient - the accumulated vector is ephemeral.
+ * Do not cache accumulated data across frames.
+ *
  * Parameters:
  * - SlotName: Name of the slot (e.g., PASSES, INPUTS)
  * - ContainerType: Full container type (e.g., std::vector<bool>, std::vector<DispatchPass>)
  * - ElementType: Element type for validation (e.g., bool, DispatchPass)
  * - Index: Slot index
  * - Nullability: SlotNullability::Required or Optional
- * - Role: SlotRole::Dependency, Execute, etc.
  * - StorageStrategy: SlotStorageStrategy::Value, Reference, or Span
  *
  * Storage Strategies:
@@ -792,13 +807,11 @@ ResourceDescriptor MakeDescriptor(
  * // Value strategy (copies booleans)
  * ACCUMULATION_INPUT_SLOT_V2(INPUTS, std::vector<bool>, bool, 1,
  *     SlotNullability::Required,
- *     SlotRole::Dependency,
  *     SlotStorageStrategy::Value);
  *
  * // Reference strategy (requires Persistent sources)
  * ACCUMULATION_INPUT_SLOT_V2(LARGE_BUFFERS, std::vector<VkBuffer>, VkBuffer, 2,
  *     SlotNullability::Required,
- *     SlotRole::Dependency,
  *     SlotStorageStrategy::Reference);
  * ```
  *
@@ -807,12 +820,12 @@ ResourceDescriptor MakeDescriptor(
  * - Container's iterable_value_t must match ElementType
  * - Reference/Span strategies validate Persistent requirement at connection time
  */
-#define ACCUMULATION_INPUT_SLOT_V2(SlotName, ContainerType, ElementType, Index, Nullability, Role, StorageStrategy) \
+#define ACCUMULATION_INPUT_SLOT_V2(SlotName, ContainerType, ElementType, Index, Nullability, StorageStrategy) \
     using SlotName##_Slot = ::Vixen::RenderGraph::ResourceSlot< \
         ContainerType, \
         Index, \
         Nullability, \
-        Role, \
+        ::Vixen::RenderGraph::SlotRole::Execute, \
         ::Vixen::RenderGraph::SlotMutability::ReadOnly, \
         ::Vixen::RenderGraph::SlotScope::NodeLevel, \
         ::Vixen::RenderGraph::SlotFlags::Accumulation | ::Vixen::RenderGraph::SlotFlags::MultiConnect, \

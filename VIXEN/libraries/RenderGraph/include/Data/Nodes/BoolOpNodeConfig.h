@@ -62,7 +62,6 @@ CONSTEXPR_NODE_CONFIG(BoolOpNodeConfig,
     // Collects bool elements into std::vector<bool> using Value strategy (copies)
     ACCUMULATION_INPUT_SLOT_V2(INPUTS, std::vector<bool>, bool, 1,
         SlotNullability::Required,
-        SlotRole::Dependency,
         SlotStorageStrategy::Value);
 
     // ===== OUTPUTS (1) =====

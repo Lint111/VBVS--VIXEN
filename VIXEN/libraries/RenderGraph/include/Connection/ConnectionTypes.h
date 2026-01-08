@@ -123,6 +123,9 @@ struct ConnectionContext {
     /// Type-erased to avoid circular dependency with AccumulationConnectionRule.h
     void* accumulationState = nullptr;
 
+    /// Skip dependency registration in Resolve (for unit tests with mock nodes)
+    bool skipDependencyRegistration = false;
+
     // ========================================================================
     // DEBUG SUPPORT
     // ========================================================================

@@ -60,8 +60,7 @@ struct TargetConfig : public ResourceConfigBase<2, 0> {
 
 struct AccumulationTargetConfig : public ResourceConfigBase<1, 0> {
     ACCUMULATION_INPUT_SLOT(PASSES, PassThroughStorage, 0,
-        SlotNullability::Required,
-        SlotRole::Dependency);
+        SlotNullability::Required);
 };
 
 // ============================================================================
@@ -1045,8 +1044,7 @@ TEST(AccumulationTypeTest, AccumulatedTypeForStruct) {
 // Test config with bool accumulation slot
 struct BoolAccumulationConfig : public ResourceConfigBase<1, 0> {
     ACCUMULATION_INPUT_SLOT(INPUTS, bool, 0,
-        SlotNullability::Required,
-        SlotRole::Dependency);
+        SlotNullability::Required);
 };
 
 TEST(AccumulationSlotTest, BoolAccumulationSlotFlags) {
@@ -1055,6 +1053,17 @@ TEST(AccumulationSlotTest, BoolAccumulationSlotFlags) {
     static_assert(BoolAccumulationConfig::INPUTS_Slot::isMultiConnect);
     static_assert(HasAccumulation(BoolAccumulationConfig::INPUTS_Slot::flags));
     static_assert(HasMultiConnect(BoolAccumulationConfig::INPUTS_Slot::flags));
+}
+
+TEST(AccumulationSlotTest, AccumulationSlotForcesExecuteRole) {
+    // Sprint 6.3: Accumulation slots are ALWAYS Execute role (never Dependency)
+    // - Accumulated vector is rebuilt each frame (reset semantics)
+    // - No dependency propagation needed
+    // - Result is Transient (don't cache across frames)
+    static_assert(BoolAccumulationConfig::INPUTS_Slot::role == SlotRole::Execute,
+        "Accumulation slots must have Execute role");
+    static_assert(AccumulationTargetConfig::PASSES_Slot::role == SlotRole::Execute,
+        "Accumulation slots must have Execute role");
 }
 
 TEST(AccumulationSlotTest, BoolAccumulationSlotType) {
@@ -1137,6 +1146,195 @@ TEST(AccumulationStateTest, SortBySortKey) {
     EXPECT_EQ(state.entries[0].sortKey, 1);
     EXPECT_EQ(state.entries[1].sortKey, 2);
     EXPECT_EQ(state.entries[2].sortKey, 3);
+}
+
+// ============================================================================
+// ACCUMULATION + FIELD EXTRACTION TESTS (Sprint 6.3)
+// ============================================================================
+
+// Test struct for field extraction
+struct TestAccumStruct {
+    int field1;
+    float field2;
+    VkBuffer field3;
+};
+
+TEST(AccumulationFieldExtractionTest, EntryPreservesFieldExtractionInfo) {
+    // Verify that AccumulationEntry stores field extraction info from sourceSlot
+    AccumulationEntry entry;
+    entry.sourceSlot.hasFieldExtraction = true;
+    entry.sourceSlot.fieldOffset = 16;
+    entry.sourceSlot.fieldSize = sizeof(float);
+
+    EXPECT_TRUE(entry.sourceSlot.hasFieldExtraction);
+    EXPECT_EQ(entry.sourceSlot.fieldOffset, 16u);
+    EXPECT_EQ(entry.sourceSlot.fieldSize, sizeof(float));
+}
+
+TEST(AccumulationFieldExtractionTest, MultipleEntriesWithDifferentExtraction) {
+    // Verify multiple entries can have different field extraction configs
+    AccumulationState state;
+
+    // Entry 1: Extract field1 (int at offset 0)
+    AccumulationEntry entry1;
+    entry1.sortKey = 1;
+    entry1.sourceSlot.hasFieldExtraction = true;
+    entry1.sourceSlot.fieldOffset = offsetof(TestAccumStruct, field1);
+    entry1.sourceSlot.fieldSize = sizeof(int);
+    state.AddEntry(entry1);
+
+    // Entry 2: No extraction (direct value)
+    AccumulationEntry entry2;
+    entry2.sortKey = 2;
+    entry2.sourceSlot.hasFieldExtraction = false;
+    state.AddEntry(entry2);
+
+    // Entry 3: Extract field3 (VkBuffer)
+    AccumulationEntry entry3;
+    entry3.sortKey = 3;
+    entry3.sourceSlot.hasFieldExtraction = true;
+    entry3.sourceSlot.fieldOffset = offsetof(TestAccumStruct, field3);
+    entry3.sourceSlot.fieldSize = sizeof(VkBuffer);
+    state.AddEntry(entry3);
+
+    ASSERT_EQ(state.entries.size(), 3u);
+
+    // Verify each entry preserved its extraction config
+    EXPECT_TRUE(state.entries[0].sourceSlot.hasFieldExtraction);
+    EXPECT_EQ(state.entries[0].sourceSlot.fieldOffset, offsetof(TestAccumStruct, field1));
+
+    EXPECT_FALSE(state.entries[1].sourceSlot.hasFieldExtraction);
+
+    EXPECT_TRUE(state.entries[2].sourceSlot.hasFieldExtraction);
+    EXPECT_EQ(state.entries[2].sourceSlot.fieldOffset, offsetof(TestAccumStruct, field3));
+}
+
+TEST(AccumulationFieldExtractionTest, PipelineAppliesFieldExtractionBeforeAccumulation) {
+    // Verify that ConnectionPipeline applies FieldExtractionModifier before
+    // AccumulationConnectionRule stores the entry
+    ConnectionPipeline pipeline;
+
+    // Add FieldExtractionModifier
+    pipeline.AddModifier(std::make_unique<FieldExtractionModifier>(
+        offsetof(TestAccumStruct, field2),  // Extract field2 (float)
+        sizeof(float),
+        ResourceType::PassThroughStorage  // Generic type for primitive
+    ));
+
+    AccumulationConnectionRule rule;
+
+    // Set up context with accumulation state
+    AccumulationState accState;
+    accState.config = AccumulationConfig{0, 10, OrderStrategy::ConnectionOrder, true};
+
+    ConnectionContext ctx;
+    // Use mock node pointers (not real objects)
+    ctx.sourceNode = reinterpret_cast<NodeInstance*>(0x100000);
+    ctx.targetNode = reinterpret_cast<NodeInstance*>(0x200000);
+    ctx.graph = reinterpret_cast<RenderGraph*>(0x300000);
+    ctx.skipDependencyRegistration = true;  // Skip AddDependency call on mock pointers
+    ctx.sourceLifetime = ResourceLifetime::Persistent;  // Required for field extraction
+    ctx.sourceSlot = SlotInfo::FromOutputSlot<SourceConfig::BUFFER_OUT_Slot>("OUT");
+    ctx.targetSlot = SlotInfo::FromInputSlot<AccumulationTargetConfig::PASSES_Slot>("PASSES");
+    ctx.accumulationState = &accState;
+
+    auto result = pipeline.Execute(ctx, rule);
+    EXPECT_TRUE(result.success) << result.errorMessage;
+
+    // Verify field extraction was applied to sourceSlot BEFORE Resolve stored it
+    ASSERT_EQ(accState.entries.size(), 1u);
+    EXPECT_TRUE(accState.entries[0].sourceSlot.hasFieldExtraction);
+    EXPECT_EQ(accState.entries[0].sourceSlot.fieldOffset, offsetof(TestAccumStruct, field2));
+    EXPECT_EQ(accState.entries[0].sourceSlot.fieldSize, sizeof(float));
+}
+
+TEST(AccumulationFieldExtractionTest, MixedExtractionThroughPipeline) {
+    // Simulate connecting multiple sources to accumulation slot,
+    // some with field extraction, some without
+    AccumulationState accState;
+    accState.config = AccumulationConfig{0, 10, OrderStrategy::ByMetadata, true};
+
+    AccumulationConnectionRule rule;
+
+    // Connection 1: With field extraction
+    {
+        ConnectionPipeline pipeline;
+        pipeline.AddModifier(std::make_unique<FieldExtractionModifier>(
+            offsetof(TestAccumStruct, field1), sizeof(int), ResourceType::PassThroughStorage
+        ));
+        pipeline.AddModifier(std::make_unique<AccumulationSortConfig>(10));
+
+        ConnectionContext ctx;
+        // Use mock node pointers (not real objects)
+        ctx.sourceNode = reinterpret_cast<NodeInstance*>(0x100000);
+        ctx.targetNode = reinterpret_cast<NodeInstance*>(0x200000);
+        ctx.graph = reinterpret_cast<RenderGraph*>(0x300000);
+        ctx.skipDependencyRegistration = true;  // Skip AddDependency call on mock pointers
+        ctx.sourceLifetime = ResourceLifetime::Persistent;
+        ctx.sourceSlot = SlotInfo::FromOutputSlot<SourceConfig::BUFFER_OUT_Slot>("OUT");
+        ctx.targetSlot = SlotInfo::FromInputSlot<AccumulationTargetConfig::PASSES_Slot>("PASSES");
+        ctx.accumulationState = &accState;
+
+        auto result = pipeline.Execute(ctx, rule);
+        EXPECT_TRUE(result.success) << result.errorMessage;
+    }
+
+    // Connection 2: Without field extraction
+    {
+        ConnectionPipeline pipeline;
+        pipeline.AddModifier(std::make_unique<AccumulationSortConfig>(20));
+
+        ConnectionContext ctx;
+        ctx.sourceNode = reinterpret_cast<NodeInstance*>(0x110000);
+        ctx.targetNode = reinterpret_cast<NodeInstance*>(0x200000);
+        ctx.graph = reinterpret_cast<RenderGraph*>(0x300000);
+        ctx.skipDependencyRegistration = true;  // Skip AddDependency call on mock pointers
+        ctx.sourceSlot = SlotInfo::FromOutputSlot<SourceConfig::BUFFER_OUT_Slot>("OUT2");
+        ctx.targetSlot = SlotInfo::FromInputSlot<AccumulationTargetConfig::PASSES_Slot>("PASSES");
+        ctx.accumulationState = &accState;
+
+        auto result = pipeline.Execute(ctx, rule);
+        EXPECT_TRUE(result.success) << result.errorMessage;
+    }
+
+    // Connection 3: With different field extraction
+    {
+        ConnectionPipeline pipeline;
+        pipeline.AddModifier(std::make_unique<FieldExtractionModifier>(
+            offsetof(TestAccumStruct, field3), sizeof(VkBuffer), ResourceType::Buffer
+        ));
+        pipeline.AddModifier(std::make_unique<AccumulationSortConfig>(30));
+
+        ConnectionContext ctx;
+        ctx.sourceNode = reinterpret_cast<NodeInstance*>(0x120000);
+        ctx.targetNode = reinterpret_cast<NodeInstance*>(0x200000);
+        ctx.graph = reinterpret_cast<RenderGraph*>(0x300000);
+        ctx.skipDependencyRegistration = true;  // Skip AddDependency call on mock pointers
+        ctx.sourceLifetime = ResourceLifetime::Persistent;
+        ctx.sourceSlot = SlotInfo::FromOutputSlot<SourceConfig::BUFFER_OUT_Slot>("OUT3");
+        ctx.targetSlot = SlotInfo::FromInputSlot<AccumulationTargetConfig::PASSES_Slot>("PASSES");
+        ctx.accumulationState = &accState;
+
+        auto result = pipeline.Execute(ctx, rule);
+        EXPECT_TRUE(result.success) << result.errorMessage;
+    }
+
+    // Verify all entries stored correctly
+    ASSERT_EQ(accState.entries.size(), 3u);
+
+    // Sort by metadata to get predictable order
+    accState.SortEntries(OrderStrategy::ByMetadata);
+
+    // Entry with sortKey=10: has field extraction for field1
+    EXPECT_TRUE(accState.entries[0].sourceSlot.hasFieldExtraction);
+    EXPECT_EQ(accState.entries[0].sourceSlot.fieldOffset, offsetof(TestAccumStruct, field1));
+
+    // Entry with sortKey=20: no field extraction
+    EXPECT_FALSE(accState.entries[1].sourceSlot.hasFieldExtraction);
+
+    // Entry with sortKey=30: has field extraction for field3
+    EXPECT_TRUE(accState.entries[2].sourceSlot.hasFieldExtraction);
+    EXPECT_EQ(accState.entries[2].sourceSlot.fieldOffset, offsetof(TestAccumStruct, field3));
 }
 
 // ============================================================================
@@ -1472,7 +1670,8 @@ TEST(VariadicModifierAPI, MultipleModifiersStreamlinedSyntax) {
     // Verify both modifiers were applied
     EXPECT_TRUE(ctx.sourceSlot.hasFieldExtraction);
     EXPECT_EQ(ctx.sourceSlot.fieldOffset, 16u);
-    EXPECT_EQ(ctx.sourceSlot.role, SlotRole::Execute);
+    // SlotRoleModifier sets ctx.roleOverride, not ctx.sourceSlot.role
+    EXPECT_EQ(ctx.roleOverride, SlotRole::Execute);
 }
 
 // ============================================================================

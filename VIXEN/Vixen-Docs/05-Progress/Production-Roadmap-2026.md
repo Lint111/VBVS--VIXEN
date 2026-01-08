@@ -174,13 +174,13 @@ All Sprint 4 tasks completed. Ready for merge to main and Sprint 5 (CashSystem R
 
 ---
 
-### Sprint 6: Timeline Foundation 🟢 IN PROGRESS
+### Sprint 6: Timeline Foundation ✅ CORE COMPLETE
 
 **Branch:** `production/sprint-6-timeline-foundation`
 **Board:** 651785
 **Goal:** Build foundational Timeline system for parallel execution.
-**Status:** 🟢 Sprint 6.1, 6.2 Complete | Sprint 6.3 Proposed
-**Progress:** 128h/260h (49%)
+**Status:** ✅ Sprints 6.1, 6.2, 6.3 COMPLETE | Sprint 6.4 (WaveScheduler) Planned
+**Progress:** 228h/260h (88%)
 
 ---
 
@@ -290,40 +290,64 @@ See [[Sprint6.2-TaskQueue-System]] for detailed implementation notes.
 
 ---
 
-#### Sprint 6.3: Timeline Capacity Tracker (48h) - PROPOSED 🆕
+#### Sprint 6.3: Timeline Capacity System (100h) ✅ COMPLETE
 
-**Design Element:** #38 (NEW)
-**Goal:** Runtime performance tracking and adaptive scheduling
-**Status:** ⏳ Proposed - Feature plan complete
-**Proposal:** [[timeline-capacity-tracker]]
+**Design Element:** #38
+**Goal:** Adaptive scheduling infrastructure with runtime performance tracking
+**Status:** ✅ Complete (2026-01-09)
+**Completed:** 100h (All 7 phases + additional fixes)
 
-| Task ID | Task | Hours | Priority | Status |
-|---------|------|-------|----------|--------|
-| TBD | Core Measurement Infrastructure | 14h | HIGH | ⏳ Planned |
-| TBD | Feedback Loop & Learning | 10h | HIGH | ⏳ Planned |
-| TBD | Adaptive Scheduling | 14h | HIGH | ⏳ Planned |
-| TBD | Tests & Documentation | 10h | MEDIUM | ⏳ Planned |
+| Phase | Task | Hours | Status |
+|-------|------|-------|--------|
+| Phase 0 | GPUQueryManager Infrastructure | 12h | ✅ Complete |
+| Phase 1 | TimelineCapacityTracker Foundation | 24h | ✅ Complete |
+| Phase 2 | TaskQueue Integration | 16h | ✅ Complete |
+| Phase 3 | Prediction & Calibration | 16h | ✅ Complete |
+| Phase 4 | Event-Driven Architecture | 12h | ✅ Complete |
+| Phase 5 | System Decoupling Analysis | 8h | ✅ Complete |
+| Phase 6 | Frame Lifecycle Decoupling | 8h | ✅ Complete |
+| Phase 7 | Persistence & Polish | 4h | ✅ Complete |
 
-**Key Features:**
-- Measure actual GPU/CPU time (vs. estimates)
-- Learn from measurements to improve predictions
-- Suggest additional tasks when capacity available
-- Identify bottlenecks (GPU vs. CPU)
-- Integrate with TaskQueue for adaptive scheduling
+**Key Deliverables:**
+- [x] GPUQueryManager for timestamp query management
+- [x] TimelineCapacityTracker with damped hysteresis (±10% max, 5% deadband)
+- [x] PredictionErrorTracker with bias correction and exponential moving average
+- [x] TaskProfile + TaskProfileRegistry for per-task calibration
+- [x] CalibrationStore for cross-session JSON persistence
+- [x] Event-driven architecture (FrameStart/End, BudgetOverrun/Available events)
+- [x] ScopedSubscriptions RAII helper class
+- [x] Hardware fingerprint detection (GPU + driver version tracking)
 
-**Success Metrics:**
-- +30-50% GPU utilization through adaptation
-- ±10% prediction accuracy after 50 frames
-- Stable framerates with graceful degradation
+**Additional Fixes (2026-01-09):**
+- Fixed SEH exception in accumulation + field extraction tests
+- Added `skipDependencyRegistration` flag to ConnectionContext
+- **Accumulation Slot Semantics Enforcement:**
+  - Removed Role parameter from ACCUMULATION_INPUT_SLOT macros
+  - Accumulation slots ALWAYS use SlotRole::Execute (hardcoded)
+  - Result lifetime is Transient (rebuilt each frame)
+  - Source can be Persistent (enables field extraction) or Transient
 
-**Dependencies:**
-- Sprint 6.2 Complete (TaskQueue foundation)
-- GPUTimestampQuery operational ✅
-- Profiler::Timer operational ✅
+**Test Results:** 222+ tests passing
+| Component | Tests |
+|-----------|-------|
+| GPUQueryManager | 35 |
+| TimelineCapacityTracker | 47 |
+| TaskQueue | 35 |
+| MultiDispatchIntegration | 22 |
+| PredictionErrorTracker | 27 |
+| TaskProfile + CalibrationStore | 56 |
 
-**Rationale:** Bridges gap between static budget planning (Sprint 6.2) and dynamic runtime execution. Enables self-tuning performance management and adaptive quality adjustment.
+**Key Files:**
+- `Core/GPUQueryManager.h` - Timestamp query pool management
+- `Core/TimelineCapacityTracker.h/.cpp` - Budget/measurement tracking
+- `Core/PredictionErrorTracker.h` - Error tracking & correction
+- `Core/TaskProfile.h` - Work unit calibration
+- `Core/TaskProfileRegistry.h` - Central profile management
+- `Core/CalibrationStore.h` - JSON persistence
+- `Core/FrameManager.h` - Frame lifecycle source
+- `EventBus/Message.h` - Budget events, application lifecycle events
 
-See [[timeline-capacity-tracker]] for comprehensive proposal.
+See [[Sprint6.3-Timeline-Capacity-System]] for comprehensive details.
 
 ---
 
@@ -697,6 +721,16 @@ graph LR
 | 2026-01-07 | Sprint 6.2: Zero-cost bypass preserves 100% backward compatibility with Sprint 6.1 |
 | 2026-01-07 | Commits: 6ecbcad (template), 86157d4 (impl), 3bfc528 (tests), 1e6e890 (docs) |
 | 2026-01-07 | Sprint 6 progress: 128h/260h (49%) - Sprints 6.1 and 6.2 complete |
+| 2026-01-08 | **Sprint 6.3 Phase 0-7 COMPLETE** - Timeline Capacity System (100h) |
+| 2026-01-08 | GPUQueryManager, TimelineCapacityTracker, PredictionErrorTracker, TaskProfile |
+| 2026-01-08 | CalibrationStore JSON persistence with hardware fingerprint detection |
+| 2026-01-08 | Event-driven architecture with ScopedSubscriptions RAII helper |
+| 2026-01-08 | 222 tests passing across 6 test files |
+| 2026-01-09 | Fixed SEH exception in accumulation + field extraction tests |
+| 2026-01-09 | Added `skipDependencyRegistration` flag to ConnectionContext |
+| 2026-01-09 | **Accumulation Slot Semantics Enforcement** - Execute role hardcoded, Transient result |
+| 2026-01-09 | Removed Role parameter from ACCUMULATION_INPUT_SLOT macros |
+| 2026-01-09 | **Sprint 6.3 COMPLETE** - Sprint 6 progress: 228h/260h (88%) |
 
 ---
 

@@ -114,10 +114,10 @@ void VulkanGraphApplication::Initialize() {
     mainLogger->Debug("Node types registered");
 
     mainLogger->Debug("Creating MessageBus");
-    // Create render graph
     // Create a MessageBus for event-driven coordination and inject into RenderGraph
     messageBus = std::make_unique<Vixen::EventBus::MessageBus>();
     mainLogger->Debug("MessageBus created");
+
 
     mainLogger->Debug("Initializing MainCacher");
     // Initialize MainCacher and connect it to MessageBus for device invalidation events
@@ -173,6 +173,16 @@ void VulkanGraphApplication::Initialize() {
     if (mainLogger) {
         mainLogger->Info("RenderGraph created successfully");
     }
+
+    // Sprint 6.3: Create autonomous CalibrationStore
+    // It subscribes to DeviceMetadataEvent (load) and ApplicationShuttingDownEvent (save)
+    mainLogger->Debug("Creating CalibrationStore");
+    calibrationStore = std::make_unique<Vixen::RenderGraph::CalibrationStore>(
+        "calibration",
+        renderGraph->GetTaskProfileRegistry(),
+        messageBus.get()
+    );
+    mainLogger->Info("CalibrationStore created (autonomous event-driven mode)");
 
     mainLogger->Debug("Registering physics loop");
     // Phase 0.4: Register loops with the graph
@@ -314,6 +324,14 @@ void VulkanGraphApplication::DeInitialize() {
         return;
     }
     deinitialized = true;
+
+    // Sprint 6.3: Publish shutdown event BEFORE any cleanup
+    // CalibrationStore subscribes and saves automatically
+    if (messageBus) {
+        auto shutdownEvent = std::make_unique<Vixen::EventBus::ApplicationShuttingDownEvent>(0);
+        messageBus->PublishImmediate(*shutdownEvent);  // Immediate - no queue processing
+        mainLogger->Info("Published ApplicationShuttingDownEvent");
+    }
 
     // Extract logs BEFORE destroying the render graph
     // With shared_ptr ownership:
@@ -1141,33 +1159,33 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Note: outputImage is not in SDI (writeonly image) so we use literal binding index 0
     batch.Connect(swapChainNode, SwapChainNodeConfig::CURRENT_FRAME_IMAGE_VIEW,
                           descriptorGatherer, 0,  // outputImage at binding 0
-                          SlotRoleModifier(SlotRole::Execute)));
+                          SlotRoleModifier(SlotRole::Execute));
 
     // Binding 1: octreeNodes (SSBO) - octree node data
     batch.Connect(voxelGridNode, VoxelGridNodeConfig::OCTREE_NODES_BUFFER,
                           descriptorGatherer, VoxelRayMarch::esvoNodes::BINDING,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute)));
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
                           
 
     // Binding 2: voxelBricks (SSBO) - voxel brick data
     batch.Connect(voxelGridNode, VoxelGridNodeConfig::OCTREE_BRICKS_BUFFER,
                           descriptorGatherer, VoxelRayMarch::brickData::BINDING,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute)));
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
     // Binding 3: materialPalette (SSBO) - material data
     batch.Connect(voxelGridNode, VoxelGridNodeConfig::OCTREE_MATERIALS_BUFFER,
                           descriptorGatherer, VoxelRayMarch::materials::BINDING,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute)));
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
     batch.Connect(voxelGridNode, VoxelGridNodeConfig::DEBUG_CAPTURE_BUFFER,
                           descriptorGatherer, VoxelRayMarch::traceWriteIndex::BINDING,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute | SlotRole::Debug)));
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute | SlotRole::Debug));
 
     // Binding 5: octreeConfig (UBO) - octree scale parameters
     // TODO: Add VoxelRayMarch::octreeConfig to VoxelRayMarchNames.h after regenerating SDI
     batch.Connect(voxelGridNode, VoxelGridNodeConfig::OCTREE_CONFIG_BUFFER,
                           descriptorGatherer, 5,  // Binding 5 (hardcoded until SDI regenerated)
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute)));
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
 #if USE_COMPRESSED_SHADER
     // Compressed shader variant requires DXT compressed buffers at bindings 6 and 7
@@ -1175,10 +1193,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Binding 7: compressedNormals (DXT) - 16 bytes/block, 32 blocks/brick = 512 bytes/brick
     batch.Connect(voxelGridNode, VoxelGridNodeConfig::COMPRESSED_COLOR_BUFFER,
                           descriptorGatherer, 6,  // Binding 6: CompressedColorBuffer
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute)));
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
     batch.Connect(voxelGridNode, VoxelGridNodeConfig::COMPRESSED_NORMAL_BUFFER,
                           descriptorGatherer, 7,  // Binding 7: CompressedNormalBuffer
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute)));
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
     if (mainLogger && mainLogger->IsEnabled()) {
         mainLogger->Info("[BuildRenderGraph] Connected compressed buffers: binding 6 (colors), binding 7 (normals)");
@@ -1189,7 +1207,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Extract imageCount metadata using field extraction, DESCRIPTOR_RESOURCES provides actual bindings
     batch.Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
                   computeDescriptorSet, DescriptorSetNodeConfig::SWAPCHAIN_IMAGE_COUNT,
-                  ExtractField(&SwapChainPublicVariables::swapChainImageCount)))
+                  ExtractField(&SwapChainPublicVariables::swapChainImageCount))
          .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
                   computeDescriptorSet, DescriptorSetNodeConfig::IMAGE_INDEX)
          // REMOVED DUPLICATE: descriptorGatherer -> computeDescriptorSet DESCRIPTOR_RESOURCES (already connected at line 919-920)
