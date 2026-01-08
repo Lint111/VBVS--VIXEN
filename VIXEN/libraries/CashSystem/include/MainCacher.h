@@ -638,7 +638,7 @@ private:
 
     // Event bus integration for device invalidation
     Vixen::EventBus::MessageBus* m_messageBus = nullptr;
-    Vixen::EventBus::EventSubscriptionID m_deviceInvalidationSubscription = 0;
+    Vixen::EventBus::ScopedSubscriptions subscriptions_;  // RAII subscriptions (auto-unsubscribe on destruction)
 
     // Note: Budget manager is now owned by VulkanDevice (Sprint 5 Phase 2.5.3)
     // Access via VulkanDevice::GetBudgetManager() instead of MainCacher

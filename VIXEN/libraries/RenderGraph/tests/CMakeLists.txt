@@ -311,6 +311,52 @@ else()
 endif()
 
 # ===========================================================================
+# Sprint 6.3: Phase 3.1 - PredictionErrorTracker Tests
+# ===========================================================================
+# Tests for prediction error tracking system
+# - Error ratio computation
+# - Rolling statistics (mean, variance, bias)
+# - Correction factor generation
+# - TimelineCapacityTracker integration
+# NOTE: Other Sprint 6.3 tests (GPUQueryManager, TimelineCapacityTracker)
+#       are defined in test_core_systems.cmake
+
+if(TARGET GTest::gtest_main)
+    add_executable(test_prediction_error_tracker
+        test_prediction_error_tracker.cpp
+    )
+
+    target_link_libraries(test_prediction_error_tracker PRIVATE
+        GTest::gtest_main
+        RenderGraph
+    )
+
+    set_target_properties(test_prediction_error_tracker PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+    gtest_discover_tests(test_prediction_error_tracker)
+
+    message(STATUS "✓ test_prediction_error_tracker configured (Sprint 6.3 Phase 3.1)")
+
+    # TaskProfile unit tests (Phase 3.2a)
+    add_executable(test_task_profile
+        test_task_profile.cpp
+    )
+
+    target_link_libraries(test_task_profile PRIVATE
+        GTest::gtest_main
+        RenderGraph
+    )
+
+    set_target_properties(test_task_profile PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+    gtest_discover_tests(test_task_profile)
+
+    message(STATUS "✓ test_task_profile configured (Sprint 6.3 Phase 3.2a)")
+else()
+    message(STATUS "⊗ Sprint 6.3 Phase 3 tests skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
 # Voxel Systems Tests - CONSOLIDATED (Phase H)
 # ===========================================================================
 # Validates voxel infrastructure:

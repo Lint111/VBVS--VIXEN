@@ -1,5 +1,6 @@
 #include "Nodes/MultiDispatchNode.h"
 #include "Data/Nodes/MultiDispatchNodeConfig.h"
+#include "Core/RenderGraph.h"  // Sprint 6.3: For TaskProfileRegistry access
 #include "VulkanDevice.h"
 #include "VulkanSwapChain.h"
 #include "Core/NodeLogging.h"
@@ -105,6 +106,19 @@ bool MultiDispatchNode::TryQueueDispatch(DispatchPass&& pass, uint64_t estimated
     }
 
     return accepted;
+}
+
+bool MultiDispatchNode::TryQueueWithProfile(DispatchPass&& pass, const ITaskProfile* profile, uint8_t priority) {
+    // Sprint 6.3: Get cost from profile directly (type-safe, no string lookup)
+    uint64_t estimatedCostNs = 0;
+
+    if (profile && profile->IsCalibrated()) {
+        estimatedCostNs = profile->GetEstimatedCostNs();
+        NODE_LOG_DEBUG("[MultiDispatchNode] Profile '" + profile->GetTaskId() + "': " +
+            std::to_string(estimatedCostNs) + "ns");
+    }
+
+    return TryQueueDispatch(std::move(pass), estimatedCostNs, priority);
 }
 
 void MultiDispatchNode::QueueBarrier(DispatchBarrier&& barrier) {

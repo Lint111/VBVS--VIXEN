@@ -4,6 +4,8 @@
 #pragma once
 
 #include "GPUPerformanceLogger.h"
+#include "PredictionErrorTracker.h"  // Sprint 6.3: Phase 3.1
+#include "MessageBus.h"              // Sprint 6.3: Event-driven architecture
 #include <cstdint>
 #include <deque>
 #include <memory>
@@ -614,6 +616,121 @@ public:
         gpuPerfLogger_ = std::move(logger);
     }
 
+    // =========================================================================
+    // Prediction Error Tracking (Phase 3.1)
+    // =========================================================================
+
+    /**
+     * @brief Record a prediction result for error tracking
+     *
+     * Call after measuring actual execution time to track prediction accuracy.
+     * Enables adaptive estimate correction in Phase 3.2.
+     *
+     * @param taskId Task type identifier (e.g., "shadowMap")
+     * @param estimatedNs Original estimate in nanoseconds
+     * @param actualNs Measured actual time in nanoseconds
+     */
+    void RecordPrediction(
+        const std::string& taskId,
+        uint64_t estimatedNs,
+        uint64_t actualNs
+    ) {
+        predictionTracker_.RecordPrediction(taskId, estimatedNs, actualNs, frameCounter_);
+    }
+
+    /**
+     * @brief Get correction factor for a task type's estimates
+     *
+     * Returns a multiplier to improve future estimates based on past accuracy.
+     *
+     * @param taskId Task type identifier
+     * @return Correction multiplier (1.0 if no data)
+     */
+    [[nodiscard]] float GetCorrectionFactor(const std::string& taskId) const {
+        return predictionTracker_.GetCorrectionFactor(taskId);
+    }
+
+    /**
+     * @brief Apply correction factor to an estimate
+     *
+     * Convenience method that applies learned correction to an estimate.
+     *
+     * @param taskId Task type identifier
+     * @param estimatedNs Original estimate in nanoseconds
+     * @return Corrected estimate in nanoseconds
+     */
+    [[nodiscard]] uint64_t GetCorrectedEstimate(
+        const std::string& taskId,
+        uint64_t estimatedNs
+    ) const {
+        float correction = predictionTracker_.GetCorrectionFactor(taskId);
+        return static_cast<uint64_t>(static_cast<float>(estimatedNs) * correction);
+    }
+
+    /**
+     * @brief Get prediction error statistics for a task type
+     *
+     * @param taskId Task type identifier
+     * @return Pointer to stats (nullptr if not tracked)
+     */
+    [[nodiscard]] const TaskPredictionStats* GetPredictionStats(
+        const std::string& taskId
+    ) const {
+        return predictionTracker_.GetTaskStats(taskId);
+    }
+
+    /**
+     * @brief Get global prediction error statistics
+     */
+    [[nodiscard]] GlobalPredictionStats GetGlobalPredictionStats() const {
+        return predictionTracker_.GetGlobalStats();
+    }
+
+    /**
+     * @brief Get direct access to prediction error tracker
+     *
+     * For advanced queries and configuration.
+     */
+    [[nodiscard]] PredictionErrorTracker& GetPredictionTracker() {
+        return predictionTracker_;
+    }
+
+    [[nodiscard]] const PredictionErrorTracker& GetPredictionTracker() const {
+        return predictionTracker_;
+    }
+
+    // =========================================================================
+    // Event-Driven Architecture (Sprint 6.3)
+    // =========================================================================
+
+    /**
+     * @brief Subscribe to frame events via MessageBus
+     *
+     * Enables self-managed frame lifecycle. When subscribed:
+     * - FrameStartEvent → calls BeginFrame()
+     * - FrameEndEvent → calls EndFrame() and publishes budget events
+     *
+     * @param messageBus MessageBus to subscribe to (non-owning)
+     */
+    void SubscribeToFrameEvents(EventBus::MessageBus* messageBus);
+
+    /**
+     * @brief Unsubscribe from frame events
+     *
+     * Note: Also happens automatically via RAII when object is destroyed.
+     */
+    void UnsubscribeFromFrameEvents() { subscriptions_.UnsubscribeAll(); }
+
+    /**
+     * @brief Check if subscribed to frame events
+     */
+    [[nodiscard]] bool IsSubscribed() const { return subscriptions_.HasSubscriptions(); }
+
+    /**
+     * @brief Get MessageBus (for publishing budget events)
+     */
+    [[nodiscard]] EventBus::MessageBus* GetMessageBus() const { return subscriptions_.GetBus(); }
+
 private:
     Config config_;
     SystemTimeline currentFrame_;
@@ -623,12 +740,21 @@ private:
     // Composition: Delegate GPU timing to GPUPerformanceLogger
     std::shared_ptr<GPUPerformanceLogger> gpuPerfLogger_;
 
+    // Sprint 6.3: Phase 3.1 - Prediction error tracking
+    PredictionErrorTracker predictionTracker_;
+
+    // Sprint 6.3: Event-driven architecture (RAII subscriptions)
+    EventBus::ScopedSubscriptions subscriptions_;
+
     // Internal helpers
     [[nodiscard]] float ComputeAverage(
         const std::deque<SystemTimeline>& data,
         uint32_t count,
         bool useGPU
     ) const;
+
+    // Publish budget events based on current utilization
+    void PublishBudgetEvents();
 };
 
 } // namespace Vixen::RenderGraph

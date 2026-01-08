@@ -2,15 +2,9 @@
 
 #include "Memory/IMemoryAllocator.h"
 #include "Memory/ResourceBudgetManager.h"
+#include "MessageBus.h"  // Include for ScopedSubscriptions
 #include <memory>
 #include <functional>
-
-// Forward declaration to avoid header dependency
-namespace Vixen::EventBus {
-    class MessageBus;
-    struct BaseEventMessage;
-    using EventSubscriptionID = uint32_t;
-}
 
 namespace ResourceManagement {
 
@@ -338,8 +332,7 @@ private:
 
     // Event-driven frame tracking (Sprint 5 Phase 4.4)
     Vixen::EventBus::MessageBus* messageBus_ = nullptr;
-    Vixen::EventBus::EventSubscriptionID frameStartSubscription_ = 0;
-    Vixen::EventBus::EventSubscriptionID frameEndSubscription_ = 0;
+    Vixen::EventBus::ScopedSubscriptions subscriptions_;  // RAII subscriptions (auto-unsubscribe on destruction)
 
     // Internal helpers
     static BudgetResourceType HeapTypeToBudgetType(DeviceHeapType heapType);
@@ -347,8 +340,8 @@ private:
     AllocationSnapshot CaptureSnapshot() const;
     void SubscribeToFrameEvents();
     void UnsubscribeFromFrameEvents();
-    bool HandleFrameStartEvent(const Vixen::EventBus::BaseEventMessage& msg);
-    bool HandleFrameEndEvent(const Vixen::EventBus::BaseEventMessage& msg);
+    bool HandleFrameStartEvent(const Vixen::EventBus::FrameStartEvent& msg);
+    bool HandleFrameEndEvent(const Vixen::EventBus::FrameEndEvent& msg);
 };
 
 } // namespace ResourceManagement

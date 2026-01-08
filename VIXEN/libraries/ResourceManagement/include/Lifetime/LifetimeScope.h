@@ -1,6 +1,8 @@
 #pragma once
 
 #include "Lifetime/SharedResource.h"
+#include "MessageBus.h"  // Sprint 6.3: ScopedSubscriptions
+#include "Message.h"     // Sprint 6.3: Frame events
 #include <vector>
 #include <string>
 #include <string_view>
@@ -431,11 +433,61 @@ public:
         return total;
     }
 
+    // =========================================================================
+    // Event-Driven Lifecycle (Sprint 6.3 Phase 6)
+    // =========================================================================
+
+    /**
+     * @brief Subscribe to frame events for automatic lifecycle management
+     *
+     * When subscribed, BeginFrame/EndFrame are called automatically in response
+     * to FrameStartEvent/FrameEndEvent. This enables decoupled operation where
+     * RenderGraph doesn't need to call these methods directly.
+     *
+     * @param messageBus MessageBus to subscribe to (must outlive this object)
+     */
+    void SubscribeToFrameEvents(Vixen::EventBus::MessageBus* messageBus) {
+        if (!messageBus) {
+            return;
+        }
+
+        subscriptions_.SetBus(messageBus);
+
+        subscriptions_.Subscribe<Vixen::EventBus::FrameStartEvent>(
+            [this](const Vixen::EventBus::FrameStartEvent& e) {
+                BeginFrame();
+            }
+        );
+
+        subscriptions_.Subscribe<Vixen::EventBus::FrameEndEvent>(
+            [this](const Vixen::EventBus::FrameEndEvent& e) {
+                EndFrame();
+            }
+        );
+    }
+
+    /**
+     * @brief Unsubscribe from frame events
+     *
+     * After calling this, BeginFrame/EndFrame must be called manually.
+     */
+    void UnsubscribeFromFrameEvents() {
+        subscriptions_.UnsubscribeAll();
+    }
+
+    /**
+     * @brief Check if currently subscribed to frame events
+     */
+    [[nodiscard]] bool IsSubscribedToFrameEvents() const noexcept {
+        return subscriptions_.HasSubscriptions();
+    }
+
 private:
     SharedResourceFactory* factory_;
     LifetimeScope frameScope_;
     std::stack<std::unique_ptr<LifetimeScope>> scopeStack_;
     uint64_t frameNumber_ = 0;
+    Vixen::EventBus::ScopedSubscriptions subscriptions_;  // Sprint 6.3: RAII event subscriptions
 };
 
 /**

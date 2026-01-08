@@ -284,4 +284,170 @@ private:
     void CheckCapacityWarning(size_t currentSize);
 };
 
+// ============================================================================
+// ScopedSubscriptions - RAII subscription manager (Sprint 6.3)
+// ============================================================================
+
+/**
+ * @brief RAII helper for managing MessageBus subscriptions
+ *
+ * Automatically unsubscribes all subscriptions when destroyed.
+ * Provides type-safe Subscribe<EventType>() that handles casting internally.
+ *
+ * Usage:
+ * @code
+ * class MySystem {
+ *     ScopedSubscriptions subs_;
+ *
+ *     void Initialize(MessageBus* bus) {
+ *         subs_.SetBus(bus);
+ *         subs_.Subscribe<FrameStartEvent>([this](const FrameStartEvent& e) {
+ *             OnFrameStart(e.frameNumber);
+ *         });
+ *         subs_.Subscribe<FrameEndEvent>([this](const FrameEndEvent& e) {
+ *             OnFrameEnd(e.frameNumber);
+ *         });
+ *         // Destructor auto-unsubscribes when MySystem is destroyed
+ *     }
+ * };
+ * @endcode
+ *
+ * Benefits:
+ * - Single member instead of N subscription IDs
+ * - RAII cleanup (no manual Unsubscribe calls)
+ * - Type-safe handlers (no manual static_cast)
+ * - Cleaner lambda signatures
+ */
+class ScopedSubscriptions {
+public:
+    ScopedSubscriptions() = default;
+    explicit ScopedSubscriptions(MessageBus* bus) : bus_(bus) {}
+
+    ~ScopedSubscriptions() {
+        UnsubscribeAll();
+    }
+
+    // Non-copyable (subscriptions are owned)
+    ScopedSubscriptions(const ScopedSubscriptions&) = delete;
+    ScopedSubscriptions& operator=(const ScopedSubscriptions&) = delete;
+
+    // Movable
+    ScopedSubscriptions(ScopedSubscriptions&& other) noexcept
+        : bus_(other.bus_)
+        , ids_(std::move(other.ids_))
+    {
+        other.bus_ = nullptr;
+    }
+
+    ScopedSubscriptions& operator=(ScopedSubscriptions&& other) noexcept {
+        if (this != &other) {
+            UnsubscribeAll();
+            bus_ = other.bus_;
+            ids_ = std::move(other.ids_);
+            other.bus_ = nullptr;
+        }
+        return *this;
+    }
+
+    /**
+     * @brief Set the MessageBus to use for subscriptions
+     *
+     * Must be called before Subscribe() if default constructor was used.
+     * Unsubscribes any existing subscriptions first.
+     */
+    void SetBus(MessageBus* bus) {
+        UnsubscribeAll();
+        bus_ = bus;
+    }
+
+    /**
+     * @brief Get the current MessageBus
+     */
+    [[nodiscard]] MessageBus* GetBus() const { return bus_; }
+
+    /**
+     * @brief Type-safe subscribe to a specific event type
+     *
+     * Handler receives the correctly-typed event reference directly.
+     * No manual static_cast needed in the handler.
+     *
+     * @tparam EventType The event class (must have static TYPE member)
+     * @param handler Lambda/function receiving const EventType&
+     */
+    template<typename EventType>
+    void Subscribe(std::function<void(const EventType&)> handler) {
+        if (!bus_) return;
+
+        auto id = bus_->Subscribe(
+            EventType::TYPE,
+            [h = std::move(handler)](const BaseEventMessage& e) -> bool {
+                h(static_cast<const EventType&>(e));
+                return true;
+            }
+        );
+        ids_.push_back(id);
+    }
+
+    /**
+     * @brief Subscribe with custom return value control
+     *
+     * Use when you need to control whether the event continues propagating.
+     *
+     * @tparam EventType The event class
+     * @param handler Lambda returning bool (true = handled, false = continue)
+     */
+    template<typename EventType>
+    void SubscribeWithResult(std::function<bool(const EventType&)> handler) {
+        if (!bus_) return;
+
+        auto id = bus_->Subscribe(
+            EventType::TYPE,
+            [h = std::move(handler)](const BaseEventMessage& e) -> bool {
+                return h(static_cast<const EventType&>(e));
+            }
+        );
+        ids_.push_back(id);
+    }
+
+    /**
+     * @brief Subscribe to event category (receives all events in category)
+     *
+     * @param category Category flags to match
+     * @param handler Handler receiving BaseEventMessage (must cast manually)
+     */
+    void SubscribeCategory(EventCategory category, MessageHandler handler) {
+        if (!bus_) return;
+        auto id = bus_->SubscribeCategory(category, std::move(handler));
+        ids_.push_back(id);
+    }
+
+    /**
+     * @brief Unsubscribe all managed subscriptions
+     *
+     * Called automatically by destructor. Safe to call multiple times.
+     */
+    void UnsubscribeAll() {
+        if (bus_) {
+            for (auto id : ids_) {
+                bus_->Unsubscribe(id);
+            }
+        }
+        ids_.clear();
+    }
+
+    /**
+     * @brief Get number of active subscriptions
+     */
+    [[nodiscard]] size_t GetSubscriptionCount() const { return ids_.size(); }
+
+    /**
+     * @brief Check if any subscriptions are active
+     */
+    [[nodiscard]] bool HasSubscriptions() const { return !ids_.empty(); }
+
+private:
+    MessageBus* bus_ = nullptr;
+    std::vector<EventSubscriptionID> ids_;
+};
+
 } // namespace Vixen::EventBus

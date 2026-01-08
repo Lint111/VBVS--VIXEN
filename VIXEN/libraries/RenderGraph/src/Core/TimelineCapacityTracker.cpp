@@ -2,6 +2,7 @@
 // Licensed under the GPL-3.0 License.
 // See LICENSE file in the project root for full license information.
 #include "Core/TimelineCapacityTracker.h"
+#include "Message.h"  // For budget events
 #include <algorithm>
 #include <cmath>
 
@@ -74,6 +75,9 @@ void TimelineCapacityTracker::EndFrame() {
     if (history_.size() > config_.historyDepth) {
         history_.pop_front();
     }
+
+    // Sprint 6.3: Publish budget events for decoupled pressure adjustment
+    PublishBudgetEvents();
 }
 
 // =============================================================================
@@ -216,6 +220,80 @@ float TimelineCapacityTracker::ComputeAverage(
     }
 
     return sum / static_cast<float>(framesToAverage);
+}
+
+// =============================================================================
+// Event-Driven Architecture (Sprint 6.3)
+// =============================================================================
+
+void TimelineCapacityTracker::SubscribeToFrameEvents(EventBus::MessageBus* messageBus) {
+    if (!messageBus) {
+        return;
+    }
+
+    // ScopedSubscriptions handles unsubscribe automatically
+    subscriptions_.SetBus(messageBus);
+
+    // Subscribe to FrameStartEvent (type-safe, clean syntax)
+    subscriptions_.Subscribe<EventBus::FrameStartEvent>(
+        [this](const EventBus::FrameStartEvent& e) {
+            // Note: Frame counter comes from FrameManager, not from us
+            // We just reset our measurements
+            BeginFrame();
+        }
+    );
+
+    // Subscribe to FrameEndEvent
+    subscriptions_.Subscribe<EventBus::FrameEndEvent>(
+        [this](const EventBus::FrameEndEvent& e) {
+            EndFrame();  // This will compute utilization and publish budget events
+        }
+    );
+}
+
+// UnsubscribeFromFrameEvents() is now inline in header using subscriptions_.UnsubscribeAll()
+
+void TimelineCapacityTracker::PublishBudgetEvents() {
+    auto* messageBus = subscriptions_.GetBus();
+    if (!messageBus) {
+        return;  // No MessageBus, skip budget event publishing
+    }
+
+    // Get GPU utilization (use max across all queues)
+    float utilization = currentFrame_.GetMaxGPUUtilization();
+
+    // Get budget and actual for event payload
+    uint64_t budgetNs = 0;
+    uint64_t actualNs = 0;
+    if (!currentFrame_.gpuQueues.empty()) {
+        budgetNs = currentFrame_.gpuQueues[0].budgetNs;
+        actualNs = currentFrame_.gpuQueues[0].measuredNs;
+    }
+
+    // Decide which event to publish based on utilization
+    if (IsOverBudget()) {
+        // Over budget: publish overrun event
+        auto event = std::make_unique<EventBus::BudgetOverrunEvent>(
+            0,  // System sender
+            frameCounter_,
+            utilization,
+            budgetNs,
+            actualNs
+        );
+        messageBus->Publish(std::move(event));
+    } else if (CanScheduleMoreWork()) {
+        // Under threshold: publish available event
+        uint64_t remainingNs = GetMinGPURemainingBudget();
+        auto event = std::make_unique<EventBus::BudgetAvailableEvent>(
+            0,  // System sender
+            frameCounter_,
+            utilization,
+            config_.adaptiveThreshold,
+            remainingNs
+        );
+        messageBus->Publish(std::move(event));
+    }
+    // If exactly at threshold (90-100%), no event - within deadband
 }
 
 } // namespace Vixen::RenderGraph

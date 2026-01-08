@@ -11,6 +11,7 @@
 #include "Memory/ResourceBudgetManager.h"
 #include "GraphLifecycleHooks.h"
 #include "NodeContext.h"
+#include "ITaskProfile.h"  // Sprint 6.3: Task profile system
 #include <string>
 #include <vector>
 #include <map>
@@ -26,6 +27,7 @@ namespace Vixen::RenderGraph {
 
 // Forward declarations
 class RenderGraph;
+class TaskProfileRegistry;
 // NodeHandle defined in CleanupStack.h
 
 /**
@@ -101,6 +103,44 @@ public:
     // Owning graph access (for cleanup registration)
     RenderGraph* GetOwningGraph() const { return owningGraph; }
     void SetOwningGraph(RenderGraph* graph) { owningGraph = graph; }
+
+    // =========================================================================
+    // Task Profile System (Sprint 6.3) - Cacher-style API
+    // =========================================================================
+
+    /**
+     * @brief Get or create a task profile (cacher pattern)
+     *
+     * Looks up profile by taskId. If not found, creates it using the provided
+     * arguments and registers it. Returns pointer to the profile.
+     *
+     * Usage:
+     * @code
+     * // Simple - creates SimpleTaskProfile("shadowPass", "shadow")
+     * auto* profile = GetOrCreateProfile<SimpleTaskProfile>("shadowPass", "shadow");
+     *
+     * // Resolution-based profile with custom table
+     * std::array<uint32_t, 11> resolutions = {...};
+     * auto* profile = GetOrCreateProfile<ResolutionTaskProfile>(
+     *     "shadowMap", "shadow", resolutions);
+     * @endcode
+     *
+     * @tparam ProfileType Concrete profile type (e.g., SimpleTaskProfile)
+     * @param taskId Unique task identifier
+     * @param args Constructor arguments for ProfileType (taskId, category, ...)
+     * @return Non-owning pointer to profile (owned by registry)
+     */
+    template<typename ProfileType, typename... Args>
+    ProfileType* GetOrCreateProfile(const std::string& taskId, Args&&... args);
+
+    /**
+     * @brief Get existing task profile (no creation)
+     *
+     * @param taskId Task identifier
+     * @return Pointer to profile, or nullptr if not found
+     */
+    ITaskProfile* GetTaskProfile(const std::string& taskId);
+    const ITaskProfile* GetTaskProfile(const std::string& taskId) const;
 
     // Node arrayable flag
     bool AllowsInputArrays() const { return allowInputArrays; }
@@ -818,7 +858,7 @@ protected:
 
     // EventBus integration
     EventBus::MessageBus* messageBus = nullptr;  // Non-owning pointer
-    std::vector<EventBus::EventSubscriptionID> eventSubscriptions;
+    EventBus::ScopedSubscriptions subscriptions_;  // RAII subscriptions (auto-unsubscribe on destruction)
     bool needsRecompile = false;
     bool deferredRecompile = false;  // Set when marked dirty during execution
 
@@ -901,6 +941,31 @@ protected:
     // Helper methods
     void AllocateResources();
     void DeallocateResources();
+
+    // Internal helper for GetOrCreateProfile (implemented in .cpp)
+    ITaskProfile* RegisterProfileIfAbsent(const std::string& taskId, std::unique_ptr<ITaskProfile> profile);
 };
+
+// ============================================================================
+// Template Implementation (inline, no RenderGraph.h dependency)
+// ============================================================================
+
+template<typename ProfileType, typename... Args>
+ProfileType* NodeInstance::GetOrCreateProfile(const std::string& taskId, Args&&... args) {
+    static_assert(std::is_base_of_v<ITaskProfile, ProfileType>,
+        "ProfileType must derive from ITaskProfile");
+
+    // Check if exists first
+    if (ITaskProfile* existing = GetTaskProfile(taskId)) {
+        return dynamic_cast<ProfileType*>(existing);
+    }
+
+    // Create new and register
+    auto newProfile = std::make_unique<ProfileType>(std::forward<Args>(args)...);
+    newProfile->SetTaskId(taskId);
+
+    ITaskProfile* registered = RegisterProfileIfAbsent(taskId, std::move(newProfile));
+    return dynamic_cast<ProfileType*>(registered);
+}
 
 } // namespace Vixen::RenderGraph

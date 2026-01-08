@@ -120,6 +120,27 @@ public:
     bool TryQueueDispatch(DispatchPass&& pass, uint64_t estimatedCostNs, uint8_t priority = 128);
 
     /**
+     * @brief Queue a dispatch using TaskProfile for cost estimation (Sprint 6.3)
+     *
+     * Uses profile's calibrated cost estimate. Type-safe - no string misspelling.
+     *
+     * Usage:
+     * @code
+     * // Setup - get or create profile (store pointer)
+     * shadowProfile_ = GetOrCreateProfile<SimpleTaskProfile>("shadow", "shadow", "shadow");
+     *
+     * // Execute - pass profile directly (type-safe)
+     * TryQueueWithProfile(std::move(pass), shadowProfile_);
+     * @endcode
+     *
+     * @param pass Dispatch pass descriptor (moved)
+     * @param profile Task profile pointer (from GetOrCreateProfile)
+     * @param priority Execution priority (0=lowest, 255=highest)
+     * @return true if task accepted, false if rejected
+     */
+    bool TryQueueWithProfile(DispatchPass&& pass, const ITaskProfile* profile, uint8_t priority = 128);
+
+    /**
      * @brief Queue an explicit barrier between passes
      *
      * Inserts a synchronization point at the current position in the

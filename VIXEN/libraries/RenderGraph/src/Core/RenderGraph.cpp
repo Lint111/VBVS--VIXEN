@@ -36,62 +36,47 @@ RenderGraph::RenderGraph(
         this->mainLogger = mainLogger;
     }
 
-    // Subscribe to cleanup events if bus provided
+    // Subscribe to events using RAII ScopedSubscriptions
     if (messageBus) {
-        cleanupEventSubscription = messageBus->Subscribe(
-            EventTypes::CleanupRequestedMessage::TYPE,
-            [this](const EventBus::BaseEventMessage& msg) {
-                auto& cleanupMsg = static_cast<const EventTypes::CleanupRequestedMessage&>(msg);
-                this->HandleCleanupRequest(cleanupMsg);
+        subscriptions_.SetBus(messageBus);
+
+        subscriptions_.SubscribeWithResult<EventTypes::CleanupRequestedMessage>(
+            [this](const EventTypes::CleanupRequestedMessage& msg) {
+                this->HandleCleanupRequest(msg);
                 return true;
             }
         );
 
-        // Subscribe to window close event for graceful shutdown
-        windowCloseSubscription = messageBus->Subscribe(
-            EventBus::WindowCloseEvent::TYPE,
-            [this](const EventBus::BaseEventMessage& msg) {
+        subscriptions_.Subscribe<EventBus::WindowCloseEvent>(
+            [this](const EventBus::WindowCloseEvent& msg) {
                 this->HandleWindowClose();
+            }
+        );
+
+        subscriptions_.SubscribeWithResult<EventTypes::RenderPauseEvent>(
+            [this](const EventTypes::RenderPauseEvent& msg) {
+                this->HandleRenderPause(msg);
                 return true;
             }
         );
 
-        // Subscribe to render pause events
-        renderPauseSubscription = messageBus->Subscribe(
-            EventTypes::RenderPauseEvent::TYPE,
-            [this](const EventBus::BaseEventMessage& msg) {
-                auto& pauseMsg = static_cast<const EventTypes::RenderPauseEvent&>(msg);
-                this->HandleRenderPause(pauseMsg);
+        subscriptions_.SubscribeWithResult<EventTypes::WindowResizedMessage>(
+            [this](const EventTypes::WindowResizedMessage& msg) {
+                this->HandleWindowResize(msg);
                 return true;
             }
         );
 
-        // Subscribe to window resize events
-        windowResizeSubscription = messageBus->Subscribe(
-            EventTypes::WindowResizedMessage::TYPE,
-            [this](const EventBus::BaseEventMessage& msg) {
-                auto& resizeMsg = static_cast<const EventTypes::WindowResizedMessage&>(msg);
-                this->HandleWindowResize(resizeMsg);
+        subscriptions_.SubscribeWithResult<EventBus::WindowStateChangeEvent>(
+            [this](const EventBus::WindowStateChangeEvent& msg) {
+                this->HandleWindowStateChange(msg);
                 return true;
             }
         );
 
-        // Subscribe to window state change events (minimize/maximize/restore)
-        windowStateSubscription = messageBus->Subscribe(
-            EventBus::WindowStateChangeEvent::TYPE,
-            [this](const EventBus::BaseEventMessage& msg) {
-                auto& stateMsg = static_cast<const EventBus::WindowStateChangeEvent&>(msg);
-                this->HandleWindowStateChange(stateMsg);
-                return true;
-            }
-        );
-
-        // Subscribe to device sync events
-        deviceSyncSubscription = messageBus->Subscribe(
-            EventTypes::DeviceSyncRequestedMessage::TYPE,
-            [this](const EventBus::BaseEventMessage& msg) {
-                auto& syncMsg = static_cast<const EventTypes::DeviceSyncRequestedMessage&>(msg);
-                this->HandleDeviceSyncRequest(syncMsg);
+        subscriptions_.SubscribeWithResult<EventTypes::DeviceSyncRequestedMessage>(
+            [this](const EventTypes::DeviceSyncRequestedMessage& msg) {
+                this->HandleDeviceSyncRequest(msg);
                 return true;
             }
         );
@@ -106,27 +91,8 @@ RenderGraph::~RenderGraph() {
         mainCacher->CleanupGlobalCaches();
     }
 
-    // Unsubscribe from events
-    if (messageBus) {
-        if (cleanupEventSubscription != 0) {
-            messageBus->Unsubscribe(cleanupEventSubscription);
-        }
-        if (renderPauseSubscription != 0) {
-            messageBus->Unsubscribe(renderPauseSubscription);
-        }
-        if (windowResizeSubscription != 0) {
-            messageBus->Unsubscribe(windowResizeSubscription);
-        }
-        if (windowStateSubscription != 0) {
-            messageBus->Unsubscribe(windowStateSubscription);
-        }
-        if (deviceSyncSubscription != 0) {
-            messageBus->Unsubscribe(deviceSyncSubscription);
-        }
-        if (windowCloseSubscription != 0) {
-            messageBus->Unsubscribe(windowCloseSubscription);
-        }
-    }
+    // Unsubscribe from events - ScopedSubscriptions handles this automatically via RAII
+    // No manual Unsubscribe() calls needed
 
     // Flush deferred destructions before cleanup
     deferredDestruction.Flush();
@@ -588,18 +554,29 @@ VkResult RenderGraph::RenderFrame() {
 
     // ========================================================================
     // Sprint 4 Phase B: Per-frame resource lifecycle management
+    // Sprint 6.3 Phase 6: Event-driven systems handle their own lifecycle
     // ========================================================================
 
     // Process deferred destructions from previous frames
-    // Resources queued N frames ago are now safe to destroy
-    deferredDestruction.ProcessFrame(globalFrameIndex);
+    // When event-driven (autoPressureAdjustment_), handled by FrameStartEvent subscription
+    if (!autoPressureAdjustment_) {
+        deferredDestruction.ProcessFrame(globalFrameIndex);
+    }
 
     // Begin new frame scope if lifetime manager is configured
-    if (scopeManager_) {
+    // When event-driven, handled by FrameStartEvent subscription
+    if (scopeManager_ && !autoPressureAdjustment_) {
         scopeManager_->BeginFrame();
     }
 
+    // Sprint 6.3 Phase 4: Begin capacity tracking for this frame
+    // When event-driven (autoPressureAdjustment_), this is handled by FrameStartEvent subscription
+    if (!autoPressureAdjustment_) {
+        capacityTracker_.BeginFrame();
+    }
+
     // Publish FrameStartEvent for allocation tracking and other frame-aware systems
+    // In event-driven mode, this triggers TimelineCapacityTracker.BeginFrame() via subscription
     if (messageBus) {
         messageBus->Publish(std::make_unique<EventBus::FrameStartEvent>(0, globalFrameIndex));
         messageBus->ProcessMessages();  // Process immediately so listeners capture state
@@ -662,13 +639,25 @@ VkResult RenderGraph::RenderFrame() {
     // ========================================================================
 
     // Publish FrameEndEvent for allocation tracking and other frame-aware systems
+    // In event-driven mode (autoPressureAdjustment_), this triggers:
+    // 1. TimelineCapacityTracker.EndFrame() via subscription
+    // 2. TimelineCapacityTracker publishes BudgetOverrun/AvailableEvent
+    // 3. TaskProfileRegistry receives Budget event and adjusts pressure autonomously
     if (messageBus) {
         messageBus->Publish(std::make_unique<EventBus::FrameEndEvent>(0, globalFrameIndex));
         messageBus->ProcessMessages();  // Process frame events before cleanup
     }
 
+    // Sprint 6.3 Phase 4: End capacity tracking (legacy direct call)
+    // When event-driven (autoPressureAdjustment_), this is handled by FrameEndEvent subscription
+    // and pressure adjustment happens autonomously via Budget events
+    if (!autoPressureAdjustment_) {
+        capacityTracker_.EndFrame();
+    }
+
     // End frame scope - releases all frame-scoped resources
-    if (scopeManager_) {
+    // When event-driven, handled by FrameEndEvent subscription
+    if (scopeManager_ && !autoPressureAdjustment_) {
         scopeManager_->EndFrame();
     }
 
@@ -1693,6 +1682,57 @@ void RenderGraph::PreAllocateResources() {
         std::to_string(RESOURCES_PER_NODE) + " resources × " +
         std::to_string(FRAMES_IN_FLIGHT) + " frames, min " +
         std::to_string(MIN_DEFERRED_CAPACITY) + ")");
+}
+
+// =============================================================================
+// Event-Driven Architecture (Sprint 6.3 Option A)
+// =============================================================================
+
+void RenderGraph::SetAutoPressureAdjustment(bool enable) {
+    if (enable && !autoPressureAdjustment_) {
+        // Enabling: wire up event subscriptions
+        InitializeEventDrivenSystems();
+    } else if (!enable && autoPressureAdjustment_) {
+        // Disabling: unsubscribe from events
+        capacityTracker_.UnsubscribeFromFrameEvents();
+        taskProfileRegistry_.UnsubscribeFromBudgetEvents();
+
+        // Sprint 6.3 Phase 6: Unsubscribe additional event-driven systems
+        deferredDestruction.UnsubscribeFromFrameEvents();
+        if (scopeManager_) {
+            scopeManager_->UnsubscribeFromFrameEvents();
+        }
+    }
+    autoPressureAdjustment_ = enable;
+}
+
+void RenderGraph::InitializeEventDrivenSystems() {
+    if (!messageBus) {
+        GRAPH_LOG_WARNING("[RenderGraph] Cannot initialize event-driven systems: no MessageBus");
+        return;
+    }
+
+    // TimelineCapacityTracker: subscribes to FrameStart/End, publishes Budget events
+    capacityTracker_.SubscribeToFrameEvents(messageBus);
+    GRAPH_LOG_DEBUG("[RenderGraph] TimelineCapacityTracker subscribed to frame events");
+
+    // TaskProfileRegistry: subscribes to Budget events for autonomous pressure adjustment
+    taskProfileRegistry_.SubscribeToBudgetEvents(messageBus);
+    GRAPH_LOG_DEBUG("[RenderGraph] TaskProfileRegistry subscribed to budget events");
+
+    // Sprint 6.3 Phase 6: Additional event-driven systems
+
+    // DeferredDestructionQueue: processes destructions at frame start
+    deferredDestruction.SubscribeToFrameEvents(messageBus);
+    GRAPH_LOG_DEBUG("[RenderGraph] DeferredDestructionQueue subscribed to frame events");
+
+    // LifetimeScopeManager: manages frame scope lifecycle
+    if (scopeManager_) {
+        scopeManager_->SubscribeToFrameEvents(messageBus);
+        GRAPH_LOG_DEBUG("[RenderGraph] LifetimeScopeManager subscribed to frame events");
+    }
+
+    GRAPH_LOG_INFO("[RenderGraph] Event-driven systems initialized (Sprint 6.3 Phase 6)");
 }
 
 } // namespace Vixen::RenderGraph

@@ -18,6 +18,9 @@
 #include "MainCacher.h"
 #include "Core/LoopManager.h"
 #include "Core/GraphLifecycleHooks.h"
+#include "Core/TaskProfileRegistry.h"
+#include "Core/CalibrationStore.h"
+#include "Core/TimelineCapacityTracker.h"
 #include <memory>
 #include <string>
 #include <vector>
@@ -528,6 +531,125 @@ public:
     GraphLifecycleHooks& GetLifecycleHooks() { return lifecycleHooks; }
     const GraphLifecycleHooks& GetLifecycleHooks() const { return lifecycleHooks; }
 
+    // ====== Task Profile System (Sprint 6.3) ======
+
+    /**
+     * @brief Get the task profile registry
+     *
+     * Nodes use this to register profiles and get cost estimates.
+     * The registry persists calibration data across sessions.
+     *
+     * @code
+     * // In node Setup:
+     * auto& registry = GetOwningGraph()->GetTaskProfileRegistry();
+     * auto profile = std::make_unique<SimpleTaskProfile>("myTask", "compute");
+     * registry.RegisterTask(std::move(profile));
+     *
+     * // In node Execute:
+     * auto* profile = registry.GetProfile("myTask");
+     * uint64_t estimatedCost = profile->GetEstimatedCostNs();
+     * @endcode
+     */
+    TaskProfileRegistry& GetTaskProfileRegistry() { return taskProfileRegistry_; }
+    const TaskProfileRegistry& GetTaskProfileRegistry() const { return taskProfileRegistry_; }
+
+    /**
+     * @brief Register a task profile factory
+     *
+     * Convenience wrapper - factories must be registered before LoadCalibration().
+     *
+     * @param typeName Profile type name (e.g., "SimpleTaskProfile")
+     * @param factory Factory function
+     */
+    void RegisterTaskProfileFactory(const std::string& typeName, TaskProfileFactory factory) {
+        taskProfileRegistry_.RegisterFactory(typeName, std::move(factory));
+    }
+
+    /**
+     * @brief Load calibration data from file
+     *
+     * Call after registering factories but before first RenderFrame().
+     *
+     * @param baseDir Directory containing calibration files
+     * @param gpu GPU identifier for file selection
+     * @return Number of profiles loaded
+     */
+    size_t LoadCalibration(const std::filesystem::path& baseDir, const GPUIdentifier& gpu) {
+        calibrationStore_ = std::make_unique<CalibrationStore>(baseDir);
+        calibrationStore_->SetGPU(gpu);
+        auto result = calibrationStore_->Load(taskProfileRegistry_);
+        return result.profileCount;
+    }
+
+    /**
+     * @brief Save calibration data to file
+     *
+     * Call periodically or at application shutdown.
+     *
+     * @return true if save succeeded
+     */
+    bool SaveCalibration() {
+        if (!calibrationStore_) return false;
+        auto result = calibrationStore_->Save(taskProfileRegistry_);
+        return result.success;
+    }
+
+    // ====== Capacity Tracking System (Sprint 6.3 Phase 4) ======
+
+    /**
+     * @brief Get the capacity tracker
+     *
+     * Provides real-time frame budget tracking and utilization metrics.
+     * Nodes record measurements; the system adjusts task profiles automatically.
+     *
+     * @return Reference to TimelineCapacityTracker
+     */
+    TimelineCapacityTracker& GetCapacityTracker() { return capacityTracker_; }
+    const TimelineCapacityTracker& GetCapacityTracker() const { return capacityTracker_; }
+
+    /**
+     * @brief Configure capacity tracking
+     *
+     * @param config Tracker configuration (budgets, thresholds)
+     */
+    void ConfigureCapacityTracking(const TimelineCapacityTracker::Config& config) {
+        capacityTracker_ = TimelineCapacityTracker(config);
+    }
+
+    /**
+     * @brief Enable automatic pressure adjustment (event-driven)
+     *
+     * When enabled, the system automatically adjusts TaskProfile workUnits
+     * based on capacity utilization after each frame via events:
+     * - TimelineCapacityTracker publishes BudgetOverrun/AvailableEvent
+     * - TaskProfileRegistry subscribes and adjusts pressure autonomously
+     *
+     * This is the event-driven implementation (Sprint 6.3 Option A).
+     * RenderGraph no longer mediates between these systems.
+     *
+     * @param enable true to enable automatic adjustment
+     */
+    void SetAutoPressureAdjustment(bool enable);
+
+    /**
+     * @brief Check if auto pressure adjustment is enabled
+     */
+    [[nodiscard]] bool IsAutoPressureAdjustmentEnabled() const {
+        return autoPressureAdjustment_;
+    }
+
+    /**
+     * @brief Wire up event-driven subsystem subscriptions
+     *
+     * Called automatically when SetAutoPressureAdjustment(true) is called.
+     * Can also be called manually after MessageBus is set.
+     *
+     * Sets up:
+     * - TimelineCapacityTracker: subscribes to FrameStart/End, publishes Budget events
+     * - TaskProfileRegistry: subscribes to Budget events for pressure adjustment
+     */
+    void InitializeEventDrivenSystems();
+
     // ====== Resource Dependency Tracking ======
 
     /**
@@ -551,12 +673,7 @@ private:
     NodeTypeRegistry* typeRegistry;
     EventBus::MessageBus* messageBus = nullptr;  // Non-owning pointer
     CashSystem::MainCacher* mainCacher = nullptr;  // Non-owning pointer
-    EventBus::EventSubscriptionID cleanupEventSubscription = 0;
-    EventBus::EventSubscriptionID renderPauseSubscription = 0;
-    EventBus::EventSubscriptionID windowResizeSubscription = 0;
-    EventBus::EventSubscriptionID windowStateSubscription = 0;
-    EventBus::EventSubscriptionID deviceSyncSubscription = 0;
-    EventBus::EventSubscriptionID windowCloseSubscription = 0;
+    EventBus::ScopedSubscriptions subscriptions_;  // RAII subscriptions (auto-unsubscribe on destruction)
     // Vixen::Vulkan::Resources::VulkanDevice* primaryDevice;  // Removed - nodes access device directly
 
     // Logger (non-owning pointer — application owns the logger)
@@ -607,6 +724,14 @@ private:
 
     // Lifecycle hook system
     GraphLifecycleHooks lifecycleHooks;
+
+    // Sprint 6.3: Task profile system for calibrated cost estimation
+    TaskProfileRegistry taskProfileRegistry_;
+    std::unique_ptr<CalibrationStore> calibrationStore_;
+
+    // Sprint 6.3 Phase 4: Capacity tracking with automatic pressure adjustment
+    TimelineCapacityTracker capacityTracker_;
+    bool autoPressureAdjustment_ = false;
 
     // Sprint 4 Phase B: Lifetime scope management (optional, externally provided)
     LifetimeScopeManager* scopeManager_ = nullptr;
