@@ -213,6 +213,25 @@ public:
         return false;
     }
 
+    /**
+     * @brief Process pending samples for all registered profiles
+     *
+     * Call at frame end to ensure statistics are up-to-date.
+     * Profiles batch samples for efficiency; this forces processing.
+     *
+     * @return Number of profiles that had pending samples
+     */
+    size_t ProcessAllSamples() {
+        size_t processed = 0;
+        for (auto& [id, profile] : profiles_) {
+            if (profile) {
+                profile->ProcessSamples();
+                ++processed;
+            }
+        }
+        return processed;
+    }
+
     // =========================================================================
     // Pressure Adjustment
     // =========================================================================

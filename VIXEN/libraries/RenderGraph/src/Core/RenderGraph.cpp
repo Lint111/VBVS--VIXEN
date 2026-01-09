@@ -736,6 +736,9 @@ VkResult RenderGraph::RenderFrame() {
     // This prevents deadlock by ensuring profile modifications happen outside event handlers
     taskProfileRegistry_.ProcessDeferredActions();
 
+    // Sprint 6.5: Process pending profile samples for timely statistics
+    taskProfileRegistry_.ProcessAllSamples();
+
     // Sprint 6.3 Phase 4: End capacity tracking (legacy direct call)
     // When event-driven (autoPressureAdjustment_), this is handled by FrameEndEvent subscription
     // and pressure adjustment happens autonomously via Budget events
