@@ -81,9 +81,20 @@ RenderGraph::RenderGraph(
             }
         );
     }
+
+    // Sprint 6.5: Initialize profile registry with built-in factories
+    taskProfileRegistry_.Init();
 }
 
 RenderGraph::~RenderGraph() {
+    // Sprint 6.5: Publish shutdown event for CalibrationStore auto-save
+    if (messageBus) {
+        messageBus->Publish(
+            std::make_unique<EventBus::ApplicationShuttingDownEvent>(0)
+        );
+        messageBus->ProcessMessages();  // Ensure event is processed before cleanup
+    }
+
     // Note: Device-dependent cache cleanup happens in DeviceNode::CleanupImpl()
     // Only cleanup global (device-independent) caches here
     // Guard against corrupted pointer (can happen during exception-triggered destruction)

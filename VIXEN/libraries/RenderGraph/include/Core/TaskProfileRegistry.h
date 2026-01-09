@@ -77,6 +77,25 @@ public:
     TaskProfileRegistry& operator=(TaskProfileRegistry&&) noexcept = default;
 
     // =========================================================================
+    // Initialization
+    // =========================================================================
+
+    /**
+     * @brief Initialize registry with built-in profile factories
+     *
+     * Registers factories for SimpleTaskProfile and ResolutionTaskProfile.
+     * Must be called before LoadState() to enable deserialization.
+     *
+     * Safe to call multiple times (idempotent).
+     */
+    void Init();
+
+    /**
+     * @brief Check if Init() has been called
+     */
+    [[nodiscard]] bool IsInitialized() const { return initialized_; }
+
+    // =========================================================================
     // Factory Registration (for polymorphic deserialization)
     // =========================================================================
 
@@ -638,6 +657,9 @@ private:
     // These are set by event handlers and processed by ProcessDeferredActions()
     bool pendingDecrease_ = false;
     bool pendingIncrease_ = false;
+
+    // Sprint 6.5: Initialization flag for built-in factories
+    bool initialized_ = false;
 };
 
 } // namespace Vixen::RenderGraph
