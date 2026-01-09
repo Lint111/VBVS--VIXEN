@@ -4,6 +4,7 @@
 #include "VulkanDevice.h"
 #include "Core/NodeLogging.h"
 #include "Core/RenderGraph.h"
+#include "Core/TaskProfiles/SimpleTaskProfile.h"  // Sprint 6.5: Profile integration
 #include "MainCacher.h"
 #include "VoxelSceneCacher.h"
 #include <cmath>
@@ -96,12 +97,24 @@ void VoxelGridNode::SetupImpl(TypedSetupContext& ctx) {
     sceneType = GetParameterValue<std::string>(VoxelGridNodeConfig::PARAM_SCENE_TYPE, std::string("test"));
 
     NODE_LOG_INFO("Voxel grid: " + std::to_string(resolution) + "^3, scene=" + sceneType);
+
+    // Sprint 6.5: Register compile-time task profile for cost estimation
+    std::string profileId = GetInstanceName() + "_compile";
+    compileProfile_ = GetOrCreateProfile<SimpleTaskProfile>(profileId, profileId, "pipeline");
+    if (compileProfile_) {
+        RegisterPhaseProfile(VirtualTaskPhase::Compile, compileProfile_);
+        NODE_LOG_INFO("[VoxelGridNode] Registered compile profile: " + profileId);
+    }
+
     NODE_LOG_DEBUG("[VoxelGridNode::SetupImpl] COMPLETED");
 }
 
 void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_DEBUG("[VoxelGridNode::CompileImpl] ENTERED with taskIndex=" + std::to_string(ctx.taskIndex));
     NODE_LOG_INFO("=== VoxelGridNode::CompileImpl START ===");
+
+    // Sprint 6.5: Start compile timing (RAII - records on scope exit)
+    auto compileSample = compileProfile_ ? compileProfile_->Sample() : ITaskProfile::Sampler(nullptr);
 
     NODE_LOG_DEBUG("[VoxelGridNode::CompileImpl] Getting device...");
     // Get device

@@ -112,6 +112,9 @@ private:
     // CashSystem integration - cached during Compile()
     CashSystem::PipelineCacher* pipelineCacher = nullptr;
     std::shared_ptr<CashSystem::PipelineWrapper> cachedPipelineWrapper;
+
+    // Task profile for compile-time cost estimation (Sprint 6.5)
+    ITaskProfile* compileProfile_ = nullptr;
 };
 
 } // namespace Vixen::RenderGraph

@@ -1,6 +1,7 @@
 #include "Nodes/RayTracingPipelineNode.h"
 #include "VulkanDevice.h"
 #include "Core/NodeLogging.h"
+#include "Core/TaskProfiles/SimpleTaskProfile.h"  // Sprint 6.5: Profile integration
 #include "ShaderDataBundle.h"
 #include "ShaderStage.h"
 #include <cstring>
@@ -47,12 +48,23 @@ void RayTracingPipelineNode::SetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_INFO("RayTracingPipeline setup: maxRecursion=" + std::to_string(maxRayRecursion_) +
                   ", output=" + std::to_string(outputWidth_) + "x" + std::to_string(outputHeight_));
 
+    // Sprint 6.5: Register compile-time task profile for cost estimation
+    std::string profileId = GetInstanceName() + "_compile";
+    compileProfile_ = GetOrCreateProfile<SimpleTaskProfile>(profileId, profileId, "pipeline");
+    if (compileProfile_) {
+        RegisterPhaseProfile(VirtualTaskPhase::Compile, compileProfile_);
+        NODE_LOG_INFO("[RayTracingPipelineNode] Registered compile profile: " + profileId);
+    }
+
     NODE_LOG_DEBUG("[RayTracingPipelineNode::SetupImpl] COMPLETED");
 }
 
 void RayTracingPipelineNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_DEBUG("[RayTracingPipelineNode::CompileImpl] ENTERED");
     NODE_LOG_INFO("=== RayTracingPipelineNode::CompileImpl START ===");
+
+    // Sprint 6.5: Start compile timing (RAII - records on scope exit)
+    auto compileSample = compileProfile_ ? compileProfile_->Sample() : ITaskProfile::Sampler(nullptr);
 
     // Get device
     VulkanDevice* devicePtr = ctx.In(RayTracingPipelineNodeConfig::VULKAN_DEVICE_IN);

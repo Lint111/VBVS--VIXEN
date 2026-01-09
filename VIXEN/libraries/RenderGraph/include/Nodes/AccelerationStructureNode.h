@@ -103,6 +103,9 @@ private:
     CashSystem::AccelerationStructureCacher* accelStructCacher_ = nullptr;
     std::shared_ptr<CashSystem::CachedAccelerationStructure> cachedAccelStruct_;
 
+    // Task profile for compile-time cost estimation (Sprint 6.5)
+    ITaskProfile* compileProfile_ = nullptr;
+
     // Dynamic TLAS mode (Sprint 5 Phase 3)
     ASBuildMode buildMode_ = ASBuildMode::Static;
     std::unique_ptr<CashSystem::DynamicTLAS> dynamicTLAS_;

@@ -53,6 +53,9 @@ private:
     VkCommandPool commandPool = VK_NULL_HANDLE;
     bool isCreated = false;
 
+    // Task profile for compile-time cost estimation (Sprint 6.5)
+    ITaskProfile* compileProfile_ = nullptr;
+
     // Helper to get VkDevice from VulkanDevice pointer
     VkDevice GetVkDevice() const {
         return vulkanDevice ? vulkanDevice->device : VK_NULL_HANDLE;

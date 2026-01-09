@@ -1,6 +1,7 @@
 #include "Nodes/ComputePipelineNode.h"
 #include "Nodes/DeviceNode.h"
 #include "Core/RenderGraph.h"
+#include "Core/TaskProfiles/SimpleTaskProfile.h"  // Sprint 6.5: Profile integration
 #include "MainCacher.h"
 #include "ComputePipelineCacher.h"
 #include "PipelineLayoutCacher.h"
@@ -48,11 +49,22 @@ void ComputePipelineNode::SetupImpl(TypedSetupContext& ctx) {
         nodeLogger->AddChild(perfLogger_);
     }
 
+    // Sprint 6.5: Register compile-time task profile for cost estimation
+    std::string profileId = GetInstanceName() + "_compile";
+    compileProfile_ = GetOrCreateProfile<SimpleTaskProfile>(profileId, profileId, "pipeline");
+    if (compileProfile_) {
+        RegisterPhaseProfile(VirtualTaskPhase::Compile, compileProfile_);
+        NODE_LOG_INFO("[ComputePipelineNode] Registered compile profile: " + profileId);
+    }
+
     NODE_LOG_INFO("[ComputePipelineNode] Setup complete");
 }
 
 void ComputePipelineNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[ComputePipelineNode::CompileImpl] Compiling compute pipeline...");
+
+    // Sprint 6.5: Start compile timing (RAII - records on scope exit)
+    auto compileSample = compileProfile_ ? compileProfile_->Sample() : ITaskProfile::Sampler(nullptr);
 
     // Access device input
     VulkanDevice* devicePtr = ctx.In(ComputePipelineNodeConfig::VULKAN_DEVICE_IN);

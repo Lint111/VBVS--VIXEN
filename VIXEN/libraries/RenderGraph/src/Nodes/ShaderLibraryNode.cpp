@@ -2,6 +2,7 @@
 #include "Core/RenderGraph.h"
 #include "VulkanDevice.h"
 #include "Core/NodeLogging.h"
+#include "Core/TaskProfiles/SimpleTaskProfile.h"  // Sprint 6.5: Profile integration
 #include "error/VulkanError.h"
 #include "MainCacher.h"
 #include "ShaderModuleCacher.h"
@@ -52,6 +53,15 @@ void ShaderLibraryNode::SetupImpl(TypedSetupContext& ctx) {
     }
 
     RegisterShaderModuleCacher();
+
+    // Sprint 6.5: Register compile-time task profile for cost estimation
+    std::string profileId = GetInstanceName() + "_compile";
+    compileProfile_ = GetOrCreateProfile<SimpleTaskProfile>(profileId, profileId, "pipeline");
+    if (compileProfile_) {
+        RegisterPhaseProfile(VirtualTaskPhase::Compile, compileProfile_);
+        NODE_LOG_INFO("[ShaderLibraryNode] Registered compile profile: " + profileId);
+    }
+
     NODE_LOG_DEBUG("ShaderLibraryNode::Setup: Complete");
 }
 
@@ -65,6 +75,9 @@ void ShaderLibraryNode::RegisterShaderBuilder(
 
 void ShaderLibraryNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_DEBUG("ShaderLibraryNode::Compile: START - Phase G shader builder");
+
+    // Sprint 6.5: Start compile timing (RAII - records on scope exit)
+    auto compileSample = compileProfile_ ? compileProfile_->Sample() : ITaskProfile::Sampler(nullptr);
 
     // Access VulkanDevice input (compile-time dependency)
     VulkanDevice* devicePtr = ctx.In(ShaderLibraryNodeConfig::VULKAN_DEVICE_IN);

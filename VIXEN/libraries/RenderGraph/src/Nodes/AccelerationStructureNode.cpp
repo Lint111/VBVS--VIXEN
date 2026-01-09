@@ -2,6 +2,7 @@
 #include "VulkanDevice.h"
 #include "Core/NodeLogging.h"
 #include "Core/RenderGraph.h"
+#include "Core/TaskProfiles/SimpleTaskProfile.h"  // Sprint 6.5: Profile integration
 #include "MainCacher.h"
 #include "AccelerationStructureCacher.h"
 #include "DynamicTLAS.h"
@@ -52,12 +53,23 @@ void AccelerationStructureNode::SetupImpl(TypedSetupContext& ctx) {
                   ", allowUpdate=" + std::to_string(allowUpdate_) +
                   ", allowCompaction=" + std::to_string(allowCompaction_));
 
+    // Sprint 6.5: Register compile-time task profile for cost estimation
+    std::string profileId = GetInstanceName() + "_compile";
+    compileProfile_ = GetOrCreateProfile<SimpleTaskProfile>(profileId, profileId, "pipeline");
+    if (compileProfile_) {
+        RegisterPhaseProfile(VirtualTaskPhase::Compile, compileProfile_);
+        NODE_LOG_INFO("[AccelerationStructureNode] Registered compile profile: " + profileId);
+    }
+
     NODE_LOG_DEBUG("[AccelerationStructureNode::SetupImpl] COMPLETED");
 }
 
 void AccelerationStructureNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_DEBUG("[AccelerationStructureNode::CompileImpl] ENTERED");
     NODE_LOG_INFO("=== AccelerationStructureNode::CompileImpl START ===");
+
+    // Sprint 6.5: Start compile timing (RAII - records on scope exit)
+    auto compileSample = compileProfile_ ? compileProfile_->Sample() : ITaskProfile::Sampler(nullptr);
 
     // Read build mode (optional input, defaults to Static)
     // For optional slots, ctx.In() returns default-initialized value if not connected
