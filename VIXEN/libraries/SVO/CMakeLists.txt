@@ -108,25 +108,12 @@ else()
     message(FATAL_ERROR "GaiaVoxelWorld target not found - ensure libraries/GaiaVoxelWorld is built before SVO")
 endif()
 
-# TBB for parallel processing (optional - fetch if not available)
-find_package(TBB QUIET)
-if(TBB_FOUND)
+# TBB for parallel processing (provided by dependencies/CMakeLists.txt)
+if(TARGET TBB::tbb)
     target_link_libraries(SVO PRIVATE TBB::tbb)
-    message(STATUS "TBB found - multi-threading enabled")
+    message(STATUS "SVO: TBB linked for parallel processing")
 else()
-    message(STATUS "TBB not found - fetching oneTBB from GitHub")
-    include(FetchContent)
-    FetchContent_Declare(
-        TBB
-        GIT_REPOSITORY https://github.com/oneapi-src/oneTBB.git
-        GIT_TAG v2021.11.0
-        GIT_SHALLOW TRUE
-    )
-    set(TBB_TEST OFF CACHE BOOL "" FORCE)
-    set(TBB_EXAMPLES OFF CACHE BOOL "" FORCE)
-    FetchContent_MakeAvailable(TBB)
-    target_link_libraries(SVO PRIVATE TBB::tbb)
-    set_target_properties(tbb PROPERTIES FOLDER "Dependencies")
+    message(WARNING "SVO: TBB::tbb target not found - parallel processing disabled")
 endif()
 
 # ------------------------------------------------------------------------------

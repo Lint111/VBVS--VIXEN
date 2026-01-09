@@ -357,6 +357,75 @@ else()
 endif()
 
 # ===========================================================================
+# Sprint 6.4: ResourceAccessTracker Tests (Phase 0)
+# ===========================================================================
+# Tests for resource access conflict detection
+# - Read/write access tracking
+# - Conflict detection (write-write, write-read)
+# - Multi-resource scenarios
+# - GraphTopology integration
+
+if(TARGET GTest::gtest_main)
+    add_executable(test_resource_access_tracker
+        test_resource_access_tracker.cpp
+    )
+
+    target_link_libraries(test_resource_access_tracker PRIVATE
+        GTest::gtest_main
+        RenderGraph
+    )
+
+    set_target_properties(test_resource_access_tracker PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+    gtest_discover_tests(test_resource_access_tracker)
+
+    message(STATUS "✓ test_resource_access_tracker configured (Sprint 6.4 Phase 0)")
+
+    # WaveScheduler Tests (Phase 1)
+    add_executable(test_wave_scheduler
+        test_wave_scheduler.cpp
+    )
+
+    target_link_libraries(test_wave_scheduler PRIVATE
+        GTest::gtest_main
+        RenderGraph
+    )
+
+    set_target_properties(test_wave_scheduler PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+    gtest_discover_tests(test_wave_scheduler)
+
+    message(STATUS "✓ test_wave_scheduler configured (Sprint 6.4 Phase 1)")
+
+    # TBBGraphExecutor Tests (Sprint 6.4 - replaces ThreadPool)
+    add_executable(test_tbb_graph_executor
+        test_tbb_graph_executor.cpp
+    )
+
+    target_link_libraries(test_tbb_graph_executor PRIVATE
+        GTest::gtest_main
+        RenderGraph
+    )
+
+    # Copy TBB DLL for test execution
+    if(TARGET TBB::tbb)
+        add_custom_command(TARGET test_tbb_graph_executor POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb>
+            $<TARGET_FILE_DIR:test_tbb_graph_executor>
+        )
+    endif()
+
+    set_target_properties(test_tbb_graph_executor PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+    gtest_discover_tests(test_tbb_graph_executor)
+
+    message(STATUS "✓ test_tbb_graph_executor configured (Sprint 6.4 Phase 3)")
+else()
+    message(STATUS "⊗ Sprint 6.4 tests skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
 # Voxel Systems Tests - CONSOLIDATED (Phase H)
 # ===========================================================================
 # Validates voxel infrastructure:

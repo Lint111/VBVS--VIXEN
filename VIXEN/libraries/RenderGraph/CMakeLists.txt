@@ -129,10 +129,13 @@ set(RENDERGRAPH_CORE_HEADERS
     include/Core/NodeTypeRegistry.h
     include/Core/PerFrameResources.h
     include/Core/RenderGraph.h
+    include/Core/ResourceAccessTracker.h  # Sprint 6.4: Task #349 - Conflict detection
     include/Core/ResourceDependencyTracker.h
+    include/Core/WaveScheduler.h  # Sprint 6.4: Task #347 - Wave computation
     include/Core/SlotTask.h
     # Note: StatefulContainer.h moved to ResourceManagement library
     include/Core/TaskQueue.h  # Sprint 6.2: Task #339 - Budget-aware task queue
+    include/Core/TBBGraphExecutor.h  # Sprint 6.4: TBB flow_graph executor
     include/Core/TimelineCapacityTracker.h  # Sprint 6.3: Task #344 - Timeline capacity tracker
     include/Core/Timer.h
     include/Core/TypedConnection.h
@@ -159,8 +162,11 @@ set(RENDERGRAPH_CORE_SOURCES
     src/Core/NodeTypeRegistry.cpp
     src/Core/PerFrameResources.cpp
     src/Core/RenderGraph.cpp
+    src/Core/ResourceAccessTracker.cpp  # Sprint 6.4: Task #349 - Conflict detection
     src/Core/ResourceDependencyTracker.cpp
+    src/Core/WaveScheduler.cpp  # Sprint 6.4: Task #347 - Wave computation
     src/Core/SlotTask.cpp
+    src/Core/TBBGraphExecutor.cpp  # Sprint 6.4: TBB flow_graph executor
     src/Core/TimelineCapacityTracker.cpp  # Sprint 6.3: Task #344 - Timeline capacity tracker
     src/Core/TaskQueue.cpp  # Sprint 6.2: Task #339 - Template instantiations
     src/Core/Timer.cpp
@@ -340,6 +346,7 @@ target_link_libraries(RenderGraph
         ShaderManagement
         SVO                    # Laine-Karras ESVO octrees
         magic_enum::magic_enum
+        TBB::tbb               # Sprint 6.4: Parallel execution
 )
 
 # ============================================================================
@@ -364,6 +371,12 @@ if(USE_PRECOMPILED_HEADERS)
         "${CMAKE_CURRENT_SOURCE_DIR}/RenderGraphHeaders.h"
     )
     message(STATUS "RenderGraph: Precompiled headers enabled (using RenderGraphHeaders.h)")
+
+    # TBBGraphExecutor needs TBB headers not in PCH - skip PCH for this file
+    set_source_files_properties(
+        src/Core/TBBGraphExecutor.cpp
+        PROPERTIES SKIP_PRECOMPILE_HEADERS ON
+    )
 endif()
 
 # ============================================================================

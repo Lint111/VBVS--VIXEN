@@ -273,4 +273,37 @@ endif()
 
 message(STATUS "VulkanMemoryAllocator (VMA) fetched - GPU memory management available")
 
+# ============================================================================
+# oneTBB - Intel Threading Building Blocks
+# ============================================================================
+# Used by: SVO (parallel octree), RenderGraph (TBBGraphExecutor)
+
+find_package(TBB QUIET)
+if(NOT TARGET TBB::tbb)
+    FetchContent_Declare(
+        TBB
+        GIT_REPOSITORY https://github.com/oneapi-src/oneTBB
+        GIT_TAG v2021.11.0
+        GIT_SHALLOW TRUE
+    )
+    set(TBB_TEST OFF CACHE BOOL "" FORCE)
+    set(TBB_EXAMPLES OFF CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(TBB)
+
+    # Organize in Dependencies folder
+    if(TARGET tbb)
+        set_target_properties(tbb PROPERTIES FOLDER "Dependencies")
+    endif()
+    if(TARGET tbbmalloc)
+        set_target_properties(tbbmalloc PROPERTIES FOLDER "Dependencies")
+    endif()
+    if(TARGET tbbmalloc_proxy)
+        set_target_properties(tbbmalloc_proxy PROPERTIES FOLDER "Dependencies")
+    endif()
+
+    message(STATUS "oneTBB fetched - parallel execution available to all libraries")
+else()
+    message(STATUS "oneTBB found - parallel execution available to all libraries")
+endif()
+
 message(STATUS "Dependencies configured - all third-party libraries fetched")
