@@ -253,27 +253,62 @@ class TimelineCapacityTracker {
 public:
     /**
      * @brief Configuration for capacity tracking
+     *
+     * For most use cases, use the static factory methods:
+     * - Config::ForTargetFPS(60.0f) - Creates config for 60 FPS target
+     * - Config::Default() - Standard 60 FPS config
+     *
+     * Advanced users can customize individual parameters.
      */
     struct Config {
-        // Device topology
-        uint32_t numGPUQueues = 1;                  ///< Number of GPU queues to track (graphics, compute, transfer)
-        uint32_t numCPUThreads = 1;                 ///< Number of CPU threads/cores to track
+        // =========================================================================
+        // Essential Parameters (most users only need these)
+        // =========================================================================
 
-        // Per-device budgets (applied to each GPU queue / CPU thread)
-        uint64_t gpuTimeBudgetNs = 16'666'666;      ///< 60 FPS target (16.67ms)
-        uint64_t cpuTimeBudgetNs = 8'000'000;       ///< Half frame for CPU (8ms)
+        uint64_t gpuTimeBudgetNs = 16'666'666;      ///< Frame budget (16.67ms = 60 FPS)
+        float adaptiveThreshold = 0.90f;            ///< Utilization threshold for scheduling
+
+        // =========================================================================
+        // Advanced Parameters (sensible defaults, rarely need changing)
+        // =========================================================================
+
+        // Device topology
+        uint32_t numGPUQueues = 1;                  ///< Number of GPU queues (graphics, compute, transfer)
+        uint32_t numCPUThreads = 1;                 ///< Number of CPU threads/cores to track
+        uint64_t cpuTimeBudgetNs = 8'000'000;       ///< CPU budget (half frame = 8ms)
 
         // History tracking
-        uint32_t historyDepth = 60;                 ///< Frames to track (default 60)
-        uint32_t maxHistoryDepth = 300;             ///< Max history cap (300 frames = 90KB)
+        uint32_t historyDepth = 60;                 ///< Frames to track (1 second at 60 FPS)
+        uint32_t maxHistoryDepth = 300;             ///< Max history cap (5 seconds)
 
-        // Adaptive scheduling parameters
-        float adaptiveThreshold = 0.90f;            ///< Add work if < 90% utilized
+        // Adaptive scheduling
         bool enableAdaptiveScheduling = true;       ///< Auto-adjust task count
-
-        // Damped hysteresis parameters (Phase 1.4)
         float hysteresisDamping = 0.10f;            ///< Max ±10% change per frame
-        float hysteresisDeadband = 0.05f;           ///< ±5% deadband prevents micro-adjustments
+        float hysteresisDeadband = 0.05f;           ///< ±5% deadband prevents oscillation
+
+        // =========================================================================
+        // Factory Methods
+        // =========================================================================
+
+        /**
+         * @brief Create config for target FPS
+         *
+         * @param targetFPS Target frames per second (e.g., 60.0f, 144.0f)
+         * @return Config with appropriate budgets
+         */
+        [[nodiscard]] static Config ForTargetFPS(float targetFPS) {
+            Config config;
+            config.gpuTimeBudgetNs = static_cast<uint64_t>(1'000'000'000.0f / targetFPS);
+            config.cpuTimeBudgetNs = config.gpuTimeBudgetNs / 2;  // CPU gets half frame
+            return config;
+        }
+
+        /**
+         * @brief Default config (60 FPS)
+         */
+        [[nodiscard]] static Config Default() {
+            return Config{};  // 60 FPS defaults
+        }
     };
 
     /**
@@ -486,6 +521,8 @@ public:
 
     // =========================================================================
     // Adaptive Scheduling (Phase 1.4: Damped Hysteresis)
+    // Note: These methods are primarily for testing/advanced use cases.
+    // Production code typically uses CanScheduleMoreWork() and IsOverBudget().
     // =========================================================================
 
     /**
@@ -493,6 +530,8 @@ public:
      *
      * Uses remaining budget and task cost estimate to compute how many
      * additional tasks can fit in the current frame.
+     *
+     * @note Primarily for testing. Production uses profile-based scheduling.
      *
      * @param estimatedCostPerTaskNs Average cost per task
      * @return Number of additional tasks to schedule (0 if none)
@@ -513,6 +552,8 @@ public:
      * - 70% util → return 1.10 (increase by 10%)
      * - 92% util → return 1.00 (within deadband)
      * - 110% util → return 0.90 (decrease by 10%)
+     *
+     * @note Primarily for testing. Production uses WorkUnitChangeCallback.
      *
      * @return Scale factor for task count (0.90 - 1.10 range)
      */
