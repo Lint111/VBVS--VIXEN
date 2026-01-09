@@ -93,6 +93,9 @@ private:
     // GPU performance metrics (timestamp queries + pipeline stats)
     std::shared_ptr<GPUPerformanceLogger> gpuPerfLogger_;
 
+    // Task profile for cost estimation (Sprint 6.5: Profile integration)
+    ITaskProfile* gpuProfile_ = nullptr;
+
 public:
     /// Get GPU performance logger for external metrics extraction
     /// @return Pointer to GPUPerformanceLogger, or nullptr if not initialized

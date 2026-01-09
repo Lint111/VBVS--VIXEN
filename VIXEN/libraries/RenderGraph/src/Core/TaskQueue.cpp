@@ -40,9 +40,14 @@ void TaskQueue<TTaskData>::RecordActualCost(uint32_t slotIndex, uint64_t actualN
     // (Uses default queue 0 - multi-queue support in Phase 2.2)
     capacityTracker_->RecordGPUTime(actualNs);
 
-    // Future Phase 3.1: Track prediction error
-    // const uint64_t estimatedNs = slots_[slotIndex].estimatedCostNs;
-    // capacityTracker_->RecordPredictionError(estimatedNs, actualNs);
+    // Sprint 6.3 Phase 3.1: Track prediction error for adaptive scheduling
+    // This enables the feedback loop where estimates are corrected based on actual measurements
+    const uint64_t estimatedNs = slots_[slotIndex].estimatedCostNs;
+    if (estimatedNs > 0) {
+        // Use slot index as taskId for now - nodes can provide semantic IDs via profiles
+        std::string taskId = "slot_" + std::to_string(slotIndex);
+        capacityTracker_->RecordPrediction(taskId, estimatedNs, actualNs);
+    }
 }
 
 template<typename TTaskData>

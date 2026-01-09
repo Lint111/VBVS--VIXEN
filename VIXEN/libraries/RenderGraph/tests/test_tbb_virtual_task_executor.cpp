@@ -45,23 +45,33 @@ private:
     std::string name_;
 };
 
-// Node that supports task parallelism
+// Node that supports task parallelism (returns multiple tasks)
 class ParallelAwareNode : public NodeInstance {
 public:
     ParallelAwareNode(const std::string& name, NodeType* type)
         : NodeInstance(name, type) {}
 
-    bool SupportsTaskParallelism() const override { return true; }
+    // Return N tasks for parallel execution
+    std::vector<VirtualTask> GetExecutionTasks(VirtualTaskPhase phase) override {
+        if (phase != VirtualTaskPhase::Execute) {
+            return NodeInstance::GetExecutionTasks(phase);
+        }
 
-    TaskParallelismMode GetTaskParallelismMode() const override {
-        return TaskParallelismMode::Parallel;
-    }
+        // Return one task per bundle
+        std::vector<VirtualTask> tasks;
+        uint32_t count = GetVirtualTaskCount();
 
-    std::function<void()> CreateVirtualTask(uint32_t taskIndex, NodeLifecyclePhase phase) override {
-        return [this, taskIndex]() {
-            ++executionCount;
-            lastExecutedTask = taskIndex;
-        };
+        for (uint32_t i = 0; i < count; ++i) {
+            VirtualTask task;
+            task.id = {this, i};
+            task.execute = [this, i]() {
+                ++executionCount;
+                lastExecutedTask = i;
+            };
+            tasks.push_back(std::move(task));
+        }
+
+        return tasks;
     }
 
     std::atomic<int> executionCount{0};

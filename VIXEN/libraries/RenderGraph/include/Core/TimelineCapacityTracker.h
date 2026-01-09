@@ -216,6 +216,35 @@ struct SystemTimeline {
  * - Suggests additional tasks when capacity available
  * - Identifies bottlenecks (GPU vs. CPU)
  *
+ * ## GPU Query Frame Synchronization
+ *
+ * **IMPORTANT**: GPU timestamp queries have inherent latency.
+ *
+ * Query timing architecture:
+ * ```
+ * Frame N:   [GPU commands] → [Write timestamps to query pool]
+ * Frame N+1: [Query results become available]
+ * Frame N+2: [Read results via vkGetQueryPoolResults]
+ * ```
+ *
+ * TimelineCapacityTracker handles this via two patterns:
+ *
+ * 1. **Immediate measurement** (RecordGPUTime/RecordCPUTime):
+ *    - Node passes measured time directly after synchronization point
+ *    - Assumes caller has waited for GPU completion (e.g., after vkQueueWaitIdle)
+ *    - Use when precise per-frame timing is critical
+ *
+ * 2. **Deferred measurement** (via GPUPerformanceLogger):
+ *    - Timestamps written to query pool during execution
+ *    - Results read N frames later when available
+ *    - Utilization reflects N-frame-delayed measurements
+ *    - Better for trend-based adaptive scheduling (smooths variance)
+ *
+ * Caller responsibilities:
+ * - Ensure vkGetQueryPoolResults reports VK_SUCCESS before reading
+ * - Call RecordGPUTime with actual nanoseconds (not query indices)
+ * - Accept that utilization reflects delayed measurements (ok for adaptation)
+ *
  * @see TaskQueue for budget-aware task scheduling (estimates)
  * @see DeviceBudgetManager for memory budget tracking
  * @see GPUPerformanceLogger for GPU time measurement

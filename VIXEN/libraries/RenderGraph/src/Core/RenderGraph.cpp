@@ -506,7 +506,7 @@ void RenderGraph::Compile() {
         std::to_string(resourceAccessTracker_.GetNodeCount()) + " nodes tracked");
 
     // Sprint 6.5: Build virtual resource access tracker for task-level parallelism
-    if (virtualTaskParallelismEnabled_) {
+    if (parallelExecutionEnabled_) {
         GRAPH_LOG_INFO("[RenderGraph::Compile] Phase: BuildVirtualResourceAccessTracker...");
         virtualAccessTracker_.BuildFromTopology(topology);
         GRAPH_LOG_INFO("[RenderGraph::Compile] VirtualResourceAccessTracker built: " +
@@ -629,39 +629,39 @@ VkResult RenderGraph::RenderFrame() {
         // =====================================================================
         // PARALLEL EXECUTION (Sprint 6.4)
         // =====================================================================
-        // Rebuild TBB graph if needed (after compilation or configuration change)
+        // Rebuild virtual task executor if needed (after compilation or configuration change)
         if (executorNeedsRebuild_) {
-            GRAPH_LOG_INFO("[RenderGraph] Building TBB flow_graph for parallel execution...");
-            tbbExecutor_.BuildFromTopology(topology, resourceAccessTracker_);
-            GRAPH_LOG_INFO("[RenderGraph] TBB flow_graph built: " +
-                std::to_string(tbbExecutor_.GetNodeCount()) + " nodes, " +
-                std::to_string(tbbExecutor_.GetEdgeCount()) + " edges");
-
-            // Sprint 6.5: Build virtual task executor if enabled
-            if (virtualTaskParallelismEnabled_) {
-                GRAPH_LOG_INFO("[RenderGraph] Building virtual task executor...");
-                virtualTaskExecutor_.Build(virtualAccessTracker_, executionOrder);
-                GRAPH_LOG_INFO("[RenderGraph] Virtual task executor built: " +
-                    std::to_string(virtualTaskExecutor_.GetStats().totalTasks) + " tasks, " +
-                    std::to_string(virtualTaskExecutor_.GetStats().optedInNodes) + " opted-in nodes");
-            }
+            GRAPH_LOG_INFO("[RenderGraph] Building virtual task executor for parallel execution...");
+            virtualTaskExecutor_.Build(virtualAccessTracker_, executionOrder);
+            GRAPH_LOG_INFO("[RenderGraph] Virtual task executor built: " +
+                std::to_string(virtualTaskExecutor_.GetStats().totalTasks) + " tasks, " +
+                std::to_string(virtualTaskExecutor_.GetStats().totalNodes) + " nodes");
 
             executorNeedsRebuild_ = false;
         }
 
-        // Execute nodes in parallel using TBB flow_graph
-        // The executor handles dependency ordering automatically
-        tbbExecutor_.Execute([this](NodeInstance* node) {
-            // Check if node should execute
-            if (node->GetState() == NodeState::Ready ||
-                node->GetState() == NodeState::Compiled ||
-                node->GetState() == NodeState::Complete) {
+        // Pre-execution: Set all nodes to Executing state
+        for (NodeInstance* node : executionOrder) {
+            if (node) {
+                NodeState state = node->GetState();
+                if (state == NodeState::Ready ||
+                    state == NodeState::Compiled ||
+                    state == NodeState::Complete) {
+                    node->SetState(NodeState::Executing);
+                }
+            }
+        }
 
-                node->SetState(NodeState::Executing);
-                node->Execute();
+        // Execute nodes in parallel using virtual task executor
+        // The executor handles dependency ordering and task-level parallelism
+        virtualTaskExecutor_.ExecutePhase(VirtualTaskPhase::Execute);
+
+        // Post-execution: Set all nodes to Complete state
+        for (NodeInstance* node : executionOrder) {
+            if (node && node->GetState() == NodeState::Executing) {
                 node->SetState(NodeState::Complete);
             }
-        });
+        }
 
         // Process deferred recompiles after all nodes complete
         for (NodeInstance* node : executionOrder) {
@@ -715,11 +715,15 @@ VkResult RenderGraph::RenderFrame() {
     // In event-driven mode (autoPressureAdjustment_), this triggers:
     // 1. TimelineCapacityTracker.EndFrame() via subscription
     // 2. TimelineCapacityTracker publishes BudgetOverrun/AvailableEvent
-    // 3. TaskProfileRegistry receives Budget event and adjusts pressure autonomously
+    // 3. TaskProfileRegistry receives Budget event and queues pressure adjustment
     if (messageBus) {
         messageBus->Publish(std::make_unique<EventBus::FrameEndEvent>(0, globalFrameIndex));
         messageBus->ProcessMessages();  // Process frame events before cleanup
     }
+
+    // Sprint 6.3: Process deferred pressure adjustments AFTER event dispatch completes
+    // This prevents deadlock by ensuring profile modifications happen outside event handlers
+    taskProfileRegistry_.ProcessDeferredActions();
 
     // Sprint 6.3 Phase 4: End capacity tracking (legacy direct call)
     // When event-driven (autoPressureAdjustment_), this is handled by FrameEndEvent subscription
@@ -1821,13 +1825,18 @@ void RenderGraph::SetParallelExecutionEnabled(bool enable) {
             GRAPH_LOG_INFO("[RenderGraph] Parallel execution ENABLED - will use TBB flow_graph");
         } else {
             GRAPH_LOG_INFO("[RenderGraph] Parallel execution DISABLED - using sequential execution");
-            tbbExecutor_.Clear();
+            virtualTaskExecutor_.Clear();
         }
     }
 }
 
 void RenderGraph::SetExecutionMode(TBBExecutionMode mode) {
-    tbbExecutor_.SetMode(mode);
+    // Map execution mode to virtual task executor enable/disable
+    if (mode == TBBExecutionMode::Sequential) {
+        virtualTaskExecutor_.SetEnabled(false);
+    } else {
+        virtualTaskExecutor_.SetEnabled(true);
+    }
 
     const char* modeStr = (mode == TBBExecutionMode::Parallel) ? "Parallel" :
                           (mode == TBBExecutionMode::Sequential) ? "Sequential" : "Limited";
@@ -1835,17 +1844,29 @@ void RenderGraph::SetExecutionMode(TBBExecutionMode mode) {
 }
 
 TBBExecutionMode RenderGraph::GetExecutionMode() const {
-    return tbbExecutor_.GetMode();
+    return virtualTaskExecutor_.IsEnabled() ? TBBExecutionMode::Parallel : TBBExecutionMode::Sequential;
 }
 
 void RenderGraph::SetMaxConcurrency(size_t maxConcurrency) {
-    tbbExecutor_.SetMaxConcurrency(maxConcurrency);
-    GRAPH_LOG_INFO("[RenderGraph] Max concurrency set to: " +
-        (maxConcurrency == 0 ? "unlimited" : std::to_string(maxConcurrency)));
+    // Virtual task executor uses TBB's internal concurrency management
+    // Log for visibility but don't actually limit (TBB handles this)
+    GRAPH_LOG_INFO("[RenderGraph] Max concurrency hint: " +
+        (maxConcurrency == 0 ? "unlimited" : std::to_string(maxConcurrency)) +
+        " (managed by TBB)");
 }
 
 TBBExecutorStats RenderGraph::GetExecutorStats() const {
-    return tbbExecutor_.GetStats();
+    // Map virtual task executor stats to TBBExecutorStats for API compatibility
+    const auto& vStats = virtualTaskExecutor_.GetStats();
+    TBBExecutorStats stats;
+    stats.nodeCount = vStats.totalNodes;
+    stats.edgeCount = vStats.criticalPathLength;  // Approximation
+    stats.executionsCompleted = vStats.parallelTasks + vStats.sequentialTasks;
+    stats.exceptionsThrown = vStats.failedTasks;
+    stats.lastExecutionMs = vStats.executionTimeMs;
+    stats.avgExecutionMs = vStats.executionTimeMs;  // Single value, no averaging
+    stats.executeCount = 1;
+    return stats;
 }
 
 // =============================================================================
@@ -1853,17 +1874,9 @@ TBBExecutorStats RenderGraph::GetExecutorStats() const {
 // =============================================================================
 
 void RenderGraph::SetVirtualTaskParallelismEnabled(bool enable) {
-    if (virtualTaskParallelismEnabled_ != enable) {
-        virtualTaskParallelismEnabled_ = enable;
-        executorNeedsRebuild_ = true;  // Trigger rebuild on next frame
-
-        if (enable) {
-            GRAPH_LOG_INFO("[RenderGraph] Virtual task parallelism ENABLED - bundles can parallelize across nodes");
-        } else {
-            GRAPH_LOG_INFO("[RenderGraph] Virtual task parallelism DISABLED");
-            virtualTaskExecutor_.Clear();
-        }
-    }
+    // Virtual task parallelism is now unified with parallel execution
+    // This method exists for API compatibility
+    SetParallelExecutionEnabled(enable);
 }
 
 } // namespace Vixen::RenderGraph

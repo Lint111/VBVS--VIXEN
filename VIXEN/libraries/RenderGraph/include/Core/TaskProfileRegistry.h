@@ -405,7 +405,7 @@ public:
      * @brief Set callback for workUnit changes
      *
      * Called whenever a task's workUnits changes via pressure adjustment.
-     * Nodes can use this to reconfigure their workload.
+     * Nodes use this to adapt their workload (e.g., reduce shadow resolution).
      *
      * @param callback Function to call on change (nullptr to disable)
      */
@@ -502,8 +502,12 @@ public:
      * @brief Subscribe to budget events via MessageBus
      *
      * Enables autonomous pressure adjustment. When subscribed:
-     * - BudgetOverrunEvent → DecreaseLowestPriority()
-     * - BudgetAvailableEvent → IncreaseHighestPriority()
+     * - BudgetOverrunEvent → queues DecreaseLowestPriority() for deferred execution
+     * - BudgetAvailableEvent → queues IncreaseHighestPriority() for deferred execution
+     *
+     * IMPORTANT: Event handlers queue actions instead of executing immediately
+     * to prevent deadlock when events are published during locks.
+     * Call ProcessDeferredActions() at a safe point outside of locks.
      *
      * This decouples TaskProfileRegistry from RenderGraph - it reacts
      * directly to events published by TimelineCapacityTracker.
@@ -517,20 +521,60 @@ public:
         subscriptions_.SetBus(messageBus);
 
         // Subscribe to BudgetOverrunEvent (type-safe, clean syntax)
+        // Uses deferred execution to avoid deadlock during event dispatch
         subscriptions_.Subscribe<EventBus::BudgetOverrunEvent>(
             [this](const EventBus::BudgetOverrunEvent& e) {
-                // Over budget: reduce workload
-                DecreaseLowestPriority();
+                // Over budget: queue workload reduction (deferred to avoid deadlock)
+                pendingDecrease_ = true;
             }
         );
 
         // Subscribe to BudgetAvailableEvent
+        // Uses deferred execution to avoid deadlock during event dispatch
         subscriptions_.Subscribe<EventBus::BudgetAvailableEvent>(
             [this](const EventBus::BudgetAvailableEvent& e) {
-                // Under threshold: increase workload
-                IncreaseHighestPriority();
+                // Under threshold: queue workload increase (deferred to avoid deadlock)
+                pendingIncrease_ = true;
             }
         );
+    }
+
+    /**
+     * @brief Process deferred pressure adjustments
+     *
+     * Call this at a safe point outside of locks (e.g., at frame end
+     * after event dispatch completes). Executes any queued pressure
+     * adjustments from budget events.
+     *
+     * @return Number of adjustments made (0-2)
+     */
+    uint32_t ProcessDeferredActions() {
+        uint32_t adjustments = 0;
+
+        // Process pending decrease first (higher priority - prevent overrun)
+        if (pendingDecrease_) {
+            pendingDecrease_ = false;
+            if (!DecreaseLowestPriority().empty()) {
+                ++adjustments;
+            }
+        }
+
+        // Process pending increase
+        if (pendingIncrease_) {
+            pendingIncrease_ = false;
+            if (!IncreaseHighestPriority().empty()) {
+                ++adjustments;
+            }
+        }
+
+        return adjustments;
+    }
+
+    /**
+     * @brief Check if there are pending deferred actions
+     */
+    [[nodiscard]] bool HasPendingActions() const {
+        return pendingDecrease_ || pendingIncrease_;
     }
 
     /**
@@ -589,6 +633,11 @@ private:
 
     // Sprint 6.3: Event-driven architecture (RAII subscriptions)
     EventBus::ScopedSubscriptions subscriptions_;
+
+    // Sprint 6.3: Deferred action flags (prevents deadlock during event dispatch)
+    // These are set by event handlers and processed by ProcessDeferredActions()
+    bool pendingDecrease_ = false;
+    bool pendingIncrease_ = false;
 };
 
 } // namespace Vixen::RenderGraph

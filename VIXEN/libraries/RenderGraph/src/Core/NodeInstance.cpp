@@ -353,58 +353,41 @@ uint64_t NodeInstance::GetLoopStepCount() const {
 }
 
 // ============================================================================
-// SPRINT 6.5: TASK-LEVEL PARALLELISM API
+// SPRINT 6.5: TASK-LEVEL PARALLELISM API (Unified)
 // ============================================================================
 
-std::function<void()> NodeInstance::CreateVirtualTask(
-    uint32_t taskIndex,
-    NodeLifecyclePhase phase
-) {
-    // Default implementation: execute the entire node's phase method
-    // for backward compatibility with nodes that don't override this.
+std::vector<VirtualTask> NodeInstance::GetExecutionTasks(VirtualTaskPhase phase) {
+    // Default implementation: Returns 1 task that runs the whole phase.
+    // This provides backward compatibility - all existing nodes work unchanged.
     //
-    // For nodes that opt-in via SupportsTaskParallelism(), the derived
-    // class should override this to provide per-bundle execution.
-    //
-    // Note: The taskIndex parameter is available but unused in the default
-    // implementation since the base Execute/Compile methods handle all bundles.
+    // Parallel nodes override this to return N tasks (one per bundle).
+    // The executor runs whatever tasks are returned - no branching needed.
+
+    VirtualTask task;
+    task.id = {this, 0};
+
+    // Attach phase profiles for timing (cost comes from profiles)
+    task.profiles = GetPhaseProfiles(phase);
 
     switch (phase) {
-        case NodeLifecyclePhase::PreSetup:
-        case NodeLifecyclePhase::PostSetup:
-            // Setup is graph-scope, not per-task
-            if (taskIndex == 0) {
-                return [this]() { this->Setup(); };
-            }
-            return {};
+        case VirtualTaskPhase::Setup:
+            task.execute = [this]() { this->Setup(); };
+            break;
 
-        case NodeLifecyclePhase::PreCompile:
-        case NodeLifecyclePhase::PostCompile:
-            // Compile is typically once per node
-            if (taskIndex == 0) {
-                return [this]() { this->Compile(); };
-            }
-            return {};
+        case VirtualTaskPhase::Compile:
+            task.execute = [this]() { this->Compile(); };
+            break;
 
-        case NodeLifecyclePhase::PreExecute:
-        case NodeLifecyclePhase::PostExecute:
-            // Execute can be per-task for opted-in nodes
-            // Default: only task 0 runs full Execute()
-            if (taskIndex == 0) {
-                return [this]() { this->Execute(); };
-            }
-            return {};
+        case VirtualTaskPhase::Execute:
+            task.execute = [this]() { this->Execute(); };
+            break;
 
-        case NodeLifecyclePhase::PreCleanup:
-        case NodeLifecyclePhase::PostCleanup:
-            // Cleanup is graph-scope
-            if (taskIndex == 0) {
-                return [this]() { this->Cleanup(); };
-            }
-            return {};
+        case VirtualTaskPhase::Cleanup:
+            task.execute = [this]() { this->Cleanup(); };
+            break;
     }
 
-    return {};
+    return {std::move(task)};
 }
 
 // ============================================================================
@@ -509,6 +492,68 @@ ITaskProfile* NodeInstance::RegisterProfileIfAbsent(const std::string& taskId, s
 
     // Register and return
     return registry.RegisterTask(std::move(profile));
+}
+
+uint64_t NodeInstance::EstimateTaskCost(uint32_t /*taskIndex*/) const {
+    // Default implementation: sum cost from Execute phase profiles.
+    // All tasks are assumed to have equal cost unless derived class overrides.
+    const auto& profiles = GetPhaseProfiles(VirtualTaskPhase::Execute);
+
+    uint64_t totalCost = 0;
+    for (const ITaskProfile* profile : profiles) {
+        if (profile) {
+            totalCost += profile->GetEstimatedCostNs();
+        }
+    }
+    return totalCost;
+}
+
+// ============================================================================
+// Phase Profile System (Sprint 6.5)
+// ============================================================================
+
+// Static empty vector for GetPhaseProfiles when phase has no profiles
+static const std::vector<ITaskProfile*> emptyProfileVector;
+
+void NodeInstance::RegisterPhaseProfile(VirtualTaskPhase phase, ITaskProfile* profile) {
+    if (!profile) return;
+    phaseProfiles_[phase].push_back(profile);
+}
+
+const std::vector<ITaskProfile*>& NodeInstance::GetPhaseProfiles(VirtualTaskPhase phase) const {
+    auto it = phaseProfiles_.find(phase);
+    if (it != phaseProfiles_.end()) {
+        return it->second;
+    }
+    return emptyProfileVector;
+}
+
+void NodeInstance::ClearPhaseProfiles(VirtualTaskPhase phase) {
+    phaseProfiles_.erase(phase);
+}
+
+void NodeInstance::ClearAllPhaseProfiles() {
+    phaseProfiles_.clear();
+}
+
+std::vector<VirtualTask> NodeInstance::CreateParallelTasks(
+    VirtualTaskPhase phase,
+    std::function<void(uint32_t)> executeBundle
+) {
+    std::vector<VirtualTask> tasks;
+    const uint32_t taskCount = GetVirtualTaskCount();
+    const auto& profiles = GetPhaseProfiles(phase);
+
+    tasks.reserve(taskCount);
+    for (uint32_t i = 0; i < taskCount; ++i) {
+        VirtualTask task;
+        task.id = {this, i};
+        task.execute = [executeBundle, i]() { executeBundle(i); };
+        task.profiles = profiles;
+        tasks.push_back(std::move(task));
+    }
+
+    return tasks;
 }
 
 } // namespace Vixen::RenderGraph

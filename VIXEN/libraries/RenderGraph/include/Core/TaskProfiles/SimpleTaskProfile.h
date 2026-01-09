@@ -81,8 +81,12 @@ public:
         // Check if this is first measurement BEFORE calling base (base sets isCalibrated_)
         bool wasCalibrated = isCalibrated_;
 
-        // Call base to update common stats
+        // Call base to add to pending samples
         ITaskProfile::RecordMeasurement(actualNs);
+
+        // Process immediately for SimpleTaskProfile (backward compatibility)
+        // More complex profiles may want to batch process
+        ProcessSamples();
 
         if (!wasCalibrated) {
             // First measurement becomes baseline

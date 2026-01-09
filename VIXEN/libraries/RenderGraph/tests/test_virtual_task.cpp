@@ -190,11 +190,11 @@ TEST_F(VirtualTaskTest, VirtualTaskState_ToString) {
     EXPECT_STREQ(ToString(VirtualTaskState::Failed), "Failed");
 }
 
-TEST_F(VirtualTaskTest, NodeLifecyclePhase_ToString) {
-    EXPECT_STREQ(ToString(NodeLifecyclePhase::Setup), "Setup");
-    EXPECT_STREQ(ToString(NodeLifecyclePhase::Compile), "Compile");
-    EXPECT_STREQ(ToString(NodeLifecyclePhase::Execute), "Execute");
-    EXPECT_STREQ(ToString(NodeLifecyclePhase::Cleanup), "Cleanup");
+TEST_F(VirtualTaskTest, VirtualTaskPhase_ToString) {
+    EXPECT_STREQ(ToString(VirtualTaskPhase::Setup), "Setup");
+    EXPECT_STREQ(ToString(VirtualTaskPhase::Compile), "Compile");
+    EXPECT_STREQ(ToString(VirtualTaskPhase::Execute), "Execute");
+    EXPECT_STREQ(ToString(VirtualTaskPhase::Cleanup), "Cleanup");
 }
 
 // =============================================================================
@@ -204,11 +204,11 @@ TEST_F(VirtualTaskTest, NodeLifecyclePhase_ToString) {
 TEST_F(VirtualTaskTest, VirtualTask_DefaultConstruction) {
     VirtualTask task;
     EXPECT_FALSE(task.id.IsValid());
-    EXPECT_EQ(task.estimatedCostNs, 0);
     EXPECT_EQ(task.priority, 128);
     EXPECT_TRUE(task.dependencies.empty());
     EXPECT_EQ(task.state, VirtualTaskState::Pending);
     EXPECT_TRUE(task.errorMessage.empty());
+    EXPECT_EQ(task.GetEstimatedCostFromProfiles(), 0);  // No profiles = 0 cost
 }
 
 TEST_F(VirtualTaskTest, VirtualTask_StateTransitions) {

@@ -21,7 +21,6 @@
 #include "Core/TaskProfileRegistry.h"
 #include "Core/CalibrationStore.h"
 #include "Core/TimelineCapacityTracker.h"
-#include "Core/TBBGraphExecutor.h"       // Sprint 6.4: Parallel execution
 #include "Core/ResourceAccessTracker.h"  // Sprint 6.4: Conflict detection
 #include "Core/VirtualResourceAccessTracker.h"  // Sprint 6.5: Per-task tracking
 #include "Core/TBBVirtualTaskExecutor.h"        // Sprint 6.5: Virtual task execution
@@ -46,6 +45,23 @@ using ResourceManagement::ResourceBudgetManager;
 using ResourceManagement::DeviceBudgetManager;
 
 // NodeHandle defined in CleanupStack.h (included transitively)
+
+// TBBExecutorStats and TBBExecutionMode kept for API compatibility
+struct TBBExecutorStats {
+    size_t nodeCount = 0;
+    size_t edgeCount = 0;
+    size_t executionsCompleted = 0;
+    size_t exceptionsThrown = 0;
+    double lastExecutionMs = 0.0;
+    double avgExecutionMs = 0.0;
+    size_t executeCount = 0;
+};
+
+enum class TBBExecutionMode {
+    Parallel,
+    Sequential,
+    Limited
+};
 
 /**
  * @brief Main Render Graph class
@@ -728,9 +744,11 @@ public:
 
     /**
      * @brief Check if virtual task parallelism is enabled
+     *
+     * Virtual task parallelism is now unified with parallel execution.
      */
     [[nodiscard]] bool IsVirtualTaskParallelismEnabled() const {
-        return virtualTaskParallelismEnabled_;
+        return parallelExecutionEnabled_;
     }
 
     /**
@@ -830,16 +848,12 @@ private:
     TimelineCapacityTracker capacityTracker_;
     bool autoPressureAdjustment_ = false;
 
-    // Sprint 6.4: Parallel execution with TBB flow_graph
-    TBBGraphExecutor tbbExecutor_;
-    ResourceAccessTracker resourceAccessTracker_;
-    bool parallelExecutionEnabled_ = false;
-    bool executorNeedsRebuild_ = true;  // Rebuild TBB graph after compilation
-
-    // Sprint 6.5: Task-level parallelism with virtual tasks
-    VirtualResourceAccessTracker virtualAccessTracker_;
+    // Sprint 6.4/6.5: Parallel execution with TBB virtual task executor
+    ResourceAccessTracker resourceAccessTracker_;  // Node-level conflict detection
+    VirtualResourceAccessTracker virtualAccessTracker_;  // Task-level conflict detection
     TBBVirtualTaskExecutor virtualTaskExecutor_;
-    bool virtualTaskParallelismEnabled_ = false;
+    bool parallelExecutionEnabled_ = false;
+    bool executorNeedsRebuild_ = true;  // Rebuild executor after compilation
 
     // Sprint 4 Phase B: Lifetime scope management (optional, externally provided)
     LifetimeScopeManager* scopeManager_ = nullptr;

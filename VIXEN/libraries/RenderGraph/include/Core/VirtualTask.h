@@ -28,7 +28,7 @@
  * VirtualTask task;
  * task.id = taskA;
  * task.execute = [nodeA]() { nodeA->ExecuteTask(0); };
- * task.estimatedCostNs = nodeA->EstimateTaskCost(0);
+ * task.profiles = nodeA->GetTaskProfiles(0);  // Cost from profiles
  * @endcode
  *
  * @see VirtualResourceAccessTracker for per-task resource tracking
@@ -40,6 +40,7 @@
 #include <functional>
 #include <vector>
 #include <string>
+#include "ITaskProfile.h"
 
 namespace Vixen::RenderGraph {
 
@@ -181,11 +182,18 @@ struct VirtualTask {
     /// Execution function - captures node and taskIndex in closure
     std::function<void()> execute;
 
-    uint64_t estimatedCostNs = 0;               ///< Estimated execution cost in nanoseconds
     uint8_t priority = 128;                     ///< Execution priority (0=highest, 255=lowest)
 
     /// Tasks that must complete before this one
     std::vector<VirtualTaskId> dependencies;
+
+    /// Task profiles for timing/calibration (non-owning, owned by registry)
+    /// Multiple profiles enable composable sub-task measurement
+    std::vector<ITaskProfile*> profiles;
+
+    /// Set to true when node-level code has already profiled this task
+    /// Executor skips profiling if this is true (avoids double-timing)
+    bool profiled = false;
 
     VirtualTaskState state = VirtualTaskState::Pending;
 
@@ -258,6 +266,59 @@ struct VirtualTask {
     void MarkFailed(const std::string& error) {
         state = VirtualTaskState::Failed;
         errorMessage = error;
+    }
+
+    // =========================================================================
+    // Profile Methods
+    // =========================================================================
+
+    /**
+     * @brief Check if task has profiles attached
+     */
+    [[nodiscard]] bool HasProfiles() const {
+        return !profiles.empty();
+    }
+
+    /**
+     * @brief Start timing on all attached profiles
+     *
+     * Sets profiled=true so executor knows not to double-time.
+     */
+    void BeginProfiling() {
+        profiled = true;
+        for (ITaskProfile* profile : profiles) {
+            if (profile) profile->Begin();
+        }
+    }
+
+    /**
+     * @brief End timing on all attached profiles
+     */
+    void EndProfiling() {
+        for (ITaskProfile* profile : profiles) {
+            if (profile) profile->End();
+        }
+    }
+
+    /**
+     * @brief Check if this task was already profiled by node code
+     */
+    [[nodiscard]] bool WasProfiled() const { return profiled; }
+
+    /**
+     * @brief Get total estimated cost from attached profiles
+     *
+     * Sums estimates from all attached profiles. Returns 0 if no profiles.
+     * Use NodeInstance::EstimateTaskCost() to get profile-based estimates.
+     */
+    [[nodiscard]] uint64_t GetEstimatedCostFromProfiles() const {
+        uint64_t totalCost = 0;
+        for (const ITaskProfile* profile : profiles) {
+            if (profile) {
+                totalCost += profile->GetEstimatedCostNs();
+            }
+        }
+        return totalCost;
     }
 };
 

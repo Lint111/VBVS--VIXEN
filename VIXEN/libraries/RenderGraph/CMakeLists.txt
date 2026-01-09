@@ -135,7 +135,6 @@ set(RENDERGRAPH_CORE_HEADERS
     include/Core/SlotTask.h
     # Note: StatefulContainer.h moved to ResourceManagement library
     include/Core/TaskQueue.h  # Sprint 6.2: Task #339 - Budget-aware task queue
-    include/Core/TBBGraphExecutor.h  # Sprint 6.4: TBB flow_graph executor
     include/Core/TimelineCapacityTracker.h  # Sprint 6.3: Task #344 - Timeline capacity tracker
     include/Core/Timer.h
     include/Core/VirtualTask.h  # Sprint 6.5: Task-level parallelism
@@ -170,7 +169,6 @@ set(RENDERGRAPH_CORE_SOURCES
     src/Core/ResourceDependencyTracker.cpp
     src/Core/WaveScheduler.cpp  # Sprint 6.4: Task #347 - Wave computation
     src/Core/SlotTask.cpp
-    src/Core/TBBGraphExecutor.cpp  # Sprint 6.4: TBB flow_graph executor
     src/Core/TimelineCapacityTracker.cpp  # Sprint 6.3: Task #344 - Timeline capacity tracker
     src/Core/TaskQueue.cpp  # Sprint 6.2: Task #339 - Template instantiations
     src/Core/Timer.cpp
@@ -379,9 +377,8 @@ if(USE_PRECOMPILED_HEADERS)
     )
     message(STATUS "RenderGraph: Precompiled headers enabled (using RenderGraphHeaders.h)")
 
-    # TBB-based executors need TBB headers not in PCH - skip PCH for these files
+    # TBB-based executor needs TBB headers not in PCH - skip PCH for this file
     set_source_files_properties(
-        src/Core/TBBGraphExecutor.cpp
         src/Core/TBBVirtualTaskExecutor.cpp
         PROPERTIES SKIP_PRECOMPILE_HEADERS ON
     )

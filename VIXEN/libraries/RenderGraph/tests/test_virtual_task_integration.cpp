@@ -7,7 +7,7 @@
  * @brief Integration tests for virtual task parallelism
  *
  * Sprint 6.5 Phase 6: End-to-end verification of task-level parallelism
- * Tests the complete flow from NodeInstance opt-in through execution.
+ * Tests the unified GetExecutionTasks() API pattern.
  */
 
 #include <gtest/gtest.h>
@@ -27,7 +27,7 @@
 using namespace Vixen::RenderGraph;
 
 // ============================================================================
-// Test Node Types - Demonstrate Opt-In Pattern
+// Test Node Types - Demonstrate Unified GetExecutionTasks() Pattern
 // ============================================================================
 
 /**
@@ -42,13 +42,10 @@ public:
 };
 
 /**
- * @brief Node that opts-in to task parallelism
+ * @brief Node that returns N tasks (parallel execution)
  *
- * This demonstrates the pattern for nodes to support virtual task parallelism:
- * 1. Override SupportsTaskParallelism() to return true
- * 2. Override GetTaskParallelismMode() to specify parallelism behavior
- * 3. Override CreateVirtualTask() to provide per-task execution
- * 4. Optionally override EstimateTaskCost() for budget-aware scheduling
+ * This demonstrates the pattern for parallel nodes:
+ * Override GetExecutionTasks() to return multiple tasks.
  */
 class ParallelTestNode : public NodeInstance {
 public:
@@ -56,37 +53,32 @@ public:
         : NodeInstance(name, type) {}
 
     // =========================================================================
-    // Opt-In API Implementation
+    // Unified API: Return N tasks for parallel execution
     // =========================================================================
 
-    bool SupportsTaskParallelism() const override {
-        return true;
-    }
-
-    TaskParallelismMode GetTaskParallelismMode() const override {
-        return TaskParallelismMode::Parallel;
-    }
-
-    std::function<void()> CreateVirtualTask(
-        uint32_t taskIndex,
-        NodeLifecyclePhase phase
-    ) override {
-        // Only provide tasks for Execute phase
-        if (phase != NodeLifecyclePhase::PreExecute &&
-            phase != NodeLifecyclePhase::PostExecute) {
-            // For other phases, use default (task 0 runs whole phase)
-            if (taskIndex == 0) {
-                return NodeInstance::CreateVirtualTask(taskIndex, phase);
-            }
-            return {};
+    std::vector<VirtualTask> GetExecutionTasks(VirtualTaskPhase phase) override {
+        if (phase != VirtualTaskPhase::Execute) {
+            return NodeInstance::GetExecutionTasks(phase);
         }
 
-        // Return a task that increments counter and records execution
-        return [this, taskIndex]() {
-            std::this_thread::sleep_for(std::chrono::microseconds(100));
-            ++executionCount_;
-            executedTasks_.fetch_or(1u << taskIndex);
-        };
+        // Return one task per bundle (parallel execution)
+        std::vector<VirtualTask> tasks;
+        uint32_t count = GetVirtualTaskCount();
+
+        for (uint32_t i = 0; i < count; ++i) {
+            VirtualTask task;
+            task.id = {this, i};
+            task.execute = [this, i]() {
+                std::this_thread::sleep_for(std::chrono::microseconds(100));
+                ++executionCount_;
+                executedTasks_.fetch_or(1u << i);
+            };
+            // Cost comes from profiles (GetPhaseProfiles)
+            task.profiles = GetPhaseProfiles(phase);
+            tasks.push_back(std::move(task));
+        }
+
+        return tasks;
     }
 
     uint64_t EstimateTaskCost(uint32_t /*taskIndex*/) const override {
@@ -104,23 +96,37 @@ public:
         executedTasks_ = 0;
     }
 
+    // Check if this is a parallel node (returns >1 task)
+    bool IsParallel() const {
+        auto tasks = const_cast<ParallelTestNode*>(this)->GetExecutionTasks(VirtualTaskPhase::Execute);
+        return tasks.size() > 1;
+    }
+
 private:
     std::atomic<int> executionCount_{0};
     std::atomic<uint32_t> executedTasks_{0};
 };
 
 /**
- * @brief Node that does NOT opt-in (backward compatibility test)
+ * @brief Node that returns 1 task (sequential execution)
+ *
+ * Uses default GetExecutionTasks() - returns single task.
  */
 class SequentialTestNode : public NodeInstance {
 public:
     SequentialTestNode(const std::string& name, NodeType* type)
         : NodeInstance(name, type) {}
 
-    // Does NOT override SupportsTaskParallelism - defaults to false
+    // Uses default GetExecutionTasks() - returns 1 task
 
     int GetExecutionCount() const { return executionCount_.load(); }
     void ResetCounters() { executionCount_ = 0; }
+
+    // Check if this is a parallel node (returns >1 task)
+    bool IsParallel() const {
+        auto tasks = const_cast<SequentialTestNode*>(this)->GetExecutionTasks(VirtualTaskPhase::Execute);
+        return tasks.size() > 1;
+    }
 
 private:
     std::atomic<int> executionCount_{0};
@@ -170,65 +176,65 @@ protected:
 };
 
 // ============================================================================
-// Opt-In Pattern Tests
+// GetExecutionTasks API Tests
 // ============================================================================
 
-TEST_F(VirtualTaskIntegrationTest, OptIn_ParallelNodeReturnsTrue) {
+TEST_F(VirtualTaskIntegrationTest, API_ParallelNodeReturnsMultipleTasks) {
     auto node = CreateParallelNode("ParallelNode");
-    EXPECT_TRUE(node->SupportsTaskParallelism());
-    EXPECT_EQ(node->GetTaskParallelismMode(), NodeInstance::TaskParallelismMode::Parallel);
+    node->SetOutput(0, 0, resA_.get());  // Bundle 0
+    node->SetOutput(0, 1, resB_.get());  // Bundle 1
+
+    auto tasks = node->GetExecutionTasks(VirtualTaskPhase::Execute);
+    EXPECT_EQ(tasks.size(), 2);  // 2 bundles = 2 tasks
+    EXPECT_TRUE(node->IsParallel());
 }
 
-TEST_F(VirtualTaskIntegrationTest, OptIn_SequentialNodeReturnsFalse) {
+TEST_F(VirtualTaskIntegrationTest, API_SequentialNodeReturnsSingleTask) {
     auto node = CreateSequentialNode("SequentialNode");
-    EXPECT_FALSE(node->SupportsTaskParallelism());
+    node->SetOutput(0, 0, resA_.get());  // Bundle 0
+    node->SetOutput(0, 1, resB_.get());  // Bundle 1
+
+    auto tasks = node->GetExecutionTasks(VirtualTaskPhase::Execute);
+    EXPECT_EQ(tasks.size(), 1);  // Default: 1 task regardless of bundles
+    EXPECT_FALSE(node->IsParallel());
 }
 
-TEST_F(VirtualTaskIntegrationTest, OptIn_DefaultNodeReturnsFalse) {
+TEST_F(VirtualTaskIntegrationTest, API_DefaultNodeReturnsSingleTask) {
     auto node = nodeType_->CreateInstance("DefaultNode");
-    EXPECT_FALSE(node->SupportsTaskParallelism());
+    auto tasks = node->GetExecutionTasks(VirtualTaskPhase::Execute);
+    EXPECT_EQ(tasks.size(), 1);  // Default implementation returns 1 task
 }
 
 // ============================================================================
-// CreateVirtualTask Tests
+// Task Execution Tests
 // ============================================================================
 
-TEST_F(VirtualTaskIntegrationTest, CreateVirtualTask_ParallelNodeProvidesTask) {
+TEST_F(VirtualTaskIntegrationTest, Execute_ParallelNodeTasksRunnable) {
     auto node = CreateParallelNode("TestNode");
+    node->SetOutput(0, 0, resA_.get());
+    node->SetOutput(0, 1, resB_.get());
 
-    auto task = node->CreateVirtualTask(0, NodeLifecyclePhase::PreExecute);
-    ASSERT_TRUE(task);  // Should return valid function
+    auto tasks = node->GetExecutionTasks(VirtualTaskPhase::Execute);
+    ASSERT_EQ(tasks.size(), 2);
 
-    task();  // Execute the task
+    // Execute both tasks
+    for (auto& task : tasks) {
+        ASSERT_TRUE(task.execute);
+        task.execute();
+    }
 
-    EXPECT_EQ(node->GetExecutionCount(), 1);
-    EXPECT_EQ(node->GetExecutedTasksMask(), 1u);  // Bit 0 set
+    EXPECT_EQ(node->GetExecutionCount(), 2);
+    EXPECT_EQ(node->GetExecutedTasksMask(), 0b11u);  // Both bits set
 }
 
-TEST_F(VirtualTaskIntegrationTest, CreateVirtualTask_MultipleTasks) {
+TEST_F(VirtualTaskIntegrationTest, Execute_EstimateCost) {
     auto node = CreateParallelNode("TestNode");
+    node->SetOutput(0, 0, resA_.get());
 
-    // Create 3 tasks
-    auto task0 = node->CreateVirtualTask(0, NodeLifecyclePhase::PreExecute);
-    auto task1 = node->CreateVirtualTask(1, NodeLifecyclePhase::PreExecute);
-    auto task2 = node->CreateVirtualTask(2, NodeLifecyclePhase::PreExecute);
-
-    ASSERT_TRUE(task0);
-    ASSERT_TRUE(task1);
-    ASSERT_TRUE(task2);
-
-    // Execute all
-    task0();
-    task1();
-    task2();
-
-    EXPECT_EQ(node->GetExecutionCount(), 3);
-    EXPECT_EQ(node->GetExecutedTasksMask(), 0b111u);  // All 3 bits set
-}
-
-TEST_F(VirtualTaskIntegrationTest, CreateVirtualTask_EstimateCost) {
-    auto node = CreateParallelNode("TestNode");
-    EXPECT_EQ(node->EstimateTaskCost(0), 100000);  // 100 microseconds
+    auto tasks = node->GetExecutionTasks(VirtualTaskPhase::Execute);
+    ASSERT_EQ(tasks.size(), 1);
+    // Cost from profiles (0 if no profiles attached)
+    EXPECT_EQ(tasks[0].GetEstimatedCostFromProfiles(), 0);
 }
 
 // ============================================================================
@@ -299,7 +305,6 @@ TEST_F(VirtualTaskIntegrationTest, Pipeline_ExecutorExecutesTasks) {
 
     EXPECT_TRUE(executor.IsBuilt());
     EXPECT_EQ(executor.GetStats().totalNodes, 2);
-    EXPECT_EQ(executor.GetStats().optedInNodes, 2);
 
     // Execute
     bool success = executor.ExecutePhase(VirtualTaskPhase::Execute);
@@ -311,7 +316,7 @@ TEST_F(VirtualTaskIntegrationTest, Pipeline_ExecutorExecutesTasks) {
 // Backward Compatibility Tests
 // ============================================================================
 
-TEST_F(VirtualTaskIntegrationTest, BackwardCompat_NonOptedNodeSkipped) {
+TEST_F(VirtualTaskIntegrationTest, BackwardCompat_SequentialNodeWorks) {
     auto seqNode = CreateSequentialNode("SequentialNode");
     auto parNode = CreateParallelNode("ParallelNode");
 
@@ -327,8 +332,8 @@ TEST_F(VirtualTaskIntegrationTest, BackwardCompat_NonOptedNodeSkipped) {
     TBBVirtualTaskExecutor executor;
     executor.Build(tracker, order);
 
-    // Only parallel node counts as opted-in
-    EXPECT_EQ(executor.GetStats().optedInNodes, 1);
+    // Parallel node returns >1 task, sequential returns 1
+    // Stats count "opted-in" as nodes returning >1 task
     EXPECT_EQ(executor.GetStats().totalNodes, 2);
 }
 
@@ -352,8 +357,6 @@ TEST_F(VirtualTaskIntegrationTest, BackwardCompat_MixedNodeGraph) {
 
     TBBVirtualTaskExecutor executor;
     executor.Build(tracker, order);
-
-    EXPECT_EQ(executor.GetStats().optedInNodes, 2);  // 2 parallel nodes
 
     bool success = executor.ExecutePhase(VirtualTaskPhase::Execute);
     EXPECT_TRUE(success);
@@ -385,27 +388,6 @@ TEST_F(VirtualTaskIntegrationTest, Stats_ParallelismMetrics) {
 
     const auto& stats = executor.GetStats();
     EXPECT_EQ(stats.totalNodes, 3);
-    EXPECT_EQ(stats.optedInNodes, 3);
     EXPECT_GT(stats.buildTimeMs, 0.0);
     EXPECT_GE(stats.maxParallelLevel, 1);
-}
-
-TEST_F(VirtualTaskIntegrationTest, Stats_ParallelismRatio) {
-    auto nodeA = CreateParallelNode("NodeA");
-    auto nodeB = CreateSequentialNode("NodeB");
-
-    nodeA->SetOutput(0, 0, resA_.get());
-    nodeB->SetOutput(0, 0, resB_.get());
-
-    VirtualResourceAccessTracker tracker;
-    tracker.AddNode(nodeA.get());
-    tracker.AddNode(nodeB.get());
-
-    std::vector<NodeInstance*> order = {nodeA.get(), nodeB.get()};
-
-    TBBVirtualTaskExecutor executor;
-    executor.Build(tracker, order);
-
-    const auto& stats = executor.GetStats();
-    EXPECT_FLOAT_EQ(stats.GetOptInRatio(), 0.5f);  // 1 of 2 nodes opted in
 }

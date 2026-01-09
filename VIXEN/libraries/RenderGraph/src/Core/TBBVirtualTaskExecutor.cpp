@@ -79,11 +79,14 @@ void TBBVirtualTaskExecutor::Build(
     stats_.criticalPathLength = depGraph_.GetCriticalPathLength();
     stats_.maxParallelLevel = depGraph_.GetMaxParallelism();
 
-    // Count opted-in nodes
+    // Count opted-in nodes (nodes returning >1 task for Execute phase)
     stats_.optedInNodes = 0;
     for (NodeInstance* node : nodes_) {
-        if (node && node->SupportsTaskParallelism()) {
-            ++stats_.optedInNodes;
+        if (node) {
+            auto tasks = node->GetExecutionTasks(VirtualTaskPhase::Execute);
+            if (tasks.size() > 1) {
+                ++stats_.optedInNodes;
+            }
         }
     }
 
@@ -103,7 +106,6 @@ void TBBVirtualTaskExecutor::BuildTasks(const VirtualResourceAccessTracker& trac
         for (const auto& taskId : nodeTasks) {
             VirtualTask task;
             task.id = taskId;
-            task.estimatedCostNs = node->EstimateTaskCost(taskId.taskIndex);
 
             // Get dependencies from graph
             task.dependencies = depGraph_.GetDependencies(taskId);
@@ -205,45 +207,34 @@ bool TBBVirtualTaskExecutor::ExecuteTask(VirtualTask& task, VirtualTaskPhase pha
 
     NodeInstance* node = task.id.node;
 
-    // Check if node supports task parallelism
-    bool supportsParallel = node->SupportsTaskParallelism();
-
-    // Map VirtualTaskPhase to NodeLifecyclePhase
-    NodeLifecyclePhase lifecyclePhase;
-    switch (phase) {
-        case VirtualTaskPhase::Setup:
-            lifecyclePhase = NodeLifecyclePhase::PreSetup;
-            break;
-        case VirtualTaskPhase::Compile:
-            lifecyclePhase = NodeLifecyclePhase::PreCompile;
-            break;
-        case VirtualTaskPhase::Execute:
-            lifecyclePhase = NodeLifecyclePhase::PreExecute;
-            break;
-        case VirtualTaskPhase::Cleanup:
-            lifecyclePhase = NodeLifecyclePhase::PreCleanup;
-            break;
-        default:
-            return true;
-    }
-
     try {
-        if (supportsParallel) {
-            // Node supports parallelism - use CreateVirtualTask
-            auto taskFunc = node->CreateVirtualTask(task.id.taskIndex, lifecyclePhase);
-            if (taskFunc) {
-                taskFunc();
+        // Sprint 6.5 Unified API: Get tasks from node
+        // The node returns all tasks it wants executed for this phase.
+        // We find the task matching our taskIndex.
+
+        auto nodeTasks = node->GetExecutionTasks(phase);
+
+        // Find matching task by index
+        std::function<void()> executeFunc;
+        for (const auto& nodeTask : nodeTasks) {
+            if (nodeTask.id.taskIndex == task.id.taskIndex) {
+                executeFunc = nodeTask.execute;
+                break;
             }
-        } else {
-            // Node doesn't support parallelism - only execute for task 0
-            // (which runs the entire node's phase)
-            if (task.id.taskIndex == 0) {
-                auto taskFunc = node->CreateVirtualTask(0, lifecyclePhase);
-                if (taskFunc) {
-                    taskFunc();
-                }
-            }
-            // Other tasks are no-ops for non-opted nodes
+        }
+
+        // If node returned only 1 task (sequential), it handles all bundles
+        // So taskIndex > 0 should skip (task 0 does everything)
+        if (!executeFunc && nodeTasks.size() == 1 && task.id.taskIndex > 0) {
+            // Sequential node - task 0 handles everything, other tasks are no-ops
+            task.MarkCompleted();
+            return true;
+        }
+
+        // Execute if we have a function
+        // Note: Profiling is handled within nodes using profile->Sample()
+        if (executeFunc) {
+            executeFunc();
         }
 
         task.MarkCompleted();

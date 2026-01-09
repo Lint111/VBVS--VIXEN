@@ -3,6 +3,7 @@
 #include "VulkanDevice.h"
 #include "Core/ComputePerformanceLogger.h"
 #include "Core/GPUPerformanceLogger.h"
+#include "Core/TaskProfiles/SimpleTaskProfile.h"  // Sprint 6.5: Profile integration
 #include "VulkanSwapChain.h"  // For SwapChainPublicVariables
 #include "ShaderDataBundle.h"
 #include "Debug/IDebugCapture.h"  // For debug capture passthrough
@@ -133,6 +134,14 @@ void ComputeDispatchNode::CompileImpl(TypedCompileContext& ctx) {
     } else {
         NODE_LOG_WARNING("[ComputeDispatchNode] GPUQueryManager not available from VulkanDevice");
     }
+
+    // Sprint 6.5: Register GPU task profile for cost estimation and learning
+    std::string profileId = GetInstanceName() + "_gpu_dispatch";
+    gpuProfile_ = GetOrCreateProfile<SimpleTaskProfile>(profileId, profileId, "compute");
+    if (gpuProfile_) {
+        RegisterPhaseProfile(VirtualTaskPhase::Execute, gpuProfile_);
+        NODE_LOG_INFO("[ComputeDispatchNode] Registered GPU profile: " + profileId);
+    }
 }
 
 // ============================================================================
@@ -167,6 +176,18 @@ void ComputeDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // The fence for this frame index was waited on, so previous frame's results are ready
     if (gpuPerfLogger_) {
         gpuPerfLogger_->CollectResults(currentFrameIndex);
+
+        // Sprint 6.5: Feed GPU timing to task profile for cost learning
+        if (gpuProfile_) {
+            auto sample = gpuProfile_->Sample();
+            float gpuTimeMs = gpuPerfLogger_->GetLastDispatchMs();
+            if (gpuTimeMs > 0.0f) {
+                uint64_t gpuTimeNs = static_cast<uint64_t>(gpuTimeMs * 1'000'000.0f);
+                sample.Finalize(gpuTimeNs);
+            } else {
+                sample.Cancel();  // No valid measurement
+            }
+        }
     }
 
     // Guard against invalid image index

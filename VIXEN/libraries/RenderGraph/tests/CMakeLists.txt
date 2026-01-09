@@ -397,30 +397,7 @@ if(TARGET GTest::gtest_main)
 
     message(STATUS "✓ test_wave_scheduler configured (Sprint 6.4 Phase 1)")
 
-    # TBBGraphExecutor Tests (Sprint 6.4 - replaces ThreadPool)
-    add_executable(test_tbb_graph_executor
-        test_tbb_graph_executor.cpp
-    )
-
-    target_link_libraries(test_tbb_graph_executor PRIVATE
-        GTest::gtest_main
-        RenderGraph
-    )
-
-    # Copy TBB DLL for test execution
-    if(TARGET TBB::tbb)
-        add_custom_command(TARGET test_tbb_graph_executor POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb>
-            $<TARGET_FILE_DIR:test_tbb_graph_executor>
-        )
-    endif()
-
-    set_target_properties(test_tbb_graph_executor PROPERTIES FOLDER "Tests/RenderGraph Tests")
-
-    gtest_discover_tests(test_tbb_graph_executor)
-
-    message(STATUS "✓ test_tbb_graph_executor configured (Sprint 6.4 Phase 3)")
+    # Note: test_tbb_graph_executor removed - functionality merged into TBBVirtualTaskExecutor
 
     # ===========================================================================
     # VirtualTask Tests (Sprint 6.5 - Task-Level Parallelism)

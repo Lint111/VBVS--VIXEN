@@ -397,11 +397,34 @@ public:
     }
 
     void ExecuteImpl() override {
+        // Sequential execution over all tasks (used when NOT using virtual task executor)
         uint32_t taskCount = DetermineTaskCount();
         for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
             TypedExecuteContext ctx(this, taskIndex);
             ExecuteImpl(ctx);
         }
+    }
+
+    // =========================================================================
+    // Sprint 6.5: Task Parallelism API (FINAL - not overridable)
+    // =========================================================================
+    //
+    // Returns N tasks for Execute phase (1 per bundle).
+    // Executor runs these tasks - parallelism is automatic based on dependencies.
+    // Single-bundle nodes naturally get 1 task.
+    // =========================================================================
+
+    std::vector<VirtualTask> GetExecutionTasks(VirtualTaskPhase phase) override {
+        // For Execute phase: return N tasks (1 per bundle)
+        if (phase == VirtualTaskPhase::Execute) {
+            return CreateParallelTasks(phase, [this](uint32_t i) {
+                TypedExecuteContext ctx(this, i);
+                ExecuteImpl(ctx);
+            });
+        }
+
+        // For other phases: 1 task that runs the whole phase
+        return NodeInstance::GetExecutionTasks(phase);
     }
 
 protected:

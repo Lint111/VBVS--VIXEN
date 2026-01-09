@@ -30,6 +30,8 @@
 #include <memory>
 #include <algorithm>
 #include <functional>
+#include <chrono>
+#include <mutex>
 
 namespace Vixen::RenderGraph {
 
@@ -215,6 +217,165 @@ public:
     [[nodiscard]] bool IsCalibrated() const { return isCalibrated_; }
 
     // =========================================================================
+    // Timing API (Sprint 6.5) - Concurrent-safe measurement via Samplers
+    // =========================================================================
+
+    /**
+     * @brief Independent sampler for concurrent-safe timing
+     *
+     * Each Sampler has its own timing state, allowing multiple concurrent
+     * measurements on the same profile. When destroyed, automatically adds
+     * its measurement to the parent profile's pending samples.
+     *
+     * Usage:
+     * @code
+     * {
+     *     auto sampler = profile->Sample();  // starts timing
+     *     // ... work being measured ...
+     * } // sampler destructor records measurement
+     * @endcode
+     */
+    class Sampler {
+    public:
+        explicit Sampler(ITaskProfile* profile)
+            : profile_(profile)
+            , startTime_(std::chrono::high_resolution_clock::now())
+            , active_(profile != nullptr)
+        {}
+
+        ~Sampler() {
+            if (active_ && profile_) {
+                auto endTime = std::chrono::high_resolution_clock::now();
+                auto elapsedNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    endTime - startTime_).count();
+                profile_->RecordMeasurement(static_cast<uint64_t>(elapsedNs));
+            }
+        }
+
+        // Move-only (no copies)
+        Sampler(const Sampler&) = delete;
+        Sampler& operator=(const Sampler&) = delete;
+
+        Sampler(Sampler&& other) noexcept
+            : profile_(other.profile_)
+            , startTime_(other.startTime_)
+            , active_(other.active_)
+        {
+            other.active_ = false;
+        }
+
+        Sampler& operator=(Sampler&& other) noexcept {
+            if (this != &other) {
+                // Record current measurement if active
+                if (active_ && profile_) {
+                    auto endTime = std::chrono::high_resolution_clock::now();
+                    auto elapsedNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                        endTime - startTime_).count();
+                    profile_->RecordMeasurement(static_cast<uint64_t>(elapsedNs));
+                }
+                profile_ = other.profile_;
+                startTime_ = other.startTime_;
+                active_ = other.active_;
+                other.active_ = false;
+            }
+            return *this;
+        }
+
+        /**
+         * @brief Cancel this measurement (won't record on destruction)
+         */
+        void Cancel() { active_ = false; }
+
+        /**
+         * @brief Finalize with externally-measured time (e.g., GPU timing)
+         *
+         * Use this when the measurement comes from an external source like
+         * GPU timestamp queries. Records the provided measurement and prevents
+         * the destructor from recording CPU-measured time.
+         *
+         * @param measurementNs Externally-measured time in nanoseconds
+         *
+         * Usage:
+         * @code
+         * {
+         *     auto sample = profile->Sample();
+         *     // ... GPU dispatch ...
+         *     uint64_t gpuTimeNs = gpuLogger->GetLastDispatchNs();
+         *     sample.Finalize(gpuTimeNs);  // Records GPU time, not CPU time
+         * }
+         * @endcode
+         */
+        void Finalize(uint64_t measurementNs) {
+            if (active_ && profile_) {
+                profile_->RecordMeasurement(measurementNs);
+                active_ = false;  // Prevent destructor from double-recording
+            }
+        }
+
+        /**
+         * @brief Get elapsed time so far (doesn't end the measurement)
+         */
+        [[nodiscard]] uint64_t ElapsedNs() const {
+            auto now = std::chrono::high_resolution_clock::now();
+            return static_cast<uint64_t>(
+                std::chrono::duration_cast<std::chrono::nanoseconds>(now - startTime_).count());
+        }
+
+    private:
+        ITaskProfile* profile_;
+        std::chrono::high_resolution_clock::time_point startTime_;
+        bool active_;
+    };
+
+    /**
+     * @brief Create an independent sampler for this profile
+     *
+     * Each sampler has its own timing state, enabling concurrent measurements.
+     * When the sampler goes out of scope, it automatically records its
+     * measurement to this profile's pending samples.
+     *
+     * @return Sampler RAII object
+     */
+    [[nodiscard]] Sampler Sample() { return Sampler(this); }
+
+    // Legacy API (NOT concurrent-safe - use Sample() instead for concurrent use)
+
+    /**
+     * @brief Start timing measurement (NOT concurrent-safe)
+     *
+     * @warning For concurrent measurements, use Sample() instead.
+     * This uses shared state and is only safe for single-threaded use.
+     */
+    void Begin() {
+        startTime_ = std::chrono::high_resolution_clock::now();
+        timing_ = true;
+    }
+
+    /**
+     * @brief End timing measurement and record result (NOT concurrent-safe)
+     *
+     * @warning For concurrent measurements, use Sample() instead.
+     */
+    void End() {
+        if (!timing_) return;
+        timing_ = false;
+
+        auto endTime = std::chrono::high_resolution_clock::now();
+        auto elapsedNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
+            endTime - startTime_).count();
+        RecordMeasurement(static_cast<uint64_t>(elapsedNs));
+    }
+
+    /**
+     * @brief Check if currently timing via Begin()/End()
+     */
+    [[nodiscard]] bool IsTiming() const { return timing_; }
+
+    // Alias for backward compatibility
+    using ScopedTiming = Sampler;
+    [[nodiscard]] Sampler Scope() { return Sample(); }
+
+    // =========================================================================
     // Virtual Interface - Derived classes MUST implement
     // =========================================================================
 
@@ -244,22 +405,56 @@ public:
     [[nodiscard]] virtual uint64_t GetEstimatedCostNs() const = 0;
 
     /**
-     * @brief Record actual measurement - task updates its calibration
+     * @brief Record actual measurement - adds to pending samples (thread-safe)
      *
-     * Called after task execution with actual measured time.
-     * Task can use this to refine its cost model.
+     * Samples are collected and processed in batches via ProcessSamples().
+     * This allows multiple concurrent measurements to contribute to the same
+     * profile without interference.
      *
      * @param actualNs Measured execution time in nanoseconds
      */
     virtual void RecordMeasurement(uint64_t actualNs) {
-        lastMeasuredCostNs_ = actualNs;
-        peakMeasuredCostNs_ = std::max(peakMeasuredCostNs_, actualNs);
-        ++sampleCount_;
-        isCalibrated_ = true;
+        std::lock_guard<std::mutex> lock(samplesMutex_);
+        pendingSamples_.push_back(actualNs);
 
-        // Derived classes should call base then add their logic:
-        // ITaskProfile::RecordMeasurement(actualNs);
-        // // ... task-specific calibration update
+        // Auto-process if we've accumulated too many samples
+        if (pendingSamples_.size() >= kMaxPendingSamples) {
+            ProcessSamplesLocked();
+        }
+    }
+
+    /**
+     * @brief Process all pending samples and update statistics (thread-safe)
+     *
+     * Call periodically (e.g., end of frame) or at shutdown to batch-process
+     * accumulated measurements. This updates:
+     * - sampleCount_
+     * - lastMeasuredCostNs_ (most recent)
+     * - peakMeasuredCostNs_ (max observed)
+     * - isCalibrated_ flag
+     *
+     * Derived classes can override to implement custom processing
+     * (e.g., exponential moving average).
+     */
+    virtual void ProcessSamples() {
+        std::lock_guard<std::mutex> lock(samplesMutex_);
+        ProcessSamplesLocked();
+    }
+
+    /**
+     * @brief Get number of pending (unprocessed) samples (thread-safe)
+     */
+    [[nodiscard]] size_t GetPendingSampleCount() const {
+        std::lock_guard<std::mutex> lock(samplesMutex_);
+        return pendingSamples_.size();
+    }
+
+    /**
+     * @brief Check if there are pending samples to process (thread-safe)
+     */
+    [[nodiscard]] bool HasPendingSamples() const {
+        std::lock_guard<std::mutex> lock(samplesMutex_);
+        return !pendingSamples_.empty();
     }
 
     /**
@@ -356,14 +551,33 @@ public:
      * Derived classes should override to reset their specific calibration data.
      */
     virtual void ResetCalibration() {
+        std::lock_guard<std::mutex> lock(samplesMutex_);
         workUnits_ = 0;  // Reset to baseline
         sampleCount_ = 0;
         lastMeasuredCostNs_ = 0;
         peakMeasuredCostNs_ = 0;
         isCalibrated_ = false;
+        timing_ = false;  // Reset timing state
+        pendingSamples_.clear();  // Discard unprocessed samples
     }
 
 protected:
+    /**
+     * @brief Process samples without locking (called with lock held)
+     */
+    void ProcessSamplesLocked() {
+        if (pendingSamples_.empty()) return;
+
+        for (uint64_t sample : pendingSamples_) {
+            lastMeasuredCostNs_ = sample;
+            peakMeasuredCostNs_ = std::max(peakMeasuredCostNs_, sample);
+            ++sampleCount_;
+        }
+
+        isCalibrated_ = true;
+        pendingSamples_.clear();
+    }
+
     // Common state - derived classes can access
     uint64_t profileId_ = 0;     ///< Internal ID (auto-assigned by registry)
     std::string name_;           ///< Display name for debugging
@@ -376,11 +590,20 @@ protected:
     uint8_t priority_ = 128;
     WorkUnitType workUnitType_ = WorkUnitType::Custom;
 
-    // Statistics
+    // Statistics (updated via ProcessSamples())
     uint32_t sampleCount_ = 0;
     uint64_t lastMeasuredCostNs_ = 0;
     uint64_t peakMeasuredCostNs_ = 0;
     bool isCalibrated_ = false;
+
+    // Timing state
+    std::chrono::high_resolution_clock::time_point startTime_{};
+    bool timing_ = false;
+
+    // Samples collection - raw measurements accumulated before processing
+    std::vector<uint64_t> pendingSamples_;
+    mutable std::mutex samplesMutex_;  // Protects pendingSamples_
+    static constexpr size_t kMaxPendingSamples = 1024;  // Auto-process when exceeded
 };
 
 /**
@@ -393,12 +616,18 @@ using TaskProfileFactory = std::function<std::unique_ptr<ITaskProfile>()>;
 /**
  * @brief Callback for workUnit changes
  *
- * Nodes can register to be notified when their workUnits change,
- * allowing them to reconfigure their workload.
+ * Nodes register this to be notified when budget pressure adjusts their workUnits.
+ * This enables adaptive workload adjustment (e.g., reduce shadow resolution when over budget).
+ *
+ * Flow:
+ * 1. TimelineCapacityTracker detects over-budget
+ * 2. TaskProfileRegistry::DecreaseLowestPriority() adjusts workUnits
+ * 3. This callback notifies the node
+ * 4. Node adjusts its workload accordingly
  *
  * @param taskId The task that changed
- * @param oldUnits Previous workUnits value (can be negative)
- * @param newUnits New workUnits value (can be negative)
+ * @param oldUnits Previous workUnits value
+ * @param newUnits New workUnits value
  */
 using WorkUnitChangeCallback = std::function<void(const std::string& taskId, int32_t oldUnits, int32_t newUnits)>;
 

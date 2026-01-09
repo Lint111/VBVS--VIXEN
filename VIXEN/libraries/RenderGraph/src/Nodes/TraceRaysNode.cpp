@@ -2,6 +2,7 @@
 #include "VulkanDevice.h"
 #include "VulkanSwapChain.h"
 #include "Core/NodeLogging.h"
+#include "Core/TaskProfiles/SimpleTaskProfile.h"  // Sprint 6.5: Profile integration
 #include <array>
 
 namespace Vixen::RenderGraph {
@@ -120,6 +121,14 @@ void TraceRaysNode::CompileImpl(TypedCompileContext& ctx) {
         NODE_LOG_WARNING("[TraceRaysNode] GPUQueryManager not available from VulkanDevice");
     }
 
+    // Sprint 6.5: Register GPU task profile for cost estimation and learning
+    std::string profileId = GetInstanceName() + "_gpu_trace";
+    gpuProfile_ = GetOrCreateProfile<SimpleTaskProfile>(profileId, profileId, "raytracing");
+    if (gpuProfile_) {
+        RegisterPhaseProfile(VirtualTaskPhase::Execute, gpuProfile_);
+        NODE_LOG_INFO("[TraceRaysNode] Registered GPU profile: " + profileId);
+    }
+
     NODE_LOG_INFO("=== TraceRaysNode::CompileImpl COMPLETE ===");
     NODE_LOG_DEBUG("[TraceRaysNode::CompileImpl] COMPLETED");
 }
@@ -175,6 +184,18 @@ void TraceRaysNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // Collect GPU performance results for this frame-in-flight (after fence wait)
     if (gpuPerfLogger_) {
         gpuPerfLogger_->CollectResults(currentFrame);
+
+        // Sprint 6.5: Feed GPU timing to task profile for cost learning
+        if (gpuProfile_) {
+            auto sample = gpuProfile_->Sample();
+            float gpuTimeMs = gpuPerfLogger_->GetLastDispatchMs();
+            if (gpuTimeMs > 0.0f) {
+                uint64_t gpuTimeNs = static_cast<uint64_t>(gpuTimeMs * 1'000'000.0f);
+                sample.Finalize(gpuTimeNs);
+            } else {
+                sample.Cancel();  // No valid measurement
+            }
+        }
     }
 
     // Guard against invalid image index (matches ComputeDispatchNode)
