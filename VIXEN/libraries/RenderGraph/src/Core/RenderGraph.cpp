@@ -505,6 +505,15 @@ void RenderGraph::Compile() {
         std::to_string(resourceAccessTracker_.GetResourceCount()) + " resources, " +
         std::to_string(resourceAccessTracker_.GetNodeCount()) + " nodes tracked");
 
+    // Sprint 6.5: Build virtual resource access tracker for task-level parallelism
+    if (virtualTaskParallelismEnabled_) {
+        GRAPH_LOG_INFO("[RenderGraph::Compile] Phase: BuildVirtualResourceAccessTracker...");
+        virtualAccessTracker_.BuildFromTopology(topology);
+        GRAPH_LOG_INFO("[RenderGraph::Compile] VirtualResourceAccessTracker built: " +
+            std::to_string(virtualAccessTracker_.GetResourceCount()) + " resources, " +
+            std::to_string(virtualAccessTracker_.GetTaskCount()) + " tasks tracked");
+    }
+
     GRAPH_LOG_INFO("[RenderGraph::Compile] Compilation complete!");
     isCompiled = true;
 }
@@ -624,10 +633,20 @@ VkResult RenderGraph::RenderFrame() {
         if (executorNeedsRebuild_) {
             GRAPH_LOG_INFO("[RenderGraph] Building TBB flow_graph for parallel execution...");
             tbbExecutor_.BuildFromTopology(topology, resourceAccessTracker_);
-            executorNeedsRebuild_ = false;
             GRAPH_LOG_INFO("[RenderGraph] TBB flow_graph built: " +
                 std::to_string(tbbExecutor_.GetNodeCount()) + " nodes, " +
                 std::to_string(tbbExecutor_.GetEdgeCount()) + " edges");
+
+            // Sprint 6.5: Build virtual task executor if enabled
+            if (virtualTaskParallelismEnabled_) {
+                GRAPH_LOG_INFO("[RenderGraph] Building virtual task executor...");
+                virtualTaskExecutor_.Build(virtualAccessTracker_, executionOrder);
+                GRAPH_LOG_INFO("[RenderGraph] Virtual task executor built: " +
+                    std::to_string(virtualTaskExecutor_.GetStats().totalTasks) + " tasks, " +
+                    std::to_string(virtualTaskExecutor_.GetStats().optedInNodes) + " opted-in nodes");
+            }
+
+            executorNeedsRebuild_ = false;
         }
 
         // Execute nodes in parallel using TBB flow_graph
@@ -1827,6 +1846,24 @@ void RenderGraph::SetMaxConcurrency(size_t maxConcurrency) {
 
 TBBExecutorStats RenderGraph::GetExecutorStats() const {
     return tbbExecutor_.GetStats();
+}
+
+// =============================================================================
+// Virtual Task Parallelism (Sprint 6.5)
+// =============================================================================
+
+void RenderGraph::SetVirtualTaskParallelismEnabled(bool enable) {
+    if (virtualTaskParallelismEnabled_ != enable) {
+        virtualTaskParallelismEnabled_ = enable;
+        executorNeedsRebuild_ = true;  // Trigger rebuild on next frame
+
+        if (enable) {
+            GRAPH_LOG_INFO("[RenderGraph] Virtual task parallelism ENABLED - bundles can parallelize across nodes");
+        } else {
+            GRAPH_LOG_INFO("[RenderGraph] Virtual task parallelism DISABLED");
+            virtualTaskExecutor_.Clear();
+        }
+    }
 }
 
 } // namespace Vixen::RenderGraph

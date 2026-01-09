@@ -23,6 +23,8 @@
 #include "Core/TimelineCapacityTracker.h"
 #include "Core/TBBGraphExecutor.h"       // Sprint 6.4: Parallel execution
 #include "Core/ResourceAccessTracker.h"  // Sprint 6.4: Conflict detection
+#include "Core/VirtualResourceAccessTracker.h"  // Sprint 6.5: Per-task tracking
+#include "Core/TBBVirtualTaskExecutor.h"        // Sprint 6.5: Virtual task execution
 #include <memory>
 #include <string>
 #include <vector>
@@ -709,6 +711,42 @@ public:
         return resourceAccessTracker_;
     }
 
+    // ====== Virtual Task Parallelism (Sprint 6.5) ======
+
+    /**
+     * @brief Enable or disable virtual task-level parallelism
+     *
+     * When enabled, nodes that opt-in via SupportsTaskParallelism() have their
+     * individual bundles (tasks) scheduled in parallel across nodes.
+     *
+     * IMPORTANT: This is more aggressive than parallel node execution.
+     * Only enable when nodes properly declare their resource accesses.
+     *
+     * @param enable true to enable virtual task parallelism
+     */
+    void SetVirtualTaskParallelismEnabled(bool enable);
+
+    /**
+     * @brief Check if virtual task parallelism is enabled
+     */
+    [[nodiscard]] bool IsVirtualTaskParallelismEnabled() const {
+        return virtualTaskParallelismEnabled_;
+    }
+
+    /**
+     * @brief Get virtual task executor statistics
+     */
+    [[nodiscard]] const VirtualTaskExecutorStats& GetVirtualTaskExecutorStats() const {
+        return virtualTaskExecutor_.GetStats();
+    }
+
+    /**
+     * @brief Get the virtual resource access tracker (for debugging/analysis)
+     */
+    [[nodiscard]] const VirtualResourceAccessTracker& GetVirtualResourceAccessTracker() const {
+        return virtualAccessTracker_;
+    }
+
     // ====== Resource Dependency Tracking ======
 
     /**
@@ -797,6 +835,11 @@ private:
     ResourceAccessTracker resourceAccessTracker_;
     bool parallelExecutionEnabled_ = false;
     bool executorNeedsRebuild_ = true;  // Rebuild TBB graph after compilation
+
+    // Sprint 6.5: Task-level parallelism with virtual tasks
+    VirtualResourceAccessTracker virtualAccessTracker_;
+    TBBVirtualTaskExecutor virtualTaskExecutor_;
+    bool virtualTaskParallelismEnabled_ = false;
 
     // Sprint 4 Phase B: Lifetime scope management (optional, externally provided)
     LifetimeScopeManager* scopeManager_ = nullptr;
