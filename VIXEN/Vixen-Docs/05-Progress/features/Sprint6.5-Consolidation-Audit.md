@@ -14,9 +14,46 @@ This audit examines Sprint 5-6 features for overlapping logic, implementation ga
 |------|--------|-----------------|-----------------|
 | Cost Estimation | 🟢 Fixed | ~~4 overlapping mechanisms~~ Now uses profiles | ✅ Consolidated around ITaskProfile |
 | Measurement Systems | 🟢 Fixed | ~~GPUPerfLogger disconnected~~ Now connected | ✅ Connected in 3 GPU nodes |
-| Event Architecture | 🟢 Good | WorkUnitChangeCallback kept for adaptive workload | Kept for Phase 2 integration |
+| Event Architecture | 🟢 Good | WorkUnitChangeCallback kept for adaptive workload | Kept for future integration |
 | Node Profiles | 🟢 Complete | 8 pipeline nodes + 3 GPU nodes profiled | ✅ 11 nodes have profiles |
 | API Ergonomics | 🟢 Improved | CreateParallelTasks() helper added | ✅ Reduced boilerplate |
+| Calibration Persistence | 🟢 Fixed | ~~Factories not registered~~ Init() added | ✅ Load/Save works end-to-end |
+| Frame Processing | 🟢 Fixed | ~~ProcessSamples not called~~ Now at frame end | ✅ Timely statistics |
+
+---
+
+## Implementation Commits (2026-01-09)
+
+| Commit | Description |
+|--------|-------------|
+| `5a4e59a` | Phase 1: Unified cost estimation via profiles |
+| `03c32ef` | Phase 2: 8 pipeline nodes with compile-time profiling |
+| `e35471d` | Phase 3: TimelineCapacityTracker Config API simplified |
+| `c2c6681` | Integration: Profile factory init + shutdown event |
+| `6c01346` | Integration: ProcessAllSamples at frame end |
+
+---
+
+## Integration Gaps Addressed
+
+| Gap | Before | After |
+|-----|--------|-------|
+| Profile factories | Never registered | `TaskProfileRegistry::Init()` registers built-ins |
+| Shutdown event | Never published | `RenderGraph::~RenderGraph()` triggers auto-save |
+| Profile registration | Manual | `GetOrCreateProfile()` auto-registers |
+| Sample processing | Batched indefinitely | `ProcessAllSamples()` at frame end |
+| Config API | 10 params, no helpers | `Config::ForTargetFPS()` factory method |
+
+---
+
+## Remaining Technical Debt
+
+| Item | Priority | Status |
+|------|----------|--------|
+| PredictionErrorTracker connection | MEDIUM | Future - requires estimate capture before execution |
+| 83 TODO comments | LOW | Triage into backlog or remove |
+| GPU query integration tests | LOW | Disabled tests in test_gpu_query_manager_integration.cpp |
+| MVP stubs (DescriptorSet, ShaderLibrary) | LOW | Document as Phase 2 features |
 
 ## Phase 1 Implementation Status (2026-01-09)
 
@@ -593,6 +630,6 @@ libraries/RenderGraph/tests/
 ---
 
 *Document generated: 2026-01-09*
-*Last updated: 2026-01-09 (All phases complete)*
+*Last updated: 2026-01-09 (All phases + integration gaps fixed)*
 *Author: Claude Code Audit*
 *Sprint: 6.5 Timeline Foundation*
