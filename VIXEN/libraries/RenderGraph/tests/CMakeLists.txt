@@ -497,6 +497,31 @@ if(TARGET GTest::gtest_main)
     gtest_discover_tests(test_tbb_virtual_task_executor)
 
     message(STATUS "✓ test_tbb_virtual_task_executor configured (Sprint 6.5 Phase 4)")
+
+    # VirtualTask Integration Tests (Sprint 6.5 - Phase 6)
+    add_executable(test_virtual_task_integration
+        test_virtual_task_integration.cpp
+    )
+
+    target_link_libraries(test_virtual_task_integration PRIVATE
+        GTest::gtest_main
+        RenderGraph
+    )
+
+    # Copy TBB DLL for test execution
+    if(TARGET TBB::tbb)
+        add_custom_command(TARGET test_virtual_task_integration POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb>
+            $<TARGET_FILE_DIR:test_virtual_task_integration>
+        )
+    endif()
+
+    set_target_properties(test_virtual_task_integration PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+    gtest_discover_tests(test_virtual_task_integration)
+
+    message(STATUS "✓ test_virtual_task_integration configured (Sprint 6.5 Phase 6)")
 else()
     message(STATUS "⊗ Sprint 6.4 tests skipped (GoogleTest not available)")
 endif()
