@@ -17,6 +17,7 @@
 #include <map>
 #include <variant>
 #include <memory>
+#include <functional>  // Sprint 6.5: For CreateVirtualTask return type
 #include "Logger.h"
 #include "MessageBus.h"
 
@@ -390,6 +391,90 @@ public:
      * @return Total steps executed by loop
      */
     uint64_t GetLoopStepCount() const;
+
+    // =========================================================================
+    // Task-Level Parallelism API (Sprint 6.5)
+    // =========================================================================
+
+    /**
+     * @brief Parallelism mode for virtual tasks
+     *
+     * Controls how bundles within a node are scheduled:
+     * - Sequential: All bundles execute in order (default, backward compatible)
+     * - Parallel: All bundles can execute concurrently if no conflicts
+     * - Hybrid: Bundle 0 executes first, rest can parallelize
+     */
+    enum class TaskParallelismMode : uint8_t {
+        Sequential, ///< Default - bundles execute in order
+        Parallel,   ///< All bundles can parallelize if no resource conflicts
+        Hybrid      ///< Bundle 0 sequential, rest can parallelize
+    };
+
+    /**
+     * @brief Check if node supports task-level parallelism
+     *
+     * Override this to opt-in to virtual task scheduling.
+     * When true, the TBBVirtualTaskExecutor can schedule individual
+     * bundles (tasks) independently across nodes.
+     *
+     * @return true if node supports task parallelism (default: false)
+     */
+    virtual bool SupportsTaskParallelism() const { return false; }
+
+    /**
+     * @brief Get the task parallelism mode
+     *
+     * Override this to control how bundles are scheduled.
+     * Only meaningful when SupportsTaskParallelism() returns true.
+     *
+     * @return Parallelism mode (default: Sequential)
+     */
+    virtual TaskParallelismMode GetTaskParallelismMode() const {
+        return TaskParallelismMode::Sequential;
+    }
+
+    /**
+     * @brief Create an executable task for a specific bundle
+     *
+     * Creates a callable that executes the given task (bundle) for
+     * the specified lifecycle phase. Used by TBBVirtualTaskExecutor.
+     *
+     * Default implementation returns empty function (task disabled).
+     * Override to provide task-specific execution logic.
+     *
+     * @param taskIndex Bundle/task index (0 to GetBundles().size()-1)
+     * @param phase Lifecycle phase (Setup, Compile, Execute, Cleanup)
+     * @return Callable that executes the task, or empty function if disabled
+     */
+    virtual std::function<void()> CreateVirtualTask(
+        uint32_t taskIndex,
+        NodeLifecyclePhase phase
+    );
+
+    /**
+     * @brief Estimate execution cost for a specific task
+     *
+     * Returns estimated cost in nanoseconds for budget-aware scheduling.
+     * Used by TimelineCapacityTracker for frame budget management.
+     *
+     * Default implementation returns 0 (unknown cost).
+     *
+     * @param taskIndex Bundle/task index
+     * @return Estimated cost in nanoseconds (0 = unknown)
+     */
+    virtual uint64_t EstimateTaskCost(uint32_t taskIndex) const { return 0; }
+
+    /**
+     * @brief Get the number of virtual tasks for this node
+     *
+     * Returns the number of bundles, which determines how many
+     * VirtualTasks will be created for this node.
+     *
+     * @return Number of tasks (at least 1)
+     */
+    uint32_t GetVirtualTaskCount() const {
+        return std::max(1u, static_cast<uint32_t>(bundles.size()));
+    }
 
     // Template method pattern - public final methods with automatic boilerplate
     /**

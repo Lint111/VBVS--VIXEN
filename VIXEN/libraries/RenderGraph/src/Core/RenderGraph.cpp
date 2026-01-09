@@ -497,6 +497,14 @@ void RenderGraph::Compile() {
     GRAPH_LOG_INFO("[RenderGraph::Compile] Phase: PreAllocateResources...");
     PreAllocateResources();
 
+    // Sprint 6.4: Build resource access tracker for parallel execution
+    GRAPH_LOG_INFO("[RenderGraph::Compile] Phase: BuildResourceAccessTracker...");
+    resourceAccessTracker_.BuildFromTopology(topology);
+    executorNeedsRebuild_ = true;  // Force TBB graph rebuild on next frame
+    GRAPH_LOG_INFO("[RenderGraph::Compile] ResourceAccessTracker built: " +
+        std::to_string(resourceAccessTracker_.GetResourceCount()) + " resources, " +
+        std::to_string(resourceAccessTracker_.GetNodeCount()) + " nodes tracked");
+
     GRAPH_LOG_INFO("[RenderGraph::Compile] Compilation complete!");
     isCompiled = true;
 }
@@ -606,28 +614,74 @@ VkResult RenderGraph::RenderFrame() {
         }
     }
 
-    // Execute all nodes in topological order
-    // Nodes handle their own synchronization, command recording, and presentation
-    for (NodeInstance* node : executionOrder) {
-        if (node->GetState() == NodeState::Ready ||
-            node->GetState() == NodeState::Compiled ||
-            node->GetState() == NodeState::Complete) {  // Execute completed nodes again each frame
+    // Execute all nodes
+    // Sprint 6.4: Support both sequential and parallel execution modes
+    if (parallelExecutionEnabled_) {
+        // =====================================================================
+        // PARALLEL EXECUTION (Sprint 6.4)
+        // =====================================================================
+        // Rebuild TBB graph if needed (after compilation or configuration change)
+        if (executorNeedsRebuild_) {
+            GRAPH_LOG_INFO("[RenderGraph] Building TBB flow_graph for parallel execution...");
+            tbbExecutor_.BuildFromTopology(topology, resourceAccessTracker_);
+            executorNeedsRebuild_ = false;
+            GRAPH_LOG_INFO("[RenderGraph] TBB flow_graph built: " +
+                std::to_string(tbbExecutor_.GetNodeCount()) + " nodes, " +
+                std::to_string(tbbExecutor_.GetEdgeCount()) + " edges");
+        }
 
-            node->SetState(NodeState::Executing);
+        // Execute nodes in parallel using TBB flow_graph
+        // The executor handles dependency ordering automatically
+        tbbExecutor_.Execute([this](NodeInstance* node) {
+            // Check if node should execute
+            if (node->GetState() == NodeState::Ready ||
+                node->GetState() == NodeState::Compiled ||
+                node->GetState() == NodeState::Complete) {
 
-            // Pass VK_NULL_HANDLE - nodes manage their own command buffers
-            node->Execute();
+                node->SetState(NodeState::Executing);
+                node->Execute();
+                node->SetState(NodeState::Complete);
+            }
+        });
 
-            node->SetState(NodeState::Complete);
-
-            // Check if this node was marked for recompilation during execution
+        // Process deferred recompiles after all nodes complete
+        for (NodeInstance* node : executionOrder) {
             if (node->HasDeferredRecompile()) {
                 node->ClearDeferredRecompile();
-                // Find the handle and mark as dirty
                 for (size_t i = 0; i < instances.size(); ++i) {
                     if (instances[i].get() == node) {
                         MarkNodeNeedsRecompile({static_cast<uint32_t>(i)});
                         break;
+                    }
+                }
+            }
+        }
+    } else {
+        // =====================================================================
+        // SEQUENTIAL EXECUTION (default)
+        // =====================================================================
+        // Nodes handle their own synchronization, command recording, and presentation
+        for (NodeInstance* node : executionOrder) {
+            if (node->GetState() == NodeState::Ready ||
+                node->GetState() == NodeState::Compiled ||
+                node->GetState() == NodeState::Complete) {  // Execute completed nodes again each frame
+
+                node->SetState(NodeState::Executing);
+
+                // Pass VK_NULL_HANDLE - nodes manage their own command buffers
+                node->Execute();
+
+                node->SetState(NodeState::Complete);
+
+                // Check if this node was marked for recompilation during execution
+                if (node->HasDeferredRecompile()) {
+                    node->ClearDeferredRecompile();
+                    // Find the handle and mark as dirty
+                    for (size_t i = 0; i < instances.size(); ++i) {
+                        if (instances[i].get() == node) {
+                            MarkNodeNeedsRecompile({static_cast<uint32_t>(i)});
+                            break;
+                        }
                     }
                 }
             }
@@ -1733,6 +1787,46 @@ void RenderGraph::InitializeEventDrivenSystems() {
     }
 
     GRAPH_LOG_INFO("[RenderGraph] Event-driven systems initialized (Sprint 6.3 Phase 6)");
+}
+
+// =============================================================================
+// Parallel Execution (Sprint 6.4)
+// =============================================================================
+
+void RenderGraph::SetParallelExecutionEnabled(bool enable) {
+    if (parallelExecutionEnabled_ != enable) {
+        parallelExecutionEnabled_ = enable;
+        executorNeedsRebuild_ = true;  // Trigger rebuild on next frame
+
+        if (enable) {
+            GRAPH_LOG_INFO("[RenderGraph] Parallel execution ENABLED - will use TBB flow_graph");
+        } else {
+            GRAPH_LOG_INFO("[RenderGraph] Parallel execution DISABLED - using sequential execution");
+            tbbExecutor_.Clear();
+        }
+    }
+}
+
+void RenderGraph::SetExecutionMode(TBBExecutionMode mode) {
+    tbbExecutor_.SetMode(mode);
+
+    const char* modeStr = (mode == TBBExecutionMode::Parallel) ? "Parallel" :
+                          (mode == TBBExecutionMode::Sequential) ? "Sequential" : "Limited";
+    GRAPH_LOG_INFO("[RenderGraph] Execution mode set to: " + std::string(modeStr));
+}
+
+TBBExecutionMode RenderGraph::GetExecutionMode() const {
+    return tbbExecutor_.GetMode();
+}
+
+void RenderGraph::SetMaxConcurrency(size_t maxConcurrency) {
+    tbbExecutor_.SetMaxConcurrency(maxConcurrency);
+    GRAPH_LOG_INFO("[RenderGraph] Max concurrency set to: " +
+        (maxConcurrency == 0 ? "unlimited" : std::to_string(maxConcurrency)));
+}
+
+TBBExecutorStats RenderGraph::GetExecutorStats() const {
+    return tbbExecutor_.GetStats();
 }
 
 } // namespace Vixen::RenderGraph

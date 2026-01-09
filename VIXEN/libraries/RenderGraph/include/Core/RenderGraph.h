@@ -21,6 +21,8 @@
 #include "Core/TaskProfileRegistry.h"
 #include "Core/CalibrationStore.h"
 #include "Core/TimelineCapacityTracker.h"
+#include "Core/TBBGraphExecutor.h"       // Sprint 6.4: Parallel execution
+#include "Core/ResourceAccessTracker.h"  // Sprint 6.4: Conflict detection
 #include <memory>
 #include <string>
 #include <vector>
@@ -650,6 +652,63 @@ public:
      */
     void InitializeEventDrivenSystems();
 
+    // ====== Parallel Execution (Sprint 6.4) ======
+
+    /**
+     * @brief Enable or disable parallel node execution
+     *
+     * When enabled, nodes without resource conflicts execute concurrently
+     * using Intel TBB flow_graph. Requires graph recompilation to take effect.
+     *
+     * IMPORTANT: Parallel execution is experimental. Use only for graphs where:
+     * - Nodes have proper resource access tracking
+     * - No implicit ordering dependencies (only explicit connections)
+     * - All node Execute() methods are thread-safe
+     *
+     * @param enable true to enable parallel execution, false for sequential
+     */
+    void SetParallelExecutionEnabled(bool enable);
+
+    /**
+     * @brief Check if parallel execution is enabled
+     */
+    [[nodiscard]] bool IsParallelExecutionEnabled() const {
+        return parallelExecutionEnabled_;
+    }
+
+    /**
+     * @brief Set the execution mode for TBB executor
+     *
+     * @param mode Parallel, Sequential, or Limited
+     */
+    void SetExecutionMode(TBBExecutionMode mode);
+
+    /**
+     * @brief Get current execution mode
+     */
+    [[nodiscard]] TBBExecutionMode GetExecutionMode() const;
+
+    /**
+     * @brief Set maximum concurrency for parallel execution
+     *
+     * @param maxConcurrency Maximum concurrent nodes (0 = unlimited, hardware_concurrency)
+     */
+    void SetMaxConcurrency(size_t maxConcurrency);
+
+    /**
+     * @brief Get TBB executor statistics
+     *
+     * Useful for debugging and performance analysis.
+     */
+    [[nodiscard]] TBBExecutorStats GetExecutorStats() const;
+
+    /**
+     * @brief Get the resource access tracker (for debugging/analysis)
+     */
+    [[nodiscard]] const ResourceAccessTracker& GetResourceAccessTracker() const {
+        return resourceAccessTracker_;
+    }
+
     // ====== Resource Dependency Tracking ======
 
     /**
@@ -732,6 +791,12 @@ private:
     // Sprint 6.3 Phase 4: Capacity tracking with automatic pressure adjustment
     TimelineCapacityTracker capacityTracker_;
     bool autoPressureAdjustment_ = false;
+
+    // Sprint 6.4: Parallel execution with TBB flow_graph
+    TBBGraphExecutor tbbExecutor_;
+    ResourceAccessTracker resourceAccessTracker_;
+    bool parallelExecutionEnabled_ = false;
+    bool executorNeedsRebuild_ = true;  // Rebuild TBB graph after compilation
 
     // Sprint 4 Phase B: Lifetime scope management (optional, externally provided)
     LifetimeScopeManager* scopeManager_ = nullptr;

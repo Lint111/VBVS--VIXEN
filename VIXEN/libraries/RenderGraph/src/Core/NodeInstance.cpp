@@ -353,6 +353,61 @@ uint64_t NodeInstance::GetLoopStepCount() const {
 }
 
 // ============================================================================
+// SPRINT 6.5: TASK-LEVEL PARALLELISM API
+// ============================================================================
+
+std::function<void()> NodeInstance::CreateVirtualTask(
+    uint32_t taskIndex,
+    NodeLifecyclePhase phase
+) {
+    // Default implementation: execute the entire node's phase method
+    // for backward compatibility with nodes that don't override this.
+    //
+    // For nodes that opt-in via SupportsTaskParallelism(), the derived
+    // class should override this to provide per-bundle execution.
+    //
+    // Note: The taskIndex parameter is available but unused in the default
+    // implementation since the base Execute/Compile methods handle all bundles.
+
+    switch (phase) {
+        case NodeLifecyclePhase::PreSetup:
+        case NodeLifecyclePhase::PostSetup:
+            // Setup is graph-scope, not per-task
+            if (taskIndex == 0) {
+                return [this]() { this->Setup(); };
+            }
+            return {};
+
+        case NodeLifecyclePhase::PreCompile:
+        case NodeLifecyclePhase::PostCompile:
+            // Compile is typically once per node
+            if (taskIndex == 0) {
+                return [this]() { this->Compile(); };
+            }
+            return {};
+
+        case NodeLifecyclePhase::PreExecute:
+        case NodeLifecyclePhase::PostExecute:
+            // Execute can be per-task for opted-in nodes
+            // Default: only task 0 runs full Execute()
+            if (taskIndex == 0) {
+                return [this]() { this->Execute(); };
+            }
+            return {};
+
+        case NodeLifecyclePhase::PreCleanup:
+        case NodeLifecyclePhase::PostCleanup:
+            // Cleanup is graph-scope
+            if (taskIndex == 0) {
+                return [this]() { this->Cleanup(); };
+            }
+            return {};
+    }
+
+    return {};
+}
+
+// ============================================================================
 // PHASE F: SLOT TASK SYSTEM IMPLEMENTATION
 // ============================================================================
 

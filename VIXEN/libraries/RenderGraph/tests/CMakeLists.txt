@@ -421,6 +421,82 @@ if(TARGET GTest::gtest_main)
     gtest_discover_tests(test_tbb_graph_executor)
 
     message(STATUS "✓ test_tbb_graph_executor configured (Sprint 6.4 Phase 3)")
+
+    # ===========================================================================
+    # VirtualTask Tests (Sprint 6.5 - Task-Level Parallelism)
+    # ===========================================================================
+
+    add_executable(test_virtual_task
+        test_virtual_task.cpp
+    )
+
+    target_link_libraries(test_virtual_task PRIVATE
+        GTest::gtest_main
+        RenderGraph
+    )
+
+    set_target_properties(test_virtual_task PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+    gtest_discover_tests(test_virtual_task)
+
+    message(STATUS "✓ test_virtual_task configured (Sprint 6.5 Phase 0)")
+
+    # VirtualResourceAccessTracker Tests (Sprint 6.5 - Phase 1)
+    add_executable(test_virtual_resource_access_tracker
+        test_virtual_resource_access_tracker.cpp
+    )
+
+    target_link_libraries(test_virtual_resource_access_tracker PRIVATE
+        GTest::gtest_main
+        RenderGraph
+    )
+
+    set_target_properties(test_virtual_resource_access_tracker PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+    gtest_discover_tests(test_virtual_resource_access_tracker)
+
+    message(STATUS "✓ test_virtual_resource_access_tracker configured (Sprint 6.5 Phase 1)")
+
+    # TaskDependencyGraph Tests (Sprint 6.5 - Phase 2)
+    add_executable(test_task_dependency_graph
+        test_task_dependency_graph.cpp
+    )
+
+    target_link_libraries(test_task_dependency_graph PRIVATE
+        GTest::gtest_main
+        RenderGraph
+    )
+
+    set_target_properties(test_task_dependency_graph PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+    gtest_discover_tests(test_task_dependency_graph)
+
+    message(STATUS "✓ test_task_dependency_graph configured (Sprint 6.5 Phase 2)")
+
+    # TBBVirtualTaskExecutor Tests (Sprint 6.5 - Phase 4)
+    add_executable(test_tbb_virtual_task_executor
+        test_tbb_virtual_task_executor.cpp
+    )
+
+    target_link_libraries(test_tbb_virtual_task_executor PRIVATE
+        GTest::gtest_main
+        RenderGraph
+    )
+
+    # Copy TBB DLL for test execution
+    if(TARGET TBB::tbb)
+        add_custom_command(TARGET test_tbb_virtual_task_executor POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb>
+            $<TARGET_FILE_DIR:test_tbb_virtual_task_executor>
+        )
+    endif()
+
+    set_target_properties(test_tbb_virtual_task_executor PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+    gtest_discover_tests(test_tbb_virtual_task_executor)
+
+    message(STATUS "✓ test_tbb_virtual_task_executor configured (Sprint 6.5 Phase 4)")
 else()
     message(STATUS "⊗ Sprint 6.4 tests skipped (GoogleTest not available)")
 endif()

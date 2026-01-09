@@ -138,6 +138,10 @@ set(RENDERGRAPH_CORE_HEADERS
     include/Core/TBBGraphExecutor.h  # Sprint 6.4: TBB flow_graph executor
     include/Core/TimelineCapacityTracker.h  # Sprint 6.3: Task #344 - Timeline capacity tracker
     include/Core/Timer.h
+    include/Core/VirtualTask.h  # Sprint 6.5: Task-level parallelism
+    include/Core/VirtualResourceAccessTracker.h  # Sprint 6.5: Per-task resource tracking
+    include/Core/TaskDependencyGraph.h  # Sprint 6.5: Task dependency resolution
+    include/Core/TBBVirtualTaskExecutor.h  # Sprint 6.5: Virtual task executor
     include/Core/TypedConnection.h
     include/Core/TypedNodeInstance.h
     include/Core/UnknownTypeRegistry.h
@@ -170,6 +174,9 @@ set(RENDERGRAPH_CORE_SOURCES
     src/Core/TimelineCapacityTracker.cpp  # Sprint 6.3: Task #344 - Timeline capacity tracker
     src/Core/TaskQueue.cpp  # Sprint 6.2: Task #339 - Template instantiations
     src/Core/Timer.cpp
+    src/Core/VirtualResourceAccessTracker.cpp  # Sprint 6.5: Per-task resource tracking
+    src/Core/TaskDependencyGraph.cpp  # Sprint 6.5: Task dependency resolution
+    src/Core/TBBVirtualTaskExecutor.cpp  # Sprint 6.5: Virtual task executor
 )
 
 # ============================================================================
@@ -372,9 +379,10 @@ if(USE_PRECOMPILED_HEADERS)
     )
     message(STATUS "RenderGraph: Precompiled headers enabled (using RenderGraphHeaders.h)")
 
-    # TBBGraphExecutor needs TBB headers not in PCH - skip PCH for this file
+    # TBB-based executors need TBB headers not in PCH - skip PCH for these files
     set_source_files_properties(
         src/Core/TBBGraphExecutor.cpp
+        src/Core/TBBVirtualTaskExecutor.cpp
         PROPERTIES SKIP_PRECOMPILE_HEADERS ON
     )
 endif()
