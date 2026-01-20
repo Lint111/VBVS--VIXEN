@@ -1,0 +1,5 @@
+{
+  "$comment": "VIXEN Benchmark Schema Reference",
+  "schema_url": "https://github.com/VIXEN-Engine/VIXEN/blob/main/application/benchmark/benchmark_schema.json",
+  "description": "Full JSON Schema for benchmark result validation available at schema_url"
+}
