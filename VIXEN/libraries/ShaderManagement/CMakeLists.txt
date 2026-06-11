@@ -79,10 +79,17 @@ endif()
 if(NOT VULKAN_TRIMMED_BUILD_ACTIVE)
     set(GLSLANG_LIBS SPIRV glslang OSDependent glslang-default-resource-limits SPIRV-Tools SPIRV-Tools-opt)
 
-    # Generate the list of files to link, per flavor (debug/optimized)
+    # Generate the list of files to link, per flavor (debug/optimized).
+    # The LunarG *Windows* SDK ships separate debug libs with a "d" suffix
+    # (e.g. SPIRVd.lib); the Linux SDK has a single unsuffixed library per
+    # name, so use the unsuffixed name for both flavors there.
     set(GLSLANG_LIB_LIST "")
     foreach(x ${GLSLANG_LIBS})
-        list(APPEND GLSLANG_LIB_LIST debug ${x}d optimized ${x})
+        if(WIN32)
+            list(APPEND GLSLANG_LIB_LIST debug ${x}d optimized ${x})
+        else()
+            list(APPEND GLSLANG_LIB_LIST ${x})
+        endif()
     endforeach()
 
     message(STATUS "ShaderManagement: Using glslang libraries from Vulkan SDK")
@@ -100,6 +107,10 @@ if(OpenSSL_FOUND)
 else()
     message(STATUS "OpenSSL not found - ShaderManagement will use the project hash fallback or header-only provider if available")
 endif()
+
+# glm is used by public headers (e.g. ResourceExtractor.h includes <glm/glm.hpp>),
+# so it must propagate to consumers as a PUBLIC dependency.
+target_link_libraries(ShaderManagement PUBLIC glm::glm)
 
 # Link Vulkan and glslang (conditional)
 if(NOT VULKAN_TRIMMED_BUILD_ACTIVE)

@@ -82,6 +82,7 @@ target_link_libraries(VulkanResources
         ${VULKAN_LIB_LIST}
         glm::glm
         gli  # Needed for GLITextureLoader
+        glfw  # Cross-platform Vulkan surface (glfwCreateWindowSurface) + required-extension query
     PRIVATE
         stb  # Needed for STBTextureLoader (header-only)
         ResourceManagement  # Sprint 5 Phase 2.5.3: Upload infrastructure
@@ -97,10 +98,8 @@ set_target_properties(VulkanResources PROPERTIES
     FOLDER "Libraries"
 )
 
-# Platform definitions
-if(WIN32)
-    target_compile_definitions(VulkanResources PRIVATE VK_USE_PLATFORM_WIN32_KHR)
-endif()
+# Platform surface handling is now cross-platform via GLFW (glfwCreateWindowSurface); no
+# VK_USE_PLATFORM_WIN32_KHR define needed.
 
 # Exclude STBTextureLoader from PCH (needs STB headers not available during PCH generation)
 set_source_files_properties(

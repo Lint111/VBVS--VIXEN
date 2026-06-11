@@ -3,6 +3,8 @@
 #include "Data/Core/ResourceConfig.h"
 #include "VulkanDeviceFwd.h"
 
+struct GLFWwindow;  // cross-platform window handle (GLFW); concrete type only needed in the .cpp
+
 namespace Vixen::RenderGraph {
 
 // Type alias for VulkanDevice (forward declared - use VulkanDevice* in slots)
@@ -12,8 +14,7 @@ using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
  * @brief Pure constexpr resource configuration for SwapChainNode
  *
  * Inputs:
- * - HWND (HWND) - Window handle from WindowNode
- * - HINSTANCE (HINSTANCE) - Instance handle from WindowNode
+ * - WINDOW (GLFWwindow*) - cross-platform window handle from WindowNode
  * - WIDTH (uint32_t) - Window width from WindowNode
  * - HEIGHT (uint32_t) - Window height from WindowNode
  * - INSTANCE (VkInstance) - Vulkan instance from InstanceNode
@@ -24,13 +25,13 @@ using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
  * - SWAPCHAIN_HANDLE (VkSwapchainKHR) - Swapchain handle
  * - SWAPCHAIN_PUBLIC (SwapChainPublicVariables*) - Public swapchain state
  *
- * Note: Surface (VkSurfaceKHR) is created internally via CreateSurface() using HWND/HINSTANCE
+ * Note: Surface (VkSurfaceKHR) is created internally via glfwCreateWindowSurface() using WINDOW
  *
  * ALL type checking happens at compile time!
  */
 // Compile-time slot counts (declared early for reuse)
 namespace SwapChainNodeCounts {
-    static constexpr size_t INPUTS = 10;  // Phase 0.7: Added PRESENT_FENCES_ARRAY
+    static constexpr size_t INPUTS = 9;   // WINDOW replaces the old HWND/HINSTANCE pair (one fewer slot)
     static constexpr size_t OUTPUTS = 4;  // Phase 0.8: Added CURRENT_FRAME_IMAGE_VIEW
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -42,62 +43,56 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
     // ===== PARAMETER NAMES =====
     static constexpr const char* IMAGE_USAGE_FLAGS = "imageUsageFlags";
 
-    // ===== INPUTS (10) =====
-    INPUT_SLOT(HWND, ::HWND, 0,
+    // ===== INPUTS (9) =====
+    INPUT_SLOT(WINDOW, GLFWwindow*, 0,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    INPUT_SLOT(HINSTANCE, ::HINSTANCE, 1,
+    INPUT_SLOT(WIDTH, uint32_t, 1,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    INPUT_SLOT(WIDTH, uint32_t, 2,
+    INPUT_SLOT(HEIGHT, uint32_t, 2,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    INPUT_SLOT(HEIGHT, uint32_t, 3,
+    INPUT_SLOT(INSTANCE, VkInstance, 3,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    INPUT_SLOT(INSTANCE, VkInstance, 4,
+    INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevice*, 4,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevice*, 5,
+    INPUT_SLOT(IMAGE_AVAILABLE_SEMAPHORES_ARRAY, const std::vector<VkSemaphore>&, 5,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    INPUT_SLOT(IMAGE_AVAILABLE_SEMAPHORES_ARRAY, const std::vector<VkSemaphore>&, 6,
+    INPUT_SLOT(RENDER_COMPLETE_SEMAPHORES_ARRAY, const std::vector<VkSemaphore>&, 6,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    INPUT_SLOT(RENDER_COMPLETE_SEMAPHORES_ARRAY, const std::vector<VkSemaphore>&, 7,
-        SlotNullability::Required,
-        SlotRole::Dependency,
-        SlotMutability::ReadOnly,
-        SlotScope::NodeLevel);
-
-    INPUT_SLOT(CURRENT_FRAME_INDEX, uint32_t, 8,
+    INPUT_SLOT(CURRENT_FRAME_INDEX, uint32_t, 7,
         SlotNullability::Required,
         SlotRole::Execute,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    INPUT_SLOT(PRESENT_FENCES_ARRAY, const std::vector<VkFence>&, 9,
+    INPUT_SLOT(PRESENT_FENCES_ARRAY, const std::vector<VkFence>&, 8,
         SlotNullability::Required,
         SlotRole::Execute,
         SlotMutability::ReadOnly,
@@ -122,16 +117,11 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
 
 
     SwapChainNodeConfig() {
-        // Window handle
-        INIT_INPUT_DESC(HWND, "hwnd",
+        // Cross-platform window handle
+        HandleDescriptor windowDesc{"GLFWwindow"};
+        INIT_INPUT_DESC(WINDOW, "window",
             ResourceLifetime::Persistent,
-            BufferDescription{}
-        );
-
-        // Instance handle
-        INIT_INPUT_DESC(HINSTANCE, "hinstance",
-            ResourceLifetime::Persistent,
-            BufferDescription{}
+            windowDesc
         );
 
         // Width parameter
@@ -192,34 +182,31 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
     // Automated config validation
     VALIDATE_NODE_CONFIG(SwapChainNodeConfig, SwapChainNodeCounts);
 
-    static_assert(HWND_Slot::index == 0, "HWND input must be at index 0");
-    static_assert(!HWND_Slot::nullable, "HWND input is required");
+    static_assert(WINDOW_Slot::index == 0, "WINDOW input must be at index 0");
+    static_assert(!WINDOW_Slot::nullable, "WINDOW input is required");
 
-    static_assert(HINSTANCE_Slot::index == 1, "HINSTANCE input must be at index 1");
-    static_assert(!HINSTANCE_Slot::nullable, "HINSTANCE input is required");
-
-    static_assert(WIDTH_Slot::index == 2, "WIDTH input must be at index 2");
+    static_assert(WIDTH_Slot::index == 1, "WIDTH input must be at index 1");
     static_assert(!WIDTH_Slot::nullable, "WIDTH input is required");
 
-    static_assert(HEIGHT_Slot::index == 3, "HEIGHT input must be at index 3");
+    static_assert(HEIGHT_Slot::index == 2, "HEIGHT input must be at index 2");
     static_assert(!HEIGHT_Slot::nullable, "HEIGHT input is required");
 
-    static_assert(INSTANCE_Slot::index == 4, "INSTANCE input must be at index 4");
+    static_assert(INSTANCE_Slot::index == 3, "INSTANCE input must be at index 3");
     static_assert(!INSTANCE_Slot::nullable, "INSTANCE input is required");
 
-    static_assert(VULKAN_DEVICE_IN_Slot::index == 5, "VULKAN_DEVICE input must be at index 5");
+    static_assert(VULKAN_DEVICE_IN_Slot::index == 4, "VULKAN_DEVICE input must be at index 4");
     static_assert(!VULKAN_DEVICE_IN_Slot::nullable, "VULKAN_DEVICE input is required");
 
-    static_assert(IMAGE_AVAILABLE_SEMAPHORES_ARRAY_Slot::index == 6, "IMAGE_AVAILABLE_SEMAPHORES_ARRAY must be at index 6");
+    static_assert(IMAGE_AVAILABLE_SEMAPHORES_ARRAY_Slot::index == 5, "IMAGE_AVAILABLE_SEMAPHORES_ARRAY must be at index 5");
     static_assert(!IMAGE_AVAILABLE_SEMAPHORES_ARRAY_Slot::nullable, "IMAGE_AVAILABLE_SEMAPHORES_ARRAY is required");
 
-    static_assert(RENDER_COMPLETE_SEMAPHORES_ARRAY_Slot::index == 7, "RENDER_COMPLETE_SEMAPHORES_ARRAY must be at index 7");
+    static_assert(RENDER_COMPLETE_SEMAPHORES_ARRAY_Slot::index == 6, "RENDER_COMPLETE_SEMAPHORES_ARRAY must be at index 6");
     static_assert(!RENDER_COMPLETE_SEMAPHORES_ARRAY_Slot::nullable, "RENDER_COMPLETE_SEMAPHORES_ARRAY is required");
 
-    static_assert(CURRENT_FRAME_INDEX_Slot::index == 8, "CURRENT_FRAME_INDEX must be at index 8");
+    static_assert(CURRENT_FRAME_INDEX_Slot::index == 7, "CURRENT_FRAME_INDEX must be at index 7");
     static_assert(!CURRENT_FRAME_INDEX_Slot::nullable, "CURRENT_FRAME_INDEX is required");
 
-    static_assert(PRESENT_FENCES_ARRAY_Slot::index == 9, "PRESENT_FENCES_ARRAY must be at index 9");
+    static_assert(PRESENT_FENCES_ARRAY_Slot::index == 8, "PRESENT_FENCES_ARRAY must be at index 8");
     static_assert(!PRESENT_FENCES_ARRAY_Slot::nullable, "PRESENT_FENCES_ARRAY is required");
 
     static_assert(SWAPCHAIN_HANDLE_Slot::index == 0, "SWAPCHAIN_HANDLE must be at index 0");
@@ -235,8 +222,7 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
     static_assert(!CURRENT_FRAME_IMAGE_VIEW_Slot::nullable, "CURRENT_FRAME_IMAGE_VIEW is required");
 
     // Type validations
-    static_assert(std::is_same_v<HWND_Slot::Type, ::HWND>);
-    static_assert(std::is_same_v<HINSTANCE_Slot::Type, ::HINSTANCE>);
+    static_assert(std::is_same_v<WINDOW_Slot::Type, GLFWwindow*>);
     static_assert(std::is_same_v<WIDTH_Slot::Type, uint32_t>);
     static_assert(std::is_same_v<HEIGHT_Slot::Type, uint32_t>);
     static_assert(std::is_same_v<INSTANCE_Slot::Type, VkInstance>);
@@ -253,4 +239,3 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
 };
 
 } // namespace Vixen::RenderGraph
-

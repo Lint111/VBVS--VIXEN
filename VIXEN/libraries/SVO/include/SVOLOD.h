@@ -86,7 +86,7 @@ struct LODParameters {
 
         LODParameters params;
         params.rayOrigSize = 0.0f;  // Pinhole camera: zero diameter at origin
-        params.rayDirSize = 2.0f * std::tanf(pixelAngle * 0.5f);  // Cone spread
+        params.rayDirSize = 2.0f * std::tan(pixelAngle * 0.5f);  // Cone spread
 
         return params;
     }
@@ -108,7 +108,7 @@ struct LODParameters {
         float nearPlane)
     {
         float pixelAngle = fovY / static_cast<float>(screenHeight);
-        float dirSize = 2.0f * std::tanf(pixelAngle * 0.5f);
+        float dirSize = 2.0f * std::tan(pixelAngle * 0.5f);
 
         LODParameters params;
         params.rayDirSize = dirSize;
@@ -169,7 +169,7 @@ struct LODParameters {
     [[nodiscard]] LODParameters withBias(float bias) const {
         LODParameters biased = *this;
         // Bias multiplies the cone spread - larger spread = earlier termination
-        float multiplier = std::powf(2.0f, bias);
+        float multiplier = std::pow(2.0f, bias);
         biased.rayDirSize *= multiplier;
         biased.rayOrigSize *= multiplier;
         return biased;
@@ -190,7 +190,7 @@ struct LODParameters {
     // ESVO: scale_exp2 = 2^(scale - 23) in [1,2] normalized space
     // World size = scale_exp2 * worldSize (since [1,2] maps to world bounds)
     constexpr int ESVO_MAX_SCALE = 22;
-    float normalizedSize = std::ldexpf(1.0f, esvoScale - ESVO_MAX_SCALE - 1);
+    float normalizedSize = std::ldexp(1.0f, esvoScale - ESVO_MAX_SCALE - 1);
     return normalizedSize * worldSize;
 }
 

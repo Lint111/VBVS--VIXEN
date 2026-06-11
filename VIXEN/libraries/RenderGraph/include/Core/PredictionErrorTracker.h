@@ -253,8 +253,13 @@ public:
     /**
      * @brief Construct with configuration
      */
-    explicit PredictionErrorTracker(const Config& config = Config{})
+    explicit PredictionErrorTracker(const Config& config)
         : config_(config) {}
+
+    /**
+     * @brief Construct with default configuration
+     */
+    PredictionErrorTracker() : PredictionErrorTracker(Config{}) {}
 
     ~PredictionErrorTracker() = default;
 

@@ -15,6 +15,7 @@
 // Forward declarations
 class VulkanRenderer;
 class VulkanSwapChain;
+struct GLFWwindow;  // cross-platform window handle (GLFW); real include only in the .cpp
 
 using namespace Vixen::Vulkan::Resources;
 using namespace Vixen::RenderGraph;
@@ -134,7 +135,7 @@ private:
     // ====== Shutdown Management ======
     bool shutdownRequested = false;                  // User requested shutdown
     std::unordered_set<std::string> shutdownAcksPending;  // Systems that need to acknowledge
-    HWND windowHandle = nullptr;                     // Cached for destruction during shutdown
+    GLFWwindow* windowHandle = nullptr;              // Cached for shutdown signalling (cross-platform GLFW handle)
     bool deinitialized = false;                      // Prevent double DeInitialize
 
     // ====== Phase 0.4: Loop System ======

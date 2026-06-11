@@ -95,7 +95,8 @@ public:
         bool strictHeapBudget = false;                  // Fail allocations over heap budget
     };
 
-    explicit HostBudgetManager(const Config& config = Config{});
+    explicit HostBudgetManager(const Config& config);
+    HostBudgetManager() : HostBudgetManager(Config{}) {}
     ~HostBudgetManager();
 
     // Non-copyable, non-movable (owns arena memory)

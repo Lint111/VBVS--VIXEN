@@ -5,6 +5,8 @@
 #include <glslang/SPIRV/disassemble.h>
 #include <spirv-tools/libspirv.hpp>
 
+#include <fstream>
+
 namespace ShaderManagement {
 
 // Initialize glslang process (global, once per process)

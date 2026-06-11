@@ -82,8 +82,7 @@ void SwapChainNode::CompileImpl(TypedCompileContext& ctx) {
 
     // Get input resources from connected nodes
     NODE_LOG_DEBUG("[SwapChainNode::Compile] Reading inputs...");
-    HWND hwnd = ctx.In(SwapChainNodeConfig::HWND);
-    HINSTANCE hinstance = ctx.In(SwapChainNodeConfig::HINSTANCE);
+    GLFWwindow* window = ctx.In(SwapChainNodeConfig::WINDOW);
     width = ctx.In(SwapChainNodeConfig::WIDTH);
     height = ctx.In(SwapChainNodeConfig::HEIGHT);
     VkInstance instance = ctx.In(SwapChainNodeConfig::INSTANCE);
@@ -91,10 +90,10 @@ void SwapChainNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_DEBUG("[SwapChainNode::Compile] WIDTH = " + std::to_string(width) + ", HEIGHT = " + std::to_string(height));
 
     // Validate all inputs
-    ValidateCompileInputs(hwnd, hinstance, instance);
+    ValidateCompileInputs(window, instance);
 
     // Load extensions and create surface
-    LoadExtensionsAndCreateSurface(instance, hwnd, hinstance);
+    LoadExtensionsAndCreateSurface(instance, window);
 
     // Get graphics queue and setup formats/capabilities
     auto graphicsQueueIndex = GetDevice()->GetGraphicsQueueHandle();
@@ -339,7 +338,7 @@ void SwapChainNode::Recreate(uint32_t newWidth, uint32_t newHeight) {
 
 // ====== Compile Phase Helper Methods ======
 
-void SwapChainNode::ValidateCompileInputs(HWND hwnd, HINSTANCE hinstance, VkInstance instance) {
+void SwapChainNode::ValidateCompileInputs(GLFWwindow* window, VkInstance instance) {
     NODE_LOG_DEBUG("[SwapChainNode] Validating compile inputs...");
 
     if (width == 0 || height == 0) {
@@ -349,14 +348,8 @@ void SwapChainNode::ValidateCompileInputs(HWND hwnd, HINSTANCE hinstance, VkInst
         throw std::runtime_error(errorMsg);
     }
 
-    if (hwnd == nullptr) {
-        std::string errorMsg = "SwapChainNode: HWND is null";
-        NODE_LOG_ERROR(errorMsg);
-        throw std::runtime_error(errorMsg);
-    }
-
-    if (hinstance == nullptr) {
-        std::string errorMsg = "SwapChainNode: HINSTANCE is null";
+    if (window == nullptr) {
+        std::string errorMsg = "SwapChainNode: window (GLFWwindow*) is null";
         NODE_LOG_ERROR(errorMsg);
         throw std::runtime_error(errorMsg);
     }
@@ -376,7 +369,7 @@ void SwapChainNode::ValidateCompileInputs(HWND hwnd, HINSTANCE hinstance, VkInst
     NODE_LOG_DEBUG("[SwapChainNode] Input validation passed");
 }
 
-void SwapChainNode::LoadExtensionsAndCreateSurface(VkInstance instance, HWND hwnd, HINSTANCE hinstance) {
+void SwapChainNode::LoadExtensionsAndCreateSurface(VkInstance instance, GLFWwindow* window) {
     NODE_LOG_INFO("[SwapChainNode] Loading swapchain extensions...");
     NODE_LOG_DEBUG("[SwapChainNode] Instance handle: 0x" + std::to_string(reinterpret_cast<uint64_t>(instance)));
 
@@ -388,9 +381,9 @@ void SwapChainNode::LoadExtensionsAndCreateSurface(VkInstance instance, HWND hwn
     }
     NODE_LOG_INFO("[SwapChainNode] Extension function pointers loaded successfully");
 
-    // Create the platform-specific surface
+    // Create the surface (cross-platform via GLFW)
     // Note: Old resources were already destroyed in CleanupImpl before Setup created fresh wrapper
-    result = swapChainWrapper->CreateSurface(instance, hwnd, hinstance);
+    result = swapChainWrapper->CreateSurface(instance, window);
     if (result != VK_SUCCESS) {
         std::string errorMsg = "SwapChainNode: Failed to create VkSurfaceKHR";
         NODE_LOG_ERROR(errorMsg);

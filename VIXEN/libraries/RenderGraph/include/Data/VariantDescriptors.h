@@ -7,6 +7,7 @@
 #include <vector>
 #include <string>
 #include <memory>
+#include <cstring>  // std::memcpy (GCC needs the explicit include; MSVC pulled it in transitively)
 
 
 

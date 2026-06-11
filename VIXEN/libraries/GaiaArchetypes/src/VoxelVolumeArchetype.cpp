@@ -194,7 +194,10 @@ void VoxelVolumeArchetype::updateVolumeStats(gaia::ecs::Entity volume, int voxel
         return;
     }
 
-    auto& stats = m_world.set<VolumeStats>(volume);
+    // set<T>() returns a write-proxy by value that commits on destruction; hold it
+    // in a local (binding it to a reference is non-conformant — GCC rejects the
+    // rvalue->non-const-ref bind — and would commit at end of statement on MSVC).
+    auto stats = m_world.set<VolumeStats>(volume);
     stats.voxelCount = static_cast<uint32_t>(
         std::max(0, static_cast<int>(stats.voxelCount) + voxelDelta));
     stats.isDirty = true;
@@ -210,7 +213,8 @@ void VoxelVolumeArchetype::updateVolumeBounds(
         return;
     }
 
-    auto& bounds = m_world.set<VolumeBounds>(volume);
+    // Hold the write-proxy by value (see updateVolumeStats); it commits on scope exit.
+    auto bounds = m_world.set<VolumeBounds>(volume);
     bounds.expand(voxelPos);
 }
 

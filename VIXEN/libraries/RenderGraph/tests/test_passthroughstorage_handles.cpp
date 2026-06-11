@@ -2,6 +2,8 @@
 
 #include "Data/Core/CompileTimeResourceSystem.h"
 
+struct GLFWwindow;  // cross-platform window handle (GLFW); only the pointer type is needed here
+
 using namespace Vixen::RenderGraph;
 
 TEST(PassThroughStorage_HandleTypes, CompileTimeRegistrationAndGetSet) {
@@ -12,14 +14,10 @@ TEST(PassThroughStorage_HandleTypes, CompileTimeRegistrationAndGetSet) {
 
     Resource r;
 
-    // Pointer-like Windows handles (HWND, HINSTANCE)
-    HWND hw = reinterpret_cast<HWND>(0x1234);
-    r.SetHandle<HWND>(std::move(hw));
-    EXPECT_EQ(r.GetHandle<HWND>(), reinterpret_cast<HWND>(0x1234));
-
-    HINSTANCE hi = reinterpret_cast<HINSTANCE>(0x5678);
-    r.SetHandle<HINSTANCE>(std::move(hi));
-    EXPECT_EQ(r.GetHandle<HINSTANCE>(), reinterpret_cast<HINSTANCE>(0x5678));
+    // Cross-platform window handle (GLFWwindow*) — validated via pointer-to-class passthrough
+    GLFWwindow* win = reinterpret_cast<GLFWwindow*>(0x1234);
+    r.SetHandle<GLFWwindow*>(std::move(win));
+    EXPECT_EQ(r.GetHandle<GLFWwindow*>(), reinterpret_cast<GLFWwindow*>(0x1234));
 
     // Vulkan instance handle
     VkInstance vi = reinterpret_cast<VkInstance>(uintptr_t(0x9));

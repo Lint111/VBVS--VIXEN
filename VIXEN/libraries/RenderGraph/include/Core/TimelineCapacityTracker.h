@@ -316,7 +316,12 @@ public:
      *
      * @param config Capacity tracking configuration
      */
-    explicit TimelineCapacityTracker(const Config& config = Config{});
+    explicit TimelineCapacityTracker(const Config& config);
+
+    /**
+     * @brief Construct with default configuration
+     */
+    TimelineCapacityTracker() : TimelineCapacityTracker(Config{}) {}
 
     /**
      * @brief Destructor

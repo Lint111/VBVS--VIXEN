@@ -137,6 +137,10 @@ FetchContent_Declare(
 set(GAIA_BUILD_UNITTEST OFF CACHE BOOL "Build Gaia unit tests" FORCE)
 set(GAIA_BUILD_EXAMPLES OFF CACHE BOOL "Build Gaia examples" FORCE)
 set(GAIA_PROFILER_CPU OFF CACHE BOOL "Enable Gaia CPU profiler" FORCE)
+# The committed single_include/gaia.h is used as-is; do not regenerate it at build
+# time. Regeneration runs a shell amalgamation script that is unavailable in this
+# checkout (and needs clang-format), and is unnecessary since the header exists.
+set(GAIA_GENERATE_SINGLE_HEADER OFF CACHE BOOL "Generate the single file header automatically." FORCE)
 
 FetchContent_MakeAvailable(gaia)
 
@@ -272,6 +276,31 @@ if(TARGET VulkanMemoryAllocator)
 endif()
 
 message(STATUS "VulkanMemoryAllocator (VMA) fetched - GPU memory management available")
+
+# ============================================================================
+# GLFW - cross-platform window + Vulkan surface + input (replaces raw Win32 windowing)
+# ============================================================================
+FetchContent_Declare(
+    glfw
+    GIT_REPOSITORY https://github.com/glfw/glfw.git
+    GIT_TAG        3.4
+    GIT_SHALLOW    TRUE
+)
+set(GLFW_BUILD_DOCS     OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(GLFW_INSTALL        OFF CACHE BOOL "" FORCE)
+# On Linux/WSL the real X11/Wayland backends need their dev libraries; until those are provisioned
+# we build the null backend so the engine COMPILES cross-platform. Windows uses Win32 (no extra deps).
+if(UNIX AND NOT APPLE AND NOT DEFINED GLFW_BUILD_X11)
+    set(GLFW_BUILD_X11     OFF CACHE BOOL "" FORCE)
+    set(GLFW_BUILD_WAYLAND OFF CACHE BOOL "" FORCE)
+endif()
+FetchContent_MakeAvailable(glfw)
+if(TARGET glfw)
+    set_target_properties(glfw PROPERTIES FOLDER "Dependencies")
+endif()
+message(STATUS "GLFW fetched - cross-platform window/surface/input available")
 
 # ============================================================================
 # oneTBB - Intel Threading Building Blocks

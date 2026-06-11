@@ -2,6 +2,10 @@
 #include "VulkanSwapChain.h"
 #include "MeshData.h"
 #include "Logger.h"
+
+#define GLFW_INCLUDE_NONE   // don't pull in <GL/gl.h> (absent on headless/WSL); Vulkan-only below
+#define GLFW_INCLUDE_VULKAN
+#include <GLFW/glfw3.h>
 #include "Core/TypedConnection.h"  // Typed slot connection helpers
 #include "Connection/ConnectionModifier.h"  // ConnectionMeta
 #include "Connection/Modifiers/FieldExtractionModifier.h"  // ExtractField
@@ -40,7 +44,9 @@
 #include "Nodes/InputNode.h"  // Input polling and event publishing
 #include <ShaderBundleBuilder.h>  // Phase G: Shader builder API (includes preprocessor support)
 #include "VoxelRayMarchNames.h"  // Generated shader binding constants
-#include "VoxelRayMarch_CompressedNames.h"
+// NOTE: "VoxelRayMarch_CompressedNames.h" was an orphaned include — that combined
+// SDI header is no longer generated (the tool now emits per-stage headers such as
+// VoxelRayMarch_Compressed_ComputeNames.h) and no symbol from it is referenced here.
 #include "Nodes/DebugBufferReaderNode.h"  // Debug: Compute shader debug capture
 #include "VulkanGlobalNames.h"  // Global Vulkan extension/layer name lists
 
@@ -260,14 +266,10 @@ bool VulkanGraphApplication::Render() {
         return false;
     }
 
-    // Process window messages
-    MSG msg;
-    while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
-        if (msg.message == WM_QUIT) {
-            return false;
-        }
-        TranslateMessage(&msg);
-        DispatchMessageW(&msg);
+    // Process window/input events (cross-platform via GLFW; fires WindowNode/InputNode callbacks).
+    glfwPollEvents();
+    if (windowHandle && glfwWindowShouldClose(windowHandle)) {
+        return false;
     }
 
     // Render a complete frame via the graph
@@ -871,18 +873,16 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   windowNode, WindowNodeConfig::INSTANCE);
 
     // --- Window → SwapChain connections ---
-    batch.Connect(windowNode, WindowNodeConfig::HWND_OUT,
-                  swapChainNode, SwapChainNodeConfig::HWND)
-         .Connect(windowNode, WindowNodeConfig::HINSTANCE_OUT,
-                  swapChainNode, SwapChainNodeConfig::HINSTANCE)
+    batch.Connect(windowNode, WindowNodeConfig::WINDOW,
+                  swapChainNode, SwapChainNodeConfig::WINDOW)
          .Connect(windowNode, WindowNodeConfig::WIDTH_OUT,
                   swapChainNode, SwapChainNodeConfig::WIDTH)
          .Connect(windowNode, WindowNodeConfig::HEIGHT_OUT,
                   swapChainNode, SwapChainNodeConfig::HEIGHT);
 
     // --- Window → Input connection ---
-    batch.Connect(windowNode, WindowNodeConfig::HWND_OUT,
-                  inputNode, InputNodeConfig::HWND_IN);
+    batch.Connect(windowNode, WindowNodeConfig::WINDOW,
+                  inputNode, InputNodeConfig::WINDOW);
 
     // --- Device → SwapChain connections ---
     batch.Connect(deviceNode, DeviceNodeConfig::INSTANCE_OUT,
@@ -1288,12 +1288,14 @@ void VulkanGraphApplication::HandleShutdownAck(const std::string& systemName) {
 }
 
 void VulkanGraphApplication::CompleteShutdown() {
-    // All systems have cleaned up - now destroy the window
+    // All systems have cleaned up - signal the window to close. WindowNode owns the GLFW window
+    // lifecycle and destroys it (glfwDestroyWindow) during its CleanupImpl, so we must not destroy
+    // it here (that would double-free); flagging should-close drives the normal teardown.
     if (windowHandle) {
         if (mainLogger) {
-            mainLogger->Info("Destroying window to complete shutdown");
+            mainLogger->Info("Signalling window to close to complete shutdown");
         }
-        DestroyWindow(windowHandle);
+        glfwSetWindowShouldClose(windowHandle, GLFW_TRUE);
         windowHandle = nullptr;
     }
 }

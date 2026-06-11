@@ -77,7 +77,18 @@ if(NOT Vulkan_FOUND AND VIXEN_AUTO_PROVISION_VULKAN)
         # Point FindVulkan at the cached SDK and re-discover so Vulkan::Vulkan + the SDK tools resolve.
         set(ENV{VULKAN_SDK} "${_vk_root}")
         set(Vulkan_INCLUDE_DIR "${_vk_root}/include" CACHE PATH "" FORCE)
-        set(Vulkan_LIBRARY "${_vk_root}/lib/libvulkan.so" CACHE FILEPATH "" FORCE)
+        # The loader location varies by SDK packaging: older SDKs ship it at lib/libvulkan.so,
+        # newer ones (e.g. 1.4.350.1) under lib/VulkanLoader/lib/libvulkan.so. Resolve the real
+        # path instead of assuming one layout, so the linker gets a file that actually exists.
+        find_library(_vk_loader
+            NAMES vulkan libvulkan
+            PATHS "${_vk_root}/lib" "${_vk_root}/lib/VulkanLoader/lib"
+            NO_DEFAULT_PATH)
+        if(_vk_loader)
+            set(Vulkan_LIBRARY "${_vk_loader}" CACHE FILEPATH "" FORCE)
+        else()
+            set(Vulkan_LIBRARY "${_vk_root}/lib/libvulkan.so" CACHE FILEPATH "" FORCE)
+        endif()
         find_package(Vulkan QUIET)
         if(Vulkan_FOUND)
             set(VIXEN_VULKAN_LAYER_PATH "${_vk_root}/share/vulkan/explicit_layer.d"

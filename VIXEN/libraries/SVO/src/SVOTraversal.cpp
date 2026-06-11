@@ -706,9 +706,9 @@ ESVORayCoefficients computeRayCoefficients(
 
     constexpr float epsilon = 1e-5f;
     glm::vec3 rayDirSafe = rayDir;
-    if (std::abs(rayDirSafe.x) < epsilon) rayDirSafe.x = std::copysignf(epsilon, rayDirSafe.x);
-    if (std::abs(rayDirSafe.y) < epsilon) rayDirSafe.y = std::copysignf(epsilon, rayDirSafe.y);
-    if (std::abs(rayDirSafe.z) < epsilon) rayDirSafe.z = std::copysignf(epsilon, rayDirSafe.z);
+    if (std::abs(rayDirSafe.x) < epsilon) rayDirSafe.x = std::copysign(epsilon, rayDirSafe.x);
+    if (std::abs(rayDirSafe.y) < epsilon) rayDirSafe.y = std::copysign(epsilon, rayDirSafe.y);
+    if (std::abs(rayDirSafe.z) < epsilon) rayDirSafe.z = std::copysign(epsilon, rayDirSafe.z);
 
     coef.tx_coef = 1.0f / -std::abs(rayDirSafe.x);
     coef.ty_coef = 1.0f / -std::abs(rayDirSafe.y);

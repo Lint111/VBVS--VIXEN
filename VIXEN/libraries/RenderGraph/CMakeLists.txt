@@ -353,6 +353,7 @@ target_link_libraries(RenderGraph
         SVO                    # Laine-Karras ESVO octrees
         magic_enum::magic_enum
         TBB::tbb               # Sprint 6.4: Parallel execution
+        glfw                   # Cross-platform window/surface/input (WindowNode/InputNode/InstanceNode)
 )
 
 # ============================================================================
@@ -365,10 +366,8 @@ set_target_properties(RenderGraph PROPERTIES
     FOLDER "Libraries"
 )
 
-# Platform definitions
-if(WIN32)
-    target_compile_definitions(RenderGraph PRIVATE VK_USE_PLATFORM_WIN32_KHR)
-endif()
+# Platform surface handling is now cross-platform via GLFW (glfwCreateWindowSurface +
+# glfwGetRequiredInstanceExtensions); no VK_USE_PLATFORM_WIN32_KHR define needed.
 
 # Precompiled headers for faster compilation
 if(USE_PRECOMPILED_HEADERS)

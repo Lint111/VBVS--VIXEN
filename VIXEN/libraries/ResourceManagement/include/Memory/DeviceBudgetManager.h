@@ -5,6 +5,7 @@
 #include "MessageBus.h"  // Include for ScopedSubscriptions
 #include <memory>
 #include <functional>
+#include <utility>
 
 namespace ResourceManagement {
 
@@ -95,8 +96,16 @@ public:
      */
     DeviceBudgetManager(
         std::shared_ptr<IMemoryAllocator> allocator,
-        VkPhysicalDevice physicalDevice = VK_NULL_HANDLE,
-        const Config& config = Config{});
+        VkPhysicalDevice physicalDevice,
+        const Config& config);
+
+    /**
+     * @brief Create device budget manager with default configuration
+     */
+    explicit DeviceBudgetManager(
+        std::shared_ptr<IMemoryAllocator> allocator,
+        VkPhysicalDevice physicalDevice = VK_NULL_HANDLE)
+        : DeviceBudgetManager(std::move(allocator), physicalDevice, Config{}) {}
 
     ~DeviceBudgetManager();
 

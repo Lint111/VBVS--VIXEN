@@ -264,9 +264,15 @@ if(BUILD_SPV_ON_COMPILE_TIME AND NOT VULKAN_TRIMMED_BUILD_ACTIVE)
 	# Modern Vulkan SDK includes these in Lib directory
 	set (GLSLANG_LIBS SPIRV glslang OSDependent glslang-default-resource-limits SPIRV-Tools SPIRV-Tools-opt)
 
-	# Generate the list of files to link, per flavor
+	# Generate the list of files to link, per flavor. The "d"-suffixed debug
+	# libraries (e.g. SPIRVd) only exist in the LunarG *Windows* SDK; the Linux
+	# SDK ships a single unsuffixed library per name.
 	foreach(x ${GLSLANG_LIBS})
-		list (APPEND VULKAN_LIB_LIST debug ${x}d optimized ${x})
+		if(WIN32)
+			list (APPEND VULKAN_LIB_LIST debug ${x}d optimized ${x})
+		else()
+			list (APPEND VULKAN_LIB_LIST ${x})
+		endif()
 
 	endforeach()
 
@@ -296,29 +302,37 @@ set(CMAKE_SUPPRESS_DEVELOPER_WARNINGS ON CACHE BOOL "Suppress developer warnings
 # Add any required preprocessor definitions here
 add_definitions(-DVK_ENABLE_BETA_EXTENSIONS)
 
-# Platform-specific Vulkan defines
-if(WIN32)
-    add_definitions(-DVK_USE_PLATFORM_WIN32_KHR)
-elseif(UNIX AND NOT APPLE)
-    add_definitions(-DVK_USE_PLATFORM_XCB_KHR)
-elseif(APPLE)
-    add_definitions(-DVK_USE_PLATFORM_MACOS_MVK)
-endif()
+# Platform surface handling is cross-platform via GLFW (glfwCreateWindowSurface +
+# glfwGetRequiredInstanceExtensions select the platform surface at build/runtime), so no
+# VK_USE_PLATFORM_* surface define is set here.
 
 # vulkan-1 library for build Vulkan application.
 # Note: Do NOT use set() here as it would overwrite glslang libraries if they were added above
 if(NOT DEFINED VULKAN_LIB_LIST)
 	set(VULKAN_LIB_LIST "")
 endif()
-list(APPEND VULKAN_LIB_LIST "vulkan-1")
 
 if(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
+	# "vulkan-1" is the Windows import-lib name for the loader. On other
+	# platforms the loader (libvulkan.so) is provided via the Vulkan::Vulkan
+	# target, linked transitively by the core libraries, so no by-name entry.
+	list(APPEND VULKAN_LIB_LIST "vulkan-1")
+
 	# Include Vulkan header files from Vulkan SDK
 	include_directories(AFTER ${VULKAN_PATH}/include)
 
-	# Link directory for vulkan-1
+	# Link directory for vulkan-1 and the glslang libraries
 	link_directories(${VULKAN_PATH}/Bin;${VULKAN_PATH}/Lib;)
+else()
+	# Ensure the loader resolves for executables that consume VULKAN_LIB_LIST
+	# even if they don't otherwise pull a Vulkan::Vulkan-linked library.
+	if(TARGET Vulkan::Vulkan)
+		list(APPEND VULKAN_LIB_LIST Vulkan::Vulkan)
+	endif()
 
+	# The glslang/SPIRV-Tools static libraries (added by-name to VULKAN_LIB_LIST
+	# above) live in <sdk>/lib on the Linux SDK; make them findable by the linker.
+	link_directories(${VULKAN_PATH}/lib)
 endif()
 
 # ============================================================================

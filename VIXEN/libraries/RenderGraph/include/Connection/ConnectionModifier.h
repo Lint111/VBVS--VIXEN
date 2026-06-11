@@ -17,7 +17,9 @@
 #include <memory>
 #include <span>
 #include <string_view>
+#include <type_traits>
 #include <typeindex>
+#include <utility>
 #include <vector>
 
 namespace Vixen::RenderGraph {
@@ -361,6 +363,23 @@ struct ConnectionMeta {
      */
     ConnectionMeta&& With(std::unique_ptr<ConnectionModifier> mod) && {
         modifiers.push_back(std::move(mod));
+        return std::move(*this);
+    }
+
+    /**
+     * @brief Add a concrete modifier passed by value, e.g. .With(ExtractField(...)).
+     *
+     * Deduced-only: the argument must already be a concrete ConnectionModifier
+     * subobject, so this never competes with the explicit-template in-place form
+     * (.With<Mod>(ctorArgs...)) — for that form the argument needs a user-defined
+     * conversion, which the in-place overload avoids and therefore wins.
+     */
+    template<typename Mod,
+             typename = std::enable_if_t<
+                 std::is_base_of_v<ConnectionModifier, std::decay_t<Mod>> &&
+                 !std::is_same_v<std::decay_t<Mod>, ConnectionModifier>>>
+    ConnectionMeta&& With(Mod&& mod) && {
+        modifiers.push_back(std::make_unique<std::decay_t<Mod>>(std::forward<Mod>(mod)));
         return std::move(*this);
     }
 

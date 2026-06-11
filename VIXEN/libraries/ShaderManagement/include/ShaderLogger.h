@@ -4,6 +4,7 @@
 #include <functional>
 #include <mutex>
 #include <chrono>
+#include <ctime>
 #include <unordered_map>
 #include <atomic>
 
@@ -253,7 +254,11 @@ private:
         auto time = std::chrono::system_clock::to_time_t(msg.timestamp);
         char timeStr[64];
         std::tm timeInfo;
+#if defined(_WIN32)
         localtime_s(&timeInfo, &time);
+#else
+        localtime_r(&time, &timeInfo);
+#endif
         std::strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", &timeInfo);
 
         fprintf(stderr, "[%s] [%s]", timeStr, LogLevelToString(msg.level));

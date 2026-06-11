@@ -13,6 +13,7 @@
 #include "Data/Core/ResourceConfig.h"
 #include "Data/Core/ResourceTypes.h"
 #include "Data/Core/SlotInfo.h"
+#include "Data/Core/ConnectionConcepts.h"  // BindingReference concept (used by FromBinding)
 #include <memory>
 #include <optional>
 #include <string>

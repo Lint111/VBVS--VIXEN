@@ -50,8 +50,9 @@ static bool initGlobalNames = []() {
     instanceExtensionNames = {
         VK_KHR_SURFACE_EXTENSION_NAME,                          // REQUIRED for surface creation
         VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME,            // OPTIONAL: Enhanced surface features
-        VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME,       // OPTIONAL: Extended capability queries
-        VK_KHR_WIN32_SURFACE_EXTENSION_NAME                     // REQUIRED on Windows platform
+        VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME        // OPTIONAL: Extended capability queries
+        // The platform surface extension (Win32/Xlib/Wayland) is added at runtime by InstanceNode
+        // via glfwGetRequiredInstanceExtensions — cross-platform, no hardcoded VK_KHR_win32_surface.
 #ifdef _DEBUG
         , VK_EXT_DEBUG_REPORT_EXTENSION_NAME
 #endif

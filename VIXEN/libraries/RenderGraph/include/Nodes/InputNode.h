@@ -4,9 +4,10 @@
 #include "Core/NodeType.h"
 #include "Data/Nodes/InputNodeConfig.h"
 #include "InputEvents.h"
-#include <Windows.h>
 #include <unordered_map>
 #include <chrono>
+
+struct GLFWwindow;  // GLFW/glfw3.h is included in the .cpp; the header only needs the handle type.
 
 namespace Vixen::RenderGraph {
 
@@ -65,7 +66,7 @@ private:
     void InitializeMouseCapture();
     void RecenterMouse();
 
-    // Poll Win32 input state
+    // Poll GLFW input state
     void PollKeyboard();
     void PollMouse();
 
@@ -76,7 +77,7 @@ private:
     // Modern polling interface
     void PopulateInputState();
 
-    // Check if key is currently down (Win32 GetAsyncKeyState)
+    // Check if key is currently down (GLFW glfwGetKey)
     bool IsKeyDown(EventBus::KeyCode key) const;
 
     // Get modifier state
@@ -84,8 +85,8 @@ private:
     bool IsCtrlPressed() const;
     bool IsAltPressed() const;
 
-    // Window handle for input context
-    HWND hwnd = nullptr;
+    // Window handle for input context (cross-platform GLFW handle)
+    GLFWwindow* window = nullptr;
 
     // Key state tracking (only track keys we care about)
     std::unordered_map<EventBus::KeyCode, KeyState> keyStates;

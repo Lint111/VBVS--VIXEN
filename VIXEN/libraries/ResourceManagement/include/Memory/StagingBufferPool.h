@@ -108,9 +108,17 @@ public:
      * @param budgetManager Device budget manager for quota and allocation
      * @param config Pool configuration
      */
-    explicit StagingBufferPool(
+    StagingBufferPool(
         DeviceBudgetManager* budgetManager,
-        const Config& config = Config{});
+        const Config& config);
+
+    /**
+     * @brief Create a staging buffer pool with default configuration
+     *
+     * @param budgetManager Device budget manager for quota and allocation
+     */
+    explicit StagingBufferPool(DeviceBudgetManager* budgetManager)
+        : StagingBufferPool(budgetManager, Config{}) {}
 
     /**
      * @brief Destructor - releases all pooled buffers

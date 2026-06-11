@@ -79,8 +79,8 @@ protected:
 
 private:
     // === Compile phase helper methods ===
-    void ValidateCompileInputs(HWND hwnd, HINSTANCE hinstance, VkInstance instance);
-    void LoadExtensionsAndCreateSurface(VkInstance instance, HWND hwnd, HINSTANCE hinstance);
+    void ValidateCompileInputs(GLFWwindow* window, VkInstance instance);
+    void LoadExtensionsAndCreateSurface(VkInstance instance, GLFWwindow* window);
     void SetupFormatsAndCapabilities(uint32_t graphicsQueueIndex);
     void CreateSwapchainAndViews();
     void PublishCompileOutputs(TypedCompileContext& ctx);

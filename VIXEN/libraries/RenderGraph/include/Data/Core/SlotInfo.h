@@ -278,7 +278,10 @@ struct SlotInfo {
     // DEFAULT CONSTRUCTOR
     // ========================================================================
 
-    constexpr SlotInfo() = default;
+    // Note: not constexpr — the std::function `extractor` member is not
+    // constexpr-default-constructible in libstdc++ (it is in MSVC's STL),
+    // so a constexpr defaulted default ctor is ill-formed under GCC/Clang.
+    SlotInfo() = default;
 };
 
 // ============================================================================

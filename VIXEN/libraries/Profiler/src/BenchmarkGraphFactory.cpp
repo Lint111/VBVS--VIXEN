@@ -265,10 +265,8 @@ void BenchmarkGraphFactory::ConnectComputeRayMarch(
                   infra.window, RG::WindowNodeConfig::INSTANCE);
 
     // Window -> SwapChain
-    batch.Connect(infra.window, RG::WindowNodeConfig::HWND_OUT,
-                  infra.swapchain, RG::SwapChainNodeConfig::HWND)
-         .Connect(infra.window, RG::WindowNodeConfig::HINSTANCE_OUT,
-                  infra.swapchain, RG::SwapChainNodeConfig::HINSTANCE)
+    batch.Connect(infra.window, RG::WindowNodeConfig::WINDOW,
+                  infra.swapchain, RG::SwapChainNodeConfig::WINDOW)
          .Connect(infra.window, RG::WindowNodeConfig::WIDTH_OUT,
                   infra.swapchain, RG::SwapChainNodeConfig::WIDTH)
          .Connect(infra.window, RG::WindowNodeConfig::HEIGHT_OUT,
@@ -276,8 +274,8 @@ void BenchmarkGraphFactory::ConnectComputeRayMarch(
 
     // Window -> Input
     if (rayMarch.input.IsValid()) {
-        batch.Connect(infra.window, RG::WindowNodeConfig::HWND_OUT,
-                      rayMarch.input, RG::InputNodeConfig::HWND_IN);
+        batch.Connect(infra.window, RG::WindowNodeConfig::WINDOW,
+                      rayMarch.input, RG::InputNodeConfig::WINDOW);
     }
 
     // Device -> SwapChain
@@ -822,10 +820,8 @@ void BenchmarkGraphFactory::ConnectFragmentRayMarch(
                   infra.window, RG::WindowNodeConfig::INSTANCE);
 
     // Window -> SwapChain
-    batch.Connect(infra.window, RG::WindowNodeConfig::HWND_OUT,
-                  infra.swapchain, RG::SwapChainNodeConfig::HWND)
-         .Connect(infra.window, RG::WindowNodeConfig::HINSTANCE_OUT,
-                  infra.swapchain, RG::SwapChainNodeConfig::HINSTANCE)
+    batch.Connect(infra.window, RG::WindowNodeConfig::WINDOW,
+                  infra.swapchain, RG::SwapChainNodeConfig::WINDOW)
          .Connect(infra.window, RG::WindowNodeConfig::WIDTH_OUT,
                   infra.swapchain, RG::SwapChainNodeConfig::WIDTH)
          .Connect(infra.window, RG::WindowNodeConfig::HEIGHT_OUT,
@@ -833,8 +829,8 @@ void BenchmarkGraphFactory::ConnectFragmentRayMarch(
 
     // Window -> Input
     if (rayMarch.input.IsValid()) {
-        batch.Connect(infra.window, RG::WindowNodeConfig::HWND_OUT,
-                      rayMarch.input, RG::InputNodeConfig::HWND_IN);
+        batch.Connect(infra.window, RG::WindowNodeConfig::WINDOW,
+                      rayMarch.input, RG::InputNodeConfig::WINDOW);
     }
 
     // Device -> SwapChain
@@ -1247,10 +1243,8 @@ void BenchmarkGraphFactory::ConnectHardwareRT(
                   infra.window, RG::WindowNodeConfig::INSTANCE);
 
     // Window -> SwapChain
-    batch.Connect(infra.window, RG::WindowNodeConfig::HWND_OUT,
-                  infra.swapchain, RG::SwapChainNodeConfig::HWND)
-         .Connect(infra.window, RG::WindowNodeConfig::HINSTANCE_OUT,
-                  infra.swapchain, RG::SwapChainNodeConfig::HINSTANCE)
+    batch.Connect(infra.window, RG::WindowNodeConfig::WINDOW,
+                  infra.swapchain, RG::SwapChainNodeConfig::WINDOW)
          .Connect(infra.window, RG::WindowNodeConfig::WIDTH_OUT,
                   infra.swapchain, RG::SwapChainNodeConfig::WIDTH)
          .Connect(infra.window, RG::WindowNodeConfig::HEIGHT_OUT,
@@ -1258,8 +1252,8 @@ void BenchmarkGraphFactory::ConnectHardwareRT(
 
     // Window -> Input
     if (rayMarch.input.IsValid()) {
-        batch.Connect(infra.window, RG::WindowNodeConfig::HWND_OUT,
-                      rayMarch.input, RG::InputNodeConfig::HWND_IN);
+        batch.Connect(infra.window, RG::WindowNodeConfig::WINDOW,
+                      rayMarch.input, RG::InputNodeConfig::WINDOW);
     }
 
     // Device -> SwapChain

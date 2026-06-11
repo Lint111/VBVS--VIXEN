@@ -4,12 +4,12 @@
 
 namespace Vixen::RenderGraph {
 
-const struct LayerRequirement {
+struct LayerRequirement {
     const std::string layerName;
     const bool optional = false;
 };
 
-const struct ExtensionRequirement {
+struct ExtensionRequirement {
     const std::string extensionName;
     const bool optional = false;
 };

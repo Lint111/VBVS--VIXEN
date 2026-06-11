@@ -128,12 +128,11 @@ public:
 private:
     ResourceExtractor() = delete;
 
-    // Extractor function declarations auto-generated from macro registry
-    // Pattern: static size_t ExtractorName(void* handle, uint8_t* dest, size_t size);
-    #define SPIRV_EXTRACTOR_TYPE(BaseType, VecSize, CppType, FnName) \
-        friend size_t FnName(void* handle, uint8_t* dest, size_t size);
-    SPIRV_EXTRACTOR_REGISTRY
-    #undef SPIRV_EXTRACTOR_TYPE
+    // The per-type extractor functions are file-local (internal-linkage) helpers
+    // defined in ResourceExtractor.cpp from SPIRV_EXTRACTOR_REGISTRY. They do not
+    // access ResourceExtractor's private members, so no friend declaration is
+    // needed here (a friend decl would give them external linkage and conflict
+    // with their `static` definition under GCC/Clang).
 
     // Helper: get size in bytes for type
     static size_t GetTypeSize(const SpirvTypeInfo& typeInfo);

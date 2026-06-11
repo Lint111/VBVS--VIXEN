@@ -34,6 +34,7 @@
 // Forward declarations (same as PassThroughStorage.h)
 struct SwapChainPublicVariables;
 struct SwapChainBuffer;
+struct GLFWwindow;  // cross-platform window handle (GLFW); used as GLFWwindow* in window/input slots
 
 namespace Vixen::RenderGraph::Data {
     struct BoolVector;
@@ -179,11 +180,10 @@ REGISTER_COMPILE_TIME_TYPE(InputState);
 // NOTE: ImageSamplerPair, DescriptorHandleVariant, and PassThroughStorage
 // are registered later after their definitions
 
-// Platform-specific types
-#ifdef _WIN32
-REGISTER_COMPILE_TIME_TYPE(HWND);
-REGISTER_COMPILE_TIME_TYPE(HINSTANCE);
-#endif
+// Window handle type: GLFWwindow* flows through slots as a cross-platform window handle.
+// GLFWwindow is an incomplete (forward-declared) struct, so it is carried as a pointer and
+// validated via the pointer-to-class passthrough rule (IsValidTypeImpl Priority 3) — no explicit
+// value-type registration (which would require a complete type).
 
 // ============================================================================
 // COMPILE-TIME TYPE TAGS (Zero-size markers)
@@ -637,14 +637,25 @@ public:
     template<typename T>
     void Set(T* value, PtrTag<T>) {
         static_assert(IsValidType_v<T*>, "Type not registered");
-        refPtr_ = static_cast<void*>(value);
+        // Object<->void* conversions use static_cast; function pointers are not
+        // object pointers, so they require reinterpret_cast (static_cast is
+        // ill-formed for them under standard C++ / GCC; MSVC tolerates it).
+        if constexpr (std::is_function_v<T>) {
+            refPtr_ = reinterpret_cast<void*>(value);
+        } else {
+            refPtr_ = static_cast<void*>(value);
+        }
         mode_ = Mode::Pointer;
     }
 
     template<typename T>
     void Set(const T* value, ConstPtrTag<T>) {
         static_assert(IsValidType_v<const T*>, "Type not registered");
-        constRefPtr_ = static_cast<const void*>(value);
+        if constexpr (std::is_function_v<T>) {
+            constRefPtr_ = reinterpret_cast<const void*>(value);
+        } else {
+            constRefPtr_ = static_cast<const void*>(value);
+        }
         mode_ = Mode::Pointer;
     }
 
@@ -673,13 +684,22 @@ public:
     template<typename T>
     T* Get(PtrTag<T>) const {
         static_assert(IsValidType_v<T*>, "Type not registered");
-        return static_cast<T*>(refPtr_);
+        // See Set(PtrTag): function pointers must round-trip via reinterpret_cast.
+        if constexpr (std::is_function_v<T>) {
+            return reinterpret_cast<T*>(refPtr_);
+        } else {
+            return static_cast<T*>(refPtr_);
+        }
     }
 
     template<typename T>
     const T* Get(ConstPtrTag<T>) const {
         static_assert(IsValidType_v<const T*>, "Type not registered");
-        return static_cast<const T*>(constRefPtr_);
+        if constexpr (std::is_function_v<T>) {
+            return reinterpret_cast<const T*>(constRefPtr_);
+        } else {
+            return static_cast<const T*>(constRefPtr_);
+        }
     }
 
     bool IsEmpty() const { return mode_ == Mode::Empty; }
@@ -850,8 +870,15 @@ public:
         // 2. If passing a pointer to a class type (T* where T is a class)
         // 3. If that class type is incomplete (forward-declared)
         //
+        // Exception: GLFWwindow is an OPAQUE handle — GLFW only ever forward-declares it (the full
+        // struct is library-internal), so it is permanently incomplete by design, exactly like a
+        // Vulkan handle. It is carried as an opaque GLFWwindow* and never has conversion_type, so it
+        // is excluded from the completeness guard (otherwise WindowNode/InputNode/SwapChainNode,
+        // which legitimately pass GLFWwindow*, would fail to compile).
+        //
         // If incomplete, we static_assert with a helpful message.
-        if constexpr (!IsVulkanHandle_v<CleanT> && std::is_pointer_v<CleanT> && std::is_class_v<PointeeT>) {
+        if constexpr (!IsVulkanHandle_v<CleanT> && !std::is_same_v<PointeeT, ::GLFWwindow>
+                      && std::is_pointer_v<CleanT> && std::is_class_v<PointeeT>) {
             // For pointer-to-class types (excluding Vulkan handles), verify the pointee is complete
             static_assert(IsCompleteType_v<PointeeT>,
                 "\n\n"

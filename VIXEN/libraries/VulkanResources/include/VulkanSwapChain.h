@@ -3,6 +3,8 @@
 #include "Headers.h"
 #include "ILoggable.h"
 
+struct GLFWwindow;  // cross-platform window handle (GLFW); real include only in the .cpp
+
 class VulkanApplication;
 class VulkanApplicationBase;
 class VulkanRenderer;
@@ -118,7 +120,7 @@ class VulkanSwapChain : public ILoggable {
     // Swapchain creation methods (exposed for SwapChainNode)
     VkResult CreateSwapChainExtensions(VkInstance instance, VkDevice device);
     void GetSupportedFormats(VkPhysicalDevice gpu);
-    VkResult CreateSurface(VkInstance instance, HWND hwnd, HINSTANCE hinstance);
+    VkResult CreateSurface(VkInstance instance, GLFWwindow* window);
     void DestroySurface(VkInstance instance);
     uint32_t GetGraphicsQueueWithPresentationSupport(VkPhysicalDevice gpu, uint32_t queueFamilyCount, const std::vector<VkQueueFamilyProperties>& queueProps);
     void GetSurfaceCapabilitiesAndPresentMode(VkPhysicalDevice gpu, uint32_t width, uint32_t height);
