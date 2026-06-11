@@ -290,12 +290,10 @@ set(GLFW_BUILD_DOCS     OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(GLFW_INSTALL        OFF CACHE BOOL "" FORCE)
-# On Linux/WSL the real X11/Wayland backends need their dev libraries; until those are provisioned
-# we build the null backend so the engine COMPILES cross-platform. Windows uses Win32 (no extra deps).
-if(UNIX AND NOT APPLE AND NOT DEFINED GLFW_BUILD_X11)
-    set(GLFW_BUILD_X11     OFF CACHE BOOL "" FORCE)
-    set(GLFW_BUILD_WAYLAND OFF CACHE BOOL "" FORCE)
-endif()
+# Self-provision GLFW's Linux windowing backend deps (X11 dev libs) into a cache and enable the X11
+# backend; if unavailable, falls back to the null backend so the build never breaks. No-op on
+# Windows (Win32) / macOS (Cocoa). Override with -DGLFW_BUILD_X11 / -DVIXEN_AUTO_PROVISION_WINDOWING.
+include(${CMAKE_SOURCE_DIR}/cmake/ProvisionWindowingDeps.cmake)
 FetchContent_MakeAvailable(glfw)
 if(TARGET glfw)
     set_target_properties(glfw PROPERTIES FOLDER "Dependencies")

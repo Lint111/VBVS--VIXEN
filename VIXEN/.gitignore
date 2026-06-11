@@ -1,6 +1,9 @@
 # Auto-provisioned Vulkan SDK cache (ProvisionVulkan.cmake)
 .vulkan-sdk/
 
+# Auto-provisioned X11 windowing dev cache (ProvisionWindowingDeps.cmake)
+.windowing-deps/
+
 # Visual Studio files
 .vs/
 *.suo
