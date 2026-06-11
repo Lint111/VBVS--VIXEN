@@ -43,7 +43,13 @@ if(VIXEN_UNINSTALL_VULKAN)
 endif()
 
 # --- locate, or auto-provision ---
+# Precedence: an already-installed Vulkan (system package or LunarG SDK via VULKAN_SDK) wins; only
+# if nothing is found do we touch the project-local cache; only if the cache is empty do we download.
+# We never install Vulkan system-wide — provisioning is a project-local cache.
 find_package(Vulkan QUIET)
+if(Vulkan_FOUND)
+    message(STATUS "VIXEN: found an existing Vulkan (${Vulkan_INCLUDE_DIRS}) — skipping auto-provision.")
+endif()
 
 if(NOT Vulkan_FOUND AND VIXEN_AUTO_PROVISION_VULKAN)
     set(_vk_root "${VIXEN_VULKAN_CACHE_DIR}/${VIXEN_VULKAN_SDK_VERSION}/x86_64")
@@ -63,6 +69,8 @@ if(NOT Vulkan_FOUND AND VIXEN_AUTO_PROVISION_VULKAN)
         endif()
         message(STATUS "VIXEN: extracting Vulkan SDK into ${VIXEN_VULKAN_CACHE_DIR} ...")
         file(ARCHIVE_EXTRACT INPUT "${_tarball}" DESTINATION "${VIXEN_VULKAN_CACHE_DIR}")
+    else()
+        message(STATUS "VIXEN: reusing cached Vulkan SDK at ${_vk_root} (no download).")
     endif()
 
     if(EXISTS "${_vk_root}/include/vulkan/vulkan.h")
