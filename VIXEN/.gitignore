@@ -1,3 +1,6 @@
+# Auto-provisioned Vulkan SDK cache (ProvisionVulkan.cmake)
+.vulkan-sdk/
+
 # Visual Studio files
 .vs/
 *.suo

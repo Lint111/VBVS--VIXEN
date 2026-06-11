@@ -148,7 +148,9 @@ endif()
 # Tests
 # ------------------------------------------------------------------------------
 
-if(SVO_BUILD_TESTS)
+# Respect the global test switch (BUILD_TESTS/BUILD_TESTING) like the other libraries — otherwise
+# SVO_BUILD_TESTS (default ON) builds tests even under -DBUILD_TESTS=OFF, breaking on the absent GTest.
+if(SVO_BUILD_TESTS AND BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
 endif()

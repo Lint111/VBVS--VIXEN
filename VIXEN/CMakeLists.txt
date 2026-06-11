@@ -145,6 +145,11 @@ else()
     add_compile_definitions(VIXEN_DEBUG_BUILD=0)
 endif()
 
+# Self-provision Vulkan: download the prebuilt SDK into a cache if none is found, so a consumer only
+# ever builds VIXEN (never installs Vulkan by hand). The legacy locate logic below then simply finds
+# the provisioned SDK and sets VULKAN_PATH / VULKAN_TRIMMED_BUILD_ACTIVE as before.
+include(cmake/ProvisionVulkan.cmake)
+
 if(AUTO_LOCATE_VULKAN)
 	message(STATUS "Attempting auto locate Vulkan using CMake......")
 	
