@@ -1,6 +1,7 @@
 #include "Nodes/TextureLoaderNode.h"
 #include "Core/RenderGraph.h"
 #include "Core/NodeLogging.h"
+#include "Core/TaskProfiles/SimpleTaskProfile.h"  // Sprint 6.5: Profile integration
 #include "VulkanDevice.h"
 #include "MainCacher.h"
 #include "TextureCacher.h"
@@ -32,9 +33,20 @@ TextureLoaderNode::TextureLoaderNode(
 void TextureLoaderNode::SetupImpl(TypedSetupContext& ctx) {
     // Graph-scope initialization only (no input access)
     NODE_LOG_DEBUG("TextureLoaderNode: Setup (graph-scope initialization)");
+
+    // Sprint 6.5: Register compile-time task profile for cost estimation
+    std::string profileId = GetInstanceName() + "_compile";
+    compileProfile_ = GetOrCreateProfile<SimpleTaskProfile>(profileId, profileId, "pipeline");
+    if (compileProfile_) {
+        RegisterPhaseProfile(VirtualTaskPhase::Compile, compileProfile_);
+        NODE_LOG_INFO("[TextureLoaderNode] Registered compile profile: " + profileId);
+    }
 }
 
 void TextureLoaderNode::CompileImpl(TypedCompileContext& ctx) {
+    // Sprint 6.5: Start compile timing (RAII - records on scope exit)
+    auto compileSample = compileProfile_ ? compileProfile_->Sample() : ITaskProfile::Sampler(nullptr);
+
     // Access device input (compile-time dependency)
     VulkanDevice* devicePtr = ctx.In(TextureLoaderNodeConfig::VULKAN_DEVICE_IN);
     if (devicePtr == nullptr) {

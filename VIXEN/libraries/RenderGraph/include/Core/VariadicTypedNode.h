@@ -2,26 +2,14 @@
 
 #include "TypedNodeInstance.h"
 #include "Data/Core/CompileTimeResourceSystem.h"
+#include "Data/Core/SlotInfo.h"  // SlotState previously lived here; now unified in Data/Core/SlotInfo.h
 #include "IGraphCompilable.h"
 #include <vector>
 
 namespace Vixen::RenderGraph {
 
-/**
- * @brief Slot state lifecycle tracking
- *
- * Tracks the validation state of variadic slots through the compilation pipeline:
- * - Tentative: Created during ConnectVariadic, not yet validated
- * - Validated: Type-checked during Compile phase
- * - Compiled: Finalized with Vulkan resources created
- * - Invalid: Validation failed, slot cannot be used
- */
-enum class SlotState {
-    Tentative,    // Created during connection, unvalidated
-    Validated,    // Type-checked during Compile
-    Compiled,     // Finalized with resources
-    Invalid       // Validation failed
-};
+// SlotState is now defined in Data/Core/SlotInfo.h (Sprint 6.0.1 unification)
+// See SlotInfo.h for documentation
 
 /**
  * @brief Variadic slot metadata (per-bundle)
@@ -616,11 +604,34 @@ protected:
     }
 
     void ExecuteImpl() override {
+        // Sequential execution over all tasks (used when NOT using virtual task executor)
         uint32_t taskCount = this->DetermineTaskCount();
         for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
             VariadicExecuteContext ctx(this, taskIndex);
             ExecuteImpl(ctx);
         }
+    }
+
+    // =========================================================================
+    // Sprint 6.5: Task Parallelism API (FINAL - not overridable)
+    // =========================================================================
+    //
+    // Returns N tasks for Execute phase (1 per bundle).
+    // Executor runs these tasks - parallelism is automatic based on dependencies.
+    // Single-bundle nodes naturally get 1 task.
+    // =========================================================================
+
+    std::vector<VirtualTask> GetExecutionTasks(VirtualTaskPhase phase) override {
+        // For Execute phase: return N tasks (1 per bundle)
+        if (phase == VirtualTaskPhase::Execute) {
+            return this->CreateParallelTasks(phase, [this](uint32_t i) {
+                VariadicExecuteContext ctx(this, i);
+                ExecuteImpl(ctx);
+            });
+        }
+
+        // For other phases: 1 task that runs the whole phase
+        return NodeInstance::GetExecutionTasks(phase);
     }
 
     // ============================================================================

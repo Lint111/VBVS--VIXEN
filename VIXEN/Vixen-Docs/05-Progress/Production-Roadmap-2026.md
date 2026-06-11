@@ -174,10 +174,194 @@ All Sprint 4 tasks completed. Ready for merge to main and Sprint 5 (CashSystem R
 
 ---
 
-### Sprint 6: Timeline Foundation (NEXT)
+### Sprint 6: Timeline Foundation ✅ CORE COMPLETE
 
+**Branch:** `production/sprint-6-timeline-foundation`
+**Board:** 651785
 **Goal:** Build foundational Timeline system for parallel execution.
-**Status:** 🆕 PLANNING
+**Status:** ✅ Sprints 6.1, 6.2, 6.3 COMPLETE | Sprint 6.4 (WaveScheduler) Planned
+**Progress:** 228h/260h (88%)
+
+---
+
+#### Sprint 6.0.1: Unified Connection System (76h) - PREREQUISITE
+
+**Design Element:** #35
+**Goal:** Single Connect() API for all connection types. Slot metadata determines behavior.
+
+| Task ID | Task | Hours | Priority | Status |
+|---------|------|-------|----------|--------|
+| #324 | SlotFlags Infrastructure | 8h | HIGH | ⏳ Planned |
+| #320 | Type Traits + Concepts | 4h | HIGH | ⏳ Planned |
+| #316 | ConnectionRule Base + Registry | 12h | HIGH | ⏳ Planned |
+| #323 | DirectConnectionRule | 4h | HIGH | ⏳ Planned |
+| #321 | AccumulationConnectionRule | 12h | HIGH | ⏳ Planned |
+| #319 | VariadicConnectionRule Refactor | 8h | HIGH | ⏳ Planned |
+| #322 | Unified Connect API | 8h | HIGH | ⏳ Planned |
+| #317 | Migrate Existing Variadic Nodes | 8h | MEDIUM | ⏳ Planned |
+| #318 | Tests + Documentation | 12h | HIGH | ⏳ Planned |
+
+**Key Deliverables:**
+- `SlotFlags` enum (Accumulation, MultiConnect, ExplicitOrder)
+- `ConnectionRule` base class + registry
+- Type traits: `is_slot_ref_v<T>`, `is_binding_ref_v<T>`
+- Single `Connect()` API with type-based dispatch
+- Deprecated `ConnectVariadic()` wrapper
+
+See [[Sprint6.0.1-Unified-Connection-System]] for detailed design.
+
+---
+
+#### Phase 1: MultiDispatchNode (56h)
+
+| Task ID | Task | Hours | Priority | Status |
+|---------|------|-------|----------|--------|
+| #313 | DispatchPass Structure | 8h | HIGH | ⏳ Planned |
+| #312 | MultiDispatchNode Core | 16h | HIGH | ⏳ Planned |
+| #314 | Pipeline Statistics | 8h | MEDIUM | ⏳ Planned |
+| #311 | Integration Tests | 16h | HIGH | ⏳ Planned |
+| #310 | Documentation & Examples | 8h | MEDIUM | ⏳ Planned |
+
+**Dependencies:** #313 → #312 → #314, #312 → #311 → #310
+
+#### Sprint 6.1: MultiDispatchNode (56h) ✅ COMPLETE
+
+**Design Element:** #36
+**Goal:** Group-based dispatch with pipeline statistics
+**Status:** ✅ Complete (2026-01-04)
+
+**Key Deliverables:**
+- GroupKeyModifier for dispatch pass grouping
+- Per-group pipeline statistics tracking
+- 41 tests passing
+- Full documentation
+
+See [[Sprint6.1-MultiDispatchNode]] for implementation details.
+
+---
+
+#### Sprint 6.2: TaskQueue System (72h) ✅ COMPLETE
+
+**Design Element:** #37
+**Goal:** Budget-aware task queue with priority scheduling
+**Status:** ✅ Complete (2026-01-07)
+**Completed:** 72h/72h (100%)
+
+| Task ID | Task | Hours | Priority | Status |
+|---------|------|-------|----------|--------|
+| #339 | TaskQueue Template | 16h | HIGH | ✅ Complete |
+| #342 | Budget-Aware Dequeue | 16h | HIGH | ✅ Complete |
+| #341 | MultiDispatchNode Integration | 16h | HIGH | ✅ Complete |
+| #343 | Stress Tests | 16h | HIGH | ✅ Complete |
+| #340 | Documentation | 8h | MEDIUM | ✅ Complete |
+
+**Key Deliverables:**
+- [x] TaskQueue<T> template with priority-based scheduling (stable sort)
+- [x] TaskBudget structure with strict/lenient overflow modes
+- [x] Budget enforcement with overflow-safe arithmetic
+- [x] MultiDispatchNode integration (replaced std::deque)
+- [x] TryQueueDispatch() budget-aware API
+- [x] QueueDispatch() backward compatibility (zero-cost bypass)
+- [x] Configuration parameters (FRAME_BUDGET_NS, BUDGET_OVERFLOW_MODE)
+- [x] 28 unit tests (test_task_queue.cpp)
+- [x] 15 integration tests (test_multidispatch_integration.cpp)
+- [x] Comprehensive API documentation (TaskQueue.md - 495 lines)
+
+**Test Coverage:** 43 tests passing (28 unit + 15 integration = 43 total)
+
+**Build Status:** ✅ RenderGraph.lib compiles successfully
+
+**Backward Compatibility:** 100% preserved (Sprint 6.1 tests pass)
+
+**Key Files:**
+- `libraries/RenderGraph/include/Data/TaskBudget.h` (169 lines)
+- `libraries/RenderGraph/include/Core/TaskQueue.h` (+132 lines)
+- `libraries/RenderGraph/tests/test_task_queue.cpp` (396 lines)
+- `libraries/RenderGraph/tests/test_multidispatch_integration.cpp` (454 lines)
+- `Vixen-Docs/Libraries/RenderGraph/TaskQueue.md` (495 lines)
+- `Vixen-Docs/Libraries/MultiDispatchNode.md` (+318 lines)
+
+**Commits:**
+- `86157d4` - feat(Sprint6.2): TaskQueue implementation (Tasks #339, #342, #341)
+- `3bfc528` - test(Sprint6.2): Integration tests (Task #343)
+- `1e6e890` - docs(Sprint6.2): API documentation (Task #340)
+
+See [[Sprint6.2-TaskQueue-System]] for detailed implementation notes.
+
+---
+
+#### Sprint 6.3: Timeline Capacity System (100h) ✅ COMPLETE
+
+**Design Element:** #38
+**Goal:** Adaptive scheduling infrastructure with runtime performance tracking
+**Status:** ✅ Complete (2026-01-09)
+**Completed:** 100h (All 7 phases + additional fixes)
+
+| Phase | Task | Hours | Status |
+|-------|------|-------|--------|
+| Phase 0 | GPUQueryManager Infrastructure | 12h | ✅ Complete |
+| Phase 1 | TimelineCapacityTracker Foundation | 24h | ✅ Complete |
+| Phase 2 | TaskQueue Integration | 16h | ✅ Complete |
+| Phase 3 | Prediction & Calibration | 16h | ✅ Complete |
+| Phase 4 | Event-Driven Architecture | 12h | ✅ Complete |
+| Phase 5 | System Decoupling Analysis | 8h | ✅ Complete |
+| Phase 6 | Frame Lifecycle Decoupling | 8h | ✅ Complete |
+| Phase 7 | Persistence & Polish | 4h | ✅ Complete |
+
+**Key Deliverables:**
+- [x] GPUQueryManager for timestamp query management
+- [x] TimelineCapacityTracker with damped hysteresis (±10% max, 5% deadband)
+- [x] PredictionErrorTracker with bias correction and exponential moving average
+- [x] TaskProfile + TaskProfileRegistry for per-task calibration
+- [x] CalibrationStore for cross-session JSON persistence
+- [x] Event-driven architecture (FrameStart/End, BudgetOverrun/Available events)
+- [x] ScopedSubscriptions RAII helper class
+- [x] Hardware fingerprint detection (GPU + driver version tracking)
+
+**Additional Fixes (2026-01-09):**
+- Fixed SEH exception in accumulation + field extraction tests
+- Added `skipDependencyRegistration` flag to ConnectionContext
+- **Accumulation Slot Semantics Enforcement:**
+  - Removed Role parameter from ACCUMULATION_INPUT_SLOT macros
+  - Accumulation slots ALWAYS use SlotRole::Execute (hardcoded)
+  - Result lifetime is Transient (rebuilt each frame)
+  - Source can be Persistent (enables field extraction) or Transient
+
+**Test Results:** 222+ tests passing
+| Component | Tests |
+|-----------|-------|
+| GPUQueryManager | 35 |
+| TimelineCapacityTracker | 47 |
+| TaskQueue | 35 |
+| MultiDispatchIntegration | 22 |
+| PredictionErrorTracker | 27 |
+| TaskProfile + CalibrationStore | 56 |
+
+**Key Files:**
+- `Core/GPUQueryManager.h` - Timestamp query pool management
+- `Core/TimelineCapacityTracker.h/.cpp` - Budget/measurement tracking
+- `Core/PredictionErrorTracker.h` - Error tracking & correction
+- `Core/TaskProfile.h` - Work unit calibration
+- `Core/TaskProfileRegistry.h` - Central profile management
+- `Core/CalibrationStore.h` - JSON persistence
+- `Core/FrameManager.h` - Frame lifecycle source
+- `EventBus/Message.h` - Budget events, application lifecycle events
+
+See [[Sprint6.3-Timeline-Capacity-System]] for comprehensive details.
+
+---
+
+#### Sprint 6.4: WaveScheduler (84h) - PLANNED
+
+| Task ID | Task | Hours | Priority |
+|---------|------|-------|----------|
+| TBD | ResourceAccessTracker | 16h | HIGH |
+| TBD | Wave Computation Algorithm | 16h | HIGH |
+| TBD | Parallel Wave Execution | 24h | HIGH |
+| TBD | Performance Tests | 16h | HIGH |
+| TBD | Documentation | 12h | MEDIUM |
+
+**Total Sprint 6:** 260h (19 tasks)
 
 See [[Sprint6-Timeline-Foundation]] for detailed planning.
 
@@ -521,6 +705,32 @@ graph LR
 | 2026-01-03 | Added 2 pre-allocation tasks to Sprint 8 (#306-307, 12h) |
 | 2026-01-03 | Added 2 pre-allocation tasks to Sprint 10 (#308-309, 14h) |
 | 2026-01-03 | Updated total: 12 sprints, 118 tasks, 1,440h (+62h from critique) |
+| 2026-01-04 | **Sprint 6 Phase 1 STARTED** - Created HacknPlan tasks #310-314 (56h) |
+| 2026-01-04 | Sprint 6: MultiDispatchNode phase detailed breakdown added |
+| 2026-01-04 | **Sprint 6.0.1 CREATED** - Unified Connection System prerequisite (9 tasks, 76h) |
+| 2026-01-04 | Design Element #35: Unified Connection System architecture |
+| 2026-01-04 | Feature plan: [[Sprint6.0.1-Unified-Connection-System]] |
+| 2026-01-04 | **Sprint 6.1 COMPLETE** - MultiDispatchNode with group-based dispatch (56h, 41 tests) |
+| 2026-01-06 | **Sprint 6.2 Task #339 COMPLETE** - TaskQueue template foundation (16h) |
+| 2026-01-06 | **Sprint 6.2 Task #342 COMPLETE** - Budget-aware dequeue with strict/lenient modes (16h, 28 tests) |
+| 2026-01-06 | **Sprint 6.2 Task #341 COMPLETE** - MultiDispatchNode integration with TaskQueue (16h) |
+| 2026-01-06 | Sprint 6.2: TryQueueDispatch() budget-aware API added, QueueDispatch() backward compatible |
+| 2026-01-06 | **Sprint 6.2 Task #343 COMPLETE** - Integration tests (16h, 15 tests) |
+| 2026-01-06 | **Sprint 6.2 Task #340 COMPLETE** - API documentation (8h, TaskQueue.md 495 lines) |
+| 2026-01-07 | **Sprint 6.2 COMPLETE** - 72h delivered, 43 tests passing (28 unit + 15 integration) |
+| 2026-01-07 | Sprint 6.2: Zero-cost bypass preserves 100% backward compatibility with Sprint 6.1 |
+| 2026-01-07 | Commits: 6ecbcad (template), 86157d4 (impl), 3bfc528 (tests), 1e6e890 (docs) |
+| 2026-01-07 | Sprint 6 progress: 128h/260h (49%) - Sprints 6.1 and 6.2 complete |
+| 2026-01-08 | **Sprint 6.3 Phase 0-7 COMPLETE** - Timeline Capacity System (100h) |
+| 2026-01-08 | GPUQueryManager, TimelineCapacityTracker, PredictionErrorTracker, TaskProfile |
+| 2026-01-08 | CalibrationStore JSON persistence with hardware fingerprint detection |
+| 2026-01-08 | Event-driven architecture with ScopedSubscriptions RAII helper |
+| 2026-01-08 | 222 tests passing across 6 test files |
+| 2026-01-09 | Fixed SEH exception in accumulation + field extraction tests |
+| 2026-01-09 | Added `skipDependencyRegistration` flag to ConnectionContext |
+| 2026-01-09 | **Accumulation Slot Semantics Enforcement** - Execute role hardcoded, Transient result |
+| 2026-01-09 | Removed Role parameter from ACCUMULATION_INPUT_SLOT macros |
+| 2026-01-09 | **Sprint 6.3 COMPLETE** - Sprint 6 progress: 228h/260h (88%) |
 
 ---
 

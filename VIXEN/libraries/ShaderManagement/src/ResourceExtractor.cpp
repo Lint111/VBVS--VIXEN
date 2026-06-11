@@ -1,6 +1,7 @@
 #include "ResourceExtractor.h"
 #include <glm/glm.hpp>
 #include <array>
+#include <cstring>
 #include <utility>
 
 namespace ShaderManagement {
@@ -95,7 +96,7 @@ size_t ResourceExtractor::ExtractZero(
 // Each follows pattern: cast handle to typed pointer, memcpy to dest, return size.
 
 #define SPIRV_EXTRACTOR_TYPE(BaseType, VecSize, CppType, FnName) \
-    size_t FnName(void* handle, uint8_t* dest, size_t size) { \
+    static size_t FnName(void* handle, uint8_t* dest, size_t size) { \
         if (!handle || !dest) return 0; \
         if (size < sizeof(CppType)) return 0; \
         auto* typedValue = static_cast<CppType*>(handle); \

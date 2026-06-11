@@ -1,3 +1,9 @@
+# Auto-provisioned Vulkan SDK cache (ProvisionVulkan.cmake)
+.vulkan-sdk/
+
+# Auto-provisioned X11 windowing dev cache (ProvisionWindowingDeps.cmake)
+.windowing-deps/
+
 # Visual Studio files
 .vs/
 *.suo
@@ -67,6 +73,10 @@ data/*
 !data/finalized/
 !data/templates/
 
+# Exception: Keep RenderGraph Data/ folder (contains node configs)
+!libraries/*/include/Data/
+!libraries/*/include/Data/**
+
 # Binaries and generated logs
 binaries/
 vulkan_app_log.txt
@@ -107,13 +117,19 @@ build/**/CMakeFiles/
 # Claude Code files
 .claude_code/
 .claudesync/
+*.local.json
+.claude/settings.local.json
 
 # Ignore .claude except for hooks and settings we want to track
 .claude/*
 !.claude/hooks/
-!.claude/settings.json
-!.claude/settings.local.json
+.claude/settings.json
 .claude/hooks/.pre-commit-approved
+
+# Node/npm artifacts (Claude Code should be installed globally, not per-project)
+node_modules/
+package.json
+package-lock.json
 
 # Cache directories
 .cache/
@@ -179,4 +195,14 @@ GW25*.pdf
 # Working notes (local only)
 PROPOSED-PAPER-IMPROVEMENTS.md
 
+# Pre Commit generated files
+.pre-commit-review-*.md
+
+# Sprint planning artifacts (should be in Obsidian/HacknPlan)
+.SPRINT-*
+SPRINT-*-CREATION-REPORT.md
+SPRINT-*-FILES.txt
+SPRINT-*-QUICK-REFERENCE.md
+.hacknplan-sprint-*.md
+.hacknplan-sprint-*.json
 

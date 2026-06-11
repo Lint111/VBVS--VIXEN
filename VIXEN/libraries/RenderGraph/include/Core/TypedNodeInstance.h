@@ -3,6 +3,7 @@
 #include "NodeInstance.h"
 #include "Data/Core/ResourceConfig.h"
 #include "Data/Core/CompileTimeResourceSystem.h"
+#include "Data/Core/ConnectionConcepts.h"  // For Iterable concept (Sprint 6.0.2)
 #include <future>
 #include <vector>
 
@@ -166,9 +167,13 @@ public:
          *
          * Phase H: Broadcast semantics - if producer outputs once during Compile (taskIndex=0)
          * but consumer reads during Execute with varying taskIndex, fall back to taskIndex=0.
+         *
+         * Sprint 6.0.1: Accumulation slot support
+         * - For regular slots: returns SlotType::Type
+         * - For accumulation slots: returns std::vector<SlotType::Type>
          */
         template<typename SlotType>
-        typename SlotType::Type In(SlotType slot) const {
+        auto In(SlotType slot) const {
             static_assert(SlotType::index < ConfigType::INPUT_COUNT, "Input index out of bounds");
 
             // Try current taskIndex first
@@ -180,8 +185,29 @@ public:
                 res = typedNode->NodeInstance::GetInput(SlotType::index, 0);
             }
 
-            if (!res) return typename SlotType::Type{};
-            return res->GetHandle<typename SlotType::Type>();
+            // Sprint 6.0.1-6.0.2: Handle accumulation slots
+            // V1 (old): SlotType::Type is element type (bool), wrap in vector
+            // V2 (new): SlotType::Type is container type (std::vector<bool>), no wrapping
+            if constexpr (SlotType::isAccumulation) {
+                using SlotTypeRaw = typename SlotType::Type;
+
+                // Sprint 6.0.2: Check if type is already a container (V2 macro)
+                // If iterable, it's already a container - no wrapping needed
+                if constexpr (Iterable<SlotTypeRaw>) {
+                    // V2: Type is already container (std::vector<T>)
+                    if (!res) return SlotTypeRaw{};
+                    return res->GetHandle<SlotTypeRaw>();
+                } else {
+                    // V1: Type is element, wrap in vector (backward compat)
+                    using VectorType = std::vector<SlotTypeRaw>;
+                    if (!res) return VectorType{};
+                    return res->GetHandle<VectorType>();
+                }
+            } else {
+                // Regular slot: return T directly
+                if (!res) return typename SlotType::Type{};
+                return res->GetHandle<typename SlotType::Type>();
+            }
         }
 
         /**
@@ -371,11 +397,34 @@ public:
     }
 
     void ExecuteImpl() override {
+        // Sequential execution over all tasks (used when NOT using virtual task executor)
         uint32_t taskCount = DetermineTaskCount();
         for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
             TypedExecuteContext ctx(this, taskIndex);
             ExecuteImpl(ctx);
         }
+    }
+
+    // =========================================================================
+    // Sprint 6.5: Task Parallelism API (FINAL - not overridable)
+    // =========================================================================
+    //
+    // Returns N tasks for Execute phase (1 per bundle).
+    // Executor runs these tasks - parallelism is automatic based on dependencies.
+    // Single-bundle nodes naturally get 1 task.
+    // =========================================================================
+
+    std::vector<VirtualTask> GetExecutionTasks(VirtualTaskPhase phase) override {
+        // For Execute phase: return N tasks (1 per bundle)
+        if (phase == VirtualTaskPhase::Execute) {
+            return CreateParallelTasks(phase, [this](uint32_t i) {
+                TypedExecuteContext ctx(this, i);
+                ExecuteImpl(ctx);
+            });
+        }
+
+        // For other phases: 1 task that runs the whole phase
+        return NodeInstance::GetExecutionTasks(phase);
     }
 
 protected:

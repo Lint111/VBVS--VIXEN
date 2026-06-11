@@ -386,43 +386,35 @@ void DeviceBudgetManager::SetFrameDeltaWarningThreshold(uint64_t threshold) {
 void DeviceBudgetManager::SubscribeToFrameEvents() {
     if (!messageBus_) return;
 
-    // Subscribe to FrameStartEvent
-    frameStartSubscription_ = messageBus_->Subscribe(
-        Vixen::EventBus::FrameStartEvent::TYPE,
-        [this](const Vixen::EventBus::BaseEventMessage& msg) {
+    subscriptions_.SetBus(messageBus_);
+
+    // Subscribe to FrameStartEvent using RAII
+    subscriptions_.SubscribeWithResult<Vixen::EventBus::FrameStartEvent>(
+        [this](const Vixen::EventBus::FrameStartEvent& msg) {
             return HandleFrameStartEvent(msg);
         }
     );
 
-    // Subscribe to FrameEndEvent
-    frameEndSubscription_ = messageBus_->Subscribe(
-        Vixen::EventBus::FrameEndEvent::TYPE,
-        [this](const Vixen::EventBus::BaseEventMessage& msg) {
+    // Subscribe to FrameEndEvent using RAII
+    subscriptions_.SubscribeWithResult<Vixen::EventBus::FrameEndEvent>(
+        [this](const Vixen::EventBus::FrameEndEvent& msg) {
             return HandleFrameEndEvent(msg);
         }
     );
 }
 
 void DeviceBudgetManager::UnsubscribeFromFrameEvents() {
-    if (!messageBus_) return;
-
-    if (frameStartSubscription_ != 0) {
-        messageBus_->Unsubscribe(frameStartSubscription_);
-        frameStartSubscription_ = 0;
-    }
-
-    if (frameEndSubscription_ != 0) {
-        messageBus_->Unsubscribe(frameEndSubscription_);
-        frameEndSubscription_ = 0;
-    }
+    // ScopedSubscriptions handles unsubscription automatically via RAII
+    // No manual Unsubscribe() calls needed
+    subscriptions_.UnsubscribeAll();
 }
 
-bool DeviceBudgetManager::HandleFrameStartEvent(const Vixen::EventBus::BaseEventMessage& /*msg*/) {
+bool DeviceBudgetManager::HandleFrameStartEvent(const Vixen::EventBus::FrameStartEvent& /*msg*/) {
     OnFrameStart();
     return false;  // Don't consume, allow other listeners
 }
 
-bool DeviceBudgetManager::HandleFrameEndEvent(const Vixen::EventBus::BaseEventMessage& /*msg*/) {
+bool DeviceBudgetManager::HandleFrameEndEvent(const Vixen::EventBus::FrameEndEvent& /*msg*/) {
     OnFrameEnd();
     return false;  // Don't consume, allow other listeners
 }

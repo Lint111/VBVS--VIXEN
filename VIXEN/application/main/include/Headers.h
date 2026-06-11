@@ -16,9 +16,13 @@
 #define APP_NAME_STR_LEN 80
 #define _CRT_SECURE_NO_WARNINGS
 #else // _WIN32
-#define  VK_USE_PLATFORM_XCB_KHR
 #include <unistd.h>
 #endif // _WIN32
+
+// NOTE: No VK_USE_PLATFORM_* surface macro is defined here. The platform surface (Win32/Xlib/
+// Wayland) is owned by GLFW: glfwCreateWindowSurface creates it and glfwGetRequiredInstanceExtensions
+// reports the instance extension to enable. Defining e.g. VK_USE_PLATFORM_XCB_KHR would force
+// vulkan.h to #include <xcb/xcb.h>, which need not be present on a headless/cross-platform build.
 
 // ============================================================================
 // Vulkan API

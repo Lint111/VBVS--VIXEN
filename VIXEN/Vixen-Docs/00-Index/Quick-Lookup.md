@@ -11,12 +11,21 @@ Fast-access reference for Claude Code. Read this file first for any documentatio
 
 ---
 
+## Recent Updates
+
+| Date | Topic | File |
+|------|-------|------|
+| 2026-01-04 | Sprint 6.0.1: Unified Connection System COMPLETE | [[../05-Progress/features/Sprint6.0.1-Unified-Connection-System]] |
+
+---
+
 ## Architecture
 
 | Topic | File |
 |-------|------|
 | System overview | [[../01-Architecture/Overview]] |
 | RenderGraph system | [[../01-Architecture/RenderGraph-System]] |
+| RenderGraph connection API | [[../05-Progress/features/Sprint6.0.1-Unified-Connection-System]] |
 | Vulkan pipeline | [[../01-Architecture/Vulkan-Pipeline]] |
 | Type system | [[../01-Architecture/Type-System]] |
 

@@ -137,6 +137,10 @@ FetchContent_Declare(
 set(GAIA_BUILD_UNITTEST OFF CACHE BOOL "Build Gaia unit tests" FORCE)
 set(GAIA_BUILD_EXAMPLES OFF CACHE BOOL "Build Gaia examples" FORCE)
 set(GAIA_PROFILER_CPU OFF CACHE BOOL "Enable Gaia CPU profiler" FORCE)
+# The committed single_include/gaia.h is used as-is; do not regenerate it at build
+# time. Regeneration runs a shell amalgamation script that is unavailable in this
+# checkout (and needs clang-format), and is unnecessary since the header exists.
+set(GAIA_GENERATE_SINGLE_HEADER OFF CACHE BOOL "Generate the single file header automatically." FORCE)
 
 FetchContent_MakeAvailable(gaia)
 
@@ -272,5 +276,61 @@ if(TARGET VulkanMemoryAllocator)
 endif()
 
 message(STATUS "VulkanMemoryAllocator (VMA) fetched - GPU memory management available")
+
+# ============================================================================
+# GLFW - cross-platform window + Vulkan surface + input (replaces raw Win32 windowing)
+# ============================================================================
+FetchContent_Declare(
+    glfw
+    GIT_REPOSITORY https://github.com/glfw/glfw.git
+    GIT_TAG        3.4
+    GIT_SHALLOW    TRUE
+)
+set(GLFW_BUILD_DOCS     OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(GLFW_INSTALL        OFF CACHE BOOL "" FORCE)
+# Self-provision GLFW's Linux windowing backend deps (X11 dev libs) into a cache and enable the X11
+# backend; if unavailable, falls back to the null backend so the build never breaks. No-op on
+# Windows (Win32) / macOS (Cocoa). Override with -DGLFW_BUILD_X11 / -DVIXEN_AUTO_PROVISION_WINDOWING.
+include(${CMAKE_SOURCE_DIR}/cmake/ProvisionWindowingDeps.cmake)
+FetchContent_MakeAvailable(glfw)
+if(TARGET glfw)
+    set_target_properties(glfw PROPERTIES FOLDER "Dependencies")
+endif()
+message(STATUS "GLFW fetched - cross-platform window/surface/input available")
+
+# ============================================================================
+# oneTBB - Intel Threading Building Blocks
+# ============================================================================
+# Used by: SVO (parallel octree), RenderGraph (TBBGraphExecutor)
+
+find_package(TBB QUIET)
+if(NOT TARGET TBB::tbb)
+    FetchContent_Declare(
+        TBB
+        GIT_REPOSITORY https://github.com/oneapi-src/oneTBB
+        GIT_TAG v2021.11.0
+        GIT_SHALLOW TRUE
+    )
+    set(TBB_TEST OFF CACHE BOOL "" FORCE)
+    set(TBB_EXAMPLES OFF CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(TBB)
+
+    # Organize in Dependencies folder
+    if(TARGET tbb)
+        set_target_properties(tbb PROPERTIES FOLDER "Dependencies")
+    endif()
+    if(TARGET tbbmalloc)
+        set_target_properties(tbbmalloc PROPERTIES FOLDER "Dependencies")
+    endif()
+    if(TARGET tbbmalloc_proxy)
+        set_target_properties(tbbmalloc_proxy PROPERTIES FOLDER "Dependencies")
+    endif()
+
+    message(STATUS "oneTBB fetched - parallel execution available to all libraries")
+else()
+    message(STATUS "oneTBB found - parallel execution available to all libraries")
+endif()
 
 message(STATUS "Dependencies configured - all third-party libraries fetched")

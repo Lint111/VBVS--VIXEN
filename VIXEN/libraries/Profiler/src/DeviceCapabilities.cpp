@@ -2,6 +2,7 @@
 #include <sstream>
 #include <iomanip>
 #include <vector>
+#include <cstring>
 
 namespace Vixen::Profiler {
 
@@ -60,10 +61,10 @@ DeviceCapabilities DeviceCapabilities::Capture(VkPhysicalDevice physicalDevice) 
     vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extensionCount, extensions.data());
 
     for (const auto& ext : extensions) {
-        if (strcmp(ext.extensionName, VK_KHR_PERFORMANCE_QUERY_EXTENSION_NAME) == 0) {
+        if (std::strcmp(ext.extensionName, VK_KHR_PERFORMANCE_QUERY_EXTENSION_NAME) == 0) {
             caps.performanceQuerySupported = true;
         }
-        if (strcmp(ext.extensionName, VK_EXT_MEMORY_BUDGET_EXTENSION_NAME) == 0) {
+        if (std::strcmp(ext.extensionName, VK_EXT_MEMORY_BUDGET_EXTENSION_NAME) == 0) {
             caps.memoryBudgetSupported = true;
         }
     }

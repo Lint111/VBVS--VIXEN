@@ -1,6 +1,7 @@
 #include "Headers.h"
 #include "Nodes/DeviceNode.h"
 #include "Core/RenderGraph.h"
+#include "Core/GPUQueryManager.h"
 #include "Message.h"
 #include "MessageBus.h"
 #include "Core/NodeLogging.h"
@@ -529,6 +530,24 @@ void DeviceNode::CreateDeviceBudgetManager(CashSystem::DeviceRegistry& deviceReg
 
     vulkanDevice->SetUpdater(std::move(updater));
     NODE_LOG_INFO("[DeviceNode] BatchedUpdater created and connected to VulkanDevice");
+
+    // Sprint 6.3 Phase 0: Create GPUQueryManager for coordinated GPU timestamp queries
+    // This prevents query slot conflicts between ProfilerSystem, TimelineCapacityTracker, and nodes
+    constexpr uint32_t framesInFlight = 4;  // Match FrameSyncNode (MAX_FRAMES_IN_FLIGHT)
+    constexpr uint32_t maxQueryConsumers = 16;  // Allow up to 16 consumers (nodes, profiler, tracker, etc.)
+
+    auto queryManager = std::make_shared<GPUQueryManager>(vulkanDevice.get(), framesInFlight, maxQueryConsumers);
+
+    // Store in VulkanDevice using template method to avoid circular dependency
+    vulkanDevice->SetQueryManagerInternal(queryManager);
+
+    if (queryManager->IsTimestampSupported()) {
+        NODE_LOG_INFO("[DeviceNode] GPUQueryManager created with " +
+                     std::to_string(maxQueryConsumers) + " query slots (period: " +
+                     std::to_string(queryManager->GetTimestampPeriod()) + " ns/tick)");
+    } else {
+        NODE_LOG_WARNING("[DeviceNode] GPU timestamp queries NOT supported on this device");
+    }
 
     // Log initial stats
     auto stats = budgetManager->GetStats();

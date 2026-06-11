@@ -3,9 +3,55 @@
 #include "NodeHelpers/ValidationHelpers.h"
 #include <iostream>
 
+#define GLFW_INCLUDE_NONE   // don't pull in <GL/gl.h> (absent on headless/WSL); Vulkan-only below
+#define GLFW_INCLUDE_VULKAN
+#include <GLFW/glfw3.h>
+
 using namespace RenderGraph::NodeHelpers;
 
 namespace Vixen::RenderGraph {
+
+namespace {
+// Map VIXEN's KeyCode (which uses Win32 virtual-key values) to GLFW key codes.
+// Letters and digits already coincide (GLFW uses ASCII uppercase: GLFW_KEY_A==0x41, GLFW_KEY_0==0x30),
+// but modifiers, escape and the arrow keys differ, so they need an explicit translation.
+int KeyCodeToGlfw(EventBus::KeyCode key) {
+    using EventBus::KeyCode;
+    switch (key) {
+        // Letters (ASCII-aligned, but list explicitly for clarity)
+        case KeyCode::W: return GLFW_KEY_W;
+        case KeyCode::A: return GLFW_KEY_A;
+        case KeyCode::S: return GLFW_KEY_S;
+        case KeyCode::D: return GLFW_KEY_D;
+        case KeyCode::Q: return GLFW_KEY_Q;
+        case KeyCode::E: return GLFW_KEY_E;
+        case KeyCode::C: return GLFW_KEY_C;
+        // Digits
+        case KeyCode::Key0: return GLFW_KEY_0;
+        case KeyCode::Key1: return GLFW_KEY_1;
+        case KeyCode::Key2: return GLFW_KEY_2;
+        case KeyCode::Key3: return GLFW_KEY_3;
+        case KeyCode::Key4: return GLFW_KEY_4;
+        case KeyCode::Key5: return GLFW_KEY_5;
+        case KeyCode::Key6: return GLFW_KEY_6;
+        case KeyCode::Key7: return GLFW_KEY_7;
+        case KeyCode::Key8: return GLFW_KEY_8;
+        case KeyCode::Key9: return GLFW_KEY_9;
+        // Special keys (differ from Win32 VK codes)
+        case KeyCode::Space:  return GLFW_KEY_SPACE;
+        case KeyCode::Shift:  return GLFW_KEY_LEFT_SHIFT;
+        case KeyCode::Ctrl:   return GLFW_KEY_LEFT_CONTROL;
+        case KeyCode::Alt:    return GLFW_KEY_LEFT_ALT;
+        case KeyCode::Escape: return GLFW_KEY_ESCAPE;
+        // Arrow keys
+        case KeyCode::Left:   return GLFW_KEY_LEFT;
+        case KeyCode::Right:  return GLFW_KEY_RIGHT;
+        case KeyCode::Up:     return GLFW_KEY_UP;
+        case KeyCode::Down:   return GLFW_KEY_DOWN;
+        default: return GLFW_KEY_UNKNOWN;
+    }
+}
+}  // namespace
 
 // ====== InputNodeType ======
 
@@ -72,10 +118,10 @@ void InputNode::SetupImpl(TypedSetupContext& ctx) {
 void InputNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[InputNode] Compile");
 
-    // Validate HWND input using helper
-    hwnd = ValidateInput<HWND>(ctx, "HWND", InputNodeConfig::HWND_IN);
+    // Validate WINDOW input using helper
+    window = ValidateInput<GLFWwindow*>(ctx, "WINDOW", InputNodeConfig::WINDOW);
 
-    NODE_LOG_INFO("[InputNode] HWND received successfully");
+    NODE_LOG_INFO("[InputNode] Window received successfully");
 }
 
 void InputNode::ExecuteImpl(TypedExecuteContext& ctx) {
@@ -91,7 +137,7 @@ void InputNode::ExecuteImpl(TypedExecuteContext& ctx) {
     }
 
     // Initialize mouse capture based on capture mode
-    if (!mouseCaptured && hwnd && mouseCaptureMode_ == MouseCaptureMode::CenterLock) {
+    if (!mouseCaptured && window && mouseCaptureMode_ == MouseCaptureMode::CenterLock) {
         InitializeMouseCapture();
     }
 
@@ -108,10 +154,8 @@ void InputNode::ExecuteImpl(TypedExecuteContext& ctx) {
     PublishKeyEvents();
     // PublishMouseEvents() disabled - all input via InputState polling
 
-    // Re-center mouse for continuous movement (only in CenterLock mode)
-    if (mouseCaptured && hwnd && mouseCaptureMode_ == MouseCaptureMode::CenterLock) {
-        RecenterMouse();
-    }
+    // GLFW's GLFW_CURSOR_DISABLED mode provides virtual unbounded cursor movement and recenters
+    // internally, so no manual recentering is needed (unlike the old Win32 SetCursorPos approach).
 
     // Modern polling interface: Populate InputState and output it
     PopulateInputState();
@@ -154,34 +198,41 @@ void InputNode::PopulateInputState() {
     else if (inputState_.IsKeyPressed(KeyCode::Key8)) inputState_.debugMode = 8;
     else if (inputState_.IsKeyPressed(KeyCode::Key9)) inputState_.debugMode = 9;
 
-    // Get current mouse position and calculate delta
-    POINT cursorPos;
-    if (GetCursorPos(&cursorPos) && ScreenToClient(hwnd, &cursorPos)) {
+    // Get current mouse position and calculate delta (GLFW reports cursor in window coordinates;
+    // in GLFW_CURSOR_DISABLED mode this is a virtual unbounded position ideal for camera deltas).
+    if (window) {
+        double cursorX = 0.0, cursorY = 0.0;
+        glfwGetCursorPos(window, &cursorX, &cursorY);
+        int32_t ix = static_cast<int32_t>(cursorX);
+        int32_t iy = static_cast<int32_t>(cursorY);
+
         // Calculate this frame's mouse movement delta
-        float deltaX = static_cast<float>(cursorPos.x - lastMouseX);
-        float deltaY = static_cast<float>(cursorPos.y - lastMouseY);
+        float deltaX = static_cast<float>(ix - lastMouseX);
+        float deltaY = static_cast<float>(iy - lastMouseY);
         inputState_.mouseDelta = glm::vec2(deltaX, deltaY);
 
         // Store position for next frame's delta calculation
-        lastMouseX = cursorPos.x;
-        lastMouseY = cursorPos.y;
+        lastMouseX = ix;
+        lastMouseY = iy;
 
         // Update current position in input state
-        inputState_.mousePosition = glm::vec2(cursorPos.x, cursorPos.y);
-    }
+        inputState_.mousePosition = glm::vec2(static_cast<float>(ix), static_cast<float>(iy));
 
-    // Mouse buttons (query current state)
-    inputState_.mouseButtons[0] = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
-    inputState_.mouseButtons[1] = (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0;
-    inputState_.mouseButtons[2] = (GetAsyncKeyState(VK_MBUTTON) & 0x8000) != 0;
+        // Mouse buttons (query current state)
+        inputState_.mouseButtons[0] = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+        inputState_.mouseButtons[1] = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
+        inputState_.mouseButtons[2] = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_MIDDLE) == GLFW_PRESS;
+    }
 }
 
 void InputNode::CleanupImpl(TypedCleanupContext& ctx) {
     NODE_LOG_INFO("[InputNode] Cleanup");
 
-    // Release mouse capture
+    // Release mouse capture (restore normal cursor)
     if (mouseCaptured) {
-        ReleaseCapture();
+        if (window) {
+            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+        }
         mouseCaptured = false;
     }
 
@@ -197,45 +248,34 @@ void InputNode::UpdateDeltaTime() {
 }
 
 void InputNode::InitializeMouseCapture() {
-    // Get window center for re-centering
-    RECT rect;
-    if (GetClientRect(hwnd, &rect)) {
-        int centerX = (rect.right - rect.left) / 2;
-        int centerY = (rect.bottom - rect.top) / 2;
-        POINT center = {centerX, centerY};
-        ClientToScreen(hwnd, &center);
-        SetCursorPos(center.x, center.y);
+    if (!window) return;
 
-        lastMouseX = centerX;
-        lastMouseY = centerY;
-    }
+    // GLFW_CURSOR_DISABLED hides the cursor and provides virtual unbounded motion (the
+    // cross-platform equivalent of Win32 SetCapture + manual recentering for FPS camera control).
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
-    // Capture mouse to window
-    SetCapture(hwnd);
+    // Seed the last-mouse position from the current cursor so the first frame's delta is ~0.
+    double cursorX = 0.0, cursorY = 0.0;
+    glfwGetCursorPos(window, &cursorX, &cursorY);
+    lastMouseX = static_cast<int32_t>(cursorX);
+    lastMouseY = static_cast<int32_t>(cursorY);
+
     mouseCaptured = true;
-    NODE_LOG_INFO("[InputNode] Mouse captured for game mode");
+    NODE_LOG_INFO("[InputNode] Mouse captured for game mode (GLFW_CURSOR_DISABLED)");
 }
 
 void InputNode::RecenterMouse() {
-    RECT rect;
-    GetClientRect(hwnd, &rect);
-    int centerX = (rect.right - rect.left) / 2;
-    int centerY = (rect.bottom - rect.top) / 2;
-    POINT center = {centerX, centerY};
-    ClientToScreen(hwnd, &center);
-    SetCursorPos(center.x, center.y);
-
-    // Update last position to center (avoid accumulated drift)
-    lastMouseX = centerX;
-    lastMouseY = centerY;
+    // No-op under GLFW: GLFW_CURSOR_DISABLED recenters internally and reports virtual unbounded
+    // motion, so the old Win32 manual SetCursorPos recentering is unnecessary.
 }
 
 // ====== Input Polling ======
 
 bool InputNode::IsKeyDown(EventBus::KeyCode key) const {
-    // GetAsyncKeyState returns high-order bit set if key is down
-    SHORT state = GetAsyncKeyState(static_cast<int>(key));
-    return (state & 0x8000) != 0;
+    if (!window) return false;
+    int glfwKey = KeyCodeToGlfw(key);
+    if (glfwKey == GLFW_KEY_UNKNOWN) return false;
+    return glfwGetKey(window, glfwKey) == GLFW_PRESS;
 }
 
 bool InputNode::IsShiftPressed() const {
@@ -264,19 +304,17 @@ void InputNode::PollKeyboard() {
 }
 
 void InputNode::PollMouse() {
-    // Get mouse position in client coordinates
-    POINT cursorPos;
-    if (GetCursorPos(&cursorPos)) {
-        // Convert to client coordinates
-        if (ScreenToClient(hwnd, &cursorPos)) {
-            if (firstMousePoll) {
-                // First frame: initialize without delta
-                lastMouseX = cursorPos.x;
-                lastMouseY = cursorPos.y;
-                firstMousePoll = false;
-            }
-            // Don't update lastMouse here - let PublishMouseEvents do it after calculating delta
+    // Get mouse position in window coordinates (GLFW)
+    if (window) {
+        double cursorX = 0.0, cursorY = 0.0;
+        glfwGetCursorPos(window, &cursorX, &cursorY);
+        if (firstMousePoll) {
+            // First frame: initialize without delta
+            lastMouseX = static_cast<int32_t>(cursorX);
+            lastMouseY = static_cast<int32_t>(cursorY);
+            firstMousePoll = false;
         }
+        // Don't update lastMouse here - let PopulateInputState do it after calculating delta
     }
 }
 
@@ -312,10 +350,13 @@ void InputNode::PublishMouseEvents() {
     }
 
     // Get current mouse position and delta (already calculated in PopulateInputState)
-    POINT cursorPos;
-    if (!GetCursorPos(&cursorPos) || !ScreenToClient(hwnd, &cursorPos)) {
+    if (!window) {
         return;
     }
+    double rawCursorX = 0.0, rawCursorY = 0.0;
+    glfwGetCursorPos(window, &rawCursorX, &rawCursorY);
+    int32_t cursorPosX = static_cast<int32_t>(rawCursorX);
+    int32_t cursorPosY = static_cast<int32_t>(rawCursorY);
 
     // Use delta from inputState (calculated in PopulateInputState)
     float deltaX = inputState_.mouseDelta.x;
@@ -356,8 +397,8 @@ void InputNode::PublishMouseEvents() {
 
         auto event = std::make_unique<EventBus::MouseMoveStartEvent>(
             instanceId,
-            cursorPos.x,
-            cursorPos.y,
+            cursorPosX,
+            cursorPosY,
             deltaX,
             deltaY
         );
@@ -371,8 +412,8 @@ void InputNode::PublishMouseEvents() {
 
         auto event = std::make_unique<EventBus::MouseMoveEndEvent>(
             instanceId,
-            cursorPos.x,
-            cursorPos.y,
+            cursorPosX,
+            cursorPosY,
             totalDeltaX,
             totalDeltaY,
             duration

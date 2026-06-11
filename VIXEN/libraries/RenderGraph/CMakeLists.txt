@@ -30,6 +30,7 @@ endif()
 set(RENDERGRAPH_DATA_CORE_HEADERS
     include/Data/BasicDataTypes.h
     include/Data/DeviceHandles.h
+    include/Data/DispatchPass.h
     include/Data/LayerAndExtensionRequirementData.h
     include/Data/ParameterDataTypes.h
     include/Data/VariantDescriptors.h
@@ -49,6 +50,7 @@ set(RENDERGRAPH_DATA_NODE_CONFIGS
     include/Data/Nodes/CommandPoolNodeConfig.h
     include/Data/Nodes/ComputeDispatchNodeConfig.h
     include/Data/Nodes/ComputePipelineNodeConfig.h
+    include/Data/Nodes/MultiDispatchNodeConfig.h
     include/Data/Nodes/ConstantNodeConfig.h
     include/Data/Nodes/DepthBufferNodeConfig.h
     include/Data/Nodes/DescriptorResourceGathererNodeConfig.h
@@ -78,14 +80,43 @@ set(RENDERGRAPH_DATA_NODE_CONFIGS
 )
 
 # ============================================================================
+# Connection System (Sprint 6.0.1)
+# ============================================================================
+
+set(RENDERGRAPH_CONNECTION_HEADERS
+    include/Connection/ConnectionTypes.h
+    include/Connection/ConnectionRule.h
+    include/Connection/ConnectionRuleRegistry.h
+    include/Connection/ConnectionPipeline.h
+    include/Connection/ConnectionModifier.h
+    include/Connection/Rules/DirectConnectionRule.h
+    include/Connection/Rules/AccumulationConnectionRule.h
+    include/Connection/Rules/VariadicConnectionRule.h
+    include/Connection/Modifiers/FieldExtractionModifier.h
+    include/Connection/Modifiers/SlotRoleModifier.h
+    include/Connection/Modifiers/DebugTagModifier.h
+    include/Connection/Modifiers/AccumulationSortConfig.h
+)
+
+set(RENDERGRAPH_CONNECTION_SOURCES
+    src/Connection/ConnectionRuleRegistry.cpp
+    src/Connection/ConnectionPipeline.cpp
+    src/Connection/Rules/DirectConnectionRule.cpp
+    src/Connection/Rules/AccumulationConnectionRule.cpp
+    src/Connection/Rules/VariadicConnectionRule.cpp
+)
+
+# ============================================================================
 # Core Implementation Headers
 # ============================================================================
 
 set(RENDERGRAPH_CORE_HEADERS
     # Note: Memory/Lifetime headers moved to ResourceManagement library
+    # Note: ConnectionRule moved to Connection/ folder (Sprint 6.0.1)
     include/Core/ComputePerformanceLogger.h
     include/Core/FieldExtractor.h
     include/Core/GPUPerformanceLogger.h
+    include/Core/GPUQueryManager.h  # Sprint 6.3: Task #344 - Query pool coordinator
     include/Core/GraphLifecycleHooks.h
     include/Core/GraphTopology.h
     include/Core/IGraphCompilable.h
@@ -98,10 +129,18 @@ set(RENDERGRAPH_CORE_HEADERS
     include/Core/NodeTypeRegistry.h
     include/Core/PerFrameResources.h
     include/Core/RenderGraph.h
+    include/Core/ResourceAccessTracker.h  # Sprint 6.4: Task #349 - Conflict detection
     include/Core/ResourceDependencyTracker.h
+    include/Core/WaveScheduler.h  # Sprint 6.4: Task #347 - Wave computation
     include/Core/SlotTask.h
     # Note: StatefulContainer.h moved to ResourceManagement library
+    include/Core/TaskQueue.h  # Sprint 6.2: Task #339 - Budget-aware task queue
+    include/Core/TimelineCapacityTracker.h  # Sprint 6.3: Task #344 - Timeline capacity tracker
     include/Core/Timer.h
+    include/Core/VirtualTask.h  # Sprint 6.5: Task-level parallelism
+    include/Core/VirtualResourceAccessTracker.h  # Sprint 6.5: Per-task resource tracking
+    include/Core/TaskDependencyGraph.h  # Sprint 6.5: Task dependency resolution
+    include/Core/TBBVirtualTaskExecutor.h  # Sprint 6.5: Virtual task executor
     include/Core/TypedConnection.h
     include/Core/TypedNodeInstance.h
     include/Core/UnknownTypeRegistry.h
@@ -115,7 +154,9 @@ set(RENDERGRAPH_DATA_CORE_SOURCES
 
 set(RENDERGRAPH_CORE_SOURCES
     # Note: Memory/Lifetime sources moved to ResourceManagement library
+    # Note: ConnectionRule.cpp split into Connection/ folder
     src/Core/GPUPerformanceLogger.cpp
+    src/Core/GPUQueryManager.cpp  # Sprint 6.3: Task #344 - Query pool coordinator
     src/Core/GraphLifecycleHooks.cpp
     src/Core/GraphTopology.cpp
     src/Core/LoopManager.cpp
@@ -124,9 +165,17 @@ set(RENDERGRAPH_CORE_SOURCES
     src/Core/NodeTypeRegistry.cpp
     src/Core/PerFrameResources.cpp
     src/Core/RenderGraph.cpp
+    src/Core/ResourceAccessTracker.cpp  # Sprint 6.4: Task #349 - Conflict detection
     src/Core/ResourceDependencyTracker.cpp
+    src/Core/WaveScheduler.cpp  # Sprint 6.4: Task #347 - Wave computation
     src/Core/SlotTask.cpp
+    src/Core/TimelineCapacityTracker.cpp  # Sprint 6.3: Task #344 - Timeline capacity tracker
+    src/Core/TaskProfileRegistry.cpp  # Sprint 6.5: Profile factory initialization
+    src/Core/TaskQueue.cpp  # Sprint 6.2: Task #339 - Template instantiations
     src/Core/Timer.cpp
+    src/Core/VirtualResourceAccessTracker.cpp  # Sprint 6.5: Per-task resource tracking
+    src/Core/TaskDependencyGraph.cpp  # Sprint 6.5: Task dependency resolution
+    src/Core/TBBVirtualTaskExecutor.cpp  # Sprint 6.5: Virtual task executor
 )
 
 # ============================================================================
@@ -139,6 +188,7 @@ set(RENDERGRAPH_NODE_HEADERS
     include/Nodes/CommandPoolNode.h
     include/Nodes/ComputeDispatchNode.h
     include/Nodes/ComputePipelineNode.h
+    include/Nodes/MultiDispatchNode.h
     include/Nodes/ConstantNode.h
     include/Nodes/ConstantNodeType.h
     include/Nodes/DebugBufferReaderNode.h
@@ -177,6 +227,7 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/CommandPoolNode.cpp
     src/Nodes/ComputeDispatchNode.cpp
     src/Nodes/ComputePipelineNode.cpp
+    src/Nodes/MultiDispatchNode.cpp
     src/Nodes/DebugBufferReaderNode.cpp
     src/Nodes/DepthBufferNode.cpp
     src/Nodes/DescriptorResourceGathererNode.cpp
@@ -240,6 +291,8 @@ add_library(RenderGraph STATIC
     ${RENDERGRAPH_DATA_CORE_HEADERS}
     ${RENDERGRAPH_DATA_CORE_SOURCES}
     ${RENDERGRAPH_DATA_NODE_CONFIGS}
+    ${RENDERGRAPH_CONNECTION_HEADERS}
+    ${RENDERGRAPH_CONNECTION_SOURCES}
     ${RENDERGRAPH_CORE_HEADERS}
     ${RENDERGRAPH_CORE_SOURCES}
     ${RENDERGRAPH_NODE_HEADERS}
@@ -299,6 +352,8 @@ target_link_libraries(RenderGraph
         ShaderManagement
         SVO                    # Laine-Karras ESVO octrees
         magic_enum::magic_enum
+        TBB::tbb               # Sprint 6.4: Parallel execution
+        glfw                   # Cross-platform window/surface/input (WindowNode/InputNode/InstanceNode)
 )
 
 # ============================================================================
@@ -311,10 +366,8 @@ set_target_properties(RenderGraph PROPERTIES
     FOLDER "Libraries"
 )
 
-# Platform definitions
-if(WIN32)
-    target_compile_definitions(RenderGraph PRIVATE VK_USE_PLATFORM_WIN32_KHR)
-endif()
+# Platform surface handling is now cross-platform via GLFW (glfwCreateWindowSurface +
+# glfwGetRequiredInstanceExtensions); no VK_USE_PLATFORM_WIN32_KHR define needed.
 
 # Precompiled headers for faster compilation
 if(USE_PRECOMPILED_HEADERS)
@@ -323,6 +376,12 @@ if(USE_PRECOMPILED_HEADERS)
         "${CMAKE_CURRENT_SOURCE_DIR}/RenderGraphHeaders.h"
     )
     message(STATUS "RenderGraph: Precompiled headers enabled (using RenderGraphHeaders.h)")
+
+    # TBB-based executor needs TBB headers not in PCH - skip PCH for this file
+    set_source_files_properties(
+        src/Core/TBBVirtualTaskExecutor.cpp
+        PROPERTIES SKIP_PRECOMPILE_HEADERS ON
+    )
 endif()
 
 # ============================================================================
@@ -332,6 +391,8 @@ endif()
 source_group("Data\\Core\\Headers" FILES ${RENDERGRAPH_DATA_CORE_HEADERS})
 source_group("Data\\Core\\Sources" FILES ${RENDERGRAPH_DATA_CORE_SOURCES})
 source_group("Data\\Nodes" FILES ${RENDERGRAPH_DATA_NODE_CONFIGS})
+source_group("Connection\\Headers" FILES ${RENDERGRAPH_CONNECTION_HEADERS})
+source_group("Connection\\Sources" FILES ${RENDERGRAPH_CONNECTION_SOURCES})
 source_group("Core\\Headers" FILES ${RENDERGRAPH_CORE_HEADERS})
 source_group("Core\\Sources" FILES ${RENDERGRAPH_CORE_SOURCES})
 source_group("Nodes\\Headers" FILES ${RENDERGRAPH_NODE_HEADERS})

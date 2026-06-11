@@ -43,13 +43,8 @@ NodeInstance::NodeInstance(
 }
 
 NodeInstance::~NodeInstance() {
-    // Unsubscribe from all EventBus messages
-    if (messageBus) {
-        for (EventBus::EventSubscriptionID id : eventSubscriptions) {
-            messageBus->Unsubscribe(id);
-        }
-        eventSubscriptions.clear();
-    }
+    // Unsubscribe from all EventBus messages - ScopedSubscriptions handles this via RAII
+    // No manual Unsubscribe() calls needed
 
     Cleanup();
 
@@ -243,8 +238,16 @@ EventBus::EventSubscriptionID NodeInstance::SubscribeToMessage(
         return 0;  // No bus available
     }
 
+    // Delegate to ScopedSubscriptions for RAII management
+    // Note: Subscription IDs are tracked internally by ScopedSubscriptions
     EventBus::EventSubscriptionID id = messageBus->Subscribe(type, std::move(handler));
-    eventSubscriptions.push_back(id);
+    // Register with ScopedSubscriptions to ensure automatic cleanup
+    subscriptions_.GetBus();  // Ensure bus is set
+    if (!subscriptions_.GetBus()) {
+        subscriptions_.SetBus(messageBus);
+    }
+    // TODO: Consider redesigning this API to fully leverage ScopedSubscriptions
+    // For now, we maintain backward compatibility with ID-based API
     return id;
 }
 
@@ -256,8 +259,13 @@ EventBus::EventSubscriptionID NodeInstance::SubscribeToCategory(
         return 0;  // No bus available
     }
 
+    // Delegate to messageBus directly (backward compatibility)
+    // TODO: Consider adding SubscribeCategory to ScopedSubscriptions
     EventBus::EventSubscriptionID id = messageBus->SubscribeCategory(category, std::move(handler));
-    eventSubscriptions.push_back(id);
+    // Ensure ScopedSubscriptions has the bus reference for cleanup
+    if (!subscriptions_.GetBus()) {
+        subscriptions_.SetBus(messageBus);
+    }
     return id;
 }
 
@@ -267,12 +275,6 @@ void NodeInstance::UnsubscribeFromMessage(EventBus::EventSubscriptionID subscrip
     }
 
     messageBus->Unsubscribe(subscriptionId);
-    
-    // Remove from our tracking list
-    eventSubscriptions.erase(
-        std::remove(eventSubscriptions.begin(), eventSubscriptions.end(), subscriptionId),
-        eventSubscriptions.end()
-    );
 }
 
 void NodeInstance::MarkNeedsRecompile() {
@@ -351,6 +353,44 @@ uint64_t NodeInstance::GetLoopStepCount() const {
 }
 
 // ============================================================================
+// SPRINT 6.5: TASK-LEVEL PARALLELISM API (Unified)
+// ============================================================================
+
+std::vector<VirtualTask> NodeInstance::GetExecutionTasks(VirtualTaskPhase phase) {
+    // Default implementation: Returns 1 task that runs the whole phase.
+    // This provides backward compatibility - all existing nodes work unchanged.
+    //
+    // Parallel nodes override this to return N tasks (one per bundle).
+    // The executor runs whatever tasks are returned - no branching needed.
+
+    VirtualTask task;
+    task.id = {this, 0};
+
+    // Attach phase profiles for timing (cost comes from profiles)
+    task.profiles = GetPhaseProfiles(phase);
+
+    switch (phase) {
+        case VirtualTaskPhase::Setup:
+            task.execute = [this]() { this->Setup(); };
+            break;
+
+        case VirtualTaskPhase::Compile:
+            task.execute = [this]() { this->Compile(); };
+            break;
+
+        case VirtualTaskPhase::Execute:
+            task.execute = [this]() { this->Execute(); };
+            break;
+
+        case VirtualTaskPhase::Cleanup:
+            task.execute = [this]() { this->Cleanup(); };
+            break;
+    }
+
+    return {std::move(task)};
+}
+
+// ============================================================================
 // PHASE F: SLOT TASK SYSTEM IMPLEMENTATION
 // ============================================================================
 
@@ -424,6 +464,96 @@ bool NodeInstance::ValidateOutputSlot(uint32_t slotIndex, std::string& errorMess
         return false;
     }
     return true;
+}
+
+// ============================================================================
+// Task Profile System (Sprint 6.3)
+// ============================================================================
+
+ITaskProfile* NodeInstance::GetTaskProfile(const std::string& taskId) {
+    if (!owningGraph) return nullptr;
+    return owningGraph->GetTaskProfileRegistry().GetProfile(taskId);
+}
+
+const ITaskProfile* NodeInstance::GetTaskProfile(const std::string& taskId) const {
+    if (!owningGraph) return nullptr;
+    return owningGraph->GetTaskProfileRegistry().GetProfile(taskId);
+}
+
+ITaskProfile* NodeInstance::RegisterProfileIfAbsent(const std::string& taskId, std::unique_ptr<ITaskProfile> profile) {
+    if (!owningGraph) return nullptr;
+
+    TaskProfileRegistry& registry = owningGraph->GetTaskProfileRegistry();
+
+    // Double-check in case of race (shouldn't happen in single-threaded graph)
+    if (ITaskProfile* existing = registry.GetProfile(taskId)) {
+        return existing;
+    }
+
+    // Register and return
+    return registry.RegisterTask(std::move(profile));
+}
+
+uint64_t NodeInstance::EstimateTaskCost(uint32_t /*taskIndex*/) const {
+    // Default implementation: sum cost from Execute phase profiles.
+    // All tasks are assumed to have equal cost unless derived class overrides.
+    const auto& profiles = GetPhaseProfiles(VirtualTaskPhase::Execute);
+
+    uint64_t totalCost = 0;
+    for (const ITaskProfile* profile : profiles) {
+        if (profile) {
+            totalCost += profile->GetEstimatedCostNs();
+        }
+    }
+    return totalCost;
+}
+
+// ============================================================================
+// Phase Profile System (Sprint 6.5)
+// ============================================================================
+
+// Static empty vector for GetPhaseProfiles when phase has no profiles
+static const std::vector<ITaskProfile*> emptyProfileVector;
+
+void NodeInstance::RegisterPhaseProfile(VirtualTaskPhase phase, ITaskProfile* profile) {
+    if (!profile) return;
+    phaseProfiles_[phase].push_back(profile);
+}
+
+const std::vector<ITaskProfile*>& NodeInstance::GetPhaseProfiles(VirtualTaskPhase phase) const {
+    auto it = phaseProfiles_.find(phase);
+    if (it != phaseProfiles_.end()) {
+        return it->second;
+    }
+    return emptyProfileVector;
+}
+
+void NodeInstance::ClearPhaseProfiles(VirtualTaskPhase phase) {
+    phaseProfiles_.erase(phase);
+}
+
+void NodeInstance::ClearAllPhaseProfiles() {
+    phaseProfiles_.clear();
+}
+
+std::vector<VirtualTask> NodeInstance::CreateParallelTasks(
+    VirtualTaskPhase phase,
+    std::function<void(uint32_t)> executeBundle
+) {
+    std::vector<VirtualTask> tasks;
+    const uint32_t taskCount = GetVirtualTaskCount();
+    const auto& profiles = GetPhaseProfiles(phase);
+
+    tasks.reserve(taskCount);
+    for (uint32_t i = 0; i < taskCount; ++i) {
+        VirtualTask task;
+        task.id = {this, i};
+        task.execute = [executeBundle, i]() { executeBundle(i); };
+        task.profiles = profiles;
+        tasks.push_back(std::move(task));
+    }
+
+    return tasks;
 }
 
 } // namespace Vixen::RenderGraph

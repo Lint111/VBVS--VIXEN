@@ -4,6 +4,12 @@
 #include "CapabilityGraph.h"
 #include <iostream>
 #include <stdexcept>
+#include <algorithm>
+#include <cstring>
+
+#define GLFW_INCLUDE_NONE   // don't pull in <GL/gl.h> (absent on headless/WSL); Vulkan-only below
+#define GLFW_INCLUDE_VULKAN
+#include <GLFW/glfw3.h>
 
 // Include central header that provides inline/selectany globals so this TU
 // does not require or create a strong definition. Use the public include
@@ -64,6 +70,22 @@ void InstanceNode::SetupImpl(TypedSetupContext& ctx) {
     // Use global extension/layer lists from main.cpp
     enabledExtensions = instanceExtensionNames;
     enabledLayers = layerNames;
+
+    // Cross-platform surface extensions: merge in whatever instance extensions GLFW requires to
+    // present on the current platform (VK_KHR_surface + the platform surface, e.g. win32/xlib/
+    // wayland). This replaces the previously-hardcoded VK_KHR_WIN32_SURFACE entry so the same code
+    // produces a valid instance on every OS. Deduplicated against the global list.
+    glfwInit();  // idempotent; required before glfwGetRequiredInstanceExtensions
+    uint32_t glfwExtCount = 0;
+    const char** glfwExts = glfwGetRequiredInstanceExtensions(&glfwExtCount);
+    for (uint32_t i = 0; glfwExts && i < glfwExtCount; ++i) {
+        const bool alreadyPresent = std::any_of(
+            enabledExtensions.begin(), enabledExtensions.end(),
+            [&](const char* e) { return std::strcmp(e, glfwExts[i]) == 0; });
+        if (!alreadyPresent) {
+            enabledExtensions.push_back(glfwExts[i]);
+        }
+    }
 
     NODE_LOG_INFO("[InstanceNode] Requested " + std::to_string(enabledExtensions.size()) + " instance extensions");
     NODE_LOG_INFO("[InstanceNode] Requested " + std::to_string(enabledLayers.size()) + " instance layers");

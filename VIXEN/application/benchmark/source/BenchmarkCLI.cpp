@@ -6,6 +6,7 @@
 #include <iomanip>
 #include <algorithm>
 #include <cctype>
+#include <cstring>
 
 #ifdef _WIN32
 #include <Windows.h>

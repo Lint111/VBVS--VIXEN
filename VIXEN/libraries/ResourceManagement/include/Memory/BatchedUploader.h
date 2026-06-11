@@ -110,7 +110,17 @@ public:
         VkQueue queue,
         uint32_t queueFamilyIndex,
         DeviceBudgetManager* budgetManager,
-        const Config& config = Config{});
+        const Config& config);
+
+    /**
+     * @brief Create a batched uploader with default configuration
+     */
+    BatchedUploader(
+        VkDevice device,
+        VkQueue queue,
+        uint32_t queueFamilyIndex,
+        DeviceBudgetManager* budgetManager)
+        : BatchedUploader(device, queue, queueFamilyIndex, budgetManager, Config{}) {}
 
     /**
      * @brief Destructor - waits for pending uploads and cleans up

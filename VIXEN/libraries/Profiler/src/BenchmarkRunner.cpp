@@ -63,9 +63,9 @@
 #include <cstring>
 #include <chrono>
 
-#ifdef _WIN32
-#include <windows.h>
-#endif
+#define GLFW_INCLUDE_NONE   // don't pull in <GL/gl.h> (absent on headless/WSL); Vulkan-only below
+#define GLFW_INCLUDE_VULKAN
+#include <GLFW/glfw3.h>
 
 namespace Vixen::Profiler {
 
@@ -1207,18 +1207,9 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
         // Render loop
         uint32_t totalFrames = testConfig.warmupFrames + testConfig.measurementFrames;
         for (uint32_t frame = 0; frame < totalFrames && !shouldClose; ++frame) {
-            // Process window messages
-#ifdef _WIN32
-            MSG msg;
-            while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
-                if (msg.message == WM_QUIT) {
-                    shouldClose = true;
-                    break;
-                }
-                TranslateMessage(&msg);
-                DispatchMessageW(&msg);
-            }
-#endif
+            // Process window/input events (cross-platform via GLFW; fires WindowNode/InputNode
+            // callbacks, which publish WindowCloseEvent → sets shouldClose via subscription).
+            glfwPollEvents();
             if (shouldClose) break;
 
             // CPU frame timing start
@@ -1457,16 +1448,8 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
         renderGraph.reset();
         if (config.verbose) std::cout << "[BenchmarkRunner] RenderGraph reset." << std::endl;
 
-        // Drain any pending window messages from graph destruction
-#ifdef _WIN32
-        MSG msg;
-        while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
-            if (msg.message != WM_QUIT) {
-                TranslateMessage(&msg);
-                DispatchMessageW(&msg);
-            }
-        }
-#endif
+        // Drain any pending window/input events from graph destruction (cross-platform via GLFW)
+        glfwPollEvents();
 
             // Reset shouldClose - programmatic window destruction is not a user close request
             // Only preserve if user actually clicked close button during the test
@@ -1505,16 +1488,8 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
                 std::cout << "  [GPU Error] Presentation/swapchain failure (GPU may not support windowed rendering)" << std::endl;
             }
 
-            // Drain message queue from failed window
-#ifdef _WIN32
-            MSG msg;
-            while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
-                if (msg.message != WM_QUIT) {
-                    TranslateMessage(&msg);
-                    DispatchMessageW(&msg);
-                }
-            }
-#endif
+            // Drain pending window/input events from the failed window (cross-platform via GLFW)
+            glfwPollEvents();
 
             // Reset shouldClose flag - this was a test failure, not user abort
             shouldClose = false;

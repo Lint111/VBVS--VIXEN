@@ -8,6 +8,7 @@
 #include <fstream>
 #include <sstream>
 #include <iomanip>
+#include <string>
 #include "Core/NodeLogging.h"
 
 namespace Vixen::RenderGraph {
@@ -45,10 +46,10 @@ void DebugBufferReaderNode::SetupImpl(TypedSetupContext& ctx) {
     auto formatInt = GetParameterValue<int>(DebugBufferReaderNodeConfig::PARAM_EXPORT_FORMAT, static_cast<int>(exportFormat));
     exportFormat = static_cast<DebugExportFormat>(formatInt);
 
-    NODE_LOG_INFO("  outputPath: %s", outputPath.c_str());
-    NODE_LOG_INFO("  maxTraces: %u", maxTraces);
-    NODE_LOG_INFO("  autoExport: %s", autoExport ? "true" : "false");
-    NODE_LOG_INFO("  exportFormat: %d", static_cast<int>(exportFormat));
+    NODE_LOG_INFO("  outputPath: " + outputPath);
+    NODE_LOG_INFO("  maxTraces: " + std::to_string(maxTraces));
+    NODE_LOG_INFO(std::string("  autoExport: ") + (autoExport ? "true" : "false"));
+    NODE_LOG_INFO("  exportFormat: " + std::to_string(static_cast<int>(exportFormat)));
 }
 
 void DebugBufferReaderNode::CompileImpl(TypedCompileContext& ctx) {
@@ -91,7 +92,7 @@ void DebugBufferReaderNode::ExecuteImpl(TypedExecuteContext& ctx) {
     }
 
     if (!debugCapture->IsCaptureEnabled()) {
-        NODE_LOG_INFO("Debug capture is disabled for '%s'", debugCapture->GetDebugName().c_str());
+        NODE_LOG_INFO("Debug capture is disabled for '" + debugCapture->GetDebugName() + "'");
         return;
     }
 
@@ -115,7 +116,7 @@ void DebugBufferReaderNode::ExecuteImpl(TypedExecuteContext& ctx) {
         // Read ray traces from the capture buffer
         uint32_t traceCount = rayTraceBuffer->Read(vkDevice);
         if (traceCount == 0) {
-            NODE_LOG_INFO("No ray traces captured this frame for '%s'", debugCapture->GetDebugName().c_str());
+            NODE_LOG_INFO("No ray traces captured this frame for '" + debugCapture->GetDebugName() + "'");
             return;
         }
 
@@ -126,18 +127,20 @@ void DebugBufferReaderNode::ExecuteImpl(TypedExecuteContext& ctx) {
 
         // Log ring buffer status
         if (rayTraceBuffer->HasWrapped()) {
-            NODE_LOG_INFO("Read %u ray traces from '%s' (ring buffer wrapped, %u total writes)",
-                          traceCount, debugCapture->GetDebugName().c_str(), rayTraceBuffer->GetTotalWrites());
+            NODE_LOG_INFO("Read " + std::to_string(traceCount) + " ray traces from '" +
+                          debugCapture->GetDebugName() + "' (ring buffer wrapped, " +
+                          std::to_string(rayTraceBuffer->GetTotalWrites()) + " total writes)");
         } else {
-            NODE_LOG_INFO("Read %u ray traces from '%s' (binding %u)",
-                          traceCount, debugCapture->GetDebugName().c_str(), debugCapture->GetBindingIndex());
+            NODE_LOG_INFO("Read " + std::to_string(traceCount) + " ray traces from '" +
+                          debugCapture->GetDebugName() + "' (binding " +
+                          std::to_string(debugCapture->GetBindingIndex()) + ")");
         }
     } else if (debugBuffer->GetType() == Debug::DebugBufferType::ShaderCounters) {
         // TODO: Handle ShaderCountersBuffer type
         NODE_LOG_INFO("ShaderCounters buffer type - aggregation not yet implemented");
         return;
     } else {
-        NODE_LOG_WARNING("Unknown debug buffer type: %s", debugBuffer->GetTypeName());
+        NODE_LOG_WARNING(std::string("Unknown debug buffer type: ") + debugBuffer->GetTypeName());
         return;
     }
 
@@ -177,7 +180,7 @@ void DebugBufferReaderNode::ExportRayTraces() {
 
 void DebugBufferReaderNode::ExportToConsole() {
     NODE_LOG_INFO("=== Ray Traces ===");
-    NODE_LOG_INFO("Total traces: %zu", rayTraces.size());
+    NODE_LOG_INFO("Total traces: " + std::to_string(rayTraces.size()));
 
     // Limit output
     size_t count = std::min(static_cast<size_t>(maxTraces), rayTraces.size());
@@ -194,7 +197,7 @@ void DebugBufferReaderNode::ExportToConsole() {
 
 void DebugBufferReaderNode::ExportToCSV() {
     std::string filename = outputPath + ".csv";
-    NODE_LOG_INFO("CSV export for ray traces not yet implemented: %s", filename.c_str());
+    NODE_LOG_INFO("CSV export for ray traces not yet implemented: " + filename);
     // TODO: Implement CSV export for ray traces
 }
 
@@ -202,7 +205,7 @@ void DebugBufferReaderNode::ExportToJSON() {
     std::string filename = outputPath + ".json";
     std::ofstream file(filename);
     if (!file.is_open()) {
-        NODE_LOG_ERROR("Failed to open JSON file for writing: %s", filename.c_str());
+        NODE_LOG_ERROR("Failed to open JSON file for writing: " + filename);
         return;
     }
 
@@ -244,7 +247,7 @@ void DebugBufferReaderNode::ExportToJSON() {
     file << "}\n";
 
     file.close();
-    NODE_LOG_INFO("Exported %zu ray traces to JSON: %s", count, filename.c_str());
+    NODE_LOG_INFO("Exported " + std::to_string(count) + " ray traces to JSON: " + filename);
 }
 
 // ============================================================================

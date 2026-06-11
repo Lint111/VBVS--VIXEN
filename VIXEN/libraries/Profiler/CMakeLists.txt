@@ -53,6 +53,7 @@ target_link_libraries(Profiler
         ShaderManagement
         ResourceManagement  # Sprint 4 Phase D: For DeviceBudgetManager metrics
         miniz
+        glfw  # Cross-platform window/event pump (glfwPollEvents in BenchmarkRunner)
 )
 
 # ============================================================================

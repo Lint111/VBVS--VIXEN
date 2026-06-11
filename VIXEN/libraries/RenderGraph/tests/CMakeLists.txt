@@ -175,6 +175,335 @@ else()
 endif()
 
 # ===========================================================================
+# Connection Concepts Test (Sprint 6.0.1)
+# ===========================================================================
+# This test validates C++20 concepts for the unified connection system:
+# - SlotReference, BindingReference, AccumulationSlot concepts
+# - ConnectionMetadata concept and helper types
+# - Legacy type trait wrappers
+# Tests are primarily compile-time (static_assert).
+
+if(TARGET GTest::gtest_main)
+    add_executable(test_connection_concepts
+        test_connection_concepts.cpp
+    )
+
+    # Link against the RenderGraph library target - includes propagate automatically
+    target_link_libraries(test_connection_concepts PRIVATE
+        GTest::gtest_main
+        RenderGraph
+    )
+
+    # Visual Studio solution folder organization
+    set_target_properties(test_connection_concepts PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+    gtest_discover_tests(test_connection_concepts)
+
+    message(STATUS "✓ test_connection_concepts configured (Sprint 6.0.1)")
+else()
+    message(STATUS "⊗ test_connection_concepts skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
+# Connection Rule Test (Sprint 6.0.1)
+# ===========================================================================
+# This test validates the ConnectionRule system:
+# - SlotDescriptor and BindingDescriptor creation
+# - ConnectionRuleRegistry rule matching
+# - DirectConnectionRule validation logic
+# Tests use GoogleTest framework.
+
+if(TARGET GTest::gtest_main)
+    add_executable(test_connection_rule
+        test_connection_rule.cpp
+    )
+
+    # Link against the RenderGraph library target
+    target_link_libraries(test_connection_rule PRIVATE
+        GTest::gtest_main
+        RenderGraph
+    )
+
+    # Visual Studio solution folder organization
+    set_target_properties(test_connection_rule PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+    gtest_discover_tests(test_connection_rule)
+
+    message(STATUS "✓ test_connection_rule configured (Sprint 6.0.1)")
+else()
+    message(STATUS "⊗ test_connection_rule skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
+# Sprint 6.1: Group-Based Dispatch Tests
+# ===========================================================================
+# Tests for MultiDispatchNode GROUP_INPUTS and GroupKeyModifier
+# - GroupKeyModifier validation and metadata storage
+# - DispatchPass validation (IsValid())
+# - Group partitioning logic
+# - Deterministic ordering (std::map)
+# - Backward compatibility with QueueDispatch()
+
+if(TARGET GTest::gtest_main)
+    add_executable(test_group_dispatch
+        test_group_dispatch.cpp
+    )
+
+    target_link_libraries(test_group_dispatch PRIVATE
+        GTest::gtest_main
+        RenderGraph
+    )
+
+    set_target_properties(test_group_dispatch PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+    gtest_discover_tests(test_group_dispatch)
+
+    message(STATUS "✓ test_group_dispatch configured (Sprint 6.1)")
+else()
+    message(STATUS "⊗ test_group_dispatch skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
+# Sprint 6.2: TaskQueue Budget-Aware System Tests
+# ===========================================================================
+# Tests for TaskQueue template and MultiDispatchNode integration
+# - Budget enforcement (strict/lenient modes)
+# - Priority-based scheduling
+# - Overflow protection
+# - TaskBudget configuration and presets
+# - Integration with MultiDispatchNode
+# - Backward compatibility with Sprint 6.1
+
+if(TARGET GTest::gtest_main)
+    # Unit tests for TaskQueue template
+    add_executable(test_task_queue
+        test_task_queue.cpp
+    )
+
+    target_link_libraries(test_task_queue PRIVATE
+        GTest::gtest_main
+        RenderGraph
+    )
+
+    set_target_properties(test_task_queue PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+    gtest_discover_tests(test_task_queue)
+
+    message(STATUS "✓ test_task_queue configured (Sprint 6.2)")
+
+    # Integration tests for MultiDispatchNode + TaskQueue
+    add_executable(test_multidispatch_integration
+        test_multidispatch_integration.cpp
+    )
+
+    target_link_libraries(test_multidispatch_integration PRIVATE
+        GTest::gtest_main
+        RenderGraph
+    )
+
+    set_target_properties(test_multidispatch_integration PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+    gtest_discover_tests(test_multidispatch_integration)
+
+    message(STATUS "✓ test_multidispatch_integration configured (Sprint 6.2)")
+else()
+    message(STATUS "⊗ Sprint 6.2 tests skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
+# Sprint 6.3: Phase 3.1 - PredictionErrorTracker Tests
+# ===========================================================================
+# Tests for prediction error tracking system
+# - Error ratio computation
+# - Rolling statistics (mean, variance, bias)
+# - Correction factor generation
+# - TimelineCapacityTracker integration
+# NOTE: Other Sprint 6.3 tests (GPUQueryManager, TimelineCapacityTracker)
+#       are defined in test_core_systems.cmake
+
+if(TARGET GTest::gtest_main)
+    add_executable(test_prediction_error_tracker
+        test_prediction_error_tracker.cpp
+    )
+
+    target_link_libraries(test_prediction_error_tracker PRIVATE
+        GTest::gtest_main
+        RenderGraph
+    )
+
+    set_target_properties(test_prediction_error_tracker PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+    gtest_discover_tests(test_prediction_error_tracker)
+
+    message(STATUS "✓ test_prediction_error_tracker configured (Sprint 6.3 Phase 3.1)")
+
+    # TaskProfile unit tests (Phase 3.2a)
+    add_executable(test_task_profile
+        test_task_profile.cpp
+    )
+
+    target_link_libraries(test_task_profile PRIVATE
+        GTest::gtest_main
+        RenderGraph
+    )
+
+    set_target_properties(test_task_profile PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+    gtest_discover_tests(test_task_profile)
+
+    message(STATUS "✓ test_task_profile configured (Sprint 6.3 Phase 3.2a)")
+else()
+    message(STATUS "⊗ Sprint 6.3 Phase 3 tests skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
+# Sprint 6.4: ResourceAccessTracker Tests (Phase 0)
+# ===========================================================================
+# Tests for resource access conflict detection
+# - Read/write access tracking
+# - Conflict detection (write-write, write-read)
+# - Multi-resource scenarios
+# - GraphTopology integration
+
+if(TARGET GTest::gtest_main)
+    add_executable(test_resource_access_tracker
+        test_resource_access_tracker.cpp
+    )
+
+    target_link_libraries(test_resource_access_tracker PRIVATE
+        GTest::gtest_main
+        RenderGraph
+    )
+
+    set_target_properties(test_resource_access_tracker PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+    gtest_discover_tests(test_resource_access_tracker)
+
+    message(STATUS "✓ test_resource_access_tracker configured (Sprint 6.4 Phase 0)")
+
+    # WaveScheduler Tests (Phase 1)
+    add_executable(test_wave_scheduler
+        test_wave_scheduler.cpp
+    )
+
+    target_link_libraries(test_wave_scheduler PRIVATE
+        GTest::gtest_main
+        RenderGraph
+    )
+
+    set_target_properties(test_wave_scheduler PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+    gtest_discover_tests(test_wave_scheduler)
+
+    message(STATUS "✓ test_wave_scheduler configured (Sprint 6.4 Phase 1)")
+
+    # Note: test_tbb_graph_executor removed - functionality merged into TBBVirtualTaskExecutor
+
+    # ===========================================================================
+    # VirtualTask Tests (Sprint 6.5 - Task-Level Parallelism)
+    # ===========================================================================
+
+    add_executable(test_virtual_task
+        test_virtual_task.cpp
+    )
+
+    target_link_libraries(test_virtual_task PRIVATE
+        GTest::gtest_main
+        RenderGraph
+    )
+
+    set_target_properties(test_virtual_task PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+    gtest_discover_tests(test_virtual_task)
+
+    message(STATUS "✓ test_virtual_task configured (Sprint 6.5 Phase 0)")
+
+    # VirtualResourceAccessTracker Tests (Sprint 6.5 - Phase 1)
+    add_executable(test_virtual_resource_access_tracker
+        test_virtual_resource_access_tracker.cpp
+    )
+
+    target_link_libraries(test_virtual_resource_access_tracker PRIVATE
+        GTest::gtest_main
+        RenderGraph
+    )
+
+    set_target_properties(test_virtual_resource_access_tracker PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+    gtest_discover_tests(test_virtual_resource_access_tracker)
+
+    message(STATUS "✓ test_virtual_resource_access_tracker configured (Sprint 6.5 Phase 1)")
+
+    # TaskDependencyGraph Tests (Sprint 6.5 - Phase 2)
+    add_executable(test_task_dependency_graph
+        test_task_dependency_graph.cpp
+    )
+
+    target_link_libraries(test_task_dependency_graph PRIVATE
+        GTest::gtest_main
+        RenderGraph
+    )
+
+    set_target_properties(test_task_dependency_graph PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+    gtest_discover_tests(test_task_dependency_graph)
+
+    message(STATUS "✓ test_task_dependency_graph configured (Sprint 6.5 Phase 2)")
+
+    # TBBVirtualTaskExecutor Tests (Sprint 6.5 - Phase 4)
+    add_executable(test_tbb_virtual_task_executor
+        test_tbb_virtual_task_executor.cpp
+    )
+
+    target_link_libraries(test_tbb_virtual_task_executor PRIVATE
+        GTest::gtest_main
+        RenderGraph
+    )
+
+    # Copy TBB DLL for test execution
+    if(TARGET TBB::tbb)
+        add_custom_command(TARGET test_tbb_virtual_task_executor POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb>
+            $<TARGET_FILE_DIR:test_tbb_virtual_task_executor>
+        )
+    endif()
+
+    set_target_properties(test_tbb_virtual_task_executor PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+    gtest_discover_tests(test_tbb_virtual_task_executor)
+
+    message(STATUS "✓ test_tbb_virtual_task_executor configured (Sprint 6.5 Phase 4)")
+
+    # VirtualTask Integration Tests (Sprint 6.5 - Phase 6)
+    add_executable(test_virtual_task_integration
+        test_virtual_task_integration.cpp
+    )
+
+    target_link_libraries(test_virtual_task_integration PRIVATE
+        GTest::gtest_main
+        RenderGraph
+    )
+
+    # Copy TBB DLL for test execution
+    if(TARGET TBB::tbb)
+        add_custom_command(TARGET test_virtual_task_integration POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb>
+            $<TARGET_FILE_DIR:test_virtual_task_integration>
+        )
+    endif()
+
+    set_target_properties(test_virtual_task_integration PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+    gtest_discover_tests(test_virtual_task_integration)
+
+    message(STATUS "✓ test_virtual_task_integration configured (Sprint 6.5 Phase 6)")
+else()
+    message(STATUS "⊗ Sprint 6.4 tests skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
 # Voxel Systems Tests - CONSOLIDATED (Phase H)
 # ===========================================================================
 # Validates voxel infrastructure:

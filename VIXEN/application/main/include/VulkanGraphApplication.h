@@ -4,6 +4,7 @@
 #include "Core/RenderGraph.h"
 #include "Core/NodeTypeRegistry.h"
 #include "Core/TypedConnection.h"
+#include "Core/CalibrationStore.h"  // Sprint 6.3: Persistence
 #include "error/VulkanError.h"
 #include "Time/EngineTime.h"
 #include "MessageBus.h"
@@ -14,6 +15,7 @@
 // Forward declarations
 class VulkanRenderer;
 class VulkanSwapChain;
+struct GLFWwindow;  // cross-platform window handle (GLFW); real include only in the .cpp
 
 using namespace Vixen::Vulkan::Resources;
 using namespace Vixen::RenderGraph;
@@ -121,6 +123,8 @@ private:
     std::unique_ptr<RenderGraph> renderGraph;        // Render graph instance
     // Owned message bus for cross-system event dispatch (injected into RenderGraph)
     std::unique_ptr<Vixen::EventBus::MessageBus> messageBus;
+    // Sprint 6.3: Calibration persistence for TaskProfiles
+    std::unique_ptr<Vixen::RenderGraph::CalibrationStore> calibrationStore;
 
     // ====== Application State ======
     uint32_t currentFrame;                           // Current frame index
@@ -131,7 +135,7 @@ private:
     // ====== Shutdown Management ======
     bool shutdownRequested = false;                  // User requested shutdown
     std::unordered_set<std::string> shutdownAcksPending;  // Systems that need to acknowledge
-    HWND windowHandle = nullptr;                     // Cached for destruction during shutdown
+    GLFWwindow* windowHandle = nullptr;              // Cached for shutdown signalling (cross-platform GLFW handle)
     bool deinitialized = false;                      // Prevent double DeInitialize
 
     // ====== Phase 0.4: Loop System ======

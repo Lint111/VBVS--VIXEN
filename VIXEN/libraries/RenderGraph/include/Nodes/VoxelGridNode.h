@@ -126,6 +126,9 @@ private:
     CashSystem::VoxelSceneCacher* voxelSceneCacher_ = nullptr;
     std::shared_ptr<CashSystem::VoxelSceneData> cachedSceneData_;
 
+    // Task profile for compile-time cost estimation (Sprint 6.5)
+    ITaskProfile* compileProfile_ = nullptr;
+
     // Cacher registration helper
     void RegisterVoxelSceneCacher();
 

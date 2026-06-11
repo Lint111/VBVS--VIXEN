@@ -27,14 +27,14 @@ CacherType* RegisterCacherIfNeeded(
     const auto wrapperTypeIndex = std::type_index(typeid(WrapperType));
 
     if (!mainCacher.IsRegistered(wrapperTypeIndex)) {
-        mainCacher.RegisterCacher<CacherType, WrapperType, ParamsType>(
+        mainCacher.template RegisterCacher<CacherType, WrapperType, ParamsType>(
             wrapperTypeIndex,
             cacherName,
             isDeviceDependent
         );
     }
 
-    auto* cacher = mainCacher.GetCacher<CacherType, WrapperType, ParamsType>(
+    auto* cacher = mainCacher.template GetCacher<CacherType, WrapperType, ParamsType>(
         wrapperTypeIndex,
         device
     );

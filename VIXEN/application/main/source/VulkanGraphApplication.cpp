@@ -2,7 +2,13 @@
 #include "VulkanSwapChain.h"
 #include "MeshData.h"
 #include "Logger.h"
+
+#define GLFW_INCLUDE_NONE   // don't pull in <GL/gl.h> (absent on headless/WSL); Vulkan-only below
+#define GLFW_INCLUDE_VULKAN
+#include <GLFW/glfw3.h>
 #include "Core/TypedConnection.h"  // Typed slot connection helpers
+#include "Connection/ConnectionModifier.h"  // ConnectionMeta
+#include "Connection/Modifiers/FieldExtractionModifier.h"  // ExtractField
 #include "CommandBufferUtility.h"  // MVP: File reading utility
 #include "MainCacher.h"  // Cache system initialization
 #include "Core/LoopManager.h"  // Phase 0.4: Loop system
@@ -38,7 +44,9 @@
 #include "Nodes/InputNode.h"  // Input polling and event publishing
 #include <ShaderBundleBuilder.h>  // Phase G: Shader builder API (includes preprocessor support)
 #include "VoxelRayMarchNames.h"  // Generated shader binding constants
-#include "VoxelRayMarch_CompressedNames.h"
+// NOTE: "VoxelRayMarch_CompressedNames.h" was an orphaned include — that combined
+// SDI header is no longer generated (the tool now emits per-stage headers such as
+// VoxelRayMarch_Compressed_ComputeNames.h) and no symbol from it is referenced here.
 #include "Nodes/DebugBufferReaderNode.h"  // Debug: Compute shader debug capture
 #include "VulkanGlobalNames.h"  // Global Vulkan extension/layer name lists
 
@@ -112,10 +120,10 @@ void VulkanGraphApplication::Initialize() {
     mainLogger->Debug("Node types registered");
 
     mainLogger->Debug("Creating MessageBus");
-    // Create render graph
     // Create a MessageBus for event-driven coordination and inject into RenderGraph
     messageBus = std::make_unique<Vixen::EventBus::MessageBus>();
     mainLogger->Debug("MessageBus created");
+
 
     mainLogger->Debug("Initializing MainCacher");
     // Initialize MainCacher and connect it to MessageBus for device invalidation events
@@ -171,6 +179,16 @@ void VulkanGraphApplication::Initialize() {
     if (mainLogger) {
         mainLogger->Info("RenderGraph created successfully");
     }
+
+    // Sprint 6.3: Create autonomous CalibrationStore
+    // It subscribes to DeviceMetadataEvent (load) and ApplicationShuttingDownEvent (save)
+    mainLogger->Debug("Creating CalibrationStore");
+    calibrationStore = std::make_unique<Vixen::RenderGraph::CalibrationStore>(
+        "calibration",
+        renderGraph->GetTaskProfileRegistry(),
+        messageBus.get()
+    );
+    mainLogger->Info("CalibrationStore created (autonomous event-driven mode)");
 
     mainLogger->Debug("Registering physics loop");
     // Phase 0.4: Register loops with the graph
@@ -248,14 +266,10 @@ bool VulkanGraphApplication::Render() {
         return false;
     }
 
-    // Process window messages
-    MSG msg;
-    while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
-        if (msg.message == WM_QUIT) {
-            return false;
-        }
-        TranslateMessage(&msg);
-        DispatchMessageW(&msg);
+    // Process window/input events (cross-platform via GLFW; fires WindowNode/InputNode callbacks).
+    glfwPollEvents();
+    if (windowHandle && glfwWindowShouldClose(windowHandle)) {
+        return false;
     }
 
     // Render a complete frame via the graph
@@ -312,6 +326,14 @@ void VulkanGraphApplication::DeInitialize() {
         return;
     }
     deinitialized = true;
+
+    // Sprint 6.3: Publish shutdown event BEFORE any cleanup
+    // CalibrationStore subscribes and saves automatically
+    if (messageBus) {
+        auto shutdownEvent = std::make_unique<Vixen::EventBus::ApplicationShuttingDownEvent>(0);
+        messageBus->PublishImmediate(*shutdownEvent);  // Immediate - no queue processing
+        mainLogger->Info("Published ApplicationShuttingDownEvent");
+    }
 
     // Extract logs BEFORE destroying the render graph
     // With shared_ptr ownership:
@@ -851,18 +873,16 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   windowNode, WindowNodeConfig::INSTANCE);
 
     // --- Window → SwapChain connections ---
-    batch.Connect(windowNode, WindowNodeConfig::HWND_OUT,
-                  swapChainNode, SwapChainNodeConfig::HWND)
-         .Connect(windowNode, WindowNodeConfig::HINSTANCE_OUT,
-                  swapChainNode, SwapChainNodeConfig::HINSTANCE)
+    batch.Connect(windowNode, WindowNodeConfig::WINDOW,
+                  swapChainNode, SwapChainNodeConfig::WINDOW)
          .Connect(windowNode, WindowNodeConfig::WIDTH_OUT,
                   swapChainNode, SwapChainNodeConfig::WIDTH)
          .Connect(windowNode, WindowNodeConfig::HEIGHT_OUT,
                   swapChainNode, SwapChainNodeConfig::HEIGHT);
 
     // --- Window → Input connection ---
-    batch.Connect(windowNode, WindowNodeConfig::HWND_OUT,
-                  inputNode, InputNodeConfig::HWND_IN);
+    batch.Connect(windowNode, WindowNodeConfig::WINDOW,
+                  inputNode, InputNodeConfig::WINDOW);
 
     // --- Device → SwapChain connections ---
     batch.Connect(deviceNode, DeviceNodeConfig::INSTANCE_OUT,
@@ -1103,80 +1123,80 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     // Connect push constant fields to push constant gatherer using member extraction
     // CameraNode now outputs a CameraData struct, so we can extract individual fields
-    batch.ConnectVariadic(cameraNode, CameraNodeConfig::CAMERA_DATA,
+    batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
                           pushConstantGatherer, VoxelRayMarch::cameraPos::BINDING,  // vec3 cameraPos
-                          &CameraData::cameraPos, SlotRole::Execute);  // Mark as Execute-only
+                          ExtractField(&CameraData::cameraPos, SlotRole::Execute));  // Mark as Execute-only
 
     // Note: time field (index 1) NOT connected - will be filled with zero by gatherer
     // This will trigger a warning log but shader will receive valid (zero) value
     // TODO: Connect actual time source when animation is needed
 
-    batch.ConnectVariadic(cameraNode, CameraNodeConfig::CAMERA_DATA,
+    batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
                           pushConstantGatherer, VoxelRayMarch::cameraDir::BINDING,  // vec3 cameraDir
-                          &CameraData::cameraDir, SlotRole::Execute);  // Mark as Execute-only
-    batch.ConnectVariadic(cameraNode, CameraNodeConfig::CAMERA_DATA,
+                          ExtractField(&CameraData::cameraDir, SlotRole::Execute));  // Mark as Execute-only
+    batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
                           pushConstantGatherer, VoxelRayMarch::fov::BINDING,  // float fov
-                          &CameraData::fov, SlotRole::Execute);  // Mark as Execute-only
-    batch.ConnectVariadic(cameraNode, CameraNodeConfig::CAMERA_DATA,
+                          ExtractField(&CameraData::fov, SlotRole::Execute));  // Mark as Execute-only
+    batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
                           pushConstantGatherer, VoxelRayMarch::cameraUp::BINDING,  // vec3 cameraUp
-                          &CameraData::cameraUp , SlotRole::Execute);  // Mark as Execute-only
-    batch.ConnectVariadic(cameraNode, CameraNodeConfig::CAMERA_DATA,
+                          ExtractField(&CameraData::cameraUp, SlotRole::Execute));  // Mark as Execute-only
+    batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
                           pushConstantGatherer, VoxelRayMarch::aspect::BINDING,  // float aspect
-                          &CameraData::aspect, SlotRole::Execute);  // Mark as Execute-only
-    batch.ConnectVariadic(cameraNode, CameraNodeConfig::CAMERA_DATA,
+                          ExtractField(&CameraData::aspect, SlotRole::Execute));  // Mark as Execute-only
+    batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
                           pushConstantGatherer, VoxelRayMarch::cameraRight::BINDING,  // vec3 cameraRight
-                          &CameraData::cameraRight, SlotRole::Execute);  // Mark as Execute-only
+                          ExtractField(&CameraData::cameraRight, SlotRole::Execute));  // Mark as Execute-only
 
     // Connect debugMode from InputState to push constant gatherer for debug visualization
     // Press 0-9 keys to switch between visualization modes at runtime
-    batch.ConnectVariadic(inputNode, InputNodeConfig::INPUT_STATE,
+    batch.Connect(inputNode, InputNodeConfig::INPUT_STATE,
                           pushConstantGatherer, VoxelRayMarch::debugMode::BINDING,  // int debugMode
-                          &InputState::debugMode, SlotRole::Execute);  // Mark as Execute-only
+                          ExtractField(&InputState::debugMode, SlotRole::Execute));  // Mark as Execute-only
 
     // Connect ray marching resources to descriptor gatherer using VoxelRayMarchNames.h bindings
     // Binding 0: outputImage - Transient (Execute-only), others are Persistent (Dependency|Execute)
     // Binding 0: outputImage (swapchain image view) - changes per frame
     // Note: outputImage is not in SDI (writeonly image) so we use literal binding index 0
-    batch.ConnectVariadic(swapChainNode, SwapChainNodeConfig::CURRENT_FRAME_IMAGE_VIEW,
+    batch.Connect(swapChainNode, SwapChainNodeConfig::CURRENT_FRAME_IMAGE_VIEW,
                           descriptorGatherer, 0,  // outputImage at binding 0
-                          SlotRole::Execute);
+                          SlotRoleModifier(SlotRole::Execute));
 
     // Binding 1: octreeNodes (SSBO) - octree node data
-    batch.ConnectVariadic(voxelGridNode, VoxelGridNodeConfig::OCTREE_NODES_BUFFER,
+    batch.Connect(voxelGridNode, VoxelGridNodeConfig::OCTREE_NODES_BUFFER,
                           descriptorGatherer, VoxelRayMarch::esvoNodes::BINDING,
-                          SlotRole::Dependency | SlotRole::Execute);
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
                           
 
     // Binding 2: voxelBricks (SSBO) - voxel brick data
-    batch.ConnectVariadic(voxelGridNode, VoxelGridNodeConfig::OCTREE_BRICKS_BUFFER,
+    batch.Connect(voxelGridNode, VoxelGridNodeConfig::OCTREE_BRICKS_BUFFER,
                           descriptorGatherer, VoxelRayMarch::brickData::BINDING,
-                          SlotRole::Dependency | SlotRole::Execute);
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
     // Binding 3: materialPalette (SSBO) - material data
-    batch.ConnectVariadic(voxelGridNode, VoxelGridNodeConfig::OCTREE_MATERIALS_BUFFER,
+    batch.Connect(voxelGridNode, VoxelGridNodeConfig::OCTREE_MATERIALS_BUFFER,
                           descriptorGatherer, VoxelRayMarch::materials::BINDING,
-                          SlotRole::Dependency | SlotRole::Execute);
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
-    batch.ConnectVariadic(voxelGridNode, VoxelGridNodeConfig::DEBUG_CAPTURE_BUFFER,
+    batch.Connect(voxelGridNode, VoxelGridNodeConfig::DEBUG_CAPTURE_BUFFER,
                           descriptorGatherer, VoxelRayMarch::traceWriteIndex::BINDING,
-                          SlotRole::Dependency | SlotRole::Execute | SlotRole::Debug);
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute | SlotRole::Debug));
 
     // Binding 5: octreeConfig (UBO) - octree scale parameters
     // TODO: Add VoxelRayMarch::octreeConfig to VoxelRayMarchNames.h after regenerating SDI
-    batch.ConnectVariadic(voxelGridNode, VoxelGridNodeConfig::OCTREE_CONFIG_BUFFER,
+    batch.Connect(voxelGridNode, VoxelGridNodeConfig::OCTREE_CONFIG_BUFFER,
                           descriptorGatherer, 5,  // Binding 5 (hardcoded until SDI regenerated)
-                          SlotRole::Dependency | SlotRole::Execute);
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
 #if USE_COMPRESSED_SHADER
     // Compressed shader variant requires DXT compressed buffers at bindings 6 and 7
     // Binding 6: compressedColors (DXT1) - 8 bytes/block, 32 blocks/brick = 256 bytes/brick
     // Binding 7: compressedNormals (DXT) - 16 bytes/block, 32 blocks/brick = 512 bytes/brick
-    batch.ConnectVariadic(voxelGridNode, VoxelGridNodeConfig::COMPRESSED_COLOR_BUFFER,
+    batch.Connect(voxelGridNode, VoxelGridNodeConfig::COMPRESSED_COLOR_BUFFER,
                           descriptorGatherer, 6,  // Binding 6: CompressedColorBuffer
-                          SlotRole::Dependency | SlotRole::Execute);
-    batch.ConnectVariadic(voxelGridNode, VoxelGridNodeConfig::COMPRESSED_NORMAL_BUFFER,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(voxelGridNode, VoxelGridNodeConfig::COMPRESSED_NORMAL_BUFFER,
                           descriptorGatherer, 7,  // Binding 7: CompressedNormalBuffer
-                          SlotRole::Dependency | SlotRole::Execute);
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
     if (mainLogger && mainLogger->IsEnabled()) {
         mainLogger->Info("[BuildRenderGraph] Connected compressed buffers: binding 6 (colors), binding 7 (normals)");
@@ -1187,7 +1207,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Extract imageCount metadata using field extraction, DESCRIPTOR_RESOURCES provides actual bindings
     batch.Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
                   computeDescriptorSet, DescriptorSetNodeConfig::SWAPCHAIN_IMAGE_COUNT,
-                  &SwapChainPublicVariables::swapChainImageCount)
+                  ExtractField(&SwapChainPublicVariables::swapChainImageCount))
          .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
                   computeDescriptorSet, DescriptorSetNodeConfig::IMAGE_INDEX)
          // REMOVED DUPLICATE: descriptorGatherer -> computeDescriptorSet DESCRIPTOR_RESOURCES (already connected at line 919-920)
@@ -1268,12 +1288,14 @@ void VulkanGraphApplication::HandleShutdownAck(const std::string& systemName) {
 }
 
 void VulkanGraphApplication::CompleteShutdown() {
-    // All systems have cleaned up - now destroy the window
+    // All systems have cleaned up - signal the window to close. WindowNode owns the GLFW window
+    // lifecycle and destroys it (glfwDestroyWindow) during its CleanupImpl, so we must not destroy
+    // it here (that would double-free); flagging should-close drives the normal teardown.
     if (windowHandle) {
         if (mainLogger) {
-            mainLogger->Info("Destroying window to complete shutdown");
+            mainLogger->Info("Signalling window to close to complete shutdown");
         }
-        DestroyWindow(windowHandle);
+        glfwSetWindowShouldClose(windowHandle, GLFW_TRUE);
         windowHandle = nullptr;
     }
 }

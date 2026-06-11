@@ -82,6 +82,9 @@ private:
     // Performance logging (disabled by default)
     std::shared_ptr<class ComputePerformanceLogger> perfLogger_;  // Shared ownership for hierarchy
 
+    // Task profile for compile-time cost estimation (Sprint 6.5)
+    ITaskProfile* compileProfile_ = nullptr;
+
     // Helper methods
     VkShaderModule CreateShaderModule(VulkanDevice* device, const std::vector<uint32_t>& spirv);
     std::shared_ptr<CashSystem::PipelineLayoutWrapper> CreatePipelineLayout(

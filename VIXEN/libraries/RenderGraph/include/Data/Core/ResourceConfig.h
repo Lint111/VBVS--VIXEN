@@ -163,6 +163,173 @@ enum class SlotScope : uint8_t {
 };
 
 /**
+ * @brief Storage strategy for accumulation slots (Sprint 6.0.2)
+ *
+ * Determines how accumulated data is stored and validated.
+ *
+ * - Value: Elements are copied into the container (default, safe)
+ *   - Validates: None (always safe)
+ *   - Warning: Logs if total copy size > 1KB
+ *
+ * - Reference: Elements are stored as references (zero-copy, requires Persistent sources)
+ *   - Validates: Source slot must have Persistent lifetime
+ *   - Compile Error: If connected source is Transient
+ *
+ * - Span: Elements are stored as std::span (view, requires Persistent sources)
+ *   - Validates: Source slot must have Persistent lifetime
+ *   - Compile Error: If connected source is Transient
+ *
+ * Usage:
+ * ```cpp
+ * ACCUMULATION_INPUT_SLOT_V2(PASSES, std::vector<DispatchPass>, DispatchPass, 0,
+ *     SlotNullability::Required, SlotRole::Dependency,
+ *     SlotStorageStrategy::Value);  // Copies DispatchPass elements
+ *
+ * ACCUMULATION_INPUT_SLOT_V2(LARGE_BUFFERS, std::vector<VkBuffer>, VkBuffer, 1,
+ *     SlotNullability::Required, SlotRole::Dependency,
+ *     SlotStorageStrategy::Reference);  // Requires Persistent source
+ * ```
+ */
+enum class SlotStorageStrategy : uint8_t {
+    Value      = 0,  // Copy elements (safe, may warn if large)
+    Reference  = 1,  // Store references (zero-copy, requires Persistent)
+    Span       = 2   // Store std::span (view, requires Persistent)
+};
+
+// ====================================================================
+// SPRINT 6.0.1: UNIFIED CONNECTION SYSTEM - SlotFlags Infrastructure
+// ====================================================================
+
+/**
+ * @brief Slot behavioral flags for unified connection system
+ *
+ * These flags extend slot capabilities beyond basic type/role metadata.
+ * Used to enable accumulation (multi-connect) and explicit ordering.
+ *
+ * Usage:
+ * ```cpp
+ * INPUT_SLOT(DISPATCH_PASSES, std::vector<DispatchPass>, 0,
+ *     SlotNullability::Required, SlotRole::Dependency,
+ *     SlotMutability::ReadOnly, SlotScope::NodeLevel,
+ *     SlotFlags::Accumulation | SlotFlags::MultiConnect);
+ * ```
+ */
+enum class SlotFlags : uint32_t {
+    None           = 0,         ///< No special behavior
+    Accumulation   = 1u << 0,   ///< Accepts T → vector<T>, flattens vector<T>
+    MultiConnect   = 1u << 1,   ///< Allows multiple sources to same slot
+    ExplicitOrder  = 1u << 2,   ///< Requires ordering metadata on connections
+};
+
+// Bitwise operators for SlotFlags
+constexpr inline SlotFlags operator|(SlotFlags a, SlotFlags b) {
+    return static_cast<SlotFlags>(static_cast<uint32_t>(a) | static_cast<uint32_t>(b));
+}
+
+constexpr inline SlotFlags operator&(SlotFlags a, SlotFlags b) {
+    return static_cast<SlotFlags>(static_cast<uint32_t>(a) & static_cast<uint32_t>(b));
+}
+
+constexpr inline SlotFlags operator~(SlotFlags a) {
+    return static_cast<SlotFlags>(~static_cast<uint32_t>(a));
+}
+
+constexpr inline SlotFlags& operator|=(SlotFlags& a, SlotFlags b) {
+    return a = a | b;
+}
+
+constexpr inline SlotFlags& operator&=(SlotFlags& a, SlotFlags b) {
+    return a = a & b;
+}
+
+// Helper functions for SlotFlags checks
+constexpr inline bool HasFlag(SlotFlags flags, SlotFlags flag) {
+    return (static_cast<uint32_t>(flags) & static_cast<uint32_t>(flag)) != 0;
+}
+
+constexpr inline bool HasAccumulation(SlotFlags flags) {
+    return HasFlag(flags, SlotFlags::Accumulation);
+}
+
+constexpr inline bool HasMultiConnect(SlotFlags flags) {
+    return HasFlag(flags, SlotFlags::MultiConnect);
+}
+
+constexpr inline bool HasExplicitOrder(SlotFlags flags) {
+    return HasFlag(flags, SlotFlags::ExplicitOrder);
+}
+
+/**
+ * @brief Ordering strategy for accumulation slots
+ *
+ * Determines how multiple connections to an accumulation slot are ordered.
+ */
+enum class OrderStrategy : uint8_t {
+    ConnectionOrder,  ///< Order by when Connect() was called (legacy behavior)
+    ByMetadata,       ///< Sort by explicit metadata key (recommended)
+    BySourceSlot,     ///< Use source slot's embedded metadata
+    Unordered         ///< Set semantics - no guaranteed order
+};
+
+/**
+ * @brief Data handling strategy for accumulation slots
+ *
+ * Determines how values from source connections are stored:
+ * - ByValue: Copy values into the accumulation (vector<T>)
+ * - ByReference: Store pointers to sources (vector<T*>)
+ * - BySpan: Store non-owning view (span<T> from single source)
+ *
+ * Example use cases:
+ * - ByValue: DispatchPass structs that are small and need copying
+ * - ByReference: Large resources where copying is expensive
+ * - BySpan: When source is already a contiguous array
+ */
+enum class AccumulationStorage : uint8_t {
+    ByValue,      ///< Copy values (T → vector<T>)
+    ByReference,  ///< Store pointers (T → vector<T*>)
+    BySpan        ///< Non-owning view (requires contiguous source)
+};
+
+/**
+ * @brief Configuration for accumulation slots
+ *
+ * Specifies constraints, ordering, and storage for slots that accept multiple connections.
+ * Used with SlotFlags::Accumulation.
+ *
+ * The target slot can be any Iterable type (vector, array, span, custom container).
+ * Storage strategy determines how source values are stored:
+ * - ByValue: Copies values (safest, works with any iterable target)
+ * - ByReference: Stores pointers (efficient, requires lifetime management)
+ * - BySpan: Non-owning view (most efficient, requires contiguous source)
+ */
+struct AccumulationConfig {
+    size_t minConnections = 0;                              ///< Minimum required connections
+    size_t maxConnections = SIZE_MAX;                       ///< Maximum allowed connections
+    OrderStrategy orderStrategy = OrderStrategy::ByMetadata; ///< How to order connections
+    AccumulationStorage storage = AccumulationStorage::ByValue; ///< How to store values
+    bool allowDuplicateKeys = false;                        ///< Allow same sortKey on multiple connections
+    bool flattenIterables = true;                           ///< Flatten source containers into accumulation
+
+    // Constexpr constructor for compile-time usage
+    constexpr AccumulationConfig() = default;
+
+    constexpr AccumulationConfig(size_t min, size_t max,
+                                  OrderStrategy order = OrderStrategy::ByMetadata,
+                                  bool duplicates = false)
+        : minConnections(min), maxConnections(max),
+          orderStrategy(order), allowDuplicateKeys(duplicates) {}
+
+    constexpr AccumulationConfig(size_t min, size_t max,
+                                  OrderStrategy order,
+                                  AccumulationStorage storageMode,
+                                  bool duplicates = false,
+                                  bool flatten = true)
+        : minConnections(min), maxConnections(max),
+          orderStrategy(order), storage(storageMode),
+          allowDuplicateKeys(duplicates), flattenIterables(flatten) {}
+};
+
+/**
  * @brief Helper constexpr values for slot count aliasing
  * 
  * Usage: InputCount<3> instead of magic number 3
@@ -183,6 +350,12 @@ enum class SlotScope : uint8_t {
  * - SlotRole moved from call-site to config
  * - SlotMutability for parallel safety
  * - SlotScope for slot task resource allocation
+ *
+ * Sprint 6.0.1 Extensions:
+ * - SlotFlags for accumulation/multi-connect behavior
+ *
+ * Sprint 6.0.2 Extensions:
+ * - SlotStorageStrategy for accumulation slots (Value/Reference/Span)
  */
 template<
     typename T,
@@ -190,7 +363,9 @@ template<
     SlotNullability Nullability = SlotNullability::Required,
     SlotRole Role = SlotRole::Dependency,
     SlotMutability Mutability = SlotMutability::ReadOnly,
-    SlotScope Scope = SlotScope::NodeLevel
+    SlotScope Scope = SlotScope::NodeLevel,
+    SlotFlags Flags = SlotFlags::None,
+    SlotStorageStrategy StorageStrategy = SlotStorageStrategy::Value
 >
 struct ResourceSlot {
     using Type = T;
@@ -207,8 +382,25 @@ struct ResourceSlot {
     static constexpr SlotMutability mutability = Mutability;
     static constexpr SlotScope scope = Scope;
 
+    // Sprint 6.0.1: Connection flags
+    static constexpr SlotFlags flags = Flags;
+
+    // Sprint 6.0.2: Storage strategy for accumulation
+    static constexpr SlotStorageStrategy storageStrategy = StorageStrategy;
+
+    // Helper accessors for flags
+    static constexpr bool isAccumulation = HasAccumulation(Flags);
+    static constexpr bool isMultiConnect = HasMultiConnect(Flags);
+    static constexpr bool requiresExplicitOrder = HasExplicitOrder(Flags);
+
     // Compile-time validation
     static_assert(ResourceTypeTraits<T>::isValid, "Unsupported Vulkan resource type");
+
+    // Sprint 6.0.1: Accumulation slots should use MultiConnect
+    static_assert(
+        !HasAccumulation(Flags) || HasMultiConnect(Flags),
+        "Accumulation slots must also have MultiConnect flag set"
+    );
 
     // Default constructor for use as constant
     constexpr ResourceSlot() = default;
@@ -496,6 +688,157 @@ ResourceDescriptor MakeDescriptor(
         Mutability, \
         Scope \
     )
+
+// ====================================================================
+// SPRINT 6.0.1: EXTENDED MACROS WITH FLAGS SUPPORT
+// ====================================================================
+
+/**
+ * @brief Define input slot with full metadata including flags (Sprint 6.0.1)
+ *
+ * Extends CONSTEXPR_INPUT_FULL with SlotFlags parameter for accumulation/multi-connect.
+ *
+ * Usage:
+ * ```cpp
+ * CONSTEXPR_INPUT_FULL_WITH_FLAGS(DISPATCH_PASSES, std::vector<DispatchPass>, 0,
+ *     SlotNullability::Required, SlotRole::Dependency,
+ *     SlotMutability::ReadOnly, SlotScope::NodeLevel,
+ *     SlotFlags::Accumulation | SlotFlags::MultiConnect);
+ * ```
+ */
+#define CONSTEXPR_INPUT_FULL_WITH_FLAGS(SlotName, SlotType, Index, Nullability, Role, Mutability, Scope, Flags) \
+    using SlotName##_Slot = ::Vixen::RenderGraph::ResourceSlot< \
+        SlotType, \
+        Index, \
+        Nullability, \
+        Role, \
+        Mutability, \
+        Scope, \
+        Flags \
+    >; \
+    static constexpr SlotName##_Slot SlotName{}
+
+/**
+ * @brief Input slot with flags for accumulation/multi-connect (Sprint 6.0.1)
+ *
+ * Use for slots that accept multiple connections (accumulation pattern).
+ *
+ * Example:
+ * ```cpp
+ * // Accumulation slot that gathers DispatchPass from multiple sources
+ * INPUT_SLOT_FLAGS(DISPATCH_PASSES, std::vector<DispatchPass>, 0,
+ *     SlotNullability::Required, SlotRole::Dependency,
+ *     SlotMutability::ReadOnly, SlotScope::NodeLevel,
+ *     SlotFlags::Accumulation | SlotFlags::MultiConnect);
+ * ```
+ */
+#define INPUT_SLOT_FLAGS(SlotName, SlotType, Index, Nullability, Role, Mutability, Scope, Flags) \
+    CONSTEXPR_INPUT_FULL_WITH_FLAGS( \
+        SlotName, \
+        SlotType, \
+        Index, \
+        Nullability, \
+        Role, \
+        Mutability, \
+        Scope, \
+        Flags \
+    )
+
+/**
+ * @brief Convenience macro for accumulation input slots
+ *
+ * Pre-configured with Accumulation | MultiConnect flags.
+ * Use for slots that gather data from multiple source nodes.
+ *
+ * IMPORTANT: Accumulation slots are ALWAYS Execute role (never Dependency):
+ * - The accumulated vector is rebuilt each frame (reset semantics)
+ * - No dependency propagation needed - consumer processes fresh data each cycle
+ * - Source changes don't need to trigger target rebuild
+ *
+ * Result Lifetime: Always Transient - the accumulated vector is ephemeral.
+ * Do not cache accumulated data across frames.
+ */
+#define ACCUMULATION_INPUT_SLOT(SlotName, SlotType, Index, Nullability) \
+    INPUT_SLOT_FLAGS( \
+        SlotName, \
+        SlotType, \
+        Index, \
+        Nullability, \
+        ::Vixen::RenderGraph::SlotRole::Execute, \
+        ::Vixen::RenderGraph::SlotMutability::ReadOnly, \
+        ::Vixen::RenderGraph::SlotScope::NodeLevel, \
+        ::Vixen::RenderGraph::SlotFlags::Accumulation | ::Vixen::RenderGraph::SlotFlags::MultiConnect \
+    )
+
+// ====================================================================
+// SPRINT 6.0.2: PROPER ACCUMULATION SLOT SYSTEM
+// ====================================================================
+
+/**
+ * @brief Proper accumulation input slot with container type and storage strategy (Sprint 6.0.2)
+ *
+ * Declares an accumulation slot using explicit container types (e.g., std::vector<T>)
+ * instead of element types. This eliminates the type system lie where slots declare
+ * element types but return containers at runtime.
+ *
+ * IMPORTANT: Accumulation slots are ALWAYS Execute role (never Dependency):
+ * - The accumulated vector is rebuilt each frame (reset semantics)
+ * - No dependency propagation needed - consumer processes fresh data each cycle
+ * - Source changes don't need to trigger target rebuild
+ *
+ * Result Lifetime: Always Transient - the accumulated vector is ephemeral.
+ * Do not cache accumulated data across frames.
+ *
+ * Parameters:
+ * - SlotName: Name of the slot (e.g., PASSES, INPUTS)
+ * - ContainerType: Full container type (e.g., std::vector<bool>, std::vector<DispatchPass>)
+ * - ElementType: Element type for validation (e.g., bool, DispatchPass)
+ * - Index: Slot index
+ * - Nullability: SlotNullability::Required or Optional
+ * - StorageStrategy: SlotStorageStrategy::Value, Reference, or Span
+ *
+ * Storage Strategies:
+ * - Value: Copies elements into container (safe, warns if >1KB total)
+ * - Reference: Stores references (zero-copy, requires Persistent sources)
+ * - Span: Stores std::span view (zero-copy, requires Persistent sources)
+ *
+ * Example:
+ * ```cpp
+ * // Value strategy (copies booleans)
+ * ACCUMULATION_INPUT_SLOT_V2(INPUTS, std::vector<bool>, bool, 1,
+ *     SlotNullability::Required,
+ *     SlotStorageStrategy::Value);
+ *
+ * // Reference strategy (requires Persistent sources)
+ * ACCUMULATION_INPUT_SLOT_V2(LARGE_BUFFERS, std::vector<VkBuffer>, VkBuffer, 2,
+ *     SlotNullability::Required,
+ *     SlotStorageStrategy::Reference);
+ * ```
+ *
+ * Compile-time Validations:
+ * - Container type must satisfy Iterable concept
+ * - Container's iterable_value_t must match ElementType
+ * - Reference/Span strategies validate Persistent requirement at connection time
+ */
+#define ACCUMULATION_INPUT_SLOT_V2(SlotName, ContainerType, ElementType, Index, Nullability, StorageStrategy) \
+    using SlotName##_Slot = ::Vixen::RenderGraph::ResourceSlot< \
+        ContainerType, \
+        Index, \
+        Nullability, \
+        ::Vixen::RenderGraph::SlotRole::Execute, \
+        ::Vixen::RenderGraph::SlotMutability::ReadOnly, \
+        ::Vixen::RenderGraph::SlotScope::NodeLevel, \
+        ::Vixen::RenderGraph::SlotFlags::Accumulation | ::Vixen::RenderGraph::SlotFlags::MultiConnect, \
+        StorageStrategy \
+    >; \
+    static constexpr SlotName##_Slot SlotName{}; \
+    /* Compile-time validation: Container must be iterable */ \
+    static_assert(::Vixen::RenderGraph::Iterable<ContainerType>, \
+        "Accumulation slot container type must satisfy Iterable concept"); \
+    /* Compile-time validation: Container element type must be convertible to declared element type */ \
+    /* Note: Uses convertible_to instead of is_same to handle std::vector<bool> proxy references */ \
+    static_assert(std::convertible_to<::Vixen::RenderGraph::iterable_value_t<ContainerType>, ElementType>, \
+        "Container's element type must be convertible to declared ElementType (handles proxy types like std::vector<bool>)")
 
 /**
  * @brief Output slot with Phase F metadata (manual index)

@@ -47,6 +47,9 @@ private:
 
     bool isLoaded = false;
 
+    // Task profile for compile-time cost estimation (Sprint 6.5)
+    ITaskProfile* compileProfile_ = nullptr;
+
     // CashSystem integration - cached wrappers
     std::shared_ptr<CashSystem::TextureWrapper> cachedTextureWrapper;
     std::shared_ptr<CashSystem::SamplerWrapper> cachedSamplerWrapper;

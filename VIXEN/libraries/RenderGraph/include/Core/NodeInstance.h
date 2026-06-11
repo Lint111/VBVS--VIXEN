@@ -11,11 +11,14 @@
 #include "Memory/ResourceBudgetManager.h"
 #include "GraphLifecycleHooks.h"
 #include "NodeContext.h"
+#include "ITaskProfile.h"  // Sprint 6.3: Task profile system
 #include <string>
 #include <vector>
 #include <map>
 #include <variant>
 #include <memory>
+#include <functional>
+#include "VirtualTask.h"  // Sprint 6.5: For GetExecutionTasks return type
 #include "Logger.h"
 #include "MessageBus.h"
 
@@ -26,6 +29,7 @@ namespace Vixen::RenderGraph {
 
 // Forward declarations
 class RenderGraph;
+class TaskProfileRegistry;
 // NodeHandle defined in CleanupStack.h
 
 /**
@@ -101,6 +105,63 @@ public:
     // Owning graph access (for cleanup registration)
     RenderGraph* GetOwningGraph() const { return owningGraph; }
     void SetOwningGraph(RenderGraph* graph) { owningGraph = graph; }
+
+    // =========================================================================
+    // Task Profile System (Sprint 6.3) - Cacher-style API
+    // =========================================================================
+    //
+    // Architecture: NodeInstance→TaskProfileRegistry wiring
+    //
+    // Profiles are OWNED by RenderGraph's TaskProfileRegistry (central ownership).
+    // NodeInstance provides convenient access via owningGraph->GetTaskProfileRegistry().
+    //
+    // Initialization flow:
+    // 1. RenderGraph creates TaskProfileRegistry in constructor
+    // 2. RenderGraph::AddNode() sets node->SetOwningGraph(this)
+    // 3. Node's Setup/Compile calls GetOrCreateProfile<T>() which:
+    //    a. Checks if profile exists in registry (via GetTaskProfile)
+    //    b. If not, creates new profile and registers it
+    //    c. Returns non-owning pointer to registry-owned profile
+    //
+    // Profile lifetime: Owned by registry until RenderGraph destruction or
+    // explicit UnregisterTask(). Safe to store returned pointers in node members.
+    //
+    // Thread safety: Single-threaded (all RenderGraph calls from main thread).
+    // =========================================================================
+
+    /**
+     * @brief Get or create a task profile (cacher pattern)
+     *
+     * Looks up profile by taskId. If not found, creates it using the provided
+     * arguments and registers it. Returns pointer to the profile.
+     *
+     * Usage:
+     * @code
+     * // Simple - creates SimpleTaskProfile("shadowPass", "shadow")
+     * auto* profile = GetOrCreateProfile<SimpleTaskProfile>("shadowPass", "shadow");
+     *
+     * // Resolution-based profile with custom table
+     * std::array<uint32_t, 11> resolutions = {...};
+     * auto* profile = GetOrCreateProfile<ResolutionTaskProfile>(
+     *     "shadowMap", "shadow", resolutions);
+     * @endcode
+     *
+     * @tparam ProfileType Concrete profile type (e.g., SimpleTaskProfile)
+     * @param taskId Unique task identifier
+     * @param args Constructor arguments for ProfileType (taskId, category, ...)
+     * @return Non-owning pointer to profile (owned by registry)
+     */
+    template<typename ProfileType, typename... Args>
+    ProfileType* GetOrCreateProfile(const std::string& taskId, Args&&... args);
+
+    /**
+     * @brief Get existing task profile (no creation)
+     *
+     * @param taskId Task identifier
+     * @return Pointer to profile, or nullptr if not found
+     */
+    ITaskProfile* GetTaskProfile(const std::string& taskId);
+    const ITaskProfile* GetTaskProfile(const std::string& taskId) const;
 
     // Node arrayable flag
     bool AllowsInputArrays() const { return allowInputArrays; }
@@ -350,6 +411,140 @@ public:
      * @return Total steps executed by loop
      */
     uint64_t GetLoopStepCount() const;
+
+    // =========================================================================
+    // Task-Level Parallelism API (Sprint 6.5)
+    // =========================================================================
+    //
+    // Unified API: Override GetExecutionTasks() to control parallelism.
+    // - Return 1 task: sequential execution (default)
+    // - Return N tasks: parallel execution (one per bundle)
+    //
+    // The executor runs whatever tasks you return. No opt-in flags needed.
+    // =========================================================================
+
+    /**
+     * @brief Register a profile for a specific execution phase
+     *
+     * Profiles attached to a phase will be:
+     * - Included in VirtualTasks returned by GetExecutionTasks()
+     * - Auto-timed via BeginProfiling()/EndProfiling() by the executor
+     *
+     * Multiple profiles per phase enable composable sub-task measurement.
+     *
+     * @param phase The execution phase
+     * @param profile Non-owning pointer to profile (must outlive node)
+     */
+    void RegisterPhaseProfile(VirtualTaskPhase phase, ITaskProfile* profile);
+
+    /**
+     * @brief Get profiles registered for a phase
+     *
+     * @param phase The execution phase
+     * @return Vector of profile pointers (may be empty)
+     */
+    const std::vector<ITaskProfile*>& GetPhaseProfiles(VirtualTaskPhase phase) const;
+
+    /**
+     * @brief Clear all profiles for a phase
+     */
+    void ClearPhaseProfiles(VirtualTaskPhase phase);
+
+    /**
+     * @brief Clear all registered phase profiles
+     */
+    void ClearAllPhaseProfiles();
+
+    /**
+     * @brief Helper to create parallel tasks for a phase
+     *
+     * Reduces boilerplate for nodes that execute multiple bundles in parallel.
+     * Creates one VirtualTask per bundle with profiles attached.
+     *
+     * Usage in GetExecutionTasks() override:
+     * @code
+     * std::vector<VirtualTask> GetExecutionTasks(VirtualTaskPhase phase) override {
+     *     if (phase != VirtualTaskPhase::Execute)
+     *         return NodeInstance::GetExecutionTasks(phase);
+     *     return CreateParallelTasks(phase, [this](uint32_t i) { ExecuteBundle(i); });
+     * }
+     * @endcode
+     *
+     * @param phase The lifecycle phase (determines which profiles to attach)
+     * @param executeBundle Function called for each task with bundle index
+     * @return Vector of tasks (one per bundle from GetVirtualTaskCount())
+     */
+    std::vector<VirtualTask> CreateParallelTasks(
+        VirtualTaskPhase phase,
+        std::function<void(uint32_t)> executeBundle
+    );
+
+    /**
+     * @brief Get all execution tasks for a lifecycle phase
+     *
+     * Returns a vector of tasks to execute for this phase.
+     * This is the SINGLE method to override for task parallelism:
+     *
+     * - Return 1 task: Node executes sequentially (default)
+     * - Return N tasks: Node executes in parallel (one task per bundle)
+     *
+     * The executor calls this ONCE per phase and runs all returned tasks.
+     * Task dependencies are determined by VirtualResourceAccessTracker
+     * based on bundle resource access patterns.
+     *
+     * Default implementation: Returns 1 task that runs the whole phase.
+     *
+     * Example for parallel node:
+     * @code
+     * std::vector<VirtualTask> GetExecutionTasks(VirtualTaskPhase phase) override {
+     *     if (phase != VirtualTaskPhase::Execute)
+     *         return NodeInstance::GetExecutionTasks(phase);
+     *
+     *     std::vector<VirtualTask> tasks;
+     *     for (uint32_t i = 0; i < DetermineTaskCount(); ++i) {
+     *         VirtualTask task;
+     *         task.id = {this, i};
+     *         task.execute = [this, i]() { ExecuteBundle(i); };
+     *         task.profiles = GetPhaseProfiles(phase);  // Cost from profiles
+     *         tasks.push_back(std::move(task));
+     *     }
+     *     return tasks;
+     * }
+     * @endcode
+     *
+     * @param phase The lifecycle phase (Setup, Compile, Execute, Cleanup)
+     * @return Vector of tasks to execute (never empty)
+     */
+    virtual std::vector<VirtualTask> GetExecutionTasks(VirtualTaskPhase phase);
+
+    /**
+     * @brief Estimate execution cost for a specific task
+     *
+     * Returns estimated cost in nanoseconds for budget-aware scheduling.
+     * Used by TimelineCapacityTracker for frame budget management.
+     *
+     * Default implementation sums estimates from Execute phase profiles
+     * registered via RegisterPhaseProfile(). Returns 0 if no profiles.
+     *
+     * Derived nodes can override to provide per-task estimation logic.
+     *
+     * @param taskIndex Bundle/task index (unused in default impl)
+     * @return Estimated cost in nanoseconds (0 = unknown)
+     */
+    virtual uint64_t EstimateTaskCost(uint32_t taskIndex) const;
+
+    /**
+     * @brief Get the number of virtual tasks for this node
+     *
+     * Returns the number of bundles, which determines how many
+     * VirtualTasks can be created for this node. Used by
+     * VirtualResourceAccessTracker for resource conflict detection.
+     *
+     * @return Number of tasks (at least 1)
+     */
+    uint32_t GetVirtualTaskCount() const {
+        return std::max(1u, static_cast<uint32_t>(bundles.size()));
+    }
 
     // Template method pattern - public final methods with automatic boilerplate
     /**
@@ -818,7 +1013,7 @@ protected:
 
     // EventBus integration
     EventBus::MessageBus* messageBus = nullptr;  // Non-owning pointer
-    std::vector<EventBus::EventSubscriptionID> eventSubscriptions;
+    EventBus::ScopedSubscriptions subscriptions_;  // RAII subscriptions (auto-unsubscribe on destruction)
     bool needsRecompile = false;
     bool deferredRecompile = false;  // Set when marked dirty during execution
 
@@ -888,6 +1083,9 @@ protected:
     // Metrics
     size_t inputMemoryFootprint = 0;
 
+    // Phase→Profile mapping for task-level profiling (Sprint 6.5)
+    std::map<VirtualTaskPhase, std::vector<ITaskProfile*>> phaseProfiles_;
+
     // Phase F: Task manager for array processing
     SlotTaskManager taskManager;
 
@@ -901,6 +1099,31 @@ protected:
     // Helper methods
     void AllocateResources();
     void DeallocateResources();
+
+    // Internal helper for GetOrCreateProfile (implemented in .cpp)
+    ITaskProfile* RegisterProfileIfAbsent(const std::string& taskId, std::unique_ptr<ITaskProfile> profile);
 };
+
+// ============================================================================
+// Template Implementation (inline, no RenderGraph.h dependency)
+// ============================================================================
+
+template<typename ProfileType, typename... Args>
+ProfileType* NodeInstance::GetOrCreateProfile(const std::string& taskId, Args&&... args) {
+    static_assert(std::is_base_of_v<ITaskProfile, ProfileType>,
+        "ProfileType must derive from ITaskProfile");
+
+    // Check if exists first
+    if (ITaskProfile* existing = GetTaskProfile(taskId)) {
+        return dynamic_cast<ProfileType*>(existing);
+    }
+
+    // Create new and register
+    auto newProfile = std::make_unique<ProfileType>(std::forward<Args>(args)...);
+    newProfile->SetTaskId(taskId);
+
+    ITaskProfile* registered = RegisterProfileIfAbsent(taskId, std::move(newProfile));
+    return dynamic_cast<ProfileType*>(registered);
+}
 
 } // namespace Vixen::RenderGraph

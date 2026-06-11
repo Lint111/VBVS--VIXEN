@@ -1,5 +1,9 @@
 #include "VulkanSwapChain.h"
 
+#define GLFW_INCLUDE_NONE   // don't pull in <GL/gl.h> (absent on headless/WSL); Vulkan-only below
+#define GLFW_INCLUDE_VULKAN
+#include <GLFW/glfw3.h>
+
 #define INSTANCE_FUNC_PTR(instance, entrypoint){                \
     fp##entrypoint = (PFN_vk##entrypoint) vkGetInstanceProcAddr \
     (instance, "vk"#entrypoint);                                \
@@ -172,16 +176,11 @@ void VulkanSwapChain::GetSupportedFormats(VkPhysicalDevice gpu)
     }
 }
 
-VkResult VulkanSwapChain::CreateSurface(VkInstance instance, HWND hwnd, HINSTANCE hinstance)
+VkResult VulkanSwapChain::CreateSurface(VkInstance instance, GLFWwindow* window)
 {
-    // Construct the surface description structure
-    VkWin32SurfaceCreateInfoKHR createInfo = {};
-    createInfo.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
-    createInfo.pNext = nullptr;
-    createInfo.hinstance = hinstance;
-    createInfo.hwnd = hwnd;
-
-    return vkCreateWin32SurfaceKHR(instance, &createInfo, nullptr, &scPublicVars.surface);
+    // Cross-platform surface creation; GLFW selects the right platform surface internally
+    // (Win32 on Windows, X11/Wayland on Linux). Replaces vkCreateWin32SurfaceKHR.
+    return glfwCreateWindowSurface(instance, window, nullptr, &scPublicVars.surface);
 }
 
 uint32_t VulkanSwapChain::GetGraphicsQueueWithPresentationSupport(VkPhysicalDevice gpu, uint32_t queueFamilyCount, const std::vector<VkQueueFamilyProperties>& queueProps)

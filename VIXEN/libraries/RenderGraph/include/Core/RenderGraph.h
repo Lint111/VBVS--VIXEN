@@ -18,6 +18,12 @@
 #include "MainCacher.h"
 #include "Core/LoopManager.h"
 #include "Core/GraphLifecycleHooks.h"
+#include "Core/TaskProfileRegistry.h"
+#include "Core/CalibrationStore.h"
+#include "Core/TimelineCapacityTracker.h"
+#include "Core/ResourceAccessTracker.h"  // Sprint 6.4: Conflict detection
+#include "Core/VirtualResourceAccessTracker.h"  // Sprint 6.5: Per-task tracking
+#include "Core/TBBVirtualTaskExecutor.h"        // Sprint 6.5: Virtual task execution
 #include <memory>
 #include <string>
 #include <vector>
@@ -39,6 +45,23 @@ using ResourceManagement::ResourceBudgetManager;
 using ResourceManagement::DeviceBudgetManager;
 
 // NodeHandle defined in CleanupStack.h (included transitively)
+
+// TBBExecutorStats and TBBExecutionMode kept for API compatibility
+struct TBBExecutorStats {
+    size_t nodeCount = 0;
+    size_t edgeCount = 0;
+    size_t executionsCompleted = 0;
+    size_t exceptionsThrown = 0;
+    double lastExecutionMs = 0.0;
+    double avgExecutionMs = 0.0;
+    size_t executeCount = 0;
+};
+
+enum class TBBExecutionMode {
+    Parallel,
+    Sequential,
+    Limited
+};
 
 /**
  * @brief Main Render Graph class
@@ -528,6 +551,220 @@ public:
     GraphLifecycleHooks& GetLifecycleHooks() { return lifecycleHooks; }
     const GraphLifecycleHooks& GetLifecycleHooks() const { return lifecycleHooks; }
 
+    // ====== Task Profile System (Sprint 6.3) ======
+
+    /**
+     * @brief Get the task profile registry
+     *
+     * Nodes use this to register profiles and get cost estimates.
+     * The registry persists calibration data across sessions.
+     *
+     * @code
+     * // In node Setup:
+     * auto& registry = GetOwningGraph()->GetTaskProfileRegistry();
+     * auto profile = std::make_unique<SimpleTaskProfile>("myTask", "compute");
+     * registry.RegisterTask(std::move(profile));
+     *
+     * // In node Execute:
+     * auto* profile = registry.GetProfile("myTask");
+     * uint64_t estimatedCost = profile->GetEstimatedCostNs();
+     * @endcode
+     */
+    TaskProfileRegistry& GetTaskProfileRegistry() { return taskProfileRegistry_; }
+    const TaskProfileRegistry& GetTaskProfileRegistry() const { return taskProfileRegistry_; }
+
+    /**
+     * @brief Register a task profile factory
+     *
+     * Convenience wrapper - factories must be registered before LoadCalibration().
+     *
+     * @param typeName Profile type name (e.g., "SimpleTaskProfile")
+     * @param factory Factory function
+     */
+    void RegisterTaskProfileFactory(const std::string& typeName, TaskProfileFactory factory) {
+        taskProfileRegistry_.RegisterFactory(typeName, std::move(factory));
+    }
+
+    /**
+     * @brief Load calibration data from file
+     *
+     * Call after registering factories but before first RenderFrame().
+     *
+     * @param baseDir Directory containing calibration files
+     * @param gpu GPU identifier for file selection
+     * @return Number of profiles loaded
+     */
+    size_t LoadCalibration(const std::filesystem::path& baseDir, const GPUIdentifier& gpu) {
+        calibrationStore_ = std::make_unique<CalibrationStore>(baseDir);
+        calibrationStore_->SetGPU(gpu);
+        auto result = calibrationStore_->Load(taskProfileRegistry_);
+        return result.profileCount;
+    }
+
+    /**
+     * @brief Save calibration data to file
+     *
+     * Call periodically or at application shutdown.
+     *
+     * @return true if save succeeded
+     */
+    bool SaveCalibration() {
+        if (!calibrationStore_) return false;
+        auto result = calibrationStore_->Save(taskProfileRegistry_);
+        return result.success;
+    }
+
+    // ====== Capacity Tracking System (Sprint 6.3 Phase 4) ======
+
+    /**
+     * @brief Get the capacity tracker
+     *
+     * Provides real-time frame budget tracking and utilization metrics.
+     * Nodes record measurements; the system adjusts task profiles automatically.
+     *
+     * @return Reference to TimelineCapacityTracker
+     */
+    TimelineCapacityTracker& GetCapacityTracker() { return capacityTracker_; }
+    const TimelineCapacityTracker& GetCapacityTracker() const { return capacityTracker_; }
+
+    /**
+     * @brief Configure capacity tracking
+     *
+     * @param config Tracker configuration (budgets, thresholds)
+     */
+    void ConfigureCapacityTracking(const TimelineCapacityTracker::Config& config) {
+        capacityTracker_ = TimelineCapacityTracker(config);
+    }
+
+    /**
+     * @brief Enable automatic pressure adjustment (event-driven)
+     *
+     * When enabled, the system automatically adjusts TaskProfile workUnits
+     * based on capacity utilization after each frame via events:
+     * - TimelineCapacityTracker publishes BudgetOverrun/AvailableEvent
+     * - TaskProfileRegistry subscribes and adjusts pressure autonomously
+     *
+     * This is the event-driven implementation (Sprint 6.3 Option A).
+     * RenderGraph no longer mediates between these systems.
+     *
+     * @param enable true to enable automatic adjustment
+     */
+    void SetAutoPressureAdjustment(bool enable);
+
+    /**
+     * @brief Check if auto pressure adjustment is enabled
+     */
+    [[nodiscard]] bool IsAutoPressureAdjustmentEnabled() const {
+        return autoPressureAdjustment_;
+    }
+
+    /**
+     * @brief Wire up event-driven subsystem subscriptions
+     *
+     * Called automatically when SetAutoPressureAdjustment(true) is called.
+     * Can also be called manually after MessageBus is set.
+     *
+     * Sets up:
+     * - TimelineCapacityTracker: subscribes to FrameStart/End, publishes Budget events
+     * - TaskProfileRegistry: subscribes to Budget events for pressure adjustment
+     */
+    void InitializeEventDrivenSystems();
+
+    // ====== Parallel Execution (Sprint 6.4) ======
+
+    /**
+     * @brief Enable or disable parallel node execution
+     *
+     * When enabled, nodes without resource conflicts execute concurrently
+     * using Intel TBB flow_graph. Requires graph recompilation to take effect.
+     *
+     * IMPORTANT: Parallel execution is experimental. Use only for graphs where:
+     * - Nodes have proper resource access tracking
+     * - No implicit ordering dependencies (only explicit connections)
+     * - All node Execute() methods are thread-safe
+     *
+     * @param enable true to enable parallel execution, false for sequential
+     */
+    void SetParallelExecutionEnabled(bool enable);
+
+    /**
+     * @brief Check if parallel execution is enabled
+     */
+    [[nodiscard]] bool IsParallelExecutionEnabled() const {
+        return parallelExecutionEnabled_;
+    }
+
+    /**
+     * @brief Set the execution mode for TBB executor
+     *
+     * @param mode Parallel, Sequential, or Limited
+     */
+    void SetExecutionMode(TBBExecutionMode mode);
+
+    /**
+     * @brief Get current execution mode
+     */
+    [[nodiscard]] TBBExecutionMode GetExecutionMode() const;
+
+    /**
+     * @brief Set maximum concurrency for parallel execution
+     *
+     * @param maxConcurrency Maximum concurrent nodes (0 = unlimited, hardware_concurrency)
+     */
+    void SetMaxConcurrency(size_t maxConcurrency);
+
+    /**
+     * @brief Get TBB executor statistics
+     *
+     * Useful for debugging and performance analysis.
+     */
+    [[nodiscard]] TBBExecutorStats GetExecutorStats() const;
+
+    /**
+     * @brief Get the resource access tracker (for debugging/analysis)
+     */
+    [[nodiscard]] const ResourceAccessTracker& GetResourceAccessTracker() const {
+        return resourceAccessTracker_;
+    }
+
+    // ====== Virtual Task Parallelism (Sprint 6.5) ======
+
+    /**
+     * @brief Enable or disable virtual task-level parallelism
+     *
+     * When enabled, nodes that opt-in via SupportsTaskParallelism() have their
+     * individual bundles (tasks) scheduled in parallel across nodes.
+     *
+     * IMPORTANT: This is more aggressive than parallel node execution.
+     * Only enable when nodes properly declare their resource accesses.
+     *
+     * @param enable true to enable virtual task parallelism
+     */
+    void SetVirtualTaskParallelismEnabled(bool enable);
+
+    /**
+     * @brief Check if virtual task parallelism is enabled
+     *
+     * Virtual task parallelism is now unified with parallel execution.
+     */
+    [[nodiscard]] bool IsVirtualTaskParallelismEnabled() const {
+        return parallelExecutionEnabled_;
+    }
+
+    /**
+     * @brief Get virtual task executor statistics
+     */
+    [[nodiscard]] const VirtualTaskExecutorStats& GetVirtualTaskExecutorStats() const {
+        return virtualTaskExecutor_.GetStats();
+    }
+
+    /**
+     * @brief Get the virtual resource access tracker (for debugging/analysis)
+     */
+    [[nodiscard]] const VirtualResourceAccessTracker& GetVirtualResourceAccessTracker() const {
+        return virtualAccessTracker_;
+    }
+
     // ====== Resource Dependency Tracking ======
 
     /**
@@ -551,12 +788,7 @@ private:
     NodeTypeRegistry* typeRegistry;
     EventBus::MessageBus* messageBus = nullptr;  // Non-owning pointer
     CashSystem::MainCacher* mainCacher = nullptr;  // Non-owning pointer
-    EventBus::EventSubscriptionID cleanupEventSubscription = 0;
-    EventBus::EventSubscriptionID renderPauseSubscription = 0;
-    EventBus::EventSubscriptionID windowResizeSubscription = 0;
-    EventBus::EventSubscriptionID windowStateSubscription = 0;
-    EventBus::EventSubscriptionID deviceSyncSubscription = 0;
-    EventBus::EventSubscriptionID windowCloseSubscription = 0;
+    EventBus::ScopedSubscriptions subscriptions_;  // RAII subscriptions (auto-unsubscribe on destruction)
     // Vixen::Vulkan::Resources::VulkanDevice* primaryDevice;  // Removed - nodes access device directly
 
     // Logger (non-owning pointer — application owns the logger)
@@ -607,6 +839,21 @@ private:
 
     // Lifecycle hook system
     GraphLifecycleHooks lifecycleHooks;
+
+    // Sprint 6.3: Task profile system for calibrated cost estimation
+    TaskProfileRegistry taskProfileRegistry_;
+    std::unique_ptr<CalibrationStore> calibrationStore_;
+
+    // Sprint 6.3 Phase 4: Capacity tracking with automatic pressure adjustment
+    TimelineCapacityTracker capacityTracker_;
+    bool autoPressureAdjustment_ = false;
+
+    // Sprint 6.4/6.5: Parallel execution with TBB virtual task executor
+    ResourceAccessTracker resourceAccessTracker_;  // Node-level conflict detection
+    VirtualResourceAccessTracker virtualAccessTracker_;  // Task-level conflict detection
+    TBBVirtualTaskExecutor virtualTaskExecutor_;
+    bool parallelExecutionEnabled_ = false;
+    bool executorNeedsRebuild_ = true;  // Rebuild executor after compilation
 
     // Sprint 4 Phase B: Lifetime scope management (optional, externally provided)
     LifetimeScopeManager* scopeManager_ = nullptr;

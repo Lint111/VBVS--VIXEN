@@ -1,6 +1,8 @@
 #pragma once
 
 #include <vulkan/vulkan.h>
+#include "MessageBus.h"  // Sprint 6.3: ScopedSubscriptions
+#include "Message.h"     // Sprint 6.3: Frame events
 #include <vector>
 #include <functional>
 #include <cstdint>
@@ -284,6 +286,51 @@ public:
         totalFlushed_ = 0;
     }
 
+    // =========================================================================
+    // Event-Driven Lifecycle (Sprint 6.3 Phase 6)
+    // =========================================================================
+
+    /**
+     * @brief Subscribe to frame events for automatic processing
+     *
+     * When subscribed, ProcessFrame() is called automatically at the start
+     * of each frame in response to FrameStartEvent. This enables decoupled
+     * operation where RenderGraph doesn't need to call ProcessFrame() directly.
+     *
+     * @param messageBus MessageBus to subscribe to (must outlive this object)
+     * @param maxFramesInFlight Number of frames to wait before destruction (default: 3)
+     */
+    void SubscribeToFrameEvents(Vixen::EventBus::MessageBus* messageBus, uint32_t maxFramesInFlight = 3) {
+        if (!messageBus) {
+            return;
+        }
+
+        maxFramesInFlight_ = maxFramesInFlight;
+        subscriptions_.SetBus(messageBus);
+
+        subscriptions_.Subscribe<Vixen::EventBus::FrameStartEvent>(
+            [this](const Vixen::EventBus::FrameStartEvent& e) {
+                ProcessFrame(e.frameNumber, maxFramesInFlight_);
+            }
+        );
+    }
+
+    /**
+     * @brief Unsubscribe from frame events
+     *
+     * After calling this, ProcessFrame() must be called manually.
+     */
+    void UnsubscribeFromFrameEvents() {
+        subscriptions_.UnsubscribeAll();
+    }
+
+    /**
+     * @brief Check if currently subscribed to frame events
+     */
+    [[nodiscard]] bool IsSubscribedToFrameEvents() const noexcept {
+        return subscriptions_.HasSubscriptions();
+    }
+
 private:
     /**
      * @brief Push element to ring buffer with automatic growth fallback
@@ -333,6 +380,10 @@ private:
     size_t totalQueued_ = 0;
     size_t totalDestroyed_ = 0;
     size_t totalFlushed_ = 0;
+
+    // Sprint 6.3 Phase 6: Event-driven lifecycle
+    Vixen::EventBus::ScopedSubscriptions subscriptions_;
+    uint32_t maxFramesInFlight_ = 3;
 };
 
 } // namespace ResourceManagement

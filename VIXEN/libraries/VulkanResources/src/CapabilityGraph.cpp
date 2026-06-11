@@ -1,5 +1,10 @@
 #include "CapabilityGraph.h"
 #include <algorithm>
+#include <cstring>
+
+#define GLFW_INCLUDE_NONE   // don't pull in <GL/gl.h> (absent on headless/WSL); Vulkan-only below
+#define GLFW_INCLUDE_VULKAN
+#include <GLFW/glfw3.h>
 
 namespace Vixen {
 
@@ -133,10 +138,23 @@ void CapabilityGraph::BuildStandardCapabilities() {
     auto surfaceExt = CreateCapability<InstanceExtensionCapability>(
         "InstanceExt:VK_KHR_surface", VK_KHR_SURFACE_EXTENSION_NAME);
 
-#ifdef VK_USE_PLATFORM_WIN32_KHR
-    auto win32Surface = CreateCapability<InstanceExtensionCapability>(
-        "InstanceExt:VK_KHR_win32_surface", VK_KHR_WIN32_SURFACE_EXTENSION_NAME);
-#endif
+    // Cross-platform surface extensions: GLFW reports exactly the instance extensions the current
+    // platform needs to present (VK_KHR_surface + the platform surface, e.g. win32/xlib/wayland).
+    // This replaces the hardcoded VK_KHR_WIN32_SURFACE / VK_USE_PLATFORM_WIN32_KHR logic.
+    std::vector<std::shared_ptr<CapabilityNode>> platformSurfaceExts;
+    {
+        glfwInit();  // idempotent; required before glfwGetRequiredInstanceExtensions
+        uint32_t glfwExtCount = 0;
+        const char** glfwExts = glfwGetRequiredInstanceExtensions(&glfwExtCount);
+        for (uint32_t i = 0; glfwExts && i < glfwExtCount; ++i) {
+            // VK_KHR_surface is already registered above; register only the platform-specific ones.
+            if (std::strcmp(glfwExts[i], VK_KHR_SURFACE_EXTENSION_NAME) == 0) {
+                continue;
+            }
+            platformSurfaceExts.push_back(CreateCapability<InstanceExtensionCapability>(
+                std::string("InstanceExt:") + glfwExts[i], glfwExts[i]));
+        }
+    }
 
     auto debugUtils = CreateCapability<InstanceExtensionCapability>(
         "InstanceExt:VK_EXT_debug_utils", VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
@@ -200,9 +218,9 @@ void CapabilityGraph::BuildStandardCapabilities() {
     auto basicRendering = std::make_shared<CompositeCapability>("BasicRenderingSupport");
     basicRendering->AddDependency(swapchain);
     basicRendering->AddDependency(surfaceExt);
-#ifdef VK_USE_PLATFORM_WIN32_KHR
-    basicRendering->AddDependency(win32Surface);
-#endif
+    for (auto& platformSurfaceExt : platformSurfaceExts) {
+        basicRendering->AddDependency(platformSurfaceExt);
+    }
     RegisterCapability(basicRendering);
 
     // Validation Support (validation layer + debug utils)

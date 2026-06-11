@@ -36,69 +36,65 @@ RenderGraph::RenderGraph(
         this->mainLogger = mainLogger;
     }
 
-    // Subscribe to cleanup events if bus provided
+    // Subscribe to events using RAII ScopedSubscriptions
     if (messageBus) {
-        cleanupEventSubscription = messageBus->Subscribe(
-            EventTypes::CleanupRequestedMessage::TYPE,
-            [this](const EventBus::BaseEventMessage& msg) {
-                auto& cleanupMsg = static_cast<const EventTypes::CleanupRequestedMessage&>(msg);
-                this->HandleCleanupRequest(cleanupMsg);
+        subscriptions_.SetBus(messageBus);
+
+        subscriptions_.SubscribeWithResult<EventTypes::CleanupRequestedMessage>(
+            [this](const EventTypes::CleanupRequestedMessage& msg) {
+                this->HandleCleanupRequest(msg);
                 return true;
             }
         );
 
-        // Subscribe to window close event for graceful shutdown
-        windowCloseSubscription = messageBus->Subscribe(
-            EventBus::WindowCloseEvent::TYPE,
-            [this](const EventBus::BaseEventMessage& msg) {
+        subscriptions_.Subscribe<EventBus::WindowCloseEvent>(
+            [this](const EventBus::WindowCloseEvent& msg) {
                 this->HandleWindowClose();
+            }
+        );
+
+        subscriptions_.SubscribeWithResult<EventTypes::RenderPauseEvent>(
+            [this](const EventTypes::RenderPauseEvent& msg) {
+                this->HandleRenderPause(msg);
                 return true;
             }
         );
 
-        // Subscribe to render pause events
-        renderPauseSubscription = messageBus->Subscribe(
-            EventTypes::RenderPauseEvent::TYPE,
-            [this](const EventBus::BaseEventMessage& msg) {
-                auto& pauseMsg = static_cast<const EventTypes::RenderPauseEvent&>(msg);
-                this->HandleRenderPause(pauseMsg);
+        subscriptions_.SubscribeWithResult<EventTypes::WindowResizedMessage>(
+            [this](const EventTypes::WindowResizedMessage& msg) {
+                this->HandleWindowResize(msg);
                 return true;
             }
         );
 
-        // Subscribe to window resize events
-        windowResizeSubscription = messageBus->Subscribe(
-            EventTypes::WindowResizedMessage::TYPE,
-            [this](const EventBus::BaseEventMessage& msg) {
-                auto& resizeMsg = static_cast<const EventTypes::WindowResizedMessage&>(msg);
-                this->HandleWindowResize(resizeMsg);
+        subscriptions_.SubscribeWithResult<EventBus::WindowStateChangeEvent>(
+            [this](const EventBus::WindowStateChangeEvent& msg) {
+                this->HandleWindowStateChange(msg);
                 return true;
             }
         );
 
-        // Subscribe to window state change events (minimize/maximize/restore)
-        windowStateSubscription = messageBus->Subscribe(
-            EventBus::WindowStateChangeEvent::TYPE,
-            [this](const EventBus::BaseEventMessage& msg) {
-                auto& stateMsg = static_cast<const EventBus::WindowStateChangeEvent&>(msg);
-                this->HandleWindowStateChange(stateMsg);
-                return true;
-            }
-        );
-
-        // Subscribe to device sync events
-        deviceSyncSubscription = messageBus->Subscribe(
-            EventTypes::DeviceSyncRequestedMessage::TYPE,
-            [this](const EventBus::BaseEventMessage& msg) {
-                auto& syncMsg = static_cast<const EventTypes::DeviceSyncRequestedMessage&>(msg);
-                this->HandleDeviceSyncRequest(syncMsg);
+        subscriptions_.SubscribeWithResult<EventTypes::DeviceSyncRequestedMessage>(
+            [this](const EventTypes::DeviceSyncRequestedMessage& msg) {
+                this->HandleDeviceSyncRequest(msg);
                 return true;
             }
         );
     }
+
+    // Sprint 6.5: Initialize profile registry with built-in factories
+    taskProfileRegistry_.Init();
 }
 
 RenderGraph::~RenderGraph() {
+    // Sprint 6.5: Publish shutdown event for CalibrationStore auto-save
+    if (messageBus) {
+        messageBus->Publish(
+            std::make_unique<EventBus::ApplicationShuttingDownEvent>(0)
+        );
+        messageBus->ProcessMessages();  // Ensure event is processed before cleanup
+    }
+
     // Note: Device-dependent cache cleanup happens in DeviceNode::CleanupImpl()
     // Only cleanup global (device-independent) caches here
     // Guard against corrupted pointer (can happen during exception-triggered destruction)
@@ -106,27 +102,8 @@ RenderGraph::~RenderGraph() {
         mainCacher->CleanupGlobalCaches();
     }
 
-    // Unsubscribe from events
-    if (messageBus) {
-        if (cleanupEventSubscription != 0) {
-            messageBus->Unsubscribe(cleanupEventSubscription);
-        }
-        if (renderPauseSubscription != 0) {
-            messageBus->Unsubscribe(renderPauseSubscription);
-        }
-        if (windowResizeSubscription != 0) {
-            messageBus->Unsubscribe(windowResizeSubscription);
-        }
-        if (windowStateSubscription != 0) {
-            messageBus->Unsubscribe(windowStateSubscription);
-        }
-        if (deviceSyncSubscription != 0) {
-            messageBus->Unsubscribe(deviceSyncSubscription);
-        }
-        if (windowCloseSubscription != 0) {
-            messageBus->Unsubscribe(windowCloseSubscription);
-        }
-    }
+    // Unsubscribe from events - ScopedSubscriptions handles this automatically via RAII
+    // No manual Unsubscribe() calls needed
 
     // Flush deferred destructions before cleanup
     deferredDestruction.Flush();
@@ -531,6 +508,23 @@ void RenderGraph::Compile() {
     GRAPH_LOG_INFO("[RenderGraph::Compile] Phase: PreAllocateResources...");
     PreAllocateResources();
 
+    // Sprint 6.4: Build resource access tracker for parallel execution
+    GRAPH_LOG_INFO("[RenderGraph::Compile] Phase: BuildResourceAccessTracker...");
+    resourceAccessTracker_.BuildFromTopology(topology);
+    executorNeedsRebuild_ = true;  // Force TBB graph rebuild on next frame
+    GRAPH_LOG_INFO("[RenderGraph::Compile] ResourceAccessTracker built: " +
+        std::to_string(resourceAccessTracker_.GetResourceCount()) + " resources, " +
+        std::to_string(resourceAccessTracker_.GetNodeCount()) + " nodes tracked");
+
+    // Sprint 6.5: Build virtual resource access tracker for task-level parallelism
+    if (parallelExecutionEnabled_) {
+        GRAPH_LOG_INFO("[RenderGraph::Compile] Phase: BuildVirtualResourceAccessTracker...");
+        virtualAccessTracker_.BuildFromTopology(topology);
+        GRAPH_LOG_INFO("[RenderGraph::Compile] VirtualResourceAccessTracker built: " +
+            std::to_string(virtualAccessTracker_.GetResourceCount()) + " resources, " +
+            std::to_string(virtualAccessTracker_.GetTaskCount()) + " tasks tracked");
+    }
+
     GRAPH_LOG_INFO("[RenderGraph::Compile] Compilation complete!");
     isCompiled = true;
 }
@@ -588,18 +582,29 @@ VkResult RenderGraph::RenderFrame() {
 
     // ========================================================================
     // Sprint 4 Phase B: Per-frame resource lifecycle management
+    // Sprint 6.3 Phase 6: Event-driven systems handle their own lifecycle
     // ========================================================================
 
     // Process deferred destructions from previous frames
-    // Resources queued N frames ago are now safe to destroy
-    deferredDestruction.ProcessFrame(globalFrameIndex);
+    // When event-driven (autoPressureAdjustment_), handled by FrameStartEvent subscription
+    if (!autoPressureAdjustment_) {
+        deferredDestruction.ProcessFrame(globalFrameIndex);
+    }
 
     // Begin new frame scope if lifetime manager is configured
-    if (scopeManager_) {
+    // When event-driven, handled by FrameStartEvent subscription
+    if (scopeManager_ && !autoPressureAdjustment_) {
         scopeManager_->BeginFrame();
     }
 
+    // Sprint 6.3 Phase 4: Begin capacity tracking for this frame
+    // When event-driven (autoPressureAdjustment_), this is handled by FrameStartEvent subscription
+    if (!autoPressureAdjustment_) {
+        capacityTracker_.BeginFrame();
+    }
+
     // Publish FrameStartEvent for allocation tracking and other frame-aware systems
+    // In event-driven mode, this triggers TimelineCapacityTracker.BeginFrame() via subscription
     if (messageBus) {
         messageBus->Publish(std::make_unique<EventBus::FrameStartEvent>(0, globalFrameIndex));
         messageBus->ProcessMessages();  // Process immediately so listeners capture state
@@ -629,28 +634,84 @@ VkResult RenderGraph::RenderFrame() {
         }
     }
 
-    // Execute all nodes in topological order
-    // Nodes handle their own synchronization, command recording, and presentation
-    for (NodeInstance* node : executionOrder) {
-        if (node->GetState() == NodeState::Ready ||
-            node->GetState() == NodeState::Compiled ||
-            node->GetState() == NodeState::Complete) {  // Execute completed nodes again each frame
+    // Execute all nodes
+    // Sprint 6.4: Support both sequential and parallel execution modes
+    if (parallelExecutionEnabled_) {
+        // =====================================================================
+        // PARALLEL EXECUTION (Sprint 6.4)
+        // =====================================================================
+        // Rebuild virtual task executor if needed (after compilation or configuration change)
+        if (executorNeedsRebuild_) {
+            GRAPH_LOG_INFO("[RenderGraph] Building virtual task executor for parallel execution...");
+            virtualTaskExecutor_.Build(virtualAccessTracker_, executionOrder);
+            GRAPH_LOG_INFO("[RenderGraph] Virtual task executor built: " +
+                std::to_string(virtualTaskExecutor_.GetStats().totalTasks) + " tasks, " +
+                std::to_string(virtualTaskExecutor_.GetStats().totalNodes) + " nodes");
 
-            node->SetState(NodeState::Executing);
+            executorNeedsRebuild_ = false;
+        }
 
-            // Pass VK_NULL_HANDLE - nodes manage their own command buffers
-            node->Execute();
+        // Pre-execution: Set all nodes to Executing state
+        for (NodeInstance* node : executionOrder) {
+            if (node) {
+                NodeState state = node->GetState();
+                if (state == NodeState::Ready ||
+                    state == NodeState::Compiled ||
+                    state == NodeState::Complete) {
+                    node->SetState(NodeState::Executing);
+                }
+            }
+        }
 
-            node->SetState(NodeState::Complete);
+        // Execute nodes in parallel using virtual task executor
+        // The executor handles dependency ordering and task-level parallelism
+        virtualTaskExecutor_.ExecutePhase(VirtualTaskPhase::Execute);
 
-            // Check if this node was marked for recompilation during execution
+        // Post-execution: Set all nodes to Complete state
+        for (NodeInstance* node : executionOrder) {
+            if (node && node->GetState() == NodeState::Executing) {
+                node->SetState(NodeState::Complete);
+            }
+        }
+
+        // Process deferred recompiles after all nodes complete
+        for (NodeInstance* node : executionOrder) {
             if (node->HasDeferredRecompile()) {
                 node->ClearDeferredRecompile();
-                // Find the handle and mark as dirty
                 for (size_t i = 0; i < instances.size(); ++i) {
                     if (instances[i].get() == node) {
                         MarkNodeNeedsRecompile({static_cast<uint32_t>(i)});
                         break;
+                    }
+                }
+            }
+        }
+    } else {
+        // =====================================================================
+        // SEQUENTIAL EXECUTION (default)
+        // =====================================================================
+        // Nodes handle their own synchronization, command recording, and presentation
+        for (NodeInstance* node : executionOrder) {
+            if (node->GetState() == NodeState::Ready ||
+                node->GetState() == NodeState::Compiled ||
+                node->GetState() == NodeState::Complete) {  // Execute completed nodes again each frame
+
+                node->SetState(NodeState::Executing);
+
+                // Pass VK_NULL_HANDLE - nodes manage their own command buffers
+                node->Execute();
+
+                node->SetState(NodeState::Complete);
+
+                // Check if this node was marked for recompilation during execution
+                if (node->HasDeferredRecompile()) {
+                    node->ClearDeferredRecompile();
+                    // Find the handle and mark as dirty
+                    for (size_t i = 0; i < instances.size(); ++i) {
+                        if (instances[i].get() == node) {
+                            MarkNodeNeedsRecompile({static_cast<uint32_t>(i)});
+                            break;
+                        }
                     }
                 }
             }
@@ -662,13 +723,32 @@ VkResult RenderGraph::RenderFrame() {
     // ========================================================================
 
     // Publish FrameEndEvent for allocation tracking and other frame-aware systems
+    // In event-driven mode (autoPressureAdjustment_), this triggers:
+    // 1. TimelineCapacityTracker.EndFrame() via subscription
+    // 2. TimelineCapacityTracker publishes BudgetOverrun/AvailableEvent
+    // 3. TaskProfileRegistry receives Budget event and queues pressure adjustment
     if (messageBus) {
         messageBus->Publish(std::make_unique<EventBus::FrameEndEvent>(0, globalFrameIndex));
         messageBus->ProcessMessages();  // Process frame events before cleanup
     }
 
+    // Sprint 6.3: Process deferred pressure adjustments AFTER event dispatch completes
+    // This prevents deadlock by ensuring profile modifications happen outside event handlers
+    taskProfileRegistry_.ProcessDeferredActions();
+
+    // Sprint 6.5: Process pending profile samples for timely statistics
+    taskProfileRegistry_.ProcessAllSamples();
+
+    // Sprint 6.3 Phase 4: End capacity tracking (legacy direct call)
+    // When event-driven (autoPressureAdjustment_), this is handled by FrameEndEvent subscription
+    // and pressure adjustment happens autonomously via Budget events
+    if (!autoPressureAdjustment_) {
+        capacityTracker_.EndFrame();
+    }
+
     // End frame scope - releases all frame-scoped resources
-    if (scopeManager_) {
+    // When event-driven, handled by FrameEndEvent subscription
+    if (scopeManager_ && !autoPressureAdjustment_) {
         scopeManager_->EndFrame();
     }
 
@@ -1693,6 +1773,124 @@ void RenderGraph::PreAllocateResources() {
         std::to_string(RESOURCES_PER_NODE) + " resources × " +
         std::to_string(FRAMES_IN_FLIGHT) + " frames, min " +
         std::to_string(MIN_DEFERRED_CAPACITY) + ")");
+}
+
+// =============================================================================
+// Event-Driven Architecture (Sprint 6.3 Option A)
+// =============================================================================
+
+void RenderGraph::SetAutoPressureAdjustment(bool enable) {
+    if (enable && !autoPressureAdjustment_) {
+        // Enabling: wire up event subscriptions
+        InitializeEventDrivenSystems();
+    } else if (!enable && autoPressureAdjustment_) {
+        // Disabling: unsubscribe from events
+        capacityTracker_.UnsubscribeFromFrameEvents();
+        taskProfileRegistry_.UnsubscribeFromBudgetEvents();
+
+        // Sprint 6.3 Phase 6: Unsubscribe additional event-driven systems
+        deferredDestruction.UnsubscribeFromFrameEvents();
+        if (scopeManager_) {
+            scopeManager_->UnsubscribeFromFrameEvents();
+        }
+    }
+    autoPressureAdjustment_ = enable;
+}
+
+void RenderGraph::InitializeEventDrivenSystems() {
+    if (!messageBus) {
+        GRAPH_LOG_WARNING("[RenderGraph] Cannot initialize event-driven systems: no MessageBus");
+        return;
+    }
+
+    // TimelineCapacityTracker: subscribes to FrameStart/End, publishes Budget events
+    capacityTracker_.SubscribeToFrameEvents(messageBus);
+    GRAPH_LOG_DEBUG("[RenderGraph] TimelineCapacityTracker subscribed to frame events");
+
+    // TaskProfileRegistry: subscribes to Budget events for autonomous pressure adjustment
+    taskProfileRegistry_.SubscribeToBudgetEvents(messageBus);
+    GRAPH_LOG_DEBUG("[RenderGraph] TaskProfileRegistry subscribed to budget events");
+
+    // Sprint 6.3 Phase 6: Additional event-driven systems
+
+    // DeferredDestructionQueue: processes destructions at frame start
+    deferredDestruction.SubscribeToFrameEvents(messageBus);
+    GRAPH_LOG_DEBUG("[RenderGraph] DeferredDestructionQueue subscribed to frame events");
+
+    // LifetimeScopeManager: manages frame scope lifecycle
+    if (scopeManager_) {
+        scopeManager_->SubscribeToFrameEvents(messageBus);
+        GRAPH_LOG_DEBUG("[RenderGraph] LifetimeScopeManager subscribed to frame events");
+    }
+
+    GRAPH_LOG_INFO("[RenderGraph] Event-driven systems initialized (Sprint 6.3 Phase 6)");
+}
+
+// =============================================================================
+// Parallel Execution (Sprint 6.4)
+// =============================================================================
+
+void RenderGraph::SetParallelExecutionEnabled(bool enable) {
+    if (parallelExecutionEnabled_ != enable) {
+        parallelExecutionEnabled_ = enable;
+        executorNeedsRebuild_ = true;  // Trigger rebuild on next frame
+
+        if (enable) {
+            GRAPH_LOG_INFO("[RenderGraph] Parallel execution ENABLED - will use TBB flow_graph");
+        } else {
+            GRAPH_LOG_INFO("[RenderGraph] Parallel execution DISABLED - using sequential execution");
+            virtualTaskExecutor_.Clear();
+        }
+    }
+}
+
+void RenderGraph::SetExecutionMode(TBBExecutionMode mode) {
+    // Map execution mode to virtual task executor enable/disable
+    if (mode == TBBExecutionMode::Sequential) {
+        virtualTaskExecutor_.SetEnabled(false);
+    } else {
+        virtualTaskExecutor_.SetEnabled(true);
+    }
+
+    const char* modeStr = (mode == TBBExecutionMode::Parallel) ? "Parallel" :
+                          (mode == TBBExecutionMode::Sequential) ? "Sequential" : "Limited";
+    GRAPH_LOG_INFO("[RenderGraph] Execution mode set to: " + std::string(modeStr));
+}
+
+TBBExecutionMode RenderGraph::GetExecutionMode() const {
+    return virtualTaskExecutor_.IsEnabled() ? TBBExecutionMode::Parallel : TBBExecutionMode::Sequential;
+}
+
+void RenderGraph::SetMaxConcurrency(size_t maxConcurrency) {
+    // Virtual task executor uses TBB's internal concurrency management
+    // Log for visibility but don't actually limit (TBB handles this)
+    GRAPH_LOG_INFO("[RenderGraph] Max concurrency hint: " +
+        (maxConcurrency == 0 ? "unlimited" : std::to_string(maxConcurrency)) +
+        " (managed by TBB)");
+}
+
+TBBExecutorStats RenderGraph::GetExecutorStats() const {
+    // Map virtual task executor stats to TBBExecutorStats for API compatibility
+    const auto& vStats = virtualTaskExecutor_.GetStats();
+    TBBExecutorStats stats;
+    stats.nodeCount = vStats.totalNodes;
+    stats.edgeCount = vStats.criticalPathLength;  // Approximation
+    stats.executionsCompleted = vStats.parallelTasks + vStats.sequentialTasks;
+    stats.exceptionsThrown = vStats.failedTasks;
+    stats.lastExecutionMs = vStats.executionTimeMs;
+    stats.avgExecutionMs = vStats.executionTimeMs;  // Single value, no averaging
+    stats.executeCount = 1;
+    return stats;
+}
+
+// =============================================================================
+// Virtual Task Parallelism (Sprint 6.5)
+// =============================================================================
+
+void RenderGraph::SetVirtualTaskParallelismEnabled(bool enable) {
+    // Virtual task parallelism is now unified with parallel execution
+    // This method exists for API compatibility
+    SetParallelExecutionEnabled(enable);
 }
 
 } // namespace Vixen::RenderGraph

@@ -117,6 +117,9 @@ private:
     // Shader builder functions (registered via RegisterShaderBuilder)
     std::vector<std::function<::ShaderManagement::ShaderBundleBuilder(int, int)>> shaderBuilderFuncs;
 
+    // Task profile for compile-time cost estimation (Sprint 6.5)
+    ITaskProfile* compileProfile_ = nullptr;
+
     // Helper methods
     void RegisterShaderModuleCacher();
     void InitializeShaderModuleCacher();

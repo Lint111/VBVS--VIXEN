@@ -42,19 +42,14 @@ MainCacher::~MainCacher() {
     // Cleanup global caches if not already done
     CleanupGlobalCaches();
 
-    // Unsubscribe from message bus (defensive - should have been called in Shutdown())
-    if (m_messageBus && m_deviceInvalidationSubscription != 0) {
-        m_messageBus->Unsubscribe(m_deviceInvalidationSubscription);
-    }
+    // Unsubscribe from message bus - ScopedSubscriptions handles this via RAII
+    // No manual Unsubscribe() calls needed
 }
 
 void MainCacher::Shutdown() {
-    // Unsubscribe from message bus BEFORE it destructs
-    if (m_messageBus && m_deviceInvalidationSubscription != 0) {
-        m_messageBus->Unsubscribe(m_deviceInvalidationSubscription);
-        m_messageBus = nullptr;
-        m_deviceInvalidationSubscription = 0;
-    }
+    // Unsubscribe from message bus BEFORE it destructs - ScopedSubscriptions handles this via RAII
+    subscriptions_.UnsubscribeAll();
+    m_messageBus = nullptr;
 }
 
 void MainCacher::SetBudgetManager(ResourceManagement::DeviceBudgetManager* /*manager*/) {
@@ -69,12 +64,10 @@ void MainCacher::Initialize(::Vixen::EventBus::MessageBus* messageBus) {
     if (messageBus) {
         m_messageBus = messageBus;
 
-        // Subscribe to device invalidation events
-        m_deviceInvalidationSubscription = m_messageBus->Subscribe(
-            ::Vixen::EventBus::DeviceInvalidationEvent::TYPE,
-            [this](const ::Vixen::EventBus::BaseEventMessage& msg) -> bool {
-                const auto& event = static_cast<const ::Vixen::EventBus::DeviceInvalidationEvent&>(msg);
-
+        // Subscribe to device invalidation events using RAII
+        subscriptions_.SetBus(messageBus);
+        subscriptions_.SubscribeWithResult<::Vixen::EventBus::DeviceInvalidationEvent>(
+            [this](const ::Vixen::EventBus::DeviceInvalidationEvent& event) -> bool {
                 // Cast deviceHandle back to VulkanDevice*
                 auto* device = static_cast<::Vixen::Vulkan::Resources::VulkanDevice*>(event.deviceHandle);
 

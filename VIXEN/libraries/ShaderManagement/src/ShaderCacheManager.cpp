@@ -1,6 +1,9 @@
 #include "ShaderCacheManager.h"
 #include "Hash.h"
 
+#include <algorithm>
+#include <fstream>
+
 namespace ShaderManagement {
 
 // Cache file format:

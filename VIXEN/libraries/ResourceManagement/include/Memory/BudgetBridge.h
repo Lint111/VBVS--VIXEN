@@ -62,7 +62,15 @@ public:
     BudgetBridge(
         HostBudgetManager* hostBudget,
         DeviceBudgetManager* deviceBudget,
-        const Config& config = Config{});
+        const Config& config);
+
+    /**
+     * @brief Create budget bridge with default configuration
+     */
+    BudgetBridge(
+        HostBudgetManager* hostBudget,
+        DeviceBudgetManager* deviceBudget)
+        : BudgetBridge(hostBudget, deviceBudget, Config{}) {}
 
     ~BudgetBridge() = default;
 

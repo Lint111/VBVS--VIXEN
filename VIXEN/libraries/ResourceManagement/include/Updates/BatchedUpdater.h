@@ -3,6 +3,7 @@
 #include "Updates/UpdateRequest.h"
 
 #include <algorithm>
+#include <atomic>
 #include <mutex>
 #include <vector>
 #include <vulkan/vulkan.h>
@@ -65,7 +66,14 @@ public:
      * @param frameCount Number of swapchain images / frames in flight
      * @param config Updater configuration
      */
-    explicit BatchedUpdater(uint32_t frameCount, const Config& config = Config{});
+    BatchedUpdater(uint32_t frameCount, const Config& config);
+
+    /**
+     * @brief Create a batched updater with default configuration
+     *
+     * @param frameCount Number of swapchain images / frames in flight
+     */
+    explicit BatchedUpdater(uint32_t frameCount) : BatchedUpdater(frameCount, Config{}) {}
 
     ~BatchedUpdater() = default;
 

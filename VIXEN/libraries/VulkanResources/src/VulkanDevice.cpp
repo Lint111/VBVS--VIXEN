@@ -473,3 +473,23 @@ ResourceManagement::IMemoryAllocator* VulkanDevice::GetAllocator() const {
     }
     return budgetManager_->GetAllocator();
 }
+
+// ============================================================================
+// GPU Query Infrastructure (Sprint 6.3 Phase 0)
+// ============================================================================
+
+void VulkanDevice::InitializeQueryManager(uint32_t framesInFlight, uint32_t maxConsumers) {
+    // This function is a no-op placeholder
+    // The actual creation happens in DeviceNode using SetQueryManagerInternal
+    // This avoids circular dependency between VulkanResources and RenderGraph
+    (void)framesInFlight;
+    (void)maxConsumers;
+}
+
+void* VulkanDevice::GetQueryManager() const {
+    return queryManager_.get();
+}
+
+bool VulkanDevice::HasQuerySupport() const {
+    return queryManager_ != nullptr;
+}

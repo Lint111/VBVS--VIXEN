@@ -23,7 +23,7 @@ class SwapChainNodeTest : public ::testing::Test {};
 
 // Configuration Tests
 TEST_F(SwapChainNodeTest, ConfigHasTwoInputs) {
-    EXPECT_EQ(SwapChainNodeConfig::INPUT_COUNT, 10) << "Requires multiple inputs including DEVICE, HWND, etc.";
+    EXPECT_EQ(SwapChainNodeConfig::INPUT_COUNT, 9) << "Requires multiple inputs including DEVICE, WINDOW, etc.";
 }
 
 TEST_F(SwapChainNodeTest, ConfigHasMultipleOutputs) {
@@ -31,12 +31,12 @@ TEST_F(SwapChainNodeTest, ConfigHasMultipleOutputs) {
 }
 
 TEST_F(SwapChainNodeTest, ConfigDeviceInputIndex) {
-    EXPECT_EQ(SwapChainNodeConfig::VULKAN_DEVICE_IN_Slot::index, 5);
+    EXPECT_EQ(SwapChainNodeConfig::VULKAN_DEVICE_IN_Slot::index, 4);
 }
 
 TEST_F(SwapChainNodeTest, ConfigSurfaceInputIndex) {
     // Surface is created internally in SwapChainNode, not an input slot
-    EXPECT_EQ(SwapChainNodeConfig::INSTANCE_Slot::index, 4);
+    EXPECT_EQ(SwapChainNodeConfig::INSTANCE_Slot::index, 3);
 }
 
 TEST_F(SwapChainNodeTest, ConfigSwapChainOutputIndex) {
