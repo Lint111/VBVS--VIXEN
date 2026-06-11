@@ -320,7 +320,8 @@ endif()
 # SHADER ASSETS
 # ============================================================================
 # Global shader source directory - GLSL files compiled by applications
-add_subdirectory(Shaders)
+# (dir is lowercase 'shaders'; capital 'Shaders' broke case-sensitive filesystems, e.g. Linux/WSL)
+add_subdirectory(shaders)
 
 # ============================================================================
 # LIBRARY STRUCTURE FOR INCREMENTAL COMPILATION
