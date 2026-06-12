@@ -289,11 +289,15 @@ set(RENDERGRAPH_EVENT_HEADERS
 
 set(RENDERGRAPH_UI_HEADERS
     include/Ui/VixenRmlRenderInterface.h
+    include/Ui/VixenRmlSystemInterface.h
     include/Ui/UiShaderSpirv.h
+    include/Data/Nodes/UIRenderNodeConfig.h
+    include/Nodes/UIRenderNode.h
 )
 
 set(RENDERGRAPH_UI_SOURCES
     src/Ui/VixenRmlRenderInterface.cpp
+    src/Nodes/UIRenderNode.cpp
 )
 
 # ============================================================================
