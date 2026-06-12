@@ -190,5 +190,9 @@
     "workbench.editorAssociations": {
         "*.xlsx": "default",
         "*.xls": "default"
-    }
+    },
+    "slidev.include": [
+        "**/slides.md",
+        "data/finalized/POWERPOINT_BLOCKOUT_v2.md"
+    ]
 }

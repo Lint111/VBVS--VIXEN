@@ -36,6 +36,17 @@
 namespace Vixen::RenderGraph {
 
 /**
+ * @brief Pending prediction sample (estimate vs actual)
+ *
+ * Stored by ITaskProfile when Sampler finishes, processed in batch
+ * by TaskProfileRegistry::ProcessAllPredictions().
+ */
+struct PendingPrediction {
+    uint64_t estimatedNs = 0;  ///< Estimate captured when Sampler was created
+    uint64_t actualNs = 0;     ///< Actual measurement when Sampler finished
+};
+
+/**
  * @brief How a task interprets its workUnits value
  */
 enum class WorkUnitType : uint8_t {
@@ -240,6 +251,7 @@ public:
         explicit Sampler(ITaskProfile* profile)
             : profile_(profile)
             , startTime_(std::chrono::high_resolution_clock::now())
+            , estimateAtStart_(profile ? profile->GetEstimatedCostNs() : 0)
             , active_(profile != nullptr)
         {}
 
@@ -248,7 +260,9 @@ public:
                 auto endTime = std::chrono::high_resolution_clock::now();
                 auto elapsedNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
                     endTime - startTime_).count();
-                profile_->RecordMeasurement(static_cast<uint64_t>(elapsedNs));
+                auto actualNs = static_cast<uint64_t>(elapsedNs);
+                profile_->RecordMeasurement(actualNs);
+                profile_->RecordPredictionSample(estimateAtStart_, actualNs);
             }
         }
 
@@ -259,6 +273,7 @@ public:
         Sampler(Sampler&& other) noexcept
             : profile_(other.profile_)
             , startTime_(other.startTime_)
+            , estimateAtStart_(other.estimateAtStart_)
             , active_(other.active_)
         {
             other.active_ = false;
@@ -271,10 +286,13 @@ public:
                     auto endTime = std::chrono::high_resolution_clock::now();
                     auto elapsedNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
                         endTime - startTime_).count();
-                    profile_->RecordMeasurement(static_cast<uint64_t>(elapsedNs));
+                    auto actualNs = static_cast<uint64_t>(elapsedNs);
+                    profile_->RecordMeasurement(actualNs);
+                    profile_->RecordPredictionSample(estimateAtStart_, actualNs);
                 }
                 profile_ = other.profile_;
                 startTime_ = other.startTime_;
+                estimateAtStart_ = other.estimateAtStart_;
                 active_ = other.active_;
                 other.active_ = false;
             }
@@ -308,6 +326,7 @@ public:
         void Finalize(uint64_t measurementNs) {
             if (active_ && profile_) {
                 profile_->RecordMeasurement(measurementNs);
+                profile_->RecordPredictionSample(estimateAtStart_, measurementNs);
                 active_ = false;  // Prevent destructor from double-recording
             }
         }
@@ -324,6 +343,7 @@ public:
     private:
         ITaskProfile* profile_;
         std::chrono::high_resolution_clock::time_point startTime_;
+        uint64_t estimateAtStart_;
         bool active_;
     };
 
@@ -421,6 +441,50 @@ public:
         if (pendingSamples_.size() >= kMaxPendingSamples) {
             ProcessSamplesLocked();
         }
+    }
+
+    /**
+     * @brief Record a prediction sample (estimate vs actual) - thread-safe
+     *
+     * Called automatically by Sampler when finalized. Stores the sample
+     * for batch processing by TaskProfileRegistry::ProcessAllPredictions().
+     *
+     * @param estimatedNs Estimate captured when measurement started
+     * @param actualNs Actual measured time
+     */
+    void RecordPredictionSample(uint64_t estimatedNs, uint64_t actualNs) {
+        std::lock_guard<std::mutex> lock(samplesMutex_);
+        pendingPredictions_.push_back({estimatedNs, actualNs});
+
+        // Auto-trim if we've accumulated too many
+        if (pendingPredictions_.size() >= kMaxPendingSamples) {
+            // Keep the most recent half
+            auto mid = pendingPredictions_.begin() + pendingPredictions_.size() / 2;
+            pendingPredictions_.erase(pendingPredictions_.begin(), mid);
+        }
+    }
+
+    /**
+     * @brief Consume pending prediction samples (moves out and clears) - thread-safe
+     *
+     * Used by TaskProfileRegistry::ProcessAllPredictions() to feed
+     * samples to PredictionErrorTracker.
+     *
+     * @return Vector of pending predictions (moved)
+     */
+    [[nodiscard]] std::vector<PendingPrediction> ConsumePendingPredictions() {
+        std::lock_guard<std::mutex> lock(samplesMutex_);
+        auto result = std::move(pendingPredictions_);
+        pendingPredictions_.clear();
+        return result;
+    }
+
+    /**
+     * @brief Check if there are pending predictions - thread-safe
+     */
+    [[nodiscard]] bool HasPendingPredictions() const {
+        std::lock_guard<std::mutex> lock(samplesMutex_);
+        return !pendingPredictions_.empty();
     }
 
     /**
@@ -559,6 +623,7 @@ public:
         isCalibrated_ = false;
         timing_ = false;  // Reset timing state
         pendingSamples_.clear();  // Discard unprocessed samples
+        pendingPredictions_.clear();  // Discard unprocessed predictions
     }
 
 protected:
@@ -602,7 +667,8 @@ protected:
 
     // Samples collection - raw measurements accumulated before processing
     std::vector<uint64_t> pendingSamples_;
-    mutable std::mutex samplesMutex_;  // Protects pendingSamples_
+    std::vector<PendingPrediction> pendingPredictions_;  ///< Prediction samples for error tracking
+    mutable std::mutex samplesMutex_;  // Protects pendingSamples_ and pendingPredictions_
     static constexpr size_t kMaxPendingSamples = 1024;  // Auto-process when exceeded
 };
 

@@ -22,6 +22,7 @@
  */
 
 #include "ITaskProfile.h"
+#include "PredictionErrorTracker.h"  // Sprint 6.5: Prediction error integration
 #include "MessageBus.h"  // Sprint 6.3: Event-driven architecture
 #include <unordered_map>
 #include <vector>
@@ -230,6 +231,35 @@ public:
             }
         }
         return processed;
+    }
+
+    /**
+     * @brief Process pending prediction samples and feed to error tracker
+     *
+     * Call at frame end after ProcessAllSamples(). Collects all pending
+     * prediction samples from profiles and feeds them to the tracker
+     * for error analysis and correction factor computation.
+     *
+     * Sprint 6.5: Prediction error integration
+     *
+     * @param tracker PredictionErrorTracker to receive samples
+     * @param frameNumber Current frame number for tracking
+     * @return Number of prediction samples processed
+     */
+    size_t ProcessAllPredictions(PredictionErrorTracker& tracker, uint32_t frameNumber = 0) {
+        size_t totalSamples = 0;
+
+        for (auto& [taskId, profile] : profiles_) {
+            if (!profile) continue;
+
+            auto predictions = profile->ConsumePendingPredictions();
+            for (const auto& pred : predictions) {
+                tracker.RecordPrediction(taskId, pred.estimatedNs, pred.actualNs, frameNumber);
+                ++totalSamples;
+            }
+        }
+
+        return totalSamples;
     }
 
     // =========================================================================

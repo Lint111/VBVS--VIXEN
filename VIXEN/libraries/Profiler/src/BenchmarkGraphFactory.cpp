@@ -400,8 +400,7 @@ void BenchmarkGraphFactory::ConnectComputeRayMarch(
 
     // SwapChain -> Descriptor Set (image count metadata)
     batch.Connect(infra.swapchain, RG::SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
-                  compute.descriptorSet, RG::DescriptorSetNodeConfig::SWAPCHAIN_IMAGE_COUNT,
-                  RG::ConnectionMeta{}.With(RG::ExtractField(&SwapChainPublicVariables::swapChainImageCount)));
+                  compute.descriptorSet, RG::DescriptorSetNodeConfig::SWAPCHAIN_INFO);
 
     batch.Connect(infra.swapchain, RG::SwapChainNodeConfig::IMAGE_INDEX,
                   compute.descriptorSet, RG::DescriptorSetNodeConfig::IMAGE_INDEX);
@@ -887,8 +886,7 @@ void BenchmarkGraphFactory::ConnectFragmentRayMarch(
 
     // SwapChain -> Descriptor Set (image count and image index)
     batch.Connect(infra.swapchain, RG::SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
-                  fragment.descriptorSet, RG::DescriptorSetNodeConfig::SWAPCHAIN_IMAGE_COUNT,
-                  RG::ConnectionMeta{}.With(RG::ExtractField(&SwapChainPublicVariables::swapChainImageCount)));
+                  fragment.descriptorSet, RG::DescriptorSetNodeConfig::SWAPCHAIN_INFO);
     batch.Connect(infra.swapchain, RG::SwapChainNodeConfig::IMAGE_INDEX,
                   fragment.descriptorSet, RG::DescriptorSetNodeConfig::IMAGE_INDEX);
 
@@ -1371,8 +1369,7 @@ void BenchmarkGraphFactory::ConnectHardwareRT(
 
     // SwapChain -> DescriptorSetNode (image count and image index)
     batch.Connect(infra.swapchain, RG::SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
-                  hardwareRT.descriptorSet, RG::DescriptorSetNodeConfig::SWAPCHAIN_IMAGE_COUNT,
-                  RG::ConnectionMeta{}.With(RG::ExtractField(&SwapChainPublicVariables::swapChainImageCount)));
+                  hardwareRT.descriptorSet, RG::DescriptorSetNodeConfig::SWAPCHAIN_INFO);
     batch.Connect(infra.swapchain, RG::SwapChainNodeConfig::IMAGE_INDEX,
                   hardwareRT.descriptorSet, RG::DescriptorSetNodeConfig::IMAGE_INDEX);
 

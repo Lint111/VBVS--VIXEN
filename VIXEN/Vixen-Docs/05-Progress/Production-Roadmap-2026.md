@@ -179,34 +179,40 @@ All Sprint 4 tasks completed. Ready for merge to main and Sprint 5 (CashSystem R
 **Branch:** `production/sprint-6-timeline-foundation`
 **Board:** 651785
 **Goal:** Build foundational Timeline system for parallel execution.
-**Status:** ✅ Sprints 6.1, 6.2, 6.3 COMPLETE | Sprint 6.4 (WaveScheduler) Planned
-**Progress:** 228h/260h (88%)
+**Status:** ✅ ALL SPRINTS COMPLETE (6.0.1, 6.1, 6.2, 6.3, 6.4, 6.5)
+**Progress:** 336h/336h (100%)
 
 ---
 
-#### Sprint 6.0.1: Unified Connection System (76h) - PREREQUISITE
+#### Sprint 6.0.1: Unified Connection System (76h) ✅ COMPLETE
 
 **Design Element:** #35
 **Goal:** Single Connect() API for all connection types. Slot metadata determines behavior.
+**Status:** ✅ Complete (implementation predates roadmap tracking)
 
 | Task ID | Task | Hours | Priority | Status |
 |---------|------|-------|----------|--------|
-| #324 | SlotFlags Infrastructure | 8h | HIGH | ⏳ Planned |
-| #320 | Type Traits + Concepts | 4h | HIGH | ⏳ Planned |
-| #316 | ConnectionRule Base + Registry | 12h | HIGH | ⏳ Planned |
-| #323 | DirectConnectionRule | 4h | HIGH | ⏳ Planned |
-| #321 | AccumulationConnectionRule | 12h | HIGH | ⏳ Planned |
-| #319 | VariadicConnectionRule Refactor | 8h | HIGH | ⏳ Planned |
-| #322 | Unified Connect API | 8h | HIGH | ⏳ Planned |
-| #317 | Migrate Existing Variadic Nodes | 8h | MEDIUM | ⏳ Planned |
-| #318 | Tests + Documentation | 12h | HIGH | ⏳ Planned |
+| #324 | SlotFlags Infrastructure | 8h | HIGH | ✅ Complete |
+| #320 | Type Traits + Concepts | 4h | HIGH | ✅ Complete |
+| #316 | ConnectionRule Base + Registry | 12h | HIGH | ✅ Complete |
+| #323 | DirectConnectionRule | 4h | HIGH | ✅ Complete |
+| #321 | AccumulationConnectionRule | 12h | HIGH | ✅ Complete |
+| #319 | VariadicConnectionRule Refactor | 8h | HIGH | ✅ Complete |
+| #322 | Unified Connect API | 8h | HIGH | ✅ Complete |
+| #317 | Migrate Existing Variadic Nodes | 8h | MEDIUM | ✅ Complete |
+| #318 | Tests + Documentation | 12h | HIGH | ✅ Complete |
 
-**Key Deliverables:**
-- `SlotFlags` enum (Accumulation, MultiConnect, ExplicitOrder)
-- `ConnectionRule` base class + registry
-- Type traits: `is_slot_ref_v<T>`, `is_binding_ref_v<T>`
-- Single `Connect()` API with type-based dispatch
-- Deprecated `ConnectVariadic()` wrapper
+**Key Files:**
+- `Connection/ConnectionRule.h` - Base class
+- `Connection/ConnectionRuleRegistry.h/.cpp` - Rule dispatch
+- `Connection/Rules/DirectConnectionRule.h/.cpp`
+- `Connection/Rules/AccumulationConnectionRule.h/.cpp`
+- `Connection/Rules/VariadicConnectionRule.h/.cpp`
+- `Core/UnifiedConnect.h` - Single Connect() API
+- `Data/Core/SlotFields.h` - SlotFlags enum
+- `Data/Core/ConnectionConcepts.h` - Type traits
+
+**Test Results:** 109 tests passing (test_connection_rule.cpp)
 
 See [[Sprint6.0.1-Unified-Connection-System]] for detailed design.
 
@@ -351,17 +357,62 @@ See [[Sprint6.3-Timeline-Capacity-System]] for comprehensive details.
 
 ---
 
-#### Sprint 6.4: WaveScheduler (84h) - PLANNED
+#### Sprint 6.5: Consolidation & Integration (16h) ✅ COMPLETE
 
-| Task ID | Task | Hours | Priority |
-|---------|------|-------|----------|
-| TBD | ResourceAccessTracker | 16h | HIGH |
-| TBD | Wave Computation Algorithm | 16h | HIGH |
-| TBD | Parallel Wave Execution | 24h | HIGH |
-| TBD | Performance Tests | 16h | HIGH |
-| TBD | Documentation | 12h | MEDIUM |
+**Design Element:** #38 (continuation)
+**Goal:** Consolidate overlapping systems, fix integration gaps
+**Status:** ✅ Complete (2026-01-10)
+**Completed:** 16h
 
-**Total Sprint 6:** 260h (19 tasks)
+| Phase | Task | Status |
+|-------|------|--------|
+| Phase 1 | Unified cost estimation via ITaskProfile | ✅ Complete |
+| Phase 2 | 8 pipeline nodes with compile-time profiling | ✅ Complete |
+| Phase 3 | Config API simplified (`Config::ForTargetFPS()`) | ✅ Complete |
+| Integration | Profile factory init + shutdown event | ✅ Complete |
+| Integration | ProcessAllSamples at frame end | ✅ Complete |
+| Integration | PredictionErrorTracker via Sampler | ✅ Complete |
+
+**Key Deliverables:**
+- [x] Removed `VirtualTask.estimatedCostNs` - now uses `GetEstimatedCostFromProfiles()`
+- [x] `Sampler` captures estimate at construction, records prediction error at finalization
+- [x] `RecordPredictionSample()` stores (estimate, actual) pairs thread-safely
+- [x] `TaskProfileRegistry::ProcessAllPredictions()` feeds to PredictionErrorTracker
+- [x] 11 nodes now have TaskProfile coverage (3 GPU + 8 pipeline)
+- [x] `TaskProfileRegistry::Init()` registers built-in factories
+- [x] `ApplicationShuttingDownEvent` triggers CalibrationStore auto-save
+
+**Test Results:** 130+ tests passing (56 TaskProfile + 27 PredictionErrorTracker + 47 TimelineCapacity)
+
+See [[Sprint6.5-Consolidation-Audit]] for detailed audit and implementation.
+
+---
+
+#### Sprint 6.4: WaveScheduler (84h) ✅ COMPLETE
+
+**Design Element:** #39
+**Goal:** Wave-based parallel execution of independent tasks
+**Status:** ✅ Complete (implementation predates roadmap tracking)
+
+| Task ID | Task | Hours | Priority | Status |
+|---------|------|-------|----------|--------|
+| TBD | ResourceAccessTracker | 16h | HIGH | ✅ Complete |
+| TBD | Wave Computation Algorithm | 16h | HIGH | ✅ Complete |
+| TBD | Parallel Wave Execution | 24h | HIGH | ✅ Complete |
+| TBD | Performance Tests | 16h | HIGH | ✅ Complete |
+| TBD | Documentation | 12h | MEDIUM | ✅ Complete |
+
+**Key Files:**
+- `Core/WaveScheduler.h/.cpp` - Wave computation and scheduling
+- `Core/ResourceAccessTracker.h/.cpp` - Resource conflict detection
+- `Core/VirtualResourceAccessTracker.h/.cpp` - Virtual task resources
+- `Core/TaskDependencyGraph.h/.cpp` - Dependency DAG
+- `Core/TBBVirtualTaskExecutor.h/.cpp` - TBB-based parallel execution
+- `Core/VirtualTask.h` - Task abstraction
+
+**Test Results:** 36 tests passing (15 WaveScheduler + 21 ResourceAccessTracker)
+
+**Total Sprint 6:** 336h (21 tasks) - ALL COMPLETE
 
 See [[Sprint6-Timeline-Foundation]] for detailed planning.
 
@@ -604,9 +655,9 @@ All tasks are tracked in HacknPlan project 230809:
 | **Sprint 4** | 651780 | Resource Manager Integration | 15 | 192h | ✅ COMPLETE |
 | **Sprint 5** | 651783 | CashSystem Robustness | 21 | 104h | ✅ COMPLETE |
 | **Sprint 5.5** | 651953 | Pre-Allocation Hardening | 4 | 16h | 🆕 NEW |
-| **Sprint 6** | 651785 | Timeline Foundation | 23 | 252h | ⏳ Next |
+| **Sprint 6** | 651785 | Timeline Foundation | 21 | 336h | ✅ COMPLETE |
 | **Sprint 7** | 651786 | Core Physics | 11 | 224h | |
-| **Sprint 8** | 651784 | Timeline System | 8 | 84h | |
+| **Sprint 8** | 651784 | Timeline System (Everything Is A Node) | 23 | 144h | ⏳ NEXT |
 | **Sprint 9** | 651788 | Auto Synchronization | 5 | 72h | |
 | **Sprint 10** | 651782 | Multi-GPU | 8 | 106h | |
 | **Sprint 11** | 651781 | Soft Body Physics | 6 | 104h | |
@@ -731,6 +782,27 @@ graph LR
 | 2026-01-09 | **Accumulation Slot Semantics Enforcement** - Execute role hardcoded, Transient result |
 | 2026-01-09 | Removed Role parameter from ACCUMULATION_INPUT_SLOT macros |
 | 2026-01-09 | **Sprint 6.3 COMPLETE** - Sprint 6 progress: 228h/260h (88%) |
+| 2026-01-09 | **Sprint 6.5 Phase 1-3 COMPLETE** - Consolidation audit, unified cost estimation |
+| 2026-01-09 | Removed `VirtualTask.estimatedCostNs` - cost via `GetEstimatedCostFromProfiles()` |
+| 2026-01-09 | 8 pipeline nodes profiled (ComputePipeline, GraphicsPipeline, RayTracingPipeline, AccelerationStructure, VoxelGrid, ShaderLibrary, DepthBuffer, TextureLoader) |
+| 2026-01-09 | `Config::ForTargetFPS()` factory method, API ergonomics improved |
+| 2026-01-09 | `TaskProfileRegistry::Init()` registers built-in factories |
+| 2026-01-09 | `ProcessAllSamples()` called at frame end for timely statistics |
+| 2026-01-10 | **PredictionErrorTracker Integration** - Automatic via Sampler RAII |
+| 2026-01-10 | `Sampler` captures `estimateAtStart_` at construction |
+| 2026-01-10 | `RecordPredictionSample()` + `ProcessAllPredictions()` API added |
+| 2026-01-10 | **Sprint 6.5 COMPLETE** - 16h delivered, 130+ tests passing |
+| 2026-01-10 | Sprint 6 progress: 244h/276h (88%) - All integration gaps resolved |
+| 2026-01-10 | **Roadmap Audit** - Discovered Sprint 6.0.1 + 6.4 already implemented |
+| 2026-01-10 | Sprint 6.0.1 (Unified Connection): 109 tests passing |
+| 2026-01-10 | Sprint 6.4 (WaveScheduler): 36 tests passing (15 + 21) |
+| 2026-01-10 | **SPRINT 6 COMPLETE** - 336h total, 100% done |
+| 2026-01-10 | **Sprint 8 Scope Expanded** - From 84h to 144h with 6 phases |
+| 2026-01-10 | Sprint 8: Added ApplicationFlowController, LiveEditSystem, GraphSerializer, Examples |
+| 2026-01-10 | Created [[Sprint8-Timeline-System]] feature document |
+| 2026-01-10 | Sprint 8: "Everything Is A Node" architecture finalized |
+| 2026-01-10 | Sprint 8: North Star = Self-editing graph editor |
+| 2026-01-10 | Sprint 8: Design Element #39, 23 tasks (#351-#373), 144h total |
 
 ---
 

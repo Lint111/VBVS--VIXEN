@@ -27,7 +27,7 @@ using ShaderDataBundle = ShaderManagement::ShaderDataBundle;
  * Inputs:
  * - VULKAN_DEVICE_IN (VulkanDevice*) - VulkanDevice pointer for resource creation
  * - SHADER_DATA_BUNDLE - Shader metadata for reflection
- * - SWAPCHAIN_IMAGE_COUNT - Number of swapchain images
+ * - SWAPCHAIN_INFO - Swapchain public variables (swapChainImageCount read during Compile)
  * - DESCRIPTOR_RESOURCES (std::vector<DescriptorResourceEntry>) - Resources with embedded metadata
  * - IMAGE_INDEX - Current swapchain image index
  *
@@ -67,9 +67,12 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    // Swapchain image count metadata (extracted from SwapChainPublicVariables::imageCount)
-    // Execute-only: image count rarely changes, no need to trigger recompilation
-    INPUT_SLOT(SWAPCHAIN_IMAGE_COUNT, uint32_t, 2,
+    // Swapchain public variables. swapChainImageCount is read during Compile for per-image
+    // descriptor allocation. Passed as the struct pointer (the canonical pattern used by
+    // ComputeDispatchNode / GeometryRenderNode) rather than a field-extracted scalar: field
+    // extraction is only honored for variadic/binding targets, not static inputs, so a
+    // field-extracted static scalar silently resolves to 0.
+    INPUT_SLOT(SWAPCHAIN_INFO, SwapChainPublicVariables*, 2,
         SlotNullability::Required,
         SlotRole::Execute,
         SlotMutability::ReadOnly,
@@ -115,7 +118,8 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
         HandleDescriptor shaderDataBundleDesc{"ShaderDataBundle*"};
         INIT_INPUT_DESC(SHADER_DATA_BUNDLE, "shader_data_bundle", ResourceLifetime::Persistent, shaderDataBundleDesc);
 
-        INIT_INPUT_DESC(SWAPCHAIN_IMAGE_COUNT, "swapchain_image_count", ResourceLifetime::Transient, BufferDescription{});
+        HandleDescriptor swapchainInfoDesc{"SwapChainPublicVariables*"};
+        INIT_INPUT_DESC(SWAPCHAIN_INFO, "swapchain_info", ResourceLifetime::Persistent, swapchainInfoDesc);
 
         // DescriptorResourceEntry contains handle + slotRole + debugCapture
         HandleDescriptor descriptorResourcesDesc{"std::vector<DescriptorResourceEntry>"};
@@ -154,8 +158,8 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
     static_assert(SHADER_DATA_BUNDLE_Slot::index == 1, "SHADER_DATA_BUNDLE must be at index 1");
     static_assert(!SHADER_DATA_BUNDLE_Slot::nullable, "SHADER_DATA_BUNDLE is required");
 
-    static_assert(SWAPCHAIN_IMAGE_COUNT_Slot::index == 2, "SWAPCHAIN_IMAGE_COUNT must be at index 2");
-    static_assert(!SWAPCHAIN_IMAGE_COUNT_Slot::nullable, "SWAPCHAIN_IMAGE_COUNT is required");
+    static_assert(SWAPCHAIN_INFO_Slot::index == 2, "SWAPCHAIN_INFO must be at index 2");
+    static_assert(!SWAPCHAIN_INFO_Slot::nullable, "SWAPCHAIN_INFO is required");
 
     static_assert(DESCRIPTOR_RESOURCES_Slot::index == 3, "DESCRIPTOR_RESOURCES must be at index 3");
     static_assert(!DESCRIPTOR_RESOURCES_Slot::nullable, "DESCRIPTOR_RESOURCES is required");
@@ -175,7 +179,7 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
     // Type validations
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
     static_assert(std::is_same_v<SHADER_DATA_BUNDLE_Slot::Type, const std::shared_ptr<ShaderManagement::ShaderDataBundle>&>);
-    static_assert(std::is_same_v<SWAPCHAIN_IMAGE_COUNT_Slot::Type, uint32_t>);
+    static_assert(std::is_same_v<SWAPCHAIN_INFO_Slot::Type, SwapChainPublicVariables*>);
     static_assert(std::is_same_v<DESCRIPTOR_RESOURCES_Slot::Type, std::vector<DescriptorResourceEntry>>);
 
     static_assert(std::is_same_v<DESCRIPTOR_SET_LAYOUT_Slot::Type, VkDescriptorSetLayout>);

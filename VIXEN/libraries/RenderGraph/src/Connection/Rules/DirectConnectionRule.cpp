@@ -23,7 +23,17 @@ bool DirectConnectionRule::CanHandle(
         return false;
     }
 
-    // We handle all other connections (slot-to-slot, slot-to-binding)
+    // Binding targets (variadic / shader-reflected) are handled by VariadicConnectionRule,
+    // which wires the resource, adds the topology ordering edge (so the producer compiles
+    // before the gatherer), and registers the PostCompile/PreExecute resource-population
+    // hooks. DirectConnectionRule only handles static slot-to-slot connections; if it
+    // claimed binding targets (it has higher priority, so FindRule would pick it first) its
+    // Resolve would silently no-op them, leaving descriptors unbound.
+    if (target.IsBinding()) {
+        return false;
+    }
+
+    // We handle static slot-to-slot connections.
     return true;
 }
 
