@@ -30,6 +30,7 @@
 #include "Nodes/GraphicsPipelineNode.h"
 #include "Nodes/GeometryRenderNode.h"
 #include "Nodes/PresentNode.h"
+#include "Nodes/UIRenderNode.h"  // S0: RmlUi data-driven UI render node
 #include "Nodes/ConstantNode.h"  // MVP: Generic parameter node
 #include "Nodes/ConstantNodeType.h"  // MVP: ConstantNode factory
 #include "Data/Nodes/ConstantNodeConfig.h"  // MVP: ConstantNode configuration
@@ -454,6 +455,7 @@ void VulkanGraphApplication::RegisterNodeTypes() {
     nodeRegistry->Register<DescriptorSetNodeType>();
     nodeRegistry->Register<GraphicsPipelineNodeType>();
     nodeRegistry->Register<GeometryRenderNodeType>();
+    nodeRegistry->Register<UIRenderNodeType>();  // S0: RmlUi data-driven UI render node
     nodeRegistry->Register<PresentNodeType>();
     nodeRegistry->Register<LoopBridgeNodeType>();
     nodeRegistry->Register<BoolOpNodeType>();
@@ -474,12 +476,78 @@ void VulkanGraphApplication::RegisterNodeTypes() {
     nodeRegistry->Register<ShaderConstantNodeType>();
     nodeRegistry->Register<ConstantNodeType>();
 
-    mainLogger->Info("Successfully registered 30 node types");
+    mainLogger->Info("Successfully registered 31 node types");
+}
+
+void VulkanGraphApplication::BuildUIGraph() {
+    using namespace Vixen::RenderGraph;
+    mainLogger->Info("Building UI-only RmlUi demo graph");
+
+    NodeHandle instanceNode    = renderGraph->AddNode<InstanceNodeType>("ui_instance");
+    NodeHandle deviceNode      = renderGraph->AddNode<DeviceNodeType>("ui_device");
+    NodeHandle windowNode      = renderGraph->AddNode<WindowNodeType>("ui_window");
+    NodeHandle swapChainNode   = renderGraph->AddNode<SwapChainNodeType>("ui_swapchain");
+    NodeHandle commandPoolNode = renderGraph->AddNode<CommandPoolNodeType>("ui_cmd_pool");
+    NodeHandle frameSyncNode   = renderGraph->AddNode<FrameSyncNodeType>("ui_frame_sync");
+    NodeHandle uiRenderNode    = renderGraph->AddNode<UIRenderNodeType>("ui_render");
+    NodeHandle presentNode     = renderGraph->AddNode<PresentNodeType>("ui_present");
+
+    auto* window = static_cast<WindowNode*>(renderGraph->GetInstance(windowNode));
+    window->SetParameter(WindowNodeConfig::PARAM_WIDTH, width);
+    window->SetParameter(WindowNodeConfig::PARAM_HEIGHT, height);
+    auto* device = static_cast<DeviceNode*>(renderGraph->GetInstance(deviceNode));
+    device->SetParameter(DeviceNodeConfig::PARAM_GPU_INDEX, 0u);
+    auto* present = static_cast<PresentNode*>(renderGraph->GetInstance(presentNode));
+    present->SetParameter(PresentNodeConfig::WAIT_FOR_IDLE, true);
+
+    ConnectionBatch batch(renderGraph.get());
+
+    // --- Infrastructure (mirrors BuildRenderGraph's core chain) ---
+    batch.Connect(instanceNode, InstanceNodeConfig::INSTANCE, deviceNode, DeviceNodeConfig::INSTANCE_IN);
+    batch.Connect(deviceNode, DeviceNodeConfig::INSTANCE_OUT, windowNode, WindowNodeConfig::INSTANCE);
+    batch.Connect(windowNode, WindowNodeConfig::WINDOW, swapChainNode, SwapChainNodeConfig::WINDOW)
+         .Connect(windowNode, WindowNodeConfig::WIDTH_OUT, swapChainNode, SwapChainNodeConfig::WIDTH)
+         .Connect(windowNode, WindowNodeConfig::HEIGHT_OUT, swapChainNode, SwapChainNodeConfig::HEIGHT);
+    batch.Connect(deviceNode, DeviceNodeConfig::INSTANCE_OUT, swapChainNode, SwapChainNodeConfig::INSTANCE)
+         .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, swapChainNode, SwapChainNodeConfig::VULKAN_DEVICE_IN);
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, frameSyncNode, FrameSyncNodeConfig::VULKAN_DEVICE);
+    batch.Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX, swapChainNode, SwapChainNodeConfig::CURRENT_FRAME_INDEX)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY, swapChainNode, SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY, swapChainNode, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::PRESENT_FENCES_ARRAY, swapChainNode, SwapChainNodeConfig::PRESENT_FENCES_ARRAY);
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, commandPoolNode, CommandPoolNodeConfig::VULKAN_DEVICE_IN);
+
+    // --- UIRenderNode inputs (slots into the render-node position) ---
+    batch.Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC, uiRenderNode, UIRenderNodeConfig::SWAPCHAIN_INFO)
+         .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL, uiRenderNode, UIRenderNodeConfig::COMMAND_POOL)
+         .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, uiRenderNode, UIRenderNodeConfig::VULKAN_DEVICE)
+         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX, uiRenderNode, UIRenderNodeConfig::IMAGE_INDEX)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX, uiRenderNode, UIRenderNodeConfig::CURRENT_FRAME_INDEX)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::IN_FLIGHT_FENCE, uiRenderNode, UIRenderNodeConfig::IN_FLIGHT_FENCE)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY, uiRenderNode, UIRenderNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY, uiRenderNode, UIRenderNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
+
+    // --- Present ---
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, presentNode, PresentNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC, presentNode, PresentNodeConfig::SWAPCHAIN)
+         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX, presentNode, PresentNodeConfig::IMAGE_INDEX)
+         .Connect(uiRenderNode, UIRenderNodeConfig::RENDER_COMPLETE_SEMAPHORE, presentNode, PresentNodeConfig::RENDER_COMPLETE_SEMAPHORE)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::PRESENT_FENCES_ARRAY, presentNode, PresentNodeConfig::PRESENT_FENCE_ARRAY);
+
+    batch.RegisterAll();
+    mainLogger->Info("UI-only RmlUi demo graph built (8 nodes)");
 }
 
 void VulkanGraphApplication::BuildRenderGraph() {
     if (!renderGraph) {
         mainLogger->Error("Cannot build render graph: RenderGraph not initialized");
+        return;
+    }
+
+    // S0: opt into the UI-only RmlUi demo graph via env var, leaving the voxel path untouched.
+    if (std::getenv("VIXEN_UI_DEMO")) {
+        mainLogger->Info("VIXEN_UI_DEMO set - building UI-only RmlUi demo graph");
+        BuildUIGraph();
         return;
     }
 
