@@ -8,6 +8,7 @@ related:
   - "[[Vulkan-Pipeline]]"
   - "[[Type-System]]"
   - "[[EventBus]]"
+  - "[[Architecture-Review-Game-Renderer-2026-06-12]]"
 ---
 
 # Architecture Overview
@@ -214,6 +215,7 @@ O(1) node lookups via `NodeHandle` instead of string-based lookups.
 
 ## 7. Related Documentation
 
+- [[Architecture-Review-Game-Renderer-2026-06-12]] - Game-renderer readiness review (verified gap analysis + phased roadmap toward the Undertow target)
 - [[../Libraries/Overview|Libraries Overview]] - All 14 library components
 - [[RenderGraph-System]] - Detailed render graph architecture
 - [[Vulkan-Pipeline]] - Vulkan resource management
