@@ -8,6 +8,9 @@
 #include <algorithm>
 #include <stdexcept>
 #include <unordered_set>
+#include <filesystem>
+#include <fstream>
+#include <system_error>
 
 // Logging macros for RenderGraph (uses mainLogger instead of nodeLogger)
 #define GRAPH_LOG_DEBUG(msg) do { if (mainLogger) mainLogger->Debug(msg); } while(0)
@@ -307,8 +310,14 @@ void RenderGraph::Clear() {
 
         if (saveSuccess) {
             GRAPH_LOG_INFO("[RenderGraph::Clear] Persistent caches saved successfully");
+            // Clean shutdown reached and the save completed: clear the session lock so the next
+            // run trusts the cache. If the process is killed before this point (or the save fails),
+            // the lock survives and the next run regenerates instead of loading a suspect cache.
+            std::error_code lockEc;
+            std::filesystem::remove(std::filesystem::path("cache") / ".session.lock", lockEc);
         } else {
             GRAPH_LOG_WARNING("[RenderGraph::Clear] Warning: Some caches failed to save");
+            // Leave the session lock in place: an incomplete save must not be trusted next run.
         }
     }
 
@@ -1037,7 +1046,35 @@ void RenderGraph::GeneratePipelines() {
     GRAPH_LOG_INFO("[GeneratePipelines] Loading persistent caches...");
     if (mainCacher) {
         std::filesystem::path cacheDir = "cache";
-        if (std::filesystem::exists(cacheDir)) {
+        std::filesystem::path sessionLock = cacheDir / ".session.lock";
+
+        // Cache session guard (dirty flag): the lock is written here at session start and removed
+        // only after a clean shutdown (RenderGraph::Clear, once the save succeeds). If it is still
+        // present now, the previous run did not reach its clean-shutdown path — a hard kill (task
+        // manager), crash, power loss, or an interrupted save — so the on-disk persistent cache may
+        // be incomplete or inconsistent. Treat it as suspect: skip loading and regenerate. A graceful
+        // exit (incl. the window close button / Alt+F4, which route through WindowCloseEvent ->
+        // Clear()) removes the lock, so those are trusted.
+        const bool previousRunUnclean = std::filesystem::exists(sessionLock);
+        const bool cacheDirExisted = std::filesystem::exists(cacheDir);
+        std::error_code lockEc;
+        std::filesystem::create_directories(cacheDir, lockEc);
+        { std::ofstream lockOut(sessionLock, std::ios::trunc); lockOut << "in-progress\n"; }
+
+        if (previousRunUnclean) {
+            GRAPH_LOG_WARNING("[RenderGraph] Previous run did not exit cleanly (cache session lock "
+                "present) - clearing the suspect persistent cache and regenerating.");
+            // Delete the device-scoped cache DATA so nothing can load a possibly-incomplete cache:
+            // not the eager LoadAllAsync below, and not the lazy per-cacher load that happens in
+            // GetOrCreate/DeserializeFromFile during node Compile (cachers register after this
+            // point, so skipping LoadAllAsync alone is not enough). The tracked cache/global
+            // manifest is left intact; the session lock (cache/.session.lock) was rewritten above.
+            std::error_code clearEc;
+            std::filesystem::remove_all(cacheDir / "devices", clearEc);
+            if (clearEc) {
+                GRAPH_LOG_WARNING("[RenderGraph] Failed to clear suspect cache: " + clearEc.message());
+            }
+        } else if (cacheDirExisted) {
             GRAPH_LOG_INFO("[RenderGraph] Loading persistent caches from: " + cacheDir.string());
             auto loadFuture = mainCacher->LoadAllAsync(cacheDir);
 
