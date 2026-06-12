@@ -67,7 +67,11 @@ CONSTEXPR_NODE_CONFIG(FrameSyncNodeConfig,
 
     // Compile-time constants
     static constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 4;  // CPU-GPU sync (fences) + both semaphore types
-    static constexpr uint32_t MAX_SWAPCHAIN_IMAGES = 3;  // Swapchain image count hint
+    // Upper bound for per-image sync arrays (renderComplete semaphores, present fences). Indexed by
+    // the runtime swapchain imageIndex, so it must be >= the actual image count the surface gives
+    // (minImageCount + 1). Some surfaces (e.g. llvmpipe on WSLg) report minImageCount 3 -> 4 images;
+    // 3 was too small and overran the arrays at imageIndex 3. 8 covers any realistic surface.
+    static constexpr uint32_t MAX_SWAPCHAIN_IMAGES = 8;
 
     // Constructor for runtime descriptor initialization
     FrameSyncNodeConfig() {

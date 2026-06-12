@@ -174,6 +174,22 @@ void VulkanSwapChain::GetSupportedFormats(VkPhysicalDevice gpu)
         // Always select the first available color format
         scPublicVars.Format = scPrivateVars.surfaceFormats[0].format;
     }
+
+    // Portability guard: keep STORAGE swapchain usage only when the chosen surface format actually
+    // supports the STORAGE_IMAGE feature. Software rasterizers (e.g. llvmpipe on WSLg) expose BGRA
+    // surface formats WITHOUT storage support; requesting STORAGE anyway produces an invalid swapchain
+    // (VUID-VkSwapchainCreateInfoKHR-imageFormat-01778) whose handle then faults inside
+    // vkQueuePresentKHR. Dropping it lets present succeed everywhere; compute-to-swapchain paths simply
+    // require a storage-capable GPU format (real GPUs report STORAGE on their swapchain formats).
+    if (imageUsageFlags & VK_IMAGE_USAGE_STORAGE_BIT) {
+        VkFormatProperties fmtProps{};
+        vkGetPhysicalDeviceFormatProperties(gpu, scPublicVars.Format, &fmtProps);
+        if (!(fmtProps.optimalTilingFeatures & VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT)) {
+            imageUsageFlags &= ~VK_IMAGE_USAGE_STORAGE_BIT;
+            LOG_INFO("[GetSupportedFormats] Surface format lacks STORAGE_IMAGE support - dropping STORAGE "
+                     "from swapchain usage (software-rasterizer / cross-platform portability).");
+        }
+    }
 }
 
 VkResult VulkanSwapChain::CreateSurface(VkInstance instance, GLFWwindow* window)
@@ -269,6 +285,13 @@ void VulkanSwapChain::GetSurfaceCapabilitiesAndPresentMode(VkPhysicalDevice gpu,
         // If the surface size is defined, the swap chain size must match
         scPrivateVars.swapChainExtent = scPrivateVars.surfCapabilities.currentExtent;
     }
+
+    // The public Extent MUST equal the extent the swapchain images are created at
+    // (imageExtent = swapChainExtent, set below in CreateSwapChainColorImages). Framebuffers
+    // and renderArea are built on those images, so if the public Extent desyncs from the image
+    // extent — e.g. the requested window size differs from the surface's currentExtent — the
+    // unrendered remainder of each image shows as uninitialized garbage (horizontal strips).
+    scPublicVars.Extent = scPrivateVars.swapChainExtent;
 }
 
 void VulkanSwapChain::ManagePresentMode()

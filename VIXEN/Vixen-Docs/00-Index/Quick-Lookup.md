@@ -15,6 +15,7 @@ Fast-access reference for Claude Code. Read this file first for any documentatio
 
 | Date | Topic | File |
 |------|-------|------|
+| 2026-06-12 | Consumer feedback / feature requests (UNDERTOW integration) | [[../05-Progress/features/consumer-feedback-undertow]] |
 | 2026-01-04 | Sprint 6.0.1: Unified Connection System COMPLETE | [[../05-Progress/features/Sprint6.0.1-Unified-Connection-System]] |
 
 ---
@@ -105,7 +106,7 @@ Fast-access reference for Claude Code. Read this file first for any documentatio
 - RenderPassNode, FramebufferNode, GraphicsPipelineNode, ComputePipelineNode, DescriptorSetNode
 
 ### Rendering
-- GeometryRenderNode, ComputeDispatchNode, PresentNode
+- GeometryRenderNode, ComputeDispatchNode, PresentNode, UIRenderNode (RmlUi → swapchain)
 
 ### Resources
 - DepthBufferNode, TextureLoaderNode, VertexBufferNode, ShaderLibraryNode

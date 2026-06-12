@@ -444,8 +444,11 @@ void SwapChainNode::CreateSwapchainAndViews() {
         throw std::runtime_error(errorMsg);
     }
 
-    // Set swapchain extent for external reference
-    swapChainWrapper->SetSwapChainExtent(width, height);
+    // NOTE: the public Extent is set authoritatively during capability resolution
+    // (GetSurfaceCapabilitiesAndPresentMode) to match the actual swapchain image extent. We
+    // must NOT overwrite it with the requested window size here — on some surfaces (e.g. WSLg
+    // software Vulkan) currentExtent differs from the requested size, and desyncing the public
+    // Extent from the image extent leaves the unrendered image remainder as garbage strips.
 
     NODE_LOG_INFO("[SwapChainNode] Swapchain created with " + std::to_string(imageCount) + " images");
 }

@@ -88,6 +88,11 @@ public:
     virtual void BuildRenderGraph();
 
     /**
+     * @brief Build a UI-only RmlUi demo graph (S0). Gated by the VIXEN_UI_DEMO env var.
+     */
+    void BuildUIGraph();
+
+    /**
      * @brief Compile the render graph
      * 
      * Validates, optimizes, and prepares the graph for execution.
