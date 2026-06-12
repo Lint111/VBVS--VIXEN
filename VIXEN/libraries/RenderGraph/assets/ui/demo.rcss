@@ -1,0 +1,29 @@
+body {
+    font-family: LatoLatin;
+    font-size: 18px;
+    color: #d0d0d0;
+}
+
+.panel {
+    width: 360px;
+    margin: 40px;
+    padding: 20px;
+    background-color: #1a1a2e;
+    border-width: 2px;
+    border-color: #4060a0;
+}
+
+h1 {
+    font-size: 32px;
+    color: #6090ff;
+    margin-bottom: 10px;
+}
+
+p {
+    margin-top: 6px;
+}
+
+.dim {
+    color: #808080;
+    font-size: 14px;
+}
