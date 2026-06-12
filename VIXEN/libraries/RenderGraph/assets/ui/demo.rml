@@ -6,7 +6,7 @@
 <body>
     <div class="panel">
         <h1>UNDERTOW</h1>
-        <p>VIXEN render backend &mdash; S0</p>
+        <p>VIXEN render backend — S0</p>
         <p class="dim">RmlUi over Vulkan</p>
     </div>
 </body>

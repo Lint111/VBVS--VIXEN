@@ -136,3 +136,15 @@ if(TARGET TBB::tbb)
     )
     message(STATUS "VIXEN: TBB DLL will be copied to output directory")
 endif()
+
+# ============================================================================
+# UI assets (RmlUi demo: RML/RCSS + font)
+# ============================================================================
+# Copy the UI assets next to the executable so the RmlUi demo is self-contained
+# (the app loads them via the relative path "assets/ui/..."). No manual copy step.
+add_custom_command(TARGET VIXEN POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_SOURCE_DIR}/libraries/RenderGraph/assets
+        $<TARGET_FILE_DIR:VIXEN>/assets
+    COMMENT "Copying UI assets (assets/ui) for VIXEN"
+)

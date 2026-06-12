@@ -285,6 +285,13 @@ void VulkanSwapChain::GetSurfaceCapabilitiesAndPresentMode(VkPhysicalDevice gpu,
         // If the surface size is defined, the swap chain size must match
         scPrivateVars.swapChainExtent = scPrivateVars.surfCapabilities.currentExtent;
     }
+
+    // The public Extent MUST equal the extent the swapchain images are created at
+    // (imageExtent = swapChainExtent, set below in CreateSwapChainColorImages). Framebuffers
+    // and renderArea are built on those images, so if the public Extent desyncs from the image
+    // extent — e.g. the requested window size differs from the surface's currentExtent — the
+    // unrendered remainder of each image shows as uninitialized garbage (horizontal strips).
+    scPublicVars.Extent = scPrivateVars.swapChainExtent;
 }
 
 void VulkanSwapChain::ManagePresentMode()

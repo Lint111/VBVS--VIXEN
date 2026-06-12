@@ -29,9 +29,10 @@ public:
 /**
  * @brief Node instance that owns an Rml::Context and renders it through VixenRmlRenderInterface.
  *
- * Mirrors GeometryRenderNode's per-frame sync/submit, but builds its own color-only render pass +
- * framebuffers from the swapchain and re-records every frame (RmlUi replays draws via Render()).
- * S0 limitation: one-time init in Compile (no live-resize handling).
+ * Mirrors GeometryRenderNode: consumes RENDER_PASS (from RenderPassNode) + FRAMEBUFFERS (from
+ * FramebufferNode) built off the swapchain, and re-records every frame (RmlUi replays draws via
+ * Render()). The swapchain-derived resources are owned + recreated-on-resize by those nodes, not
+ * here; this node owns only its one-time RmlUi pipeline/context/document + per-image command buffers.
  */
 class UIRenderNode : public TypedNode<UIRenderNodeConfig> {
 public:
@@ -45,18 +46,16 @@ protected:
     void CleanupImpl(TypedCleanupContext& ctx) override;
 
 private:
-    void CreateRenderPass(VkFormat colorFormat);
-    void CreateFramebuffers(SwapChainPublicVariables* sc);
-    void RecordFrame(VkCommandBuffer cmd, uint32_t imageIndex);
+    void FreeCommandBuffers();  // free the per-image command buffers (no device wait)
+    void RecordFrame(VkCommandBuffer cmd, VkFramebuffer framebuffer);
 
     bool initialized_ = false;
     VkDevice device_ = VK_NULL_HANDLE;
     VkQueue queue_ = VK_NULL_HANDLE;
     VkCommandPool commandPool_ = VK_NULL_HANDLE;
-    VkRenderPass renderPass_ = VK_NULL_HANDLE;
+    VkRenderPass renderPass_ = VK_NULL_HANDLE;   // consumed from RenderPassNode (not owned)
     VkExtent2D extent_{};
-    std::vector<VkFramebuffer> framebuffers_;
-    std::vector<VkCommandBuffer> commandBuffers_;  // one per swapchain image
+    std::vector<VkCommandBuffer> commandBuffers_;  // one per swapchain image (owned)
 
     Vixen::Ui::VixenRmlSystemInterface systemInterface_;
     Vixen::Ui::VixenRmlRenderInterface renderInterface_;

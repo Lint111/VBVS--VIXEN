@@ -10,18 +10,19 @@ using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 /**
  * @brief Resource configuration for UIRenderNode (RmlUi → Vulkan).
  *
- * UIRenderNode mirrors GeometryRenderNode's per-frame sync/target inputs, but OWNS its pipeline,
- * geometry, textures, render pass, and framebuffers internally (via VixenRmlRenderInterface) — so it
- * drops PIPELINE/PIPELINE_LAYOUT/DESCRIPTOR_SETS/VERTEX_BUFFER/RENDER_PASS/FRAMEBUFFERS. It builds a
- * color-only render pass + framebuffers from SWAPCHAIN_INFO, so its pipeline is format-compatible.
+ * UIRenderNode mirrors GeometryRenderNode: it CONSUMES a color-only RENDER_PASS (from RenderPassNode)
+ * and FRAMEBUFFERS (from FramebufferNode) built off the swapchain, so the swapchain-derived resource
+ * lifecycle (recreate + cleanup on resize) lives in those nodes — never in the consumer. It owns only
+ * its RmlUi pipeline/geometry/textures (via VixenRmlRenderInterface) and its per-image command buffers.
  *
- * Inputs (8): SWAPCHAIN_INFO, COMMAND_POOL, VULKAN_DEVICE, IMAGE_INDEX, CURRENT_FRAME_INDEX,
- *   IN_FLIGHT_FENCE, IMAGE_AVAILABLE_SEMAPHORES_ARRAY, RENDER_COMPLETE_SEMAPHORES_ARRAY.
+ * Inputs (10): SWAPCHAIN_INFO, COMMAND_POOL, VULKAN_DEVICE, IMAGE_INDEX, CURRENT_FRAME_INDEX,
+ *   IN_FLIGHT_FENCE, IMAGE_AVAILABLE_SEMAPHORES_ARRAY, RENDER_COMPLETE_SEMAPHORES_ARRAY,
+ *   RENDER_PASS, FRAMEBUFFERS.
  * Outputs (2): COMMAND_BUFFERS, RENDER_COMPLETE_SEMAPHORE.
  * Parameters: rmlDocumentPath, fontPath.
  */
 namespace UIRenderNodeCounts {
-    static constexpr size_t INPUTS = 8;
+    static constexpr size_t INPUTS = 10;
     static constexpr size_t OUTPUTS = 2;
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Array;
 }
@@ -59,6 +60,14 @@ CONSTEXPR_NODE_CONFIG(UIRenderNodeConfig,
     INPUT_SLOT(RENDER_COMPLETE_SEMAPHORES_ARRAY, const std::vector<VkSemaphore>&, 7,
         SlotNullability::Required, SlotRole::Dependency, SlotMutability::ReadOnly, SlotScope::NodeLevel);
 
+    // Color-only render pass (from RenderPassNode) + per-image framebuffers (from FramebufferNode),
+    // both built off the swapchain. UIRenderNode consumes them; it does not own their lifecycle.
+    INPUT_SLOT(RENDER_PASS, VkRenderPass, 8,
+        SlotNullability::Required, SlotRole::Dependency, SlotMutability::ReadOnly, SlotScope::NodeLevel);
+
+    INPUT_SLOT(FRAMEBUFFERS, std::vector<VkFramebuffer>, 9,
+        SlotNullability::Required, SlotRole::Dependency, SlotMutability::ReadOnly, SlotScope::NodeLevel);
+
     // ===== OUTPUTS (2) =====
     OUTPUT_SLOT(COMMAND_BUFFERS, VkCommandBuffer, 0,
         SlotNullability::Required, SlotMutability::WriteOnly);
@@ -85,6 +94,11 @@ CONSTEXPR_NODE_CONFIG(UIRenderNodeConfig,
         INIT_INPUT_DESC(RENDER_COMPLETE_SEMAPHORES_ARRAY, "render_complete_semaphores_array",
             ResourceLifetime::Persistent, semaphoreArrayDesc);
 
+        // RENDER_PASS is a handle (persistent-capable); FRAMEBUFFERS is a value vector, so it must be
+        // Transient (a value type cannot be a Persistent slot). Mirrors GeometryRenderNodeConfig.
+        INIT_INPUT_DESC(RENDER_PASS, "render_pass", ResourceLifetime::Persistent, BufferDescription{});
+        INIT_INPUT_DESC(FRAMEBUFFERS, "framebuffers", ResourceLifetime::Transient, BufferDescription{});
+
         INIT_OUTPUT_DESC(COMMAND_BUFFERS, "command_buffers", ResourceLifetime::Transient, BufferDescription{});
         INIT_OUTPUT_DESC(RENDER_COMPLETE_SEMAPHORE, "render_complete_semaphore",
             ResourceLifetime::Transient, BufferDescription{});
@@ -100,6 +114,8 @@ CONSTEXPR_NODE_CONFIG(UIRenderNodeConfig,
     static_assert(IN_FLIGHT_FENCE_Slot::index == 5, "IN_FLIGHT_FENCE must be at index 5");
     static_assert(IMAGE_AVAILABLE_SEMAPHORES_ARRAY_Slot::index == 6, "IMAGE_AVAILABLE_SEMAPHORES_ARRAY must be at index 6");
     static_assert(RENDER_COMPLETE_SEMAPHORES_ARRAY_Slot::index == 7, "RENDER_COMPLETE_SEMAPHORES_ARRAY must be at index 7");
+    static_assert(RENDER_PASS_Slot::index == 8, "RENDER_PASS must be at index 8");
+    static_assert(FRAMEBUFFERS_Slot::index == 9, "FRAMEBUFFERS must be at index 9");
     static_assert(COMMAND_BUFFERS_Slot::index == 0, "COMMAND_BUFFERS must be at index 0");
     static_assert(RENDER_COMPLETE_SEMAPHORE_Slot::index == 1, "RENDER_COMPLETE_SEMAPHORE must be at index 1");
 
@@ -111,6 +127,8 @@ CONSTEXPR_NODE_CONFIG(UIRenderNodeConfig,
     static_assert(std::is_same_v<IN_FLIGHT_FENCE_Slot::Type, VkFence>);
     static_assert(std::is_same_v<IMAGE_AVAILABLE_SEMAPHORES_ARRAY_Slot::Type, const std::vector<VkSemaphore>&>);
     static_assert(std::is_same_v<RENDER_COMPLETE_SEMAPHORES_ARRAY_Slot::Type, const std::vector<VkSemaphore>&>);
+    static_assert(std::is_same_v<RENDER_PASS_Slot::Type, VkRenderPass>);
+    static_assert(std::is_same_v<FRAMEBUFFERS_Slot::Type, std::vector<VkFramebuffer>>);
     static_assert(std::is_same_v<COMMAND_BUFFERS_Slot::Type, VkCommandBuffer>);
     static_assert(std::is_same_v<RENDER_COMPLETE_SEMAPHORE_Slot::Type, VkSemaphore>);
 };
