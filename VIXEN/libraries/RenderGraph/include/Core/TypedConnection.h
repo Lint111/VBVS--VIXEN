@@ -1,6 +1,8 @@
 #pragma once
 
 #include "Core/RenderGraph.h"
+#include "Core/NodeInstance.h"
+#include "Core/NodeType.h"
 #include "Core/GraphLifecycleHooks.h"
 #include "Data/Core/ResourceConfig.h"
 #include "Data/Core/ConnectionConcepts.h"  // ConnectionOrder
@@ -197,6 +199,7 @@ public:
         // Build source SlotInfo from compile-time slot type
         pending.context.sourceSlot = SlotInfo::FromOutputSlot<SourceSlot>("");
         pending.context.sourceSlot.index = SourceSlot::index;
+        PopulateSourceLifetime(pending.context, SourceSlot::index);
 
         // Build target SlotInfo - handle static slots, SDI bindings, legacy bindings, and raw integers
         if constexpr (requires { TargetSlot::BINDING; TargetSlot::DESCRIPTOR_TYPE; }) {
@@ -414,6 +417,7 @@ public:
 
                 pending.context.sourceSlot = SlotInfo::FromOutputSlot<SourceSlot>("");
                 pending.context.sourceSlot.index = SourceSlot::index;
+                PopulateSourceLifetime(pending.context, SourceSlot::index);
                 pending.context.targetSlot = SlotInfo::FromInputSlot<TargetSlot>("");
                 pending.context.targetSlot.index = TargetSlot::index;
 
@@ -430,6 +434,7 @@ public:
 
                 pending.context.sourceSlot = SlotInfo::FromOutputSlot<SourceSlot>("");
                 pending.context.sourceSlot.index = SourceSlot::index;
+                PopulateSourceLifetime(pending.context, SourceSlot::index);
                 pending.context.targetSlot = SlotInfo::FromInputSlot<TargetSlot>("");
                 pending.context.targetSlot.index = TargetSlot::index;
 
@@ -528,6 +533,27 @@ public:
     }
 
 private:
+    /**
+     * @brief Propagate the source node's declared output lifetime into the connection context.
+     *
+     * The connection context defaults sourceLifetime to Transient. FieldExtractionModifier
+     * requires a Persistent source (it extracts a field by stable address, which is only valid
+     * if the producing resource is not reallocated between frames). Without this propagation
+     * every field-extraction connection fails PreValidation even when the source output is
+     * declared Persistent in its node config. Null-safe: leaves the Transient default if the
+     * source node, its type, or the output descriptor is unavailable.
+     */
+    static void PopulateSourceLifetime(ConnectionContext& ctx, uint32_t sourceOutputIndex) {
+        if (!ctx.sourceNode) {
+            return;
+        }
+        if (const NodeType* type = ctx.sourceNode->GetType()) {
+            if (const ResourceDescriptor* desc = type->GetOutputDescriptor(sourceOutputIndex)) {
+                ctx.sourceLifetime = desc->lifetime;
+            }
+        }
+    }
+
     RenderGraph* graph;
     ConnectionRuleRegistry registry_;                      ///< Rule registry (owns rules)
     std::vector<PendingConnection> pendingConnections_;    ///< Pending connections for RegisterAll

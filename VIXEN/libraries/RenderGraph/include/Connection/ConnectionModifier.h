@@ -14,9 +14,11 @@
 
 #include "Connection/ConnectionTypes.h"
 #include <algorithm>
+#include <concepts>
 #include <memory>
 #include <span>
 #include <string_view>
+#include <type_traits>
 #include <typeindex>
 #include <vector>
 
@@ -370,6 +372,23 @@ struct ConnectionMeta {
     template<typename Mod, typename... Args>
     ConnectionMeta&& With(Args&&... args) && {
         modifiers.push_back(std::make_unique<Mod>(std::forward<Args>(args)...));
+        return std::move(*this);
+    }
+
+    /**
+     * @brief Add a concrete modifier passed by value (rvalue chain).
+     *
+     * Enables the documented ergonomic form, e.g. `.With(ExtractField(&S::field))`:
+     * a modifier created by value is moved into an owning unique_ptr. Constrained to
+     * ConnectionModifier-derived argument types so it never shadows the unique_ptr
+     * overload (a unique_ptr is not a ConnectionModifier) nor the explicit-template
+     * in-place constructor overload (the concrete modifiers' value constructors are
+     * `explicit`, so non-modifier arguments do not bind here).
+     */
+    template<typename Mod>
+        requires std::derived_from<std::remove_cvref_t<Mod>, ConnectionModifier>
+    ConnectionMeta&& With(Mod&& mod) && {
+        modifiers.push_back(std::make_unique<std::remove_cvref_t<Mod>>(std::forward<Mod>(mod)));
         return std::move(*this);
     }
 
