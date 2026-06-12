@@ -529,7 +529,11 @@ void VulkanGraphApplication::BuildUIGraph() {
 
     // --- Present ---
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, presentNode, PresentNodeConfig::VULKAN_DEVICE_IN)
-         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC, presentNode, PresentNodeConfig::SWAPCHAIN)
+         // Use the raw VkSwapchainKHR output (SWAPCHAIN_HANDLE), NOT SWAPCHAIN_PUBLIC: the
+         // SwapChainPublicVariables*->VkSwapchainKHR implicit conversion is not invoked across the typed
+         // connection on GCC (struct has many conversion operators), so SWAPCHAIN_PUBLIC would hand
+         // present the struct pointer instead of the handle and fault inside vkQueuePresentKHR.
+         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_HANDLE, presentNode, PresentNodeConfig::SWAPCHAIN)
          .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX, presentNode, PresentNodeConfig::IMAGE_INDEX)
          .Connect(uiRenderNode, UIRenderNodeConfig::RENDER_COMPLETE_SEMAPHORE, presentNode, PresentNodeConfig::RENDER_COMPLETE_SEMAPHORE)
          .Connect(frameSyncNode, FrameSyncNodeConfig::PRESENT_FENCES_ARRAY, presentNode, PresentNodeConfig::PRESENT_FENCE_ARRAY);
