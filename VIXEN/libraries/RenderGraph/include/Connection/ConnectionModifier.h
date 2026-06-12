@@ -14,6 +14,7 @@
 
 #include "Connection/ConnectionTypes.h"
 #include <algorithm>
+#include <concepts>
 #include <memory>
 #include <span>
 #include <string_view>
@@ -367,28 +368,28 @@ struct ConnectionMeta {
     }
 
     /**
-     * @brief Add a concrete modifier passed by value, e.g. .With(ExtractField(...)).
-     *
-     * Deduced-only: the argument must already be a concrete ConnectionModifier
-     * subobject, so this never competes with the explicit-template in-place form
-     * (.With<Mod>(ctorArgs...)) — for that form the argument needs a user-defined
-     * conversion, which the in-place overload avoids and therefore wins.
-     */
-    template<typename Mod,
-             typename = std::enable_if_t<
-                 std::is_base_of_v<ConnectionModifier, std::decay_t<Mod>> &&
-                 !std::is_same_v<std::decay_t<Mod>, ConnectionModifier>>>
-    ConnectionMeta&& With(Mod&& mod) && {
-        modifiers.push_back(std::make_unique<std::decay_t<Mod>>(std::forward<Mod>(mod)));
-        return std::move(*this);
-    }
-
-    /**
      * @brief Construct and add a modifier in-place (rvalue chain)
      */
     template<typename Mod, typename... Args>
     ConnectionMeta&& With(Args&&... args) && {
         modifiers.push_back(std::make_unique<Mod>(std::forward<Args>(args)...));
+        return std::move(*this);
+    }
+
+    /**
+     * @brief Add a concrete modifier passed by value (rvalue chain).
+     *
+     * Enables the documented ergonomic form, e.g. `.With(ExtractField(&S::field))`:
+     * a modifier created by value is moved into an owning unique_ptr. Constrained to
+     * ConnectionModifier-derived argument types so it never shadows the unique_ptr
+     * overload (a unique_ptr is not a ConnectionModifier) nor the explicit-template
+     * in-place constructor overload (the concrete modifiers' value constructors are
+     * `explicit`, so non-modifier arguments do not bind here).
+     */
+    template<typename Mod>
+        requires std::derived_from<std::remove_cvref_t<Mod>, ConnectionModifier>
+    ConnectionMeta&& With(Mod&& mod) && {
+        modifiers.push_back(std::make_unique<std::remove_cvref_t<Mod>>(std::forward<Mod>(mod)));
         return std::move(*this);
     }
 

@@ -1,4 +1,44 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(cmake:*)",
+      "Bash(ninja:*)",
+      "Bash(msbuild:*)",
+      "Bash(conan:*)",
+      "Bash(vcpkg:*)",
+      "Bash(glslc:*)",
+      "Bash(spirv-val:*)",
+      "Bash(glslangValidator:*)",
+      "Bash(/c/VulkanSDK/:*)",
+      "Bash(C:/VulkanSDK/:*)",
+      "Bash(taskkill /F /IM MSBuild.exe:*)",
+      "Bash(taskkill /F /IM cl.exe:*)",
+      "Bash(taskkill /F /IM ninja.exe:*)",
+      "Bash(taskkill /F /IM cmake.exe:*)",
+      "Bash(taskkill /F /IM glslc.exe:*)",
+      "Bash(timeout:*)",
+      "Bash(./build/:*)",
+      "Bash(./binaries/:*)",
+      "Bash(./*.exe:*)",
+      "Read(C:/cpp/**)",
+      "Edit(C:/cpp/**)",
+      "Write(C:/cpp/**)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"C:/cpp/VBVS--VIXEN/VIXEN/.claude/hooks/pre-commit-gate.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  },
   "extraKnownMarketplaces": {
     "anthropic-plugins": {
       "source": {

@@ -1197,17 +1197,23 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(voxelGridNode, VoxelGridNodeConfig::COMPRESSED_NORMAL_BUFFER,
                           descriptorGatherer, 7,  // Binding 7: CompressedNormalBuffer
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    // Binding 8: ShaderCounters debug/profiling buffer. The compute shaders enable
+    // ENABLE_SHADER_COUNTERS by default and statically use binding 8, so it must be bound
+    // (an unbound descriptor used in dispatch is undefined behavior). Mirrors the benchmark wiring.
+    batch.Connect(voxelGridNode, VoxelGridNodeConfig::SHADER_COUNTERS_BUFFER,
+                          descriptorGatherer, 8,  // Binding 8: ShaderCountersBuffer
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
     if (mainLogger && mainLogger->IsEnabled()) {
-        mainLogger->Info("[BuildRenderGraph] Connected compressed buffers: binding 6 (colors), binding 7 (normals)");
+        mainLogger->Info("[BuildRenderGraph] Connected compressed buffers: binding 6 (colors), binding 7 (normals), binding 8 (shader counters)");
     }
 #endif
 
     // Swapchain connections to descriptor set and dispatch
-    // Extract imageCount metadata using field extraction, DESCRIPTOR_RESOURCES provides actual bindings
+    // Pass swapchain public vars; DescriptorSetNode reads swapChainImageCount during Compile.
+    // DESCRIPTOR_RESOURCES provides the actual bindings.
     batch.Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
-                  computeDescriptorSet, DescriptorSetNodeConfig::SWAPCHAIN_IMAGE_COUNT,
-                  ExtractField(&SwapChainPublicVariables::swapChainImageCount))
+                  computeDescriptorSet, DescriptorSetNodeConfig::SWAPCHAIN_INFO)
          .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
                   computeDescriptorSet, DescriptorSetNodeConfig::IMAGE_INDEX)
          // REMOVED DUPLICATE: descriptorGatherer -> computeDescriptorSet DESCRIPTOR_RESOURCES (already connected at line 919-920)

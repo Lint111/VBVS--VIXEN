@@ -5,6 +5,7 @@
 #include "error/VulkanError.h"
 #include "CapabilityGraph.h"
 #include <memory>
+#include <functional>
 
 // Forward declarations for upload/update/allocation infrastructure (Sprint 5)
 namespace ResourceManagement {
@@ -319,6 +320,11 @@ public:
     template<typename T>
     void SetQueryManagerInternal(std::shared_ptr<T> manager) {
         queryManager_ = std::static_pointer_cast<void>(manager);
+        // Type-erased GPU-resource release so DestroyDevice() can free the query pools BEFORE
+        // vkDestroyDevice without VulkanResources depending on RenderGraph::GPUQueryManager.
+        // The manager is shared with render-graph nodes, so a plain reset would not guarantee
+        // the pools are destroyed while the device is still alive; this releases them explicitly.
+        queryManagerRelease_ = [manager]() { if (manager) manager->ReleaseGPUResources(); };
     }
 
 private:
@@ -326,6 +332,10 @@ private:
     inline void* AppendToPNext(void** chainEnd, void* featureStruct);
 
     inline bool HasExtension(const std::vector<const char*>& extensions, const char* name);
+
+    // Query the physical device for the non-concrete features tracked by the capability graph,
+    // returning the names it reports as supported (fed into DeviceFeatureCapability).
+    std::vector<std::string> QueryAvailableDeviceFeatures() const;
 
     // RTX state
     bool rtxEnabled_ = false;
@@ -345,6 +355,11 @@ private:
     // Stored as void* to avoid circular dependency (VulkanResources <-> RenderGraph)
     // Actual type: std::shared_ptr<RenderGraph::GPUQueryManager>
     std::shared_ptr<void> queryManager_;
+
+    // Type-erased "release GPU resources" hook for queryManager_, invoked before vkDestroyDevice
+    // so the query pools are destroyed while the device is still valid (the manager is shared
+    // with render-graph nodes, whose destruction order relative to the device is not guaranteed).
+    std::function<void()> queryManagerRelease_;
 
 };
 

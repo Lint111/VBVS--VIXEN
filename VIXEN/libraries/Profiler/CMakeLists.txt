@@ -72,6 +72,15 @@ endif()
 # Compiler settings
 # ============================================================================
 
+# Win32: exclude wingdi.h, which #defines DeviceCapabilities -> DeviceCapabilitiesW (a GDI
+# function) and collides with our Profiler::DeviceCapabilities struct wherever windows.h is
+# transitively pulled in. PUBLIC so consumers that include Profiler headers (e.g. the Profiler
+# tests, which don't use the ProfilerHeaders.h PCH) get the same protection. Defined via -D so
+# it applies before any include, independent of header/PCH ordering.
+if(WIN32)
+    target_compile_definitions(Profiler PUBLIC WIN32_LEAN_AND_MEAN NOGDI)
+endif()
+
 target_compile_features(Profiler PUBLIC cxx_std_23)
 
 if(MSVC)

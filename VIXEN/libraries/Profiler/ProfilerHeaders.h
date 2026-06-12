@@ -16,6 +16,19 @@
 #define NOMINMAX
 #endif
 
+// Trim the Win32 API surface pulled in by any transitive windows.h include. WIN32_LEAN_AND_MEAN
+// matches the other libraries' PCHs (RenderGraphHeaders.h, ShaderManagementHeaders.h), but the
+// critical one here is NOGDI: it excludes wingdi.h, which #defines DeviceCapabilities (->
+// DeviceCapabilitiesW, a GDI function). Without NOGDI that macro clobbers our
+// Profiler::DeviceCapabilities struct (the struct name resolves to a function -> "type assumed
+// int" across the whole Profiler).
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOGDI
+#define NOGDI
+#endif
+
 // ============================================================================
 // Standard Library - Containers
 // ============================================================================
