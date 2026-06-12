@@ -125,6 +125,32 @@ private:
 };
 
 /**
+ * @brief Capability node for Vulkan device features (non-concrete / optional)
+ *
+ * Mirrors DeviceExtensionCapability, but for device features queried via
+ * vkGetPhysicalDeviceFeatures2 (e.g. timelineSemaphore). The supported-feature set is
+ * populated from the physical device during device creation, so every non-concrete
+ * feature is gated through the capability graph rather than ad-hoc inline queries —
+ * centralising all capability checks under one convention.
+ */
+class DeviceFeatureCapability : public CapabilityNode {
+public:
+    DeviceFeatureCapability(const std::string& featureName)
+        : CapabilityNode("DeviceFeature:" + featureName)
+        , featureName_(featureName) {}
+
+    /// Set the features the physical device reports as supported (called during device creation)
+    static void SetAvailableFeatures(const std::vector<std::string>& features);
+
+protected:
+    bool CheckAvailability() const override;
+
+private:
+    std::string featureName_;
+    static std::vector<std::string> availableFeatures_;
+};
+
+/**
  * @brief Composite capability node that depends on other capabilities
  *
  * A composite capability is satisfied only if ALL its dependencies are satisfied.

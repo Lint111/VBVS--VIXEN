@@ -35,6 +35,13 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
     queueInfo.queueCount = 1;
     queueInfo.pQueuePriorities = queuePriorities;
 
+    // Centralise non-concrete capability checks through the capability graph: register the
+    // standard capability nodes and populate the physical device's supported features, so the
+    // feature-enablement decisions below are gated via capabilityGraph_.IsCapabilityAvailable()
+    // (same convention as device extensions) rather than ad-hoc inline queries.
+    capabilityGraph_.BuildStandardCapabilities();
+    Vixen::DeviceFeatureCapability::SetAvailableFeatures(QueryAvailableDeviceFeatures());
+
     VkPhysicalDeviceFeatures2 deviceFeatures2{};
     deviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
 
@@ -108,6 +115,22 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
         deviceFeatureStorage.push_back(std::move(featureStruct));
     }
 
+    // Enable the non-concrete timelineSemaphore feature, gated through the capability graph
+    // (populated above from the physical device). The BatchedUploader needs it for timeline-
+    // based upload synchronization; when unsupported it falls back to its non-timeline path
+    // (BatchedUploader::useTimelineSemaphores_). Enabling it (when supported) also resolves the
+    // "timelineSemaphore feature not enabled" validation error from vkCreateSemaphore(TIMELINE).
+    // This local must outlive vkCreateDevice() below; it is scoped to this function.
+    VkPhysicalDeviceVulkan12Features vulkan12Features{};
+    vulkan12Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+    if (capabilityGraph_.IsCapabilityAvailable("DeviceFeature:timelineSemaphore")) {
+        vulkan12Features.timelineSemaphore = VK_TRUE;
+        pNextChainEnd = reinterpret_cast<void**>(AppendToPNext(pNextChainEnd, &vulkan12Features));
+    } else {
+        std::cerr << "[VulkanDevice] WARNING: timelineSemaphore not supported by this GPU - "
+                     "uploads will use the non-timeline synchronization fallback" << std::endl;
+    }
+
     vkGetPhysicalDeviceFeatures(*gpu, &deviceFeatures);
 
     // Validate and enable device features
@@ -145,10 +168,9 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
 
     VK_CHECK(vkCreateDevice(*gpu, &deviceInfo, nullptr, &device), "Failed to create logical device");
 
-    // Initialize capability graph
-    capabilityGraph_.BuildStandardCapabilities();
-
-    // Convert extension names to strings for capability graph
+    // The capability graph was built before device creation (so feature enablement could be
+    // gated through it). Now record the device extensions that were actually enabled, then
+    // invalidate cached results so subsequent queries see the populated extension set.
     std::vector<std::string> extensionStrings;
     extensionStrings.reserve(extensions.size());
     for (const char* ext : extensions) {
@@ -173,8 +195,22 @@ void VulkanDevice::DestroyDevice()
 {
     if (device == VK_NULL_HANDLE)
         return;
-        
-    
+
+    // Release device-owned subsystems (staging buffers, upload command buffers, the upload
+    // timeline semaphore, and the budget allocator's buffers) BEFORE destroying the device.
+    // These are VulkanDevice members; their destructors would otherwise run after this
+    // function returns — i.e. after vkDestroyDevice — freeing child objects against an
+    // already-destroyed device (validation: "child objects ... not destroyed prior to
+    // destroying device", and undefined behaviour).
+    uploader_.reset();
+    // The GPU query manager is shared with render-graph nodes (so resetting our reference alone
+    // may not destroy it). Explicitly release its query pools here, while the device is alive.
+    if (queryManagerRelease_) {
+        queryManagerRelease_();
+    }
+    queryManager_.reset();
+    budgetManager_.reset();
+
     vkDestroyDevice(device, nullptr);
     device = VK_NULL_HANDLE;
 }
@@ -350,6 +386,30 @@ RTXCapabilities VulkanDevice::CheckRTXSupport() const {
     caps.maxPrimitiveCount = accelStructProps.maxPrimitiveCount;
 
     return caps;
+}
+
+std::vector<std::string> VulkanDevice::QueryAvailableDeviceFeatures() const {
+    // Query the physical device for the non-concrete features tracked by the capability graph
+    // and return the names it reports as supported. Feed into
+    // DeviceFeatureCapability::SetAvailableFeatures() so feature enablement is gated centrally.
+    // Add further VkPhysicalDeviceVulkan1x / extension feature structs to the pNext chain (and
+    // a matching name push_back) as more non-concrete features are adopted.
+    std::vector<std::string> supported;
+
+    VkPhysicalDeviceVulkan12Features vulkan12{};
+    vulkan12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+
+    VkPhysicalDeviceFeatures2 features2{};
+    features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+    features2.pNext = &vulkan12;
+
+    vkGetPhysicalDeviceFeatures2(*gpu, &features2);
+
+    if (vulkan12.timelineSemaphore) {
+        supported.emplace_back("timelineSemaphore");
+    }
+
+    return supported;
 }
 
 // ============================================================================

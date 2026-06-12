@@ -10,6 +10,7 @@ namespace Vixen {
 std::vector<std::string> InstanceExtensionCapability::availableExtensions_;
 std::vector<std::string> InstanceLayerCapability::availableLayers_;
 std::vector<std::string> DeviceExtensionCapability::availableExtensions_;
+std::vector<std::string> DeviceFeatureCapability::availableFeatures_;
 
 //==============================================================================
 // InstanceExtensionCapability
@@ -48,6 +49,19 @@ void DeviceExtensionCapability::SetAvailableExtensions(const std::vector<std::st
 bool DeviceExtensionCapability::CheckAvailability() const {
     return std::find(availableExtensions_.begin(), availableExtensions_.end(), extensionName_)
            != availableExtensions_.end();
+}
+
+//==============================================================================
+// DeviceFeatureCapability
+//==============================================================================
+
+void DeviceFeatureCapability::SetAvailableFeatures(const std::vector<std::string>& features) {
+    availableFeatures_ = features;
+}
+
+bool DeviceFeatureCapability::CheckAvailability() const {
+    return std::find(availableFeatures_.begin(), availableFeatures_.end(), featureName_)
+           != availableFeatures_.end();
 }
 
 //==============================================================================
@@ -125,6 +139,16 @@ void CapabilityGraph::BuildStandardCapabilities() {
 
     auto bufferDeviceAddress = CreateCapability<DeviceExtensionCapability>(
         "DeviceExt:VK_KHR_buffer_device_address", VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME);
+
+    //==========================================================================
+    // Device Features (non-concrete, queried via vkGetPhysicalDeviceFeatures2)
+    //==========================================================================
+
+    // timelineSemaphore (core Vulkan 1.2). Used by the BatchedUploader for timeline-based
+    // upload synchronisation; gated through the graph so enablement only happens when the
+    // physical device reports support (DeviceFeatureCapability::SetAvailableFeatures).
+    auto timelineSemaphore = CreateCapability<DeviceFeatureCapability>(
+        "DeviceFeature:timelineSemaphore", "timelineSemaphore");
 
     //==========================================================================
     // Instance Extensions
