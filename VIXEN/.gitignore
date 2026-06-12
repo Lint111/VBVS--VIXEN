@@ -64,6 +64,7 @@ tools/*
 # Data directories with benchmark results and large files
 data/
 data/*
+!data/finalized/
 !data/templates/
 
 # Exception: Keep RenderGraph Data/ folder (contains node configs)

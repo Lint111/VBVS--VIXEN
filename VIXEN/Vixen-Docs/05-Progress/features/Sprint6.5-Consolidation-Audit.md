@@ -50,10 +50,28 @@ This audit examines Sprint 5-6 features for overlapping logic, implementation ga
 
 | Item | Priority | Status |
 |------|----------|--------|
-| PredictionErrorTracker connection | MEDIUM | Future - requires estimate capture before execution |
+| ~~PredictionErrorTracker connection~~ | ~~MEDIUM~~ | ✅ Integrated via Sampler (2026-01-10) |
 | 83 TODO comments | LOW | Triage into backlog or remove |
 | GPU query integration tests | LOW | Disabled tests in test_gpu_query_manager_integration.cpp |
 | MVP stubs (DescriptorSet, ShaderLibrary) | LOW | Document as Phase 2 features |
+
+### PredictionErrorTracker Integration (2026-01-10)
+
+Automatic prediction error tracking now works without user intervention:
+
+```cpp
+// User code unchanged - Sampler handles everything automatically:
+auto sample = profile->Sample();  // Captures estimate at construction
+// ... work ...
+sample.Finalize(gpuTimeNs);       // Records measurement AND prediction error
+```
+
+**Implementation Details:**
+- `Sampler` captures `estimateAtStart_` in constructor via `GetEstimatedCostNs()`
+- Both destructor and `Finalize()` call `RecordPredictionSample(estimated, actual)`
+- `ITaskProfile` stores `pendingPredictions_` vector (thread-safe)
+- `TaskProfileRegistry::ProcessAllPredictions(tracker, frameNum)` feeds to tracker
+- All 130+ existing tests pass
 
 ## Phase 1 Implementation Status (2026-01-09)
 
@@ -630,6 +648,6 @@ libraries/RenderGraph/tests/
 ---
 
 *Document generated: 2026-01-09*
-*Last updated: 2026-01-09 (All phases + integration gaps fixed)*
+*Last updated: 2026-01-10 (PredictionErrorTracker integrated via Sampler)*
 *Author: Claude Code Audit*
 *Sprint: 6.5 Timeline Foundation*

@@ -12,7 +12,8 @@
 
   <instruction>
     Before EVERY response, load rules from the `project-rules` skill.
-    Read the applicable rule files from `.claude/skills/project-rules/rules/`.
+    Global rules (communication, engineering) come from `~/.claude/skills/project-rules/rules/`.
+    VIXEN-specific rules come from `.claude/skills/project-rules/rules/`.
     Display loaded rules at START of response in code block.
   </instruction>
 
@@ -23,23 +24,23 @@
 
   <rule-files>
     <always description="Load every response">
-      <file>rules/communication.md</file>
-      <file>rules/engineering.md</file>
-      <file>rules/obsidian-first.md</file>
-      <file>rules/logging.md</file>
-      <file>rules/hacknplan-workflow.md</file>
+      <file source="global">rules/communication.md</file>
+      <file source="global">rules/engineering.md</file>
+      <file source="local">rules/obsidian-first.md</file>
+      <file source="local">rules/logging.md</file>
+      <file source="local">rules/hacknplan-workflow.md</file>
     </always>
     <task-relevant description="Load when task matches">
-      <file trigger="coding">rules/workflow.md</file>
-      <file trigger="code-review">rules/code-review.md</file>
-      <file trigger="building,testing">rules/commands.md</file>
-      <file trigger="agent-launch">rules/agents.md</file>
-      <file trigger="feature,complex-problem">rules/collaborative-development.md</file>
-      <file trigger="python-sandbox,code-executor,word-doc,powerpoint">rules/code-executor.md</file>
+      <file trigger="coding" source="local">rules/workflow.md</file>
+      <file trigger="code-review" source="local">rules/code-review.md</file>
+      <file trigger="building,testing" source="local">rules/commands.md</file>
+      <file trigger="agent-launch" source="local">rules/agents.md</file>
+      <file trigger="feature,complex-problem" source="local">rules/collaborative-development.md</file>
+      <file trigger="python-sandbox,code-executor,word-doc,powerpoint" source="global">rules/code-executor.md</file>
     </task-relevant>
     <situational description="Load when condition arises">
-      <file trigger="new-conversation">rules/session.md</file>
-      <file trigger="build-error">rules/troubleshooting.md</file>
+      <file trigger="new-conversation" source="local">rules/session.md</file>
+      <file trigger="build-error" source="local">rules/troubleshooting.md</file>
     </situational>
   </rule-files>
 
@@ -85,7 +86,8 @@
   <directory name="libraries">Core libraries (SVO, RenderGraph, Profiler)</directory>
   <directory name="Vixen-Docs">Obsidian documentation vault</directory>
   <directory name="memory-bank">Session persistence files</directory>
-  <directory name=".claude/skills">Skill definitions including project-rules</directory>
+  <directory name=".claude/skills">VIXEN-specific skill definitions including project-rules</directory>
+  <directory name=".claude/agents">VIXEN-specific agent definitions</directory>
 </project-structure>
 
 ---
@@ -100,9 +102,9 @@
   <delegation-table>
     | MCP Tool Prefix | Agent | Model | Purpose |
     |-----------------|-------|-------|---------|
-    | `mcp__hacknplan__*` | hacknplan-manager | Haiku | Tasks, sprints, time logging |
-    | `mcp__obsidian-vault__*` | obsidian-manager | Haiku | Vault docs, search |
-    | `mcp__hacknplan-obsidian-glue__*` | obsidian-manager | Haiku | Cross-references |
+    | `mcp__hacknplan__*` | hacknplan-manager | Sonnet | Tasks, sprints, time logging |
+    | `mcp__obsidian-vault__*` | obsidian-manager | Sonnet | Vault docs, search |
+    | `mcp__hacknplan-obsidian-glue__*` | obsidian-manager | Sonnet | Cross-references |
   </delegation-table>
 
   <workflow>
@@ -114,26 +116,8 @@
 
   <example>
     User: "Log 2 hours on the shader task"
-    ❌ WRONG: Call mcp__hacknplan__log_work_session directly
-    ✅ RIGHT: Task(hacknplan-manager, "Log 2 hours on shader task")
+    Bad: Call mcp__hacknplan__log_work_session directly
+    Good: Task(hacknplan-manager, "Log 2 hours on shader task")
   </example>
 
 </mcp-delegation>
-
----
-
-<workarounds id="claude-code-bugs">
-
-  <workaround id="file-path-bug">
-    <title>Windows File Paths</title>
-    <symptom>Edit tool fails with "File has been unexpectedly modified"</symptom>
-    <cause>Claude Code fails to recognize already-read files with relative paths</cause>
-    <solution>
-      Always use complete absolute Windows paths with drive letters:
-      - ✅ C:\cpp\VBVS--VIXEN\VIXEN\libraries\Profiler\src\BenchmarkConfig.cpp
-      - ❌ libraries/Profiler/src/BenchmarkConfig.cpp
-      - ❌ ./libraries/Profiler/src/BenchmarkConfig.cpp
-    </solution>
-  </workaround>
-
-</workarounds>
