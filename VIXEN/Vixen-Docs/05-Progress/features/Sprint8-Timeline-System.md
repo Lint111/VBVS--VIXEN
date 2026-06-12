@@ -861,6 +861,7 @@ graph TD
 - [[Production-Roadmap-2026]] - Master roadmap
 - [[timeline-execution-system]] - Original proposal
 - [[GraphLifecycleHooks]] - Hook system reference
+- [[Architecture-Review-Game-Renderer-2026-06-12]] - Game-renderer readiness review; its decision #1 asks that Sprint 8 deliverables (GraphSerializer, GraphEditorNode, ValidationNode, SnapshotNode) be specified against public mod-API requirements, not internal-tool requirements
 
 ---
 
