@@ -284,6 +284,19 @@ set(RENDERGRAPH_EVENT_HEADERS
 )
 
 # ============================================================================
+# UI (RmlUi backend — data-driven, moddable RML/RCSS rendered through Vulkan)
+# ============================================================================
+
+set(RENDERGRAPH_UI_HEADERS
+    include/Ui/VixenRmlRenderInterface.h
+    include/Ui/UiShaderSpirv.h
+)
+
+set(RENDERGRAPH_UI_SOURCES
+    src/Ui/VixenRmlRenderInterface.cpp
+)
+
+# ============================================================================
 # Create Static Library
 # ============================================================================
 
@@ -300,6 +313,8 @@ add_library(RenderGraph STATIC
     ${RENDERGRAPH_DEBUG_HEADERS}
     ${RENDERGRAPH_DEBUG_SOURCES}
     ${RENDERGRAPH_EVENT_HEADERS}
+    ${RENDERGRAPH_UI_HEADERS}
+    ${RENDERGRAPH_UI_SOURCES}
 )
 
 # ============================================================================
@@ -354,7 +369,12 @@ target_link_libraries(RenderGraph
         magic_enum::magic_enum
         TBB::tbb               # Sprint 6.4: Parallel execution
         glfw                   # Cross-platform window/surface/input (WindowNode/InputNode/InstanceNode)
+        rmlui_core             # Data-driven UI (RML/RCSS); freetype is its transitive font engine
+        freetype
 )
+
+# RmlUi is built static (FetchContent); code including its headers needs this define.
+target_compile_definitions(RenderGraph PUBLIC RMLUI_STATIC_LIB)
 
 # ============================================================================
 # Install and Properties
