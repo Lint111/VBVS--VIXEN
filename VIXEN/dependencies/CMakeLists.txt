@@ -301,6 +301,54 @@ endif()
 message(STATUS "GLFW fetched - cross-platform window/surface/input available")
 
 # ============================================================================
+# FreeType + RmlUi - data-driven, moddable UI (RML/RCSS). Self-contained: both
+# build from source via FetchContent (no system packages, cross-platform). RmlUi's
+# RML/RCSS is the surface a mod re-skins through the content pipeline; the Vulkan
+# render backend (VK) covers basic-render + transforms (the shader/filter tier is
+# GL3/DX12-only and not needed by the legibility-first UI).
+# ============================================================================
+FetchContent_Declare(freetype
+    GIT_REPOSITORY https://github.com/freetype/freetype.git
+    GIT_TAG        VER-2-13-2
+    GIT_SHALLOW    TRUE)
+# Drop FreeType's optional codecs so it needs nothing off-system.
+set(FT_DISABLE_ZLIB     ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_BZIP2    ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_PNG      ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_HARFBUZZ ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_BROTLI   ON CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(freetype)
+if(TARGET freetype)
+    set_target_properties(freetype PROPERTIES FOLDER "Dependencies")
+    target_compile_options(freetype PRIVATE
+        $<$<CXX_COMPILER_ID:MSVC>:/W0>
+        $<$<CXX_COMPILER_ID:GNU>:-w>
+        $<$<CXX_COMPILER_ID:Clang>:-w>)
+endif()
+# RmlUi locates FreeType by the find_package target name Freetype::Freetype; FetchContent only
+# provides the lowercase `freetype` target, so alias it before RmlUi is configured below.
+if(TARGET freetype AND NOT TARGET Freetype::Freetype)
+    add_library(Freetype::Freetype ALIAS freetype)
+endif()
+
+FetchContent_Declare(rmlui
+    GIT_REPOSITORY https://github.com/mikke89/RmlUi.git
+    GIT_TAG        6.0
+    GIT_SHALLOW    TRUE)
+set(RMLUI_SAMPLES        OFF CACHE BOOL "" FORCE)
+set(RMLUI_LUA_BINDINGS   OFF CACHE BOOL "" FORCE)
+set(BUILD_TESTING        OFF CACHE BOOL "" FORCE)
+# Hand RmlUi the FetchContent FreeType target rather than a system find_package.
+set(RMLUI_FONT_ENGINE    freetype CACHE STRING "" FORCE)
+FetchContent_MakeAvailable(rmlui)
+foreach(_rml RmlCore RmlUi RmlDebugger rmlui_core)
+    if(TARGET ${_rml})
+        set_target_properties(${_rml} PROPERTIES FOLDER "Dependencies")
+    endif()
+endforeach()
+message(STATUS "RmlUi + FreeType fetched - moddable UI available")
+
+# ============================================================================
 # oneTBB - Intel Threading Building Blocks
 # ============================================================================
 # Used by: SVO (parallel octree), RenderGraph (TBBGraphExecutor)
