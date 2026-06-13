@@ -150,6 +150,9 @@ endif()
 # the provisioned SDK and sets VULKAN_PATH / VULKAN_TRIMMED_BUILD_ACTIVE as before.
 include(cmake/ProvisionVulkan.cmake)
 
+# Reusable runtime-asset staging helper (vixen_stage_assets) for apps + consumers.
+include(cmake/VixenAssets.cmake)
+
 if(AUTO_LOCATE_VULKAN)
 	message(STATUS "Attempting auto locate Vulkan using CMake......")
 	
