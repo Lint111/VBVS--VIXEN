@@ -1489,8 +1489,9 @@ void RenderGraph::RecompileDirtyNodes() {
             GRAPH_LOG_INFO("[RenderGraph] Recompiling node: " + node->GetInstanceName());
     
             try {
-                // Call cleanup first (destroy old resources)
-                node->Cleanup();
+                // Call cleanup first (destroy old resources). This is a RECOMPILE, not final teardown:
+                // nodes owning persistent-across-recompile resources (e.g. the OS window) keep them.
+                node->Cleanup(CleanupReason::Recompile);
     
                 // Ensure node has a chance to recreate transient objects (e.g., swapchain wrapper)
                 // Some nodes may not have device inputs available immediately; if Setup/Compile

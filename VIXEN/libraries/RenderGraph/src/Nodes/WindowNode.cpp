@@ -55,60 +55,69 @@ void WindowNode::CompileImpl(TypedCompileContext& ctx) {
         throw std::runtime_error("WindowNode: VkInstance not provided via input slot");
     }
 
-    width = GetParameterValue<uint32_t>(WindowNodeConfig::PARAM_WIDTH, 800);
-    height = GetParameterValue<uint32_t>(WindowNodeConfig::PARAM_HEIGHT, 600);
+    // The OS window + its surface are PERSISTENT across recompiles (CleanupReason::Recompile keeps
+    // them -- see CleanupImpl): only the swapchain follows a recompile, not the window. Create them on
+    // the first compile only; a later recompile reuses the same handles and just re-publishes them.
+    // width/height track live resize events (ExecuteImpl), so seed them from parameters only on create.
+    if (window == nullptr) {
+        width = GetParameterValue<uint32_t>(WindowNodeConfig::PARAM_WIDTH, 800);
+        height = GetParameterValue<uint32_t>(WindowNodeConfig::PARAM_HEIGHT, 600);
 
-    NODE_LOG_INFO("[WindowNode] Creating window " + std::to_string(width) + "x" + std::to_string(height));
+        NODE_LOG_INFO("[WindowNode] Creating window " + std::to_string(width) + "x" + std::to_string(height));
 
-    // Vulkan rendering: tell GLFW not to create an OpenGL context.
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
+        // Vulkan rendering: tell GLFW not to create an OpenGL context.
+        glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+        glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
-    window = glfwCreateWindow(static_cast<int>(width), static_cast<int>(height),
-                              "Vixen Render Graph", nullptr, nullptr);
-    if (!window) {
-        const char* err = nullptr;
-        glfwGetError(&err);
-        std::string msg = std::string("WindowNode: glfwCreateWindow failed: ") + (err ? err : "unknown");
-        NODE_LOG_ERROR(msg);
-        throw std::runtime_error(msg);
+        window = glfwCreateWindow(static_cast<int>(width), static_cast<int>(height),
+                                  "Vixen Render Graph", nullptr, nullptr);
+        if (!window) {
+            const char* err = nullptr;
+            glfwGetError(&err);
+            std::string msg = std::string("WindowNode: glfwCreateWindow failed: ") + (err ? err : "unknown");
+            NODE_LOG_ERROR(msg);
+            throw std::runtime_error(msg);
+        }
+
+        // Route GLFW callbacks back to this instance (replaces the Win32 WndProc + GWLP_USERDATA).
+        glfwSetWindowUserPointer(window, this);
+        glfwSetFramebufferSizeCallback(window, &WindowNode::OnFramebufferSize);
+        glfwSetWindowCloseCallback(window, &WindowNode::OnWindowClose);
+        glfwSetWindowFocusCallback(window, &WindowNode::OnWindowFocus);
+        glfwSetWindowIconifyCallback(window, &WindowNode::OnWindowIconify);
+
+        NODE_LOG_INFO("[WindowNode] Window created");
+
+        // Create VkSurfaceKHR (cross-platform; GLFW picks the right platform surface internally).
+        VkResult result = glfwCreateWindowSurface(vkInstance, window, nullptr, &surface);
+        if (result != VK_SUCCESS) {
+            NODE_LOG_ERROR("[WindowNode] ERROR: glfwCreateWindowSurface failed: " + std::to_string(result));
+            throw std::runtime_error("WindowNode: Failed to create surface");
+        }
+
+        fpDestroySurfaceKHR = (PFN_vkDestroySurfaceKHR)vkGetInstanceProcAddr(vkInstance, "vkDestroySurfaceKHR");
+    } else {
+        NODE_LOG_INFO("[WindowNode] Reusing persistent window + surface across recompile");
     }
 
-    // Route GLFW callbacks back to this instance (replaces the Win32 WndProc + GWLP_USERDATA).
-    glfwSetWindowUserPointer(window, this);
-    glfwSetFramebufferSizeCallback(window, &WindowNode::OnFramebufferSize);
-    glfwSetWindowCloseCallback(window, &WindowNode::OnWindowClose);
-    glfwSetWindowFocusCallback(window, &WindowNode::OnWindowFocus);
-    glfwSetWindowIconifyCallback(window, &WindowNode::OnWindowIconify);
-
-    NODE_LOG_INFO("[WindowNode] Window created");
-
-    // Create VkSurfaceKHR (cross-platform; GLFW picks the right platform surface internally).
-    VkSurfaceKHR surface = VK_NULL_HANDLE;
-    VkResult result = glfwCreateWindowSurface(vkInstance, window, nullptr, &surface);
-    if (result != VK_SUCCESS) {
-        NODE_LOG_ERROR("[WindowNode] ERROR: glfwCreateWindowSurface failed: " + std::to_string(result));
-        throw std::runtime_error("WindowNode: Failed to create surface");
-    }
-
-    fpDestroySurfaceKHR = (PFN_vkDestroySurfaceKHR)vkGetInstanceProcAddr(vkInstance, "vkDestroySurfaceKHR");
-
-    // Store outputs in type-safe slots.
+    // Always (re)publish outputs so downstream nodes (SwapChainNode) read the current handles.
     ctx.Out(WindowNodeConfig::SURFACE, surface);
     ctx.Out(WindowNodeConfig::WINDOW, window);
     ctx.Out(WindowNodeConfig::WIDTH_OUT, width);
     ctx.Out(WindowNodeConfig::HEIGHT_OUT, height);
 
-    NODE_LOG_INFO("[WindowNode] Surface created and window data stored (width=" +
-                  std::to_string(width) + ", height=" + std::to_string(height) + ")");
+    NODE_LOG_INFO("[WindowNode] Outputs published (width=" + std::to_string(width) +
+                  ", height=" + std::to_string(height) + ")");
 }
 
 void WindowNode::ExecuteImpl(TypedExecuteContext& ctx) {
     slotIndex = ctx.taskIndex;
 
-    // Pump GLFW events (fires the callbacks below, which fill the event queue). Idempotent across
-    // windows in a frame; the app loop may also poll.
-    glfwPollEvents();
+    // Input is pumped once per frame by the application main loop: glfwPollEvents() is the global OS
+    // message pump and must run on the main thread every iteration -- even while rendering is paused,
+    // which RenderFrame() short-circuits before reaching node Execute -- so it cannot live here. That
+    // single pump fires this node's GLFW callbacks and fills the event queue we drain below; here we
+    // only read the resulting should-close flag.
     if (window && glfwWindowShouldClose(window)) {
         shouldClose = true;
     }
@@ -211,16 +220,22 @@ void WindowNode::OnWindowIconify(GLFWwindow* w, int iconified) {
 }
 
 void WindowNode::CleanupImpl(TypedCleanupContext& ctx) {
-    NODE_LOG_INFO("[WindowNode] Cleanup");
+    // Window + surface are PERSISTENT: a recompile (e.g. swapchain recreation) must NOT destroy them --
+    // only the swapchain follows recompiles. Tear them down solely on final application teardown.
+    if (ctx.reason != CleanupReason::FinalTeardown) {
+        NODE_LOG_INFO("[WindowNode] Cleanup (recompile) - keeping persistent window + surface");
+        return;
+    }
 
-    // Destroy surface - access output directly via NodeInstance (CleanupContext has no I/O)
-    Resource* surfaceRes = NodeInstance::GetOutput(WindowNodeConfig::SURFACE.index, 0);
-    if (surfaceRes) {
-        VkSurfaceKHR surface = surfaceRes->GetHandle<VkSurfaceKHR>();
-        if (surface != VK_NULL_HANDLE && fpDestroySurfaceKHR && vkInstance != VK_NULL_HANDLE) {
-            fpDestroySurfaceKHR(vkInstance, surface, nullptr);
-            surfaceRes->SetHandle<VkSurfaceKHR>(VK_NULL_HANDLE);
-        }
+    NODE_LOG_INFO("[WindowNode] Cleanup (final teardown) - destroying surface + window");
+
+    if (surface != VK_NULL_HANDLE && fpDestroySurfaceKHR && vkInstance != VK_NULL_HANDLE) {
+        fpDestroySurfaceKHR(vkInstance, surface, nullptr);
+        surface = VK_NULL_HANDLE;
+    }
+    // Keep the published SURFACE output handle consistent with the now-destroyed surface.
+    if (Resource* surfaceRes = NodeInstance::GetOutput(WindowNodeConfig::SURFACE.index, 0)) {
+        surfaceRes->SetHandle<VkSurfaceKHR>(VK_NULL_HANDLE);
     }
 
     if (window) {

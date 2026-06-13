@@ -26,8 +26,8 @@ TEST_F(WindowNodeTest, ConfigHasZeroInputs) {
     EXPECT_EQ(WindowNodeConfig::INPUT_COUNT, 1);
 }
 
-TEST_F(WindowNodeTest, ConfigHasOneOutput) {
-    EXPECT_EQ(WindowNodeConfig::OUTPUT_COUNT, 5) << "WindowNode outputs SURFACE and window properties";
+TEST_F(WindowNodeTest, ConfigHasFourOutputs) {
+    EXPECT_EQ(WindowNodeConfig::OUTPUT_COUNT, 4) << "WindowNode outputs SURFACE, WINDOW, WIDTH, HEIGHT";
 }
 
 TEST_F(WindowNodeTest, ConfigSurfaceOutputIndex) {
