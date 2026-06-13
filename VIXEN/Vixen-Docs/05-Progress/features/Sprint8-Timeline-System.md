@@ -3,9 +3,19 @@
 **Sprint:** 8
 **Board:** 651784
 **Design Element:** #39 (Timeline System - Composable Application Flow)
-**Status:** PLANNING
+**Status:** PLANNING — **re-scoped against the public mod-API 2026-06-13 (Decision #1 / AR#76)**
 **Created:** 2026-01-10
 **Branch:** `production/sprint-8-timeline-system`
+
+> **Re-scope (2026-06-13, P1 — the cheapest, highest-leverage item in [[Architecture-Review-Game-Renderer-2026-06-12]]).**
+> Sprint 8's mutation machinery (GraphEditorNode / ValidationNode / SnapshotNode / GraphSerializer) is
+> ~80 % of the public mod-API's runtime-mutation machinery. It is now **specified against public-API
+> requirements** so it ships *as* the mod API rather than being rebuilt into one later (the review's most
+> expensive failure mode). Two changes, both cost-neutral to implement: the anti-plugin **Framework
+> Positioning is reversed** (VIXEN is an embeddable mod host; UNDERTOW is consumer zero), and the new
+> **Public Mod-API Requirements** section (R1–R5) constrains every Phase 4–5 surface — string addressing,
+> Result-not-throw (the error-model prerequisite is **done**, AR#1 merged), generational handles, persisted
+> connection records, and the thin handles/strings/POD boundary.
 
 ---
 
@@ -171,26 +181,94 @@ DeltaPreview PreviewStateTransition(StateId from, StateId to);
 
 ### Framework Positioning
 
+> **Re-scoped 2026-06-13 — Decision #1 / AR#76 ([[Architecture-Review-Game-Renderer-2026-06-12]]).**
+> The original line — *"Self-contained applications (not plugin hosts)"*, with *"Large ecosystem of
+> compatible tools"* listed as a deliberate sacrifice — is **withdrawn**. VIXEN's chosen direction is an
+> **embeddable game-renderer that hosts data- and script-authored mods** (consumer zero: the **UNDERTOW**
+> C# host, already integrated on `main`). Sprint 8's mutation machinery (GraphEditorNode / ValidationNode
+> / SnapshotNode / GraphSerializer) IS ~80 % of the public mod-API's runtime-mutation machinery — so it
+> is **specified against public-API requirements** (next section), not internal-tool requirements. The
+> implementation cost is the same now; an internal-first build forces a far costlier moddability retrofit
+> later (the most expensive failure mode in the review).
+
 **What VIXEN optimizes for:**
-- Applications where developer controls entire flow
-- Performance-critical pipelines (no hidden callbacks)
-- Custom engines/tools built on VIXEN
-- Self-contained applications (not plugin hosts)
+- **Hosts that own the loop and drive VIXEN as a library** — `PumpEvents()/Update(dt)/RenderFrame()`;
+  UNDERTOW is the named consumer zero.
+- Performance-critical, explicit pipelines (no hidden callbacks) — **the graph IS the application**.
+- **Data- and script-authored content** — graphs, parameters, and shader packages addressed *by string*,
+  loaded from data (GraphSerializer is the public format).
+- Custom engines/tools built on VIXEN — full graph-level control is always available underneath.
 
-**What VIXEN sacrifices:**
-- "Drop asset in, it works" convenience (Unity-style)
-- Large ecosystem of compatible tools
-- Beginner accessibility
+**What VIXEN deliberately is NOT:**
+- A "drop any asset in, it works" turnkey editor (Unity-style convenience).
+- A beginner-first generalist tool.
 
-**Comparison:**
+VIXEN **is** a plugin/mod host. The moddability pillar rides Sprint 8's mutation machinery plus the §6
+layered engine-ops API (Layer 0 embedding contract → Layer 1 command/event surface → Layer 2 data-driven
+definitions → Layer 3 script bindings) in the Architecture Review.
 
 | Aspect | Unity-style | VIXEN-style |
 |--------|-------------|-------------|
-| Application flow | Predefined contract | User-defined graph |
-| External tools | Hook into lifecycle | Must understand topology |
-| Target user | Generalist | Specialist, full control |
+| Application flow | Predefined contract | Host- or data-defined graph |
+| Mods author | Assets into a fixed pipeline | Graphs / params / shader packages by string (Layer 2) |
+| External tools | Hook into lifecycle | Drive the engine-ops API; or compose graph topology |
+| Target user | Generalist | Host integrator + modder, with full control underneath |
 
-**Niche:** Tools and applications where the developer IS the architect of the entire flow.
+**Niche:** an embeddable, moddable renderer where a host (or a mod) composes the flow from data — and can
+drop to full graph-level control when needed.
+
+---
+
+## Public Mod-API Requirements (Decision #1 — specify before building)
+
+> These constraints apply to **every public surface Sprint 8 builds** (EditCommand, GraphEditorNode,
+> ValidationNode, SnapshotNode, GraphSerializer). They cost nothing extra now and are the difference
+> between "Sprint 8 *is* the mod API" and "Sprint 8 must be rebuilt into the mod API." Grounded in the
+> Architecture Review §6 (the layered engine-ops API) and §7 (API surface).
+
+**R1 — String addressing is the public vocabulary (AR Layer 2).** Mods and hosts reference nodes, slots,
+parameters, and node-types **by stable string name**, never by raw `NodeHandle`/vector index (an index
+cannot survive serialization, a recompile, or a DLL boundary). `EditCommand` and the GraphSerializer JSON
+express `{ typeName, instanceName, slotName, paramName }`. `AddNode(typeName, instanceName)` +
+`GetInstanceByName` + `SetParameter(name, value)` already exist as the backend; Sprint 8 adds the
+name→handle resolution facade (`Connect(srcName, srcSlot, dstName, dstSlot)`) and auto-generates runtime
+slot schemas from the `CONSTEXPR_NODE_CONFIG`/`INPUT_SLOT` macros (the SDI trick applied to nodes). Raw
+handles remain the *internal* fast path only.
+
+**R2 — Recoverable status, never throw, at every entry point (AR Layer 0 — ✅ prerequisite DONE).** Every
+edit / validate / apply / snapshot / (de)serialize operation returns a result type
+(`std::expected`-based `VulkanResult`/`VulkanStatus`/`ConnectionResult`), not `void`+throw and not a bare
+`std::unique_ptr` that is null-on-failure. A mod's malformed graph is a *diagnostic the host renders*, not
+a crash. **This is unblocked now:** the process-fatal error model is replaced (AR#1 error-model phases
+1–3 merged 2026-06-13 — `exit()` de-fatalised, host-facing status channel, device-loss recovery; see
+[[Error-Model-Refactor-2026-06]]). `ValidationNode` already outputs `isValid`+`errorMessage` — keep that
+shape and extend `GraphEditorNode::Apply` and `GraphSerializer::Deserialize` to return it too. Fatal-class
+events (device-lost, OOM) are *additionally* published on the bus.
+
+**R3 — Generational opaque handles (AR Layer 0).** Node / connection / resource / cache handles are
+`{index, generation}`, not raw indices or `typeid` keys (neither crosses a DLL boundary; a raw index is
+silently wrong after a `RemoveNode`). `RemoveNode` must bump the generation and reject stale handles —
+the review flags today's `RemoveNode` as erasing by index with **no generation check**. SnapshotNode
+rollback and GraphEditorNode deltas depend on this to detect references invalidated by an intervening edit.
+
+**R4 — Persist connection records (AR Layer 2 — prerequisite for serialization).** Persist
+`(src, dst, srcSlot, dstSlot, rule, modifiers, debugTag)` at `ConnectionPipeline::Resolve` time. Today all
+of it lives in `ConnectionContext` and is **discarded** after wiring — so the graph cannot describe its
+own connections. This record is the shared prerequisite for GraphSerializer (Phase 5), disconnect, and
+introspection; build it once, in Phase 4, ahead of the serializer.
+
+**R5 — The thin boundary (AR Layer 3 — honor from Phase 4, don't redesign later).** Public payloads
+(`EditCommand`, `ValidationResult`, `GraphSnapshot`, serializer DTOs) carry **only handles, strings, and
+the POD-ish `ParamTypeValue` variant** — no `glm`, `Vk*`, `gaia.h`, or template entry points on the
+mod-facing signature. This keeps a C shim (hence Lua/wasm bindings) mechanically feasible on top later;
+Layer 3 itself is not scheduled now, but its constraint must hold from Layer 1 onward so nothing is
+redesigned. (Internal graph wiring between the Sprint-8 nodes may still use rich types; the constraint is
+on the *mod-facing* command/serializer surface.)
+
+**Acceptance for "specified against public-API requirements":** the Phase 4–5 specs below name, for each
+of EditCommand / GraphEditorNode / ValidationNode / SnapshotNode / GraphSerializer, its string-addressed
+form (R1), its Result return type (R2), its handle model (R3), and its POD-able payload (R5); and Phase 4
+includes the connection-record task (R4) ahead of Phase 5.
 
 ---
 
@@ -686,18 +764,24 @@ User Input → EditCommand
 
 | Task | Hours | Dependencies | Files |
 |------|-------|--------------|-------|
-| ValidationNode with graph simulation | 10h | TimelineNode | `Nodes/ValidationNode.h/.cpp` |
-| SnapshotNode with history management | 8h | GraphSerializer | `Nodes/SnapshotNode.h/.cpp` |
-| GraphEditorNode with safe apply | 8h | ValidationNode | `Nodes/GraphEditorNode.h/.cpp` |
+| **Persist connection records** at `ConnectionPipeline::Resolve` — `(src,dst,srcSlot,dstSlot,rule,modifiers,debugTag)` (R4; prereq for serialize/disconnect/introspect) | 6h | None | `Connection/ConnectionRecord.h`, `ConnectionPipeline.cpp` |
+| `EditCommand` (R1 string-addressed: `{op, typeName, instanceName, srcSlot, dstName, dstSlot, params}`) + `ValidationResult`, both POD-able strings + `ParamTypeValue` (R5) | 4h | None | `Data/EditTypes.h` |
+| ValidationNode — graph simulation, **returns `ValidationResult`, no throw** (R2) | 10h | TimelineNode | `Nodes/ValidationNode.h/.cpp` |
+| GraphEditorNode — resolves **name→handle** (R1), `Apply` returns a `VulkanResult` (R2), generational handles (R3) | 8h | ValidationNode | `Nodes/GraphEditorNode.h/.cpp` |
+| SnapshotNode — history over the serialized form (R1/R5); generational handles (R3) | 8h | GraphSerializer, conn. records | `Nodes/SnapshotNode.h/.cpp` |
 | FeedbackNode for user communication | 2h | All above | `Nodes/FeedbackNode.h/.cpp` |
-| EditCommand + ValidationResult types | 4h | None | `Data/EditTypes.h` |
 
-**Key Insight:** The validation/snapshot/apply pipeline is ITSELF a graph of nodes. Self-editing is safe because edits pass through validation before touching the running graph.
+*Hours: +6h vs the original 32h (the connection-record task, R4) → Phase 4 = 38h, Sprint 8 = 150h. This
+buys the serializer its source data and the disconnect/introspection primitives — it is mod-API
+infrastructure, not editor polish.*
+
+**Key Insight:** The validation/snapshot/apply pipeline is ITSELF a graph of nodes. Self-editing is safe because edits pass through validation before touching the running graph — and because each edit is a *string-addressed, Result-returning* command, the same pipeline is the host/mod command surface (AR Layer 1).
 
 **Success Metrics:**
-- [ ] Invalid edits are caught and blocked with clear feedback
+- [ ] Invalid edits are caught and blocked with clear feedback (a `ValidationResult`, not a throw — R2)
+- [ ] An edit is expressible **by string name** with no raw handle (R1) and round-trips through the serializer
 - [ ] Valid edits apply at frame boundary without stutter
-- [ ] Rollback restores previous working state
+- [ ] Rollback restores previous working state; stale handles after an intervening edit are rejected (R3)
 - [ ] Self-editing demo: editor modifies its own UI node, sees change
 - [ ] 25+ unit tests passing
 
@@ -708,18 +792,26 @@ User Input → EditCommand
 **Goal:** Save/load graph configurations
 
 ```cpp
-// Target API
+// Target API — the PUBLIC graph format. Mod-API requirements R1 (string-addressed), R2 (Result-returning),
+// R4 (driven by persisted connection records). The SAME JSON is the engine's own scene/view-definition
+// format AND the mod-authored graph format — build it once, for both consumers.
 class GraphSerializer {
 public:
-    // Serialize to JSON
+    // Serialize to JSON, addressing everything by string name (R1):
+    //   { "nodes":       [ { "type": "...", "name": "...", "params": { "<name>": <ParamTypeValue> } } ],
+    //     "connections": [ { "srcName","srcSlot","dstName","dstSlot","rule","modifiers","debugTag" } ] }
+    // The connections array is emitted from the persisted connection records (R4) — not reconstructable
+    // without them.
     nlohmann::json SerializeGraph(const RenderGraph& graph);
     nlohmann::json SerializeTimeline(const TimelineNode& timeline);
 
-    // Deserialize from JSON
-    std::unique_ptr<RenderGraph> DeserializeGraph(const nlohmann::json& j);
-    std::unique_ptr<TimelineNode> DeserializeTimeline(const nlohmann::json& j);
+    // Deserialize: returns a Result, never throws, never a null-on-failure unique_ptr (R2). A malformed
+    // mod graph yields a host-renderable diagnostic (unknown type name, unknown slot, type-mismatched or
+    // cyclic connection) — not a crash. Payloads are POD-able strings + ParamTypeValue (R5).
+    VulkanResult<std::unique_ptr<RenderGraph>>  DeserializeGraph(const nlohmann::json& j);
+    VulkanResult<std::unique_ptr<TimelineNode>> DeserializeTimeline(const nlohmann::json& j);
 
-    // Node factory registration (for deserialization)
+    // Node factory registration: string type-name → factory (R1).
     template<typename TNode>
     void RegisterNodeFactory(const std::string& typeName);
 
@@ -734,11 +826,16 @@ private:
 | Node factory registry | 4h | Serialization | `Core/GraphSerializer.cpp` |
 | Graph deserialization | 4h | Factory registry | `Core/GraphSerializer.cpp` |
 
-**Success Metrics:**
-- [ ] Can round-trip serialize/deserialize full graph
-- [ ] All node types registered in factory
-- [ ] Connections preserved through serialization
-- [ ] 10+ unit tests passing
+**Success Metrics (mod-API-conformant — Decision #1):**
+- [ ] Round-trips a full graph **by string name** (type / instance / slot / param) — raw handle indices
+  never appear in the JSON (R1)
+- [ ] `DeserializeGraph` returns a `VulkanResult`; a malformed graph (unknown type, unknown slot,
+  type-mismatched or cyclic connection) yields a host-renderable diagnostic, not a throw/crash (R2)
+- [ ] Connections round-trip from the persisted connection records (R4), preserving rule + modifiers +
+  debugTag
+- [ ] All node types registered in the string-keyed factory
+- [ ] Public JSON/DTO surface carries only strings + `ParamTypeValue` — no `glm`/`Vk*`/STL containers (R5)
+- [ ] 10+ unit tests passing, including malformed-input diagnostics
 
 ---
 
