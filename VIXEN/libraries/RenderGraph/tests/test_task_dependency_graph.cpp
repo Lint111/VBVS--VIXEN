@@ -1,5 +1,5 @@
 // Copyright (C) 2025 Lior Yanai (eLiorg)
-// Licensed under the GPL-3.0 License.
+// Licensed under the MIT License.
 // See LICENSE file in the project root for full license information.
 
 /**
