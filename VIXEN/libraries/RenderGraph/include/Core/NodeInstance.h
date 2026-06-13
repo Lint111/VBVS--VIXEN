@@ -646,10 +646,11 @@ public:
      * Derived classes (like TypedNode) can override this method to implement
      * task-based cleanup, following the same pattern as Execute().
      */
-    virtual void Cleanup() final {
+    virtual void Cleanup(CleanupReason reason = CleanupReason::FinalTeardown) final {
         if (cleanedUp) {
             return;  // Already cleaned up
         }
+        cleanupReason_ = reason;  // remembered so CleanupImpl()'s context carries it (recompile vs final teardown)
         try {
             ExecuteNodeHook(NodeLifecyclePhase::PreCleanup);
             CleanupImpl();
@@ -816,6 +817,7 @@ protected:
         uint32_t taskCount = DetermineTaskCount();
         for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
             CleanupContext ctx = CreateCleanupContext(taskIndex);
+            ctx.reason = cleanupReason_;  // recompile vs final teardown — flows to CleanupImpl(ctx) overrides
             CleanupImpl(ctx);
         }
     }
@@ -1079,6 +1081,7 @@ protected:
     std::vector<NodeInstance*> dependencies;
     uint32_t executionOrder = 0;
     bool cleanedUp = false;  // Cleanup protection flag
+    CleanupReason cleanupReason_ = CleanupReason::FinalTeardown;  // why Cleanup() was called; flows into CleanupContext
 
     // Metrics
     size_t inputMemoryFootprint = 0;

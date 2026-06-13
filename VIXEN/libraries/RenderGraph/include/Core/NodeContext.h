@@ -79,11 +79,27 @@ public:
 };
 
 /**
+ * @brief Why a node is being cleaned up.
+ *
+ * Lets a node distinguish a transient **recompile** (e.g. swapchain recreation — release per-recompile
+ * resources but KEEP persistent ones, like the OS window) from **final teardown** (release everything).
+ * Most nodes ignore it; only nodes owning persistent-across-recompile resources need to branch on it.
+ */
+enum class CleanupReason {
+    Recompile,      // RecompileDirtyNodes: this node is dirty and will be Setup+Compiled again
+    FinalTeardown   // ExecuteCleanup: the whole graph is shutting down
+};
+
+/**
  * @brief Context for Cleanup phase
  *
  * Cleanup cannot access inputs/outputs - resources being destroyed.
  */
 struct CleanupContext : public BaseContext {
+    // Why this cleanup is happening. Set by NodeInstance::CleanupImpl() from the Cleanup(reason) call;
+    // defaults to FinalTeardown so destructor/CleanupStack paths (which pass no reason) are safe.
+    CleanupReason reason = CleanupReason::FinalTeardown;
+
     CleanupContext(NodeInstance* n, uint32_t taskIdx)
         : BaseContext(n, taskIdx) {}  // No tasks in Cleanup
 
