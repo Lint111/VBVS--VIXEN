@@ -75,6 +75,7 @@ Complete documentation for all 14 VIXEN libraries.
 
 ### [[01-Architecture/Overview|Architecture]]
 Core system design and component relationships.
+- [[01-Architecture/Architecture-Review-Game-Renderer-2026-06-12|Architecture Review: Game Renderer Readiness (2026-06)]] - Verified audit + gap analysis + phased roadmap toward the Undertow game-engine target
 - [[01-Architecture/RenderGraph-System|RenderGraph System]] - Detailed node-based rendering pipeline
 - [[01-Architecture/Vulkan-Pipeline|Vulkan Pipeline]] - GPU resource management
 - [[01-Architecture/Type-System|Type System]] - Compile-time safety with variants

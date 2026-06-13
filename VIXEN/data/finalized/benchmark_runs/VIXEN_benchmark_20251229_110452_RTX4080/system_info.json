@@ -1,0 +1,19 @@
+{
+  "package_version": "1.0",
+  "created": "2025-12-29T11:04:52",
+  "machine_name": "LAPTOP-URJE8E52",
+  "device": {
+    "gpu": "NVIDIA GeForce RTX 4080 Laptop GPU",
+    "driver": "591.59.0",
+    "vulkan_version": "1.4.325",
+    "vram_mb": 11995,
+    "vendor_id": 4318,
+    "device_id": 10208,
+    "device_type": 2,
+    "timestamp_period_ns": 1.00,
+    "timestamp_supported": true,
+    "performance_query_supported": false
+  },
+  "test_count": 145,
+  "format_notes": "JSON files contain per-test results. debug_images/ contains screenshots."
+}

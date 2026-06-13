@@ -1,0 +1,13 @@
+gpu_name,pipeline,avg_fps,min_fps,max_fps,avg_frame_time_ms,test_count
+AMD Radeon(TM) Graphics,compute,320.3,37.11,1219.19,5.91,117
+AMD Radeon(TM) Graphics,fragment,388.02,60.48,1232.92,4.51,113
+AMD Radeon(TM) Graphics,hardware_rt,727.86,165.37,1789.25,2.42,79
+NVIDIA GeForce RTX 3060 Laptop GPU,compute,93.66,49.36,152.5,13.63,48
+NVIDIA GeForce RTX 3060 Laptop GPU,fragment,860.78,409.35,1816.28,1.78,48
+NVIDIA GeForce RTX 3060 Laptop GPU,hardware_rt,1170.27,680.94,1712.18,1.48,48
+NVIDIA GeForce RTX 3080,compute,156.73,82.84,233.59,7.44,48
+NVIDIA GeForce RTX 3080,fragment,2099.11,904.39,4342.63,0.61,48
+NVIDIA GeForce RTX 3080,hardware_rt,2993.69,2004.56,3889.3,0.38,48
+NVIDIA GeForce RTX 4080 Laptop GPU,compute,1373.0,922.48,2152.55,0.9,48
+NVIDIA GeForce RTX 4080 Laptop GPU,fragment,1683.79,917.84,3088.68,0.8,48
+NVIDIA GeForce RTX 4080 Laptop GPU,hardware_rt,2305.43,1496.27,3086.72,0.58,48
