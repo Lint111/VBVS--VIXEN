@@ -56,7 +56,9 @@ Findings that recur across **3+ independent docs** — this is where the real de
 
 1. **Process-fatal error model** — `std::exit(1)` / throw scattered (`RenderGraph.cpp:224`,
    `VulkanSwapChain.cpp:249`, ~20 in texture loaders). [AR#1 blocker] and the root of UNDERTOW's
-   opaque crashes [FR-2/FR-3]. *Prerequisite gate for everything mod-facing.*
+   opaque crashes [FR-2/FR-3]. *Prerequisite gate for everything mod-facing.* **Phase 1 done 2026-06-13**
+   (every process-fatal `exit()` removed — [[Error-Model-Refactor-2026-06]]); the lifecycle→`RenderFrame`
+   propagation channel remains [phase 2].
 2. **Latent thread-safety debt, all unmasking at once** — 4 critical TaskProfile races
    [TS-1…4, "1hr critical path"] + TypedCacher lock-during-wait **guaranteed deadlock** [AR#51] +
    racy `VoxelInjectionQueue`. Masked by single-threaded use today; **all surface the moment
@@ -94,13 +96,17 @@ Correctness bugs + the only-consumer's pain + legal hygiene. Wasted on no possib
   - **TS-3 deferred-action flags** — `pendingDecrease_/pendingIncrease_` were plain `bool` written in bus handlers, read in `ProcessDeferredActions` → data race. Fixed: `std::atomic<bool>` + `exchange`. Added the first deferred-action coverage.
   - **TS-2 `Begin()/End()` unsafe** — deprecated the legacy shared-state timing API; migrated its only (dead-but-documented) caller `VirtualTask::BeginProfiling/EndProfiling` to per-task `Sampler`s (via a `shared_ptr` holder, keeping `VirtualTask` copyable).
   - **TS-1 move-assign "race"** — investigated, **dismissed as a false positive**: Samplers are thread-local (every `Sample()` site is a stack-local), so the move-assignment is not a data race; the audit's reorder would risk losing measurements.
-- [~] **Replace process-fatal error model** [AR#1] — **IN PROGRESS.** Done 2026-06-13 (commit `339096f`):
-  `RenderGraph::ConnectNodes` duplicate-connection `std::exit(1)` → catchable `throw` (the lone outlier
-  among the function's sibling validations; mod/host-facing graph API). **Remaining:** `VulkanSwapChain:264`
-  `exit(-1)` (zero-extent) + ~20 `exit(1)` in the texture loaders (mechanical, but void-return ripple +
-  error paths need fault injection to test); and the architectural channel — `NodeInstance::Execute`
-  returns `void` and `RenderFrame()` only returns `VK_SUCCESS`, so node failures can't propagate (wide
-  refactor touching every node — its own session). **Gate for all mod-facing work.**
+- [~] **Replace process-fatal error model** [AR#1] — **IN PROGRESS (phase 1 done).** Design + phased
+  plan: [[Error-Model-Refactor-2026-06]]. ✅ **Phase 1 — ALL process-fatal `exit()` de-fataled (2026-06-13):**
+  `ConnectNodes` duplicate-connection `std::exit(1)` → `throw` (commit `339096f`); the 20 texture-loader
+  `exit(1)` → `VulkanResult`/`VulkanStatus`, leak-free, single-owner cleanup (commit `ce4cab00`);
+  `VulkanSwapChain` zero-extent `exit(-1)` → recoverable `VK_ERROR_OUT_OF_DATE_KHR`, SwapChainNode throws
+  for the deferred-recompile path to retry (commit `1c68ed4d`). Adopts the existing `std::expected`
+  `VulkanResult`/`VulkanStatus` + `VK_CHECK` family. **Remaining (phase 2 — "its own session"):** the
+  architectural channel — `NodeInstance::Execute`/`Compile` return `void` and `RenderFrame()` only returns
+  `VK_SUCCESS`, so node failures can't propagate; protect the initial `Compile()` in `Prepare()`. (Phase 3:
+  adopt `VK_CHECK`/status across the ~396 `throw`s where recovery beats fail-and-report.) **Gate for all
+  mod-facing work.**
 - [~] **UNDERTOW quick wins** — **PARTIAL (2026-06-13).** Done: cross-platform validation gate via
   `VIXEN_VULKAN_VALIDATION` (not the MSVC-only `#ifdef _DEBUG`) [FR-1, commit `6519b77`]; reusable
   `vixen_stage_assets()` CMake helper [FR-10, commit `91bba98`]; per-image sync arrays sized to the
