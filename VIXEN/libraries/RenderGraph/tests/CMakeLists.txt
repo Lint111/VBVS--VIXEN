@@ -513,6 +513,59 @@ endif()
 include(test_voxel_systems.cmake)
 
 # ===========================================================================
+# S1: UIRenderNode HUD data model smoke test (headless — no Vulkan required)
+# ===========================================================================
+# Exercises:
+#   - RmlUi init with VixenRmlSystemInterface + NullRenderInterface
+#   - Context::CreateDataModel("hud") + Bind("tick") + Bind("bodyCount")
+#   - LoadDocument("hud.rml") parses without error
+#   - SetHudData-equivalent (struct update + DirtyVariable + Update())
+#   - GetInnerRML() contains the substituted values 42 and 7
+#   - Rml::Shutdown() cleans up cleanly
+# Assets (font + hud.rml/hud.rcss) are staged next to the binary by POST_BUILD.
+
+if(TARGET GTest::gtest_main)
+    add_executable(test_ui_hud_smoke
+        test_ui_hud_smoke.cpp
+    )
+
+    target_link_libraries(test_ui_hud_smoke PRIVATE
+        GTest::gtest_main
+        RenderGraph
+    )
+
+    # Stage the UI assets (font + rml + rcss) next to the test binary so
+    # hud.rml / font paths resolve at test runtime.
+    set(_UI_ASSETS_SRC "${CMAKE_CURRENT_SOURCE_DIR}/../assets/ui")
+    add_custom_command(TARGET test_ui_hud_smoke POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            "$<TARGET_FILE_DIR:test_ui_hud_smoke>/assets/ui"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${_UI_ASSETS_SRC}"
+            "$<TARGET_FILE_DIR:test_ui_hud_smoke>/assets/ui"
+        COMMENT "Staging UI assets for test_ui_hud_smoke"
+    )
+
+    # Copy TBB DLL (transitive dep via SVO → RenderGraph → TBB)
+    if(TARGET TBB::tbb)
+        add_custom_command(TARGET test_ui_hud_smoke POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                $<TARGET_FILE:TBB::tbb>
+                $<TARGET_FILE_DIR:test_ui_hud_smoke>
+            COMMENT "Copying TBB DLL for test_ui_hud_smoke"
+        )
+    endif()
+
+    set_target_properties(test_ui_hud_smoke PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+    gtest_discover_tests(test_ui_hud_smoke)
+
+    message(STATUS "✓ test_ui_hud_smoke configured (S1: HUD data model headless smoke)")
+else()
+    message(STATUS "⊗ test_ui_hud_smoke skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
 # CompileTimeResourceSystem Tests
 # ===========================================================================
 # Test suite for compile-time type system validation, caching, and traits.

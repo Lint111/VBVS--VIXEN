@@ -1,0 +1,12 @@
+<rml>
+<head>
+    <title>Undertow HUD</title>
+    <link type="text/rcss" href="hud.rcss"/>
+</head>
+<body data-model="hud">
+    <div id="hud">
+        <span id="hud-tick">tick {{tick}}</span>
+        <span id="hud-bodies">bodies {{bodyCount}}</span>
+    </div>
+</body>
+</rml>

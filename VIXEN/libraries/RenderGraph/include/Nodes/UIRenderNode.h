@@ -5,6 +5,8 @@
 #include "Ui/VixenRmlRenderInterface.h"
 #include "Ui/VixenRmlSystemInterface.h"
 
+#include <RmlUi/Core/DataModelHandle.h>
+
 #include <memory>
 #include <string>
 #include <vector>
@@ -39,6 +41,9 @@ public:
     UIRenderNode(const std::string& instanceName, NodeType* nodeType);
     ~UIRenderNode() override = default;
 
+    /// Host-facing seam: push the latest sim values; the bound HUD elements refresh on next Update().
+    void SetHudData(int tick, int bodyCount);
+
 protected:
     void SetupImpl(TypedSetupContext& ctx) override;
     void CompileImpl(TypedCompileContext& ctx) override;
@@ -61,6 +66,11 @@ private:
     Vixen::Ui::VixenRmlRenderInterface renderInterface_;
     Rml::Context* context_ = nullptr;
     Rml::ElementDocument* document_ = nullptr;
+
+    // S1: Rml data model for live sim data bound to the HUD document.
+    struct HudData { int tick = 0; int bodyCount = 0; };
+    HudData hud_{};
+    Rml::DataModelHandle hudModel_;
 };
 
 } // namespace Vixen::RenderGraph
