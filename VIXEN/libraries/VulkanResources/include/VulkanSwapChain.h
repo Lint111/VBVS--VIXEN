@@ -2,6 +2,7 @@
 
 #include "Headers.h"
 #include "ILoggable.h"
+#include "error/VulkanError.h"  // VulkanStatus for de-fatalized surface-capability queries
 
 struct GLFWwindow;  // cross-platform window handle (GLFW); real include only in the .cpp
 
@@ -123,7 +124,9 @@ class VulkanSwapChain : public ILoggable {
     VkResult CreateSurface(VkInstance instance, GLFWwindow* window);
     void DestroySurface(VkInstance instance);
     uint32_t GetGraphicsQueueWithPresentationSupport(VkPhysicalDevice gpu, uint32_t queueFamilyCount, const std::vector<VkQueueFamilyProperties>& queueProps);
-    void GetSurfaceCapabilitiesAndPresentMode(VkPhysicalDevice gpu, uint32_t width, uint32_t height);
+    // Returns an error (instead of the old exit(-1)) when the surface reports zero extent -- e.g.
+    // the window is minimized / not yet sized -- so the caller can defer + retry rather than die.
+    VulkanStatus GetSurfaceCapabilitiesAndPresentMode(VkPhysicalDevice gpu, uint32_t width, uint32_t height);
     void ManagePresentMode();
     void CreateSwapChainColorImages(VkDevice device);
     void CreateColorImageView(VkDevice device, const VkCommandBuffer& cmd);

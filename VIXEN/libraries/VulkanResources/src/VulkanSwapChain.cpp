@@ -250,18 +250,20 @@ uint32_t VulkanSwapChain::GetGraphicsQueueWithPresentationSupport(VkPhysicalDevi
     return graphicsQueueNodeIndex;
 }
 
-void VulkanSwapChain::GetSurfaceCapabilitiesAndPresentMode(VkPhysicalDevice gpu, uint32_t width, uint32_t height)
+VulkanStatus VulkanSwapChain::GetSurfaceCapabilitiesAndPresentMode(VkPhysicalDevice gpu, uint32_t width, uint32_t height)
 {
     fpGetPhysicalDeviceSurfaceCapabilitiesKHR(gpu, scPublicVars.surface, &scPrivateVars.surfCapabilities);
 
-    // If surface capabilities returned zeros, the window might not be ready yet
+    // If surface capabilities returned zeros, the window might not be ready yet (e.g. minimized).
+    // Return a transient error so the caller can defer + retry instead of the process dying (was exit(-1)).
     if (scPrivateVars.surfCapabilities.maxImageExtent.width == 0 ||
         scPrivateVars.surfCapabilities.maxImageExtent.height == 0) {
         LOG_ERROR("ERROR: Surface capabilities returned invalid dimensions!");
         LOG_ERROR("Window dimensions: " + std::to_string(width) + "x" + std::to_string(height));
         LOG_ERROR("Surface capabilities: " + std::to_string(scPrivateVars.surfCapabilities.maxImageExtent.width)
                   + "x" + std::to_string(scPrivateVars.surfCapabilities.maxImageExtent.height));
-        exit(-1);
+        return std::unexpected(VulkanError{VK_ERROR_OUT_OF_DATE_KHR,
+            "Surface reported zero extent (window not ready / minimized); defer swapchain setup"});
     }
 
     fpGetPhysicalDeviceSurfacePresentModesKHR(gpu, scPublicVars.surface, &scPrivateVars.presentModeCount, nullptr);
@@ -292,6 +294,8 @@ void VulkanSwapChain::GetSurfaceCapabilitiesAndPresentMode(VkPhysicalDevice gpu,
     // extent — e.g. the requested window size differs from the surface's currentExtent — the
     // unrendered remainder of each image shows as uninitialized garbage (horizontal strips).
     scPublicVars.Extent = scPrivateVars.swapChainExtent;
+
+    return {};  // success
 }
 
 void VulkanSwapChain::ManagePresentMode()
