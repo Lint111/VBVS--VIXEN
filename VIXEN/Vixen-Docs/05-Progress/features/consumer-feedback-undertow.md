@@ -289,7 +289,12 @@ Debug and reused cached artifacts). All fixed on `claude/wsl-build-portability`.
   frame-throttle like the existing GPU-perf logger's 120-frame cadence); don't run `debug_capture` at
   INFO outside debug builds; root the persistent cache at a cache dir (e.g. `$XDG_CACHE_HOME`) instead
   of cwd.
-- **Status:** OPEN (minor; cosmetic — does not affect correctness).
+- **Status:** log spam FIXED — `Logger` gained a process-wide `SetGlobalMinLevel(LogLevel)` (default
+  `LOG_DEBUG`, no behaviour change), and the per-frame voxel-grid / compute-dispatch / debug-readback
+  `ExecuteImpl` diagnostics were re-levelled INFO→DEBUG. The render host defaults the threshold to INFO
+  (overridable via `VIXEN_LOG_LEVEL=debug|info|warning|error`) → ~30× fewer lines in steady state,
+  render unaffected, meaningful INFO retained. The **cwd-pollution** part (host writes `cache/` +
+  `generated/` to the working directory) remains OPEN.
 
 ---
 

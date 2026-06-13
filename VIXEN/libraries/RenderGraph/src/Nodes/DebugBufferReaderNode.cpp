@@ -64,7 +64,7 @@ void DebugBufferReaderNode::CompileImpl(TypedCompileContext& ctx) {
 }
 
 void DebugBufferReaderNode::ExecuteImpl(TypedExecuteContext& ctx) {
-    NODE_LOG_INFO("DebugBufferReaderNode::ExecuteImpl");
+    NODE_LOG_DEBUG("DebugBufferReaderNode::ExecuteImpl");
 
     if (GetDevice() == nullptr) {
         NODE_LOG_ERROR("No VulkanDevice available");
@@ -92,7 +92,7 @@ void DebugBufferReaderNode::ExecuteImpl(TypedExecuteContext& ctx) {
     }
 
     if (!debugCapture->IsCaptureEnabled()) {
-        NODE_LOG_INFO("Debug capture is disabled for '" + debugCapture->GetDebugName() + "'");
+        NODE_LOG_DEBUG("Debug capture is disabled for '" + debugCapture->GetDebugName() + "'");
         return;
     }
 
@@ -116,7 +116,7 @@ void DebugBufferReaderNode::ExecuteImpl(TypedExecuteContext& ctx) {
         // Read ray traces from the capture buffer
         uint32_t traceCount = rayTraceBuffer->Read(vkDevice);
         if (traceCount == 0) {
-            NODE_LOG_INFO("No ray traces captured this frame for '" + debugCapture->GetDebugName() + "'");
+            NODE_LOG_DEBUG("No ray traces captured this frame for '" + debugCapture->GetDebugName() + "'");
             return;
         }
 
@@ -127,17 +127,17 @@ void DebugBufferReaderNode::ExecuteImpl(TypedExecuteContext& ctx) {
 
         // Log ring buffer status
         if (rayTraceBuffer->HasWrapped()) {
-            NODE_LOG_INFO("Read " + std::to_string(traceCount) + " ray traces from '" +
+            NODE_LOG_DEBUG("Read " + std::to_string(traceCount) + " ray traces from '" +
                           debugCapture->GetDebugName() + "' (ring buffer wrapped, " +
                           std::to_string(rayTraceBuffer->GetTotalWrites()) + " total writes)");
         } else {
-            NODE_LOG_INFO("Read " + std::to_string(traceCount) + " ray traces from '" +
+            NODE_LOG_DEBUG("Read " + std::to_string(traceCount) + " ray traces from '" +
                           debugCapture->GetDebugName() + "' (binding " +
                           std::to_string(debugCapture->GetBindingIndex()) + ")");
         }
     } else if (debugBuffer->GetType() == Debug::DebugBufferType::ShaderCounters) {
         // TODO: Handle ShaderCountersBuffer type
-        NODE_LOG_INFO("ShaderCounters buffer type - aggregation not yet implemented");
+        NODE_LOG_DEBUG("ShaderCounters buffer type - aggregation not yet implemented");
         return;
     } else {
         NODE_LOG_WARNING(std::string("Unknown debug buffer type: ") + debugBuffer->GetTypeName());

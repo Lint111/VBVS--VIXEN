@@ -166,7 +166,7 @@ void ComputeDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
 
     static int logCounter = 0;
     if (logCounter++ < 20) {
-        NODE_LOG_INFO("Compute Frame " + std::to_string(currentFrameIndex) + ", Image " + std::to_string(imageIndex));
+        NODE_LOG_DEBUG("Compute Frame " + std::to_string(currentFrameIndex) + ", Image " + std::to_string(imageIndex));
     }
 
     // Phase 0.4: Reset fence before submitting (fence was already waited on by FrameSyncNode)
@@ -266,7 +266,7 @@ void ComputeDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
     if (debugCapture) {
         static int debugLogCount = 0;
         if (debugLogCount++ < 3) {
-            NODE_LOG_INFO("[ComputeDispatchNode] Passing through debug capture: " + debugCapture->GetDebugName());
+            NODE_LOG_DEBUG("[ComputeDispatchNode] Passing through debug capture: " + debugCapture->GetDebugName());
         }
     }
 }
@@ -304,7 +304,7 @@ void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cm
 
     static int logCount = 0;
     if (logCount++ < 3) {
-        NODE_LOG_INFO("[ComputeDispatchNode] Dispatch: " + std::to_string(dispatchX) + "x" + std::to_string(dispatchY) + "x" + std::to_string(dispatchZ) +
+        NODE_LOG_DEBUG("[ComputeDispatchNode] Dispatch: " + std::to_string(dispatchX) + "x" + std::to_string(dispatchY) + "x" + std::to_string(dispatchZ) +
                       " for swapchain " + std::to_string(swapchainInfo->Extent.width) + "x" + std::to_string(swapchainInfo->Extent.height));
     }
 
@@ -342,7 +342,7 @@ void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cm
         throw std::runtime_error("[ComputeDispatchNode::RecordComputeCommands] Failed to end command buffer");
     }
 
-    NODE_LOG_INFO("[ComputeDispatchNode::RecordComputeCommands] Recorded compute commands for image " + std::to_string(imageIndex));
+    NODE_LOG_DEBUG("[ComputeDispatchNode::RecordComputeCommands] Recorded compute commands for image " + std::to_string(imageIndex));
 }
 
 // ============================================================================
@@ -414,7 +414,7 @@ void ComputeDispatchNode::SetPushConstants(Context& ctx, VkCommandBuffer cmdBuff
 
                 static int pcLogCount = 0;
                 if (pcLogCount++ < 3) {
-                    NODE_LOG_INFO("[ComputeDispatchNode] Setting gathered push constants: offset=" +
+                    NODE_LOG_DEBUG("[ComputeDispatchNode] Setting gathered push constants: offset=" +
                                   std::to_string(range.offset) + ", size=" + std::to_string(range.size));
                 }
             }
@@ -442,7 +442,7 @@ void ComputeDispatchNode::SetPushConstants(Context& ctx, VkCommandBuffer cmdBuff
 
             static int pcLogCount = 0;
             if (pcLogCount++ < 3) {
-                NODE_LOG_INFO("[ComputeDispatchNode] Setting legacy push constants: offset=" +
+                NODE_LOG_DEBUG("[ComputeDispatchNode] Setting legacy push constants: offset=" +
                               std::to_string(pc.offset) + ", size=" + std::to_string(pc.size));
             }
         }

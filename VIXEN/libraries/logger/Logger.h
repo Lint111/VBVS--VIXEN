@@ -44,6 +44,13 @@ public:
     void Error(const std::string& message);
     void Critical(const std::string& message);
 
+    // Process-wide minimum log level. Messages below this are dropped for ALL loggers (every
+    // instance), so a consumer can silence chatty low-severity output without touching call sites.
+    // Default LOG_DEBUG = no filtering (every level prints, the historical behaviour). Raise it (e.g.
+    // to LOG_INFO) to drop per-frame DEBUG diagnostics.
+    static void SetGlobalMinLevel(LogLevel level) { globalMinLevel = level; }
+    static LogLevel GetGlobalMinLevel() { return globalMinLevel; }
+
     // Extract logs recursively
     std::string ExtractLogs(int indentLevel = 0) const;
 
@@ -56,6 +63,7 @@ public:
     const std::string& GetName() const { return name; }
 
 protected:
+    static LogLevel globalMinLevel;  // process-wide threshold; see SetGlobalMinLevel
     std::string name;
     bool enabled;
     bool terminalOutput = false;
