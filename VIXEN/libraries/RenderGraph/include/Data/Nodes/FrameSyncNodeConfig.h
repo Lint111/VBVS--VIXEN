@@ -11,7 +11,7 @@ namespace Vixen::RenderGraph {
 // Compile-time slot counts (declared early for reuse)
 namespace FrameSyncNodeCounts {
     static constexpr size_t INPUTS = 1;  // Back to 1: only VulkanDevice
-    static constexpr size_t OUTPUTS = 5;  // Phase 0.6: Added PRESENT_FENCES_ARRAY for VK_KHR_swapchain_maintenance1
+    static constexpr size_t OUTPUTS = 3;  // FR-3: per-IMAGE renderComplete + presentFences moved to SwapChainNode
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -57,21 +57,11 @@ CONSTEXPR_NODE_CONFIG(FrameSyncNodeConfig,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
-    OUTPUT_SLOT(RENDER_COMPLETE_SEMAPHORES_ARRAY, const std::vector<VkSemaphore>&, 3,
-        SlotNullability::Required,
-        SlotMutability::WriteOnly);
-
-    OUTPUT_SLOT(PRESENT_FENCES_ARRAY, const std::vector<VkFence>&, 4,
-        SlotNullability::Required,
-        SlotMutability::WriteOnly);
+    // FR-3: per-IMAGE renderComplete semaphores + present fences are now owned by SwapChainNode
+    // (sized to the exact swapchain image count). FrameSyncNode keeps only per-FLIGHT resources.
 
     // Compile-time constants
-    static constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 4;  // CPU-GPU sync (fences) + both semaphore types
-    // Upper bound for per-image sync arrays (renderComplete semaphores, present fences). Indexed by
-    // the runtime swapchain imageIndex, so it must be >= the actual image count the surface gives
-    // (minImageCount + 1). Some surfaces (e.g. llvmpipe on WSLg) report minImageCount 3 -> 4 images;
-    // 3 was too small and overran the arrays at imageIndex 3. 8 covers any realistic surface.
-    static constexpr uint32_t MAX_SWAPCHAIN_IMAGES = 8;
+    static constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 4;  // CPU-GPU sync (fences) + imageAvailable semaphores
 
     // Constructor for runtime descriptor initialization
     FrameSyncNodeConfig() {
@@ -88,10 +78,6 @@ CONSTEXPR_NODE_CONFIG(FrameSyncNodeConfig,
 
         HandleDescriptor semaphoreArrayDesc{"VkSemaphoreArrayPtr"};
         INIT_OUTPUT_DESC(IMAGE_AVAILABLE_SEMAPHORES_ARRAY, "image_available_semaphores_array", ResourceLifetime::Persistent, semaphoreArrayDesc);
-        INIT_OUTPUT_DESC(RENDER_COMPLETE_SEMAPHORES_ARRAY, "render_complete_semaphores_array", ResourceLifetime::Persistent, semaphoreArrayDesc);
-
-        HandleDescriptor fenceArrayDesc{"VkFenceArrayPtr"};
-        INIT_OUTPUT_DESC(PRESENT_FENCES_ARRAY, "present_fences_array", ResourceLifetime::Persistent, fenceArrayDesc);
     }
 
     // Automated config validation
@@ -103,16 +89,12 @@ CONSTEXPR_NODE_CONFIG(FrameSyncNodeConfig,
     static_assert(CURRENT_FRAME_INDEX_Slot::index == 0, "CURRENT_FRAME_INDEX must be at index 0");
     static_assert(IN_FLIGHT_FENCE_Slot::index == 1, "IN_FLIGHT_FENCE must be at index 1");
     static_assert(IMAGE_AVAILABLE_SEMAPHORES_ARRAY_Slot::index == 2, "IMAGE_AVAILABLE_SEMAPHORES_ARRAY must be at index 2");
-    static_assert(RENDER_COMPLETE_SEMAPHORES_ARRAY_Slot::index == 3, "RENDER_COMPLETE_SEMAPHORES_ARRAY must be at index 3");
-    static_assert(PRESENT_FENCES_ARRAY_Slot::index == 4, "PRESENT_FENCES_ARRAY must be at index 4");
 
     // Type validations
     static_assert(std::is_same_v<VULKAN_DEVICE_Slot::Type, VulkanDevice*>);
     static_assert(std::is_same_v<CURRENT_FRAME_INDEX_Slot::Type, uint32_t>);
     static_assert(std::is_same_v<IN_FLIGHT_FENCE_Slot::Type, VkFence>);
     static_assert(std::is_same_v<IMAGE_AVAILABLE_SEMAPHORES_ARRAY_Slot::Type, const std::vector<VkSemaphore>&>);
-    static_assert(std::is_same_v<RENDER_COMPLETE_SEMAPHORES_ARRAY_Slot::Type, const std::vector<VkSemaphore>&>);
-    static_assert(std::is_same_v<PRESENT_FENCES_ARRAY_Slot::Type, const std::vector<VkFence>&>);
 };
 
 } // namespace Vixen::RenderGraph

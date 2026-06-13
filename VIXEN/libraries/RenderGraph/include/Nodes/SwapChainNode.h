@@ -84,8 +84,18 @@ private:
     void SetupFormatsAndCapabilities(uint32_t graphicsQueueIndex);
     void CreateSwapchainAndViews();
     void PublishCompileOutputs(TypedCompileContext& ctx);
+
+    // FR-3: per-IMAGE sync resources are owned here, sized to the EXACT swapchain image
+    // count (vkGetSwapchainImagesKHR), not pre-sized to a constant in FrameSyncNode.
+    void CreatePerImageSyncResources();   // (re)creates, reusing existing arrays when the count is unchanged
+    void DestroyPerImageSyncResources();
+
     // Swapchain wrapper (from existing VulkanSwapChain)
     VulkanSwapChain* swapChainWrapper = nullptr;
+
+    // Per-IMAGE sync (indexed by acquired image index), sized to the actual image count.
+    std::vector<VkSemaphore> renderCompleteSemaphores;  // signaled by render, waited by present
+    std::vector<VkFence> presentFences;                 // per-image present fences (VK_EXT_swapchain_maintenance1)
 
     // Device handle is stored in the parent NodeInstance::device member
 

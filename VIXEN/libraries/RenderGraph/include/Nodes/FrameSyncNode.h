@@ -81,10 +81,9 @@ private:
         VkFence inFlightFence = VK_NULL_HANDLE;
     };
 
-    std::vector<FrameSyncData> frameSyncData;    // Size = MAX_FRAMES_IN_FLIGHT
-    std::vector<VkSemaphore> imageAvailableSemaphores;  // Size = swapchain image count
-    std::vector<VkSemaphore> renderCompleteSemaphores;  // Size = swapchain image count
-    std::vector<VkFence> presentFences;          // Size = swapchain image count (VK_KHR_swapchain_maintenance1)
+    std::vector<FrameSyncData> frameSyncData;    // Size = MAX_FRAMES_IN_FLIGHT (per-flight CPU-GPU fences)
+    std::vector<VkSemaphore> imageAvailableSemaphores;  // Size = MAX_FRAMES_IN_FLIGHT (per-flight acquisition)
+    // FR-3: renderComplete semaphores + present fences (per-IMAGE) now owned by SwapChainNode.
     uint32_t currentFrameIndex = 0;              // Current frame-in-flight index
     bool isCreated = false;
 };

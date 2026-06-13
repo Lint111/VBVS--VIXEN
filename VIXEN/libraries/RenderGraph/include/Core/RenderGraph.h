@@ -812,6 +812,9 @@ private:
     // Execution
     std::vector<NodeInstance*> executionOrder;
     bool isCompiled = false;
+    // AR#16: set by ExecuteCleanup (shutdown). RenderFrame() checks this so it never executes a node
+    // against destroyed resources (the render loop can iterate once more after WindowCloseEvent).
+    bool isCleanedUp = false;
 
     // Event-driven recompilation
     std::set<NodeHandle> dirtyNodes;

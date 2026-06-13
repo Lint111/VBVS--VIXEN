@@ -526,9 +526,8 @@ void VulkanGraphApplication::BuildUIGraph() {
          .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, swapChainNode, SwapChainNodeConfig::VULKAN_DEVICE_IN);
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, frameSyncNode, FrameSyncNodeConfig::VULKAN_DEVICE);
     batch.Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX, swapChainNode, SwapChainNodeConfig::CURRENT_FRAME_INDEX)
-         .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY, swapChainNode, SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
-         .Connect(frameSyncNode, FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY, swapChainNode, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY)
-         .Connect(frameSyncNode, FrameSyncNodeConfig::PRESENT_FENCES_ARRAY, swapChainNode, SwapChainNodeConfig::PRESENT_FENCES_ARRAY);
+         .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY, swapChainNode, SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
+    // FR-3: renderComplete + presentFences are now PRODUCED by swapChainNode (sized to the actual image count).
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, commandPoolNode, CommandPoolNodeConfig::VULKAN_DEVICE_IN);
 
     // --- Render pass + framebuffers (swapchain-derived; these nodes own the resize lifecycle) ---
@@ -546,7 +545,7 @@ void VulkanGraphApplication::BuildUIGraph() {
          .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX, uiRenderNode, UIRenderNodeConfig::CURRENT_FRAME_INDEX)
          .Connect(frameSyncNode, FrameSyncNodeConfig::IN_FLIGHT_FENCE, uiRenderNode, UIRenderNodeConfig::IN_FLIGHT_FENCE)
          .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY, uiRenderNode, UIRenderNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
-         .Connect(frameSyncNode, FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY, uiRenderNode, UIRenderNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY)
+         .Connect(swapChainNode, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY, uiRenderNode, UIRenderNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY)
          .Connect(renderPassNode, RenderPassNodeConfig::RENDER_PASS, uiRenderNode, UIRenderNodeConfig::RENDER_PASS)
          .Connect(framebufferNode, FramebufferNodeConfig::FRAMEBUFFERS, uiRenderNode, UIRenderNodeConfig::FRAMEBUFFERS);
 
@@ -559,7 +558,7 @@ void VulkanGraphApplication::BuildUIGraph() {
          .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_HANDLE, presentNode, PresentNodeConfig::SWAPCHAIN)
          .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX, presentNode, PresentNodeConfig::IMAGE_INDEX)
          .Connect(uiRenderNode, UIRenderNodeConfig::RENDER_COMPLETE_SEMAPHORE, presentNode, PresentNodeConfig::RENDER_COMPLETE_SEMAPHORE)
-         .Connect(frameSyncNode, FrameSyncNodeConfig::PRESENT_FENCES_ARRAY, presentNode, PresentNodeConfig::PRESENT_FENCE_ARRAY);
+         .Connect(swapChainNode, SwapChainNodeConfig::PRESENT_FENCES_ARRAY, presentNode, PresentNodeConfig::PRESENT_FENCE_ARRAY);
 
     batch.RegisterAll();
     mainLogger->Info("UI-only RmlUi demo graph built (10 nodes)");
@@ -995,11 +994,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   swapChainNode, SwapChainNodeConfig::CURRENT_FRAME_INDEX);
     batch.Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
                   swapChainNode, SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
-    batch.Connect(frameSyncNode, FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
-                  swapChainNode, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
-    // Phase 0.7: Present fences array (VK_EXT_swapchain_maintenance1)
-    batch.Connect(frameSyncNode, FrameSyncNodeConfig::PRESENT_FENCES_ARRAY,
-                  swapChainNode, SwapChainNodeConfig::PRESENT_FENCES_ARRAY);
+    // FR-3: renderComplete + presentFences are now PRODUCED by swapChainNode (sized to the actual image count).
 
     // --- Device → CommandPool connection ---
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
@@ -1148,8 +1143,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(frameSyncNode, FrameSyncNodeConfig::IN_FLIGHT_FENCE,
                   debugCaptureNode, DebugBufferReaderNodeConfig::IN_FLIGHT_FENCE);
 
-    // --- FrameSync → Present connections (Phase 0.7) ---
-    batch.Connect(frameSyncNode, FrameSyncNodeConfig::PRESENT_FENCES_ARRAY,
+    // --- SwapChain → Present present-fence array (FR-3: owned by swapChainNode) ---
+    batch.Connect(swapChainNode, SwapChainNodeConfig::PRESENT_FENCES_ARRAY,
                   presentNode, PresentNodeConfig::PRESENT_FENCE_ARRAY);
 
     // MVP: Shader connection happens in CompileRenderGraph (after device creation)
@@ -1324,7 +1319,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   computeDispatch, ComputeDispatchNodeConfig::IN_FLIGHT_FENCE)
          .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
                   computeDispatch, ComputeDispatchNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
-         .Connect(frameSyncNode, FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
+         .Connect(swapChainNode, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
                   computeDispatch, ComputeDispatchNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
 
     // REMOVED DUPLICATE: computeDispatch -> present RENDER_COMPLETE_SEMAPHORE (already connected at line 894-895)
