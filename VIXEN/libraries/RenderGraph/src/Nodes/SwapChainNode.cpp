@@ -33,8 +33,11 @@ void SwapChainNode::SetupImpl(TypedSetupContext& ctx) {
     // Graph-scope initialization only (no input access)
     NODE_LOG_DEBUG("SwapChainNode: Setup (graph-scope initialization)");
 
-    // Subscribe to window resize events
-    if (GetMessageBus()) {
+    // Subscribe to window resize events ONCE. SetupImpl re-runs on every recompile; without this
+    // guard the subscriptions accumulate and each one fires an extra MarkNeedsRecompile, so a single
+    // resize snowballs into many recompiles.
+    if (GetMessageBus() && !resizeSubscribed_) {
+        resizeSubscribed_ = true;
         SubscribeToMessage(
             EventTypes::WindowResizedMessage::TYPE,
             [this](const EventBus::BaseEventMessage& msg) -> bool {
@@ -166,9 +169,16 @@ void SwapChainNode::ExecuteImpl(TypedExecuteContext& ctx) {
         }
     }
 
-    // If swapchain is out of date, skip this frame
+    // If swapchain is out of date, skip this frame.
     if (currentImageIndex == UINT32_MAX) {
         NODE_LOG_INFO("SwapChainNode: Skipping frame due to out-of-date swapchain");
+        // Propagate the invalid index so the downstream render + present nodes skip this frame too.
+        // Without this the IMAGE_INDEX output keeps its previous (valid) value, so the render node
+        // records + submits work that waits on the per-flight acquire semaphore which acquire never
+        // signalled (acquire returned OUT_OF_DATE) — that submit blocks forever, the queue never goes
+        // idle, and the whole render loop deadlocks on the next fence/idle wait. This was the
+        // window-resize hang.
+        ctx.Out(SwapChainNodeConfig::IMAGE_INDEX, UINT32_MAX);
         return;
     }
 
