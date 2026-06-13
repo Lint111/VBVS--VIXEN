@@ -96,11 +96,13 @@ Correctness bugs + the only-consumer's pain + legal hygiene. Wasted on no possib
   error paths need fault injection to test); and the architectural channel — `NodeInstance::Execute`
   returns `void` and `RenderFrame()` only returns `VK_SUCCESS`, so node failures can't propagate (wide
   refactor touching every node — its own session). **Gate for all mod-facing work.**
-- [ ] **UNDERTOW quick wins** — cross-platform validation gate (`VIXEN_ENABLE_VALIDATION` not
-  `#ifdef _DEBUG`) [FR-1]; size per-image arrays from actual image count [FR-3]; **reject
-  connection type mismatches** instead of relying on silent implicit conversion [FR-4]; discover
-  `WindowNode` by type not magic name `"main_window"` [FR-6]; `vixen_stage_assets()` CMake helper
-  [FR-10].
+- [~] **UNDERTOW quick wins** — **PARTIAL (2026-06-13).** Done: cross-platform validation gate via
+  `VIXEN_VULKAN_VALIDATION` (not the MSVC-only `#ifdef _DEBUG`) [FR-1, commit `6519b77`]; reusable
+  `vixen_stage_assets()` CMake helper [FR-10, commit `91bba98`]. **Remaining:** size per-image arrays
+  from actual image count [FR-3, partially done — `MAX_SWAPCHAIN_IMAGES` already bumped 3→8]; **reject
+  connection type mismatches** instead of silent implicit conversion [FR-4, touches the connection
+  system — note the 3 pre-existing `test_connection_rule` binding failures live in that area]; discover
+  `WindowNode` by type not the magic name `"main_window"` [FR-6].
 - [x] **License cleanup** [AR#6] — **DONE 2026-06-13** (commit `3b5494e`): 32 Sprint-6 files'
   `GPL-3.0` headers → `MIT` to match the canonical root LICENSE + README badge. Header-only, no code change.
 - [x] **Cache generator identity** [AR#52] — **DONE 2026-06-13** (commit `8a6267b`, red→green test):
