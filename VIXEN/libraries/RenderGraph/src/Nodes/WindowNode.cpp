@@ -113,9 +113,11 @@ void WindowNode::CompileImpl(TypedCompileContext& ctx) {
 void WindowNode::ExecuteImpl(TypedExecuteContext& ctx) {
     slotIndex = ctx.taskIndex;
 
-    // Pump GLFW events (fires the callbacks below, which fill the event queue). Idempotent across
-    // windows in a frame; the app loop may also poll.
-    glfwPollEvents();
+    // Input is pumped once per frame by the application main loop: glfwPollEvents() is the global OS
+    // message pump and must run on the main thread every iteration -- even while rendering is paused,
+    // which RenderFrame() short-circuits before reaching node Execute -- so it cannot live here. That
+    // single pump fires this node's GLFW callbacks and fills the event queue we drain below; here we
+    // only read the resulting should-close flag.
     if (window && glfwWindowShouldClose(window)) {
         shouldClose = true;
     }
