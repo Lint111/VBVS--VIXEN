@@ -341,16 +341,16 @@ target_include_directories(RenderGraph
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         # Main application includes - use SOURCE_DIR for project root
-        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/application/main/include>
+        $<BUILD_INTERFACE:${VIXEN_ROOT}/application/main/include>
         # Generated SDI headers - priority order:
         #   1. Dev-time: Tool-generated SDI files in source tree
         #   2. Build-time: CMake-generated SDI files (main app)
         #   3. Build-time: CMake-generated SDI files (benchmark app)
         #   4. Binaries: Pre-built SDI files in binaries/generated/sdi
-        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/generated/sdi>
+        $<BUILD_INTERFACE:${VIXEN_ROOT}/generated/sdi>
         $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/application/main/generated/sdi>
         $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/application/benchmark/generated/sdi>
-        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/binaries/generated/sdi>
+        $<BUILD_INTERFACE:${VIXEN_ROOT}/binaries/generated/sdi>
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
 )

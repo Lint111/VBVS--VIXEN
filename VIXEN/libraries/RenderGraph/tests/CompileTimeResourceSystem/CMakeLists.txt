@@ -10,8 +10,8 @@ include(GoogleTest)
 add_executable(test_minimal
     ../test_minimal.cpp
 )
-# Use CMAKE_SOURCE_DIR for project root - link against RenderGraph for includes
-target_include_directories(test_minimal PRIVATE ${CMAKE_SOURCE_DIR}/application/main/include ${Vulkan_INCLUDE_DIRS})
+# Use VIXEN_ROOT for project root - link against RenderGraph for includes
+target_include_directories(test_minimal PRIVATE ${VIXEN_ROOT}/application/main/include ${Vulkan_INCLUDE_DIRS})
 target_link_libraries(test_minimal PRIVATE RenderGraph ${Vulkan_LIBRARIES} gli)
 set_property(TARGET test_minimal PROPERTY CXX_STANDARD 23)
 set_property(TARGET test_minimal PROPERTY CXX_STANDARD_REQUIRED ON)
@@ -22,8 +22,8 @@ set_property(TARGET test_minimal PROPERTY CXX_STANDARD_REQUIRED ON)
 add_executable(test_compile_time_cache
     test_compile_time_cache.cpp
 )
-# Use CMAKE_SOURCE_DIR for project root - link against RenderGraph for includes
-target_include_directories(test_compile_time_cache PRIVATE ${CMAKE_SOURCE_DIR}/application/main/include ${Vulkan_INCLUDE_DIRS})
+# Use VIXEN_ROOT for project root - link against RenderGraph for includes
+target_include_directories(test_compile_time_cache PRIVATE ${VIXEN_ROOT}/application/main/include ${Vulkan_INCLUDE_DIRS})
 target_link_libraries(test_compile_time_cache PRIVATE RenderGraph ${Vulkan_LIBRARIES} gli)
 set_property(TARGET test_compile_time_cache PROPERTY CXX_STANDARD 23)
 set_property(TARGET test_compile_time_cache PROPERTY CXX_STANDARD_REQUIRED ON)
@@ -34,8 +34,8 @@ set_property(TARGET test_compile_time_cache PROPERTY CXX_STANDARD_REQUIRED ON)
 add_executable(test_traits_debug
     test_traits_debug.cpp
 )
-# Use CMAKE_SOURCE_DIR for project root - link against RenderGraph for includes
-target_include_directories(test_traits_debug PRIVATE ${CMAKE_SOURCE_DIR}/application/main/include ${Vulkan_INCLUDE_DIRS})
+# Use VIXEN_ROOT for project root - link against RenderGraph for includes
+target_include_directories(test_traits_debug PRIVATE ${VIXEN_ROOT}/application/main/include ${Vulkan_INCLUDE_DIRS})
 target_link_libraries(test_traits_debug PRIVATE RenderGraph ${Vulkan_LIBRARIES})
 set_property(TARGET test_traits_debug PROPERTY CXX_STANDARD 23)
 set_property(TARGET test_traits_debug PROPERTY CXX_STANDARD_REQUIRED ON)
@@ -46,8 +46,8 @@ set_property(TARGET test_traits_debug PROPERTY CXX_STANDARD_REQUIRED ON)
 add_executable(test_recursive_validation
     test_recursive_validation.cpp
 )
-# Use CMAKE_SOURCE_DIR for project root - no relative paths
-target_include_directories(test_recursive_validation PRIVATE ${CMAKE_SOURCE_DIR}/application/main/include ${Vulkan_INCLUDE_DIRS})
+# Use VIXEN_ROOT for project root - no relative paths
+target_include_directories(test_recursive_validation PRIVATE ${VIXEN_ROOT}/application/main/include ${Vulkan_INCLUDE_DIRS})
 target_link_libraries(test_recursive_validation PRIVATE ${Vulkan_LIBRARIES} gli)
 set_property(TARGET test_recursive_validation PROPERTY CXX_STANDARD 23)
 set_property(TARGET test_recursive_validation PROPERTY CXX_STANDARD_REQUIRED ON)
@@ -56,7 +56,7 @@ set_property(TARGET test_recursive_validation PROPERTY CXX_STANDARD_REQUIRED ON)
 # add_executable(test_cache_performance
 #     test_cache_performance.cpp
 # )
-# target_include_directories(test_cache_performance PRIVATE ${CMAKE_SOURCE_DIR}/application/main/include ${Vulkan_INCLUDE_DIRS})
+# target_include_directories(test_cache_performance PRIVATE ${VIXEN_ROOT}/application/main/include ${Vulkan_INCLUDE_DIRS})
 # target_link_libraries(test_cache_performance PRIVATE ${Vulkan_LIBRARIES})
 # set_property(TARGET test_cache_performance PROPERTY CXX_STANDARD 23)
 # set_property(TARGET test_cache_performance PROPERTY CXX_STANDARD_REQUIRED ON)
@@ -64,8 +64,8 @@ set_property(TARGET test_recursive_validation PROPERTY CXX_STANDARD_REQUIRED ON)
 add_executable(test_registration
     test_registration.cpp
 )
-# Use CMAKE_SOURCE_DIR for project root - link against RenderGraph for includes
-target_include_directories(test_registration PRIVATE ${CMAKE_SOURCE_DIR}/application/main/include ${Vulkan_INCLUDE_DIRS})
+# Use VIXEN_ROOT for project root - link against RenderGraph for includes
+target_include_directories(test_registration PRIVATE ${VIXEN_ROOT}/application/main/include ${Vulkan_INCLUDE_DIRS})
 target_link_libraries(test_registration PRIVATE RenderGraph ${Vulkan_LIBRARIES})
 set_property(TARGET test_registration PROPERTY CXX_STANDARD 23)
 set_property(TARGET test_registration PROPERTY CXX_STANDARD_REQUIRED ON)
@@ -73,8 +73,8 @@ set_property(TARGET test_registration PROPERTY CXX_STANDARD_REQUIRED ON)
 add_executable(test_simple_traits
     test_simple_traits.cpp
 )
-# Use CMAKE_SOURCE_DIR for project root - link against RenderGraph for includes
-target_include_directories(test_simple_traits PRIVATE ${CMAKE_SOURCE_DIR}/application/main/include ${Vulkan_INCLUDE_DIRS})
+# Use VIXEN_ROOT for project root - link against RenderGraph for includes
+target_include_directories(test_simple_traits PRIVATE ${VIXEN_ROOT}/application/main/include ${Vulkan_INCLUDE_DIRS})
 target_link_libraries(test_simple_traits PRIVATE RenderGraph ${Vulkan_LIBRARIES})
 set_property(TARGET test_simple_traits PROPERTY CXX_STANDARD 23)
 set_property(TARGET test_simple_traits PROPERTY CXX_STANDARD_REQUIRED ON)
@@ -82,8 +82,8 @@ set_property(TARGET test_simple_traits PROPERTY CXX_STANDARD_REQUIRED ON)
 add_executable(test_syntax_check
     test_syntax_check.cpp
 )
-# Use CMAKE_SOURCE_DIR for project root - link against RenderGraph for includes
-target_include_directories(test_syntax_check PRIVATE ${CMAKE_SOURCE_DIR}/application/main/include ${Vulkan_INCLUDE_DIRS})
+# Use VIXEN_ROOT for project root - link against RenderGraph for includes
+target_include_directories(test_syntax_check PRIVATE ${VIXEN_ROOT}/application/main/include ${Vulkan_INCLUDE_DIRS})
 target_link_libraries(test_syntax_check PRIVATE RenderGraph ${Vulkan_LIBRARIES})
 set_property(TARGET test_syntax_check PROPERTY CXX_STANDARD 23)
 set_property(TARGET test_syntax_check PROPERTY CXX_STANDARD_REQUIRED ON)
@@ -91,8 +91,8 @@ set_property(TARGET test_syntax_check PROPERTY CXX_STANDARD_REQUIRED ON)
 add_executable(test_type_check
     test_type_check.cpp
 )
-# Use CMAKE_SOURCE_DIR for project root - link against RenderGraph for includes
-target_include_directories(test_type_check PRIVATE ${CMAKE_SOURCE_DIR}/application/main/include ${Vulkan_INCLUDE_DIRS})
+# Use VIXEN_ROOT for project root - link against RenderGraph for includes
+target_include_directories(test_type_check PRIVATE ${VIXEN_ROOT}/application/main/include ${Vulkan_INCLUDE_DIRS})
 target_link_libraries(test_type_check PRIVATE RenderGraph ${Vulkan_LIBRARIES} gli)
 set_property(TARGET test_type_check PROPERTY CXX_STANDARD 23)
 set_property(TARGET test_type_check PROPERTY CXX_STANDARD_REQUIRED ON)

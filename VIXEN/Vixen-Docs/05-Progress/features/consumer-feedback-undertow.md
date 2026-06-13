@@ -204,6 +204,50 @@ found by driving the resize path; all fixed on `claude/wsl-build-portability` (`
 
 ---
 
+## Embeddability / super-build portability (consumer-discovered, fixed)
+
+To render the sim, the UNDERTOW `vixen/` build `add_subdirectory`'s the engine and links a render host
+to it. Two enabling engine changes were needed: the render driver is now a reusable library
+(`VixenApp` = `VulkanApplicationBase` + `VulkanGraphApplication`, so the `VIXEN` exe and external hosts
+both drive it), and the CMake is relocatable (`VIXEN_ROOT` replaces `CMAKE_SOURCE_DIR` everywhere, so
+the tree works standalone *and* as a subdirectory). Making the engine build in that fresh-tree,
+Release configuration then surfaced three latent issues the standalone tree had masked (it configured
+Debug and reused cached artifacts). All fixed on `claude/wsl-build-portability`.
+
+### FR-16 — X11 provisioning doesn't disable GLFW's Wayland backend
+- **Context:** a fresh super-build configure failed at `glfw-src/.../CMakeLists.txt: Failed to find wayland-scanner`.
+- **Issue:** `ProvisionWindowingDeps.cmake` provisions the **X11** dev chain and sets `GLFW_BUILD_X11 ON`,
+  but never disables Wayland. GLFW defaults `GLFW_BUILD_WAYLAND ON` on Linux, and that backend needs
+  `wayland-scanner` at configure time — which isn't provisioned. The standalone tree only escaped
+  because an earlier null-backend configure had cached `GLFW_BUILD_WAYLAND OFF`; a fresh tree fires the
+  X11 branch directly and fails.
+- **Suggested fix:** probe `wayland-scanner` up front; if absent, force `GLFW_BUILD_WAYLAND OFF` (it
+  can't build anyway). Leave it alone when present so a Wayland-capable host still gets that backend.
+- **Status:** FIXED (`cmake/ProvisionWindowingDeps.cmake`).
+
+### FR-17 — TBB (FetchContent) breaks a gcc-13 Release build via a -Werror false positive
+- **Context:** the Release super-build failed compiling TBB: `__atomic_store_1 ... writing 1 byte into
+  a region of size 0 [-Werror=stringop-overflow]`.
+- **Issue:** oneTBB builds with `-Werror -Wfatal-errors`, and gcc 13+ at `-O2/-O3` emits a known
+  false-positive `-Wstringop-overflow` inside TBB's lock-free atomics. So a gcc-13 **Release** build of
+  VIXEN breaks on third-party code. Debug dodged it (`-O0`).
+- **Suggested fix:** after `FetchContent_MakeAvailable(TBB)`, strip the error-promotion on the TBB
+  targets for GCC (`-Wno-error=stringop-overflow`). It's a compiler/library interaction, not our code.
+- **Status:** FIXED (`dependencies/CMakeLists.txt`).
+
+### FR-18 — Library headers force VK_USE_PLATFORM_XCB_KHR, pulling in an unneeded xcb.h
+- **Context:** a fresh build failed at `ShaderManagement`'s PCH: `vulkan/vulkan.h: fatal error:
+  xcb/xcb.h: No such file or directory`.
+- **Issue:** `ShaderManagementHeaders.h` and `RenderGraphHeaders.h` both `#define VK_USE_PLATFORM_XCB_KHR`
+  on the non-Windows path, which forces `vulkan.h` to `#include <xcb/xcb.h>` — yet neither library uses
+  any xcb type, and the provisioned xcb header isn't on those targets' include path. This is exactly
+  the coupling `application/main/include/Headers.h` documents as the *wrong* approach (GLFW owns the
+  platform surface at runtime). The standalone tree masked it with a stale cached PCH.
+- **Suggested fix:** remove the vestigial define (keep `unistd.h`); the surface ext is GLFW's job.
+- **Status:** FIXED (`ShaderManagementHeaders.h`, `RenderGraphHeaders.h`).
+
+---
+
 ## Adding entries
 
 Number sequentially (`FR-N`). When an entry is fixed engine-side, set `Status: FIXED` and note the

@@ -293,7 +293,7 @@ set(GLFW_INSTALL        OFF CACHE BOOL "" FORCE)
 # Self-provision GLFW's Linux windowing backend deps (X11 dev libs) into a cache and enable the X11
 # backend; if unavailable, falls back to the null backend so the build never breaks. No-op on
 # Windows (Win32) / macOS (Cocoa). Override with -DGLFW_BUILD_X11 / -DVIXEN_AUTO_PROVISION_WINDOWING.
-include(${CMAKE_SOURCE_DIR}/cmake/ProvisionWindowingDeps.cmake)
+include(${VIXEN_ROOT}/cmake/ProvisionWindowingDeps.cmake)
 FetchContent_MakeAvailable(glfw)
 if(TARGET glfw)
     set_target_properties(glfw PROPERTIES FOLDER "Dependencies")
@@ -374,6 +374,19 @@ if(NOT TARGET TBB::tbb)
     endif()
     if(TARGET tbbmalloc_proxy)
         set_target_properties(tbbmalloc_proxy PROPERTIES FOLDER "Dependencies")
+    endif()
+
+    # gcc 13+ at -O2/-O3 emits a FALSE-POSITIVE -Wstringop-overflow inside TBB's lock-free atomics
+    # ("__atomic_store_1 ... writing 1 byte into a region of size 0"). TBB builds with -Werror, so on
+    # a gcc-13 Release build this breaks an otherwise-fine compile. Strip the error-promotion (and the
+    # warning) on the TBB targets for GCC only — it's a known compiler/TBB interaction in third-party
+    # code, not ours — so VIXEN builds in any configuration (Debug dodged it by being -O0).
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        foreach(_tbb_tgt tbb tbbmalloc tbbmalloc_proxy)
+            if(TARGET ${_tbb_tgt})
+                target_compile_options(${_tbb_tgt} PRIVATE -Wno-error=stringop-overflow -Wno-stringop-overflow)
+            endif()
+        endforeach()
     endif()
 
     message(STATUS "oneTBB fetched - parallel execution available to all libraries")

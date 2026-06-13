@@ -7,6 +7,11 @@ cmake_minimum_required(VERSION 3.11..4.2 FATAL_ERROR)
 
 set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 
+# Root of the VIXEN engine tree. Use this (NOT CMAKE_SOURCE_DIR) for engine-relative source paths so
+# VIXEN works both standalone AND when add_subdirectory'd into a super-build (e.g. the UNDERTOW
+# vixen/ build that also builds the render host). Standalone, this equals CMAKE_SOURCE_DIR.
+set(VIXEN_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
+
 set(Recipe_Name "VIXEN")
 
 # ============================================================================
@@ -418,4 +423,4 @@ include(cmake/BenchmarkPackage.cmake)
 # Visual Studio Solution Organization
 # ============================================================================
 # Set VIXEN as the startup project in Visual Studio
-set_property(DIRECTORY ${CMAKE_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT VIXEN)
+set_property(DIRECTORY ${VIXEN_ROOT} PROPERTY VS_STARTUP_PROJECT VIXEN)

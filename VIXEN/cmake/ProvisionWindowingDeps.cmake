@@ -24,8 +24,21 @@ if(NOT (UNIX AND NOT APPLE))
 endif()
 
 option(VIXEN_AUTO_PROVISION_WINDOWING "Auto-provision X11 dev libs for GLFW on Linux when absent" ON)
-set(VIXEN_WINDOWING_CACHE_DIR "${CMAKE_SOURCE_DIR}/.windowing-deps" CACHE PATH "Provisioned X11 dev cache")
+set(VIXEN_WINDOWING_CACHE_DIR "${VIXEN_ROOT}/.windowing-deps" CACHE PATH "Provisioned X11 dev cache")
 set(_arch "x86_64-linux-gnu")
+
+# GLFW's Linux build defaults the Wayland backend ON, and that backend needs wayland-scanner at
+# configure time. We provision the X11 backend (below), not Wayland — so on a fresh tree where the
+# X11 branch fires directly (no prior null-backend configure to cache it OFF), GLFW would still try
+# to build Wayland and fail on the missing wayland-scanner. Disable the Wayland backend up front when
+# wayland-scanner is absent (build it can't run). If it IS present, leave GLFW's default so a
+# Wayland-capable host still gets that backend. This keeps the X11 path self-consistent whether VIXEN
+# is built standalone or add_subdirectory'd into a super-build.
+find_program(_vixen_wayland_scanner wayland-scanner)
+if(NOT _vixen_wayland_scanner)
+    set(GLFW_BUILD_WAYLAND OFF CACHE BOOL "" FORCE)
+    message(STATUS "VIXEN: wayland-scanner not found; GLFW Wayland backend disabled (X11 only).")
+endif()
 
 # 1) System X11 dev present? Just enable the X11 backend and let GLFW find it normally.
 find_path(_vixen_x11_sys NAMES X11/Xlib.h PATHS /usr/include)

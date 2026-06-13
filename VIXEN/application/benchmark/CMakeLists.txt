@@ -105,11 +105,11 @@ endif()
 
 # Output to binaries/ alongside main VIXEN executable
 set_target_properties(vixen_benchmark PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/binaries
-    RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_SOURCE_DIR}/binaries
-    RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_SOURCE_DIR}/binaries
-    RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL ${CMAKE_SOURCE_DIR}/binaries
-    RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO ${CMAKE_SOURCE_DIR}/binaries
+    RUNTIME_OUTPUT_DIRECTORY ${VIXEN_ROOT}/binaries
+    RUNTIME_OUTPUT_DIRECTORY_DEBUG ${VIXEN_ROOT}/binaries
+    RUNTIME_OUTPUT_DIRECTORY_RELEASE ${VIXEN_ROOT}/binaries
+    RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL ${VIXEN_ROOT}/binaries
+    RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO ${VIXEN_ROOT}/binaries
 )
 
 # ============================================================================
@@ -203,7 +203,7 @@ endif()
 # - Copies shader sources for runtime compilation
 # - Creates README.txt with usage instructions
 
-set(BENCHMARK_PACKAGE_DIR "${CMAKE_SOURCE_DIR}/VixenBenchmark")
+set(BENCHMARK_PACKAGE_DIR "${VIXEN_ROOT}/VixenBenchmark")
 
 # Create the package target
 add_custom_target(benchmark_package
@@ -250,7 +250,7 @@ endif()
 # Copy shader sources for runtime compilation
 add_custom_command(TARGET benchmark_package POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${CMAKE_SOURCE_DIR}/shaders"
+        "${VIXEN_ROOT}/shaders"
         "${BENCHMARK_PACKAGE_DIR}/shaders"
     COMMENT "Copying shader sources"
 )
