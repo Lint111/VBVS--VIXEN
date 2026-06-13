@@ -380,6 +380,13 @@ target_link_libraries(RenderGraph
 # RmlUi is built static (FetchContent); code including its headers needs this define.
 target_compile_definitions(RenderGraph PUBLIC RMLUI_STATIC_LIB)
 
+# UIRenderNode loads RmlUi assets (fonts/docs) via paths relative to the exe (vixen_stage_assets
+# stages them next to demo binaries). Consumers that run from a different CWD (e.g. the UNDERTOW host)
+# wouldn't find them; this source-dir fallback lets the node resolve assets/ui/* from the engine tree
+# regardless of CWD. Private — only UIRenderNode.cpp uses it.
+target_compile_definitions(RenderGraph PRIVATE
+    VIXEN_UI_ASSET_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/assets")
+
 # ============================================================================
 # Install and Properties
 # ============================================================================

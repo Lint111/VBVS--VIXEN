@@ -54,6 +54,11 @@ CONSTEXPR_NODE_CONFIG(ComputeDispatchNodeConfig,
     static constexpr const char* DISPATCH_Z = "dispatchZ";
     static constexpr const char* PUSH_CONSTANT_SIZE = "pushConstantSize";
     static constexpr const char* DESCRIPTOR_SET_COUNT = "descriptorSetCount";
+    // When true, leave the swapchain image in VK_IMAGE_LAYOUT_GENERAL after the dispatch instead of
+    // transitioning it to PRESENT_SRC, and submit with no fence — for compositing a downstream graphics
+    // pass (e.g. a UI render pass with loadOp=LOAD) that owns the final present transition + the frame
+    // fence. Default false ⇒ compute is the last writer and presents directly (voxel-only path).
+    static constexpr const char* PARAM_LEAVE_IMAGE_IN_GENERAL = "leaveImageInGeneral";
 
     // ===== INPUTS (6) =====
 

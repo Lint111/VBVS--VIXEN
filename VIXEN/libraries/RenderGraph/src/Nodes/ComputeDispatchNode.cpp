@@ -169,8 +169,16 @@ void ComputeDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
         NODE_LOG_DEBUG("Compute Frame " + std::to_string(currentFrameIndex) + ", Image " + std::to_string(imageIndex));
     }
 
-    // Phase 0.4: Reset fence before submitting (fence was already waited on by FrameSyncNode)
-    vkResetFences(vulkanDevice->device, 1, &inFlightFence);
+    // Composite mode: when a downstream graphics pass (UI) follows, it owns the frame fence + the
+    // final present transition. The compute then submits with NO fence and leaves the image in GENERAL.
+    const bool leaveImageInGeneral =
+        GetParameterValue<bool>(ComputeDispatchNodeConfig::PARAM_LEAVE_IMAGE_IN_GENERAL, false);
+
+    // Phase 0.4: Reset fence before submitting (fence was already waited on by FrameSyncNode). In
+    // composite mode the downstream UI submit resets + owns the fence, so leave it alone here.
+    if (!leaveImageInGeneral) {
+        vkResetFences(vulkanDevice->device, 1, &inFlightFence);
+    }
 
     // Collect GPU performance results for this frame-in-flight (after fence wait)
     // The fence for this frame index was waited on, so previous frame's results are ready
@@ -229,7 +237,7 @@ void ComputeDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // Always re-record to update push constants (they change every frame)
     // TODO: Optimize using secondary command buffers or dynamic state
     VkCommandBuffer cmdBuffer = commandBuffers.GetValue(imageIndex);
-    RecordComputeCommands(ctx, cmdBuffer, imageIndex, currentFrameIndex, &pushConstants);
+    RecordComputeCommands(ctx, cmdBuffer, imageIndex, currentFrameIndex, &pushConstants, leaveImageInGeneral);
     commandBuffers.MarkReady(imageIndex);
 
     // Submit command buffer to compute queue
@@ -246,12 +254,17 @@ void ComputeDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &cmdBuffer;
 
-    // Signal render complete semaphore (will be consumed by Present)
+    // Signal render complete semaphore. Voxel-only: consumed by Present. Composite: the compute→UI
+    // handoff the downstream UI submit waits on (per-IMAGE, same array, no double-signal).
     submitInfo.signalSemaphoreCount = 1;
     submitInfo.pSignalSemaphores = &renderCompleteSemaphore;
 
+    // Composite mode submits with no fence — the downstream UI submit is the frame's last submit and
+    // owns inFlightFence (a binary fence must not be signalled by two submits in one frame).
+    VkFence submitFence = leaveImageInGeneral ? VK_NULL_HANDLE : inFlightFence;
+
     // Submit to graphics queue (assume compute = graphics for now)
-    VkResult result = vkQueueSubmit(vulkanDevice->queue, 1, &submitInfo, inFlightFence);
+    VkResult result = vkQueueSubmit(vulkanDevice->queue, 1, &submitInfo, submitFence);
     if (result != VK_SUCCESS) {
         throw std::runtime_error("[ComputeDispatchNode::ExecuteImpl] Failed to submit command buffer: " + std::to_string(result));
     }
@@ -275,7 +288,7 @@ void ComputeDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
 // RECORD COMPUTE COMMANDS
 // ============================================================================
 
-void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmdBuffer, uint32_t imageIndex, uint32_t frameIndex, const void* pushConstantData) {
+void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmdBuffer, uint32_t imageIndex, uint32_t frameIndex, const void* pushConstantData, bool leaveImageInGeneral) {
     // Begin command buffer recording
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -334,7 +347,11 @@ void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cm
         gpuPerfLogger_->RecordDispatchEnd(cmdBuffer, frameIndex, swapchainInfo->Extent.width, swapchainInfo->Extent.height);
     }
 
-    TransitionImageToPresent(cmdBuffer, swapchainImage);
+    // Voxel-only: compute is the last writer, so hand the image to present. Composite: leave it in
+    // GENERAL — the downstream UI render pass loads from GENERAL and owns the →PRESENT_SRC transition.
+    if (!leaveImageInGeneral) {
+        TransitionImageToPresent(cmdBuffer, swapchainImage);
+    }
 
     // End command buffer
     result = vkEndCommandBuffer(cmdBuffer);

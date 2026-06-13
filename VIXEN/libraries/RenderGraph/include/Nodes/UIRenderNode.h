@@ -52,6 +52,7 @@ protected:
 
 private:
     void FreeCommandBuffers();  // free the per-image command buffers (no device wait)
+    void DestroyCompositeSemaphores();  // destroy the owned per-image "ui complete" semaphores
     void RecordFrame(VkCommandBuffer cmd, VkFramebuffer framebuffer);
 
     bool initialized_ = false;
@@ -61,6 +62,13 @@ private:
     VkRenderPass renderPass_ = VK_NULL_HANDLE;   // consumed from RenderPassNode (not owned)
     VkExtent2D extent_{};
     std::vector<VkCommandBuffer> commandBuffers_;  // one per swapchain image (owned)
+    uint32_t syncImageCount_ = 0;  // image count the owned cmd buffers + composite semaphores were sized to
+
+    // Composite mode (compositing over the voxel compute): layered over an upstream producer. The
+    // node waits on the per-IMAGE compute→UI handoff and signals its own per-image semaphore (so the
+    // present-wait semaphore is distinct from the handoff — a binary semaphore is one-signal/one-wait).
+    bool composite_ = false;
+    std::vector<VkSemaphore> uiCompleteSemaphores_;  // one per swapchain image (owned; composite only)
 
     Vixen::Ui::VixenRmlSystemInterface systemInterface_;
     Vixen::Ui::VixenRmlRenderInterface renderInterface_;

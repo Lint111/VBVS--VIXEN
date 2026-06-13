@@ -701,7 +701,16 @@ void VulkanGraphApplication::BuildRenderGraph() {
     
     NodeHandle debugCaptureNode = renderGraph->AddNode<DebugBufferReaderNodeType>("debug_capture");
 
-    mainLogger->Info("Created 29 node instances (including compute pipeline, camera, voxel grid, and gatherers)");
+    // --- UI composite pass (HUD over the voxel render) ---
+    // A color-only graphics pass layered over the compute output: RenderPassNode (LOAD, initial=General,
+    // final=PresentSrc) + FramebufferNode (swapchain image views) + UIRenderNode (composite). Mirrors
+    // BuildUIGraph's UIRenderNode shape, but LOADs the voxel image instead of clearing.
+    NodeHandle uiRenderPassNode  = renderGraph->AddNode<RenderPassNodeType>("ui_composite_render_pass");
+    NodeHandle uiFramebufferNode = renderGraph->AddNode<FramebufferNodeType>("ui_composite_framebuffer");
+    NodeHandle uiCompositeNode   = renderGraph->AddNode<UIRenderNodeType>("ui_composite_render");
+    uiRenderNode_ = uiCompositeNode;                 // store for GetUiRenderNode() live lookup (host SetHudData)
+
+    mainLogger->Info("Created 32 node instances (including compute pipeline, camera, voxel grid, gatherers, and UI composite pass)");
 
     // ===================================================================
     // PHASE 2: Configure node parameters
@@ -1017,7 +1026,26 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     
 
-    mainLogger->Info("Configured all node parameters (including camera and voxel grid)");
+    // --- UI composite pass parameters ---
+    // The compute leaves the swapchain image in GENERAL (it no longer transitions to PRESENT_SRC); the
+    // UI render pass LOADs that image, draws the HUD over it, and owns the →PRESENT_SRC transition.
+    dispatch->SetParameter(ComputeDispatchNodeConfig::PARAM_LEAVE_IMAGE_IN_GENERAL, true);
+
+    auto* uiRenderPass = static_cast<RenderPassNode*>(renderGraph->GetInstance(uiRenderPassNode));
+    uiRenderPass->SetParameter(RenderPassNodeConfig::PARAM_COLOR_LOAD_OP, AttachmentLoadOp::Load);   // preserve voxels
+    uiRenderPass->SetParameter(RenderPassNodeConfig::PARAM_COLOR_STORE_OP, AttachmentStoreOp::Store);
+    uiRenderPass->SetParameter(RenderPassNodeConfig::PARAM_INITIAL_LAYOUT, ImageLayout::General);    // compute leaves GENERAL
+    uiRenderPass->SetParameter(RenderPassNodeConfig::PARAM_FINAL_LAYOUT, ImageLayout::PresentSrc);   // ready for present
+    uiRenderPass->SetParameter(RenderPassNodeConfig::PARAM_SAMPLES, 1u);
+
+    auto* uiFramebuffer = static_cast<FramebufferNode*>(renderGraph->GetInstance(uiFramebufferNode));
+    uiFramebuffer->SetParameter(FramebufferNodeConfig::PARAM_LAYERS, 1u);
+
+    auto* uiComposite = static_cast<UIRenderNode*>(renderGraph->GetInstance(uiCompositeNode));
+    uiComposite->SetParameter(UIRenderNodeConfig::PARAM_COMPOSITE, true);
+    uiComposite->SetParameter(UIRenderNodeConfig::RML_DOCUMENT_PATH, std::string("assets/ui/hud.rml"));
+
+    mainLogger->Info("Configured all node parameters (including camera, voxel grid, and UI composite pass)");
 
     // ===================================================================
     // PHASE 3: Wire connections using TypedConnection API
@@ -1196,8 +1224,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
                   presentNode, PresentNodeConfig::IMAGE_INDEX);
 
-    // --- ComputeDispatch → Present semaphore connection (separate to avoid ConnectionBatch duplication bug) ---
-    batch.Connect(computeDispatch, ComputeDispatchNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+    // --- UI composite → Present semaphore connection ---
+    // The UI pass is now the frame's last submit: present waits on the UI's render-complete semaphore
+    // (not the compute's). The compute's render-complete is consumed by the UI as the compute→UI handoff.
+    batch.Connect(uiCompositeNode, UIRenderNodeConfig::RENDER_COMPLETE_SEMAPHORE,
                   presentNode, PresentNodeConfig::RENDER_COMPLETE_SEMAPHORE);
 
 
@@ -1396,6 +1426,39 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     // REMOVED DUPLICATE: computeDispatch -> present RENDER_COMPLETE_SEMAPHORE (already connected at line 894-895)
 
+    // ===================================================================
+    // UI composite pass: HUD render pass over the compute output, before present.
+    // Mirrors BuildUIGraph's RenderPassNode → FramebufferNode → UIRenderNode shape, but the render pass
+    // LOADs (initial=General, from the compute) instead of clearing, and the UI node runs in composite
+    // mode (waits on the compute→UI handoff, signals its own present semaphore, owns the frame fence).
+    // ===================================================================
+
+    // UI render pass: device + swapchain format. (Color-only; no depth → LOAD/initial=General set above.)
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, uiRenderPassNode, RenderPassNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC, uiRenderPassNode, RenderPassNodeConfig::SWAPCHAIN_INFO);
+
+    // UI framebuffers: wrap each swapchain image view against the UI render pass.
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, uiFramebufferNode, FramebufferNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(uiRenderPassNode, RenderPassNodeConfig::RENDER_PASS, uiFramebufferNode, FramebufferNodeConfig::RENDER_PASS)
+         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC, uiFramebufferNode, FramebufferNodeConfig::SWAPCHAIN_INFO);
+
+    // UIRenderNode (composite) inputs — mirrors BuildUIGraph's UIRenderNode wiring.
+    batch.Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC, uiCompositeNode, UIRenderNodeConfig::SWAPCHAIN_INFO)
+         .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL, uiCompositeNode, UIRenderNodeConfig::COMMAND_POOL)
+         .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, uiCompositeNode, UIRenderNodeConfig::VULKAN_DEVICE)
+         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX, uiCompositeNode, UIRenderNodeConfig::IMAGE_INDEX)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX, uiCompositeNode, UIRenderNodeConfig::CURRENT_FRAME_INDEX)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::IN_FLIGHT_FENCE, uiCompositeNode, UIRenderNodeConfig::IN_FLIGHT_FENCE)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY, uiCompositeNode, UIRenderNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
+         .Connect(swapChainNode, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY, uiCompositeNode, UIRenderNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY)
+         .Connect(uiRenderPassNode, RenderPassNodeConfig::RENDER_PASS, uiCompositeNode, UIRenderNodeConfig::RENDER_PASS)
+         .Connect(uiFramebufferNode, FramebufferNodeConfig::FRAMEBUFFERS, uiCompositeNode, UIRenderNodeConfig::FRAMEBUFFERS);
+
+    // The compute→UI handoff: the UI waits on the semaphore the compute signalled after writing the
+    // image. This is also the explicit edge that orders the UI's Execute after the compute's.
+    batch.Connect(computeDispatch, ComputeDispatchNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+                  uiCompositeNode, UIRenderNodeConfig::COMPOSITE_WAIT_SEMAPHORE);
+
     // Atomically register all connections
     size_t connectionCount = batch.GetConnectionCount();
     mainLogger->Info("Registering " + std::to_string(connectionCount) + " connections...");
@@ -1523,4 +1586,12 @@ GLFWwindow* VulkanGraphApplication::GetWindowHandle() const {
     // recompiles, so never cache the pointer (that was the dangling-window bug the refactor removed).
     auto* window = static_cast<WindowNode*>(renderGraph->GetInstance(windowNode_));
     return window != nullptr ? window->GetWindow() : nullptr;
+}
+
+Vixen::RenderGraph::UIRenderNode* VulkanGraphApplication::GetUiRenderNode() const {
+    // Live lookup of the composite HUD node (set in BuildRenderGraph). Mirrors GetWindowHandle: never
+    // cache the pointer (it persists across recompiles). nullptr when unset — e.g. the VIXEN_UI_DEMO
+    // path builds BuildUIGraph (no composite node) and never assigns uiRenderNode_.
+    if (!renderGraph) return nullptr;
+    return static_cast<Vixen::RenderGraph::UIRenderNode*>(renderGraph->GetInstance(uiRenderNode_));
 }

@@ -16,6 +16,7 @@
 class VulkanRenderer;
 class VulkanSwapChain;
 struct GLFWwindow;  // cross-platform window handle (GLFW); real include only in the .cpp
+namespace Vixen::RenderGraph { class UIRenderNode; }  // composite HUD node; real include only in the .cpp
 
 using namespace Vixen::Vulkan::Resources;
 using namespace Vixen::RenderGraph;
@@ -147,6 +148,7 @@ private:
     uint32_t simLoopID = 0;                          // Logic loop for the embedded sim (fixed cadence)
     NodeHandle voxelGridNode_{};                     // stored so the host can mark the scene dirty
     NodeHandle windowNode_{};                        // stored so GetWindowHandle() can query the WindowNode live
+    NodeHandle uiRenderNode_{};                      // stored so GetUiRenderNode() can query the composite UI node live
 
     // NOTE: Command buffers, semaphores, and all Vulkan resources
     // are managed by the render graph nodes, not the application
@@ -162,4 +164,8 @@ public:
     // Queries the WindowNode LIVE each call (the node owns the window post-de-own refactor + persists
     // across recompiles) — no cached handle, so no dangling-pointer window-capture bug.
     GLFWwindow* GetWindowHandle() const;
+    // Expose the composite HUD node so the host can push live sim data (SetHudData) each frame. LIVE
+    // lookup (like GetWindowHandle) — the node persists across recompiles; returns nullptr if unset
+    // (e.g. the VIXEN_UI_DEMO path, which has no composite UI node).
+    Vixen::RenderGraph::UIRenderNode* GetUiRenderNode() const;
 };

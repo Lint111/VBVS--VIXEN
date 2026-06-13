@@ -55,6 +55,7 @@ enum class AttachmentStoreOp {
  */
 enum class ImageLayout {
     Undefined,                    // VK_IMAGE_LAYOUT_UNDEFINED
+    General,                     // VK_IMAGE_LAYOUT_GENERAL (compute STORAGE writes; valid LOAD source)
     ColorAttachment,             // VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
     DepthStencilAttachment,      // VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
     PresentSrc,                  // VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
