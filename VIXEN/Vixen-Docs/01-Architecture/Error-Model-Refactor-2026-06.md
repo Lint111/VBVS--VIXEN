@@ -1,8 +1,8 @@
 ---
 tags: [architecture, error-model, refactor, AR1, mod-facing]
 created: 2026-06-13
-status: phases 1-2 done (exit() de-fatal + host-facing status channel); phase 3 (internal throws / recovery) queued
-related: ["[[Architecture-Review-Game-Renderer-2026-06-12]]", "[[consumer-feedback-undertow]]"]
+status: phases 1-3 done. P1 exit()-de-fatal + P2 host-facing status channel + P3 device-loss recovery (rebuild on a fresh device, validated). Merged to main 2026-06-13.
+related: ["[[Architecture-Review-Game-Renderer-2026-06-12]]", "[[consumer-feedback-undertow]]", "[[Device-Loss-Recovery-2026-06]]"]
 ---
 
 # Error-Model Refactor (AR#1) — Design
@@ -84,9 +84,21 @@ C++ and, for recompiles, are already caught + deferred). Bounded change at the b
 returns status only. (Deferred for a future increment: *recovering* the initial compile via mark-for-retry
 like recompiles; richer per-failure recovery for device-lost / OOM lives in phase 3.)
 
-### Phase 3 — the long tail
-Adopt `VK_CHECK`/status across the 396 `throw`s where recovery (vs a clean fail-and-report) makes sense;
-keep `throw` for genuine programmer-error invariants.
+### Phase 3 — surgical *recovery* (NOT a mass throw→status conversion) ✅ DONE (2026-06-13)
+**Reframe (confirmed by categorizing the throws):** the backlog's "adopt status across the ~396 throws"
+was mostly *inappropriate* — the majority are validation/invariant checks ("shader bundle not set",
+"device input is null", …) that SHOULD stay `throw` (fail fast on a mis-wired graph), and post-Phase-2
+they no longer crash the host. The genuine value is **recovery of the one truly-transient runtime
+failure that matters for a long-running C# host: GPU device loss.**
+
+Delivered (full design + root-causes in [[Device-Loss-Recovery-2026-06]]): detect `VK_ERROR_DEVICE_LOST`
+→ rebuild the whole graph on a fresh device (ordering-correct teardown-reverse / rebuild-forward;
+instance + surface + window persist, only the device + its children rebuild) → resume rendering.
+Validated via a fault-injection harness (`VIXEN_SIMULATE_DEVICE_LOSS`): synthetic loss → full rebuild →
+~73-89s of continuous post-recovery rendering, no crash, zero Vulkan validation errors. Also fixed two
+pre-existing UAFs the rebuild surfaced (a dangling GPU-task-profile pointer via CalibrationStore.Load
+replacing profile objects; a rebuildable-ConstantNode value). (OOM / shader-compile recovery + the
+unrecoverable-loss terminal path remain a future increment — not blocking.)
 
 ## 5. Acceptance
 
@@ -94,5 +106,7 @@ keep `throw` for genuine programmer-error invariants.
 - ✅ A node Execute failure surfaces as a status, not a crash (Phase 2a).
 - ✅ Initial graph compile failure is reportable via `IsPrepared()`/`GetLastError()`, not `exit(-1)` (Phase 2b).
 - ✅ No exception escapes `Prepare`/`Update`/`Render`/`RenderFrame` to the C# host (Phase 2c).
-- ⬜ Specific *recovery* for shader-compile / device-lost / OOM (vs. report-and-stop), + defer initial
-  compile for retry — phase 3 / future increment.
+- ✅ Device loss is detected and recovered: the graph rebuilds on a fresh device and resumes rendering
+  (Phase 3 — validated; see [[Device-Loss-Recovery-2026-06]]).
+- ⬜ OOM / shader-compile recovery + the unrecoverable-loss terminal path + defer-initial-compile-retry —
+  future increment (not blocking; device loss was the high-value case).
