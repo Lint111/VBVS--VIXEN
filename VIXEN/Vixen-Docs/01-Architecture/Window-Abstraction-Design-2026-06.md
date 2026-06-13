@@ -1,7 +1,7 @@
 ---
 tags: [architecture, design-sketch, window, lifecycle, refactor]
 created: 2026-06-13
-status: approved direction — implementation plan next
+status: implemented (phases 1-4, 2026-06-13); phase 5 (multi-window rendering) deferred
 related: ["[[Architecture-Review-Game-Renderer-2026-06-12]]", "[[Overview]]"]
 ---
 
