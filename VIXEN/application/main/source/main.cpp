@@ -4,6 +4,14 @@
 #include "VulkanGlobalNames.h"
 #include <Logger.h>
 
+// Validation layers/extensions are gated by the cross-platform VIXEN_VULKAN_VALIDATION
+// symbol (set by cmake/ProvisionVulkan.cmake from the build type), NOT the MSVC-only
+// _DEBUG macro -- _DEBUG is undefined on GCC/Clang, which silently disabled validation
+// for non-MSVC consumers (UNDERTOW FR-1). Default off if the symbol is absent.
+#ifndef VIXEN_VULKAN_VALIDATION
+#define VIXEN_VULKAN_VALIDATION 0
+#endif
+
 // Initialize global Vulkan extension/layer lists (defined inline in VulkanGlobalNames.h)
 static bool initGlobalNames = []() {
     deviceExtensionNames = {
@@ -18,14 +26,14 @@ static bool initGlobalNames = []() {
         VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME // For querying surface capabilities
         // The platform surface extension (Win32/Xlib/Wayland) is added at runtime by InstanceNode
         // via glfwGetRequiredInstanceExtensions — cross-platform, no hardcoded VK_KHR_win32_surface.
-#ifdef _DEBUG
+#if VIXEN_VULKAN_VALIDATION
         , VK_EXT_DEBUG_REPORT_EXTENSION_NAME  // Debug extension for validation callbacks
 #endif
     };
 
     layerNames = {
-#ifdef _DEBUG
-        "VK_LAYER_KHRONOS_validation"  // Only enable validation in debug builds
+#if VIXEN_VULKAN_VALIDATION
+        "VK_LAYER_KHRONOS_validation"  // Enabled via VIXEN_VULKAN_VALIDATION (cross-platform)
 #endif
     };
 
