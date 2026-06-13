@@ -278,29 +278,37 @@ bool VulkanGraphApplication::Render() {
         return false;
     }
 
-    // Pump the OS event queue (main thread, every iteration -- including while minimized). This fires
-    // the WindowNode GLFW callbacks that publish WindowCloseEvent / WindowResizeEvent; WindowNode owns
-    // the window and its lifecycle.
-    glfwPollEvents();
+    // Phase 2c (AR#1): the host-facing tick must NEVER throw -- a C++ exception across a C# host
+    // (UNDERTOW) boundary is undefined behaviour. RenderFrame() already catches node-Execute failures
+    // (2a); this guard covers anything else (the event-callback handlers fired by glfwPollEvents, etc.).
+    try {
+        // Pump the OS event queue (main thread, every iteration -- including while minimized). This fires
+        // the WindowNode GLFW callbacks that publish WindowCloseEvent / WindowResizeEvent; WindowNode owns
+        // the window and its lifecycle.
+        glfwPollEvents();
 
-    // Render a complete frame via the graph
-    // The graph internally handles:
-    // - Event processing and deferred recompilation
-    // - Image acquisition (SwapChainNode)
-    // - Command buffer allocation & recording (GeometryRenderNode)
-    // - Queue submission with semaphores (nodes manage sync)
-    // - Presentation (PresentNode)
-    VkResult result = renderGraph->RenderFrame();
+        // Render a complete frame via the graph (it internally handles event processing + deferred
+        // recompilation, image acquisition, command recording, queue submission with semaphores, present).
+        VkResult result = renderGraph->RenderFrame();
 
-    // Event-driven swapchain recreation is now handled internally by RenderGraph
-    // VK_ERROR_OUT_OF_DATE_KHR will trigger events that mark nodes for recompilation
-    if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
-        mainLogger->Error("Frame rendering failed with result: " + std::to_string(result));
+        // Event-driven swapchain recreation is handled internally; VK_ERROR_OUT_OF_DATE_KHR triggers
+        // events that mark nodes for recompilation.
+        if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
+            mainLogger->Error("Frame rendering failed with result: " + std::to_string(result));
+            return false;
+        }
+
+        currentFrame++;
+        return true;
+    } catch (const std::exception& e) {
+        lastError_ = std::string("Render failed: ") + e.what();
+        if (mainLogger) mainLogger->Error("[VulkanGraphApplication::Render] " + lastError_);
+        return false;  // stop the loop; the host reads GetLastError()
+    } catch (...) {
+        lastError_ = "Render failed: unknown (non-std) exception";
+        if (mainLogger) mainLogger->Error("[VulkanGraphApplication::Render] " + lastError_);
         return false;
     }
-
-    currentFrame++;
-    return true;
 }
 
 void VulkanGraphApplication::Update() {
@@ -308,23 +316,30 @@ void VulkanGraphApplication::Update() {
         return;
     }
 
-    // Update time for both application and graph
-    // Application time (legacy - kept for compatibility)
-    time.Update();
+    // Phase 2c: like Render(), the Update tick must not throw to a C# host. ProcessEvents() runs event
+    // handlers and RecompileDirtyNodes() already catches per-node compile failures; this guards the rest.
+    try {
+        // Application time (legacy - kept for compatibility)
+        time.Update();
 
-    // Graph time (used by nodes for frame-rate independent animations)
-    if (renderGraph) {
-        renderGraph->UpdateTime();
-    }
+        // Graph time (used by nodes for frame-rate independent animations)
+        if (renderGraph) {
+            renderGraph->UpdateTime();
+        }
 
-    // Process events and handle deferred recompilation
-    // This must happen in update phase, not render phase, to allow:
-    // - Updating without rendering (minimized windows)
-    // - Different update/render frame rates
-    // - Proper event-driven invalidation handling
-    if (renderGraph) {
-        renderGraph->ProcessEvents();
-        renderGraph->RecompileDirtyNodes();
+        // Process events + deferred recompilation here (not in render) so updates run without rendering
+        // (minimized windows), at a different rate, and event-driven invalidation is handled.
+        if (renderGraph) {
+            renderGraph->ProcessEvents();
+            renderGraph->RecompileDirtyNodes();
+        }
+    } catch (const std::exception& e) {
+        // Record + continue: a fatal condition also surfaces via the next Render() (which returns false).
+        lastError_ = std::string("Update failed: ") + e.what();
+        if (mainLogger) mainLogger->Error("[VulkanGraphApplication::Update] " + lastError_);
+    } catch (...) {
+        lastError_ = "Update failed: unknown (non-std) exception";
+        if (mainLogger) mainLogger->Error("[VulkanGraphApplication::Update] " + lastError_);
     }
 
     // Note: MVP matrix updates now handled by DescriptorSetNode during Execute()
