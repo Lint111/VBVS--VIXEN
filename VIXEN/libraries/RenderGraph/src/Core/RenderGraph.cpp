@@ -588,7 +588,28 @@ void RenderGraph::Execute(VkCommandBuffer commandBuffer) {
     }
 }
 
+void RenderGraph::NotifyDeviceLost(const std::string& site) {
+    // AR#1 Phase 3, Increment 1. Idempotent latch: the first detection wins so we report a single,
+    // coherent device-loss origin even though several GPU calls (submit/present/wait) may all fail in
+    // the same frame. The device + every child object is invalid from here; RenderFrame() short-circuits
+    // to VK_ERROR_DEVICE_LOST until recovery (Increment 2) rebuilds on a fresh device and clears the flag.
+    if (deviceLost_) {
+        GRAPH_LOG_WARNING("[RenderGraph::NotifyDeviceLost] (already latched) further device-lost at: " + site);
+        return;
+    }
+    deviceLost_ = true;
+    GRAPH_LOG_ERROR("[RenderGraph::NotifyDeviceLost] VK_ERROR_DEVICE_LOST detected at: " + site +
+                    " — the GPU device and all its resources are now invalid; rendering halts until recovery.");
+}
+
 VkResult RenderGraph::RenderFrame() {
+    // AR#1 Phase 3: once the device is lost, every GPU call is invalid. Report it as a distinct status
+    // (not Phase 2a's generic VK_ERROR_UNKNOWN) on every subsequent frame so the trigger can route to
+    // recovery; do this before any node executes against the dead device.
+    if (deviceLost_) {
+        return VK_ERROR_DEVICE_LOST;
+    }
+
     // AR#16: after shutdown cleanup the graph's resources are destroyed. Skip cleanly instead of
     // executing nodes that would index freed per-image sync arrays (vector-out-of-range on close).
     if (isCleanedUp) {
@@ -812,6 +833,13 @@ VkResult RenderGraph::RenderFrame() {
 
     // Increment frame counter for next frame
     globalFrameIndex++;
+
+    // AR#1 Phase 3: if a node latched device-loss mid-frame (e.g. a submit/wait returned
+    // VK_ERROR_DEVICE_LOST), surface that distinctly — it outranks a generic node-Execute failure and
+    // tells the trigger to route to recovery rather than treat the frame as a one-off error.
+    if (deviceLost_) {
+        return VK_ERROR_DEVICE_LOST;
+    }
 
     return frameResult;  // Phase 2a: VK_SUCCESS, or the failure recorded if a node's Execute threw
 }

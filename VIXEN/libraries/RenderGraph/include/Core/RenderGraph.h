@@ -428,6 +428,24 @@ public:
      */
     void RecompileDirtyNodes();
 
+    // ====== Device-loss recovery (AR#1 Error-Model Phase 3) ======
+
+    /**
+     * @brief Latch that the GPU device was lost (VK_ERROR_DEVICE_LOST).
+     *
+     * Called by any node that observes VK_ERROR_DEVICE_LOST from a GPU call (submit / present /
+     * acquire / fence wait). Idempotent — the first detection wins; subsequent calls only log.
+     * Once latched, RenderFrame() short-circuits and returns VK_ERROR_DEVICE_LOST until recovery
+     * clears the flag (Increment 2: RecoverFromDeviceLoss). The device and all its child objects
+     * are invalid after this point; the graph must rebuild on a fresh device before rendering again.
+     *
+     * @param site Human-readable origin of the detection, e.g. "FrameSyncNode::vkWaitForFences".
+     */
+    void NotifyDeviceLost(const std::string& site);
+
+    /** @brief True once a VK_ERROR_DEVICE_LOST has been latched and not yet recovered. */
+    bool IsDeviceLost() const { return deviceLost_; }
+
     /**
      * @brief Get the message bus (for nodes to publish events)
      */
@@ -834,6 +852,11 @@ private:
     // AR#16: set by ExecuteCleanup (shutdown). RenderFrame() checks this so it never executes a node
     // against destroyed resources (the render loop can iterate once more after WindowCloseEvent).
     bool isCleanedUp = false;
+
+    // Device-loss recovery (AR#1 Error-Model Phase 3). Latched by NotifyDeviceLost() when a node sees
+    // VK_ERROR_DEVICE_LOST; checked by RenderFrame() which then returns VK_ERROR_DEVICE_LOST distinctly
+    // (vs Phase 2a's generic VK_ERROR_UNKNOWN). Increment 2 adds RecoverFromDeviceLoss() to clear it.
+    bool deviceLost_ = false;
 
     // Event-driven recompilation
     std::set<NodeHandle> dirtyNodes;
