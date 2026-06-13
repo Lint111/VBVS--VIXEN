@@ -147,6 +147,8 @@ struct VoxelSceneCreateInfo {
     uint32_t resolution = 128;
     float density = 0.5f;       // 0.0-1.0 (used by some generators)
     uint32_t seed = 42;         // For reproducibility
+    std::string customGeneratorName;  // Selects the registered generator when sceneType == Custom
+                                      // (empty for built-in types). Part of the cache key.
 
     /**
      * @brief Compute hash for cache key
@@ -161,6 +163,12 @@ struct VoxelSceneCreateInfo {
         hash = hash * 31 + resolution;
         hash = hash * 31 + densityQuantized;
         hash = hash * 31 + seed;
+        // Fold in the custom generator name so distinct custom generators get
+        // distinct keys (all Custom scenes share sceneType==255). Empty for
+        // built-in types, so their existing keys are unchanged.
+        for (unsigned char c : customGeneratorName) {
+            hash = hash * 31 + c;
+        }
         return hash;
     }
 
@@ -168,7 +176,8 @@ struct VoxelSceneCreateInfo {
         return sceneType == other.sceneType &&
                resolution == other.resolution &&
                static_cast<uint32_t>(density * 100) == static_cast<uint32_t>(other.density * 100) &&
-               seed == other.seed;
+               seed == other.seed &&
+               customGeneratorName == other.customGeneratorName;
     }
 };
 

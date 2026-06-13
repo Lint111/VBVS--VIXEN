@@ -73,6 +73,20 @@ endif()
 set_target_properties(test_typed_cacher_concurrency PROPERTIES FOLDER "Tests/CashSystem Tests")
 gtest_discover_tests(test_typed_cacher_concurrency)
 
+# VoxelSceneCreateInfo cache-key tests (P0 / AR#52 custom-generator identity)
+add_executable(test_voxel_scene_key
+    test_voxel_scene_key.cpp
+)
+target_compile_features(test_voxel_scene_key PRIVATE cxx_std_23)
+if(TARGET CashSystem)
+    target_link_libraries(test_voxel_scene_key PRIVATE GTest::gtest_main CashSystem Logger VulkanResources glm::glm)
+else()
+    target_link_libraries(test_voxel_scene_key PRIVATE GTest::gtest_main Logger glm::glm)
+endif()
+
+set_target_properties(test_voxel_scene_key PROPERTIES FOLDER "Tests/CashSystem Tests")
+gtest_discover_tests(test_voxel_scene_key)
+
 # Basic CashSystem functionality tests
 # TODO: Update these tests to use new registration-by-type API
 # add_executable(test_cashsystem_basic
