@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <fstream>
 #include <system_error>
+#include <cstdlib>  // std::getenv / std::atoi — device-loss fault-injection hook (VIXEN_SIMULATE_DEVICE_LOSS)
 
 // Logging macros for RenderGraph (uses mainLogger instead of nodeLogger)
 #define GRAPH_LOG_DEBUG(msg) do { if (mainLogger) mainLogger->Debug(msg); } while(0)
@@ -602,7 +603,102 @@ void RenderGraph::NotifyDeviceLost(const std::string& site) {
                     " — the GPU device and all its resources are now invalid; rendering halts until recovery.");
 }
 
+bool RenderGraph::RecoverFromDeviceLoss() {
+    if (!deviceLost_) {
+        return true;  // nothing to recover
+    }
+    if (deviceLostUnrecoverable_) {
+        return false;  // already determined the device is gone for good — don't spin
+    }
+
+    GRAPH_LOG_INFO("[RenderGraph::RecoverFromDeviceLoss] ===== DEVICE-LOSS RECOVERY: rebuilding the graph on a fresh device =====");
+
+    // Announce the reset (Reason::DriverReset, with the OLD/lost device handle) for observability and any
+    // subscriber not torn down by the graph. The authoritative device-cache clear also happens in
+    // DeviceNode::CleanupImpl during teardown below (idempotent), so this is not load-bearing for caches.
+    if (messageBus) {
+        void* oldDeviceHandle = nullptr;
+        for (const auto& inst : instances) {
+            if (inst && inst->GetNodeType() && inst->GetNodeType()->GetTypeName() == "Device") {
+                oldDeviceHandle = inst->GetDevice();
+                break;
+            }
+        }
+        messageBus->Publish(std::make_unique<EventBus::DeviceInvalidationEvent>(
+            0, oldDeviceHandle, EventBus::DeviceInvalidationEvent::Reason::DriverReset,
+            "device-loss recovery (VK_ERROR_DEVICE_LOST)"));
+        messageBus->ProcessMessages();
+    }
+
+    try {
+        // Drain in-flight work before destroying resources. On a truly-lost device vkDeviceWaitIdle
+        // returns VK_ERROR_DEVICE_LOST immediately (no hang); on a healthy device (fault-injection test)
+        // it actually drains, making the teardown safe in both cases.
+        WaitForGraphDevicesIdle();
+
+        // --- Pass 1: TEARDOWN in REVERSE execution order (children before the device) ---
+        // reason = DeviceLost: every node releases its device-child resources (same as Recompile, which
+        // all nodes already do); WindowNode keeps the window+surface; DeviceNode (last) destroys the old
+        // VkDevice and clears device caches.
+        for (auto it = executionOrder.rbegin(); it != executionOrder.rend(); ++it) {
+            NodeInstance* node = *it;
+            if (!node) continue;
+            GRAPH_LOG_INFO("[RenderGraph::RecoverFromDeviceLoss] Teardown: " + node->GetInstanceName());
+            node->Cleanup(CleanupReason::DeviceLost);
+        }
+
+        // --- Pass 2: REBUILD in FORWARD execution order (device first, then its dependents) ---
+        // DeviceNode::CompileImpl creates the new VulkanDevice and publishes it on VULKAN_DEVICE_OUT;
+        // each downstream node re-reads the new VulkanDevice* via ctx.In on Setup/Compile and recreates
+        // its resources. Mirrors the per-node bookkeeping in RecompileDirtyNodes.
+        for (NodeInstance* node : executionOrder) {
+            if (!node) continue;
+            GRAPH_LOG_INFO("[RenderGraph::RecoverFromDeviceLoss] Rebuild: " + node->GetInstanceName());
+            node->Setup();
+            node->ResetInputsUsedInCompile();
+            node->Compile();
+            node->ClearNeedsRecompile();
+            node->ResetCleanupFlag();                     // allow a future teardown to run again
+            cleanupStack.ResetExecuted(node->GetHandle());
+        }
+    } catch (const std::exception& e) {
+        deviceLostUnrecoverable_ = true;
+        GRAPH_LOG_ERROR(std::string("[RenderGraph::RecoverFromDeviceLoss] Rebuild failed — the device is unrecoverable: ") + e.what());
+        return false;
+    } catch (...) {
+        deviceLostUnrecoverable_ = true;
+        GRAPH_LOG_ERROR("[RenderGraph::RecoverFromDeviceLoss] Rebuild failed with a non-std exception — the device is unrecoverable");
+        return false;
+    }
+
+    // Rebuilt successfully. Clear the latch and any stale dirty work (everything was just rebuilt), and
+    // force the parallel virtual-task executor to rebuild against the freshly-compiled nodes.
+    deviceLost_ = false;
+    dirtyNodes.clear();
+    executorNeedsRebuild_ = true;
+    GRAPH_LOG_INFO("[RenderGraph::RecoverFromDeviceLoss] ===== RECOVERY COMPLETE: rendering resumes on the new device =====");
+    return true;
+}
+
 VkResult RenderGraph::RenderFrame() {
+    // AR#1 Phase 3: device-loss fault-injection hook (no-op unless VIXEN_SIMULATE_DEVICE_LOSS is set).
+    // Parse the env once; then latch a synthetic loss exactly once at the configured render-frame so the
+    // teardown+rebuild recovery path runs in a live run. The rebuild is valid on a healthy device too, so
+    // this faithfully exercises RecoverFromDeviceLoss without needing a real TDR.
+    if (simulateDeviceLossFrame_ == -2) {
+        const char* env = std::getenv("VIXEN_SIMULATE_DEVICE_LOSS");
+        simulateDeviceLossFrame_ = -1;
+        if (env) {
+            int parsed = std::atoi(env);
+            simulateDeviceLossFrame_ = (parsed > 0) ? parsed : 120;  // truthy-but-non-numeric -> default frame
+        }
+    }
+    if (!deviceLossSimulated_ && simulateDeviceLossFrame_ >= 0 &&
+        globalFrameIndex >= static_cast<uint64_t>(simulateDeviceLossFrame_)) {
+        deviceLossSimulated_ = true;
+        NotifyDeviceLost("VIXEN_SIMULATE_DEVICE_LOSS (synthetic fault injection)");
+    }
+
     // AR#1 Phase 3: once the device is lost, every GPU call is invalid. Report it as a distinct status
     // (not Phase 2a's generic VK_ERROR_UNKNOWN) on every subsequent frame so the trigger can route to
     // recovery; do this before any node executes against the dead device.

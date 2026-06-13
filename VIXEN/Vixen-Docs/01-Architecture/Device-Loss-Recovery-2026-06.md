@@ -1,7 +1,7 @@
 ---
 tags: [architecture, error-model, refactor, AR1, device-loss, recovery, phase3]
 created: 2026-06-13
-status: phase 3 — increment 1 (detection + distinct reporting) IN PROGRESS
+status: phase 3 — Inc 1 (detection) DONE+committed; Inc 2 (rebuild mechanism) VALIDATED end-to-end, one post-recovery resync crash remains
 related: ["[[Error-Model-Refactor-2026-06]]", "[[Window-Abstraction-Design-2026-06]]", "[[Architecture-Review-Game-Renderer-2026-06-12]]"]
 ---
 
@@ -113,23 +113,41 @@ surfaces here within one frame. Secondary sites (acquire/present/submit) are wir
 
 ## 6. Phased increments
 
-- **Increment 1 — detection + distinct reporting (foundation).** `deviceLost_` flag,
-  `NotifyDeviceLost()`/`IsDeviceLost()`, `FrameSyncNode` fence-wait detection, `RenderFrame` returns a
-  distinct `VK_ERROR_DEVICE_LOST`. Device loss is now *detected and cleanly reported* (no crash/UB)
-  even before recovery exists. ← **this increment**
-- **Increment 2 — the rebuild path.** `CleanupReason::DeviceLost`; `RecoverFromDeviceLoss()`
-  (teardown-reverse / rebuild-forward); in-graph self-heal trigger; bounded retry + terminal give-up;
-  `DeviceInvalidationEvent{DriverReset}`.
-- **Increment 3 — hardening + coverage + tests.** Wire the remaining acquire/present/submit sites;
-  simulated-device-loss test (inject `VK_ERROR_DEVICE_LOST`, assert rebuild + continued rendering);
+- **Increment 1 — detection + distinct reporting (foundation).** ✅ DONE (commit `16d0b8ec`).
+  `deviceLost_` flag, `NotifyDeviceLost()`/`IsDeviceLost()`, `FrameSyncNode` fence-wait detection,
+  `RenderFrame` returns a distinct `VK_ERROR_DEVICE_LOST`. Device loss is now *detected and cleanly
+  reported* (no crash/UB) even before recovery exists. Validated: clean build; live app renders the
+  loop with no false detection.
+- **Increment 2 — the rebuild path.** ⏳ MECHANISM VALIDATED, one post-recovery crash remains.
+  Landed: `CleanupReason::DeviceLost`; `RecoverFromDeviceLoss()` (drain → teardown-reverse →
+  rebuild-forward); in-graph self-heal trigger from the app `Render()`; single-attempt + terminal
+  `deviceLostUnrecoverable_`; `DeviceInvalidationEvent{DriverReset}`; a **fault-injection harness**
+  (`VIXEN_SIMULATE_DEVICE_LOSS=<frame>`) that latches a synthetic loss in a live run (the
+  teardown/recreate is valid on a healthy device, so it faithfully drives recovery). Also fixed
+  **ConstantNode** to be rebuildable (it moved its value into the output once and reset it on cleanup,
+  so a rebuild's second Compile threw "Value not set" — now it retains a re-populator and keeps the
+  value across non-final cleanups, like the window survives a device loss).
+  **Proven by the harness:** synthetic loss at frame 60 → all 19 nodes torn down (reverse) → device
+  recreated → all 19 rebuilt (forward) → "RECOVERY COMPLETE" → swapchain recreated → rendering resumes.
+  **Remaining:** the *first post-recovery frame* crashes (silent CPU fault, no Vulkan validation error)
+  right after binding the compute descriptors. The compute buffers (bindings 1–8) are all graph-owned
+  by `voxelGridNode` and ARE rebuilt to fresh handles — so this is NOT an injected-device-resource /
+  consumer-boundary problem; it is a per-node post-rebuild stale-reference (candidates: a cached
+  `VkDescriptorSet`/pool/pipeline in DescriptorSetNode/ComputeDispatchNode, or a command-buffer
+  recording referencing a pre-rebuild object). Needs instrumentation to pin the exact op; likely a
+  small number of focused per-node resync fixes.
+- **Increment 3 — hardening + coverage + tests.** Resolve the post-recovery resync; wire the remaining
+  acquire/present/submit detection sites; promote the fault-injection harness into an automated test;
   live-app no-regression validation.
 
 ## 7. Acceptance
 
-- ⬜ A runtime `VK_ERROR_DEVICE_LOST` is detected and surfaced as a distinct status, not a crash (Inc 1).
-- ⬜ The graph rebuilds on a fresh device with correct destroy-before-recreate ordering and resumes
-  rendering (Inc 2).
-- ⬜ Window + surface survive the rebuild (no flicker/recreate of the OS window) (Inc 2).
-- ⬜ An unrecoverable loss (device gone) terminates gracefully via status, with bounded retries — no
-  infinite recovery spin (Inc 2).
-- ⬜ Simulated device-loss test proves rebuild + continued rendering; live app unaffected (Inc 3).
+- ✅ A runtime `VK_ERROR_DEVICE_LOST` is detected and surfaced as a distinct status, not a crash (Inc 1).
+- 🟡 The graph rebuilds on a fresh device with correct destroy-before-recreate ordering (Inc 2 —
+  teardown+device-recreate+rebuild all proven; resumes for one frame then a post-rebuild resync crash).
+- ✅ Window + surface survive the rebuild (no OS-window recreate — WindowNode keeps them on `DeviceLost`).
+- ⬜ Post-recovery rendering is stable across frames (the remaining resync crash).
+- ⬜ An unrecoverable loss (device gone) terminates gracefully via status, with no infinite spin
+  (`deviceLostUnrecoverable_` path — coded, not yet exercised since the simulated device is healthy).
+- ⬜ Automated simulated device-loss test; live app unaffected with the env var unset (the latter holds:
+  recovery code is dormant unless a real loss or the env var triggers it).

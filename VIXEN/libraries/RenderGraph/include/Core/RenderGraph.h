@@ -447,6 +447,30 @@ public:
     bool IsDeviceLost() const { return deviceLost_; }
 
     /**
+     * @brief Rebuild the whole graph on a fresh GPU device after a latched device loss.
+     *
+     * Ordering-correct full rebuild — the dirty-recompile cascade canNOT be reused for this: it
+     * processes nodes in execution order, so it would recreate the device (DeviceNode is first) BEFORE
+     * the downstream nodes tear down their old buffers/images, destroying children of a dead device.
+     * Instead this does a strict two-pass:
+     *   1. Drain (WaitForGraphDevicesIdle — returns immediately on a truly-lost device) then TEARDOWN
+     *      every node in REVERSE execution order with reason = DeviceLost (children before the device;
+     *      WindowNode keeps the window+surface; DeviceNode, last, destroys the old VkDevice).
+     *   2. REBUILD (Setup + Compile) every node in FORWARD execution order — DeviceNode first creates the
+     *      new VulkanDevice and republishes it; every downstream node re-reads the new VulkanDevice* from
+     *      its input (verified: all nodes acquire the device via ctx.In on Setup/Compile) and recreates.
+     * Single attempt: on success the device-lost latch clears and rendering resumes; if the rebuild
+     * throws (the device is genuinely gone), latches an unrecoverable terminal state and returns false so
+     * the host aborts gracefully — no infinite recovery spin.
+     *
+     * Lives in the graph (the host just drives the tick, as it does RecompileDirtyNodes); the host can
+     * call this when RenderFrame() returns VK_ERROR_DEVICE_LOST.
+     *
+     * @return true if the graph was rebuilt and rendering can resume; false if the loss is unrecoverable.
+     */
+    bool RecoverFromDeviceLoss();
+
+    /**
      * @brief Get the message bus (for nodes to publish events)
      */
     EventBus::MessageBus* GetMessageBus() const { return messageBus; }
@@ -855,8 +879,18 @@ private:
 
     // Device-loss recovery (AR#1 Error-Model Phase 3). Latched by NotifyDeviceLost() when a node sees
     // VK_ERROR_DEVICE_LOST; checked by RenderFrame() which then returns VK_ERROR_DEVICE_LOST distinctly
-    // (vs Phase 2a's generic VK_ERROR_UNKNOWN). Increment 2 adds RecoverFromDeviceLoss() to clear it.
+    // (vs Phase 2a's generic VK_ERROR_UNKNOWN). RecoverFromDeviceLoss() rebuilds + clears it.
     bool deviceLost_ = false;
+    // Set when a device-loss rebuild attempt fails (the GPU is genuinely gone). Terminal: RenderFrame()
+    // keeps returning VK_ERROR_DEVICE_LOST and RecoverFromDeviceLoss() refuses to retry, so the host
+    // aborts instead of spinning on an unrecoverable device.
+    bool deviceLostUnrecoverable_ = false;
+    // Fault-injection test hook (VIXEN_SIMULATE_DEVICE_LOSS=<render-frame>). -2 = env not yet parsed,
+    // -1 = disabled, >=0 = latch a synthetic device loss once at that globalFrameIndex. The teardown +
+    // rebuild are valid on a healthy device too (vkDestroy*/recreate don't require a truly-lost device),
+    // so this faithfully exercises RecoverFromDeviceLoss() in a live run. Off (env unset) in normal runs.
+    int simulateDeviceLossFrame_ = -2;
+    bool deviceLossSimulated_ = false;
 
     // Event-driven recompilation
     std::set<NodeHandle> dirtyNodes;
