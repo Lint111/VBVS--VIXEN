@@ -226,15 +226,6 @@ void VulkanGraphApplication::Prepare() {
             mainLogger->Info("[VulkanGraphApplication::Prepare] BuildRenderGraph complete");
         }
 
-        // Get window handle for graceful shutdown
-        auto* windowInst = renderGraph->GetInstanceByName("main_window");
-        if (windowInst) {
-            auto* windowNode = dynamic_cast<Vixen::RenderGraph::WindowNode*>(windowInst);
-            if (windowNode) {
-                windowHandle = windowNode->GetWindow();
-            }
-        }
-
         // Compile the render graph - nodes set up their pipelines
         if (mainLogger && mainLogger->IsEnabled()) {
             mainLogger->Info("[VulkanGraphApplication::Prepare] Calling CompileRenderGraph...");
@@ -242,6 +233,24 @@ void VulkanGraphApplication::Prepare() {
         CompileRenderGraph();
         if (mainLogger && mainLogger->IsEnabled()) {
             mainLogger->Info("[VulkanGraphApplication::Prepare] CompileRenderGraph complete");
+        }
+
+        // Cache the GLFW window handle used by the render-loop close check (Render()) and the
+        // graceful-shutdown signal (CompleteShutdown). This MUST run AFTER CompileRenderGraph():
+        // WindowNode creates the GLFW window in its CompileImpl, so GetWindow() returns null
+        // before compile -- capturing it earlier left windowHandle null, so the loop could never
+        // observe glfwWindowShouldClose() and spun forever after cleanup. Discover the node by
+        // TYPE, not a magic instance name (FR-6): the handle belongs to whichever WindowNode the
+        // graph built, regardless of what it was named.
+        auto windowInstances = renderGraph->GetInstancesOfType<WindowNodeType>();
+        if (!windowInstances.empty()) {
+            if (auto* windowNode = dynamic_cast<Vixen::RenderGraph::WindowNode*>(windowInstances.front())) {
+                windowHandle = windowNode->GetWindow();
+            }
+        }
+        if (!windowHandle && mainLogger) {
+            mainLogger->Warning("Prepare: no WindowNode GLFW window found after compile - "
+                                "window-close shutdown will be unavailable");
         }
 
         isPrepared = true;
@@ -263,7 +272,13 @@ void VulkanGraphApplication::Prepare() {
 }
 
 bool VulkanGraphApplication::Render() {
-    if (!isPrepared || !graphCompiled || !renderGraph) {
+    // Exit the render loop once a graceful shutdown has been requested (the window-close event
+    // sets shutdownRequested). During shutdown the RenderGraph is torn down and WindowNode
+    // destroys the GLFW window (glfwDestroyWindow) in its CleanupImpl, so the cached windowHandle
+    // dangles -- this flag, checked before any window access below, is the reliable, window-
+    // independent stop signal. Without it the loop kept calling RenderFrame() (a no-op after
+    // cleanup, per AR#16) forever, so the process hung instead of exiting on window close.
+    if (!isPrepared || !graphCompiled || !renderGraph || shutdownRequested) {
         return false;
     }
 
@@ -1384,16 +1399,16 @@ void VulkanGraphApplication::HandleShutdownAck(const std::string& systemName) {
 }
 
 void VulkanGraphApplication::CompleteShutdown() {
-    // All systems have cleaned up - signal the window to close. WindowNode owns the GLFW window
-    // lifecycle and destroys it (glfwDestroyWindow) during its CleanupImpl, so we must not destroy
-    // it here (that would double-free); flagging should-close drives the normal teardown.
-    if (windowHandle) {
-        if (mainLogger) {
-            mainLogger->Info("Signalling window to close to complete shutdown");
-        }
-        glfwSetWindowShouldClose(windowHandle, GLFW_TRUE);
-        windowHandle = nullptr;
+    // All systems have acknowledged shutdown. The RenderGraph -- including WindowNode, which calls
+    // glfwDestroyWindow in its CleanupImpl -- has already torn down by this point, so the cached
+    // windowHandle now DANGLES and must not be touched (the old code called glfwSetWindowShouldClose
+    // on the destroyed window, which was undefined behaviour and, worse, never reached the loop).
+    // The render loop exits on the shutdownRequested flag (see Render()); here we only drop our
+    // stale handle copy.
+    if (mainLogger) {
+        mainLogger->Info("Shutdown complete - render loop will exit");
     }
+    windowHandle = nullptr;
 }
 
 void VulkanGraphApplication::EnableNodeLogger(NodeHandle handle, bool enableTerminal) {

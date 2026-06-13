@@ -70,12 +70,11 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
             VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
             VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR,
             sizeof(VkPhysicalDeviceRayTracingPipelineFeaturesKHR)
-        },
-        {
-            VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME,
-            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES_KHR,
-            sizeof(VkPhysicalDeviceBufferDeviceAddressFeaturesKHR)
         }
+        // NOTE: buffer_device_address is intentionally NOT mapped here. It was promoted to
+        // Vulkan 1.2 core, so it is enabled below via VkPhysicalDeviceVulkan12Features rather
+        // than a standalone VkPhysicalDeviceBufferDeviceAddressFeatures struct -- the two are
+        // mutually exclusive in one pNext chain (VUID-VkDeviceCreateInfo-pNext-02830).
     };
 
     for (auto& mapping : deviceExtentionMappings) {
@@ -103,9 +102,6 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
         } else if (mapping.structType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR) {
             VkPhysicalDeviceRayTracingPipelineFeaturesKHR* rtFeatures = reinterpret_cast<VkPhysicalDeviceRayTracingPipelineFeaturesKHR*>(featureStruct.get());
             rtFeatures->rayTracingPipeline = VK_TRUE;
-        } else if (mapping.structType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES_KHR) {
-            VkPhysicalDeviceBufferDeviceAddressFeaturesKHR* bdaFeatures = reinterpret_cast<VkPhysicalDeviceBufferDeviceAddressFeaturesKHR*>(featureStruct.get());
-            bdaFeatures->bufferDeviceAddress = VK_TRUE;
         }
 
         // Append to pNext chain
@@ -123,12 +119,23 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
     // This local must outlive vkCreateDevice() below; it is scoped to this function.
     VkPhysicalDeviceVulkan12Features vulkan12Features{};
     vulkan12Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+    bool needVulkan12Features = false;
     if (capabilityGraph_.IsCapabilityAvailable("DeviceFeature:timelineSemaphore")) {
         vulkan12Features.timelineSemaphore = VK_TRUE;
-        pNextChainEnd = reinterpret_cast<void**>(AppendToPNext(pNextChainEnd, &vulkan12Features));
+        needVulkan12Features = true;
     } else {
         std::cerr << "[VulkanDevice] WARNING: timelineSemaphore not supported by this GPU - "
                      "uploads will use the non-timeline synchronization fallback" << std::endl;
+    }
+    // buffer_device_address was promoted to Vulkan 1.2 core; enable it through Vulkan12Features
+    // (when the extension is present) rather than a standalone feature struct, which is illegal
+    // alongside Vulkan12Features in one pNext chain (VUID-VkDeviceCreateInfo-pNext-02830).
+    if (HasExtension(extensions, VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME)) {
+        vulkan12Features.bufferDeviceAddress = VK_TRUE;
+        needVulkan12Features = true;
+    }
+    if (needVulkan12Features) {
+        pNextChainEnd = reinterpret_cast<void**>(AppendToPNext(pNextChainEnd, &vulkan12Features));
     }
 
     vkGetPhysicalDeviceFeatures(*gpu, &deviceFeatures);

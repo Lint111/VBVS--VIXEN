@@ -1,5 +1,6 @@
 #include "VulkanLayerAndExtension.h"
 #include "VulkanInstance.h"
+#include <iostream>
 
 namespace Vixen::Vulkan::Resources {
 
@@ -241,29 +242,30 @@ uint32_t VulkanLayerAndExtension::DebugFunction(
 	const char* pMsg,
 	void* pUserData) {
 
-	if(msgFlags & VK_DEBUG_REPORT_ERROR_BIT_EXT) {
-		std::string msg = "[VK_DEBUG_REPORT] ERROR: [" + std::string(pLayerPrefix) + "] Code "
-				  + std::to_string(msgCode) + " : " + pMsg;
+	// Classify severity, then emit. Validation output must never be silently dropped: each
+	// branch here previously built a std::string and discarded it, so every report -- VUID
+	// errors included -- vanished, making the VIXEN_VULKAN_VALIDATION gate (FR-1) useless.
+	// Write unconditionally to stderr, which is captured cross-platform regardless of any
+	// per-logger enablement.
+	const char* severity;
+	if (msgFlags & VK_DEBUG_REPORT_ERROR_BIT_EXT) {
+		severity = "ERROR";
 	} else if (msgFlags & VK_DEBUG_REPORT_WARNING_BIT_EXT) {
-		std::string msg = "[VK_DEBUG_REPORT] WARNING: [" + std::string(pLayerPrefix) + "] Code "
-				  + std::to_string(msgCode) + " : " + pMsg;
-	} else if( msgFlags & VK_DEBUG_REPORT_INFORMATION_BIT_EXT) {
-		std::string msg = "[VK_DEBUG_REPORT] INFO: [" + std::string(pLayerPrefix) + "] Code "
-				  + std::to_string(msgCode) + " : " + pMsg;
+		severity = "WARNING";
+	} else if (msgFlags & VK_DEBUG_REPORT_INFORMATION_BIT_EXT) {
+		severity = "INFO";
 	} else if (msgFlags & VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT) {
-		std::string msg = "[VK_DEBUG_REPORT] PERFORMANCE: [" + std::string(pLayerPrefix) + "] Code "
-				  + std::to_string(msgCode) + " : " + pMsg;
+		severity = "PERFORMANCE";
 	} else if (msgFlags & VK_DEBUG_REPORT_DEBUG_BIT_EXT) {
-		std::string msg = "[VK_DEBUG_REPORT] DEBUG: [" + std::string(pLayerPrefix) + "] Code "
-				  + std::to_string(msgCode) + " : " + pMsg;
+		severity = "DEBUG";
 	} else {
-		std::string msg = "[VK_DEBUG_REPORT] UNKNOWN REPORT: [" + std::string(pLayerPrefix) + "] Code "
-				  + std::to_string(msgCode) + " : " + pMsg;
-
-		return VK_FALSE;
+		severity = "UNKNOWN REPORT";
 	}
 
-	return VK_SUCCESS;
+	std::cerr << "[VK_DEBUG_REPORT] " << severity << ": [" << pLayerPrefix << "] Code "
+			  << msgCode << " : " << pMsg << std::endl;
+
+	return VK_FALSE;
 }
 
 void VulkanLayerAndExtension::DestroyDebugReportCallback(VkInstance instance) {

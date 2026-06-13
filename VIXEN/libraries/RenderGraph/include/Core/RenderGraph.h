@@ -247,6 +247,25 @@ public:
     std::vector<NodeInstance*> GetInstancesOfType(NodeTypeId typeId) const;
 
     /**
+     * @brief Get all instances whose node type is the given C++ NodeType class.
+     *
+     * Type-safe discovery that avoids hard-coding instance names (FR-6): resolves the
+     * type id from the registry, then returns the matching instances. Returns an empty
+     * vector if the type was never registered with this graph.
+     *
+     * @tparam TNodeType A NodeType-derived class (e.g. WindowNodeType)
+     */
+    template<typename TNodeType>
+    std::vector<NodeInstance*> GetInstancesOfType() const {
+        static_assert(std::is_base_of_v<NodeType, TNodeType>, "TNodeType must derive from NodeType");
+        TNodeType* nodeType = typeRegistry->Get<TNodeType>();
+        if (!nodeType) {
+            return {};
+        }
+        return GetInstancesOfType(nodeType->GetTypeId());
+    }
+
+    /**
      * @brief Get instance count of a specific type
      */
     uint32_t GetInstanceCount(NodeTypeId typeId) const;
