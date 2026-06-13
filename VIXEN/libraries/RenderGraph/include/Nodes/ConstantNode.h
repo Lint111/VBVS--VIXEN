@@ -47,13 +47,7 @@ public:
     ConstantNode(const std::string& name, NodeType* nodeType, T value)
         : TypedNode<ConstantNodeConfig>(name, nodeType)
     {
-        // Compile-time validation: T must be a registered resource type
-        static_assert(ResourceTypeTraits<T>::isValid,
-            "ConstantNode: Type must be registered in RESOURCE_TYPE_REGISTRY");
-
-        // Create a Resource with the typed value
-        storedResource = Resource::Create<T>(HandleDescriptor("Constant"));
-        storedResource->SetHandle<T>(value);
+        SetValue<T>(std::move(value));
     }
 
     /**
@@ -77,13 +71,20 @@ public:
         static_assert(ResourceTypeTraits<T>::isValid,
             "ConstantNode::SetValue: Type must be registered in RESOURCE_TYPE_REGISTRY");
 
-        std::cout << "[ConstantNode::SetValue] Setting value for node: " << GetInstanceName() << std::endl;
-
-        // Create a Resource with the typed value using the variant system
-        storedResource = Resource::Create<T>(HandleDescriptor("Constant"));
-        storedResource->SetHandle<T>(std::move(value));
-
-        std::cout << "[ConstantNode::SetValue] Value set successfully" << std::endl;
+        // Retain the value as a re-populator that rebuilds storedResource from a COPY of the value. The
+        // graph must be rebuildable -- AR#1 Phase 3 device-loss recovery tears down and recompiles every
+        // node -- but the old design moved the value into the output once and reset it on cleanup, so a
+        // rebuild's second Compile threw "Value not set". Re-populating storedResource from the retained
+        // value at the start of every Compile fixes that. storedResource is a STABLE member on purpose:
+        // Resource::SetHandle's descriptor extractor captures `this`, and CompileImpl moves the resource
+        // into the graph output -- the extractor keeps pointing at this member (which stays alive and
+        // retains the handle), so it must not be a throwaway local. The re-populator survives Recompile/
+        // DeviceLost cleanups (CPU config outlives a device loss, like the OS window).
+        repopulateStored = [this, value = std::move(value)]() {
+            storedResource = Resource::Create<T>(HandleDescriptor("Constant"));
+            storedResource->SetHandle<T>(T(value));  // re-apply a COPY of the retained value
+        };
+        repopulateStored();  // populate now so the value is available before the first Compile
     }
 
     /**
@@ -116,52 +117,34 @@ protected:
     }
 
     void CompileImpl(TypedCompileContext& ctx) override {
-        std::cout << "[ConstantNode::Compile] START for node: " << GetInstanceName() << std::endl;
-
-        // Ensure value has been set
-        if (!storedResource.has_value()) {
-            std::cout << "[ConstantNode::Compile] ERROR: Value not set!" << std::endl;
+        // The re-populator rebuilds the stored value; absent it, no value was ever set.
+        if (!repopulateStored) {
             throw std::runtime_error("ConstantNode '" + GetInstanceName() + "': Value not set before Compile()");
         }
 
-        std::cout << "[ConstantNode::Compile] Value is set, retrieving output resource..." << std::endl;
+        // Re-populate storedResource from the retained value so EVERY Compile (including a device-loss
+        // rebuild) has a fresh resource to publish -- the old single-use move left it emptied.
+        repopulateStored();
 
         // Get the Resource* that the graph allocated for our output
         Resource* outputRes = NodeInstance::GetOutput(0, 0);
         if (!outputRes) {
-            std::cout << "[ConstantNode::Compile] ERROR: Output resource not allocated!" << std::endl;
             throw std::runtime_error("ConstantNode '" + GetInstanceName() + "': Output resource not allocated");
         }
 
-        std::cout << "[ConstantNode::Compile] Moving resource to output..." << std::endl;
-        std::cout << "[ConstantNode::Compile] Output resource address: " << outputRes << std::endl;
-        std::cout << "[ConstantNode::Compile] Source resource is valid: " << storedResource->IsValid() << std::endl;
-
-        // Move the resource data to the graph's output (Resource only supports move semantics)
+        // Move the resource data to the graph's output (Resource is move-only). The output's descriptor
+        // extractor keeps pointing at storedResource (a stable member that retains the handle after the
+        // move), so the moved-from member must stay alive -- which it does.
         *outputRes = std::move(*storedResource);
 
-        std::cout << "[ConstantNode::Compile] Transferred resource is valid: " << outputRes->IsValid() << std::endl;
-        std::cout << "[ConstantNode::Compile] SUCCESS - Resource transferred" << std::endl;
-        
-        // CRITICAL: Register cleanup if we have a callback
-        // This ensures externally-managed resources (like VulkanShader*) are properly destroyed
-        std::cout << "[ConstantNode::Compile] Checking cleanup callback: " 
-                  << (cleanupCallback ? "EXISTS" : "NULL") << std::endl;
-        
+        // Register cleanup for an externally-managed resource (e.g. VulkanShader*) if a callback was set.
         if (cleanupCallback && GetOwningGraph()) {
-            std::cout << "[ConstantNode::Compile] Registering cleanup callback in CleanupStack..." << std::endl;
-
             GetOwningGraph()->GetCleanupStack().Register(
                 GetHandle(),
                 GetInstanceName() + "_Cleanup",
                 [this]() { this->Cleanup(); },
                 cleanupDependencyHandles  // Dependencies: this must be cleaned up before these nodes
             );
-            std::cout << "[ConstantNode::Compile] Cleanup callback registered successfully" << std::endl;
-        } else {
-            std::cout << "[ConstantNode::Compile] NOT registering cleanup (callback=" 
-                      << (cleanupCallback ? "EXISTS" : "NULL") 
-                      << ", graph=" << (GetOwningGraph() ? "EXISTS" : "NULL") << ")" << std::endl;
         }
     }
 
@@ -170,19 +153,29 @@ protected:
     }
 
     void CleanupImpl(TypedCleanupContext& ctx) override {
-        // Invoke custom cleanup callback if set (for externally-managed resources)
+        // The constant's value is CPU config that must SURVIVE a rebuild (recompile / device-loss recovery)
+        // so the node can re-publish it -- keep the factory and the externally-managed-resource callback
+        // across non-final cleanups; release them only on final teardown. (Mirrors WindowNode keeping the
+        // window across recompiles: non-device state outlives a device loss.)
+        if (ctx.reason != CleanupReason::FinalTeardown) {
+            return;
+        }
+
+        // Final teardown: destroy the externally-managed resource (if any) and drop the retained value.
         if (cleanupCallback) {
-            std::cout << "[ConstantNode::CleanupImpl] Invoking cleanup callback for: " 
-                      << GetInstanceName() << std::endl;
             cleanupCallback();
             cleanupCallback = nullptr;
         }
-        
+        repopulateStored = nullptr;
         storedResource.reset();
     }
 
 private:
+    // Stable storage for the value Resource (NOT a local): the output's descriptor extractor captures the
+    // address of this member, so it must outlive each Compile's move-to-output. Re-populated from the
+    // retained value on every Compile via repopulateStored so the node is rebuildable.
     std::optional<Resource> storedResource;
+    std::function<void()> repopulateStored;  // rebuilds storedResource from the retained value (see SetValue)
     std::function<void()> cleanupCallback;
     std::vector<NodeHandle> cleanupDependencyHandles;
 };

@@ -527,15 +527,24 @@ public:
                 continue;
             }
 
-            // Create instance via factory
+            // Create instance via factory and load its calibration state
             auto profile = factoryIt->second();
             if (!profile) continue;
-
-            // Load state
             profile->LoadState(profileJson);
 
-            // Register
-            RegisterTask(std::move(profile));
+            // AR#1 Phase 3 fix: if a profile with this id is already registered, load the calibration INTO
+            // the existing object in place rather than replacing it. RegisterTask does
+            // profiles_[id] = std::move(new), which frees the existing profile — and nodes cache a raw
+            // ITaskProfile* to it (e.g. ComputeDispatchNode::gpuProfile_, acquired during their Compile).
+            // Replacing it dangles those pointers: a use-after-free that crashed in gpuProfile_->Sample().
+            // DeviceNode publishes DeviceMetadataEvent on every (re)compile -> CalibrationStore::Load() ->
+            // here, so a device-loss rebuild re-ran this and made the UAF reliable; once a calibration file
+            // exists it also bites on a normal first frame. In-place load preserves object identity.
+            if (ITaskProfile* existing = GetProfile(profile->GetTaskId())) {
+                existing->LoadState(profileJson);
+            } else {
+                RegisterTask(std::move(profile));
+            }
             ++loaded;
         }
 

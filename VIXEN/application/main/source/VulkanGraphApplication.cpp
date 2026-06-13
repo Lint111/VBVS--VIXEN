@@ -293,6 +293,21 @@ bool VulkanGraphApplication::Render() {
 
         // Event-driven swapchain recreation is handled internally; VK_ERROR_OUT_OF_DATE_KHR triggers
         // events that mark nodes for recompilation.
+        if (result == VK_ERROR_DEVICE_LOST) {
+            // AR#1 Phase 3 (Increment 2): self-heal. Rebuild the whole graph on a fresh device and keep
+            // rendering — the host just sees a hitched frame. The recovery system lives in the graph; the
+            // app merely drives the tick (as it does RecompileDirtyNodes). If the device is genuinely gone
+            // the rebuild fails terminally — report it and stop (the host reads GetLastError()).
+            mainLogger->Warning("[VulkanGraphApplication::Render] GPU device lost — attempting recovery (rebuild on a fresh device)");
+            if (renderGraph->RecoverFromDeviceLoss()) {
+                mainLogger->Info("[VulkanGraphApplication::Render] Device recovery succeeded — resuming rendering");
+                currentFrame++;
+                return true;  // keep the render loop alive
+            }
+            lastError_ = "GPU device lost (VK_ERROR_DEVICE_LOST) and could not be recovered — the device is unavailable";
+            mainLogger->Error("[VulkanGraphApplication::Render] " + lastError_);
+            return false;
+        }
         if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
             mainLogger->Error("Frame rendering failed with result: " + std::to_string(result));
             return false;

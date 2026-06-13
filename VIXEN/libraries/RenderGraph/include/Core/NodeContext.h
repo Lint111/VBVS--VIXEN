@@ -87,6 +87,10 @@ public:
  */
 enum class CleanupReason {
     Recompile,      // RecompileDirtyNodes: this node is dirty and will be Setup+Compiled again
+    DeviceLost,     // RecoverFromDeviceLoss: the GPU device was lost. Release ALL device-child resources
+                    // (like Recompile — every node already does this); persistent NON-device resources
+                    // (the OS window + surface) still survive (reason != FinalTeardown). Any vkDeviceWaitIdle
+                    // / fence wait in CleanupImpl is harmless: on a lost device it returns immediately.
     FinalTeardown   // ExecuteCleanup: the whole graph is shutting down
 };
 

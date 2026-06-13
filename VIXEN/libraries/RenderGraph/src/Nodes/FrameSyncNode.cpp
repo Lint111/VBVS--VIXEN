@@ -113,7 +113,19 @@ void FrameSyncNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // This ensures the previous frame using this flight's resources has completed
     // Without this wait, we could reuse semaphores that are still in use by the presentation engine
     VkFence currentFence = frameSyncData[currentFrameIndex].inFlightFence;
-    vkWaitForFences(device->device, 1, &currentFence, VK_TRUE, UINT64_MAX);
+    VkResult waitResult = vkWaitForFences(device->device, 1, &currentFence, VK_TRUE, UINT64_MAX);
+
+    // AR#1 Phase 3 (Increment 1): this fence wait runs every frame and is the universal, earliest
+    // backstop for device loss — when the GPU device is lost, the submitted work never completes and
+    // the wait returns VK_ERROR_DEVICE_LOST immediately. Latch it on the graph so RenderFrame() reports
+    // a distinct status (and, in Increment 2, triggers a rebuild on a fresh device). Bail out before
+    // publishing this frame's now-invalid fence/semaphore handles downstream.
+    if (waitResult == VK_ERROR_DEVICE_LOST) {
+        NODE_LOG_ERROR("Device lost while waiting on in-flight fence (flight "
+                       + std::to_string(currentFrameIndex) + ")");
+        GetOwningGraph()->NotifyDeviceLost("FrameSyncNode::vkWaitForFences");
+        return;
+    }
 
     // Note: Fence will be reset by GeometryRenderNode before submission
 
