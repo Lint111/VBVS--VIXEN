@@ -34,7 +34,13 @@ void VulkanApplicationBase::DeInitialize() {
 VulkanStatus VulkanApplicationBase::CreateVulkanInstance(std::vector<const char*>& layers,
                                                           std::vector<const char*>& extensions,
                                                           const char* applicationName) {
-    instanceObj.CreateInstance(layers, extensions, applicationName);
+    // Propagate the VkResult: previously this swallowed it and always returned success, so a failed
+    // vkCreateInstance produced a null VkInstance that the next vkGetInstanceProcAddr call aborted on
+    // (SIGABRT, "Invalid instance"). Surfacing it lets InitializeVulkanCore report and exit cleanly.
+    VkResult result = instanceObj.CreateInstance(layers, extensions, applicationName);
+    if (result != VK_SUCCESS) {
+        return std::unexpected(VulkanError{result, "vkCreateInstance failed"});
+    }
     return {};
 }
 

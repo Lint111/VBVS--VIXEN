@@ -296,6 +296,37 @@ Debug and reused cached artifacts). All fixed on `claude/wsl-build-portability`.
   render unaffected, meaningful INFO retained. The **cwd-pollution** part (host writes `cache/` +
   `generated/` to the working directory) remains OPEN.
 
+### FR-22 — `vkCreateInstance` aborts on Dozen/WSL2 because instance extensions aren't filtered against availability
+- **Context:** the standalone `VIXEN` exe (UI-demo path, `VIXEN_UI_DEMO=1`) aborts with SIGABRT
+  immediately after `SelectWslGpuIcd` picks the Dozen ICD: `[Vulkan Loader] ERROR: vkGetInstanceProcAddr:
+  Invalid instance` — i.e. `vkCreateInstance` returned a null instance and the next
+  `vkGetInstanceProcAddr(nullInstance,…)` aborted. The host never hit this (it creates its instance
+  through `InstanceNode`, which already filters).
+- **Issue:** the `VulkanApplicationBase` → `VulkanInstance::CreateInstance` path passes the global
+  `instanceExtensionNames` (`VK_KHR_surface` + `VK_EXT_surface_maintenance1` +
+  `VK_KHR_get_surface_capabilities2`) **straight to `vkCreateInstance` with no availability check**.
+  Mesa Dozen advertises only 11 instance extensions and **does not expose `VK_EXT_surface_maintenance1`**,
+  so the call fails with `VK_ERROR_EXTENSION_NOT_PRESENT` (`VkResult -7`) — confirmed by direct
+  enumeration + a probe `vkCreateInstance` (3-ext request → -7; drop `surface_maintenance1` → `VK_SUCCESS`).
+  A second latent bug compounded it: `VulkanApplicationBase::CreateVulkanInstance` discarded the
+  `VkResult` and always returned success, so the existing `if (!result)` guard could never fire → the
+  null instance escaped to the crash instead of a clean exit. (The InstanceNode render-graph path was
+  already robust via `ValidateAndFilterExtensions`/`Layers`; only this earlier base-class instance
+  wasn't — and it lacked even the platform surface ext.)
+- **Suggested fix (applied):** add `VulkanLayerAndExtension::FilterUnsupportedExtensions()` (mirrors the
+  existing `AreLayersSupported`) — enumerate `vkEnumerateInstanceExtensionProperties`, drop any requested
+  instance extension the ICD doesn't advertise (with a warning), keep a caller-supplied `mandatory` set
+  (here `VK_KHR_surface`) so a genuinely-missing required ext still surfaces via `vkCreateInstance`.
+  `VulkanInstance::CreateInstance` calls it before building `VkInstanceCreateInfo`; and
+  `VulkanApplicationBase::CreateVulkanInstance` now propagates the `VkResult` so any future instance
+  failure exits cleanly instead of aborting. General hardening for any limited driver — no Dozen
+  special-case, native GPUs and the host are unaffected (they request only supported exts).
+- **Status:** FIXED (`VulkanResources/src/VulkanLayerAndExtension.cpp` + `.../VulkanInstance.cpp` +
+  `application/main/source/VulkanApplicationBase.cpp`, branch `claude/wsl-build-portability`). Proven:
+  exe UI-demo now creates the instance on Dozen, RmlUi loads `assets/ui/demo.rml` + its font, the
+  `UIRenderNode` compiles and the render loop runs — 0 `Invalid instance`, 0 device removals, 0
+  validation errors; host re-verified unchanged (selected Dozen ICD, VoxelScene cache ready, 0 removals).
+
 ---
 
 ## Adding entries

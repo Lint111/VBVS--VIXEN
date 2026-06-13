@@ -184,6 +184,54 @@ VkBool32 VulkanLayerAndExtension::AreLayersSupported(std::vector<const char*>& l
 	return true;
 }
 
+void VulkanLayerAndExtension::FilterUnsupportedExtensions(std::vector<const char*>& extensionNames,
+														  const std::vector<const char*>& mandatory) {
+	// Enumerate the instance extensions the active ICD actually exposes (layer == nullptr).
+	uint32_t availableCount = 0;
+	if (vkEnumerateInstanceExtensionProperties(nullptr, &availableCount, nullptr) != VK_SUCCESS || availableCount == 0) {
+		// Can't enumerate: leave the list untouched and let vkCreateInstance be the arbiter.
+		return;
+	}
+	std::vector<VkExtensionProperties> available(availableCount);
+	if (vkEnumerateInstanceExtensionProperties(nullptr, &availableCount, available.data()) != VK_SUCCESS) {
+		return;
+	}
+
+	auto isAvailable = [&available](const char* name) {
+		for (const auto& ext : available) {
+			if (!strcmp(name, ext.extensionName)) {
+				return true;
+			}
+		}
+		return false;
+	};
+	auto isMandatory = [&mandatory](const char* name) {
+		for (const char* m : mandatory) {
+			if (!strcmp(name, m)) {
+				return true;
+			}
+		}
+		return false;
+	};
+
+	std::vector<const char*> filtered;
+	filtered.reserve(extensionNames.size());
+	for (const char* requested : extensionNames) {
+		if (isAvailable(requested)) {
+			filtered.push_back(requested);
+		} else if (isMandatory(requested)) {
+			// Keep it: a missing mandatory extension is a genuine error vkCreateInstance must surface.
+			LOG_WARNING("Mandatory instance extension not advertised by ICD, keeping anyway: " +
+						std::string(requested));
+			filtered.push_back(requested);
+		} else {
+			LOG_WARNING("Optional instance extension unsupported by ICD, dropping: " +
+						std::string(requested));
+		}
+	}
+	extensionNames = filtered;
+}
+
 VkResult VulkanLayerAndExtension::CreateDebugReportCallBack(VkInstance instance) {
 	VkResult result;
 
