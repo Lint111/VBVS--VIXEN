@@ -292,11 +292,8 @@ void BenchmarkGraphFactory::ConnectComputeRayMarch(
     batch.Connect(infra.frameSync, RG::FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
                   infra.swapchain, RG::SwapChainNodeConfig::CURRENT_FRAME_INDEX)
          .Connect(infra.frameSync, RG::FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
-                  infra.swapchain, RG::SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
-         .Connect(infra.frameSync, RG::FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
-                  infra.swapchain, RG::SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY)
-         .Connect(infra.frameSync, RG::FrameSyncNodeConfig::PRESENT_FENCES_ARRAY,
-                  infra.swapchain, RG::SwapChainNodeConfig::PRESENT_FENCES_ARRAY);
+                  infra.swapchain, RG::SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
+    // FR-3: renderComplete + presentFences are produced by swapchain (sized to the actual image count).
 
     // Device -> CommandPool
     batch.Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
@@ -418,7 +415,7 @@ void BenchmarkGraphFactory::ConnectComputeRayMarch(
                   compute.dispatch, RG::ComputeDispatchNodeConfig::IN_FLIGHT_FENCE)
          .Connect(infra.frameSync, RG::FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
                   compute.dispatch, RG::ComputeDispatchNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
-         .Connect(infra.frameSync, RG::FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
+         .Connect(infra.swapchain, RG::SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
                   compute.dispatch, RG::ComputeDispatchNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
 
     //--------------------------------------------------------------------------
@@ -440,7 +437,7 @@ void BenchmarkGraphFactory::ConnectComputeRayMarch(
                   output.present, RG::PresentNodeConfig::RENDER_COMPLETE_SEMAPHORE);
 
     // FrameSync -> Present (present fences)
-    batch.Connect(infra.frameSync, RG::FrameSyncNodeConfig::PRESENT_FENCES_ARRAY,
+    batch.Connect(infra.swapchain, RG::SwapChainNodeConfig::PRESENT_FENCES_ARRAY,
                   output.present, RG::PresentNodeConfig::PRESENT_FENCE_ARRAY);
 
     //--------------------------------------------------------------------------
@@ -846,11 +843,8 @@ void BenchmarkGraphFactory::ConnectFragmentRayMarch(
     batch.Connect(infra.frameSync, RG::FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
                   infra.swapchain, RG::SwapChainNodeConfig::CURRENT_FRAME_INDEX)
          .Connect(infra.frameSync, RG::FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
-                  infra.swapchain, RG::SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
-         .Connect(infra.frameSync, RG::FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
-                  infra.swapchain, RG::SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY)
-         .Connect(infra.frameSync, RG::FrameSyncNodeConfig::PRESENT_FENCES_ARRAY,
-                  infra.swapchain, RG::SwapChainNodeConfig::PRESENT_FENCES_ARRAY);
+                  infra.swapchain, RG::SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
+    // FR-3: renderComplete + presentFences are produced by swapchain (sized to the actual image count).
 
     // Device -> CommandPool
     batch.Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
@@ -969,7 +963,7 @@ void BenchmarkGraphFactory::ConnectFragmentRayMarch(
                   output.present, RG::PresentNodeConfig::IMAGE_INDEX);
 
     // FrameSync -> Present (present fences)
-    batch.Connect(infra.frameSync, RG::FrameSyncNodeConfig::PRESENT_FENCES_ARRAY,
+    batch.Connect(infra.swapchain, RG::SwapChainNodeConfig::PRESENT_FENCES_ARRAY,
                   output.present, RG::PresentNodeConfig::PRESENT_FENCE_ARRAY);
 
     //--------------------------------------------------------------------------
@@ -1022,7 +1016,7 @@ void BenchmarkGraphFactory::ConnectFragmentRayMarch(
                       fragment.drawCommand, RG::GeometryRenderNodeConfig::IN_FLIGHT_FENCE)
              .Connect(infra.frameSync, RG::FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
                       fragment.drawCommand, RG::GeometryRenderNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
-             .Connect(infra.frameSync, RG::FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
+             .Connect(infra.swapchain, RG::SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
                       fragment.drawCommand, RG::GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
 
         // GeometryRenderNode -> Present (render complete semaphore for presentation sync)
@@ -1268,11 +1262,8 @@ void BenchmarkGraphFactory::ConnectHardwareRT(
     batch.Connect(infra.frameSync, RG::FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
                   infra.swapchain, RG::SwapChainNodeConfig::CURRENT_FRAME_INDEX)
          .Connect(infra.frameSync, RG::FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
-                  infra.swapchain, RG::SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
-         .Connect(infra.frameSync, RG::FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
-                  infra.swapchain, RG::SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY)
-         .Connect(infra.frameSync, RG::FrameSyncNodeConfig::PRESENT_FENCES_ARRAY,
-                  infra.swapchain, RG::SwapChainNodeConfig::PRESENT_FENCES_ARRAY);
+                  infra.swapchain, RG::SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
+    // FR-3: renderComplete + presentFences are produced by swapchain (sized to the actual image count).
 
     // Device -> CommandPool
     batch.Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
@@ -1433,7 +1424,7 @@ void BenchmarkGraphFactory::ConnectHardwareRT(
                   hardwareRT.traceRays, RG::TraceRaysNodeConfig::IN_FLIGHT_FENCE)
          .Connect(infra.frameSync, RG::FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
                   hardwareRT.traceRays, RG::TraceRaysNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
-         .Connect(infra.frameSync, RG::FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
+         .Connect(infra.swapchain, RG::SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
                   hardwareRT.traceRays, RG::TraceRaysNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
 
     // Camera -> TraceRaysNode (push constants for camera data)
@@ -1460,7 +1451,7 @@ void BenchmarkGraphFactory::ConnectHardwareRT(
                   output.present, RG::PresentNodeConfig::RENDER_COMPLETE_SEMAPHORE);
 
     // FrameSync -> Present (present fences)
-    batch.Connect(infra.frameSync, RG::FrameSyncNodeConfig::PRESENT_FENCES_ARRAY,
+    batch.Connect(infra.swapchain, RG::SwapChainNodeConfig::PRESENT_FENCES_ARRAY,
                   output.present, RG::PresentNodeConfig::PRESENT_FENCE_ARRAY);
 
     // Register all connections atomically

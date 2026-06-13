@@ -393,6 +393,12 @@ void RenderGraph::HandleWindowClose() {
 void RenderGraph::ExecuteCleanup() {
     GRAPH_LOG_INFO("[RenderGraph::ExecuteCleanup] Executing cleanup callbacks...");
 
+    // AR#16: from here the graph's resources are being destroyed. Mark the graph un-renderable so
+    // RenderFrame() stops executing nodes (which would index freed per-image sync arrays and trip a
+    // vector-out-of-range on shutdown). The render loop may run one more iteration after a
+    // WindowCloseEvent triggers this cleanup.
+    isCleanedUp = true;
+
     // Check if cleanup has already been executed
     if (cleanupStack.GetNodeCount() == 0) {
         GRAPH_LOG_INFO("[RenderGraph::ExecuteCleanup] Cleanup already executed, skipping");
@@ -583,6 +589,12 @@ void RenderGraph::Execute(VkCommandBuffer commandBuffer) {
 }
 
 VkResult RenderGraph::RenderFrame() {
+    // AR#16: after shutdown cleanup the graph's resources are destroyed. Skip cleanly instead of
+    // executing nodes that would index freed per-image sync arrays (vector-out-of-range on close).
+    if (isCleanedUp) {
+        return VK_SUCCESS;
+    }
+
     if (!isCompiled) {
         throw std::runtime_error("Graph must be compiled before rendering");
     }
