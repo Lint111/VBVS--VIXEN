@@ -154,6 +154,7 @@ endif()
 # ever builds VIXEN (never installs Vulkan by hand). The legacy locate logic below then simply finds
 # the provisioned SDK and sets VULKAN_PATH / VULKAN_TRIMMED_BUILD_ACTIVE as before.
 include(cmake/ProvisionVulkan.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/ProvisionWslVulkan.cmake)
 
 # Reusable runtime-asset staging helper (vixen_stage_assets) for apps + consumers.
 include(cmake/VixenAssets.cmake)
