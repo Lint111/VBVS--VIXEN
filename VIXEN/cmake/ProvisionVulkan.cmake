@@ -21,7 +21,7 @@ include_guard(GLOBAL)
 
 option(VIXEN_AUTO_PROVISION_VULKAN "Download a prebuilt Vulkan SDK into a cache when none is found" ON)
 set(VIXEN_VULKAN_SDK_VERSION "1.4.350.1" CACHE STRING "LunarG Vulkan SDK version to auto-provision")
-set(VIXEN_VULKAN_CACHE_DIR "${CMAKE_SOURCE_DIR}/.vulkan-sdk" CACHE PATH "Persistent Vulkan provisioning cache")
+set(VIXEN_VULKAN_CACHE_DIR "${VIXEN_ROOT}/.vulkan-sdk" CACHE PATH "Persistent Vulkan provisioning cache")
 option(VIXEN_UNINSTALL_VULKAN "Remove the provisioned Vulkan cache and stop" OFF)
 
 # Build-type-gated validation (Debug or any multi-config generator => on; Release => off), overridable.

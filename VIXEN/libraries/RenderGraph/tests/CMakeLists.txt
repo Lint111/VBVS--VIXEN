@@ -11,7 +11,7 @@ add_executable(test_rendergraph_basic
 
 # Ensure tests can include generated headers and centralized test mocks
 # (Allows includes like <generated/sdi/Name.h> and <RenderGraph/tests/TestMocks.h>)
-include_directories(${CMAKE_SOURCE_DIR})
+include_directories(${VIXEN_ROOT})
 
 # Link against the RenderGraph library target - includes propagate automatically
 # RenderGraph target exposes its include directory as PUBLIC, no manual include_directories needed
@@ -122,9 +122,9 @@ if(TARGET GTest::gtest_main)
         test_descriptor_gatherer_comprehensive.cpp
     )
 
-    # Link against library targets - includes propagate automatically via CMAKE_SOURCE_DIR
+    # Link against library targets - includes propagate automatically via VIXEN_ROOT
     target_include_directories(test_descriptor_gatherer_comprehensive PRIVATE
-        ${CMAKE_SOURCE_DIR}/application/main/include
+        ${VIXEN_ROOT}/application/main/include
     )
 
     target_link_libraries(test_descriptor_gatherer_comprehensive PRIVATE

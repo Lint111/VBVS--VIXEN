@@ -905,7 +905,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Ray marching: Voxel grid parameters
     auto* voxelGrid = static_cast<VoxelGridNode*>(renderGraph->GetInstance(voxelGridNode));
     voxelGrid->SetParameter(VoxelGridNodeConfig::PARAM_RESOLUTION, 128u);
-    voxelGrid->SetParameter(VoxelGridNodeConfig::PARAM_SCENE_TYPE, std::string("cornell"));  // Cornell box scene
+    // Scene type defaults to the Cornell-box test scene; a host can override it (e.g. the UNDERTOW
+    // render host sets VIXEN_SCENE=starsystem after registering its bodies with the scene factory).
+    const char* sceneEnv = std::getenv("VIXEN_SCENE");
+    voxelGrid->SetParameter(VoxelGridNodeConfig::PARAM_SCENE_TYPE,
+                            std::string(sceneEnv != nullptr ? sceneEnv : "cornell"));
 
     // Enable logging for VoxelGridNode to see octree generation
     if (auto* voxelLogger = voxelGrid->GetLogger()) {

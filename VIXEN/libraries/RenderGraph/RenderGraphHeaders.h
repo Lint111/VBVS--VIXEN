@@ -13,7 +13,10 @@
 #define NOMINMAX
 #define _CRT_SECURE_NO_WARNINGS
 #else // _WIN32
-#define VK_USE_PLATFORM_XCB_KHR
+// No VK_USE_PLATFORM_* surface macro: GLFW owns the platform surface (glfwCreateWindowSurface +
+// glfwGetRequiredInstanceExtensions), so defining e.g. VK_USE_PLATFORM_XCB_KHR — which forces
+// vulkan.h to #include <xcb/xcb.h> — only adds an unnecessary build-dep (this lib uses no xcb types).
+// Matches application/main/include/Headers.h.
 #include <unistd.h>
 #endif // _WIN32
 

@@ -14,7 +14,7 @@
 #   ├── shaders/           (GLSL sources for runtime compilation)
 #   └── *.dll              (Runtime dependencies)
 
-set(BENCHMARK_PACKAGE_DIR "${CMAKE_SOURCE_DIR}/VixenBenchmark")
+set(BENCHMARK_PACKAGE_DIR "${VIXEN_ROOT}/VixenBenchmark")
 
 # ============================================================================
 # Shader Files Required for Benchmark
@@ -67,7 +67,7 @@ add_custom_command(TARGET package_benchmark PRE_BUILD
 # Copy executable
 add_custom_command(TARGET package_benchmark POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_SOURCE_DIR}/binaries/vixen_benchmark.exe"
+        "${VIXEN_ROOT}/binaries/vixen_benchmark.exe"
         "${BENCHMARK_PACKAGE_DIR}/"
     COMMENT "Copying benchmark executable"
 )
@@ -75,7 +75,7 @@ add_custom_command(TARGET package_benchmark POST_BUILD
 # Copy TBB DLL
 add_custom_command(TARGET package_benchmark POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_SOURCE_DIR}/binaries/tbb12_debug.dll"
+        "${VIXEN_ROOT}/binaries/tbb12_debug.dll"
         "${BENCHMARK_PACKAGE_DIR}/"
     COMMENT "Copying TBB DLL"
 )
@@ -83,7 +83,7 @@ add_custom_command(TARGET package_benchmark POST_BUILD
 # Copy benchmark config
 add_custom_command(TARGET package_benchmark POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_SOURCE_DIR}/application/benchmark/benchmark_config.json"
+        "${VIXEN_ROOT}/application/benchmark/benchmark_config.json"
         "${BENCHMARK_PACKAGE_DIR}/"
     COMMENT "Copying benchmark config"
 )
@@ -92,7 +92,7 @@ add_custom_command(TARGET package_benchmark POST_BUILD
 foreach(shader ${BENCHMARK_SHADER_MAIN})
     add_custom_command(TARGET package_benchmark POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${CMAKE_SOURCE_DIR}/shaders/${shader}"
+            "${VIXEN_ROOT}/shaders/${shader}"
             "${BENCHMARK_PACKAGE_DIR}/shaders/"
         COMMENT "Copying shader: ${shader}"
     )
@@ -102,7 +102,7 @@ endforeach()
 foreach(shader ${BENCHMARK_SHADER_INCLUDES})
     add_custom_command(TARGET package_benchmark POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${CMAKE_SOURCE_DIR}/shaders/${shader}"
+            "${VIXEN_ROOT}/shaders/${shader}"
             "${BENCHMARK_PACKAGE_DIR}/shaders/"
         COMMENT "Copying shader include: ${shader}"
     )
@@ -110,10 +110,10 @@ endforeach()
 
 # Copy README from VixenBenchmark source (maintained separately for easier editing)
 # If the source README doesn't exist, create a minimal one
-if(EXISTS "${CMAKE_SOURCE_DIR}/VixenBenchmark/README.txt")
+if(EXISTS "${VIXEN_ROOT}/VixenBenchmark/README.txt")
     add_custom_command(TARGET package_benchmark POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${CMAKE_SOURCE_DIR}/VixenBenchmark/README.txt"
+            "${VIXEN_ROOT}/VixenBenchmark/README.txt"
             "${BENCHMARK_PACKAGE_DIR}/README.txt"
         COMMENT "Copying README from source"
     )

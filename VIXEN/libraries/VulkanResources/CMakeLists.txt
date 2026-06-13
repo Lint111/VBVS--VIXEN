@@ -67,7 +67,7 @@ target_include_directories(VulkanResources
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         # Main application includes - for Headers.h and other shared headers
-        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/application/main/include>
+        $<BUILD_INTERFACE:${VIXEN_ROOT}/application/main/include>
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
@@ -111,7 +111,7 @@ set_source_files_properties(
 # Precompiled headers for faster compilation
 if(USE_PRECOMPILED_HEADERS)
     target_precompile_headers(VulkanResources PRIVATE
-        "${CMAKE_SOURCE_DIR}/application/main/include/Headers.h"
+        "${VIXEN_ROOT}/application/main/include/Headers.h"
     )
     message(STATUS "VulkanResources: Precompiled headers enabled (using Headers.h)")
 endif()
