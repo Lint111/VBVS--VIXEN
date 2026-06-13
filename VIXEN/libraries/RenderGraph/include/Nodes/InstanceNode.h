@@ -43,7 +43,7 @@ protected:
     void SetupImpl(TypedSetupContext& ctx) override;
     void CompileImpl(TypedCompileContext& ctx) override;
     void ExecuteImpl(TypedExecuteContext& ctx) override;
-    void CleanupImpl() override;
+    void CleanupImpl(TypedCleanupContext& ctx) override;
 
 private:
     // Vulkan instance
