@@ -2,6 +2,8 @@
 #include "VulkanSwapChain.h"
 #include "MeshData.h"
 #include "Logger.h"
+#include <cstdlib>     // std::getenv / ::setenv for the WSL2 Dozen ICD selection
+#include <filesystem>  // std::filesystem::exists for the WSL2 Dozen ICD selection
 
 #define GLFW_INCLUDE_NONE   // don't pull in <GL/gl.h> (absent on headless/WSL); Vulkan-only below
 #define GLFW_INCLUDE_VULKAN
@@ -96,9 +98,38 @@ VulkanGraphApplication* VulkanGraphApplication::GetInstance() {
     return instance.get();
 }
 
+namespace {
+// On WSL2 the GPU is reachable only via Mesa Dozen (Vulkan-over-D3D12). If the build provisioned
+// Dozen (the VIXEN_WSL_DZN_ICD compile-def, set by cmake/ProvisionWslVulkan.cmake) and the user
+// hasn't already chosen an ICD, point the Vulkan loader at it before any instance/ICD work. No-op
+// off WSL (no /dev/dxg), when VK_ICD_FILENAMES is already set, or when the manifest is missing.
+// libd3d12.so is already on the loader path via WSL's ld.wsl.conf, so no LD_LIBRARY_PATH change is
+// needed. Native (non-WSL) hosts have no /dev/dxg, so this never alters their behaviour. Returns the
+// ICD path it selected (so the caller can log it in member scope), or nullptr if it did nothing.
+const char* SelectWslGpuIcd() {
+#if defined(__linux__) && defined(VIXEN_WSL_DZN_ICD)
+    const char* icd = VIXEN_WSL_DZN_ICD;
+    if (icd && icd[0] != '\0'
+        && std::filesystem::exists("/dev/dxg")
+        && std::getenv("VK_ICD_FILENAMES") == nullptr
+        && std::filesystem::exists(icd)) {
+        ::setenv("VK_ICD_FILENAMES", icd, /*overwrite=*/0);
+        return icd;
+    }
+#endif
+    return nullptr;
+}
+}  // namespace
+
 void VulkanGraphApplication::Initialize() {
     mainLogger->Debug("VulkanGraphApplication::Initialize() - START");
     mainLogger->Info("VulkanGraphApplication Initialize START");
+
+    // WSL2: select the provisioned Mesa Dozen ICD before the base creates the Vulkan instance below
+    // (no-op off WSL / when already configured). Must precede VulkanApplicationBase::Initialize().
+    if (const char* dznIcd = SelectWslGpuIcd()) {
+        mainLogger->Info(std::string("[SelectWslGpuIcd] WSL2 GPU: selected Dozen ICD ") + dznIcd);
+    }
 
     mainLogger->Debug("About to call VulkanApplicationBase::Initialize()");
     // Initialize base Vulkan core (instance, device)
@@ -202,6 +233,16 @@ void VulkanGraphApplication::Initialize() {
     });
     mainLogger->Debug("Physics loop registered with ID: " + std::to_string(physicsLoopID));
     mainLogger->Info("Registered PhysicsLoop (60Hz) with ID: " + std::to_string(physicsLoopID));
+
+    // Register sim logic loop at 30Hz (decoupled from render fps; drives the embedded sim)
+    simLoopID = renderGraph->RegisterLoop(LoopConfig{
+        1.0 / 30.0,                                  // 30Hz logic cadence
+        "SimLoop",
+        LoopCatchupMode::MultipleSteps,
+        0.25  // Max 250ms catchup
+    });
+    mainLogger->Debug("Sim loop registered with ID: " + std::to_string(simLoopID));
+    mainLogger->Info("Registered SimLoop (30Hz) with ID: " + std::to_string(simLoopID));
 
     if (mainLogger) {
         mainLogger->Info("VulkanGraphApplication initialized successfully");
@@ -626,6 +667,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // --- Infrastructure Nodes ---
     NodeHandle instanceNode = renderGraph->AddNode<InstanceNodeType>( "main_instance");  // Phase 1.1
     NodeHandle windowNode = renderGraph->AddNode<WindowNodeType>("main_window");
+    windowNode_ = windowNode;                        // store for GetWindowHandle() live lookup
     NodeHandle deviceNode = renderGraph->AddNode<DeviceNodeType>("main_device");
     NodeHandle swapChainNode = renderGraph->AddNode<SwapChainNodeType>("main_swapchain");
     NodeHandle commandPoolNode = renderGraph->AddNode<CommandPoolNodeType>("main_cmd_pool");
@@ -664,6 +706,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // --- Ray Marching Nodes ---
     NodeHandle cameraNode = renderGraph->AddNode<CameraNodeType>("raymarch_camera");
     NodeHandle voxelGridNode = renderGraph->AddNode<VoxelGridNodeType>("voxel_grid");
+    voxelGridNode_ = voxelGridNode;                  // store for MarkVoxelSceneDirty()
 
     // --- Input Node ---
     NodeHandle inputNode = renderGraph->AddNode<InputNodeType>("input_handler");
@@ -1472,4 +1515,27 @@ void VulkanGraphApplication::EnableNodeLogger(const std::string& nodeName, bool 
             mainLogger->Warning("Node '" + nodeName + "' has no logger");
         }
     }
+}
+
+// --- Embedded-sim driver seams -------------------------------------------------------------------
+
+bool VulkanGraphApplication::ShouldStepLogic(double& outDt) {
+    const auto* ref = renderGraph->GetLoopManager().GetLoopReference(simLoopID);
+    if (ref != nullptr && ref->shouldExecuteThisFrame) {
+        outDt = 1.0 / 30.0;                         // the SimLoop's fixed timestep
+        return true;
+    }
+    outDt = 0.0;
+    return false;
+}
+
+void VulkanGraphApplication::MarkVoxelSceneDirty() {
+    renderGraph->MarkNodeNeedsRecompile(voxelGridNode_);
+}
+
+GLFWwindow* VulkanGraphApplication::GetWindowHandle() const {
+    // Live lookup — the WindowNode owns the window (post-de-own refactor) and persists across
+    // recompiles, so never cache the pointer (that was the dangling-window bug the refactor removed).
+    auto* window = static_cast<WindowNode*>(renderGraph->GetInstance(windowNode_));
+    return window != nullptr ? window->GetWindow() : nullptr;
 }

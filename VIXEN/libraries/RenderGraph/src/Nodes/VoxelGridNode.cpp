@@ -305,14 +305,14 @@ void VoxelGridNode::ExecuteImpl(TypedExecuteContext& ctx) {
         return;
     }
 
-    NODE_LOG_INFO("=== VoxelGridNode::ExecuteImpl START ===");
+    NODE_LOG_DEBUG("=== VoxelGridNode::ExecuteImpl START ===");
 
     // Buffers are stored in cachedSceneData_, accessed directly for output
     // Validate buffer handles before outputting (guards against destroyed buffers)
     if (cachedSceneData_ && cachedSceneData_->esvoNodesBuffer != VK_NULL_HANDLE) {
-        NODE_LOG_INFO("  octreeNodesBuffer handle: " + std::to_string(reinterpret_cast<uint64_t>(cachedSceneData_->esvoNodesBuffer)));
-        NODE_LOG_INFO("  octreeBricksBuffer handle: " + std::to_string(reinterpret_cast<uint64_t>(cachedSceneData_->brickDataBuffer)));
-        NODE_LOG_INFO("  octreeMaterialsBuffer handle: " + std::to_string(reinterpret_cast<uint64_t>(cachedSceneData_->materialsBuffer)));
+        NODE_LOG_DEBUG("  octreeNodesBuffer handle: " + std::to_string(reinterpret_cast<uint64_t>(cachedSceneData_->esvoNodesBuffer)));
+        NODE_LOG_DEBUG("  octreeBricksBuffer handle: " + std::to_string(reinterpret_cast<uint64_t>(cachedSceneData_->brickDataBuffer)));
+        NODE_LOG_DEBUG("  octreeMaterialsBuffer handle: " + std::to_string(reinterpret_cast<uint64_t>(cachedSceneData_->materialsBuffer)));
 
         ctx.Out(VoxelGridNodeConfig::OCTREE_NODES_BUFFER, cachedSceneData_->esvoNodesBuffer);
         ctx.Out(VoxelGridNodeConfig::OCTREE_BRICKS_BUFFER, cachedSceneData_->brickDataBuffer);
@@ -353,7 +353,7 @@ void VoxelGridNode::ExecuteImpl(TypedExecuteContext& ctx) {
         ctx.Out(VoxelGridNodeConfig::SHADER_COUNTERS_BUFFER, shaderCountersResource_.get());
     }
 
-    NODE_LOG_INFO("=== VoxelGridNode::ExecuteImpl END ===");
+    NODE_LOG_DEBUG("=== VoxelGridNode::ExecuteImpl END ===");
     NODE_LOG_DEBUG("[VoxelGridNode::ExecuteImpl] COMPLETED");
 }
 

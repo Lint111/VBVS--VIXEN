@@ -13,6 +13,12 @@ VulkanInstance::~VulkanInstance() {
 VkResult VulkanInstance::CreateInstance(std::vector<const char*>& layerNames,
 										std::vector<const char*>& extensionNames,
 										char const*const appName) {
+	// Drop any requested instance extensions the active ICD does not advertise, so a limited driver
+	// (e.g. Mesa Dozen on WSL2, which lacks VK_EXT_surface_maintenance1) cannot make vkCreateInstance
+	// fail with VK_ERROR_EXTENSION_NOT_PRESENT. VK_KHR_surface is mandatory -- without it there is no
+	// presentation path, so its absence stays a hard error rather than being silently swallowed.
+	layerExtension.FilterUnsupportedExtensions(extensionNames, {VK_KHR_SURFACE_EXTENSION_NAME});
+
 	//set the instance specific layer and extension information
 	layerExtension.appRequestedExtensionNames = extensionNames;
 	layerExtension.appRequestedLayerNames = layerNames;

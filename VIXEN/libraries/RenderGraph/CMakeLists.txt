@@ -429,6 +429,6 @@ source_group("EventTypes" FILES ${RENDERGRAPH_EVENT_HEADERS})
 # Tests
 # ============================================================================
 
-if(BUILD_TESTING)
+if(BUILD_TESTING OR BUILD_TESTS)
     add_subdirectory(tests)
 endif()

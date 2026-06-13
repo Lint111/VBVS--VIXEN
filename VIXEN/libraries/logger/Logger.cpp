@@ -3,6 +3,10 @@
 
 namespace Vixen::Log {
 
+// Process-wide minimum log level (see Logger::SetGlobalMinLevel). Default LOG_DEBUG = no filtering,
+// preserving the historical "every level prints" behaviour until a consumer raises it.
+LogLevel Logger::globalMinLevel = LogLevel::LOG_DEBUG;
+
 Logger::Logger(const std::string& name, bool enabled)
     : name(name), enabled(enabled)
 {
@@ -38,6 +42,9 @@ void Logger::RemoveChild(Logger *child)
 void Logger::Log(LogLevel level, const std::string& message)
 {
     if (!enabled) {
+        return;
+    }
+    if (level < globalMinLevel) {  // process-wide verbosity threshold
         return;
     }
 

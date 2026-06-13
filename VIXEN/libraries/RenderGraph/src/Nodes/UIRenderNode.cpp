@@ -5,6 +5,7 @@
 
 #include <RmlUi/Core.h>
 #include <RmlUi/Core/Context.h>
+#include <RmlUi/Core/DataModelHandle.h>
 #include <RmlUi/Core/ElementDocument.h>
 
 #include <cstdint>
@@ -50,6 +51,12 @@ void UIRenderNode::CompileImpl(TypedCompileContext& ctx) {
         Rml::LoadFontFace(fontPath);
         context_ = Rml::CreateContext("vixen_ui", Rml::Vector2i(static_cast<int>(extent_.width), static_cast<int>(extent_.height)));
         if (context_) {
+            // S1: construct the "hud" data model so hud.rml (data-model="hud") can bind tick + bodyCount.
+            if (Rml::DataModelConstructor c = context_->CreateDataModel("hud")) {
+                c.Bind("tick", &hud_.tick);
+                c.Bind("bodyCount", &hud_.bodyCount);
+                hudModel_ = c.GetModelHandle();
+            }
             document_ = context_->LoadDocument(docPath);
             if (document_) document_->Show();
         }
@@ -127,6 +134,15 @@ void UIRenderNode::ExecuteImpl(TypedExecuteContext& ctx) {
 
     ctx.Out(UIRenderNodeConfig::COMMAND_BUFFERS, cmd);
     ctx.Out(UIRenderNodeConfig::RENDER_COMPLETE_SEMAPHORE, signalSem);
+}
+
+void UIRenderNode::SetHudData(int tick, int bodyCount) {
+    hud_.tick = tick;
+    hud_.bodyCount = bodyCount;
+    if (hudModel_) {
+        hudModel_.DirtyVariable("tick");
+        hudModel_.DirtyVariable("bodyCount");
+    }
 }
 
 void UIRenderNode::CleanupImpl(TypedCleanupContext& /*ctx*/) {
