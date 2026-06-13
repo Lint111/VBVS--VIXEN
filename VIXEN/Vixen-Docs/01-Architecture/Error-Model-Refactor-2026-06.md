@@ -1,7 +1,7 @@
 ---
 tags: [architecture, error-model, refactor, AR1, mod-facing]
 created: 2026-06-13
-status: phase 1 done (exit() de-fatal); phases 2-3 queued
+status: phases 1-2 done (exit() de-fatal + host-facing status channel); phase 3 (internal throws / recovery) queued
 related: ["[[Architecture-Review-Game-Renderer-2026-06-12]]", "[[consumer-feedback-undertow]]"]
 ---
 
@@ -66,13 +66,23 @@ Convert the 21 engine `exit()` calls to `VulkanResult`/`VulkanStatus` returns:
   fatal). Commit `1c68ed4d`.
 - (The 6 `std::exit` in `shader_tool.cpp` are a standalone CLI tool, intentionally left.)
 
-### Phase 2 — the propagation channel (next; wide, every-node — "its own session")
-- Lifecycle `Execute()`/`Compile()` return `VulkanStatus`; `RenderFrame()` returns a status that reflects
-  node failure (not always `VK_SUCCESS`).
-- The app defers/reports/recovers instead of exiting; **protect the initial `Compile()`** in `Prepare()`
-  the way recompiles already are (mark-for-retry / surface a clean error to the host).
-- Recoverability targets: shader-compile failure, device-lost (`VK_ERROR_DEVICE_LOST`), OOM, asset-load
-  failure — all currently fatal-ish, should be host-reportable.
+### Phase 2 — the host-facing propagation channel ✅ DONE (2026-06-13)
+**Design choice: Option A (status at the host boundary), not the every-node `*Impl`→`VulkanStatus` rewrite.**
+Rationale: UNDERTOW is a **C# host**, and C++ exceptions are undefined behaviour across that boundary — so
+the requirement is *status at the host-facing API*, not eliminating internal exceptions (which stay within
+C++ and, for recompiles, are already caught + deferred). Bounded change at the boundaries:
+- **2a** — `RenderFrame()` catches node-Execute failures (sequential path + the parallel virtual-task
+  executor) → logs + returns a non-success `VkResult`; the app's `Render()` already stops the loop on a
+  non-success result. No exception escapes to the loop/host. Commit `754cfd51`.
+- **2b** — `Prepare()` catches initial-`Compile()` failures (`std::exception` + `...`) → records a
+  host-readable message + leaves `isPrepared=false`, no rethrow→exit; `main` aborts gracefully. Added
+  `lastError_`/`GetLastError()` on `VulkanApplicationBase`. Commit `3be2a92c`.
+- **2c** — `Render()`/`Update()` wrapped in catch-all guards → nothing escapes the host-facing tick
+  (event-callback handlers, `ProcessEvents`, etc.). Commit `32e689ce`.
+
+**Result:** no exception can escape `Prepare`/`Update`/`Render`/`RenderFrame` — the host-facing boundary
+returns status only. (Deferred for a future increment: *recovering* the initial compile via mark-for-retry
+like recompiles; richer per-failure recovery for device-lost / OOM lives in phase 3.)
 
 ### Phase 3 — the long tail
 Adopt `VK_CHECK`/status across the 396 `throw`s where recovery (vs a clean fail-and-report) makes sense;
@@ -81,6 +91,8 @@ keep `throw` for genuine programmer-error invariants.
 ## 5. Acceptance
 
 - ✅ No process-fatal `exit()` in the engine path (Phase 1).
-- ⬜ A node failure propagates through `RenderFrame()` as a status the host can act on (Phase 2).
-- ⬜ Initial graph compile failure is recoverable/reportable, not `exit(-1)` (Phase 2).
-- ⬜ Shader-compile / device-lost / OOM are host-reportable (Phase 2-3).
+- ✅ A node Execute failure surfaces as a status, not a crash (Phase 2a).
+- ✅ Initial graph compile failure is reportable via `IsPrepared()`/`GetLastError()`, not `exit(-1)` (Phase 2b).
+- ✅ No exception escapes `Prepare`/`Update`/`Render`/`RenderFrame` to the C# host (Phase 2c).
+- ⬜ Specific *recovery* for shader-compile / device-lost / OOM (vs. report-and-stop), + defer initial
+  compile for retry — phase 3 / future increment.

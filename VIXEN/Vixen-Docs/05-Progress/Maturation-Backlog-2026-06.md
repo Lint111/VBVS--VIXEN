@@ -96,17 +96,21 @@ Correctness bugs + the only-consumer's pain + legal hygiene. Wasted on no possib
   - **TS-3 deferred-action flags** — `pendingDecrease_/pendingIncrease_` were plain `bool` written in bus handlers, read in `ProcessDeferredActions` → data race. Fixed: `std::atomic<bool>` + `exchange`. Added the first deferred-action coverage.
   - **TS-2 `Begin()/End()` unsafe** — deprecated the legacy shared-state timing API; migrated its only (dead-but-documented) caller `VirtualTask::BeginProfiling/EndProfiling` to per-task `Sampler`s (via a `shared_ptr` holder, keeping `VirtualTask` copyable).
   - **TS-1 move-assign "race"** — investigated, **dismissed as a false positive**: Samplers are thread-local (every `Sample()` site is a stack-local), so the move-assignment is not a data race; the audit's reorder would risk losing measurements.
-- [~] **Replace process-fatal error model** [AR#1] — **IN PROGRESS (phase 1 done).** Design + phased
+- [~] **Replace process-fatal error model** [AR#1] — **IN PROGRESS (phases 1-2 done; mod-facing gate
+  materially closed).** Design + phased
   plan: [[Error-Model-Refactor-2026-06]]. ✅ **Phase 1 — ALL process-fatal `exit()` de-fataled (2026-06-13):**
   `ConnectNodes` duplicate-connection `std::exit(1)` → `throw` (commit `339096f`); the 20 texture-loader
   `exit(1)` → `VulkanResult`/`VulkanStatus`, leak-free, single-owner cleanup (commit `ce4cab00`);
   `VulkanSwapChain` zero-extent `exit(-1)` → recoverable `VK_ERROR_OUT_OF_DATE_KHR`, SwapChainNode throws
   for the deferred-recompile path to retry (commit `1c68ed4d`). Adopts the existing `std::expected`
-  `VulkanResult`/`VulkanStatus` + `VK_CHECK` family. **Remaining (phase 2 — "its own session"):** the
-  architectural channel — `NodeInstance::Execute`/`Compile` return `void` and `RenderFrame()` only returns
-  `VK_SUCCESS`, so node failures can't propagate; protect the initial `Compile()` in `Prepare()`. (Phase 3:
-  adopt `VK_CHECK`/status across the ~396 `throw`s where recovery beats fail-and-report.) **Gate for all
-  mod-facing work.**
+  `VulkanResult`/`VulkanStatus` + `VK_CHECK` family. ✅ **Phase 2 — host-facing propagation channel
+  (2026-06-13, Option A — status at the boundary, since UNDERTOW is a C# host where C++ exceptions are UB):**
+  `RenderFrame()` catches node-Execute failures → status (`754cfd51`); `Prepare()` catches initial-compile
+  failures → `IsPrepared()`/`GetLastError()`, no rethrow→exit (`3be2a92c`); `Render()`/`Update()` catch-all
+  guards (`32e689ce`). No exception can now escape `Prepare`/`Update`/`Render`/`RenderFrame` to the host.
+  **Remaining (phase 3, lower priority — these no longer crash the host):** adopt `VK_CHECK`/status across
+  the ~396 internal `throw`s where recovery beats fail-and-report; *recover* initial-compile (mark-for-retry)
+  + device-lost/OOM. **Gate for all mod-facing work — materially closed by phases 1-2.**
 - [~] **UNDERTOW quick wins** — **PARTIAL (2026-06-13).** Done: cross-platform validation gate via
   `VIXEN_VULKAN_VALIDATION` (not the MSVC-only `#ifdef _DEBUG`) [FR-1, commit `6519b77`]; reusable
   `vixen_stage_assets()` CMake helper [FR-10, commit `91bba98`]; per-image sync arrays sized to the
