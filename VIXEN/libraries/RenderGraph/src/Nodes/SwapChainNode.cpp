@@ -110,6 +110,10 @@ void SwapChainNode::CompileImpl(TypedCompileContext& ctx) {
     // Create swapchain and image views
     CreateSwapchainAndViews();
 
+    // FR-3: (re)create per-IMAGE sync resources sized to the EXACT swapchain image count.
+    // Follows the swapchain's own destroy(Cleanup)+create(Compile) lifecycle.
+    CreatePerImageSyncResources();
+
     // Publish outputs
     PublishCompileOutputs(ctx);
 
@@ -126,16 +130,16 @@ void SwapChainNode::CompileImpl(TypedCompileContext& ctx) {
 }
 
 void SwapChainNode::ExecuteImpl(TypedExecuteContext& ctx) {
-    // Phase 0.5: Get semaphore arrays from FrameSyncNode
+    // Phase 0.5: imageAvailable (per-FLIGHT) still comes from FrameSyncNode.
     const std::vector<VkSemaphore>& imageAvailableSemaphores = ctx.In(SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
-    const std::vector<VkSemaphore>& renderCompleteSemaphores = ctx.In(SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
 
+    // FR-3: renderComplete (per-IMAGE) is owned here (member), sized to the actual image count.
     if (imageAvailableSemaphores.empty() || renderCompleteSemaphores.empty()) {
-        throw std::runtime_error("SwapChainNode: Semaphore arrays are null");
+        throw std::runtime_error("SwapChainNode: synchronization arrays are empty");
     }
 
-    // Phase 0.7: Get present fences array (VK_EXT_swapchain_maintenance1)
-    const std::vector<VkFence>& presentFencesArray = ctx.In(SwapChainNodeConfig::PRESENT_FENCES_ARRAY);
+    // Phase 0.7: per-IMAGE present fences (owned here; empty if VK_EXT_swapchain_maintenance1 unavailable)
+    const std::vector<VkFence>& presentFencesArray = presentFences;
 
     // Phase 0.6: CORRECT two-tier semaphore indexing (Vulkan guide pattern)
     // https://docs.vulkan.org/guide/latest/swapchain_semaphore_reuse.html
@@ -200,7 +204,9 @@ void SwapChainNode::ExecuteImpl(TypedExecuteContext& ctx) {
 void SwapChainNode::CleanupImpl(TypedCleanupContext& ctx) {
     NODE_LOG_INFO("[SwapChainNode::CleanupImpl] Called");
 
-    // Phase 0.2: Semaphores now managed by FrameSyncNode - no cleanup needed here
+    // FR-3: destroy per-IMAGE sync resources owned here, alongside the swapchain destroy below
+    // (same safe point the existing swapchain teardown relies on).
+    DestroyPerImageSyncResources();
 
     // Cleanup swapchain wrapper if we own it
     if (swapChainWrapper) {
@@ -472,10 +478,62 @@ void SwapChainNode::PublishCompileOutputs(TypedCompileContext& ctx) {
     // Output 2: Pointer to public swapchain variables
     ctx.Out(SwapChainNodeConfig::SWAPCHAIN_PUBLIC, &swapChainWrapper->scPublicVars);
 
-    // Phase 0.2: Semaphores now managed by FrameSyncNode (per-flight pattern)
-    // No need to create per-swapchain-image semaphores anymore
+    // FR-3: per-IMAGE sync arrays owned here, sized to the actual swapchain image count.
+    ctx.Out(SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY, renderCompleteSemaphores);
+    ctx.Out(SwapChainNodeConfig::PRESENT_FENCES_ARRAY, presentFences);
 
     NODE_LOG_DEBUG("[SwapChainNode] Outputs published successfully");
+}
+
+void SwapChainNode::CreatePerImageSyncResources() {
+    DestroyPerImageSyncResources();  // idempotent: never leak if called without a prior cleanup
+
+    VkDevice device = GetDevice()->device;
+    const uint32_t imageCount = swapChainWrapper->scPublicVars.swapChainImageCount;
+
+    // Per-IMAGE render-complete semaphores: signaled by the render submit, waited by present.
+    // One per swapchain image, per the Vulkan swapchain-semaphore-reuse guidance.
+    renderCompleteSemaphores.resize(imageCount);
+    VkSemaphoreCreateInfo semInfo{};
+    semInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+    for (uint32_t i = 0; i < imageCount; ++i) {
+        if (vkCreateSemaphore(device, &semInfo, nullptr, &renderCompleteSemaphores[i]) != VK_SUCCESS) {
+            throw std::runtime_error("SwapChainNode: failed to create renderComplete semaphore for image " + std::to_string(i));
+        }
+    }
+
+    // Per-IMAGE present fences (VK_EXT_swapchain_maintenance1). Left empty if unavailable;
+    // SwapChainNode/PresentNode skip fence logic when the array is empty.
+    if (GetDevice()->HasCapability("SwapchainMaintenance1")) {
+        presentFences.resize(imageCount);
+        VkFenceCreateInfo fenceInfo{};
+        fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+        fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;  // start signaled (no wait on first use)
+        for (uint32_t i = 0; i < imageCount; ++i) {
+            if (vkCreateFence(device, &fenceInfo, nullptr, &presentFences[i]) != VK_SUCCESS) {
+                throw std::runtime_error("SwapChainNode: failed to create present fence for image " + std::to_string(i));
+            }
+        }
+    }
+
+    NODE_LOG_INFO("[SwapChainNode] Created " + std::to_string(renderCompleteSemaphores.size())
+                  + " renderComplete semaphores + " + std::to_string(presentFences.size())
+                  + " present fences (swapchain image count = " + std::to_string(imageCount) + ")");
+}
+
+void SwapChainNode::DestroyPerImageSyncResources() {
+    auto* dev = GetDevice();
+    if (dev != nullptr && dev->device != VK_NULL_HANDLE) {
+        VkDevice device = dev->device;
+        for (auto& s : renderCompleteSemaphores) {
+            if (s != VK_NULL_HANDLE) { vkDestroySemaphore(device, s, nullptr); s = VK_NULL_HANDLE; }
+        }
+        for (auto& f : presentFences) {
+            if (f != VK_NULL_HANDLE) { vkDestroyFence(device, f, nullptr); f = VK_NULL_HANDLE; }
+        }
+    }
+    renderCompleteSemaphores.clear();
+    presentFences.clear();
 }
 
 } // namespace Vixen::RenderGraph

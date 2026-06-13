@@ -122,10 +122,8 @@ if(TARGET TBB::tbb)
 endif()
 
 # Copy the UI assets next to the executable so the RmlUi demo is self-contained
-# (the app loads them via the relative path "assets/ui/..."). No manual copy step.
-add_custom_command(TARGET VIXEN POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${VIXEN_ROOT}/libraries/RenderGraph/assets
-        $<TARGET_FILE_DIR:VIXEN>/assets
-    COMMENT "Copying UI assets (assets/ui) for VIXEN"
-)
+# (the app loads them via the relative path "assets/ui/..."). Uses the shared
+# vixen_stage_assets helper (cmake/VixenAssets.cmake) so consumers stage assets the same
+# way without hand-writing a POST_BUILD copy [FR-10]. Path is rooted at VIXEN_ROOT (not
+# CMAKE_SOURCE_DIR) so it resolves when the engine is add_subdirectory'd into a super-build.
+vixen_stage_assets(VIXEN ${VIXEN_ROOT}/libraries/RenderGraph/assets DEST assets)

@@ -140,13 +140,13 @@ private:
     // ====== Shutdown Management ======
     bool shutdownRequested = false;                  // User requested shutdown
     std::unordered_set<std::string> shutdownAcksPending;  // Systems that need to acknowledge
-    GLFWwindow* windowHandle = nullptr;              // Cached for shutdown signalling (cross-platform GLFW handle)
     bool deinitialized = false;                      // Prevent double DeInitialize
 
     // ====== Phase 0.4: Loop System ======
     uint32_t physicsLoopID = 0;                      // Physics loop at 60Hz
     uint32_t simLoopID = 0;                          // Logic loop for the embedded sim (fixed cadence)
     NodeHandle voxelGridNode_{};                     // stored so the host can mark the scene dirty
+    NodeHandle windowNode_{};                        // stored so GetWindowHandle() can query the WindowNode live
 
     // NOTE: Command buffers, semaphores, and all Vulkan resources
     // are managed by the render graph nodes, not the application
@@ -159,5 +159,7 @@ public:
     // calls this; RecompileDirtyNodes rebuilds the SVO on the next Update()).
     void MarkVoxelSceneDirty();
     // Expose the GLFW window handle so the host can poll input (e.g. Space/period for pause/step).
-    GLFWwindow* GetWindowHandle() const { return windowHandle; }
+    // Queries the WindowNode LIVE each call (the node owns the window post-de-own refactor + persists
+    // across recompiles) — no cached handle, so no dangling-pointer window-capture bug.
+    GLFWwindow* GetWindowHandle() const;
 };

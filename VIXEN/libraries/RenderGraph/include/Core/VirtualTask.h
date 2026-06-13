@@ -1,5 +1,5 @@
 // Copyright (C) 2025 Lior Yanai (eLiorg)
-// Licensed under the GPL-3.0 License.
+// Licensed under the MIT License.
 // See LICENSE file in the project root for full license information.
 #pragma once
 
@@ -40,6 +40,7 @@
 #include <functional>
 #include <vector>
 #include <string>
+#include <memory>
 #include "ITaskProfile.h"
 
 namespace Vixen::RenderGraph {
@@ -195,6 +196,11 @@ struct VirtualTask {
     /// Executor skips profiling if this is true (avoids double-timing)
     bool profiled = false;
 
+    /// Active per-task timing Samplers, created by BeginProfiling() and recorded
+    /// when reset in EndProfiling(). Held via shared_ptr so VirtualTask keeps the
+    /// value semantics the executor relies on (Samplers themselves are move-only).
+    std::shared_ptr<std::vector<ITaskProfile::Sampler>> activeSamplers_;
+
     VirtualTaskState state = VirtualTaskState::Pending;
 
     /// Error message if state == Failed
@@ -286,18 +292,22 @@ struct VirtualTask {
      */
     void BeginProfiling() {
         profiled = true;
+        // Per-task Samplers are concurrent-safe even when several tasks share a
+        // profile, unlike the deprecated shared-state Begin()/End().
+        auto samplers = std::make_shared<std::vector<ITaskProfile::Sampler>>();
+        samplers->reserve(profiles.size());
         for (ITaskProfile* profile : profiles) {
-            if (profile) profile->Begin();
+            if (profile) samplers->push_back(profile->Sample());
         }
+        activeSamplers_ = std::move(samplers);
     }
 
     /**
      * @brief End timing on all attached profiles
      */
     void EndProfiling() {
-        for (ITaskProfile* profile : profiles) {
-            if (profile) profile->End();
-        }
+        // Resetting destroys each Sampler, recording its measurement.
+        activeSamplers_.reset();
     }
 
     /**

@@ -81,6 +81,7 @@ private:
     uint32_t height = 0;
 
     GLFWwindow* window = nullptr;
+    VkSurfaceKHR surface = VK_NULL_HANDLE;  // Created with the window; both persist across recompiles, destroyed only at final teardown
 
     VkInstance vkInstance = VK_NULL_HANDLE;  // Cached from input slot for surface cleanup
     PFN_vkDestroySurfaceKHR fpDestroySurfaceKHR = nullptr;

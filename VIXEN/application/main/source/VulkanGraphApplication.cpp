@@ -236,15 +236,6 @@ void VulkanGraphApplication::Prepare() {
             mainLogger->Info("[VulkanGraphApplication::Prepare] BuildRenderGraph complete");
         }
 
-        // Get window handle for graceful shutdown
-        auto* windowInst = renderGraph->GetInstanceByName("main_window");
-        if (windowInst) {
-            auto* windowNode = dynamic_cast<Vixen::RenderGraph::WindowNode*>(windowInst);
-            if (windowNode) {
-                windowHandle = windowNode->GetWindow();
-            }
-        }
-
         // Compile the render graph - nodes set up their pipelines
         if (mainLogger && mainLogger->IsEnabled()) {
             mainLogger->Info("[VulkanGraphApplication::Prepare] Calling CompileRenderGraph...");
@@ -253,6 +244,11 @@ void VulkanGraphApplication::Prepare() {
         if (mainLogger && mainLogger->IsEnabled()) {
             mainLogger->Info("[VulkanGraphApplication::Prepare] CompileRenderGraph complete");
         }
+
+        // The application does NOT own or cache the GLFW window. WindowNode owns it entirely (created
+        // in CompileImpl, destroyed only at final teardown). The render loop exits on the
+        // shutdownRequested flag, which is set when the WindowNode-published WindowCloseEvent is
+        // handled -- the app just runs the graph and listens for the event, never touching the window.
 
         isPrepared = true;
 
@@ -273,15 +269,18 @@ void VulkanGraphApplication::Prepare() {
 }
 
 bool VulkanGraphApplication::Render() {
-    if (!isPrepared || !graphCompiled || !renderGraph) {
+    // Exit the render loop once a graceful shutdown has been requested. WindowNode publishes a
+    // WindowCloseEvent when the user closes the window; handling it sets shutdownRequested. That flag
+    // is the single, window-independent stop signal -- the app neither polls nor owns the GLFW window
+    // (without it the loop would keep calling RenderFrame(), a no-op after cleanup per AR#16, forever).
+    if (!isPrepared || !graphCompiled || !renderGraph || shutdownRequested) {
         return false;
     }
 
-    // Process window/input events (cross-platform via GLFW; fires WindowNode/InputNode callbacks).
+    // Pump the OS event queue (main thread, every iteration -- including while minimized). This fires
+    // the WindowNode GLFW callbacks that publish WindowCloseEvent / WindowResizeEvent; WindowNode owns
+    // the window and its lifecycle.
     glfwPollEvents();
-    if (windowHandle && glfwWindowShouldClose(windowHandle)) {
-        return false;
-    }
 
     // Render a complete frame via the graph
     // The graph internally handles:
@@ -536,9 +535,8 @@ void VulkanGraphApplication::BuildUIGraph() {
          .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, swapChainNode, SwapChainNodeConfig::VULKAN_DEVICE_IN);
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, frameSyncNode, FrameSyncNodeConfig::VULKAN_DEVICE);
     batch.Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX, swapChainNode, SwapChainNodeConfig::CURRENT_FRAME_INDEX)
-         .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY, swapChainNode, SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
-         .Connect(frameSyncNode, FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY, swapChainNode, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY)
-         .Connect(frameSyncNode, FrameSyncNodeConfig::PRESENT_FENCES_ARRAY, swapChainNode, SwapChainNodeConfig::PRESENT_FENCES_ARRAY);
+         .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY, swapChainNode, SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
+    // FR-3: renderComplete + presentFences are now PRODUCED by swapChainNode (sized to the actual image count).
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, commandPoolNode, CommandPoolNodeConfig::VULKAN_DEVICE_IN);
 
     // --- Render pass + framebuffers (swapchain-derived; these nodes own the resize lifecycle) ---
@@ -556,7 +554,7 @@ void VulkanGraphApplication::BuildUIGraph() {
          .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX, uiRenderNode, UIRenderNodeConfig::CURRENT_FRAME_INDEX)
          .Connect(frameSyncNode, FrameSyncNodeConfig::IN_FLIGHT_FENCE, uiRenderNode, UIRenderNodeConfig::IN_FLIGHT_FENCE)
          .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY, uiRenderNode, UIRenderNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
-         .Connect(frameSyncNode, FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY, uiRenderNode, UIRenderNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY)
+         .Connect(swapChainNode, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY, uiRenderNode, UIRenderNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY)
          .Connect(renderPassNode, RenderPassNodeConfig::RENDER_PASS, uiRenderNode, UIRenderNodeConfig::RENDER_PASS)
          .Connect(framebufferNode, FramebufferNodeConfig::FRAMEBUFFERS, uiRenderNode, UIRenderNodeConfig::FRAMEBUFFERS);
 
@@ -569,7 +567,7 @@ void VulkanGraphApplication::BuildUIGraph() {
          .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_HANDLE, presentNode, PresentNodeConfig::SWAPCHAIN)
          .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX, presentNode, PresentNodeConfig::IMAGE_INDEX)
          .Connect(uiRenderNode, UIRenderNodeConfig::RENDER_COMPLETE_SEMAPHORE, presentNode, PresentNodeConfig::RENDER_COMPLETE_SEMAPHORE)
-         .Connect(frameSyncNode, FrameSyncNodeConfig::PRESENT_FENCES_ARRAY, presentNode, PresentNodeConfig::PRESENT_FENCE_ARRAY);
+         .Connect(swapChainNode, SwapChainNodeConfig::PRESENT_FENCES_ARRAY, presentNode, PresentNodeConfig::PRESENT_FENCE_ARRAY);
 
     batch.RegisterAll();
     mainLogger->Info("UI-only RmlUi demo graph built (10 nodes)");
@@ -597,6 +595,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // --- Infrastructure Nodes ---
     NodeHandle instanceNode = renderGraph->AddNode<InstanceNodeType>( "main_instance");  // Phase 1.1
     NodeHandle windowNode = renderGraph->AddNode<WindowNodeType>("main_window");
+    windowNode_ = windowNode;                        // store for GetWindowHandle() live lookup
     NodeHandle deviceNode = renderGraph->AddNode<DeviceNodeType>("main_device");
     NodeHandle swapChainNode = renderGraph->AddNode<SwapChainNodeType>("main_swapchain");
     NodeHandle commandPoolNode = renderGraph->AddNode<CommandPoolNodeType>("main_cmd_pool");
@@ -1010,11 +1009,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   swapChainNode, SwapChainNodeConfig::CURRENT_FRAME_INDEX);
     batch.Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
                   swapChainNode, SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
-    batch.Connect(frameSyncNode, FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
-                  swapChainNode, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
-    // Phase 0.7: Present fences array (VK_EXT_swapchain_maintenance1)
-    batch.Connect(frameSyncNode, FrameSyncNodeConfig::PRESENT_FENCES_ARRAY,
-                  swapChainNode, SwapChainNodeConfig::PRESENT_FENCES_ARRAY);
+    // FR-3: renderComplete + presentFences are now PRODUCED by swapChainNode (sized to the actual image count).
 
     // --- Device → CommandPool connection ---
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
@@ -1163,8 +1158,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(frameSyncNode, FrameSyncNodeConfig::IN_FLIGHT_FENCE,
                   debugCaptureNode, DebugBufferReaderNodeConfig::IN_FLIGHT_FENCE);
 
-    // --- FrameSync → Present connections (Phase 0.7) ---
-    batch.Connect(frameSyncNode, FrameSyncNodeConfig::PRESENT_FENCES_ARRAY,
+    // --- SwapChain → Present present-fence array (FR-3: owned by swapChainNode) ---
+    batch.Connect(swapChainNode, SwapChainNodeConfig::PRESENT_FENCES_ARRAY,
                   presentNode, PresentNodeConfig::PRESENT_FENCE_ARRAY);
 
     // MVP: Shader connection happens in CompileRenderGraph (after device creation)
@@ -1339,7 +1334,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   computeDispatch, ComputeDispatchNodeConfig::IN_FLIGHT_FENCE)
          .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
                   computeDispatch, ComputeDispatchNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
-         .Connect(frameSyncNode, FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
+         .Connect(swapChainNode, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
                   computeDispatch, ComputeDispatchNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
 
     // REMOVED DUPLICATE: computeDispatch -> present RENDER_COMPLETE_SEMAPHORE (already connected at line 894-895)
@@ -1404,15 +1399,12 @@ void VulkanGraphApplication::HandleShutdownAck(const std::string& systemName) {
 }
 
 void VulkanGraphApplication::CompleteShutdown() {
-    // All systems have cleaned up - signal the window to close. WindowNode owns the GLFW window
-    // lifecycle and destroys it (glfwDestroyWindow) during its CleanupImpl, so we must not destroy
-    // it here (that would double-free); flagging should-close drives the normal teardown.
-    if (windowHandle) {
-        if (mainLogger) {
-            mainLogger->Info("Signalling window to close to complete shutdown");
-        }
-        glfwSetWindowShouldClose(windowHandle, GLFW_TRUE);
-        windowHandle = nullptr;
+    // All systems have acknowledged shutdown; the RenderGraph (including WindowNode, which destroys the
+    // GLFW window in its CleanupImpl) has torn down. There is nothing to do for the window -- the app
+    // does not own it. The render loop exits on the shutdownRequested flag (set in
+    // HandleShutdownRequest; see Render()).
+    if (mainLogger) {
+        mainLogger->Info("Shutdown complete - render loop will exit");
     }
 }
 
@@ -1467,4 +1459,11 @@ bool VulkanGraphApplication::ShouldStepLogic(double& outDt) {
 
 void VulkanGraphApplication::MarkVoxelSceneDirty() {
     renderGraph->MarkNodeNeedsRecompile(voxelGridNode_);
+}
+
+GLFWwindow* VulkanGraphApplication::GetWindowHandle() const {
+    // Live lookup — the WindowNode owns the window (post-de-own refactor) and persists across
+    // recompiles, so never cache the pointer (that was the dangling-window bug the refactor removed).
+    auto* window = static_cast<WindowNode*>(renderGraph->GetInstance(windowNode_));
+    return window != nullptr ? window->GetWindow() : nullptr;
 }

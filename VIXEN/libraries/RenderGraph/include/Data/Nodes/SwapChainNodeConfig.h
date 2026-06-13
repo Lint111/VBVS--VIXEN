@@ -31,8 +31,8 @@ using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
  */
 // Compile-time slot counts (declared early for reuse)
 namespace SwapChainNodeCounts {
-    static constexpr size_t INPUTS = 9;   // WINDOW replaces the old HWND/HINSTANCE pair (one fewer slot)
-    static constexpr size_t OUTPUTS = 4;  // Phase 0.8: Added CURRENT_FRAME_IMAGE_VIEW
+    static constexpr size_t INPUTS = 7;   // FR-3: renderComplete + presentFences moved to OUTPUTS (owned here)
+    static constexpr size_t OUTPUTS = 6;  // + RENDER_COMPLETE_SEMAPHORES_ARRAY, PRESENT_FENCES_ARRAY (per-image, sized to actual count)
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -80,25 +80,13 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    INPUT_SLOT(RENDER_COMPLETE_SEMAPHORES_ARRAY, const std::vector<VkSemaphore>&, 6,
-        SlotNullability::Required,
-        SlotRole::Dependency,
-        SlotMutability::ReadOnly,
-        SlotScope::NodeLevel);
-
-    INPUT_SLOT(CURRENT_FRAME_INDEX, uint32_t, 7,
+    INPUT_SLOT(CURRENT_FRAME_INDEX, uint32_t, 6,
         SlotNullability::Required,
         SlotRole::Execute,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    INPUT_SLOT(PRESENT_FENCES_ARRAY, const std::vector<VkFence>&, 8,
-        SlotNullability::Required,
-        SlotRole::Execute,
-        SlotMutability::ReadOnly,
-        SlotScope::NodeLevel);
-
-    // ===== OUTPUTS (4) =====
+    // ===== OUTPUTS (6) =====
     OUTPUT_SLOT(SWAPCHAIN_HANDLE, VkSwapchainKHR, 0,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
@@ -112,6 +100,16 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
         SlotMutability::WriteOnly);
 
     OUTPUT_SLOT(CURRENT_FRAME_IMAGE_VIEW, VkImageView, 3,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
+    // FR-3: per-IMAGE sync resources are owned here (sized to the exact swapchain
+    // image count), not pre-sized to a constant in FrameSyncNode.
+    OUTPUT_SLOT(RENDER_COMPLETE_SEMAPHORES_ARRAY, const std::vector<VkSemaphore>&, 4,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
+    OUTPUT_SLOT(PRESENT_FENCES_ARRAY, const std::vector<VkFence>&, 5,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
@@ -146,16 +144,12 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
         HandleDescriptor vulkanDeviceDesc{"VulkanDevice*"};
         INIT_INPUT_DESC(VULKAN_DEVICE_IN, "vulkan_device", ResourceLifetime::Persistent, vulkanDeviceDesc);
 
-        // Phase 0.4: Semaphore arrays and frame index from FrameSyncNode
+        // Phase 0.4: imageAvailable semaphores (per-FLIGHT) + frame index from FrameSyncNode
         HandleDescriptor semaphoreArrayDesc{"VkSemaphoreArrayPtr"};
         INIT_INPUT_DESC(IMAGE_AVAILABLE_SEMAPHORES_ARRAY, "image_available_semaphores_array", ResourceLifetime::Persistent, semaphoreArrayDesc);
-        INIT_INPUT_DESC(RENDER_COMPLETE_SEMAPHORES_ARRAY, "render_complete_semaphores_array", ResourceLifetime::Persistent, semaphoreArrayDesc);
 
         HandleDescriptor frameIndexDesc{"uint32_t"};
         INIT_INPUT_DESC(CURRENT_FRAME_INDEX, "current_frame_index", ResourceLifetime::Transient, frameIndexDesc);
-
-        HandleDescriptor fenceArrayDesc{"VkFenceArrayPtr"};
-        INIT_INPUT_DESC(PRESENT_FENCES_ARRAY, "present_fences_array", ResourceLifetime::Persistent, fenceArrayDesc);
 
         INIT_OUTPUT_DESC(SWAPCHAIN_HANDLE, "swapchain_handle",
             ResourceLifetime::Persistent,
@@ -177,6 +171,12 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
             ResourceLifetime::Transient,
             imageViewDesc  // VkImageView for current frame's swapchain image
         );
+
+        // FR-3: per-IMAGE sync arrays produced here, sized to the actual swapchain image count
+        HandleDescriptor renderCompleteDesc{"VkSemaphoreArrayPtr"};
+        INIT_OUTPUT_DESC(RENDER_COMPLETE_SEMAPHORES_ARRAY, "render_complete_semaphores_array", ResourceLifetime::Persistent, renderCompleteDesc);
+        HandleDescriptor presentFenceDesc{"VkFenceArrayPtr"};
+        INIT_OUTPUT_DESC(PRESENT_FENCES_ARRAY, "present_fences_array", ResourceLifetime::Persistent, presentFenceDesc);
     }
 
     // Automated config validation
@@ -200,14 +200,8 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
     static_assert(IMAGE_AVAILABLE_SEMAPHORES_ARRAY_Slot::index == 5, "IMAGE_AVAILABLE_SEMAPHORES_ARRAY must be at index 5");
     static_assert(!IMAGE_AVAILABLE_SEMAPHORES_ARRAY_Slot::nullable, "IMAGE_AVAILABLE_SEMAPHORES_ARRAY is required");
 
-    static_assert(RENDER_COMPLETE_SEMAPHORES_ARRAY_Slot::index == 6, "RENDER_COMPLETE_SEMAPHORES_ARRAY must be at index 6");
-    static_assert(!RENDER_COMPLETE_SEMAPHORES_ARRAY_Slot::nullable, "RENDER_COMPLETE_SEMAPHORES_ARRAY is required");
-
-    static_assert(CURRENT_FRAME_INDEX_Slot::index == 7, "CURRENT_FRAME_INDEX must be at index 7");
+    static_assert(CURRENT_FRAME_INDEX_Slot::index == 6, "CURRENT_FRAME_INDEX must be at index 6");
     static_assert(!CURRENT_FRAME_INDEX_Slot::nullable, "CURRENT_FRAME_INDEX is required");
-
-    static_assert(PRESENT_FENCES_ARRAY_Slot::index == 8, "PRESENT_FENCES_ARRAY must be at index 8");
-    static_assert(!PRESENT_FENCES_ARRAY_Slot::nullable, "PRESENT_FENCES_ARRAY is required");
 
     static_assert(SWAPCHAIN_HANDLE_Slot::index == 0, "SWAPCHAIN_HANDLE must be at index 0");
     static_assert(!SWAPCHAIN_HANDLE_Slot::nullable, "SWAPCHAIN_HANDLE is required");
@@ -220,6 +214,12 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
 
     static_assert(CURRENT_FRAME_IMAGE_VIEW_Slot::index == 3, "CURRENT_FRAME_IMAGE_VIEW must be at index 3");
     static_assert(!CURRENT_FRAME_IMAGE_VIEW_Slot::nullable, "CURRENT_FRAME_IMAGE_VIEW is required");
+
+    static_assert(RENDER_COMPLETE_SEMAPHORES_ARRAY_Slot::index == 4, "RENDER_COMPLETE_SEMAPHORES_ARRAY output must be at index 4");
+    static_assert(!RENDER_COMPLETE_SEMAPHORES_ARRAY_Slot::nullable, "RENDER_COMPLETE_SEMAPHORES_ARRAY output is required");
+
+    static_assert(PRESENT_FENCES_ARRAY_Slot::index == 5, "PRESENT_FENCES_ARRAY output must be at index 5");
+    static_assert(!PRESENT_FENCES_ARRAY_Slot::nullable, "PRESENT_FENCES_ARRAY output is required");
 
     // Type validations
     static_assert(std::is_same_v<WINDOW_Slot::Type, GLFWwindow*>);

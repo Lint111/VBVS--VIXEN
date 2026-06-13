@@ -220,8 +220,15 @@ void RenderGraph::ConnectNodes(
     // But NOT OK for many outputs to connect to one input (multiple drivers)
     Resource* existingInput = toNode->GetInput(inputIdx, 0);
     if (existingInput != nullptr) {
-        GRAPH_LOG_CRITICAL("\n=== FATAL ERROR: Duplicate Connection Detected ===\nAttempting to connect: " + fromNode->GetInstanceName() + "[output " + std::to_string(outputIdx) + "] -> " + toNode->GetInstanceName() + "[input " + std::to_string(inputIdx) + "]\nBut input slot " + std::to_string(inputIdx) + " of " + toNode->GetInstanceName() + " is ALREADY CONNECTED to another output.\nMultiple outputs cannot drive the same input slot.\n==============================================");
-        std::exit(1);  // Terminate immediately
+        // Recoverable, like the index-validation throws above: a bad Connect()
+        // must be catchable by the host/mod wiring the graph, not process-fatal.
+        std::string error = "Duplicate connection: input slot " + std::to_string(inputIdx) +
+                          " of " + toNode->GetInstanceName() + " is already connected. Attempted " +
+                          fromNode->GetInstanceName() + "[output " + std::to_string(outputIdx) + "] -> " +
+                          toNode->GetInstanceName() + "[input " + std::to_string(inputIdx) + "]. " +
+                          "Multiple outputs cannot drive the same input slot.";
+        GRAPH_LOG_ERROR(error);
+        throw std::runtime_error(error);
     }
 
     // Connect all array elements from output to input
@@ -385,6 +392,12 @@ void RenderGraph::HandleWindowClose() {
 
 void RenderGraph::ExecuteCleanup() {
     GRAPH_LOG_INFO("[RenderGraph::ExecuteCleanup] Executing cleanup callbacks...");
+
+    // AR#16: from here the graph's resources are being destroyed. Mark the graph un-renderable so
+    // RenderFrame() stops executing nodes (which would index freed per-image sync arrays and trip a
+    // vector-out-of-range on shutdown). The render loop may run one more iteration after a
+    // WindowCloseEvent triggers this cleanup.
+    isCleanedUp = true;
 
     // Check if cleanup has already been executed
     if (cleanupStack.GetNodeCount() == 0) {
@@ -576,6 +589,12 @@ void RenderGraph::Execute(VkCommandBuffer commandBuffer) {
 }
 
 VkResult RenderGraph::RenderFrame() {
+    // AR#16: after shutdown cleanup the graph's resources are destroyed. Skip cleanly instead of
+    // executing nodes that would index freed per-image sync arrays (vector-out-of-range on close).
+    if (isCleanedUp) {
+        return VK_SUCCESS;
+    }
+
     if (!isCompiled) {
         throw std::runtime_error("Graph must be compiled before rendering");
     }
@@ -1470,8 +1489,9 @@ void RenderGraph::RecompileDirtyNodes() {
             GRAPH_LOG_INFO("[RenderGraph] Recompiling node: " + node->GetInstanceName());
     
             try {
-                // Call cleanup first (destroy old resources)
-                node->Cleanup();
+                // Call cleanup first (destroy old resources). This is a RECOMPILE, not final teardown:
+                // nodes owning persistent-across-recompile resources (e.g. the OS window) keep them.
+                node->Cleanup(CleanupReason::Recompile);
     
                 // Ensure node has a chance to recreate transient objects (e.g., swapchain wrapper)
                 // Some nodes may not have device inputs available immediately; if Setup/Compile

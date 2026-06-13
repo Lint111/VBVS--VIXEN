@@ -1,5 +1,5 @@
 // Copyright (C) 2025 Lior Yanai (eLiorg)
-// Licensed under the GPL-3.0 License.
+// Licensed under the MIT License.
 // See LICENSE file in the project root for full license information.
 
 /**
@@ -45,6 +45,35 @@ protected:
         return VirtualTaskId{reinterpret_cast<NodeInstance*>(node), taskIndex};
     }
 };
+
+// Profile that counts RecordMeasurement calls (for profiling-path tests).
+namespace {
+class CountingProfile : public ITaskProfile {
+public:
+    int records = 0;
+    void OnWorkUnitsChanged(int32_t, int32_t) override {}
+    [[nodiscard]] uint64_t GetEstimatedCostNs() const override { return 0; }
+    void RecordMeasurement(uint64_t) override { ++records; }
+    [[nodiscard]] std::string GetTypeName() const override { return "CountingProfile"; }
+    [[nodiscard]] std::string GetStateDescription() const override { return ""; }
+};
+}  // namespace
+
+// TS-2: BeginProfiling/EndProfiling time via per-task Samplers (concurrent-safe),
+// not the deprecated shared-state Begin()/End(). EndProfiling records exactly once.
+TEST_F(VirtualTaskTest, BeginEndProfilingRecordsViaSamplers) {
+    CountingProfile profile;
+    VirtualTask task;
+    task.id = MakeTaskId(nodeA_.get(), 0);
+    task.profiles.push_back(&profile);
+
+    task.BeginProfiling();
+    EXPECT_TRUE(task.WasProfiled());
+    EXPECT_EQ(profile.records, 0) << "must not record until EndProfiling";
+
+    task.EndProfiling();
+    EXPECT_EQ(profile.records, 1) << "EndProfiling destroys the Sampler, recording once";
+}
 
 // =============================================================================
 // VirtualTaskId Tests
