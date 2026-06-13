@@ -148,6 +148,62 @@ Related: the engine renders its UI path on WSLg software Vulkan (llvmpipe) as of
 
 ---
 
+## Render-graph resize correctness (consumer-discovered, fixed)
+
+Window resize hung the render loop and never re-fit the swapchain. Four distinct engine bugs,
+found by driving the resize path; all fixed on `claude/wsl-build-portability` (`f6c9d8e7`). These are
+**general engine bugs** — they affect any graph that resizes (voxel path included), not just the UI demo.
+
+### FR-11 — Message-type ids are not stable across translation units
+- **Context:** window resize never reached `SwapChainNode` to trigger recompilation.
+- **Issue:** `AUTO_MESSAGE_TYPE()` was `MESSAGE_TYPE_BASE + __COUNTER__`. `__COUNTER__` resets per TU
+  and increments per use, so a `static constexpr TYPE` declared in a header resolves to *different*
+  values depending on include order. A message published in one TU then fails to match the same
+  type's subscription in another TU and is delivered to nobody. `WindowResizedMessage` is published
+  in `WindowNode.cpp` and subscribed in `SwapChainNode.cpp`/`RenderGraph.cpp` — different TUs — so
+  resize silently routed to no one. *This is the most serious one: it can mis-route ANY cross-TU
+  message.*
+- **Suggested fix:** derive the id from a translation-unit-stable hash of the definition site
+  (`__FILE__` + `__LINE__`), not `__COUNTER__`. (Better long-term: hash the type name.)
+- **Status:** FIXED (`Message.h`). EventBus unit tests still green.
+
+### FR-12 — OUT_OF_DATE frame-skip doesn't propagate the invalid image index
+- **Context:** the loop hung the instant a resized acquire returned `VK_ERROR_OUT_OF_DATE_KHR`.
+- **Issue:** `SwapChainNode::ExecuteImpl` returned early on an out-of-date acquire **without** writing
+  `IMAGE_INDEX`, so its output kept the previous (valid) index. The render node then recorded +
+  submitted with that stale index, waiting on a per-flight acquire semaphore that acquire never
+  signalled — the submit blocked, the queue never went idle, and the next fence/idle wait deadlocked.
+- **Suggested fix:** output `IMAGE_INDEX = UINT32_MAX` before the skip-return (the render + present
+  nodes already guard on `UINT32_MAX`).
+- **Status:** FIXED (`SwapChainNode.cpp`).
+
+### FR-13 — Recompile is deferred during a swapchain-recreation pause
+- **Context:** after FR-12 was fixed, resize stopped hanging but froze permanently (paused).
+- **Issue:** OUT_OF_DATE publishes `RenderPauseEvent(SwapChainRecreation, PAUSE_START)`, and
+  `RecompileDirtyNodes` defers while `renderPaused`. But the recompile *is* the recreation, and it's
+  what publishes the `PAUSE_END` that resumes — so deferring it left rendering paused forever.
+- **Suggested fix:** don't defer the recompile when the pause reason is `SwapChainRecreation`.
+- **Status:** FIXED (`RenderGraph.cpp/.h`).
+
+### FR-14 — SwapChainNode re-subscribes on every recompile
+- **Context:** each resize produced a growing storm of recompiles.
+- **Issue:** the `WindowResizedMessage` subscription is created in `SetupImpl`, which re-runs on every
+  recompile, so subscriptions accumulate and each one fires an extra `MarkNeedsRecompile`.
+- **Suggested fix:** guard the subscription so it registers once (or unsubscribe on cleanup). More
+  broadly: `SetupImpl` re-running on recompile is a footgun for any one-time subscription/registration.
+- **Status:** FIXED (`SwapChainNode.cpp`, one-shot guard).
+
+### FR-15 — No live rendering during a window-drag resize
+- **Context:** during an active resize drag the content lags (strips appear, then snap to fit).
+- **Issue:** GLFW's modal move/resize loop blocks the event loop on the main thread, so no frames
+  render *during* the drag — the swapchain only catches up once each resize step lands. Functionally
+  correct, but not smooth.
+- **Suggested fix:** render during the modal resize via `glfwSetWindowRefreshCallback` (re-entrant
+  render), or drive rendering from a second thread.
+- **Status:** OPEN (cosmetic; not a correctness bug).
+
+---
+
 ## Adding entries
 
 Number sequentially (`FR-N`). When an entry is fixed engine-side, set `Status: FIXED` and note the
