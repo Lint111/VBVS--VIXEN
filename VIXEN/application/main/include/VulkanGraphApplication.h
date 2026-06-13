@@ -158,4 +158,6 @@ public:
     // Mark the voxel scene for regeneration (the host re-registers its scene generator first, then
     // calls this; RecompileDirtyNodes rebuilds the SVO on the next Update()).
     void MarkVoxelSceneDirty();
+    // Expose the GLFW window handle so the host can poll input (e.g. Space/period for pause/step).
+    GLFWwindow* GetWindowHandle() const { return windowHandle; }
 };
