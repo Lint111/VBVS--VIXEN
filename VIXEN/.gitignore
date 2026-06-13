@@ -67,11 +67,12 @@ tools/*
 
 
 
-# Data directories with benchmark results and large files
+# Data directories: legacy benchmark/research artifacts from VIXEN's research-platform days.
+# No longer relevant to the game-renderer path; kept local-only (regeneratable by the
+# benchmark). Previously `!data/finalized/` / `!data/templates/` force-tracked these — dropped
+# so the ~385MB research dump stays out of the engine repo.
 data/
 data/*
-!data/finalized/
-!data/templates/
 
 # Exception: Keep RenderGraph Data/ folder (contains node configs)
 !libraries/*/include/Data/
