@@ -145,13 +145,19 @@ Correctness bugs + the only-consumer's pain + legal hygiene. Wasted on no possib
 
 ### P1 — The pivotal decision (cheapest, highest-leverage item in the review)
 
-- [ ] **Re-scope [[05-Progress/features/Sprint8-Timeline-System|Sprint 8]] against public mod-API
-  requirements *before writing its 144h of code*** [AR#76 / Decision #1]. Sprint 8 ("Everything Is
-  A Node": GraphSerializer, GraphEditorNode, ValidationNode, SnapshotNode) already builds ~80% of
-  the mod-API mutation machinery. If it ships with raw handles / throw-on-error / no string
-  addressing, the mod API is rebuilt later at far higher cost. Also reverse the
-  `Sprint8-Timeline-System.md:178` line positioning VIXEN as *"not a plugin host."*
-  **Cost = editing a planning doc. Risk if skipped = the most expensive failure mode in the review.**
+- [x] **Re-scope [[05-Progress/features/Sprint8-Timeline-System|Sprint 8]] against public mod-API
+  requirements *before writing its code*** [AR#76 / Decision #1] — **DONE 2026-06-13.** Sprint 8's
+  mutation machinery (GraphSerializer, GraphEditorNode, ValidationNode, SnapshotNode — ~80% of the
+  mod-API machinery) is now specified against public-API requirements so it ships *as* the mod API.
+  Edited the Sprint 8 plan: (1) **reversed the anti-plugin Framework Positioning** (`:178` "not plugin
+  hosts" → embeddable mod host, UNDERTOW = consumer zero); (2) added a **Public Mod-API Requirements**
+  section — R1 string addressing, R2 Result-not-throw (the error-model prerequisite is **done** — AR#1),
+  R3 generational opaque handles, R4 persisted connection records, R5 thin handles/strings/POD boundary,
+  each cross-referenced to the Architecture Review §6 layers; (3) amended the Phase 4–5 specs
+  (string-addressed `EditCommand`/GraphSerializer, `Result`-returning deserialize, +6h connection-record
+  task ahead of serialization). **Cost = editing a planning doc (the cheapest, highest-leverage item in
+  the review); risk-if-skipped = the most expensive failure mode (moddability retrofit).** This closes
+  **P1**.
 
 ### P2 — Engine boundary (game-renderer foundation, review Phase 1)
 
