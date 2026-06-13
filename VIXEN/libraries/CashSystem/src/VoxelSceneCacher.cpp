@@ -368,15 +368,19 @@ bool VoxelSceneCacher::DeserializeFromFile(const std::filesystem::path& path, vo
 // ============================================================================
 
 void VoxelSceneCacher::GenerateScene(const VoxelSceneCreateInfo& ci, VoxelSceneData& data) {
-    LOG_INFO("[VoxelSceneCacher::GenerateScene] Generating " + SceneTypeToString(ci.sceneType) + " @ " + std::to_string(ci.resolution) + "^3");
+    // Resolve the generator name: built-in types map via SceneTypeToString;
+    // Custom uses the caller-supplied generator name (not the literal "custom",
+    // which is unregistered and silently fell back to cornell).
+    const std::string sceneTypeName = (ci.sceneType == SceneType::Custom)
+        ? ci.customGeneratorName
+        : SceneTypeToString(ci.sceneType);
 
-    // Get scene type as string for factory lookup
-    std::string sceneTypeName = SceneTypeToString(ci.sceneType);
+    LOG_INFO("[VoxelSceneCacher::GenerateScene] Generating '" + sceneTypeName + "' @ " + std::to_string(ci.resolution) + "^3");
 
     // Create generator from factory
     auto generator = SceneGeneratorFactory::Create(sceneTypeName);
     if (!generator) {
-        LOG_DEBUG("[VoxelSceneCacher::GenerateScene] Unknown scene type '" + sceneTypeName + "', falling back to 'cornell'");
+        LOG_DEBUG("[VoxelSceneCacher::GenerateScene] Unknown scene generator '" + sceneTypeName + "', falling back to 'cornell'");
         generator = SceneGeneratorFactory::Create("cornell");
         if (!generator) {
             throw std::runtime_error("[VoxelSceneCacher::GenerateScene] Failed to create scene generator");
