@@ -662,6 +662,11 @@ VkResult RenderGraph::RenderFrame() {
         }
     }
 
+    // Phase 2a (AR#1): track a node-execution failure so it surfaces as a return status instead of an
+    // exception escaping RenderFrame -- which would propagate to the app loop (process-fatal) and is
+    // undefined behaviour across a C# host boundary (UNDERTOW). Frame-end cleanup below still runs.
+    VkResult frameResult = VK_SUCCESS;
+
     // Execute all nodes
     // Sprint 6.4: Support both sequential and parallel execution modes
     if (parallelExecutionEnabled_) {
@@ -692,8 +697,17 @@ VkResult RenderGraph::RenderFrame() {
         }
 
         // Execute nodes in parallel using virtual task executor
-        // The executor handles dependency ordering and task-level parallelism
-        virtualTaskExecutor_.ExecutePhase(VirtualTaskPhase::Execute);
+        // The executor handles dependency ordering and task-level parallelism. Phase 2a: a task
+        // failure must not escape RenderFrame as an exception -- catch it and surface a status.
+        try {
+            virtualTaskExecutor_.ExecutePhase(VirtualTaskPhase::Execute);
+        } catch (const std::exception& e) {
+            GRAPH_LOG_ERROR(std::string("[RenderGraph::RenderFrame] Parallel execute phase failed: ") + e.what());
+            frameResult = VK_ERROR_UNKNOWN;
+        } catch (...) {
+            GRAPH_LOG_ERROR("[RenderGraph::RenderFrame] Parallel execute phase failed with a non-std exception");
+            frameResult = VK_ERROR_UNKNOWN;
+        }
 
         // Post-execution: Set all nodes to Complete state
         for (NodeInstance* node : executionOrder) {
@@ -726,8 +740,24 @@ VkResult RenderGraph::RenderFrame() {
 
                 node->SetState(NodeState::Executing);
 
-                // Pass VK_NULL_HANDLE - nodes manage their own command buffers
-                node->Execute();
+                // Phase 2a: catch a node Execute failure here instead of letting the exception
+                // propagate out of RenderFrame -> the app loop -> a process-fatal exit (and UB across
+                // a C# host). Record it, stop the frame, and return a non-success status to Render().
+                try {
+                    node->Execute();  // Pass VK_NULL_HANDLE - nodes manage their own command buffers
+                } catch (const std::exception& e) {
+                    GRAPH_LOG_ERROR("[RenderGraph::RenderFrame] Node '" + node->GetInstanceName() +
+                                    "' failed during Execute: " + e.what());
+                    node->SetState(NodeState::Complete);
+                    frameResult = VK_ERROR_UNKNOWN;
+                    break;
+                } catch (...) {
+                    GRAPH_LOG_ERROR("[RenderGraph::RenderFrame] Node '" + node->GetInstanceName() +
+                                    "' failed during Execute with a non-std exception");
+                    node->SetState(NodeState::Complete);
+                    frameResult = VK_ERROR_UNKNOWN;
+                    break;
+                }
 
                 node->SetState(NodeState::Complete);
 
@@ -783,7 +813,7 @@ VkResult RenderGraph::RenderFrame() {
     // Increment frame counter for next frame
     globalFrameIndex++;
 
-    return VK_SUCCESS;
+    return frameResult;  // Phase 2a: VK_SUCCESS, or the failure recorded if a node's Execute threw
 }
 
 NodeInstance* RenderGraph::GetInstance(NodeHandle handle) {

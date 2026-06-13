@@ -2,6 +2,7 @@
 
 #include "Headers.h"
 #include "ILoggable.h"
+#include "error/VulkanError.h"
 
 // Forward declaration
 namespace Vixen::Vulkan::Resources {
@@ -60,11 +61,11 @@ public:
     virtual ~TextureLoader() = default;
 
     // Load texture from file and return TextureData for caller to own
-    TextureData Load(const char* fileName, const TextureLoadConfig& config);
+    VulkanResult<TextureData> Load(const char* fileName, const TextureLoadConfig& config);
 
 protected:
     // Override this to load pixel data from file (library-specific)
-    virtual PixelData LoadPixelData(const char* fileName) = 0;
+    virtual VulkanResult<PixelData> LoadPixelData(const char* fileName) = 0;
 
     // Override this to free pixel data (library-specific)
     virtual void FreePixelData(PixelData& data) = 0;
@@ -75,20 +76,20 @@ protected:
 
 private:
     // Upload linear - map memory directly, no staging buffer
-    void UploadLinear(
+    VulkanStatus UploadLinear(
         const PixelData& pixelData,
         TextureData* texture,
         const TextureLoadConfig& config
     );
 
     // Upload optimal - use staging buffer for GPU-optimal layout
-    void UploadOptimal(
+    VulkanStatus UploadOptimal(
         const PixelData& pixelData,
         TextureData* texture,
         const TextureLoadConfig& config
     );
 
-    void CreateImage(
+    VulkanStatus CreateImage(
         TextureData* texture,
         VkImageUsageFlags usage,
         VkFormat format,
@@ -98,16 +99,20 @@ private:
         uint32_t mipLevels
     );
 
-    void CreateImageView(
+    VulkanStatus CreateImageView(
         TextureData* texture,
         VkFormat format,
         uint32_t mipLevels
     );
 
-    void CreateSampler(
+    VulkanStatus CreateSampler(
         TextureData* texture,
         uint32_t mipLevels
     );
+
+    // Release any GPU resources already created in `texture` when a load fails partway, so error
+    // paths leak nothing (Load() calls this on upload failure).
+    void DestroyPartialTexture(TextureData& texture);
 
     public:
     void SetImageLayout(
