@@ -64,6 +64,13 @@ target_compile_definitions(VixenApp PRIVATE
     VIXEN_SDI_OUTPUT_DIR="${APP_SDI_OUTPUT_DIR}"
 )
 
+# WSL2 GPU Vulkan: pass the provisioned Mesa Dozen ICD path (set by cmake/ProvisionWslVulkan.cmake at
+# top-level configure, which runs before this subdirectory). Empty/undefined off WSL, in which case
+# VulkanGraphApplication's SelectWslGpuIcd() helper compiles to a no-op.
+if(VIXEN_WSL_DZN_ICD)
+    target_compile_definitions(VixenApp PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
+endif()
+
 set_property(TARGET VixenApp PROPERTY CXX_STANDARD 23)
 set_property(TARGET VixenApp PROPERTY CXX_STANDARD_REQUIRED ON)
 set_property(TARGET VixenApp PROPERTY C_STANDARD 23)
