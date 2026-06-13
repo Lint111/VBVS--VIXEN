@@ -246,6 +246,51 @@ Debug and reused cached artifacts). All fixed on `claude/wsl-build-portability`.
 - **Suggested fix:** remove the vestigial define (keep `unistd.h`); the surface ext is GLFW's job.
 - **Status:** FIXED (`ShaderManagementHeaders.h`, `RenderGraphHeaders.h`).
 
+### FR-19 — STORAGE swapchain over an SRGB surface format removes the device on D3D12 (Dozen/WSL2)
+- **Context:** with GPU Vulkan reached via Mesa Dozen (Vulkan-over-D3D12) on WSL2, the voxel render
+  came up **black** then `D3D12: Removing Device.` the instant a STORAGE image view was created over
+  the swapchain image.
+- **Issue:** the voxel compute path uses the swapchain image as a STORAGE image (a D3D12 UAV). The
+  X11/XCB surface Dozen exposes lists `VK_FORMAT_B8G8R8A8_SRGB` **first**, so the "select
+  `surfaceFormats[0]`" rule in `GetSupportedFormats()` picks SRGB — and **D3D12 forbids UAVs on any
+  `*_SRGB` format**. Dozen still reports SRGB as storage-capable, so the pipeline builds and the device
+  is silently removed at view-creation time. (Native ICDs happened to list a UNORM format first, hiding
+  this.)
+- **Suggested fix:** when STORAGE usage is requested and the chosen format is `*_SRGB`, swap to its
+  UNORM sibling if the surface offers one. Gate on the Dozen-only `VK_MSFT_layered_driver` device
+  extension so native GPUs are untouched. (The ray-marcher already writes display-ready colour, so
+  UNORM is in fact the correct present target there.)
+- **Status:** FIXED (`VulkanResources/src/VulkanSwapChain.cpp::GetSupportedFormats`, branch
+  `claude/wsl-build-portability`). Proven: 6000+ frames, 0 device removals, RTX 3060.
+
+### FR-20 — No GPU Vulkan path under WSL2 (software-only fallback)
+- **Context:** stock WSL2 ships only a software Vulkan ICD (lavapipe → llvmpipe), so VIXEN's
+  STORAGE-swapchain compute path renders on the CPU even though the real GPU is present (`/dev/dxg` +
+  `/usr/lib/wsl/lib/libd3d12.so`). Reaching the GPU needs Mesa **Dozen**, which isn't packaged.
+- **Issue/UX:** building + selecting Dozen by hand (no-sudo Mesa build, then `VK_ICD_FILENAMES`) is a
+  long manual dance no consumer should have to do.
+- **Added (for review):** a VIXEN-side auto-provision so a WSL2 build gets GPU rendering turnkey —
+  `cmake/ProvisionWslVulkan.cmake` (+ `provision-wsl-vulkan.sh`) detects `/dev/dxg` and builds Dozen
+  no-sudo into `~/.cache/vixen/wsl-vulkan` (idempotent, cached, **non-fatal** → software fallback on
+  failure, opt-out `VIXEN_AUTO_PROVISION_WSL_VULKAN=OFF`); and `VulkanGraphApplication::Initialize()`
+  selects the provisioned ICD before instance creation (gated on `/dev/dxg` + `VK_ICD_FILENAMES`-unset,
+  so it's a no-op off WSL / when the user chose an ICD). Every `VixenApp` consumer benefits.
+- **Status:** ADDED on `claude/wsl-build-portability` (awaiting your review/adoption). Proven turnkey:
+  ~150 fps ray-march, 0 device removals, no manual env.
+
+### FR-21 — Render-host runtime UX: per-frame INFO log spam + cwd pollution
+- **Context:** observed during a 90 s render of the embedded sim.
+- **Issue:** (a) ~14 000 INFO lines / 90 s — `voxel_grid` logs `octreeBricksBuffer handle: …` and
+  friends every frame, `ComputeDispatchNode` logs `Recorded compute commands for image N` per
+  swapchain image per frame, and a `debug_capture` buffer-readback node runs at INFO in a normal
+  (non-debug) render. (b) the host writes its RenderGraph `cache/` and `generated/` directories into
+  the consumer's **current working directory**, not a cache location.
+- **Suggested fix:** gate the per-frame buffer-handle / command-record logs behind DEBUG (or a
+  frame-throttle like the existing GPU-perf logger's 120-frame cadence); don't run `debug_capture` at
+  INFO outside debug builds; root the persistent cache at a cache dir (e.g. `$XDG_CACHE_HOME`) instead
+  of cwd.
+- **Status:** OPEN (minor; cosmetic — does not affect correctness).
+
 ---
 
 ## Adding entries
