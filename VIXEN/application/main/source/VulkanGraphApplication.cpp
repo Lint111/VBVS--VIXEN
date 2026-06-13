@@ -250,11 +250,22 @@ void VulkanGraphApplication::Prepare() {
         }
     }
     catch (const std::exception& e) {
-        if (mainLogger && mainLogger->IsEnabled()) {
-            mainLogger->Error(std::string("[VulkanGraphApplication::Prepare] EXCEPTION: ") + e.what());
+        // Phase 2b (AR#1): do NOT rethrow. Prepare() is host-facing -- the C# UNDERTOW host calls it,
+        // and a C++ exception crossing that boundary is undefined behaviour; rethrowing also took the
+        // standalone app down via main() -> exit -1. Record the failure and leave isPrepared=false so
+        // the caller reports it (GetLastError()) and aborts/retries gracefully instead of crashing.
+        lastError_ = std::string("Prepare failed: ") + e.what();
+        if (mainLogger) {
+            mainLogger->Error("[VulkanGraphApplication::Prepare] " + lastError_);
         }
         isPrepared = false;
-        throw;  // Re-throw to let main() handle it
+    }
+    catch (...) {
+        lastError_ = "Prepare failed: unknown (non-std) exception";
+        if (mainLogger) {
+            mainLogger->Error("[VulkanGraphApplication::Prepare] " + lastError_);
+        }
+        isPrepared = false;
     }
 }
 

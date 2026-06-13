@@ -62,6 +62,10 @@ public:
     // ====== Getters ======
 
     inline bool IsPrepared() const { return isPrepared; }
+    // Last failure message, set when Prepare() (or a frame) fails instead of throwing to the host.
+    // Host-facing: a C# host (UNDERTOW) reads IsPrepared()==false + GetLastError() rather than catching
+    // a C++ exception (which is UB across the boundary). Empty on success.
+    inline const std::string& GetLastError() const { return lastError_; }
     inline VulkanInstance* GetInstance() { return &instanceObj; }
     inline std::shared_ptr<Logger> GetLogger() const { return mainLogger; }
 
@@ -96,4 +100,5 @@ protected:
     // ====== State ======
     bool debugFlag;                                 // Debug mode enabled
     bool isPrepared;                                // Ready to render
+    std::string lastError_;                         // Last Prepare/frame failure message (host-readable; empty = ok)
 };

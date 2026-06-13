@@ -54,6 +54,13 @@ int main(int argc, char** argv) {
 
         mainLogger->Info("Calling Prepare...");
         appObj -> Prepare();
+        if (!appObj->IsPrepared()) {
+            // Phase 2b: Prepare() now reports failure via IsPrepared()/GetLastError() instead of
+            // throwing (so a C# host gets a status, not a C++ exception). Abort the run gracefully.
+            mainLogger->Error("Prepare failed: " + appObj->GetLastError() + " - aborting before render loop");
+            appObj -> DeInitialize();
+            return -1;
+        }
 
         mainLogger->Info("Entering render loop...");
         bool isWindowOpen = true;
