@@ -175,6 +175,55 @@ void VulkanSwapChain::GetSupportedFormats(VkPhysicalDevice gpu)
         scPublicVars.Format = scPrivateVars.surfaceFormats[0].format;
     }
 
+    // Dozen/D3D12 swapchain-STORAGE format fix (enables WSL2 GPU rendering) ------------------------
+    // Dozen (Mesa's Vulkan-over-D3D12 "microsoft" driver, used on WSL2 to reach the real GPU) maps a
+    // STORAGE swapchain image to a D3D12 UAV. D3D12 forbids UAVs on *_SRGB formats — but the X11/XCB
+    // surface Dozen exposes lists VK_FORMAT_B8G8R8A8_SRGB *first*, so the "select surfaceFormats[0]"
+    // rule above picks SRGB. The STORAGE guard below then keeps the bit (Dozen reports SRGB as
+    // storage-capable), the compute pipeline builds, and the GPU silently removes the device
+    // ("D3D12: Removing Device.") the moment a STORAGE image view is created over the SRGB swapchain
+    // image. The UNORM sibling (e.g. VK_FORMAT_B8G8R8A8_UNORM) IS a legal D3D12 UAV — a direct
+    // SRGB→UNORM swapchain reproducer on this box renders fine. So when STORAGE usage is requested on
+    // a Dozen device and the chosen format is *_SRGB, swap to the matching non-SRGB (UNORM) surface
+    // format if the surface offers one. Gated on the Dozen-only VK_MSFT_layered_driver device
+    // extension → native-GPU behaviour is unchanged. The only visible change on Dozen is that the
+    // compositor no longer applies a linear→sRGB encode on present; the ray-marcher already writes
+    // display-ready colour, so UNORM (raw bytes) is in fact the correct target here.
+    if (imageUsageFlags & VK_IMAGE_USAGE_STORAGE_BIT) {
+        bool isLayeredDriver = false;
+        uint32_t devExtCount = 0;
+        if (vkEnumerateDeviceExtensionProperties(gpu, nullptr, &devExtCount, nullptr) == VK_SUCCESS && devExtCount > 0) {
+            std::vector<VkExtensionProperties> devExts(devExtCount);
+            if (vkEnumerateDeviceExtensionProperties(gpu, nullptr, &devExtCount, devExts.data()) == VK_SUCCESS) {
+                for (const auto& e : devExts) {
+                    if (std::strcmp(e.extensionName, "VK_MSFT_layered_driver") == 0) { isLayeredDriver = true; break; }
+                }
+            }
+        }
+        // Map an SRGB surface format to its UNORM sibling (D3D12 UAVs reject SRGB; UNORM is legal).
+        auto srgbToUnorm = [](VkFormat f) -> VkFormat {
+            switch (f) {
+                case VK_FORMAT_B8G8R8A8_SRGB: return VK_FORMAT_B8G8R8A8_UNORM;
+                case VK_FORMAT_R8G8B8A8_SRGB: return VK_FORMAT_R8G8B8A8_UNORM;
+                case VK_FORMAT_A8B8G8R8_SRGB_PACK32: return VK_FORMAT_A8B8G8R8_UNORM_PACK32;
+                default: return f;
+            }
+        };
+        const VkFormat unormWanted = srgbToUnorm(scPublicVars.Format);
+        if (isLayeredDriver && unormWanted != scPublicVars.Format) {
+            for (const auto& sf : scPrivateVars.surfaceFormats) {
+                if (sf.format == unormWanted) {
+                    LOG_INFO("[GetSupportedFormats] Dozen/D3D12 (VK_MSFT_layered_driver) + STORAGE swapchain: "
+                             "swapping chosen SRGB surface format to its UNORM sibling (SRGB is not a legal "
+                             "D3D12 UAV; UNORM is).");
+                    scPublicVars.Format = unormWanted;
+                    break;
+                }
+            }
+        }
+    }
+    // (end Dozen/D3D12 swapchain-STORAGE format fix)
+
     // Portability guard: keep STORAGE swapchain usage only when the chosen surface format actually
     // supports the STORAGE_IMAGE feature. Software rasterizers (e.g. llvmpipe on WSLg) expose BGRA
     // surface formats WITHOUT storage support; requesting STORAGE anyway produces an invalid swapchain
