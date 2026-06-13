@@ -257,12 +257,7 @@ public:
 
         ~Sampler() {
             if (active_ && profile_) {
-                auto endTime = std::chrono::high_resolution_clock::now();
-                auto elapsedNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                    endTime - startTime_).count();
-                auto actualNs = static_cast<uint64_t>(elapsedNs);
-                profile_->RecordMeasurement(actualNs);
-                profile_->RecordPredictionSample(estimateAtStart_, actualNs);
+                RecordResult(ElapsedNs());
             }
         }
 
@@ -281,14 +276,11 @@ public:
 
         Sampler& operator=(Sampler&& other) noexcept {
             if (this != &other) {
-                // Record current measurement if active
+                // Flush this sampler's in-flight measurement before `other`
+                // overwrites it. RecordResult is noexcept: operator= is noexcept,
+                // so a propagating exception here would call std::terminate.
                 if (active_ && profile_) {
-                    auto endTime = std::chrono::high_resolution_clock::now();
-                    auto elapsedNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                        endTime - startTime_).count();
-                    auto actualNs = static_cast<uint64_t>(elapsedNs);
-                    profile_->RecordMeasurement(actualNs);
-                    profile_->RecordPredictionSample(estimateAtStart_, actualNs);
+                    RecordResult(ElapsedNs());
                 }
                 profile_ = other.profile_;
                 startTime_ = other.startTime_;
@@ -325,8 +317,7 @@ public:
          */
         void Finalize(uint64_t measurementNs) {
             if (active_ && profile_) {
-                profile_->RecordMeasurement(measurementNs);
-                profile_->RecordPredictionSample(estimateAtStart_, measurementNs);
+                RecordResult(measurementNs);
                 active_ = false;  // Prevent destructor from double-recording
             }
         }
@@ -341,6 +332,19 @@ public:
         }
 
     private:
+        // Record the finalized measurement to the parent profile. NEVER throws:
+        // invoked from the destructor and the noexcept move-assignment, where a
+        // propagating exception (e.g. bad_alloc growing the samples vector) would
+        // call std::terminate. A dropped timing sample must not crash the app.
+        void RecordResult(uint64_t actualNs) noexcept {
+            try {
+                profile_->RecordMeasurement(actualNs);
+                profile_->RecordPredictionSample(estimateAtStart_, actualNs);
+            } catch (...) {
+                // Intentionally swallow: losing one timing sample is not fatal.
+            }
+        }
+
         ITaskProfile* profile_;
         std::chrono::high_resolution_clock::time_point startTime_;
         uint64_t estimateAtStart_;
@@ -366,6 +370,7 @@ public:
      * @warning For concurrent measurements, use Sample() instead.
      * This uses shared state and is only safe for single-threaded use.
      */
+    [[deprecated("Not concurrent-safe (shared profile state). Use Sample() for a per-measurement Sampler.")]]
     void Begin() {
         startTime_ = std::chrono::high_resolution_clock::now();
         timing_ = true;
@@ -376,6 +381,7 @@ public:
      *
      * @warning For concurrent measurements, use Sample() instead.
      */
+    [[deprecated("Not concurrent-safe (shared profile state). Use Sample() for a per-measurement Sampler.")]]
     void End() {
         if (!timing_) return;
         timing_ = false;
@@ -389,6 +395,7 @@ public:
     /**
      * @brief Check if currently timing via Begin()/End()
      */
+    [[deprecated("Tied to the deprecated Begin()/End() timing API.")]]
     [[nodiscard]] bool IsTiming() const { return timing_; }
 
     // Alias for backward compatibility

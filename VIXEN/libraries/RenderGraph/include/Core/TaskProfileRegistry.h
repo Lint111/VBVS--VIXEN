@@ -29,6 +29,7 @@
 #include <algorithm>
 #include <string>
 #include <memory>
+#include <atomic>
 
 namespace Vixen::RenderGraph {
 
@@ -619,17 +620,18 @@ public:
     uint32_t ProcessDeferredActions() {
         uint32_t adjustments = 0;
 
+        // Atomically read-and-clear each flag (exchange) so an event handler
+        // setting it again on another thread is never silently lost in the gap
+        // between a separate read and reset.
         // Process pending decrease first (higher priority - prevent overrun)
-        if (pendingDecrease_) {
-            pendingDecrease_ = false;
+        if (pendingDecrease_.exchange(false)) {
             if (!DecreaseLowestPriority().empty()) {
                 ++adjustments;
             }
         }
 
         // Process pending increase
-        if (pendingIncrease_) {
-            pendingIncrease_ = false;
+        if (pendingIncrease_.exchange(false)) {
             if (!IncreaseHighestPriority().empty()) {
                 ++adjustments;
             }
@@ -642,7 +644,7 @@ public:
      * @brief Check if there are pending deferred actions
      */
     [[nodiscard]] bool HasPendingActions() const {
-        return pendingDecrease_ || pendingIncrease_;
+        return pendingDecrease_.load() || pendingIncrease_.load();
     }
 
     /**
@@ -703,9 +705,12 @@ private:
     EventBus::ScopedSubscriptions subscriptions_;
 
     // Sprint 6.3: Deferred action flags (prevents deadlock during event dispatch)
-    // These are set by event handlers and processed by ProcessDeferredActions()
-    bool pendingDecrease_ = false;
-    bool pendingIncrease_ = false;
+    // These are set by event handlers and processed by ProcessDeferredActions().
+    // Atomic: a budget-event handler (potentially on the publisher's thread)
+    // writes these while ProcessDeferredActions() reads-and-clears them at a
+    // frame-safe point. Plain bool here is a data race (UB) under that handoff.
+    std::atomic<bool> pendingDecrease_{false};
+    std::atomic<bool> pendingIncrease_{false};
 
     // Sprint 6.5: Initialization flag for built-in factories
     bool initialized_ = false;

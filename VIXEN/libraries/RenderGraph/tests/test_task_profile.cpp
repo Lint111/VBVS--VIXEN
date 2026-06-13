@@ -996,3 +996,108 @@ TEST_F(EventDrivenCalibrationStoreTest, ManualModeStillWorks) {
     EXPECT_TRUE(result.success);
     EXPECT_TRUE(store.Exists());
 }
+
+// ============================================================================
+// SAMPLER EXCEPTION-SAFETY TESTS (TS-4)
+// ============================================================================
+//
+// The Sampler finalize paths (destructor, move-assignment, Finalize) record a
+// measurement to the parent profile. RecordMeasurement can throw (e.g. bad_alloc
+// from the samples vector). The destructor and move-assignment are noexcept, so a
+// propagating exception there calls std::terminate. These tests prove the paths
+// swallow exceptions instead of crashing the program.
+
+#include <stdexcept>
+#include <utility>
+
+namespace {
+// A profile whose RecordMeasurement always throws.
+class ThrowingProfile : public ITaskProfile {
+public:
+    void OnWorkUnitsChanged(int32_t, int32_t) override {}
+    [[nodiscard]] uint64_t GetEstimatedCostNs() const override { return 0; }
+    void RecordMeasurement(uint64_t) override { throw std::runtime_error("record failed"); }
+    [[nodiscard]] std::string GetTypeName() const override { return "ThrowingProfile"; }
+    [[nodiscard]] std::string GetStateDescription() const override { return "throwing"; }
+};
+}  // namespace
+
+TEST(SamplerExceptionSafety, FinalizeDoesNotPropagate) {
+    ThrowingProfile profile;
+    auto sampler = profile.Sample();
+    EXPECT_NO_THROW(sampler.Finalize(1'000'000));
+}
+
+TEST(SamplerExceptionSafety, DestructorDoesNotTerminate) {
+    ThrowingProfile profile;
+    // Destructor (noexcept) calls the throwing RecordMeasurement at scope end.
+    EXPECT_NO_THROW({
+        auto sampler = profile.Sample();
+        (void)sampler;
+    });
+}
+
+TEST(SamplerExceptionSafety, MoveAssignmentDoesNotTerminate) {
+    ThrowingProfile profile;
+    auto active = profile.Sample();       // active sampler, flushed on overwrite
+    auto replacement = profile.Sample();
+    // Move-assignment (noexcept) flushes `active`'s measurement (throws).
+    EXPECT_NO_THROW({ active = std::move(replacement); });
+}
+
+// ============================================================================
+// DEFERRED BUDGET-ACTION TESTS (TS-3)
+// ============================================================================
+//
+// Budget event handlers must DEFER pressure adjustments (set an atomic flag),
+// not act inline; ProcessDeferredActions() applies and clears them at a safe
+// point. Locks in the event -> defer -> process flow (previously untested).
+
+TEST(TaskProfileDeferredActions, BudgetOverrunDefersThenDecreasesOnProcess) {
+    Vixen::EventBus::MessageBus bus;
+    TaskProfileRegistry registry;
+
+    auto low = std::make_unique<SimpleTaskProfile>("low", "");
+    low->SetPriority(50);
+    low->SetBounds(-5, +5);
+    low->SetWorkUnits(0);
+    registry.RegisterTask(std::move(low));
+
+    registry.SubscribeToBudgetEvents(&bus);
+    EXPECT_FALSE(registry.HasPendingActions());
+
+    // Budget overrun: handler must QUEUE a decrease, not act immediately.
+    Vixen::EventBus::BudgetOverrunEvent overrun(0, 1, 1.2f, 1000, 1200);
+    bus.PublishImmediate(overrun);
+
+    EXPECT_TRUE(registry.HasPendingActions());
+    EXPECT_EQ(registry.GetProfile("low")->GetWorkUnits(), 0) << "handler must defer, not act inline";
+
+    EXPECT_EQ(registry.ProcessDeferredActions(), 1u);
+    EXPECT_EQ(registry.GetProfile("low")->GetWorkUnits(), -1);
+    EXPECT_FALSE(registry.HasPendingActions());
+
+    // Idempotent once the flag is cleared.
+    EXPECT_EQ(registry.ProcessDeferredActions(), 0u);
+}
+
+TEST(TaskProfileDeferredActions, BudgetAvailableDefersThenIncreasesOnProcess) {
+    Vixen::EventBus::MessageBus bus;
+    TaskProfileRegistry registry;
+
+    auto high = std::make_unique<SimpleTaskProfile>("high", "");
+    high->SetPriority(200);
+    high->SetBounds(-5, +5);
+    high->SetWorkUnits(0);
+    registry.RegisterTask(std::move(high));
+
+    registry.SubscribeToBudgetEvents(&bus);
+
+    Vixen::EventBus::BudgetAvailableEvent avail(0, 1, 0.5f, 0.9f, 500);
+    bus.PublishImmediate(avail);
+
+    EXPECT_TRUE(registry.HasPendingActions());
+    EXPECT_EQ(registry.ProcessDeferredActions(), 1u);
+    EXPECT_EQ(registry.GetProfile("high")->GetWorkUnits(), 1);
+    EXPECT_FALSE(registry.HasPendingActions());
+}

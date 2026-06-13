@@ -77,7 +77,14 @@ public:
                 return it->second.resource;
             }
             auto pit = m_pending.find(key);
-            if (pit != m_pending.end()) return pit->second.get();
+            if (pit != m_pending.end()) {
+                // Copy the shared_future, then RELEASE the lock before waiting.
+                // Waiting while holding m_lock deadlocks the creator, which must
+                // re-acquire m_lock to fulfil the promise (see test_typed_cacher_concurrency).
+                std::shared_future<PtrT> fut = pit->second;
+                rlock.unlock();
+                return fut.get();
+            }
         }
 
         // try to create
@@ -87,7 +94,13 @@ public:
             return it->second.resource;
         }
         auto pit = m_pending.find(key);
-        if (pit != m_pending.end()) return pit->second.get();
+        if (pit != m_pending.end()) {
+            // Another thread is creating this key: copy its future, release the
+            // lock, then wait. Never block on the future while holding m_lock.
+            std::shared_future<PtrT> fut = pit->second;
+            wlock.unlock();
+            return fut.get();
+        }
 
         // create a promise to signal others
         auto prom = std::make_shared<std::promise<PtrT>>();

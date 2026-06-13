@@ -59,6 +59,20 @@ endif()
 set_target_properties(test_cacher_chain_integration PROPERTIES FOLDER "Tests/CashSystem Tests")
 gtest_discover_tests(test_cacher_chain_integration)
 
+# TypedCacher concurrency regression tests (P0 / AR#51 deadlock)
+add_executable(test_typed_cacher_concurrency
+    test_typed_cacher_concurrency.cpp
+)
+target_compile_features(test_typed_cacher_concurrency PRIVATE cxx_std_23)
+if(TARGET CashSystem)
+    target_link_libraries(test_typed_cacher_concurrency PRIVATE GTest::gtest_main CashSystem Logger VulkanResources)
+else()
+    target_link_libraries(test_typed_cacher_concurrency PRIVATE GTest::gtest_main Logger)
+endif()
+
+set_target_properties(test_typed_cacher_concurrency PROPERTIES FOLDER "Tests/CashSystem Tests")
+gtest_discover_tests(test_typed_cacher_concurrency)
+
 # Basic CashSystem functionality tests
 # TODO: Update these tests to use new registration-by-type API
 # add_executable(test_cashsystem_basic
