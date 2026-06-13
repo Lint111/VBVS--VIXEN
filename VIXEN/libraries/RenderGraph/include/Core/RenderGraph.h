@@ -816,6 +816,10 @@ private:
     // Event-driven recompilation
     std::set<NodeHandle> dirtyNodes;
     bool renderPaused = false;
+    // True when the current pause is a SwapChainRecreation pause. In that case the recompile is the
+    // recreation, so RecompileDirtyNodes must NOT defer on renderPaused (deferring would leave the
+    // swapchain un-recreated and the matching PAUSE_END never sent — a permanent pause on resize).
+    bool pausedForRecreation_ = false;
 
     // Cleanup management
     CleanupStack cleanupStack;

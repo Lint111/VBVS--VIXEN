@@ -48,14 +48,39 @@ namespace detail {
     // Base offset for auto-generated IDs (start at 1000 to avoid manual IDs)
     constexpr MessageType MESSAGE_TYPE_BASE = 1000;
 
+    // FNV-1a 32-bit string hash (constexpr).
+    constexpr uint32_t Fnv1aHash(const char* s, uint32_t h = 2166136261u) {
+        return (*s == '\0') ? h
+            : Fnv1aHash(s + 1, (h ^ static_cast<uint32_t>(static_cast<unsigned char>(*s))) * 16777619u);
+    }
+
+    // Stable per-definition-site message-type id: a hash of "__FILE__ + __LINE__".
+    //
+    // CRITICAL: a message type id MUST be identical in every translation unit. The old scheme
+    // (MESSAGE_TYPE_BASE + __COUNTER__) was NOT: __COUNTER__ resets per TU and increments per use,
+    // so a `static constexpr TYPE` declared in a header resolved to *different* values depending on
+    // include order. A message published in one TU then failed to match the same type's
+    // subscription in another TU, and the message routed to nobody (this silently broke window-resize
+    // -> swapchain-recompile, since publish/subscribe live in different TUs). Hashing the fixed
+    // definition site (file+line) is translation-unit-stable and unique per declaration.
+    constexpr MessageType StableMessageTypeId(const char* file, uint32_t line) {
+        uint32_t h = Fnv1aHash(file);
+        h = (h ^ (line & 0xFFu)) * 16777619u;
+        h = (h ^ ((line >> 8) & 0xFFu)) * 16777619u;
+        h = (h ^ ((line >> 16) & 0xFFu)) * 16777619u;
+        h = (h ^ ((line >> 24) & 0xFFu)) * 16777619u;
+        return h | 0x80000000u;  // top bit set: large value, clear of manual (<1000) ids
+    }
+
     template<int N>
     struct NextMessageType {
         static constexpr MessageType value = MESSAGE_TYPE_BASE + N;
     };
 }
 
-// Helper macro for declaring message types with auto-increment
-#define AUTO_MESSAGE_TYPE() (::Vixen::EventBus::detail::MESSAGE_TYPE_BASE + __COUNTER__)
+// Helper macro for declaring message types. The id is derived from the (translation-unit-stable)
+// definition site, NOT __COUNTER__ — see StableMessageTypeId above for why that matters.
+#define AUTO_MESSAGE_TYPE() (::Vixen::EventBus::detail::StableMessageTypeId(__FILE__, __LINE__))
 
 // ============================================================================
 // Event Category Bit Flags (64-bit)

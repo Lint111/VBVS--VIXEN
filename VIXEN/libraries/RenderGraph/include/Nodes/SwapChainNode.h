@@ -101,6 +101,11 @@ private:
     uint32_t currentImageIndex = 0;
     uint32_t width = 0;
     uint32_t height = 0;
+
+    // SetupImpl re-runs on every recompile; subscribe to WindowResizedMessage only once so
+    // subscriptions don't accumulate (each accumulated sub fires an extra MarkNeedsRecompile,
+    // turning one resize into a storm of recompiles).
+    bool resizeSubscribed_ = false;
 };
 
 } // namespace Vixen::RenderGraph

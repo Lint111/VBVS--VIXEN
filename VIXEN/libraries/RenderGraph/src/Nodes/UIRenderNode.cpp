@@ -132,24 +132,18 @@ void UIRenderNode::ExecuteImpl(TypedExecuteContext& ctx) {
 void UIRenderNode::CleanupImpl(TypedCleanupContext& /*ctx*/) {
     if (device_ == VK_NULL_HANDLE) return;
 
-    // Always free the per-image command buffers. No vkDeviceWaitIdle: during a recompile the graph
+    // Free only the per-image command buffers. No vkDeviceWaitIdle: during a recompile the graph
     // relies on FrameSyncNode for frame-in-flight sync (RenderGraph::RecompileDirtyNodes skips device
     // waits on purpose), and a wait on a submit still blocked on an un-signalled acquire semaphore
-    // would deadlock — that was the window-resize stall. The render pass + framebuffers are owned by
-    // RenderPassNode/FramebufferNode and cleaned up there.
+    // would deadlock. The render pass + framebuffers are owned by RenderPassNode/FramebufferNode.
+    //
+    // We deliberately do NOT tear RmlUi (context/document/pipeline) down here: a resize triggers a
+    // recompile (Cleanup → Compile), and distinguishing that from a true shutdown is unreliable
+    // (NeedsRecompile() doesn't hold under the cascading recompiles a resize produces). Tearing RmlUi
+    // down per recompile re-initialized it every resize, which both churned and disrupted rendering.
+    // The persistent state is kept so CompileImpl's resize path just re-fits + rebuilds the command
+    // buffers. RmlUi is reclaimed at process exit (the demo is a short-lived process).
     FreeCommandBuffers();
-
-    // Keep the persistent RmlUi state across recompiles (resize); tear it down only at a real shutdown
-    // (NeedsRecompile() is true mid-recompile, false at shutdown).
-    if (NeedsRecompile()) return;
-
-    vkDeviceWaitIdle(device_);
-    if (document_) { document_->Close(); document_ = nullptr; }
-    if (context_) { Rml::RemoveContext("vixen_ui"); context_ = nullptr; }
-    renderInterface_.Shutdown();
-    Rml::Shutdown();
-    renderPass_ = VK_NULL_HANDLE;  // not owned — just drop the cached handle
-    initialized_ = false;
 }
 
 } // namespace Vixen::RenderGraph

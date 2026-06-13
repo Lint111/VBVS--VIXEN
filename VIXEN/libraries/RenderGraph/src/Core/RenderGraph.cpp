@@ -1354,8 +1354,11 @@ void RenderGraph::RecompileDirtyNodes() {
         return;  // Nothing to recompile
     }
 
-    // Defer recompilation if rendering is paused (e.g., during swapchain recreation)
-    if (renderPaused) {
+    // Defer recompilation while rendering is paused — UNLESS the pause is for swapchain recreation.
+    // In that case THIS recompile IS the recreation (and it publishes the PAUSE_END that resumes
+    // rendering), so deferring it would leave the swapchain un-recreated and rendering paused forever
+    // (the window-resize freeze).
+    if (renderPaused && !pausedForRecreation_) {
         GRAPH_LOG_INFO("[RenderGraph::RecompileDirtyNodes] Deferring recompilation - rendering paused");
         return;
     }
@@ -1571,6 +1574,10 @@ void RenderGraph::HandleRenderPause(const EventTypes::RenderPauseEvent& msg) {
                  " (reason: " + std::to_string(static_cast<int>(msg.pauseReason)) + ")");
 
     renderPaused = (msg.pauseAction == EventTypes::RenderPauseEvent::Action::PAUSE_START);
+    // This event is only published for swapchain recreation, so a pause from here means the recompile
+    // (which recreates the swapchain and then sends PAUSE_END) must be allowed to run while paused.
+    pausedForRecreation_ = renderPaused &&
+        (msg.pauseReason == EventTypes::RenderPauseEvent::Reason::SwapChainRecreation);
 
     if (renderPaused) {
         GRAPH_LOG_INFO("[RenderGraph] Rendering paused - continuing with event processing only");
