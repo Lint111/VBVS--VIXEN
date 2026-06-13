@@ -9,6 +9,7 @@
 #include <RmlUi/Core/RenderInterface.h>
 
 #include <cstdint>
+#include <utility>
 #include <vector>
 
 namespace Vixen::Ui {
@@ -54,6 +55,25 @@ private:
                       VkBuffer& outBuf, VkDeviceMemory& outMem);
     Texture* CreateTextureRGBA(const uint8_t* rgba, uint32_t width, uint32_t height);
     void CreatePipeline();
+
+    // Per-struct Vulkan teardown — shared by the deferred-free path (BeginFrame) and Shutdown so the
+    // two destroy a resource identically. Both null-check, destroy the owned objects, and `delete` the
+    // struct; the caller owns removing the pointer from any list.
+    void DestroyGeometry(Geometry* g);
+    void DestroyTexture(Texture* t);
+
+    // Frames-in-flight deferred delete for RmlUi geometry/textures. RmlUi recompiles geometry (and may
+    // regenerate textures) on every relayout — which happens whenever a bound HUD value like {{tick}}
+    // changes — so a no-op Release would leak a vertex+index buffer (+ 2 VkDeviceMemory) per relayout,
+    // growing GPU allocations without bound until the driver/D3D12 heap faults. Instead Release defers:
+    // it records the release frame and the resource is freed only once it can no longer be referenced by
+    // any in-flight frame. Freeing a GPU resource a frame too EARLY is a use-after-free, so we bias late.
+    static constexpr uint64_t kDeferFrames = 8;  // must be >= max frames-in-flight (FrameSync
+                                                 // MAX_FRAMES_IN_FLIGHT = 4); 8 is a safe 2x margin and
+                                                 // the HUD geometry is tiny, so the margin is free.
+    uint64_t frameCounter_ = 0;  // ++ per BeginFrame; the age clock for deferred frees.
+    std::vector<std::pair<uint64_t, Geometry*>> pendingGeometryDeletes_;  // {releaseFrame, ptr}
+    std::vector<std::pair<uint64_t, Texture*>> pendingTextureDeletes_;    // {releaseFrame, ptr}
 
     VkDevice device_ = VK_NULL_HANDLE;
     VkPhysicalDevice physicalDevice_ = VK_NULL_HANDLE;
