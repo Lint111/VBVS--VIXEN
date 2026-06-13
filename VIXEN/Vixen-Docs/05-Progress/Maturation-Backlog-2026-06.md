@@ -89,20 +89,24 @@ Correctness bugs + the only-consumer's pain + legal hygiene. Wasted on no possib
   - **TS-3 deferred-action flags** — `pendingDecrease_/pendingIncrease_` were plain `bool` written in bus handlers, read in `ProcessDeferredActions` → data race. Fixed: `std::atomic<bool>` + `exchange`. Added the first deferred-action coverage.
   - **TS-2 `Begin()/End()` unsafe** — deprecated the legacy shared-state timing API; migrated its only (dead-but-documented) caller `VirtualTask::BeginProfiling/EndProfiling` to per-task `Sampler`s (via a `shared_ptr` holder, keeping `VirtualTask` copyable).
   - **TS-1 move-assign "race"** — investigated, **dismissed as a false positive**: Samplers are thread-local (every `Sample()` site is a stack-local), so the move-assignment is not a data race; the audit's reorder would risk losing measurements.
-- [ ] **Replace process-fatal error model** [AR#1] — substitute existing `std::expected`
-  (`VulkanResult`/`VulkanStatus`/`ConnectionResult`) for the 3 hard `exit()` sites + the always-
-  `VK_SUCCESS` `RenderFrame()` channel + silently-ignored parallel-task failures. Mechanical; types
-  already exist. **Gate for all mod-facing work.**
+- [~] **Replace process-fatal error model** [AR#1] — **IN PROGRESS.** Done 2026-06-13 (commit `339096f`):
+  `RenderGraph::ConnectNodes` duplicate-connection `std::exit(1)` → catchable `throw` (the lone outlier
+  among the function's sibling validations; mod/host-facing graph API). **Remaining:** `VulkanSwapChain:264`
+  `exit(-1)` (zero-extent) + ~20 `exit(1)` in the texture loaders (mechanical, but void-return ripple +
+  error paths need fault injection to test); and the architectural channel — `NodeInstance::Execute`
+  returns `void` and `RenderFrame()` only returns `VK_SUCCESS`, so node failures can't propagate (wide
+  refactor touching every node — its own session). **Gate for all mod-facing work.**
 - [ ] **UNDERTOW quick wins** — cross-platform validation gate (`VIXEN_ENABLE_VALIDATION` not
   `#ifdef _DEBUG`) [FR-1]; size per-image arrays from actual image count [FR-3]; **reject
   connection type mismatches** instead of relying on silent implicit conversion [FR-4]; discover
   `WindowNode` by type not magic name `"main_window"` [FR-6]; `vixen_stage_assets()` CMake helper
   [FR-10].
-- [ ] **License cleanup** [AR#6] — 30 stray GPL-3.0 headers in an MIT repo (spread by copy-paste
-  from Sprint-6 files). Legal exposure for a consumable library; zero engineering.
-- [ ] **Cache generator identity** [AR#52] — hash generator name+version into `ComputeKey` AND
-  carry the name through `CreateInfo` into `GenerateScene`; stop the silent cornell-box fallback
-  for `SceneType::Custom`.
+- [x] **License cleanup** [AR#6] — **DONE 2026-06-13** (commit `3b5494e`): 32 Sprint-6 files'
+  `GPL-3.0` headers → `MIT` to match the canonical root LICENSE + README badge. Header-only, no code change.
+- [x] **Cache generator identity** [AR#52] — **DONE 2026-06-13** (commit `8a6267b`, red→green test):
+  added `VoxelSceneCreateInfo::customGeneratorName`, folded it into `ComputeHash`/`operator==` (distinct
+  custom generators → distinct keys; empty name keeps built-in keys), and `GenerateScene` now invokes the
+  named generator instead of the silent cornell fallback for `SceneType::Custom`.
 
 ### P1 — The pivotal decision (cheapest, highest-leverage item in the review)
 
