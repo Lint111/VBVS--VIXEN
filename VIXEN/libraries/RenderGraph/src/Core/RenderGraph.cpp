@@ -220,8 +220,15 @@ void RenderGraph::ConnectNodes(
     // But NOT OK for many outputs to connect to one input (multiple drivers)
     Resource* existingInput = toNode->GetInput(inputIdx, 0);
     if (existingInput != nullptr) {
-        GRAPH_LOG_CRITICAL("\n=== FATAL ERROR: Duplicate Connection Detected ===\nAttempting to connect: " + fromNode->GetInstanceName() + "[output " + std::to_string(outputIdx) + "] -> " + toNode->GetInstanceName() + "[input " + std::to_string(inputIdx) + "]\nBut input slot " + std::to_string(inputIdx) + " of " + toNode->GetInstanceName() + " is ALREADY CONNECTED to another output.\nMultiple outputs cannot drive the same input slot.\n==============================================");
-        std::exit(1);  // Terminate immediately
+        // Recoverable, like the index-validation throws above: a bad Connect()
+        // must be catchable by the host/mod wiring the graph, not process-fatal.
+        std::string error = "Duplicate connection: input slot " + std::to_string(inputIdx) +
+                          " of " + toNode->GetInstanceName() + " is already connected. Attempted " +
+                          fromNode->GetInstanceName() + "[output " + std::to_string(outputIdx) + "] -> " +
+                          toNode->GetInstanceName() + "[input " + std::to_string(inputIdx) + "]. " +
+                          "Multiple outputs cannot drive the same input slot.";
+        GRAPH_LOG_ERROR(error);
+        throw std::runtime_error(error);
     }
 
     // Connect all array elements from output to input
