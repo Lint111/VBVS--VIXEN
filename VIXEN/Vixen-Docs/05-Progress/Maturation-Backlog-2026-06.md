@@ -61,9 +61,13 @@ Findings that recur across **3+ independent docs** — this is where the real de
    [TS-1…4, "1hr critical path"] + TypedCacher lock-during-wait **guaranteed deadlock** [AR#51] +
    racy `VoxelInjectionQueue`. Masked by single-threaded use today; **all surface the moment
    anything parallelizes** [AR#88].
-3. **EventBus is observable-not-operable** — `__COUNTER__` event IDs diverge across translation
-   units *within one build* [AR#66]; God-Object coupling forces 200+ file recompiles [ARCH-2];
-   no queue pre-allocation [MEM-2]. Three+ docs.
+3. **EventBus is observable-not-operable** — ~~`__COUNTER__` event IDs diverge across translation
+   units *within one build* [AR#66]~~ **FIXED 2026-06-13** (consumer resize work, merge `7615897`):
+   `AUTO_MESSAGE_TYPE` now hashes the definition site (`StableMessageTypeId` = FNV-1a of `__FILE__`+`__LINE__`),
+   which is TU-stable — this was silently breaking `WindowResized`→swapchain-recompile (FR-11). Review
+   caveats (follow-up, low risk): relies on `__FILE__` expanding identically across TUs; 32-bit hash
+   collisions are undetected (a debug-time collision assert would close it). Still open from AR#66/ARCH-2:
+   God-Object coupling forces 200+ file recompiles; no queue pre-allocation [MEM-2]; no command layer.
 4. **Connection system silently mis-wires** — typed connections accept type mismatches and fault
    at runtime [FR-4 "genuinely nasty silent footgun"]; registry closed to consumers [AR#23–25];
    ~20 Connect calls with no presets [FR-9].
