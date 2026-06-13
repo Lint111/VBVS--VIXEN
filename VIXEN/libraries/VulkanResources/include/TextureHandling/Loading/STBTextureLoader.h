@@ -10,7 +10,7 @@ public:
     STBTextureLoader(VulkanDevice* device, VkCommandPool commandPool);
 
 protected:
-    PixelData LoadPixelData(const char* fileName) override;
+    VulkanResult<PixelData> LoadPixelData(const char* fileName) override;
     void FreePixelData(PixelData& data) override;
 };
 

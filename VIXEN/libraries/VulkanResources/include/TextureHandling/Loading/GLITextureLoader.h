@@ -10,7 +10,7 @@ public:
     using TextureLoader::TextureLoader; // Inherit constructor
 
 protected:
-    PixelData LoadPixelData(const char* fileName) override;
+    VulkanResult<PixelData> LoadPixelData(const char* fileName) override;
     void FreePixelData(PixelData& data) override;
 };
 

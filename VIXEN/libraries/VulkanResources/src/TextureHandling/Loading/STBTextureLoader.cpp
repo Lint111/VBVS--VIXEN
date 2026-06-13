@@ -12,15 +12,16 @@ STBTextureLoader::STBTextureLoader(VulkanDevice* device, VkCommandPool commandPo
     // Constructor - removed debug output
 }
 
-PixelData STBTextureLoader::LoadPixelData(const char* fileName) {
+VulkanResult<PixelData> STBTextureLoader::LoadPixelData(const char* fileName) {
     PixelData data;
 
     int width, height, channels;
     stbi_uc* pixels = stbi_load(fileName, &width, &height, &channels, STBI_rgb_alpha);
 
     if (!pixels) {
-        LOG_ERROR(std::string("Failed to load texture file: ") + fileName + ". STB Error: " + stbi_failure_reason());
-        exit(1);
+        std::string reason = std::string("Failed to load texture file: ") + fileName + ". STB Error: " + stbi_failure_reason();
+        LOG_ERROR(reason);
+        return std::unexpected(VulkanError{VK_ERROR_INITIALIZATION_FAILED, reason});
     }
     data.pixels = pixels;
     data.width = static_cast<uint32_t>(width);

@@ -2,6 +2,7 @@
 #include "VulkanDevice.h"
 #include "CommandBufferUtility.h"
 #include "Logger.h"
+#include "error/VulkanError.h"
 #include <iostream>
 
 namespace Vixen::TextureHandling {
@@ -11,32 +12,57 @@ TextureLoader::TextureLoader(VulkanDevice* device, VkCommandPool commandPool)
     InitializeLogger("TextureLoader", false);
 }
 
-TextureData TextureLoader::Load(const char* fileName, const TextureLoadConfig& config) {
+VulkanResult<TextureData> TextureLoader::Load(const char* fileName, const TextureLoadConfig& config) {
     TextureData texture{};
 
     // Load pixel data (library-specific)
-    PixelData pixelData = LoadPixelData(fileName);
+    auto pixelDataResult = LoadPixelData(fileName);
+    VK_PROPAGATE_ERROR(pixelDataResult);  // Nothing allocated yet on failure
+    PixelData pixelData = pixelDataResult.value();
 
     // Upload based on config mode
-    if (config.uploadMode == TextureLoadConfig::UploadMode::Linear) {
-        UploadLinear(pixelData, &texture, config);
-    } else {
-        UploadOptimal(pixelData, &texture, config);
-    }
+    VulkanStatus uploadStatus = (config.uploadMode == TextureLoadConfig::UploadMode::Linear)
+        ? UploadLinear(pixelData, &texture, config)
+        : UploadOptimal(pixelData, &texture, config);
 
-    // Free pixel data (library-specific)
+    // Free pixel data (library-specific) - always runs, even on upload failure,
+    // so the pixels allocated by LoadPixelData are never leaked.
     FreePixelData(pixelData);
+
+    // If the upload failed partway, tear down any GPU resources already created in `texture`
+    // before propagating, so a failed load leaks nothing (the old exit() masked this by killing
+    // the process). Internal staging/fence resources are cleaned by the Upload* functions.
+    if (!uploadStatus.has_value()) {
+        DestroyPartialTexture(texture);
+        return std::unexpected(uploadStatus.error());
+    }
 
     return texture;
 }
 
-void TextureLoader::UploadLinear(
+// Tear down whatever GPU resources Upload* created in `texture` before a failure, so a failed
+// Load() leaks nothing. Handles left VK_NULL_HANDLE by the value-initialised TextureData are skipped.
+void TextureLoader::DestroyPartialTexture(TextureData& texture) {
+    VkDevice dev = deviceObj->device;
+    if (texture.sampler != VK_NULL_HANDLE)    vkDestroySampler(dev, texture.sampler, nullptr);
+    if (texture.view != VK_NULL_HANDLE)       vkDestroyImageView(dev, texture.view, nullptr);
+    if (texture.cmdTexture != VK_NULL_HANDLE) vkFreeCommandBuffers(dev, cmdPool, 1, &texture.cmdTexture);
+    if (texture.mem != VK_NULL_HANDLE)        vkFreeMemory(dev, texture.mem, nullptr);
+    if (texture.image != VK_NULL_HANDLE)      vkDestroyImage(dev, texture.image, nullptr);
+    texture.sampler = VK_NULL_HANDLE;
+    texture.view = VK_NULL_HANDLE;
+    texture.cmdTexture = VK_NULL_HANDLE;
+    texture.mem = VK_NULL_HANDLE;
+    texture.image = VK_NULL_HANDLE;
+}
+
+VulkanStatus TextureLoader::UploadLinear(
     const PixelData& pixelData,
     TextureData* texture,
     const TextureLoadConfig& config
 ) {
     // Create image with linear tiling
-    CreateImage(
+    VK_PROPAGATE_ERROR(CreateImage(
         texture,
         config.usage,
         config.format,
@@ -44,7 +70,7 @@ void TextureLoader::UploadLinear(
         pixelData.width,
         pixelData.height,
         pixelData.mipLevels
-    );
+    ));
 
     // Map and copy directly to image memory
     VkImageSubresource subresource{};
@@ -59,7 +85,7 @@ void TextureLoader::UploadLinear(
     VkResult result = vkMapMemory(deviceObj->device, texture->mem, 0, texture->memAllocInfo.allocationSize, 0, &data);
     if (result != VK_SUCCESS) {
         LOG_ERROR("Failed to map image memory! VkResult: " + std::to_string(result));
-        exit(1);
+        return std::unexpected(VulkanError{result, "Failed to map image memory (UploadLinear)"});
     }
 
     memcpy(data, pixelData.pixels, static_cast<size_t>(pixelData.size));
@@ -94,7 +120,7 @@ void TextureLoader::UploadLinear(
     result = vkCreateFence(deviceObj->device, &fenceCI, nullptr, &fence);
     if (result != VK_SUCCESS) {
         LOG_ERROR("Failed to create fence! VkResult: " + std::to_string(result));
-        exit(1);
+        return std::unexpected(VulkanError{result, "Failed to create fence (UploadLinear)"});
     }
 
     VkSubmitInfo submitInfo{};
@@ -105,23 +131,27 @@ void TextureLoader::UploadLinear(
     result = vkQueueSubmit(deviceObj->queue, 1, &submitInfo, fence);
     if (result != VK_SUCCESS) {
         LOG_ERROR("Failed to submit queue! VkResult: " + std::to_string(result));
-        exit(1);
+        vkDestroyFence(deviceObj->device, fence, nullptr);
+        return std::unexpected(VulkanError{result, "Failed to submit queue (UploadLinear)"});
     }
 
     result = vkWaitForFences(deviceObj->device, 1, &fence, VK_TRUE, 10000000000);
     if (result != VK_SUCCESS) {
         LOG_ERROR("Wait for fence timeout! VkResult: " + std::to_string(result));
-        exit(1);
+        vkDestroyFence(deviceObj->device, fence, nullptr);
+        return std::unexpected(VulkanError{result, "Wait for fence timeout (UploadLinear)"});
     }
 
     vkDestroyFence(deviceObj->device, fence, nullptr);
 
     // Create image view and sampler
-    CreateImageView(texture, config.format, pixelData.mipLevels);
-    CreateSampler(texture, pixelData.mipLevels);
+    VK_PROPAGATE_ERROR(CreateImageView(texture, config.format, pixelData.mipLevels));
+    VK_PROPAGATE_ERROR(CreateSampler(texture, pixelData.mipLevels));
+
+    return {};
 }
 
-void TextureLoader::UploadOptimal(
+VulkanStatus TextureLoader::UploadOptimal(
     const PixelData& pixelData,
     TextureData* texture,
     const TextureLoadConfig& config
@@ -139,7 +169,7 @@ void TextureLoader::UploadOptimal(
     VkResult result = vkCreateBuffer(deviceObj->device, &bufferCI, nullptr, &stagingBuffer);
     if (result != VK_SUCCESS) {
         LOG_ERROR("Failed to create staging buffer! VkResult: " + std::to_string(result));
-        exit(1);
+        return std::unexpected(VulkanError{result, "Failed to create staging buffer (UploadOptimal)"});
     }
 
     VkMemoryRequirements memReqs;
@@ -155,7 +185,7 @@ void TextureLoader::UploadOptimal(
     if (!memTypeResult.has_value()) {
         LOG_ERROR("Failed to find suitable memory type!");
         vkDestroyBuffer(deviceObj->device, stagingBuffer, nullptr);
-        exit(1);
+        return std::unexpected(VulkanError{VK_ERROR_INITIALIZATION_FAILED, "Failed to find suitable memory type for staging buffer (UploadOptimal)"});
     }
     allocInfo.memoryTypeIndex = memTypeResult.value();
 
@@ -163,7 +193,7 @@ void TextureLoader::UploadOptimal(
     if (result != VK_SUCCESS) {
         LOG_ERROR("Failed to allocate staging memory! VkResult: " + std::to_string(result));
         vkDestroyBuffer(deviceObj->device, stagingBuffer, nullptr);
-        exit(1);
+        return std::unexpected(VulkanError{result, "Failed to allocate staging memory (UploadOptimal)"});
     }
 
     result = vkBindBufferMemory(deviceObj->device, stagingBuffer, stagingMemory, 0);
@@ -171,7 +201,7 @@ void TextureLoader::UploadOptimal(
         LOG_ERROR("Failed to bind staging buffer memory! VkResult: " + std::to_string(result));
         vkFreeMemory(deviceObj->device, stagingMemory, nullptr);
         vkDestroyBuffer(deviceObj->device, stagingBuffer, nullptr);
-        exit(1);
+        return std::unexpected(VulkanError{result, "Failed to bind staging buffer memory (UploadOptimal)"});
     }
 
     // Copy pixel data to staging buffer
@@ -181,21 +211,26 @@ void TextureLoader::UploadOptimal(
         LOG_ERROR("Failed to map staging memory! VkResult: " + std::to_string(result));
         vkFreeMemory(deviceObj->device, stagingMemory, nullptr);
         vkDestroyBuffer(deviceObj->device, stagingBuffer, nullptr);
-        exit(1);
+        return std::unexpected(VulkanError{result, "Failed to map staging memory (UploadOptimal)"});
     }
     memcpy(data, pixelData.pixels, static_cast<size_t>(pixelData.size));
     vkUnmapMemory(deviceObj->device, stagingMemory);
 
     // Create image with optimal tiling
-    CreateImage(
-        texture,
-        config.usage,
-        config.format,
-        VK_IMAGE_TILING_OPTIMAL,
-        pixelData.width,
-        pixelData.height,
-        pixelData.mipLevels
-    );
+    if (auto imageStatus = CreateImage(
+            texture,
+            config.usage,
+            config.format,
+            VK_IMAGE_TILING_OPTIMAL,
+            pixelData.width,
+            pixelData.height,
+            pixelData.mipLevels
+        ); !imageStatus.has_value()) {
+        // Image creation failed - release the staging resources before propagating
+        vkFreeMemory(deviceObj->device, stagingMemory, nullptr);
+        vkDestroyBuffer(deviceObj->device, stagingBuffer, nullptr);
+        return std::unexpected(imageStatus.error());
+    }
 
     // Allocate command buffer for texture upload
     CommandBufferMgr::AllocateCommandBuffer(&deviceObj->device, cmdPool, &texture->cmdTexture);
@@ -267,7 +302,9 @@ void TextureLoader::UploadOptimal(
     result = vkCreateFence(deviceObj->device, &fenceCI, nullptr, &fence);
     if (result != VK_SUCCESS) {
         LOG_ERROR("Failed to create fence! VkResult: " + std::to_string(result));
-        exit(1);
+        vkFreeMemory(deviceObj->device, stagingMemory, nullptr);
+        vkDestroyBuffer(deviceObj->device, stagingBuffer, nullptr);
+        return std::unexpected(VulkanError{result, "Failed to create fence (UploadOptimal)"});
     }
 
     VkSubmitInfo submitInfo{};
@@ -280,7 +317,10 @@ void TextureLoader::UploadOptimal(
     result = vkWaitForFences(deviceObj->device, 1, &fence, VK_TRUE, 10000000000);
     if (result != VK_SUCCESS) {
         LOG_ERROR("Wait for fence timeout! VkResult: " + std::to_string(result));
-        exit(1);
+        vkDestroyFence(deviceObj->device, fence, nullptr);
+        vkFreeMemory(deviceObj->device, stagingMemory, nullptr);
+        vkDestroyBuffer(deviceObj->device, stagingBuffer, nullptr);
+        return std::unexpected(VulkanError{result, "Wait for fence timeout (UploadOptimal)"});
     }
 
     vkDestroyFence(deviceObj->device, fence, nullptr);
@@ -288,11 +328,13 @@ void TextureLoader::UploadOptimal(
     vkDestroyBuffer(deviceObj->device, stagingBuffer, nullptr);
 
     // Create image view and sampler
-    CreateImageView(texture, config.format, pixelData.mipLevels);
-    CreateSampler(texture, pixelData.mipLevels);
+    VK_PROPAGATE_ERROR(CreateImageView(texture, config.format, pixelData.mipLevels));
+    VK_PROPAGATE_ERROR(CreateSampler(texture, pixelData.mipLevels));
+
+    return {};
 }
 
-void TextureLoader::CreateImage(
+VulkanStatus TextureLoader::CreateImage(
     TextureData* texture,
     VkImageUsageFlags usage,
     VkFormat format,
@@ -321,7 +363,7 @@ void TextureLoader::CreateImage(
     VkResult result = vkCreateImage(deviceObj->device, &imageCI, nullptr, &texture->image);
     if (result != VK_SUCCESS) {
         LOG_ERROR("Failed to create image! VkResult: " + std::to_string(result));
-        exit(1);
+        return std::unexpected(VulkanError{result, "Failed to create image (CreateImage)"});
     }
 
     VkMemoryRequirements memReqs{};
@@ -335,32 +377,36 @@ void TextureLoader::CreateImage(
         ? (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)
         : VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 
+    // On any failure below, the partially-created image/mem stay in `texture` and are released
+    // once by Load()'s DestroyPartialTexture when the error propagates -- so we do NOT free them
+    // here (doing so would double-free).
     auto memTypeResult = deviceObj->MemoryTypeFromProperties(memReqs.memoryTypeBits, memProps);
     if (!memTypeResult.has_value()) {
         LOG_ERROR("Failed to find suitable memory type!");
-        vkDestroyImage(deviceObj->device, texture->image, nullptr);
-        exit(1);
+        return std::unexpected(VulkanError{VK_ERROR_INITIALIZATION_FAILED, "Failed to find suitable memory type for image (CreateImage)"});
     }
     texture->memAllocInfo.memoryTypeIndex = memTypeResult.value();
 
     result = vkAllocateMemory(deviceObj->device, &texture->memAllocInfo, nullptr, &texture->mem);
     if (result != VK_SUCCESS) {
         LOG_ERROR("Failed to allocate image memory! VkResult: " + std::to_string(result));
-        exit(1);
+        return std::unexpected(VulkanError{result, "Failed to allocate image memory (CreateImage)"});
     }
 
     result = vkBindImageMemory(deviceObj->device, texture->image, texture->mem, 0);
     if (result != VK_SUCCESS) {
         LOG_ERROR("Failed to bind image memory! VkResult: " + std::to_string(result));
-        exit(1);
+        return std::unexpected(VulkanError{result, "Failed to bind image memory (CreateImage)"});
     }
 
     texture->textureWidth = width;
     texture->textureHeight = height;
     texture->minMapLevels = mipLevels;
+
+    return {};
 }
 
-void TextureLoader::CreateImageView(
+VulkanStatus TextureLoader::CreateImageView(
     TextureData* texture,
     VkFormat format,
     uint32_t mipLevels
@@ -383,11 +429,13 @@ void TextureLoader::CreateImageView(
     VkResult result = vkCreateImageView(deviceObj->device, &viewCI, nullptr, &texture->view);
     if (result != VK_SUCCESS) {
         LOG_ERROR("Failed to create image view! VkResult: " + std::to_string(result));
-        exit(1);
+        return std::unexpected(VulkanError{result, "Failed to create image view (CreateImageView)"});
     }
+
+    return {};
 }
 
-void TextureLoader::CreateSampler(
+VulkanStatus TextureLoader::CreateSampler(
     TextureData* texture,
     uint32_t mipLevels
 ) {
@@ -412,12 +460,14 @@ void TextureLoader::CreateSampler(
     VkResult result = vkCreateSampler(deviceObj->device, &samplerCI, nullptr, &texture->sampler);
     if (result != VK_SUCCESS) {
         LOG_ERROR("Failed to create sampler! VkResult: " + std::to_string(result));
-        exit(1);
+        return std::unexpected(VulkanError{result, "Failed to create sampler (CreateSampler)"});
     }
 
     texture->descsImageInfo.sampler = texture->sampler;
     texture->descsImageInfo.imageView = texture->view;
     texture->descsImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+    return {};
 }
 
 void TextureLoader::SetImageLayout(
