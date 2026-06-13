@@ -415,8 +415,13 @@ void SwapChainNode::SetupFormatsAndCapabilities(uint32_t graphicsQueueIndex) {
     // Get supported surface formats
     swapChainWrapper->GetSupportedFormats(*GetDevice()->gpu);
 
-    // Query surface capabilities and present modes
-    swapChainWrapper->GetSurfaceCapabilitiesAndPresentMode(*GetDevice()->gpu, width, height);
+    // Query surface capabilities and present modes. A zero-extent surface (window minimized / not yet
+    // sized) now returns an error instead of the old VulkanSwapChain exit(-1); throw it so the graph's
+    // deferred-recompile path retries this node on a later frame rather than the process dying.
+    if (auto capsStatus = swapChainWrapper->GetSurfaceCapabilitiesAndPresentMode(*GetDevice()->gpu, width, height);
+        !capsStatus.has_value()) {
+        throw std::runtime_error("[SwapChainNode] Surface capabilities unavailable: " + capsStatus.error().toString());
+    }
 
     // Select optimal present mode
     swapChainWrapper->ManagePresentMode();

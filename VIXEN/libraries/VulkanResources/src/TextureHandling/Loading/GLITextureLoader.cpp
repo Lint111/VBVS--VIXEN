@@ -4,13 +4,14 @@
 
 namespace Vixen::TextureHandling {
 
-PixelData GLITextureLoader::LoadPixelData(const char* fileName) {
+VulkanResult<PixelData> GLITextureLoader::LoadPixelData(const char* fileName) {
     PixelData data;
 
     gli::texture2d image2D(gli::load(fileName));
     if (image2D.empty()) {
-        LOG_ERROR(std::string("Failed to load texture file: ") + fileName + ". GLI only supports DDS, KTX 1.0, and KMG formats");
-        exit(1);
+        std::string reason = std::string("Failed to load texture file: ") + fileName + ". GLI only supports DDS, KTX 1.0, and KMG formats";
+        LOG_ERROR(reason);
+        return std::unexpected(VulkanError{VK_ERROR_INITIALIZATION_FAILED, reason});
     }
 
     data.width = static_cast<uint32_t>(image2D.extent().x);
@@ -22,7 +23,7 @@ PixelData GLITextureLoader::LoadPixelData(const char* fileName) {
     void* pixelsCopy = malloc(data.size);
     if (!pixelsCopy) {
         LOG_ERROR("Failed to allocate memory for pixel data!");
-        exit(1);
+        return std::unexpected(VulkanError{VK_ERROR_INITIALIZATION_FAILED, "Failed to allocate memory for pixel data (GLI LoadPixelData)"});
     }
     memcpy(pixelsCopy, image2D.data(), data.size);
     data.pixels = pixelsCopy;
