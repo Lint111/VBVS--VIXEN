@@ -221,15 +221,28 @@ Correctness bugs + the only-consumer's pain + legal hygiene. Wasted on no possib
   the `ICommandBufferPreallocator` capability interface, mirroring `IGraphCompilable`).
   Follow-up nit: `SceneGenerator` still carries the `VIXEN::RenderGraph` namespace while living in
   SVO — a cosmetic renamespace, deferred (its target namespace is an API-visible call). Unblocks [AR#2].
-- [ ] **Host-supplied window/surface injection** (`ExternalWindowNode`; feasible without engine
-  edits — SwapChainNode already consumes HWND via typed slots) [AR#9]
+- [ ] **Host-supplied window/surface injection** (`ExternalWindowNode`) [AR#9] — **evaluated +
+  parked 2026-06-14.** Recon correction to the original note: `SwapChainNode` consumes a
+  **`GLFWwindow*`** and creates the surface itself via `glfwCreateWindowSurface` — it does NOT take a
+  `VkSurfaceKHR`, so it is **coupled to GLFW**. A true host-owned (non-GLFW) window therefore DOES need
+  engine surgery (decouple `SwapChainNode` to accept a `VkSurfaceKHR`). No consumer needs it yet —
+  UNDERTOW embeds the *other* way (its RmlUi UI inside VIXEN's window). Deferred until a concrete
+  editor / host-owned-window need appears; the pure shape when taken is **surface injection** (host
+  supplies a `VkSurfaceKHR`, or a native handle that `ExternalWindowNode` turns into one). See the
+  "Host-owned window is not done yet" note in [[Hosting-VIXEN]].
 - [ ] **Distinct recompile-vs-shutdown lifecycle hooks** — `CleanupImpl` runs on both; naive
   impl **deadlocks on resize** and destroys persistent state [FR-7]. Plus the "render-to-swapchain"
   authoring recipe so node authors stop re-hitting FR-5/FR-7 [FR-8].
 - [ ] **Bring the sprint branch onto main's merged GLFW port** [AR#11] — windowing/input is already
   GLFW end-to-end on `main`; `production/sprint-6-timeline-foundation` predates it (Win32-only).
-- [ ] **Embedding docs + API stability story** — `Vixen-Docs/06-Embedding/Hosting-VIXEN.md`;
-  generated `VixenVersion.h`; designated supported-header set [AR#12/#13]
+- [ ] **Embedding docs + API stability story** [AR#12/#13] — **AR#12 docs DONE 2026-06-14:**
+  [[Hosting-VIXEN]] (`06-Embedding/Hosting-VIXEN.md`) documents the full embedding flow —
+  `find_package(VIXEN)` (the AR#2 fat SDK, 14 libs) → construct `EngineContext`/`EngineConfig` →
+  register node types → build graph → own the loop via `Graph().RenderFrame()` → publish
+  `ApplicationShuttingDownEvent` + deterministic teardown; includes the SDK packaging command, a
+  consumer `CMakeLists`, the `EngineConfig::mainCacher` injection note (AR#8), and the
+  build-portability gotchas. **Remaining [AR#13]:** generated `VixenVersion.h` + a designated
+  supported-header set (the API-stability half).
 
 ### P3 — Presentation layer (review Phase 2)
 
