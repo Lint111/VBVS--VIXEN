@@ -1,0 +1,35 @@
+@PACKAGE_INIT@
+
+# ============================================================================
+# VIXENConfig.cmake — package config for find_package(VIXEN) (AR#2)
+#
+# Lets an external CMake project (e.g. the UNDERTOW host) consume a *prebuilt,
+# installed* VIXEN as imported Vixen::* targets:
+#
+#     find_package(VIXEN REQUIRED)
+#     target_link_libraries(my_host PRIVATE Vixen::RenderGraph)
+#
+# This file re-creates VIXEN's external dependencies (so the imported targets'
+# INTERFACE_LINK_LIBRARIES resolve) and then pulls in the exported target set.
+# ============================================================================
+
+include(CMakeFindDependencyMacro)
+
+# --- External dependencies of the exported targets ---------------------------
+# These must be resolvable from the consumer's CMAKE_PREFIX_PATH. VIXEN's own
+# install tree is a valid prefix: the FetchContent dependencies that ship their
+# own package configs are installed alongside VIXEN (see cmake/VixenInstall.cmake).
+# Anything still unresolved is tracked as AR#2 increment 2 (third-party findability).
+find_dependency(Threads)
+find_dependency(Vulkan)
+find_dependency(glm)
+find_dependency(glfw3)
+find_dependency(TBB)
+find_dependency(magic_enum)
+find_dependency(nlohmann_json)
+find_dependency(Freetype)
+
+# --- The exported VIXEN target set -------------------------------------------
+include("${CMAKE_CURRENT_LIST_DIR}/VixenTargets.cmake")
+
+check_required_components(VIXEN)

@@ -52,20 +52,7 @@ endif()
 source_group("Header Files" FILES ${LOGGER_HEADERS})
 source_group("Source Files" FILES ${LOGGER_SOURCES})
 
-# ============================================================================
-# Installation (optional)
-# ============================================================================
-
-install(TARGETS Logger
-    EXPORT LoggerTargets
-    ARCHIVE DESTINATION lib
-    LIBRARY DESTINATION lib
-    RUNTIME DESTINATION bin
-)
-
-install(FILES ${LOGGER_HEADERS}
-    DESTINATION include/Logger
-)
+# Install/export is handled centrally for all VIXEN libraries — see cmake/VixenInstall.cmake (AR#2).
 
 # ============================================================================
 # Tests

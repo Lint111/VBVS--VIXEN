@@ -360,6 +360,18 @@ add_subdirectory(shaders)
 add_subdirectory(libraries)
 
 # ============================================================================
+# CONSUMABLE ARTIFACT (AR#2)
+# ============================================================================
+# Unified install(EXPORT VixenTargets) + VIXENConfig.cmake so an external host
+# (UNDERTOW) can find_package(VIXEN) and link Vixen::* . Must follow the
+# libraries subdir so every exported target exists. Standalone builds only —
+# when VIXEN is add_subdirectory'd into a super-build the host owns install.
+option(VIXEN_INSTALL_EXPORT "Generate the install(EXPORT)/find_package(VIXEN) consumable artifact (AR#2)" OFF)
+if(VIXEN_INSTALL_EXPORT AND CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    include(cmake/VixenInstall.cmake)
+endif()
+
+# ============================================================================
 # APPLICATION EXECUTABLES
 # ============================================================================
 # All application entry points and executables
