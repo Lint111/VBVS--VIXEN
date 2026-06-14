@@ -195,3 +195,16 @@ set_target_properties(test_instance_buffer_node PROPERTIES FOLDER "Tests/RenderG
 gtest_discover_tests(test_instance_buffer_node)
 
 message(STATUS "[RenderGraph Tests] Added: test_instance_buffer_node (AR#31)")
+
+# MvpUniformNode Tests (AR#31)
+add_executable(test_mvp_uniform_node
+    Nodes/test_mvp_uniform_node.cpp
+)
+
+target_link_libraries(test_mvp_uniform_node PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+
+# Visual Studio solution folder organization
+set_target_properties(test_mvp_uniform_node PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_mvp_uniform_node)
+
+message(STATUS "[RenderGraph Tests] Added: test_mvp_uniform_node (AR#31)")
