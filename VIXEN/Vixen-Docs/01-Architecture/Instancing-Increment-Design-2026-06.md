@@ -3,7 +3,7 @@ title: Many-entity draw path — instancing increment (AR#31, increment 1)
 aliases: [InstanceBufferNode, instancing, gl_InstanceIndex, AR#31 increment]
 tags: [architecture, design, rendergraph, presentation-layer, AR31]
 created: 2026-06-14
-status: DONE (on branch claude/ar31-instancing-increment) — built, renders 64 instanced cubes, 0 VK errors
+status: DONE — general Draw.vert/Draw.frag path, 64 textured instanced cubes, 0 VK errors (merged to main 2026-06-15)
 related:
   - "[[RenderGraph]]"
   - "[[Maturation-Backlog-2026-06]]"
@@ -86,22 +86,37 @@ void main() {
 model is now per-instance. For the increment the existing camera/MVP source is acceptable as long as the
 cubes are visible; correctness of the exact proj·view split is an implementation detail of the demo graph.)
 
-> **Implementation note (as-built):** `Draw.vert`/`Draw.frag` could **not** be reused: `Draw.frag`
-> already binds a `sampler2D` at binding 1 (collides with an instance SSBO there — SPIR-V reflection
-> rejects "incompatible types across stages"), and **no node produces the binding-0 MVP UBO**. So the
-> demo ships **dedicated `shaders/InstancingDemo.vert` + `.frag`**: the vertex stage's only descriptor is
-> the instance SSBO at **binding 0**, the fragment stage is descriptor-free (colors by UV + instance id),
-> and proj·view is baked into the vertex shader. The `Draw.vert` edit was reverted. Reviving instancing
-> on the *general* `Draw.*` path later needs a free SSBO binding + an MVP-UBO producer node (deferred).
+> **Implementation note (as-built, 2026-06-15 — general path):** The demo now drives the **general
+> `Draw.vert` + `Draw.frag`** path (the throwaway `InstancingDemo.*` shaders were deleted). The two
+> original blockers were fixed:
+> - **Binding collision** → instance SSBO moved to **binding 2** (0 = MVP UBO, 1 = `Draw.frag`'s
+>   `sampler2D`, 2 = instance transforms). No cross-stage collision.
+> - **Missing MVP-UBO producer** → new **`MvpUniformNode`** (proj·view UBO at binding 0).
+>
+> Two adjacent subsystems turned out to be **stubs/incomplete** and were implemented as root-cause fixes
+> (not band-aids):
+> - **`CashSystem::TextureCacher` was a stub** (`CreateFallbackTexture` made a 1×1 CPU pixel, created no
+>   VkImage) — so `TextureLoaderNode` was non-functional for *any* texture, even a valid file. Now it does
+>   real staging upload (`TextureLoader::LoadFromMemory` raw-bytes path + a transient command pool), and
+>   generates a default checkerboard when `FILE_PATH` is empty. This also fixes the file path.
+> - **The combined-image-sampler descriptor path was incomplete** — a `sampler2D` needs view+sampler in
+>   one binding, but two connections to one gatherer binding collapse (last-writer-wins). Added a
+>   `TextureLoaderNode TEXTURE_SAMPLER_PAIR` (`ImageSamplerPair`) output so one connection satisfies the
+>   binding, taught the gatherer/`CanBePersistent` to accept it, and fixed `Resource::GetDescriptorHandle`
+>   to prefer a non-null `ImageSamplerPair` before the lone `VkImageView` (guarded so plain image-view
+>   bindings — e.g. the voxel storage image — are unaffected; verified regression-clean).
 
-### 3. Descriptor wiring
+### 3. Descriptor wiring (as-built)
 
-The instance SSBO must be bound at **binding 1** of the geometry descriptor set. The reflection-driven
-descriptor system (`DescriptorResourceGathererNode` → `DescriptorSetNode`) already binds SSBOs for the
-**compute** path — follow that pattern: the gatherer discovers binding 1 from `Draw.vert` reflection and
-takes the `INSTANCE_BUFFER` as the bound resource. **This is the main integration risk;** if reflection
-wiring proves heavy for the increment, a focused fallback is to bind the SSBO via the descriptor set node
-directly. Resolve during implementation.
+Three reflection-driven descriptors on the general shaders, all via `DescriptorResourceGathererNode` →
+`DescriptorSetNode`:
+- **binding 0** — MVP uniform buffer ← `MvpUniformNode.MVP_BUFFER`
+- **binding 1** — combined image sampler ← `TextureLoaderNode.TEXTURE_SAMPLER_PAIR` (one
+  `ImageSamplerPair` handle satisfies the view+sampler binding)
+- **binding 2** — instance transforms SSBO ← `InstanceBufferNode.INSTANCE_BUFFER`
+
+Each connected with `SlotRole::Dependency | SlotRole::Execute`. This was the main integration risk and
+required completing the combined-image-sampler path (see the implementation note above).
 
 ### 4. `GeometryRenderNode`
 
