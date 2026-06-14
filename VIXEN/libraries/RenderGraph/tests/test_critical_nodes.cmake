@@ -182,3 +182,16 @@ set_target_properties(test_blend_mode PROPERTIES FOLDER "Tests/RenderGraph Tests
 gtest_discover_tests(test_blend_mode)
 
 message(STATUS "[RenderGraph Tests] Added: test_blend_mode (AR#32)")
+
+# InstanceBufferNode Tests (AR#31)
+add_executable(test_instance_buffer_node
+    Nodes/test_instance_buffer_node.cpp
+)
+
+target_link_libraries(test_instance_buffer_node PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+
+# Visual Studio solution folder organization
+set_target_properties(test_instance_buffer_node PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_instance_buffer_node)
+
+message(STATUS "[RenderGraph Tests] Added: test_instance_buffer_node (AR#31)")
