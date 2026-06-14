@@ -897,7 +897,12 @@ struct CanBePersistent {
     using Decayed = std::remove_cv_t<std::remove_reference_t<T>>;
     static constexpr bool value =
         std::is_pointer_v<Decayed> ||
-        std::is_reference_v<T>;
+        std::is_reference_v<T> ||
+        // ImageSamplerPair is a trivially-copyable bundle of two opaque Vulkan handles
+        // (VkImageView + VkSampler), semantically a handle like VkImageView (which is itself
+        // a pointer and thus persistable). A persistent lifetime lets it survive graph
+        // recompiles so a combined-image-sampler output reaches the descriptor path intact (AR#31).
+        std::is_same_v<Decayed, ::Vixen::RenderGraph::ImageSamplerPair>;
 };
 
 template<typename T>

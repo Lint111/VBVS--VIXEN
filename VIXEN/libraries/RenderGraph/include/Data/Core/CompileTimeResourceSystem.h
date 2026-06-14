@@ -1054,10 +1054,17 @@ public:
                 break;
 
             case ResourceType::ImageView:
-                // ImageView resources: try view first, then sampler (for combined samplers)
+                // ImageView resources: prefer the combined ImageSamplerPair (a sampler2D supplied as
+                // one handle) BEFORE the single VkImageView, so a combined-image-sampler binding is
+                // not silently extracted as a lone (and in Debug possibly null) image view. AR#31.
+                try {
+                    auto pair = GetHandle<ImageSamplerPair>();
+                    if (pair.imageView != VK_NULL_HANDLE || pair.sampler != VK_NULL_HANDLE) {
+                        return DescriptorHandleVariant{pair};
+                    }
+                } catch (...) {}
                 try { return DescriptorHandleVariant{GetHandle<VkImageView>()}; } catch (...) {}
                 try { return DescriptorHandleVariant{GetHandle<VkSampler>()}; } catch (...) {}
-                try { return DescriptorHandleVariant{GetHandle<ImageSamplerPair>()}; } catch (...) {}
                 // Try vector types for descriptor arrays
                 try { return DescriptorHandleVariant{GetHandle<std::vector<VkImageView>>()}; } catch (...) {}
                 try { return DescriptorHandleVariant{GetHandle<std::vector<VkSampler>>()}; } catch (...) {}

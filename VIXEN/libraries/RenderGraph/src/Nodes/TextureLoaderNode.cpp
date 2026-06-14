@@ -75,6 +75,10 @@ void TextureLoaderNode::CompileImpl(TypedCompileContext& ctx) {
     ctx.Out(TextureLoaderNodeConfig::TEXTURE_VIEW, textureView);
     ctx.Out(TextureLoaderNodeConfig::TEXTURE_SAMPLER, textureSampler);
     ctx.Out(TextureLoaderNodeConfig::VULKAN_DEVICE_OUT, device);
+    // Combined view+sampler for the reflection-driven gatherer path (AR#31): one connection
+    // satisfies a GLSL `sampler2D` (VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER) binding.
+    ctx.Out(TextureLoaderNodeConfig::TEXTURE_SAMPLER_PAIR,
+            ImageSamplerPair{textureView, textureSampler});
 }
 
 void TextureLoaderNode::ExecuteImpl(TypedExecuteContext& ctx) {

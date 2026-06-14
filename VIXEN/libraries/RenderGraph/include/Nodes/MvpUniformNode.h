@@ -25,7 +25,7 @@ public:
  *
  * Outputs the VkBuffer. The model matrix is applied per-instance in the shader, and
  * Draw.vert performs the Vulkan Y-flip / Z-remap itself, so this node bakes only the
- * unmodified proj*view (matching the existing InstancingDemo.vert baked matrices).
+ * unmodified proj*view.
  *
  * FR-7 lifecycle: the buffer persists across graph recompile; released only on
  * FinalTeardown.

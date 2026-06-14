@@ -636,6 +636,8 @@ void VulkanGraphApplication::BuildInstancingDemoGraph() {
     NodeHandle framebufferNode = renderGraph->AddNode<FramebufferNodeType>("inst_framebuffer");
     NodeHandle vertexBufferNode = renderGraph->AddNode<VertexBufferNodeType>("inst_cube_vb");
     NodeHandle instanceBufferNode = renderGraph->AddNode<InstanceBufferNodeType>("inst_buffer");
+    NodeHandle mvpUniformNode  = renderGraph->AddNode<MvpUniformNodeType>("inst_mvp");
+    NodeHandle textureNode     = renderGraph->AddNode<TextureLoaderNodeType>("inst_texture");
     NodeHandle shaderLibNode   = renderGraph->AddNode<ShaderLibraryNodeType>("inst_shader_lib");
     NodeHandle descGathererNode = renderGraph->AddNode<DescriptorResourceGathererNodeType>("inst_desc_gatherer");
     NodeHandle descriptorSetNode = renderGraph->AddNode<DescriptorSetNodeType>("inst_descriptors");
@@ -666,6 +668,27 @@ void VulkanGraphApplication::BuildInstancingDemoGraph() {
     if (auto* ibLogger = instanceBuffer->GetLogger()) {
         ibLogger->SetEnabled(true);
         ibLogger->SetTerminalOutput(true);
+    }
+
+    // MVP uniform buffer (binding 0): proj*view for the general Draw.vert. Draw.vert applies the
+    // per-instance model matrix and the Vulkan Y-flip/Z-remap itself, so this is plain proj*view.
+    auto* mvpUniform = static_cast<MvpUniformNode*>(renderGraph->GetInstance(mvpUniformNode));
+    mvpUniform->SetParameter(MvpUniformNodeConfig::PARAM_FOV_DEGREES, 45.0f);
+    mvpUniform->SetParameter(MvpUniformNodeConfig::PARAM_ASPECT,
+                             static_cast<float>(width) / static_cast<float>(height));
+    mvpUniform->SetParameter(MvpUniformNodeConfig::PARAM_NEAR, 0.1f);
+    mvpUniform->SetParameter(MvpUniformNodeConfig::PARAM_FAR, 100.0f);
+    // Pull the camera back so the whole gridDim^2 grid (spacing 2.5) is in frame.
+    mvpUniform->SetParameter(MvpUniformNodeConfig::PARAM_CAMERA_DISTANCE, 30.0f);
+
+    // Albedo texture (binding 1): empty FILE_PATH => TextureLoaderNode generates a default
+    // checkerboard, so the general Draw.frag `sampler2D tex` path runs with zero asset deps.
+    auto* texture = static_cast<TextureLoaderNode*>(renderGraph->GetInstance(textureNode));
+    texture->SetParameter(TextureLoaderNodeConfig::SAMPLER_FILTER, std::string("Linear"));
+    texture->SetParameter(TextureLoaderNodeConfig::SAMPLER_ADDRESS_MODE, std::string("Repeat"));
+    if (auto* texLogger = texture->GetLogger()) {
+        texLogger->SetEnabled(true);
+        texLogger->SetTerminalOutput(true);
     }
 
     // Depth attachment.
@@ -717,35 +740,34 @@ void VulkanGraphApplication::BuildInstancingDemoGraph() {
     auto* present = static_cast<PresentNode*>(renderGraph->GetInstance(presentNode));
     present->SetParameter(PresentNodeConfig::WAIT_FOR_IDLE, true);
 
-    // Demo shader program: InstancingDemo.vert + InstancingDemo.frag. The vertex stage's ONLY
-    // descriptor is the instance SSBO (binding 0); the fragment stage is descriptor-free. This is
-    // a self-contained demo pair (not Draw.vert/Draw.frag): Draw.vert/Draw.frag collide at
-    // binding 1 (vertex SSBO vs fragment sampler2D), which SPIR-V reflection rejects, and Draw.vert
-    // also needs an MVP uniform buffer that no node in the graph produces. The demo bakes the
-    // proj*view into the vertex shader, so binding 0 (the SSBO from InstanceBufferNode via the
-    // gatherer) is the only descriptor that must be satisfied.
+    // General shader program: the reusable Draw.vert + Draw.frag (AR#31). Reflects THREE bindings:
+    //   0 = uniform buffer  (mvp, from MvpUniformNode)
+    //   1 = combined sampler (sampler2D tex, from TextureLoaderNode's ImageSamplerPair)
+    //   2 = storage buffer  (instance model[] SSBO, from InstanceBufferNode, indexed by gl_InstanceIndex)
+    // This makes the general triangle path the real, instancing-capable one rather than a throwaway
+    // demo pair. (Copied from the BuildRenderGraph Draw.vert/Draw.frag builder lambda.)
     auto* shaderLib = static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(shaderLibNode));
     shaderLib->RegisterShaderBuilder([](int vulkanVer, int spirvVer) {
         ShaderManagement::ShaderBundleBuilder builder;
 
         std::vector<std::filesystem::path> possiblePaths = {
 #ifdef VIXEN_SHADER_SOURCE_DIR
-            VIXEN_SHADER_SOURCE_DIR "/InstancingDemo.vert",
+            VIXEN_SHADER_SOURCE_DIR "/Draw.vert",
 #endif
-            "shaders/InstancingDemo.vert",
-            "InstancingDemo.vert",
-            "../shaders/InstancingDemo.vert"
+            "shaders/Draw.vert",
+            "Draw.vert",
+            "../shaders/Draw.vert"
         };
         std::filesystem::path vertPath, fragPath;
         for (const auto& path : possiblePaths) {
             if (std::filesystem::exists(path)) {
                 vertPath = path;
-                fragPath = path.parent_path() / "InstancingDemo.frag";
+                fragPath = path.parent_path() / "Draw.frag";
                 break;
             }
         }
         if (vertPath.empty()) {
-            throw std::runtime_error("InstancingDemo.vert not found - check shader search paths");
+            throw std::runtime_error("Draw.vert not found - check shader search paths");
         }
 
         ShaderManagement::SdiGeneratorConfig sdiConfig;
@@ -753,7 +775,7 @@ void VulkanGraphApplication::BuildInstancingDemoGraph() {
         sdiConfig.namespacePrefix = "ShaderInterface";
         sdiConfig.generateComments = true;
 
-        builder.SetProgramName("InstancingDemo_Shader")
+        builder.SetProgramName("Draw_Shader")
                .SetSdiConfig(sdiConfig)
                .EnableSdiGeneration(true)
                .SetTargetVulkanVersion(vulkanVer)
@@ -797,21 +819,33 @@ void VulkanGraphApplication::BuildInstancingDemoGraph() {
          .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC, framebufferNode, FramebufferNodeConfig::SWAPCHAIN_INFO)
          .Connect(depthBufferNode, DepthBufferNodeConfig::DEPTH_IMAGE_VIEW, framebufferNode, FramebufferNodeConfig::DEPTH_ATTACHMENT);
 
-    // --- Vertex + instance buffers ---
+    // --- Vertex + instance buffers + MVP UBO + texture ---
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, vertexBufferNode, VertexBufferNodeConfig::VULKAN_DEVICE_IN);
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, instanceBufferNode, InstanceBufferNodeConfig::VULKAN_DEVICE_IN);
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, mvpUniformNode, MvpUniformNodeConfig::VULKAN_DEVICE_IN);
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, textureNode, TextureLoaderNodeConfig::VULKAN_DEVICE_IN);
 
     // --- Shader library ---
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, shaderLibNode, ShaderLibraryNodeConfig::VULKAN_DEVICE_IN);
 
     // --- Descriptor path: gatherer (reflection-driven) → descriptor set ---
-    // The instance SSBO is bound at binding 0 — the same data-driven SSBO pattern the compute path
-    // uses for octree/brick/material buffers. Dependency|Execute so it is bound on first execute and
-    // refreshed if the source node recompiles (e.g. swapchain resize).
+    // Draw.vert/Draw.frag reflect three bindings; wire each resource to its shader binding index:
+    //   0 = MVP uniform buffer (MvpUniformNode)
+    //   1 = combined image sampler (TextureLoaderNode's ImageSamplerPair — one connection carries
+    //       BOTH the VkImageView and VkSampler the sampler2D needs; two separate view/sampler
+    //       connections to the same binding would collapse and drop one handle)
+    //   2 = instance model[] SSBO (InstanceBufferNode), indexed by gl_InstanceIndex
+    // All Dependency|Execute: bound on first execute and refreshed if a source recompiles (resize).
     batch.Connect(shaderLibNode, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
                   descGathererNode, DescriptorResourceGathererNodeConfig::SHADER_DATA_BUNDLE);
+    batch.Connect(mvpUniformNode, MvpUniformNodeConfig::MVP_BUFFER,
+                  descGathererNode, 0,  // MVP uniform buffer at binding 0
+                  SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(textureNode, TextureLoaderNodeConfig::TEXTURE_SAMPLER_PAIR,
+                  descGathererNode, 1,  // Combined image sampler at binding 1 (view + sampler)
+                  SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
     batch.Connect(instanceBufferNode, InstanceBufferNodeConfig::INSTANCE_BUFFER,
-                  descGathererNode, 0,  // Instances SSBO at binding 0
+                  descGathererNode, 2,  // Instances SSBO at binding 2
                   SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, descriptorSetNode, DescriptorSetNodeConfig::VULKAN_DEVICE_IN)
