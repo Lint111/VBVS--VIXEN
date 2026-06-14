@@ -238,12 +238,18 @@ Correctness bugs + the only-consumer's pain + legal hygiene. Wasted on no possib
   editor / host-owned-window need appears; the pure shape when taken is **surface injection** (host
   supplies a `VkSurfaceKHR`, or a native handle that `ExternalWindowNode` turns into one). See the
   "Host-owned window is not done yet" note in [[Hosting-VIXEN]].
-- [ ] **Distinct recompile-vs-shutdown lifecycle hooks** — `CleanupImpl` runs on both; naive
-  impl **deadlocks on resize** and destroys persistent state [FR-7]. Plus the "render-to-swapchain"
-  authoring recipe so node authors stop re-hitting FR-5/FR-7 [FR-8].
+- [x] **Recompile-vs-shutdown lifecycle + render-to-swapchain recipe** [FR-7/FR-8] — **DONE 2026-06-14
+  (docs).** The *mechanism* already existed: `CleanupImpl(ctx)` carries `CleanupReason` (Recompile /
+  DeviceLost / FinalTeardown, `NodeContext.h`); reference nodes (WindowNode, SwapChainNode,
+  UIRenderNode, ConstantNode) branch on it correctly. FR-7/FR-8 were a **discoverability** gap, not a
+  missing API — so (per the consumer's "document prominently" suggestion) the contract is now in the
+  author-facing `TypedNodeInstance::CleanupImpl` doc-comment + new §3.1/§3.2 in [[RenderGraph]]
+  (recompile must be lightweight, no device wait; consume RenderPass/Framebuffers as inputs, don't
+  build them in-node). A structural hook-split was considered + rejected (high blast radius across all
+  nodes; debatable vs the working `ctx.reason` design).
 - [ ] **Bring the sprint branch onto main's merged GLFW port** [AR#11] — windowing/input is already
   GLFW end-to-end on `main`; `production/sprint-6-timeline-foundation` predates it (Win32-only).
-- [ ] **Embedding docs + API stability story** [AR#12/#13] — **AR#12 docs DONE 2026-06-14:**
+- [x] **Embedding docs + API stability story** [AR#12/#13] — **AR#12 docs DONE 2026-06-14:**
   [[Hosting-VIXEN]] (`06-Embedding/Hosting-VIXEN.md`) documents the full embedding flow —
   `find_package(VIXEN)` (the AR#2 fat SDK, 14 libs) → construct `EngineContext`/`EngineConfig` →
   register node types → build graph → own the loop via `Graph().RenderFrame()` → publish

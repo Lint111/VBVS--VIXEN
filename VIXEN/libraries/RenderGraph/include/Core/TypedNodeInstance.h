@@ -475,7 +475,14 @@ protected:
      *
      * Called during Cleanup phase. No I/O access during cleanup.
      *
-     * @param ctx Cleanup context (no I/O access)
+     * CONTRACT (FR-7): Cleanup runs on BOTH recompile (e.g. swapchain resize) and final teardown —
+     * branch on `ctx.reason`. On `CleanupReason::Recompile`/`DeviceLost` keep persistent resources
+     * and do NOT `vkDeviceWaitIdle`/fence-wait (the graph skips device-idle on recompile; a wait here
+     * deadlocks resize). Release everything only on `FinalTeardown`. See `CleanupReason` in
+     * NodeContext.h and the recipe in Vixen-Docs Libraries/RenderGraph.md §3.1; reference nodes:
+     * WindowNode, SwapChainNode, UIRenderNode.
+     *
+     * @param ctx Cleanup context (no I/O access; carries `reason`)
      */
     virtual void CleanupImpl(TypedCleanupContext& ctx) {}
 

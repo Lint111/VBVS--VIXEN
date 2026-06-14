@@ -116,6 +116,45 @@ class NodeInstance {
 };
 ```
 
+### 3.1 Cleanup: recompile vs final teardown (FR-7)
+
+`Cleanup()` runs on **both** a transient recompile (e.g. swapchain resize) and final teardown — the
+reason is carried in `ctx.reason` (`CleanupReason::Recompile` / `DeviceLost` / `FinalTeardown`, see
+`Core/NodeContext.h`). The mechanism already exists; the contract for a stateful node's
+`CleanupImpl(ctx)`:
+
+- **Recompile must be lightweight — no `vkDeviceWaitIdle` / fence waits.** The graph deliberately
+  skips device-idle during recompile; a wait here **deadlocks resize** (a submit blocked on an
+  un-signalled acquire semaphore never completes).
+- **Keep persistent-across-recompile state** (OS window/surface, long-lived GPU sync objects); release
+  only per-recompile resources. Tear everything down **only** when `ctx.reason == FinalTeardown`.
+- Most nodes own nothing persistent and can ignore `ctx.reason`. Correct reference implementations:
+  `WindowNode`, `SwapChainNode`, `UIRenderNode`, `ConstantNode`.
+
+```cpp
+void MyNode::CleanupImpl(TypedCleanupContext& ctx) {
+    if (ctx.reason != CleanupReason::FinalTeardown) {
+        return;  // recompile / device-loss: keep persistent resources, NO device wait
+    }
+    // FinalTeardown only: release everything
+}
+```
+
+### 3.2 Render-to-swapchain recipe (FR-8)
+
+Don't build the render pass / framebuffers **inside** a render node — consume them as inputs so the
+swapchain-recompile cascade owns their resize lifecycle:
+
+```
+SwapChainNode → RenderPassNode → FramebufferNode → <YourRenderNode> → PresentNode
+```
+
+Take `RENDER_PASS` (from `RenderPassNode`) and `FRAMEBUFFERS` (from `FramebufferNode`) as typed inputs
+and record into them. Minimal color-only template: the UI graph
+(`swapchain → RenderPassNode → FramebufferNode → UIRenderNode → PresentNode`); fuller reference:
+`GeometryRenderNode`. Building these inside the node reproduces the FR-5 (extent desync) / FR-7
+(resize) footguns.
+
 ---
 
 ## 4. Node Catalog
