@@ -6,7 +6,7 @@
 // Required for unique_ptr members (MSVC requires complete types for unique_ptr destructors)
 #include "LaineKarrasOctree.h"
 #include "GaiaVoxelWorld.h"
-#include "Data/SceneGenerator.h"
+#include "SceneGenerator.h"
 
 // Note: BatchedUploader included via TypedCacher.h (Sprint 5 Phase 2.5.2)
 

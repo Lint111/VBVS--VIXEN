@@ -34,7 +34,6 @@ set(RENDERGRAPH_DATA_CORE_HEADERS
     include/Data/LayerAndExtensionRequirementData.h
     include/Data/ParameterDataTypes.h
     include/Data/VariantDescriptors.h
-    include/Data/SceneGenerator.h
     include/Data/VoxelOctree.h
     include/Data/Core/GraphMessages.h
     include/Data/Core/ResourceConfig.h
@@ -148,7 +147,6 @@ set(RENDERGRAPH_CORE_HEADERS
 )
 
 set(RENDERGRAPH_DATA_CORE_SOURCES
-    src/Data/SceneGenerator.cpp
     src/Data/VoxelOctree.cpp
 )
 

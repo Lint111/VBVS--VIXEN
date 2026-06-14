@@ -17,6 +17,7 @@ add_library(SVO STATIC
     include/SVOBuilder.h
     include/LaineKarrasOctree.h
     include/SVOLOD.h  # Screen-space LOD parameters (Phase B.2)
+    include/SceneGenerator.h  # Procedural voxel scene generation (relocated from RenderGraph — AR#3/#4 cycle break)
     # VoxelInjection.h DEPRECATED - removed in favor of rebuild() API
 
     # Implementation
@@ -41,6 +42,7 @@ add_library(SVO STATIC
     src/VoxelSamplers.cpp
     # src/RayCaster.cpp  # TODO: Implement
     src/Serialization.cpp
+    src/SceneGenerator.cpp  # Procedural voxel scene generation (relocated from RenderGraph — AR#3/#4 cycle break)
     # src/SVOFactory.cpp  # TODO: Implement
 )
 

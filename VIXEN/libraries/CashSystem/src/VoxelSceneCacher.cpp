@@ -12,7 +12,7 @@
 #include "SVOBuilder.h"
 
 // RenderGraph library integration
-#include "Data/SceneGenerator.h"
+#include "SceneGenerator.h"
 
 #include <iostream>
 #include <fstream>

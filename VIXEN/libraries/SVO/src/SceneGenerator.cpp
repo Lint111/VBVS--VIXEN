@@ -1,4 +1,4 @@
-#include "Data/SceneGenerator.h"
+#include "SceneGenerator.h"
 #include <cmath>
 #include <algorithm>
 #include <random>

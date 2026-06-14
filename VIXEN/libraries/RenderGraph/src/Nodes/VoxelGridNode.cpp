@@ -1,5 +1,5 @@
 #include "Nodes/VoxelGridNode.h"
-#include "Data/SceneGenerator.h"
+#include "SceneGenerator.h"
 #include "Data/VoxelOctree.h" // Legacy - will be removed
 #include "VulkanDevice.h"
 #include "Core/NodeLogging.h"
