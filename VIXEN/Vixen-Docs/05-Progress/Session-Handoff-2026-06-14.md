@@ -84,3 +84,32 @@ required consumer — leave it unless a concrete need appears.
   instance/device via in-graph nodes (InstanceNode→DeviceNode) — EngineContext needs no device.
 - **rtk hook mangles** `git diff/show/reset/check-ignore` — use `rtk proxy git …` for ground truth.
 - **`project-rules` skill** must be invoked first thing each turn (UserPromptSubmit hook enforces it).
+
+---
+
+## Session update — 2026-06-14 (later): AR#8 core-two landed
+
+Branch **`claude/ar8-desingletonize`** (off `main`). AR#8 **MainCacher + CapabilityGraph** de-singletonized
+and verified; **ProfilerSystem deliberately deferred**. Full detail in [[Maturation-Backlog-2026-06]] (AR#8
+entry now `[x]`). Highlights:
+
+- **`MainCacher::Instance()` deleted.** Cacher is host-owned: `EngineContext` creates+owns one when the host
+  injects none (`EngineConfig::mainCacher`); `BenchmarkRunner` owns a local one. Internal cachers +
+  `DeviceRegistry` reach siblings via `CacherBase::SetMainCacher` back-pointer (set by MainCacher at each
+  creation path). `RenderGraph::GetMainCacher()` lost the `Instance()` fallback (asserts injected).
+  `EngineContext::~EngineContext` now `Shutdown()`s the cacher before the bus dies — **fixed a latent
+  exit-time UAF** the singleton path carried. Removed 3 dead registration helpers + dead `test_cash_system.cpp`.
+- **`CapabilityGraph`** — 4 process-wide static availability vectors → per-graph instance state. Device-level
+  sets from `VulkanDevice`; instance-level self-populated from the loader (`vkEnumerateInstance*Properties`
+  is global), so the old `InstanceNode`→static→device bridge is gone. Leaf nodes consult their owning graph.
+- **Verified:** full build green; cacher tests (45) + device/capability tests (48) pass; 25 s app smoke
+  renders voxels per-frame, no `VK_ERROR`/validation errors.
+- **⚠ Pre-existing failures (NOT from this work — over untouched code paths; don't blame your change):**
+  `test_swap_chain_node.ConfigHasTwoInputs` (stale slot-count assertion), `test_cornell_box.LeftWallHit_Red`
+  (SVO ray geometry, `hitPoint.x` boundary), `test_profiler.ConfigToMetricsExportFlow` (profiler metrics
+  validity; uses `BenchmarkRunner::RecordFrame/Finalize`, not the changed `RunSuiteWithWindow`).
+- **ProfilerSystem deferred:** benchmark-only (app/EngineContext never touch it) → not a multi-instance
+  blocker; doing it re-opens the deferred BenchmarkRunner surface for no engine-side gain.
+
+**Next task order unchanged:** AR#9 `ExternalWindowNode` → AR#12 embedding docs → cosmetic `SceneGenerator`
+`VIXEN::RenderGraph`→`Vixen::SVO` rename. ProfilerSystem only if a concrete in-engine profiling need appears.

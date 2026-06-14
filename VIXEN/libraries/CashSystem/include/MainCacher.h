@@ -61,7 +61,13 @@ class PipelineCacher;
  */
 class MainCacher : public ILoggable {
 public:
-    static MainCacher& Instance();
+    /// Construct a standalone cacher. AR#8: MainCacher is an ordinary instantiable object owned by
+    /// its host (EngineContext / BenchmarkRunner), not a process-wide singleton. Non-copyable/movable
+    /// (holds mutexes and is referenced by the cachers/registries it owns).
+    MainCacher() = default;
+    ~MainCacher();
+    MainCacher(const MainCacher&) = delete;
+    MainCacher& operator=(const MainCacher&) = delete;
 
     /**
      * @brief Initialize the MainCacher and subscribe to device invalidation events
@@ -173,6 +179,7 @@ public:
 
             // Create new cacher instance using global factory
             auto newCacher = factoryIt->second();
+            newCacher->SetMainCacher(this);  // AR#8: cacher reaches siblings via its owner, not Instance()
             typedCacher = dynamic_cast<CacherT*>(newCacher.get());
 
             if (!typedCacher) {
@@ -245,8 +252,9 @@ public:
         
         // Create new global cacher
         auto newCacher = factoryIt->second();
+        newCacher->SetMainCacher(this);  // AR#8: cacher reaches siblings via its owner, not Instance()
         auto* typedCacher = dynamic_cast<CacherT*>(newCacher.get());
-        
+
         if (!typedCacher) {
             throw std::runtime_error(
                 "Factory returned wrong type for: " + GetTypeName(typeIndex)
@@ -631,11 +639,6 @@ public:
     */
 
 private:
-    MainCacher() = default;
-    ~MainCacher();
-    MainCacher(const MainCacher&) = delete;
-    MainCacher& operator=(const MainCacher&) = delete;
-
     // Event bus integration for device invalidation
     Vixen::EventBus::MessageBus* m_messageBus = nullptr;
     Vixen::EventBus::ScopedSubscriptions subscriptions_;  // RAII subscriptions (auto-unsubscribe on destruction)

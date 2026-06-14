@@ -9,6 +9,8 @@
 
 namespace Vixen {
 
+class CapabilityGraph;  // owning graph; leaf nodes consult its availability sets (AR#8 — was statics)
+
 /**
  * @brief Base class for GPU capability nodes
  *
@@ -34,6 +36,11 @@ public:
     /// Force recheck of availability (clears cache)
     void Invalidate() { cachedResult_.reset(); }
 
+    /// Set the owning graph (AR#8: leaf nodes consult the graph's per-instance availability sets in
+    /// CheckAvailability() instead of the former process-wide static vectors). Called by
+    /// CapabilityGraph::RegisterCapability.
+    void SetOwningGraph(const CapabilityGraph* graph) noexcept { graph_ = graph; }
+
     /// Add a dependency node
     void AddDependency(std::shared_ptr<CapabilityNode> dep) {
         dependencies_.push_back(dep);
@@ -58,6 +65,10 @@ protected:
         return true;
     }
 
+    /// Owning graph (AR#8): leaf nodes read its per-instance availability sets in CheckAvailability()
+    /// instead of process-wide statics. Null until the node is registered with a graph.
+    const CapabilityGraph* graph_ = nullptr;
+
 private:
     std::string name_;
     std::vector<std::shared_ptr<CapabilityNode>> dependencies_;
@@ -73,15 +84,11 @@ public:
         : CapabilityNode("InstanceExt:" + extensionName)
         , extensionName_(extensionName) {}
 
-    /// Set available extensions (called during instance creation)
-    static void SetAvailableExtensions(const std::vector<std::string>& extensions);
-
 protected:
-    bool CheckAvailability() const override;
+    bool CheckAvailability() const override;  // consults the owning graph's instance-extension set (AR#8)
 
 private:
     std::string extensionName_;
-    static std::vector<std::string> availableExtensions_;
 };
 
 /**
@@ -93,15 +100,11 @@ public:
         : CapabilityNode("InstanceLayer:" + layerName)
         , layerName_(layerName) {}
 
-    /// Set available layers (called during instance creation)
-    static void SetAvailableLayers(const std::vector<std::string>& layers);
-
 protected:
-    bool CheckAvailability() const override;
+    bool CheckAvailability() const override;  // consults the owning graph's instance-layer set (AR#8)
 
 private:
     std::string layerName_;
-    static std::vector<std::string> availableLayers_;
 };
 
 /**
@@ -113,15 +116,11 @@ public:
         : CapabilityNode("DeviceExt:" + extensionName)
         , extensionName_(extensionName) {}
 
-    /// Set available extensions for current device (called during device creation)
-    static void SetAvailableExtensions(const std::vector<std::string>& extensions);
-
 protected:
-    bool CheckAvailability() const override;
+    bool CheckAvailability() const override;  // consults the owning graph's device-extension set (AR#8)
 
 private:
     std::string extensionName_;
-    static std::vector<std::string> availableExtensions_;
 };
 
 /**
@@ -139,15 +138,11 @@ public:
         : CapabilityNode("DeviceFeature:" + featureName)
         , featureName_(featureName) {}
 
-    /// Set the features the physical device reports as supported (called during device creation)
-    static void SetAvailableFeatures(const std::vector<std::string>& features);
-
 protected:
-    bool CheckAvailability() const override;
+    bool CheckAvailability() const override;  // consults the owning graph's device-feature set (AR#8)
 
 private:
     std::string featureName_;
-    static std::vector<std::string> availableFeatures_;
 };
 
 /**
@@ -171,6 +166,13 @@ protected:
  *
  * Manages a dependency graph of GPU capabilities.
  * Provides registry of known capabilities and query interface.
+ *
+ * AR#8: the available-extension/layer/feature sets are per-graph instance state (a CapabilityGraph
+ * is owned per VulkanDevice). Instance-level sets are self-populated from the loader by
+ * BuildStandardCapabilities (instance availability is globally queryable, no VkInstance needed);
+ * device-level sets are supplied by the owning VulkanDevice once its physical device is known.
+ * This replaces the former process-wide static vectors, so multiple devices/engines in one process
+ * never clobber each other's capability state.
  */
 class CapabilityGraph {
 public:
@@ -191,6 +193,19 @@ public:
     /// Invalidate all cached results (call when device/instance changes)
     void InvalidateAll();
 
+    // --- Available-capability sets (AR#8: per-graph instance state; replaces process-wide statics).
+    // Instance-level sets are self-populated by BuildStandardCapabilities. Device-level sets are
+    // supplied by the owning VulkanDevice after the physical device is selected.
+    void SetAvailableInstanceExtensions(std::vector<std::string> extensions);
+    void SetAvailableInstanceLayers(std::vector<std::string> layers);
+    void SetAvailableDeviceExtensions(std::vector<std::string> extensions);
+    void SetAvailableDeviceFeatures(std::vector<std::string> features);
+
+    bool IsInstanceExtensionAvailable(const std::string& name) const;
+    bool IsInstanceLayerAvailable(const std::string& name) const;
+    bool IsDeviceExtensionAvailable(const std::string& name) const;
+    bool IsDeviceFeatureAvailable(const std::string& name) const;
+
     /// Get all registered capabilities
     const std::unordered_map<std::string, std::shared_ptr<CapabilityNode>>& GetAllCapabilities() const {
         return capabilities_;
@@ -198,6 +213,12 @@ public:
 
 private:
     std::unordered_map<std::string, std::shared_ptr<CapabilityNode>> capabilities_;
+
+    // Availability sets consulted by the leaf capability nodes (AR#8: per-instance, were static).
+    std::vector<std::string> availableInstanceExtensions_;
+    std::vector<std::string> availableInstanceLayers_;
+    std::vector<std::string> availableDeviceExtensions_;
+    std::vector<std::string> availableDeviceFeatures_;
 
     // Helper to create and register capabilities
     template<typename T, typename... Args>

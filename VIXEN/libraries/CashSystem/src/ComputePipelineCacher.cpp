@@ -99,8 +99,12 @@ void ComputePipelineCacher::CreatePipelineLayout(
     // Convenience fallback: Create layout from descriptor set layout + push constants
     LOG_DEBUG("[ComputePipelineCacher::CreatePipelineLayout] Using convenience fallback to create pipeline layout");
 
-    // Get PipelineLayoutCacher from MainCacher
-    auto& mainCacher = MainCacher::Instance();
+    // Get PipelineLayoutCacher from our owning MainCacher (AR#8: was MainCacher::Instance())
+    MainCacher* owner = GetMainCacher();
+    if (!owner) {
+        throw std::runtime_error("[ComputePipelineCacher::CreatePipelineLayout] no owning MainCacher");
+    }
+    auto& mainCacher = *owner;
     auto* layoutCacher = mainCacher.GetCacher<PipelineLayoutCacher, PipelineLayoutWrapper, PipelineLayoutCreateParams>(
         std::type_index(typeid(PipelineLayoutWrapper)),
         GetDevice()

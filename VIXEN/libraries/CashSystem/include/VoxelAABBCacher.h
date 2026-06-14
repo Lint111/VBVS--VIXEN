@@ -221,21 +221,7 @@ private:
     // Note: BatchedUploader is in TypedCacher base class via GetUploader()
 };
 
-// ============================================================================
-// REGISTRATION HELPER
-// ============================================================================
-
-/**
- * @brief Register VoxelAABBCacher with MainCacher
- *
- * Call during application initialization before using the cacher.
- */
-inline void RegisterVoxelAABBCacher() {
-    MainCacher::Instance().RegisterCacher<VoxelAABBCacher, VoxelAABBData, VoxelAABBCreateInfo>(
-        std::type_index(typeid(VoxelAABBData)),
-        "VoxelAABBCacher",
-        true  // device-dependent
-    );
-}
+// AR#8: the former inline RegisterVoxelAABBCacher() free helper (reached MainCacher::Instance())
+// was unused dead code. Removed; register VoxelAABBCacher on your own MainCacher instance instead.
 
 } // namespace CashSystem
