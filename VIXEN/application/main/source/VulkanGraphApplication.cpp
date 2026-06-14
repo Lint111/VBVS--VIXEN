@@ -23,6 +23,7 @@
 #include "Nodes/FrameSyncNode.h"  // Phase 0.2: Frame-in-flight synchronization
 #include "Nodes/TextureLoaderNode.h"
 #include "Nodes/DepthBufferNode.h"
+#include "Nodes/RenderTargetNode.h"
 #include "Nodes/SwapChainNode.h"
 #include "Nodes/VertexBufferNode.h"
 #include "Nodes/RenderPassNode.h"
@@ -489,6 +490,7 @@ void VulkanGraphApplication::RegisterNodeTypes(NodeTypeRegistry& registry) {
     registry.Register<FrameSyncNodeType>();
     registry.Register<TextureLoaderNodeType>();
     registry.Register<DepthBufferNodeType>();
+    registry.Register<RenderTargetNodeType>();
     registry.Register<SwapChainNodeType>();
     registry.Register<VertexBufferNodeType>();
     registry.Register<RenderPassNodeType>();
