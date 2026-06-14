@@ -31,19 +31,12 @@ using namespace Vixen::RenderGraph;
  * - Dynamic pipeline reconfiguration
  */
 class VulkanGraphApplication : public VulkanApplicationBase {
-private:
+public:
+    // Instantiable (AR#7): the former singleton (GetInstance + once_flag) is gone — a host
+    // constructs and owns the application directly. Only main.cpp ever created it, and no
+    // library code reached for the global instance, so there is nothing else to re-thread.
     VulkanGraphApplication();
-
-public:
     ~VulkanGraphApplication() override;
-
-private:
-    // Singleton pattern
-    static std::unique_ptr<VulkanGraphApplication> instance;
-    static std::once_flag onlyOnce;
-
-public:
-    static VulkanGraphApplication* GetInstance();
 
     // ====== Lifecycle Methods ======
     

@@ -47,7 +47,10 @@ int main(int argc, char** argv) {
     mainLogger->Info("Starting VulkanGraphApplication...");
 
     try {
-        VulkanApplicationBase* appObj = VulkanGraphApplication::GetInstance();
+        // Instantiate the application directly (AR#7: the singleton is gone). unique_ptr so
+        // teardown (~VulkanGraphApplication -> DeInitialize) runs deterministically on scope exit.
+        auto app = std::make_unique<VulkanGraphApplication>();
+        VulkanApplicationBase* appObj = app.get();
 
         mainLogger->Info("Calling Initialize...");
         appObj -> Initialize();
