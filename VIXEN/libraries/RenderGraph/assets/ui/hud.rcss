@@ -8,19 +8,65 @@ body {
     position: absolute;
     top: 10px;
     right: 10px;
+    width: 220px;
     padding: 8px 12px;
     background-color: #1a1a2ecc;
     border-width: 1px;
     border-color: #4060a0;
 }
 
-#hud-tick {
+/* ---- Clock row ---- */
+.clock {
     display: block;
     color: #90c0ff;
+    margin-bottom: 8px;
 }
 
-#hud-bodies {
+/* ---- Section label ---- */
+.section-label {
     display: block;
-    color: #a0e0a0;
-    margin-top: 4px;
+    color: #707090;
+    font-size: 12px;
+    margin-bottom: 2px;
+    border-bottom-width: 1px;
+    border-color: #303050;
+    padding-bottom: 2px;
+}
+
+/* ---- Shared row layout ---- */
+.factions,
+.events {
+    display: block;
+    margin-top: 6px;
+}
+
+.row {
+    display: block;
+    margin-top: 3px;
+}
+
+/* ---- Faction columns ---- */
+.col-name {
+    display: inline-block;
+    width: 130px;
+    color: #e0d0b0;
+}
+
+.col-value {
+    display: inline-block;
+    color: #e08060;
+}
+
+/* ---- Event columns ---- */
+.col-tick {
+    display: inline-block;
+    width: 50px;
+    color: #707090;
+    font-size: 13px;
+}
+
+.col-kind {
+    display: inline-block;
+    color: #c0e0ff;
+    font-size: 13px;
 }

@@ -3,10 +3,23 @@
     <title>Undertow HUD</title>
     <link type="text/rcss" href="hud.rcss"/>
 </head>
-<body data-model="hud">
-    <div id="hud">
-        <span id="hud-tick">tick {{tick}}</span>
-        <span id="hud-bodies">bodies {{bodyCount}}</span>
+<body>
+    <div data-model="hud" id="hud">
+        <div class="clock">tick {{tick}} · bodies {{bodyCount}}</div>
+        <div class="factions">
+            <div class="section-label">Factions</div>
+            <div class="row" data-for="f : factions">
+                <span class="col-name">{{f.name}}</span>
+                <span class="col-value">{{f.grievance}}</span>
+            </div>
+        </div>
+        <div class="events">
+            <div class="section-label">Events</div>
+            <div class="row" data-for="e : events">
+                <span class="col-tick">T{{e.tick}}</span>
+                <span class="col-kind">{{e.kind}}</span>
+            </div>
+        </div>
     </div>
 </body>
 </rml>
