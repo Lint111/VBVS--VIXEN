@@ -311,6 +311,11 @@ Correctness bugs + the only-consumer's pain + legal hygiene. Wasted on no possib
 - [ ] **Sync model: allow >1 submitting pass per frame** [AR#21] — every leaf node independently
   `vkQueueSubmit`s the frame's single binary semaphore → only one submitting pass composes today.
   Surfaces the moment a second view is wired. Sprint 8 `TimelineNode` is the named fix.
+  **Subsumed by the auto-sync epic** → [[Auto-Sync-FrameGraph-Design-2026-06]] (audit done 2026-06-14:
+  automatic barrier scheduling from the *existing-but-unused* `SlotMutability`/`ResourceAccessTracker`
+  access model + centralized image-layout state; AR#21 multi-submit/timeline is its increment 2). Parked
+  for a focused session. Motivated by the GPU compute→compute→render "no readback" ask (data already
+  stays on GPU; the gap is auto-sync, not data passing).
 - [ ] **Picking/selection** — CPU click+drag-select is buildable today (`queryRegion`,
   `getEntityByMorton`, `CameraData` inv matrices all exist); GPU pixel-exact ID-buffer is later
   [AR#35]. Note: `MouseButtonEvent` is declared but **never published by InputNode** — fix that.
