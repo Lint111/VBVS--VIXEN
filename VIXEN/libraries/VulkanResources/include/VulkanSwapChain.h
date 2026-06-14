@@ -3,6 +3,7 @@
 #include "Headers.h"
 #include "ILoggable.h"
 #include "error/VulkanError.h"  // VulkanStatus for de-fatalized surface-capability queries
+#include "IRenderTarget.h"
 
 struct GLFWwindow;  // cross-platform window handle (GLFW); real include only in the .cpp
 
@@ -43,7 +44,7 @@ struct SwapChainPrivateVariables {
     std::vector<VkSurfaceFormatKHR> surfaceFormats;
 };
 
-struct SwapChainPublicVariables {
+struct SwapChainPublicVariables : public Vixen::Vulkan::Resources::IRenderTarget {
     // The logical platform dependent surface object
     VkSurfaceKHR surface;
 
@@ -65,22 +66,13 @@ struct SwapChainPublicVariables {
 	// Extends of the swapchain images
 	VkExtent2D Extent;
 
-    // Implicit conversion operators for render graph connections
-    // When nodes expect VkImageView, automatically provide current image view
-    operator VkImageView() const {
-        if (currentColorBuffer < colorBuffers.size()) {
-            return colorBuffers[currentColorBuffer].view;
-        }
-        return VK_NULL_HANDLE;
-    }
-
-    // When nodes expect VkImage, automatically provide current image
-    operator VkImage() const {
-        if (currentColorBuffer < colorBuffers.size()) {
-            return colorBuffers[currentColorBuffer].image;
-        }
-        return VK_NULL_HANDLE;
-    }
+    // IRenderTarget interface implementation
+    uint32_t    GetImageCount()   const override { return swapChainImageCount; }
+    uint32_t    GetCurrentIndex() const override { return currentColorBuffer; }
+    VkImage     GetImage(uint32_t i) const override { return i < colorBuffers.size() ? colorBuffers[i].image : VK_NULL_HANDLE; }
+    VkImageView GetView(uint32_t i)  const override { return i < colorBuffers.size() ? colorBuffers[i].view  : VK_NULL_HANDLE; }
+    VkFormat    GetFormat()   const override { return Format; }
+    VkExtent2D  GetExtent()   const override { return Extent; }
 
     operator VkSurfaceKHR() const {
         return surface;
