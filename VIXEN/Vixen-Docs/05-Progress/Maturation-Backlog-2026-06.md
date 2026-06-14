@@ -286,8 +286,17 @@ Correctness bugs + the only-consumer's pain + legal hygiene. Wasted on no possib
 - [ ] **Per-frame dynamic content** — `StreamingBufferNode`/`DynamicBufferNode`; drain the dead-ended
   `BatchedUpdater` (`VulkanDevice::RecordUpdates` has zero callers) [AR#33]; per-frame dynamic
   geometry / multi-draw for text+UI (`UIDrawListNode`) [AR#34]
-- [ ] **Alpha blending** — one hardcoded `blendEnable=VK_FALSE` blocks all UI-over-3D; add
-  `BLEND_MODE` string param (CULL_MODE pattern) [AR#32]
+- [x] **Alpha blending** — **DONE 2026-06-14** [AR#32]. `BLEND_MODE` string param on
+  `GraphicsPipelineNode` (CULL_MODE pattern): `None` (default, opaque — prior behavior), `Alpha`,
+  `PremultipliedAlpha`, `Additive`, `Multiply`. Design: [[BlendMode-Design-2026-06]]. The hardcoded
+  `blendEnable=VK_FALSE` lived in **two** paths (the `PipelineCacher` live path + the node's manual
+  fallback); both now consume one `MakeColorBlendAttachment(mode)` recipe (RenderGraph
+  `VulkanStructHelpers.h`, throws on unknown). Blend state is threaded through `PipelineCreateParams`
+  (defaulted opaque/write-RGBA so existing callers are unchanged) **and** the pipeline cache key
+  (`ComputeKey`) so distinct blend modes never collide on one cached pipeline. Tests: `test_blend_mode`
+  (8, pure recipe+config), `test_pipeline_blend_key` (4, cache-key distinctness + opaque default); build
+  green, all CashSystem suites pass, app smoke clean (0 VK errors). Follow-ups: per-attachment/MRT blend,
+  `logicOp`/dual-source/blend-constants — deferred (single attachment today).
 - [ ] **Multi-view / multi-camera** + flexible camera (ortho projection, zoom-to-cursor, camera-
   relative transform) — current camera is orbit-only, perspective-only, swapchain-bound [AR#29/#30]
 - [ ] **Sync model: allow >1 submitting pass per frame** [AR#21] — every leaf node independently

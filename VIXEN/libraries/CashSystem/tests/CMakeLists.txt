@@ -17,6 +17,19 @@ set_target_properties(test_registration_api PROPERTIES FOLDER "Tests/CashSystem 
 
 gtest_discover_tests(test_registration_api)
 
+# Pipeline blend-state cache-key tests (AR#32)
+add_executable(test_pipeline_blend_key
+    test_pipeline_blend_key.cpp
+)
+target_compile_features(test_pipeline_blend_key PRIVATE cxx_std_23)
+if(TARGET CashSystem)
+    target_link_libraries(test_pipeline_blend_key PRIVATE GTest::gtest_main CashSystem Logger VulkanResources)
+else()
+    target_link_libraries(test_pipeline_blend_key PRIVATE GTest::gtest_main Logger)
+endif()
+set_target_properties(test_pipeline_blend_key PROPERTIES FOLDER "Tests/CashSystem Tests")
+gtest_discover_tests(test_pipeline_blend_key)
+
 # Phase 3 TLAS Lifecycle tests (Sprint 5)
 add_executable(test_tlas_phase3
     test_tlas_phase3.cpp

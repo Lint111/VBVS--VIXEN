@@ -78,11 +78,13 @@ void GraphicsPipelineNode::CompileImpl(TypedCompileContext& ctx) {
     std::string polygonModeStr = GetParameterValue<std::string>(GraphicsPipelineNodeConfig::POLYGON_MODE, "Fill");
     std::string topologyStr = GetParameterValue<std::string>(GraphicsPipelineNodeConfig::TOPOLOGY, "TriangleList");
     std::string frontFaceStr = GetParameterValue<std::string>(GraphicsPipelineNodeConfig::FRONT_FACE, "CounterClockwise");
+    std::string blendModeStr = GetParameterValue<std::string>(GraphicsPipelineNodeConfig::BLEND_MODE, "None");
 
     cullMode = ParseCullMode(cullModeStr);
     polygonMode = ParsePolygonMode(polygonModeStr);
     topology = ParseTopology(topologyStr);
     frontFace = ParseFrontFace(frontFaceStr);
+    blendAttachment = MakeColorBlendAttachment(blendModeStr);  // AR#32: single source of truth
 
     // Get inputs
     currentShaderBundle = ctx.In(GraphicsPipelineNodeConfig::SHADER_DATA_BUNDLE);  // Store for use in helper functions
@@ -453,8 +455,9 @@ void GraphicsPipelineNode::BuildDepthStencilState(VkPipelineDepthStencilStateCre
 }
 
 void GraphicsPipelineNode::BuildColorBlendState(VkPipelineColorBlendStateCreateInfo& outState) {
-    static VkPipelineColorBlendAttachmentState attachment = CreateColorBlendAttachment(VK_FALSE);
-    outState = CreateColorBlendState(&attachment, 1);
+    // AR#32: blendAttachment is a node member (set from BLEND_MODE in CompileImpl, opaque by
+    // default). Its address stays valid for outState.pAttachments through pipeline creation.
+    outState = CreateColorBlendState(&blendAttachment, 1);
 }
 
 void GraphicsPipelineNode::BuildViewportState(VkPipelineViewportStateCreateInfo& outState) {
@@ -616,12 +619,14 @@ void GraphicsPipelineNode::CreatePipelineWithCache(TypedCompileContext& ctx) {
         params.cullMode = this->cullMode;
         params.polygonMode = this->polygonMode;
         params.topology = this->topology;
+        params.colorBlendAttachment = this->blendAttachment;  // AR#32
         params.vertexBindings = vertexBindings;  // Local variable built from reflection above
         params.vertexAttributes = vertexAttributes;  // Local variable built from reflection above
 
         NODE_LOG_DEBUG("GraphicsPipelineNode: Pipeline params: depth=" + std::string(this->enableDepthTest ? "true" : "false") +
                       " depthWrite=" + std::string(this->enableDepthWrite ? "true" : "false") + " cull=" + std::to_string(this->cullMode) +
-                      " polyMode=" + std::to_string(this->polygonMode) + " topo=" + std::to_string(this->topology));
+                      " polyMode=" + std::to_string(this->polygonMode) + " topo=" + std::to_string(this->topology) +
+                      " blend=" + std::string(this->blendAttachment.blendEnable ? "on" : "off"));
 
         try {
             // Use cacher to get or create pipeline

@@ -114,6 +114,7 @@ std::shared_ptr<PipelineWrapper> PipelineCacher::Create(const PipelineCreatePara
     wrapper->cullMode = ci.cullMode;
     wrapper->polygonMode = ci.polygonMode;
     wrapper->topology = ci.topology;
+    wrapper->colorBlendAttachment = ci.colorBlendAttachment;
 
     // Create pipeline components
     LOG_DEBUG("Creating pipeline cache...");
@@ -131,6 +132,7 @@ std::shared_ptr<PipelineWrapper> PipelineCacher::Create(const PipelineCreatePara
 std::uint64_t PipelineCacher::ComputeKey(const PipelineCreateParams& ci) const {
     // Combine all parameters into a unique key
     std::ostringstream keyStream;
+    const VkPipelineColorBlendAttachmentState& blend = ci.colorBlendAttachment;
     keyStream << ci.vertexShaderKey << "|"
               << ci.fragmentShaderKey << "|"
               << ci.layoutKey << "|"
@@ -139,7 +141,12 @@ std::uint64_t PipelineCacher::ComputeKey(const PipelineCreateParams& ci) const {
               << ci.enableDepthWrite << "|"
               << ci.cullMode << "|"
               << ci.polygonMode << "|"
-              << ci.topology;
+              << ci.topology << "|"
+              // Blend state (AR#32) — distinct blend modes must not collide on one cached pipeline.
+              << blend.blendEnable << ","
+              << blend.srcColorBlendFactor << "," << blend.dstColorBlendFactor << "," << blend.colorBlendOp << ","
+              << blend.srcAlphaBlendFactor << "," << blend.dstAlphaBlendFactor << "," << blend.alphaBlendOp << ","
+              << blend.colorWriteMask;
 
     // Use hash function to create 64-bit key
     const std::string keyString = keyStream.str();
@@ -210,11 +217,9 @@ void PipelineCacher::CreatePipeline(const PipelineCreateParams& ci, PipelineWrap
     depthStencil.depthBoundsTestEnable = VK_FALSE;
     depthStencil.stencilTestEnable = VK_FALSE;
 
-    // Color blending
-    VkPipelineColorBlendAttachmentState colorBlendAttachment{};
-    colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
-                                          VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-    colorBlendAttachment.blendEnable = VK_FALSE;
+    // Color blending (AR#32) — driven by ci.colorBlendAttachment (BLEND_MODE param).
+    // Defaults to opaque/write-RGBA, so callers that don't set it are unchanged.
+    VkPipelineColorBlendAttachmentState colorBlendAttachment = ci.colorBlendAttachment;
 
     VkPipelineColorBlendStateCreateInfo colorBlending{};
     colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;

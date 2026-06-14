@@ -41,6 +41,17 @@ struct PipelineWrapper {
     VkCullModeFlags cullMode = VK_CULL_MODE_BACK_BIT;
     VkPolygonMode polygonMode = VK_POLYGON_MODE_FILL;
     VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+
+    // Color blend (AR#32). Default = opaque, write RGBA — matches the prior hardcoded behavior.
+    VkPipelineColorBlendAttachmentState colorBlendAttachment{
+        VK_FALSE,                                       // blendEnable
+        VK_BLEND_FACTOR_ZERO, VK_BLEND_FACTOR_ZERO,     // src/dst color factor
+        VK_BLEND_OP_ADD,                                // color op
+        VK_BLEND_FACTOR_ZERO, VK_BLEND_FACTOR_ZERO,     // src/dst alpha factor
+        VK_BLEND_OP_ADD,                                // alpha op
+        VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+        VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT  // colorWriteMask
+    };
 };
 
 /**
@@ -79,6 +90,18 @@ struct PipelineCreateParams {
     VkCullModeFlags cullMode = VK_CULL_MODE_BACK_BIT;
     VkPolygonMode polygonMode = VK_POLYGON_MODE_FILL;
     VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+
+    // Color blend (AR#32). Default = opaque, write RGBA — matches the prior hardcoded behavior.
+    // GraphicsPipelineNode fills this from its BLEND_MODE parameter; part of the cache key.
+    VkPipelineColorBlendAttachmentState colorBlendAttachment{
+        VK_FALSE,                                       // blendEnable
+        VK_BLEND_FACTOR_ZERO, VK_BLEND_FACTOR_ZERO,     // src/dst color factor
+        VK_BLEND_OP_ADD,                                // color op
+        VK_BLEND_FACTOR_ZERO, VK_BLEND_FACTOR_ZERO,     // src/dst alpha factor
+        VK_BLEND_OP_ADD,                                // alpha op
+        VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+        VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT  // colorWriteMask
+    };
 
     // Vertex input description (if needed)
     std::vector<VkVertexInputAttributeDescription> vertexAttributes;

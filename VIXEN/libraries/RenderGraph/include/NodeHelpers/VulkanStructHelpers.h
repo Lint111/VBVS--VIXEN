@@ -3,6 +3,8 @@
 #include <vulkan/vulkan.h>
 #include <vector>
 #include <array>
+#include <string>
+#include <stdexcept>
 
 namespace RenderGraph::NodeHelpers {
 
@@ -101,6 +103,62 @@ inline VkPipelineColorBlendAttachmentState CreateColorBlendAttachment(
         VK_COLOR_COMPONENT_B_BIT |
         VK_COLOR_COMPONENT_A_BIT;
     state.blendEnable = blendEnable;
+    return state;
+}
+
+/// Build a color-blend attachment state from a named blend mode (AR#32).
+///
+/// This is the single source of truth for the `BLEND_MODE` GraphicsPipelineNode
+/// parameter — both the cacher path (PipelineCacher) and the manual fallback path
+/// consume the value the node computes once via this function. All modes write all
+/// color channels. Throws on an unknown mode, matching the Parse* convention in
+/// EnumParsers.h (no silent fallthrough).
+///
+/// Modes:
+/// - "None"               opaque, blending disabled (default; preserves prior behavior)
+/// - "Alpha"              straight (non-premultiplied) alpha "over": src*a + dst*(1-a)
+/// - "PremultipliedAlpha" alpha "over" for src already multiplied by its alpha: src + dst*(1-a)
+/// - "Additive"           alpha-weighted additive (glow/fire/particles): src*a + dst
+/// - "Multiply"           modulate/darken: src*dst
+inline VkPipelineColorBlendAttachmentState MakeColorBlendAttachment(const std::string& mode) {
+    VkPipelineColorBlendAttachmentState state{};
+    state.colorWriteMask =
+        VK_COLOR_COMPONENT_R_BIT |
+        VK_COLOR_COMPONENT_G_BIT |
+        VK_COLOR_COMPONENT_B_BIT |
+        VK_COLOR_COMPONENT_A_BIT;
+    state.colorBlendOp = VK_BLEND_OP_ADD;
+    state.alphaBlendOp = VK_BLEND_OP_ADD;
+
+    if (mode == "None") {
+        state.blendEnable = VK_FALSE;
+        return state;
+    }
+
+    state.blendEnable = VK_TRUE;
+    if (mode == "Alpha") {
+        state.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+        state.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        state.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+        state.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+    } else if (mode == "PremultipliedAlpha") {
+        state.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
+        state.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        state.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+        state.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+    } else if (mode == "Additive") {
+        state.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+        state.dstColorBlendFactor = VK_BLEND_FACTOR_ONE;
+        state.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+        state.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+    } else if (mode == "Multiply") {
+        state.srcColorBlendFactor = VK_BLEND_FACTOR_DST_COLOR;
+        state.dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
+        state.srcAlphaBlendFactor = VK_BLEND_FACTOR_DST_ALPHA;
+        state.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+    } else {
+        throw std::runtime_error("Unknown blend mode: " + mode);
+    }
     return state;
 }
 

@@ -78,6 +78,18 @@ private:
     VkPolygonMode polygonMode = VK_POLYGON_MODE_FILL;
     VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
     VkFrontFace frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    // Color blend from BLEND_MODE (AR#32). Default = opaque, write RGBA (prior behavior). Built
+    // once in CompileImpl; fed to both the cacher params and the manual fallback. Member (not a
+    // local) so its address stays valid for CreateColorBlendState's pAttachments pointer.
+    VkPipelineColorBlendAttachmentState blendAttachment{
+        VK_FALSE,                                       // blendEnable
+        VK_BLEND_FACTOR_ZERO, VK_BLEND_FACTOR_ZERO,     // src/dst color factor
+        VK_BLEND_OP_ADD,                                // color op
+        VK_BLEND_FACTOR_ZERO, VK_BLEND_FACTOR_ZERO,     // src/dst alpha factor
+        VK_BLEND_OP_ADD,                                // alpha op
+        VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+        VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT  // colorWriteMask
+    };
 
     // Shader stage data (built from reflection)
     std::vector<VkPipelineShaderStageCreateInfo> shaderStageInfos;

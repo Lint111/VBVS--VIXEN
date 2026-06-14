@@ -169,3 +169,16 @@ set_target_properties(test_render_target_node PROPERTIES FOLDER "Tests/RenderGra
 gtest_discover_tests(test_render_target_node)
 
 message(STATUS "[RenderGraph Tests] Added: test_render_target_node (AR#28)")
+
+# Blend mode recipe + config Tests (AR#32) — pure unit tests, no device
+add_executable(test_blend_mode
+    Nodes/test_blend_mode.cpp
+)
+
+target_link_libraries(test_blend_mode PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+
+# Visual Studio solution folder organization
+set_target_properties(test_blend_mode PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_blend_mode)
+
+message(STATUS "[RenderGraph Tests] Added: test_blend_mode (AR#32)")

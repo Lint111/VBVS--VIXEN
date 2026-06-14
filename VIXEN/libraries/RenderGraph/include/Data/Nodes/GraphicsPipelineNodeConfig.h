@@ -36,6 +36,7 @@ using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
  * - POLYGON_MODE (string) - Polygon mode: "Fill", "Line", "Point" (default: "Fill")
  * - TOPOLOGY (string) - Primitive topology: "TriangleList", "TriangleStrip", etc. (default: "TriangleList")
  * - FRONT_FACE (string) - Front face: "Clockwise", "CounterClockwise" (default: "CounterClockwise")
+ * - BLEND_MODE (string) - Color blend: "None", "Alpha", "PremultipliedAlpha", "Additive", "Multiply" (default: "None")
  *
  * Note: Pipelines are swapchain-independent. Viewport/scissor are set dynamically at execute-time.
  */
@@ -58,6 +59,7 @@ CONSTEXPR_NODE_CONFIG(GraphicsPipelineNodeConfig,
     static constexpr const char* POLYGON_MODE = "polygonMode";
     static constexpr const char* TOPOLOGY = "topology";
     static constexpr const char* FRONT_FACE = "frontFace";
+    static constexpr const char* BLEND_MODE = "blendMode";
 
     // ===== INPUTS (4) =====
     INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevice*, 0,
