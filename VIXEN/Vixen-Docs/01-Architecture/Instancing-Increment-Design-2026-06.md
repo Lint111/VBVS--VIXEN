@@ -3,7 +3,7 @@ title: Many-entity draw path — instancing increment (AR#31, increment 1)
 aliases: [InstanceBufferNode, instancing, gl_InstanceIndex, AR#31 increment]
 tags: [architecture, design, rendergraph, presentation-layer, AR31]
 created: 2026-06-14
-status: approved (design) — implementation in progress
+status: DONE (on branch claude/ar31-instancing-increment) — built, renders 64 instanced cubes, 0 VK errors
 related:
   - "[[RenderGraph]]"
   - "[[Maturation-Backlog-2026-06]]"
@@ -85,6 +85,14 @@ void main() {
 `Draw.frag` unchanged. (Whoever fills the `mvp` UBO in the demo graph supplies **proj·view**, since the
 model is now per-instance. For the increment the existing camera/MVP source is acceptable as long as the
 cubes are visible; correctness of the exact proj·view split is an implementation detail of the demo graph.)
+
+> **Implementation note (as-built):** `Draw.vert`/`Draw.frag` could **not** be reused: `Draw.frag`
+> already binds a `sampler2D` at binding 1 (collides with an instance SSBO there — SPIR-V reflection
+> rejects "incompatible types across stages"), and **no node produces the binding-0 MVP UBO**. So the
+> demo ships **dedicated `shaders/InstancingDemo.vert` + `.frag`**: the vertex stage's only descriptor is
+> the instance SSBO at **binding 0**, the fragment stage is descriptor-free (colors by UV + instance id),
+> and proj·view is baked into the vertex shader. The `Draw.vert` edit was reverted. Reviving instancing
+> on the *general* `Draw.*` path later needs a free SSBO binding + an MVP-UBO producer node (deferred).
 
 ### 3. Descriptor wiring
 
