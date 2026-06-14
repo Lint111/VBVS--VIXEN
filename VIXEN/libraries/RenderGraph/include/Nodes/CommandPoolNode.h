@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Core/TypedNodeInstance.h"
+#include "Core/ICommandBufferPreallocator.h"  // Capability interface — lets the graph core pre-allocate without knowing CommandPoolNode (AR#3/#4)
 #include "Data/Nodes/CommandPoolNodeConfig.h"
 #include "VulkanDevice.h"
 #include <vector>
@@ -36,7 +37,7 @@ public:
  *  command buffers based on aggregated node requirements.
  *  Nodes can then request buffers via AcquireCommandBuffer().
  */
-class CommandPoolNode : public TypedNode<CommandPoolNodeConfig> {
+class CommandPoolNode : public TypedNode<CommandPoolNodeConfig>, public ICommandBufferPreallocator {
 public:
 
     CommandPoolNode(
@@ -59,7 +60,7 @@ public:
      * @param primaryCount Number of primary command buffers to pre-allocate
      * @param secondaryCount Number of secondary command buffers (default: 0)
      */
-    void PreAllocateCommandBuffers(uint32_t primaryCount, uint32_t secondaryCount = 0);
+    void PreAllocateCommandBuffers(uint32_t primaryCount, uint32_t secondaryCount = 0) override;
 
     /**
      * @brief Acquire a pre-allocated primary command buffer
