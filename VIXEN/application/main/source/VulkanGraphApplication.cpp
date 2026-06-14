@@ -111,6 +111,24 @@ const char* SelectWslGpuIcd() {
 #endif
     return nullptr;
 }
+
+// When the build enabled validation (VIXEN_VULKAN_VALIDATION) with an auto-provisioned SDK, point the
+// Vulkan loader at the provisioned validation-layer manifests (VK_LAYER_PATH) and force-enable the
+// layer (VK_INSTANCE_LAYERS) before instance creation — self-contained, no manual env. The validation
+// layer catches invalid GPU ops CPU-side (a log, not a kernel panic — critical on WSL/Dozen). No-op
+// when not built with validation, or when the user already configured layers. Returns the path or null.
+const char* SelectValidationLayerPath() {
+#if defined(__linux__) && defined(VIXEN_VK_LAYER_PATH)
+    const char* lp = VIXEN_VK_LAYER_PATH;
+    if (lp && lp[0] != '\0' && std::filesystem::exists(lp)) {
+        if (std::getenv("VK_LAYER_PATH") == nullptr) ::setenv("VK_LAYER_PATH", lp, /*overwrite=*/0);
+        if (std::getenv("VK_INSTANCE_LAYERS") == nullptr)
+            ::setenv("VK_INSTANCE_LAYERS", "VK_LAYER_KHRONOS_validation", /*overwrite=*/0);
+        return lp;
+    }
+#endif
+    return nullptr;
+}
 }  // namespace
 
 void VulkanGraphApplication::Initialize() {
@@ -121,6 +139,9 @@ void VulkanGraphApplication::Initialize() {
     // (no-op off WSL / when already configured). Must precede VulkanApplicationBase::Initialize().
     if (const char* dznIcd = SelectWslGpuIcd()) {
         mainLogger->Info(std::string("[SelectWslGpuIcd] WSL2 GPU: selected Dozen ICD ") + dznIcd);
+    }
+    if (const char* layerPath = SelectValidationLayerPath()) {
+        mainLogger->Info(std::string("[SelectValidationLayerPath] validation layers active (VK_LAYER_PATH=") + layerPath + ")");
     }
 
     mainLogger->Debug("About to call VulkanApplicationBase::Initialize()");
