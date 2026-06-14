@@ -6,6 +6,7 @@
 #include "Nodes/DeviceNode.h"
 #include "Nodes/SwapChainNode.h"
 #include "Nodes/DepthBufferNode.h"
+#include "Nodes/RenderTargetNode.h"
 #include "Nodes/RenderPassNode.h"
 #include "Nodes/FramebufferNode.h"
 #include "Nodes/FrameSyncNode.h"
@@ -163,6 +164,7 @@ void RegisterBuiltInNodeTypes(NodeTypeRegistry& registry) {
     registry.Register<DeviceNodeType>();
     registry.Register<SwapChainNodeType>();
     registry.Register<DepthBufferNodeType>();
+    registry.Register<RenderTargetNodeType>();
     registry.Register<RenderPassNodeType>();
     registry.Register<FramebufferNodeType>();
     registry.Register<FrameSyncNodeType>();

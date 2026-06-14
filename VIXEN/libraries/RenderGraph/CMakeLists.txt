@@ -52,6 +52,7 @@ set(RENDERGRAPH_DATA_NODE_CONFIGS
     include/Data/Nodes/MultiDispatchNodeConfig.h
     include/Data/Nodes/ConstantNodeConfig.h
     include/Data/Nodes/DepthBufferNodeConfig.h
+    include/Data/Nodes/RenderTargetNodeConfig.h
     include/Data/Nodes/DescriptorResourceGathererNodeConfig.h
     include/Data/Nodes/DescriptorSetNodeConfig.h
     include/Data/Nodes/DeviceNodeConfig.h
@@ -194,6 +195,7 @@ set(RENDERGRAPH_NODE_HEADERS
     include/Nodes/ConstantNodeType.h
     include/Nodes/DebugBufferReaderNode.h
     include/Nodes/DepthBufferNode.h
+    include/Nodes/RenderTargetNode.h
     include/Nodes/DescriptorResourceGathererNode.h
     include/Nodes/DescriptorSetNode.h
     include/Nodes/DeviceNode.h
@@ -231,6 +233,7 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/MultiDispatchNode.cpp
     src/Nodes/DebugBufferReaderNode.cpp
     src/Nodes/DepthBufferNode.cpp
+    src/Nodes/RenderTargetNode.cpp
     src/Nodes/DescriptorResourceGathererNode.cpp
     src/Nodes/DescriptorSetNode.cpp
     src/Nodes/DeviceNode.cpp
