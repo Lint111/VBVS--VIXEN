@@ -19,6 +19,7 @@ namespace ShaderManagement {
 
 namespace Vixen::Vulkan::Resources {
     class VulkanDevice;  // Forward declare VulkanDevice
+    struct IRenderTarget; // Forward declare IRenderTarget (AR#28)
 }
 
 namespace Vixen::RenderGraph {

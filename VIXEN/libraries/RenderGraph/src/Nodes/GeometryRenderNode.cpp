@@ -74,12 +74,12 @@ void GeometryRenderNode::CompileImpl(TypedCompileContext& ctx) {
 
     // Allocate command buffers (one per framebuffer/swapchain image)
     // Get actual image count from swapchain
-    SwapChainPublicVariables* swapchainInfo = ctx.In(GeometryRenderNodeConfig::SWAPCHAIN_INFO);
+    Vixen::Vulkan::Resources::IRenderTarget* swapchainInfo = ctx.In(GeometryRenderNodeConfig::SWAPCHAIN_INFO);
     if (!swapchainInfo) {
         throw std::runtime_error("GeometryRenderNode: SwapChain info is null during Compile");
     }
 
-    uint32_t imageCount = swapchainInfo->swapChainImageCount;
+    uint32_t imageCount = swapchainInfo->GetImageCount();
     NODE_LOG_INFO("[GeometryRenderNode::Compile] Swapchain has " + std::to_string(imageCount) + " images, allocating command buffers");
     commandBuffers.resize(imageCount);
 
@@ -286,7 +286,7 @@ void GeometryRenderNode::RecordDrawCommands(Context& ctx, VkCommandBuffer cmdBuf
     VkPipeline pipeline = ctx.In(GeometryRenderNodeConfig::PIPELINE);
     VkPipelineLayout pipelineLayout = ctx.In(GeometryRenderNodeConfig::PIPELINE_LAYOUT);
     VkBuffer vertexBuffer = ctx.In(GeometryRenderNodeConfig::VERTEX_BUFFER);
-    SwapChainPublicVariables* swapchainInfo = ctx.In(GeometryRenderNodeConfig::SWAPCHAIN_INFO);
+    Vixen::Vulkan::Resources::IRenderTarget* swapchainInfo = ctx.In(GeometryRenderNodeConfig::SWAPCHAIN_INFO);
     std::vector<VkDescriptorSet> descriptorSets = ctx.In(GeometryRenderNodeConfig::DESCRIPTOR_SETS);
 
     // Validate inputs
@@ -314,7 +314,7 @@ void GeometryRenderNode::RecordDrawCommands(Context& ctx, VkCommandBuffer cmdBuf
 
     // Begin render pass with clear
     BeginRenderPassWithClear(cmdBuffer, renderPass, currentFramebuffer,
-                            swapchainInfo->Extent.width, swapchainInfo->Extent.height);
+                            swapchainInfo->GetExtent().width, swapchainInfo->GetExtent().height);
 
     // Bind pipeline and descriptors
     BindPipelineAndDescriptors(cmdBuffer, pipeline, pipelineLayout, descriptorSets);
@@ -326,7 +326,7 @@ void GeometryRenderNode::RecordDrawCommands(Context& ctx, VkCommandBuffer cmdBuf
     BindVertexAndIndexBuffers(cmdBuffer, ctx, vertexBuffer);
 
     // Set viewport and scissor
-    SetViewportAndScissor(cmdBuffer, swapchainInfo->Extent);
+    SetViewportAndScissor(cmdBuffer, swapchainInfo->GetExtent());
 
     // Draw
     RecordDrawCall(cmdBuffer, ctx);
@@ -337,7 +337,7 @@ void GeometryRenderNode::RecordDrawCommands(Context& ctx, VkCommandBuffer cmdBuf
     // Record GPU timing end (after render pass)
     if (gpuPerfLogger_) {
         gpuPerfLogger_->RecordDispatchEnd(cmdBuffer, frameIndex,
-            swapchainInfo->Extent.width, swapchainInfo->Extent.height);
+            swapchainInfo->GetExtent().width, swapchainInfo->GetExtent().height);
     }
 
     // End command buffer
@@ -362,7 +362,7 @@ void GeometryRenderNode::ValidateInputs(
     VkPipeline pipeline,
     VkPipelineLayout pipelineLayout,
     VkBuffer vertexBuffer,
-    SwapChainPublicVariables* swapchainInfo
+    Vixen::Vulkan::Resources::IRenderTarget* swapchainInfo
 ) {
     if (renderPass == VK_NULL_HANDLE) {
         std::string errorMsg = "GeometryRenderNode: RenderPass is VK_NULL_HANDLE";

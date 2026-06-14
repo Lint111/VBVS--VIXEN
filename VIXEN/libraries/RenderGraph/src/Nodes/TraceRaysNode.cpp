@@ -75,11 +75,11 @@ void TraceRaysNode::CompileImpl(TypedCompileContext& ctx) {
     }
 
     // Get swapchain info for command buffer allocation count (matches ComputeDispatchNode)
-    SwapChainPublicVariables* swapchainInfo = ctx.In(TraceRaysNodeConfig::SWAPCHAIN_INFO);
+    Vixen::Vulkan::Resources::IRenderTarget* swapchainInfo = ctx.In(TraceRaysNodeConfig::SWAPCHAIN_INFO);
     if (!swapchainInfo) {
         throw std::runtime_error("[TraceRaysNode] SWAPCHAIN_INFO is null");
     }
-    swapChainImageCount_ = swapchainInfo->swapChainImageCount;
+    swapChainImageCount_ = swapchainInfo->GetImageCount();
     NODE_LOG_INFO("[TraceRaysNode] Swapchain image count: " + std::to_string(swapChainImageCount_));
 
     // Load RTX functions
@@ -135,7 +135,7 @@ void TraceRaysNode::CompileImpl(TypedCompileContext& ctx) {
 
 void TraceRaysNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // Get frame info
-    SwapChainPublicVariables* swapchainInfo = ctx.In(TraceRaysNodeConfig::SWAPCHAIN_INFO);
+    Vixen::Vulkan::Resources::IRenderTarget* swapchainInfo = ctx.In(TraceRaysNodeConfig::SWAPCHAIN_INFO);
     uint32_t imageIndex = ctx.In(TraceRaysNodeConfig::IMAGE_INDEX);
     uint32_t currentFrame = ctx.In(TraceRaysNodeConfig::CURRENT_FRAME_INDEX);
     VkFence inFlightFence = ctx.In(TraceRaysNodeConfig::IN_FLIGHT_FENCE);
@@ -215,7 +215,7 @@ void TraceRaysNode::ExecuteImpl(TypedExecuteContext& ctx) {
     vkBeginCommandBuffer(cmdBuffer, &beginInfo);
 
     // Get output image for layout transitions
-    VkImage outputImage = swapchainInfo->colorBuffers[imageIndex].image;
+    VkImage outputImage = swapchainInfo->GetImage(imageIndex);
 
     // Transition image to GENERAL for ray tracing output
     // After present, swapchain images are in PRESENT_SRC_KHR layout.

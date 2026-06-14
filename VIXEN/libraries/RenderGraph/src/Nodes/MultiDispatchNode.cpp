@@ -190,7 +190,7 @@ void MultiDispatchNode::CompileImpl(TypedCompileContext& ctx) {
 
     // Get inputs
     commandPool_ = ctx.In(MultiDispatchNodeConfig::COMMAND_POOL);
-    SwapChainPublicVariables* swapchainInfo = ctx.In(MultiDispatchNodeConfig::SWAPCHAIN_INFO);
+    Vixen::Vulkan::Resources::IRenderTarget* swapchainInfo = ctx.In(MultiDispatchNodeConfig::SWAPCHAIN_INFO);
 
     if (commandPool_ == VK_NULL_HANDLE) {
         throw std::runtime_error("[MultiDispatchNode::CompileImpl] Command pool is null/invalid");
@@ -200,7 +200,7 @@ void MultiDispatchNode::CompileImpl(TypedCompileContext& ctx) {
         throw std::runtime_error("[MultiDispatchNode::CompileImpl] SwapChain info is null");
     }
 
-    uint32_t imageCount = swapchainInfo->swapChainImageCount;
+    uint32_t imageCount = swapchainInfo->GetImageCount();
     NODE_LOG_INFO("[MultiDispatchNode::CompileImpl] Allocating " +
         std::to_string(imageCount) + " command buffers");
 

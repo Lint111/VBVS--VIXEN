@@ -35,7 +35,7 @@ CONSTEXPR_NODE_CONFIG(SwapChainStructSpreaderNodeConfig,
                       SwapChainStructSpreaderNodeCounts::ARRAY_MODE) {
 
     // ===== INPUTS (1) =====
-    INPUT_SLOT(SWAPCHAIN_PUBLIC, SwapChainPublicVariables*, 0,
+    INPUT_SLOT(SWAPCHAIN_PUBLIC, Vixen::Vulkan::Resources::IRenderTarget*, 0,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
@@ -63,7 +63,7 @@ CONSTEXPR_NODE_CONFIG(SwapChainStructSpreaderNodeConfig,
         SlotMutability::WriteOnly);
 
     SwapChainStructSpreaderNodeConfig() {
-        HandleDescriptor publicVarsDesc{"SwapChainPublicVariables*"};
+        HandleDescriptor publicVarsDesc{"IRenderTarget*"};
         INIT_INPUT_DESC(SWAPCHAIN_PUBLIC, "swapchain_public",
             ResourceLifetime::Persistent,
             publicVarsDesc);

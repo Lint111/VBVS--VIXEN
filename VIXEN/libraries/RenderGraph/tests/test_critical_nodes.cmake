@@ -156,3 +156,16 @@ set_target_properties(test_acceleration_structure_node PROPERTIES FOLDER "Tests/
 gtest_discover_tests(test_acceleration_structure_node)
 
 message(STATUS "[RenderGraph Tests] Added: test_acceleration_structure_node (Phase 3.4)")
+
+# RenderTargetNode Tests (AR#28)
+add_executable(test_render_target_node
+    Nodes/test_render_target_node.cpp
+)
+
+target_link_libraries(test_render_target_node PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+
+# Visual Studio solution folder organization
+set_target_properties(test_render_target_node PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_render_target_node)
+
+message(STATUS "[RenderGraph Tests] Added: test_render_target_node (AR#28)")

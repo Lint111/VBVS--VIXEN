@@ -40,7 +40,7 @@ CONSTEXPR_NODE_CONFIG(CameraNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    INPUT_SLOT(SWAPCHAIN_PUBLIC, SwapChainPublicVariables*, 1,
+    INPUT_SLOT(SWAPCHAIN_PUBLIC, Vixen::Vulkan::Resources::IRenderTarget*, 1,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
@@ -84,7 +84,7 @@ CONSTEXPR_NODE_CONFIG(CameraNodeConfig,
         HandleDescriptor vulkanDeviceDesc{"VulkanDevice*"};
         INIT_INPUT_DESC(VULKAN_DEVICE_IN, "vulkan_device", ResourceLifetime::Persistent, vulkanDeviceDesc);
 
-        HandleDescriptor swapchainDesc{"SwapChainPublicVariables*"};
+        HandleDescriptor swapchainDesc{"IRenderTarget*"};
         INIT_INPUT_DESC(SWAPCHAIN_PUBLIC, "swapchain_public", ResourceLifetime::Persistent, swapchainDesc);
 
         HandleDescriptor imageIndexDesc{"uint32_t"};
@@ -110,7 +110,7 @@ CONSTEXPR_NODE_CONFIG(CameraNodeConfig,
 
     // Type validations
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
-    static_assert(std::is_same_v<SWAPCHAIN_PUBLIC_Slot::Type, SwapChainPublicVariables*>);
+    static_assert(std::is_same_v<SWAPCHAIN_PUBLIC_Slot::Type, Vixen::Vulkan::Resources::IRenderTarget*>);
     static_assert(std::is_same_v<IMAGE_INDEX_Slot::Type, uint32_t>);
     static_assert(std::is_same_v<INPUT_STATE_Slot::Type, InputStatePtr>);
     static_assert(std::is_same_v<CAMERA_DATA_Slot::Type, const CameraData&>);

@@ -242,11 +242,11 @@ void DescriptorSetNode::CompileImpl(TypedCompileContext& ctx) {
     // Get swapchain image count for per-image resource allocation.
     // Read swapChainImageCount from the SwapChainPublicVariables pointer (canonical pattern,
     // matching ComputeDispatchNode / GeometryRenderNode) instead of a field-extracted scalar.
-    SwapChainPublicVariables* swapchainInfo = ctx.In(DescriptorSetNodeConfig::SWAPCHAIN_INFO);
+    Vixen::Vulkan::Resources::IRenderTarget* swapchainInfo = ctx.In(DescriptorSetNodeConfig::SWAPCHAIN_INFO);
     if (!swapchainInfo) {
         throw std::runtime_error("DescriptorSetNode: SwapChain info is null");
     }
-    uint32_t imageCount = swapchainInfo->swapChainImageCount;
+    uint32_t imageCount = swapchainInfo->GetImageCount();
 
     if (imageCount == 0) {
         throw std::runtime_error("DescriptorSetNode: swapChainImageCount is 0");

@@ -108,7 +108,7 @@ CONSTEXPR_NODE_CONFIG(GeometryRenderNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    INPUT_SLOT(SWAPCHAIN_INFO, SwapChainPublicVariables*, 7,
+    INPUT_SLOT(SWAPCHAIN_INFO, Vixen::Vulkan::Resources::IRenderTarget*, 7,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
@@ -216,7 +216,7 @@ CONSTEXPR_NODE_CONFIG(GeometryRenderNodeConfig,
             BufferDescription{}
         );
 
-        HandleDescriptor swapchainInfoDesc{"SwapChainPublicVariables*"};
+        HandleDescriptor swapchainInfoDesc{"IRenderTarget*"};
         INIT_INPUT_DESC(SWAPCHAIN_INFO, "swapchain_info",
             ResourceLifetime::Persistent,
             swapchainInfoDesc
@@ -355,7 +355,7 @@ CONSTEXPR_NODE_CONFIG(GeometryRenderNodeConfig,
     static_assert(std::is_same_v<DESCRIPTOR_SETS_Slot::Type, const std::vector<VkDescriptorSet>&>);
     static_assert(std::is_same_v<VERTEX_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<INDEX_BUFFER_Slot::Type, VkBuffer>);
-    static_assert(std::is_same_v<SWAPCHAIN_INFO_Slot::Type, SwapChainPublicVariables*>);
+    static_assert(std::is_same_v<SWAPCHAIN_INFO_Slot::Type, Vixen::Vulkan::Resources::IRenderTarget*>);
     static_assert(std::is_same_v<COMMAND_POOL_Slot::Type, VkCommandPool>);
     static_assert(std::is_same_v<VULKAN_DEVICE_Slot::Type, VulkanDevice*>);
     static_assert(std::is_same_v<IMAGE_INDEX_Slot::Type, uint32_t>);

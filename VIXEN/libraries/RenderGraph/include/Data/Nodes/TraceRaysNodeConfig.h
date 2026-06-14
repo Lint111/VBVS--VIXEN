@@ -77,7 +77,7 @@ CONSTEXPR_NODE_CONFIG(TraceRaysNodeConfig,
         SlotScope::NodeLevel);
 
     // Swapchain info for output image access
-    INPUT_SLOT(SWAPCHAIN_INFO, SwapChainPublicVariables*, 4,
+    INPUT_SLOT(SWAPCHAIN_INFO, Vixen::Vulkan::Resources::IRenderTarget*, 4,
         SlotNullability::Required,
         SlotRole::Execute,
         SlotMutability::ReadOnly,
@@ -166,7 +166,7 @@ CONSTEXPR_NODE_CONFIG(TraceRaysNodeConfig,
         HandleDescriptor accelDesc{"AccelerationStructureData*"};
         INIT_INPUT_DESC(ACCELERATION_STRUCTURE_DATA, "acceleration_structure", ResourceLifetime::Persistent, accelDesc);
 
-        HandleDescriptor swapchainDesc{"SwapChainPublicVariables*"};
+        HandleDescriptor swapchainDesc{"IRenderTarget*"};
         INIT_INPUT_DESC(SWAPCHAIN_INFO, "swapchain_info", ResourceLifetime::Persistent, swapchainDesc);
 
         HandleDescriptor uint32Desc{"uint32_t"};
