@@ -7,7 +7,7 @@
  */
 
 #include <gtest/gtest.h>
-#include "Data/SceneGenerator.h"
+#include "SceneGenerator.h"
 
 using namespace VIXEN::RenderGraph;
 

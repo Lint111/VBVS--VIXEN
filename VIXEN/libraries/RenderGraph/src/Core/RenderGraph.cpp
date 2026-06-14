@@ -1,8 +1,6 @@
 #include "Core/RenderGraph.h"
 #include "Core/IGraphCompilable.h"
-#include "Nodes/SwapChainNode.h"
-#include "Nodes/PresentNode.h"
-#include "Nodes/CommandPoolNode.h"  // Sprint 5.5: Pre-allocation
+#include "Core/ICommandBufferPreallocator.h"  // Capability interface — command-buffer pre-allocation without concrete-node coupling (AR#3/#4)
 #include "VulkanDevice.h"
 #include "Message.h"  // FrameStartEvent, FrameEndEvent
 #include <algorithm>
@@ -764,20 +762,9 @@ VkResult RenderGraph::RenderFrame() {
     // Each node owns and manages its own Vulkan resources.
     // The graph just calls Execute() on each node in dependency order.
 
-    // TODO Phase 1: For minimal MVP, manually wire SwapChainNode -> PresentNode
-    // In future phases, this will be done automatically via the dependency graph
-    Vixen::RenderGraph::SwapChainNode* swapChainNode = nullptr;
-    Vixen::RenderGraph::PresentNode* presentNode = nullptr;
-
-    // Find SwapChain and Present nodes
-    for (NodeInstance* node : executionOrder) {
-        if (node->GetNodeType()->GetTypeName() == "SwapChain") {
-            swapChainNode = static_cast<Vixen::RenderGraph::SwapChainNode*>(node);
-        }
-        if (node->GetNodeType()->GetTypeName() == "Present") {
-            presentNode = static_cast<Vixen::RenderGraph::PresentNode*>(node);
-        }
-    }
+    // (Former MVP code manually located the SwapChain/Present nodes here to hand-wire them.
+    // Node execution is now fully dependency-driven via executionOrder below, so the core no
+    // longer special-cases — or #includes — any concrete node type. AR#3/#4 layering.)
 
     // Phase 2a (AR#1): track a node-execution failure so it surfaces as a return status instead of an
     // exception escaping RenderFrame -- which would propagate to the app loop (process-fatal) and is
@@ -1953,23 +1940,23 @@ void RenderGraph::PreAllocateResources() {
         std::to_string(totalRequirements.commandBufferCount) + " command buffers, " +
         std::to_string(totalRequirements.descriptorSetCount) + " descriptor sets");
 
-    // Find CommandPoolNodes and pre-allocate command buffers
+    // Ask the first command-buffer-preallocating node to reserve them. CommandPoolNode
+    // implements ICommandBufferPreallocator; the core dispatches through that capability
+    // interface so it stays decoupled from the concrete node type (AR#3/#4).
     if (totalRequirements.commandBufferCount > 0) {
-        // Find all CommandPoolNode instances
         for (const auto& instance : instances) {
-            CommandPoolNode* cmdPoolNode = dynamic_cast<CommandPoolNode*>(instance.get());
-            if (cmdPoolNode) {
-                // Pre-allocate command buffers in this pool
-                // For now, allocate all requirements to the first pool found
-                // Future: Could distribute based on queue family or usage hints
-                cmdPoolNode->PreAllocateCommandBuffers(totalRequirements.commandBufferCount);
+            auto* preallocator = dynamic_cast<ICommandBufferPreallocator*>(instance.get());
+            if (preallocator) {
+                // For now, allocate all requirements to the first pool found.
+                // Future: distribute based on queue family or usage hints.
+                preallocator->PreAllocateCommandBuffers(totalRequirements.commandBufferCount, 0);
 
                 GRAPH_LOG_INFO("[RenderGraph] Pre-allocated " +
                     std::to_string(totalRequirements.commandBufferCount) +
-                    " command buffers in pool '" + cmdPoolNode->GetInstanceName() + "'");
+                    " command buffers in pool '" + instance->GetInstanceName() + "'");
 
-                // Only pre-allocate in first pool for simplicity
-                // Multi-pool support would require tracking which nodes use which pool
+                // Only pre-allocate in the first pool; multi-pool support would require
+                // tracking which nodes use which pool.
                 break;
             }
         }
