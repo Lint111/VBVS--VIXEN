@@ -241,8 +241,13 @@ Correctness bugs + the only-consumer's pain + legal hygiene. Wasted on no possib
   register node types → build graph → own the loop via `Graph().RenderFrame()` → publish
   `ApplicationShuttingDownEvent` + deterministic teardown; includes the SDK packaging command, a
   consumer `CMakeLists`, the `EngineConfig::mainCacher` injection note (AR#8), and the
-  build-portability gotchas. **Remaining [AR#13]:** generated `VixenVersion.h` + a designated
-  supported-header set (the API-stability half).
+  build-portability gotchas. **AR#13 DONE 2026-06-14:** generated `<VixenVersion.h>` (from a single
+  source of truth — root `project(... VERSION 0.1.0)` now feeds both the C++ macros via
+  `cmake/VixenVersion.h.in` and the package-version file; `VixenInstall.cmake` no longer hardcodes
+  the version), on `Vixen::RenderGraph`'s public include + installed into the SDK; and a documented
+  **supported public-header set** in [[Hosting-VIXEN]] (everything else = internal/may-change). A
+  curated umbrella `<Vixen.h>` was deliberately **not** done — premature at 0.1.0 with one consumer;
+  revisit when the API stabilizes or a second consumer appears.
 
 ### P3 — Presentation layer (review Phase 2)
 

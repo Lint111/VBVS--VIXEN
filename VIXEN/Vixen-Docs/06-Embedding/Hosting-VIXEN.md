@@ -213,6 +213,49 @@ leave it null for full isolation.
 
 ---
 
+## Version & supported public headers
+
+### Checking the VIXEN version
+
+`<VixenVersion.h>` (generated from the SDK's `project()` version — AR#13) lets a host assert the
+VIXEN it built against:
+
+```cpp
+#include <VixenVersion.h>
+
+static_assert(VIXEN_VERSION >= VIXEN_MAKE_VERSION(0, 1, 0),
+              "This host requires VIXEN >= 0.1.0");
+// Also available: VIXEN_VERSION_MAJOR / _MINOR / _PATCH and VIXEN_VERSION_STRING ("0.1.0").
+```
+
+The CMake package carries the same version (one source of truth): `find_package(VIXEN 0.1.0
+REQUIRED)` enforces it at configure time (SameMajorVersion compatibility).
+
+### Supported public headers
+
+These are the **stable, supported** entry points for an embedder. Include paths are relative to the
+SDK's flattened `include/`:
+
+| Header | For |
+|---|---|
+| `<VixenVersion.h>` | version / compatibility macros |
+| `<Core/EngineContext.h>`, `<Core/EngineConfig.h>` | stand up + configure the engine |
+| `<Core/RenderGraph.h>` | the graph: `RenderFrame()`, `Compile()`, `GetMainCacher()` |
+| `<Core/NodeTypeRegistry.h>` | register node types |
+| `<Core/TypedConnection.h>` | wire nodes |
+| `<Core/CalibrationStore.h>` | the `Calibration()` accessor's type |
+| `<Nodes/*.h>` (e.g. `InstanceNode.h`, `DeviceNode.h`, `SwapChainNode.h`, `VoxelGridNode.h`) | the node types you register + wire |
+| `<Logger.h>` | the `Vixen::Log::Logger` passed in `EngineConfig` |
+| `<Message.h>` | `EventBus::ApplicationShuttingDownEvent` + bus message types |
+
+> [!warning] Everything else is internal
+> Other headers ship in the SDK only because the libraries include each other by
+> include-dir-relative paths; they are **implementation detail and may change without notice**.
+> Depend on the set above. There is no umbrella `<Vixen.h>` at 0.1.0 — a curated public header is
+> deferred until the API stabilizes (the second half of [AR#13]).
+
+---
+
 ## Build-portability gotchas (consumer-discovered)
 
 - **Validation is gated by `VIXEN_VULKAN_VALIDATION`, not `_DEBUG`.** `_DEBUG` is MSVC-only, so

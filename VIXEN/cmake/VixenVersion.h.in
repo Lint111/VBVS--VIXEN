@@ -1,0 +1,25 @@
+#pragma once
+// ============================================================================
+// VixenVersion.h — GENERATED from cmake/VixenVersion.h.in (AR#13). Do not edit.
+//
+// Single source of truth is the root CMakeLists project(... VERSION x.y.z). A host that links
+// Vixen::RenderGraph can include <VixenVersion.h> to query the VIXEN it built against, e.g.:
+//
+//     #include <VixenVersion.h>
+//     #if VIXEN_VERSION < VIXEN_MAKE_VERSION(0, 2, 0)
+//     #  error "This host requires VIXEN >= 0.2.0"
+//     #endif
+// ============================================================================
+
+#define VIXEN_VERSION_MAJOR @PROJECT_VERSION_MAJOR@
+#define VIXEN_VERSION_MINOR @PROJECT_VERSION_MINOR@
+#define VIXEN_VERSION_PATCH @PROJECT_VERSION_PATCH@
+
+#define VIXEN_VERSION_STRING "@PROJECT_VERSION@"
+
+// Encode a version as a single comparable integer (major*10000 + minor*100 + patch).
+#define VIXEN_MAKE_VERSION(major, minor, patch) ((major) * 10000 + (minor) * 100 + (patch))
+
+// This build's version as a comparable integer (use with VIXEN_MAKE_VERSION in #if).
+#define VIXEN_VERSION \
+    VIXEN_MAKE_VERSION(VIXEN_VERSION_MAJOR, VIXEN_VERSION_MINOR, VIXEN_VERSION_PATCH)

@@ -289,8 +289,11 @@ if(BUILD_SPV_ON_COMPILE_TIME AND NOT VULKAN_TRIMMED_BUILD_ACTIVE)
 	# No additional link_directories needed - already configured at line 125
 endif()
 
-# Specify a suitable project name
-project(${Recipe_Name})
+# Specify a suitable project name.
+# VERSION is the single source of truth for VIXEN's version (AR#13): it populates
+# PROJECT_VERSION*, which feeds both the generated <VixenVersion.h> (cmake/VixenVersion.h.in)
+# and the find_package(VIXEN) package-version file (cmake/VixenInstall.cmake).
+project(${Recipe_Name} VERSION 0.1.0)
 
 # MSVC parallel build PDB fix (must be right after project())
 if(MSVC)
@@ -358,6 +361,21 @@ add_subdirectory(shaders)
 # Changing one component won't force recompilation of others
 
 add_subdirectory(libraries)
+
+# ============================================================================
+# GENERATED VERSION HEADER (AR#13)
+# ============================================================================
+# <VixenVersion.h> generated from project()'s VERSION (single source of truth) and put on
+# Vixen::RenderGraph's PUBLIC include path, so VIXEN's own TUs and any consumer linking
+# Vixen::RenderGraph can #include <VixenVersion.h>. The matching install() (into the SDK
+# include dir) lives in cmake/VixenInstall.cmake; INSTALL_INTERFACE include is already the
+# flattened include/ injected there, so the installed header resolves for consumers.
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/VixenVersion.h.in
+    ${CMAKE_BINARY_DIR}/generated/include/VixenVersion.h
+    @ONLY)
+target_include_directories(RenderGraph PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated/include>)
 
 # ============================================================================
 # CONSUMABLE ARTIFACT (AR#2)
