@@ -71,9 +71,6 @@
 #define USE_COMPRESSED_SHADER 1  // Default: compressed baseline
 #endif
 
-std::unique_ptr<VulkanGraphApplication> VulkanGraphApplication::instance;
-std::once_flag VulkanGraphApplication::onlyOnce;
-
 VulkanGraphApplication::VulkanGraphApplication()
     : VulkanApplicationBase(),
       currentFrame(0),
@@ -91,11 +88,6 @@ VulkanGraphApplication::VulkanGraphApplication()
 
 VulkanGraphApplication::~VulkanGraphApplication() {
     DeInitialize();
-}
-
-VulkanGraphApplication* VulkanGraphApplication::GetInstance() {
-    std::call_once(onlyOnce, []() { instance.reset(new VulkanGraphApplication()); });
-    return instance.get();
 }
 
 namespace {
