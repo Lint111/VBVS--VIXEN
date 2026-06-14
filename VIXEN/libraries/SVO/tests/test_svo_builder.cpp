@@ -115,6 +115,13 @@ TEST(SVOBuilderTest, TriangleAABBIntersection) {
 // ===========================================================================
 
 TEST(SVOBuilderTest, GeometricError) {
+    // KNOWN DESIGN GAP (documented 2026-06-14, see Maturation-Backlog AR#3/#4 notes): the
+    // mesh->SVO build path (SVOBuilder::subdivideNode/shouldTerminate) is attribute(color)-driven.
+    // geometryErrorThreshold is only consulted when params.enableContours is true; this cube has
+    // uniform color, so estimateAttributeError == 0 and the build terminates at the root
+    // (totalVoxels == 1). Making geometryErrorThreshold drive subdivision standalone is a builder
+    // design decision — and the live app uses buildFromVoxelGrid, not build(mesh). Left asserting
+    // the intended behaviour (not weakened) so the gap stays visible until that decision is made.
     BuildParams params;
     params.maxLevels = 10;
     params.geometryErrorThreshold = 0.01f;  // Tight threshold

@@ -63,6 +63,17 @@ std::unique_ptr<Octree> SVOBuilder::build(
     m_context->progressCallback = m_progressCallback;
     m_context->octree = std::make_unique<Octree>();
 
+    // Empty input has no geometry: return an empty octree (totalVoxels/leafVoxels stay 0) instead
+    // of running the subdivide path, which would count the single empty root node and leave
+    // totalVoxels == 1 for an empty mesh. Real geometry continues through the normal path below.
+    if (triangles.empty()) {
+        m_context->octree->maxLevels = m_params.maxLevels;
+        m_context->octree->worldMin = worldMin;
+        m_context->octree->worldMax = worldMax;
+        m_stats = {};
+        return std::move(m_context->octree);
+    }
+
     // Estimate total nodes for progress tracking
     m_context->totalEstimatedNodes = estimateNodeCount();
 
