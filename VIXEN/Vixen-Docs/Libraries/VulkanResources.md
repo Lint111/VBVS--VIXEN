@@ -68,6 +68,18 @@ VkQueue graphicsQueue = device.GetGraphicsQueue();
 | Compute | Async compute (if separate) |
 | Transfer | Async transfer (if separate) |
 
+### 2.2 CapabilityGraph (per-device)
+
+Each `VulkanDevice` owns a `Vixen::CapabilityGraph` (`device.GetCapabilityGraph()`) — a dependency
+graph of GPU capabilities (device extensions/features, instance extensions/layers, and composites
+like `RTXSupport`, `SwapchainMaintenance1`). Query via `device.HasCapability("RTXSupport")`.
+
+> [!note] AR#8 (2026-06-14): per-instance, not static
+> The available extension/layer/feature sets are now **per-`CapabilityGraph` instance state**, not
+> process-wide static vectors. Device-level sets are supplied by the owning `VulkanDevice`;
+> instance-level sets self-populate from the loader (`vkEnumerateInstance*Properties`). So multiple
+> devices/engines in one process no longer clobber each other's capability state.
+
 ---
 
 ## 3. GPUTimestampQuery
@@ -210,7 +222,8 @@ VkImage image = ImageUtils::Create(device, physicalDevice, imageInfo);
 
 | File | Purpose |
 |------|---------|
-| `libraries/VulkanResources/include/VulkanDevice.h` | Device management |
+| `libraries/VulkanResources/include/VulkanDevice.h` | Device management + per-device CapabilityGraph |
+| `libraries/VulkanResources/include/CapabilityGraph.h` | GPU capability graph (per-instance state; AR#8) |
 | `libraries/VulkanResources/include/GPUTimestampQuery.h` | GPU timing |
 | `libraries/VulkanResources/include/SwapChain.h` | Swapchain handling |
 | `libraries/VulkanResources/include/PipelineUtils.h` | Pipeline creation |
