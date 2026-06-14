@@ -6,8 +6,10 @@
 #include "Ui/VixenRmlSystemInterface.h"
 
 #include <RmlUi/Core/DataModelHandle.h>
+#include <RmlUi/Core/Types.h>  // Rml::String
 
 #include <memory>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -15,6 +17,11 @@ struct SwapChainPublicVariables;  // global (VulkanSwapChain.h); full include in
 namespace Rml { class Context; class ElementDocument; }
 
 namespace Vixen::RenderGraph {
+
+/// Host-facing input types for SetHudView. The host passes plain C data; the node copies to
+/// Rml::String internally so the caller does not need to care about RmlUi types.
+struct HudFactionIn { const char* name; float grievance; };
+struct HudEventIn   { const char* kind; int tick; };
 
 /**
  * @brief Node type for rendering an RmlUi document (data-driven UI) into the swapchain.
@@ -41,7 +48,13 @@ public:
     UIRenderNode(const std::string& instanceName, NodeType* nodeType);
     ~UIRenderNode() override = default;
 
-    /// Host-facing seam: push the latest sim values; the bound HUD elements refresh on next Update().
+    /// Host-facing seam (S1b): push tick, bodyCount, faction list and event list.
+    /// The node copies name/kind strings to Rml::String and dirties all four bound vars.
+    void SetHudView(int tick, int bodyCount,
+                    std::span<const HudFactionIn> factions,
+                    std::span<const HudEventIn> events);
+
+    /// S1a compatibility shim — delegates to SetHudView with empty lists.
     void SetHudData(int tick, int bodyCount);
 
 protected:
@@ -75,10 +88,17 @@ private:
     Rml::Context* context_ = nullptr;
     Rml::ElementDocument* document_ = nullptr;
 
-    // S1: Rml data model for live sim data bound to the HUD document.
-    struct HudData { int tick = 0; int bodyCount = 0; };
-    HudData hud_{};
-    Rml::DataModelHandle hudModel_;
+    // S1b: Rml data model members. Structs are registered with RegisterStruct<> / RegisterArray<>
+    // in CompileImpl before LoadDocument. tick_ / bodyCount_ are bound as scalars; factions_ /
+    // events_ are bound as arrays (data-for in the HUD document).
+    struct HudFaction { Rml::String name; float grievance = 0.f; };
+    struct HudEvent   { Rml::String kind; int tick = 0; };
+
+    int tick_ = 0;
+    int bodyCount_ = 0;
+    std::vector<HudFaction> factions_;
+    std::vector<HudEvent>   events_;
+    Rml::DataModelHandle    hudModel_;
 };
 
 } // namespace Vixen::RenderGraph

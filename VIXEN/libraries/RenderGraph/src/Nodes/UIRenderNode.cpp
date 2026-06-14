@@ -10,6 +10,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <span>
 
 namespace Vixen::RenderGraph {
 
@@ -72,10 +73,24 @@ void UIRenderNode::CompileImpl(TypedCompileContext& ctx) {
         Rml::LoadFontFace(fontPath);
         context_ = Rml::CreateContext("vixen_ui", Rml::Vector2i(static_cast<int>(extent_.width), static_cast<int>(extent_.height)));
         if (context_) {
-            // S1: construct the "hud" data model so hud.rml (data-model="hud") can bind tick + bodyCount.
+            // S1b: construct the "hud" data model with scalars + struct/array list bindings.
+            // RegisterStruct<T> / RegisterArray<Container> must be called before Bind() or
+            // LoadDocument() — type info must exist before the document references the vars.
             if (Rml::DataModelConstructor c = context_->CreateDataModel("hud")) {
-                c.Bind("tick", &hud_.tick);
-                c.Bind("bodyCount", &hud_.bodyCount);
+                if (auto fh = c.RegisterStruct<HudFaction>()) {
+                    fh.RegisterMember("name",      &HudFaction::name);
+                    fh.RegisterMember("grievance", &HudFaction::grievance);
+                }
+                if (auto eh = c.RegisterStruct<HudEvent>()) {
+                    eh.RegisterMember("kind", &HudEvent::kind);
+                    eh.RegisterMember("tick", &HudEvent::tick);
+                }
+                c.RegisterArray<std::vector<HudFaction>>();
+                c.RegisterArray<std::vector<HudEvent>>();
+                c.Bind("tick",       &tick_);
+                c.Bind("bodyCount",  &bodyCount_);
+                c.Bind("factions",   &factions_);
+                c.Bind("events",     &events_);
                 hudModel_ = c.GetModelHandle();
             }
             document_ = context_->LoadDocument(docPath);
@@ -201,13 +216,32 @@ void UIRenderNode::ExecuteImpl(TypedExecuteContext& ctx) {
     ctx.Out(UIRenderNodeConfig::RENDER_COMPLETE_SEMAPHORE, signalSem);
 }
 
-void UIRenderNode::SetHudData(int tick, int bodyCount) {
-    hud_.tick = tick;
-    hud_.bodyCount = bodyCount;
+void UIRenderNode::SetHudView(int tick, int bodyCount,
+                              std::span<const HudFactionIn> factions,
+                              std::span<const HudEventIn> events) {
+    tick_      = tick;
+    bodyCount_ = bodyCount;
+
+    factions_.clear();
+    factions_.reserve(factions.size());
+    for (const HudFactionIn& f : factions)
+        factions_.push_back({f.name ? Rml::String(f.name) : Rml::String{}, f.grievance});
+
+    events_.clear();
+    events_.reserve(events.size());
+    for (const HudEventIn& e : events)
+        events_.push_back({e.kind ? Rml::String(e.kind) : Rml::String{}, e.tick});
+
     if (hudModel_) {
         hudModel_.DirtyVariable("tick");
         hudModel_.DirtyVariable("bodyCount");
+        hudModel_.DirtyVariable("factions");
+        hudModel_.DirtyVariable("events");
     }
+}
+
+void UIRenderNode::SetHudData(int tick, int bodyCount) {
+    SetHudView(tick, bodyCount, {}, {});
 }
 
 void UIRenderNode::CleanupImpl(TypedCleanupContext& ctx) {
