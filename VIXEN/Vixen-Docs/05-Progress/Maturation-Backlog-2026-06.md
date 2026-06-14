@@ -166,8 +166,17 @@ Correctness bugs + the only-consumer's pain + legal hygiene. Wasted on no possib
   + `EngineConfig`; `BenchmarkRunner` is the factoring reference) [AR#7]
 - [ ] **De-singletonize** `MainCacher` / `CapabilityGraph` / `ProfilerSystem` (static state → one
   device per process; blocks game+editor instances) [AR#8]
-- [ ] **Ship a consumable artifact** — `install(EXPORT)` / `VIXENConfig.cmake` / `find_package(VIXEN)`;
-  *"Undertow physically cannot link VIXEN today"* [AR#2]
+- [x] **Ship a consumable artifact** [AR#2] — **DONE 2026-06-14** (fat self-contained SDK).
+  `cmake -B build -DVIXEN_INSTALL_EXPORT=ON && cmake --install build --prefix <sdk>` produces a
+  unified `VixenTargets` export + `VIXENConfig.cmake`; an external project then does
+  `find_package(VIXEN)` + links `Vixen::RenderGraph`. Validated end-to-end: throwaway consumer
+  configures, generates, and **links consumer.exe**. All 14 VIXEN libs + the vendored deps
+  (glm/glfw/stb/VMA/magic_enum/nlohmann_json/miniz/rmlui_core/ProjectHash) are bundled into the
+  export; gli/freetype/gaia ship their own configs inside the SDK; only Vulkan/TBB/Threads are
+  resolved externally. Machinery lives in `cmake/VixenInstall.cmake` + `cmake/VIXENConfig.cmake.in`,
+  gated behind `option(VIXEN_INSTALL_EXPORT)` (default OFF — packaging-only, dev build untouched).
+  *Undertow can now link a prebuilt VIXEN.* (Super-build / add_subdirectory consumption was already
+  unblocked by the [AR#3/#4] cycle-breaking.)
 - [x] **Sever build-layering leaks** [AR#3/#4] — **DONE 2026-06-14** (3 increments, all merged):
   (A) relocated `Headers.h`/`VixenHash.h`/`MeshData.h` → `libraries/Core`; the 3 core libs now link
   `Core::Core` instead of PUBLIC-including `application/main/include`.

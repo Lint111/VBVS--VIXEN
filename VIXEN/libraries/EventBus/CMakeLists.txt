@@ -55,20 +55,7 @@ endif()
 source_group("Header Files" FILES ${EVENTBUS_HEADERS})
 source_group("Source Files" FILES ${EVENTBUS_SOURCES})
 
-# ============================================================================
-# Installation (optional)
-# ============================================================================
-
-install(TARGETS EventBus
-    EXPORT EventBusTargets
-    ARCHIVE DESTINATION lib
-    LIBRARY DESTINATION lib
-    RUNTIME DESTINATION bin
-)
-
-install(FILES ${EVENTBUS_HEADERS}
-    DESTINATION include
-)
+# Install/export is handled centrally for all VIXEN libraries — see cmake/VixenInstall.cmake (AR#2).
 
 # ============================================================================
 # Tests

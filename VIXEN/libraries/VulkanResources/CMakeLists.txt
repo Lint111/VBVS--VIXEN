@@ -65,7 +65,7 @@ target_compile_features(VulkanResources PUBLIC cxx_std_23)
 
 target_include_directories(VulkanResources
     PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         # Headers.h and other shared headers now come from Core::Core (linked below), not the
         # application layer (AR#3/#4 build-layering severance).
     PRIVATE
