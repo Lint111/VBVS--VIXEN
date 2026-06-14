@@ -265,11 +265,19 @@ Correctness bugs + the only-consumer's pain + legal hygiene. Wasted on no possib
 
 ### P3 — Presentation layer (review Phase 2)
 
-- [ ] **`RenderTargetNode` / render-to-texture** [AR#28, Decision #3] — *"essentially the entire
+- [~] **`RenderTargetNode` / render-to-texture** [AR#28, Decision #3] — *"essentially the entire
   grand-strategy presentation layer hangs off this single change"*: minimap, portraits, picking
   ID-buffers, fog-of-war, post-processing, multi-view. Fix is a producer node, not new
-  infrastructure (VMA/Direct allocators already make arbitrary images). Also un-stubs
-  `AllocateResources()` + `FindMemoryType` [AR#18].
+  infrastructure (VMA/Direct allocators already make arbitrary images).
+  **Design+plan:** [[RenderTarget-Design-2026-06]] + [[RenderTarget-Implementation-Plan-2026-06]].
+  **FOUNDATION DONE 2026-06-14 (merged to main, `3a7780fe`):** `IRenderTarget` interface
+  (`IRenderTarget.h`), `SwapChainPublicVariables` implements it (build-green, app renders clean), and a
+  color-only `RenderTargetNode` producer (allocates offscreen color images via real memory-type
+  selection, FR-7 lifecycle, registered). **REMAINING (fresh run, plan Tasks 7–24):** round-trip test;
+  the ~13-node / 68-site slot migration `SwapChainPublicVariables*` → `IRenderTarget*` (each: build +
+  benchmark + smoke); fix DepthBufferNode's `memoryTypeIndex=0` placeholder in-pass [AR#18]; verify +
+  close. Minor cleanup carried: consolidate RenderTargetNode's local `DEFAULT_FRAMES_IN_FLIGHT` +
+  `FindMemoryType` copies if the claimed `LNK1163` linker conflict can be resolved.
 - [ ] **Many-entity draw path** — instancing / draw lists / `vkCmdDrawIndirect` (today exactly one
   `vkCmdDraw` in the whole tree) [AR#31]
 - [ ] **Per-frame dynamic content** — `StreamingBufferNode`/`DynamicBufferNode`; drain the dead-ended

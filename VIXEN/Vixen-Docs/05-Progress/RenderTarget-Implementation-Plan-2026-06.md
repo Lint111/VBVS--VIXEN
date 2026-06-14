@@ -14,6 +14,24 @@
 
 ---
 
+## STATUS (2026-06-14) — resume here
+
+**Foundation merged to main (`3a7780fe`), build-green + app renders clean:**
+- ✅ Task 1 — `IRenderTarget.h` (interface + `RenderTargetData`)
+- ✅ Task 2 — `SwapChainPublicVariables` implements `IRenderTarget`
+- ✅ Tasks 3–6 — `RenderTargetNode` (config/header/impl + registered in all sites)
+
+**▶ RESUME AT Task 7** (round-trip test), then **Phase 4** (the ~13-node migration), then **Phase 5**
+(verify + finish). The `claude/ar28-render-target` branch was merged + deleted — branch anew from main.
+
+Carry-forward cleanup: `RenderTargetNode.cpp` has a local `DEFAULT_FRAMES_IN_FLIGHT=4` and a local
+`FindSuitableMemoryType` (copies, to dodge a claimed MSVC `LNK1163`); consolidate to
+`FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT` / `NodeHelpers::FindMemoryType` if that linker issue can be
+resolved. Implementation discovery: `VulkanDevice` exposes `device` (VkDevice) + `gpu` (VkPhysicalDevice*)
+as public fields (no getters).
+
+---
+
 ## File Structure
 
 - **Create** `libraries/VulkanResources/include/IRenderTarget.h` — the `IRenderTarget` interface + `RenderTargetData` impl.
