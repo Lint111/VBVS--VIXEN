@@ -7,8 +7,7 @@
 #include <fstream>
 #include <glm/glm.hpp>
 
-namespace VIXEN {
-namespace RenderGraph {
+namespace Vixen::SVO {
 
 // ============================================================================
 // Sparse Voxel Octree (SVO) Data Structures
@@ -815,5 +814,4 @@ private:
     ) const;
 };
 
-} // namespace RenderGraph
-} // namespace VIXEN
+} // namespace Vixen::SVO

@@ -18,14 +18,14 @@
 #include "GaiaVoxelWorld.h"   // For GaiaVoxelWorld entity-based voxel storage
 #include "VoxelComponents.h"  // For GaiaVoxel::Material component
 
-using VIXEN::RenderGraph::VoxelGrid;
-using VIXEN::RenderGraph::SparseVoxelOctree; // Legacy - will be removed
-using VIXEN::RenderGraph::SceneGeneratorFactory;
-using VIXEN::RenderGraph::SceneGeneratorParams;
-using VIXEN::RenderGraph::ISceneGenerator;
-using VIXEN::RenderGraph::VoxelDataCache;
-using VIXEN::RenderGraph::OctreeNode; // Legacy - will be removed
-using VIXEN::RenderGraph::VoxelBrick; // Legacy - will be removed
+using Vixen::SVO::VoxelGrid;
+using Vixen::SVO::SparseVoxelOctree; // Legacy - will be removed
+using Vixen::SVO::SceneGeneratorFactory;
+using Vixen::SVO::SceneGeneratorParams;
+using Vixen::SVO::ISceneGenerator;
+using Vixen::SVO::VoxelDataCache;
+using Vixen::SVO::OctreeNode; // Legacy - will be removed
+using Vixen::SVO::VoxelBrick; // Legacy - will be removed
 
 namespace Vixen::RenderGraph {
 

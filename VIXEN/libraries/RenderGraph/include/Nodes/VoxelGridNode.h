@@ -15,12 +15,9 @@ namespace Vixen::Vulkan::Resources {
     class VulkanDevice;
 }
 
-namespace VIXEN::RenderGraph {
+namespace Vixen::SVO {
     class VoxelGrid;
     class SparseVoxelOctree;
-}
-
-namespace Vixen::SVO {
     struct Octree;
 }
 
@@ -85,17 +82,17 @@ protected:
 
 private:
     // Scene generation
-    void GenerateProceduralScene(VIXEN::RenderGraph::VoxelGrid& grid);
+    void GenerateProceduralScene(Vixen::SVO::VoxelGrid& grid);
 
     // Buffer upload orchestration
-    void UploadOctreeBuffers(const VIXEN::RenderGraph::SparseVoxelOctree& octree);
+    void UploadOctreeBuffers(const Vixen::SVO::SparseVoxelOctree& octree);
 
     // New ESVO buffer upload (SVO::Octree structure + direct grid access)
-    void UploadESVOBuffers(const Vixen::SVO::Octree& octree, const VIXEN::RenderGraph::VoxelGrid& grid);
+    void UploadESVOBuffers(const Vixen::SVO::Octree& octree, const Vixen::SVO::VoxelGrid& grid);
 
     // Buffer creation steps (extracted from UploadOctreeBuffers)
     void CreateOctreeNodesBuffer(VkDeviceSize size, const void* nodeData);
-    void CreateOctreeBricksBuffer(const VIXEN::RenderGraph::SparseVoxelOctree& octree);
+    void CreateOctreeBricksBuffer(const Vixen::SVO::SparseVoxelOctree& octree);
     void CreateOctreeMaterialsBuffer();
     void UploadBufferDataViaStagingBuffer();
 

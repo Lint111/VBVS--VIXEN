@@ -22,7 +22,7 @@
 #include <span>
 
 using namespace Vixen::GaiaVoxel;
-using namespace VIXEN::RenderGraph;
+using namespace Vixen::SVO;
 
 namespace CashSystem {
 

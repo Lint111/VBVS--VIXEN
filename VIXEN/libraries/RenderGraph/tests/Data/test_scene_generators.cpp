@@ -9,7 +9,7 @@
 #include <gtest/gtest.h>
 #include "SceneGenerator.h"
 
-using namespace VIXEN::RenderGraph;
+using namespace Vixen::SVO;
 
 class SceneGeneratorTest : public ::testing::Test {
 protected:

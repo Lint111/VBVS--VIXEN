@@ -5,8 +5,7 @@
 #include <algorithm>
 #include <vector>
 
-namespace VIXEN {
-namespace RenderGraph {
+namespace Vixen::SVO {
 
 SparseVoxelOctree::SparseVoxelOctree()
     : maxDepth_(0)
@@ -884,5 +883,4 @@ void SparseVoxelOctree::CheckForSymmetry() const {
     }
 }
 
-} // namespace RenderGraph
-} // namespace VIXEN
+} // namespace Vixen::SVO

@@ -19,7 +19,7 @@
 #include <filesystem>
 #include <fstream>
 
-using namespace VIXEN::RenderGraph;
+using namespace Vixen::SVO;
 
 class VoxelOctreeTest : public ::testing::Test {
 protected:

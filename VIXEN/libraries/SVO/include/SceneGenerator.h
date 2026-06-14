@@ -9,8 +9,7 @@
 #include <mutex>
 #include <glm/glm.hpp>
 
-namespace VIXEN {
-namespace RenderGraph {
+namespace Vixen::SVO {
 
 // ============================================================================
 // Procedural Scene Generation for Voxel Ray Tracing Research
@@ -519,5 +518,4 @@ public:
     );
 };
 
-} // namespace RenderGraph
-} // namespace VIXEN
+} // namespace Vixen::SVO
