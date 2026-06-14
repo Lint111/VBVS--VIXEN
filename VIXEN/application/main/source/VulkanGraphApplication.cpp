@@ -133,42 +133,19 @@ void VulkanGraphApplication::Initialize() {
     mainLogger->Debug("Instance exported globally");
     mainLogger->Info("VulkanGraphApplication Instance exported globally");
 
-    mainLogger->Debug("Creating node type registry");
-    // Create node type registry
-    nodeRegistry = std::make_unique<NodeTypeRegistry>();
-    mainLogger->Debug("Node type registry created");
-
-    mainLogger->Debug("About to register node types");
-    // Register all node types
-    RegisterNodeTypes();
-    mainLogger->Debug("Node types registered");
-
-    mainLogger->Debug("Creating MessageBus");
-    // Create a MessageBus for event-driven coordination and inject into RenderGraph
-    messageBus = std::make_unique<Vixen::EventBus::MessageBus>();
-    mainLogger->Debug("MessageBus created");
-
-
-    mainLogger->Debug("Initializing MainCacher");
-    // Initialize MainCacher and connect it to MessageBus for device invalidation events
-    auto& mainCacher = CashSystem::MainCacher::Instance();
-    mainLogger->Debug("MainCacher instance obtained");
-    mainCacher.Initialize(messageBus.get());
-    mainLogger->Debug("MainCacher initialized");
-    mainLogger->Info("MainCacher initialized and subscribed to device invalidation events");
-
-    // NOTE: Cache loading will happen automatically when devices request cached resources
-    // This is because we need VulkanDevice to be created first before we can load caches
-
-    mainLogger->Debug("Creating RenderGraph");
-    // Create RenderGraph with all dependencies (registry, messageBus, logger, mainCacher)
-    renderGraph = std::make_unique<RenderGraph>(
-        nodeRegistry.get(),
-        messageBus.get(),
-        mainLogger.get(),
-        &mainCacher
-    );
-    mainLogger->Debug("RenderGraph created");
+    // AR#7: stand up the engine subsystems via an instantiable EngineContext (was four separate
+    // members + the manual create-order here). The context owns registry/bus/graph + the autonomous
+    // CalibrationStore and wires MainCacher; the app keeps non-owning views for existing call sites.
+    mainLogger->Debug("Creating EngineContext (registry + bus + graph + calibration)");
+    Vixen::RenderGraph::EngineConfig engineCfg;
+    engineCfg.logger = mainLogger.get();
+    engineCfg.calibrationDir = "calibration";
+    engineCfg.registerNodeTypes = [this](NodeTypeRegistry& reg) { RegisterNodeTypes(reg); };
+    engine_ = std::make_unique<Vixen::RenderGraph::EngineContext>(engineCfg);
+    nodeRegistry = &engine_->Registry();
+    messageBus   = &engine_->Bus();
+    renderGraph  = &engine_->Graph();
+    mainLogger->Info("EngineContext created (MainCacher initialized, autonomous CalibrationStore active)");
 
     mainLogger->Debug("Subscribing to WindowCloseEvent");
     // Subscribe to shutdown events
@@ -204,15 +181,8 @@ void VulkanGraphApplication::Initialize() {
         mainLogger->Info("RenderGraph created successfully");
     }
 
-    // Sprint 6.3: Create autonomous CalibrationStore
-    // It subscribes to DeviceMetadataEvent (load) and ApplicationShuttingDownEvent (save)
-    mainLogger->Debug("Creating CalibrationStore");
-    calibrationStore = std::make_unique<Vixen::RenderGraph::CalibrationStore>(
-        "calibration",
-        renderGraph->GetTaskProfileRegistry(),
-        messageBus.get()
-    );
-    mainLogger->Info("CalibrationStore created (autonomous event-driven mode)");
+    // (CalibrationStore — autonomous, event-driven: load on DeviceMetadataEvent, save on
+    // ApplicationShuttingDownEvent — is now created inside EngineContext above.)
 
     mainLogger->Debug("Registering physics loop");
     // Phase 0.4: Register loops with the graph
@@ -444,13 +414,15 @@ void VulkanGraphApplication::DeInitialize() {
     if (mainLogger && mainLogger->IsEnabled()) {
         mainLogger->Info("[DeInitialize] Destroying render graph...");
     }
-    renderGraph.reset();
+    // AR#7: one reset tears down the whole EngineContext in order — calibration -> graph
+    // (node cleanup, while the base-class VkDevice below is still valid) -> bus -> registry.
+    engine_.reset();
+    nodeRegistry = nullptr;
+    messageBus = nullptr;
+    renderGraph = nullptr;
     if (mainLogger && mainLogger->IsEnabled()) {
-        mainLogger->Info("[DeInitialize] Render graph destroyed");
+        mainLogger->Info("[DeInitialize] EngineContext (graph + registry + bus + calibration) destroyed");
     }
-
-    // Destroy node registry
-    nodeRegistry.reset();
 
     // Graph nodes handle their own cleanup (including window)
 
@@ -503,51 +475,48 @@ void VulkanGraphApplication::CompileRenderGraph() {
     }
 }
 
-void VulkanGraphApplication::RegisterNodeTypes() {
-    if (!nodeRegistry) {
-        mainLogger->Error("Cannot register node types: Registry not initialized");
-        return;
-    }
-
+void VulkanGraphApplication::RegisterNodeTypes(NodeTypeRegistry& registry) {
+    // Invoked by EngineContext during its construction, on the engine's fresh registry (passed by
+    // reference) — BEFORE the app's `nodeRegistry` view is assigned, so do not guard on that member.
     mainLogger->Info("Registering all built-in node types");
 
     // Register all node types using type-based API (zero strings)
     // Phase F+ nodes:
-    nodeRegistry->Register<InstanceNodeType>();
-    nodeRegistry->Register<WindowNodeType>();
-    nodeRegistry->Register<DeviceNodeType>();
-    nodeRegistry->Register<CommandPoolNodeType>();
-    nodeRegistry->Register<FrameSyncNodeType>();
-    nodeRegistry->Register<TextureLoaderNodeType>();
-    nodeRegistry->Register<DepthBufferNodeType>();
-    nodeRegistry->Register<SwapChainNodeType>();
-    nodeRegistry->Register<VertexBufferNodeType>();
-    nodeRegistry->Register<RenderPassNodeType>();
-    nodeRegistry->Register<FramebufferNodeType>();
-    nodeRegistry->Register<ShaderLibraryNodeType>();
-    nodeRegistry->Register<DescriptorSetNodeType>();
-    nodeRegistry->Register<GraphicsPipelineNodeType>();
-    nodeRegistry->Register<GeometryRenderNodeType>();
-    nodeRegistry->Register<UIRenderNodeType>();  // S0: RmlUi data-driven UI render node
-    nodeRegistry->Register<PresentNodeType>();
-    nodeRegistry->Register<LoopBridgeNodeType>();
-    nodeRegistry->Register<BoolOpNodeType>();
+    registry.Register<InstanceNodeType>();
+    registry.Register<WindowNodeType>();
+    registry.Register<DeviceNodeType>();
+    registry.Register<CommandPoolNodeType>();
+    registry.Register<FrameSyncNodeType>();
+    registry.Register<TextureLoaderNodeType>();
+    registry.Register<DepthBufferNodeType>();
+    registry.Register<SwapChainNodeType>();
+    registry.Register<VertexBufferNodeType>();
+    registry.Register<RenderPassNodeType>();
+    registry.Register<FramebufferNodeType>();
+    registry.Register<ShaderLibraryNodeType>();
+    registry.Register<DescriptorSetNodeType>();
+    registry.Register<GraphicsPipelineNodeType>();
+    registry.Register<GeometryRenderNodeType>();
+    registry.Register<UIRenderNodeType>();  // S0: RmlUi data-driven UI render node
+    registry.Register<PresentNodeType>();
+    registry.Register<LoopBridgeNodeType>();
+    registry.Register<BoolOpNodeType>();
 
     // Phase G nodes:
-    nodeRegistry->Register<ComputePipelineNodeType>();
-    nodeRegistry->Register<ComputeDispatchNodeType>();
+    registry.Register<ComputePipelineNodeType>();
+    registry.Register<ComputeDispatchNodeType>();
 
     // Phase H nodes:
-    nodeRegistry->Register<DescriptorResourceGathererNodeType>();
-    nodeRegistry->Register<PushConstantGathererNodeType>();
-    nodeRegistry->Register<CameraNodeType>();
-    nodeRegistry->Register<VoxelGridNodeType>();
-    nodeRegistry->Register<InputNodeType>();
-    nodeRegistry->Register<DebugBufferReaderNodeType>();
+    registry.Register<DescriptorResourceGathererNodeType>();
+    registry.Register<PushConstantGathererNodeType>();
+    registry.Register<CameraNodeType>();
+    registry.Register<VoxelGridNodeType>();
+    registry.Register<InputNodeType>();
+    registry.Register<DebugBufferReaderNodeType>();
 
     // Special nodes (require RenderGraph.h to be included - circular dependency in library)
-    nodeRegistry->Register<ShaderConstantNodeType>();
-    nodeRegistry->Register<ConstantNodeType>();
+    registry.Register<ShaderConstantNodeType>();
+    registry.Register<ConstantNodeType>();
 
     mainLogger->Info("Successfully registered 31 node types");
 }
@@ -587,7 +556,7 @@ void VulkanGraphApplication::BuildUIGraph() {
     auto* framebuffer = static_cast<FramebufferNode*>(renderGraph->GetInstance(framebufferNode));
     framebuffer->SetParameter(FramebufferNodeConfig::PARAM_LAYERS, 1u);
 
-    ConnectionBatch batch(renderGraph.get());
+    ConnectionBatch batch(renderGraph);
 
     // --- Infrastructure (mirrors BuildRenderGraph's core chain) ---
     batch.Connect(instanceNode, InstanceNodeConfig::INSTANCE, deviceNode, DeviceNodeConfig::INSTANCE_IN);
@@ -1035,7 +1004,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     mainLogger->Info("Wiring node connections using TypedConnection API");
 
     // Use ConnectionBatch for atomic registration
-    ConnectionBatch batch(renderGraph.get());
+    ConnectionBatch batch(renderGraph);
 
     // --- Instance → Device connection (Phase 1.1: Dependency injection) ---
     batch.Connect(instanceNode, InstanceNodeConfig::INSTANCE,

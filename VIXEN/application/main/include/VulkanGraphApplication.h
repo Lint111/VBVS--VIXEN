@@ -2,6 +2,7 @@
 
 #include "VulkanApplicationBase.h"
 #include "Core/RenderGraph.h"
+#include "Core/EngineContext.h"  // AR#7: instantiable engine aggregate
 #include "Core/NodeTypeRegistry.h"
 #include "Core/TypedConnection.h"
 #include "Core/CalibrationStore.h"  // Sprint 6.3: Persistence
@@ -51,12 +52,12 @@ public:
     /**
      * @brief Get the render graph
      */
-    inline RenderGraph* GetRenderGraph() const { return renderGraph.get(); }
+    inline RenderGraph* GetRenderGraph() const { return renderGraph; }
 
     /**
      * @brief Get the node type registry
      */
-    inline NodeTypeRegistry* GetNodeTypeRegistry() const { return nodeRegistry.get(); }
+    inline NodeTypeRegistry* GetNodeTypeRegistry() const { return nodeRegistry; }
 
     /**
      * @brief Enable logging for a specific node (by handle)
@@ -98,7 +99,7 @@ protected:
      *
      * Override to register custom node types with the registry.
      */
-    virtual void RegisterNodeTypes();
+    virtual void RegisterNodeTypes(NodeTypeRegistry& registry);
 
     /**
      * @brief Handle shutdown request from user (X button clicked)
@@ -116,13 +117,14 @@ protected:
     void CompleteShutdown();
 
 private:
-    // ====== Graph Components ======
-    std::unique_ptr<NodeTypeRegistry> nodeRegistry;  // Node type registry
-    std::unique_ptr<RenderGraph> renderGraph;        // Render graph instance
-    // Owned message bus for cross-system event dispatch (injected into RenderGraph)
-    std::unique_ptr<Vixen::EventBus::MessageBus> messageBus;
-    // Sprint 6.3: Calibration persistence for TaskProfiles
-    std::unique_ptr<Vixen::RenderGraph::CalibrationStore> calibrationStore;
+    // ====== Engine (AR#7) ======
+    // EngineContext OWNS the core graph subsystems (registry, bus, graph, and the autonomous
+    // CalibrationStore). The app keeps non-owning views named as before so the existing call
+    // sites are unchanged; they point into engine_ and are valid for its lifetime.
+    std::unique_ptr<Vixen::RenderGraph::EngineContext> engine_;
+    NodeTypeRegistry* nodeRegistry = nullptr;             // view: &engine_->Registry()
+    RenderGraph* renderGraph = nullptr;                   // view: &engine_->Graph()
+    Vixen::EventBus::MessageBus* messageBus = nullptr;    // view: &engine_->Bus()
 
     // ====== Application State ======
     uint32_t currentFrame;                           // Current frame index
