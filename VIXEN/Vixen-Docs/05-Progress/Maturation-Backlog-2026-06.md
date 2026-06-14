@@ -219,8 +219,16 @@ Correctness bugs + the only-consumer's pain + legal hygiene. Wasted on no possib
   (C) decoupled the graph core from concrete leaf nodes — `RenderGraph.cpp` now `#include`s zero
   `Nodes/` headers (dead SwapChain/Present find-loop deleted; CommandPoolNode coupling replaced with
   the `ICommandBufferPreallocator` capability interface, mirroring `IGraphCompilable`).
-  Follow-up nit: `SceneGenerator` still carries the `VIXEN::RenderGraph` namespace while living in
-  SVO — a cosmetic renamespace, deferred (its target namespace is an API-visible call). Unblocks [AR#2].
+  Follow-up nit **DONE 2026-06-14**: the legacy all-caps `VIXEN::RenderGraph` namespace is **gone**.
+  It was bigger than "SceneGenerator" — it also held `VoxelOctree`/`VoxelTraversal` (RenderGraph/Data)
+  with an inconsistent `VIXEN` vs `VIXEN::RenderGraph` nesting and contradictory fwd-decls. All voxel/SVO
+  data types (`SceneGenerator*`, `VoxelGrid`, `SparseVoxelOctree`, `OctreeNode`/`ESVONode`/`VoxelBrick`/
+  `VoxelMaterial`, `Ray`/`AABB`/`DDAState`) now live in **`Vixen::SVO`** (unified with the modern SVO ns);
+  node types stay in `Vixen::RenderGraph`. ~12 files (5 defs + 7 consumers incl. 3 tests). Verified:
+  full build green; the rename diff is namespace-lines-only (proven logic-free), so the **pre-existing**
+  voxel/SVO unit-test failures it surfaced (test_scene_generators density, test_voxel_octree node-count=0,
+  test_voxel_injection, test_svo_builder, test_cornell_box) are unrelated subsystem test debt, not
+  regressions. Fully closes AR#3/#4.
 - [ ] **Host-supplied window/surface injection** (`ExternalWindowNode`) [AR#9] — **evaluated +
   parked 2026-06-14.** Recon correction to the original note: `SwapChainNode` consumes a
   **`GLFWwindow*`** and creates the surface itself via `glfwCreateWindowSurface` — it does NOT take a

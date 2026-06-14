@@ -344,7 +344,7 @@ private:
 
     // Temporary build data (cleared after Create() completes)
     // Note: BatchedUploader is now in TypedCacher base class via GetUploader()
-    std::unique_ptr<VIXEN::RenderGraph::VoxelGrid> m_cachedGrid;
+    std::unique_ptr<Vixen::SVO::VoxelGrid> m_cachedGrid;
     std::unique_ptr<Vixen::GaiaVoxel::GaiaVoxelWorld> m_voxelWorld;
     std::unique_ptr<Vixen::SVO::LaineKarrasOctree> m_octree;
 };
