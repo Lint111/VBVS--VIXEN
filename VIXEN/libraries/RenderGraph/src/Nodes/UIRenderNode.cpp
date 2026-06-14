@@ -29,13 +29,13 @@ void UIRenderNode::FreeCommandBuffers() {
 
 void UIRenderNode::CompileImpl(TypedCompileContext& ctx) {
     VulkanDevice* device = ctx.In(UIRenderNodeConfig::VULKAN_DEVICE);
-    SwapChainPublicVariables* sc = ctx.In(UIRenderNodeConfig::SWAPCHAIN_INFO);
+    Vixen::Vulkan::Resources::IRenderTarget* sc = ctx.In(UIRenderNodeConfig::SWAPCHAIN_INFO);
     commandPool_ = ctx.In(UIRenderNodeConfig::COMMAND_POOL);
     renderPass_ = ctx.In(UIRenderNodeConfig::RENDER_PASS);
 
     device_ = device->device;
     queue_ = device->queue;
-    extent_ = sc->Extent;
+    extent_ = sc->GetExtent();
 
     if (!initialized_) {
         // One-time: the RmlUi render interface/pipeline (built against the consumed render pass —
@@ -69,7 +69,7 @@ void UIRenderNode::CompileImpl(TypedCompileContext& ctx) {
 
     // (Re)allocate one command buffer per swapchain image (idempotent: free any stale ones first).
     FreeCommandBuffers();
-    commandBuffers_.resize(sc->swapChainImageCount);
+    commandBuffers_.resize(sc->GetImageCount());
     VkCommandBufferAllocateInfo cbai{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
     cbai.commandPool = commandPool_;
     cbai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;

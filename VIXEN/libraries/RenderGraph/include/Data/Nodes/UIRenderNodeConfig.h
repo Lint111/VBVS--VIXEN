@@ -36,7 +36,7 @@ CONSTEXPR_NODE_CONFIG(UIRenderNodeConfig,
     static constexpr const char* FONT_PATH = "fontPath";
 
     // ===== INPUTS (8) =====
-    INPUT_SLOT(SWAPCHAIN_INFO, SwapChainPublicVariables*, 0,
+    INPUT_SLOT(SWAPCHAIN_INFO, Vixen::Vulkan::Resources::IRenderTarget*, 0,
         SlotNullability::Required, SlotRole::Dependency, SlotMutability::ReadOnly, SlotScope::NodeLevel);
 
     INPUT_SLOT(COMMAND_POOL, VkCommandPool, 1,
@@ -76,7 +76,7 @@ CONSTEXPR_NODE_CONFIG(UIRenderNodeConfig,
         SlotNullability::Required, SlotMutability::WriteOnly);
 
     UIRenderNodeConfig() {
-        HandleDescriptor swapchainInfoDesc{"SwapChainPublicVariables*"};
+        HandleDescriptor swapchainInfoDesc{"IRenderTarget*"};
         INIT_INPUT_DESC(SWAPCHAIN_INFO, "swapchain_info", ResourceLifetime::Persistent, swapchainInfoDesc);
 
         INIT_INPUT_DESC(COMMAND_POOL, "command_pool", ResourceLifetime::Persistent, BufferDescription{});
@@ -119,7 +119,7 @@ CONSTEXPR_NODE_CONFIG(UIRenderNodeConfig,
     static_assert(COMMAND_BUFFERS_Slot::index == 0, "COMMAND_BUFFERS must be at index 0");
     static_assert(RENDER_COMPLETE_SEMAPHORE_Slot::index == 1, "RENDER_COMPLETE_SEMAPHORE must be at index 1");
 
-    static_assert(std::is_same_v<SWAPCHAIN_INFO_Slot::Type, SwapChainPublicVariables*>);
+    static_assert(std::is_same_v<SWAPCHAIN_INFO_Slot::Type, Vixen::Vulkan::Resources::IRenderTarget*>);
     static_assert(std::is_same_v<COMMAND_POOL_Slot::Type, VkCommandPool>);
     static_assert(std::is_same_v<VULKAN_DEVICE_Slot::Type, VulkanDevice*>);
     static_assert(std::is_same_v<IMAGE_INDEX_Slot::Type, uint32_t>);

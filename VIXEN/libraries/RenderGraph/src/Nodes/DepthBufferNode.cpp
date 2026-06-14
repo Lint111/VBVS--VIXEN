@@ -1,6 +1,7 @@
 #include "Nodes/DepthBufferNode.h"
 #include "Core/RenderGraph.h"
 #include "VulkanDevice.h"
+#include "IRenderTarget.h"  // AR#28: for IRenderTarget interface
 #include "Core/NodeLogging.h"
 #include "Core/TaskProfiles/SimpleTaskProfile.h"  // Sprint 6.5: Profile integration
 #include "error/VulkanError.h"
@@ -63,13 +64,13 @@ void DepthBufferNode::CompileImpl(TypedCompileContext& ctx) {
     #define VK_DEVICE (vulkanDevice->device)
 
     // Validate swapchain variables and command pool
-    SwapChainPublicVariables* swapChainVars = ValidateInput<SwapChainPublicVariables*>(
+    Vixen::Vulkan::Resources::IRenderTarget* swapChainVars = ValidateInput<Vixen::Vulkan::Resources::IRenderTarget*>(
         ctx, "SwapChainPublicVars", DepthBufferNodeConfig::SWAPCHAIN_PUBLIC_VARS);
     VkCommandPool cmdPool = ValidateInput<VkCommandPool>(
         ctx, "CommandPool", DepthBufferNodeConfig::COMMAND_POOL);
 
-    uint32_t width = swapChainVars->Extent.width;
-    uint32_t height = swapChainVars->Extent.height;
+    uint32_t width = swapChainVars->GetExtent().width;
+    uint32_t height = swapChainVars->GetExtent().height;
 
     NODE_LOG_DEBUG("Input dimensions: " + std::to_string(width) + "x" + std::to_string(height));
 

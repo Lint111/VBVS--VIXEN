@@ -48,7 +48,7 @@ CONSTEXPR_NODE_CONFIG(DepthBufferNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    INPUT_SLOT(SWAPCHAIN_PUBLIC_VARS, SwapChainPublicVariables*, 1,
+    INPUT_SLOT(SWAPCHAIN_PUBLIC_VARS, Vixen::Vulkan::Resources::IRenderTarget*, 1,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
@@ -148,7 +148,7 @@ CONSTEXPR_NODE_CONFIG(DepthBufferNodeConfig,
     // Type validations
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
     static_assert(std::is_same_v<VULKAN_DEVICE_OUT_Slot::Type, VulkanDevice*>);
-    static_assert(std::is_same_v<SWAPCHAIN_PUBLIC_VARS_Slot::Type, SwapChainPublicVariables*>);
+    static_assert(std::is_same_v<SWAPCHAIN_PUBLIC_VARS_Slot::Type, Vixen::Vulkan::Resources::IRenderTarget*>);
     static_assert(std::is_same_v<COMMAND_POOL_Slot::Type, VkCommandPool>);
 
     static_assert(std::is_same_v<DEPTH_IMAGE_Slot::Type, VkImage>);

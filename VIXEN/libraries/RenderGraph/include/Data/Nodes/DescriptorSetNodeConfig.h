@@ -72,7 +72,7 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
     // ComputeDispatchNode / GeometryRenderNode) rather than a field-extracted scalar: field
     // extraction is only honored for variadic/binding targets, not static inputs, so a
     // field-extracted static scalar silently resolves to 0.
-    INPUT_SLOT(SWAPCHAIN_INFO, SwapChainPublicVariables*, 2,
+    INPUT_SLOT(SWAPCHAIN_INFO, Vixen::Vulkan::Resources::IRenderTarget*, 2,
         SlotNullability::Required,
         SlotRole::Execute,
         SlotMutability::ReadOnly,
@@ -118,7 +118,7 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
         HandleDescriptor shaderDataBundleDesc{"ShaderDataBundle*"};
         INIT_INPUT_DESC(SHADER_DATA_BUNDLE, "shader_data_bundle", ResourceLifetime::Persistent, shaderDataBundleDesc);
 
-        HandleDescriptor swapchainInfoDesc{"SwapChainPublicVariables*"};
+        HandleDescriptor swapchainInfoDesc{"IRenderTarget*"};
         INIT_INPUT_DESC(SWAPCHAIN_INFO, "swapchain_info", ResourceLifetime::Persistent, swapchainInfoDesc);
 
         // DescriptorResourceEntry contains handle + slotRole + debugCapture
@@ -179,7 +179,7 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
     // Type validations
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
     static_assert(std::is_same_v<SHADER_DATA_BUNDLE_Slot::Type, const std::shared_ptr<ShaderManagement::ShaderDataBundle>&>);
-    static_assert(std::is_same_v<SWAPCHAIN_INFO_Slot::Type, SwapChainPublicVariables*>);
+    static_assert(std::is_same_v<SWAPCHAIN_INFO_Slot::Type, Vixen::Vulkan::Resources::IRenderTarget*>);
     static_assert(std::is_same_v<DESCRIPTOR_RESOURCES_Slot::Type, std::vector<DescriptorResourceEntry>>);
 
     static_assert(std::is_same_v<DESCRIPTOR_SET_LAYOUT_Slot::Type, VkDescriptorSetLayout>);

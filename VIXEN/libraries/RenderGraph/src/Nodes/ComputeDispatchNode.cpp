@@ -73,7 +73,7 @@ void ComputeDispatchNode::CompileImpl(TypedCompileContext& ctx) {
 
     // Get inputs
     commandPool = ctx.In(ComputeDispatchNodeConfig::COMMAND_POOL);
-    SwapChainPublicVariables* swapchainInfo = ctx.In(ComputeDispatchNodeConfig::SWAPCHAIN_INFO);
+    Vixen::Vulkan::Resources::IRenderTarget* swapchainInfo = ctx.In(ComputeDispatchNodeConfig::SWAPCHAIN_INFO);
 
     if (commandPool == VK_NULL_HANDLE) {
         throw std::runtime_error("[ComputeDispatchNode::CompileImpl] Command pool is null/invalid");
@@ -83,7 +83,7 @@ void ComputeDispatchNode::CompileImpl(TypedCompileContext& ctx) {
         throw std::runtime_error("[ComputeDispatchNode::CompileImpl] SwapChain info is null");
     }
 
-    uint32_t imageCount = swapchainInfo->swapChainImageCount;
+    uint32_t imageCount = swapchainInfo->GetImageCount();
     NODE_LOG_INFO("[ComputeDispatchNode::CompileImpl] Allocating " + std::to_string(imageCount) + " command buffers");
 
     // Allocate command buffers (one per swapchain image)
@@ -290,7 +290,7 @@ void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cm
     VkPipeline pipeline = ctx.In(ComputeDispatchNodeConfig::COMPUTE_PIPELINE);
     VkPipelineLayout pipelineLayout = ctx.In(ComputeDispatchNodeConfig::PIPELINE_LAYOUT);
     std::vector<VkDescriptorSet> descriptorSets = ctx.In(ComputeDispatchNodeConfig::DESCRIPTOR_SETS);
-    SwapChainPublicVariables* swapchainInfo = ctx.In(ComputeDispatchNodeConfig::SWAPCHAIN_INFO);
+    Vixen::Vulkan::Resources::IRenderTarget* swapchainInfo = ctx.In(ComputeDispatchNodeConfig::SWAPCHAIN_INFO);
 
     // Validate descriptor sets
     if (descriptorSets.empty() || imageIndex >= descriptorSets.size()) {
@@ -298,18 +298,18 @@ void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cm
     }
 
     // Get dispatch dimensions from swapchain extent (8x8 workgroup size)
-    uint32_t dispatchX = (swapchainInfo->Extent.width + 7) / 8;
-    uint32_t dispatchY = (swapchainInfo->Extent.height + 7) / 8;
+    uint32_t dispatchX = (swapchainInfo->GetExtent().width + 7) / 8;
+    uint32_t dispatchY = (swapchainInfo->GetExtent().height + 7) / 8;
     uint32_t dispatchZ = 1;
 
     static int logCount = 0;
     if (logCount++ < 3) {
         NODE_LOG_DEBUG("[ComputeDispatchNode] Dispatch: " + std::to_string(dispatchX) + "x" + std::to_string(dispatchY) + "x" + std::to_string(dispatchZ) +
-                      " for swapchain " + std::to_string(swapchainInfo->Extent.width) + "x" + std::to_string(swapchainInfo->Extent.height));
+                      " for swapchain " + std::to_string(swapchainInfo->GetExtent().width) + "x" + std::to_string(swapchainInfo->GetExtent().height));
     }
 
     // Execute recording steps
-    VkImage swapchainImage = swapchainInfo->colorBuffers[imageIndex].image;
+    VkImage swapchainImage = swapchainInfo->GetImage(imageIndex);
     VkDescriptorSet descriptorSet = descriptorSets[imageIndex];
 
     // Begin GPU timing frame (reset queries for this frame)
@@ -331,7 +331,7 @@ void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cm
 
     // End GPU timing
     if (gpuPerfLogger_) {
-        gpuPerfLogger_->RecordDispatchEnd(cmdBuffer, frameIndex, swapchainInfo->Extent.width, swapchainInfo->Extent.height);
+        gpuPerfLogger_->RecordDispatchEnd(cmdBuffer, frameIndex, swapchainInfo->GetExtent().width, swapchainInfo->GetExtent().height);
     }
 
     TransitionImageToPresent(cmdBuffer, swapchainImage);

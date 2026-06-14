@@ -6,6 +6,10 @@
 
 using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 
+namespace Vixen::Vulkan::Resources {
+    struct IRenderTarget; // AR#28: abstract render target interface
+}
+
 namespace Vixen::RenderGraph {
 
 // ============================================================================
@@ -91,7 +95,7 @@ CONSTEXPR_NODE_CONFIG(MultiDispatchNodeConfig,
     /**
      * @brief Swapchain info for image count (command buffer sizing)
      */
-    INPUT_SLOT(SWAPCHAIN_INFO, SwapChainPublicVariables*, 2,
+    INPUT_SLOT(SWAPCHAIN_INFO, Vixen::Vulkan::Resources::IRenderTarget*, 2,
         SlotNullability::Required,
         SlotRole::Execute,
         SlotMutability::ReadOnly,
@@ -167,7 +171,7 @@ CONSTEXPR_NODE_CONFIG(MultiDispatchNodeConfig,
         INIT_INPUT_DESC(COMMAND_POOL, "command_pool",
             ResourceLifetime::Persistent, commandPoolDesc);
 
-        HandleDescriptor swapchainDesc{"SwapChainPublicVariables*"};
+        HandleDescriptor swapchainDesc{"IRenderTarget*"};
         INIT_INPUT_DESC(SWAPCHAIN_INFO, "swapchain_info",
             ResourceLifetime::Persistent, swapchainDesc);
 

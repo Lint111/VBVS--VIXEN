@@ -91,7 +91,7 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
-    OUTPUT_SLOT(SWAPCHAIN_PUBLIC, SwapChainPublicVariables*, 1,
+    OUTPUT_SLOT(SWAPCHAIN_PUBLIC, Vixen::Vulkan::Resources::IRenderTarget*, 1,
         SlotNullability::Optional,
         SlotMutability::WriteOnly);
 
@@ -233,7 +233,7 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
     static_assert(std::is_same_v<PRESENT_FENCES_ARRAY_Slot::Type, const std::vector<VkFence>&>);
 
     static_assert(std::is_same_v<SWAPCHAIN_HANDLE_Slot::Type, VkSwapchainKHR>);
-    static_assert(std::is_same_v<SWAPCHAIN_PUBLIC_Slot::Type, ::SwapChainPublicVariables*>);
+    static_assert(std::is_same_v<SWAPCHAIN_PUBLIC_Slot::Type, Vixen::Vulkan::Resources::IRenderTarget*>);
     static_assert(std::is_same_v<IMAGE_INDEX_Slot::Type, uint32_t>);
     static_assert(std::is_same_v<CURRENT_FRAME_IMAGE_VIEW_Slot::Type, VkImageView>);
 };

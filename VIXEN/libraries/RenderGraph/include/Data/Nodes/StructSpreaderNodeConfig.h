@@ -31,14 +31,14 @@ CONSTEXPR_NODE_CONFIG(StructSpreaderNodeConfig,
                       StructSpreaderNodeCounts::ARRAY_MODE) {
 
     // ===== INPUTS (1) =====
-    INPUT_SLOT(STRUCT_RESOURCE, SwapChainPublicVariables*, 0,
+    INPUT_SLOT(STRUCT_RESOURCE, Vixen::Vulkan::Resources::IRenderTarget*, 0,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
     StructSpreaderNodeConfig() {
-        HandleDescriptor structDesc{"SwapChainPublicVariables*"};
+        HandleDescriptor structDesc{"IRenderTarget*"};
         INIT_INPUT_DESC(STRUCT_RESOURCE, "struct_resource",
             ResourceLifetime::Persistent,
             structDesc);

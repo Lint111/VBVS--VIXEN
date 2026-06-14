@@ -57,11 +57,11 @@ void RenderPassNode::CompileImpl(TypedCompileContext& ctx) {
     SetDevice(devicePtr);
 
     // Get swapchain info bundle and extract format
-    SwapChainPublicVariables* swapchainInfo = ctx.In(RenderPassNodeConfig::SWAPCHAIN_INFO);
+    Vixen::Vulkan::Resources::IRenderTarget* swapchainInfo = ctx.In(RenderPassNodeConfig::SWAPCHAIN_INFO);
     if (!swapchainInfo) {
         throw std::runtime_error("RenderPassNode: swapchain info bundle is null");
     }
-    VkFormat colorFormat = swapchainInfo->Format;
+    VkFormat colorFormat = swapchainInfo->GetFormat();
 
     // Get depth format directly
     VkFormat depthFormat = ctx.In(RenderPassNodeConfig::DEPTH_FORMAT);

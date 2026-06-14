@@ -67,12 +67,12 @@ void CameraNode::CompileImpl(TypedCompileContext& ctx) {
     VulkanDevice* devicePtr = ctx.In(CameraNodeConfig::VULKAN_DEVICE_IN);
     SetDevice(devicePtr);
 
-    SwapChainPublicVariables* swapchainInfo = ValidateInput<SwapChainPublicVariables*>(
+    Vixen::Vulkan::Resources::IRenderTarget* swapchainInfo = ValidateInput<Vixen::Vulkan::Resources::IRenderTarget*>(
         ctx, "SwapChainPublic", CameraNodeConfig::SWAPCHAIN_PUBLIC);
 
     // Initialize camera data with valid values
-    float aspectRatio = static_cast<float>(swapchainInfo->Extent.width) /
-                        static_cast<float>(swapchainInfo->Extent.height);
+    float aspectRatio = static_cast<float>(swapchainInfo->GetExtent().width) /
+                        static_cast<float>(swapchainInfo->GetExtent().height);
 
     // Compute initial camera vectors
     glm::vec3 forward;
@@ -119,13 +119,13 @@ void CameraNode::CompileImpl(TypedCompileContext& ctx) {
 
 void CameraNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // Get swapchain info for aspect ratio
-    SwapChainPublicVariables* swapchainInfo = ctx.In(CameraNodeConfig::SWAPCHAIN_PUBLIC);
+    Vixen::Vulkan::Resources::IRenderTarget* swapchainInfo = ctx.In(CameraNodeConfig::SWAPCHAIN_PUBLIC);
     if (!swapchainInfo) {
         return;
     }
 
-    float aspectRatio = static_cast<float>(swapchainInfo->Extent.width) /
-                        static_cast<float>(swapchainInfo->Extent.height);
+    float aspectRatio = static_cast<float>(swapchainInfo->GetExtent().width) /
+                        static_cast<float>(swapchainInfo->GetExtent().height);
 
     // Modern polling-based input: Read InputState once per frame
     InputStatePtr inputState = ctx.In(CameraNodeConfig::INPUT_STATE);
