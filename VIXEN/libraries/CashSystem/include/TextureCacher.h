@@ -148,8 +148,21 @@ protected:
 private:
     // Helper methods
     std::string ComputeFileChecksum(const std::string& filePath) const;
+
+    // Decode pixels (from file via STB, or generate a default checkerboard when the
+    // file path is empty) and upload them to a real VkImage/VkImageView/VkDeviceMemory
+    // through the shared TextureLoader GPU path. Populates image/view/memory and the
+    // cached pixelData/dimensions on `wrapper`. The wrapper's sampler is supplied
+    // separately by SamplerCacher (composition) and is left untouched here.
     void LoadTextureFromFile(const TextureCreateParams& ci, TextureWrapper& wrapper);
-    void CreateFallbackTexture(const TextureCreateParams& ci, TextureWrapper& wrapper);
+
+    // Generate an in-memory RGBA8 checkerboard (used when no file path is provided),
+    // returned as tightly-packed pixels plus its square dimension.
+    static std::vector<uint8_t> GenerateCheckerboard(uint32_t& outSize);
+
+    // Lazily-created transient command pool used for one-shot texture uploads.
+    // Destroyed in Cleanup(). Mirrors AccelerationStructureCacher's pattern.
+    VkCommandPool m_uploadCommandPool = VK_NULL_HANDLE;
 };
 
 } // namespace CashSystem
