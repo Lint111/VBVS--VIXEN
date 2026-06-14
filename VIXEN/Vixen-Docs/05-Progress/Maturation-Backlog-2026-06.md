@@ -265,19 +265,22 @@ Correctness bugs + the only-consumer's pain + legal hygiene. Wasted on no possib
 
 ### P3 — Presentation layer (review Phase 2)
 
-- [~] **`RenderTargetNode` / render-to-texture** [AR#28, Decision #3] — *"essentially the entire
-  grand-strategy presentation layer hangs off this single change"*: minimap, portraits, picking
-  ID-buffers, fog-of-war, post-processing, multi-view. Fix is a producer node, not new
-  infrastructure (VMA/Direct allocators already make arbitrary images).
-  **Design+plan:** [[RenderTarget-Design-2026-06]] + [[RenderTarget-Implementation-Plan-2026-06]].
-  **FOUNDATION DONE 2026-06-14 (merged to main, `3a7780fe`):** `IRenderTarget` interface
-  (`IRenderTarget.h`), `SwapChainPublicVariables` implements it (build-green, app renders clean), and a
-  color-only `RenderTargetNode` producer (allocates offscreen color images via real memory-type
-  selection, FR-7 lifecycle, registered). **REMAINING (fresh run, plan Tasks 7–24):** round-trip test;
-  the ~13-node / 68-site slot migration `SwapChainPublicVariables*` → `IRenderTarget*` (each: build +
-  benchmark + smoke); fix DepthBufferNode's `memoryTypeIndex=0` placeholder in-pass [AR#18]; verify +
-  close. Minor cleanup carried: consolidate RenderTargetNode's local `DEFAULT_FRAMES_IN_FLIGHT` +
-  `FindMemoryType` copies if the claimed `LNK1163` linker conflict can be resolved.
+- [x] **`RenderTargetNode` / render-to-texture** [AR#28, Decision #3] — **DONE 2026-06-14** (merged to
+  main, `271a461f`). The P3 presentation-layer keystone: offscreen render targets are now a first-class
+  graph concept. Design+plan: [[RenderTarget-Design-2026-06]] + [[RenderTarget-Implementation-Plan-2026-06]].
+  Shipped: `IRenderTarget` interface (`IRenderTarget.h`); `SwapChainPublicVariables` implements it;
+  color-only `RenderTargetNode` producer (offscreen color images via real memory-type selection, FR-7
+  lifecycle, registered + config-tested, 24 tests); and the **full slot migration** — all 13 recording-node
+  slots (12 inputs + SwapChainNode output) `SwapChainPublicVariables*` → `IRenderTarget*`, with the 10
+  consuming `.cpp`s moved to the interface accessors (`GetView(i)`/`GetExtent()`/`GetImageCount()`/…).
+  Verified: full build green; render-graph/node test suites pass (render_target 24, swap_chain 12,
+  rendergraph 3, device 22); app smoke clean (0 VK_ERROR/VUID, ~85k render events). `FrameCapture` kept
+  `SwapChainPublicVariables*` (genuine swapchain-specific PNG capture — not a render-graph slot).
+  **Follow-ups (deferred, noted in the design):** `followSwapchainExtent`/resize; headless pipeline;
+  `CompositeNode` view fan-in; consolidate RenderTargetNode's local `DEFAULT_FRAMES_IN_FLIGHT` +
+  `FindMemoryType` copies (added to dodge a claimed MSVC `LNK1163`); fix DepthBufferNode's
+  `memoryTypeIndex=0` placeholder [AR#18] (NOT done in this pass — its slot migrated but the
+  placeholder remains).
 - [ ] **Many-entity draw path** — instancing / draw lists / `vkCmdDrawIndirect` (today exactly one
   `vkCmdDraw` in the whole tree) [AR#31]
 - [ ] **Per-frame dynamic content** — `StreamingBufferNode`/`DynamicBufferNode`; drain the dead-ended

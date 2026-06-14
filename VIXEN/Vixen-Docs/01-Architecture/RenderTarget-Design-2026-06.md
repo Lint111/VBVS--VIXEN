@@ -3,7 +3,7 @@ title: RenderTargetNode + IRenderTarget — Design (AR#28)
 aliases: [RenderTargetNode, IRenderTarget, render-to-texture, AR#28 design]
 tags: [architecture, design, rendergraph, presentation-layer, AR28, spec]
 created: 2026-06-14
-status: approved (design) — implementation pending
+status: DONE — implemented + merged to main (271a461f, 2026-06-14)
 related:
   - "[[RenderGraph]]"
   - "[[Maturation-Backlog-2026-06]]"

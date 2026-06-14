@@ -14,15 +14,21 @@
 
 ---
 
-## STATUS (2026-06-14) — resume here
+## STATUS (2026-06-14) — ✅ DONE (all phases complete, merged to main `271a461f`)
 
-**Foundation merged to main (`3a7780fe`), build-green + app renders clean:**
+**Foundation** (merged `3a7780fe`):
 - ✅ Task 1 — `IRenderTarget.h` (interface + `RenderTargetData`)
 - ✅ Task 2 — `SwapChainPublicVariables` implements `IRenderTarget`
 - ✅ Tasks 3–6 — `RenderTargetNode` (config/header/impl + registered in all sites)
 
-**▶ RESUME AT Task 7** (round-trip test), then **Phase 4** (the ~13-node migration), then **Phase 5**
-(verify + finish). The `claude/ar28-render-target` branch was merged + deleted — branch anew from main.
+**Test + migration** (merged `271a461f`):
+- ✅ Task 7 — RenderTargetNode config + round-trip test (`test_render_target_node.cpp`, 24 cases)
+- ✅ Phase 4 (Tasks 8–22) — full slot migration: all 13 recording-node slots `SwapChainPublicVariables*`
+  → `Vixen::Vulkan::Resources::IRenderTarget*`; the 10 consuming `.cpp`s moved to the interface
+  accessors (`GetView(i)`/`GetExtent()`/`GetImageCount()`/…). `FrameCapture` deliberately kept
+  `SwapChainPublicVariables*` (genuine swapchain-specific PNG capture, not a graph slot).
+- ✅ Phase 5 (Tasks 23–24) — verified: full build green; render-graph/node test suites pass; app smoke
+  clean (0 VK_ERROR/VUID, ~85k render events). Backlog [[Maturation-Backlog-2026-06]] AR#28 → DONE.
 
 Carry-forward cleanup: `RenderTargetNode.cpp` has a local `DEFAULT_FRAMES_IN_FLIGHT=4` and a local
 `FindSuitableMemoryType` (copies, to dodge a claimed MSVC `LNK1163`); consolidate to
