@@ -168,9 +168,16 @@ Correctness bugs + the only-consumer's pain + legal hygiene. Wasted on no possib
   device per process; blocks game+editor instances) [AR#8]
 - [ ] **Ship a consumable artifact** — `install(EXPORT)` / `VIXENConfig.cmake` / `find_package(VIXEN)`;
   *"Undertow physically cannot link VIXEN today"* [AR#2]
-- [ ] **Sever build-layering leaks** — 3 core libs PUBLIC-include `application/main/include`; ~32
-  library files `#include "Headers.h"`; break core↔nodes↔SVO entanglement + CMake cycles; relocate
-  shared decls into `libraries/Core` (which currently has no real core layer [AR#74]) [AR#3/#4]
+- [x] **Sever build-layering leaks** [AR#3/#4] — **DONE 2026-06-14** (3 increments, all merged):
+  (A) relocated `Headers.h`/`VixenHash.h`/`MeshData.h` → `libraries/Core`; the 3 core libs now link
+  `Core::Core` instead of PUBLIC-including `application/main/include`.
+  (B) broke the `RenderGraph↔CashSystem` CMake link cycle by relocating `SceneGenerator` down to
+  `SVO` (the layer both already link) → one-directional DAG.
+  (C) decoupled the graph core from concrete leaf nodes — `RenderGraph.cpp` now `#include`s zero
+  `Nodes/` headers (dead SwapChain/Present find-loop deleted; CommandPoolNode coupling replaced with
+  the `ICommandBufferPreallocator` capability interface, mirroring `IGraphCompilable`).
+  Follow-up nit: `SceneGenerator` still carries the `VIXEN::RenderGraph` namespace while living in
+  SVO — a cosmetic renamespace, deferred (its target namespace is an API-visible call). Unblocks [AR#2].
 - [ ] **Host-supplied window/surface injection** (`ExternalWindowNode`; feasible without engine
   edits — SwapChainNode already consumes HWND via typed slots) [AR#9]
 - [ ] **Distinct recompile-vs-shutdown lifecycle hooks** — `CleanupImpl` runs on both; naive
