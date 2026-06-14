@@ -15,6 +15,7 @@ Fast-access reference for Claude Code. Read this file first for any documentatio
 
 | Date | Topic | File |
 |------|-------|------|
+| 2026-06-14 | Embedding VIXEN in a host (find_package → EngineContext → own-the-loop) [AR#12] | [[../06-Embedding/Hosting-VIXEN]] |
 | 2026-06-12 | Consumer feedback / feature requests (UNDERTOW integration) | [[../05-Progress/features/consumer-feedback-undertow]] |
 | 2026-01-04 | Sprint 6.0.1: Unified Connection System COMPLETE | [[../05-Progress/features/Sprint6.0.1-Unified-Connection-System]] |
 
@@ -37,6 +38,7 @@ Fast-access reference for Claude Code. Read this file first for any documentatio
 | Task | File |
 |------|------|
 | Create a new node | [[../templates/Node-Documentation]] |
+| Embed VIXEN in a host app | [[../06-Embedding/Hosting-VIXEN]] |
 | Add logging | [[../Libraries/Logger]] |
 | Write tests | [[../04-Development/Testing]] |
 | Coding standards | [[../04-Development/Coding-Standards]] |
