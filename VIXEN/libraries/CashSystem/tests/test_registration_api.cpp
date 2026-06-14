@@ -12,8 +12,8 @@ using namespace CashSystem;
 class RegistrationAPITest : public ::testing::Test {
 protected:
     void SetUp() override {
-        mainCacher = &MainCacher::Instance();
-        // Clear cache instances but keep registrations (singleton persists)
+        // AR#8: MainCacher is no longer a singleton — each test owns a fresh instance.
+        mainCacher = &ownedCacher_;
         mainCacher->ClearAll();
     }
 
@@ -38,6 +38,7 @@ protected:
         return true;  // Already registered
     }
 
+    MainCacher ownedCacher_;            // AR#8: owned per-test, replaces the singleton
     MainCacher* mainCacher = nullptr;
 };
 

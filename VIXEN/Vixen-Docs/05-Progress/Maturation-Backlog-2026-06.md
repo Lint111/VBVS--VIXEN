@@ -173,8 +173,33 @@ Correctness bugs + the only-consumer's pain + legal hygiene. Wasted on no possib
   Validated: 20s smoke, graph builds + renders, zero crashes. Already consumer-available via the AR#2
   SDK (it ships inside the exported RenderGraph lib). Follow-up: BenchmarkRunner could adopt
   EngineContext for dedup.
-- [ ] **De-singletonize** `MainCacher` / `CapabilityGraph` / `ProfilerSystem` (static state → one
-  device per process; blocks game+editor instances) [AR#8]
+- [x] **De-singletonize** `MainCacher` / `CapabilityGraph` [AR#8] — **DONE 2026-06-14** (core two of
+  three; **ProfilerSystem deliberately deferred** — see end of item). This was the last global-state
+  blocker to running >1 `EngineContext` (game + editor) in one process.
+  - **`MainCacher::Instance()` removed.** The cacher is now an ordinary object owned by its host:
+    `EngineContext` creates + owns one when the host injects none (`EngineConfig::mainCacher`);
+    `BenchmarkRunner` owns a method-local one. CashSystem-internal cachers + `DeviceRegistry` reach
+    sibling cachers through a back-pointer (`CacherBase::SetMainCacher`, set by MainCacher at every
+    creation path) instead of the global. `RenderGraph::GetMainCacher()` lost its `Instance()`
+    fallback (asserts an injected cacher). Bonus fix: `EngineContext::~EngineContext` now calls
+    `mainCacher_->Shutdown()` before the bus is destroyed, closing a latent exit-time use-after-free
+    the singleton path had (its bus subscription outlived the bus). Removed 3 dead singleton-coupled
+    registration helpers + 1 dead, unbuilt, already-broken test (`test_cash_system.cpp`).
+  - **`CapabilityGraph`** — the 4 process-wide **static** availability vectors (instance ext/layer,
+    device ext/feature) → per-graph instance state (one `CapabilityGraph` per `VulkanDevice`). Leaf
+    capability nodes consult their owning graph; device-level sets are supplied by `VulkanDevice`,
+    instance-level sets self-populate from the loader (`vkEnumerateInstance*Properties` is global, no
+    `VkInstance` needed) — so the old `InstanceNode`→static→device bridge is gone.
+  - **Validated:** full Debug build green; cacher tests (45) + device/capability tests (48) pass;
+    25 s app smoke renders voxels per-frame with no `VK_ERROR`/validation errors. Pre-existing,
+    AR#8-unrelated failures (over code paths untouched here): `test_swap_chain_node.ConfigHasTwoInputs`
+    (stale slot-count), `test_cornell_box.LeftWallHit_Red` (SVO ray geometry),
+    `test_profiler.ConfigToMetricsExportFlow` (profiler metrics validity).
+  - **ProfilerSystem NOT done (deferred, decision 2026-06-14).** It is **benchmark-only** — the app and
+    `EngineContext` never touch it — so it is *not* a blocker to multiple engine instances, and
+    de-singletonizing it would re-open the deliberately-deferred `BenchmarkRunner` surface for zero
+    engine-side gain. Same call as "BenchmarkRunner adopts EngineContext": leave it until a concrete
+    in-engine profiling need appears.
 - [x] **Ship a consumable artifact** [AR#2] — **DONE 2026-06-14** (fat self-contained SDK).
   `cmake -B build -DVIXEN_INSTALL_EXPORT=ON && cmake --install build --prefix <sdk>` produces a
   unified `VixenTargets` export + `VIXENConfig.cmake`; an external project then does

@@ -8,65 +8,64 @@
 
 namespace Vixen {
 
-//==============================================================================
-// Static member initialization
-//==============================================================================
+namespace {
 
-std::vector<std::string> InstanceExtensionCapability::availableExtensions_;
-std::vector<std::string> InstanceLayerCapability::availableLayers_;
-std::vector<std::string> DeviceExtensionCapability::availableExtensions_;
-std::vector<std::string> DeviceFeatureCapability::availableFeatures_;
-
-//==============================================================================
-// InstanceExtensionCapability
-//==============================================================================
-
-void InstanceExtensionCapability::SetAvailableExtensions(const std::vector<std::string>& extensions) {
-    availableExtensions_ = extensions;
+bool Contains(const std::vector<std::string>& haystack, const std::string& needle) {
+    return std::find(haystack.begin(), haystack.end(), needle) != haystack.end();
 }
+
+// Instance-level availability is global to the loader/ICD set (no VkInstance handle required), so a
+// per-device CapabilityGraph can populate it itself rather than receiving it from the InstanceNode
+// via process-wide statics (AR#8).
+std::vector<std::string> EnumerateAvailableInstanceExtensions() {
+    uint32_t count = 0;
+    vkEnumerateInstanceExtensionProperties(nullptr, &count, nullptr);
+    std::vector<VkExtensionProperties> props(count);
+    vkEnumerateInstanceExtensionProperties(nullptr, &count, props.data());
+
+    std::vector<std::string> names;
+    names.reserve(count);
+    for (const auto& p : props) {
+        names.emplace_back(p.extensionName);
+    }
+    return names;
+}
+
+std::vector<std::string> EnumerateAvailableInstanceLayers() {
+    uint32_t count = 0;
+    vkEnumerateInstanceLayerProperties(&count, nullptr);
+    std::vector<VkLayerProperties> props(count);
+    vkEnumerateInstanceLayerProperties(&count, props.data());
+
+    std::vector<std::string> names;
+    names.reserve(count);
+    for (const auto& p : props) {
+        names.emplace_back(p.layerName);
+    }
+    return names;
+}
+
+} // namespace
+
+//==============================================================================
+// Leaf capability availability checks — consult the owning graph's per-instance
+// availability sets (AR#8: replaces the former process-wide static vectors).
+//==============================================================================
 
 bool InstanceExtensionCapability::CheckAvailability() const {
-    return std::find(availableExtensions_.begin(), availableExtensions_.end(), extensionName_)
-           != availableExtensions_.end();
-}
-
-//==============================================================================
-// InstanceLayerCapability
-//==============================================================================
-
-void InstanceLayerCapability::SetAvailableLayers(const std::vector<std::string>& layers) {
-    availableLayers_ = layers;
+    return graph_ && graph_->IsInstanceExtensionAvailable(extensionName_);
 }
 
 bool InstanceLayerCapability::CheckAvailability() const {
-    return std::find(availableLayers_.begin(), availableLayers_.end(), layerName_)
-           != availableLayers_.end();
-}
-
-//==============================================================================
-// DeviceExtensionCapability
-//==============================================================================
-
-void DeviceExtensionCapability::SetAvailableExtensions(const std::vector<std::string>& extensions) {
-    availableExtensions_ = extensions;
+    return graph_ && graph_->IsInstanceLayerAvailable(layerName_);
 }
 
 bool DeviceExtensionCapability::CheckAvailability() const {
-    return std::find(availableExtensions_.begin(), availableExtensions_.end(), extensionName_)
-           != availableExtensions_.end();
-}
-
-//==============================================================================
-// DeviceFeatureCapability
-//==============================================================================
-
-void DeviceFeatureCapability::SetAvailableFeatures(const std::vector<std::string>& features) {
-    availableFeatures_ = features;
+    return graph_ && graph_->IsDeviceExtensionAvailable(extensionName_);
 }
 
 bool DeviceFeatureCapability::CheckAvailability() const {
-    return std::find(availableFeatures_.begin(), availableFeatures_.end(), featureName_)
-           != availableFeatures_.end();
+    return graph_ && graph_->IsDeviceFeatureAvailable(featureName_);
 }
 
 //==============================================================================
@@ -74,6 +73,7 @@ bool DeviceFeatureCapability::CheckAvailability() const {
 //==============================================================================
 
 void CapabilityGraph::RegisterCapability(std::shared_ptr<CapabilityNode> capability) {
+    capability->SetOwningGraph(this);  // AR#8: node consults this graph's availability sets
     capabilities_[capability->GetName()] = capability;
 }
 
@@ -93,7 +93,44 @@ void CapabilityGraph::InvalidateAll() {
     }
 }
 
+void CapabilityGraph::SetAvailableInstanceExtensions(std::vector<std::string> extensions) {
+    availableInstanceExtensions_ = std::move(extensions);
+}
+
+void CapabilityGraph::SetAvailableInstanceLayers(std::vector<std::string> layers) {
+    availableInstanceLayers_ = std::move(layers);
+}
+
+void CapabilityGraph::SetAvailableDeviceExtensions(std::vector<std::string> extensions) {
+    availableDeviceExtensions_ = std::move(extensions);
+}
+
+void CapabilityGraph::SetAvailableDeviceFeatures(std::vector<std::string> features) {
+    availableDeviceFeatures_ = std::move(features);
+}
+
+bool CapabilityGraph::IsInstanceExtensionAvailable(const std::string& name) const {
+    return Contains(availableInstanceExtensions_, name);
+}
+
+bool CapabilityGraph::IsInstanceLayerAvailable(const std::string& name) const {
+    return Contains(availableInstanceLayers_, name);
+}
+
+bool CapabilityGraph::IsDeviceExtensionAvailable(const std::string& name) const {
+    return Contains(availableDeviceExtensions_, name);
+}
+
+bool CapabilityGraph::IsDeviceFeatureAvailable(const std::string& name) const {
+    return Contains(availableDeviceFeatures_, name);
+}
+
 void CapabilityGraph::BuildStandardCapabilities() {
+    // AR#8: self-populate instance-level availability from the loader (globally queryable, no
+    // VkInstance needed). Device-level sets are filled in later by the owning VulkanDevice.
+    SetAvailableInstanceExtensions(EnumerateAvailableInstanceExtensions());
+    SetAvailableInstanceLayers(EnumerateAvailableInstanceLayers());
+
     //==========================================================================
     // Base Device Extensions
     //==========================================================================
@@ -151,7 +188,7 @@ void CapabilityGraph::BuildStandardCapabilities() {
 
     // timelineSemaphore (core Vulkan 1.2). Used by the BatchedUploader for timeline-based
     // upload synchronisation; gated through the graph so enablement only happens when the
-    // physical device reports support (DeviceFeatureCapability::SetAvailableFeatures).
+    // physical device reports support (CapabilityGraph::SetAvailableDeviceFeatures).
     auto timelineSemaphore = CreateCapability<DeviceFeatureCapability>(
         "DeviceFeature:timelineSemaphore", "timelineSemaphore");
 

@@ -13,6 +13,8 @@ namespace Vixen::Vulkan::Resources {
 
 namespace CashSystem {
 
+class MainCacher;  // owning cacher, set at creation (AR#8 — replaces the process-wide singleton)
+
 class CacherBase {
 public:
     virtual ~CacherBase() = default;
@@ -48,6 +50,15 @@ public:
 
     // Return human readable name for diagnostics
     virtual std::string_view name() const noexcept = 0;
+
+    // Owning MainCacher, set by MainCacher when it creates this cacher via a factory.
+    // Lets a cacher reach sibling cachers (e.g. a pipeline cacher fetching its layout cacher)
+    // without reaching the former process-wide MainCacher::Instance() singleton (AR#8).
+    void SetMainCacher(MainCacher* owner) noexcept { mainCacher_ = owner; }
+    MainCacher* GetMainCacher() const noexcept { return mainCacher_; }
+
+protected:
+    MainCacher* mainCacher_ = nullptr;  // non-owning
 };
 
 } // namespace CashSystem

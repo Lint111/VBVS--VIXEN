@@ -215,13 +215,10 @@ void InstanceNode::ValidateAndFilterExtensions() {
     enabledExtensions = validatedExtensions;
     NODE_LOG_INFO("[InstanceNode] Enabled " + std::to_string(enabledExtensions.size()) + " instance extensions");
 
-    // Populate capability graph with available instance extensions
-    std::vector<std::string> availableExtStrings;
-    availableExtStrings.reserve(availableExtensions.size());
-    for (const auto& ext : availableExtensions) {
-        availableExtStrings.emplace_back(ext.extensionName);
-    }
-    Vixen::InstanceExtensionCapability::SetAvailableExtensions(availableExtStrings);
+    // AR#8: instance-extension availability is no longer pushed to a process-wide static here.
+    // Each device's CapabilityGraph self-populates it from the loader (instance availability is
+    // globally queryable via vkEnumerateInstanceExtensionProperties), so multiple instances/devices
+    // in one process don't clobber shared capability state.
 }
 
 void InstanceNode::ValidateAndFilterLayers() {
@@ -259,13 +256,8 @@ void InstanceNode::ValidateAndFilterLayers() {
     enabledLayers = validatedLayers;
     NODE_LOG_INFO("[InstanceNode] Enabled " + std::to_string(enabledLayers.size()) + " instance layers");
 
-    // Populate capability graph with available instance layers
-    std::vector<std::string> availableLayerStrings;
-    availableLayerStrings.reserve(availableLayers.size());
-    for (const auto& layer : availableLayers) {
-        availableLayerStrings.emplace_back(layer.layerName);
-    }
-    Vixen::InstanceLayerCapability::SetAvailableLayers(availableLayerStrings);
+    // AR#8: instance-layer availability is no longer pushed to a process-wide static here (see the
+    // instance-extension note above) — each device's CapabilityGraph self-populates from the loader.
 }
 
 } // namespace Vixen::RenderGraph

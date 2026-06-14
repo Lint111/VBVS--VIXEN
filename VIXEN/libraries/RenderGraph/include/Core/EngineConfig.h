@@ -22,7 +22,8 @@ struct EngineConfig {
     /// Engine-level diagnostics logger (graph + nodes). May be null.
     Vixen::Log::Logger* logger = nullptr;
 
-    /// Cache provider. Null => the process-wide CashSystem::MainCacher::Instance() is used.
+    /// Cache provider (non-owning). Null => EngineContext creates and OWNS its own MainCacher, so
+    /// multiple EngineContexts never share process-wide cache state (AR#8 — no singleton fallback).
     CashSystem::MainCacher* mainCacher = nullptr;
 
     /// Directory where the CalibrationStore persists task profiles.

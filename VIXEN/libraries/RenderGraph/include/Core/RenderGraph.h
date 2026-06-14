@@ -2,6 +2,8 @@
 
 #include "Headers.h"
 
+#include <cassert>
+
 #include "Core/NodeInstance.h"
 #include "Core/NodeTypeRegistry.h"
 #include "Core/GraphTopology.h"
@@ -104,13 +106,14 @@ public:
      * @param registry The node type registry
      * @param messageBus Event bus for graph events (optional)
      * @param mainLogger Optional logger for debug output (in debug builds)
-     * @param mainCacher Main cache system (optional, defaults to singleton)
+     * @param mainCacher Main cache system (required; injected by EngineContext — AR#8 removed the
+     *        process-wide MainCacher::Instance() fallback so multiple engines don't share caches)
      */
     explicit RenderGraph(
         NodeTypeRegistry* registry,
         EventBus::MessageBus* messageBus = nullptr,
         Logger* mainLogger = nullptr,
-        CashSystem::MainCacher* mainCacher = nullptr
+        CashSystem::MainCacher* mainCacher = nullptr  // de facto required; see GetMainCacher()
     );
 
     ~RenderGraph();
@@ -492,7 +495,10 @@ public:
      * Registration is idempotent - multiple nodes can call RegisterCacher for the same type.
      */
     CashSystem::MainCacher& GetMainCacher() {
-        return mainCacher ? *mainCacher : CashSystem::MainCacher::Instance();
+        // AR#8: no MainCacher::Instance() fallback. The cacher is injected by EngineContext (which
+        // owns one when the host supplies none), so two engines never share process-wide caches.
+        assert(mainCacher && "RenderGraph has no MainCacher — construct it via EngineContext or pass one to the ctor");
+        return *mainCacher;
     }
 
     /**

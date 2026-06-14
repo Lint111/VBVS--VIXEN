@@ -40,7 +40,7 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
     // feature-enablement decisions below are gated via capabilityGraph_.IsCapabilityAvailable()
     // (same convention as device extensions) rather than ad-hoc inline queries.
     capabilityGraph_.BuildStandardCapabilities();
-    Vixen::DeviceFeatureCapability::SetAvailableFeatures(QueryAvailableDeviceFeatures());
+    capabilityGraph_.SetAvailableDeviceFeatures(QueryAvailableDeviceFeatures());  // AR#8: per-graph, was static
 
     VkPhysicalDeviceFeatures2 deviceFeatures2{};
     deviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
@@ -183,7 +183,7 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
     for (const char* ext : extensions) {
         extensionStrings.emplace_back(ext);
     }
-    Vixen::DeviceExtensionCapability::SetAvailableExtensions(extensionStrings);
+    capabilityGraph_.SetAvailableDeviceExtensions(extensionStrings);  // AR#8: per-graph, was static
 
     // Invalidate graph to force recheck with new extensions
     capabilityGraph_.InvalidateAll();
@@ -398,7 +398,7 @@ RTXCapabilities VulkanDevice::CheckRTXSupport() const {
 std::vector<std::string> VulkanDevice::QueryAvailableDeviceFeatures() const {
     // Query the physical device for the non-concrete features tracked by the capability graph
     // and return the names it reports as supported. Feed into
-    // DeviceFeatureCapability::SetAvailableFeatures() so feature enablement is gated centrally.
+    // CapabilityGraph::SetAvailableDeviceFeatures() so feature enablement is gated centrally.
     // Add further VkPhysicalDeviceVulkan1x / extension feature structs to the pNext chain (and
     // a matching name push_back) as more non-concrete features are adopted.
     std::vector<std::string> supported;

@@ -275,8 +275,12 @@ void PipelineCacher::CreatePipelineLayout(const PipelineCreateParams& ci, Pipeli
     // ===== Convenience Path: Create from descriptor set layout =====
     LOG_DEBUG("No layout wrapper provided, using convenience path (PipelineLayoutCacher)");
 
-    // Get PipelineLayoutCacher from MainCacher (register if needed)
-    auto& mainCacher = MainCacher::Instance();
+    // Get PipelineLayoutCacher from our owning MainCacher (AR#8: was MainCacher::Instance()), register if needed
+    MainCacher* owner = GetMainCacher();
+    if (!owner) {
+        throw std::runtime_error("PipelineCacher: no owning MainCacher");
+    }
+    auto& mainCacher = *owner;
 
     if (!mainCacher.IsRegistered(typeid(PipelineLayoutWrapper))) {
         LOG_DEBUG("Registering PipelineLayoutCacher");

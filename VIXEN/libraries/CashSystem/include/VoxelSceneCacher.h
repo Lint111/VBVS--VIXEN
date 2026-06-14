@@ -349,21 +349,8 @@ private:
     std::unique_ptr<Vixen::SVO::LaineKarrasOctree> m_octree;
 };
 
-// ============================================================================
-// REGISTRATION HELPER
-// ============================================================================
-
-/**
- * @brief Register VoxelSceneCacher with MainCacher
- *
- * Call during application initialization before using the cacher.
- */
-inline void RegisterVoxelSceneCacher() {
-    MainCacher::Instance().RegisterCacher<VoxelSceneCacher, VoxelSceneData, VoxelSceneCreateInfo>(
-        std::type_index(typeid(VoxelSceneData)),
-        "VoxelSceneCacher",
-        true  // device-dependent
-    );
-}
+// AR#8: the former inline RegisterVoxelSceneCacher() free helper (reached MainCacher::Instance())
+// was unused dead code — VoxelGridNode registers VoxelSceneCacher via its graph's injected
+// MainCacher. Removed; register on your own MainCacher instance instead.
 
 } // namespace CashSystem

@@ -45,11 +45,16 @@ public:
 private:
     // Non-owning.
     Vixen::Log::Logger* logger_;
-    CashSystem::MainCacher* mainCacher_;
+
+    // AR#8: when the host injects no cacher, EngineContext OWNS one — no process-wide singleton.
+    // Declared before the owned graph so it outlives the graph's node cleanup; the destructor
+    // severs its bus subscription (MainCacher::Shutdown) before bus_ is destroyed.
+    std::unique_ptr<CashSystem::MainCacher> ownedCacher_;
+    CashSystem::MainCacher* mainCacher_ = nullptr;  // view: -> ownedCacher_ or config.mainCacher
 
     // Owned. Declaration order IS the construction order; destruction is the reverse
-    // (calibration_ -> graph_ -> bus_ -> registry_), which keeps bus_/registry_ alive through
-    // the graph's node cleanup.
+    // (calibration_ -> graph_ -> bus_ -> registry_ -> ownedCacher_), which keeps bus_/registry_ and
+    // the cacher alive through the graph's node cleanup.
     std::unique_ptr<NodeTypeRegistry> registry_;
     std::unique_ptr<Vixen::EventBus::MessageBus> bus_;
     std::unique_ptr<RenderGraph> graph_;
