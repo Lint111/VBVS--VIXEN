@@ -340,8 +340,8 @@ target_compile_features(RenderGraph PUBLIC cxx_std_23)
 target_include_directories(RenderGraph
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
-        # Main application includes - use SOURCE_DIR for project root
-        $<BUILD_INTERFACE:${VIXEN_ROOT}/application/main/include>
+        # Common headers (Headers.h / VixenHash.h / MeshData.h) now come from Core::Core (linked below),
+        # not the application layer (AR#3/#4 build-layering severance).
         # Generated SDI headers - priority order:
         #   1. Dev-time: Tool-generated SDI files in source tree
         #   2. Build-time: CMake-generated SDI files (main app)
@@ -363,6 +363,7 @@ target_include_directories(RenderGraph
 
 target_link_libraries(RenderGraph
     PUBLIC
+        Core::Core  # Common headers (Headers.h / VixenHash.h / MeshData.h) — AR#3/#4
         VulkanResources
         Logger
         EventBus
