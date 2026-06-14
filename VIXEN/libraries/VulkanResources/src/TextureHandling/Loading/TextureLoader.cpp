@@ -40,6 +40,43 @@ VulkanResult<TextureData> TextureLoader::Load(const char* fileName, const Textur
     return texture;
 }
 
+VulkanResult<TextureData> TextureLoader::LoadFromMemory(
+    const uint8_t* pixels,
+    uint32_t width,
+    uint32_t height,
+    const TextureLoadConfig& config
+) {
+    if (pixels == nullptr || width == 0 || height == 0) {
+        return std::unexpected(VulkanError{
+            VK_ERROR_INITIALIZATION_FAILED,
+            "TextureLoader::LoadFromMemory: null pixels or zero dimensions"});
+    }
+
+    TextureData texture{};
+
+    // Describe the in-memory image. We do NOT own `pixels` and there is nothing to
+    // free afterwards (unlike the file path, which allocates via stb), so this path
+    // has no FreePixelData call. The upload itself is the identical GPU path as Load().
+    PixelData pixelData{};
+    pixelData.pixels = const_cast<void*>(static_cast<const void*>(pixels));
+    pixelData.width = width;
+    pixelData.height = height;
+    pixelData.mipLevels = 1;  // single mip level for procedurally-supplied bytes
+    pixelData.size = static_cast<VkDeviceSize>(width) * height * 4;  // RGBA8
+
+    VulkanStatus uploadStatus = (config.uploadMode == TextureLoadConfig::UploadMode::Linear)
+        ? UploadLinear(pixelData, &texture, config)
+        : UploadOptimal(pixelData, &texture, config);
+
+    // Tear down any partially-created GPU resources on failure so nothing leaks.
+    if (!uploadStatus.has_value()) {
+        DestroyPartialTexture(texture);
+        return std::unexpected(uploadStatus.error());
+    }
+
+    return texture;
+}
+
 // Tear down whatever GPU resources Upload* created in `texture` before a failure, so a failed
 // Load() leaks nothing. Handles left VK_NULL_HANDLE by the value-initialised TextureData are skipped.
 void TextureLoader::DestroyPartialTexture(TextureData& texture) {

@@ -63,6 +63,19 @@ public:
     // Load texture from file and return TextureData for caller to own
     VulkanResult<TextureData> Load(const char* fileName, const TextureLoadConfig& config);
 
+    // Upload an in-memory RGBA8 image (no file I/O) through the exact same GPU
+    // staging/upload path as Load(). `pixels` must be width*height*4 bytes of
+    // tightly-packed RGBA8 (single mip level). The returned TextureData is owned
+    // by the caller, identical in shape to what Load() produces. This is the
+    // file-independent seam used for procedurally-generated textures (e.g. a
+    // default checkerboard) so they go through the real upload, not a parallel one.
+    VulkanResult<TextureData> LoadFromMemory(
+        const uint8_t* pixels,
+        uint32_t width,
+        uint32_t height,
+        const TextureLoadConfig& config
+    );
+
 protected:
     // Override this to load pixel data from file (library-specific)
     virtual VulkanResult<PixelData> LoadPixelData(const char* fileName) = 0;

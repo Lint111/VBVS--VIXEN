@@ -281,16 +281,20 @@ Correctness bugs + the only-consumer's pain + legal hygiene. Wasted on no possib
   `FindMemoryType` copies (added to dodge a claimed MSVC `LNK1163`); fix DepthBufferNode's
   `memoryTypeIndex=0` placeholder [AR#18] (NOT done in this pass — its slot migrated but the
   placeholder remains).
-- [~] **Many-entity draw path** [AR#31] — **increment 1 DONE 2026-06-14** (on branch
-  `claude/ar31-instancing-increment`): hardware **instancing** — one cube mesh, **64 instances** via an
-  SSBO of per-instance `mat4` transforms indexed by `gl_InstanceIndex`. New `InstanceBufferNode` produces
-  the transform SSBO (FR-7, real memory-type selection, 25-test config suite); rendered in an isolated
-  `VIXEN_INSTANCING_DEMO` graph (mirrors `BuildUIGraph`, voxel path untouched) with dedicated
-  `InstancingDemo.vert/.frag` (binding-0 SSBO; `Draw.*` couldn't be reused — frag binding-1 sampler
-  collision + no MVP-UBO producer). Verified: build green, 0 VK errors, 48631 render events,
-  instanceCount=64. Design: [[Instancing-Increment-Design-2026-06]]. **Remaining increments:** heterogeneous
-  multi-mesh **draw lists**, `vkCmdDrawIndirect` (GPU-driven), GPU culling, per-frame dynamic transforms.
-  NOTE: gotcha — WSL bash does not pass env vars to Windows `.exe`; run the demo via
+- [~] **Many-entity draw path** [AR#31] — **increment 1 DONE 2026-06-15**: hardware **instancing** — one
+  cube mesh, **64 instances** via an SSBO of per-instance `mat4` transforms indexed by `gl_InstanceIndex`,
+  rendered through the **reusable general `Draw.vert`/`Draw.frag` path** (3 reflection-driven descriptors:
+  0 = MVP UBO, 1 = texture, 2 = instance SSBO) in an isolated `VIXEN_INSTANCING_DEMO` graph (mirrors
+  `BuildUIGraph`, voxel path untouched). New nodes: `InstanceBufferNode` (transform SSBO),
+  `MvpUniformNode` (MVP UBO) — both FR-7 + real memory-type selection + config tests. **Bonus root-cause
+  fixes uncovered en route:** `CashSystem::TextureCacher` was a stub (no real VkImage) → now does real
+  staging upload + a default checkerboard when `FILE_PATH` empty (also fixes the file path); and the
+  combined-image-sampler descriptor path was incomplete → added `ImageSamplerPair` so view+sampler bind as
+  one. Verified: build green, demo 0 VK errors / 64 instances / textured cubes, default voxel path
+  regression-clean (0 VK errors, sustained render loop past the bake). Design:
+  [[Instancing-Increment-Design-2026-06]]. **Remaining increments:** heterogeneous multi-mesh **draw
+  lists**, `vkCmdDrawIndirect` (GPU-driven), GPU culling, per-frame dynamic transforms.
+  NOTE: gotcha — WSL bash does not pass env vars to Windows `.exe`; run via
   `cmd.exe /c "set VIXEN_INSTANCING_DEMO=1&& VIXEN.exe"`.
 - [ ] **Per-frame dynamic content** — `StreamingBufferNode`/`DynamicBufferNode`; drain the dead-ended
   `BatchedUpdater` (`VulkanDevice::RecordUpdates` has zero callers) [AR#33]; per-frame dynamic
