@@ -24,6 +24,7 @@
 #include "Nodes/TextureLoaderNode.h"
 #include "Nodes/DepthBufferNode.h"
 #include "Nodes/RenderTargetNode.h"
+#include "Nodes/InstanceBufferNode.h"
 #include "Nodes/SwapChainNode.h"
 #include "Nodes/VertexBufferNode.h"
 #include "Nodes/RenderPassNode.h"
@@ -491,6 +492,7 @@ void VulkanGraphApplication::RegisterNodeTypes(NodeTypeRegistry& registry) {
     registry.Register<TextureLoaderNodeType>();
     registry.Register<DepthBufferNodeType>();
     registry.Register<RenderTargetNodeType>();
+    registry.Register<InstanceBufferNodeType>();
     registry.Register<SwapChainNodeType>();
     registry.Register<VertexBufferNodeType>();
     registry.Register<RenderPassNodeType>();
@@ -608,6 +610,251 @@ void VulkanGraphApplication::BuildUIGraph() {
     mainLogger->Info("UI-only RmlUi demo graph built (10 nodes)");
 }
 
+void VulkanGraphApplication::BuildInstancingDemoGraph() {
+    using namespace Vixen::RenderGraph;
+    mainLogger->Info("Building instanced-cube raster demo graph (AR#31)");
+
+    // gridDim^2 cubes from a single mesh, one per-instance model matrix in an SSBO indexed
+    // by gl_InstanceIndex. Isolated env-gated graph; mirrors BuildUIGraph's self-contained
+    // infrastructure (own device/window/swapchain/etc.) so the live voxel path is untouched.
+    constexpr uint32_t kGridDim = 8u;                 // 8x8 = 64 instances
+    const uint32_t     kInstanceCount = kGridDim * kGridDim;
+
+    // ----- Infrastructure -----
+    NodeHandle instanceNode    = renderGraph->AddNode<InstanceNodeType>("inst_instance");
+    NodeHandle deviceNode      = renderGraph->AddNode<DeviceNodeType>("inst_device");
+    NodeHandle windowNode      = renderGraph->AddNode<WindowNodeType>("main_window");
+    NodeHandle swapChainNode   = renderGraph->AddNode<SwapChainNodeType>("inst_swapchain");
+    NodeHandle commandPoolNode = renderGraph->AddNode<CommandPoolNodeType>("inst_cmd_pool");
+    NodeHandle frameSyncNode   = renderGraph->AddNode<FrameSyncNodeType>("inst_frame_sync");
+
+    // ----- Raster resources -----
+    NodeHandle depthBufferNode = renderGraph->AddNode<DepthBufferNodeType>("inst_depth");
+    NodeHandle renderPassNode  = renderGraph->AddNode<RenderPassNodeType>("inst_render_pass");
+    NodeHandle framebufferNode = renderGraph->AddNode<FramebufferNodeType>("inst_framebuffer");
+    NodeHandle vertexBufferNode = renderGraph->AddNode<VertexBufferNodeType>("inst_cube_vb");
+    NodeHandle instanceBufferNode = renderGraph->AddNode<InstanceBufferNodeType>("inst_buffer");
+    NodeHandle shaderLibNode   = renderGraph->AddNode<ShaderLibraryNodeType>("inst_shader_lib");
+    NodeHandle descGathererNode = renderGraph->AddNode<DescriptorResourceGathererNodeType>("inst_desc_gatherer");
+    NodeHandle descriptorSetNode = renderGraph->AddNode<DescriptorSetNodeType>("inst_descriptors");
+    NodeHandle pipelineNode    = renderGraph->AddNode<GraphicsPipelineNodeType>("inst_pipeline");
+    NodeHandle geometryRenderNode = renderGraph->AddNode<GeometryRenderNodeType>("inst_render");
+    NodeHandle presentNode     = renderGraph->AddNode<PresentNodeType>("inst_present");
+
+    // ===================================================================
+    // Parameters
+    // ===================================================================
+    auto* window = static_cast<WindowNode*>(renderGraph->GetInstance(windowNode));
+    window->SetParameter(WindowNodeConfig::PARAM_WIDTH, width);
+    window->SetParameter(WindowNodeConfig::PARAM_HEIGHT, height);
+    auto* device = static_cast<DeviceNode*>(renderGraph->GetInstance(deviceNode));
+    device->SetParameter(DeviceNodeConfig::PARAM_GPU_INDEX, 0u);
+
+    // Cube vertex buffer (36 verts, pos vec4 + UV vec2; same layout as the disabled Draw path).
+    auto* vertexBuffer = static_cast<VertexBufferNode*>(renderGraph->GetInstance(vertexBufferNode));
+    vertexBuffer->SetParameter(VertexBufferNodeConfig::PARAM_VERTEX_COUNT, 36u);
+    vertexBuffer->SetParameter(VertexBufferNodeConfig::PARAM_VERTEX_STRIDE, sizeof(VertexWithUV));
+    vertexBuffer->SetParameter(VertexBufferNodeConfig::PARAM_USE_TEXTURE, true);  // location 1 = vec2 UV
+    vertexBuffer->SetParameter(VertexBufferNodeConfig::PARAM_INDEX_COUNT, 0u);    // non-indexed draw
+
+    // Per-instance model-matrix SSBO: gridDim^2 translation matrices on a planar grid.
+    auto* instanceBuffer = static_cast<InstanceBufferNode*>(renderGraph->GetInstance(instanceBufferNode));
+    instanceBuffer->SetParameter(InstanceBufferNodeConfig::PARAM_GRID_DIM, kGridDim);
+    instanceBuffer->SetParameter(InstanceBufferNodeConfig::PARAM_SPACING, 2.5f);
+    if (auto* ibLogger = instanceBuffer->GetLogger()) {
+        ibLogger->SetEnabled(true);
+        ibLogger->SetTerminalOutput(true);
+    }
+
+    // Depth attachment.
+    auto* depthBuffer = static_cast<DepthBufferNode*>(renderGraph->GetInstance(depthBufferNode));
+    depthBuffer->SetParameter(DepthBufferNodeConfig::PARAM_FORMAT,
+                              static_cast<uint32_t>(VK_FORMAT_D32_SFLOAT));
+
+    // Color+depth render pass that ends in present-src.
+    auto* renderPass = static_cast<RenderPassNode*>(renderGraph->GetInstance(renderPassNode));
+    renderPass->SetParameter(RenderPassNodeConfig::PARAM_COLOR_LOAD_OP, AttachmentLoadOp::Clear);
+    renderPass->SetParameter(RenderPassNodeConfig::PARAM_COLOR_STORE_OP, AttachmentStoreOp::Store);
+    renderPass->SetParameter(RenderPassNodeConfig::PARAM_DEPTH_LOAD_OP, AttachmentLoadOp::Clear);
+    renderPass->SetParameter(RenderPassNodeConfig::PARAM_DEPTH_STORE_OP, AttachmentStoreOp::DontCare);
+    renderPass->SetParameter(RenderPassNodeConfig::PARAM_INITIAL_LAYOUT, ImageLayout::Undefined);
+    renderPass->SetParameter(RenderPassNodeConfig::PARAM_FINAL_LAYOUT, ImageLayout::PresentSrc);
+    renderPass->SetParameter(RenderPassNodeConfig::PARAM_SAMPLES, 1u);
+
+    auto* framebuffer = static_cast<FramebufferNode*>(renderGraph->GetInstance(framebufferNode));
+    framebuffer->SetParameter(FramebufferNodeConfig::PARAM_LAYERS, 1u);
+
+    // Graphics pipeline: depth-tested, back-face-culled, filled triangles, CCW front.
+    auto* pipeline = static_cast<GraphicsPipelineNode*>(renderGraph->GetInstance(pipelineNode));
+    pipeline->SetParameter(GraphicsPipelineNodeConfig::ENABLE_DEPTH_TEST, true);
+    pipeline->SetParameter(GraphicsPipelineNodeConfig::ENABLE_DEPTH_WRITE, true);
+    pipeline->SetParameter(GraphicsPipelineNodeConfig::ENABLE_VERTEX_INPUT, true);
+    pipeline->SetParameter(GraphicsPipelineNodeConfig::CULL_MODE, std::string("Back"));
+    pipeline->SetParameter(GraphicsPipelineNodeConfig::POLYGON_MODE, std::string("Fill"));
+    pipeline->SetParameter(GraphicsPipelineNodeConfig::TOPOLOGY, std::string("TriangleList"));
+    pipeline->SetParameter(GraphicsPipelineNodeConfig::FRONT_FACE, std::string("CounterClockwise"));
+
+    // Geometry render: 36 verts, kInstanceCount instances (matches PARAM_GRID_DIM^2).
+    auto* geometryRender = static_cast<GeometryRenderNode*>(renderGraph->GetInstance(geometryRenderNode));
+    geometryRender->SetParameter(GeometryRenderNodeConfig::VERTEX_COUNT, 36u);
+    geometryRender->SetParameter(GeometryRenderNodeConfig::INSTANCE_COUNT, kInstanceCount);
+    geometryRender->SetParameter(GeometryRenderNodeConfig::FIRST_VERTEX, 0u);
+    geometryRender->SetParameter(GeometryRenderNodeConfig::FIRST_INSTANCE, 0u);
+    geometryRender->SetParameter(GeometryRenderNodeConfig::USE_INDEX_BUFFER, false);
+    geometryRender->SetParameter(GeometryRenderNodeConfig::CLEAR_COLOR_R, 0.02f);
+    geometryRender->SetParameter(GeometryRenderNodeConfig::CLEAR_COLOR_G, 0.02f);
+    geometryRender->SetParameter(GeometryRenderNodeConfig::CLEAR_COLOR_B, 0.08f);
+    geometryRender->SetParameter(GeometryRenderNodeConfig::CLEAR_COLOR_A, 1.0f);
+    geometryRender->SetParameter(GeometryRenderNodeConfig::CLEAR_DEPTH, 1.0f);
+    geometryRender->SetParameter(GeometryRenderNodeConfig::CLEAR_STENCIL, 0u);
+    if (auto* grLogger = geometryRender->GetLogger()) {
+        grLogger->SetEnabled(true);
+        grLogger->SetTerminalOutput(true);
+    }
+
+    auto* present = static_cast<PresentNode*>(renderGraph->GetInstance(presentNode));
+    present->SetParameter(PresentNodeConfig::WAIT_FOR_IDLE, true);
+
+    // Demo shader program: InstancingDemo.vert + InstancingDemo.frag. The vertex stage's ONLY
+    // descriptor is the instance SSBO (binding 0); the fragment stage is descriptor-free. This is
+    // a self-contained demo pair (not Draw.vert/Draw.frag): Draw.vert/Draw.frag collide at
+    // binding 1 (vertex SSBO vs fragment sampler2D), which SPIR-V reflection rejects, and Draw.vert
+    // also needs an MVP uniform buffer that no node in the graph produces. The demo bakes the
+    // proj*view into the vertex shader, so binding 0 (the SSBO from InstanceBufferNode via the
+    // gatherer) is the only descriptor that must be satisfied.
+    auto* shaderLib = static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(shaderLibNode));
+    shaderLib->RegisterShaderBuilder([](int vulkanVer, int spirvVer) {
+        ShaderManagement::ShaderBundleBuilder builder;
+
+        std::vector<std::filesystem::path> possiblePaths = {
+#ifdef VIXEN_SHADER_SOURCE_DIR
+            VIXEN_SHADER_SOURCE_DIR "/InstancingDemo.vert",
+#endif
+            "shaders/InstancingDemo.vert",
+            "InstancingDemo.vert",
+            "../shaders/InstancingDemo.vert"
+        };
+        std::filesystem::path vertPath, fragPath;
+        for (const auto& path : possiblePaths) {
+            if (std::filesystem::exists(path)) {
+                vertPath = path;
+                fragPath = path.parent_path() / "InstancingDemo.frag";
+                break;
+            }
+        }
+        if (vertPath.empty()) {
+            throw std::runtime_error("InstancingDemo.vert not found - check shader search paths");
+        }
+
+        ShaderManagement::SdiGeneratorConfig sdiConfig;
+        sdiConfig.outputDirectory = std::filesystem::current_path() / "generated" / "sdi";
+        sdiConfig.namespacePrefix = "ShaderInterface";
+        sdiConfig.generateComments = true;
+
+        builder.SetProgramName("InstancingDemo_Shader")
+               .SetSdiConfig(sdiConfig)
+               .EnableSdiGeneration(true)
+               .SetTargetVulkanVersion(vulkanVer)
+               .SetTargetSpirvVersion(spirvVer)
+               .AddStageFromFile(ShaderManagement::ShaderStage::Vertex, vertPath, "main")
+               .AddStageFromFile(ShaderManagement::ShaderStage::Fragment, fragPath, "main");
+        return builder;
+    });
+
+    // ===================================================================
+    // Connections
+    // ===================================================================
+    ConnectionBatch batch(renderGraph);
+
+    // --- Core infrastructure chain (mirrors BuildUIGraph) ---
+    batch.Connect(instanceNode, InstanceNodeConfig::INSTANCE, deviceNode, DeviceNodeConfig::INSTANCE_IN);
+    batch.Connect(deviceNode, DeviceNodeConfig::INSTANCE_OUT, windowNode, WindowNodeConfig::INSTANCE);
+    batch.Connect(windowNode, WindowNodeConfig::WINDOW, swapChainNode, SwapChainNodeConfig::WINDOW)
+         .Connect(windowNode, WindowNodeConfig::WIDTH_OUT, swapChainNode, SwapChainNodeConfig::WIDTH)
+         .Connect(windowNode, WindowNodeConfig::HEIGHT_OUT, swapChainNode, SwapChainNodeConfig::HEIGHT);
+    batch.Connect(deviceNode, DeviceNodeConfig::INSTANCE_OUT, swapChainNode, SwapChainNodeConfig::INSTANCE)
+         .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, swapChainNode, SwapChainNodeConfig::VULKAN_DEVICE_IN);
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, frameSyncNode, FrameSyncNodeConfig::VULKAN_DEVICE);
+    batch.Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX, swapChainNode, SwapChainNodeConfig::CURRENT_FRAME_INDEX)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY, swapChainNode, SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, commandPoolNode, CommandPoolNodeConfig::VULKAN_DEVICE_IN);
+
+    // --- Depth buffer ---
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, depthBufferNode, DepthBufferNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC, depthBufferNode, DepthBufferNodeConfig::SWAPCHAIN_PUBLIC_VARS)
+         .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL, depthBufferNode, DepthBufferNodeConfig::COMMAND_POOL);
+
+    // --- Render pass (color + depth) ---
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, renderPassNode, RenderPassNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC, renderPassNode, RenderPassNodeConfig::SWAPCHAIN_INFO)
+         .Connect(depthBufferNode, DepthBufferNodeConfig::DEPTH_FORMAT, renderPassNode, RenderPassNodeConfig::DEPTH_FORMAT);
+
+    // --- Framebuffer (wraps swapchain image views + depth attachment) ---
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, framebufferNode, FramebufferNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(renderPassNode, RenderPassNodeConfig::RENDER_PASS, framebufferNode, FramebufferNodeConfig::RENDER_PASS)
+         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC, framebufferNode, FramebufferNodeConfig::SWAPCHAIN_INFO)
+         .Connect(depthBufferNode, DepthBufferNodeConfig::DEPTH_IMAGE_VIEW, framebufferNode, FramebufferNodeConfig::DEPTH_ATTACHMENT);
+
+    // --- Vertex + instance buffers ---
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, vertexBufferNode, VertexBufferNodeConfig::VULKAN_DEVICE_IN);
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, instanceBufferNode, InstanceBufferNodeConfig::VULKAN_DEVICE_IN);
+
+    // --- Shader library ---
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, shaderLibNode, ShaderLibraryNodeConfig::VULKAN_DEVICE_IN);
+
+    // --- Descriptor path: gatherer (reflection-driven) → descriptor set ---
+    // The instance SSBO is bound at binding 0 — the same data-driven SSBO pattern the compute path
+    // uses for octree/brick/material buffers. Dependency|Execute so it is bound on first execute and
+    // refreshed if the source node recompiles (e.g. swapchain resize).
+    batch.Connect(shaderLibNode, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  descGathererNode, DescriptorResourceGathererNodeConfig::SHADER_DATA_BUNDLE);
+    batch.Connect(instanceBufferNode, InstanceBufferNodeConfig::INSTANCE_BUFFER,
+                  descGathererNode, 0,  // Instances SSBO at binding 0
+                  SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, descriptorSetNode, DescriptorSetNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(shaderLibNode, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE, descriptorSetNode, DescriptorSetNodeConfig::SHADER_DATA_BUNDLE)
+         .Connect(descGathererNode, DescriptorResourceGathererNodeConfig::DESCRIPTOR_RESOURCES, descriptorSetNode, DescriptorSetNodeConfig::DESCRIPTOR_RESOURCES)
+         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC, descriptorSetNode, DescriptorSetNodeConfig::SWAPCHAIN_INFO)
+         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX, descriptorSetNode, DescriptorSetNodeConfig::IMAGE_INDEX);
+
+    // --- Graphics pipeline ---
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, pipelineNode, GraphicsPipelineNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(shaderLibNode, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE, pipelineNode, GraphicsPipelineNodeConfig::SHADER_DATA_BUNDLE)
+         .Connect(renderPassNode, RenderPassNodeConfig::RENDER_PASS, pipelineNode, GraphicsPipelineNodeConfig::RENDER_PASS)
+         .Connect(descriptorSetNode, DescriptorSetNodeConfig::DESCRIPTOR_SET_LAYOUT, pipelineNode, GraphicsPipelineNodeConfig::DESCRIPTOR_SET_LAYOUT);
+
+    // --- Geometry render (the instanced draw) ---
+    batch.Connect(renderPassNode, RenderPassNodeConfig::RENDER_PASS, geometryRenderNode, GeometryRenderNodeConfig::RENDER_PASS)
+         .Connect(framebufferNode, FramebufferNodeConfig::FRAMEBUFFERS, geometryRenderNode, GeometryRenderNodeConfig::FRAMEBUFFERS)
+         .Connect(pipelineNode, GraphicsPipelineNodeConfig::PIPELINE, geometryRenderNode, GeometryRenderNodeConfig::PIPELINE)
+         .Connect(pipelineNode, GraphicsPipelineNodeConfig::PIPELINE_LAYOUT, geometryRenderNode, GeometryRenderNodeConfig::PIPELINE_LAYOUT)
+         .Connect(descriptorSetNode, DescriptorSetNodeConfig::DESCRIPTOR_SETS, geometryRenderNode, GeometryRenderNodeConfig::DESCRIPTOR_SETS)
+         .Connect(vertexBufferNode, VertexBufferNodeConfig::VERTEX_BUFFER, geometryRenderNode, GeometryRenderNodeConfig::VERTEX_BUFFER)
+         .Connect(vertexBufferNode, VertexBufferNodeConfig::INDEX_BUFFER, geometryRenderNode, GeometryRenderNodeConfig::INDEX_BUFFER)
+         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC, geometryRenderNode, GeometryRenderNodeConfig::SWAPCHAIN_INFO)
+         .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL, geometryRenderNode, GeometryRenderNodeConfig::COMMAND_POOL)
+         .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, geometryRenderNode, GeometryRenderNodeConfig::VULKAN_DEVICE)
+         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX, geometryRenderNode, GeometryRenderNodeConfig::IMAGE_INDEX)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX, geometryRenderNode, GeometryRenderNodeConfig::CURRENT_FRAME_INDEX)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::IN_FLIGHT_FENCE, geometryRenderNode, GeometryRenderNodeConfig::IN_FLIGHT_FENCE)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY, geometryRenderNode, GeometryRenderNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
+         .Connect(swapChainNode, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY, geometryRenderNode, GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
+
+    // --- Present ---
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, presentNode, PresentNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_HANDLE, presentNode, PresentNodeConfig::SWAPCHAIN)
+         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX, presentNode, PresentNodeConfig::IMAGE_INDEX)
+         .Connect(geometryRenderNode, GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORE, presentNode, PresentNodeConfig::RENDER_COMPLETE_SEMAPHORE)
+         .Connect(swapChainNode, SwapChainNodeConfig::PRESENT_FENCES_ARRAY, presentNode, PresentNodeConfig::PRESENT_FENCE_ARRAY);
+
+    size_t connectionCount = batch.GetConnectionCount();
+    batch.RegisterAll();
+    mainLogger->Info("Instanced-cube demo graph built (" + std::to_string(renderGraph->GetNodeCount()) +
+                     " nodes, " + std::to_string(connectionCount) + " connections, " +
+                     std::to_string(kInstanceCount) + " instances)");
+}
+
 void VulkanGraphApplication::BuildRenderGraph() {
     if (!renderGraph) {
         mainLogger->Error("Cannot build render graph: RenderGraph not initialized");
@@ -618,6 +865,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
     if (std::getenv("VIXEN_UI_DEMO")) {
         mainLogger->Info("VIXEN_UI_DEMO set - building UI-only RmlUi demo graph");
         BuildUIGraph();
+        return;
+    }
+
+    // AR#31: opt into the isolated instanced-cube raster demo via env var, leaving the
+    // live voxel-compute path untouched.
+    if (std::getenv("VIXEN_INSTANCING_DEMO")) {
+        mainLogger->Info("VIXEN_INSTANCING_DEMO set - building instanced-cube raster demo graph");
+        BuildInstancingDemoGraph();
         return;
     }
 

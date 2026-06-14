@@ -1,0 +1,135 @@
+---
+title: Many-entity draw path — instancing increment (AR#31, increment 1)
+aliases: [InstanceBufferNode, instancing, gl_InstanceIndex, AR#31 increment]
+tags: [architecture, design, rendergraph, presentation-layer, AR31]
+created: 2026-06-14
+status: DONE (on branch claude/ar31-instancing-increment) — built, renders 64 instanced cubes, 0 VK errors
+related:
+  - "[[RenderGraph]]"
+  - "[[Maturation-Backlog-2026-06]]"
+  - "[[BlendMode-Design-2026-06]]"
+---
+
+# Many-entity draw path — instancing increment (AR#31, increment 1)
+
+The first real step toward many-entity rendering: one mesh, **N instances** via hardware instancing,
+each with its own transform from an SSBO indexed by `gl_InstanceIndex`. Rendered in an **isolated
+env-var demo graph** so the live voxel-compute path is untouched. Source: AR#31, scope chosen
+"instancing increment first" (2026-06-14).
+
+## Context (what exists today)
+
+- **Raster path is dormant.** The live app runs **compute-only** (voxel ray-marching); the entire
+  graphics-pipeline branch in `VulkanGraphApplication.cpp` is disabled inside `/* */` blocks
+  (`BuildRenderGraph`, ~lines 640–657 nodes, 698–756 params). The voxel path writes the swapchain.
+- **One mesh, hardcoded.** `VertexBufferNode` uploads a static 36-vertex cube (`Core/MeshData.h`).
+- **`GeometryRenderNode` already supports instancing** — `RecordDrawCall` issues
+  `vkCmdDraw(vertexCount, instanceCount, …)` (`GeometryRenderNode.cpp:514-520`); `INSTANCE_COUNT` is a
+  parameter. The draw primitive is done; what's missing is the per-instance data + a shader that reads it.
+- **`Draw.vert`** uses a single-MVP UBO (`mat4 mvp`, binding 0) — no per-instance data.
+- **Isolated alternate graphs already exist:** `VIXEN_UI_DEMO` env var → `BuildUIGraph()`
+  (`VulkanGraphApplication.cpp:526, 617-622`) builds a separate graph leaving voxel untouched. This is
+  the re-light pattern to mirror.
+- Wiring uses the `ConnectionBatch` API (`batch.Connect(src, OUT, dst, IN)`).
+
+## Decisions
+
+| # | Decision | Choice |
+|---|----------|--------|
+| Scope | how much to build | **Instancing increment**: one mesh, N instances, re-lit just enough to see N cubes. Defer multi-mesh draw-lists + `vkCmdDrawIndirect`. |
+| Data path | per-instance transforms | **SSBO indexed by `gl_InstanceIndex`** (not instance vertex attributes) — the path GPU-driven culling/indirect later builds on. |
+| Source | where transforms come from | **New `InstanceBufferNode`** — a dedicated producer node (the reusable seam for future per-frame transforms/culling), not inline. |
+| Re-light | how to render | **`BuildInstancingDemoGraph()`** gated by `VIXEN_INSTANCING_DEMO`, mirroring `BuildUIGraph` — voxel path untouched. |
+
+## Design
+
+### 1. `InstanceBufferNode` (new producer node)
+
+A `TypedNode<InstanceBufferNodeConfig>` that allocates a storage buffer of N `mat4` model matrices and
+outputs it for the descriptor set. Mirror the **`RenderTargetNode`** producer pattern (AR#28:
+`libraries/RenderGraph/{include/Data/Nodes/RenderTargetNodeConfig.h, include/Nodes/RenderTargetNode.h,
+src/Nodes/RenderTargetNode.cpp}`) for structure, FR-7 lifecycle (`ctx.reason`), and registration.
+
+- **Inputs:** `VULKAN_DEVICE (VulkanDevice*)`.
+- **Outputs:** `INSTANCE_BUFFER (VkBuffer)`; `INSTANCE_COUNT (uint32_t)`.
+- **Parameters:** `GRID_DIM (uint32_t, default 8)` → N = GRID_DIM³ (or GRID_DIM² for a planar grid —
+  implementer picks the simplest visible layout); `SPACING (float, default 2.0)`.
+- **Allocation:** one `VkBuffer` with `VK_BUFFER_USAGE_STORAGE_BUFFER_BIT`, host-visible+coherent (simplest
+  for a static upload), sized `N * sizeof(mat4)`. Use the real memory-type selection (mirror
+  `RenderTargetNode::CreateTarget` / `NodeHelpers` `FindMemoryType` — **not** a `memoryTypeIndex=0`
+  placeholder). Fill with a grid of translation matrices (`glm::translate`), map/memcpy/unmap once at
+  compile.
+- **Lifecycle (FR-7):** create once; persist across recompile; free only on `FinalTeardown`.
+
+### 2. Shader (`shaders/Draw.vert` + the `VixenBenchmark/shaders/Draw.vert` copy)
+
+Add the instance SSBO and apply the per-instance model:
+
+```glsl
+#version 450
+layout (std140, binding = 0) uniform bufferVals { mat4 mvp; } myBufferVals;          // proj*view
+layout (std430, binding = 1) readonly buffer Instances { mat4 model[]; } instances;   // AR#31
+
+layout(location = 0) in vec4 pos;
+layout(location = 1) in vec2 inUV;
+layout(location = 0) out vec2 outUV;
+
+void main() {
+    outUV = inUV;
+    gl_Position = myBufferVals.mvp * instances.model[gl_InstanceIndex] * pos;
+    gl_Position.y = -gl_Position.y;
+    gl_Position.z = (gl_Position.z + gl_Position.w) / 2.0;
+}
+```
+
+`Draw.frag` unchanged. (Whoever fills the `mvp` UBO in the demo graph supplies **proj·view**, since the
+model is now per-instance. For the increment the existing camera/MVP source is acceptable as long as the
+cubes are visible; correctness of the exact proj·view split is an implementation detail of the demo graph.)
+
+> **Implementation note (as-built):** `Draw.vert`/`Draw.frag` could **not** be reused: `Draw.frag`
+> already binds a `sampler2D` at binding 1 (collides with an instance SSBO there — SPIR-V reflection
+> rejects "incompatible types across stages"), and **no node produces the binding-0 MVP UBO**. So the
+> demo ships **dedicated `shaders/InstancingDemo.vert` + `.frag`**: the vertex stage's only descriptor is
+> the instance SSBO at **binding 0**, the fragment stage is descriptor-free (colors by UV + instance id),
+> and proj·view is baked into the vertex shader. The `Draw.vert` edit was reverted. Reviving instancing
+> on the *general* `Draw.*` path later needs a free SSBO binding + an MVP-UBO producer node (deferred).
+
+### 3. Descriptor wiring
+
+The instance SSBO must be bound at **binding 1** of the geometry descriptor set. The reflection-driven
+descriptor system (`DescriptorResourceGathererNode` → `DescriptorSetNode`) already binds SSBOs for the
+**compute** path — follow that pattern: the gatherer discovers binding 1 from `Draw.vert` reflection and
+takes the `INSTANCE_BUFFER` as the bound resource. **This is the main integration risk;** if reflection
+wiring proves heavy for the increment, a focused fallback is to bind the SSBO via the descriptor set node
+directly. Resolve during implementation.
+
+### 4. `GeometryRenderNode`
+
+No draw-loop change needed: set `INSTANCE_COUNT = N` (from `InstanceBufferNode`'s `INSTANCE_COUNT`
+output, or the demo graph sets the param). The SSBO arrives via the descriptor set.
+
+### 5. Re-light: `BuildInstancingDemoGraph()`
+
+New method gated by `getenv("VIXEN_INSTANCING_DEMO")` at the top of `BuildRenderGraph()` (beside the
+`VIXEN_UI_DEMO` check). Mirror `BuildUIGraph()` structure. Wire the raster chain using the disabled
+blocks + the UI graph as templates:
+
+`Instance→Device→Window→SwapChain→CommandPool`, `RenderPass`, `Framebuffer`, `DepthBuffer`,
+`VertexBuffer` (cube), `InstanceBufferNode`, `ShaderLibrary` (Draw.vert/frag), `DescriptorResourceGatherer`,
+`DescriptorSet`, `GraphicsPipeline`, `FrameSync`, `GeometryRender`, `Present`. Set
+`GeometryRenderNode INSTANCE_COUNT = N`.
+
+## Testing
+
+- **Unit:** `InstanceBufferNode` config (slots/params/defaults) + the transform-grid generation (N =
+  GRID_DIM^k; matrices are the expected translations) — pure where possible, mirroring
+  `test_render_target_node.cpp`.
+- **App smoke:** run with `VIXEN_INSTANCING_DEMO=1` → 0 VK_ERROR/VUID; draw recorded with
+  `instanceCount == N (>1)`; render activity > 0. (Assert via logs.)
+- **Regression:** default run (no env var) is byte-identical voxel-compute behavior.
+
+## Out of scope (later AR#31 increments)
+
+- Heterogeneous multi-mesh **draw lists** and `vkCmdDrawIndirect` (GPU-driven).
+- GPU culling; per-frame dynamic transforms (those build on this SSBO seam).
+- Replacing the live voxel path with raster (this stays an isolated demo graph).

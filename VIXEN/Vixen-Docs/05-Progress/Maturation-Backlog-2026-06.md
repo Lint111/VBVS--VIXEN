@@ -281,8 +281,17 @@ Correctness bugs + the only-consumer's pain + legal hygiene. Wasted on no possib
   `FindMemoryType` copies (added to dodge a claimed MSVC `LNK1163`); fix DepthBufferNode's
   `memoryTypeIndex=0` placeholder [AR#18] (NOT done in this pass — its slot migrated but the
   placeholder remains).
-- [ ] **Many-entity draw path** — instancing / draw lists / `vkCmdDrawIndirect` (today exactly one
-  `vkCmdDraw` in the whole tree) [AR#31]
+- [~] **Many-entity draw path** [AR#31] — **increment 1 DONE 2026-06-14** (on branch
+  `claude/ar31-instancing-increment`): hardware **instancing** — one cube mesh, **64 instances** via an
+  SSBO of per-instance `mat4` transforms indexed by `gl_InstanceIndex`. New `InstanceBufferNode` produces
+  the transform SSBO (FR-7, real memory-type selection, 25-test config suite); rendered in an isolated
+  `VIXEN_INSTANCING_DEMO` graph (mirrors `BuildUIGraph`, voxel path untouched) with dedicated
+  `InstancingDemo.vert/.frag` (binding-0 SSBO; `Draw.*` couldn't be reused — frag binding-1 sampler
+  collision + no MVP-UBO producer). Verified: build green, 0 VK errors, 48631 render events,
+  instanceCount=64. Design: [[Instancing-Increment-Design-2026-06]]. **Remaining increments:** heterogeneous
+  multi-mesh **draw lists**, `vkCmdDrawIndirect` (GPU-driven), GPU culling, per-frame dynamic transforms.
+  NOTE: gotcha — WSL bash does not pass env vars to Windows `.exe`; run the demo via
+  `cmd.exe /c "set VIXEN_INSTANCING_DEMO=1&& VIXEN.exe"`.
 - [ ] **Per-frame dynamic content** — `StreamingBufferNode`/`DynamicBufferNode`; drain the dead-ended
   `BatchedUpdater` (`VulkanDevice::RecordUpdates` has zero callers) [AR#33]; per-frame dynamic
   geometry / multi-draw for text+UI (`UIDrawListNode`) [AR#34]
@@ -302,6 +311,11 @@ Correctness bugs + the only-consumer's pain + legal hygiene. Wasted on no possib
 - [ ] **Sync model: allow >1 submitting pass per frame** [AR#21] — every leaf node independently
   `vkQueueSubmit`s the frame's single binary semaphore → only one submitting pass composes today.
   Surfaces the moment a second view is wired. Sprint 8 `TimelineNode` is the named fix.
+  **Subsumed by the auto-sync epic** → [[Auto-Sync-FrameGraph-Design-2026-06]] (audit done 2026-06-14:
+  automatic barrier scheduling from the *existing-but-unused* `SlotMutability`/`ResourceAccessTracker`
+  access model + centralized image-layout state; AR#21 multi-submit/timeline is its increment 2). Parked
+  for a focused session. Motivated by the GPU compute→compute→render "no readback" ask (data already
+  stays on GPU; the gap is auto-sync, not data passing).
 - [ ] **Picking/selection** — CPU click+drag-select is buildable today (`queryRegion`,
   `getEntityByMorton`, `CameraData` inv matrices all exist); GPU pixel-exact ID-buffer is later
   [AR#35]. Note: `MouseButtonEvent` is declared but **never published by InputNode** — fix that.
