@@ -5,8 +5,7 @@
 #include <algorithm>
 #include <limits>
 
-namespace VIXEN {
-namespace RenderGraph {
+namespace Vixen::SVO {
 
 // ============================================================================
 // RAY-AABB INTERSECTION UTILITIES
@@ -295,5 +294,4 @@ inline bool IsVoxelInBounds(const glm::ivec3& voxelPos, uint32_t gridSize) {
             voxelPos.z >= 0 && voxelPos.z < static_cast<int>(gridSize));
 }
 
-} // namespace RenderGraph
-} // namespace VIXEN
+} // namespace Vixen::SVO

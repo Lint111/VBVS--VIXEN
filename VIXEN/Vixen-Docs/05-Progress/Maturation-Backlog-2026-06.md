@@ -96,8 +96,8 @@ Correctness bugs + the only-consumer's pain + legal hygiene. Wasted on no possib
   - **TS-3 deferred-action flags** — `pendingDecrease_/pendingIncrease_` were plain `bool` written in bus handlers, read in `ProcessDeferredActions` → data race. Fixed: `std::atomic<bool>` + `exchange`. Added the first deferred-action coverage.
   - **TS-2 `Begin()/End()` unsafe** — deprecated the legacy shared-state timing API; migrated its only (dead-but-documented) caller `VirtualTask::BeginProfiling/EndProfiling` to per-task `Sampler`s (via a `shared_ptr` holder, keeping `VirtualTask` copyable).
   - **TS-1 move-assign "race"** — investigated, **dismissed as a false positive**: Samplers are thread-local (every `Sample()` site is a stack-local), so the move-assignment is not a data race; the audit's reorder would risk losing measurements.
-- [~] **Replace process-fatal error model** [AR#1] — **IN PROGRESS (phases 1-2 done; mod-facing gate
-  materially closed).** Design + phased
+- [x] **Replace process-fatal error model** [AR#1] — **DONE (phases 1-3 complete; merged to main 2026-06-13).**
+  Design + phased
   plan: [[Error-Model-Refactor-2026-06]]. ✅ **Phase 1 — ALL process-fatal `exit()` de-fataled (2026-06-13):**
   `ConnectNodes` duplicate-connection `std::exit(1)` → `throw` (commit `339096f`); the 20 texture-loader
   `exit(1)` → `VulkanResult`/`VulkanStatus`, leak-free, single-owner cleanup (commit `ce4cab00`);
@@ -108,9 +108,15 @@ Correctness bugs + the only-consumer's pain + legal hygiene. Wasted on no possib
   `RenderFrame()` catches node-Execute failures → status (`754cfd51`); `Prepare()` catches initial-compile
   failures → `IsPrepared()`/`GetLastError()`, no rethrow→exit (`3be2a92c`); `Render()`/`Update()` catch-all
   guards (`32e689ce`). No exception can now escape `Prepare`/`Update`/`Render`/`RenderFrame` to the host.
-  **Remaining (phase 3, lower priority — these no longer crash the host):** adopt `VK_CHECK`/status across
-  the ~396 internal `throw`s where recovery beats fail-and-report; *recover* initial-compile (mark-for-retry)
-  + device-lost/OOM. **Gate for all mod-facing work — materially closed by phases 1-2.**
+  ✅ **Phase 3 — device-loss recovery (2026-06-13):** reframed away from the misleading "convert ~396
+  throws" (most are correct fail-fast invariants) to the one high-value recoverable failure — GPU device
+  loss. Detect `VK_ERROR_DEVICE_LOST` → rebuild the whole graph on a fresh device (ordering-correct
+  teardown-reverse/rebuild-forward; instance+surface+window persist) → resume rendering. Validated via a
+  fault-injection harness: full rebuild + ~73-89s continuous post-recovery rendering, zero validation
+  errors. Fixed two pre-existing UAFs the rebuild surfaced (dangling GPU-profile pointer via
+  CalibrationStore.Load; rebuildable ConstantNode). See [[Device-Loss-Recovery-2026-06]]. **Gate for all
+  mod-facing work — CLOSED.** (Future, non-blocking: OOM/shader-compile recovery, unrecoverable-loss
+  terminal path, defer-initial-compile-retry.)
 - [~] **UNDERTOW quick wins** — **PARTIAL (2026-06-13).** Done: cross-platform validation gate via
   `VIXEN_VULKAN_VALIDATION` (not the MSVC-only `#ifdef _DEBUG`) [FR-1, commit `6519b77`]; reusable
   `vixen_stage_assets()` CMake helper [FR-10, commit `91bba98`]; per-image sync arrays sized to the
@@ -120,6 +126,16 @@ Correctness bugs + the only-consumer's pain + legal hygiene. Wasted on no possib
   conversion [FR-4, touches the connection system — note the 3 pre-existing `test_connection_rule`
   binding failures live in that area]; discover `WindowNode` by type not the magic name `"main_window"`
   [FR-6].
+- [x] **UNDERTOW consumer integration merge** — **DONE + AUDITED, merged to main 2026-06-13** (consumer
+  branch `claude/wsl-build-portability`, 13 commits). Embedding seams for the C# host (`SimLoop` 30Hz
+  logic loop, live `GetWindowHandle()`, `MarkVoxelSceneDirty`, `SetHudData`); RmlUi HUD data model +
+  headless smoke test; **WSL2/Dozen GPU enablement** (auto-provision Mesa Dozen, ICD selection, swapchain
+  UNORM-for-STORAGE + instance-extension filtering — all gated on Dozen/WSL, zero native impact) [FR-19/20/21];
+  a genuine `CreateVulkanInstance` VkResult-propagation bug fix (was → SIGABRT); process-wide logger
+  min-level filter + per-frame node-log re-leveling to DEBUG. Audit: high quality, every change gated +
+  documented, no silent error-swallowing, includes a test. Validated on merged main: clean build, HUD
+  smoke 3/3, task-profile 61/61, device-loss recovery + normal rendering both green (0 validation errors).
+  See [[consumer-feedback-undertow]].
 - [x] **License cleanup** [AR#6] — **DONE 2026-06-13** (commit `3b5494e`): 32 Sprint-6 files'
   `GPL-3.0` headers → `MIT` to match the canonical root LICENSE + README badge. Header-only, no code change.
 - [x] **Cache generator identity** [AR#52] — **DONE 2026-06-13** (commit `8a6267b`, red→green test):
@@ -129,35 +145,123 @@ Correctness bugs + the only-consumer's pain + legal hygiene. Wasted on no possib
 
 ### P1 — The pivotal decision (cheapest, highest-leverage item in the review)
 
-- [ ] **Re-scope [[05-Progress/features/Sprint8-Timeline-System|Sprint 8]] against public mod-API
-  requirements *before writing its 144h of code*** [AR#76 / Decision #1]. Sprint 8 ("Everything Is
-  A Node": GraphSerializer, GraphEditorNode, ValidationNode, SnapshotNode) already builds ~80% of
-  the mod-API mutation machinery. If it ships with raw handles / throw-on-error / no string
-  addressing, the mod API is rebuilt later at far higher cost. Also reverse the
-  `Sprint8-Timeline-System.md:178` line positioning VIXEN as *"not a plugin host."*
-  **Cost = editing a planning doc. Risk if skipped = the most expensive failure mode in the review.**
+- [x] **Re-scope [[05-Progress/features/Sprint8-Timeline-System|Sprint 8]] against public mod-API
+  requirements *before writing its code*** [AR#76 / Decision #1] — **DONE 2026-06-13.** Sprint 8's
+  mutation machinery (GraphSerializer, GraphEditorNode, ValidationNode, SnapshotNode — ~80% of the
+  mod-API machinery) is now specified against public-API requirements so it ships *as* the mod API.
+  Edited the Sprint 8 plan: (1) **reversed the anti-plugin Framework Positioning** (`:178` "not plugin
+  hosts" → embeddable mod host, UNDERTOW = consumer zero); (2) added a **Public Mod-API Requirements**
+  section — R1 string addressing, R2 Result-not-throw (the error-model prerequisite is **done** — AR#1),
+  R3 generational opaque handles, R4 persisted connection records, R5 thin handles/strings/POD boundary,
+  each cross-referenced to the Architecture Review §6 layers; (3) amended the Phase 4–5 specs
+  (string-addressed `EditCommand`/GraphSerializer, `Result`-returning deserialize, +6h connection-record
+  task ahead of serialization). **Cost = editing a planning doc (the cheapest, highest-leverage item in
+  the review); risk-if-skipped = the most expensive failure mode (moddability retrofit).** This closes
+  **P1**.
 
 ### P2 — Engine boundary (game-renderer foundation, review Phase 1)
 
-- [ ] **Extract instantiable `EngineContext`** (kill `VulkanGraphApplication` singleton + once_flag;
-  lift `NodeTypeRegistry`/`MessageBus`/`RenderGraph`/`CalibrationStore` into `Vixen::EngineContext`
-  + `EngineConfig`; `BenchmarkRunner` is the factoring reference) [AR#7]
-- [ ] **De-singletonize** `MainCacher` / `CapabilityGraph` / `ProfilerSystem` (static state → one
-  device per process; blocks game+editor instances) [AR#8]
-- [ ] **Ship a consumable artifact** — `install(EXPORT)` / `VIXENConfig.cmake` / `find_package(VIXEN)`;
-  *"Undertow physically cannot link VIXEN today"* [AR#2]
-- [ ] **Sever build-layering leaks** — 3 core libs PUBLIC-include `application/main/include`; ~32
-  library files `#include "Headers.h"`; break core↔nodes↔SVO entanglement + CMake cycles; relocate
-  shared decls into `libraries/Core` (which currently has no real core layer [AR#74]) [AR#3/#4]
-- [ ] **Host-supplied window/surface injection** (`ExternalWindowNode`; feasible without engine
-  edits — SwapChainNode already consumes HWND via typed slots) [AR#9]
-- [ ] **Distinct recompile-vs-shutdown lifecycle hooks** — `CleanupImpl` runs on both; naive
-  impl **deadlocks on resize** and destroys persistent state [FR-7]. Plus the "render-to-swapchain"
-  authoring recipe so node authors stop re-hitting FR-5/FR-7 [FR-8].
+- [x] **Extract instantiable `EngineContext`** [AR#7] — **DONE 2026-06-14** (2 increments):
+  *(inc 1)* killed the `VulkanGraphApplication` singleton (`GetInstance`/`once_flag` gone, ctor
+  public, main.cpp owns it via `unique_ptr`). *(inc 2)* lifted `NodeTypeRegistry`/`MessageBus`/
+  `RenderGraph`/`CalibrationStore` into `Vixen::RenderGraph::EngineContext` + `EngineConfig` in the
+  **RenderGraph library** (resolved the home Q: it already owns registry/calibration/profile-registry,
+  and Profiler→RenderGraph is one-way → no cycle, no new links). Resolved the device-ownership Q: the
+  graph creates its OWN instance/device via in-graph nodes (InstanceNode→DeviceNode), so EngineContext
+  needs **no** device injected. Node registration is caller-supplied via `EngineConfig::registerNodeTypes`
+  (app=31, benchmark=26). The app owns one `EngineContext` + non-owning views (call sites unchanged).
+  Validated: 20s smoke, graph builds + renders, zero crashes. Already consumer-available via the AR#2
+  SDK (it ships inside the exported RenderGraph lib). Follow-up: BenchmarkRunner could adopt
+  EngineContext for dedup.
+- [x] **De-singletonize** `MainCacher` / `CapabilityGraph` [AR#8] — **DONE 2026-06-14** (core two of
+  three; **ProfilerSystem deliberately deferred** — see end of item). This was the last global-state
+  blocker to running >1 `EngineContext` (game + editor) in one process.
+  - **`MainCacher::Instance()` removed.** The cacher is now an ordinary object owned by its host:
+    `EngineContext` creates + owns one when the host injects none (`EngineConfig::mainCacher`);
+    `BenchmarkRunner` owns a method-local one. CashSystem-internal cachers + `DeviceRegistry` reach
+    sibling cachers through a back-pointer (`CacherBase::SetMainCacher`, set by MainCacher at every
+    creation path) instead of the global. `RenderGraph::GetMainCacher()` lost its `Instance()`
+    fallback (asserts an injected cacher). Bonus fix: `EngineContext::~EngineContext` now calls
+    `mainCacher_->Shutdown()` before the bus is destroyed, closing a latent exit-time use-after-free
+    the singleton path had (its bus subscription outlived the bus). Removed 3 dead singleton-coupled
+    registration helpers + 1 dead, unbuilt, already-broken test (`test_cash_system.cpp`).
+  - **`CapabilityGraph`** — the 4 process-wide **static** availability vectors (instance ext/layer,
+    device ext/feature) → per-graph instance state (one `CapabilityGraph` per `VulkanDevice`). Leaf
+    capability nodes consult their owning graph; device-level sets are supplied by `VulkanDevice`,
+    instance-level sets self-populate from the loader (`vkEnumerateInstance*Properties` is global, no
+    `VkInstance` needed) — so the old `InstanceNode`→static→device bridge is gone.
+  - **Validated:** full Debug build green; cacher tests (45) + device/capability tests (48) pass;
+    25 s app smoke renders voxels per-frame with no `VK_ERROR`/validation errors. Pre-existing,
+    AR#8-unrelated failures (over code paths untouched here): `test_swap_chain_node.ConfigHasTwoInputs`
+    (stale slot-count), `test_cornell_box.LeftWallHit_Red` (SVO ray geometry),
+    `test_profiler.ConfigToMetricsExportFlow` (profiler metrics validity).
+  - **ProfilerSystem NOT done (deferred, decision 2026-06-14).** It is **benchmark-only** — the app and
+    `EngineContext` never touch it — so it is *not* a blocker to multiple engine instances, and
+    de-singletonizing it would re-open the deliberately-deferred `BenchmarkRunner` surface for zero
+    engine-side gain. Same call as "BenchmarkRunner adopts EngineContext": leave it until a concrete
+    in-engine profiling need appears.
+- [x] **Ship a consumable artifact** [AR#2] — **DONE 2026-06-14** (fat self-contained SDK).
+  `cmake -B build -DVIXEN_INSTALL_EXPORT=ON && cmake --install build --prefix <sdk>` produces a
+  unified `VixenTargets` export + `VIXENConfig.cmake`; an external project then does
+  `find_package(VIXEN)` + links `Vixen::RenderGraph`. Validated end-to-end: throwaway consumer
+  configures, generates, and **links consumer.exe**. All 14 VIXEN libs + the vendored deps
+  (glm/glfw/stb/VMA/magic_enum/nlohmann_json/miniz/rmlui_core/ProjectHash) are bundled into the
+  export; gli/freetype/gaia ship their own configs inside the SDK; only Vulkan/TBB/Threads are
+  resolved externally. Machinery lives in `cmake/VixenInstall.cmake` + `cmake/VIXENConfig.cmake.in`,
+  gated behind `option(VIXEN_INSTALL_EXPORT)` (default OFF — packaging-only, dev build untouched).
+  *Undertow can now link a prebuilt VIXEN.* (Super-build / add_subdirectory consumption was already
+  unblocked by the [AR#3/#4] cycle-breaking.)
+- [x] **Sever build-layering leaks** [AR#3/#4] — **DONE 2026-06-14** (3 increments, all merged):
+  (A) relocated `Headers.h`/`VixenHash.h`/`MeshData.h` → `libraries/Core`; the 3 core libs now link
+  `Core::Core` instead of PUBLIC-including `application/main/include`.
+  (B) broke the `RenderGraph↔CashSystem` CMake link cycle by relocating `SceneGenerator` down to
+  `SVO` (the layer both already link) → one-directional DAG.
+  (C) decoupled the graph core from concrete leaf nodes — `RenderGraph.cpp` now `#include`s zero
+  `Nodes/` headers (dead SwapChain/Present find-loop deleted; CommandPoolNode coupling replaced with
+  the `ICommandBufferPreallocator` capability interface, mirroring `IGraphCompilable`).
+  Follow-up nit **DONE 2026-06-14**: the legacy all-caps `VIXEN::RenderGraph` namespace is **gone**.
+  It was bigger than "SceneGenerator" — it also held `VoxelOctree`/`VoxelTraversal` (RenderGraph/Data)
+  with an inconsistent `VIXEN` vs `VIXEN::RenderGraph` nesting and contradictory fwd-decls. All voxel/SVO
+  data types (`SceneGenerator*`, `VoxelGrid`, `SparseVoxelOctree`, `OctreeNode`/`ESVONode`/`VoxelBrick`/
+  `VoxelMaterial`, `Ray`/`AABB`/`DDAState`) now live in **`Vixen::SVO`** (unified with the modern SVO ns);
+  node types stay in `Vixen::RenderGraph`. ~12 files (5 defs + 7 consumers incl. 3 tests). Verified:
+  full build green; the rename diff is namespace-lines-only (proven logic-free), so the **pre-existing**
+  voxel/SVO unit-test failures it surfaced (test_scene_generators density, test_voxel_octree node-count=0,
+  test_voxel_injection, test_svo_builder, test_cornell_box) are unrelated subsystem test debt, not
+  regressions. Fully closes AR#3/#4.
+- [ ] **Host-supplied window/surface injection** (`ExternalWindowNode`) [AR#9] — **evaluated +
+  parked 2026-06-14.** Recon correction to the original note: `SwapChainNode` consumes a
+  **`GLFWwindow*`** and creates the surface itself via `glfwCreateWindowSurface` — it does NOT take a
+  `VkSurfaceKHR`, so it is **coupled to GLFW**. A true host-owned (non-GLFW) window therefore DOES need
+  engine surgery (decouple `SwapChainNode` to accept a `VkSurfaceKHR`). No consumer needs it yet —
+  UNDERTOW embeds the *other* way (its RmlUi UI inside VIXEN's window). Deferred until a concrete
+  editor / host-owned-window need appears; the pure shape when taken is **surface injection** (host
+  supplies a `VkSurfaceKHR`, or a native handle that `ExternalWindowNode` turns into one). See the
+  "Host-owned window is not done yet" note in [[Hosting-VIXEN]].
+- [x] **Recompile-vs-shutdown lifecycle + render-to-swapchain recipe** [FR-7/FR-8] — **DONE 2026-06-14
+  (docs).** The *mechanism* already existed: `CleanupImpl(ctx)` carries `CleanupReason` (Recompile /
+  DeviceLost / FinalTeardown, `NodeContext.h`); reference nodes (WindowNode, SwapChainNode,
+  UIRenderNode, ConstantNode) branch on it correctly. FR-7/FR-8 were a **discoverability** gap, not a
+  missing API — so (per the consumer's "document prominently" suggestion) the contract is now in the
+  author-facing `TypedNodeInstance::CleanupImpl` doc-comment + new §3.1/§3.2 in [[RenderGraph]]
+  (recompile must be lightweight, no device wait; consume RenderPass/Framebuffers as inputs, don't
+  build them in-node). A structural hook-split was considered + rejected (high blast radius across all
+  nodes; debatable vs the working `ctx.reason` design).
 - [ ] **Bring the sprint branch onto main's merged GLFW port** [AR#11] — windowing/input is already
   GLFW end-to-end on `main`; `production/sprint-6-timeline-foundation` predates it (Win32-only).
-- [ ] **Embedding docs + API stability story** — `Vixen-Docs/06-Embedding/Hosting-VIXEN.md`;
-  generated `VixenVersion.h`; designated supported-header set [AR#12/#13]
+- [x] **Embedding docs + API stability story** [AR#12/#13] — **AR#12 docs DONE 2026-06-14:**
+  [[Hosting-VIXEN]] (`06-Embedding/Hosting-VIXEN.md`) documents the full embedding flow —
+  `find_package(VIXEN)` (the AR#2 fat SDK, 14 libs) → construct `EngineContext`/`EngineConfig` →
+  register node types → build graph → own the loop via `Graph().RenderFrame()` → publish
+  `ApplicationShuttingDownEvent` + deterministic teardown; includes the SDK packaging command, a
+  consumer `CMakeLists`, the `EngineConfig::mainCacher` injection note (AR#8), and the
+  build-portability gotchas. **AR#13 DONE 2026-06-14:** generated `<VixenVersion.h>` (from a single
+  source of truth — root `project(... VERSION 0.1.0)` now feeds both the C++ macros via
+  `cmake/VixenVersion.h.in` and the package-version file; `VixenInstall.cmake` no longer hardcodes
+  the version), on `Vixen::RenderGraph`'s public include + installed into the SDK; and a documented
+  **supported public-header set** in [[Hosting-VIXEN]] (everything else = internal/may-change). A
+  curated umbrella `<Vixen.h>` was deliberately **not** done — premature at 0.1.0 with one consumer;
+  revisit when the API stabilizes or a second consumer appears.
 
 ### P3 — Presentation layer (review Phase 2)
 

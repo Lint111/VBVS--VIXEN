@@ -1,11 +1,10 @@
-#include "Data/SceneGenerator.h"
+#include "SceneGenerator.h"
 #include <cmath>
 #include <algorithm>
 #include <random>
 #include <iostream>
 
-namespace VIXEN {
-namespace RenderGraph {
+namespace Vixen::SVO {
 
 // ============================================================================
 // VoxelGrid Implementation
@@ -851,5 +850,4 @@ void UrbanGridGenerator::Generate(
 #pragma warning(pop)
 #endif
 
-} // namespace RenderGraph
-} // namespace VIXEN
+} // namespace Vixen::SVO

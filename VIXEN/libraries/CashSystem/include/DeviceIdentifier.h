@@ -180,6 +180,15 @@ public:
     size_t GetCacheSize() const noexcept { return m_deviceCachers.size(); }
 
     /**
+     * @brief Set the owning MainCacher (AR#8 — replaces MainCacher::Instance()).
+     *
+     * Set by MainCacher when it creates this registry, so the registry can create cachers
+     * by name (manifest load) through its owner rather than the former process-wide singleton.
+     */
+    void SetOwner(MainCacher* owner) noexcept { m_owner = owner; }
+    MainCacher* GetOwner() const noexcept { return m_owner; }
+
+    /**
      * @brief Set budget manager for GPU allocation tracking
      * @deprecated Budget manager is now accessed via VulkanDevice - this method is a no-op
      * @param manager Ignored - budget manager comes from VulkanDevice
@@ -201,6 +210,7 @@ private:
     DeviceIdentifier m_deviceId;
     Vixen::Vulkan::Resources::VulkanDevice* m_device;
     bool m_initialized;
+    MainCacher* m_owner = nullptr;  // non-owning; set by MainCacher (AR#8)
 
     // Note: Budget manager is now owned by VulkanDevice (Sprint 5 Phase 2.5.3)
     // Access via m_device->GetBudgetManager() instead

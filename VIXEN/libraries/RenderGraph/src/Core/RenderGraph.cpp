@@ -1,8 +1,6 @@
 #include "Core/RenderGraph.h"
 #include "Core/IGraphCompilable.h"
-#include "Nodes/SwapChainNode.h"
-#include "Nodes/PresentNode.h"
-#include "Nodes/CommandPoolNode.h"  // Sprint 5.5: Pre-allocation
+#include "Core/ICommandBufferPreallocator.h"  // Capability interface — command-buffer pre-allocation without concrete-node coupling (AR#3/#4)
 #include "VulkanDevice.h"
 #include "Message.h"  // FrameStartEvent, FrameEndEvent
 #include <algorithm>
@@ -11,6 +9,7 @@
 #include <filesystem>
 #include <fstream>
 #include <system_error>
+#include <cstdlib>  // std::getenv / std::atoi — device-loss fault-injection hook (VIXEN_SIMULATE_DEVICE_LOSS)
 
 // Logging macros for RenderGraph (uses mainLogger instead of nodeLogger)
 #define GRAPH_LOG_DEBUG(msg) do { if (mainLogger) mainLogger->Debug(msg); } while(0)
@@ -588,7 +587,123 @@ void RenderGraph::Execute(VkCommandBuffer commandBuffer) {
     }
 }
 
+void RenderGraph::NotifyDeviceLost(const std::string& site) {
+    // AR#1 Phase 3, Increment 1. Idempotent latch: the first detection wins so we report a single,
+    // coherent device-loss origin even though several GPU calls (submit/present/wait) may all fail in
+    // the same frame. The device + every child object is invalid from here; RenderFrame() short-circuits
+    // to VK_ERROR_DEVICE_LOST until recovery (Increment 2) rebuilds on a fresh device and clears the flag.
+    if (deviceLost_) {
+        GRAPH_LOG_WARNING("[RenderGraph::NotifyDeviceLost] (already latched) further device-lost at: " + site);
+        return;
+    }
+    deviceLost_ = true;
+    GRAPH_LOG_ERROR("[RenderGraph::NotifyDeviceLost] VK_ERROR_DEVICE_LOST detected at: " + site +
+                    " — the GPU device and all its resources are now invalid; rendering halts until recovery.");
+}
+
+bool RenderGraph::RecoverFromDeviceLoss() {
+    if (!deviceLost_) {
+        return true;  // nothing to recover
+    }
+    if (deviceLostUnrecoverable_) {
+        return false;  // already determined the device is gone for good — don't spin
+    }
+
+    GRAPH_LOG_INFO("[RenderGraph::RecoverFromDeviceLoss] ===== DEVICE-LOSS RECOVERY: rebuilding the graph on a fresh device =====");
+
+    // Announce the reset (Reason::DriverReset, with the OLD/lost device handle) for observability and any
+    // subscriber not torn down by the graph. The authoritative device-cache clear also happens in
+    // DeviceNode::CleanupImpl during teardown below (idempotent), so this is not load-bearing for caches.
+    if (messageBus) {
+        void* oldDeviceHandle = nullptr;
+        for (const auto& inst : instances) {
+            if (inst && inst->GetNodeType() && inst->GetNodeType()->GetTypeName() == "Device") {
+                oldDeviceHandle = inst->GetDevice();
+                break;
+            }
+        }
+        messageBus->Publish(std::make_unique<EventBus::DeviceInvalidationEvent>(
+            0, oldDeviceHandle, EventBus::DeviceInvalidationEvent::Reason::DriverReset,
+            "device-loss recovery (VK_ERROR_DEVICE_LOST)"));
+        messageBus->ProcessMessages();
+    }
+
+    try {
+        // Drain in-flight work before destroying resources. On a truly-lost device vkDeviceWaitIdle
+        // returns VK_ERROR_DEVICE_LOST immediately (no hang); on a healthy device (fault-injection test)
+        // it actually drains, making the teardown safe in both cases.
+        WaitForGraphDevicesIdle();
+
+        // --- Pass 1: TEARDOWN in REVERSE execution order (children before the device) ---
+        // reason = DeviceLost: every node releases its device-child resources (same as Recompile, which
+        // all nodes already do); WindowNode keeps the window+surface; DeviceNode (last) destroys the old
+        // VkDevice and clears device caches.
+        for (auto it = executionOrder.rbegin(); it != executionOrder.rend(); ++it) {
+            NodeInstance* node = *it;
+            if (!node) continue;
+            GRAPH_LOG_INFO("[RenderGraph::RecoverFromDeviceLoss] Teardown: " + node->GetInstanceName());
+            node->Cleanup(CleanupReason::DeviceLost);
+        }
+
+        // --- Pass 2: REBUILD in FORWARD execution order (device first, then its dependents) ---
+        // DeviceNode::CompileImpl creates the new VulkanDevice and publishes it on VULKAN_DEVICE_OUT;
+        // each downstream node re-reads the new VulkanDevice* via ctx.In on Setup/Compile and recreates
+        // its resources. Mirrors the per-node bookkeeping in RecompileDirtyNodes.
+        for (NodeInstance* node : executionOrder) {
+            if (!node) continue;
+            GRAPH_LOG_INFO("[RenderGraph::RecoverFromDeviceLoss] Rebuild: " + node->GetInstanceName());
+            node->Setup();
+            node->ResetInputsUsedInCompile();
+            node->Compile();
+            node->ClearNeedsRecompile();
+            node->ResetCleanupFlag();                     // allow a future teardown to run again
+            cleanupStack.ResetExecuted(node->GetHandle());
+        }
+    } catch (const std::exception& e) {
+        deviceLostUnrecoverable_ = true;
+        GRAPH_LOG_ERROR(std::string("[RenderGraph::RecoverFromDeviceLoss] Rebuild failed — the device is unrecoverable: ") + e.what());
+        return false;
+    } catch (...) {
+        deviceLostUnrecoverable_ = true;
+        GRAPH_LOG_ERROR("[RenderGraph::RecoverFromDeviceLoss] Rebuild failed with a non-std exception — the device is unrecoverable");
+        return false;
+    }
+
+    // Rebuilt successfully. Clear the latch and any stale dirty work (everything was just rebuilt), and
+    // force the parallel virtual-task executor to rebuild against the freshly-compiled nodes.
+    deviceLost_ = false;
+    dirtyNodes.clear();
+    executorNeedsRebuild_ = true;
+    GRAPH_LOG_INFO("[RenderGraph::RecoverFromDeviceLoss] ===== RECOVERY COMPLETE: rendering resumes on the new device =====");
+    return true;
+}
+
 VkResult RenderGraph::RenderFrame() {
+    // AR#1 Phase 3: device-loss fault-injection hook (no-op unless VIXEN_SIMULATE_DEVICE_LOSS is set).
+    // Parse the env once; then latch a synthetic loss exactly once at the configured render-frame so the
+    // teardown+rebuild recovery path runs in a live run. The rebuild is valid on a healthy device too, so
+    // this faithfully exercises RecoverFromDeviceLoss without needing a real TDR.
+    if (simulateDeviceLossFrame_ == -2) {
+        const char* env = std::getenv("VIXEN_SIMULATE_DEVICE_LOSS");
+        simulateDeviceLossFrame_ = -1;
+        if (env) {
+            int parsed = std::atoi(env);
+            simulateDeviceLossFrame_ = (parsed > 0) ? parsed : 120;  // truthy-but-non-numeric -> default frame
+        }
+    }
+    if (!deviceLossSimulated_ && simulateDeviceLossFrame_ >= 0 &&
+        globalFrameIndex >= static_cast<uint64_t>(simulateDeviceLossFrame_)) {
+        deviceLossSimulated_ = true;
+        NotifyDeviceLost("VIXEN_SIMULATE_DEVICE_LOSS (synthetic fault injection)");
+    }
+
+    // AR#1 Phase 3: once the device is lost, every GPU call is invalid. Report it as a distinct status
+    // (not Phase 2a's generic VK_ERROR_UNKNOWN) on every subsequent frame so the trigger can route to
+    // recovery; do this before any node executes against the dead device.
+    if (deviceLost_) {
+        return VK_ERROR_DEVICE_LOST;
+    }
+
     // AR#16: after shutdown cleanup the graph's resources are destroyed. Skip cleanly instead of
     // executing nodes that would index freed per-image sync arrays (vector-out-of-range on close).
     if (isCleanedUp) {
@@ -647,20 +762,9 @@ VkResult RenderGraph::RenderFrame() {
     // Each node owns and manages its own Vulkan resources.
     // The graph just calls Execute() on each node in dependency order.
 
-    // TODO Phase 1: For minimal MVP, manually wire SwapChainNode -> PresentNode
-    // In future phases, this will be done automatically via the dependency graph
-    Vixen::RenderGraph::SwapChainNode* swapChainNode = nullptr;
-    Vixen::RenderGraph::PresentNode* presentNode = nullptr;
-
-    // Find SwapChain and Present nodes
-    for (NodeInstance* node : executionOrder) {
-        if (node->GetNodeType()->GetTypeName() == "SwapChain") {
-            swapChainNode = static_cast<Vixen::RenderGraph::SwapChainNode*>(node);
-        }
-        if (node->GetNodeType()->GetTypeName() == "Present") {
-            presentNode = static_cast<Vixen::RenderGraph::PresentNode*>(node);
-        }
-    }
+    // (Former MVP code manually located the SwapChain/Present nodes here to hand-wire them.
+    // Node execution is now fully dependency-driven via executionOrder below, so the core no
+    // longer special-cases — or #includes — any concrete node type. AR#3/#4 layering.)
 
     // Phase 2a (AR#1): track a node-execution failure so it surfaces as a return status instead of an
     // exception escaping RenderFrame -- which would propagate to the app loop (process-fatal) and is
@@ -812,6 +916,13 @@ VkResult RenderGraph::RenderFrame() {
 
     // Increment frame counter for next frame
     globalFrameIndex++;
+
+    // AR#1 Phase 3: if a node latched device-loss mid-frame (e.g. a submit/wait returned
+    // VK_ERROR_DEVICE_LOST), surface that distinctly — it outranks a generic node-Execute failure and
+    // tells the trigger to route to recovery rather than treat the frame as a one-off error.
+    if (deviceLost_) {
+        return VK_ERROR_DEVICE_LOST;
+    }
 
     return frameResult;  // Phase 2a: VK_SUCCESS, or the failure recorded if a node's Execute threw
 }
@@ -1829,23 +1940,23 @@ void RenderGraph::PreAllocateResources() {
         std::to_string(totalRequirements.commandBufferCount) + " command buffers, " +
         std::to_string(totalRequirements.descriptorSetCount) + " descriptor sets");
 
-    // Find CommandPoolNodes and pre-allocate command buffers
+    // Ask the first command-buffer-preallocating node to reserve them. CommandPoolNode
+    // implements ICommandBufferPreallocator; the core dispatches through that capability
+    // interface so it stays decoupled from the concrete node type (AR#3/#4).
     if (totalRequirements.commandBufferCount > 0) {
-        // Find all CommandPoolNode instances
         for (const auto& instance : instances) {
-            CommandPoolNode* cmdPoolNode = dynamic_cast<CommandPoolNode*>(instance.get());
-            if (cmdPoolNode) {
-                // Pre-allocate command buffers in this pool
-                // For now, allocate all requirements to the first pool found
-                // Future: Could distribute based on queue family or usage hints
-                cmdPoolNode->PreAllocateCommandBuffers(totalRequirements.commandBufferCount);
+            auto* preallocator = dynamic_cast<ICommandBufferPreallocator*>(instance.get());
+            if (preallocator) {
+                // For now, allocate all requirements to the first pool found.
+                // Future: distribute based on queue family or usage hints.
+                preallocator->PreAllocateCommandBuffers(totalRequirements.commandBufferCount, 0);
 
                 GRAPH_LOG_INFO("[RenderGraph] Pre-allocated " +
                     std::to_string(totalRequirements.commandBufferCount) +
-                    " command buffers in pool '" + cmdPoolNode->GetInstanceName() + "'");
+                    " command buffers in pool '" + instance->GetInstanceName() + "'");
 
-                // Only pre-allocate in first pool for simplicity
-                // Multi-pool support would require tracking which nodes use which pool
+                // Only pre-allocate in the first pool; multi-pool support would require
+                // tracking which nodes use which pool.
                 break;
             }
         }

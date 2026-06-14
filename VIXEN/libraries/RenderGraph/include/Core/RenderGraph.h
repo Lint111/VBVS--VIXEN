@@ -2,6 +2,8 @@
 
 #include "Headers.h"
 
+#include <cassert>
+
 #include "Core/NodeInstance.h"
 #include "Core/NodeTypeRegistry.h"
 #include "Core/GraphTopology.h"
@@ -104,13 +106,14 @@ public:
      * @param registry The node type registry
      * @param messageBus Event bus for graph events (optional)
      * @param mainLogger Optional logger for debug output (in debug builds)
-     * @param mainCacher Main cache system (optional, defaults to singleton)
+     * @param mainCacher Main cache system (required; injected by EngineContext — AR#8 removed the
+     *        process-wide MainCacher::Instance() fallback so multiple engines don't share caches)
      */
     explicit RenderGraph(
         NodeTypeRegistry* registry,
         EventBus::MessageBus* messageBus = nullptr,
         Logger* mainLogger = nullptr,
-        CashSystem::MainCacher* mainCacher = nullptr
+        CashSystem::MainCacher* mainCacher = nullptr  // de facto required; see GetMainCacher()
     );
 
     ~RenderGraph();
@@ -428,6 +431,48 @@ public:
      */
     void RecompileDirtyNodes();
 
+    // ====== Device-loss recovery (AR#1 Error-Model Phase 3) ======
+
+    /**
+     * @brief Latch that the GPU device was lost (VK_ERROR_DEVICE_LOST).
+     *
+     * Called by any node that observes VK_ERROR_DEVICE_LOST from a GPU call (submit / present /
+     * acquire / fence wait). Idempotent — the first detection wins; subsequent calls only log.
+     * Once latched, RenderFrame() short-circuits and returns VK_ERROR_DEVICE_LOST until recovery
+     * clears the flag (Increment 2: RecoverFromDeviceLoss). The device and all its child objects
+     * are invalid after this point; the graph must rebuild on a fresh device before rendering again.
+     *
+     * @param site Human-readable origin of the detection, e.g. "FrameSyncNode::vkWaitForFences".
+     */
+    void NotifyDeviceLost(const std::string& site);
+
+    /** @brief True once a VK_ERROR_DEVICE_LOST has been latched and not yet recovered. */
+    bool IsDeviceLost() const { return deviceLost_; }
+
+    /**
+     * @brief Rebuild the whole graph on a fresh GPU device after a latched device loss.
+     *
+     * Ordering-correct full rebuild — the dirty-recompile cascade canNOT be reused for this: it
+     * processes nodes in execution order, so it would recreate the device (DeviceNode is first) BEFORE
+     * the downstream nodes tear down their old buffers/images, destroying children of a dead device.
+     * Instead this does a strict two-pass:
+     *   1. Drain (WaitForGraphDevicesIdle — returns immediately on a truly-lost device) then TEARDOWN
+     *      every node in REVERSE execution order with reason = DeviceLost (children before the device;
+     *      WindowNode keeps the window+surface; DeviceNode, last, destroys the old VkDevice).
+     *   2. REBUILD (Setup + Compile) every node in FORWARD execution order — DeviceNode first creates the
+     *      new VulkanDevice and republishes it; every downstream node re-reads the new VulkanDevice* from
+     *      its input (verified: all nodes acquire the device via ctx.In on Setup/Compile) and recreates.
+     * Single attempt: on success the device-lost latch clears and rendering resumes; if the rebuild
+     * throws (the device is genuinely gone), latches an unrecoverable terminal state and returns false so
+     * the host aborts gracefully — no infinite recovery spin.
+     *
+     * Lives in the graph (the host just drives the tick, as it does RecompileDirtyNodes); the host can
+     * call this when RenderFrame() returns VK_ERROR_DEVICE_LOST.
+     *
+     * @return true if the graph was rebuilt and rendering can resume; false if the loss is unrecoverable.
+     */
+    bool RecoverFromDeviceLoss();
+
     /**
      * @brief Get the message bus (for nodes to publish events)
      */
@@ -450,7 +495,10 @@ public:
      * Registration is idempotent - multiple nodes can call RegisterCacher for the same type.
      */
     CashSystem::MainCacher& GetMainCacher() {
-        return mainCacher ? *mainCacher : CashSystem::MainCacher::Instance();
+        // AR#8: no MainCacher::Instance() fallback. The cacher is injected by EngineContext (which
+        // owns one when the host supplies none), so two engines never share process-wide caches.
+        assert(mainCacher && "RenderGraph has no MainCacher — construct it via EngineContext or pass one to the ctor");
+        return *mainCacher;
     }
 
     /**
@@ -834,6 +882,21 @@ private:
     // AR#16: set by ExecuteCleanup (shutdown). RenderFrame() checks this so it never executes a node
     // against destroyed resources (the render loop can iterate once more after WindowCloseEvent).
     bool isCleanedUp = false;
+
+    // Device-loss recovery (AR#1 Error-Model Phase 3). Latched by NotifyDeviceLost() when a node sees
+    // VK_ERROR_DEVICE_LOST; checked by RenderFrame() which then returns VK_ERROR_DEVICE_LOST distinctly
+    // (vs Phase 2a's generic VK_ERROR_UNKNOWN). RecoverFromDeviceLoss() rebuilds + clears it.
+    bool deviceLost_ = false;
+    // Set when a device-loss rebuild attempt fails (the GPU is genuinely gone). Terminal: RenderFrame()
+    // keeps returning VK_ERROR_DEVICE_LOST and RecoverFromDeviceLoss() refuses to retry, so the host
+    // aborts instead of spinning on an unrecoverable device.
+    bool deviceLostUnrecoverable_ = false;
+    // Fault-injection test hook (VIXEN_SIMULATE_DEVICE_LOSS=<render-frame>). -2 = env not yet parsed,
+    // -1 = disabled, >=0 = latch a synthetic device loss once at that globalFrameIndex. The teardown +
+    // rebuild are valid on a healthy device too (vkDestroy*/recreate don't require a truly-lost device),
+    // so this faithfully exercises RecoverFromDeviceLoss() in a live run. Off (env unset) in normal runs.
+    int simulateDeviceLossFrame_ = -2;
+    bool deviceLossSimulated_ = false;
 
     // Event-driven recompilation
     std::set<NodeHandle> dirtyNodes;

@@ -6,7 +6,7 @@
 // Required for unique_ptr members (MSVC requires complete types for unique_ptr destructors)
 #include "LaineKarrasOctree.h"
 #include "GaiaVoxelWorld.h"
-#include "Data/SceneGenerator.h"
+#include "SceneGenerator.h"
 
 // Note: BatchedUploader included via TypedCacher.h (Sprint 5 Phase 2.5.2)
 
@@ -344,26 +344,13 @@ private:
 
     // Temporary build data (cleared after Create() completes)
     // Note: BatchedUploader is now in TypedCacher base class via GetUploader()
-    std::unique_ptr<VIXEN::RenderGraph::VoxelGrid> m_cachedGrid;
+    std::unique_ptr<Vixen::SVO::VoxelGrid> m_cachedGrid;
     std::unique_ptr<Vixen::GaiaVoxel::GaiaVoxelWorld> m_voxelWorld;
     std::unique_ptr<Vixen::SVO::LaineKarrasOctree> m_octree;
 };
 
-// ============================================================================
-// REGISTRATION HELPER
-// ============================================================================
-
-/**
- * @brief Register VoxelSceneCacher with MainCacher
- *
- * Call during application initialization before using the cacher.
- */
-inline void RegisterVoxelSceneCacher() {
-    MainCacher::Instance().RegisterCacher<VoxelSceneCacher, VoxelSceneData, VoxelSceneCreateInfo>(
-        std::type_index(typeid(VoxelSceneData)),
-        "VoxelSceneCacher",
-        true  // device-dependent
-    );
-}
+// AR#8: the former inline RegisterVoxelSceneCacher() free helper (reached MainCacher::Instance())
+// was unused dead code — VoxelGridNode registers VoxelSceneCacher via its graph's injected
+// MainCacher. Removed; register on your own MainCacher instance instead.
 
 } // namespace CashSystem

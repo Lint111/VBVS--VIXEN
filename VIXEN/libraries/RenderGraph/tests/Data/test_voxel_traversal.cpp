@@ -12,7 +12,7 @@
 #include "Data/VoxelTraversal.h"
 #include <glm/gtc/epsilon.hpp>
 
-using namespace VIXEN::RenderGraph;
+using namespace Vixen::SVO;
 
 // ============================================================================
 // RAY-AABB INTERSECTION TESTS

@@ -69,18 +69,7 @@ set_target_properties(VoxelData PROPERTIES
     EXPORT_NAME VoxelData
 )
 
-# Installation rules (optional)
-install(TARGETS VoxelData
-    EXPORT VoxelDataTargets
-    LIBRARY DESTINATION lib
-    ARCHIVE DESTINATION lib
-    RUNTIME DESTINATION bin
-)
-
-install(DIRECTORY include/
-    DESTINATION include
-    FILES_MATCHING PATTERN "*.h"
-)
+# Install/export is handled centrally for all VIXEN libraries — see cmake/VixenInstall.cmake (AR#2).
 
 # Tests
 if(BUILD_TESTING)

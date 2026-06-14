@@ -34,7 +34,6 @@ set(RENDERGRAPH_DATA_CORE_HEADERS
     include/Data/LayerAndExtensionRequirementData.h
     include/Data/ParameterDataTypes.h
     include/Data/VariantDescriptors.h
-    include/Data/SceneGenerator.h
     include/Data/VoxelOctree.h
     include/Data/Core/GraphMessages.h
     include/Data/Core/ResourceConfig.h
@@ -128,6 +127,8 @@ set(RENDERGRAPH_CORE_HEADERS
     include/Core/NodeType.h
     include/Core/NodeTypeRegistry.h
     include/Core/PerFrameResources.h
+    include/Core/EngineConfig.h          # AR#7: instantiable engine config
+    include/Core/EngineContext.h         # AR#7: instantiable EngineContext (owns registry/bus/graph/calibration)
     include/Core/RenderGraph.h
     include/Core/ResourceAccessTracker.h  # Sprint 6.4: Task #349 - Conflict detection
     include/Core/ResourceDependencyTracker.h
@@ -148,7 +149,6 @@ set(RENDERGRAPH_CORE_HEADERS
 )
 
 set(RENDERGRAPH_DATA_CORE_SOURCES
-    src/Data/SceneGenerator.cpp
     src/Data/VoxelOctree.cpp
 )
 
@@ -164,6 +164,7 @@ set(RENDERGRAPH_CORE_SOURCES
     src/Core/NodeType.cpp
     src/Core/NodeTypeRegistry.cpp
     src/Core/PerFrameResources.cpp
+    src/Core/EngineContext.cpp           # AR#7: instantiable EngineContext
     src/Core/RenderGraph.cpp
     src/Core/ResourceAccessTracker.cpp  # Sprint 6.4: Task #349 - Conflict detection
     src/Core/ResourceDependencyTracker.cpp
@@ -339,9 +340,9 @@ target_compile_features(RenderGraph PUBLIC cxx_std_23)
 
 target_include_directories(RenderGraph
     PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
-        # Main application includes - use SOURCE_DIR for project root
-        $<BUILD_INTERFACE:${VIXEN_ROOT}/application/main/include>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        # Common headers (Headers.h / VixenHash.h / MeshData.h) now come from Core::Core (linked below),
+        # not the application layer (AR#3/#4 build-layering severance).
         # Generated SDI headers - priority order:
         #   1. Dev-time: Tool-generated SDI files in source tree
         #   2. Build-time: CMake-generated SDI files (main app)
@@ -363,6 +364,7 @@ target_include_directories(RenderGraph
 
 target_link_libraries(RenderGraph
     PUBLIC
+        Core::Core  # Common headers (Headers.h / VixenHash.h / MeshData.h) — AR#3/#4
         VulkanResources
         Logger
         EventBus

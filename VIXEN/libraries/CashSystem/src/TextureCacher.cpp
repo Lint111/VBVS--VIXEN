@@ -51,8 +51,13 @@ std::shared_ptr<TextureWrapper> TextureCacher::Create(const TextureCreateParams&
         // Runtime path: use provided sampler
         wrapper->samplerWrapper = ci.samplerWrapper;
     } else if (ci.samplerParams.has_value()) {
-        // Deserialization path: get sampler from SamplerCacher
-        auto& mainCacher = MainCacher::Instance();
+        // Deserialization path: get sampler from SamplerCacher via our owning MainCacher
+        // (AR#8: was MainCacher::Instance())
+        MainCacher* owner = GetMainCacher();
+        if (!owner) {
+            throw std::runtime_error("[TextureCacher] no owning MainCacher");
+        }
+        auto& mainCacher = *owner;
         auto* samplerCacher = mainCacher.GetCacher<SamplerCacher, SamplerWrapper, SamplerCreateParams>(
             std::type_index(typeid(SamplerWrapper)),
             GetDevice()

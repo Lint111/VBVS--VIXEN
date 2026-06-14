@@ -935,8 +935,10 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
     // Create message bus for event coordination
     auto messageBus = std::make_unique<Vixen::EventBus::MessageBus>();
 
-    // Get global MainCacher instance for cache persistence
-    auto& mainCacher = CashSystem::MainCacher::Instance();
+    // AR#8: the benchmark OWNS its MainCacher (was the process-wide MainCacher::Instance()), so it's
+    // no longer a global singleton. Declared after messageBus so it destructs first — while the bus
+    // is still alive — keeping its bus subscription teardown safe.
+    CashSystem::MainCacher mainCacher;
     mainCacher.Initialize(messageBus.get());
 
     // Create logger for RenderGraph (kept as unique_ptr for lifetime management)
@@ -1507,10 +1509,10 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
     suiteResults_.SetEndTime(std::chrono::system_clock::now());
     ExportAllResults();
 
-    // Shutdown mainCacher BEFORE messageBus destructs
-    // mainCacher is a global singleton that destructs during static deinitialization
-    // messageBus is local and destructs when this function returns
-    CashSystem::MainCacher::Instance().Shutdown();
+    // Shutdown mainCacher BEFORE messageBus destructs (unsubscribes it from the bus).
+    // Both are method-locals; mainCacher destructs first (declared later), but this explicit
+    // Shutdown honours the MainCacher::Shutdown contract ("call before MessageBus is destroyed").
+    mainCacher.Shutdown();
 
     ProfilerSystem::Instance().Shutdown();
 

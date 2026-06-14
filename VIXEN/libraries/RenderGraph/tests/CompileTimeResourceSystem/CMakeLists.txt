@@ -48,7 +48,9 @@ add_executable(test_recursive_validation
 )
 # Use VIXEN_ROOT for project root - no relative paths
 target_include_directories(test_recursive_validation PRIVATE ${VIXEN_ROOT}/application/main/include ${Vulkan_INCLUDE_DIRS})
-target_link_libraries(test_recursive_validation PRIVATE ${Vulkan_LIBRARIES} gli)
+# Core::Core supplies Headers.h (relocated there in AR#3/#4). The sibling tests get it via
+# their RenderGraph link; this one links neither, so name Core directly.
+target_link_libraries(test_recursive_validation PRIVATE Core::Core ${Vulkan_LIBRARIES} gli)
 set_property(TARGET test_recursive_validation PROPERTY CXX_STANDARD 23)
 set_property(TARGET test_recursive_validation PROPERTY CXX_STANDARD_REQUIRED ON)
 

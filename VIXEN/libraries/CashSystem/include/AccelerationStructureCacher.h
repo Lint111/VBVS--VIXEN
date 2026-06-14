@@ -296,21 +296,8 @@ private:
     void LoadRTFunctions();
 };
 
-// ============================================================================
-// REGISTRATION HELPER
-// ============================================================================
-
-/**
- * @brief Register AccelerationStructureCacher with MainCacher
- *
- * Call during application initialization before using the cacher.
- */
-inline void RegisterAccelerationStructureCacher() {
-    MainCacher::Instance().RegisterCacher<AccelerationStructureCacher, CachedAccelerationStructure, AccelStructCreateInfo>(
-        std::type_index(typeid(CachedAccelerationStructure)),
-        "AccelerationStructureCacher",
-        true  // device-dependent
-    );
-}
+// AR#8: the former inline RegisterAccelerationStructureCacher() free helper (reached
+// MainCacher::Instance()) was unused dead code — AccelerationStructureNode registers via its
+// graph's injected MainCacher. Removed; register on your own MainCacher instance instead.
 
 } // namespace CashSystem

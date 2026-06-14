@@ -17,11 +17,39 @@ The RenderGraph is a directed acyclic graph (DAG) of rendering operations. Each 
 
 ---
 
+## 0. EngineContext — the instantiable engine aggregate (AR#7/#8)
+
+`Vixen::RenderGraph::EngineContext` (`Core/EngineContext.h`) is the top-level, **instantiable** owner
+of the engine's core subsystems — there is **no process-wide singleton**. A host constructs one from
+an `EngineConfig`; it stands up, in the one valid order, the `NodeTypeRegistry`, `MessageBus`,
+`RenderGraph`, and (optionally) the autonomous `CalibrationStore`, and owns the
+`CashSystem::MainCacher` (creating one when the host injects none via `EngineConfig::mainCacher`).
+
+Because every one of these is per-`EngineContext` — registry, bus, graph, calibration, **and** the
+cacher and per-device `CapabilityGraph`s (AR#8 removed the last global statics) — **multiple
+EngineContexts can coexist in one process** (e.g. a game view + an editor preview) without sharing
+state. Node-type registration is caller-supplied via `EngineConfig::registerNodeTypes`. The graph
+creates its own Vulkan instance/device via in-graph nodes (`InstanceNode → DeviceNode`), so
+EngineContext needs no device injected.
+
+Teardown is deterministic by member-declaration order (calibration → graph → bus → registry → owned
+cacher); publish an `ApplicationShuttingDownEvent` on `Bus()` before destroying the context so the
+CalibrationStore persists. To embed a host on top of this, see [[Hosting-VIXEN]].
+
+| Accessor | Returns |
+|---|---|
+| `Registry()` | the `NodeTypeRegistry` |
+| `Bus()` | the `MessageBus` |
+| `Graph()` | the `RenderGraph` (drive `RenderFrame()` from your loop) |
+| `Calibration()` | the `CalibrationStore` (null if `enableCalibration` was false) |
+
+---
+
 ## 1. Node Type vs Node Instance
 
 ```mermaid
 flowchart TB
-    subgraph Node Types [Registry - 1 per process]
+    subgraph Node Types [Registry - 1 per EngineContext]
         NT1[ShadowMapPass Type]
         NT2[GeometryPass Type]
         NT3[PostProcessPass Type]
@@ -46,7 +74,7 @@ flowchart TB
 
 | Concept | Role | Count | Example |
 |---------|------|-------|---------|
-| **Node Type** | Template/Definition | 1 per process | `ShadowMapPass` |
+| **Node Type** | Template/Definition | 1 per engine (registry) | `ShadowMapPass` |
 | **Node Instance** | Concrete usage | N per scene | `ShadowMap_Light0` |
 
 ---
@@ -87,6 +115,45 @@ class NodeInstance {
     virtual void Cleanup();  // Destroy resources
 };
 ```
+
+### 3.1 Cleanup: recompile vs final teardown (FR-7)
+
+`Cleanup()` runs on **both** a transient recompile (e.g. swapchain resize) and final teardown — the
+reason is carried in `ctx.reason` (`CleanupReason::Recompile` / `DeviceLost` / `FinalTeardown`, see
+`Core/NodeContext.h`). The mechanism already exists; the contract for a stateful node's
+`CleanupImpl(ctx)`:
+
+- **Recompile must be lightweight — no `vkDeviceWaitIdle` / fence waits.** The graph deliberately
+  skips device-idle during recompile; a wait here **deadlocks resize** (a submit blocked on an
+  un-signalled acquire semaphore never completes).
+- **Keep persistent-across-recompile state** (OS window/surface, long-lived GPU sync objects); release
+  only per-recompile resources. Tear everything down **only** when `ctx.reason == FinalTeardown`.
+- Most nodes own nothing persistent and can ignore `ctx.reason`. Correct reference implementations:
+  `WindowNode`, `SwapChainNode`, `UIRenderNode`, `ConstantNode`.
+
+```cpp
+void MyNode::CleanupImpl(TypedCleanupContext& ctx) {
+    if (ctx.reason != CleanupReason::FinalTeardown) {
+        return;  // recompile / device-loss: keep persistent resources, NO device wait
+    }
+    // FinalTeardown only: release everything
+}
+```
+
+### 3.2 Render-to-swapchain recipe (FR-8)
+
+Don't build the render pass / framebuffers **inside** a render node — consume them as inputs so the
+swapchain-recompile cascade owns their resize lifecycle:
+
+```
+SwapChainNode → RenderPassNode → FramebufferNode → <YourRenderNode> → PresentNode
+```
+
+Take `RENDER_PASS` (from `RenderPassNode`) and `FRAMEBUFFERS` (from `FramebufferNode`) as typed inputs
+and record into them. Minimal color-only template: the UI graph
+(`swapchain → RenderPassNode → FramebufferNode → UIRenderNode → PresentNode`); fuller reference:
+`GeometryRenderNode`. Building these inside the node reproduces the FR-5 (extent desync) / FR-7
+(resize) footguns.
 
 ---
 
@@ -183,6 +250,7 @@ For detailed connection system architecture, see [[../01-Architecture/RenderGrap
 
 | Component | Location |
 |-----------|----------|
+| EngineContext / EngineConfig | `libraries/RenderGraph/include/Core/EngineContext.h`, `EngineConfig.h` |
 | RenderGraph | `libraries/RenderGraph/src/Core/RenderGraph.cpp` |
 | NodeInstance | `libraries/RenderGraph/include/Core/NodeInstance.h` |
 | TypedNode | `libraries/RenderGraph/include/Core/TypedNodeInstance.h` |
@@ -194,6 +262,8 @@ For detailed connection system architecture, see [[../01-Architecture/RenderGrap
 ## 8. Related Pages
 
 - [[Overview]] - Library index
+- [[../06-Embedding/Hosting-VIXEN|Hosting VIXEN]] - Embedding via EngineContext (find_package → own-the-loop)
 - [[../01-Architecture/RenderGraph-System|RenderGraph Architecture]] - Detailed architecture
 - [[../01-Architecture/Vulkan-Pipeline|Vulkan Pipeline]] - Vulkan resource management
 - [[../01-Architecture/Type-System|Type System]] - Compile-time type safety
+- [[CashSystem]] - MainCacher (owned by EngineContext; AR#8)

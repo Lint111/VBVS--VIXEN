@@ -65,9 +65,9 @@ target_compile_features(VulkanResources PUBLIC cxx_std_23)
 
 target_include_directories(VulkanResources
     PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
-        # Main application includes - for Headers.h and other shared headers
-        $<BUILD_INTERFACE:${VIXEN_ROOT}/application/main/include>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        # Headers.h and other shared headers now come from Core::Core (linked below), not the
+        # application layer (AR#3/#4 build-layering severance).
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
@@ -78,6 +78,7 @@ target_include_directories(VulkanResources
 
 target_link_libraries(VulkanResources
     PUBLIC
+        Core::Core  # Common headers (Headers.h / VixenHash.h / MeshData.h) — AR#3/#4
         Logger
         ${VULKAN_LIB_LIST}
         glm::glm
@@ -111,7 +112,7 @@ set_source_files_properties(
 # Precompiled headers for faster compilation
 if(USE_PRECOMPILED_HEADERS)
     target_precompile_headers(VulkanResources PRIVATE
-        "${VIXEN_ROOT}/application/main/include/Headers.h"
+        "${VIXEN_ROOT}/libraries/Core/include/Headers.h"
     )
     message(STATUS "VulkanResources: Precompiled headers enabled (using Headers.h)")
 endif()

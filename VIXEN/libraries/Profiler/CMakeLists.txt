@@ -119,18 +119,4 @@ if(USE_PRECOMPILED_HEADERS)
     message(STATUS "Profiler: Precompiled headers enabled (using ProfilerHeaders.h)")
 endif()
 
-# ============================================================================
-# Installation
-# ============================================================================
-
-install(TARGETS Profiler
-    EXPORT ProfilerTargets
-    LIBRARY DESTINATION lib
-    ARCHIVE DESTINATION lib
-    RUNTIME DESTINATION bin
-)
-
-install(DIRECTORY include/
-    DESTINATION include
-    FILES_MATCHING PATTERN "*.h"
-)
+# Install/export is handled centrally for all VIXEN libraries — see cmake/VixenInstall.cmake (AR#2).

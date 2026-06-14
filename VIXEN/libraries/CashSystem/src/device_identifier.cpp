@@ -153,9 +153,11 @@ bool DeviceRegistry::LoadAll(const std::filesystem::path& directory) {
                 if (!cacherName.empty()) {
                     LOG_DEBUG("Found cacher in manifest: " + cacherName);
 
-                    // Create cacher instance using MainCacher's factory system
-                    auto& mainCacher = MainCacher::Instance();
-                    auto* createdCacher = mainCacher.CreateCacherByName(cacherName, m_device, *this);
+                    // Create cacher instance using our owning MainCacher's factory system
+                    // (AR#8: was MainCacher::Instance()). If unowned, fall through to lazy-load.
+                    auto* createdCacher = m_owner
+                        ? m_owner->CreateCacherByName(cacherName, m_device, *this)
+                        : nullptr;
 
                     if (!createdCacher) {
                         // Not an error - cacher may not be registered yet

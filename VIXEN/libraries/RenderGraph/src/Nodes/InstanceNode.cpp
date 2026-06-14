@@ -94,25 +94,22 @@ void InstanceNode::SetupImpl(TypedSetupContext& ctx) {
 }
 
 void InstanceNode::CompileImpl(TypedCompileContext& ctx) {
-    NODE_LOG_INFO("[InstanceNode] Compile: Creating Vulkan instance");
-
-    // Destroy existing instance if recompiling
-    if (instance != VK_NULL_HANDLE) {
-        NODE_LOG_INFO("[InstanceNode] Destroying existing instance for recompilation");
-        DestroyVulkanInstance();
+    // Idempotent: the VkInstance is PERSISTENT across a recompile / device-loss rebuild (see CleanupImpl).
+    // Only create it the first time; on a rebuild the existing instance is reused so downstream nodes —
+    // and the WindowNode surface created from it — stay valid. Always (re)publish the handle.
+    if (instance == VK_NULL_HANDLE) {
+        NODE_LOG_INFO("[InstanceNode] Compile: Creating Vulkan instance");
+        ValidateAndFilterExtensions();
+        ValidateAndFilterLayers();
+        CreateVulkanInstance();
+    } else {
+        NODE_LOG_INFO("[InstanceNode] Compile: reusing persistent VkInstance");
     }
 
-    // Validate and filter extensions/layers before creating instance
-    ValidateAndFilterExtensions();
-    ValidateAndFilterLayers();
-
-    // Create Vulkan instance
-    CreateVulkanInstance();
-
-    // Output the instance handle
+    // Output the instance handle (every compile, so re-wiring picks it up)
     ctx.Out(InstanceNodeConfig::INSTANCE, instance);
 
-    NODE_LOG_INFO("[InstanceNode] Instance created and output set");
+    NODE_LOG_INFO("[InstanceNode] Instance output set");
 }
 
 void InstanceNode::ExecuteImpl(TypedExecuteContext& ctx) {
@@ -120,7 +117,16 @@ void InstanceNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // Instance is created during Compile and remains valid
 }
 
-void InstanceNode::CleanupImpl() {
+void InstanceNode::CleanupImpl(TypedCleanupContext& ctx) {
+    // The VkInstance is instance-level and SURVIVES a device loss (only the device + its children are
+    // rebuilt). Keep it across a recompile / device-loss rebuild — exactly like WindowNode keeps the
+    // window+surface. The surface is created FROM this instance, so destroying it here while WindowNode
+    // keeps the surface would dangle the surface and trip VUID-vkDestroyInstance-instance-00629. Release
+    // only on final teardown.
+    if (ctx.reason != CleanupReason::FinalTeardown) {
+        NODE_LOG_INFO("[InstanceNode] Cleanup (recompile/device-loss): keeping the persistent VkInstance");
+        return;
+    }
     NODE_LOG_INFO("[InstanceNode] Cleanup: Destroying Vulkan instance");
     DestroyVulkanInstance();
 }
@@ -209,13 +215,10 @@ void InstanceNode::ValidateAndFilterExtensions() {
     enabledExtensions = validatedExtensions;
     NODE_LOG_INFO("[InstanceNode] Enabled " + std::to_string(enabledExtensions.size()) + " instance extensions");
 
-    // Populate capability graph with available instance extensions
-    std::vector<std::string> availableExtStrings;
-    availableExtStrings.reserve(availableExtensions.size());
-    for (const auto& ext : availableExtensions) {
-        availableExtStrings.emplace_back(ext.extensionName);
-    }
-    Vixen::InstanceExtensionCapability::SetAvailableExtensions(availableExtStrings);
+    // AR#8: instance-extension availability is no longer pushed to a process-wide static here.
+    // Each device's CapabilityGraph self-populates it from the loader (instance availability is
+    // globally queryable via vkEnumerateInstanceExtensionProperties), so multiple instances/devices
+    // in one process don't clobber shared capability state.
 }
 
 void InstanceNode::ValidateAndFilterLayers() {
@@ -253,13 +256,8 @@ void InstanceNode::ValidateAndFilterLayers() {
     enabledLayers = validatedLayers;
     NODE_LOG_INFO("[InstanceNode] Enabled " + std::to_string(enabledLayers.size()) + " instance layers");
 
-    // Populate capability graph with available instance layers
-    std::vector<std::string> availableLayerStrings;
-    availableLayerStrings.reserve(availableLayers.size());
-    for (const auto& layer : availableLayers) {
-        availableLayerStrings.emplace_back(layer.layerName);
-    }
-    Vixen::InstanceLayerCapability::SetAvailableLayers(availableLayerStrings);
+    // AR#8: instance-layer availability is no longer pushed to a process-wide static here (see the
+    // instance-extension note above) — each device's CapabilityGraph self-populates from the loader.
 }
 
 } // namespace Vixen::RenderGraph

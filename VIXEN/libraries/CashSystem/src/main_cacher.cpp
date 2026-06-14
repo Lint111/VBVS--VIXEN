@@ -11,11 +11,6 @@
 
 namespace CashSystem {
 
-MainCacher& MainCacher::Instance() {
-    static MainCacher instance;
-    return instance;
-}
-
 void MainCacher::CleanupGlobalCaches() {
     // Cleanup all device-independent cachers
     std::lock_guard lock(m_globalRegistryMutex);
@@ -102,6 +97,7 @@ DeviceRegistry& MainCacher::GetOrCreateDeviceRegistry(::Vixen::Vulkan::Resources
 
     // Create new device registry
     auto [newIt, inserted] = m_deviceRegistries.try_emplace(deviceId, deviceId);
+    newIt->second.SetOwner(this);  // AR#8: registry creates cachers-by-name via its owner, not Instance()
 
     // Initialize the new registry with the device pointer
     if (inserted && device) {
@@ -125,6 +121,7 @@ DeviceRegistry& MainCacher::GetOrCreateDeviceRegistry(const DeviceIdentifier& de
     // Note: This overload doesn't have the device pointer, so registry won't be initialized
     // Only the VulkanDevice* overload above initializes the registry
     auto [newIt, inserted] = m_deviceRegistries.try_emplace(deviceId, deviceId);
+    newIt->second.SetOwner(this);  // AR#8: registry creates cachers-by-name via its owner, not Instance()
 
     return newIt->second;
 }
@@ -162,6 +159,7 @@ CacherBase* MainCacher::CreateCacherByName(
     if (!newCacher) {
         return nullptr;
     }
+    newCacher->SetMainCacher(this);  // AR#8: cacher reaches siblings via its owner, not Instance()
 
     // Initialize with device (required before DeserializeFromFile)
     newCacher->Initialize(device);

@@ -12,7 +12,7 @@
 #include "SVOBuilder.h"
 
 // RenderGraph library integration
-#include "Data/SceneGenerator.h"
+#include "SceneGenerator.h"
 
 #include <iostream>
 #include <fstream>
@@ -22,7 +22,7 @@
 #include <span>
 
 using namespace Vixen::GaiaVoxel;
-using namespace VIXEN::RenderGraph;
+using namespace Vixen::SVO;
 
 namespace CashSystem {
 

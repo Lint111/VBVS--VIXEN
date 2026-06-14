@@ -50,15 +50,4 @@ if(BUILD_TESTING)
     endif()
 endif()
 
-# Installation rules
-install(TARGETS Core
-    EXPORT CoreTargets
-    LIBRARY DESTINATION lib
-    ARCHIVE DESTINATION lib
-    RUNTIME DESTINATION bin
-)
-
-install(DIRECTORY include/
-    DESTINATION include
-    FILES_MATCHING PATTERN "*.h"
-)
+# Install/export is handled centrally for all VIXEN libraries — see cmake/VixenInstall.cmake (AR#2).

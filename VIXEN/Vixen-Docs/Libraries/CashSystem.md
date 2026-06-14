@@ -63,17 +63,25 @@ flowchart TB
 
 ### 2.1 MainCacher
 
-Global registry orchestrating all cachers with virtual cleanup.
+Instantiable registry orchestrating all cachers with virtual cleanup.
+
+> [!important] AR#8 (2026-06-14): MainCacher is **not a singleton**
+> `MainCacher::Instance()` was removed. The engine's `EngineContext` **owns** one (creating it when
+> the host injects none via `EngineConfig::mainCacher`); nodes reach it through the graph
+> (`graph.GetMainCacher()`), and CashSystem-internal cachers reach sibling cachers through an owner
+> back-pointer (`CacherBase::GetMainCacher()`, set by MainCacher at creation). This lets multiple
+> `EngineContext` instances coexist in one process without sharing cache state. See [[Hosting-VIXEN]].
 
 ```cpp
-MainCacher& cacher = MainCacher::GetInstance();
+// In a node: get the engine's cacher from the owning graph (no global).
+CashSystem::MainCacher& cacher = GetOwningGraph()->GetMainCacher();
 
-// Access typed cachers
-auto& shaderCacher = cacher.GetShaderModuleCacher();
-auto& pipelineCacher = cacher.GetPipelineCacher();
+// Typed cachers are obtained via the template API (see MainCacher.h GetCacher<>());
+// the old named getters (GetShaderModuleCacher(), ...) are gone:
+//   cacher.GetCacher<CacherT, ResourceT, CreateInfoT>(std::type_index(typeid(ResourceT)), device);
 
-// Cleanup all cachers (on device destruction)
-cacher.Cleanup(device);
+// Device-dependent caches are cleaned up by DeviceNode / device-invalidation events; the
+// device-independent caches are cleaned up when the owning MainCacher is destroyed.
 ```
 
 ### 2.2 TypedCacher < T >
@@ -150,13 +158,16 @@ VkPipelineLayout layout = layoutCacher.GetOrCreateFromShaders(shaderModules);
 Caches complete voxel scene data including octree, compressed colors/normals, and GPU buffers.
 
 ```cpp
-auto& sceneCacher = MainCacher::GetInstance().GetVoxelSceneCacher();
+// AR#8: no singleton — get the engine's MainCacher from the graph, then the typed cacher.
+auto& cacher = GetOwningGraph()->GetMainCacher();
+auto* sceneCacher = cacher.GetCacher<VoxelSceneCacher, VoxelSceneData, VoxelSceneCreateInfo>(
+    std::type_index(typeid(VoxelSceneData)), device);
 VoxelSceneCreateInfo ci{
     .sceneType = SceneType::Cornell,
     .resolution = 256,
     .density = 0.5f
 };
-auto sceneData = sceneCacher.GetOrCreate(ci);
+auto sceneData = sceneCacher->GetOrCreate(ci);
 // Returns shared_ptr<VoxelSceneData> with all CPU + GPU buffers
 ```
 
@@ -168,13 +179,16 @@ auto sceneData = sceneCacher.GetOrCreate(ci);
 Caches hardware RT acceleration structures built from voxel scene data.
 
 ```cpp
-auto& asCacher = MainCacher::GetInstance().GetAccelerationStructureCacher();
+// AR#8: no singleton — obtained the same way via GetOwningGraph()->GetMainCacher().GetCacher<...>().
+auto* asCacher = GetOwningGraph()->GetMainCacher()
+    .GetCacher<AccelerationStructureCacher, CachedAccelerationStructure, AccelStructCreateInfo>(
+        std::type_index(typeid(CachedAccelerationStructure)), device);
 AccelStructCreateInfo ci{
     .sceneData = sceneDataPtr,  // From VoxelSceneCacher
     .device = device,
     .physicalDevice = physicalDevice
 };
-auto accelStruct = asCacher.GetOrCreate(ci);
+auto accelStruct = asCacher->GetOrCreate(ci);
 // Returns shared_ptr<CachedAccelerationStructure> with BLAS/TLAS
 ```
 
@@ -324,7 +338,8 @@ flowchart LR
 
 | File | Purpose |
 |------|---------|
-| `libraries/CashSystem/include/MainCacher.h` | Global registry |
+| `libraries/CashSystem/include/MainCacher.h` | Instantiable cacher registry (host-owned; AR#8 — no singleton) |
+| `libraries/CashSystem/include/CacherBase.h` | Cacher base + owner back-pointer to MainCacher (AR#8) |
 | `libraries/CashSystem/include/TypedCacher.h` | Template base |
 | `libraries/CashSystem/include/ShaderModuleCacher.h` | Shader caching |
 | `libraries/CashSystem/include/PipelineCacher.h` | Pipeline caching |
