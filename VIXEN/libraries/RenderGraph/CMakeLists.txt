@@ -337,7 +337,7 @@ target_compile_features(RenderGraph PUBLIC cxx_std_23)
 
 target_include_directories(RenderGraph
     PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         # Common headers (Headers.h / VixenHash.h / MeshData.h) now come from Core::Core (linked below),
         # not the application layer (AR#3/#4 build-layering severance).
         # Generated SDI headers - priority order:
