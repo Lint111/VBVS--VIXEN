@@ -127,6 +127,8 @@ set(RENDERGRAPH_CORE_HEADERS
     include/Core/NodeType.h
     include/Core/NodeTypeRegistry.h
     include/Core/PerFrameResources.h
+    include/Core/EngineConfig.h          # AR#7: instantiable engine config
+    include/Core/EngineContext.h         # AR#7: instantiable EngineContext (owns registry/bus/graph/calibration)
     include/Core/RenderGraph.h
     include/Core/ResourceAccessTracker.h  # Sprint 6.4: Task #349 - Conflict detection
     include/Core/ResourceDependencyTracker.h
@@ -162,6 +164,7 @@ set(RENDERGRAPH_CORE_SOURCES
     src/Core/NodeType.cpp
     src/Core/NodeTypeRegistry.cpp
     src/Core/PerFrameResources.cpp
+    src/Core/EngineContext.cpp           # AR#7: instantiable EngineContext
     src/Core/RenderGraph.cpp
     src/Core/ResourceAccessTracker.cpp  # Sprint 6.4: Task #349 - Conflict detection
     src/Core/ResourceDependencyTracker.cpp
