@@ -24,6 +24,7 @@
 #include "Nodes/TextureLoaderNode.h"
 #include "Nodes/DepthBufferNode.h"
 #include "Nodes/RenderTargetNode.h"
+#include "Nodes/InstanceBufferNode.h"
 #include "Nodes/SwapChainNode.h"
 #include "Nodes/VertexBufferNode.h"
 #include "Nodes/RenderPassNode.h"
@@ -491,6 +492,7 @@ void VulkanGraphApplication::RegisterNodeTypes(NodeTypeRegistry& registry) {
     registry.Register<TextureLoaderNodeType>();
     registry.Register<DepthBufferNodeType>();
     registry.Register<RenderTargetNodeType>();
+    registry.Register<InstanceBufferNodeType>();
     registry.Register<SwapChainNodeType>();
     registry.Register<VertexBufferNodeType>();
     registry.Register<RenderPassNodeType>();
