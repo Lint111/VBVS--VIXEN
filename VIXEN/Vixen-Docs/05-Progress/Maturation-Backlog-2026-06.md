@@ -161,9 +161,14 @@ Correctness bugs + the only-consumer's pain + legal hygiene. Wasted on no possib
 
 ### P2 — Engine boundary (game-renderer foundation, review Phase 1)
 
-- [ ] **Extract instantiable `EngineContext`** (kill `VulkanGraphApplication` singleton + once_flag;
-  lift `NodeTypeRegistry`/`MessageBus`/`RenderGraph`/`CalibrationStore` into `Vixen::EngineContext`
-  + `EngineConfig`; `BenchmarkRunner` is the factoring reference) [AR#7]
+- [~] **Extract instantiable `EngineContext`** [AR#7] — *inc 1 DONE 2026-06-14*: killed the
+  `VulkanGraphApplication` singleton (`GetInstance`/`once_flag` gone, constructor public, main.cpp
+  owns it via `unique_ptr`). Recon confirmed only main.cpp ever reached the global + no library
+  code did, so the coupling was minimal. **Remaining (inc 2)**: lift `NodeTypeRegistry`/`MessageBus`/
+  `RenderGraph`/`CalibrationStore` into a `Vixen::EngineContext` value-type + `EngineConfig`, in a
+  *library* (so find_package consumers get it), with the app delegating to it; `BenchmarkRunner` is
+  the factoring reference. Open design Qs: which lib hosts EngineContext, and device ownership
+  (VulkanApplicationBase creates the device before the graph — inject vs own).
 - [ ] **De-singletonize** `MainCacher` / `CapabilityGraph` / `ProfilerSystem` (static state → one
   device per process; blocks game+editor instances) [AR#8]
 - [x] **Ship a consumable artifact** [AR#2] — **DONE 2026-06-14** (fat self-contained SDK).
