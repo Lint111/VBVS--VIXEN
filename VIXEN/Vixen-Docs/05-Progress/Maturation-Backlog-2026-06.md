@@ -161,14 +161,18 @@ Correctness bugs + the only-consumer's pain + legal hygiene. Wasted on no possib
 
 ### P2 — Engine boundary (game-renderer foundation, review Phase 1)
 
-- [~] **Extract instantiable `EngineContext`** [AR#7] — *inc 1 DONE 2026-06-14*: killed the
-  `VulkanGraphApplication` singleton (`GetInstance`/`once_flag` gone, constructor public, main.cpp
-  owns it via `unique_ptr`). Recon confirmed only main.cpp ever reached the global + no library
-  code did, so the coupling was minimal. **Remaining (inc 2)**: lift `NodeTypeRegistry`/`MessageBus`/
-  `RenderGraph`/`CalibrationStore` into a `Vixen::EngineContext` value-type + `EngineConfig`, in a
-  *library* (so find_package consumers get it), with the app delegating to it; `BenchmarkRunner` is
-  the factoring reference. Open design Qs: which lib hosts EngineContext, and device ownership
-  (VulkanApplicationBase creates the device before the graph — inject vs own).
+- [x] **Extract instantiable `EngineContext`** [AR#7] — **DONE 2026-06-14** (2 increments):
+  *(inc 1)* killed the `VulkanGraphApplication` singleton (`GetInstance`/`once_flag` gone, ctor
+  public, main.cpp owns it via `unique_ptr`). *(inc 2)* lifted `NodeTypeRegistry`/`MessageBus`/
+  `RenderGraph`/`CalibrationStore` into `Vixen::RenderGraph::EngineContext` + `EngineConfig` in the
+  **RenderGraph library** (resolved the home Q: it already owns registry/calibration/profile-registry,
+  and Profiler→RenderGraph is one-way → no cycle, no new links). Resolved the device-ownership Q: the
+  graph creates its OWN instance/device via in-graph nodes (InstanceNode→DeviceNode), so EngineContext
+  needs **no** device injected. Node registration is caller-supplied via `EngineConfig::registerNodeTypes`
+  (app=31, benchmark=26). The app owns one `EngineContext` + non-owning views (call sites unchanged).
+  Validated: 20s smoke, graph builds + renders, zero crashes. Already consumer-available via the AR#2
+  SDK (it ships inside the exported RenderGraph lib). Follow-up: BenchmarkRunner could adopt
+  EngineContext for dedup.
 - [ ] **De-singletonize** `MainCacher` / `CapabilityGraph` / `ProfilerSystem` (static state → one
   device per process; blocks game+editor instances) [AR#8]
 - [x] **Ship a consumable artifact** [AR#2] — **DONE 2026-06-14** (fat self-contained SDK).
