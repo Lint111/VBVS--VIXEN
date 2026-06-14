@@ -39,7 +39,8 @@ include(CMakePackageConfigHelpers)
 # Until then VIXEN_INSTALL_EXPORT defaults OFF so the normal build stays green.
 # ----------------------------------------------------------------------------
 
-set(VIXEN_VERSION 0.1.0)
+# AR#13: the version is owned by the root project(... VERSION x.y.z) — don't hardcode it here.
+set(VIXEN_VERSION ${PROJECT_VERSION})
 
 # Target names (note: the Logger target lives in libraries/logger).
 set(VIXEN_EXPORTED_TARGETS
@@ -101,6 +102,11 @@ foreach(_dir IN LISTS VIXEN_LIBRARY_DIRS)
             PATTERN "*.inl"
     )
 endforeach()
+
+# 2a. The generated <VixenVersion.h> (AR#13; built from project() VERSION in the root
+#     CMakeLists) into the same flat include/ prefix, so consumers get it alongside the lib headers.
+install(FILES ${CMAKE_BINARY_DIR}/generated/include/VixenVersion.h
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
 # 2b. Bundle third-party + internal deps into VixenTargets (fat self-contained SDK).
 #     These are PUBLIC — or static-lib PRIVATE, propagated as $<LINK_ONLY:> — deps of
