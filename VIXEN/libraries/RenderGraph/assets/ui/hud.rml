@@ -21,5 +21,10 @@
             </div>
         </div>
     </div>
+    <!-- Demo interactive widget: an ELLIPSE hit-mask proves hit vs pass-through. A click on the disc
+         is a UI hit; a click in the square's transparent corners falls through to the voxel pick.
+         pointer-events:auto (in hud.rcss) opts it back into picking; the hit-mask attribute then
+         drives the per-pixel shape test. No action is wired yet (a later S4 step). -->
+    <div id="demo-btn" hit-mask="ellipse">●</div>
 </body>
 </rml>

@@ -2,6 +2,11 @@ body {
     font-family: LatoLatin;
     font-size: 16px;
     color: #d0d0d0;
+    /* The HUD body spans the whole viewport. Make it transparent to picking so empty space and the
+       read-only HUD pass clicks THROUGH to the voxel world (RmlUi's GetElementAtPoint skips
+       pointer-events:none elements). Interactive widgets opt back in with pointer-events:auto.
+       NOTE: pointer-events is inherited, so this cascades to #hud and its children by default. */
+    pointer-events: none;
 }
 
 #hud {
@@ -13,6 +18,27 @@ body {
     background-color: #1a1a2ecc;
     border-width: 1px;
     border-color: #4060a0;
+    pointer-events: none;  /* read-only panel — never occludes the voxel pick (explicit) */
+}
+
+/* ---- Demo interactive widget (S-step proof of hit-mask hit vs pass-through) ----
+   A small round button with an ELLIPSE hit-mask: a click on the disc registers as a UI hit, while a
+   click in the transparent square corners passes through to the voxel pick. Opts back into picking
+   with pointer-events:auto (overriding the inherited none). No action wiring yet (later S4 step). */
+#demo-btn {
+    position: absolute;
+    bottom: 16px;
+    left: 16px;
+    width: 48px;
+    height: 48px;
+    background-color: #4060a0cc;
+    color: #e0f0ff;
+    font-size: 28px;
+    text-align: center;
+    border-width: 1px;
+    border-color: #80a0e0;
+    border-radius: 24px;
+    pointer-events: auto;  /* interactive — the provider then runs the hit-mask test */
 }
 
 /* ---- Clock row ---- */
