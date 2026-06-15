@@ -197,6 +197,21 @@ gtest_discover_tests(test_selection_set)
 
 message(STATUS "[RenderGraph Tests] Added: test_selection_set (SEL-P1)")
 
+# VoxelSelectionProvider (SEL-P2) — headless tests (priority/kind + no-device miss).
+# Links the full RenderGraph (the provider uses Vulkan); the GPU readback path itself
+# is exercised live in the app (the user's manual click test).
+add_executable(test_voxel_selection_provider
+    Selection/test_voxel_selection_provider.cpp
+)
+
+target_link_libraries(test_voxel_selection_provider PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+
+# Visual Studio solution folder organization
+set_target_properties(test_voxel_selection_provider PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_voxel_selection_provider)
+
+message(STATUS "[RenderGraph Tests] Added: test_voxel_selection_provider (SEL-P2)")
+
 # PickRay unproject Tests (AR#35) — pure unit tests, no device
 add_executable(test_pick_ray
     Nodes/test_pick_ray.cpp

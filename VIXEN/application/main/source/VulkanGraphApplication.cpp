@@ -50,7 +50,7 @@
 #include "Nodes/CameraNode.h"  // Ray marching: Camera data
 #include "Nodes/VoxelGridNode.h"  // Ray marching: 3D voxel texture
 #include "Nodes/InputNode.h"  // Input polling and event publishing
-#include "Nodes/PickingNode.h"  // AR#35: CPU click-picking of voxels
+#include "Nodes/SelectionCoordinatorNode.h"  // SEL-P2: engine-wide selection coordinator (GPU voxel pick provider)
 #include <ShaderBundleBuilder.h>  // Phase G: Shader builder API (includes preprocessor support)
 #include "VoxelRayMarchNames.h"  // Generated shader binding constants
 // NOTE: "VoxelRayMarch_CompressedNames.h" was an orphaned include — that combined
@@ -523,7 +523,7 @@ void VulkanGraphApplication::RegisterNodeTypes(NodeTypeRegistry& registry) {
     registry.Register<CameraNodeType>();
     registry.Register<VoxelGridNodeType>();
     registry.Register<InputNodeType>();
-    registry.Register<PickingNodeType>();  // AR#35: CPU click-picking of voxels
+    registry.Register<SelectionCoordinatorNodeType>();  // SEL-P2: engine-wide selection coordinator
     registry.Register<DebugBufferReaderNodeType>();
 
     // Special nodes (require RenderGraph.h to be included - circular dependency in library)
@@ -978,12 +978,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // --- Pick ID Target (AR#35 GPU picking P1: R32_UINT storage-image ring at binding 9) ---
     NodeHandle pickIdTargetNode = renderGraph->AddNode<PickIdTargetNodeType>("pick_id_target");
 
-    // --- Picking Node (AR#35 GPU picking P2: read back the center pick-ID texel on click) ---
-    NodeHandle pickingNode = renderGraph->AddNode<PickingNodeType>("voxel_picking");
-    // Node loggers default DISABLED (NodeInstance ctor); pick results are user-facing, so enable
+    // --- Selection Coordinator (SEL-P2: engine-wide selection; owns the VoxelSelectionProvider that
+    // reads back the center pick-ID texel on click, plus the durable SelectionSet) ---
+    NodeHandle selectionCoordinatorNode = renderGraph->AddNode<SelectionCoordinatorNodeType>("selection_coordinator");
+    // Node loggers default DISABLED (NodeInstance ctor); selection results are user-facing, so enable
     // this node's logger to the terminal (otherwise its HIT/miss + diagnostics are silently dropped).
-    if (auto* pickInst = renderGraph->GetInstance(pickingNode)) {
-        if (auto* pl = pickInst->GetLogger()) { pl->SetEnabled(true); pl->SetTerminalOutput(true); }
+    if (auto* selInst = renderGraph->GetInstance(selectionCoordinatorNode)) {
+        if (auto* sl = selInst->GetLogger()) { sl->SetEnabled(true); sl->SetTerminalOutput(true); }
     }
 
     NodeHandle physicsLoopBridge = renderGraph->AddNode<LoopBridgeNodeType>("physics_loop");
@@ -1567,25 +1568,28 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(inputNode, InputNodeConfig::INPUT_STATE,
                   cameraNode, CameraNodeConfig::INPUT_STATE);
 
-    // Picking node connections (AR#35 GPU picking P2) — read back the center pick-ID texel on click.
-    // No CPU ray-march / voxel world anymore: it copies the crosshair texel of PickIdTargetNode's
-    // ID image (binding-9 target) via a one-shot fenced copy, decodes brick/voxel, and reports.
-    // Inputs: per-frame InputState; the ID VkImage; device + command pool for the one-shot copy;
-    // the frame-in-flight index; and the swapchain viewport size (for the center offset).
+    // Selection coordinator connections (SEL-P2) — on a left-click edge it runs its providers and
+    // updates the durable SelectionSet. The voxel provider it owns copies the crosshair texel of
+    // PickIdTargetNode's ID image (binding-9 target) via a one-shot fenced copy, decodes brick/voxel,
+    // and reports the hit. Inputs: per-frame InputState; the ID VkImage; device + command pool for
+    // the one-shot copy; the frame-in-flight index; the swapchain viewport size (for the center
+    // offset); and CameraData for the SelectContext (carried for future ray-based providers).
     batch.Connect(inputNode, InputNodeConfig::INPUT_STATE,
-                  pickingNode, PickingNodeConfig::INPUT_STATE)
+                  selectionCoordinatorNode, SelectionCoordinatorNodeConfig::INPUT_STATE)
          .Connect(pickIdTargetNode, PickIdTargetNodeConfig::ID_IMAGE,
-                  pickingNode, PickingNodeConfig::ID_IMAGE)
+                  selectionCoordinatorNode, SelectionCoordinatorNodeConfig::ID_IMAGE)
          .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                  pickingNode, PickingNodeConfig::VULKAN_DEVICE)
+                  selectionCoordinatorNode, SelectionCoordinatorNodeConfig::VULKAN_DEVICE)
          .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
-                  pickingNode, PickingNodeConfig::COMMAND_POOL)
+                  selectionCoordinatorNode, SelectionCoordinatorNodeConfig::COMMAND_POOL)
          .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
-                  pickingNode, PickingNodeConfig::CURRENT_FRAME_INDEX)
+                  selectionCoordinatorNode, SelectionCoordinatorNodeConfig::CURRENT_FRAME_INDEX)
          .Connect(windowNode, WindowNodeConfig::WIDTH_OUT,
-                  pickingNode, PickingNodeConfig::VIEWPORT_WIDTH)
+                  selectionCoordinatorNode, SelectionCoordinatorNodeConfig::VIEWPORT_WIDTH)
          .Connect(windowNode, WindowNodeConfig::HEIGHT_OUT,
-                  pickingNode, PickingNodeConfig::VIEWPORT_HEIGHT);
+                  selectionCoordinatorNode, SelectionCoordinatorNodeConfig::VIEWPORT_HEIGHT)
+         .Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
+                  selectionCoordinatorNode, SelectionCoordinatorNodeConfig::CAMERA_DATA);
 
     // Pick ID target (AR#35 GPU picking P1): allocate the R32_UINT storage-image ring sized to the
     // window, transition it to GENERAL once, and expose the current frame's view for binding 9.

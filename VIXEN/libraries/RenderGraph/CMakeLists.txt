@@ -54,6 +54,7 @@ set(RENDERGRAPH_DATA_NODE_CONFIGS
     include/Data/Nodes/DepthBufferNodeConfig.h
     include/Data/Nodes/RenderTargetNodeConfig.h
     include/Data/Nodes/PickIdTargetNodeConfig.h
+    include/Data/Nodes/SelectionCoordinatorNodeConfig.h
     include/Data/Nodes/DescriptorResourceGathererNodeConfig.h
     include/Data/Nodes/DescriptorSetNodeConfig.h
     include/Data/Nodes/DeviceNodeConfig.h
@@ -198,6 +199,7 @@ set(RENDERGRAPH_NODE_HEADERS
     include/Nodes/DepthBufferNode.h
     include/Nodes/RenderTargetNode.h
     include/Nodes/PickIdTargetNode.h
+    include/Nodes/SelectionCoordinatorNode.h
     include/Nodes/DescriptorResourceGathererNode.h
     include/Nodes/DescriptorSetNode.h
     include/Nodes/DeviceNode.h
@@ -250,7 +252,7 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/InputNode.cpp
     src/Nodes/InstanceNode.cpp
     src/Nodes/LoopBridgeNode.cpp
-    src/Nodes/PickingNode.cpp
+    src/Nodes/SelectionCoordinatorNode.cpp
     src/Nodes/PresentNode.cpp
     src/Nodes/PushConstantGathererNode.cpp
     src/Nodes/RenderPassNode.cpp
@@ -324,10 +326,12 @@ set(RENDERGRAPH_SELECTION_HEADERS
     include/Selection/SelectContext.h
     include/Selection/ISelectionProvider.h
     include/Selection/SelectionSet.h
+    include/Selection/VoxelSelectionProvider.h
 )
 
 set(RENDERGRAPH_SELECTION_SOURCES
     src/Selection/SelectionSet.cpp
+    src/Selection/VoxelSelectionProvider.cpp
 )
 
 # ============================================================================
