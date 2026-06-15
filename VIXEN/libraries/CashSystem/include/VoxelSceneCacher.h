@@ -198,6 +198,13 @@ struct VoxelSceneCreateInfo {
  */
 struct VoxelSceneData {
     // ===== CPU-side data (for re-upload or CPU-side queries) =====
+    // CPU-side entity voxel world (owned). Built during Create() and retained for
+    // the lifetime of this cached resource so downstream nodes (e.g. picking) can
+    // run CPU-side spatial queries against the same scene the GPU buffers describe.
+    // Survives cache hits because it lives on the cached resource, not on the cacher's
+    // transient build scratch. Null only if the world was never built (defensive).
+    std::unique_ptr<Vixen::GaiaVoxel::GaiaVoxelWorld> voxelWorld;
+
     std::vector<uint8_t> esvoNodesCPU;          // ESVO octree node array
     std::vector<uint8_t> brickDataCPU;          // Raw brick voxel data
     std::vector<GPUMaterial> materialsCPU;      // Material palette

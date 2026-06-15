@@ -140,7 +140,14 @@ std::shared_ptr<VoxelSceneData> VoxelSceneCacher::Create(const VoxelSceneCreateI
     // Step 5: Upload all data to GPU
     UploadToGPU(*data);
 
-    LOG_INFO("[VoxelSceneCacher::Create] Scene data created: " + std::to_string(data->nodeCount) + " nodes, " + std::to_string(data->brickCount) + " bricks, " + std::to_string(data->solidVoxelCount) + " voxels, " + std::to_string(data->totalMemorySize / 1024.0f / 1024.0f) + " MB GPU");
+    // Transfer ownership of the CPU voxel world from transient build scratch onto the
+    // cached resource. The octree (m_octree) only borrowed m_voxelWorld during BuildOctree
+    // (rebuild + node extraction, all complete by now) and never retains it past Create(),
+    // so the move leaves no dangling borrow. After this, the world lives exactly as long as
+    // the cached VoxelSceneData and survives cache hits (which bypass Create() entirely).
+    data->voxelWorld = std::move(m_voxelWorld);
+
+    LOG_INFO("[VoxelSceneCacher::Create] Scene data created: " + std::to_string(data->nodeCount) + " nodes, " + std::to_string(data->brickCount) + " bricks, " + std::to_string(data->solidVoxelCount) + " voxels, " + std::to_string(data->totalMemorySize / 1024.0f / 1024.0f) + " MB GPU" + ", voxelWorld=" + (data->voxelWorld ? "present" : "null"));
 
     return data;
 }
