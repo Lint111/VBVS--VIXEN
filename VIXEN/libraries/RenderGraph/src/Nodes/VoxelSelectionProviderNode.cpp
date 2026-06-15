@@ -1,8 +1,12 @@
-#include "Selection/VoxelSelectionProvider.h"
+#include "Nodes/VoxelSelectionProviderNode.h"
+#include "Core/NodeLogging.h"
+#include "Selection/SelectionCandidate.h"
+#include "InputEvents.h"
 #include "VulkanDevice.h"
 
 #include <glm/glm.hpp>
 #include <cstring>
+#include <string>
 
 namespace Vixen::RenderGraph {
 
@@ -11,7 +15,7 @@ using namespace Vixen::Vulkan::Resources;
 namespace {
 // Local memory-type finder. Anonymous namespace (not an inline helper header) to avoid emitting
 // an inline-function COMDAT into this TU that conflicts with the same inline instantiated
-// elsewhere — the same precaution the old PickingNode/PickIdTargetNode/InstanceBufferNode take.
+// elsewhere — the same precaution the old VoxelSelectionProvider/PickIdTargetNode take.
 uint32_t FindHostVisibleMemoryType(
     const VkPhysicalDeviceMemoryProperties& memProps,
     uint32_t typeFilter,
@@ -27,32 +31,93 @@ uint32_t FindHostVisibleMemoryType(
 }
 } // namespace
 
-VoxelSelectionProvider::~VoxelSelectionProvider() {
-    // RAII: release the host-visible staging buffer we own (was PickingNode::CleanupImpl).
-    DestroyStagingBuffer();
+// ============================================================================
+// NODE TYPE FACTORY
+// ============================================================================
+
+std::unique_ptr<NodeInstance> VoxelSelectionProviderNodeType::CreateInstance(
+    const std::string& instanceName
+) const {
+    return std::make_unique<VoxelSelectionProviderNode>(
+        instanceName, const_cast<VoxelSelectionProviderNodeType*>(this));
 }
 
-void VoxelSelectionProvider::configure(VulkanDevice* device,
-                                       VkCommandPool pool,
-                                       VkImage idImage) {
-    // If the device changes, tear down the staging buffer first so we never free it against the
-    // wrong device. On a same-device recompile we keep it (it is reused across clicks).
-    if (device != device_) {
+// ============================================================================
+// VOXEL SELECTION PROVIDER NODE IMPLEMENTATION
+// ============================================================================
+
+VoxelSelectionProviderNode::VoxelSelectionProviderNode(
+    const std::string& instanceName,
+    NodeType* nodeType
+) : TypedNode<VoxelSelectionProviderNodeConfig>(instanceName, nodeType)
+{
+    NODE_LOG_INFO("[VoxelSelectionProvider] constructor");
+}
+
+void VoxelSelectionProviderNode::SetupImpl(TypedSetupContext& ctx) {
+    NODE_LOG_INFO("[VoxelSelectionProvider] setup");
+    // Provider layer priority (world layer = 0 by default). Read once at graph-scope setup.
+    priority_     = GetParameterValue<int>(VoxelSelectionProviderNodeConfig::PARAM_PRIORITY, 0);
+    lastLeftDown_ = false;
+}
+
+void VoxelSelectionProviderNode::CompileImpl(TypedCompileContext& ctx) {
+    // Cache the compile-stable Dependency handles (the ID-image ring, device and command pool are
+    // valid for the cached scene's lifetime). The device lives in the base NodeInstance (SetDevice
+    // now, GetDevice() in Execute/Cleanup) per the device convention — no private device member.
+    VulkanDevice* device = ctx.In(VoxelSelectionProviderNodeConfig::VULKAN_DEVICE);
+
+    // If the device changes on recompile, tear down the staging buffer first so we never free it
+    // against the wrong device. On a same-device recompile we keep it (it is reused across clicks).
+    if (device != GetDevice()) {
         DestroyStagingBuffer();
     }
-    device_      = device;
-    commandPool_ = pool;
-    idImage_     = idImage;
+    SetDevice(device);
+    commandPool_ = ctx.In(VoxelSelectionProviderNodeConfig::COMMAND_POOL);
+    idImage_     = ctx.In(VoxelSelectionProviderNodeConfig::ID_IMAGE);
+
+    const bool ready = GetDevice() && commandPool_ != VK_NULL_HANDLE && idImage_ != VK_NULL_HANDLE;
+    NODE_LOG_INFO(std::string("[VoxelSelectionProvider] compile: priority=") +
+                  std::to_string(priority_) + "; " +
+                  (ready ? "configured (device+pool+ID image acquired)"
+                         : "INERT (missing device/pool/ID image)"));
 }
 
-std::optional<Hit> VoxelSelectionProvider::resolve(const SelectContext& ctx) {
-    const uint32_t width  = ctx.viewportWidth;
-    const uint32_t height = ctx.viewportHeight;
+void VoxelSelectionProviderNode::ExecuteImpl(TypedExecuteContext& ctx) {
+    // A provider emits a candidate EVERY frame so the coordinator's accumulation slot always has a
+    // fresh value from this source. Default = miss; only a click-edge hit overwrites it.
+    SelectionCandidate candidate{};
+    candidate.hit      = false;
+    candidate.id       = kInvalidSelectionId;
+    candidate.depth    = 0.0f;
+    candidate.priority = priority_;
+    candidate.worldPos = glm::vec3(0.0f);
 
-    if (!device_ || commandPool_ == VK_NULL_HANDLE || idImage_ == VK_NULL_HANDLE ||
+    InputStatePtr input = ctx.In(VoxelSelectionProviderNodeConfig::INPUT_STATE);
+    if (!input) {
+        ctx.Out(VoxelSelectionProviderNodeConfig::CANDIDATE, candidate);
+        return;  // no input state this frame
+    }
+
+    // Edge-detect the left-button press: resolve only on the down-edge (no per-frame readback).
+    const bool leftDown = input->mouseButtons[0];
+    const bool pressedThisFrame = leftDown && !lastLeftDown_;
+    lastLeftDown_ = leftDown;
+
+    if (!pressedThisFrame) {
+        ctx.Out(VoxelSelectionProviderNodeConfig::CANDIDATE, candidate);
+        return;  // cheap: only read back on a click edge
+    }
+
+    const uint32_t width  = ctx.In(VoxelSelectionProviderNodeConfig::VIEWPORT_WIDTH);
+    const uint32_t height = ctx.In(VoxelSelectionProviderNodeConfig::VIEWPORT_HEIGHT);
+
+    if (!GetDevice() || commandPool_ == VK_NULL_HANDLE || idImage_ == VK_NULL_HANDLE ||
         width == 0 || height == 0) {
-        // Resources or viewport not ready — treat as a miss (no hit to report).
-        return std::nullopt;
+        // Resources or viewport not ready — emit a miss (never crash).
+        NODE_LOG_INFO("[VoxelSelectionProvider] click ignored — resources/viewport not ready");
+        ctx.Out(VoxelSelectionProviderNodeConfig::CANDIDATE, candidate);
+        return;
     }
 
     // Read back the center texel of the current frame's pick-ID image.
@@ -68,31 +133,45 @@ std::optional<Hit> VoxelSelectionProvider::resolve(const SelectContext& ctx) {
     // torn write. If stale reads are ever observed under fast motion, the principled fallback is the
     // previous-completed-frame slot — not needed so far.
     uint32_t pickID = kMissSentinel;
-    if (!ReadCenterPixel(width, height, pickID)) {
-        // Readback failed (see prior error log) — report no hit.
-        return std::nullopt;
-    }
-
-    if (pickID == kMissSentinel) {
-        return std::nullopt;  // empty space under the crosshair
+    if (!ReadCenterPixel(width, height, pickID) || pickID == kMissSentinel) {
+        // Readback failed (see prior error log) or empty space under the crosshair — report a miss.
+        NODE_LOG_INFO("[VoxelSelectionProvider] click — miss (empty space under crosshair)");
+        ctx.Out(VoxelSelectionProviderNodeConfig::CANDIDATE, candidate);
+        return;
     }
 
     // Hit. payload carries the packed pickID (brick = id >> 10, voxel = id & 0x3FF). World position
     // from brick/voxel is deferred (needs the brick->world inverse — see design "Out of scope"), so
     // depth = 0 and worldPos = (0,0,0) for now.
-    return Hit{ SelectionId{ ProviderKind::Voxel, static_cast<uint64_t>(pickID) },
-                /*depth=*/0.0f,
-                /*worldPos=*/glm::vec3(0.0f) };
+    candidate.hit      = true;
+    candidate.id       = SelectionId{ ProviderKind::Voxel, static_cast<uint64_t>(pickID) };
+    candidate.depth    = 0.0f;
+    candidate.worldPos = glm::vec3(0.0f);
+
+    const uint32_t brickIndex     = pickID >> kBrickIdxShift;
+    const uint32_t voxelLinearIdx = pickID & kVoxelIdxMask;
+    NODE_LOG_INFO("[VoxelSelectionProvider] click — HIT pickID=" + std::to_string(pickID) +
+                  " brick=" + std::to_string(brickIndex) +
+                  " voxel=" + std::to_string(voxelLinearIdx) +
+                  " priority=" + std::to_string(priority_));
+
+    ctx.Out(VoxelSelectionProviderNodeConfig::CANDIDATE, candidate);
 }
 
-bool VoxelSelectionProvider::EnsureStagingBuffer() {
+// ----------------------------------------------------------------------------
+// GPU readback helpers (MOVED verbatim from the old C++ VoxelSelectionProvider;
+// device_ → GetDevice() per the base-NodeInstance device convention).
+// ----------------------------------------------------------------------------
+
+bool VoxelSelectionProviderNode::EnsureStagingBuffer() {
     if (stagingBuffer_ != VK_NULL_HANDLE) {
         return true;  // already created — reused across clicks
     }
-    if (!device_) {
+    VulkanDevice* device = GetDevice();
+    if (!device) {
         return false;
     }
-    VkDevice vkDevice = device_->device;
+    VkDevice vkDevice = device->device;
 
     VkBufferCreateInfo bufInfo{};
     bufInfo.sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -109,7 +188,7 @@ bool VoxelSelectionProvider::EnsureStagingBuffer() {
     vkGetBufferMemoryRequirements(vkDevice, stagingBuffer_, &req);
 
     const uint32_t memType = FindHostVisibleMemoryType(
-        device_->gpuMemoryProperties,
+        device->gpuMemoryProperties,
         req.memoryTypeBits,
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
     if (memType == UINT32_MAX) {
@@ -134,11 +213,12 @@ bool VoxelSelectionProvider::EnsureStagingBuffer() {
     return true;
 }
 
-bool VoxelSelectionProvider::ReadCenterPixel(uint32_t width, uint32_t height, uint32_t& pickIDOut) {
+bool VoxelSelectionProviderNode::ReadCenterPixel(uint32_t width, uint32_t height, uint32_t& pickIDOut) {
     if (!EnsureStagingBuffer()) {
         return false;
     }
-    VkDevice vkDevice = device_->device;
+    VulkanDevice* device = GetDevice();
+    VkDevice vkDevice = device->device;
 
     // --- One-shot command buffer from the (graph-owned) command pool ---
     VkCommandBufferAllocateInfo cbAlloc{};
@@ -197,7 +277,7 @@ bool VoxelSelectionProvider::ReadCenterPixel(uint32_t width, uint32_t height, ui
     submit.commandBufferCount = 1;
     submit.pCommandBuffers    = &cmd;
 
-    if (vkQueueSubmit(device_->queue, 1, &submit, fence) != VK_SUCCESS) {
+    if (vkQueueSubmit(device->queue, 1, &submit, fence) != VK_SUCCESS) {
         vkDestroyFence(vkDevice, fence, nullptr);
         vkFreeCommandBuffers(vkDevice, commandPool_, 1, &cmd);
         return false;
@@ -221,11 +301,12 @@ bool VoxelSelectionProvider::ReadCenterPixel(uint32_t width, uint32_t height, ui
     return true;
 }
 
-void VoxelSelectionProvider::DestroyStagingBuffer() {
-    if (!device_) {
+void VoxelSelectionProviderNode::DestroyStagingBuffer() {
+    VulkanDevice* device = GetDevice();
+    if (!device) {
         return;
     }
-    VkDevice vkDevice = device_->device;
+    VkDevice vkDevice = device->device;
     if (stagingBuffer_ != VK_NULL_HANDLE) {
         vkDestroyBuffer(vkDevice, stagingBuffer_, nullptr);
         stagingBuffer_ = VK_NULL_HANDLE;
@@ -234,6 +315,17 @@ void VoxelSelectionProvider::DestroyStagingBuffer() {
         vkFreeMemory(vkDevice, stagingMemory_, nullptr);
         stagingMemory_ = VK_NULL_HANDLE;
     }
+}
+
+void VoxelSelectionProviderNode::CleanupImpl(TypedCleanupContext& ctx) {
+    NODE_LOG_INFO("[VoxelSelectionProvider] cleanup");
+    // Release the host-visible staging buffer we own (RAII). The device lives in the base
+    // NodeInstance and is re-set every CompileImpl via SetDevice(), so it is intentionally not
+    // reset here; drop the cached Dependency handles (re-acquired next CompileImpl).
+    DestroyStagingBuffer();
+    commandPool_  = VK_NULL_HANDLE;
+    idImage_      = VK_NULL_HANDLE;
+    lastLeftDown_ = false;
 }
 
 } // namespace Vixen::RenderGraph

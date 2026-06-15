@@ -421,6 +421,21 @@ P1 gates Sprint 8 implementation ─────────┘                 
 - **Keep the benchmark suite green throughout** [AR#87] — it is the regression net and the only
   consumer exercising the fragment pipeline + headless bring-up.
 
+## Newly-found gap (2026-06-15)
+
+- **RenderGraph has no RUNTIME accumulation-gather for MultiConnect/Accumulation input slots.**
+  `AccumulationConnectionRule::Resolve` records the source list + an ordering edge but never assembles
+  the `std::vector<T>` onto the consumer's input resource, so `ctx.In(accumSlot)` reads **empty** every
+  Execute. `MultiDispatchNode` only reads its accumulation slot at compile (one-time snapshot);
+  `BoolOpNode`'s accumulation has no runtime test — neither exercises a per-frame gather, so the gap was
+  unnoticed. Blocker is type erasure (`Resource` stores `std::any`), so a type-erased rule can't append
+  element `T` into `std::vector<T>`. Fix: register a **typed PreExecute gather hook** from the typed
+  `Connect` site (where `T` is known) — the `GraphLifecycleHooks` `PreExecute` infra already exists and
+  `VariadicConnectionRule` uses it; needs correct per-slot vector ownership + per-frame reset. Surfaced
+  by the SEL-P2 providers-are-nodes refactor (the selection coordinator's candidate fan-in); worked
+  around there with a single-source candidate slot (`DirectConnectionRule` wires it). Closing this
+  unblocks true N-provider selection (UI + voxel + mesh → one coordinator) and any future fan-in node.
+
 ## Maturity scorecard (from the review)
 
 | Subsystem | Maturity (1=sketch…5=prod) | | Subsystem | Maturity |
