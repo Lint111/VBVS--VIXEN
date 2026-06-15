@@ -8,6 +8,7 @@
 #include <RmlUi/Core/DataModelHandle.h>
 #include <RmlUi/Core/Types.h>  // Rml::String
 
+#include <filesystem>
 #include <memory>
 #include <span>
 #include <string>
@@ -87,6 +88,12 @@ private:
     Vixen::Ui::VixenRmlRenderInterface renderInterface_;
     Rml::Context* context_ = nullptr;
     Rml::ElementDocument* document_ = nullptr;
+
+    // Live hot-reload (dev only; gated on VIXEN_UI_LIVE). Cache the resolved document path + the newest
+    // mtime across the RML and its sibling RCSS so CompileImpl's recompile branch can detect an on-disk
+    // edit and swap the document CPU-side (never touching the persistent GPU sync objects).
+    std::string resolvedDocPath_;
+    std::filesystem::file_time_type lastUiWriteTime_{};
 
     // S1b: Rml data model members. Structs are registered with RegisterStruct<> / RegisterArray<>
     // in CompileImpl before LoadDocument. tick_ / bodyCount_ are bound as scalars; factions_ /

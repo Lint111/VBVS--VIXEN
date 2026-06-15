@@ -7,6 +7,7 @@
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/DataModelHandle.h>
 #include <RmlUi/Core/ElementDocument.h>
+#include <RmlUi/Core/Factory.h>
 
 #include <cstdint>
 #include <cstdlib>
@@ -41,6 +42,24 @@ std::string ResolveUiAsset(const std::string& configured) {
     if (std::filesystem::exists(candidate)) return candidate.string();
 #endif
     return configured;  // let RmlUi log the miss against the configured path
+}
+
+// Newest mtime across the RML document and every sibling *.rcss (the stylesheets it may @import or be
+// linked to). Used by the live hot-reload to detect an on-disk edit to either the doc or its styles.
+std::filesystem::file_time_type LatestUiMtime(const std::string& rmlPath) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    fs::file_time_type latest = fs::last_write_time(rmlPath, ec);
+    fs::path dir = fs::path(rmlPath).parent_path();
+    std::error_code dec;
+    for (fs::directory_iterator it(dir, dec), end; it != end; it.increment(dec)) {
+        if (it->path().extension() == ".rcss") {
+            std::error_code fec;
+            auto t = fs::last_write_time(it->path(), fec);
+            if (!fec && t > latest) latest = t;
+        }
+    }
+    return latest;
 }
 }  // namespace
 
@@ -107,12 +126,33 @@ void UIRenderNode::CompileImpl(TypedCompileContext& ctx) {
             }
             document_ = context_->LoadDocument(docPath);
             if (document_) document_->Show();
+            // Cache the resolved path + initial mtime so the recompile branch can detect on-disk edits
+            // (live hot-reload; dormant unless VIXEN_UI_LIVE is set).
+            resolvedDocPath_ = docPath;
+            lastUiWriteTime_ = LatestUiMtime(docPath);
         }
         initialized_ = true;
     } else if (context_) {
         // Recompile (window resize): RenderPassNode/FramebufferNode rebuilt the render pass +
         // framebuffers for the new extent; just re-fit the RmlUi document to the new size.
         context_->SetDimensions(Rml::Vector2i(static_cast<int>(extent_.width), static_cast<int>(extent_.height)));
+
+        // Live hot-reload (dev only). CPU-SIDE DOCUMENT SWAP ONLY — never touch the persistent GPU sync
+        // objects (the destroy-while-in-flight race that kernel-panics WSL). Old document geometry routes
+        // through the render interface's frames-in-flight deferred-delete; UnloadDocument defers the C++
+        // destroy to the next Context::Update(). The "hud" data model is Context-level so it survives the
+        // reload — the new document re-binds via data-model="hud", and SetHudView keeps feeding it.
+        // ClearStyleSheetCache() must precede LoadDocument so edited RCSS actually takes effect.
+        if (std::getenv("VIXEN_UI_LIVE") && !resolvedDocPath_.empty()) {
+            std::filesystem::file_time_type mtime = LatestUiMtime(resolvedDocPath_);
+            if (mtime > lastUiWriteTime_) {
+                Rml::Factory::ClearStyleSheetCache();
+                if (document_) context_->UnloadDocument(document_);
+                document_ = context_->LoadDocument(resolvedDocPath_);
+                if (document_) document_->Show();
+                lastUiWriteTime_ = mtime;
+            }
+        }
     }
 
     // (Re)build the per-image GPU sync objects (command buffers + composite present semaphores) ONLY
