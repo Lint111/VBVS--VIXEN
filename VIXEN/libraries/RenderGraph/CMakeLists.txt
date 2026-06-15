@@ -308,12 +308,14 @@ set(RENDERGRAPH_UI_HEADERS
     include/Ui/VixenRmlRenderInterface.h
     include/Ui/VixenRmlSystemInterface.h
     include/Ui/UiShaderSpirv.h
+    include/Ui/UiHitMask.h
     include/Data/Nodes/UIRenderNodeConfig.h
     include/Nodes/UIRenderNode.h
 )
 
 set(RENDERGRAPH_UI_SOURCES
     src/Ui/VixenRmlRenderInterface.cpp
+    src/Ui/UiHitMask.cpp
     src/Nodes/UIRenderNode.cpp
 )
 
@@ -413,6 +415,8 @@ target_link_libraries(RenderGraph
         glfw                   # Cross-platform window/surface/input (WindowNode/InputNode/InstanceNode)
         rmlui_core             # Data-driven UI (RML/RCSS); freetype is its transitive font engine
         freetype
+    PRIVATE
+        stb                    # header-only; only UiHitMask.cpp uses it (stbi_load for image hit-masks)
 )
 
 # RmlUi is built static (FetchContent); code including its headers needs this define.
@@ -449,6 +453,12 @@ if(USE_PRECOMPILED_HEADERS)
     # TBB-based executor needs TBB headers not in PCH - skip PCH for this file
     set_source_files_properties(
         src/Core/TBBVirtualTaskExecutor.cpp
+        PROPERTIES SKIP_PRECOMPILE_HEADERS ON
+    )
+
+    # UiHitMask is intentionally dependency-light (pure math + header-only stb); skip the heavy PCH.
+    set_source_files_properties(
+        src/Ui/UiHitMask.cpp
         PROPERTIES SKIP_PRECOMPILE_HEADERS ON
     )
 endif()

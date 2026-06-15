@@ -2,10 +2,12 @@
 #include "Nodes/UIRenderNode.h"      // GetUiContext() — the Rml::Context to hit-test
 #include "Core/NodeLogging.h"
 #include "Selection/SelectionCandidate.h"
+#include "Ui/UiHitMask.h"           // per-element hit-mask test (custom shapes / image masks)
 #include "InputEvents.h"
 
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/Element.h>
+#include <RmlUi/Core/Box.h>    // Rml::BoxArea, Element::GetBox().GetSize()
 #include <RmlUi/Core/Types.h>  // Rml::Vector2f, Rml::String
 
 #include <glm/glm.hpp>
@@ -90,6 +92,27 @@ void UISelectionProviderNode::ExecuteImpl(TypedExecuteContext& ctx) {
         NODE_LOG_INFO("[UISelectionProvider] click — miss (no UI element under cursor)");
         ctx.Out(UISelectionProviderNodeConfig::CANDIDATE, candidate);
         return;
+    }
+
+    // Per-element hit-mask: GetElementAtPoint is AABB-only (RmlUi already honours `pointer-events:
+    // none`, so non-interactive HUD areas never reach here). For an interactive element with a
+    // `hit-mask` attribute, run the mask test so a click on a transparent / non-shape pixel passes
+    // THROUGH to the voxel pick instead of being swallowed. `none` / no attribute keeps the plain
+    // box behaviour (always a hit).
+    const Rml::String maskAttr = hitElement->GetAttribute("hit-mask", Rml::String("none"));
+    const HitMaskSpec maskSpec = ParseHitMask(std::string(maskAttr));
+    if (maskSpec.shape != HitMaskShape::Box) {
+        // Map the cursor to element-local pixels (border box: matches GetElementAtPoint's geometry).
+        const Rml::Vector2f origin = hitElement->GetAbsoluteOffset(Rml::BoxArea::Border);
+        const Rml::Vector2f size   = hitElement->GetBox().GetSize(Rml::BoxArea::Border);
+        const float localX = cursor.x - origin.x;
+        const float localY = cursor.y - origin.y;
+        if (!HitMaskContains(maskSpec, localX, localY, size.x, size.y)) {
+            NODE_LOG_INFO("[UISelectionProvider] click — hit-mask MISS on element id='" +
+                          std::string(hitElement->GetId()) + "'; passing through to the world");
+            ctx.Out(UISelectionProviderNodeConfig::CANDIDATE, candidate);  // candidate.hit == false
+            return;
+        }
     }
 
     // Hit. payload is a STABLE handle: a hash of the element's RML `id` attribute (NOT the raw

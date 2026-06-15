@@ -73,6 +73,28 @@ set_target_properties(test_accumulation_gather PROPERTIES FOLDER "Tests/RenderGr
 
 gtest_discover_tests(test_accumulation_gather)
 
+# UI hit-mask math (Ui/UiHitMask.h) — pure CPU, no RmlUi/Vulkan/GPU. The pngwrite TU compiles
+# stb_image_write for the Image round-trip (the read side comes from RenderGraph's link closure).
+if(TARGET RenderGraph)
+    add_executable(test_ui_hit_mask
+        test_ui_hit_mask.cpp
+        test_ui_hit_mask_pngwrite.cpp
+    )
+
+    target_link_libraries(test_ui_hit_mask PRIVATE GTest::gtest_main RenderGraph)
+    if(TARGET stb)
+        target_link_libraries(test_ui_hit_mask PRIVATE stb)  # stb_image_write.h for the test writer
+    endif()
+
+    set_target_properties(test_ui_hit_mask PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+    gtest_discover_tests(test_ui_hit_mask)
+
+    message(STATUS "✓ test_ui_hit_mask configured (UI hit-mask math)")
+else()
+    message(STATUS "⊗ test_ui_hit_mask skipped (RenderGraph target not available)")
+endif()
+
 # Additional typed-node tests
 target_sources(test_typednode_helpers PRIVATE test_executeonly_behavior.cpp)
 
