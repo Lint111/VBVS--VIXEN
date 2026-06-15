@@ -637,7 +637,7 @@ void VulkanGraphApplication::BuildInstancingDemoGraph() {
     NodeHandle renderPassNode  = renderGraph->AddNode<RenderPassNodeType>("inst_render_pass");
     NodeHandle framebufferNode = renderGraph->AddNode<FramebufferNodeType>("inst_framebuffer");
     NodeHandle vertexBufferNode = renderGraph->AddNode<VertexBufferNodeType>("inst_cube_vb");
-    NodeHandle instanceBufferNode = renderGraph->AddNode<InstanceBufferNodeType>("inst_buffer");
+    NodeHandle instanceBufferNode = renderGraph->AddNode<DynamicInstanceBufferNodeType>("inst_buffer");
     NodeHandle mvpUniformNode  = renderGraph->AddNode<MvpUniformNodeType>("inst_mvp");
     NodeHandle textureNode     = renderGraph->AddNode<TextureLoaderNodeType>("inst_texture");
     NodeHandle shaderLibNode   = renderGraph->AddNode<ShaderLibraryNodeType>("inst_shader_lib");
@@ -663,10 +663,12 @@ void VulkanGraphApplication::BuildInstancingDemoGraph() {
     vertexBuffer->SetParameter(VertexBufferNodeConfig::PARAM_USE_TEXTURE, true);  // location 1 = vec2 UV
     vertexBuffer->SetParameter(VertexBufferNodeConfig::PARAM_INDEX_COUNT, 0u);    // non-indexed draw
 
-    // Per-instance model-matrix SSBO: gridDim^2 translation matrices on a planar grid.
-    auto* instanceBuffer = static_cast<InstanceBufferNode*>(renderGraph->GetInstance(instanceBufferNode));
-    instanceBuffer->SetParameter(InstanceBufferNodeConfig::PARAM_GRID_DIM, kGridDim);
-    instanceBuffer->SetParameter(InstanceBufferNodeConfig::PARAM_SPACING, 2.5f);
+    // Per-instance model-matrix SSBO: gridDim^2 matrices on a planar grid, ANIMATED per-frame
+    // (AR#33) — DynamicInstanceBufferNode rewrites a ring-buffered SSBO each frame so the cubes spin.
+    auto* instanceBuffer = static_cast<DynamicInstanceBufferNode*>(renderGraph->GetInstance(instanceBufferNode));
+    instanceBuffer->SetParameter(DynamicInstanceBufferNodeConfig::PARAM_GRID_DIM, kGridDim);
+    instanceBuffer->SetParameter(DynamicInstanceBufferNodeConfig::PARAM_SPACING, 2.5f);
+    instanceBuffer->SetParameter(DynamicInstanceBufferNodeConfig::PARAM_ROTATION_SPEED, 0.02f);
     if (auto* ibLogger = instanceBuffer->GetLogger()) {
         ibLogger->SetEnabled(true);
         ibLogger->SetTerminalOutput(true);
@@ -823,7 +825,9 @@ void VulkanGraphApplication::BuildInstancingDemoGraph() {
 
     // --- Vertex + instance buffers + MVP UBO + texture ---
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, vertexBufferNode, VertexBufferNodeConfig::VULKAN_DEVICE_IN);
-    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, instanceBufferNode, InstanceBufferNodeConfig::VULKAN_DEVICE_IN);
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, instanceBufferNode, DynamicInstanceBufferNodeConfig::VULKAN_DEVICE_IN);
+    // AR#33: the dynamic instance buffer needs the per-frame ring index to pick which buffer to write/emit.
+    batch.Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX, instanceBufferNode, DynamicInstanceBufferNodeConfig::CURRENT_FRAME_INDEX);
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, mvpUniformNode, MvpUniformNodeConfig::VULKAN_DEVICE_IN);
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, textureNode, TextureLoaderNodeConfig::VULKAN_DEVICE_IN);
 
@@ -846,8 +850,8 @@ void VulkanGraphApplication::BuildInstancingDemoGraph() {
     batch.Connect(textureNode, TextureLoaderNodeConfig::TEXTURE_SAMPLER_PAIR,
                   descGathererNode, 1,  // Combined image sampler at binding 1 (view + sampler)
                   SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    batch.Connect(instanceBufferNode, InstanceBufferNodeConfig::INSTANCE_BUFFER,
-                  descGathererNode, 2,  // Instances SSBO at binding 2
+    batch.Connect(instanceBufferNode, DynamicInstanceBufferNodeConfig::INSTANCE_BUFFER,
+                  descGathererNode, 2,  // Instances SSBO at binding 2 (ring buffer, re-emitted per frame)
                   SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, descriptorSetNode, DescriptorSetNodeConfig::VULKAN_DEVICE_IN)
