@@ -3,7 +3,9 @@ title: Picking / selection — CPU click ray-pick (AR#35, increment 1)
 aliases: [PickingNode, picking, ray-pick, MouseButtonEvent, PickResultEvent, AR#35]
 tags: [architecture, design, rendergraph, input, presentation-layer, AR35]
 created: 2026-06-15
-status: DONE (impl + headless-verified) — pending user click-confirm, then merge
+status: SUPERSEDED — the CPU ray-pick (GaiaVoxelWorld) is null on cached-scene hits; shipped approach is
+  GPU pixel-exact ID-buffer picking, see [[GPU-IDBuffer-Picking-Design-2026-06]]. This doc kept for the
+  input/event/unproject foundation (MouseButtonEvent, PickResultEvent, ComputePickRay) which still stands.
 related:
   - "[[Maturation-Backlog-2026-06]]"
   - "[[RenderGraph]]"
