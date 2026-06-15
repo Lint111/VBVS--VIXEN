@@ -37,6 +37,10 @@ set_target_properties(EventBus PROPERTIES FOLDER "Libraries")
 find_package(Threads REQUIRED)
 target_link_libraries(EventBus PUBLIC Threads::Threads)
 
+# glm: InputEvents.h (public header) uses glm::vec2/vec3 for input/pick events.
+# glm::glm is a header-only INTERFACE target, so this just adds its include path.
+target_link_libraries(EventBus PUBLIC glm::glm)
+
 # ============================================================================
 # Precompiled Headers
 # ============================================================================

@@ -152,7 +152,9 @@ void InputNode::ExecuteImpl(TypedExecuteContext& ctx) {
 
     // Still call PublishKeyEvents for ESC handling only
     PublishKeyEvents();
-    // PublishMouseEvents() disabled - all input via InputState polling
+    // Publish MouseButtonEvent on press/release transitions (for picking/selection).
+    // Mouse-move and continuous input still flow via InputState polling.
+    PublishMouseEvents();
 
     // GLFW's GLFW_CURSOR_DISABLED mode provides virtual unbounded cursor movement and recenters
     // internally, so no manual recentering is needed (unlike the old Win32 SetCursorPos approach).
@@ -357,6 +359,46 @@ void InputNode::PublishMouseEvents() {
     glfwGetCursorPos(window, &rawCursorX, &rawCursorY);
     int32_t cursorPosX = static_cast<int32_t>(rawCursorX);
     int32_t cursorPosY = static_cast<int32_t>(rawCursorY);
+
+    // --- Mouse button transitions -> MouseButtonEvent ----------------------
+    // Edge-detect each of the 3 buttons against last frame's state and publish
+    // a Pressed event on the down-edge and a Released event on the up-edge,
+    // carrying the button and current cursor pixel coords. Pull-based InputState
+    // polling is unaffected (both coexist).
+    {
+        const int glfwButtons[3] = {
+            GLFW_MOUSE_BUTTON_LEFT,
+            GLFW_MOUSE_BUTTON_RIGHT,
+            GLFW_MOUSE_BUTTON_MIDDLE
+        };
+        const EventBus::MouseButton vixenButtons[3] = {
+            EventBus::MouseButton::Left,
+            EventBus::MouseButton::Right,
+            EventBus::MouseButton::Middle
+        };
+
+        for (int i = 0; i < 3; ++i) {
+            const bool nowDown = glfwGetMouseButton(window, glfwButtons[i]) == GLFW_PRESS;
+            const bool wasDown = lastMouseButtonState_[i];
+
+            if (nowDown != wasDown) {
+                const EventBus::KeyEventType type = nowDown
+                    ? EventBus::KeyEventType::Pressed
+                    : EventBus::KeyEventType::Released;
+
+                auto event = std::make_unique<EventBus::MouseButtonEvent>(
+                    instanceId,
+                    vixenButtons[i],
+                    type,
+                    cursorPosX,
+                    cursorPosY
+                );
+                GetMessageBus()->Publish(std::move(event));
+            }
+
+            lastMouseButtonState_[i] = nowDown;
+        }
+    }
 
     // Use delta from inputState (calculated in PopulateInputState)
     float deltaX = inputState_.mouseDelta.x;
