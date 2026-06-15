@@ -296,9 +296,18 @@ Correctness bugs + the only-consumer's pain + legal hygiene. Wasted on no possib
   lists**, `vkCmdDrawIndirect` (GPU-driven), GPU culling, per-frame dynamic transforms.
   NOTE: gotcha — WSL bash does not pass env vars to Windows `.exe`; run via
   `cmd.exe /c "set VIXEN_INSTANCING_DEMO=1&& VIXEN.exe"`.
-- [ ] **Per-frame dynamic content** — `StreamingBufferNode`/`DynamicBufferNode`; drain the dead-ended
-  `BatchedUpdater` (`VulkanDevice::RecordUpdates` has zero callers) [AR#33]; per-frame dynamic
-  geometry / multi-draw for text+UI (`UIDrawListNode`) [AR#34]
+- [~] **Per-frame dynamic content** [AR#33/#34] — **AR#33 increment 1 DONE 2026-06-15**: first per-frame
+  dynamic *buffer* — the instancing demo's 64 cubes now **animate** (spin) via a ring-buffered instance
+  SSBO rewritten each frame (no readback). New `DynamicInstanceBufferNode` (ring of N=MAX_FRAMES_IN_FLIGHT
+  host-visible storage buffers via the revived `PerFrameResources` helper, extended with
+  `CreateStorageBuffer`); per-frame descriptor re-bind rides existing rails (re-emit transient output +
+  `Dependency|Execute` connection + `DescriptorSetNode::ExecuteImpl` per-frame `vkUpdateDescriptorSets`).
+  Verified: binding 2 cycles through all 4 ring handles, 0 VK errors, **user visually confirmed animation**;
+  default voxel path regression-clean. Design: [[Dynamic-Content-Design-2026-06]]. **Decision:** used the
+  `PerFrameResources` ring (right tool for host-visible per-frame data); **`BatchedUpdater` deferred** to
+  its proper home (device-local / dynamic-TLAS command updates — see [[Auto-Sync-FrameGraph-Design-2026-06]]),
+  NOT forced here. **Remaining:** AR#34 dynamic *geometry* / multi-draw for text+UI (`UIDrawListNode`);
+  a generic reusable `DynamicBufferNode`; real elapsed-time animation (frame-counter today).
 - [x] **Alpha blending** — **DONE 2026-06-14** [AR#32]. `BLEND_MODE` string param on
   `GraphicsPipelineNode` (CULL_MODE pattern): `None` (default, opaque — prior behavior), `Alpha`,
   `PremultipliedAlpha`, `Additive`, `Multiply`. Design: [[BlendMode-Design-2026-06]]. The hardcoded
