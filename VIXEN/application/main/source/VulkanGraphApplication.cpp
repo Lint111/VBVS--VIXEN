@@ -978,7 +978,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // --- Pick ID Target (AR#35 GPU picking P1: R32_UINT storage-image ring at binding 9) ---
     NodeHandle pickIdTargetNode = renderGraph->AddNode<PickIdTargetNodeType>("pick_id_target");
 
-    // --- Picking Node (AR#35: CPU click-pick of voxels) ---
+    // --- Picking Node (AR#35 GPU picking P2: read back the center pick-ID texel on click) ---
     NodeHandle pickingNode = renderGraph->AddNode<PickingNodeType>("voxel_picking");
     // Node loggers default DISABLED (NodeInstance ctor); pick results are user-facing, so enable
     // this node's logger to the terminal (otherwise its HIT/miss + diagnostics are silently dropped).
@@ -1567,15 +1567,21 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(inputNode, InputNodeConfig::INPUT_STATE,
                   cameraNode, CameraNodeConfig::INPUT_STATE);
 
-    // Picking node connections (AR#35) — unproject cursor + ray-march the voxel world on click.
-    // Reuses the same per-frame InputState and CameraData the camera consumes, the swapchain
-    // viewport size from the window, and the CPU voxel world VoxelGridNode publishes (slot 10).
+    // Picking node connections (AR#35 GPU picking P2) — read back the center pick-ID texel on click.
+    // No CPU ray-march / voxel world anymore: it copies the crosshair texel of PickIdTargetNode's
+    // ID image (binding-9 target) via a one-shot fenced copy, decodes brick/voxel, and reports.
+    // Inputs: per-frame InputState; the ID VkImage; device + command pool for the one-shot copy;
+    // the frame-in-flight index; and the swapchain viewport size (for the center offset).
     batch.Connect(inputNode, InputNodeConfig::INPUT_STATE,
                   pickingNode, PickingNodeConfig::INPUT_STATE)
-         .Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
-                  pickingNode, PickingNodeConfig::CAMERA_DATA)
-         .Connect(voxelGridNode, VoxelGridNodeConfig::VOXEL_WORLD,
-                  pickingNode, PickingNodeConfig::VOXEL_WORLD)
+         .Connect(pickIdTargetNode, PickIdTargetNodeConfig::ID_IMAGE,
+                  pickingNode, PickingNodeConfig::ID_IMAGE)
+         .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  pickingNode, PickingNodeConfig::VULKAN_DEVICE)
+         .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
+                  pickingNode, PickingNodeConfig::COMMAND_POOL)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                  pickingNode, PickingNodeConfig::CURRENT_FRAME_INDEX)
          .Connect(windowNode, WindowNodeConfig::WIDTH_OUT,
                   pickingNode, PickingNodeConfig::VIEWPORT_WIDTH)
          .Connect(windowNode, WindowNodeConfig::HEIGHT_OUT,
