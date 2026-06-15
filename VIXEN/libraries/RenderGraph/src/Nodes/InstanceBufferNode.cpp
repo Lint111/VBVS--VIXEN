@@ -52,8 +52,8 @@ void InstanceBufferNode::SetupImpl(TypedSetupContext& ctx) {
 void InstanceBufferNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[InstanceBufferNode] Compile START");
 
-    device_ = ctx.In(InstanceBufferNodeConfig::VULKAN_DEVICE_IN);
-    if (!device_) {
+    SetDevice(ctx.In(InstanceBufferNodeConfig::VULKAN_DEVICE_IN));
+    if (!GetDevice()) {
         throw std::runtime_error("[InstanceBufferNode] VULKAN_DEVICE_IN is null");
     }
 
@@ -66,7 +66,7 @@ void InstanceBufferNode::CompileImpl(TypedCompileContext& ctx) {
 
     // FR-7: the buffer is persistent across recompile — only create once.
     if (buffer_ == VK_NULL_HANDLE) {
-        CreateBuffer(device_);
+        CreateBuffer(GetDevice());
     } else {
         NODE_LOG_INFO("[InstanceBufferNode] Reusing persistent instance buffer across recompile");
     }
@@ -169,8 +169,8 @@ void InstanceBufferNode::CreateBuffer(VulkanDevice* device) {
 }
 
 void InstanceBufferNode::DestroyBuffer() {
-    if (!device_) return;
-    VkDevice vkDevice = device_->device;
+    if (!GetDevice()) return;
+    VkDevice vkDevice = GetDevice()->device;
 
     if (buffer_ != VK_NULL_HANDLE) { vkDestroyBuffer(vkDevice, buffer_, nullptr); buffer_ = VK_NULL_HANDLE; }
     if (memory_ != VK_NULL_HANDLE) { vkFreeMemory   (vkDevice, memory_, nullptr); memory_ = VK_NULL_HANDLE; }

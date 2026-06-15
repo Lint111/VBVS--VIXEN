@@ -47,7 +47,6 @@ private:
     void CreateBuffer(Vixen::Vulkan::Resources::VulkanDevice* device);
     void DestroyBuffer();
 
-    Vixen::Vulkan::Resources::VulkanDevice* device_        = nullptr;  // cached for cleanup
     VkBuffer                                buffer_        = VK_NULL_HANDLE;
     VkDeviceMemory                          memory_        = VK_NULL_HANDLE;
     uint32_t                                instanceCount_ = 0;

@@ -33,7 +33,7 @@
 #include "Nodes/CameraNode.h"
 #include "Nodes/VoxelGridNode.h"
 #include "Nodes/InputNode.h"
-#include "Nodes/PickingNode.h"
+#include "Nodes/SelectionCoordinatorNode.h"
 // Note: ConstantNodeType excluded - has circular dependency (ConstantNode.h uses RenderGraph inline)
 // ConstantNodeType must be registered separately where RenderGraph.h is already included
 #include "Nodes/DescriptorResourceGathererNode.h"
@@ -196,7 +196,7 @@ void RegisterBuiltInNodeTypes(NodeTypeRegistry& registry) {
     registry.Register<CameraNodeType>();
     registry.Register<VoxelGridNodeType>();
     registry.Register<InputNodeType>();
-    registry.Register<PickingNodeType>();  // AR#35: CPU click-picking
+    registry.Register<SelectionCoordinatorNodeType>();  // SEL-P2: engine-wide selection coordinator
     // Note: ConstantNodeType must be registered in application code (circular dependency)
     registry.Register<DescriptorResourceGathererNodeType>();
     registry.Register<PushConstantGathererNodeType>();

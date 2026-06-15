@@ -51,8 +51,8 @@ void MvpUniformNode::SetupImpl(TypedSetupContext& ctx) {
 void MvpUniformNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[MvpUniformNode] Compile START");
 
-    device_ = ctx.In(MvpUniformNodeConfig::VULKAN_DEVICE_IN);
-    if (!device_) {
+    SetDevice(ctx.In(MvpUniformNodeConfig::VULKAN_DEVICE_IN));
+    if (!GetDevice()) {
         throw std::runtime_error("[MvpUniformNode] VULKAN_DEVICE_IN is null");
     }
 
@@ -64,7 +64,7 @@ void MvpUniformNode::CompileImpl(TypedCompileContext& ctx) {
 
     // FR-7: the buffer is persistent across recompile — only create once.
     if (buffer_ == VK_NULL_HANDLE) {
-        CreateBuffer(device_);
+        CreateBuffer(GetDevice());
     } else {
         NODE_LOG_INFO("[MvpUniformNode] Reusing persistent MVP buffer across recompile");
     }
@@ -157,8 +157,8 @@ void MvpUniformNode::CreateBuffer(VulkanDevice* device) {
 }
 
 void MvpUniformNode::DestroyBuffer() {
-    if (!device_) return;
-    VkDevice vkDevice = device_->device;
+    if (!GetDevice()) return;
+    VkDevice vkDevice = GetDevice()->device;
 
     if (buffer_ != VK_NULL_HANDLE) { vkDestroyBuffer(vkDevice, buffer_, nullptr); buffer_ = VK_NULL_HANDLE; }
     if (memory_ != VK_NULL_HANDLE) { vkFreeMemory   (vkDevice, memory_, nullptr); memory_ = VK_NULL_HANDLE; }
