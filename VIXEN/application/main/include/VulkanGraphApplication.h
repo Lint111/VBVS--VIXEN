@@ -18,6 +18,7 @@ class VulkanRenderer;
 class VulkanSwapChain;
 struct GLFWwindow;  // cross-platform window handle (GLFW); real include only in the .cpp
 namespace Vixen::RenderGraph { class UIRenderNode; }  // composite HUD node; real include only in the .cpp
+namespace Vixen::RenderGraph { class UISelectionProviderNode; }  // UI hit-test provider; real include only in the .cpp
 
 using namespace Vixen::Vulkan::Resources;
 using namespace Vixen::RenderGraph;
@@ -151,6 +152,7 @@ private:
     NodeHandle voxelGridNode_{};                     // stored so the host can mark the scene dirty
     NodeHandle windowNode_{};                        // stored so GetWindowHandle() can query the WindowNode live
     NodeHandle uiRenderNode_{};                      // stored so GetUiRenderNode() can query the composite UI node live
+    NodeHandle uiSelectionProviderNode_{};           // stored so GetUiSelectionProviderNode() can drain HUD clicks live
 
     // NOTE: Command buffers, semaphores, and all Vulkan resources
     // are managed by the render graph nodes, not the application
@@ -170,4 +172,8 @@ public:
     // lookup (like GetWindowHandle) — the node persists across recompiles; returns nullptr if unset
     // (e.g. the VIXEN_UI_DEMO path, which has no composite UI node).
     Vixen::RenderGraph::UIRenderNode* GetUiRenderNode() const;
+    // Expose the UI selection provider node so the host can drain HUD clicks (DrainClickedElementId) each
+    // frame and forward the clicked element id into the feedback slice. LIVE lookup (like GetUiRenderNode);
+    // returns nullptr if unset (e.g. a graph without the selection provider).
+    Vixen::RenderGraph::UISelectionProviderNode* GetUiSelectionProviderNode() const;
 };

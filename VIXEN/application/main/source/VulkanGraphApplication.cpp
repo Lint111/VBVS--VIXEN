@@ -1018,6 +1018,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // gather slot, so a HUD click OCCLUDES the voxel pick (priority 0). It reads the live context from
     // the UI composite node via SetUiRenderNode (wired below, once uiCompositeNode exists). ---
     NodeHandle uiSelectionProviderNode = renderGraph->AddNode<UISelectionProviderNodeType>("ui_selection_provider");
+    uiSelectionProviderNode_ = uiSelectionProviderNode;   // store for GetUiSelectionProviderNode() live lookup (host drains HUD clicks)
     // Provider HIT/miss is user-facing; enable its logger to the terminal (defaults DISABLED).
     if (auto* uiProvInst = renderGraph->GetInstance(uiSelectionProviderNode)) {
         if (auto* pl = uiProvInst->GetLogger()) { pl->SetEnabled(true); pl->SetTerminalOutput(true); }
@@ -2005,4 +2006,13 @@ Vixen::RenderGraph::UIRenderNode* VulkanGraphApplication::GetUiRenderNode() cons
     // path builds BuildUIGraph (no composite node) and never assigns uiRenderNode_.
     if (!renderGraph) return nullptr;
     return static_cast<Vixen::RenderGraph::UIRenderNode*>(renderGraph->GetInstance(uiRenderNode_));
+}
+
+Vixen::RenderGraph::UISelectionProviderNode* VulkanGraphApplication::GetUiSelectionProviderNode() const {
+    // Live lookup of the UI selection provider (set in BuildRenderGraph). Mirrors GetUiRenderNode: never
+    // cache the pointer (it persists across recompiles). nullptr when unset — e.g. a graph built without
+    // the selection provider node.
+    if (!renderGraph) return nullptr;
+    return static_cast<Vixen::RenderGraph::UISelectionProviderNode*>(
+        renderGraph->GetInstance(uiSelectionProviderNode_));
 }

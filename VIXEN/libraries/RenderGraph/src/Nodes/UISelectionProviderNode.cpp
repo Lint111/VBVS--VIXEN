@@ -120,6 +120,11 @@ void UISelectionProviderNode::ExecuteImpl(TypedExecuteContext& ctx) {
     const Rml::String elementId = hitElement->GetId();
     const uint64_t payload = static_cast<uint64_t>(std::hash<Rml::String>{}(elementId));
 
+    // S4: also stash the human-readable id for the HOST to drain this frame (DrainClickedElementId).
+    // The host forwards it into the feedback slice, where the matching ui_binding ('#id') fires. Set only
+    // on this confirmed, mask-passing down-edge hit — so a fresh click is reported exactly once.
+    clickedElementId_ = std::string(elementId);
+
     candidate.hit      = true;
     candidate.id       = SelectionId{ ProviderKind::Ui, payload };
     candidate.depth    = 0.0f;  // UI is a flat layer; priority (not depth) settles vs the world.

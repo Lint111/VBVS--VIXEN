@@ -59,6 +59,16 @@ public:
     /// tolerating a null context until then). Not a graph slot — see the class doc.
     void SetUiRenderNode(UIRenderNode* uiNode) { uiNode_ = uiNode; }
 
+    /// Drain the most recent CLICKED element id (a hit-mask-passing left-click down-edge): returns the
+    /// RML `id` of the element clicked since the last drain and CLEARS it, so each fresh click is reported
+    /// exactly once (empty string when no new click). The host (S4) polls this each frame and forwards a
+    /// non-empty id into the feedback slice, where its ui_binding resolves + fires. CPU-only, no GPU touch.
+    std::string DrainClickedElementId() {
+        std::string out = std::move(clickedElementId_);
+        clickedElementId_.clear();
+        return out;
+    }
+
 protected:
     void SetupImpl(TypedSetupContext& ctx) override;
     void ExecuteImpl(TypedExecuteContext& ctx) override;
@@ -72,6 +82,12 @@ private:
 
     // Edge detection for the left mouse button (resolve on the down-edge only).
     bool lastLeftDown_ = false;
+
+    // The id of the element clicked on the latest hit-mask-passing down-edge, awaiting a host drain. Set
+    // only on a confirmed UI hit (after the mask test), cleared by DrainClickedElementId(). Empty = no
+    // pending click. Distinct from the SelectionCandidate payload (a HASH for the coordinator) — this is
+    // the human-readable id the ui_binding selector ('#id') matches.
+    std::string clickedElementId_;
 };
 
 } // namespace Vixen::RenderGraph
