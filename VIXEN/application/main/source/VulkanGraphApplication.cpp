@@ -11,6 +11,7 @@
 #include "Core/TypedConnection.h"  // Typed slot connection helpers
 #include "Connection/ConnectionModifier.h"  // ConnectionMeta
 #include "Connection/Modifiers/FieldExtractionModifier.h"  // ExtractField
+#include "Connection/Modifiers/AccumulationSortConfig.h"  // SEL-P3: accumulation-connect sort key (provider fan-in)
 #include "CommandBufferUtility.h"  // MVP: File reading utility
 #include "MainCacher.h"  // Cache system initialization
 #include "Core/LoopManager.h"  // Phase 0.4: Loop system
@@ -52,6 +53,7 @@
 #include "Nodes/InputNode.h"  // Input polling and event publishing
 #include "Nodes/SelectionCoordinatorNode.h"  // SEL-P2: engine-wide selection coordinator (gathers provider candidates)
 #include "Nodes/VoxelSelectionProviderNode.h"  // SEL-P2: voxel-domain selection provider node (GPU pick readback)
+#include "Nodes/UISelectionProviderNode.h"  // SEL-P3: UI-domain selection provider node (RmlUi hit-test)
 #include <ShaderBundleBuilder.h>  // Phase G: Shader builder API (includes preprocessor support)
 #include "VoxelRayMarchNames.h"  // Generated shader binding constants
 // NOTE: "VoxelRayMarch_CompressedNames.h" was an orphaned include — that combined
@@ -546,6 +548,7 @@ void VulkanGraphApplication::RegisterNodeTypes(NodeTypeRegistry& registry) {
     registry.Register<VoxelGridNodeType>();
     registry.Register<InputNodeType>();
     registry.Register<VoxelSelectionProviderNodeType>();  // SEL-P2: voxel-domain selection provider node
+    registry.Register<UISelectionProviderNodeType>();  // SEL-P3: UI-domain selection provider node
     registry.Register<SelectionCoordinatorNodeType>();  // SEL-P2: engine-wide selection coordinator
     registry.Register<DebugBufferReaderNodeType>();
 
@@ -1010,6 +1013,16 @@ void VulkanGraphApplication::BuildRenderGraph() {
         if (auto* pl = provInst->GetLogger()) { pl->SetEnabled(true); pl->SetTerminalOutput(true); }
     }
 
+    // --- UI Selection Provider (SEL-P3: providers are nodes) — on a click edge it hit-tests the HUD's
+    // Rml::Context at the cursor and emits a SelectionCandidate (priority 10) into the coordinator's
+    // gather slot, so a HUD click OCCLUDES the voxel pick (priority 0). It reads the live context from
+    // the UI composite node via SetUiRenderNode (wired below, once uiCompositeNode exists). ---
+    NodeHandle uiSelectionProviderNode = renderGraph->AddNode<UISelectionProviderNodeType>("ui_selection_provider");
+    // Provider HIT/miss is user-facing; enable its logger to the terminal (defaults DISABLED).
+    if (auto* uiProvInst = renderGraph->GetInstance(uiSelectionProviderNode)) {
+        if (auto* pl = uiProvInst->GetLogger()) { pl->SetEnabled(true); pl->SetTerminalOutput(true); }
+    }
+
     // --- Selection Coordinator (SEL-P2: engine-wide selection; gathers provider candidates via a
     // MultiConnect slot, priority-resolves, and owns the durable SelectionSet) ---
     NodeHandle selectionCoordinatorNode = renderGraph->AddNode<SelectionCoordinatorNodeType>("selection_coordinator");
@@ -1032,6 +1045,16 @@ void VulkanGraphApplication::BuildRenderGraph() {
     NodeHandle uiFramebufferNode = renderGraph->AddNode<FramebufferNodeType>("ui_composite_framebuffer");
     NodeHandle uiCompositeNode   = renderGraph->AddNode<UIRenderNodeType>("ui_composite_render");
     uiRenderNode_ = uiCompositeNode;                 // store for GetUiRenderNode() live lookup (host SetHudData)
+
+    // SEL-P3: give the UI selection provider the composite UIRenderNode, so it can hit-test that
+    // node's Rml::Context on a click (the context is a raw RmlUi pointer created in UIRenderNode's
+    // CompileImpl — not a graph slot, so it is passed by node reference, not connected). The context
+    // is null until the UI node first compiles; the provider tolerates that (emits a miss).
+    if (auto* uiNodeInst = static_cast<UIRenderNode*>(renderGraph->GetInstance(uiCompositeNode))) {
+        if (auto* uiProvInst = static_cast<UISelectionProviderNode*>(renderGraph->GetInstance(uiSelectionProviderNode))) {
+            uiProvInst->SetUiRenderNode(uiNodeInst);
+        }
+    }
 
     mainLogger->Info("Created node instances (including compute pipeline, camera, voxel grid, gatherers, selection provider, and UI composite pass)");
 
@@ -1650,15 +1673,26 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(windowNode, WindowNodeConfig::HEIGHT_OUT,
                   voxelSelectionProviderNode, VoxelSelectionProviderNodeConfig::VIEWPORT_HEIGHT);
 
-    // The coordinator consumes the voxel provider's CANDIDATE, priority-resolves (pickBestCandidate,
-    // ready for N candidates), applies the input modifier to the durable SelectionSet, and broadcasts
-    // a SelectionChangedEvent. It also reads InputState for the click edge. (A multi-provider fan-in
-    // into one slot needs the engine's accumulation-gather — see the FAN-IN NOTE in the coordinator
-    // config; today it is a single direct candidate connection, which the engine wires every frame.)
+    // SEL-P3 UI provider: only needs per-frame InputState (cursor position + left button). It reads
+    // the HUD's Rml::Context via the UIRenderNode reference wired above (SetUiRenderNode), not a slot.
+    batch.Connect(inputNode, InputNodeConfig::INPUT_STATE,
+                  uiSelectionProviderNode, UISelectionProviderNodeConfig::INPUT_STATE);
+
+    // The coordinator GATHERS every provider's CANDIDATE into its PROVIDER_CANDIDATES accumulation
+    // slot, priority-resolves (pickBestCandidate over the gathered vector), applies the input modifier
+    // to the durable SelectionSet, and broadcasts a SelectionChangedEvent. It also reads InputState
+    // for the click edge. Both providers MultiConnect into the gather slot via the accumulation-connect
+    // path (ConnectionMeta{}.With<AccumulationSortConfig>(key)); the sort key only orders the gathered
+    // vector — the WINNER is decided by candidate priority (UI=10 occludes voxel world=0). Adding
+    // another provider is one more MultiConnect here, with no coordinator change.
     batch.Connect(inputNode, InputNodeConfig::INPUT_STATE,
                   selectionCoordinatorNode, SelectionCoordinatorNodeConfig::INPUT_STATE)
          .Connect(voxelSelectionProviderNode, VoxelSelectionProviderNodeConfig::CANDIDATE,
-                  selectionCoordinatorNode, SelectionCoordinatorNodeConfig::PROVIDER_CANDIDATE);
+                  selectionCoordinatorNode, SelectionCoordinatorNodeConfig::PROVIDER_CANDIDATES,
+                  ConnectionMeta{}.With<AccumulationSortConfig>(0))
+         .Connect(uiSelectionProviderNode, UISelectionProviderNodeConfig::CANDIDATE,
+                  selectionCoordinatorNode, SelectionCoordinatorNodeConfig::PROVIDER_CANDIDATES,
+                  ConnectionMeta{}.With<AccumulationSortConfig>(1));
 
     // Pick ID target (AR#35 GPU picking P1): allocate the R32_UINT storage-image ring sized to the
     // window, transition it to GENERAL once, and expose the current frame's view for binding 9.
