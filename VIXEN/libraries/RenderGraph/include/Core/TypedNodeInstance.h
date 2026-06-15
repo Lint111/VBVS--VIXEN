@@ -6,8 +6,36 @@
 #include "Data/Core/ConnectionConcepts.h"  // For Iterable concept (Sprint 6.0.2)
 #include <future>
 #include <vector>
+#include <algorithm>    // std::stable_sort (accumulation gather ordering)
+#include <type_traits>  // std::conditional_t (accumulation element-type derivation)
 
 namespace Vixen::RenderGraph {
+
+namespace detail {
+
+/**
+ * @brief Element type stored by an accumulation slot of type @p SlotTypeRaw.
+ *
+ * For a container slot (V2, e.g. std::vector<bool>) this is the container's
+ * value_type -- the type a producer actually wrote (bool), NOT the iterator's
+ * dereference proxy (std::vector<bool> yields std::_Bit_reference on deref, which
+ * is not a registered Resource type). For an element-typed slot (V1) it is the
+ * slot type itself. Used by TypedNode::InAll to read each producer's output as T.
+ */
+template<typename SlotTypeRaw, typename = void>
+struct AccumulationElement {
+    using type = SlotTypeRaw;  // V1: slot type IS the element
+};
+
+template<typename SlotTypeRaw>
+struct AccumulationElement<SlotTypeRaw, std::void_t<typename SlotTypeRaw::value_type>> {
+    using type = typename SlotTypeRaw::value_type;  // V2: container element (bool for vector<bool>)
+};
+
+template<typename SlotTypeRaw>
+using AccumulationElement_t = typename AccumulationElement<SlotTypeRaw>::type;
+
+} // namespace detail
 
 /**
  * @brief Macro-based system to auto-generate storage from config
@@ -185,29 +213,91 @@ public:
                 res = typedNode->NodeInstance::GetInput(SlotType::index, 0);
             }
 
-            // Sprint 6.0.1-6.0.2: Handle accumulation slots
-            // V1 (old): SlotType::Type is element type (bool), wrap in vector
-            // V2 (new): SlotType::Type is container type (std::vector<bool>), no wrapping
+            // Accumulation slots gather an array of values from N producers (fan-in).
+            // The gather happens at Execute (producer outputs are per-frame), assembling
+            // std::vector<ElementType> from each recorded producer's CURRENT output.
+            // Delegating to InAll keeps a single gather implementation; In(accumSlot) and
+            // InAll(accumSlot) are equivalent for an accumulation slot.
             if constexpr (SlotType::isAccumulation) {
-                using SlotTypeRaw = typename SlotType::Type;
-
-                // Sprint 6.0.2: Check if type is already a container (V2 macro)
-                // If iterable, it's already a container - no wrapping needed
-                if constexpr (Iterable<SlotTypeRaw>) {
-                    // V2: Type is already container (std::vector<T>)
-                    if (!res) return SlotTypeRaw{};
-                    return res->GetHandle<SlotTypeRaw>();
-                } else {
-                    // V1: Type is element, wrap in vector (backward compat)
-                    using VectorType = std::vector<SlotTypeRaw>;
-                    if (!res) return VectorType{};
-                    return res->GetHandle<VectorType>();
-                }
+                (void)res;  // accumulation does not read the slot's own single Resource
+                return InAll(slot);
             } else {
                 // Regular slot: return T directly
                 if (!res) return typename SlotType::Type{};
                 return res->GetHandle<typename SlotType::Type>();
             }
+        }
+
+        /**
+         * @brief Gather an accumulation input slot into std::vector<ElementType>.
+         *
+         * Typed runtime accumulation-gather (fan-in): the consumer slot declares its
+         * element type T, so the assembled value is std::vector<T> built from all N
+         * producer nodes connected to this slot. Each producer's CURRENT output Resource
+         * is read as T at call time -- the gather is intentionally at Execute because
+         * producer values are per-frame.
+         *
+         * Element type T is derived from the slot at compile time (no per-element-type
+         * registry):
+         *  - V2 slots: SlotType::Type is the container (e.g. std::vector<T>); T is the
+         *    container's value_type (bool for std::vector<bool>, not the deref proxy).
+         *  - V1 slots: SlotType::Type is the element T; the container is std::vector<T>.
+         *
+         * Producers are recorded on the consumer node by AccumulationConnectionRule
+         * (see NodeInstance::RegisterAccumulationSource), and the connection's dependency
+         * edge guarantees producers execute first.
+         *
+         * @return std::vector<T> with one element per connected producer, in connection
+         *         order (ties on sort key broken by insertion order). Empty if the slot
+         *         is unconnected.
+         */
+        template<typename SlotType>
+        auto InAll(SlotType /*slot*/) const {
+            static_assert(SlotType::index < ConfigType::INPUT_COUNT, "Input index out of bounds");
+            static_assert(SlotType::isAccumulation,
+                "InAll() requires an accumulation slot (SlotFlags::Accumulation). "
+                "Use In() for single-source slots.");
+
+            using SlotTypeRaw = typename SlotType::Type;
+            // Derive the element type the producers store: container value_type for V2
+            // (bool for std::vector<bool>), the slot type itself for V1.
+            using ElementType = detail::AccumulationElement_t<SlotTypeRaw>;
+
+            std::vector<ElementType> gathered;
+
+            const auto* sources =
+                typedNode->NodeInstance::GetAccumulationSources(SlotType::index);
+            if (!sources) {
+                return gathered;
+            }
+
+            // Connection order is preserved; honor explicit ordering metadata when set.
+            // Stable sort keeps insertion order for equal keys (and for the all-zero
+            // default, i.e. plain connection order).
+            std::vector<const NodeInstance::AccumulationSource*> ordered;
+            ordered.reserve(sources->size());
+            for (const auto& src : *sources) {
+                ordered.push_back(&src);
+            }
+            std::stable_sort(ordered.begin(), ordered.end(),
+                [](const NodeInstance::AccumulationSource* a,
+                   const NodeInstance::AccumulationSource* b) {
+                    return a->sortKey < b->sortKey;
+                });
+
+            gathered.reserve(ordered.size());
+            for (const NodeInstance::AccumulationSource* src : ordered) {
+                if (!src->producer) {
+                    continue;
+                }
+                Resource* out = src->producer->NodeInstance::GetOutput(src->outputSlot, 0);
+                if (!out || !out->IsValid()) {
+                    continue;  // producer has not produced this frame; skip gracefully
+                }
+                gathered.push_back(out->template GetHandle<ElementType>());
+            }
+
+            return gathered;
         }
 
         /**
