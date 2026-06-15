@@ -39,8 +39,8 @@ inline constexpr SelectionId kInvalidSelectionId = ::Vixen::kInvalidSelectionId;
  *
  * Driven by input modifiers (typically Shift/Ctrl/Alt). See SelectionSet::apply
  * for the exact semantics of each. Defined here (the lightweight identity
- * header) so BOTH SelectContext and SelectionSet can use it without
- * SelectionSet pulling in glm/CameraData via SelectContext.
+ * header) so SelectionSet and the SelectionCoordinatorNode can use it without
+ * pulling in glm/CameraData.
  */
 enum class SelectionModifier : uint8_t {
     Replace = 0,  ///< Clear the set, then select only this id (default click).

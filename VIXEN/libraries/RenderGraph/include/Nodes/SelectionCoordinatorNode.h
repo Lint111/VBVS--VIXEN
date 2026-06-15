@@ -4,12 +4,9 @@
 #include "Core/NodeType.h"
 #include "Core/NodeLogging.h"
 #include "Data/Nodes/SelectionCoordinatorNodeConfig.h"
-#include "Selection/ISelectionProvider.h"
 #include "Selection/SelectionSet.h"
-#include "VulkanDeviceFwd.h"
-#include <vulkan/vulkan.h>
+#include <cstdint>
 #include <memory>
-#include <vector>
 
 namespace Vixen::RenderGraph {
 
@@ -28,25 +25,22 @@ public:
 };
 
 /**
- * @brief Engine-wide selection coordinator (SEL-P2) — generalizes the shipped PickingNode.
+ * @brief Engine-wide selection coordinator (SEL-P2) — providers are NODES feeding it.
  *
  * The single source of truth for selection. It owns a SelectionSet (engine-side durable
- * state) and a priority-ordered list of ISelectionProviders. On a left-mouse-button PRESS
- * edge it:
- *   1. builds a SelectContext — crosshair screen point ({w/2, h/2}; the cursor is locked
- *      to screen center), viewport, camera, and a SelectionModifier read from the input
- *      modifier keys (Shift→Add, Ctrl→Toggle, else Replace);
- *   2. runs the providers highest-priority-first and takes the FIRST hit (UI-occludes-world
- *      ordering — only the voxel provider is registered today);
- *   3. applies the modifier to the SelectionSet and broadcasts a SelectionChangedEvent
- *      (snapshot of the set) on the message bus.
+ * state) and gathers candidates from provider NODES via a MultiConnect accumulation slot
+ * (PROVIDER_CANDIDATES). It no longer owns providers or does any GPU work — each provider
+ * node (VoxelSelectionProviderNode, a future UI provider node, …) resolves its own domain
+ * on a click and emits a SelectionCandidate into that one slot.
  *
- * The voxel domain is handled by a VoxelSelectionProvider the node owns, constructed and
- * configure()'d in CompileImpl with the device / command pool / ID image cached from the
- * graph. That provider performs the GPU ID-buffer readback the PickingNode used to do
- * inline (the readback logic was MOVED, not rewritten — see Selection-System-Design).
+ * On a left-mouse-button PRESS edge (edge-detected from INPUT_STATE) it:
+ *   1. gathers the accumulated candidates and keeps the ones that hit;
+ *   2. picks the best — MAX priority, tie-break MIN depth (UI occludes the world);
+ *   3. reads a SelectionModifier from the input modifier keys (Shift→Add, Ctrl→Toggle,
+ *      else Replace) and applies it to the SelectionSet (Replace-on-miss clears);
+ *   4. broadcasts a SelectionChangedEvent (snapshot of the set) on the message bus.
  *
- * Per-frame cost off the click edge is a couple of pointer reads and an edge comparison.
+ * Per-frame cost off the click edge is a couple of reads and an edge comparison.
  */
 class SelectionCoordinatorNode : public TypedNode<SelectionCoordinatorNodeConfig> {
 public:
@@ -63,19 +57,7 @@ protected:
     void CleanupImpl(TypedCleanupContext& ctx) override;
 
 private:
-    // Register a provider, keeping providers_ sorted by priority() DESCENDING (highest first,
-    // so it is queried first — UI occludes world). Called from CompileImpl.
-    void RegisterProvider(std::unique_ptr<ISelectionProvider> provider);
-
-    // ----- Compile-cached Dependency handles (stable for the cached scene's lifetime) -----
-    // The device is NOT cached here: it lives in the base NodeInstance (SetDevice/GetDevice),
-    // re-set each CompileImpl. Only the command pool + ID image are cached locally.
-    VkCommandPool                           commandPool_ = VK_NULL_HANDLE;
-    VkImage                                 idImage_     = VK_NULL_HANDLE;
-
-    // ----- Selection state + providers (the node is the single source of truth) -----
-    // Providers sorted by priority() descending; queried in order, first hit wins.
-    std::vector<std::unique_ptr<ISelectionProvider>> providers_;
+    // ----- Selection state (the node is the single source of truth) -----
     SelectionSet set_;  ///< The durable selection set this node owns.
 
     // Edge detection for the left mouse button (fire on the down-edge only).
