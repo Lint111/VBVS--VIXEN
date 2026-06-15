@@ -11,6 +11,10 @@ namespace Vixen::RenderGraph::Debug {
     class IDebugCapture;
 }
 
+namespace Vixen::Vulkan::Resources {
+    struct IRenderTarget; // AR#28: abstract render target interface
+}
+
 namespace Vixen::RenderGraph {
 
 // Type alias for debug capture interface
@@ -111,7 +115,7 @@ CONSTEXPR_NODE_CONFIG(ComputeDispatchNodeConfig,
      * @brief Swapchain info (image views, dimensions, format)
      * Execute-only: swapchain info only needed during dispatch, not during pipeline creation
      */
-    INPUT_SLOT(SWAPCHAIN_INFO, SwapChainPublicVariables*, 5,
+    INPUT_SLOT(SWAPCHAIN_INFO, Vixen::Vulkan::Resources::IRenderTarget*, 5,
         SlotNullability::Required,
         SlotRole::Execute,
         SlotMutability::ReadOnly,
@@ -253,7 +257,7 @@ CONSTEXPR_NODE_CONFIG(ComputeDispatchNodeConfig,
         HandleDescriptor descSetsDesc{"std::vector<VkDescriptorSet>"};
         INIT_INPUT_DESC(DESCRIPTOR_SETS, "descriptor_sets", ResourceLifetime::Persistent, descSetsDesc);
 
-        HandleDescriptor swapchainDesc{"SwapChainPublicVariables*"};
+        HandleDescriptor swapchainDesc{"IRenderTarget*"};
         INIT_INPUT_DESC(SWAPCHAIN_INFO, "swapchain_info", ResourceLifetime::Persistent, swapchainDesc);
 
         HandleDescriptor uint32Desc{"uint32_t"};

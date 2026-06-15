@@ -6,6 +6,11 @@
 #include "Nodes/DeviceNode.h"
 #include "Nodes/SwapChainNode.h"
 #include "Nodes/DepthBufferNode.h"
+#include "Nodes/RenderTargetNode.h"
+#include "Nodes/PickIdTargetNode.h"
+#include "Nodes/InstanceBufferNode.h"
+#include "Nodes/DynamicInstanceBufferNode.h"
+#include "Nodes/MvpUniformNode.h"
 #include "Nodes/RenderPassNode.h"
 #include "Nodes/FramebufferNode.h"
 #include "Nodes/FrameSyncNode.h"
@@ -28,6 +33,8 @@
 #include "Nodes/CameraNode.h"
 #include "Nodes/VoxelGridNode.h"
 #include "Nodes/InputNode.h"
+#include "Nodes/SelectionCoordinatorNode.h"
+#include "Nodes/VoxelSelectionProviderNode.h"
 // Note: ConstantNodeType excluded - has circular dependency (ConstantNode.h uses RenderGraph inline)
 // ConstantNodeType must be registered separately where RenderGraph.h is already included
 #include "Nodes/DescriptorResourceGathererNode.h"
@@ -163,6 +170,11 @@ void RegisterBuiltInNodeTypes(NodeTypeRegistry& registry) {
     registry.Register<DeviceNodeType>();
     registry.Register<SwapChainNodeType>();
     registry.Register<DepthBufferNodeType>();
+    registry.Register<RenderTargetNodeType>();
+    registry.Register<PickIdTargetNodeType>();
+    registry.Register<InstanceBufferNodeType>();
+    registry.Register<DynamicInstanceBufferNodeType>();
+    registry.Register<MvpUniformNodeType>();
     registry.Register<RenderPassNodeType>();
     registry.Register<FramebufferNodeType>();
     registry.Register<FrameSyncNodeType>();
@@ -185,6 +197,8 @@ void RegisterBuiltInNodeTypes(NodeTypeRegistry& registry) {
     registry.Register<CameraNodeType>();
     registry.Register<VoxelGridNodeType>();
     registry.Register<InputNodeType>();
+    registry.Register<VoxelSelectionProviderNodeType>();  // SEL-P2: voxel-domain selection provider node
+    registry.Register<SelectionCoordinatorNodeType>();  // SEL-P2: engine-wide selection coordinator
     // Note: ConstantNodeType must be registered in application code (circular dependency)
     registry.Register<DescriptorResourceGathererNodeType>();
     registry.Register<PushConstantGathererNodeType>();

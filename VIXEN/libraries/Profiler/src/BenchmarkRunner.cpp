@@ -24,6 +24,7 @@
 #include <Nodes/WindowNode.h>
 #include <Nodes/DeviceNode.h>
 #include <Nodes/SwapChainNode.h>
+#include <Nodes/RenderTargetNode.h>
 #include <Nodes/CommandPoolNode.h>
 #include <Nodes/FrameSyncNode.h>
 #include <Nodes/ShaderLibraryNode.h>
@@ -430,6 +431,7 @@ void RegisterAllNodeTypes(Vixen::RenderGraph::NodeTypeRegistry& registry) {
     registry.Register<CommandPoolNodeType>();
     registry.Register<FrameSyncNodeType>();
     registry.Register<SwapChainNodeType>();
+    registry.Register<RenderTargetNodeType>();
 
     // Shader/descriptor nodes (shared by compute and fragment)
     registry.Register<ShaderLibraryNodeType>();

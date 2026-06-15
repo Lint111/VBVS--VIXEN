@@ -60,7 +60,7 @@ protected:
     void BeginCommandBuffer(VkCommandBuffer cmdBuffer);
     void ValidateInputs(Context& ctx, VkRenderPass renderPass, VkPipeline pipeline,
                         VkPipelineLayout pipelineLayout, VkBuffer vertexBuffer,
-                        SwapChainPublicVariables* swapchainInfo);
+                        Vixen::Vulkan::Resources::IRenderTarget* swapchainInfo);
     void BeginRenderPassWithClear(VkCommandBuffer cmdBuffer, VkRenderPass renderPass,
                                   VkFramebuffer framebuffer, uint32_t width, uint32_t height);
     void BindPipelineAndDescriptors(VkCommandBuffer cmdBuffer, VkPipeline pipeline,

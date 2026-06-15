@@ -57,7 +57,7 @@ CONSTEXPR_NODE_CONFIG(FramebufferNodeConfig,
         SlotScope::NodeLevel);
 
     // Swapchain public variables bundle (contains colorBuffers array)
-    INPUT_SLOT(SWAPCHAIN_INFO, SwapChainPublicVariables*, 2,
+    INPUT_SLOT(SWAPCHAIN_INFO, Vixen::Vulkan::Resources::IRenderTarget*, 2,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
@@ -91,7 +91,7 @@ CONSTEXPR_NODE_CONFIG(FramebufferNodeConfig,
             BufferDescription{}
         );
 
-        HandleDescriptor swapchainInfoDesc{"SwapChainPublicVariables*"};
+        HandleDescriptor swapchainInfoDesc{"IRenderTarget*"};
         INIT_INPUT_DESC(SWAPCHAIN_INFO, "swapchain_info",
             ResourceLifetime::Persistent,
             swapchainInfoDesc
@@ -132,7 +132,7 @@ CONSTEXPR_NODE_CONFIG(FramebufferNodeConfig,
     // Type validations
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
     static_assert(std::is_same_v<RENDER_PASS_Slot::Type, VkRenderPass>);
-    static_assert(std::is_same_v<SWAPCHAIN_INFO_Slot::Type, SwapChainPublicVariables*>);
+    static_assert(std::is_same_v<SWAPCHAIN_INFO_Slot::Type, Vixen::Vulkan::Resources::IRenderTarget*>);
     static_assert(std::is_same_v<DEPTH_ATTACHMENT_Slot::Type, VkImageView>);
     static_assert(std::is_same_v<FRAMEBUFFERS_Slot::Type, std::vector<VkFramebuffer>>);
     static_assert(std::is_same_v<VULKAN_DEVICE_OUT_Slot::Type, VulkanDevice*>);

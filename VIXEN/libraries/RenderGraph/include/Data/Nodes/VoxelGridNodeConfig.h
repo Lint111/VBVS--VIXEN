@@ -22,6 +22,12 @@ namespace CashSystem {
     struct VoxelSceneData;
 }
 
+// Forward declaration for CPU-side entity voxel world (non-wrapper pointer type,
+// no conversion_type needed - only published as a plain pointer for CPU-side queries)
+namespace Vixen::GaiaVoxel {
+    class GaiaVoxelWorld;
+}
+
 namespace Vixen::RenderGraph {
 
 // Type alias for VulkanDevice (use VulkanDevice* explicitly in slots)
@@ -30,7 +36,7 @@ using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 // Compile-time slot counts
 namespace VoxelGridNodeCounts {
     static constexpr size_t INPUTS = 2;
-    static constexpr size_t OUTPUTS = 10;  // Slots 0-9: 3 octree + debug + config + 2 compressed + brick grid + scene data + shader counters
+    static constexpr size_t OUTPUTS = 11;  // Slots 0-10: 3 octree + debug + config + 2 compressed + brick grid + scene data + shader counters + voxel world
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 // NOTE: Wrapper types (RayTraceBuffer*, ShaderCountersBuffer*) are used for slots
@@ -44,7 +50,7 @@ namespace VoxelGridNodeCounts {
  * Outputs SSBO buffers for octree-based ray marching.
  *
  * Inputs: 2 (VULKAN_DEVICE_IN, COMMAND_POOL)
- * Outputs: 9 (OCTREE_NODES_BUFFER, OCTREE_BRICKS_BUFFER, OCTREE_MATERIALS_BUFFER, DEBUG_CAPTURE_BUFFER, OCTREE_CONFIG_BUFFER, COMPRESSED_COLOR_BUFFER, COMPRESSED_NORMAL_BUFFER, BRICK_GRID_LOOKUP_BUFFER)
+ * Outputs: 11 (OCTREE_NODES_BUFFER, OCTREE_BRICKS_BUFFER, OCTREE_MATERIALS_BUFFER, DEBUG_CAPTURE_BUFFER, OCTREE_CONFIG_BUFFER, COMPRESSED_COLOR_BUFFER, COMPRESSED_NORMAL_BUFFER, BRICK_GRID_LOOKUP_BUFFER, VOXEL_SCENE_DATA, SHADER_COUNTERS_BUFFER, VOXEL_WORLD)
  */
 CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
                       VoxelGridNodeCounts::INPUTS,
@@ -126,8 +132,17 @@ CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
         SlotNullability::Optional,
         SlotMutability::WriteOnly);
 
-    // Slot index verification: 0-9 = 10 slots total
-    static_assert(VoxelGridNodeCounts::OUTPUTS == 10, "OUTPUT slot count mismatch");
+    // CPU-side entity voxel world - owned by the cached VoxelSceneData, exposed here as a
+    // plain pointer so downstream nodes (e.g. picking) can run CPU-side spatial queries
+    // against the same scene the GPU octree buffers describe.
+    // Mirrors VOXEL_SCENE_DATA's attributes (Optional, WriteOnly): a non-wrapper pointer
+    // handle output, valid for as long as the cached scene data lives.
+    OUTPUT_SLOT(VOXEL_WORLD, Vixen::GaiaVoxel::GaiaVoxelWorld*, 10,
+        SlotNullability::Optional,
+        SlotMutability::WriteOnly);
+
+    // Slot index verification: 0-10 = 11 slots total
+    static_assert(VoxelGridNodeCounts::OUTPUTS == 11, "OUTPUT slot count mismatch");
 
     // ===== PARAMETERS =====
     static constexpr const char* PARAM_RESOLUTION = "resolution";
@@ -197,6 +212,10 @@ CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
         shaderCountersDesc.size = 64;  // sizeof(GPUShaderCounters) = 64 bytes
         shaderCountersDesc.usage = ResourceUsage::StorageBuffer;
         INIT_OUTPUT_DESC(SHADER_COUNTERS_BUFFER, "shader_counters_buffer", ResourceLifetime::Persistent, shaderCountersDesc);
+
+        // CPU voxel world handle - plain pointer to the cached scene's entity world
+        HandleDescriptor voxelWorldDesc{"Vixen::GaiaVoxel::GaiaVoxelWorld*"};
+        INIT_OUTPUT_DESC(VOXEL_WORLD, "voxel_world", ResourceLifetime::Persistent, voxelWorldDesc);
     }
 
     // Automated config validation
@@ -215,6 +234,7 @@ CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
     static_assert(BRICK_GRID_LOOKUP_BUFFER_Slot::index == 7, "BRICK_GRID_LOOKUP_BUFFER must be at index 7");
     static_assert(VOXEL_SCENE_DATA_Slot::index == 8, "VOXEL_SCENE_DATA must be at index 8");
     static_assert(SHADER_COUNTERS_BUFFER_Slot::index == 9, "SHADER_COUNTERS_BUFFER must be at index 9");
+    static_assert(VOXEL_WORLD_Slot::index == 10, "VOXEL_WORLD must be at index 10");
 
     // Type validations - wrapper types use conversion_type for descriptor extraction
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
@@ -229,6 +249,7 @@ CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
     static_assert(std::is_same_v<BRICK_GRID_LOOKUP_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<VOXEL_SCENE_DATA_Slot::Type, CashSystem::VoxelSceneData*>);
     static_assert(std::is_same_v<SHADER_COUNTERS_BUFFER_Slot::Type, Debug::ShaderCountersBuffer*>);  // Wrapper with conversion_type = VkBuffer
+    static_assert(std::is_same_v<VOXEL_WORLD_Slot::Type, Vixen::GaiaVoxel::GaiaVoxelWorld*>);
 };
 
 } // namespace Vixen::RenderGraph

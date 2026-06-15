@@ -28,9 +28,12 @@
 #include <sstream>
 #include <iomanip>
 
-// Enable tracking in Debug builds by default
-#ifndef NDEBUG
-#define VIXEN_DEBUG_DESCRIPTOR_TRACKING 1
+// Per-frame descriptor tracking is OFF by default — it emits a [ResourceTracker] line per
+// descriptor extraction/bind every frame (tens of thousands per run) straight to the console,
+// which drowns out real logs. Opt in when debugging descriptor flow by building with
+// -DVIXEN_DEBUG_DESCRIPTOR_TRACKING=1 (or defining it before this header).
+#ifndef VIXEN_DEBUG_DESCRIPTOR_TRACKING
+#define VIXEN_DEBUG_DESCRIPTOR_TRACKING 0
 #endif
 
 namespace Vixen::RenderGraph::Debug {

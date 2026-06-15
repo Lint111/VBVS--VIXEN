@@ -2,6 +2,7 @@
 
 #include "Message.h"
 #include <cstdint>
+#include <glm/glm.hpp>
 
 namespace Vixen::EventBus {
 
@@ -211,6 +212,46 @@ struct MouseButtonEvent : public BaseEventMessage {
         , eventType(type)
         , x(posX)
         , y(posY)
+    {}
+};
+
+/**
+ * @brief Pick / selection result event
+ *
+ * Published by a picking node after resolving a screen-space click into a
+ * scene-space selection (e.g. unproject + voxel raycast). Carries the picked
+ * entity plus the hit's spatial data so selection/UI systems can react.
+ *
+ * On a miss, hit==false, entityId==0 and mortonCode==0; worldPosition is
+ * unspecified. screenPosition/button echo the originating click.
+ */
+struct PickResultEvent : public BaseEventMessage {
+    static constexpr MessageType TYPE = AUTO_MESSAGE_TYPE();
+    static constexpr EventCategory CATEGORY = EventCategory::ApplicationState;
+
+    uint64_t entityId;          // Picked entity id (0 == invalid / miss)
+    bool hit;                   // true if the ray hit something
+    glm::vec3 worldPosition;    // World-space hit position (valid when hit)
+    uint64_t mortonCode;        // Morton/voxel code of the hit cell (0 on miss)
+    glm::vec2 screenPosition;   // Screen-space pixel coords of the originating click
+    int button;                 // Mouse button that triggered the pick (MouseButton value)
+
+    PickResultEvent(
+        SenderID sender,
+        uint64_t entity,
+        bool didHit,
+        const glm::vec3& world,
+        uint64_t morton,
+        const glm::vec2& screen,
+        int mouseButton
+    )
+        : BaseEventMessage(CATEGORY, TYPE, sender)
+        , entityId(entity)
+        , hit(didHit)
+        , worldPosition(world)
+        , mortonCode(morton)
+        , screenPosition(screen)
+        , button(mouseButton)
     {}
 };
 

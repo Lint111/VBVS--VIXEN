@@ -19,7 +19,10 @@ using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
  * - TEXTURE_IMAGE (VkImage) - Loaded texture image
  * - TEXTURE_VIEW (VkImageView) - Image view for shader access
  * - TEXTURE_SAMPLER (VkSampler) - Configured sampler
- * 
+ * - TEXTURE_SAMPLER_PAIR (ImageSamplerPair) - Combined {view, sampler} for a single
+ *   VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER binding (the reflection-driven gatherer
+ *   path: wire this ONE output to a gatherer binding for a GLSL `sampler2D`). AR#31.
+ *
  * Parameters:
  * - FILE_PATH (string) - Path to texture file
  * - UPLOAD_MODE (string) - "Optimal" or "Linear"
@@ -31,7 +34,7 @@ using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
  */
 namespace TextureLoaderNodeCounts {
     static constexpr size_t INPUTS = 1;  // Changed from 0
-    static constexpr size_t OUTPUTS = 4; // Changed from 3
+    static constexpr size_t OUTPUTS = 5; // image, view, sampler, device, sampler-pair (AR#31)
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -70,6 +73,15 @@ CONSTEXPR_NODE_CONFIG(TextureLoaderNodeConfig,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
+    // Combined image-sampler for the reflection-driven descriptor path (AR#31). A GLSL
+    // `sampler2D` reflects as one VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER binding that
+    // needs BOTH a VkImageView and a VkSampler; bundling them in one ImageSamplerPair lets
+    // a SINGLE gatherer connection satisfy that binding (two separate connections to the
+    // same gatherer binding collapse — last-writer-wins — and drop one handle).
+    OUTPUT_SLOT(TEXTURE_SAMPLER_PAIR, ImageSamplerPair, 4,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
     TextureLoaderNodeConfig() {
         // Initialize input descriptors
         HandleDescriptor vulkanDeviceDesc{"VulkanDevice*"};
@@ -95,6 +107,15 @@ CONSTEXPR_NODE_CONFIG(TextureLoaderNodeConfig,
             ResourceLifetime::Persistent,
             vulkanDeviceDesc
         );
+
+        // Persistent so the combined view+sampler survives graph recompiles and reaches the
+        // descriptor path intact (mirrors TEXTURE_VIEW/TEXTURE_SAMPLER, which are persistent).
+        // ImageSamplerPair is allowed to be persistent via CanBePersistent (it is a trivially
+        // copyable bundle of opaque Vulkan handles). AR#31.
+        INIT_OUTPUT_DESC(TEXTURE_SAMPLER_PAIR, "texture_sampler_pair",
+            ResourceLifetime::Persistent,
+            ImageDescription{}  // ImageSamplerPair deduces to ResourceType::ImageView
+        );
     }
 
     // Automated config validation
@@ -116,6 +137,11 @@ CONSTEXPR_NODE_CONFIG(TextureLoaderNodeConfig,
     static_assert(VULKAN_DEVICE_OUT_Slot::index == 3, "DEVICE_OUT must be at index 3");
     static_assert(!VULKAN_DEVICE_OUT_Slot::nullable, "DEVICE_OUT is required");
     static_assert(std::is_same_v<VULKAN_DEVICE_OUT_Slot::Type, VulkanDevice*>, "DEVICE_OUT must be VkDevice");
+
+    static_assert(TEXTURE_SAMPLER_PAIR_Slot::index == 4, "TEXTURE_SAMPLER_PAIR must be at index 4");
+    static_assert(!TEXTURE_SAMPLER_PAIR_Slot::nullable, "TEXTURE_SAMPLER_PAIR is required");
+    static_assert(std::is_same_v<TEXTURE_SAMPLER_PAIR_Slot::Type, ImageSamplerPair>,
+                  "TEXTURE_SAMPLER_PAIR must be ImageSamplerPair");
 };
 
 } // namespace Vixen::RenderGraph

@@ -87,7 +87,9 @@ void DebugBufferReaderNode::ExecuteImpl(TypedExecuteContext& ctx) {
     }
 
     if (debugCapture == nullptr) {
-        NODE_LOG_WARNING("No debug capture interface provided - skipping readback");
+        // Benign + expected: debug capture is opt-in and unwired by default. This runs every frame,
+        // so keep it at DEBUG (matches the capture-disabled skip below) instead of warning each frame.
+        NODE_LOG_DEBUG("No debug capture interface provided - skipping readback");
         return;
     }
 

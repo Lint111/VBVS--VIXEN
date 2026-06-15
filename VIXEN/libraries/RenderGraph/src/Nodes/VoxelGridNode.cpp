@@ -259,6 +259,16 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
     if (cachedSceneData_) {
         ctx.Out(VoxelGridNodeConfig::VOXEL_SCENE_DATA, cachedSceneData_.get());
         NODE_LOG_DEBUG("  VOXEL_SCENE_DATA=" + std::to_string(reinterpret_cast<uint64_t>(cachedSceneData_.get())));
+
+        // Output CPU voxel world (owned by cachedSceneData_) for CPU-side queries (e.g. picking).
+        // Lives as long as the cached scene data; published as a plain pointer (null-safe).
+        // Validity is identical on cache-miss and cache-hit: the world is part of the cached
+        // resource, so a hit returns the same populated VoxelSceneData a fresh build would.
+        Vixen::GaiaVoxel::GaiaVoxelWorld* voxelWorld = cachedSceneData_->voxelWorld.get();
+        ctx.Out(VoxelGridNodeConfig::VOXEL_WORLD, voxelWorld);
+        NODE_LOG_INFO("[VoxelGridNode::CompileImpl] VOXEL_WORLD output ptr=" +
+                      std::to_string(reinterpret_cast<uint64_t>(voxelWorld)) +
+                      (voxelWorld ? " (valid - CPU picking queries available)" : " (NULL - no CPU world on cached scene!)"));
     }
 
     // Output debug capture buffer (wrapper with conversion_type = VkBuffer)
@@ -337,6 +347,9 @@ void VoxelGridNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // Re-output cached scene data for downstream nodes
     if (cachedSceneData_) {
         ctx.Out(VoxelGridNodeConfig::VOXEL_SCENE_DATA, cachedSceneData_.get());
+        // Re-output CPU voxel world (owned by cachedSceneData_) so variadic consumers
+        // (e.g. picking) re-resolve it on recompile. Null-safe.
+        ctx.Out(VoxelGridNodeConfig::VOXEL_WORLD, cachedSceneData_->voxelWorld.get());
     }
 
     // Re-output debug capture buffer (wrapper with conversion_type = VkBuffer)

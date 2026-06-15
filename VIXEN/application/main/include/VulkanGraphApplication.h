@@ -88,6 +88,13 @@ public:
     void BuildUIGraph();
 
     /**
+     * @brief Build an isolated instanced-cube raster demo graph (AR#31). Gated by the
+     *        VIXEN_INSTANCING_DEMO env var. Renders N = gridDim^2 cubes from one mesh via
+     *        a per-instance model-matrix SSBO (InstanceBufferNode) indexed by gl_InstanceIndex.
+     */
+    void BuildInstancingDemoGraph();
+
+    /**
      * @brief Compile the render graph
      * 
      * Validates, optimizes, and prepares the graph for execution.

@@ -80,13 +80,13 @@ void UIRenderNode::FreeCommandBuffers() {
 
 void UIRenderNode::CompileImpl(TypedCompileContext& ctx) {
     VulkanDevice* device = ctx.In(UIRenderNodeConfig::VULKAN_DEVICE);
-    SwapChainPublicVariables* sc = ctx.In(UIRenderNodeConfig::SWAPCHAIN_INFO);
+    Vixen::Vulkan::Resources::IRenderTarget* sc = ctx.In(UIRenderNodeConfig::SWAPCHAIN_INFO);
     commandPool_ = ctx.In(UIRenderNodeConfig::COMMAND_POOL);
     renderPass_ = ctx.In(UIRenderNodeConfig::RENDER_PASS);
 
     device_ = device->device;
     queue_ = device->queue;
-    extent_ = sc->Extent;
+    extent_ = sc->GetExtent();
 
     composite_ = GetParameterValue<bool>(UIRenderNodeConfig::PARAM_COMPOSITE, false);
 
@@ -166,7 +166,7 @@ void UIRenderNode::CompileImpl(TypedCompileContext& ctx) {
     // stable across a pure recompile (it only changes on a real swapchain format/size change, which
     // carries its own pause+recreation), so guarding on it makes the steady state a no-op while still
     // rebuilding correctly on an actual resize.
-    const uint32_t imageCount = sc->swapChainImageCount;
+    const uint32_t imageCount = sc->GetImageCount();
     const bool rebuildSync = (imageCount != syncImageCount_) || commandBuffers_.empty();
     if (rebuildSync) {
         FreeCommandBuffers();

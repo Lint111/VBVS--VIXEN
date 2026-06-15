@@ -156,3 +156,124 @@ set_target_properties(test_acceleration_structure_node PROPERTIES FOLDER "Tests/
 gtest_discover_tests(test_acceleration_structure_node)
 
 message(STATUS "[RenderGraph Tests] Added: test_acceleration_structure_node (Phase 3.4)")
+
+# RenderTargetNode Tests (AR#28)
+add_executable(test_render_target_node
+    Nodes/test_render_target_node.cpp
+)
+
+target_link_libraries(test_render_target_node PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+
+# Visual Studio solution folder organization
+set_target_properties(test_render_target_node PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_render_target_node)
+
+message(STATUS "[RenderGraph Tests] Added: test_render_target_node (AR#28)")
+
+# Blend mode recipe + config Tests (AR#32) — pure unit tests, no device
+add_executable(test_blend_mode
+    Nodes/test_blend_mode.cpp
+)
+
+target_link_libraries(test_blend_mode PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+
+# Visual Studio solution folder organization
+set_target_properties(test_blend_mode PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_blend_mode)
+
+message(STATUS "[RenderGraph Tests] Added: test_blend_mode (AR#32)")
+
+# Selection core types (SEL-P1) — pure unit tests, no device
+# Covers SelectionSet.apply modifier semantics + SelectionId hash/equality.
+add_executable(test_selection_set
+    Selection/test_selection_set.cpp
+)
+
+target_link_libraries(test_selection_set PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+
+# Visual Studio solution folder organization
+set_target_properties(test_selection_set PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_selection_set)
+
+message(STATUS "[RenderGraph Tests] Added: test_selection_set (SEL-P1)")
+
+# Selection candidate resolution (SEL-P2, providers-are-nodes) — pure unit tests, no device.
+# Pins pickBestCandidate() (max priority, tie-break min depth, ignore non-hits) — the rule the
+# SelectionCoordinatorNode applies to the MultiConnect candidate fan-in. The voxel provider node's
+# GPU readback is exercised live in the app (the user's manual click test).
+add_executable(test_selection_resolve
+    Selection/test_selection_resolve.cpp
+)
+
+target_link_libraries(test_selection_resolve PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+
+# Visual Studio solution folder organization
+set_target_properties(test_selection_resolve PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_selection_resolve)
+
+message(STATUS "[RenderGraph Tests] Added: test_selection_resolve (SEL-P2)")
+
+# PickRay unproject Tests (AR#35) — pure unit tests, no device
+add_executable(test_pick_ray
+    Nodes/test_pick_ray.cpp
+)
+
+target_link_libraries(test_pick_ray PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+
+# Visual Studio solution folder organization
+set_target_properties(test_pick_ray PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_pick_ray)
+
+message(STATUS "[RenderGraph Tests] Added: test_pick_ray (AR#35)")
+
+# InstanceBufferNode Tests (AR#31)
+add_executable(test_instance_buffer_node
+    Nodes/test_instance_buffer_node.cpp
+)
+
+target_link_libraries(test_instance_buffer_node PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+
+# Visual Studio solution folder organization
+set_target_properties(test_instance_buffer_node PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_instance_buffer_node)
+
+message(STATUS "[RenderGraph Tests] Added: test_instance_buffer_node (AR#31)")
+
+# PickIdTargetNode Tests (AR#35 GPU picking P1)
+add_executable(test_pick_id_target_node
+    Nodes/test_pick_id_target_node.cpp
+)
+
+target_link_libraries(test_pick_id_target_node PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+
+# Visual Studio solution folder organization
+set_target_properties(test_pick_id_target_node PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_pick_id_target_node)
+
+message(STATUS "[RenderGraph Tests] Added: test_pick_id_target_node (AR#35)")
+
+# DynamicInstanceBufferNode Tests (AR#33)
+add_executable(test_dynamic_instance_buffer_node
+    Nodes/test_dynamic_instance_buffer_node.cpp
+)
+
+target_link_libraries(test_dynamic_instance_buffer_node PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+
+# Visual Studio solution folder organization
+set_target_properties(test_dynamic_instance_buffer_node PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_dynamic_instance_buffer_node)
+
+message(STATUS "[RenderGraph Tests] Added: test_dynamic_instance_buffer_node (AR#33)")
+
+# MvpUniformNode Tests (AR#31)
+add_executable(test_mvp_uniform_node
+    Nodes/test_mvp_uniform_node.cpp
+)
+
+target_link_libraries(test_mvp_uniform_node PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+
+# Visual Studio solution folder organization
+set_target_properties(test_mvp_uniform_node PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_mvp_uniform_node)
+
+message(STATUS "[RenderGraph Tests] Added: test_mvp_uniform_node (AR#31)")

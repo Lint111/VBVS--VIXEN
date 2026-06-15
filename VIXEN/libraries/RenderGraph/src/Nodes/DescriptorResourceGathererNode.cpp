@@ -732,9 +732,12 @@ bool DescriptorResourceGathererNode::CheckUsageCompatibility(
 
         case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
         case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
-            // Both require Sampled usage (combined sampler checks image compatibility)
+            // Both require Sampled usage (combined sampler checks image compatibility).
+            // ImageView is accepted because a combined image sampler may be supplied as a
+            // single ImageSamplerPair handle, which deduces to ResourceType::ImageView (AR#31).
             return HasUsage(usage, ResourceUsage::Sampled) &&
-                   (resType == ResourceType::Image || resType == ResourceType::Image3D);
+                   (resType == ResourceType::Image || resType == ResourceType::Image3D ||
+                    resType == ResourceType::ImageView);
 
         case VK_DESCRIPTOR_TYPE_SAMPLER:
             // Samplers are separate resources - check ResourceType
@@ -773,10 +776,13 @@ bool DescriptorResourceGathererNode::IsResourceTypeCompatibleWithDescriptor(
 
         case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
             // Combined sampler can accept BOTH ImageView (Image type) and Sampler (Buffer type)
-            // When two resources connect to same binding, check each individually
+            // When two resources connect to same binding, check each individually.
+            // ImageView also covers the single-handle ImageSamplerPair form, whose deduced
+            // ResourceType is ImageView (AR#31).
             return resType == ResourceType::Image ||
                    resType == ResourceType::StorageImage ||
                    resType == ResourceType::Image3D ||
+                   resType == ResourceType::ImageView ||
                    resType == ResourceType::Buffer;  // VkSampler uses Buffer ResourceType
 
         case VK_DESCRIPTOR_TYPE_SAMPLER:

@@ -265,26 +265,90 @@ Correctness bugs + the only-consumer's pain + legal hygiene. Wasted on no possib
 
 ### P3 — Presentation layer (review Phase 2)
 
-- [ ] **`RenderTargetNode` / render-to-texture** [AR#28, Decision #3] — *"essentially the entire
-  grand-strategy presentation layer hangs off this single change"*: minimap, portraits, picking
-  ID-buffers, fog-of-war, post-processing, multi-view. Fix is a producer node, not new
-  infrastructure (VMA/Direct allocators already make arbitrary images). Also un-stubs
-  `AllocateResources()` + `FindMemoryType` [AR#18].
-- [ ] **Many-entity draw path** — instancing / draw lists / `vkCmdDrawIndirect` (today exactly one
-  `vkCmdDraw` in the whole tree) [AR#31]
-- [ ] **Per-frame dynamic content** — `StreamingBufferNode`/`DynamicBufferNode`; drain the dead-ended
-  `BatchedUpdater` (`VulkanDevice::RecordUpdates` has zero callers) [AR#33]; per-frame dynamic
-  geometry / multi-draw for text+UI (`UIDrawListNode`) [AR#34]
-- [ ] **Alpha blending** — one hardcoded `blendEnable=VK_FALSE` blocks all UI-over-3D; add
-  `BLEND_MODE` string param (CULL_MODE pattern) [AR#32]
+- [x] **`RenderTargetNode` / render-to-texture** [AR#28, Decision #3] — **DONE 2026-06-14** (merged to
+  main, `271a461f`). The P3 presentation-layer keystone: offscreen render targets are now a first-class
+  graph concept. Design+plan: [[RenderTarget-Design-2026-06]] + [[RenderTarget-Implementation-Plan-2026-06]].
+  Shipped: `IRenderTarget` interface (`IRenderTarget.h`); `SwapChainPublicVariables` implements it;
+  color-only `RenderTargetNode` producer (offscreen color images via real memory-type selection, FR-7
+  lifecycle, registered + config-tested, 24 tests); and the **full slot migration** — all 13 recording-node
+  slots (12 inputs + SwapChainNode output) `SwapChainPublicVariables*` → `IRenderTarget*`, with the 10
+  consuming `.cpp`s moved to the interface accessors (`GetView(i)`/`GetExtent()`/`GetImageCount()`/…).
+  Verified: full build green; render-graph/node test suites pass (render_target 24, swap_chain 12,
+  rendergraph 3, device 22); app smoke clean (0 VK_ERROR/VUID, ~85k render events). `FrameCapture` kept
+  `SwapChainPublicVariables*` (genuine swapchain-specific PNG capture — not a render-graph slot).
+  **Follow-ups (deferred, noted in the design):** `followSwapchainExtent`/resize; headless pipeline;
+  `CompositeNode` view fan-in; consolidate RenderTargetNode's local `DEFAULT_FRAMES_IN_FLIGHT` +
+  `FindMemoryType` copies (added to dodge a claimed MSVC `LNK1163`); fix DepthBufferNode's
+  `memoryTypeIndex=0` placeholder [AR#18] (NOT done in this pass — its slot migrated but the
+  placeholder remains).
+- [~] **Many-entity draw path** [AR#31] — **increment 1 DONE 2026-06-15**: hardware **instancing** — one
+  cube mesh, **64 instances** via an SSBO of per-instance `mat4` transforms indexed by `gl_InstanceIndex`,
+  rendered through the **reusable general `Draw.vert`/`Draw.frag` path** (3 reflection-driven descriptors:
+  0 = MVP UBO, 1 = texture, 2 = instance SSBO) in an isolated `VIXEN_INSTANCING_DEMO` graph (mirrors
+  `BuildUIGraph`, voxel path untouched). New nodes: `InstanceBufferNode` (transform SSBO),
+  `MvpUniformNode` (MVP UBO) — both FR-7 + real memory-type selection + config tests. **Bonus root-cause
+  fixes uncovered en route:** `CashSystem::TextureCacher` was a stub (no real VkImage) → now does real
+  staging upload + a default checkerboard when `FILE_PATH` empty (also fixes the file path); and the
+  combined-image-sampler descriptor path was incomplete → added `ImageSamplerPair` so view+sampler bind as
+  one. Verified: build green, demo 0 VK errors / 64 instances / textured cubes, default voxel path
+  regression-clean (0 VK errors, sustained render loop past the bake). Design:
+  [[Instancing-Increment-Design-2026-06]]. **Remaining increments:** heterogeneous multi-mesh **draw
+  lists**, `vkCmdDrawIndirect` (GPU-driven), GPU culling, per-frame dynamic transforms.
+  NOTE: gotcha — WSL bash does not pass env vars to Windows `.exe`; run via
+  `cmd.exe /c "set VIXEN_INSTANCING_DEMO=1&& VIXEN.exe"`.
+- [~] **Per-frame dynamic content** [AR#33/#34] — **AR#33 increment 1 DONE 2026-06-15**: first per-frame
+  dynamic *buffer* — the instancing demo's 64 cubes now **animate** (spin) via a ring-buffered instance
+  SSBO rewritten each frame (no readback). New `DynamicInstanceBufferNode` (ring of N=MAX_FRAMES_IN_FLIGHT
+  host-visible storage buffers via the revived `PerFrameResources` helper, extended with
+  `CreateStorageBuffer`); per-frame descriptor re-bind rides existing rails (re-emit transient output +
+  `Dependency|Execute` connection + `DescriptorSetNode::ExecuteImpl` per-frame `vkUpdateDescriptorSets`).
+  Verified: binding 2 cycles through all 4 ring handles, 0 VK errors, **user visually confirmed animation**;
+  default voxel path regression-clean. Design: [[Dynamic-Content-Design-2026-06]]. **Decision:** used the
+  `PerFrameResources` ring (right tool for host-visible per-frame data); **`BatchedUpdater` deferred** to
+  its proper home (device-local / dynamic-TLAS command updates — see [[Auto-Sync-FrameGraph-Design-2026-06]]),
+  NOT forced here. **Remaining:** AR#34 dynamic *geometry* / multi-draw for text+UI (`UIDrawListNode`);
+  a generic reusable `DynamicBufferNode`; real elapsed-time animation (frame-counter today).
+- [x] **Alpha blending** — **DONE 2026-06-14** [AR#32]. `BLEND_MODE` string param on
+  `GraphicsPipelineNode` (CULL_MODE pattern): `None` (default, opaque — prior behavior), `Alpha`,
+  `PremultipliedAlpha`, `Additive`, `Multiply`. Design: [[BlendMode-Design-2026-06]]. The hardcoded
+  `blendEnable=VK_FALSE` lived in **two** paths (the `PipelineCacher` live path + the node's manual
+  fallback); both now consume one `MakeColorBlendAttachment(mode)` recipe (RenderGraph
+  `VulkanStructHelpers.h`, throws on unknown). Blend state is threaded through `PipelineCreateParams`
+  (defaulted opaque/write-RGBA so existing callers are unchanged) **and** the pipeline cache key
+  (`ComputeKey`) so distinct blend modes never collide on one cached pipeline. Tests: `test_blend_mode`
+  (8, pure recipe+config), `test_pipeline_blend_key` (4, cache-key distinctness + opaque default); build
+  green, all CashSystem suites pass, app smoke clean (0 VK errors). Follow-ups: per-attachment/MRT blend,
+  `logicOp`/dual-source/blend-constants — deferred (single attachment today).
 - [ ] **Multi-view / multi-camera** + flexible camera (ortho projection, zoom-to-cursor, camera-
   relative transform) — current camera is orbit-only, perspective-only, swapchain-bound [AR#29/#30]
 - [ ] **Sync model: allow >1 submitting pass per frame** [AR#21] — every leaf node independently
   `vkQueueSubmit`s the frame's single binary semaphore → only one submitting pass composes today.
   Surfaces the moment a second view is wired. Sprint 8 `TimelineNode` is the named fix.
-- [ ] **Picking/selection** — CPU click+drag-select is buildable today (`queryRegion`,
-  `getEntityByMorton`, `CameraData` inv matrices all exist); GPU pixel-exact ID-buffer is later
-  [AR#35]. Note: `MouseButtonEvent` is declared but **never published by InputNode** — fix that.
+  **Subsumed by the auto-sync epic** → [[Auto-Sync-FrameGraph-Design-2026-06]] (audit done 2026-06-14:
+  automatic barrier scheduling from the *existing-but-unused* `SlotMutability`/`ResourceAccessTracker`
+  access model + centralized image-layout state; AR#21 multi-submit/timeline is its increment 2). Parked
+  for a focused session. Motivated by the GPU compute→compute→render "no readback" ask (data already
+  stays on GPU; the gap is auto-sync, not data passing).
+- [~] **Picking/selection** [AR#35] — **DONE 2026-06-15: GPU pixel-exact ID-buffer picking** (live,
+  user-confirmed: brick/voxel change with aim, misses on sky). The voxel compute ray-march writes a
+  per-pixel `pickID = (brickIndex<<10)|voxelLinearIdx` to an `R32_UINT` ID image (new `PickIdTargetNode`,
+  binding 9); on a left-click the reworked `PickingNode` reads back the **center texel** (crosshair —
+  cursor is locked center) via a fenced one-shot `vkCmdCopyImageToBuffer`, decodes brick/voxel, logs +
+  publishes `PickResultEvent`. Design: [[GPU-IDBuffer-Picking-Design-2026-06]].
+  **Why GPU not CPU:** the CPU ray-pick ([[Picking-Design-2026-06]], superseded) depended on the ECS
+  `GaiaVoxelWorld`, which is **null on every disk-cache hit** (not serialized) — GPU picking uses the
+  cached octree the shader already traverses, so it works on every run + is pixel-exact.
+  Foundation that still stands: `MouseButtonEvent` publish fix, `PickResultEvent`, `ComputePickRay`
+  (kept for a future RTS cursor), the durable `VoxelGridNode VOXEL_WORLD` exposure.
+  **Selection system DONE 2026-06-15** ([[Selection-System-Design-2026-06]]): engine-native
+  `SelectContext` + `ISelectionProvider` + `SelectionSet` + `SelectionChangedEvent` (deps-light;
+  `SelectionId` in EventBus); `SelectionCoordinatorNode` (native node, owns the SelectionSet, runs
+  providers by priority, Shift/Ctrl→Add/Toggle modifiers) with `VoxelSelectionProvider` (reuses the GPU
+  readback — provider #1). 116 node/selection tests pass; live picks confirmed. Also: all session nodes
+  now use the base `NodeInstance::device` (no private device members). **Remaining:** UI selection provider
+  synced from the **WSL customer branch (UI injection)**; the **subgraph-as-node** capability
+  ([[Subgraph-As-Node-Design-2026-06]], greenfield epic); drag-rectangle multi-select; world pos / Morton
+  from brick+voxel; visual highlight.
 
 ### P4 — Deep-sim / voxel pillar (review Phase 3)
 
@@ -356,6 +420,21 @@ P1 gates Sprint 8 implementation ─────────┘                 
   P0 thread-safety fixes and a deliberate review first.
 - **Keep the benchmark suite green throughout** [AR#87] — it is the regression net and the only
   consumer exercising the fragment pipeline + headless bring-up.
+
+## Newly-found gap (2026-06-15)
+
+- **RenderGraph has no RUNTIME accumulation-gather for MultiConnect/Accumulation input slots.**
+  `AccumulationConnectionRule::Resolve` records the source list + an ordering edge but never assembles
+  the `std::vector<T>` onto the consumer's input resource, so `ctx.In(accumSlot)` reads **empty** every
+  Execute. `MultiDispatchNode` only reads its accumulation slot at compile (one-time snapshot);
+  `BoolOpNode`'s accumulation has no runtime test — neither exercises a per-frame gather, so the gap was
+  unnoticed. Blocker is type erasure (`Resource` stores `std::any`), so a type-erased rule can't append
+  element `T` into `std::vector<T>`. Fix: register a **typed PreExecute gather hook** from the typed
+  `Connect` site (where `T` is known) — the `GraphLifecycleHooks` `PreExecute` infra already exists and
+  `VariadicConnectionRule` uses it; needs correct per-slot vector ownership + per-frame reset. Surfaced
+  by the SEL-P2 providers-are-nodes refactor (the selection coordinator's candidate fan-in); worked
+  around there with a single-source candidate slot (`DirectConnectionRule` wires it). Closing this
+  unblocks true N-provider selection (UI + voxel + mesh → one coordinator) and any future fan-in node.
 
 ## Maturity scorecard (from the review)
 

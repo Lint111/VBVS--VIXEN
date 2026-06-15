@@ -18,10 +18,18 @@ void PerFrameResources::Initialize(Vixen::Vulkan::Resources::VulkanDevice* devic
 }
 
 VkBuffer PerFrameResources::CreateUniformBuffer(uint32_t frameIndex, VkDeviceSize bufferSize) {
-    ValidateFrameIndex(frameIndex, "CreateUniformBuffer");
+    return CreateBufferImpl(frameIndex, bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
+}
+
+VkBuffer PerFrameResources::CreateStorageBuffer(uint32_t frameIndex, VkDeviceSize bufferSize) {
+    return CreateBufferImpl(frameIndex, bufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+}
+
+VkBuffer PerFrameResources::CreateBufferImpl(uint32_t frameIndex, VkDeviceSize bufferSize, VkBufferUsageFlags usage) {
+    ValidateFrameIndex(frameIndex, "CreateBufferImpl");
 
     if (bufferSize == 0) {
-        throw std::runtime_error("PerFrameResources::CreateUniformBuffer - bufferSize must be > 0");
+        throw std::runtime_error("PerFrameResources::CreateBufferImpl - bufferSize must be > 0");
     }
 
     auto& frame = frames[frameIndex];
@@ -36,16 +44,16 @@ VkBuffer PerFrameResources::CreateUniformBuffer(uint32_t frameIndex, VkDeviceSiz
         vkFreeMemory(device->device, frame.uniformMemory, nullptr);
     }
 
-    // Create uniform buffer
+    // Create buffer with the requested usage (uniform or storage)
     VkBufferCreateInfo bufferInfo{};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bufferInfo.size = bufferSize;
-    bufferInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+    bufferInfo.usage = usage;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
     VkResult result = vkCreateBuffer(device->device, &bufferInfo, nullptr, &frame.uniformBuffer);
     if (result != VK_SUCCESS) {
-        throw std::runtime_error("PerFrameResources::CreateUniformBuffer - vkCreateBuffer failed");
+        throw std::runtime_error("PerFrameResources::CreateBufferImpl - vkCreateBuffer failed");
     }
 
     // Get memory requirements
@@ -65,7 +73,7 @@ VkBuffer PerFrameResources::CreateUniformBuffer(uint32_t frameIndex, VkDeviceSiz
     if (result != VK_SUCCESS) {
         vkDestroyBuffer(device->device, frame.uniformBuffer, nullptr);
         frame.uniformBuffer = VK_NULL_HANDLE;
-        throw std::runtime_error("PerFrameResources::CreateUniformBuffer - vkAllocateMemory failed");
+        throw std::runtime_error("PerFrameResources::CreateBufferImpl - vkAllocateMemory failed");
     }
 
     // Bind buffer to memory
@@ -78,7 +86,7 @@ VkBuffer PerFrameResources::CreateUniformBuffer(uint32_t frameIndex, VkDeviceSiz
         vkDestroyBuffer(device->device, frame.uniformBuffer, nullptr);
         frame.uniformBuffer = VK_NULL_HANDLE;
         frame.uniformMemory = VK_NULL_HANDLE;
-        throw std::runtime_error("PerFrameResources::CreateUniformBuffer - vkMapMemory failed");
+        throw std::runtime_error("PerFrameResources::CreateBufferImpl - vkMapMemory failed");
     }
 
     frame.uniformBufferSize = bufferSize;

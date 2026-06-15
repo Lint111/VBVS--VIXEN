@@ -60,6 +60,7 @@ namespace Vixen::RenderGraph {
     enum class BoolOp : uint8_t;
     enum class SlotRole : uint8_t;
     struct InputState;
+    struct SelectionCandidate;
 
     // Type alias for convenience
     using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
@@ -137,6 +138,11 @@ REGISTER_COMPILE_TIME_TYPE(Vixen::RenderGraph::Data::BoolVector);
 
 // Sprint 6.1: Register DispatchPass for GROUP_INPUTS accumulation slot
 REGISTER_COMPILE_TIME_TYPE(Vixen::RenderGraph::DispatchPass);
+
+// SEL-P2 (provider nodes): register SelectionCandidate so it is a valid slot value
+// type — both the provider node's CANDIDATE output and the coordinator's MultiConnect
+// PROVIDER_CANDIDATES slot (std::vector<SelectionCandidate>, auto-valid via StripContainer).
+REGISTER_COMPILE_TIME_TYPE(Vixen::RenderGraph::SelectionCandidate);
 
 // Forward declare types defined later in this file
 struct ImageSamplerPair;  // Full definition below, after descriptor variant section
@@ -1054,10 +1060,17 @@ public:
                 break;
 
             case ResourceType::ImageView:
-                // ImageView resources: try view first, then sampler (for combined samplers)
+                // ImageView resources: prefer the combined ImageSamplerPair (a sampler2D supplied as
+                // one handle) BEFORE the single VkImageView, so a combined-image-sampler binding is
+                // not silently extracted as a lone (and in Debug possibly null) image view. AR#31.
+                try {
+                    auto pair = GetHandle<ImageSamplerPair>();
+                    if (pair.imageView != VK_NULL_HANDLE || pair.sampler != VK_NULL_HANDLE) {
+                        return DescriptorHandleVariant{pair};
+                    }
+                } catch (...) {}
                 try { return DescriptorHandleVariant{GetHandle<VkImageView>()}; } catch (...) {}
                 try { return DescriptorHandleVariant{GetHandle<VkSampler>()}; } catch (...) {}
-                try { return DescriptorHandleVariant{GetHandle<ImageSamplerPair>()}; } catch (...) {}
                 // Try vector types for descriptor arrays
                 try { return DescriptorHandleVariant{GetHandle<std::vector<VkImageView>>()}; } catch (...) {}
                 try { return DescriptorHandleVariant{GetHandle<std::vector<VkSampler>>()}; } catch (...) {}

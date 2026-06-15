@@ -11,6 +11,8 @@ set(EVENTBUS_HEADERS
     include/MessageBus.h
     include/WorkerThreadBridge.h
     include/InputEvents.h
+    include/SelectionId.h        # SEL-P1: low-level selection identity (kept here so SelectionChangedEvent can carry it without a RenderGraph dep)
+    include/SelectionEvents.h    # SEL-P1: SelectionChangedEvent
 )
 
 set(EVENTBUS_SOURCES
@@ -36,6 +38,10 @@ set_target_properties(EventBus PROPERTIES FOLDER "Libraries")
 # Thread support required for std::thread
 find_package(Threads REQUIRED)
 target_link_libraries(EventBus PUBLIC Threads::Threads)
+
+# glm: InputEvents.h (public header) uses glm::vec2/vec3 for input/pick events.
+# glm::glm is a header-only INTERFACE target, so this just adds its include path.
+target_link_libraries(EventBus PUBLIC glm::glm)
 
 # ============================================================================
 # Precompiled Headers

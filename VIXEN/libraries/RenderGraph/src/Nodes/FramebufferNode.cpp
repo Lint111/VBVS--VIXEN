@@ -50,12 +50,12 @@ void FramebufferNode::CompileImpl(TypedCompileContext& ctx) {
     uint32_t layers = GetParameterValue<uint32_t>(FramebufferNodeConfig::PARAM_LAYERS, 1);
 
     // Get swapchain info
-    SwapChainPublicVariables* swapchainInfo = ctx.In(FramebufferNodeConfig::SWAPCHAIN_INFO);
+    Vixen::Vulkan::Resources::IRenderTarget* swapchainInfo = ctx.In(FramebufferNodeConfig::SWAPCHAIN_INFO);
     if (!swapchainInfo) {
         throw std::runtime_error("FramebufferNode: SwapChain info is null");
     }
 
-    size_t colorAttachmentCount = swapchainInfo->colorBuffers.size();
+    size_t colorAttachmentCount = swapchainInfo->GetImageCount();
     if (colorAttachmentCount == 0) {
         VulkanError error{VK_ERROR_INITIALIZATION_FAILED, "No color buffers in swapchain"};
         NODE_LOG_ERROR(error.toString());
@@ -70,13 +70,13 @@ void FramebufferNode::CompileImpl(TypedCompileContext& ctx) {
 
     // Create one framebuffer per swapchain image
     for (size_t i = 0; i < colorAttachmentCount; i++) {
-        VkImageView colorView = swapchainInfo->colorBuffers[i].view;
+        VkImageView colorView = swapchainInfo->GetView(static_cast<uint32_t>(i));
         NODE_LOG_DEBUG("[FramebufferNode::Compile] Processing attachment " + std::to_string(i) + ", view=" + std::to_string(reinterpret_cast<uint64_t>(colorView)));
 
         std::vector<VkImageView> attachments = BuildAttachmentArray(colorView, depthView);
 
         try {
-            framebuffers[i] = CreateSingleFramebuffer(renderPass, attachments, swapchainInfo->Extent, layers);
+            framebuffers[i] = CreateSingleFramebuffer(renderPass, attachments, swapchainInfo->GetExtent(), layers);
             NODE_LOG_DEBUG("[FramebufferNode::Compile] Created framebuffer[" + std::to_string(i) + "]=" + std::to_string(reinterpret_cast<uint64_t>(framebuffers[i])));
         } catch (const std::exception&) {
             CleanupPartialFramebuffers(i);
