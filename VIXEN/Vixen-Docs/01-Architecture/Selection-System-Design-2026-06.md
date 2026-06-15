@@ -61,12 +61,16 @@ The UI work lands a **`UiSelectionProvider`** (hit-test the injected UI at the s
 ahead of the voxel provider (UI occludes world). Sync = merge the WSL branch onto this base, then wire its
 UI hit-test as a provider. (Identify the exact branch ref at sync time.)
 
-## Decisions to confirm
-1. **Provider-owned hit-testing** (recommended) vs every selectable self-tests. Provider-owned fits
-   voxels (the GPU readback resolves the hit; you don't instantiate 300k `ISelectable`s) and UI (one rect
-   test) — `ISelectable` is just the result identity. Self-testing would force per-object intersect APIs.
-2. **Engine-owned `SelectionSet`** (coordinator holds + broadcasts) vs app-owned. Engine-owned + an event
-   keeps it reusable; the app subscribes.
+## Decisions (confirmed 2026-06-15)
+1. **Provider-owned hit-testing.** Each `ISelectionProvider` resolves its own domain (voxel = GPU
+   readback, UI = rect test, mesh = ray test); `ISelectable` is just the result identity. No per-object
+   intersect API, no instantiating 300k voxel selectables.
+2. **Engine-native, node-based, dependency-light.** The `SelectionCoordinator` is a **native RenderGraph
+   node** (`SelectionCoordinatorNode`) that owns the `SelectionSet` and broadcasts `SelectionChangedEvent`
+   on the existing EventBus. Providers are **engine-native C++ interfaces** registered with the node — NO
+   external dependencies (VIXEN keeps its dep surface minimal). Selection is "just another graph node",
+   consistent with the rest of the engine. The app/UI/highlight subscribe to the event; the node is the
+   single source of truth.
 
 ## Out of scope (later)
 - Drag-rectangle multi-select (a *region* SelectContext → providers return multiple hits).
