@@ -68,7 +68,8 @@ private:
     void RegisterProvider(std::unique_ptr<ISelectionProvider> provider);
 
     // ----- Compile-cached Dependency handles (stable for the cached scene's lifetime) -----
-    Vixen::Vulkan::Resources::VulkanDevice* device_      = nullptr;
+    // The device is NOT cached here: it lives in the base NodeInstance (SetDevice/GetDevice),
+    // re-set each CompileImpl. Only the command pool + ID image are cached locally.
     VkCommandPool                           commandPool_ = VK_NULL_HANDLE;
     VkImage                                 idImage_     = VK_NULL_HANDLE;
 

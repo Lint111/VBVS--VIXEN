@@ -65,7 +65,6 @@ private:
     void TransitionAllToGeneral(VkCommandPool commandPool);
     void DestroyImages();
 
-    Vixen::Vulkan::Resources::VulkanDevice* device_      = nullptr;  // cached for cleanup
     std::vector<IdImage>                    images_;
     uint32_t                                width_       = 0;
     uint32_t                                height_      = 0;

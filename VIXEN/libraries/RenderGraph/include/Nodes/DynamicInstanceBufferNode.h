@@ -56,7 +56,6 @@ private:
     // FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT.
     static const uint32_t kRingSize;
 
-    Vixen::Vulkan::Resources::VulkanDevice* device_        = nullptr;  // cached for cleanup
     PerFrameResources                       perFrame_;                 // ring of storage buffers
     uint32_t                                instanceCount_ = 0;
     uint32_t                                gridDim_       = 8;

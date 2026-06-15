@@ -37,8 +37,8 @@ void DynamicInstanceBufferNode::SetupImpl(TypedSetupContext& ctx) {
 void DynamicInstanceBufferNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[DynamicInstanceBufferNode] Compile START");
 
-    device_ = ctx.In(DynamicInstanceBufferNodeConfig::VULKAN_DEVICE_IN);
-    if (!device_) {
+    SetDevice(ctx.In(DynamicInstanceBufferNodeConfig::VULKAN_DEVICE_IN));
+    if (!GetDevice()) {
         throw std::runtime_error("[DynamicInstanceBufferNode] VULKAN_DEVICE_IN is null");
     }
 
@@ -55,7 +55,7 @@ void DynamicInstanceBufferNode::CompileImpl(TypedCompileContext& ctx) {
 
     // FR-7: the ring buffers are persistent across recompile — only create once.
     if (!perFrame_.IsInitialized()) {
-        perFrame_.Initialize(device_, kRingSize);
+        perFrame_.Initialize(GetDevice(), kRingSize);
         for (uint32_t i = 0; i < kRingSize; ++i) {
             perFrame_.CreateStorageBuffer(i, bufferSize);
         }

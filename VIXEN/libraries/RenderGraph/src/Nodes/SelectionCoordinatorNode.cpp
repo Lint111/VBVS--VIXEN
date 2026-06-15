@@ -59,18 +59,20 @@ void SelectionCoordinatorNode::RegisterProvider(std::unique_ptr<ISelectionProvid
 void SelectionCoordinatorNode::CompileImpl(TypedCompileContext& ctx) {
     // Cache the compile-stable Dependency handles (the ID-image ring, device and command pool are
     // valid for the cached scene's lifetime). These drive the voxel provider's one-shot readback.
-    device_      = ctx.In(SelectionCoordinatorNodeConfig::VULKAN_DEVICE);
+    SetDevice(ctx.In(SelectionCoordinatorNodeConfig::VULKAN_DEVICE));
     commandPool_ = ctx.In(SelectionCoordinatorNodeConfig::COMMAND_POOL);
     idImage_     = ctx.In(SelectionCoordinatorNodeConfig::ID_IMAGE);
 
     // Construct + configure the voxel provider and register it. Rebuilding the provider list on each
     // compile keeps the cached handles and the provider's bound resources consistent with the scene.
+    // VoxelSelectionProvider is NOT a node, so it keeps its own device field (set via configure) —
+    // feed it the canonical device from the base NodeInstance via GetDevice().
     providers_.clear();
     auto voxel = std::make_unique<VoxelSelectionProvider>();
-    voxel->configure(device_, commandPool_, idImage_);
+    voxel->configure(GetDevice(), commandPool_, idImage_);
     RegisterProvider(std::move(voxel));
 
-    const bool ready = device_ && commandPool_ != VK_NULL_HANDLE && idImage_ != VK_NULL_HANDLE;
+    const bool ready = GetDevice() && commandPool_ != VK_NULL_HANDLE && idImage_ != VK_NULL_HANDLE;
     NODE_LOG_INFO(std::string("[SelectionCoordinator] compile: ") +
                   std::to_string(providers_.size()) + " provider(s) registered; voxel provider " +
                   (ready ? "configured (device+pool+ID image acquired)"
@@ -201,10 +203,11 @@ void SelectionCoordinatorNode::CleanupImpl(TypedCleanupContext& ctx) {
     NODE_LOG_INFO("[SelectionCoordinator] cleanup");
     // Drop providers (their dtors release any Vulkan resources they own — e.g. the voxel provider's
     // staging buffer, RAII). Reset edge/state; drop cached Dependency handles (re-acquired next
-    // CompileImpl). The SelectionSet is intentionally NOT cleared here — selection is durable state,
-    // and Cleanup runs on recompile (e.g. swapchain resize); a resize should not wipe the selection.
+    // CompileImpl). The device lives in the base NodeInstance and is re-set every CompileImpl via
+    // SetDevice(), so it is intentionally not reset here. The SelectionSet is intentionally NOT
+    // cleared here — selection is durable state, and Cleanup runs on recompile (e.g. swapchain
+    // resize); a resize should not wipe the selection.
     providers_.clear();
-    device_      = nullptr;
     commandPool_ = VK_NULL_HANDLE;
     idImage_     = VK_NULL_HANDLE;
     lastLeftDown_ = false;

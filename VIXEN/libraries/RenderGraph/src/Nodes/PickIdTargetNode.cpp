@@ -53,8 +53,8 @@ void PickIdTargetNode::SetupImpl(TypedSetupContext& ctx) {
 void PickIdTargetNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[PickIdTargetNode] Compile START");
 
-    device_ = ctx.In(PickIdTargetNodeConfig::VULKAN_DEVICE_IN);
-    if (!device_) {
+    SetDevice(ctx.In(PickIdTargetNodeConfig::VULKAN_DEVICE_IN));
+    if (!GetDevice()) {
         throw std::runtime_error("[PickIdTargetNode] VULKAN_DEVICE_IN is null");
     }
 
@@ -74,7 +74,7 @@ void PickIdTargetNode::CompileImpl(TypedCompileContext& ctx) {
     // followSwapchainExtent mode would recreate here when the extent changes.)
     if (images_.empty()) {
         imageCount_ = PICK_ID_FRAMES_IN_FLIGHT;
-        CreateImages(device_, commandPool);
+        CreateImages(GetDevice(), commandPool);
     } else {
         NODE_LOG_INFO("[PickIdTargetNode] Reusing persistent pick-ID images across recompile");
     }
@@ -188,7 +188,7 @@ void PickIdTargetNode::CreateImages(VulkanDevice* device, VkCommandPool commandP
 }
 
 void PickIdTargetNode::TransitionAllToGeneral(VkCommandPool commandPool) {
-    VkDevice vkDevice = device_->device;
+    VkDevice vkDevice = GetDevice()->device;
 
     // One-shot command buffer for the layout transitions.
     VkCommandBufferAllocateInfo allocInfo{};
@@ -247,18 +247,18 @@ void PickIdTargetNode::TransitionAllToGeneral(VkCommandPool commandPool) {
     submitInfo.pCommandBuffers    = &cmd;
 
     // Submit on the device queue and wait — this runs once at Compile, before any dispatch.
-    if (vkQueueSubmit(device_->queue, 1, &submitInfo, VK_NULL_HANDLE) != VK_SUCCESS) {
+    if (vkQueueSubmit(GetDevice()->queue, 1, &submitInfo, VK_NULL_HANDLE) != VK_SUCCESS) {
         vkFreeCommandBuffers(vkDevice, commandPool, 1, &cmd);
         throw std::runtime_error("[PickIdTargetNode] vkQueueSubmit (transition) failed");
     }
-    vkQueueWaitIdle(device_->queue);
+    vkQueueWaitIdle(GetDevice()->queue);
 
     vkFreeCommandBuffers(vkDevice, commandPool, 1, &cmd);
 }
 
 void PickIdTargetNode::DestroyImages() {
-    if (!device_) return;
-    VkDevice vkDevice = device_->device;
+    if (!GetDevice()) return;
+    VkDevice vkDevice = GetDevice()->device;
 
     for (auto& img : images_) {
         if (img.view   != VK_NULL_HANDLE) { vkDestroyImageView(vkDevice, img.view,   nullptr); img.view   = VK_NULL_HANDLE; }
