@@ -329,9 +329,21 @@ Correctness bugs + the only-consumer's pain + legal hygiene. Wasted on no possib
   access model + centralized image-layout state; AR#21 multi-submit/timeline is its increment 2). Parked
   for a focused session. Motivated by the GPU compute→compute→render "no readback" ask (data already
   stays on GPU; the gap is auto-sync, not data passing).
-- [ ] **Picking/selection** — CPU click+drag-select is buildable today (`queryRegion`,
-  `getEntityByMorton`, `CameraData` inv matrices all exist); GPU pixel-exact ID-buffer is later
-  [AR#35]. Note: `MouseButtonEvent` is declared but **never published by InputNode** — fix that.
+- [~] **Picking/selection** [AR#35] — **DONE 2026-06-15: GPU pixel-exact ID-buffer picking** (live,
+  user-confirmed: brick/voxel change with aim, misses on sky). The voxel compute ray-march writes a
+  per-pixel `pickID = (brickIndex<<10)|voxelLinearIdx` to an `R32_UINT` ID image (new `PickIdTargetNode`,
+  binding 9); on a left-click the reworked `PickingNode` reads back the **center texel** (crosshair —
+  cursor is locked center) via a fenced one-shot `vkCmdCopyImageToBuffer`, decodes brick/voxel, logs +
+  publishes `PickResultEvent`. Design: [[GPU-IDBuffer-Picking-Design-2026-06]].
+  **Why GPU not CPU:** the CPU ray-pick ([[Picking-Design-2026-06]], superseded) depended on the ECS
+  `GaiaVoxelWorld`, which is **null on every disk-cache hit** (not serialized) — GPU picking uses the
+  cached octree the shader already traverses, so it works on every run + is pixel-exact.
+  Foundation that still stands: `MouseButtonEvent` publish fix, `PickResultEvent`, `ComputePickRay`
+  (kept for a future RTS cursor), the durable `VoxelGridNode VOXEL_WORLD` exposure.
+  **Next:** generalize into an `ISelectable`/`SelectContext` selection system (voxel = provider #1; UI +
+  3D-mesh + custom providers; coordinator + priority/occlusion) — user-requested; then a UI selection
+  provider synced from the WSL customer branch (UI injection). Later: drag-rectangle multi-select; world
+  pos / Morton from brick+voxel; visual highlight + durable selection state.
 
 ### P4 — Deep-sim / voxel pillar (review Phase 3)
 

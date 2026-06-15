@@ -3,6 +3,8 @@
 #include "VulkanGraphApplication.h"
 #include "VulkanGlobalNames.h"
 #include <Logger.h>
+#include <cstdlib>  // std::getenv for VIXEN_LOG_LEVEL
+#include <string>
 
 // Validation layers/extensions are gated by the cross-platform VIXEN_VULKAN_VALIDATION
 // symbol (set by cmake/ProvisionVulkan.cmake from the build type), NOT the MSVC-only
@@ -41,6 +43,23 @@ static bool initGlobalNames = []() {
 }();
 
 int main(int argc, char** argv) {
+    // Log verbosity: default to INFO so per-frame DEBUG diagnostics don't drown the console.
+    // Override with the VIXEN_LOG_LEVEL env var: DEBUG | INFO | WARNING | ERROR | CRITICAL.
+    // (Per-frame descriptor tracking is a separate, compile-time opt-in:
+    //  -DVIXEN_DEBUG_DESCRIPTOR_TRACKING=1.)
+    {
+        Vixen::Log::LogLevel level = Vixen::Log::LogLevel::LOG_INFO;
+        if (const char* env = std::getenv("VIXEN_LOG_LEVEL")) {
+            const std::string lv(env);
+            if      (lv == "DEBUG")                 level = Vixen::Log::LogLevel::LOG_DEBUG;
+            else if (lv == "INFO")                  level = Vixen::Log::LogLevel::LOG_INFO;
+            else if (lv == "WARNING" || lv == "WARN") level = Vixen::Log::LogLevel::LOG_WARNING;
+            else if (lv == "ERROR")                 level = Vixen::Log::LogLevel::LOG_ERROR;
+            else if (lv == "CRITICAL")              level = Vixen::Log::LogLevel::LOG_CRITICAL;
+        }
+        Vixen::Log::Logger::SetGlobalMinLevel(level);
+    }
+
     // Create main logger for application-level diagnostics
     auto mainLogger = std::make_shared<Vixen::Log::Logger>("main", true);
     mainLogger->SetTerminalOutput(true);

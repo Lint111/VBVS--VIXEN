@@ -183,6 +183,19 @@ gtest_discover_tests(test_blend_mode)
 
 message(STATUS "[RenderGraph Tests] Added: test_blend_mode (AR#32)")
 
+# PickRay unproject Tests (AR#35) — pure unit tests, no device
+add_executable(test_pick_ray
+    Nodes/test_pick_ray.cpp
+)
+
+target_link_libraries(test_pick_ray PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+
+# Visual Studio solution folder organization
+set_target_properties(test_pick_ray PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_pick_ray)
+
+message(STATUS "[RenderGraph Tests] Added: test_pick_ray (AR#35)")
+
 # InstanceBufferNode Tests (AR#31)
 add_executable(test_instance_buffer_node
     Nodes/test_instance_buffer_node.cpp
@@ -195,6 +208,19 @@ set_target_properties(test_instance_buffer_node PROPERTIES FOLDER "Tests/RenderG
 gtest_discover_tests(test_instance_buffer_node)
 
 message(STATUS "[RenderGraph Tests] Added: test_instance_buffer_node (AR#31)")
+
+# PickIdTargetNode Tests (AR#35 GPU picking P1)
+add_executable(test_pick_id_target_node
+    Nodes/test_pick_id_target_node.cpp
+)
+
+target_link_libraries(test_pick_id_target_node PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+
+# Visual Studio solution folder organization
+set_target_properties(test_pick_id_target_node PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_pick_id_target_node)
+
+message(STATUS "[RenderGraph Tests] Added: test_pick_id_target_node (AR#35)")
 
 # DynamicInstanceBufferNode Tests (AR#33)
 add_executable(test_dynamic_instance_buffer_node

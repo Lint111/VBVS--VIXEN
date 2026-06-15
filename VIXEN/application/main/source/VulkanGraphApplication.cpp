@@ -24,6 +24,7 @@
 #include "Nodes/TextureLoaderNode.h"
 #include "Nodes/DepthBufferNode.h"
 #include "Nodes/RenderTargetNode.h"
+#include "Nodes/PickIdTargetNode.h"  // AR#35: GPU picking ID-image target (R32_UINT storage ring)
 #include "Nodes/InstanceBufferNode.h"
 #include "Nodes/DynamicInstanceBufferNode.h"
 #include "Nodes/MvpUniformNode.h"
@@ -49,6 +50,7 @@
 #include "Nodes/CameraNode.h"  // Ray marching: Camera data
 #include "Nodes/VoxelGridNode.h"  // Ray marching: 3D voxel texture
 #include "Nodes/InputNode.h"  // Input polling and event publishing
+#include "Nodes/PickingNode.h"  // AR#35: CPU click-picking of voxels
 #include <ShaderBundleBuilder.h>  // Phase G: Shader builder API (includes preprocessor support)
 #include "VoxelRayMarchNames.h"  // Generated shader binding constants
 // NOTE: "VoxelRayMarch_CompressedNames.h" was an orphaned include — that combined
@@ -494,6 +496,7 @@ void VulkanGraphApplication::RegisterNodeTypes(NodeTypeRegistry& registry) {
     registry.Register<TextureLoaderNodeType>();
     registry.Register<DepthBufferNodeType>();
     registry.Register<RenderTargetNodeType>();
+    registry.Register<PickIdTargetNodeType>();  // AR#35: GPU picking ID-image target
     registry.Register<InstanceBufferNodeType>();
     registry.Register<DynamicInstanceBufferNodeType>();
     registry.Register<MvpUniformNodeType>();
@@ -520,13 +523,14 @@ void VulkanGraphApplication::RegisterNodeTypes(NodeTypeRegistry& registry) {
     registry.Register<CameraNodeType>();
     registry.Register<VoxelGridNodeType>();
     registry.Register<InputNodeType>();
+    registry.Register<PickingNodeType>();  // AR#35: CPU click-picking of voxels
     registry.Register<DebugBufferReaderNodeType>();
 
     // Special nodes (require RenderGraph.h to be included - circular dependency in library)
     registry.Register<ShaderConstantNodeType>();
     registry.Register<ConstantNodeType>();
 
-    mainLogger->Info("Successfully registered 31 node types");
+    mainLogger->Info("Successfully registered 32 node types");
 }
 
 void VulkanGraphApplication::BuildUIGraph() {
@@ -970,6 +974,17 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     // --- Input Node ---
     NodeHandle inputNode = renderGraph->AddNode<InputNodeType>("input_handler");
+
+    // --- Pick ID Target (AR#35 GPU picking P1: R32_UINT storage-image ring at binding 9) ---
+    NodeHandle pickIdTargetNode = renderGraph->AddNode<PickIdTargetNodeType>("pick_id_target");
+
+    // --- Picking Node (AR#35 GPU picking P2: read back the center pick-ID texel on click) ---
+    NodeHandle pickingNode = renderGraph->AddNode<PickingNodeType>("voxel_picking");
+    // Node loggers default DISABLED (NodeInstance ctor); pick results are user-facing, so enable
+    // this node's logger to the terminal (otherwise its HIT/miss + diagnostics are silently dropped).
+    if (auto* pickInst = renderGraph->GetInstance(pickingNode)) {
+        if (auto* pl = pickInst->GetLogger()) { pl->SetEnabled(true); pl->SetTerminalOutput(true); }
+    }
 
     NodeHandle physicsLoopBridge = renderGraph->AddNode<LoopBridgeNodeType>("physics_loop");
     NodeHandle physicsLoopIDConstant = renderGraph->AddNode<ConstantNodeType>("physics_loop_id");
@@ -1552,6 +1567,42 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(inputNode, InputNodeConfig::INPUT_STATE,
                   cameraNode, CameraNodeConfig::INPUT_STATE);
 
+    // Picking node connections (AR#35 GPU picking P2) — read back the center pick-ID texel on click.
+    // No CPU ray-march / voxel world anymore: it copies the crosshair texel of PickIdTargetNode's
+    // ID image (binding-9 target) via a one-shot fenced copy, decodes brick/voxel, and reports.
+    // Inputs: per-frame InputState; the ID VkImage; device + command pool for the one-shot copy;
+    // the frame-in-flight index; and the swapchain viewport size (for the center offset).
+    batch.Connect(inputNode, InputNodeConfig::INPUT_STATE,
+                  pickingNode, PickingNodeConfig::INPUT_STATE)
+         .Connect(pickIdTargetNode, PickIdTargetNodeConfig::ID_IMAGE,
+                  pickingNode, PickingNodeConfig::ID_IMAGE)
+         .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  pickingNode, PickingNodeConfig::VULKAN_DEVICE)
+         .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
+                  pickingNode, PickingNodeConfig::COMMAND_POOL)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                  pickingNode, PickingNodeConfig::CURRENT_FRAME_INDEX)
+         .Connect(windowNode, WindowNodeConfig::WIDTH_OUT,
+                  pickingNode, PickingNodeConfig::VIEWPORT_WIDTH)
+         .Connect(windowNode, WindowNodeConfig::HEIGHT_OUT,
+                  pickingNode, PickingNodeConfig::VIEWPORT_HEIGHT);
+
+    // Pick ID target (AR#35 GPU picking P1): allocate the R32_UINT storage-image ring sized to the
+    // window, transition it to GENERAL once, and expose the current frame's view for binding 9.
+    // Device + command pool drive allocation + the one-shot UNDEFINED->GENERAL transition; the frame
+    // index advances the ring each Execute. The ID_IMAGE_VIEW -> descriptorGatherer binding-9 wiring
+    // is below, beside the other compute descriptor connections.
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  pickIdTargetNode, PickIdTargetNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
+                  pickIdTargetNode, PickIdTargetNodeConfig::COMMAND_POOL)
+         .Connect(windowNode, WindowNodeConfig::WIDTH_OUT,
+                  pickIdTargetNode, PickIdTargetNodeConfig::WIDTH)
+         .Connect(windowNode, WindowNodeConfig::HEIGHT_OUT,
+                  pickIdTargetNode, PickIdTargetNodeConfig::HEIGHT)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                  pickIdTargetNode, PickIdTargetNodeConfig::CURRENT_FRAME_INDEX);
+
     // Voxel grid node connections
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   voxelGridNode, VoxelGridNodeConfig::VULKAN_DEVICE_IN)
@@ -1623,6 +1674,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(voxelGridNode, VoxelGridNodeConfig::OCTREE_CONFIG_BUFFER,
                           descriptorGatherer, 5,  // Binding 5 (hardcoded until SDI regenerated)
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
+    // Binding 9: idOutputImage (R32_UINT storage image) - AR#35 GPU picking P1. The compute shader
+    // writes the per-pixel pick ID here. Execute-only, exactly like the swapchain output at binding 0:
+    // PickIdTargetNode re-emits the current ring image's view each frame and the gatherer refreshes it.
+    // The shader reflects binding 9 as a STORAGE_IMAGE; DescriptorSetNode writes it with layout GENERAL.
+    batch.Connect(pickIdTargetNode, PickIdTargetNodeConfig::ID_IMAGE_VIEW,
+                          descriptorGatherer, 9,  // Binding 9: idOutputImage
+                          SlotRoleModifier(SlotRole::Execute));
 
 #if USE_COMPRESSED_SHADER
     // Compressed shader variant requires DXT compressed buffers at bindings 6 and 7

@@ -53,6 +53,7 @@ set(RENDERGRAPH_DATA_NODE_CONFIGS
     include/Data/Nodes/ConstantNodeConfig.h
     include/Data/Nodes/DepthBufferNodeConfig.h
     include/Data/Nodes/RenderTargetNodeConfig.h
+    include/Data/Nodes/PickIdTargetNodeConfig.h
     include/Data/Nodes/DescriptorResourceGathererNodeConfig.h
     include/Data/Nodes/DescriptorSetNodeConfig.h
     include/Data/Nodes/DeviceNodeConfig.h
@@ -196,6 +197,7 @@ set(RENDERGRAPH_NODE_HEADERS
     include/Nodes/DebugBufferReaderNode.h
     include/Nodes/DepthBufferNode.h
     include/Nodes/RenderTargetNode.h
+    include/Nodes/PickIdTargetNode.h
     include/Nodes/DescriptorResourceGathererNode.h
     include/Nodes/DescriptorSetNode.h
     include/Nodes/DeviceNode.h
@@ -234,6 +236,7 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/DebugBufferReaderNode.cpp
     src/Nodes/DepthBufferNode.cpp
     src/Nodes/RenderTargetNode.cpp
+    src/Nodes/PickIdTargetNode.cpp
     src/Nodes/InstanceBufferNode.cpp
     src/Nodes/DynamicInstanceBufferNode.cpp
     src/Nodes/MvpUniformNode.cpp
@@ -247,6 +250,7 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/InputNode.cpp
     src/Nodes/InstanceNode.cpp
     src/Nodes/LoopBridgeNode.cpp
+    src/Nodes/PickingNode.cpp
     src/Nodes/PresentNode.cpp
     src/Nodes/PushConstantGathererNode.cpp
     src/Nodes/RenderPassNode.cpp

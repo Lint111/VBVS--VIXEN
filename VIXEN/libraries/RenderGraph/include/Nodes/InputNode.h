@@ -101,6 +101,10 @@ private:
     bool firstMousePoll = true;
     bool mouseCaptured = false;  // Track if mouse is captured for game mode
 
+    // Previous-frame button state for edge detection in PublishMouseEvents()
+    // ([0]=left, [1]=right, [2]=middle — matches InputState::mouseButtons).
+    bool lastMouseButtonState_[3] = {false, false, false};
+
     // Delta time for held duration calculation
     std::chrono::steady_clock::time_point lastFrameTime;
     float deltaTime = 0.0f;
