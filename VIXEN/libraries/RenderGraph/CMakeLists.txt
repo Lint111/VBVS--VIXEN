@@ -235,6 +235,7 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/DepthBufferNode.cpp
     src/Nodes/RenderTargetNode.cpp
     src/Nodes/InstanceBufferNode.cpp
+    src/Nodes/DynamicInstanceBufferNode.cpp
     src/Nodes/MvpUniformNode.cpp
     src/Nodes/DescriptorResourceGathererNode.cpp
     src/Nodes/DescriptorSetNode.cpp

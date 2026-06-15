@@ -25,6 +25,7 @@
 #include "Nodes/DepthBufferNode.h"
 #include "Nodes/RenderTargetNode.h"
 #include "Nodes/InstanceBufferNode.h"
+#include "Nodes/DynamicInstanceBufferNode.h"
 #include "Nodes/MvpUniformNode.h"
 #include "Nodes/SwapChainNode.h"
 #include "Nodes/VertexBufferNode.h"
@@ -494,6 +495,7 @@ void VulkanGraphApplication::RegisterNodeTypes(NodeTypeRegistry& registry) {
     registry.Register<DepthBufferNodeType>();
     registry.Register<RenderTargetNodeType>();
     registry.Register<InstanceBufferNodeType>();
+    registry.Register<DynamicInstanceBufferNodeType>();
     registry.Register<MvpUniformNodeType>();
     registry.Register<SwapChainNodeType>();
     registry.Register<VertexBufferNodeType>();
