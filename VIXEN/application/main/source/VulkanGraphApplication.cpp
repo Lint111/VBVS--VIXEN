@@ -49,6 +49,7 @@
 #include "Nodes/CameraNode.h"  // Ray marching: Camera data
 #include "Nodes/VoxelGridNode.h"  // Ray marching: 3D voxel texture
 #include "Nodes/InputNode.h"  // Input polling and event publishing
+#include "Nodes/PickingNode.h"  // AR#35: CPU click-picking of voxels
 #include <ShaderBundleBuilder.h>  // Phase G: Shader builder API (includes preprocessor support)
 #include "VoxelRayMarchNames.h"  // Generated shader binding constants
 // NOTE: "VoxelRayMarch_CompressedNames.h" was an orphaned include — that combined
@@ -520,13 +521,14 @@ void VulkanGraphApplication::RegisterNodeTypes(NodeTypeRegistry& registry) {
     registry.Register<CameraNodeType>();
     registry.Register<VoxelGridNodeType>();
     registry.Register<InputNodeType>();
+    registry.Register<PickingNodeType>();  // AR#35: CPU click-picking of voxels
     registry.Register<DebugBufferReaderNodeType>();
 
     // Special nodes (require RenderGraph.h to be included - circular dependency in library)
     registry.Register<ShaderConstantNodeType>();
     registry.Register<ConstantNodeType>();
 
-    mainLogger->Info("Successfully registered 31 node types");
+    mainLogger->Info("Successfully registered 32 node types");
 }
 
 void VulkanGraphApplication::BuildUIGraph() {
@@ -970,6 +972,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     // --- Input Node ---
     NodeHandle inputNode = renderGraph->AddNode<InputNodeType>("input_handler");
+
+    // --- Picking Node (AR#35: CPU click-pick of voxels) ---
+    NodeHandle pickingNode = renderGraph->AddNode<PickingNodeType>("voxel_picking");
 
     NodeHandle physicsLoopBridge = renderGraph->AddNode<LoopBridgeNodeType>("physics_loop");
     NodeHandle physicsLoopIDConstant = renderGraph->AddNode<ConstantNodeType>("physics_loop_id");
@@ -1551,6 +1556,20 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   cameraNode, CameraNodeConfig::IMAGE_INDEX)
          .Connect(inputNode, InputNodeConfig::INPUT_STATE,
                   cameraNode, CameraNodeConfig::INPUT_STATE);
+
+    // Picking node connections (AR#35) — unproject cursor + ray-march the voxel world on click.
+    // Reuses the same per-frame InputState and CameraData the camera consumes, the swapchain
+    // viewport size from the window, and the CPU voxel world VoxelGridNode publishes (slot 10).
+    batch.Connect(inputNode, InputNodeConfig::INPUT_STATE,
+                  pickingNode, PickingNodeConfig::INPUT_STATE)
+         .Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
+                  pickingNode, PickingNodeConfig::CAMERA_DATA)
+         .Connect(voxelGridNode, VoxelGridNodeConfig::VOXEL_WORLD,
+                  pickingNode, PickingNodeConfig::VOXEL_WORLD)
+         .Connect(windowNode, WindowNodeConfig::WIDTH_OUT,
+                  pickingNode, PickingNodeConfig::VIEWPORT_WIDTH)
+         .Connect(windowNode, WindowNodeConfig::HEIGHT_OUT,
+                  pickingNode, PickingNodeConfig::VIEWPORT_HEIGHT);
 
     // Voxel grid node connections
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,

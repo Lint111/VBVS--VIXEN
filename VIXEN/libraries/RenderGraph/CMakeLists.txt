@@ -247,6 +247,7 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/InputNode.cpp
     src/Nodes/InstanceNode.cpp
     src/Nodes/LoopBridgeNode.cpp
+    src/Nodes/PickingNode.cpp
     src/Nodes/PresentNode.cpp
     src/Nodes/PushConstantGathererNode.cpp
     src/Nodes/RenderPassNode.cpp
