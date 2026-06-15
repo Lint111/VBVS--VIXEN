@@ -11,6 +11,8 @@ set(EVENTBUS_HEADERS
     include/MessageBus.h
     include/WorkerThreadBridge.h
     include/InputEvents.h
+    include/SelectionId.h        # SEL-P1: low-level selection identity (kept here so SelectionChangedEvent can carry it without a RenderGraph dep)
+    include/SelectionEvents.h    # SEL-P1: SelectionChangedEvent
 )
 
 set(EVENTBUS_SOURCES

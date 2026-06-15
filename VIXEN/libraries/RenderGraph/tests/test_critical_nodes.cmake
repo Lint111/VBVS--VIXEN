@@ -183,6 +183,20 @@ gtest_discover_tests(test_blend_mode)
 
 message(STATUS "[RenderGraph Tests] Added: test_blend_mode (AR#32)")
 
+# Selection core types (SEL-P1) — pure unit tests, no device
+# Covers SelectionSet.apply modifier semantics + SelectionId hash/equality.
+add_executable(test_selection_set
+    Selection/test_selection_set.cpp
+)
+
+target_link_libraries(test_selection_set PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+
+# Visual Studio solution folder organization
+set_target_properties(test_selection_set PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_selection_set)
+
+message(STATUS "[RenderGraph Tests] Added: test_selection_set (SEL-P1)")
+
 # PickRay unproject Tests (AR#35) — pure unit tests, no device
 add_executable(test_pick_ray
     Nodes/test_pick_ray.cpp

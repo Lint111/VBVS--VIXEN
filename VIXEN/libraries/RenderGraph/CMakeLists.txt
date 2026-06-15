@@ -312,6 +312,25 @@ set(RENDERGRAPH_UI_SOURCES
 )
 
 # ============================================================================
+# Selection (SEL-P1) — engine-native selection core types
+# ============================================================================
+# Provider-owned, dependency-light picking/selection abstraction. SelectionId
+# itself lives in EventBus (so SelectionChangedEvent can carry it without a
+# RenderGraph dep); these headers re-export it and add the engine-side types.
+
+set(RENDERGRAPH_SELECTION_HEADERS
+    include/Selection/SelectionId.h
+    include/Selection/ISelectable.h
+    include/Selection/SelectContext.h
+    include/Selection/ISelectionProvider.h
+    include/Selection/SelectionSet.h
+)
+
+set(RENDERGRAPH_SELECTION_SOURCES
+    src/Selection/SelectionSet.cpp
+)
+
+# ============================================================================
 # Create Static Library
 # ============================================================================
 
@@ -330,6 +349,8 @@ add_library(RenderGraph STATIC
     ${RENDERGRAPH_EVENT_HEADERS}
     ${RENDERGRAPH_UI_HEADERS}
     ${RENDERGRAPH_UI_SOURCES}
+    ${RENDERGRAPH_SELECTION_HEADERS}
+    ${RENDERGRAPH_SELECTION_SOURCES}
 )
 
 # ============================================================================
