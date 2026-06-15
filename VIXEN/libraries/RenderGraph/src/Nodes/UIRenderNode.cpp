@@ -9,6 +9,7 @@
 #include <RmlUi/Core/ElementDocument.h>
 
 #include <cstdint>
+#include <cstdlib>
 #include <filesystem>
 #include <span>
 
@@ -20,6 +21,17 @@ namespace {
 // that runs from elsewhere (the UNDERTOW host) wouldn't find it; fall back to the engine source tree
 // via VIXEN_UI_ASSET_SOURCE_DIR (which points at .../RenderGraph/assets, so strip a leading "assets/").
 std::string ResolveUiAsset(const std::string& configured) {
+    // Dev override (highest priority): point the UI loader at an authoritative content tree on disk
+    // (e.g. <repo>/core/content/core) via VIXEN_UI_SOURCE_DIR, so the watched/loaded files are the
+    // authored ones. The configured path is relative under "assets/" (e.g. "assets/ui/hud.rml"); strip
+    // that prefix and resolve against the source dir (→ <dir>/ui/hud.rml). Pairs with VIXEN_UI_LIVE.
+    if (const char* srcDir = std::getenv("VIXEN_UI_SOURCE_DIR")) {
+        std::string rel = configured;
+        const std::string prefix = "assets/";
+        if (rel.rfind(prefix, 0) == 0) rel = rel.substr(prefix.size());
+        std::filesystem::path candidate = std::filesystem::path(srcDir) / rel;
+        if (std::filesystem::exists(candidate)) return candidate.string();
+    }
     if (std::filesystem::exists(configured)) return configured;
 #ifdef VIXEN_UI_ASSET_SOURCE_DIR
     std::string rel = configured;
