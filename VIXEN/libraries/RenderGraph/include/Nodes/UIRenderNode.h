@@ -58,6 +58,14 @@ public:
     /// S1a compatibility shim — delegates to SetHudView with empty lists.
     void SetHudData(int tick, int bodyCount);
 
+    /// Selection seam (additive): expose the owned Rml::Context so a selection provider
+    /// (UISelectionProviderNode) can hit-test the HUD on a click. The context is created in
+    /// CompileImpl and lives for this node's lifetime (RmlUi is reclaimed at process exit), so the
+    /// pointer is stable after the first compile and null before it. READ-ONLY — the provider only
+    /// calls Context::GetElementAtPoint; it never mutates the context, the GPU sync objects, the
+    /// composite pass, or the live-reload state. Returns nullptr if the context failed to create.
+    [[nodiscard]] Rml::Context* GetUiContext() const { return context_; }
+
 protected:
     void SetupImpl(TypedSetupContext& ctx) override;
     void CompileImpl(TypedCompileContext& ctx) override;

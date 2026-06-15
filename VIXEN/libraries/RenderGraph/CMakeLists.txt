@@ -256,6 +256,7 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/LoopBridgeNode.cpp
     src/Nodes/SelectionCoordinatorNode.cpp
     src/Nodes/VoxelSelectionProviderNode.cpp
+    src/Nodes/UISelectionProviderNode.cpp
     src/Nodes/PresentNode.cpp
     src/Nodes/PushConstantGathererNode.cpp
     src/Nodes/RenderPassNode.cpp
