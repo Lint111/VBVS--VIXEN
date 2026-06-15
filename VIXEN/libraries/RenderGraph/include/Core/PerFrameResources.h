@@ -78,6 +78,20 @@ public:
     VkBuffer CreateUniformBuffer(uint32_t frameIndex, VkDeviceSize bufferSize);
 
     /**
+     * @brief Create storage buffer (SSBO) for a specific frame
+     *
+     * Identical to CreateUniformBuffer but allocates with
+     * VK_BUFFER_USAGE_STORAGE_BUFFER_BIT. Host-visible / host-coherent and
+     * persistently mapped (reuses the same FrameData fields, so
+     * GetUniformBuffer / GetUniformBufferMapped return the storage buffer too).
+     *
+     * @param frameIndex Frame index (0 to frameCount-1)
+     * @param bufferSize Size of storage buffer in bytes
+     * @return VkBuffer handle
+     */
+    VkBuffer CreateStorageBuffer(uint32_t frameIndex, VkDeviceSize bufferSize);
+
+    /**
      * @brief Get uniform buffer for a frame
      * @param frameIndex Frame index
      * @return VkBuffer handle (VK_NULL_HANDLE if not created)
@@ -151,6 +165,11 @@ public:
 private:
     Vixen::Vulkan::Resources::VulkanDevice* device = nullptr;
     std::vector<FrameData> frames;
+
+    // Helper: Create a host-visible/host-coherent, persistently-mapped buffer
+    // for a frame with the given usage flags (shared by CreateUniformBuffer /
+    // CreateStorageBuffer).
+    VkBuffer CreateBufferImpl(uint32_t frameIndex, VkDeviceSize bufferSize, VkBufferUsageFlags usage);
 
     // Helper: Find memory type
     uint32_t FindMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
