@@ -329,9 +329,18 @@ Correctness bugs + the only-consumer's pain + legal hygiene. Wasted on no possib
   access model + centralized image-layout state; AR#21 multi-submit/timeline is its increment 2). Parked
   for a focused session. Motivated by the GPU compute→compute→render "no readback" ask (data already
   stays on GPU; the gap is auto-sync, not data passing).
-- [ ] **Picking/selection** — CPU click+drag-select is buildable today (`queryRegion`,
-  `getEntityByMorton`, `CameraData` inv matrices all exist); GPU pixel-exact ID-buffer is later
-  [AR#35]. Note: `MouseButtonEvent` is declared but **never published by InputNode** — fix that.
+- [~] **Picking/selection** [AR#35] — **increment 1 DONE 2026-06-15**: CPU left-click **ray-pick** of
+  voxels in the live graph. New `PickingNode` (type 125): unproject cursor (`ComputePickRay`, using the
+  now-first-consumed real `invProjection`/`invView`) → march `getEntityByWorldSpace` → first solid voxel
+  → log + publish `PickResultEvent`. Fixed the **`MouseButtonEvent` never-published bug** (InputNode now
+  emits press/release edges) and added `PickResultEvent`. Root-cause prerequisite: moved `GaiaVoxelWorld`
+  ownership from transient cacher scratch onto the cached `VoxelSceneData`, exposed via
+  `VoxelGridNode VOXEL_WORLD` (no dangling/cache-hit/wrong-scene pointer). Design:
+  [[Picking-Design-2026-06]]. Verified: `test_pick_ray` 5/5 (incl. NDC Y-sign guard — CameraNode bakes
+  the Vulkan Y-flip, so `ndc.y = 2·py/H − 1`), cacher suites 39/39, build green, app smoke clean
+  (PickingNode wired, world non-null, 0 VK errors); **live click-pick = user manual test**. **Remaining:**
+  drag-rectangle multi-select; GPU pixel-exact ID-buffer (consumes [AR#28]); visual highlight + durable
+  selection state.
 
 ### P4 — Deep-sim / voxel pillar (review Phase 3)
 
