@@ -340,10 +340,15 @@ Correctness bugs + the only-consumer's pain + legal hygiene. Wasted on no possib
   cached octree the shader already traverses, so it works on every run + is pixel-exact.
   Foundation that still stands: `MouseButtonEvent` publish fix, `PickResultEvent`, `ComputePickRay`
   (kept for a future RTS cursor), the durable `VoxelGridNode VOXEL_WORLD` exposure.
-  **Next:** generalize into an `ISelectable`/`SelectContext` selection system (voxel = provider #1; UI +
-  3D-mesh + custom providers; coordinator + priority/occlusion) — user-requested; then a UI selection
-  provider synced from the WSL customer branch (UI injection). Later: drag-rectangle multi-select; world
-  pos / Morton from brick+voxel; visual highlight + durable selection state.
+  **Selection system DONE 2026-06-15** ([[Selection-System-Design-2026-06]]): engine-native
+  `SelectContext` + `ISelectionProvider` + `SelectionSet` + `SelectionChangedEvent` (deps-light;
+  `SelectionId` in EventBus); `SelectionCoordinatorNode` (native node, owns the SelectionSet, runs
+  providers by priority, Shift/Ctrl→Add/Toggle modifiers) with `VoxelSelectionProvider` (reuses the GPU
+  readback — provider #1). 116 node/selection tests pass; live picks confirmed. Also: all session nodes
+  now use the base `NodeInstance::device` (no private device members). **Remaining:** UI selection provider
+  synced from the **WSL customer branch (UI injection)**; the **subgraph-as-node** capability
+  ([[Subgraph-As-Node-Design-2026-06]], greenfield epic); drag-rectangle multi-select; world pos / Morton
+  from brick+voxel; visual highlight.
 
 ### P4 — Deep-sim / voxel pillar (review Phase 3)
 

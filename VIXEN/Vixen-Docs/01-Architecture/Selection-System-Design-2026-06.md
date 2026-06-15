@@ -3,7 +3,7 @@ title: Selection system — ISelectable / SelectContext (engine-wide picking)
 aliases: [ISelectable, SelectContext, ISelectionProvider, SelectionCoordinator, selection system]
 tags: [architecture, design, rendergraph, picking, selection, input]
 created: 2026-06-15
-status: design — pending approval, then implement
+status: DONE (core + coordinator + voxel provider, merged to main 2026-06-15) — UI provider syncs from WSL branch next
 related:
   - "[[GPU-IDBuffer-Picking-Design-2026-06]]"
   - "[[Picking-Design-2026-06]]"
