@@ -24,6 +24,7 @@
 #include "Nodes/TextureLoaderNode.h"
 #include "Nodes/DepthBufferNode.h"
 #include "Nodes/RenderTargetNode.h"
+#include "Nodes/PickIdTargetNode.h"  // AR#35: GPU picking ID-image target (R32_UINT storage ring)
 #include "Nodes/InstanceBufferNode.h"
 #include "Nodes/DynamicInstanceBufferNode.h"
 #include "Nodes/MvpUniformNode.h"
@@ -495,6 +496,7 @@ void VulkanGraphApplication::RegisterNodeTypes(NodeTypeRegistry& registry) {
     registry.Register<TextureLoaderNodeType>();
     registry.Register<DepthBufferNodeType>();
     registry.Register<RenderTargetNodeType>();
+    registry.Register<PickIdTargetNodeType>();  // AR#35: GPU picking ID-image target
     registry.Register<InstanceBufferNodeType>();
     registry.Register<DynamicInstanceBufferNodeType>();
     registry.Register<MvpUniformNodeType>();
@@ -973,8 +975,16 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // --- Input Node ---
     NodeHandle inputNode = renderGraph->AddNode<InputNodeType>("input_handler");
 
+    // --- Pick ID Target (AR#35 GPU picking P1: R32_UINT storage-image ring at binding 9) ---
+    NodeHandle pickIdTargetNode = renderGraph->AddNode<PickIdTargetNodeType>("pick_id_target");
+
     // --- Picking Node (AR#35: CPU click-pick of voxels) ---
     NodeHandle pickingNode = renderGraph->AddNode<PickingNodeType>("voxel_picking");
+    // Node loggers default DISABLED (NodeInstance ctor); pick results are user-facing, so enable
+    // this node's logger to the terminal (otherwise its HIT/miss + diagnostics are silently dropped).
+    if (auto* pickInst = renderGraph->GetInstance(pickingNode)) {
+        if (auto* pl = pickInst->GetLogger()) { pl->SetEnabled(true); pl->SetTerminalOutput(true); }
+    }
 
     NodeHandle physicsLoopBridge = renderGraph->AddNode<LoopBridgeNodeType>("physics_loop");
     NodeHandle physicsLoopIDConstant = renderGraph->AddNode<ConstantNodeType>("physics_loop_id");
@@ -1571,6 +1581,22 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(windowNode, WindowNodeConfig::HEIGHT_OUT,
                   pickingNode, PickingNodeConfig::VIEWPORT_HEIGHT);
 
+    // Pick ID target (AR#35 GPU picking P1): allocate the R32_UINT storage-image ring sized to the
+    // window, transition it to GENERAL once, and expose the current frame's view for binding 9.
+    // Device + command pool drive allocation + the one-shot UNDEFINED->GENERAL transition; the frame
+    // index advances the ring each Execute. The ID_IMAGE_VIEW -> descriptorGatherer binding-9 wiring
+    // is below, beside the other compute descriptor connections.
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  pickIdTargetNode, PickIdTargetNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
+                  pickIdTargetNode, PickIdTargetNodeConfig::COMMAND_POOL)
+         .Connect(windowNode, WindowNodeConfig::WIDTH_OUT,
+                  pickIdTargetNode, PickIdTargetNodeConfig::WIDTH)
+         .Connect(windowNode, WindowNodeConfig::HEIGHT_OUT,
+                  pickIdTargetNode, PickIdTargetNodeConfig::HEIGHT)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                  pickIdTargetNode, PickIdTargetNodeConfig::CURRENT_FRAME_INDEX);
+
     // Voxel grid node connections
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   voxelGridNode, VoxelGridNodeConfig::VULKAN_DEVICE_IN)
@@ -1642,6 +1668,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(voxelGridNode, VoxelGridNodeConfig::OCTREE_CONFIG_BUFFER,
                           descriptorGatherer, 5,  // Binding 5 (hardcoded until SDI regenerated)
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
+    // Binding 9: idOutputImage (R32_UINT storage image) - AR#35 GPU picking P1. The compute shader
+    // writes the per-pixel pick ID here. Execute-only, exactly like the swapchain output at binding 0:
+    // PickIdTargetNode re-emits the current ring image's view each frame and the gatherer refreshes it.
+    // The shader reflects binding 9 as a STORAGE_IMAGE; DescriptorSetNode writes it with layout GENERAL.
+    batch.Connect(pickIdTargetNode, PickIdTargetNodeConfig::ID_IMAGE_VIEW,
+                          descriptorGatherer, 9,  // Binding 9: idOutputImage
+                          SlotRoleModifier(SlotRole::Execute));
 
 #if USE_COMPRESSED_SHADER
     // Compressed shader variant requires DXT compressed buffers at bindings 6 and 7

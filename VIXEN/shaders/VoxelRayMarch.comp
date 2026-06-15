@@ -19,6 +19,11 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 layout(binding = 0) uniform writeonly image2D outputImage;
 
+// AR#35 (GPU ID-buffer picking, P1): per-pixel hit identity. Binding 9 is the next free
+// slot (binding 8 = ShaderCounters). Written every pixel: packed (brickIndex<<10)|voxelLinearIdx
+// on a hit, or 0xFFFFFFFF on a miss. Reflected by SPIR-V as a STORAGE_IMAGE (R32_UINT).
+layout(binding = 9) uniform writeonly uimage2D idOutputImage;
+
 layout(std430, binding = 1) readonly buffer ESVOBuffer {
     uvec2 esvoNodes[];
 };
@@ -127,7 +132,8 @@ layout(push_constant) uniform PushConstants {
 
 bool marchBrickFromPos(vec3 rayDir, vec3 posInBrick, uint brickIndex,
                        out vec3 hitColor, out vec3 hitNormal, out uint axisMask,
-                       out vec3 hitBrickLocalPos) {
+                       out vec3 hitBrickLocalPos, out uint hitVoxelLinearIdx) {
+    hitVoxelLinearIdx = 0u;  // AR#35: set to the hit voxel's 0..511 linear index on a true return
     ivec3 currentVoxel = ivec3(floor(posInBrick));
     currentVoxel = clamp(currentVoxel, ivec3(0), ivec3(7));
 
@@ -208,6 +214,7 @@ bool marchBrickFromPos(vec3 rayDir, vec3 posInBrick, uint brickIndex,
             }
 
             hitBrickLocalPos = vec3(currentVoxel) + vec3(0.5);
+            hitVoxelLinearIdx = voxelLinearIdx;  // AR#35: report the hit voxel index for the pick ID
             return true;
         }
 
@@ -242,7 +249,11 @@ bool handleLeafHit(TraversalState state, RayCoefficients coef,
                    vec3 rayStartWorld, vec3 rayDir, float tBias,
                    uvec2 parentDescriptor, uint validMask, uint leafMask, uint parentNodeIndex,
                    inout StackEntry stack[STACK_SIZE],
-                   out vec3 hitColor, out vec3 hitNormal, out float hitT) {
+                   out vec3 hitColor, out vec3 hitNormal, out float hitT,
+                   out uint hitBrickIndex, out uint hitVoxelLinearIdx) {
+
+    hitBrickIndex = 0u;       // AR#35: pick identity, valid only when this returns true
+    hitVoxelLinearIdx = 0u;
 
     int BRICK_SIZE_VAL = octreeConfig.brickSize;
 
@@ -278,10 +289,13 @@ bool handleLeafHit(TraversalState state, RayCoefficients coef,
     vec3 brickHitColor, brickHitNormal;
     uint axisMask;
     vec3 hitBrickLocalPos;
-    if (marchBrickFromPos(rayDir, posInBrick, brickIndex, brickHitColor, brickHitNormal, axisMask, hitBrickLocalPos)) {
+    uint voxelLinearIdx;
+    if (marchBrickFromPos(rayDir, posInBrick, brickIndex, brickHitColor, brickHitNormal, axisMask, hitBrickLocalPos, voxelLinearIdx)) {
         hitColor = brickHitColor;
         hitNormal = brickHitNormal;
         hitT = tBias + tHit;
+        hitBrickIndex = brickIndex;          // AR#35: surface the hit identity to the caller
+        hitVoxelLinearIdx = voxelLinearIdx;
         return true;
     }
 
@@ -294,7 +308,11 @@ bool handleLeafHit(TraversalState state, RayCoefficients coef,
 
 bool traverseOctree(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMax,
                     out vec3 hitColor, out vec3 hitNormal, out float hitT,
+                    out uint hitBrickIndex, out uint hitVoxelLinearIdx,
                     inout DebugRaySample debugInfo) {
+
+    hitBrickIndex = 0u;       // AR#35: pick identity, valid only when this returns true
+    hitVoxelLinearIdx = 0u;
 
     debugInfo.hitFlag = 0u;
     debugInfo.exitCode = DEBUG_EXIT_NONE;
@@ -366,7 +384,8 @@ bool traverseOctree(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMax,
                 float tBias = tEntryWorld;
                 if (handleLeafHit(state, coef, rayStartWorld, rayDir, tBias,
                                   parent_descriptor, validMask, leafMask, state.parentPtr,
-                                  stack, hitColor, hitNormal, hitT)) {
+                                  stack, hitColor, hitNormal, hitT,
+                                  hitBrickIndex, hitVoxelLinearIdx)) {
                     recordTraceStep(TRACE_STEP_HIT, state.parentPtr, state.scale, uint(state.idx),
                                     state.pos, state.t_min, tv_max, parent_descriptor);
                     endRayTrace(true);
@@ -484,11 +503,14 @@ void main() {
     recordRayStart();
 
     bool hit = false;
+    uint hitBrickIndex = 0u;       // AR#35: pick identity for the ID buffer
+    uint hitVoxelLinearIdx = 0u;
     if (gridT.y >= 0.0) {
         vec3 hitColor, hitNormal;
 
         hit = traverseOctree(rayOrigin, rayDir, vec3(0.0), vec3(1.0),
-                                  hitColor, hitNormal, hitT, debugSample);
+                                  hitColor, hitNormal, hitT,
+                                  hitBrickIndex, hitVoxelLinearIdx, debugSample);
 
         if (hit) {
             color = computeLighting(hitColor, hitNormal, rayDir);
@@ -544,4 +566,10 @@ void main() {
     }
 
     imageStore(outputImage, pixelCoords, vec4(color, 1.0));
+
+    // AR#35 (GPU ID-buffer picking, P1): write the per-pixel hit identity. Packed as
+    // (brickIndex << 10) | (voxelLinearIdx & 0x3FF); 0xFFFFFFFF sentinel on a miss.
+    // Decoded on the CPU as brick = id >> 10, voxel = id & 0x3FF. Every pixel writes.
+    uint pickID = hit ? ((hitBrickIndex << 10u) | (hitVoxelLinearIdx & 0x3FFu)) : 0xFFFFFFFFu;
+    imageStore(idOutputImage, pixelCoords, uvec4(pickID, 0u, 0u, 0u));
 }

@@ -7,6 +7,7 @@
 #include "Nodes/SwapChainNode.h"
 #include "Nodes/DepthBufferNode.h"
 #include "Nodes/RenderTargetNode.h"
+#include "Nodes/PickIdTargetNode.h"
 #include "Nodes/InstanceBufferNode.h"
 #include "Nodes/DynamicInstanceBufferNode.h"
 #include "Nodes/MvpUniformNode.h"
@@ -169,6 +170,7 @@ void RegisterBuiltInNodeTypes(NodeTypeRegistry& registry) {
     registry.Register<SwapChainNodeType>();
     registry.Register<DepthBufferNodeType>();
     registry.Register<RenderTargetNodeType>();
+    registry.Register<PickIdTargetNodeType>();
     registry.Register<InstanceBufferNodeType>();
     registry.Register<DynamicInstanceBufferNodeType>();
     registry.Register<MvpUniformNodeType>();
