@@ -21,7 +21,7 @@ namespace Vixen::RenderGraph {
 
 /// Host-facing input types for SetHudView. The host passes plain C data; the node copies to
 /// Rml::String internally so the caller does not need to care about RmlUi types.
-struct HudFactionIn { const char* name; float grievance; };
+struct HudFactionIn { const char* name; float grievance; bool focused; bool known; };
 struct HudEventIn   { const char* kind; int tick; };
 
 /**
@@ -106,7 +106,7 @@ private:
     // S1b: Rml data model members. Structs are registered with RegisterStruct<> / RegisterArray<>
     // in CompileImpl before LoadDocument. tick_ / bodyCount_ are bound as scalars; factions_ /
     // events_ are bound as arrays (data-for in the HUD document).
-    struct HudFaction { Rml::String name; float grievance = 0.f; };
+    struct HudFaction { Rml::String name; float grievance = 0.f; bool focused = false; bool known = false; };
     struct HudEvent   { Rml::String kind; int tick = 0; };
 
     int tick_ = 0;

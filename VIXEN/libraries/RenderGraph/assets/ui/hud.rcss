@@ -41,6 +41,44 @@ body {
     pointer-events: auto;  /* interactive — the provider then runs the hit-mask test */
 }
 
+/* ---- Focus button (view:focus) ---- */
+/* Sits beside #demo-btn; same ellipse hit-mask / pointer-events:auto. Clicking it cycles the player's
+   focused faction (the binding lives in hud.utdl). */
+#focus-btn {
+    position: absolute;
+    bottom: 16px;
+    left: 72px;
+    width: 48px;
+    height: 48px;
+    background-color: #4060a0cc;
+    color: #e0f0ff;
+    font-size: 28px;
+    text-align: center;
+    border-width: 1px;
+    border-color: #80a0e0;
+    border-radius: 24px;
+    pointer-events: auto;  /* interactive — the provider then runs the hit-mask test */
+}
+
+/* ---- Investigate button (player:investigate) ---- */
+/* Sits beside #focus-btn; same ellipse hit-mask / pointer-events:auto. Clicking it investigates the
+   focused faction, raising the player's knowledge of it to Known (the binding lives in hud.utdl). */
+#investigate-btn {
+    position: absolute;
+    bottom: 16px;
+    left: 128px;
+    width: 48px;
+    height: 48px;
+    background-color: #4060a0cc;
+    color: #e0f0ff;
+    font-size: 28px;
+    text-align: center;
+    border-width: 1px;
+    border-color: #80a0e0;
+    border-radius: 24px;
+    pointer-events: auto;  /* interactive — the provider then runs the hit-mask test */
+}
+
 /* ---- Clock row ---- */
 .clock {
     display: block;
@@ -69,13 +107,40 @@ body {
 .row {
     display: block;
     margin-top: 3px;
+    border-left-width: 2px;
+    border-color: transparent;  /* default: no focus bar (the .focused rule lights it) */
+    padding-left: 4px;
+}
+
+/* ---- Faction row state (driven by the HudFactions Focused/Known columns) ---- */
+/* .focused: the player's focus cursor is on this faction → highlight bar + brighter background. */
+.row.focused {
+    background-color: #2a3a5ecc;
+    border-color: #90c0ff;
+}
+
+/* .known: the player has investigated this faction (knowledge ≥ Known) → the row reads as "known"
+   (the ✓ glyph in .col-known plus a confident name colour). Unknown rows stay dim. */
+.row.known .col-name {
+    color: #e0d0b0;
+}
+
+.row.known .col-known {
+    color: #80e0a0;  /* green ✓ for a known faction */
 }
 
 /* ---- Faction columns ---- */
+.col-known {
+    display: inline-block;
+    width: 14px;
+    color: #505070;  /* dim '·' until the row is .known */
+    font-size: 13px;
+}
+
 .col-name {
     display: inline-block;
-    width: 130px;
-    color: #e0d0b0;
+    width: 116px;
+    color: #908060;  /* unknown factions read dim; .row.known brightens the name */
 }
 
 .col-value {

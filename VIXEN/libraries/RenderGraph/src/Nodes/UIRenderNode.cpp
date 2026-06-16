@@ -111,6 +111,8 @@ void UIRenderNode::CompileImpl(TypedCompileContext& ctx) {
                 if (auto fh = c.RegisterStruct<HudFaction>()) {
                     fh.RegisterMember("name",      &HudFaction::name);
                     fh.RegisterMember("grievance", &HudFaction::grievance);
+                    fh.RegisterMember("focused",   &HudFaction::focused);
+                    fh.RegisterMember("known",     &HudFaction::known);
                 }
                 if (auto eh = c.RegisterStruct<HudEvent>()) {
                     eh.RegisterMember("kind", &HudEvent::kind);
@@ -277,7 +279,7 @@ void UIRenderNode::SetHudView(int tick, int bodyCount,
     factions_.clear();
     factions_.reserve(factions.size());
     for (const HudFactionIn& f : factions)
-        factions_.push_back({f.name ? Rml::String(f.name) : Rml::String{}, f.grievance});
+        factions_.push_back({f.name ? Rml::String(f.name) : Rml::String{}, f.grievance, f.focused, f.known});
 
     events_.clear();
     events_.reserve(events.size());

@@ -8,7 +8,11 @@
         <div class="clock">tick {{tick}} · bodies {{bodyCount}}</div>
         <div class="factions">
             <div class="section-label">Factions</div>
-            <div class="row" data-for="f : factions">
+            <!-- Per-row state from the View's HudFactions columns: data-class-focused tracks
+                 HudFactionFocused (the player's focus cursor → .focused highlight); data-class-known
+                 tracks HudFactionKnown (investigated → .known indicator + the ✓ via .col-known). -->
+            <div class="row" data-for="f : factions" data-class-focused="f.focused" data-class-known="f.known">
+                <span class="col-known">{{ f.known ? '✓' : '·' }}</span>
                 <span class="col-name">{{f.name}}</span>
                 <span class="col-value">{{f.grievance}}</span>
             </div>
@@ -26,5 +30,11 @@
          pointer-events:auto (in hud.rcss) opts it back into picking; the hit-mask attribute then
          drives the per-pixel shape test. No action is wired yet (a later S4 step). -->
     <div id="demo-btn" hit-mask="ellipse">●</div>
+    <!-- Focus widget: clicking ▸ fires view:focus (bound in hud.utdl), which walks the player's focus
+         cursor down the faction list. Same ellipse hit-mask / pointer-events:auto pattern as #demo-btn. -->
+    <div id="focus-btn" hit-mask="ellipse">▸</div>
+    <!-- Investigate widget: clicking 🔍 fires player:investigate (bound in hud.utdl), which investigates
+         the focused faction (raises the player's knowledge of it to Known). Same hit-mask pattern. -->
+    <div id="investigate-btn" hit-mask="ellipse">🔍</div>
 </body>
 </rml>
