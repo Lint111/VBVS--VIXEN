@@ -6,12 +6,16 @@
 <body>
     <div data-model="hud" id="hud">
         <div class="clock">tick {{tick}} · bodies {{bodyCount}}</div>
+        <!-- Active map lens (view:lens): the lens's display name + its member count, from the Hud
+             ActiveLens / ActiveLensCount columns. "None (0)" when no lens is active. -->
+        <div class="lens-status">Lens: {{activeLensName}} ({{activeLensCount}})</div>
         <div class="factions">
             <div class="section-label">Factions</div>
             <!-- Per-row state from the View's HudFactions columns: data-class-focused tracks
                  HudFactionFocused (the player's focus cursor → .focused highlight); data-class-known
-                 tracks HudFactionKnown (investigated → .known indicator + the ✓ via .col-known). -->
-            <div class="row" data-for="f : factions" data-class-focused="f.focused" data-class-known="f.known">
+                 tracks HudFactionKnown (investigated → .known indicator + the ✓ via .col-known);
+                 data-class-in-lens tracks HudFactionInLens (in the active lens's set → .in-lens). -->
+            <div class="row" data-for="f : factions" data-class-focused="f.focused" data-class-known="f.known" data-class-in-lens="f.inLens">
                 <span class="col-known">{{ f.known ? '✓' : '·' }}</span>
                 <span class="col-name">{{f.name}}</span>
                 <span class="col-value">{{f.grievance}}</span>
@@ -36,5 +40,8 @@
     <!-- Investigate widget: clicking 🔍 fires player:investigate (bound in hud.utdl), which investigates
          the focused faction (raises the player's knowledge of it to Known). Same hit-mask pattern. -->
     <div id="investigate-btn" hit-mask="ellipse">🔍</div>
+    <!-- Lens widget: clicking ◉ fires view:lens (bound in hud.utdl), which cycles the active map lens
+         (None→Intel→Logistics→Threat). Same ellipse hit-mask / pointer-events:auto pattern. -->
+    <div id="lens-btn" hit-mask="ellipse">◉</div>
 </body>
 </rml>

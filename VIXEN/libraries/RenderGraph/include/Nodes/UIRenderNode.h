@@ -21,7 +21,7 @@ namespace Vixen::RenderGraph {
 
 /// Host-facing input types for SetHudView. The host passes plain C data; the node copies to
 /// Rml::String internally so the caller does not need to care about RmlUi types.
-struct HudFactionIn { const char* name; float grievance; bool focused; bool known; };
+struct HudFactionIn { const char* name; float grievance; bool focused; bool known; bool inLens; };
 struct HudEventIn   { const char* kind; int tick; };
 
 /**
@@ -49,9 +49,10 @@ public:
     UIRenderNode(const std::string& instanceName, NodeType* nodeType);
     ~UIRenderNode() override = default;
 
-    /// Host-facing seam (S1b): push tick, bodyCount, faction list and event list.
-    /// The node copies name/kind strings to Rml::String and dirties all four bound vars.
-    void SetHudView(int tick, int bodyCount,
+    /// Host-facing seam (S1b): push tick, bodyCount, the active map lens (raw LensKind 0-3 + its member
+    /// count), the faction list and the event list. The node copies name/kind strings to Rml::String, maps
+    /// the lens enum to its display name, and dirties all bound vars.
+    void SetHudView(int tick, int bodyCount, int activeLens, int activeLensCount,
                     std::span<const HudFactionIn> factions,
                     std::span<const HudEventIn> events);
 
@@ -104,13 +105,15 @@ private:
     std::filesystem::file_time_type lastUiWriteTime_{};
 
     // S1b: Rml data model members. Structs are registered with RegisterStruct<> / RegisterArray<>
-    // in CompileImpl before LoadDocument. tick_ / bodyCount_ are bound as scalars; factions_ /
-    // events_ are bound as arrays (data-for in the HUD document).
-    struct HudFaction { Rml::String name; float grievance = 0.f; bool focused = false; bool known = false; };
+    // in CompileImpl before LoadDocument. tick_ / bodyCount_ / activeLensName_ / activeLensCount_ are
+    // bound as scalars; factions_ / events_ are bound as arrays (data-for in the HUD document).
+    struct HudFaction { Rml::String name; float grievance = 0.f; bool focused = false; bool known = false; bool inLens = false; };
     struct HudEvent   { Rml::String kind; int tick = 0; };
 
     int tick_ = 0;
     int bodyCount_ = 0;
+    Rml::String activeLensName_ = "None";  // the active map lens's display name (LensKind 0-3 → None/Intel/Logistics/Threat)
+    int activeLensCount_ = 0;              // number of entities the active lens spans (0 when None)
     std::vector<HudFaction> factions_;
     std::vector<HudEvent>   events_;
     Rml::DataModelHandle    hudModel_;

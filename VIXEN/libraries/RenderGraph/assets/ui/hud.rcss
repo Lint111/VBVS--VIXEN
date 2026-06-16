@@ -79,10 +79,38 @@ body {
     pointer-events: auto;  /* interactive — the provider then runs the hit-mask test */
 }
 
+/* ---- Lens button (view:lens) ---- */
+/* Sits beside #investigate-btn; same ellipse hit-mask / pointer-events:auto. Clicking it cycles the
+   active map lens None→Intel→Logistics→Threat (the binding lives in hud.utdl). */
+#lens-btn {
+    position: absolute;
+    bottom: 16px;
+    left: 184px;
+    width: 48px;
+    height: 48px;
+    background-color: #4060a0cc;
+    color: #e0f0ff;
+    font-size: 28px;
+    text-align: center;
+    border-width: 1px;
+    border-color: #80a0e0;
+    border-radius: 24px;
+    pointer-events: auto;  /* interactive — the provider then runs the hit-mask test */
+}
+
 /* ---- Clock row ---- */
 .clock {
     display: block;
     color: #90c0ff;
+    margin-bottom: 8px;
+}
+
+/* ---- Active-lens status (view:lens) ---- */
+/* Shows "Lens: {name} ({count})" from the Hud ActiveLens/ActiveLensCount columns. */
+.lens-status {
+    display: block;
+    color: #b090e0;
+    font-size: 13px;
     margin-bottom: 8px;
 }
 
@@ -127,6 +155,16 @@ body {
 
 .row.known .col-known {
     color: #80e0a0;  /* green ✓ for a known faction */
+}
+
+/* .in-lens: this faction is in the active map lens's entity set (HudFactionInLens) → a lens accent on
+   the row (a purple left bar tint), distinct from the .focused cursor highlight. */
+.row.in-lens {
+    border-color: #b090e0;
+}
+
+.row.in-lens .col-name {
+    color: #d0b8f0;  /* lens-lit name tint */
 }
 
 /* ---- Faction columns ---- */

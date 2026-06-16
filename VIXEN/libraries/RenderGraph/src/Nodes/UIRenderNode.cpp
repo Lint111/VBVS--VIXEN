@@ -113,6 +113,7 @@ void UIRenderNode::CompileImpl(TypedCompileContext& ctx) {
                     fh.RegisterMember("grievance", &HudFaction::grievance);
                     fh.RegisterMember("focused",   &HudFaction::focused);
                     fh.RegisterMember("known",     &HudFaction::known);
+                    fh.RegisterMember("inLens",    &HudFaction::inLens);
                 }
                 if (auto eh = c.RegisterStruct<HudEvent>()) {
                     eh.RegisterMember("kind", &HudEvent::kind);
@@ -120,10 +121,12 @@ void UIRenderNode::CompileImpl(TypedCompileContext& ctx) {
                 }
                 c.RegisterArray<std::vector<HudFaction>>();
                 c.RegisterArray<std::vector<HudEvent>>();
-                c.Bind("tick",       &tick_);
-                c.Bind("bodyCount",  &bodyCount_);
-                c.Bind("factions",   &factions_);
-                c.Bind("events",     &events_);
+                c.Bind("tick",            &tick_);
+                c.Bind("bodyCount",       &bodyCount_);
+                c.Bind("activeLensName",  &activeLensName_);
+                c.Bind("activeLensCount", &activeLensCount_);
+                c.Bind("factions",        &factions_);
+                c.Bind("events",          &events_);
                 hudModel_ = c.GetModelHandle();
             }
             document_ = context_->LoadDocument(docPath);
@@ -270,16 +273,20 @@ void UIRenderNode::ExecuteImpl(TypedExecuteContext& ctx) {
     ctx.Out(UIRenderNodeConfig::RENDER_COMPLETE_SEMAPHORE, signalSem);
 }
 
-void UIRenderNode::SetHudView(int tick, int bodyCount,
+void UIRenderNode::SetHudView(int tick, int bodyCount, int activeLens, int activeLensCount,
                               std::span<const HudFactionIn> factions,
                               std::span<const HudEventIn> events) {
     tick_      = tick;
     bodyCount_ = bodyCount;
+    // Map the raw LensKind (0-3) to its display name for the HUD label (matches the C# LensKind enum).
+    static const char* const kLensNames[] = { "None", "Intel", "Logistics", "Threat" };
+    activeLensName_  = (activeLens >= 0 && activeLens < 4) ? kLensNames[activeLens] : "None";
+    activeLensCount_ = activeLensCount;
 
     factions_.clear();
     factions_.reserve(factions.size());
     for (const HudFactionIn& f : factions)
-        factions_.push_back({f.name ? Rml::String(f.name) : Rml::String{}, f.grievance, f.focused, f.known});
+        factions_.push_back({f.name ? Rml::String(f.name) : Rml::String{}, f.grievance, f.focused, f.known, f.inLens});
 
     events_.clear();
     events_.reserve(events.size());
@@ -289,13 +296,15 @@ void UIRenderNode::SetHudView(int tick, int bodyCount,
     if (hudModel_) {
         hudModel_.DirtyVariable("tick");
         hudModel_.DirtyVariable("bodyCount");
+        hudModel_.DirtyVariable("activeLensName");
+        hudModel_.DirtyVariable("activeLensCount");
         hudModel_.DirtyVariable("factions");
         hudModel_.DirtyVariable("events");
     }
 }
 
 void UIRenderNode::SetHudData(int tick, int bodyCount) {
-    SetHudView(tick, bodyCount, {}, {});
+    SetHudView(tick, bodyCount, 0, 0, {}, {});
 }
 
 void UIRenderNode::CleanupImpl(TypedCleanupContext& ctx) {
