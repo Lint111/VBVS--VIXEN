@@ -5,7 +5,8 @@
 > ALL DONE & verified** (2026-06-19). See `Vixen-Docs/01-Architecture/RenderGraph-System.md` §9
 > and `docs/superpowers/plans/2026-06-19-rendergraph-node-build-decoupling.md`. Earlier today:
 > build-env Ninja preset fix + RenderGraph stale-test cleanup + M1. **Build with the
-> `vixen-ninja` preset, not `cmake -B build`.** Manual check owed: GUI VIXEN.exe window/present run.
+> `vixen-ninja` preset, not `cmake -B build`.** GUI VIXEN.exe verified on real GPU (render loop,
+> 41 nodes, 30 instances, stable; only a pre-existing idOutputImage VUID).
 > Everything below is stale (Sprint 6, Jan 2026).
 
 ---
