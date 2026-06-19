@@ -869,6 +869,16 @@ void VulkanGraphApplication::BuildRenderGraph() {
                           descriptorGatherer, 9,  // Binding 9: idOutputImage
                           SlotRoleModifier(SlotRole::Execute));
 
+    // Binding 8: ShaderCounters debug/profiling buffer. BOTH shader variants enable
+    // ENABLE_SHADER_COUNTERS by default and statically use binding 8 (written every pixel),
+    // so it MUST be bound for the non-compressed path too — an unbound descriptor statically
+    // used in a dispatch is VUID-vkCmdDispatch-None-08114 (and undefined behavior). This was
+    // previously (incorrectly) gated inside USE_COMPRESSED_SHADER. VoxelGridNode produces
+    // SHADER_COUNTERS_BUFFER unconditionally, so this connects in either build configuration.
+    batch.Connect(voxelGridNode, VoxelGridNodeConfig::SHADER_COUNTERS_BUFFER,
+                          descriptorGatherer, 8,  // Binding 8: ShaderCountersBuffer
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
 #if USE_COMPRESSED_SHADER
     // Compressed shader variant requires DXT compressed buffers at bindings 6 and 7
     // Binding 6: compressedColors (DXT1) - 8 bytes/block, 32 blocks/brick = 256 bytes/brick
@@ -879,15 +889,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(voxelGridNode, VoxelGridNodeConfig::COMPRESSED_NORMAL_BUFFER,
                           descriptorGatherer, 7,  // Binding 7: CompressedNormalBuffer
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    // Binding 8: ShaderCounters debug/profiling buffer. The compute shaders enable
-    // ENABLE_SHADER_COUNTERS by default and statically use binding 8, so it must be bound
-    // (an unbound descriptor used in dispatch is undefined behavior). Mirrors the benchmark wiring.
-    batch.Connect(voxelGridNode, VoxelGridNodeConfig::SHADER_COUNTERS_BUFFER,
-                          descriptorGatherer, 8,  // Binding 8: ShaderCountersBuffer
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
     if (mainLogger && mainLogger->IsEnabled()) {
-        mainLogger->Info("[BuildRenderGraph] Connected compressed buffers: binding 6 (colors), binding 7 (normals), binding 8 (shader counters)");
+        mainLogger->Info("[BuildRenderGraph] Connected compressed buffers: binding 6 (colors), binding 7 (normals)");
     }
 #endif
 
