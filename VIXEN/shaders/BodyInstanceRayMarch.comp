@@ -207,9 +207,20 @@ int g_brickArrayBase = 0;   // configs[g_octreeIdx].brickArrayBase
 // ============================================================================
 // LOD CONTROL (Task 7)
 // ============================================================================
-// Uncomment to enable screen-space LOD termination (added in Task 7).
-// The traversal loop in traverseOctreeInstanced() checks this at each descent.
-// #define LOD_ENABLED
+// Screen-space LOD termination: stops descending when the voxel's projected
+// footprint covers ≥ 1 pixel, returning a coarse hit instead.
+//
+// Formula (Laine & Karras 2010, Section 4.4 / CUDA Raycast.inl L181):
+//   tc_max * raySizeCoef + raySizeBias >= scale_exp2
+// where:
+//   raySizeCoef = 2 * tan(fov / screenHeight / 2)  (cone spread per unit dist)
+//   raySizeBias = 0 for a pinhole camera
+//   tc_max      = tv_max (exit-t of the voxel being tested)
+//   scale_exp2  = 2^(scale - esvoMaxScale)  (normalized voxel size)
+//
+// Set pc.raySizeCoef = 0.0 to disable (full-detail traversal regardless).
+// The condition is gated on raySizeCoef > 0.0 to make the zero case free.
+#define LOD_ENABLED
 
 // ============================================================================
 // BRICK DDA MARCHING (instanced — uses g_brickArrayBase)
