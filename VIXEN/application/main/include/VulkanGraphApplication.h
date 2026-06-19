@@ -10,6 +10,7 @@
 #include "Time/EngineTime.h"
 #include "MessageBus.h"
 #include <memory>
+#include <vector>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -19,6 +20,8 @@ class VulkanSwapChain;
 struct GLFWwindow;  // cross-platform window handle (GLFW); real include only in the .cpp
 namespace Vixen::RenderGraph { class UIRenderNode; }  // composite HUD node; real include only in the .cpp
 namespace Vixen::RenderGraph { class UISelectionProviderNode; }  // UI hit-test provider; real include only in the .cpp
+namespace Vixen::RenderGraph { class BodyOctreeSceneNode; }  // M-wire: sparse shell octree upload node; real include in .cpp
+namespace Vixen::SVO { struct BodyInstanceGpu; }  // M-wire: per-body GPU instance record (32 bytes)
 
 using namespace Vixen::Vulkan::Resources;
 using namespace Vixen::RenderGraph;
@@ -149,7 +152,8 @@ private:
     // ====== Phase 0.4: Loop System ======
     uint32_t physicsLoopID = 0;                      // Physics loop at 60Hz
     uint32_t simLoopID = 0;                          // Logic loop for the embedded sim (fixed cadence)
-    NodeHandle voxelGridNode_{};                     // stored so the host can mark the scene dirty
+    NodeHandle voxelGridNode_{};                     // dense debug-buffer node (still in graph; no longer the render source)
+    NodeHandle bodyOctreeSceneNode_{};               // M-wire: sparse shell octree node (bindings 1/2/3/5/10)
     NodeHandle windowNode_{};                        // stored so GetWindowHandle() can query the WindowNode live
     NodeHandle uiRenderNode_{};                      // stored so GetUiRenderNode() can query the composite UI node live
     NodeHandle uiSelectionProviderNode_{};           // stored so GetUiSelectionProviderNode() can drain HUD clicks live
@@ -161,9 +165,12 @@ public:
     // --- Embedded-sim driver seams (host-driven; VIXEN-agnostic) -----------------------------------
     // True when the SimLoop's fixed timestep is due this frame; outDt = that fixed timestep (seconds).
     bool ShouldStepLogic(double& outDt);
-    // Mark the voxel scene for regeneration (the host re-registers its scene generator first, then
-    // calls this; RecompileDirtyNodes rebuilds the SVO on the next Update()).
+    // Mark the dense voxel scene for regeneration (kept for legacy/demo callers; not called by the
+    // body render path post M-wire — bodies are pushed via SetBodyInstances instead).
     void MarkVoxelSceneDirty();
+    // M-wire: push the current per-body instance list into BodyOctreeSceneNode so it re-uploads the
+    // SSBO on the next compile tick. Replaces the StarSystemGenerator + MarkVoxelSceneDirty flow.
+    void SetBodyInstances(std::vector<Vixen::SVO::BodyInstanceGpu> instances);
     // Expose the GLFW window handle so the host can poll input (e.g. Space/period for pause/step).
     // Queries the WindowNode LIVE each call (the node owns the window post-de-own refactor + persists
     // across recompiles) — no cached handle, so no dangling-pointer window-capture bug.
