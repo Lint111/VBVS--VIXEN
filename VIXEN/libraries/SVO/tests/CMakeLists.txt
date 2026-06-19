@@ -440,3 +440,21 @@ if(TARGET TBB::tbb)
 endif()
 
 gtest_discover_tests(test_lod)
+
+# ===========================================================================
+# Shell Octree Tests  (SP1 — surface-shell voxelizer + body octree)
+# ===========================================================================
+add_executable(test_shell_octree test_shell_octree.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_shell_octree PRIVATE GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_shell_octree PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_shell_octree PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_shell_octree POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_shell_octree>
+        COMMENT "Copying TBB DLL for test_shell_octree")
+endif()
+gtest_discover_tests(test_shell_octree)
