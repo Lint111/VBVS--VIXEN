@@ -1,7 +1,9 @@
 > **⚠️ 2026-06-19 — current work is on branch `claude/rendergraph-node-build-decoupling`.**
-> See `Vixen-Docs/05-Progress/Session-Handoff-2026-06-19.md` for the live handoff
-> (build-env Ninja preset fix + RenderGraph stale-test cleanup + node build-decoupling M1;
-> M2–M5 pending). **Build with the `vixen-ninja` preset, not `cmake -B build`.**
+> Node build-decoupling **M2 (lib split) + M3 (self-registration) + M5 (docs) DONE & verified**
+> (2026-06-19); M4 (app TU split) deferred (optional). See `Vixen-Docs/01-Architecture/RenderGraph-System.md` §9
+> and `docs/superpowers/plans/2026-06-19-rendergraph-node-build-decoupling.md`. Earlier today:
+> build-env Ninja preset fix + RenderGraph stale-test cleanup + M1. **Build with the
+> `vixen-ninja` preset, not `cmake -B build`.** Manual check owed: GUI VIXEN.exe window/present run.
 > Everything below is stale (Sprint 6, Jan 2026).
 
 ---
