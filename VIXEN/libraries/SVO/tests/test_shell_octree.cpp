@@ -1,5 +1,6 @@
 #include "ShellVoxelizer.h"
 #include "ShellOctree.h"
+#include "SVOLOD.h"
 #include <gtest/gtest.h>
 #include <algorithm>
 
@@ -61,6 +62,79 @@ TEST(BodyOctree, BuildsValidAndTraversable) {
                               "octree built via the entity path must be populated";
     EXPECT_LT(entry.hitPoint.x, c)
         << "Entry hit must be on the NEAR half of the sphere (x < centre)";
+}
+
+// LOD ladder: a coarse-LOD cast resolves the shell at a coarser voxel (lower user
+// scale number) than a full-detail cast of the same ray. This is the headless half
+// of the LOD that SP2 exploits.
+//
+// Scale convention (confirmed from source):
+//   Full-detail path (traverseBrickView, SVOBrickDDA.cpp line 509):
+//       hit.scale = m_maxLevels - 1              ← always the finest user scale
+//   LOD early-terminate path (SVOTraversal.cpp line 647):
+//       lodHit.scale = esvoToUserScale(state.scale)
+//       where esvoToUserScale(s) = s - (ESVO_MAX_SCALE - m_maxLevels + 1)
+//       state.scale starts at ESVO_MAX_SCALE (22) and DECREMENTS on each PUSH.
+//       For depth=7 (maxLevels=10): esvoToUserScale(s) = s - 13.
+//         root  esvoScale=22 → userScale=9  (same as leaf — root LOD is a no-op)
+//         esvoScale=21       → userScale=8
+//         esvoScale=20       → userScale=7  (← this is what we want LOD to return)
+//       Full-detail brick leaf always: m_maxLevels - 1 = 9.
+//
+// Key: LOD must terminate at an INTERMEDIATE ESVO scale (not the root) to produce
+// a userScale strictly below m_maxLevels-1. We tune rayDirSize to hit esvoScale=20.
+//
+// Assertion matches test_lod.cpp DistantVoxelTerminatesEarly pattern (strict <).
+TEST(BodyOctree, CoarseLodGivesCoarserShell) {
+    // Depth 7 → n = 128 cells, sphere radius = 64.
+    const int depth = 7;
+    const float n     = static_cast<float>(1 << depth);  // 128
+    const float c     = n * 0.5f;                         // 64  (centre)
+
+    auto s = Vixen::SVO::BuildShellOctree(depth, /*materialId*/ 2);
+
+    // Same ray geometry as BuildsValidAndTraversable (entry along +x through centre).
+    const glm::vec3 origin(-2.0f, c, c);
+    const glm::vec3 dir(1.0f, 0.0f, 0.0f);
+
+    // --- Full-detail cast (no LOD) ---
+    auto fullHit = s.octree->castRay(origin, dir, 0.0f, 1e30f);
+    ASSERT_TRUE(fullHit.hit)
+        << "Full-detail ray must hit the shell before testing the LOD ladder";
+
+    // --- Coarse-LOD cast: pick rayDirSize carefully so LOD terminates at an
+    // INTERMEDIATE internal node (not the root, not the leaf) — giving a
+    // user scale strictly less than the leaf scale (m_maxLevels - 1 = 9).
+    //
+    // LOD condition (SVOTraversal.cpp):
+    //   shouldTerminate ⇔ worldDistance * rayDirSize >= worldVoxelSize
+    //
+    // With depth=7 (n=128, worldSize=128, maxLevels=10, brickDepth=3):
+    //   esvoToUserScale(s) = s - 13  (for maxLevels=10: offset = 22-10+1 = 13)
+    //   root  esvoScale=22 → voxelSize = 64  → userScale=9 (same as leaf!)
+    //   esvoScale=21 → voxelSize = 32  → userScale=8
+    //   esvoScale=20 → voxelSize = 16  → userScale=7
+    //
+    // Ray entry is at x=0 (origin x=-2 + 2 units travel), so worldDistance ≈ 2-3.
+    // To NOT trigger at root (voxelSize=64): need 3 * rayDirSize < 64 → rayDirSize < 21.
+    // To trigger at esvoScale=20 (voxelSize=16): need 2 * rayDirSize >= 16 → rayDirSize >= 8.
+    // We use rayDirSize=10 (a safe midpoint): triggers at esvoScale≤20, not at 22 or 21.
+    Vixen::SVO::LODParameters coarseParams(0.0f, 10.0f);  // rayOrigSize=0, rayDirSize=10
+    ASSERT_TRUE(coarseParams.isEnabled())
+        << "LOD must be enabled (non-zero cone spread)";
+
+    auto coarseHit = s.octree->castRayWithLOD(origin, dir, coarseParams, 0.0f, 1e30f);
+    ASSERT_TRUE(coarseHit.hit)
+        << "Coarse-LOD ray must also hit the shell";
+
+    // The LOD ladder: coarse hit terminates before reaching the brick leaf, so its
+    // user scale is smaller (fewer descents → higher ESVO scale → lower user scale).
+    // test_lod.cpp's DistantVoxelTerminatesEarly asserts EXPECT_LE (coarse <= full);
+    // here the scale arithmetic is deterministic, so we assert the stronger strict <.
+    EXPECT_LT(coarseHit.scale, fullHit.scale)
+        << "Coarse-LOD hit (scale=" << coarseHit.scale
+        << ") should have a lower user-scale number than full-detail hit (scale="
+        << fullHit.scale << "); lower user scale = fewer descents = coarser voxel";
 }
 
 // Hollow vs solid: cast from just inside the centre OUTWARD. For a HOLLOW shell
