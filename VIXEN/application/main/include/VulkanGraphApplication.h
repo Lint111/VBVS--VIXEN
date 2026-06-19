@@ -102,13 +102,6 @@ public:
 
 protected:
     /**
-     * @brief Register all node types
-     *
-     * Override to register custom node types with the registry.
-     */
-    virtual void RegisterNodeTypes(NodeTypeRegistry& registry);
-
-    /**
      * @brief Handle shutdown request from user (X button clicked)
      */
     void HandleShutdownRequest();

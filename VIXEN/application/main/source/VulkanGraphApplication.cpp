@@ -14,6 +14,7 @@
 #include "CommandBufferUtility.h"  // MVP: File reading utility
 #include "MainCacher.h"  // Cache system initialization
 #include "Core/LoopManager.h"  // Phase 0.4: Loop system
+#include "Core/NodeRegistration.h"  // M3: RegisterAllNodes (decentralized node self-registration)
 
 // Include all node types
 #include "Nodes/InstanceNode.h"  // Phase 1.1: Separated instance creation
@@ -147,7 +148,14 @@ void VulkanGraphApplication::Initialize() {
     Vixen::RenderGraph::EngineConfig engineCfg;
     engineCfg.logger = mainLogger.get();
     engineCfg.calibrationDir = "calibration";
-    engineCfg.registerNodeTypes = [this](NodeTypeRegistry& reg) { RegisterNodeTypes(reg); };
+    // M3: nodes self-register into a global manifest (RenderGraphNodes is whole-archived);
+    // RegisterAllNodes replays the manifest into this EngineContext's fresh registry. No
+    // hand-maintained list — adding a node needs only its own VIXEN_REGISTER_NODE line.
+    engineCfg.registerNodeTypes = [this](NodeTypeRegistry& reg) {
+        Vixen::RenderGraph::RegisterAllNodes(reg);
+        mainLogger->Info("Registered " + std::to_string(reg.GetNodeTypeCount()) +
+                         " built-in node types (self-registration)");
+    };
     engine_ = std::make_unique<Vixen::RenderGraph::EngineContext>(engineCfg);
     nodeRegistry = &engine_->Registry();
     messageBus   = &engine_->Bus();
@@ -480,59 +488,6 @@ void VulkanGraphApplication::CompileRenderGraph() {
     if (mainLogger && mainLogger->IsEnabled()) {
         mainLogger->Info("[CompileRenderGraph] Complete - " + std::to_string(renderGraph->GetNodeCount()) + " nodes");
     }
-}
-
-void VulkanGraphApplication::RegisterNodeTypes(NodeTypeRegistry& registry) {
-    // Invoked by EngineContext during its construction, on the engine's fresh registry (passed by
-    // reference) — BEFORE the app's `nodeRegistry` view is assigned, so do not guard on that member.
-    mainLogger->Info("Registering all built-in node types");
-
-    // Register all node types using type-based API (zero strings)
-    // Phase F+ nodes:
-    registry.Register<InstanceNodeType>();
-    registry.Register<WindowNodeType>();
-    registry.Register<DeviceNodeType>();
-    registry.Register<CommandPoolNodeType>();
-    registry.Register<FrameSyncNodeType>();
-    registry.Register<TextureLoaderNodeType>();
-    registry.Register<DepthBufferNodeType>();
-    registry.Register<RenderTargetNodeType>();
-    registry.Register<PickIdTargetNodeType>();  // AR#35: GPU picking ID-image target
-    registry.Register<InstanceBufferNodeType>();
-    registry.Register<DynamicInstanceBufferNodeType>();
-    registry.Register<MvpUniformNodeType>();
-    registry.Register<SwapChainNodeType>();
-    registry.Register<VertexBufferNodeType>();
-    registry.Register<RenderPassNodeType>();
-    registry.Register<FramebufferNodeType>();
-    registry.Register<ShaderLibraryNodeType>();
-    registry.Register<DescriptorSetNodeType>();
-    registry.Register<GraphicsPipelineNodeType>();
-    registry.Register<GeometryRenderNodeType>();
-    registry.Register<UIRenderNodeType>();  // S0: RmlUi data-driven UI render node
-    registry.Register<PresentNodeType>();
-    registry.Register<LoopBridgeNodeType>();
-    registry.Register<BoolOpNodeType>();
-
-    // Phase G nodes:
-    registry.Register<ComputePipelineNodeType>();
-    registry.Register<ComputeDispatchNodeType>();
-
-    // Phase H nodes:
-    registry.Register<DescriptorResourceGathererNodeType>();
-    registry.Register<PushConstantGathererNodeType>();
-    registry.Register<CameraNodeType>();
-    registry.Register<VoxelGridNodeType>();
-    registry.Register<InputNodeType>();
-    registry.Register<VoxelSelectionProviderNodeType>();  // SEL-P2: voxel-domain selection provider node
-    registry.Register<SelectionCoordinatorNodeType>();  // SEL-P2: engine-wide selection coordinator
-    registry.Register<DebugBufferReaderNodeType>();
-
-    // Special nodes (require RenderGraph.h to be included - circular dependency in library)
-    registry.Register<ShaderConstantNodeType>();
-    registry.Register<ConstantNodeType>();
-
-    mainLogger->Info("Successfully registered 32 node types");
 }
 
 void VulkanGraphApplication::BuildUIGraph() {
