@@ -80,6 +80,7 @@ set(RENDERGRAPH_DATA_NODE_CONFIGS
     include/Data/Nodes/RayTracingPipelineNodeConfig.h
     include/Data/Nodes/TraceRaysNodeConfig.h
     include/Data/Nodes/WindowNodeConfig.h
+    include/Data/Nodes/BodyOctreeSceneNodeConfig.h
 )
 
 # ============================================================================
@@ -228,6 +229,7 @@ set(RENDERGRAPH_NODE_HEADERS
     include/Nodes/RayTracingPipelineNode.h
     include/Nodes/TraceRaysNode.h
     include/Nodes/WindowNode.h
+    include/Nodes/BodyOctreeSceneNode.h
 )
 
 set(RENDERGRAPH_NODE_SOURCES
@@ -271,6 +273,7 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/RayTracingPipelineNode.cpp
     src/Nodes/TraceRaysNode.cpp
     src/Nodes/WindowNode.cpp
+    src/Nodes/BodyOctreeSceneNode.cpp
 )
 
 # ============================================================================
