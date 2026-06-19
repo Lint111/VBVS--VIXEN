@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-> **STATUS (2026-06-19):** M1 ✅ (prior session) · M2 ✅ · M3 ✅ · M5 ✅ (measured + documented) · **M4 deferred** (optional; only worth it to shrink the app's single large construction TU). Commits on `claude/rendergraph-node-build-decoupling`: `3ec2e6f3` (TypedConnection node-config leak removed), `ec86171b` (M2 split), `c1ee6889`+`f7635a39`+`b81064c0` (M3). Builds/measurements use the **`vixen-ninja` preset**, not the VS-generator commands written in the steps below. Self-registration verified on real GPU via `vixen_benchmark`. One follow-up surfaced: `StructSpreaderNode` is dead code (left unregistered).
+> **STATUS (2026-06-19):** M1 ✅ (prior session) · M2 ✅ · M3 ✅ · M4 ✅ · M5 ✅ — **all milestones done**. Commits on `claude/rendergraph-node-build-decoupling`: `3ec2e6f3` (TypedConnection node-config leak removed), `ec86171b` (M2 split), `c1ee6889`+`f7635a39`+`b81064c0` (M3), `de4f9f1a` (M4 app TU split). Builds/measurements use the **`vixen-ninja` preset**, not the VS-generator commands written in the steps below. Self-registration verified on real GPU via `vixen_benchmark`. Two follow-ups: `StructSpreaderNode` is dead code (left unregistered); GUI `VIXEN.exe` window/present run is the one owed manual check.
 
 **Goal:** Make RenderGraph builds granular so editing one node (or wiring a few nodes) does not recompile the graph core, the registry, or unrelated nodes — without weakening any compile-time guarantee.
 

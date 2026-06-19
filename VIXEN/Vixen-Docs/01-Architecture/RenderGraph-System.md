@@ -367,10 +367,14 @@ No central registry edit, no app/benchmark list edit.
 | Edit one node `.cpp` body | ~119 TUs | **1** (just that node) |
 | Edit one node config header | ~119 TUs | **5** (the node + the app/benchmark/test TUs that *wire* it) |
 | `RenderGraphCore` recompiles on a node change | yes (dead registry) | **never** |
+| `VulkanGraphApplication.cpp` (app lifecycle) recompiles on a node-config edit | yes (1838-line monolith) | **never** (M4) |
 
 The residual 5-TU config-header cost is inherent to compile-time wiring (whoever wires a node
-must see its config). Shrinking the app's share (one large `VulkanGraphApplication.cpp` TU) is
-the optional **M4** (per-subgraph construction TUs), deferred.
+must see its config). **M4 (done)** split the app's graph construction out of
+`VulkanGraphApplication.cpp` (1838 → 564 lines) into `application/main/source/graph/Build*Graph.cpp`,
+each including only the node headers its own subgraph wires. A node-config edit now recompiles
+only the subgraph TU that wires that node (e.g. `BuildRenderGraph.cpp`), never the app's
+lifecycle code and never the other subgraph TUs.
 
 ### 9.6 Known follow-up
 
