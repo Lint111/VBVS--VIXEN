@@ -459,3 +459,22 @@ if(TARGET TBB::tbb)
         COMMENT "Copying TBB DLL for test_shell_octree")
 endif()
 gtest_discover_tests(test_shell_octree)
+
+# ===========================================================================
+# Shell Octree GPU Serialization Tests  (SP2 Task 5a — CPU byte format)
+# ===========================================================================
+add_executable(test_shell_octree_gpu test_shell_octree_gpu.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_shell_octree_gpu PRIVATE
+        GTest::gtest_main SVO GaiaVoxelWorld VoxelComponents VoxelData)
+else()
+    target_link_libraries(test_shell_octree_gpu PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_shell_octree_gpu PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_shell_octree_gpu POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_shell_octree_gpu>
+        COMMENT "Copying TBB DLL for test_shell_octree_gpu")
+endif()
+gtest_discover_tests(test_shell_octree_gpu)
