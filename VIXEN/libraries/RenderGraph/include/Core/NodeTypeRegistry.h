@@ -121,9 +121,4 @@ private:
     NodeTypeId nextTypeId = 1;
 };
 
-/**
- * @brief Helper function to register built-in node types
- */
-void RegisterBuiltInNodeTypes(NodeTypeRegistry& registry);
-
 } // namespace Vixen::RenderGraph
