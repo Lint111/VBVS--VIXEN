@@ -1,5 +1,6 @@
 #include "Headers.h"
 #include "Nodes/DeviceNode.h"
+#include "Core/NodeRegistration.h"
 #include "Core/RenderGraph.h"
 #include "Core/GPUQueryManager.h"
 #include "Message.h"
@@ -557,3 +558,6 @@ void DeviceNode::CreateDeviceBudgetManager(CashSystem::DeviceRegistry& deviceReg
 }
 
 } // namespace Vixen::RenderGraph
+
+// Self-registration (M3): registrar kept in this TU; RenderGraphNodes is whole-archived so it is not stripped.
+VIXEN_REGISTER_NODE(Vixen::RenderGraph::DeviceNodeType);

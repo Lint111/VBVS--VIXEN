@@ -1,4 +1,5 @@
 #include "Nodes/GraphicsPipelineNode.h"
+#include "Core/NodeRegistration.h"
 #include "Core/RenderGraph.h"
 #include "Core/TaskProfiles/SimpleTaskProfile.h"  // Sprint 6.5: Profile integration
 #include "VulkanDevice.h"
@@ -651,3 +652,6 @@ void GraphicsPipelineNode::CreatePipelineWithCache(TypedCompileContext& ctx) {
 }
 
 } // namespace Vixen::RenderGraph
+
+// Self-registration (M3): registrar kept in this TU; RenderGraphNodes is whole-archived so it is not stripped.
+VIXEN_REGISTER_NODE(Vixen::RenderGraph::GraphicsPipelineNodeType);

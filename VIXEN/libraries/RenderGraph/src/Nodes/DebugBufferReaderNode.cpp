@@ -1,4 +1,5 @@
 #include "Nodes/DebugBufferReaderNode.h"
+#include "Core/NodeRegistration.h"
 #include "Debug/IExportable.h"
 #include "Debug/IDebugCapture.h"
 #include "VulkanDevice.h"
@@ -325,3 +326,6 @@ void DebugBufferReaderNode::PrintSummary() const {
 }
 
 } // namespace Vixen::RenderGraph
+
+// Self-registration (M3): registrar kept in this TU; RenderGraphNodes is whole-archived so it is not stripped.
+VIXEN_REGISTER_NODE(Vixen::RenderGraph::DebugBufferReaderNodeType);

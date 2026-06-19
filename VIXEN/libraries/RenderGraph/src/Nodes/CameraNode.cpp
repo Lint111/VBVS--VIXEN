@@ -1,5 +1,6 @@
 #include "Headers.h"  // MUST be first to define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include "Nodes/CameraNode.h"
+#include "Core/NodeRegistration.h"
 #include "VulkanDevice.h"
 #include "VulkanSwapChain.h"
 #include "InputEvents.h"
@@ -285,3 +286,6 @@ void CameraNode::ApplyMovement(float deltaTime) {
 }
 
 } // namespace Vixen::RenderGraph
+
+// Self-registration (M3): registrar kept in this TU; RenderGraphNodes is whole-archived so it is not stripped.
+VIXEN_REGISTER_NODE(Vixen::RenderGraph::CameraNodeType);

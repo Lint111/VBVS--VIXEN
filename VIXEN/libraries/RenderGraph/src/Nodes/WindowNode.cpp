@@ -1,5 +1,6 @@
 #include "Headers.h"
 #include "Nodes/WindowNode.h"
+#include "Core/NodeRegistration.h"
 #include "VulkanDevice.h"
 #include "Core/NodeLogging.h"
 #include "Message.h"
@@ -244,3 +245,6 @@ void WindowNode::CleanupImpl(TypedCleanupContext& ctx) {
 }
 
 } // namespace Vixen::RenderGraph
+
+// Self-registration (M3): registrar kept in this TU; RenderGraphNodes is whole-archived so it is not stripped.
+VIXEN_REGISTER_NODE(Vixen::RenderGraph::WindowNodeType);

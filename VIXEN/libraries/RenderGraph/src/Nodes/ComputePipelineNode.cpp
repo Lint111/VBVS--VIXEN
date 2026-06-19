@@ -1,4 +1,5 @@
 #include "Nodes/ComputePipelineNode.h"
+#include "Core/NodeRegistration.h"
 #include "Nodes/DeviceNode.h"
 #include "Core/RenderGraph.h"
 #include "Core/TaskProfiles/SimpleTaskProfile.h"  // Sprint 6.5: Profile integration
@@ -287,3 +288,6 @@ void ComputePipelineNode::CreateComputePipeline(
 }
 
 } // namespace Vixen::RenderGraph
+
+// Self-registration (M3): registrar kept in this TU; RenderGraphNodes is whole-archived so it is not stripped.
+VIXEN_REGISTER_NODE(Vixen::RenderGraph::ComputePipelineNodeType);

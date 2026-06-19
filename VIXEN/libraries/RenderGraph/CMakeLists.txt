@@ -234,6 +234,7 @@ set(RENDERGRAPH_NODE_HEADERS
 
 set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/BoolOpNode.cpp
+    src/Nodes/ConstantNode.cpp  # M3: self-registration TU for the header-only Constant node types
     src/Nodes/CameraNode.cpp
     src/Nodes/CommandPoolNode.cpp
     src/Nodes/ComputeDispatchNode.cpp
@@ -374,14 +375,25 @@ add_library(RenderGraphNodes STATIC
 
 # ----------------------------------------------------------------------------
 # RenderGraph — back-compat facade: existing consumers link this and get both.
-# (Milestone 3 will make this whole-archive RenderGraphNodes so the per-node
-#  self-registrars survive static-library linking.)
+# RenderGraphNodes is linked WHOLE-ARCHIVE so the per-node VIXEN_REGISTER_NODE
+# registrars (anonymous-namespace statics that nothing references) are not
+# stripped by the linker. Without it RegisterAllNodes() registers nothing — the
+# guard is test_node_self_registration.
 # ----------------------------------------------------------------------------
 add_library(RenderGraph INTERFACE)
-target_link_libraries(RenderGraph INTERFACE
-    RenderGraphCore
-    RenderGraphNodes
-)
+target_link_libraries(RenderGraph INTERFACE RenderGraphCore)
+
+if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.24)
+    target_link_libraries(RenderGraph INTERFACE
+        "$<LINK_LIBRARY:WHOLE_ARCHIVE,RenderGraphNodes>")
+elseif(MSVC)
+    target_link_libraries(RenderGraph INTERFACE RenderGraphNodes)
+    target_link_options(RenderGraph INTERFACE
+        "/WHOLEARCHIVE:$<TARGET_FILE:RenderGraphNodes>")
+else()
+    target_link_libraries(RenderGraph INTERFACE
+        "-Wl,--whole-archive" RenderGraphNodes "-Wl,--no-whole-archive")
+endif()
 
 # ============================================================================
 # Compiler Options (both compiled targets)

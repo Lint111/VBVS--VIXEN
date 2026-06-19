@@ -1,4 +1,5 @@
 #include "Nodes/MultiDispatchNode.h"
+#include "Core/NodeRegistration.h"
 #include "Data/Nodes/MultiDispatchNodeConfig.h"
 #include "Core/RenderGraph.h"  // Sprint 6.3: For TaskProfileRegistry access
 #include "VulkanDevice.h"
@@ -730,3 +731,6 @@ void MultiDispatchNode::CleanupImpl(TypedCleanupContext& ctx) {
 }
 
 } // namespace Vixen::RenderGraph
+
+// Self-registration (M3): registrar kept in this TU; RenderGraphNodes is whole-archived so it is not stripped.
+VIXEN_REGISTER_NODE(Vixen::RenderGraph::MultiDispatchNodeType);

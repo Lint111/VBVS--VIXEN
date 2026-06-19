@@ -1,4 +1,5 @@
 #include "Nodes/DepthBufferNode.h"
+#include "Core/NodeRegistration.h"
 #include "Core/RenderGraph.h"
 #include "VulkanDevice.h"
 #include "IRenderTarget.h"  // AR#28: for IRenderTarget interface
@@ -291,3 +292,6 @@ void DepthBufferNode::TransitionImageLayout(
 
 } // namespace Vixen::RenderGraph
 
+
+// Self-registration (M3): registrar kept in this TU; RenderGraphNodes is whole-archived so it is not stripped.
+VIXEN_REGISTER_NODE(Vixen::RenderGraph::DepthBufferNodeType);
