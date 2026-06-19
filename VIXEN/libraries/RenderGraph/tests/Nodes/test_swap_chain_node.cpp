@@ -22,8 +22,9 @@ using namespace Vixen::RenderGraph;
 class SwapChainNodeTest : public ::testing::Test {};
 
 // Configuration Tests
-TEST_F(SwapChainNodeTest, ConfigHasTwoInputs) {
-    EXPECT_EQ(SwapChainNodeConfig::INPUT_COUNT, 9) << "Requires multiple inputs including DEVICE, WINDOW, etc.";
+TEST_F(SwapChainNodeTest, ConfigHasSevenInputs) {
+    // FR-3 (266bfa3b) moved renderComplete + presentFences from inputs to outputs (9 -> 7).
+    EXPECT_EQ(SwapChainNodeConfig::INPUT_COUNT, 7) << "DEVICE, WINDOW, WIDTH, HEIGHT, etc.";
 }
 
 TEST_F(SwapChainNodeTest, ConfigHasMultipleOutputs) {
