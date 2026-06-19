@@ -1,0 +1,692 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+
+// ============================================================================
+// BodyInstanceRayMarch.comp - Instanced Multi-Octree Ray Marching
+// ============================================================================
+// Tasks 6 + 7: For each ray, loop all body instances, transform the ray into
+// each instance's octree-local space, run ESVO traversal against the
+// appropriate per-body octree (identified by BodyInstance.octreeIndex), keep
+// the nearest world-space hit across all instances, and shade by instance color.
+//
+// The ≤3 octree node/brick arrays are concatenated in the shared SSBOs (bindings
+// 1 and 2).  Per-octree base offsets live in OctreeConfig.nodeArrayBase /
+// brickArrayBase (new fields added in SP2 Task 5a).  A global-int macro trick
+// lets the unchanged ESVOTraversal.glsl / ESVOCoefficients.glsl /
+// CoordinateTransforms.glsl includes resolve against the active config element
+// without any modification to those shared include files.
+//
+// Screen-space LOD (Task 7): before descending into any non-leaf node the
+// traversal checks whether the voxel's projected footprint already covers ≥1
+// pixel; if so it terminates early and returns a coarse hit.  Enabled here
+// (not in the dense VoxelRayMarch.comp path) via #define LOD_ENABLED.
+//
+// Dense-path safety: VoxelRayMarch.comp, ESVOTraversal.glsl, and all other
+// include files are NOT modified.  The only additive change to shared includes
+// is a fetchESVONode override via #define below that is only active inside this
+// translation unit.
+// ============================================================================
+
+#include "SVOTypes.glsl"
+#include "Materials.glsl"
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+// ============================================================================
+// BUFFER BINDINGS
+// ============================================================================
+
+layout(binding = 0) uniform writeonly image2D outputImage;
+
+// Per-pixel hit identity: packed (brickIndex<<10)|voxelLinearIdx, 0xFFFFFFFF on miss
+layout(binding = 9) uniform writeonly uimage2D idOutputImage;
+
+// Concatenated ESVO node descriptors for ALL octrees (≤3), with per-octree
+// nodeArrayBase offsets stored in configs[i].nodeArrayBase.
+layout(std430, binding = 1) readonly buffer ESVOBuffer {
+    uvec2 esvoNodes[];
+};
+
+// Concatenated brick voxel data for ALL octrees; per-octree brickArrayBase
+// stored in configs[i].brickArrayBase.
+layout(std430, binding = 2) readonly buffer BrickBuffer {
+    uint brickData[];
+};
+
+layout(std430, binding = 3) readonly buffer MaterialBuffer {
+    Material materials[];
+};
+
+layout(std430, binding = 4) buffer RayTraceBuffer {
+    uint traceWriteIndex;
+    uint traceCapacity;
+    uint _padding[2];
+    uint traceData[];
+};
+
+// ============================================================================
+// OCTREE CONFIG ARRAY (binding 5, std140, 256 B / element, 3 elements)
+// ============================================================================
+// Struct layout must be byte-for-byte identical to the C++ OctreeConfig
+// (std140 256-byte padded struct).  The two new ints (nodeArrayBase,
+// brickArrayBase) occupy the first 8 bytes of what was formerly _padding4[16].
+//
+// Byte offsets:
+//   0   esvoMaxScale        int
+//   4   userMaxLevels       int
+//   8   brickDepthLevels    int
+//   12  brickSize           int
+//   16  minESVOScale        int
+//   20  brickESVOScale      int
+//   24  bricksPerAxis       int
+//   28  _padding1           int
+//   32  gridMin             vec3  (+4 B pad → offset 44)
+//   48  gridMax             vec3  (+4 B pad → offset 60)
+//   64  localToWorld        mat4  (64 B)
+//   128 worldToLocal        mat4  (64 B)
+//   192 nodeArrayBase       int   ← first 2 ints of former _padding4[16]
+//   196 brickArrayBase      int
+//   200 _padding4_tail      float[14]  (56 B, completes to 256 B)
+// ============================================================================
+struct OctreeConfig {
+    int  esvoMaxScale;
+    int  userMaxLevels;
+    int  brickDepthLevels;
+    int  brickSize;
+    int  minESVOScale;
+    int  brickESVOScale;
+    int  bricksPerAxis;
+    int  _padding1;
+    vec3 gridMin;
+    float _padding2;
+    vec3 gridMax;
+    float _padding3;
+    mat4 localToWorld;
+    mat4 worldToLocal;
+    int  nodeArrayBase;   // byte 192: base index into esvoNodes[]
+    int  brickArrayBase;  // byte 196: base index into brickData[] (brick units)
+    float _padding4_tail[14];  // bytes 200-255 (14 × 4 = 56 B)
+};
+
+layout(std140, binding = 5) uniform OctreeConfigsUBO {
+    OctreeConfig configs[3];
+};
+
+// ============================================================================
+// BODY INSTANCE SSBO (binding 10, std430, 32 B / element)
+// ============================================================================
+// Declared before C++ wires it (Task 8); glslc accepts unmatched bindings at
+// compile time — the descriptor wiring is deferred to the next milestone.
+struct BodyInstance {
+    vec3  worldPos;
+    float renderScale;
+    vec3  color;
+    uint  octreeIndex;   // 0..2, indexes into configs[]
+};
+
+layout(std430, binding = 10) readonly buffer BodyInstanceBuffer {
+    BodyInstance bodyInstances[];
+};
+
+// ============================================================================
+// SHADER COUNTERS (Performance Metrics)
+// ============================================================================
+#define ENABLE_SHADER_COUNTERS
+#define SHADER_COUNTERS_BINDING 8
+#include "ShaderCounters.glsl"
+
+// ============================================================================
+// PUSH CONSTANTS
+// ============================================================================
+// Original 48-byte block: cameraPos(12) + time(4) + cameraDir(12) + fov(4) +
+//                         cameraUp(12)  + aspect(4) + cameraRight(12) + debugMode(4)
+// Added: raySizeCoef(4) + raySizeBias(4) + instanceCount(4) = 60 B total.
+// Vulkan minimum push-constant range is 128 B, so we have ample headroom.
+//
+// raySizeCoef: cone spread per unit distance = 2*tan(fov / screenHeight / 2)
+//              Set to 0.0 to disable LOD (full-detail traversal).
+// raySizeBias: cone diameter at origin (0.0 for pinhole camera).
+// instanceCount: number of valid entries in bodyInstances[].
+
+#define DEBUG_MODE_NORMAL 0
+#define DEBUG_MODE_OCTANT 1
+#define DEBUG_MODE_DEPTH  2
+#define DEBUG_MODE_ITERATIONS 3
+#define DEBUG_MODE_T_SPAN 4
+#define DEBUG_MODE_NORMALS 5
+#define DEBUG_MODE_POSITION 6
+#define DEBUG_MODE_BRICKS 7
+#define DEBUG_MODE_MATERIALS 8
+
+layout(push_constant) uniform PushConstants {
+    vec3  cameraPos;
+    float time;
+    vec3  cameraDir;
+    float fov;
+    vec3  cameraUp;
+    float aspect;
+    vec3  cameraRight;
+    int   debugMode;
+    float raySizeCoef;    // LOD cone spread (bytes 48-51)
+    float raySizeBias;    // LOD cone origin size (bytes 52-55)
+    int   instanceCount;  // active body instances  (bytes 56-59)
+} pc;
+
+// ============================================================================
+// PER-DISPATCH GLOBALS
+// ============================================================================
+// These are set once per instance iteration before calling traversal helpers.
+// g_octreeIdx is used by the octreeConfig macro below.
+// g_esvoNodeBase is declared in ESVOTraversal.glsl (defaults to 0 for the dense
+// path); we set it here per-instance so fetchESVONode() addresses the right
+// sub-range of the concatenated esvoNodes[] buffer.
+// g_brickArrayBase applies the per-octree brick offset in marchBrickInstanced().
+int g_octreeIdx      = 0;   // index into configs[] for the active octree
+int g_brickArrayBase = 0;   // configs[g_octreeIdx].brickArrayBase
+
+// ============================================================================
+// MACRO OVERRIDE: octreeConfig
+// ============================================================================
+// The shared includes (ESVOTraversal.glsl, ESVOCoefficients.glsl,
+// RayGeneration.glsl, CoordinateTransforms.glsl) all reference a symbol named
+// "octreeConfig".  By defining it as a macro BEFORE including those files we
+// redirect every "octreeConfig.field" to "configs[g_octreeIdx].field" without
+// touching the shared source.
+#define octreeConfig configs[g_octreeIdx]
+
+// ============================================================================
+// SHARED INCLUDES (order matters — macros above must be defined first)
+// ============================================================================
+#include "CoordinateTransforms.glsl"
+#include "RayGeneration.glsl"
+#include "ESVOCoefficients.glsl"
+#include "TraceRecording.glsl"
+#include "ESVOTraversal.glsl"
+#include "Lighting.glsl"
+
+// ============================================================================
+// LOD CONTROL (Task 7)
+// ============================================================================
+// Uncomment to enable screen-space LOD termination (added in Task 7).
+// The traversal loop in traverseOctreeInstanced() checks this at each descent.
+// #define LOD_ENABLED
+
+// ============================================================================
+// BRICK DDA MARCHING (instanced — uses g_brickArrayBase)
+// ============================================================================
+
+bool marchBrickInstanced(vec3 rayDir, vec3 posInBrick, uint localBrickIndex,
+                         out vec3 hitColor, out vec3 hitNormal, out uint axisMask,
+                         out vec3 hitBrickLocalPos, out uint hitVoxelLinearIdx) {
+    hitVoxelLinearIdx = 0u;
+    ivec3 currentVoxel = clamp(ivec3(floor(posInBrick)), ivec3(0), ivec3(7));
+
+    ivec3 step = ivec3(sign(rayDir));
+    if (step.x == 0) step.x = 1;
+    if (step.y == 0) step.y = 1;
+    if (step.z == 0) step.z = 1;
+
+    int BRICK_SIZE_VAL = octreeConfig.brickSize;
+
+    if ((posInBrick.x <= 0.001 && rayDir.x < 0.0) ||
+        (posInBrick.x >= float(BRICK_SIZE_VAL) - 0.001 && rayDir.x > 0.0) ||
+        (posInBrick.y <= 0.001 && rayDir.y < 0.0) ||
+        (posInBrick.y >= float(BRICK_SIZE_VAL) - 0.001 && rayDir.y > 0.0) ||
+        (posInBrick.z <= 0.001 && rayDir.z < 0.0) ||
+        (posInBrick.z >= float(BRICK_SIZE_VAL) - 0.001 && rayDir.z > 0.0)) {
+        return false;
+    }
+
+    vec3 deltaDist;
+    deltaDist.x = abs(rayDir.x) > DIR_EPSILON ? 1.0 / abs(rayDir.x) : 1e20;
+    deltaDist.y = abs(rayDir.y) > DIR_EPSILON ? 1.0 / abs(rayDir.y) : 1e20;
+    deltaDist.z = abs(rayDir.z) > DIR_EPSILON ? 1.0 / abs(rayDir.z) : 1e20;
+
+    vec3 tMax;
+    const float MIN_DIST = 0.0001;
+    for (int axis = 0; axis < 3; axis++) {
+        if (abs(rayDir[axis]) < DIR_EPSILON) {
+            tMax[axis] = 1e20;
+        } else {
+            float posLocal  = posInBrick[axis];
+            float distToNext = (rayDir[axis] > 0.0)
+                ? float(currentVoxel[axis] + 1) - posLocal
+                : posLocal - float(currentVoxel[axis]);
+            distToNext = max(distToNext, MIN_DIST);
+            tMax[axis] = distToNext / abs(rayDir[axis]);
+        }
+    }
+
+    // The absolute brick index in the concatenated brickData[] array
+    // = brickArrayBase (in brick units) + localBrickIndex
+    uint absBrickIndex = uint(g_brickArrayBase) + localBrickIndex;
+
+    axisMask = 0u;
+    const int MAX_STEPS = 300;
+    for (int i = 0; i < MAX_STEPS; i++) {
+        if (any(lessThan(currentVoxel, ivec3(0))) ||
+            any(greaterThanEqual(currentVoxel, ivec3(8)))) {
+            break;
+        }
+
+        uint voxelLinearIdx = uint(currentVoxel.z * 64 + currentVoxel.y * 8 + currentVoxel.x);
+        uint voxelData = brickData[absBrickIndex * 512u + voxelLinearIdx];
+
+        if (voxelData != 0u) {
+            uint matID  = voxelData & 0xFFu;
+            hitColor    = getMaterialColor(matID);
+            hitNormal   = vec3(0.0);
+            if (axisMask == 1u)      hitNormal.x = -float(step.x);
+            else if (axisMask == 2u) hitNormal.y = -float(step.y);
+            else                     hitNormal.z = -float(step.z);
+
+            if (i == 0) {
+                vec3 absDir = abs(rayDir);
+                if      (absDir.x > absDir.y && absDir.x > absDir.z) hitNormal = vec3(-sign(rayDir.x), 0.0, 0.0);
+                else if (absDir.y > absDir.z)                         hitNormal = vec3(0.0, -sign(rayDir.y), 0.0);
+                else                                                   hitNormal = vec3(0.0, 0.0, -sign(rayDir.z));
+            }
+
+            hitBrickLocalPos  = vec3(currentVoxel) + vec3(0.5);
+            hitVoxelLinearIdx = voxelLinearIdx;
+            return true;
+        }
+
+        if (tMax.x < tMax.y && tMax.x < tMax.z) {
+            currentVoxel.x += step.x; tMax.x += deltaDist.x; axisMask = 1u;
+        } else if (tMax.y < tMax.z) {
+            currentVoxel.y += step.y; tMax.y += deltaDist.y; axisMask = 2u;
+        } else {
+            currentVoxel.z += step.z; tMax.z += deltaDist.z; axisMask = 4u;
+        }
+    }
+    return false;
+}
+
+// ============================================================================
+// LEAF HIT HANDLING (instanced — applies g_brickArrayBase)
+// ============================================================================
+
+bool handleLeafHitInstanced(TraversalState state, RayCoefficients coef,
+                             vec3 rayStartWorld, vec3 rayDir, float tBias,
+                             uvec2 parentDescriptor, uint validMask, uint leafMask,
+                             inout StackEntry stack[STACK_SIZE],
+                             out vec3 hitColor, out vec3 hitNormal, out float hitT,
+                             out uint hitBrickIndex, out uint hitVoxelLinearIdx) {
+    hitBrickIndex      = 0u;
+    hitVoxelLinearIdx  = 0u;
+
+    int BRICK_SIZE_VAL = octreeConfig.brickSize;
+
+    int localChildIdx = mirroredToLocalOctant(state.idx, coef.octant_mask);
+    if (localChildIdx < 0 || localChildIdx > 7) return false;
+
+    uint childPointer          = getChildPointer(parentDescriptor);
+    uint totalInternalChildren = bitCount(validMask & ~leafMask);
+    uint leafChildrenBeforeMe  = countLeavesBefore(validMask, leafMask, localChildIdx);
+    uint leafDescriptorIndex   = childPointer + totalInternalChildren + leafChildrenBeforeMe;
+
+    uvec2 leafDescriptor = fetchESVONode(leafDescriptorIndex);  // uses our macro → base-offset
+    uint  localBrickIdx  = getContourPointer(leafDescriptor);
+
+    if (localBrickIdx == SVO_INVALID_INDEX) return false;
+
+    float tHit      = state.t_min;
+    vec3  rayDirLocal = mat3(octreeConfig.worldToLocal) * rayDir;
+    vec3  hitPos12    = coef.normOrigin + rayDirLocal * tHit;
+
+    vec3 posInBrick = computePosInBrick(hitPos12, state.pos, state.scale_exp2,
+                                        coef.octant_mask, BRICK_SIZE_VAL);
+    posInBrick = clamp(posInBrick, vec3(0.0), vec3(float(BRICK_SIZE_VAL) - 0.001));
+
+    vec3 brickColor, brickNormal;
+    uint axisMask;
+    vec3 hitBrickLocalPos;
+    uint voxelLinearIdx;
+    if (marchBrickInstanced(rayDir, posInBrick, localBrickIdx,
+                            brickColor, brickNormal, axisMask,
+                            hitBrickLocalPos, voxelLinearIdx)) {
+        hitColor         = brickColor;
+        hitNormal        = brickNormal;
+        hitT             = tBias + tHit;
+        // Absolute brick index for the ID buffer: base + local
+        hitBrickIndex    = uint(g_brickArrayBase) + localBrickIdx;
+        hitVoxelLinearIdx = voxelLinearIdx;
+        return true;
+    }
+    return false;
+}
+
+// ============================================================================
+// TRAVERSAL LOOP (instanced + LOD)
+// ============================================================================
+// Mirrors traverseOctree() from VoxelRayMarch.comp, extended with:
+//   • base-offset node fetch (via the fetchESVONode macro)
+//   • screen-space LOD termination before every non-leaf PUSH
+//
+// The LOD condition (Laine & Karras 2010, Section 4.4 / CUDA Raycast.inl L181):
+//   tc_max * raySizeCoef + raySizeBias >= scale_exp2
+// When true the voxel subtends < 1 pixel at the current distance; we shade the
+// current (coarser) node instead of descending further.
+// raySizeCoef == 0.0 disables LOD entirely (full-detail traversal).
+
+bool traverseOctreeInstanced(vec3 rayOrigin, vec3 rayDir,
+                              out vec3 hitColor, out vec3 hitNormal, out float hitT,
+                              out uint hitBrickIndex, out uint hitVoxelLinearIdx,
+                              inout DebugRaySample debugInfo) {
+    hitBrickIndex     = 0u;
+    hitVoxelLinearIdx = 0u;
+
+    debugInfo.hitFlag      = 0u;
+    debugInfo.exitCode     = DEBUG_EXIT_NONE;
+    debugInfo.lastStepMask = 0u;
+    debugInfo.iterationCount = 0u;
+
+    vec3 rayOriginLocal = (octreeConfig.worldToLocal * vec4(rayOrigin, 1.0)).xyz;
+    vec3 rayDirLocal    = mat3(octreeConfig.worldToLocal) * rayDir;
+
+    vec2 gridT = rayAABBIntersection(rayOriginLocal, rayDirLocal, vec3(0.0), vec3(1.0));
+    if (gridT.y < 0.0) {
+        debugInfo.exitCode = DEBUG_EXIT_INVALID_SPAN;
+        debugInfo.tMin = gridT.x;
+        debugInfo.tMax = gridT.y;
+        return false;
+    }
+
+    bool rayStartsInside = (gridT.x < 0.0);
+    vec3 rayStartWorld;
+    float tEntryWorld = 0.0;
+    if (rayStartsInside) {
+        rayStartWorld = rayOrigin;
+        tEntryWorld   = 0.0;
+    } else {
+        vec3 entryPointLocal = rayOriginLocal + rayDirLocal * (gridT.x + EPSILON);
+        rayStartWorld = (octreeConfig.localToWorld * vec4(entryPointLocal, 1.0)).xyz;
+        tEntryWorld   = length(rayStartWorld - rayOrigin);
+    }
+
+    RayCoefficients coef  = initRayCoefficients(rayDir, rayStartWorld);
+    debugInfo.octantMask  = uint(coef.octant_mask);
+
+    StackEntry stack[STACK_SIZE];
+    TraversalState state = initTraversalState(coef, stack, rayStartsInside);
+    snapshotTraversalState(state, coef, debugInfo);
+
+    ivec2 pixelCoords = ivec2(debugInfo.pixel);
+    bool isTracing    = beginRayTrace(pixelCoords);
+
+    if (state.t_min >= state.t_max) {
+        debugInfo.exitCode     = DEBUG_EXIT_INVALID_SPAN;
+        debugInfo.iterationCount = 0u;
+        endRayTrace(false);
+        return false;
+    }
+
+    int iter = 0;
+    for (; iter < MAX_ITERS && state.scale <= octreeConfig.esvoMaxScale; ++iter) {
+
+        uvec2 parent_descriptor = fetchESVONode(state.parentPtr);  // base-offset via macro
+        uint validMask   = getValidMask(parent_descriptor);
+        uint leafMask    = getLeafMask(parent_descriptor);
+        uint childPointer = getChildPointer(parent_descriptor);
+
+        bool isLeaf;
+        float tv_max, tx_center, ty_center, tz_center;
+
+        if (checkChildValidity(state, coef, validMask, leafMask,
+                               isLeaf, tv_max, tx_center, ty_center, tz_center)) {
+
+            if (isLeaf) {
+                float tBias = tEntryWorld;
+                if (handleLeafHitInstanced(state, coef, rayStartWorld, rayDir, tBias,
+                                           parent_descriptor, validMask, leafMask,
+                                           stack, hitColor, hitNormal, hitT,
+                                           hitBrickIndex, hitVoxelLinearIdx)) {
+                    endRayTrace(true);
+                    snapshotTraversalState(state, coef, debugInfo);
+                    debugInfo.hitFlag      = 1u;
+                    debugInfo.exitCode     = DEBUG_EXIT_HIT;
+                    debugInfo.iterationCount = uint(iter + 1);
+                    return true;
+                }
+                state.t_min = tv_max;
+                snapshotTraversalState(state, coef, debugInfo);
+
+            } else {
+#ifdef LOD_ENABLED
+                // Screen-space LOD termination (Laine & Karras 2010, Section 4.4).
+                // tc_max is the exit-t of the current voxel; scale_exp2 is its
+                // normalized size.  When the projected footprint (tv_max*coef +
+                // bias) covers ≥ 1 pixel we stop descending and shade here.
+                if (pc.raySizeCoef > 0.0 &&
+                    tv_max * pc.raySizeCoef + pc.raySizeBias >= state.scale_exp2) {
+                    // Shade the coarse node with a flat normal (no brick DDA).
+                    // We derive a plausible world-space position from t_min and
+                    // compose a simple surface normal from the last step direction.
+                    hitT      = tEntryWorld + state.t_min;
+                    hitColor  = vec3(0.5);   // LOD-shaded nodes get neutral grey;
+                                             // the instance's color tint is applied
+                                             // in main() after this returns.
+                    hitNormal = vec3(0.0, 1.0, 0.0);  // placeholder; orbit view is
+                                                       // too far to matter
+                    hitBrickIndex     = 0u;
+                    hitVoxelLinearIdx = 0u;
+                    endRayTrace(true);
+                    snapshotTraversalState(state, coef, debugInfo);
+                    debugInfo.hitFlag      = 1u;
+                    debugInfo.exitCode     = DEBUG_EXIT_HIT;
+                    debugInfo.iterationCount = uint(iter + 1);
+                    return true;
+                }
+#endif
+                executePushPhase(state, coef, stack, validMask, leafMask, childPointer,
+                                 tv_max, tx_center, ty_center, tz_center);
+                snapshotTraversalState(state, coef, debugInfo);
+                continue;
+            }
+        }
+
+        int step_mask;
+        int advanceResult = executeAdvancePhase(state, coef, step_mask);
+        debugInfo.lastStepMask = uint(step_mask);
+        snapshotTraversalState(state, coef, debugInfo);
+
+        if (advanceResult == 0) {
+            if (state.scale < octreeConfig.esvoMaxScale) {
+                state.t_max = stack[state.scale + 1].t_max;
+            }
+        }
+
+        if (advanceResult == 1) {
+            int popResult = executePopPhase(state, coef, stack, step_mask);
+            snapshotTraversalState(state, coef, debugInfo);
+            if (popResult == 1) {
+                endRayTrace(false);
+                debugInfo.exitCode     = DEBUG_EXIT_STACK;
+                debugInfo.iterationCount = uint(iter + 1);
+                return false;
+            }
+        }
+    }
+
+    endRayTrace(false);
+    debugInfo.exitCode     = DEBUG_EXIT_NO_HIT;
+    debugInfo.iterationCount = uint(iter);
+    return false;
+}
+
+// ============================================================================
+// MAIN
+// ============================================================================
+
+void main() {
+    ivec2 pixelCoords = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 imgSize     = imageSize(outputImage);
+
+    if (pixelCoords.x >= imgSize.x || pixelCoords.y >= imgSize.y) return;
+
+    vec2 uv = (vec2(pixelCoords) + 0.5) / vec2(imgSize);
+    vec3 rayOrigin = pc.cameraPos;
+    vec3 rayDir    = getRayDir(uv);
+
+    // Sky colour (used when no instance is hit)
+    vec3 skyColor = vec3(0.02, 0.02, 0.06) * (1.0 - uv.y * 0.4);
+
+    // -----------------------------------------------------------------------
+    // Per-pixel nearest-hit accumulator (across all instances)
+    // -----------------------------------------------------------------------
+    bool  anyHit         = false;
+    float bestT          = 1e30;
+    vec3  bestColor      = skyColor;
+    vec3  bestNormal     = vec3(0.0, 1.0, 0.0);
+    uint  bestBrickIndex = 0u;
+    uint  bestVoxelIdx   = 0u;
+
+    // -----------------------------------------------------------------------
+    // Record metrics once for the dominant hit
+    // -----------------------------------------------------------------------
+    recordRayStart();
+
+    // -----------------------------------------------------------------------
+    // INSTANCE LOOP
+    // -----------------------------------------------------------------------
+    int numInstances = clamp(pc.instanceCount, 0, 3 * 64); // safety cap
+    for (int instIdx = 0; instIdx < numInstances; ++instIdx) {
+
+        BodyInstance inst = bodyInstances[instIdx];
+        uint oi = clamp(inst.octreeIndex, 0u, 2u);
+
+        // Set globals used by fetchESVONode (via g_esvoNodeBase in ESVOTraversal.glsl)
+        // and by marchBrickInstanced (via g_brickArrayBase below).
+        g_octreeIdx      = int(oi);
+        g_esvoNodeBase   = configs[oi].nodeArrayBase;   // declared in ESVOTraversal.glsl
+        g_brickArrayBase = configs[oi].brickArrayBase;
+
+        // ------------------------------------------------------------------
+        // World→octree-local ray transform
+        //
+        // The instance places the body at inst.worldPos scaled by
+        // inst.renderScale.  The octree occupies its native [0,1]^3 local
+        // space (as defined by configs[oi].gridMin/gridMax and worldToLocal).
+        //
+        // The worldToLocal matrix in configs[oi] maps world→[0,1] for the
+        // base (unit) octree.  For an instance with position worldPos and
+        // scale renderScale the effective transform is:
+        //
+        //   octreeLocal = worldToLocal * ((world - worldPos) / renderScale + centre)
+        //
+        // We implement this by constructing an adjusted ray origin/dir in
+        // terms of the octree's own normalised local frame.
+        //
+        // Step 1: Translate ray so the instance's world centre is at origin.
+        //         The octree's world-space centre is (gridMin+gridMax)*0.5 as
+        //         seen by the worldToLocal matrix; after transform that lands
+        //         at (0.5,0.5,0.5).  The instance shifts this world centre to
+        //         inst.worldPos.  So we subtract inst.worldPos then divide by
+        //         renderScale to undo the instance scaling before applying the
+        //         base octree transform.
+        // ------------------------------------------------------------------
+        vec3 relOrigin = (rayOrigin - inst.worldPos) / inst.renderScale;
+        vec3 relDir    = rayDir; // direction is scale-invariant (we normalize after)
+        // Note: relDir does NOT need dividing by renderScale — the worldToLocal
+        // matrix will handle the orientation; renderScale only affects the
+        // origin offset.  The traversal uses the world-space ray for lighting
+        // normals anyway; what matters is that the entry AABB test and coef
+        // initialisation get the right local-space origin.
+
+        // Reconstruct a world-space ray that, after worldToLocal, lands
+        // exactly as if the octree were positioned at worldPos with renderScale.
+        // We pass these adjusted world-space coords to traverseOctreeInstanced
+        // which internally applies octreeConfig.worldToLocal.
+        //
+        // The adjusted "world origin" is such that applying worldToLocal yields
+        // the correct local position:  worldToLocal*(adjustedOrigin,1) must
+        // equal the local coordinate of the ray in the instanced frame.
+        //
+        // Simplest: shift the camera into the instance's local frame (undo
+        // instance placement), then let worldToLocal do the rest.
+        vec3 adjustedOrigin = inst.worldPos + mat3(configs[oi].localToWorld)
+                              * (mat3(configs[oi].worldToLocal) * relOrigin);
+
+        // AABB bound-test in local space (quick cull before full traversal)
+        vec3 localRayOrigin = (configs[oi].worldToLocal * vec4(adjustedOrigin, 1.0)).xyz;
+        vec3 localRayDir    = mat3(configs[oi].worldToLocal) * relDir;
+        vec2 gridT = rayAABBIntersection(localRayOrigin, localRayDir, vec3(0.0), vec3(1.0));
+        if (gridT.y < 0.0) continue;  // ray misses this instance's AABB
+
+        // ------------------------------------------------------------------
+        // Run ESVO traversal against this instance's octree
+        // ------------------------------------------------------------------
+        DebugRaySample dbg;
+        dbg.pixel         = uvec2(pixelCoords);
+        dbg.rayDir        = rayDir;
+        dbg.octantMask    = 0u;
+        dbg.hitFlag       = 0u;
+        dbg.exitCode      = DEBUG_EXIT_NONE;
+        dbg.lastStepMask  = 0u;
+        dbg.iterationCount = 0u;
+        dbg.scale         = configs[oi].esvoMaxScale;
+        dbg.stateIdx      = 0u;
+        dbg.tMin          = 0.0;
+        dbg.tMax          = 0.0;
+        dbg.scaleExp2     = 0.0;
+        dbg.posMirrored   = vec3(0.0);
+        dbg.localNorm     = vec3(0.0);
+
+        vec3  hitColor;
+        vec3  hitNormal;
+        float hitT;
+        uint  hitBrick;
+        uint  hitVoxel;
+
+        bool hit = traverseOctreeInstanced(adjustedOrigin, relDir,
+                                           hitColor, hitNormal, hitT,
+                                           hitBrick, hitVoxel, dbg);
+
+        if (hit && hitT < bestT) {
+            bestT          = hitT;
+            // Tint by instance colour (multiply LOD-grey or material colour)
+            bestColor      = hitColor * inst.color;
+            bestNormal     = hitNormal;
+            bestBrickIndex = hitBrick;
+            bestVoxelIdx   = hitVoxel;
+            anyHit         = true;
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Shade & write output
+    // -----------------------------------------------------------------------
+    vec3 outColor;
+    if (anyHit) {
+        outColor = computeLighting(bestColor, bestNormal, rayDir);
+    } else {
+        outColor = skyColor;
+    }
+
+    // Debug visualisation modes (reuse the last instance's debug sample —
+    // full per-instance debug would need an extra accumulator; this is a
+    // best-effort approximation for the iteration/depth modes).
+    if (pc.debugMode > 0 && anyHit) {
+        switch (pc.debugMode) {
+            case DEBUG_MODE_NORMALS:
+                outColor = normalShading(bestNormal);
+                break;
+            default:
+                break;
+        }
+    }
+
+    imageStore(outputImage, pixelCoords, vec4(outColor, 1.0));
+
+    // ID buffer: encode absolute brick + voxel (same packing as VoxelRayMarch)
+    uint pickID = anyHit
+        ? ((bestBrickIndex << 10u) | (bestVoxelIdx & 0x3FFu))
+        : 0xFFFFFFFFu;
+    imageStore(idOutputImage, pixelCoords, uvec4(pickID, 0u, 0u, 0u));
+
+    // Metrics
+    bool earlyTerm = false; // no single iteration count with multiple instances
+    recordVoxelSteps(0u);   // per-instance metrics omitted in multi-instance path
+    recordRayEnd(anyHit, earlyTerm);
+}

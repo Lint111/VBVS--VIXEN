@@ -51,11 +51,18 @@ struct TraversalState {
 // ESVO NODE FETCH
 // ============================================================================
 
+// Per-dispatch base offset added to every node fetch.
+// Default 0 reproduces the single-octree dense path (VoxelRayMarch.comp never
+// sets this).  Multi-octree shaders (BodyInstanceRayMarch.comp) set this to
+// configs[oi].nodeArrayBase before each traversal call.
+int g_esvoNodeBase = 0;
+
 // Fetch node descriptor from ESVO buffer
-// nodeIndex: Index into esvoNodes array
+// nodeIndex: Local index within the current octree's node array.
+//            g_esvoNodeBase is added to address the concatenated multi-octree buffer.
 // Returns: uvec2 containing validMask, leafMask, childPointer
 uvec2 fetchESVONode(uint nodeIndex) {
-    return esvoNodes[nodeIndex];
+    return esvoNodes[uint(g_esvoNodeBase) + nodeIndex];
 }
 
 // ============================================================================
