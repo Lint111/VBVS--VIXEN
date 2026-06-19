@@ -6,7 +6,9 @@
 > and `docs/superpowers/plans/2026-06-19-rendergraph-node-build-decoupling.md`. Earlier today:
 > build-env Ninja preset fix + RenderGraph stale-test cleanup + M1. **Build with the
 > `vixen-ninja` preset, not `cmake -B build`.** GUI VIXEN.exe verified on real GPU (render loop,
-> 41 nodes, 30 instances, stable; only a pre-existing idOutputImage VUID).
+> 41 nodes, 30 instances, stable) and **validation-clean** after fixing the shaderCounters
+> (binding 8) descriptor VUID (b2f18808). Benchmark's idOutputImage (binding 9) VUID is a
+> documented known issue (Benchmark-Troubleshooting.md).
 > Everything below is stale (Sprint 6, Jan 2026).
 
 ---
