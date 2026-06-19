@@ -9,7 +9,7 @@ using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 
 // Compile-time slot counts
 namespace BodyOctreeSceneNodeCounts {
-    static constexpr size_t INPUTS  = 2;  // VULKAN_DEVICE_IN, COMMAND_POOL
+    static constexpr size_t INPUTS  = 3;  // VULKAN_DEVICE_IN, COMMAND_POOL, CURRENT_FRAME_INDEX
     static constexpr size_t OUTPUTS = 6;  // 4 octree buffers + instance buffer + instance count
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -27,7 +27,7 @@ namespace BodyOctreeSceneNodeCounts {
  * this node where VoxelGridNode was, with no shader/descriptor changes. The new
  * INSTANCE_BUFFER (VkBuffer) + INSTANCE_COUNT (uint32_t) feed the instanced draw.
  *
- * Inputs: 2 (VULKAN_DEVICE_IN, COMMAND_POOL)
+ * Inputs: 3 (VULKAN_DEVICE_IN, COMMAND_POOL, CURRENT_FRAME_INDEX)
  * Outputs: 6 (OCTREE_NODES_BUFFER, OCTREE_BRICKS_BUFFER, OCTREE_MATERIALS_BUFFER,
  *             OCTREE_CONFIG_BUFFER, INSTANCE_BUFFER, INSTANCE_COUNT)
  */
@@ -35,7 +35,7 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
                       BodyOctreeSceneNodeCounts::INPUTS,
                       BodyOctreeSceneNodeCounts::OUTPUTS,
                       BodyOctreeSceneNodeCounts::ARRAY_MODE) {
-    // ===== INPUTS (2) — mirror VoxelGridNode =====
+    // ===== INPUTS (3) — mirror VoxelGridNode + per-frame ring index =====
     INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevice*, 0,
         SlotNullability::Required,
         SlotRole::Dependency,
@@ -45,6 +45,14 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
     INPUT_SLOT(COMMAND_POOL, VkCommandPool, 1,
         SlotNullability::Required,
         SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
+    // Per-frame ring index from FrameSyncNode — read each Execute to select which
+    // ring buffer to upload instances into (mirrors DynamicInstanceBufferNodeConfig).
+    INPUT_SLOT(CURRENT_FRAME_INDEX, uint32_t, 2,
+        SlotNullability::Required,
+        SlotRole::Execute,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
@@ -84,6 +92,10 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
         CommandPoolDescriptor commandPoolDesc{};
         INIT_INPUT_DESC(COMMAND_POOL, "command_pool", ResourceLifetime::Persistent, commandPoolDesc);
 
+        // Per-frame ring index (transient scalar) — drives instance-buffer ring selection in ExecuteImpl.
+        INIT_INPUT_DESC(CURRENT_FRAME_INDEX, "current_frame_index",
+            ResourceLifetime::Transient, BufferDescription{});
+
         // ----- Octree SSBO outputs (persistent — survive recompile, freed only at FinalTeardown) -----
         BufferDescriptor octreeNodesDesc{};
         octreeNodesDesc.usage = ResourceUsage::StorageBuffer | ResourceUsage::TransferDst;
@@ -118,6 +130,10 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
     // ----- Index validations -----
     static_assert(VULKAN_DEVICE_IN_Slot::index == 0, "VULKAN_DEVICE_IN must be at index 0");
     static_assert(COMMAND_POOL_Slot::index == 1, "COMMAND_POOL must be at index 1");
+    static_assert(CURRENT_FRAME_INDEX_Slot::index == 2, "CURRENT_FRAME_INDEX must be at index 2");
+    static_assert(!CURRENT_FRAME_INDEX_Slot::nullable, "CURRENT_FRAME_INDEX must not be nullable");
+    static_assert(std::is_same_v<CURRENT_FRAME_INDEX_Slot::Type, uint32_t>,
+                  "CURRENT_FRAME_INDEX must be uint32_t");
     static_assert(OCTREE_NODES_BUFFER_Slot::index == 0, "OCTREE_NODES_BUFFER must be at index 0");
     static_assert(OCTREE_BRICKS_BUFFER_Slot::index == 1, "OCTREE_BRICKS_BUFFER must be at index 1");
     static_assert(OCTREE_MATERIALS_BUFFER_Slot::index == 2, "OCTREE_MATERIALS_BUFFER must be at index 2");

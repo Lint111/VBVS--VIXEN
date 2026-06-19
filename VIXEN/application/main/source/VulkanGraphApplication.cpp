@@ -1755,7 +1755,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::VULKAN_DEVICE_IN)
          .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
-                  bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::COMMAND_POOL);
+                  bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::COMMAND_POOL)
+         // FR-7 ring fix: supply the per-frame index so ExecuteImpl picks which ring
+         // slot to upload instances into (prevents CPU/GPU races on the instance SSBO).
+         .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                  bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::CURRENT_FRAME_INDEX);
 
     // Connect push constant fields to push constant gatherer using member extraction
     // CameraNode now outputs a CameraData struct, so we can extract individual fields

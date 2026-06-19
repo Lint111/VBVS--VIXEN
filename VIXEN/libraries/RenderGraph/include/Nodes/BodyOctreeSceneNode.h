@@ -2,6 +2,7 @@
 
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
+#include "Core/PerFrameResources.h"
 #include "Data/Nodes/BodyOctreeSceneNodeConfig.h"
 
 #include "ShellOctree.h"      // Vixen::SVO::ShellOctree, BuildShellOctree
@@ -40,21 +41,25 @@ public:
  *   1. builds the <=3 per-kind ShellOctrees once (cached as members; they OWN their
  *      world + registry + octree, so they stay alive for the node's lifetime),
  *   2. serializes + concatenates them via Vixen::SVO::Concatenate (cached bytes),
- *   3. creates 5 GPU buffers (nodes / bricks / materials SSBOs, the 3x256B config UBO,
- *      and the packed instance SSBO), host-visible/host-coherent, filled by memcpy,
- *   4. publishes the four octree slots (same names/types as VoxelGridNode) plus the
- *      new INSTANCE_BUFFER + INSTANCE_COUNT.
+ *   3. creates 4 GPU octree buffers (nodes / bricks / materials SSBOs + config UBO),
+ *      host-visible/host-coherent, filled at create time,
+ *   4. allocates a RING of kRingSize (= MAX_FRAMES_IN_FLIGHT) instance SSBOs (once,
+ *      persistent across recompile; grown with vkDeviceWaitIdle on capacity overflow),
+ *   5. publishes the four octree slots plus INSTANCE_BUFFER (ring[0] as a compile-time
+ *      placeholder) + INSTANCE_COUNT.
  *
- * Instance seam: the host (Task 8) calls SetInstances(...) to push the current body
- * list; that stores the vector, marks a dirty flag, and requests a recompile so the
- * instance SSBO is re-uploaded on the next compile (octrees are NOT rebuilt).
+ * Instance seam: the host calls SetInstances(...) which ONLY stashes the vector and
+ * sets a dirty flag — it NO LONGER triggers recompile. ExecuteImpl uploads the current
+ * instances into ring[frameIndex % kRingSize] every frame and re-emits that buffer on
+ * INSTANCE_BUFFER so the descriptor binds the freshly-written, not-in-flight slot.
  *
  * Lifecycle (CRITICAL — see the WSL/Dozen recompile-frees-in-flight VM-panic trap):
- * the GPU buffers persist across recompile and are destroyed ONLY on FinalTeardown.
- * Mirrors InstanceBufferNode's FR-7 guard.
+ *   - Octree buffers: created once, persist across recompile, destroyed at FinalTeardown.
+ *   - Instance ring: allocated once, persists across recompile; grown (behind
+ *     vkDeviceWaitIdle) only on capacity overflow; destroyed at FinalTeardown.
+ *   - No GPU resource is ever freed on the per-tick / per-recompile path.
  *
- * NOTE: this node is intentionally NOT registered / wired into the render graph here;
- * Task 8 wires it (replacing VoxelGridNode's octree output) and bumps the submodule.
+ * Mirrors DynamicInstanceBufferNode's FR-7 ring pattern exactly.
  */
 class BodyOctreeSceneNode : public TypedNode<BodyOctreeSceneNodeConfig> {
 public:
@@ -64,11 +69,11 @@ public:
     ~BodyOctreeSceneNode() override = default;
 
     /**
-     * @brief Push the current per-body instance list (host -> node seam, Task 8).
+     * @brief Push the current per-body instance list (host -> node seam).
      *
-     * Stores the vector, marks the instance buffer dirty, and requests a recompile.
-     * Thread-simple by design: the buffers are (re)built on the next CompileImpl.
-     * The cached octrees are NOT affected (only the instance SSBO is re-uploaded).
+     * Stashes the vector and marks a dirty flag. Does NOT trigger recompile.
+     * ExecuteImpl uploads the current data into the current frame's ring buffer
+     * on every frame — the per-tick recompile cascade is gone entirely.
      */
     void SetInstances(std::vector<Vixen::SVO::BodyInstanceGpu> instances);
 
@@ -80,38 +85,42 @@ protected:
 
 private:
     // --- Octree build / serialization (octrees + concatenated bytes cached) ---
-    void EnsureOctreesBuilt();                                   // build + concatenate once
+    void EnsureOctreesBuilt();                                        // build + concatenate once
     void CreateOctreeBuffers(Vixen::Vulkan::Resources::VulkanDevice* device);  // 4 octree buffers
-    void CreateOrUpdateInstanceBuffer(Vixen::Vulkan::Resources::VulkanDevice* device);  // instance SSBO
+    void EnsureRingAllocated(Vixen::Vulkan::Resources::VulkanDevice* device,
+                             VkDeviceSize neededCapacity);            // allocate/grow instance ring
     void DestroyBuffers();
 
     // Build constants (one shell per kind; depth/material chosen here).
-    static constexpr int      kShellDepth   = 6;  // 2^6 = 64 cells/axis
-    static constexpr uint32_t kKindCount    = 3;
+    static constexpr int      kShellDepth = 6;   // 2^6 = 64 cells/axis
+    static constexpr uint32_t kKindCount  = 3;
+
+    // Ring size = frames-in-flight (same as DynamicInstanceBufferNode).
+    // Defined in .cpp from FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT.
+    static const uint32_t kRingSize;
 
     // Per-kind owning shell octrees (built once, kept alive for the node's lifetime).
     std::vector<Vixen::SVO::ShellOctree>   shellOctrees_;
     Vixen::SVO::ConcatenatedOctrees        concatenated_;
     bool                                   octreesBuilt_ = false;
 
-    // Current instance list + dirty flag (set by SetInstances).
+    // Current instance list (set by SetInstances; uploaded in ExecuteImpl).
     std::vector<Vixen::SVO::BodyInstanceGpu> instances_;
-    uint32_t                                 instanceCount_     = 0;
-    bool                                     instancesDirty_    = true;
+    uint32_t                                 instanceCount_ = 0;
 
     // --- GPU resources (persistent across recompile; freed only at FinalTeardown) ---
-    VkBuffer       nodesBuffer_      = VK_NULL_HANDLE;
-    VkDeviceMemory nodesMemory_      = VK_NULL_HANDLE;
-    VkBuffer       bricksBuffer_     = VK_NULL_HANDLE;
-    VkDeviceMemory bricksMemory_     = VK_NULL_HANDLE;
-    VkBuffer       materialsBuffer_  = VK_NULL_HANDLE;
-    VkDeviceMemory materialsMemory_  = VK_NULL_HANDLE;
-    VkBuffer       configBuffer_     = VK_NULL_HANDLE;
-    VkDeviceMemory configMemory_     = VK_NULL_HANDLE;
+    VkBuffer       nodesBuffer_     = VK_NULL_HANDLE;
+    VkDeviceMemory nodesMemory_     = VK_NULL_HANDLE;
+    VkBuffer       bricksBuffer_    = VK_NULL_HANDLE;
+    VkDeviceMemory bricksMemory_    = VK_NULL_HANDLE;
+    VkBuffer       materialsBuffer_ = VK_NULL_HANDLE;
+    VkDeviceMemory materialsMemory_ = VK_NULL_HANDLE;
+    VkBuffer       configBuffer_    = VK_NULL_HANDLE;
+    VkDeviceMemory configMemory_    = VK_NULL_HANDLE;
 
-    VkBuffer       instanceBuffer_   = VK_NULL_HANDLE;
-    VkDeviceMemory instanceMemory_   = VK_NULL_HANDLE;
-    VkDeviceSize   instanceCapacity_ = 0;  // bytes currently allocated for the instance SSBO
+    // Instance SSBO ring (one buffer per frame-in-flight — never freed on the tick path).
+    PerFrameResources perFrame_;
+    VkDeviceSize      instanceRingCapacity_ = 0;  // bytes per ring slot (grow-only)
 };
 
 } // namespace Vixen::RenderGraph

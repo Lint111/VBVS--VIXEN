@@ -1,6 +1,7 @@
 #include "Nodes/BodyOctreeSceneNode.h"
 #include "Core/RenderGraph.h"
 #include "Core/NodeLogging.h"
+#include "Data/Nodes/FrameSyncNodeConfig.h"
 #include "VulkanDevice.h"
 
 #include <algorithm>
@@ -30,6 +31,9 @@ static uint32_t FindSuitableMemoryType(
 namespace Vixen::RenderGraph {
 
 using namespace Vixen::Vulkan::Resources;
+
+// Ring size = frames-in-flight (the value CURRENT_FRAME_INDEX cycles through).
+const uint32_t BodyOctreeSceneNode::kRingSize = FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT;
 
 namespace {
 
@@ -124,13 +128,12 @@ BodyOctreeSceneNode::BodyOctreeSceneNode(const std::string& instanceName, NodeTy
 }
 
 void BodyOctreeSceneNode::SetInstances(std::vector<Vixen::SVO::BodyInstanceGpu> instances) {
-    instances_      = std::move(instances);
-    instancesDirty_ = true;
-    // Request a recompile so the instance SSBO is re-uploaded on the next compile.
-    // (The cached octrees are untouched — only the instance buffer is rebuilt.)
-    MarkNeedsRecompile();
+    // Stash the new list. ExecuteImpl uploads it each frame into the current ring slot.
+    // Do NOT call MarkNeedsRecompile — the per-tick recompile cascade was the race root cause.
+    instances_     = std::move(instances);
+    instanceCount_ = static_cast<uint32_t>(instances_.size());
     NODE_LOG_INFO("[BodyOctreeSceneNode] SetInstances: " +
-                  std::to_string(instances_.size()) + " instances (recompile requested)");
+                  std::to_string(instanceCount_) + " instances staged for next Execute");
 }
 
 void BodyOctreeSceneNode::SetupImpl(TypedSetupContext& /*ctx*/) {
@@ -164,24 +167,66 @@ void BodyOctreeSceneNode::CompileImpl(TypedCompileContext& ctx) {
         NODE_LOG_INFO("[BodyOctreeSceneNode] Reusing persistent octree buffers across recompile");
     }
 
-    // 3b) Instance SSBO — (re)build when dirty (grows allocation if needed).
-    CreateOrUpdateInstanceBuffer(devicePtr);
+    // 3b) Instance SSBO ring — allocate once, persistent across recompile.
+    // A placeholder capacity of at least 1 element ensures the ring is valid before
+    // the first SetInstances call. EnsureRingAllocated grows it (behind vkDeviceWaitIdle)
+    // if SetInstances is called with a larger list before the first Compile.
+    {
+        // Capacity: max of current instance list and a safe minimum (1 record).
+        std::vector<Vixen::SVO::BodyInstanceGpu> placeholderList;
+        if (instances_.empty()) {
+            placeholderList.push_back(Vixen::SVO::BodyInstanceGpu{});
+        }
+        const std::vector<Vixen::SVO::BodyInstanceGpu>& toMeasure =
+            instances_.empty() ? placeholderList : instances_;
+        const std::vector<uint8_t> packed = Vixen::SVO::PackInstances(toMeasure);
+        const VkDeviceSize needed = std::max<VkDeviceSize>(packed.size(), 1);
+        EnsureRingAllocated(devicePtr, needed);
+    }
 
-    // 4) Publish outputs.
+    // 4) Publish outputs. INSTANCE_BUFFER emits ring slot 0 as a compile-time placeholder;
+    //    ExecuteImpl overwrites it each frame with the current ring slot.
     ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_NODES_BUFFER,     nodesBuffer_);
     ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_BRICKS_BUFFER,    bricksBuffer_);
     ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_MATERIALS_BUFFER, materialsBuffer_);
     ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_CONFIG_BUFFER,    configBuffer_);
-    ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_BUFFER,         instanceBuffer_);
+    ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_BUFFER,         perFrame_.GetUniformBuffer(0));
     ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_COUNT,          instanceCount_);
 
     NODE_LOG_INFO("[BodyOctreeSceneNode] Outputs published (octrees=" +
                   std::to_string(concatenated_.count) + ", instances=" +
-                  std::to_string(instanceCount_) + ")");
+                  std::to_string(instanceCount_) + ", ringSlots=" +
+                  std::to_string(kRingSize) + ")");
 }
 
-void BodyOctreeSceneNode::ExecuteImpl(TypedExecuteContext& /*ctx*/) {
-    // Static, host-coherent buffers — filled at compile time. Nothing per-frame.
+void BodyOctreeSceneNode::ExecuteImpl(TypedExecuteContext& ctx) {
+    // Per-frame ring index from FrameSyncNode (clamp via modulo for safety).
+    const uint32_t frameIndex = ctx.In(BodyOctreeSceneNodeConfig::CURRENT_FRAME_INDEX) % kRingSize;
+
+    // Build the packed byte representation of the current instance list.
+    // If empty, produce a valid 1-element placeholder so the SSBO is always non-null.
+    std::vector<Vixen::SVO::BodyInstanceGpu> toPack;
+    if (instances_.empty()) {
+        toPack.push_back(Vixen::SVO::BodyInstanceGpu{});  // zeroed placeholder
+    } else {
+        toPack = instances_;
+    }
+    const std::vector<uint8_t> packed = Vixen::SVO::PackInstances(toPack);
+
+    // Upload into THIS frame's ring buffer (host-coherent: no flush needed).
+    // The frame fence for frameIndex was waited before Execute fired, so this
+    // slot is guaranteed not in flight.
+    void* mapped = perFrame_.GetUniformBufferMapped(frameIndex);
+    if (mapped && !packed.empty()) {
+        const size_t copyBytes = std::min(static_cast<size_t>(instanceRingCapacity_),
+                                          packed.size());
+        std::memcpy(mapped, packed.data(), copyBytes);
+    }
+
+    // Emit THIS frame's buffer so the descriptor binds the just-written data.
+    ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_BUFFER, perFrame_.GetUniformBuffer(frameIndex));
+    // Re-emit the count (it may change each frame if SetInstances was called).
+    ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_COUNT, instanceCount_);
 }
 
 void BodyOctreeSceneNode::CleanupImpl(TypedCleanupContext& ctx) {
@@ -273,61 +318,36 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device) {
                   std::to_string(static_cast<uint64_t>(configSize)) + "B)");
 }
 
-void BodyOctreeSceneNode::CreateOrUpdateInstanceBuffer(VulkanDevice* device) {
-    // Already current and allocated — nothing to do.
-    if (!instancesDirty_ && instanceBuffer_ != VK_NULL_HANDLE) {
+void BodyOctreeSceneNode::EnsureRingAllocated(VulkanDevice* device, VkDeviceSize neededCapacity) {
+    if (perFrame_.IsInitialized() && neededCapacity <= instanceRingCapacity_) {
+        // Ring already exists and is large enough — nothing to do.
+        NODE_LOG_INFO("[BodyOctreeSceneNode] Reusing persistent instance ring (capacity=" +
+                      std::to_string(static_cast<uint64_t>(instanceRingCapacity_)) + "B)");
         return;
     }
 
-    // Pack the instances. If empty, still produce a valid 1-element placeholder so
-    // the output slot is always a valid VkBuffer (the count reports the real value).
-    std::vector<Vixen::SVO::BodyInstanceGpu> toPack = instances_;
-    instanceCount_ = static_cast<uint32_t>(instances_.size());
-    if (toPack.empty()) {
-        toPack.push_back(Vixen::SVO::BodyInstanceGpu{});  // zeroed placeholder record
-    }
-    const std::vector<uint8_t> packed = Vixen::SVO::PackInstances(toPack);
-    const VkDeviceSize neededSize = std::max<VkDeviceSize>(packed.size(), 1);
-
-    VkDevice vkDevice = device->device;
-
-    // Reuse the existing allocation if it is large enough (host-coherent re-upload).
-    // This keeps the buffer persistent across recompile in the common case; we only
-    // grow (destroy + recreate) when the instance list outgrows the allocation.
-    if (instanceBuffer_ != VK_NULL_HANDLE && neededSize <= instanceCapacity_) {
-        void* mapped = nullptr;
-        if (vkMapMemory(vkDevice, instanceMemory_, 0, neededSize, 0, &mapped) != VK_SUCCESS) {
-            throw std::runtime_error("[BodyOctreeSceneNode] vkMapMemory failed for instance SSBO re-upload");
-        }
-        std::memcpy(mapped, packed.data(), static_cast<size_t>(packed.size()));
-        vkUnmapMemory(vkDevice, instanceMemory_);
-        instancesDirty_ = false;
-        NODE_LOG_INFO("[BodyOctreeSceneNode] Re-uploaded instance SSBO in place (" +
-                      std::to_string(instanceCount_) + " instances)");
-        return;
+    // Grow path: we must wait for all in-flight frames before destroying and recreating
+    // the ring. This is a RARE path (capacity overflow), not the per-frame path.
+    if (perFrame_.IsInitialized()) {
+        NODE_LOG_INFO("[BodyOctreeSceneNode] Growing instance ring (old=" +
+                      std::to_string(static_cast<uint64_t>(instanceRingCapacity_)) +
+                      "B → new=" + std::to_string(static_cast<uint64_t>(neededCapacity)) +
+                      "B) — vkDeviceWaitIdle");
+        vkDeviceWaitIdle(device->device);
+        perFrame_.Cleanup();
+        instanceRingCapacity_ = 0;
     }
 
-    // (Re)create at the needed size. Destroying here is safe: this runs in CompileImpl,
-    // never in the recompile cleanup path. Grow-only — small allocations are rare.
-    if (instanceBuffer_ != VK_NULL_HANDLE) {
-        vkDestroyBuffer(vkDevice, instanceBuffer_, nullptr);
-        instanceBuffer_ = VK_NULL_HANDLE;
+    // Allocate fresh ring of kRingSize storage buffers.
+    perFrame_.Initialize(device, kRingSize);
+    for (uint32_t i = 0; i < kRingSize; ++i) {
+        perFrame_.CreateStorageBuffer(i, neededCapacity);
     }
-    if (instanceMemory_ != VK_NULL_HANDLE) {
-        vkFreeMemory(vkDevice, instanceMemory_, nullptr);
-        instanceMemory_ = VK_NULL_HANDLE;
-    }
+    instanceRingCapacity_ = neededCapacity;
 
-    CreateHostBuffer(device, neededSize,
-        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-        packed.data(),
-        instanceBuffer_, instanceMemory_, "body instance SSBO");
-    instanceCapacity_ = neededSize;
-    instancesDirty_   = false;
-
-    NODE_LOG_INFO("[BodyOctreeSceneNode] Created instance SSBO (" +
-                  std::to_string(instanceCount_) + " instances, " +
-                  std::to_string(static_cast<uint64_t>(neededSize)) + "B)");
+    NODE_LOG_INFO("[BodyOctreeSceneNode] Allocated instance ring: " +
+                  std::to_string(kRingSize) + " x " +
+                  std::to_string(static_cast<uint64_t>(neededCapacity)) + "B storage buffers");
 }
 
 void BodyOctreeSceneNode::DestroyBuffers() {
@@ -343,8 +363,10 @@ void BodyOctreeSceneNode::DestroyBuffers() {
     destroy(bricksBuffer_,    bricksMemory_);
     destroy(materialsBuffer_, materialsMemory_);
     destroy(configBuffer_,    configMemory_);
-    destroy(instanceBuffer_,  instanceMemory_);
-    instanceCapacity_ = 0;
+
+    // FR-7: destroy the instance ring via PerFrameResources (mirrors DynamicInstanceBufferNode).
+    perFrame_.Cleanup();
+    instanceRingCapacity_ = 0;
 
     NODE_LOG_INFO("[BodyOctreeSceneNode] All buffers destroyed");
 }
