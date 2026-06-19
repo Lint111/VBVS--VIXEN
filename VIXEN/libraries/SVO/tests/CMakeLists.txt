@@ -446,7 +446,8 @@ gtest_discover_tests(test_lod)
 # ===========================================================================
 add_executable(test_shell_octree test_shell_octree.cpp)
 if(TARGET SVO)
-    target_link_libraries(test_shell_octree PRIVATE GTest::gtest_main SVO)
+    target_link_libraries(test_shell_octree PRIVATE
+        GTest::gtest_main SVO GaiaVoxelWorld VoxelComponents VoxelData)
 else()
     target_link_libraries(test_shell_octree PRIVATE GTest::gtest_main)
 endif()
