@@ -128,6 +128,7 @@ set(RENDERGRAPH_CORE_HEADERS
     include/Core/LoopManager.h
     include/Core/NodeInstance.h
     include/Core/NodeLogging.h
+    include/Core/NodeRegistration.h
     include/Core/NodeType.h
     include/Core/NodeTypeRegistry.h
     include/Core/PerFrameResources.h
@@ -165,6 +166,7 @@ set(RENDERGRAPH_CORE_SOURCES
     src/Core/GraphTopology.cpp
     src/Core/LoopManager.cpp
     src/Core/NodeInstance.cpp
+    src/Core/NodeRegistration.cpp
     src/Core/NodeType.cpp
     src/Core/NodeTypeRegistry.cpp
     src/Core/PerFrameResources.cpp
