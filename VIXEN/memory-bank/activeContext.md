@@ -1,4 +1,6 @@
-> **⚠️ 2026-06-19 — current work is on branch `claude/rendergraph-node-build-decoupling`.**
+> **⚠️ 2026-06-19 — node build-decoupling MERGED to local `main`** (fast-forward; feature branch
+> `claude/rendergraph-node-build-decoupling` deleted). `main` is 14 commits ahead of `origin/main`,
+> NOT pushed.
 > Node build-decoupling **M2 (lib split) + M3 (self-registration) + M4 (app TU split) + M5 (docs)
 > ALL DONE & verified** (2026-06-19). See `Vixen-Docs/01-Architecture/RenderGraph-System.md` §9
 > and `docs/superpowers/plans/2026-06-19-rendergraph-node-build-decoupling.md`. Earlier today:
