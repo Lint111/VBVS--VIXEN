@@ -274,11 +274,13 @@ TEST(ConnectionRuleRegistryTest, FindRuleForBindingConnection) {
     MockBindingRef bindingRef{0, 7};
     auto targetInfo = SlotInfo::FromBinding(bindingRef, "binding");
 
-    // DirectConnectionRule should handle slot-to-binding connections
+    // Binding targets route to VariadicConnectionRule: Direct rejects bindings
+    // (its Resolve would no-op them, leaving descriptors unbound).
+    // See 51927757 (restore voxel rendering — binding-rule routing).
     const ConnectionRule* rule = registry.FindRule(sourceInfo, targetInfo);
 
     ASSERT_NE(rule, nullptr);
-    EXPECT_EQ(rule->Name(), "DirectConnectionRule");
+    EXPECT_EQ(rule->Name(), "VariadicConnectionRule");
 }
 
 // ============================================================================
@@ -303,16 +305,18 @@ TEST(DirectConnectionRuleTest, CannotHandleAccumulationConnection) {
     EXPECT_FALSE(rule.CanHandle(sourceInfo, targetInfo));
 }
 
-TEST(DirectConnectionRuleTest, CanHandleBindingConnection) {
-    // DirectConnectionRule now handles 1:1 binding connections too
+TEST(DirectConnectionRuleTest, CannotHandleBindingConnection) {
+    // DirectConnectionRule does NOT handle binding targets: they route to
+    // VariadicConnectionRule (which binds the resource + registers the populate
+    // hooks). Direct's Resolve would no-op a binding, leaving descriptors unbound.
+    // See 51927757 (restore voxel rendering — binding-rule routing).
     DirectConnectionRule rule;
 
     auto sourceInfo = SlotInfo::FromOutputSlot<SourceConfig::BUFFER_OUT_Slot>("OUT");
     MockBindingRef bindingRef{0, 7};
     auto targetInfo = SlotInfo::FromBinding(bindingRef, "test");
 
-    // Direct rule CAN handle slot-to-binding (1:1 connection)
-    EXPECT_TRUE(rule.CanHandle(sourceInfo, targetInfo));
+    EXPECT_FALSE(rule.CanHandle(sourceInfo, targetInfo));
 }
 
 TEST(DirectConnectionRuleTest, ValidateSourceNotNull) {
@@ -886,11 +890,12 @@ TEST(ConnectionRuleRegistryTest, VariadicRuleMatchedForBindingTarget) {
 
     const ConnectionRule* rule = registry.FindRule(sourceInfo, targetInfo);
 
-    // DirectConnectionRule has higher priority (50) than VariadicConnectionRule (25)
-    // But DirectConnectionRule CAN handle binding targets (1:1 slot-to-binding)
-    // So DirectConnectionRule should be matched
+    // DirectConnectionRule has higher priority (50) than VariadicConnectionRule (25),
+    // but Direct rejects binding targets (CanHandle == false), so FindRule falls through
+    // to VariadicConnectionRule — the rule that actually binds the resource.
+    // See 51927757 (restore voxel rendering — binding-rule routing).
     ASSERT_NE(rule, nullptr);
-    EXPECT_EQ(rule->Name(), "DirectConnectionRule");
+    EXPECT_EQ(rule->Name(), "VariadicConnectionRule");
 }
 
 TEST(ConnectionRuleRegistryTest, RulePriorityOrder) {
