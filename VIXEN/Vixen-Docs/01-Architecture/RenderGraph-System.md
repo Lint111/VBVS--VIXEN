@@ -305,7 +305,83 @@ void RenderGraph::Execute(VkCommandBuffer cmd) {
 
 ---
 
-## 9. Related Pages
+## 9. Library Structure & Node Registration (Build Decoupling)
+
+> Added 2026-06-19 (branch `claude/rendergraph-node-build-decoupling`, M2+M3).
+
+### 9.1 Three CMake targets
+
+`libraries/RenderGraph/CMakeLists.txt` builds the system as two static libraries plus a
+back-compat facade:
+
+| Target | Contents | Heavy deps |
+|--------|----------|------------|
+| `RenderGraphCore` | graph engine: Data/Core, Connection, Core, Debug, Event, Selection — **zero concrete-node dependencies** | Core::Core, VulkanResources, Logger, EventBus, ResourceManagement, CashSystem, ShaderManagement, SVO, TBB, magic_enum |
+| `RenderGraphNodes` | the ~40 concrete nodes + their configs + the RmlUi UI node; depends on `RenderGraphCore` | adds glfw, rmlui_core, freetype (+ `RMLUI_STATIC_LIB`) |
+| `RenderGraph` | **INTERFACE facade** — every existing consumer links this and transitively gets both libs | — |
+
+**Invariant: editing a node can never recompile `RenderGraphCore`.** Verified structurally
+(no Core/Connection/Data/Debug/Selection TU includes a node header — the connection layer's
+old `TypedConnection.h → 3 node-config` leak was removed) and by measurement (below).
+
+The facade is `INTERFACE`, so it cannot take `PUBLIC`/`PRIVATE` properties — the generated
+`<VixenVersion.h>` include dir lives on `RenderGraphCore PUBLIC` (propagates through the
+facade to consumers and to Nodes).
+
+### 9.2 Node self-registration (no central list)
+
+Each node `.cpp` self-registers via a one-liner at file scope:
+
+```cpp
+// end of src/Nodes/CameraNode.cpp
+VIXEN_REGISTER_NODE(Vixen::RenderGraph::CameraNodeType);
+```
+
+`VIXEN_REGISTER_NODE` (in `include/Core/NodeRegistration.h`) appends a registrar thunk to a
+global Meyers-singleton manifest at dynamic-init. `RegisterAllNodes(NodeTypeRegistry&)`
+replays that manifest into any per-`EngineContext` registry; wire it via
+`EngineConfig::registerNodeTypes`. The app (`VulkanGraphApplication`) and the benchmark
+(`BenchmarkRunner`) both use it — there is **no hand-maintained registration list anywhere**.
+
+### 9.3 Whole-archive requirement (the #1 footgun)
+
+The registrars are anonymous-namespace statics that nothing references, so a static-library
+linker **strips them** by default. The facade therefore links `RenderGraphNodes`
+**whole-archive** (`$<LINK_LIBRARY:WHOLE_ARCHIVE,RenderGraphNodes>` on CMake ≥3.24, with
+MSVC `/WHOLEARCHIVE` and GNU `--whole-archive` fallbacks). `tests/test_node_self_registration.cpp`
+is the guard: without whole-archive `GetNodeTypeCount()` collapses to 0; with it, ≥32.
+**If that test goes red after a CMake change, check the link command for the whole-archive flag first.**
+
+### 9.4 Adding a node now
+
+1. Create `include/Nodes/XNode.h` (+ `XNodeType`), `src/Nodes/XNode.cpp`, `include/Data/Nodes/XNodeConfig.h`.
+2. Add `VIXEN_REGISTER_NODE(Vixen::RenderGraph::XNodeType);` at the end of `XNode.cpp`.
+3. Add the sources to `RENDERGRAPH_NODE_*` in `libraries/RenderGraph/CMakeLists.txt`.
+
+No central registry edit, no app/benchmark list edit.
+
+### 9.5 Build-granularity results (Ninja preset)
+
+| Scenario | Before | After (M2+M3) |
+|----------|--------|---------------|
+| Edit one node `.cpp` body | ~119 TUs | **1** (just that node) |
+| Edit one node config header | ~119 TUs | **5** (the node + the app/benchmark/test TUs that *wire* it) |
+| `RenderGraphCore` recompiles on a node change | yes (dead registry) | **never** |
+
+The residual 5-TU config-header cost is inherent to compile-time wiring (whoever wires a node
+must see its config). Shrinking the app's share (one large `VulkanGraphApplication.cpp` TU) is
+the optional **M4** (per-subgraph construction TUs), deferred.
+
+### 9.6 Known follow-up
+
+- **`StructSpreaderNode` is dead code** — its `.cpp` is fully commented out, so
+  `StructSpreaderNodeType::CreateInstance` is declared but undefined. It is intentionally
+  left unregistered (registering it would force its vtable and fail to link). Decide
+  delete-vs-implement separately.
+
+---
+
+## 10. Related Pages
 
 ### Core Documentation
 

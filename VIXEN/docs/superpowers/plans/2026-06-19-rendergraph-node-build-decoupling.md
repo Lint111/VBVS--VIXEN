@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **STATUS (2026-06-19):** M1 ✅ (prior session) · M2 ✅ · M3 ✅ · M5 ✅ (measured + documented) · **M4 deferred** (optional; only worth it to shrink the app's single large construction TU). Commits on `claude/rendergraph-node-build-decoupling`: `3ec2e6f3` (TypedConnection node-config leak removed), `ec86171b` (M2 split), `c1ee6889`+`f7635a39`+`b81064c0` (M3). Builds/measurements use the **`vixen-ninja` preset**, not the VS-generator commands written in the steps below. Self-registration verified on real GPU via `vixen_benchmark`. One follow-up surfaced: `StructSpreaderNode` is dead code (left unregistered).
+
 **Goal:** Make RenderGraph builds granular so editing one node (or wiring a few nodes) does not recompile the graph core, the registry, or unrelated nodes — without weakening any compile-time guarantee.
 
 **Architecture:** Three moves, in value order for the build-granularity goal. (1) Delete the dead central node registry (a 34-header recompile chokepoint that nothing calls). (2) Split the monolithic `RenderGraph` static library into `RenderGraphCore` (graph engine, zero concrete-node deps) + `RenderGraphNodes` (the 40 nodes), with a back-compat `RenderGraph` alias so consumers are untouched. (3) Replace the hand-maintained registration list with node self-registration (a global manifest replayed per `EngineContext`), linked whole-archive so static-lib registrars are not stripped. An optional fourth move splits the app's graph construction into per-subgraph translation units to shrink the app's recompile blast radius.
@@ -728,11 +730,16 @@ grep -ciE 'Compiling|/c ' build_touch_cameracpp_AFTER.log
 
 - [ ] **Step 2: Fill in the results table**
 
-| Scenario | TUs recompiled BEFORE | TUs recompiled AFTER |
+| Scenario | TUs recompiled BEFORE | TUs recompiled AFTER (M2+M3, Ninja preset) |
 |---|---|---|
-| Edit one node config header | (Task 0 Step 2) | (Task 8 Step 1) |
-| Edit one node `.cpp` body | (Task 0 Step 3) | (Task 8 Step 1) |
-| `RenderGraphCore` recompiles on node change? | yes (dead registry) | no (Milestone 2 Step 5) |
+| Edit one node config header | ~119 (VS baseline) | **5** (node + the app/benchmark/test TUs that wire it) |
+| Edit one node `.cpp` body | ~119 (VS baseline) | **1** (just that node's TU) |
+| `RenderGraphCore` recompiles on node change? | yes (dead registry) | **no — never** |
+
+> Measured 2026-06-19 via the `vixen-ninja` preset (touch → rebuild → count
+> `Building CXX object`). The 5-TU config-header cost is inherent to compile-time wiring
+> (the app/benchmark/anchor-test TUs that `AddNode<>`/`Connect` Camera must see its config).
+> Shrinking the app's single large `VulkanGraphApplication.cpp` TU is the optional **M4**, deferred.
 
 - [ ] **Step 3: Update architecture docs (obsidian-first rule)**
 
