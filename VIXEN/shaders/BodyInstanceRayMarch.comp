@@ -574,54 +574,42 @@ void main() {
         g_brickArrayBase = configs[oi].brickArrayBase;
 
         // ------------------------------------------------------------------
-        // World→octree-local ray transform
+        // World → instance-local ray transform (single consistent frame)
         //
-        // The instance places the body at inst.worldPos scaled by
-        // inst.renderScale.  The octree occupies its native [0,1]^3 local
-        // space (as defined by configs[oi].gridMin/gridMax and worldToLocal).
+        // The instance places the body at inst.worldPos, scaled by
+        // inst.renderScale.  Serialize emits the BASE (un-instanced) octree
+        // mapping in configs[oi]: worldToLocal maps the base octree's world
+        // frame → its [0,1]^3 grid (it already folds in the gridMin/gridMax
+        // centre — we must NOT re-apply a centre offset here).
         //
-        // The worldToLocal matrix in configs[oi] maps world→[0,1] for the
-        // base (unit) octree.  For an instance with position worldPos and
-        // scale renderScale the effective transform is:
+        // To render an INSTANCE we first de-instance the world ray into the
+        // base octree's world frame by undoing the placement, then let
+        // traverseOctreeInstanced apply configs[oi].worldToLocal exactly once:
         //
-        //   octreeLocal = worldToLocal * ((world - worldPos) / renderScale + centre)
+        //   p_base = (p_world      - worldPos) / renderScale     (point)
+        //   d_base =  d_world                  / renderScale     (direction)
         //
-        // We implement this by constructing an adjusted ray origin/dir in
-        // terms of the octree's own normalised local frame.
+        // CRITICAL: the SAME /renderScale must scale BOTH origin and
+        // direction, or the t-parametrisation is warped and hitT (used for the
+        // cross-instance nearest-hit test and the LOD coarse-shade distance)
+        // ends up in inconsistent units when renderScale != 1.  The translation
+        // term drops out of the direction because a direction is a difference
+        // of points; the scale does not.
         //
-        // Step 1: Translate ray so the instance's world centre is at origin.
-        //         The octree's world-space centre is (gridMin+gridMax)*0.5 as
-        //         seen by the worldToLocal matrix; after transform that lands
-        //         at (0.5,0.5,0.5).  The instance shifts this world centre to
-        //         inst.worldPos.  So we subtract inst.worldPos then divide by
-        //         renderScale to undo the instance scaling before applying the
-        //         base octree transform.
+        // We deliberately do NOT renormalise d_base: traverseOctreeInstanced
+        // and initRayCoefficients are scale-tolerant (they derive t-spans from
+        // ratios), and keeping d_base = rayDir/renderScale means hitT is in the
+        // SAME world-distance units across every instance, so the nearest-hit
+        // comparison is correct.  (rayDir itself is already unit-length.)
         // ------------------------------------------------------------------
-        vec3 relOrigin = (rayOrigin - inst.worldPos) / inst.renderScale;
-        vec3 relDir    = rayDir; // direction is scale-invariant (we normalize after)
-        // Note: relDir does NOT need dividing by renderScale — the worldToLocal
-        // matrix will handle the orientation; renderScale only affects the
-        // origin offset.  The traversal uses the world-space ray for lighting
-        // normals anyway; what matters is that the entry AABB test and coef
-        // initialisation get the right local-space origin.
+        float invScale = 1.0 / inst.renderScale;
+        vec3  instOrigin = (rayOrigin - inst.worldPos) * invScale;
+        vec3  instDir    = rayDir * invScale;
 
-        // Reconstruct a world-space ray that, after worldToLocal, lands
-        // exactly as if the octree were positioned at worldPos with renderScale.
-        // We pass these adjusted world-space coords to traverseOctreeInstanced
-        // which internally applies octreeConfig.worldToLocal.
-        //
-        // The adjusted "world origin" is such that applying worldToLocal yields
-        // the correct local position:  worldToLocal*(adjustedOrigin,1) must
-        // equal the local coordinate of the ray in the instanced frame.
-        //
-        // Simplest: shift the camera into the instance's local frame (undo
-        // instance placement), then let worldToLocal do the rest.
-        vec3 adjustedOrigin = inst.worldPos + mat3(configs[oi].localToWorld)
-                              * (mat3(configs[oi].worldToLocal) * relOrigin);
-
-        // AABB bound-test in local space (quick cull before full traversal)
-        vec3 localRayOrigin = (configs[oi].worldToLocal * vec4(adjustedOrigin, 1.0)).xyz;
-        vec3 localRayDir    = mat3(configs[oi].worldToLocal) * relDir;
+        // Quick AABB cull in the base octree's [0,1]^3 grid (same transform the
+        // traversal uses internally), before paying for full ESVO descent.
+        vec3 localRayOrigin = (configs[oi].worldToLocal * vec4(instOrigin, 1.0)).xyz;
+        vec3 localRayDir    = mat3(configs[oi].worldToLocal) * instDir;
         vec2 gridT = rayAABBIntersection(localRayOrigin, localRayDir, vec3(0.0), vec3(1.0));
         if (gridT.y < 0.0) continue;  // ray misses this instance's AABB
 
@@ -650,7 +638,12 @@ void main() {
         uint  hitBrick;
         uint  hitVoxel;
 
-        bool hit = traverseOctreeInstanced(adjustedOrigin, relDir,
+        // Pass the de-instanced ray (origin AND direction both scaled by
+        // 1/renderScale).  Because rayDir is unit-length, the returned hitT
+        // equals the TRUE world distance along the original ray
+        // (instOrigin + t*instDir maps back to rayOrigin + t*rayDir), so the
+        // cross-instance nearest-hit test below compares like-for-like.
+        bool hit = traverseOctreeInstanced(instOrigin, instDir,
                                            hitColor, hitNormal, hitT,
                                            hitBrick, hitVoxel, dbg);
 
