@@ -4,6 +4,7 @@
 #include "Logger.h"
 #include <cstdlib>     // std::getenv / ::setenv for the WSL2 Dozen ICD selection
 #include <filesystem>  // std::filesystem::exists for the WSL2 Dozen ICD selection
+#include <cmath>       // std::tan for the LOD ray-cone (raySizeCoef) computation
 
 #define GLFW_INCLUDE_NONE   // don't pull in <GL/gl.h> (absent on headless/WSL); Vulkan-only below
 #define GLFW_INCLUDE_VULKAN
@@ -1209,11 +1210,29 @@ void VulkanGraphApplication::BuildRenderGraph() {
         mainLogger->Info("[BuildRenderGraph] Loop ID set, moving to shader library...");
     }
 
+    // Vertical FOV of the ray-march camera, in degrees. Single source of truth: used both to
+    // configure CameraNode (PARAM_FOV, below) and to derive the LOD ray-cone spread (raySizeCoef).
+    constexpr float kRaymarchCameraFovDegrees = 45.0f;
+
     // M-wire Task 8: set LOD push constant values (fields 8 and 9 of BodyInstanceRayMarch.comp).
+    // raySizeCoef is the ray cone spread per unit distance — drives the screen-space-error LOD
+    // stop in BodyInstanceRayMarch.comp (gated on raySizeCoef > 0.0). Match the reference
+    // SVOLOD.h::LODParameters::fromCamera: 2*tan((fovY / screenHeight) / 2), with fovY in radians
+    // and screenHeight the swapchain pixel height (the same `height` used for dispatch dims below).
+    // kRaymarchCameraFovDegrees is the vertical FOV; it is fed to CameraNode (PARAM_FOV) below so
+    // the two stay in lock-step. raySizeBias = 0.0 (pinhole camera; zero cone diameter at origin).
+    const float fovYRadians   = kRaymarchCameraFovDegrees * (3.14159265358979323846f / 180.0f);
+    const float screenHeightF = static_cast<float>(height);
+    const float raySizeCoef   = 2.0f * std::tan((fovYRadians / screenHeightF) * 0.5f);
     auto* raySizeCoefConst = static_cast<ConstantNode*>(renderGraph->GetInstance(raySizeCoefConstant));
-    raySizeCoefConst->SetValue<float>(0.0f);   // 0.0 = disable LOD; set 2*tan(fov/h/2) to enable
+    raySizeCoefConst->SetValue<float>(raySizeCoef);   // 2*tan(fovY/h/2): LOD enabled (Task 7)
     auto* raySizeBiasConst = static_cast<ConstantNode*>(renderGraph->GetInstance(raySizeBiasConstant));
     raySizeBiasConst->SetValue<float>(0.0f);   // 0.0 = pinhole camera bias
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info("[BuildRenderGraph] LOD raySizeCoef=" + std::to_string(raySizeCoef) +
+                         " (fov=" + std::to_string(kRaymarchCameraFovDegrees) + " deg, screenHeight=" +
+                         std::to_string(height) + ")");
+    }
 
     auto* frameSync = static_cast<FrameSyncNode*>(renderGraph->GetInstance(frameSyncNode));
 
@@ -1302,7 +1321,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
         cameraLogger->SetTerminalOutput(false);
     }
 
-    camera->SetParameter(CameraNodeConfig::PARAM_FOV, 45.0f);
+    camera->SetParameter(CameraNodeConfig::PARAM_FOV, kRaymarchCameraFovDegrees);  // shared with raySizeCoef
     camera->SetParameter(CameraNodeConfig::PARAM_NEAR_PLANE, 0.1f);
     camera->SetParameter(CameraNodeConfig::PARAM_FAR_PLANE, 500.0f);
     // Camera presets for Cornell box (grid spans [0,128], center at 64,64,64)
