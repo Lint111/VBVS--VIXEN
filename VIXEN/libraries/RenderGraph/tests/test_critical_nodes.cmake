@@ -277,3 +277,26 @@ set_target_properties(test_mvp_uniform_node PROPERTIES FOLDER "Tests/RenderGraph
 gtest_discover_tests(test_mvp_uniform_node)
 
 message(STATUS "[RenderGraph Tests] Added: test_mvp_uniform_node (AR#31)")
+
+# BodyOctreeSceneNode software-Vulkan (lavapipe) LIFETIME test.
+# Drives the REAL node lifecycle (Compile -> Execute ring cycles -> grow -> Cleanup
+# recompile/teardown -> device destroy) on the lavapipe CPU rasterizer under the
+# Khronos validation layer, asserting NO lifetime errors (destroy-while-bound,
+# double-free, leaked objects). Links the same set as the FR-7 ring sibling
+# test_dynamic_instance_buffer_node; SVO (ShellOctree/PackInstances) comes in via
+# the RenderGraph link closure. See the file header for the SAFETY contract and the
+# required VK_ICD_FILENAMES (lavapipe) + VK_LAYER_PATH (validation) run-time env.
+add_executable(test_body_octree_lifetime
+    Nodes/test_body_octree_lifetime.cpp
+)
+
+target_link_libraries(test_body_octree_lifetime PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+if(TARGET SVO)
+    target_link_libraries(test_body_octree_lifetime PRIVATE SVO)
+endif()
+
+# Visual Studio solution folder organization
+set_target_properties(test_body_octree_lifetime PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_body_octree_lifetime)
+
+message(STATUS "[RenderGraph Tests] Added: test_body_octree_lifetime (lavapipe lifetime)")
