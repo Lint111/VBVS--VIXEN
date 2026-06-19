@@ -1,3 +1,11 @@
+> **⚠️ 2026-06-19 — current work is on branch `claude/rendergraph-node-build-decoupling`.**
+> See `Vixen-Docs/05-Progress/Session-Handoff-2026-06-19.md` for the live handoff
+> (build-env Ninja preset fix + RenderGraph stale-test cleanup + node build-decoupling M1;
+> M2–M5 pending). **Build with the `vixen-ninja` preset, not `cmake -B build`.**
+> Everything below is stale (Sprint 6, Jan 2026).
+
+---
+
 # Active Context - Sprint 6 Phase 3
 
 **Last Updated:** 2026-01-09
