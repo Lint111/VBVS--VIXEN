@@ -510,3 +510,26 @@ if(TARGET SVO)
             COMMENT "Copying TBB DLL for cpu_body_render")
     endif()
 endif()
+
+# ===========================================================================
+# CPU Body Render Diagnostics  (artifact isolation — pure castRay, NO Vulkan)
+# ===========================================================================
+# 5 diagnostic variant PNGs: shell/solid/thickband × depth-6/depth-8.
+# Same NEAR camera as cpu_body_render. Not a gtest target.
+if(TARGET SVO)
+    add_executable(cpu_body_render_diag cpu_body_render_diag.cpp)
+    target_link_libraries(cpu_body_render_diag PRIVATE
+        SVO GaiaVoxelWorld VoxelComponents VoxelData)
+    if(TARGET stb)
+        target_link_libraries(cpu_body_render_diag PRIVATE stb)
+    endif()
+    target_include_directories(cpu_body_render_diag PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../../render)
+    set_target_properties(cpu_body_render_diag PROPERTIES FOLDER "Tools/SVO")
+    if(TARGET TBB::tbb)
+        add_custom_command(TARGET cpu_body_render_diag POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:cpu_body_render_diag>
+            COMMENT "Copying TBB DLL for cpu_body_render_diag")
+    endif()
+endif()
