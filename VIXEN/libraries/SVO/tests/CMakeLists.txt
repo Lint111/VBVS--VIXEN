@@ -478,3 +478,35 @@ if(TARGET TBB::tbb)
         COMMENT "Copying TBB DLL for test_shell_octree_gpu")
 endif()
 gtest_discover_tests(test_shell_octree_gpu)
+
+# ===========================================================================
+# CPU Body Render Tool  (headless visual check — pure castRay, NO Vulkan/GPU)
+# ===========================================================================
+# Standalone `main` that mirrors BodyInstanceRayMarch.comp ON THE CPU using the
+# proven LaineKarrasOctree::castRay / castRayWithLOD traversal, rendering the SP2
+# body scene to two PNGs (/tmp/body_render_far.png + _near.png). It builds the same
+# ≤3 per-kind shell octrees as BodyOctreeSceneNode and reuses vixen/render's
+# BuildBodyInstances rule. It touches NO Vulkan — safe to run anywhere.
+#
+# Not a gtest target (it writes images + prints a report), so no gtest_discover_tests.
+if(TARGET SVO)
+    add_executable(cpu_body_render cpu_body_render_main.cpp)
+    target_link_libraries(cpu_body_render PRIVATE
+        SVO GaiaVoxelWorld VoxelComponents VoxelData)
+    # glm comes transitively from SVO (PUBLIC). stb provides stb_image_write.h.
+    if(TARGET stb)
+        target_link_libraries(cpu_body_render PRIVATE stb)
+    endif()
+    # vixen/render headers (scene_instances.h / star_scene.h) live beside the engine
+    # submodule at <repo>/vixen/render. From this dir (.../VIXEN/libraries/SVO/tests)
+    # that is five levels up (tests→SVO→libraries→VIXEN→engine→vixen) then /render.
+    target_include_directories(cpu_body_render PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../../render)
+    set_target_properties(cpu_body_render PROPERTIES FOLDER "Tools/SVO")
+    if(TARGET TBB::tbb)
+        add_custom_command(TARGET cpu_body_render POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:cpu_body_render>
+            COMMENT "Copying TBB DLL for cpu_body_render")
+    endif()
+endif()
