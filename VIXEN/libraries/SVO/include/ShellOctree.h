@@ -102,6 +102,11 @@ inline ShellOctree BuildShellOctree(int depth, uint32_t materialId) {
         *result.world, result.registry.get(), maxLevels, kBrickDepthLevels);
     result.octree->rebuild(*result.world, worldMin, worldMax);
 
+    // A shell IS a body octree (integer-grid voxels at worldMin=0, GPU-serializable brick
+    // layout): route its non-LOD castRay through the GPU-parity traversal so body
+    // collision/queries match the renderer exactly (LaineKarrasOctree::setBodyOctree).
+    result.octree->setBodyOctree(true);
+
     return result;
 }
 

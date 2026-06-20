@@ -480,6 +480,28 @@ endif()
 gtest_discover_tests(test_shell_octree_gpu)
 
 # ===========================================================================
+# GPU Parity Tests  (castRay vs the GpuTraversalMirror oracle — NO Vulkan/GPU)
+# ===========================================================================
+# Drives LaineKarrasOctree::castRay to bit-for-bit parity with a faithful 1:1 C++
+# mirror of the GPU body shader (GpuTraversalMirror.h), run against the EXACT byte
+# buffers the shader consumes (ShellOctreeGpu::Serialize). Headless / gtest-only.
+add_executable(test_gpu_parity test_gpu_parity.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_gpu_parity PRIVATE
+        GTest::gtest_main SVO GaiaVoxelWorld VoxelComponents VoxelData)
+else()
+    target_link_libraries(test_gpu_parity PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_gpu_parity PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_gpu_parity POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_gpu_parity>
+        COMMENT "Copying TBB DLL for test_gpu_parity")
+endif()
+gtest_discover_tests(test_gpu_parity)
+
+# ===========================================================================
 # CPU Body Render Tool  (headless visual check — pure castRay, NO Vulkan/GPU)
 # ===========================================================================
 # Standalone `main` that mirrors BodyInstanceRayMarch.comp ON THE CPU using the
