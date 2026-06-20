@@ -1,8 +1,9 @@
-> **⚠️ 2026-06-19 — node build-decoupling MERGED to local `main`** (fast-forward; feature branch
-> `claude/rendergraph-node-build-decoupling` deleted). `main` is 14 commits ahead of `origin/main`,
-> NOT pushed.
+> **⚠️ 2026-06-20 — node build-decoupling DONE, merged to `main`, PUSHED to `origin/main`.**
+> See the live handoff `Vixen-Docs/05-Progress/Session-Handoff-2026-06-20.md`.
 > Node build-decoupling **M2 (lib split) + M3 (self-registration) + M4 (app TU split) + M5 (docs)
-> ALL DONE & verified** (2026-06-19). See `Vixen-Docs/01-Architecture/RenderGraph-System.md` §9
+> ALL DONE & verified**; GUI `VIXEN.exe` **visually validated** (renders the Cornell-box default
+> scene cleanly, GPU picking works) and **validation-clean** after the shaderCounters (binding 8)
+> descriptor VUID fix (`b2f18808`). See `Vixen-Docs/01-Architecture/RenderGraph-System.md` §9
 > and `docs/superpowers/plans/2026-06-19-rendergraph-node-build-decoupling.md`. Earlier today:
 > build-env Ninja preset fix + RenderGraph stale-test cleanup + M1. **Build with the
 > `vixen-ninja` preset, not `cmake -B build`.** GUI VIXEN.exe verified on real GPU (render loop,
