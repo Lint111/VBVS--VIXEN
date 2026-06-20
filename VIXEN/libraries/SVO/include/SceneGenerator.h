@@ -119,15 +119,16 @@ struct SceneGeneratorParams {
     float persistence = 0.5f;
 
     // Urban/cityscape-specific params
-    uint32_t streetWidth = 0;  // 0 = auto
-    uint32_t blockCount = 4;
+    uint32_t streetWidth = 0;  // 0 = auto (thin, resolution-scaled)
+    uint32_t blockCount = 2;   // 2x2 blocks: keeps the building footprint high enough that the
+                               // cityscape can reach its ~90% density spec at all resolutions
     float buildingDensity = 0.4f;
     float heightVariance = 0.8f;
     uint32_t blockSize = 8;
 
     // Tunnel/cave-specific params
     uint32_t cellCount = 8;
-    float wallThickness = 0.3f;
+    float wallThickness = 0.5f;  // Cave solid-fraction threshold; 0.5 => ~50% density (the spec)
 
     // General extensibility
     std::map<std::string, float> customParams;
@@ -514,7 +515,7 @@ public:
     static void Generate(
         VoxelGrid& grid,
         uint32_t streetWidth = 0,
-        uint32_t blockCount = 4
+        uint32_t blockCount = 2
     );
 };
 
