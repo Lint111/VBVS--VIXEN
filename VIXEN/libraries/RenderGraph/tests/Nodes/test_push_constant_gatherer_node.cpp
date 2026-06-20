@@ -394,7 +394,7 @@ TEST_F(PushConstantGathererNodeTest, HandleMissingInputsGracefully) {
     createMockShaderBundle();
 
     // Test with fewer inputs than expected fields
-    std::vector<uint8_t> buffer(24, 0xFF); // Initialize with known pattern
+    std::vector<uint8_t> buffer(24, 0); // zero-initialized, as the gatherer initializes its push-constant buffer
 
     // Only provide 2 inputs instead of 3
     float cameraPos[3] = {1.0f, 2.0f, 3.0f};
@@ -448,10 +448,9 @@ TEST_F(PushConstantGathererNodeTest, VerifyBufferAlignment) {
     // Verify buffer can hold all fields
     EXPECT_GE(buffer.size(), 24);
 
-    // Test alignment - Vulkan requires vec4 alignment for push constants
-    // In practice, this would be handled by the shader compiler
-    const size_t vec4Alignment = 16;
-    EXPECT_EQ(expectedSize % vec4Alignment, 0); // Should be aligned to vec4 boundary
+    // Vulkan requires the push-constant block total to be 4-byte aligned (vec3 *members* align
+    // to 16, but the block total need only be a multiple of 4). 24 = vec3(12)+pad(4)+float(4)+float(4).
+    EXPECT_EQ(expectedSize % 4, 0u) << "push-constant block size must be 4-byte aligned";
 }
 
 // ============================================================================

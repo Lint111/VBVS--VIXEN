@@ -1,4 +1,5 @@
 #include "Nodes/BodyOctreeSceneNode.h"
+#include "Core/NodeRegistration.h"  // M3: VIXEN_REGISTER_NODE self-registration
 #include "Core/RenderGraph.h"
 #include "Core/NodeLogging.h"
 #include "Data/Nodes/FrameSyncNodeConfig.h"
@@ -372,3 +373,9 @@ void BodyOctreeSceneNode::DestroyBuffers() {
 }
 
 } // namespace Vixen::RenderGraph
+
+// Self-registration (M3): registrar kept in this TU; RenderGraphNodes is whole-archived so it is not stripped.
+// Required after the M4 app-TU split dropped VulkanGraphApplication::RegisterNodeTypes (which used to
+// hand-register this node); BuildRenderGraph now AddNode<BodyOctreeSceneNodeType>s it, so it must be in
+// the RegisterAllNodes manifest like every other node.
+VIXEN_REGISTER_NODE(Vixen::RenderGraph::BodyOctreeSceneNodeType);

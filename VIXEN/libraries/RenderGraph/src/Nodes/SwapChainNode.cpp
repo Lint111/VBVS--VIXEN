@@ -1,4 +1,5 @@
 #include "Nodes/SwapChainNode.h"
+#include "Core/NodeRegistration.h"
 #include "Data/Nodes/FrameSyncNodeConfig.h"  // Phase 0.4: For CURRENT_FRAME_INDEX input
 #include "Core/RenderGraph.h"
 #include "VulkanDevice.h"
@@ -542,3 +543,6 @@ void SwapChainNode::DestroyPerImageSyncResources() {
 }
 
 } // namespace Vixen::RenderGraph
+
+// Self-registration (M3): registrar kept in this TU; RenderGraphNodes is whole-archived so it is not stripped.
+VIXEN_REGISTER_NODE(Vixen::RenderGraph::SwapChainNodeType);

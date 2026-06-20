@@ -1,4 +1,5 @@
 #include "Nodes/PushConstantGathererNode.h"
+#include "Core/NodeRegistration.h"
 #include "Core/NodeContext.h"
 #include "Core/NodeLogging.h"
 #include "SpirvReflectionData.h"
@@ -535,3 +536,6 @@ ResourceType PushConstantGathererNode::GetResourceTypeForField(const PushConstan
 }
 
 } // namespace Vixen::RenderGraph
+
+// Self-registration (M3): registrar kept in this TU; RenderGraphNodes is whole-archived so it is not stripped.
+VIXEN_REGISTER_NODE(Vixen::RenderGraph::PushConstantGathererNodeType);

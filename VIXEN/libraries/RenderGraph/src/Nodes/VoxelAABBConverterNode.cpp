@@ -1,4 +1,5 @@
 #include "Nodes/VoxelAABBConverterNode.h"
+#include "Core/NodeRegistration.h"
 #include "VulkanDevice.h"
 #include "Core/NodeLogging.h"
 #include "Core/RenderGraph.h"
@@ -172,3 +173,6 @@ void VoxelAABBConverterNode::CleanupImpl(TypedCleanupContext& ctx) {
 }
 
 } // namespace Vixen::RenderGraph
+
+// Self-registration (M3): registrar kept in this TU; RenderGraphNodes is whole-archived so it is not stripped.
+VIXEN_REGISTER_NODE(Vixen::RenderGraph::VoxelAABBConverterNodeType);

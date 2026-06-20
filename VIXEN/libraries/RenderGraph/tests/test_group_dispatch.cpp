@@ -253,7 +253,8 @@ TEST(MultiDispatchNodeConfig, HasGroupInputsSlot) {
     EXPECT_EQ(nullability, SlotNullability::Optional);
 
     constexpr auto role = MultiDispatchNodeConfig::GROUP_INPUTS_Slot::role;
-    EXPECT_EQ(role, SlotRole::Dependency);
+    // Sprint 6.3 (938a95d1) hardcoded accumulation slots to Execute (transient-result semantics).
+    EXPECT_EQ(role, SlotRole::Execute);
 
     constexpr auto storageStrategy = MultiDispatchNodeConfig::GROUP_INPUTS_Slot::storageStrategy;
     EXPECT_EQ(storageStrategy, SlotStorageStrategy::Value);

@@ -1,4 +1,5 @@
 #include "Nodes/AccelerationStructureNode.h"
+#include "Core/NodeRegistration.h"
 #include "VulkanDevice.h"
 #include "Core/NodeLogging.h"
 #include "Core/RenderGraph.h"
@@ -322,3 +323,6 @@ void AccelerationStructureNode::InitializeDynamicTLAS(uint32_t imageCount) {
 }
 
 } // namespace Vixen::RenderGraph
+
+// Self-registration (M3): registrar kept in this TU; RenderGraphNodes is whole-archived so it is not stripped.
+VIXEN_REGISTER_NODE(Vixen::RenderGraph::AccelerationStructureNodeType);

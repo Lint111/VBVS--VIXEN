@@ -366,15 +366,18 @@ add_subdirectory(libraries)
 # GENERATED VERSION HEADER (AR#13)
 # ============================================================================
 # <VixenVersion.h> generated from project()'s VERSION (single source of truth) and put on
-# Vixen::RenderGraph's PUBLIC include path, so VIXEN's own TUs and any consumer linking
-# Vixen::RenderGraph can #include <VixenVersion.h>. The matching install() (into the SDK
-# include dir) lives in cmake/VixenInstall.cmake; INSTALL_INTERFACE include is already the
-# flattened include/ injected there, so the installed header resolves for consumers.
+# RenderGraphCore's PUBLIC include path, so VIXEN's own TUs and any consumer linking
+# Vixen::RenderGraph (the INTERFACE facade → RenderGraphCore) can #include <VixenVersion.h>.
+# (RenderGraph is now an INTERFACE library and cannot take PUBLIC include dirs directly;
+# Core's PUBLIC include propagates through the facade to every consumer and to Nodes.)
+# The matching install() (into the SDK include dir) lives in cmake/VixenInstall.cmake;
+# INSTALL_INTERFACE include is already the flattened include/ injected there, so the
+# installed header resolves for consumers.
 configure_file(
     ${CMAKE_CURRENT_SOURCE_DIR}/cmake/VixenVersion.h.in
     ${CMAKE_BINARY_DIR}/generated/include/VixenVersion.h
     @ONLY)
-target_include_directories(RenderGraph PUBLIC
+target_include_directories(RenderGraphCore PUBLIC
     $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated/include>)
 
 # ============================================================================

@@ -129,6 +129,7 @@ set(RENDERGRAPH_CORE_HEADERS
     include/Core/LoopManager.h
     include/Core/NodeInstance.h
     include/Core/NodeLogging.h
+    include/Core/NodeRegistration.h
     include/Core/NodeType.h
     include/Core/NodeTypeRegistry.h
     include/Core/PerFrameResources.h
@@ -166,6 +167,7 @@ set(RENDERGRAPH_CORE_SOURCES
     src/Core/GraphTopology.cpp
     src/Core/LoopManager.cpp
     src/Core/NodeInstance.cpp
+    src/Core/NodeRegistration.cpp
     src/Core/NodeType.cpp
     src/Core/NodeTypeRegistry.cpp
     src/Core/PerFrameResources.cpp
@@ -234,6 +236,7 @@ set(RENDERGRAPH_NODE_HEADERS
 
 set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/BoolOpNode.cpp
+    src/Nodes/ConstantNode.cpp  # M3: self-registration TU for the header-only Constant node types
     src/Nodes/CameraNode.cpp
     src/Nodes/CommandPoolNode.cpp
     src/Nodes/ComputeDispatchNode.cpp
@@ -341,61 +344,97 @@ set(RENDERGRAPH_SELECTION_SOURCES
 )
 
 # ============================================================================
-# Create Static Library
+# Create Libraries — split for build granularity:
+#   RenderGraphCore   graph engine, ZERO concrete-node dependencies
+#   RenderGraphNodes  the concrete nodes (+ their heavy deps), depends on Core
+#   RenderGraph       back-compat INTERFACE facade (consumers link this, get both)
+# Editing a node can never recompile RenderGraphCore — that is the whole point.
 # ============================================================================
 
-add_library(RenderGraph STATIC
+# ----------------------------------------------------------------------------
+# RenderGraphCore — graph engine, zero concrete-node dependencies
+# ----------------------------------------------------------------------------
+add_library(RenderGraphCore STATIC
     ${RENDERGRAPH_DATA_CORE_HEADERS}
     ${RENDERGRAPH_DATA_CORE_SOURCES}
-    ${RENDERGRAPH_DATA_NODE_CONFIGS}
     ${RENDERGRAPH_CONNECTION_HEADERS}
     ${RENDERGRAPH_CONNECTION_SOURCES}
     ${RENDERGRAPH_CORE_HEADERS}
     ${RENDERGRAPH_CORE_SOURCES}
-    ${RENDERGRAPH_NODE_HEADERS}
-    ${RENDERGRAPH_NODE_SOURCES}
     ${RENDERGRAPH_DEBUG_HEADERS}
     ${RENDERGRAPH_DEBUG_SOURCES}
     ${RENDERGRAPH_EVENT_HEADERS}
-    ${RENDERGRAPH_UI_HEADERS}
-    ${RENDERGRAPH_UI_SOURCES}
     ${RENDERGRAPH_SELECTION_HEADERS}
     ${RENDERGRAPH_SELECTION_SOURCES}
 )
 
+# ----------------------------------------------------------------------------
+# RenderGraphNodes — the concrete nodes (+ their heavy deps), depends on Core
+# ----------------------------------------------------------------------------
+add_library(RenderGraphNodes STATIC
+    ${RENDERGRAPH_DATA_NODE_CONFIGS}
+    ${RENDERGRAPH_NODE_HEADERS}
+    ${RENDERGRAPH_NODE_SOURCES}
+    ${RENDERGRAPH_UI_HEADERS}
+    ${RENDERGRAPH_UI_SOURCES}
+)
+
+# ----------------------------------------------------------------------------
+# RenderGraph — back-compat facade: existing consumers link this and get both.
+# RenderGraphNodes is linked WHOLE-ARCHIVE so the per-node VIXEN_REGISTER_NODE
+# registrars (anonymous-namespace statics that nothing references) are not
+# stripped by the linker. Without it RegisterAllNodes() registers nothing — the
+# guard is test_node_self_registration.
+# ----------------------------------------------------------------------------
+add_library(RenderGraph INTERFACE)
+target_link_libraries(RenderGraph INTERFACE RenderGraphCore)
+
+if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.24)
+    target_link_libraries(RenderGraph INTERFACE
+        "$<LINK_LIBRARY:WHOLE_ARCHIVE,RenderGraphNodes>")
+elseif(MSVC)
+    target_link_libraries(RenderGraph INTERFACE RenderGraphNodes)
+    target_link_options(RenderGraph INTERFACE
+        "/WHOLEARCHIVE:$<TARGET_FILE:RenderGraphNodes>")
+else()
+    target_link_libraries(RenderGraph INTERFACE
+        "-Wl,--whole-archive" RenderGraphNodes "-Wl,--no-whole-archive")
+endif()
+
 # ============================================================================
-# Compiler Options
+# Compiler Options (both compiled targets)
 # ============================================================================
 
 # MSVC: Enable /FS for parallel compilation PDB access and /bigobj for large object files
 if(MSVC)
-    target_compile_options(RenderGraph PRIVATE /FS /bigobj)
+    target_compile_options(RenderGraphCore PRIVATE /FS /bigobj)
+    target_compile_options(RenderGraphNodes PRIVATE /FS /bigobj)
 endif()
 
 # C++23 standard
-target_compile_features(RenderGraph PUBLIC cxx_std_23)
+target_compile_features(RenderGraphCore PUBLIC cxx_std_23)
+target_compile_features(RenderGraphNodes PUBLIC cxx_std_23)
 
 # ============================================================================
-# Include Directories
+# Include Directories (both targets: include/ root + generated SDI dirs)
 # ============================================================================
+# SDI header priority order: (1) dev-time tool-generated in source tree,
+# (2) build-time main app, (3) build-time benchmark app, (4) pre-built binaries.
+# Common headers (Headers.h / VixenHash.h / MeshData.h) come from Core::Core
+# (linked below), not the application layer (AR#3/#4 build-layering severance).
 
-target_include_directories(RenderGraph
-    PUBLIC
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-        # Common headers (Headers.h / VixenHash.h / MeshData.h) now come from Core::Core (linked below),
-        # not the application layer (AR#3/#4 build-layering severance).
-        # Generated SDI headers - priority order:
-        #   1. Dev-time: Tool-generated SDI files in source tree
-        #   2. Build-time: CMake-generated SDI files (main app)
-        #   3. Build-time: CMake-generated SDI files (benchmark app)
-        #   4. Binaries: Pre-built SDI files in binaries/generated/sdi
-        $<BUILD_INTERFACE:${VIXEN_ROOT}/generated/sdi>
-        $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/application/main/generated/sdi>
-        $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/application/benchmark/generated/sdi>
-        $<BUILD_INTERFACE:${VIXEN_ROOT}/binaries/generated/sdi>
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/src
-)
+foreach(rg_target RenderGraphCore RenderGraphNodes)
+    target_include_directories(${rg_target}
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<BUILD_INTERFACE:${VIXEN_ROOT}/generated/sdi>
+            $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/application/main/generated/sdi>
+            $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/application/benchmark/generated/sdi>
+            $<BUILD_INTERFACE:${VIXEN_ROOT}/binaries/generated/sdi>
+        PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+endforeach()
 
 # Note: CashSystem and ShaderManagement includes come from target_link_libraries below
 
@@ -403,7 +442,9 @@ target_include_directories(RenderGraph
 # Link Dependencies
 # ============================================================================
 
-target_link_libraries(RenderGraph
+# Core: graph-engine deps only. No glfw/rmlui/freetype — verified that no Core,
+# Connection, Data, Debug or Selection TU includes those; they are Nodes-only.
+target_link_libraries(RenderGraphCore
     PUBLIC
         Core::Core  # Common headers (Headers.h / VixenHash.h / MeshData.h) — AR#3/#4
         VulkanResources
@@ -415,6 +456,12 @@ target_link_libraries(RenderGraph
         SVO                    # Laine-Karras ESVO octrees
         magic_enum::magic_enum
         TBB::tbb               # Sprint 6.4: Parallel execution
+)
+
+# Nodes: depends on Core + the windowing/UI deps the concrete nodes pull in.
+target_link_libraries(RenderGraphNodes
+    PUBLIC
+        RenderGraphCore
         glfw                   # Cross-platform window/surface/input (WindowNode/InputNode/InstanceNode)
         rmlui_core             # Data-driven UI (RML/RCSS); freetype is its transitive font engine
         freetype
@@ -422,22 +469,26 @@ target_link_libraries(RenderGraph
         stb                    # header-only; only UiHitMask.cpp uses it (stbi_load for image hit-masks)
 )
 
-# RmlUi is built static (FetchContent); code including its headers needs this define.
-target_compile_definitions(RenderGraph PUBLIC RMLUI_STATIC_LIB)
+# RmlUi is built static (FetchContent); code including its headers needs this
+# define. Only the Nodes lib (UIRenderNode + UI headers) includes RmlUi.
+target_compile_definitions(RenderGraphNodes PUBLIC RMLUI_STATIC_LIB)
 
 # UIRenderNode loads RmlUi assets (fonts/docs) via paths relative to the exe (vixen_stage_assets
 # stages them next to demo binaries). Consumers that run from a different CWD (e.g. the UNDERTOW host)
 # wouldn't find them; this source-dir fallback lets the node resolve assets/ui/* from the engine tree
 # regardless of CWD. Private — only UIRenderNode.cpp uses it.
-target_compile_definitions(RenderGraph PRIVATE
+# NOTE (merge integration): post the M2 library split, `RenderGraph` is an INTERFACE alias and cannot
+# carry PRIVATE definitions; UIRenderNode.cpp lives in RenderGraphNodes, so target that lib (mirrors the
+# RMLUI_STATIC_LIB define above).
+target_compile_definitions(RenderGraphNodes PRIVATE
     VIXEN_UI_ASSET_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/assets")
 
 # ============================================================================
-# Install and Properties
+# Install and Properties (both static libs)
 # ============================================================================
 
 # Set output directory
-set_target_properties(RenderGraph PROPERTIES
+set_target_properties(RenderGraphCore RenderGraphNodes PROPERTIES
     ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
     FOLDER "Libraries"
 )
@@ -445,13 +496,14 @@ set_target_properties(RenderGraph PROPERTIES
 # Platform surface handling is now cross-platform via GLFW (glfwCreateWindowSurface +
 # glfwGetRequiredInstanceExtensions); no VK_USE_PLATFORM_WIN32_KHR define needed.
 
-# Precompiled headers for faster compilation
+# Precompiled headers for faster compilation. RenderGraphHeaders.h is Vulkan/GLM/STL
+# only (no node deps), so it lives on Core. Add a node-side PCH only if measured
+# beneficial (YAGNI for now).
 if(USE_PRECOMPILED_HEADERS)
-    # Use library-specific header (no GLI or other app-level dependencies)
-    target_precompile_headers(RenderGraph PRIVATE
+    target_precompile_headers(RenderGraphCore PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/RenderGraphHeaders.h"
     )
-    message(STATUS "RenderGraph: Precompiled headers enabled (using RenderGraphHeaders.h)")
+    message(STATUS "RenderGraphCore: Precompiled headers enabled (using RenderGraphHeaders.h)")
 
     # TBB-based executor needs TBB headers not in PCH - skip PCH for this file
     set_source_files_properties(

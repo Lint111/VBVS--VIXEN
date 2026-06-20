@@ -21,6 +21,11 @@ set(APP_SDI_OUTPUT_DIR "${CMAKE_BINARY_DIR}/application/main/generated/sdi")
 add_library(VixenApp STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanApplicationBase.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanGraphApplication.cpp
+    # M4: per-subgraph construction TUs (extracted from VulkanGraphApplication.cpp so a
+    # node-config edit recompiles only the subgraph that wires it, not the lifecycle code).
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildRenderGraph.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildUIGraph.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildInstancingDemoGraph.cpp
     ${HPP_FILES}
 )
 

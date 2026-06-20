@@ -434,8 +434,29 @@ Collect the following information:
 
 ---
 
+## Known Validation Issue: idOutputImage (binding 9) unbound
+
+`VoxelRayMarch.comp` / `VoxelRayMarch_Compressed.comp` statically write the pick-ID storage
+image `idOutputImage` at descriptor **binding 9** every pixel (`imageStore`). The benchmark's
+compute graph (`BenchmarkGraphFactory`) wires bindings 0–8 but has **no pick-ID target**, so
+binding 9 is reflected into the descriptor-set layout and statically used by the dispatch yet
+never updated — producing `VUID-vkCmdDispatch-None-08114` ("descriptor … idOutputImage … never
+been updated") every frame, and technically undefined behavior on the write.
+
+**Status:** known / accepted (2026-06-19). The benchmark does not use GPU picking, so the
+written pick IDs are discarded and the warning is benign for perf measurement. Decided not to
+fix (would require adding a `PickIdTargetNode` + binding-9 wiring to the benchmark graph).
+
+The analogous GUI-app issue was a *different* binding — `shaderCounters` (binding 8), mis-gated
+behind `#if USE_COMPRESSED_SHADER` — and **is fixed** (commit `b2f18808`); VIXEN.exe now runs
+validation-clean. To clear the benchmark warning later, mirror the app's binding-9 wiring
+(`PickIdTargetNode.ID_IMAGE_VIEW → gatherer binding 9`, Execute role).
+
+---
+
 ## Changelog
 
 | Date | Change |
 |------|--------|
 | 2025-12-17 | Initial creation for Sprint 2 completion |
+| 2026-06-19 | Documented known idOutputImage (binding 9) VUID; GUI shaderCounters (binding 8) VUID fixed (b2f18808) |

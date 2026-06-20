@@ -1,4 +1,5 @@
 #include "Nodes/VoxelGridNode.h"
+#include "Core/NodeRegistration.h"
 #include "SceneGenerator.h"
 #include "Data/VoxelOctree.h" // Legacy - will be removed
 #include "VulkanDevice.h"
@@ -537,3 +538,6 @@ void VoxelGridNode::CreateSceneViaCacher() {
 }
 
 } // namespace Vixen::RenderGraph
+
+// Self-registration (M3): registrar kept in this TU; RenderGraphNodes is whole-archived so it is not stripped.
+VIXEN_REGISTER_NODE(Vixen::RenderGraph::VoxelGridNodeType);

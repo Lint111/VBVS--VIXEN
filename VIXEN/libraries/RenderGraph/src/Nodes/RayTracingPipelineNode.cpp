@@ -1,4 +1,5 @@
 #include "Nodes/RayTracingPipelineNode.h"
+#include "Core/NodeRegistration.h"
 #include "VulkanDevice.h"
 #include "Core/NodeLogging.h"
 #include "Core/TaskProfiles/SimpleTaskProfile.h"  // Sprint 6.5: Profile integration
@@ -693,3 +694,6 @@ void RayTracingPipelineNode::DestroyPipeline() {
 }
 
 } // namespace Vixen::RenderGraph
+
+// Self-registration (M3): registrar kept in this TU; RenderGraphNodes is whole-archived so it is not stripped.
+VIXEN_REGISTER_NODE(Vixen::RenderGraph::RayTracingPipelineNodeType);

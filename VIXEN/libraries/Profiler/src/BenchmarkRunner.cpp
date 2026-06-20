@@ -13,6 +13,7 @@
 #include <sstream>
 #include <Core/RenderGraph.h>
 #include <Core/NodeTypeRegistry.h>
+#include <Core/NodeRegistration.h>  // M3: RegisterAllNodes (decentralized self-registration)
 #include <MessageBus.h>
 #include <Message.h>
 #include <MainCacher.h>
@@ -422,46 +423,12 @@ void CleanupHeadlessVulkan(HeadlessVulkanContext& ctx) {
 }
 
 void RegisterAllNodeTypes(Vixen::RenderGraph::NodeTypeRegistry& registry) {
-    using namespace Vixen::RenderGraph;
-
-    // Infrastructure nodes
-    registry.Register<InstanceNodeType>();
-    registry.Register<WindowNodeType>();
-    registry.Register<DeviceNodeType>();
-    registry.Register<CommandPoolNodeType>();
-    registry.Register<FrameSyncNodeType>();
-    registry.Register<SwapChainNodeType>();
-    registry.Register<RenderTargetNodeType>();
-
-    // Shader/descriptor nodes (shared by compute and fragment)
-    registry.Register<ShaderLibraryNodeType>();
-    registry.Register<DescriptorResourceGathererNodeType>();
-    registry.Register<PushConstantGathererNodeType>();
-    registry.Register<DescriptorSetNodeType>();
-
-    // Compute pipeline nodes
-    registry.Register<ComputePipelineNodeType>();
-    registry.Register<ComputeDispatchNodeType>();
-
-    // Fragment/graphics pipeline nodes
-    registry.Register<RenderPassNodeType>();
-    registry.Register<FramebufferNodeType>();
-    registry.Register<GraphicsPipelineNodeType>();
-    registry.Register<GeometryRenderNodeType>();
-
-    // RTX nodes
-    registry.Register<VoxelAABBConverterNodeType>();
-    registry.Register<AccelerationStructureNodeType>();
-    registry.Register<RayTracingPipelineNodeType>();
-    registry.Register<TraceRaysNodeType>();
-
-    // Scene/utility nodes
-    registry.Register<CameraNodeType>();
-    registry.Register<VoxelGridNodeType>();
-    registry.Register<InputNodeType>();
-    registry.Register<PresentNodeType>();
-    registry.Register<DebugBufferReaderNodeType>();
-    registry.Register<ConstantNodeType>();
+    // M3: delegate to the library's decentralized self-registration. Nodes self-register
+    // via VIXEN_REGISTER_NODE (RenderGraphNodes is whole-archived), so there is no longer a
+    // hand-maintained list to keep in sync with the app's. The set registered here is a
+    // superset of what the benchmark wires — extra registered types are harmless (AddNode<T>
+    // only needs its own type present).
+    Vixen::RenderGraph::RegisterAllNodes(registry);
 }
 
 } // anonymous namespace

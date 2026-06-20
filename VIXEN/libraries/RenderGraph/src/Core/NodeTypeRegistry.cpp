@@ -1,46 +1,6 @@
 #include "Core/NodeTypeRegistry.h"
 #include <algorithm>
 
-// Phase F+ node types
-#include "Nodes/WindowNode.h"
-#include "Nodes/DeviceNode.h"
-#include "Nodes/SwapChainNode.h"
-#include "Nodes/DepthBufferNode.h"
-#include "Nodes/RenderTargetNode.h"
-#include "Nodes/PickIdTargetNode.h"
-#include "Nodes/InstanceBufferNode.h"
-#include "Nodes/DynamicInstanceBufferNode.h"
-#include "Nodes/MvpUniformNode.h"
-#include "Nodes/RenderPassNode.h"
-#include "Nodes/FramebufferNode.h"
-#include "Nodes/FrameSyncNode.h"
-#include "Nodes/ShaderLibraryNode.h"
-#include "Nodes/GraphicsPipelineNode.h"
-#include "Nodes/DescriptorSetNode.h"
-#include "Nodes/VertexBufferNode.h"
-#include "Nodes/TextureLoaderNode.h"
-#include "Nodes/CommandPoolNode.h"
-#include "Nodes/GeometryRenderNode.h"
-#include "Nodes/PresentNode.h"
-#include "Nodes/LoopBridgeNode.h"
-
-// Phase G node types
-#include "Nodes/ComputePipelineNode.h"
-#include "Nodes/ComputeDispatchNode.h"
-
-// Phase H node types
-#include "Nodes/InstanceNode.h"
-#include "Nodes/CameraNode.h"
-#include "Nodes/VoxelGridNode.h"
-#include "Nodes/InputNode.h"
-#include "Nodes/SelectionCoordinatorNode.h"
-#include "Nodes/VoxelSelectionProviderNode.h"
-// Note: ConstantNodeType excluded - has circular dependency (ConstantNode.h uses RenderGraph inline)
-// ConstantNodeType must be registered separately where RenderGraph.h is already included
-#include "Nodes/DescriptorResourceGathererNode.h"
-#include "Nodes/PushConstantGathererNode.h"
-#include "Nodes/DebugBufferReaderNode.h"
-
 namespace Vixen::RenderGraph {
 
 bool NodeTypeRegistry::RegisterNodeType(std::unique_ptr<NodeType> nodeType) {
@@ -161,48 +121,6 @@ void NodeTypeRegistry::Clear() {
     nameToId.clear();
     typeIndexToId.clear();
     nextTypeId = 1;
-}
-
-void RegisterBuiltInNodeTypes(NodeTypeRegistry& registry) {
-    // Register built-in node types using type-based API (zero string literals)
-    // Phase F+ nodes:
-    registry.Register<WindowNodeType>();
-    registry.Register<DeviceNodeType>();
-    registry.Register<SwapChainNodeType>();
-    registry.Register<DepthBufferNodeType>();
-    registry.Register<RenderTargetNodeType>();
-    registry.Register<PickIdTargetNodeType>();
-    registry.Register<InstanceBufferNodeType>();
-    registry.Register<DynamicInstanceBufferNodeType>();
-    registry.Register<MvpUniformNodeType>();
-    registry.Register<RenderPassNodeType>();
-    registry.Register<FramebufferNodeType>();
-    registry.Register<FrameSyncNodeType>();
-    registry.Register<ShaderLibraryNodeType>();
-    registry.Register<GraphicsPipelineNodeType>();
-    registry.Register<DescriptorSetNodeType>();
-    registry.Register<VertexBufferNodeType>();
-    registry.Register<TextureLoaderNodeType>();
-    registry.Register<CommandPoolNodeType>();
-    registry.Register<GeometryRenderNodeType>();
-    registry.Register<PresentNodeType>();
-    registry.Register<LoopBridgeNodeType>();
-
-    // Phase G nodes:
-    registry.Register<ComputePipelineNodeType>();
-    registry.Register<ComputeDispatchNodeType>();
-
-    // Phase H nodes:
-    registry.Register<InstanceNodeType>();
-    registry.Register<CameraNodeType>();
-    registry.Register<VoxelGridNodeType>();
-    registry.Register<InputNodeType>();
-    registry.Register<VoxelSelectionProviderNodeType>();  // SEL-P2: voxel-domain selection provider node
-    registry.Register<SelectionCoordinatorNodeType>();  // SEL-P2: engine-wide selection coordinator
-    // Note: ConstantNodeType must be registered in application code (circular dependency)
-    registry.Register<DescriptorResourceGathererNodeType>();
-    registry.Register<PushConstantGathererNodeType>();
-    registry.Register<DebugBufferReaderNodeType>();
 }
 
 } // namespace Vixen::RenderGraph

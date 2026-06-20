@@ -1,4 +1,5 @@
 #include "Nodes/CommandPoolNode.h"
+#include "Core/NodeRegistration.h"
 #include "Core/RenderGraph.h"
 #include "VulkanDevice.h"
 #include "Core/NodeLogging.h"
@@ -249,3 +250,6 @@ CommandPoolNode::PoolStats CommandPoolNode::GetPoolStats() const {
 }
 
 } // namespace Vixen::RenderGraph
+
+// Self-registration (M3): registrar kept in this TU; RenderGraphNodes is whole-archived so it is not stripped.
+VIXEN_REGISTER_NODE(Vixen::RenderGraph::CommandPoolNodeType);

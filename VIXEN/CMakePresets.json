@@ -1,0 +1,22 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": { "major": 3, "minor": 21, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "vixen-ninja",
+      "displayName": "VIXEN Ninja + sccache (fast incremental)",
+      "description": "Ninja generator so CMAKE_CXX_COMPILER_LAUNCHER (sccache) is honored and dependency tracking is fine-grained. Embedded (/Z7) debug info is required for sccache to cache MSVC debug builds (separate-PDB /Zi is non-cacheable and causes C1041 under parallel cl.exe). gtest_discover_tests runs at test time (PRE_TEST), not build time, so the build never executes test exes. Requires an MSVC environment (run from a VS Developer prompt or after vcvars64.bat).",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/../build-ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_POLICY_DEFAULT_CMP0141": "NEW",
+        "CMAKE_MSVC_DEBUG_INFORMATION_FORMAT": "Embedded",
+        "CMAKE_GTEST_DISCOVER_TESTS_DISCOVERY_MODE": "PRE_TEST"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "vixen-ninja", "configurePreset": "vixen-ninja" }
+  ]
+}

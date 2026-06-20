@@ -603,6 +603,22 @@ else()
 endif()
 
 # ===========================================================================
+# Node Self-Registration Anchor (M3)
+# ===========================================================================
+# Guards the whole-archive requirement: links the RenderGraph facade (which
+# whole-archives RenderGraphNodes). If that whole-archive is ever lost, the
+# per-node static registrars are stripped and GetNodeTypeCount() collapses to ~0,
+# failing this test.
+add_executable(test_node_self_registration test_node_self_registration.cpp)
+if(TARGET RenderGraph)
+    target_link_libraries(test_node_self_registration PRIVATE GTest::gtest_main RenderGraph)
+else()
+    target_link_libraries(test_node_self_registration PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_node_self_registration PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_node_self_registration)
+
+# ===========================================================================
 # CompileTimeResourceSystem Tests
 # ===========================================================================
 # Test suite for compile-time type system validation, caching, and traits.

@@ -15,9 +15,6 @@
 #include "Connection/Modifiers/FieldExtractionModifier.h"
 #include "Connection/Modifiers/SlotRoleModifier.h"
 #include "Connection/Modifiers/AccumulationSortConfig.h"
-#include "Data/Nodes/DescriptorResourceGathererNodeConfig.h"
-#include "Data/Nodes/PushConstantGathererNodeConfig.h"
-#include "Data/Nodes/StructSpreaderNodeConfig.h"
 #include <vector>
 #include <functional>
 
