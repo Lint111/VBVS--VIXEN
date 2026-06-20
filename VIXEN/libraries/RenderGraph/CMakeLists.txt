@@ -152,8 +152,9 @@ set(RENDERGRAPH_CORE_HEADERS
     include/Core/VariadicTypedNode.h
 )
 
+# Emptied: the deprecated SparseVoxelOctree (src/Data/VoxelOctree.cpp) was removed (live path is
+# LaineKarrasOctree). The remaining Data/ files are struct-only headers — no .cpp to compile here.
 set(RENDERGRAPH_DATA_CORE_SOURCES
-    src/Data/VoxelOctree.cpp
 )
 
 set(RENDERGRAPH_CORE_SOURCES

@@ -9,31 +9,8 @@
 # Compatible with VULKAN_TRIMMED_BUILD (headers only, no Vulkan required).
 # ===========================================================================
 
-# ---------------------------------------------------------------------------
-# Voxel Octree Tests (Phase H)
-# ---------------------------------------------------------------------------
-# Validates VoxelOctree functionality:
-# - Octree construction from voxel grids
-# - Empty space culling optimization
-# - Compression ratio calculation
-# - Serialization/deserialization
-# - Edge cases (power-of-2 validation, empty grids, filled grids)
-
-add_executable(test_voxel_octree
-    Data/test_voxel_octree.cpp
-)
-
-target_link_libraries(test_voxel_octree PRIVATE
-    GTest::gtest_main
-    RenderGraph
-)
-
-
-# Visual Studio solution folder organization
-set_target_properties(test_voxel_octree PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_voxel_octree)
-
-message(STATUS "[RenderGraph Tests] Added: test_voxel_octree")
+# Voxel Octree Tests removed — the deprecated SparseVoxelOctree class (and its
+# Data/test_voxel_octree.cpp) was deleted; the live voxel path is LaineKarrasOctree.
 
 # ---------------------------------------------------------------------------
 # Scene Generator Tests (Phase H.2.5)

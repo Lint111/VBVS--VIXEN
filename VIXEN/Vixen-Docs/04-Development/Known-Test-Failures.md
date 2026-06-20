@@ -25,27 +25,27 @@ to the current design (with the proving commit cited in each test). **Not** weak
 | `PushConstantGathererNodeTest.HandleMissingInputsGracefully` | buffer init `0xFF` | init `0` | (test-internal bug) |
 | `PushConstantGathererNodeTest.VerifyBufferAlignment` | `size % 16 == 0` (false math) | `size % 4 == 0` (Vulkan rule) | (test-internal bug) |
 
-## Deferred — REAL discrepancies (do NOT weaken to go green)
+## Resolved (2026-06-20) — both former "deferred" discrepancies
 
-### `test_scene_generators` — 5 failing — generator does not meet documented density spec
-The README/research test-matrix defines fixed scene densities (Cornell 10%, Cave 50%, Urban 90%),
-and `test_scene_generators` asserts them (±5%). The generators do not produce them:
-- **Urban 64/128/256**: target 90%, produces **~28%** (block-footprint prisms + streets can't reach 90% by construction).
-- **Cave_CustomDensity**: density parameter is **inverted** (higher param → lower density).
-- **CornellBox_64**: fixed 3-voxel walls don't scale, so 64³ reads ~23% vs the 10% target (128³/256³ pass).
+### `test_scene_generators` — FIXED (was 5 failing) — generators now meet the density spec
+The test's deprecated static wrappers delegate to the live `SceneGeneratorFactory` generators
+(used by `VoxelSceneCacher`), which now hit the documented densities (±5%):
+- **Cave**: the density threshold was inverted (`noiseValue > threshold` made a higher threshold
+  *sparser*) → flipped to `< threshold`; live default `wallThickness` 0.3 → 0.5 (the 50% spec).
+- **Cornell**: fixed 3-voxel walls (23% at 64³) → thickness scales with resolution (`res/50`,
+  min 1), holding ~10% across 64/128/256.
+- **Urban**: sparse 0.6-height blocks (~28%) → compute one uniform building height from the
+  footprint to reach ~90% by construction, thin resolution-scaled streets, `blockCount` 4 → 2.
 
-These are a **generator/spec gap, not stale tests** — weakening the asserts to the produced values
-would hide the defect and corrupt the research benchmark densities. **Decision needed:** fix the
-generators to meet the documented densities, or formally revise the research spec. (Also flagged in
-`05-Progress/Session-Handoff-2026-06-14-pm.md`.)
+All 19 `test_scene_generators` tests pass.
 
-### `test_voxel_octree` — 7 failing — deprecated class, ESVO-accessor staleness
-`SparseVoxelOctree::GetNodeCount()` / `GetMemoryUsage()` / `SerializeToBuffer()` read the legacy
-`nodes_` vector, but the build default flipped to ESVO (`esvoNodes_`), so they return 0 even though
-the tree built. `SparseVoxelOctree` is tagged *"Legacy — will be removed"*; the **live render path
-uses `LaineKarrasOctree`**, which does not consume these accessors. **Decision needed:** make the
-accessors ESVO-aware, or delete the deprecated class + its 7 tests (it is still `#include`d by
-`VoxelGridNode`, so removal requires de-referencing there).
+### `test_voxel_octree` — REMOVED — deprecated `SparseVoxelOctree` deleted
+`SparseVoxelOctree` was confirmed dead: never instantiated outside its own tests, the live render
+path is `LaineKarrasOctree`, its serialize had no live callers, and `VoxelGridNode`'s references
+were stale undefined declarations. Rather than port the legacy serialize/accessors to ESVO, the
+class, its `VoxelOctree.cpp`, and `test_voxel_octree.cpp` were deleted. The shared
+`OctreeNode`/`ESVONode`/`VoxelBrick` structs in `VoxelOctree.h` remain — they back the live path
+(`LaineKarrasOctree`, `GpuTraversalMirror`, `VoxelGridNode`).
 
 ## Not a failure — harness/CWD artifact
 
