@@ -300,3 +300,61 @@ set_target_properties(test_body_octree_lifetime PROPERTIES FOLDER "Tests/RenderG
 gtest_discover_tests(test_body_octree_lifetime)
 
 message(STATUS "[RenderGraph Tests] Added: test_body_octree_lifetime (lavapipe lifetime)")
+
+# ===========================================================================
+# BodyInstanceRayMarch.comp REAL-SHADER render-to-PNG test (lavapipe).
+# ===========================================================================
+# Compiles the SHIPPED ray-march compute shader to SPIR-V at build time with the
+# bundled glslc, then renders the SP2 body scene through it on the lavapipe CPU
+# rasterizer and dumps /tmp/glsl_shader_near.png. Same SAFETY contract + env as
+# test_body_octree_lifetime (lavapipe ICD + validation layer; software device is
+# hard-asserted before any vkQueueSubmit). The PNG is directly comparable to the
+# CPU castRay reference (cpu_body_render NEAR view) to settle the brick-crack Q.
+# NOTE: do NOT gate on if(TARGET SVO) — at the point tests/CMakeLists.txt includes
+# this file the SVO target is not yet visible in this directory scope (subdirectory
+# ordering). SVO symbols (ShellOctree/BodyInstanceGpu, header-only + lib) reach this
+# target transitively via RenderGraph in RENDERGRAPH_TEST_COMMON_LIBS, exactly like
+# test_body_octree_lifetime above (whose own `if(TARGET SVO)` link is likewise a no-op).
+
+# --- Compile BodyInstanceRayMarch.comp -> SPIR-V with the bundled glslc ---
+# VIXEN_SHADER_SOURCE_DIR is <VIXEN>/shaders; the bundled SDK sits beside it.
+set(_brm_shader_dir "${VIXEN_SHADER_SOURCE_DIR}")
+set(_brm_glslc "${_brm_shader_dir}/../.vulkan-sdk/1.4.350.1/x86_64/bin/glslc")
+set(_brm_src "${_brm_shader_dir}/BodyInstanceRayMarch.comp")
+set(_brm_spv "${CMAKE_CURRENT_BINARY_DIR}/BodyInstanceRayMarch.spv")
+
+add_custom_command(
+    OUTPUT  ${_brm_spv}
+    COMMAND ${_brm_glslc}
+            -fshader-stage=compute
+            -I ${_brm_shader_dir}
+            --target-env=vulkan1.3
+            ${_brm_src}
+            -o ${_brm_spv}
+    DEPENDS ${_brm_src}
+    COMMENT "Compiling BodyInstanceRayMarch.comp -> SPIR-V (bundled glslc)"
+    VERBATIM)
+add_custom_target(body_instance_raymarch_spv DEPENDS ${_brm_spv})
+
+add_executable(test_body_instance_raymarch_render
+    Nodes/test_body_instance_raymarch_render.cpp
+)
+add_dependencies(test_body_instance_raymarch_render body_instance_raymarch_spv)
+target_link_libraries(test_body_instance_raymarch_render PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+if(TARGET SVO)
+    target_link_libraries(test_body_instance_raymarch_render PRIVATE SVO)
+endif()
+if(TARGET stb)
+    target_link_libraries(test_body_instance_raymarch_render PRIVATE stb)
+else()
+    # stb is an INTERFACE header dep; if the target isn't visible here, add its include dir.
+    target_include_directories(test_body_instance_raymarch_render PRIVATE
+        "${CMAKE_BINARY_DIR}/_deps/stb-src")
+endif()
+target_compile_definitions(test_body_instance_raymarch_render PRIVATE
+    GLSL_RAYMARCH_SPV="${_brm_spv}")
+
+set_target_properties(test_body_instance_raymarch_render PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_body_instance_raymarch_render)
+
+message(STATUS "[RenderGraph Tests] Added: test_body_instance_raymarch_render (lavapipe real-shader render)")

@@ -512,6 +512,29 @@ if(TARGET SVO)
 endif()
 
 # ===========================================================================
+# CPU castRay COMPARISON render  (same shell + same camera as the GPU shader)
+# ===========================================================================
+# Renders the SAME single octree-0 shell at the SAME shader camera as
+# test_body_instance_raymarch_render, via pure CPU castRay, to
+# /tmp/cpu_castray_near_cmp.png — the direct apples-to-apples brick-crack
+# comparison against /tmp/glsl_shader_near.png. NO Vulkan. Not a gtest target.
+if(TARGET SVO)
+    add_executable(cpu_castray_cmp cpu_castray_cmp_main.cpp)
+    target_link_libraries(cpu_castray_cmp PRIVATE
+        SVO GaiaVoxelWorld VoxelComponents VoxelData)
+    if(TARGET stb)
+        target_link_libraries(cpu_castray_cmp PRIVATE stb)
+    endif()
+    set_target_properties(cpu_castray_cmp PROPERTIES FOLDER "Tools/SVO")
+    if(TARGET TBB::tbb)
+        add_custom_command(TARGET cpu_castray_cmp POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:cpu_castray_cmp>
+            COMMENT "Copying TBB DLL for cpu_castray_cmp")
+    endif()
+endif()
+
+# ===========================================================================
 # CPU Body Render Diagnostics  (artifact isolation — pure castRay, NO Vulkan)
 # ===========================================================================
 # 5 diagnostic variant PNGs: shell/solid/thickband × depth-6/depth-8.

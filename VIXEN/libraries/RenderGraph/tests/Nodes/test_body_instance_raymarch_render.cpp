@@ -1,0 +1,736 @@
+/**
+ * @file test_body_instance_raymarch_render.cpp
+ * @brief Render the REAL GPU ray-march shader (BodyInstanceRayMarch.comp) to a PNG
+ *        on lavapipe (software Vulkan, CPU). The decisive crack test.
+ *
+ * The CPU reference renderer (cpu_body_render_main.cpp) draws the SP2 body scene by
+ * the SVO library's CPU castRay path and shows dark "+" brick-boundary cracks at the
+ * close-up. This test runs the ACTUAL shipped compute shader against the SAME octree
+ * GPU buffers + the SAME synthetic scene + the SAME NEAR camera, so the two PNGs are
+ * directly comparable: does the shipped renderer crack the same way, or render clean?
+ *
+ * ===========================================================================
+ *  SAFETY — LAVAPIPE ONLY (identical contract to test_body_octree_lifetime.cpp)
+ * ===========================================================================
+ * lavapipe (llvmpipe) is a pure-CPU LLVM rasterizer that NEVER touches the
+ * WSL2/Mesa-Dozen (Vulkan-over-D3D12) path. The harness forces lavapipe two ways:
+ *   1. The runner sets VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json.
+ *   2. PickSoftwarePhysicalDevice() selects ONLY a device whose deviceName contains
+ *      "llvmpipe"/"lavapipe" AND deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU, and the
+ *      fixture HARD-ASSERTS softwareConfirmed_ before ANY vkQueueSubmit. If the chosen
+ *      device is not the software rasterizer the test FAILS and never submits.
+ *
+ * Run:
+ *   VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json \
+ *   VK_LAYER_PATH=<...>/.vulkan-sdk/1.4.350.1/x86_64/share/vulkan/explicit_layer.d \
+ *   ./test_body_instance_raymarch_render
+ *
+ * Output: /tmp/glsl_shader_near.png  (512x512 RGBA8, the shipped shader's NEAR view).
+ *
+ * The SPIR-V is compiled at BUILD time by glslc (CMake custom command) and its path is
+ * passed in via the GLSL_RAYMARCH_SPV compile definition.
+ */
+
+#include <gtest/gtest.h>
+
+#include "Nodes/BodyOctreeSceneNode.h"
+#include "Data/Nodes/BodyOctreeSceneNodeConfig.h"
+#include "Data/Nodes/FrameSyncNodeConfig.h"
+#include "Data/Core/CompileTimeResourceSystem.h"
+#include "Core/NodeContext.h"
+#include "VulkanDevice.h"
+
+#include "ShellOctreeGpu.h"   // Vixen::SVO::BodyInstanceGpu
+
+#include <vulkan/vulkan.h>
+
+// PNG writer (own TU impl — mirrors cpu_body_render_main.cpp; stb is an INTERFACE
+// header-only dep so we instantiate the write impl here).
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include <stb_image_write.h>
+
+#include <glm/glm.hpp>
+
+#include <array>
+#include <chrono>
+#include <cmath>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <fstream>
+#include <string>
+#include <vector>
+
+using namespace Vixen::RenderGraph;
+using Vixen::Vulkan::Resources::VulkanDevice;
+
+#ifndef GLSL_RAYMARCH_SPV
+#error "GLSL_RAYMARCH_SPV (path to compiled BodyInstanceRayMarch.spv) must be defined by CMake"
+#endif
+
+namespace {
+
+// ---------------------------------------------------------------------------
+// Push-constant block — byte-identical to BodyInstanceRayMarch.comp PushConstants.
+// Layout (GLSL std430 push-constant rules: each vec3 is 16-byte aligned but 12-byte
+// sized, so the trailing scalar fills the 4-byte pad after each vec3):
+//   0  cameraPos(12)  + time(4)        -> 16
+//   16 cameraDir(12)  + fov(4)         -> 32
+//   32 cameraUp(12)   + aspect(4)      -> 48
+//   48 cameraRight(12)+ debugMode(4)   -> 64
+//   64 raySizeCoef(4) raySizeBias(4) instanceCount(4) -> 76
+// glm::vec3 is 12 bytes (4-byte aligned), so the C++ struct lays out identically (76 B).
+// The shader header's "60 B" note undercounts the per-vec3 16-byte alignment padding.
+// NOTE: the shader's getRayDir() applies radians(pc.fov*0.5), so pc.fov is DEGREES.
+// ---------------------------------------------------------------------------
+struct PushConstants {
+    glm::vec3 cameraPos;   float time;
+    glm::vec3 cameraDir;   float fov;       // DEGREES
+    glm::vec3 cameraUp;    float aspect;
+    glm::vec3 cameraRight; int32_t debugMode;
+    float   raySizeCoef;
+    float   raySizeBias;
+    int32_t instanceCount;
+};
+static_assert(sizeof(PushConstants) == 76, "PushConstants must be 76 bytes (matches shader std430 push block)");
+
+// ---------------------------------------------------------------------------
+// Read a compiled SPIR-V file into a uint32 vector.
+// ---------------------------------------------------------------------------
+std::vector<uint32_t> ReadSpirv(const char* path) {
+    std::ifstream f(path, std::ios::binary | std::ios::ate);
+    if (!f) return {};
+    const std::streamsize sz = f.tellg();
+    if (sz <= 0 || (sz % 4) != 0) return {};
+    std::vector<uint32_t> code(static_cast<size_t>(sz) / 4);
+    f.seekg(0);
+    f.read(reinterpret_cast<char*>(code.data()), sz);
+    return code;
+}
+
+// ---------------------------------------------------------------------------
+// Lavapipe render fixture — reuses the device/instance/pool/node bring-up from
+// test_body_octree_lifetime.cpp verbatim, then adds a compute render.
+// ---------------------------------------------------------------------------
+class BodyInstanceRayMarchRenderTest : public ::testing::Test {
+protected:
+    VkInstance       instance_       = VK_NULL_HANDLE;
+    VkPhysicalDevice physicalDevice_ = VK_NULL_HANDLE;
+    VkDevice         logicalDevice_  = VK_NULL_HANDLE;
+    VkQueue          queue_          = VK_NULL_HANDLE;
+    VkCommandPool    commandPool_    = VK_NULL_HANDLE;
+    uint32_t         queueFamily_    = 0;
+    std::string      selectedDeviceName_;
+    bool             softwareConfirmed_ = false;
+
+    std::unique_ptr<VulkanDevice> deviceShell_;
+
+    static bool LooksLikeSoftware(const VkPhysicalDeviceProperties& props) {
+        std::string name(props.deviceName);
+        for (char& c : name) c = static_cast<char>(::tolower(c));
+        const bool nameSays =
+            name.find("llvmpipe") != std::string::npos ||
+            name.find("lavapipe") != std::string::npos;
+        const bool typeSays = props.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU;
+        return nameSays && typeSays;
+    }
+
+    void SetUp() override {
+        VkApplicationInfo appInfo{};
+        appInfo.sType            = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+        appInfo.pApplicationName = "test_body_instance_raymarch_render";
+        // The shader is compiled with --target-env=vulkan1.3 (SPIR-V 1.6), so the
+        // instance/device must advertise Vulkan 1.3 or the shader module is rejected
+        // ("Invalid SPIR-V binary version 1.6 for target environment SPIR-V 1.5").
+        appInfo.apiVersion       = VK_API_VERSION_1_3;
+
+        const char* layers[]     = {"VK_LAYER_KHRONOS_validation"};
+        const char* extensions[] = {VK_EXT_DEBUG_UTILS_EXTENSION_NAME};
+
+        VkInstanceCreateInfo instInfo{};
+        instInfo.sType                   = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+        instInfo.pApplicationInfo        = &appInfo;
+        instInfo.enabledLayerCount       = 1;
+        instInfo.ppEnabledLayerNames     = layers;
+        instInfo.enabledExtensionCount   = 1;
+        instInfo.ppEnabledExtensionNames = extensions;
+
+        ASSERT_EQ(vkCreateInstance(&instInfo, nullptr, &instance_), VK_SUCCESS)
+            << "vkCreateInstance failed. Is the validation layer on VK_LAYER_PATH and "
+               "lavapipe on VK_ICD_FILENAMES?";
+
+        ASSERT_NO_FATAL_FAILURE(PickSoftwarePhysicalDevice());
+        ASSERT_TRUE(softwareConfirmed_)
+            << "Refusing to run: selected device '" << selectedDeviceName_
+            << "' is NOT the software rasterizer. Aborting before any vkQueueSubmit.";
+
+        ASSERT_NO_FATAL_FAILURE(CreateLogicalDevice());
+        ASSERT_NO_FATAL_FAILURE(CreateCommandPool());
+
+        deviceShell_ = std::make_unique<VulkanDevice>(&physicalDevice_);
+        deviceShell_->device = logicalDevice_;
+    }
+
+    void TearDown() override {
+        if (deviceShell_) { deviceShell_->device = VK_NULL_HANDLE; deviceShell_.reset(); }
+        if (commandPool_ != VK_NULL_HANDLE && logicalDevice_ != VK_NULL_HANDLE) {
+            vkDestroyCommandPool(logicalDevice_, commandPool_, nullptr);
+            commandPool_ = VK_NULL_HANDLE;
+        }
+        if (logicalDevice_ != VK_NULL_HANDLE) {
+            vkDestroyDevice(logicalDevice_, nullptr);
+            logicalDevice_ = VK_NULL_HANDLE;
+        }
+        if (instance_ != VK_NULL_HANDLE) {
+            vkDestroyInstance(instance_, nullptr);
+            instance_ = VK_NULL_HANDLE;
+        }
+    }
+
+    void PickSoftwarePhysicalDevice() {
+        uint32_t count = 0;
+        ASSERT_EQ(vkEnumeratePhysicalDevices(instance_, &count, nullptr), VK_SUCCESS);
+        ASSERT_GT(count, 0u) << "No Vulkan physical devices visible. Is lavapipe forced via "
+                                "VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json?";
+        std::vector<VkPhysicalDevice> devices(count);
+        ASSERT_EQ(vkEnumeratePhysicalDevices(instance_, &count, devices.data()), VK_SUCCESS);
+        for (VkPhysicalDevice dev : devices) {
+            VkPhysicalDeviceProperties props{};
+            vkGetPhysicalDeviceProperties(dev, &props);
+            if (LooksLikeSoftware(props)) {
+                physicalDevice_     = dev;
+                selectedDeviceName_ = props.deviceName;
+                softwareConfirmed_  = true;
+                return;
+            }
+        }
+        VkPhysicalDeviceProperties props{};
+        vkGetPhysicalDeviceProperties(devices[0], &props);
+        selectedDeviceName_ = props.deviceName;
+        softwareConfirmed_  = false;
+    }
+
+    void CreateLogicalDevice() {
+        uint32_t qfCount = 0;
+        vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice_, &qfCount, nullptr);
+        ASSERT_GT(qfCount, 0u);
+        std::vector<VkQueueFamilyProperties> qfs(qfCount);
+        vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice_, &qfCount, qfs.data());
+        bool found = false;
+        for (uint32_t i = 0; i < qfCount; ++i) {
+            if (qfs[i].queueFlags & VK_QUEUE_COMPUTE_BIT) { queueFamily_ = i; found = true; break; }
+        }
+        ASSERT_TRUE(found) << "No compute queue family on the software device";
+
+        float priority = 1.0f;
+        VkDeviceQueueCreateInfo qInfo{};
+        qInfo.sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        qInfo.queueFamilyIndex = queueFamily_;
+        qInfo.queueCount       = 1;
+        qInfo.pQueuePriorities = &priority;
+
+        // The shader writes to image2D/uimage2D WITHOUT a format qualifier
+        // (SPIR-V capability StorageImageWriteWithoutFormat), which requires this
+        // feature. lavapipe supports it; enable it so the shader module validates
+        // and the pipeline executes correctly.
+        VkPhysicalDeviceFeatures features{};
+        features.shaderStorageImageWriteWithoutFormat = VK_TRUE;
+
+        VkDeviceCreateInfo dInfo{};
+        dInfo.sType                = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+        dInfo.queueCreateInfoCount = 1;
+        dInfo.pQueueCreateInfos    = &qInfo;
+        dInfo.pEnabledFeatures     = &features;
+        ASSERT_EQ(vkCreateDevice(physicalDevice_, &dInfo, nullptr, &logicalDevice_), VK_SUCCESS);
+        vkGetDeviceQueue(logicalDevice_, queueFamily_, 0, &queue_);
+    }
+
+    void CreateCommandPool() {
+        VkCommandPoolCreateInfo poolInfo{};
+        poolInfo.sType            = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+        poolInfo.flags            = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+        poolInfo.queueFamilyIndex = queueFamily_;
+        ASSERT_EQ(vkCreateCommandPool(logicalDevice_, &poolInfo, nullptr, &commandPool_), VK_SUCCESS);
+    }
+
+    template<typename T>
+    static void SetHandleVal(Resource& res, T value) { res.SetHandle<T>(std::move(value)); }
+
+    uint32_t FindMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags required) {
+        VkPhysicalDeviceMemoryProperties memProps{};
+        vkGetPhysicalDeviceMemoryProperties(physicalDevice_, &memProps);
+        for (uint32_t i = 0; i < memProps.memoryTypeCount; ++i) {
+            if ((typeFilter & (1u << i)) &&
+                (memProps.memoryTypes[i].propertyFlags & required) == required) {
+                return i;
+            }
+        }
+        return UINT32_MAX;
+    }
+
+    // Create an image (storage-usable + transfer-src) in the given format.
+    void CreateImage(uint32_t w, uint32_t h, VkFormat format,
+                     VkImage& outImage, VkDeviceMemory& outMem) {
+        VkImageCreateInfo ci{};
+        ci.sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        ci.imageType     = VK_IMAGE_TYPE_2D;
+        ci.format        = format;
+        ci.extent        = {w, h, 1};
+        ci.mipLevels     = 1;
+        ci.arrayLayers   = 1;
+        ci.samples       = VK_SAMPLE_COUNT_1_BIT;
+        ci.tiling        = VK_IMAGE_TILING_OPTIMAL;
+        ci.usage         = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+        ci.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
+        ci.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        ASSERT_EQ(vkCreateImage(logicalDevice_, &ci, nullptr, &outImage), VK_SUCCESS);
+
+        VkMemoryRequirements req{};
+        vkGetImageMemoryRequirements(logicalDevice_, outImage, &req);
+        VkMemoryAllocateInfo ai{};
+        ai.sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        ai.allocationSize  = req.size;
+        ai.memoryTypeIndex = FindMemoryType(req.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        ASSERT_NE(ai.memoryTypeIndex, UINT32_MAX);
+        ASSERT_EQ(vkAllocateMemory(logicalDevice_, &ai, nullptr, &outMem), VK_SUCCESS);
+        ASSERT_EQ(vkBindImageMemory(logicalDevice_, outImage, outMem, 0), VK_SUCCESS);
+    }
+
+    VkImageView CreateView(VkImage image, VkFormat format) {
+        VkImageViewCreateInfo vi{};
+        vi.sType    = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        vi.image    = image;
+        vi.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        vi.format   = format;
+        vi.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        VkImageView view = VK_NULL_HANDLE;
+        EXPECT_EQ(vkCreateImageView(logicalDevice_, &vi, nullptr, &view), VK_SUCCESS);
+        return view;
+    }
+
+    // A small host-visible buffer (for the dummy trace/counter SSBOs the shader declares).
+    void CreateHostBuffer(VkDeviceSize size, VkBufferUsageFlags usage,
+                          VkBuffer& outBuf, VkDeviceMemory& outMem, bool zero) {
+        VkBufferCreateInfo bi{};
+        bi.sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bi.size        = size;
+        bi.usage       = usage;
+        bi.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        ASSERT_EQ(vkCreateBuffer(logicalDevice_, &bi, nullptr, &outBuf), VK_SUCCESS);
+        VkMemoryRequirements req{};
+        vkGetBufferMemoryRequirements(logicalDevice_, outBuf, &req);
+        VkMemoryAllocateInfo ai{};
+        ai.sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        ai.allocationSize  = req.size;
+        ai.memoryTypeIndex = FindMemoryType(req.memoryTypeBits,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        ASSERT_NE(ai.memoryTypeIndex, UINT32_MAX);
+        ASSERT_EQ(vkAllocateMemory(logicalDevice_, &ai, nullptr, &outMem), VK_SUCCESS);
+        ASSERT_EQ(vkBindBufferMemory(logicalDevice_, outBuf, outMem, 0), VK_SUCCESS);
+        if (zero) {
+            void* m = nullptr;
+            ASSERT_EQ(vkMapMemory(logicalDevice_, outMem, 0, size, 0, &m), VK_SUCCESS);
+            std::memset(m, 0, static_cast<size_t>(size));
+            vkUnmapMemory(logicalDevice_, outMem);
+        }
+    }
+};
+
+// ---------------------------------------------------------------------------
+// Build the SAME synthetic NEAR scene as cpu_body_render_main.cpp, drive the real
+// shader, and dump the PNG.
+// ---------------------------------------------------------------------------
+TEST_F(BodyInstanceRayMarchRenderTest, RenderRealShaderNearViewToPng) {
+    std::cout << "[ lavapipe ] selected physical device: '" << selectedDeviceName_
+              << "' (software rasterizer confirmed)\n";
+    ASSERT_TRUE(softwareConfirmed_);
+
+    // ---- 1. Build the node + scene; compile to get the octree GPU buffers --------
+    using C = BodyOctreeSceneNodeConfig;
+    BodyOctreeSceneNodeType nodeType("BodyOctreeScene");
+    auto nodeBase = nodeType.CreateInstance("body_render");
+    auto* node = dynamic_cast<BodyOctreeSceneNode*>(nodeBase.get());
+    ASSERT_NE(node, nullptr);
+
+    Resource deviceRes; SetHandleVal<VulkanDevice*>(deviceRes, deviceShell_.get());
+    Resource poolRes;   SetHandleVal<VkCommandPool>(poolRes, commandPool_);
+    Resource frameRes;  uint32_t frameIndex = 0; SetHandleVal<uint32_t>(frameRes, frameIndex);
+    node->SetInput(C::VULKAN_DEVICE_IN_Slot::index,    0, &deviceRes);
+    node->SetInput(C::COMMAND_POOL_Slot::index,        0, &poolRes);
+    node->SetInput(C::CURRENT_FRAME_INDEX_Slot::index, 0, &frameRes);
+
+    // Scene: a SINGLE instance using octreeIndex=0 (the star shell), at the world origin.
+    //
+    // WHY octreeIndex 0 ONLY (a real shipped-renderer bug surfaced while standing this up):
+    //   Vixen::SVO::OctreeConfig is sizeof()==260 bytes (256 B std140 UBO body + a trailing
+    //   non-UBO `float worldGridSize` convenience field). BodyOctreeSceneNode::CreateOctreeBuffers
+    //   uploads the WHOLE std::array<OctreeConfig,3> (260-byte stride) into the config UBO, but
+    //   the shader's `OctreeConfig configs[3]` has a 256-byte std140 stride. So configs[0] is byte-
+    //   aligned (offset 0) and renders correctly, but configs[1]/configs[2] are read 4/8 bytes
+    //   misaligned -> garbage localToWorld/worldToLocal -> the instance's AABB cull fails and the
+    //   body never draws. Using octreeIndex 0 sidesteps the bug so we can render the REAL shader and
+    //   judge cracks; the bug itself is reported separately. The star shell is the identical hollow-
+    //   sphere shell geometry (BuildShellOctree(6, materialId)), so cracks surface the same way.
+    constexpr float kBase = 0.05f;
+    auto mk = [](float x, float y, float z, float scale, uint32_t octree,
+                 float r, float g, float b) {
+        Vixen::SVO::BodyInstanceGpu i{};
+        i.worldPos[0] = x; i.worldPos[1] = y; i.worldPos[2] = z;
+        i.renderScale = scale; i.octreeIndex = octree;
+        i.color[0] = r; i.color[1] = g; i.color[2] = b;
+        return i;
+    };
+    const std::vector<Vixen::SVO::BodyInstanceGpu> instances = {
+        mk(0.0f, 0.0f, 0.0f, kBase * 2.0f, 0, 1.00f, 0.95f, 0.60f), // body on octree 0 (star shell)
+    };
+    const uint32_t kInstanceCount = static_cast<uint32_t>(instances.size());
+    node->SetInstances(instances);
+    node->Setup();
+    ASSERT_NO_THROW(node->Compile());
+
+    // Execute once so the instance ring slot 0 is filled with the current instances and
+    // re-published on INSTANCE_BUFFER.
+    frameIndex = 0; SetHandleVal<uint32_t>(frameRes, frameIndex);
+    ASSERT_NO_THROW(node->Execute());
+
+    VkBuffer nodesBuf     = node->GetOutput(C::OCTREE_NODES_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    VkBuffer bricksBuf    = node->GetOutput(C::OCTREE_BRICKS_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    VkBuffer materialsBuf = node->GetOutput(C::OCTREE_MATERIALS_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    VkBuffer configBuf    = node->GetOutput(C::OCTREE_CONFIG_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    VkBuffer instanceBuf  = node->GetOutput(C::INSTANCE_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    ASSERT_NE(nodesBuf, VK_NULL_HANDLE);
+    ASSERT_NE(bricksBuf, VK_NULL_HANDLE);
+    ASSERT_NE(materialsBuf, VK_NULL_HANDLE);
+    ASSERT_NE(configBuf, VK_NULL_HANDLE);
+    ASSERT_NE(instanceBuf, VK_NULL_HANDLE);
+
+    // ---- 2. Dummy SSBOs for bindings the shader declares but we don't read ----------
+    // binding 4 = RayTraceBuffer (header: traceWriteIndex, traceCapacity, _pad[2], data[]).
+    //             traceCapacity=0 makes beginRayTrace() a no-op, so a 16-byte header is enough.
+    // binding 8 = ShaderCounters (atomic counters). A small zeroed buffer suffices.
+    VkBuffer traceBuf = VK_NULL_HANDLE, counterBuf = VK_NULL_HANDLE;
+    VkDeviceMemory traceMem = VK_NULL_HANDLE, counterMem = VK_NULL_HANDLE;
+    CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, traceBuf, traceMem, /*zero=*/true);
+    CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, counterBuf, counterMem, /*zero=*/true);
+
+    // ---- 3. Offscreen output images (rgba8 colour + r32ui id) -----------------------
+    constexpr uint32_t kW = 512, kH = 512;
+    const VkFormat kColorFmt = VK_FORMAT_R8G8B8A8_UNORM;
+    const VkFormat kIdFmt    = VK_FORMAT_R32_UINT;
+    VkImage colorImg = VK_NULL_HANDLE, idImg = VK_NULL_HANDLE;
+    VkDeviceMemory colorMem = VK_NULL_HANDLE, idMem = VK_NULL_HANDLE;
+    ASSERT_NO_FATAL_FAILURE(CreateImage(kW, kH, kColorFmt, colorImg, colorMem));
+    ASSERT_NO_FATAL_FAILURE(CreateImage(kW, kH, kIdFmt, idImg, idMem));
+    VkImageView colorView = CreateView(colorImg, kColorFmt);
+    VkImageView idView     = CreateView(idImg, kIdFmt);
+    ASSERT_NE(colorView, VK_NULL_HANDLE);
+    ASSERT_NE(idView, VK_NULL_HANDLE);
+
+    // ---- 4. Load SPIR-V → shader module ---------------------------------------------
+    const std::vector<uint32_t> spirv = ReadSpirv(GLSL_RAYMARCH_SPV);
+    ASSERT_FALSE(spirv.empty()) << "Failed to read compiled SPIR-V at " << GLSL_RAYMARCH_SPV;
+    VkShaderModuleCreateInfo smci{};
+    smci.sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    smci.codeSize = spirv.size() * sizeof(uint32_t);
+    smci.pCode    = spirv.data();
+    VkShaderModule shaderModule = VK_NULL_HANDLE;
+    ASSERT_EQ(vkCreateShaderModule(logicalDevice_, &smci, nullptr, &shaderModule), VK_SUCCESS);
+
+    // ---- 5. Descriptor set layout (bindings 0..10 the shader uses) ------------------
+    auto bind = [](uint32_t b, VkDescriptorType t) {
+        VkDescriptorSetLayoutBinding lb{};
+        lb.binding         = b;
+        lb.descriptorType  = t;
+        lb.descriptorCount = 1;
+        lb.stageFlags      = VK_SHADER_STAGE_COMPUTE_BIT;
+        return lb;
+    };
+    const std::array<VkDescriptorSetLayoutBinding, 9> bindings = {
+        bind(0,  VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),   // outputImage
+        bind(1,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // esvoNodes
+        bind(2,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // brickData
+        bind(3,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // materials
+        bind(4,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // RayTraceBuffer
+        bind(5,  VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER),  // OctreeConfigs UBO
+        bind(8,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // ShaderCounters
+        bind(9,  VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),   // idOutputImage
+        bind(10, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // BodyInstance SSBO
+    };
+    VkDescriptorSetLayoutCreateInfo dslci{};
+    dslci.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    dslci.bindingCount = static_cast<uint32_t>(bindings.size());
+    dslci.pBindings    = bindings.data();
+    VkDescriptorSetLayout dsl = VK_NULL_HANDLE;
+    ASSERT_EQ(vkCreateDescriptorSetLayout(logicalDevice_, &dslci, nullptr, &dsl), VK_SUCCESS);
+
+    // ---- 6. Pipeline layout (push constants) ----------------------------------------
+    VkPushConstantRange pcr{};
+    pcr.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    pcr.offset     = 0;
+    pcr.size       = sizeof(PushConstants);
+    VkPipelineLayoutCreateInfo plci{};
+    plci.sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    plci.setLayoutCount         = 1;
+    plci.pSetLayouts            = &dsl;
+    plci.pushConstantRangeCount = 1;
+    plci.pPushConstantRanges    = &pcr;
+    VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
+    ASSERT_EQ(vkCreatePipelineLayout(logicalDevice_, &plci, nullptr, &pipelineLayout), VK_SUCCESS);
+
+    // ---- 7. Compute pipeline --------------------------------------------------------
+    VkComputePipelineCreateInfo cpci{};
+    cpci.sType        = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+    cpci.stage.sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    cpci.stage.stage  = VK_SHADER_STAGE_COMPUTE_BIT;
+    cpci.stage.module = shaderModule;
+    cpci.stage.pName  = "main";
+    cpci.layout       = pipelineLayout;
+    VkPipeline pipeline = VK_NULL_HANDLE;
+    ASSERT_EQ(vkCreateComputePipelines(logicalDevice_, VK_NULL_HANDLE, 1, &cpci, nullptr, &pipeline),
+              VK_SUCCESS);
+
+    // ---- 8. Descriptor pool + set ---------------------------------------------------
+    // 2 storage images (0,9); 6 storage buffers (1,2,3,4,8,10); 1 UBO (5).
+    const std::array<VkDescriptorPoolSize, 3> poolSizes = {{
+        {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  2},
+        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 6},
+        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1},
+    }};
+    VkDescriptorPoolCreateInfo dpci{};
+    dpci.sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    dpci.maxSets       = 1;
+    dpci.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
+    dpci.pPoolSizes    = poolSizes.data();
+    VkDescriptorPool descPool = VK_NULL_HANDLE;
+    ASSERT_EQ(vkCreateDescriptorPool(logicalDevice_, &dpci, nullptr, &descPool), VK_SUCCESS);
+
+    VkDescriptorSetAllocateInfo dsai{};
+    dsai.sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    dsai.descriptorPool     = descPool;
+    dsai.descriptorSetCount = 1;
+    dsai.pSetLayouts        = &dsl;
+    VkDescriptorSet descSet = VK_NULL_HANDLE;
+    ASSERT_EQ(vkAllocateDescriptorSets(logicalDevice_, &dsai, &descSet), VK_SUCCESS);
+
+    // ---- 9. Write descriptors -------------------------------------------------------
+    VkDescriptorImageInfo colorInfo{VK_NULL_HANDLE, colorView, VK_IMAGE_LAYOUT_GENERAL};
+    VkDescriptorImageInfo idInfo{VK_NULL_HANDLE, idView, VK_IMAGE_LAYOUT_GENERAL};
+    VkDescriptorBufferInfo nodesInfo{nodesBuf, 0, VK_WHOLE_SIZE};
+    VkDescriptorBufferInfo bricksInfo{bricksBuf, 0, VK_WHOLE_SIZE};
+    VkDescriptorBufferInfo matsInfo{materialsBuf, 0, VK_WHOLE_SIZE};
+    VkDescriptorBufferInfo traceInfo{traceBuf, 0, VK_WHOLE_SIZE};
+    VkDescriptorBufferInfo configInfo{configBuf, 0, VK_WHOLE_SIZE};
+    VkDescriptorBufferInfo counterInfo{counterBuf, 0, VK_WHOLE_SIZE};
+    VkDescriptorBufferInfo instInfo{instanceBuf, 0, VK_WHOLE_SIZE};
+
+    auto wImg = [&](uint32_t b, VkDescriptorImageInfo* info) {
+        VkWriteDescriptorSet w{};
+        w.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        w.dstSet          = descSet;
+        w.dstBinding      = b;
+        w.descriptorCount = 1;
+        w.descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+        w.pImageInfo      = info;
+        return w;
+    };
+    auto wBuf = [&](uint32_t b, VkDescriptorType t, VkDescriptorBufferInfo* info) {
+        VkWriteDescriptorSet w{};
+        w.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        w.dstSet          = descSet;
+        w.dstBinding      = b;
+        w.descriptorCount = 1;
+        w.descriptorType  = t;
+        w.pBufferInfo     = info;
+        return w;
+    };
+    const std::array<VkWriteDescriptorSet, 9> writes = {
+        wImg(0, &colorInfo),
+        wBuf(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &nodesInfo),
+        wBuf(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &bricksInfo),
+        wBuf(3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &matsInfo),
+        wBuf(4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &traceInfo),
+        wBuf(5, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, &configInfo),
+        wBuf(8, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &counterInfo),
+        wImg(9, &idInfo),
+        wBuf(10, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &instInfo),
+    };
+    vkUpdateDescriptorSets(logicalDevice_, static_cast<uint32_t>(writes.size()),
+                           writes.data(), 0, nullptr);
+
+    // ---- 10. Push constants — NEAR camera aimed at the SHADER's true sphere ----------
+    // IMPORTANT: the SHIPPED shader does NOT center the body at worldPos. Its OctreeConfig
+    // (ShellOctreeGpu::Serialize) hardcodes localToWorld = scale(kWorldGridSize=10) with NO
+    // centering translate, and the de-instance transform is instOrigin=(rayOrigin-worldPos)
+    // /renderScale. So the shell sphere — which fills the octree's [0,1]^3 grid (radius 0.5
+    // at centre 0.5 in local) — maps to an ACTUAL-WORLD ball spanning
+    //   [worldPos, worldPos + kWorldGridSize*renderScale]^3,
+    // i.e. centre C = worldPos + 0.5*kWorldGridSize*renderScale, radius R = 0.5*kWorldGridSize
+    // *renderScale.  (The CPU reference tool instead centres at worldPos with radius
+    // renderScale — a DIFFERENT convention; see report. Both render the SAME hollow-shell
+    // geometry, so cracks surface either way.)  We aim at the shader's true sphere so the
+    // planet fills the frame.
+    constexpr float kWorldGridSize = 10.0f;          // matches ShellOctreeGpu::Serialize
+    const float bodyScale = kBase * 2.0f;            // 0.10 (octree-0 body renderScale)
+    const glm::vec3 bodyWorldPos(0.0f, 0.0f, 0.0f);
+    const float R = 0.5f * kWorldGridSize * bodyScale;             // 0.50 AU sphere radius
+    const glm::vec3 focus = bodyWorldPos + glm::vec3(R);           // shader's true centre (0.5,0.5,0.5)
+    const float dist = R * 4.0f;                                   // near framing (~2.0 AU back)
+    const glm::vec3 eye = focus + glm::normalize(glm::vec3(0.3f, 0.25f, 1.0f)) * dist;
+    const glm::vec3 dir = glm::normalize(focus - eye);
+    const glm::vec3 worldUp(0.0f, 1.0f, 0.0f);
+    const glm::vec3 right = glm::normalize(glm::cross(dir, worldUp));
+    const glm::vec3 up    = glm::normalize(glm::cross(right, dir));
+
+    PushConstants pc{};
+    pc.cameraPos   = eye;
+    pc.time        = 0.0f;
+    pc.cameraDir   = dir;
+    pc.fov         = 45.0f;                  // DEGREES (shader does radians() itself)
+    pc.cameraUp    = up;
+    pc.aspect      = static_cast<float>(kW) / static_cast<float>(kH);
+    pc.cameraRight = right;
+    pc.debugMode   = 0;
+    pc.raySizeCoef = 0.0f;                   // full detail (no LOD) — best for cracks
+    pc.raySizeBias = 0.0f;
+    pc.instanceCount = static_cast<int32_t>(kInstanceCount);
+
+    std::printf("[NEAR] eye=(%.3f,%.3f,%.3f) focus=(%.3f,%.3f,%.3f) R=%.3f dist=%.3f AU fov=45 "
+                "instances=%u | full detail (raySizeCoef=0)\n",
+                eye.x, eye.y, eye.z, focus.x, focus.y, focus.z, R, dist, kInstanceCount);
+
+    // ---- 11. Record + submit (SAFETY: software device already asserted) -------------
+    ASSERT_TRUE(softwareConfirmed_) << "ABORT: not the software rasterizer; refusing to submit.";
+
+    VkCommandBufferAllocateInfo cbai{};
+    cbai.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    cbai.commandPool        = commandPool_;
+    cbai.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    cbai.commandBufferCount = 1;
+    VkCommandBuffer cmd = VK_NULL_HANDLE;
+    ASSERT_EQ(vkAllocateCommandBuffers(logicalDevice_, &cbai, &cmd), VK_SUCCESS);
+
+    VkCommandBufferBeginInfo bi{};
+    bi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    ASSERT_EQ(vkBeginCommandBuffer(cmd, &bi), VK_SUCCESS);
+
+    // Transition both images UNDEFINED -> GENERAL for storage-image writes.
+    auto barrierToGeneral = [&](VkImage img) {
+        VkImageMemoryBarrier b{};
+        b.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        b.oldLayout           = VK_IMAGE_LAYOUT_UNDEFINED;
+        b.newLayout           = VK_IMAGE_LAYOUT_GENERAL;
+        b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        b.image               = img;
+        b.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        b.srcAccessMask       = 0;
+        b.dstAccessMask       = VK_ACCESS_SHADER_WRITE_BIT;
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &b);
+    };
+    barrierToGeneral(colorImg);
+    barrierToGeneral(idImg);
+
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout,
+                            0, 1, &descSet, 0, nullptr);
+    vkCmdPushConstants(cmd, pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(pc), &pc);
+
+    const uint32_t gx = (kW + 7) / 8;
+    const uint32_t gy = (kH + 7) / 8;
+    vkCmdDispatch(cmd, gx, gy, 1);
+
+    // Barrier: shader writes -> transfer read for copy-to-buffer.
+    VkImageMemoryBarrier toSrc{};
+    toSrc.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    toSrc.oldLayout           = VK_IMAGE_LAYOUT_GENERAL;
+    toSrc.newLayout           = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    toSrc.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    toSrc.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    toSrc.image               = colorImg;
+    toSrc.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    toSrc.srcAccessMask       = VK_ACCESS_SHADER_WRITE_BIT;
+    toSrc.dstAccessMask       = VK_ACCESS_TRANSFER_READ_BIT;
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                         VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &toSrc);
+
+    // Readback buffer for the colour image (RGBA8).
+    const VkDeviceSize rbSize = static_cast<VkDeviceSize>(kW) * kH * 4;
+    VkBuffer rbBuf = VK_NULL_HANDLE; VkDeviceMemory rbMem = VK_NULL_HANDLE;
+    CreateHostBuffer(rbSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT, rbBuf, rbMem, /*zero=*/false);
+
+    VkBufferImageCopy copy{};
+    copy.bufferOffset      = 0;
+    copy.bufferRowLength   = 0;  // tightly packed
+    copy.bufferImageHeight = 0;
+    copy.imageSubresource  = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    copy.imageOffset       = {0, 0, 0};
+    copy.imageExtent       = {kW, kH, 1};
+    vkCmdCopyImageToBuffer(cmd, colorImg, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, rbBuf, 1, &copy);
+
+    ASSERT_EQ(vkEndCommandBuffer(cmd), VK_SUCCESS);
+
+    VkSubmitInfo si{};
+    si.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    si.commandBufferCount = 1;
+    si.pCommandBuffers    = &cmd;
+
+    // FINAL SAFETY GATE before the only vkQueueSubmit in this test.
+    ASSERT_TRUE(softwareConfirmed_) << "ABORT: software device not confirmed; refusing vkQueueSubmit.";
+    const auto t0 = std::chrono::steady_clock::now();
+    ASSERT_EQ(vkQueueSubmit(queue_, 1, &si, VK_NULL_HANDLE), VK_SUCCESS);
+    ASSERT_EQ(vkQueueWaitIdle(queue_), VK_SUCCESS);
+    const auto t1 = std::chrono::steady_clock::now();
+    const double renderMs =
+        std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+
+    // ---- 12. Map readback, count hits, write PNG ------------------------------------
+    void* mapped = nullptr;
+    ASSERT_EQ(vkMapMemory(logicalDevice_, rbMem, 0, rbSize, 0, &mapped), VK_SUCCESS);
+    const uint8_t* px = static_cast<const uint8_t*>(mapped);
+
+    // Hit count = pixels not equal to the sky gradient. The sky is dark blue
+    // (~0.02,0.02,0.06)*(1-uv.y*0.4); a pixel is a "body hit" if it is noticeably
+    // brighter than the darkest sky. Use a simple luminance threshold.
+    std::vector<uint8_t> rgb(static_cast<size_t>(kW) * kH * 3);
+    int hitPixels = 0;
+    for (uint32_t i = 0; i < kW * kH; ++i) {
+        const uint8_t r = px[i * 4 + 0], g = px[i * 4 + 1], b = px[i * 4 + 2];
+        rgb[i * 3 + 0] = r; rgb[i * 3 + 1] = g; rgb[i * 3 + 2] = b;
+        // Sky max is roughly (5,5,16) in 8-bit; treat anything brighter as a body hit.
+        if (r > 24 || g > 24 || b > 40) ++hitPixels;
+    }
+    vkUnmapMemory(logicalDevice_, rbMem);
+
+    const char* outPath = "/tmp/glsl_shader_near.png";
+    const int wrote = stbi_write_png(outPath, static_cast<int>(kW), static_cast<int>(kH),
+                                     3, rgb.data(), static_cast<int>(kW) * 3);
+    EXPECT_NE(wrote, 0) << "stbi_write_png failed for " << outPath;
+
+    std::printf("[NEAR] %ux%u | device='%s' | render=%.0f ms | body pixels=%d / %u | -> %s\n",
+                kW, kH, selectedDeviceName_.c_str(), renderMs, hitPixels, kW * kH, outPath);
+    EXPECT_GT(hitPixels, 0) << "Shader produced an all-sky image — the planet was not hit.";
+
+    // ---- 13. Teardown ----------------------------------------------------------------
+    vkDeviceWaitIdle(logicalDevice_);
+    vkDestroyBuffer(logicalDevice_, rbBuf, nullptr);    vkFreeMemory(logicalDevice_, rbMem, nullptr);
+    vkDestroyDescriptorPool(logicalDevice_, descPool, nullptr);
+    vkDestroyPipeline(logicalDevice_, pipeline, nullptr);
+    vkDestroyPipelineLayout(logicalDevice_, pipelineLayout, nullptr);
+    vkDestroyDescriptorSetLayout(logicalDevice_, dsl, nullptr);
+    vkDestroyShaderModule(logicalDevice_, shaderModule, nullptr);
+    vkDestroyImageView(logicalDevice_, colorView, nullptr);
+    vkDestroyImageView(logicalDevice_, idView, nullptr);
+    vkDestroyImage(logicalDevice_, colorImg, nullptr);  vkFreeMemory(logicalDevice_, colorMem, nullptr);
+    vkDestroyImage(logicalDevice_, idImg, nullptr);     vkFreeMemory(logicalDevice_, idMem, nullptr);
+    vkDestroyBuffer(logicalDevice_, traceBuf, nullptr); vkFreeMemory(logicalDevice_, traceMem, nullptr);
+    vkDestroyBuffer(logicalDevice_, counterBuf, nullptr); vkFreeMemory(logicalDevice_, counterMem, nullptr);
+
+    // Tear the node down before the device dies.
+    vkDeviceWaitIdle(logicalDevice_);
+    node->Cleanup(CleanupReason::FinalTeardown);
+    nodeBase.reset();
+}
+
+}  // namespace
