@@ -10,6 +10,15 @@
 #include <set>
 #include <vector>
 
+// MSVC's <windows.h> (pulled in transitively on the Windows build) defines `far`/`near` as
+// empty legacy segment-qualifier macros (mangling the local `far` plane-distance variables in
+// the sweeps below) and `min`/`max` as function-like macros (mangling the glm::min/glm::max
+// calls). Drop them all — this test never wants the windows.h macros.
+#undef far
+#undef near
+#undef min
+#undef max
+
 TEST(ShellVoxelizer, IsHollowSurfaceShell) {
     int d = 5;                          // 32^3 lattice
     auto cells = Vixen::SVO::ShellVoxels(d);   // vector<glm::ivec3> in [0, 2^d)
