@@ -143,6 +143,16 @@ ConnectionResult AccumulationConnectionRule::Resolve(ConnectionContext& ctx) con
         IsValidNodePtr(ctx.sourceNode) &&
         IsValidNodePtr(ctx.targetNode)) {
         ctx.targetNode->AddDependency(ctx.sourceNode);
+
+        // Record the producer connection on the consumer so the Execute-time gather
+        // (TypedNode::InAll) can assemble std::vector<T> from each producer's CURRENT
+        // output. The AddDependency edge above guarantees producers run first, so their
+        // outputs are populated by the time the consumer reads them.
+        ctx.targetNode->RegisterAccumulationSource(
+            ctx.targetSlot.index,
+            ctx.sourceNode,
+            ctx.sourceSlot.index,
+            ctx.sortKey);
     }
 
     return ConnectionResult::Success();

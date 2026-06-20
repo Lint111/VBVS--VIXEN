@@ -327,6 +327,30 @@ Debug and reused cached artifacts). All fixed on `claude/wsl-build-portability`.
   `UIRenderNode` compiles and the render loop runs — 0 `Invalid instance`, 0 device removals, 0
   validation errors; host re-verified unchanged (selected Dozen ICD, VoxelScene cache ready, 0 removals).
 
+### FR-23 — Default shader compilation targets SPIR-V 1.6 even on Vulkan-1.2 devices (Dozen/WSL2)
+- **Context:** Vulkan validation (`VUID-VkShaderModuleCreateInfo-pCode-08737`) fired at
+  `vkCreateShaderModule` on Mesa Dozen (WSL2): `spirv-val produced an error: Invalid SPIR-V binary
+  version 1.6 for target environment SPIR-V 1.5 (under Vulkan 1.2 semantics)`.
+- **Issue:** Three default values in the engine assumed Vulkan 1.3 / SPIR-V 1.6, so any shader
+  compiled before `DeviceMetadataEvent` is received (or via the `ShaderModuleCacher` direct-compile
+  path, which bypasses the device-metadata flow entirely) targets SPIR-V 1.6. Dozen's physical
+  device reports `apiVersion = VK_API_VERSION_1_2` (the Vulkan spec requires the *physical device's*
+  `apiVersion` to govern the maximum SPIR-V version), so the module fails `spirv-val` validation
+  under Vulkan 1.2 semantics. The shader happens to run on Dozen (Dozen is permissive), but it is a
+  spec violation and a portability footgun for any future strict-validation or non-1.3 driver.
+  **Standard mapping (Vulkan spec §46.1):** Vulkan 1.0→SPIR-V 1.0; 1.1→1.3; 1.2→1.5; 1.3→1.6.
+  The `DeviceNode::GetMaxSpirvVersion` lambda and the `OnDeviceMetadata` handler were already correct
+  (they map from `deviceProps.apiVersion`); the bug was purely in the three safe-floor defaults.
+- **Consumer impact:** any driver whose physical device `apiVersion` < 1.3 (Dozen/WSL2, any IHV
+  that caps physical apiVersion below what the instance requested, old hardware).
+- **Suggested fix (applied):** lower the three default/fallback values from 130/160 to 120/150
+  (`ShaderLibraryNode.h` member defaults; `ShaderCompiler.h::CompilationOptions` field defaults;
+  `shader_compilation_cacher.cpp::CompileShader` hardcoded options). Any Vulkan-1.2+ device is
+  covered; Vulkan-1.3 native GPUs receive the real 130/160 after `DeviceMetadataEvent` fires (the
+  metadata-driven path in `ShaderLibraryNode` is unaffected). General fix — no Dozen special-case.
+- **Status:** FIXED (`ShaderLibraryNode.h`, `ShaderCompiler.h`, `shader_compilation_cacher.cpp`,
+  branch `claude/wsl-build-portability`).
+
 ---
 
 ## Adding entries

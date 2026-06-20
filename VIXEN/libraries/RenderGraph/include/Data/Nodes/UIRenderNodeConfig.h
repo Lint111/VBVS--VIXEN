@@ -22,7 +22,7 @@ using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
  * Parameters: rmlDocumentPath, fontPath.
  */
 namespace UIRenderNodeCounts {
-    static constexpr size_t INPUTS = 10;
+    static constexpr size_t INPUTS = 11;  // +COMPOSITE_WAIT_SEMAPHORE (compute→UI handoff, composite only)
     static constexpr size_t OUTPUTS = 2;
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Array;
 }
@@ -34,6 +34,13 @@ CONSTEXPR_NODE_CONFIG(UIRenderNodeConfig,
     // ===== PARAMETER NAMES =====
     static constexpr const char* RML_DOCUMENT_PATH = "rmlDocumentPath";
     static constexpr const char* FONT_PATH = "fontPath";
+    // Composite mode (default false): when true this UI pass is layered OVER an upstream producer (the
+    // voxel compute) that wrote the swapchain image and signalled the per-IMAGE semaphore wired into
+    // IMAGE_AVAILABLE_SEMAPHORES_ARRAY. The node then waits on that array indexed by IMAGE (the
+    // compute→UI handoff), signals its own per-image "ui complete" semaphore (output via
+    // RENDER_COMPLETE_SEMAPHORE for present), and owns the frame fence. False = standalone UI graph
+    // (S0 demo): wait imageAvailable[frame], signal renderComplete[image].
+    static constexpr const char* PARAM_COMPOSITE = "composite";
 
     // ===== INPUTS (8) =====
     INPUT_SLOT(SWAPCHAIN_INFO, Vixen::Vulkan::Resources::IRenderTarget*, 0,
@@ -68,6 +75,13 @@ CONSTEXPR_NODE_CONFIG(UIRenderNodeConfig,
     INPUT_SLOT(FRAMEBUFFERS, std::vector<VkFramebuffer>, 9,
         SlotNullability::Required, SlotRole::Dependency, SlotMutability::ReadOnly, SlotScope::NodeLevel);
 
+    // Composite-only: the single per-frame semaphore the upstream producer (voxel compute) signals
+    // after writing the swapchain image. The UI submit waits on it (COLOR_ATTACHMENT_OUTPUT) so the
+    // load reads the finished voxel pixels. Optional ⇒ the standalone S0 UI graph omits it. This edge
+    // also orders the UI's Execute after the compute's (the graph orders solely by explicit edges).
+    INPUT_SLOT(COMPOSITE_WAIT_SEMAPHORE, VkSemaphore, 10,
+        SlotNullability::Optional, SlotRole::Execute, SlotMutability::ReadOnly, SlotScope::NodeLevel);
+
     // ===== OUTPUTS (2) =====
     OUTPUT_SLOT(COMMAND_BUFFERS, VkCommandBuffer, 0,
         SlotNullability::Required, SlotMutability::WriteOnly);
@@ -99,6 +113,9 @@ CONSTEXPR_NODE_CONFIG(UIRenderNodeConfig,
         INIT_INPUT_DESC(RENDER_PASS, "render_pass", ResourceLifetime::Persistent, BufferDescription{});
         INIT_INPUT_DESC(FRAMEBUFFERS, "framebuffers", ResourceLifetime::Transient, BufferDescription{});
 
+        HandleDescriptor compositeWaitDesc{"VkSemaphore"};
+        INIT_INPUT_DESC(COMPOSITE_WAIT_SEMAPHORE, "composite_wait_semaphore", ResourceLifetime::Transient, compositeWaitDesc);
+
         INIT_OUTPUT_DESC(COMMAND_BUFFERS, "command_buffers", ResourceLifetime::Transient, BufferDescription{});
         INIT_OUTPUT_DESC(RENDER_COMPLETE_SEMAPHORE, "render_complete_semaphore",
             ResourceLifetime::Transient, BufferDescription{});
@@ -116,6 +133,8 @@ CONSTEXPR_NODE_CONFIG(UIRenderNodeConfig,
     static_assert(RENDER_COMPLETE_SEMAPHORES_ARRAY_Slot::index == 7, "RENDER_COMPLETE_SEMAPHORES_ARRAY must be at index 7");
     static_assert(RENDER_PASS_Slot::index == 8, "RENDER_PASS must be at index 8");
     static_assert(FRAMEBUFFERS_Slot::index == 9, "FRAMEBUFFERS must be at index 9");
+    static_assert(COMPOSITE_WAIT_SEMAPHORE_Slot::index == 10, "COMPOSITE_WAIT_SEMAPHORE must be at index 10");
+    static_assert(COMPOSITE_WAIT_SEMAPHORE_Slot::nullable, "COMPOSITE_WAIT_SEMAPHORE is optional");
     static_assert(COMMAND_BUFFERS_Slot::index == 0, "COMMAND_BUFFERS must be at index 0");
     static_assert(RENDER_COMPLETE_SEMAPHORE_Slot::index == 1, "RENDER_COMPLETE_SEMAPHORE must be at index 1");
 
@@ -129,6 +148,7 @@ CONSTEXPR_NODE_CONFIG(UIRenderNodeConfig,
     static_assert(std::is_same_v<RENDER_COMPLETE_SEMAPHORES_ARRAY_Slot::Type, const std::vector<VkSemaphore>&>);
     static_assert(std::is_same_v<RENDER_PASS_Slot::Type, VkRenderPass>);
     static_assert(std::is_same_v<FRAMEBUFFERS_Slot::Type, std::vector<VkFramebuffer>>);
+    static_assert(std::is_same_v<COMPOSITE_WAIT_SEMAPHORE_Slot::Type, VkSemaphore>);
     static_assert(std::is_same_v<COMMAND_BUFFERS_Slot::Type, VkCommandBuffer>);
     static_assert(std::is_same_v<RENDER_COMPLETE_SEMAPHORE_Slot::Type, VkSemaphore>);
 };

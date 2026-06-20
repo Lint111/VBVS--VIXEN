@@ -440,3 +440,141 @@ if(TARGET TBB::tbb)
 endif()
 
 gtest_discover_tests(test_lod)
+
+# ===========================================================================
+# Shell Octree Tests  (SP1 — surface-shell voxelizer + body octree)
+# ===========================================================================
+add_executable(test_shell_octree test_shell_octree.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_shell_octree PRIVATE
+        GTest::gtest_main SVO GaiaVoxelWorld VoxelComponents VoxelData)
+else()
+    target_link_libraries(test_shell_octree PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_shell_octree PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_shell_octree POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_shell_octree>
+        COMMENT "Copying TBB DLL for test_shell_octree")
+endif()
+gtest_discover_tests(test_shell_octree)
+
+# ===========================================================================
+# Shell Octree GPU Serialization Tests  (SP2 Task 5a — CPU byte format)
+# ===========================================================================
+add_executable(test_shell_octree_gpu test_shell_octree_gpu.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_shell_octree_gpu PRIVATE
+        GTest::gtest_main SVO GaiaVoxelWorld VoxelComponents VoxelData)
+else()
+    target_link_libraries(test_shell_octree_gpu PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_shell_octree_gpu PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_shell_octree_gpu POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_shell_octree_gpu>
+        COMMENT "Copying TBB DLL for test_shell_octree_gpu")
+endif()
+gtest_discover_tests(test_shell_octree_gpu)
+
+# ===========================================================================
+# GPU Parity Tests  (castRay vs the GpuTraversalMirror oracle — NO Vulkan/GPU)
+# ===========================================================================
+# Drives LaineKarrasOctree::castRay to bit-for-bit parity with a faithful 1:1 C++
+# mirror of the GPU body shader (GpuTraversalMirror.h), run against the EXACT byte
+# buffers the shader consumes (ShellOctreeGpu::Serialize). Headless / gtest-only.
+add_executable(test_gpu_parity test_gpu_parity.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_gpu_parity PRIVATE
+        GTest::gtest_main SVO GaiaVoxelWorld VoxelComponents VoxelData)
+else()
+    target_link_libraries(test_gpu_parity PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_gpu_parity PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_gpu_parity POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_gpu_parity>
+        COMMENT "Copying TBB DLL for test_gpu_parity")
+endif()
+gtest_discover_tests(test_gpu_parity)
+
+# ===========================================================================
+# CPU Body Render Tool  (headless visual check — pure castRay, NO Vulkan/GPU)
+# ===========================================================================
+# Standalone `main` that mirrors BodyInstanceRayMarch.comp ON THE CPU using the
+# proven LaineKarrasOctree::castRay / castRayWithLOD traversal, rendering the SP2
+# body scene to two PNGs (/tmp/body_render_far.png + _near.png). It builds the same
+# ≤3 per-kind shell octrees as BodyOctreeSceneNode and reuses vixen/render's
+# BuildBodyInstances rule. It touches NO Vulkan — safe to run anywhere.
+#
+# Not a gtest target (it writes images + prints a report), so no gtest_discover_tests.
+if(TARGET SVO)
+    add_executable(cpu_body_render cpu_body_render_main.cpp)
+    target_link_libraries(cpu_body_render PRIVATE
+        SVO GaiaVoxelWorld VoxelComponents VoxelData)
+    # glm comes transitively from SVO (PUBLIC). stb provides stb_image_write.h.
+    if(TARGET stb)
+        target_link_libraries(cpu_body_render PRIVATE stb)
+    endif()
+    # vixen/render headers (scene_instances.h / star_scene.h) live beside the engine
+    # submodule at <repo>/vixen/render. From this dir (.../VIXEN/libraries/SVO/tests)
+    # that is five levels up (tests→SVO→libraries→VIXEN→engine→vixen) then /render.
+    target_include_directories(cpu_body_render PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../../render)
+    set_target_properties(cpu_body_render PROPERTIES FOLDER "Tools/SVO")
+    if(TARGET TBB::tbb)
+        add_custom_command(TARGET cpu_body_render POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:cpu_body_render>
+            COMMENT "Copying TBB DLL for cpu_body_render")
+    endif()
+endif()
+
+# ===========================================================================
+# CPU castRay COMPARISON render  (same shell + same camera as the GPU shader)
+# ===========================================================================
+# Renders the SAME single octree-0 shell at the SAME shader camera as
+# test_body_instance_raymarch_render, via pure CPU castRay, to
+# /tmp/cpu_castray_near_cmp.png — the direct apples-to-apples brick-crack
+# comparison against /tmp/glsl_shader_near.png. NO Vulkan. Not a gtest target.
+if(TARGET SVO)
+    add_executable(cpu_castray_cmp cpu_castray_cmp_main.cpp)
+    target_link_libraries(cpu_castray_cmp PRIVATE
+        SVO GaiaVoxelWorld VoxelComponents VoxelData)
+    if(TARGET stb)
+        target_link_libraries(cpu_castray_cmp PRIVATE stb)
+    endif()
+    set_target_properties(cpu_castray_cmp PROPERTIES FOLDER "Tools/SVO")
+    if(TARGET TBB::tbb)
+        add_custom_command(TARGET cpu_castray_cmp POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:cpu_castray_cmp>
+            COMMENT "Copying TBB DLL for cpu_castray_cmp")
+    endif()
+endif()
+
+# ===========================================================================
+# CPU Body Render Diagnostics  (artifact isolation — pure castRay, NO Vulkan)
+# ===========================================================================
+# 5 diagnostic variant PNGs: shell/solid/thickband × depth-6/depth-8.
+# Same NEAR camera as cpu_body_render. Not a gtest target.
+if(TARGET SVO)
+    add_executable(cpu_body_render_diag cpu_body_render_diag.cpp)
+    target_link_libraries(cpu_body_render_diag PRIVATE
+        SVO GaiaVoxelWorld VoxelComponents VoxelData)
+    if(TARGET stb)
+        target_link_libraries(cpu_body_render_diag PRIVATE stb)
+    endif()
+    target_include_directories(cpu_body_render_diag PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../../render)
+    set_target_properties(cpu_body_render_diag PROPERTIES FOLDER "Tools/SVO")
+    if(TARGET TBB::tbb)
+        add_custom_command(TARGET cpu_body_render_diag POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:cpu_body_render_diag>
+            COMMENT "Copying TBB DLL for cpu_body_render_diag")
+    endif()
+endif()

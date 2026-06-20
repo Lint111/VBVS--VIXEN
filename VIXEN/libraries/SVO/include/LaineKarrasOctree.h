@@ -116,6 +116,15 @@ public:
     // Additive insertion support - ensure octree is initialized
     void ensureInitialized(const glm::vec3& worldMin, const glm::vec3& worldMax, int maxLevels);
 
+    // Mark this octree as a BODY octree (built from a GaiaVoxelWorld with the body
+    // convention: integer-grid voxels at worldMin=0, brick layout matching the GPU
+    // serializer). When set, the non-LOD castRay() runs the GPU-parity traversal
+    // (castRayGpuMirror) so collision / nearest-voxel / ray queries against bodies match
+    // the renderer exactly. Other octrees (mesh-voxelized, arbitrary frames) keep the
+    // legacy traversal unchanged. Set by the body builder (e.g. BuildShellOctree).
+    void setBodyOctree(bool isBody) { m_isBodyOctree = isBody; }
+    [[nodiscard]] bool isBodyOctree() const { return m_isBodyOctree; }
+
     // ========================================================================
     // DEPRECATED: Incremental Insertion API (removed in favor of rebuild())
     // ========================================================================
@@ -314,6 +323,12 @@ private:
     size_t m_voxelCount{ 0 };
     size_t m_memoryUsage{ 0 };
 
+    // When true, non-LOD castRay() uses the GPU-parity traversal (castRayGpuMirror) so
+    // body collision/queries match the renderer. Set via setBodyOctree() by the body
+    // builder (e.g. BuildShellOctree). Default false ⇒ legacy traversal for all other
+    // octree kinds (mesh-voxelized, arbitrary world frames) — zero behavioural change.
+    bool m_isBodyOctree{ false };
+
     // Transform: maps local [0, worldSize] space ↔ world space
     // localToWorld: transforms local-space positions to world space
     // worldToLocal: transforms world-space rays into local space for traversal
@@ -395,6 +410,16 @@ private:
     ISVOStructure::RayHit castRayImpl(const glm::vec3& origin, const glm::vec3& direction,
                        float tMin, float tMax, float rayBias,
                        const LODParameters* lodParams = nullptr) const;
+
+    // GPU-PARITY ray cast: a faithful 1:1 port of the GPU body shader traversal
+    // (shaders/BodyInstanceRayMarch.comp + ESVOTraversal.glsl), run against the LIVE
+    // octree (childDescriptors + EntityBrickView occupancy). The GPU renders complete
+    // bodies, so this is correct by construction; GpuTraversalMirror (the standalone
+    // serialized-buffer oracle, used by test_gpu_parity) independently cross-checks it.
+    // No LOD (full detail). castRay()/castRayImpl route the non-LOD path through this
+    // when this octree is a BODY octree (see useGpuMirrorTraversal()).
+    ISVOStructure::RayHit castRayGpuMirror(const glm::vec3& origin, const glm::vec3& direction,
+                       float tMin, float tMax) const;
 
     // ========================================================================
     // Refactored Traversal Phase Methods

@@ -1,13 +1,24 @@
 // BuildRenderGraph -- extracted from VulkanGraphApplication.cpp (M4: per-subgraph construction TU).
 // Editing a node config now recompiles only the subgraph TU(s) wiring it, not the
 // app's lifecycle code. Node includes below are derived from this subgraph's wiring.
+//
+// SP2 body-octree render route (merged onto the M4 TU split): this subgraph builds the
+// BodyOctreeSceneNode + BodyInstanceRayMarch.comp route (bindings 1/2/3/5/10) and the
+// composite-HUD/UI-selection passes, so it also pulls the UI nodes. The include ORDER below
+// is load-bearing: BodyOctreeSceneNode.h MUST precede UIRenderNode.h (and any RmlUi/robin_hood
+// header) because BodyOctreeSceneNode.h transitively pulls gaia.h (ShellOctree ->
+// LaineKarrasOctree -> ISVOStructure), whose std::hash<> specialisations must be visible before
+// RmlUi's bundled robin_hood.h wraps them.
 #include "VulkanGraphApplication.h"
+#include <cmath>  // std::tan for the LOD ray-cone (raySizeCoef) computation
 #include "Connection/ConnectionModifier.h"
 #include "Connection/Modifiers/FieldExtractionModifier.h"
+#include "Connection/Modifiers/AccumulationSortConfig.h"  // SEL-P3: accumulation-connect sort key (provider fan-in)
 #include "Core/NodeRegistration.h"
 #include "MeshData.h"
 #include "VoxelRayMarchNames.h"  // Generated SDI shader-binding constants (VoxelRayMarch::*)
 // --- nodes this subgraph wires ---
+#include "Data/Nodes/BodyOctreeSceneNodeConfig.h"  // M-wire: sparse shell octree + instance SSBO config
 #include "Data/Nodes/CameraNodeConfig.h"
 #include "Data/Nodes/CommandPoolNodeConfig.h"
 #include "Data/Nodes/ComputeDispatchNodeConfig.h"
@@ -33,10 +44,14 @@
 #include "Data/Nodes/ShaderLibraryNodeConfig.h"
 #include "Data/Nodes/SwapChainNodeConfig.h"
 #include "Data/Nodes/TextureLoaderNodeConfig.h"
+#include "Data/Nodes/UIRenderNodeConfig.h"  // S0: composite-HUD render node config
+#include "Data/Nodes/UISelectionProviderNodeConfig.h"  // SEL-P3: UI-domain selection provider config
 #include "Data/Nodes/VertexBufferNodeConfig.h"
 #include "Data/Nodes/VoxelGridNodeConfig.h"
 #include "Data/Nodes/VoxelSelectionProviderNodeConfig.h"
 #include "Data/Nodes/WindowNodeConfig.h"
+// M-wire: BodyOctreeSceneNode.h MUST precede UIRenderNode.h (gaia std::hash before robin_hood) — see file header above.
+#include "Nodes/BodyOctreeSceneNode.h"  // M-wire: sparse shell octree + instance SSBO
 #include "Nodes/CameraNode.h"
 #include "Nodes/CommandPoolNode.h"
 #include "Nodes/ComputeDispatchNode.h"
@@ -62,6 +77,8 @@
 #include "Nodes/ShaderLibraryNode.h"
 #include "Nodes/SwapChainNode.h"
 #include "Nodes/TextureLoaderNode.h"
+#include "Nodes/UIRenderNode.h"  // S0: composite-HUD render node (RmlUi) — AFTER BodyOctreeSceneNode.h
+#include "Nodes/UISelectionProviderNode.h"  // SEL-P3: UI-domain selection provider (RmlUi hit-test)
 #include "Nodes/VertexBufferNode.h"
 #include "Nodes/VoxelGridNode.h"
 #include "Nodes/VoxelSelectionProviderNode.h"
@@ -136,7 +153,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // --- Ray Marching Nodes ---
     NodeHandle cameraNode = renderGraph->AddNode<CameraNodeType>("raymarch_camera");
     NodeHandle voxelGridNode = renderGraph->AddNode<VoxelGridNodeType>("voxel_grid");
-    voxelGridNode_ = voxelGridNode;                  // store for MarkVoxelSceneDirty()
+    voxelGridNode_ = voxelGridNode;                  // store for MarkVoxelSceneDirty() (debug buffers only; not the render source post M-wire)
+
+    // M-wire Task 8: sparse shell octree node — the live render source for bodies.
+    // Outputs OCTREE_NODES/BRICKS/MATERIALS/CONFIG_BUFFER (identical slot names to VoxelGridNode,
+    // so the descriptor wiring for bindings 1/2/3/5 just points here instead) plus
+    // INSTANCE_BUFFER (binding 10) and INSTANCE_COUNT.
+    NodeHandle bodyOctreeSceneNode = renderGraph->AddNode<BodyOctreeSceneNodeType>("body_octree_scene");
+    bodyOctreeSceneNode_ = bodyOctreeSceneNode;      // store so SetBodyInstances() can forward to it
 
     // --- Input Node ---
     NodeHandle inputNode = renderGraph->AddNode<InputNodeType>("input_handler");
@@ -153,6 +177,17 @@ void VulkanGraphApplication::BuildRenderGraph() {
         if (auto* pl = provInst->GetLogger()) { pl->SetEnabled(true); pl->SetTerminalOutput(true); }
     }
 
+    // --- UI Selection Provider (SEL-P3: providers are nodes) — on a click edge it hit-tests the HUD's
+    // Rml::Context at the cursor and emits a SelectionCandidate (priority 10) into the coordinator's
+    // gather slot, so a HUD click OCCLUDES the voxel pick (priority 0). It reads the live context from
+    // the UI composite node via SetUiRenderNode (wired below, once uiCompositeNode exists). ---
+    NodeHandle uiSelectionProviderNode = renderGraph->AddNode<UISelectionProviderNodeType>("ui_selection_provider");
+    uiSelectionProviderNode_ = uiSelectionProviderNode;   // store for GetUiSelectionProviderNode() live lookup (host drains HUD clicks)
+    // Provider HIT/miss is user-facing; enable its logger to the terminal (defaults DISABLED).
+    if (auto* uiProvInst = renderGraph->GetInstance(uiSelectionProviderNode)) {
+        if (auto* pl = uiProvInst->GetLogger()) { pl->SetEnabled(true); pl->SetTerminalOutput(true); }
+    }
+
     // --- Selection Coordinator (SEL-P2: engine-wide selection; gathers provider candidates via a
     // MultiConnect slot, priority-resolves, and owns the durable SelectionSet) ---
     NodeHandle selectionCoordinatorNode = renderGraph->AddNode<SelectionCoordinatorNodeType>("selection_coordinator");
@@ -164,10 +199,35 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     NodeHandle physicsLoopBridge = renderGraph->AddNode<LoopBridgeNodeType>("physics_loop");
     NodeHandle physicsLoopIDConstant = renderGraph->AddNode<ConstantNodeType>("physics_loop_id");
+
+    // M-wire Task 8: push constants for BodyInstanceRayMarch.comp (fields 8 and 9).
+    // raySizeCoef = 0.0 disables LOD (full-detail traversal); set non-zero for screen-space LOD.
+    // raySizeBias = 0.0 (pinhole camera; no bias at origin).
+    NodeHandle raySizeCoefConstant = renderGraph->AddNode<ConstantNodeType>("ray_size_coef");
+    NodeHandle raySizeBiasConstant = renderGraph->AddNode<ConstantNodeType>("ray_size_bias");
     
     NodeHandle debugCaptureNode = renderGraph->AddNode<DebugBufferReaderNodeType>("debug_capture");
 
-    mainLogger->Info("Created 30 node instances (including compute pipeline, camera, voxel grid, gatherers, and selection provider)");
+    // --- UI composite pass (HUD over the voxel render) ---
+    // A color-only graphics pass layered over the compute output: RenderPassNode (LOAD, initial=General,
+    // final=PresentSrc) + FramebufferNode (swapchain image views) + UIRenderNode (composite). Mirrors
+    // BuildUIGraph's UIRenderNode shape, but LOADs the voxel image instead of clearing.
+    NodeHandle uiRenderPassNode  = renderGraph->AddNode<RenderPassNodeType>("ui_composite_render_pass");
+    NodeHandle uiFramebufferNode = renderGraph->AddNode<FramebufferNodeType>("ui_composite_framebuffer");
+    NodeHandle uiCompositeNode   = renderGraph->AddNode<UIRenderNodeType>("ui_composite_render");
+    uiRenderNode_ = uiCompositeNode;                 // store for GetUiRenderNode() live lookup (host SetHudData)
+
+    // SEL-P3: give the UI selection provider the composite UIRenderNode, so it can hit-test that
+    // node's Rml::Context on a click (the context is a raw RmlUi pointer created in UIRenderNode's
+    // CompileImpl — not a graph slot, so it is passed by node reference, not connected). The context
+    // is null until the UI node first compiles; the provider tolerates that (emits a miss).
+    if (auto* uiNodeInst = static_cast<UIRenderNode*>(renderGraph->GetInstance(uiCompositeNode))) {
+        if (auto* uiProvInst = static_cast<UISelectionProviderNode*>(renderGraph->GetInstance(uiSelectionProviderNode))) {
+            uiProvInst->SetUiRenderNode(uiNodeInst);
+        }
+    }
+
+    mainLogger->Info("Created node instances (including compute pipeline, camera, voxel grid, gatherers, selection provider, and UI composite pass)");
 
     // ===================================================================
     // PHASE 2: Configure node parameters
@@ -297,28 +357,46 @@ void VulkanGraphApplication::BuildRenderGraph() {
         mainLogger->Info("[BuildRenderGraph] Loop ID set, moving to shader library...");
     }
 
+    // Vertical FOV of the ray-march camera, in degrees. Single source of truth: used both to
+    // configure CameraNode (PARAM_FOV, below) and to derive the LOD ray-cone spread (raySizeCoef).
+    constexpr float kRaymarchCameraFovDegrees = 45.0f;
+
+    // M-wire Task 8: set LOD push constant values (fields 8 and 9 of BodyInstanceRayMarch.comp).
+    // raySizeCoef is the ray cone spread per unit distance — drives the screen-space-error LOD
+    // stop in BodyInstanceRayMarch.comp (gated on raySizeCoef > 0.0). Match the reference
+    // SVOLOD.h::LODParameters::fromCamera: 2*tan((fovY / screenHeight) / 2), with fovY in radians
+    // and screenHeight the swapchain pixel height (the same `height` used for dispatch dims below).
+    // kRaymarchCameraFovDegrees is the vertical FOV; it is fed to CameraNode (PARAM_FOV) below so
+    // the two stay in lock-step. raySizeBias = 0.0 (pinhole camera; zero cone diameter at origin).
+    const float fovYRadians   = kRaymarchCameraFovDegrees * (3.14159265358979323846f / 180.0f);
+    const float screenHeightF = static_cast<float>(height);
+    const float raySizeCoef   = 2.0f * std::tan((fovYRadians / screenHeightF) * 0.5f);
+    auto* raySizeCoefConst = static_cast<ConstantNode*>(renderGraph->GetInstance(raySizeCoefConstant));
+    raySizeCoefConst->SetValue<float>(raySizeCoef);   // 2*tan(fovY/h/2): LOD enabled (Task 7)
+    auto* raySizeBiasConst = static_cast<ConstantNode*>(renderGraph->GetInstance(raySizeBiasConstant));
+    raySizeBiasConst->SetValue<float>(0.0f);   // 0.0 = pinhole camera bias
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info("[BuildRenderGraph] LOD raySizeCoef=" + std::to_string(raySizeCoef) +
+                         " (fov=" + std::to_string(kRaymarchCameraFovDegrees) + " deg, screenHeight=" +
+                         std::to_string(height) + ")");
+    }
+
     auto* frameSync = static_cast<FrameSyncNode*>(renderGraph->GetInstance(frameSyncNode));
 
     // Voxel ray marching compute shader (VoxelRayMarch.comp)
     // Load from pre-compiled shaders in build directory
     auto* computeShaderLibNode = static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(computeShaderLib));
 
+    // M-wire Task 8: use the instanced shell-octree ray-march shader (BodyInstanceRayMarch.comp).
+    // Replaces VoxelRayMarch_Compressed.comp. Bindings 1/2/3/5 come from BodyOctreeSceneNode;
+    // binding 10 = per-body instance SSBO; bindings 4/8 = debug/counters from voxelGridNode.
     computeShaderLibNode->RegisterShaderBuilder([this](int vulkanVer, int spirvVer) {
         ShaderManagement::ShaderBundleBuilder builder;
 
-        // Shader variant selection for A/B performance testing
-        // USE_COMPRESSED_SHADER=1: DXT compressed variant (bindings 7,8 for compressed data)
-        // USE_COMPRESSED_SHADER=0: Uncompressed baseline (binding 2 for raw brick data)
-#if USE_COMPRESSED_SHADER
-        constexpr const char* shaderName = "VoxelRayMarch_Compressed.comp";
-        constexpr const char* programName = "VoxelRayMarch_Compressed";
-#else
-        constexpr const char* shaderName = "VoxelRayMarch.comp";
-        constexpr const char* programName = "VoxelRayMarch";
-#endif
+        constexpr const char* shaderName = "BodyInstanceRayMarch.comp";
+        constexpr const char* programName = "BodyInstanceRayMarch";
 
-        // Find voxel ray march shader source
-        // Try compile-time shader directory first, then fallback to runtime search paths
+        // Find shader source — try compile-time dir first, then fallback runtime paths.
         std::vector<std::filesystem::path> possiblePaths = {
 #ifdef VIXEN_SHADER_SOURCE_DIR
             std::string(VIXEN_SHADER_SOURCE_DIR) + "/" + shaderName,
@@ -347,8 +425,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
             throw std::runtime_error(std::string(shaderName) + " not found - check shader search paths");
         }
 
-        // Configure builder with include paths for #include directive support
-        // AddIncludePath() automatically creates internal preprocessor
         builder.SetProgramName(programName)
                .SetPipelineType(ShaderManagement::PipelineTypeConstraint::Compute)
                .SetTargetVulkanVersion(vulkanVer)
@@ -361,13 +437,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
                .AddStageFromFile(ShaderManagement::ShaderStage::Compute, compPath, "main");
 
         if (mainLogger && mainLogger->IsEnabled()) {
-#if USE_COMPRESSED_SHADER
-            mainLogger->Info("[BuildRenderGraph] Using COMPRESSED shader variant: " + compPath.string());
-            mainLogger->Info("[BuildRenderGraph] Compressed buffers at bindings 7 (colors), 8 (normals)");
-#else
-            mainLogger->Info("[BuildRenderGraph] Using UNCOMPRESSED shader variant: " + compPath.string());
-            mainLogger->Info("[BuildRenderGraph] Raw brick data at binding 2");
-#endif
+            mainLogger->Info("[BuildRenderGraph] Using BodyInstanceRayMarch shader: " + compPath.string());
+            mainLogger->Info("[BuildRenderGraph] Octree buffers at bindings 1/2/3/5 (BodyOctreeSceneNode); instances at binding 10");
         }
 
         return builder;
@@ -397,7 +468,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
         cameraLogger->SetTerminalOutput(false);
     }
 
-    camera->SetParameter(CameraNodeConfig::PARAM_FOV, 45.0f);
+    camera->SetParameter(CameraNodeConfig::PARAM_FOV, kRaymarchCameraFovDegrees);  // shared with raySizeCoef
     camera->SetParameter(CameraNodeConfig::PARAM_NEAR_PLANE, 0.1f);
     camera->SetParameter(CameraNodeConfig::PARAM_FAR_PLANE, 500.0f);
     // Camera presets for Cornell box (grid spans [0,128], center at 64,64,64)
@@ -483,7 +554,26 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     
 
-    mainLogger->Info("Configured all node parameters (including camera and voxel grid)");
+    // --- UI composite pass parameters ---
+    // The compute leaves the swapchain image in GENERAL (it no longer transitions to PRESENT_SRC); the
+    // UI render pass LOADs that image, draws the HUD over it, and owns the →PRESENT_SRC transition.
+    dispatch->SetParameter(ComputeDispatchNodeConfig::PARAM_LEAVE_IMAGE_IN_GENERAL, true);
+
+    auto* uiRenderPass = static_cast<RenderPassNode*>(renderGraph->GetInstance(uiRenderPassNode));
+    uiRenderPass->SetParameter(RenderPassNodeConfig::PARAM_COLOR_LOAD_OP, AttachmentLoadOp::Load);   // preserve voxels
+    uiRenderPass->SetParameter(RenderPassNodeConfig::PARAM_COLOR_STORE_OP, AttachmentStoreOp::Store);
+    uiRenderPass->SetParameter(RenderPassNodeConfig::PARAM_INITIAL_LAYOUT, ImageLayout::General);    // compute leaves GENERAL
+    uiRenderPass->SetParameter(RenderPassNodeConfig::PARAM_FINAL_LAYOUT, ImageLayout::PresentSrc);   // ready for present
+    uiRenderPass->SetParameter(RenderPassNodeConfig::PARAM_SAMPLES, 1u);
+
+    auto* uiFramebuffer = static_cast<FramebufferNode*>(renderGraph->GetInstance(uiFramebufferNode));
+    uiFramebuffer->SetParameter(FramebufferNodeConfig::PARAM_LAYERS, 1u);
+
+    auto* uiComposite = static_cast<UIRenderNode*>(renderGraph->GetInstance(uiCompositeNode));
+    uiComposite->SetParameter(UIRenderNodeConfig::PARAM_COMPOSITE, true);
+    uiComposite->SetParameter(UIRenderNodeConfig::RML_DOCUMENT_PATH, std::string("assets/ui/hud.rml"));
+
+    mainLogger->Info("Configured all node parameters (including camera, voxel grid, and UI composite pass)");
 
     // ===================================================================
     // PHASE 3: Wire connections using TypedConnection API
@@ -662,8 +752,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
                   presentNode, PresentNodeConfig::IMAGE_INDEX);
 
-    // --- ComputeDispatch → Present semaphore connection (separate to avoid ConnectionBatch duplication bug) ---
-    batch.Connect(computeDispatch, ComputeDispatchNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+    // --- UI composite → Present semaphore connection ---
+    // The UI pass is now the frame's last submit: present waits on the UI's render-complete semaphore
+    // (not the compute's). The compute's render-complete is consumed by the UI as the compute→UI handoff.
+    batch.Connect(uiCompositeNode, UIRenderNodeConfig::RENDER_COMPLETE_SEMAPHORE,
                   presentNode, PresentNodeConfig::RENDER_COMPLETE_SEMAPHORE);
 
 
@@ -763,15 +855,26 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(windowNode, WindowNodeConfig::HEIGHT_OUT,
                   voxelSelectionProviderNode, VoxelSelectionProviderNodeConfig::VIEWPORT_HEIGHT);
 
-    // The coordinator consumes the voxel provider's CANDIDATE, priority-resolves (pickBestCandidate,
-    // ready for N candidates), applies the input modifier to the durable SelectionSet, and broadcasts
-    // a SelectionChangedEvent. It also reads InputState for the click edge. (A multi-provider fan-in
-    // into one slot needs the engine's accumulation-gather — see the FAN-IN NOTE in the coordinator
-    // config; today it is a single direct candidate connection, which the engine wires every frame.)
+    // SEL-P3 UI provider: only needs per-frame InputState (cursor position + left button). It reads
+    // the HUD's Rml::Context via the UIRenderNode reference wired above (SetUiRenderNode), not a slot.
+    batch.Connect(inputNode, InputNodeConfig::INPUT_STATE,
+                  uiSelectionProviderNode, UISelectionProviderNodeConfig::INPUT_STATE);
+
+    // The coordinator GATHERS every provider's CANDIDATE into its PROVIDER_CANDIDATES accumulation
+    // slot, priority-resolves (pickBestCandidate over the gathered vector), applies the input modifier
+    // to the durable SelectionSet, and broadcasts a SelectionChangedEvent. It also reads InputState
+    // for the click edge. Both providers MultiConnect into the gather slot via the accumulation-connect
+    // path (ConnectionMeta{}.With<AccumulationSortConfig>(key)); the sort key only orders the gathered
+    // vector — the WINNER is decided by candidate priority (UI=10 occludes voxel world=0). Adding
+    // another provider is one more MultiConnect here, with no coordinator change.
     batch.Connect(inputNode, InputNodeConfig::INPUT_STATE,
                   selectionCoordinatorNode, SelectionCoordinatorNodeConfig::INPUT_STATE)
          .Connect(voxelSelectionProviderNode, VoxelSelectionProviderNodeConfig::CANDIDATE,
-                  selectionCoordinatorNode, SelectionCoordinatorNodeConfig::PROVIDER_CANDIDATE);
+                  selectionCoordinatorNode, SelectionCoordinatorNodeConfig::PROVIDER_CANDIDATES,
+                  ConnectionMeta{}.With<AccumulationSortConfig>(0))
+         .Connect(uiSelectionProviderNode, UISelectionProviderNodeConfig::CANDIDATE,
+                  selectionCoordinatorNode, SelectionCoordinatorNodeConfig::PROVIDER_CANDIDATES,
+                  ConnectionMeta{}.With<AccumulationSortConfig>(1));
 
     // Pick ID target (AR#35 GPU picking P1): allocate the R32_UINT storage-image ring sized to the
     // window, transition it to GENERAL once, and expose the current frame's view for binding 9.
@@ -789,11 +892,21 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
                   pickIdTargetNode, PickIdTargetNodeConfig::CURRENT_FRAME_INDEX);
 
-    // Voxel grid node connections
+    // Voxel grid node connections (debug-only; no longer the render source — kept for bindings 4 and 8)
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   voxelGridNode, VoxelGridNodeConfig::VULKAN_DEVICE_IN)
          .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
                   voxelGridNode, VoxelGridNodeConfig::COMMAND_POOL);
+
+    // M-wire Task 8: body octree scene node connections (the live render source post M-wire).
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
+                  bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::COMMAND_POOL)
+         // FR-7 ring fix: supply the per-frame index so ExecuteImpl picks which ring
+         // slot to upload instances into (prevents CPU/GPU races on the instance SSBO).
+         .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                  bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::CURRENT_FRAME_INDEX);
 
     // Connect push constant fields to push constant gatherer using member extraction
     // CameraNode now outputs a CameraData struct, so we can extract individual fields
@@ -827,6 +940,22 @@ void VulkanGraphApplication::BuildRenderGraph() {
                           pushConstantGatherer, VoxelRayMarch::debugMode::BINDING,  // int debugMode
                           ExtractField(&InputState::debugMode, SlotRole::Execute));  // Mark as Execute-only
 
+    // M-wire Task 8: new push constant fields 8, 9, 10 for BodyInstanceRayMarch.comp.
+    // Field indices match shader reflection order: cameraPos(0),time(1),cameraDir(2),fov(3),
+    // cameraUp(4),aspect(5),cameraRight(6),debugMode(7), raySizeCoef(8),raySizeBias(9),instanceCount(10).
+    // raySizeCoef (binding 8): LOD cone-spread constant; 0.0 disables LOD (full-detail traversal).
+    batch.Connect(raySizeCoefConstant, ConstantNodeConfig::OUTPUT,
+                          pushConstantGatherer, 8,  // push constant field 8: float raySizeCoef
+                          SlotRoleModifier(SlotRole::Execute));
+    // raySizeBias (binding 9): LOD origin cone size; 0.0 for pinhole camera.
+    batch.Connect(raySizeBiasConstant, ConstantNodeConfig::OUTPUT,
+                          pushConstantGatherer, 9,  // push constant field 9: float raySizeBias
+                          SlotRoleModifier(SlotRole::Execute));
+    // instanceCount (binding 10): number of valid entries in bodyInstances[]; from BodyOctreeSceneNode.
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_COUNT,
+                          pushConstantGatherer, 10,  // push constant field 10: int instanceCount
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
     // Connect ray marching resources to descriptor gatherer using VoxelRayMarchNames.h bindings
     // Binding 0: outputImage - Transient (Execute-only), others are Persistent (Dependency|Execute)
     // Binding 0: outputImage (swapchain image view) - changes per frame
@@ -835,30 +964,36 @@ void VulkanGraphApplication::BuildRenderGraph() {
                           descriptorGatherer, 0,  // outputImage at binding 0
                           SlotRoleModifier(SlotRole::Execute));
 
-    // Binding 1: octreeNodes (SSBO) - octree node data
-    batch.Connect(voxelGridNode, VoxelGridNodeConfig::OCTREE_NODES_BUFFER,
+    // M-wire Task 8: bindings 1/2/3/5 now come from BodyOctreeSceneNode (sparse shell octrees).
+    // Slot names are identical to VoxelGridNode's octree outputs (by design in BodyOctreeSceneNodeConfig).
+    // The shader's esvoNodes/brickData/materials/OctreeConfigsUBO at these bindings are now the
+    // concatenated per-kind shell octrees, NOT the dense 128^3 grid.
+
+    // Binding 1: esvoNodes (SSBO) - concatenated shell octree node descriptors for <= 3 kinds
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_NODES_BUFFER,
                           descriptorGatherer, VoxelRayMarch::esvoNodes::BINDING,
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-                          
 
-    // Binding 2: voxelBricks (SSBO) - voxel brick data
-    batch.Connect(voxelGridNode, VoxelGridNodeConfig::OCTREE_BRICKS_BUFFER,
+    // Binding 2: brickData (SSBO) - concatenated brick voxel data
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_BRICKS_BUFFER,
                           descriptorGatherer, VoxelRayMarch::brickData::BINDING,
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
-    // Binding 3: materialPalette (SSBO) - material data
-    batch.Connect(voxelGridNode, VoxelGridNodeConfig::OCTREE_MATERIALS_BUFFER,
+    // Binding 3: materials (SSBO) - material palette
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_MATERIALS_BUFFER,
                           descriptorGatherer, VoxelRayMarch::materials::BINDING,
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
+    // Binding 4: RayTraceBuffer (debug capture) — still from voxelGridNode (it has the buffer;
+    // BodyOctreeSceneNode has no debug capture). VoxelGridNode stays in graph for this purpose.
     batch.Connect(voxelGridNode, VoxelGridNodeConfig::DEBUG_CAPTURE_BUFFER,
                           descriptorGatherer, VoxelRayMarch::traceWriteIndex::BINDING,
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute | SlotRole::Debug));
 
-    // Binding 5: octreeConfig (UBO) - octree scale parameters
-    // TODO: Add VoxelRayMarch::octreeConfig to VoxelRayMarchNames.h after regenerating SDI
-    batch.Connect(voxelGridNode, VoxelGridNodeConfig::OCTREE_CONFIG_BUFFER,
-                          descriptorGatherer, 5,  // Binding 5 (hardcoded until SDI regenerated)
+    // Binding 5: OctreeConfigsUBO (3 x 256 B std140 array) - per-kind octree config
+    // BodyOctreeSceneNode outputs OCTREE_CONFIG_BUFFER sized to 3 x kMaxOctrees entries.
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_CONFIG_BUFFER,
+                          descriptorGatherer, 5,  // Binding 5 (hardcoded; no SDI regen yet)
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
     // Binding 9: idOutputImage (R32_UINT storage image) - AR#35 GPU picking P1. The compute shader
@@ -869,31 +1004,26 @@ void VulkanGraphApplication::BuildRenderGraph() {
                           descriptorGatherer, 9,  // Binding 9: idOutputImage
                           SlotRoleModifier(SlotRole::Execute));
 
-    // Binding 8: ShaderCounters debug/profiling buffer. BOTH shader variants enable
-    // ENABLE_SHADER_COUNTERS by default and statically use binding 8 (written every pixel),
-    // so it MUST be bound for the non-compressed path too — an unbound descriptor statically
-    // used in a dispatch is VUID-vkCmdDispatch-None-08114 (and undefined behavior). This was
-    // previously (incorrectly) gated inside USE_COMPRESSED_SHADER. VoxelGridNode produces
-    // SHADER_COUNTERS_BUFFER unconditionally, so this connects in either build configuration.
+    // Binding 8: ShaderCounters — BodyInstanceRayMarch.comp uses ENABLE_SHADER_COUNTERS at binding 8
+    // exactly like the compressed variant did. Still sourced from voxelGridNode (the only node with
+    // this buffer; BodyOctreeSceneNode has no shader counters). Must be bound to avoid UB.
     batch.Connect(voxelGridNode, VoxelGridNodeConfig::SHADER_COUNTERS_BUFFER,
                           descriptorGatherer, 8,  // Binding 8: ShaderCountersBuffer
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
-#if USE_COMPRESSED_SHADER
-    // Compressed shader variant requires DXT compressed buffers at bindings 6 and 7
-    // Binding 6: compressedColors (DXT1) - 8 bytes/block, 32 blocks/brick = 256 bytes/brick
-    // Binding 7: compressedNormals (DXT) - 16 bytes/block, 32 blocks/brick = 512 bytes/brick
-    batch.Connect(voxelGridNode, VoxelGridNodeConfig::COMPRESSED_COLOR_BUFFER,
-                          descriptorGatherer, 6,  // Binding 6: CompressedColorBuffer
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    batch.Connect(voxelGridNode, VoxelGridNodeConfig::COMPRESSED_NORMAL_BUFFER,
-                          descriptorGatherer, 7,  // Binding 7: CompressedNormalBuffer
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info("[BuildRenderGraph] Connected debug/counters: binding 4 (voxelGridNode debug capture), binding 8 (voxelGridNode shader counters)");
+    }
+
+    // Binding 10: BodyInstanceBuffer (SSBO) — per-body BodyInstanceGpu records (32 B each).
+    // M-wire Task 8: this is the NEW binding not present in the dense path.
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_BUFFER,
+                          descriptorGatherer, 10,  // Binding 10: BodyInstanceBuffer
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
     if (mainLogger && mainLogger->IsEnabled()) {
-        mainLogger->Info("[BuildRenderGraph] Connected compressed buffers: binding 6 (colors), binding 7 (normals)");
+        mainLogger->Info("[BuildRenderGraph] Connected body instance SSBO at binding 10 (BodyOctreeSceneNode)");
     }
-#endif
 
     // Swapchain connections to descriptor set and dispatch
     // Pass swapchain public vars; DescriptorSetNode reads swapChainImageCount during Compile.
@@ -919,6 +1049,39 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   computeDispatch, ComputeDispatchNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
 
     // REMOVED DUPLICATE: computeDispatch -> present RENDER_COMPLETE_SEMAPHORE (already connected at line 894-895)
+
+    // ===================================================================
+    // UI composite pass: HUD render pass over the compute output, before present.
+    // Mirrors BuildUIGraph's RenderPassNode → FramebufferNode → UIRenderNode shape, but the render pass
+    // LOADs (initial=General, from the compute) instead of clearing, and the UI node runs in composite
+    // mode (waits on the compute→UI handoff, signals its own present semaphore, owns the frame fence).
+    // ===================================================================
+
+    // UI render pass: device + swapchain format. (Color-only; no depth → LOAD/initial=General set above.)
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, uiRenderPassNode, RenderPassNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC, uiRenderPassNode, RenderPassNodeConfig::SWAPCHAIN_INFO);
+
+    // UI framebuffers: wrap each swapchain image view against the UI render pass.
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, uiFramebufferNode, FramebufferNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(uiRenderPassNode, RenderPassNodeConfig::RENDER_PASS, uiFramebufferNode, FramebufferNodeConfig::RENDER_PASS)
+         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC, uiFramebufferNode, FramebufferNodeConfig::SWAPCHAIN_INFO);
+
+    // UIRenderNode (composite) inputs — mirrors BuildUIGraph's UIRenderNode wiring.
+    batch.Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC, uiCompositeNode, UIRenderNodeConfig::SWAPCHAIN_INFO)
+         .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL, uiCompositeNode, UIRenderNodeConfig::COMMAND_POOL)
+         .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, uiCompositeNode, UIRenderNodeConfig::VULKAN_DEVICE)
+         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX, uiCompositeNode, UIRenderNodeConfig::IMAGE_INDEX)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX, uiCompositeNode, UIRenderNodeConfig::CURRENT_FRAME_INDEX)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::IN_FLIGHT_FENCE, uiCompositeNode, UIRenderNodeConfig::IN_FLIGHT_FENCE)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY, uiCompositeNode, UIRenderNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
+         .Connect(swapChainNode, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY, uiCompositeNode, UIRenderNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY)
+         .Connect(uiRenderPassNode, RenderPassNodeConfig::RENDER_PASS, uiCompositeNode, UIRenderNodeConfig::RENDER_PASS)
+         .Connect(uiFramebufferNode, FramebufferNodeConfig::FRAMEBUFFERS, uiCompositeNode, UIRenderNodeConfig::FRAMEBUFFERS);
+
+    // The compute→UI handoff: the UI waits on the semaphore the compute signalled after writing the
+    // image. This is also the explicit edge that orders the UI's Execute after the compute's.
+    batch.Connect(computeDispatch, ComputeDispatchNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+                  uiCompositeNode, UIRenderNodeConfig::COMPOSITE_WAIT_SEMAPHORE);
 
     // Atomically register all connections
     size_t connectionCount = batch.GetConnectionCount();

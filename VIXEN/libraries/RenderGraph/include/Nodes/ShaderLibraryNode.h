@@ -106,9 +106,13 @@ private:
     std::shared_ptr<CashSystem::ShaderModuleWrapper> vertexShader;
     std::shared_ptr<CashSystem::ShaderModuleWrapper> fragmentShader;
 
-    // Device metadata (received via EventBus)
-    int deviceVulkanVersion = 130;  // Default: Vulkan 1.3
-    int deviceSpirvVersion = 160;   // Default: SPIR-V 1.6
+    // Device metadata (received via EventBus).
+    // Defaults are a conservative safe floor (Vulkan 1.2 / SPIR-V 1.5) so that any shader compiled
+    // before DeviceMetadataEvent is received never targets a higher SPIR-V version than a Vulkan-1.2
+    // device can accept (e.g. Mesa Dozen on WSL2 reports apiVersion = 1.2 even though the instance
+    // requests 1.3).  Once OnDeviceMetadata fires these are replaced with the device's real caps.
+    int deviceVulkanVersion = 120;  // Safe floor: Vulkan 1.2
+    int deviceSpirvVersion = 150;   // Safe floor: SPIR-V 1.5 (matches Vulkan 1.2 per spec §46.1)
     bool hasReceivedDeviceMetadata = false;
 
     // Event handlers

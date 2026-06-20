@@ -108,6 +108,12 @@ endif()
 # --- clear, build-type-aware validation symbol + status ---
 if(VIXEN_VULKAN_VALIDATION)
     add_compile_definitions(VIXEN_VULKAN_VALIDATION=1)
+    # Self-contained validation: pass the provisioned validation-layer manifest dir to the app so it can
+    # point the Vulkan loader at it (VK_LAYER_PATH) at startup — no manual env, works on GCC/WSL where the
+    # SDK was auto-provisioned. Empty when Vulkan came from the system (the loader already knows its layers).
+    if(VIXEN_VULKAN_LAYER_PATH)
+        add_compile_definitions(VIXEN_VK_LAYER_PATH="${VIXEN_VULKAN_LAYER_PATH}")
+    endif()
 else()
     add_compile_definitions(VIXEN_VULKAN_VALIDATION=0)
 endif()

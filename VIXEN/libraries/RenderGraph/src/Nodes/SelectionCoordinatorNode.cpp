@@ -67,14 +67,14 @@ void SelectionCoordinatorNode::ExecuteImpl(TypedExecuteContext& ctx) {
         return;  // cheap: only resolve on a click edge
     }
 
-    // --- Gather the provider candidate(s) and resolve --------------------------------------------
-    // A provider node emits one SelectionCandidate per frame on its CANDIDATE output (hit=false off
-    // the click edge / on a miss). We resolve through a vector so this stays ready for N providers:
-    // pickBestCandidate picks the best HIT by MAX priority, tie-break MIN depth (UI occludes world).
-    // (Today a single provider is wired — see the FAN-IN NOTE in the config for the engine
-    // accumulation-gather gap; this is the same pickBestCandidate the vector fan-in would use.)
-    const SelectionCandidate candidate = ctx.In(SelectionCoordinatorNodeConfig::PROVIDER_CANDIDATE);
-    const std::vector<SelectionCandidate> candidates{ candidate };
+    // --- Gather the provider candidates and resolve ----------------------------------------------
+    // PROVIDER_CANDIDATES is an accumulation gather slot: ctx.InAll assembles a
+    // std::vector<SelectionCandidate> with one entry per wired provider node (each emits a candidate
+    // every frame — hit=false off the click edge / on a miss). pickBestCandidate picks the best HIT
+    // by MAX priority, tie-break MIN depth (UI occludes world). Adding a provider is a MultiConnect
+    // into this slot — no change here.
+    const std::vector<SelectionCandidate> candidates =
+        ctx.InAll(SelectionCoordinatorNodeConfig::PROVIDER_CANDIDATES);
 
     // Resolve via the shared rule (max priority, tie-break min depth; non-hits ignored).
     const SelectionCandidate* best = pickBestCandidate(candidates);

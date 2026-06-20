@@ -221,6 +221,24 @@ std::optional<ISVOStructure::RayHit> LaineKarrasOctree::traverseBrickAndReturnHi
                 brickLocalMin.x, brickLocalMin.y, brickLocalMin.z, brickLocalMax.x, brickLocalMax.y, brickLocalMax.z);
     DEBUG_PRINT("    brickTMin=%.4f, brickTMax=%.4f, tEntry=%.4f\n", brickTMin, brickTMax, tEntry);
 
+    // Reject bricks the ray geometrically MISSES (empty slab interval).
+    // A valid ray-AABB intersection requires brickTMin <= brickTMax; when the
+    // interval is empty the ray never crosses the brick, so any "hit" would be a
+    // phantom. The old code passed the empty interval straight into the DDA, which
+    // built an entry point from the bogus brickTMin, clamped it to an edge voxel,
+    // and returned an occupancy hit on the first iteration — the detached
+    // brick-aligned blocks seen on oblique rays. The GPU brick DDA avoids this by
+    // deriving the entry from the leaf-octant geometry (computePosInBrick) and
+    // rejecting exit-boundary entries (BodyInstanceRayMarch.comp marchBrickInstanced
+    // L242-249); the equivalent CPU correctness is to drop the missed brick here so
+    // the ESVO loop advances to the next leaf, exactly as the GPU returns false.
+    constexpr float kIntervalEpsilon = 1e-4f;
+    if (brickTMin > brickTMax + kIntervalEpsilon) {
+        DEBUG_PRINT("    REJECT: ray misses brick AABB (brickTMin %.4f > brickTMax %.4f)\n",
+                    brickTMin, brickTMax);
+        return std::nullopt;
+    }
+
     return traverseBrickView(brickView, brickLocalMin, brickVoxelSize, localRayOrigin, rayDir, brickTMin, brickTMax);
 }
 
@@ -490,27 +508,50 @@ std::optional<ISVOStructure::RayHit> LaineKarrasOctree::traverseBrickView(
             glm::vec3 tFarHit = glm::max(t0, t1);
 
             float hitT = glm::max(glm::max(tNearHit.x, tNearHit.y), tNearHit.z);
-            hitT = std::max(hitT, 0.0f);
+            const float voxelExitT = glm::min(glm::min(tFarHit.x, tFarHit.y), tFarHit.z);
 
-            glm::vec3 entryNormal;
-            if (tNearHit.x >= tNearHit.y && tNearHit.x >= tNearHit.z) {
-                entryNormal = glm::vec3(rayDir.x > 0.0f ? -1.0f : 1.0f, 0.0f, 0.0f);
-            } else if (tNearHit.y >= tNearHit.z) {
-                entryNormal = glm::vec3(0.0f, rayDir.y > 0.0f ? -1.0f : 1.0f, 0.0f);
-            } else {
-                entryNormal = glm::vec3(0.0f, 0.0f, rayDir.z > 0.0f ? -1.0f : 1.0f);
+            // Accept the hit only if the ray actually passes through the voxel's
+            // INTERIOR (positive length: tNear < tFar) — the per-voxel form of the
+            // same ray-AABB validity test as the brick-level guard above. At an exact
+            // corner/edge the entry tNear and exit tFar collapse (hitT >= voxelExitT):
+            // the ray merely touches this voxel at a single point while its true path
+            // continues through the EMPTY neighbouring cell, so a hit here is a phantom
+            // (the brick-aligned specks on oblique rays that clip a voxel corner). When
+            // that happens we DON'T return — we fall through to the normal DDA advance
+            // and keep marching to the voxel the ray truly enters. The GPU brick DDA
+            // avoids the case because its integer DDA, seeded from the sub-voxel
+            // leaf-octant entry (computePosInBrick) clamped to [0, brickSize-0.001],
+            // lands in the interior voxel rather than the grazed-corner voxel.
+            constexpr float kGrazeEpsilon = 1e-4f;
+            const bool realCrossing = (hitT < voxelExitT - kGrazeEpsilon);
+
+            if (realCrossing) {
+                hitT = std::max(hitT, 0.0f);
+
+                glm::vec3 entryNormal;
+                if (tNearHit.x >= tNearHit.y && tNearHit.x >= tNearHit.z) {
+                    entryNormal = glm::vec3(rayDir.x > 0.0f ? -1.0f : 1.0f, 0.0f, 0.0f);
+                } else if (tNearHit.y >= tNearHit.z) {
+                    entryNormal = glm::vec3(0.0f, rayDir.y > 0.0f ? -1.0f : 1.0f, 0.0f);
+                } else {
+                    entryNormal = glm::vec3(0.0f, 0.0f, rayDir.z > 0.0f ? -1.0f : 1.0f);
+                }
+
+                ISVOStructure::RayHit hit;
+                hit.hit = true;
+                hit.tMin = hitT;
+                hit.tMax = hitT + brickVoxelSize;
+                hit.hitPoint = rayOrigin + rayDir * hitT;
+                hit.scale = m_maxLevels - 1;
+                hit.normal = entryNormal;
+                hit.entity = entity;
+
+                return hit;
             }
 
-            ISVOStructure::RayHit hit;
-            hit.hit = true;
-            hit.tMin = hitT;
-            hit.tMax = hitT + brickVoxelSize;
-            hit.hitPoint = rayOrigin + rayDir * hitT;
-            hit.scale = m_maxLevels - 1;
-            hit.normal = entryNormal;
-            hit.entity = entity;
-
-            return hit;
+            DEBUG_PRINT("    SKIP graze voxel=(%d,%d,%d): hitT=%.4f >= voxelExitT=%.4f (zero interior)\n",
+                        currentVoxel.x, currentVoxel.y, currentVoxel.z, hitT, voxelExitT);
+            // else: corner/edge graze — fall through to the DDA advance below.
         }
 
         // 7. Advance to next voxel

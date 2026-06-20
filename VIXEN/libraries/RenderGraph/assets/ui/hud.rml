@@ -3,10 +3,45 @@
     <title>Undertow HUD</title>
     <link type="text/rcss" href="hud.rcss"/>
 </head>
-<body data-model="hud">
-    <div id="hud">
-        <span id="hud-tick">tick {{tick}}</span>
-        <span id="hud-bodies">bodies {{bodyCount}}</span>
+<body>
+    <div data-model="hud" id="hud">
+        <div class="clock">tick {{tick}} · bodies {{bodyCount}}</div>
+        <!-- Active map lens (view:lens): the lens's display name + its member count, from the Hud
+             ActiveLens / ActiveLensCount columns. "None (0)" when no lens is active. -->
+        <div class="lens-status">Lens: {{activeLensName}} ({{activeLensCount}})</div>
+        <div class="factions">
+            <div class="section-label">Factions</div>
+            <!-- Per-row state from the View's HudFactions columns: data-class-focused tracks
+                 HudFactionFocused (the player's focus cursor → .focused highlight); data-class-known
+                 tracks HudFactionKnown (investigated → .known indicator + the ✓ via .col-known);
+                 data-class-in-lens tracks HudFactionInLens (in the active lens's set → .in-lens). -->
+            <div class="row" data-for="f : factions" data-class-focused="f.focused" data-class-known="f.known" data-class-in-lens="f.inLens">
+                <span class="col-known">{{ f.known ? '✓' : '·' }}</span>
+                <span class="col-name">{{f.name}}</span>
+                <span class="col-value">{{f.grievance}}</span>
+            </div>
+        </div>
+        <div class="events">
+            <div class="section-label">Events</div>
+            <div class="row" data-for="e : events">
+                <span class="col-tick">T{{e.tick}}</span>
+                <span class="col-kind">{{e.kind}}</span>
+            </div>
+        </div>
     </div>
+    <!-- Demo interactive widget: an ELLIPSE hit-mask proves hit vs pass-through. A click on the disc
+         is a UI hit; a click in the square's transparent corners falls through to the voxel pick.
+         pointer-events:auto (in hud.rcss) opts it back into picking; the hit-mask attribute then
+         drives the per-pixel shape test. No action is wired yet (a later S4 step). -->
+    <div id="demo-btn" hit-mask="ellipse">●</div>
+    <!-- Focus widget: clicking ▸ fires view:focus (bound in hud.utdl), which walks the player's focus
+         cursor down the faction list. Same ellipse hit-mask / pointer-events:auto pattern as #demo-btn. -->
+    <div id="focus-btn" hit-mask="ellipse">▸</div>
+    <!-- Investigate widget: clicking 🔍 fires player:investigate (bound in hud.utdl), which investigates
+         the focused faction (raises the player's knowledge of it to Known). Same hit-mask pattern. -->
+    <div id="investigate-btn" hit-mask="ellipse">🔍</div>
+    <!-- Lens widget: clicking ◉ fires view:lens (bound in hud.utdl), which cycles the active map lens
+         (None→Intel→Logistics→Threat). Same ellipse hit-mask / pointer-events:auto pattern. -->
+    <div id="lens-btn" hit-mask="ellipse">◉</div>
 </body>
 </rml>

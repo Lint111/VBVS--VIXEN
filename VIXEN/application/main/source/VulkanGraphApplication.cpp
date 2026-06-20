@@ -4,6 +4,7 @@
 #include "Logger.h"
 #include <cstdlib>     // std::getenv / ::setenv for the WSL2 Dozen ICD selection
 #include <filesystem>  // std::filesystem::exists for the WSL2 Dozen ICD selection
+#include <cmath>       // std::tan for the LOD ray-cone (raySizeCoef) computation
 
 #define GLFW_INCLUDE_NONE   // don't pull in <GL/gl.h> (absent on headless/WSL); Vulkan-only below
 #define GLFW_INCLUDE_VULKAN
@@ -11,13 +12,22 @@
 #include "Core/TypedConnection.h"  // Typed slot connection helpers
 #include "Connection/ConnectionModifier.h"  // ConnectionMeta
 #include "Connection/Modifiers/FieldExtractionModifier.h"  // ExtractField
+#include "Connection/Modifiers/AccumulationSortConfig.h"  // SEL-P3: accumulation-connect sort key (provider fan-in)
 #include "CommandBufferUtility.h"  // MVP: File reading utility
 #include "MainCacher.h"  // Cache system initialization
 #include "Core/LoopManager.h"  // Phase 0.4: Loop system
 #include "Core/NodeRegistration.h"  // M3: RegisterAllNodes (decentralized node self-registration)
 // M4: graph construction + its ~37 node includes moved to source/graph/Build*Graph.cpp.
-// The lifecycle code here needs only WindowNode (live window lookup after the de-own refactor).
+// The lifecycle code here needs only WindowNode (live window lookup after the de-own refactor)
+// plus the few concrete node types its host-feed seams downcast to: BodyOctreeSceneNode
+// (SetBodyInstances), UIRenderNode (GetUiRenderNode), UISelectionProviderNode
+// (GetUiSelectionProviderNode). Include-order is load-bearing: BodyOctreeSceneNode.h MUST precede
+// UIRenderNode.h (and any RmlUi/robin_hood header) — BodyOctreeSceneNode.h pulls in gaia.h, whose
+// std::hash<> specialisations must be visible before RmlUi's bundled robin_hood.h wraps them.
 #include "Nodes/WindowNode.h"
+#include "Nodes/BodyOctreeSceneNode.h"        // M-wire: SetBodyInstances() downcast target (gaia — before UIRenderNode.h)
+#include "Nodes/UIRenderNode.h"               // GetUiRenderNode() downcast target (RmlUi — after BodyOctreeSceneNode.h)
+#include "Nodes/UISelectionProviderNode.h"    // GetUiSelectionProviderNode() downcast target
 
 #include <ShaderBundleBuilder.h>  // Phase G: Shader builder API (includes preprocessor support)
 // NOTE: "VoxelRayMarch_CompressedNames.h" was an orphaned include — that combined
@@ -83,6 +93,24 @@ const char* SelectWslGpuIcd() {
 #endif
     return nullptr;
 }
+
+// When the build enabled validation (VIXEN_VULKAN_VALIDATION) with an auto-provisioned SDK, point the
+// Vulkan loader at the provisioned validation-layer manifests (VK_LAYER_PATH) and force-enable the
+// layer (VK_INSTANCE_LAYERS) before instance creation — self-contained, no manual env. The validation
+// layer catches invalid GPU ops CPU-side (a log, not a kernel panic — critical on WSL/Dozen). No-op
+// when not built with validation, or when the user already configured layers. Returns the path or null.
+const char* SelectValidationLayerPath() {
+#if defined(__linux__) && defined(VIXEN_VK_LAYER_PATH)
+    const char* lp = VIXEN_VK_LAYER_PATH;
+    if (lp && lp[0] != '\0' && std::filesystem::exists(lp)) {
+        if (std::getenv("VK_LAYER_PATH") == nullptr) ::setenv("VK_LAYER_PATH", lp, /*overwrite=*/0);
+        if (std::getenv("VK_INSTANCE_LAYERS") == nullptr)
+            ::setenv("VK_INSTANCE_LAYERS", "VK_LAYER_KHRONOS_validation", /*overwrite=*/0);
+        return lp;
+    }
+#endif
+    return nullptr;
+}
 }  // namespace
 
 void VulkanGraphApplication::Initialize() {
@@ -93,6 +121,9 @@ void VulkanGraphApplication::Initialize() {
     // (no-op off WSL / when already configured). Must precede VulkanApplicationBase::Initialize().
     if (const char* dznIcd = SelectWslGpuIcd()) {
         mainLogger->Info(std::string("[SelectWslGpuIcd] WSL2 GPU: selected Dozen ICD ") + dznIcd);
+    }
+    if (const char* layerPath = SelectValidationLayerPath()) {
+        mainLogger->Info(std::string("[SelectValidationLayerPath] validation layers active (VK_LAYER_PATH=") + layerPath + ")");
     }
 
     mainLogger->Debug("About to call VulkanApplicationBase::Initialize()");
@@ -557,9 +588,39 @@ void VulkanGraphApplication::MarkVoxelSceneDirty() {
     renderGraph->MarkNodeNeedsRecompile(voxelGridNode_);
 }
 
+void VulkanGraphApplication::SetBodyInstances(std::vector<Vixen::SVO::BodyInstanceGpu> instances) {
+    // M-wire Task 8: forward the host-side instance list to BodyOctreeSceneNode, which will
+    // re-upload the instance SSBO (binding 10) on the next compile tick.
+    // Replaces the StarSystemGenerator::Register + MarkVoxelSceneDirty flow for body rendering.
+    auto* node = static_cast<Vixen::RenderGraph::BodyOctreeSceneNode*>(
+        renderGraph->GetInstance(bodyOctreeSceneNode_));
+    if (node) {
+        node->SetInstances(std::move(instances));
+    } else if (mainLogger) {
+        mainLogger->Warning("[VulkanGraphApplication::SetBodyInstances] bodyOctreeSceneNode_ not found — bodies not updated");
+    }
+}
+
 GLFWwindow* VulkanGraphApplication::GetWindowHandle() const {
     // Live lookup — the WindowNode owns the window (post-de-own refactor) and persists across
     // recompiles, so never cache the pointer (that was the dangling-window bug the refactor removed).
     auto* window = static_cast<WindowNode*>(renderGraph->GetInstance(windowNode_));
     return window != nullptr ? window->GetWindow() : nullptr;
+}
+
+Vixen::RenderGraph::UIRenderNode* VulkanGraphApplication::GetUiRenderNode() const {
+    // Live lookup of the composite HUD node (set in BuildRenderGraph). Mirrors GetWindowHandle: never
+    // cache the pointer (it persists across recompiles). nullptr when unset — e.g. the VIXEN_UI_DEMO
+    // path builds BuildUIGraph (no composite node) and never assigns uiRenderNode_.
+    if (!renderGraph) return nullptr;
+    return static_cast<Vixen::RenderGraph::UIRenderNode*>(renderGraph->GetInstance(uiRenderNode_));
+}
+
+Vixen::RenderGraph::UISelectionProviderNode* VulkanGraphApplication::GetUiSelectionProviderNode() const {
+    // Live lookup of the UI selection provider (set in BuildRenderGraph). Mirrors GetUiRenderNode: never
+    // cache the pointer (it persists across recompiles). nullptr when unset — e.g. a graph built without
+    // the selection provider node.
+    if (!renderGraph) return nullptr;
+    return static_cast<Vixen::RenderGraph::UISelectionProviderNode*>(
+        renderGraph->GetInstance(uiSelectionProviderNode_));
 }

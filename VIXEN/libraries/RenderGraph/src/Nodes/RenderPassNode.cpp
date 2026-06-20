@@ -165,6 +165,7 @@ VkAttachmentStoreOp RenderPassNode::ConvertStoreOp(AttachmentStoreOp op) {
 VkImageLayout RenderPassNode::ConvertImageLayout(ImageLayout layout) {
     switch (layout) {
         case ImageLayout::Undefined: return VK_IMAGE_LAYOUT_UNDEFINED;
+        case ImageLayout::General: return VK_IMAGE_LAYOUT_GENERAL;
         case ImageLayout::ColorAttachment: return VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
         case ImageLayout::DepthStencilAttachment: return VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
         case ImageLayout::PresentSrc: return VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;

@@ -981,6 +981,60 @@ public:
      */
     void SetOutput(uint32_t slotIndex, uint32_t arrayIndex, Resource* resource) override;
 
+    // ============================================================================
+    // ACCUMULATION GATHER (typed runtime fan-in)
+    // ============================================================================
+
+    /**
+     * @brief Recorded producer connection feeding an accumulation input slot.
+     *
+     * An accumulation input slot gathers an array of values from N producer nodes
+     * (fan-in). Unlike a direct connection -- which wires one producer output Resource
+     * into the consumer input slot -- an accumulation slot records each producer here
+     * and assembles the std::vector<T> at Execute time (see TypedNode::InAll).
+     *
+     * The gather is deferred to Execute (not Resolve) because producer outputs carry
+     * per-frame values: each producer's CURRENT output Resource is read at gather time.
+     */
+    struct AccumulationSource {
+        NodeInstance* producer = nullptr;  ///< Producer node whose output feeds the slot
+        uint32_t outputSlot = 0;           ///< Producer output slot index
+        int32_t sortKey = 0;               ///< Ordering key (ByMetadata); stable insertion order ties
+    };
+
+    /**
+     * @brief Record a producer connection feeding an accumulation input slot.
+     *
+     * Called by AccumulationConnectionRule::Resolve() once per source connection.
+     * Order of registration is preserved; the gather may additionally sort by sortKey.
+     *
+     * @param inputSlot  Consumer accumulation input slot index
+     * @param producer   Producer node supplying a value
+     * @param outputSlot Producer output slot index to read
+     * @param sortKey    Ordering metadata (0 = connection order)
+     */
+    void RegisterAccumulationSource(uint32_t inputSlot, NodeInstance* producer,
+                                    uint32_t outputSlot, int32_t sortKey = 0) {
+        if (!producer) {
+            return;
+        }
+        accumulationSources_[inputSlot].push_back(AccumulationSource{producer, outputSlot, sortKey});
+    }
+
+    /**
+     * @brief Get the recorded producer connections for an accumulation input slot.
+     *
+     * @param inputSlot Consumer accumulation input slot index
+     * @return Pointer to the source list, or nullptr if the slot has no sources.
+     */
+    const std::vector<AccumulationSource>* GetAccumulationSources(uint32_t inputSlot) const {
+        auto it = accumulationSources_.find(inputSlot);
+        if (it == accumulationSources_.end()) {
+            return nullptr;
+        }
+        return &it->second;
+    }
+
 protected:
     /**
      * @brief Set node state (internal use only)
@@ -1080,6 +1134,11 @@ protected:
     NodeState state = NodeState::Created;
     std::vector<NodeInstance*> dependencies;
     uint32_t executionOrder = 0;
+
+    // Accumulation gather: per-(input slot) list of producer connections feeding it.
+    // Populated by AccumulationConnectionRule::Resolve(); consumed at Execute by
+    // TypedNode::InAll() to assemble std::vector<T> from the producers' current outputs.
+    std::map<uint32_t, std::vector<AccumulationSource>> accumulationSources_;
     bool cleanedUp = false;  // Cleanup protection flag
     CleanupReason cleanupReason_ = CleanupReason::FinalTeardown;  // why Cleanup() was called; flows into CleanupContext
 

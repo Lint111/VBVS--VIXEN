@@ -78,6 +78,7 @@ set(RENDERGRAPH_DATA_NODE_CONFIGS
     include/Data/Nodes/RayTracingPipelineNodeConfig.h
     include/Data/Nodes/TraceRaysNodeConfig.h
     include/Data/Nodes/WindowNodeConfig.h
+    include/Data/Nodes/BodyOctreeSceneNodeConfig.h
 )
 
 # ============================================================================
@@ -226,6 +227,7 @@ set(RENDERGRAPH_NODE_HEADERS
     include/Nodes/RayTracingPipelineNode.h
     include/Nodes/TraceRaysNode.h
     include/Nodes/WindowNode.h
+    include/Nodes/BodyOctreeSceneNode.h
 )
 
 set(RENDERGRAPH_NODE_SOURCES
@@ -255,6 +257,7 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/LoopBridgeNode.cpp
     src/Nodes/SelectionCoordinatorNode.cpp
     src/Nodes/VoxelSelectionProviderNode.cpp
+    src/Nodes/UISelectionProviderNode.cpp
     src/Nodes/PresentNode.cpp
     src/Nodes/PushConstantGathererNode.cpp
     src/Nodes/RenderPassNode.cpp
@@ -268,6 +271,7 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/RayTracingPipelineNode.cpp
     src/Nodes/TraceRaysNode.cpp
     src/Nodes/WindowNode.cpp
+    src/Nodes/BodyOctreeSceneNode.cpp
 )
 
 # ============================================================================
@@ -305,12 +309,14 @@ set(RENDERGRAPH_UI_HEADERS
     include/Ui/VixenRmlRenderInterface.h
     include/Ui/VixenRmlSystemInterface.h
     include/Ui/UiShaderSpirv.h
+    include/Ui/UiHitMask.h
     include/Data/Nodes/UIRenderNodeConfig.h
     include/Nodes/UIRenderNode.h
 )
 
 set(RENDERGRAPH_UI_SOURCES
     src/Ui/VixenRmlRenderInterface.cpp
+    src/Ui/UiHitMask.cpp
     src/Nodes/UIRenderNode.cpp
 )
 
@@ -454,11 +460,23 @@ target_link_libraries(RenderGraphNodes
         glfw                   # Cross-platform window/surface/input (WindowNode/InputNode/InstanceNode)
         rmlui_core             # Data-driven UI (RML/RCSS); freetype is its transitive font engine
         freetype
+    PRIVATE
+        stb                    # header-only; only UiHitMask.cpp uses it (stbi_load for image hit-masks)
 )
 
 # RmlUi is built static (FetchContent); code including its headers needs this
 # define. Only the Nodes lib (UIRenderNode + UI headers) includes RmlUi.
 target_compile_definitions(RenderGraphNodes PUBLIC RMLUI_STATIC_LIB)
+
+# UIRenderNode loads RmlUi assets (fonts/docs) via paths relative to the exe (vixen_stage_assets
+# stages them next to demo binaries). Consumers that run from a different CWD (e.g. the UNDERTOW host)
+# wouldn't find them; this source-dir fallback lets the node resolve assets/ui/* from the engine tree
+# regardless of CWD. Private — only UIRenderNode.cpp uses it.
+# NOTE (merge integration): post the M2 library split, `RenderGraph` is an INTERFACE alias and cannot
+# carry PRIVATE definitions; UIRenderNode.cpp lives in RenderGraphNodes, so target that lib (mirrors the
+# RMLUI_STATIC_LIB define above).
+target_compile_definitions(RenderGraphNodes PRIVATE
+    VIXEN_UI_ASSET_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/assets")
 
 # ============================================================================
 # Install and Properties (both static libs)
@@ -485,6 +503,12 @@ if(USE_PRECOMPILED_HEADERS)
     # TBB-based executor needs TBB headers not in PCH - skip PCH for this file
     set_source_files_properties(
         src/Core/TBBVirtualTaskExecutor.cpp
+        PROPERTIES SKIP_PRECOMPILE_HEADERS ON
+    )
+
+    # UiHitMask is intentionally dependency-light (pure math + header-only stb); skip the heavy PCH.
+    set_source_files_properties(
+        src/Ui/UiHitMask.cpp
         PROPERTIES SKIP_PRECOMPILE_HEADERS ON
     )
 endif()

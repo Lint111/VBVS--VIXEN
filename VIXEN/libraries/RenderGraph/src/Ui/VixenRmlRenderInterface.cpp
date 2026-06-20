@@ -297,10 +297,52 @@ VixenRmlRenderInterface::Texture* VixenRmlRenderInterface::CreateTextureRGBA(con
     return tex;
 }
 
+void VixenRmlRenderInterface::DestroyGeometry(Geometry* g) {
+    if (!g) return;
+    if (g->vbuf) vkDestroyBuffer(device_, g->vbuf, nullptr);
+    if (g->vmem) vkFreeMemory(device_, g->vmem, nullptr);
+    if (g->ibuf) vkDestroyBuffer(device_, g->ibuf, nullptr);
+    if (g->imem) vkFreeMemory(device_, g->imem, nullptr);
+    delete g;
+}
+
+void VixenRmlRenderInterface::DestroyTexture(Texture* t) {
+    if (!t) return;
+    if (t->sampler) vkDestroySampler(device_, t->sampler, nullptr);
+    if (t->view) vkDestroyImageView(device_, t->view, nullptr);
+    if (t->image) vkDestroyImage(device_, t->image, nullptr);
+    if (t->memory) vkFreeMemory(device_, t->memory, nullptr);
+    // The descriptor set is freed implicitly when the pool is destroyed in Shutdown (the pool was not
+    // created with VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT, so it is not individually freeable);
+    // it is cheap and bounded by the 64-set pool, so leaving it to pool teardown is fine.
+    delete t;
+}
+
 void VixenRmlRenderInterface::BeginFrame(VkCommandBuffer cmd, VkExtent2D extent) {
     cmd_ = cmd;
     extent_ = extent;
     scissorEnabled_ = false;
+
+    // Advance the frame clock, then reclaim any deferred-released resource old enough that no in-flight
+    // frame can still reference it (age >= kDeferFrames). Bias LATE: a resource freed a frame too early
+    // is a use-after-free. Iterate-and-erase in place; the lists are tiny (HUD geometry only).
+    ++frameCounter_;
+    for (auto it = pendingGeometryDeletes_.begin(); it != pendingGeometryDeletes_.end();) {
+        if (frameCounter_ - it->first >= kDeferFrames) {
+            DestroyGeometry(it->second);
+            it = pendingGeometryDeletes_.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    for (auto it = pendingTextureDeletes_.begin(); it != pendingTextureDeletes_.end();) {
+        if (frameCounter_ - it->first >= kDeferFrames) {
+            DestroyTexture(it->second);
+            it = pendingTextureDeletes_.erase(it);
+        } else {
+            ++it;
+        }
+    }
 }
 
 Rml::CompiledGeometryHandle VixenRmlRenderInterface::CompileGeometry(Rml::Span<const Rml::Vertex> vertices,
@@ -353,9 +395,17 @@ void VixenRmlRenderInterface::RenderGeometry(Rml::CompiledGeometryHandle geometr
     vkCmdDrawIndexed(cmd_, g->indexCount, 1, 0, 0, 0);
 }
 
-void VixenRmlRenderInterface::ReleaseGeometry(Rml::CompiledGeometryHandle /*geometry*/) {
-    // S0: deferred — all geometry buffers are destroyed in Shutdown() after vkDeviceWaitIdle. A static
-    // document compiles geometry once at layout, so there is no per-frame churn to reclaim here.
+void VixenRmlRenderInterface::ReleaseGeometry(Rml::CompiledGeometryHandle geometry) {
+    auto* g = reinterpret_cast<Geometry*>(geometry);
+    if (!g) return;
+    // Hand ownership from geometries_ to the deferred-delete queue: erase it here (so Shutdown won't
+    // double-free) and free it later in BeginFrame once it is past every in-flight frame. RmlUi may
+    // call Release while the buffer is still bound in a frame the GPU hasn't finished — freeing now
+    // would be a use-after-free.
+    for (auto it = geometries_.begin(); it != geometries_.end(); ++it) {
+        if (*it == g) { geometries_.erase(it); break; }
+    }
+    pendingGeometryDeletes_.emplace_back(frameCounter_, g);
 }
 
 Rml::TextureHandle VixenRmlRenderInterface::LoadTexture(Rml::Vector2i& /*dims*/, const Rml::String& /*source*/) {
@@ -368,8 +418,15 @@ Rml::TextureHandle VixenRmlRenderInterface::GenerateTexture(Rml::Span<const Rml:
     return reinterpret_cast<Rml::TextureHandle>(tex);
 }
 
-void VixenRmlRenderInterface::ReleaseTexture(Rml::TextureHandle /*texture*/) {
-    // S0: deferred to Shutdown() (see ReleaseGeometry).
+void VixenRmlRenderInterface::ReleaseTexture(Rml::TextureHandle texture) {
+    auto* t = reinterpret_cast<Texture*>(texture);
+    if (!t) return;
+    // Same deferred hand-off as ReleaseGeometry: erase from textures_ so Shutdown won't double-free,
+    // then free in BeginFrame once no in-flight frame can still sample it.
+    for (auto it = textures_.begin(); it != textures_.end(); ++it) {
+        if (*it == t) { textures_.erase(it); break; }
+    }
+    pendingTextureDeletes_.emplace_back(frameCounter_, t);
 }
 
 void VixenRmlRenderInterface::EnableScissorRegion(bool enable) {
@@ -383,27 +440,20 @@ void VixenRmlRenderInterface::SetScissorRegion(Rml::Rectanglei region) {
 
 void VixenRmlRenderInterface::Shutdown() {
     if (device_ == VK_NULL_HANDLE) return;
+    // Caller vkDeviceWaitIdle's first, so everything still owned — live AND deferred-but-not-yet-freed —
+    // is safe to destroy now. Drain both the live lists and the pending-delete queues via the same
+    // per-struct helpers the deferred path uses, so teardown is identical no matter which path frees it.
 
-    auto destroyTex = [this](Texture* t) {
-        if (!t) return;
-        if (t->sampler) vkDestroySampler(device_, t->sampler, nullptr);
-        if (t->view) vkDestroyImageView(device_, t->view, nullptr);
-        if (t->image) vkDestroyImage(device_, t->image, nullptr);
-        if (t->memory) vkFreeMemory(device_, t->memory, nullptr);
-        delete t;
-    };
-    for (Texture* t : textures_) destroyTex(t);
+    for (Texture* t : textures_) DestroyTexture(t);
     textures_.clear();
     defaultTexture_ = nullptr;  // owned via textures_ above
+    for (auto& [releaseFrame, t] : pendingTextureDeletes_) { (void)releaseFrame; DestroyTexture(t); }
+    pendingTextureDeletes_.clear();
 
-    for (Geometry* g : geometries_) {
-        if (g->vbuf) vkDestroyBuffer(device_, g->vbuf, nullptr);
-        if (g->vmem) vkFreeMemory(device_, g->vmem, nullptr);
-        if (g->ibuf) vkDestroyBuffer(device_, g->ibuf, nullptr);
-        if (g->imem) vkFreeMemory(device_, g->imem, nullptr);
-        delete g;
-    }
+    for (Geometry* g : geometries_) DestroyGeometry(g);
     geometries_.clear();
+    for (auto& [releaseFrame, g] : pendingGeometryDeletes_) { (void)releaseFrame; DestroyGeometry(g); }
+    pendingGeometryDeletes_.clear();
 
     if (pipeline_) vkDestroyPipeline(device_, pipeline_, nullptr);
     if (pipelineLayout_) vkDestroyPipelineLayout(device_, pipelineLayout_, nullptr);

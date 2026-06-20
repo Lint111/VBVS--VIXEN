@@ -265,12 +265,17 @@ void ShaderCompilationCacher::CompileShader(const ShaderCompilationParams& ci, C
             return;
     }
 
-    // Set up compilation options
+    // Set up compilation options.
+    // Use Vulkan 1.2 / SPIR-V 1.5 as a safe floor: this path compiles shaders that arrive directly
+    // via ShaderModuleCreateParams (bypassing the ShaderLibraryNode device-metadata flow), so we
+    // cannot know the device's actual API version.  SPIR-V 1.5 is valid on all Vulkan 1.2+ devices;
+    // if the caller needs Vulkan 1.3 / SPIR-V 1.6, they should compile through ShaderBundleBuilder
+    // (which receives the device version via DeviceMetadataEvent).
     ShaderManagement::CompilationOptions options;
     options.optimizePerformance = true;
     options.generateDebugInfo = false;
-    options.targetVulkanVersion = 130;  // Vulkan 1.3
-    options.targetSpirvVersion = 160;   // SPIR-V 1.6
+    options.targetVulkanVersion = 120;  // Safe floor: Vulkan 1.2
+    options.targetSpirvVersion = 150;   // Safe floor: SPIR-V 1.5 (matches Vulkan 1.2 per spec §46.1)
 
     // Create compiler
     ShaderManagement::ShaderCompiler compiler;
