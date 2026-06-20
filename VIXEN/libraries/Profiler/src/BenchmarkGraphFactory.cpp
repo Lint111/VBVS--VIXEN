@@ -26,6 +26,7 @@
 #include <Nodes/DescriptorSetNode.h>
 #include <Nodes/ComputePipelineNode.h>
 #include <Nodes/ComputeDispatchNode.h>
+#include <Nodes/PickIdTargetNode.h>
 #include <Nodes/CameraNode.h>
 #include <Nodes/VoxelGridNode.h>
 #include <Nodes/InputNode.h>
@@ -56,6 +57,7 @@
 #include <Data/Nodes/DescriptorSetNodeConfig.h>
 #include <Data/Nodes/ComputePipelineNodeConfig.h>
 #include <Data/Nodes/ComputeDispatchNodeConfig.h>
+#include <Data/Nodes/PickIdTargetNodeConfig.h>
 #include <Data/Nodes/CameraNodeConfig.h>
 #include <Data/Nodes/VoxelGridNodeConfig.h>
 #include <Data/Nodes/InputNodeConfig.h>
@@ -174,6 +176,10 @@ ComputePipelineNodes BenchmarkGraphFactory::BuildComputePipeline(
     nodes.descriptorSet = graph->AddNode<RG::DescriptorSetNodeType>("benchmark_descriptors");
     nodes.pipeline = graph->AddNode<RG::ComputePipelineNodeType>("benchmark_pipeline");
     nodes.dispatch = graph->AddNode<RG::ComputeDispatchNodeType>("benchmark_dispatch");
+    // AR#35: the voxel ray-march shader statically writes idOutputImage at binding 9, so the
+    // benchmark must bind a valid R32_UINT storage image there (mirrors the app; the benchmark
+    // never reads it back — picking is app-only — it exists purely to satisfy the static write).
+    nodes.pickIdTarget = graph->AddNode<RG::PickIdTargetNodeType>("benchmark_pick_id_target");
 
     // Configure parameters
     ConfigureComputePipelineParams(graph, nodes, infra, shaderPath, workgroupSizeX, workgroupSizeY);
@@ -1668,6 +1674,9 @@ void BenchmarkGraphFactory::WireVariadicResources(
     constexpr uint32_t BINDING_COMPRESSED_NORMAL = 7;
     // Both uncompressed and compressed shaders use binding 8 for ShaderCounters
     constexpr uint32_t BINDING_SHADER_COUNTERS = 8;
+    // Binding 9: idOutputImage (R32_UINT storage image, AR#35 GPU picking). Statically written by
+    // both VoxelRayMarch.comp variants, so it must be bound (else VUID-vkCmdDispatch-None-08114).
+    constexpr uint32_t BINDING_ID_OUTPUT_IMAGE = 9;
 
     // Binding 0: outputImage (swapchain storage image) - Execute only (changes per frame)
     batch.Connect(
@@ -1722,6 +1731,33 @@ void BenchmarkGraphFactory::WireVariadicResources(
         rayMarch.voxelGrid, RG::VoxelGridNodeConfig::SHADER_COUNTERS_BUFFER,
         compute.descriptorGatherer, BINDING_SHADER_COUNTERS,
         RG::ConnectionMeta{}.With(std::unique_ptr<RG::SlotRoleModifier>(new RG::SlotRoleModifier(RG::SlotRole::Dependency | RG::SlotRole::Execute))));
+
+    // PickIdTargetNode allocation inputs: device + command pool drive the R32_UINT ring allocation
+    // and the one-shot UNDEFINED->GENERAL transition; window width/height size it to the swapchain;
+    // the frame index advances the ring each Execute (mirrors the app's pick_id_target wiring).
+    batch.Connect(
+        infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
+        compute.pickIdTarget, RG::PickIdTargetNodeConfig::VULKAN_DEVICE_IN);
+    batch.Connect(
+        infra.commandPool, RG::CommandPoolNodeConfig::COMMAND_POOL,
+        compute.pickIdTarget, RG::PickIdTargetNodeConfig::COMMAND_POOL);
+    batch.Connect(
+        infra.window, RG::WindowNodeConfig::WIDTH_OUT,
+        compute.pickIdTarget, RG::PickIdTargetNodeConfig::WIDTH);
+    batch.Connect(
+        infra.window, RG::WindowNodeConfig::HEIGHT_OUT,
+        compute.pickIdTarget, RG::PickIdTargetNodeConfig::HEIGHT);
+    batch.Connect(
+        infra.frameSync, RG::FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+        compute.pickIdTarget, RG::PickIdTargetNodeConfig::CURRENT_FRAME_INDEX);
+
+    // Binding 9: idOutputImage view from the pick-ID target. Execute-only and refreshed per frame,
+    // exactly like the swapchain output at binding 0 (PickIdTargetNode re-emits the current ring
+    // image's view each Execute and the gatherer rebinds it).
+    batch.Connect(
+        compute.pickIdTarget, RG::PickIdTargetNodeConfig::ID_IMAGE_VIEW,
+        compute.descriptorGatherer, BINDING_ID_OUTPUT_IMAGE,
+        RG::ConnectionMeta{}.With(std::unique_ptr<RG::SlotRoleModifier>(new RG::SlotRoleModifier(RG::SlotRole::Execute))));
 
     //--------------------------------------------------------------------------
     // VoxelRayMarch.comp Push Constants

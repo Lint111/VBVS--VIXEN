@@ -434,23 +434,25 @@ Collect the following information:
 
 ---
 
-## Known Validation Issue: idOutputImage (binding 9) unbound
+## Resolved Validation Issue: idOutputImage (binding 9) unbound
 
 `VoxelRayMarch.comp` / `VoxelRayMarch_Compressed.comp` statically write the pick-ID storage
 image `idOutputImage` at descriptor **binding 9** every pixel (`imageStore`). The benchmark's
-compute graph (`BenchmarkGraphFactory`) wires bindings 0–8 but has **no pick-ID target**, so
-binding 9 is reflected into the descriptor-set layout and statically used by the dispatch yet
-never updated — producing `VUID-vkCmdDispatch-None-08114` ("descriptor … idOutputImage … never
-been updated") every frame, and technically undefined behavior on the write.
+compute graph (`BenchmarkGraphFactory`) previously wired bindings 0–8 but had **no pick-ID
+target**, so binding 9 was reflected into the descriptor-set layout and statically used by the
+dispatch yet never updated — producing `VUID-vkCmdDispatch-None-08114` ("descriptor …
+idOutputImage … never been updated") every frame, and technically undefined behavior on the write.
 
-**Status:** known / accepted (2026-06-19). The benchmark does not use GPU picking, so the
-written pick IDs are discarded and the warning is benign for perf measurement. Decided not to
-fix (would require adding a `PickIdTargetNode` + binding-9 wiring to the benchmark graph).
+**Status:** **FIXED 2026-06-20.** `BuildComputePipeline` now creates a `benchmark_pick_id_target`
+(`PickIdTargetNode`) and `WireVariadicResources` binds its `ID_IMAGE_VIEW` to gatherer binding 9
+(Execute role), with the node's allocation inputs (device, command pool, window width/height, frame
+index) wired from `infra` — mirroring the app's `pick_id_target` exactly. The benchmark never reads
+the IDs back (picking is app-only); the target exists purely to satisfy the static write. Verified:
+a windowed `--render --debug` 64³ Cornell compute run reports **`[Validation] 0 errors`** with the
+dispatch executing every frame (previously ≥1 error from 08114).
 
 The analogous GUI-app issue was a *different* binding — `shaderCounters` (binding 8), mis-gated
-behind `#if USE_COMPRESSED_SHADER` — and **is fixed** (commit `b2f18808`); VIXEN.exe now runs
-validation-clean. To clear the benchmark warning later, mirror the app's binding-9 wiring
-(`PickIdTargetNode.ID_IMAGE_VIEW → gatherer binding 9`, Execute role).
+behind `#if USE_COMPRESSED_SHADER` — and was fixed earlier (commit `b2f18808`).
 
 ---
 
@@ -460,3 +462,4 @@ validation-clean. To clear the benchmark warning later, mirror the app's binding
 |------|--------|
 | 2025-12-17 | Initial creation for Sprint 2 completion |
 | 2026-06-19 | Documented known idOutputImage (binding 9) VUID; GUI shaderCounters (binding 8) VUID fixed (b2f18808) |
+| 2026-06-20 | idOutputImage (binding 9) VUID **fixed** — benchmark compute graph now binds a `PickIdTargetNode` at binding 9 (mirrors the app); verified validation-clean on a windowed 64³ run |
