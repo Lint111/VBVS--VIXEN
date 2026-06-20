@@ -63,8 +63,8 @@
 //   brickData[(brickArrayBase + localBrickIdx)*512 + voxelIdx].
 // These two int32 bases live INSIDE OctreeConfig, in the first two slots of the
 // formerly-`_padding4[16]` std140 tail. The tail is uploaded but was unused by
-// the shader, so the struct stays byte-identical (still 256 B; worldGridSize
-// still at offset 256) and the existing shader UBO layout is unchanged.
+// the shader, so the struct stays byte-identical (exactly 256 B) and the existing
+// shader UBO layout is unchanged.
 
 #include "ShellOctree.h"      // ShellOctree, BuildShellOctree
 #include "SVOTypes.h"         // ChildDescriptor
@@ -104,14 +104,34 @@ struct GPUMaterial {
 static_assert(sizeof(GPUMaterial) == 32, "GPUMaterial must be 32 bytes (matches the shader palette stride)");
 
 /**
- * Octree configuration UBO. MUST match CashSystem::OctreeConfig and the shader's
- * OctreeConfigUBO std140 layout (VoxelSceneCacher.h:100-133,
- * VoxelRayMarch.comp:46-62). The 256-byte UBO portion is what gets uploaded;
- * `worldGridSize` sits just past it (offset 256) and is NOT uploaded.
+ * Octree configuration UBO. MUST match the shader's `OctreeConfig configs[3]`
+ * std140 layout (BodyInstanceRayMarch.comp:91-113). `sizeof(OctreeConfig)` is the
+ * ARRAY STRIDE the GPU reads `configs[i]` with — it MUST equal the shader's std140
+ * element stride or configs[1]/configs[2] read garbage (see static_assert + the
+ * stride trap below).
  *
- * SP2 addition: `nodeArrayBase` / `brickArrayBase` reuse the first two slots of
- * the std140 tail (formerly `_padding4[16]`); the shader did not read that tail,
- * so the layout is byte-identical and still 256 bytes.
+ * ===================== std140 UBO-ARRAY-STRIDE TRAP (fixed 2026-06-20) ============
+ * The shader's element is laid out by std140, where an ARRAY OF SCALARS rounds each
+ * element up to 16 bytes (vec4 alignment). The trailing `float _padding4_tail[14]`
+ * therefore occupies 14*16 = 224 bytes (NOT 14*4 = 56), so the shader's whole
+ * OctreeConfig element strides at **432 bytes** — verified from the compiled SPIR-V:
+ *   OpDecorate %_arr_OctreeConfig_uint_3 ArrayStride 432
+ *   OpDecorate %_arr_float_uint_14       ArrayStride 16
+ * (The shader source's "14 * 4 = 56 B" comment is wrong — it ignores std140 scalar-
+ * array padding.) BodyOctreeSceneNode uploads `std::array<OctreeConfig,3>` at THIS
+ * struct's sizeof stride, so the C++ struct MUST also be 432 bytes: then configs[0]
+ * (byte 0), configs[1] (byte 432), configs[2] (byte 864) all align with the shader.
+ * A tighter sizeof (the old 256/260) put configs[1]/[2] before the shader's read
+ * point → garbage localToWorld/worldToLocal → the AABB cull failed → every body with
+ * octreeIndex>0 silently drew NOTHING (only octree 0, at base offset 0, rendered).
+ *
+ * The shader reads fields only at byte offsets 0..199 (the header ints, gridMin/Max,
+ * the two mat4s, and nodeArrayBase@192 / brickArrayBase@196); bytes 200..431 are
+ * pure pad it never touches, so the ONLY constraint on the tail is that it makes the
+ * struct exactly 432 bytes. (The `worldGridSize` convenience field that used to trail
+ * this struct was removed — it was write-only here; the live readers use the SEPARATE
+ * CashSystem::OctreeConfig.) Do NOT change the offset of any field at <200; keep the
+ * struct exactly 432 bytes so the array stride matches the shader.
  */
 struct OctreeConfig {
     int32_t esvoMaxScale;       // Always 22 (ESVO normalized space)
@@ -130,22 +150,29 @@ struct OctreeConfig {
     float gridMaxX, gridMaxY, gridMaxZ;
     float _padding3;            // pad vec3 -> vec4
 
-    glm::mat4 localToWorld;     // 64 bytes
-    glm::mat4 worldToLocal;     // 64 bytes
+    glm::mat4 localToWorld;     // 64 bytes (offset 64)
+    glm::mat4 worldToLocal;     // 64 bytes (offset 128)
 
-    // std140 tail (formerly float _padding4[16] == 64 bytes). First two int32
-    // slots now carry the per-octree base offsets (the concat contract).
-    int32_t nodeArrayBase;      // element offset of this octree's first node
-    int32_t brickArrayBase;     // brick offset of this octree's first brick
-    float   _padding4[14];      // remaining std140 tail, kept zero
+    int32_t nodeArrayBase;      // offset 192: element offset of this octree's first node
+    int32_t brickArrayBase;     // offset 196: brick offset of this octree's first brick
 
-    // Non-UBO field (not uploaded) — convenience only.
-    float worldGridSize;
+    // Pad the C++ element to the shader's std140 UBO-array stride of 432 bytes (the
+    // shader's `float _padding4_tail[14]` is 14*16 B under std140, NOT 14*4 — see the
+    // trap note above). 432 - 200 = 232 bytes = 58 floats. Never read by the shader.
+    float _padding4[58];        // bytes 200..431, kept zero (completes the element to 432 B)
 };
-static_assert(offsetof(OctreeConfig, worldGridSize) == 256,
-              "OctreeConfig UBO portion must be exactly 256 bytes (matches the shader UBO)");
+static_assert(sizeof(OctreeConfig) == 432,
+              "OctreeConfig array stride must equal the shader's 432-byte std140 UBO element "
+              "stride (its trailing float[14] is std140-padded to 14*16 B; the compiled SPIR-V "
+              "decorates the configs[3] array with ArrayStride 432). BodyOctreeSceneNode uploads "
+              "std::array<OctreeConfig,3> at this struct's sizeof stride — a tighter sizeof "
+              "misaligns configs[1]/configs[2] and octreeIndex>0 bodies render NOTHING.");
 static_assert(offsetof(OctreeConfig, nodeArrayBase) == 192,
-              "nodeArrayBase must land at the start of the std140 tail (offset 192)");
+              "nodeArrayBase must stay at offset 192 (a field the shader reads)");
+static_assert(offsetof(OctreeConfig, brickArrayBase) == 196,
+              "brickArrayBase must stay at offset 196 (a field the shader reads)");
+static_assert(offsetof(OctreeConfig, localToWorld) == 64 && offsetof(OctreeConfig, worldToLocal) == 128,
+              "the two mat4s the shader reads must stay at offsets 64 / 128");
 
 // ===========================================================================
 // Serialized output
@@ -314,8 +341,11 @@ inline SerializedOctree Serialize(const ShellOctree& shell) {
     c.brickESVOScale = c.esvoMaxScale - (c.userMaxLevels - 1 - brickUserScale);
     c.bricksPerAxis = oct->bricksPerAxis;
 
-    constexpr float kWorldGridSize = 10.0f;  // matches cacher WORLD_GRID_SIZE
-    c.worldGridSize = kWorldGridSize;
+    // World-grid extent the base octree's localToWorld scales by (matches cacher
+    // WORLD_GRID_SIZE). Used below for the localToWorld/worldToLocal matrices; it is
+    // NOT stored on OctreeConfig (the former trailing worldGridSize field was removed
+    // to keep sizeof(OctreeConfig)==256 — see the struct's stride-trap note).
+    constexpr float kWorldGridSize = 10.0f;
 
     c.gridMinX = oct->worldMin.x;
     c.gridMinY = oct->worldMin.y;

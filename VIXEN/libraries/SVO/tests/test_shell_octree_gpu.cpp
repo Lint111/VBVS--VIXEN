@@ -10,7 +10,8 @@
 //   - nodes   : raw ChildDescriptor array, stride sizeof(ChildDescriptor) == 8.
 //   - bricks  : 512 * uint32_t per brick (2048 B), voxel order z*64+y*8+x.
 //   - material: GPUMaterial palette, stride 32 B.
-//   - config  : OctreeConfig std140 UBO, exactly 256 B.
+//   - config  : OctreeConfig std140 UBO element, stride 432 B (the shader's configs[3]
+//               ArrayStride; its trailing float[14] is std140-padded to 14*16).
 
 #include "ShellOctree.h"
 #include "ShellOctreeGpu.h"
@@ -102,8 +103,16 @@ TEST(ShellOctreeGpu, ConfigFieldsAreSane) {
     auto shell = BuildShellOctree(depth, /*materialId*/ 2);
     const SerializedOctree s = Serialize(shell);
 
-    // 256-byte std140 UBO portion (worldGridSize sits just past it).
-    EXPECT_EQ(offsetof(OctreeConfig, worldGridSize), 256u);
+    // sizeof(OctreeConfig) == the shader's std140 UBO-array stride (432 B: the trailing
+    // float[14] is std140-padded to 14*16, and the compiled SPIR-V decorates configs[3]
+    // with ArrayStride 432). The node uploads std::array<OctreeConfig,3> at this stride,
+    // so a mismatch misaligns configs[1]/[2] and octreeIndex>0 bodies render nothing.
+    // Lock the stride + the offsets of every field the shader actually reads (<200).
+    EXPECT_EQ(sizeof(OctreeConfig), 432u);
+    EXPECT_EQ(offsetof(OctreeConfig, localToWorld), 64u);
+    EXPECT_EQ(offsetof(OctreeConfig, worldToLocal), 128u);
+    EXPECT_EQ(offsetof(OctreeConfig, nodeArrayBase), 192u);
+    EXPECT_EQ(offsetof(OctreeConfig, brickArrayBase), 196u);
 
     const OctreeConfig& c = s.config;
     EXPECT_EQ(c.esvoMaxScale, 22);
