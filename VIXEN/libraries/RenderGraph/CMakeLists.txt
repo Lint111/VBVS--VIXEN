@@ -69,9 +69,7 @@ set(RENDERGRAPH_DATA_NODE_CONFIGS
     include/Data/Nodes/PushConstantGathererNodeConfig.h
     include/Data/Nodes/RenderPassNodeConfig.h
     include/Data/Nodes/ShaderLibraryNodeConfig.h
-    include/Data/Nodes/StructSpreaderNodeConfig.h
     include/Data/Nodes/SwapChainNodeConfig.h
-    include/Data/Nodes/SwapChainStructSpreaderNodeConfig.h
     include/Data/Nodes/TextureLoaderNodeConfig.h
     include/Data/Nodes/VertexBufferNodeConfig.h
     include/Data/Nodes/VoxelGridNodeConfig.h
@@ -219,9 +217,7 @@ set(RENDERGRAPH_NODE_HEADERS
     include/Nodes/RenderPassNode.h
     include/Nodes/ResourceGathererNode.h
     include/Nodes/ShaderLibraryNode.h
-    include/Nodes/StructSpreaderNode.h
     include/Nodes/SwapChainNode.h
-    include/Nodes/SwapChainStructSpreaderNode.h
     include/Nodes/TextureLoaderNode.h
     include/Nodes/VertexBufferNode.h
     include/Nodes/VoxelGridNode.h
@@ -263,7 +259,6 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/PushConstantGathererNode.cpp
     src/Nodes/RenderPassNode.cpp
     src/Nodes/ShaderLibraryNode.cpp
-    src/Nodes/StructSpreaderNode.cpp
     src/Nodes/SwapChainNode.cpp
     src/Nodes/TextureLoaderNode.cpp
     src/Nodes/VertexBufferNode.cpp
