@@ -135,6 +135,8 @@ set(RENDERGRAPH_CORE_HEADERS
     include/Core/EngineContext.h         # AR#7: instantiable EngineContext (owns registry/bus/graph/calibration)
     include/Core/RenderGraph.h
     include/Core/FrameSyncScheduler.h     # auto-sync P2: pure scheduling core + FrameSyncScheduler class
+    include/Core/PassGroupSchedule.h     # auto-sync P4: node-local barrier baking (header-only)
+    include/Core/PassRecorder.h          # auto-sync P4 M2: baggage-free recorder (barrier replay + compute + render)
     include/Core/ResourceAccessTracker.h  # Sprint 6.4: Task #349 - Conflict detection
     include/Core/ResourceDependencyTracker.h
     include/Core/WaveScheduler.h  # Sprint 6.4: Task #347 - Wave computation
@@ -174,6 +176,7 @@ set(RENDERGRAPH_CORE_SOURCES
     src/Core/EngineContext.cpp           # AR#7: instantiable EngineContext
     src/Core/RenderGraph.cpp
     src/Core/FrameSyncScheduler.cpp     # auto-sync P2: pure scheduling core
+    src/Core/PassRecorder.cpp           # auto-sync P4 M2: baggage-free recorder (barrier replay + compute + render)
     src/Core/ResourceAccessTracker.cpp  # Sprint 6.4: Task #349 - Conflict detection
     src/Core/ResourceDependencyTracker.cpp
     src/Core/WaveScheduler.cpp  # Sprint 6.4: Task #347 - Wave computation
