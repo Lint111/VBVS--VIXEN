@@ -25,6 +25,22 @@
 
 ---
 
+## Milestone Map
+
+Segmentation for the post-brainstorm-context-manager pipeline (confirmed 2026-06-21). A resume reuses
+this grouping verbatim — do not re-segment. Builds run FOREGROUND with `timeout: 600000`.
+
+- [x] **Milestone 1 — Task 1:** `FrameSyncSchedule` data types. Implementer: **Haiku**. ✅
+- [ ] **Milestone 2 — Task 2:** pure scheduling core (`BuildScheduleFromTimelines`). Implementer: **Sonnet**.
+- [ ] **Milestone 3 — Task 3:** adapter (`FrameSyncScheduler::Build`) + `RenderGraph` Compile hook. Implementer: **Sonnet**.
+
+Opus validates each milestone; the controller runs the `vixen-ninja` build gate between milestones.
+
+### Progress Log
+- **Milestone 1 (Task 1): DONE** · `FrameSyncSchedule.h` (6 structs: `ResourceAccessPoint`/`ResourceTimeline`/`GroupBarrier`/`SyncEdge`/`SubmitGroup`/`FrameSyncSchedule`) + `test_frame_sync_scheduler` (2/2) · commit `9a4fce35` · Opus validator **APPROVED** (type/field-name fidelity confirmed, no collisions) · full build green · 2026-06-21
+
+---
+
 ## File structure (P2)
 
 - **Create** `libraries/RenderGraph/include/Core/FrameSyncSchedule.h` — the schedule data types (`ResourceAccessPoint`, `ResourceTimeline`, `GroupBarrier`, `SyncEdge`, `SubmitGroup`, `FrameSyncSchedule`). Pure data, depends on `<vulkan/vulkan.h>` + `Core/BarrierTypes.h`.
