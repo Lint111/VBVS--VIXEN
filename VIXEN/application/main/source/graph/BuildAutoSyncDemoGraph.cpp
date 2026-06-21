@@ -32,6 +32,7 @@
 #include <filesystem>
 #include <stdexcept>
 #include "Connection/ConnectionModifier.h"
+#include "Connection/Modifiers/SlotRoleModifier.h"  // ordering-edge role
 #include "Core/NodeRegistration.h"
 #include "ShaderStage.h"  // ShaderManagement::ShaderStage / PipelineTypeConstraint
 // --- nodes this subgraph wires ---
@@ -312,20 +313,25 @@ void VulkanGraphApplication::BuildAutoSyncDemoGraph() {
          .Connect(frameSyncNode, FrameSyncNodeConfig::IN_FLIGHT_FENCE, passGroupNode, PassGroupNodeConfig::IN_FLIGHT_FENCE)
          .Connect(swapChainNode, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY, passGroupNode, PassGroupNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
 
-    // --- PassGroupNode generic compile-ordering dependency ---
-    // Wire COMPILE_AFTER from the graphics pipeline's device pass-through. The graphics
-    // pipeline is downstream of the render pass + gfx descriptor set; the compute
-    // pipelines + their descriptor sets are independently upstream of PassGroupNode via
-    // nothing — so we ALSO force ordering after them by wiring their device pass-through
-    // outputs is not possible on a single Single-mode slot. Instead, we depend on the
-    // graphics pipeline (the longest chain) and additionally guarantee ALL handle sources
-    // are compiled inside the post-compile callback (it only fills the passes once every
-    // source reports Compiled). The COMPILE_AFTER edge guarantees PassGroupNode itself is
-    // ordered after the graphics-pipeline subtree; the compute subtrees share the same
-    // device/swapchain roots and are scheduled before the leaf PassGroupNode in practice,
-    // and the callback's all-compiled gate makes the fill order-independent regardless.
-    batch.Connect(gfxPipeline, GraphicsPipelineNodeConfig::VULKAN_DEVICE_OUT,
-                  passGroupNode, PassGroupNodeConfig::COMPILE_AFTER);
+    // --- PassGroupNode compile-ordering: one variadic edge per handle source ---
+    // GUARANTEE (not "in practice"): the post-compile callback reads concrete handles from
+    // all 9 handle-source nodes, so PassGroupNode MUST compile after every one of them. We
+    // wire one Dependency-role VARIADIC edge (binding indices 0..8) from each source into
+    // PassGroupNode. VariadicConnectionRule adds a real topology edge per connection, so
+    // GraphTopology::TopologicalSort places PassGroupNode strictly after all 9 sources —
+    // the callback has populated passes_ before CompileImpl runs. The edge VALUES are never
+    // read (ordering only); we use each node's device pass-through (or the SSBO's BUFFER_SIZE,
+    // which has no device-out). This is pass-count-agnostic and uses no artificial data deps.
+    const SlotRoleModifier orderingDep(SlotRole::Dependency);
+    batch.Connect(ssboNode,        StorageBufferNodeConfig::BUFFER_SIZE,         passGroupNode, 0u, orderingDep);
+    batch.Connect(fillPipeline,    ComputePipelineNodeConfig::VULKAN_DEVICE_OUT, passGroupNode, 1u, orderingDep);
+    batch.Connect(postPipeline,    ComputePipelineNodeConfig::VULKAN_DEVICE_OUT, passGroupNode, 2u, orderingDep);
+    batch.Connect(gfxPipeline,     GraphicsPipelineNodeConfig::VULKAN_DEVICE_OUT, passGroupNode, 3u, orderingDep);
+    batch.Connect(fillDescSet,     DescriptorSetNodeConfig::VULKAN_DEVICE_OUT,   passGroupNode, 4u, orderingDep);
+    batch.Connect(postDescSet,     DescriptorSetNodeConfig::VULKAN_DEVICE_OUT,   passGroupNode, 5u, orderingDep);
+    batch.Connect(gfxDescSet,      DescriptorSetNodeConfig::VULKAN_DEVICE_OUT,   passGroupNode, 6u, orderingDep);
+    batch.Connect(renderPassNode,  RenderPassNodeConfig::VULKAN_DEVICE_OUT,      passGroupNode, 7u, orderingDep);
+    batch.Connect(framebufferNode, FramebufferNodeConfig::VULKAN_DEVICE_OUT,     passGroupNode, 8u, orderingDep);
 
     // --- Present: waits on PassGroupNode's render-complete semaphore ---
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, presentNode, PresentNodeConfig::VULKAN_DEVICE_IN)

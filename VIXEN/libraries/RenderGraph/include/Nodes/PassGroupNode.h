@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Core/TypedNodeInstance.h"
+#include "Core/VariadicTypedNode.h"   // variadic compile-ordering inputs
 #include "Core/NodeType.h"
 #include "Core/NodeLogging.h"
 #include "State/StatefulContainer.h"
@@ -32,10 +33,18 @@ public:
  * Host assembly API: the builder fills concrete Vulkan handles after
  * pipelines/render passes/framebuffers are created.
  *
- * auto-sync P4 M3
+ * Compile ordering: subclasses VariadicTypedNode so the host can wire an
+ * arbitrary number of compile-ordering dependency edges (one per handle-source
+ * node) — see PassGroupNodeConfig. These variadic inputs are NEVER read; they
+ * exist only to make TopologicalSort place this node after all its sources, so
+ * the post-compile callback has populated the pass list before CompileImpl runs.
+ *
+ * auto-sync P4 M3 (M4: variadic compile-ordering inputs)
  */
-class PassGroupNode : public TypedNode<PassGroupNodeConfig> {
+class PassGroupNode : public VariadicTypedNode<PassGroupNodeConfig> {
 public:
+    using Base = VariadicTypedNode<PassGroupNodeConfig>;
+
     PassGroupNode(const std::string& instanceName, NodeType* nodeType);
     ~PassGroupNode() override = default;
 
@@ -50,9 +59,9 @@ public:
     [[nodiscard]] size_t PassCount() const { return passes_.size(); }
 
 protected:
-    void CompileImpl(TypedCompileContext& ctx) override;
-    void ExecuteImpl(TypedExecuteContext& ctx) override;
-    void CleanupImpl(TypedCleanupContext& ctx) override;
+    void CompileImpl(VariadicCompileContext& ctx) override;
+    void ExecuteImpl(VariadicExecuteContext& ctx) override;
+    void CleanupImpl(VariadicCleanupContext& ctx) override;
 
 private:
     std::vector<PassStep>  passes_;

@@ -34,8 +34,11 @@ std::unique_ptr<NodeInstance> PassGroupNodeType::CreateInstance(
 PassGroupNode::PassGroupNode(
     const std::string& instanceName,
     NodeType* nodeType
-) : TypedNode<PassGroupNodeConfig>(instanceName, nodeType)
+) : VariadicTypedNode<PassGroupNodeConfig>(instanceName, nodeType)
 {
+    // Variadic inputs are compile-ordering-only and optional: min=0 so an unwired
+    // node (e.g. the M3 smoke test) still constructs and validates.
+    SetVariadicInputConstraints(0);
     NODE_LOG_INFO("[PassGroupNode] Constructor called for " + instanceName);
 }
 
@@ -59,7 +62,7 @@ void PassGroupNode::AddRenderPass(RenderPassStep step) {
 // COMPILE
 // ============================================================================
 
-void PassGroupNode::CompileImpl(TypedCompileContext& ctx) {
+void PassGroupNode::CompileImpl(VariadicCompileContext& ctx) {
     NODE_LOG_INFO("[PassGroupNode::CompileImpl] Baking node-local schedule + allocating command buffers");
 
     assert(!passes_.empty() &&
@@ -123,7 +126,7 @@ void PassGroupNode::CompileImpl(TypedCompileContext& ctx) {
 // EXECUTE
 // ============================================================================
 
-void PassGroupNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void PassGroupNode::ExecuteImpl(VariadicExecuteContext& ctx) {
     // ---- Resolve FrameSync inputs (mirrors ComputeDispatchNode::ExecuteImpl:153-166) ----
     uint32_t imageIndex        = ctx.In(PassGroupNodeConfig::IMAGE_INDEX);
     uint32_t currentFrameIndex = ctx.In(PassGroupNodeConfig::CURRENT_FRAME_INDEX);
@@ -201,7 +204,7 @@ void PassGroupNode::ExecuteImpl(TypedExecuteContext& ctx) {
 // CLEANUP
 // ============================================================================
 
-void PassGroupNode::CleanupImpl(TypedCleanupContext& ctx) {
+void PassGroupNode::CleanupImpl(VariadicCleanupContext& ctx) {
     NODE_LOG_INFO("[PassGroupNode::CleanupImpl] Cleaning up resources");
 
     if (vulkanDevice && vulkanDevice->device != VK_NULL_HANDLE) {

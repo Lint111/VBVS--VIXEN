@@ -17,7 +17,10 @@ namespace Vixen::RenderGraph {
 // ============================================================================
 
 namespace PassGroupNodeCounts {
-    static constexpr size_t INPUTS  = 9;   // 8 FrameSync/WSI wiring + 1 generic compile-ordering dep
+    // 8 fixed FrameSync/WSI slots. The generic compile-ordering dependency is a
+    // VARIADIC input (dynamic, beyond the fixed count): the host wires one edge per
+    // handle-source node so TopologicalSort guarantees this node compiles last.
+    static constexpr size_t INPUTS  = 8;
     static constexpr size_t OUTPUTS = 2;
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -106,25 +109,20 @@ CONSTEXPR_NODE_CONFIG(PassGroupNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    /**
-     * @brief Generic compile-ordering dependency (OPTIONAL).
-     *
-     * VALUE IS UNUSED — this slot exists only to create a topology edge so that
-     * this node compiles AFTER whatever produces the wired output. The host
-     * assembly API (SetPasses / AddComputePass / AddRenderPass) supplies the
-     * concrete per-pass pipeline/render-pass/framebuffer handles, which are only
-     * available AFTER those producing nodes have compiled. Wiring this slot from
-     * any producing node's VULKAN_DEVICE_OUT (every node passes the device
-     * through) forces the correct compile order, pass-count-agnostically.
-     *
-     * Typed VulkanDevice* purely so it can be wired from any node's device
-     * pass-through output; the node never reads it.
-     */
-    INPUT_SLOT(COMPILE_AFTER, VulkanDevice*, 8,
-        SlotNullability::Optional,
-        SlotRole::Dependency,
-        SlotMutability::ReadOnly,
-        SlotScope::NodeLevel);
+    // ===== VARIADIC INPUT (compile-ordering dependency) =====
+    //
+    // Beyond the 8 fixed slots, PassGroupNode accepts an ARBITRARY number of
+    // VARIADIC inputs used SOLELY for compile ordering (their values are never
+    // read). The host assembly API (SetPasses / AddComputePass / AddRenderPass)
+    // supplies the concrete per-pass pipeline/render-pass/framebuffer handles,
+    // which only exist AFTER their producing nodes compile. By wiring one variadic
+    // edge per handle-source node (each Dependency-role, so it adds a topology
+    // edge — VariadicConnectionRule), TopologicalSort GUARANTEES PassGroupNode
+    // compiles after EVERY source, so the post-compile callback has populated the
+    // pass list before CompileImpl bakes the schedule. Pass-count-agnostic.
+    //
+    // PassGroupNode subclasses VariadicTypedNode for this. With min=0 variadic
+    // inputs, an unwired node (M3 smoke test) still constructs/validates.
 
     // ===== OUTPUTS =====
 
@@ -162,10 +160,6 @@ CONSTEXPR_NODE_CONFIG(PassGroupNodeConfig,
 
         HandleDescriptor fenceDesc{"VkFence"};
         INIT_INPUT_DESC(IN_FLIGHT_FENCE, "in_flight_fence", ResourceLifetime::Transient, fenceDesc);
-
-        // Generic compile-ordering dependency (value unused; topology edge only).
-        HandleDescriptor compileAfterDesc{"VulkanDevice*"};
-        INIT_INPUT_DESC(COMPILE_AFTER, "compile_after", ResourceLifetime::Persistent, compileAfterDesc);
 
         HandleDescriptor semaphoreDesc{"VkSemaphore"};
         INIT_OUTPUT_DESC(RENDER_COMPLETE_SEMAPHORE, "render_complete_semaphore",
