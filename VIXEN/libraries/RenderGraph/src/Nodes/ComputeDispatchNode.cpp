@@ -1,5 +1,6 @@
 #include "Nodes/ComputeDispatchNode.h"
 #include "Core/NodeRegistration.h"
+#include "Core/RenderGraph.h"
 #include "Data/Nodes/ComputeDispatchNodeConfig.h"
 #include "VulkanDevice.h"
 #include "Core/ComputePerformanceLogger.h"
@@ -331,7 +332,17 @@ void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cm
         gpuPerfLogger_->BeginFrame(cmdBuffer, frameIndex);
     }
 
-    TransitionImageToGeneral(cmdBuffer, swapchainImage);
+    // WSI lifecycle (acquire): always transition the swapchain image into GENERAL for the
+    // compute storage write. Swapchain-lifecycle transition, not an inter-pass hazard, so
+    // it stays node-managed in Tier-1.
+    TransitionImageToGeneralBarrier2(cmdBuffer, swapchainImage);
+    // Additionally replay any scheduler-baked INTER-PASS entry barriers for this group
+    // (no-op on the single-pass voxel path; active for future multi-pass chains).
+    const FrameSyncSchedule& sched = GetOwningGraph()->GetFrameSyncSchedule();
+    if (const SubmitGroup* myGroup = FindGroupForNode(sched, this)) {
+        ReplayEntryBarriers(cmdBuffer, *myGroup, imageIndex, swapchainInfo);
+    }
+
     BindComputePipeline(cmdBuffer, pipeline, pipelineLayout, descriptorSet);
     SetPushConstants(ctx, cmdBuffer, pipelineLayout, pushConstantData);
 
@@ -350,8 +361,10 @@ void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cm
 
     // Voxel-only: compute is the last writer, so hand the image to present. Composite: leave it in
     // GENERAL — the downstream UI render pass loads from GENERAL and owns the →PRESENT_SRC transition.
+    // Note: the GENERAL→PRESENT_SRC transition is NOT yet baked into the schedule (P5 concern),
+    // so we emit it explicitly here using barrier2.
     if (!leaveImageInGeneral) {
-        TransitionImageToPresent(cmdBuffer, swapchainImage);
+        TransitionImageToPresentBarrier2(cmdBuffer, swapchainImage);
     }
 
     // End command buffer
@@ -367,31 +380,74 @@ void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cm
 // HELPER METHODS
 // ============================================================================
 
-void ComputeDispatchNode::TransitionImageToGeneral(VkCommandBuffer cmdBuffer, VkImage image) {
-    VkImageMemoryBarrier barrier{};
-    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    barrier.srcAccessMask = 0;
-    barrier.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-    barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
-    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.image = image;
-    barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    barrier.subresourceRange.baseMipLevel = 0;
-    barrier.subresourceRange.levelCount = 1;
-    barrier.subresourceRange.baseArrayLayer = 0;
-    barrier.subresourceRange.layerCount = 1;
+// Replay entry barriers baked by the FrameSyncScheduler for this node's SubmitGroup.
+// Image barriers use the runtime swapchain image handle (node-local correlation).
+void ComputeDispatchNode::ReplayEntryBarriers(
+    VkCommandBuffer cmd, const SubmitGroup& group,
+    uint32_t imageIndex, Vixen::Vulkan::Resources::IRenderTarget* swapchainInfo) {
+    if (group.entryBarriers.empty()) return;
 
-    vkCmdPipelineBarrier(
-        cmdBuffer,
-        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-        0,
-        0, nullptr,
-        0, nullptr,
-        1, &barrier
-    );
+    std::vector<VkImageMemoryBarrier2> imageBarriers;
+    std::vector<VkMemoryBarrier2>      memBarriers;
+
+    for (const GroupBarrier& b : group.entryBarriers) {
+        if (b.isImage) {
+            VkImageMemoryBarrier2 ib{};
+            ib.sType           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+            ib.srcStageMask    = b.src.stage;
+            ib.srcAccessMask   = b.src.access;
+            ib.oldLayout       = b.src.layout;
+            ib.dstStageMask    = b.dst.stage;
+            ib.dstAccessMask   = b.dst.access;
+            ib.newLayout       = b.dst.layout;
+            ib.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            ib.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            // Tier-1 node-local correlation placeholder: only reached once image barriers are
+            // baked (Tier-2+). In Tier-1 the scheduler bakes buffer/memory barriers only, so on
+            // the voxel path entryBarriers is empty and this branch is a no-op.
+            ib.image           = swapchainInfo->GetImage(imageIndex);
+            ib.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+            imageBarriers.push_back(ib);
+        } else {
+            VkMemoryBarrier2 mb{};
+            mb.sType         = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2;
+            mb.srcStageMask  = b.src.stage;
+            mb.srcAccessMask = b.src.access;
+            mb.dstStageMask  = b.dst.stage;
+            mb.dstAccessMask = b.dst.access;
+            memBarriers.push_back(mb);
+        }
+    }
+
+    VkDependencyInfo dep{};
+    dep.sType                   = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+    dep.imageMemoryBarrierCount = static_cast<uint32_t>(imageBarriers.size());
+    dep.pImageMemoryBarriers    = imageBarriers.data();
+    dep.memoryBarrierCount      = static_cast<uint32_t>(memBarriers.size());
+    dep.pMemoryBarriers         = memBarriers.data();
+    vkCmdPipelineBarrier2(cmd, &dep);
+}
+
+// Fallback barrier2: UNDEFINED → GENERAL (TOP_OF_PIPE/0 → COMPUTE_SHADER/SHADER_STORAGE_WRITE).
+void ComputeDispatchNode::TransitionImageToGeneralBarrier2(VkCommandBuffer cmdBuffer, VkImage image) {
+    VkImageMemoryBarrier2 ib{};
+    ib.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+    ib.srcStageMask        = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
+    ib.srcAccessMask       = VK_ACCESS_2_NONE;
+    ib.oldLayout           = VK_IMAGE_LAYOUT_UNDEFINED;
+    ib.dstStageMask        = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+    ib.dstAccessMask       = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT;
+    ib.newLayout           = VK_IMAGE_LAYOUT_GENERAL;
+    ib.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    ib.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    ib.image               = image;
+    ib.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+
+    VkDependencyInfo dep{};
+    dep.sType                   = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+    dep.imageMemoryBarrierCount = 1;
+    dep.pImageMemoryBarriers    = &ib;
+    vkCmdPipelineBarrier2(cmdBuffer, &dep);
 }
 
 void ComputeDispatchNode::BindComputePipeline(VkCommandBuffer cmdBuffer, VkPipeline pipeline, VkPipelineLayout layout, VkDescriptorSet descriptorSet) {
@@ -467,31 +523,27 @@ void ComputeDispatchNode::SetPushConstants(Context& ctx, VkCommandBuffer cmdBuff
     }
 }
 
-void ComputeDispatchNode::TransitionImageToPresent(VkCommandBuffer cmdBuffer, VkImage image) {
-    VkImageMemoryBarrier barrier{};
-    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-    barrier.dstAccessMask = 0;
-    barrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
-    barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.image = image;
-    barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    barrier.subresourceRange.baseMipLevel = 0;
-    barrier.subresourceRange.levelCount = 1;
-    barrier.subresourceRange.baseArrayLayer = 0;
-    barrier.subresourceRange.layerCount = 1;
+// Explicit GENERAL → PRESENT_SRC_KHR transition for the voxel-only (!leaveImageInGeneral) path.
+// This is NOT yet baked in the schedule (the present-side group's PresentSrc access is a P5 concern).
+void ComputeDispatchNode::TransitionImageToPresentBarrier2(VkCommandBuffer cmdBuffer, VkImage image) {
+    VkImageMemoryBarrier2 ib{};
+    ib.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+    ib.srcStageMask        = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+    ib.srcAccessMask       = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT;
+    ib.oldLayout           = VK_IMAGE_LAYOUT_GENERAL;
+    ib.dstStageMask        = VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT;
+    ib.dstAccessMask       = VK_ACCESS_2_NONE;
+    ib.newLayout           = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    ib.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    ib.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    ib.image               = image;
+    ib.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
 
-    vkCmdPipelineBarrier(
-        cmdBuffer,
-        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-        VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-        0,
-        0, nullptr,
-        0, nullptr,
-        1, &barrier
-    );
+    VkDependencyInfo dep{};
+    dep.sType                   = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+    dep.imageMemoryBarrierCount = 1;
+    dep.pImageMemoryBarriers    = &ib;
+    vkCmdPipelineBarrier2(cmdBuffer, &dep);
 }
 
 // ============================================================================
