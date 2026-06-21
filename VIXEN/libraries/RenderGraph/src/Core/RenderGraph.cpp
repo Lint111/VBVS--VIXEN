@@ -537,6 +537,12 @@ void RenderGraph::Compile() {
         std::to_string(resourceAccessTracker_.GetResourceCount()) + " resources, " +
         std::to_string(resourceAccessTracker_.GetNodeCount()) + " nodes tracked");
 
+    // Auto-sync: bake the frame sync schedule from the access model (P2).
+    frameSyncScheduler_.Build(executionOrder, resourceAccessTracker_, /*swapchainResource=*/nullptr);
+    GRAPH_LOG_INFO("[RenderGraph::Compile] FrameSyncSchedule built: " +
+        std::to_string(GetFrameSyncSchedule().groups.size()) + " groups, " +
+        std::to_string(GetFrameSyncSchedule().edges.size()) + " edges");
+
     // Sprint 6.5: Build virtual resource access tracker for task-level parallelism
     if (parallelExecutionEnabled_) {
         GRAPH_LOG_INFO("[RenderGraph::Compile] Phase: BuildVirtualResourceAccessTracker...");

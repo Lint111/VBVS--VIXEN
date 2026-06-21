@@ -2,7 +2,48 @@
 #include <gtest/gtest.h>
 #include "Core/FrameSyncSchedule.h"
 #include "Core/FrameSyncScheduler.h"
+#include "Core/ResourceAccessTracker.h"
+#include "Core/NodeInstance.h"
+#include "Core/NodeType.h"
 using namespace Vixen::RenderGraph;
+
+// ============================================================================
+// Minimal mocks for adapter tests (mirrored from test_wave_scheduler.cpp)
+// ============================================================================
+
+namespace {
+
+class MockResource2 : public Resource {
+public:
+    MockResource2() = default;
+    std::string debugName;
+};
+
+class MockNodeType2 : public NodeType {
+public:
+    explicit MockNodeType2(const std::string& name) : NodeType(name) {}
+    std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override {
+        return std::make_unique<NodeInstance>(instanceName, const_cast<MockNodeType2*>(this));
+    }
+};
+
+void AddOutput2(NodeInstance* node, Resource* resource, size_t slotIndex = 0) {
+    auto& bundles = const_cast<std::vector<NodeInstance::Bundle>&>(node->GetBundles());
+    if (bundles.empty()) bundles.push_back({});
+    if (bundles[0].outputs.size() <= slotIndex)
+        bundles[0].outputs.resize(slotIndex + 1, nullptr);
+    bundles[0].outputs[slotIndex] = resource;
+}
+
+void AddInput2(NodeInstance* node, Resource* resource, size_t slotIndex = 0) {
+    auto& bundles = const_cast<std::vector<NodeInstance::Bundle>&>(node->GetBundles());
+    if (bundles.empty()) bundles.push_back({});
+    if (bundles[0].inputs.size() <= slotIndex)
+        bundles[0].inputs.resize(slotIndex + 1, nullptr);
+    bundles[0].inputs[slotIndex] = resource;
+}
+
+} // namespace
 
 TEST(FrameSyncScheduleTypes, DefaultScheduleIsEmptyAndInvalid) {
     FrameSyncSchedule s;
@@ -82,4 +123,31 @@ TEST(FrameSyncCore, TimelineOffsetsAreGroupOrdinals) {
     EXPECT_EQ(s.timelineValuesPerFrame, 2u);
     ASSERT_EQ(s.edges.size(), 1u);
     EXPECT_EQ(s.edges[0].timelineOffset, 0u);
+}
+
+// ============================================================================
+// Adapter tests: FrameSyncScheduler::Build (real graph → schedule)
+// ============================================================================
+
+TEST(FrameSyncAdapter, WriterThenReader_ProducesEdge) {
+    MockNodeType2 type("mock");
+    auto writer = type.CreateInstance("writer");
+    auto reader = type.CreateInstance("reader");
+    MockResource2 res; res.debugName = "img";
+
+    AddOutput2(writer.get(), &res);   // writer writes res
+    AddInput2(reader.get(),  &res);   // reader reads res
+
+    ResourceAccessTracker tracker;
+    tracker.AddNode(writer.get());
+    tracker.AddNode(reader.get());
+
+    std::vector<NodeInstance*> execOrder = {writer.get(), reader.get()};
+    FrameSyncScheduler scheduler;
+    ASSERT_TRUE(scheduler.Build(execOrder, tracker));
+    const FrameSyncSchedule& s = scheduler.GetSchedule();
+    ASSERT_EQ(s.groups.size(), 2u);
+    EXPECT_EQ(s.groups[0].node, writer.get());
+    EXPECT_EQ(s.groups[1].node, reader.get());
+    EXPECT_EQ(s.edges.size(), 1u);   // RAW write->read across groups
 }
