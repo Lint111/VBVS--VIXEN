@@ -134,6 +134,7 @@ set(RENDERGRAPH_CORE_HEADERS
     include/Core/EngineConfig.h          # AR#7: instantiable engine config
     include/Core/EngineContext.h         # AR#7: instantiable EngineContext (owns registry/bus/graph/calibration)
     include/Core/RenderGraph.h
+    include/Core/FrameSyncScheduler.h     # auto-sync P2: pure scheduling core + FrameSyncScheduler class
     include/Core/ResourceAccessTracker.h  # Sprint 6.4: Task #349 - Conflict detection
     include/Core/ResourceDependencyTracker.h
     include/Core/WaveScheduler.h  # Sprint 6.4: Task #347 - Wave computation
@@ -172,6 +173,7 @@ set(RENDERGRAPH_CORE_SOURCES
     src/Core/PerFrameResources.cpp
     src/Core/EngineContext.cpp           # AR#7: instantiable EngineContext
     src/Core/RenderGraph.cpp
+    src/Core/FrameSyncScheduler.cpp     # auto-sync P2: pure scheduling core
     src/Core/ResourceAccessTracker.cpp  # Sprint 6.4: Task #349 - Conflict detection
     src/Core/ResourceDependencyTracker.cpp
     src/Core/WaveScheduler.cpp  # Sprint 6.4: Task #347 - Wave computation

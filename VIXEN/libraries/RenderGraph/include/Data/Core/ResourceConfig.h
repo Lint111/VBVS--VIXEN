@@ -141,16 +141,8 @@ inline bool ToBool(SlotRole a) {
 
 
 
-/**
- * @brief Slot mutability enum (Phase F: parallel safety)
- *
- * Indicates read/write access pattern for automatic synchronization.
- */
-enum class SlotMutability : uint8_t {
-    ReadOnly   = 1u << 0,  // Node only reads (parallel-safe)
-    WriteOnly  = 1u << 1,  // Node only writes (output slots)
-    ReadWrite  = 1u << 2   // Node reads and writes (needs locking if parallel)
-};
+// SlotMutability is now defined in CompileTimeResourceSystem.h (included above)
+// to allow ResourceDescriptor to embed it without circular includes.
 
 /**
  * @brief Slot scope enum (Phase F: slot task system)
@@ -577,7 +569,8 @@ ResourceDescriptor MakeDescriptor(
         SlotType::resourceType,  // Compile-time constant
         lifetime,
         desc,
-        SlotType::nullable       // Compile-time constant
+        SlotType::nullable,      // Compile-time constant
+        SlotType::mutability     // Compile-time constant (auto-sync P1)
     };
 }
 

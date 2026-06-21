@@ -35,6 +35,7 @@
 
 #include "NodeInstance.h"
 #include "GraphTopology.h"
+#include "Core/BarrierTypes.h"
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -61,6 +62,7 @@ struct ResourceAccess {
     ResourceAccessType accessType = ResourceAccessType::Read;
     uint32_t slotIndex = 0;     ///< Input or output slot index
     bool isOutput = false;      ///< True if output slot, false if input
+    AccessKind kind = AccessKind::None;   ///< NEW: declarative sync semantics (auto-sync P1)
 };
 
 /**
@@ -255,7 +257,8 @@ private:
         NodeInstance* node,
         ResourceAccessType accessType,
         uint32_t slotIndex,
-        bool isOutput
+        bool isOutput,
+        AccessKind kind = AccessKind::None
     );
 };
 
