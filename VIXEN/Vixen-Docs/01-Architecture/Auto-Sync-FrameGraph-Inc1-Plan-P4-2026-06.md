@@ -77,7 +77,7 @@ related:
 
 - **M1 ✅ DONE — Pure node-local baking core (Tasks 1–2).** `PassStep` types + `BuildPassGroupSchedule` + full unit tests. No GPU. *Gate:* `test_pass_group_schedule` green, full build green.
 - **M2 ✅ DONE — Recorder core (Tasks 3–4).** Baggage-free `PassRecorder`: barrier replay + compute recording + trailing render-pass recording. *Gate:* build green (recording correctness verified live in M5).
-- **M3 — PassGroupNode (Tasks 5–6).** Node class: config slots, host assembly API, `CompileImpl` bakes the node-local schedule, `ExecuteImpl` records via `PassRecorder` + submits once; self-registers. *Gate:* build green + node-registration smoke test.
+- **M3 ✅ DONE — PassGroupNode (Tasks 5–6).** Node class: config slots, host assembly API, `CompileImpl` bakes the node-local schedule, `ExecuteImpl` records via `PassRecorder` + submits once; self-registers. *Gate:* build green + node-registration smoke test.
 - **M4 — Demo graph (Tasks 7–8).** `BuildAutoSyncDemoGraph` (`compute→compute→render→present`, fullscreen frag reads compute SSBO) + `VIXEN_AUTOSYNC_DEMO` dispatch + shaders. *Gate:* app builds; demo graph constructs + compiles without throw.
 - **M5 — Live gate (Task 9, HANDS-ON).** Run under syncval; confirm visual + **0 synchronization-validation errors**. *Gate:* the P4 exit gate — user-driven, not agent-self-certified.
 
@@ -497,3 +497,4 @@ Match the EXACT `CompileImpl`/`ExecuteImpl`/`CleanupImpl` signatures from the `N
 ## Progress Log
 - Milestone 1 (Tasks 1–2): DONE · commits `aaaceb8c`, `d96c2e61` · Opus validator APPROVED (all 6 checks; re-derived all 3 tests vs the real `BuildScheduleFromTimelines` contract, ran the exe = 3 passed, clean tree, correct scope, fresh binary) · 2026-06-21
 - Milestone 2 (Tasks 3–4): DONE · commits `e2e021e4` (+ empty marker `41db7b1a`) · Opus validator APPROVED (7 checks; forced a clean recompile of `PassRecorder.cpp` → 77/77 zero errors, render-pass arm verified genuinely present, baggage-free, balanced begin/end render pass, global `VkMemoryBarrier2` mirrors the proven `ComputeDispatchNode` sync2 precedent) · 2026-06-21
+- Milestone 3 (Tasks 5–6): DONE · commits `e502508e`, `d4325dc2` · Opus validator APPROVED (8 checks; line-by-line submit-path audit vs ComputeDispatchNode = correct two-tier indexing wait=frame/signal=image/cmd=image + fence reset + recorder strictly between begin/end, no MultiDispatchNode baggage, forced clean rebuild 80/80 zero errors, smoke 3/3 ran himself) · type-name `PassGroup`, 8 in/2 out slots · 2026-06-21
