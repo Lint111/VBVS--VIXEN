@@ -129,6 +129,59 @@ TEST(FrameSyncCore, TimelineOffsetsAreGroupOrdinals) {
 // Adapter tests: FrameSyncScheduler::Build (real graph → schedule)
 // ============================================================================
 
+// ============================================================================
+// AUTO-SYNC P3: FindGroupForNode + declared AccessKind reaches the barrier
+// ============================================================================
+
+TEST(FrameSyncP3, FindGroupForNode_ReturnsCorrectGroup) {
+    // Construct a schedule with two groups and verify FindGroupForNode works.
+    std::vector<ResourceTimeline> timelines = {{
+        R(0), /*isImage=*/true,
+        {{0, AccessKind::ComputeStorageWrite}, {1, AccessKind::FragmentSampledRead}}
+    }};
+    FrameSyncSchedule s = BuildScheduleFromTimelines(timelines, 2);
+    ASSERT_TRUE(s.valid);
+
+    // FindGroupForNode requires g.node to be set; set synthetic pointers.
+    NodeInstance* fakeNodeA = reinterpret_cast<NodeInstance*>(0xA000);
+    NodeInstance* fakeNodeB = reinterpret_cast<NodeInstance*>(0xB000);
+    s.groups[0].node = fakeNodeA;
+    s.groups[1].node = fakeNodeB;
+
+    const SubmitGroup* gA = FindGroupForNode(s, fakeNodeA);
+    const SubmitGroup* gB = FindGroupForNode(s, fakeNodeB);
+    const SubmitGroup* gNull = FindGroupForNode(s, reinterpret_cast<NodeInstance*>(0xDEAD));
+
+    ASSERT_NE(gA, nullptr);
+    ASSERT_NE(gB, nullptr);
+    EXPECT_EQ(gNull, nullptr);
+    EXPECT_EQ(gA->groupId, 0u);
+    EXPECT_EQ(gB->groupId, 1u);
+}
+
+TEST(FrameSyncP3, DeclaredAccessKind_ReachesBarrierLayout) {
+    // A timeline carrying ComputeStorageWrite → FragmentSampledRead (image)
+    // should produce a barrier whose src.layout is VK_IMAGE_LAYOUT_GENERAL
+    // (the real ComputeStorageWrite layout), NOT the provisional default.
+    // This test would pass even before P3 because BuildScheduleFromTimelines
+    // already accepts explicit AccessKind in the timeline — but when the kind
+    // is populated from a slot descriptor (Step 5), the end-to-end path is
+    // exercised.  Here we verify the existing BuildScheduleFromTimelines path
+    // correctly uses the declared kind (not ProvisionalKind).
+    std::vector<ResourceTimeline> tl = {{
+        R(1), /*isImage=*/true,
+        {{0, AccessKind::ComputeStorageWrite}, {1, AccessKind::FragmentSampledRead}}
+    }};
+    FrameSyncSchedule s = BuildScheduleFromTimelines(tl, 2);
+    ASSERT_TRUE(s.valid);
+    ASSERT_EQ(s.groups[1].entryBarriers.size(), 1u);
+    const GroupBarrier& b = s.groups[1].entryBarriers[0];
+    // ComputeStorageWrite → layout GENERAL (not UNDEFINED from None)
+    EXPECT_EQ(b.src.layout, VK_IMAGE_LAYOUT_GENERAL)
+        << "declared AccessKind::ComputeStorageWrite must produce GENERAL layout, not the provisional default";
+    EXPECT_EQ(b.dst.layout, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+}
+
 TEST(FrameSyncAdapter, WriterThenReader_ProducesEdge) {
     MockNodeType2 type("mock");
     auto writer = type.CreateInstance("writer");

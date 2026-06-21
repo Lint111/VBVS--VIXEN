@@ -56,4 +56,12 @@ struct FrameSyncSchedule {
     void Clear() { groups.clear(); edges.clear(); timelineValuesPerFrame = 0; valid = false; }
 };
 
+/// Find the SubmitGroup for a given node in a FrameSyncSchedule.
+/// Returns nullptr if the node is not present.
+[[nodiscard]] inline const SubmitGroup* FindGroupForNode(
+    const FrameSyncSchedule& s, const NodeInstance* node) {
+    for (const SubmitGroup& g : s.groups) if (g.node == node) return &g;
+    return nullptr;
+}
+
 } // namespace Vixen::RenderGraph

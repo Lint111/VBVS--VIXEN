@@ -21,6 +21,7 @@
 
 #include "ResourceTypes.h"
 #include "ResourceConfig.h"  // For SlotNullability, SlotRole, SlotMutability, SlotScope, SlotFlags
+#include "Core/BarrierTypes.h"  // For AccessKind
 
 namespace Vixen::RenderGraph {
 
@@ -56,7 +57,8 @@ namespace Vixen::RenderGraph {
  * These are newer fields for accumulation, multi-connect, etc.
  */
 #define SLOT_EXTENDED_FIELDS(X) \
-    X(SlotFlags,       flags,       SlotFlags::None)
+    X(SlotFlags,       flags,       SlotFlags::None) \
+    X(AccessKind,      accessKind,  AccessKind::None)
 
 /**
  * @brief All slot fields combined

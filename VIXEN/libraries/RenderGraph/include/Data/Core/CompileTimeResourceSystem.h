@@ -18,6 +18,7 @@
 // Vulkan type definitions
 #include <vulkan/vulkan.h>
 
+#include "Core/BarrierTypes.h"  // For AccessKind (auto-sync P3)
 #include "ResourceTypes.h"
 #include "ResourceTypeTraits.h"  // Include for StripContainer
 #include "Data/VariantDescriptors.h"
@@ -1317,6 +1318,7 @@ struct ResourceDescriptor {
     ResourceDescriptorVariant descriptor;  // Actual descriptor variant (ImageDescriptor, etc.)
     bool nullable = false;
     SlotMutability mutability = SlotMutability::ReadOnly;  // Auto-sync P1: ReadWrite inputs count as writers
+    AccessKind accessKind = AccessKind::None;              // Auto-sync P3: declared per-slot access semantics
 
     // Constructor for compatibility
     ResourceDescriptor() = default;
