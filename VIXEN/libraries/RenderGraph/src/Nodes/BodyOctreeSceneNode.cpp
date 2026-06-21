@@ -132,7 +132,7 @@ void BodyOctreeSceneNode::SetInstances(std::vector<Vixen::SVO::BodyInstanceGpu> 
     // Stash the new list. ExecuteImpl uploads it each frame into the current ring slot.
     // Do NOT call MarkNeedsRecompile — the per-tick recompile cascade was the race root cause.
     instances_     = std::move(instances);
-    instanceCount_ = static_cast<uint32_t>(instances_.size());
+    instanceCount_ = static_cast<int32_t>(instances_.size());
     NODE_LOG_INFO("[BodyOctreeSceneNode] SetInstances: " +
                   std::to_string(instanceCount_) + " instances staged for next Execute");
 }

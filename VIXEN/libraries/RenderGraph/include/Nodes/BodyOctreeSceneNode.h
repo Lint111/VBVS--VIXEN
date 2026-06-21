@@ -106,7 +106,10 @@ private:
 
     // Current instance list (set by SetInstances; uploaded in ExecuteImpl).
     std::vector<Vixen::SVO::BodyInstanceGpu> instances_;
-    uint32_t                                 instanceCount_ = 0;
+    // int32_t (not uint32_t) to match the shader's reflected `int instanceCount` push-constant field
+    // (BodyInstanceRayMarch.comp). The INSTANCE_COUNT slot, this member, and the shader field are all
+    // int32_t so the gatherer's reflection-driven any_cast<int32_t> at Execute succeeds.
+    int32_t                                  instanceCount_ = 0;
 
     // --- GPU resources (persistent across recompile; freed only at FinalTeardown) ---
     VkBuffer       nodesBuffer_     = VK_NULL_HANDLE;
