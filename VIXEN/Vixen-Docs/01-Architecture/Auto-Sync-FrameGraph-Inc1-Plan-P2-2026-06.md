@@ -31,13 +31,14 @@ Segmentation for the post-brainstorm-context-manager pipeline (confirmed 2026-06
 this grouping verbatim — do not re-segment. Builds run FOREGROUND with `timeout: 600000`.
 
 - [x] **Milestone 1 — Task 1:** `FrameSyncSchedule` data types. Implementer: **Haiku**. ✅
-- [ ] **Milestone 2 — Task 2:** pure scheduling core (`BuildScheduleFromTimelines`). Implementer: **Sonnet**.
+- [x] **Milestone 2 — Task 2:** pure scheduling core (`BuildScheduleFromTimelines`). Implementer: **Sonnet**. ✅
 - [ ] **Milestone 3 — Task 3:** adapter (`FrameSyncScheduler::Build`) + `RenderGraph` Compile hook. Implementer: **Sonnet**.
 
 Opus validates each milestone; the controller runs the `vixen-ninja` build gate between milestones.
 
 ### Progress Log
 - **Milestone 1 (Task 1): DONE** · `FrameSyncSchedule.h` (6 structs: `ResourceAccessPoint`/`ResourceTimeline`/`GroupBarrier`/`SyncEdge`/`SubmitGroup`/`FrameSyncSchedule`) + `test_frame_sync_scheduler` (2/2) · commit `9a4fce35` · Opus validator **APPROVED** (type/field-name fidelity confirmed, no collisions) · full build green · 2026-06-21
+- **Milestone 2 (Task 2): DONE** · pure `BuildScheduleFromTimelines` core (consecutive-pair hazard + layout-diff sync → `SyncEdge` + `GroupBarrier` + wait/signal wiring) · commit `8af82f79` · Opus validator **APPROVED** (algorithm reasoned sound incl. layout-change-between-reads; `FrameSyncScheduler::Build` declared-not-defined, links clean) · `test_frame_sync_scheduler` 7/7 · full build 78 targets · 2026-06-21 · *minor non-blocking:* no bounds-check on `groups[groupId]` (unreachable — adapter sizes `groupCount`)
 
 ---
 
