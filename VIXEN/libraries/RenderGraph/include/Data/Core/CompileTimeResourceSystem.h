@@ -1285,6 +1285,24 @@ inline DescriptorHandleVariant DescriptorResourceEntry::GetHandle() const {
 }
 
 // ============================================================================
+// SLOT MUTABILITY (auto-sync P1: moved here so ResourceDescriptor can use it
+// without a circular include through ResourceConfig.h)
+// ============================================================================
+
+/**
+ * @brief Slot mutability enum (Phase F: parallel safety)
+ *
+ * Indicates read/write access pattern for automatic synchronization.
+ * Defined here so ResourceDescriptor can embed it without circular includes.
+ * ResourceConfig.h re-uses this definition (it includes this file first).
+ */
+enum class SlotMutability : uint8_t {
+    ReadOnly   = 1u << 0,  // Node only reads (parallel-safe)
+    WriteOnly  = 1u << 1,  // Node only writes (output slots)
+    ReadWrite  = 1u << 2   // Node reads and writes (needs locking if parallel)
+};
+
+// ============================================================================
 // RESOURCE DESCRIPTOR WITH METADATA
 // ============================================================================
 
@@ -1298,6 +1316,7 @@ struct ResourceDescriptor {
     ResourceLifetime lifetime = ResourceLifetime::Transient;
     ResourceDescriptorVariant descriptor;  // Actual descriptor variant (ImageDescriptor, etc.)
     bool nullable = false;
+    SlotMutability mutability = SlotMutability::ReadOnly;  // Auto-sync P1: ReadWrite inputs count as writers
 
     // Constructor for compatibility
     ResourceDescriptor() = default;
@@ -1307,9 +1326,10 @@ struct ResourceDescriptor {
         ResourceType type_,
         ResourceLifetime lifetime_,
         const ResourceDescriptorVariant& desc_,
-        bool nullable_ = false
+        bool nullable_ = false,
+        SlotMutability mutability_ = SlotMutability::ReadOnly
     ) : name(std::move(name_)), type(type_), lifetime(lifetime_),
-        descriptor(desc_), nullable(nullable_) {}
+        descriptor(desc_), nullable(nullable_), mutability(mutability_) {}
 };
 
 // Backward compatibility aliases (same as old ResourceVariant.h)
