@@ -67,6 +67,7 @@ set(RENDERGRAPH_DATA_NODE_CONFIGS
     include/Data/Nodes/LoopBridgeNodeConfig.h
     include/Data/Nodes/PresentNodeConfig.h
     include/Data/Nodes/PushConstantGathererNodeConfig.h
+    include/Data/Nodes/PassGroupNodeConfig.h
     include/Data/Nodes/RenderPassNodeConfig.h
     include/Data/Nodes/ShaderLibraryNodeConfig.h
     include/Data/Nodes/SwapChainNodeConfig.h
@@ -221,6 +222,7 @@ set(RENDERGRAPH_NODE_HEADERS
     include/Nodes/LoopBridgeNode.h
     include/Nodes/PresentNode.h
     include/Nodes/PushConstantGathererNode.h
+    include/Nodes/PassGroupNode.h
     include/Nodes/RenderPassNode.h
     include/Nodes/ResourceGathererNode.h
     include/Nodes/ShaderLibraryNode.h
@@ -266,6 +268,7 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/UISelectionProviderNode.cpp
     src/Nodes/PresentNode.cpp
     src/Nodes/PushConstantGathererNode.cpp
+    src/Nodes/PassGroupNode.cpp
     src/Nodes/RenderPassNode.cpp
     src/Nodes/ShaderLibraryNode.cpp
     src/Nodes/SwapChainNode.cpp
