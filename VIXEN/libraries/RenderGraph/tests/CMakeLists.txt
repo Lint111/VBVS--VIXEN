@@ -603,6 +603,21 @@ else()
 endif()
 
 # ===========================================================================
+# BarrierTypes Tests (auto-sync P1)
+# ===========================================================================
+# Validates AccessKind -> Vulkan sync-semantics mapping
+
+if(TARGET GTest::gtest_main)
+    add_executable(test_barrier_types test_barrier_types.cpp)
+    target_link_libraries(test_barrier_types PRIVATE GTest::gtest_main RenderGraph)
+    set_target_properties(test_barrier_types PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    gtest_discover_tests(test_barrier_types)
+    message(STATUS "✓ test_barrier_types configured (auto-sync P1)")
+else()
+    message(STATUS "⊗ test_barrier_types skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
 # Node Self-Registration Anchor (M3)
 # ===========================================================================
 # Guards the whole-archive requirement: links the RenderGraph facade (which
