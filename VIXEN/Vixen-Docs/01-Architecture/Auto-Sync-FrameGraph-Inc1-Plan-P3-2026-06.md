@@ -26,11 +26,12 @@
 
 ### Milestone Map (for the post-brainstorm-context-manager pipeline)
 - [x] **Milestone 1 — Task 1:** `AccessKind` slot declaration + scheduler reads it + `FindGroupForNode` + drop dead `nodeToGroup`. CPU-unit-testable. Implementer: **Sonnet**. ✅
-- [ ] **Milestone 2 — Task 2:** enable synchronization validation behind `VIXEN_VULKAN_VALIDATION`. Implementer: **Sonnet**.
+- [x] **Milestone 2 — Task 2:** enable synchronization validation behind `VIXEN_VULKAN_VALIDATION`. Implementer: **Sonnet**. ✅
 - [ ] **Milestone 3 — Task 3:** `ComputeDispatchNode` replays baked `entryBarriers` (`barrier2`); delete hand-rolled transitions. **Execution-changing → syncval gate is HANDS-ON (user-driven), not pipeline-self-gated.** Implementer: **Sonnet**, then user verification.
 
 ### Progress Log
 - **Milestone 1 (Task 1): DONE** · per-slot `AccessKind` (`SLOT_EXTENDED_FIELDS` + opt-in `INPUT_SLOT_SYNC`/`OUTPUT_SLOT_SYNC`; only `ComputeDispatchNodeConfig` changed) flowing slot→descriptor→tracker→scheduler; `FindGroupForNode` added; dead `nodeToGroup` removed; `SWAPCHAIN_INFO` declared `ReadWrite`+`ComputeStorageWrite` · commit `1752b1fd` · Opus validator **APPROVED** (plumbing mirrors `mutability`, macros non-breaking, wave conflicts benign) · frame_sync 10/10, tracker 23/23, wave 15/15, node-reg 2/2 · full build green · 2026-06-21 · *nit→M3:* declared-kind-via-`Build` only transitively tested (closed by M3's live path)
+- **Milestone 2 (Task 2): DONE** · synchronization validation chained at the real instance site (`VulkanInstance::CreateInstance`) behind `VIXEN_VULKAN_VALIDATION` (`VK_EXT_validation_features` added post-filter; `pNext` preserved; static lifetime) · commit `a500f297` · Opus validator **APPROVED** (airtight gate, default build byte-unchanged, no second instance site) · build 84 targets green · 2026-06-21
 
 ---
 
