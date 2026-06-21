@@ -618,6 +618,21 @@ else()
 endif()
 
 # ===========================================================================
+# FrameSyncSchedule Data Types Tests (auto-sync P2)
+# ===========================================================================
+# Validates FrameSyncSchedule data types (pure structs, no business logic)
+
+if(TARGET GTest::gtest_main)
+    add_executable(test_frame_sync_scheduler test_frame_sync_scheduler.cpp)
+    target_link_libraries(test_frame_sync_scheduler PRIVATE GTest::gtest_main RenderGraph)
+    set_target_properties(test_frame_sync_scheduler PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    gtest_discover_tests(test_frame_sync_scheduler)
+    message(STATUS "✓ test_frame_sync_scheduler configured (auto-sync P2)")
+else()
+    message(STATUS "⊗ test_frame_sync_scheduler skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
 # Node Self-Registration Anchor (M3)
 # ===========================================================================
 # Guards the whole-archive requirement: links the RenderGraph facade (which
