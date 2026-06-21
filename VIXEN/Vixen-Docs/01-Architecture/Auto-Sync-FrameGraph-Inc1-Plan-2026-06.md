@@ -40,6 +40,22 @@ speculation).
 
 ---
 
+## Milestone Map
+
+Segmentation for the post-brainstorm-context-manager pipeline (confirmed 2026-06-21). A resume reuses
+this grouping verbatim — do not re-segment.
+
+- [x] **Milestone 1 — Task 1:** `AccessKind` + sync-semantics mapping + tests. Implementer: **Haiku**. ✅
+- [ ] **Milestone 2 — Tasks 2–3:** Complete `ResourceAccessTracker` + `VirtualResourceAccessTracker`
+  (ReadWrite + `AccessKind`). Implementer: **Sonnet**.
+
+Opus validates each milestone; the controller runs the `vixen-ninja` build gate between milestones.
+
+### Progress Log
+- **Milestone 1 (Task 1): DONE** · `AccessKind` + `ResolveAccess` mapping + `test_barrier_types` (5/5 pass) · commit `5c243d82` (Opus validator **APPROVED** — all 12 stage/access/layout mappings verified correct, no `ResourceUsage` collision) + `87e53309` (untracked the generated `VoxelRayMarch_CompressedNames.h` SDI header the implementer over-committed) · `.gitignore` build-tree hygiene kept (`d4a6c3f4`) · full build green · 2026-06-21
+
+---
+
 ## File structure (P1)
 
 - **Create** `libraries/RenderGraph/include/Core/BarrierTypes.h` — `AccessKind`, `AccessInfo`,
