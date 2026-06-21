@@ -325,7 +325,8 @@ void UIRenderNode::CleanupImpl(TypedCleanupContext& ctx) {
     //
     // We likewise do NOT tear RmlUi (context/document/pipeline) down on recompile: a resize triggers a
     // recompile (Cleanup → Compile), and distinguishing that from a true shutdown via NeedsRecompile()
-    // is unreliable under the cascading recompiles a resize produces. RmlUi is reclaimed at process exit.
+    // is unreliable under the cascading recompiles a resize produces. RmlUi is torn down only on FINAL
+    // teardown, in the strict order required by RmlUi (see below).
     if (ctx.reason != CleanupReason::FinalTeardown) {
         return;  // recompile: keep all persistent resources (command buffers + present semaphores + RmlUi)
     }
@@ -335,6 +336,27 @@ void UIRenderNode::CleanupImpl(TypedCleanupContext& ctx) {
     FreeCommandBuffers();
     DestroyCompositeSemaphores();  // owned per-image present semaphores (composite mode)
     syncImageCount_ = 0;
+
+    // RmlUi teardown — STRICT ORDER (RmlUi asserts otherwise, RenderInterface.cpp:45 "RenderInterface is
+    // being destroyed but still actively referenced ... destroy it AFTER Rml::Shutdown"). renderInterface_
+    // is a member, so it is destructed by ~UIRenderNode; RmlUi keeps a live reference to it (set via
+    // Rml::SetRenderInterface in CompileImpl) until Rml::Shutdown() drops it. We must therefore:
+    //   1. RemoveContext  — release the context + its document (their geometry/textures live in our
+    //                       render interface, so they must go before the interface's GPU objects).
+    //   2. Rml::Shutdown  — RmlUi releases its references to the render + system interfaces.
+    //   3. renderInterface_.Shutdown — now safe to destroy our pipeline/descriptors/textures (device idle).
+    // Guard on initialized_ so a teardown that never reached the one-time RmlUi init is a no-op, and reset
+    // it so a second FinalTeardown (defensive) does not double-shutdown RmlUi.
+    if (initialized_) {
+        if (context_) {
+            Rml::RemoveContext("vixen_ui");  // releases context_ + document_ (owned by the context)
+            context_ = nullptr;
+            document_ = nullptr;
+        }
+        Rml::Shutdown();              // RmlUi drops its references to renderInterface_ / systemInterface_
+        renderInterface_.Shutdown(); // destroy our GPU objects AFTER RmlUi no longer references the interface
+        initialized_ = false;
+    }
 }
 
 } // namespace Vixen::RenderGraph

@@ -515,6 +515,50 @@ void VulkanGraphApplication::BuildRenderGraph() {
     voxelGrid->SetParameter(VoxelGridNodeConfig::PARAM_SCENE_TYPE,
                             std::string(sceneEnv != nullptr ? sceneEnv : "cornell"));
 
+    // --- Standalone default body scene (Option A) ---
+    // The live render path dispatches BodyInstanceRayMarch.comp, which only draws per-body INSTANCES
+    // (numInstances = clamp(pc.instanceCount, ...)). The UNDERTOW host feeds real bodies at runtime via
+    // VulkanGraphApplication::SetBodyInstances() -> BodyOctreeSceneNode::SetInstances(), but standalone
+    // VIXEN.exe has no body source, so with 0 instances every ray misses and the screen is just the
+    // dark sky color (looks black). Seed a few default instances so the standalone app shows a scene.
+    //
+    // SetInstances REPLACES the list (instances_ = std::move(...)), so a host that calls SetBodyInstances
+    // at runtime fully overwrites these defaults — they are a standalone fallback only, no host gating
+    // needed. BodyOctreeSceneNode builds 3 shell-octree "kinds" (octreeIndex 0/1/2), each a [0,64]^3 shell
+    // (base center (32,32,32)). The instance transform is instOrigin = (rayOrigin - worldPos)/renderScale,
+    // so a shell centered at world C needs worldPos = C - (32,32,32)*renderScale. We center the 3 shells
+    // around the 128^3 grid centre (64,64,64) and spread them along X so they don't overlap and all sit
+    // in the default camera view (verified on screen: three distinct red/green/white spheres).
+    // color[3] is a per-instance tint that MULTIPLIES the kind's material (1=red, 2=green, 3=white), kept
+    // near-white per instance (slight warm/neutral/cool bias) so each stays bright and the three are
+    // distinguishable by both base material and tint.
+    {
+        constexpr float kScale = 0.75f;                 // shell side = 64*0.75 = 48 units (spacing 50 keeps them separate)
+        constexpr float kHalf  = 32.0f * kScale;        // base shell half-extent after scale (=24)
+        auto placeCentered = [&](float cx, float cy, float cz,
+                                 float r, float g, float b, uint32_t kind) {
+            Vixen::SVO::BodyInstanceGpu inst{};
+            inst.worldPos[0] = cx - kHalf;
+            inst.worldPos[1] = cy - kHalf;
+            inst.worldPos[2] = cz - kHalf;
+            inst.renderScale = kScale;
+            inst.color[0]    = r;
+            inst.color[1]    = g;
+            inst.color[2]    = b;
+            inst.octreeIndex = kind;
+            return inst;
+        };
+        std::vector<Vixen::SVO::BodyInstanceGpu> defaultBodies = {
+            placeCentered( 14.0f, 64.0f, 64.0f, 1.00f, 0.95f, 0.85f, 0u),  // left   — warm-white tint × red kind
+            placeCentered( 64.0f, 64.0f, 64.0f, 0.90f, 1.00f, 0.90f, 1u),  // center — neutral white  × green kind
+            placeCentered(114.0f, 64.0f, 64.0f, 0.85f, 0.90f, 1.00f, 2u),  // right  — cool tint      × white kind
+        };
+        if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))) {
+            bodyScene->SetInstances(std::move(defaultBodies));
+            mainLogger->Info("[BuildRenderGraph] Seeded 3 default body instances (standalone fallback; a host's SetBodyInstances overrides these)");
+        }
+    }
+
     // Enable logging for VoxelGridNode to see octree generation
     if (auto* voxelLogger = voxelGrid->GetLogger()) {
         voxelLogger->SetEnabled(true);  // Enable to debug voxel rendering

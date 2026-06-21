@@ -192,6 +192,13 @@ void CapabilityGraph::BuildStandardCapabilities() {
     auto timelineSemaphore = CreateCapability<DeviceFeatureCapability>(
         "DeviceFeature:timelineSemaphore", "timelineSemaphore");
 
+    // synchronization2 (core Vulkan 1.3). REQUIRED: the renderer records all GPU barriers via
+    // vkCmdPipelineBarrier2 (ComputeDispatchNode, MultiDispatchNode); without it every barrier2
+    // call fails validation (VUID-vkCmdPipelineBarrier2-synchronization2-03848). Gated through the
+    // graph like timelineSemaphore; enablement (and a hard-error-if-missing) lives in VulkanDevice.
+    auto synchronization2 = CreateCapability<DeviceFeatureCapability>(
+        "DeviceFeature:synchronization2", "synchronization2");
+
     //==========================================================================
     // Instance Extensions
     //==========================================================================

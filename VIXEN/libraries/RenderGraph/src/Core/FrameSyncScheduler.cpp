@@ -69,10 +69,6 @@ bool FrameSyncScheduler::Build(const std::vector<NodeInstance*>& executionOrder,
     schedule_.Clear();
     const uint32_t groupCount = static_cast<uint32_t>(executionOrder.size());
 
-    std::unordered_map<NodeInstance*, uint32_t> nodeToGroup;
-    nodeToGroup.reserve(groupCount);
-    for (uint32_t g = 0; g < groupCount; ++g) nodeToGroup[executionOrder[g]] = g;
-
     std::unordered_map<Resource*, ResourceTimeline> byResource;
     for (uint32_t g = 0; g < groupCount; ++g) {
         NodeInstance* node = executionOrder[g];

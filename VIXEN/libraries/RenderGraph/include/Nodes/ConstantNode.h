@@ -126,10 +126,25 @@ protected:
         // rebuild) has a fresh resource to publish -- the old single-use move left it emptied.
         repopulateStored();
 
-        // Get the Resource* that the graph allocated for our output
+        // Get the Resource* that the graph allocated for our output.
+        // ConnectNodes (the static-slot path) always calls CreateResourceForOutput+SetOutput before
+        // Compile, so GetOutput(0,0) is non-null for direct connections.
+        // The variadic/binding connection path (VariadicConnectionRule::Resolve) does NOT allocate
+        // the source output -- it only registers a PostCompile hook that reads GetOutput after Compile.
+        // For that path we must self-allocate here, exactly mirroring what TypedNode::EnsureOutputSlot
+        // does for unconnected outputs (which is also the internal pattern used by ctx.Out()).
         Resource* outputRes = NodeInstance::GetOutput(0, 0);
         if (!outputRes) {
-            throw std::runtime_error("ConstantNode '" + GetInstanceName() + "': Output resource not allocated");
+            // Self-allocate: ensure bundles[0].outputs[0] exists.
+            if (NodeInstance::bundles.empty()) {
+                NodeInstance::bundles.resize(1);
+            }
+            auto& outs = NodeInstance::bundles[0].outputs;
+            if (outs.empty()) {
+                outs.resize(1, nullptr);
+            }
+            outs[0] = new Resource();
+            outputRes = outs[0];
         }
 
         // Move the resource data to the graph's output (Resource is move-only). The output's descriptor

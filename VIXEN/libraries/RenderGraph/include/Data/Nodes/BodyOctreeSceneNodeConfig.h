@@ -79,7 +79,10 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
-    OUTPUT_SLOT(INSTANCE_COUNT, uint32_t, 5,
+    // int32_t (signed) to match the shader's reflected `int instanceCount` push-constant field
+    // (BodyInstanceRayMarch.comp, binding 10). Keeping the slot, the node member, and the shader field
+    // all int32_t lets the PushConstantGatherer's reflection-driven any_cast<int32_t> succeed at Execute.
+    OUTPUT_SLOT(INSTANCE_COUNT, int32_t, 5,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
@@ -149,7 +152,7 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
     static_assert(std::is_same_v<OCTREE_MATERIALS_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<OCTREE_CONFIG_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<INSTANCE_BUFFER_Slot::Type, VkBuffer>);
-    static_assert(std::is_same_v<INSTANCE_COUNT_Slot::Type, uint32_t>);
+    static_assert(std::is_same_v<INSTANCE_COUNT_Slot::Type, int32_t>);
 };
 
 } // namespace Vixen::RenderGraph

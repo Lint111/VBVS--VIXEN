@@ -138,6 +138,21 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
         pNextChainEnd = reinterpret_cast<void**>(AppendToPNext(pNextChainEnd, &vulkan12Features));
     }
 
+    // Vulkan 1.3 core: synchronization2 is REQUIRED — the renderer records all GPU barriers via
+    // vkCmdPipelineBarrier2 (ComputeDispatchNode, MultiDispatchNode). Gated through the capability
+    // graph like timelineSemaphore/bufferDeviceAddress; unlike those it is mandatory, so a device
+    // that lacks it is a hard error (cf. shaderStorageImageWriteWithoutFormat above).
+    // This local must outlive vkCreateDevice() below; it is scoped to this function.
+    VkPhysicalDeviceVulkan13Features vulkan13Features{};
+    vulkan13Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
+    if (!capabilityGraph_.IsCapabilityAvailable("DeviceFeature:synchronization2")) {
+        throw std::runtime_error(
+            "GPU does not support synchronization2 (Vulkan 1.3 core) - required: the renderer "
+            "records all GPU barriers via vkCmdPipelineBarrier2.");
+    }
+    vulkan13Features.synchronization2 = VK_TRUE;
+    pNextChainEnd = reinterpret_cast<void**>(AppendToPNext(pNextChainEnd, &vulkan13Features));
+
     vkGetPhysicalDeviceFeatures(*gpu, &deviceFeatures);
 
     // Validate and enable device features
@@ -406,6 +421,10 @@ std::vector<std::string> VulkanDevice::QueryAvailableDeviceFeatures() const {
     VkPhysicalDeviceVulkan12Features vulkan12{};
     vulkan12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
 
+    VkPhysicalDeviceVulkan13Features vulkan13{};
+    vulkan13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
+    vulkan12.pNext = &vulkan13;
+
     VkPhysicalDeviceFeatures2 features2{};
     features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
     features2.pNext = &vulkan12;
@@ -414,6 +433,9 @@ std::vector<std::string> VulkanDevice::QueryAvailableDeviceFeatures() const {
 
     if (vulkan12.timelineSemaphore) {
         supported.emplace_back("timelineSemaphore");
+    }
+    if (vulkan13.synchronization2) {
+        supported.emplace_back("synchronization2");
     }
 
     return supported;

@@ -113,13 +113,16 @@ CONSTEXPR_NODE_CONFIG(ComputeDispatchNodeConfig,
 
     /**
      * @brief Swapchain info (image views, dimensions, format)
-     * Execute-only: swapchain info only needed during dispatch, not during pipeline creation
+     * Execute-only: swapchain info only needed during dispatch, not during pipeline creation.
+     * Auto-sync P3: ComputeStorageWrite — the compute shader storage-writes the swapchain image.
+     * ReadWrite mutability so the tracker records this node as a writer for hazard detection.
      */
-    INPUT_SLOT(SWAPCHAIN_INFO, Vixen::Vulkan::Resources::IRenderTarget*, 5,
+    INPUT_SLOT_SYNC(SWAPCHAIN_INFO, Vixen::Vulkan::Resources::IRenderTarget*, 5,
         SlotNullability::Required,
         SlotRole::Execute,
-        SlotMutability::ReadOnly,
-        SlotScope::NodeLevel);
+        SlotMutability::ReadWrite,
+        SlotScope::NodeLevel,
+        ::Vixen::RenderGraph::AccessKind::ComputeStorageWrite);
 
     /**
      * @brief Current swapchain image index to render to

@@ -76,15 +76,22 @@ void ResourceAccessTracker::AddNode(NodeInstance* node) {
     // Process each bundle (task/array index)
     for (const auto& bundle : bundles) {
         // Outputs are WRITES
+        NodeType* type = node->GetType();
         for (size_t slotIndex = 0; slotIndex < bundle.outputs.size(); ++slotIndex) {
             Resource* resource = bundle.outputs[slotIndex];
             if (resource) {
+                AccessKind kind = AccessKind::None;
+                if (type) {
+                    const ResourceDescriptor* desc = type->GetOutputDescriptor(static_cast<uint32_t>(slotIndex));
+                    if (desc) kind = desc->accessKind;
+                }
                 RecordAccess(
                     resource,
                     node,
                     ResourceAccessType::Write,
                     static_cast<uint32_t>(slotIndex),
-                    true  // isOutput
+                    true,  // isOutput
+                    kind
                 );
             }
         }
@@ -92,15 +99,19 @@ void ResourceAccessTracker::AddNode(NodeInstance* node) {
         // Inputs: Read by default; ReadWrite if the slot declares it (completes the :92 TODO).
         // A ReadWrite input genuinely mutates the resource, so it must be tracked as a writer
         // for correct WAR/WAW hazard detection (e.g. WaveScheduler conflict checks).
-        NodeType* type = node->GetType();
+        // Auto-sync P3: also propagate the declared accessKind from the descriptor.
         for (size_t slotIndex = 0; slotIndex < bundle.inputs.size(); ++slotIndex) {
             Resource* resource = bundle.inputs[slotIndex];
             if (!resource) continue;
             ResourceAccessType access = ResourceAccessType::Read;
+            AccessKind kind = AccessKind::None;
             if (type) {
                 const ResourceDescriptor* desc = type->GetInputDescriptor(static_cast<uint32_t>(slotIndex));
-                if (desc && desc->mutability == SlotMutability::ReadWrite) {
-                    access = ResourceAccessType::ReadWrite;
+                if (desc) {
+                    if (desc->mutability == SlotMutability::ReadWrite) {
+                        access = ResourceAccessType::ReadWrite;
+                    }
+                    kind = desc->accessKind;  // Auto-sync P3
                 }
             }
             RecordAccess(
@@ -108,7 +119,8 @@ void ResourceAccessTracker::AddNode(NodeInstance* node) {
                 node,
                 access,
                 static_cast<uint32_t>(slotIndex),
-                false  // isOutput
+                false,  // isOutput
+                kind
             );
         }
     }

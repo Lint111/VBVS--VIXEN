@@ -3,6 +3,7 @@
 #include "Headers.h"
 
 #include "Data/Core/ResourceTypes.h"
+#include "Core/BarrierTypes.h"  // For AccessKind (auto-sync P3)
 #include <array>
 #include <string>
 #include <string_view>
@@ -358,7 +359,8 @@ template<
     SlotMutability Mutability = SlotMutability::ReadOnly,
     SlotScope Scope = SlotScope::NodeLevel,
     SlotFlags Flags = SlotFlags::None,
-    SlotStorageStrategy StorageStrategy = SlotStorageStrategy::Value
+    SlotStorageStrategy StorageStrategy = SlotStorageStrategy::Value,
+    AccessKind Kind = AccessKind::None
 >
 struct ResourceSlot {
     using Type = T;
@@ -380,6 +382,9 @@ struct ResourceSlot {
 
     // Sprint 6.0.2: Storage strategy for accumulation
     static constexpr SlotStorageStrategy storageStrategy = StorageStrategy;
+
+    // Auto-sync P3: Declarative per-slot access kind for sync scheduling
+    static constexpr AccessKind accessKind = Kind;
 
     // Helper accessors for flags
     static constexpr bool isAccumulation = HasAccumulation(Flags);
@@ -564,7 +569,7 @@ ResourceDescriptor MakeDescriptor(
     ResourceLifetime lifetime,
     const DescType& desc = DescType{}
 ) {
-    return ResourceDescriptor{
+    ResourceDescriptor d{
         std::string(name),
         SlotType::resourceType,  // Compile-time constant
         lifetime,
@@ -572,6 +577,8 @@ ResourceDescriptor MakeDescriptor(
         SlotType::nullable,      // Compile-time constant
         SlotType::mutability     // Compile-time constant (auto-sync P1)
     };
+    d.accessKind = SlotType::accessKind;  // Compile-time constant (auto-sync P3)
+    return d;
 }
 
 // ====================================================================
@@ -848,6 +855,61 @@ ResourceDescriptor MakeDescriptor(
         Nullability, \
         Mutability \
     )
+
+// ====================================================================
+// AUTO-SYNC P3: SLOT MACROS WITH EXPLICIT ACCESSKIND
+// ====================================================================
+
+/**
+ * @brief Input slot with declarative AccessKind for auto-sync (P3)
+ *
+ * Extends INPUT_SLOT with an explicit AccessKind so the scheduler can use
+ * the declared kind instead of falling back to ProvisionalKind().
+ * Existing INPUT_SLOT usages are UNTOUCHED (their accessKind defaults to None).
+ *
+ * Parameters match INPUT_SLOT plus a trailing ACCESSKIND argument.
+ *
+ * Usage:
+ * ```cpp
+ * INPUT_SLOT_SYNC(SWAPCHAIN_INFO, IRenderTarget*, 5,
+ *     SlotNullability::Required, SlotRole::Execute,
+ *     SlotMutability::ReadWrite, SlotScope::NodeLevel,
+ *     AccessKind::ComputeStorageWrite);
+ * ```
+ */
+#define INPUT_SLOT_SYNC(SlotName, SlotType, Index, Nullability, Role, Mutability, Scope, AccessKindVal) \
+    using SlotName##_Slot = ::Vixen::RenderGraph::ResourceSlot< \
+        SlotType, \
+        Index, \
+        Nullability, \
+        Role, \
+        Mutability, \
+        Scope, \
+        ::Vixen::RenderGraph::SlotFlags::None, \
+        ::Vixen::RenderGraph::SlotStorageStrategy::Value, \
+        AccessKindVal \
+    >; \
+    static constexpr SlotName##_Slot SlotName{}
+
+/**
+ * @brief Output slot with declarative AccessKind for auto-sync (P3)
+ *
+ * Extends OUTPUT_SLOT with an explicit AccessKind.
+ * Existing OUTPUT_SLOT usages are UNTOUCHED (their accessKind defaults to None).
+ */
+#define OUTPUT_SLOT_SYNC(SlotName, SlotType, Index, Nullability, Mutability, AccessKindVal) \
+    using SlotName##_Slot = ::Vixen::RenderGraph::ResourceSlot< \
+        SlotType, \
+        Index, \
+        Nullability, \
+        ::Vixen::RenderGraph::SlotRole::Output, \
+        Mutability, \
+        ::Vixen::RenderGraph::SlotScope::NodeLevel, \
+        ::Vixen::RenderGraph::SlotFlags::None, \
+        ::Vixen::RenderGraph::SlotStorageStrategy::Value, \
+        AccessKindVal \
+    >; \
+    static constexpr SlotName##_Slot SlotName{}
 
 /* PERSISTENT_INPUT_SLOT and PERSISTENT_OUTPUT_SLOT removed.
  * Use INPUT_SLOT/OUTPUT_SLOT to declare slot metadata and specify the
