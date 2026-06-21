@@ -207,13 +207,19 @@ void VulkanGraphApplication::BuildAutoSyncDemoGraph() {
     ssbo->SetParameter(StorageBufferNodeConfig::PARAM_BYTES_PER_PIXEL,
                        static_cast<uint32_t>(4 * sizeof(float)));
 
-    // Color-only render pass: LOAD the existing contents, General -> PresentSrc.
-    // The compute-written image->present transition is handled by these layout ops
-    // (P4 scope: no baked image barrier; the SSBO buffer hazards ARE baked).
+    // Color-only render pass: Undefined -> PresentSrc, DONT_CARE load.
+    // The fragment pass OVERWRITES every pixel of the color attachment from the SSBO
+    // (fullscreen triangle, viewport = full extent), so prior attachment contents are
+    // irrelevant — there is nothing to LOAD. Using initialLayout=Undefined lets the
+    // render pass perform a valid layout transition from whatever the swapchain image
+    // currently is (Undefined on first acquire, PresentSrc after) to PresentSrc, with no
+    // false "expects General" expectation and no need for a separately baked image barrier.
+    // (P4 scope: only SSBO BUFFER hazards are auto-baked; the image is handled by the
+    // render pass's own attachment layout ops, the standard swapchain pattern.)
     auto* renderPass = static_cast<RenderPassNode*>(renderGraph->GetInstance(renderPassNode));
-    renderPass->SetParameter(RenderPassNodeConfig::PARAM_COLOR_LOAD_OP, AttachmentLoadOp::Load);
+    renderPass->SetParameter(RenderPassNodeConfig::PARAM_COLOR_LOAD_OP, AttachmentLoadOp::DontCare);
     renderPass->SetParameter(RenderPassNodeConfig::PARAM_COLOR_STORE_OP, AttachmentStoreOp::Store);
-    renderPass->SetParameter(RenderPassNodeConfig::PARAM_INITIAL_LAYOUT, ImageLayout::General);
+    renderPass->SetParameter(RenderPassNodeConfig::PARAM_INITIAL_LAYOUT, ImageLayout::Undefined);
     renderPass->SetParameter(RenderPassNodeConfig::PARAM_FINAL_LAYOUT, ImageLayout::PresentSrc);
     renderPass->SetParameter(RenderPassNodeConfig::PARAM_SAMPLES, 1u);
 
@@ -363,6 +369,10 @@ void VulkanGraphApplication::BuildAutoSyncDemoGraph() {
             }
 
             // All handle-source nodes that must be compiled before we can read handles.
+            // The callback fires after each node is marked Compiled; once the LAST of these
+            // sources reports Compiled, every handle is available and we assemble. PassGroupNode
+            // is topologically ordered after all 9 (one Dependency-role variadic edge each), so
+            // this assembly always runs before PassGroupNode::CompileImpl.
             const NodeHandle sources[] = {
                 ssboNode, fillPipeline, postPipeline, gfxPipeline,
                 fillDescSet, postDescSet, gfxDescSet, renderPassNode, framebufferNode
@@ -390,12 +400,21 @@ void VulkanGraphApplication::BuildAutoSyncDemoGraph() {
             VkRenderPass     rpH      = outHandle(renderPassNode, RenderPassNodeConfig::RENDER_PASS_Slot::index,         VkRenderPass{});
 
             // Per-pipeline descriptor sets (each set is allocated per swapchain image).
-            Resource* fillSetsRes = graph->GetInstance(fillDescSet)->GetOutput(DescriptorSetNodeConfig::DESCRIPTOR_SETS_Slot::index, 0);
-            Resource* postSetsRes = graph->GetInstance(postDescSet)->GetOutput(DescriptorSetNodeConfig::DESCRIPTOR_SETS_Slot::index, 0);
-            Resource* gfxSetsRes  = graph->GetInstance(gfxDescSet)->GetOutput(DescriptorSetNodeConfig::DESCRIPTOR_SETS_Slot::index, 0);
-            std::vector<VkDescriptorSet> fillSets = fillSetsRes ? fillSetsRes->GetHandle<std::vector<VkDescriptorSet>>() : std::vector<VkDescriptorSet>{};
-            std::vector<VkDescriptorSet> postSets = postSetsRes ? postSetsRes->GetHandle<std::vector<VkDescriptorSet>>() : std::vector<VkDescriptorSet>{};
-            std::vector<VkDescriptorSet> gfxSets  = gfxSetsRes  ? gfxSetsRes->GetHandle<std::vector<VkDescriptorSet>>()  : std::vector<VkDescriptorSet>{};
+            // DescriptorSetNode declares DESCRIPTOR_SETS as `const std::vector<VkDescriptorSet>&`
+            // (a reference output: the Resource stores a pointer to the node's live member, no copy).
+            // GetHandle MUST be queried with that exact declared type — TypeToTag maps `const T&` to
+            // ConstRefTag<T> but `T` (value) to ValueTag<T>, so querying the value type finds nothing
+            // and yields an EMPTY vector, which would skip vkCmdBindDescriptorSets and trip
+            // VUID-vkCmd{Dispatch,Draw}-None-08600. Read the reference, then copy into the pass.
+            using DescSetsRef = DescriptorSetNodeConfig::DESCRIPTOR_SETS_Slot::Type;  // const std::vector<VkDescriptorSet>&
+            auto readDescSets = [&](NodeHandle h) -> std::vector<VkDescriptorSet> {
+                Resource* res = graph->GetInstance(h)->GetOutput(DescriptorSetNodeConfig::DESCRIPTOR_SETS_Slot::index, 0);
+                if (!res || !res->IsValid()) return {};
+                return res->GetHandle<DescSetsRef>();  // ConstRefTag round-trip; copy on return
+            };
+            std::vector<VkDescriptorSet> fillSets = readDescSets(fillDescSet);
+            std::vector<VkDescriptorSet> postSets = readDescSets(postDescSet);
+            std::vector<VkDescriptorSet> gfxSets  = readDescSets(gfxDescSet);
 
             // Framebuffers (one per swapchain image).
             Resource* fbRes = graph->GetInstance(framebufferNode)->GetOutput(FramebufferNodeConfig::FRAMEBUFFERS_Slot::index, 0);

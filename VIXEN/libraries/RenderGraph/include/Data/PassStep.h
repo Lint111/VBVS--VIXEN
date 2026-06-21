@@ -26,7 +26,7 @@ struct PassResourceAccess {
 struct ComputePassStep {
     VkPipeline                   pipeline = VK_NULL_HANDLE;
     VkPipelineLayout             layout   = VK_NULL_HANDLE;
-    std::vector<VkDescriptorSet> descriptorSets;
+    std::vector<VkDescriptorSet> descriptorSets;  // one set per swapchain image; recorder binds [imageIndex] at firstSet
     uint32_t                     firstSet = 0;
     std::optional<PushConstantData> pushConstants;
     glm::uvec3                   workGroupCount = {1, 1, 1};
@@ -42,7 +42,7 @@ struct RenderPassStep {
     std::vector<VkFramebuffer>   framebuffers;                  // one per swapchain image
     VkExtent2D                   renderArea = {0, 0};
     std::vector<VkClearValue>    clearValues;
-    std::vector<VkDescriptorSet> descriptorSets;
+    std::vector<VkDescriptorSet> descriptorSets;  // one set per swapchain image; recorder binds [imageIndex] at firstSet
     uint32_t                     firstSet = 0;
     std::optional<PushConstantData> pushConstants;
     uint32_t                     vertexCount   = 3;             // fullscreen triangle default

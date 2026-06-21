@@ -51,17 +51,21 @@ void ReplayGroupBarriers(VkCommandBuffer cmd, const std::vector<GroupBarrier>& b
 // RecordOneStep — compute arm
 // ============================================================================
 
-static void RecordOneStep(VkCommandBuffer cmd, const ComputePassStep& step, uint32_t /*imageIndex*/) {
+static void RecordOneStep(VkCommandBuffer cmd, const ComputePassStep& step, uint32_t imageIndex) {
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, step.pipeline);
 
-    if (!step.descriptorSets.empty()) {
+    // descriptorSets holds one set PER SWAPCHAIN IMAGE (parallel to RenderPassStep::framebuffers).
+    // Bind exactly the set for the current image at firstSet — binding the whole vector would map
+    // per-image sets onto consecutive set indices the pipeline layout does not declare.
+    if (imageIndex < step.descriptorSets.size()) {
+        VkDescriptorSet set = step.descriptorSets[imageIndex];
         vkCmdBindDescriptorSets(
             cmd,
             VK_PIPELINE_BIND_POINT_COMPUTE,
             step.layout,
             step.firstSet,
-            static_cast<uint32_t>(step.descriptorSets.size()),
-            step.descriptorSets.data(),
+            1,
+            &set,
             0, nullptr
         );
     }
@@ -108,15 +112,17 @@ static void RecordOneStep(VkCommandBuffer cmd, const RenderPassStep& step, uint3
     // Bind graphics pipeline
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, step.pipeline);
 
-    // Bind descriptor sets (if any)
-    if (!step.descriptorSets.empty()) {
+    // Bind descriptor sets — one set PER SWAPCHAIN IMAGE (parallel to framebuffers above).
+    // Bind exactly the set for the current image at firstSet (see compute arm note).
+    if (imageIndex < step.descriptorSets.size()) {
+        VkDescriptorSet set = step.descriptorSets[imageIndex];
         vkCmdBindDescriptorSets(
             cmd,
             VK_PIPELINE_BIND_POINT_GRAPHICS,
             step.layout,
             step.firstSet,
-            static_cast<uint32_t>(step.descriptorSets.size()),
-            step.descriptorSets.data(),
+            1,
+            &set,
             0, nullptr
         );
     }

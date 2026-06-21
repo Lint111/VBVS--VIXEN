@@ -1123,7 +1123,7 @@ Resource* RenderGraph::CreateResourceForOutput(NodeInstance* node, uint32_t outp
 void RenderGraph::AnalyzeDependencies() {
     // Topological sort gives us execution order
     executionOrder = topology.TopologicalSort();
-    
+
     // Assign execution order indices
     for (size_t i = 0; i < executionOrder.size(); ++i) {
         executionOrder[i]->SetExecutionOrder(static_cast<uint32_t>(i));
@@ -1268,6 +1268,16 @@ void RenderGraph::GeneratePipelines() {
 
         GRAPH_LOG_DEBUG("[GeneratePipelines] Node compiled successfully: " + instance->GetInstanceName());
 
+        // Mark the node Compiled BEFORE running post-compile callbacks/hooks. Compile()
+        // has fully run, so its outputs are populated and it is — by contract — compiled.
+        // Post-compile callbacks fire here precisely so dependents can read a just-compiled
+        // node's results; a callback that aggregates several sources and checks each source's
+        // GetState() must see the just-finished node as Compiled, otherwise the LAST source's
+        // callback (the one that completes the set) wrongly judges that source not-ready and
+        // bails — leaving the dependent (e.g. PassGroupNode, ordered immediately after) to
+        // compile with nothing assembled. Set state first so GetState() matches reality.
+        instance->SetState(NodeState::Compiled);
+
         // Execute post-compile callbacks immediately after compilation
         // This ensures extracted values are available before dependent nodes compile
         for (auto& callback : postNodeCompileCallbacks) {
@@ -1277,8 +1287,6 @@ void RenderGraph::GeneratePipelines() {
         // Execute lifecycle hooks for PostCompile phase
         // This includes ConnectVariadic PostCompile hooks that populate slot resources
         lifecycleHooks.ExecuteNodeHooks(NodeLifecyclePhase::PostCompile, instance);
-
-        instance->SetState(NodeState::Compiled);
     }
 }
 
