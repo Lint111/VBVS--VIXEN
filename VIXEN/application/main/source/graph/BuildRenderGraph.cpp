@@ -105,6 +105,15 @@ void VulkanGraphApplication::BuildRenderGraph() {
         return;
     }
 
+    // AR#21 P4: opt into the isolated auto-sync FrameGraph demo via env var. Proves
+    // buffer-hazard auto-synchronization (compute->compute->render->present in ONE
+    // command buffer via PassGroupNode). Leaves the live voxel-compute path untouched.
+    if (std::getenv("VIXEN_AUTOSYNC_DEMO")) {
+        mainLogger->Info("VIXEN_AUTOSYNC_DEMO set - building auto-sync FrameGraph demo graph");
+        BuildAutoSyncDemoGraph();
+        return;
+    }
+
     mainLogger->Info("Building complete render pipeline with typed connections");
 
     // ===================================================================
