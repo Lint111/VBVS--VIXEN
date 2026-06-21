@@ -3,7 +3,8 @@
 // See LICENSE file in the project root for full license information.
 
 #include "Core/VirtualResourceAccessTracker.h"
-#include "Data/Core/CompileTimeResourceSystem.h"  // Resource class
+#include "Core/NodeType.h"                         // NodeType::GetInputDescriptor
+#include "Data/Core/CompileTimeResourceSystem.h"  // Resource class, ResourceDescriptor, SlotMutability
 #include <algorithm>
 
 namespace Vixen::RenderGraph {
@@ -115,19 +116,27 @@ void VirtualResourceAccessTracker::AddNode(NodeInstance* node) {
             }
         }
 
-        // Inputs are READS for this specific task
-        // TODO: Check SlotMutability for ReadWrite inputs
+        // Inputs: Read by default; ReadWrite if the slot declares it (completes the TODO).
+        // Mirrors ResourceAccessTracker: a ReadWrite input mutates the resource, so it must
+        // be tracked as a writer for correct WAR/WAW hazard detection at task granularity.
+        NodeType* type = node->GetType();
         for (size_t slotIndex = 0; slotIndex < bundle.inputs.size(); ++slotIndex) {
             Resource* resource = bundle.inputs[slotIndex];
-            if (resource) {
-                RecordAccess(
-                    resource,
-                    taskId,
-                    ResourceAccessType::Read,
-                    static_cast<uint32_t>(slotIndex),
-                    false  // isOutput
-                );
+            if (!resource) continue;
+            ResourceAccessType access = ResourceAccessType::Read;
+            if (type) {
+                const ResourceDescriptor* desc = type->GetInputDescriptor(static_cast<uint32_t>(slotIndex));
+                if (desc && desc->mutability == SlotMutability::ReadWrite) {
+                    access = ResourceAccessType::ReadWrite;
+                }
             }
+            RecordAccess(
+                resource,
+                taskId,
+                access,
+                static_cast<uint32_t>(slotIndex),
+                false  // isOutput
+            );
         }
     }
 }
@@ -349,7 +358,8 @@ void VirtualResourceAccessTracker::RecordAccess(
     const VirtualTaskId& task,
     ResourceAccessType accessType,
     uint32_t slotIndex,
-    bool isOutput
+    bool isOutput,
+    AccessKind kind
 ) {
     if (!resource || !task.IsValid()) return;
 
@@ -364,7 +374,7 @@ void VirtualResourceAccessTracker::RecordAccess(
         });
 
     if (existingIt == info.accesses.end()) {
-        info.accesses.push_back({task, accessType, slotIndex, isOutput});
+        info.accesses.push_back({task, accessType, slotIndex, isOutput, kind});
     } else {
         // Upgrade to ReadWrite if needed
         if (accessType != existingIt->accessType) {
