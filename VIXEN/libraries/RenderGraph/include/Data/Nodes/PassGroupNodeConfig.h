@@ -17,7 +17,7 @@ namespace Vixen::RenderGraph {
 // ============================================================================
 
 namespace PassGroupNodeCounts {
-    static constexpr size_t INPUTS  = 8;   // mirrors ComputeDispatchNode FrameSync wiring
+    static constexpr size_t INPUTS  = 9;   // 8 FrameSync/WSI wiring + 1 generic compile-ordering dep
     static constexpr size_t OUTPUTS = 2;
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -106,6 +106,26 @@ CONSTEXPR_NODE_CONFIG(PassGroupNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
+    /**
+     * @brief Generic compile-ordering dependency (OPTIONAL).
+     *
+     * VALUE IS UNUSED — this slot exists only to create a topology edge so that
+     * this node compiles AFTER whatever produces the wired output. The host
+     * assembly API (SetPasses / AddComputePass / AddRenderPass) supplies the
+     * concrete per-pass pipeline/render-pass/framebuffer handles, which are only
+     * available AFTER those producing nodes have compiled. Wiring this slot from
+     * any producing node's VULKAN_DEVICE_OUT (every node passes the device
+     * through) forces the correct compile order, pass-count-agnostically.
+     *
+     * Typed VulkanDevice* purely so it can be wired from any node's device
+     * pass-through output; the node never reads it.
+     */
+    INPUT_SLOT(COMPILE_AFTER, VulkanDevice*, 8,
+        SlotNullability::Optional,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
     // ===== OUTPUTS =====
 
     /** @brief Render complete semaphore for Present to wait on */
@@ -142,6 +162,10 @@ CONSTEXPR_NODE_CONFIG(PassGroupNodeConfig,
 
         HandleDescriptor fenceDesc{"VkFence"};
         INIT_INPUT_DESC(IN_FLIGHT_FENCE, "in_flight_fence", ResourceLifetime::Transient, fenceDesc);
+
+        // Generic compile-ordering dependency (value unused; topology edge only).
+        HandleDescriptor compileAfterDesc{"VulkanDevice*"};
+        INIT_INPUT_DESC(COMPILE_AFTER, "compile_after", ResourceLifetime::Persistent, compileAfterDesc);
 
         HandleDescriptor semaphoreDesc{"VkSemaphore"};
         INIT_OUTPUT_DESC(RENDER_COMPLETE_SEMAPHORE, "render_complete_semaphore",

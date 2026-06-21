@@ -99,6 +99,15 @@ public:
     void BuildInstancingDemoGraph();
 
     /**
+     * @brief Build an isolated auto-sync FrameGraph demo graph (AR#21 P4). Gated by the
+     *        VIXEN_AUTOSYNC_DEMO env var. Proves buffer-hazard auto-synchronization:
+     *        compute(fill SSBO) -> compute(in-place RAW) -> render(fullscreen frag reads
+     *        SSBO) -> present, all in ONE command buffer via PassGroupNode, with the
+     *        intra-pass barriers auto-baked by BuildPassGroupSchedule.
+     */
+    void BuildAutoSyncDemoGraph();
+
+    /**
      * @brief Compile the render graph
      * 
      * Validates, optimizes, and prepares the graph for execution.

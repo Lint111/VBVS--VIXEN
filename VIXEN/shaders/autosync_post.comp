@@ -1,0 +1,36 @@
+// autosync_post.comp — auto-sync FrameGraph P4 demo (pass B: in-place transform).
+// READ-MODIFY-WRITE of the SAME SSBO that autosync_fill.comp wrote. This is a
+// genuine load-then-store: it reads data[idx], transforms it, and writes it back,
+// so pass A -> pass B is a real READ-AFTER-WRITE hazard (not write-after-write).
+// The PassGroupNode bakes a buffer barrier between A and B to resolve it.
+#version 460
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+// Binding 0: the shared SSBO. READ + WRITE (in-place).
+layout(std430, binding = 0) buffer PixelBuffer {
+    vec4 data[];
+};
+
+layout(push_constant) uniform PushConstants {
+    uint width;
+    uint height;
+} pc;
+
+void main() {
+    uint x = gl_GlobalInvocationID.x;
+    uint y = gl_GlobalInvocationID.y;
+
+    if (x >= pc.width || y >= pc.height) {
+        return;
+    }
+
+    uint idx = y * pc.width + x;
+
+    // LOAD first (this is what makes A->B a true RAW hazard) ...
+    vec4 v = data[idx];
+    // ... transform ...
+    vec3 rgb = v.rgb * 0.8 + vec3(0.1);
+    // ... then STORE back.
+    data[idx] = vec4(rgb, 1.0);
+}
