@@ -32,13 +32,14 @@ this grouping verbatim — do not re-segment. Builds run FOREGROUND with `timeou
 
 - [x] **Milestone 1 — Task 1:** `FrameSyncSchedule` data types. Implementer: **Haiku**. ✅
 - [x] **Milestone 2 — Task 2:** pure scheduling core (`BuildScheduleFromTimelines`). Implementer: **Sonnet**. ✅
-- [ ] **Milestone 3 — Task 3:** adapter (`FrameSyncScheduler::Build`) + `RenderGraph` Compile hook. Implementer: **Sonnet**.
+- [x] **Milestone 3 — Task 3:** adapter (`FrameSyncScheduler::Build`) + `RenderGraph` Compile hook. Implementer: **Sonnet**. ✅
 
 Opus validates each milestone; the controller runs the `vixen-ninja` build gate between milestones.
 
 ### Progress Log
 - **Milestone 1 (Task 1): DONE** · `FrameSyncSchedule.h` (6 structs: `ResourceAccessPoint`/`ResourceTimeline`/`GroupBarrier`/`SyncEdge`/`SubmitGroup`/`FrameSyncSchedule`) + `test_frame_sync_scheduler` (2/2) · commit `9a4fce35` · Opus validator **APPROVED** (type/field-name fidelity confirmed, no collisions) · full build green · 2026-06-21
 - **Milestone 2 (Task 2): DONE** · pure `BuildScheduleFromTimelines` core (consecutive-pair hazard + layout-diff sync → `SyncEdge` + `GroupBarrier` + wait/signal wiring) · commit `8af82f79` · Opus validator **APPROVED** (algorithm reasoned sound incl. layout-change-between-reads; `FrameSyncScheduler::Build` declared-not-defined, links clean) · `test_frame_sync_scheduler` 7/7 · full build 78 targets · 2026-06-21 · *minor non-blocking:* no bounds-check on `groups[groupId]` (unreachable — adapter sizes `groupCount`)
+- **Milestone 3 (Task 3): DONE** · `FrameSyncScheduler::Build` adapter (per-node timelines from tracker, `ProvisionalKind` fallback, sort + core call, node wiring, swapchain tagging) + `RenderGraph` member / Compile-hook / `GetFrameSyncSchedule()` accessor · commit `3a71f412` · Opus validator **APPROVED** (adapter correct, hook after `BuildExecutionOrder`, NO behavior change — only log + test consume the schedule, `Execute()` never reads it) · `test_frame_sync_scheduler` 8/8 · regression tracker 22 / wave 15 / node-reg 2 · full build 163 targets incl `VIXEN.exe` · 2026-06-21 · *non-blocking nits (→P3):* dead `nodeToGroup` map; mock-helper `2`-suffix
 
 ---
 
@@ -556,10 +557,12 @@ git commit -m "feat(rendergraph): FrameSyncScheduler adapter + Compile hook (aut
 
 ## Phase P2 exit gate
 
-- [ ] Full `vixen-ninja` build green (FOREGROUND, `timeout: 600000`).
-- [ ] `test_frame_sync_scheduler` passes (types + core + adapter); regression net green (`test_resource_access_tracker`, `test_wave_scheduler`, `test_node_self_registration`).
-- [ ] **No behavior change**: `RenderGraph::Compile` now logs a schedule but nothing consumes it; the live app path is unchanged (deferred app/syncval verification to P3, which first consumes the schedule).
-- [ ] Commits for Tasks 1–3 on `feat/auto-sync-framegraph`.
+- [x] Full `vixen-ninja` build green (FOREGROUND) — 163 targets incl `VIXEN.exe` + `vixen_benchmark.exe` (M3 Opus validator, 2026-06-21).
+- [x] `test_frame_sync_scheduler` 8/8 (types + core + adapter); regression net green (`test_resource_access_tracker` 22, `test_wave_scheduler` 15, `test_node_self_registration` 2).
+- [x] **No behavior change** (validator-confirmed): `RenderGraph::Compile` builds + logs the schedule; only the log line + tests read `GetFrameSyncSchedule()`; `Execute()` never consumes it ⇒ live app path unchanged. App/syncval verification is the **P3** gate (first phase that consumes the schedule).
+- [x] Commits for Tasks 1–3 on `feat/auto-sync-framegraph`: `9a4fce35` (types), `8af82f79` (core), `3a71f412` (adapter+hook).
+
+**Phase P2 COMPLETE (2026-06-21).** Carry-forward nits to fold into P3 (it re-touches `FrameSyncScheduler.cpp`): remove the dead `nodeToGroup` map; optionally share the mock test harness.
 
 **Next (P3):** wire real per-slot `AccessKind` (declare usage on the recording nodes' slots), resolve the real swapchain `Resource*` into `Build`, then have `ComputeDispatchNode` replay its group's `entryBarriers` (Tier-1) — the first phase that changes execution, gated by **syncval**.
 
