@@ -46,6 +46,26 @@ VkResult VulkanInstance::CreateInstance(std::vector<const char*>& layerNames,
 	instInfo.enabledExtensionCount = static_cast<uint32_t>(extensionNames.size());
 	instInfo.ppEnabledExtensionNames = extensionNames.data();
 
+#if VIXEN_VULKAN_VALIDATION
+	// Synchronization validation: chain VkValidationFeaturesEXT into pNext so the validation layer
+	// reports missing/wrong barriers as errors. VK_EXT_validation_features is provided by the
+	// validation layer itself (not the ICD), so it is appended here — after FilterUnsupportedExtensions
+	// — to avoid being silently dropped by the ICD-only extension filter above.
+	extensionNames.push_back(VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME);
+	instInfo.enabledExtensionCount = static_cast<uint32_t>(extensionNames.size());
+	instInfo.ppEnabledExtensionNames = extensionNames.data();
+
+	static const VkValidationFeatureEnableEXT kSyncvalEnables[] = {
+		VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT,
+	};
+	VkValidationFeaturesEXT validationFeatures{};
+	validationFeatures.sType = VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT;
+	validationFeatures.enabledValidationFeatureCount = 1;
+	validationFeatures.pEnabledValidationFeatures = kSyncvalEnables;
+	validationFeatures.pNext = instInfo.pNext;  // preserve existing chain (e.g. debug messenger)
+	instInfo.pNext = &validationFeatures;
+#endif
+
 	VkResult res = vkCreateInstance(&instInfo, nullptr, &instance);
 	return res;
 }
