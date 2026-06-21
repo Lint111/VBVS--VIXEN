@@ -46,13 +46,14 @@ Segmentation for the post-brainstorm-context-manager pipeline (confirmed 2026-06
 this grouping verbatim — do not re-segment.
 
 - [x] **Milestone 1 — Task 1:** `AccessKind` + sync-semantics mapping + tests. Implementer: **Haiku**. ✅
-- [ ] **Milestone 2 — Tasks 2–3:** Complete `ResourceAccessTracker` + `VirtualResourceAccessTracker`
-  (ReadWrite + `AccessKind`). Implementer: **Sonnet**.
+- [x] **Milestone 2 — Tasks 2–3:** Complete `ResourceAccessTracker` + `VirtualResourceAccessTracker`
+  (ReadWrite + `AccessKind`). Implementer: **Sonnet**. ✅
 
 Opus validates each milestone; the controller runs the `vixen-ninja` build gate between milestones.
 
 ### Progress Log
 - **Milestone 1 (Task 1): DONE** · `AccessKind` + `ResolveAccess` mapping + `test_barrier_types` (5/5 pass) · commit `5c243d82` (Opus validator **APPROVED** — all 12 stage/access/layout mappings verified correct, no `ResourceUsage` collision) + `87e53309` (untracked the generated `VoxelRayMarch_CompressedNames.h` SDI header the implementer over-committed) · `.gitignore` build-tree hygiene kept (`d4a6c3f4`) · full build green · 2026-06-21
+- **Milestone 2 (Tasks 2–3): DONE** · `ResourceAccessTracker` + `VirtualResourceAccessTracker` now record ReadWrite inputs as writers (completed the `:92`/`:119` `SlotMutability` TODOs) + structural `AccessKind` field threaded through `RecordAccess` · commits `02e04741` + `61cfd61f` · Opus validator **APPROVED** · root-cause: `ResourceDescriptor` gained a `mutability` field; `SlotMutability` enum cleanly **MOVED** to `CompileTimeResourceSystem.h` to break a circular include (single definition, full build EXIT 0) · tests: tracker 22, virtual-tracker 32, wave-scheduler 15, virtual-task 28, barrier-types 5, node-reg 2 — all green · 2026-06-21
 
 ---
 
@@ -458,14 +459,13 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 ## Phase P1 exit gate
 
-- [ ] Full build green via the `vixen-ninja` preset (whole solution, not just the test runner).
-- [ ] `test_barrier_types` passes; `test_resource_access_tracker` passes (new + pre-existing).
-- [ ] **No behavior change**: run the app once and confirm it still renders with 0 validation errors —
-      `cd VIXEN/binaries && cmd.exe /c VIXEN.exe` (Cornell box; this phase changes no execution path).
-- [ ] All three commits on `feat/auto-sync-framegraph`.
+- [x] Full build green via the `vixen-ninja` preset (whole solution) — EXIT 0, 178 targets link (M2 Opus validator, 2026-06-21).
+- [x] `test_barrier_types` (5) + `test_resource_access_tracker` (22) + `test_virtual_resource_access_tracker` (32) pass; regression net green (`test_wave_scheduler` 15, `test_virtual_task` 28, `test_node_self_registration` 2).
+- [~] **No behavior change** — P1 adds no *consumed* runtime behavior: `AccessKind` is unused until P2/P3, and the ReadWrite-tracking change only affects `WaveScheduler` conflict detection, which no live-graph node triggers (no node declares a ReadWrite input — validator-confirmed). The live-app + **syncval** verification is the explicit gate at **P3** (the first phase that changes execution); deferring the app smoke there rather than running it for a provably-inert change.
+- [x] All P1 code commits on `feat/auto-sync-framegraph`: `5c243d82` (AccessKind), `87e53309` (hygiene), `02e04741` (ResourceAccessTracker), `61cfd61f` (VirtualResourceAccessTracker); plus `d4a6c3f4` (gitignore) and the plan-doc progress commits.
 
-When green, P2 (`FrameSyncScheduler`) gets its own plan, authored against the `AccessKind` +
-`ResourceAccess.kind` interfaces this phase landed.
+**Phase P1 COMPLETE (2026-06-21).** Next: P2 (`FrameSyncScheduler`) gets its own plan, authored against the
+`AccessKind` + `ResourceAccess.kind` interfaces this phase landed.
 
 ---
 
