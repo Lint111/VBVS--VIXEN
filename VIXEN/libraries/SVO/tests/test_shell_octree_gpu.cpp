@@ -189,8 +189,8 @@ TEST(ShellOctreeGpu, ConcatRejectsMoreThanThree) {
 // Per-instance GPU record packing
 // ---------------------------------------------------------------------------
 
-TEST(ShellOctreeGpu, InstanceRecordIsThirtyTwoBytes) {
-    EXPECT_EQ(sizeof(BodyInstanceGpu), 32u);
+TEST(ShellOctreeGpu, InstanceRecordIsSixtyFourBytes) {
+    EXPECT_EQ(sizeof(BodyInstanceGpu), 64u);
 }
 
 TEST(ShellOctreeGpu, InstancePackingRoundTrips) {

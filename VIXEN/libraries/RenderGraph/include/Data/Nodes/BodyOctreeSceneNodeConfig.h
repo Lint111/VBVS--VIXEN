@@ -74,7 +74,7 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
-    // New: per-body instance SSBO (BodyInstanceGpu records, 32 bytes each) + count.
+    // New: per-body instance SSBO (BodyInstanceGpu records, 64 bytes each) + count.
     OUTPUT_SLOT(INSTANCE_BUFFER, VkBuffer, 4,
         SlotNullability::Required,
         SlotMutability::WriteOnly);

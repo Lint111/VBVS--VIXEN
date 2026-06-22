@@ -553,29 +553,38 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // near-white per instance (slight warm/neutral/cool bias) so each stays bright and the three are
     // distinguishable by both base material and tint.
     {
-        constexpr float kScale = 0.75f;                 // shell side = 64*0.75 = 48 units (spacing 50 keeps them separate)
-        constexpr float kHalf  = 32.0f * kScale;        // base shell half-extent after scale (=24)
-        auto placeCentered = [&](float cx, float cy, float cz,
-                                 float r, float g, float b, uint32_t kind) {
+        // Procedural SDF bodies (Increment 1): true smooth spheres, no octree.
+        // worldPos = world centre; recipeParams = (radius, displaceAmp, displaceFreq).
+        // Radius 24 matches the prior Stored shells' on-screen size (kHalf=24), so the
+        // default camera frames all three. providerKind=1 selects the Procedural path.
+        constexpr float kRadius = 24.0f;
+        auto placeProcedural = [&](float cx, float cy, float cz,
+                                   float r, float g, float b,
+                                   uint32_t recipeId, float amp, float freq) {
             Vixen::SVO::BodyInstanceGpu inst{};
-            inst.worldPos[0] = cx - kHalf;
-            inst.worldPos[1] = cy - kHalf;
-            inst.worldPos[2] = cz - kHalf;
-            inst.renderScale = kScale;
+            inst.worldPos[0] = cx;
+            inst.worldPos[1] = cy;
+            inst.worldPos[2] = cz;
+            inst.renderScale = 1.0f;            // unused by Procedural
             inst.color[0]    = r;
             inst.color[1]    = g;
             inst.color[2]    = b;
-            inst.octreeIndex = kind;
+            inst.octreeIndex = 0u;              // unused by Procedural
+            inst.providerKind = 1u;             // PROVIDER_PROCEDURAL
+            inst.recipeId     = recipeId;       // 0 = sphere, 1 = displaced sphere
+            inst.recipeParams[0] = kRadius;
+            inst.recipeParams[1] = amp;
+            inst.recipeParams[2] = freq;
             return inst;
         };
         std::vector<Vixen::SVO::BodyInstanceGpu> defaultBodies = {
-            placeCentered( 14.0f, 64.0f, 64.0f, 1.00f, 0.95f, 0.85f, 0u),  // left   — warm-white tint × red kind
-            placeCentered( 64.0f, 64.0f, 64.0f, 0.90f, 1.00f, 0.90f, 1u),  // center — neutral white  × green kind
-            placeCentered(114.0f, 64.0f, 64.0f, 0.85f, 0.90f, 1.00f, 2u),  // right  — cool tint      × white kind
+            placeProcedural( 14.0f, 64.0f, 64.0f, 1.00f, 0.95f, 0.85f, 0u, 0.0f, 0.0f),  // left   — smooth star/sphere
+            placeProcedural( 64.0f, 64.0f, 64.0f, 0.55f, 0.75f, 1.00f, 1u, 2.0f, 0.5f),  // centre — displaced planet
+            placeProcedural(114.0f, 64.0f, 64.0f, 0.85f, 0.90f, 1.00f, 0u, 0.0f, 0.0f),  // right  — smooth sphere
         };
         if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))) {
             bodyScene->SetInstances(std::move(defaultBodies));
-            mainLogger->Info("[BuildRenderGraph] Seeded 3 default body instances (standalone fallback; a host's SetBodyInstances overrides these)");
+            mainLogger->Info("[BuildRenderGraph] Seeded 3 Procedural SDF body instances (standalone fallback)");
         }
     }
 
@@ -1079,7 +1088,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
         mainLogger->Info("[BuildRenderGraph] Connected debug/counters: binding 4 (voxelGridNode debug capture), binding 8 (voxelGridNode shader counters)");
     }
 
-    // Binding 10: BodyInstanceBuffer (SSBO) — per-body BodyInstanceGpu records (32 B each).
+    // Binding 10: BodyInstanceBuffer (SSBO) — per-body BodyInstanceGpu records (64 B each).
     // M-wire Task 8: this is the NEW binding not present in the dense path.
     batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_BUFFER,
                           descriptorGatherer, 10,  // Binding 10: BodyInstanceBuffer

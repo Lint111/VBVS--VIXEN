@@ -21,7 +21,7 @@ struct GLFWwindow;  // cross-platform window handle (GLFW); real include only in
 namespace Vixen::RenderGraph { class UIRenderNode; }  // composite HUD node; real include only in the .cpp
 namespace Vixen::RenderGraph { class UISelectionProviderNode; }  // UI hit-test provider; real include only in the .cpp
 namespace Vixen::RenderGraph { class BodyOctreeSceneNode; }  // M-wire: sparse shell octree upload node; real include in .cpp
-namespace Vixen::SVO { struct BodyInstanceGpu; }  // M-wire: per-body GPU instance record (32 bytes)
+namespace Vixen::SVO { struct BodyInstanceGpu; }  // M-wire: per-body GPU instance record (64 bytes)
 
 using namespace Vixen::Vulkan::Resources;
 using namespace Vixen::RenderGraph;
