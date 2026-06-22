@@ -114,6 +114,17 @@ void VulkanGraphApplication::BuildRenderGraph() {
         return;
     }
 
+    // AR#21 P5b M2: opt into the multi-submit fan-in demo via env var. Proves
+    // TIMELINE-ONLY ordering across separate compute submits: 2 independent producer
+    // compute submits write 2 buffers, 1 consumer compute submit waits BOTH via 2 baked
+    // timeline edges (NO binary handoff between them) + writes the swapchain. Leaves the
+    // live voxel-compute path untouched.
+    if (std::getenv("VIXEN_FANIN_DEMO")) {
+        mainLogger->Info("VIXEN_FANIN_DEMO set - building multi-submit fan-in timeline demo graph");
+        BuildFanInDemoGraph();
+        return;
+    }
+
     mainLogger->Info("Building complete render pipeline with typed connections");
 
     // ===================================================================

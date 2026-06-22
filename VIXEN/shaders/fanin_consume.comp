@@ -1,0 +1,45 @@
+// fanin_consume.comp — auto-sync FrameGraph P5b M2 fan-in demo (consumer).
+// Reads BOTH producer buffers (bufA, bufB) and writes the swapchain image. This is the
+// genuine 2-wait fan-in: the consumer's submit WAITS on the baked timeline edge from
+// producer A AND the one from producer B (NO binary handoff). If either wait is missing
+// or wrong, the consumer reads ungenerated buffer data → that half of the screen is
+// visibly wrong (black/garbage), so the live gate can SEE correctness.
+#version 460
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+// Binding 0: the swapchain image (storage image), WRITTEN here. rgba8 GENERAL layout
+// (matches the live VoxelRayMarch output-image convention).
+layout(binding = 0, rgba8) uniform writeonly image2D outputImage;
+
+// Binding 1: bufA (producer A output). READ-ONLY.
+layout(std430, binding = 1) readonly buffer BufA {
+    vec4 dataA[];
+};
+
+// Binding 2: bufB (producer B output). READ-ONLY.
+layout(std430, binding = 2) readonly buffer BufB {
+    vec4 dataB[];
+};
+
+layout(push_constant) uniform PushConstants {
+    uint width;
+    uint height;
+} pc;
+
+void main() {
+    uint x = gl_GlobalInvocationID.x;
+    uint y = gl_GlobalInvocationID.y;
+    if (x >= pc.width || y >= pc.height) {
+        return;
+    }
+    uint idx = y * pc.width + x;
+
+    // Combine: LEFT half shows producer A's data, RIGHT half shows producer B's data.
+    // A split (rather than a blend) makes a single dropped wait unmistakable — exactly
+    // one half goes wrong. Both producers must have completed (both timeline waits
+    // honoured) for both halves to be correct.
+    vec4 color = (x < pc.width / 2u) ? dataA[idx] : dataB[idx];
+
+    imageStore(outputImage, ivec2(x, y), color);
+}
