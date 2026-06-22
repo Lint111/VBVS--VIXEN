@@ -12,6 +12,23 @@
 
 ---
 
+## Milestone Map
+
+> context-manager pipeline (confirmed 2026-06-22). Controller owns the Windows ninja build +
+> live gate (path-pinned/PDB-hazard); Sonnet implementers write code + commit; Opus validates each.
+> Worktree-isolated build via `C:\cpp\_wt_build.bat <targets>` (points at `.claude/worktrees/stored-sdf`).
+
+- **M1 — Bake path** (Tasks 1–2) · Sonnet · gate: `test_sdf_bake` gtest green (controller-run) + Opus validator.
+- **M2 — SoA-SDF serialize + lookup + descriptor** (Tasks 3–4) · Sonnet · gate: `test_soa_sdf_serialize` gtest green (controller-run) + Opus validator.
+- **M3 — GPU wiring** (Tasks 5–6: 2 buffers + bindings) · Sonnet · gate: `VIXEN.exe` links + `static_assert`s (controller-run) + Opus validator.
+- **M4 — Shader Stored-SDF handler** (Tasks 7–9) · Sonnet · gate: build green; shader runtime-compiled → validated at the **M5 live gate** + Opus validator.
+- **M5 — Gate + verify** (Tasks 10–11) · controller/interactive · live A/B (Stored matches Procedural, 0 syncval) + no-regression.
+
+### Progress Log
+- _(pending — M1 not yet started)_
+
+---
+
 ## Critical surfaces (grounded 2026-06-22)
 
 - **Body serializer = `ShellOctreeGpu::Serialize`/`Concatenate`** (`libraries/SVO/include/ShellOctreeGpu.h`): per-voxel pack at `:304–318` (`world.getEntityByWorldSpace(pos)` → `Material`); `OctreeConfig` emit at `:334–373`; `SerializedOctree` struct `:184`, `ConcatenatedOctrees` `:203`. **NOT `VoxelSceneCacher`** (that's the VoxelGridNode path).
