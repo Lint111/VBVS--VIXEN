@@ -12,6 +12,23 @@
 
 ---
 
+## Milestone Map
+
+> Execution grouping for the post-brainstorm-context-manager pipeline (confirmed 2026-06-22).
+> Project-aware gate: the **controller** owns the Windows ninja build + live run (the preset is
+> path-pinned to the main checkout and PDB-lock-hazardous); **Sonnet** implementers write code +
+> commit; **Opus** validates each milestone. Builds stay worktree-isolated via
+> `cmake --preset vixen-ninja` invoked from the worktree (binaryDir `${sourceDir}/../build-ninja`).
+
+- **M1 — CPU recipe library + GLSL mirror** (Tasks 1–2) · implementer Sonnet · gate: `test_sdf_recipes` gtest green (controller-run) + Opus validator.
+- **M2 — GPU integration** (Tasks 3–5: grow `BodyInstanceGpu` 32→64 B, shader provider branch, seed 3-body scene) · implementer Sonnet · gate: worktree ninja build — shaders compile + `static_assert`s hold (controller-run) + Opus validator.
+- **M3 — Verification + live gate** (Tasks 6–7) · controller/interactive · authoritative live app run (smooth spheres, 0 syncval).
+
+### Progress Log
+- _(pending — M1 not yet started)_
+
+---
+
 ## Critical project facts (read before starting)
 
 - **`PackInstances` is a `memcpy`** of the `BodyInstanceGpu` array (`ShellOctreeGpu.h:425`), and the instance ring auto-sizes from `PackInstances(...).size()` (`BodyOctreeSceneNode.cpp:183-185`). So growing the struct requires updating only: the C++ struct + its `static_assert`, and the **GLSL `BodyInstance` struct** (they must stay byte-for-byte identical). No change to `PackInstances` or the node.
