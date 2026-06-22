@@ -30,7 +30,9 @@
 - Milestone 3 (Tasks 6–7): **DONE** · live gate — `VIXEN.exe` rendered the 3 Procedural bodies; **user-confirmed smooth spheres**; render loop clean, 0 VUID/validation errors. No-regression: `test_gpu_parity` [PASSED 4]. · 2026-06-22 · (worktree exe = `.claude/worktrees/sdf-body-rendering/VIXEN/binaries/VIXEN.exe`)
 - ⚠️ Pre-existing (NOT an Inc1 regression): `test_brick_traversal::BrickToBrickTransition` fails (Expected true / Actual false) — verified via `git diff eb546383..HEAD`: no brick-DDA/traversal source changed by Inc1, so it predates this work. Out of scope; candidate for a separate fix.
 
-**Increment 1 COMPLETE** — Procedural SDF provider live + visually verified. Next: final Opus diff review → finish-branch (merge to main / PR).
+- Final Opus diff review: **APPROVED_WITH_NITS** → fixed inline (commit `33dc25bb`): Lipschitz-derived sphere-trace step `1/(1 + amp·freq·√3)` (replaces the magic `0.7`; prevents displaced-body tunneling/speckle and future-proofs Inc2 recipes) + a CPU parity test at the live displaced params (amp=2, freq=0.5) + stale-comment/cosmetic cleanups. `test_sdf_recipes` [PASSED 6]. Re-live-gate: shader recompiled at runtime, rendered clean, **0 validation errors** — non-regressive confirmed.
+
+**Increment 1 COMPLETE** — Procedural SDF provider live + visually verified + final-review nits resolved. Next: finish-branch (merge to main / PR).
 
 ---
 
