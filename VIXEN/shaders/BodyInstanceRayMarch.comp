@@ -207,6 +207,11 @@ int g_brickArrayBase = 0;   // configs[g_octreeIdx].brickArrayBase
 #include "TraceRecording.glsl"
 #include "ESVOTraversal.glsl"
 #include "Lighting.glsl"
+#include "SdfRecipes.glsl"
+
+// Provider kinds (mirror ShellOctreeGpu.h ProviderKind + SdfRecipes.h).
+#define PROVIDER_STORED     0u
+#define PROVIDER_PROCEDURAL 1u
 
 // ============================================================================
 // LOD CONTROL (Task 7)
@@ -570,6 +575,26 @@ void main() {
 
         BodyInstance inst = bodyInstances[instIdx];
         uint oi = clamp(inst.octreeIndex, 0u, 2u);
+
+        // --- Procedural provider: analytic SDF sphere-trace (no octree) ---
+        if (inst.providerKind == PROVIDER_PROCEDURAL) {
+            vec3 pCenter = inst.worldPos;
+            vec3 pParams = vec3(inst.recipeParams[0], inst.recipeParams[1], inst.recipeParams[2]);
+            vec3 pNormal;
+            float pT;
+            if (traceProceduralBody(inst.recipeId, pCenter, pParams, rayOrigin, rayDir,
+                                    pNormal, pT)) {
+                if (pT < bestT) {
+                    bestT          = pT;
+                    bestColor      = inst.color;   // procedural base colour = instance tint
+                    bestNormal     = pNormal;      // smooth SDF-gradient normal
+                    bestBrickIndex = 0u;
+                    bestVoxelIdx   = 0u;
+                    anyHit         = true;
+                }
+            }
+            continue;  // procedural body fully handled; skip the ESVO path
+        }
 
         // Set globals used by fetchESVONode (via g_esvoNodeBase in ESVOTraversal.glsl)
         // and by marchBrickInstanced (via g_brickArrayBase below).
