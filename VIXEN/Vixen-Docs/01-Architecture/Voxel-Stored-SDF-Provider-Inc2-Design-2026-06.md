@@ -93,6 +93,20 @@ should match within tolerance, 0 syncval. Keep Procedural as the default scene.
 - **Neighbor resolution:** `BuildBrickGridLookup` (grid coord → brick index) is uploaded so
   the shader resolves cross-brick samples in O(1). Missing entry → far-positive sentinel.
 
+## 4a. Grounding correction (2026-06-22, post-approval)
+
+Verified against the body path: the **body** serializer is `ShellOctreeGpu::Serialize`/
+`Concatenate` (`libraries/SVO/include/ShellOctreeGpu.h` — packs `materialId`/voxel at
+:304–318, emits per-body `OctreeConfig`), **not** `VoxelSceneCacher` (which feeds the
+separate VoxelGridNode/Cornell path). So Inc2's SoA-SDF packing for **bodies** modifies
+`ShellOctreeGpu::Serialize`. The cross-brick grid→brick map also already exists on the
+body octree as **`SVOBuilder::brickGridToBrickView`** (`SVOBuilder.h:59–61`) — Inc2
+serializes it to a GPU lookup buffer (not a new `BuildBrickGridLookup`). The §3/§5
+references to `VoxelSceneCacher`/`BuildBrickGridLookup` should be read as
+`ShellOctreeGpu::Serialize`/`SVOBuilder::brickGridToBrickView` for the body path. The
+architecture (cross-brick sampling, SoA-SDF, bake, descriptor in `OctreeConfig` tail) is
+unchanged — only the file targets.
+
 ## 5. Seam map
 
 | File | Change |
