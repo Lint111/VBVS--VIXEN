@@ -537,8 +537,19 @@ void RenderGraph::Compile() {
         std::to_string(resourceAccessTracker_.GetResourceCount()) + " resources, " +
         std::to_string(resourceAccessTracker_.GetNodeCount()) + " nodes tracked");
 
-    // Auto-sync: bake the frame sync schedule from the access model (P2).
-    frameSyncScheduler_.Build(executionOrder, resourceAccessTracker_, /*swapchainResource=*/nullptr);
+    // Auto-sync: bake the frame sync schedule from the access model (P2/P5a M2).
+    // Locate the swapchain node's SWAPCHAIN_PUBLIC Resource* so the scheduler can
+    // flag it as an image resource (enables baked image-barrier replay).
+    // Headless / test graphs that have no SwapChainNode get nullptr → buffer-only barriers.
+    const Resource* swapchainResource = nullptr;
+    for (NodeInstance* node : executionOrder) {
+        NodeType* nodeType = node ? node->GetNodeType() : nullptr;
+        if (nodeType && nodeType->GetTypeName() == "SwapChain") {
+            swapchainResource = node->GetOutput(1 /*SWAPCHAIN_PUBLIC*/, 0);
+            break;
+        }
+    }
+    frameSyncScheduler_.Build(executionOrder, resourceAccessTracker_, swapchainResource);
     GRAPH_LOG_INFO("[RenderGraph::Compile] FrameSyncSchedule built: " +
         std::to_string(GetFrameSyncSchedule().groups.size()) + " groups, " +
         std::to_string(GetFrameSyncSchedule().edges.size()) + " edges");
