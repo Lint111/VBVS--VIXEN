@@ -114,6 +114,17 @@ void VulkanGraphApplication::BuildRenderGraph() {
         return;
     }
 
+    // AR#21 P5b M2: opt into the multi-submit fan-in demo via env var. Proves
+    // TIMELINE-ONLY ordering across separate compute submits: 2 independent producer
+    // compute submits write 2 buffers, 1 consumer compute submit waits BOTH via 2 baked
+    // timeline edges (NO binary handoff between them) + writes the swapchain. Leaves the
+    // live voxel-compute path untouched.
+    if (std::getenv("VIXEN_FANIN_DEMO")) {
+        mainLogger->Info("VIXEN_FANIN_DEMO set - building multi-submit fan-in timeline demo graph");
+        BuildFanInDemoGraph();
+        return;
+    }
+
     mainLogger->Info("Building complete render pipeline with typed connections");
 
     // ===================================================================
@@ -1099,7 +1110,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
                   computeDispatch, ComputeDispatchNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
          .Connect(swapChainNode, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
-                  computeDispatch, ComputeDispatchNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
+                  computeDispatch, ComputeDispatchNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY)
+         // P5b M1: wire FrameSyncNode timeline primitives into ComputeDispatchNode
+         .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_SEMAPHORE,
+                  computeDispatch, ComputeDispatchNodeConfig::TIMELINE_SEMAPHORE_IN)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_FRAME_BASE,
+                  computeDispatch, ComputeDispatchNodeConfig::TIMELINE_FRAME_BASE_IN);
 
     // REMOVED DUPLICATE: computeDispatch -> present RENDER_COMPLETE_SEMAPHORE (already connected at line 894-895)
 
@@ -1129,10 +1145,28 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY, uiCompositeNode, UIRenderNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
          .Connect(swapChainNode, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY, uiCompositeNode, UIRenderNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY)
          .Connect(uiRenderPassNode, RenderPassNodeConfig::RENDER_PASS, uiCompositeNode, UIRenderNodeConfig::RENDER_PASS)
-         .Connect(uiFramebufferNode, FramebufferNodeConfig::FRAMEBUFFERS, uiCompositeNode, UIRenderNodeConfig::FRAMEBUFFERS);
+         .Connect(uiFramebufferNode, FramebufferNodeConfig::FRAMEBUFFERS, uiCompositeNode, UIRenderNodeConfig::FRAMEBUFFERS)
+         // P5b M1: wire FrameSyncNode timeline primitives into UIRenderNode (consumer waits on edges)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_SEMAPHORE, uiCompositeNode, UIRenderNodeConfig::TIMELINE_SEMAPHORE_IN)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_FRAME_BASE, uiCompositeNode, UIRenderNodeConfig::TIMELINE_FRAME_BASE_IN);
 
-    // The compute→UI handoff: the UI waits on the semaphore the compute signalled after writing the
-    // image. This is also the explicit edge that orders the UI's Execute after the compute's.
+    // P5b M3: the compute→UI ordering is carried by the baked timeline edge for GPU SYNC (memory
+    // visibility), but the graph still needs the compute→UI TOPOLOGY edge so the execution order
+    // (and hence the timeline edge the scheduler bakes from it) is compute-before-UI. The
+    // FrameSyncScheduler derives edge DIRECTION from groupId order (== execution order); without this
+    // dependency the topological sort places UI before compute, so it bakes the edge BACKWARDS
+    // (UI→compute), tags the COMPUTE group as the swapchain present-signal, and leaves the presented
+    // image in GENERAL (compute runs last w/ leaveImageInGeneral) — VUID-...-01430 — while the UI draw
+    // sees the image still UNDEFINED — VUID-vkCmdDraw-None-09600. So we keep this connection purely as
+    // the ORDERING edge (its documented secondary purpose, UIRenderNodeConfig SWAPCHAIN/COMPOSITE_WAIT):
+    // the binary semaphore it carries is INERT — compute no longer SIGNALS renderComplete in composite
+    // (ComputeDispatchNode gates it to !leaveImageInGeneral) and UIRenderNode no longer WAITS
+    // compositeWait (the M3 binary handoff was dropped from its submit). With the edge in the right
+    // direction the scheduler bakes the single compute(GENERAL)→UI(GENERAL) timeline edge (UI gets the
+    // waitEdge + waits the compute's timeline value, the timeline semaphore carries cross-submit memory
+    // visibility, both layouts GENERAL ⇒ no transition), tags the UI group as present (its render pass
+    // owns GENERAL→PRESENT_SRC), and the timeline alone — not a binary handoff — orders compute→UI.
+    // WSI acquire (compute waits imageAvailable) and present (UI signals its uiComplete) stay binary.
     batch.Connect(computeDispatch, ComputeDispatchNodeConfig::RENDER_COMPLETE_SEMAPHORE,
                   uiCompositeNode, UIRenderNodeConfig::COMPOSITE_WAIT_SEMAPHORE);
 

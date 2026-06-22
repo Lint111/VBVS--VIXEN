@@ -864,7 +864,8 @@ ResourceDescriptor MakeDescriptor(
  * @brief Input slot with declarative AccessKind for auto-sync (P3)
  *
  * Extends INPUT_SLOT with an explicit AccessKind so the scheduler can use
- * the declared kind instead of falling back to ProvisionalKind().
+ * the declared kind directly (AccessKind::None accesses are excluded from the
+ * timeline — they are untyped handle/config passthroughs, not GPU hazards).
  * Existing INPUT_SLOT usages are UNTOUCHED (their accessKind defaults to None).
  *
  * Parameters match INPUT_SLOT plus a trailing ACCESSKIND argument.

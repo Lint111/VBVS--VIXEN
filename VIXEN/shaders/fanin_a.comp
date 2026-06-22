@@ -1,0 +1,35 @@
+// fanin_a.comp — auto-sync FrameGraph P5b M2 fan-in demo (producer A).
+// Independent producer: writes a distinct pattern into storage buffer bufA. This is
+// its OWN submit / OWN SubmitGroup; it shares NO binary semaphore with the consumer —
+// the consumer waits its completion SOLELY via the baked timeline edge.
+#version 460
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+// Binding 0: bufA (one vec4 per pixel). WRITE-ONLY (producer). std430 so the C++
+// byte layout (vec4 per element) matches exactly.
+layout(std430, binding = 0) writeonly buffer BufA {
+    vec4 data[];
+};
+
+layout(push_constant) uniform PushConstants {
+    uint width;
+    uint height;
+} pc;
+
+void main() {
+    uint x = gl_GlobalInvocationID.x;
+    uint y = gl_GlobalInvocationID.y;
+    if (x >= pc.width || y >= pc.height) {
+        return;
+    }
+    uint idx = y * pc.width + x;
+    // Pattern A: a horizontal red gradient (green ramps with y) — clearly distinct
+    // from pattern B, so a missing wait on EITHER producer is visible on screen.
+    data[idx] = vec4(
+        float(x) / float(pc.width),   // R ramps left→right
+        float(y) / float(pc.height),  // G ramps top→bottom
+        0.0,
+        1.0
+    );
+}

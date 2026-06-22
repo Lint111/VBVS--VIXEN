@@ -25,6 +25,13 @@ enum class AccessKind : uint8_t {
     FragmentStorageRead,
     VertexStorageRead,
     ColorAttachmentWrite,
+    /// Color attachment that reads+writes an image kept in VK_IMAGE_LAYOUT_GENERAL. Used by the live
+    /// composite UI pass, whose render pass LOADs the compute output from initialLayout=General and
+    /// blends the HUD over it — declaring this on UI's swapchain access makes the scheduler bake the
+    /// compute(GENERAL)→UI(GENERAL) timeline edge with NO layout transition (just ordering + the
+    /// timeline semaphore's cross-submit memory visibility). Distinct from ColorAttachmentWrite, which
+    /// resolves to COLOR_ATTACHMENT_OPTIMAL (a transition the composite render pass does NOT want).
+    ColorAttachmentWriteGeneral,
     DepthAttachmentReadWrite,
     IndirectRead,
     TransferRead,
@@ -60,6 +67,10 @@ enum class AccessKind : uint8_t {
     case AccessKind::ColorAttachmentWrite:
         return {VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
                 VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
+    case AccessKind::ColorAttachmentWriteGeneral:
+        return {VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+                VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT,
+                VK_IMAGE_LAYOUT_GENERAL};
     case AccessKind::DepthAttachmentReadWrite:
         return {VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
                 VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
@@ -87,6 +98,7 @@ enum class AccessKind : uint8_t {
     case AccessKind::ComputeStorageWrite:
     case AccessKind::ComputeStorageReadWrite:
     case AccessKind::ColorAttachmentWrite:
+    case AccessKind::ColorAttachmentWriteGeneral:
     case AccessKind::DepthAttachmentReadWrite:
     case AccessKind::TransferWrite:
         return true;
@@ -103,6 +115,7 @@ enum class AccessKind : uint8_t {
     case AccessKind::FragmentSampledRead:
     case AccessKind::FragmentStorageRead:
     case AccessKind::VertexStorageRead:
+    case AccessKind::ColorAttachmentWriteGeneral:
     case AccessKind::DepthAttachmentReadWrite:
     case AccessKind::IndirectRead:
     case AccessKind::TransferRead:

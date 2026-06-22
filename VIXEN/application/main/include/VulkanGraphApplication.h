@@ -108,6 +108,17 @@ public:
     void BuildAutoSyncDemoGraph();
 
     /**
+     * @brief Build an isolated multi-submit fan-in demo graph (AR#21 P5b M2). Gated by
+     *        the VIXEN_FANIN_DEMO env var. Proves TIMELINE-ONLY ordering across SEPARATE
+     *        compute submits: compute(A) + compute(B) each write a distinct storage
+     *        buffer (each its OWN submit/group), a consumer compute submit waits BOTH via
+     *        2 baked timeline edges (NO binary handoff between them) and writes the
+     *        swapchain → present. The genuine 2-wait fan-in the 1-edge composite can't
+     *        isolate. Uses the generic ComputeStageNode.
+     */
+    void BuildFanInDemoGraph();
+
+    /**
      * @brief Compile the render graph
      * 
      * Validates, optimizes, and prepares the graph for execution.
