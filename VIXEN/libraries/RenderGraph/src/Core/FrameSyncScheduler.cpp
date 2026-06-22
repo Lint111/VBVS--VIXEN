@@ -52,16 +52,6 @@ FrameSyncSchedule BuildScheduleFromTimelines(
     return s;
 }
 
-namespace {
-AccessKind ProvisionalKind(ResourceAccessType t, bool /*isImage*/) {
-    switch (t) {
-    case ResourceAccessType::Write:     return AccessKind::ComputeStorageWrite;
-    case ResourceAccessType::ReadWrite: return AccessKind::ComputeStorageReadWrite;
-    case ResourceAccessType::Read:
-    default:                            return AccessKind::ComputeStorageRead;
-    }
-}
-} // anonymous namespace
 
 bool FrameSyncScheduler::Build(const std::vector<NodeInstance*>& executionOrder,
                                const ResourceAccessTracker& tracker,
@@ -75,14 +65,38 @@ bool FrameSyncScheduler::Build(const std::vector<NodeInstance*>& executionOrder,
         for (Resource* res : tracker.GetNodeResources(node)) {
             const ResourceAccessInfo* info = tracker.GetAccessInfo(res);
             if (!info) continue;
+
+            // Only DECLARED GPU hazards participate in the timeline. An access is a real
+            // GPU memory hazard iff it carries an explicit AccessKind (declared via an
+            // INPUT_SLOT_SYNC / sync output slot). Plain accessKind=None accesses are NOT
+            // GPU hazards — they are either handle/config passthroughs (device, command
+            // pool, semaphores, the buffer-handle passthrough) OR CPU-side metadata reads
+            // of an image handle (e.g. StorageBufferNode/DescriptorSetNode read the
+            // swapchain IRenderTarget* only for extent/image-count at compile time). Baking
+            // edges for these manufactured spurious write→read / WAR edges whose endpoint
+            // group is a NON-submitting data node (which never signals its timeline value),
+            // so a consumer waiting such an edge hangs forever — surfacing downstream as
+            // VUID-vkQueuePresentKHR-pWaitSemaphores-03268. The swapchain image hazard is
+            // itself expressed via a declared AccessKind (ComputeStorageWrite today; UI's
+            // ColorAttachment kind arrives in M3), so the real swapchain edge survives this
+            // gate; the untyped swapchain *metadata* reads are correctly excluded. We still
+            // flag the swapchain timeline isImage so its barriers resolve image layouts.
+            // (The acquire/present tagging below scans GetNodeResources independently, so it
+            // is unaffected by which accesses enter the timeline.)
+            const bool isSwapchain = (res == swapchainResource);
+            bool hasDeclaredAccessHere = false;
+            for (const ResourceAccess& a : info->accesses) {
+                if (a.node == node && a.kind != AccessKind::None) { hasDeclaredAccessHere = true; break; }
+            }
+            if (!hasDeclaredAccessHere) continue;
+
             ResourceTimeline& tl = byResource[res];
             tl.resource = res;
-            if (res == swapchainResource) tl.isImage = true;
+            if (isSwapchain) tl.isImage = true;
             for (const ResourceAccess& a : info->accesses) {
                 if (a.node != node) continue;
-                AccessKind kind = (a.kind != AccessKind::None)
-                    ? a.kind : ProvisionalKind(a.accessType, tl.isImage);
-                tl.accesses.push_back({g, kind});
+                if (a.kind == AccessKind::None) continue;  // only declared GPU hazards
+                tl.accesses.push_back({g, a.kind});
             }
         }
     }

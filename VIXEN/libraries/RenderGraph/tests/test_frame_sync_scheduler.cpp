@@ -182,14 +182,21 @@ TEST(FrameSyncP3, DeclaredAccessKind_ReachesBarrierLayout) {
     EXPECT_EQ(b.dst.layout, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 }
 
-TEST(FrameSyncAdapter, WriterThenReader_ProducesEdge) {
+// An UNTYPED handle/config passthrough (accessKind=None, not the swapchain) is NOT a
+// GPU memory hazard and must NOT bake a timeline edge. This is the anti-deadlock
+// invariant (P5b M2): such edges would otherwise point from a non-submitting data node
+// that never signals its timeline value, hanging any consumer that waits them. Real
+// hazards (declared AccessKind, or the swapchain image) DO bake edges — see the
+// FrameSyncCore/FrameSyncP3 BuildScheduleFromTimelines tests (explicit kinds) and
+// SwapchainResource_ImageBarriersAndTagging below.
+TEST(FrameSyncAdapter, UntypedPassthrough_ProducesNoEdge) {
     MockNodeType2 type("mock");
     auto writer = type.CreateInstance("writer");
     auto reader = type.CreateInstance("reader");
-    MockResource2 res; res.debugName = "img";
+    MockResource2 res; res.debugName = "handle";  // a plain handle passthrough, accessKind None
 
-    AddOutput2(writer.get(), &res);   // writer writes res
-    AddInput2(reader.get(),  &res);   // reader reads res
+    AddOutput2(writer.get(), &res);   // writer writes res (accessKind None — no descriptor)
+    AddInput2(reader.get(),  &res);   // reader reads res (accessKind None)
 
     ResourceAccessTracker tracker;
     tracker.AddNode(writer.get());
@@ -202,18 +209,32 @@ TEST(FrameSyncAdapter, WriterThenReader_ProducesEdge) {
     ASSERT_EQ(s.groups.size(), 2u);
     EXPECT_EQ(s.groups[0].node, writer.get());
     EXPECT_EQ(s.groups[1].node, reader.get());
-    EXPECT_EQ(s.edges.size(), 1u);   // RAW write->read across groups
+    EXPECT_EQ(s.edges.size(), 0u)   // untyped passthrough is not a hazard → no timeline edge
+        << "an untyped (accessKind=None, non-swapchain) write->read must NOT bake a timeline "
+           "edge — only declared-sync or swapchain hazards do (P5b M2 anti-deadlock invariant)";
 }
 
 // P5a M2: passing the real swapchain Resource* to Build turns on isImage + acquire/present tagging.
+// P5b M2: the swapchain edge bakes from DECLARED AccessKinds (the gate now ignores untyped
+// metadata accesses), so the mock writer/reader declare a schema carrying the kinds — exactly
+// how the live ComputeDispatchNode (ComputeStorageWrite) declares its swapchain access.
 TEST(FrameSyncAdapter, SwapchainResource_ImageBarriersAndTagging) {
-    MockNodeType2 type("mock");
-    auto writer = type.CreateInstance("writer");
-    auto reader = type.CreateInstance("reader");
+    MockNodeType2 writerType("mock_writer");
+    MockNodeType2 readerType("mock_reader");
+    // Declared sync accesses: writer ComputeStorageWrite (output slot 0), reader ComputeStorageRead (input slot 0).
+    Schema writerOut(1);
+    writerOut[0].accessKind = AccessKind::ComputeStorageWrite;
+    writerType.SetOutputSchema(writerOut);
+    Schema readerIn(1);
+    readerIn[0].accessKind = AccessKind::ComputeStorageRead;
+    readerType.SetInputSchema(readerIn);
+
+    auto writer = writerType.CreateInstance("writer");
+    auto reader = readerType.CreateInstance("reader");
     MockResource2 sharedResource; sharedResource.debugName = "swapchain";
 
-    AddOutput2(writer.get(), &sharedResource);  // writer outputs the swapchain resource
-    AddInput2(reader.get(),  &sharedResource);  // reader consumes it
+    AddOutput2(writer.get(), &sharedResource);  // writer outputs the swapchain resource (declared W)
+    AddInput2(reader.get(),  &sharedResource);  // reader consumes it (declared R)
 
     ResourceAccessTracker tracker;
     tracker.AddNode(writer.get());
