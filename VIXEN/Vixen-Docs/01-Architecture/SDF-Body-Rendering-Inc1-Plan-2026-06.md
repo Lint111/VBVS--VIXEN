@@ -22,12 +22,15 @@
 
 - **M1 — CPU recipe library + GLSL mirror** (Tasks 1–2) · implementer Sonnet · gate: `test_sdf_recipes` gtest green (controller-run) + Opus validator. · **✅ DONE 2026-06-22**
 - **M2 — GPU integration** (Tasks 3–5: grow `BodyInstanceGpu` 32→64 B, shader provider branch, seed 3-body scene) · implementer Sonnet · gate: worktree C++ build — `static_assert`s hold + `VIXEN.exe` links + `test_shell_octree_gpu` [9] & `test_sdf_recipes` [5] green (controller-run) + Opus validator. · **✅ DONE 2026-06-22** (NB: the shader is **runtime-compiled** by VIXEN, so `BodyInstanceRayMarch.comp` + the provider branch are validated at the **M3 live gate**, not at build time).
-- **M3 — Verification + live gate** (Tasks 6–7) · controller/interactive · authoritative live app run (smooth spheres, 0 syncval).
+- **M3 — Verification + live gate** (Tasks 6–7) · controller/interactive · authoritative live app run (smooth spheres, 0 syncval). · **✅ DONE 2026-06-22** — user-confirmed smooth render; 0 validation errors; `test_gpu_parity` [4]. (Pre-existing, unrelated: `test_brick_traversal::BrickToBrickTransition` fails on origin/main too — brick-DDA code untouched by Inc1.)
 
 ### Progress Log
 - Milestone 1 (Tasks 1–2): **DONE** · commits `ac6dc38e`..`d00fdffc` · gate `test_sdf_recipes` [PASSED 5] · Opus validator OK · 2026-06-22
 - Milestone 2 (Tasks 3–5): **DONE** · commits `c8c62dad`..`fcc3e4d9` · gate: `VIXEN.exe` links + `test_shell_octree_gpu` [PASSED 9] + `test_sdf_recipes` [PASSED 5] · Opus validator OK · 2026-06-22
-- _(Milestone 3 — verification + live gate — PENDING; interactive with user. NB: worktree app exe = `.claude/worktrees/sdf-body-rendering/VIXEN/binaries/VIXEN.exe`, NOT the main-checkout path the plan's Task 7 cites.)_
+- Milestone 3 (Tasks 6–7): **DONE** · live gate — `VIXEN.exe` rendered the 3 Procedural bodies; **user-confirmed smooth spheres**; render loop clean, 0 VUID/validation errors. No-regression: `test_gpu_parity` [PASSED 4]. · 2026-06-22 · (worktree exe = `.claude/worktrees/sdf-body-rendering/VIXEN/binaries/VIXEN.exe`)
+- ⚠️ Pre-existing (NOT an Inc1 regression): `test_brick_traversal::BrickToBrickTransition` fails (Expected true / Actual false) — verified via `git diff eb546383..HEAD`: no brick-DDA/traversal source changed by Inc1, so it predates this work. Out of scope; candidate for a separate fix.
+
+**Increment 1 COMPLETE** — Procedural SDF provider live + visually verified. Next: final Opus diff review → finish-branch (merge to main / PR).
 
 ---
 
