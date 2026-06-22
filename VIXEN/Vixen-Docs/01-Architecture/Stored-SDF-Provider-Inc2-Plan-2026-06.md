@@ -19,14 +19,14 @@
 > Worktree-isolated build via `C:\cpp\_wt_build.bat <targets>` (points at `.claude/worktrees/stored-sdf`).
 
 - **M1 — Bake path** (Tasks 1–2) · Sonnet · gate: `test_sdf_bake` gtest green (controller-run) + Opus validator. · **✅ DONE 2026-06-22**
-- **M2 — SoA-SDF serialize + lookup + descriptor** (Tasks 3–4) · Sonnet · gate: `test_soa_sdf_serialize` gtest green (controller-run) + Opus validator.
-- **M3 — GPU wiring** (Tasks 5–6: 2 buffers + bindings) · Sonnet · gate: `VIXEN.exe` links + `static_assert`s (controller-run) + Opus validator.
-- **M4 — Shader Stored-SDF handler** (Tasks 7–9) · Sonnet · gate: build green; shader runtime-compiled → validated at the **M5 live gate** + Opus validator.
+- **M2 — SoA-SDF serialize + lookup + descriptor** (Tasks 3–4) · Sonnet · gate: `test_soa_sdf_serialize` gtest green (controller-run) + Opus validator. · **✅ DONE 2026-06-22** — descriptor in `Vixen::SVO::OctreeConfig` tail (432 B struct, SPIR-V ArrayStride 432): `formatId`@200, `bricksPerAxis`@204, `sdfBrickArrayBase`@208. M4 GLSL must match these offsets.
+- **M3 — GPU + shader integration** (Tasks 5–9: 2 buffers + descriptor bindings + shader bindings 11/12 + Stored-SDF handler) · Sonnet · gate: `VIXEN.exe` links + shader runtime-compiles (controller-run) + Opus validator; full correctness at the **M5 live gate**. *(M3+M4 merged 2026-06-22 — buffers, descriptor bindings, and shader bindings are one coupled unit; the descriptor layout needs the shader to declare bindings 11/12, and the GLSL `OctreeConfig` tail must match M2's byte offsets formatId@200/bricksPerAxis@204/sdfBrickArrayBase@208.)*
 - **M5 — Gate + verify** (Tasks 10–11) · controller/interactive · live A/B (Stored matches Procedural, 0 syncval) + no-regression.
 
 ### Progress Log
 - Milestone 1 (Tasks 1–2): **DONE** · commits `4bcdf5d2`..`b9497543` · gate `test_sdf_bake` [PASSED 2] · Opus validator OK (1 prescribed test-compile fix applied) · 2026-06-22
-- _(Milestone 2 in progress)_
+- Milestone 2 (Tasks 3–4): **DONE** · commit `0f3e4bb3` · gate `test_soa_sdf_serialize` [PASSED 8] · Opus validator OK (verified SPIR-V ArrayStride 432 == upload stride; descriptor sound) · 2026-06-22
+- _(Milestone 3 — GPU wiring — in progress)_
 
 ---
 
