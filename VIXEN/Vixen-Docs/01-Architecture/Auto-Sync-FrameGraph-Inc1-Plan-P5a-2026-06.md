@@ -59,7 +59,7 @@ related:
 
 > Confirm before execution; do not re-segment on resume.
 
-- **M1 — FrameSyncNode timeline + frameBase (Tasks 1–3).** Feature gate + timeline semaphore + frameBase advance/publish + 2 output slots + monotonicity unit test. **Zero behaviour change** (primitive created/published, nothing consumes it). *Gate (agent):* build green + unit test pass (no GPU).
+- **M1 ✅ DONE — FrameSyncNode timeline + frameBase (Tasks 1–3).** Feature gate + timeline semaphore + frameBase advance/publish + 2 output slots + monotonicity unit test. **Zero behaviour change** (primitive created/published, nothing consumes it). *Gate (agent):* build green + unit test pass (no GPU).
 - **M2 — Swapchain `Resource*` identity → baked image barriers (Tasks 4–6).** Pass the real swapchain `Resource*` to the scheduler (turns on image-barrier replay on the live path) + scheduler unit test. *Gate:* build + unit, **then HANDS-ON live syncval** — the live composite must render at 0 syncval with the newly-firing baked image barriers (no regression). REQUIRES a live GPU run.
 
 ---
@@ -163,4 +163,4 @@ TEST(FrameSyncTimeline, ZeroStrideHoldsBase) {
 - **Live-gate placement:** M1 is zero-behaviour-change (safe, no GPU gate needed); M2 changes the live path → explicit hands-on live syncval gate (Task 6). ✓
 
 ## Progress Log
-- *(empty — appended per milestone: `Milestone N (Tasks A–B): DONE · commits <short>..<short> · Opus validator OK · <date>`)*
+- Milestone 1 (Tasks 1–3): DONE · commits `72987bc3`, `97d613ad` (Task 1 a no-op — `timelineSemaphore` was already enabled via the capability graph by prior BatchedUploader work; verified enabled end-to-end) · Opus validator APPROVED (8 checks; timeline semaphore final-teardown-only so the monotonic counter survives recompile, frameBase advances once/frame before publish + never reset in CompileImpl, ZERO behaviour change confirmed, test 2/2 + scheduler 10/10). FrameSyncNode → 5 output slots. **Build-env note:** a prior P4-debug agent had flipped `ENABLE_COVERAGE=ON` in the local `build-ninja` cache (`--coverage` corrupts objects on this MSVC toolchain → `test_timer`/`test_scene_generators` link-fail); reconfigured `ENABLE_COVERAGE=OFF` + full clean rebuild = **901/901 green** (repo CMake default is OFF — NOT a committed contamination). · 2026-06-22
