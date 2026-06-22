@@ -20,13 +20,15 @@
 
 - **M1 — Bake path** (Tasks 1–2) · Sonnet · gate: `test_sdf_bake` gtest green (controller-run) + Opus validator. · **✅ DONE 2026-06-22**
 - **M2 — SoA-SDF serialize + lookup + descriptor** (Tasks 3–4) · Sonnet · gate: `test_soa_sdf_serialize` gtest green (controller-run) + Opus validator. · **✅ DONE 2026-06-22** — descriptor in `Vixen::SVO::OctreeConfig` tail (432 B struct, SPIR-V ArrayStride 432): `formatId`@200, `bricksPerAxis`@204, `sdfBrickArrayBase`@208. M4 GLSL must match these offsets.
-- **M3 — GPU + shader integration** (Tasks 5–9: 2 buffers + descriptor bindings + shader bindings 11/12 + Stored-SDF handler) · Sonnet · gate: `VIXEN.exe` links + shader runtime-compiles (controller-run) + Opus validator; full correctness at the **M5 live gate**. *(M3+M4 merged 2026-06-22 — buffers, descriptor bindings, and shader bindings are one coupled unit; the descriptor layout needs the shader to declare bindings 11/12, and the GLSL `OctreeConfig` tail must match M2's byte offsets formatId@200/bricksPerAxis@204/sdfBrickArrayBase@208.)*
+- **M3 — GPU + shader integration** (Tasks 5–9: 2 buffers + descriptor bindings + shader bindings 11/12 + Stored-SDF handler) · Sonnet · gate: `VIXEN.exe` links + shader runtime-compiles (controller-run) + Opus validator. **✅ DONE 2026-06-22** (VIXEN.exe links, Opus-validated). Full correctness — incl. the ⚠️ **`renderScale` ↔ grid-voxel-space coupling** in `marchStoredSdf` (validator-flagged: the AABB is `[0,bpa*8]` but `main()` de-instances by `/renderScale`) — at the **M5 live gate**. *(M3+M4 merged 2026-06-22 — buffers, descriptor bindings, and shader bindings are one coupled unit; the descriptor layout needs the shader to declare bindings 11/12, and the GLSL `OctreeConfig` tail must match M2's byte offsets formatId@200/bricksPerAxis@204/sdfBrickArrayBase@208.)*
 - **M5 — Gate + verify** (Tasks 10–11) · controller/interactive · live A/B (Stored matches Procedural, 0 syncval) + no-regression.
 
 ### Progress Log
 - Milestone 1 (Tasks 1–2): **DONE** · commits `4bcdf5d2`..`b9497543` · gate `test_sdf_bake` [PASSED 2] · Opus validator OK (1 prescribed test-compile fix applied) · 2026-06-22
 - Milestone 2 (Tasks 3–4): **DONE** · commit `0f3e4bb3` · gate `test_soa_sdf_serialize` [PASSED 8] · Opus validator OK (verified SPIR-V ArrayStride 432 == upload stride; descriptor sound) · 2026-06-22
-- _(Milestone 3 — GPU wiring — in progress)_
+- Milestone 3 (Tasks 5–9, M3+M4 merged): **DONE** · commits `94efef72`..`8a7327c5` · gate: `VIXEN.exe` links (clean C++ compile incl. OUTPUTS=8 static_asserts) + Opus validator OK (non-regression ✓, byte offsets 200/204/208 ✓, SoA/lookup indexing ✓) · 2026-06-22
+- ⚠️ **Carried to M5:** validator flagged `marchStoredSdf` scale-coupling — its AABB is grid-voxel space `[0,bpa*8]` but `main()` de-instances `(rayOrigin-worldPos)/renderScale`; the Stored demo's `renderScale`/`worldPos` must be authored so the de-instanced ray is in grid-voxel units, else the march degenerates. Verify FIRST at the live gate. Also a cosmetic stale comment (`BodyInstanceRayMarch.comp:84-90`, `_padding4_tail[14]`→`[13]`).
+- _(Milestone 5 — live gate — pending; interactive)_
 
 ---
 
