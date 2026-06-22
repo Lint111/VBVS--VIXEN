@@ -45,12 +45,15 @@ struct ComputePipelineNodes {
     RG::NodeHandle descriptorSet;
     RG::NodeHandle pipeline;
     RG::NodeHandle dispatch;
+    RG::NodeHandle pickIdTarget;  // AR#35: R32_UINT ID image bound at descriptor binding 9.
+                                  // VoxelRayMarch.comp statically writes idOutputImage (binding 9),
+                                  // so it MUST be bound or vkCmdDispatch hits VUID-...-08114.
 
     /// Check if all required nodes are valid
     bool IsValid() const {
         return shaderLib.IsValid() && descriptorGatherer.IsValid() &&
                pushConstantGatherer.IsValid() && descriptorSet.IsValid() &&
-               pipeline.IsValid() && dispatch.IsValid();
+               pipeline.IsValid() && dispatch.IsValid() && pickIdTarget.IsValid();
     }
 };
 

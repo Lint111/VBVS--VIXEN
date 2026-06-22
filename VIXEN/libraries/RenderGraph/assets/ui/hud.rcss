@@ -2,10 +2,22 @@ body {
     font-family: LatoLatin;
     font-size: 16px;
     color: #d0d0d0;
-    /* The HUD body spans the whole viewport. Make it transparent to picking so empty space and the
-       read-only HUD pass clicks THROUGH to the voxel world (RmlUi's GetElementAtPoint skips
-       pointer-events:none elements). Interactive widgets opt back in with pointer-events:auto.
-       NOTE: pointer-events is inherited, so this cascades to #hud and its children by default. */
+    /* Stretch the document to fill the whole context (viewport). Every HUD element is
+       position:absolute and anchored to an edge (#hud → top/right, the buttons → bottom/left), so
+       they resolve against this element as their containing block. Without an explicit size the body
+       has only out-of-flow children and collapses to 0x0 — then `right`/`bottom` anchor against a
+       zero-sized block and every element lands off-screen (negative offset). Anchoring all four edges
+       (the RmlUi full-window idiom, cf. the RmlUi demo sample's `body { top/left/right/bottom: 0 }`)
+       makes the body span the context so the HUD is positioned correctly. */
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    /* Make the body transparent to picking so empty space and the read-only HUD pass click THROUGH to
+       the voxel world (RmlUi's GetElementAtPoint skips pointer-events:none elements). Interactive
+       widgets opt back in with pointer-events:auto. NOTE: pointer-events is inherited, so this
+       cascades to #hud and its children by default. */
     pointer-events: none;
 }
 

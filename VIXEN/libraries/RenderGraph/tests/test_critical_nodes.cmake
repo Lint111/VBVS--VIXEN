@@ -318,8 +318,14 @@ message(STATUS "[RenderGraph Tests] Added: test_body_octree_lifetime (lavapipe l
 
 # --- Compile BodyInstanceRayMarch.comp -> SPIR-V with the bundled glslc ---
 # VIXEN_SHADER_SOURCE_DIR is <VIXEN>/shaders; the bundled SDK sits beside it.
+# This is a lavapipe/WSL-only test: it needs the auto-provisioned Linux LunarG SDK's glslc
+# (and lavapipe at run time). On environments where Vulkan came from the system (so the SDK
+# cache was never provisioned — e.g. the Windows/MSVC build), the bundled glslc is absent;
+# gate the whole rule on its existence so the rest of the suite still builds. Without the gate,
+# the missing glslc fails the entire ninja build ("system cannot find the path specified").
 set(_brm_shader_dir "${VIXEN_SHADER_SOURCE_DIR}")
 set(_brm_glslc "${_brm_shader_dir}/../.vulkan-sdk/1.4.350.1/x86_64/bin/glslc")
+if(EXISTS "${_brm_glslc}")
 set(_brm_src "${_brm_shader_dir}/BodyInstanceRayMarch.comp")
 set(_brm_spv "${CMAKE_CURRENT_BINARY_DIR}/BodyInstanceRayMarch.spv")
 
@@ -358,3 +364,6 @@ set_target_properties(test_body_instance_raymarch_render PROPERTIES FOLDER "Test
 gtest_discover_tests(test_body_instance_raymarch_render)
 
 message(STATUS "[RenderGraph Tests] Added: test_body_instance_raymarch_render (lavapipe real-shader render)")
+else()
+    message(STATUS "[RenderGraph Tests] SKIPPED test_body_instance_raymarch_render — bundled glslc not provisioned at ${_brm_glslc} (lavapipe/WSL-only test)")
+endif()

@@ -537,6 +537,23 @@ void RenderGraph::Compile() {
         std::to_string(resourceAccessTracker_.GetResourceCount()) + " resources, " +
         std::to_string(resourceAccessTracker_.GetNodeCount()) + " nodes tracked");
 
+    // Auto-sync: bake the frame sync schedule from the access model (P2/P5a M2).
+    // Locate the swapchain node's SWAPCHAIN_PUBLIC Resource* so the scheduler can
+    // flag it as an image resource (enables baked image-barrier replay).
+    // Headless / test graphs that have no SwapChainNode get nullptr → buffer-only barriers.
+    const Resource* swapchainResource = nullptr;
+    for (NodeInstance* node : executionOrder) {
+        NodeType* nodeType = node ? node->GetNodeType() : nullptr;
+        if (nodeType && nodeType->GetTypeName() == "SwapChain") {
+            swapchainResource = node->GetOutput(1 /*SWAPCHAIN_PUBLIC*/, 0);
+            break;
+        }
+    }
+    frameSyncScheduler_.Build(executionOrder, resourceAccessTracker_, swapchainResource);
+    GRAPH_LOG_INFO("[RenderGraph::Compile] FrameSyncSchedule built: " +
+        std::to_string(GetFrameSyncSchedule().groups.size()) + " groups, " +
+        std::to_string(GetFrameSyncSchedule().edges.size()) + " edges");
+
     // Sprint 6.5: Build virtual resource access tracker for task-level parallelism
     if (parallelExecutionEnabled_) {
         GRAPH_LOG_INFO("[RenderGraph::Compile] Phase: BuildVirtualResourceAccessTracker...");
@@ -1117,7 +1134,7 @@ Resource* RenderGraph::CreateResourceForOutput(NodeInstance* node, uint32_t outp
 void RenderGraph::AnalyzeDependencies() {
     // Topological sort gives us execution order
     executionOrder = topology.TopologicalSort();
-    
+
     // Assign execution order indices
     for (size_t i = 0; i < executionOrder.size(); ++i) {
         executionOrder[i]->SetExecutionOrder(static_cast<uint32_t>(i));
@@ -1262,6 +1279,16 @@ void RenderGraph::GeneratePipelines() {
 
         GRAPH_LOG_DEBUG("[GeneratePipelines] Node compiled successfully: " + instance->GetInstanceName());
 
+        // Mark the node Compiled BEFORE running post-compile callbacks/hooks. Compile()
+        // has fully run, so its outputs are populated and it is — by contract — compiled.
+        // Post-compile callbacks fire here precisely so dependents can read a just-compiled
+        // node's results; a callback that aggregates several sources and checks each source's
+        // GetState() must see the just-finished node as Compiled, otherwise the LAST source's
+        // callback (the one that completes the set) wrongly judges that source not-ready and
+        // bails — leaving the dependent (e.g. PassGroupNode, ordered immediately after) to
+        // compile with nothing assembled. Set state first so GetState() matches reality.
+        instance->SetState(NodeState::Compiled);
+
         // Execute post-compile callbacks immediately after compilation
         // This ensures extracted values are available before dependent nodes compile
         for (auto& callback : postNodeCompileCallbacks) {
@@ -1271,8 +1298,6 @@ void RenderGraph::GeneratePipelines() {
         // Execute lifecycle hooks for PostCompile phase
         // This includes ConnectVariadic PostCompile hooks that populate slot resources
         lifecycleHooks.ExecuteNodeHooks(NodeLifecyclePhase::PostCompile, instance);
-
-        instance->SetState(NodeState::Compiled);
     }
 }
 

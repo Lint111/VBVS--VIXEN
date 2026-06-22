@@ -365,8 +365,11 @@ void CornellBoxSceneGenerator::Generate(VoxelGrid& grid, const SceneGeneratorPar
 
 void CornellBoxSceneGenerator::GenerateWalls(VoxelGrid& grid) {
     uint32_t res = grid.GetResolution();
-    // Thicken walls to 3 voxels to ensure brick occupancy at all resolutions
-    const uint32_t wallThickness = 3;
+    // Scale wall thickness with resolution so the box's solid fraction (~10% — five res*res
+    // walls of thickness t give 5*t/res density) stays resolution-invariant. A fixed 3-voxel
+    // thickness was 23% at 64^3 but only 6% at 256^3; res/50 (rounded, min 1) holds ~10% across
+    // 64/128/256. Min 1 keeps the walls solid at every resolution.
+    const uint32_t wallThickness = std::max(1u, (res + 25u) / 50u);
 
     // Left wall (material ID 1 = red)
     for (uint32_t y = 0; y < res; ++y) {
@@ -592,8 +595,11 @@ void TunnelSceneGenerator::GenerateCaveTerrain(VoxelGrid& grid, const SceneGener
                 // Convert noise range [-1, 1] to [0, 1]
                 noiseValue = (noiseValue + 1.0f) * 0.5f;
 
-                // Threshold determines solid vs empty
-                if (noiseValue > threshold) {
+                // Threshold determines solid vs empty. The threshold IS the target solid
+                // fraction: a higher threshold fills more of the noise field (denser cave),
+                // a lower threshold leaves it sparser. (Previously inverted: '>' made a higher
+                // threshold *sparser*, contradicting the densityThreshold contract.)
+                if (noiseValue < threshold) {
                     grid.Set(x, y, z, 30);  // Material ID 30 = stone
                 }
             }
@@ -675,39 +681,45 @@ void CityscapeSceneGenerator::Generate(VoxelGrid& grid, const SceneGeneratorPara
     grid.Clear();
 
     uint32_t res = grid.GetResolution();
+
+    // A 90%-dense cityscape (the research density spec) is necessarily near-solid: thin streets
+    // and buildings that fill almost the full height. Auto street width stays thin and scales
+    // gently with resolution so the street fraction — and therefore the density — is
+    // resolution-invariant.
     uint32_t streetWidth = params.streetWidth;
     if (streetWidth == 0) {
-        streetWidth = res / 16;  // Auto: 1/16 of resolution
-        if (streetWidth == 0) streetWidth = 1;
+        streetWidth = std::max(1u, res / 128u);
     }
 
-    // 1. Generate street grid
-    GenerateStreetGrid(grid, streetWidth, params.blockCount);
+    uint32_t blockCount = std::max(1u, params.blockCount);
 
-    // 2. Generate buildings in each block
-    uint32_t blockSize = (res - (params.blockCount + 1) * streetWidth) / params.blockCount;
+    // 1. Street grid (asphalt floor markings between blocks)
+    GenerateStreetGrid(grid, streetWidth, blockCount);
 
-    std::mt19937 rng(params.seed);
+    // 2. Buildings fill each block to ONE uniform height chosen so the total solid fraction lands
+    //    on the ~90% target for the actual footprint: density = footprintFraction * (height/res),
+    //    hence height = target * res / footprintFraction (capped at full height when the footprint
+    //    alone cannot reach the target). Uniform + deterministic => reproducible density.
+    uint32_t blockSize = (res - (blockCount + 1) * streetWidth) / blockCount;
+    if (blockSize == 0) blockSize = 1;
 
-    for (uint32_t bx = 0; bx < params.blockCount; ++bx) {
-        for (uint32_t bz = 0; bz < params.blockCount; ++bz) {
+    const float targetDensity = 0.90f;
+    const uint64_t buildingSpan = static_cast<uint64_t>(blockCount) * blockSize;
+    const float footprintFraction =
+        static_cast<float>(buildingSpan * buildingSpan) /
+        (static_cast<float>(res) * static_cast<float>(res));
+    uint32_t height = static_cast<uint32_t>(
+        targetDensity * static_cast<float>(res) / std::max(footprintFraction, 0.01f) + 0.5f);
+    height = std::min(height, res);
+
+    for (uint32_t bx = 0; bx < blockCount; ++bx) {
+        for (uint32_t bz = 0; bz < blockCount; ++bz) {
             glm::ivec3 origin(
-                streetWidth + bx * (blockSize + streetWidth),
+                static_cast<int>(streetWidth + bx * (blockSize + streetWidth)),
                 0,
-                streetWidth + bz * (blockSize + streetWidth)
+                static_cast<int>(streetWidth + bz * (blockSize + streetWidth))
             );
-
-            glm::ivec3 size(blockSize, 0, blockSize);
-
-            // Random building height based on heightVariance
-            float minHeight = res * (0.6f - params.heightVariance * 0.3f);
-            float maxHeight = res * (0.6f + params.heightVariance * 0.3f);
-            std::uniform_int_distribution<uint32_t> heightDist(
-                static_cast<uint32_t>(minHeight),
-                static_cast<uint32_t>(maxHeight)
-            );
-            uint32_t height = heightDist(rng);
-
+            glm::ivec3 size(static_cast<int>(blockSize), 0, static_cast<int>(blockSize));
             GenerateBuilding(grid, origin, size, height);
         }
     }

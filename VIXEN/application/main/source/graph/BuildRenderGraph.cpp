@@ -105,6 +105,26 @@ void VulkanGraphApplication::BuildRenderGraph() {
         return;
     }
 
+    // AR#21 P4: opt into the isolated auto-sync FrameGraph demo via env var. Proves
+    // buffer-hazard auto-synchronization (compute->compute->render->present in ONE
+    // command buffer via PassGroupNode). Leaves the live voxel-compute path untouched.
+    if (std::getenv("VIXEN_AUTOSYNC_DEMO")) {
+        mainLogger->Info("VIXEN_AUTOSYNC_DEMO set - building auto-sync FrameGraph demo graph");
+        BuildAutoSyncDemoGraph();
+        return;
+    }
+
+    // AR#21 P5b M2: opt into the multi-submit fan-in demo via env var. Proves
+    // TIMELINE-ONLY ordering across separate compute submits: 2 independent producer
+    // compute submits write 2 buffers, 1 consumer compute submit waits BOTH via 2 baked
+    // timeline edges (NO binary handoff between them) + writes the swapchain. Leaves the
+    // live voxel-compute path untouched.
+    if (std::getenv("VIXEN_FANIN_DEMO")) {
+        mainLogger->Info("VIXEN_FANIN_DEMO set - building multi-submit fan-in timeline demo graph");
+        BuildFanInDemoGraph();
+        return;
+    }
+
     mainLogger->Info("Building complete render pipeline with typed connections");
 
     // ===================================================================
@@ -514,6 +534,50 @@ void VulkanGraphApplication::BuildRenderGraph() {
     const char* sceneEnv = std::getenv("VIXEN_SCENE");
     voxelGrid->SetParameter(VoxelGridNodeConfig::PARAM_SCENE_TYPE,
                             std::string(sceneEnv != nullptr ? sceneEnv : "cornell"));
+
+    // --- Standalone default body scene (Option A) ---
+    // The live render path dispatches BodyInstanceRayMarch.comp, which only draws per-body INSTANCES
+    // (numInstances = clamp(pc.instanceCount, ...)). The UNDERTOW host feeds real bodies at runtime via
+    // VulkanGraphApplication::SetBodyInstances() -> BodyOctreeSceneNode::SetInstances(), but standalone
+    // VIXEN.exe has no body source, so with 0 instances every ray misses and the screen is just the
+    // dark sky color (looks black). Seed a few default instances so the standalone app shows a scene.
+    //
+    // SetInstances REPLACES the list (instances_ = std::move(...)), so a host that calls SetBodyInstances
+    // at runtime fully overwrites these defaults — they are a standalone fallback only, no host gating
+    // needed. BodyOctreeSceneNode builds 3 shell-octree "kinds" (octreeIndex 0/1/2), each a [0,64]^3 shell
+    // (base center (32,32,32)). The instance transform is instOrigin = (rayOrigin - worldPos)/renderScale,
+    // so a shell centered at world C needs worldPos = C - (32,32,32)*renderScale. We center the 3 shells
+    // around the 128^3 grid centre (64,64,64) and spread them along X so they don't overlap and all sit
+    // in the default camera view (verified on screen: three distinct red/green/white spheres).
+    // color[3] is a per-instance tint that MULTIPLIES the kind's material (1=red, 2=green, 3=white), kept
+    // near-white per instance (slight warm/neutral/cool bias) so each stays bright and the three are
+    // distinguishable by both base material and tint.
+    {
+        constexpr float kScale = 0.75f;                 // shell side = 64*0.75 = 48 units (spacing 50 keeps them separate)
+        constexpr float kHalf  = 32.0f * kScale;        // base shell half-extent after scale (=24)
+        auto placeCentered = [&](float cx, float cy, float cz,
+                                 float r, float g, float b, uint32_t kind) {
+            Vixen::SVO::BodyInstanceGpu inst{};
+            inst.worldPos[0] = cx - kHalf;
+            inst.worldPos[1] = cy - kHalf;
+            inst.worldPos[2] = cz - kHalf;
+            inst.renderScale = kScale;
+            inst.color[0]    = r;
+            inst.color[1]    = g;
+            inst.color[2]    = b;
+            inst.octreeIndex = kind;
+            return inst;
+        };
+        std::vector<Vixen::SVO::BodyInstanceGpu> defaultBodies = {
+            placeCentered( 14.0f, 64.0f, 64.0f, 1.00f, 0.95f, 0.85f, 0u),  // left   — warm-white tint × red kind
+            placeCentered( 64.0f, 64.0f, 64.0f, 0.90f, 1.00f, 0.90f, 1u),  // center — neutral white  × green kind
+            placeCentered(114.0f, 64.0f, 64.0f, 0.85f, 0.90f, 1.00f, 2u),  // right  — cool tint      × white kind
+        };
+        if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))) {
+            bodyScene->SetInstances(std::move(defaultBodies));
+            mainLogger->Info("[BuildRenderGraph] Seeded 3 default body instances (standalone fallback; a host's SetBodyInstances overrides these)");
+        }
+    }
 
     // Enable logging for VoxelGridNode to see octree generation
     if (auto* voxelLogger = voxelGrid->GetLogger()) {
@@ -1046,7 +1110,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
                   computeDispatch, ComputeDispatchNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
          .Connect(swapChainNode, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
-                  computeDispatch, ComputeDispatchNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
+                  computeDispatch, ComputeDispatchNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY)
+         // P5b M1: wire FrameSyncNode timeline primitives into ComputeDispatchNode
+         .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_SEMAPHORE,
+                  computeDispatch, ComputeDispatchNodeConfig::TIMELINE_SEMAPHORE_IN)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_FRAME_BASE,
+                  computeDispatch, ComputeDispatchNodeConfig::TIMELINE_FRAME_BASE_IN);
 
     // REMOVED DUPLICATE: computeDispatch -> present RENDER_COMPLETE_SEMAPHORE (already connected at line 894-895)
 
@@ -1076,10 +1145,28 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY, uiCompositeNode, UIRenderNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
          .Connect(swapChainNode, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY, uiCompositeNode, UIRenderNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY)
          .Connect(uiRenderPassNode, RenderPassNodeConfig::RENDER_PASS, uiCompositeNode, UIRenderNodeConfig::RENDER_PASS)
-         .Connect(uiFramebufferNode, FramebufferNodeConfig::FRAMEBUFFERS, uiCompositeNode, UIRenderNodeConfig::FRAMEBUFFERS);
+         .Connect(uiFramebufferNode, FramebufferNodeConfig::FRAMEBUFFERS, uiCompositeNode, UIRenderNodeConfig::FRAMEBUFFERS)
+         // P5b M1: wire FrameSyncNode timeline primitives into UIRenderNode (consumer waits on edges)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_SEMAPHORE, uiCompositeNode, UIRenderNodeConfig::TIMELINE_SEMAPHORE_IN)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_FRAME_BASE, uiCompositeNode, UIRenderNodeConfig::TIMELINE_FRAME_BASE_IN);
 
-    // The compute→UI handoff: the UI waits on the semaphore the compute signalled after writing the
-    // image. This is also the explicit edge that orders the UI's Execute after the compute's.
+    // P5b M3: the compute→UI ordering is carried by the baked timeline edge for GPU SYNC (memory
+    // visibility), but the graph still needs the compute→UI TOPOLOGY edge so the execution order
+    // (and hence the timeline edge the scheduler bakes from it) is compute-before-UI. The
+    // FrameSyncScheduler derives edge DIRECTION from groupId order (== execution order); without this
+    // dependency the topological sort places UI before compute, so it bakes the edge BACKWARDS
+    // (UI→compute), tags the COMPUTE group as the swapchain present-signal, and leaves the presented
+    // image in GENERAL (compute runs last w/ leaveImageInGeneral) — VUID-...-01430 — while the UI draw
+    // sees the image still UNDEFINED — VUID-vkCmdDraw-None-09600. So we keep this connection purely as
+    // the ORDERING edge (its documented secondary purpose, UIRenderNodeConfig SWAPCHAIN/COMPOSITE_WAIT):
+    // the binary semaphore it carries is INERT — compute no longer SIGNALS renderComplete in composite
+    // (ComputeDispatchNode gates it to !leaveImageInGeneral) and UIRenderNode no longer WAITS
+    // compositeWait (the M3 binary handoff was dropped from its submit). With the edge in the right
+    // direction the scheduler bakes the single compute(GENERAL)→UI(GENERAL) timeline edge (UI gets the
+    // waitEdge + waits the compute's timeline value, the timeline semaphore carries cross-submit memory
+    // visibility, both layouts GENERAL ⇒ no transition), tags the UI group as present (its render pass
+    // owns GENERAL→PRESENT_SRC), and the timeline alone — not a binary handoff — orders compute→UI.
+    // WSI acquire (compute waits imageAvailable) and present (UI signals its uiComplete) stay binary.
     batch.Connect(computeDispatch, ComputeDispatchNodeConfig::RENDER_COMPLETE_SEMAPHORE,
                   uiCompositeNode, UIRenderNodeConfig::COMPOSITE_WAIT_SEMAPHORE);
 

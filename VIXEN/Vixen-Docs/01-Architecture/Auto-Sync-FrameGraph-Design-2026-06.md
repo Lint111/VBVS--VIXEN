@@ -3,7 +3,7 @@ title: Automatic GPU sync (frame-graph barrier scheduling) — design note (AR#2
 aliases: [auto-sync, barrier scheduler, frame graph, GPU-GPU passing, AR#21 timeline]
 tags: [architecture, design, rendergraph, synchronization, AR21, parked]
 created: 2026-06-14
-status: PARKED design note — audit complete, not started. Pick up in a focused session.
+status: SUPERSEDED (scope) by [[Auto-Sync-FrameGraph-Inc1-Design-2026-06]] — that spec merges this note's increments 1+2 into one Tiers-1+2 deliverable (2026-06-21). This note remains the audit/background.
 related:
   - "[[RenderGraph]]"
   - "[[Maturation-Backlog-2026-06]]"
@@ -11,6 +11,12 @@ related:
 ---
 
 # Automatic GPU sync (frame-graph barrier scheduling) — design note
+
+> [!note] Increment 1 is now designed — see [[Auto-Sync-FrameGraph-Inc1-Design-2026-06]]
+> The 2026-06-21 brainstorming merged this note's **increment 1** (intra-submit barriers) and
+> **increment 2** (multi-submit/timeline) into a single **Tiers 1+2** deliverable, with a centralized,
+> loop-aware `FrameSyncScheduler` and an internal P1–P6 phasing. This note remains the original
+> audit/background; the detailed, implementation-ready design lives in the linked spec.
 
 **Motivation (user, 2026-06-14):** "make nodes have deferred outputs/inputs so we can pass inner GPU
 process passing — compute → compute → render without GPU↔CPU readback." Chosen direction: **automatic

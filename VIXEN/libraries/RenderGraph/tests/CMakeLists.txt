@@ -603,6 +603,67 @@ else()
 endif()
 
 # ===========================================================================
+# BarrierTypes Tests (auto-sync P1)
+# ===========================================================================
+# Validates AccessKind -> Vulkan sync-semantics mapping
+
+if(TARGET GTest::gtest_main)
+    add_executable(test_barrier_types test_barrier_types.cpp)
+    target_link_libraries(test_barrier_types PRIVATE GTest::gtest_main RenderGraph)
+    set_target_properties(test_barrier_types PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    gtest_discover_tests(test_barrier_types)
+    message(STATUS "✓ test_barrier_types configured (auto-sync P1)")
+else()
+    message(STATUS "⊗ test_barrier_types skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
+# FrameSyncSchedule Data Types Tests (auto-sync P2)
+# ===========================================================================
+# Validates FrameSyncSchedule data types (pure structs, no business logic)
+
+if(TARGET GTest::gtest_main)
+    add_executable(test_frame_sync_scheduler test_frame_sync_scheduler.cpp)
+    target_link_libraries(test_frame_sync_scheduler PRIVATE GTest::gtest_main RenderGraph)
+    set_target_properties(test_frame_sync_scheduler PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    gtest_discover_tests(test_frame_sync_scheduler)
+    message(STATUS "✓ test_frame_sync_scheduler configured (auto-sync P2)")
+else()
+    message(STATUS "⊗ test_frame_sync_scheduler skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
+# FrameSyncNode Timeline Semaphore + frameBase Tests (auto-sync P5a M1)
+# ===========================================================================
+# Pure CPU test of NextFrameBase arithmetic (no Vulkan device required).
+# Validates: monotonic advance, no ring collision, zero-stride no-op.
+
+if(TARGET GTest::gtest_main)
+    add_executable(test_frame_sync_node_timeline test_frame_sync_node_timeline.cpp)
+    target_link_libraries(test_frame_sync_node_timeline PRIVATE GTest::gtest_main RenderGraph)
+    set_target_properties(test_frame_sync_node_timeline PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    gtest_discover_tests(test_frame_sync_node_timeline)
+    message(STATUS "✓ test_frame_sync_node_timeline configured (auto-sync P5a M1)")
+else()
+    message(STATUS "⊗ test_frame_sync_node_timeline skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
+# PassGroupSchedule Tests (auto-sync P4 M1)
+# ===========================================================================
+# Validates BuildPassGroupSchedule node-local barrier baking (pure CPU, no GPU)
+
+if(TARGET GTest::gtest_main)
+    add_executable(test_pass_group_schedule test_pass_group_schedule.cpp)
+    target_link_libraries(test_pass_group_schedule PRIVATE GTest::gtest_main RenderGraph)
+    set_target_properties(test_pass_group_schedule PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    gtest_discover_tests(test_pass_group_schedule)
+    message(STATUS "✓ test_pass_group_schedule configured (auto-sync P4 M1)")
+else()
+    message(STATUS "⊗ test_pass_group_schedule skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
 # Node Self-Registration Anchor (M3)
 # ===========================================================================
 # Guards the whole-archive requirement: links the RenderGraph facade (which
@@ -617,6 +678,25 @@ else()
 endif()
 set_target_properties(test_node_self_registration PROPERTIES FOLDER "Tests/RenderGraph Tests")
 gtest_discover_tests(test_node_self_registration)
+
+# ===========================================================================
+# PassGroupNode Smoke Test (auto-sync P4 M3)
+# ===========================================================================
+# No GPU required: (1) registry lookup by type, (2) AddComputePass/AddRenderPass
+# grow the pass list, (3) SetPasses replaces existing passes.
+if(TARGET GTest::gtest_main)
+    add_executable(test_pass_group_node_smoke test_pass_group_node_smoke.cpp)
+    if(TARGET RenderGraph)
+        target_link_libraries(test_pass_group_node_smoke PRIVATE GTest::gtest_main RenderGraph)
+    else()
+        target_link_libraries(test_pass_group_node_smoke PRIVATE GTest::gtest_main)
+    endif()
+    set_target_properties(test_pass_group_node_smoke PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    gtest_discover_tests(test_pass_group_node_smoke)
+    message(STATUS "✓ test_pass_group_node_smoke configured (auto-sync P4 M3)")
+else()
+    message(STATUS "⊗ test_pass_group_node_smoke skipped (GoogleTest not available)")
+endif()
 
 # ===========================================================================
 # CompileTimeResourceSystem Tests

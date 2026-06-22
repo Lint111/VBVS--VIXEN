@@ -1,3 +1,7 @@
+// Suppress <windows.h>'s min/max macros (pulled in transitively on the Windows build) so the
+// std::max below isn't mangled into a syntax error. Must precede every include.
+#define NOMINMAX
+
 // cpu_castray_cmp_main.cpp — CPU castRay render of the SAME single shell + SAME camera
 // as the GPU shader render (test_body_instance_raymarch_render), for a direct apples-to-
 // apples brick-crack comparison.  NO Vulkan, NO GPU — pure SVO castRay.

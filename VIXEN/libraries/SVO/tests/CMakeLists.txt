@@ -511,7 +511,11 @@ gtest_discover_tests(test_gpu_parity)
 # BuildBodyInstances rule. It touches NO Vulkan — safe to run anywhere.
 #
 # Not a gtest target (it writes images + prints a report), so no gtest_discover_tests.
-if(TARGET SVO)
+# Gate on the UNDERTOW consumer headers (render/scene_instances.h, render/star_scene.h): they
+# only exist when VIXEN is embedded in the UNDERTOW repo (render/ as a sibling submodule, five
+# levels up). In a standalone VIXEN checkout they are absent, so this consumer-integration tool
+# cannot build — skip it rather than failing the whole build.
+if(TARGET SVO AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../../../../render/star_scene.h")
     add_executable(cpu_body_render cpu_body_render_main.cpp)
     target_link_libraries(cpu_body_render PRIVATE
         SVO GaiaVoxelWorld VoxelComponents VoxelData)
@@ -519,9 +523,6 @@ if(TARGET SVO)
     if(TARGET stb)
         target_link_libraries(cpu_body_render PRIVATE stb)
     endif()
-    # vixen/render headers (scene_instances.h / star_scene.h) live beside the engine
-    # submodule at <repo>/vixen/render. From this dir (.../VIXEN/libraries/SVO/tests)
-    # that is five levels up (tests→SVO→libraries→VIXEN→engine→vixen) then /render.
     target_include_directories(cpu_body_render PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/../../../../../render)
     set_target_properties(cpu_body_render PROPERTIES FOLDER "Tools/SVO")
@@ -531,6 +532,8 @@ if(TARGET SVO)
                 $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:cpu_body_render>
             COMMENT "Copying TBB DLL for cpu_body_render")
     endif()
+else()
+    message(STATUS "[SVO Tests] SKIPPED cpu_body_render — UNDERTOW consumer headers (render/) absent (standalone VIXEN build)")
 endif()
 
 # ===========================================================================
@@ -561,7 +564,8 @@ endif()
 # ===========================================================================
 # 5 diagnostic variant PNGs: shell/solid/thickband × depth-6/depth-8.
 # Same NEAR camera as cpu_body_render. Not a gtest target.
-if(TARGET SVO)
+# Same UNDERTOW-consumer-header gate as cpu_body_render above.
+if(TARGET SVO AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../../../../render/star_scene.h")
     add_executable(cpu_body_render_diag cpu_body_render_diag.cpp)
     target_link_libraries(cpu_body_render_diag PRIVATE
         SVO GaiaVoxelWorld VoxelComponents VoxelData)
@@ -577,4 +581,6 @@ if(TARGET SVO)
                 $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:cpu_body_render_diag>
             COMMENT "Copying TBB DLL for cpu_body_render_diag")
     endif()
+else()
+    message(STATUS "[SVO Tests] SKIPPED cpu_body_render_diag — UNDERTOW consumer headers (render/) absent (standalone VIXEN build)")
 endif()

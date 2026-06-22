@@ -1,0 +1,36 @@
+// autosync_fill.comp — auto-sync FrameGraph P4 demo (pass A: SSBO producer).
+// Writes a per-pixel gradient into a storage buffer. This is the FIRST writer in
+// the compute->compute->fragment hazard chain proven by the PassGroupNode demo.
+#version 460
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+// Binding 0: the shared SSBO (one vec4 per pixel). WRITE-ONLY here (producer).
+// std430 so the C++/buffer byte layout (vec4 per element) matches exactly.
+layout(std430, binding = 0) writeonly buffer PixelBuffer {
+    vec4 data[];
+};
+
+// Extent supplied by the host (PassGroupNode push constants).
+layout(push_constant) uniform PushConstants {
+    uint width;
+    uint height;
+} pc;
+
+void main() {
+    uint x = gl_GlobalInvocationID.x;
+    uint y = gl_GlobalInvocationID.y;
+
+    // Guard against work groups that overrun the extent (8x8 tiling).
+    if (x >= pc.width || y >= pc.height) {
+        return;
+    }
+
+    uint idx = y * pc.width + x;
+    data[idx] = vec4(
+        float(x) / float(pc.width),
+        float(y) / float(pc.height),
+        0.5,
+        1.0
+    );
+}

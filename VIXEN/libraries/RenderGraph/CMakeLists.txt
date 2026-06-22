@@ -67,11 +67,10 @@ set(RENDERGRAPH_DATA_NODE_CONFIGS
     include/Data/Nodes/LoopBridgeNodeConfig.h
     include/Data/Nodes/PresentNodeConfig.h
     include/Data/Nodes/PushConstantGathererNodeConfig.h
+    include/Data/Nodes/PassGroupNodeConfig.h
     include/Data/Nodes/RenderPassNodeConfig.h
     include/Data/Nodes/ShaderLibraryNodeConfig.h
-    include/Data/Nodes/StructSpreaderNodeConfig.h
     include/Data/Nodes/SwapChainNodeConfig.h
-    include/Data/Nodes/SwapChainStructSpreaderNodeConfig.h
     include/Data/Nodes/TextureLoaderNodeConfig.h
     include/Data/Nodes/VertexBufferNodeConfig.h
     include/Data/Nodes/VoxelGridNodeConfig.h
@@ -136,6 +135,9 @@ set(RENDERGRAPH_CORE_HEADERS
     include/Core/EngineConfig.h          # AR#7: instantiable engine config
     include/Core/EngineContext.h         # AR#7: instantiable EngineContext (owns registry/bus/graph/calibration)
     include/Core/RenderGraph.h
+    include/Core/FrameSyncScheduler.h     # auto-sync P2: pure scheduling core + FrameSyncScheduler class
+    include/Core/PassGroupSchedule.h     # auto-sync P4: node-local barrier baking (header-only)
+    include/Core/PassRecorder.h          # auto-sync P4 M2: baggage-free recorder (barrier replay + compute + render)
     include/Core/ResourceAccessTracker.h  # Sprint 6.4: Task #349 - Conflict detection
     include/Core/ResourceDependencyTracker.h
     include/Core/WaveScheduler.h  # Sprint 6.4: Task #347 - Wave computation
@@ -154,8 +156,9 @@ set(RENDERGRAPH_CORE_HEADERS
     include/Core/VariadicTypedNode.h
 )
 
+# Emptied: the deprecated SparseVoxelOctree (src/Data/VoxelOctree.cpp) was removed (live path is
+# LaineKarrasOctree). The remaining Data/ files are struct-only headers — no .cpp to compile here.
 set(RENDERGRAPH_DATA_CORE_SOURCES
-    src/Data/VoxelOctree.cpp
 )
 
 set(RENDERGRAPH_CORE_SOURCES
@@ -173,6 +176,8 @@ set(RENDERGRAPH_CORE_SOURCES
     src/Core/PerFrameResources.cpp
     src/Core/EngineContext.cpp           # AR#7: instantiable EngineContext
     src/Core/RenderGraph.cpp
+    src/Core/FrameSyncScheduler.cpp     # auto-sync P2: pure scheduling core
+    src/Core/PassRecorder.cpp           # auto-sync P4 M2: baggage-free recorder (barrier replay + compute + render)
     src/Core/ResourceAccessTracker.cpp  # Sprint 6.4: Task #349 - Conflict detection
     src/Core/ResourceDependencyTracker.cpp
     src/Core/WaveScheduler.cpp  # Sprint 6.4: Task #347 - Wave computation
@@ -217,12 +222,11 @@ set(RENDERGRAPH_NODE_HEADERS
     include/Nodes/LoopBridgeNode.h
     include/Nodes/PresentNode.h
     include/Nodes/PushConstantGathererNode.h
+    include/Nodes/PassGroupNode.h
     include/Nodes/RenderPassNode.h
     include/Nodes/ResourceGathererNode.h
     include/Nodes/ShaderLibraryNode.h
-    include/Nodes/StructSpreaderNode.h
     include/Nodes/SwapChainNode.h
-    include/Nodes/SwapChainStructSpreaderNode.h
     include/Nodes/TextureLoaderNode.h
     include/Nodes/VertexBufferNode.h
     include/Nodes/VoxelGridNode.h
@@ -240,6 +244,7 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/CameraNode.cpp
     src/Nodes/CommandPoolNode.cpp
     src/Nodes/ComputeDispatchNode.cpp
+    src/Nodes/ComputeStageNode.cpp      # auto-sync P5b M2: generic single-compute-pass submit node
     src/Nodes/ComputePipelineNode.cpp
     src/Nodes/MultiDispatchNode.cpp
     src/Nodes/DebugBufferReaderNode.cpp
@@ -247,6 +252,7 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/RenderTargetNode.cpp
     src/Nodes/PickIdTargetNode.cpp
     src/Nodes/InstanceBufferNode.cpp
+    src/Nodes/StorageBufferNode.cpp     # auto-sync P4 M4: generic arbitrary-sized SSBO node
     src/Nodes/DynamicInstanceBufferNode.cpp
     src/Nodes/MvpUniformNode.cpp
     src/Nodes/DescriptorResourceGathererNode.cpp
@@ -264,9 +270,9 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/UISelectionProviderNode.cpp
     src/Nodes/PresentNode.cpp
     src/Nodes/PushConstantGathererNode.cpp
+    src/Nodes/PassGroupNode.cpp
     src/Nodes/RenderPassNode.cpp
     src/Nodes/ShaderLibraryNode.cpp
-    src/Nodes/StructSpreaderNode.cpp
     src/Nodes/SwapChainNode.cpp
     src/Nodes/TextureLoaderNode.cpp
     src/Nodes/VertexBufferNode.cpp

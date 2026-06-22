@@ -26,6 +26,8 @@ add_library(VixenApp STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildRenderGraph.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildUIGraph.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildInstancingDemoGraph.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildAutoSyncDemoGraph.cpp  # auto-sync P4 M4
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildFanInDemoGraph.cpp     # auto-sync P5b M2 fan-in
     ${HPP_FILES}
 )
 

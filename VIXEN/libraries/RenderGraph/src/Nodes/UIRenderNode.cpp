@@ -1,5 +1,7 @@
 #include "Nodes/UIRenderNode.h"
 #include "Core/NodeRegistration.h"
+#include "Core/RenderGraph.h"           // GetOwningGraph()->GetFrameSyncSchedule()
+#include "Core/FrameSyncSchedule.h"     // SubmitGroup, SyncEdge, FindGroupForNode
 
 #include "VulkanDevice.h"
 #include "VulkanSwapChain.h"
@@ -245,13 +247,10 @@ void UIRenderNode::ExecuteImpl(TypedExecuteContext& ctx) {
 
     if (imageIndex == UINT32_MAX || imageIndex >= commandBuffers_.size() || imageIndex >= framebuffers.size()) return;
 
-    // Composite: wait on the compute→UI handoff (the single semaphore the voxel compute signalled after
-    // writing this image) and signal this node's own per-image semaphore for present — the handoff and
-    // the present-wait must be distinct binary semaphores. Standalone (S0): wait imageAvailable[frame]
-    // (the acquire), signal renderComplete[image].
-    VkSemaphore compositeWait = composite_ ? ctx.In(UIRenderNodeConfig::COMPOSITE_WAIT_SEMAPHORE) : VK_NULL_HANDLE;
-    if (composite_ && (compositeWait == VK_NULL_HANDLE || imageIndex >= uiCompleteSemaphores_.size())) return;
-    VkSemaphore waitSem = composite_ ? compositeWait : imageAvailable[currentFrameIndex];
+    // Composite: the compute→UI ordering is carried SOLELY by the baked timeline waitEdge (P5b M3) —
+    // no binary handoff wait here. This node signals its own per-image semaphore for present. Standalone
+    // (S0, no timeline): wait imageAvailable[frame] (the acquire), signal renderComplete[image].
+    if (composite_ && imageIndex >= uiCompleteSemaphores_.size()) return;
     VkSemaphore signalSem = composite_ ? uiCompleteSemaphores_[imageIndex] : renderComplete[imageIndex];
 
     // This UI submit is the frame's last submit, so it resets + owns the frame fence (in composite mode
@@ -261,16 +260,57 @@ void UIRenderNode::ExecuteImpl(TypedExecuteContext& ctx) {
     VkCommandBuffer cmd = commandBuffers_[imageIndex];
     RecordFrame(cmd, framebuffers[imageIndex]);
 
-    VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    VkSubmitInfo si{VK_STRUCTURE_TYPE_SUBMIT_INFO};
-    si.waitSemaphoreCount = 1;
-    si.pWaitSemaphores = &waitSem;
-    si.pWaitDstStageMask = &waitStage;
-    si.commandBufferCount = 1;
-    si.pCommandBuffers = &cmd;
-    si.signalSemaphoreCount = 1;
-    si.pSignalSemaphores = &signalSem;
-    vkQueueSubmit(queue_, 1, &si, inFlightFence);
+    // P5b M1: read timeline primitives (Optional — VK_NULL_HANDLE / 0 if not wired)
+    VkSemaphore timelineSem = ctx.In(UIRenderNodeConfig::TIMELINE_SEMAPHORE_IN);
+    uint64_t frameBase = ctx.In(UIRenderNodeConfig::TIMELINE_FRAME_BASE_IN);
+
+    VkCommandBufferSubmitInfo cmdInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO};
+    cmdInfo.commandBuffer = cmd;
+
+    std::vector<VkSemaphoreSubmitInfo> waits, signals;
+
+    // Standalone (S0) ONLY: wait the binary WSI acquire (imageAvailable). The composite graph has no
+    // imageAvailable wait here — the upstream compute waits the acquire, and compute→UI is ordered by
+    // the timeline waitEdge below (P5b M3 dropped the binary compute→UI handoff).
+    if (!composite_) {
+        VkSemaphoreSubmitInfo binaryWait{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
+        binaryWait.semaphore = imageAvailable[currentFrameIndex];
+        binaryWait.value     = 0;  // binary semaphore: value ignored
+        binaryWait.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+        waits.push_back(binaryWait);
+    }
+
+    // Timeline WAITS (UI is the consumer): one per baked waitEdge. In composite this is now the SOLE
+    // compute→UI ordering (the compute's GENERAL write → UI's GENERAL color-attachment access edge).
+    if (timelineSem != VK_NULL_HANDLE) {
+        const FrameSyncSchedule& sched = GetOwningGraph()->GetFrameSyncSchedule();
+        if (const SubmitGroup* grp = FindGroupForNode(sched, this)) {
+            for (uint32_t idx : grp->waitEdges) {
+                VkSemaphoreSubmitInfo twait{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
+                twait.semaphore = timelineSem;
+                twait.value     = sched.edges[idx].timelineOffset + frameBase;
+                twait.stageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT |
+                                  VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+                waits.push_back(twait);
+            }
+        }
+    }
+
+    // Binary signal (uiComplete / renderComplete — present waits on this)
+    VkSemaphoreSubmitInfo binSig{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
+    binSig.semaphore = signalSem;
+    binSig.value     = 0;  // binary semaphore: value ignored
+    binSig.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+    signals.push_back(binSig);
+
+    VkSubmitInfo2 si{VK_STRUCTURE_TYPE_SUBMIT_INFO_2};
+    si.waitSemaphoreInfoCount   = static_cast<uint32_t>(waits.size());
+    si.pWaitSemaphoreInfos      = waits.data();
+    si.commandBufferInfoCount   = 1;
+    si.pCommandBufferInfos      = &cmdInfo;
+    si.signalSemaphoreInfoCount = static_cast<uint32_t>(signals.size());
+    si.pSignalSemaphoreInfos    = signals.data();
+    vkQueueSubmit2(queue_, 1, &si, inFlightFence);
 
     ctx.Out(UIRenderNodeConfig::COMMAND_BUFFERS, cmd);
     ctx.Out(UIRenderNodeConfig::RENDER_COMPLETE_SEMAPHORE, signalSem);
@@ -332,7 +372,8 @@ void UIRenderNode::CleanupImpl(TypedCleanupContext& ctx) {
     //
     // We likewise do NOT tear RmlUi (context/document/pipeline) down on recompile: a resize triggers a
     // recompile (Cleanup → Compile), and distinguishing that from a true shutdown via NeedsRecompile()
-    // is unreliable under the cascading recompiles a resize produces. RmlUi is reclaimed at process exit.
+    // is unreliable under the cascading recompiles a resize produces. RmlUi is torn down only on FINAL
+    // teardown, in the strict order required by RmlUi (see below).
     if (ctx.reason != CleanupReason::FinalTeardown) {
         return;  // recompile: keep all persistent resources (command buffers + present semaphores + RmlUi)
     }
@@ -342,6 +383,27 @@ void UIRenderNode::CleanupImpl(TypedCleanupContext& ctx) {
     FreeCommandBuffers();
     DestroyCompositeSemaphores();  // owned per-image present semaphores (composite mode)
     syncImageCount_ = 0;
+
+    // RmlUi teardown — STRICT ORDER (RmlUi asserts otherwise, RenderInterface.cpp:45 "RenderInterface is
+    // being destroyed but still actively referenced ... destroy it AFTER Rml::Shutdown"). renderInterface_
+    // is a member, so it is destructed by ~UIRenderNode; RmlUi keeps a live reference to it (set via
+    // Rml::SetRenderInterface in CompileImpl) until Rml::Shutdown() drops it. We must therefore:
+    //   1. RemoveContext  — release the context + its document (their geometry/textures live in our
+    //                       render interface, so they must go before the interface's GPU objects).
+    //   2. Rml::Shutdown  — RmlUi releases its references to the render + system interfaces.
+    //   3. renderInterface_.Shutdown — now safe to destroy our pipeline/descriptors/textures (device idle).
+    // Guard on initialized_ so a teardown that never reached the one-time RmlUi init is a no-op, and reset
+    // it so a second FinalTeardown (defensive) does not double-shutdown RmlUi.
+    if (initialized_) {
+        if (context_) {
+            Rml::RemoveContext("vixen_ui");  // releases context_ + document_ (owned by the context)
+            context_ = nullptr;
+            document_ = nullptr;
+        }
+        Rml::Shutdown();              // RmlUi drops its references to renderInterface_ / systemInterface_
+        renderInterface_.Shutdown(); // destroy our GPU objects AFTER RmlUi no longer references the interface
+        initialized_ = false;
+    }
 }
 
 } // namespace Vixen::RenderGraph

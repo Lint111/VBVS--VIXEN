@@ -31,10 +31,22 @@
 *.out
 *.app
 *.sln
-*.sln
 *.vcxproj
-/VIXEN/build
 VIXEN/gatherer_test.txt
+
+# Build output (CMake / Visual Studio / Ninja) — repo-root and legacy VIXEN/ locations
+/build/
+/build-ninja/
+/VIXEN/build/
+
+# Local dev helper scripts (machine-specific absolute paths)
+/_ninja_*.bat
+
+# Runtime GPU calibration output (device-specific)
+/VIXEN/calibration/
+
+# Regenerated SDI header (build artifact, no live consumer; siblings tracked intentionally)
+/VIXEN/generated/sdi/VoxelRayMarch_CompressedNames.h
 
 # Cache directories
 .cache/

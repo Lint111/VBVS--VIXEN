@@ -22,7 +22,7 @@ using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
  * Parameters: rmlDocumentPath, fontPath.
  */
 namespace UIRenderNodeCounts {
-    static constexpr size_t INPUTS = 11;  // +COMPOSITE_WAIT_SEMAPHORE (compute→UI handoff, composite only)
+    static constexpr size_t INPUTS = 13;  // +COMPOSITE_WAIT_SEMAPHORE (compute→UI handoff) +TIMELINE_SEMAPHORE_IN +TIMELINE_FRAME_BASE_IN (P5b M1)
     static constexpr size_t OUTPUTS = 2;
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Array;
 }
@@ -43,8 +43,16 @@ CONSTEXPR_NODE_CONFIG(UIRenderNodeConfig,
     static constexpr const char* PARAM_COMPOSITE = "composite";
 
     // ===== INPUTS (8) =====
-    INPUT_SLOT(SWAPCHAIN_INFO, Vixen::Vulkan::Resources::IRenderTarget*, 0,
-        SlotNullability::Required, SlotRole::Dependency, SlotMutability::ReadOnly, SlotScope::NodeLevel);
+    // Auto-sync P5b M3: the composite UI pass LOADs the compute output (initialLayout=General) and
+    // blends the HUD over it, so it both reads and writes the swapchain image while it stays in
+    // GENERAL. Declaring ColorAttachmentWriteGeneral makes the scheduler bake the compute(GENERAL)→
+    // UI(GENERAL) timeline edge (compute writes ⇒ hazard) with NO layout transition — the timeline
+    // semaphore alone carries the ordering + cross-submit memory visibility. ReadWrite mutability so
+    // the tracker records this node as a writer for hazard detection (mirrors ComputeDispatchNode's
+    // swapchain slot). UIRenderNode reads this handle in CompileImpl, so the slot stays Dependency.
+    INPUT_SLOT_SYNC(SWAPCHAIN_INFO, Vixen::Vulkan::Resources::IRenderTarget*, 0,
+        SlotNullability::Required, SlotRole::Dependency, SlotMutability::ReadWrite, SlotScope::NodeLevel,
+        ::Vixen::RenderGraph::AccessKind::ColorAttachmentWriteGeneral);
 
     INPUT_SLOT(COMMAND_POOL, VkCommandPool, 1,
         SlotNullability::Required, SlotRole::Dependency, SlotMutability::ReadOnly, SlotScope::NodeLevel);
@@ -82,6 +90,20 @@ CONSTEXPR_NODE_CONFIG(UIRenderNodeConfig,
     INPUT_SLOT(COMPOSITE_WAIT_SEMAPHORE, VkSemaphore, 10,
         SlotNullability::Optional, SlotRole::Execute, SlotMutability::ReadOnly, SlotScope::NodeLevel);
 
+    /**
+     * @brief Timeline semaphore from FrameSyncNode (P5b M1).
+     * Used in vkQueueSubmit2 to wait on timeline values for baked waitEdges.
+     */
+    INPUT_SLOT(TIMELINE_SEMAPHORE_IN, VkSemaphore, 11,
+        SlotNullability::Optional, SlotRole::Execute, SlotMutability::ReadOnly, SlotScope::NodeLevel);
+
+    /**
+     * @brief Per-frame timeline base offset from FrameSyncNode (P5b M1).
+     * Added to each SyncEdge::timelineOffset to compute the absolute wait value.
+     */
+    INPUT_SLOT(TIMELINE_FRAME_BASE_IN, uint64_t, 12,
+        SlotNullability::Optional, SlotRole::Execute, SlotMutability::ReadOnly, SlotScope::NodeLevel);
+
     // ===== OUTPUTS (2) =====
     OUTPUT_SLOT(COMMAND_BUFFERS, VkCommandBuffer, 0,
         SlotNullability::Required, SlotMutability::WriteOnly);
@@ -116,6 +138,13 @@ CONSTEXPR_NODE_CONFIG(UIRenderNodeConfig,
         HandleDescriptor compositeWaitDesc{"VkSemaphore"};
         INIT_INPUT_DESC(COMPOSITE_WAIT_SEMAPHORE, "composite_wait_semaphore", ResourceLifetime::Transient, compositeWaitDesc);
 
+        // P5b M1: timeline semaphore + per-frame base from FrameSyncNode
+        HandleDescriptor timelineSemDesc{"VkSemaphore"};
+        INIT_INPUT_DESC(TIMELINE_SEMAPHORE_IN, "timeline_semaphore_in", ResourceLifetime::Persistent, timelineSemDesc);
+
+        HandleDescriptor frameBaseDesc{"uint64_t"};
+        INIT_INPUT_DESC(TIMELINE_FRAME_BASE_IN, "timeline_frame_base_in", ResourceLifetime::Transient, frameBaseDesc);
+
         INIT_OUTPUT_DESC(COMMAND_BUFFERS, "command_buffers", ResourceLifetime::Transient, BufferDescription{});
         INIT_OUTPUT_DESC(RENDER_COMPLETE_SEMAPHORE, "render_complete_semaphore",
             ResourceLifetime::Transient, BufferDescription{});
@@ -135,6 +164,10 @@ CONSTEXPR_NODE_CONFIG(UIRenderNodeConfig,
     static_assert(FRAMEBUFFERS_Slot::index == 9, "FRAMEBUFFERS must be at index 9");
     static_assert(COMPOSITE_WAIT_SEMAPHORE_Slot::index == 10, "COMPOSITE_WAIT_SEMAPHORE must be at index 10");
     static_assert(COMPOSITE_WAIT_SEMAPHORE_Slot::nullable, "COMPOSITE_WAIT_SEMAPHORE is optional");
+    static_assert(TIMELINE_SEMAPHORE_IN_Slot::index == 11, "TIMELINE_SEMAPHORE_IN must be at index 11");
+    static_assert(TIMELINE_SEMAPHORE_IN_Slot::nullable, "TIMELINE_SEMAPHORE_IN is optional");
+    static_assert(TIMELINE_FRAME_BASE_IN_Slot::index == 12, "TIMELINE_FRAME_BASE_IN must be at index 12");
+    static_assert(TIMELINE_FRAME_BASE_IN_Slot::nullable, "TIMELINE_FRAME_BASE_IN is optional");
     static_assert(COMMAND_BUFFERS_Slot::index == 0, "COMMAND_BUFFERS must be at index 0");
     static_assert(RENDER_COMPLETE_SEMAPHORE_Slot::index == 1, "RENDER_COMPLETE_SEMAPHORE must be at index 1");
 
@@ -149,6 +182,8 @@ CONSTEXPR_NODE_CONFIG(UIRenderNodeConfig,
     static_assert(std::is_same_v<RENDER_PASS_Slot::Type, VkRenderPass>);
     static_assert(std::is_same_v<FRAMEBUFFERS_Slot::Type, std::vector<VkFramebuffer>>);
     static_assert(std::is_same_v<COMPOSITE_WAIT_SEMAPHORE_Slot::Type, VkSemaphore>);
+    static_assert(std::is_same_v<TIMELINE_SEMAPHORE_IN_Slot::Type, VkSemaphore>);
+    static_assert(std::is_same_v<TIMELINE_FRAME_BASE_IN_Slot::Type, uint64_t>);
     static_assert(std::is_same_v<COMMAND_BUFFERS_Slot::Type, VkCommandBuffer>);
     static_assert(std::is_same_v<RENDER_COMPLETE_SEMAPHORE_Slot::Type, VkSemaphore>);
 };

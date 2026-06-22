@@ -29,6 +29,13 @@
 #include <cstring>
 #include <cmath>
 
+// This header uses glm::min/glm::max heavily. When included after <windows.h> (pulled in
+// transitively on the Windows build via Vulkan/GTest), the `min`/`max` function-like macros
+// mangle every `glm::max(` into a syntax error. NOMINMAX only helps before windows.h is seen,
+// which a header cannot guarantee, so drop the macros outright — no C++ code wants them.
+#undef min
+#undef max
+
 namespace Vixen::SVO {
 
 // ===========================================================================

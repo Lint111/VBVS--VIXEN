@@ -376,12 +376,15 @@ each including only the node headers its own subgraph wires. A node-config edit 
 only the subgraph TU that wires that node (e.g. `BuildRenderGraph.cpp`), never the app's
 lifecycle code and never the other subgraph TUs.
 
-### 9.6 Known follow-up
+### 9.6 Resolved follow-up
 
-- **`StructSpreaderNode` is dead code** — its `.cpp` is fully commented out, so
-  `StructSpreaderNodeType::CreateInstance` is declared but undefined. It is intentionally
-  left unregistered (registering it would force its vtable and fail to link). Decide
-  delete-vs-implement separately.
+- **`StructSpreaderNode` + `SwapChainStructSpreaderNode` removed (2026-06-20).** Both were dead
+  code — `StructSpreaderNode.cpp` was fully commented out and `SwapChainStructSpreaderNode` had no
+  `.cpp` at all, so neither could be instantiated; both were unregistered and unreferenced by any
+  graph, test, or consumer. Their purpose (spreading `SwapChainPublicVariables` struct members into
+  individual resource slots) was superseded by the `IRenderTarget` interface migration, which
+  replaced raw struct-member access with typed accessors. Deleted the 2 node headers, 2 config
+  headers, and 1 dead `.cpp`, and removed their `CMakeLists.txt` entries.
 
 ---
 

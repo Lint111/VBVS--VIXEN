@@ -1,15 +1,17 @@
-> **⚠️ 2026-06-20 — node build-decoupling DONE, merged to `main`, PUSHED to `origin/main`.**
-> See the live handoff `Vixen-Docs/05-Progress/Session-Handoff-2026-06-20.md`.
-> Node build-decoupling **M2 (lib split) + M3 (self-registration) + M4 (app TU split) + M5 (docs)
-> ALL DONE & verified**; GUI `VIXEN.exe` **visually validated** (renders the Cornell-box default
-> scene cleanly, GPU picking works) and **validation-clean** after the shaderCounters (binding 8)
-> descriptor VUID fix (`b2f18808`). See `Vixen-Docs/01-Architecture/RenderGraph-System.md` §9
-> and `docs/superpowers/plans/2026-06-19-rendergraph-node-build-decoupling.md`. Earlier today:
-> build-env Ninja preset fix + RenderGraph stale-test cleanup + M1. **Build with the
-> `vixen-ninja` preset, not `cmake -B build`.** GUI VIXEN.exe verified on real GPU (render loop,
-> 41 nodes, 30 instances, stable) and **validation-clean** after fixing the shaderCounters
-> (binding 8) descriptor VUID (b2f18808). Benchmark's idOutputImage (binding 9) VUID is a
-> documented known issue (Benchmark-Troubleshooting.md).
+> **⚠️ 2026-06-21 — loose ends cleared + consumer/WSL branch MERGED, all PUSHED to `origin/main` (`7d1de593`).**
+> Live handoff: `Vixen-Docs/05-Progress/Session-Handoff-2026-06-21.md`.
+> This session: (1) benchmark `idOutputImage` binding-9 VUID **fixed** (PickIdTargetNode in
+> BenchmarkGraphFactory; verified 0 validation errors) — no longer a known issue; (2) dead
+> `StructSpreaderNode`/`SwapChainStructSpreaderNode` **deleted**; (3) scene generators **fixed to
+> spec** (Cave inversion, Cornell wall-scaling, Urban 90% redesign) — `test_scene_generators` 19/19;
+> (4) deprecated **`SparseVoxelOctree` deleted** (live octree path = `LaineKarrasOctree`; shared
+> structs kept); (5) **merged `claude/wsl-build-portability`** (36 commits — entity/body octree
+> rendering, UI/HUD selection, typed accumulation-gather [closes the 2026-06-15 gap], validation
+> wiring), then **fixed its WSL→MSVC build breakage** (windows.h `far/near/min/max` macros; gated
+> lavapipe/UNDERTOW-consumer tests). Build GREEN; node-registration/generators/shell-octree/gpu-parity
+> all pass. **Build with the `vixen-ninja` preset** (`cmd.exe /c _ninja_preset_build.bat`), NOT
+> `cmake -B build`; test exes live under `build-ninja/` at the **repo root**.
+> Next frontier (Maturation backlog): P3 auto-sync FrameGraph epic [AR#21] → multi-view.
 > Everything below is stale (Sprint 6, Jan 2026).
 
 ---

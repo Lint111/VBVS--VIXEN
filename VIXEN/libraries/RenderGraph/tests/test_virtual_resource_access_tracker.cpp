@@ -34,6 +34,26 @@ public:
     }
 };
 
+// NodeType that declares one ReadWrite input slot at index 0.
+// Used by ReadWriteInputCountsAsWriter to verify the :119 SlotMutability completion.
+class TestNodeTypeWithReadWriteInput : public NodeType {
+public:
+    explicit TestNodeTypeWithReadWriteInput(const std::string& name)
+        : NodeType(name) {
+        ResourceDescriptor desc;
+        desc.name = "ReadWriteInput";
+        desc.type = ResourceType::Buffer;
+        desc.lifetime = ResourceLifetime::Transient;
+        desc.nullable = false;
+        desc.mutability = SlotMutability::ReadWrite;
+        inputSchema.push_back(desc);
+    }
+
+    std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override {
+        return std::make_unique<NodeInstance>(instanceName, const_cast<TestNodeTypeWithReadWriteInput*>(this));
+    }
+};
+
 // Minimal Resource for testing
 class TestResource : public Resource {
 public:
@@ -565,4 +585,30 @@ TEST_F(VirtualResourceAccessTrackerTest, EdgeCase_InvalidTaskId) {
     EXPECT_TRUE(tracker_.GetTaskWrites(invalid).empty());
     EXPECT_TRUE(tracker_.GetTaskReads(invalid).empty());
     EXPECT_FALSE(tracker_.IsWriter(invalid));
+}
+
+// ============================================================================
+// AUTO-SYNC P1: READWRITE INPUT TRACKING (mirrors ResourceAccessTracker)
+// ============================================================================
+
+// A ReadWrite input must be tracked as a writer at task granularity, completing
+// the :119 SlotMutability TODO. Standalone suite (not the fixture) because it
+// needs a node type with a ReadWrite input schema.
+TEST(VirtualResourceAccessTrackerMutabilityTest, ReadWriteInputCountsAsWriter) {
+    auto nodeTypeRW = std::make_unique<TestNodeTypeWithReadWriteInput>("TypeRW");
+    auto nodeRW = nodeTypeRW->CreateInstance("NodeRW");
+
+    auto resource = std::make_unique<TestResource>("SharedResource");
+    nodeRW->SetInput(0, 0, resource.get());  // slot 0, task 0
+
+    VirtualResourceAccessTracker tracker;
+    tracker.AddNode(nodeRW.get());
+
+    VirtualTaskId task{nodeRW.get(), 0};
+    EXPECT_TRUE(tracker.IsWriter(task));  // was false pre-fix
+
+    const VirtualResourceAccessInfo* info = tracker.GetAccessInfo(resource.get());
+    ASSERT_NE(info, nullptr);
+    ASSERT_EQ(info->accesses.size(), 1u);
+    EXPECT_EQ(info->accesses[0].accessType, ResourceAccessType::ReadWrite);  // was Read pre-fix
 }

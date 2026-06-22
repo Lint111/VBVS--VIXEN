@@ -6,6 +6,7 @@
 #include "State/StatefulContainer.h"
 #include "Core/GPUPerformanceLogger.h"
 #include "Data/Nodes/ComputeDispatchNodeConfig.h"
+#include "Core/FrameSyncSchedule.h"
 
 namespace Vixen::RenderGraph {
 
@@ -70,10 +71,13 @@ private:
     void RecordComputeCommands(Context& ctx, VkCommandBuffer cmdBuffer, uint32_t imageIndex, uint32_t frameIndex, const void* pushConstantData, bool leaveImageInGeneral);
 
     // Extracted helper methods for RecordComputeCommands
-    void TransitionImageToGeneral(VkCommandBuffer cmdBuffer, VkImage image);
+    void ReplayEntryBarriers(VkCommandBuffer cmd, const SubmitGroup& group,
+                             uint32_t imageIndex,
+                             Vixen::Vulkan::Resources::IRenderTarget* swapchainInfo);
+    void TransitionImageToGeneralBarrier2(VkCommandBuffer cmdBuffer, VkImage image);
+    void TransitionImageToPresentBarrier2(VkCommandBuffer cmdBuffer, VkImage image);
     void BindComputePipeline(VkCommandBuffer cmdBuffer, VkPipeline pipeline, VkPipelineLayout layout, VkDescriptorSet descriptorSet);
     void SetPushConstants(Context& ctx, VkCommandBuffer cmdBuffer, VkPipelineLayout layout, const void* pushConstantData);
-    void TransitionImageToPresent(VkCommandBuffer cmdBuffer, VkImage image);
 
     // Device and command pool references
     VulkanDevice* vulkanDevice = nullptr;

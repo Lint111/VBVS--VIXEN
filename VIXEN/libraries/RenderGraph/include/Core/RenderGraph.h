@@ -24,6 +24,7 @@
 #include "Core/CalibrationStore.h"
 #include "Core/TimelineCapacityTracker.h"
 #include "Core/ResourceAccessTracker.h"  // Sprint 6.4: Conflict detection
+#include "Core/FrameSyncScheduler.h"     // Auto-sync P2: frame sync schedule
 #include "Core/VirtualResourceAccessTracker.h"  // Sprint 6.5: Per-task tracking
 #include "Core/TBBVirtualTaskExecutor.h"        // Sprint 6.5: Virtual task execution
 #include <memory>
@@ -794,6 +795,16 @@ public:
         return resourceAccessTracker_;
     }
 
+    /**
+     * @brief Get the frame sync schedule (auto-sync P2)
+     *
+     * Returns the baked FrameSyncSchedule produced during Compile().
+     * Not yet consumed at Execute-time (P3); exposed for inspection and tests.
+     */
+    [[nodiscard]] const FrameSyncSchedule& GetFrameSyncSchedule() const {
+        return frameSyncScheduler_.GetSchedule();
+    }
+
     // ====== Virtual Task Parallelism (Sprint 6.5) ======
 
     /**
@@ -939,6 +950,7 @@ private:
 
     // Sprint 6.4/6.5: Parallel execution with TBB virtual task executor
     ResourceAccessTracker resourceAccessTracker_;  // Node-level conflict detection
+    FrameSyncScheduler frameSyncScheduler_;         // Auto-sync P2: per-frame sync schedule
     VirtualResourceAccessTracker virtualAccessTracker_;  // Task-level conflict detection
     TBBVirtualTaskExecutor virtualTaskExecutor_;
     bool parallelExecutionEnabled_ = false;

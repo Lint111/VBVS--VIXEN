@@ -26,6 +26,11 @@
 #include <set>
 #include <vector>
 
+// MSVC's <windows.h> defines `far`/`near` as empty legacy macros that mangle the local `far`
+// plane-distance variable below into a syntax error; drop them (test code never wants them).
+#undef far
+#undef near
+
 using namespace Vixen::SVO;
 
 namespace {

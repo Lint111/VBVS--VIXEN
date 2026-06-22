@@ -20,13 +20,10 @@
 #include "VoxelComponents.h"  // For GaiaVoxel::Material component
 
 using Vixen::SVO::VoxelGrid;
-using Vixen::SVO::SparseVoxelOctree; // Legacy - will be removed
 using Vixen::SVO::SceneGeneratorFactory;
 using Vixen::SVO::SceneGeneratorParams;
 using Vixen::SVO::ISceneGenerator;
 using Vixen::SVO::VoxelDataCache;
-using Vixen::SVO::OctreeNode; // Legacy - will be removed
-using Vixen::SVO::VoxelBrick; // Legacy - will be removed
 
 namespace Vixen::RenderGraph {
 

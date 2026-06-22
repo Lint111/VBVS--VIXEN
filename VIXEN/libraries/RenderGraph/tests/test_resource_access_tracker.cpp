@@ -51,6 +51,31 @@ public:
 };
 
 /**
+ * @brief Mock NodeType that declares one ReadWrite input slot in its schema.
+ *
+ * Used by ReadWriteInputCountsAsWriter to verify the :92 TODO fix:
+ * a ReadWrite input must be tracked as a writer so WAR/WAW hazards are detectable.
+ */
+class MockNodeTypeWithReadWriteInput : public NodeType {
+public:
+    explicit MockNodeTypeWithReadWriteInput(const std::string& name)
+        : NodeType(name) {
+        // Populate inputSchema with one ReadWrite slot at index 0
+        ResourceDescriptor desc;
+        desc.name = "ReadWriteInput";
+        desc.type = ResourceType::Buffer;
+        desc.lifetime = ResourceLifetime::Transient;
+        desc.nullable = false;
+        desc.mutability = SlotMutability::ReadWrite;
+        inputSchema.push_back(desc);
+    }
+
+    std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override {
+        return std::make_unique<NodeInstance>(instanceName, const_cast<MockNodeTypeWithReadWriteInput*>(this));
+    }
+};
+
+/**
  * @brief Test fixture for ResourceAccessTracker
  */
 class ResourceAccessTrackerTest : public ::testing::Test {
@@ -440,4 +465,86 @@ TEST_F(ResourceAccessTrackerTest, MultipleBundle_TracksAllAccesses) {
 
     auto writes = tracker_.GetNodeWrites(nodeA_.get());
     EXPECT_EQ(writes.size(), 2u);  // R2, R3
+}
+
+// ============================================================================
+// AUTO-SYNC P1: READWRITE INPUT TRACKING
+// ============================================================================
+
+// ============================================================================
+// AUTO-SYNC P3: DECLARED ACCESSKIND PROPAGATES TO ResourceAccess.kind
+// ============================================================================
+
+/**
+ * @brief Mock NodeType that declares one ComputeStorageWrite input slot.
+ *
+ * Used by DeclaredAccessKind_PropagatesFromDescriptor to verify that when a
+ * descriptor carries an explicit accessKind, AddNode() copies it into the
+ * ResourceAccess record instead of leaving it None.
+ */
+class MockNodeTypeWithAccessKindInput : public NodeType {
+public:
+    explicit MockNodeTypeWithAccessKindInput(const std::string& name)
+        : NodeType(name) {
+        ResourceDescriptor desc;
+        desc.name = "ComputeWriteInput";
+        desc.type = ResourceType::Buffer;
+        desc.lifetime = ResourceLifetime::Transient;
+        desc.nullable = false;
+        desc.mutability = SlotMutability::ReadWrite;
+        desc.accessKind = AccessKind::ComputeStorageWrite;
+        inputSchema.push_back(desc);
+    }
+
+    std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override {
+        return std::make_unique<NodeInstance>(instanceName, const_cast<MockNodeTypeWithAccessKindInput*>(this));
+    }
+};
+
+TEST(ResourceAccessTrackerAccessKindTest, DeclaredAccessKind_PropagatesFromDescriptor) {
+    // A descriptor that declares ComputeStorageWrite should produce a
+    // ResourceAccess with kind == ComputeStorageWrite (not None).
+    auto nodeType = std::make_unique<MockNodeTypeWithAccessKindInput>("TypeAK");
+    auto node = nodeType->CreateInstance("NodeAK");
+
+    auto resource = std::make_unique<MockResource>("AKResource");
+    auto& bundles = const_cast<std::vector<NodeInstance::Bundle>&>(node->GetBundles());
+    bundles.push_back({});
+    bundles[0].inputs.push_back(resource.get());  // slot 0
+
+    ResourceAccessTracker tracker;
+    tracker.AddNode(node.get());
+
+    const ResourceAccessInfo* info = tracker.GetAccessInfo(resource.get());
+    ASSERT_NE(info, nullptr);
+    ASSERT_EQ(info->accesses.size(), 1u);
+    // Before the P3 field exists this fails (kind stays None).
+    EXPECT_EQ(info->accesses[0].kind, AccessKind::ComputeStorageWrite);
+}
+
+// A ReadWrite input must be tracked as a writer (not just a reader), so WAR/WAW
+// hazards are detectable. Before the :92 fix it was recorded Read-only.
+// Uses a standalone suite (not the TEST_F fixture) because it needs a node type
+// with a ReadWrite input schema, which the shared fixture does not provide.
+TEST(ResourceAccessTrackerMutabilityTest, ReadWriteInputCountsAsWriter) {
+    // Create a node type that declares slot 0 as ReadWrite
+    auto nodeTypeRW = std::make_unique<MockNodeTypeWithReadWriteInput>("TypeRW");
+    auto nodeRW = nodeTypeRW->CreateInstance("NodeRW");
+
+    // Create a resource and wire it as an input at slot 0
+    auto resource = std::make_unique<MockResource>("SharedResource");
+    auto& bundles = const_cast<std::vector<NodeInstance::Bundle>&>(nodeRW->GetBundles());
+    bundles.push_back({});  // Bundle 0
+    bundles[0].inputs.push_back(resource.get());  // slot 0
+
+    ResourceAccessTracker tracker;
+    tracker.AddNode(nodeRW.get());
+
+    // After the :92 fix: ReadWrite input is recorded as ReadWrite → node is a writer
+    EXPECT_TRUE(tracker.IsWriter(nodeRW.get()));  // was false pre-fix
+
+    const ResourceAccessInfo* info = tracker.GetAccessInfo(resource.get());
+    ASSERT_NE(info, nullptr);
+    ASSERT_EQ(info->accesses.size(), 1u);
+    EXPECT_EQ(info->accesses[0].accessType, ResourceAccessType::ReadWrite);  // was Read pre-fix
 }
