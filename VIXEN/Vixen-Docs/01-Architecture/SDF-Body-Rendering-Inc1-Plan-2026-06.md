@@ -21,12 +21,13 @@
 > `cmake --preset vixen-ninja` invoked from the worktree (binaryDir `${sourceDir}/../build-ninja`).
 
 - **M1 — CPU recipe library + GLSL mirror** (Tasks 1–2) · implementer Sonnet · gate: `test_sdf_recipes` gtest green (controller-run) + Opus validator. · **✅ DONE 2026-06-22**
-- **M2 — GPU integration** (Tasks 3–5: grow `BodyInstanceGpu` 32→64 B, shader provider branch, seed 3-body scene) · implementer Sonnet · gate: worktree ninja build — shaders compile + `static_assert`s hold (controller-run) + Opus validator.
+- **M2 — GPU integration** (Tasks 3–5: grow `BodyInstanceGpu` 32→64 B, shader provider branch, seed 3-body scene) · implementer Sonnet · gate: worktree C++ build — `static_assert`s hold + `VIXEN.exe` links + `test_shell_octree_gpu` [9] & `test_sdf_recipes` [5] green (controller-run) + Opus validator. · **✅ DONE 2026-06-22** (NB: the shader is **runtime-compiled** by VIXEN, so `BodyInstanceRayMarch.comp` + the provider branch are validated at the **M3 live gate**, not at build time).
 - **M3 — Verification + live gate** (Tasks 6–7) · controller/interactive · authoritative live app run (smooth spheres, 0 syncval).
 
 ### Progress Log
 - Milestone 1 (Tasks 1–2): **DONE** · commits `ac6dc38e`..`d00fdffc` · gate `test_sdf_recipes` [PASSED 5] · Opus validator OK · 2026-06-22
-- _(Milestone 2 in progress)_
+- Milestone 2 (Tasks 3–5): **DONE** · commits `c8c62dad`..`fcc3e4d9` · gate: `VIXEN.exe` links + `test_shell_octree_gpu` [PASSED 9] + `test_sdf_recipes` [PASSED 5] · Opus validator OK · 2026-06-22
+- _(Milestone 3 — verification + live gate — PENDING; interactive with user. NB: worktree app exe = `.claude/worktrees/sdf-body-rendering/VIXEN/binaries/VIXEN.exe`, NOT the main-checkout path the plan's Task 7 cites.)_
 
 ---
 
