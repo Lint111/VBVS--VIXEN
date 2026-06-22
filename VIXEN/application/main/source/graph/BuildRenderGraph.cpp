@@ -1098,6 +1098,22 @@ void VulkanGraphApplication::BuildRenderGraph() {
         mainLogger->Info("[BuildRenderGraph] Connected body instance SSBO at binding 10 (BodyOctreeSceneNode)");
     }
 
+    // Inc2 M3: Binding 11: SoA-SDF brick SSBO (float[] per-voxel SDF values).
+    // Placeholder (1-byte pad) for binary/Procedural bodies; populated by ConcatenateSdf for Stored-SDF.
+    // Shader only reads this when OctreeConfig.formatId == FORMAT_STORED_SDF (1u) — dead code for current bodies.
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_SDF_BUFFER,
+                          descriptorGatherer, 11,  // Binding 11: SdfBrickBuffer
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
+    // Inc2 M3: Binding 12: Brick-grid lookup SSBO (uint32[bpa^3] grid-coord→brickIndex table).
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_BRICKLOOKUP_BUFFER,
+                          descriptorGatherer, 12,  // Binding 12: BrickLookupBuffer
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info("[BuildRenderGraph] Connected SoA-SDF buffer at binding 11, brick-grid lookup at binding 12 (Inc2 M3)");
+    }
+
     // Swapchain connections to descriptor set and dispatch
     // Pass swapchain public vars; DescriptorSetNode reads swapChainImageCount during Compile.
     // DESCRIPTOR_RESOURCES provides the actual bindings.
