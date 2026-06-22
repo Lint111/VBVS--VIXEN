@@ -67,6 +67,7 @@ set(RENDERGRAPH_DATA_NODE_CONFIGS
     include/Data/Nodes/LoopBridgeNodeConfig.h
     include/Data/Nodes/PresentNodeConfig.h
     include/Data/Nodes/PushConstantGathererNodeConfig.h
+    include/Data/Nodes/PassGroupNodeConfig.h
     include/Data/Nodes/RenderPassNodeConfig.h
     include/Data/Nodes/ShaderLibraryNodeConfig.h
     include/Data/Nodes/SwapChainNodeConfig.h
@@ -135,6 +136,8 @@ set(RENDERGRAPH_CORE_HEADERS
     include/Core/EngineContext.h         # AR#7: instantiable EngineContext (owns registry/bus/graph/calibration)
     include/Core/RenderGraph.h
     include/Core/FrameSyncScheduler.h     # auto-sync P2: pure scheduling core + FrameSyncScheduler class
+    include/Core/PassGroupSchedule.h     # auto-sync P4: node-local barrier baking (header-only)
+    include/Core/PassRecorder.h          # auto-sync P4 M2: baggage-free recorder (barrier replay + compute + render)
     include/Core/ResourceAccessTracker.h  # Sprint 6.4: Task #349 - Conflict detection
     include/Core/ResourceDependencyTracker.h
     include/Core/WaveScheduler.h  # Sprint 6.4: Task #347 - Wave computation
@@ -174,6 +177,7 @@ set(RENDERGRAPH_CORE_SOURCES
     src/Core/EngineContext.cpp           # AR#7: instantiable EngineContext
     src/Core/RenderGraph.cpp
     src/Core/FrameSyncScheduler.cpp     # auto-sync P2: pure scheduling core
+    src/Core/PassRecorder.cpp           # auto-sync P4 M2: baggage-free recorder (barrier replay + compute + render)
     src/Core/ResourceAccessTracker.cpp  # Sprint 6.4: Task #349 - Conflict detection
     src/Core/ResourceDependencyTracker.cpp
     src/Core/WaveScheduler.cpp  # Sprint 6.4: Task #347 - Wave computation
@@ -218,6 +222,7 @@ set(RENDERGRAPH_NODE_HEADERS
     include/Nodes/LoopBridgeNode.h
     include/Nodes/PresentNode.h
     include/Nodes/PushConstantGathererNode.h
+    include/Nodes/PassGroupNode.h
     include/Nodes/RenderPassNode.h
     include/Nodes/ResourceGathererNode.h
     include/Nodes/ShaderLibraryNode.h
@@ -246,6 +251,7 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/RenderTargetNode.cpp
     src/Nodes/PickIdTargetNode.cpp
     src/Nodes/InstanceBufferNode.cpp
+    src/Nodes/StorageBufferNode.cpp     # auto-sync P4 M4: generic arbitrary-sized SSBO node
     src/Nodes/DynamicInstanceBufferNode.cpp
     src/Nodes/MvpUniformNode.cpp
     src/Nodes/DescriptorResourceGathererNode.cpp
@@ -263,6 +269,7 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/UISelectionProviderNode.cpp
     src/Nodes/PresentNode.cpp
     src/Nodes/PushConstantGathererNode.cpp
+    src/Nodes/PassGroupNode.cpp
     src/Nodes/RenderPassNode.cpp
     src/Nodes/ShaderLibraryNode.cpp
     src/Nodes/SwapChainNode.cpp

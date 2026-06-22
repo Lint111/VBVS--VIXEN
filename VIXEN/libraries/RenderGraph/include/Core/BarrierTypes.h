@@ -22,6 +22,7 @@ enum class AccessKind : uint8_t {
     ComputeStorageReadWrite,
     ComputeSampledRead,
     FragmentSampledRead,
+    FragmentStorageRead,
     VertexStorageRead,
     ColorAttachmentWrite,
     DepthAttachmentReadWrite,
@@ -50,6 +51,9 @@ enum class AccessKind : uint8_t {
     case AccessKind::FragmentSampledRead:
         return {VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
                 VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+    case AccessKind::FragmentStorageRead:
+        return {VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
+                VK_IMAGE_LAYOUT_UNDEFINED};
     case AccessKind::VertexStorageRead:
         return {VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
                 VK_IMAGE_LAYOUT_UNDEFINED};
@@ -97,6 +101,7 @@ enum class AccessKind : uint8_t {
     case AccessKind::ComputeStorageReadWrite:
     case AccessKind::ComputeSampledRead:
     case AccessKind::FragmentSampledRead:
+    case AccessKind::FragmentStorageRead:
     case AccessKind::VertexStorageRead:
     case AccessKind::DepthAttachmentReadWrite:
     case AccessKind::IndirectRead:

@@ -633,6 +633,21 @@ else()
 endif()
 
 # ===========================================================================
+# PassGroupSchedule Tests (auto-sync P4 M1)
+# ===========================================================================
+# Validates BuildPassGroupSchedule node-local barrier baking (pure CPU, no GPU)
+
+if(TARGET GTest::gtest_main)
+    add_executable(test_pass_group_schedule test_pass_group_schedule.cpp)
+    target_link_libraries(test_pass_group_schedule PRIVATE GTest::gtest_main RenderGraph)
+    set_target_properties(test_pass_group_schedule PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    gtest_discover_tests(test_pass_group_schedule)
+    message(STATUS "✓ test_pass_group_schedule configured (auto-sync P4 M1)")
+else()
+    message(STATUS "⊗ test_pass_group_schedule skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
 # Node Self-Registration Anchor (M3)
 # ===========================================================================
 # Guards the whole-archive requirement: links the RenderGraph facade (which
@@ -647,6 +662,25 @@ else()
 endif()
 set_target_properties(test_node_self_registration PROPERTIES FOLDER "Tests/RenderGraph Tests")
 gtest_discover_tests(test_node_self_registration)
+
+# ===========================================================================
+# PassGroupNode Smoke Test (auto-sync P4 M3)
+# ===========================================================================
+# No GPU required: (1) registry lookup by type, (2) AddComputePass/AddRenderPass
+# grow the pass list, (3) SetPasses replaces existing passes.
+if(TARGET GTest::gtest_main)
+    add_executable(test_pass_group_node_smoke test_pass_group_node_smoke.cpp)
+    if(TARGET RenderGraph)
+        target_link_libraries(test_pass_group_node_smoke PRIVATE GTest::gtest_main RenderGraph)
+    else()
+        target_link_libraries(test_pass_group_node_smoke PRIVATE GTest::gtest_main)
+    endif()
+    set_target_properties(test_pass_group_node_smoke PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    gtest_discover_tests(test_pass_group_node_smoke)
+    message(STATUS "✓ test_pass_group_node_smoke configured (auto-sync P4 M3)")
+else()
+    message(STATUS "⊗ test_pass_group_node_smoke skipped (GoogleTest not available)")
+endif()
 
 # ===========================================================================
 # CompileTimeResourceSystem Tests
