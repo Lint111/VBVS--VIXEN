@@ -187,12 +187,16 @@ void BodyOctreeSceneNode::CompileImpl(TypedCompileContext& ctx) {
 
     // 4) Publish outputs. INSTANCE_BUFFER emits ring slot 0 as a compile-time placeholder;
     //    ExecuteImpl overwrites it each frame with the current ring slot.
-    ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_NODES_BUFFER,     nodesBuffer_);
-    ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_BRICKS_BUFFER,    bricksBuffer_);
-    ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_MATERIALS_BUFFER, materialsBuffer_);
-    ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_CONFIG_BUFFER,    configBuffer_);
-    ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_BUFFER,         perFrame_.GetUniformBuffer(0));
-    ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_COUNT,          instanceCount_);
+    ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_NODES_BUFFER,         nodesBuffer_);
+    ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_BRICKS_BUFFER,        bricksBuffer_);
+    ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_MATERIALS_BUFFER,     materialsBuffer_);
+    ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_CONFIG_BUFFER,        configBuffer_);
+    ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_BUFFER,             perFrame_.GetUniformBuffer(0));
+    ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_COUNT,              instanceCount_);
+    // Inc2 M3: SDF + lookup buffers (bindings 11/12). Always emitted — placeholder
+    // for binary/Procedural, real data for Stored-SDF bodies.
+    ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_SDF_BUFFER,           sdfBuffer_);
+    ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_BRICKLOOKUP_BUFFER,   brickLookupBuffer_);
 
     NODE_LOG_INFO("[BodyOctreeSceneNode] Outputs published (octrees=" +
                   std::to_string(concatenated_.count) + ", instances=" +
@@ -312,11 +316,31 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device) {
         concatenated_.configs.data(),
         configBuffer_, configMemory_, "octree config UBO");
 
+    // Inc2 M3: SoA-SDF buffer (binding 11) + brick-grid lookup (binding 12).
+    // Pad to 1 byte when empty — binary/Procedural bodies leave sdfBricks empty;
+    // the shader only reads these when OctreeConfig.formatId == FORMAT_STORED_SDF (1u).
+    const VkDeviceSize sdfSize =
+        std::max<VkDeviceSize>(concatenated_.sdfBricks.size(), 1);
+    const VkDeviceSize brickLookupSize =
+        std::max<VkDeviceSize>(concatenated_.brickGridLookup.size(), 1);
+
+    CreateHostBuffer(device, sdfSize,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        concatenated_.sdfBricks.empty() ? nullptr : concatenated_.sdfBricks.data(),
+        sdfBuffer_, sdfMemory_, "SoA-SDF brick SSBO");
+
+    CreateHostBuffer(device, brickLookupSize,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        concatenated_.brickGridLookup.empty() ? nullptr : concatenated_.brickGridLookup.data(),
+        brickLookupBuffer_, brickLookupMemory_, "brick-grid lookup SSBO");
+
     NODE_LOG_INFO("[BodyOctreeSceneNode] Created octree buffers (nodes=" +
                   std::to_string(static_cast<uint64_t>(nodesSize)) + "B, bricks=" +
                   std::to_string(static_cast<uint64_t>(bricksSize)) + "B, materials=" +
                   std::to_string(static_cast<uint64_t>(materialsSize)) + "B, config=" +
-                  std::to_string(static_cast<uint64_t>(configSize)) + "B)");
+                  std::to_string(static_cast<uint64_t>(configSize)) + "B, sdf=" +
+                  std::to_string(static_cast<uint64_t>(sdfSize)) + "B, brickLookup=" +
+                  std::to_string(static_cast<uint64_t>(brickLookupSize)) + "B)");
 }
 
 void BodyOctreeSceneNode::EnsureRingAllocated(VulkanDevice* device, VkDeviceSize neededCapacity) {
@@ -360,10 +384,12 @@ void BodyOctreeSceneNode::DestroyBuffers() {
         if (mem != VK_NULL_HANDLE) { vkFreeMemory(vkDevice, mem, nullptr);    mem = VK_NULL_HANDLE; }
     };
 
-    destroy(nodesBuffer_,     nodesMemory_);
-    destroy(bricksBuffer_,    bricksMemory_);
-    destroy(materialsBuffer_, materialsMemory_);
-    destroy(configBuffer_,    configMemory_);
+    destroy(nodesBuffer_,         nodesMemory_);
+    destroy(bricksBuffer_,        bricksMemory_);
+    destroy(materialsBuffer_,     materialsMemory_);
+    destroy(configBuffer_,        configMemory_);
+    destroy(sdfBuffer_,           sdfMemory_);         // Inc2 M3
+    destroy(brickLookupBuffer_,   brickLookupMemory_); // Inc2 M3
 
     // FR-7: destroy the instance ring via PerFrameResources (mirrors DynamicInstanceBufferNode).
     perFrame_.Cleanup();

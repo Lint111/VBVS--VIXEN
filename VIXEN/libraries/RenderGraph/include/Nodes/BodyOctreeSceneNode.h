@@ -112,14 +112,21 @@ private:
     int32_t                                  instanceCount_ = 0;
 
     // --- GPU resources (persistent across recompile; freed only at FinalTeardown) ---
-    VkBuffer       nodesBuffer_     = VK_NULL_HANDLE;
-    VkDeviceMemory nodesMemory_     = VK_NULL_HANDLE;
-    VkBuffer       bricksBuffer_    = VK_NULL_HANDLE;
-    VkDeviceMemory bricksMemory_    = VK_NULL_HANDLE;
-    VkBuffer       materialsBuffer_ = VK_NULL_HANDLE;
-    VkDeviceMemory materialsMemory_ = VK_NULL_HANDLE;
-    VkBuffer       configBuffer_    = VK_NULL_HANDLE;
-    VkDeviceMemory configMemory_    = VK_NULL_HANDLE;
+    VkBuffer       nodesBuffer_          = VK_NULL_HANDLE;
+    VkDeviceMemory nodesMemory_          = VK_NULL_HANDLE;
+    VkBuffer       bricksBuffer_         = VK_NULL_HANDLE;
+    VkDeviceMemory bricksMemory_         = VK_NULL_HANDLE;
+    VkBuffer       materialsBuffer_      = VK_NULL_HANDLE;
+    VkDeviceMemory materialsMemory_      = VK_NULL_HANDLE;
+    VkBuffer       configBuffer_         = VK_NULL_HANDLE;
+    VkDeviceMemory configMemory_         = VK_NULL_HANDLE;
+    // Inc2 M3: SoA-SDF buffer (shader binding 11) + brick-grid lookup (shader binding 12).
+    // Created with a 1-byte placeholder when concatenated_.sdfBricks is empty
+    // (binary/Procedural path — non-regression invariant: descriptor set always valid).
+    VkBuffer       sdfBuffer_            = VK_NULL_HANDLE;
+    VkDeviceMemory sdfMemory_            = VK_NULL_HANDLE;
+    VkBuffer       brickLookupBuffer_    = VK_NULL_HANDLE;
+    VkDeviceMemory brickLookupMemory_    = VK_NULL_HANDLE;
 
     // Instance SSBO ring (one buffer per frame-in-flight — never freed on the tick path).
     PerFrameResources perFrame_;
