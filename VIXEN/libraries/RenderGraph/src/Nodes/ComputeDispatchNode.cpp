@@ -281,12 +281,18 @@ void ComputeDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
         }
     }
 
-    // Binary signal (renderComplete): voxel-only → Present waits; composite → UI binary wait (M1 additive)
-    VkSemaphoreSubmitInfo renderSig{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
-    renderSig.semaphore = renderCompleteSemaphore;
-    renderSig.value     = 0;  // binary semaphore: value ignored
-    renderSig.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-    signals.push_back(renderSig);
+    // Binary signal (renderComplete): voxel-only path ONLY — Present waits it there. In the composite
+    // path (leaveImageInGeneral) its only consumer was UI's binary compositeWait, which P5b M3 removed
+    // in favour of the baked compute→UI timeline edge; signalling it there would leave an orphaned
+    // per-image binary that is re-signalled each frame with no intervening wait (a binary-semaphore
+    // re-signal VUID). So skip it in composite — the timeline signalEdges above carry compute→UI.
+    if (!leaveImageInGeneral) {
+        VkSemaphoreSubmitInfo renderSig{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
+        renderSig.semaphore = renderCompleteSemaphore;
+        renderSig.value     = 0;  // binary semaphore: value ignored
+        renderSig.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+        signals.push_back(renderSig);
+    }
 
     // Composite mode submits with no fence — the downstream UI submit is the frame's last submit and
     // owns inFlightFence (a binary fence must not be signalled by two submits in one frame).

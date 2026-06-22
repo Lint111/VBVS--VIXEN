@@ -245,13 +245,10 @@ void UIRenderNode::ExecuteImpl(TypedExecuteContext& ctx) {
 
     if (imageIndex == UINT32_MAX || imageIndex >= commandBuffers_.size() || imageIndex >= framebuffers.size()) return;
 
-    // Composite: wait on the compute→UI handoff (the single semaphore the voxel compute signalled after
-    // writing this image) and signal this node's own per-image semaphore for present — the handoff and
-    // the present-wait must be distinct binary semaphores. Standalone (S0): wait imageAvailable[frame]
-    // (the acquire), signal renderComplete[image].
-    VkSemaphore compositeWait = composite_ ? ctx.In(UIRenderNodeConfig::COMPOSITE_WAIT_SEMAPHORE) : VK_NULL_HANDLE;
-    if (composite_ && (compositeWait == VK_NULL_HANDLE || imageIndex >= uiCompleteSemaphores_.size())) return;
-    VkSemaphore waitSem = composite_ ? compositeWait : imageAvailable[currentFrameIndex];
+    // Composite: the compute→UI ordering is carried SOLELY by the baked timeline waitEdge (P5b M3) —
+    // no binary handoff wait here. This node signals its own per-image semaphore for present. Standalone
+    // (S0, no timeline): wait imageAvailable[frame] (the acquire), signal renderComplete[image].
+    if (composite_ && imageIndex >= uiCompleteSemaphores_.size()) return;
     VkSemaphore signalSem = composite_ ? uiCompleteSemaphores_[imageIndex] : renderComplete[imageIndex];
 
     // This UI submit is the frame's last submit, so it resets + owns the frame fence (in composite mode
@@ -270,15 +267,19 @@ void UIRenderNode::ExecuteImpl(TypedExecuteContext& ctx) {
 
     std::vector<VkSemaphoreSubmitInfo> waits, signals;
 
-    // Binary wait (additive in M1 — kept as-is; removed in M3):
-    // composite: wait on the compute→UI binary handoff; standalone: wait imageAvailable.
-    VkSemaphoreSubmitInfo binaryWait{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
-    binaryWait.semaphore = waitSem;
-    binaryWait.value     = 0;  // binary semaphore: value ignored
-    binaryWait.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-    waits.push_back(binaryWait);
+    // Standalone (S0) ONLY: wait the binary WSI acquire (imageAvailable). The composite graph has no
+    // imageAvailable wait here — the upstream compute waits the acquire, and compute→UI is ordered by
+    // the timeline waitEdge below (P5b M3 dropped the binary compute→UI handoff).
+    if (!composite_) {
+        VkSemaphoreSubmitInfo binaryWait{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
+        binaryWait.semaphore = imageAvailable[currentFrameIndex];
+        binaryWait.value     = 0;  // binary semaphore: value ignored
+        binaryWait.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+        waits.push_back(binaryWait);
+    }
 
-    // Timeline WAITS (UI is the consumer): one per baked waitEdge (additive — both waits are present in M1)
+    // Timeline WAITS (UI is the consumer): one per baked waitEdge. In composite this is now the SOLE
+    // compute→UI ordering (the compute's GENERAL write → UI's GENERAL color-attachment access edge).
     if (timelineSem != VK_NULL_HANDLE) {
         const FrameSyncSchedule& sched = GetOwningGraph()->GetFrameSyncSchedule();
         if (const SubmitGroup* grp = FindGroupForNode(sched, this)) {

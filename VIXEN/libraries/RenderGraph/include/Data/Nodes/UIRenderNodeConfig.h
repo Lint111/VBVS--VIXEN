@@ -43,8 +43,16 @@ CONSTEXPR_NODE_CONFIG(UIRenderNodeConfig,
     static constexpr const char* PARAM_COMPOSITE = "composite";
 
     // ===== INPUTS (8) =====
-    INPUT_SLOT(SWAPCHAIN_INFO, Vixen::Vulkan::Resources::IRenderTarget*, 0,
-        SlotNullability::Required, SlotRole::Dependency, SlotMutability::ReadOnly, SlotScope::NodeLevel);
+    // Auto-sync P5b M3: the composite UI pass LOADs the compute output (initialLayout=General) and
+    // blends the HUD over it, so it both reads and writes the swapchain image while it stays in
+    // GENERAL. Declaring ColorAttachmentWriteGeneral makes the scheduler bake the compute(GENERAL)→
+    // UI(GENERAL) timeline edge (compute writes ⇒ hazard) with NO layout transition — the timeline
+    // semaphore alone carries the ordering + cross-submit memory visibility. ReadWrite mutability so
+    // the tracker records this node as a writer for hazard detection (mirrors ComputeDispatchNode's
+    // swapchain slot). UIRenderNode reads this handle in CompileImpl, so the slot stays Dependency.
+    INPUT_SLOT_SYNC(SWAPCHAIN_INFO, Vixen::Vulkan::Resources::IRenderTarget*, 0,
+        SlotNullability::Required, SlotRole::Dependency, SlotMutability::ReadWrite, SlotScope::NodeLevel,
+        ::Vixen::RenderGraph::AccessKind::ColorAttachmentWriteGeneral);
 
     INPUT_SLOT(COMMAND_POOL, VkCommandPool, 1,
         SlotNullability::Required, SlotRole::Dependency, SlotMutability::ReadOnly, SlotScope::NodeLevel);

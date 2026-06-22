@@ -1150,10 +1150,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_SEMAPHORE, uiCompositeNode, UIRenderNodeConfig::TIMELINE_SEMAPHORE_IN)
          .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_FRAME_BASE, uiCompositeNode, UIRenderNodeConfig::TIMELINE_FRAME_BASE_IN);
 
-    // The compute→UI handoff: the UI waits on the semaphore the compute signalled after writing the
-    // image. This is also the explicit edge that orders the UI's Execute after the compute's.
-    batch.Connect(computeDispatch, ComputeDispatchNodeConfig::RENDER_COMPLETE_SEMAPHORE,
-                  uiCompositeNode, UIRenderNodeConfig::COMPOSITE_WAIT_SEMAPHORE);
+    // P5b M3: the compute→UI ordering is now carried SOLELY by the baked timeline edge. UI declares
+    // ColorAttachmentWriteGeneral on its swapchain access (UIRenderNodeConfig) and compute declares
+    // ComputeStorageWrite, so the scheduler bakes a compute(GENERAL)→UI(GENERAL) hazard edge: UI gets
+    // a waitEdge and waits the compute's timeline value (M1 consumption), and the timeline semaphore
+    // provides the cross-submit memory visibility. Both layouts are GENERAL ⇒ no transition. The
+    // former binary RENDER_COMPLETE_SEMAPHORE→COMPOSITE_WAIT_SEMAPHORE handoff is therefore removed
+    // (and the binary compositeWait wait dropped from UIRenderNode's submit). WSI acquire (compute
+    // waits imageAvailable) and present (UI signals its uiComplete) stay binary.
 
     // Atomically register all connections
     size_t connectionCount = batch.GetConnectionCount();
