@@ -92,6 +92,16 @@ endif()
 
 gtest_discover_tests(test_svo_types)
 
+add_executable(test_sdf_recipes
+    test_sdf_recipes.cpp
+)
+if(TARGET SVO)
+    target_link_libraries(test_sdf_recipes PRIVATE GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_sdf_recipes PRIVATE GTest::gtest_main)
+endif()
+gtest_discover_tests(test_sdf_recipes)
+
 # ===========================================================================
 # Sampler Tests
 # ===========================================================================
