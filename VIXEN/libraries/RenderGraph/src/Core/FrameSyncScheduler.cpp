@@ -4,6 +4,7 @@
 #include "Core/NodeInstance.h"
 #include <unordered_map>
 #include <algorithm>
+#include <cassert>
 
 namespace Vixen::RenderGraph {
 
@@ -126,6 +127,43 @@ bool FrameSyncScheduler::Build(const std::vector<NodeInstance*>& executionOrder,
         }
         if (first >= 0) schedule_.groups[first].swapchainAcquireWait = true;
         if (last  >= 0) schedule_.groups[last].swapchainPresentSignal = true;
+
+        // WSI TIMELINE LAW (schedule-build-time invariant):
+        // The swapchain acquire (imageAvailable) and present (renderComplete) synchronisation
+        // points are BINARY semaphore boundaries — they must NEVER be expressed as timeline
+        // SyncEdges on the swapchain resource.  Binary and timeline semaphores are distinct
+        // objects with distinct signalling semantics; a timeline edge on the acquire/present
+        // boundary would bypass the WSI contract and produce VUID errors.
+        //
+        // The acquire group's binary wait (swapchainAcquireWait) is independent of timeline
+        // waitEdges: an edge from a "pre-acquire" group on the swapchain resource would mean
+        // a non-WSI group signals the acquire semaphore value — which never happens.
+        // The present group's binary signal (swapchainPresentSignal) is independent of
+        // timeline signalEdges on the swapchain resource for the same reason.
+        //
+        // This assert fires at schedule-build time (cheap, not a hot-path check) if the
+        // edge-baking logic ever incorrectly creates a timeline edge where the ONLY shared
+        // resource is the swapchain AND one endpoint is the acquire or present group.
+        if (first >= 0 && last >= 0) {
+            const uint32_t acquireGroupId = static_cast<uint32_t>(first);
+            const uint32_t presentGroupId = static_cast<uint32_t>(last);
+            for (const SyncEdge& e : schedule_.edges) {
+                if (e.resource != swapchainResource) continue;
+                // A timeline edge whose TO-group is the acquire group would mean a pre-acquire
+                // node must signal a timeline value before the acquire group can proceed —
+                // but the acquire group's GPU work is already gated by the BINARY imageAvailable.
+                // A timeline edge whose FROM-group is the present group would mean the present
+                // group is expected to signal a timeline value AFTER present — meaningless since
+                // present owns the binary renderComplete signal, not a timeline signal.
+                (void)acquireGroupId; (void)presentGroupId;
+                assert(e.toGroup != acquireGroupId
+                    && "WSI law violated: timeline SyncEdge targets the swapchain-acquire group; "
+                       "imageAvailable is a binary boundary — never a timeline wait.");
+                assert(e.fromGroup != presentGroupId
+                    && "WSI law violated: timeline SyncEdge originates from the swapchain-present group; "
+                       "renderComplete is a binary boundary — never a timeline signal.");
+            }
+        }
     }
     return schedule_.valid;
 }

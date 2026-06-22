@@ -255,7 +255,7 @@ CONSTEXPR_NODE_CONFIG(ComputeStageNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    // ===== OUTPUTS (2) =====
+    // ===== OUTPUTS (3) =====
 
     /** @brief renderComplete semaphore for Present to wait on (consumer role). */
     OUTPUT_SLOT(RENDER_COMPLETE_SEMAPHORE, VkSemaphore, 0,
