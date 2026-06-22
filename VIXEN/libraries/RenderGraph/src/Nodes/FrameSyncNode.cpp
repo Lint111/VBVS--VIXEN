@@ -95,12 +95,36 @@ void FrameSyncNode::CompileImpl(TypedCompileContext& ctx) {
     isCreated = true;
     currentFrameIndex = 0;
 
+    // P5a M1: create the per-loop timeline semaphore ONCE (persistent across recompile so the
+    // monotonic counter is never reset by resize/recompile). Guard on VK_NULL_HANDLE so a second
+    // CompileImpl (e.g. swapchain resize) is a no-op for this object.
+    if (timelineSemaphore_ == VK_NULL_HANDLE) {
+        VkSemaphoreTypeCreateInfo typeInfo{};
+        typeInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO;
+        typeInfo.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE;
+        typeInfo.initialValue = 0;
+
+        VkSemaphoreCreateInfo semInfo{};
+        semInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+        semInfo.pNext = &typeInfo;
+
+        if (vkCreateSemaphore(device->device, &semInfo, nullptr, &timelineSemaphore_) != VK_SUCCESS) {
+            throw std::runtime_error("FrameSyncNode: failed to create per-loop timeline semaphore");
+        }
+        NODE_LOG_INFO("Created per-loop timeline semaphore (auto-sync P5a M1)");
+    }
+
     // Set initial outputs (flight 0)
     ctx.Out(FrameSyncNodeConfig::CURRENT_FRAME_INDEX, currentFrameIndex);
     ctx.Out(FrameSyncNodeConfig::IN_FLIGHT_FENCE, frameSyncData[currentFrameIndex].inFlightFence);
 
     // Output the per-FLIGHT imageAvailable array
     ctx.Out(FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY, imageAvailableSemaphores);
+
+    // P5a M1: publish safe compile-time defaults for the new timeline slots.
+    // frameBase_ is NOT reset here — it must survive recompile to keep the counter monotonic.
+    ctx.Out(FrameSyncNodeConfig::TIMELINE_SEMAPHORE, timelineSemaphore_);
+    ctx.Out(FrameSyncNodeConfig::TIMELINE_FRAME_BASE, frameBase_);
 
     NODE_LOG_INFO("Per-flight synchronization primitives created successfully");
     NODE_LOG_INFO("Created " + std::to_string(imageAvailableSemaphores.size()) + " imageAvailable semaphores (per-flight)");
@@ -109,6 +133,12 @@ void FrameSyncNode::CompileImpl(TypedCompileContext& ctx) {
 void FrameSyncNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // Advance frame index (ring buffer for CPU-GPU sync)
     currentFrameIndex = (currentFrameIndex + 1) % FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT;
+
+    // P5a M1: advance the monotonic timeline base. stride=0 when no edges are baked yet (no-op).
+    // frameBase_ is published AFTER the advance so all downstream consumers in this frame read
+    // the same base. Nothing waits/signals on the timeline yet — that is P5b.
+    const uint64_t stride = GetOwningGraph()->GetFrameSyncSchedule().timelineValuesPerFrame;
+    frameBase_ = NextFrameBase(frameBase_, stride);
 
     // Phase 0.4: CRITICAL - Wait on the current flight's fence BEFORE acquiring the next image
     // This ensures the previous frame using this flight's resources has completed
@@ -136,6 +166,10 @@ void FrameSyncNode::ExecuteImpl(TypedExecuteContext& ctx) {
 
     // Re-output the per-FLIGHT imageAvailable array for Execute-phase connections
     ctx.Out(FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY, imageAvailableSemaphores);
+
+    // P5a M1: publish timeline outputs (not yet consumed; consumption is P5b)
+    ctx.Out(FrameSyncNodeConfig::TIMELINE_SEMAPHORE, timelineSemaphore_);
+    ctx.Out(FrameSyncNodeConfig::TIMELINE_FRAME_BASE, frameBase_);
 }
 
 void FrameSyncNode::CleanupImpl(TypedCleanupContext& ctx) {
@@ -164,6 +198,17 @@ void FrameSyncNode::CleanupImpl(TypedCleanupContext& ctx) {
         isCreated = false;
 
         NODE_LOG_INFO("Frame synchronization primitives destroyed");
+    }
+
+    // P5a M1: the per-loop timeline semaphore is PERSISTENT across recompile (resize/recompile must
+    // NOT destroy it — that would reset the monotonic counter and collide with frames still in
+    // flight). Torn down only on FinalTeardown, mirroring UIRenderNode's persistent-resource rationale.
+    if (ctx.reason == CleanupReason::FinalTeardown &&
+        timelineSemaphore_ != VK_NULL_HANDLE &&
+        device != nullptr && device->device != VK_NULL_HANDLE) {
+        vkDestroySemaphore(device->device, timelineSemaphore_, nullptr);
+        timelineSemaphore_ = VK_NULL_HANDLE;
+        NODE_LOG_INFO("Destroyed per-loop timeline semaphore (final teardown)");
     }
 }
 
