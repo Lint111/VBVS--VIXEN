@@ -57,7 +57,7 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    // ===== OUTPUTS (6) =====
+    // ===== OUTPUTS (8) =====
     // Same names/types as VoxelGridNode's octree slots (so Task 8 can swap nodes).
     OUTPUT_SLOT(OCTREE_NODES_BUFFER, VkBuffer, 0,
         SlotNullability::Required,
@@ -125,7 +125,7 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
         octreeMaterialsDesc.usage = ResourceUsage::StorageBuffer | ResourceUsage::TransferDst;
         INIT_OUTPUT_DESC(OCTREE_MATERIALS_BUFFER, "octree_materials_buffer", ResourceLifetime::Persistent, octreeMaterialsDesc);
 
-        // Octree config UBO — 3 x 256-byte OctreeConfig (std140).
+        // Octree config UBO — 3 x 432-byte OctreeConfig (std140 array stride 432).
         BufferDescriptor octreeConfigDesc{};
         octreeConfigDesc.usage = ResourceUsage::UniformBuffer | ResourceUsage::TransferDst;
         INIT_OUTPUT_DESC(OCTREE_CONFIG_BUFFER, "octree_config_buffer", ResourceLifetime::Persistent, octreeConfigDesc);
