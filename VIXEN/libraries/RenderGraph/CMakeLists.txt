@@ -244,6 +244,7 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/CameraNode.cpp
     src/Nodes/CommandPoolNode.cpp
     src/Nodes/ComputeDispatchNode.cpp
+    src/Nodes/ComputeStageNode.cpp      # auto-sync P5b M2: generic single-compute-pass submit node
     src/Nodes/ComputePipelineNode.cpp
     src/Nodes/MultiDispatchNode.cpp
     src/Nodes/DebugBufferReaderNode.cpp
