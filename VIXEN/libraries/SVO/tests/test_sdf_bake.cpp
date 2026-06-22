@@ -77,5 +77,5 @@ TEST(SdfBake, OctreeBuildIsNonEmpty) {
         glm::vec3(-2.0f, 8.0f, 8.0f),
         glm::vec3( 1.0f, 0.0f, 0.0f),
         0.0f, 1e30f);
-    EXPECT_TRUE(hit.has_value()) << "castRay must hit the baked SDF shell along +x axis";
+    EXPECT_TRUE(hit.hit) << "castRay must hit the baked SDF shell along +x axis";
 }
