@@ -1,5 +1,7 @@
 #include "Nodes/UIRenderNode.h"
 #include "Core/NodeRegistration.h"
+#include "Core/RenderGraph.h"           // GetOwningGraph()->GetFrameSyncSchedule()
+#include "Core/FrameSyncSchedule.h"     // SubmitGroup, SyncEdge, FindGroupForNode
 
 #include "VulkanDevice.h"
 #include "VulkanSwapChain.h"
@@ -259,16 +261,53 @@ void UIRenderNode::ExecuteImpl(TypedExecuteContext& ctx) {
     VkCommandBuffer cmd = commandBuffers_[imageIndex];
     RecordFrame(cmd, framebuffers[imageIndex]);
 
-    VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    VkSubmitInfo si{VK_STRUCTURE_TYPE_SUBMIT_INFO};
-    si.waitSemaphoreCount = 1;
-    si.pWaitSemaphores = &waitSem;
-    si.pWaitDstStageMask = &waitStage;
-    si.commandBufferCount = 1;
-    si.pCommandBuffers = &cmd;
-    si.signalSemaphoreCount = 1;
-    si.pSignalSemaphores = &signalSem;
-    vkQueueSubmit(queue_, 1, &si, inFlightFence);
+    // P5b M1: read timeline primitives (Optional — VK_NULL_HANDLE / 0 if not wired)
+    VkSemaphore timelineSem = ctx.In(UIRenderNodeConfig::TIMELINE_SEMAPHORE_IN);
+    uint64_t frameBase = ctx.In(UIRenderNodeConfig::TIMELINE_FRAME_BASE_IN);
+
+    VkCommandBufferSubmitInfo cmdInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO};
+    cmdInfo.commandBuffer = cmd;
+
+    std::vector<VkSemaphoreSubmitInfo> waits, signals;
+
+    // Binary wait (additive in M1 — kept as-is; removed in M3):
+    // composite: wait on the compute→UI binary handoff; standalone: wait imageAvailable.
+    VkSemaphoreSubmitInfo binaryWait{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
+    binaryWait.semaphore = waitSem;
+    binaryWait.value     = 0;  // binary semaphore: value ignored
+    binaryWait.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+    waits.push_back(binaryWait);
+
+    // Timeline WAITS (UI is the consumer): one per baked waitEdge (additive — both waits are present in M1)
+    if (timelineSem != VK_NULL_HANDLE) {
+        const FrameSyncSchedule& sched = GetOwningGraph()->GetFrameSyncSchedule();
+        if (const SubmitGroup* grp = FindGroupForNode(sched, this)) {
+            for (uint32_t idx : grp->waitEdges) {
+                VkSemaphoreSubmitInfo twait{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
+                twait.semaphore = timelineSem;
+                twait.value     = sched.edges[idx].timelineOffset + frameBase;
+                twait.stageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT |
+                                  VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+                waits.push_back(twait);
+            }
+        }
+    }
+
+    // Binary signal (uiComplete / renderComplete — present waits on this)
+    VkSemaphoreSubmitInfo binSig{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
+    binSig.semaphore = signalSem;
+    binSig.value     = 0;  // binary semaphore: value ignored
+    binSig.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+    signals.push_back(binSig);
+
+    VkSubmitInfo2 si{VK_STRUCTURE_TYPE_SUBMIT_INFO_2};
+    si.waitSemaphoreInfoCount   = static_cast<uint32_t>(waits.size());
+    si.pWaitSemaphoreInfos      = waits.data();
+    si.commandBufferInfoCount   = 1;
+    si.pCommandBufferInfos      = &cmdInfo;
+    si.signalSemaphoreInfoCount = static_cast<uint32_t>(signals.size());
+    si.pSignalSemaphoreInfos    = signals.data();
+    vkQueueSubmit2(queue_, 1, &si, inFlightFence);
 
     ctx.Out(UIRenderNodeConfig::COMMAND_BUFFERS, cmd);
     ctx.Out(UIRenderNodeConfig::RENDER_COMPLETE_SEMAPHORE, signalSem);

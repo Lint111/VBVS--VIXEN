@@ -242,33 +242,60 @@ void ComputeDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
     RecordComputeCommands(ctx, cmdBuffer, imageIndex, currentFrameIndex, &pushConstants, leaveImageInGeneral);
     commandBuffers.MarkReady(imageIndex);
 
-    // Submit command buffer to compute queue
-    VkSubmitInfo submitInfo{};
-    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    // P5b M1: read timeline primitives from FrameSyncNode slots (Optional — VK_NULL_HANDLE / 0 if not wired)
+    VkSemaphore timelineSem = ctx.In(ComputeDispatchNodeConfig::TIMELINE_SEMAPHORE_IN);
+    uint64_t frameBase = ctx.In(ComputeDispatchNodeConfig::TIMELINE_FRAME_BASE_IN);
 
-    // Wait for image to be available before writing to it
-    VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
-    submitInfo.waitSemaphoreCount = 1;
-    submitInfo.pWaitSemaphores = &imageAvailableSemaphore;
-    submitInfo.pWaitDstStageMask = &waitStage;
+    // Build vkQueueSubmit2 semaphore arrays
+    VkCommandBufferSubmitInfo cmdInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO};
+    cmdInfo.commandBuffer = cmdBuffer;
 
-    // Submit command buffer
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &cmdBuffer;
+    std::vector<VkSemaphoreSubmitInfo> waits, signals;
 
-    // Signal render complete semaphore. Voxel-only: consumed by Present. Composite: the compute→UI
-    // handoff the downstream UI submit waits on (per-IMAGE, same array, no double-signal).
-    submitInfo.signalSemaphoreCount = 1;
-    submitInfo.pSignalSemaphores = &renderCompleteSemaphore;
+    // Binary acquire wait (imageAvailable is a WSI binary semaphore)
+    VkSemaphoreSubmitInfo acquireWait{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
+    acquireWait.semaphore = imageAvailableSemaphore;
+    acquireWait.value     = 0;  // binary semaphore: value ignored
+    acquireWait.stageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+    waits.push_back(acquireWait);
+
+    // Timeline SIGNALS (compute is the producer): one per baked signalEdge
+    if (timelineSem != VK_NULL_HANDLE) {
+        const FrameSyncSchedule& sched = GetOwningGraph()->GetFrameSyncSchedule();
+        if (const SubmitGroup* grp = FindGroupForNode(sched, this)) {
+            for (uint32_t idx : grp->signalEdges) {
+                VkSemaphoreSubmitInfo tsig{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
+                tsig.semaphore = timelineSem;
+                tsig.value     = sched.edges[idx].timelineOffset + frameBase;
+                tsig.stageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+                signals.push_back(tsig);
+            }
+        }
+    }
+
+    // Binary signal (renderComplete): voxel-only → Present waits; composite → UI binary wait (M1 additive)
+    VkSemaphoreSubmitInfo renderSig{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
+    renderSig.semaphore = renderCompleteSemaphore;
+    renderSig.value     = 0;  // binary semaphore: value ignored
+    renderSig.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+    signals.push_back(renderSig);
 
     // Composite mode submits with no fence — the downstream UI submit is the frame's last submit and
     // owns inFlightFence (a binary fence must not be signalled by two submits in one frame).
     VkFence submitFence = leaveImageInGeneral ? VK_NULL_HANDLE : inFlightFence;
 
-    // Submit to graphics queue (assume compute = graphics for now)
-    VkResult result = vkQueueSubmit(vulkanDevice->queue, 1, &submitInfo, submitFence);
+    VkSubmitInfo2 si{VK_STRUCTURE_TYPE_SUBMIT_INFO_2};
+    si.waitSemaphoreInfoCount   = static_cast<uint32_t>(waits.size());
+    si.pWaitSemaphoreInfos      = waits.data();
+    si.commandBufferInfoCount   = 1;
+    si.pCommandBufferInfos      = &cmdInfo;
+    si.signalSemaphoreInfoCount = static_cast<uint32_t>(signals.size());
+    si.pSignalSemaphoreInfos    = signals.data();
+
+    // Submit to graphics queue via synchronization2
+    VkResult result = vkQueueSubmit2(vulkanDevice->queue, 1, &si, submitFence);
     if (result != VK_SUCCESS) {
-        throw std::runtime_error("[ComputeDispatchNode::ExecuteImpl] Failed to submit command buffer: " + std::to_string(result));
+        throw std::runtime_error("[ComputeDispatchNode::ExecuteImpl] Failed to submit command buffer (vkQueueSubmit2): " + std::to_string(result));
     }
 
     // Output semaphore for Present to wait on

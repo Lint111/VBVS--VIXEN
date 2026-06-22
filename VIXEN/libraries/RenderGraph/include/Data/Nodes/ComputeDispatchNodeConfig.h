@@ -25,7 +25,7 @@ using IDebugCapture = Debug::IDebugCapture;
 // ============================================================================
 
 namespace ComputeDispatchNodeCounts {
-    static constexpr size_t INPUTS = 15;  // Added DEBUG_CAPTURE input
+    static constexpr size_t INPUTS = 17;  // +TIMELINE_SEMAPHORE_IN, +TIMELINE_FRAME_BASE_IN (P5b M1)
     static constexpr size_t OUTPUTS = 4;  // Added DEBUG_CAPTURE_OUT output
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -209,6 +209,26 @@ CONSTEXPR_NODE_CONFIG(ComputeDispatchNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
+    /**
+     * @brief Timeline semaphore from FrameSyncNode (P5b M1).
+     * Used in vkQueueSubmit2 to signal timeline values for baked signalEdges.
+     */
+    INPUT_SLOT(TIMELINE_SEMAPHORE_IN, VkSemaphore, 15,
+        SlotNullability::Optional,
+        SlotRole::Execute,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
+    /**
+     * @brief Per-frame timeline base offset from FrameSyncNode (P5b M1).
+     * Added to each SyncEdge::timelineOffset to compute the absolute signal value.
+     */
+    INPUT_SLOT(TIMELINE_FRAME_BASE_IN, uint64_t, 16,
+        SlotNullability::Optional,
+        SlotRole::Execute,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
     // ===== OUTPUTS (4) =====
 
     /**
@@ -285,6 +305,13 @@ CONSTEXPR_NODE_CONFIG(ComputeDispatchNodeConfig,
 
         HandleDescriptor debugCaptureDesc{"IDebugCapture*"};
         INIT_INPUT_DESC(DEBUG_CAPTURE, "debug_capture", ResourceLifetime::Transient, debugCaptureDesc);
+
+        // P5b M1: timeline semaphore + per-frame base from FrameSyncNode
+        HandleDescriptor timelineSemDesc{"VkSemaphore"};
+        INIT_INPUT_DESC(TIMELINE_SEMAPHORE_IN, "timeline_semaphore_in", ResourceLifetime::Persistent, timelineSemDesc);
+
+        HandleDescriptor frameBaseDesc{"uint64_t"};
+        INIT_INPUT_DESC(TIMELINE_FRAME_BASE_IN, "timeline_frame_base_in", ResourceLifetime::Transient, frameBaseDesc);
 
         // Initialize output descriptors
         HandleDescriptor cmdBufferDesc{"VkCommandBuffer"};
