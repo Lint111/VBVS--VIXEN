@@ -10,6 +10,7 @@
 #include "PipelineCacher.h"
 #include "ShaderDataBundle.h"
 #include "ShaderProgram.h"
+#include "Hash.h"  // ComputeSHA256HexFromUint32Vec — SPIR-V content hash for pipeline cache key
 #include "VulkanDevice.h"
 #include "Core/ComputePerformanceLogger.h"
 #include "Core/NodeLogging.h"
@@ -255,13 +256,29 @@ void ComputePipelineNode::CreateComputePipeline(
         throw std::runtime_error("[ComputePipelineNode] Failed to get ComputePipelineCacher");
     }
 
-    // Build pipeline params
+    // Build pipeline params.
+    //
+    // Pipeline cache key MUST uniquely identify the shader's CODE. The bundle's
+    // `uuid` is the descriptor-INTERFACE hash (deliberately code-agnostic so shaders
+    // with identical descriptor layouts share an SDI header — see ShaderDataBundle
+    // descriptorInterfaceHash). Two functionally different compute shaders with the
+    // same descriptor interface (e.g. the auto-sync demo's fill vs post — both expose
+    // one std430 SSBO at set0/binding0 + a uvec2 push constant) therefore carry the
+    // SAME uuid. Using it as the ComputePipelineCacher key collides them, so the second
+    // pass silently binds the first pass's pipeline. Key on a hash of the actual SPIR-V
+    // (program name + SPIR-V content) so distinct code yields distinct pipelines, while
+    // the interface uuid keeps its legitimate SDI/descriptor-sharing role.
+    const auto& computeSpirv = shaderBundle->GetSpirv(ShaderManagement::ShaderStage::Compute);
+    const std::string codeKey =
+        shaderBundle->GetProgramName() + ":" +
+        ShaderManagement::ComputeSHA256HexFromUint32Vec(computeSpirv);
+
     CashSystem::ComputePipelineCreateParams pipelineParams;
     pipelineParams.shaderModule = shaderModule;
     entryPointName_ = shaderBundle->GetEntryPoint(ShaderManagement::ShaderStage::Compute);
     pipelineParams.entryPoint = entryPointName_.c_str();
     pipelineParams.pipelineLayoutWrapper = layoutWrapper;
-    pipelineParams.shaderKey = shaderBundle->uuid;
+    pipelineParams.shaderKey = codeKey;  // code identity, not interface uuid
     pipelineParams.layoutKey = layoutKey;
     pipelineParams.workgroupSizeX = workgroupX;
     pipelineParams.workgroupSizeY = workgroupY;
