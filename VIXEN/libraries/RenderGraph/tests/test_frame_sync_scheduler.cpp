@@ -204,3 +204,39 @@ TEST(FrameSyncAdapter, WriterThenReader_ProducesEdge) {
     EXPECT_EQ(s.groups[1].node, reader.get());
     EXPECT_EQ(s.edges.size(), 1u);   // RAW write->read across groups
 }
+
+// P5a M2: passing the real swapchain Resource* to Build turns on isImage + acquire/present tagging.
+TEST(FrameSyncAdapter, SwapchainResource_ImageBarriersAndTagging) {
+    MockNodeType2 type("mock");
+    auto writer = type.CreateInstance("writer");
+    auto reader = type.CreateInstance("reader");
+    MockResource2 sharedResource; sharedResource.debugName = "swapchain";
+
+    AddOutput2(writer.get(), &sharedResource);  // writer outputs the swapchain resource
+    AddInput2(reader.get(),  &sharedResource);  // reader consumes it
+
+    ResourceAccessTracker tracker;
+    tracker.AddNode(writer.get());
+    tracker.AddNode(reader.get());
+
+    std::vector<NodeInstance*> execOrder = {writer.get(), reader.get()};
+    FrameSyncScheduler scheduler;
+    // Pass sharedResource as the swapchain identity — flips isImage=true for that timeline.
+    ASSERT_TRUE(scheduler.Build(execOrder, tracker, &sharedResource));
+    const FrameSyncSchedule& s = scheduler.GetSchedule();
+
+    ASSERT_EQ(s.groups.size(), 2u);
+    ASSERT_EQ(s.edges.size(), 1u);  // RAW hazard produces one edge
+
+    // (a) The consumer group's entryBarriers must contain an image barrier.
+    ASSERT_GE(s.groups[1].entryBarriers.size(), 1u);
+    EXPECT_TRUE(s.groups[1].entryBarriers[0].isImage)
+        << "swapchainResource must be treated as an image (isImage==true in entryBarrier)";
+
+    // (b) The first group touching the swapchain resource is tagged acquireWait,
+    //     the last group is tagged presentSignal.
+    EXPECT_TRUE(s.groups[0].swapchainAcquireWait)
+        << "first group touching swapchain must be tagged swapchainAcquireWait";
+    EXPECT_TRUE(s.groups[1].swapchainPresentSignal)
+        << "last group touching swapchain must be tagged swapchainPresentSignal";
+}
