@@ -67,11 +67,12 @@
 // shader UBO layout is unchanged.
 
 #include "ShellOctree.h"      // ShellOctree, BuildShellOctree
+#include "SdfBake.h"          // SdfBodyOctree, BakeRecipeToSdfWorld, BuildSdfBodyOctree
 #include "SVOTypes.h"         // ChildDescriptor
 #include "SVOBuilder.h"       // Octree / OctreeBlock
 #include "LaineKarrasOctree.h"
 #include "GaiaVoxelWorld.h"
-#include "VoxelComponents.h"  // Material
+#include "VoxelComponents.h"  // Material, Density
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>  // glm::scale / glm::translate
@@ -174,6 +175,52 @@ static_assert(offsetof(OctreeConfig, brickArrayBase) == 196,
 static_assert(offsetof(OctreeConfig, localToWorld) == 64 && offsetof(OctreeConfig, worldToLocal) == 128,
               "the two mat4s the shader reads must stay at offsets 64 / 128");
 
+// ============================================================================
+// Stored-SDF layout descriptor (Inc2 M2)
+// ============================================================================
+// Stored as three uint32s at the START of OctreeConfig._padding4 (bytes 200-211).
+// The shader never reads _padding4, so these are safe to repurpose.
+// M4's GLSL must replicate these exact byte offsets in the OctreeConfig struct.
+//
+//   byte 200 = _padding4[0] reinterpreted as uint32: formatId
+//              0 = FORMAT_BINARY (existing ESVO path, default / zero-init)
+//              1 = FORMAT_STORED_SDF (Inc2 trilinear iso-surface path)
+//   byte 204 = _padding4[1] reinterpreted as uint32: bricksPerAxis (grid side)
+//   byte 208 = _padding4[2] reinterpreted as uint32: sdfBrickArrayBase
+//              element offset (in floats) of this octree's first SDF brick in
+//              the concatenated sdfBricks buffer (same pattern as brickArrayBase).
+//
+// sizeof(OctreeConfig) == 432 is UNCHANGED (no new fields; we alias existing pad).
+
+/// Format IDs written into OctreeConfig._padding4[0] (byte 200).
+static constexpr uint32_t FORMAT_BINARY     = 0u;  ///< binary ESVO path (default)
+static constexpr uint32_t STORED_SDF        = 1u;  ///< Inc2 trilinear iso-surface path
+
+/// Read the formatId from the OctreeConfig tail (byte 200, uint32 aliased in _padding4[0]).
+inline uint32_t formatIdOf(const OctreeConfig& c) {
+    uint32_t v;
+    std::memcpy(&v, &c._padding4[0], sizeof(uint32_t));
+    return v;
+}
+/// Write formatId into the OctreeConfig tail.
+inline void setFormatId(OctreeConfig& c, uint32_t id) {
+    std::memcpy(&c._padding4[0], &id, sizeof(uint32_t));
+}
+/// Read the sdfBrickArrayBase from the OctreeConfig tail (byte 208, uint32 aliased in _padding4[2]).
+inline uint32_t sdfBrickArrayBaseOf(const OctreeConfig& c) {
+    uint32_t v;
+    std::memcpy(&v, &c._padding4[2], sizeof(uint32_t));
+    return v;
+}
+/// Write sdfBrickArrayBase into the OctreeConfig tail.
+inline void setSdfBrickArrayBase(OctreeConfig& c, uint32_t base) {
+    std::memcpy(&c._padding4[2], &base, sizeof(uint32_t));
+}
+/// Write bricksPerAxis into the OctreeConfig descriptor tail (byte 204, _padding4[1]).
+inline void setDescriptorBricksPerAxis(OctreeConfig& c, uint32_t bpa) {
+    std::memcpy(&c._padding4[1], &bpa, sizeof(uint32_t));
+}
+
 // ===========================================================================
 // Serialized output
 // ===========================================================================
@@ -187,10 +234,20 @@ struct SerializedOctree {
     static constexpr uint32_t kBrickStrideBytes = 512u * sizeof(uint32_t);  // 2048
     static constexpr uint32_t kVoxelsPerBrick = 512u;
 
-    std::vector<uint8_t> nodes;       // ChildDescriptor array (stride 8)
-    std::vector<uint8_t> bricks;      // 512*uint32 per brick (stride 2048)
-    std::vector<uint8_t> materials;   // GPUMaterial palette (stride 32)
+    // SoA SDF brick stride: one float per voxel, 512 voxels => 2048 bytes/brick.
+    // Same z*64+y*8+x voxel order as the material brick loop above.
+    // Only populated when emitSdf=true (Stored-SDF bodies). Empty for binary ESVO.
+    static constexpr uint32_t kSdfBrickStrideBytes = 512u * sizeof(float);  // 2048
+
+    std::vector<uint8_t> nodes;           // ChildDescriptor array (stride 8)
+    std::vector<uint8_t> bricks;          // 512*uint32 per brick (stride 2048)
+    std::vector<uint8_t> materials;       // GPUMaterial palette (stride 32)
     OctreeConfig config{};
+
+    // Inc2 M2 — SoA-SDF extension (emitSdf=true only):
+    std::vector<uint8_t> sdfBricks;       // 512*float per brick (stride 2048)
+    std::vector<uint8_t> brickGridLookup; // uint32[bricksPerAxis^3]: grid-coord→brickIndex,
+                                          // 0xFFFFFFFF = unallocated brick.
 
     uint32_t nodeCount = 0;   // == nodes.size() / sizeof(ChildDescriptor)
     uint32_t brickCount = 0;  // == bricks.size() / kBrickStrideBytes
@@ -203,9 +260,15 @@ struct SerializedOctree {
 struct ConcatenatedOctrees {
     static constexpr size_t kMaxOctrees = 3;
 
-    std::vector<uint8_t> nodes;   // octree0 nodes ++ octree1 nodes ++ ...
-    std::vector<uint8_t> bricks;  // octree0 bricks ++ octree1 bricks ++ ...
+    std::vector<uint8_t> nodes;      // octree0 nodes ++ octree1 nodes ++ ...
+    std::vector<uint8_t> bricks;     // octree0 bricks ++ octree1 bricks ++ ...
     std::vector<uint8_t> materials;  // shared palette (identical across shells)
+
+    // Inc2 M2 — SoA-SDF extension (populated by ConcatenateSdf; empty otherwise):
+    std::vector<uint8_t> sdfBricks;       // octree0 sdfBricks ++ octree1 sdfBricks ++ ...
+    std::vector<uint8_t> brickGridLookup; // octrees concatenated; each sub-table is
+                                          // uint32[bpa^3] where bpa = bricksPerAxis.
+                                          // Per-octree size varies; M3 uploads them separately.
 
     std::array<OctreeConfig, kMaxOctrees> configs{};
     std::array<uint32_t, kMaxOctrees> nodeCounts{};
@@ -376,6 +439,170 @@ inline SerializedOctree Serialize(const ShellOctree& shell) {
 }
 
 // ===========================================================================
+// SoA-SDF Serialize (Inc2 M2) — SdfBodyOctree → SerializedOctree with
+//   sdfBricks + brickGridLookup + layout descriptor in OctreeConfig._padding4.
+// ===========================================================================
+
+/**
+ * Serialize one SdfBodyOctree into CPU byte buffers (material bricks + SoA-SDF
+ * bricks + dense grid-lookup table + OctreeConfig with Stored-SDF descriptor).
+ *
+ * Voxel order in sdfBricks: identical to the material bricks loop —
+ *   sdfBricks[i * 512 + z*64+y*8+x] == Density at (gridOrigin+{bx,by,bz}).
+ *   Same z-outer, y-middle, x-inner order as the binary Serialize above.
+ *
+ * Dense grid→brick lookup (brickGridLookup):
+ *   A flat uint32[bpa^3] table (bpa = oct->bricksPerAxis, read from Octree).
+ *   GPU flat index:  brickX + brickY*bpa + brickZ*bpa^2
+ *   Value: brickView index (0..brickCount-1), or 0xFFFFFFFF = unallocated.
+ *   Built by inverting brickGridToBrickView (SVOBuilder.h:59-61):
+ *     packed key = brickX | (brickY<<10) | (brickZ<<20)
+ *
+ * Layout descriptor (OctreeConfig._padding4, sizeof unchanged = 432):
+ *   byte 200 (_padding4[0], uint32 alias): formatId = STORED_SDF (1u)
+ *   byte 204 (_padding4[1], uint32 alias): bricksPerAxis (uint32)
+ *   byte 208 (_padding4[2], uint32 alias): sdfBrickArrayBase = 0 single-octree
+ *                                          (ConcatenateSdf updates per-octree)
+ * M4's GLSL OctreeConfig must match these exact byte offsets.
+ */
+inline SerializedOctree SerializeSdf(const SdfBodyOctree& body) {
+    if (!body.octree || !body.world) {
+        throw std::runtime_error("ShellOctreeGpu::SerializeSdf: body missing octree or world");
+    }
+    const Octree* oct = body.octree->getOctree();
+    if (!oct || !oct->root) {
+        throw std::runtime_error("ShellOctreeGpu::SerializeSdf: octree has no root (call rebuild)");
+    }
+
+    SerializedOctree out;
+    Vixen::GaiaVoxel::GaiaVoxelWorld& world = *body.world;
+
+    // --- nodes: raw ChildDescriptor array (same as binary path)
+    const std::vector<ChildDescriptor>& descriptors = oct->root->childDescriptors;
+    out.nodeCount = static_cast<uint32_t>(descriptors.size());
+    out.nodes.resize(descriptors.size() * sizeof(ChildDescriptor));
+    if (!descriptors.empty()) {
+        std::memcpy(out.nodes.data(), descriptors.data(), out.nodes.size());
+    }
+
+    // --- bricks (material) + sdfBricks: iterate brickViews in order,
+    //     same z*64+y*8+x inner loop as the binary Serialize above.
+    const std::vector<Vixen::GaiaVoxel::EntityBrickView>& brickViews = oct->root->brickViews;
+    const int brickSide = oct->brickSideLength;  // 8
+    out.brickCount = static_cast<uint32_t>(brickViews.size());
+
+    std::vector<uint32_t> brickWords;
+    std::vector<float>    sdfWords;
+    brickWords.reserve(brickViews.size() * SerializedOctree::kVoxelsPerBrick);
+    sdfWords.reserve(brickViews.size()   * SerializedOctree::kVoxelsPerBrick);
+
+    for (const Vixen::GaiaVoxel::EntityBrickView& view : brickViews) {
+        const glm::ivec3 gridOrigin = view.getLocalGridOrigin();
+        for (int bz = 0; bz < brickSide; ++bz) {
+            for (int by = 0; by < brickSide; ++by) {
+                for (int bx = 0; bx < brickSide; ++bx) {
+                    const glm::vec3 worldPos(
+                        static_cast<float>(gridOrigin.x + bx),
+                        static_cast<float>(gridOrigin.y + by),
+                        static_cast<float>(gridOrigin.z + bz));
+                    uint32_t materialId = 0u;
+                    float    density    = 0.0f;
+                    const auto entity = world.getEntityByWorldSpace(worldPos);
+                    if (world.exists(entity)) {
+                        const auto mat = world.getComponentValue<Vixen::GaiaVoxel::Material>(entity);
+                        materialId = mat.has_value() ? mat.value() : 0u;
+                        const auto den = world.getComponentValue<Vixen::GaiaVoxel::Density>(entity);
+                        density = den.has_value() ? den.value() : 0.0f;
+                    }
+                    brickWords.push_back(materialId);
+                    sdfWords.push_back(density);
+                }
+            }
+        }
+    }
+    out.bricks.resize(brickWords.size() * sizeof(uint32_t));
+    if (!brickWords.empty()) {
+        std::memcpy(out.bricks.data(), brickWords.data(), out.bricks.size());
+    }
+    out.sdfBricks.resize(sdfWords.size() * sizeof(float));
+    if (!sdfWords.empty()) {
+        std::memcpy(out.sdfBricks.data(), sdfWords.data(), out.sdfBricks.size());
+    }
+
+    // --- materials: default palette
+    const std::vector<GPUMaterial> palette = detail::BuildDefaultMaterialPalette();
+    out.materials.resize(palette.size() * sizeof(GPUMaterial));
+    std::memcpy(out.materials.data(), palette.data(), out.materials.size());
+
+    // --- Dense grid→brick lookup: uint32[bpa^3].
+    //     brickGridToBrickView key encoding (SVOBuilder.h:108-110):
+    //       key = brickX | (brickY<<10) | (brickZ<<20)
+    //     GPU flat index: brickX + brickY*bpa + brickZ*bpa*bpa
+    {
+        const int bpa = oct->bricksPerAxis;
+        const uint32_t tableSize = static_cast<uint32_t>(bpa) *
+                                   static_cast<uint32_t>(bpa) *
+                                   static_cast<uint32_t>(bpa);
+        std::vector<uint32_t> lookupTable(tableSize, 0xFFFFFFFFu);
+        for (const auto& kv : oct->root->brickGridToBrickView) {
+            const uint32_t key = kv.first;
+            const uint32_t brickViewIdx = kv.second;
+            const uint32_t gx = (key)       & 0x3FFu;
+            const uint32_t gy = (key >> 10) & 0x3FFu;
+            const uint32_t gz = (key >> 20) & 0x3FFu;
+            const uint32_t flatIdx = gx
+                                   + gy * static_cast<uint32_t>(bpa)
+                                   + gz * static_cast<uint32_t>(bpa) * static_cast<uint32_t>(bpa);
+            if (flatIdx < tableSize) {
+                lookupTable[flatIdx] = brickViewIdx;
+            }
+        }
+        out.brickGridLookup.resize(tableSize * sizeof(uint32_t));
+        if (!lookupTable.empty()) {
+            std::memcpy(out.brickGridLookup.data(), lookupTable.data(), out.brickGridLookup.size());
+        }
+    }
+
+    // --- OctreeConfig (same header fields as binary Serialize)
+    OctreeConfig& c = out.config;
+    std::memset(&c, 0, sizeof(OctreeConfig));
+
+    const int maxLevels = oct->maxLevels;
+    const int brickDepth = brickSide > 0
+        ? static_cast<int>(std::lround(std::log2(static_cast<double>(brickSide))))
+        : 3;
+    c.esvoMaxScale    = 22;
+    c.userMaxLevels   = maxLevels;
+    c.brickDepthLevels= brickDepth;
+    c.brickSize       = 1 << brickDepth;
+    c.minESVOScale    = c.esvoMaxScale - c.userMaxLevels + 1;
+    const int brickUserScale = c.userMaxLevels - c.brickDepthLevels;
+    c.brickESVOScale  = c.esvoMaxScale - (c.userMaxLevels - 1 - brickUserScale);
+    c.bricksPerAxis   = oct->bricksPerAxis;
+
+    constexpr float kWorldGridSize = 10.0f;
+    c.gridMinX = oct->worldMin.x; c.gridMinY = oct->worldMin.y; c.gridMinZ = oct->worldMin.z;
+    c.gridMaxX = oct->worldMax.x; c.gridMaxY = oct->worldMax.y; c.gridMaxZ = oct->worldMax.z;
+    const glm::mat4 scaleMat = glm::scale(glm::mat4(1.0f), glm::vec3(kWorldGridSize));
+    const glm::mat4 translateMat = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f));
+    c.localToWorld = translateMat * scaleMat;
+    c.worldToLocal = glm::inverse(c.localToWorld);
+
+    c.nodeArrayBase  = 0;
+    c.brickArrayBase = 0;
+
+    // Stored-SDF layout descriptor in _padding4 tail (bytes 200-211):
+    //   byte 200 (_padding4[0]): formatId = STORED_SDF (1u)
+    //   byte 204 (_padding4[1]): bricksPerAxis (uint32)
+    //   byte 208 (_padding4[2]): sdfBrickArrayBase (0 for single-octree)
+    setFormatId(c, STORED_SDF);
+    setDescriptorBricksPerAxis(c, static_cast<uint32_t>(oct->bricksPerAxis));
+    setSdfBrickArrayBase(c, 0u);
+
+    return out;
+}
+
+// ===========================================================================
 // Multi-octree concatenation (<= 3)
 // ===========================================================================
 
@@ -419,6 +646,68 @@ inline ConcatenatedOctrees Concatenate(const std::vector<const ShellOctree*>& oc
 
         nodeBase += s.nodeCount;
         brickBase += s.brickCount;
+    }
+
+    return cat;
+}
+
+/**
+ * Concatenate <=3 SdfBodyOctrees into shared node/brick/sdfBricks buffers.
+ * Records per-octree nodeArrayBase, brickArrayBase, and sdfBrickArrayBase
+ * (in OctreeConfig._padding4[2]) for each octree. Throws std::length_error
+ * if given more than 3 octrees.
+ *
+ * sdfBrickArrayBase is the ELEMENT offset (in float units) of each octree's
+ * first SDF brick in the concatenated sdfBricks buffer — mirrors the
+ * brickArrayBase convention (VoxelSceneCacher.cpp:740 pattern).
+ *
+ * brickGridLookup: the per-octree lookup tables are appended in order.
+ * Each sub-table is uint32[bpa^3] for that octree (bpa may differ if octrees
+ * have different bricksPerAxis, though in practice they match). M3 uploads
+ * them together; the sdfBrickArrayBase offset in the descriptor is sufficient
+ * for the shader to index the right sub-table if sizes are equal.
+ */
+inline ConcatenatedOctrees ConcatenateSdf(const std::vector<const SdfBodyOctree*>& octrees) {
+    if (octrees.size() > ConcatenatedOctrees::kMaxOctrees) {
+        throw std::length_error("ShellOctreeGpu::ConcatenateSdf: at most 3 octrees supported");
+    }
+
+    ConcatenatedOctrees cat;
+    cat.count = static_cast<uint32_t>(octrees.size());
+
+    uint32_t nodeBase    = 0;   // running node element offset
+    uint32_t brickBase   = 0;   // running brick offset
+    uint32_t sdfBase     = 0;   // running SDF element offset (in floats = voxels)
+
+    for (size_t k = 0; k < octrees.size(); ++k) {
+        if (octrees[k] == nullptr) {
+            throw std::invalid_argument("ShellOctreeGpu::ConcatenateSdf: null octree pointer");
+        }
+        SerializedOctree s = SerializeSdf(*octrees[k]);
+
+        // Stamp bases into this octree's config BEFORE appending.
+        s.config.nodeArrayBase  = static_cast<int32_t>(nodeBase);
+        s.config.brickArrayBase = static_cast<int32_t>(brickBase);
+        setSdfBrickArrayBase(s.config, sdfBase);
+
+        cat.configs[k]     = s.config;
+        cat.nodeCounts[k]  = s.nodeCount;
+        cat.brickCounts[k] = s.brickCount;
+
+        cat.nodes.insert(cat.nodes.end(),   s.nodes.begin(),   s.nodes.end());
+        cat.bricks.insert(cat.bricks.end(), s.bricks.begin(),  s.bricks.end());
+        cat.sdfBricks.insert(cat.sdfBricks.end(), s.sdfBricks.begin(), s.sdfBricks.end());
+        cat.brickGridLookup.insert(cat.brickGridLookup.end(),
+                                   s.brickGridLookup.begin(), s.brickGridLookup.end());
+
+        if (cat.materials.empty()) {
+            cat.materials = std::move(s.materials);
+        }
+
+        nodeBase  += s.nodeCount;
+        brickBase += s.brickCount;
+        // sdfBase advances by brickCount * kVoxelsPerBrick (float elements per SDF brick)
+        sdfBase   += s.brickCount * SerializedOctree::kVoxelsPerBrick;
     }
 
     return cat;

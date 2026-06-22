@@ -103,6 +103,25 @@ endif()
 gtest_discover_tests(test_sdf_recipes)
 
 # ===========================================================================
+# SoA-SDF Serialize Tests  (Inc2 M2 — SoA-SDF brick + grid-lookup + descriptor)
+# ===========================================================================
+add_executable(test_soa_sdf_serialize test_soa_sdf_serialize.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_soa_sdf_serialize PRIVATE
+        GTest::gtest_main SVO GaiaVoxelWorld VoxelComponents VoxelData)
+else()
+    target_link_libraries(test_soa_sdf_serialize PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_soa_sdf_serialize PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_soa_sdf_serialize POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_soa_sdf_serialize>
+        COMMENT "Copying TBB DLL for test_soa_sdf_serialize")
+endif()
+gtest_discover_tests(test_soa_sdf_serialize)
+
+# ===========================================================================
 # SDF Bake Tests  (Inc2 M1 — recipe → narrow-band SDF voxels + body octree)
 # ===========================================================================
 add_executable(test_sdf_bake test_sdf_bake.cpp)
