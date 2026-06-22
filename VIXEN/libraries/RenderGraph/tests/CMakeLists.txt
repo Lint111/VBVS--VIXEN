@@ -633,6 +633,22 @@ else()
 endif()
 
 # ===========================================================================
+# FrameSyncNode Timeline Semaphore + frameBase Tests (auto-sync P5a M1)
+# ===========================================================================
+# Pure CPU test of NextFrameBase arithmetic (no Vulkan device required).
+# Validates: monotonic advance, no ring collision, zero-stride no-op.
+
+if(TARGET GTest::gtest_main)
+    add_executable(test_frame_sync_node_timeline test_frame_sync_node_timeline.cpp)
+    target_link_libraries(test_frame_sync_node_timeline PRIVATE GTest::gtest_main RenderGraph)
+    set_target_properties(test_frame_sync_node_timeline PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    gtest_discover_tests(test_frame_sync_node_timeline)
+    message(STATUS "✓ test_frame_sync_node_timeline configured (auto-sync P5a M1)")
+else()
+    message(STATUS "⊗ test_frame_sync_node_timeline skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
 # PassGroupSchedule Tests (auto-sync P4 M1)
 # ===========================================================================
 # Validates BuildPassGroupSchedule node-local barrier baking (pure CPU, no GPU)
