@@ -54,8 +54,9 @@ bool traceProceduralBody(uint recipeId, vec3 center, vec3 params, vec3 ro, vec3 
 
     float t = tNear;
     const int   MAX_STEPS = 128;
-    const float EPS       = 1e-3;
-    float stepScale = (recipeId == RECIPE_DISPLACED_SPHERE) ? 0.7 : 1.0;
+    const float EPS       = 1e-3;  // hit threshold (independent of gradient h in sdfGradient, which coincidentally equals EPS)
+    // Step factor = 1/Lipschitz (see SdfRecipes.h): L = 1 + maxDisp*freq*sqrt(3).
+    float stepScale = 1.0 / (1.0 + maxDisp * params.z * 1.7320508);
     for (int i = 0; i < MAX_STEPS; ++i) {
         vec3  p = ro + rd * t;
         float d = evalSdf(recipeId, p, center, params);

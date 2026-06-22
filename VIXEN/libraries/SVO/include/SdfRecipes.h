@@ -88,8 +88,11 @@ inline TraceHit traceProcedural(uint32_t recipeId, const glm::vec3& ro, const gl
 
     float t = tNear;
     const int   MAX_STEPS  = 128;
-    const float EPS        = 1e-3f;
-    const float stepScale  = (recipeId == RECIPE_DISPLACED_SPHERE) ? 0.7f : 1.0f; // Lipschitz guard
+    const float EPS        = 1e-3f;  // hit threshold (independent of gradient h in sdfGradient, which coincidentally equals EPS)
+    // Step factor = 1/Lipschitz so the sphere-trace never overshoots the iso-surface.
+    // L = 1 (radial term) + maxDisp*freq*sqrt(3) (displacement-gradient bound); maxDisp=0
+    // gives 1.0 for the plain sphere, self-adjusting for any displaced params (no magic).
+    const float stepScale  = 1.0f / (1.0f + maxDisp * rp.displaceFreq * 1.7320508f);
     for (int i = 0; i < MAX_STEPS; ++i) {
         const glm::vec3 p = ro + rd * t;
         const float d = evalSdf(recipeId, p, center, rp);

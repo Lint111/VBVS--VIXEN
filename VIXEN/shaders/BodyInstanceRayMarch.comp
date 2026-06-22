@@ -574,7 +574,6 @@ void main() {
     for (int instIdx = 0; instIdx < numInstances; ++instIdx) {
 
         BodyInstance inst = bodyInstances[instIdx];
-        uint oi = clamp(inst.octreeIndex, 0u, 2u);
 
         // --- Procedural provider: analytic SDF sphere-trace (no octree) ---
         if (inst.providerKind == PROVIDER_PROCEDURAL) {
@@ -595,6 +594,8 @@ void main() {
             }
             continue;  // procedural body fully handled; skip the ESVO path
         }
+
+        uint oi = clamp(inst.octreeIndex, 0u, 2u);
 
         // Set globals used by fetchESVONode (via g_esvoNodeBase in ESVOTraversal.glsl)
         // and by marchBrickInstanced (via g_brickArrayBase below).

@@ -214,7 +214,7 @@ struct ConcatenatedOctrees {
 };
 
 /**
- * Per-instance GPU record (std430-friendly, 32 bytes). The host-side BodyInstance
+ * Per-instance GPU record (std430-friendly, 64 bytes). The host-side BodyInstance
  * lives in the outer repo (vixen/render/scene_instances.h) and is intentionally
  * NOT included here — Task 5b / main bridges the two. octreeIndex selects which
  * concatenated octree (and thus which OctreeConfig) this instance draws.

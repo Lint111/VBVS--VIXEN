@@ -61,3 +61,15 @@ TEST(SdfRecipes, DisplacedSphereIsDeterministicAndBounded) {
     const float plain = evalSdf(RECIPE_SPHERE, p, c, rp);
     EXPECT_LE(std::abs(a - plain), rp.displaceAmp + kEps);            // bounded by amplitude
 }
+
+// Conservative Lipschitz step must land the trace ON the iso-surface at the LIVE
+// displaced-planet params (amp=2, freq=0.5, r=24) — guards against tunneling/speckle.
+TEST(SdfRecipes, DisplacedTraceLandsOnIsoSurfaceAtLiveParams) {
+    const glm::vec3 c(0.0f, 0.0f, 50.0f);
+    const RecipeParams rp{24.0f, 2.0f, 0.5f, 0.0f, 0.0f, 0.0f};
+    const TraceHit h = traceProcedural(RECIPE_DISPLACED_SPHERE, glm::vec3(0.0f),
+                                       glm::vec3(0.0f, 0.0f, 1.0f), c, rp);
+    ASSERT_TRUE(h.hit);
+    EXPECT_NEAR(evalSdf(RECIPE_DISPLACED_SPHERE, h.point, c, rp), 0.0f, 5e-3f);  // on surface
+    EXPECT_NEAR(glm::length(h.normal), 1.0f, 1e-3f);                            // unit normal, no NaN
+}
