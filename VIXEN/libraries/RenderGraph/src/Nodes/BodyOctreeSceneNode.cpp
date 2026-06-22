@@ -263,12 +263,17 @@ void BodyOctreeSceneNode::EnsureOctreesBuilt() {
         NODE_LOG_INFO("[BodyOctreeSceneNode] VIXEN_STORED_SDF_DEMO: baking 3 Stored-SDF octrees");
 
         // Grid: n=64 → bricksPerAxis=8 (2^(log2(64)-brickDepth=3) = 2^3 = 8).
-        // center=(32,32,32) — sphere grid-radius 32 fills [0,64] exactly.
-        // bandVoxels=2.5 → narrow-band SDF voxels; brickDepth=3 (8^3 bricks).
+        // center=(32,32,32); radius 26 leaves a 6-voxel margin to the [0,64] walls.
+        // bandVoxels=2.5 → HONEST narrow-band SDF (interior + far-exterior bricks are
+        // unallocated). The renderer must traverse this sparse field correctly — see the
+        // "ESVO-leaf-hit traversal" plan in the Inc2 design/plan docs (the next step).
+        // (Live gate found the standalone marchStoredSdf flat sphere-trace mishandles the
+        //  sparse edges; the fix is to reuse the ESVO traversal with an SDF leaf-hit, NOT
+        //  to densify the data.)
         constexpr int   kSdfN          = 64;
         constexpr float kSdfCenter     = 32.0f;
-        constexpr float kSdfRadius     = 32.0f;  // sphere touches [0,64] walls
-        constexpr float kSdfBand       = 2.5f;
+        constexpr float kSdfRadius     = 26.0f;  // 6-voxel margin to the [0,64] walls
+        constexpr float kSdfBand       = 2.5f;   // narrow band (honest sparse data)
         constexpr int   kSdfBrickDepth = 3;
 
         const glm::vec3 center(kSdfCenter, kSdfCenter, kSdfCenter);

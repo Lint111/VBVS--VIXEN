@@ -146,7 +146,7 @@ bool marchStoredSdf(int octreeIdx, vec3 ro, vec3 rd,
 
     float t = max(tNear, 0.0);
 
-    const int   MAX_STEPS = 128;
+    const int   MAX_STEPS = 256;
     const float EPS       = 0.01;  // hit threshold in voxel units
     const float MAX_T     = tFar;
 
@@ -159,8 +159,14 @@ bool marchStoredSdf(int octreeIdx, vec3 ro, vec3 rd,
             hitT      = t;
             return true;
         }
-        // Sphere-trace step: advance by the SDF value (clamped to a minimum to avoid stalling).
-        t += max(d, 0.1);
+        // Sphere-trace with a provably non-overshooting, resolution-INDEPENDENT step.
+        // The field is trilinear over UNIT-spaced voxels, so its gradient is bounded by the
+        // trilinear Lipschitz constant |grad f| <= sqrt(3). The true distance to the surface is
+        // therefore >= d/sqrt(3), so stepping by d/sqrt(3) (factor 0.5773503, dimensionless)
+        // CANNOT pass the iso-surface — correct at ANY grid size or voxel density. The floor
+        // is EPS (a voxel fraction → resolution-relative), just enough to prevent stalls; a
+        // larger floor (the old 0.1) steps tangentially past grazing surfaces → POV holes.
+        t += max(d * 0.5773503, EPS);
     }
     return false;
 }
