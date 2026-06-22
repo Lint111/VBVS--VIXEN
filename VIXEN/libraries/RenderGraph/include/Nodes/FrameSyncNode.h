@@ -43,6 +43,16 @@ public:
  *  5. Signal fence at queue submit
  *  6. Advance CURRENT_FRAME_INDEX (wraps at MAX_FRAMES_IN_FLIGHT)
  */
+/// @brief Advance a monotonic timeline base by the per-frame stride.
+/// Pure arithmetic; testable without a device. Used in ExecuteImpl to advance frameBase_.
+/// @param prev  The base value from the previous frame.
+/// @param stride  Number of timeline values consumed per frame (schedule.timelineValuesPerFrame).
+///               0 when no edges are baked yet (no-op; base unchanged).
+/// @return The base for the current frame: prev + stride.
+constexpr uint64_t NextFrameBase(uint64_t prev, uint64_t stride) {
+    return prev + stride;
+}
+
 class FrameSyncNode : public TypedNode<FrameSyncNodeConfig> {
 public:
 
@@ -85,6 +95,8 @@ private:
     std::vector<VkSemaphore> imageAvailableSemaphores;  // Size = MAX_FRAMES_IN_FLIGHT (per-flight acquisition)
     // FR-3: renderComplete semaphores + present fences (per-IMAGE) now owned by SwapChainNode.
     uint32_t currentFrameIndex = 0;              // Current frame-in-flight index
+    VkSemaphore timelineSemaphore_ = VK_NULL_HANDLE;  // Per-loop timeline semaphore (P5a M1); persistent across recompile
+    uint64_t frameBase_ = 0;                     // Monotonic base offset per frame; never reset on recompile
     bool isCreated = false;
 };
 
