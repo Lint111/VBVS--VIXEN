@@ -12,6 +12,7 @@
 #include "Core/NodeLogging.h"
 #include <stdexcept>
 #include <chrono>
+#include <set>
 
 
 namespace Vixen::RenderGraph {
@@ -259,14 +260,21 @@ void ComputeDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
     acquireWait.stageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
     waits.push_back(acquireWait);
 
-    // Timeline SIGNALS (compute is the producer): one per baked signalEdge
+    // Timeline SIGNALS (compute is the producer): a group signals its OWN completion value once.
+    // All of a producer's signalEdges carry the same timelineOffset (== the producer's groupId,
+    // see FrameSyncScheduler.cpp), so distinct (offset+frameBase) values dedupe to one. A timeline
+    // value must be signalled at most once per submit, else VUID-VkSubmitInfo2-semaphore-03882.
     if (timelineSem != VK_NULL_HANDLE) {
         const FrameSyncSchedule& sched = GetOwningGraph()->GetFrameSyncSchedule();
         if (const SubmitGroup* grp = FindGroupForNode(sched, this)) {
+            std::set<uint64_t> distinctSignalValues;
             for (uint32_t idx : grp->signalEdges) {
+                distinctSignalValues.insert(sched.edges[idx].timelineOffset + frameBase);
+            }
+            for (uint64_t value : distinctSignalValues) {
                 VkSemaphoreSubmitInfo tsig{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
                 tsig.semaphore = timelineSem;
-                tsig.value     = sched.edges[idx].timelineOffset + frameBase;
+                tsig.value     = value;
                 tsig.stageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
                 signals.push_back(tsig);
             }
