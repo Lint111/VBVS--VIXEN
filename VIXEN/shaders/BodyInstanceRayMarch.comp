@@ -57,6 +57,17 @@ layout(std430, binding = 3) readonly buffer MaterialBuffer {
     Material materials[];
 };
 
+// ============================================================================
+// STORED-SDF BUFFERS (Inc2 M3 — bindings 11 and 12)
+// ============================================================================
+// Bound as placeholders (1-byte SSBOs) for binary/Procedural bodies. The shader
+// only accesses these when OctreeConfig.formatId == FORMAT_STORED_SDF (1u).
+layout(std430, binding = 11) readonly buffer SdfBrickBuffer  { float sdfData[]; };
+layout(std430, binding = 12) readonly buffer BrickLookupBuffer { uint  brickLookup[]; };
+
+#define FORMAT_BINARY     0u
+#define FORMAT_STORED_SDF 1u
+
 layout(std430, binding = 4) buffer RayTraceBuffer {
     uint traceWriteIndex;
     uint traceCapacity;
@@ -65,13 +76,25 @@ layout(std430, binding = 4) buffer RayTraceBuffer {
 };
 
 // ============================================================================
-// OCTREE CONFIG ARRAY (binding 5, std140, 256 B / element, 3 elements)
+// OCTREE CONFIG ARRAY (binding 5, std140, 432 B / element, 3 elements)
 // ============================================================================
 // Struct layout must be byte-for-byte identical to the C++ OctreeConfig
-// (std140 256-byte padded struct).  The two new ints (nodeArrayBase,
-// brickArrayBase) occupy the first 8 bytes of what was formerly _padding4[16].
+// (std140 432-byte padded struct, SPIR-V ArrayStride 432).
 //
-// Byte offsets:
+// IMPORTANT std140 scalar-array padding: in a std140 UBO, each element of a
+// float/int/uint array is padded to a vec4 stride (16 bytes), NOT 4 bytes.
+// So float _padding4_tail[14] occupies 14*16=224 bytes, making the whole
+// struct 200+224=424 bytes, rounded to 432 (the ArrayStride in the SPIR-V).
+// The C++ OctreeConfig has float _padding4[58] (4-byte stride) = 232 bytes,
+// totaling exactly 432 bytes. Both land configs[k] at byte k*432.
+//
+// Inc2 M3: bytes 200/204/208 carry the Stored-SDF descriptor (formatId,
+// bricksPerAxisSdf, sdfBrickArrayBase) reusing the first 12 of _padding4[58]
+// on the CPU. The GLSL replaces the first 3 pad-tail floats with named uints.
+// After the 3 uints (12 bytes at 200-211), the tail needs 13 floats at std140
+// 16-byte strides: 13*16=208 bytes ending at 420, struct rounds to 432. ✓
+//
+// Byte offsets (GLSL std140 layout, confirmed from SPIR-V ArrayStride 432):
 //   0   esvoMaxScale        int
 //   4   userMaxLevels       int
 //   8   brickDepthLevels    int
@@ -80,13 +103,16 @@ layout(std430, binding = 4) buffer RayTraceBuffer {
 //   20  brickESVOScale      int
 //   24  bricksPerAxis       int
 //   28  _padding1           int
-//   32  gridMin             vec3  (+4 B pad → offset 44)
-//   48  gridMax             vec3  (+4 B pad → offset 60)
-//   64  localToWorld        mat4  (64 B)
-//   128 worldToLocal        mat4  (64 B)
-//   192 nodeArrayBase       int   ← first 2 ints of former _padding4[16]
+//   32  gridMin             vec3  (+4 B pad → 48)
+//   48  gridMax             vec3  (+4 B pad → 64)
+//   64  localToWorld        mat4  (64 B → 128)
+//   128 worldToLocal        mat4  (64 B → 192)
+//   192 nodeArrayBase       int
 //   196 brickArrayBase      int
-//   200 _padding4_tail      float[14]  (56 B, completes to 256 B)
+//   200 formatId            uint  ← Inc2 M2: 0=FORMAT_BINARY, 1=FORMAT_STORED_SDF
+//   204 bricksPerAxisSdf    uint  ← Inc2 M2: brick-grid cube side length
+//   208 sdfBrickArrayBase   uint  ← Inc2 M2: float-element offset into sdfData[]
+//   212 _padding4_tail[13]  float (13*16=208 B → 420, rounded to 432)
 // ============================================================================
 struct OctreeConfig {
     int  esvoMaxScale;
@@ -103,9 +129,12 @@ struct OctreeConfig {
     float _padding3;
     mat4 localToWorld;
     mat4 worldToLocal;
-    int  nodeArrayBase;   // byte 192: base index into esvoNodes[]
-    int  brickArrayBase;  // byte 196: base index into brickData[] (brick units)
-    float _padding4_tail[14];  // bytes 200-255 (14 × 4 = 56 B)
+    int  nodeArrayBase;      // byte 192: base index into esvoNodes[]
+    int  brickArrayBase;     // byte 196: base index into brickData[] (brick units)
+    uint formatId;           // byte 200: 0=FORMAT_BINARY, 1=FORMAT_STORED_SDF (Inc2 M2)
+    uint bricksPerAxisSdf;   // byte 204: brick-grid cube side length (Inc2 M2)
+    uint sdfBrickArrayBase;  // byte 208: float-element offset into sdfData[] (Inc2 M2)
+    float _padding4_tail[13];  // bytes 212..431 (13*16=208 B under std140; struct→432 B)
 };
 
 layout(std140, binding = 5) uniform OctreeConfigsUBO {
@@ -208,6 +237,7 @@ int g_brickArrayBase = 0;   // configs[g_octreeIdx].brickArrayBase
 #include "ESVOTraversal.glsl"
 #include "Lighting.glsl"
 #include "SdfRecipes.glsl"
+#include "StoredSdf.glsl"    // Inc2 M4: trilinear SDF fetch + sphere-trace handler
 
 // Provider kinds (mirror ShellOctreeGpu.h ProviderKind + SdfRecipes.h).
 #define PROVIDER_STORED     0u
@@ -596,6 +626,30 @@ void main() {
         }
 
         uint oi = clamp(inst.octreeIndex, 0u, 2u);
+
+        // --- Stored-SDF provider: trilinear iso-surface march (Inc2 M4) ---
+        // Only reached when providerKind == PROVIDER_STORED (0u) AND formatId == FORMAT_STORED_SDF (1u).
+        // Binary bodies have formatId == FORMAT_BINARY (0u) and fall through to the ESVO path below.
+        if (configs[oi].formatId == FORMAT_STORED_SDF) {
+            // De-instance the world ray into octree grid-local space.
+            // The SDF is baked in grid units; instOrigin/instDir already scaled.
+            float invScale = 1.0 / inst.renderScale;
+            vec3  sdfOrigin = (rayOrigin - inst.worldPos) * invScale;
+            vec3  sdfDir    = rayDir * invScale;
+            vec3  sdfNormal;
+            float sdfT;
+            if (marchStoredSdf(int(oi), sdfOrigin, sdfDir, sdfNormal, sdfT)) {
+                if (sdfT < bestT) {
+                    bestT          = sdfT;
+                    bestColor      = inst.color;
+                    bestNormal     = sdfNormal;
+                    bestBrickIndex = 0u;
+                    bestVoxelIdx   = 0u;
+                    anyHit         = true;
+                }
+            }
+            continue;  // Stored-SDF body fully handled; skip ESVO path
+        }
 
         // Set globals used by fetchESVONode (via g_esvoNodeBase in ESVOTraversal.glsl)
         // and by marchBrickInstanced (via g_brickArrayBase below).
