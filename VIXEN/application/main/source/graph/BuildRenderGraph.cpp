@@ -1150,14 +1150,25 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_SEMAPHORE, uiCompositeNode, UIRenderNodeConfig::TIMELINE_SEMAPHORE_IN)
          .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_FRAME_BASE, uiCompositeNode, UIRenderNodeConfig::TIMELINE_FRAME_BASE_IN);
 
-    // P5b M3: the compute→UI ordering is now carried SOLELY by the baked timeline edge. UI declares
-    // ColorAttachmentWriteGeneral on its swapchain access (UIRenderNodeConfig) and compute declares
-    // ComputeStorageWrite, so the scheduler bakes a compute(GENERAL)→UI(GENERAL) hazard edge: UI gets
-    // a waitEdge and waits the compute's timeline value (M1 consumption), and the timeline semaphore
-    // provides the cross-submit memory visibility. Both layouts are GENERAL ⇒ no transition. The
-    // former binary RENDER_COMPLETE_SEMAPHORE→COMPOSITE_WAIT_SEMAPHORE handoff is therefore removed
-    // (and the binary compositeWait wait dropped from UIRenderNode's submit). WSI acquire (compute
-    // waits imageAvailable) and present (UI signals its uiComplete) stay binary.
+    // P5b M3: the compute→UI ordering is carried by the baked timeline edge for GPU SYNC (memory
+    // visibility), but the graph still needs the compute→UI TOPOLOGY edge so the execution order
+    // (and hence the timeline edge the scheduler bakes from it) is compute-before-UI. The
+    // FrameSyncScheduler derives edge DIRECTION from groupId order (== execution order); without this
+    // dependency the topological sort places UI before compute, so it bakes the edge BACKWARDS
+    // (UI→compute), tags the COMPUTE group as the swapchain present-signal, and leaves the presented
+    // image in GENERAL (compute runs last w/ leaveImageInGeneral) — VUID-...-01430 — while the UI draw
+    // sees the image still UNDEFINED — VUID-vkCmdDraw-None-09600. So we keep this connection purely as
+    // the ORDERING edge (its documented secondary purpose, UIRenderNodeConfig SWAPCHAIN/COMPOSITE_WAIT):
+    // the binary semaphore it carries is INERT — compute no longer SIGNALS renderComplete in composite
+    // (ComputeDispatchNode gates it to !leaveImageInGeneral) and UIRenderNode no longer WAITS
+    // compositeWait (the M3 binary handoff was dropped from its submit). With the edge in the right
+    // direction the scheduler bakes the single compute(GENERAL)→UI(GENERAL) timeline edge (UI gets the
+    // waitEdge + waits the compute's timeline value, the timeline semaphore carries cross-submit memory
+    // visibility, both layouts GENERAL ⇒ no transition), tags the UI group as present (its render pass
+    // owns GENERAL→PRESENT_SRC), and the timeline alone — not a binary handoff — orders compute→UI.
+    // WSI acquire (compute waits imageAvailable) and present (UI signals its uiComplete) stay binary.
+    batch.Connect(computeDispatch, ComputeDispatchNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+                  uiCompositeNode, UIRenderNodeConfig::COMPOSITE_WAIT_SEMAPHORE);
 
     // Atomically register all connections
     size_t connectionCount = batch.GetConnectionCount();
