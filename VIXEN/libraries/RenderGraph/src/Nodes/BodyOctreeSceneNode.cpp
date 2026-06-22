@@ -6,6 +6,7 @@
 #include "VulkanDevice.h"
 
 #include <algorithm>
+#include <cstdlib>   // std::getenv
 #include <cstring>
 #include <stdexcept>
 #include <string>
@@ -255,9 +256,78 @@ void BodyOctreeSceneNode::EnsureOctreesBuilt() {
         return;
     }
 
-    // Build one owning shell octree per kind. ShellOctree is move-only (unique_ptr
-    // members) and OWNS its world/registry/octree, so the cached vector keeps them
-    // alive for the node's lifetime — required because Serialize() reads the world.
+    // VIXEN_STORED_SDF_DEMO: bake the 3 body kinds as Stored-SDF octrees so the
+    // Stored-SDF shader path (formatId == STORED_SDF, bindings 11/12) can be A/B'd
+    // against the Procedural path (default when env var is unset).
+    if (std::getenv("VIXEN_STORED_SDF_DEMO")) {
+        NODE_LOG_INFO("[BodyOctreeSceneNode] VIXEN_STORED_SDF_DEMO: baking 3 Stored-SDF octrees");
+
+        // Grid: n=64 → bricksPerAxis=8 (2^(log2(64)-brickDepth=3) = 2^3 = 8).
+        // center=(32,32,32) — sphere grid-radius 32 fills [0,64] exactly.
+        // bandVoxels=2.5 → narrow-band SDF voxels; brickDepth=3 (8^3 bricks).
+        constexpr int   kSdfN          = 64;
+        constexpr float kSdfCenter     = 32.0f;
+        constexpr float kSdfRadius     = 32.0f;  // sphere touches [0,64] walls
+        constexpr float kSdfBand       = 2.5f;
+        constexpr int   kSdfBrickDepth = 3;
+
+        const glm::vec3 center(kSdfCenter, kSdfCenter, kSdfCenter);
+
+        // Bake 3 Stored-SDF bodies:
+        //   kind 0 — smooth sphere (left,   materialId=1 red)
+        //   kind 1 — displaced sphere (centre, materialId=2 green; amp≈2.7, freq≈0.375)
+        //   kind 2 — smooth sphere (right,  materialId=3 white)
+        //
+        // amp=2.7 ≈ 2.7 grid-voxels of displacement; freq=0.375 gives ≈3 sinusoidal
+        // cycles across the [0,64] grid. The displaced body is visibly distinct from
+        // the plain spheres without blowing out the narrow-band.
+        struct SdfKind {
+            uint32_t recipeId;
+            float    displaceAmp;
+            float    displaceFreq;
+        };
+        constexpr SdfKind kSdfKinds[kKindCount] = {
+            { Vixen::SVO::RECIPE_SPHERE,           0.0f, 0.0f   },  // kind 0: smooth
+            { Vixen::SVO::RECIPE_DISPLACED_SPHERE, 2.7f, 0.375f },  // kind 1: displaced
+            { Vixen::SVO::RECIPE_SPHERE,           0.0f, 0.0f   },  // kind 2: smooth
+        };
+
+        std::vector<Vixen::SVO::SdfBodyOctree> sdfOctrees;
+        sdfOctrees.reserve(kKindCount);
+
+        for (uint32_t k = 0; k < kKindCount; ++k) {
+            const SdfKind& sk = kSdfKinds[k];
+            Vixen::SVO::RecipeParams rp{};
+            rp.radius       = kSdfRadius;
+            rp.displaceAmp  = sk.displaceAmp;
+            rp.displaceFreq = sk.displaceFreq;
+
+            Vixen::SVO::SdfBakeResult baked =
+                Vixen::SVO::BakeRecipeToSdfWorld(sk.recipeId, center, rp, kSdfN, kSdfBand);
+            sdfOctrees.push_back(
+                Vixen::SVO::BuildSdfBodyOctree(baked, kSdfBrickDepth));
+        }
+
+        std::vector<const Vixen::SVO::SdfBodyOctree*> sdfPtrs;
+        sdfPtrs.reserve(sdfOctrees.size());
+        for (const Vixen::SVO::SdfBodyOctree& s : sdfOctrees) {
+            sdfPtrs.push_back(&s);
+        }
+
+        concatenated_ = Vixen::SVO::ConcatenateSdf(sdfPtrs);
+        octreesBuilt_ = true;
+
+        NODE_LOG_INFO("[BodyOctreeSceneNode] Stored-SDF: built " +
+                      std::to_string(concatenated_.count) + " SDF octrees (sdf=" +
+                      std::to_string(concatenated_.sdfBricks.size()) + "B, lookup=" +
+                      std::to_string(concatenated_.brickGridLookup.size()) + "B)");
+        return;
+    }
+
+    // Default (binary shell octrees): Build one owning shell octree per kind.
+    // ShellOctree is move-only (unique_ptr members) and OWNS its world/registry/octree,
+    // so the cached vector keeps them alive for the node's lifetime — required because
+    // Serialize() reads the world.
     shellOctrees_.clear();
     shellOctrees_.reserve(kKindCount);
     for (uint32_t k = 0; k < kKindCount; ++k) {

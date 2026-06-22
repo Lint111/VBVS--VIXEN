@@ -553,38 +553,86 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // near-white per instance (slight warm/neutral/cool bias) so each stays bright and the three are
     // distinguishable by both base material and tint.
     {
-        // Procedural SDF bodies (Increment 1): true smooth spheres, no octree.
-        // worldPos = world centre; recipeParams = (radius, displaceAmp, displaceFreq).
-        // Radius 24 matches the prior Stored shells' on-screen size (kHalf=24), so the
-        // default camera frames all three. providerKind=1 selects the Procedural path.
-        constexpr float kRadius = 24.0f;
-        auto placeProcedural = [&](float cx, float cy, float cz,
+        if (std::getenv("VIXEN_STORED_SDF_DEMO")) {
+            // VIXEN_STORED_SDF_DEMO — Stored-SDF bodies (Increment 2, M5 Task 10).
+            // EnsureOctreesBuilt has baked 3 SdfBodyOctrees (kinds 0/1/2) via ConcatenateSdf,
+            // setting configs[k].formatId = STORED_SDF and populating the sdfBricks /
+            // brickGridLookup buffers (bindings 11/12). Instances use providerKind=0 (STORED)
+            // and octreeIndex=0/1/2 to select the per-kind OctreeConfig.
+            //
+            // Transform convention (binary-shell / marchStoredSdf AABB):
+            //   renderScale = 0.75       — scales grid-voxel [0,64] into world units
+            //   worldPos    = center - 32*0.75 = center - 24
+            //     → de-instance transform: instOrigin = (rayOrigin - worldPos) / renderScale
+            //       so a ray at world center maps to grid (32,32,32) = [0,64] AABB center.
+            //
+            // Body centers in world space (same spread as the Procedural seed so the
+            // default camera (X=64, Z=300, looking -Z) frames all three):
+            //   left   center = (14, 64, 64)  → worldPos = (14-24, 64-24, 64-24) = (-10, 40, 40)
+            //   centre center = (64, 64, 64)  → worldPos = (64-24, 64-24, 64-24) = ( 40, 40, 40)
+            //   right  center = (114,64, 64)  → worldPos = (114-24,64-24, 64-24) = ( 90, 40, 40)
+            constexpr float kRenderScale = 0.75f;
+            constexpr float kHalf        = 32.0f * kRenderScale;  // = 24.0f
+
+            auto placeStored = [&](float cx, float cy, float cz,
                                    float r, float g, float b,
-                                   uint32_t recipeId, float amp, float freq) {
-            Vixen::SVO::BodyInstanceGpu inst{};
-            inst.worldPos[0] = cx;
-            inst.worldPos[1] = cy;
-            inst.worldPos[2] = cz;
-            inst.renderScale = 1.0f;            // unused by Procedural
-            inst.color[0]    = r;
-            inst.color[1]    = g;
-            inst.color[2]    = b;
-            inst.octreeIndex = 0u;              // unused by Procedural
-            inst.providerKind = 1u;             // PROVIDER_PROCEDURAL
-            inst.recipeId     = recipeId;       // 0 = sphere, 1 = displaced sphere
-            inst.recipeParams[0] = kRadius;
-            inst.recipeParams[1] = amp;
-            inst.recipeParams[2] = freq;
-            return inst;
-        };
-        std::vector<Vixen::SVO::BodyInstanceGpu> defaultBodies = {
-            placeProcedural( 14.0f, 64.0f, 64.0f, 1.00f, 0.95f, 0.85f, 0u, 0.0f, 0.0f),  // left   — smooth star/sphere
-            placeProcedural( 64.0f, 64.0f, 64.0f, 0.55f, 0.75f, 1.00f, 1u, 2.0f, 0.5f),  // centre — displaced planet
-            placeProcedural(114.0f, 64.0f, 64.0f, 0.85f, 0.90f, 1.00f, 0u, 0.0f, 0.0f),  // right  — smooth sphere
-        };
-        if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))) {
-            bodyScene->SetInstances(std::move(defaultBodies));
-            mainLogger->Info("[BuildRenderGraph] Seeded 3 Procedural SDF body instances (standalone fallback)");
+                                   uint32_t octreeIdx) {
+                Vixen::SVO::BodyInstanceGpu inst{};
+                inst.worldPos[0]  = cx - kHalf;  // worldPos = center - 24 per axis
+                inst.worldPos[1]  = cy - kHalf;
+                inst.worldPos[2]  = cz - kHalf;
+                inst.renderScale  = kRenderScale;
+                inst.color[0]     = r;
+                inst.color[1]     = g;
+                inst.color[2]     = b;
+                inst.octreeIndex  = octreeIdx;    // selects configs[k] (incl. formatId)
+                inst.providerKind = 0u;           // PROVIDER_STORED: octree/Stored path
+                inst.recipeId     = 0u;           // unused by Stored path
+                return inst;
+            };
+            std::vector<Vixen::SVO::BodyInstanceGpu> storedBodies = {
+                placeStored( 14.0f, 64.0f, 64.0f, 1.00f, 0.95f, 0.85f, 0u),  // left   — smooth sphere   (kind 0, red)
+                placeStored( 64.0f, 64.0f, 64.0f, 0.55f, 0.75f, 1.00f, 1u),  // centre — displaced sphere (kind 1, green)
+                placeStored(114.0f, 64.0f, 64.0f, 0.85f, 0.90f, 1.00f, 2u),  // right  — smooth sphere   (kind 2, white)
+            };
+            if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))) {
+                bodyScene->SetInstances(std::move(storedBodies));
+                mainLogger->Info("[BuildRenderGraph] VIXEN_STORED_SDF_DEMO: seeded 3 Stored-SDF body instances");
+            }
+        } else {
+            // Default — Procedural SDF bodies (Increment 1): true smooth spheres, no octree.
+            // worldPos = world centre; recipeParams = (radius, displaceAmp, displaceFreq).
+            // Radius 24 matches the prior Stored shells' on-screen size (kHalf=24), so the
+            // default camera frames all three. providerKind=1 selects the Procedural path.
+            constexpr float kRadius = 24.0f;
+            auto placeProcedural = [&](float cx, float cy, float cz,
+                                       float r, float g, float b,
+                                       uint32_t recipeId, float amp, float freq) {
+                Vixen::SVO::BodyInstanceGpu inst{};
+                inst.worldPos[0] = cx;
+                inst.worldPos[1] = cy;
+                inst.worldPos[2] = cz;
+                inst.renderScale = 1.0f;            // unused by Procedural
+                inst.color[0]    = r;
+                inst.color[1]    = g;
+                inst.color[2]    = b;
+                inst.octreeIndex = 0u;              // unused by Procedural
+                inst.providerKind = 1u;             // PROVIDER_PROCEDURAL
+                inst.recipeId     = recipeId;       // 0 = sphere, 1 = displaced sphere
+                inst.recipeParams[0] = kRadius;
+                inst.recipeParams[1] = amp;
+                inst.recipeParams[2] = freq;
+                return inst;
+            };
+            std::vector<Vixen::SVO::BodyInstanceGpu> defaultBodies = {
+                placeProcedural( 14.0f, 64.0f, 64.0f, 1.00f, 0.95f, 0.85f, 0u, 0.0f, 0.0f),  // left   — smooth star/sphere
+                placeProcedural( 64.0f, 64.0f, 64.0f, 0.55f, 0.75f, 1.00f, 1u, 2.0f, 0.5f),  // centre — displaced planet
+                placeProcedural(114.0f, 64.0f, 64.0f, 0.85f, 0.90f, 1.00f, 0u, 0.0f, 0.0f),  // right  — smooth sphere
+            };
+            if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))) {
+                bodyScene->SetInstances(std::move(defaultBodies));
+                mainLogger->Info("[BuildRenderGraph] Seeded 3 Procedural SDF body instances (standalone fallback)");
+            }
         }
     }
 
