@@ -220,12 +220,21 @@ struct ConcatenatedOctrees {
  * concatenated octree (and thus which OctreeConfig) this instance draws.
  */
 struct BodyInstanceGpu {
-    float worldPos[3];      // 12 bytes
-    float renderScale;      // 4 bytes
-    float color[3];         // 12 bytes
-    uint32_t octreeIndex;   // 4 bytes
+    float worldPos[3];       // 0   : body centre (world space)
+    float renderScale;       // 12  : Stored: grid scale; Procedural: unused
+    float color[3];          // 16  : per-instance tint
+    uint32_t octreeIndex;    // 28  : Stored: index into configs[]; Procedural: unused
+    uint32_t providerKind;   // 32  : 0 = Stored/ESVO, 1 = Procedural
+    uint32_t recipeId;       // 36  : Procedural recipe id (0 = sphere, 1 = displaced sphere)
+    float recipeParams[6];   // 40..63 : params.xyz = (radius, displaceAmp, displaceFreq); 3 spare
 };
-static_assert(sizeof(BodyInstanceGpu) == 32, "BodyInstanceGpu must be 32 bytes (std430 record)");
+// 64-byte std430 record. recipeParams[6] is valid because binding 10 is a std430
+// SSBO (float[] stride = 4). providerKind defaults to 0 (Stored) under value-init,
+// so a zeroed/legacy record renders via the unchanged ESVO path.
+static_assert(sizeof(BodyInstanceGpu) == 64, "BodyInstanceGpu must be 64 bytes (std430 record)");
+static_assert(offsetof(BodyInstanceGpu, providerKind) == 32, "providerKind @32");
+static_assert(offsetof(BodyInstanceGpu, recipeId)     == 36, "recipeId @36");
+static_assert(offsetof(BodyInstanceGpu, recipeParams) == 40, "recipeParams @40");
 
 // ===========================================================================
 // Implementation helpers

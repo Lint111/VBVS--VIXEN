@@ -1079,7 +1079,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
         mainLogger->Info("[BuildRenderGraph] Connected debug/counters: binding 4 (voxelGridNode debug capture), binding 8 (voxelGridNode shader counters)");
     }
 
-    // Binding 10: BodyInstanceBuffer (SSBO) — per-body BodyInstanceGpu records (32 B each).
+    // Binding 10: BodyInstanceBuffer (SSBO) — per-body BodyInstanceGpu records (64 B each).
     // M-wire Task 8: this is the NEW binding not present in the dense path.
     batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_BUFFER,
                           descriptorGatherer, 10,  // Binding 10: BodyInstanceBuffer

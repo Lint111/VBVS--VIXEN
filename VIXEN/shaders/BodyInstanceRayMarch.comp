@@ -113,16 +113,20 @@ layout(std140, binding = 5) uniform OctreeConfigsUBO {
 };
 
 // ============================================================================
-// BODY INSTANCE SSBO (binding 10, std430, 32 B / element)
+// BODY INSTANCE SSBO (binding 10, std430, 64 B / element)
 // ============================================================================
 // Declared before C++ wires it (Task 8); glslc accepts unmatched bindings at
 // compile time — the descriptor wiring is deferred to the next milestone.
 struct BodyInstance {
-    vec3  worldPos;
-    float renderScale;
-    vec3  color;
-    uint  octreeIndex;   // 0..2, indexes into configs[]
+    vec3  worldPos;          // 0
+    float renderScale;       // 12
+    vec3  color;             // 16
+    uint  octreeIndex;       // 28
+    uint  providerKind;      // 32  (0 = Stored/ESVO, 1 = Procedural)
+    uint  recipeId;          // 36
+    float recipeParams[6];   // 40..63  (params.xyz = radius, amp, freq)
 };
+// std430 SSBO record, 64 bytes — byte-for-byte identical to C++ BodyInstanceGpu.
 
 layout(std430, binding = 10) readonly buffer BodyInstanceBuffer {
     BodyInstance bodyInstances[];
