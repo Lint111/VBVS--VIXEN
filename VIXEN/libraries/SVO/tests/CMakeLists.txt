@@ -122,6 +122,25 @@ endif()
 gtest_discover_tests(test_soa_sdf_serialize)
 
 # ===========================================================================
+# Channel Format Tests  (Inc3 M1 — VIXEN channel vocabulary + OctreeConfig table)
+# ===========================================================================
+add_executable(test_channel_format test_channel_format.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_channel_format PRIVATE
+        GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_channel_format PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_channel_format PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_channel_format POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_channel_format>
+        COMMENT "Copying TBB DLL for test_channel_format")
+endif()
+gtest_discover_tests(test_channel_format)
+
+# ===========================================================================
 # SDF Bake Tests  (Inc2 M1 — recipe → narrow-band SDF voxels + body octree)
 # ===========================================================================
 add_executable(test_sdf_bake test_sdf_bake.cpp)

@@ -73,6 +73,7 @@
 #include "LaineKarrasOctree.h"
 #include "GaiaVoxelWorld.h"
 #include "VoxelComponents.h"  // Material, Density
+#include "VoxelChannelFormat.h"  // ChannelDesc, kMaxChannels, SemanticId, FieldKind (Inc3 M1)
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>  // glm::scale / glm::translate
@@ -157,11 +158,32 @@ struct OctreeConfig {
     int32_t nodeArrayBase;      // offset 192: element offset of this octree's first node
     int32_t brickArrayBase;     // offset 196: brick offset of this octree's first brick
 
-    // Pad the C++ element to the shader's std140 UBO-array stride of 432 bytes (the
-    // shader's `float _padding4_tail[14]` is 14*16 B under std140, NOT 14*4 — see the
-    // trap note above). 432 - 200 = 232 bytes = 58 floats. Never read by the shader.
-    float _padding4[58];        // bytes 200..431, kept zero (completes the element to 432 B)
+    // ===========================================================================
+    // Tail (bytes 200..431 = 232 bytes): shader never reads these; the ONLY
+    // constraint is sizeof(OctreeConfig)==432. Layout (Inc3 M1):
+    //
+    //   byte 200: formatId         (uint32) — 0=FORMAT_BINARY, 1=FORMAT_STORED_SDF
+    //   byte 204: bricksPerAxisSdf (uint32) — grid side for the SDF brick lookup
+    //   byte 208: poolBrickBase    (uint32) — element offset (floats) of first SDF brick
+    //             in the concatenated pool (replaces the Inc2 sdfBrickArrayBase alias).
+    //   byte 212: channelCount     (uint32) — number of live channels in channels[]
+    //   byte 216: brickStrideFloats(uint32) — floats per brick across ALL channels
+    //   byte 220: ChannelDesc channels[kMaxChannels] — kMaxChannels=8, 16 B each = 128 B
+    //             → ends at byte 348.
+    //   bytes 348..431: _tailPad[21] (uint32) — 84 bytes, kept zero.
+    //
+    // Budget check: 4+4+4+4+4+128+84 = 232 bytes = 432-200. ✓
+    // ===========================================================================
+    uint32_t formatId;              // byte 200: 0 = FORMAT_BINARY, 1 = FORMAT_STORED_SDF
+    uint32_t bricksPerAxisSdf;      // byte 204: grid side for the SDF brick lookup table
+    uint32_t poolBrickBase;         // byte 208: element offset (floats) into the pool
+    uint32_t channelCount;          // byte 212: number of live channels in channels[]
+    uint32_t brickStrideFloats;     // byte 216: floats per brick (sum over all channels)
+    ChannelDesc channels[kMaxChannels]; // bytes 220..347: per-channel descriptors (Inc3 M1)
+    uint32_t _tailPad[21];          // bytes 348..431: pad to 432 bytes (21 × 4 = 84)
 };
+static_assert(sizeof(ChannelDesc) == 16,
+              "ChannelDesc must be 16 bytes (4×uint32 = one std140 uvec4 lane)");
 static_assert(sizeof(OctreeConfig) == 432,
               "OctreeConfig array stride must equal the shader's 432-byte std140 UBO element "
               "stride (its trailing float[14] is std140-padded to 14*16 B; the compiled SPIR-V "
@@ -174,51 +196,42 @@ static_assert(offsetof(OctreeConfig, brickArrayBase) == 196,
               "brickArrayBase must stay at offset 196 (a field the shader reads)");
 static_assert(offsetof(OctreeConfig, localToWorld) == 64 && offsetof(OctreeConfig, worldToLocal) == 128,
               "the two mat4s the shader reads must stay at offsets 64 / 128");
+static_assert(offsetof(OctreeConfig, formatId)          == 200, "formatId@200");
+static_assert(offsetof(OctreeConfig, bricksPerAxisSdf)  == 204, "bricksPerAxisSdf@204");
+static_assert(offsetof(OctreeConfig, poolBrickBase)     == 208, "poolBrickBase@208");
+static_assert(offsetof(OctreeConfig, channelCount)      == 212, "channelCount@212");
+static_assert(offsetof(OctreeConfig, brickStrideFloats) == 216, "brickStrideFloats@216");
+static_assert(offsetof(OctreeConfig, channels)          == 220, "channels[0]@220");
 
 // ============================================================================
-// Stored-SDF layout descriptor (Inc2 M2)
+// Inc2 Stored-SDF descriptor helpers (thin shims over named fields, Inc3 M1)
 // ============================================================================
-// Stored as three uint32s at the START of OctreeConfig._padding4 (bytes 200-211).
-// The shader never reads _padding4, so these are safe to repurpose.
-// M4's GLSL must replicate these exact byte offsets in the OctreeConfig struct.
-//
-//   byte 200 = _padding4[0] reinterpreted as uint32: formatId
-//              0 = FORMAT_BINARY (existing ESVO path, default / zero-init)
-//              1 = FORMAT_STORED_SDF (Inc2 trilinear iso-surface path)
-//   byte 204 = _padding4[1] reinterpreted as uint32: bricksPerAxis (grid side)
-//   byte 208 = _padding4[2] reinterpreted as uint32: sdfBrickArrayBase
-//              element offset (in floats) of this octree's first SDF brick in
-//              the concatenated sdfBricks buffer (same pattern as brickArrayBase).
-//
-// sizeof(OctreeConfig) == 432 is UNCHANGED (no new fields; we alias existing pad).
+// These preserve the Inc2 public API so existing call sites in ConcatenateSdf,
+// SerializeSdf, and test_soa_sdf_serialize.cpp continue to compile unchanged.
 
-/// Format IDs written into OctreeConfig._padding4[0] (byte 200).
-static constexpr uint32_t FORMAT_BINARY     = 0u;  ///< binary ESVO path (default)
-static constexpr uint32_t STORED_SDF        = 1u;  ///< Inc2 trilinear iso-surface path
+/// Format IDs for OctreeConfig::formatId (byte 200).
+static constexpr uint32_t FORMAT_BINARY = 0u;  ///< binary ESVO path (default)
+static constexpr uint32_t STORED_SDF    = 1u;  ///< Inc2 trilinear iso-surface path
 
-/// Read the formatId from the OctreeConfig tail (byte 200, uint32 aliased in _padding4[0]).
+/// Read the formatId from the OctreeConfig tail (byte 200, now a named field).
 inline uint32_t formatIdOf(const OctreeConfig& c) {
-    uint32_t v;
-    std::memcpy(&v, &c._padding4[0], sizeof(uint32_t));
-    return v;
+    return c.formatId;
 }
 /// Write formatId into the OctreeConfig tail.
 inline void setFormatId(OctreeConfig& c, uint32_t id) {
-    std::memcpy(&c._padding4[0], &id, sizeof(uint32_t));
+    c.formatId = id;
 }
-/// Read the sdfBrickArrayBase from the OctreeConfig tail (byte 208, uint32 aliased in _padding4[2]).
+/// Read the poolBrickBase (formerly sdfBrickArrayBase) from OctreeConfig (byte 208).
 inline uint32_t sdfBrickArrayBaseOf(const OctreeConfig& c) {
-    uint32_t v;
-    std::memcpy(&v, &c._padding4[2], sizeof(uint32_t));
-    return v;
+    return c.poolBrickBase;
 }
-/// Write sdfBrickArrayBase into the OctreeConfig tail.
+/// Write poolBrickBase (formerly sdfBrickArrayBase) into the OctreeConfig tail.
 inline void setSdfBrickArrayBase(OctreeConfig& c, uint32_t base) {
-    std::memcpy(&c._padding4[2], &base, sizeof(uint32_t));
+    c.poolBrickBase = base;
 }
-/// Write bricksPerAxis into the OctreeConfig descriptor tail (byte 204, _padding4[1]).
+/// Write bricksPerAxisSdf into the OctreeConfig tail (byte 204).
 inline void setDescriptorBricksPerAxis(OctreeConfig& c, uint32_t bpa) {
-    std::memcpy(&c._padding4[1], &bpa, sizeof(uint32_t));
+    c.bricksPerAxisSdf = bpa;
 }
 
 // ===========================================================================
