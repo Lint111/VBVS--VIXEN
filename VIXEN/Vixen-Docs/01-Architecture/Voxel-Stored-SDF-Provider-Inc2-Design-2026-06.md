@@ -1,16 +1,30 @@
 ---
 title: Stored SDF Provider — Increment 2 Design
-status: Design — approved 2026-06-22
+status: BUILT 2026-06-23 (M1–M6, branch feat/stored-sdf-provider-impl, M6 d03ceca2) — renders SOLID; see M6 redesign note
 date: 2026-06-22
+updated: 2026-06-23
 tags: [architecture, voxel, sdf, stored-provider, soa-bricks, cacher, increment-2]
 aliases: [Stored SDF, SoA bricks, Increment 2, Voxel SDF baking]
 related:
   - "[[Voxel-Content-Format-Contract-Design-2026-06]]"
+  - "[[Stored-SDF-Provider-Inc2-Plan-2026-06]]"
   - "[[SDF-Body-Rendering-Inc1-Plan-2026-06]]"
   - "libraries/VoxelData/VOXELCONFIG.md"
 ---
 
 # Stored SDF Provider — Increment 2 Design
+
+> **Status (2026-06-23): BUILT & rendering.** M1–M6 done on `feat/stored-sdf-provider-impl`
+> (M6 `d03ceca2`); Stored-SDF bodies render SOLID (smooth + displaced spheres, no holes),
+> verified on the real shader (lavapipe offscreen `RenderStoredSdfBodiesNoHoles` fillRatio 1.0 +
+> live VIXEN.exe path). **The M6 rendering architecture supersedes the original march design in
+> this doc:** rendering does NOT use a standalone `marchStoredSdf` sphere-trace — it **reuses the
+> ESVO octree traversal** (`traverseOctreeInstanced`), swapping only the leaf hit-test to a bounded
+> trilinear march (`handleLeafHitInstancedSdf`→`marchBrickSdf`). The flat march was built first,
+> showed POV-dependent brick-aligned holes, and was retired. Also: the **bake fully populates active
+> bricks (+1-brick dilation) with true SDF** (band-only left non-band voxels as 0.0 → false
+> surfaces). Authoritative implementation + rationale: the "⭐ Milestone M6" section of
+> [[Stored-SDF-Provider-Inc2-Plan-2026-06]].
 
 ## 1. Context
 

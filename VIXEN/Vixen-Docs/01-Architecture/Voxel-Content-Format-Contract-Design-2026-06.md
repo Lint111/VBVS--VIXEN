@@ -1,16 +1,29 @@
 ---
 title: Voxel Content-Format Contract & Smooth SDF Body Rendering
-status: Design — approved 2026-06-22
+status: Design approved 2026-06-22 — Inc1 (Procedural) + Inc2 (Stored SDF) BUILT & rendering 2026-06-23; Inc3 (Materialization) + multi-channel = resume here
 date: 2026-06-22
+updated: 2026-06-23
 tags: [architecture, voxel, sdf, content-format, rendering, smoothing, body-octree]
 aliases: [SDF Body Rendering, Smooth Voxel Bodies, Content Format Contract, Voxel Provider Contract]
 related:
   - "[[RenderGraph-System]]"
   - "[[Auto-Sync-FrameGraph-Design-2026-06]]"
+  - "[[Stored-SDF-Provider-Inc2-Plan-2026-06]]"
   - "libraries/VoxelData/VOXELCONFIG.md"
 ---
 
 # Voxel Content-Format Contract & Smooth SDF Body Rendering
+
+> **Status (2026-06-23).** The SDF channel of the contract is **functional end-to-end**:
+> **Inc1 (Procedural)** merged to `main` (`6c8b3cef`); **Inc2 (Stored SDF)** done on branch
+> `feat/stored-sdf-provider-impl` (M6 `d03ceca2`) — Stored-SDF bodies render SOLID (smooth +
+> displaced spheres, no holes) verified on the real shader (lavapipe offscreen + live VIXEN.exe
+> path: ShaderManagement compiles, bindings 11/12 dispatch). **Two design points changed in the
+> build — see the ⚠️ callouts in §3.2, §4, §7:** Stored rendering reuses the ESVO octree
+> traversal (not a standalone march), and the Stored storage model is **8³ bricks + cross-brick
+> fetch + a 1-brick dilation margin** (NOT the 10³ apron originally proposed). **Resume point:**
+> Inc3 (Materialization) and extending the contract beyond the `sdf` channel to multi-channel
+> (`material`/`color`/`normal`/PBR) for arbitrary content packs (§3.1, §8).
 
 ## 1. Context & Problem
 
@@ -135,6 +148,18 @@ brick boundary — no octree re-descent at seams, no seam artifacts. Cost: ~2× 
 per brick (1000 vs 512). Alternative (deferred): 8³ + cross-brick fetch at faces
 (less memory, more shader complexity).
 
+> **⚠️ As-built (Inc2, 2026-06-23): the deferred alternative was chosen — 8³ bricks +
+> cross-brick fetch, no 10³ apron.** Bricks stay 8³ (512 floats/channel); the GPU
+> trilinear stencil reads neighbour bricks at faces via the grid→brick lookup table
+> (`brickLookup[]`, binding 12), resolving each corner to its owning brick (or a `1e9`
+> sentinel for unallocated neighbours, which the march probes through). To keep those
+> face stencils reading honest data, the **bake dilates the active brick set by one brick**
+> and **fully populates every active brick with true SDF** — i.e. seam-correctness is
+> achieved by a *brick-level* margin in the data, not a *voxel-level* apron in storage.
+> Net memory ≈ band-shell + 1-brick margin, no per-brick 10³ inflation. If multi-channel
+> Stored content later shows seam artifacts on `color`/`normal`, revisit the 10³ apron
+> for those channels. The §4 addressing formula still applies with `apron = 0`.
+
 Addressing (all schema-derived → fully data-driven):
 ```
 voxelsPerBrick = (8 + 2·apron)³                      // 10³ with apron=1
@@ -173,8 +198,8 @@ re-materialize" path.
 |---|---|---|
 | `libraries/VoxelData/` (`VoxelConfig`, `AttributeRegistry`) | declared schema | reuse as-is; it is the contract |
 | `libraries/SVO/include/ShellOctreeGpu.h`, `BodyInstanceGpu` | per-body GPU record | add provider kind + provider data (recipe id/params, or brick/channel offsets) |
-| `libraries/CashSystem/VoxelSceneCacher` | CPU→GPU brick build | (Inc 2) schema-driven SoA-brick pack + emit GPU layout descriptor into `OctreeConfig` tail |
-| `OctreeConfig` UBO (`VoxelSceneCacher.h`) | per-octree GPU config | use free tail (bytes ≥200) for the layout descriptor / provider info |
+| ~~`libraries/CashSystem/VoxelSceneCacher`~~ → **`libraries/SVO/include/ShellOctreeGpu.h` (`SerializeSdf`/`ConcatenateSdf`)** | CPU→GPU brick build (BODY path) | **As-built (Inc2):** bodies serialize via `ShellOctreeGpu`, not `VoxelSceneCacher` (that is the VoxelGridNode/world path). `SerializeSdf` emits the SoA-SDF brick pool + grid→brick lookup + descriptor. Bake (`SdfBake.h`) fully populates active+dilated bricks with true SDF. |
+| `OctreeConfig` UBO (`ShellOctreeGpu.h`) | per-octree GPU config | free tail carries the descriptor: `formatId`@200 / `bricksPerAxis`@204 / `sdfBrickArrayBase`@208 (432-B std140, ArrayStride 432) |
 | `shaders/BodyInstanceRayMarch.comp` | render | provider branch → `evalSDF(p)`; shared iso-surface root-find + gradient normal; replaces cube-face normal |
 | `libraries/RenderGraph/.../BodyOctreeSceneNode` | scene node | accept provider-tagged bodies; route Procedural vs Stored |
 | `application/main/source/graph/BuildRenderGraph.cpp` | 3-body default scene | seed Procedural sphere/star bodies for the live gate |
@@ -185,15 +210,31 @@ The contract is **designed** for all three providers up front; only Increment 1 
 **built** first. This matches the project's established Design-doc + per-increment-Plan
 pattern (cf. Auto-Sync FrameGraph) and the live-gate-authoritative lesson.
 
-1. **Increment 1 — Procedural SDF provider.** Contract scaffolding (provider tag in
-   the per-body record + shader dispatch) + a small recipe library + shared
-   iso-surface/gradient shading. The 3-body scene's planets/stars become true smooth
+1. **Increment 1 — Procedural SDF provider. ✅ DONE — merged to `main` (`6c8b3cef`, 2026-06-22).**
+   Contract scaffolding (provider tag in the per-body record + shader dispatch) + a small recipe
+   library + shared iso-surface/gradient shading. The 3-body scene's planets/stars are true smooth
    spheres. **No storage work.** Fast, decisive on-screen win.
-2. **Increment 2 — Stored SDF provider.** SoA bricks + apron + schema-driven
-   `VoxelSceneCacher` + GPU layout descriptor + trilinear fetch. Serves arbitrary
-   baked content from packs. (Apron-on vs apron-off-first is an Increment-2 decision.)
-3. **Increment 3 — Materialization.** Procedural→Stored bake on edit, via the
-   observer/rebuild hook.
+2. **Increment 2 — Stored SDF provider. ✅ DONE — branch `feat/stored-sdf-provider-impl` (M1–M6,
+   M6 `d03ceca2`, 2026-06-23; not yet merged).** Plan: [[Stored-SDF-Provider-Inc2-Plan-2026-06]].
+   Serves baked SDF content. **⚠️ As-built differs from this design's first sketch (deliberately):**
+   - **Storage = 8³ bricks + cross-brick fetch + a 1-brick DILATION margin, NOT a 10³ apron** (§4).
+   - **The body serializer is `ShellOctreeGpu::SerializeSdf`, NOT `VoxelSceneCacher`** (§7) — bodies
+     are serialized per the `ShellOctreeGpu` path, with the GPU layout descriptor in the
+     `OctreeConfig` tail (`formatId`@200, `bricksPerAxis`@204, `sdfBrickArrayBase`@208; 432-B std140).
+   - **Rendering reuses the ESVO octree traversal** (`traverseOctreeInstanced`), swapping only the
+     leaf hit-test to a bounded trilinear march (`handleLeafHitInstancedSdf`→`marchBrickSdf`) — it does
+     NOT run a standalone sphere-trace. The original flat `marchStoredSdf` was built first, produced
+     POV-dependent brick holes, and was retired in M6 (§3.2).
+   - **Bake invariant:** narrow-band sparsity is at the BRICK level — active bricks are FULLY
+     populated with true SDF (storing only band voxels left the rest 0.0 → false iso-surfaces).
+3. **Increment 3 — Materialization. ▶ RESUME HERE.** Procedural→Stored bake on edit, via the
+   `AttributeRegistry` observer/rebuild hook (§6). Plus the still-open contract breadth below.
+
+**Still-open contract work (resume alongside Inc3):** only the **`sdf` channel** is built end-to-end.
+The full per-channel contract (§3.1) — declaring + GPU-propagating + shading **`material`/`color`/
+`normal`/PBR** channels from arbitrary content packs (UNDERTOW) — is designed but not implemented.
+The Stored path currently carries a material brick + palette alongside the SoA-SDF; extending it to
+the general schema-derived multi-channel SoA pack (§4 addressing) is the next contract increment.
 
 ### Increment 1 scope (immediately actionable)
 
@@ -236,10 +277,17 @@ pattern (cf. Auto-Sync FrameGraph) and the live-gate-authoritative lesson.
   (SDF) neighbour sampling that dominates smooth rendering; rejected in favour of SoA
   bricks.
 
-## 11. Open decisions (deferred, not blocking Increment 1)
+## 11. Open decisions
 
-- Apron-on from the start vs apron-off-first at Increment 2 (memory vs seam artifacts).
-- Recipe representation generality: fixed primitive+CSG library (first cut) vs a small
+- ~~Apron-on from the start vs apron-off-first at Increment 2 (memory vs seam artifacts).~~
+  **RESOLVED (Inc2, 2026-06-23): apron-off** — 8³ bricks + cross-brick fetch, seam-correctness via
+  a 1-brick bake dilation + full-brick SDF (§4 as-built). Revisit per-channel 10³ apron only if
+  multi-channel seams appear.
+- ~~Exact home of the GPU layout descriptor (inline in `OctreeConfig` tail vs a parallel SSBO).~~
+  **RESOLVED (Inc2): inline in the `OctreeConfig` tail** — `formatId`@200 / `bricksPerAxis`@204 /
+  `sdfBrickArrayBase`@208, in the 432-byte std140 `Vixen::SVO::OctreeConfig` (SPIR-V ArrayStride 432).
+- **(still open)** Recipe representation generality: fixed primitive+CSG library (first cut) vs a small
   SDF-program/bytecode interpreter (Dreams-like) if content demands arbitrary CSG.
-- Exact home of the GPU layout descriptor (inline in `OctreeConfig` tail vs a parallel
-  descriptor SSBO) — settle when Increment 2 sizes it.
+- **(new, for the resume)** Multi-channel Stored pack: the SoA addressing (§4) is schema-derived but
+  only `sdf` (+ a legacy material brick/palette) is wired today. Decide how `material`/`color`/`normal`
+  channels ride the same SoA pool + descriptor when extending past the SDF channel.
