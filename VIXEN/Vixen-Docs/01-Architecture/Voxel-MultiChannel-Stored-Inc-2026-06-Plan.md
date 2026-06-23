@@ -37,7 +37,7 @@ Vulkan 1.3 (lavapipe for the offscreen gate).
   extended green (pool layout, per-channel base, round-trip sdf+color+roughness) + `VIXEN.exe` links.
 - **M3 — Shader generic channel reads + roughness lighting** ✅ DONE (Tasks 6–8) · GLSL · gate: glslc compiles;
   correctness deferred to the M4 live gate.
-- **M4 — Offscreen render gate (authoritative)** (Tasks 9–10) · controller · gate: lavapipe render shows
+- **M4 — Offscreen render gate (authoritative)** ✅ DONE (Tasks 9–10) · controller · gate: lavapipe render shows
   per-voxel color gradient + roughness shading + SDF solid (no-regression); MSVC binary no-regression.
 
 ### Channel set this increment
@@ -287,25 +287,25 @@ float rough  = sampleChannelScalarTrilinear(SEM_ROUGHNESS, gridHit); // default 
 
 **Files:** Modify `test_body_instance_raymarch_render.cpp`.
 
-- [ ] **Step 1:** Extend `RenderStoredSdfBodiesNoHoles` (or add `RenderStoredSdfMultiChannel`): the bake
+- [x] **Step 1:** Extend `RenderStoredSdfBodiesNoHoles` (or add `RenderStoredSdfMultiChannel`): the bake
   now produces a color gradient + varying roughness. Render the smooth sphere (binding 11 = pool;
   bindings 11/12 already bound). Assert: (a) SDF still solid (`fillRatio > 0.97`, no-regression);
   (b) **per-voxel color varies** — sample a row of body pixels across the disk and assert the RGB is NOT
   constant (range above a threshold), proving the `color` channel flows; (c) write PNG for inspection.
-- [ ] **Step 2:** Build the render test (WSL preset) + run on lavapipe; **controller reads the PNG** to
+- [x] **Step 2:** Build the render test (WSL preset) + run on lavapipe; **controller reads the PNG** to
   confirm the color gradient + roughness shading appear and the sphere is solid. Record in this plan's
   Progress Log + `memory-bank/activeContext.md`.
-- [ ] **Step 3: Commit** `test(rendergraph): multi-channel Stored render gate (Inc3 M4)`.
+- [x] **Step 3: Commit** `test(rendergraph): multi-channel Stored render gate (Inc3 M4)`.
 
 ### Task 10: No-regression + descriptor parity
 
 **Files:** none new.
 
-- [ ] **Step 1:** Run the binary `RenderRealShaderNearViewToPng` + `RenderMultiKindBodiesProvesStrideFix`
+- [x] **Step 1:** Run the binary `RenderRealShaderNearViewToPng` + `RenderMultiKindBodiesProvesStrideFix`
   (unchanged output) + `test_soa_sdf_serialize` + `test_sdf_bake` + `test_channel_format` — all green.
-- [ ] **Step 2:** MSVC: `cmd.exe /c "C:\cpp\_wt_build.bat VIXEN"` green (the OctreeConfig/serialize
+- [x] **Step 2:** MSVC: `cmd.exe /c "C:\cpp\_wt_build.bat VIXEN"` green (the OctreeConfig/serialize
   changes compile under MSVC — watch for `near`/`far`/`min`/`max` keyword + `windows.h` traps).
-- [ ] **Step 3: Commit** `docs(progress): Inc3 multi-channel gate — per-voxel color+roughness render, no-regression`.
+- [x] **Step 3: Commit** `docs(progress): Inc3 multi-channel gate — per-voxel color+roughness render, no-regression`.
 
 ---
 
@@ -348,6 +348,21 @@ float rough  = sampleChannelScalarTrilinear(SEM_ROUGHNESS, gridHit); // default 
 - **⚠️ For M4:** the render test's `gtest_discover_tests` hits a 5s discovery timeout (Vulkan static-init to LIST
   cases) — this is NOT a compile/link failure (the exe links, shader compiles). M4 must RUN the render binary
   directly (or via ctest with a raised `DISCOVERY_TIMEOUT`), not rely on test discovery.
+
+- **Milestone M4 (Tasks 9–10 + deferred cleanups): DONE** · commits `563a9fa5..c527b8bd` · 2026-06-23
+  — **Authoritative live render gate PASSED.** New `RenderStoredSdfMultiChannel` (lavapipe): `fillRatio=0.9879`
+  (solid, == the `RenderStoredSdfBodiesNoHoles` baseline → no solidity regression) + per-voxel color range
+  R 0.710 / G 0.514 / B 0.412 (≫ 0.10 → color channel flows). **Controller read `/tmp/glsl_sdf_multichannel.png`:**
+  smooth multi-hue color gradient (RGB cos-bands) + roughness-aware 3D lit shading on a solid sphere — Inc3
+  deliverable visually confirmed. No-regression: `RenderRealShaderNearViewToPng` + `RenderMultiKindBodiesProvesStrideFix`
+  (kind0/1/2 = 21743/17804/21743, matches Inc2) + `test_soa_sdf_serialize` 10/10 + `test_sdf_bake` 2/2 +
+  `test_channel_format` 2/2 all green. **MSVC `_wt_build.bat VIXEN` rc=0** (55 targets). Deferred M2 cleanups done:
+  `MultiChannelBakedColorRoughness` tightened to exact-formula `EXPECT_NEAR` at voxel p=(38,32,32) (catches a
+  color↔roughness swap); stale `sdfBricks`/"256-byte" comments scrubbed → `channelPool`/432-B.
+  CMake: render test set to `DISCOVERY_MODE PRE_TEST` (build no longer trips the gtest 5s discovery timeout).
+- **Pre-existing (NOT Inc3): minor shell-octree surface artifacts** (a few edge notches + a brick-seam square)
+  visible in the render. `fillRatio` is byte-identical to the Inc2 baseline and the SDF march is unchanged, so
+  these are the project's known/deferred "shell-octree artifacts" render-quality item, out of Inc3 scope.
 
 ## Self-Review
 
