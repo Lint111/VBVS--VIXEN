@@ -1,10 +1,14 @@
-// test_soa_sdf_serialize.cpp — Inc2 M2: SoA-SDF brick + grid-lookup serialization.
+// test_soa_sdf_serialize.cpp — Inc2/Inc3 M2: SoA-SDF pool serialization.
 //
-// Covers Tasks 3 and 4:
-//   Task 3 — SerializeSdf emits sdfBricks of the right size; a surface voxel's
-//             SoA SDF ≈ its baked Density; descriptor formatId == STORED_SDF.
+// Covers Tasks 3 and 4 (Inc2):
+//   Task 3 — SerializeSdf emits a SDF channel in channelPool of the right size;
+//             a surface voxel's SoA SDF ≈ its baked Density; descriptor formatId == STORED_SDF.
 //   Task 4 — brickGridLookup: every allocated brick's grid cell maps to its
 //             brickView index; unallocated cells map to 0xFFFFFFFF.
+//
+// Inc3 M2 Tasks 3/4 additions:
+//   MultiChannelPoolLayout — 3-channel pool (sdf+color+roughness), sizes+bases correct.
+//   MultiChannelBakedColorRoughness — per-voxel color/roughness finite and in-range.
 
 #include <gtest/gtest.h>
 #include <glm/glm.hpp>
@@ -43,18 +47,18 @@ struct SdfFixture {
 };
 
 // ---------------------------------------------------------------------------
-// Task 3 — SoA-SDF brick buffer
+// Task 3 — SoA-SDF channel in the generic pool
 // ---------------------------------------------------------------------------
 
-// The sdfBricks buffer must be exactly brickCount * 512 * sizeof(float) bytes.
+// The channelPool buffer must be exactly brickCount * brickStrideFloats * sizeof(float) bytes.
 TEST(SoaSdfSerialize, BrickBufferSize) {
     SdfFixture f;
     SerializedOctree out = SerializeSdf(f.body);
 
-    ASSERT_FALSE(out.sdfBricks.empty()) << "sdfBricks must be non-empty for a non-trivial bake";
-    EXPECT_EQ(out.sdfBricks.size(),
-              static_cast<size_t>(out.brickCount) * SerializedOctree::kVoxelsPerBrick * sizeof(float))
-        << "sdfBricks byte size must equal brickCount * 512 * sizeof(float)";
+    ASSERT_FALSE(out.channelPool.empty()) << "channelPool must be non-empty for a non-trivial bake";
+    EXPECT_EQ(out.channelPool.size(),
+              static_cast<size_t>(out.brickCount) * out.brickStrideFloats * sizeof(float))
+        << "channelPool byte size must equal brickCount * brickStrideFloats * sizeof(float)";
 }
 
 // The SoA SDF for a known near-surface voxel should match its baked Density.
@@ -63,7 +67,7 @@ TEST(SoaSdfSerialize, BrickBufferSize) {
 TEST(SoaSdfSerialize, SurfaceVoxelHoldsSignedDistance) {
     SdfFixture f;
     SerializedOctree out = SerializeSdf(f.body);
-    ASSERT_FALSE(out.sdfBricks.empty());
+    ASSERT_FALSE(out.channelPool.empty());
 
     const Vixen::SVO::Octree* oct = f.body.octree->getOctree();
     ASSERT_NE(oct, nullptr);
@@ -84,12 +88,7 @@ TEST(SoaSdfSerialize, SurfaceVoxelHoldsSignedDistance) {
         }
         // Voxel slot within this brick: z*64 + y*8 + x
         const uint32_t slot = static_cast<uint32_t>(local.z * 64 + local.y * 8 + local.x);
-        const uint32_t byteOffset = (bi * SerializedOctree::kVoxelsPerBrick + slot)
-                                    * static_cast<uint32_t>(sizeof(float));
-        ASSERT_LE(byteOffset + sizeof(float), out.sdfBricks.size())
-            << "SDF slot offset out of range";
-        float storedSdf = 0.0f;
-        std::memcpy(&storedSdf, out.sdfBricks.data() + byteOffset, sizeof(float));
+        float storedSdf = out.readPoolVoxel(SEM_SDF, bi, slot, 0);
 
         RecipeParams rp{f.r, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
         const float expected = evalSdf(RECIPE_SPHERE, targetPos, f.center, rp);
@@ -108,11 +107,11 @@ TEST(SoaSdfSerialize, DescriptorFields) {
 
     // formatId must be STORED_SDF (1u) — byte 200
     EXPECT_EQ(formatIdOf(out.config), STORED_SDF)
-        << "OctreeConfig._padding4[0] (byte 200) must be STORED_SDF = 1";
+        << "OctreeConfig.formatId (byte 200) must be STORED_SDF = 1";
 
-    // sdfBrickArrayBase must be 0 for a single-octree serialize — byte 208
+    // poolBrickBase must be 0 for a single-octree serialize — byte 208
     EXPECT_EQ(sdfBrickArrayBaseOf(out.config), 0u)
-        << "Single-octree sdfBrickArrayBase must be 0";
+        << "Single-octree poolBrickBase must be 0";
 
     // sizeof(OctreeConfig) must still be 432 (static_assert already checks this,
     // but a runtime echo is a useful test signal).
@@ -218,7 +217,7 @@ TEST(SoaSdfSerialize, LookupUnallocatedCellsSentinel) {
 }
 
 // ---------------------------------------------------------------------------
-// ConcatenateSdf — sdfBrickArrayBase advances correctly for >1 octree.
+// ConcatenateSdf — poolBrickBase advances correctly for >1 octree.
 // ---------------------------------------------------------------------------
 TEST(SoaSdfSerialize, ConcatenateSdfBrickArrayBase) {
     SdfFixture f;
@@ -229,21 +228,77 @@ TEST(SoaSdfSerialize, ConcatenateSdfBrickArrayBase) {
     ConcatenatedOctrees cat = ConcatenateSdf(vec);
     ASSERT_EQ(cat.count, 2u);
 
-    // configs[0].sdfBrickArrayBase must be 0.
+    // configs[0].poolBrickBase must be 0.
     EXPECT_EQ(sdfBrickArrayBaseOf(cat.configs[0]), 0u)
-        << "First octree sdfBrickArrayBase must be 0";
+        << "First octree poolBrickBase must be 0";
 
-    // configs[1].sdfBrickArrayBase must be configs[0].brickCount * 512.
-    const uint32_t expectedBase = cat.brickCounts[0] * SerializedOctree::kVoxelsPerBrick;
+    // configs[1].poolBrickBase must be configs[0].brickCount * brickStrideFloats[0].
+    // Since both are the same body, brickStrideFloats is equal across octrees.
+    const uint32_t stride0  = cat.configs[0].brickStrideFloats;
+    const uint32_t expectedBase = cat.brickCounts[0] * stride0;
     EXPECT_EQ(sdfBrickArrayBaseOf(cat.configs[1]), expectedBase)
-        << "Second octree sdfBrickArrayBase must be brickCount[0] * 512";
+        << "Second octree poolBrickBase must be brickCount[0] * brickStrideFloats";
 
-    // sdfBricks total size must be (brickCounts[0]+brickCounts[1]) * 512 * sizeof(float).
+    // channelPool total size must be (brickCounts[0]+brickCounts[1]) * brickStrideFloats * sizeof(float).
     const uint32_t totalBricks = cat.brickCounts[0] + cat.brickCounts[1];
-    EXPECT_EQ(cat.sdfBricks.size(),
-              static_cast<size_t>(totalBricks) * SerializedOctree::kVoxelsPerBrick * sizeof(float));
+    EXPECT_EQ(cat.channelPool.size(),
+              static_cast<size_t>(totalBricks) * stride0 * sizeof(float));
 
     // Both configs must carry formatId = STORED_SDF.
     EXPECT_EQ(formatIdOf(cat.configs[0]), STORED_SDF);
     EXPECT_EQ(formatIdOf(cat.configs[1]), STORED_SDF);
+}
+
+// ---------------------------------------------------------------------------
+// Inc3 M2 Task 3 — multi-channel SoA pool layout
+// ---------------------------------------------------------------------------
+TEST(SoaSdfSerialize, MultiChannelPoolLayout) {
+    RecipeParams rp{6.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+    Vixen::SVO::SdfBakeResult baked =
+        Vixen::SVO::BakeRecipeToSdfWorld(RECIPE_SPHERE, glm::vec3(32), rp, 64, 2.5f);
+    Vixen::SVO::SdfBodyOctree body = Vixen::SVO::BuildSdfBodyOctree(baked, 3);
+    Vixen::SVO::SerializedOctree out = Vixen::SVO::SerializeSdf(body);
+
+    // 3 channels: sdf(1)+color(3)+roughness(1) = 5 float-lanes/voxel
+    EXPECT_EQ(out.channelCount, 3u);
+    EXPECT_EQ(out.brickStrideFloats, (1u + 3u + 1u) * 512u);   // 2560
+
+    // channelBaseFloats: sdf 0, color 512, roughness 2048 (declaration order)
+    EXPECT_EQ(out.channelBaseFloats(SEM_SDF),       0u);
+    EXPECT_EQ(out.channelBaseFloats(SEM_COLOR),     512u);
+    EXPECT_EQ(out.channelBaseFloats(SEM_ROUGHNESS), 2048u);
+
+    // Pool byte size = brickCount * brickStrideFloats * sizeof(float)
+    EXPECT_EQ(out.channelPool.size(),
+              static_cast<size_t>(out.brickCount) * out.brickStrideFloats * sizeof(float));
+
+    // A voxel in the SDF channel must hold a finite value
+    float sdf = out.readPoolVoxel(SEM_SDF, 0, 0, 0);
+    EXPECT_TRUE(std::isfinite(sdf));
+}
+
+// Inc3 M2 Task 4 — baked color+roughness values round-trip through the pool
+TEST(SoaSdfSerialize, MultiChannelBakedColorRoughness) {
+    RecipeParams rp{6.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+    Vixen::SVO::SdfBakeResult baked =
+        Vixen::SVO::BakeRecipeToSdfWorld(RECIPE_SPHERE, glm::vec3(32), rp, 64, 2.5f);
+    Vixen::SVO::SdfBodyOctree body = Vixen::SVO::BuildSdfBodyOctree(baked, 3);
+    Vixen::SVO::SerializedOctree out = Vixen::SVO::SerializeSdf(body);
+
+    ASSERT_EQ(out.channelCount, 3u);
+    ASSERT_FALSE(out.channelPool.empty());
+
+    // Check brick 0, voxel 0 — color and roughness must be finite and in [0,1]
+    float r0    = out.readPoolVoxel(SEM_COLOR, 0, 0, 0);
+    float g0    = out.readPoolVoxel(SEM_COLOR, 0, 0, 1);
+    float b0    = out.readPoolVoxel(SEM_COLOR, 0, 0, 2);
+    float rough0 = out.readPoolVoxel(SEM_ROUGHNESS, 0, 0, 0);
+
+    EXPECT_TRUE(std::isfinite(r0));
+    EXPECT_TRUE(std::isfinite(g0));
+    EXPECT_TRUE(std::isfinite(b0));
+    EXPECT_GE(r0, 0.0f);  EXPECT_LE(r0, 1.0f);
+    EXPECT_GE(g0, 0.0f);  EXPECT_LE(g0, 1.0f);
+    EXPECT_GE(b0, 0.0f);  EXPECT_LE(b0, 1.0f);
+    EXPECT_GE(rough0, 0.0f);  EXPECT_LE(rough0, 1.0f);
 }

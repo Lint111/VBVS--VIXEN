@@ -67,10 +67,11 @@ inline SdfBakeResult BakeRecipeToSdfWorld(uint32_t recipeId, const glm::vec3& ce
     r.n      = n;
     r.center = center;
 
-    // Registry (mirrors ShellOctree.h: key="density" Float + "color" Vec3 attr)
+    // Registry (density Float key + color Vec3 attr + roughness Float attr)
     r.registry = std::make_unique<AttributeRegistry>();
     r.registry->registerKey("density", Vixen::VoxelData::AttributeType::Float, 0.0f);
     r.registry->addAttribute("color", Vixen::VoxelData::AttributeType::Vec3, glm::vec3(1.0f));
+    r.registry->addAttribute("roughness", Vixen::VoxelData::AttributeType::Float, 0.5f);
 
     // World
     r.world = std::make_unique<Vixen::GaiaVoxel::GaiaVoxelWorld>();
@@ -118,7 +119,8 @@ inline SdfBakeResult BakeRecipeToSdfWorld(uint32_t recipeId, const glm::vec3& ce
             if (touchesBand) activeBrick[brickIndex(bx, by, bz)] = 1u;
         }
 
-    // Pass 2 — fully populate every active brick with the TRUE signed distance.
+    // Pass 2 — fully populate every active brick with the TRUE signed distance
+    // plus spatially-varying color and roughness (Inc3 M2 multi-channel bake).
     for (int z = 0; z < n; ++z)
       for (int y = 0; y < n; ++y)
         for (int x = 0; x < n; ++x) {
@@ -128,9 +130,17 @@ inline SdfBakeResult BakeRecipeToSdfWorld(uint32_t recipeId, const glm::vec3& ce
                               static_cast<float>(y),
                               static_cast<float>(z));
             const float sd = evalSdf(recipeId, p, center, rp);
+            // Smooth RGB bands varying across the grid (visible per-voxel variation)
+            const glm::vec3 col = 0.5f + 0.5f * glm::cos(
+                glm::vec3(p.x, p.y, p.z) * 0.12f
+                + glm::vec3(0.0f, 2.094f, 4.188f));
+            // Roughness: striped along Y, clamped to [0,1]
+            const float rough = glm::clamp(
+                0.2f + 0.6f * glm::fract(p.y * 0.0625f), 0.0f, 1.0f);
             const Vixen::GaiaVoxel::ComponentQueryRequest comps[] = {
                 Vixen::GaiaVoxel::Density{sd},
-                Vixen::GaiaVoxel::Color{glm::vec3(1.0f)},
+                Vixen::GaiaVoxel::Color{col},
+                Vixen::GaiaVoxel::Roughness{rough},
                 Vixen::GaiaVoxel::Material{1u},
             };
             r.world->createVoxel(

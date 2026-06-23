@@ -247,23 +247,50 @@ struct SerializedOctree {
     static constexpr uint32_t kBrickStrideBytes = 512u * sizeof(uint32_t);  // 2048
     static constexpr uint32_t kVoxelsPerBrick = 512u;
 
-    // SoA SDF brick stride: one float per voxel, 512 voxels => 2048 bytes/brick.
-    // Same z*64+y*8+x voxel order as the material brick loop above.
-    // Only populated when emitSdf=true (Stored-SDF bodies). Empty for binary ESVO.
-    static constexpr uint32_t kSdfBrickStrideBytes = 512u * sizeof(float);  // 2048
-
     std::vector<uint8_t> nodes;           // ChildDescriptor array (stride 8)
     std::vector<uint8_t> bricks;          // 512*uint32 per brick (stride 2048)
     std::vector<uint8_t> materials;       // GPUMaterial palette (stride 32)
     OctreeConfig config{};
 
-    // Inc2 M2 — SoA-SDF extension (emitSdf=true only):
-    std::vector<uint8_t> sdfBricks;       // 512*float per brick (stride 2048)
+    // Inc3 M2 — Generic multi-channel SoA pool (emitSdf=true only):
+    // Layout: channelPool[brick * brickStrideFloats + channelBaseFloats[c] + comp*512 + voxel]
+    // Channels in canonical order: SDF(1 float), Color(3 floats), Roughness(1 float), ...
+    std::vector<uint8_t> channelPool;     // brickCount * brickStrideFloats * sizeof(float)
+    uint32_t channelCount     = 0;        // number of live channels
+    uint32_t brickStrideFloats = 0;       // total floats per brick (sum over all channels)
+    ChannelDesc channels[kMaxChannels]{};  // per-channel descriptors (channelBaseFloats packed inside)
+
     std::vector<uint8_t> brickGridLookup; // uint32[bricksPerAxis^3]: grid-coord→brickIndex,
                                           // 0xFFFFFFFF = unallocated brick.
 
     uint32_t nodeCount = 0;   // == nodes.size() / sizeof(ChildDescriptor)
     uint32_t brickCount = 0;  // == bricks.size() / kBrickStrideBytes
+
+    // Returns the channelBaseFloats for the given semantic (scans channels[]).
+    // Returns 0xFFFFFFFFu if the semantic is not present.
+    uint32_t channelBaseFloats(SemanticId sem) const {
+        for (uint32_t i = 0; i < channelCount; ++i) {
+            if (channels[i].semanticId == static_cast<uint32_t>(sem))
+                return channels[i].channelBaseFloats;
+        }
+        return 0xFFFFFFFFu;
+    }
+
+    // Read a single float from the pool:
+    //   brick  — brick index (0..brickCount-1)
+    //   voxel  — voxel slot within brick (0..511, z*64+y*8+x order)
+    //   comp   — component index within the channel's elemCount (0 for scalars)
+    // Returns 0.0f if the semantic is not present.
+    float readPoolVoxel(SemanticId sem, uint32_t brick, uint32_t voxel, uint32_t comp) const {
+        const uint32_t base = channelBaseFloats(sem);
+        if (base == 0xFFFFFFFFu) return 0.0f;
+        const uint32_t floatIdx = brick * brickStrideFloats + base + comp * kVoxelsPerBrick + voxel;
+        const size_t   byteOff  = static_cast<size_t>(floatIdx) * sizeof(float);
+        if (byteOff + sizeof(float) > channelPool.size()) return 0.0f;
+        float val = 0.0f;
+        std::memcpy(&val, channelPool.data() + byteOff, sizeof(float));
+        return val;
+    }
 };
 
 /**
@@ -277,8 +304,8 @@ struct ConcatenatedOctrees {
     std::vector<uint8_t> bricks;     // octree0 bricks ++ octree1 bricks ++ ...
     std::vector<uint8_t> materials;  // shared palette (identical across shells)
 
-    // Inc2 M2 — SoA-SDF extension (populated by ConcatenateSdf; empty otherwise):
-    std::vector<uint8_t> sdfBricks;       // octree0 sdfBricks ++ octree1 sdfBricks ++ ...
+    // Inc3 M2 — Generic multi-channel SoA pool (populated by ConcatenateSdf; empty otherwise):
+    std::vector<uint8_t> channelPool;     // octree0 pool ++ octree1 pool ++ ...
     std::vector<uint8_t> brickGridLookup; // octrees concatenated; each sub-table is
                                           // uint32[bpa^3] where bpa = bricksPerAxis.
                                           // Per-octree size varies; M3 uploads them separately.
@@ -498,48 +525,110 @@ inline SerializedOctree SerializeSdf(const SdfBodyOctree& body) {
         std::memcpy(out.nodes.data(), descriptors.data(), out.nodes.size());
     }
 
-    // --- bricks (material) + sdfBricks: iterate brickViews in order,
-    //     same z*64+y*8+x inner loop as the binary Serialize above.
+    // --- Channel table: canonical order SDF(1) → Color(3) → Roughness(1).
+    //     This order is the SINGLE SOURCE OF TRUTH for the pool layout; the test pins it.
+    struct ChannelSpec {
+        SemanticId  sem;
+        uint32_t    elemCount;
+        FieldKind   fieldKind;
+    };
+    const ChannelSpec kChannelSpecs[] = {
+        { SEM_SDF,       1u, FK_DISTANCE },
+        { SEM_COLOR,     3u, FK_NONE     },
+        { SEM_ROUGHNESS, 1u, FK_NONE     },
+    };
+    constexpr uint32_t kNumChannels =
+        static_cast<uint32_t>(sizeof(kChannelSpecs) / sizeof(kChannelSpecs[0]));
+
+    // Build out.channels[] and compute brickStrideFloats.
+    uint32_t runningBase = 0u;
+    for (uint32_t ci = 0; ci < kNumChannels; ++ci) {
+        out.channels[ci].semanticId        = static_cast<uint32_t>(kChannelSpecs[ci].sem);
+        out.channels[ci].elemCount         = kChannelSpecs[ci].elemCount;
+        out.channels[ci].channelBaseFloats = runningBase;
+        out.channels[ci].fieldKind         = static_cast<uint32_t>(kChannelSpecs[ci].fieldKind);
+        runningBase += kChannelSpecs[ci].elemCount * SerializedOctree::kVoxelsPerBrick;
+    }
+    out.channelCount      = kNumChannels;
+    out.brickStrideFloats = runningBase;  // total floats per brick
+
+    // --- bricks (material) + generic SoA pool: iterate brickViews in order.
     const std::vector<Vixen::GaiaVoxel::EntityBrickView>& brickViews = oct->root->brickViews;
     const int brickSide = oct->brickSideLength;  // 8
     out.brickCount = static_cast<uint32_t>(brickViews.size());
 
     std::vector<uint32_t> brickWords;
-    std::vector<float>    sdfWords;
-    brickWords.reserve(brickViews.size() * SerializedOctree::kVoxelsPerBrick);
-    sdfWords.reserve(brickViews.size()   * SerializedOctree::kVoxelsPerBrick);
+    brickWords.reserve(out.brickCount * SerializedOctree::kVoxelsPerBrick);
 
-    for (const Vixen::GaiaVoxel::EntityBrickView& view : brickViews) {
+    // channelPool: brickCount * brickStrideFloats floats, zero-initialised.
+    const size_t poolFloats = static_cast<size_t>(out.brickCount) * out.brickStrideFloats;
+    std::vector<float> pool(poolFloats, 0.0f);
+
+    for (uint32_t bi = 0; bi < out.brickCount; ++bi) {
+        const Vixen::GaiaVoxel::EntityBrickView& view = brickViews[bi];
         const glm::ivec3 gridOrigin = view.getLocalGridOrigin();
+        uint32_t voxelSlot = 0u;
         for (int bz = 0; bz < brickSide; ++bz) {
             for (int by = 0; by < brickSide; ++by) {
-                for (int bx = 0; bx < brickSide; ++bx) {
+                for (int bx = 0; bx < brickSide; ++bx, ++voxelSlot) {
                     const glm::vec3 worldPos(
                         static_cast<float>(gridOrigin.x + bx),
                         static_cast<float>(gridOrigin.y + by),
                         static_cast<float>(gridOrigin.z + bz));
-                    uint32_t materialId = 0u;
-                    float    density    = 0.0f;
                     const auto entity = world.getEntityByWorldSpace(worldPos);
-                    if (world.exists(entity)) {
+                    const bool alive  = world.exists(entity);
+
+                    // material brick (unchanged)
+                    uint32_t materialId = 0u;
+                    if (alive) {
                         const auto mat = world.getComponentValue<Vixen::GaiaVoxel::Material>(entity);
                         materialId = mat.has_value() ? mat.value() : 0u;
-                        const auto den = world.getComponentValue<Vixen::GaiaVoxel::Density>(entity);
-                        density = den.has_value() ? den.value() : 0.0f;
                     }
                     brickWords.push_back(materialId);
-                    sdfWords.push_back(density);
+
+                    // Generic channel pool — write each channel in canonical order.
+                    for (uint32_t ci = 0; ci < kNumChannels; ++ci) {
+                        const uint32_t base = out.channels[ci].channelBaseFloats;
+                        const uint32_t ec   = out.channels[ci].elemCount;
+                        SemanticId     sem  = kChannelSpecs[ci].sem;
+
+                        if (!alive) {
+                            // Leave zero (default) — no voxel here.
+                            continue;
+                        }
+
+                        if (sem == SEM_SDF) {
+                            const auto den = world.getComponentValue<Vixen::GaiaVoxel::Density>(entity);
+                            pool[bi * out.brickStrideFloats + base + voxelSlot] =
+                                den.has_value() ? den.value() : 0.0f;
+                        } else if (sem == SEM_COLOR) {
+                            const auto col = world.getComponentValue<Vixen::GaiaVoxel::Color>(entity);
+                            glm::vec3 cv(1.0f);
+                            if (col.has_value()) cv = col.value();
+                            // Color: 3 components, each occupying a full 512-voxel lane.
+                            // comp*512 offsets: comp=0 → base+0..511, comp=1 → base+512..1023, etc.
+                            for (uint32_t comp = 0; comp < ec; ++comp) {
+                                pool[bi * out.brickStrideFloats + base + comp * kVoxelsPerBrick + voxelSlot] = cv[comp];
+                            }
+                        } else if (sem == SEM_ROUGHNESS) {
+                            const auto rgh = world.getComponentValue<Vixen::GaiaVoxel::Roughness>(entity);
+                            pool[bi * out.brickStrideFloats + base + voxelSlot] =
+                                rgh.has_value() ? rgh.value() : 0.5f;
+                        }
+                        (void)ec;  // suppress warning for single-elem channels
+                    }
                 }
             }
         }
     }
+
     out.bricks.resize(brickWords.size() * sizeof(uint32_t));
     if (!brickWords.empty()) {
         std::memcpy(out.bricks.data(), brickWords.data(), out.bricks.size());
     }
-    out.sdfBricks.resize(sdfWords.size() * sizeof(float));
-    if (!sdfWords.empty()) {
-        std::memcpy(out.sdfBricks.data(), sdfWords.data(), out.sdfBricks.size());
+    out.channelPool.resize(poolFloats * sizeof(float));
+    if (!pool.empty()) {
+        std::memcpy(out.channelPool.data(), pool.data(), out.channelPool.size());
     }
 
     // --- materials: default palette
@@ -548,9 +637,6 @@ inline SerializedOctree SerializeSdf(const SdfBodyOctree& body) {
     std::memcpy(out.materials.data(), palette.data(), out.materials.size());
 
     // --- Dense grid→brick lookup: uint32[bpa^3].
-    //     brickGridToBrickView key encoding (SVOBuilder.h:108-110):
-    //       key = brickX | (brickY<<10) | (brickZ<<20)
-    //     GPU flat index: brickX + brickY*bpa + brickZ*bpa*bpa
     {
         const int bpa = oct->bricksPerAxis;
         const uint32_t tableSize = static_cast<uint32_t>(bpa) *
@@ -604,13 +690,16 @@ inline SerializedOctree SerializeSdf(const SdfBodyOctree& body) {
     c.nodeArrayBase  = 0;
     c.brickArrayBase = 0;
 
-    // Stored-SDF layout descriptor in _padding4 tail (bytes 200-211):
-    //   byte 200 (_padding4[0]): formatId = STORED_SDF (1u)
-    //   byte 204 (_padding4[1]): bricksPerAxis (uint32)
-    //   byte 208 (_padding4[2]): sdfBrickArrayBase (0 for single-octree)
+    // Stored-SDF layout descriptor: formatId, bricksPerAxis, poolBrickBase (=0 single-octree),
+    // channelCount, brickStrideFloats, channels[].
     setFormatId(c, STORED_SDF);
     setDescriptorBricksPerAxis(c, static_cast<uint32_t>(oct->bricksPerAxis));
-    setSdfBrickArrayBase(c, 0u);
+    setSdfBrickArrayBase(c, 0u);  // poolBrickBase; ConcatenateSdf sets per-octree value
+    c.channelCount      = out.channelCount;
+    c.brickStrideFloats = out.brickStrideFloats;
+    for (uint32_t ci = 0; ci < out.channelCount && ci < kMaxChannels; ++ci) {
+        c.channels[ci] = out.channels[ci];
+    }
 
     return out;
 }
@@ -690,7 +779,7 @@ inline ConcatenatedOctrees ConcatenateSdf(const std::vector<const SdfBodyOctree*
 
     uint32_t nodeBase    = 0;   // running node element offset
     uint32_t brickBase   = 0;   // running brick offset
-    uint32_t sdfBase     = 0;   // running SDF element offset (in floats = voxels)
+    uint32_t poolBase    = 0;   // running pool element offset (in floats)
 
     for (size_t k = 0; k < octrees.size(); ++k) {
         if (octrees[k] == nullptr) {
@@ -699,9 +788,10 @@ inline ConcatenatedOctrees ConcatenateSdf(const std::vector<const SdfBodyOctree*
         SerializedOctree s = SerializeSdf(*octrees[k]);
 
         // Stamp bases into this octree's config BEFORE appending.
+        // poolBase is the float-element offset of this octree's first brick in the pool.
         s.config.nodeArrayBase  = static_cast<int32_t>(nodeBase);
         s.config.brickArrayBase = static_cast<int32_t>(brickBase);
-        setSdfBrickArrayBase(s.config, sdfBase);
+        setSdfBrickArrayBase(s.config, poolBase);  // poolBrickBase = poolBase
 
         cat.configs[k]     = s.config;
         cat.nodeCounts[k]  = s.nodeCount;
@@ -709,7 +799,8 @@ inline ConcatenatedOctrees ConcatenateSdf(const std::vector<const SdfBodyOctree*
 
         cat.nodes.insert(cat.nodes.end(),   s.nodes.begin(),   s.nodes.end());
         cat.bricks.insert(cat.bricks.end(), s.bricks.begin(),  s.bricks.end());
-        cat.sdfBricks.insert(cat.sdfBricks.end(), s.sdfBricks.begin(), s.sdfBricks.end());
+        cat.channelPool.insert(cat.channelPool.end(),
+                               s.channelPool.begin(), s.channelPool.end());
         cat.brickGridLookup.insert(cat.brickGridLookup.end(),
                                    s.brickGridLookup.begin(), s.brickGridLookup.end());
 
@@ -719,8 +810,8 @@ inline ConcatenatedOctrees ConcatenateSdf(const std::vector<const SdfBodyOctree*
 
         nodeBase  += s.nodeCount;
         brickBase += s.brickCount;
-        // sdfBase advances by brickCount * kVoxelsPerBrick (float elements per SDF brick)
-        sdfBase   += s.brickCount * SerializedOctree::kVoxelsPerBrick;
+        // poolBase advances by brickCount * brickStrideFloats (total floats per brick)
+        poolBase  += s.brickCount * s.brickStrideFloats;
     }
 
     return cat;
