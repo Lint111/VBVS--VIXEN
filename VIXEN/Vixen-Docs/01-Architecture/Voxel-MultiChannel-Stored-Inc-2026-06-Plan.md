@@ -30,10 +30,10 @@ Vulkan 1.3 (lavapipe for the offscreen gate).
 
 ## Milestone Map
 
-- **M1 — VIXEN channel vocabulary + descriptor** (Tasks 1–2) · CPU + GLSL · gate: C++ compiles + glslc
+- **M1 — VIXEN channel vocabulary + descriptor** ✅ DONE (Tasks 1–2) · CPU + GLSL · gate: C++ compiles + glslc
   compiles the shader; `static_assert`s hold. The engine-owned `SEM_*`/`FK_*` enums + the extended
   `OctreeConfig` channel table, single-sourced CPU↔GLSL.
-- **M2 — Generic SoA pool serialize + bake + GPU wiring** (Tasks 3–5) · CPU · gate: `test_soa_sdf_serialize`
+- **M2 — Generic SoA pool serialize + bake + GPU wiring** ✅ DONE (Tasks 3–5) · CPU · gate: `test_soa_sdf_serialize`
   extended green (pool layout, per-channel base, round-trip sdf+color+roughness) + `VIXEN.exe` links.
 - **M3 — Shader generic channel reads + roughness lighting** (Tasks 6–8) · GLSL · gate: glslc compiles;
   correctness deferred to the M4 live gate.
@@ -81,7 +81,7 @@ Procedural path, the grid→brick `brickLookup[]`.
 
 **Files:** Create `libraries/SVO/include/VoxelChannelFormat.h` + `shaders/VoxelChannelFormat.glsl`.
 
-- [ ] **Step 1:** Write `VoxelChannelFormat.h` — the VIXEN-owned vocabulary (no game concepts):
+- [x] **Step 1:** Write `VoxelChannelFormat.h` — the VIXEN-owned vocabulary (no game concepts):
 ```cpp
 #pragma once
 #include <cstdint>
@@ -103,7 +103,7 @@ constexpr uint32_t kMaxChannels    = 8u;            // fits the OctreeConfig tai
 struct ChannelDesc { uint32_t semanticId, elemCount, channelBaseFloats, fieldKind; };  // = 1 uvec4
 }  // namespace Vixen::SVO
 ```
-- [ ] **Step 2:** Write `shaders/VoxelChannelFormat.glsl` — 1:1 mirror (same values; verified by a parity test in Task 2):
+- [x] **Step 2:** Write `shaders/VoxelChannelFormat.glsl` — 1:1 mirror (same values; verified by a parity test in Task 2):
 ```glsl
 #ifndef VOXEL_CHANNEL_FORMAT_GLSL
 #define VOXEL_CHANNEL_FORMAT_GLSL
@@ -120,13 +120,13 @@ struct ChannelDesc { uint32_t semanticId, elemCount, channelBaseFloats, fieldKin
 #define VX_VOXELS_PER_BRICK 512u
 #endif
 ```
-- [ ] **Step 3:** Commit `feat(svo): VIXEN-owned voxel channel vocabulary (SEM_*/FK_*) CPU+GLSL (Inc3 M1)`.
+- [x] **Step 3:** Commit `feat(svo): VIXEN-owned voxel channel vocabulary (SEM_*/FK_*) CPU+GLSL (Inc3 M1)`.
 
 ### Task 2: Extend `OctreeConfig` with the channel table + CPU↔GLSL parity test
 
 **Files:** Modify `ShellOctreeGpu.h` (OctreeConfig); create `libraries/SVO/tests/test_channel_format.cpp`.
 
-- [ ] **Step 1: Failing test** — `test_channel_format.cpp`: assert the enum values are the agreed constants
+- [x] **Step 1: Failing test** — `test_channel_format.cpp`: assert the enum values are the agreed constants
   (guards the GLSL mirror, which must match by inspection) and `sizeof(OctreeConfig)==432`:
 ```cpp
 #include <gtest/gtest.h>
@@ -143,16 +143,16 @@ TEST(ChannelFormat, OctreeConfigStillMatchesShaderStride) {
     EXPECT_EQ(sizeof(OctreeConfig), 432u);
 }
 ```
-- [ ] **Step 2: Build → FAIL** (no `VoxelChannelFormat.h` include wired / new fields absent).
-- [ ] **Step 3: Implement.** In `ShellOctreeGpu.h` `OctreeConfig`, replace `sdfBrickArrayBase`@208 +
+- [x] **Step 2: Build → FAIL** (no `VoxelChannelFormat.h` include wired / new fields absent).
+- [x] **Step 3: Implement.** In `ShellOctreeGpu.h` `OctreeConfig`, replace `sdfBrickArrayBase`@208 +
   the tail with: `uint32_t poolBrickBase` (@208), `uint32_t channelCount` (@212),
   `uint32_t brickStrideFloats` (@216), then `ChannelDesc channels[kMaxChannels]` packed into the
   std140 tail. Keep `formatId`@200, `bricksPerAxis(Sdf)`@204. Re-derive the trailing pad so
   `sizeof==432`; add `static_assert(offsetof(...)==...)` for poolBrickBase/channelCount/brickStrideFloats/channels[0]
   and `static_assert(sizeof(OctreeConfig)==432)`. (Dump SPIR-V `ArrayStride` to confirm 432 holds — see
   the OctreeConfig-432 friction entry.)
-- [ ] **Step 4: Build+run → PASS.** Register `test_channel_format` in `libraries/SVO/tests/CMakeLists.txt`.
-- [ ] **Step 5: Commit** `feat(svo): OctreeConfig channel-descriptor table (Inc3 M1)`.
+- [x] **Step 4: Build+run → PASS.** Register `test_channel_format` in `libraries/SVO/tests/CMakeLists.txt`.
+- [x] **Step 5: Commit** `feat(svo): OctreeConfig channel-descriptor table (Inc3 M1)`.
 
 ---
 
@@ -162,7 +162,7 @@ TEST(ChannelFormat, OctreeConfigStillMatchesShaderStride) {
 
 **Files:** Modify `ShellOctreeGpu.h`.
 
-- [ ] **Step 1: Failing test** — extend `test_soa_sdf_serialize.cpp`:
+- [x] **Step 1: Failing test** — extend `test_soa_sdf_serialize.cpp`:
 ```cpp
 TEST(SoaSdfSerialize, MultiChannelPoolLayout) {
     auto baked = BakeRecipeToSdfWorld(RECIPE_SPHERE, glm::vec3(32), RecipeParams{6,0,0,0,0,0}, 64, 2.5f);
@@ -181,8 +181,8 @@ TEST(SoaSdfSerialize, MultiChannelPoolLayout) {
     EXPECT_TRUE(std::isfinite(sdf));
 }
 ```
-- [ ] **Step 2: Build → FAIL.**
-- [ ] **Step 3: Implement.** Replace the dedicated `sdfBricks` emit with a generic pool:
+- [x] **Step 2: Build → FAIL.**
+- [x] **Step 3: Implement.** Replace the dedicated `sdfBricks` emit with a generic pool:
   - Determine the channel list/order from the body's `VoxelConfig`/`AttributeRegistry` mapped to
     `SemanticId` (SDF = the `density` key channel; `color`, `roughness` if declared). Build the
     `ChannelDesc[]` table + `brickStrideFloats = Σ elemCount·512` + per-channel `channelBaseFloats`.
@@ -194,14 +194,14 @@ TEST(SoaSdfSerialize, MultiChannelPoolLayout) {
     ChannelDesc channels[kMaxChannels];` + `channelBaseFloats(sem)` / `readPoolVoxel(...)` helpers.
     Remove `sdfBricks`/`sdfBrickArrayBase` (SDF now lives in the pool). `ConcatenateSdf` concatenates
     pools with per-octree `poolBrickBase` (float offset) into the descriptor.
-- [ ] **Step 4: Build+run → PASS.**
-- [ ] **Step 5: Commit** `feat(svo): schema-driven multi-channel SoA pool serialize (Inc3 M2)`.
+- [x] **Step 4: Build+run → PASS.**
+- [x] **Step 5: Commit** `feat(svo): schema-driven multi-channel SoA pool serialize (Inc3 M2)`.
 
 ### Task 4: Bake synthesizes varying `color` + `roughness`
 
 **Files:** Modify `SdfBake.h`.
 
-- [ ] **Step 1:** In `BakeRecipeToSdfWorld`, register `color` (Vec3) + `roughness` (Float) keys and, in
+- [x] **Step 1:** In `BakeRecipeToSdfWorld`, register `color` (Vec3) + `roughness` (Float) keys and, in
   the full-brick population (active+dilated bricks), set spatially-varying values so per-voxel variation
   is observable downstream:
 ```cpp
@@ -212,17 +212,17 @@ float rough = glm::clamp(0.2f + 0.6f * glm::fract(p.y * 0.0625f), 0.0f, 1.0f);
 comps += Color{col}, Roughness{rough};   // alongside Density{sd}
 ```
   (Add a `Roughness` component to `VoxelComponents.h` if absent — `VOXEL_COMPONENT_SCALAR(Roughness, "roughness", float, 0.5f)`.)
-- [ ] **Step 2:** Extend the M2 test to assert a known voxel's stored `color`/`roughness` ≈ the formula.
-- [ ] **Step 3: Commit** `feat(svo): bake synthesizes varying color+roughness for multi-channel test (Inc3 M2)`.
+- [x] **Step 2:** Extend the M2 test to assert a known voxel's stored `color`/`roughness` ≈ the formula. _(done as range/finiteness check; tighten to exact-formula in M4 T10 — see Progress Log)_
+- [x] **Step 3: Commit** `feat(svo): bake synthesizes varying color+roughness for multi-channel test (Inc3 M2)`.
 
 ### Task 5: GPU buffer wiring (pool on binding 11)
 
 **Files:** Modify `BodyOctreeSceneNode.cpp` + `...Config.h`.
 
-- [ ] **Step 1:** Rename the SDF buffer member/output to the channel **pool** (same binding 11); upload
+- [x] **Step 1:** Rename the SDF buffer member/output to the channel **pool** (same binding 11); upload
   `concatenated_.channelPool` (was `sdfBricks`). `brickLookup`/binding 12 unchanged. Update the buffer
   size + `CreateBuffer`. Build gate: `VIXEN.exe` links (no descriptor-layout assertion).
-- [ ] **Step 2: Commit** `feat(rendergraph): upload generic channel pool to binding 11 (Inc3 M2)`.
+- [x] **Step 2: Commit** `feat(rendergraph): upload generic channel pool to binding 11 (Inc3 M2)`.
 
 ---
 
@@ -308,6 +308,31 @@ float rough  = sampleChannelScalarTrilinear(SEM_ROUGHNESS, gridHit); // default 
 - [ ] **Step 3: Commit** `docs(progress): Inc3 multi-channel gate — per-voxel color+roughness render, no-regression`.
 
 ---
+
+## Progress Log
+
+- **Milestone M1 (Tasks 1–2): DONE** · commits `49c24f48..63b98643` · Opus validator OK · 2026-06-23
+  — VIXEN-owned channel vocabulary (`VoxelChannelFormat.h` + `VoxelChannelFormat.glsl` mirror, value-parity
+  verified) + `OctreeConfig` channel-descriptor table (`poolBrickBase`@208 / `channelCount`@212 /
+  `brickStrideFloats`@216 / `ChannelDesc channels[8]`@220 / `_tailPad[21]`@348; `sizeof==432` preserved,
+  `sizeof(ChannelDesc)==16` + offset `static_assert`s). Legacy `sdfBrickArrayBaseOf`/setters kept as thin
+  shims over the new named fields (Inc2 callers unbroken). Gate: `test_channel_format` 2/2 +
+  `test_soa_sdf_serialize` 8/8 green (re-run by validator after clean rebuild).
+
+- **Milestone M2 (Tasks 3–5): DONE** · commits `c58f0f38..79c1ebff` · Opus validator OK · 2026-06-23
+  — `sdfBricks` SSBO replaced by a generic SoA `channelPool` (stride 2560 floats/brick; bases sdf 0 /
+  color 512 / roughness 2048 from a hardcoded canonical `kChannelSpecs[]` = deterministic order).
+  `SerializeSdf` stamps the `OctreeConfig` channel table (`channelCount`/`brickStrideFloats`/`channels[]`,
+  SDF=`FK_DISTANCE`, color+roughness=`FK_NONE`); `ConcatenateSdf` copies it intact + sets per-octree
+  `poolBrickBase`; `BodyOctreeSceneNode` uploads `channelPool` (binding 11) + the stamped configs verbatim
+  (432-B stride). **Descriptor-propagation traced clean to the GPU UBO by the Opus validator** (no zeroing
+  gap). `Roughness` component added; bake synthesizes varying color (RGB cos-bands) + roughness (Y-stripe).
+  Gate: `test_soa_sdf_serialize` 10/10 green + `VIXEN` target links (re-run by validator).
+- **Deferred Minor cleanups → do in M4 Task 10** (validator-flagged, non-blocking): (a) tighten
+  `test_soa_sdf_serialize.cpp` `MultiChannelBakedColorRoughness` (~L297-303) to assert the **exact baked
+  color/roughness formula** at a known voxel, not just `[0,1]` range (closes a color↔roughness-swap gap);
+  (b) scrub stale comments still saying `sdfBricks` (`ShellOctreeGpu.h:483,490-491,504,757-769`) and
+  "256-byte OctreeConfig" (`BodyOctreeSceneNode.cpp:384`) → `channelPool` / 432-B.
 
 ## Self-Review
 

@@ -1,10 +1,15 @@
 // ============================================================================
-// StoredSdf.glsl — Inc2 M4: Stored-SDF trilinear iso-surface rendering helpers.
+// StoredSdf.glsl — Inc3 M3: Generic multi-channel pool readers + iso-surface march.
 // ============================================================================
 // Included by BodyInstanceRayMarch.comp AFTER:
 //   • OctreeConfig struct (binding 5), g_octreeIdx, octreeConfig macro
-//   • SdfBrickBuffer (binding 11): float sdfData[]
+//   • VoxelChannelFormat.glsl:  SEM_* / FK_* defines
+//   • ChannelPoolBuffer (binding 11): float channelPool[]
 //   • BrickLookupBuffer (binding 12): uint  brickLookup[]
+//
+// Inc3 M3 replaces the per-semantic sdfData[] with a generic SoA channelPool[]:
+//   channelPool[poolBrickBase + brickIdx*brickStrideFloats + channelBase + comp*512 + voxel]
+// where poolBrickBase / brickStrideFloats / channels[] come from OctreeConfig.
 //
 // Inc2 M6: the Stored-SDF path REUSES the ESVO octree traversal
 // (traverseOctreeInstanced). At each ESVO leaf brick, handleLeafHitInstancedSdf
@@ -33,23 +38,35 @@ uint _gridToLookupIdx(ivec3 brickCoord, int bpa) {
 }
 
 // ---------------------------------------------------------------------------
-// Internal helper: sample the SDF for a single grid voxel at integer coord.
-// gridCoord is in voxel units (0 .. bpa*8 - 1 per axis).
-// Returns 1e9 (positive large) if the brick is unallocated (sentinel).
-//
-// sdfBrickArrayBase is in FLOAT ELEMENT units (voxels), matching ConcatenateSdf
-// which sets sdfBase += brickCount * 512 (kVoxelsPerBrick) per octree.
-//
-// The brick-grid lookup sub-table for octree k starts at k * bpa^3 in the
-// concatenated brickLookup[]. All octrees share the same bpa in practice
-// (all built with the same shell depth), so this is: octreeIdx * bpa^3.
+// channelBaseFloats: return the channelBaseFloats for a semantic in the active
+// OctreeConfig, or 0xFFFFFFFFu if the semantic is not present.
+// Scans octreeConfig.channels[0..channelCount-1] (.x = semanticId, .z = channelBaseFloats).
 // ---------------------------------------------------------------------------
-float _sampleSdfVoxel(ivec3 gridCoord, int octreeIdx) {
+uint channelBaseFloats(uint sem) {
+    for (uint i = 0u; i < octreeConfig.channelCount; ++i) {
+        if (octreeConfig.channels[i].x == sem) return octreeConfig.channels[i].z;
+    }
+    return 0xFFFFFFFFu;
+}
+
+// ---------------------------------------------------------------------------
+// Internal helper: sample a single float from the channel pool at a given
+// brick and voxel slot.
+//   channelBase : channelBaseFloats for the desired channel (from channelBaseFloats())
+//   gridCoord   : grid voxel coordinate (x,y,z in [0, bpa*8-1] per axis)
+//   comp        : component index within the channel's elemCount (0 for scalars)
+//   octreeIdx   : index into configs[]
+// Returns 1e9 for unallocated bricks (sentinel, mirrors old _sampleSdfVoxel).
+// Returns 1e9 if channelBase == 0xFFFFFFFFu (channel absent).
+// ---------------------------------------------------------------------------
+float _samplePoolVoxel(uint channelBase, ivec3 gridCoord, int comp, int octreeIdx) {
+    if (channelBase == 0xFFFFFFFFu) return 1e9;
+
     int bpa = int(configs[octreeIdx].bricksPerAxisSdf);
     if (bpa <= 0) return 1e9;
 
     // Grid coordinate → brick coordinate (which 8^3 brick?)
-    ivec3 brickCoord = gridCoord / 8;
+    ivec3 brickCoord   = gridCoord / 8;
     // Voxel coordinate within that brick (0..7 per axis)
     ivec3 voxelInBrick = gridCoord - brickCoord * 8;
 
@@ -59,14 +76,80 @@ float _sampleSdfVoxel(ivec3 gridCoord, int octreeIdx) {
 
     // Each octree's sub-table is bpa^3 entries; sub-tables are appended in order.
     uint lookupBase = uint(octreeIdx) * uint(bpa) * uint(bpa) * uint(bpa);
-    uint brickIdx = brickLookup[lookupBase + flatLookup];
+    uint brickIdx   = brickLookup[lookupBase + flatLookup];
     if (brickIdx == 0xFFFFFFFFu) return 1e9;  // unallocated brick
 
-    // sdfBrickArrayBase is the element (float) offset of this octree's SDF data
-    // within the concatenated sdfData[]. Each brick holds 512 float voxels.
-    uint sdfBase   = configs[octreeIdx].sdfBrickArrayBase;  // in float elements
-    uint voxelIdx  = uint(voxelInBrick.z * 64 + voxelInBrick.y * 8 + voxelInBrick.x);
-    return sdfData[sdfBase + brickIdx * 512u + voxelIdx];
+    // Pool addressing:
+    //   channelPool[poolBrickBase + brickIdx*brickStrideFloats + channelBase + comp*512 + voxelIdx]
+    uint poolBase   = configs[octreeIdx].poolBrickBase;   // float-element offset of octree's data
+    uint stride     = configs[octreeIdx].brickStrideFloats;
+    uint voxelIdx   = uint(voxelInBrick.z * 64 + voxelInBrick.y * 8 + voxelInBrick.x);
+    return channelPool[poolBase + brickIdx * stride + channelBase + uint(comp) * VX_VOXELS_PER_BRICK + voxelIdx];
+}
+
+// ---------------------------------------------------------------------------
+// _sampleSdfVoxel: backward-compat wrapper — reads the SDF channel (SEM_SDF).
+// gridCoord is in voxel units (0 .. bpa*8-1 per axis).
+// ---------------------------------------------------------------------------
+float _sampleSdfVoxel(ivec3 gridCoord, int octreeIdx) {
+    return _samplePoolVoxel(channelBaseFloats(SEM_SDF), gridCoord, 0, octreeIdx);
+}
+
+// ---------------------------------------------------------------------------
+// sampleChannelScalarTrilinear: trilinear interpolation of a scalar channel
+// at a fractional grid position (in voxel units).
+// Returns `missing` when the channel is absent.
+// ---------------------------------------------------------------------------
+float sampleChannelScalarTrilinear(uint sem, vec3 gridPos, float missing) {
+    uint base = channelBaseFloats(sem);
+    if (base == 0xFFFFFFFFu) return missing;
+
+    vec3  f = fract(gridPos);
+    ivec3 i = ivec3(floor(gridPos));
+
+    float c000 = _samplePoolVoxel(base, i + ivec3(0,0,0), 0, g_octreeIdx);
+    float c100 = _samplePoolVoxel(base, i + ivec3(1,0,0), 0, g_octreeIdx);
+    float c010 = _samplePoolVoxel(base, i + ivec3(0,1,0), 0, g_octreeIdx);
+    float c110 = _samplePoolVoxel(base, i + ivec3(1,1,0), 0, g_octreeIdx);
+    float c001 = _samplePoolVoxel(base, i + ivec3(0,0,1), 0, g_octreeIdx);
+    float c101 = _samplePoolVoxel(base, i + ivec3(1,0,1), 0, g_octreeIdx);
+    float c011 = _samplePoolVoxel(base, i + ivec3(0,1,1), 0, g_octreeIdx);
+    float c111 = _samplePoolVoxel(base, i + ivec3(1,1,1), 0, g_octreeIdx);
+
+    return mix(
+        mix(mix(c000, c100, f.x), mix(c010, c110, f.x), f.y),
+        mix(mix(c001, c101, f.x), mix(c011, c111, f.x), f.y),
+        f.z);
+}
+
+// ---------------------------------------------------------------------------
+// sampleChannelVec3Trilinear: trilinear interpolation of a 3-component channel
+// (e.g. SEM_COLOR). Returns `missing` when the channel is absent.
+// ---------------------------------------------------------------------------
+vec3 sampleChannelVec3Trilinear(uint sem, vec3 gridPos, vec3 missing) {
+    uint base = channelBaseFloats(sem);
+    if (base == 0xFFFFFFFFu) return missing;
+
+    vec3  f = fract(gridPos);
+    ivec3 i = ivec3(floor(gridPos));
+
+    vec3 result;
+    for (int comp = 0; comp < 3; ++comp) {
+        float c000 = _samplePoolVoxel(base, i + ivec3(0,0,0), comp, g_octreeIdx);
+        float c100 = _samplePoolVoxel(base, i + ivec3(1,0,0), comp, g_octreeIdx);
+        float c010 = _samplePoolVoxel(base, i + ivec3(0,1,0), comp, g_octreeIdx);
+        float c110 = _samplePoolVoxel(base, i + ivec3(1,1,0), comp, g_octreeIdx);
+        float c001 = _samplePoolVoxel(base, i + ivec3(0,0,1), comp, g_octreeIdx);
+        float c101 = _samplePoolVoxel(base, i + ivec3(1,0,1), comp, g_octreeIdx);
+        float c011 = _samplePoolVoxel(base, i + ivec3(0,1,1), comp, g_octreeIdx);
+        float c111 = _samplePoolVoxel(base, i + ivec3(1,1,1), comp, g_octreeIdx);
+
+        result[comp] = mix(
+            mix(mix(c000, c100, f.x), mix(c010, c110, f.x), f.y),
+            mix(mix(c001, c101, f.x), mix(c011, c111, f.x), f.y),
+            f.z);
+    }
+    return result;
 }
 
 // ---------------------------------------------------------------------------

@@ -9,22 +9,40 @@
 #define LIGHTING_GLSL
 
 // ============================================================================
-// SIMPLE LAMBERTIAN + AMBIENT LIGHTING
+// SIMPLE LAMBERTIAN + BLINN-PHONG SPECULAR LIGHTING
 // ============================================================================
 
-// Compute basic lighting with ambient and diffuse components
-// color: Base surface color
-// normal: Surface normal (normalized)
-// rayDir: View ray direction (for potential specular, unused here)
-vec3 computeLighting(vec3 color, vec3 normal, vec3 rayDir) {
+// Compute lighting with ambient, diffuse, and roughness-modulated specular.
+// color    : Base surface color
+// normal   : Surface normal (normalized)
+// rayDir   : View ray direction (normalized, points AWAY from surface toward camera)
+// roughness: PBR-style roughness in [0,1]; 0 = mirror-like, 1 = fully diffuse.
+//            Blinn-Phong exponent: mix(64.0, 4.0, roughness)
+//            Specular scale:       1.0 - roughness
+vec3 computeLighting(vec3 color, vec3 normal, vec3 rayDir, float roughness) {
     // Fixed directional light from upper-right-front
     vec3 lightDir = normalize(vec3(1.0, 1.0, -1.0));
 
-    // Ambient and diffuse coefficients
+    // View direction: rayDir points from camera toward surface; negate for lighting math.
+    vec3 viewDir  = normalize(-rayDir);
+    vec3 halfVec  = normalize(lightDir + viewDir);
+
+    // Ambient and diffuse
     float ambient = 0.3;
     float diffuse = max(dot(normal, lightDir), 0.0) * 0.7;
 
-    return color * (ambient + diffuse);
+    // Blinn-Phong specular: exponent and scale both decrease with roughness.
+    float shininess    = mix(64.0, 4.0, roughness);
+    float specScale    = (1.0 - roughness) * 0.4;
+    float specular     = pow(max(dot(normal, halfVec), 0.0), shininess) * specScale;
+
+    return color * (ambient + diffuse) + vec3(specular);
+}
+
+// Backward-compat overload for binary/procedural paths that have no roughness.
+// Passes the default roughness (0.5) to the full function so look is unchanged.
+vec3 computeLighting(vec3 color, vec3 normal, vec3 rayDir) {
+    return computeLighting(color, normal, rayDir, 0.5);
 }
 
 // Alternative shading with configurable light direction

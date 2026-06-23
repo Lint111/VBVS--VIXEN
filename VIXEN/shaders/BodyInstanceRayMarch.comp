@@ -29,6 +29,7 @@
 
 #include "SVOTypes.glsl"
 #include "Materials.glsl"
+#include "VoxelChannelFormat.glsl"   // Inc3 M3: SEM_* and FK_* defines
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
@@ -62,7 +63,8 @@ layout(std430, binding = 3) readonly buffer MaterialBuffer {
 // ============================================================================
 // Bound as placeholders (1-byte SSBOs) for binary/Procedural bodies. The shader
 // only accesses these when OctreeConfig.formatId == FORMAT_STORED_SDF (1u).
-layout(std430, binding = 11) readonly buffer SdfBrickBuffer  { float sdfData[]; };
+// Inc3 M3: binding 11 renamed sdfData → channelPool (generic multi-channel SoA pool).
+layout(std430, binding = 11) readonly buffer ChannelPoolBuffer { float channelPool[]; };
 layout(std430, binding = 12) readonly buffer BrickLookupBuffer { uint  brickLookup[]; };
 
 #define FORMAT_BINARY     0u
@@ -83,16 +85,16 @@ layout(std430, binding = 4) buffer RayTraceBuffer {
 //
 // IMPORTANT std140 scalar-array padding: in a std140 UBO, each element of a
 // float/int/uint array is padded to a vec4 stride (16 bytes), NOT 4 bytes.
-// So float _padding4_tail[14] occupies 14*16=224 bytes, making the whole
-// struct 200+224=424 bytes, rounded to 432 (the ArrayStride in the SPIR-V).
-// The C++ OctreeConfig has float _padding4[58] (4-byte stride) = 232 bytes,
-// totaling exactly 432 bytes. Both land configs[k] at byte k*432.
+// An ARRAY-OF-STRUCT (like channels[8]) also has its base rounded up to 16-byte
+// alignment by std140, so the first element lands at the next 16-byte boundary.
 //
-// Inc2 M3: bytes 200/204/208 carry the Stored-SDF descriptor (formatId,
-// bricksPerAxisSdf, sdfBrickArrayBase) reusing the first 12 of _padding4[58]
-// on the CPU. The GLSL replaces the first 3 pad-tail floats with named uints.
-// After the 3 uints (12 bytes at 200-211), the tail needs 13 floats at std140
-// 16-byte strides: 13*16=208 bytes ending at 420, struct rounds to 432. ✓
+// Inc3 M3: bytes 200..431 carry the Stored-SDF descriptor and channel table.
+//   Five uints (200..219, 20 bytes) land at byte 220 = std140 aligns next array
+//   to 224. The _padChannels field at byte 220 makes this explicit on the CPU.
+//   channels[8] is declared as uvec4[8] (NOT a struct) to avoid per-member std140
+//   padding surprises; each uvec4 is 16 bytes (aligned naturally).
+//   After channels (224..351, 128 B), the tail needs 5 floats at std140
+//   16-byte strides: 5*16=80 bytes ending at 431, struct = 432 B total. ✓
 //
 // Byte offsets (GLSL std140 layout, confirmed from SPIR-V ArrayStride 432):
 //   0   esvoMaxScale        int
@@ -109,10 +111,15 @@ layout(std430, binding = 4) buffer RayTraceBuffer {
 //   128 worldToLocal        mat4  (64 B → 192)
 //   192 nodeArrayBase       int
 //   196 brickArrayBase      int
-//   200 formatId            uint  ← Inc2 M2: 0=FORMAT_BINARY, 1=FORMAT_STORED_SDF
-//   204 bricksPerAxisSdf    uint  ← Inc2 M2: brick-grid cube side length
-//   208 sdfBrickArrayBase   uint  ← Inc2 M2: float-element offset into sdfData[]
-//   212 _padding4_tail[13]  float (13*16=208 B → 420, rounded to 432)
+//   200 formatId            uint  ← 0=FORMAT_BINARY, 1=FORMAT_STORED_SDF
+//   204 bricksPerAxisSdf    uint  ← brick-grid cube side length
+//   208 poolBrickBase       uint  ← float-element offset into channelPool[]
+//   212 channelCount        uint  ← number of live channels in channels[]
+//   216 brickStrideFloats   uint  ← floats per brick (sum over all channels)
+//   220 (implicit std140 pad to 16-byte array alignment)
+//   224 channels[8]         uvec4 ← .x=semanticId .y=elemCount .z=channelBaseFloats .w=fieldKind
+//                                  8*16=128 B → ends at byte 352
+//   352 _tailPad[5]         float  5*16=80 B under std140 → struct = 432 B ✓
 // ============================================================================
 struct OctreeConfig {
     int  esvoMaxScale;
@@ -129,12 +136,16 @@ struct OctreeConfig {
     float _padding3;
     mat4 localToWorld;
     mat4 worldToLocal;
-    int  nodeArrayBase;      // byte 192: base index into esvoNodes[]
-    int  brickArrayBase;     // byte 196: base index into brickData[] (brick units)
-    uint formatId;           // byte 200: 0=FORMAT_BINARY, 1=FORMAT_STORED_SDF (Inc2 M2)
-    uint bricksPerAxisSdf;   // byte 204: brick-grid cube side length (Inc2 M2)
-    uint sdfBrickArrayBase;  // byte 208: float-element offset into sdfData[] (Inc2 M2)
-    float _padding4_tail[13];  // bytes 212..431 (13*16=208 B under std140; struct→432 B)
+    int  nodeArrayBase;       // byte 192: base index into esvoNodes[]
+    int  brickArrayBase;      // byte 196: base index into brickData[] (brick units)
+    uint formatId;            // byte 200: 0=FORMAT_BINARY, 1=FORMAT_STORED_SDF
+    uint bricksPerAxisSdf;    // byte 204: brick-grid cube side length
+    uint poolBrickBase;       // byte 208: float-element offset into channelPool[]
+    uint channelCount;        // byte 212: number of live channels in channels[]
+    uint brickStrideFloats;   // byte 216: floats per brick (sum over all channels)
+    // bytes 220..223: implicit std140 pad before the 16-aligned array
+    uvec4 channels[8];        // byte 224: .x=semanticId .y=elemCount .z=channelBaseFloats .w=fieldKind
+    float _tailPad[5];        // byte 352: std140 16-strided: 5*16=80 B → struct 432 B
 };
 
 layout(std140, binding = 5) uniform OctreeConfigsUBO {
@@ -408,24 +419,26 @@ bool handleLeafHitInstanced(TraversalState state, RayCoefficients coef,
 }
 
 // ============================================================================
-// STORED-SDF LEAF HIT (instanced) — Inc2 M6
+// STORED-SDF LEAF HIT (instanced) — Inc3 M3 (updated from Inc2 M6)
 // ============================================================================
 // SDF variant of handleLeafHitInstanced. Reached from traverseOctreeInstanced at
 // an ESVO leaf when configs[g_octreeIdx].formatId == FORMAT_STORED_SDF. Bridges
 // the leaf entry from ESVO [1,2]^3 space into the SDF's true grid-voxel frame and
 // marches the trilinear iso-surface within that ONE brick (marchBrickSdf).
 //
-// Simpler than the binary handler: the SDF is keyed by GRID COORDINATE (via
-// brickLookup inside sampleSdfTrilinear), so we need NO leaf-descriptor fetch and
-// NO contour pointer — just the geometric hit position. The octree leaf existing
-// IS the guarantee that this brick's SDF is allocated.
+// Inc3 M3: after the iso-surface hit, sample per-voxel color (SEM_COLOR) and
+// roughness (SEM_ROUGHNESS) from the generic channel pool via trilinear gather.
+// hitColor is the voxel color (NOT the vec3(1) tint placeholder); hitRoughness
+// is the per-voxel roughness. Instance tint is still applied in main().
 bool handleLeafHitInstancedSdf(TraversalState state, RayCoefficients coef,
                                vec3 rayDir, float tBias,
                                out vec3 hitColor, out vec3 hitNormal, out float hitT,
+                               out float hitRoughness,
                                out uint hitBrickIndex, out uint hitVoxelLinearIdx) {
-    hitColor          = vec3(1.0);   // instance tint is applied in main()
+    hitColor          = vec3(1.0);
     hitNormal         = vec3(0.0, 1.0, 0.0);
     hitT              = 0.0;
+    hitRoughness      = 0.5;
     hitBrickIndex     = 0u;
     hitVoxelLinearIdx = 0u;
 
@@ -454,6 +467,11 @@ bool handleLeafHitInstancedSdf(TraversalState state, RayCoefficients coef,
     float tHitLocal = state.t_min + sHit / (dirLen * gridScale);
     hitT = tBias + tHitLocal;
 
+    // Inc3 M3: sample per-voxel color and roughness at the hit grid position.
+    vec3 gridHit = gridEntry + gridDirN * sHit;
+    hitColor     = sampleChannelVec3Trilinear(SEM_COLOR, gridHit, vec3(1.0));
+    hitRoughness = sampleChannelScalarTrilinear(SEM_ROUGHNESS, gridHit, 0.5);
+
     // Best-effort pick/ID: the leaf brick's flat grid index (voxel idx unused for SDF).
     ivec3 brick   = ivec3(floor((gridEntry + gridDirN * 1e-3) / 8.0));
     uint  flatIdx = _gridToLookupIdx(brick, bpa);
@@ -477,10 +495,12 @@ bool handleLeafHitInstancedSdf(TraversalState state, RayCoefficients coef,
 
 bool traverseOctreeInstanced(vec3 rayOrigin, vec3 rayDir,
                               out vec3 hitColor, out vec3 hitNormal, out float hitT,
+                              out float hitRoughness,
                               out uint hitBrickIndex, out uint hitVoxelLinearIdx,
                               inout DebugRaySample debugInfo) {
     hitBrickIndex     = 0u;
     hitVoxelLinearIdx = 0u;
+    hitRoughness      = 0.5;
 
     debugInfo.hitFlag      = 0u;
     debugInfo.exitCode     = DEBUG_EXIT_NONE;
@@ -543,18 +563,22 @@ bool traverseOctreeInstanced(vec3 rayOrigin, vec3 rayDir,
 
             if (isLeaf) {
                 float tBias = tEntryWorld;
-                // Inc2 M6: dispatch the leaf hit-test by content format. Stored-SDF
-                // bricks march the trilinear iso-surface; binary bricks DDA voxels.
-                // Everything else around the leaf (empty-skip, t-span, ADVANCE/POP)
-                // is shared and unchanged.
-                bool leafHit = (octreeConfig.formatId == FORMAT_STORED_SDF)
-                    ? handleLeafHitInstancedSdf(state, coef, rayDir, tBias,
-                                                hitColor, hitNormal, hitT,
-                                                hitBrickIndex, hitVoxelLinearIdx)
-                    : handleLeafHitInstanced(state, coef, rayStartWorld, rayDir, tBias,
-                                             parent_descriptor, validMask, leafMask,
-                                             stack, hitColor, hitNormal, hitT,
-                                             hitBrickIndex, hitVoxelLinearIdx);
+                // Inc3 M3: dispatch the leaf hit-test by content format. Stored-SDF
+                // bricks march the trilinear iso-surface and sample per-voxel color +
+                // roughness; binary bricks DDA voxels (roughness defaults to 0.5).
+                bool leafHit;
+                if (octreeConfig.formatId == FORMAT_STORED_SDF) {
+                    leafHit = handleLeafHitInstancedSdf(state, coef, rayDir, tBias,
+                                                        hitColor, hitNormal, hitT,
+                                                        hitRoughness,
+                                                        hitBrickIndex, hitVoxelLinearIdx);
+                } else {
+                    hitRoughness = 0.5;  // binary path: default roughness
+                    leafHit = handleLeafHitInstanced(state, coef, rayStartWorld, rayDir, tBias,
+                                                     parent_descriptor, validMask, leafMask,
+                                                     stack, hitColor, hitNormal, hitT,
+                                                     hitBrickIndex, hitVoxelLinearIdx);
+                }
                 if (leafHit) {
                     endRayTrace(true);
                     snapshotTraversalState(state, coef, debugInfo);
@@ -649,12 +673,13 @@ void main() {
     // -----------------------------------------------------------------------
     // Per-pixel nearest-hit accumulator (across all instances)
     // -----------------------------------------------------------------------
-    bool  anyHit         = false;
-    float bestT          = 1e30;
-    vec3  bestColor      = skyColor;
-    vec3  bestNormal     = vec3(0.0, 1.0, 0.0);
-    uint  bestBrickIndex = 0u;
-    uint  bestVoxelIdx   = 0u;
+    bool  anyHit          = false;
+    float bestT           = 1e30;
+    vec3  bestColor       = skyColor;
+    vec3  bestNormal      = vec3(0.0, 1.0, 0.0);
+    float bestRoughness   = 0.5;   // Inc3 M3: default for binary/procedural paths
+    uint  bestBrickIndex  = 0u;
+    uint  bestVoxelIdx    = 0u;
 
     // -----------------------------------------------------------------------
     // Record metrics once for the dominant hit
@@ -764,6 +789,7 @@ void main() {
         vec3  hitColor;
         vec3  hitNormal;
         float hitT;
+        float hitRoughness;
         uint  hitBrick;
         uint  hitVoxel;
 
@@ -774,16 +800,18 @@ void main() {
         // cross-instance nearest-hit test below compares like-for-like.
         bool hit = traverseOctreeInstanced(instOrigin, instDir,
                                            hitColor, hitNormal, hitT,
+                                           hitRoughness,
                                            hitBrick, hitVoxel, dbg);
 
         if (hit && hitT < bestT) {
-            bestT          = hitT;
+            bestT           = hitT;
             // Tint by instance colour (multiply LOD-grey or material colour)
-            bestColor      = hitColor * inst.color;
-            bestNormal     = hitNormal;
-            bestBrickIndex = hitBrick;
-            bestVoxelIdx   = hitVoxel;
-            anyHit         = true;
+            bestColor       = hitColor * inst.color;
+            bestNormal      = hitNormal;
+            bestRoughness   = hitRoughness;   // Inc3 M3: per-voxel roughness
+            bestBrickIndex  = hitBrick;
+            bestVoxelIdx    = hitVoxel;
+            anyHit          = true;
         }
     }
 
@@ -792,7 +820,7 @@ void main() {
     // -----------------------------------------------------------------------
     vec3 outColor;
     if (anyHit) {
-        outColor = computeLighting(bestColor, bestNormal, rayDir);
+        outColor = computeLighting(bestColor, bestNormal, rayDir, bestRoughness);
     } else {
         outColor = skyColor;
     }
