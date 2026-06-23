@@ -21,7 +21,8 @@
 - **M1 — Bake path** (Tasks 1–2) · Sonnet · gate: `test_sdf_bake` gtest green (controller-run) + Opus validator. · **✅ DONE 2026-06-22**
 - **M2 — SoA-SDF serialize + lookup + descriptor** (Tasks 3–4) · Sonnet · gate: `test_soa_sdf_serialize` gtest green (controller-run) + Opus validator. · **✅ DONE 2026-06-22** — descriptor in `Vixen::SVO::OctreeConfig` tail (432 B struct, SPIR-V ArrayStride 432): `formatId`@200, `bricksPerAxis`@204, `sdfBrickArrayBase`@208. M4 GLSL must match these offsets.
 - **M3 — GPU + shader integration** (Tasks 5–9: 2 buffers + descriptor bindings + shader bindings 11/12 + Stored-SDF handler) · Sonnet · gate: `VIXEN.exe` links + shader runtime-compiles (controller-run) + Opus validator. **✅ DONE 2026-06-22** (VIXEN.exe links, Opus-validated). Full correctness — incl. the ⚠️ **`renderScale` ↔ grid-voxel-space coupling** in `marchStoredSdf` (validator-flagged: the AABB is `[0,bpa*8]` but `main()` de-instances by `/renderScale`) — at the **M5 live gate**. *(M3+M4 merged 2026-06-22 — buffers, descriptor bindings, and shader bindings are one coupled unit; the descriptor layout needs the shader to declare bindings 11/12, and the GLSL `OctreeConfig` tail must match M2's byte offsets formatId@200/bricksPerAxis@204/sdfBrickArrayBase@208.)*
-- **M5 — Gate + verify** (Tasks 10–11) · controller/interactive · live A/B (Stored matches Procedural, 0 syncval) + no-regression. · **◑ PARTIAL 2026-06-22** — Stored-SDF renders smooth + displaced spheres on screen (0 syncval), but a traversal artifact remains; **resume at the "⭐ NEXT STEP" section below (ESVO-leaf-hit redesign, retire `marchStoredSdf`)**.
+- **M5 — Gate + verify** (Tasks 10–11) · controller/interactive · live A/B (Stored matches Procedural, 0 syncval) + no-regression. · **◑ PARTIAL 2026-06-22** — Stored-SDF renders smooth + displaced spheres on screen (0 syncval), but a traversal artifact remains; superseded by the M6 redesign below.
+- **M6 — ESVO-leaf-hit redesign** (Tasks 12–16) · reuse `traverseOctreeInstanced`; swap only the leaf hit-test to a bounded trilinear SDF march; retire `marchStoredSdf`. · **✅ DONE 2026-06-23** — verified on the REAL shader on lavapipe (offscreen render test): smooth + displaced Stored-SDF spheres render SOLID, brick-aligned holes GONE (fillRatio 1.0); binary near + multikind no-regression; CPU bake tests green. Two extra fixes the redesign exposed: (i) the bake left non-band voxels in allocated bricks as 0.0 → false iso-surfaces — fixed by fully populating active bricks (+1-brick dilation) with true SDF; (ii) trilinear stencils straddling unallocated bricks return the 1e9 sentinel — the march probes through them. Residual: faint brick-scale shading facets (inherent trilinear-normal C0 kinks), not holes.
 
 ### Progress Log
 - Milestone 1 (Tasks 1–2): **DONE** · commits `4bcdf5d2`..`b9497543` · gate `test_sdf_bake` [PASSED 2] · Opus validator OK (1 prescribed test-compile fix applied) · 2026-06-22
@@ -33,14 +34,127 @@
 
 ---
 
-## ⭐ NEXT STEP (resume here): reuse the ESVO traversal for SDF leaf-hits — retire `marchStoredSdf`
+## ⭐ Milestone M6 (resume here): ESVO-driven Stored-SDF leaf-hits — retire `marchStoredSdf`
 
-**The fix (validated against `shaders/ESVOTraversal.glsl`):** do NOT flat-march. Reuse the existing Laine-Karras three-phase DFS that the binary body path already drives via `traverseOctreeInstanced` (`BodyInstanceRayMarch.comp`). `ESVOTraversal.glsl` already handles every edge case the live gate exposed:
-- **empty-space skipping** — `checkChildValidity` (`ESVOTraversal.glsl:196`) → ADVANCE past empty/unallocated children (no fake-distance lunge);
-- **OOBB enter/exit** — `initTraversalState` (`:91`) sets `t_min/t_max` from the ray–box coefficients; the loop is bounded by that span + `STACK_SIZE=23` (`:24`);
-- **"hit a brick, miss, go to the next"** — that is literally ADVANCE→POP→descend the next sibling.
+> **Design of record for the redesign** (brainstormed + approved 2026-06-23). Replaces the
+> standalone flat sphere-trace with an ESVO-traversal-driven leaf march. Status: **planned**.
 
-**Change ONLY the leaf hit-test.** The binary path calls `handleLeafHitInstanced → marchBrickInstanced` (first-non-empty-voxel DDA). For Stored-SDF, write the SDF variant: at a leaf brick, march the **trilinear SDF to the zero iso-surface within that brick's `[t_min, t_max]` span** (the traversal hands you the leaf's t-span, so the march is BOUNDED — no unbounded sphere-trace, no sentinel-as-distance), cross-brick lookup only for the trilinear stencil at brick faces, gradient normal as today, reusing the `1/√3` Lipschitz step. Dispatch by `formatId==STORED_SDF` exactly where `marchBrickInstanced` is called. Keep `SerializeSdf`/descriptor/bindings/bake (M1–M3, validated). Net: retire the standalone `marchStoredSdf`; add `handleLeafHitInstancedSdf` + `marchBrickSdf`. Then verify the `hitT` units (grid-voxel vs world) in the cross-instance nearest-hit test.
+### Why
+The M5 live gate proved the Stored-SDF data + descriptor + bindings + trilinear math all work —
+spheres render — but `marchStoredSdf` is a FLAT sphere-trace that treats an unallocated narrow-band
+brick as a *distance* (`+1e9`) and lunges past geometry → POV/angle/distance-dependent brick-aligned
+holes. It reinvents — badly — the empty-space skipping and brick→brick movement that
+`ESVOTraversal.glsl` already does correctly. Fix: stop reinventing; reuse the traversal.
+
+### Feasibility — confirmed against the bake path (2026-06-23)
+The redesign requires the baked Stored-SDF body to expose a traversable ESVO hierarchy co-indexed
+with the SDF bricks. Verified true by construction:
+- **Full ESVO node array is emitted** for SDF bodies — `SerializeSdf` copies the octree's
+  `ChildDescriptor[]` (valid/leaf/child-pointer) just like the binary path (`ShellOctreeGpu.h:480`).
+- **Leaf ≡ brick, 1:1 by grid coordinate** — the octree is built to brick scale; each populated
+  narrow-band brick becomes a leaf, and `brickLookup[]` is the inverted `brickGridToBrickView` map
+  (`ShellOctreeGpu.h:537`; build at `SVORebuild.cpp:420–443`).
+- **`bricksPerAxis == bricksPerAxisSdf`** (one value, copied into the descriptor tail at
+  `ShellOctreeGpu.h:599`); **`brickSize == 8`** always (`:577`).
+- **Empty bricks → parent octant valid-bit 0 → skipped** by `checkChildValidity`/ADVANCE
+  (`SVORebuild.cpp:480–492`). The octree's masks derive from the SAME allocation as `brickLookup[]`.
+
+### The change — swap ONLY the leaf hit-test
+In `traverseOctreeInstanced` at the `isLeaf` branch (`BodyInstanceRayMarch.comp:489`), dispatch by
+format. Everything around it — PUSH/ADVANCE/POP, empty-skip, t-span bounds, LOD, the miss path
+(`state.t_min = tv_max` then advance to the next leaf) — is unchanged:
+```glsl
+if (isLeaf) {
+    float tBias = tEntryWorld;
+    bool got = (octreeConfig.formatId == FORMAT_STORED_SDF)
+        ? handleLeafHitInstancedSdf(state, coef, rayDir, tBias,
+                                    hitColor, hitNormal, hitT, hitBrickIndex, hitVoxelLinearIdx)
+        : handleLeafHitInstanced(state, coef, rayStartWorld, rayDir, tBias,
+                                 parent_descriptor, validMask, leafMask, stack,
+                                 hitColor, hitNormal, hitT, hitBrickIndex, hitVoxelLinearIdx);
+    if (got) { /* existing hit bookkeeping + return true */ }
+    state.t_min = tv_max;  // miss → ADVANCE to next leaf (unchanged)
+    ...
+}
+```
+
+### Coordinate bridge (ESVO `[1,2]³` ↔ SDF grid-voxel `[0, bpa·8]`)
+Exact and cheap; `bpa = octreeConfig.bricksPerAxis`:
+- hit point in normalized space: `hitPos12 = coef.normOrigin + rayDirLocal · state.t_min`
+- → grid-voxel: `gridPos = (hitPos12 − 1.0) · float(bpa·8)`
+- march direction in grid-voxel space: `normalize(rayDirLocal)` (the `bpa·8` scale cancels)
+- leaf's brick coord: `floor(gridPos / 8)` — equals the leaf's brick (leaf≡brick), so `brickLookup`
+  resolves to real SDF (no sentinel at the leaf center, by bake consistency).
+
+### New functions (add) — no other shader changes
+1. **`marchBrickSdf`** in `StoredSdf.glsl` (beside the existing SDF helpers): sphere-trace the
+   trilinear field **within one brick's 8-voxel cube** — all math in TRUE geometric grid-voxel
+   coordinates (NOT the ESVO mirrored frame), so no octant un-mirroring is needed and
+   `sampleSdfTrilinear` is fed the coordinates it expects. Entry = the bridged `gridPos`; brick =
+   `floor((gridPos + ε·dirN)/8)` (ε-nudge inward to disambiguate the entry face for either ray sign);
+   bound = brick-cube exit (slab test on `[brick·8, (brick+1)·8]`); step `s += max(d · 0.5773503, EPS)`
+   (the proven `1/√3` Lipschitz step); normal `sdfGradientStored`. Cross-brick reads occur only inside
+   the trilinear stencil at faces (already handled by `_sampleSdfVoxel`). No iso-cross in this brick →
+   return false (traversal advances).
+2. **`handleLeafHitInstancedSdf`** in `BodyInstanceRayMarch.comp` (beside `handleLeafHitInstanced`):
+   builds the grid entry, calls `marchBrickSdf`, returns world `hitT`. **Simpler** than the binary
+   handler — it needs NO leaf-descriptor fetch / contour pointer (SDF is keyed by grid coord, not by
+   the brick storage index). Sets `hitColor=vec3(1.0)` (instance tint applied in `main()`),
+   `hitBrickIndex`/`hitVoxelLinearIdx` derived from the grid coord for the pick/ID buffer.
+
+### `main()` simplification + retire
+- **Delete** the special-case Stored-SDF block (`BodyInstanceRayMarch.comp:633–652`). Stored-SDF
+  bodies then fall through to the **same** binary ESVO path (de-instance `(rayOrigin−worldPos)/scale`,
+  set `g_octreeIdx`/`g_esvoNodeBase`/`g_brickArrayBase`, `[0,1]³` AABB cull, `traverseOctreeInstanced`).
+- **Delete** `marchStoredSdf` from `StoredSdf.glsl` (keep `_gridToLookupIdx`, `_sampleSdfVoxel`,
+  `sampleSdfTrilinear`, `sdfGradientStored`). No permanent format flag-gate (pure end-state).
+- **Keep** all of M1–M3 (bake, serialize, descriptor, bindings 11/12) untouched.
+
+### hitT consistency
+Return SDF `hitT` in the SAME parametrization as the binary leaf (`tBias + tHitLocal`), converting
+the in-brick march arc-length back via `tHitLocal = state.t_min + s_hit / (length(rayDirLocal) · bpa·8)`,
+so the cross-instance nearest-hit test (`hitT < bestT`) compares like-for-like across mixed
+binary/Stored/procedural scenes.
+
+### Edge case
+A trilinear stencil straddling an *unallocated* neighbor brick yields `+1e9` on those corners.
+Narrow-band guarantees the iso-surface sits ≥1 voxel inside allocated bricks, so surface samples
+never read a sentinel; far samples reading `1e9` only over-estimate distance (safe for sphere-tracing).
+If a face artifact survives the live gate, the fallback is clamping sentinel corners to the band
+width — noted, not pre-emptively coded.
+
+### Out of scope
+World-space normal transform (deferred, as today); binary/procedural path changes; the cosmetic
+stale `_padding4_tail` comment (fold in opportunistically). 
+
+### Tasks
+- [x] **T12 — `marchBrickSdf`** in `StoredSdf.glsl`: bounded single-brick trilinear iso-surface march
+  (entry, brick-cube slab bound, `1/√3` step, gradient normal). Returns hit + grid-voxel arc-length. **DONE 2026-06-23.**
+- [x] **T13 — `handleLeafHitInstancedSdf`** in `BodyInstanceRayMarch.comp`: coordinate bridge →
+  `marchBrickSdf` → world `hitT` (consistent units) + ID-buffer fields. **DONE 2026-06-23.**
+- [x] **T14 — Leaf dispatch** in `traverseOctreeInstanced`: branch on `octreeConfig.formatId` at the
+  `isLeaf` site; binary path byte-for-byte unchanged. **DONE 2026-06-23.**
+- [x] **T15 — `main()` retire**: delete the Stored-SDF special case so SDF bodies flow through the
+  binary ESVO path; delete `marchStoredSdf`. **DONE 2026-06-23** (shader compiles clean to SPIR-V).
+- [x] **T16 — Actual-Vulkan render gate (authoritative)**: **DONE 2026-06-23.** Verified on the REAL
+  shipped shader on lavapipe via `test_body_instance_raymarch_render` (WSL/GCC build, bundled glslc,
+  software Vulkan). Added `RenderStoredSdfBodiesNoHoles` — bakes the Stored-SDF bodies through the
+  node's real SDF path (bindings 11/12), renders smooth + displaced spheres, asserts SOLID silhouette
+  (`fillRatio > 0.97`; got **1.0000**); PNGs `/tmp/glsl_sdf_{smooth,displaced}_near.png` inspected =
+  solid lit spheres, displacement visible, holes gone. No-regression: `RenderRealShaderNearViewToPng`
+  (86k body px) + `RenderMultiKindBodiesProvesStrideFix` (kind0/1/2 = 21743/17804/21743) PASS; CPU
+  `test_sdf_bake` (2/2, updated to brick-sparsity contract) + `test_soa_sdf_serialize` (8/8) PASS.
+- [ ] **T17 (optional polish, deferred)** — faint brick-scale shading facets remain on the smooth
+  sphere (trilinear normals are C0 with gradient kinks at voxel/brick boundaries). Not holes. Options:
+  analytic trilinear gradient, tricubic interpolation, or finer voxels. Out of M6's hole-fix scope.
+
+> **WSL/lavapipe build recipe (this worktree, 2026-06-23):** the repo ships only the Windows
+> `vixen-ninja` preset; for the lavapipe render test, symlink the bundled SDK
+> (`ln -sfn <undertow>/vixen/engine/VIXEN/.vulkan-sdk <worktree>/VIXEN/.vulkan-sdk`) so the test's
+> glslc gate passes, then configure a Linux build:
+> `cmake -S VIXEN -B VIXEN/build-wsl -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DVIXEN_AUTO_PROVISION_WSL_VULKAN=OFF`
+> and build `test_body_instance_raymarch_render`. Run with
+> `VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json VK_LAYER_PATH=<sdk>/x86_64/share/vulkan/explicit_layer.d`.
 
 ---
 

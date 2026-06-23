@@ -17,6 +17,7 @@
 #include <memory>
 #include <optional>
 #include <cmath>
+#include <vector>
 
 namespace Vixen::SVO {
 
@@ -38,18 +39,30 @@ struct SdfBakeResult {
 // ---------------------------------------------------------------------------
 // BakeRecipeToSdfWorld
 //
-// Evaluates the recipe over the integer grid [0,n)^3.  For each cell whose
-// |evalSdf| <= bandVoxels a voxel entity is created carrying:
-//   Density{signedDistance}  (the baked SDF value — NOT a constant 1.0)
-//   Color{1,1,1}
-//   Material{1}
+// Narrow-band SDF, sparse at the BRICK level (Inc2 M6 correctness fix):
+//   1. A brick (brickDepth → 8^3 cells) is ACTIVE if any of its cells is within
+//      the narrow band (|evalSdf| <= bandVoxels) — i.e. the iso-surface passes
+//      through it.
+//   2. Every cell of an ACTIVE brick gets a voxel entity carrying the TRUE signed
+//      distance (Density), Color{1,1,1}, Material{1}.
+//   3. Inactive bricks (no surface) get no voxels → the octree skips them.
+//
+// Why fully populate active bricks (not just band cells): the GPU trilinear march
+// (StoredSdf.glsl) samples the SDF across a whole leaf brick. If non-band cells in
+// an allocated brick were left empty, ShellOctreeGpu::SerializeSdf packs them as
+// 0.0 — a FALSE iso-surface (sd==0) that the per-brick march hits as brick-shaped
+// facets. Storing the real SDF over the entire active brick makes the field a
+// correct, hole-free signed distance inside every allocated brick. Buffer sizes are
+// unchanged: SerializeSdf always reserves 512 floats per brick; this just fills the
+// zeros with real distances.
 //
 // The AttributeRegistry keys mirror ShellOctree.h ("density" Float key + "color"
-// Vec3 attribute), so the same SVORebuild / ShellOctreeGpu pipeline can consume
-// the result unchanged.
+// Vec3 attribute), so the same SVORebuild / ShellOctreeGpu pipeline consumes the
+// result unchanged.
 // ---------------------------------------------------------------------------
 inline SdfBakeResult BakeRecipeToSdfWorld(uint32_t recipeId, const glm::vec3& center,
-                                          const RecipeParams& rp, int n, float bandVoxels) {
+                                          const RecipeParams& rp, int n, float bandVoxels,
+                                          int brickDepth = 3) {
     SdfBakeResult r;
     r.n      = n;
     r.center = center;
@@ -62,23 +75,66 @@ inline SdfBakeResult BakeRecipeToSdfWorld(uint32_t recipeId, const glm::vec3& ce
     // World
     r.world = std::make_unique<Vixen::GaiaVoxel::GaiaVoxelWorld>();
 
-    // Evaluate recipe over [0,n)^3 — emit only narrow-band cells
+    const int brickSide     = 1 << brickDepth;                       // 8
+    const int bricksPerAxis = (n + brickSide - 1) / brickSide;
+    auto brickIndex = [&](int bx, int by, int bz) {
+        return (bz * bricksPerAxis + by) * bricksPerAxis + bx;
+    };
+
+    // Pass 1 — mark bricks the iso-surface passes through (any in-band cell).
+    const size_t numBricks = static_cast<size_t>(bricksPerAxis) * bricksPerAxis * bricksPerAxis;
+    std::vector<uint8_t> bandBrick(numBricks, 0u);
     for (int z = 0; z < n; ++z)
       for (int y = 0; y < n; ++y)
         for (int x = 0; x < n; ++x) {
+            const float sd = evalSdf(recipeId,
+                glm::vec3(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z)),
+                center, rp);
+            if (std::abs(sd) <= bandVoxels)
+                bandBrick[brickIndex(x / brickSide, y / brickSide, z / brickSide)] = 1u;
+        }
+
+    // Dilate the active set by ONE brick. The GPU trilinear stencil + gradient at a surface
+    // brick's faces reach one voxel into the neighbouring brick; if that neighbour were
+    // unallocated, _sampleSdfVoxel returns its 1e9 sentinel and corrupts the sample/normal at
+    // the face. Populating a 1-brick margin guarantees every stencil around a real surface
+    // brick reads honest data, so the march sphere-traces cleanly with consistent normals (no
+    // brick-face shading seams). Sparsity is preserved (shell + 1 margin, not a solid ball).
+    std::vector<uint8_t> activeBrick(numBricks, 0u);
+    // NOTE: do NOT name a variable `near`/`far` — MSVC reserves them (legacy segment
+    // qualifiers via windows.h), which GCC does not, so it silently breaks the MSVC build.
+    for (int bz = 0; bz < bricksPerAxis; ++bz)
+      for (int by = 0; by < bricksPerAxis; ++by)
+        for (int bx = 0; bx < bricksPerAxis; ++bx) {
+            bool touchesBand = false;
+            for (int dz = -1; dz <= 1 && !touchesBand; ++dz)
+              for (int dy = -1; dy <= 1 && !touchesBand; ++dy)
+                for (int dx = -1; dx <= 1 && !touchesBand; ++dx) {
+                    const int nx = bx + dx, ny = by + dy, nz = bz + dz;
+                    if (nx < 0 || ny < 0 || nz < 0 ||
+                        nx >= bricksPerAxis || ny >= bricksPerAxis || nz >= bricksPerAxis) continue;
+                    if (bandBrick[brickIndex(nx, ny, nz)]) touchesBand = true;
+                }
+            if (touchesBand) activeBrick[brickIndex(bx, by, bz)] = 1u;
+        }
+
+    // Pass 2 — fully populate every active brick with the TRUE signed distance.
+    for (int z = 0; z < n; ++z)
+      for (int y = 0; y < n; ++y)
+        for (int x = 0; x < n; ++x) {
+            if (!activeBrick[brickIndex(x / brickSide, y / brickSide, z / brickSide)])
+                continue;
             const glm::vec3 p(static_cast<float>(x),
                               static_cast<float>(y),
                               static_cast<float>(z));
             const float sd = evalSdf(recipeId, p, center, rp);
-            if (std::abs(sd) <= bandVoxels) {
-                const Vixen::GaiaVoxel::ComponentQueryRequest comps[] = {
-                    Vixen::GaiaVoxel::Density{sd},
-                    Vixen::GaiaVoxel::Color{glm::vec3(1.0f)},
-                    Vixen::GaiaVoxel::Material{1u},
-                };
-                r.world->createVoxel(
-                    Vixen::GaiaVoxel::VoxelCreationRequest{p, comps});
-            }
+            const Vixen::GaiaVoxel::ComponentQueryRequest comps[] = {
+                Vixen::GaiaVoxel::Density{sd},
+                Vixen::GaiaVoxel::Color{glm::vec3(1.0f)},
+                Vixen::GaiaVoxel::Material{1u},
+            };
+            r.world->createVoxel(
+                Vixen::GaiaVoxel::VoxelCreationRequest{p, comps});
         }
 
     return r;

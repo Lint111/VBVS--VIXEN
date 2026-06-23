@@ -408,6 +408,61 @@ bool handleLeafHitInstanced(TraversalState state, RayCoefficients coef,
 }
 
 // ============================================================================
+// STORED-SDF LEAF HIT (instanced) — Inc2 M6
+// ============================================================================
+// SDF variant of handleLeafHitInstanced. Reached from traverseOctreeInstanced at
+// an ESVO leaf when configs[g_octreeIdx].formatId == FORMAT_STORED_SDF. Bridges
+// the leaf entry from ESVO [1,2]^3 space into the SDF's true grid-voxel frame and
+// marches the trilinear iso-surface within that ONE brick (marchBrickSdf).
+//
+// Simpler than the binary handler: the SDF is keyed by GRID COORDINATE (via
+// brickLookup inside sampleSdfTrilinear), so we need NO leaf-descriptor fetch and
+// NO contour pointer — just the geometric hit position. The octree leaf existing
+// IS the guarantee that this brick's SDF is allocated.
+bool handleLeafHitInstancedSdf(TraversalState state, RayCoefficients coef,
+                               vec3 rayDir, float tBias,
+                               out vec3 hitColor, out vec3 hitNormal, out float hitT,
+                               out uint hitBrickIndex, out uint hitVoxelLinearIdx) {
+    hitColor          = vec3(1.0);   // instance tint is applied in main()
+    hitNormal         = vec3(0.0, 1.0, 0.0);
+    hitT              = 0.0;
+    hitBrickIndex     = 0u;
+    hitVoxelLinearIdx = 0u;
+
+    int bpa = int(octreeConfig.bricksPerAxisSdf);
+    if (bpa <= 0) return false;
+    float gridScale = float(bpa * 8);
+
+    // Bridge ESVO [1,2]^3 → true geometric grid-voxel space.
+    vec3 rayDirLocal = mat3(octreeConfig.worldToLocal) * rayDir;
+    vec3 hitPos12    = coef.normOrigin + rayDirLocal * state.t_min;   // [1,2]^3
+    vec3 gridEntry   = (hitPos12 - vec3(1.0)) * gridScale;            // [0, bpa*8]
+    float dirLen     = length(rayDirLocal);
+    if (dirLen < 1e-12) return false;
+    vec3 gridDirN    = rayDirLocal / dirLen;                          // normalized
+
+    vec3  nrm;
+    float sHit;
+    if (!marchBrickSdf(g_octreeIdx, gridEntry, gridDirN, nrm, sHit)) {
+        return false;
+    }
+    hitNormal = nrm;
+
+    // hitT in the SAME parametrization as the binary leaf (tBias + local-t): convert
+    // the grid-voxel arc-length sHit back to [1,2]^3 t-units. gridPos advances by
+    // |rayDirLocal|*gridScale per unit t, so Δt = sHit / (|rayDirLocal|*gridScale).
+    float tHitLocal = state.t_min + sHit / (dirLen * gridScale);
+    hitT = tBias + tHitLocal;
+
+    // Best-effort pick/ID: the leaf brick's flat grid index (voxel idx unused for SDF).
+    ivec3 brick   = ivec3(floor((gridEntry + gridDirN * 1e-3) / 8.0));
+    uint  flatIdx = _gridToLookupIdx(brick, bpa);
+    hitBrickIndex     = (flatIdx == 0xFFFFFFFFu) ? 0u : flatIdx;
+    hitVoxelLinearIdx = 0u;
+    return true;
+}
+
+// ============================================================================
 // TRAVERSAL LOOP (instanced + LOD)
 // ============================================================================
 // Mirrors traverseOctree() from VoxelRayMarch.comp, extended with:
@@ -488,10 +543,19 @@ bool traverseOctreeInstanced(vec3 rayOrigin, vec3 rayDir,
 
             if (isLeaf) {
                 float tBias = tEntryWorld;
-                if (handleLeafHitInstanced(state, coef, rayStartWorld, rayDir, tBias,
-                                           parent_descriptor, validMask, leafMask,
-                                           stack, hitColor, hitNormal, hitT,
-                                           hitBrickIndex, hitVoxelLinearIdx)) {
+                // Inc2 M6: dispatch the leaf hit-test by content format. Stored-SDF
+                // bricks march the trilinear iso-surface; binary bricks DDA voxels.
+                // Everything else around the leaf (empty-skip, t-span, ADVANCE/POP)
+                // is shared and unchanged.
+                bool leafHit = (octreeConfig.formatId == FORMAT_STORED_SDF)
+                    ? handleLeafHitInstancedSdf(state, coef, rayDir, tBias,
+                                                hitColor, hitNormal, hitT,
+                                                hitBrickIndex, hitVoxelLinearIdx)
+                    : handleLeafHitInstanced(state, coef, rayStartWorld, rayDir, tBias,
+                                             parent_descriptor, validMask, leafMask,
+                                             stack, hitColor, hitNormal, hitT,
+                                             hitBrickIndex, hitVoxelLinearIdx);
+                if (leafHit) {
                     endRayTrace(true);
                     snapshotTraversalState(state, coef, debugInfo);
                     debugInfo.hitFlag      = 1u;
@@ -627,29 +691,10 @@ void main() {
 
         uint oi = clamp(inst.octreeIndex, 0u, 2u);
 
-        // --- Stored-SDF provider: trilinear iso-surface march (Inc2 M4) ---
-        // Only reached when providerKind == PROVIDER_STORED (0u) AND formatId == FORMAT_STORED_SDF (1u).
-        // Binary bodies have formatId == FORMAT_BINARY (0u) and fall through to the ESVO path below.
-        if (configs[oi].formatId == FORMAT_STORED_SDF) {
-            // De-instance the world ray into octree grid-local space.
-            // The SDF is baked in grid units; instOrigin/instDir already scaled.
-            float invScale = 1.0 / inst.renderScale;
-            vec3  sdfOrigin = (rayOrigin - inst.worldPos) * invScale;
-            vec3  sdfDir    = rayDir * invScale;
-            vec3  sdfNormal;
-            float sdfT;
-            if (marchStoredSdf(int(oi), sdfOrigin, sdfDir, sdfNormal, sdfT)) {
-                if (sdfT < bestT) {
-                    bestT          = sdfT;
-                    bestColor      = inst.color;
-                    bestNormal     = sdfNormal;
-                    bestBrickIndex = 0u;
-                    bestVoxelIdx   = 0u;
-                    anyHit         = true;
-                }
-            }
-            continue;  // Stored-SDF body fully handled; skip ESVO path
-        }
+        // Inc2 M6: Stored-SDF bodies are NO LONGER special-cased here. They flow
+        // through the SAME ESVO path as binary bodies below; the leaf hit-test inside
+        // traverseOctreeInstanced dispatches to the trilinear SDF march by formatId.
+        // (The old standalone marchStoredSdf flat sphere-trace has been retired.)
 
         // Set globals used by fetchESVONode (via g_esvoNodeBase in ESVOTraversal.glsl)
         // and by marchBrickInstanced (via g_brickArrayBase below).

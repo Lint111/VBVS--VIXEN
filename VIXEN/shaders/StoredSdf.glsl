@@ -5,12 +5,16 @@
 //   • OctreeConfig struct (binding 5), g_octreeIdx, octreeConfig macro
 //   • SdfBrickBuffer (binding 11): float sdfData[]
 //   • BrickLookupBuffer (binding 12): uint  brickLookup[]
-//   • SdfRecipes.glsl (reuses evalSdf for out-of-AABB sentinel clamping)
-//   • Lighting.glsl (reuses computeLighting in marchStoredSdf)
 //
-// Parallel to traceProceduralBody (SdfRecipes.glsl) for the Stored path.
-// These helpers are dead code when formatId == FORMAT_BINARY — the dispatch
-// in main() guards them with configs[oi].formatId == FORMAT_STORED_SDF.
+// Inc2 M6: the Stored-SDF path REUSES the ESVO octree traversal
+// (traverseOctreeInstanced). At each ESVO leaf brick, handleLeafHitInstancedSdf
+// (in BodyInstanceRayMarch.comp) calls marchBrickSdf below to sphere-trace the
+// trilinear iso-surface within that ONE brick. The standalone flat sphere-trace
+// (marchStoredSdf) has been retired — the octree, not a flat march, handles
+// empty-space skipping and brick→brick movement.
+//
+// These helpers are dead code when formatId == FORMAT_BINARY — the leaf-hit
+// dispatch in traverseOctreeInstanced guards them with formatId == FORMAT_STORED_SDF.
 // ============================================================================
 #ifndef STORED_SDF_GLSL
 #define STORED_SDF_GLSL
@@ -108,65 +112,67 @@ vec3 sdfGradientStored(vec3 gridPos, int octreeIdx) {
 }
 
 // ---------------------------------------------------------------------------
-// marchStoredSdf: sphere-trace the trilinear SDF field for a single Stored-SDF
-// body instance. ro/rd are in octree GRID-VOXEL space (de-instanced by caller).
+// marchBrickSdf (Inc2 M6): sphere-trace the trilinear SDF iso-surface within ONE
+// ESVO leaf brick. Called by handleLeafHitInstancedSdf once the octree traversal
+// has located an allocated leaf — so this march is BOUNDED to that single 8-voxel
+// brick and NEVER lunges across empty space (the octree skips empties for us).
 //
-// The body's grid AABB is [0, bpa*8]^3 in voxel units. We intersect ro+rd with
-// that box first, then sphere-trace inside.
-//
-// On hit: hitNormal is the normalized SDF gradient (world normal = transforms of
-// gradient can be deferred to M5; for now gradient is in grid space, consistent
-// with the Procedural path which also returns the analytic local normal).
-// hitT is the ray parameter (same units as ro/rd, grid-voxel distance).
+// All coordinates are in TRUE GEOMETRIC grid-voxel space ([0, bpa*8]); the caller
+// bridges from the ESVO [1,2]^3 frame so no octant un-mirroring is needed and
+// sampleSdfTrilinear gets exactly the coordinates it expects.
+//   gridEntry : ray entry point at the leaf, grid-voxel coords.
+//   gridDirN  : ray direction in grid-voxel space, NORMALIZED (so the march arc-
+//               length is in voxel units and the 1/√3 Lipschitz step is exact).
+// On hit: hitNormal = normalized SDF gradient (grid space), sHit = arc-length from
+// gridEntry to the iso-surface (voxel units). On miss the traversal ADVANCEs to
+// the next leaf, so returning false here is the correct "not in this brick".
 // ---------------------------------------------------------------------------
-bool marchStoredSdf(int octreeIdx, vec3 ro, vec3 rd,
-                    out vec3 hitNormal, out float hitT) {
+bool marchBrickSdf(int octreeIdx, vec3 gridEntry, vec3 gridDirN,
+                   out vec3 hitNormal, out float sHit) {
     hitNormal = vec3(0.0, 1.0, 0.0);
-    hitT      = 0.0;
+    sHit      = 0.0;
 
-    int bpa = int(configs[octreeIdx].bricksPerAxisSdf);
-    if (bpa <= 0) return false;
+    // Identify this leaf's brick. Nudge inward along the ray so a point sitting
+    // exactly on the entry face resolves to the brick we are ENTERING (correct for
+    // either ray sign — the entry face is the lower face for +dir, upper for -dir).
+    const float kNudge = 1e-3;
+    ivec3 brick = ivec3(floor((gridEntry + gridDirN * kNudge) / 8.0));
+    vec3  bMin  = vec3(brick) * 8.0;
+    vec3  bMax  = bMin + vec3(8.0);
 
-    float gridSize = float(bpa * 8);
-    vec3  aabbMin  = vec3(0.0);
-    vec3  aabbMax  = vec3(gridSize);
+    // Brick-cube exit arc-length (slab test). gridDirN is unit-length, so the slab
+    // t-values are already arc-lengths in voxel units.
+    vec3 invD = vec3(
+        abs(gridDirN.x) > 1e-8 ? 1.0 / gridDirN.x : 1e20,
+        abs(gridDirN.y) > 1e-8 ? 1.0 / gridDirN.y : 1e20,
+        abs(gridDirN.z) > 1e-8 ? 1.0 / gridDirN.z : 1e20);
+    vec3  t0   = (bMin - gridEntry) * invD;
+    vec3  t1   = (bMax - gridEntry) * invD;
+    vec3  thi  = max(t0, t1);
+    float sMax = max(min(min(thi.x, thi.y), thi.z), 0.0);   // exit; ≤ 8√3 voxels
 
-    // Ray–AABB intersection in grid space.
-    vec3 invDir = vec3(
-        abs(rd.x) > 1e-8 ? 1.0 / rd.x : 1e20 * sign(rd.x + 1e-30),
-        abs(rd.y) > 1e-8 ? 1.0 / rd.y : 1e20 * sign(rd.y + 1e-30),
-        abs(rd.z) > 1e-8 ? 1.0 / rd.z : 1e20 * sign(rd.z + 1e-30));
-    vec3 t0 = (aabbMin - ro) * invDir;
-    vec3 t1 = (aabbMax - ro) * invDir;
-    vec3 tNear3 = min(t0, t1);
-    vec3 tFar3  = max(t0, t1);
-    float tNear = max(max(tNear3.x, tNear3.y), tNear3.z);
-    float tFar  = min(min(tFar3.x,  tFar3.y),  tFar3.z);
-    if (tFar < 0.0 || tNear > tFar) return false;
+    const int   MAX_STEPS = 96;    // one 8³ brick + sentinel probes — converges well within this
+    const float EPS       = 0.01;  // iso threshold (voxel fraction)
+    // Above this, a trilinear sample is sentinel-contaminated: at a brick face the 8-corner
+    // stencil reached into an UNALLOCATED neighbour brick (_sampleSdfVoxel → 1e9). Real
+    // in-leaf distances are ≤ a brick diagonal (~14), so anything large means "no honest
+    // distance here" — probe forward one voxel until the stencil sits fully inside populated
+    // data, rather than trusting the blown-up value as a distance (which would lunge past sMax).
+    const float SENTINEL_D = 100.0;
 
-    float t = max(tNear, 0.0);
-
-    const int   MAX_STEPS = 256;
-    const float EPS       = 0.01;  // hit threshold in voxel units
-    const float MAX_T     = tFar;
-
+    float s = 0.0;
     for (int i = 0; i < MAX_STEPS; ++i) {
-        if (t > MAX_T) return false;
-        vec3  p = ro + rd * t;
+        if (s > sMax) return false;   // left the brick without crossing → advance
+        vec3  p = gridEntry + gridDirN * s;
         float d = sampleSdfTrilinear(p, octreeIdx);
-        if (d < EPS) {
+        if (d < EPS) {                // crossed (or reached) the iso-surface
             hitNormal = sdfGradientStored(p, octreeIdx);
-            hitT      = t;
+            sHit      = s;
             return true;
         }
-        // Sphere-trace with a provably non-overshooting, resolution-INDEPENDENT step.
-        // The field is trilinear over UNIT-spaced voxels, so its gradient is bounded by the
-        // trilinear Lipschitz constant |grad f| <= sqrt(3). The true distance to the surface is
-        // therefore >= d/sqrt(3), so stepping by d/sqrt(3) (factor 0.5773503, dimensionless)
-        // CANNOT pass the iso-surface — correct at ANY grid size or voxel density. The floor
-        // is EPS (a voxel fraction → resolution-relative), just enough to prevent stalls; a
-        // larger floor (the old 0.1) steps tangentially past grazing surfaces → POV holes.
-        t += max(d * 0.5773503, EPS);
+        // 1/√3 Lipschitz step for honest samples; a bounded 1-voxel probe through
+        // sentinel-contaminated (brick-face straddle) regions.
+        s += (d > SENTINEL_D) ? 1.0 : max(d * 0.5773503, EPS);
     }
     return false;
 }

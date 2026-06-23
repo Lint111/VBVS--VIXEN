@@ -324,10 +324,22 @@ message(STATUS "[RenderGraph Tests] Added: test_body_octree_lifetime (lavapipe l
 # gate the whole rule on its existence so the rest of the suite still builds. Without the gate,
 # the missing glslc fails the entire ninja build ("system cannot find the path specified").
 set(_brm_shader_dir "${VIXEN_SHADER_SOURCE_DIR}")
-set(_brm_glslc "${_brm_shader_dir}/../.vulkan-sdk/1.4.350.1/x86_64/bin/glslc")
+# Locate glslc from the auto-provisioned Vulkan SDK (ProvisionVulkan.cmake) rather than a
+# hardcoded version path, so a clean WSL configure (which downloads the SDK) finds it and a
+# version bump (VIXEN_VULKAN_SDK_VERSION) doesn't silently skip this test. Falls back to the
+# legacy relative path if the provisioning vars are unset (e.g. a system-SDK build).
+if(DEFINED VIXEN_VULKAN_CACHE_DIR AND DEFINED VIXEN_VULKAN_SDK_VERSION)
+    set(_brm_glslc "${VIXEN_VULKAN_CACHE_DIR}/${VIXEN_VULKAN_SDK_VERSION}/x86_64/bin/glslc")
+else()
+    set(_brm_glslc "${_brm_shader_dir}/../.vulkan-sdk/1.4.350.1/x86_64/bin/glslc")
+endif()
 if(EXISTS "${_brm_glslc}")
 set(_brm_src "${_brm_shader_dir}/BodyInstanceRayMarch.comp")
 set(_brm_spv "${CMAKE_CURRENT_BINARY_DIR}/BodyInstanceRayMarch.spv")
+
+# DEPEND on the .comp AND every .glsl it may #include — otherwise editing an include
+# (e.g. StoredSdf.glsl / ESVOTraversal.glsl) leaves the .spv stale ("ninja: no work to do").
+file(GLOB _brm_includes CONFIGURE_DEPENDS "${_brm_shader_dir}/*.glsl")
 
 add_custom_command(
     OUTPUT  ${_brm_spv}
@@ -337,7 +349,7 @@ add_custom_command(
             --target-env=vulkan1.3
             ${_brm_src}
             -o ${_brm_spv}
-    DEPENDS ${_brm_src}
+    DEPENDS ${_brm_src} ${_brm_includes}
     COMMENT "Compiling BodyInstanceRayMarch.comp -> SPIR-V (bundled glslc)"
     VERBATIM)
 add_custom_target(body_instance_raymarch_spv DEPENDS ${_brm_spv})
