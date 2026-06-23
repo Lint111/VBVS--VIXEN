@@ -29,6 +29,28 @@ generic format from the start, not a SDF-only one that needs retrofitting.
 This realizes the contract design's §3.2 Provider + §4 SoA-pool model for the Stored
 provider. It sequences **before** Materialization deliberately (user decision 2026-06-23).
 
+## 1.1 Format ownership — the format is VIXEN's; a game is a consumer, not an owner
+
+VIXEN **owns the rendering pipeline** — it **declares** the schema and **renders** it — so the
+content format is a **VIXEN engine abstraction**, game-agnostic. A game (e.g. UNDERSET) is a
+**consumer of the VIXEN pipeline, not an owner of it**: it **conforms** to VIXEN's format, it does
+not define or shape it. The format must therefore represent VIXEN concepts, never consumer-specific
+ones (no "planet"/"star"/game-entity semantics in the format — only generic voxel channels).
+Concretely:
+
+- The **channel-semantic vocabulary** (`SEM_*`) and **field-kind** (`FK_*`) enums are owned by
+  VIXEN and defined **once in a VIXEN engine header** (CPU, e.g. alongside `VoxelData`/SVO),
+  **mirrored 1:1 in GLSL** (the same single-source-of-truth pattern Inc1 used for
+  `SdfRecipes.h`↔`SdfRecipes.glsl`). They are the engine's reusable vocabulary, not a content
+  pack's.
+- The **descriptor format** (the `OctreeConfig` channel table) is VIXEN's GPU contract; a
+  conforming pack supplies channel *values* via the declared `VoxelConfig`/`AttributeRegistry`
+  schema — VIXEN derives the GPU layout. A pack never writes raw GPU offsets.
+- Adding a *new semantic* is a VIXEN engine decision (it extends the vocabulary + shader);
+  a pack only chooses *which existing semantics* its content carries.
+
+Net: any VIXEN-based game gets the same content format; UNDERSET is merely one consumer of it.
+
 ## 2. Scope
 
 **Wired end-to-end this increment** (proves the generic machinery across two types):

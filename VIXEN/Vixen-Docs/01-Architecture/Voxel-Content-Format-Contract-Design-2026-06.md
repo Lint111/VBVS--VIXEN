@@ -52,10 +52,16 @@ independent root causes, both confirmed in code:
 ### Goal
 
 Bodies (planets, stars, and **arbitrary voxel models**) should render smoothly —
-spherical things look spherical — and the smoothness data should arrive **from the
-content/sim package (UNDERTOW)** in a **type-declared format the renderer dispatches
-on**, supporting multiple formats over time (SDF first; scalar/RGB/PBR channels
-later) per the needs of each content pack.
+spherical things look spherical — driven by a **type-declared content format that
+VIXEN owns and the renderer dispatches on**, supporting multiple formats over time
+(SDF first; scalar/RGB/PBR + density channels later).
+
+**Ownership (foundational).** VIXEN **declares and renders** this format, so it is a
+**VIXEN engine abstraction** — game-agnostic. A game (e.g. UNDERSET) is a **consumer of
+the VIXEN rendering pipeline, not an owner of it**: it supplies content that *conforms* to
+VIXEN's declared format; it never defines, shapes, or hardcodes the format or GPU layout.
+The format represents VIXEN concepts (generic voxel channels), never consumer-specific
+ones. Any VIXEN-based game gets the same format; the current consumer is merely the first.
 
 ## 2. Key Discovery — the contract already exists CPU-side
 
