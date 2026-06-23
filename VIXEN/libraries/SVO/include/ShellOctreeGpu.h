@@ -61,10 +61,10 @@
 // so the shader, when it selects octree k for an instance, indexes
 //   childDescriptors[nodeArrayBase + localNodeIdx]
 //   brickData[(brickArrayBase + localBrickIdx)*512 + voxelIdx].
-// These two int32 bases live INSIDE OctreeConfig, in the first two slots of the
-// formerly-`_padding4[16]` std140 tail. The tail is uploaded but was unused by
-// the shader, so the struct stays byte-identical (exactly 256 B) and the existing
-// shader UBO layout is unchanged.
+// These two int32 bases live INSIDE OctreeConfig, in the named fields
+// nodeArrayBase / brickArrayBase that were added to the struct tail. The tail
+// is uploaded but was unused by the shader, so the struct stays byte-identical
+// (exactly 432 B) and the existing shader UBO layout is unchanged.
 
 #include "ShellOctree.h"      // ShellOctree, BuildShellOctree
 #include "SdfBake.h"          // SdfBodyOctree, BakeRecipeToSdfWorld, BuildSdfBodyOctree
@@ -485,7 +485,7 @@ inline SerializedOctree Serialize(const ShellOctree& shell) {
 
 // ===========================================================================
 // SoA-SDF Serialize (Inc2 M2) — SdfBodyOctree → SerializedOctree with
-//   channelPool + brickGridLookup + layout descriptor in OctreeConfig._padding4.
+//   channelPool + brickGridLookup + layout descriptor in OctreeConfig named fields.
 // ===========================================================================
 
 /**
@@ -504,11 +504,13 @@ inline SerializedOctree Serialize(const ShellOctree& shell) {
  *   Built by inverting brickGridToBrickView (SVOBuilder.h:59-61):
  *     packed key = brickX | (brickY<<10) | (brickZ<<20)
  *
- * Layout descriptor (OctreeConfig._padding4, sizeof unchanged = 432):
- *   byte 200 (_padding4[0], uint32 alias): formatId = STORED_SDF (1u)
- *   byte 204 (_padding4[1], uint32 alias): bricksPerAxis (uint32)
- *   byte 208 (_padding4[2], uint32 alias): sdfBrickArrayBase = 0 single-octree
- *                                          (ConcatenateSdf updates per-octree)
+ * Layout descriptor (OctreeConfig named tail fields, sizeof = 432):
+ *   byte 200 (formatId,       uint32): STORED_SDF (1u)
+ *   byte 204 (bricksPerAxis,  uint32): bricks per axis of the octree
+ *   byte 208 (poolBrickBase,  uint32): element offset (floats) of this octree's
+ *                                      first brick in the shared channelPool
+ *                                      (0 for single-octree; ConcatenateSdf
+ *                                      updates per-octree)
  * M4's GLSL OctreeConfig must match these exact byte offsets.
  */
 inline SerializedOctree SerializeSdf(const SdfBodyOctree& body) {
@@ -761,18 +763,18 @@ inline ConcatenatedOctrees Concatenate(const std::vector<const ShellOctree*>& oc
 
 /**
  * Concatenate <=3 SdfBodyOctrees into shared node/brick/channelPool buffers.
- * Records per-octree nodeArrayBase, brickArrayBase, and sdfBrickArrayBase
- * (in OctreeConfig._padding4[2]) for each octree. Throws std::length_error
+ * Records per-octree nodeArrayBase, brickArrayBase, and poolBrickBase
+ * (OctreeConfig.poolBrickBase@208) for each octree. Throws std::length_error
  * if given more than 3 octrees.
  *
- * sdfBrickArrayBase is the ELEMENT offset (in float units) of each octree's
+ * poolBrickBase is the ELEMENT offset (in float units) of each octree's
  * first brick in the concatenated channelPool buffer — mirrors the
  * brickArrayBase convention (VoxelSceneCacher.cpp:740 pattern).
  *
  * brickGridLookup: the per-octree lookup tables are appended in order.
  * Each sub-table is uint32[bpa^3] for that octree (bpa may differ if octrees
  * have different bricksPerAxis, though in practice they match). M3 uploads
- * them together; the sdfBrickArrayBase offset in the descriptor is sufficient
+ * them together; the poolBrickBase offset in the descriptor is sufficient
  * for the shader to index the right sub-table if sizes are equal.
  */
 inline ConcatenatedOctrees ConcatenateSdf(const std::vector<const SdfBodyOctree*>& octrees) {
