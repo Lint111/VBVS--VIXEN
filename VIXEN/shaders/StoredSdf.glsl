@@ -25,6 +25,21 @@
 #define STORED_SDF_GLSL
 
 // ---------------------------------------------------------------------------
+// Unallocated-brick SIGN-AWARE sentinel (Inc3 hole fix).
+//
+// _samplePoolVoxel returns a large-magnitude SIGNED sentinel for an empty brick so
+// the trilinear stencil at a brick face bordering empty space stays sign-correct:
+//   • exterior empty (brickLookup==0xFFFFFFFF / out-of-grid / channel-absent) → +SDF_SENTINEL
+//   • interior empty (brickLookup==0xFFFFFFFE)                                → −SDF_SENTINEL
+// Encoding matches ShellOctreeGpu.h kBrickUnalloc{Exterior,Interior}. marchBrickSdf
+// detects |d| > SDF_SENTINEL_D as "contaminated" (a stencil that reached into empty
+// space) and steps a small bounded amount instead of trusting the blown-up distance.
+// ---------------------------------------------------------------------------
+#define SDF_BRICK_UNALLOC_EXTERIOR 0xFFFFFFFFu  // no brick, SDF > 0
+#define SDF_BRICK_UNALLOC_INTERIOR 0xFFFFFFFEu  // no brick, SDF < 0
+const float SDF_SENTINEL = 1e9;
+
+// ---------------------------------------------------------------------------
 // Internal helper: convert a brick-grid 3D coordinate to a flat uint32 index
 // into brickLookup[]. Returns 0xFFFFFFFFu for out-of-grid coords.
 // bpa = bricksPerAxisSdf = octree.bricksPerAxis for the SDF grid.
@@ -56,14 +71,18 @@ uint channelBaseFloats(uint sem) {
 //   gridCoord   : grid voxel coordinate (x,y,z in [0, bpa*8-1] per axis)
 //   comp        : component index within the channel's elemCount (0 for scalars)
 //   octreeIdx   : index into configs[]
-// Returns 1e9 for unallocated bricks (sentinel, mirrors old _sampleSdfVoxel).
-// Returns 1e9 if channelBase == 0xFFFFFFFFu (channel absent).
+// Returns a SIGNED sentinel for unallocated bricks (Inc3 hole fix):
+//   exterior empty / out-of-grid / channel-absent → +SDF_SENTINEL
+//   interior empty (lookup == 0xFFFFFFFE)          → −SDF_SENTINEL
+// so a brick-face trilinear stencil reaching into empty space stays sign-correct.
+// (For non-SDF channels the +SDF_SENTINEL "absent" value is harmless — those readers
+// only sample inside allocated bricks at a confirmed iso hit.)
 // ---------------------------------------------------------------------------
 float _samplePoolVoxel(uint channelBase, ivec3 gridCoord, int comp, int octreeIdx) {
-    if (channelBase == 0xFFFFFFFFu) return 1e9;
+    if (channelBase == 0xFFFFFFFFu) return SDF_SENTINEL;
 
     int bpa = int(configs[octreeIdx].bricksPerAxisSdf);
-    if (bpa <= 0) return 1e9;
+    if (bpa <= 0) return SDF_SENTINEL;
 
     // Grid coordinate → brick coordinate (which 8^3 brick?)
     ivec3 brickCoord   = gridCoord / 8;
@@ -72,12 +91,14 @@ float _samplePoolVoxel(uint channelBase, ivec3 gridCoord, int comp, int octreeId
 
     // Look up the brick index in the dense per-octree sub-table.
     uint flatLookup = _gridToLookupIdx(brickCoord, bpa);
-    if (flatLookup == 0xFFFFFFFFu) return 1e9;  // out of grid
+    if (flatLookup == 0xFFFFFFFFu) return SDF_SENTINEL;  // out of grid → exterior
 
     // Each octree's sub-table is bpa^3 entries; sub-tables are appended in order.
     uint lookupBase = uint(octreeIdx) * uint(bpa) * uint(bpa) * uint(bpa);
     uint brickIdx   = brickLookup[lookupBase + flatLookup];
-    if (brickIdx == 0xFFFFFFFFu) return 1e9;  // unallocated brick
+    // Sign-aware empty-brick sentinels: interior empty is NEGATIVE, exterior POSITIVE.
+    if (brickIdx == SDF_BRICK_UNALLOC_INTERIOR) return -SDF_SENTINEL;
+    if (brickIdx == SDF_BRICK_UNALLOC_EXTERIOR) return  SDF_SENTINEL;
 
     // Pool addressing:
     //   channelPool[poolBrickBase + brickIdx*brickStrideFloats + channelBase + comp*512 + voxelIdx]
@@ -156,6 +177,15 @@ vec3 sampleChannelVec3Trilinear(uint sem, vec3 gridPos, vec3 missing) {
 // sampleSdfTrilinear: trilinear interpolation of the SDF at a fractional grid
 // position (in voxel units). The 8 corners are fetched via _sampleSdfVoxel.
 // gridPos is in octree grid-voxel coordinates (0..bpa*8 per axis).
+//
+// Inc3 hole fix: the corners are SIGN-AWARE — an empty brick yields ±SDF_SENTINEL
+// (interior −, exterior +). We keep the PLAIN blend (no per-corner reconstruction):
+// a stencil straddling empty space blends to a large MAGNITUDE that marchBrickSdf
+// detects (|d|>SENTINEL_D) and steps through, rather than trusting it as a distance.
+// (A per-corner honest-corner reconstruction was tried and REGRESSED the GPU — the
+// reconstructed value is discontinuous across brick faces and the GPU's lower-precision
+// blend turns that into fresh holes; the exact-CPU mirror does not reproduce it. The
+// sign-correct sentinel + contamination-aware march is what holds up on real hardware.)
 // ---------------------------------------------------------------------------
 float sampleSdfTrilinear(vec3 gridPos, int octreeIdx) {
     vec3  f = fract(gridPos);
@@ -178,20 +208,30 @@ float sampleSdfTrilinear(vec3 gridPos, int octreeIdx) {
 
 // ---------------------------------------------------------------------------
 // sdfGradientStored: central-difference gradient of the trilinear SDF field.
-// Step h = 0.5 voxel (fine enough for the interpolated field).
 // Returns a normalized gradient (normal pointing outward from the surface).
+//
+// Inc3 hole fix: a ±h tap can land in sentinel-contaminated space (a stencil that
+// reached into an empty brick → ±SDF_SENTINEL). With SIGN-AWARE sentinels that tap
+// still carries the CORRECT SIGN (exterior empty = +, interior empty = −), so its
+// direction is meaningful — only its 1e9 MAGNITUDE is not. We therefore CLAMP each
+// sample to ±CL voxels instead of dropping it: a contaminated tap then contributes a
+// bounded, correctly-signed push, so the central difference yields a stable outward
+// normal even at a brick CORNER/EDGE where multiple axes straddle empty space (where
+// dropping taps used to collapse the gradient → a garbage fallback normal → specular
+// blow-out). fallbackDir is only the degenerate last resort, never at a real iso point.
 // ---------------------------------------------------------------------------
-vec3 sdfGradientStored(vec3 gridPos, int octreeIdx) {
-    const float h = 0.5;
-    float gx = sampleSdfTrilinear(gridPos + vec3(h,0,0), octreeIdx)
-             - sampleSdfTrilinear(gridPos - vec3(h,0,0), octreeIdx);
-    float gy = sampleSdfTrilinear(gridPos + vec3(0,h,0), octreeIdx)
-             - sampleSdfTrilinear(gridPos - vec3(0,h,0), octreeIdx);
-    float gz = sampleSdfTrilinear(gridPos + vec3(0,0,h), octreeIdx)
-             - sampleSdfTrilinear(gridPos - vec3(0,0,h), octreeIdx);
-    vec3 g = vec3(gx, gy, gz);
+vec3 sdfGradientStored(vec3 gridPos, int octreeIdx, vec3 fallbackDir) {
+    const float h  = 0.5;
+    const float CL = 2.0;
+    vec3 g = vec3(0.0);
+    for (int ax = 0; ax < 3; ++ax) {
+        vec3 e = vec3(0.0); e[ax] = h;
+        float sp = clamp(sampleSdfTrilinear(gridPos + e, octreeIdx), -CL, CL);
+        float sm = clamp(sampleSdfTrilinear(gridPos - e, octreeIdx), -CL, CL);
+        g[ax] = (sp - sm);
+    }
     float len = length(g);
-    return (len > 1e-6) ? g / len : vec3(0.0, 1.0, 0.0);
+    return (len > 1e-6) ? g / len : normalize(fallbackDir + vec3(0.0, 1e-6, 0.0));
 }
 
 // ---------------------------------------------------------------------------
@@ -236,26 +276,52 @@ bool marchBrickSdf(int octreeIdx, vec3 gridEntry, vec3 gridDirN,
 
     const int   MAX_STEPS = 96;    // one 8³ brick + sentinel probes — converges well within this
     const float EPS       = 0.01;  // iso threshold (voxel fraction)
-    // Above this, a trilinear sample is sentinel-contaminated: at a brick face the 8-corner
-    // stencil reached into an UNALLOCATED neighbour brick (_sampleSdfVoxel → 1e9). Real
-    // in-leaf distances are ≤ a brick diagonal (~14), so anything large means "no honest
-    // distance here" — probe forward one voxel until the stencil sits fully inside populated
-    // data, rather than trusting the blown-up value as a distance (which would lunge past sMax).
-    const float SENTINEL_D = 100.0;
+    // |d| above this ⇒ the trilinear sample is sentinel-contaminated: at a brick face the
+    // 8-corner stencil reached into an UNALLOCATED neighbour brick (_samplePoolVoxel →
+    // ±SDF_SENTINEL). Real in-leaf distances are ≤ a brick diagonal (~14), so a large
+    // MAGNITUDE (either sign now — interior empties are −SDF_SENTINEL) means "no honest
+    // distance here". With sign-aware sentinels a contaminated sample can be large-NEGATIVE,
+    // so the contamination test MUST run BEFORE the d<EPS hit test or an interior-empty
+    // stencil straddle would register a FALSE hit at the brick face.
+    const float SENTINEL_D    = 100.0;
+    // Bounded step through contaminated space: small enough not to skip a surface crossing
+    // sitting just inside the face, large enough to exit the contaminated band in a few steps.
+    // (Tuned on lavapipe; 0.5 voxel closes the brick-face holes without false hits.)
+    const float CONTAM_STEP   = 0.5;
+    // Bounded overshoot PAST the brick exit. The iso-surface can sit a sub-voxel fraction
+    // BEYOND this brick's exit face, inside the (allocated) neighbour brick — and the ESVO
+    // traversal does not always then descend to that neighbour (a brick-boundary precision
+    // effect), so the crossing would be missed entirely → a hole. The trilinear sampler reads
+    // the GLOBAL field, so we let the march continue a SMALL margin past sMax to catch such a
+    // boundary-straddling crossing. Safety: this never lunges across empty space — once the
+    // sample turns CONTAMINATED in the margin (the neighbour brick is empty) we STOP, and the
+    // margin is < 1 voxel so we cannot reach a distant surface.
+    const float EXIT_MARGIN   = 1.0;
+    const float sLimit        = sMax + EXIT_MARGIN;
 
     float s = 0.0;
     for (int i = 0; i < MAX_STEPS; ++i) {
-        if (s > sMax) return false;   // left the brick without crossing → advance
+        if (s > sLimit) return false;   // left the brick (+margin) without crossing → advance
         vec3  p = gridEntry + gridDirN * s;
         float d = sampleSdfTrilinear(p, octreeIdx);
-        if (d < EPS) {                // crossed (or reached) the iso-surface
-            hitNormal = sdfGradientStored(p, octreeIdx);
+
+        if (abs(d) > SENTINEL_D) {
+            // CONTAMINATED (sentinel straddle): NOT a hit regardless of sign.
+            // In the overshoot margin a contaminated sample means the neighbour brick is
+            // empty (no honest surface to catch there) → stop rather than probe into emptiness.
+            if (s > sMax) return false;
+            // Inside the brick: step a small bounded amount so a near-face crossing is not
+            // skipped, then re-sample.
+            s += CONTAM_STEP;
+            continue;
+        }
+        if (d < EPS) {                // honest sample crossed (or reached) the iso-surface
+            hitNormal = sdfGradientStored(p, octreeIdx, gridDirN);
             sHit      = s;
             return true;
         }
-        // 1/√3 Lipschitz step for honest samples; a bounded 1-voxel probe through
-        // sentinel-contaminated (brick-face straddle) regions.
-        s += (d > SENTINEL_D) ? 1.0 : max(d * 0.5773503, EPS);
+        // 1/√3 Lipschitz step for honest samples.
+        s += max(d * 0.5773503, EPS);
     }
     return false;
 }
