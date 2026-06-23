@@ -1,0 +1,1435 @@
+// test_stored_sdf_march_mirror.cpp — gpu-shader-debug CPU mirror of the
+// Stored-SDF leaf march in shaders/StoredSdf.glsl + shaders/BodyInstanceRayMarch.comp.
+//
+// PURPOSE: the GPU renderer draws the Stored-SDF sphere with systematic angular
+// brick-aligned dark HOLES (fillRatio ~0.988, 1.0 = solid). This test reproduces
+// those holes ON THE CPU by:
+//   1. baking the EXACT render-test scene (RECIPE_SPHERE, n=64, center=32, r=26,
+//      band=2.5, brickDepth=3) and SerializeSdf-ing it — identical channelPool /
+//      brickLookup / OctreeConfig to what the GPU consumes,
+//   2. driving rays with the SAME ESVO traversal the GPU uses (a verbatim copy of
+//      GpuTraversalMirror's PUSH/ADVANCE/POP loop) but swapping in the Stored-SDF
+//      leaf handler (handleLeafHitInstancedSdf + marchBrickSdf + the pool readers),
+//      translated 1:1 from the GLSL,
+//   3. comparing each ray's mirror hit against the ANALYTIC sphere: a ray whose
+//      analytic-sphere intersection is inside the body but which the mirror misses
+//      is a HOLE.
+//
+// SYNC CONTRACT: the ESVO traversal block is a line-by-line copy of
+// GpuTraversalMirror.h; the SDF leaf block is a line-by-line port of the cited GLSL.
+//
+// @shader shaders/StoredSdf.glsl (_samplePoolVoxel, sampleSdfTrilinear, marchBrickSdf)
+// @shader shaders/BodyInstanceRayMarch.comp (handleLeafHitInstancedSdf, traverseOctreeInstanced)
+
+#include <gtest/gtest.h>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+
+// MSVC defines far/near/min/max as macros via <windows.h>.
+#undef far
+#undef near
+#undef min
+#undef max
+
+#include "SdfBake.h"
+#include "ShellOctreeGpu.h"
+#include "SdfRecipes.h"
+#include "VoxelChannelFormat.h"
+
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <cmath>
+#include <string>
+#include <utility>
+#include <vector>
+#include <bit>
+
+using namespace Vixen::SVO;
+
+namespace {
+
+// ===========================================================================
+// Scene parameters — IDENTICAL to BodyOctreeSceneNode::EnsureOctreesBuilt() SDF bake
+// and test_body_instance_raymarch_render.cpp RenderStoredSdf* camera framing.
+// ===========================================================================
+constexpr int   kSdfN          = 64;
+constexpr float kSdfCenter     = 32.0f;
+constexpr float kSdfRadius     = 26.0f;
+constexpr float kSdfBand       = 2.5f;
+constexpr int   kSdfBrickDepth = 3;
+
+constexpr float kWorldGridSize = 10.0f;   // ShellOctreeGpu::SerializeSdf localToWorld scale
+constexpr float kRS            = 2.0f;    // render test renderScale for the framed body
+
+// ===========================================================================
+// SdfMarchMirror — verbatim ESVO traversal (GpuTraversalMirror.h) with the
+// Stored-SDF leaf handler swapped in.
+// ===========================================================================
+class SdfMarchMirror {
+public:
+    struct Hit {
+        bool      hit = false;
+        float     t = 0.0f;
+        glm::vec3 hitPoint{0.0f};
+        glm::vec3 normal{0.0f};
+        float     sHit = 0.0f;     // grid-voxel arc-length within the hit brick
+        glm::ivec3 hitBrick{0};    // brick the hit landed in
+        int       iterations = 0;
+        int       exitCode = 0;
+        int       leavesVisited = 0;   // # of allocated SDF leaves the ray marched
+    };
+
+    // Precision-fragility probe: multiply the leaf-entry t_min used to build gridEntry
+    // by (1 + tJitter). Simulates the GPU computing a slightly different tv_max/t_min
+    // than exact CPU arithmetic. 0 = exact (default).
+    float m_tJitter = 0.0f;
+
+    // DIAGNOSTIC counters (mutable so const castRay can tally them across a sweep).
+    mutable long long m_leafHits = 0;      // SDF leaves that the march was invoked on
+    mutable long long m_brickDisagree = 0; // of those, floor-brick != ESVO-leaf-brick
+    bool m_dumpDisagree = false;           // print the first few disagreements
+    bool m_useEsvoBrick = false;           // (probe) bound the march to the ESVO leaf brick
+    bool m_fixGrazing = false;             // FIX-A: honest-corner trilinear reconstruction (sampler)
+    bool m_fixMarch   = false;             // FIX-B: march exit-clamp + sign-change (march loop)
+    bool m_mixFused   = false;             // (probe) compute mix as a+t*(b-a) (GPU-like rounding)
+
+    explicit SdfMarchMirror(const SerializedOctree& s)
+        : m_cfg(s.config) {
+        m_nodeCount      = s.nodeCount;
+        m_nodes          = reinterpret_cast<const ChildDescriptor*>(s.nodes.data());
+        m_nodeArrayBase  = m_cfg.nodeArrayBase;
+        // Stored-SDF pool + grid lookup (the shader's bindings 11/12).
+        m_pool           = reinterpret_cast<const float*>(s.channelPool.data());
+        m_poolFloats     = s.channelPool.size() / sizeof(float);
+        m_lookup         = reinterpret_cast<const uint32_t*>(s.brickGridLookup.data());
+        m_lookupCount    = s.brickGridLookup.size() / sizeof(uint32_t);
+        m_brickStride    = s.brickStrideFloats;
+        m_poolBrickBase  = m_cfg.poolBrickBase;
+        m_bpaSdf         = static_cast<int>(m_cfg.bricksPerAxisSdf);
+        for (uint32_t i = 0; i < s.channelCount && i < kMaxChannels; ++i)
+            m_channels[i] = s.channels[i];
+        m_channelCount = s.channelCount;
+    }
+
+    // Port of traverseOctreeInstanced(): cast a WORLD-space ray, return the hit.
+    Hit castRay(const glm::vec3& rayOrigin, const glm::vec3& rayDirIn) const {
+        Hit out;
+        const glm::vec3 rayDir = glm::normalize(rayDirIn);
+
+        const glm::vec3 rayOriginLocal = glm::vec3(m_cfg.worldToLocal * glm::vec4(rayOrigin, 1.0f));
+        const glm::vec3 rayDirLocal    = glm::mat3(m_cfg.worldToLocal) * rayDir;
+
+        const glm::vec2 gridT = rayAABBIntersection(rayOriginLocal, rayDirLocal, glm::vec3(0.0f), glm::vec3(1.0f));
+        if (gridT.y < 0.0f) { out.exitCode = 2; return out; }
+
+        const bool rayStartsInside = (gridT.x < 0.0f);
+        glm::vec3 rayStartWorld;
+        float tEntryWorld = 0.0f;
+        if (rayStartsInside) {
+            rayStartWorld = rayOrigin;
+            tEntryWorld   = 0.0f;
+        } else {
+            const glm::vec3 entryPointLocal = rayOriginLocal + rayDirLocal * (gridT.x + kEpsilon);
+            rayStartWorld = glm::vec3(m_cfg.localToWorld * glm::vec4(entryPointLocal, 1.0f));
+            tEntryWorld   = glm::length(rayStartWorld - rayOrigin);
+        }
+
+        const RayCoefficients coef = initRayCoefficients(rayDir, rayStartWorld);
+
+        StackEntry stack[kStackSize];
+        TraversalState state = initTraversalState(coef, stack, rayStartsInside);
+
+        if (state.t_min >= state.t_max) { out.exitCode = 2; return out; }
+
+        int iter = 0;
+        for (; iter < kMaxIters && state.scale <= m_cfg.esvoMaxScale; ++iter) {
+            const ChildDescriptor parent = fetchNode(state.parentPtr);
+            const uint32_t validMask    = getValidMask(parent);
+            const uint32_t leafMask     = getLeafMask(parent);
+            const uint32_t childPointer = getChildPointer(parent);
+
+            bool isLeaf = false;
+            float tv_max = 0.0f, tx_center = 0.0f, ty_center = 0.0f, tz_center = 0.0f;
+
+            if (checkChildValidity(state, coef, validMask, leafMask, isLeaf, tv_max,
+                                   tx_center, ty_center, tz_center)) {
+                if (isLeaf) {
+                    if (handleLeafHitSdf(state, coef, rayDir, tEntryWorld, rayOrigin, out)) {
+                        out.hit = true;
+                        out.exitCode = 1;
+                        out.iterations = iter + 1;
+                        return out;
+                    }
+                    state.t_min = tv_max;
+                } else {
+                    executePushPhase(state, coef, stack, validMask, leafMask, childPointer,
+                                     tv_max, tx_center, ty_center, tz_center);
+                    continue;
+                }
+            }
+
+            int step_mask = 0;
+            const int advanceResult = executeAdvancePhase(state, coef, step_mask);
+            if (advanceResult == 0) {
+                if (state.scale < m_cfg.esvoMaxScale) state.t_max = stack[state.scale + 1].t_max;
+            }
+            if (advanceResult == 1) {
+                const int popResult = executePopPhase(state, coef, stack, step_mask);
+                if (popResult == 1) { out.exitCode = 3; out.iterations = iter + 1; return out; }
+            }
+        }
+        out.iterations = iter;
+        return out;
+    }
+
+    // -------- DIAGNOSTIC: expose per-leaf details for a single ray --------
+    struct LeafProbe {
+        glm::vec3 gridEntry{0.0f};
+        glm::vec3 gridDirN{0.0f};
+        glm::ivec3 brickPicked{0};
+        uint32_t   brickIdxLookup = 0xFFFFFFFFu;
+        float      sMax = 0.0f;
+        float      minD = 1e30f;
+        int        steps = 0;
+        bool       hit = false;
+    };
+    void probeRay(const glm::vec3& rayOrigin, const glm::vec3& rayDirIn,
+                  std::vector<LeafProbe>& probes) const;
+
+    // Brute-force REFERENCE: march the GLOBAL trilinear field with a tiny fixed step,
+    // ignoring brick bounds entirely. Returns the minimum d seen and whether d ever went
+    // < 0 (true penetration of the trilinear iso). This is the ground truth for whether a
+    // ray ACTUALLY crosses the reconstructed surface — independent of the per-brick march.
+    struct RefResult { float minD = 1e30f; bool crossed = false; float sCross = -1.0f;
+                       glm::vec3 crossPos{0.0f}; glm::ivec3 crossBrick{0}; };
+    RefResult referenceMarch(const glm::vec3& rayOrigin, const glm::vec3& rayDirIn) const;
+    bool brickAllocated(const glm::ivec3& b) const {
+        const uint32_t fl = gridToLookupIdx(b, m_bpaSdf);
+        if (fl == 0xFFFFFFFFu || fl >= m_lookupCount) return false;
+        return m_lookup[fl] != 0xFFFFFFFFu;
+    }
+    // Did the ESVO traversal visit a leaf whose brick == `want` for this ray?
+    bool esvoVisitsBrick(const glm::vec3& rayOrigin, const glm::vec3& rayDirIn, const glm::ivec3& want) const;
+
+    // Dump the per-step (s, d) sequence of marchBrickSdf for the leaf whose ESVO brick
+    // matches `wantBrick`, for a single ray. Reveals exactly how the surface is stepped over.
+    void dumpLeafSteps(const glm::vec3& rayOrigin, const glm::vec3& rayDirIn,
+                       const glm::ivec3& wantBrick) const;
+
+private:
+    static constexpr int   kStackSize = 23;
+    static constexpr int   kMaxIters  = 512;
+    static constexpr float kEpsilon   = 1e-6f;
+    static constexpr float kDirEps    = 1e-5f;
+
+    struct StackEntry { uint32_t parentPtr = 0; float t_max = 0.0f; };
+    struct TraversalState {
+        uint32_t parentPtr = 0;
+        int   idx = 0;
+        int   scale = 0;
+        float scale_exp2 = 0.5f;
+        glm::vec3 pos{1.0f};
+        float t_min = 0.0f, t_max = 1.0f;
+        float h = 0.0f;
+    };
+    struct RayCoefficients {
+        float tx_coef = 0, ty_coef = 0, tz_coef = 0;
+        float tx_bias = 0, ty_bias = 0, tz_bias = 0;
+        int   octant_mask = 7;
+        glm::vec3 rayDir{0.0f};
+        glm::vec3 normOrigin{1.0f};
+    };
+
+    const OctreeConfig m_cfg;
+    const ChildDescriptor* m_nodes = nullptr;
+    uint32_t m_nodeCount = 0;
+    int m_nodeArrayBase = 0;
+
+    // Stored-SDF buffers
+    const float*    m_pool   = nullptr;  size_t m_poolFloats = 0;
+    const uint32_t* m_lookup = nullptr;  size_t m_lookupCount = 0;
+    uint32_t m_brickStride = 0;
+    uint32_t m_poolBrickBase = 0;
+    int      m_bpaSdf = 0;
+    ChannelDesc m_channels[kMaxChannels]{};
+    uint32_t m_channelCount = 0;
+
+    // ---- descriptor bit extraction (SVOTypes.glsl) ----
+    static uint32_t descriptorX(const ChildDescriptor& d) { uint32_t w[2]; std::memcpy(w, &d, 8); return w[0]; }
+    static uint32_t descriptorY(const ChildDescriptor& d) { uint32_t w[2]; std::memcpy(w, &d, 8); return w[1]; }
+    static uint32_t getChildPointer(const ChildDescriptor& d)   { return descriptorX(d) & 0x7FFFu; }
+    static uint32_t getValidMask(const ChildDescriptor& d)      { return (descriptorX(d) >> 16) & 0xFFu; }
+    static uint32_t getLeafMask(const ChildDescriptor& d)       { return (descriptorX(d) >> 24) & 0xFFu; }
+    static uint32_t getContourPointer(const ChildDescriptor& d) { return descriptorY(d) & 0xFFFFFFu; }
+    static bool childExists(uint32_t v, int i) { return ((v >> i) & 1u) != 0u; }
+    static bool childIsLeaf(uint32_t l, int i) { return ((l >> i) & 1u) != 0u; }
+    static uint32_t countLeavesBefore(uint32_t validMask, uint32_t leafMask, int childIndex) {
+        if (childIndex <= 0) return 0u;
+        uint32_t mask = (1u << childIndex) - 1u;
+        return static_cast<uint32_t>(std::popcount(validMask & leafMask & mask));
+    }
+    static int mirroredToLocalOctant(int idx, int octant_mask) { return idx ^ ((~octant_mask) & 7); }
+    static const uint32_t SVO_INVALID_INDEX = 0xFFFFFFu;
+
+    ChildDescriptor fetchNode(uint32_t nodeIndex) const {
+        uint32_t idx = static_cast<uint32_t>(m_nodeArrayBase) + nodeIndex;
+        if (idx >= m_nodeCount) return ChildDescriptor{};
+        return m_nodes[idx];
+    }
+
+    // ---- RayGeneration.glsl ----
+    static glm::vec2 rayAABBIntersection(const glm::vec3& ro, const glm::vec3& rd,
+                                         const glm::vec3& bmin, const glm::vec3& bmax) {
+        const glm::vec3 invDir = 1.0f / rd;
+        const glm::vec3 t0 = (bmin - ro) * invDir;
+        const glm::vec3 t1 = (bmax - ro) * invDir;
+        const glm::vec3 tMin = glm::min(t0, t1);
+        const glm::vec3 tMax = glm::max(t0, t1);
+        return glm::vec2(glm::max(glm::max(tMin.x, tMin.y), tMin.z),
+                         glm::min(glm::min(tMax.x, tMax.y), tMax.z));
+    }
+    glm::vec3 worldToNormalized(const glm::vec3& worldPos) const {
+        const glm::vec4 localPos = m_cfg.worldToLocal * glm::vec4(worldPos, 1.0f);
+        const glm::vec3 p = glm::vec3(localPos) / localPos.w;
+        return p + 1.0f;
+    }
+
+    // ---- ESVOCoefficients.glsl ----
+    RayCoefficients initRayCoefficients(const glm::vec3& rayDir, const glm::vec3& rayStartWorld) const {
+        RayCoefficients coef;
+        coef.rayDir = rayDir;
+        const glm::vec3 p = worldToNormalized(rayStartWorld);
+        coef.normOrigin = p;
+        glm::vec3 d = glm::mat3(m_cfg.worldToLocal) * rayDir;
+
+        const float epsilon_esvo = std::exp2(-static_cast<float>(m_cfg.esvoMaxScale));
+        const float sx = d.x >= 0.0f ? 1.0f : -1.0f;
+        const float sy = d.y >= 0.0f ? 1.0f : -1.0f;
+        const float sz = d.z >= 0.0f ? 1.0f : -1.0f;
+        if (std::abs(d.x) < epsilon_esvo) d.x = sx * epsilon_esvo;
+        if (std::abs(d.y) < epsilon_esvo) d.y = sy * epsilon_esvo;
+        if (std::abs(d.z) < epsilon_esvo) d.z = sz * epsilon_esvo;
+
+        coef.tx_coef = 1.0f / -std::abs(d.x);
+        coef.ty_coef = 1.0f / -std::abs(d.y);
+        coef.tz_coef = 1.0f / -std::abs(d.z);
+        coef.tx_bias = coef.tx_coef * p.x;
+        coef.ty_bias = coef.ty_coef * p.y;
+        coef.tz_bias = coef.tz_coef * p.z;
+
+        coef.octant_mask = 7;
+        if (d.x > 0.0f) { coef.octant_mask ^= 1; coef.tx_bias = 3.0f * coef.tx_coef - coef.tx_bias; }
+        if (d.y > 0.0f) { coef.octant_mask ^= 2; coef.ty_bias = 3.0f * coef.ty_coef - coef.ty_bias; }
+        if (d.z > 0.0f) { coef.octant_mask ^= 4; coef.tz_bias = 3.0f * coef.tz_coef - coef.tz_bias; }
+        return coef;
+    }
+
+    // ---- ESVOTraversal.glsl initTraversalState ----
+    TraversalState initTraversalState(const RayCoefficients& coef, StackEntry stack[kStackSize],
+                                      bool rayStartsInside) const {
+        TraversalState state;
+        if (rayStartsInside) {
+            state.t_min = 0.0f;
+            state.t_max = glm::min(glm::min(coef.tx_coef - coef.tx_bias, coef.ty_coef - coef.ty_bias),
+                                   coef.tz_coef - coef.tz_bias);
+        } else {
+            state.t_min = glm::max(glm::max(2.0f * coef.tx_coef - coef.tx_bias, 2.0f * coef.ty_coef - coef.ty_bias),
+                                   2.0f * coef.tz_coef - coef.tz_bias);
+            state.t_max = glm::min(glm::min(coef.tx_coef - coef.tx_bias, coef.ty_coef - coef.ty_bias),
+                                   coef.tz_coef - coef.tz_bias);
+        }
+        state.h = state.t_max;
+        state.t_min = glm::max(state.t_min, 0.0f);
+
+        state.parentPtr = 0u;
+        state.scale = m_cfg.esvoMaxScale;
+        state.scale_exp2 = 0.5f;
+        state.pos = glm::vec3(1.0f);
+        for (int s = 0; s < kStackSize; ++s) { stack[s].parentPtr = 0u; stack[s].t_max = state.t_max; }
+
+        state.idx = 0;
+        const float boundary_epsilon = 1e-4f;
+        const bool usePositionBased = (state.t_min < boundary_epsilon);
+
+        glm::vec3 mirroredOrigin;
+        mirroredOrigin.x = ((coef.octant_mask & 1) != 0) ? coef.normOrigin.x : (3.0f - coef.normOrigin.x);
+        mirroredOrigin.y = ((coef.octant_mask & 2) != 0) ? coef.normOrigin.y : (3.0f - coef.normOrigin.y);
+        mirroredOrigin.z = ((coef.octant_mask & 4) != 0) ? coef.normOrigin.z : (3.0f - coef.normOrigin.z);
+
+        if (std::abs(coef.rayDir.x) < kDirEps || usePositionBased) {
+            if (mirroredOrigin.x >= 1.5f) { state.idx |= 1; state.pos.x = 1.5f; }
+        } else if (1.5f * coef.tx_coef - coef.tx_bias > state.t_min) { state.idx ^= 1; state.pos.x = 1.5f; }
+        if (std::abs(coef.rayDir.y) < kDirEps || usePositionBased) {
+            if (mirroredOrigin.y >= 1.5f) { state.idx |= 2; state.pos.y = 1.5f; }
+        } else if (1.5f * coef.ty_coef - coef.ty_bias > state.t_min) { state.idx ^= 2; state.pos.y = 1.5f; }
+        if (std::abs(coef.rayDir.z) < kDirEps || usePositionBased) {
+            if (mirroredOrigin.z >= 1.5f) { state.idx |= 4; state.pos.z = 1.5f; }
+        } else if (1.5f * coef.tz_coef - coef.tz_bias > state.t_min) { state.idx ^= 4; state.pos.z = 1.5f; }
+        return state;
+    }
+
+    // ---- ESVOTraversal.glsl corner / checkChildValidity ----
+    static void computeVoxelCorners(const glm::vec3& pos, const RayCoefficients& coef,
+                                    float& tx, float& ty, float& tz) {
+        tx = pos.x * coef.tx_coef - coef.tx_bias;
+        ty = pos.y * coef.ty_coef - coef.ty_bias;
+        tz = pos.z * coef.tz_coef - coef.tz_bias;
+    }
+    static float computeCorrectedTcMax(float tx, float ty, float tz, const glm::vec3& rayDir, float t_max) {
+        const float corner_threshold = 1000.0f;
+        const bool useX = (std::abs(rayDir.x) >= kDirEps);
+        const bool useY = (std::abs(rayDir.y) >= kDirEps);
+        const bool useZ = (std::abs(rayDir.z) >= kDirEps);
+        const float vx = (useX && std::abs(tx) < corner_threshold) ? tx : t_max;
+        const float vy = (useY && std::abs(ty) < corner_threshold) ? ty : t_max;
+        const float vz = (useZ && std::abs(tz) < corner_threshold) ? tz : t_max;
+        return glm::min(glm::min(vx, vy), vz);
+    }
+    bool checkChildValidity(const TraversalState& state, const RayCoefficients& coef,
+                            uint32_t validMask, uint32_t leafMask, bool& isLeaf, float& tv_max,
+                            float& tx_center, float& ty_center, float& tz_center) const {
+        const int localChildIdx = mirroredToLocalOctant(state.idx, coef.octant_mask);
+        const bool child_valid = childExists(validMask, localChildIdx);
+        isLeaf = childIsLeaf(leafMask, localChildIdx);
+        if (!child_valid || state.t_min > state.t_max + kEpsilon) return false;
+
+        float tx, ty, tz;
+        computeVoxelCorners(state.pos, coef, tx, ty, tz);
+        const float tc_max = computeCorrectedTcMax(tx, ty, tz, coef.rayDir, state.t_max);
+        tv_max = glm::min(state.t_max, tc_max);
+
+        const float halfScale = state.scale_exp2 * 0.5f;
+        tx_center = halfScale * coef.tx_coef + tx;
+        ty_center = halfScale * coef.ty_coef + ty;
+        tz_center = halfScale * coef.tz_coef + tz;
+        return state.t_min <= tv_max + kEpsilon;
+    }
+
+    void executePushPhase(TraversalState& state, const RayCoefficients& coef, StackEntry stack[kStackSize],
+                          uint32_t validMask, uint32_t leafMask, uint32_t childPointer,
+                          float tv_max, float tx_center, float ty_center, float tz_center) const {
+        float tx, ty, tz;
+        computeVoxelCorners(state.pos, coef, tx, ty, tz);
+        const float tc_max = glm::min(glm::min(tx, ty), tz);
+        if (state.scale >= 0 && state.scale < kStackSize) {
+            stack[state.scale].parentPtr = state.parentPtr;
+            stack[state.scale].t_max = state.t_max;
+        }
+        state.h = tc_max;
+        const int worldIdx = mirroredToLocalOctant(state.idx, coef.octant_mask);
+        const uint32_t nonLeafMask = validMask & ~leafMask;
+        const uint32_t mask_before_child = (1u << worldIdx) - 1u;
+        const uint32_t childLocalIndex = static_cast<uint32_t>(std::popcount(nonLeafMask & mask_before_child));
+        state.parentPtr = childPointer + childLocalIndex;
+
+        state.idx = 0;
+        state.scale--;
+        const float halfScale = state.scale_exp2 * 0.5f;
+        state.scale_exp2 = halfScale;
+        if (tx_center > state.t_min) { state.idx ^= 1; state.pos.x += state.scale_exp2; }
+        if (ty_center > state.t_min) { state.idx ^= 2; state.pos.y += state.scale_exp2; }
+        if (tz_center > state.t_min) { state.idx ^= 4; state.pos.z += state.scale_exp2; }
+        state.t_max = tv_max;
+    }
+
+    int executeAdvancePhase(TraversalState& state, const RayCoefficients& coef, int& step_mask) const {
+        float tx, ty, tz;
+        computeVoxelCorners(state.pos, coef, tx, ty, tz);
+        const bool canStepX = (std::abs(coef.rayDir.x) >= kDirEps);
+        const bool canStepY = (std::abs(coef.rayDir.y) >= kDirEps);
+        const bool canStepZ = (std::abs(coef.rayDir.z) >= kDirEps);
+        float tc_max = computeCorrectedTcMax(tx, ty, tz, coef.rayDir, state.t_max);
+        if (tc_max >= 1e10f) {
+            const float fx = canStepX ? tx : -1e10f;
+            const float fy = canStepY ? ty : -1e10f;
+            const float fz = canStepZ ? tz : -1e10f;
+            tc_max = glm::max(glm::max(fx, fy), fz);
+        }
+        step_mask = 0;
+        if (canStepX && tx <= tc_max) { step_mask ^= 1; state.pos.x -= state.scale_exp2; }
+        if (canStepY && ty <= tc_max) { step_mask ^= 2; state.pos.y -= state.scale_exp2; }
+        if (canStepZ && tz <= tc_max) { step_mask ^= 4; state.pos.z -= state.scale_exp2; }
+        state.t_min = glm::max(tc_max, 0.0f);
+        state.idx ^= step_mask;
+        if ((state.idx & step_mask) != 0) return 1;
+        return 0;
+    }
+
+    int executePopPhase(TraversalState& state, const RayCoefficients& /*coef*/,
+                        StackEntry stack[kStackSize], int step_mask) const {
+        if (state.scale >= m_cfg.esvoMaxScale) {
+            if (state.t_min > state.t_max ||
+                state.pos.x < 1.0f || state.pos.x >= 2.0f ||
+                state.pos.y < 1.0f || state.pos.y >= 2.0f ||
+                state.pos.z < 1.0f || state.pos.z >= 2.0f) return 1;
+            return 0;
+        }
+        uint32_t differing_bits = 0u;
+        if ((step_mask & 1) != 0) differing_bits |= floatBitsToUint(state.pos.x) ^ floatBitsToUint(state.pos.x + state.scale_exp2);
+        if ((step_mask & 2) != 0) differing_bits |= floatBitsToUint(state.pos.y) ^ floatBitsToUint(state.pos.y + state.scale_exp2);
+        if ((step_mask & 4) != 0) differing_bits |= floatBitsToUint(state.pos.z) ^ floatBitsToUint(state.pos.z + state.scale_exp2);
+        if (differing_bits == 0u) return 1;
+
+        state.scale = static_cast<int>((floatBitsToUint(static_cast<float>(differing_bits)) >> 23u) - 127u);
+        state.scale_exp2 = uintBitsToFloat(static_cast<uint32_t>(state.scale - m_cfg.esvoMaxScale - 1 + 127) << 23u);
+        if (state.scale < m_cfg.minESVOScale || state.scale > m_cfg.esvoMaxScale) return 1;
+
+        state.parentPtr = stack[state.scale].parentPtr;
+        state.t_max     = stack[state.scale].t_max;
+        const uint32_t shx = floatBitsToUint(state.pos.x) >> static_cast<uint32_t>(state.scale);
+        const uint32_t shy = floatBitsToUint(state.pos.y) >> static_cast<uint32_t>(state.scale);
+        const uint32_t shz = floatBitsToUint(state.pos.z) >> static_cast<uint32_t>(state.scale);
+        state.pos.x = uintBitsToFloat(shx << static_cast<uint32_t>(state.scale));
+        state.pos.y = uintBitsToFloat(shy << static_cast<uint32_t>(state.scale));
+        state.pos.z = uintBitsToFloat(shz << static_cast<uint32_t>(state.scale));
+        state.idx = static_cast<int>(shx & 1u) | (static_cast<int>(shy & 1u) << 1) | (static_cast<int>(shz & 1u) << 2);
+        state.h = 0.0f;
+        return 0;
+    }
+    static uint32_t floatBitsToUint(float f) { uint32_t u; std::memcpy(&u, &f, 4); return u; }
+    static float    uintBitsToFloat(uint32_t u) { float f; std::memcpy(&f, &u, 4); return f; }
+
+    // ====================================================================
+    // StoredSdf.glsl — pool readers (1:1 port)
+    // ====================================================================
+    uint32_t channelBaseFloats(uint32_t sem) const {
+        for (uint32_t i = 0; i < m_channelCount; ++i)
+            if (m_channels[i].semanticId == sem) return m_channels[i].channelBaseFloats;
+        return 0xFFFFFFFFu;
+    }
+    static uint32_t gridToLookupIdx(const glm::ivec3& bc, int bpa) {
+        if (bc.x < 0 || bc.y < 0 || bc.z < 0 || bc.x >= bpa || bc.y >= bpa || bc.z >= bpa)
+            return 0xFFFFFFFFu;
+        return static_cast<uint32_t>(bc.z * bpa * bpa + bc.y * bpa + bc.x);
+    }
+    float samplePoolVoxel(uint32_t channelBase, const glm::ivec3& gridCoord, int comp) const {
+        if (channelBase == 0xFFFFFFFFu) return 1e9f;
+        const int bpa = m_bpaSdf;
+        if (bpa <= 0) return 1e9f;
+        // GLSL ivec3 `/ 8` truncates toward zero; mirror exactly via component div.
+        const glm::ivec3 bc(gridCoord.x / 8, gridCoord.y / 8, gridCoord.z / 8);
+        const glm::ivec3 voxelInBrick = gridCoord - bc * 8;
+        const uint32_t flatLookup = gridToLookupIdx(bc, bpa);
+        if (flatLookup == 0xFFFFFFFFu) return 1e9f;
+        const uint32_t lookupBase = 0u * static_cast<uint32_t>(bpa) * bpa * bpa;  // octreeIdx 0
+        const uint32_t lookupIdx = lookupBase + flatLookup;
+        if (lookupIdx >= m_lookupCount) return 1e9f;
+        const uint32_t brickIdx = m_lookup[lookupIdx];
+        if (brickIdx == 0xFFFFFFFFu) return 1e9f;
+        const uint32_t voxelIdx = static_cast<uint32_t>(voxelInBrick.z * 64 + voxelInBrick.y * 8 + voxelInBrick.x);
+        const uint32_t fi = m_poolBrickBase + brickIdx * m_brickStride + channelBase
+                          + static_cast<uint32_t>(comp) * kVoxelsPerBrick + voxelIdx;
+        if (fi >= m_poolFloats) return 1e9f;
+        return m_pool[fi];
+    }
+    float sampleSdfVoxel(const glm::ivec3& gridCoord) const {
+        return samplePoolVoxel(channelBaseFloats(SEM_SDF), gridCoord, 0);
+    }
+    float sampleSdfTrilinear(const glm::vec3& gridPos) const {
+        const glm::vec3 f = glm::fract(gridPos);
+        const glm::ivec3 i = glm::ivec3(glm::floor(gridPos));
+        float c[8] = {
+            sampleSdfVoxel(i + glm::ivec3(0,0,0)), sampleSdfVoxel(i + glm::ivec3(1,0,0)),
+            sampleSdfVoxel(i + glm::ivec3(0,1,0)), sampleSdfVoxel(i + glm::ivec3(1,1,0)),
+            sampleSdfVoxel(i + glm::ivec3(0,0,1)), sampleSdfVoxel(i + glm::ivec3(1,0,1)),
+            sampleSdfVoxel(i + glm::ivec3(0,1,1)), sampleSdfVoxel(i + glm::ivec3(1,1,1)) };
+
+        if (m_fixGrazing) {
+            // FIX: an unallocated corner returns the 1e9 sentinel. Blending it raw poisons
+            // the reconstructed field across a surface-brick face that borders unallocated
+            // space, so the march sees a huge `d` (>SENTINEL_D), takes a coarse 1-voxel
+            // probe, and STEPS OVER a surface sitting within ~1 voxel of that face → a
+            // brick-grid-aligned hole. Reconstruct from the HONEST corners only: replace
+            // each sentinel corner with the MAX honest corner (an unallocated neighbour of a
+            // surface brick is, for a signed-distance field, FARTHER outside → larger SDF, so
+            // this is the correct monotone extrapolation and preserves the honest corners'
+            // zero-crossing). All 8 sentinel → genuinely empty → return the sentinel.
+            const float SENT = 1e8f;
+            float honestMax = -1e30f; int honestCount = 0;
+            for (float v : c) if (v < SENT) { honestMax = glm::max(honestMax, v); ++honestCount; }
+            if (honestCount == 0) return 1e9f;          // truly empty space
+            for (float& v : c) if (v >= SENT) v = honestMax;
+        }
+
+        return mixf(
+            mixf(mixf(c[0], c[1], f.x), mixf(c[2], c[3], f.x), f.y),
+            mixf(mixf(c[4], c[5], f.x), mixf(c[6], c[7], f.x), f.y),
+            f.z);
+    }
+    // mix variant: GLSL drivers may compute mix as a + t*(b-a) (catastrophic cancellation
+    // when b is the 1e9 sentinel) rather than glm's a*(1-t)+b*t. Toggle to probe whether
+    // the GPU's holes are a sentinel + mix-form rounding effect the strict CPU mix misses.
+    float mixf(float a, float b, float t) const {
+        return m_mixFused ? (a + t * (b - a)) : (a * (1.0f - t) + b * t);
+    }
+    // RAW trilinear (the original blend; sentinel corners poison the result). Used only by
+    // the reference-march oracle so its "is there a real crossing" verdict is independent of
+    // the fix and never extrapolates a false surface into unallocated space.
+    float sampleSdfTrilinearRaw(const glm::vec3& gridPos) const {
+        const glm::vec3 f = glm::fract(gridPos);
+        const glm::ivec3 i = glm::ivec3(glm::floor(gridPos));
+        const float c000 = sampleSdfVoxel(i + glm::ivec3(0,0,0));
+        const float c100 = sampleSdfVoxel(i + glm::ivec3(1,0,0));
+        const float c010 = sampleSdfVoxel(i + glm::ivec3(0,1,0));
+        const float c110 = sampleSdfVoxel(i + glm::ivec3(1,1,0));
+        const float c001 = sampleSdfVoxel(i + glm::ivec3(0,0,1));
+        const float c101 = sampleSdfVoxel(i + glm::ivec3(1,0,1));
+        const float c011 = sampleSdfVoxel(i + glm::ivec3(0,1,1));
+        const float c111 = sampleSdfVoxel(i + glm::ivec3(1,1,1));
+        return glm::mix(
+            glm::mix(glm::mix(c000, c100, f.x), glm::mix(c010, c110, f.x), f.y),
+            glm::mix(glm::mix(c001, c101, f.x), glm::mix(c011, c111, f.x), f.y),
+            f.z);
+    }
+    glm::vec3 sdfGradientStored(const glm::vec3& gridPos) const {
+        const float h = 0.5f;
+        const float gx = sampleSdfTrilinear(gridPos + glm::vec3(h,0,0)) - sampleSdfTrilinear(gridPos - glm::vec3(h,0,0));
+        const float gy = sampleSdfTrilinear(gridPos + glm::vec3(0,h,0)) - sampleSdfTrilinear(gridPos - glm::vec3(0,h,0));
+        const float gz = sampleSdfTrilinear(gridPos + glm::vec3(0,0,h)) - sampleSdfTrilinear(gridPos - glm::vec3(0,0,h));
+        const glm::vec3 g(gx, gy, gz);
+        const float len = glm::length(g);
+        return (len > 1e-6f) ? g / len : glm::vec3(0.0f, 1.0f, 0.0f);
+    }
+
+    // ====================================================================
+    // StoredSdf.glsl — marchBrickSdf (1:1 port).
+    //   leafBrick: the brick coordinate to bound the march to.
+    //     - CURRENT (buggy) shader: floor((gridEntry+gridDirN*1e-3)/8), recomputed here.
+    //     - FIX (m_useEsvoBrick): the brick the ESVO traversal descended to, passed in.
+    // ====================================================================
+    bool marchBrickSdf(const glm::vec3& gridEntry, const glm::vec3& gridDirN,
+                       const glm::ivec3& esvoBrick,
+                       glm::vec3& hitNormal, float& sHit, glm::ivec3& hitBrick) const {
+        hitNormal = glm::vec3(0.0f, 1.0f, 0.0f);
+        sHit = 0.0f;
+        const float kNudge = 1e-3f;
+        const glm::ivec3 brick = m_useEsvoBrick
+            ? esvoBrick
+            : glm::ivec3(glm::floor((gridEntry + gridDirN * kNudge) / 8.0f));
+        hitBrick = brick;
+        const glm::vec3 bMin = glm::vec3(brick) * 8.0f;
+        const glm::vec3 bMax = bMin + glm::vec3(8.0f);
+
+        const glm::vec3 invD(
+            std::abs(gridDirN.x) > 1e-8f ? 1.0f / gridDirN.x : 1e20f,
+            std::abs(gridDirN.y) > 1e-8f ? 1.0f / gridDirN.y : 1e20f,
+            std::abs(gridDirN.z) > 1e-8f ? 1.0f / gridDirN.z : 1e20f);
+        const glm::vec3 t0 = (bMin - gridEntry) * invD;
+        const glm::vec3 t1 = (bMax - gridEntry) * invD;
+        const glm::vec3 thi = glm::max(t0, t1);
+        const float sMax = glm::max(glm::min(glm::min(thi.x, thi.y), thi.z), 0.0f);
+
+        const int   MAX_STEPS  = 96;
+        const float EPS        = 0.01f;
+        const float SENTINEL_D = 100.0f;
+
+        if (!m_fixMarch) {
+            // CURRENT shader march loop (uses sampleSdfTrilinear, which is honest-reconstructed
+            // when FIX-A m_fixGrazing is on).
+            float s = 0.0f;
+            for (int i = 0; i < MAX_STEPS; ++i) {
+                if (s > sMax) return false;
+                const glm::vec3 p = gridEntry + gridDirN * s;
+                const float d = sampleSdfTrilinear(p);
+                if (d < EPS) { hitNormal = sdfGradientStored(p); sHit = s; return true; }
+                s += (d > SENTINEL_D) ? 1.0f : glm::max(d * 0.5773503f, EPS);
+            }
+            return false;
+        }
+
+        // FIX: a multiplicative sphere-trace step can skip the thin iso band for a ray
+        // grazing the surface near the brick-exit face, and the old loop bailed on
+        // `s > sMax` WITHOUT ever sampling the exit. Two robustness additions:
+        //   (1) Clamp each sample to the brick exit (sMax) so the exit face IS sampled
+        //       before giving up — catches a crossing sitting in the last sub-step.
+        //   (2) Detect a sign change between two consecutive HONEST samples (dPrev>0, d<0):
+        //       the iso was crossed inside the step → refine by linear interpolation.
+        // Both are exact for an SDF and never produce a false hit in empty space (no sign
+        // change, no sub-EPS sample). Sentinel-contaminated samples (d>SENTINEL_D) are not
+        // used as sign endpoints; we still probe forward 1 voxel through them.
+        float s = 0.0f;
+        float sPrev = 0.0f;
+        float dPrev = 1e30f;   // sentinel: no honest previous sample yet
+        bool  prevHonest = false;
+        for (int i = 0; i < MAX_STEPS; ++i) {
+            const bool atExit = (s >= sMax);
+            const float sc = atExit ? sMax : s;       // clamp the final sample to the exit face
+            const glm::vec3 p = gridEntry + gridDirN * sc;
+            const float d = sampleSdfTrilinear(p);
+            const bool honest = (d <= SENTINEL_D);
+
+            if (honest && d < EPS) {                  // direct hit (incl. d<0)
+                hitNormal = sdfGradientStored(p);
+                sHit = sc;
+                return true;
+            }
+            // Sign change between consecutive honest samples → surface crossed in (sPrev, sc).
+            if (honest && prevHonest && dPrev > 0.0f && d < 0.0f) {
+                const float t = dPrev / (dPrev - d);          // linear root in [0,1]
+                const float sHitInterp = sPrev + t * (sc - sPrev);
+                const glm::vec3 ph = gridEntry + gridDirN * sHitInterp;
+                hitNormal = sdfGradientStored(ph);
+                sHit = sHitInterp;
+                return true;
+            }
+
+            if (atExit) return false;                 // sampled the exit, still no crossing
+
+            sPrev = sc; dPrev = d; prevHonest = honest;
+            s += honest ? glm::max(d * 0.5773503f, EPS) : 1.0f;
+        }
+        return false;
+    }
+
+    // ====================================================================
+    // BodyInstanceRayMarch.comp — handleLeafHitInstancedSdf (1:1 port)
+    // ====================================================================
+    bool handleLeafHitSdf(const TraversalState& state, const RayCoefficients& coef,
+                          const glm::vec3& rayDir, float tBias, const glm::vec3& rayOrigin,
+                          Hit& out) const {
+        const int bpa = m_bpaSdf;
+        if (bpa <= 0) return false;
+        const float gridScale = static_cast<float>(bpa * 8);
+
+        const glm::vec3 rayDirLocal = glm::mat3(m_cfg.worldToLocal) * rayDir;
+        const float tEntry = state.t_min * (1.0f + m_tJitter);  // jitter probe (0 by default)
+        const glm::vec3 hitPos12 = coef.normOrigin + rayDirLocal * tEntry;
+        const glm::vec3 gridEntry = (hitPos12 - glm::vec3(1.0f)) * gridScale;
+        const float dirLen = glm::length(rayDirLocal);
+        if (dirLen < 1e-12f) return false;
+        const glm::vec3 gridDirN = rayDirLocal / dirLen;
+
+        // DIAGNOSTIC: the brick marchBrickSdf will select (floor of nudged entry) vs the
+        // brick the ESVO actually descended to (the leaf node geometry). If they DISAGREE
+        // the march bounds/lookup are for a different brick than the leaf → structural hole.
+        const glm::ivec3 floorBrick =
+            glm::ivec3(glm::floor((gridEntry + gridDirN * 1e-3f) / 8.0f));
+        const glm::ivec3 esvoBrick = esvoLeafBrick(state, coef);
+        ++m_leafHits;
+        if (floorBrick != esvoBrick) {
+            ++m_brickDisagree;
+            if (m_dumpDisagree && m_brickDisagree <= 40) {
+                const uint32_t flE = gridToLookupIdx(esvoBrick, m_bpaSdf);
+                const uint32_t flF = gridToLookupIdx(floorBrick, m_bpaSdf);
+                const uint32_t biE = (flE==0xFFFFFFFFu||flE>=m_lookupCount)?0xFFFFFFFFu:m_lookup[flE];
+                const uint32_t biF = (flF==0xFFFFFFFFu||flF>=m_lookupCount)?0xFFFFFFFFu:m_lookup[flF];
+                std::printf("  [DISAGREE #%lld] esvoBrick=(%d,%d,%d)[lk=%s] floorBrick=(%d,%d,%d)[lk=%s] "
+                            "gridEntry=(%.5f,%.5f,%.5f) t_min=%.6f\n",
+                            m_brickDisagree, esvoBrick.x, esvoBrick.y, esvoBrick.z,
+                            (biE==0xFFFFFFFFu?"UNALLOC":"alloc"),
+                            floorBrick.x, floorBrick.y, floorBrick.z,
+                            (biF==0xFFFFFFFFu?"UNALLOC":"alloc"),
+                            gridEntry.x, gridEntry.y, gridEntry.z, state.t_min);
+            }
+        }
+
+        glm::vec3 nrm; float sHit; glm::ivec3 hitBrick;
+        if (!marchBrickSdf(gridEntry, gridDirN, esvoBrick, nrm, sHit, hitBrick)) {
+            out.leavesVisited += 1;   // we DID visit an allocated leaf, but it missed
+            return false;
+        }
+        out.normal = nrm;
+        const float tHitLocal = state.t_min + sHit / (dirLen * gridScale);
+        out.t = tBias + tHitLocal;
+        out.hitPoint = rayOrigin + rayDir * out.t;
+        out.sHit = sHit;
+        out.hitBrick = hitBrick;
+        return true;
+    }
+
+    // The brick coordinate the ESVO traversal actually descended to (the leaf node).
+    // Mirrors GpuTraversalMirror::absoluteVoxelCell node-min logic: unmirror state.pos to
+    // canonical [1,2], → grid01 → [0,n], then divide by brickSize (=8) for the brick coord.
+    glm::ivec3 esvoLeafBrick(const TraversalState& state, const RayCoefficients& coef) const {
+        glm::vec3 localMin = state.pos;
+        if ((coef.octant_mask & 1) == 0) localMin.x = 3.0f - state.scale_exp2 - localMin.x;
+        if ((coef.octant_mask & 2) == 0) localMin.y = 3.0f - state.scale_exp2 - localMin.y;
+        if ((coef.octant_mask & 4) == 0) localMin.z = 3.0f - state.scale_exp2 - localMin.z;
+        const glm::vec3 grid01Min = localMin - glm::vec3(1.0f);
+        const float n = static_cast<float>(m_bpaSdf) * 8.0f;
+        const glm::vec3 nodeGridMin = grid01Min * n;
+        return glm::ivec3(
+            static_cast<int>(std::lround(nodeGridMin.x / 8.0)),
+            static_cast<int>(std::lround(nodeGridMin.y / 8.0)),
+            static_cast<int>(std::lround(nodeGridMin.z / 8.0)));
+    }
+};
+
+// Out-of-line probe (needs the private types fully declared above).
+inline void SdfMarchMirror::probeRay(const glm::vec3& rayOrigin, const glm::vec3& rayDirIn,
+                                     std::vector<SdfMarchMirror::LeafProbe>& probes) const {
+    const glm::vec3 rayDir = glm::normalize(rayDirIn);
+    const glm::vec3 rayOriginLocal = glm::vec3(m_cfg.worldToLocal * glm::vec4(rayOrigin, 1.0f));
+    const glm::vec3 rayDirLocal    = glm::mat3(m_cfg.worldToLocal) * rayDir;
+    const glm::vec2 gridT = rayAABBIntersection(rayOriginLocal, rayDirLocal, glm::vec3(0.0f), glm::vec3(1.0f));
+    if (gridT.y < 0.0f) return;
+    const bool rayStartsInside = (gridT.x < 0.0f);
+    glm::vec3 rayStartWorld;
+    if (rayStartsInside) { rayStartWorld = rayOrigin; }
+    else {
+        const glm::vec3 e = rayOriginLocal + rayDirLocal * (gridT.x + kEpsilon);
+        rayStartWorld = glm::vec3(m_cfg.localToWorld * glm::vec4(e, 1.0f));
+    }
+    const RayCoefficients coef = initRayCoefficients(rayDir, rayStartWorld);
+    StackEntry stack[kStackSize];
+    TraversalState state = initTraversalState(coef, stack, rayStartsInside);
+    if (state.t_min >= state.t_max) return;
+
+    auto probeLeaf = [&](const TraversalState& st) -> LeafProbe {
+        LeafProbe pr;
+        const int bpa = m_bpaSdf;
+        const float gridScale = static_cast<float>(bpa * 8);
+        const glm::vec3 hitPos12 = coef.normOrigin + rayDirLocal * st.t_min;
+        pr.gridEntry = (hitPos12 - glm::vec3(1.0f)) * gridScale;
+        const float dirLen = glm::length(rayDirLocal);
+        pr.gridDirN = rayDirLocal / dirLen;
+        const glm::ivec3 brick = glm::ivec3(glm::floor((pr.gridEntry + pr.gridDirN * 1e-3f) / 8.0f));
+        pr.brickPicked = brick;
+        const uint32_t fl = gridToLookupIdx(brick, bpa);
+        pr.brickIdxLookup = (fl == 0xFFFFFFFFu || fl >= m_lookupCount) ? 0xFFFFFFFFu : m_lookup[fl];
+        const glm::vec3 bMin = glm::vec3(brick) * 8.0f, bMax = bMin + glm::vec3(8.0f);
+        const glm::vec3 invD(std::abs(pr.gridDirN.x)>1e-8f?1.0f/pr.gridDirN.x:1e20f,
+                             std::abs(pr.gridDirN.y)>1e-8f?1.0f/pr.gridDirN.y:1e20f,
+                             std::abs(pr.gridDirN.z)>1e-8f?1.0f/pr.gridDirN.z:1e20f);
+        const glm::vec3 t0=(bMin-pr.gridEntry)*invD, t1=(bMax-pr.gridEntry)*invD, thi=glm::max(t0,t1);
+        pr.sMax = glm::max(glm::min(glm::min(thi.x,thi.y),thi.z),0.0f);
+        float s=0.0f;
+        for (int i=0;i<96;++i){ if(s>pr.sMax)break; const glm::vec3 p=pr.gridEntry+pr.gridDirN*s;
+            const float d=sampleSdfTrilinear(p); pr.minD=glm::min(pr.minD,d); pr.steps=i+1;
+            if(d<0.01f){pr.hit=true;break;} s+=(d>100.0f)?1.0f:glm::max(d*0.5773503f,0.01f); }
+        return pr;
+    };
+
+    for (int iter = 0; iter < kMaxIters && state.scale <= m_cfg.esvoMaxScale; ++iter) {
+        const ChildDescriptor parent = fetchNode(state.parentPtr);
+        const uint32_t validMask = getValidMask(parent), leafMask = getLeafMask(parent),
+                       childPointer = getChildPointer(parent);
+        bool isLeaf = false; float tv_max=0, txc=0, tyc=0, tzc=0;
+        if (checkChildValidity(state, coef, validMask, leafMask, isLeaf, tv_max, txc, tyc, tzc)) {
+            if (isLeaf) {
+                LeafProbe pr = probeLeaf(state);
+                probes.push_back(pr);
+                if (pr.hit) return;
+                state.t_min = tv_max;
+            } else {
+                executePushPhase(state, coef, stack, validMask, leafMask, childPointer, tv_max, txc, tyc, tzc);
+                continue;
+            }
+        }
+        int sm = 0; const int ar = executeAdvancePhase(state, coef, sm);
+        if (ar == 0) { if (state.scale < m_cfg.esvoMaxScale) state.t_max = stack[state.scale+1].t_max; }
+        if (ar == 1) { if (executePopPhase(state, coef, stack, sm) == 1) return; }
+    }
+}
+
+inline SdfMarchMirror::RefResult
+SdfMarchMirror::referenceMarch(const glm::vec3& rayOrigin, const glm::vec3& rayDirIn) const {
+    const glm::vec3 rayDir = glm::normalize(rayDirIn);
+    const glm::vec3 roLocal = glm::vec3(m_cfg.worldToLocal * glm::vec4(rayOrigin, 1.0f));
+    const glm::vec3 rdLocal = glm::mat3(m_cfg.worldToLocal) * rayDir;
+    const glm::vec2 gridT = rayAABBIntersection(roLocal, rdLocal, glm::vec3(0.0f), glm::vec3(1.0f));
+    RefResult r;
+    if (gridT.y < 0.0f) return r;
+    const float gridScale = static_cast<float>(m_bpaSdf * 8);
+    const float dirLen = glm::length(rdLocal);
+    if (dirLen < 1e-12f) return r;
+    const glm::vec3 gridDirN = rdLocal / dirLen;
+    const glm::vec3 g0 = roLocal * gridScale;                       // local[0,1]→grid origin
+    const float s0 = glm::max(gridT.x, 0.0f) * dirLen * gridScale;  // entry arc-length (grid)
+    const float s1 = gridT.y * dirLen * gridScale;                  // exit  arc-length (grid)
+    const float step = 0.02f;
+    for (float s = s0; s <= s1; s += step) {
+        const glm::vec3 p = g0 + gridDirN * s;
+        const float d = sampleSdfTrilinearRaw(p);   // RAW (sentinel-aware) — honest ground truth
+        if (d > 1e8f) continue;   // sentinel region: ignore (never extrapolate into empty space)
+        r.minD = glm::min(r.minD, d);
+        if (d < 0.0f) { r.crossed = true; r.sCross = s; r.crossPos = p;
+                        r.crossBrick = glm::ivec3(glm::floor(p / 8.0f)); return r; }
+    }
+    return r;
+}
+
+inline bool SdfMarchMirror::esvoVisitsBrick(const glm::vec3& rayOrigin, const glm::vec3& rayDirIn,
+                                            const glm::ivec3& want) const {
+    const glm::vec3 rayDir = glm::normalize(rayDirIn);
+    const glm::vec3 roLocal = glm::vec3(m_cfg.worldToLocal * glm::vec4(rayOrigin, 1.0f));
+    const glm::vec3 rdLocal = glm::mat3(m_cfg.worldToLocal) * rayDir;
+    const glm::vec2 gridT = rayAABBIntersection(roLocal, rdLocal, glm::vec3(0.0f), glm::vec3(1.0f));
+    if (gridT.y < 0.0f) return false;
+    const bool inside = (gridT.x < 0.0f);
+    glm::vec3 startW = inside ? rayOrigin
+        : glm::vec3(m_cfg.localToWorld * glm::vec4(roLocal + rdLocal * (gridT.x + kEpsilon), 1.0f));
+    const RayCoefficients coef = initRayCoefficients(rayDir, startW);
+    StackEntry stack[kStackSize];
+    TraversalState state = initTraversalState(coef, stack, inside);
+    if (state.t_min >= state.t_max) return false;
+    for (int iter = 0; iter < kMaxIters && state.scale <= m_cfg.esvoMaxScale; ++iter) {
+        const ChildDescriptor parent = fetchNode(state.parentPtr);
+        const uint32_t vm = getValidMask(parent), lm = getLeafMask(parent), cp = getChildPointer(parent);
+        bool isLeaf=false; float tv=0,a=0,b=0,c=0;
+        if (checkChildValidity(state, coef, vm, lm, isLeaf, tv, a, b, c)) {
+            if (isLeaf) {
+                if (esvoLeafBrick(state, coef) == want) return true;
+                state.t_min = tv;
+            } else { executePushPhase(state, coef, stack, vm, lm, cp, tv, a, b, c); continue; }
+        }
+        int sm=0; const int ar=executeAdvancePhase(state, coef, sm);
+        if (ar==0){ if(state.scale<m_cfg.esvoMaxScale) state.t_max=stack[state.scale+1].t_max; }
+        if (ar==1){ if(executePopPhase(state, coef, stack, sm)==1) return false; }
+    }
+    return false;
+}
+
+inline void SdfMarchMirror::dumpLeafSteps(const glm::vec3& rayOrigin, const glm::vec3& rayDirIn,
+                                          const glm::ivec3& wantBrick) const {
+    const glm::vec3 rayDir = glm::normalize(rayDirIn);
+    const glm::vec3 roLocal = glm::vec3(m_cfg.worldToLocal * glm::vec4(rayOrigin, 1.0f));
+    const glm::vec3 rdLocal = glm::mat3(m_cfg.worldToLocal) * rayDir;
+    const glm::vec2 gridT = rayAABBIntersection(roLocal, rdLocal, glm::vec3(0.0f), glm::vec3(1.0f));
+    if (gridT.y < 0.0f) return;
+    const bool inside = (gridT.x < 0.0f);
+    glm::vec3 startW = inside ? rayOrigin
+        : glm::vec3(m_cfg.localToWorld * glm::vec4(roLocal + rdLocal * (gridT.x + kEpsilon), 1.0f));
+    const RayCoefficients coef = initRayCoefficients(rayDir, startW);
+    StackEntry stack[kStackSize];
+    TraversalState state = initTraversalState(coef, stack, inside);
+    if (state.t_min >= state.t_max) return;
+    for (int iter = 0; iter < kMaxIters && state.scale <= m_cfg.esvoMaxScale; ++iter) {
+        const ChildDescriptor parent = fetchNode(state.parentPtr);
+        const uint32_t vm = getValidMask(parent), lm = getLeafMask(parent), cp = getChildPointer(parent);
+        bool isLeaf=false; float tv=0,a=0,b=0,c=0;
+        if (checkChildValidity(state, coef, vm, lm, isLeaf, tv, a, b, c)) {
+            if (isLeaf) {
+                const glm::ivec3 eb = esvoLeafBrick(state, coef);
+                if (eb == wantBrick) {
+                    const float gridScale = static_cast<float>(m_bpaSdf * 8);
+                    const glm::vec3 hp12 = coef.normOrigin + rdLocal * state.t_min;
+                    const glm::vec3 gridEntry = (hp12 - glm::vec3(1.0f)) * gridScale;
+                    const glm::vec3 gdN = rdLocal / glm::length(rdLocal);
+                    const glm::vec3 bMin = glm::vec3(eb)*8.0f, bMax = bMin+glm::vec3(8.0f);
+                    const glm::vec3 invD(std::abs(gdN.x)>1e-8f?1.0f/gdN.x:1e20f,
+                                         std::abs(gdN.y)>1e-8f?1.0f/gdN.y:1e20f,
+                                         std::abs(gdN.z)>1e-8f?1.0f/gdN.z:1e20f);
+                    const glm::vec3 t0=(bMin-gridEntry)*invD, t1=(bMax-gridEntry)*invD, thi=glm::max(t0,t1);
+                    const float sMax = glm::max(glm::min(glm::min(thi.x,thi.y),thi.z),0.0f);
+                    std::printf("   [STEPS leaf brick=(%d,%d,%d)] gridEntry=(%.4f,%.4f,%.4f) sMax=%.4f\n",
+                                eb.x,eb.y,eb.z,gridEntry.x,gridEntry.y,gridEntry.z,sMax);
+                    float s=0.0f;
+                    for (int i=0;i<96;++i){
+                        const glm::vec3 p=gridEntry+gdN*s; const float d=sampleSdfTrilinear(p);
+                        const float stepTaken=(d>100.0f)?1.0f:glm::max(d*0.5773503f,0.01f);
+                        std::printf("      i=%2d s=%.4f d=%.5f step=%.5f%s\n", i, s, d, stepTaken,
+                                    (s>sMax?"  [s>sMax -> EXIT]":""));
+                        if (s>sMax) break;
+                        if (d<0.01f){ std::printf("      HIT at s=%.4f\n", s); break; }
+                        s+=stepTaken;
+                    }
+                    return;
+                }
+                state.t_min = tv;
+            } else { executePushPhase(state, coef, stack, vm, lm, cp, tv, a, b, c); continue; }
+        }
+        int sm=0; const int ar=executeAdvancePhase(state, coef, sm);
+        if (ar==0){ if(state.scale<m_cfg.esvoMaxScale) state.t_max=stack[state.scale+1].t_max; }
+        if (ar==1){ if(executePopPhase(state, coef, stack, sm)==1) return; }
+    }
+}
+
+// ===========================================================================
+// Build the framed camera EXACTLY like RenderStoredSdf*: getRayDir / MakeCamera.
+// ===========================================================================
+struct Camera {
+    glm::vec3 eye, dir, up, right;
+    float fovDeg = 45.0f, aspect = 1.0f;
+};
+Camera MakeCamera(const glm::vec3& eye, const glm::vec3& target, uint32_t w, uint32_t h) {
+    Camera c;
+    c.eye = eye;
+    c.dir = glm::normalize(target - eye);
+    const glm::vec3 worldUp(0.0f, 1.0f, 0.0f);
+    c.right = glm::normalize(glm::cross(c.dir, worldUp));
+    c.up    = glm::normalize(glm::cross(c.right, c.dir));
+    c.fovDeg = 45.0f;
+    c.aspect = static_cast<float>(w) / static_cast<float>(h);
+    return c;
+}
+glm::vec3 getRayDir(const Camera& c, float u, float v) {
+    const float tanHalfFov = std::tan(glm::radians(c.fovDeg * 0.5f));
+    float ndcx = u * 2.0f - 1.0f;
+    float ndcy = v * 2.0f - 1.0f;
+    ndcy = -ndcy;
+    const glm::vec3 rd = c.dir + c.right * ndcx * tanHalfFov * c.aspect + c.up * ndcy * tanHalfFov;
+    return glm::normalize(rd);
+}
+
+// Analytic sphere intersection (the body's TRUE surface) in the SAME world frame the
+// shader renders: body world centre = worldPos + 0.5*kWorldGridSize*renderScale; the SDF
+// iso is at grid radius kSdfRadius of grid side kSdfN, scaled by kWorldGridSize*renderScale/kSdfN.
+struct AnalyticBody {
+    glm::vec3 centre;
+    float     radius;   // world radius of the iso-surface
+};
+AnalyticBody MakeAnalyticBody() {
+    AnalyticBody b;
+    const glm::vec3 worldPos(0.0f);
+    b.centre = worldPos + glm::vec3(0.5f * kWorldGridSize * kRS);
+    // grid->world scale: the octree [0,1]^3 maps to kWorldGridSize*renderScale world units,
+    // and the grid is kSdfN voxels across, so one grid voxel = kWorldGridSize*kRS/kSdfN world.
+    const float gridToWorld = kWorldGridSize * kRS / static_cast<float>(kSdfN);
+    b.radius = kSdfRadius * gridToWorld;
+    return b;
+}
+// De-instance a TRUE-world ray into the base octree's frame, EXACTLY as the GPU
+// main() does before traverseOctreeInstanced: instOrigin=(rayOrigin-worldPos)/renderScale,
+// instDir=rayDir/renderScale (NOT renormalized — the traversal is scale-tolerant).
+// worldPos = origin for the framed body, renderScale = kRS.
+struct InstRay { glm::vec3 origin, dir; };
+InstRay DeInstance(const glm::vec3& eye, const glm::vec3& rayDir) {
+    const float invScale = 1.0f / kRS;
+    const glm::vec3 worldPos(0.0f);
+    return InstRay{ (eye - worldPos) * invScale, rayDir * invScale };
+}
+
+// returns nearest t>0 of ray vs sphere, or -1 on miss.
+float sphereHitT(const AnalyticBody& b, const glm::vec3& ro, const glm::vec3& rd) {
+    const glm::vec3 oc = ro - b.centre;
+    const float bq = glm::dot(oc, rd);
+    const float cq = glm::dot(oc, oc) - b.radius * b.radius;
+    const float disc = bq * bq - cq;
+    if (disc < 0.0f) return -1.0f;
+    const float sq = std::sqrt(disc);
+    float t = -bq - sq;
+    if (t < 0.0f) t = -bq + sq;
+    return (t >= 0.0f) ? t : -1.0f;
+}
+
+struct BakedScene {
+    SdfBodyOctree body;
+    SerializedOctree serialized;
+};
+BakedScene BakeScene(uint32_t recipeId, float amp, float freq) {
+    BakedScene s;
+    RecipeParams rp{};
+    rp.radius = kSdfRadius; rp.displaceAmp = amp; rp.displaceFreq = freq;
+    const glm::vec3 center(kSdfCenter, kSdfCenter, kSdfCenter);
+    SdfBakeResult baked = BakeRecipeToSdfWorld(recipeId, center, rp, kSdfN, kSdfBand, kSdfBrickDepth);
+    s.body = BuildSdfBodyOctree(baked, kSdfBrickDepth);
+    s.serialized = SerializeSdf(s.body);
+    return s;
+}
+
+}  // namespace
+
+// ===========================================================================
+// REPRO: sweep the framed camera and count rays where the analytic sphere is hit
+// (interior of the silhouette) but the mirror march returns NO hit → that is a HOLE.
+// ===========================================================================
+struct SweepStats {
+    int analyticHits = 0;
+    int mirrorMiss = 0;
+    int visitedLeafButMissed = 0;
+    int neverVisitedLeaf = 0;
+    long long leafHits = 0;
+    long long brickDisagree = 0;
+};
+// Sweep the framed camera; count holes (analytic-interior ray the mirror misses).
+static SweepStats SweepHoles(SdfMarchMirror& mirror, const AnalyticBody& body, float jitter) {
+    constexpr uint32_t kW = 512, kH = 512;
+    const glm::vec3 focus = body.centre;
+    const float     R     = 0.5f * kWorldGridSize * kRS;
+    const glm::vec3 eye   = focus + glm::normalize(glm::vec3(0.3f, 0.25f, 1.0f)) * (R * 4.0f);
+    const Camera cam = MakeCamera(eye, focus, kW, kH);
+
+    mirror.m_tJitter = jitter;
+    mirror.m_leafHits = 0; mirror.m_brickDisagree = 0;
+    SweepStats st;
+    for (uint32_t py = 0; py < kH; ++py)
+        for (uint32_t px = 0; px < kW; ++px) {
+            const float u = (px + 0.5f) / kW, v = (py + 0.5f) / kH;
+            const glm::vec3 rd = getRayDir(cam, u, v);
+            const float ta = sphereHitT(body, eye, rd);
+            if (ta < 0.0f) continue;
+            // Comfortable silhouette interior (exclude the anti-aliased limb).
+            const glm::vec3 toCentre = glm::normalize(body.centre - eye);
+            const float cosA = glm::dot(rd, toCentre);
+            const float cosEdge = std::sqrt(std::max(0.0f,
+                1.0f - (body.radius * body.radius) / glm::dot(body.centre - eye, body.centre - eye)));
+            if (cosA <= cosEdge + 1e-4f) continue;
+            ++st.analyticHits;
+            const InstRay ir = DeInstance(eye, rd);
+            const SdfMarchMirror::Hit h = mirror.castRay(ir.origin, ir.dir);
+            if (!h.hit) {
+                ++st.mirrorMiss;
+                if (h.leavesVisited > 0) ++st.visitedLeafButMissed; else ++st.neverVisitedLeaf;
+            }
+        }
+    st.leafHits = mirror.m_leafHits;
+    st.brickDisagree = mirror.m_brickDisagree;
+    return st;
+}
+
+// ===========================================================================
+// REPRO: an EXACT-arithmetic mirror of the GPU march is HOLE-FREE; tiny perturbation
+// of the leaf-entry t (simulating GPU 32-bit-float rounding through the ESVO pipeline)
+// makes brick-aligned holes APPEAR — proving the holes are brick-boundary precision-
+// fragility, NOT an algorithmic miss. Also reports floor-brick vs ESVO-leaf-brick
+// disagreement (the structural amplifier).
+// ===========================================================================
+TEST(StoredSdfMarchMirror, ReproducesBrickAlignedHoles) {
+    BakedScene scene = BakeScene(RECIPE_SPHERE, 0.0f, 0.0f);
+    SdfMarchMirror mirror(scene.serialized);
+    const AnalyticBody body = MakeAnalyticBody();
+
+    const float jitters[] = { 0.0f, 1e-6f, 1e-5f, 1e-4f, 1e-3f };
+    SweepStats exact{};
+    for (float j : jitters) {
+        const SweepStats st = SweepHoles(mirror, body, j);
+        const double missRate = st.analyticHits ? double(st.mirrorMiss) / st.analyticHits : 0.0;
+        const double disRate  = st.leafHits ? double(st.brickDisagree) / st.leafHits : 0.0;
+        std::printf("[REPRO] jitter=%.0e  interiorRays=%d  miss=%d (%.4f)  "
+                    "leafHits=%lld brickDisagree=%lld (%.4f)  visitedButMissed=%d neverVisited=%d\n",
+                    j, st.analyticHits, st.mirrorMiss, missRate,
+                    st.leafHits, st.brickDisagree, disRate,
+                    st.visitedLeafButMissed, st.neverVisitedLeaf);
+        if (j == 0.0f) exact = st;
+    }
+
+    EXPECT_GT(exact.analyticHits, 10000) << "camera framing did not cover the body interior";
+    // The decisive finding: EXACT arithmetic is HOLE-FREE (the algorithm is correct);
+    // the GPU's holes come from float-precision sensitivity, demonstrated by the jitter rows.
+    EXPECT_EQ(exact.mirrorMiss, 0)
+        << "exact-arithmetic mirror itself has holes — they would be an algorithmic bug, not precision";
+}
+
+// ===========================================================================
+// DIAGNOSTIC: dump the cases where marchBrickSdf's floor-derived brick disagrees
+// with the brick the ESVO actually descended to. These are the brick-boundary
+// fragility seeds (the march bounds + lookup use floor(gridEntry/8), NOT the ESVO leaf).
+// ===========================================================================
+TEST(StoredSdfMarchMirror, DiagBrickSelectionDisagreement) {
+    BakedScene scene = BakeScene(RECIPE_SPHERE, 0.0f, 0.0f);
+    SdfMarchMirror mirror(scene.serialized);
+    const AnalyticBody body = MakeAnalyticBody();
+    mirror.m_dumpDisagree = true;
+    std::printf("[DISAGREE] floor(gridEntry/8) vs ESVO-leaf-brick — exact arithmetic:\n");
+    const SweepStats st = SweepHoles(mirror, body, 0.0f);
+    std::printf("[DISAGREE] total leafHits=%lld disagree=%lld\n", st.leafHits, st.brickDisagree);
+    SUCCEED();
+}
+
+// ===========================================================================
+// DIAGNOSTIC: find the EXACT-arithmetic interior misses across an orbit and dump the
+// full per-leaf probe for the first few — revealing the real hole mechanism.
+// ===========================================================================
+TEST(StoredSdfMarchMirror, DiagFindExactMisses) {
+    BakedScene scene = BakeScene(RECIPE_SPHERE, 0.0f, 0.0f);
+    SdfMarchMirror mirror(scene.serialized);
+    const AnalyticBody body = MakeAnalyticBody();
+    if (const char* e = std::getenv("MIRROR_FIX")) mirror.m_fixGrazing = (e[0] == '1');
+    std::printf("[MISS] m_fixGrazing=%d\n", (int)mirror.m_fixGrazing);
+
+    constexpr uint32_t kW = 256, kH = 256;
+    const float R = 0.5f * kWorldGridSize * kRS;
+    int dumped = 0;
+    for (int vi = 0; vi < 64 && dumped < 6; ++vi) {
+        const float az = 6.2831853f * vi / 64;
+        const float el = 0.6f * std::sin(2.0f * az);
+        const glm::vec3 dirToEye = glm::normalize(glm::vec3(std::cos(az), std::sin(el), std::sin(az)));
+        const glm::vec3 eye = body.centre + dirToEye * (R * 4.0f);
+        const Camera cam = MakeCamera(eye, body.centre, kW, kH);
+        const float d2 = glm::dot(body.centre - eye, body.centre - eye);
+        const float cosEdge = std::sqrt(std::max(0.0f, 1.0f - (body.radius*body.radius)/d2));
+        const glm::vec3 toC = glm::normalize(body.centre - eye);
+        for (uint32_t py = 0; py < kH && dumped < 6; ++py)
+            for (uint32_t px = 0; px < kW && dumped < 6; ++px) {
+                const float u=(px+0.5f)/kW, v=(py+0.5f)/kH;
+                const glm::vec3 rd = getRayDir(cam, u, v);
+                const float ta = sphereHitT(body, eye, rd);
+                if (ta < 0.0f) continue;
+                if (glm::dot(rd, toC) <= cosEdge + 1e-4f) continue;
+                const InstRay ir = DeInstance(eye, rd);
+                if (mirror.castRay(ir.origin, ir.dir).hit) continue;   // only misses
+                const SdfMarchMirror::RefResult ref = mirror.referenceMarch(ir.origin, ir.dir);
+                if (!ref.crossed) continue;   // only genuine step-over holes
+                ++dumped;
+                const bool xAlloc = mirror.brickAllocated(ref.crossBrick);
+                const bool xVisit = mirror.esvoVisitsBrick(ir.origin, ir.dir, ref.crossBrick);
+                std::vector<SdfMarchMirror::LeafProbe> ps;
+                mirror.probeRay(ir.origin, ir.dir, ps);
+                std::printf("\n[MISS] view=%d px=(%u,%u) analyticT=%.4f leavesVisited=%zu  "
+                            "REF: minD=%.5f crossBrick=(%d,%d,%d) alloc=%d esvoVisits=%d\n",
+                            vi, px, py, ta, ps.size(), ref.minD,
+                            ref.crossBrick.x, ref.crossBrick.y, ref.crossBrick.z, (int)xAlloc, (int)xVisit);
+                for (size_t i = 0; i < ps.size(); ++i) {
+                    const auto& p = ps[i];
+                    char lk[16];
+                    if (p.brickIdxLookup==0xFFFFFFFFu) std::snprintf(lk,sizeof(lk),"UNALLOC");
+                    else std::snprintf(lk,sizeof(lk),"%u",p.brickIdxLookup);
+                    std::printf("   leaf#%zu gridEntry=(%.4f,%.4f,%.4f) dirN=(%.4f,%.4f,%.4f) "
+                                "brick=(%d,%d,%d)[%s] sMax=%.4f steps=%d minD=%.5f hit=%d\n",
+                                i,p.gridEntry.x,p.gridEntry.y,p.gridEntry.z,p.gridDirN.x,p.gridDirN.y,p.gridDirN.z,
+                                p.brickPicked.x,p.brickPicked.y,p.brickPicked.z,lk,p.sMax,p.steps,p.minD,(int)p.hit);
+                }
+            }
+    }
+    std::printf("\n[MISS] dumped %d missing rays\n", dumped);
+    SUCCEED();
+}
+
+// ===========================================================================
+// DIAGNOSTIC: dump the per-step (s,d) sequence for the KNOWN step-over hole at
+// view=1 px=(112,113), leaf brick (7,4,4) — showing the surface crossing being
+// stepped over by the 1/sqrt3 multiplicative step.
+// ===========================================================================
+TEST(StoredSdfMarchMirror, DiagStepOverSequence) {
+    BakedScene scene = BakeScene(RECIPE_SPHERE, 0.0f, 0.0f);
+    SdfMarchMirror mirror(scene.serialized);
+    const AnalyticBody body = MakeAnalyticBody();
+    constexpr uint32_t kW = 256, kH = 256;
+    const float R = 0.5f * kWorldGridSize * kRS;
+    const int vi = 1;
+    const float az = 6.2831853f * vi / 64;
+    const float el = 0.6f * std::sin(2.0f * az);
+    const glm::vec3 dirToEye = glm::normalize(glm::vec3(std::cos(az), std::sin(el), std::sin(az)));
+    const glm::vec3 eye = body.centre + dirToEye * (R * 4.0f);
+    const Camera cam = MakeCamera(eye, body.centre, kW, kH);
+    for (uint32_t px : {112u, 113u, 114u}) {
+        const float u=(px+0.5f)/kW, v=(113u+0.5f)/kH;
+        const glm::vec3 rd = getRayDir(cam, u, v);
+        const InstRay ir = DeInstance(eye, rd);
+        const SdfMarchMirror::RefResult ref = mirror.referenceMarch(ir.origin, ir.dir);
+        std::printf("\n[STEPOVER] px=(%u,113) reference minD=%.5f crossed=%d crossBrick=(%d,%d,%d) "
+                    "crossPos=(%.3f,%.3f,%.3f) allocCross=%d allocNbrX+=%d\n",
+                    px, ref.minD, (int)ref.crossed, ref.crossBrick.x, ref.crossBrick.y, ref.crossBrick.z,
+                    ref.crossPos.x, ref.crossPos.y, ref.crossPos.z,
+                    (int)mirror.brickAllocated(ref.crossBrick),
+                    (int)mirror.brickAllocated(ref.crossBrick + glm::ivec3(1,0,0)));
+        mirror.dumpLeafSteps(ir.origin, ir.dir, ref.crossBrick);
+    }
+    SUCCEED();
+}
+
+// Multi-view sweep helper: orbit the body and count holes. Returns (interiorRays, miss).
+// A "hole" here is an interior ray (analytic-sphere interior) where (a) the mirror march
+// MISSES, AND (b) the brute-force fine reference march CONFIRMS the trilinear iso is
+// actually crossed — so it is a genuine step-over hole, NOT a legitimate grazing-limb miss.
+static std::pair<long long,long long> OrbitSweep(SdfMarchMirror& mirror, const AnalyticBody& body,
+                                                 float jitter, bool fixSampler, bool fixMarch,
+                                                 int views) {
+    constexpr uint32_t kW = 256, kH = 256;
+    const float R = 0.5f * kWorldGridSize * kRS;
+    long long interior = 0, miss = 0;
+    mirror.m_tJitter = jitter;
+    mirror.m_fixGrazing = fixSampler;
+    mirror.m_fixMarch   = fixMarch;
+    for (int vi = 0; vi < views; ++vi) {
+        const float az = 6.2831853f * vi / views;
+        const float el = 0.6f * std::sin(2.0f * az);   // wobble elevation for variety
+        const glm::vec3 dirToEye = glm::normalize(glm::vec3(std::cos(az), std::sin(el), std::sin(az)));
+        const glm::vec3 eye = body.centre + dirToEye * (R * 4.0f);
+        const Camera cam = MakeCamera(eye, body.centre, kW, kH);
+        const float d2 = glm::dot(body.centre - eye, body.centre - eye);
+        const float cosEdge = std::sqrt(std::max(0.0f, 1.0f - (body.radius*body.radius)/d2));
+        const glm::vec3 toC = glm::normalize(body.centre - eye);
+        for (uint32_t py = 0; py < kH; ++py)
+            for (uint32_t px = 0; px < kW; ++px) {
+                const float u=(px+0.5f)/kW, v=(py+0.5f)/kH;
+                const glm::vec3 rd = getRayDir(cam, u, v);
+                if (sphereHitT(body, eye, rd) < 0.0f) continue;
+                if (glm::dot(rd, toC) <= cosEdge + 1e-4f) continue;   // interior only
+                ++interior;
+                const InstRay ir = DeInstance(eye, rd);
+                if (!mirror.castRay(ir.origin, ir.dir).hit) {
+                    // Only count it as a HOLE if the reconstructed trilinear iso is
+                    // genuinely crossed (fine reference march). Legit grazing-limb misses
+                    // (where the surface truly isn't reached) are excluded.
+                    if (mirror.referenceMarch(ir.origin, ir.dir).crossed) ++miss;
+                }
+            }
+    }
+    return {interior, miss};
+}
+
+// ===========================================================================
+// FIX PROOF: across a 64-view orbit, the CURRENT marchBrickSdf leaves genuine
+// step-over holes (interior rays where the trilinear iso IS crossed but the march
+// misses). The grazing/brick-exit fix drives them to ZERO. The esvoBrick brick-
+// selection change is shown to be irrelevant to the holes (kept off here).
+// ===========================================================================
+TEST(StoredSdfMarchMirror, GrazingFixRemovesHoles) {
+    BakedScene scene = BakeScene(RECIPE_SPHERE, 0.0f, 0.0f);
+    SdfMarchMirror mirror(scene.serialized);
+    const AnalyticBody body = MakeAnalyticBody();
+
+    const int views = 32;
+    auto none      = OrbitSweep(mirror, body, 0.0f, /*sampler=*/false, /*march=*/false, views);
+    auto samplerA  = OrbitSweep(mirror, body, 0.0f, /*sampler=*/true,  /*march=*/false, views);
+    auto marchB    = OrbitSweep(mirror, body, 0.0f, /*sampler=*/false, /*march=*/true,  views);
+    auto both      = OrbitSweep(mirror, body, 0.0f, /*sampler=*/true,  /*march=*/true,  views);
+    std::printf("[FIXPROOF] views=%d (genuine step-over holes; raw-reference-confirmed crossings)\n", views);
+    std::printf("[FIXPROOF] CURRENT (no fix)        : holes=%lld / %lld (%.5f)\n",
+                none.second, none.first, double(none.second)/none.first);
+    std::printf("[FIXPROOF] FIX-A sampler only      : holes=%lld (%.5f)\n",
+                samplerA.second, double(samplerA.second)/samplerA.first);
+    std::printf("[FIXPROOF] FIX-B march only        : holes=%lld (%.5f)\n",
+                marchB.second, double(marchB.second)/marchB.first);
+    std::printf("[FIXPROOF] FIX-A + FIX-B           : holes=%lld (%.5f)\n",
+                both.second, double(both.second)/both.first);
+
+    EXPECT_GT(none.second, 0) << "repro invalid — current march showed no step-over holes";
+    EXPECT_EQ(samplerA.second, 0) << "FIX-A (honest-corner reconstruction) did not eliminate all holes";
+    EXPECT_EQ(both.second, 0) << "combined fix did not eliminate all reference-confirmed holes";
+
+    // Same fix must hold for the DISPLACED sphere (octree 1 in the render scene).
+    BakedScene disp = BakeScene(RECIPE_DISPLACED_SPHERE, 2.7f, 0.375f);
+    SdfMarchMirror dmir(disp.serialized);
+    // Displaced surface ≠ analytic sphere; use the bounding sphere (radius + amp) so the
+    // interior filter still selects rays that must hit *some* part of the body.
+    AnalyticBody dbody = MakeAnalyticBody();
+    dbody.radius += 2.7f * kWorldGridSize * kRS / float(kSdfN);
+    auto dNone = OrbitSweep(dmir, dbody, 0.0f, false, false, views);
+    auto dFix  = OrbitSweep(dmir, dbody, 0.0f, true,  false, views);
+    std::printf("[FIXPROOF-DISP] CURRENT holes=%lld / %lld   FIX-A holes=%lld\n",
+                dNone.second, dNone.first, dFix.second);
+    EXPECT_LE(dFix.second, dNone.second) << "FIX-A regressed the displaced sphere";
+}
+
+// ===========================================================================
+// DIAGNOSTIC: fillRatio + bodyPixel at the EXACT render-test front view, fix OFF vs ON.
+// Mirrors RenderStoredSdfBodiesNoHoles scanline metric so we can tell whether the fix
+// changes coverage (distorts the surface) at that specific camera.
+// ===========================================================================
+TEST(StoredSdfMarchMirror, DiagFrontViewFillRatio) {
+    BakedScene scene = BakeScene(RECIPE_SPHERE, 0.0f, 0.0f);
+    SdfMarchMirror mirror(scene.serialized);
+    const AnalyticBody body = MakeAnalyticBody();
+    constexpr uint32_t kW = 512, kH = 512;
+    const glm::vec3 focus = body.centre;
+    const float R = 0.5f * kWorldGridSize * kRS;
+    const glm::vec3 eye = focus + glm::normalize(glm::vec3(0.3f, 0.25f, 1.0f)) * (R * 4.0f);
+    const Camera cam = MakeCamera(eye, focus, kW, kH);
+
+    struct V { bool sampler, march, mixFused; const char* tag; };
+    const V variants[] = {
+        {false,false,false,"baseline (strict mix)"},
+        {false,false,true, "baseline + fused mix a+t(b-a)"},
+        {true, false,false,"FIX-A sampler"},
+        {true, false,true, "FIX-A sampler + fused mix"},
+    };
+    for (const V& vv : variants) {
+        mirror.m_fixGrazing = vv.sampler;
+        mirror.m_fixMarch   = vv.march;
+        mirror.m_mixFused   = vv.mixFused;
+        uint64_t totalBody = 0, totalSpan = 0; int bodyPx = 0;
+        for (uint32_t y = 0; y < kH; ++y) {
+            int first=-1,last=-1,cnt=0;
+            for (uint32_t x = 0; x < kW; ++x) {
+                const float u=(x+0.5f)/kW, v=(y+0.5f)/kH;
+                const glm::vec3 rd = getRayDir(cam, u, v);
+                const InstRay ir = DeInstance(eye, rd);
+                if (mirror.castRay(ir.origin, ir.dir).hit) { if(first<0)first=int(x); last=int(x); ++cnt; }
+            }
+            if (first>=0){ totalBody+=cnt; totalSpan+=(last-first+1); bodyPx+=cnt; }
+        }
+        const double fr = totalSpan ? double(totalBody)/double(totalSpan) : 0.0;
+        std::printf("[FRONTVIEW] %-32s bodyPx=%d fillRatio=%.5f\n", vv.tag, bodyPx, fr);
+    }
+    mirror.m_mixFused = false;
+    SUCCEED();
+}
+
+// ===========================================================================
+// DIAGNOSTIC: ASCII silhouette (downsampled) — '#' mirror-hit, '.' analytic-hit-but-
+// mirror-miss (HOLE), ' ' background. Reveals whether misses are scattered brick-
+// aligned holes (GPU-faithful) or a gross geometry mismatch (mirror broken).
+// ===========================================================================
+TEST(StoredSdfMarchMirror, DiagAsciiSilhouette) {
+    BakedScene scene = BakeScene(RECIPE_SPHERE, 0.0f, 0.0f);
+    SdfMarchMirror mirror(scene.serialized);
+    const AnalyticBody body = MakeAnalyticBody();
+
+    constexpr uint32_t kW = 512, kH = 512;
+    const glm::vec3 focus = body.centre;
+    const float     R     = 0.5f * kWorldGridSize * kRS;
+    const glm::vec3 eye   = focus + glm::normalize(glm::vec3(0.3f, 0.25f, 1.0f)) * (R * 4.0f);
+    const Camera cam = MakeCamera(eye, focus, kW, kH);
+
+    constexpr int AW = 96, AH = 48;
+    std::printf("[ASCII] '#'=mirror hit  '.'=hole (analytic hit, mirror miss)  ' '=bg\n");
+    int totalMirrorHit = 0, totalAnalytic = 0;
+    for (int ay = 0; ay < AH; ++ay) {
+        std::string line;
+        for (int ax = 0; ax < AW; ++ax) {
+            const uint32_t px = static_cast<uint32_t>((ax + 0.5f) / AW * kW);
+            const uint32_t py = static_cast<uint32_t>((ay + 0.5f) / AH * kH);
+            const float u = (static_cast<float>(px) + 0.5f) / kW;
+            const float v = (static_cast<float>(py) + 0.5f) / kH;
+            const glm::vec3 rd = getRayDir(cam, u, v);
+            const float ta = sphereHitT(body, eye, rd);
+            const InstRay ir = DeInstance(eye, rd);
+            const SdfMarchMirror::Hit h = mirror.castRay(ir.origin, ir.dir);
+            if (h.hit) { line += '#'; ++totalMirrorHit; }
+            else if (ta >= 0.0f) { line += '.'; }
+            else line += ' ';
+            if (ta >= 0.0f) ++totalAnalytic;
+        }
+        std::printf("%s\n", line.c_str());
+    }
+    std::printf("[ASCII] sampled mirrorHit=%d analytic=%d\n", totalMirrorHit, totalAnalytic);
+    SUCCEED();
+}
+
+// ===========================================================================
+// DIAGNOSTIC: probe individual rays — the dead-center ray (should hit the front
+// face) and a few rays the ASCII showed as HOLES — dumping per-leaf gridEntry,
+// brick picked, lookup result, sMax, steps, minD.
+// ===========================================================================
+TEST(StoredSdfMarchMirror, DiagProbeRays) {
+    BakedScene scene = BakeScene(RECIPE_SPHERE, 0.0f, 0.0f);
+    SdfMarchMirror mirror(scene.serialized);
+    const AnalyticBody body = MakeAnalyticBody();
+    std::printf("[PROBE] body centre=(%.3f,%.3f,%.3f) radius=%.4f  bpaSdf=%u brickStride=%u\n",
+                body.centre.x, body.centre.y, body.centre.z, body.radius,
+                scene.serialized.config.bricksPerAxisSdf, scene.serialized.brickStrideFloats);
+
+    constexpr uint32_t kW = 512, kH = 512;
+    const glm::vec3 focus = body.centre;
+    const float     R     = 0.5f * kWorldGridSize * kRS;
+    const glm::vec3 eye   = focus + glm::normalize(glm::vec3(0.3f, 0.25f, 1.0f)) * (R * 4.0f);
+    const Camera cam = MakeCamera(eye, focus, kW, kH);
+
+    // Pixels to probe: dead center, plus 4 offsets known to be holes from the ASCII.
+    struct PX { int px, py; const char* tag; };
+    const PX probes[] = {
+        {256, 256, "center"},
+        {300, 256, "right-of-center (HOLE)"},
+        {256, 300, "below-center (HOLE)"},
+        {210, 256, "left-of-center"},
+        {256, 210, "above-center"},
+    };
+    for (const PX& q : probes) {
+        const float u = (q.px + 0.5f) / kW, v = (q.py + 0.5f) / kH;
+        const glm::vec3 rd = getRayDir(cam, u, v);
+        const float ta = sphereHitT(body, eye, rd);
+        const InstRay ir = DeInstance(eye, rd);
+        std::vector<SdfMarchMirror::LeafProbe> ps;
+        mirror.probeRay(ir.origin, ir.dir, ps);
+        std::printf("\n[PROBE %s] px=(%d,%d) analyticT=%.4f  leavesVisited=%zu\n",
+                    q.tag, q.px, q.py, ta, ps.size());
+        for (size_t i = 0; i < ps.size(); ++i) {
+            const auto& p = ps[i];
+            char lk[16];
+            if (p.brickIdxLookup == 0xFFFFFFFFu) std::snprintf(lk, sizeof(lk), "UNALLOC");
+            else std::snprintf(lk, sizeof(lk), "%u", p.brickIdxLookup);
+            std::printf("   leaf#%zu gridEntry=(%.3f,%.3f,%.3f) dirN=(%.3f,%.3f,%.3f) "
+                        "brick=(%d,%d,%d) lookupIdx=%s sMax=%.4f steps=%d minD=%.4f hit=%d\n",
+                        i, p.gridEntry.x, p.gridEntry.y, p.gridEntry.z,
+                        p.gridDirN.x, p.gridDirN.y, p.gridDirN.z,
+                        p.brickPicked.x, p.brickPicked.y, p.brickPicked.z,
+                        lk, p.sMax, p.steps, p.minD, (int)p.hit);
+        }
+    }
+    SUCCEED();
+}

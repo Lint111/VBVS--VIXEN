@@ -122,6 +122,27 @@ endif()
 gtest_discover_tests(test_soa_sdf_serialize)
 
 # ===========================================================================
+# Stored-SDF March Mirror Tests  (gpu-shader-debug — CPU mirror of StoredSdf.glsl
+# marchBrickSdf + BodyInstanceRayMarch.comp handleLeafHitInstancedSdf, reproducing
+# the GPU's brick-aligned holes on the CPU for root-cause debugging)
+# ===========================================================================
+add_executable(test_stored_sdf_march_mirror test_stored_sdf_march_mirror.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_stored_sdf_march_mirror PRIVATE
+        GTest::gtest_main SVO GaiaVoxelWorld VoxelComponents VoxelData)
+else()
+    target_link_libraries(test_stored_sdf_march_mirror PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_stored_sdf_march_mirror PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_stored_sdf_march_mirror POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_stored_sdf_march_mirror>
+        COMMENT "Copying TBB DLL for test_stored_sdf_march_mirror")
+endif()
+gtest_discover_tests(test_stored_sdf_march_mirror)
+
+# ===========================================================================
 # Channel Format Tests  (Inc3 M1 — VIXEN channel vocabulary + OctreeConfig table)
 # ===========================================================================
 add_executable(test_channel_format test_channel_format.cpp)
