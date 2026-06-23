@@ -323,8 +323,8 @@ void BodyOctreeSceneNode::EnsureOctreesBuilt() {
         octreesBuilt_ = true;
 
         NODE_LOG_INFO("[BodyOctreeSceneNode] Stored-SDF: built " +
-                      std::to_string(concatenated_.count) + " SDF octrees (sdf=" +
-                      std::to_string(concatenated_.sdfBricks.size()) + "B, lookup=" +
+                      std::to_string(concatenated_.count) + " SDF octrees (channelPool=" +
+                      std::to_string(concatenated_.channelPool.size()) + "B, lookup=" +
                       std::to_string(concatenated_.brickGridLookup.size()) + "B)");
         return;
     }
@@ -391,18 +391,18 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device) {
         concatenated_.configs.data(),
         configBuffer_, configMemory_, "octree config UBO");
 
-    // Inc2 M3: SoA-SDF buffer (binding 11) + brick-grid lookup (binding 12).
-    // Pad to 1 byte when empty — binary/Procedural bodies leave sdfBricks empty;
+    // Inc3 M2: Generic multi-channel pool buffer (binding 11) + brick-grid lookup (binding 12).
+    // Pad to 1 byte when empty — binary/Procedural bodies leave channelPool empty;
     // the shader only reads these when OctreeConfig.formatId == FORMAT_STORED_SDF (1u).
     const VkDeviceSize sdfSize =
-        std::max<VkDeviceSize>(concatenated_.sdfBricks.size(), 1);
+        std::max<VkDeviceSize>(concatenated_.channelPool.size(), 1);
     const VkDeviceSize brickLookupSize =
         std::max<VkDeviceSize>(concatenated_.brickGridLookup.size(), 1);
 
     CreateHostBuffer(device, sdfSize,
         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-        concatenated_.sdfBricks.empty() ? nullptr : concatenated_.sdfBricks.data(),
-        sdfBuffer_, sdfMemory_, "SoA-SDF brick SSBO");
+        concatenated_.channelPool.empty() ? nullptr : concatenated_.channelPool.data(),
+        sdfBuffer_, sdfMemory_, "channel pool SSBO");
 
     CreateHostBuffer(device, brickLookupSize,
         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
@@ -413,7 +413,7 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device) {
                   std::to_string(static_cast<uint64_t>(nodesSize)) + "B, bricks=" +
                   std::to_string(static_cast<uint64_t>(bricksSize)) + "B, materials=" +
                   std::to_string(static_cast<uint64_t>(materialsSize)) + "B, config=" +
-                  std::to_string(static_cast<uint64_t>(configSize)) + "B, sdf=" +
+                  std::to_string(static_cast<uint64_t>(configSize)) + "B, channelPool=" +
                   std::to_string(static_cast<uint64_t>(sdfSize)) + "B, brickLookup=" +
                   std::to_string(static_cast<uint64_t>(brickLookupSize)) + "B)");
 }

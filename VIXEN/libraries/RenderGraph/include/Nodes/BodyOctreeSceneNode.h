@@ -120,8 +120,8 @@ private:
     VkDeviceMemory materialsMemory_      = VK_NULL_HANDLE;
     VkBuffer       configBuffer_         = VK_NULL_HANDLE;
     VkDeviceMemory configMemory_         = VK_NULL_HANDLE;
-    // Inc2 M3: SoA-SDF buffer (shader binding 11) + brick-grid lookup (shader binding 12).
-    // Created with a 1-byte placeholder when concatenated_.sdfBricks is empty
+    // Inc3 M2: generic channel pool buffer (shader binding 11) + brick-grid lookup (shader binding 12).
+    // Created with a 1-byte placeholder when concatenated_.channelPool is empty
     // (binary/Procedural path — non-regression invariant: descriptor set always valid).
     VkBuffer       sdfBuffer_            = VK_NULL_HANDLE;
     VkDeviceMemory sdfMemory_            = VK_NULL_HANDLE;
