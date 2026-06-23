@@ -1,6 +1,6 @@
 ---
 title: Voxel Content-Format Contract & Smooth SDF Body Rendering
-status: Design approved 2026-06-22 — Inc1 (Procedural) + Inc2 (Stored SDF) BUILT & rendering 2026-06-23; Inc3 (Materialization) + multi-channel = resume here
+status: Design approved 2026-06-22 — Inc1 (Procedural) + Inc2 (Stored SDF) BUILT & rendering 2026-06-23; Inc3 (Generic Multi-Channel) designed 2026-06-23 (NEXT); Inc4 (Materialization) after
 date: 2026-06-22
 updated: 2026-06-23
 tags: [architecture, voxel, sdf, content-format, rendering, smoothing, body-octree]
@@ -22,8 +22,10 @@ related:
 > build — see the ⚠️ callouts in §3.2, §4, §7:** Stored rendering reuses the ESVO octree
 > traversal (not a standalone march), and the Stored storage model is **8³ bricks + cross-brick
 > fetch + a 1-brick dilation margin** (NOT the 10³ apron originally proposed). **Resume point:**
-> Inc3 (Materialization) and extending the contract beyond the `sdf` channel to multi-channel
-> (`material`/`color`/`normal`/PBR) for arbitrary content packs (§3.1, §8).
+> **Inc3 (Generic Multi-Channel Stored)** — designed 2026-06-23, [[Voxel-MultiChannel-Stored-Inc-2026-06-Design]];
+> generalizes the Stored path to a schema-derived multi-channel SoA pool (`color`/`roughness`/… + a
+> `fieldKind` distance-vs-density declaration) so the **Inc4 Materialization** bake target is generic
+> from day one (§3.1, §8).
 
 ## 1. Context & Problem
 
@@ -227,14 +229,19 @@ pattern (cf. Auto-Sync FrameGraph) and the live-gate-authoritative lesson.
      POV-dependent brick holes, and was retired in M6 (§3.2).
    - **Bake invariant:** narrow-band sparsity is at the BRICK level — active bricks are FULLY
      populated with true SDF (storing only band voxels left the rest 0.0 → false iso-surfaces).
-3. **Increment 3 — Materialization. ▶ RESUME HERE.** Procedural→Stored bake on edit, via the
-   `AttributeRegistry` observer/rebuild hook (§6). Plus the still-open contract breadth below.
+3. **Increment 3 — Generic Multi-Channel Stored. ▶ NEXT (designed 2026-06-23).** Generalize the
+   Stored path from "SDF + material-id" to a **schema-derived multi-channel SoA pool** the shader
+   reads by semantic (§4 addressing). Wires `sdf`+`color`+`roughness` end-to-end (proves Vec3+Float),
+   migrates SDF into the generic pool, and adds a per-channel descriptor table — incl. a **`fieldKind`**
+   (distance vs density) so volumetric/density fields are declarable from the start. Sequenced BEFORE
+   materialization so the bake target is generic on day one. Design of record:
+   [[Voxel-MultiChannel-Stored-Inc-2026-06-Design]].
+4. **Increment 4 — Materialization.** Procedural→Stored bake on edit, via the `AttributeRegistry`
+   observer/rebuild hook (§6) — baking into the Inc3 generic multi-channel pool.
 
-**Still-open contract work (resume alongside Inc3):** only the **`sdf` channel** is built end-to-end.
-The full per-channel contract (§3.1) — declaring + GPU-propagating + shading **`material`/`color`/
-`normal`/PBR** channels from arbitrary content packs (UNDERTOW) — is designed but not implemented.
-The Stored path currently carries a material brick + palette alongside the SoA-SDF; extending it to
-the general schema-derived multi-channel SoA pack (§4 addressing) is the next contract increment.
+**Status:** only the **`sdf` channel** is built end-to-end today (Inc2). The full per-channel contract
+(§3.1) — declaring + GPU-propagating + shading `color`/`roughness`/`normal`/PBR + density fields from
+arbitrary content packs (UNDERTOW) — is **designed** (Inc3) and is the immediate next build.
 
 ### Increment 1 scope (immediately actionable)
 
