@@ -13,6 +13,7 @@
 #include <gtest/gtest.h>
 #include <glm/glm.hpp>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <cmath>
 #include <vector>
@@ -182,7 +183,11 @@ TEST(SoaSdfSerialize, LookupAllocatedBricksRoundTrip) {
     }
 }
 
-// Every cell NOT in brickGridToBrickView must be 0xFFFFFFFF.
+// Every cell NOT in brickGridToBrickView must be one of the two "no brick"
+// sentinels — kBrickUnallocExterior (0xFFFFFFFF, SDF>0) or kBrickUnallocInterior
+// (0xFFFFFFFE, SDF<0). The sign-aware classification (Inc3 hole fix) tags deep-
+// interior empties as INTERIOR; both still mean "no allocated brick here", so the
+// invariant under test is: no allocated brickView index leaks into an empty cell.
 TEST(SoaSdfSerialize, LookupUnallocatedCellsSentinel) {
     SdfFixture f;
     SerializedOctree out = SerializeSdf(f.body);
@@ -210,10 +215,67 @@ TEST(SoaSdfSerialize, LookupUnallocatedCellsSentinel) {
 
     for (uint32_t i = 0; i < tableSize; ++i) {
         if (!allocated[i]) {
-            EXPECT_EQ(lookup[i], 0xFFFFFFFFu)
-                << "unallocated cell [" << i << "] must be sentinel 0xFFFFFFFF";
+            EXPECT_TRUE(Vixen::SVO::isBrickUnallocated(lookup[i]))
+                << "unallocated cell [" << i << "] must be a 'no brick' sentinel "
+                << "(0xFFFFFFFF exterior or 0xFFFFFFFE interior), got " << lookup[i];
         }
     }
+}
+
+// Sign-aware classification (Inc3 hole fix): deep-interior empty bricks must be
+// tagged kBrickUnallocInterior, exterior empties kBrickUnallocExterior. Bakes the
+// RENDER-scene sphere (n=64, r=26, band=2.5 → bpa=8) whose CORE bricks are unallocated
+// (band+1 shell only), so the central cell is interior and a far-corner cell is
+// exterior — a decisive sign check. (The shared 16^3 fixture has bpa=2, too small to
+// have an interior brick distinct from the shell.)
+TEST(SoaSdfSerialize, LookupInteriorBricksTaggedInterior) {
+    RecipeParams rp{26.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+    SdfBakeResult baked = BakeRecipeToSdfWorld(RECIPE_SPHERE, glm::vec3(32.0f), rp,
+                                               /*n=*/64, /*band=*/2.5f, /*brickDepth=*/3);
+    SdfBodyOctree body = BuildSdfBodyOctree(baked, 3);
+    SerializedOctree out = SerializeSdf(body);
+    ASSERT_FALSE(out.brickGridLookup.empty());
+
+    const Vixen::SVO::Octree* oct = body.octree->getOctree();
+    const int bpa = oct->bricksPerAxis;
+    ASSERT_GE(bpa, 3) << "need an interior brick distinct from the shell";
+    const uint32_t tableSize = static_cast<uint32_t>(bpa * bpa * bpa);
+
+    std::vector<uint32_t> lookup(tableSize);
+    std::memcpy(lookup.data(), out.brickGridLookup.data(), out.brickGridLookup.size());
+
+    auto flatOf = [bpa](int x, int y, int z) {
+        return static_cast<uint32_t>(z * bpa * bpa + y * bpa + x);
+    };
+
+    // Count how the empties were classified, and assert both classes occur.
+    int interior = 0, exterior = 0, allocated = 0;
+    for (uint32_t v : lookup) {
+        if (v == Vixen::SVO::kBrickUnallocInterior) ++interior;
+        else if (v == Vixen::SVO::kBrickUnallocExterior) ++exterior;
+        else ++allocated;
+    }
+    std::printf("[SIGNCLASS] bpa=%d allocated=%d interiorEmpty=%d exteriorEmpty=%d\n",
+                bpa, allocated, interior, exterior);
+
+    EXPECT_GT(interior, 0)
+        << "no empty brick tagged INTERIOR — the sign-aware flood-fill did not run/propagate";
+    EXPECT_GT(exterior, 0) << "expected some exterior empty bricks (grid corners)";
+
+    // The grid CENTRE brick is deep inside the sphere → must be interior (or, if the
+    // sphere is small enough that the centre is allocated shell, skip — but the fixture
+    // sphere is large, so the centre is hollow interior).
+    const int c = bpa / 2;
+    const uint32_t centre = lookup[flatOf(c, c, c)];
+    if (Vixen::SVO::isBrickUnallocated(centre)) {
+        EXPECT_EQ(centre, Vixen::SVO::kBrickUnallocInterior)
+            << "the hollow grid-centre brick must be tagged INTERIOR (SDF<0)";
+    }
+    // A grid CORNER brick is far outside → must be exterior.
+    const uint32_t corner = lookup[flatOf(0, 0, 0)];
+    ASSERT_TRUE(Vixen::SVO::isBrickUnallocated(corner)) << "corner brick should be empty";
+    EXPECT_EQ(corner, Vixen::SVO::kBrickUnallocExterior)
+        << "the far-corner brick must be tagged EXTERIOR (SDF>0)";
 }
 
 // ---------------------------------------------------------------------------

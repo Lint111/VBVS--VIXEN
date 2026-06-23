@@ -218,6 +218,35 @@ static_assert(offsetof(OctreeConfig, channels)          == 224, "channels[0]@224
 static constexpr uint32_t FORMAT_BINARY = 0u;  ///< binary ESVO path (default)
 static constexpr uint32_t STORED_SDF    = 1u;  ///< Inc2 trilinear iso-surface path
 
+// ============================================================================
+// brickGridLookup sentinel encoding (Inc3 — sign-aware unallocated bricks)
+// ============================================================================
+// A cell of the dense grid→brick lookup table (brickGridLookup) holds either an
+// allocated brickView index (0 .. brickCount-1) OR one of two "no brick" sentinels
+// that ALSO carry the SDF sign of the empty region, so the GPU trilinear stencil
+// reads a SIGN-CORRECT sentinel at faces bordering unallocated space:
+//
+//   kBrickUnallocExterior (0xFFFFFFFF): unallocated brick OUTSIDE the surface
+//                                        (SDF > 0) — the historical sentinel value,
+//                                        kept unchanged so untouched consumers still
+//                                        see "no brick" for exterior empties.
+//   kBrickUnallocInterior (0xFFFFFFFE): unallocated brick INSIDE the surface
+//                                        (SDF < 0). A deep-interior brick has a truly
+//                                        NEGATIVE distance; tagging it lets the sampler
+//                                        return -SENTINEL instead of a sign-wrong
+//                                        +SENTINEL, which previously corrupted the
+//                                        trilinear field at inner-shell faces and made
+//                                        marchBrickSdf step over the surface (holes).
+//
+// BOTH values mean "this cell has no allocated brick"; readers test against either
+// (or `>= kBrickUnallocInterior`) to decide "no brick" and read the sign from WHICH.
+static constexpr uint32_t kBrickUnallocExterior = 0xFFFFFFFFu;  ///< no brick, SDF > 0
+static constexpr uint32_t kBrickUnallocInterior = 0xFFFFFFFEu;  ///< no brick, SDF < 0
+/// True if a brickGridLookup value is one of the "no brick" sentinels (either sign).
+inline bool isBrickUnallocated(uint32_t v) {
+    return v >= kBrickUnallocInterior;  // 0xFFFFFFFE or 0xFFFFFFFF
+}
+
 /// Read the formatId from the OctreeConfig tail (byte 200, now a named field).
 inline uint32_t formatIdOf(const OctreeConfig& c) {
     return c.formatId;
@@ -664,6 +693,113 @@ inline SerializedOctree SerializeSdf(const SdfBodyOctree& body) {
                 lookupTable[flatIdx] = brickViewIdx;
             }
         }
+
+        // --- Sign-aware classification of UNALLOCATED bricks (Inc3 hole fix) -----
+        // Tag every empty cell as interior (SDF<0 → kBrickUnallocInterior) or exterior
+        // (SDF>0 → kBrickUnallocExterior), derived GENERICALLY from the stored Density
+        // (SDF) channel of the ALLOCATED shell — no recipe dependency.
+        //
+        // Method (multi-source BFS over the bpa^3 brick grid):
+        //   1. For every empty cell adjacent (6-neighbour) to an allocated brick, seed
+        //      its sign from the sign of that allocated brick's boundary-voxel layer
+        //      FACING the empty cell (the mean SDF of the 8×8 face nearest the empty
+        //      neighbour). An allocated shell voxel on the exterior side is >0, on the
+        //      interior side <0, so the facing-layer mean is the correct local sign.
+        //   2. Propagate signs to deeper empty cells via BFS — each still-untagged empty
+        //      cell inherits the sign of the first tagged empty neighbour that reaches it.
+        // The allocated band+dilation shell fully separates interior from exterior empties
+        // (BFS never crosses an allocated brick, which is never enqueued), so the two
+        // regions stay independently sign-consistent even for concave shapes.
+        {
+            const uint32_t sdfBase = out.channelBaseFloats(SEM_SDF);
+            // Only meaningful when the SDF channel is present AND the table has empties to tag.
+            if (sdfBase != 0xFFFFFFFFu && tableSize > 0u) {
+                auto flatOf = [bpa](int x, int y, int z) -> uint32_t {
+                    return static_cast<uint32_t>(z * bpa * bpa + y * bpa + x);
+                };
+                // Mean SDF over an allocated brick's 8×8 boundary face whose outward normal
+                // is (nx,ny,nz) (exactly one component non-zero). brickIdx selects the brick
+                // in `pool`; the face is the voxel layer at coordinate 0 (normal -1) or
+                // brickSide-1 (normal +1) along that axis.
+                auto faceMeanSdf = [&](uint32_t brickIdx, int nx, int ny, int nz) -> float {
+                    const size_t bbase = static_cast<size_t>(brickIdx) * out.brickStrideFloats + sdfBase;
+                    double sum = 0.0; int cnt = 0;
+                    const int lo = 0, hi = brickSide - 1;
+                    for (int b = 0; b < brickSide; ++b)
+                        for (int a = 0; a < brickSide; ++a) {
+                            int vx, vy, vz;
+                            if (nx != 0)      { vx = (nx > 0) ? hi : lo; vy = a; vz = b; }
+                            else if (ny != 0) { vy = (ny > 0) ? hi : lo; vx = a; vz = b; }
+                            else              { vz = (nz > 0) ? hi : lo; vx = a; vy = b; }
+                            const uint32_t voxelSlot =
+                                static_cast<uint32_t>(vz * 64 + vy * 8 + vx);
+                            sum += static_cast<double>(pool[bbase + voxelSlot]);
+                            ++cnt;
+                        }
+                    return cnt ? static_cast<float>(sum / cnt) : 0.0f;
+                };
+
+                // sign[]: 0 = untagged, +1 = exterior (SDF>0), -1 = interior (SDF<0).
+                std::vector<int8_t> sign(tableSize, 0);
+                std::vector<uint32_t> queue;
+                queue.reserve(tableSize);
+                const int dirs[6][3] = {{+1,0,0},{-1,0,0},{0,+1,0},{0,-1,0},{0,0,+1},{0,0,-1}};
+
+                // Seed: empty cells touching an allocated brick, signed by the allocated
+                // brick's facing-face mean.
+                for (int z = 0; z < bpa; ++z)
+                  for (int y = 0; y < bpa; ++y)
+                    for (int x = 0; x < bpa; ++x) {
+                        const uint32_t fl = flatOf(x, y, z);
+                        if (lookupTable[fl] == kBrickUnallocExterior) {
+                            for (const auto& d : dirs) {
+                                const int ax = x + d[0], ay = y + d[1], az = z + d[2];
+                                if (ax < 0 || ay < 0 || az < 0 ||
+                                    ax >= bpa || ay >= bpa || az >= bpa) continue;
+                                const uint32_t af = flatOf(ax, ay, az);
+                                const uint32_t aIdx = lookupTable[af];
+                                if (aIdx == kBrickUnallocExterior) continue;  // neighbour also empty
+                                // Allocated neighbour: its face FACING the empty cell has
+                                // outward normal -d (points from the allocated brick toward
+                                // the empty cell). Sample that layer's mean SDF.
+                                const float m = faceMeanSdf(aIdx, -d[0], -d[1], -d[2]);
+                                const int8_t s = (m < 0.0f) ? int8_t(-1) : int8_t(+1);
+                                if (sign[fl] == 0) { sign[fl] = s; queue.push_back(fl); }
+                                break;  // one allocated neighbour is enough to seed
+                            }
+                        }
+                    }
+
+                // BFS propagation through still-untagged empty cells.
+                for (size_t qi = 0; qi < queue.size(); ++qi) {
+                    const uint32_t cf = queue[qi];
+                    const int cx = static_cast<int>(cf % bpa);
+                    const int cy = static_cast<int>((cf / bpa) % bpa);
+                    const int cz = static_cast<int>(cf / (bpa * bpa));
+                    const int8_t cs = sign[cf];
+                    for (const auto& d : dirs) {
+                        const int ax = cx + d[0], ay = cy + d[1], az = cz + d[2];
+                        if (ax < 0 || ay < 0 || az < 0 ||
+                            ax >= bpa || ay >= bpa || az >= bpa) continue;
+                        const uint32_t af = flatOf(ax, ay, az);
+                        if (lookupTable[af] != kBrickUnallocExterior) continue;  // allocated → stop
+                        if (sign[af] != 0) continue;                            // already tagged
+                        sign[af] = cs;
+                        queue.push_back(af);
+                    }
+                }
+
+                // Stamp the interior sentinel. (Exterior keeps 0xFFFFFFFF; an empty cell that
+                // BFS never reached — e.g. fully isolated from any shell — stays exterior,
+                // the safe default for the historical positive sentinel.)
+                for (uint32_t i = 0; i < tableSize; ++i) {
+                    if (lookupTable[i] == kBrickUnallocExterior && sign[i] < 0) {
+                        lookupTable[i] = kBrickUnallocInterior;
+                    }
+                }
+            }
+        }
+
         out.brickGridLookup.resize(tableSize * sizeof(uint32_t));
         if (!lookupTable.empty()) {
             std::memcpy(out.brickGridLookup.data(), lookupTable.data(), out.brickGridLookup.size());
