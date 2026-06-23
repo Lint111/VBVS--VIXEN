@@ -160,7 +160,7 @@ struct OctreeConfig {
 
     // ===========================================================================
     // Tail (bytes 200..431 = 232 bytes): shader never reads these; the ONLY
-    // constraint is sizeof(OctreeConfig)==432. Layout (Inc3 M1):
+    // constraint is sizeof(OctreeConfig)==432. Layout (Inc3 M3 — std140-aligned):
     //
     //   byte 200: formatId         (uint32) — 0=FORMAT_BINARY, 1=FORMAT_STORED_SDF
     //   byte 204: bricksPerAxisSdf (uint32) — grid side for the SDF brick lookup
@@ -168,19 +168,23 @@ struct OctreeConfig {
     //             in the concatenated pool (replaces the Inc2 sdfBrickArrayBase alias).
     //   byte 212: channelCount     (uint32) — number of live channels in channels[]
     //   byte 216: brickStrideFloats(uint32) — floats per brick across ALL channels
-    //   byte 220: ChannelDesc channels[kMaxChannels] — kMaxChannels=8, 16 B each = 128 B
-    //             → ends at byte 348.
-    //   bytes 348..431: _tailPad[21] (uint32) — 84 bytes, kept zero.
+    //   byte 220: _padChannels     (uint32) — std140 array-alignment pad (channels[] is
+    //             an ARRAY in the GLSL std140 UBO, so its base must be 16-byte aligned;
+    //             the GPU reads channels[0] at byte 224, not 220).
+    //   byte 224: ChannelDesc channels[kMaxChannels] — kMaxChannels=8, 16 B each = 128 B
+    //             → ends at byte 352.
+    //   bytes 352..431: _tailPad[20] (uint32) — 80 bytes, kept zero.
     //
-    // Budget check: 4+4+4+4+4+128+84 = 232 bytes = 432-200. ✓
+    // Budget check: 4+4+4+4+4+4+128+80 = 232 bytes = 432-200. ✓
     // ===========================================================================
     uint32_t formatId;              // byte 200: 0 = FORMAT_BINARY, 1 = FORMAT_STORED_SDF
     uint32_t bricksPerAxisSdf;      // byte 204: grid side for the SDF brick lookup table
     uint32_t poolBrickBase;         // byte 208: element offset (floats) into the pool
     uint32_t channelCount;          // byte 212: number of live channels in channels[]
     uint32_t brickStrideFloats;     // byte 216: floats per brick (sum over all channels)
-    ChannelDesc channels[kMaxChannels]; // bytes 220..347: per-channel descriptors (Inc3 M1)
-    uint32_t _tailPad[21];          // bytes 348..431: pad to 432 bytes (21 × 4 = 84)
+    uint32_t _padChannels;          // byte 220: std140 array-alignment pad (channels[] must be 16-aligned)
+    ChannelDesc channels[kMaxChannels]; // bytes 224..351: per-channel descriptors (Inc3 M3)
+    uint32_t _tailPad[20];          // bytes 352..431: pad to 432 bytes (20 × 4 = 80)
 };
 static_assert(sizeof(ChannelDesc) == 16,
               "ChannelDesc must be 16 bytes (4×uint32 = one std140 uvec4 lane)");
@@ -201,7 +205,8 @@ static_assert(offsetof(OctreeConfig, bricksPerAxisSdf)  == 204, "bricksPerAxisSd
 static_assert(offsetof(OctreeConfig, poolBrickBase)     == 208, "poolBrickBase@208");
 static_assert(offsetof(OctreeConfig, channelCount)      == 212, "channelCount@212");
 static_assert(offsetof(OctreeConfig, brickStrideFloats) == 216, "brickStrideFloats@216");
-static_assert(offsetof(OctreeConfig, channels)          == 220, "channels[0]@220");
+static_assert(offsetof(OctreeConfig, _padChannels)       == 220, "_padChannels@220");
+static_assert(offsetof(OctreeConfig, channels)          == 224, "channels[0]@224 (std140 array-alignment)");
 
 // ============================================================================
 // Inc2 Stored-SDF descriptor helpers (thin shims over named fields, Inc3 M1)
