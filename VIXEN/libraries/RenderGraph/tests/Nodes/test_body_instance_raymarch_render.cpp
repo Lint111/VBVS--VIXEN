@@ -977,4 +977,164 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderStoredSdfBodiesNoHoles) {
     nodeBase.reset();
 }
 
+// ---------------------------------------------------------------------------
+// MULTI-CHANNEL render gate (Inc3 M4) — decisive proof that per-voxel color
+// and roughness channels reach the GPU shader and produce visible variation.
+//
+// Renders the smooth Stored-SDF sphere (octree 0) which is baked with:
+//   color = 0.5 + 0.5*cos(p*0.12 + {0, 2.094, 4.188})  (smooth RGB bands)
+//   roughness = clamp(0.2 + 0.6*fract(p.y*0.0625), 0, 1) (Y-stripe)
+//
+// Assertions:
+//   (a) SDF still SOLID -- fillRatio > 0.97 (no-regression from RenderStoredSdfBodiesNoHoles)
+//   (b) Per-voxel COLOR varies -- sample a horizontal row of body pixels; the
+//       per-channel range (max-min) must exceed 0.10 on at least one of R/G/B.
+//       A flat tint (color not routed to shader) would FAIL this.
+//   (c) PNG written to /tmp/glsl_sdf_multichannel.png for visual inspection.
+// ---------------------------------------------------------------------------
+TEST_F(BodyInstanceRayMarchRenderTest, RenderStoredSdfMultiChannel) {
+    std::cout << "[ lavapipe ] selected physical device: '" << selectedDeviceName_
+              << "' (software rasterizer confirmed)\n";
+    ASSERT_TRUE(softwareConfirmed_);
+
+    using C = BodyOctreeSceneNodeConfig;
+    BodyOctreeSceneNodeType nodeType("BodyOctreeScene");
+    auto nodeBase = nodeType.CreateInstance("body_render_multichannel");
+    auto* node = dynamic_cast<BodyOctreeSceneNode*>(nodeBase.get());
+    ASSERT_NE(node, nullptr);
+
+    Resource deviceRes; SetHandleVal<VulkanDevice*>(deviceRes, deviceShell_.get());
+    Resource poolRes;   SetHandleVal<VkCommandPool>(poolRes, commandPool_);
+    Resource frameRes;  uint32_t frameIndex = 0; SetHandleVal<uint32_t>(frameRes, frameIndex);
+    node->SetInput(C::VULKAN_DEVICE_IN_Slot::index,    0, &deviceRes);
+    node->SetInput(C::COMMAND_POOL_Slot::index,        0, &poolRes);
+    node->SetInput(C::CURRENT_FRAME_INDEX_Slot::index, 0, &frameRes);
+
+    constexpr float kRS = 2.0f;
+    const Vixen::SVO::BodyInstanceGpu frameInst = MakeInstance(0.0f, 0.0f, 0.0f, kRS, 0, 1.0f, 1.0f, 1.0f);
+
+    node->SetInstances({ frameInst });
+    node->Setup();
+    ::setenv("VIXEN_STORED_SDF_DEMO", "1", /*overwrite=*/1);
+    ASSERT_NO_THROW(node->Compile());
+    ::unsetenv("VIXEN_STORED_SDF_DEMO");
+
+    NodeBuffers b;
+    b.nodes       = node->GetOutput(C::OCTREE_NODES_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.bricks      = node->GetOutput(C::OCTREE_BRICKS_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.materials   = node->GetOutput(C::OCTREE_MATERIALS_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.config      = node->GetOutput(C::OCTREE_CONFIG_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.sdf         = node->GetOutput(C::OCTREE_SDF_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.brickLookup = node->GetOutput(C::OCTREE_BRICKLOOKUP_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    ASSERT_NE(b.config, VK_NULL_HANDLE);
+    ASSERT_NE(b.sdf, VK_NULL_HANDLE);
+    ASSERT_NE(b.brickLookup, VK_NULL_HANDLE);
+
+    ASSERT_EQ(sizeof(Vixen::SVO::OctreeConfig), 432u)
+        << "OctreeConfig must match the shader's 432-byte std140 configs[] ArrayStride";
+
+    constexpr uint32_t kW = 512, kH = 512;
+    const glm::vec3 focus = ShaderBodyCentre(frameInst);
+    const float     R     = ShaderBodyRadius(frameInst);
+    const glm::vec3 eye   = focus + glm::normalize(glm::vec3(0.3f, 0.25f, 1.0f)) * (R * 4.0f);
+    const PushConstants pc = MakeCamera(eye, focus, kW, kH, 1);
+
+    // Render the Stored-SDF sphere (octree 0) into RGBA.
+    node->SetInstances({ MakeInstance(0.0f, 0.0f, 0.0f, kRS, 0u, 1.0f, 1.0f, 1.0f) });
+    frameIndex = 0; SetHandleVal<uint32_t>(frameRes, frameIndex);
+    node->Execute();
+    VkBuffer inst = node->GetOutput(C::INSTANCE_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    ASSERT_NE(inst, VK_NULL_HANDLE);
+
+    std::vector<uint8_t> rgba; double renderMs = 0.0;
+    ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, inst,
+                                          b.sdf, b.brickLookup, pc, kW, kH, rgba, renderMs));
+
+    // ------------------------------------------------------------------
+    // (a) SDF solid: fillRatio > 0.97 (no-regression oracle)
+    // ------------------------------------------------------------------
+    uint64_t totalBody = 0, totalSpan = 0;
+    int bodyRows = 0, bodyPixels = 0;
+    for (uint32_t y = 0; y < kH; ++y) {
+        int first = -1, last = -1, cnt = 0;
+        for (uint32_t x = 0; x < kW; ++x) {
+            const uint8_t* px = &rgba[(static_cast<size_t>(y) * kW + x) * 4];
+            if (px[0] > 24 || px[1] > 24 || px[2] > 40) {
+                if (first < 0) first = int(x); last = int(x); ++cnt;
+            }
+        }
+        if (first >= 0) { totalBody += cnt; totalSpan += (last - first + 1); ++bodyRows; bodyPixels += cnt; }
+    }
+    const double fillRatio = (totalSpan > 0) ? double(totalBody) / double(totalSpan) : 0.0;
+    std::printf("[MULTICHANNEL] smooth sphere: bodyPx=%d rows=%d fillRatio=%.4f\n",
+                bodyPixels, bodyRows, fillRatio);
+
+    EXPECT_GT(bodyPixels, 20000) << "Multi-channel Stored-SDF sphere barely rendered.";
+    EXPECT_GT(fillRatio, 0.97)
+        << "Multi-channel Stored-SDF sphere has HOLES (fillRatio=" << fillRatio << " < 0.97)";
+
+    // ------------------------------------------------------------------
+    // (b) Per-voxel color varies: scan a horizontal row near the centre of the
+    //     sphere disk, collect body pixels, and assert that the range of at
+    //     least one channel (R/G/B) exceeds 0.10 (flat tint would FAIL).
+    // ------------------------------------------------------------------
+    // Pick the row in the vertical-centre half with the most body pixels.
+    uint32_t bestRow = kH / 2;
+    int bestCnt = 0;
+    for (uint32_t y = kH / 4; y < 3 * kH / 4; ++y) {
+        int cnt = 0;
+        for (uint32_t x = 0; x < kW; ++x) {
+            const uint8_t* px = &rgba[(static_cast<size_t>(y) * kW + x) * 4];
+            if (px[0] > 24 || px[1] > 24 || px[2] > 40) ++cnt;
+        }
+        if (cnt > bestCnt) { bestCnt = cnt; bestRow = y; }
+    }
+
+    float rMin = 1.0f, rMax = 0.0f;
+    float gMin = 1.0f, gMax = 0.0f;
+    float blMin = 1.0f, blMax = 0.0f;
+    int rowBodyPx = 0;
+    for (uint32_t x = 0; x < kW; ++x) {
+        const uint8_t* px = &rgba[(static_cast<size_t>(bestRow) * kW + x) * 4];
+        if (!(px[0] > 24 || px[1] > 24 || px[2] > 40)) continue;
+        ++rowBodyPx;
+        const float rf  = px[0] / 255.0f;
+        const float gf  = px[1] / 255.0f;
+        const float bff = px[2] / 255.0f;
+        if (rf  < rMin)  rMin  = rf;   if (rf  > rMax)  rMax  = rf;
+        if (gf  < gMin)  gMin  = gf;   if (gf  > gMax)  gMax  = gf;
+        if (bff < blMin) blMin = bff;  if (bff > blMax) blMax = bff;
+    }
+    const float rRange  = rMax  - rMin;
+    const float gRange  = gMax  - gMin;
+    const float blRange = blMax - blMin;
+    std::printf("[MULTICHANNEL] color range row=%u bodyPx=%d | R=[%.3f,%.3f] range=%.3f | "
+                "G=[%.3f,%.3f] range=%.3f | B=[%.3f,%.3f] range=%.3f\n",
+                bestRow, rowBodyPx, rMin, rMax, rRange, gMin, gMax, gRange, blMin, blMax, blRange);
+
+    const float maxRange = (rRange > gRange) ? (rRange > blRange ? rRange : blRange)
+                                              : (gRange > blRange ? gRange : blRange);
+    EXPECT_GT(maxRange, 0.10f)
+        << "Per-voxel color shows no variation (max channel range=" << maxRange
+        << ") -- color channel is NOT reaching the shader (flat tint / color not wired).";
+
+    // ------------------------------------------------------------------
+    // (c) Write PNG for visual inspection
+    // ------------------------------------------------------------------
+    std::vector<uint8_t> rgb(static_cast<size_t>(kW) * kH * 3);
+    for (uint32_t i = 0; i < kW * kH; ++i) {
+        rgb[i * 3 + 0] = rgba[i * 4 + 0];
+        rgb[i * 3 + 1] = rgba[i * 4 + 1];
+        rgb[i * 3 + 2] = rgba[i * 4 + 2];
+    }
+    const char* outPath = "/tmp/glsl_sdf_multichannel.png";
+    EXPECT_NE(stbi_write_png(outPath, kW, kH, 3, rgb.data(), kW * 3), 0)
+        << "stbi_write_png failed for " << outPath;
+    std::printf("[MULTICHANNEL] %ux%u | render=%.0f ms | -> %s\n", kW, kH, renderMs, outPath);
+
+    vkDeviceWaitIdle(logicalDevice_);
+    node->Cleanup(CleanupReason::FinalTeardown);
+    nodeBase.reset();
+}
+
 }  // namespace

@@ -373,7 +373,12 @@ target_compile_definitions(test_body_instance_raymarch_render PRIVATE
     GLSL_RAYMARCH_SPV="${_brm_spv}")
 
 set_target_properties(test_body_instance_raymarch_render PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_body_instance_raymarch_render)
+# DISCOVERY_MODE PRE_TEST: defer the --gtest_list_tests invocation to ctest run-time,
+# not POST_BUILD. This prevents the Vulkan-init timeout from making the build "FAILED"
+# (the known MSB3073 / 5s discovery timeout flake — see friction log 2026-06-13).
+gtest_discover_tests(test_body_instance_raymarch_render
+    DISCOVERY_MODE PRE_TEST
+    DISCOVERY_TIMEOUT 120)
 
 message(STATUS "[RenderGraph Tests] Added: test_body_instance_raymarch_render (lavapipe real-shader render)")
 else()
