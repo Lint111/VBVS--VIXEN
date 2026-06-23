@@ -485,16 +485,17 @@ inline SerializedOctree Serialize(const ShellOctree& shell) {
 
 // ===========================================================================
 // SoA-SDF Serialize (Inc2 M2) — SdfBodyOctree → SerializedOctree with
-//   sdfBricks + brickGridLookup + layout descriptor in OctreeConfig._padding4.
+//   channelPool + brickGridLookup + layout descriptor in OctreeConfig._padding4.
 // ===========================================================================
 
 /**
- * Serialize one SdfBodyOctree into CPU byte buffers (material bricks + SoA-SDF
- * bricks + dense grid-lookup table + OctreeConfig with Stored-SDF descriptor).
+ * Serialize one SdfBodyOctree into CPU byte buffers (material bricks + generic
+ * multi-channel SoA pool + dense grid-lookup table + OctreeConfig with
+ * Stored-SDF descriptor).
  *
- * Voxel order in sdfBricks: identical to the material bricks loop —
- *   sdfBricks[i * 512 + z*64+y*8+x] == Density at (gridOrigin+{bx,by,bz}).
- *   Same z-outer, y-middle, x-inner order as the binary Serialize above.
+ * Voxel order in the channelPool: identical to the material bricks loop —
+ *   channelPool[brick * brickStrideFloats + channelBase + voxel] where voxel
+ *   = z*64+y*8+x. Same z-outer, y-middle, x-inner order as the binary Serialize above.
  *
  * Dense grid→brick lookup (brickGridLookup):
  *   A flat uint32[bpa^3] table (bpa = oct->bricksPerAxis, read from Octree).
@@ -759,13 +760,13 @@ inline ConcatenatedOctrees Concatenate(const std::vector<const ShellOctree*>& oc
 }
 
 /**
- * Concatenate <=3 SdfBodyOctrees into shared node/brick/sdfBricks buffers.
+ * Concatenate <=3 SdfBodyOctrees into shared node/brick/channelPool buffers.
  * Records per-octree nodeArrayBase, brickArrayBase, and sdfBrickArrayBase
  * (in OctreeConfig._padding4[2]) for each octree. Throws std::length_error
  * if given more than 3 octrees.
  *
  * sdfBrickArrayBase is the ELEMENT offset (in float units) of each octree's
- * first SDF brick in the concatenated sdfBricks buffer — mirrors the
+ * first brick in the concatenated channelPool buffer — mirrors the
  * brickArrayBase convention (VoxelSceneCacher.cpp:740 pattern).
  *
  * brickGridLookup: the per-octree lookup tables are appended in order.

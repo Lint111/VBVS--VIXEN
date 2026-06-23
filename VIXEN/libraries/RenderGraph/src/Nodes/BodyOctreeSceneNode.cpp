@@ -381,7 +381,7 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device) {
         concatenated_.materials.empty() ? nullptr : concatenated_.materials.data(),
         materialsBuffer_, materialsMemory_, "octree materials SSBO");
 
-    // Config UBO: 3 x 256-byte OctreeConfig (std140), uploaded contiguously. Always
+    // Config UBO: 3 x 432-byte OctreeConfig (std140, sizeof=432), uploaded contiguously. Always
     // upload the full kMaxOctrees array so the slot covers every selectable index.
     const VkDeviceSize configSize =
         static_cast<VkDeviceSize>(sizeof(Vixen::SVO::OctreeConfig)) *

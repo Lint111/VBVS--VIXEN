@@ -35,7 +35,7 @@ Vulkan 1.3 (lavapipe for the offscreen gate).
   `OctreeConfig` channel table, single-sourced CPU↔GLSL.
 - **M2 — Generic SoA pool serialize + bake + GPU wiring** ✅ DONE (Tasks 3–5) · CPU · gate: `test_soa_sdf_serialize`
   extended green (pool layout, per-channel base, round-trip sdf+color+roughness) + `VIXEN.exe` links.
-- **M3 — Shader generic channel reads + roughness lighting** (Tasks 6–8) · GLSL · gate: glslc compiles;
+- **M3 — Shader generic channel reads + roughness lighting** ✅ DONE (Tasks 6–8) · GLSL · gate: glslc compiles;
   correctness deferred to the M4 live gate.
 - **M4 — Offscreen render gate (authoritative)** (Tasks 9–10) · controller · gate: lavapipe render shows
   per-voxel color gradient + roughness shading + SDF solid (no-regression); MSVC binary no-regression.
@@ -232,10 +232,10 @@ comps += Color{col}, Roughness{rough};   // alongside Density{sd}
 
 **Files:** Modify `StoredSdf.glsl`, `BodyInstanceRayMarch.comp`.
 
-- [ ] **Step 1:** In `.comp`: rename `sdfData[]`→`channelPool[]` (binding 11, `float`); add the channel
+- [x] **Step 1:** In `.comp`: rename `sdfData[]`→`channelPool[]` (binding 11, `float`); add the channel
   table fields to the GLSL `OctreeConfig` (poolBrickBase, channelCount, brickStrideFloats, channels[])
   matching the C++ offsets; `#include "VoxelChannelFormat.glsl"`.
-- [ ] **Step 2:** In `StoredSdf.glsl`, add:
+- [x] **Step 2:** In `StoredSdf.glsl`, add:
 ```glsl
 // returns channelBaseFloats for a semantic in the active octree, or 0xFFFFFFFFu if absent.
 uint channelBaseFloats(uint sem) {
@@ -253,13 +253,13 @@ float _samplePoolVoxel(uint base, ivec3 gridCoord, int comp, int octreeIdx) {
   logic unchanged. Add `sampleChannelScalarTrilinear(uint sem, vec3 gridPos)` and
   `sampleChannelVec3Trilinear(uint sem, vec3 gridPos)` (8-corner trilinear over `_samplePoolVoxel`,
   per component); each returns a default when `channelBaseFloats==0xFFFFFFFFu`.
-- [ ] **Step 3:** glslc compile gate (controller); commit `feat(shader): generic channel-pool readers (Inc3 M3)`.
+- [x] **Step 3:** glslc compile gate (controller); commit `feat(shader): generic channel-pool readers (Inc3 M3)`.
 
 ### Task 7: Sample color + roughness at the leaf hit
 
 **Files:** Modify `BodyInstanceRayMarch.comp` (`handleLeafHitInstancedSdf`).
 
-- [ ] **Step 1:** After `marchBrickSdf` returns the hit `gridPos`, sample channels:
+- [x] **Step 1:** After `marchBrickSdf` returns the hit `gridPos`, sample channels:
 ```glsl
 hitColor     = sampleChannelVec3Trilinear(SEM_COLOR, gridHit);      // default vec3(1.0)
 float rough  = sampleChannelScalarTrilinear(SEM_ROUGHNESS, gridHit); // default 0.5
@@ -267,17 +267,17 @@ float rough  = sampleChannelScalarTrilinear(SEM_ROUGHNESS, gridHit); // default 
   Output `hitColor` (per-voxel, no longer `vec3(1.0)` tint placeholder) + a new `out float hitRoughness`.
   Thread `hitRoughness` up through `traverseOctreeInstanced` to `main()` (add to the nearest-hit
   accumulator, default 0.5 for binary/procedural).
-- [ ] **Step 2:** glslc compile gate; commit `feat(shader): per-voxel color+roughness at Stored-SDF hit (Inc3 M3)`.
+- [x] **Step 2:** glslc compile gate; commit `feat(shader): per-voxel color+roughness at Stored-SDF hit (Inc3 M3)`.
 
 ### Task 8: Roughness-aware lighting
 
 **Files:** Modify `Lighting.glsl`, `BodyInstanceRayMarch.comp` (call site).
 
-- [ ] **Step 1:** `computeLighting(vec3 baseColor, vec3 normal, vec3 rayDir, float roughness)` — modulate
+- [x] **Step 1:** `computeLighting(vec3 baseColor, vec3 normal, vec3 rayDir, float roughness)` — modulate
   the specular term by roughness (e.g. Blinn-Phong exponent `mix(64.0, 4.0, roughness)` + specular scale
   `1.0-roughness`). Default roughness 0.5 at existing call sites (binary/procedural) so they're visually
   unchanged. `main()` passes `bestRoughness`.
-- [ ] **Step 2:** glslc compile gate; commit `feat(shader): roughness-aware lighting (Inc3 M3)`.
+- [x] **Step 2:** glslc compile gate; commit `feat(shader): roughness-aware lighting (Inc3 M3)`.
 
 ---
 
@@ -333,6 +333,21 @@ float rough  = sampleChannelScalarTrilinear(SEM_ROUGHNESS, gridHit); // default 
   color/roughness formula** at a known voxel, not just `[0,1]` range (closes a color↔roughness-swap gap);
   (b) scrub stale comments still saying `sdfBricks` (`ShellOctreeGpu.h:483,490-491,504,757-769`) and
   "256-byte OctreeConfig" (`BodyOctreeSceneNode.cpp:384`) → `channelPool` / 432-B.
+
+- **Milestone M3 (Tasks 6–8 + std140 fix): DONE** · commits `0f56a63a..5a62c268` · Opus validator OK · 2026-06-23
+  — Shader now reads the generic channel pool by semantic. `channelPool[]` (binding 11); GLSL `OctreeConfig`
+  carries `poolBrickBase`/`channelCount`/`brickStrideFloats`/`uvec4 channels[8]`; `channelBaseFloats(sem)` +
+  `_samplePoolVoxel` + `sampleChannelScalar/Vec3Trilinear` (defaults for absent channels); `_sampleSdfVoxel`
+  routes through the pool (SDF march byte-identical); per-voxel color+roughness sampled at the leaf hit and
+  `hitRoughness` threaded to `main()`; `computeLighting` is roughness-aware (binary/procedural pass 0.5,
+  unchanged look). **std140 fix (`0f56a63a`):** M1 had `channels[]`@220 but std140 aligns the UBO array to
+  **224** — added `_padChannels`@220, `channels`@224, `_tailPad[20]`; sizeof stays 432. **Proven by `spirv-dis`
+  (re-verified by validator on a fresh recompile):** `ArrayStride 432` + `channels Offset 224` + `uvec4 ArrayStride 16`.
+  C++↔GLSL layouts provably agree. Gate: shader compiles; `test_channel_format` 2/2 + `test_soa_sdf_serialize`
+  10/10 green. Note (lighting): specular scale is `(1-roughness)*0.4` (magnitude tweak, monotonic — within §7).
+- **⚠️ For M4:** the render test's `gtest_discover_tests` hits a 5s discovery timeout (Vulkan static-init to LIST
+  cases) — this is NOT a compile/link failure (the exe links, shader compiles). M4 must RUN the render binary
+  directly (or via ctest with a raised `DISCOVERY_TIMEOUT`), not rely on test discovery.
 
 ## Self-Review
 

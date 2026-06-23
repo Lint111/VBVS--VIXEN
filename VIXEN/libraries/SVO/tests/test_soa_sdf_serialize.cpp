@@ -277,7 +277,10 @@ TEST(SoaSdfSerialize, MultiChannelPoolLayout) {
     EXPECT_TRUE(std::isfinite(sdf));
 }
 
-// Inc3 M2 Task 4 — baked color+roughness values round-trip through the pool
+// Inc3 M2 Task 4 — baked color+roughness values round-trip through the pool.
+// TIGHTENED (Inc3 M4 T10): verify the EXACT formula (not just finite+in-range),
+// using a known surface voxel found via brickViews.  This closes the color/roughness
+// swap gap: if the channels were swapped the EXPECT_NEAR would fail.
 TEST(SoaSdfSerialize, MultiChannelBakedColorRoughness) {
     RecipeParams rp{6.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
     Vixen::SVO::SdfBakeResult baked =
@@ -288,17 +291,54 @@ TEST(SoaSdfSerialize, MultiChannelBakedColorRoughness) {
     ASSERT_EQ(out.channelCount, 3u);
     ASSERT_FALSE(out.channelPool.empty());
 
-    // Check brick 0, voxel 0 — color and roughness must be finite and in [0,1]
-    float r0    = out.readPoolVoxel(SEM_COLOR, 0, 0, 0);
-    float g0    = out.readPoolVoxel(SEM_COLOR, 0, 0, 1);
-    float b0    = out.readPoolVoxel(SEM_COLOR, 0, 0, 2);
-    float rough0 = out.readPoolVoxel(SEM_ROUGHNESS, 0, 0, 0);
+    // ------------------------------------------------------------------
+    // Locate a known surface voxel: p = (38, 32, 32) lies on the +X surface
+    // of the sphere (center=32, r=6). The bake dilates by 1 brick so this brick
+    // is guaranteed to be active.
+    // ------------------------------------------------------------------
+    const glm::vec3 targetPos(38.0f, 32.0f, 32.0f);
 
-    EXPECT_TRUE(std::isfinite(r0));
-    EXPECT_TRUE(std::isfinite(g0));
-    EXPECT_TRUE(std::isfinite(b0));
-    EXPECT_GE(r0, 0.0f);  EXPECT_LE(r0, 1.0f);
-    EXPECT_GE(g0, 0.0f);  EXPECT_LE(g0, 1.0f);
-    EXPECT_GE(b0, 0.0f);  EXPECT_LE(b0, 1.0f);
-    EXPECT_GE(rough0, 0.0f);  EXPECT_LE(rough0, 1.0f);
+    const Vixen::SVO::Octree* oct = body.octree->getOctree();
+    ASSERT_NE(oct, nullptr);
+    ASSERT_NE(oct->root, nullptr);
+    const auto& brickViews = oct->root->brickViews;
+    ASSERT_FALSE(brickViews.empty());
+
+    bool found = false;
+    for (uint32_t bi = 0; bi < static_cast<uint32_t>(brickViews.size()); ++bi) {
+        const glm::ivec3 origin = brickViews[bi].getLocalGridOrigin();
+        const glm::ivec3 local  = glm::ivec3(targetPos) - origin;
+        if (local.x < 0 || local.x >= 8 || local.y < 0 || local.y >= 8 ||
+            local.z < 0 || local.z >= 8) {
+            continue;
+        }
+        const uint32_t slot = static_cast<uint32_t>(local.z * 64 + local.y * 8 + local.x);
+
+        // --- Exact bake formula (from SdfBake.h BakeRecipeToSdfWorld) ---
+        // color = 0.5 + 0.5*cos(p*0.12 + {0, 2.094, 4.188})
+        const glm::vec3 colExpected = 0.5f + 0.5f * glm::cos(
+            glm::vec3(targetPos.x, targetPos.y, targetPos.z) * 0.12f
+            + glm::vec3(0.0f, 2.094f, 4.188f));
+        // roughness = clamp(0.2 + 0.6*fract(p.y*0.0625), 0, 1)
+        const float roughExpected = glm::clamp(
+            0.2f + 0.6f * glm::fract(targetPos.y * 0.0625f), 0.0f, 1.0f);
+
+        const float storedR  = out.readPoolVoxel(SEM_COLOR,     bi, slot, 0);
+        const float storedG  = out.readPoolVoxel(SEM_COLOR,     bi, slot, 1);
+        const float storedB  = out.readPoolVoxel(SEM_COLOR,     bi, slot, 2);
+        const float storedRg = out.readPoolVoxel(SEM_ROUGHNESS, bi, slot, 0);
+
+        EXPECT_NEAR(storedR,  colExpected.r, 0.01f)
+            << "Color.R at p=(38,32,32) must match bake formula";
+        EXPECT_NEAR(storedG,  colExpected.g, 0.01f)
+            << "Color.G at p=(38,32,32) must match bake formula";
+        EXPECT_NEAR(storedB,  colExpected.b, 0.01f)
+            << "Color.B at p=(38,32,32) must match bake formula";
+        EXPECT_NEAR(storedRg, roughExpected, 0.01f)
+            << "Roughness at p=(38,32,32) must match bake formula";
+
+        found = true;
+        break;
+    }
+    EXPECT_TRUE(found) << "No active brick contains surface voxel (38,32,32)";
 }
