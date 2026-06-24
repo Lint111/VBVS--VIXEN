@@ -125,6 +125,15 @@ public:
     void setBodyOctree(bool isBody) { m_isBodyOctree = isBody; }
     [[nodiscard]] bool isBodyOctree() const { return m_isBodyOctree; }
 
+    // Mark this octree as built over a SIGNED-DISTANCE field (Density = signed distance,
+    // negative inside the surface). When set, rebuild() bins voxels into bricks by
+    // OCCUPANCY (queryOccupiedVoxels) instead of the default density>0 solidity, so
+    // all-interior bricks are retained and the stored field is hole-free. MUST be called
+    // BEFORE rebuild() (it changes which voxels rebuild enumerates). Set by the SDF body
+    // builder (BuildSdfBodyOctree). Binary octrees leave this false.
+    void setSignedDistanceField(bool isSdf) { m_signedDistanceField = isSdf; }
+    [[nodiscard]] bool isSignedDistanceField() const { return m_signedDistanceField; }
+
     // ========================================================================
     // DEPRECATED: Incremental Insertion API (removed in favor of rebuild())
     // ========================================================================
@@ -328,6 +337,14 @@ private:
     // builder (e.g. BuildShellOctree). Default false ⇒ legacy traversal for all other
     // octree kinds (mesh-voxelized, arbitrary world frames) — zero behavioural change.
     bool m_isBodyOctree{ false };
+
+    // When true, rebuild() selects voxels for bricks by OCCUPANCY (queryOccupiedVoxels)
+    // rather than the default `density > 0` solidity (querySolidVoxels). Required for
+    // SIGNED-FIELD bodies (Stored-SDF) where Density is the signed distance (negative
+    // INSIDE): the >0 filter would drop every all-interior brick, holing the field.
+    // Must be set BEFORE rebuild() (see setSignedDistanceField). Default false ⇒ binary
+    // / Cornell / shell octrees keep the existing density>0 occupancy — no change.
+    bool m_signedDistanceField{ false };
 
     // Transform: maps local [0, worldSize] space ↔ world space
     // localToWorld: transforms local-space positions to world space

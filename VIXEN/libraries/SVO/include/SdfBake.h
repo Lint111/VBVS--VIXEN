@@ -205,6 +205,11 @@ inline SdfBodyOctree BuildSdfBodyOctree(SdfBakeResult& baked, int brickDepth /*=
 
     result.octree = std::make_unique<LaineKarrasOctree>(
         *result.world, result.registry.get(), maxLevels, brickDepth);
+    // Density carries the SIGNED distance (negative inside), so rebuild must keep
+    // all-interior bricks: select voxels by occupancy, not density>0. MUST precede
+    // rebuild() — it decides which voxels become bricks (fixes the dropped-interior-
+    // brick sentinel contamination, the Stored-SDF brick-fleck root cause).
+    result.octree->setSignedDistanceField(true);
     result.octree->rebuild(*result.world, worldMin, worldMax);
     result.octree->setBodyOctree(true);
 

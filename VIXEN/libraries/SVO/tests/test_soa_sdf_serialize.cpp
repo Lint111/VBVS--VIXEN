@@ -228,7 +228,14 @@ TEST(SoaSdfSerialize, LookupUnallocatedCellsSentinel) {
 // (band+1 shell only), so the central cell is interior and a far-corner cell is
 // exterior — a decisive sign check. (The shared 16^3 fixture has bpa=2, too small to
 // have an interior brick distinct from the shell.)
-TEST(SoaSdfSerialize, LookupInteriorBricksTaggedInterior) {
+// Interior bricks of a signed-distance body are SELECTED BY OCCUPANCY (not density>0),
+// so every active brick — including fully-interior ones (all voxels sd<=0) — is allocated.
+// This is the brick-fleck root-cause fix: previously querySolidVoxels' density>0 filter
+// dropped all-interior bricks, leaving them unallocated (interior-sentinel) and corrupting
+// surface stencils that reached into them. Post-fix the interior is hole-free: only the
+// EXTERIOR empties remain (sign-tagged exterior). The interior-sentinel classification path
+// stays live for genuinely hollow shapes, but a solid sphere produces zero interior empties.
+TEST(SoaSdfSerialize, InteriorBricksAllocatedNotDropped) {
     RecipeParams rp{26.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
     SdfBakeResult baked = BakeRecipeToSdfWorld(RECIPE_SPHERE, glm::vec3(32.0f), rp,
                                                /*n=*/64, /*band=*/2.5f, /*brickDepth=*/3);
@@ -248,7 +255,6 @@ TEST(SoaSdfSerialize, LookupInteriorBricksTaggedInterior) {
         return static_cast<uint32_t>(z * bpa * bpa + y * bpa + x);
     };
 
-    // Count how the empties were classified, and assert both classes occur.
     int interior = 0, exterior = 0, allocated = 0;
     for (uint32_t v : lookup) {
         if (v == Vixen::SVO::kBrickUnallocInterior) ++interior;
@@ -258,20 +264,19 @@ TEST(SoaSdfSerialize, LookupInteriorBricksTaggedInterior) {
     std::printf("[SIGNCLASS] bpa=%d allocated=%d interiorEmpty=%d exteriorEmpty=%d\n",
                 bpa, allocated, interior, exterior);
 
-    EXPECT_GT(interior, 0)
-        << "no empty brick tagged INTERIOR — the sign-aware flood-fill did not run/propagate";
+    // ROOT-CAUSE FIX: no active brick is dropped, so NO interior brick is left empty.
+    EXPECT_EQ(interior, 0)
+        << "an interior brick was left unallocated — the density>0 drop regressed "
+           "(occupancy selection must keep all-interior bricks)";
     EXPECT_GT(exterior, 0) << "expected some exterior empty bricks (grid corners)";
 
-    // The grid CENTRE brick is deep inside the sphere → must be interior (or, if the
-    // sphere is small enough that the centre is allocated shell, skip — but the fixture
-    // sphere is large, so the centre is hollow interior).
+    // The grid CENTRE brick is deep inside the (solid) sphere → must now be ALLOCATED.
     const int c = bpa / 2;
     const uint32_t centre = lookup[flatOf(c, c, c)];
-    if (Vixen::SVO::isBrickUnallocated(centre)) {
-        EXPECT_EQ(centre, Vixen::SVO::kBrickUnallocInterior)
-            << "the hollow grid-centre brick must be tagged INTERIOR (SDF<0)";
-    }
-    // A grid CORNER brick is far outside → must be exterior.
+    EXPECT_FALSE(Vixen::SVO::isBrickUnallocated(centre))
+        << "the solid-sphere grid-centre brick must be ALLOCATED (interior no longer dropped)";
+
+    // A grid CORNER brick is far outside → still empty, tagged EXTERIOR (sign path intact).
     const uint32_t corner = lookup[flatOf(0, 0, 0)];
     ASSERT_TRUE(Vixen::SVO::isBrickUnallocated(corner)) << "corner brick should be empty";
     EXPECT_EQ(corner, Vixen::SVO::kBrickUnallocExterior)

@@ -283,9 +283,13 @@ void LaineKarrasOctree::rebuild(GaiaVoxelWorld& world, const glm::vec3& worldMin
     // TODO: Add ILoggable - std::cout << "[LaineKarrasOctree] Rebuilding: bricksPerAxis=" << bricksPerAxis
     //       << ", brickSideLength=" << brickSideLength << std::endl;
 
-    // Step 1: Query all solid voxels once (O(N))
-    // TODO: Add ILoggable - std::cout << "[LaineKarrasOctree] Querying all solid voxels..." << std::endl;
-    auto allVoxels = world.querySolidVoxels();
+    // Step 1: Query all voxels destined for bricks once (O(N)).
+    // Signed-distance bodies select by OCCUPANCY (Density may be negative inside);
+    // every other octree keeps the default density>0 solidity. See
+    // LaineKarrasOctree::setSignedDistanceField / GaiaVoxelWorld::queryOccupiedVoxels.
+    // TODO: Add ILoggable - std::cout << "[LaineKarrasOctree] Querying voxels..." << std::endl;
+    auto allVoxels = m_signedDistanceField ? world.queryOccupiedVoxels()
+                                           : world.querySolidVoxels();
     // TODO: Add ILoggable - std::cout << "[LaineKarrasOctree] Found " << allVoxels.size() << " solid voxels" << std::endl;
 
     // Step 2: Bin voxels by brick coordinate using a hash map
