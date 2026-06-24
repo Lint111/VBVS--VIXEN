@@ -981,6 +981,72 @@ BakedScene BakeScene(uint32_t recipeId, float amp, float freq) {
     return s;
 }
 
+// ===========================================================================
+// ROOT-CAUSE PROBE SCAFFOLD — exercise the ACTUAL demo scene: 3 octrees
+// concatenated via ConcatenateSdf (the path BodyOctreeSceneNode uploads),
+// then build a SerializedOctree that views ONE octree (idx k) of that
+// concatenation, with octree-k's poolBrickBase / nodeArrayBase / its own
+// lookup sub-table. This is what the prior single-octree mirror NEVER tested:
+// octree 1 (the displaced body) lives at poolBrickBase>0, nodeArrayBase>0, and
+// its lookup is the SECOND bpa^3 sub-table — the worst-artifact case.
+// ===========================================================================
+struct ConcatScene {
+    // Keep the owning bodies alive (octree holds pointers into world/registry).
+    std::vector<SdfBodyOctree> bodies;
+    ConcatenatedOctrees cat;
+};
+ConcatScene BakeConcatDemo() {
+    // EXACTLY BodyOctreeSceneNode::EnsureOctreesBuilt() under VIXEN_STORED_SDF_DEMO:
+    //   kind 0 smooth, kind 1 displaced (amp 2.7, freq 0.375), kind 2 smooth.
+    struct Kind { uint32_t recipe; float amp; float freq; };
+    const Kind kinds[3] = {
+        { RECIPE_SPHERE,           0.0f, 0.0f   },
+        { RECIPE_DISPLACED_SPHERE, 2.7f, 0.375f },
+        { RECIPE_SPHERE,           0.0f, 0.0f   },
+    };
+    ConcatScene s;
+    s.bodies.reserve(3);
+    const glm::vec3 center(kSdfCenter, kSdfCenter, kSdfCenter);
+    for (const Kind& k : kinds) {
+        RecipeParams rp{};
+        rp.radius = kSdfRadius; rp.displaceAmp = k.amp; rp.displaceFreq = k.freq;
+        // NOTE: the demo (BodyOctreeSceneNode.cpp:311) calls BakeRecipeToSdfWorld
+        // WITHOUT the brickDepth arg → default 3. Match that exactly here.
+        SdfBakeResult baked = BakeRecipeToSdfWorld(k.recipe, center, rp, kSdfN, kSdfBand);
+        s.bodies.push_back(BuildSdfBodyOctree(baked, kSdfBrickDepth));
+    }
+    std::vector<const SdfBodyOctree*> ptrs;
+    for (const SdfBodyOctree& b : s.bodies) ptrs.push_back(&b);
+    s.cat = ConcatenateSdf(ptrs);
+    return s;
+}
+
+// Build a SerializedOctree that the SdfMarchMirror can consume, viewing octree
+// `k` of a concatenation. The mirror addresses nodes via (nodeArrayBase + idx)
+// into the FULL concatenated node buffer, and pool via (poolBrickBase +
+// brickIdx*stride + ...). Its lookup, however, hardcodes sub-table 0
+// (lookupBase = 0*bpa^3) — so we hand it ONLY octree-k's lookup sub-table.
+SerializedOctree ViewConcatOctree(const ConcatScene& s, uint32_t k) {
+    const OctreeConfig& cfg = s.cat.configs[k];
+    SerializedOctree v;
+    v.config       = cfg;                       // carries nodeArrayBase / poolBrickBase for k
+    v.nodes        = s.cat.nodes;               // FULL concatenated node buffer (offset via base)
+    v.nodeCount    = static_cast<uint32_t>(s.cat.nodes.size() / sizeof(ChildDescriptor));
+    v.channelPool  = s.cat.channelPool;         // FULL concatenated pool (offset via poolBrickBase)
+    v.brickStrideFloats = cfg.brickStrideFloats;
+    v.channelCount = cfg.channelCount;
+    for (uint32_t i = 0; i < cfg.channelCount && i < kMaxChannels; ++i)
+        v.channels[i] = cfg.channels[i];
+    // Slice octree-k's lookup sub-table (bpa^3 uint32) out of the concatenated lookup.
+    const int bpa = static_cast<int>(cfg.bricksPerAxisSdf);
+    const size_t subEntries = static_cast<size_t>(bpa) * bpa * bpa;
+    const size_t subBytes   = subEntries * sizeof(uint32_t);
+    const size_t off        = static_cast<size_t>(k) * subBytes;
+    v.brickGridLookup.assign(s.cat.brickGridLookup.begin() + off,
+                             s.cat.brickGridLookup.begin() + off + subBytes);
+    return v;
+}
+
 }  // namespace
 
 // ===========================================================================
@@ -1395,6 +1461,191 @@ TEST(StoredSdfMarchMirror, DiagProbeRays) {
                         p.brickPicked.x, p.brickPicked.y, p.brickPicked.z,
                         lk, p.sMax, p.steps, p.minD, (int)p.hit);
         }
+    }
+    SUCCEED();
+}
+
+// ===========================================================================
+// GPU-VS-CPU DIVERGENCE PROBE — feed the EXACT pixels the GPU readback flagged
+// as holes (smooth body, octree 0, 512^2, front view) into the CPU mirror.
+// The GPU readback (test_body_instance_raymarch_render DEBUG_SdfHoleReadback)
+// reported these as sLimit-overrun misses with minD≈2.7-3.4 voxels (the surface
+// sits in the NEIGHBOUR brick the ESVO didn't reach). If the CPU mirror HITS the
+// same pixels, the divergence is GPU-execution (ESVO leaf enumeration under
+// 32-bit float) — NOT data/serialize. This pins WHERE the divergence lives.
+// ===========================================================================
+TEST(StoredSdfMarchMirror, GpuHolePixelsOnCpu) {
+    BakedScene scene = BakeScene(RECIPE_SPHERE, 0.0f, 0.0f);
+    SdfMarchMirror mirror(scene.serialized);
+    const AnalyticBody body = MakeAnalyticBody();
+
+    // EXACT render-test framing (RenderStoredSdfBodiesNoHoles / DEBUG_SdfHoleReadback).
+    constexpr uint32_t kW = 512, kH = 512;
+    const glm::vec3 focus = body.centre;
+    const float     R     = 0.5f * kWorldGridSize * kRS;
+    const glm::vec3 eye   = focus + glm::normalize(glm::vec3(0.3f, 0.25f, 1.0f)) * (R * 4.0f);
+    const Camera cam = MakeCamera(eye, focus, kW, kH);
+
+    // The 13 real GPU hole pixels (minD≈2.7-3.4 family) from the readback.
+    const std::pair<int,int> gpuHoles[] = {
+        {130,218},{131,218},{132,218},{128,229},{129,229},{130,229},
+        {275,387},{276,387},{277,387},{278,387}
+    };
+    int cpuHit = 0, cpuMiss = 0;
+    for (auto [px, py] : gpuHoles) {
+        const float u=(px+0.5f)/kW, v=(py+0.5f)/kH;
+        const glm::vec3 rd = getRayDir(cam, u, v);
+        const InstRay ir = DeInstance(eye, rd);
+        const SdfMarchMirror::Hit h = mirror.castRay(ir.origin, ir.dir);
+        const SdfMarchMirror::RefResult ref = mirror.referenceMarch(ir.origin, ir.dir);
+        std::printf("[GPUHOLE] px=(%d,%d) cpuHit=%d cpuT=%.4f | refCrossed=%d refMinD=%.4f crossBrick=(%d,%d,%d)\n",
+                    px, py, (int)h.hit, h.t, (int)ref.crossed, ref.minD,
+                    ref.crossBrick.x, ref.crossBrick.y, ref.crossBrick.z);
+        if (h.hit) ++cpuHit; else ++cpuMiss;
+    }
+    std::printf("[GPUHOLE] CPU mirror over the GPU's hole pixels: hit=%d miss=%d\n", cpuHit, cpuMiss);
+
+    // Per-leaf dump for the first real hole pixel — what brick does the march bound
+    // to, is it allocated, and what is the per-leaf minD?
+    {
+        const int px = 130, py = 218;
+        const float u=(px+0.5f)/kW, v=(py+0.5f)/kH;
+        const glm::vec3 rd = getRayDir(cam, u, v);
+        const InstRay ir = DeInstance(eye, rd);
+        std::printf("\n[GPUHOLE detail px=(130,218)] per-leaf marchBrickSdf probe:\n");
+        std::vector<SdfMarchMirror::LeafProbe> ps;
+        mirror.probeRay(ir.origin, ir.dir, ps);
+        for (size_t i = 0; i < ps.size(); ++i) {
+            const auto& p = ps[i];
+            char lk[16];
+            if (p.brickIdxLookup==0xFFFFFFFFu) std::snprintf(lk,sizeof(lk),"UNALLOC");
+            else std::snprintf(lk,sizeof(lk),"%u",p.brickIdxLookup);
+            std::printf("   leaf#%zu brick=(%d,%d,%d)[%s] gridEntry=(%.3f,%.3f,%.3f) sMax=%.3f steps=%d minD=%.4f hit=%d\n",
+                        i,p.brickPicked.x,p.brickPicked.y,p.brickPicked.z,lk,
+                        p.gridEntry.x,p.gridEntry.y,p.gridEntry.z,p.sMax,p.steps,p.minD,(int)p.hit);
+        }
+    }
+    // If the CPU mirror HITS where the GPU holed, the bug is GPU float execution of
+    // the ESVO/march, not the data. (If the CPU also misses, the data/algorithm is
+    // implicated and the mirror should reproduce the GPU fillRatio.)
+    SUCCEED();
+}
+
+// ===========================================================================
+// ROOT CAUSE #1 — the floor-derived brick vs the ESVO-leaf brick.
+//
+// marchBrickSdf bounds its slab + lookup to floor((gridEntry+dirN*1e-3)/8),
+// NOT to the brick the ESVO traversal actually descended into. When the leaf
+// entry t lands ON a brick boundary (gridEntry coord ≈ k*8), the floor (after a
+// tiny ±dirN nudge) can resolve to the NEIGHBOUR brick the ray is LEAVING. The
+// march then tests the WRONG brick's [bMin,bMax] slab → wrong sMax → it steps
+// out of (or never enters) the real leaf brick → a MISS at that ray.
+//
+// This DISAGREEMENT is the seed; GPU 32-bit-float rounding through the ESVO
+// pipeline lands MANY more entries within epsilon of a brick face than exact CPU
+// arithmetic, so the seed becomes a consistent brick-aligned hole pattern on GPU
+// while exact CPU sees only a handful.
+//
+// PROOF: sweep with GPU-faithful t jitter and compare the CURRENT march
+// (floor brick) against the PROPOSED fix (ESVO leaf brick, m_useEsvoBrick=true).
+// If binding to the ESVO brick collapses the jitter-induced misses, the floor
+// selection is the root cause.
+// ===========================================================================
+TEST(StoredSdfMarchMirror, RootCause_EsvoBrickVsFloorBrick) {
+    BakedScene scene = BakeScene(RECIPE_SPHERE, 0.0f, 0.0f);
+    SdfMarchMirror mirror(scene.serialized);
+    const AnalyticBody body = MakeAnalyticBody();
+
+    const float jitters[] = { 0.0f, 1e-5f, 1e-4f, 5e-4f, 1e-3f };
+    std::printf("[ROOTCAUSE] floor-brick vs ESVO-leaf-brick  (miss = analytic-interior ray the march drops)\n");
+    long long floorMissAtMaxJitter = 0, esvoMissAtMaxJitter = 0;
+    long long disagreeAtMaxJitter = 0;
+    for (float j : jitters) {
+        // CURRENT shader behaviour: march bounds to floor(gridEntry/8).
+        mirror.m_useEsvoBrick = false;
+        const SweepStats fs = SweepHoles(mirror, body, j);
+        // PROPOSED fix: march bounds to the ESVO leaf brick the traversal chose.
+        mirror.m_useEsvoBrick = true;
+        const SweepStats es = SweepHoles(mirror, body, j);
+        std::printf("  jitter=%.0e  floorBrick miss=%d   esvoBrick miss=%d   "
+                    "brickDisagree=%lld/%lld\n",
+                    j, fs.mirrorMiss, es.mirrorMiss, fs.brickDisagree, fs.leafHits);
+        if (j == jitters[sizeof(jitters)/sizeof(jitters[0]) - 1]) {
+            floorMissAtMaxJitter = fs.mirrorMiss;
+            esvoMissAtMaxJitter  = es.mirrorMiss;
+            disagreeAtMaxJitter  = fs.brickDisagree;
+        }
+    }
+    // The disagreement is real and grows with precision loss.
+    EXPECT_GT(disagreeAtMaxJitter, 0)
+        << "expected floor-brick to disagree with ESVO-leaf-brick under jitter";
+    // Binding the march to the ESVO leaf brick removes the boundary-straddle misses
+    // the floor selection introduces (no false brick, correct slab/sMax).
+    EXPECT_LE(esvoMissAtMaxJitter, floorMissAtMaxJitter)
+        << "ESVO-brick march must not be worse than the floor-brick march";
+}
+
+// ===========================================================================
+// ROOT CAUSE #2 — the DISPLACED body is octree 1 of the CONCATENATED demo bake
+// (poolBrickBase>0, nodeArrayBase>0, the SECOND lookup sub-table). The prior
+// mirror only ever tested octree 0 of a SINGLE-octree SerializeSdf — so the
+// multi-octree addressing the GPU actually consumes was NEVER mirrored.
+//
+// This test drives the mirror over octree 1 of the real ConcatenateSdf output
+// and reports holes under GPU-faithful jitter for floor-brick vs ESVO-brick.
+// It also asserts the multi-octree addressing is self-consistent (octree 1
+// renders a body at all — i.e. poolBrickBase/lookup-slice are correct), which
+// rules a data/addressing corruption IN or OUT for the displaced body.
+// ===========================================================================
+TEST(StoredSdfMarchMirror, RootCause_DisplacedOctree1MultiOctree) {
+    ConcatScene demo = BakeConcatDemo();
+    ASSERT_EQ(demo.cat.count, 3u);
+
+    // Octree 1 must be offset in BOTH the node buffer and the pool.
+    EXPECT_GT(demo.cat.configs[1].nodeArrayBase, 0)
+        << "octree 1 nodeArrayBase should be > 0 (concatenated after octree 0)";
+    EXPECT_GT(demo.cat.configs[1].poolBrickBase, 0u)
+        << "octree 1 poolBrickBase should be > 0 (pool appended after octree 0)";
+
+    SerializedOctree view1 = ViewConcatOctree(demo, 1u);
+    SdfMarchMirror mirror(view1);
+
+    // Displaced body: its bumpy iso ≈ analytic sphere + amp; frame on that.
+    AnalyticBody body = MakeAnalyticBody();
+    body.radius += 2.7f * kWorldGridSize * kRS / float(kSdfN);
+
+    // First: does octree 1 render AT ALL through the multi-octree addressing?
+    // (A solid front-view body proves poolBrickBase/lookup-slice are correct.)
+    {
+        constexpr uint32_t kW = 256, kH = 256;
+        const glm::vec3 focus = body.centre;
+        const float R = 0.5f * kWorldGridSize * kRS;
+        const glm::vec3 eye = focus + glm::normalize(glm::vec3(0.3f, 0.25f, 1.0f)) * (R * 4.0f);
+        const Camera cam = MakeCamera(eye, focus, kW, kH);
+        int bodyPx = 0;
+        for (uint32_t y = 0; y < kH; ++y)
+          for (uint32_t x = 0; x < kW; ++x) {
+            const glm::vec3 rd = getRayDir(cam, (x+0.5f)/kW, (y+0.5f)/kH);
+            const InstRay ir = DeInstance(eye, rd);
+            if (mirror.castRay(ir.origin, ir.dir).hit) ++bodyPx;
+          }
+        std::printf("[OCT1] displaced octree-1 (multi-octree addressing): bodyPx=%d / %u\n",
+                    bodyPx, kW * kH);
+        EXPECT_GT(bodyPx, 5000)
+            << "octree 1 barely rendered via concatenated poolBrickBase/lookup — "
+               "multi-octree addressing is broken (data path bug)";
+    }
+
+    // Then: floor-brick vs ESVO-brick miss counts under jitter on octree 1.
+    const float jitters[] = { 0.0f, 1e-4f, 1e-3f };
+    std::printf("[OCT1] floor-brick vs ESVO-brick on octree 1 (displaced):\n");
+    for (float j : jitters) {
+        mirror.m_useEsvoBrick = false;
+        const auto fres = OrbitSweep(mirror, body, j, 8);
+        mirror.m_useEsvoBrick = true;
+        const auto eres = OrbitSweep(mirror, body, j, 8);
+        std::printf("  jitter=%.0e  floorBrick holes=%lld/%lld   esvoBrick holes=%lld/%lld\n",
+                    j, fres.second, fres.first, eres.second, eres.first);
     }
     SUCCEED();
 }
