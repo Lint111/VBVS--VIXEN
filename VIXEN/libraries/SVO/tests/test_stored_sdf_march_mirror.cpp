@@ -63,8 +63,8 @@ constexpr int   kSdfBrickDepth = 3;
 constexpr float kWorldGridSize = 10.0f;   // ShellOctreeGpu::SerializeSdf localToWorld scale
 constexpr float kRS            = 2.0f;    // render test renderScale for the framed body
 
-// Sign-aware unallocated-brick sentinel (mirrors StoredSdf.glsl SDF_SENTINEL + the
-// kBrickUnalloc{Exterior,Interior} encoding in ShellOctreeGpu.h).
+// Single positive unallocated-brick sentinel (mirrors StoredSdf.glsl _samplePoolVoxel's
+// 1e9 return + the single kBrickUnalloc (0xFFFFFFFF) sentinel in ShellOctreeGpu.h).
 constexpr float kSdfSentinel = 1e9f;
 
 // ===========================================================================
@@ -212,12 +212,12 @@ public:
         return m_lookup[fl] != 0xFFFFFFFFu;
     }
     // Diagnostic accessors (root-cause probe): the RAW lookup value at a brick coord
-    // (0xFFFFFFFF exterior / 0xFFFFFFFE interior / else a real brick index), the grid
-    // side, and a single SDF-channel pool read at a grid voxel (sign-aware sentinel).
+    // (0xFFFFFFFF unallocated sentinel / else a real brick index), the grid side, and a
+    // single SDF-channel pool read at a grid voxel (positive sentinel if unallocated).
     int      bpaSdf() const { return m_bpaSdf; }
     uint32_t lookupRaw(const glm::ivec3& b) const {
         const uint32_t fl = gridToLookupIdx(b, m_bpaSdf);
-        if (fl == 0xFFFFFFFFu || fl >= m_lookupCount) return 0xFFFFFFFFu;  // out of grid → exterior
+        if (fl == 0xFFFFFFFFu || fl >= m_lookupCount) return 0xFFFFFFFFu;  // out of grid
         return m_lookup[fl];
     }
     float sampleSdfVoxelPub(const glm::ivec3& gridCoord) const { return sampleSdfVoxel(gridCoord); }
@@ -515,8 +515,8 @@ private:
             return 0xFFFFFFFFu;
         return static_cast<uint32_t>(bc.z * bpa * bpa + bc.y * bpa + bc.x);
     }
-    // 1:1 port of StoredSdf.glsl _samplePoolVoxel — returns a SIGN-AWARE sentinel for
-    // empty bricks (exterior/out-of-grid/absent → +kSdfSentinel, interior → −kSdfSentinel).
+    // 1:1 port of StoredSdf.glsl _samplePoolVoxel — returns the single positive sentinel
+    // (+kSdfSentinel) for any unallocated brick / out-of-grid / absent channel.
     float samplePoolVoxel(uint32_t channelBase, const glm::ivec3& gridCoord, int comp) const {
         if (channelBase == 0xFFFFFFFFu) return kSdfSentinel;
         const int bpa = m_bpaSdf;
@@ -525,13 +525,12 @@ private:
         const glm::ivec3 bc(gridCoord.x / 8, gridCoord.y / 8, gridCoord.z / 8);
         const glm::ivec3 voxelInBrick = gridCoord - bc * 8;
         const uint32_t flatLookup = gridToLookupIdx(bc, bpa);
-        if (flatLookup == 0xFFFFFFFFu) return kSdfSentinel;  // out of grid → exterior
+        if (flatLookup == 0xFFFFFFFFu) return kSdfSentinel;  // out of grid
         const uint32_t lookupBase = 0u * static_cast<uint32_t>(bpa) * bpa * bpa;  // octreeIdx 0
         const uint32_t lookupIdx = lookupBase + flatLookup;
         if (lookupIdx >= m_lookupCount) return kSdfSentinel;
         const uint32_t brickIdx = m_lookup[lookupIdx];
-        if (brickIdx == kBrickUnallocInterior) return -kSdfSentinel;  // interior empty
-        if (brickIdx == kBrickUnallocExterior) return  kSdfSentinel;  // exterior empty
+        if (brickIdx == kBrickUnalloc) return kSdfSentinel;  // unallocated brick
         const uint32_t voxelIdx = static_cast<uint32_t>(voxelInBrick.z * 64 + voxelInBrick.y * 8 + voxelInBrick.x);
         const uint32_t fi = m_poolBrickBase + brickIdx * m_brickStride + channelBase
                           + static_cast<uint32_t>(comp) * kVoxelsPerBrick + voxelIdx;
@@ -541,13 +540,9 @@ private:
     float sampleSdfVoxel(const glm::ivec3& gridCoord) const {
         return samplePoolVoxel(channelBaseFloats(SEM_SDF), gridCoord, 0);
     }
-    // 1:1 port of StoredSdf.glsl sampleSdfTrilinear — PLAIN trilinear blend of the 8
-    // SIGN-AWARE corners. A stencil straddling empty space blends to a large MAGNITUDE that
-    // marchBrickSdf detects (|d|>SENTINEL_D) and steps through. (A per-corner honest-corner
-    // reconstruction zeroes the CPU residual but REGRESSED the GPU — the reconstructed value
-    // is discontinuous across brick faces and the GPU's lower-precision blend turns that into
-    // fresh holes; the exact-CPU mirror does not reproduce it. We mirror the SHIPPED plain
-    // blend so the CPU residual honestly reflects the on-GPU march, per the authoritative gate.)
+    // 1:1 port of StoredSdf.glsl sampleSdfTrilinear — PLAIN trilinear blend of the 8 corners.
+    // An empty corner reads +kSdfSentinel, so a stencil straddling empty space blends to a
+    // large positive MAGNITUDE that marchBrickSdf detects (d>SENTINEL_D) and steps through.
     float sampleSdfTrilinear(const glm::vec3& gridPos) const {
         const glm::vec3 f = glm::fract(gridPos);
         const glm::ivec3 i = glm::ivec3(glm::floor(gridPos));
@@ -571,22 +566,19 @@ private:
     float sampleSdfTrilinearRaw(const glm::vec3& gridPos) const {
         return sampleSdfTrilinear(gridPos);
     }
-    // 1:1 port of StoredSdf.glsl sdfGradientStored — CLAMP each tap to ±CL voxels so a
-    // sentinel-contaminated tap contributes a bounded, correctly-signed push (sign-aware
-    // sentinels make the direction meaningful), keeping the normal well-conditioned even at
-    // a brick corner where multiple axes straddle empty space.
-    glm::vec3 sdfGradientStored(const glm::vec3& gridPos, const glm::vec3& fallbackDir) const {
-        const float h  = 0.5f;
-        const float CL = 2.0f;
-        glm::vec3 g(0.0f);
-        for (int ax = 0; ax < 3; ++ax) {
-            glm::vec3 e(0.0f); e[ax] = h;
-            const float sp = glm::clamp(sampleSdfTrilinear(gridPos + e), -CL, CL);
-            const float sm = glm::clamp(sampleSdfTrilinear(gridPos - e), -CL, CL);
-            g[ax] = (sp - sm);
-        }
+    // 1:1 port of StoredSdf.glsl sdfGradientStored — central-difference gradient of the
+    // trilinear SDF field (step h = 0.5 voxel), normalized outward.
+    glm::vec3 sdfGradientStored(const glm::vec3& gridPos) const {
+        const float h = 0.5f;
+        const float gx = sampleSdfTrilinear(gridPos + glm::vec3(h,0,0))
+                       - sampleSdfTrilinear(gridPos - glm::vec3(h,0,0));
+        const float gy = sampleSdfTrilinear(gridPos + glm::vec3(0,h,0))
+                       - sampleSdfTrilinear(gridPos - glm::vec3(0,h,0));
+        const float gz = sampleSdfTrilinear(gridPos + glm::vec3(0,0,h))
+                       - sampleSdfTrilinear(gridPos - glm::vec3(0,0,h));
+        glm::vec3 g(gx, gy, gz);
         const float len = glm::length(g);
-        return (len > 1e-6f) ? g / len : glm::normalize(fallbackDir + glm::vec3(0.0f, 1e-6f, 0.0f));
+        return (len > 1e-6f) ? g / len : glm::vec3(0.0f, 1.0f, 0.0f);
     }
 
     // ====================================================================
@@ -617,29 +609,20 @@ private:
         const glm::vec3 thi = glm::max(t0, t1);
         const float sMax = glm::max(glm::min(glm::min(thi.x, thi.y), thi.z), 0.0f);
 
-        const int   MAX_STEPS   = 96;
-        const float EPS         = 0.01f;
-        const float SENTINEL_D  = 100.0f;   // |d| above this ⇒ sentinel-contaminated
-        const float CONTAM_STEP = 0.5f;     // bounded step through contaminated space
-        const float EXIT_MARGIN = 1.0f;     // bounded overshoot past the brick exit (boundary straddle)
-        const float sLimit      = sMax + EXIT_MARGIN;
+        const int   MAX_STEPS  = 96;
+        const float EPS        = 0.01f;
+        const float SENTINEL_D = 100.0f;   // d above this ⇒ sentinel-contaminated stencil
 
-        // 1:1 port of StoredSdf.glsl marchBrickSdf. Sign-aware sentinels make a contaminated
-        // sample possibly large-NEGATIVE, so the contamination test (|d|>SENTINEL_D) runs
-        // BEFORE the d<EPS hit test — otherwise an interior-empty stencil straddle would
-        // register a FALSE hit at the brick face. The EXIT_MARGIN overshoot catches a crossing
-        // sitting a sub-voxel fraction past the exit face in the (allocated) neighbour brick.
+        // 1:1 port of StoredSdf.glsl marchBrickSdf. An unallocated-brick stencil reads the
+        // single positive sentinel, so a contaminated sample is large-positive (d>SENTINEL_D)
+        // and the 1/√3 Lipschitz step degrades to a bounded 1-voxel probe through it.
         float s = 0.0f;
         for (int i = 0; i < MAX_STEPS; ++i) {
-            if (s > sLimit) return false;
+            if (s > sMax) return false;
             const glm::vec3 p = gridEntry + gridDirN * s;
             const float d = sampleSdfTrilinear(p);
-            if (std::abs(d) > SENTINEL_D) {        // contaminated
-                if (s > sMax) return false;        // empty neighbour in the margin → stop
-                s += CONTAM_STEP; continue;
-            }
-            if (d < EPS) { hitNormal = sdfGradientStored(p, gridDirN); sHit = s; return true; }
-            s += glm::max(d * 0.5773503f, EPS);
+            if (d < EPS) { hitNormal = sdfGradientStored(p); sHit = s; return true; }
+            s += (d > SENTINEL_D) ? 1.0f : glm::max(d * 0.5773503f, EPS);
         }
         return false;
     }
@@ -759,8 +742,8 @@ inline void SdfMarchMirror::probeRay(const glm::vec3& rayOrigin, const glm::vec3
         float s=0.0f;
         for (int i=0;i<96;++i){ if(s>pr.sMax)break; const glm::vec3 p=pr.gridEntry+pr.gridDirN*s;
             const float d=sampleSdfTrilinear(p); pr.minD=glm::min(pr.minD,d); pr.steps=i+1;
-            if(std::abs(d)>100.0f){ s+=0.5f; continue; }   // contaminated → bounded step (sign-aware)
-            if(d<0.01f){pr.hit=true;break;} s+=glm::max(d*0.5773503f,0.01f); }
+            if(d<0.01f){pr.hit=true;break;}
+            s += (d>100.0f) ? 1.0f : glm::max(d*0.5773503f,0.01f); }   // contaminated → 1-voxel probe
         return pr;
     };
 
@@ -805,8 +788,8 @@ SdfMarchMirror::referenceMarch(const glm::vec3& rayOrigin, const glm::vec3& rayD
     for (float s = s0; s <= s1; s += step) {
         const glm::vec3 p = g0 + gridDirN * s;
         const float d = sampleSdfTrilinearRaw(p);   // RAW (sentinel-aware) — honest ground truth
-        if (std::abs(d) > 1e8f) continue;   // sentinel region (either sign): ignore — never
-                                            // treat a ±SENTINEL straddle as a real crossing
+        if (d > 1e8f) continue;   // positive-sentinel region: ignore — never treat a
+                                  // +SENTINEL straddle as a real crossing
         r.minD = glm::min(r.minD, d);
         if (d < 0.0f) { r.crossed = true; r.sCross = s; r.crossPos = p;
                         r.crossBrick = glm::ivec3(glm::floor(p / 8.0f)); return r; }
@@ -880,20 +863,17 @@ inline void SdfMarchMirror::dumpLeafSteps(const glm::vec3& rayOrigin, const glm:
                                          std::abs(gdN.z)>1e-8f?1.0f/gdN.z:1e20f);
                     const glm::vec3 t0=(bMin-gridEntry)*invD, t1=(bMax-gridEntry)*invD, thi=glm::max(t0,t1);
                     const float sMax = glm::max(glm::min(glm::min(thi.x,thi.y),thi.z),0.0f);
-                    const float sLimit = sMax + 1.0f;   // EXIT_MARGIN
-                    std::printf("   [STEPS esvoBrick=(%d,%d,%d) marchBrick=(%d,%d,%d)] gridEntry=(%.4f,%.4f,%.4f) sMax=%.4f sLimit=%.4f\n",
-                                eb.x,eb.y,eb.z, mb.x,mb.y,mb.z, gridEntry.x,gridEntry.y,gridEntry.z,sMax,sLimit);
+                    std::printf("   [STEPS esvoBrick=(%d,%d,%d) marchBrick=(%d,%d,%d)] gridEntry=(%.4f,%.4f,%.4f) sMax=%.4f\n",
+                                eb.x,eb.y,eb.z, mb.x,mb.y,mb.z, gridEntry.x,gridEntry.y,gridEntry.z,sMax);
                     float s=0.0f; float minD=1e30f;
                     for (int i=0;i<96;++i){
-                        if (s>sLimit){ std::printf("      EXIT s=%.4f>sLimit (minD=%.5f)\n", s, minD); break; }
+                        if (s>sMax){ std::printf("      EXIT s=%.4f>sMax (minD=%.5f)\n", s, minD); break; }
                         const glm::vec3 p=gridEntry+gdN*s; const float d=sampleSdfTrilinear(p);
-                        const bool contam = std::abs(d) > 100.0f;
+                        const bool contam = d > 100.0f;
                         minD = glm::min(minD, contam?minD:d);
-                        const float stepTaken = contam ? 0.5f : glm::max(d*0.5773503f,0.01f);
-                        std::printf("      i=%2d s=%.4f p=(%.3f,%.3f,%.3f) d=%.5f step=%.5f%s%s\n", i, s,
-                                    p.x,p.y,p.z, d, stepTaken,
-                                    (contam?"  [contam]":""), (s>sMax?"  [margin]":""));
-                        if (contam && s>sMax){ std::printf("      STOP: contaminated in margin\n"); break; }
+                        const float stepTaken = contam ? 1.0f : glm::max(d*0.5773503f,0.01f);
+                        std::printf("      i=%2d s=%.4f p=(%.3f,%.3f,%.3f) d=%.5f step=%.5f%s\n", i, s,
+                                    p.x,p.y,p.z, d, stepTaken, (contam?"  [contam]":""));
                         if (!contam && d<0.01f){ std::printf("      HIT at s=%.4f\n", s); break; }
                         s+=stepTaken;
                     }
@@ -1164,7 +1144,7 @@ TEST(StoredSdfMarchMirror, DiagFindExactMisses) {
     BakedScene scene = BakeScene(RECIPE_SPHERE, 0.0f, 0.0f);
     SdfMarchMirror mirror(scene.serialized);
     const AnalyticBody body = MakeAnalyticBody();
-    std::printf("[MISS] sign-aware march (default)\n");
+    std::printf("[MISS] single-sentinel march (default)\n");
 
     constexpr uint32_t kW = 256, kH = 256;
     const float R = 0.5f * kWorldGridSize * kRS;
@@ -1296,21 +1276,16 @@ static std::pair<long long,long long> OrbitSweep(SdfMarchMirror& mirror, const A
 }
 
 // ===========================================================================
-// FIX PROOF: across an orbit, the SIGN-AWARE march (the shipped default — signed
-// sentinels + contamination-first step + clamped gradient + exit margin) drives the
-// genuine step-over holes (interior rays where the reference fine-march confirms the
-// trilinear iso IS crossed but the per-brick march misses) DOWN BY >10× vs the pre-fix
-// baseline (117 smooth / 276 displaced on this orbit). This is the CPU SECONDARY check.
-//
-// It does not reach literally zero on CPU: the few residual cases are where the
-// iso-surface sits a sub-voxel fraction past a brick face whose neighbour stencil also
-// touches an interior-empty brick — there the PLAIN sign-aware blend has no honest
-// zero-crossing to catch (the −SENTINEL corner dominates). A per-corner reconstruction
-// CAN catch them on CPU but REGRESSED the lavapipe render (the authoritative gate), so we
-// ship the plain blend. Crucially these residual CPU cases do NOT manifest as holes at the
-// GPU render camera (lavapipe fillRatio 0.9879→0.9892, silhouette visually solid).
+// FIX PROOF: across an orbit, the single-positive-sentinel march (the shipped default)
+// COMBINED with the occupancy-based brick selection (commit 7db15496 — every active
+// brick, interior or shell, is allocated) drives the genuine step-over holes (interior
+// rays where the reference fine-march confirms the trilinear iso IS crossed but the
+// per-brick march misses) DOWN BY >5× vs the pre-fix baseline (117 smooth / 276 displaced
+// on this orbit). This is the CPU SECONDARY check; the occupancy fix — NOT a sign-aware
+// sentinel — is what makes a surface stencil never reach into an unallocated interior
+// brick. The authoritative check is the lavapipe render (silhouette visually solid).
 // ===========================================================================
-TEST(StoredSdfMarchMirror, SignAwareMarchRemovesHoles) {
+TEST(StoredSdfMarchMirror, OccupancyFixRemovesHoles) {
     BakedScene scene = BakeScene(RECIPE_SPHERE, 0.0f, 0.0f);
     SdfMarchMirror mirror(scene.serialized);
     const AnalyticBody body = MakeAnalyticBody();
@@ -1319,17 +1294,17 @@ TEST(StoredSdfMarchMirror, SignAwareMarchRemovesHoles) {
     const long long kBaselineSmooth = 117;   // pre-fix step-overs on this orbit (documented)
     long long deep = 0;
     auto sweep = OrbitSweep(mirror, body, 0.0f, views, &deep);
-    std::printf("[FIXPROOF] views=%d sign-aware march: holes=%lld / %lld (%.6f)  deep(interior)=%lld  "
-                "(baseline was %lld)\n",
+    std::printf("[FIXPROOF] views=%d single-sentinel march + occupancy fix: holes=%lld / %lld (%.6f)  "
+                "deep(interior)=%lld  (baseline was %lld)\n",
                 views, sweep.second, sweep.first, double(sweep.second)/sweep.first, deep, kBaselineSmooth);
     EXPECT_GT(sweep.first, 100000) << "orbit did not cover the interior";
     // Apples-to-apples: total reference-confirmed misses cut >5× vs baseline (the residual is
     // mostly thin-limb tangent-ray disagreement, a handful are deep-interior — see below).
     EXPECT_LT(sweep.second, kBaselineSmooth / 5)
-        << "sign-aware march did not cut step-overs >5× (was " << kBaselineSmooth << ")";
+        << "march + occupancy fix did not cut step-overs >5× (was " << kBaselineSmooth << ")";
     // The genuine "hole" metric — interior step-overs (not the limb band) — is near zero.
     EXPECT_LT(deep, 10)
-        << "more interior step-overs than the known plain-blend residual (baseline was ~117)";
+        << "more interior step-overs than expected with the occupancy fix (baseline was ~117)";
 
     // Same trend for the DISPLACED sphere (octree 1 in the render scene). Its bumpy surface
     // ≠ the analytic bounding sphere we filter with, so the bounding-sphere interior over-
@@ -1342,14 +1317,14 @@ TEST(StoredSdfMarchMirror, SignAwareMarchRemovesHoles) {
     long long dDeep = 0;
     auto dSweep = OrbitSweep(dmir, dbody, 0.0f, views, &dDeep);
     const double dDeepRate = double(dDeep) / double(dSweep.first);
-    std::printf("[FIXPROOF-DISP] sign-aware march: holes=%lld / %lld  deep(interior)=%lld (rate %.6f)\n",
+    std::printf("[FIXPROOF-DISP] single-sentinel march + occupancy fix: holes=%lld / %lld  deep(interior)=%lld (rate %.6f)\n",
                 dSweep.second, dSweep.first, dDeep, dDeepRate);
     EXPECT_LT(dDeepRate, 0.001)
         << "displaced-sphere interior step-over rate too high (" << dDeepRate << ")";
 }
 
 // ===========================================================================
-// DIAGNOSTIC: fillRatio + bodyPixel at the EXACT render-test front view (sign-aware
+// DIAGNOSTIC: fillRatio + bodyPixel at the EXACT render-test front view (single-sentinel
 // march). Mirrors RenderStoredSdfBodiesNoHoles' scanline metric. NOTE (per task): the
 // CPU mirror reads fillRatio ~1.0 here while the GPU reads ~0.988 — the front-view
 // residual is a GPU/SPIR-V float effect the exact-arithmetic CPU mirror does NOT
@@ -1377,7 +1352,7 @@ TEST(StoredSdfMarchMirror, DiagFrontViewFillRatio) {
         if (first>=0){ totalBody+=cnt; totalSpan+=(last-first+1); bodyPx+=cnt; }
     }
     const double fr = totalSpan ? double(totalBody)/double(totalSpan) : 0.0;
-    std::printf("[FRONTVIEW] sign-aware march: bodyPx=%d fillRatio=%.5f\n", bodyPx, fr);
+    std::printf("[FRONTVIEW] single-sentinel march: bodyPx=%d fillRatio=%.5f\n", bodyPx, fr);
     SUCCEED();
 }
 
@@ -1479,7 +1454,7 @@ TEST(StoredSdfMarchMirror, DiagProbeRays) {
 // GPU-VS-CPU DIVERGENCE PROBE — feed the EXACT pixels the GPU readback flagged
 // as holes (smooth body, octree 0, 512^2, front view) into the CPU mirror.
 // The GPU readback (test_body_instance_raymarch_render DEBUG_SdfHoleReadback)
-// reported these as sLimit-overrun misses with minD≈2.7-3.4 voxels (the surface
+// reported these as brick-exit-overrun misses with minD≈2.7-3.4 voxels (the surface
 // sits in the NEIGHBOUR brick the ESVO didn't reach). If the CPU mirror HITS the
 // same pixels, the divergence is GPU-execution (ESVO leaf enumeration under
 // 32-bit float) — NOT data/serialize. This pins WHERE the divergence lives.
@@ -1672,12 +1647,12 @@ TEST(StoredSdfMarchMirror, RootCause_DisplacedOctree1MultiOctree) {
 //
 // What we measure: for a DENSE set of true sphere-surface points, enumerate EVERY
 // trilinear/gradient tap corner. A tap is "contaminated" if sampleSdfVoxel(corner)
-// returns a sentinel (|v| > SENTINEL_D=100 — exactly marchBrickSdf's test). For each
+// returns the sentinel (v > SENTINEL_D=100 — exactly marchBrickSdf's test). For each
 // contaminated tap record (1) hitBrick = floor(hitGridPos/8) and whether it is a BAND
 // brick / an ACTIVE brick (recomputed IDENTICALLY to SdfBake.h); (2) the corner grid
 // pos and tapBrick = floor(corner/8); (3) chebyshevBrickDist(hitBrick, tapBrick);
-// (4) is tapBrick in-grid? in the bake's activeBrick[] set? what does the lookup return
-// (real / exterior 0xFFFFFFFF / interior 0xFFFFFFFE)?
+// (4) is tapBrick in-grid? in the bake's activeBrick[] set? does the lookup return a
+// real brick index or the single unallocated sentinel (0xFFFFFFFF)?
 //
 // Decision: dist==1 & tapBrick ACTIVE but lookup UNALLOC  ⇒ serialize/lookup bug
 //           dist==1 & tapBrick NOT active                 ⇒ dilation bug
@@ -1738,17 +1713,16 @@ TEST(StoredSdfMarchMirror, RootCause_SentinelContaminationOrigin) {
                 bpa, n, nBand, nActive, numBricks);
 
     // How many ACTIVE bricks does the lookup actually represent vs drop?
-    int activeButUnalloc=0, activeAlloc=0, activeUnallocInterior=0, activeUnallocExterior=0;
+    int activeButUnalloc=0, activeAlloc=0;
     for (int bz=0;bz<bpa;++bz) for (int by=0;by<bpa;++by) for (int bx=0;bx<bpa;++bx) {
         const glm::ivec3 b(bx,by,bz);
         if (!isActive(b)) continue;
         const uint32_t lk = mirror.lookupRaw(b);
-        if (lk == kBrickUnallocExterior)      { ++activeButUnalloc; ++activeUnallocExterior; }
-        else if (lk == kBrickUnallocInterior) { ++activeButUnalloc; ++activeUnallocInterior; }
-        else                                    ++activeAlloc;
+        if (isBrickUnallocated(lk)) ++activeButUnalloc;
+        else                        ++activeAlloc;
     }
-    std::printf("[RC] ACTIVE bricks: lookup-alloc=%d  lookup-UNALLOC=%d (interior=%d exterior=%d)\n",
-                activeAlloc, activeButUnalloc, activeUnallocInterior, activeUnallocExterior);
+    std::printf("[RC] ACTIVE bricks: lookup-alloc=%d  lookup-UNALLOC=%d\n",
+                activeAlloc, activeButUnalloc);
 
     // DIRECT CAUSE CHECK: querySolidVoxels() keeps a voxel only if Density>0. So a brick is
     // dropped from the octree (→ lookup UNALLOC) iff NONE of its 512 voxels has sd>0. Verify
@@ -1759,7 +1733,7 @@ TEST(StoredSdfMarchMirror, RootCause_SentinelContaminationOrigin) {
             const glm::ivec3 b(bx,by,bz);
             if (!isActive(b)) continue;
             const uint32_t lk = mirror.lookupRaw(b);
-            if (lk!=kBrickUnallocInterior && lk!=kBrickUnallocExterior) continue;
+            if (!isBrickUnallocated(lk)) continue;
             ++unallocBricks;
             int pos=0;
             for (int vz=0;vz<8;++vz) for (int vy=0;vy<8;++vy) for (int vx=0;vx<8;++vx) {
@@ -1778,7 +1752,7 @@ TEST(StoredSdfMarchMirror, RootCause_SentinelContaminationOrigin) {
     // ---- Dense sphere-surface points; enumerate every contaminated tap ----
     const float SENTINEL_D = 100.0f;
     const float h = 0.5f;   // sdfGradientStored tap offset (matches the shader)
-    auto contaminated = [&](const glm::ivec3& c){ return std::abs(mirror.sampleSdfVoxelPub(c)) > SENTINEL_D; };
+    auto contaminated = [&](const glm::ivec3& c){ return mirror.sampleSdfVoxelPub(c) > SENTINEL_D; };
 
     // Histogram over chebyshev brick distance (0..>=3) and the cross-tab.
     long long histDist[8] = {0};
@@ -1787,7 +1761,7 @@ TEST(StoredSdfMarchMirror, RootCause_SentinelContaminationOrigin) {
     long long xt_d1_active_alloc   = 0;   // dist==1, tapBrick ACTIVE & allocated (shouldn't be contaminated)
     long long xt_d0_any            = 0;   // dist==0 (same brick) contaminated (shouldn't happen)
     long long xt_dge2              = 0;   // dist>=2 (reach beyond margin)
-    long long tapInterior=0, tapExterior=0;   // sign of the contaminated lookup sentinel
+    long long tapUnalloc=0;               // contaminated taps whose lookup is the unalloc sentinel
     long long contamTaps=0, totalTaps=0, surfacePts=0;
     // For dist==0 contaminated taps: is the HIT brick itself allocated in the lookup?
     long long d0_hitBrickUnalloc=0, d0_hitBrickAlloc=0;
@@ -1832,20 +1806,18 @@ TEST(StoredSdfMarchMirror, RootCause_SentinelContaminationOrigin) {
                     const int d = cheby(hitBrick, tapBrick);
                     histDist[std::min(d,7)]++;
                     const uint32_t lk = mirror.lookupRaw(tapBrick);
-                    const bool unallocI = (lk==kBrickUnallocInterior);
-                    const bool unallocE = (lk==kBrickUnallocExterior);
-                    if (unallocI) ++tapInterior; if (unallocE) ++tapExterior;
+                    const bool tapUnallocated = isBrickUnallocated(lk);
+                    if (tapUnallocated) ++tapUnalloc;
                     const bool tapActive = isActive(tapBrick);
                     if (d==0) {
                         ++xt_d0_any;
-                        const uint32_t hlk = mirror.lookupRaw(hitBrick);
-                        if (hlk==kBrickUnallocInterior||hlk==kBrickUnallocExterior) ++d0_hitBrickUnalloc;
+                        if (isBrickUnallocated(mirror.lookupRaw(hitBrick))) ++d0_hitBrickUnalloc;
                         else ++d0_hitBrickAlloc;
                     }
                     else if (d==1) {
-                        if (tapActive && (unallocI||unallocE)) ++xt_d1_active_unalloc;
-                        else if (!tapActive)                   ++xt_d1_inactive;
-                        else                                    ++xt_d1_active_alloc;
+                        if (tapActive && tapUnallocated) ++xt_d1_active_unalloc;
+                        else if (!tapActive)             ++xt_d1_inactive;
+                        else                              ++xt_d1_active_alloc;
                     } else ++xt_dge2;
                     if (!countedHitBrickThisPt) {
                         countedHitBrickThisPt = true;
@@ -1863,8 +1835,7 @@ TEST(StoredSdfMarchMirror, RootCause_SentinelContaminationOrigin) {
     std::printf("[RC] chebyshev(hitBrick,tapBrick) histogram over CONTAMINATED taps:\n");
     for (int d=0; d<=4; ++d) std::printf("     dist==%d : %lld\n", d, histDist[d]);
     std::printf("     dist>=5 : %lld\n", histDist[5]+histDist[6]+histDist[7]);
-    std::printf("[RC] contaminated-tap sentinel sign: interior(-)=%lld  exterior(+)=%lld\n",
-                tapInterior, tapExterior);
+    std::printf("[RC] contaminated taps with unallocated-sentinel lookup: %lld\n", tapUnalloc);
     std::printf("[RC] cross-tab (CONTAMINATED taps):\n");
     std::printf("     dist==0 (same brick)                         : %lld  (hitBrick itself UNALLOC=%lld alloc=%lld)\n",
                 xt_d0_any, d0_hitBrickUnalloc, d0_hitBrickAlloc);

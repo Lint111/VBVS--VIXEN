@@ -183,11 +183,9 @@ TEST(SoaSdfSerialize, LookupAllocatedBricksRoundTrip) {
     }
 }
 
-// Every cell NOT in brickGridToBrickView must be one of the two "no brick"
-// sentinels — kBrickUnallocExterior (0xFFFFFFFF, SDF>0) or kBrickUnallocInterior
-// (0xFFFFFFFE, SDF<0). The sign-aware classification (Inc3 hole fix) tags deep-
-// interior empties as INTERIOR; both still mean "no allocated brick here", so the
-// invariant under test is: no allocated brickView index leaks into an empty cell.
+// Every cell NOT in brickGridToBrickView must be the single "no brick" sentinel
+// kBrickUnalloc (0xFFFFFFFF). The invariant under test is: no allocated brickView
+// index leaks into an empty cell.
 TEST(SoaSdfSerialize, LookupUnallocatedCellsSentinel) {
     SdfFixture f;
     SerializedOctree out = SerializeSdf(f.body);
@@ -216,25 +214,22 @@ TEST(SoaSdfSerialize, LookupUnallocatedCellsSentinel) {
     for (uint32_t i = 0; i < tableSize; ++i) {
         if (!allocated[i]) {
             EXPECT_TRUE(Vixen::SVO::isBrickUnallocated(lookup[i]))
-                << "unallocated cell [" << i << "] must be a 'no brick' sentinel "
-                << "(0xFFFFFFFF exterior or 0xFFFFFFFE interior), got " << lookup[i];
+                << "unallocated cell [" << i << "] must be the 'no brick' sentinel "
+                << "(0xFFFFFFFF), got " << lookup[i];
         }
     }
 }
 
-// Sign-aware classification (Inc3 hole fix): deep-interior empty bricks must be
-// tagged kBrickUnallocInterior, exterior empties kBrickUnallocExterior. Bakes the
-// RENDER-scene sphere (n=64, r=26, band=2.5 → bpa=8) whose CORE bricks are unallocated
-// (band+1 shell only), so the central cell is interior and a far-corner cell is
-// exterior — a decisive sign check. (The shared 16^3 fixture has bpa=2, too small to
-// have an interior brick distinct from the shell.)
-// Interior bricks of a signed-distance body are SELECTED BY OCCUPANCY (not density>0),
-// so every active brick — including fully-interior ones (all voxels sd<=0) — is allocated.
-// This is the brick-fleck root-cause fix: previously querySolidVoxels' density>0 filter
-// dropped all-interior bricks, leaving them unallocated (interior-sentinel) and corrupting
-// surface stencils that reached into them. Post-fix the interior is hole-free: only the
-// EXTERIOR empties remain (sign-tagged exterior). The interior-sentinel classification path
-// stays live for genuinely hollow shapes, but a solid sphere produces zero interior empties.
+// Occupancy-based brick selection (commit 7db15496 — the brick-fleck root-cause fix):
+// interior bricks of a signed-distance body are SELECTED BY OCCUPANCY (not density>0), so
+// every active brick — including fully-interior ones (all voxels sd<=0) — is allocated.
+// Previously querySolidVoxels' density>0 filter dropped all-interior bricks, leaving them
+// unallocated and corrupting surface stencils that reached into them. Post-fix every active
+// interior brick is allocated, so a surface stencil never reads an unallocated interior
+// brick — which is why the single positive sentinel suffices (no sign-aware sentinel needed).
+// Bakes the RENDER-scene sphere (n=64, r=26, band=2.5 → bpa=8) whose grid-corner cells are
+// unallocated exterior while the (solid) core is fully allocated — a decisive check. (The
+// shared 16^3 fixture has bpa=2, too small to have an interior brick distinct from the shell.)
 TEST(SoaSdfSerialize, InteriorBricksAllocatedNotDropped) {
     RecipeParams rp{26.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
     SdfBakeResult baked = BakeRecipeToSdfWorld(RECIPE_SPHERE, glm::vec3(32.0f), rp,
@@ -255,32 +250,29 @@ TEST(SoaSdfSerialize, InteriorBricksAllocatedNotDropped) {
         return static_cast<uint32_t>(z * bpa * bpa + y * bpa + x);
     };
 
-    int interior = 0, exterior = 0, allocated = 0;
+    int unallocated = 0, allocated = 0;
     for (uint32_t v : lookup) {
-        if (v == Vixen::SVO::kBrickUnallocInterior) ++interior;
-        else if (v == Vixen::SVO::kBrickUnallocExterior) ++exterior;
+        if (Vixen::SVO::isBrickUnallocated(v)) ++unallocated;
         else ++allocated;
     }
-    std::printf("[SIGNCLASS] bpa=%d allocated=%d interiorEmpty=%d exteriorEmpty=%d\n",
-                bpa, allocated, interior, exterior);
+    std::printf("[OCCUPANCY] bpa=%d allocated=%d unallocated=%d\n",
+                bpa, allocated, unallocated);
 
-    // ROOT-CAUSE FIX: no active brick is dropped, so NO interior brick is left empty.
-    EXPECT_EQ(interior, 0)
-        << "an interior brick was left unallocated — the density>0 drop regressed "
-           "(occupancy selection must keep all-interior bricks)";
-    EXPECT_GT(exterior, 0) << "expected some exterior empty bricks (grid corners)";
+    EXPECT_GT(allocated, 0) << "expected the solid-sphere shell+interior bricks to be allocated";
+    EXPECT_GT(unallocated, 0) << "expected some unallocated bricks (grid corners)";
 
-    // The grid CENTRE brick is deep inside the (solid) sphere → must now be ALLOCATED.
+    // The grid CENTRE brick is deep inside the (solid) sphere → must be ALLOCATED. (Pre-fix
+    // the density>0 filter dropped it — this is the regression guard for the occupancy fix.)
     const int c = bpa / 2;
     const uint32_t centre = lookup[flatOf(c, c, c)];
     EXPECT_FALSE(Vixen::SVO::isBrickUnallocated(centre))
         << "the solid-sphere grid-centre brick must be ALLOCATED (interior no longer dropped)";
 
-    // A grid CORNER brick is far outside → still empty, tagged EXTERIOR (sign path intact).
+    // A grid CORNER brick is far outside → unallocated, carrying the single sentinel.
     const uint32_t corner = lookup[flatOf(0, 0, 0)];
     ASSERT_TRUE(Vixen::SVO::isBrickUnallocated(corner)) << "corner brick should be empty";
-    EXPECT_EQ(corner, Vixen::SVO::kBrickUnallocExterior)
-        << "the far-corner brick must be tagged EXTERIOR (SDF>0)";
+    EXPECT_EQ(corner, Vixen::SVO::kBrickUnalloc)
+        << "an unallocated brick must carry the single 'no brick' sentinel (0xFFFFFFFF)";
 }
 
 // ---------------------------------------------------------------------------
