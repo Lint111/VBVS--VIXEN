@@ -211,6 +211,16 @@ public:
         if (fl == 0xFFFFFFFFu || fl >= m_lookupCount) return false;
         return m_lookup[fl] != 0xFFFFFFFFu;
     }
+    // Diagnostic accessors (root-cause probe): the RAW lookup value at a brick coord
+    // (0xFFFFFFFF exterior / 0xFFFFFFFE interior / else a real brick index), the grid
+    // side, and a single SDF-channel pool read at a grid voxel (sign-aware sentinel).
+    int      bpaSdf() const { return m_bpaSdf; }
+    uint32_t lookupRaw(const glm::ivec3& b) const {
+        const uint32_t fl = gridToLookupIdx(b, m_bpaSdf);
+        if (fl == 0xFFFFFFFFu || fl >= m_lookupCount) return 0xFFFFFFFFu;  // out of grid → exterior
+        return m_lookup[fl];
+    }
+    float sampleSdfVoxelPub(const glm::ivec3& gridCoord) const { return sampleSdfVoxel(gridCoord); }
     // Did the ESVO traversal visit a leaf whose brick == `want` for this ray?
     bool esvoVisitsBrick(const glm::vec3& rayOrigin, const glm::vec3& rayDirIn, const glm::ivec3& want) const;
 
@@ -1647,5 +1657,223 @@ TEST(StoredSdfMarchMirror, RootCause_DisplacedOctree1MultiOctree) {
         std::printf("  jitter=%.0e  floorBrick holes=%lld/%lld   esvoBrick holes=%lld/%lld\n",
                     j, fres.second, fres.first, eres.second, eres.first);
     }
+    SUCCEED();
+}
+
+// ===========================================================================
+// ROOT-CAUSE DATA PROBE (report-only): resolve the "sentinel contamination is
+// IMPOSSIBLE" contradiction with numbers.
+//
+// Claim under test: a surface-hit stencil (sampleSdfTrilinear at hit, and the ±0.5
+// gradient taps) should NEVER read an unallocated brick, because the bake marks every
+// band brick AND dilates the active set by a 26-connected 1-brick margin AND fully
+// populates every active brick. So every tap (reach ≤ ~2 voxels from a band brick)
+// should land in an allocated brick.
+//
+// What we measure: for a DENSE set of true sphere-surface points, enumerate EVERY
+// trilinear/gradient tap corner. A tap is "contaminated" if sampleSdfVoxel(corner)
+// returns a sentinel (|v| > SENTINEL_D=100 — exactly marchBrickSdf's test). For each
+// contaminated tap record (1) hitBrick = floor(hitGridPos/8) and whether it is a BAND
+// brick / an ACTIVE brick (recomputed IDENTICALLY to SdfBake.h); (2) the corner grid
+// pos and tapBrick = floor(corner/8); (3) chebyshevBrickDist(hitBrick, tapBrick);
+// (4) is tapBrick in-grid? in the bake's activeBrick[] set? what does the lookup return
+// (real / exterior 0xFFFFFFFF / interior 0xFFFFFFFE)?
+//
+// Decision: dist==1 & tapBrick ACTIVE but lookup UNALLOC  ⇒ serialize/lookup bug
+//           dist==1 & tapBrick NOT active                 ⇒ dilation bug
+//           dist>=2                                        ⇒ reach exceeds the margin
+// ===========================================================================
+TEST(StoredSdfMarchMirror, RootCause_SentinelContaminationOrigin) {
+    // SAME bake the render uses: octree 0 of the concatenated demo (smooth sphere).
+    ConcatScene demo = BakeConcatDemo();
+    ASSERT_EQ(demo.cat.count, 3u);
+    SerializedOctree view0 = ViewConcatOctree(demo, 0u);
+    SdfMarchMirror mirror(view0);
+
+    const int   bpa       = mirror.bpaSdf();
+    const int   n         = bpa * 8;                 // grid side in voxels
+    const int   brickSide = 8;
+    const float band      = kSdfBand;                // 2.5
+    const glm::vec3 center(kSdfCenter);              // (32,32,32)
+    RecipeParams rp{}; rp.radius = kSdfRadius; rp.displaceAmp = 0.0f; rp.displaceFreq = 0.0f;
+    ASSERT_GT(bpa, 0);
+
+    // ---- Recompute the bake's band/active sets EXACTLY as SdfBake.h (lines 79-120) ----
+    const int bricksPerAxis = (n + brickSide - 1) / brickSide;   // == bpa
+    auto brickIndex = [&](int bx, int by, int bz) {
+        return (bz * bricksPerAxis + by) * bricksPerAxis + bx;
+    };
+    const size_t numBricks = static_cast<size_t>(bricksPerAxis) * bricksPerAxis * bricksPerAxis;
+    std::vector<uint8_t> bandBrick(numBricks, 0u), activeBrick(numBricks, 0u);
+    for (int z = 0; z < n; ++z)
+      for (int y = 0; y < n; ++y)
+        for (int x = 0; x < n; ++x) {
+            const float sd = evalSdf(RECIPE_SPHERE,
+                glm::vec3(float(x), float(y), float(z)), center, rp);
+            if (std::abs(sd) <= band)
+                bandBrick[brickIndex(x/brickSide, y/brickSide, z/brickSide)] = 1u;
+        }
+    for (int bz = 0; bz < bricksPerAxis; ++bz)
+      for (int by = 0; by < bricksPerAxis; ++by)
+        for (int bx = 0; bx < bricksPerAxis; ++bx) {
+            bool touches = false;
+            for (int dz=-1; dz<=1 && !touches; ++dz)
+              for (int dy=-1; dy<=1 && !touches; ++dy)
+                for (int dx=-1; dx<=1 && !touches; ++dx) {
+                    const int nx=bx+dx, ny=by+dy, nz=bz+dz;
+                    if (nx<0||ny<0||nz<0||nx>=bricksPerAxis||ny>=bricksPerAxis||nz>=bricksPerAxis) continue;
+                    if (bandBrick[brickIndex(nx,ny,nz)]) touches = true;
+                }
+            if (touches) activeBrick[brickIndex(bx,by,bz)] = 1u;
+        }
+    auto inGrid    = [&](const glm::ivec3& b){ return b.x>=0&&b.y>=0&&b.z>=0&&b.x<bpa&&b.y<bpa&&b.z<bpa; };
+    auto isActive  = [&](const glm::ivec3& b){ return inGrid(b) && activeBrick[brickIndex(b.x,b.y,b.z)]!=0u; };
+    auto isBand    = [&](const glm::ivec3& b){ return inGrid(b) && bandBrick  [brickIndex(b.x,b.y,b.z)]!=0u; };
+    auto cheby     = [](const glm::ivec3& a, const glm::ivec3& b){
+        return std::max(std::max(std::abs(a.x-b.x), std::abs(a.y-b.y)), std::abs(a.z-b.z)); };
+
+    // Sanity counts.
+    int nBand=0,nActive=0; for (size_t i=0;i<numBricks;++i){ nBand+=bandBrick[i]; nActive+=activeBrick[i]; }
+    std::printf("[RC] bpa=%d n=%d  bandBricks=%d activeBricks=%d (numBricks=%zu)\n",
+                bpa, n, nBand, nActive, numBricks);
+
+    // How many ACTIVE bricks does the lookup actually represent vs drop?
+    int activeButUnalloc=0, activeAlloc=0, activeUnallocInterior=0, activeUnallocExterior=0;
+    for (int bz=0;bz<bpa;++bz) for (int by=0;by<bpa;++by) for (int bx=0;bx<bpa;++bx) {
+        const glm::ivec3 b(bx,by,bz);
+        if (!isActive(b)) continue;
+        const uint32_t lk = mirror.lookupRaw(b);
+        if (lk == kBrickUnallocExterior)      { ++activeButUnalloc; ++activeUnallocExterior; }
+        else if (lk == kBrickUnallocInterior) { ++activeButUnalloc; ++activeUnallocInterior; }
+        else                                    ++activeAlloc;
+    }
+    std::printf("[RC] ACTIVE bricks: lookup-alloc=%d  lookup-UNALLOC=%d (interior=%d exterior=%d)\n",
+                activeAlloc, activeButUnalloc, activeUnallocInterior, activeUnallocExterior);
+
+    // DIRECT CAUSE CHECK: querySolidVoxels() keeps a voxel only if Density>0. So a brick is
+    // dropped from the octree (→ lookup UNALLOC) iff NONE of its 512 voxels has sd>0. Verify
+    // every active-but-unalloc brick has exactly zero positive-SDF voxels (all interior/zero).
+    {
+        int unallocBricks=0, unallocBricksWithPositive=0, maxPosInUnalloc=0;
+        for (int bz=0;bz<bpa;++bz) for (int by=0;by<bpa;++by) for (int bx=0;bx<bpa;++bx) {
+            const glm::ivec3 b(bx,by,bz);
+            if (!isActive(b)) continue;
+            const uint32_t lk = mirror.lookupRaw(b);
+            if (lk!=kBrickUnallocInterior && lk!=kBrickUnallocExterior) continue;
+            ++unallocBricks;
+            int pos=0;
+            for (int vz=0;vz<8;++vz) for (int vy=0;vy<8;++vy) for (int vx=0;vx<8;++vx) {
+                const glm::vec3 p(float(bx*8+vx), float(by*8+vy), float(bz*8+vz));
+                if (evalSdf(RECIPE_SPHERE, p, center, rp) > 0.0f) ++pos;
+            }
+            if (pos>0) { ++unallocBricksWithPositive; maxPosInUnalloc=std::max(maxPosInUnalloc,pos); }
+        }
+        std::printf("[RC] active-but-UNALLOC bricks=%d  of those WITH any positive-SDF voxel=%d "
+                    "(max positive voxels in any=%d)\n",
+                    unallocBricks, unallocBricksWithPositive, maxPosInUnalloc);
+        std::printf("[RC]   => if WITH-positive==0, the Density>0 filter in querySolidVoxels() "
+                    "dropped every fully-interior active brick (root cause).\n");
+    }
+
+    // ---- Dense sphere-surface points; enumerate every contaminated tap ----
+    const float SENTINEL_D = 100.0f;
+    const float h = 0.5f;   // sdfGradientStored tap offset (matches the shader)
+    auto contaminated = [&](const glm::ivec3& c){ return std::abs(mirror.sampleSdfVoxelPub(c)) > SENTINEL_D; };
+
+    // Histogram over chebyshev brick distance (0..>=3) and the cross-tab.
+    long long histDist[8] = {0};
+    long long xt_d1_active_unalloc = 0;   // dist==1, tapBrick ACTIVE, lookup UNALLOC  → serialize/lookup bug
+    long long xt_d1_inactive       = 0;   // dist==1, tapBrick NOT active              → dilation bug
+    long long xt_d1_active_alloc   = 0;   // dist==1, tapBrick ACTIVE & allocated (shouldn't be contaminated)
+    long long xt_d0_any            = 0;   // dist==0 (same brick) contaminated (shouldn't happen)
+    long long xt_dge2              = 0;   // dist>=2 (reach beyond margin)
+    long long tapInterior=0, tapExterior=0;   // sign of the contaminated lookup sentinel
+    long long contamTaps=0, totalTaps=0, surfacePts=0;
+    // For dist==0 contaminated taps: is the HIT brick itself allocated in the lookup?
+    long long d0_hitBrickUnalloc=0, d0_hitBrickAlloc=0;
+    // Of contaminated taps: is hitBrick a band brick? (it must be, for a real surface hit)
+    long long hitBrickBand=0, hitBrickActiveNotBand=0, hitBrickInactive=0;
+
+    // March the true sphere surface on a fine angular grid (theta,phi), at radius kSdfRadius.
+    constexpr float kPi = 3.14159265358979323846f;
+    const int kTheta = 360, kPhi = 720;
+    for (int it=0; it<kTheta; ++it) {
+        const float theta = kPi * (it + 0.5f) / kTheta;                   // [0,pi]
+        for (int ip=0; ip<kPhi; ++ip) {
+            const float phi = 2.0f*kPi * ip / kPhi;                       // [0,2pi)
+            const glm::vec3 dir(std::sin(theta)*std::cos(phi),
+                                std::sin(theta)*std::sin(phi),
+                                std::cos(theta));
+            const glm::vec3 hitGrid = center + dir * kSdfRadius;          // on the iso (grid voxel space)
+            if (hitGrid.x<0||hitGrid.y<0||hitGrid.z<0||hitGrid.x>=n||hitGrid.y>=n||hitGrid.z>=n) continue;
+            ++surfacePts;
+            const glm::ivec3 hitBrick = glm::ivec3(glm::floor(hitGrid / 8.0f));
+
+            // Enumerate the exact tap set marchBrickSdf+sdfGradientStored use at a hit:
+            //   the hit-point trilinear, and the 6 gradient taps (hit ± h along each axis).
+            glm::vec3 taps[7];
+            taps[0] = hitGrid;
+            int nt = 1;
+            for (int ax=0; ax<3; ++ax) {
+                glm::vec3 e(0.0f); e[ax] = h;
+                taps[nt++] = hitGrid + e;
+                taps[nt++] = hitGrid - e;
+            }
+            bool countedHitBrickThisPt = false;
+            for (int ti=0; ti<nt; ++ti) {
+                const glm::vec3 q = taps[ti];
+                const glm::ivec3 base = glm::ivec3(glm::floor(q));
+                for (int corner=0; corner<8; ++corner) {
+                    const glm::ivec3 c = base + glm::ivec3(corner&1,(corner>>1)&1,(corner>>2)&1);
+                    ++totalTaps;
+                    if (!contaminated(c)) continue;
+                    ++contamTaps;
+                    const glm::ivec3 tapBrick = glm::ivec3(c.x/8, c.y/8, c.z/8);  // floor (c>=0)
+                    const int d = cheby(hitBrick, tapBrick);
+                    histDist[std::min(d,7)]++;
+                    const uint32_t lk = mirror.lookupRaw(tapBrick);
+                    const bool unallocI = (lk==kBrickUnallocInterior);
+                    const bool unallocE = (lk==kBrickUnallocExterior);
+                    if (unallocI) ++tapInterior; if (unallocE) ++tapExterior;
+                    const bool tapActive = isActive(tapBrick);
+                    if (d==0) {
+                        ++xt_d0_any;
+                        const uint32_t hlk = mirror.lookupRaw(hitBrick);
+                        if (hlk==kBrickUnallocInterior||hlk==kBrickUnallocExterior) ++d0_hitBrickUnalloc;
+                        else ++d0_hitBrickAlloc;
+                    }
+                    else if (d==1) {
+                        if (tapActive && (unallocI||unallocE)) ++xt_d1_active_unalloc;
+                        else if (!tapActive)                   ++xt_d1_inactive;
+                        else                                    ++xt_d1_active_alloc;
+                    } else ++xt_dge2;
+                    if (!countedHitBrickThisPt) {
+                        countedHitBrickThisPt = true;
+                        if (isBand(hitBrick)) ++hitBrickBand;
+                        else if (isActive(hitBrick)) ++hitBrickActiveNotBand;
+                        else ++hitBrickInactive;
+                    }
+                }
+            }
+        }
+    }
+
+    std::printf("\n[RC] surface points sampled=%lld  taps=%lld  contaminated taps=%lld (%.4f%%)\n",
+                surfacePts, totalTaps, contamTaps, 100.0*double(contamTaps)/double(std::max<long long>(1,totalTaps)));
+    std::printf("[RC] chebyshev(hitBrick,tapBrick) histogram over CONTAMINATED taps:\n");
+    for (int d=0; d<=4; ++d) std::printf("     dist==%d : %lld\n", d, histDist[d]);
+    std::printf("     dist>=5 : %lld\n", histDist[5]+histDist[6]+histDist[7]);
+    std::printf("[RC] contaminated-tap sentinel sign: interior(-)=%lld  exterior(+)=%lld\n",
+                tapInterior, tapExterior);
+    std::printf("[RC] cross-tab (CONTAMINATED taps):\n");
+    std::printf("     dist==0 (same brick)                         : %lld  (hitBrick itself UNALLOC=%lld alloc=%lld)\n",
+                xt_d0_any, d0_hitBrickUnalloc, d0_hitBrickAlloc);
+    std::printf("     dist==1 & tapBrick ACTIVE & lookup UNALLOC    : %lld   <- serialize/lookup bug\n", xt_d1_active_unalloc);
+    std::printf("     dist==1 & tapBrick NOT active                 : %lld   <- dilation bug\n", xt_d1_inactive);
+    std::printf("     dist==1 & tapBrick ACTIVE & allocated         : %lld\n", xt_d1_active_alloc);
+    std::printf("     dist>=2 (reach beyond 1-brick margin)         : %lld   <- reach model wrong\n", xt_dge2);
+    std::printf("[RC] of contaminated-tap hitBricks: band=%lld activeNotBand=%lld inactive=%lld\n",
+                hitBrickBand, hitBrickActiveNotBand, hitBrickInactive);
+
     SUCCEED();
 }
