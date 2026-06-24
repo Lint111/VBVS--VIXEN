@@ -364,6 +364,23 @@ float rough  = sampleChannelScalarTrilinear(SEM_ROUGHNESS, gridHit); // default 
   visible in the render. `fillRatio` is byte-identical to the Inc2 baseline and the SDF march is unchanged, so
   these are the project's known/deferred "shell-octree artifacts" render-quality item, out of Inc3 scope.
 
+- **Inc3 hole-fix (post-M4): brick-fleck artifacts root-caused + fixed + merged** · commits `c390d737..f1bb2d74` · 2026-06-24
+  — User flagged consistent brick-grid-aligned holes/flecks on the rendered Stored bodies (real GPU + lavapipe). Root cause
+  (proven by a CPU march-mirror + GPU readback — `StoredSdfMarchMirror.RootCause_SentinelContaminationOrigin`):
+  **`GaiaVoxelWorld::querySolidVoxels()` keeps a voxel only if `Density > 0`, but a Stored-SDF body's `Density` IS the
+  signed distance (negative INSIDE)** → every fully-interior brick (all voxels sd≤0) was dropped from the octree → absent
+  from BOTH `brickGridLookup` and the `channelPool` → surface trilinear/gradient stencils reaching those dropped interior
+  neighbours read the unallocated sentinel → the flecks. (Octree 0: 508 active bricks, **72 interior dropped**, 101,206
+  contaminated taps.) Earlier sign-aware-sentinel + honest-tap-gradient attempts were whack-a-mole (they patched the
+  sentinel CONSUMERS — march, normal, color — not the dropped-brick cause). **Fix (`7db15496`, cleanly scoped, binary path
+  byte-unchanged):** `GaiaVoxelWorld::queryOccupiedVoxels()` (occupancy, sign-agnostic) + `LaineKarrasOctree::setSignedDistanceField(true)`
+  so the SDF-body rebuild bins bricks by OCCUPANCY not density>0; `BuildSdfBodyOctree` sets it. The interim sign-aware
+  sentinel band-aids (`92c9a5c2`/`9c79edc2`) were then removed as dead code (`f1bb2d74`) — restored the single-positive-sentinel
+  baseline. Verified: contaminated taps **101206→0**, all 508 bricks allocated; lavapipe smooth+displaced **CLEAN**
+  (controller read the PNGs); binary no-regression (multikind 21743/17804/21743); `test_soa_sdf_serialize` 11/11, mirror 12/12.
+  FF-merged to main (`main → f1bb2d74`). **Durable gotcha:** the "solid = Density>0" occupancy contract is a BINARY-voxel
+  assumption; any signed-distance/Density-as-field body must select bricks by occupancy, or interior bricks vanish.
+
 ## Self-Review
 
 **Spec coverage:** §3 pool → M2 T3; §4 descriptor+fieldKind → M1 T2; §5 schema-driven pack → M2 T3;
