@@ -33,12 +33,13 @@
 > Persisted for the context-manager pipeline (2026-06-26). Two milestones, sequential. VIXEN-only, branch `feat/sdf-recipe-codegen-p2`.
 
 - [x] **M1 `[VIXEN]` — Instruction→HLSL emitter + compile gate (Task 1).** CPU/compile, low-risk. Gate: `test_recipe_codegen` green — emits straight-line `sdfRecipe` for sphere∪sphere + the full shader compiles to valid SPIR-V via the HLSL path. Implementer **Sonnet**.
-- [ ] **M2 `[VIXEN]` — Standalone compute sphere-trace render (Tasks 2–3).** Gate: `RenderProceduralRecipe` renders a recipe SOLID on lavapipe (bodyPixels > threshold) + controller/validator reads the PNG (smooth procedural peanut); existing render tests untouched. Implementer **Sonnet**.
+- [x] **M2 `[VIXEN]` — Standalone compute sphere-trace render (Tasks 2–3).** Gate: `RenderProceduralRecipe` renders a recipe SOLID on lavapipe (bodyPixels > threshold) + controller/validator reads the PNG (smooth procedural peanut); existing render tests untouched. Implementer **Sonnet**.
 
 Validators: **Opus** per milestone (M2 reads the PNG + tamper-checks). Controller: Opus, thin.
 
 ## Progress Log
 
+- **M2 `[VIXEN]` (Tasks 2–3): DONE** · commits `7adde399` (render) + `927c2e71` (robustness fix) · Opus validator APPROVED, **tamper-verified** (spheres apart → 105048→12140 px, separated lobes → restored) · 2026-06-27 — standalone 1-binding compute (VK 1.3 + `shaderStorageImageWriteWithoutFormat`) compiles the M1-emitted recipe HLSL → sphere-traces **live** → smooth analytic **peanut** (`bodyPixels=105048`); controller read `/tmp/glsl_recipe_procedural.png` (smooth two-lobe, zero voxel/brick stepping — distinct from P2.1's baked peanut). Emitter `cbuffer`→`[[vk::push_constant]]` (binding-collision fix). No-regression: `RenderStoredSdfBodiesNoHoles` + `RenderRecipeBakedBody` green. **Robustness fix (shared P0 HLSL path):** dropped the unconditional `setEnvTargetHlslFunctionality1()` in `ShaderCompiler.cpp` → portable extension-free SPIR-V; `VUID-VkShaderModuleCreateInfo-pCode-08742` gone (real-GPU-safe; before/after validation evidence captured). **P2.2 COMPLETE.**
 - **M1 `[VIXEN]` (Task 1): DONE** · commit `353b4080` · Opus validator APPROVED, **tamper-verified** (3-sphere/2-union recipe → correct straight-line chain; injected undeclared var → compile FAILED → restored) · 2026-06-26 — header-only `EmitProceduralComputeShader` (data-driven straight-line, mirrors `evalRecipe`); the trace-`main` HLSL template compiles clean through glslang's HLSL frontend **as-is** (`RWTexture2D`/`GetDimensions`/`cbuffer`/`numthreads`); `test_recipe_codegen` green (valid SPIR-V). **Notes for M2:** default-case silently drops unknown opcodes (fine for Sphere/Union); the `cbuffer PC` (76 B) + `RWTexture2D@u0` is the contract M2's push-const + binding-0 must match; M2's real risk is descriptor/**feature plumbing** (`shaderStorageImageWriteWithoutFormat` + VK 1.3), NOT shader source.
 
 ---
