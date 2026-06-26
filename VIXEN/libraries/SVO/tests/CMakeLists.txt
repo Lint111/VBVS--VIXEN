@@ -181,6 +181,18 @@ endif()
 gtest_discover_tests(test_sdf_bake)
 
 # ===========================================================================
+# Recipe Eval Parity Tests (P0 T4 — CPU stack-VM parity vs analytic golden)
+# ===========================================================================
+add_executable(test_recipe_eval_parity test_recipe_eval_parity.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_recipe_eval_parity PRIVATE GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_recipe_eval_parity PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_recipe_eval_parity PROPERTIES FOLDER "Tests/SVO Tests")
+gtest_discover_tests(test_recipe_eval_parity)
+
+# ===========================================================================
 # Sampler Tests
 # ===========================================================================
 # Tests NoiseSampler, SDFSampler, HeightmapSampler
