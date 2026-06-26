@@ -33,13 +33,13 @@
 
 > Persisted for the context-manager pipeline (2026-06-26). One milestone; runs autonomously. Yeroket-only.
 
-- [ ] **M1 `[YEROKET]` — Real AST visitors (Tasks 1–5).** Repo `/home/liory/Github/Yeroket-Fantasy`, branch `feat/kernel-codegen-p1`. Implementer: **Sonnet**. Gate: `~/.dotnet/dotnet test Tests/SDFNodeGenerator.Tests.csproj` green — `Sphere`/`Union` C++/HLSL byte-identical to P0 + new `SmoothUnion` multi-statement golden passes (C++ & HLSL) + 0 new failures; rebuilt DLL committed.
+- [x] **M1 `[YEROKET]` — Real AST visitors (Tasks 1–5).** Repo `/home/liory/Github/Yeroket-Fantasy`, branch `feat/kernel-codegen-p1`. Implementer: **Sonnet**. Gate: `~/.dotnet/dotnet test Tests/SDFNodeGenerator.Tests.csproj` green — `Sphere`/`Union` C++/HLSL byte-identical to P0 + new `SmoothUnion` multi-statement golden passes (C++ & HLSL) + 0 new failures; rebuilt DLL committed.
 
 Validator: **Opus** (fix-loop cap 3), tamper-check the multi-statement golden. Controller (me): Opus, thin.
 
 ## Progress Log
 
-_(controller appends one line per completed milestone)_
+- **M1 `[YEROKET]` (Tasks 1–5): DONE** · commits `806efaed`..`c2d91c85` · Opus validator APPROVED, **tamper-verified** (broke saturate→clamp ⇒ C++ golden failed; reverted `MapType` ⇒ HLSL byte-diff test red-on-bug/green-on-fix) · 2026-06-26 — real AST codegen on both backends: C++ via new `CppAstVisitor`, HLSL via the existing `HLSLVisitor` (additive `EmitCallableFunction`/`ToHLSLCallable`; `EmitFunction` untouched); P0 regex path **deleted**; multi-statement `SmoothUnion` proven. Validation caught a real HLSL-regen bug — `HLSLVisitor.MapType` leaked `Unity.Mathematics.float3` (FQN) → root-cause namespace-strip fix; regen now **byte-identical** to the committed P0 artifacts, auto-guarded by referenced-assembly tests (the inline golden structurally couldn't catch it). Suite 87/4 (4 pre-existing, 0 new); DLL rebuilt+committed. **VIXEN needs no re-vendoring. P1 COMPLETE.** Deferred (unchanged): manifest, opcode layering, conformance export (add when P2/P4 need them). **P2 next** = core opcode catalog + VIXEN runtime/bake.
 
 ---
 
