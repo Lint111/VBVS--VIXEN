@@ -32,14 +32,14 @@
 
 > Persisted for the context-manager pipeline (2026-06-26). Two milestones, sequential. VIXEN-only, branch `feat/sdf-recipe-codegen-p2`.
 
-- [ ] **M1 `[VIXEN]` — Instruction→HLSL emitter + compile gate (Task 1).** CPU/compile, low-risk. Gate: `test_recipe_codegen` green — emits straight-line `sdfRecipe` for sphere∪sphere + the full shader compiles to valid SPIR-V via the HLSL path. Implementer **Sonnet**.
+- [x] **M1 `[VIXEN]` — Instruction→HLSL emitter + compile gate (Task 1).** CPU/compile, low-risk. Gate: `test_recipe_codegen` green — emits straight-line `sdfRecipe` for sphere∪sphere + the full shader compiles to valid SPIR-V via the HLSL path. Implementer **Sonnet**.
 - [ ] **M2 `[VIXEN]` — Standalone compute sphere-trace render (Tasks 2–3).** Gate: `RenderProceduralRecipe` renders a recipe SOLID on lavapipe (bodyPixels > threshold) + controller/validator reads the PNG (smooth procedural peanut); existing render tests untouched. Implementer **Sonnet**.
 
 Validators: **Opus** per milestone (M2 reads the PNG + tamper-checks). Controller: Opus, thin.
 
 ## Progress Log
 
-_(controller appends one line per completed milestone)_
+- **M1 `[VIXEN]` (Task 1): DONE** · commit `353b4080` · Opus validator APPROVED, **tamper-verified** (3-sphere/2-union recipe → correct straight-line chain; injected undeclared var → compile FAILED → restored) · 2026-06-26 — header-only `EmitProceduralComputeShader` (data-driven straight-line, mirrors `evalRecipe`); the trace-`main` HLSL template compiles clean through glslang's HLSL frontend **as-is** (`RWTexture2D`/`GetDimensions`/`cbuffer`/`numthreads`); `test_recipe_codegen` green (valid SPIR-V). **Notes for M2:** default-case silently drops unknown opcodes (fine for Sphere/Union); the `cbuffer PC` (76 B) + `RWTexture2D@u0` is the contract M2's push-const + binding-0 must match; M2's real risk is descriptor/**feature plumbing** (`shaderStorageImageWriteWithoutFormat` + VK 1.3), NOT shader source.
 
 ---
 
