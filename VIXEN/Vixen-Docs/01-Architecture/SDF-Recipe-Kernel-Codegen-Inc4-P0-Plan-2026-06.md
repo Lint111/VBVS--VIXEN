@@ -24,13 +24,14 @@
 > Persisted by post-brainstorm-context-manager (2026-06-26). On resume, reuse this grouping verbatim — do NOT re-segment. Milestones run sequentially; M2 consumes M1's artifacts.
 
 - [x] **M1 `[YEROKET]` — Generator C++ backend (Tasks 1–2 + emit artifacts to disk).** Repo `/home/liory/Github/Yeroket-Fantasy`, branch `feat/kernel-cpp-emitter`. Implementer: **Sonnet**. Gate: `~/.dotnet/dotnet test Tests/SDFNodeGenerator.Tests.csproj` green (incl. new `CppEmitterTests`); generated `SdfCoreKernels.g.hpp` + `SdfCoreKernels.hlsl` written to disk via **pure dotnet, no Unity**.
-- [ ] **M2 `[VIXEN]` — Consumer + parity + HLSL ingest (Tasks 3–5).** Worktree `…/sdf-recipe-codegen-p0`, branch `feat/sdf-recipe-codegen-p0`. Implementer: **Sonnet**. Gate: `test_recipe_eval_parity` + `test_hlsl_ingestion` green; existing GLSL compile no-regression.
+- [x] **M2 `[VIXEN]` — Consumer + parity + HLSL ingest (Tasks 3–5).** Worktree `…/sdf-recipe-codegen-p0`, branch `feat/sdf-recipe-codegen-p0`. Implementer: **Sonnet**. Gate: `test_recipe_eval_parity` + `test_hlsl_ingestion` green; existing GLSL compile no-regression.
 
 Validators: **Opus** per milestone (fix-loop cap 3). Final review: **Opus** over the full two-repo diff.
 
 ## Progress Log
 
 - **M1 `[YEROKET]` (Tasks 1–2): DONE** · commits `b8939cc0`..`4fb67c91` · Opus validator APPROVED (HLSL gap caught + fixed on re-validate) · 2026-06-26 — C++ **and** HLSL single-sourced from `SdfCoreKernels.cs` via a new pluggable backend (callable-through-HLSL route); artifacts `SdfCoreKernels.g.hpp` + `.g.hlsl` committed on Yeroket `feat/kernel-cpp-emitter`; suite 83/4 (4 pre-existing, 0 new). **P1 note:** the regex emitter must become a real AST visitor before the catalog expands (both backends share it).
+- **M2 `[VIXEN]` (Tasks 3–5): DONE** · commits `b8ffb937`..`6684ea35` · Opus validator APPROVED, **tamper-verified** (generated `min`→`max` ⇒ parity test failed; HLSL syntax error ⇒ ingestion failed; both restored) · 2026-06-26 — vendored generated `.g.hpp`/`.g.hlsl`; byte-compat `SdfInstruction` (132 B, `float data[32]`, Union=24); stack-VM eval parity ≤1e-5 vs independent analytic golden; HLSL→SPIR-V ingestion of the **generated** `.g.hlsl` via glslang `EShSourceHlsl` (`ENABLE_HLSL` unlock scoped to one TU); GLSL no-regression 13/13. Pre-existing `SdiLifecycleTest` mtime flake unrelated. **P0 COMPLETE.**
 
 ---
 
