@@ -1260,4 +1260,127 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderRecipeBakedBody) {
     nodeBase.reset();
 }
 
+// ---------------------------------------------------------------------------
+// P2.3 M2 — Live edit → re-materialize → re-render gate.
+//
+// Renders octree 0 as a single sphere (A), edits the recipe to a sphere∪sphere
+// peanut (B) via SetBakeRecipe AFTER Compile, drives one Execute (which
+// re-materializes), re-reads the (new) handles, and re-renders. B must be a
+// WIDER body than A — proving the GPU saw the edit with no graph rebuild.
+//
+// PNGs: /tmp/glsl_sdf_remat_A.png (sphere), /tmp/glsl_sdf_remat_B.png (peanut).
+// ---------------------------------------------------------------------------
+TEST_F(BodyInstanceRayMarchRenderTest, RematerializeEditLoop) {
+    ASSERT_TRUE(softwareConfirmed_);
+    using C = BodyOctreeSceneNodeConfig;
+
+    BodyOctreeSceneNodeType nodeType("BodyOctreeScene");
+    auto nodeBase = nodeType.CreateInstance("body_render_remat");
+    auto* node = dynamic_cast<BodyOctreeSceneNode*>(nodeBase.get());
+    ASSERT_NE(node, nullptr);
+
+    Resource deviceRes; SetHandleVal<VulkanDevice*>(deviceRes, deviceShell_.get());
+    Resource poolRes;   SetHandleVal<VkCommandPool>(poolRes, commandPool_);
+    Resource frameRes;  uint32_t frameIndex = 0; SetHandleVal<uint32_t>(frameRes, frameIndex);
+    node->SetInput(C::VULKAN_DEVICE_IN_Slot::index,    0, &deviceRes);
+    node->SetInput(C::COMMAND_POOL_Slot::index,        0, &poolRes);
+    node->SetInput(C::CURRENT_FRAME_INDEX_Slot::index, 0, &frameRes);
+
+    constexpr float kRS = 2.0f;
+    const Vixen::SVO::BodyInstanceGpu frameInst = MakeInstance(0.0f, 0.0f, 0.0f, kRS, 0, 1.0f, 1.0f, 1.0f);
+    node->SetInstances({ frameInst });
+
+    auto makeSph = [](glm::vec3 c, float r) {
+        Vixen::SVO::Recipe::SdfInstruction in{};
+        in.opCode  = static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::Sphere);
+        in.data[0] = c.x; in.data[1] = c.y; in.data[2] = c.z; in.data[3] = r;
+        return in;
+    };
+    Vixen::SVO::Recipe::SdfInstruction uni{};
+    uni.opCode = static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::Union);
+
+    // Recipe A: a single centred sphere (one round lobe).
+    node->SetBakeRecipe({ makeSph({32.0f, 32.0f, 32.0f}, 18.0f) });
+
+    node->Setup();
+    // Keep STORED_SDF_DEMO set across BOTH executes — the edit Execute's Rematerialize()
+    // re-runs EnsureOctreesBuilt(), which gates on this env var.
+    ::setenv("VIXEN_STORED_SDF_DEMO", "1", /*overwrite=*/1);
+    ASSERT_NO_THROW(node->Compile());      // bakes recipe A; clears recipeDirty_
+    ASSERT_NO_THROW(node->Execute());      // uploads instance; no re-materialize (not dirty)
+
+    constexpr uint32_t kW = 512, kH = 512;
+    const glm::vec3 focus = ShaderBodyCentre(frameInst);
+    const float     R     = ShaderBodyRadius(frameInst);
+    const glm::vec3 eye   = focus + glm::normalize(glm::vec3(0.3f, 0.25f, 1.0f)) * (R * 4.0f);
+    const PushConstants pc = MakeCamera(eye, focus, kW, kH, 1);
+
+    // Re-reads handles each call so a re-materialized (recreated) buffer is picked up.
+    auto renderAndMeasure = [&](const char* png, int& outWidth, int& outBodyPx) {
+        NodeBuffers b;
+        b.nodes       = node->GetOutput(C::OCTREE_NODES_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+        b.bricks      = node->GetOutput(C::OCTREE_BRICKS_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+        b.materials   = node->GetOutput(C::OCTREE_MATERIALS_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+        b.config      = node->GetOutput(C::OCTREE_CONFIG_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+        b.sdf         = node->GetOutput(C::OCTREE_SDF_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+        b.brickLookup = node->GetOutput(C::OCTREE_BRICKLOOKUP_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+        VkBuffer inst = node->GetOutput(C::INSTANCE_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+        ASSERT_NE(b.sdf, VK_NULL_HANDLE);
+        ASSERT_NE(inst,  VK_NULL_HANDLE);
+
+        std::vector<uint8_t> rgba; double ms = 0.0;
+        ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, inst,
+                                             b.sdf, b.brickLookup, pc, kW, kH, rgba, ms));
+        {
+            std::vector<uint8_t> rgb(static_cast<size_t>(kW) * kH * 3);
+            for (uint32_t i = 0; i < kW * kH; ++i) {
+                rgb[i*3+0] = rgba[i*4+0]; rgb[i*3+1] = rgba[i*4+1]; rgb[i*3+2] = rgba[i*4+2];
+            }
+            EXPECT_NE(stbi_write_png(png, kW, kH, 3, rgb.data(), kW*3), 0)
+                << "stbi_write_png failed for " << png;
+        }
+        int minX = int(kW), maxX = -1, bodyPx = 0;
+        for (uint32_t y = 0; y < kH; ++y) for (uint32_t x = 0; x < kW; ++x) {
+            const uint8_t* px = &rgba[(static_cast<size_t>(y)*kW + x)*4];
+            if (px[0] > 24 || px[1] > 24 || px[2] > 40) {
+                if (int(x) < minX) minX = int(x);
+                if (int(x) > maxX) maxX = int(x);
+                ++bodyPx;
+            }
+        }
+        outWidth  = (maxX < minX) ? 0 : (maxX - minX + 1);
+        outBodyPx = bodyPx;
+    };
+
+    // --- render A (single sphere) ---
+    int widthA = 0, pxA = 0;
+    renderAndMeasure("/tmp/glsl_sdf_remat_A.png", widthA, pxA);
+
+    // --- EDIT at runtime: sphere∪sphere peanut (two offset lobes, wider than A) ---
+    node->SetBakeRecipe({
+        makeSph({24.0f, 32.0f, 32.0f}, 16.0f),
+        makeSph({40.0f, 32.0f, 32.0f}, 16.0f),
+        uni
+    });
+    frameIndex = 0; SetHandleVal<uint32_t>(frameRes, frameIndex);
+    ASSERT_NO_THROW(node->Execute());       // recipeDirty_ -> Rematerialize + re-emit octree slots
+    ::unsetenv("VIXEN_STORED_SDF_DEMO");
+
+    // --- render B (re-reads the NEW handles post-rematerialize) ---
+    int widthB = 0, pxB = 0;
+    renderAndMeasure("/tmp/glsl_sdf_remat_B.png", widthB, pxB);
+
+    std::printf("[REMAT] A: width=%d px=%d  B: width=%d px=%d  (B = wider peanut)\n",
+                widthA, pxA, widthB, pxB);
+    EXPECT_GT(widthA, 0) << "shape A (sphere) did not render";
+    EXPECT_GT(pxB, 20000) << "shape B barely rendered";
+    EXPECT_GT(widthB, static_cast<int>(widthA * 1.15f))
+        << "edit did NOT re-materialize: B not wider than A (widthA=" << widthA
+        << " widthB=" << widthB << ")";
+
+    vkDeviceWaitIdle(logicalDevice_);
+    node->Cleanup(CleanupReason::FinalTeardown);
+    nodeBase.reset();
+}
+
 }  // namespace
