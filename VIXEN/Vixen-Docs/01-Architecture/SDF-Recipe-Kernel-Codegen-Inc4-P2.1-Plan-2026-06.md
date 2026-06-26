@@ -34,14 +34,14 @@
 
 > Persisted for the context-manager pipeline (2026-06-26). Two milestones, sequential. VIXEN-only.
 
-- [ ] **M1 `[VIXEN]` — Eval-callable bake core + recipe bake (Task 1).** CPU-only, low-risk. Gate: `test_recipe_bake` green (recipe-sphere ≡ analytic-sphere) + `test_sdf_bake`/`test_soa_sdf_serialize` no-regression. Implementer **Sonnet**.
+- [x] **M1 `[VIXEN]` — Eval-callable bake core + recipe bake (Task 1).** CPU-only, low-risk. Gate: `test_recipe_bake` green (recipe-sphere ≡ analytic-sphere) + `test_sdf_bake`/`test_soa_sdf_serialize` no-regression. Implementer **Sonnet**.
 - [ ] **M2 `[VIXEN]` — Node recipe-injection + lavapipe render gate (Tasks 2–3).** Gate: new `RenderRecipeBakedBody` renders a recipe-baked body SOLID on lavapipe (fillRatio > 0.97) + controller/validator reads the PNG; `RenderStoredSdf*` no-regression. Implementer **Sonnet**.
 
 Validators: **Opus** per milestone (M2 validator reads the PNG; tamper-check the parity test). Controller: Opus, thin.
 
 ## Progress Log
 
-_(controller appends one line per completed milestone)_
+- **M1 `[VIXEN]` (Task 1): DONE** · commit `b75dd45d` · Opus validator APPROVED, **tamper-verified** (recipe radius +2 → parity failed by exactly 2.0 → restore → pass) · 2026-06-26 — `SdfBake` refactored to an eval-callable core `BakeSdfWorld<EvalFn>`; `BakeRecipeToSdfWorld` is now a thin wrapper (analytic path byte-identical, both band+populate eval sites converted, color/roughness untouched); `BakeRecipeInstructionsToSdfWorld` bakes a recipe via `Recipe::evalRecipe`. `test_recipe_bake` parity green + `test_sdf_bake` 2/2 + `test_soa_sdf_serialize` 11/11. **Note for M2:** `build-wsl` ctest discovery is stale (run test binaries directly, or `cmake --preset vixen-wsl` to regenerate); unused `#include <functional>` in SdfBake.h is a harmless nit.
 
 ---
 
