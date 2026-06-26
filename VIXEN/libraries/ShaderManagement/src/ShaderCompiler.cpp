@@ -1,4 +1,5 @@
 #include "ShaderCompiler.h"
+#define ENABLE_HLSL  // unlock glslang HLSL frontend API (setHlslIoMapping, setEnvTargetHlslFunctionality1)
 #include <glslang/Public/ShaderLang.h>
 #include <glslang/Public/ResourceLimits.h>
 #include <glslang/SPIRV/GlslangToSpv.h>
@@ -114,7 +115,14 @@ CompilationOutput ShaderCompiler::CompileInternal(
 
     // Configure environment
     int vulkanVersion = options.targetVulkanVersion;
-    shader.setEnvInput(glslang::EShSourceGlsl, shaderStage, glslang::EShClientVulkan, vulkanVersion);
+    const glslang::EShSource srcLang =
+        (options.sourceLanguage == CompilationOptions::SourceLanguage::HLSL) ? glslang::EShSourceHlsl
+                                                                              : glslang::EShSourceGlsl;
+    shader.setEnvInput(srcLang, shaderStage, glslang::EShClientVulkan, vulkanVersion);
+    if (options.sourceLanguage == CompilationOptions::SourceLanguage::HLSL) {
+        shader.setEnvTargetHlslFunctionality1();
+        shader.setHlslIoMapping(true);   // honor [[vk::binding]] / register→binding
+    }
     shader.setEnvClient(glslang::EShClientVulkan, static_cast<glslang::EShTargetClientVersion>(vulkanVersion));
 
     // Convert shorthand SPIR-V version (e.g., 150 for v1.5) to proper encoding

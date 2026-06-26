@@ -21,6 +21,10 @@ struct CompilationOptions {
     int targetVulkanVersion = 120;      // 110, 111, 120, 130 (Vulkan 1.x.0) — default is Vulkan 1.2 (safe floor)
     int targetSpirvVersion = 150;       // 100, 110, 120, 130, 140, 150, 160 (SPIR-V 1.x) — SPIR-V 1.5 for Vulkan 1.2 (safe floor; 1.6 requires Vulkan 1.3)
 
+    // Source language
+    enum class SourceLanguage { GLSL, HLSL };
+    SourceLanguage sourceLanguage = SourceLanguage::GLSL;   // HLSL ingests via glslang's HLSL frontend
+
     // Validation
     bool validateSpirv = false;         // Run SPIR-V validator after compilation (can enable for debugging, but has known issues with glslang-generated SPIR-V)
 };

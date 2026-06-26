@@ -30,6 +30,24 @@ add_executable(ShaderManagementTests
     # test_uuid_generation.cpp
 )
 
+# HLSL ingestion test (P0 T5) — separate executable so it has no Vulkan device dependency
+add_executable(test_hlsl_ingestion
+    test_hlsl_ingestion.cpp
+)
+target_link_libraries(test_hlsl_ingestion
+    PRIVATE
+        ShaderManagement
+        gtest
+        gtest_main
+)
+set_target_properties(test_hlsl_ingestion PROPERTIES FOLDER "Tests/ShaderManagement Tests")
+# Pass the absolute path to the vendored generated HLSL at compile time
+target_compile_definitions(test_hlsl_ingestion PRIVATE
+    SDF_CORE_KERNELS_HLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.hlsl"
+)
+include(GoogleTest)
+gtest_discover_tests(test_hlsl_ingestion WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+
 # Link against library target - includes propagate automatically
 target_link_libraries(ShaderManagementTests
     PRIVATE
