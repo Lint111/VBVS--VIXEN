@@ -101,6 +101,8 @@ private:
     void EnsureRingAllocated(Vixen::Vulkan::Resources::VulkanDevice* device,
                              VkDeviceSize neededCapacity);            // allocate/grow instance ring
     void DestroyBuffers();
+    void DestroyOctreeBuffers();   // P2.3: destroy ONLY the 6 octree/channel buffers (ring untouched)
+    void Rematerialize();          // P2.3: re-bake octree 0 + recreate octree buffers (behind vkDeviceWaitIdle)
 
     // Build constants (one shell per kind; depth/material chosen here).
     static constexpr int      kShellDepth = 6;   // 2^6 = 64 cells/axis
@@ -114,6 +116,7 @@ private:
     std::vector<Vixen::SVO::ShellOctree>   shellOctrees_;
     Vixen::SVO::ConcatenatedOctrees        concatenated_;
     bool                                   octreesBuilt_ = false;
+    bool                                   recipeDirty_  = false;  // P2.3: set by SetBakeRecipe post-Compile; re-materialize on next Execute
 
     // Optional recipe for octree 0 (P2.1 materialization). Empty = analytic path.
     std::vector<Vixen::SVO::Recipe::SdfInstruction> bakeRecipe_;

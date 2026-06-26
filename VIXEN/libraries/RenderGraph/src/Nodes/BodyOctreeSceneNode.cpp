@@ -139,7 +139,9 @@ void BodyOctreeSceneNode::SetInstances(std::vector<Vixen::SVO::BodyInstanceGpu> 
 }
 
 void BodyOctreeSceneNode::SetBakeRecipe(std::vector<Vixen::SVO::Recipe::SdfInstruction> prog) {
-    bakeRecipe_ = std::move(prog);
+    bakeRecipe_  = std::move(prog);
+    recipeDirty_ = true;   // P2.3: if already compiled, ExecuteImpl re-materializes on the next frame;
+                           //       if pre-Compile, CompileImpl bakes fresh and clears this.
     NODE_LOG_INFO("[BodyOctreeSceneNode] SetBakeRecipe: " +
                   std::to_string(bakeRecipe_.size()) + " instructions — octree 0 will use recipe bake");
 }
@@ -209,9 +211,21 @@ void BodyOctreeSceneNode::CompileImpl(TypedCompileContext& ctx) {
                   std::to_string(concatenated_.count) + ", instances=" +
                   std::to_string(instanceCount_) + ", ringSlots=" +
                   std::to_string(kRingSize) + ")");
+
+    // A fresh compile already baked the current recipe — no pending re-materialize.
+    recipeDirty_ = false;
 }
 
 void BodyOctreeSceneNode::ExecuteImpl(TypedExecuteContext& ctx) {
+    // P2.3: a runtime recipe edit (SetBakeRecipe after Compile) re-bakes + re-uploads here,
+    // at the fence-waited safe point — never on the recompile cascade.
+    bool octreeRepublished = false;
+    if (recipeDirty_) {
+        Rematerialize();
+        recipeDirty_      = false;
+        octreeRepublished = true;
+    }
+
     // Per-frame ring index from FrameSyncNode (clamp via modulo for safety).
     const uint32_t frameIndex = ctx.In(BodyOctreeSceneNodeConfig::CURRENT_FRAME_INDEX) % kRingSize;
 
@@ -239,6 +253,17 @@ void BodyOctreeSceneNode::ExecuteImpl(TypedExecuteContext& ctx) {
     ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_BUFFER, perFrame_.GetUniformBuffer(frameIndex));
     // Re-emit the count (it may change each frame if SetInstances was called).
     ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_COUNT, instanceCount_);
+
+    // Re-emit the octree slots with the freshly-created handles after a re-materialize,
+    // so GetOutput()->GetHandle() (and any per-frame descriptor re-bind) sees the new buffers.
+    if (octreeRepublished) {
+        ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_NODES_BUFFER,       nodesBuffer_);
+        ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_BRICKS_BUFFER,      bricksBuffer_);
+        ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_MATERIALS_BUFFER,   materialsBuffer_);
+        ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_CONFIG_BUFFER,      configBuffer_);
+        ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_SDF_BUFFER,         sdfBuffer_);
+        ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_BRICKLOOKUP_BUFFER, brickLookupBuffer_);
+    }
 }
 
 void BodyOctreeSceneNode::CleanupImpl(TypedCleanupContext& ctx) {
@@ -464,7 +489,26 @@ void BodyOctreeSceneNode::EnsureRingAllocated(VulkanDevice* device, VkDeviceSize
                   std::to_string(static_cast<uint64_t>(neededCapacity)) + "B storage buffers");
 }
 
-void BodyOctreeSceneNode::DestroyBuffers() {
+void BodyOctreeSceneNode::Rematerialize() {
+    VulkanDevice* device = GetDevice();
+    if (!device) {
+        NODE_LOG_ERROR("[BodyOctreeSceneNode] Rematerialize called with no device");
+        return;
+    }
+    NODE_LOG_INFO("[BodyOctreeSceneNode] Rematerialize: re-baking octree 0 from edited recipe");
+
+    // Rare, explicit edit path — safe to stall (mirrors the ring-grow vkDeviceWaitIdle).
+    // Guarantees no in-flight command buffer still references the octree buffers we free.
+    vkDeviceWaitIdle(device->device);
+
+    octreesBuilt_ = false;     // force EnsureOctreesBuilt to re-bake + re-concatenate all 3 octrees
+    EnsureOctreesBuilt();      // octree 0 uses the new bakeRecipe_; octrees 1/2 unchanged
+
+    DestroyOctreeBuffers();    // ring is NOT touched
+    CreateOctreeBuffers(device);
+}
+
+void BodyOctreeSceneNode::DestroyOctreeBuffers() {
     if (!GetDevice()) return;
     VkDevice vkDevice = GetDevice()->device;
 
@@ -479,6 +523,10 @@ void BodyOctreeSceneNode::DestroyBuffers() {
     destroy(configBuffer_,        configMemory_);
     destroy(sdfBuffer_,           sdfMemory_);         // Inc2 M3
     destroy(brickLookupBuffer_,   brickLookupMemory_); // Inc2 M3
+}
+
+void BodyOctreeSceneNode::DestroyBuffers() {
+    DestroyOctreeBuffers();
 
     // FR-7: destroy the instance ring via PerFrameResources (mirrors DynamicInstanceBufferNode).
     perFrame_.Cleanup();
