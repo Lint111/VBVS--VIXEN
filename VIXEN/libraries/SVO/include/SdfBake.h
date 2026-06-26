@@ -12,12 +12,14 @@
 #include "VoxelComponents.h"
 #include "AttributeRegistry.h"
 #include "LaineKarrasOctree.h"
+#include "Recipe/SdfRecipeEval.h"
 
 #include <glm/glm.hpp>
 #include <memory>
 #include <optional>
 #include <cmath>
 #include <vector>
+#include <functional>
 
 namespace Vixen::SVO {
 
@@ -60,9 +62,15 @@ struct SdfBakeResult {
 // Vec3 attribute), so the same SVORebuild / ShellOctreeGpu pipeline consumes the
 // result unchanged.
 // ---------------------------------------------------------------------------
-inline SdfBakeResult BakeRecipeToSdfWorld(uint32_t recipeId, const glm::vec3& center,
-                                          const RecipeParams& rp, int n, float bandVoxels,
-                                          int brickDepth = 3) {
+// ---------------------------------------------------------------------------
+// BakeSdfWorld — eval-callable core (P2.1 M1).
+//
+// Two-pass narrow-band bake. EvalFn: float(glm::vec3 gridPos).
+// Color/roughness synthesis is unchanged from the original analytic path.
+// ---------------------------------------------------------------------------
+template<class EvalFn>
+inline SdfBakeResult BakeSdfWorld(EvalFn&& eval, const glm::vec3& center,
+                                  int n, float bandVoxels, int brickDepth = 3) {
     SdfBakeResult r;
     r.n      = n;
     r.center = center;
@@ -88,9 +96,8 @@ inline SdfBakeResult BakeRecipeToSdfWorld(uint32_t recipeId, const glm::vec3& ce
     for (int z = 0; z < n; ++z)
       for (int y = 0; y < n; ++y)
         for (int x = 0; x < n; ++x) {
-            const float sd = evalSdf(recipeId,
-                glm::vec3(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z)),
-                center, rp);
+            const float sd = eval(
+                glm::vec3(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z)));
             if (std::abs(sd) <= bandVoxels)
                 bandBrick[brickIndex(x / brickSide, y / brickSide, z / brickSide)] = 1u;
         }
@@ -129,7 +136,7 @@ inline SdfBakeResult BakeRecipeToSdfWorld(uint32_t recipeId, const glm::vec3& ce
             const glm::vec3 p(static_cast<float>(x),
                               static_cast<float>(y),
                               static_cast<float>(z));
-            const float sd = evalSdf(recipeId, p, center, rp);
+            const float sd = eval(p);
             // Smooth RGB bands varying across the grid (visible per-voxel variation)
             const glm::vec3 col = 0.5f + 0.5f * glm::cos(
                 glm::vec3(p.x, p.y, p.z) * 0.12f
@@ -148,6 +155,26 @@ inline SdfBakeResult BakeRecipeToSdfWorld(uint32_t recipeId, const glm::vec3& ce
         }
 
     return r;
+}
+
+// Thin wrapper — analytic recipe path (behaviour-identical to the original).
+inline SdfBakeResult BakeRecipeToSdfWorld(uint32_t recipeId, const glm::vec3& center,
+                                          const RecipeParams& rp, int n, float bandVoxels,
+                                          int brickDepth = 3) {
+    return BakeSdfWorld(
+        [&](const glm::vec3& p) { return evalSdf(recipeId, p, center, rp); },
+        center, n, bandVoxels, brickDepth);
+}
+
+// Recipe-instruction path — evaluates a P0 SdfInstruction[] program via the CPU stack-VM.
+inline SdfBakeResult BakeRecipeInstructionsToSdfWorld(const Recipe::SdfInstruction* prog,
+                                                      uint32_t count,
+                                                      const glm::vec3& center,
+                                                      int n, float bandVoxels,
+                                                      int brickDepth = 3) {
+    return BakeSdfWorld(
+        [&](const glm::vec3& p) { return Recipe::evalRecipe(prog, count, p); },
+        center, n, bandVoxels, brickDepth);
 }
 
 // sampleStored implementation (out-of-line in the header — inline body)

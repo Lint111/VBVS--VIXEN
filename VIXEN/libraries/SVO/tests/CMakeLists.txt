@@ -181,6 +181,25 @@ endif()
 gtest_discover_tests(test_sdf_bake)
 
 # ===========================================================================
+# Recipe Bake Parity Tests (P2.1 M1 — recipe-sphere bake == analytic-sphere bake)
+# ===========================================================================
+add_executable(test_recipe_bake test_recipe_bake.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_recipe_bake PRIVATE
+        GTest::gtest_main SVO GaiaVoxelWorld VoxelComponents VoxelData)
+else()
+    target_link_libraries(test_recipe_bake PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_recipe_bake PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_recipe_bake POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_recipe_bake>
+        COMMENT "Copying TBB DLL for test_recipe_bake")
+endif()
+gtest_discover_tests(test_recipe_bake)
+
+# ===========================================================================
 # Recipe Eval Parity Tests (P0 T4 — CPU stack-VM parity vs analytic golden)
 # ===========================================================================
 add_executable(test_recipe_eval_parity test_recipe_eval_parity.cpp)
