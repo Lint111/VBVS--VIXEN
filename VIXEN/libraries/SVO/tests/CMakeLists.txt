@@ -181,6 +181,31 @@ endif()
 gtest_discover_tests(test_sdf_bake)
 
 # ===========================================================================
+# Recipe Codegen Tests (P2.2 M1 — instruction→HLSL emitter + SPIR-V compile gate)
+# ===========================================================================
+add_executable(test_recipe_codegen test_recipe_codegen.cpp)
+if(TARGET SVO AND TARGET ShaderManagement)
+    target_link_libraries(test_recipe_codegen PRIVATE
+        GTest::gtest_main SVO ShaderManagement)
+elseif(TARGET SVO)
+    target_link_libraries(test_recipe_codegen PRIVATE
+        GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_recipe_codegen PRIVATE GTest::gtest_main)
+endif()
+target_compile_definitions(test_recipe_codegen PRIVATE
+    SDF_CORE_KERNELS_HLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.hlsl"
+)
+set_target_properties(test_recipe_codegen PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_recipe_codegen POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_recipe_codegen>
+        COMMENT "Copying TBB DLL for test_recipe_codegen")
+endif()
+gtest_discover_tests(test_recipe_codegen)
+
+# ===========================================================================
 # Recipe Bake Parity Tests (P2.1 M1 — recipe-sphere bake == analytic-sphere bake)
 # ===========================================================================
 add_executable(test_recipe_bake test_recipe_bake.cpp)
