@@ -14,8 +14,23 @@
 - **Byte-compat with the C# format** — `SdfOpCode` values and the `SdfInstruction` layout MUST match `Yeroket-Fantasy/Packages/com.utility.graph-framework/Runtime/VM/SDFInstruction.cs` (Design D6). For P0, hand-mirror the subset with explicit, verified values; full-enum generation is P1.
 - **Canonical source = C#; generated artifacts are committed.** VIXEN's normal build stays .NET-free. (Design D8)
 - **Linux dotnet only** for the generator: `~/.dotnet/dotnet`. Windows dotnet via `/mnt/c` → MSB3030 (kernel-framework friction). The generator runs as a **compiled DLL** — editing `SourceGenerator~/*.cs` has no effect until the DLL is rebuilt; **commit the rebuilt DLL** with the source change.
-- **Repos:** `[YEROKET]` = `/home/liory/Github/Yeroket-Fantasy` (WSL checkout, canonical, NOT a worktree). `[VIXEN]` = this worktree `/mnt/c/cpp/VBVS--VIXEN/.claude/worktrees/stored-sdf/VIXEN`.
+- **Repos (execution workspaces):** `[YEROKET]` = `/home/liory/Github/Yeroket-Fantasy` on branch `feat/kernel-cpp-emitter` (canonical checkout, NOT a worktree). `[VIXEN]` = worktree `/mnt/c/cpp/VBVS--VIXEN/.claude/worktrees/sdf-recipe-codegen-p0/VIXEN` on branch `feat/sdf-recipe-codegen-p0`.
 - **P0 deliberately defers** (to P2): GPU eval *runtime* parity (compute dispatch + readback) and the sphere-traced PNG render. P0 proves the generated HLSL **compiles** in VIXEN; CPU parity proves the codegen *semantics* (HLSL and C++ are emitted from the same source by parallel visitors).
+
+---
+
+## Milestone Map
+
+> Persisted by post-brainstorm-context-manager (2026-06-26). On resume, reuse this grouping verbatim — do NOT re-segment. Milestones run sequentially; M2 consumes M1's artifacts.
+
+- [ ] **M1 `[YEROKET]` — Generator C++ backend (Tasks 1–2 + emit artifacts to disk).** Repo `/home/liory/Github/Yeroket-Fantasy`, branch `feat/kernel-cpp-emitter`. Implementer: **Sonnet**. Gate: `~/.dotnet/dotnet test Tests/SDFNodeGenerator.Tests.csproj` green (incl. new `CppEmitterTests`); generated `SdfCoreKernels.g.hpp` + `SdfCoreKernels.hlsl` written to disk via **pure dotnet, no Unity**.
+- [ ] **M2 `[VIXEN]` — Consumer + parity + HLSL ingest (Tasks 3–5).** Worktree `…/sdf-recipe-codegen-p0`, branch `feat/sdf-recipe-codegen-p0`. Implementer: **Sonnet**. Gate: `test_recipe_eval_parity` + `test_hlsl_ingestion` green; existing GLSL compile no-regression.
+
+Validators: **Opus** per milestone (fix-loop cap 3). Final review: **Opus** over the full two-repo diff.
+
+## Progress Log
+
+_(controller appends one line per completed milestone)_
 
 ---
 
