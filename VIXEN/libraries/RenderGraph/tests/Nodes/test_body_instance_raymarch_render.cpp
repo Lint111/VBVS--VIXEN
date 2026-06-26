@@ -1137,4 +1137,127 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderStoredSdfMultiChannel) {
     nodeBase.reset();
 }
 
+// ---------------------------------------------------------------------------
+// P2.1 M2 — Recipe-baked body render gate.
+//
+// Injects a sphere∪sphere peanut recipe into octree 0 via SetBakeRecipe before
+// Compile. The resulting body cannot be produced by any hardcoded recipe, which
+// proves the materialization path (recipe → BakeRecipeInstructionsToSdfWorld →
+// Stored octree → shipped BodyInstanceRayMarch.comp shader) end-to-end.
+//
+// Oracle: peanut silhouette is SOLID — fillRatio > 0.97, bodyPixels > 20000.
+// PNG: /tmp/glsl_sdf_recipe_peanut.png (controller reads it).
+// ---------------------------------------------------------------------------
+TEST_F(BodyInstanceRayMarchRenderTest, RenderRecipeBakedBody) {
+    std::cout << "[ lavapipe ] selected physical device: '" << selectedDeviceName_
+              << "' (software rasterizer confirmed)\n";
+    ASSERT_TRUE(softwareConfirmed_);
+
+    using C = BodyOctreeSceneNodeConfig;
+    BodyOctreeSceneNodeType nodeType("BodyOctreeScene");
+    auto nodeBase = nodeType.CreateInstance("body_render_recipe");
+    auto* node = dynamic_cast<BodyOctreeSceneNode*>(nodeBase.get());
+    ASSERT_NE(node, nullptr);
+
+    Resource deviceRes; SetHandleVal<VulkanDevice*>(deviceRes, deviceShell_.get());
+    Resource poolRes;   SetHandleVal<VkCommandPool>(poolRes, commandPool_);
+    Resource frameRes;  uint32_t frameIndex = 0; SetHandleVal<uint32_t>(frameRes, frameIndex);
+    node->SetInput(C::VULKAN_DEVICE_IN_Slot::index,    0, &deviceRes);
+    node->SetInput(C::COMMAND_POOL_Slot::index,        0, &poolRes);
+    node->SetInput(C::CURRENT_FRAME_INDEX_Slot::index, 0, &frameRes);
+
+    constexpr float kRS = 2.0f;
+    const Vixen::SVO::BodyInstanceGpu frameInst = MakeInstance(0.0f, 0.0f, 0.0f, kRS, 0, 1.0f, 1.0f, 1.0f);
+    node->SetInstances({ frameInst });
+
+    // Build a sphere∪sphere peanut recipe in grid space (64^3).
+    // Two overlapping spheres at x=26 and x=38, radius=16 each → forms a peanut
+    // shape the hardcoded recipes cannot produce.
+    auto makeSph = [](glm::vec3 c, float r) {
+        Vixen::SVO::Recipe::SdfInstruction in{};
+        in.opCode  = static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::Sphere);
+        in.data[0] = c.x; in.data[1] = c.y; in.data[2] = c.z; in.data[3] = r;
+        return in;
+    };
+    Vixen::SVO::Recipe::SdfInstruction uni{};
+    uni.opCode = static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::Union);
+
+    node->SetBakeRecipe({
+        makeSph({26.0f, 32.0f, 32.0f}, 16.0f),  // left lobe
+        makeSph({38.0f, 32.0f, 32.0f}, 16.0f),  // right lobe
+        uni                                       // union → peanut
+    });
+
+    node->Setup();
+    ::setenv("VIXEN_STORED_SDF_DEMO", "1", /*overwrite=*/1);
+    ASSERT_NO_THROW(node->Compile());
+    ::unsetenv("VIXEN_STORED_SDF_DEMO");
+
+    NodeBuffers b;
+    b.nodes       = node->GetOutput(C::OCTREE_NODES_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.bricks      = node->GetOutput(C::OCTREE_BRICKS_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.materials   = node->GetOutput(C::OCTREE_MATERIALS_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.config      = node->GetOutput(C::OCTREE_CONFIG_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.sdf         = node->GetOutput(C::OCTREE_SDF_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.brickLookup = node->GetOutput(C::OCTREE_BRICKLOOKUP_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    ASSERT_NE(b.config,      VK_NULL_HANDLE);
+    ASSERT_NE(b.sdf,         VK_NULL_HANDLE);
+    ASSERT_NE(b.brickLookup, VK_NULL_HANDLE);
+
+    ASSERT_EQ(sizeof(Vixen::SVO::OctreeConfig), 432u)
+        << "OctreeConfig must match the shader's 432-byte std140 configs[] ArrayStride";
+
+    constexpr uint32_t kW = 512, kH = 512;
+    const glm::vec3 focus = ShaderBodyCentre(frameInst);
+    const float     R     = ShaderBodyRadius(frameInst);
+    const glm::vec3 eye   = focus + glm::normalize(glm::vec3(0.3f, 0.25f, 1.0f)) * (R * 4.0f);
+    const PushConstants pc = MakeCamera(eye, focus, kW, kH, 1);
+
+    // Render octree 0 (recipe-baked peanut).
+    node->SetInstances({ MakeInstance(0.0f, 0.0f, 0.0f, kRS, 0u, 1.0f, 1.0f, 1.0f) });
+    frameIndex = 0; SetHandleVal<uint32_t>(frameRes, frameIndex);
+    node->Execute();
+    VkBuffer inst = node->GetOutput(C::INSTANCE_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    ASSERT_NE(inst, VK_NULL_HANDLE);
+
+    std::vector<uint8_t> rgba; double ms = 0.0;
+    ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, inst,
+                                         b.sdf, b.brickLookup, pc, kW, kH, rgba, ms));
+
+    // Write PNG (controller reads this to verify visually).
+    const char* outPath = "/tmp/glsl_sdf_recipe_peanut.png";
+    {
+        std::vector<uint8_t> rgb(static_cast<size_t>(kW) * kH * 3);
+        for (uint32_t i = 0; i < kW * kH; ++i) {
+            rgb[i*3+0] = rgba[i*4+0]; rgb[i*3+1] = rgba[i*4+1]; rgb[i*3+2] = rgba[i*4+2];
+        }
+        EXPECT_NE(stbi_write_png(outPath, kW, kH, 3, rgb.data(), kW * 3), 0)
+            << "stbi_write_png failed for " << outPath;
+    }
+
+    // Solid-silhouette oracle (same as RenderStoredSdfBodiesNoHoles smooth sphere check).
+    uint64_t totalBody = 0, totalSpan = 0;
+    int bodyRows = 0, bodyPixels = 0;
+    for (uint32_t y = 0; y < kH; ++y) {
+        int first = -1, last = -1, cnt = 0;
+        for (uint32_t x = 0; x < kW; ++x) {
+            const uint8_t* px = &rgba[(static_cast<size_t>(y) * kW + x) * 4];
+            if (px[0] > 24 || px[1] > 24 || px[2] > 40) {
+                if (first < 0) first = int(x); last = int(x); ++cnt;
+            }
+        }
+        if (first >= 0) { totalBody += cnt; totalSpan += (last - first + 1); ++bodyRows; bodyPixels += cnt; }
+    }
+    const double fillRatio = (totalSpan > 0) ? double(totalBody) / double(totalSpan) : 0.0;
+    std::printf("[RECIPE] peanut: bodyPx=%d rows=%d fillRatio=%.4f | render=%.0f ms | -> %s\n",
+                bodyPixels, bodyRows, fillRatio, ms, outPath);
+
+    EXPECT_GT(bodyPixels, 20000) << "recipe-baked body barely rendered";
+    EXPECT_GT(fillRatio, 0.97)   << "recipe-baked body has interior holes (fillRatio=" << fillRatio << ")";
+
+    vkDeviceWaitIdle(logicalDevice_);
+    node->Cleanup(CleanupReason::FinalTeardown);
+    nodeBase.reset();
+}
+
 }  // namespace

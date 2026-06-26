@@ -138,6 +138,12 @@ void BodyOctreeSceneNode::SetInstances(std::vector<Vixen::SVO::BodyInstanceGpu> 
                   std::to_string(instanceCount_) + " instances staged for next Execute");
 }
 
+void BodyOctreeSceneNode::SetBakeRecipe(std::vector<Vixen::SVO::Recipe::SdfInstruction> prog) {
+    bakeRecipe_ = std::move(prog);
+    NODE_LOG_INFO("[BodyOctreeSceneNode] SetBakeRecipe: " +
+                  std::to_string(bakeRecipe_.size()) + " instructions — octree 0 will use recipe bake");
+}
+
 void BodyOctreeSceneNode::SetupImpl(TypedSetupContext& /*ctx*/) {
     // Graph-scope initialization only (no input access).
     NODE_LOG_DEBUG("[BodyOctreeSceneNode] Setup (graph-scope initialization)");
@@ -301,14 +307,22 @@ void BodyOctreeSceneNode::EnsureOctreesBuilt() {
         sdfOctrees.reserve(kKindCount);
 
         for (uint32_t k = 0; k < kKindCount; ++k) {
-            const SdfKind& sk = kSdfKinds[k];
-            Vixen::SVO::RecipeParams rp{};
-            rp.radius       = kSdfRadius;
-            rp.displaceAmp  = sk.displaceAmp;
-            rp.displaceFreq = sk.displaceFreq;
-
-            Vixen::SVO::SdfBakeResult baked =
-                Vixen::SVO::BakeRecipeToSdfWorld(sk.recipeId, center, rp, kSdfN, kSdfBand);
+            Vixen::SVO::SdfBakeResult baked;
+            // ponytail: recipe injection for octree 0 only; analytic path unchanged for k>0
+            if (k == 0 && !bakeRecipe_.empty()) {
+                NODE_LOG_INFO("[BodyOctreeSceneNode] octree 0: baking via recipe ("
+                              + std::to_string(bakeRecipe_.size()) + " instructions)");
+                baked = Vixen::SVO::BakeRecipeInstructionsToSdfWorld(
+                    bakeRecipe_.data(), static_cast<uint32_t>(bakeRecipe_.size()),
+                    center, kSdfN, kSdfBand, kSdfBrickDepth);
+            } else {
+                const SdfKind& sk = kSdfKinds[k];
+                Vixen::SVO::RecipeParams rp{};
+                rp.radius       = kSdfRadius;
+                rp.displaceAmp  = sk.displaceAmp;
+                rp.displaceFreq = sk.displaceFreq;
+                baked = Vixen::SVO::BakeRecipeToSdfWorld(sk.recipeId, center, rp, kSdfN, kSdfBand);
+            }
             sdfOctrees.push_back(
                 Vixen::SVO::BuildSdfBodyOctree(baked, kSdfBrickDepth));
         }

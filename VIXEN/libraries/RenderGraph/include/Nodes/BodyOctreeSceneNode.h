@@ -7,6 +7,7 @@
 
 #include "ShellOctree.h"      // Vixen::SVO::ShellOctree, BuildShellOctree
 #include "ShellOctreeGpu.h"   // Vixen::SVO::{Concatenate, ConcatenatedOctrees, BodyInstanceGpu, PackInstances}
+#include "Recipe/SdfInstruction.h"  // Vixen::SVO::Recipe::SdfInstruction
 
 #include <cstdint>
 #include <memory>
@@ -77,6 +78,16 @@ public:
      */
     void SetInstances(std::vector<Vixen::SVO::BodyInstanceGpu> instances);
 
+    /**
+     * @brief Inject an SdfInstruction recipe for octree 0's bake.
+     *
+     * When non-empty and VIXEN_STORED_SDF_DEMO is set, octree 0 is baked via
+     * BakeRecipeInstructionsToSdfWorld instead of the hardcoded analytic path.
+     * Octrees 1/2 remain on the analytic path. Empty (default) = no change.
+     * // ponytail: guard keeps analytic path byte-identical when recipe is absent
+     */
+    void SetBakeRecipe(std::vector<Vixen::SVO::Recipe::SdfInstruction> prog);
+
 protected:
     void SetupImpl(TypedSetupContext& ctx) override;
     void CompileImpl(TypedCompileContext& ctx) override;
@@ -103,6 +114,9 @@ private:
     std::vector<Vixen::SVO::ShellOctree>   shellOctrees_;
     Vixen::SVO::ConcatenatedOctrees        concatenated_;
     bool                                   octreesBuilt_ = false;
+
+    // Optional recipe for octree 0 (P2.1 materialization). Empty = analytic path.
+    std::vector<Vixen::SVO::Recipe::SdfInstruction> bakeRecipe_;
 
     // Current instance list (set by SetInstances; uploaded in ExecuteImpl).
     std::vector<Vixen::SVO::BodyInstanceGpu> instances_;

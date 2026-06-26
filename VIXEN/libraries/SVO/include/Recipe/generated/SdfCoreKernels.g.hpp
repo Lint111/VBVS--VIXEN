@@ -8,11 +8,11 @@
 
 namespace Yeroket::Sdf::Generated {
 
-float SdfCore_Sphere(glm::vec3 p, glm::vec3 center, float radius) {
+inline float SdfCore_Sphere(glm::vec3 p, glm::vec3 center, float radius) {
     return glm::length(p - center) - radius;
 }
 
-float SdfCore_Union(float a, float b) {
+inline float SdfCore_Union(float a, float b) {
     return glm::min(a, b);
 }
 
