@@ -23,14 +23,14 @@
 
 > Persisted by post-brainstorm-context-manager (2026-06-26). On resume, reuse this grouping verbatim — do NOT re-segment. Milestones run sequentially; M2 consumes M1's artifacts.
 
-- [ ] **M1 `[YEROKET]` — Generator C++ backend (Tasks 1–2 + emit artifacts to disk).** Repo `/home/liory/Github/Yeroket-Fantasy`, branch `feat/kernel-cpp-emitter`. Implementer: **Sonnet**. Gate: `~/.dotnet/dotnet test Tests/SDFNodeGenerator.Tests.csproj` green (incl. new `CppEmitterTests`); generated `SdfCoreKernels.g.hpp` + `SdfCoreKernels.hlsl` written to disk via **pure dotnet, no Unity**.
+- [x] **M1 `[YEROKET]` — Generator C++ backend (Tasks 1–2 + emit artifacts to disk).** Repo `/home/liory/Github/Yeroket-Fantasy`, branch `feat/kernel-cpp-emitter`. Implementer: **Sonnet**. Gate: `~/.dotnet/dotnet test Tests/SDFNodeGenerator.Tests.csproj` green (incl. new `CppEmitterTests`); generated `SdfCoreKernels.g.hpp` + `SdfCoreKernels.hlsl` written to disk via **pure dotnet, no Unity**.
 - [ ] **M2 `[VIXEN]` — Consumer + parity + HLSL ingest (Tasks 3–5).** Worktree `…/sdf-recipe-codegen-p0`, branch `feat/sdf-recipe-codegen-p0`. Implementer: **Sonnet**. Gate: `test_recipe_eval_parity` + `test_hlsl_ingestion` green; existing GLSL compile no-regression.
 
 Validators: **Opus** per milestone (fix-loop cap 3). Final review: **Opus** over the full two-repo diff.
 
 ## Progress Log
 
-_(controller appends one line per completed milestone)_
+- **M1 `[YEROKET]` (Tasks 1–2): DONE** · commits `b8939cc0`..`4fb67c91` · Opus validator APPROVED (HLSL gap caught + fixed on re-validate) · 2026-06-26 — C++ **and** HLSL single-sourced from `SdfCoreKernels.cs` via a new pluggable backend (callable-through-HLSL route); artifacts `SdfCoreKernels.g.hpp` + `.g.hlsl` committed on Yeroket `feat/kernel-cpp-emitter`; suite 83/4 (4 pre-existing, 0 new). **P1 note:** the regex emitter must become a real AST visitor before the catalog expands (both backends share it).
 
 ---
 
