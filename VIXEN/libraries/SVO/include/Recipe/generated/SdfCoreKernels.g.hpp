@@ -1,6 +1,6 @@
 // GENERATED from SdfCoreKernels.cs by the kernel-framework C++/HLSL emitter
 // Do not edit; regenerate via the Yeroket source generator (P1 automates).
-// Vendored from Yeroket-Fantasy Packages/com.utility.sdf/Runtime/GPU/Generated/ (branch feat/kernel-cpp-emitter)
+// Vendored from Yeroket-Fantasy Packages/com.utility.sdf/Runtime/GPU/Generated/ (branch feat/kernel-codegen-p1, generator emits `inline`)
 
 #pragma once
 #include <glm/glm.hpp>
