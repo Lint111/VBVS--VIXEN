@@ -384,3 +384,58 @@ message(STATUS "[RenderGraph Tests] Added: test_body_instance_raymarch_render (l
 else()
     message(STATUS "[RenderGraph Tests] SKIPPED test_body_instance_raymarch_render — bundled glslc not provisioned at ${_brm_glslc} (lavapipe/WSL-only test)")
 endif()
+
+# ===========================================================================
+# P2.2 M2 — Procedural recipe live compute render (lavapipe, compile realization)
+# ===========================================================================
+# Emits an all-HLSL compute shader from SdfInstruction[], compiles it via
+# ShaderCompiler (HLSL→SPIR-V at test run time), dispatches on lavapipe with a
+# minimal 1-binding (storage-image) + push-constant compute harness.
+# No pre-compiled .spv needed (ShaderCompiler handles it at runtime).
+# Same SAFETY contract as test_body_instance_raymarch_render (lavapipe-only).
+if(TARGET ShaderManagement)
+# NOTE: SVO target is not visible at this include scope (subdirectory ordering),
+# same as test_body_instance_raymarch_render. SVO headers + ShaderCompiler reach
+# the test transitively via RENDERGRAPH_TEST_COMMON_LIBS (which includes ShaderManagement).
+
+add_executable(test_procedural_recipe_render
+    Nodes/test_procedural_recipe_render.cpp
+)
+
+target_link_libraries(test_procedural_recipe_render PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+# Optional explicit SVO link (no-op at this scope, transitive via RENDERGRAPH_TEST_COMMON_LIBS).
+if(TARGET SVO)
+    target_link_libraries(test_procedural_recipe_render PRIVATE SVO)
+endif()
+
+if(TARGET stb)
+    target_link_libraries(test_procedural_recipe_render PRIVATE stb)
+else()
+    target_include_directories(test_procedural_recipe_render PRIVATE
+        "${CMAKE_BINARY_DIR}/_deps/stb-src")
+endif()
+
+# SDF_CORE_KERNELS_HLSL_PATH: same path as used by test_recipe_codegen.
+target_compile_definitions(test_procedural_recipe_render PRIVATE
+    SDF_CORE_KERNELS_HLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.hlsl"
+)
+
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_procedural_recipe_render POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb>
+            $<TARGET_FILE_DIR:test_procedural_recipe_render>
+        COMMENT "Copying TBB DLL for test_procedural_recipe_render")
+endif()
+
+set_target_properties(test_procedural_recipe_render PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+# PRE_TEST discovery to avoid Vulkan-init timeout during build (same as raymarch render test).
+gtest_discover_tests(test_procedural_recipe_render
+    DISCOVERY_MODE PRE_TEST
+    DISCOVERY_TIMEOUT 120)
+
+message(STATUS "[RenderGraph Tests] Added: test_procedural_recipe_render (P2.2 M2 live procedural compute)")
+else()
+    message(STATUS "[RenderGraph Tests] SKIPPED test_procedural_recipe_render — ShaderManagement not available")
+endif()

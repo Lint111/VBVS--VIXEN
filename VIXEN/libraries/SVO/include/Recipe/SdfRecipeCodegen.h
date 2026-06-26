@@ -9,7 +9,10 @@ namespace Vixen::SVO::Recipe {
 // Fixed trace-main template — concatenated after sdfCoreHlsl + sdfRecipe.
 // Uses cbuffer + RWTexture2D; validated to compile via glslang HLSL frontend.
 static constexpr const char* kTraceMain = R"(
-cbuffer PC : register(b0) {
+// [[vk::push_constant]] maps cbuffer to Vulkan push constants (no descriptor binding).
+// Without this, cbuffer PC : register(b0) aliases binding 0 with outImg -> pipeline validation error.
+[[vk::push_constant]]
+cbuffer PC {
     float3 camPos;  float _p0;
     float3 camDir;  float fov;
     float3 camUp;   float aspect;
