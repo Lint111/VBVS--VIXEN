@@ -35,13 +35,14 @@
 > Persisted for the context-manager pipeline (2026-06-26). Two milestones, sequential. VIXEN-only.
 
 - [x] **M1 `[VIXEN]` — Eval-callable bake core + recipe bake (Task 1).** CPU-only, low-risk. Gate: `test_recipe_bake` green (recipe-sphere ≡ analytic-sphere) + `test_sdf_bake`/`test_soa_sdf_serialize` no-regression. Implementer **Sonnet**.
-- [ ] **M2 `[VIXEN]` — Node recipe-injection + lavapipe render gate (Tasks 2–3).** Gate: new `RenderRecipeBakedBody` renders a recipe-baked body SOLID on lavapipe (fillRatio > 0.97) + controller/validator reads the PNG; `RenderStoredSdf*` no-regression. Implementer **Sonnet**.
+- [x] **M2 `[VIXEN]` — Node recipe-injection + lavapipe render gate (Tasks 2–3).** Gate: new `RenderRecipeBakedBody` renders a recipe-baked body SOLID on lavapipe (fillRatio > 0.97) + controller/validator reads the PNG; `RenderStoredSdf*` no-regression. Implementer **Sonnet**.
 
 Validators: **Opus** per milestone (M2 validator reads the PNG; tamper-check the parity test). Controller: Opus, thin.
 
 ## Progress Log
 
 - **M1 `[VIXEN]` (Task 1): DONE** · commit `b75dd45d` · Opus validator APPROVED, **tamper-verified** (recipe radius +2 → parity failed by exactly 2.0 → restore → pass) · 2026-06-26 — `SdfBake` refactored to an eval-callable core `BakeSdfWorld<EvalFn>`; `BakeRecipeToSdfWorld` is now a thin wrapper (analytic path byte-identical, both band+populate eval sites converted, color/roughness untouched); `BakeRecipeInstructionsToSdfWorld` bakes a recipe via `Recipe::evalRecipe`. `test_recipe_bake` parity green + `test_sdf_bake` 2/2 + `test_soa_sdf_serialize` 11/11. **Note for M2:** `build-wsl` ctest discovery is stale (run test binaries directly, or `cmake --preset vixen-wsl` to regenerate); unused `#include <functional>` in SdfBake.h is a harmless nit.
+- **M2 `[VIXEN]` (Tasks 2–3): DONE** · commit `ed4f6a81` · 2026-06-26 — `BodyOctreeSceneNode` gains `SetBakeRecipe`+`bakeRecipe_`; octree 0 bake branches on non-empty recipe (analytic path byte-preserved for empty/k>0). `RenderRecipeBakedBody` TEST_F: sphere∪sphere peanut → lavapipe bodyPx=27618, fillRatio=0.9969. No-regression: `RenderStoredSdfBodiesNoHoles`+`RenderStoredSdfMultiChannel` fillRatio=0.9895; `test_recipe_bake`/`test_sdf_bake`/`test_soa_sdf_serialize` all green. **Bonus fix:** `SdfCoreKernels.g.hpp` non-inline ODR violation (functions not marked `inline` → duplicate symbol when BodyOctreeSceneNode.o + test TU linked together); added `inline`. PNG at `/tmp/glsl_sdf_recipe_peanut.png`.
 
 ---
 
