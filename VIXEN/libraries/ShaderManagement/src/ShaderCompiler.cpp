@@ -120,7 +120,12 @@ CompilationOutput ShaderCompiler::CompileInternal(
                                                                               : glslang::EShSourceGlsl;
     shader.setEnvInput(srcLang, shaderStage, glslang::EShClientVulkan, vulkanVersion);
     if (options.sourceLanguage == CompilationOptions::SourceLanguage::HLSL) {
-        shader.setEnvTargetHlslFunctionality1();
+        // NOTE: do NOT call setEnvTargetHlslFunctionality1() — it declares the
+        // SPV_GOOGLE_hlsl_functionality1 SPIR-V extension (preserves HLSL
+        // register/semantic decorations) which requires the device to enable
+        // VK_GOOGLE_hlsl_functionality1, else vkCreateShaderModule trips
+        // VUID-VkShaderModuleCreateInfo-pCode-08742 on real GPUs. VIXEN doesn't
+        // need those decorations — setHlslIoMapping(true) does register→binding.
         shader.setHlslIoMapping(true);   // honor [[vk::binding]] / register→binding
     }
     shader.setEnvClient(glslang::EShClientVulkan, static_cast<glslang::EShTargetClientVersion>(vulkanVersion));
