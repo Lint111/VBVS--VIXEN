@@ -69,13 +69,16 @@ Source of truth: `Yeroket-Fantasy/Packages/com.utility.graph-framework/Runtime/V
 
 ## Open design points — RESOLVE in the P2.4 design pass before writing the no-placeholder plan
 
-1. **VM-emitter extension is the real work, not the switch cases.** Today `evalRecipe` +
-   `EmitProceduralComputeShader` handle only leaf (Sphere) + binary (Union). The catalogue needs:
-   - **domain transforms** (modify `p` for subsequent ops → position-stack: Transform/Twist/Bend/Mirror/Repeat),
-   - **value math** (scalar/float3 value-stack),
-   - **stack control** (RestorePos/Push/Compose/Decompose).
-   Must first understand the C# VM's stack model (`SDFCompiledEvaluator.cs`) and extend BOTH VIXEN
-   evaluators to mirror it. This is a design sub-task, likely its own early milestone.
+1. **VM-emitter extension — RESOLVED 2026-06-27** → see [[SDF-Recipe-Kernel-Codegen-Inc4-P2.4-M2-VM-Emitter-Design-2026-06|M2 design of record]].
+   Findings: the C# VM is a flat stack machine with a value stack + a **position stack** + a mutable `Pos`
+   + a `DistScale` register; domain transforms `PosStack[Psp++]=Pos; Pos=f(Pos)` with a paired `RestorePos`,
+   emitted by the compiler as a flat `transform→children→RestorePos` sequence (depth statically known →
+   unrolls to SSA temporaries → straight-line HLSL). **VIXEN's `evalRecipe` + `EmitProceduralComputeShader`
+   are ALREADY stack machines** — the only structural gap is the position stack + new opcode cases (the
+   `SdfInstruction` struct + `kTraceMain` need no change). Decisions: ParamMask=0 (baked recipes; dynamic
+   params → P4), DistScale mirror-the-C#-codegen (pin in M2 task 1), Decompose/Passthrough = no-op,
+   analytic parity oracle for M2. M2 = position-stack + one representative opcode per lane (a leaf, a
+   k-param CSG, a domain-transform+RestorePos), live-gated; M3/M4 then fill the catalogue mechanically.
 2. **Regen path — RESOLVED 2026-06-27: dotnet-only, NO Unity.** Confirmed in the canonical Yeroket
    checkout. Commands: `cd Packages/com.yeroket.utility.kernel-framework/SourceGenerator~ && ~/.dotnet/dotnet
    build -c Release` (auto-deploys `RoslynAnalyzers/SDFNodeGenerator.dll` — commit it) → `~/.dotnet/dotnet
