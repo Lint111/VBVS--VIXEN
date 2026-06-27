@@ -3,10 +3,18 @@
 
 namespace Vixen::SVO::Recipe {
 
-// Byte-compat mirror of Yeroket SDFOpCode. P0 subset; values MUST match the C# enum
-// order in com.utility.graph-framework/Runtime/VM/SDFInstruction.cs.
-// Sphere=0 (primitive[0]); Link=23 (primitive[23]); Union=24 (first binary op).
-enum class SdfOpCode : uint8_t { Sphere = 0, Union = 24 };
+// Byte-compat mirror of Yeroket SDFOpCode. P2.4 M2b subset; values MUST match
+// the C# enum in com.utility.graph-framework/Runtime/VM/SDFInstruction.cs.
+// Sphere=0; Box=1; Union=24; SmoothUnion=25; MirrorX=41; RestorePos=97.
+// APPEND-ONLY — never reorder existing values.
+enum class SdfOpCode : uint8_t {
+    Sphere      =  0,
+    Box         =  1,
+    Union       = 24,
+    SmoothUnion = 25,
+    MirrorX     = 41,
+    RestorePos  = 97,
+};
 
 // 132-byte blittable mirror of SDFInstruction.
 // ⚠ Alignment: C# struct is byte,byte,byte,byte + 8×float4 = 4 + 128 = 132 bytes packed.

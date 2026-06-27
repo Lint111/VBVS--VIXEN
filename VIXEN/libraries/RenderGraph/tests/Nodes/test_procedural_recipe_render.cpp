@@ -110,6 +110,28 @@ static Vixen::SVO::Recipe::SdfInstruction makeUnion() {
     in.opCode = static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::Union);
     return in;
 }
+static Vixen::SVO::Recipe::SdfInstruction makeBox(float bx, float by, float bz) {
+    Vixen::SVO::Recipe::SdfInstruction in{};
+    in.opCode  = static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::Box);
+    in.data[0] = bx; in.data[1] = by; in.data[2] = bz;
+    return in;
+}
+static Vixen::SVO::Recipe::SdfInstruction makeSmoothUnion(float k) {
+    Vixen::SVO::Recipe::SdfInstruction in{};
+    in.opCode  = static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::SmoothUnion);
+    in.data[2] = k;  // k = Data0.z
+    return in;
+}
+static Vixen::SVO::Recipe::SdfInstruction makeMirrorX() {
+    Vixen::SVO::Recipe::SdfInstruction in{};
+    in.opCode = static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::MirrorX);
+    return in;
+}
+static Vixen::SVO::Recipe::SdfInstruction makeRestorePos() {
+    Vixen::SVO::Recipe::SdfInstruction in{};
+    in.opCode = static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::RestorePos);
+    return in;
+}
 
 // ---------------------------------------------------------------------------
 // Lavapipe render fixture — minimal: 1 binding (storage image) + push constants.
@@ -591,5 +613,106 @@ TEST_F(ProceduralRecipeRenderTest, RenderProceduralRecipe) {
            "Sample floats [pixel 0]: R=" << rgba32f[0] << " G=" << rgba32f[1]
            << " B=" << rgba32f[2] << " A=" << rgba32f[3]
            << "\nEmitted shader source (first 2000 chars):\n"
+        << shaderSrc.substr(0, 2000);
+}
+
+// ---------------------------------------------------------------------------
+// P2.4 M2b — Live lavapipe render gate for MirrorX(SmoothUnion(Box, Sphere)).
+//
+// Recipe: [MirrorX, Box(halfExtents), Sphere(center, r), SmoothUnion(k), RestorePos]
+// Box (halfExtents 0.6,0.5,0.5) is centred at origin in mirrored space — a slightly
+// wide symmetric block. Sphere at (1.8,0,0) appears at BOTH x=+1.8 AND x=−1.8 after
+// the mirror fold, giving two protrusions blended into the box via smooth-union.
+// Result from the front: bilaterally symmetric dumbbell — box centre + two rounded
+// blobs on each side. Mirror symmetry + smooth-union are visually distinct from a
+// plain sphere∪sphere peanut.
+//
+// Writes /tmp/glsl_sdf_m2_mirror.png (512×512 RGBA8).
+// Controller/validator reads the PNG to confirm symmetry and smooth blending.
+// ---------------------------------------------------------------------------
+TEST_F(ProceduralRecipeRenderTest, RenderMirrorCsgRecipe) {
+    // Step 1: read the vendored SdfCoreKernels HLSL.
+    std::ifstream kernelFile(SDF_CORE_KERNELS_HLSL_PATH);
+    ASSERT_TRUE(kernelFile.good())
+        << "Cannot open vendored HLSL: " << SDF_CORE_KERNELS_HLSL_PATH;
+    std::ostringstream ss;
+    ss << kernelFile.rdbuf();
+    const std::string sdfCoreHlsl = ss.str();
+
+    // Step 2: build mirror-CSG recipe.
+    // In mirrored space (pos.x = |p.x|, pos.y/z unchanged):
+    //   Box centred at origin, halfExtents (0.6, 0.5, 0.5)
+    //   Sphere at (1.8, 0, 0), radius 0.9
+    //   SmoothUnion k=0.5 → wide smooth blend
+    // After RestorePos, world pos is restored. The body is symmetric in x.
+    Vixen::SVO::Recipe::SdfInstruction prog[] = {
+        makeMirrorX(),
+        makeBox(0.6f, 0.5f, 0.5f),
+        makeSphere(1.8f, 0.0f, 0.0f, 0.9f),
+        makeSmoothUnion(0.5f),
+        makeRestorePos()
+    };
+    const std::string shaderSrc =
+        Vixen::SVO::Recipe::EmitProceduralComputeShader(prog, 5, sdfCoreHlsl);
+
+    // Step 3: compile HLSL → SPIR-V.
+    ShaderManagement::ShaderCompiler compiler;
+    ShaderManagement::CompilationOptions opts;
+    opts.sourceLanguage = ShaderManagement::CompilationOptions::SourceLanguage::HLSL;
+    opts.validateSpirv  = false;  // ponytail: glslang SPIR-V validator quirk (see P2.2 M1)
+    auto compOut = compiler.Compile(ShaderManagement::ShaderStage::Compute, shaderSrc, "main", opts);
+    ASSERT_TRUE(compOut.success)
+        << "HLSL compile failed:\n" << compOut.GetFullLog()
+        << "\n--- emitted source ---\n" << shaderSrc;
+    ASSERT_FALSE(compOut.spirv.empty());
+
+    // Step 4: camera looking head-on at the symmetric body from z+.
+    // Body extent: ±(1.8+0.9)=±2.7 on x, ±(0.5+~0.5bleed)≈±1.2 on y/z.
+    // Eye at (0,0,10), target (0,0,0), FOV 45° gives comfortable framing.
+    constexpr uint32_t W = 512, H = 512;
+    const RecipePushConstants pc = MakeCamera(
+        glm::vec3(0.0f, 0.0f, 10.0f),
+        glm::vec3(0.0f, 0.0f,  0.0f),
+        W, H
+    );
+
+    // Step 5: dispatch on lavapipe, readback float pixels.
+    std::vector<float> rgba32f;
+    ASSERT_NO_FATAL_FAILURE(RenderProcedural(compOut.spirv, pc, W, H, rgba32f));
+    ASSERT_EQ(rgba32f.size(), static_cast<size_t>(W) * H * 4);
+
+    // Step 6: count body pixels + convert to RGBA8 for PNG.
+    int bodyPixels = 0;
+    std::vector<uint8_t> rgba8(W * H * 4);
+    for (uint32_t i = 0; i < W * H; ++i) {
+        const float fr = rgba32f[i * 4 + 0];
+        const float fg = rgba32f[i * 4 + 1];
+        const float fb = rgba32f[i * 4 + 2];
+        const float fa = rgba32f[i * 4 + 3];
+        rgba8[i * 4 + 0] = static_cast<uint8_t>(std::min(fr * 255.0f + 0.5f, 255.0f));
+        rgba8[i * 4 + 1] = static_cast<uint8_t>(std::min(fg * 255.0f + 0.5f, 255.0f));
+        rgba8[i * 4 + 2] = static_cast<uint8_t>(std::min(fb * 255.0f + 0.5f, 255.0f));
+        rgba8[i * 4 + 3] = static_cast<uint8_t>(std::min(fa * 255.0f + 0.5f, 255.0f));
+        if (fr > 0.08f || fg > 0.08f) ++bodyPixels;
+    }
+
+    // Step 7: write PNG — controller reads it to verify mirror symmetry + smooth-union.
+    const char* pngPath = "/tmp/glsl_sdf_m2_mirror.png";
+    const int pngOk = stbi_write_png(pngPath,
+        static_cast<int>(W), static_cast<int>(H), 4,
+        rgba8.data(), static_cast<int>(W) * 4);
+
+    printf("[RenderMirrorCsgRecipe] bodyPixels=%d  PNG written=%s  path=%s\n",
+           bodyPixels, pngOk ? "YES" : "NO", pngPath);
+    fflush(stdout);
+
+    EXPECT_TRUE(pngOk) << "stbi_write_png failed for " << pngPath;
+    ASSERT_GT(bodyPixels, 20000)
+        << "bodyPixels=" << bodyPixels << " <= 20000 — image is likely all-black. "
+           "Check: (1) shaderStorageImageWriteWithoutFormat, (2) Vulkan 1.3, "
+           "(3) camera framing. "
+           "Sample floats [pixel 0]: R=" << rgba32f[0] << " G=" << rgba32f[1]
+           << " B=" << rgba32f[2] << " A=" << rgba32f[3]
+           << "\nEmitted shader (first 2000 chars):\n"
         << shaderSrc.substr(0, 2000);
 }

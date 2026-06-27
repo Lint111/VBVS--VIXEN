@@ -1,8 +1,9 @@
 #pragma once
 #include "Recipe/SdfInstruction.h"
+#include <cassert>
+#include <cstdint>
 #include <string>
 #include <vector>
-#include <cstdint>
 
 namespace Vixen::SVO::Recipe {
 
@@ -71,6 +72,10 @@ inline std::string EmitProceduralComputeShader(
     std::string body;
     int n = 0;
 
+    // emit-time position stack: mirrors pos/posStack in evalRecipe (C# VM ctx.Pos/PosStack)
+    std::string curPos = "p";
+    std::vector<std::string> posSaveStk;
+
     // ponytail: std::to_string for floats — sufficient for HLSL literals; no locale issues
     auto f = [](float v) {
         // Ensure a decimal point so HLSL sees it as a float literal.
@@ -82,22 +87,53 @@ inline std::string EmitProceduralComputeShader(
 
     for (uint32_t i = 0; i < count; ++i) {
         const SdfInstruction& in = prog[i];
-        std::string t = "t" + std::to_string(n++);
-
         switch (static_cast<SdfOpCode>(in.opCode)) {
             case SdfOpCode::Sphere: {
                 // data[0..2] = center xyz, data[3] = radius (mirrors SdfRecipeEval.h)
-                body += "  float " + t + " = SdfCore_Sphere(p, float3("
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = SdfCore_Sphere(" + curPos + ", float3("
                     + f(in.data[0]) + ", " + f(in.data[1]) + ", " + f(in.data[2])
                     + "), " + f(in.data[3]) + ");\n";
                 stk.push_back(t);
                 break;
             }
+            case SdfOpCode::Box: {
+                // data[0..2] = halfExtents xyz (mirrors SdfRecipeEval.h)
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = SdfCore_Box(" + curPos + ", float3("
+                    + f(in.data[0]) + ", " + f(in.data[1]) + ", " + f(in.data[2]) + "));\n";
+                stk.push_back(t);
+                break;
+            }
             case SdfOpCode::Union: {
+                assert(stk.size() >= 2 && "Union: emit-time value stack underflow");
                 std::string b = stk.back(); stk.pop_back();
                 std::string a = stk.back(); stk.pop_back();
+                std::string t = "t" + std::to_string(n++);
                 body += "  float " + t + " = SdfCore_Union(" + a + ", " + b + ");\n";
                 stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::SmoothUnion: {
+                // data[2] = k (Data0.z), mirrors evalRecipe
+                assert(stk.size() >= 2 && "SmoothUnion: emit-time value stack underflow");
+                std::string b = stk.back(); stk.pop_back();
+                std::string a = stk.back(); stk.pop_back();
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = SdfCore_SmoothUnion(" + a + ", " + b
+                    + ", " + f(in.data[2]) + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::MirrorX: {
+                std::string pN = "pp" + std::to_string(n++);
+                body += "  float3 " + pN + " = SdfCore_MirrorX(" + curPos + ");\n";
+                posSaveStk.push_back(curPos); curPos = pN;
+                break;
+            }
+            case SdfOpCode::RestorePos: {
+                assert(!posSaveStk.empty() && "RestorePos: emit-time position stack underflow");
+                curPos = posSaveStk.back(); posSaveStk.pop_back();
                 break;
             }
             default:
@@ -105,6 +141,7 @@ inline std::string EmitProceduralComputeShader(
         }
     }
 
+    assert(!stk.empty() && "EmitProceduralComputeShader: empty value stack at return");
     std::string recipe =
         "float sdfRecipe(float3 p) {\n"
         + body
