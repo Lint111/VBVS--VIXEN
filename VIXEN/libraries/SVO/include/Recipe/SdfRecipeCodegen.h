@@ -87,6 +87,7 @@ inline std::string EmitProceduralComputeShader(
 
     for (uint32_t i = 0; i < count; ++i) {
         const SdfInstruction& in = prog[i];
+        assert(in.paramMask == 0 && "ParamMask!=0 deferred to P4");
         switch (static_cast<SdfOpCode>(in.opCode)) {
             case SdfOpCode::Sphere: {
                 // data[0..2] = center xyz, data[3] = radius (mirrors SdfRecipeEval.h)
