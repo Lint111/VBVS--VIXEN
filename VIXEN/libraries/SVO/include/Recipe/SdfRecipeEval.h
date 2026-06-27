@@ -194,6 +194,44 @@ inline float evalRecipe(const SdfInstruction* prog, uint32_t count, glm::vec3 p)
                 glm::vec3 he(in.data[0], in.data[1], in.data[2]);
                 stack[sp++] = SdfCore_BoxRounded(q, he, in.data[3]);
             } break;
+            // --- Leaf primitives — P2.4 M3b-3: prism + cone family ---
+            case SdfOpCode::RoundCone: {
+                assert(sp < 64 && "value stack overflow");
+                // data[0]=r1, data[1]=r2, data[2]=height, data[4..6]=position
+                glm::vec3 q = pos - glm::vec3(in.data[4], in.data[5], in.data[6]);
+                stack[sp++] = SdfCore_RoundCone(q, in.data[0], in.data[1], in.data[2]);
+            } break;
+            case SdfOpCode::FakeRoundCone: {
+                assert(sp < 64 && "value stack overflow");
+                // data[0]=r1, data[1]=r2, data[2]=height, data[4..6]=position
+                glm::vec3 q = pos - glm::vec3(in.data[4], in.data[5], in.data[6]);
+                stack[sp++] = SdfCore_FakeRoundCone(q, in.data[0], in.data[1], in.data[2]);
+            } break;
+            case SdfOpCode::Segment: {
+                assert(sp < 64 && "value stack overflow");
+                // data[0..2]=pointA, data[3]=radius, data[4..6]=pointB — no pos-offset; samples pos directly
+                glm::vec3 a(in.data[0], in.data[1], in.data[2]);
+                glm::vec3 b(in.data[4], in.data[5], in.data[6]);
+                stack[sp++] = SdfCore_Segment(pos, a, b, in.data[3]);
+            } break;
+            case SdfOpCode::TriangularPrism: {
+                assert(sp < 64 && "value stack overflow");
+                // data[0]=h.x (tri half-size), data[1]=h.y (depth half-size), data[4..6]=position
+                glm::vec3 q = pos - glm::vec3(in.data[4], in.data[5], in.data[6]);
+                stack[sp++] = SdfCore_TriangularPrism(q, glm::vec2(in.data[0], in.data[1]));
+            } break;
+            case SdfOpCode::Pyramid: {
+                assert(sp < 64 && "value stack overflow");
+                // data[0]=height, data[4..6]=position
+                glm::vec3 q = pos - glm::vec3(in.data[4], in.data[5], in.data[6]);
+                stack[sp++] = SdfCore_Pyramid(q, in.data[0]);
+            } break;
+            case SdfOpCode::HexPrism: {
+                assert(sp < 64 && "value stack overflow");
+                // data[0]=h.x (hex radius), data[1]=h.y (half-height), data[4..6]=position
+                glm::vec3 q = pos - glm::vec3(in.data[4], in.data[5], in.data[6]);
+                stack[sp++] = SdfCore_HexPrism(q, glm::vec2(in.data[0], in.data[1]));
+            } break;
             case SdfOpCode::MirrorX: {
                 assert(psp < 64 && "MirrorX: position stack overflow");
                 posStack[psp++] = pos; pos = SdfCore_MirrorX(pos);

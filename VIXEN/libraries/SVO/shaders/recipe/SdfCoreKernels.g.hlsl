@@ -147,5 +147,63 @@ float SdfCore_Link(float3 p, float halfLength, float majorRadius, float minorRad
     return length(float2(length(float2(q.x, q.y)) - majorRadius, q.z)) - minorRadius;
 }
 
+float SdfCore_TriangularPrism(float3 p, float2 h) {
+    float3 q = abs(p);
+    return max(q.z - h.y, max(q.x * 0.866025 + p.y * 0.5, -p.y) - h.x * 0.5);
+}
+
+float SdfCore_HexPrism(float3 p, float2 h) {
+    float k0 = 0.8660254;
+    float kz = 0.57735;
+    float3 q = abs(p);
+    float dotVal = min(dot(float2(-k0, 0.5), float2(q.x, q.z)), 0.0);
+    q.x -= 2.0 * dotVal * (-k0);
+    q.z -= 2.0 * dotVal * 0.5;
+    float2 d = float2(length(float2(q.x, q.z) - float2(clamp(q.x, -kz * h.x, kz * h.x), h.x)) * sign(q.z - h.x), q.y - h.y);
+    return min(max(d.x, d.y), 0.0) + length(max(d, 0.0));
+}
+
+float SdfCore_Pyramid(float3 p, float height) {
+    float m2 = height * height + 0.25;
+    float3 q = float3(abs(p.x), p.y, abs(p.z));
+    q = ((q.z > q.x) ? float3(q.z, q.y, q.x) : q);
+    q.x -= 0.5;
+    q.z -= 0.5;
+    float3 a = float3(q.z, height * q.y - 0.5 * q.x, height * q.x + 0.5 * q.y);
+    float s = max(-a.x, 0.0);
+    float t = saturate((a.y - 0.5 * q.z) / (m2 + 0.25));
+    float da = m2 * (a.x + s) * (a.x + s) + a.y * a.y;
+    float db = m2 * (a.x + 0.5 * t) * (a.x + 0.5 * t) + (a.y - m2 * t) * (a.y - m2 * t);
+    float d2 = ((min(a.y, -a.x * m2 - a.y * 0.5) > 0.0) ? 0.0 : min(da, db));
+    return sqrt((d2 + a.z * a.z) / m2) * sign(max(a.z, -q.y));
+}
+
+float SdfCore_Segment(float3 p, float3 a, float3 b, float radius) {
+    float3 pa = p - a;
+    float3 ba = b - a;
+    float h = saturate(dot(pa, ba) / dot(ba, ba));
+    return length(pa - ba * h) - radius;
+}
+
+float SdfCore_FakeRoundCone(float3 p, float r1, float r2, float height) {
+    float2 q = float2(length(float2(p.x, p.z)), p.y);
+    float h = saturate(q.y / height);
+    float r = lerp(r1, r2, h);
+    return length(float2(q.x, q.y - height * h)) - r;
+}
+
+float SdfCore_RoundCone(float3 p, float r1, float r2, float height) {
+    float2 q = float2(length(float2(p.x, p.z)), p.y);
+    float b = (r1 - r2) / height;
+    float a = sqrt(1.0 - b * b);
+    float k = dot(q, float2(-b, a));
+    float regionA = length(q) - r1;
+    float regionB = length(q - float2(0.0, height)) - r2;
+    float regionC = dot(q, float2(a, b)) - r1;
+    float d = ((k < 0.0) ? regionA : regionC);
+    d = ((k > a * height) ? regionB : d);
+    return d;
+}
+
 
 #endif // SDF_CORE_KERNELS_G_HLSL

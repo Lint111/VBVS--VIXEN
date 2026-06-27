@@ -150,4 +150,62 @@ inline float SdfCore_Link(glm::vec3 p, float halfLength, float majorRadius, floa
     return glm::length(glm::vec2(glm::length(glm::vec2(q.x, q.y)) - majorRadius, q.z)) - minorRadius;
 }
 
+inline float SdfCore_TriangularPrism(glm::vec3 p, glm::vec2 h) {
+    glm::vec3 q = glm::abs(p);
+    return glm::max(q.z - h.y, glm::max(q.x * 0.866025f + p.y * 0.5f, -p.y) - h.x * 0.5f);
+}
+
+inline float SdfCore_HexPrism(glm::vec3 p, glm::vec2 h) {
+    float k0 = 0.8660254f;
+    float kz = 0.57735f;
+    glm::vec3 q = glm::abs(p);
+    float dotVal = glm::min(glm::dot(glm::vec2(-k0, 0.5f), glm::vec2(q.x, q.z)), 0.0f);
+    q.x -= 2.0f * dotVal * (-k0);
+    q.z -= 2.0f * dotVal * 0.5f;
+    glm::vec2 d = glm::vec2(glm::length(glm::vec2(q.x, q.z) - glm::vec2(glm::clamp(q.x, -kz * h.x, kz * h.x), h.x)) * glm::sign(q.z - h.x), q.y - h.y);
+    return glm::min(glm::max(d.x, d.y), 0.0f) + glm::length(glm::max(d, 0.0f));
+}
+
+inline float SdfCore_Pyramid(glm::vec3 p, float height) {
+    float m2 = height * height + 0.25f;
+    glm::vec3 q = glm::vec3(glm::abs(p.x), p.y, glm::abs(p.z));
+    q = ((q.z > q.x) ? glm::vec3(q.z, q.y, q.x) : q);
+    q.x -= 0.5f;
+    q.z -= 0.5f;
+    glm::vec3 a = glm::vec3(q.z, height * q.y - 0.5f * q.x, height * q.x + 0.5f * q.y);
+    float s = glm::max(-a.x, 0.0f);
+    float t = glm::clamp((a.y - 0.5f * q.z) / (m2 + 0.25f), 0.0f, 1.0f);
+    float da = m2 * (a.x + s) * (a.x + s) + a.y * a.y;
+    float db = m2 * (a.x + 0.5f * t) * (a.x + 0.5f * t) + (a.y - m2 * t) * (a.y - m2 * t);
+    float d2 = ((glm::min(a.y, -a.x * m2 - a.y * 0.5f) > 0.0f) ? 0.0f : glm::min(da, db));
+    return glm::sqrt((d2 + a.z * a.z) / m2) * glm::sign(glm::max(a.z, -q.y));
+}
+
+inline float SdfCore_Segment(glm::vec3 p, glm::vec3 a, glm::vec3 b, float radius) {
+    glm::vec3 pa = p - a;
+    glm::vec3 ba = b - a;
+    float h = glm::clamp(glm::dot(pa, ba) / glm::dot(ba, ba), 0.0f, 1.0f);
+    return glm::length(pa - ba * h) - radius;
+}
+
+inline float SdfCore_FakeRoundCone(glm::vec3 p, float r1, float r2, float height) {
+    glm::vec2 q = glm::vec2(glm::length(glm::vec2(p.x, p.z)), p.y);
+    float h = glm::clamp(q.y / height, 0.0f, 1.0f);
+    float r = glm::mix(r1, r2, h);
+    return glm::length(glm::vec2(q.x, q.y - height * h)) - r;
+}
+
+inline float SdfCore_RoundCone(glm::vec3 p, float r1, float r2, float height) {
+    glm::vec2 q = glm::vec2(glm::length(glm::vec2(p.x, p.z)), p.y);
+    float b = (r1 - r2) / height;
+    float a = glm::sqrt(1.0f - b * b);
+    float k = glm::dot(q, glm::vec2(-b, a));
+    float regionA = glm::length(q) - r1;
+    float regionB = glm::length(q - glm::vec2(0.0f, height)) - r2;
+    float regionC = glm::dot(q, glm::vec2(a, b)) - r1;
+    float d = ((k < 0.0f) ? regionA : regionC);
+    d = ((k > a * height) ? regionB : d);
+    return d;
+}
+
 } // namespace Yeroket::Sdf::Generated

@@ -363,6 +363,61 @@ inline std::string EmitProceduralComputeShader(
                 stk.push_back(t);
                 break;
             }
+            // --- Leaf primitives — P2.4 M3b-3: prism + cone family ---
+            case SdfOpCode::RoundCone: {
+                // data[0]=r1, data[1]=r2, data[2]=height, data[4..6]=position
+                std::string t = "t" + std::to_string(n++);
+                std::string q = curPos + " - float3(" + f(in.data[4]) + ", " + f(in.data[5]) + ", " + f(in.data[6]) + ")";
+                body += "  float " + t + " = SdfCore_RoundCone(" + q + ", "
+                    + f(in.data[0]) + ", " + f(in.data[1]) + ", " + f(in.data[2]) + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::FakeRoundCone: {
+                // data[0]=r1, data[1]=r2, data[2]=height, data[4..6]=position
+                std::string t = "t" + std::to_string(n++);
+                std::string q = curPos + " - float3(" + f(in.data[4]) + ", " + f(in.data[5]) + ", " + f(in.data[6]) + ")";
+                body += "  float " + t + " = SdfCore_FakeRoundCone(" + q + ", "
+                    + f(in.data[0]) + ", " + f(in.data[1]) + ", " + f(in.data[2]) + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::Segment: {
+                // data[0..2]=pointA, data[3]=radius, data[4..6]=pointB — samples curPos directly (no offset)
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = SdfCore_Segment(" + curPos + ", float3("
+                    + f(in.data[0]) + ", " + f(in.data[1]) + ", " + f(in.data[2]) + "), float3("
+                    + f(in.data[4]) + ", " + f(in.data[5]) + ", " + f(in.data[6]) + "), "
+                    + f(in.data[3]) + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::TriangularPrism: {
+                // data[0]=h.x, data[1]=h.y, data[4..6]=position
+                std::string t = "t" + std::to_string(n++);
+                std::string q = curPos + " - float3(" + f(in.data[4]) + ", " + f(in.data[5]) + ", " + f(in.data[6]) + ")";
+                body += "  float " + t + " = SdfCore_TriangularPrism(" + q + ", float2("
+                    + f(in.data[0]) + ", " + f(in.data[1]) + "));\n";
+                stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::Pyramid: {
+                // data[0]=height, data[4..6]=position
+                std::string t = "t" + std::to_string(n++);
+                std::string q = curPos + " - float3(" + f(in.data[4]) + ", " + f(in.data[5]) + ", " + f(in.data[6]) + ")";
+                body += "  float " + t + " = SdfCore_Pyramid(" + q + ", " + f(in.data[0]) + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::HexPrism: {
+                // data[0]=h.x (hex radius), data[1]=h.y (half-height), data[4..6]=position
+                std::string t = "t" + std::to_string(n++);
+                std::string q = curPos + " - float3(" + f(in.data[4]) + ", " + f(in.data[5]) + ", " + f(in.data[6]) + ")";
+                body += "  float " + t + " = SdfCore_HexPrism(" + q + ", float2("
+                    + f(in.data[0]) + ", " + f(in.data[1]) + "));\n";
+                stk.push_back(t);
+                break;
+            }
             case SdfOpCode::MirrorX: {
                 std::string pN = "pp" + std::to_string(n++);
                 body += "  float3 " + pN + " = SdfCore_MirrorX(" + curPos + ");\n";

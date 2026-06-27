@@ -744,3 +744,212 @@ TEST(RecipeEvalParity, M3b2_RoundedBox_MatchesAnalytic) {
     EXPECT_GT(std::abs(evalRecipe(prog, 1, pWorld) - posBoxRoundedDist(pWorld, glm::vec3(0.0f), he, rr)), 0.05f)
         << "RoundedBox offset not applied";
 }
+
+// ============================================================
+// P2.4 M3b-3 — 6 prism/cone-family leaf primitive parity cases.
+// Offset group (pos-off=YES): TriangularPrism, HexPrism, Pyramid, FakeRoundCone, RoundCone.
+// No-offset: Segment (pointA=data[0..2], radius=data[3], pointB=data[4..6]).
+// Oracles are independent C++ formulas — NOT calling SdfCore_*.
+// ============================================================
+
+// --- M3b-3 instruction helpers ---
+static SdfInstruction triangularPrismOp(float hx, float hy, glm::vec3 off) {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::TriangularPrism;
+    in.data[0]=hx; in.data[1]=hy;
+    in.data[4]=off.x; in.data[5]=off.y; in.data[6]=off.z;  return in; }
+static SdfInstruction hexPrismOp(float hx, float hy, glm::vec3 off) {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::HexPrism;
+    in.data[0]=hx; in.data[1]=hy;
+    in.data[4]=off.x; in.data[5]=off.y; in.data[6]=off.z;  return in; }
+static SdfInstruction pyramidOp(float height, glm::vec3 off) {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::Pyramid;
+    in.data[0]=height;
+    in.data[4]=off.x; in.data[5]=off.y; in.data[6]=off.z;  return in; }
+static SdfInstruction segmentOp(glm::vec3 ptA, float radius, glm::vec3 ptB) {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::Segment;
+    in.data[0]=ptA.x; in.data[1]=ptA.y; in.data[2]=ptA.z;
+    in.data[3]=radius;
+    in.data[4]=ptB.x; in.data[5]=ptB.y; in.data[6]=ptB.z;  return in; }
+static SdfInstruction fakeRoundConeOp(float r1, float r2, float height, glm::vec3 off) {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::FakeRoundCone;
+    in.data[0]=r1; in.data[1]=r2; in.data[2]=height;
+    in.data[4]=off.x; in.data[5]=off.y; in.data[6]=off.z;  return in; }
+static SdfInstruction roundConeOp(float r1, float r2, float height, glm::vec3 off) {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::RoundCone;
+    in.data[0]=r1; in.data[1]=r2; in.data[2]=height;
+    in.data[4]=off.x; in.data[5]=off.y; in.data[6]=off.z;  return in; }
+
+// --- M3b-3 oracle helpers (re-derived from SDFPrimitives.cs — NOT calling SdfCore_*) ---
+static float triangularPrismDist(glm::vec3 p, glm::vec3 off, float hx, float hy) {
+    // mirrors SDFPrimitives.TriangularPrism:530 — uses signed p.y, abs on x/z
+    glm::vec3 lp = p - off;
+    glm::vec3 q = glm::abs(lp);
+    return std::max(q.z - hy, std::max(q.x * 0.866025f + lp.y * 0.5f, -lp.y) - hx * 0.5f);
+}
+static float hexPrismDist(glm::vec3 p, glm::vec3 off, float hx, float hy) {
+    // mirrors SDFPrimitives.HexPrism:580
+    const float k0 = 0.8660254f; // sqrt(3)/2
+    const float kz = 0.57735f;   // 1/sqrt(3)
+    glm::vec3 lp = p - off;
+    glm::vec3 q = glm::abs(lp);
+    float dotVal = std::min(glm::dot(glm::vec2(-k0, 0.5f), glm::vec2(q.x, q.z)), 0.0f);
+    float qx = q.x - 2.0f * dotVal * (-k0);
+    float qz = q.z - 2.0f * dotVal * 0.5f;
+    glm::vec2 d(
+        glm::length(glm::vec2(qx, qz) - glm::vec2(glm::clamp(qx, -kz * hx, kz * hx), hx))
+            * sign1f(qz - hx),
+        q.y - hy);
+    return std::min(std::max(d.x, d.y), 0.0f) + glm::length(glm::max(d, glm::vec2(0.0f)));
+}
+static float pyramidDist_oracle(glm::vec3 p, glm::vec3 off, float height) {
+    // Independent port of published IQ sdPyramid (iquilezles.org/articles/distfunctions).
+    // NOT derived from the kernel — keeps the parity test from becoming a circular oracle.
+    glm::vec3 lp = p - off;
+    float m2 = height * height + 0.25f;
+    float px = std::abs(lp.x), pz = std::abs(lp.z), py = lp.y;
+    if (pz > px) { float tmp = px; px = pz; pz = tmp; }  // fold so px >= pz
+    px -= 0.5f; pz -= 0.5f;
+    glm::vec3 q(pz, height * py - 0.5f * px, height * px + 0.5f * py);
+    float s = std::max(-q.x, 0.0f);
+    float t = glm::clamp((q.y - 0.5f * pz) / (m2 + 0.25f), 0.0f, 1.0f);
+    float da = m2 * (q.x + s) * (q.x + s) + q.y * q.y;
+    float db = m2 * (q.x + 0.5f * t) * (q.x + 0.5f * t) + (q.y - m2 * t) * (q.y - m2 * t);
+    float d2 = (std::min(q.y, -q.x * m2 - q.y * 0.5f) > 0.0f) ? 0.0f : std::min(da, db);
+    float signVal = std::max(q.z, -py) >= 0.0f ? 1.0f : -1.0f;
+    return std::sqrt((d2 + q.z * q.z) / m2) * signVal;
+}
+static float segmentDist(glm::vec3 p, glm::vec3 ptA, glm::vec3 ptB, float radius) {
+    // mirrors SDFPrimitives.Capsule:82 in segment (line segment) form
+    glm::vec3 pa = p - ptA, ba = ptB - ptA;
+    float h = glm::clamp(glm::dot(pa, ba) / glm::dot(ba, ba), 0.0f, 1.0f);
+    return glm::length(pa - ba * h) - radius;
+}
+static float fakeRoundConeDist(glm::vec3 p, glm::vec3 off, float r1, float r2, float height) {
+    // mirrors SDFPrimitives.FakeRoundCone:468
+    glm::vec3 lp = p - off;
+    glm::vec2 q(glm::length(glm::vec2(lp.x, lp.z)), lp.y);
+    float h = glm::clamp(q.y / height, 0.0f, 1.0f);
+    float r = glm::mix(r1, r2, h);
+    return glm::length(glm::vec2(q.x, q.y - height * h)) - r;
+}
+static float roundConeDist_oracle(glm::vec3 p, glm::vec3 off, float r1, float r2, float height) {
+    // mirrors SDFPrimitives.ConeRounded:447 — original branched form (oracle for branchless kernel)
+    glm::vec3 lp = p - off;
+    glm::vec2 q(glm::length(glm::vec2(lp.x, lp.z)), lp.y);
+    float b = (r1 - r2) / height;
+    float a = std::sqrt(1.0f - b * b);
+    float k = glm::dot(q, glm::vec2(-b, a));
+    if (k < 0.0f)           return glm::length(q) - r1;
+    if (k > a * height)     return glm::length(q - glm::vec2(0.0f, height)) - r2;
+    return glm::dot(q, glm::vec2(a, b)) - r1;
+}
+
+// Shared offset — same kOff as M3b-2 (non-zero so offset-insensitive queries fail).
+
+// --- 1. TriangularPrism (pos-off=YES) ---
+TEST(RecipeEvalParity, M3b3_TriangularPrism_MatchesOracle) {
+    const float hx=0.5f, hy=0.4f;
+    SdfInstruction prog[] = { triangularPrismOp(hx, hy, kOff) };
+    const glm::vec3 pts[] = {
+        kOff + glm::vec3(0.0f, -0.2f,  0.0f),   // inside (below axis, within base)
+        kOff + glm::vec3(0.7f,  0.0f,  0.0f),   // outside along X
+        kOff + glm::vec3(0.0f,  0.0f,  0.6f),   // outside along Z (beyond hy)
+        kOff + glm::vec3(0.3f,  0.25f, 0.2f),   // outside, off-axis
+    };
+    for (const glm::vec3& p : pts)
+        EXPECT_NEAR(evalRecipe(prog, 1, p), triangularPrismDist(p, kOff, hx, hy), 1e-5f)
+            << "TriangularPrism at (" << p.x << "," << p.y << "," << p.z << ")";
+    glm::vec3 pWorld(0.0f, 0.0f, 0.0f);
+    EXPECT_GT(std::abs(evalRecipe(prog, 1, pWorld) - triangularPrismDist(pWorld, glm::vec3(0.0f), hx, hy)), 0.1f)
+        << "TriangularPrism offset not applied";
+}
+
+// --- 2. HexPrism (pos-off=YES) ---
+TEST(RecipeEvalParity, M3b3_HexPrism_MatchesOracle) {
+    const float hx=0.4f, hy=0.5f;
+    SdfInstruction prog[] = { hexPrismOp(hx, hy, kOff) };
+    const glm::vec3 pts[] = {
+        kOff + glm::vec3(0.0f,  0.0f,  0.0f),   // center (inside)
+        kOff + glm::vec3(0.5f,  0.0f,  0.0f),   // outside X (beyond hex radius)
+        kOff + glm::vec3(0.0f,  0.7f,  0.0f),   // outside top cap
+        kOff + glm::vec3(0.3f,  0.3f,  0.3f),   // outside, off-axis
+    };
+    for (const glm::vec3& p : pts)
+        EXPECT_NEAR(evalRecipe(prog, 1, p), hexPrismDist(p, kOff, hx, hy), 1e-5f)
+            << "HexPrism at (" << p.x << "," << p.y << "," << p.z << ")";
+    glm::vec3 pWorld(0.0f, 0.0f, 0.0f);
+    EXPECT_GT(std::abs(evalRecipe(prog, 1, pWorld) - hexPrismDist(pWorld, glm::vec3(0.0f), hx, hy)), 0.1f)
+        << "HexPrism offset not applied";
+}
+
+// --- 3. Pyramid (pos-off=YES, branchless rewrite oracle) ---
+TEST(RecipeEvalParity, M3b3_Pyramid_MatchesOracle) {
+    const float height=1.0f;
+    SdfInstruction prog[] = { pyramidOp(height, kOff) };
+    const glm::vec3 pts[] = {
+        kOff + glm::vec3(0.2f,  0.3f,  0.1f),   // inside (q.z <= q.x: no fold)
+        kOff + glm::vec3(0.1f,  0.3f,  0.35f),  // inside (q.z > q.x: fold triggered)
+        kOff + glm::vec3(0.0f,  1.2f,  0.0f),   // above apex
+        kOff + glm::vec3(0.7f, -0.2f,  0.3f),   // outside, below base
+    };
+    for (const glm::vec3& p : pts)
+        EXPECT_NEAR(evalRecipe(prog, 1, p), pyramidDist_oracle(p, kOff, height), 1e-5f)
+            << "Pyramid at (" << p.x << "," << p.y << "," << p.z << ")";
+    glm::vec3 pWorld(0.0f, 0.0f, 0.0f);
+    EXPECT_GT(std::abs(evalRecipe(prog, 1, pWorld) - pyramidDist_oracle(pWorld, glm::vec3(0.0f), height)), 0.1f)
+        << "Pyramid offset not applied";
+}
+
+// --- 4. Segment (no pos-offset: data[0..2]=ptA, data[3]=radius, data[4..6]=ptB) ---
+TEST(RecipeEvalParity, M3b3_Segment_MatchesOracle) {
+    const glm::vec3 ptA(0.1f, -0.3f, 0.2f), ptB(0.7f, 0.5f, -0.1f);
+    const float radius = 0.08f;
+    SdfInstruction prog[] = { segmentOp(ptA, radius, ptB) };
+    const glm::vec3 pts[] = {
+        ptA + glm::vec3(0.0f, -0.4f, 0.0f),        // past ptA end (h clamped to 0)
+        ptB + glm::vec3(0.0f,  0.4f, 0.0f),         // past ptB end (h clamped to 1)
+        (ptA + ptB) * 0.5f,                          // midpoint (on axis — inside tube)
+        (ptA + ptB) * 0.5f + glm::vec3(0.3f, 0.0f, 0.3f), // off-axis from midpoint
+    };
+    for (const glm::vec3& p : pts)
+        EXPECT_NEAR(evalRecipe(prog, 1, p), segmentDist(p, ptA, ptB, radius), 1e-5f)
+            << "Segment at (" << p.x << "," << p.y << "," << p.z << ")";
+    // No pos-offset test — Segment has no position field; samples pos directly.
+}
+
+// --- 5. FakeRoundCone (pos-off=YES) ---
+TEST(RecipeEvalParity, M3b3_FakeRoundCone_MatchesOracle) {
+    const float r1=0.3f, r2=0.1f, height=1.0f;
+    SdfInstruction prog[] = { fakeRoundConeOp(r1, r2, height, kOff) };
+    const glm::vec3 pts[] = {
+        kOff + glm::vec3(0.0f, 0.5f,  0.0f),   // on axis, mid-height (inside)
+        kOff + glm::vec3(0.4f, 0.5f,  0.0f),   // outside at mid-height
+        kOff + glm::vec3(0.0f, 1.3f,  0.0f),   // above top cap
+        kOff + glm::vec3(0.3f, 0.0f,  0.3f),   // near base, off-axis
+    };
+    for (const glm::vec3& p : pts)
+        EXPECT_NEAR(evalRecipe(prog, 1, p), fakeRoundConeDist(p, kOff, r1, r2, height), 1e-5f)
+            << "FakeRoundCone at (" << p.x << "," << p.y << "," << p.z << ")";
+    glm::vec3 pWorld(0.0f, 0.0f, 0.0f);
+    EXPECT_GT(std::abs(evalRecipe(prog, 1, pWorld) - fakeRoundConeDist(pWorld, glm::vec3(0.0f), r1, r2, height)), 0.1f)
+        << "FakeRoundCone offset not applied";
+}
+
+// --- 6. RoundCone (pos-off=YES, branchless rewrite oracle — one point per region) ---
+TEST(RecipeEvalParity, M3b3_RoundCone_MatchesOracle) {
+    const float r1=0.3f, r2=0.1f, height=1.0f;
+    SdfInstruction prog[] = { roundConeOp(r1, r2, height, kOff) };
+    const glm::vec3 pts[] = {
+        // Compute b = (r1-r2)/height = 0.2, a = sqrt(1-0.04) ≈ 0.98
+        // k = dot(q, (-b, a)) = -b*rho + a*qy
+        kOff + glm::vec3(0.5f, -0.5f, 0.0f),   // k < 0 region: below base sphere
+        kOff + glm::vec3(0.05f, 0.5f, 0.0f),   // middle region: on the cone slope
+        kOff + glm::vec3(0.0f,  1.5f, 0.0f),   // k > a*h region: above top sphere
+    };
+    for (const glm::vec3& p : pts)
+        EXPECT_NEAR(evalRecipe(prog, 1, p), roundConeDist_oracle(p, kOff, r1, r2, height), 1e-5f)
+            << "RoundCone at (" << p.x << "," << p.y << "," << p.z << ")";
+    glm::vec3 pWorld(0.0f, 0.0f, 0.0f);
+    EXPECT_GT(std::abs(evalRecipe(prog, 1, pWorld) - roundConeDist_oracle(pWorld, glm::vec3(0.0f), r1, r2, height)), 0.1f)
+        << "RoundCone offset not applied";
+}

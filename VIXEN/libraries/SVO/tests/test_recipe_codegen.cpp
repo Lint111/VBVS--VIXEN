@@ -260,3 +260,50 @@ TEST(RecipeCodegen, EmitsPositionedLeafPrimitivesCompilesToSpirv) {
     ASSERT_TRUE(out4.success) << out4.GetFullLog() << "\n--- emitted source ---\n" << src;
     EXPECT_FALSE(out4.spirv.empty());
 }
+
+TEST(RecipeCodegen, EmitsM3b3PrimitivesCompilesToSpirv) {
+    // P2.4 M3b-3: branchless Pyramid + RoundCone (both had rewrite) + Segment (no-offset)
+    std::ifstream f5(SDF_CORE_KERNELS_HLSL_PATH);
+    ASSERT_TRUE(f5.good()) << "Cannot open vendored HLSL: " << SDF_CORE_KERNELS_HLSL_PATH;
+    std::ostringstream ss5;
+    ss5 << f5.rdbuf();
+    std::string core = ss5.str();
+
+    // Pyramid at offset (+0.3, 0, 0): height=1.0
+    Recipe::SdfInstruction pyramid{};
+    pyramid.opCode  = static_cast<uint8_t>(Recipe::SdfOpCode::Pyramid);
+    pyramid.data[0] = 1.0f;   // height
+    pyramid.data[4] = 0.3f;   // position offset x
+
+    // RoundCone at offset (-0.3, 0, 0): r1=0.3, r2=0.1, height=1.0
+    Recipe::SdfInstruction roundCone{};
+    roundCone.opCode  = static_cast<uint8_t>(Recipe::SdfOpCode::RoundCone);
+    roundCone.data[0] = 0.3f; roundCone.data[1] = 0.1f; roundCone.data[2] = 1.0f;
+    roundCone.data[4] = -0.3f;
+
+    // Segment (no-offset): ptA=(0,0,0), radius=0.05, ptB=(0.5,0.5,0)
+    Recipe::SdfInstruction segment{};
+    segment.opCode  = static_cast<uint8_t>(Recipe::SdfOpCode::Segment);
+    segment.data[0] = 0.0f; segment.data[1] = 0.0f; segment.data[2] = 0.0f;
+    segment.data[3] = 0.05f;
+    segment.data[4] = 0.5f; segment.data[5] = 0.5f; segment.data[6] = 0.0f;
+
+    Recipe::SdfInstruction prog[] = { pyramid, roundCone, unionOp(), segment, unionOp() };
+    std::string src = Recipe::EmitProceduralComputeShader(prog, 5, core);
+
+    EXPECT_NE(src.find("SdfCore_Pyramid("), std::string::npos)
+        << "Expected SdfCore_Pyramid call; src:\n" << src;
+    EXPECT_NE(src.find("SdfCore_RoundCone("), std::string::npos)
+        << "Expected SdfCore_RoundCone call; src:\n" << src;
+    EXPECT_NE(src.find("SdfCore_Segment("), std::string::npos)
+        << "Expected SdfCore_Segment call; src:\n" << src;
+
+    ShaderCompiler compiler5;
+    CompilationOptions opts5;
+    opts5.sourceLanguage = CompilationOptions::SourceLanguage::HLSL;
+    opts5.validateSpirv  = false;  // ponytail: glslang SPIR-V validator quirk (same as prior gates)
+
+    auto out5 = compiler5.Compile(ShaderStage::Compute, src, "main", opts5);
+    ASSERT_TRUE(out5.success) << out5.GetFullLog() << "\n--- emitted source ---\n" << src;
+    EXPECT_FALSE(out5.spirv.empty());
+}

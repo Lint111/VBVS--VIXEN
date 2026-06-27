@@ -1012,3 +1012,95 @@ TEST_F(ProceduralRecipeRenderTest, RenderCone) {
            << "\nEmitted shader (first 2000 chars):\n"
         << shaderSrc.substr(0, 2000);
 }
+
+// ---------------------------------------------------------------------------
+// P2.4 M3b-3 — Live lavapipe render gate for Pyramid (branchless rewrite).
+//
+// Recipe: [Pyramid(height=1.0, offset=(0,0,0))]
+//   Unit pyramid: base 1×1 in XZ at y=0, apex at (0,1,0).
+//   Camera above, looking down at an angle — shows a classic diamond/triangle
+//   silhouette confirming the branchless Pyramid kernel runs correctly on GPU.
+//
+// Writes /tmp/glsl_sdf_m3b_pyramid.png (512×512 RGBA8). ICD-only (no validation).
+// Validator reads the PNG to confirm pyramid shape (non-trivial pixel count).
+// ---------------------------------------------------------------------------
+TEST_F(ProceduralRecipeRenderTest, RenderPyramid) {
+    // Step 1: read the vendored SdfCoreKernels HLSL (now includes Pyramid).
+    std::ifstream kernelFile(SDF_CORE_KERNELS_HLSL_PATH);
+    ASSERT_TRUE(kernelFile.good())
+        << "Cannot open vendored HLSL: " << SDF_CORE_KERNELS_HLSL_PATH;
+    std::ostringstream ss;
+    ss << kernelFile.rdbuf();
+    const std::string sdfCoreHlsl = ss.str();
+
+    // Step 2: Pyramid recipe. height=1.0, position offset at origin.
+    // data[0]=height, data[4..6]=position offset (all 0).
+    Vixen::SVO::Recipe::SdfInstruction pyramid{};
+    pyramid.opCode  = static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::Pyramid);
+    pyramid.data[0] = 1.0f;  // height
+
+    Vixen::SVO::Recipe::SdfInstruction prog[] = { pyramid };
+    const std::string shaderSrc =
+        Vixen::SVO::Recipe::EmitProceduralComputeShader(prog, 1, sdfCoreHlsl);
+
+    // Step 3: compile HLSL → SPIR-V.
+    ShaderManagement::ShaderCompiler compiler;
+    ShaderManagement::CompilationOptions opts;
+    opts.sourceLanguage = ShaderManagement::CompilationOptions::SourceLanguage::HLSL;
+    opts.validateSpirv  = false;  // ponytail: glslang SPIR-V validator quirk
+    auto compOut = compiler.Compile(ShaderManagement::ShaderStage::Compute, shaderSrc, "main", opts);
+    ASSERT_TRUE(compOut.success)
+        << "HLSL compile failed:\n" << compOut.GetFullLog()
+        << "\n--- emitted source ---\n" << shaderSrc;
+    ASSERT_FALSE(compOut.spirv.empty());
+
+    // Step 4: camera above and slightly back — views pyramid from above-front.
+    // Pyramid: base 1×1 in XZ at y=0, apex at (0,1,0).
+    // Eye at (0, 2.5, 3.5) target (0, 0.5, 0) — shows diamond/square silhouette.
+    constexpr uint32_t W = 512, H = 512;
+    const RecipePushConstants pc = MakeCamera(
+        glm::vec3(0.0f, 2.5f, 3.5f),   // eye — above and back
+        glm::vec3(0.0f, 0.5f, 0.0f),   // target — pyramid midpoint
+        W, H
+    );
+
+    // Step 5: dispatch on lavapipe, readback float pixels (RGBA32F).
+    std::vector<float> rgba32f;
+    ASSERT_NO_FATAL_FAILURE(RenderProcedural(compOut.spirv, pc, W, H, rgba32f));
+    ASSERT_EQ(rgba32f.size(), static_cast<size_t>(W) * H * 4);
+
+    // Step 6: count body pixels + convert to RGBA8 for PNG.
+    int bodyPixels = 0;
+    std::vector<uint8_t> rgba8(W * H * 4);
+    for (uint32_t i = 0; i < W * H; ++i) {
+        const float fr = rgba32f[i * 4 + 0];
+        const float fg = rgba32f[i * 4 + 1];
+        const float fb = rgba32f[i * 4 + 2];
+        const float fa = rgba32f[i * 4 + 3];
+        rgba8[i * 4 + 0] = static_cast<uint8_t>(std::min(fr * 255.0f + 0.5f, 255.0f));
+        rgba8[i * 4 + 1] = static_cast<uint8_t>(std::min(fg * 255.0f + 0.5f, 255.0f));
+        rgba8[i * 4 + 2] = static_cast<uint8_t>(std::min(fb * 255.0f + 0.5f, 255.0f));
+        rgba8[i * 4 + 3] = static_cast<uint8_t>(std::min(fa * 255.0f + 0.5f, 255.0f));
+        if (fr > 0.08f || fg > 0.08f) ++bodyPixels;
+    }
+
+    // Step 7: write PNG — validator reads it to confirm pyramid shape.
+    const char* pngPath = "/tmp/glsl_sdf_m3b_pyramid.png";
+    const int pngOk = stbi_write_png(pngPath,
+        static_cast<int>(W), static_cast<int>(H), 4,
+        rgba8.data(), static_cast<int>(W) * 4);
+
+    printf("[RenderPyramid] bodyPixels=%d  PNG written=%s  path=%s\n",
+           bodyPixels, pngOk ? "YES" : "NO", pngPath);
+    fflush(stdout);
+
+    EXPECT_TRUE(pngOk) << "stbi_write_png failed for " << pngPath;
+    ASSERT_GT(bodyPixels, 2000)
+        << "bodyPixels=" << bodyPixels << " <= 2000 — image is likely all-black. "
+           "Check: (1) branchless Pyramid kernel, (2) SdfOpCode::Pyramid case in emit/eval, "
+           "(3) height=1.0 base at y=0 apex at (0,1,0). "
+           "Sample floats [pixel 0]: R=" << rgba32f[0] << " G=" << rgba32f[1]
+           << " B=" << rgba32f[2] << " A=" << rgba32f[3]
+           << "\nEmitted shader (first 2000 chars):\n"
+        << shaderSrc.substr(0, 2000);
+}
