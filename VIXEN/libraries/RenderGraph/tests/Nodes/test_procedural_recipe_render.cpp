@@ -31,6 +31,7 @@
 #include "Recipe/SdfRecipeCodegen.h"
 #include "Recipe/SdfInstruction.h"
 #include "ShaderCompiler.h"
+#include "TestVkValidation.h"
 
 #include <vulkan/vulkan.h>
 
@@ -163,20 +164,20 @@ protected:
         // Vulkan 1.3 instance — required so the SPIR-V 1.6 module is accepted.
         appInfo.apiVersion       = VK_API_VERSION_1_3;
 
-        const char* layers[]     = {"VK_LAYER_KHRONOS_validation"};
-        const char* extensions[] = {VK_EXT_DEBUG_UTILS_EXTENSION_NAME};
+        // ponytail: validation is a debug aid — only enabled when the SDK layer is installed
+        const auto  enabledLayers = EnabledValidationLayers();
+        const char* extensions[]  = {VK_EXT_DEBUG_UTILS_EXTENSION_NAME};
 
         VkInstanceCreateInfo instInfo{};
         instInfo.sType                   = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
         instInfo.pApplicationInfo        = &appInfo;
-        instInfo.enabledLayerCount       = 1;
-        instInfo.ppEnabledLayerNames     = layers;
+        instInfo.enabledLayerCount       = static_cast<uint32_t>(enabledLayers.size());
+        instInfo.ppEnabledLayerNames     = enabledLayers.empty() ? nullptr : enabledLayers.data();
         instInfo.enabledExtensionCount   = 1;
         instInfo.ppEnabledExtensionNames = extensions;
 
         ASSERT_EQ(vkCreateInstance(&instInfo, nullptr, &instance_), VK_SUCCESS)
-            << "vkCreateInstance failed — is lavapipe on VK_ICD_FILENAMES and "
-               "validation layer on VK_LAYER_PATH?";
+            << "vkCreateInstance failed — is lavapipe on VK_ICD_FILENAMES?";
 
         ASSERT_NO_FATAL_FAILURE(PickSoftwarePhysicalDevice());
         ASSERT_TRUE(softwareConfirmed_)
