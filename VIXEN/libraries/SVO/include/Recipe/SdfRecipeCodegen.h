@@ -233,6 +233,49 @@ inline std::string EmitProceduralComputeShader(
                 stk.push_back(t);
                 break;
             }
+            // --- Leaf primitives (no-position, pos-off=NO) — P2.4 M3b-1 ---
+            case SdfOpCode::Capsule: {
+                // data[0]=halfHeight, data[1]=radius
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = SdfCore_Capsule(" + curPos + ", "
+                    + f(in.data[0]) + ", " + f(in.data[1]) + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::Cylinder: {
+                // data[0]=halfHeight, data[1]=radius
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = SdfCore_Cylinder(" + curPos + ", "
+                    + f(in.data[0]) + ", " + f(in.data[1]) + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::Torus: {
+                // data[0]=majorRadius, data[1]=minorRadius
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = SdfCore_Torus(" + curPos + ", "
+                    + f(in.data[0]) + ", " + f(in.data[1]) + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::BoxRounded: {
+                // data[0..2]=halfExtents, data[3]=rounding
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = SdfCore_BoxRounded(" + curPos + ", float3("
+                    + f(in.data[0]) + ", " + f(in.data[1]) + ", " + f(in.data[2]) + "), "
+                    + f(in.data[3]) + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::Plane: {
+                // data[0..2]=normal, data[3]=distance
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = SdfCore_Plane(" + curPos + ", float3("
+                    + f(in.data[0]) + ", " + f(in.data[1]) + ", " + f(in.data[2]) + "), "
+                    + f(in.data[3]) + ");\n";
+                stk.push_back(t);
+                break;
+            }
             case SdfOpCode::MirrorX: {
                 std::string pN = "pp" + std::to_string(n++);
                 body += "  float3 " + pN + " = SdfCore_MirrorX(" + curPos + ");\n";

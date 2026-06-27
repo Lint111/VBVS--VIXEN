@@ -1,6 +1,5 @@
 // GENERATED from SdfCoreKernels.cs by the kernel-framework C++/HLSL emitter
 // Do not edit; regenerate via the Yeroket source generator (P1 automates).
-// Vendored from Yeroket-Fantasy Packages/com.utility.sdf/Runtime/GPU/Generated/ (branch feat/kernel-cpp-emitter)
 
 #ifndef SDF_CORE_KERNELS_G_HLSL
 #define SDF_CORE_KERNELS_G_HLSL
@@ -75,6 +74,31 @@ float SdfCore_Round(float d, float r) {
 
 float SdfCore_Onion(float d, float r) {
     return abs(d) - r;
+}
+
+float SdfCore_BoxRounded(float3 p, float3 halfExtents, float roundRadius) {
+    float3 q = abs(p) - halfExtents + roundRadius;
+    return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0) - roundRadius;
+}
+
+float SdfCore_Capsule(float3 p, float height, float radius) {
+    float3 localP = p;
+    localP.y -= clamp(localP.y, -height, height);
+    return length(localP) - radius;
+}
+
+float SdfCore_Cylinder(float3 p, float height, float radius) {
+    float2 d = float2(length(float2(p.x, p.z)) - radius, abs(p.y) - height);
+    return min(max(d.x, d.y), 0.0) + length(max(d, 0.0));
+}
+
+float SdfCore_Plane(float3 p, float3 normal, float distance) {
+    return dot(p, normal) + distance;
+}
+
+float SdfCore_Torus(float3 p, float majorRadius, float minorRadius) {
+    float2 q = float2(length(float2(p.x, p.z)) - majorRadius, p.y);
+    return length(q) - minorRadius;
 }
 
 

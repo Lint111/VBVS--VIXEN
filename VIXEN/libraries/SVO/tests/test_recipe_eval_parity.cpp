@@ -21,6 +21,23 @@ static SdfInstruction smoothUnionOp(float k) {
 static SdfInstruction mirrorXOp() { SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::MirrorX; return in; }
 static SdfInstruction restorePosOp() { SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::RestorePos; return in; }
 
+// --- M3b-1 instruction helpers (5 no-position leaf primitives) ---
+static SdfInstruction capsuleOp(float halfH, float r) {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::Capsule;
+    in.data[0]=halfH; in.data[1]=r; return in; }
+static SdfInstruction cylinderOp(float halfH, float r) {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::Cylinder;
+    in.data[0]=halfH; in.data[1]=r; return in; }
+static SdfInstruction torusOp(float majorR, float minorR) {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::Torus;
+    in.data[0]=majorR; in.data[1]=minorR; return in; }
+static SdfInstruction boxRoundedOp(glm::vec3 he, float rr) {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::BoxRounded;
+    in.data[0]=he.x; in.data[1]=he.y; in.data[2]=he.z; in.data[3]=rr; return in; }
+static SdfInstruction planeOp(glm::vec3 n, float d) {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::Plane;
+    in.data[0]=n.x; in.data[1]=n.y; in.data[2]=n.z; in.data[3]=d; return in; }
+
 // --- M3a instruction helpers ---
 static SdfInstruction subtractOp() { SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::Subtract; return in; }
 static SdfInstruction intersectOp() { SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::Intersect; return in; }
@@ -50,6 +67,34 @@ static float boxDist(glm::vec3 p, glm::vec3 hext) {
 }
 static float sphereDist(glm::vec3 p, glm::vec3 c, float r) {
     return glm::length(p - c) - r;
+}
+
+// Oracle helpers for M3b-1 leaf primitives (re-derived from SDFPrimitives.cs — NOT calling SdfCore_*).
+static float capsuleDist(glm::vec3 p, float halfH, float r) {
+    // mirrors SDFPrimitives.CapsuleVertical:96
+    glm::vec3 lp = p;
+    lp.y -= std::max(-halfH, std::min(lp.y, halfH));
+    return glm::length(lp) - r;
+}
+static float cylinderDist(glm::vec3 p, float halfH, float r) {
+    // mirrors SDFPrimitives.Cylinder:210
+    glm::vec2 d(glm::length(glm::vec2(p.x, p.z)) - r, std::abs(p.y) - halfH);
+    return std::min(std::max(d.x, d.y), 0.0f) + glm::length(glm::max(d, glm::vec2(0.0f)));
+}
+static float torusDist(glm::vec3 p, float majorR, float minorR) {
+    // mirrors SDFPrimitives.Torus:293
+    glm::vec2 q(glm::length(glm::vec2(p.x, p.z)) - majorR, p.y);
+    return glm::length(q) - minorR;
+}
+static float boxRoundedDist(glm::vec3 p, glm::vec3 he, float rr) {
+    // mirrors SDFPrimitives.BoxRounded:194
+    glm::vec3 q = glm::abs(p) - he + rr;
+    return glm::length(glm::max(q, glm::vec3(0.0f)))
+         + std::min(std::max(q.x, std::max(q.y, q.z)), 0.0f) - rr;
+}
+static float planeDist(glm::vec3 p, glm::vec3 n, float d) {
+    // mirrors SDFPrimitives.Plane:267
+    return glm::dot(p, n) + d;
 }
 
 TEST(RecipeEvalParity, SphereUnionMatchesAnalytic) {
@@ -336,4 +381,85 @@ TEST(RecipeEvalParity, M3a_Onion_MatchesAnalytic) {
         EXPECT_NEAR(evalRecipe(prog,2,p), std::abs(d)-thick, 1e-5f)
             << "Onion at (" << p.x <<","<< p.y <<","<< p.z <<")";
     }
+}
+
+// ============================================================
+// P2.4 M3b-1 — 5 no-position leaf primitive parity cases.
+// Oracles: re-derived from SDFPrimitives.cs in C++ (NOT calling SdfCore_*).
+// ≥4 sample points per primitive; params chosen for non-degenerate shapes.
+// ============================================================
+
+// --- Capsule: recipe [Capsule(halfH=0.5, r=0.3)] ---
+TEST(RecipeEvalParity, M3b1_Capsule_MatchesAnalytic) {
+    const float halfH = 0.5f, r = 0.3f;
+    SdfInstruction prog[] = { capsuleOp(halfH, r) };
+    const glm::vec3 pts[] = {
+        glm::vec3(0.0f,  0.0f,  0.0f),   // inside cap shaft
+        glm::vec3(0.0f,  0.6f,  0.0f),   // above top cap
+        glm::vec3(0.4f,  0.0f,  0.0f),   // outside shaft radially
+        glm::vec3(0.3f,  0.5f,  0.1f),   // near top cap edge
+    };
+    for (const glm::vec3& p : pts)
+        EXPECT_NEAR(evalRecipe(prog, 1, p), capsuleDist(p, halfH, r), 1e-5f)
+            << "Capsule at (" << p.x << "," << p.y << "," << p.z << ")";
+}
+
+// --- Cylinder: recipe [Cylinder(halfH=0.6, r=0.4)] ---
+TEST(RecipeEvalParity, M3b1_Cylinder_MatchesAnalytic) {
+    const float halfH = 0.6f, r = 0.4f;
+    SdfInstruction prog[] = { cylinderOp(halfH, r) };
+    const glm::vec3 pts[] = {
+        glm::vec3(0.0f,  0.0f,  0.0f),   // inside cylinder centre
+        glm::vec3(0.5f,  0.0f,  0.0f),   // outside radially, within height
+        glm::vec3(0.0f,  0.8f,  0.0f),   // above cap
+        glm::vec3(0.3f,  0.7f,  0.2f),   // outside both radially and axially
+    };
+    for (const glm::vec3& p : pts)
+        EXPECT_NEAR(evalRecipe(prog, 1, p), cylinderDist(p, halfH, r), 1e-5f)
+            << "Cylinder at (" << p.x << "," << p.y << "," << p.z << ")";
+}
+
+// --- Torus: recipe [Torus(majorR=0.6, minorR=0.2)] ---
+TEST(RecipeEvalParity, M3b1_Torus_MatchesAnalytic) {
+    const float majorR = 0.6f, minorR = 0.2f;
+    SdfInstruction prog[] = { torusOp(majorR, minorR) };
+    const glm::vec3 pts[] = {
+        glm::vec3(0.6f,  0.0f,  0.0f),   // on major ring in XZ, at center of tube cross-section
+        glm::vec3(0.8f,  0.0f,  0.0f),   // outside tube on major ring axis
+        glm::vec3(0.0f,  0.5f,  0.0f),   // above ring centre (away from tube)
+        glm::vec3(0.6f,  0.25f, 0.0f),   // near tube surface, slightly above
+    };
+    for (const glm::vec3& p : pts)
+        EXPECT_NEAR(evalRecipe(prog, 1, p), torusDist(p, majorR, minorR), 1e-5f)
+            << "Torus at (" << p.x << "," << p.y << "," << p.z << ")";
+}
+
+// --- BoxRounded: recipe [BoxRounded(he=(0.5,0.4,0.3), rr=0.05)] ---
+TEST(RecipeEvalParity, M3b1_BoxRounded_MatchesAnalytic) {
+    const glm::vec3 he(0.5f, 0.4f, 0.3f); const float rr = 0.05f;
+    SdfInstruction prog[] = { boxRoundedOp(he, rr) };
+    const glm::vec3 pts[] = {
+        glm::vec3(0.0f,  0.0f,  0.0f),   // inside
+        glm::vec3(0.6f,  0.0f,  0.0f),   // outside along X
+        glm::vec3(0.5f,  0.4f,  0.3f),   // near a corner
+        glm::vec3(0.2f,  0.5f,  0.1f),   // outside along Y
+    };
+    for (const glm::vec3& p : pts)
+        EXPECT_NEAR(evalRecipe(prog, 1, p), boxRoundedDist(p, he, rr), 1e-5f)
+            << "BoxRounded at (" << p.x << "," << p.y << "," << p.z << ")";
+}
+
+// --- Plane: recipe [Plane(normal=(0,1,0), d=-0.5)] → points above/below y=0.5 plane ---
+TEST(RecipeEvalParity, M3b1_Plane_MatchesAnalytic) {
+    const glm::vec3 n(0.0f, 1.0f, 0.0f); const float d = -0.5f;
+    SdfInstruction prog[] = { planeOp(n, d) };
+    const glm::vec3 pts[] = {
+        glm::vec3(0.0f,  0.5f,  0.0f),   // on the plane (dot=0.5, +d=0 → distance=0)
+        glm::vec3(0.0f,  1.0f,  0.0f),   // above plane
+        glm::vec3(0.0f,  0.0f,  0.0f),   // below plane
+        glm::vec3(1.0f,  0.7f,  2.0f),   // above plane, off-axis
+    };
+    for (const glm::vec3& p : pts)
+        EXPECT_NEAR(evalRecipe(prog, 1, p), planeDist(p, n, d), 1e-5f)
+            << "Plane at (" << p.x << "," << p.y << "," << p.z << ")";
 }

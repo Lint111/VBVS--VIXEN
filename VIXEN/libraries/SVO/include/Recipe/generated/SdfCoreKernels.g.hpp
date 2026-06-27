@@ -1,6 +1,5 @@
 // GENERATED from SdfCoreKernels.cs by the kernel-framework C++/HLSL emitter
 // Do not edit; regenerate via the Yeroket source generator (P1 automates).
-// Vendored from Yeroket-Fantasy Packages/com.utility.sdf/Runtime/GPU/Generated/ (branch feat/kernel-codegen-p1, generator emits `inline`)
 
 #pragma once
 #include <glm/glm.hpp>
@@ -78,6 +77,31 @@ inline float SdfCore_Round(float d, float r) {
 
 inline float SdfCore_Onion(float d, float r) {
     return glm::abs(d) - r;
+}
+
+inline float SdfCore_BoxRounded(glm::vec3 p, glm::vec3 halfExtents, float roundRadius) {
+    glm::vec3 q = glm::abs(p) - halfExtents + roundRadius;
+    return glm::length(glm::max(q, 0.0f)) + glm::min(glm::max(q.x, glm::max(q.y, q.z)), 0.0f) - roundRadius;
+}
+
+inline float SdfCore_Capsule(glm::vec3 p, float height, float radius) {
+    glm::vec3 localP = p;
+    localP.y -= glm::clamp(localP.y, -height, height);
+    return glm::length(localP) - radius;
+}
+
+inline float SdfCore_Cylinder(glm::vec3 p, float height, float radius) {
+    glm::vec2 d = glm::vec2(glm::length(glm::vec2(p.x, p.z)) - radius, glm::abs(p.y) - height);
+    return glm::min(glm::max(d.x, d.y), 0.0f) + glm::length(glm::max(d, 0.0f));
+}
+
+inline float SdfCore_Plane(glm::vec3 p, glm::vec3 normal, float distance) {
+    return glm::dot(p, normal) + distance;
+}
+
+inline float SdfCore_Torus(glm::vec3 p, float majorRadius, float minorRadius) {
+    glm::vec2 q = glm::vec2(glm::length(glm::vec2(p.x, p.z)) - majorRadius, p.y);
+    return glm::length(q) - minorRadius;
 }
 
 } // namespace Yeroket::Sdf::Generated

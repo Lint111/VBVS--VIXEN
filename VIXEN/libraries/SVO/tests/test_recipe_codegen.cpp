@@ -169,3 +169,44 @@ TEST(RecipeCodegen, EmitsCsgModifierCompilesToSpirv) {
     ASSERT_TRUE(out2.success) << out2.GetFullLog() << "\n--- emitted source ---\n" << src;
     EXPECT_FALSE(out2.spirv.empty());
 }
+
+// P2.4 M3b-1 — SPIR-V compile gate for Torus and BoxRounded (2 of the 5 new leaves).
+// Recipe: [Torus(majorR=0.6, minorR=0.2), BoxRounded(he=(0.4,0.4,0.4), rr=0.05), Union]
+// Verifies: emitter produces SdfCore_Torus and SdfCore_BoxRounded calls; compiles to SPIR-V.
+TEST(RecipeCodegen, EmitsLeafPrimitivesCompilesToSpirv) {
+    std::ifstream f(SDF_CORE_KERNELS_HLSL_PATH);
+    ASSERT_TRUE(f.good()) << "Cannot open vendored HLSL: " << SDF_CORE_KERNELS_HLSL_PATH;
+    std::ostringstream ss;
+    ss << f.rdbuf();
+    std::string core = ss.str();
+
+    // Torus instruction: data[0]=majorR, data[1]=minorR
+    Recipe::SdfInstruction torus{};
+    torus.opCode = static_cast<uint8_t>(Recipe::SdfOpCode::Torus);
+    torus.data[0] = 0.6f; torus.data[1] = 0.2f;
+
+    // BoxRounded instruction: data[0..2]=halfExtents, data[3]=rounding
+    Recipe::SdfInstruction boxRounded{};
+    boxRounded.opCode = static_cast<uint8_t>(Recipe::SdfOpCode::BoxRounded);
+    boxRounded.data[0] = 0.4f; boxRounded.data[1] = 0.4f; boxRounded.data[2] = 0.4f;
+    boxRounded.data[3] = 0.05f;
+
+    Recipe::SdfInstruction prog[] = { torus, boxRounded, unionOp() };
+    std::string src = Recipe::EmitProceduralComputeShader(prog, 3, core);
+
+    // Verify the two new leaf calls appear in the emitted HLSL.
+    EXPECT_NE(src.find("SdfCore_Torus("), std::string::npos)
+        << "Expected SdfCore_Torus call; src:\n" << src;
+    EXPECT_NE(src.find("SdfCore_BoxRounded("), std::string::npos)
+        << "Expected SdfCore_BoxRounded call; src:\n" << src;
+
+    // Compile through HLSL path → valid SPIR-V.
+    ShaderCompiler compiler3;
+    CompilationOptions opts3;
+    opts3.sourceLanguage = CompilationOptions::SourceLanguage::HLSL;
+    opts3.validateSpirv  = false;  // ponytail: glslang SPIR-V validator quirk (same as M2/M3a)
+
+    auto out3 = compiler3.Compile(ShaderStage::Compute, src, "main", opts3);
+    ASSERT_TRUE(out3.success) << out3.GetFullLog() << "\n--- emitted source ---\n" << src;
+    EXPECT_FALSE(out3.spirv.empty());
+}

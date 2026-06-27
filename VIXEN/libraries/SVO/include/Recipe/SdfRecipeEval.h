@@ -105,6 +105,34 @@ inline float evalRecipe(const SdfInstruction* prog, uint32_t count, glm::vec3 p)
                 assert(sp >= 1 && "Onion: value stack underflow");
                 stack[sp - 1] = SdfCore_Onion(stack[sp - 1], in.data[0]);  // thickness = Data0.x
             } break;
+            // --- Leaf primitives (no-position, pos-off=NO) — P2.4 M3b-1 ---
+            case SdfOpCode::Capsule: {
+                assert(sp < 64 && "value stack overflow");
+                // data[0]=halfHeight, data[1]=radius
+                stack[sp++] = SdfCore_Capsule(pos, in.data[0], in.data[1]);
+            } break;
+            case SdfOpCode::Cylinder: {
+                assert(sp < 64 && "value stack overflow");
+                // data[0]=halfHeight, data[1]=radius
+                stack[sp++] = SdfCore_Cylinder(pos, in.data[0], in.data[1]);
+            } break;
+            case SdfOpCode::Torus: {
+                assert(sp < 64 && "value stack overflow");
+                // data[0]=majorRadius, data[1]=minorRadius
+                stack[sp++] = SdfCore_Torus(pos, in.data[0], in.data[1]);
+            } break;
+            case SdfOpCode::BoxRounded: {
+                assert(sp < 64 && "value stack overflow");
+                // data[0..2]=halfExtents, data[3]=rounding
+                glm::vec3 he(in.data[0], in.data[1], in.data[2]);
+                stack[sp++] = SdfCore_BoxRounded(pos, he, in.data[3]);
+            } break;
+            case SdfOpCode::Plane: {
+                assert(sp < 64 && "value stack overflow");
+                // data[0..2]=normal, data[3]=distance
+                glm::vec3 n(in.data[0], in.data[1], in.data[2]);
+                stack[sp++] = SdfCore_Plane(pos, n, in.data[3]);
+            } break;
             case SdfOpCode::MirrorX: {
                 assert(psp < 64 && "MirrorX: position stack overflow");
                 posStack[psp++] = pos; pos = SdfCore_MirrorX(pos);
