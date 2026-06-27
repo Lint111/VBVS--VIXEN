@@ -76,11 +76,16 @@ Source of truth: `Yeroket-Fantasy/Packages/com.utility.graph-framework/Runtime/V
    - **stack control** (RestorePos/Push/Compose/Decompose).
    Must first understand the C# VM's stack model (`SDFCompiledEvaluator.cs`) and extend BOTH VIXEN
    evaluators to mirror it. This is a design sub-task, likely its own early milestone.
-2. **Regen path must be dotnet-only (no Unity) for an autonomous pipeline.** Design D8 says regeneration
-   needs `dotnet`, not Unity; P1 re-vendored byte-identical via dotnet. CONFIRM the exact command/path
-   that materializes `.g.hpp`/`.g.hlsl` from a `dotnet build`/`test` (the source-gen emits the header text
-   as C# string constants; find how P1 extracted them) — if it genuinely needs a Unity domain reload, the
-   regen becomes a controller/manual step (like Unity gating), not a worker step.
+2. **Regen path — RESOLVED 2026-06-27: dotnet-only, NO Unity.** Confirmed in the canonical Yeroket
+   checkout. Commands: `cd Packages/com.yeroket.utility.kernel-framework/SourceGenerator~ && ~/.dotnet/dotnet
+   build -c Release` (auto-deploys `RoslynAnalyzers/SDFNodeGenerator.dll` — commit it) → `~/.dotnet/dotnet
+   test Tests/SDFNodeGenerator.Tests.csproj` (87/4; the 4 fails = pre-existing RefKind/ChainDispatch noise).
+   The `.g.hpp`/`.g.hlsl` artifacts are produced by running the generator **in-process** via the test infra
+   (`RunAndFindGeneratedAgainstMathRef` + `ExtractConst`) and `File.WriteAllText` — P0/P1 did exactly this
+   (`git add --force`, `Generated/` is gitignored). **M3 will add an `UPDATE_GOLDENS=1` write-mode** to make
+   regen-write a one-liner (deferred from M1 — M1 writes nothing, artifacts byte-identical). ⚠ The golden
+   byte-identity tests run against the inline `RealSourceMirror` constant, NOT the real `SdfCoreKernels.cs` —
+   so M3's regen-write must read from the real source + re-prepend the manual provenance comment block.
 3. **`CppMappingTables` coverage.** Verify `math.rotate`/`math.conjugate`/`math.cross` etc. map to C++ before
    marking Transform/quaternion ops — unmapped calls fall back to verbatim C# and won't compile as C++.
 4. **Multi-slot `data[]` encodings.** Per-opcode param packing (e.g. Transform uses slots 0–2 for
@@ -88,9 +93,10 @@ Source of truth: `Yeroket-Fantasy/Packages/com.utility.graph-framework/Runtime/V
 
 ## Proposed milestone shape (refine in the plan)
 
-- **M1 — Layering mechanism**: `[SdfCoreKernel]` attribute + the `EmitCppEmitter` filter; Sphere/Union
-  marked; regen byte-identical to today (proves the filter changes nothing yet). Gate: dotnet tests +
-  VIXEN re-vendor byte-identical + existing render gates green.
+- **M1 — Layering mechanism ✅ DONE 2026-06-27**: `[SdfCoreKernel]` attribute + the `EmitCppEmitter`
+  filter; Sphere/Union marked; regen byte-identical (proves the filter changes nothing yet). Yeroket
+  commit `32207d64` on `feat/kernel-codegen-p2`; Opus-validated (filter load-bearing — tamper-confirmed:
+  unmarking Union drops it from the regen → golden fails; 88/4-pre-existing; DLL committed with the filter).
 - **M2 — VM-emitter extension**: extend `evalRecipe` + `EmitProceduralComputeShader` to the full VM
   stack model (domain-transform/value/stack-control), proven on a couple of representative new opcodes.
 - **M3 — Primitives + CSG batch**: mark + regen + consume all generic primitives + binary CSG +
@@ -98,6 +104,20 @@ Source of truth: `Yeroket-Fantasy/Packages/com.utility.graph-framework/Runtime/V
 - **M4 — Domain transforms + math**: the position/value-stack opcodes; conformance.
 - **M5 — Live render gate**: a non-trivial CSG composition (e.g. box ∩ sphere − cylinder, transformed)
   bakes + renders in VIXEN on lavapipe; no-regression on the existing Sphere/Union shapes.
+
+## Progress
+
+Cross-repo, two stacked branches (both KEPT, not merged): **Yeroket** `feat/kernel-codegen-p2` (off
+`feat/kernel-codegen-p1`) for the generator/kernels; **VIXEN** `feat/sdf-recipe-codegen-p2` for consumption +
+these docs.
+
+- **Regen path confirmed dotnet-only** (2026-06-27) — see resolved design-point 2.
+- **M1 DONE** (2026-06-27) — Yeroket `32207d64`; `[SdfCoreKernel]` marker + `EmitCppEmitter` filter, Sphere/
+  Union marked, byte-identical, Opus-validated (tamper-confirmed load-bearing).
+- **Next = M2** (VM-emitter extension) — the design-heavy core: understand the C# VM stack model
+  (`SDFCompiledEvaluator.cs`) and extend VIXEN `evalRecipe` + `EmitProceduralComputeShader` from leaf+binary
+  to domain-transform (position-stack) / value-math / stack-control. Needs the design pass (open point 1)
+  before it can be a no-placeholder plan.
 
 ## Risks / gotchas (confirmed 2026-06-27)
 
