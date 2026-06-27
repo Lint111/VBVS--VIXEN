@@ -117,15 +117,20 @@ these docs.
 - **Regen path confirmed dotnet-only** (2026-06-27) — see resolved design-point 2.
 - **M1 DONE** (2026-06-27) — Yeroket `32207d64`; `[SdfCoreKernel]` marker + `EmitCppEmitter` filter, Sphere/
   Union marked, byte-identical, Opus-validated (tamper-confirmed load-bearing).
-- **Next = M2** (VM-emitter extension) — the design-heavy core: understand the C# VM stack model
-  (`SDFCompiledEvaluator.cs`) and extend VIXEN `evalRecipe` + `EmitProceduralComputeShader` from leaf+binary
-  to domain-transform (position-stack) / value-math / stack-control. Needs the design pass (open point 1)
-  before it can be a no-placeholder plan.
+- **M2 DONE** (2026-06-27) — VM-emitter position-stack extension. **M2a** (Yeroket `a20bd16c`): `Box`/`SmoothUnion`/`MirrorX` `[KernelCallable]+[SdfCoreKernel]` kernels + a generator C++-emitter float-literal fix (`CppAstVisitor`: `0f`→`0.0f`, `saturate`→`glm::clamp(x,0.0f,1.0f)` — was bare ints → glm template-deduction failures) + golden-test refactor (reads the real source + `UPDATE_GOLDENS`); regen 88/4. **M2b** (VIXEN `c2d2d21`): position stack (`pos`/`posStack` in `evalRecipe`; `curPos`/`posSaveStk` in `EmitProceduralComputeShader`) + 4 cases (Box=1/SmoothUnion=25/MirrorX=41/RestorePos=97). Gated: CPU analytic parity + SPIR-V compile + **live lavapipe render** of `MirrorX(SmoothUnion(Box,Sphere))` (symmetric mirror-CSG, 25,332px); tamper-proven load-bearing; both per-milestone validations + a final holistic pass all Opus-APPROVED. Plan: [[SDF-Recipe-Kernel-Codegen-Inc4-P2.4-M2-Plan-2026-06]].
+- **Next = M3** (primitives + CSG batch). **Prerequisites from the M2 final review (do these FIRST):**
+  1. **Enum name→byte conformance test** (highest priority) — C# `SDFOpCode` uses *implicit ordinals* in a *sectioned* enum, so adding an opcode in-section silently shifts every later value (incl. RestorePos=97) and nothing automated catches the VIXEN desync. Add a checked-in conformance test (or pin C# values explicit `= N`) BEFORE adding opcodes.
+  2. **Sci-notation emitter guard** — `CppAstVisitor` appends `.0` when no `.` is present → `1e-3f`→`1e-3.0f` (invalid C++). Skip the `.0` insertion when the literal contains `e`/`E`; add a sci-notation kernel to exercise it via VIXEN's C++ compile gate.
+  3. **Eval hardening** — add `assert(sp < 64)` (value-stack overflow; mirror the existing `psp` guard) + `assert(in.paramMask == 0 && "ParamMask!=0 → P4")` on both the eval and emit paths.
+  4. **DistScale breadcrumb** — comment at `RestorePos` that M4's `Transform` must reintroduce the `distScale=1` reset + its application (the one extension that is NOT a pure switch-case — needs evaluator plumbing on both paths).
+  5. **Test coverage** — add a post-`RestorePos` leaf in an M3 parity case (M2 never observes the restored position, so a no-op RestorePos would pass today), and use *asymmetric* oracle inputs for non-commutative ops (Subtract/SmoothSubtract) so an a/b operand swap can't hide.
 
 ## Risks / gotchas (confirmed 2026-06-27)
 
 - **Enum ordering is a cross-repo binary contract** — append only, never insert mid-group; VIXEN's
-  `SdfOpCode` values must equal the C# byte values.
+  `SdfOpCode` values must equal the C# byte values. **⚠ UNPROTECTED:** C# uses implicit ordinals, so an
+  in-section insert shifts every later value with NO automated catch (all VIXEN tests use VIXEN's own enum).
+  Add a name→byte conformance test (or pin explicit `= N` in C#) — **M3 prereq #1**.
 - **`float data[32]`** layout is load-bearing (132 B; `static_assert`) — do not change to `glm::vec4[8]`.
 - **Canonical Yeroket checkout = `/home/liory/Github/Yeroket-Fantasy`** (the `/mnt/c/GitHub` one is stale).
 - **Manual vendor copy has no automation** — worth a small script once the first batch lands.

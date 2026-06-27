@@ -78,7 +78,7 @@ names. The position stack unrolls to SSA temporaries (depth is statically known 
 ```
 posStk = ["p"];   valStk = [];   // emit-time
   leaf:         emit `float tN = SdfCore_X(<posStk.back()>, <lit Data...>);`  valStk.push(tN)
-  binary:       a=valStk.pop(); b=valStk.pop(); emit `float tN = SdfCore_Op(a,b[,k]);` valStk.push(tN)
+  binary:       b=valStk.pop(); a=valStk.pop(); emit `float tN = SdfCore_Op(a,b[,k]);` valStk.push(tN)
   domain xform: emit `float3 pK = SdfCore_X(<posStk.back()>, <lit Data...>);` posStk.push(pK)
   RestorePos:   posStk.pop()                                          // back to the saved name
 final: `return <valStk.back()>;`

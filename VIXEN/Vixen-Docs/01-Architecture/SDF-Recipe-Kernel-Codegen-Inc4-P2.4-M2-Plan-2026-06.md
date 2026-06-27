@@ -42,14 +42,15 @@
 
 > Two milestones, SEQUENTIAL (M2b consumes M2a's vendored kernels). Cross-repo.
 
-- [ ] **M2a `[YEROKET]` — author 3 kernels + regen + vendor (Task 1).** Gate: DLL rebuilt; `~/.dotnet/dotnet test` green (golden tests now guard Box/SmoothUnion/MirrorX; the 4 pre-existing RefKind/ChainDispatch fails unchanged); regenerated `.g.hpp`/`.g.hlsl` contain `SdfCore_Box`/`SdfCore_SmoothUnion`/`SdfCore_MirrorX`; copied into VIXEN. Implementer **Sonnet**, validator **Opus**.
-- [ ] **M2b `[VIXEN]` — position-stack VM extension + cases + gates (Tasks 2–3).** Gate: CPU analytic parity for each new opcode; `EmitProceduralComputeShader` output compiles to SPIR-V; **live lavapipe render** of `MirrorX(SmoothUnion(Box, Sphere))` shows the mirrored CSG body; Sphere/Union non-regression green. Implementer **Sonnet**, validator **Opus** (reads the render PNG).
+- [x] **M2a `[YEROKET]` — author 3 kernels + regen + vendor (Task 1).** Gate: DLL rebuilt; `~/.dotnet/dotnet test` green (golden tests now guard Box/SmoothUnion/MirrorX; the 4 pre-existing RefKind/ChainDispatch fails unchanged); regenerated `.g.hpp`/`.g.hlsl` contain `SdfCore_Box`/`SdfCore_SmoothUnion`/`SdfCore_MirrorX`; copied into VIXEN. Implementer **Sonnet**, validator **Opus**.
+- [x] **M2b `[VIXEN]` — position-stack VM extension + cases + gates (Tasks 2–3).** Gate: CPU analytic parity for each new opcode; `EmitProceduralComputeShader` output compiles to SPIR-V; **live lavapipe render** of `MirrorX(SmoothUnion(Box, Sphere))` shows the mirrored CSG body; Sphere/Union non-regression green. Implementer **Sonnet**, validator **Opus** (reads the render PNG).
 
 Validators **Opus** per milestone. Controller Opus, thin.
 
 ## Progress Log
 
-- _(pending execution)_
+- **M2a (Task 1, Yeroket + vendor): DONE** · Yeroket `a20bd16c` · VIXEN `3d80a133` · Opus validator **APPROVED** (round 2). Fix-loop resolved a generator C++-emitter float-literal blocker: `CppAstVisitor` now emits `0f`→`0.0f`/`1f`→`1.0f`/`0.5f`→`0.5f` + `saturate`→`glm::clamp(x, 0.0f, 1.0f)` (was bare ints → glm template-deduction failures). Regen reproducible (88/4, same 4 pre-existing); golden guards corrected artifact; generated C++ compiles clean (g++ -std=c++23 + glm); Sphere/Union untouched. · 2026-06-27
+- **M2b (Tasks 2-3, VIXEN consume): DONE** · VIXEN `c2d2d21` · Opus validator **APPROVED** (tamper conclusive: removing the `MirrorX` pos-mutation fails parity at the negative-x points → `git checkout` restore → green; PNG = bilaterally-symmetric mirror-CSG, box centre + 2 mirror-folded sphere lobes, 25,332px). Position stack (`pos`+`posStack`) added to `evalRecipe` + emit-time (`curPos`+`posSaveStk`) to `EmitProceduralComputeShader`; `SdfOpCode` Box=1/SmoothUnion=25/MirrorX=41/RestorePos=97 (match C# implicit ordinals); CPU analytic parity + SPIR-V compile + live lavapipe render all green; P2.2 + P2.1/P2.3 stored gates non-regressed. Trailing fix: `#include <cassert>` self-contained-header. · 2026-06-27
 
 ---
 
