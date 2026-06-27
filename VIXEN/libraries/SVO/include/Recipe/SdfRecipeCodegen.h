@@ -125,6 +125,113 @@ inline std::string EmitProceduralComputeShader(
                 stk.push_back(t);
                 break;
             }
+            // --- Binary CSG (non-smooth) ---
+            case SdfOpCode::Subtract: {           // non-commutative: A minus B
+                assert(stk.size() >= 2 && "Subtract: emit-time value stack underflow");
+                std::string b = stk.back(); stk.pop_back();
+                std::string a = stk.back(); stk.pop_back();
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = SdfCore_Subtract(" + a + ", " + b + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::Intersect: {
+                assert(stk.size() >= 2 && "Intersect: emit-time value stack underflow");
+                std::string b = stk.back(); stk.pop_back();
+                std::string a = stk.back(); stk.pop_back();
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = SdfCore_Intersect(" + a + ", " + b + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::Xor: {
+                assert(stk.size() >= 2 && "Xor: emit-time value stack underflow");
+                std::string b = stk.back(); stk.pop_back();
+                std::string a = stk.back(); stk.pop_back();
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = SdfCore_Xor(" + a + ", " + b + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            // --- Binary CSG (smooth linear): k = data[2] ---
+            case SdfOpCode::SmoothSubtract: {     // non-commutative
+                assert(stk.size() >= 2 && "SmoothSubtract: emit-time value stack underflow");
+                std::string b = stk.back(); stk.pop_back();
+                std::string a = stk.back(); stk.pop_back();
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = SdfCore_SmoothSubtract(" + a + ", " + b
+                    + ", " + f(in.data[2]) + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::SmoothIntersect: {
+                assert(stk.size() >= 2 && "SmoothIntersect: emit-time value stack underflow");
+                std::string b = stk.back(); stk.pop_back();
+                std::string a = stk.back(); stk.pop_back();
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = SdfCore_SmoothIntersect(" + a + ", " + b
+                    + ", " + f(in.data[2]) + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::SmoothMax: {
+                assert(stk.size() >= 2 && "SmoothMax: emit-time value stack underflow");
+                std::string b = stk.back(); stk.pop_back();
+                std::string a = stk.back(); stk.pop_back();
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = SdfCore_SmoothMax(" + a + ", " + b
+                    + ", " + f(in.data[2]) + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            // --- Binary CSG (smooth cubic): k = data[2] ---
+            case SdfOpCode::SmoothUnionCubic: {
+                assert(stk.size() >= 2 && "SmoothUnionCubic: emit-time value stack underflow");
+                std::string b = stk.back(); stk.pop_back();
+                std::string a = stk.back(); stk.pop_back();
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = SdfCore_SmoothUnionCubic(" + a + ", " + b
+                    + ", " + f(in.data[2]) + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::SmoothSubtractCubic: { // non-commutative
+                assert(stk.size() >= 2 && "SmoothSubtractCubic: emit-time value stack underflow");
+                std::string b = stk.back(); stk.pop_back();
+                std::string a = stk.back(); stk.pop_back();
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = SdfCore_SmoothSubtractCubic(" + a + ", " + b
+                    + ", " + f(in.data[2]) + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::SmoothIntersectCubic: {
+                assert(stk.size() >= 2 && "SmoothIntersectCubic: emit-time value stack underflow");
+                std::string b = stk.back(); stk.pop_back();
+                std::string a = stk.back(); stk.pop_back();
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = SdfCore_SmoothIntersectCubic(" + a + ", " + b
+                    + ", " + f(in.data[2]) + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            // --- Unary modifiers: pop-and-replace (TOS), radius/thickness = data[0] ---
+            case SdfOpCode::Round: {
+                assert(!stk.empty() && "Round: emit-time value stack underflow");
+                std::string a = stk.back(); stk.pop_back();
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = SdfCore_Round(" + a + ", " + f(in.data[0]) + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::Onion: {
+                assert(!stk.empty() && "Onion: emit-time value stack underflow");
+                std::string a = stk.back(); stk.pop_back();
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = SdfCore_Onion(" + a + ", " + f(in.data[0]) + ");\n";
+                stk.push_back(t);
+                break;
+            }
             case SdfOpCode::MirrorX: {
                 std::string pN = "pp" + std::to_string(n++);
                 body += "  float3 " + pN + " = SdfCore_MirrorX(" + curPos + ");\n";

@@ -133,6 +133,11 @@ static Vixen::SVO::Recipe::SdfInstruction makeRestorePos() {
     in.opCode = static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::RestorePos);
     return in;
 }
+static Vixen::SVO::Recipe::SdfInstruction makeSubtract() {
+    Vixen::SVO::Recipe::SdfInstruction in{};
+    in.opCode = static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::Subtract);
+    return in;
+}
 
 // ---------------------------------------------------------------------------
 // Lavapipe render fixture — minimal: 1 binding (storage image) + push constants.
@@ -712,6 +717,105 @@ TEST_F(ProceduralRecipeRenderTest, RenderMirrorCsgRecipe) {
         << "bodyPixels=" << bodyPixels << " <= 20000 — image is likely all-black. "
            "Check: (1) shaderStorageImageWriteWithoutFormat, (2) Vulkan 1.3, "
            "(3) camera framing. "
+           "Sample floats [pixel 0]: R=" << rgba32f[0] << " G=" << rgba32f[1]
+           << " B=" << rgba32f[2] << " A=" << rgba32f[3]
+           << "\nEmitted shader (first 2000 chars):\n"
+        << shaderSrc.substr(0, 2000);
+}
+
+// ---------------------------------------------------------------------------
+// P2.4 M3a — Live lavapipe render gate for Subtract(Box, Sphere).
+//
+// Recipe: [Box(halfExtents 0.7,0.7,0.7), Sphere(center=(0,0,0.7), r=0.55), Subtract]
+// Sphere centered on the +z box face protrudes through it; Subtract carves a visible
+// concave spherical bite into the front face (bowl-like depression when seen from z+).
+// NOTE: sphere at origin would be fully enclosed (r=0.55 < halfExtent=0.7) →
+// interior void, invisible from outside; center must sit on/near the face.
+// This is the authoritative GPU-matches-CPU proof for the non-commutative Subtract
+// opcode (A=box=base, B=sphere=cutter).
+//
+// Writes /tmp/glsl_sdf_m3a_subtract.png (512×512 RGBA8). ICD-only (no validation).
+// Validator reads the PNG to confirm the box-with-spherical-cavity appearance.
+// ---------------------------------------------------------------------------
+TEST_F(ProceduralRecipeRenderTest, RenderSubtractBoxSphere) {
+    // Step 1: read vendored SdfCoreKernels HLSL (now includes all M3a kernels).
+    std::ifstream kernelFile(SDF_CORE_KERNELS_HLSL_PATH);
+    ASSERT_TRUE(kernelFile.good())
+        << "Cannot open vendored HLSL: " << SDF_CORE_KERNELS_HLSL_PATH;
+    std::ostringstream ss;
+    ss << kernelFile.rdbuf();
+    const std::string sdfCoreHlsl = ss.str();
+
+    // Step 2: build Subtract(Box, Sphere) recipe.
+    // Box halfExtents (0.7,0.7,0.7) = A (base, deeper on stack).
+    // Sphere centered on the +z face (0,0,0.7) r=0.55 = B (cutter, top of stack).
+    // The sphere protrudes through the +z face → Subtract carves a VISIBLE concave
+    // spherical bite visible from the front (camera at z+). A sphere at the origin
+    // would be fully enclosed (r=0.55 < halfExtent=0.7) → interior void, invisible.
+    Vixen::SVO::Recipe::SdfInstruction prog[] = {
+        makeBox(0.7f, 0.7f, 0.7f),
+        makeSphere(0.0f, 0.0f, 0.7f, 0.55f),
+        makeSubtract()
+    };
+    const std::string shaderSrc =
+        Vixen::SVO::Recipe::EmitProceduralComputeShader(prog, 3, sdfCoreHlsl);
+
+    // Step 3: compile HLSL → SPIR-V.
+    ShaderManagement::ShaderCompiler compiler;
+    ShaderManagement::CompilationOptions opts;
+    opts.sourceLanguage = ShaderManagement::CompilationOptions::SourceLanguage::HLSL;
+    opts.validateSpirv  = false;  // ponytail: glslang SPIR-V validator quirk (see P2.2 M1)
+    auto compOut = compiler.Compile(ShaderManagement::ShaderStage::Compute, shaderSrc, "main", opts);
+    ASSERT_TRUE(compOut.success)
+        << "HLSL compile failed:\n" << compOut.GetFullLog()
+        << "\n--- emitted source ---\n" << shaderSrc;
+    ASSERT_FALSE(compOut.spirv.empty());
+
+    // Step 4: camera looking from z+ at the carved box.
+    // Box extent ±0.7 on all axes; eye at (0,0,6) gives comfortable framing.
+    // Slight upward tilt reveals the cavity on the front face.
+    constexpr uint32_t W = 512, H = 512;
+    const RecipePushConstants pc = MakeCamera(
+        glm::vec3(0.0f, 0.3f, 6.0f),   // eye — slight up tilt shows the carved face
+        glm::vec3(0.0f, 0.0f, 0.0f),   // target — box centre
+        W, H
+    );
+
+    // Step 5: dispatch on lavapipe, readback float pixels.
+    std::vector<float> rgba32f;
+    ASSERT_NO_FATAL_FAILURE(RenderProcedural(compOut.spirv, pc, W, H, rgba32f));
+    ASSERT_EQ(rgba32f.size(), static_cast<size_t>(W) * H * 4);
+
+    // Step 6: count body pixels + convert to RGBA8 for PNG.
+    int bodyPixels = 0;
+    std::vector<uint8_t> rgba8(W * H * 4);
+    for (uint32_t i = 0; i < W * H; ++i) {
+        const float fr = rgba32f[i * 4 + 0];
+        const float fg = rgba32f[i * 4 + 1];
+        const float fb = rgba32f[i * 4 + 2];
+        const float fa = rgba32f[i * 4 + 3];
+        rgba8[i * 4 + 0] = static_cast<uint8_t>(std::min(fr * 255.0f + 0.5f, 255.0f));
+        rgba8[i * 4 + 1] = static_cast<uint8_t>(std::min(fg * 255.0f + 0.5f, 255.0f));
+        rgba8[i * 4 + 2] = static_cast<uint8_t>(std::min(fb * 255.0f + 0.5f, 255.0f));
+        rgba8[i * 4 + 3] = static_cast<uint8_t>(std::min(fa * 255.0f + 0.5f, 255.0f));
+        if (fr > 0.08f || fg > 0.08f) ++bodyPixels;
+    }
+
+    // Step 7: write PNG — validator reads it to verify box-with-spherical-cavity.
+    const char* pngPath = "/tmp/glsl_sdf_m3a_subtract.png";
+    const int pngOk = stbi_write_png(pngPath,
+        static_cast<int>(W), static_cast<int>(H), 4,
+        rgba8.data(), static_cast<int>(W) * 4);
+
+    printf("[RenderSubtractBoxSphere] bodyPixels=%d  PNG written=%s  path=%s\n",
+           bodyPixels, pngOk ? "YES" : "NO", pngPath);
+    fflush(stdout);
+
+    EXPECT_TRUE(pngOk) << "stbi_write_png failed for " << pngPath;
+    ASSERT_GT(bodyPixels, 5000)
+        << "bodyPixels=" << bodyPixels << " <= 5000 — image is likely all-black. "
+           "Check: (1) shaderStorageImageWriteWithoutFormat, (2) Vulkan 1.3, "
+           "(3) Subtract opcode case landed in EmitProceduralComputeShader. "
            "Sample floats [pixel 0]: R=" << rgba32f[0] << " G=" << rgba32f[1]
            << " B=" << rgba32f[2] << " A=" << rgba32f[3]
            << "\nEmitted shader (first 2000 chars):\n"

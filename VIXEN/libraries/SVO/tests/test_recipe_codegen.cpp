@@ -52,6 +52,20 @@ static Recipe::SdfInstruction restorePosOp() {
     return in;
 }
 
+static Recipe::SdfInstruction smoothSubtractOp(float k) {
+    Recipe::SdfInstruction in{};
+    in.opCode  = static_cast<uint8_t>(Recipe::SdfOpCode::SmoothSubtract);
+    in.data[2] = k;
+    return in;
+}
+
+static Recipe::SdfInstruction onionOp(float thickness) {
+    Recipe::SdfInstruction in{};
+    in.opCode  = static_cast<uint8_t>(Recipe::SdfOpCode::Onion);
+    in.data[0] = thickness;
+    return in;
+}
+
 TEST(RecipeCodegen, EmitsCompilableProceduralShader) {
     // Read the vendored generated HLSL kernels (same as test_hlsl_ingestion.cpp).
     std::ifstream f(SDF_CORE_KERNELS_HLSL_PATH);
@@ -117,4 +131,41 @@ TEST(RecipeCodegen, EmitsMirrorCsgCompilesToSpirv) {
     auto out = compiler.Compile(ShaderStage::Compute, src, "main", opts);
     ASSERT_TRUE(out.success) << out.GetFullLog() << "\n--- emitted source ---\n" << src;
     EXPECT_FALSE(out.spirv.empty());
+}
+
+// P2.4 M3a — SPIR-V compile gate for Onion(SmoothSubtract(Box, Sphere)).
+// Verifies: emitter produces SdfCore_SmoothSubtract + SdfCore_Onion calls
+// and the resulting HLSL compiles to valid SPIR-V.
+TEST(RecipeCodegen, EmitsCsgModifierCompilesToSpirv) {
+    std::ifstream f(SDF_CORE_KERNELS_HLSL_PATH);
+    ASSERT_TRUE(f.good()) << "Cannot open vendored HLSL: " << SDF_CORE_KERNELS_HLSL_PATH;
+    std::ostringstream ss;
+    ss << f.rdbuf();
+    std::string core = ss.str();
+
+    // Recipe: [Box(0.7,0.7,0.7), Sphere(0,0,0,0.55), SmoothSubtract(k=0.3), Onion(0.05)]
+    // → SmoothSubtract of box-minus-sphere, then Onion shells the result.
+    Recipe::SdfInstruction prog[] = {
+        boxOp(0.7f, 0.7f, 0.7f),
+        sphere(0.0f, 0.0f, 0.0f, 0.55f),
+        smoothSubtractOp(0.3f),
+        onionOp(0.05f)
+    };
+    std::string src = Recipe::EmitProceduralComputeShader(prog, 4, core);
+
+    // Verify the key CSG+modifier kernel calls appear in the emitted HLSL.
+    EXPECT_NE(src.find("SdfCore_SmoothSubtract("), std::string::npos)
+        << "Expected SdfCore_SmoothSubtract call; src:\n" << src;
+    EXPECT_NE(src.find("SdfCore_Onion("), std::string::npos)
+        << "Expected SdfCore_Onion call; src:\n" << src;
+
+    // Compile through HLSL path → valid SPIR-V.
+    ShaderCompiler compiler2;
+    CompilationOptions opts2;
+    opts2.sourceLanguage = CompilationOptions::SourceLanguage::HLSL;
+    opts2.validateSpirv  = false;  // ponytail: glslang SPIR-V validator quirk (same as P2.2 M1)
+
+    auto out2 = compiler2.Compile(ShaderStage::Compute, src, "main", opts2);
+    ASSERT_TRUE(out2.success) << out2.GetFullLog() << "\n--- emitted source ---\n" << src;
+    EXPECT_FALSE(out2.spirv.empty());
 }

@@ -14,25 +14,96 @@ inline float evalRecipe(const SdfInstruction* prog, uint32_t count, glm::vec3 p)
     using namespace Yeroket::Sdf::Generated;
     for (uint32_t i = 0; i < count; ++i) {
         const SdfInstruction& in = prog[i];
+        assert(in.paramMask == 0 && "ParamMask!=0 deferred to P4");
         switch (static_cast<SdfOpCode>(in.opCode)) {
             case SdfOpCode::Sphere: {
+                assert(sp < 64 && "value stack overflow");
                 glm::vec3 c(in.data[0], in.data[1], in.data[2]);  // Data0.xyz = center
                 float r = in.data[3];                              // Data0.w   = radius
                 stack[sp++] = SdfCore_Sphere(pos, c, r);           // pos (not p)
             } break;
             case SdfOpCode::Box: {
+                assert(sp < 64 && "value stack overflow");
                 glm::vec3 b(in.data[0], in.data[1], in.data[2]);  // Data0.xyz = halfExtents
                 stack[sp++] = SdfCore_Box(pos, b);
             } break;
             case SdfOpCode::Union: {
                 assert(sp >= 2 && "Union: value stack underflow");
                 float b = stack[--sp]; float a = stack[--sp];
+                assert(sp < 64 && "value stack overflow");
                 stack[sp++] = SdfCore_Union(a, b);
             } break;
             case SdfOpCode::SmoothUnion: {
                 assert(sp >= 2 && "SmoothUnion: value stack underflow");
                 float b = stack[--sp]; float a = stack[--sp];
+                assert(sp < 64 && "value stack overflow");
                 stack[sp++] = SdfCore_SmoothUnion(a, b, in.data[2]); // k = Data0.z
+            } break;
+            // --- Binary CSG (non-smooth): b=top (cutter/B), a=deeper (base/A) ---
+            case SdfOpCode::Subtract: {           // non-commutative: A minus B
+                assert(sp >= 2 && "Subtract: value stack underflow");
+                float b = stack[--sp]; float a = stack[--sp];
+                assert(sp < 64 && "value stack overflow");
+                stack[sp++] = SdfCore_Subtract(a, b);
+            } break;
+            case SdfOpCode::Intersect: {
+                assert(sp >= 2 && "Intersect: value stack underflow");
+                float b = stack[--sp]; float a = stack[--sp];
+                assert(sp < 64 && "value stack overflow");
+                stack[sp++] = SdfCore_Intersect(a, b);
+            } break;
+            case SdfOpCode::Xor: {
+                assert(sp >= 2 && "Xor: value stack underflow");
+                float b = stack[--sp]; float a = stack[--sp];
+                assert(sp < 64 && "value stack overflow");
+                stack[sp++] = SdfCore_Xor(a, b);
+            } break;
+            // --- Binary CSG (smooth linear): k = data[2] (Data0.z) ---
+            case SdfOpCode::SmoothSubtract: {     // non-commutative
+                assert(sp >= 2 && "SmoothSubtract: value stack underflow");
+                float b = stack[--sp]; float a = stack[--sp];
+                assert(sp < 64 && "value stack overflow");
+                stack[sp++] = SdfCore_SmoothSubtract(a, b, in.data[2]);
+            } break;
+            case SdfOpCode::SmoothIntersect: {
+                assert(sp >= 2 && "SmoothIntersect: value stack underflow");
+                float b = stack[--sp]; float a = stack[--sp];
+                assert(sp < 64 && "value stack overflow");
+                stack[sp++] = SdfCore_SmoothIntersect(a, b, in.data[2]);
+            } break;
+            case SdfOpCode::SmoothMax: {
+                assert(sp >= 2 && "SmoothMax: value stack underflow");
+                float b = stack[--sp]; float a = stack[--sp];
+                assert(sp < 64 && "value stack overflow");
+                stack[sp++] = SdfCore_SmoothMax(a, b, in.data[2]);
+            } break;
+            // --- Binary CSG (smooth cubic): k = data[2] (Data0.z) ---
+            case SdfOpCode::SmoothUnionCubic: {
+                assert(sp >= 2 && "SmoothUnionCubic: value stack underflow");
+                float b = stack[--sp]; float a = stack[--sp];
+                assert(sp < 64 && "value stack overflow");
+                stack[sp++] = SdfCore_SmoothUnionCubic(a, b, in.data[2]);
+            } break;
+            case SdfOpCode::SmoothSubtractCubic: { // non-commutative
+                assert(sp >= 2 && "SmoothSubtractCubic: value stack underflow");
+                float b = stack[--sp]; float a = stack[--sp];
+                assert(sp < 64 && "value stack overflow");
+                stack[sp++] = SdfCore_SmoothSubtractCubic(a, b, in.data[2]);
+            } break;
+            case SdfOpCode::SmoothIntersectCubic: {
+                assert(sp >= 2 && "SmoothIntersectCubic: value stack underflow");
+                float b = stack[--sp]; float a = stack[--sp];
+                assert(sp < 64 && "value stack overflow");
+                stack[sp++] = SdfCore_SmoothIntersectCubic(a, b, in.data[2]);
+            } break;
+            // --- Unary modifiers: TOS-modify, net stack delta 0; radius/thickness = data[0] ---
+            case SdfOpCode::Round: {
+                assert(sp >= 1 && "Round: value stack underflow");
+                stack[sp - 1] = SdfCore_Round(stack[sp - 1], in.data[0]);  // radius = Data0.x
+            } break;
+            case SdfOpCode::Onion: {
+                assert(sp >= 1 && "Onion: value stack underflow");
+                stack[sp - 1] = SdfCore_Onion(stack[sp - 1], in.data[0]);  // thickness = Data0.x
             } break;
             case SdfOpCode::MirrorX: {
                 assert(psp < 64 && "MirrorX: position stack overflow");
@@ -41,6 +112,9 @@ inline float evalRecipe(const SdfInstruction* prog, uint32_t count, glm::vec3 p)
             case SdfOpCode::RestorePos: {
                 assert(psp > 0 && "RestorePos: position stack underflow");
                 pos = posStack[--psp];
+                // NOTE: M4's Transform must reintroduce distScale (reset to 1 here + apply on
+                // leaf distances) — the one non-switch-case extension; deferred (no rigid M2/M3a
+                // op needs it).
             } break;
         }
     }
