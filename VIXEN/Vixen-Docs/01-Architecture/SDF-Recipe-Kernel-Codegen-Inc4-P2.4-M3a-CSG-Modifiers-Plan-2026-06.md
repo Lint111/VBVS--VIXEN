@@ -26,7 +26,7 @@
 - **Enum is generated** (M3-prereq #1 landed): marking the kernels `[SdfCoreKernel]` auto-adds their `SDFOpCode` members to `SdfOpCodes.g.h`. Do NOT hand-edit VIXEN's enum. Confirm the canonical values: Subtract=26, SmoothSubtract=27, Intersect=28, SmoothIntersect=29, Xor=30, SmoothMax=31, SmoothUnionCubic=32, SmoothSubtractCubic=33, SmoothIntersectCubic=34, Round=35, Onion=36 (verify against the pinned `SDFOpCode` in `SDFInstruction.cs`).
 - **New unary lane:** Round/Onion modify the top of stack in place — `stack[sp-1] = SdfCore_X(stack[sp-1], data[0])` (net stack delta 0); emit pops-and-replaces the top name.
 - **Render ICD-only** (validation now optional, `c3cbfdb6`): `VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json`.
-- **Yeroket:** `~/.dotnet/dotnet` only; rebuild + commit the DLL; never Unity. Both branches KEPT/unmerged. Trailers on every commit:
+- **Yeroket:** `~/.dotnet/dotnet` only; rebuild + commit the DLL; never Unity; run tests via `~/.dotnet/dotnet test Tests/SDFNodeGenerator.Tests.csproj` (running `dotnet test` from `SourceGenerator~` WITHOUT the csproj target silently picks the non-test project → 0 tests, exit 0 — a false "pass"). Both branches KEPT/unmerged. Trailers on every commit:
   `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>` + `Claude-Session: https://claude.ai/code/session_01FyfX5aZWhF1kakkUE98u4c`.
 - **No-regression:** dotnet suite stays at the 4 pre-existing fails; VIXEN's M2 parity/codegen/bake + the MirrorCsg render gate stay green.
 
@@ -50,14 +50,14 @@
 
 > Two milestones, SEQUENTIAL (M3a-V consumes M3a-Y's vendored kernels+enum).
 
-- [ ] **M3a-Y `[YEROKET]` — sci-notation guard + 11 kernel wrappers + regen + vendor (Task 1).** Gate: DLL rebuilt; sci-notation guard + regression test (a `1e-3f` literal emits valid C++ `1e-3f`, compiles); `~/.dotnet/dotnet test` green (kernel + enum goldens regrown — enum now 17 members incl. the 11 new); generated C++ compiles (g++ -std=c++23 + glm); vendored. Implementer **Sonnet**, validator **Opus**.
+- [x] **M3a-Y `[YEROKET]` — sci-notation guard + 11 kernel wrappers + regen + vendor (Task 1).** Gate: DLL rebuilt; sci-notation guard + regression test (a `1e-3f` literal emits valid C++ `1e-3f`, compiles); `~/.dotnet/dotnet test` green (kernel + enum goldens regrown — enum now 17 members incl. the 11 new); generated C++ compiles (g++ -std=c++23 + glm); vendored. Implementer **Sonnet**, validator **Opus**.
 - [ ] **M3a-V `[VIXEN]` — asserts + DistScale note + 11 cases + gates (Tasks 2–3).** Gate: build clean; CPU analytic parity for all 11 (asymmetric oracles for Subtract/SmoothSubtract/SmoothSubtractCubic); SPIR-V compile; **live lavapipe render** of `Subtract(Box, Sphere)` (a box with a carved spherical cavity) ICD-only; M2 gates non-regressed. Implementer **Sonnet**, validator **Opus** (reads the render PNG).
 
 Validators **Opus** per milestone. Controller Opus, thin.
 
 ## Progress Log
 
-- _(pending execution)_
+- M3a-Y (Task 1): DONE · Yeroket `dc12d029` (feat/kernel-codegen-p2) + VIXEN vendor `9bfb7b14` (feat/sdf-recipe-codegen-p2) · Opus validator APPROVED · dotnet 91/95 (4 pre-existing) · 2026-06-27. **Fix-loop 1:** validator caught a real GPU-only correctness bug — `HLSLVisitor.cs` stripped the `f` suffix without re-adding `.0`, so `1f/6f`→`1/6`→HLSL integer-division `0`, zeroing the cubic-smoothing term in SmoothMax/SmoothUnionCubic/SmoothIntersectCubic/SmoothSubtractCubic (C++ path was correct → silent CPU≠GPU divergence; no existing gate covered it — g++ checks only C++, the SPIR-V gate only checks that HLSL *compiles*, the live render had no cubic op). Root-caused in all 3 HLSLVisitor emit paths + a `1f/6f` regression test; glslang-proven (`0.166666672`). **DURABLE GOTCHA:** the codegen float-literal guard must live in BOTH CppAstVisitor (sci-notation `1e-3f`) AND HLSLVisitor (bare-int `1f`→int-division); HLSL `1/6==0`. _(cosmetic: dc12d029's message still reads only "sci-notation guard"; local WIP branch, fix at squash/merge. Untracked VIXEN build artifacts noted, not from these commits.)_
 
 ---
 
