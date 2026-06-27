@@ -276,6 +276,93 @@ inline std::string EmitProceduralComputeShader(
                 stk.push_back(t);
                 break;
             }
+            // --- Leaf primitives (position-offset, pos-off=YES) — P2.4 M3b-2 ---
+            // Offset baked into position expression: curPos + " - float3(dx,dy,dz)"
+            case SdfOpCode::Ellipsoid: {
+                // data[0..2]=radii, data[4..6]=position
+                std::string t = "t" + std::to_string(n++);
+                std::string q = curPos + " - float3(" + f(in.data[4]) + ", " + f(in.data[5]) + ", " + f(in.data[6]) + ")";
+                body += "  float " + t + " = SdfCore_Ellipsoid(" + q + ", float3("
+                    + f(in.data[0]) + ", " + f(in.data[1]) + ", " + f(in.data[2]) + "));\n";
+                stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::HollowCylinder: {
+                // data[0]=halfLen, data[1]=outerR, data[2]=wall, data[4..6]=position
+                std::string t = "t" + std::to_string(n++);
+                std::string q = curPos + " - float3(" + f(in.data[4]) + ", " + f(in.data[5]) + ", " + f(in.data[6]) + ")";
+                body += "  float " + t + " = SdfCore_HollowCylinder(" + q + ", "
+                    + f(in.data[0]) + ", " + f(in.data[1]) + ", " + f(in.data[2]) + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::TaperedCylinder: {
+                // data[0]=height, data[1]=r1 (base), data[2]=r2 (top), data[4..6]=position
+                std::string t = "t" + std::to_string(n++);
+                std::string q = curPos + " - float3(" + f(in.data[4]) + ", " + f(in.data[5]) + ", " + f(in.data[6]) + ")";
+                body += "  float " + t + " = SdfCore_TaperedCylinder(" + q + ", "
+                    + f(in.data[0]) + ", " + f(in.data[1]) + ", " + f(in.data[2]) + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::Cone: {
+                // data[0]=sinAngle, data[1]=cosAngle, data[2]=height, data[4..6]=position
+                std::string t = "t" + std::to_string(n++);
+                std::string q = curPos + " - float3(" + f(in.data[4]) + ", " + f(in.data[5]) + ", " + f(in.data[6]) + ")";
+                body += "  float " + t + " = SdfCore_Cone(" + q + ", float2("
+                    + f(in.data[0]) + ", " + f(in.data[1]) + "), " + f(in.data[2]) + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::CappedTorus: {
+                // data[0]=sinA, data[1]=cosA, data[2]=majorR, data[3]=minorR, data[4..6]=position
+                std::string t = "t" + std::to_string(n++);
+                std::string q = curPos + " - float3(" + f(in.data[4]) + ", " + f(in.data[5]) + ", " + f(in.data[6]) + ")";
+                body += "  float " + t + " = SdfCore_CappedTorus(" + q + ", float2("
+                    + f(in.data[0]) + ", " + f(in.data[1]) + "), " + f(in.data[2]) + ", " + f(in.data[3]) + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::Link: {
+                // data[0]=halfLen, data[1]=majorR, data[2]=minorR, data[4..6]=position
+                std::string t = "t" + std::to_string(n++);
+                std::string q = curPos + " - float3(" + f(in.data[4]) + ", " + f(in.data[5]) + ", " + f(in.data[6]) + ")";
+                body += "  float " + t + " = SdfCore_Link(" + q + ", "
+                    + f(in.data[0]) + ", " + f(in.data[1]) + ", " + f(in.data[2]) + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            // Panel/Plank/RoundedBox: positioned BoxRounded (same math, opcode differs)
+            case SdfOpCode::Panel: {
+                // data[0..2]=halfExtents, data[3]=rounding, data[4..6]=position
+                std::string t = "t" + std::to_string(n++);
+                std::string q = curPos + " - float3(" + f(in.data[4]) + ", " + f(in.data[5]) + ", " + f(in.data[6]) + ")";
+                body += "  float " + t + " = SdfCore_BoxRounded(" + q + ", float3("
+                    + f(in.data[0]) + ", " + f(in.data[1]) + ", " + f(in.data[2]) + "), "
+                    + f(in.data[3]) + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::Plank: {
+                // data[0..2]=halfExtents, data[3]=rounding, data[4..6]=position
+                std::string t = "t" + std::to_string(n++);
+                std::string q = curPos + " - float3(" + f(in.data[4]) + ", " + f(in.data[5]) + ", " + f(in.data[6]) + ")";
+                body += "  float " + t + " = SdfCore_BoxRounded(" + q + ", float3("
+                    + f(in.data[0]) + ", " + f(in.data[1]) + ", " + f(in.data[2]) + "), "
+                    + f(in.data[3]) + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::RoundedBox: {
+                // data[0..2]=halfExtents, data[3]=rounding, data[4..6]=position
+                std::string t = "t" + std::to_string(n++);
+                std::string q = curPos + " - float3(" + f(in.data[4]) + ", " + f(in.data[5]) + ", " + f(in.data[6]) + ")";
+                body += "  float " + t + " = SdfCore_BoxRounded(" + q + ", float3("
+                    + f(in.data[0]) + ", " + f(in.data[1]) + ", " + f(in.data[2]) + "), "
+                    + f(in.data[3]) + ");\n";
+                stk.push_back(t);
+                break;
+            }
             case SdfOpCode::MirrorX: {
                 std::string pN = "pp" + std::to_string(n++);
                 body += "  float3 " + pN + " = SdfCore_MirrorX(" + curPos + ");\n";

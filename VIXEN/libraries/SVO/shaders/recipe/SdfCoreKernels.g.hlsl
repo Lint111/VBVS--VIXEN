@@ -101,5 +101,51 @@ float SdfCore_Torus(float3 p, float majorRadius, float minorRadius) {
     return length(q) - minorRadius;
 }
 
+float SdfCore_Ellipsoid(float3 p, float3 radii) {
+    float3 safeRadii = max(radii, 0.0001);
+    float k0 = length(p / safeRadii);
+    float k1 = length(p / (safeRadii * safeRadii));
+    return k0 * (k0 - 1.0) / max(k1, 0.0001);
+}
+
+float SdfCore_HollowCylinder(float3 p, float halfLen, float outerR, float wall) {
+    float2 d = float2(length(float2(p.x, p.z)) - outerR, abs(p.y) - halfLen);
+    float cyl = min(max(d.x, d.y), 0.0) + length(max(d, 0.0));
+    return abs(cyl) - wall;
+}
+
+float SdfCore_TaperedCylinder(float3 p, float height, float r1, float r2) {
+    float2 q = float2(length(float2(p.x, p.z)), p.y);
+    float2 k1 = float2(r2, height);
+    float2 k2 = float2(r2 - r1, 2.0 * height);
+    float2 ca = float2(q.x - min(q.x, ((q.y < 0.0) ? r1 : r2)), abs(q.y) - height);
+    float2 cb = q - k1 + k2 * saturate(dot(k1 - q, k2) / dot(k2, k2));
+    float s = ((cb.x < 0.0 && ca.y < 0.0) ? -1.0 : 1.0);
+    return s * sqrt(min(dot(ca, ca), dot(cb, cb)));
+}
+
+float SdfCore_Cone(float3 p, float2 angle, float height) {
+    float2 q = height * float2(angle.x / angle.y, -1.0);
+    float2 w = float2(length(float2(p.x, p.z)), p.y);
+    float2 a = w - q * saturate(dot(w, q) / dot(q, q));
+    float2 b = w - q * float2(saturate(w.x / q.x), 1.0);
+    float k = sign(q.y);
+    float d = min(dot(a, a), dot(b, b));
+    float s = max(k * (w.x * q.y - w.y * q.x), k * (w.y - q.y));
+    return sqrt(d) * sign(s);
+}
+
+float SdfCore_CappedTorus(float3 p, float2 sc, float majorRadius, float minorRadius) {
+    float3 localP = p;
+    localP.x = abs(localP.x);
+    float k = ((sc.y * localP.x > sc.x * localP.z) ? dot(float2(localP.x, localP.z), sc) : length(float2(localP.x, localP.z)));
+    return sqrt(dot(localP, localP) + majorRadius * majorRadius - 2.0 * majorRadius * k) - minorRadius;
+}
+
+float SdfCore_Link(float3 p, float halfLength, float majorRadius, float minorRadius) {
+    float3 q = float3(p.x, max(abs(p.y) - halfLength, 0.0), p.z);
+    return length(float2(length(float2(q.x, q.y)) - majorRadius, q.z)) - minorRadius;
+}
+
 
 #endif // SDF_CORE_KERNELS_G_HLSL

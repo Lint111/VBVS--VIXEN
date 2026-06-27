@@ -915,3 +915,100 @@ TEST_F(ProceduralRecipeRenderTest, RenderTorus) {
            << "\nEmitted shader (first 2000 chars):\n"
         << shaderSrc.substr(0, 2000);
 }
+
+// ---------------------------------------------------------------------------
+// P2.4 M3b-2 — Live lavapipe render gate for Cone (positioned op).
+//
+// Recipe: [Cone(half-angle=30°, height=1.0, offset=(0,0,0))]
+//   sin(30°)=0.5, cos(30°)=0.866. Apex at origin, base circle at y=-1.0,
+//   base radius ≈ height * sin/cos ≈ 0.577. Camera slightly elevated from z+
+//   looking toward the cone's mid-point — shows a classic pointed triangle
+//   silhouette confirming the Cone kernel + position-offset path works on GPU.
+//   Position offset is (0,0,0) so the emit path still generates "p - float3(0,0,0)".
+//
+// Writes /tmp/glsl_sdf_m3b_cone.png (512×512 RGBA8). ICD-only (no validation).
+// Validator reads the PNG to confirm a cone/triangle shape.
+// ---------------------------------------------------------------------------
+TEST_F(ProceduralRecipeRenderTest, RenderCone) {
+    // Step 1: read the vendored SdfCoreKernels HLSL (now includes Cone).
+    std::ifstream kernelFile(SDF_CORE_KERNELS_HLSL_PATH);
+    ASSERT_TRUE(kernelFile.good())
+        << "Cannot open vendored HLSL: " << SDF_CORE_KERNELS_HLSL_PATH;
+    std::ostringstream ss;
+    ss << kernelFile.rdbuf();
+    const std::string sdfCoreHlsl = ss.str();
+
+    // Step 2: Cone recipe. half-angle=30° (sin=0.5, cos=0.866), height=1.0, no offset.
+    // data[0]=sinAngle, data[1]=cosAngle, data[2]=height, data[4..6]=position offset (all 0).
+    Vixen::SVO::Recipe::SdfInstruction cone{};
+    cone.opCode  = static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::Cone);
+    cone.data[0] = 0.5f;       // sin(30°)
+    cone.data[1] = 0.866025f;  // cos(30°)
+    cone.data[2] = 1.0f;       // height
+    // data[4..6] remain 0.0f (default) — position offset at origin
+
+    Vixen::SVO::Recipe::SdfInstruction prog[] = { cone };
+    const std::string shaderSrc =
+        Vixen::SVO::Recipe::EmitProceduralComputeShader(prog, 1, sdfCoreHlsl);
+
+    // Step 3: compile HLSL → SPIR-V.
+    ShaderManagement::ShaderCompiler compiler;
+    ShaderManagement::CompilationOptions opts;
+    opts.sourceLanguage = ShaderManagement::CompilationOptions::SourceLanguage::HLSL;
+    opts.validateSpirv  = false;  // ponytail: glslang SPIR-V validator quirk
+    auto compOut = compiler.Compile(ShaderManagement::ShaderStage::Compute, shaderSrc, "main", opts);
+    ASSERT_TRUE(compOut.success)
+        << "HLSL compile failed:\n" << compOut.GetFullLog()
+        << "\n--- emitted source ---\n" << shaderSrc;
+    ASSERT_FALSE(compOut.spirv.empty());
+
+    // Step 4: camera looking from z+ slightly elevated.
+    // Cone: apex at (0,0,0), base at y=-1.0 (radius ≈ 0.577).
+    // Eye at (0, 0.5, 4.0) target (0, -0.5, 0) — shows pointed triangle silhouette.
+    constexpr uint32_t W = 512, H = 512;
+    const RecipePushConstants pc = MakeCamera(
+        glm::vec3(0.0f, 0.5f, 4.0f),   // eye — slightly above and back
+        glm::vec3(0.0f, -0.5f, 0.0f),  // target — cone midpoint
+        W, H
+    );
+
+    // Step 5: dispatch on lavapipe, readback float pixels (RGBA32F).
+    std::vector<float> rgba32f;
+    ASSERT_NO_FATAL_FAILURE(RenderProcedural(compOut.spirv, pc, W, H, rgba32f));
+    ASSERT_EQ(rgba32f.size(), static_cast<size_t>(W) * H * 4);
+
+    // Step 6: count body pixels + convert to RGBA8 for PNG.
+    int bodyPixels = 0;
+    std::vector<uint8_t> rgba8(W * H * 4);
+    for (uint32_t i = 0; i < W * H; ++i) {
+        const float fr = rgba32f[i * 4 + 0];
+        const float fg = rgba32f[i * 4 + 1];
+        const float fb = rgba32f[i * 4 + 2];
+        const float fa = rgba32f[i * 4 + 3];
+        rgba8[i * 4 + 0] = static_cast<uint8_t>(std::min(fr * 255.0f + 0.5f, 255.0f));
+        rgba8[i * 4 + 1] = static_cast<uint8_t>(std::min(fg * 255.0f + 0.5f, 255.0f));
+        rgba8[i * 4 + 2] = static_cast<uint8_t>(std::min(fb * 255.0f + 0.5f, 255.0f));
+        rgba8[i * 4 + 3] = static_cast<uint8_t>(std::min(fa * 255.0f + 0.5f, 255.0f));
+        if (fr > 0.08f || fg > 0.08f) ++bodyPixels;
+    }
+
+    // Step 7: write PNG — validator reads it to confirm cone/triangle shape.
+    const char* pngPath = "/tmp/glsl_sdf_m3b_cone.png";
+    const int pngOk = stbi_write_png(pngPath,
+        static_cast<int>(W), static_cast<int>(H), 4,
+        rgba8.data(), static_cast<int>(W) * 4);
+
+    printf("[RenderCone] bodyPixels=%d  PNG written=%s  path=%s\n",
+           bodyPixels, pngOk ? "YES" : "NO", pngPath);
+    fflush(stdout);
+
+    EXPECT_TRUE(pngOk) << "stbi_write_png failed for " << pngPath;
+    ASSERT_GT(bodyPixels, 2000)
+        << "bodyPixels=" << bodyPixels << " <= 2000 — image is likely all-black. "
+           "Check: (1) shaderStorageImageWriteWithoutFormat, (2) Vulkan 1.3, "
+           "(3) Cone opcode case in EmitProceduralComputeShader. "
+           "Sample floats [pixel 0]: R=" << rgba32f[0] << " G=" << rgba32f[1]
+           << " B=" << rgba32f[2] << " A=" << rgba32f[3]
+           << "\nEmitted shader (first 2000 chars):\n"
+        << shaderSrc.substr(0, 2000);
+}

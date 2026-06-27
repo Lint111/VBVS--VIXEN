@@ -210,3 +210,53 @@ TEST(RecipeCodegen, EmitsLeafPrimitivesCompilesToSpirv) {
     ASSERT_TRUE(out3.success) << out3.GetFullLog() << "\n--- emitted source ---\n" << src;
     EXPECT_FALSE(out3.spirv.empty());
 }
+
+// P2.4 M3b-2 — SPIR-V compile gate for positioned leaf primitives.
+// Recipe: [Ellipsoid(radii=(0.6,0.4,0.3), offset=(0.5,0,0)),
+//          Cone(sin30=0.5 cos30=0.866, h=1.0, offset=(-0.5,0,0)), Union]
+// Verifies: (1) emitter produces SdfCore_Ellipsoid and SdfCore_Cone calls,
+//           (2) both calls include the "- float3(...)" position-offset expression,
+//           (3) the resulting HLSL compiles to valid SPIR-V.
+TEST(RecipeCodegen, EmitsPositionedLeafPrimitivesCompilesToSpirv) {
+    std::ifstream f4(SDF_CORE_KERNELS_HLSL_PATH);
+    ASSERT_TRUE(f4.good()) << "Cannot open vendored HLSL: " << SDF_CORE_KERNELS_HLSL_PATH;
+    std::ostringstream ss4;
+    ss4 << f4.rdbuf();
+    std::string core = ss4.str();
+
+    // Ellipsoid at offset (+0.5, 0, 0): radii=(0.6, 0.4, 0.3)
+    Recipe::SdfInstruction ellipsoid{};
+    ellipsoid.opCode  = static_cast<uint8_t>(Recipe::SdfOpCode::Ellipsoid);
+    ellipsoid.data[0] = 0.6f; ellipsoid.data[1] = 0.4f; ellipsoid.data[2] = 0.3f;
+    ellipsoid.data[4] = 0.5f;  // position offset x=+0.5
+
+    // Cone at offset (-0.5, 0, 0): half-angle 30°, height 1.0
+    Recipe::SdfInstruction cone{};
+    cone.opCode  = static_cast<uint8_t>(Recipe::SdfOpCode::Cone);
+    cone.data[0] = 0.5f;       // sin(30°)
+    cone.data[1] = 0.866025f;  // cos(30°)
+    cone.data[2] = 1.0f;       // height
+    cone.data[4] = -0.5f;      // position offset x=-0.5
+
+    Recipe::SdfInstruction prog[] = { ellipsoid, cone, unionOp() };
+    std::string src = Recipe::EmitProceduralComputeShader(prog, 3, core);
+
+    // Verify the two new kernel calls appear in the emitted HLSL.
+    EXPECT_NE(src.find("SdfCore_Ellipsoid("), std::string::npos)
+        << "Expected SdfCore_Ellipsoid call; src:\n" << src;
+    EXPECT_NE(src.find("SdfCore_Cone("), std::string::npos)
+        << "Expected SdfCore_Cone call; src:\n" << src;
+    // Position-offset: "- float3(" must appear from the data[4..6] offset expressions.
+    EXPECT_NE(src.find("- float3("), std::string::npos)
+        << "Expected position-offset '- float3(...)' in emitted HLSL; src:\n" << src;
+
+    // Compile through HLSL path → valid SPIR-V.
+    ShaderCompiler compiler4;
+    CompilationOptions opts4;
+    opts4.sourceLanguage = CompilationOptions::SourceLanguage::HLSL;
+    opts4.validateSpirv  = false;  // ponytail: glslang SPIR-V validator quirk (same as prior gates)
+
+    auto out4 = compiler4.Compile(ShaderStage::Compute, src, "main", opts4);
+    ASSERT_TRUE(out4.success) << out4.GetFullLog() << "\n--- emitted source ---\n" << src;
+    EXPECT_FALSE(out4.spirv.empty());
+}

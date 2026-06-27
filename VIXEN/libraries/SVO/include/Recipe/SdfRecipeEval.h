@@ -133,6 +133,67 @@ inline float evalRecipe(const SdfInstruction* prog, uint32_t count, glm::vec3 p)
                 glm::vec3 n(in.data[0], in.data[1], in.data[2]);
                 stack[sp++] = SdfCore_Plane(pos, n, in.data[3]);
             } break;
+            // --- Leaf primitives (position-offset, pos-off=YES) — P2.4 M3b-2 ---
+            // Sample point: q = pos - vec3(data[4..6])
+            case SdfOpCode::Ellipsoid: {
+                assert(sp < 64 && "value stack overflow");
+                // data[0..2]=radii, data[4..6]=position
+                glm::vec3 q = pos - glm::vec3(in.data[4], in.data[5], in.data[6]);
+                glm::vec3 radii(in.data[0], in.data[1], in.data[2]);
+                stack[sp++] = SdfCore_Ellipsoid(q, radii);
+            } break;
+            case SdfOpCode::HollowCylinder: {
+                assert(sp < 64 && "value stack overflow");
+                // data[0]=halfLen, data[1]=outerR, data[2]=wall, data[4..6]=position
+                glm::vec3 q = pos - glm::vec3(in.data[4], in.data[5], in.data[6]);
+                stack[sp++] = SdfCore_HollowCylinder(q, in.data[0], in.data[1], in.data[2]);
+            } break;
+            case SdfOpCode::TaperedCylinder: {
+                assert(sp < 64 && "value stack overflow");
+                // data[0]=halfH (height), data[1]=baseR (r1), data[2]=topR (r2), data[4..6]=position
+                glm::vec3 q = pos - glm::vec3(in.data[4], in.data[5], in.data[6]);
+                stack[sp++] = SdfCore_TaperedCylinder(q, in.data[0], in.data[1], in.data[2]);
+            } break;
+            case SdfOpCode::Cone: {
+                assert(sp < 64 && "value stack overflow");
+                // data[0]=sinAngle, data[1]=cosAngle, data[2]=height, data[4..6]=position
+                glm::vec3 q = pos - glm::vec3(in.data[4], in.data[5], in.data[6]);
+                stack[sp++] = SdfCore_Cone(q, glm::vec2(in.data[0], in.data[1]), in.data[2]);
+            } break;
+            case SdfOpCode::CappedTorus: {
+                assert(sp < 64 && "value stack overflow");
+                // data[0]=sinA, data[1]=cosA, data[2]=majorR, data[3]=minorR, data[4..6]=position
+                glm::vec3 q = pos - glm::vec3(in.data[4], in.data[5], in.data[6]);
+                stack[sp++] = SdfCore_CappedTorus(q, glm::vec2(in.data[0], in.data[1]), in.data[2], in.data[3]);
+            } break;
+            case SdfOpCode::Link: {
+                assert(sp < 64 && "value stack overflow");
+                // data[0]=halfLen, data[1]=majorR, data[2]=minorR, data[4..6]=position
+                glm::vec3 q = pos - glm::vec3(in.data[4], in.data[5], in.data[6]);
+                stack[sp++] = SdfCore_Link(q, in.data[0], in.data[1], in.data[2]);
+            } break;
+            // Panel/Plank/RoundedBox: positioned BoxRounded (same math as BoxRounded=2, opcode differs)
+            case SdfOpCode::Panel: {
+                assert(sp < 64 && "value stack overflow");
+                // data[0..2]=halfExtents, data[3]=rounding, data[4..6]=position
+                glm::vec3 q = pos - glm::vec3(in.data[4], in.data[5], in.data[6]);
+                glm::vec3 he(in.data[0], in.data[1], in.data[2]);
+                stack[sp++] = SdfCore_BoxRounded(q, he, in.data[3]);
+            } break;
+            case SdfOpCode::Plank: {
+                assert(sp < 64 && "value stack overflow");
+                // data[0..2]=halfExtents, data[3]=rounding, data[4..6]=position
+                glm::vec3 q = pos - glm::vec3(in.data[4], in.data[5], in.data[6]);
+                glm::vec3 he(in.data[0], in.data[1], in.data[2]);
+                stack[sp++] = SdfCore_BoxRounded(q, he, in.data[3]);
+            } break;
+            case SdfOpCode::RoundedBox: {
+                assert(sp < 64 && "value stack overflow");
+                // data[0..2]=halfExtents, data[3]=rounding, data[4..6]=position
+                glm::vec3 q = pos - glm::vec3(in.data[4], in.data[5], in.data[6]);
+                glm::vec3 he(in.data[0], in.data[1], in.data[2]);
+                stack[sp++] = SdfCore_BoxRounded(q, he, in.data[3]);
+            } break;
             case SdfOpCode::MirrorX: {
                 assert(psp < 64 && "MirrorX: position stack overflow");
                 posStack[psp++] = pos; pos = SdfCore_MirrorX(pos);

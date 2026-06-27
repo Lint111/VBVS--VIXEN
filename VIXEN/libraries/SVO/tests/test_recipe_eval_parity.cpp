@@ -463,3 +463,284 @@ TEST(RecipeEvalParity, M3b1_Plane_MatchesAnalytic) {
         EXPECT_NEAR(evalRecipe(prog, 1, p), planeDist(p, n, d), 1e-5f)
             << "Plane at (" << p.x << "," << p.y << "," << p.z << ")";
 }
+
+// ============================================================
+// P2.4 M3b-2 — 9 position-offset leaf primitive parity cases.
+// All use a non-zero position offset in data[4..6] (= {0.5f, 0.3f, 0.2f}).
+// Each includes a point where a wrong/missing offset would produce a clearly different result.
+// Oracles are independent C++ formulas (Global Constraints) — NOT calling SdfCore_*.
+// ============================================================
+
+// --- M3b-2 instruction helpers ---
+static SdfInstruction ellipsoidOp(glm::vec3 radii, glm::vec3 off) {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::Ellipsoid;
+    in.data[0]=radii.x; in.data[1]=radii.y; in.data[2]=radii.z;
+    in.data[4]=off.x;   in.data[5]=off.y;   in.data[6]=off.z;  return in; }
+static SdfInstruction hollowCylinderOp(float halfLen, float outerR, float wall, glm::vec3 off) {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::HollowCylinder;
+    in.data[0]=halfLen; in.data[1]=outerR; in.data[2]=wall;
+    in.data[4]=off.x;   in.data[5]=off.y;  in.data[6]=off.z;  return in; }
+static SdfInstruction taperedCylinderOp(float height, float r1, float r2, glm::vec3 off) {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::TaperedCylinder;
+    in.data[0]=height; in.data[1]=r1; in.data[2]=r2;
+    in.data[4]=off.x;  in.data[5]=off.y; in.data[6]=off.z;  return in; }
+static SdfInstruction coneOp(float sinA, float cosA, float height, glm::vec3 off) {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::Cone;
+    in.data[0]=sinA; in.data[1]=cosA; in.data[2]=height;
+    in.data[4]=off.x; in.data[5]=off.y; in.data[6]=off.z;  return in; }
+static SdfInstruction cappedTorusOp(float sinA, float cosA, float majorR, float minorR, glm::vec3 off) {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::CappedTorus;
+    in.data[0]=sinA; in.data[1]=cosA; in.data[2]=majorR; in.data[3]=minorR;
+    in.data[4]=off.x; in.data[5]=off.y; in.data[6]=off.z;  return in; }
+static SdfInstruction linkOp(float halfLen, float majorR, float minorR, glm::vec3 off) {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::Link;
+    in.data[0]=halfLen; in.data[1]=majorR; in.data[2]=minorR;
+    in.data[4]=off.x;   in.data[5]=off.y;  in.data[6]=off.z;  return in; }
+static SdfInstruction panelOp(glm::vec3 he, float rr, glm::vec3 off) {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::Panel;
+    in.data[0]=he.x; in.data[1]=he.y; in.data[2]=he.z; in.data[3]=rr;
+    in.data[4]=off.x; in.data[5]=off.y; in.data[6]=off.z;  return in; }
+static SdfInstruction plankOp(glm::vec3 he, float rr, glm::vec3 off) {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::Plank;
+    in.data[0]=he.x; in.data[1]=he.y; in.data[2]=he.z; in.data[3]=rr;
+    in.data[4]=off.x; in.data[5]=off.y; in.data[6]=off.z;  return in; }
+static SdfInstruction roundedBoxOp(glm::vec3 he, float rr, glm::vec3 off) {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::RoundedBox;
+    in.data[0]=he.x; in.data[1]=he.y; in.data[2]=he.z; in.data[3]=rr;
+    in.data[4]=off.x; in.data[5]=off.y; in.data[6]=off.z;  return in; }
+
+// --- M3b-2 oracle helpers (re-derived from SDFPrimitives.cs — NOT calling SdfCore_*) ---
+static float sign1f(float x) { return (x > 0.0f) ? 1.0f : ((x < 0.0f) ? -1.0f : 0.0f); }
+
+static float ellipsoidDist_oracle(glm::vec3 p, glm::vec3 off, glm::vec3 radii) {
+    // mirrors SDFPrimitives.Ellipsoid:62 — original formula with branch (used as oracle)
+    glm::vec3 q = p - off;
+    glm::vec3 safeR = glm::max(radii, 0.0001f);
+    float k0 = glm::length(q / safeR);
+    float k1 = glm::length(q / (safeR * safeR));
+    if (k1 < 0.0001f) return k0 - 1.0f;
+    return k0 * (k0 - 1.0f) / k1;
+}
+static float hollowCylinderDist(glm::vec3 p, glm::vec3 off, float halfLen, float outerR, float wall) {
+    // mirrors Cylinder (SDFPrimitives.cs:210) + Onion (SDFOperations.cs:228)
+    glm::vec3 q = p - off;
+    glm::vec2 d(glm::length(glm::vec2(q.x, q.z)) - outerR, std::abs(q.y) - halfLen);
+    float cyl = std::min(std::max(d.x, d.y), 0.0f) + glm::length(glm::max(d, glm::vec2(0.0f)));
+    return std::abs(cyl) - wall;
+}
+static float taperedCylinderDist(glm::vec3 p, glm::vec3 off, float height, float r1, float r2) {
+    // mirrors SDFPrimitives.ConeCapped:429
+    glm::vec3 p0 = p - off;
+    glm::vec2 q(glm::length(glm::vec2(p0.x, p0.z)), p0.y);
+    glm::vec2 k1(r2, height);
+    glm::vec2 k2(r2 - r1, 2.0f * height);
+    glm::vec2 ca(q.x - std::min(q.x, (q.y < 0.0f) ? r1 : r2), std::abs(q.y) - height);
+    float t = glm::clamp(glm::dot(k1 - q, k2) / glm::dot(k2, k2), 0.0f, 1.0f);
+    glm::vec2 cb = q - k1 + k2 * t;
+    float s = (cb.x < 0.0f && ca.y < 0.0f) ? -1.0f : 1.0f;
+    return s * std::sqrt(std::min(glm::dot(ca, ca), glm::dot(cb, cb)));
+}
+static float coneDist(glm::vec3 p, glm::vec3 off, float sinA, float cosA, float height) {
+    // mirrors SDFPrimitives.Cone:354
+    glm::vec3 p0 = p - off;
+    glm::vec2 angle(sinA, cosA);
+    glm::vec2 q = height * glm::vec2(angle.x / angle.y, -1.0f);
+    glm::vec2 w(glm::length(glm::vec2(p0.x, p0.z)), p0.y);
+    glm::vec2 a = w - q * glm::clamp(glm::dot(w, q) / glm::dot(q, q), 0.0f, 1.0f);
+    glm::vec2 b = w - q * glm::vec2(glm::clamp(w.x / q.x, 0.0f, 1.0f), 1.0f);
+    float k = sign1f(q.y);
+    float d = std::min(glm::dot(a, a), glm::dot(b, b));
+    float s = std::max(k * (w.x * q.y - w.y * q.x), k * (w.y - q.y));
+    return std::sqrt(d) * sign1f(s);
+}
+static float cappedTorusDist(glm::vec3 p, glm::vec3 off, float sinA, float cosA, float majorR, float minorR) {
+    // mirrors SDFPrimitives.TorusCapped:336
+    glm::vec3 q = p - off;
+    q.x = std::abs(q.x);
+    glm::vec2 sc(sinA, cosA);
+    float k = (sc.y * q.x > sc.x * q.z)
+        ? glm::dot(glm::vec2(q.x, q.z), sc)
+        : glm::length(glm::vec2(q.x, q.z));
+    return std::sqrt(glm::dot(q, q) + majorR * majorR - 2.0f * majorR * k) - minorR;
+}
+static float linkDist(glm::vec3 p, glm::vec3 off, float halfLen, float majorR, float minorR) {
+    // mirrors SDFPrimitives.Link:606
+    glm::vec3 q3 = p - off;
+    glm::vec3 q(q3.x, std::max(std::abs(q3.y) - halfLen, 0.0f), q3.z);
+    return glm::length(glm::vec2(glm::length(glm::vec2(q.x, q.y)) - majorR, q.z)) - minorR;
+}
+static float posBoxRoundedDist(glm::vec3 p, glm::vec3 off, glm::vec3 he, float rr) {
+    // Panel/Plank/RoundedBox: positioned BoxRounded — mirrors SDFPrimitives.BoxRounded:194
+    glm::vec3 q = glm::abs(p - off) - he + rr;
+    return glm::length(glm::max(q, glm::vec3(0.0f)))
+         + std::min(std::max(q.x, std::max(q.y, q.z)), 0.0f) - rr;
+}
+
+// Shared offset used in all M3b-2 tests — non-zero so offset-insensitive points fail.
+static const glm::vec3 kOff(0.5f, 0.3f, 0.2f);
+
+// --- 1. Ellipsoid (branchless form parity) ---
+// Oracle = ORIGINAL formula. Points away from center so k1 is NOT near zero (branch not taken).
+TEST(RecipeEvalParity, M3b2_Ellipsoid_MatchesOracle) {
+    const glm::vec3 radii(0.6f, 0.4f, 0.5f);
+    SdfInstruction prog[] = { ellipsoidOp(radii, kOff) };
+    const glm::vec3 pts[] = {
+        kOff + glm::vec3(0.7f,  0.0f,  0.0f),   // outside along X from offset
+        kOff + glm::vec3(0.0f,  0.5f,  0.0f),   // outside along Y from offset
+        kOff + glm::vec3(0.3f,  0.2f,  0.25f),  // near surface, off-axis
+        kOff + glm::vec3(1.0f,  0.8f,  0.6f),   // far outside
+    };
+    for (const glm::vec3& p : pts)
+        EXPECT_NEAR(evalRecipe(prog, 1, p), ellipsoidDist_oracle(p, kOff, radii), 1e-5f)
+            << "Ellipsoid at (" << p.x << "," << p.y << "," << p.z << ")";
+    // Position-offset sensitivity: query at world-origin — wrong answer if offset not applied
+    glm::vec3 pWorld(0.0f, 0.0f, 0.0f);
+    float withOffset    = evalRecipe(prog, 1, pWorld);
+    float withoutOffset = ellipsoidDist_oracle(pWorld, glm::vec3(0.0f), radii);
+    EXPECT_GT(std::abs(withOffset - withoutOffset), 0.1f)
+        << "Ellipsoid offset not applied: results match (offset missing?)";
+}
+
+// --- 2. HollowCylinder ---
+TEST(RecipeEvalParity, M3b2_HollowCylinder_MatchesAnalytic) {
+    const float halfLen=0.5f, outerR=0.4f, wall=0.05f;
+    SdfInstruction prog[] = { hollowCylinderOp(halfLen, outerR, wall, kOff) };
+    const glm::vec3 pts[] = {
+        kOff + glm::vec3(0.4f,  0.0f,  0.0f),   // on outer surface (XZ radius = outerR)
+        kOff + glm::vec3(0.0f,  0.7f,  0.0f),   // above cap
+        kOff + glm::vec3(0.35f, 0.0f,  0.0f),   // inside hollow cylinder (near inner wall)
+        kOff + glm::vec3(0.6f,  0.3f,  0.2f),   // outside both radially and axially
+    };
+    for (const glm::vec3& p : pts)
+        EXPECT_NEAR(evalRecipe(prog, 1, p), hollowCylinderDist(p, kOff, halfLen, outerR, wall), 1e-5f)
+            << "HollowCylinder at (" << p.x << "," << p.y << "," << p.z << ")";
+    glm::vec3 pWorld(0.0f, 0.0f, 0.0f);
+    EXPECT_GT(std::abs(evalRecipe(prog, 1, pWorld) - hollowCylinderDist(pWorld, glm::vec3(0.0f), halfLen, outerR, wall)), 0.1f)
+        << "HollowCylinder offset not applied";
+}
+
+// --- 3. TaperedCylinder ---
+TEST(RecipeEvalParity, M3b2_TaperedCylinder_MatchesAnalytic) {
+    const float height=1.0f, r1=0.4f, r2=0.15f;
+    SdfInstruction prog[] = { taperedCylinderOp(height, r1, r2, kOff) };
+    const glm::vec3 pts[] = {
+        kOff + glm::vec3(0.4f,  0.0f,  0.0f),   // near base radius
+        kOff + glm::vec3(0.0f,  1.2f,  0.0f),   // above top cap
+        kOff + glm::vec3(0.15f, 1.0f,  0.0f),   // near top edge
+        kOff + glm::vec3(0.5f,  0.5f,  0.3f),   // outside, off-axis
+    };
+    for (const glm::vec3& p : pts)
+        EXPECT_NEAR(evalRecipe(prog, 1, p), taperedCylinderDist(p, kOff, height, r1, r2), 1e-5f)
+            << "TaperedCylinder at (" << p.x << "," << p.y << "," << p.z << ")";
+    glm::vec3 pWorld(0.0f, 0.0f, 0.0f);
+    EXPECT_GT(std::abs(evalRecipe(prog, 1, pWorld) - taperedCylinderDist(pWorld, glm::vec3(0.0f), height, r1, r2)), 0.1f)
+        << "TaperedCylinder offset not applied";
+}
+
+// --- 4. Cone (30° half-angle → sinA≈0.5, cosA≈0.866) ---
+TEST(RecipeEvalParity, M3b2_Cone_MatchesAnalytic) {
+    const float sinA=0.5f, cosA=0.866f, height=1.0f;
+    SdfInstruction prog[] = { coneOp(sinA, cosA, height, kOff) };
+    const glm::vec3 pts[] = {
+        kOff + glm::vec3(0.0f,  0.5f,  0.0f),   // on axis, mid-height (inside cone)
+        kOff + glm::vec3(0.6f,  0.5f,  0.0f),   // outside cone surface at mid-height
+        kOff + glm::vec3(0.0f,  1.2f,  0.0f),   // above tip
+        kOff + glm::vec3(0.3f,  0.0f,  0.2f),   // near base, off-axis
+    };
+    for (const glm::vec3& p : pts)
+        EXPECT_NEAR(evalRecipe(prog, 1, p), coneDist(p, kOff, sinA, cosA, height), 1e-4f)
+            << "Cone at (" << p.x << "," << p.y << "," << p.z << ")";
+    glm::vec3 pWorld(0.0f, 0.0f, 0.0f);
+    EXPECT_GT(std::abs(evalRecipe(prog, 1, pWorld) - coneDist(pWorld, glm::vec3(0.0f), sinA, cosA, height)), 0.2f)
+        << "Cone offset not applied";
+}
+
+// --- 5. CappedTorus (cap angle ≈75° → sinA≈0.966, cosA≈0.259) ---
+TEST(RecipeEvalParity, M3b2_CappedTorus_MatchesAnalytic) {
+    const float sinA=0.966f, cosA=0.259f, majorR=0.6f, minorR=0.15f;
+    SdfInstruction prog[] = { cappedTorusOp(sinA, cosA, majorR, minorR, kOff) };
+    const glm::vec3 pts[] = {
+        kOff + glm::vec3(0.6f,  0.0f,  0.0f),   // on major ring in XZ
+        kOff + glm::vec3(0.6f,  0.2f,  0.0f),   // near tube surface
+        kOff + glm::vec3(0.0f,  0.0f,  0.8f),   // behind torus, outside
+        kOff + glm::vec3(1.0f,  0.3f,  0.0f),   // outside ring
+    };
+    for (const glm::vec3& p : pts)
+        EXPECT_NEAR(evalRecipe(prog, 1, p), cappedTorusDist(p, kOff, sinA, cosA, majorR, minorR), 1e-5f)
+            << "CappedTorus at (" << p.x << "," << p.y << "," << p.z << ")";
+    glm::vec3 pWorld(0.0f, 0.0f, 0.0f);
+    EXPECT_GT(std::abs(evalRecipe(prog, 1, pWorld) - cappedTorusDist(pWorld, glm::vec3(0.0f), sinA, cosA, majorR, minorR)), 0.1f)
+        << "CappedTorus offset not applied";
+}
+
+// --- 6. Link ---
+TEST(RecipeEvalParity, M3b2_Link_MatchesAnalytic) {
+    const float halfLen=0.3f, majorR=0.4f, minorR=0.1f;
+    SdfInstruction prog[] = { linkOp(halfLen, majorR, minorR, kOff) };
+    const glm::vec3 pts[] = {
+        kOff + glm::vec3(0.4f,  0.0f,  0.0f),   // on major ring in XY at y=0
+        kOff + glm::vec3(0.4f,  0.5f,  0.0f),   // above halfLen (y clamped to halfLen)
+        kOff + glm::vec3(0.0f,  0.0f,  0.15f),  // near Z tube
+        kOff + glm::vec3(0.8f,  0.4f,  0.2f),   // outside link
+    };
+    for (const glm::vec3& p : pts)
+        EXPECT_NEAR(evalRecipe(prog, 1, p), linkDist(p, kOff, halfLen, majorR, minorR), 1e-5f)
+            << "Link at (" << p.x << "," << p.y << "," << p.z << ")";
+    glm::vec3 pWorld(0.0f, 0.0f, 0.0f);
+    EXPECT_GT(std::abs(evalRecipe(prog, 1, pWorld) - linkDist(pWorld, glm::vec3(0.0f), halfLen, majorR, minorR)), 0.1f)
+        << "Link offset not applied";
+}
+
+// --- 7. Panel (positioned BoxRounded, opcode=10) ---
+TEST(RecipeEvalParity, M3b2_Panel_MatchesAnalytic) {
+    const glm::vec3 he(0.6f, 0.05f, 0.4f); const float rr=0.02f;
+    SdfInstruction prog[] = { panelOp(he, rr, kOff) };
+    const glm::vec3 pts[] = {
+        kOff + glm::vec3(0.0f,  0.0f,  0.0f),   // inside
+        kOff + glm::vec3(0.7f,  0.0f,  0.0f),   // outside X
+        kOff + glm::vec3(0.0f,  0.1f,  0.0f),   // above (thin panel)
+        kOff + glm::vec3(0.6f,  0.06f, 0.4f),   // near corner
+    };
+    for (const glm::vec3& p : pts)
+        EXPECT_NEAR(evalRecipe(prog, 1, p), posBoxRoundedDist(p, kOff, he, rr), 1e-5f)
+            << "Panel at (" << p.x << "," << p.y << "," << p.z << ")";
+    glm::vec3 pWorld(0.0f, 0.0f, 0.0f);
+    EXPECT_GT(std::abs(evalRecipe(prog, 1, pWorld) - posBoxRoundedDist(pWorld, glm::vec3(0.0f), he, rr)), 0.05f)
+        << "Panel offset not applied";
+}
+
+// --- 8. Plank (positioned BoxRounded, opcode=11) ---
+TEST(RecipeEvalParity, M3b2_Plank_MatchesAnalytic) {
+    const glm::vec3 he(0.8f, 0.08f, 0.12f); const float rr=0.02f;
+    SdfInstruction prog[] = { plankOp(he, rr, kOff) };
+    const glm::vec3 pts[] = {
+        kOff + glm::vec3(0.0f,  0.0f,  0.0f),   // inside
+        kOff + glm::vec3(0.9f,  0.0f,  0.0f),   // outside X
+        kOff + glm::vec3(0.0f,  0.12f, 0.0f),   // outside Y
+        kOff + glm::vec3(0.5f,  0.09f, 0.15f),  // outside corner region
+    };
+    for (const glm::vec3& p : pts)
+        EXPECT_NEAR(evalRecipe(prog, 1, p), posBoxRoundedDist(p, kOff, he, rr), 1e-5f)
+            << "Plank at (" << p.x << "," << p.y << "," << p.z << ")";
+    glm::vec3 pWorld(0.0f, 0.0f, 0.0f);
+    EXPECT_GT(std::abs(evalRecipe(prog, 1, pWorld) - posBoxRoundedDist(pWorld, glm::vec3(0.0f), he, rr)), 0.05f)
+        << "Plank offset not applied";
+}
+
+// --- 9. RoundedBox (positioned BoxRounded, opcode=12) ---
+TEST(RecipeEvalParity, M3b2_RoundedBox_MatchesAnalytic) {
+    const glm::vec3 he(0.4f, 0.3f, 0.35f); const float rr=0.05f;
+    SdfInstruction prog[] = { roundedBoxOp(he, rr, kOff) };
+    const glm::vec3 pts[] = {
+        kOff + glm::vec3(0.0f,  0.0f,  0.0f),   // inside
+        kOff + glm::vec3(0.5f,  0.0f,  0.0f),   // outside X
+        kOff + glm::vec3(0.0f,  0.4f,  0.0f),   // outside Y
+        kOff + glm::vec3(0.45f, 0.35f, 0.4f),   // near corner
+    };
+    for (const glm::vec3& p : pts)
+        EXPECT_NEAR(evalRecipe(prog, 1, p), posBoxRoundedDist(p, kOff, he, rr), 1e-5f)
+            << "RoundedBox at (" << p.x << "," << p.y << "," << p.z << ")";
+    glm::vec3 pWorld(0.0f, 0.0f, 0.0f);
+    EXPECT_GT(std::abs(evalRecipe(prog, 1, pWorld) - posBoxRoundedDist(pWorld, glm::vec3(0.0f), he, rr)), 0.05f)
+        << "RoundedBox offset not applied";
+}
