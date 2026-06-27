@@ -26,6 +26,24 @@ float3 SdfCore_MirrorX(float3 p) {
     return float3(abs(p.x), p.y, p.z);
 }
 
+float3 SdfCore_MirrorY(float3 p) {
+    return float3(p.x, abs(p.y), p.z);
+}
+
+float3 SdfCore_MirrorZ(float3 p) {
+    return float3(p.x, p.y, abs(p.z));
+}
+
+float3 SdfCore_Elongate(float3 p, float3 h) {
+    return p - clamp(p, -h, h);
+}
+
+float3 SdfCore_Revolution(float3 p, float3 center, float offset) {
+    float3 pp = p - center;
+    float2 q = float2(length(float2(pp.x, pp.z)) - offset, pp.y);
+    return float3(q.x, q.y, 0) + center;
+}
+
 float SdfCore_Intersect(float a, float b) {
     return max(a, b);
 }

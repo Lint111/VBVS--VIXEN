@@ -307,3 +307,40 @@ TEST(RecipeCodegen, EmitsM3b3PrimitivesCompilesToSpirv) {
     ASSERT_TRUE(out5.success) << out5.GetFullLog() << "\n--- emitted source ---\n" << src;
     EXPECT_FALSE(out5.spirv.empty());
 }
+
+// P2.4 M4a — SPIR-V gate for Revolution transform recipe.
+// Recipe: [Revolution(offset=0.8, center=origin), Sphere(origin, r=0.2), RestorePos]
+// Verifies: SdfCore_Revolution + SdfCore_Sphere calls emitted; posStack save/restore pattern; SPIR-V compiles.
+TEST(SdfRecipeCodegen, M4a_RevolutionSpirV_Compiles) {
+    std::stringstream ss6;
+    std::ifstream kf6(SDF_CORE_KERNELS_HLSL_PATH);
+    ASSERT_TRUE(kf6.is_open()) << "SDF_CORE_KERNELS_HLSL_PATH not found: " << SDF_CORE_KERNELS_HLSL_PATH;
+    ss6 << kf6.rdbuf();
+    std::string core = ss6.str();
+
+    // Revolution(offset=0.8, center=origin)
+    Recipe::SdfInstruction rev{};
+    rev.opCode  = static_cast<uint8_t>(Recipe::SdfOpCode::Revolution);
+    rev.data[0] = 0.8f;  // offset
+    // data[4..6] = center = (0,0,0) (default zero)
+
+    Recipe::SdfInstruction prog[] = { rev, sphere(0.f,0.f,0.f, 0.2f), restorePosOp() };
+    std::string src = Recipe::EmitProceduralComputeShader(prog, 3, core);
+
+    EXPECT_NE(src.find("SdfCore_Revolution("), std::string::npos)
+        << "Expected SdfCore_Revolution call; src:\n" << src;
+    EXPECT_NE(src.find("SdfCore_Sphere("), std::string::npos)
+        << "Expected SdfCore_Sphere call; src:\n" << src;
+    // posStack pattern: a new float3 variable for the transformed position
+    EXPECT_NE(src.find("SdfCore_Revolution(p,"), std::string::npos)
+        << "Expected position variable fed into Revolution; src:\n" << src;
+
+    ShaderCompiler compiler6;
+    CompilationOptions opts6;
+    opts6.sourceLanguage = CompilationOptions::SourceLanguage::HLSL;
+    opts6.validateSpirv  = false;
+
+    auto out6 = compiler6.Compile(ShaderStage::Compute, src, "main", opts6);
+    ASSERT_TRUE(out6.success) << out6.GetFullLog() << "\n--- emitted source ---\n" << src;
+    EXPECT_FALSE(out6.spirv.empty());
+}

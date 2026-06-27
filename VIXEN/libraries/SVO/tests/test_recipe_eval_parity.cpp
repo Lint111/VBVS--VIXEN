@@ -953,3 +953,159 @@ TEST(RecipeEvalParity, M3b3_RoundCone_MatchesOracle) {
     EXPECT_GT(std::abs(evalRecipe(prog, 1, pWorld) - roundConeDist_oracle(pWorld, glm::vec3(0.0f), r1, r2, height)), 0.1f)
         << "RoundCone offset not applied";
 }
+
+// ===========================================================================
+// P2.4 M4a — 4 domain-transform kernels + distScaleStack scaffold.
+// Oracles are INDEPENDENT (first-principles geometric derivations, NOT calling SdfCore_*).
+// Each recipe: [<transform>, Sphere(origin, r=0.5f), RestorePos]
+// distScale=1.0f for all M4a ops → RestorePos multiplies by 1; existing values unchanged.
+// ===========================================================================
+
+// M4a instruction helpers
+static SdfInstruction mirrorYOp() { SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::MirrorY; return in; }
+static SdfInstruction mirrorZOp() { SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::MirrorZ; return in; }
+static SdfInstruction elongateOp(glm::vec3 h) {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::Elongate;
+    in.data[0]=h.x; in.data[1]=h.y; in.data[2]=h.z; return in; }
+static SdfInstruction revolutionOp(float offset, glm::vec3 center) {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::Revolution;
+    in.data[0]=offset;
+    in.data[4]=center.x; in.data[5]=center.y; in.data[6]=center.z; return in; }
+
+// --- MirrorY ---
+// Oracle: sphere(mirrored_p) where mirror is by-hand: p' = (p.x, |p.y|, p.z)
+TEST(RecipeEvalParity, M4a_MirrorY_MatchesOracle) {
+    const float r = 0.5f;
+    SdfInstruction prog[] = { mirrorYOp(), sphere(glm::vec3(0.f), r), restorePosOp() };
+    // Independent oracle: mirror p.y by hand, compute sphere dist from scratch
+    auto oracle = [&](glm::vec3 p) {
+        glm::vec3 pm(p.x, std::abs(p.y), p.z);  // mirror Y by hand
+        return glm::length(pm) - r;              // sphere at origin, computed directly
+    };
+    const glm::vec3 pts[] = {
+        glm::vec3( 0.0f,  1.0f,  0.0f),   // +y: no mirror effect
+        glm::vec3( 0.0f, -1.0f,  0.0f),   // -y: mirror changes result
+        glm::vec3( 0.5f, -0.5f,  0.3f),   // off-axis, -y side
+        glm::vec3(-0.3f,  0.8f, -0.2f),   // +y, multi-component
+        glm::vec3( 0.0f, -2.0f,  0.0f),   // far -y: distance equals far +y
+    };
+    for (const glm::vec3& p : pts)
+        EXPECT_NEAR(evalRecipe(prog, 3, p), oracle(p), 1e-5f)
+            << "MirrorY at (" << p.x << "," << p.y << "," << p.z << ")";
+    // Symmetry: f(0,+y,0) == f(0,-y,0) for any y
+    EXPECT_NEAR(evalRecipe(prog,3,glm::vec3(0.f,0.7f,0.f)),
+                evalRecipe(prog,3,glm::vec3(0.f,-0.7f,0.f)), 1e-5f) << "MirrorY symmetry";
+}
+
+// --- MirrorZ ---
+// Oracle: sphere(mirrored_p) where mirror is by-hand: p' = (p.x, p.y, |p.z|)
+TEST(RecipeEvalParity, M4a_MirrorZ_MatchesOracle) {
+    const float r = 0.5f;
+    SdfInstruction prog[] = { mirrorZOp(), sphere(glm::vec3(0.f), r), restorePosOp() };
+    auto oracle = [&](glm::vec3 p) {
+        glm::vec3 pm(p.x, p.y, std::abs(p.z));  // mirror Z by hand
+        return glm::length(pm) - r;
+    };
+    const glm::vec3 pts[] = {
+        glm::vec3( 0.0f,  0.0f,  1.0f),   // +z: no effect
+        glm::vec3( 0.0f,  0.0f, -1.0f),   // -z: mirror changes result
+        glm::vec3( 0.3f,  0.2f, -0.7f),   // off-axis, -z
+        glm::vec3(-0.4f, -0.1f,  0.9f),   // +z, multi-component
+    };
+    for (const glm::vec3& p : pts)
+        EXPECT_NEAR(evalRecipe(prog, 3, p), oracle(p), 1e-5f)
+            << "MirrorZ at (" << p.x << "," << p.y << "," << p.z << ")";
+}
+
+// --- Elongate ---
+// Oracle: Elongate(p,h) = p - clamp(p,-h,h), derived from SDFOperations.Elongate.
+// Then sphere(q) — independent derivation using std::clamp.
+TEST(RecipeEvalParity, M4a_Elongate_MatchesOracle) {
+    const glm::vec3 h(0.4f, 0.2f, 0.3f);
+    const float r = 0.3f;
+    SdfInstruction prog[] = { elongateOp(h), sphere(glm::vec3(0.f), r), restorePosOp() };
+    // Independent oracle: clamp each component by hand (SDFOperations.Elongate formula)
+    auto oracle = [&](glm::vec3 p) {
+        glm::vec3 clamped(
+            std::max(-h.x, std::min(p.x, h.x)),
+            std::max(-h.y, std::min(p.y, h.y)),
+            std::max(-h.z, std::min(p.z, h.z)));
+        glm::vec3 q = p - clamped;  // elongated position
+        return glm::length(q) - r;
+    };
+    const glm::vec3 pts[] = {
+        glm::vec3( 0.0f,  0.0f,  0.0f),   // inside elongation box → q near 0
+        glm::vec3( 0.6f,  0.0f,  0.0f),   // beyond elongation along x
+        glm::vec3( 0.0f,  0.5f,  0.0f),   // beyond elongation along y
+        glm::vec3(-0.5f,  0.3f,  0.4f),   // off-axis, beyond all components
+        glm::vec3( 0.2f, -0.1f, -0.2f),   // inside elongation box in all axes
+    };
+    for (const glm::vec3& p : pts)
+        EXPECT_NEAR(evalRecipe(prog, 3, p), oracle(p), 1e-5f)
+            << "Elongate at (" << p.x << "," << p.y << "," << p.z << ")";
+}
+
+// --- Revolution ---
+// Oracle: derived first-principles from RevolutionNode.EvalBurst formula.
+// Revolution maps p → q=(length(xz)-offset, y) then evaluates child at float3(q,0)+center.
+// Independent formula: compute length(xz) by hand, subtract offset, compute sphere at origin.
+TEST(RecipeEvalParity, M4a_Revolution_MatchesOracle) {
+    const float offset = 0.8f;
+    const glm::vec3 center(0.1f, 0.0f, 0.2f);
+    const float r = 0.15f;
+    SdfInstruction prog[] = { revolutionOp(offset, center), sphere(center, r), restorePosOp() };
+    // Independent oracle: hand-derive the revolution transform and sphere eval.
+    // RevolutionNode: pp = p - center; q = (length(pp.xz) - offset, pp.y); child at float3(q.x,q.y,0)+center
+    // sphere at center with radius r: length(float3(q.x,q.y,0)) - r
+    auto oracle = [&](glm::vec3 p) {
+        glm::vec3 pp = p - center;
+        float xz_len = std::sqrt(pp.x * pp.x + pp.z * pp.z);  // length of xz by hand
+        float qx = xz_len - offset;
+        float qy = pp.y;
+        // The transformed point seen by child (sphere at center, radius r):
+        // child receives float3(qx,qy,0)+center; sphere center is 'center'; sphere SDF = length(float3(qx,qy,0))-r
+        return std::sqrt(qx * qx + qy * qy) - r;
+    };
+    const glm::vec3 pts[] = {
+        center + glm::vec3(offset + 0.3f, 0.0f, 0.0f),  // on the revolution ring, +x
+        center + glm::vec3(0.0f, 0.0f, offset + 0.3f),  // on the ring, +z
+        center + glm::vec3(offset,  0.2f, 0.0f),         // on ring, slightly above equator
+        center + glm::vec3(0.2f,    0.5f, 0.1f),         // off ring, general position
+        center + glm::vec3(-offset, 0.0f, 0.0f),         // opposite side: xz_len=offset → ring
+    };
+    for (const glm::vec3& p : pts)
+        EXPECT_NEAR(evalRecipe(prog, 3, p), oracle(p), 1e-5f)
+            << "Revolution at (" << p.x << "," << p.y << "," << p.z << ")";
+    // Verify revolution is rotationally symmetric around Y: f(offset+dr, y, 0) == f(0, y, offset+dr)
+    float dr = 0.3f;
+    EXPECT_NEAR(evalRecipe(prog,3, center+glm::vec3(offset+dr,0.f,0.f)),
+                evalRecipe(prog,3, center+glm::vec3(0.f,0.f,offset+dr)), 1e-5f)
+        << "Revolution Y-axis symmetry";
+}
+
+// --- DistScale no-op sanity: MirrorX still correct after distScaleStack change ---
+// Proves the MirrorX+RestorePos still returns same result as pre-M4a (distScale=1.0f is identity).
+TEST(RecipeEvalParity, M4a_DistScaleNoOp_MirrorXNonRegression) {
+    // Same recipe as MirrorXSmoothUnionBoxSphereMatchesAnalytic — must equal pre-M4a oracle.
+    const glm::vec3 b(0.8f, 0.5f, 0.5f);
+    const glm::vec3 c(1.5f, 0.0f, 0.0f);
+    const float r = 0.5f, k = 0.3f;
+    SdfInstruction prog[] = { mirrorXOp(), boxOp(b), sphere(c,r), smoothUnionOp(k), restorePosOp() };
+    auto mirrorX = [](glm::vec3 q){ return glm::vec3(std::abs(q.x), q.y, q.z); };
+    auto bD = [](glm::vec3 q, glm::vec3 hext){
+        glm::vec3 d=glm::abs(q)-hext;
+        return glm::length(glm::max(d,glm::vec3(0.f)))+std::min(std::max(d.x,std::max(d.y,d.z)),0.f); };
+    auto sD = [](glm::vec3 q, glm::vec3 ctr, float rad){ return glm::length(q-ctr)-rad; };
+    auto su = [](float a, float b_, float k_){
+        float h=glm::clamp(0.5f+0.5f*(b_-a)/k_,0.f,1.f);
+        return glm::mix(b_,a,h)-k_*h*(1.f-h); };
+    auto oracle = [&](glm::vec3 p){
+        glm::vec3 mp=mirrorX(p); return su(bD(mp,b),sD(mp,c,r),k); };
+    const glm::vec3 pts[]={
+        glm::vec3( 2.f,0.f,0.f), glm::vec3(-2.f,0.f,0.f),
+        glm::vec3( 0.f,0.f,0.f), glm::vec3(-1.5f,-0.3f,0.2f),
+    };
+    for (const glm::vec3& p : pts)
+        EXPECT_NEAR(evalRecipe(prog,5,p), oracle(p), 1e-4f)
+            << "MirrorX non-regression at (" << p.x << "," << p.y << "," << p.z << ")";
+}

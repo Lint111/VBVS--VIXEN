@@ -1104,3 +1104,105 @@ TEST_F(ProceduralRecipeRenderTest, RenderPyramid) {
            << "\nEmitted shader (first 2000 chars):\n"
         << shaderSrc.substr(0, 2000);
 }
+
+// ---------------------------------------------------------------------------
+// P2.4 M4a — Live lavapipe render gate for Revolution transform.
+//
+// Recipe: [Revolution(offset=1.0, center=origin), Sphere(center=origin, r=0.25), RestorePos]
+// The Revolution transform maps p → (length(p.xz)-1.0, p.y, 0)+center.
+// The child Sphere at origin with r=0.25 then evaluates on that 2D cross-section.
+// Net shape: a torus-like revolved ring (a circle of radius 0.25 revolved at distance 1.0
+// from the Y axis). Camera from z+ should see a ring/donut cross-section.
+//
+// Writes /tmp/glsl_sdf_m4_revolution.png (512×512 RGBA8). ICD-only (no validation layer).
+// ---------------------------------------------------------------------------
+static Vixen::SVO::Recipe::SdfInstruction makeRevolution(float offset, float cx, float cy, float cz) {
+    Vixen::SVO::Recipe::SdfInstruction in{};
+    in.opCode  = static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::Revolution);
+    in.data[0] = offset;
+    in.data[4] = cx; in.data[5] = cy; in.data[6] = cz;
+    return in;
+}
+
+TEST_F(ProceduralRecipeRenderTest, RenderRevolution) {
+    // Step 1: read vendored SdfCoreKernels HLSL (now includes M4a kernels).
+    std::ifstream kernelFile(SDF_CORE_KERNELS_HLSL_PATH);
+    ASSERT_TRUE(kernelFile.good())
+        << "Cannot open vendored HLSL: " << SDF_CORE_KERNELS_HLSL_PATH;
+    std::ostringstream ss;
+    ss << kernelFile.rdbuf();
+    const std::string sdfCoreHlsl = ss.str();
+
+    // Step 2: build Revolution recipe.
+    // Revolution(offset=1.0, center=origin): revolve around Y axis at radius 1.0
+    // Child: Sphere(origin, r=0.25) — evaluates on the 2D revolved cross-section
+    // Result shape: a torus-like ring (circle r=0.25 at xz-distance=1.0 from Y axis)
+    Vixen::SVO::Recipe::SdfInstruction prog[] = {
+        makeRevolution(1.0f, 0.0f, 0.0f, 0.0f),
+        makeSphere(0.0f, 0.0f, 0.0f, 0.25f),
+        makeRestorePos()
+    };
+    const std::string shaderSrc =
+        Vixen::SVO::Recipe::EmitProceduralComputeShader(prog, 3, sdfCoreHlsl);
+
+    // Step 3: compile HLSL → SPIR-V.
+    ShaderManagement::ShaderCompiler compiler;
+    ShaderManagement::CompilationOptions opts;
+    opts.sourceLanguage = ShaderManagement::CompilationOptions::SourceLanguage::HLSL;
+    opts.validateSpirv  = false;
+    auto compOut = compiler.Compile(ShaderManagement::ShaderStage::Compute, shaderSrc, "main", opts);
+    ASSERT_TRUE(compOut.success)
+        << "HLSL compile failed:\n" << compOut.GetFullLog()
+        << "\n--- emitted source ---\n" << shaderSrc;
+    ASSERT_FALSE(compOut.spirv.empty());
+
+    // Step 4: camera from z+ looking at the ring (ring lies in the xz plane at y=0,
+    // extends from x=-1.25 to x=+1.25). Eye at (0,2,6) tilted down to see ring top.
+    constexpr uint32_t W = 512, H = 512;
+    const RecipePushConstants pc = MakeCamera(
+        glm::vec3(0.0f, 2.0f, 6.0f),
+        glm::vec3(0.0f, 0.0f, 0.0f),
+        W, H
+    );
+
+    // Step 5: dispatch on lavapipe.
+    std::vector<float> rgba32f;
+    ASSERT_NO_FATAL_FAILURE(RenderProcedural(compOut.spirv, pc, W, H, rgba32f));
+    ASSERT_EQ(rgba32f.size(), static_cast<size_t>(W) * H * 4);
+
+    // Step 6: count body pixels + write PNG.
+    int bodyPixels = 0;
+    std::vector<uint8_t> rgba8(W * H * 4);
+    for (uint32_t i = 0; i < W * H; ++i) {
+        const float fr = rgba32f[i * 4 + 0];
+        const float fg = rgba32f[i * 4 + 1];
+        const float fb = rgba32f[i * 4 + 2];
+        const float fa = rgba32f[i * 4 + 3];
+        rgba8[i * 4 + 0] = static_cast<uint8_t>(std::min(fr * 255.0f + 0.5f, 255.0f));
+        rgba8[i * 4 + 1] = static_cast<uint8_t>(std::min(fg * 255.0f + 0.5f, 255.0f));
+        rgba8[i * 4 + 2] = static_cast<uint8_t>(std::min(fb * 255.0f + 0.5f, 255.0f));
+        rgba8[i * 4 + 3] = static_cast<uint8_t>(std::min(fa * 255.0f + 0.5f, 255.0f));
+        if (fr > 0.08f || fg > 0.08f) ++bodyPixels;
+    }
+
+    const char* pngPath = "/tmp/glsl_sdf_m4_revolution.png";
+    const int pngOk = stbi_write_png(pngPath,
+        static_cast<int>(W), static_cast<int>(H), 4,
+        rgba8.data(), static_cast<int>(W) * 4);
+
+    printf("[RenderRevolution] bodyPixels=%d  PNG written=%s  path=%s\n",
+           bodyPixels, pngOk ? "YES" : "NO", pngPath);
+    fflush(stdout);
+
+    EXPECT_TRUE(pngOk) << "stbi_write_png failed for " << pngPath;
+    // A revolved ring at radius=1.0 tube-radius=0.25 from eye at (0,2,6) produces
+    // a visible torus-like silhouette. Expect at least 3000 lit pixels.
+    ASSERT_GT(bodyPixels, 3000)
+        << "bodyPixels=" << bodyPixels << " <= 3000 — image is likely all-black. "
+           "Check: (1) SdfCore_Revolution kernel, (2) SdfOpCode::Revolution case in emit/eval, "
+           "(3) center=origin offset=1.0 tube-r=0.25 camera at (0,2,6). "
+           "Sample floats [pixel 0]: R=" << rgba32f[0] << " G=" << rgba32f[1]
+           << " B=" << rgba32f[2] << " A=" << rgba32f[3]
+           << "\nEmitted shader (first 2000 chars):\n"
+        << shaderSrc.substr(0, 2000);
+}

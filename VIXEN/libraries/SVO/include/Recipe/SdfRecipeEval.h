@@ -11,6 +11,7 @@ inline float evalRecipe(const SdfInstruction* prog, uint32_t count, glm::vec3 p)
     float stack[64]; int sp = 0;
     glm::vec3 pos = p;                   // current sample point (mirrors C# VM ctx.Pos)
     glm::vec3 posStack[64]; int psp = 0; // domain-transform save stack (C# VM ctx.PosStack)
+    float distScaleStack[64];            // distance-scale per saved frame (pushed 1.0f for non-scaling transforms; M4b Transform uses data[7])
     using namespace Yeroket::Sdf::Generated;
     for (uint32_t i = 0; i < count; ++i) {
         const SdfInstruction& in = prog[i];
@@ -234,14 +235,37 @@ inline float evalRecipe(const SdfInstruction* prog, uint32_t count, glm::vec3 p)
             } break;
             case SdfOpCode::MirrorX: {
                 assert(psp < 64 && "MirrorX: position stack overflow");
-                posStack[psp++] = pos; pos = SdfCore_MirrorX(pos);
+                posStack[psp] = pos; distScaleStack[psp] = 1.0f; psp++;
+                pos = SdfCore_MirrorX(pos);
+            } break;
+            case SdfOpCode::MirrorY: {
+                assert(psp < 64 && "MirrorY: position stack overflow");
+                posStack[psp] = pos; distScaleStack[psp] = 1.0f; psp++;
+                pos = SdfCore_MirrorY(pos);
+            } break;
+            case SdfOpCode::MirrorZ: {
+                assert(psp < 64 && "MirrorZ: position stack overflow");
+                posStack[psp] = pos; distScaleStack[psp] = 1.0f; psp++;
+                pos = SdfCore_MirrorZ(pos);
+            } break;
+            case SdfOpCode::Elongate: {
+                assert(psp < 64 && "Elongate: position stack overflow");
+                // data[0..2] = elongation h
+                posStack[psp] = pos; distScaleStack[psp] = 1.0f; psp++;
+                pos = SdfCore_Elongate(pos, glm::vec3(in.data[0], in.data[1], in.data[2]));
+            } break;
+            case SdfOpCode::Revolution: {
+                assert(psp < 64 && "Revolution: position stack overflow");
+                // data[0]=offset, data[4..6]=center
+                posStack[psp] = pos; distScaleStack[psp] = 1.0f; psp++;
+                glm::vec3 center(in.data[4], in.data[5], in.data[6]);
+                pos = SdfCore_Revolution(pos, center, in.data[0]);
             } break;
             case SdfOpCode::RestorePos: {
                 assert(psp > 0 && "RestorePos: position stack underflow");
-                pos = posStack[--psp];
-                // NOTE: M4's Transform must reintroduce distScale (reset to 1 here + apply on
-                // leaf distances) — the one non-switch-case extension; deferred (no rigid M2/M3a
-                // op needs it).
+                psp--;
+                pos = posStack[psp];
+                stack[sp-1] *= distScaleStack[psp];  // apply distScale (1.0f for M4a; M4b Transform uses actual scale)
             } break;
         }
     }

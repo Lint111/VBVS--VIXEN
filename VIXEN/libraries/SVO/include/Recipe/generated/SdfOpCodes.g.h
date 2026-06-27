@@ -39,7 +39,11 @@ enum class SdfOpCode : uint8_t {
     SmoothIntersectCubic = 34,
     Round                = 35,
     Onion                = 36,
+    Elongate             = 38,
     MirrorX              = 41,
+    MirrorY              = 42,
+    MirrorZ              = 43,
+    Revolution           = 46,
     RestorePos           = 97,
 };
 }  // namespace Vixen::SVO::Recipe

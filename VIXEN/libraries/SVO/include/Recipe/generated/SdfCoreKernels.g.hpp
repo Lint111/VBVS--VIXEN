@@ -29,6 +29,24 @@ inline glm::vec3 SdfCore_MirrorX(glm::vec3 p) {
     return glm::vec3(glm::abs(p.x), p.y, p.z);
 }
 
+inline glm::vec3 SdfCore_MirrorY(glm::vec3 p) {
+    return glm::vec3(p.x, glm::abs(p.y), p.z);
+}
+
+inline glm::vec3 SdfCore_MirrorZ(glm::vec3 p) {
+    return glm::vec3(p.x, p.y, glm::abs(p.z));
+}
+
+inline glm::vec3 SdfCore_Elongate(glm::vec3 p, glm::vec3 h) {
+    return p - glm::clamp(p, -h, h);
+}
+
+inline glm::vec3 SdfCore_Revolution(glm::vec3 p, glm::vec3 center, float offset) {
+    glm::vec3 pp = p - center;
+    glm::vec2 q = glm::vec2(glm::length(glm::vec2(pp.x, pp.z)) - offset, pp.y);
+    return glm::vec3(q.x, q.y, 0) + center;
+}
+
 inline float SdfCore_Intersect(float a, float b) {
     return glm::max(a, b);
 }

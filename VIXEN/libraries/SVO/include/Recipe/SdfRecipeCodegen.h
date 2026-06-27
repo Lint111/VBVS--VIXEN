@@ -75,6 +75,9 @@ inline std::string EmitProceduralComputeShader(
     // emit-time position stack: mirrors pos/posStack in evalRecipe (C# VM ctx.Pos/PosStack)
     std::string curPos = "p";
     std::vector<std::string> posSaveStk;
+    // emit-time distScale stack: 1.0f for non-scaling transforms; M4b Transform pushes data[7]
+    // At RestorePos: if |scale-1|>1e-4 emit a multiply to scale the TOS distance before popping.
+    std::vector<float> distScaleSaveStk;
 
     // ponytail: std::to_string for floats — sufficient for HLSL literals; no locale issues
     auto f = [](float v) {
@@ -421,11 +424,49 @@ inline std::string EmitProceduralComputeShader(
             case SdfOpCode::MirrorX: {
                 std::string pN = "pp" + std::to_string(n++);
                 body += "  float3 " + pN + " = SdfCore_MirrorX(" + curPos + ");\n";
-                posSaveStk.push_back(curPos); curPos = pN;
+                posSaveStk.push_back(curPos); distScaleSaveStk.push_back(1.0f); curPos = pN;
+                break;
+            }
+            case SdfOpCode::MirrorY: {
+                std::string pN = "pp" + std::to_string(n++);
+                body += "  float3 " + pN + " = SdfCore_MirrorY(" + curPos + ");\n";
+                posSaveStk.push_back(curPos); distScaleSaveStk.push_back(1.0f); curPos = pN;
+                break;
+            }
+            case SdfOpCode::MirrorZ: {
+                std::string pN = "pp" + std::to_string(n++);
+                body += "  float3 " + pN + " = SdfCore_MirrorZ(" + curPos + ");\n";
+                posSaveStk.push_back(curPos); distScaleSaveStk.push_back(1.0f); curPos = pN;
+                break;
+            }
+            case SdfOpCode::Elongate: {
+                // data[0..2] = elongation h
+                std::string pN = "pp" + std::to_string(n++);
+                body += "  float3 " + pN + " = SdfCore_Elongate(" + curPos + ", float3("
+                    + f(in.data[0]) + ", " + f(in.data[1]) + ", " + f(in.data[2]) + "));\n";
+                posSaveStk.push_back(curPos); distScaleSaveStk.push_back(1.0f); curPos = pN;
+                break;
+            }
+            case SdfOpCode::Revolution: {
+                // data[0]=offset, data[4..6]=center
+                std::string pN = "pp" + std::to_string(n++);
+                body += "  float3 " + pN + " = SdfCore_Revolution(" + curPos + ", float3("
+                    + f(in.data[4]) + ", " + f(in.data[5]) + ", " + f(in.data[6]) + "), "
+                    + f(in.data[0]) + ");\n";
+                posSaveStk.push_back(curPos); distScaleSaveStk.push_back(1.0f); curPos = pN;
                 break;
             }
             case SdfOpCode::RestorePos: {
                 assert(!posSaveStk.empty() && "RestorePos: emit-time position stack underflow");
+                assert(!distScaleSaveStk.empty() && "RestorePos: emit-time distScale stack underflow");
+                float scale = distScaleSaveStk.back(); distScaleSaveStk.pop_back();
+                if (std::abs(scale - 1.0f) > 1e-4f) {
+                    // M4b: Transform pushes a non-unit scale; emit the multiply into the TOS distance.
+                    assert(!stk.empty() && "RestorePos: value stack empty when applying distScale");
+                    std::string sN = "t" + std::to_string(n++);
+                    body += "  float " + sN + " = " + stk.back() + " * " + f(scale) + ";\n";
+                    stk.back() = sN;
+                }
                 curPos = posSaveStk.back(); posSaveStk.pop_back();
                 break;
             }
