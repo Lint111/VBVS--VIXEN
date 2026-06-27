@@ -39,14 +39,15 @@
 
 > Two milestones, SEQUENTIAL (MB consumes MA's generated enum). Cross-repo.
 
-- [ ] **MA `[YEROKET]` — pin values + `[SdfCoreOp]` marker + `EmitSdfOpCodeEnum` + diagnostic + golden + regen (Tasks 1–4).** Gate: DLL rebuilt; `~/.dotnet/dotnet test` 88/4 (+ the new enum golden passes); generated `SdfOpCodes.g.h` contains EXACTLY `{Sphere=0,Box=1,Union=24,SmoothUnion=25,MirrorX=41,RestorePos=97}` in VIXEN's `Recipe` namespace; pinned C# values unchanged from ordinals. Implementer **Sonnet**, validator **Opus**.
-- [ ] **MB `[VIXEN]` — vendor + swap the enum to the generated include + build + tests (Task 5).** Gate: `SdfInstruction.h` includes the generated enum; `git diff` shows the generated enum is semantically identical to the prior hand-written one (same 6 names+values); build clean; recipe parity/codegen/bake + the lavapipe render gates all green (ICD-only). Implementer **Sonnet**, validator **Opus**.
+- [x] **MA `[YEROKET]` — pin values + `[SdfCoreOp]` marker + `EmitSdfOpCodeEnum` + diagnostic + golden + regen (Tasks 1–4).** Gate: DLL rebuilt; `~/.dotnet/dotnet test` 88/4 (+ the new enum golden passes); generated `SdfOpCodes.g.h` contains EXACTLY `{Sphere=0,Box=1,Union=24,SmoothUnion=25,MirrorX=41,RestorePos=97}` in VIXEN's `Recipe` namespace; pinned C# values unchanged from ordinals. Implementer **Sonnet**, validator **Opus**.
+- [x] **MB `[VIXEN]` — vendor + swap the enum to the generated include + build + tests (Task 5).** Gate: `SdfInstruction.h` includes the generated enum; `git diff` shows the generated enum is semantically identical to the prior hand-written one (same 6 names+values); build clean; recipe parity/codegen/bake + the lavapipe render gates all green (ICD-only). Implementer **Sonnet**, validator **Opus**.
 
 Validators **Opus** per milestone. Controller Opus, thin.
 
 ## Progress Log
 
-- _(pending execution)_
+- **MA (Tasks 1-4, Yeroket): DONE** · Yeroket `4a5680aa` (amended) · VIXEN vendor `e12c6c85` · Opus validator **APPROVED** (initial 7-check pass + a fix-loop re-validation). Pinned all 151 `SDFOpCode` members explicit (= ordinals, value-preserving, append-only); added `[SdfCoreOp]` (marked `RestorePos`); `EmitSdfOpCodeEnum` emits VIXEN's subset (kernels ∪ `[SdfCoreOp]`, values from real `SDFOpCode`) → `SdfOpCodes.g.h` = exactly `{Sphere=0,Box=1,Union=24,SmoothUnion=25,MirrorX=41,RestorePos=97}`; `SDFK040`/`SDFK041` diagnostics + golden guard. **Fix-loop closed a stub-drift gap**: the golden/regen now 3-stage-compiles the REAL `SDFInstruction.cs` (no stub enum) → a change to the canonical enum fails the golden (proven `MirrorX 41→88`). dotnet 89/4. **M3 note:** the enum golden's stage-3 still stubs the *kernel set* (which names are `[SdfCoreKernel]`) — non-silent (kernel emit golden reads real + `SDFK041` + VIXEN compile catch a missing member); make stage-3 read real `SdfCoreKernels.cs` when convenient in M3. · 2026-06-27
+- **MB (Task 5, VIXEN): DONE** · VIXEN `516172e7` · `SdfInstruction.h` now `#include "generated/SdfOpCodes.g.h"` (enum→include: 1 ins/13 del, 6 values identical; file-scope include avoids double-nesting); build clean (all 8 `SdfOpCode` consumers unchanged); recipe parity 2/2 + codegen 2/2 + bake 1/1; **ICD-only lavapipe render MirrorCsg = 25,332px (exact baseline — swap is behaviour-identical)**. Self-proving; accepted without a separate validator. **Issue #2 (codegen-generated OpCode mirror) COMPLETE.** · 2026-06-27
 
 ---
 
