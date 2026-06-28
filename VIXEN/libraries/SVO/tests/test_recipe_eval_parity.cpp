@@ -973,21 +973,23 @@ static SdfInstruction revolutionOp(float offset, glm::vec3 center) {
     in.data[4]=center.x; in.data[5]=center.y; in.data[6]=center.z; return in; }
 
 // --- MirrorY ---
-// Oracle: sphere(mirrored_p) where mirror is by-hand: p' = (p.x, |p.y|, p.z)
+// Child sphere is off-axis at (0,0.5,0) so |p.y| vs p.y is observable for -y inputs.
+// Oracle: length((p.x, |p.y|, p.z) - (0,0.5,0)) - r, computed by hand.
 TEST(RecipeEvalParity, M4a_MirrorY_MatchesOracle) {
     const float r = 0.5f;
-    SdfInstruction prog[] = { mirrorYOp(), sphere(glm::vec3(0.f), r), restorePosOp() };
+    const glm::vec3 center(0.f, 0.5f, 0.f);  // off-axis so mirror is detectable
+    SdfInstruction prog[] = { mirrorYOp(), sphere(center, r), restorePosOp() };
     // Independent oracle: mirror p.y by hand, compute sphere dist from scratch
     auto oracle = [&](glm::vec3 p) {
         glm::vec3 pm(p.x, std::abs(p.y), p.z);  // mirror Y by hand
-        return glm::length(pm) - r;              // sphere at origin, computed directly
+        return glm::length(pm - center) - r;     // sphere at center, computed directly
     };
     const glm::vec3 pts[] = {
-        glm::vec3( 0.0f,  1.0f,  0.0f),   // +y: no mirror effect
-        glm::vec3( 0.0f, -1.0f,  0.0f),   // -y: mirror changes result
+        glm::vec3( 0.0f,  1.0f,  0.0f),   // +y: p.y>0 so |p.y|=p.y, no flip
+        glm::vec3( 0.0f, -1.0f,  0.0f),   // -y: mirror flips to +y, changes dist
         glm::vec3( 0.5f, -0.5f,  0.3f),   // off-axis, -y side
         glm::vec3(-0.3f,  0.8f, -0.2f),   // +y, multi-component
-        glm::vec3( 0.0f, -2.0f,  0.0f),   // far -y: distance equals far +y
+        glm::vec3( 0.0f, -0.5f,  0.0f),   // directly below center: mirrors onto center
     };
     for (const glm::vec3& p : pts)
         EXPECT_NEAR(evalRecipe(prog, 3, p), oracle(p), 1e-5f)
@@ -998,23 +1000,29 @@ TEST(RecipeEvalParity, M4a_MirrorY_MatchesOracle) {
 }
 
 // --- MirrorZ ---
-// Oracle: sphere(mirrored_p) where mirror is by-hand: p' = (p.x, p.y, |p.z|)
+// Child sphere is off-axis at (0,0,0.5) so |p.z| vs p.z is observable for -z inputs.
+// Oracle: length((p.x, p.y, |p.z|) - (0,0,0.5)) - r, computed by hand.
 TEST(RecipeEvalParity, M4a_MirrorZ_MatchesOracle) {
     const float r = 0.5f;
-    SdfInstruction prog[] = { mirrorZOp(), sphere(glm::vec3(0.f), r), restorePosOp() };
+    const glm::vec3 center(0.f, 0.f, 0.5f);  // off-axis so mirror is detectable
+    SdfInstruction prog[] = { mirrorZOp(), sphere(center, r), restorePosOp() };
     auto oracle = [&](glm::vec3 p) {
         glm::vec3 pm(p.x, p.y, std::abs(p.z));  // mirror Z by hand
-        return glm::length(pm) - r;
+        return glm::length(pm - center) - r;     // sphere at center, computed directly
     };
     const glm::vec3 pts[] = {
-        glm::vec3( 0.0f,  0.0f,  1.0f),   // +z: no effect
-        glm::vec3( 0.0f,  0.0f, -1.0f),   // -z: mirror changes result
-        glm::vec3( 0.3f,  0.2f, -0.7f),   // off-axis, -z
+        glm::vec3( 0.0f,  0.0f,  1.0f),   // +z: p.z>0 so |p.z|=p.z, no flip
+        glm::vec3( 0.0f,  0.0f, -1.0f),   // -z: mirror flips to +z, changes dist
+        glm::vec3( 0.3f,  0.2f, -0.7f),   // off-axis, -z side
         glm::vec3(-0.4f, -0.1f,  0.9f),   // +z, multi-component
+        glm::vec3( 0.0f,  0.0f, -0.5f),   // directly behind center: mirrors onto center
     };
     for (const glm::vec3& p : pts)
         EXPECT_NEAR(evalRecipe(prog, 3, p), oracle(p), 1e-5f)
             << "MirrorZ at (" << p.x << "," << p.y << "," << p.z << ")";
+    // Symmetry: f(0,0,+z) == f(0,0,-z) for any z
+    EXPECT_NEAR(evalRecipe(prog,3,glm::vec3(0.f,0.f,0.7f)),
+                evalRecipe(prog,3,glm::vec3(0.f,0.f,-0.7f)), 1e-5f) << "MirrorZ symmetry";
 }
 
 // --- Elongate ---
