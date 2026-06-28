@@ -1697,4 +1697,46 @@ TEST_F(ProceduralRecipeRenderTest, RenderComposition) {
            "is indistinguishable from identity-scale ablation (box world=0.25). "
            "Non-uniform distScale is likely not propagating to the GPU render. "
            "bodyPixels=" << bodyPixels;
+
+    // ── Ablation 3: distScale-ISOLATED (invScale fixed, distScale 2.0→1.0) ──────
+    // Ablation-2 toggled BOTH invScale and distScale, so a distScale-only GPU regression
+    // could slip (invScale dominates the pixel diff). This variant holds invScale=(0.5,0.5,1/3)
+    // fixed and toggles only distScale 2.0→1.0. Measured diff: ~40,728px (>5,000 threshold).
+    Inst ablateProg3[] = {
+        makeTwist(0.6f),
+        makeTransform(noTrans, identRot, invSc, 1.0f),  // invScale SAME, distScale=1.0
+        makeBox(0.25f, 0.25f, 0.25f),
+        makeRestorePos(),
+        makeSphere(0.55f, 0.f, 0.f, 0.35f),
+        makeSmoothUnion(0.15f),
+        makeRestorePos(),
+        makePositionChannel(1),
+        makeMathSin(3.5f, 0.f, 1.f),
+        makeDisplacement(0.06f),
+    };
+    const std::string ablate3Src =
+        Vixen::SVO::Recipe::EmitProceduralComputeShader(ablateProg3, 10, sdfCoreHlsl);
+    auto ablate3Out = compiler.Compile(ShaderManagement::ShaderStage::Compute,
+                                       ablate3Src, "main", opts);
+    ASSERT_TRUE(ablate3Out.success)
+        << "Ablation-3 (distScale-isolated) compile failed:\n" << ablate3Out.GetFullLog();
+
+    std::vector<float> ablate3Rgba;
+    ASSERT_NO_FATAL_FAILURE(RenderProcedural(ablate3Out.spirv, pc, W, H, ablate3Rgba));
+    ASSERT_EQ(ablate3Rgba.size(), static_cast<size_t>(W) * H * 4);
+
+    int diffDistScale = 0;
+    for (uint32_t i = 0; i < W * H; ++i) {
+        float dr = std::abs(rgba32f[i*4+0] - ablate3Rgba[i*4+0]);
+        float dg = std::abs(rgba32f[i*4+1] - ablate3Rgba[i*4+1]);
+        if (dr + dg > 0.02f) ++diffDistScale;
+    }
+    printf("[RenderComposition] Ablation-3 (distScale-isolated) diffPixels=%d\n", diffDistScale);
+    fflush(stdout);
+
+    ASSERT_GT(diffDistScale, 5000)
+        << "diffDistScale=" << diffDistScale << " <= 5000 — full (distScale=2) is "
+           "indistinguishable from distScale=1 variant (invScale held fixed). "
+           "DistScale is likely not reaching the GPU render path. "
+           "bodyPixels=" << bodyPixels;
 }
