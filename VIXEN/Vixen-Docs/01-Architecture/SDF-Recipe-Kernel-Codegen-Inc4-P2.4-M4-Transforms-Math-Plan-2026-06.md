@@ -40,6 +40,7 @@
 - [x] **M4b — warp transforms + Transform + DistScale application (Task 2).** Twist(39), Bend(40), RepeatInfinite(44), RepeatLimited(45) trig/fmod/round kernels + Transform(37) quat-rotate kernel + the DistScale APPLICATION (Transform pushes data2.w; RestorePos applies). Add CppMappingTables entries for fmod/round if the kernels use them. Gate: kernels+vendored; Transform quat-rotate parity vs glm::quat; DistScale nested-correctness parity (a scaled Transform changes distances by the scale); live **Twist** render PNG-confirmed (visible helical warp); no-regression.
 - [x] **M4c — value-math lane (Task 3).** ~25 scalar `SdfCore_MathX` kernels (Sin/Cos/Smoothstep/Remap/Clamp/Abs/Frac/Pow/Sqrt/Negate/Step/Sign/Saturate/Exp/Log/Log2; Add/Sub/Mul/Div/Min/Max; Lerp; Select; + PositionChannel/Displacement/DistanceTo leaf/peek ops) + VIXEN value-stack dispatch (unary/binary/ternary). Add CppMappingTables entries (smoothstep/frac/step/exp/log/log2). Gate: kernels+vendored; independent parity per op; SPIR-V; live **Displacement** render (sphere + sin surface bumps) PNG-confirmed; no-regression.
 - [x] **M4d — float3-math + VM-control (Task 4).** Float3 kernels (Add/Sub/MulCW/Min/Max 102-106; ScalarMul/Dot/Normalize 107-109 wired CORRECTLY) + VM-control (Output 94, PushParam 95, PushFloat3 98, ComposeFloat3 99 no-op, Passthrough 100, DecomposeFloat3 101, PositionChannel 73 if not in M4c) as `[SdfCoreOp]`/hand-dispatch. Gate: kernels+vendored; parity; SPIR-V; a live render exercising a float3-math path; no-regression; flag the Float3 CompileToBurst canonical bug. **M4 COMPLETE.**
+- [ ] **M5 — canonical Float3 fix + broad CSG-composition render (Task 5).** (User-greenlit 2026-06-28.) (A) Fix canonical `CompileToBurst` Float3ScalarMul/Dot/Normalize → real opcodes (Yeroket; generated files MUST stay unchanged → VIXEN vendor diff empty). (B) One live composition recipe exercising every lane (≥2 leaves + CSG + a NON-UNIFORM-SCALE Transform so DistScale flows through the GPU render path — the M4 render-coverage gap + warp + value-math displacement) → lavapipe PNG with a TEETH'd gate (ablation-diff, not bare ASSERT_GT) + an independent-oracle CPU parity of the composition. Closes P2.4.
 
 ## Progress Log
 
@@ -69,7 +70,7 @@
   - **CANONICAL BUG FLAGGED — awaiting user decision:** `SdfCoreKernels.cs` `CompileToBurst` returns `SDFOpCode.Output` for Float3ScalarMul/Dot/Normalize (placeholder; same class as the Pyramid canonical bug). VIXEN dispatches 107/108/109 correctly regardless; fixing canonical would also fix Unity C#-compiled recipes.
   - Minor non-blocking (optional future): Float3Min/Max parity asserts only the b-wins component, so a hypothetical `return b` mis-impl would slip (return-a + min↔max swap ARE caught).
 
-**P2.4 catalogue (M1+M2+M3prep+M3a+M3b+M4a+M4b+M4c+M4d) COMPLETE.** Remaining optional: M5 (broad live multi-op CSG-composition render gate) per the Execution Handoff; + the canonical Float3 `CompileToBurst` fix decision.
+**P2.4 catalogue (M1+M2+M3prep+M3a+M3b+M4a+M4b+M4c+M4d) COMPLETE.** **M5 GREENLIT (user 2026-06-28):** canonical Float3 `CompileToBurst` fix + a broad live multi-op CSG-composition render gate (Task 5) — closes P2.4.
 
 ---
 
@@ -135,6 +136,21 @@
 - [ ] **Step 2 (VIXEN eval/emit):** float3-math cases (pop/push the 3-float groups); VM-control cases (no-ops / pushes / index); **N1** rewrite the Select + Displacement cases to CALL `SdfCore_Select`/`SdfCore_Displacement` (delete the inline VIXEN math in both eval and emit). Build clean.
 - [ ] **Step 3 (parity + SPIR-V + N1 re-tamper + N2 gate):** float3-math parity (independent oracle; asymmetric operands; Normalize against glm::normalize); a recipe using PushFloat3→ComposeFloat3→Float3Add. SPIR-V test. **N1:** re-tamper Select/Displacement (now kernels) → their M4c tests still FAIL on a broken kernel (teeth survive the kernelization). **N2:** strengthen `RenderDisplacement` per the carried note (amp=0 baseline diff or silhouette-variance). (Float3 ops are mostly internal plumbing — a render that drives an SDF param through a float3 path if natural; else parity+SPIR-V suffice with a note.)
 - [ ] **Step 4 (no-regression + commit + flag):** all green; prior renders unchanged. Commit VIXEN. Report the Float3ScalarMul/Dot/Normalize C# `CompileToBurst`→Output canonical bug for a user decision (fix canonical like Pyramid, or leave VIXEN-only-correct).
+
+## Task 5 [M5]: canonical Float3 fix + broad CSG-composition render
+
+> One milestone, two tasks, ONE implementer + ONE Opus validator. User-greenlit 2026-06-28. Closes P2.4.
+
+### Task A — canonical Float3 `CompileToBurst` fix (Yeroket `feat/kernel-codegen-p2`)
+Canonical `SdfCoreKernels.cs` `CompileToBurst` returns `SDFOpCode.Output` (placeholder) for Float3ScalarMul/Dot/Normalize, so Unity's Burst-compiled recipes never dispatch them. VIXEN is already correct; this fixes canonical (and Unity) — same class as the Pyramid canonical fix.
+- [ ] **Step 1:** in `CompileToBurst`, return the REAL opcode for each (Float3ScalarMul=107 / Float3Dot=108 / Float3Normalize=109) instead of `SDFOpCode.Output`. Confirm `EvalBurst` (the C# Burst VM) HAS correct cases for 107/108/109 (the M4d validator confirmed the math is present/correct — verify; if a case is missing, add it mirroring the kernel). 
+- [ ] **Step 2:** This is a RUNTIME method, NOT part of the source-gen emit → regen and CONFIRM the generated `SdfCoreKernels.g.hpp`/`.g.hlsl`/`SdfOpCodes.g.h` are UNCHANGED (so VIXEN's vendored diff stays empty — re-vendor + `diff` empty). `~/.dotnet/dotnet test Tests/SDFNodeGenerator.Tests.csproj` green (4 pre-existing fails only). Commit Yeroket. (Burst itself can't be run headless/no-Unity → correctness is by inspection + dotnet suite + generated-files-unchanged; state this in the report.)
+
+### Task B — broad CSG-composition render (VIXEN `feat/sdf-recipe-codegen-p2`)
+Each milestone tested ops in isolation; M5 proves they COMPOSE live on the GPU, and closes the gap that DistScale (non-uniform scale) was never exercised in a render (only CPU parity + SPIR-V in M4b).
+- [ ] **Step 3 (composition recipe + independent-oracle CPU parity):** author ONE recipe composing ≥1 op from EVERY lane: ≥2 leaf primitives (e.g. Box + Sphere + Torus), a binary CSG (SmoothUnion and/or Subtract), a domain transform INCLUDING a `Transform` with NON-UNIFORM SCALE (so `distScaleStack` carries a non-1 scale into the rendered distance — the render-coverage gap), a warp (Twist/Bend) and a value-math surface displacement (`Displacement(…, MathSin(PositionChannel))`). Add an `evalRecipe` parity test at ≥4 sample points vs an INDEPENDENT oracle that composes the lane ops by hand (glm/std; NOT a transcription of the kernels) — proves the composed VM eval is correct, not merely that it renders. Build clean.
+- [ ] **Step 4 (live render + TEETH):** add `RenderComposition` → `/tmp/glsl_sdf_m5_composition.png` ICD-only (`VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json`); assert non-trivial px AND give it real teeth (the N2 lesson — bare `ASSERT_GT` is toothless): render an ABLATED variant (drop one op, e.g. remove the displacement or the scale) and assert the full composition differs by > a meaningful pixel threshold; OR a structural property check. READ the PNG to confirm it's the intended composed shape.
+- [ ] **Step 5 (no-regression + commit):** all prior parity (90/90) + the new composition parity green; SPIR-V; ALL prior renders exact (MirrorCsg 25,332 / Twist 19,161 / Revolution 21,900 / Subtract 26,604 / Torus 20,922 / Cone 17,060 / Pyramid 18,802 / Displacement 92,832); vendor diffs empty. Commit VIXEN. **P2.4 COMPLETE.**
 
 ## Self-Review
 
