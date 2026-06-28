@@ -349,4 +349,46 @@ inline float SdfCore_MathLerp(float a, float b, float t) {
     return glm::mix(a, b, t);
 }
 
+inline float SdfCore_Select(float cond, float a, float b, float thr) {
+    return (cond > thr ? a : b);
+}
+
+inline float SdfCore_Displacement(float sdf, float disp, float scale) {
+    return sdf + disp * scale;
+}
+
+inline glm::vec3 SdfCore_Float3Add(glm::vec3 a, glm::vec3 b) {
+    return a + b;
+}
+
+inline glm::vec3 SdfCore_Float3Sub(glm::vec3 a, glm::vec3 b) {
+    return a - b;
+}
+
+inline glm::vec3 SdfCore_Float3MulComponentWise(glm::vec3 a, glm::vec3 b) {
+    return a * b;
+}
+
+inline glm::vec3 SdfCore_Float3Min(glm::vec3 a, glm::vec3 b) {
+    return glm::min(a, b);
+}
+
+inline glm::vec3 SdfCore_Float3Max(glm::vec3 a, glm::vec3 b) {
+    return glm::max(a, b);
+}
+
+inline glm::vec3 SdfCore_Float3ScalarMul(glm::vec3 v, float s) {
+    return v * s;
+}
+
+inline float SdfCore_Float3Dot(glm::vec3 a, glm::vec3 b) {
+    return glm::dot(a, b);
+}
+
+inline glm::vec3 SdfCore_Float3Normalize(glm::vec3 v) {
+    float lenSq = v.x * v.x + v.y * v.y + v.z * v.z;
+    float invLen = (lenSq < 1e-14f ? 0.0f : 1.0f / glm::sqrt(lenSq));
+    return v * invLen;
+}
+
 } // namespace Yeroket::Sdf::Generated

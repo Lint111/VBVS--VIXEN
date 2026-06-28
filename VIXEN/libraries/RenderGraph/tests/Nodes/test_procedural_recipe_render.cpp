@@ -1395,7 +1395,7 @@ TEST_F(ProceduralRecipeRenderTest, RenderDisplacement) {
     ASSERT_NO_FATAL_FAILURE(RenderProcedural(compOut.spirv, pc, W, H, rgba32f));
     ASSERT_EQ(rgba32f.size(), static_cast<size_t>(W) * H * 4);
 
-    // Step 6: count body pixels + write PNG.
+    // Step 6: count body pixels + write displaced PNG.
     int bodyPixels = 0;
     std::vector<uint8_t> rgba8(W * H * 4);
     for (uint32_t i = 0; i < W * H; ++i) {
@@ -1429,4 +1429,39 @@ TEST_F(ProceduralRecipeRenderTest, RenderDisplacement) {
            << " B=" << rgba32f[2] << " A=" << rgba32f[3]
            << "\nEmitted shader (first 2000 chars):\n"
         << shaderSrc.substr(0, 2000);
+
+    // ── N2: Differential gate ───────────────────────────────────────────────
+    // Render the same sphere WITHOUT displacement (plain sphere = baseline).
+    // If Displacement is a no-op the two renders would be identical → this fails.
+    Inst baselineProg[] = { makeSphere(0.f, 0.f, 0.f, 0.8f) };
+    const std::string baselineSrc =
+        Vixen::SVO::Recipe::EmitProceduralComputeShader(baselineProg, 1, sdfCoreHlsl);
+
+    auto baselineCompOut = compiler.Compile(ShaderManagement::ShaderStage::Compute,
+                                            baselineSrc, "main", opts);
+    ASSERT_TRUE(baselineCompOut.success)
+        << "Baseline HLSL compile failed:\n" << baselineCompOut.GetFullLog()
+        << "\n--- baseline source ---\n" << baselineSrc;
+
+    std::vector<float> baselineRgba32f;
+    ASSERT_NO_FATAL_FAILURE(RenderProcedural(baselineCompOut.spirv, pc, W, H, baselineRgba32f));
+    ASSERT_EQ(baselineRgba32f.size(), static_cast<size_t>(W) * H * 4);
+
+    // Count pixels that differ significantly between baseline (smooth) and displaced.
+    // A real displacement changes surface normals → per-pixel shading differs.
+    int diffPixels = 0;
+    for (uint32_t i = 0; i < W * H; ++i) {
+        float dr = std::abs(rgba32f[i*4+0] - baselineRgba32f[i*4+0]);
+        float dg = std::abs(rgba32f[i*4+1] - baselineRgba32f[i*4+1]);
+        if (dr + dg > 0.02f) ++diffPixels;
+    }
+
+    printf("[RenderDisplacement] N2: diffPixels=%d (displaced vs smooth baseline)\n",
+           diffPixels);
+    fflush(stdout);
+
+    ASSERT_GT(diffPixels, 500)
+        << "diffPixels=" << diffPixels << " <= 500 — displaced render is indistinguishable from "
+           "smooth sphere. Displacement is likely a no-op. "
+           "bodyPixels(displaced)=" << bodyPixels;
 }

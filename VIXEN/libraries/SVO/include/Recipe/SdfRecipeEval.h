@@ -414,12 +414,13 @@ inline float evalRecipe(const SdfInstruction* prog, uint32_t count, glm::vec3 p)
                 stack[sp-1] = SdfCore_MathLerp(stack[sp-1], b, t_val);
             } break;
             // Ternary Select: b=top, a=middle, cond=stack[sp-1] → cond>data[0]?a:b
+            // N1: delegated to generated kernel (single-source math)
             case SdfOpCode::Select: {
                 assert(sp >= 3 && "Select: value stack underflow");
                 float b = stack[--sp];
                 float a = stack[--sp];
                 float cond = stack[sp-1];
-                stack[sp-1] = cond > in.data[0] ? a : b;
+                stack[sp-1] = SdfCore_Select(cond, a, b, in.data[0]);
             } break;
             // Leaf/peek: push a value derived from pos
             case SdfOpCode::PositionChannel: {
@@ -435,15 +436,100 @@ inline float evalRecipe(const SdfInstruction* prog, uint32_t count, glm::vec3 p)
                 }
                 stack[sp++] = val;
             } break;
-            case SdfOpCode::Displacement: {       // pop disp; stack[sp-1] += disp * scale
+            case SdfOpCode::Displacement: {       // pop disp; stack[sp-1] = sdf + disp * scale
+                // N1: delegated to generated kernel (single-source math)
                 assert(sp >= 2 && "Displacement: value stack underflow");
                 float disp = stack[--sp];
-                stack[sp-1] += disp * in.data[0]; // data[0]=scale
+                stack[sp-1] = SdfCore_Displacement(stack[sp-1], disp, in.data[0]);
             } break;
             case SdfOpCode::DistanceTo: {          // push length(pos - center)
                 assert(sp < 64 && "DistanceTo: value stack overflow");
                 glm::vec3 center(in.data[0], in.data[1], in.data[2]);
                 stack[sp++] = glm::length(pos - center);
+            } break;
+            // VM-control ops (hand-dispatched — no [SdfCoreKernel] equivalent)
+            case SdfOpCode::Output: {              // passthrough: marks recipe end
+                // no-op for eval (stack unchanged)
+            } break;
+            case SdfOpCode::PushParam: {           // push baked parameter value
+                assert(sp < 64 && "PushParam: value stack overflow");
+                stack[sp++] = in.data[0];
+            } break;
+            case SdfOpCode::PushFloat3: {          // push data[0..2] as 3 floats (x then y then z)
+                assert(sp < 62 && "PushFloat3: value stack overflow");
+                stack[sp++] = in.data[0]; // x (deepest)
+                stack[sp++] = in.data[1]; // y
+                stack[sp++] = in.data[2]; // z (top)
+            } break;
+            case SdfOpCode::ComposeFloat3: {       // no-op: 3 scalars on stack already form float3
+            } break;
+            case SdfOpCode::Passthrough: {         // pop 1, push 1 unchanged (reroute node)
+                // no-op for eval (stack[sp-1] unchanged)
+            } break;
+            case SdfOpCode::DecomposeFloat3: {     // pop float3, push one component
+                assert(sp >= 3 && "DecomposeFloat3: value stack underflow");
+                float vz = stack[--sp], vy = stack[--sp], vx = stack[--sp];
+                int ch = (int)in.data[0]; // 0=x, 1=y, 2=z
+                stack[sp++] = (ch == 0) ? vx : (ch == 1) ? vy : vz;
+            } break;
+            // Float3 arithmetic (float3 = 3 consecutive scalars; x=deepest, z=top)
+            // Binary ops: pop b(bz,by,bx), pop a(az,ay,ax), push result(x,y,z)
+            case SdfOpCode::Float3Add: {
+                assert(sp >= 6 && "Float3Add: value stack underflow");
+                float bz = stack[--sp], by = stack[--sp], bx = stack[--sp];
+                float az = stack[--sp], ay = stack[--sp], ax = stack[--sp];
+                glm::vec3 r = SdfCore_Float3Add({ax,ay,az}, {bx,by,bz});
+                stack[sp++] = r.x; stack[sp++] = r.y; stack[sp++] = r.z;
+            } break;
+            case SdfOpCode::Float3Sub: {           // non-commutative: a - b
+                assert(sp >= 6 && "Float3Sub: value stack underflow");
+                float bz = stack[--sp], by = stack[--sp], bx = stack[--sp];
+                float az = stack[--sp], ay = stack[--sp], ax = stack[--sp];
+                glm::vec3 r = SdfCore_Float3Sub({ax,ay,az}, {bx,by,bz});
+                stack[sp++] = r.x; stack[sp++] = r.y; stack[sp++] = r.z;
+            } break;
+            case SdfOpCode::Float3MulComponentWise: {
+                assert(sp >= 6 && "Float3MulComponentWise: value stack underflow");
+                float bz = stack[--sp], by = stack[--sp], bx = stack[--sp];
+                float az = stack[--sp], ay = stack[--sp], ax = stack[--sp];
+                glm::vec3 r = SdfCore_Float3MulComponentWise({ax,ay,az}, {bx,by,bz});
+                stack[sp++] = r.x; stack[sp++] = r.y; stack[sp++] = r.z;
+            } break;
+            case SdfOpCode::Float3Min: {
+                assert(sp >= 6 && "Float3Min: value stack underflow");
+                float bz = stack[--sp], by = stack[--sp], bx = stack[--sp];
+                float az = stack[--sp], ay = stack[--sp], ax = stack[--sp];
+                glm::vec3 r = SdfCore_Float3Min({ax,ay,az}, {bx,by,bz});
+                stack[sp++] = r.x; stack[sp++] = r.y; stack[sp++] = r.z;
+            } break;
+            case SdfOpCode::Float3Max: {
+                assert(sp >= 6 && "Float3Max: value stack underflow");
+                float bz = stack[--sp], by = stack[--sp], bx = stack[--sp];
+                float az = stack[--sp], ay = stack[--sp], ax = stack[--sp];
+                glm::vec3 r = SdfCore_Float3Max({ax,ay,az}, {bx,by,bz});
+                stack[sp++] = r.x; stack[sp++] = r.y; stack[sp++] = r.z;
+            } break;
+            // Float3ScalarMul: scalar=top, then vz,vy,vx → push result
+            case SdfOpCode::Float3ScalarMul: {
+                assert(sp >= 4 && "Float3ScalarMul: value stack underflow");
+                float s  = stack[--sp];
+                float vz = stack[--sp], vy = stack[--sp], vx = stack[--sp];
+                glm::vec3 r = SdfCore_Float3ScalarMul({vx,vy,vz}, s);
+                stack[sp++] = r.x; stack[sp++] = r.y; stack[sp++] = r.z;
+            } break;
+            // Float3Dot: pop b then a → push scalar dot product
+            case SdfOpCode::Float3Dot: {
+                assert(sp >= 6 && "Float3Dot: value stack underflow");
+                float bz = stack[--sp], by = stack[--sp], bx = stack[--sp];
+                float az = stack[--sp], ay = stack[--sp], ax = stack[--sp];
+                stack[sp++] = SdfCore_Float3Dot({ax,ay,az}, {bx,by,bz});
+            } break;
+            // Float3Normalize: pop vz,vy,vx → push normalized float3
+            case SdfOpCode::Float3Normalize: {
+                assert(sp >= 3 && "Float3Normalize: value stack underflow");
+                float vz = stack[--sp], vy = stack[--sp], vx = stack[--sp];
+                glm::vec3 r = SdfCore_Float3Normalize({vx,vy,vz});
+                stack[sp++] = r.x; stack[sp++] = r.y; stack[sp++] = r.z;
             } break;
         }
     }

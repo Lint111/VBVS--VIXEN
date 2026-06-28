@@ -713,13 +713,14 @@ inline std::string EmitProceduralComputeShader(
                 break;
             }
             // Ternary Select: b=top, a=middle, cond=bottom → cond>threshold?a:b
+            // N1: delegates to generated kernel SdfCore_Select
             case SdfOpCode::Select: {
                 assert(stk.size() >= 3 && "Select: emit-time value stack underflow");
                 std::string b = stk.back(); stk.pop_back();
                 std::string a = stk.back(); stk.pop_back();
                 std::string cond = stk.back(); stk.pop_back();
                 std::string t = "t" + std::to_string(n++);
-                body += "  float " + t + " = (" + cond + " > " + f(in.data[0]) + ") ? " + a + " : " + b + ";\n";
+                body += "  float " + t + " = SdfCore_Select(" + cond + ", " + a + ", " + b + ", " + f(in.data[0]) + ");\n";
                 stk.push_back(t);
                 break;
             }
@@ -740,12 +741,13 @@ inline std::string EmitProceduralComputeShader(
                 stk.push_back(t);
                 break;
             }
-            case SdfOpCode::Displacement: {       // pop disp; TOS += disp * scale
+            case SdfOpCode::Displacement: {       // pop disp; push sdf + disp * scale
+                // N1: delegates to generated kernel SdfCore_Displacement
                 assert(stk.size() >= 2 && "Displacement: emit-time value stack underflow");
                 std::string disp = stk.back(); stk.pop_back();
                 std::string sdf = stk.back(); stk.pop_back();
                 std::string t = "t" + std::to_string(n++);
-                body += "  float " + t + " = " + sdf + " + " + disp + " * " + f(in.data[0]) + ";\n";
+                body += "  float " + t + " = SdfCore_Displacement(" + sdf + ", " + disp + ", " + f(in.data[0]) + ");\n";
                 stk.push_back(t);
                 break;
             }
@@ -754,6 +756,144 @@ inline std::string EmitProceduralComputeShader(
                 body += "  float " + t + " = length(" + curPos + " - float3("
                     + f(in.data[0]) + ", " + f(in.data[1]) + ", " + f(in.data[2]) + "));\n";
                 stk.push_back(t);
+                break;
+            }
+            // VM-control ops (hand-dispatched — no generated kernel equivalent)
+            case SdfOpCode::Output: {              // passthrough; marks recipe end
+                // no-op for emit (top of stack is the output value)
+                break;
+            }
+            case SdfOpCode::PushParam: {           // push baked parameter value
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = " + f(in.data[0]) + ";\n";
+                stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::PushFloat3: {          // push data[0..2] as x,y,z scalars
+                std::string t = "t" + std::to_string(n++);
+                body += "  float3 " + t + " = float3(" + f(in.data[0]) + ", " + f(in.data[1]) + ", " + f(in.data[2]) + ");\n";
+                stk.push_back(t + ".x");
+                stk.push_back(t + ".y");
+                stk.push_back(t + ".z");
+                break;
+            }
+            case SdfOpCode::ComposeFloat3: {       // no-op: 3 scalars on stack are already float3
+                break;
+            }
+            case SdfOpCode::Passthrough: {         // pop 1, push 1 unchanged
+                break;                             // top of stack is already the right value
+            }
+            case SdfOpCode::DecomposeFloat3: {     // pop float3 (vz,vy,vx), push one component
+                assert(stk.size() >= 3 && "DecomposeFloat3: emit-time value stack underflow");
+                std::string vz = stk.back(); stk.pop_back();
+                std::string vy = stk.back(); stk.pop_back();
+                std::string vx = stk.back(); stk.pop_back();
+                int ch = (int)in.data[0]; // 0=x, 1=y, 2=z
+                stk.push_back(ch == 0 ? vx : ch == 1 ? vy : vz);
+                break;
+            }
+            // Float3 arithmetic — float3 is 3 consecutive scalars on string stack; x=deepest, z=top
+            // Binary: pop b(bz,by,bx) then a(az,ay,ax), recompose float3, call kernel, push result.xyz
+            case SdfOpCode::Float3Add: {
+                assert(stk.size() >= 6 && "Float3Add: emit-time value stack underflow");
+                std::string bz = stk.back(); stk.pop_back();
+                std::string by = stk.back(); stk.pop_back();
+                std::string bx = stk.back(); stk.pop_back();
+                std::string az = stk.back(); stk.pop_back();
+                std::string ay = stk.back(); stk.pop_back();
+                std::string ax = stk.back(); stk.pop_back();
+                std::string t = "t" + std::to_string(n++);
+                body += "  float3 " + t + " = SdfCore_Float3Add(float3(" + ax + ", " + ay + ", " + az + "), float3(" + bx + ", " + by + ", " + bz + "));\n";
+                stk.push_back(t + ".x"); stk.push_back(t + ".y"); stk.push_back(t + ".z");
+                break;
+            }
+            case SdfOpCode::Float3Sub: {           // non-commutative: a - b
+                assert(stk.size() >= 6 && "Float3Sub: emit-time value stack underflow");
+                std::string bz = stk.back(); stk.pop_back();
+                std::string by = stk.back(); stk.pop_back();
+                std::string bx = stk.back(); stk.pop_back();
+                std::string az = stk.back(); stk.pop_back();
+                std::string ay = stk.back(); stk.pop_back();
+                std::string ax = stk.back(); stk.pop_back();
+                std::string t = "t" + std::to_string(n++);
+                body += "  float3 " + t + " = SdfCore_Float3Sub(float3(" + ax + ", " + ay + ", " + az + "), float3(" + bx + ", " + by + ", " + bz + "));\n";
+                stk.push_back(t + ".x"); stk.push_back(t + ".y"); stk.push_back(t + ".z");
+                break;
+            }
+            case SdfOpCode::Float3MulComponentWise: {
+                assert(stk.size() >= 6 && "Float3MulComponentWise: emit-time value stack underflow");
+                std::string bz = stk.back(); stk.pop_back();
+                std::string by = stk.back(); stk.pop_back();
+                std::string bx = stk.back(); stk.pop_back();
+                std::string az = stk.back(); stk.pop_back();
+                std::string ay = stk.back(); stk.pop_back();
+                std::string ax = stk.back(); stk.pop_back();
+                std::string t = "t" + std::to_string(n++);
+                body += "  float3 " + t + " = SdfCore_Float3MulComponentWise(float3(" + ax + ", " + ay + ", " + az + "), float3(" + bx + ", " + by + ", " + bz + "));\n";
+                stk.push_back(t + ".x"); stk.push_back(t + ".y"); stk.push_back(t + ".z");
+                break;
+            }
+            case SdfOpCode::Float3Min: {
+                assert(stk.size() >= 6 && "Float3Min: emit-time value stack underflow");
+                std::string bz = stk.back(); stk.pop_back();
+                std::string by = stk.back(); stk.pop_back();
+                std::string bx = stk.back(); stk.pop_back();
+                std::string az = stk.back(); stk.pop_back();
+                std::string ay = stk.back(); stk.pop_back();
+                std::string ax = stk.back(); stk.pop_back();
+                std::string t = "t" + std::to_string(n++);
+                body += "  float3 " + t + " = SdfCore_Float3Min(float3(" + ax + ", " + ay + ", " + az + "), float3(" + bx + ", " + by + ", " + bz + "));\n";
+                stk.push_back(t + ".x"); stk.push_back(t + ".y"); stk.push_back(t + ".z");
+                break;
+            }
+            case SdfOpCode::Float3Max: {
+                assert(stk.size() >= 6 && "Float3Max: emit-time value stack underflow");
+                std::string bz = stk.back(); stk.pop_back();
+                std::string by = stk.back(); stk.pop_back();
+                std::string bx = stk.back(); stk.pop_back();
+                std::string az = stk.back(); stk.pop_back();
+                std::string ay = stk.back(); stk.pop_back();
+                std::string ax = stk.back(); stk.pop_back();
+                std::string t = "t" + std::to_string(n++);
+                body += "  float3 " + t + " = SdfCore_Float3Max(float3(" + ax + ", " + ay + ", " + az + "), float3(" + bx + ", " + by + ", " + bz + "));\n";
+                stk.push_back(t + ".x"); stk.push_back(t + ".y"); stk.push_back(t + ".z");
+                break;
+            }
+            // Float3ScalarMul: scalar=top, then vz,vy,vx → push result
+            case SdfOpCode::Float3ScalarMul: {
+                assert(stk.size() >= 4 && "Float3ScalarMul: emit-time value stack underflow");
+                std::string s  = stk.back(); stk.pop_back();
+                std::string vz = stk.back(); stk.pop_back();
+                std::string vy = stk.back(); stk.pop_back();
+                std::string vx = stk.back(); stk.pop_back();
+                std::string t = "t" + std::to_string(n++);
+                body += "  float3 " + t + " = SdfCore_Float3ScalarMul(float3(" + vx + ", " + vy + ", " + vz + "), " + s + ");\n";
+                stk.push_back(t + ".x"); stk.push_back(t + ".y"); stk.push_back(t + ".z");
+                break;
+            }
+            // Float3Dot: pop b then a → push scalar
+            case SdfOpCode::Float3Dot: {
+                assert(stk.size() >= 6 && "Float3Dot: emit-time value stack underflow");
+                std::string bz = stk.back(); stk.pop_back();
+                std::string by = stk.back(); stk.pop_back();
+                std::string bx = stk.back(); stk.pop_back();
+                std::string az = stk.back(); stk.pop_back();
+                std::string ay = stk.back(); stk.pop_back();
+                std::string ax = stk.back(); stk.pop_back();
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = SdfCore_Float3Dot(float3(" + ax + ", " + ay + ", " + az + "), float3(" + bx + ", " + by + ", " + bz + "));\n";
+                stk.push_back(t);
+                break;
+            }
+            // Float3Normalize: pop vz,vy,vx → push normalized float3
+            case SdfOpCode::Float3Normalize: {
+                assert(stk.size() >= 3 && "Float3Normalize: emit-time value stack underflow");
+                std::string vz = stk.back(); stk.pop_back();
+                std::string vy = stk.back(); stk.pop_back();
+                std::string vx = stk.back(); stk.pop_back();
+                std::string t = "t" + std::to_string(n++);
+                body += "  float3 " + t + " = SdfCore_Float3Normalize(float3(" + vx + ", " + vy + ", " + vz + "));\n";
+                stk.push_back(t + ".x"); stk.push_back(t + ".y"); stk.push_back(t + ".z");
                 break;
             }
             default:

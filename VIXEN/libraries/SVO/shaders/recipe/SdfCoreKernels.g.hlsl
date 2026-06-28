@@ -346,5 +346,47 @@ float SdfCore_MathLerp(float a, float b, float t) {
     return lerp(a, b, t);
 }
 
+float SdfCore_Select(float cond, float a, float b, float thr) {
+    return (cond > thr ? a : b);
+}
+
+float SdfCore_Displacement(float sdf, float disp, float scale) {
+    return sdf + disp * scale;
+}
+
+float3 SdfCore_Float3Add(float3 a, float3 b) {
+    return a + b;
+}
+
+float3 SdfCore_Float3Sub(float3 a, float3 b) {
+    return a - b;
+}
+
+float3 SdfCore_Float3MulComponentWise(float3 a, float3 b) {
+    return a * b;
+}
+
+float3 SdfCore_Float3Min(float3 a, float3 b) {
+    return min(a, b);
+}
+
+float3 SdfCore_Float3Max(float3 a, float3 b) {
+    return max(a, b);
+}
+
+float3 SdfCore_Float3ScalarMul(float3 v, float s) {
+    return v * s;
+}
+
+float SdfCore_Float3Dot(float3 a, float3 b) {
+    return dot(a, b);
+}
+
+float3 SdfCore_Float3Normalize(float3 v) {
+    float lenSq = v.x * v.x + v.y * v.y + v.z * v.z;
+    float invLen = (lenSq < 1e-14 ? 0.0 : 1.0 / sqrt(lenSq));
+    return v * invLen;
+}
+
 
 #endif // SDF_CORE_KERNELS_G_HLSL

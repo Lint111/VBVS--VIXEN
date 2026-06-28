@@ -507,3 +507,91 @@ TEST(SdfRecipeCodegen, M4c_ValueMathDisplacementSpirV_Compiles) {
     ASSERT_TRUE(outA.success) << outA.GetFullLog() << "\n--- emitted source (progA) ---\n" << srcA;
     EXPECT_FALSE(outA.spirv.empty());
 }
+
+// P2.4 M4d — SPIR-V gate for Float3 arithmetic + VM-control emit.
+// Verifies that Select+Displacement now call generated kernels (N1),
+// and that Float3 ops emit valid HLSL that compiles to SPIR-V.
+// Displacement is now emitted via SdfCore_Displacement (not inline math).
+TEST(CodegenEmit, M4d_Float3AndVMControl_CompilesSpirV) {
+    // Load vendored HLSL (contains SdfCore_Float3Add etc.)
+    std::ifstream kernelFile(SDF_CORE_KERNELS_HLSL_PATH);
+    ASSERT_TRUE(kernelFile.good()) << "Cannot open vendored HLSL: " << SDF_CORE_KERNELS_HLSL_PATH;
+    std::ostringstream kss; kss << kernelFile.rdbuf();
+    const std::string core = kss.str();
+
+    // prog: PushFloat3(1,2,3), PushFloat3(4,5,6), Float3Add, DecomposeFloat3(y), Output
+    // → emits float3 add + scalar extract, returns y component = 7.0
+    auto pf3 = [](float x, float y, float z) {
+        Recipe::SdfInstruction in{};
+        in.opCode = (uint8_t)Recipe::SdfOpCode::PushFloat3;
+        in.data[0]=x; in.data[1]=y; in.data[2]=z; return in;
+    };
+    auto decomp = [](int ch) {
+        Recipe::SdfInstruction in{};
+        in.opCode = (uint8_t)Recipe::SdfOpCode::DecomposeFloat3;
+        in.data[0]=(float)ch; return in;
+    };
+
+    Recipe::SdfInstruction addProg[] = {
+        pf3(1,2,3), pf3(4,5,6),
+        []{ Recipe::SdfInstruction in{}; in.opCode=(uint8_t)Recipe::SdfOpCode::Float3Add; return in; }(),
+        decomp(1),   // extract y = 2+5 = 7
+        []{ Recipe::SdfInstruction in{}; in.opCode=(uint8_t)Recipe::SdfOpCode::Output; return in; }(),
+    };
+    std::string srcAdd = Recipe::EmitProceduralComputeShader(addProg, 5, core);
+
+    EXPECT_NE(srcAdd.find("SdfCore_Float3Add("), std::string::npos)
+        << "Expected SdfCore_Float3Add in emitted HLSL; src:\n" << srcAdd;
+
+    // prog: PushFloat3(3,0,4), Float3Normalize, DecomposeFloat3(x)
+    // → emits SdfCore_Float3Normalize; x should be 0.6
+    Recipe::SdfInstruction normProg[] = {
+        pf3(3,0,4),
+        []{ Recipe::SdfInstruction in{}; in.opCode=(uint8_t)Recipe::SdfOpCode::Float3Normalize; return in; }(),
+        decomp(0),   // extract x
+    };
+    std::string srcNorm = Recipe::EmitProceduralComputeShader(normProg, 3, core);
+
+    EXPECT_NE(srcNorm.find("SdfCore_Float3Normalize("), std::string::npos)
+        << "Expected SdfCore_Float3Normalize in emitted HLSL; src:\n" << srcNorm;
+
+    // N1: Select and Displacement now call generated kernels, not inline math
+    Recipe::SdfInstruction selProg[] = {
+        sphere(0,0,0,0.5f),  // base SDF
+        sphere(1,0,0,0.5f),  // alternate SDF
+        sphere(0,0,0,1.0f),  // cond SDF
+        []{ Recipe::SdfInstruction in{}; in.opCode=(uint8_t)Recipe::SdfOpCode::Select; in.data[0]=0.5f; return in; }(),
+    };
+    std::string srcSel = Recipe::EmitProceduralComputeShader(selProg, 4, core);
+
+    EXPECT_NE(srcSel.find("SdfCore_Select("), std::string::npos)
+        << "N1: expected SdfCore_Select kernel call (not inline ternary); src:\n" << srcSel;
+    // Confirm old inline ternary is not in the recipe body (preamble may have it in SdfCore_Select def)
+    {
+        size_t recipePos = srcSel.find("float sdfRecipe(");
+        ASSERT_NE(recipePos, std::string::npos) << "sdfRecipe not found; src:\n" << srcSel;
+        // In the recipe body there should be no raw ternary — only the kernel call
+        std::string recipeBody = srcSel.substr(recipePos);
+        EXPECT_EQ(recipeBody.find(") ? "), std::string::npos)
+            << "N1: found old inline ternary ') ? ' in sdfRecipe body — N1 rewrite did not apply;\n"
+            << "recipe body:\n" << recipeBody;
+    }
+
+    // Compile all to SPIR-V
+    ShaderCompiler compiler9;
+    CompilationOptions opts9;
+    opts9.sourceLanguage = CompilationOptions::SourceLanguage::HLSL;
+    opts9.validateSpirv  = false;
+
+    auto outAdd = compiler9.Compile(ShaderStage::Compute, srcAdd, "main", opts9);
+    ASSERT_TRUE(outAdd.success) << outAdd.GetFullLog() << "\n--- Float3Add src ---\n" << srcAdd;
+    EXPECT_FALSE(outAdd.spirv.empty());
+
+    auto outNorm = compiler9.Compile(ShaderStage::Compute, srcNorm, "main", opts9);
+    ASSERT_TRUE(outNorm.success) << outNorm.GetFullLog() << "\n--- Float3Normalize src ---\n" << srcNorm;
+    EXPECT_FALSE(outNorm.spirv.empty());
+
+    auto outSel = compiler9.Compile(ShaderStage::Compute, srcSel, "main", opts9);
+    ASSERT_TRUE(outSel.success) << outSel.GetFullLog() << "\n--- Select src ---\n" << srcSel;
+    EXPECT_FALSE(outSel.spirv.empty());
+}

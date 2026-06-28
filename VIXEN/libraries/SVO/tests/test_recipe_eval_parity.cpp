@@ -1885,3 +1885,211 @@ TEST(RecipeEvalParity, M4c_DistanceTo_MatchesOracle) {
         EXPECT_NEAR(evalRecipe(prog, 1, p), glm::length(p - center), 1e-5f)
             << "DistanceTo at (" << p.x << "," << p.y << "," << p.z << ")";
 }
+
+// ── P2.4 M4d ─────────────────────────────────────────────────────────────────
+// Helpers for M4d VM-control + Float3 arithmetic ops.
+
+static SdfInstruction pushParamOp(float val) {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::PushParam; in.data[0]=val; return in; }
+static SdfInstruction pushFloat3Op(float x, float y, float z) {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::PushFloat3;
+    in.data[0]=x; in.data[1]=y; in.data[2]=z; return in; }
+static SdfInstruction composeFloat3Op() {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::ComposeFloat3; return in; }
+static SdfInstruction passthroughOp() {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::Passthrough; return in; }
+static SdfInstruction outputOp() {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::Output; return in; }
+static SdfInstruction decomposeFloat3Op(int ch) {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::DecomposeFloat3;
+    in.data[0]=(float)ch; return in; }
+static SdfInstruction float3AddOp() {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::Float3Add; return in; }
+static SdfInstruction float3SubOp() {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::Float3Sub; return in; }
+static SdfInstruction float3MulCWOp() {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::Float3MulComponentWise; return in; }
+static SdfInstruction float3MinOp() {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::Float3Min; return in; }
+static SdfInstruction float3MaxOp() {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::Float3Max; return in; }
+static SdfInstruction float3ScalarMulOp() {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::Float3ScalarMul; return in; }
+static SdfInstruction float3DotOp() {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::Float3Dot; return in; }
+static SdfInstruction float3NormalizeOp() {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::Float3Normalize; return in; }
+
+// ── N1 Re-tamper: kernel probes confirm SdfCore_Select / SdfCore_Displacement ─
+// These call the generated kernels directly. If the kernel body is changed (e.g.
+// always returns a, or swaps branches) these fail — even if the inline was right.
+// Kernels live in Yeroket::Sdf::Generated; bring them in for the probe tests.
+using namespace Yeroket::Sdf::Generated;
+
+TEST(RecipeEvalParity, M4d_N1_Select_KernelProbe_AboveThresh) {
+    // cond > thr → return a
+    EXPECT_EQ(SdfCore_Select(1.0f,  42.0f, -99.0f, 0.5f),  42.0f);
+    EXPECT_EQ(SdfCore_Select(0.6f,  10.0f,   3.0f, 0.5f),  10.0f);
+}
+TEST(RecipeEvalParity, M4d_N1_Select_KernelProbe_BelowThresh) {
+    // cond <= thr → return b
+    EXPECT_EQ(SdfCore_Select(0.0f,  42.0f, -99.0f, 0.5f), -99.0f);
+    EXPECT_EQ(SdfCore_Select(-5.f,  10.0f,   3.0f, 0.5f),   3.0f);
+}
+TEST(RecipeEvalParity, M4d_N1_Displacement_KernelProbe) {
+    // sdf + disp * scale (independent: no circular use of the SDF stack)
+    EXPECT_NEAR(SdfCore_Displacement(2.0f,  0.5f, 0.1f), 2.0f + 0.5f * 0.1f,  1e-6f);
+    EXPECT_NEAR(SdfCore_Displacement(0.0f, -3.0f, 2.0f), 0.0f + (-3.0f) * 2.0f, 1e-6f);
+}
+
+// ── VM-control ops ────────────────────────────────────────────────────────────
+
+TEST(RecipeEvalParity, M4d_PushParam_PushesDataValue) {
+    // [PushParam(42.5)] → returns 42.5 regardless of pos
+    SdfInstruction prog[] = { pushParamOp(42.5f) };
+    EXPECT_NEAR(evalRecipe(prog, 1, glm::vec3(0,0,0)), 42.5f, 1e-6f);
+    EXPECT_NEAR(evalRecipe(prog, 1, glm::vec3(9,8,7)), 42.5f, 1e-6f);
+}
+
+TEST(RecipeEvalParity, M4d_Output_IsPassthrough) {
+    // [PushParam(3.14), Output] → returns 3.14 (Output is no-op)
+    SdfInstruction prog[] = { pushParamOp(3.14f), outputOp() };
+    EXPECT_NEAR(evalRecipe(prog, 2, glm::vec3(0,0,0)), 3.14f, 1e-5f);
+}
+
+TEST(RecipeEvalParity, M4d_Passthrough_IsNoop) {
+    // [PositionChannel(X), Passthrough] → returns pos.x unchanged
+    SdfInstruction prog[] = { posChannelOp(0), passthroughOp() };
+    EXPECT_NEAR(evalRecipe(prog, 2, glm::vec3(7.f, 0, 0)), 7.0f, 1e-6f);
+}
+
+TEST(RecipeEvalParity, M4d_PushFloat3_DecomposeFloat3_AllComponents) {
+    // PushFloat3 pushes (1,2,3) as x(deepest),y,z(top); DecomposeFloat3 pops all and returns one
+    const float x=1.f, y=2.f, z=3.f;
+    auto run = [&](int ch) {
+        SdfInstruction prog[] = { pushFloat3Op(x,y,z), decomposeFloat3Op(ch) };
+        return evalRecipe(prog, 2, glm::vec3(0,0,0));
+    };
+    EXPECT_NEAR(run(0), x, 1e-6f);  // extract x
+    EXPECT_NEAR(run(1), y, 1e-6f);  // extract y
+    EXPECT_NEAR(run(2), z, 1e-6f);  // extract z
+}
+
+TEST(RecipeEvalParity, M4d_ComposeFloat3_IsNoop) {
+    // 3 scalars on stack + ComposeFloat3 (no-op) + DecomposeFloat3(z) → pos.z
+    SdfInstruction prog[] = {
+        posChannelOp(0), posChannelOp(1), posChannelOp(2),
+        composeFloat3Op(),
+        decomposeFloat3Op(2)   // extract z
+    };
+    EXPECT_NEAR(evalRecipe(prog, 5, glm::vec3(3.f, 7.f, 11.f)), 11.0f, 1e-6f);
+}
+
+// ── Float3 arithmetic ops ─────────────────────────────────────────────────────
+// Oracles are independent (not calling SdfCore_* functions directly).
+
+TEST(RecipeEvalParity, M4d_Float3Add_IndependentOracle) {
+    // push a=(1,2,3), b=(4,5,6); add → (5,7,9); extract y=7
+    SdfInstruction prog[] = {
+        pushFloat3Op(1,2,3), pushFloat3Op(4,5,6),
+        float3AddOp(),
+        decomposeFloat3Op(1)   // y=2+5=7
+    };
+    EXPECT_NEAR(evalRecipe(prog, 4, glm::vec3(0,0,0)), 7.0f, 1e-6f);
+}
+
+TEST(RecipeEvalParity, M4d_Float3Sub_IsAsymmetric) {
+    // push a=(5,3,7), b=(1,2,4); sub → a-b=(4,1,3); extract z=3
+    SdfInstruction prog[] = {
+        pushFloat3Op(5,3,7), pushFloat3Op(1,2,4),
+        float3SubOp(),
+        decomposeFloat3Op(2)   // z=7-4=3
+    };
+    EXPECT_NEAR(evalRecipe(prog, 4, glm::vec3(0,0,0)), 3.0f, 1e-6f);
+
+    // Reversed order (b first on stack = deepest) → b-a = (1-5,2-3,4-7) = (-4,-1,-3); extract z=-3
+    SdfInstruction progRev[] = {
+        pushFloat3Op(1,2,4), pushFloat3Op(5,3,7),
+        float3SubOp(),
+        decomposeFloat3Op(2)   // z=4-7=-3
+    };
+    EXPECT_NEAR(evalRecipe(progRev, 4, glm::vec3(0,0,0)), -3.0f, 1e-6f);
+}
+
+TEST(RecipeEvalParity, M4d_Float3MulComponentWise_Oracle) {
+    // push a=(2,3,4), b=(5,6,7); cw-mul → (10,18,28); extract x=10
+    SdfInstruction prog[] = {
+        pushFloat3Op(2,3,4), pushFloat3Op(5,6,7),
+        float3MulCWOp(),
+        decomposeFloat3Op(0)   // x=2*5=10
+    };
+    EXPECT_NEAR(evalRecipe(prog, 4, glm::vec3(0,0,0)), 10.0f, 1e-6f);
+}
+
+TEST(RecipeEvalParity, M4d_Float3Min_Oracle) {
+    // push a=(1,5,3), b=(4,2,6); min → (1,2,3); extract y=2
+    SdfInstruction prog[] = {
+        pushFloat3Op(1,5,3), pushFloat3Op(4,2,6),
+        float3MinOp(),
+        decomposeFloat3Op(1)   // y=min(5,2)=2
+    };
+    EXPECT_NEAR(evalRecipe(prog, 4, glm::vec3(0,0,0)), 2.0f, 1e-6f);
+}
+
+TEST(RecipeEvalParity, M4d_Float3Max_Oracle) {
+    // push a=(1,5,3), b=(4,2,6); max → (4,5,6); extract z=6
+    SdfInstruction prog[] = {
+        pushFloat3Op(1,5,3), pushFloat3Op(4,2,6),
+        float3MaxOp(),
+        decomposeFloat3Op(2)   // z=max(3,6)=6
+    };
+    EXPECT_NEAR(evalRecipe(prog, 4, glm::vec3(0,0,0)), 6.0f, 1e-6f);
+}
+
+TEST(RecipeEvalParity, M4d_Float3ScalarMul_IsAsymmetric) {
+    // push v=(2,4,6); push scalar=0.5; scalarMul → (1,2,3); extract y=2
+    // Stack order at ScalarMul: scalar=top, then vz,vy,vx below
+    SdfInstruction prog[] = {
+        pushFloat3Op(2,4,6),    // push v.x then v.y then v.z (z=top before scalar)
+        pushParamOp(0.5f),      // push scalar on top
+        float3ScalarMulOp(),
+        decomposeFloat3Op(1)    // y=4*0.5=2
+    };
+    EXPECT_NEAR(evalRecipe(prog, 4, glm::vec3(0,0,0)), 2.0f, 1e-6f);
+}
+
+TEST(RecipeEvalParity, M4d_Float3Dot_IndependentOracle) {
+    // push a=(1,2,3), b=(4,5,6); dot → 1*4+2*5+3*6 = 32
+    SdfInstruction prog[] = {
+        pushFloat3Op(1,2,3), pushFloat3Op(4,5,6),
+        float3DotOp()   // pushes scalar result → sp=1 at return
+    };
+    EXPECT_NEAR(evalRecipe(prog, 3, glm::vec3(0,0,0)), 32.0f, 1e-5f);
+
+    // Orthogonal vectors → dot=0
+    SdfInstruction progOrth[] = {
+        pushFloat3Op(1,0,0), pushFloat3Op(0,1,0),
+        float3DotOp()
+    };
+    EXPECT_NEAR(evalRecipe(progOrth, 3, glm::vec3(0,0,0)), 0.0f, 1e-6f);
+}
+
+TEST(RecipeEvalParity, M4d_Float3Normalize_Oracle) {
+    // v=(3,0,4) → length=5 → normalized=(0.6, 0, 0.8); extract x=0.6
+    SdfInstruction prog[] = {
+        pushFloat3Op(3,0,4),
+        float3NormalizeOp(),
+        decomposeFloat3Op(0)    // x=3/5=0.6
+    };
+    EXPECT_NEAR(evalRecipe(prog, 3, glm::vec3(0,0,0)), 0.6f, 1e-5f);
+}
+
+TEST(RecipeEvalParity, M4d_Float3Normalize_ZeroVector_Safe) {
+    // zero vector → safe normalize returns (0,0,0); extract x=0
+    SdfInstruction prog[] = {
+        pushFloat3Op(0,0,0),
+        float3NormalizeOp(),
+        decomposeFloat3Op(0)
+    };
+    EXPECT_NEAR(evalRecipe(prog, 3, glm::vec3(0,0,0)), 0.0f, 1e-6f);
+}
