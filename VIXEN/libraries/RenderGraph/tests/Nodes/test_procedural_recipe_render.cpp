@@ -1206,3 +1206,106 @@ TEST_F(ProceduralRecipeRenderTest, RenderRevolution) {
            << "\nEmitted shader (first 2000 chars):\n"
         << shaderSrc.substr(0, 2000);
 }
+
+// P2.4 M4b — Live lavapipe render gate for Twist transform.
+//
+// Recipe: [Twist(k=1.2), Box(halfExtents=(0.2,1.2,0.2)), RestorePos]
+// A TALL thin box twisted around Y at k=1.2 rad/unit → the top and bottom surfaces
+// are rotated ~70° relative to each other → helical/warped silhouette visible from z+.
+// Using a box (NOT a sphere) because a sphere at the origin is twist-invariant.
+//
+// Writes /tmp/glsl_sdf_m4_twist.png (512×512 RGBA8). ICD-only (no validation layer).
+// ---------------------------------------------------------------------------
+static Vixen::SVO::Recipe::SdfInstruction makeTwist(float k) {
+    Vixen::SVO::Recipe::SdfInstruction in{};
+    in.opCode  = static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::Twist);
+    in.data[0] = k;
+    return in;
+}
+
+TEST_F(ProceduralRecipeRenderTest, RenderTwist) {
+    // Step 1: read vendored SdfCoreKernels HLSL (now includes M4b kernels).
+    std::ifstream kernelFile(SDF_CORE_KERNELS_HLSL_PATH);
+    ASSERT_TRUE(kernelFile.good())
+        << "Cannot open vendored HLSL: " << SDF_CORE_KERNELS_HLSL_PATH;
+    std::ostringstream ss;
+    ss << kernelFile.rdbuf();
+    const std::string sdfCoreHlsl = ss.str();
+
+    // Step 2: build Twist recipe.
+    // Twist(k=1.2): twist a tall thin box around the Y axis.
+    // The box halfExtents (0.2, 1.2, 0.2) makes it tall — 1.2 units in Y → twist angle 1.44 rad ≈ 82°.
+    // This produces a clearly helical/twisted solid visible as a distorted cross-section.
+    Vixen::SVO::Recipe::SdfInstruction box{};
+    box.opCode  = static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::Box);
+    box.data[0] = 0.2f; box.data[1] = 1.2f; box.data[2] = 0.2f;  // halfExtents
+
+    Vixen::SVO::Recipe::SdfInstruction prog[] = {
+        makeTwist(1.2f),
+        box,
+        makeRestorePos()
+    };
+    const std::string shaderSrc =
+        Vixen::SVO::Recipe::EmitProceduralComputeShader(prog, 3, sdfCoreHlsl);
+
+    // Step 3: compile HLSL → SPIR-V.
+    ShaderManagement::ShaderCompiler compiler;
+    ShaderManagement::CompilationOptions opts;
+    opts.sourceLanguage = ShaderManagement::CompilationOptions::SourceLanguage::HLSL;
+    opts.validateSpirv  = false;
+    auto compOut = compiler.Compile(ShaderManagement::ShaderStage::Compute, shaderSrc, "main", opts);
+    ASSERT_TRUE(compOut.success)
+        << "HLSL compile failed:\n" << compOut.GetFullLog()
+        << "\n--- emitted source ---\n" << shaderSrc;
+    ASSERT_FALSE(compOut.spirv.empty());
+
+    // Step 4: camera from z+ looking at the twisted box from a slight angle above.
+    // Box height=2.4, radius~0.28; camera at (0, 1, 5) tilted slightly to see the twist.
+    constexpr uint32_t W = 512, H = 512;
+    const RecipePushConstants pc = MakeCamera(
+        glm::vec3(0.5f, 0.5f, 5.0f),  // slight x-offset to see twist cross-section asymmetry
+        glm::vec3(0.0f, 0.0f, 0.0f),
+        W, H
+    );
+
+    // Step 5: dispatch on lavapipe.
+    std::vector<float> rgba32f;
+    ASSERT_NO_FATAL_FAILURE(RenderProcedural(compOut.spirv, pc, W, H, rgba32f));
+    ASSERT_EQ(rgba32f.size(), static_cast<size_t>(W) * H * 4);
+
+    // Step 6: count body pixels + write PNG.
+    int bodyPixels = 0;
+    std::vector<uint8_t> rgba8(W * H * 4);
+    for (uint32_t i = 0; i < W * H; ++i) {
+        const float fr = rgba32f[i * 4 + 0];
+        const float fg = rgba32f[i * 4 + 1];
+        const float fb = rgba32f[i * 4 + 2];
+        const float fa = rgba32f[i * 4 + 3];
+        rgba8[i * 4 + 0] = static_cast<uint8_t>(std::min(fr * 255.0f + 0.5f, 255.0f));
+        rgba8[i * 4 + 1] = static_cast<uint8_t>(std::min(fg * 255.0f + 0.5f, 255.0f));
+        rgba8[i * 4 + 2] = static_cast<uint8_t>(std::min(fb * 255.0f + 0.5f, 255.0f));
+        rgba8[i * 4 + 3] = static_cast<uint8_t>(std::min(fa * 255.0f + 0.5f, 255.0f));
+        if (fr > 0.08f || fg > 0.08f) ++bodyPixels;
+    }
+
+    const char* pngPath = "/tmp/glsl_sdf_m4_twist.png";
+    const int pngOk = stbi_write_png(pngPath,
+        static_cast<int>(W), static_cast<int>(H), 4,
+        rgba8.data(), static_cast<int>(W) * 4);
+
+    printf("[RenderTwist] bodyPixels=%d  PNG written=%s  path=%s\n",
+           bodyPixels, pngOk ? "YES" : "NO", pngPath);
+    fflush(stdout);
+
+    EXPECT_TRUE(pngOk) << "stbi_write_png failed for " << pngPath;
+    // A twisted tall box from a near-front view produces a visible non-trivial body.
+    // Expect at least 2000 lit pixels.
+    ASSERT_GT(bodyPixels, 2000)
+        << "bodyPixels=" << bodyPixels << " <= 2000 — image is likely all-black or degenerate. "
+           "Check: (1) SdfCore_Twist kernel, (2) SdfOpCode::Twist case in emit/eval, "
+           "(3) k=1.2 box=(0.2,1.2,0.2) camera at (0.5,0.5,5). "
+           "Sample floats [pixel 0]: R=" << rgba32f[0] << " G=" << rgba32f[1]
+           << " B=" << rgba32f[2] << " A=" << rgba32f[3]
+           << "\nEmitted shader (first 2000 chars):\n"
+        << shaderSrc.substr(0, 2000);
+}

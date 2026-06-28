@@ -261,6 +261,41 @@ inline float evalRecipe(const SdfInstruction* prog, uint32_t count, glm::vec3 p)
                 glm::vec3 center(in.data[4], in.data[5], in.data[6]);
                 pos = SdfCore_Revolution(pos, center, in.data[0]);
             } break;
+            case SdfOpCode::Transform: {
+                assert(psp < 64 && "Transform: position stack overflow");
+                // data[0..2]=translation (Data0.xyz), data[4..7]=invRot xyzw (Data1),
+                // data[8..10]=invScale (Data2.xyz), data[11]=distScale (Data2.w)
+                glm::vec3 trans(in.data[0], in.data[1], in.data[2]);
+                glm::vec4 invRot(in.data[4], in.data[5], in.data[6], in.data[7]);  // xyzw
+                glm::vec3 invScale(in.data[8], in.data[9], in.data[10]);
+                float distScale = in.data[11];  // math.cmin(abs(nodeScale))
+                posStack[psp] = pos; distScaleStack[psp] = distScale; psp++;
+                pos = SdfCore_Transform(pos, trans, invRot, invScale);
+            } break;
+            case SdfOpCode::Twist: {
+                assert(psp < 64 && "Twist: position stack overflow");
+                // data[0]=k (radians/unit Y)
+                posStack[psp] = pos; distScaleStack[psp] = 1.0f; psp++;
+                pos = SdfCore_Twist(pos, in.data[0]);
+            } break;
+            case SdfOpCode::Bend: {
+                assert(psp < 64 && "Bend: position stack overflow");
+                // data[0]=k bend amount
+                posStack[psp] = pos; distScaleStack[psp] = 1.0f; psp++;
+                pos = SdfCore_Bend(pos, in.data[0]);
+            } break;
+            case SdfOpCode::RepeatInfinite: {
+                assert(psp < 64 && "RepeatInfinite: position stack overflow");
+                // data[0..2]=spacing xyz (Data0.xyz)
+                posStack[psp] = pos; distScaleStack[psp] = 1.0f; psp++;
+                pos = SdfCore_RepeatInfinite(pos, glm::vec3(in.data[0], in.data[1], in.data[2]));
+            } break;
+            case SdfOpCode::RepeatLimited: {
+                assert(psp < 64 && "RepeatLimited: position stack overflow");
+                // data[0]=spacing scalar (Data0.x), data[1..3]=limit xyz (Data0.yzw)
+                posStack[psp] = pos; distScaleStack[psp] = 1.0f; psp++;
+                pos = SdfCore_RepeatLimited(pos, in.data[0], glm::vec3(in.data[1], in.data[2], in.data[3]));
+            } break;
             case SdfOpCode::RestorePos: {
                 assert(psp > 0 && "RestorePos: position stack underflow");
                 psp--;

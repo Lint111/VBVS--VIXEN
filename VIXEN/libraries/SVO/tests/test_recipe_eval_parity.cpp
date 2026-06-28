@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include "Recipe/SdfRecipeEval.h"
 #include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>   // glm::quat — for M4b Transform oracle
 #include <cmath>
 #include <algorithm>
 using namespace Vixen::SVO::Recipe;
@@ -1089,6 +1090,250 @@ TEST(RecipeEvalParity, M4a_Revolution_MatchesOracle) {
     EXPECT_NEAR(evalRecipe(prog,3, center+glm::vec3(offset+dr,0.f,0.f)),
                 evalRecipe(prog,3, center+glm::vec3(0.f,0.f,offset+dr)), 1e-5f)
         << "Revolution Y-axis symmetry";
+}
+
+// ===========================================================================
+// P2.4 M4b — warp transforms + Transform + DistScale APPLICATION.
+// All oracles are INDEPENDENT: never transcribe the kernel body into the oracle.
+// Twist/Bend: oracle via std::cos/std::sin by hand (independent of SdfCore_ implementation).
+// RepeatInfinite/RepeatLimited: oracle via std::fmod/std::round by hand.
+// Transform: oracle via glm::quat rotation (independent of cross-product kernel form).
+// DistScale: Transform pushes data[11]; RestorePos scales TOS distance by distScale.
+// TOOTHLESS-ORACLE TRAP: use OFF-AXIS children + probe points where the op is OBSERVABLE.
+// ===========================================================================
+
+// M4b instruction helpers
+static SdfInstruction twistOp(float k) {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::Twist;
+    in.data[0]=k; return in; }
+static SdfInstruction bendOp(float k) {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::Bend;
+    in.data[0]=k; return in; }
+static SdfInstruction repeatInfiniteOp(glm::vec3 sp) {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::RepeatInfinite;
+    in.data[0]=sp.x; in.data[1]=sp.y; in.data[2]=sp.z; return in; }
+static SdfInstruction repeatLimitedOp(float s, glm::vec3 lim) {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::RepeatLimited;
+    in.data[0]=s; in.data[1]=lim.x; in.data[2]=lim.y; in.data[3]=lim.z; return in; }
+// Transform: trans=data[0..2], invRot xyzw=data[4..7], invScale=data[8..10], distScale=data[11]
+static SdfInstruction transformOp(glm::vec3 trans, glm::vec4 invRotXYZW, glm::vec3 invScale, float distScale) {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::Transform;
+    in.data[0]=trans.x;    in.data[1]=trans.y;    in.data[2]=trans.z;
+    in.data[4]=invRotXYZW.x; in.data[5]=invRotXYZW.y; in.data[6]=invRotXYZW.z; in.data[7]=invRotXYZW.w;
+    in.data[8]=invScale.x; in.data[9]=invScale.y; in.data[10]=invScale.z;
+    in.data[11]=distScale; return in; }
+
+// --- Twist ---
+// Oracle: twist around Y by k rad/unit using std::cos/std::sin — independent of SdfCore_Twist.
+// OFF-AXIS child at (0.6, 0, 0.0) + points with non-zero y so rotation actually moves the surface.
+TEST(RecipeEvalParity, M4b_Twist_MatchesOracle) {
+    const float k = 1.2f;
+    const glm::vec3 center(0.6f, 0.0f, 0.0f);  // off-axis: twist around Y is observable
+    const float r = 0.2f;
+    SdfInstruction prog[] = { twistOp(k), sphere(center, r), restorePosOp() };
+    // Independent oracle: rotate (x,z) by k*y using std::trig (NOT SdfCore_Twist formula)
+    auto oracle = [&](glm::vec3 p) {
+        float c = std::cos(k * p.y);
+        float s = std::sin(k * p.y);
+        glm::vec3 tp(c * p.x - s * p.z, p.y, s * p.x + c * p.z);
+        return glm::length(tp - center) - r;
+    };
+    const glm::vec3 pts[] = {
+        glm::vec3( 0.6f,  0.0f,  0.0f),  // no twist at y=0 → at center surface
+        glm::vec3( 0.6f,  1.0f,  0.0f),  // y=1 → twist rotates the child; probe moves off-center
+        glm::vec3( 0.0f,  0.5f,  0.6f),  // p.z component + non-zero y
+        glm::vec3(-0.4f,  0.7f,  0.2f),  // negative x + twist
+        glm::vec3( 1.0f, -0.5f,  0.0f),  // negative y twist direction
+    };
+    for (const glm::vec3& p : pts)
+        EXPECT_NEAR(evalRecipe(prog, 3, p), oracle(p), 1e-5f)
+            << "Twist at (" << p.x << "," << p.y << "," << p.z << ")";
+}
+
+// --- Bend ---
+// Oracle: bend around X by k using std::cos/std::sin — independent of SdfCore_Bend.
+// OFF-AXIS child at (0, 0.5, 0.3) + points with non-zero x so the rotation is observable.
+TEST(RecipeEvalParity, M4b_Bend_MatchesOracle) {
+    const float k = 0.8f;
+    const glm::vec3 center(0.0f, 0.5f, 0.3f);  // off-axis child
+    const float r = 0.2f;
+    SdfInstruction prog[] = { bendOp(k), sphere(center, r), restorePosOp() };
+    // Independent oracle: rotate (x,y) by k*x using std::trig (NOT SdfCore_Bend formula)
+    auto oracle = [&](glm::vec3 p) {
+        float c = std::cos(k * p.x);
+        float s = std::sin(k * p.x);
+        glm::vec3 tp(c * p.x - s * p.y, s * p.x + c * p.y, p.z);
+        return glm::length(tp - center) - r;
+    };
+    const glm::vec3 pts[] = {
+        glm::vec3( 0.0f,  0.5f,  0.3f),  // at child center, x=0 → no bend
+        glm::vec3( 0.8f,  0.5f,  0.3f),  // non-zero x → bend rotates position
+        glm::vec3(-0.6f,  0.2f,  0.3f),  // negative x
+        glm::vec3( 1.0f, -0.2f,  0.1f),  // bend and off-axis y
+        glm::vec3( 0.5f,  1.0f,  0.3f),  // large y with bend
+    };
+    for (const glm::vec3& p : pts)
+        EXPECT_NEAR(evalRecipe(prog, 3, p), oracle(p), 1e-5f)
+            << "Bend at (" << p.x << "," << p.y << "," << p.z << ")";
+}
+
+// --- RepeatInfinite ---
+// Oracle: std::fmod(abs(p)+sp*0.5, sp)-sp*0.5 by hand — NOT SdfCore_RepeatInfinite.
+// Points OUTSIDE the central cell (|p| > spacing) so tiling changes the result.
+TEST(RecipeEvalParity, M4b_RepeatInfinite_MatchesOracle) {
+    const glm::vec3 sp(1.0f, 1.5f, 0.8f);
+    const float r = 0.2f;
+    SdfInstruction prog[] = { repeatInfiniteOp(sp), sphere(glm::vec3(0.f), r), restorePosOp() };
+    // Independent oracle: glm::mod semantics (non-neg dividend → same as std::fmod)
+    auto oracle = [&](glm::vec3 p) {
+        float x = std::fmod(std::abs(p.x) + sp.x * 0.5f, sp.x) - sp.x * 0.5f;
+        float y = std::fmod(std::abs(p.y) + sp.y * 0.5f, sp.y) - sp.y * 0.5f;
+        float z = std::fmod(std::abs(p.z) + sp.z * 0.5f, sp.z) - sp.z * 0.5f;
+        return glm::length(glm::vec3(x, y, z)) - r;  // sphere at origin in each cell
+    };
+    const glm::vec3 pts[] = {
+        glm::vec3( 1.3f,  0.0f,  0.0f),  // outside central cell in x
+        glm::vec3( 0.0f,  1.8f,  0.0f),  // outside central cell in y
+        glm::vec3( 0.0f,  0.0f,  0.9f),  // outside central cell in z
+        glm::vec3( 2.0f,  3.0f,  1.6f),  // far outside in all axes
+        glm::vec3(-1.3f,  0.5f, -0.9f),  // negative coords (abs applied)
+    };
+    for (const glm::vec3& p : pts)
+        EXPECT_NEAR(evalRecipe(prog, 3, p), oracle(p), 1e-5f)
+            << "RepeatInfinite at (" << p.x << "," << p.y << "," << p.z << ")";
+}
+
+// --- RepeatLimited ---
+// Oracle: p - s*clamp(round(p/s), -lim, lim) by hand — NOT SdfCore_RepeatLimited.
+// Points OUTSIDE the limited range so clamping changes the result.
+TEST(RecipeEvalParity, M4b_RepeatLimited_MatchesOracle) {
+    const float s = 1.2f;
+    const glm::vec3 lim(2.0f, 1.0f, 1.5f);
+    const float r = 0.3f;
+    SdfInstruction prog[] = { repeatLimitedOp(s, lim), sphere(glm::vec3(0.f), r), restorePosOp() };
+    // Independent oracle: round component-wise, clamp, subtract (NOT SdfCore_RepeatLimited)
+    auto oracle = [&](glm::vec3 p) {
+        float rx = std::round(p.x / s);
+        float ry = std::round(p.y / s);
+        float rz = std::round(p.z / s);
+        float cx = std::max(-lim.x, std::min(rx, lim.x));
+        float cy = std::max(-lim.y, std::min(ry, lim.y));
+        float cz = std::max(-lim.z, std::min(rz, lim.z));
+        glm::vec3 rp = p - s * glm::vec3(cx, cy, cz);
+        return glm::length(rp) - r;
+    };
+    const glm::vec3 pts[] = {
+        glm::vec3( 2.5f,  0.0f,  0.0f),  // within limit in x (round(2.5/1.2)=round(2.08)=2 ≤ 2)
+        glm::vec3( 3.5f,  0.0f,  0.0f),  // clamped in x (round(3.5/1.2)=3 > 2 → clamp to 2)
+        glm::vec3( 0.0f,  2.0f,  0.0f),  // clamped in y (round(2/1.2)=2 > 1 → clamp to 1)
+        glm::vec3( 0.0f,  0.0f,  3.0f),  // clamped in z (round(3/1.2)=2 ≤ 1.5 → no, 3/1.2=2.5→round=3>1.5 → clamp)
+        glm::vec3(-4.0f,  1.5f, -2.0f),  // clamped in x (negative) and z
+    };
+    for (const glm::vec3& p : pts)
+        EXPECT_NEAR(evalRecipe(prog, 3, p), oracle(p), 1e-5f)
+            << "RepeatLimited at (" << p.x << "," << p.y << "," << p.z << ")";
+}
+
+// --- Transform ---
+// Oracle uses glm::quat rotation — INDEPENDENT of the cross-product kernel implementation.
+// Exercise translation AND non-uniform scale AND a non-identity rotation with off-center child.
+TEST(RecipeEvalParity, M4b_Transform_MatchesOracle) {
+    // Setup: a 45-degree rotation around Y axis as a quaternion
+    // glm::quat from angle-axis: quat(cos(θ/2), sin(θ/2)*axis)
+    float halfAngle = glm::radians(45.0f) * 0.5f;
+    glm::quat rot = glm::quat(std::cos(halfAngle), glm::vec3(0.f, std::sin(halfAngle), 0.f));
+    glm::quat invRot = glm::inverse(rot);
+    glm::vec3 trans(0.5f, 0.2f, 0.1f);
+    glm::vec3 scale(2.0f, 1.5f, 0.8f);  // non-uniform scale (non-trivial distScale)
+    glm::vec3 invScale(1.0f/scale.x, 1.0f/scale.y, 1.0f/scale.z);
+    float distScale = std::min({scale.x, scale.y, scale.z});  // min component = distScale
+
+    // Encode as flat data[]: trans=[0..2], invRot.xyzw=[4..7], invScale=[8..10], distScale=[11]
+    glm::vec4 invRotV(invRot.x, invRot.y, invRot.z, invRot.w);
+    SdfInstruction xf = transformOp(trans, invRotV, invScale, distScale);
+    const float r = 0.3f;
+    const glm::vec3 childCenter(0.4f, 0.3f, 0.2f);  // off-center child
+    SdfInstruction prog[] = { xf, sphere(childCenter, r), restorePosOp() };
+
+    // Independent oracle: glm::quat * vec3 rotation (NOT cross-product form)
+    auto oracle = [&](glm::vec3 p) {
+        glm::vec3 v = p - trans;
+        glm::vec3 rotated = invRot * v;  // glm quaternion rotate — independent
+        glm::vec3 tp = rotated * invScale;
+        float sphereDist = glm::length(tp - childCenter) - r;
+        return distScale * sphereDist;  // RestorePos applies distScale
+    };
+    const glm::vec3 pts[] = {
+        trans + glm::vec3(0.4f, 0.3f, 0.2f),  // near child-center in world space
+        trans + glm::vec3(1.0f, 0.0f, 0.0f),  // along local x
+        trans + glm::vec3(0.0f, 0.0f, 1.0f),  // along local z (45° rot makes this interesting)
+        trans + glm::vec3(-0.5f, 0.3f, 0.4f), // off-axis
+        glm::vec3(0.0f, 0.0f, 0.0f),          // world origin (far from child after transform)
+    };
+    for (const glm::vec3& p : pts)
+        EXPECT_NEAR(evalRecipe(prog, 3, p), oracle(p), 1e-4f)
+            << "Transform at (" << p.x << "," << p.y << "," << p.z << ")";
+}
+
+// --- DistScale APPLICATION: scaled Transform changes distances ---
+// A [Transform(uniform scale=2 → invScale=0.5, distScale=2), Sphere(r=0.5), RestorePos]
+// must return 2 * sphere_at(transformed_p). Proves distScale is applied, not ignored.
+TEST(RecipeEvalParity, M4b_DistScale_ScaledTransformScalesDistance) {
+    // Identity rotation (no rotation), translation zero, scale=2 → invScale=0.5, distScale=2
+    glm::vec4 identRotXYZW(0.0f, 0.0f, 0.0f, 1.0f);  // identity quaternion
+    glm::vec3 noTrans(0.0f, 0.0f, 0.0f);
+    glm::vec3 invScale(0.5f, 0.5f, 0.5f);  // 1/scale = 0.5 (scale = 2)
+    float distScale = 2.0f;
+    SdfInstruction xf = transformOp(noTrans, identRotXYZW, invScale, distScale);
+    const float r = 0.5f;
+    SdfInstruction prog[] = { xf, sphere(glm::vec3(0.f), r), restorePosOp() };
+    // Oracle: distScale * sphere(p * invScale) = 2 * (length(p*0.5) - 0.5)
+    auto oracle = [&](glm::vec3 p) {
+        return distScale * (glm::length(p * invScale) - r);
+    };
+    const glm::vec3 pts[] = {
+        glm::vec3(3.0f, 0.0f, 0.0f),  // dist = 2*(1.5-0.5) = 2.0
+        glm::vec3(0.0f, 1.0f, 0.0f),
+        glm::vec3(1.0f, 1.0f, 1.0f),
+        glm::vec3(0.1f, 0.1f, 0.1f),
+    };
+    for (const glm::vec3& p : pts)
+        EXPECT_NEAR(evalRecipe(prog, 3, p), oracle(p), 1e-5f)
+            << "ScaledTransform at (" << p.x << "," << p.y << "," << p.z << ")";
+}
+
+// --- DistScale STACK COMPOSITION: nested Transforms compose distScale correctly ---
+// [Transform(s1), Transform(s2), Sphere, RestorePos, RestorePos] → s1*s2*sphere(…).
+// Proves the STACK (not a single register) composes nested scales.
+TEST(RecipeEvalParity, M4b_DistScale_NestedTransformsComposeScale) {
+    glm::vec4 identRotXYZW(0.0f, 0.0f, 0.0f, 1.0f);
+    glm::vec3 noTrans(0.0f, 0.0f, 0.0f);
+    // Outer: scale=3 → invScale=1/3, distScale=3
+    glm::vec3 invScale1(1.0f/3.0f, 1.0f/3.0f, 1.0f/3.0f);
+    float distScale1 = 3.0f;
+    // Inner: scale=2 → invScale=0.5, distScale=2
+    glm::vec3 invScale2(0.5f, 0.5f, 0.5f);
+    float distScale2 = 2.0f;
+    SdfInstruction xf1 = transformOp(noTrans, identRotXYZW, invScale1, distScale1);
+    SdfInstruction xf2 = transformOp(noTrans, identRotXYZW, invScale2, distScale2);
+    const float r = 0.5f;
+    // [Transform(s1), Transform(s2), Sphere, RestorePos(s2), RestorePos(s1)]
+    SdfInstruction prog[] = { xf1, xf2, sphere(glm::vec3(0.f), r), restorePosOp(), restorePosOp() };
+    // Oracle: combined scale = distScale1 * distScale2 = 6; sphere at p * invScale1 * invScale2
+    auto oracle = [&](glm::vec3 p) {
+        glm::vec3 tp = p * invScale1 * invScale2;  // apply both scales
+        float rawDist = glm::length(tp) - r;
+        return distScale1 * distScale2 * rawDist;
+    };
+    const glm::vec3 pts[] = {
+        glm::vec3(6.0f, 0.0f, 0.0f),   // expected: 6*(6*1/6 - 0.5) = 6*(1-0.5) = 3.0
+        glm::vec3(1.0f, 1.0f, 0.0f),
+        glm::vec3(0.5f, 0.5f, 0.5f),
+        glm::vec3(3.0f, 4.0f, 0.0f),
+    };
+    for (const glm::vec3& p : pts)
+        EXPECT_NEAR(evalRecipe(prog, 5, p), oracle(p), 1e-4f)
+            << "NestedTransform at (" << p.x << "," << p.y << "," << p.z << ")";
 }
 
 // --- DistScale no-op sanity: MirrorX still correct after distScaleStack change ---

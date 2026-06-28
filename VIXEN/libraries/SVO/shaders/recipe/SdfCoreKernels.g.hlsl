@@ -44,6 +44,37 @@ float3 SdfCore_Revolution(float3 p, float3 center, float offset) {
     return float3(q.x, q.y, 0) + center;
 }
 
+float3 SdfCore_Twist(float3 p, float k) {
+    float c = cos(k * p.y);
+    float s = sin(k * p.y);
+    float2 q = float2(c * p.x - s * p.z, s * p.x + c * p.z);
+    return float3(q.x, p.y, q.y);
+}
+
+float3 SdfCore_Bend(float3 p, float k) {
+    float c = cos(k * p.x);
+    float s = sin(k * p.x);
+    float2 q = float2(c * p.x - s * p.y, s * p.x + c * p.y);
+    return float3(q.x, q.y, p.z);
+}
+
+float3 SdfCore_RepeatInfinite(float3 p, float3 spacing) {
+    return fmod(abs(p) + spacing * 0.5, spacing) - spacing * 0.5;
+}
+
+float3 SdfCore_RepeatLimited(float3 p, float spacing, float3 limit) {
+    return p - spacing * clamp(round(p / spacing), -limit, limit);
+}
+
+float3 SdfCore_Transform(float3 p, float3 translation, float4 invRotXYZW, float3 invScale) {
+    float3 v = p - translation;
+    float3 qv = float3(invRotXYZW.x, invRotXYZW.y, invRotXYZW.z);
+    float qw = invRotXYZW.w;
+    float3 t = 2.0 * cross(qv, v);
+    float3 rotated = v + qw * t + cross(qv, t);
+    return rotated * invScale;
+}
+
 float SdfCore_Intersect(float a, float b) {
     return max(a, b);
 }

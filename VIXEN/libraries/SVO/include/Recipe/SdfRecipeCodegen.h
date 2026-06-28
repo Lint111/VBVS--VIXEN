@@ -456,6 +456,47 @@ inline std::string EmitProceduralComputeShader(
                 posSaveStk.push_back(curPos); distScaleSaveStk.push_back(1.0f); curPos = pN;
                 break;
             }
+            case SdfOpCode::Transform: {
+                // data[0..2]=translation, data[4..7]=invRot xyzw, data[8..10]=invScale, data[11]=distScale
+                std::string pN = "pp" + std::to_string(n++);
+                body += "  float3 " + pN + " = SdfCore_Transform(" + curPos + ", float3("
+                    + f(in.data[0]) + ", " + f(in.data[1]) + ", " + f(in.data[2]) + "), float4("
+                    + f(in.data[4]) + ", " + f(in.data[5]) + ", " + f(in.data[6]) + ", " + f(in.data[7]) + "), float3("
+                    + f(in.data[8]) + ", " + f(in.data[9]) + ", " + f(in.data[10]) + "));\n";
+                posSaveStk.push_back(curPos); distScaleSaveStk.push_back(in.data[11]); curPos = pN;
+                break;
+            }
+            case SdfOpCode::Twist: {
+                // data[0]=k
+                std::string pN = "pp" + std::to_string(n++);
+                body += "  float3 " + pN + " = SdfCore_Twist(" + curPos + ", " + f(in.data[0]) + ");\n";
+                posSaveStk.push_back(curPos); distScaleSaveStk.push_back(1.0f); curPos = pN;
+                break;
+            }
+            case SdfOpCode::Bend: {
+                // data[0]=k
+                std::string pN = "pp" + std::to_string(n++);
+                body += "  float3 " + pN + " = SdfCore_Bend(" + curPos + ", " + f(in.data[0]) + ");\n";
+                posSaveStk.push_back(curPos); distScaleSaveStk.push_back(1.0f); curPos = pN;
+                break;
+            }
+            case SdfOpCode::RepeatInfinite: {
+                // data[0..2]=spacing xyz
+                std::string pN = "pp" + std::to_string(n++);
+                body += "  float3 " + pN + " = SdfCore_RepeatInfinite(" + curPos + ", float3("
+                    + f(in.data[0]) + ", " + f(in.data[1]) + ", " + f(in.data[2]) + "));\n";
+                posSaveStk.push_back(curPos); distScaleSaveStk.push_back(1.0f); curPos = pN;
+                break;
+            }
+            case SdfOpCode::RepeatLimited: {
+                // data[0]=spacing scalar, data[1..3]=limit xyz
+                std::string pN = "pp" + std::to_string(n++);
+                body += "  float3 " + pN + " = SdfCore_RepeatLimited(" + curPos + ", "
+                    + f(in.data[0]) + ", float3("
+                    + f(in.data[1]) + ", " + f(in.data[2]) + ", " + f(in.data[3]) + "));\n";
+                posSaveStk.push_back(curPos); distScaleSaveStk.push_back(1.0f); curPos = pN;
+                break;
+            }
             case SdfOpCode::RestorePos: {
                 assert(!posSaveStk.empty() && "RestorePos: emit-time position stack underflow");
                 assert(!distScaleSaveStk.empty() && "RestorePos: emit-time distScale stack underflow");

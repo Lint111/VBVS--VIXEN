@@ -344,3 +344,56 @@ TEST(SdfRecipeCodegen, M4a_RevolutionSpirV_Compiles) {
     ASSERT_TRUE(out6.success) << out6.GetFullLog() << "\n--- emitted source ---\n" << src;
     EXPECT_FALSE(out6.spirv.empty());
 }
+
+// P2.4 M4b — SPIR-V gate for Twist + Transform recipe.
+// Recipe: [Twist(k=1.2), Box(he=(0.2,1.0,0.2)), RestorePos, Transform(non-identity), Sphere, RestorePos]
+// Verifies: SdfCore_Twist + SdfCore_Transform calls emitted; distScale path present; SPIR-V compiles.
+TEST(SdfRecipeCodegen, M4b_TwistTransformSpirV_Compiles) {
+    std::stringstream ss7;
+    std::ifstream kf7(SDF_CORE_KERNELS_HLSL_PATH);
+    ASSERT_TRUE(kf7.is_open()) << "SDF_CORE_KERNELS_HLSL_PATH not found: " << SDF_CORE_KERNELS_HLSL_PATH;
+    ss7 << kf7.rdbuf();
+    std::string core7 = ss7.str();
+
+    // Twist(k=1.2)
+    Recipe::SdfInstruction twist{};
+    twist.opCode = static_cast<uint8_t>(Recipe::SdfOpCode::Twist);
+    twist.data[0] = 1.2f;
+
+    // Tall box (child of twist)
+    Recipe::SdfInstruction box7{};
+    box7.opCode = static_cast<uint8_t>(Recipe::SdfOpCode::Box);
+    box7.data[0] = 0.2f; box7.data[1] = 1.0f; box7.data[2] = 0.2f;
+
+    // Transform: identity rotation, slight translation, scale=2 (invScale=0.5, distScale=2)
+    Recipe::SdfInstruction xform{};
+    xform.opCode = static_cast<uint8_t>(Recipe::SdfOpCode::Transform);
+    xform.data[0] = 0.5f;  // trans.x
+    // data[4..7] = identity quat (0,0,0,1)
+    xform.data[7] = 1.0f;  // invRot.w
+    xform.data[8] = 0.5f; xform.data[9] = 0.5f; xform.data[10] = 0.5f;  // invScale
+    xform.data[11] = 2.0f;  // distScale
+
+    Recipe::SdfInstruction prog7[] = {
+        twist, box7, restorePosOp(),
+        xform, sphere(0.f,0.f,0.f, 0.3f), restorePosOp()
+    };
+    std::string src7 = Recipe::EmitProceduralComputeShader(prog7, 6, core7);
+
+    EXPECT_NE(src7.find("SdfCore_Twist("), std::string::npos)
+        << "Expected SdfCore_Twist call; src:\n" << src7;
+    EXPECT_NE(src7.find("SdfCore_Transform("), std::string::npos)
+        << "Expected SdfCore_Transform call; src:\n" << src7;
+    // distScale=2.0 → RestorePos must emit a multiply by 2.0 for the scaled Transform
+    EXPECT_NE(src7.find("* 2."), std::string::npos)
+        << "Expected distScale multiply in emitted source; src:\n" << src7;
+
+    ShaderCompiler compiler7;
+    CompilationOptions opts7;
+    opts7.sourceLanguage = CompilationOptions::SourceLanguage::HLSL;
+    opts7.validateSpirv  = false;
+
+    auto out7 = compiler7.Compile(ShaderStage::Compute, src7, "main", opts7);
+    ASSERT_TRUE(out7.success) << out7.GetFullLog() << "\n--- emitted source ---\n" << src7;
+    EXPECT_FALSE(out7.spirv.empty());
+}
