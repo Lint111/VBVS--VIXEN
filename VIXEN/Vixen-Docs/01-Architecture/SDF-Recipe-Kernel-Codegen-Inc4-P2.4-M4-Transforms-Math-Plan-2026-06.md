@@ -36,14 +36,19 @@
 
 > 4 cross-repo milestones, SEQUENTIAL, escalating. Implementer **Sonnet** (`mode: bypassPermissions`), validator **Opus** (`mode: bypassPermissions`, reads renders + runs INDEPENDENT numeric checks) per milestone.
 
-- [ ] **M4a — mirror/simple transforms + the DistScale-stack scaffold (Task 1).** MirrorY(42), MirrorZ(43), Elongate(38), Revolution(46) as float3 kernels; introduce `distScaleStack` (all push 1.0f) + extend MirrorX & RestorePos. No trig, no scale yet. Gate: kernels+vendored; eval/emit cases + distScaleStack scaffold; independent parity; SPIR-V; live **Revolution** render (a revolved profile) PNG-confirmed; no-regression (incl. MirrorX still correct after the RestorePos change).
+- [x] **M4a — mirror/simple transforms + the DistScale-stack scaffold (Task 1).** MirrorY(42), MirrorZ(43), Elongate(38), Revolution(46) as float3 kernels; introduce `distScaleStack` (all push 1.0f) + extend MirrorX & RestorePos. No trig, no scale yet. Gate: kernels+vendored; eval/emit cases + distScaleStack scaffold; independent parity; SPIR-V; live **Revolution** render (a revolved profile) PNG-confirmed; no-regression (incl. MirrorX still correct after the RestorePos change).
 - [ ] **M4b — warp transforms + Transform + DistScale application (Task 2).** Twist(39), Bend(40), RepeatInfinite(44), RepeatLimited(45) trig/fmod/round kernels + Transform(37) quat-rotate kernel + the DistScale APPLICATION (Transform pushes data2.w; RestorePos applies). Add CppMappingTables entries for fmod/round if the kernels use them. Gate: kernels+vendored; Transform quat-rotate parity vs glm::quat; DistScale nested-correctness parity (a scaled Transform changes distances by the scale); live **Twist** render PNG-confirmed (visible helical warp); no-regression.
 - [ ] **M4c — value-math lane (Task 3).** ~25 scalar `SdfCore_MathX` kernels (Sin/Cos/Smoothstep/Remap/Clamp/Abs/Frac/Pow/Sqrt/Negate/Step/Sign/Saturate/Exp/Log/Log2; Add/Sub/Mul/Div/Min/Max; Lerp; Select; + PositionChannel/Displacement/DistanceTo leaf/peek ops) + VIXEN value-stack dispatch (unary/binary/ternary). Add CppMappingTables entries (smoothstep/frac/step/exp/log/log2). Gate: kernels+vendored; independent parity per op; SPIR-V; live **Displacement** render (sphere + sin surface bumps) PNG-confirmed; no-regression.
 - [ ] **M4d — float3-math + VM-control (Task 4).** Float3 kernels (Add/Sub/MulCW/Min/Max 102-106; ScalarMul/Dot/Normalize 107-109 wired CORRECTLY) + VM-control (Output 94, PushParam 95, PushFloat3 98, ComposeFloat3 99 no-op, Passthrough 100, DecomposeFloat3 101, PositionChannel 73 if not in M4c) as `[SdfCoreOp]`/hand-dispatch. Gate: kernels+vendored; parity; SPIR-V; a live render exercising a float3-math path; no-regression; flag the Float3 CompileToBurst canonical bug. **M4 COMPLETE.**
 
 ## Progress Log
 
-- _(pending execution)_
+- Milestone M4a (Task 1): DONE · Yeroket `f9615435` + VIXEN `d42a2c77` (+teeth fix `e93c37d3`) · Opus validator APPROVED after 1 fix-loop · 2026-06-28
+  - Kernels: SdfCore_MirrorY(42)/MirrorZ(43)/Elongate(38)/Revolution(46) as float3 [SdfCoreKernel]; enum 37→41; dotnet 91 pass / 4 pre-existing fail.
+  - DistScale STACK scaffold landed: `distScaleStack[64]` parallel to `posStack` (same `psp`); MirrorX + all M4a transforms push 1.0f; RestorePos pops+applies `stack[sp-1]*=distScaleStack[psp]`; emit mirrors via `distScaleSaveStk`. (Application of a non-1 scale arrives in M4b/Transform.)
+  - Parity 38/38 (independent oracles), SPIR-V 7/7, live RenderRevolution=21,900px (validator read PNG = clean revolved torus).
+  - FIX-LOOP (durable lesson): validator's TAMPER test caught MirrorY/MirrorZ parity tests as VACUOUS — an origin-centered child sphere makes `length(p)` invariant under a single-axis sign flip, so an identity-broken mirror kernel PASSED. Fixed test-only by moving the child off-axis (center (0,0.5,0)/(0,0,0.5)) + matching independent oracle; re-tamper confirmed both now FAIL on a broken kernel. The Pyramid lesson recurs: a parity oracle needs geometry where the op is observable, or it has no teeth.
+  - No-regression exact: MirrorCsg 25,332 / Subtract 26,604 / Torus 20,922 / Cone 17,060 / Pyramid 18,802.
 
 ---
 
