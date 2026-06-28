@@ -1362,3 +1362,526 @@ TEST(RecipeEvalParity, M4a_DistScaleNoOp_MirrorXNonRegression) {
         EXPECT_NEAR(evalRecipe(prog,5,p), oracle(p), 1e-4f)
             << "MirrorX non-regression at (" << p.x << "," << p.y << "," << p.z << ")";
 }
+
+// ============================================================
+// P2.4 M4c — value-math lane parity.
+// Oracles are INDEPENDENT std::/glm:: formulas — NEVER transcribed from SdfCore_* bodies.
+// All tests use non-trivial probe points (not identity inputs).
+// ============================================================
+
+// ── M4c helpers (instruction builders) ──────────────────────────────────────
+
+static SdfInstruction posChannelOp(int ch) {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::PositionChannel; in.data[0]=(float)ch; return in; }
+static SdfInstruction mathSinOp(float freq, float phase, float amp) {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::MathSin;
+    in.data[0]=freq; in.data[1]=phase; in.data[2]=amp; return in; }
+static SdfInstruction mathCosOp(float freq, float phase, float amp) {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::MathCos;
+    in.data[0]=freq; in.data[1]=phase; in.data[2]=amp; return in; }
+static SdfInstruction mathSmoothstepOp(float edge0, float edge1) {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::MathSmoothstep;
+    in.data[0]=edge0; in.data[1]=edge1; return in; }
+static SdfInstruction mathRemapOp(float iMin, float iMax, float oMin, float oMax) {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::MathRemap;
+    in.data[0]=iMin; in.data[1]=iMax; in.data[2]=oMin; in.data[3]=oMax; return in; }
+static SdfInstruction mathClampOp(float lo, float hi) {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::MathClamp;
+    in.data[0]=lo; in.data[1]=hi; return in; }
+static SdfInstruction mathAbsOp() {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::MathAbs; return in; }
+static SdfInstruction mathFracOp() {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::MathFrac; return in; }
+static SdfInstruction mathPowOp(float power) {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::MathPow; in.data[0]=power; return in; }
+static SdfInstruction mathSqrtOp() {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::MathSqrt; return in; }
+static SdfInstruction mathNegateOp() {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::MathNegate; return in; }
+static SdfInstruction mathStepOp(float edge) {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::MathStep; in.data[0]=edge; return in; }
+static SdfInstruction mathSignOp() {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::MathSign; return in; }
+static SdfInstruction mathSaturateOp() {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::MathSaturate; return in; }
+static SdfInstruction mathExpOp() {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::MathExp; return in; }
+static SdfInstruction mathLogOp() {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::MathLog; return in; }
+static SdfInstruction mathLog2Op() {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::MathLog2; return in; }
+static SdfInstruction mathAddOp() {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::MathAdd; return in; }
+static SdfInstruction mathSubOp() {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::MathSub; return in; }
+static SdfInstruction mathMulOp() {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::MathMul; return in; }
+static SdfInstruction mathDivOp() {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::MathDiv; return in; }
+static SdfInstruction mathMinOp() {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::MathMin; return in; }
+static SdfInstruction mathMaxOp() {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::MathMax; return in; }
+static SdfInstruction mathLerpOp() {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::MathLerp; return in; }
+static SdfInstruction selectOp(float threshold) {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::Select; in.data[0]=threshold; return in; }
+static SdfInstruction displacementOp(float scale) {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::Displacement; in.data[0]=scale; return in; }
+static SdfInstruction distanceToOp(glm::vec3 center) {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::DistanceTo;
+    in.data[0]=center.x; in.data[1]=center.y; in.data[2]=center.z; return in; }
+
+// Push a constant onto the value stack via PositionChannel=Y at a known point.
+// Convenience: posChannelOp(1) at point (0,K,0) pushes K.
+static SdfInstruction pushConst(float val) {
+    // unused: we probe at specific points that yield the right channel value.
+    // (see each test that uses this pattern)
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::PositionChannel; in.data[0]=1.f; (void)val; return in;
+}
+
+// ── PositionChannel ──────────────────────────────────────────────────────────
+// Recipe: [PositionChannel(Y), PositionChannel(Y), MathAdd] → 2*y
+// Tests ch=1 (Y), non-trivial y, result is observable.
+TEST(RecipeEvalParity, M4c_PositionChannel_Y) {
+    // single channel push: [Sphere(origin,r), PositionChannel(Y)] — but recipe must end with 1 value.
+    // Simpler: push channel twice, add → 2*y is observable.
+    SdfInstruction prog[] = { posChannelOp(1), posChannelOp(1), mathAddOp() };
+    const glm::vec3 pts[] = {
+        glm::vec3(0.f, 0.5f, 0.f),    // y=0.5  → 2*0.5 = 1.0
+        glm::vec3(1.f,-0.7f, 2.f),    // y=-0.7 → 2*(-0.7) = -1.4
+        glm::vec3(0.f, 1.3f, 0.f),    // y=1.3  → 2.6
+    };
+    for (const glm::vec3& p : pts)
+        EXPECT_NEAR(evalRecipe(prog, 3, p), 2.0f * p.y, 1e-5f)
+            << "PositionChannel(Y) at (" << p.x << "," << p.y << "," << p.z << ")";
+}
+
+// Test ch=0 (X) and ch=3 (length(xz)).
+TEST(RecipeEvalParity, M4c_PositionChannel_X_and_LenXZ) {
+    // ch=0: push X twice, sub → 0 (but that's vacuous). Better: push X, MathNegate → -x.
+    SdfInstruction progX[] = { posChannelOp(0), mathNegateOp() };
+    // ch=3: length(xz) at (3,0,4) = 5.0
+    SdfInstruction progXZ[] = { posChannelOp(3), posChannelOp(3), mathMulOp() }; // len²? no — sqr len
+    const glm::vec3 p1(1.5f, 99.f, 0.f);   // X=1.5 → negate → -1.5
+    const glm::vec3 p2(3.0f,  0.f, 4.0f);  // length(xz)=5.0 → mul → 25.0
+    EXPECT_NEAR(evalRecipe(progX, 2, p1), -p1.x, 1e-5f)
+        << "PositionChannel(X) negate at " << p1.x;
+    EXPECT_NEAR(evalRecipe(progXZ, 3, p2), 25.0f, 1e-5f)
+        << "PositionChannel(LenXZ)^2 at " << p2.x << "," << p2.z;
+}
+
+// ── MathSin ─────────────────────────────────────────────────────────────────
+// Oracle: amp * sin(x * freq + phase)  (INDEPENDENT of SdfCore_MathSin)
+TEST(RecipeEvalParity, M4c_MathSin_MatchesOracle) {
+    // Push y-channel as input, apply sin with freq=3, phase=0.5, amp=2.
+    const float freq=3.f, phase=0.5f, amp=2.f;
+    SdfInstruction prog[] = { posChannelOp(1), mathSinOp(freq, phase, amp) };
+    const glm::vec3 pts[] = {
+        glm::vec3(0.f, 0.3f, 0.f),
+        glm::vec3(0.f, 1.0f, 0.f),
+        glm::vec3(0.f,-0.5f, 0.f),
+    };
+    for (const glm::vec3& p : pts) {
+        float expected = amp * std::sin(p.y * freq + phase);  // independent oracle
+        EXPECT_NEAR(evalRecipe(prog, 2, p), expected, 1e-5f)
+            << "MathSin at y=" << p.y;
+    }
+}
+
+// ── MathCos ─────────────────────────────────────────────────────────────────
+TEST(RecipeEvalParity, M4c_MathCos_MatchesOracle) {
+    const float freq=2.f, phase=0.f, amp=1.5f;
+    SdfInstruction prog[] = { posChannelOp(1), mathCosOp(freq, phase, amp) };
+    const glm::vec3 pts[] = {
+        glm::vec3(0.f, 0.5f, 0.f),
+        glm::vec3(0.f, 1.2f, 0.f),
+    };
+    for (const glm::vec3& p : pts) {
+        float expected = amp * std::cos(p.y * freq + phase);
+        EXPECT_NEAR(evalRecipe(prog, 2, p), expected, 1e-5f)
+            << "MathCos at y=" << p.y;
+    }
+}
+
+// ── MathSmoothstep ───────────────────────────────────────────────────────────
+// Oracle: clamp((x-e0)/(e1-e0), 0,1)^2 * (3 - 2*clamp(...))
+TEST(RecipeEvalParity, M4c_MathSmoothstep_MatchesOracle) {
+    const float e0=0.2f, e1=0.8f;
+    SdfInstruction prog[] = { posChannelOp(1), mathSmoothstepOp(e0, e1) };
+    const glm::vec3 pts[] = {
+        glm::vec3(0.f, 0.0f, 0.f),   // below e0 → 0
+        glm::vec3(0.f, 0.5f, 0.f),   // between → non-trivial
+        glm::vec3(0.f, 1.0f, 0.f),   // above e1 → 1
+        glm::vec3(0.f, 0.3f, 0.f),   // inside range
+    };
+    auto oracle = [&](float x) {
+        float t = std::max(0.f, std::min(1.f, (x - e0) / (e1 - e0)));
+        return t * t * (3.f - 2.f * t);
+    };
+    for (const glm::vec3& p : pts)
+        EXPECT_NEAR(evalRecipe(prog, 2, p), oracle(p.y), 1e-5f)
+            << "MathSmoothstep at y=" << p.y;
+}
+
+// ── MathRemap ────────────────────────────────────────────────────────────────
+// Oracle: outMin + (x - inMin) / (inMax - inMin) * (outMax - outMin)
+TEST(RecipeEvalParity, M4c_MathRemap_MatchesOracle) {
+    const float iMin=0.f, iMax=1.f, oMin=-1.f, oMax=1.f;
+    SdfInstruction prog[] = { posChannelOp(1), mathRemapOp(iMin, iMax, oMin, oMax) };
+    const glm::vec3 pts[] = {
+        glm::vec3(0.f, 0.0f, 0.f),    // 0→-1
+        glm::vec3(0.f, 0.5f, 0.f),    // 0.5→0
+        glm::vec3(0.f, 1.0f, 0.f),    // 1→1
+        glm::vec3(0.f, 0.25f, 0.f),   // 0.25→-0.5
+    };
+    auto oracle = [&](float x) {
+        return oMin + (x - iMin) / (iMax - iMin) * (oMax - oMin);
+    };
+    for (const glm::vec3& p : pts)
+        EXPECT_NEAR(evalRecipe(prog, 2, p), oracle(p.y), 1e-5f)
+            << "MathRemap at y=" << p.y;
+}
+
+// ── MathClamp ────────────────────────────────────────────────────────────────
+TEST(RecipeEvalParity, M4c_MathClamp_MatchesOracle) {
+    const float lo=0.2f, hi=0.7f;
+    SdfInstruction prog[] = { posChannelOp(1), mathClampOp(lo, hi) };
+    const glm::vec3 pts[] = {
+        glm::vec3(0.f, -0.5f, 0.f),  // below lo → 0.2
+        glm::vec3(0.f,  0.5f, 0.f),  // inside → 0.5
+        glm::vec3(0.f,  2.0f, 0.f),  // above hi → 0.7
+    };
+    for (const glm::vec3& p : pts) {
+        float expected = std::max(lo, std::min(hi, p.y));
+        EXPECT_NEAR(evalRecipe(prog, 2, p), expected, 1e-5f)
+            << "MathClamp at y=" << p.y;
+    }
+}
+
+// ── MathAbs ──────────────────────────────────────────────────────────────────
+// Must probe at negative x to be non-vacuous.
+TEST(RecipeEvalParity, M4c_MathAbs_NegativeInput) {
+    SdfInstruction prog[] = { posChannelOp(1), mathAbsOp() };
+    const glm::vec3 pts[] = {
+        glm::vec3(0.f, -0.7f, 0.f),   // negative → 0.7
+        glm::vec3(0.f,  0.3f, 0.f),   // positive → 0.3 (unchanged)
+        glm::vec3(0.f, -2.0f, 0.f),   // negative → 2.0
+    };
+    for (const glm::vec3& p : pts)
+        EXPECT_NEAR(evalRecipe(prog, 2, p), std::abs(p.y), 1e-5f)
+            << "MathAbs at y=" << p.y;
+}
+
+// ── MathFrac ─────────────────────────────────────────────────────────────────
+// Oracle: x - floor(x)
+TEST(RecipeEvalParity, M4c_MathFrac_MatchesOracle) {
+    SdfInstruction prog[] = { posChannelOp(1), mathFracOp() };
+    const glm::vec3 pts[] = {
+        glm::vec3(0.f, 0.7f, 0.f),    // 0.7 - 0 = 0.7
+        glm::vec3(0.f, 2.3f, 0.f),    // 2.3 - 2 = 0.3
+        glm::vec3(0.f, 1.9f, 0.f),    // 1.9 - 1 = 0.9
+    };
+    for (const glm::vec3& p : pts) {
+        float expected = p.y - std::floor(p.y);
+        EXPECT_NEAR(evalRecipe(prog, 2, p), expected, 1e-5f)
+            << "MathFrac at y=" << p.y;
+    }
+}
+
+// ── MathPow ──────────────────────────────────────────────────────────────────
+// Oracle: pow(abs(x), power) * sign(x)   (sign-preserving, from SdfCoreKernels.cs comment)
+TEST(RecipeEvalParity, M4c_MathPow_MatchesOracle) {
+    const float power = 2.5f;
+    SdfInstruction prog[] = { posChannelOp(1), mathPowOp(power) };
+    const glm::vec3 pts[] = {
+        glm::vec3(0.f, 0.5f, 0.f),    // positive: pow(0.5,2.5)*1 ≈ 0.1768
+        glm::vec3(0.f,-0.5f, 0.f),    // negative: pow(0.5,2.5)*-1 ≈ -0.1768
+        glm::vec3(0.f, 2.0f, 0.f),    // 2^2.5 ≈ 5.657
+    };
+    for (const glm::vec3& p : pts) {
+        float expected = std::pow(std::abs(p.y), power) * (p.y >= 0.f ? 1.f : -1.f);
+        EXPECT_NEAR(evalRecipe(prog, 2, p), expected, 1e-4f)
+            << "MathPow at y=" << p.y;
+    }
+}
+
+// ── MathSqrt ─────────────────────────────────────────────────────────────────
+// Oracle: sqrt(abs(x))  (safe, domain-extended)
+TEST(RecipeEvalParity, M4c_MathSqrt_MatchesOracle) {
+    SdfInstruction prog[] = { posChannelOp(1), mathSqrtOp() };
+    const glm::vec3 pts[] = {
+        glm::vec3(0.f, 4.0f, 0.f),    // sqrt(4)=2
+        glm::vec3(0.f, 2.0f, 0.f),    // sqrt(2)≈1.414
+        glm::vec3(0.f,-9.0f, 0.f),    // sqrt(abs(-9))=3  (domain extension)
+    };
+    for (const glm::vec3& p : pts)
+        EXPECT_NEAR(evalRecipe(prog, 2, p), std::sqrt(std::abs(p.y)), 1e-5f)
+            << "MathSqrt at y=" << p.y;
+}
+
+// ── MathNegate ───────────────────────────────────────────────────────────────
+TEST(RecipeEvalParity, M4c_MathNegate_MatchesOracle) {
+    SdfInstruction prog[] = { posChannelOp(1), mathNegateOp() };
+    const glm::vec3 pts[] = {
+        glm::vec3(0.f, 0.7f, 0.f),    // -0.7
+        glm::vec3(0.f,-1.3f, 0.f),    // 1.3
+    };
+    for (const glm::vec3& p : pts)
+        EXPECT_NEAR(evalRecipe(prog, 2, p), -p.y, 1e-5f)
+            << "MathNegate at y=" << p.y;
+}
+
+// ── MathStep ─────────────────────────────────────────────────────────────────
+// Oracle: step(edge, x) = (x >= edge) ? 1.0 : 0.0
+TEST(RecipeEvalParity, M4c_MathStep_MatchesOracle) {
+    const float edge = 0.5f;
+    SdfInstruction prog[] = { posChannelOp(1), mathStepOp(edge) };
+    const glm::vec3 pts[] = {
+        glm::vec3(0.f, 0.3f, 0.f),    // below edge → 0
+        glm::vec3(0.f, 0.5f, 0.f),    // at edge → 1
+        glm::vec3(0.f, 0.8f, 0.f),    // above edge → 1
+    };
+    for (const glm::vec3& p : pts) {
+        float expected = (p.y >= edge) ? 1.0f : 0.0f;
+        EXPECT_NEAR(evalRecipe(prog, 2, p), expected, 1e-5f)
+            << "MathStep at y=" << p.y;
+    }
+}
+
+// ── MathSign ─────────────────────────────────────────────────────────────────
+TEST(RecipeEvalParity, M4c_MathSign_MatchesOracle) {
+    SdfInstruction prog[] = { posChannelOp(1), mathSignOp() };
+    const glm::vec3 pts[] = {
+        glm::vec3(0.f,  1.5f, 0.f),  // positive → 1
+        glm::vec3(0.f, -0.3f, 0.f),  // negative → -1
+    };
+    for (const glm::vec3& p : pts) {
+        float expected = (p.y > 0.f) ? 1.f : (p.y < 0.f ? -1.f : 0.f);
+        EXPECT_NEAR(evalRecipe(prog, 2, p), expected, 1e-5f)
+            << "MathSign at y=" << p.y;
+    }
+}
+
+// ── MathSaturate ─────────────────────────────────────────────────────────────
+// Oracle: clamp(x, 0, 1)
+TEST(RecipeEvalParity, M4c_MathSaturate_MatchesOracle) {
+    SdfInstruction prog[] = { posChannelOp(1), mathSaturateOp() };
+    const glm::vec3 pts[] = {
+        glm::vec3(0.f, -0.5f, 0.f),  // below 0 → 0
+        glm::vec3(0.f,  0.7f, 0.f),  // inside → 0.7
+        glm::vec3(0.f,  1.5f, 0.f),  // above 1 → 1
+    };
+    for (const glm::vec3& p : pts) {
+        float expected = std::max(0.f, std::min(1.f, p.y));
+        EXPECT_NEAR(evalRecipe(prog, 2, p), expected, 1e-5f)
+            << "MathSaturate at y=" << p.y;
+    }
+}
+
+// ── MathExp ──────────────────────────────────────────────────────────────────
+TEST(RecipeEvalParity, M4c_MathExp_MatchesOracle) {
+    SdfInstruction prog[] = { posChannelOp(1), mathExpOp() };
+    const glm::vec3 pts[] = {
+        glm::vec3(0.f, 0.0f, 0.f),   // exp(0)=1
+        glm::vec3(0.f, 1.0f, 0.f),   // exp(1)≈2.718
+        glm::vec3(0.f,-1.0f, 0.f),   // exp(-1)≈0.368
+    };
+    for (const glm::vec3& p : pts)
+        EXPECT_NEAR(evalRecipe(prog, 2, p), std::exp(p.y), 1e-5f)
+            << "MathExp at y=" << p.y;
+}
+
+// ── MathLog ──────────────────────────────────────────────────────────────────
+// Oracle: log(max(x, 1e-30f))  (guarded)
+TEST(RecipeEvalParity, M4c_MathLog_MatchesOracle) {
+    SdfInstruction prog[] = { posChannelOp(1), mathLogOp() };
+    const glm::vec3 pts[] = {
+        glm::vec3(0.f, 1.0f, 0.f),   // log(1)=0
+        glm::vec3(0.f, 2.718f, 0.f), // log(e)≈1
+        glm::vec3(0.f, 0.5f, 0.f),   // log(0.5)≈-0.693
+    };
+    for (const glm::vec3& p : pts)
+        EXPECT_NEAR(evalRecipe(prog, 2, p), std::log(std::max(p.y, 1e-30f)), 1e-4f)
+            << "MathLog at y=" << p.y;
+}
+
+// ── MathLog2 ─────────────────────────────────────────────────────────────────
+// Oracle: log2(max(x, 1e-30f))
+TEST(RecipeEvalParity, M4c_MathLog2_MatchesOracle) {
+    SdfInstruction prog[] = { posChannelOp(1), mathLog2Op() };
+    const glm::vec3 pts[] = {
+        glm::vec3(0.f, 1.0f, 0.f),   // log2(1)=0
+        glm::vec3(0.f, 4.0f, 0.f),   // log2(4)=2
+        glm::vec3(0.f, 0.5f, 0.f),   // log2(0.5)=-1
+    };
+    for (const glm::vec3& p : pts)
+        EXPECT_NEAR(evalRecipe(prog, 2, p), std::log2(std::max(p.y, 1e-30f)), 1e-5f)
+            << "MathLog2 at y=" << p.y;
+}
+
+// ── Binary ops ───────────────────────────────────────────────────────────────
+// Stack: push a=X-channel, push b=Y-channel at (3, 7, 0) → a=3, b=7.
+// This gives asymmetric operands (a≠b) for all binary tests.
+
+// MathAdd
+TEST(RecipeEvalParity, M4c_MathAdd_MatchesOracle) {
+    SdfInstruction prog[] = { posChannelOp(0), posChannelOp(1), mathAddOp() };
+    const glm::vec3 pts[] = {
+        glm::vec3(3.f, 7.f, 0.f),    // 3+7=10
+        glm::vec3(1.f,-2.f, 0.f),    // 1+(-2)=-1
+        glm::vec3(0.5f,0.5f,0.f),    // 0.5+0.5=1.0 (not vacuous: both push, then add)
+    };
+    for (const glm::vec3& p : pts)
+        EXPECT_NEAR(evalRecipe(prog, 3, p), p.x + p.y, 1e-5f)
+            << "MathAdd at (" << p.x << "," << p.y << ")";
+}
+
+// MathSub (non-commutative: a pushed first, b on top → a-b = X-Y)
+TEST(RecipeEvalParity, M4c_MathSub_NonCommutativeAsymmetric) {
+    SdfInstruction fwd[] = { posChannelOp(0), posChannelOp(1), mathSubOp() }; // x - y
+    SdfInstruction bwd[] = { posChannelOp(1), posChannelOp(0), mathSubOp() }; // y - x
+    const glm::vec3 pts[] = {
+        glm::vec3(5.f, 2.f, 0.f),    // fwd:3, bwd:-3
+        glm::vec3(1.f, 4.f, 0.f),    // fwd:-3, bwd:3
+    };
+    for (const glm::vec3& p : pts) {
+        EXPECT_NEAR(evalRecipe(fwd, 3, p), p.x - p.y, 1e-5f)
+            << "MathSub(x,y) at (" << p.x << "," << p.y << ")";
+        EXPECT_NEAR(evalRecipe(bwd, 3, p), p.y - p.x, 1e-5f)
+            << "MathSub(y,x) at (" << p.x << "," << p.y << ")";
+    }
+    EXPECT_TRUE(std::abs(evalRecipe(fwd,3,pts[0]) - evalRecipe(bwd,3,pts[0])) > 1e-4f)
+        << "MathSub must be non-commutative";
+}
+
+// MathMul
+TEST(RecipeEvalParity, M4c_MathMul_MatchesOracle) {
+    SdfInstruction prog[] = { posChannelOp(0), posChannelOp(1), mathMulOp() };
+    const glm::vec3 pts[] = {
+        glm::vec3(3.f, 4.f, 0.f),    // 12
+        glm::vec3(2.f,-1.5f,0.f),    // -3
+    };
+    for (const glm::vec3& p : pts)
+        EXPECT_NEAR(evalRecipe(prog, 3, p), p.x * p.y, 1e-5f)
+            << "MathMul at (" << p.x << "," << p.y << ")";
+}
+
+// MathDiv — non-commutative + safe-div-by-zero test.
+TEST(RecipeEvalParity, M4c_MathDiv_NonCommutativeAndSafe) {
+    SdfInstruction fwd[] = { posChannelOp(0), posChannelOp(1), mathDivOp() }; // x/y
+    const glm::vec3 pts[] = {
+        glm::vec3(6.f, 3.f, 0.f),    // 6/3=2
+        glm::vec3(1.f, 4.f, 0.f),    // 1/4=0.25
+    };
+    for (const glm::vec3& p : pts)
+        EXPECT_NEAR(evalRecipe(fwd, 3, p), p.x / p.y, 1e-5f)
+            << "MathDiv at (" << p.x << "," << p.y << ")";
+    // Safe: div-by-zero → 0
+    SdfInstruction zero[] = { posChannelOp(0), posChannelOp(2), mathDivOp() }; // x/z=x/0
+    EXPECT_NEAR(evalRecipe(zero, 3, glm::vec3(5.f, 0.f, 0.f)), 0.f, 1e-5f)
+        << "MathDiv safe zero";
+}
+
+// MathMin
+TEST(RecipeEvalParity, M4c_MathMin_MatchesOracle) {
+    SdfInstruction prog[] = { posChannelOp(0), posChannelOp(1), mathMinOp() };
+    const glm::vec3 pts[] = {
+        glm::vec3(3.f, 7.f, 0.f),    // min=3
+        glm::vec3(-1.f,2.f, 0.f),    // min=-1
+    };
+    for (const glm::vec3& p : pts)
+        EXPECT_NEAR(evalRecipe(prog, 3, p), std::min(p.x, p.y), 1e-5f)
+            << "MathMin at (" << p.x << "," << p.y << ")";
+}
+
+// MathMax
+TEST(RecipeEvalParity, M4c_MathMax_MatchesOracle) {
+    SdfInstruction prog[] = { posChannelOp(0), posChannelOp(1), mathMaxOp() };
+    const glm::vec3 pts[] = {
+        glm::vec3(3.f, 7.f, 0.f),    // max=7
+        glm::vec3(-1.f,2.f, 0.f),    // max=2
+    };
+    for (const glm::vec3& p : pts)
+        EXPECT_NEAR(evalRecipe(prog, 3, p), std::max(p.x, p.y), 1e-5f)
+            << "MathMax at (" << p.x << "," << p.y << ")";
+}
+
+// ── MathLerp ─────────────────────────────────────────────────────────────────
+// Stack order: a pushed first (X), b next (Y), t on top (Z).
+// Oracle: a + t*(b-a) = X + Z*(Y-X)   (independent mix formula)
+TEST(RecipeEvalParity, M4c_MathLerp_Asymmetric) {
+    SdfInstruction prog[] = { posChannelOp(0), posChannelOp(1), posChannelOp(2), mathLerpOp() };
+    const glm::vec3 pts[] = {
+        glm::vec3(0.f, 1.f, 0.5f),   // lerp(0,1,0.5)=0.5
+        glm::vec3(2.f, 8.f, 0.25f),  // lerp(2,8,0.25)=3.5
+        glm::vec3(1.f,-1.f, 0.0f),   // t=0 → a=1
+        glm::vec3(1.f,-1.f, 1.0f),   // t=1 → b=-1
+    };
+    for (const glm::vec3& p : pts) {
+        float expected = p.x + p.z * (p.y - p.x);  // independent oracle
+        EXPECT_NEAR(evalRecipe(prog, 4, p), expected, 1e-5f)
+            << "MathLerp at (" << p.x << "," << p.y << "," << p.z << ")";
+    }
+}
+
+// ── Select ───────────────────────────────────────────────────────────────────
+// Stack: cond=X pushed first (bottom), a=Y next, b=Z on top.
+// Oracle: cond > threshold ? a : b
+TEST(RecipeEvalParity, M4c_Select_Asymmetric) {
+    const float thresh = 0.0f;
+    // prog: push cond(X), a(Y), b(Z), select
+    SdfInstruction prog[] = { posChannelOp(0), posChannelOp(1), posChannelOp(2), selectOp(thresh) };
+    const glm::vec3 pts[] = {
+        glm::vec3( 1.f, 3.f, 7.f),   // cond=1>0 → a=3
+        glm::vec3(-1.f, 3.f, 7.f),   // cond=-1>0? no → b=7
+        glm::vec3( 0.5f,2.f,-5.f),   // cond=0.5>0 → a=2
+    };
+    for (const glm::vec3& p : pts) {
+        float expected = (p.x > thresh) ? p.y : p.z;
+        EXPECT_NEAR(evalRecipe(prog, 4, p), expected, 1e-5f)
+            << "Select at cond=" << p.x << " a=" << p.y << " b=" << p.z;
+    }
+}
+
+// ── Displacement ─────────────────────────────────────────────────────────────
+// Recipe: [Sphere, PositionChannel(Y), MathSin(freq,phase,amp), Displacement(scale)]
+// Oracle: sphereDist + sin(y*freq+phase)*amp * scale
+TEST(RecipeEvalParity, M4c_Displacement_SphereWithSin) {
+    const glm::vec3 ctr(0.f,0.f,0.f); const float rad=0.8f;
+    const float freq=3.f, phase=0.f, amp=1.f, scale=0.05f;
+    SdfInstruction prog[] = {
+        sphere(ctr, rad),
+        posChannelOp(1),
+        mathSinOp(freq, phase, amp),
+        displacementOp(scale),
+    };
+    const glm::vec3 pts[] = {
+        glm::vec3(1.f, 0.f, 0.f),
+        glm::vec3(0.f, 1.f, 0.f),
+        glm::vec3(0.5f,0.5f,0.f),
+    };
+    for (const glm::vec3& p : pts) {
+        float sdf = glm::length(p - ctr) - rad;
+        float disp = amp * std::sin(p.y * freq + phase);
+        float expected = sdf + disp * scale;
+        EXPECT_NEAR(evalRecipe(prog, 4, p), expected, 1e-5f)
+            << "Displacement(Sphere,MathSin) at (" << p.x << "," << p.y << "," << p.z << ")";
+    }
+}
+
+// ── DistanceTo ───────────────────────────────────────────────────────────────
+// Oracle: length(pos - center)  (no subtraction of radius — pure distance)
+TEST(RecipeEvalParity, M4c_DistanceTo_MatchesOracle) {
+    const glm::vec3 center(1.f, 2.f, 3.f);
+    SdfInstruction prog[] = { distanceToOp(center) };
+    const glm::vec3 pts[] = {
+        glm::vec3(1.f, 2.f, 3.f),    // at center → 0
+        glm::vec3(4.f, 2.f, 3.f),    // dx=3 → 3
+        glm::vec3(1.f, 2.f, 7.f),    // dz=4 → 4
+        glm::vec3(0.f, 0.f, 0.f),    // sqrt(1+4+9)=sqrt(14)
+    };
+    for (const glm::vec3& p : pts)
+        EXPECT_NEAR(evalRecipe(prog, 1, p), glm::length(p - center), 1e-5f)
+            << "DistanceTo at (" << p.x << "," << p.y << "," << p.z << ")";
+}

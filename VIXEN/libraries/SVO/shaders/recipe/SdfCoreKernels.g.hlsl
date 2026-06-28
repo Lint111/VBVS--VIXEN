@@ -254,5 +254,97 @@ float SdfCore_RoundCone(float3 p, float r1, float r2, float height) {
     return d;
 }
 
+float SdfCore_MathSin(float x, float frequency, float phase, float amplitude) {
+    return sin(x * frequency + phase) * amplitude;
+}
+
+float SdfCore_MathCos(float x, float frequency, float phase, float amplitude) {
+    return cos(x * frequency + phase) * amplitude;
+}
+
+float SdfCore_MathSmoothstep(float x, float edge0, float edge1) {
+    return smoothstep(edge0, edge1, x);
+}
+
+float SdfCore_MathRemap(float x, float inMin, float inMax, float outMin, float outMax) {
+    return outMin + (x - inMin) / max(inMax - inMin, 1e-8) * (outMax - outMin);
+}
+
+float SdfCore_MathClamp(float x, float lo, float hi) {
+    return clamp(x, lo, hi);
+}
+
+float SdfCore_MathAbs(float x) {
+    return abs(x);
+}
+
+float SdfCore_MathFrac(float x) {
+    return frac(x);
+}
+
+float SdfCore_MathPow(float x, float power) {
+    return pow(abs(x), power) * sign(x);
+}
+
+float SdfCore_MathSqrt(float x) {
+    return sqrt(abs(x));
+}
+
+float SdfCore_MathNegate(float x) {
+    return -x;
+}
+
+float SdfCore_MathStep(float x, float edge) {
+    return step(edge, x);
+}
+
+float SdfCore_MathSign(float x) {
+    return sign(x);
+}
+
+float SdfCore_MathSaturate(float x) {
+    return saturate(x);
+}
+
+float SdfCore_MathExp(float x) {
+    return exp(x);
+}
+
+float SdfCore_MathLog(float x) {
+    return log(max(x, 1e-30));
+}
+
+float SdfCore_MathLog2(float x) {
+    return log2(max(x, 1e-30));
+}
+
+float SdfCore_MathAdd(float a, float b) {
+    return a + b;
+}
+
+float SdfCore_MathSub(float a, float b) {
+    return a - b;
+}
+
+float SdfCore_MathMul(float a, float b) {
+    return a * b;
+}
+
+float SdfCore_MathDiv(float a, float b) {
+    return (b != 0.0 ? a / b : 0.0);
+}
+
+float SdfCore_MathMin(float a, float b) {
+    return min(a, b);
+}
+
+float SdfCore_MathMax(float a, float b) {
+    return max(a, b);
+}
+
+float SdfCore_MathLerp(float a, float b, float t) {
+    return lerp(a, b, t);
+}
+
 
 #endif // SDF_CORE_KERNELS_G_HLSL

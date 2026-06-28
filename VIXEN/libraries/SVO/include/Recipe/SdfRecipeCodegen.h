@@ -511,6 +511,251 @@ inline std::string EmitProceduralComputeShader(
                 curPos = posSaveStk.back(); posSaveStk.pop_back();
                 break;
             }
+            // ── M4c: value-math lane (emit mirrors eval) ─────────────────────────
+            // Unary (pop-and-replace TOS)
+            case SdfOpCode::MathSin: {
+                assert(!stk.empty() && "MathSin: emit-time value stack underflow");
+                std::string a = stk.back(); stk.pop_back();
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = SdfCore_MathSin(" + a + ", "
+                    + f(in.data[0]) + ", " + f(in.data[1]) + ", " + f(in.data[2]) + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::MathCos: {
+                assert(!stk.empty() && "MathCos: emit-time value stack underflow");
+                std::string a = stk.back(); stk.pop_back();
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = SdfCore_MathCos(" + a + ", "
+                    + f(in.data[0]) + ", " + f(in.data[1]) + ", " + f(in.data[2]) + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::MathSmoothstep: {
+                assert(!stk.empty() && "MathSmoothstep: emit-time value stack underflow");
+                std::string a = stk.back(); stk.pop_back();
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = SdfCore_MathSmoothstep(" + a + ", "
+                    + f(in.data[0]) + ", " + f(in.data[1]) + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::MathRemap: {
+                assert(!stk.empty() && "MathRemap: emit-time value stack underflow");
+                std::string a = stk.back(); stk.pop_back();
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = SdfCore_MathRemap(" + a + ", "
+                    + f(in.data[0]) + ", " + f(in.data[1]) + ", " + f(in.data[2]) + ", " + f(in.data[3]) + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::MathClamp: {
+                assert(!stk.empty() && "MathClamp: emit-time value stack underflow");
+                std::string a = stk.back(); stk.pop_back();
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = SdfCore_MathClamp(" + a + ", "
+                    + f(in.data[0]) + ", " + f(in.data[1]) + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::MathAbs: {
+                assert(!stk.empty() && "MathAbs: emit-time value stack underflow");
+                std::string a = stk.back(); stk.pop_back();
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = SdfCore_MathAbs(" + a + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::MathFrac: {
+                assert(!stk.empty() && "MathFrac: emit-time value stack underflow");
+                std::string a = stk.back(); stk.pop_back();
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = SdfCore_MathFrac(" + a + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::MathPow: {
+                assert(!stk.empty() && "MathPow: emit-time value stack underflow");
+                std::string a = stk.back(); stk.pop_back();
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = SdfCore_MathPow(" + a + ", " + f(in.data[0]) + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::MathSqrt: {
+                assert(!stk.empty() && "MathSqrt: emit-time value stack underflow");
+                std::string a = stk.back(); stk.pop_back();
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = SdfCore_MathSqrt(" + a + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::MathNegate: {
+                assert(!stk.empty() && "MathNegate: emit-time value stack underflow");
+                std::string a = stk.back(); stk.pop_back();
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = SdfCore_MathNegate(" + a + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::MathStep: {
+                assert(!stk.empty() && "MathStep: emit-time value stack underflow");
+                std::string a = stk.back(); stk.pop_back();
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = SdfCore_MathStep(" + a + ", " + f(in.data[0]) + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::MathSign: {
+                assert(!stk.empty() && "MathSign: emit-time value stack underflow");
+                std::string a = stk.back(); stk.pop_back();
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = SdfCore_MathSign(" + a + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::MathSaturate: {
+                assert(!stk.empty() && "MathSaturate: emit-time value stack underflow");
+                std::string a = stk.back(); stk.pop_back();
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = SdfCore_MathSaturate(" + a + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::MathExp: {
+                assert(!stk.empty() && "MathExp: emit-time value stack underflow");
+                std::string a = stk.back(); stk.pop_back();
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = SdfCore_MathExp(" + a + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::MathLog: {
+                assert(!stk.empty() && "MathLog: emit-time value stack underflow");
+                std::string a = stk.back(); stk.pop_back();
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = SdfCore_MathLog(" + a + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::MathLog2: {
+                assert(!stk.empty() && "MathLog2: emit-time value stack underflow");
+                std::string a = stk.back(); stk.pop_back();
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = SdfCore_MathLog2(" + a + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            // Binary (pop b=top, a=new-top, replace with result)
+            case SdfOpCode::MathAdd: {
+                assert(stk.size() >= 2 && "MathAdd: emit-time value stack underflow");
+                std::string b = stk.back(); stk.pop_back();
+                std::string a = stk.back(); stk.pop_back();
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = SdfCore_MathAdd(" + a + ", " + b + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::MathSub: {            // non-commutative: a - b
+                assert(stk.size() >= 2 && "MathSub: emit-time value stack underflow");
+                std::string b = stk.back(); stk.pop_back();
+                std::string a = stk.back(); stk.pop_back();
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = SdfCore_MathSub(" + a + ", " + b + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::MathMul: {
+                assert(stk.size() >= 2 && "MathMul: emit-time value stack underflow");
+                std::string b = stk.back(); stk.pop_back();
+                std::string a = stk.back(); stk.pop_back();
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = SdfCore_MathMul(" + a + ", " + b + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::MathDiv: {
+                assert(stk.size() >= 2 && "MathDiv: emit-time value stack underflow");
+                std::string b = stk.back(); stk.pop_back();
+                std::string a = stk.back(); stk.pop_back();
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = SdfCore_MathDiv(" + a + ", " + b + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::MathMin: {
+                assert(stk.size() >= 2 && "MathMin: emit-time value stack underflow");
+                std::string b = stk.back(); stk.pop_back();
+                std::string a = stk.back(); stk.pop_back();
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = SdfCore_MathMin(" + a + ", " + b + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::MathMax: {
+                assert(stk.size() >= 2 && "MathMax: emit-time value stack underflow");
+                std::string b = stk.back(); stk.pop_back();
+                std::string a = stk.back(); stk.pop_back();
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = SdfCore_MathMax(" + a + ", " + b + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            // Ternary MathLerp: t_val=top, b=middle, a=bottom → lerp(a,b,t_val)
+            case SdfOpCode::MathLerp: {
+                assert(stk.size() >= 3 && "MathLerp: emit-time value stack underflow");
+                std::string t_val = stk.back(); stk.pop_back();
+                std::string b = stk.back(); stk.pop_back();
+                std::string a = stk.back(); stk.pop_back();
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = SdfCore_MathLerp(" + a + ", " + b + ", " + t_val + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            // Ternary Select: b=top, a=middle, cond=bottom → cond>threshold?a:b
+            case SdfOpCode::Select: {
+                assert(stk.size() >= 3 && "Select: emit-time value stack underflow");
+                std::string b = stk.back(); stk.pop_back();
+                std::string a = stk.back(); stk.pop_back();
+                std::string cond = stk.back(); stk.pop_back();
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = (" + cond + " > " + f(in.data[0]) + ") ? " + a + " : " + b + ";\n";
+                stk.push_back(t);
+                break;
+            }
+            // Leaf: push position-derived value
+            case SdfOpCode::PositionChannel: {
+                // channel baked in data[0]: 0=x,1=y,2=z,3=length(xz)
+                std::string t = "t" + std::to_string(n++);
+                int ch = (int)in.data[0];
+                std::string expr;
+                switch (ch) {
+                    case 0: expr = curPos + ".x"; break;
+                    case 1: expr = curPos + ".y"; break;
+                    case 2: expr = curPos + ".z"; break;
+                    case 3: expr = "length(float2(" + curPos + ".x, " + curPos + ".z))"; break;
+                    default: expr = curPos + ".y"; break;
+                }
+                body += "  float " + t + " = " + expr + ";\n";
+                stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::Displacement: {       // pop disp; TOS += disp * scale
+                assert(stk.size() >= 2 && "Displacement: emit-time value stack underflow");
+                std::string disp = stk.back(); stk.pop_back();
+                std::string sdf = stk.back(); stk.pop_back();
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = " + sdf + " + " + disp + " * " + f(in.data[0]) + ";\n";
+                stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::DistanceTo: {          // push length(curPos - center)
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = length(" + curPos + " - float3("
+                    + f(in.data[0]) + ", " + f(in.data[1]) + ", " + f(in.data[2]) + "));\n";
+                stk.push_back(t);
+                break;
+            }
             default:
                 break;
         }

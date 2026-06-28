@@ -1309,3 +1309,124 @@ TEST_F(ProceduralRecipeRenderTest, RenderTwist) {
            << "\nEmitted shader (first 2000 chars):\n"
         << shaderSrc.substr(0, 2000);
 }
+
+// ---------------------------------------------------------------------------
+// P2.4 M4c — Live lavapipe render gate for value-math Displacement.
+//
+// Recipe: Displacement(Sphere(r=0.8), MathSin(PositionChannel.y * freq) * amp)
+// Equivalently as a flat instruction stream:
+//   [Sphere(0,0,0,0.8),          ← base SDF
+//    PositionChannel(Y=1),        ← push y coordinate
+//    MathSin(freq=6, phase=0, amp=1), ← sin(y*6)
+//    Displacement(scale=0.05)]    ← sdf + sin(...)*0.05
+//
+// Result: a bumpy/wavy sphere — the sin modulates the SDF surface by 0.05*sin(6*y).
+// This is visually distinct from a smooth sphere: the silhouette shows small ripples/waves.
+//
+// Pixel count assertion: a sphere of r=0.8 at origin filling a 512x512 frame from z=3
+// occupies roughly 18,000–25,000 body pixels (sinusoidal displacement doesn't change area
+// significantly, just surface waviness). Threshold: >10,000.
+//
+// Writes /tmp/glsl_sdf_m4_displace.png (512×512 RGBA8).
+// ---------------------------------------------------------------------------
+TEST_F(ProceduralRecipeRenderTest, RenderDisplacement) {
+    // Step 1: read vendored HLSL.
+    std::ifstream kernelFile(SDF_CORE_KERNELS_HLSL_PATH);
+    ASSERT_TRUE(kernelFile.good())
+        << "Cannot open vendored HLSL: " << SDF_CORE_KERNELS_HLSL_PATH;
+    std::ostringstream ss; ss << kernelFile.rdbuf();
+    const std::string sdfCoreHlsl = ss.str();
+
+    // Step 2: build displacement recipe.
+    // [Sphere(0,0,0,0.8), PositionChannel(Y), MathSin(6,0,1), Displacement(0.05)]
+    using Inst = Vixen::SVO::Recipe::SdfInstruction;
+    using Op   = Vixen::SVO::Recipe::SdfOpCode;
+
+    Inst posCh{};
+    posCh.opCode=(uint8_t)Op::PositionChannel; posCh.data[0]=1.f; // Y channel
+
+    Inst mathSin{};
+    mathSin.opCode=(uint8_t)Op::MathSin;
+    mathSin.data[0]=6.f; mathSin.data[1]=0.f; mathSin.data[2]=1.f; // freq=6,phase=0,amp=1
+
+    Inst displ{};
+    displ.opCode=(uint8_t)Op::Displacement; displ.data[0]=0.05f;   // scale=0.05
+
+    Inst prog[] = {
+        makeSphere(0.f, 0.f, 0.f, 0.8f),  // base sphere r=0.8 at origin
+        posCh,                              // push pos.y
+        mathSin,                            // sin(y*6+0)*1
+        displ,                              // sdf + sin(...)*0.05
+    };
+
+    const std::string shaderSrc =
+        Vixen::SVO::Recipe::EmitProceduralComputeShader(prog, 4, sdfCoreHlsl);
+
+    // Verify the displacement math is in the emitted HLSL.
+    EXPECT_NE(shaderSrc.find("SdfCore_MathSin("), std::string::npos)
+        << "Expected SdfCore_MathSin in emitted HLSL; src:\n" << shaderSrc;
+    EXPECT_NE(shaderSrc.find(".y"), std::string::npos)
+        << "Expected .y (PositionChannel Y) in emitted HLSL; src:\n" << shaderSrc;
+    EXPECT_NE(shaderSrc.find("0.05"), std::string::npos)
+        << "Expected displacement scale 0.05 in emitted HLSL; src:\n" << shaderSrc;
+
+    // Step 3: compile HLSL → SPIR-V.
+    ShaderManagement::ShaderCompiler compiler;
+    ShaderManagement::CompilationOptions opts;
+    opts.sourceLanguage = ShaderManagement::CompilationOptions::SourceLanguage::HLSL;
+    opts.validateSpirv  = false;
+    auto compOut = compiler.Compile(ShaderManagement::ShaderStage::Compute, shaderSrc, "main", opts);
+    ASSERT_TRUE(compOut.success)
+        << "HLSL compile failed:\n" << compOut.GetFullLog()
+        << "\n--- emitted source ---\n" << shaderSrc;
+    ASSERT_FALSE(compOut.spirv.empty());
+
+    // Step 4: camera from z+ looking at the bumpy sphere straight-on.
+    // Sphere r=0.8 at origin; camera at (0,0,3) — sphere fills ~26% of height.
+    constexpr uint32_t W = 512, H = 512;
+    const RecipePushConstants pc = MakeCamera(
+        glm::vec3(0.0f, 0.0f, 3.0f),
+        glm::vec3(0.0f, 0.0f, 0.0f),
+        W, H
+    );
+
+    // Step 5: dispatch on lavapipe.
+    std::vector<float> rgba32f;
+    ASSERT_NO_FATAL_FAILURE(RenderProcedural(compOut.spirv, pc, W, H, rgba32f));
+    ASSERT_EQ(rgba32f.size(), static_cast<size_t>(W) * H * 4);
+
+    // Step 6: count body pixels + write PNG.
+    int bodyPixels = 0;
+    std::vector<uint8_t> rgba8(W * H * 4);
+    for (uint32_t i = 0; i < W * H; ++i) {
+        const float fr = rgba32f[i * 4 + 0];
+        const float fg = rgba32f[i * 4 + 1];
+        const float fb = rgba32f[i * 4 + 2];
+        const float fa = rgba32f[i * 4 + 3];
+        rgba8[i * 4 + 0] = static_cast<uint8_t>(std::min(fr * 255.0f + 0.5f, 255.0f));
+        rgba8[i * 4 + 1] = static_cast<uint8_t>(std::min(fg * 255.0f + 0.5f, 255.0f));
+        rgba8[i * 4 + 2] = static_cast<uint8_t>(std::min(fb * 255.0f + 0.5f, 255.0f));
+        rgba8[i * 4 + 3] = static_cast<uint8_t>(std::min(fa * 255.0f + 0.5f, 255.0f));
+        if (fr > 0.08f || fg > 0.08f) ++bodyPixels;
+    }
+
+    const char* pngPath = "/tmp/glsl_sdf_m4_displace.png";
+    const int pngOk = stbi_write_png(pngPath,
+        static_cast<int>(W), static_cast<int>(H), 4,
+        rgba8.data(), static_cast<int>(W) * 4);
+
+    printf("[RenderDisplacement] bodyPixels=%d  PNG written=%s  path=%s\n",
+           bodyPixels, pngOk ? "YES" : "NO", pngPath);
+    fflush(stdout);
+
+    EXPECT_TRUE(pngOk) << "stbi_write_png failed for " << pngPath;
+    // Sphere r=0.8 at z=3 camera: body occupies ~10,000–25,000 px.
+    // Displacement (±0.05) adds waviness but doesn't eliminate the body.
+    ASSERT_GT(bodyPixels, 10000)
+        << "bodyPixels=" << bodyPixels << " <= 10000 — bumpy sphere appears degenerate. "
+           "Check: PositionChannel(Y), MathSin, Displacement dispatch in eval+emit. "
+           "Sample floats [pixel 0]: R=" << rgba32f[0] << " G=" << rgba32f[1]
+           << " B=" << rgba32f[2] << " A=" << rgba32f[3]
+           << "\nEmitted shader (first 2000 chars):\n"
+        << shaderSrc.substr(0, 2000);
+}

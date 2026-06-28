@@ -302,6 +302,149 @@ inline float evalRecipe(const SdfInstruction* prog, uint32_t count, glm::vec3 p)
                 pos = posStack[psp];
                 stack[sp-1] *= distScaleStack[psp];  // apply distScale (1.0f for M4a; M4b Transform uses actual scale)
             } break;
+
+            // ── M4c: value-math lane ───────────────────────────────────────────────
+            // Unary: stack[sp-1] = SdfCore_MathX(stack[sp-1], data…)
+            case SdfOpCode::MathSin: {
+                assert(sp >= 1 && "MathSin: value stack underflow");
+                // data[0]=frequency, data[1]=phase, data[2]=amplitude (ParamMask=0, baked)
+                stack[sp-1] = SdfCore_MathSin(stack[sp-1], in.data[0], in.data[1], in.data[2]);
+            } break;
+            case SdfOpCode::MathCos: {
+                assert(sp >= 1 && "MathCos: value stack underflow");
+                stack[sp-1] = SdfCore_MathCos(stack[sp-1], in.data[0], in.data[1], in.data[2]);
+            } break;
+            case SdfOpCode::MathSmoothstep: {
+                assert(sp >= 1 && "MathSmoothstep: value stack underflow");
+                // data[0]=edge0, data[1]=edge1
+                stack[sp-1] = SdfCore_MathSmoothstep(stack[sp-1], in.data[0], in.data[1]);
+            } break;
+            case SdfOpCode::MathRemap: {
+                assert(sp >= 1 && "MathRemap: value stack underflow");
+                // data[0]=inMin, data[1]=inMax, data[2]=outMin, data[3]=outMax
+                stack[sp-1] = SdfCore_MathRemap(stack[sp-1], in.data[0], in.data[1], in.data[2], in.data[3]);
+            } break;
+            case SdfOpCode::MathClamp: {
+                assert(sp >= 1 && "MathClamp: value stack underflow");
+                // data[0]=lo, data[1]=hi
+                stack[sp-1] = SdfCore_MathClamp(stack[sp-1], in.data[0], in.data[1]);
+            } break;
+            case SdfOpCode::MathAbs: {
+                assert(sp >= 1 && "MathAbs: value stack underflow");
+                stack[sp-1] = SdfCore_MathAbs(stack[sp-1]);
+            } break;
+            case SdfOpCode::MathFrac: {
+                assert(sp >= 1 && "MathFrac: value stack underflow");
+                stack[sp-1] = SdfCore_MathFrac(stack[sp-1]);
+            } break;
+            case SdfOpCode::MathPow: {
+                assert(sp >= 1 && "MathPow: value stack underflow");
+                // data[0]=power
+                stack[sp-1] = SdfCore_MathPow(stack[sp-1], in.data[0]);
+            } break;
+            case SdfOpCode::MathSqrt: {
+                assert(sp >= 1 && "MathSqrt: value stack underflow");
+                stack[sp-1] = SdfCore_MathSqrt(stack[sp-1]);
+            } break;
+            case SdfOpCode::MathNegate: {
+                assert(sp >= 1 && "MathNegate: value stack underflow");
+                stack[sp-1] = SdfCore_MathNegate(stack[sp-1]);
+            } break;
+            case SdfOpCode::MathStep: {
+                assert(sp >= 1 && "MathStep: value stack underflow");
+                // data[0]=edge
+                stack[sp-1] = SdfCore_MathStep(stack[sp-1], in.data[0]);
+            } break;
+            case SdfOpCode::MathSign: {
+                assert(sp >= 1 && "MathSign: value stack underflow");
+                stack[sp-1] = SdfCore_MathSign(stack[sp-1]);
+            } break;
+            case SdfOpCode::MathSaturate: {
+                assert(sp >= 1 && "MathSaturate: value stack underflow");
+                stack[sp-1] = SdfCore_MathSaturate(stack[sp-1]);
+            } break;
+            case SdfOpCode::MathExp: {
+                assert(sp >= 1 && "MathExp: value stack underflow");
+                stack[sp-1] = SdfCore_MathExp(stack[sp-1]);
+            } break;
+            case SdfOpCode::MathLog: {
+                assert(sp >= 1 && "MathLog: value stack underflow");
+                stack[sp-1] = SdfCore_MathLog(stack[sp-1]);
+            } break;
+            case SdfOpCode::MathLog2: {
+                assert(sp >= 1 && "MathLog2: value stack underflow");
+                stack[sp-1] = SdfCore_MathLog2(stack[sp-1]);
+            } break;
+            // Binary: float b=stack[--sp]; stack[sp-1]=SdfCore_MathX(stack[sp-1]/*a*/, b)
+            case SdfOpCode::MathAdd: {
+                assert(sp >= 2 && "MathAdd: value stack underflow");
+                float b = stack[--sp];
+                stack[sp-1] = SdfCore_MathAdd(stack[sp-1], b);
+            } break;
+            case SdfOpCode::MathSub: {            // non-commutative: a - b
+                assert(sp >= 2 && "MathSub: value stack underflow");
+                float b = stack[--sp];
+                stack[sp-1] = SdfCore_MathSub(stack[sp-1], b);
+            } break;
+            case SdfOpCode::MathMul: {
+                assert(sp >= 2 && "MathMul: value stack underflow");
+                float b = stack[--sp];
+                stack[sp-1] = SdfCore_MathMul(stack[sp-1], b);
+            } break;
+            case SdfOpCode::MathDiv: {            // safe: 0 when b==0
+                assert(sp >= 2 && "MathDiv: value stack underflow");
+                float b = stack[--sp];
+                stack[sp-1] = SdfCore_MathDiv(stack[sp-1], b);
+            } break;
+            case SdfOpCode::MathMin: {
+                assert(sp >= 2 && "MathMin: value stack underflow");
+                float b = stack[--sp];
+                stack[sp-1] = SdfCore_MathMin(stack[sp-1], b);
+            } break;
+            case SdfOpCode::MathMax: {
+                assert(sp >= 2 && "MathMax: value stack underflow");
+                float b = stack[--sp];
+                stack[sp-1] = SdfCore_MathMax(stack[sp-1], b);
+            } break;
+            // Ternary MathLerp: t=top, b=middle, a=stack[sp-1] → lerp(a,b,t)
+            case SdfOpCode::MathLerp: {
+                assert(sp >= 3 && "MathLerp: value stack underflow");
+                float t_val = stack[--sp];
+                float b = stack[--sp];
+                stack[sp-1] = SdfCore_MathLerp(stack[sp-1], b, t_val);
+            } break;
+            // Ternary Select: b=top, a=middle, cond=stack[sp-1] → cond>data[0]?a:b
+            case SdfOpCode::Select: {
+                assert(sp >= 3 && "Select: value stack underflow");
+                float b = stack[--sp];
+                float a = stack[--sp];
+                float cond = stack[sp-1];
+                stack[sp-1] = cond > in.data[0] ? a : b;
+            } break;
+            // Leaf/peek: push a value derived from pos
+            case SdfOpCode::PositionChannel: {
+                assert(sp < 64 && "PositionChannel: value stack overflow");
+                int ch = (int)in.data[0];  // 0=x, 1=y, 2=z, 3=length(xz)
+                float val;
+                switch (ch) {
+                    case 0: val = pos.x; break;
+                    case 1: val = pos.y; break;
+                    case 2: val = pos.z; break;
+                    case 3: val = glm::length(glm::vec2(pos.x, pos.z)); break;
+                    default: val = pos.y; break;
+                }
+                stack[sp++] = val;
+            } break;
+            case SdfOpCode::Displacement: {       // pop disp; stack[sp-1] += disp * scale
+                assert(sp >= 2 && "Displacement: value stack underflow");
+                float disp = stack[--sp];
+                stack[sp-1] += disp * in.data[0]; // data[0]=scale
+            } break;
+            case SdfOpCode::DistanceTo: {          // push length(pos - center)
+                assert(sp < 64 && "DistanceTo: value stack overflow");
+                glm::vec3 center(in.data[0], in.data[1], in.data[2]);
+                stack[sp++] = glm::length(pos - center);
+            } break;
         }
     }
     assert(sp == 1 && "evalRecipe: expected exactly one value on stack at return");

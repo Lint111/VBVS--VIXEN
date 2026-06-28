@@ -257,4 +257,96 @@ inline float SdfCore_RoundCone(glm::vec3 p, float r1, float r2, float height) {
     return d;
 }
 
+inline float SdfCore_MathSin(float x, float frequency, float phase, float amplitude) {
+    return glm::sin(x * frequency + phase) * amplitude;
+}
+
+inline float SdfCore_MathCos(float x, float frequency, float phase, float amplitude) {
+    return glm::cos(x * frequency + phase) * amplitude;
+}
+
+inline float SdfCore_MathSmoothstep(float x, float edge0, float edge1) {
+    return glm::smoothstep(edge0, edge1, x);
+}
+
+inline float SdfCore_MathRemap(float x, float inMin, float inMax, float outMin, float outMax) {
+    return outMin + (x - inMin) / glm::max(inMax - inMin, 1e-8f) * (outMax - outMin);
+}
+
+inline float SdfCore_MathClamp(float x, float lo, float hi) {
+    return glm::clamp(x, lo, hi);
+}
+
+inline float SdfCore_MathAbs(float x) {
+    return glm::abs(x);
+}
+
+inline float SdfCore_MathFrac(float x) {
+    return glm::fract(x);
+}
+
+inline float SdfCore_MathPow(float x, float power) {
+    return glm::pow(glm::abs(x), power) * glm::sign(x);
+}
+
+inline float SdfCore_MathSqrt(float x) {
+    return glm::sqrt(glm::abs(x));
+}
+
+inline float SdfCore_MathNegate(float x) {
+    return -x;
+}
+
+inline float SdfCore_MathStep(float x, float edge) {
+    return glm::step(edge, x);
+}
+
+inline float SdfCore_MathSign(float x) {
+    return glm::sign(x);
+}
+
+inline float SdfCore_MathSaturate(float x) {
+    return glm::clamp(x, 0.0f, 1.0f);
+}
+
+inline float SdfCore_MathExp(float x) {
+    return glm::exp(x);
+}
+
+inline float SdfCore_MathLog(float x) {
+    return glm::log(glm::max(x, 1e-30f));
+}
+
+inline float SdfCore_MathLog2(float x) {
+    return glm::log2(glm::max(x, 1e-30f));
+}
+
+inline float SdfCore_MathAdd(float a, float b) {
+    return a + b;
+}
+
+inline float SdfCore_MathSub(float a, float b) {
+    return a - b;
+}
+
+inline float SdfCore_MathMul(float a, float b) {
+    return a * b;
+}
+
+inline float SdfCore_MathDiv(float a, float b) {
+    return (b != 0.0f ? a / b : 0.0f);
+}
+
+inline float SdfCore_MathMin(float a, float b) {
+    return glm::min(a, b);
+}
+
+inline float SdfCore_MathMax(float a, float b) {
+    return glm::max(a, b);
+}
+
+inline float SdfCore_MathLerp(float a, float b, float t) {
+    return glm::mix(a, b, t);
+}
+
 } // namespace Yeroket::Sdf::Generated

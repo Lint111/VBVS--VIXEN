@@ -397,3 +397,113 @@ TEST(SdfRecipeCodegen, M4b_TwistTransformSpirV_Compiles) {
     ASSERT_TRUE(out7.success) << out7.GetFullLog() << "\n--- emitted source ---\n" << src7;
     EXPECT_FALSE(out7.spirv.empty());
 }
+
+// ── M4c: value-math SPIR-V test ──────────────────────────────────────────────
+// Recipe: Sphere, PositionChannel(Y), MathSin(freq,phase,amp), Displacement(scale), Union(sphere2)
+// Exercises PositionChannel, MathSin, Displacement + binary Union in one shader.
+// Separately also tests MathAdd, MathMul, MathClamp, MathLog2 chains → SPIR-V.
+TEST(SdfRecipeCodegen, M4c_ValueMathDisplacementSpirV_Compiles) {
+    std::ifstream kf(SDF_CORE_KERNELS_HLSL_PATH);
+    ASSERT_TRUE(kf.is_open()) << "SDF_CORE_KERNELS_HLSL_PATH not found: " << SDF_CORE_KERNELS_HLSL_PATH;
+    std::stringstream ss; ss << kf.rdbuf();
+    std::string core = ss.str();
+
+    // Instruction helpers (local, mirrors parity-test helpers)
+    auto posChOp = [](int ch) {
+        Recipe::SdfInstruction in{};
+        in.opCode=(uint8_t)Recipe::SdfOpCode::PositionChannel; in.data[0]=(float)ch; return in; };
+    auto sinOp = [](float freq, float phase, float amp) {
+        Recipe::SdfInstruction in{};
+        in.opCode=(uint8_t)Recipe::SdfOpCode::MathSin;
+        in.data[0]=freq; in.data[1]=phase; in.data[2]=amp; return in; };
+    auto displOp = [](float scale) {
+        Recipe::SdfInstruction in{};
+        in.opCode=(uint8_t)Recipe::SdfOpCode::Displacement; in.data[0]=scale; return in; };
+    auto mulOp = []() {
+        Recipe::SdfInstruction in{}; in.opCode=(uint8_t)Recipe::SdfOpCode::MathMul; return in; };
+    auto addOp = []() {
+        Recipe::SdfInstruction in{}; in.opCode=(uint8_t)Recipe::SdfOpCode::MathAdd; return in; };
+    auto clampOp = [](float lo, float hi) {
+        Recipe::SdfInstruction in{};
+        in.opCode=(uint8_t)Recipe::SdfOpCode::MathClamp;
+        in.data[0]=lo; in.data[1]=hi; return in; };
+    auto log2Op = []() {
+        Recipe::SdfInstruction in{}; in.opCode=(uint8_t)Recipe::SdfOpCode::MathLog2; return in; };
+    auto lerpOp = []() {
+        Recipe::SdfInstruction in{}; in.opCode=(uint8_t)Recipe::SdfOpCode::MathLerp; return in; };
+
+    // Recipe 1: bumpy-sphere displacement
+    // [Sphere(origin,0.8), PositionChannel(Y), MathSin(6,0,1), Displacement(0.05)]
+    Recipe::SdfInstruction prog8[] = {
+        sphere(0.f,0.f,0.f, 0.8f),
+        posChOp(1),
+        sinOp(6.f, 0.f, 1.f),
+        displOp(0.05f),
+    };
+    std::string src8 = Recipe::EmitProceduralComputeShader(prog8, 4, core);
+
+    EXPECT_NE(src8.find("SdfCore_MathSin("), std::string::npos)
+        << "Expected SdfCore_MathSin call in emitted HLSL; src:\n" << src8;
+    // Displacement is emitted inline: tN = tSdf + tDisp * scale  (no SdfCore_Displacement function)
+    EXPECT_NE(src8.find("0.05"), std::string::npos)
+        << "Expected displacement scale literal 0.05 in inline expr; src:\n" << src8;
+    // The position channel must appear as curPos.y in emitted source
+    EXPECT_NE(src8.find(".y"), std::string::npos)
+        << "Expected .y (PositionChannel Y) in emitted HLSL; src:\n" << src8;
+
+    // Recipe 2: math chain — pos(Y) * pos(Y) → clamp → log2 → add with sphere
+    // [Sphere(0.5,0,0,0.3), PositionChannel(Y), PositionChannel(Y), MathMul, MathClamp(0,1), MathLog2, MathAdd]
+    Recipe::SdfInstruction prog9[] = {
+        sphere(0.5f,0.f,0.f, 0.3f),
+        posChOp(1), posChOp(1), mulOp(),    // y*y
+        clampOp(0.f, 1.f),                   // clamp to [0,1]
+        log2Op(),                             // log2
+        addOp(),                              // add to sphere SDF
+    };
+    std::string src9 = Recipe::EmitProceduralComputeShader(prog9, 7, core);
+
+    EXPECT_NE(src9.find("SdfCore_MathMul("), std::string::npos)
+        << "Expected SdfCore_MathMul; src:\n" << src9;
+    EXPECT_NE(src9.find("SdfCore_MathClamp("), std::string::npos)
+        << "Expected SdfCore_MathClamp; src:\n" << src9;
+    EXPECT_NE(src9.find("SdfCore_MathLog2("), std::string::npos)
+        << "Expected SdfCore_MathLog2; src:\n" << src9;
+
+    // Recipe 3: Lerp between two spheres using DistanceTo as interpolant
+    // [Sphere(-1,0,0,0.5), Sphere(1,0,0,0.5), DistanceTo(0,0,0), MathClamp(0,1), MathLerp]
+    auto dtoOp = [](float cx, float cy, float cz) {
+        Recipe::SdfInstruction in{};
+        in.opCode=(uint8_t)Recipe::SdfOpCode::DistanceTo;
+        in.data[0]=cx; in.data[1]=cy; in.data[2]=cz; return in; };
+    Recipe::SdfInstruction progA[] = {
+        sphere(-1.f,0.f,0.f, 0.5f),
+        sphere( 1.f,0.f,0.f, 0.5f),
+        dtoOp(0.f,0.f,0.f),
+        clampOp(0.f,1.f),
+        lerpOp(),
+    };
+    std::string srcA = Recipe::EmitProceduralComputeShader(progA, 5, core);
+
+    EXPECT_NE(srcA.find("SdfCore_MathLerp("), std::string::npos)
+        << "Expected SdfCore_MathLerp; srcA:\n" << srcA;
+    EXPECT_NE(srcA.find("length("), std::string::npos)
+        << "Expected length() call from DistanceTo; srcA:\n" << srcA;
+
+    // Compile all three to SPIR-V
+    ShaderCompiler compiler8;
+    CompilationOptions opts8;
+    opts8.sourceLanguage = CompilationOptions::SourceLanguage::HLSL;
+    opts8.validateSpirv  = false;
+
+    auto out8 = compiler8.Compile(ShaderStage::Compute, src8, "main", opts8);
+    ASSERT_TRUE(out8.success) << out8.GetFullLog() << "\n--- emitted source (prog8) ---\n" << src8;
+    EXPECT_FALSE(out8.spirv.empty());
+
+    auto out9 = compiler8.Compile(ShaderStage::Compute, src9, "main", opts8);
+    ASSERT_TRUE(out9.success) << out9.GetFullLog() << "\n--- emitted source (prog9) ---\n" << src9;
+    EXPECT_FALSE(out9.spirv.empty());
+
+    auto outA = compiler8.Compile(ShaderStage::Compute, srcA, "main", opts8);
+    ASSERT_TRUE(outA.success) << outA.GetFullLog() << "\n--- emitted source (progA) ---\n" << srcA;
+    EXPECT_FALSE(outA.spirv.empty());
+}
