@@ -2093,3 +2093,94 @@ TEST(RecipeEvalParity, M4d_Float3Normalize_ZeroVector_Safe) {
     };
     EXPECT_NEAR(evalRecipe(prog, 3, glm::vec3(0,0,0)), 0.0f, 1e-6f);
 }
+
+// ===========================================================================
+// P2.4 M5 — broad CSG-composition parity.
+// Recipe exercises EVERY lane proven in M2-M4:
+//   Twist(k=0.6) [warp]
+//     Transform(identity rot, invScale=(0.5,0.5,1/3), distScale=2.0) [non-uniform scale]
+//       Box(half=0.25)  [leaf 1]
+//     RestorePos        [distScale=2.0 applied to Box SDF]
+//     Sphere(0.55,0,0, r=0.35) [leaf 2, at twisted pos]
+//     SmoothUnion(k=0.15) [CSG]
+//   RestorePos          [Twist distScale=1.0, no-op]
+//   PositionChannel(Y)  [value-math leaf — uses ORIGINAL pos.y]
+//   MathSin(3.5,0,1)    [value-math unary]
+//   Displacement(0.06)  [value-math + SDF]
+//
+// Oracle is INDEPENDENT: computes the result step-by-step from std::/glm::
+// primitives — NEVER calls any SdfCore_* function or evalRecipe.
+// ===========================================================================
+
+TEST(RecipeEvalParity, M5_CompositionAll_IndependentOracle) {
+    // Composition recipe (10 instructions)
+    const glm::vec3 noTrans(0.f, 0.f, 0.f);
+    const glm::vec4 identRot(0.f, 0.f, 0.f, 1.f); // identity quat xyzw
+    const glm::vec3 invSc(0.5f, 0.5f, 1.f/3.f);
+    const float dScale = 2.0f;
+
+    SdfInstruction prog[] = {
+        twistOp(0.6f),                                        // [0] Twist
+        transformOp(noTrans, identRot, invSc, dScale),        // [1] Transform (non-uniform scale)
+        boxOp(glm::vec3(0.25f, 0.25f, 0.25f)),               // [2] Box (leaf 1)
+        restorePosOp(),                                        // [3] RestorePos → distScale=2 applied
+        sphere(glm::vec3(0.55f, 0.f, 0.f), 0.35f),           // [4] Sphere (leaf 2)
+        smoothUnionOp(0.15f),                                  // [5] CSG
+        restorePosOp(),                                        // [6] RestorePos → Twist (distScale=1)
+        posChannelOp(1),                                       // [7] PositionChannel(Y) — ORIGINAL pos
+        mathSinOp(3.5f, 0.f, 1.f),                            // [8] sin(y*3.5)
+        displacementOp(0.06f),                                 // [9] sdf + sin(...)*0.06
+    };
+
+    // INDEPENDENT oracle — derives result from first principles (no SdfCore_* calls).
+    auto compositionOracle = [](glm::vec3 p) -> float {
+        // ── Twist(k=0.6) oracle: rotate (x,z) by k*y via std::cos/sin ───────
+        float c = std::cos(0.6f * p.y);
+        float s = std::sin(0.6f * p.y);
+        glm::vec3 tp(c * p.x - s * p.z,  p.y,  s * p.x + c * p.z);
+
+        // ── Transform(invSc=(0.5,0.5,1/3), distScale=2.0) + Box(half=0.25) ──
+        // Oracle: scale tp by invScale, compute box SDF, multiply by distScale
+        const glm::vec3 xs = tp * glm::vec3(0.5f, 0.5f, 1.f/3.f);
+        const glm::vec3 bH(0.25f, 0.25f, 0.25f);
+        glm::vec3 bq = glm::abs(xs) - bH;
+        float boxLocal = glm::length(glm::max(bq, glm::vec3(0.f)))
+                       + std::min(std::max(bq.x, std::max(bq.y, bq.z)), 0.f);
+        float boxWorld = 2.0f * boxLocal;  // RestorePos applies distScale=2
+
+        // ── Sphere at twisted pos (not original pos) ──────────────────────────
+        float sphDist = glm::length(tp - glm::vec3(0.55f, 0.f, 0.f)) - 0.35f;
+
+        // ── SmoothUnion(a=boxWorld, b=sphDist, k=0.15) ───────────────────────
+        // Formula matches SdfCore_SmoothUnion: h=clamp(0.5+0.5*(b-a)/k,0,1); mix(b,a,h)-k*h*(1-h)
+        const float su_k = 0.15f;
+        float h = std::max(0.f, std::min(1.f, 0.5f + 0.5f * (sphDist - boxWorld) / su_k));
+        float suDist = (1.f - h) * sphDist + h * boxWorld - su_k * h * (1.f - h);
+
+        // ── RestorePos (Twist, distScale=1.0) → suDist unchanged ─────────────
+
+        // ── PositionChannel(Y) at ORIGINAL pos p (not twisted tp) ────────────
+        float posY = p.y;
+
+        // ── MathSin(freq=3.5, phase=0, amp=1) oracle: std::sin ───────────────
+        float sinVal = std::sin(posY * 3.5f) * 1.f;
+
+        // ── Displacement(scale=0.06): sdf + sinVal * 0.06 ────────────────────
+        return suDist + sinVal * 0.06f;
+    };
+
+    // 5 sample points — each makes a different subset of ops observable:
+    const glm::vec3 pts[] = {
+        glm::vec3(0.f,   0.f, 0.f),    // origin: inside scaled box; y=0 → no twist, no sin
+        glm::vec3(0.55f, 0.f, 0.f),    // sphere center: inside sphere; y=0 → no sin
+        glm::vec3(0.f,   0.8f, 0.f),   // above shapes: outside both; y=0.8 → sin visible
+        glm::vec3(-0.3f, 0.6f, 0.2f),  // off-axis: twist + sin effect
+        glm::vec3(0.3f,  0.4f, 0.1f),  // near SmoothUnion blend region
+    };
+    // Tolerance 1e-4: floating-point chain (twist→transform→box→su→sin) accumulates ~4 levels
+    for (const glm::vec3& p : pts)
+        EXPECT_NEAR(evalRecipe(prog, 10, p), compositionOracle(p), 1e-4f)
+            << "M5 composition at (" << p.x << "," << p.y << "," << p.z << ")"
+            << "  evalRecipe=" << evalRecipe(prog,10,p)
+            << "  oracle=" << compositionOracle(p);
+}

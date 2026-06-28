@@ -1216,6 +1216,37 @@ TEST_F(ProceduralRecipeRenderTest, RenderRevolution) {
 //
 // Writes /tmp/glsl_sdf_m4_twist.png (512×512 RGBA8). ICD-only (no validation layer).
 // ---------------------------------------------------------------------------
+// Transform: trans=data[0..2], invRot xyzw=data[4..7], invScale=data[8..10], distScale=data[11]
+static Vixen::SVO::Recipe::SdfInstruction makeTransform(
+    glm::vec3 trans, glm::vec4 invRotXYZW, glm::vec3 invScale, float distScale)
+{
+    Vixen::SVO::Recipe::SdfInstruction in{};
+    in.opCode = static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::Transform);
+    in.data[0]=trans.x;       in.data[1]=trans.y;       in.data[2]=trans.z;
+    in.data[4]=invRotXYZW.x;  in.data[5]=invRotXYZW.y;
+    in.data[6]=invRotXYZW.z;  in.data[7]=invRotXYZW.w;
+    in.data[8]=invScale.x;    in.data[9]=invScale.y;    in.data[10]=invScale.z;
+    in.data[11]=distScale;
+    return in;
+}
+static Vixen::SVO::Recipe::SdfInstruction makePositionChannel(int ch) {
+    Vixen::SVO::Recipe::SdfInstruction in{};
+    in.opCode = static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::PositionChannel);
+    in.data[0] = static_cast<float>(ch);
+    return in;
+}
+static Vixen::SVO::Recipe::SdfInstruction makeMathSin(float freq, float phase, float amp) {
+    Vixen::SVO::Recipe::SdfInstruction in{};
+    in.opCode = static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::MathSin);
+    in.data[0]=freq; in.data[1]=phase; in.data[2]=amp;
+    return in;
+}
+static Vixen::SVO::Recipe::SdfInstruction makeDisplacement(float scale) {
+    Vixen::SVO::Recipe::SdfInstruction in{};
+    in.opCode = static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::Displacement);
+    in.data[0] = scale;
+    return in;
+}
 static Vixen::SVO::Recipe::SdfInstruction makeTwist(float k) {
     Vixen::SVO::Recipe::SdfInstruction in{};
     in.opCode  = static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::Twist);
@@ -1464,4 +1495,206 @@ TEST_F(ProceduralRecipeRenderTest, RenderDisplacement) {
         << "diffPixels=" << diffPixels << " <= 500 — displaced render is indistinguishable from "
            "smooth sphere. Displacement is likely a no-op. "
            "bodyPixels(displaced)=" << bodyPixels;
+}
+
+// ---------------------------------------------------------------------------
+// P2.4 M5 — broad CSG-composition render gate (closes P2.4).
+//
+// Recipe exercises EVERY proven lane:
+//   Twist(k=0.6)                           [warp]
+//     Transform(I-rot, invSc=(0.5,0.5,1/3), distScale=2.0) [non-uniform scale]
+//       Box(half=0.25)                     [leaf 1]
+//     RestorePos → distScale=2.0 applied
+//     Sphere(0.55,0,0,r=0.35)             [leaf 2]
+//     SmoothUnion(k=0.15)                  [CSG]
+//   RestorePos → Twist distScale=1.0 (no-op)
+//   PositionChannel(Y)                     [value-math leaf]
+//   MathSin(3.5, 0, 1)                    [value-math unary]
+//   Displacement(0.06)                     [value-math + SDF]
+//
+// TEETH (two ablations):
+//   Ablation 1: no-displacement (drop last 3 ops) — proves Displacement is active.
+//   Ablation 2: identity-scale Transform (invSc=1, distScale=1) — proves non-uniform
+//               DistScale reaches the GPU render path (M4b render-coverage gap).
+//
+// Writes /tmp/glsl_sdf_m5_composition.png (512×512 RGBA8).
+// ---------------------------------------------------------------------------
+TEST_F(ProceduralRecipeRenderTest, RenderComposition) {
+    // ── Step 1: read vendored SdfCoreKernels HLSL ────────────────────────────
+    std::ifstream kernelFile(SDF_CORE_KERNELS_HLSL_PATH);
+    ASSERT_TRUE(kernelFile.good())
+        << "Cannot open vendored HLSL: " << SDF_CORE_KERNELS_HLSL_PATH;
+    std::ostringstream ss;
+    ss << kernelFile.rdbuf();
+    const std::string sdfCoreHlsl = ss.str();
+
+    // ── Step 2: build the full composition recipe (10 instructions) ──────────
+    using Inst = Vixen::SVO::Recipe::SdfInstruction;
+
+    const glm::vec3 noTrans(0.f, 0.f, 0.f);
+    const glm::vec4 identRot(0.f, 0.f, 0.f, 1.f);      // identity quaternion xyzw
+    const glm::vec3 invSc(0.5f, 0.5f, 1.f/3.f);        // non-uniform invScale: X*0.5, Y*0.5, Z*0.333
+    const float dScale = 2.0f;                           // distScale = min(1/0.5,1/0.5,1/0.333) = 2.0
+
+    Inst fullProg[] = {
+        makeTwist(0.6f),                                                       // [0] Twist
+        makeTransform(noTrans, identRot, invSc, dScale),                        // [1] non-uniform scale
+        makeBox(0.25f, 0.25f, 0.25f),                                          // [2] Box (leaf 1)
+        makeRestorePos(),                                                       // [3] distScale=2 applied
+        makeSphere(0.55f, 0.f, 0.f, 0.35f),                                   // [4] Sphere (leaf 2)
+        makeSmoothUnion(0.15f),                                                 // [5] CSG
+        makeRestorePos(),                                                       // [6] Twist (distScale=1)
+        makePositionChannel(1),                                                  // [7] original pos.y
+        makeMathSin(3.5f, 0.f, 1.f),                                           // [8] sin(y*3.5)
+        makeDisplacement(0.06f),                                                // [9] displacement
+    };
+
+    const std::string shaderSrc =
+        Vixen::SVO::Recipe::EmitProceduralComputeShader(fullProg, 10, sdfCoreHlsl);
+
+    // Verify key ops appear in emitted HLSL.
+    EXPECT_NE(shaderSrc.find("SdfCore_Twist("), std::string::npos)
+        << "Expected SdfCore_Twist in emitted HLSL; src:\n" << shaderSrc;
+    EXPECT_NE(shaderSrc.find("SdfCore_Transform("), std::string::npos)
+        << "Expected SdfCore_Transform in emitted HLSL";
+    EXPECT_NE(shaderSrc.find("SdfCore_SmoothUnion("), std::string::npos)
+        << "Expected SdfCore_SmoothUnion in emitted HLSL";
+    EXPECT_NE(shaderSrc.find("SdfCore_Displacement("), std::string::npos)
+        << "Expected SdfCore_Displacement in emitted HLSL";
+    // distScale=2.0 must produce a multiply in the emitted HLSL
+    EXPECT_NE(shaderSrc.find("* 2."), std::string::npos)
+        << "Expected distScale multiply (distScale=2) in emitted HLSL";
+
+    // ── Step 3: compile HLSL → SPIR-V ────────────────────────────────────────
+    ShaderManagement::ShaderCompiler compiler;
+    ShaderManagement::CompilationOptions opts;
+    opts.sourceLanguage = ShaderManagement::CompilationOptions::SourceLanguage::HLSL;
+    opts.validateSpirv  = false;
+    auto compOut = compiler.Compile(ShaderManagement::ShaderStage::Compute, shaderSrc, "main", opts);
+    ASSERT_TRUE(compOut.success)
+        << "HLSL compile failed:\n" << compOut.GetFullLog()
+        << "\n--- emitted source ---\n" << shaderSrc;
+    ASSERT_FALSE(compOut.spirv.empty());
+
+    // ── Step 4: camera from z=4 looking at origin ─────────────────────────────
+    // Composition: scaled box ~(±0.5,±0.5,±0.75), sphere at x=0.55 r=0.35, twisted.
+    // Camera at (0.4, 0.3, 4) looking at origin → offset sees the composition at angle.
+    constexpr uint32_t W = 512, H = 512;
+    const RecipePushConstants pc = MakeCamera(
+        glm::vec3(0.4f, 0.3f, 4.0f),
+        glm::vec3(0.0f, 0.0f, 0.0f),
+        W, H
+    );
+
+    // ── Step 5: dispatch full composition on lavapipe ─────────────────────────
+    std::vector<float> rgba32f;
+    ASSERT_NO_FATAL_FAILURE(RenderProcedural(compOut.spirv, pc, W, H, rgba32f));
+    ASSERT_EQ(rgba32f.size(), static_cast<size_t>(W) * H * 4);
+
+    // ── Step 6: count full body pixels + write composition PNG ────────────────
+    int bodyPixels = 0;
+    std::vector<uint8_t> rgba8(W * H * 4);
+    for (uint32_t i = 0; i < W * H; ++i) {
+        const float fr = rgba32f[i*4+0];
+        const float fg = rgba32f[i*4+1];
+        const float fb = rgba32f[i*4+2];
+        const float fa = rgba32f[i*4+3];
+        rgba8[i*4+0] = static_cast<uint8_t>(std::min(fr * 255.f + 0.5f, 255.f));
+        rgba8[i*4+1] = static_cast<uint8_t>(std::min(fg * 255.f + 0.5f, 255.f));
+        rgba8[i*4+2] = static_cast<uint8_t>(std::min(fb * 255.f + 0.5f, 255.f));
+        rgba8[i*4+3] = static_cast<uint8_t>(std::min(fa * 255.f + 0.5f, 255.f));
+        if (fr > 0.08f || fg > 0.08f) ++bodyPixels;
+    }
+
+    const char* pngPath = "/tmp/glsl_sdf_m5_composition.png";
+    const int pngOk = stbi_write_png(pngPath, (int)W, (int)H, 4, rgba8.data(), (int)W*4);
+    printf("[RenderComposition] bodyPixels=%d  PNG=%s  path=%s\n",
+           bodyPixels, pngOk ? "YES" : "NO", pngPath);
+    fflush(stdout);
+
+    EXPECT_TRUE(pngOk) << "stbi_write_png failed for " << pngPath;
+    ASSERT_GT(bodyPixels, 10000)
+        << "bodyPixels=" << bodyPixels << " <= 10000 — composition render appears degenerate. "
+           "Sample [0]: R=" << rgba32f[0] << " G=" << rgba32f[1] << " B=" << rgba32f[2]
+           << "\nEmitted shader (first 2000 chars):\n" << shaderSrc.substr(0, 2000);
+
+    // ── Ablation 1: no displacement ───────────────────────────────────────────
+    // Drop last 3 instructions (PositionChannel + MathSin + Displacement).
+    // If Displacement is a no-op the full and ablated renders would be identical.
+    Inst ablateProg1[] = {
+        makeTwist(0.6f),
+        makeTransform(noTrans, identRot, invSc, dScale),
+        makeBox(0.25f, 0.25f, 0.25f),
+        makeRestorePos(),
+        makeSphere(0.55f, 0.f, 0.f, 0.35f),
+        makeSmoothUnion(0.15f),
+        makeRestorePos(),
+    };
+    const std::string ablate1Src =
+        Vixen::SVO::Recipe::EmitProceduralComputeShader(ablateProg1, 7, sdfCoreHlsl);
+    auto ablate1Out = compiler.Compile(ShaderManagement::ShaderStage::Compute,
+                                       ablate1Src, "main", opts);
+    ASSERT_TRUE(ablate1Out.success)
+        << "Ablation-1 (no-displacement) compile failed:\n" << ablate1Out.GetFullLog();
+
+    std::vector<float> ablate1Rgba;
+    ASSERT_NO_FATAL_FAILURE(RenderProcedural(ablate1Out.spirv, pc, W, H, ablate1Rgba));
+    ASSERT_EQ(ablate1Rgba.size(), static_cast<size_t>(W) * H * 4);
+
+    int diffDisp = 0;
+    for (uint32_t i = 0; i < W * H; ++i) {
+        float dr = std::abs(rgba32f[i*4+0] - ablate1Rgba[i*4+0]);
+        float dg = std::abs(rgba32f[i*4+1] - ablate1Rgba[i*4+1]);
+        if (dr + dg > 0.02f) ++diffDisp;
+    }
+    printf("[RenderComposition] Ablation-1 (no-displacement) diffPixels=%d\n", diffDisp);
+    fflush(stdout);
+
+    ASSERT_GT(diffDisp, 1000)
+        << "diffDisp=" << diffDisp << " <= 1000 — full composition is indistinguishable from "
+           "no-displacement ablation. Displacement is likely a no-op in the GPU path. "
+           "bodyPixels=" << bodyPixels;
+
+    // ── Ablation 2: identity scale (DistScale-sensitive teeth) ───────────────
+    // Set Transform to identity scale: invScale=(1,1,1), distScale=1.0.
+    // The box (half=0.25) now renders at world half-extents=0.25 instead of (0.5,0.5,0.75).
+    // A dramatically smaller box → shape changes, many pixels differ.
+    // This specifically proves non-uniform distScale propagates through the GPU render path.
+    Inst ablateProg2[] = {
+        makeTwist(0.6f),
+        makeTransform(noTrans, identRot, glm::vec3(1.f,1.f,1.f), 1.0f),  // identity scale
+        makeBox(0.25f, 0.25f, 0.25f),
+        makeRestorePos(),
+        makeSphere(0.55f, 0.f, 0.f, 0.35f),
+        makeSmoothUnion(0.15f),
+        makeRestorePos(),
+        makePositionChannel(1),
+        makeMathSin(3.5f, 0.f, 1.f),
+        makeDisplacement(0.06f),
+    };
+    const std::string ablate2Src =
+        Vixen::SVO::Recipe::EmitProceduralComputeShader(ablateProg2, 10, sdfCoreHlsl);
+    auto ablate2Out = compiler.Compile(ShaderManagement::ShaderStage::Compute,
+                                       ablate2Src, "main", opts);
+    ASSERT_TRUE(ablate2Out.success)
+        << "Ablation-2 (identity-scale) compile failed:\n" << ablate2Out.GetFullLog();
+
+    std::vector<float> ablate2Rgba;
+    ASSERT_NO_FATAL_FAILURE(RenderProcedural(ablate2Out.spirv, pc, W, H, ablate2Rgba));
+    ASSERT_EQ(ablate2Rgba.size(), static_cast<size_t>(W) * H * 4);
+
+    int diffScale = 0;
+    for (uint32_t i = 0; i < W * H; ++i) {
+        float dr = std::abs(rgba32f[i*4+0] - ablate2Rgba[i*4+0]);
+        float dg = std::abs(rgba32f[i*4+1] - ablate2Rgba[i*4+1]);
+        if (dr + dg > 0.02f) ++diffScale;
+    }
+    printf("[RenderComposition] Ablation-2 (identity-scale/DistScale) diffPixels=%d\n", diffScale);
+    fflush(stdout);
+
+    ASSERT_GT(diffScale, 3000)
+        << "diffScale=" << diffScale << " <= 3000 — full composition (distScale=2, box world ~0.5) "
+           "is indistinguishable from identity-scale ablation (box world=0.25). "
+           "Non-uniform distScale is likely not propagating to the GPU render. "
+           "bodyPixels=" << bodyPixels;
 }
