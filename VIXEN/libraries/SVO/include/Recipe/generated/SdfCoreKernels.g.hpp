@@ -48,14 +48,16 @@ inline glm::vec3 SdfCore_Revolution(glm::vec3 p, glm::vec3 center, float offset)
 }
 
 inline glm::vec3 SdfCore_Twist(glm::vec3 p, float k) {
-    float c = glm::cos(k * p.y); float s = glm::sin(k * p.y);
-    glm::vec2 q(c * p.x - s * p.z, s * p.x + c * p.z);
+    float c = glm::cos(k * p.y);
+    float s = glm::sin(k * p.y);
+    glm::vec2 q = glm::vec2(c * p.x - s * p.z, s * p.x + c * p.z);
     return glm::vec3(q.x, p.y, q.y);
 }
 
 inline glm::vec3 SdfCore_Bend(glm::vec3 p, float k) {
-    float c = glm::cos(k * p.x); float s = glm::sin(k * p.x);
-    glm::vec2 q(c * p.x - s * p.y, s * p.x + c * p.y);
+    float c = glm::cos(k * p.x);
+    float s = glm::sin(k * p.x);
+    glm::vec2 q = glm::vec2(c * p.x - s * p.y, s * p.x + c * p.y);
     return glm::vec3(q.x, q.y, p.z);
 }
 
@@ -69,7 +71,7 @@ inline glm::vec3 SdfCore_RepeatLimited(glm::vec3 p, float spacing, glm::vec3 lim
 
 inline glm::vec3 SdfCore_Transform(glm::vec3 p, glm::vec3 translation, glm::vec4 invRotXYZW, glm::vec3 invScale) {
     glm::vec3 v = p - translation;
-    glm::vec3 qv(invRotXYZW.x, invRotXYZW.y, invRotXYZW.z);
+    glm::vec3 qv = glm::vec3(invRotXYZW.x, invRotXYZW.y, invRotXYZW.z);
     float qw = invRotXYZW.w;
     glm::vec3 t = 2.0f * glm::cross(qv, v);
     glm::vec3 rotated = v + qw * t + glm::cross(qv, t);

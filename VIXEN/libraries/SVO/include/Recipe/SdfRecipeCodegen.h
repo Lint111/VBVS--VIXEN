@@ -75,7 +75,7 @@ inline std::string EmitProceduralComputeShader(
     // emit-time position stack: mirrors pos/posStack in evalRecipe (C# VM ctx.Pos/PosStack)
     std::string curPos = "p";
     std::vector<std::string> posSaveStk;
-    // emit-time distScale stack: 1.0f for non-scaling transforms; M4b Transform pushes data[7]
+    // emit-time distScale stack: 1.0f for non-scaling transforms; M4b Transform pushes data[11]
     // At RestorePos: if |scale-1|>1e-4 emit a multiply to scale the TOS distance before popping.
     std::vector<float> distScaleSaveStk;
 

@@ -11,7 +11,7 @@ inline float evalRecipe(const SdfInstruction* prog, uint32_t count, glm::vec3 p)
     float stack[64]; int sp = 0;
     glm::vec3 pos = p;                   // current sample point (mirrors C# VM ctx.Pos)
     glm::vec3 posStack[64]; int psp = 0; // domain-transform save stack (C# VM ctx.PosStack)
-    float distScaleStack[64];            // distance-scale per saved frame (pushed 1.0f for non-scaling transforms; M4b Transform uses data[7])
+    float distScaleStack[64];            // distance-scale per saved frame (pushed 1.0f for non-scaling transforms; M4b Transform uses data[11])
     using namespace Yeroket::Sdf::Generated;
     for (uint32_t i = 0; i < count; ++i) {
         const SdfInstruction& in = prog[i];
