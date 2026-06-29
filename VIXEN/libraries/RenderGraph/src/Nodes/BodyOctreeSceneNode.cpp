@@ -514,7 +514,7 @@ void BodyOctreeSceneNode::Rematerialize() {
         NODE_LOG_ERROR("[BodyOctreeSceneNode] Rematerialize called with no device");
         return;
     }
-    NODE_LOG_INFO("[BodyOctreeSceneNode] Rematerialize: re-baking octree 0 from edited recipe");
+    NODE_LOG_INFO("[BodyOctreeSceneNode] Rematerialize: rebuilding octree buffers");
 
     // Rare, explicit edit path — safe to stall (mirrors the ring-grow vkDeviceWaitIdle).
     // Guarantees no in-flight command buffer still references the octree buffers we free.

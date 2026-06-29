@@ -44,6 +44,7 @@
 #include <array>
 #include <cctype>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -492,17 +493,26 @@ TEST_F(RecipePoolRenderTest, FourRecipesAllRender) {
     VkBuffer lookBuf = buf(C::OCTREE_BRICKLOOKUP_BUFFER_Slot::index);
     ASSERT_NE(nodes, VK_NULL_HANDLE); ASSERT_NE(cfgBuf, VK_NULL_HANDLE);
 
-    // 6) Render — camera looks at the group centre.
+    // 6) Camera: target the true centroid of all 4 body centres so EVERY octreeIndex
+    //    slot appears on-screen. instances[1] was the old target — it skipped slot 3.
     constexpr uint32_t kW=512, kH=512;
-    const glm::vec3 groupCentre = BodyCentre(instances[1]);  // roughly centred
-    const glm::vec3 eye = groupCentre + glm::normalize(glm::vec3(0.0f, 0.2f, 1.0f)) * (R * 10.0f);
-    const PushConstants pc = MakeCamera(eye, groupCentre, kW, kH, int32_t(instances.size()));
+    const glm::vec3 c0     = BodyCentre(instances[0]);
+    const glm::vec3 c3     = BodyCentre(instances[3]);
+    const glm::vec3 centroid = 0.5f * (c0 + c3);
+    const float spanX = std::abs(c3.x - c0.x) + 2.0f * R;   // edge-to-edge span
+    // Fit the full span horizontally at fov=45°, aspect=1.0 (512x512), with 40% margin.
+    const float dist = (0.5f * spanX) / std::tan(glm::radians(22.5f)) * 1.4f;
+    const glm::vec3 eye = centroid + glm::normalize(glm::vec3(0.0f, 0.2f, 1.0f)) * dist;
+    const PushConstants pc = MakeCamera(eye, centroid, kW, kH, int32_t(instances.size()));
 
     std::vector<uint8_t> rgba; double ms = 0.0;
     ASSERT_NO_FATAL_FAILURE(RenderToRgba(nodes, bricks, mats, cfgBuf, instBuf,
                                          sdfBuf, lookBuf, pc, kW, kH, rgba, ms));
 
-    // 7) Write PNG + count hits.
+    // 7) Write PNG, total hit count, AND per-x-band hits (1 band per octreeIndex slot).
+    //    4 bands of 128px each; each body centre falls in a distinct band so a zero
+    //    band means that octreeIndex slot never rendered — the whole point of dropping
+    //    the old kMaxOctrees=3 cap.
     const char* outPath = "/tmp/recipe_pool_render.png";
     {
         std::vector<uint8_t> rgb(size_t(kW)*kH*3);
@@ -513,15 +523,25 @@ TEST_F(RecipePoolRenderTest, FourRecipesAllRender) {
     }
 
     int hitPixels = 0;
-    for (uint32_t i = 0; i < kW*kH; ++i) {
-        if (rgba[i*4+0]>24 || rgba[i*4+1]>24 || rgba[i*4+2]>40) ++hitPixels;
+    std::array<int,4> bandHits{};
+    for (uint32_t y = 0; y < kH; ++y) {
+        for (uint32_t x = 0; x < kW; ++x) {
+            const uint32_t i = y*kW + x;
+            if (rgba[i*4+0]>24 || rgba[i*4+1]>24 || rgba[i*4+2]>40) {
+                ++hitPixels;
+                ++bandHits[x / (kW/4)];   // 4 equal horizontal bands
+            }
+        }
     }
-    std::printf("[POOL] 4 recipe bodies | hitPixels=%d | render=%.0f ms | -> %s\n",
-                hitPixels, ms, outPath);
+    std::printf("[POOL] 4-body render | total=%d | bands=[%d,%d,%d,%d] | render=%.0f ms | -> %s\n",
+                hitPixels, bandHits[0], bandHits[1], bandHits[2], bandHits[3], ms, outPath);
 
-    // With 4 bodies visible the hit count should comfortably exceed a single body threshold.
-    EXPECT_GT(hitPixels, 2000)
-        << "Expected >=4 visible bodies totalling >2000 hit pixels. PNG: " << outPath;
+    EXPECT_GT(hitPixels, 2000) << "Total hit pixel count too low";
+    // Each x-band must have hits — proves all 4 octreeIndex slots actually rendered.
+    for (int band = 0; band < 4; ++band)
+        EXPECT_GT(bandHits[band], 50)
+            << "octreeIndex " << band << " band[" << band << "]=" << bandHits[band]
+            << " — slot may not have rendered";
 
     vkDeviceWaitIdle(logicalDevice_);
     node->Cleanup(CleanupReason::FinalTeardown);

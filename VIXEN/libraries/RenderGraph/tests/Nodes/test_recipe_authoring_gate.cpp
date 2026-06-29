@@ -4,18 +4,18 @@
  *
  * Two tests:
  *   1. CsgSubtractRendersNonTrivial — bakes a Subtract(Box, Sphere) recipe where the
- *      sphere protrudes through the +z face of the box → verifies the CSG notch is
- *      visible (hitPixels > 3000) and saves /tmp/recipe_gate.png.
+ *      sphere centre sits at the z-midpoint of the box (voxel z=18, r=22), spanning
+ *      the full [0,36] box depth → through-tunnel → ablation delta (boxOnly-csg>500).
  *   2. DefaultSceneRegression — renders the standard 3-shell-octree scene (no recipe
  *      pool) to confirm the M2 SSBO binding-5 change didn't break the base path;
  *      saves /tmp/recipe_default_scene.png.
  *
- * Box SDF notes (SdfRecipeEval.cpp):
- *   sdBox(pos, halfExtents) — pos is raw voxel coords in [0, n].
- *   Box(36,36,36) occupies [0,36]^3, which INCLUDES the grid centre (32,32,32).
- *   Sphere(32,32,48, r=20) protrudes into the box from the +z face at z=36:
- *     sphere extends from z=28 to z=68 → 8 voxels inside the box below z=36.
- *     At z=36 the sphere cross-section has radius sqrt(20²−12²)=16 voxels.
+ * Box SDF notes (SdfRecipeEval.cpp / SdfCore_Box):
+ *   sdBox(abs(p), halfExtents) — interior where all |pos.i| < halfExtent.
+ *   Box(36,36,36) occupies [0,36]^3 in the positive domain.
+ *   Sphere(32,32,18, r=22): centre at z-midpoint of the box; spans z ∈ [-4,40]
+ *     → THROUGH-TUNNEL (not a depression), hole radius at z=36 face ≈ 12.6 voxels.
+ *     Rays through the tunnel find no subtract surface within [0,64]³ → black pixels.
  *
  * SAFETY — LAVAPIPE ONLY: identical contract to test_body_instance_raymarch_render.cpp.
  *
@@ -452,11 +452,15 @@ protected:
 };
 
 // ---------------------------------------------------------------------------
-// I4.2a — CSG Subtract(Box, Sphere) renders a non-trivial solid.
+// I4.2a — CSG Subtract(Box, Sphere) ablation gate.
 //
-// The sphere protrudes through the +z face of the box, cutting a circular notch.
-// The test asserts the result has MORE than 3000 lit pixels (far more than zero).
-// The threshold is deliberately conservative to be CPU/lavapipe stable.
+// Renders the SAME body twice with an identical camera:
+//   Pass A — Box only          → boxOnlyPx
+//   Pass B — Subtract(Box,Sphere) → csgPx
+//
+// A no-op Subtract would leave csgPx ≈ boxOnlyPx (delta ≈ 0) and the delta
+// assert fails.  The real subtract carves a hemispherical notch (intersection
+// circle radius=16 voxels at z=36) that removes a large visible chunk.
 // ---------------------------------------------------------------------------
 TEST_F(RecipeAuthoringGateTest, CsgSubtractRendersNonTrivial) {
     std::printf("[ lavapipe ] %s\n", selectedDeviceName_.c_str());
@@ -466,83 +470,116 @@ TEST_F(RecipeAuthoringGateTest, CsgSubtractRendersNonTrivial) {
     using SdfOp = Vixen::SVO::Recipe::SdfOpCode;
 
     // Box(halfExtents=36,36,36): occupies [0,36]^3 in the 64^3 grid.
-    // Grid centre (32,32,32) is inside the box (32<36 on all axes).
+    // SdfCore_Box uses abs(p), so the interior is where all |pos.i| < 36.
     SdfI boxInst{}; boxInst.opCode = uint8_t(SdfOp::Box);
     boxInst.data[0] = 36.0f; boxInst.data[1] = 36.0f; boxInst.data[2] = 36.0f;
 
-    // Sphere(centre=(32,32,48), r=20): protrudes into the box from the +z face at z=36.
-    //   sphere extends from z=28 to z=68 → 8 voxels of overlap below z=36.
-    //   at z=36 the intersection circle has radius sqrt(400-144)=16 voxels.
+    // Sphere(centre=(32,32,18), r=22): placed at the z-midpoint of the box.
+    //   Sphere spans z ∈ [18-22, 18+22] = [-4, 40], which COVERS the full [0,36] box
+    //   z-depth → creates a THROUGH-TUNNEL (not just a depression).
+    //   Hole radius at z=36 face: sqrt(22²-18²) = sqrt(160) ≈ 12.6 voxels.
+    //   Rays through the hole see no surface within the baking domain → black pixels.
     SdfI sphInst{}; sphInst.opCode = uint8_t(SdfOp::Sphere);
-    sphInst.data[0] = 32.0f; sphInst.data[1] = 32.0f; sphInst.data[2] = 48.0f;
-    sphInst.data[3] = 20.0f;
+    sphInst.data[0] = 32.0f; sphInst.data[1] = 32.0f; sphInst.data[2] = 18.0f;
+    sphInst.data[3] = 22.0f;
 
-    // Subtract pops 2 (box bottom, sphere top), pushes 1 (box − sphere).
     SdfI subInst{}; subInst.opCode = uint8_t(SdfOp::Subtract);
 
-    Vixen::SVO::RecipeRegistry reg;
-    Vixen::SVO::RecipeRegistry::RecipeEntry entry{};
-    entry.bytecode = { boxInst, sphInst, subInst };
-    ASSERT_EQ(reg.Register(100u, entry), Vixen::SVO::RecipeRegistry::RegisterResult::Ok)
-        << "Recipe registration failed";
-
     Vixen::SVO::RecipeBakeConfig bakeCfg{};
-    auto bakeResult = Vixen::SVO::BakeRegistryToPool(reg, bakeCfg);
-    ASSERT_TRUE(bakeResult.ok) << bakeResult.err;
-    ASSERT_EQ(bakeResult.pool.count, 1u);
 
-    BodyOctreeSceneNodeType nodeType("BodyOctreeScene");
-    auto nodeBase = nodeType.CreateInstance("csg_gate");
-    auto* node = dynamic_cast<BodyOctreeSceneNode*>(nodeBase.get());
-    ASSERT_NE(node, nullptr);
-    node->SetRecipePool(std::move(bakeResult.pool));
-
-    // Single body at the world origin, renderScale 0.20 (radius 1.0 world unit).
+    // Shared instance + camera parameters.
     constexpr float kRS = 0.20f;
     const std::vector<Vixen::SVO::BodyInstanceGpu> instances = {
         MakeInst(0.0f, 0.0f, 0.0f, kRS, 0u),
     };
-
     constexpr uint32_t kW = 512, kH = 512;
+    const glm::vec3 centre = BodyCentre(instances[0]);  // (1,1,1)
+    const float     R      = 0.5f * kWorldGridSize * kRS;  // 1.0
+    // Camera from +z, slight tilt — same for BOTH passes so delta is recipe-only.
+    const glm::vec3 eye = centre + glm::normalize(glm::vec3(0.1f, 0.2f, 1.0f)) * (R * 6.0f);
+    const PushConstants sharedPc = MakeCamera(eye, centre, kW, kH, int32_t(instances.size()));
 
-    ASSERT_NO_FATAL_FAILURE(RunNode(node, nodeBase, instances,
-        [&](VkBuffer nodes, VkBuffer bricks, VkBuffer mats, VkBuffer cfgBuf,
-            VkBuffer instBuf, VkBuffer sdfBuf, VkBuffer lookBuf) {
+    // --- Pass A: Box only (ablation baseline) ---
+    int boxOnlyPx = 0;
+    {
+        Vixen::SVO::RecipeRegistry regBox;
+        Vixen::SVO::RecipeRegistry::RecipeEntry eBox{};
+        eBox.bytecode = { boxInst };
+        ASSERT_EQ(regBox.Register(100u, eBox), Vixen::SVO::RecipeRegistry::RegisterResult::Ok);
+        auto boxResult = Vixen::SVO::BakeRegistryToPool(regBox, bakeCfg);
+        ASSERT_TRUE(boxResult.ok) << boxResult.err;
 
-        ASSERT_NE(nodes,   VK_NULL_HANDLE);
-        ASSERT_NE(cfgBuf,  VK_NULL_HANDLE);
-        ASSERT_NE(instBuf, VK_NULL_HANDLE);
+        BodyOctreeSceneNodeType nt("BodyOctreeScene");
+        auto nb = nt.CreateInstance("box_ablation");
+        auto* nd = dynamic_cast<BodyOctreeSceneNode*>(nb.get());
+        ASSERT_NE(nd, nullptr);
+        nd->SetRecipePool(std::move(boxResult.pool));
 
-        const glm::vec3 centre = BodyCentre(instances[0]);  // (1,1,1)
-        const float     R      = 0.5f * kWorldGridSize * kRS;  // 1.0
-        // Camera from +z side, slight tilt so depth shading visible.
-        const glm::vec3 eye = centre + glm::normalize(glm::vec3(0.1f, 0.2f, 1.0f)) * (R * 6.0f);
-        const PushConstants pc = MakeCamera(eye, centre, kW, kH, int32_t(instances.size()));
+        ASSERT_NO_FATAL_FAILURE(RunNode(nd, nb, instances,
+            [&](VkBuffer ns, VkBuffer br, VkBuffer mt, VkBuffer cfg,
+                VkBuffer inst, VkBuffer sdf, VkBuffer lk) {
+            std::vector<uint8_t> rgba; double ms2 = 0.0;
+            ASSERT_NO_FATAL_FAILURE(RenderToRgba(ns,br,mt,cfg,inst,sdf,lk,sharedPc,kW,kH,rgba,ms2));
+            for (uint32_t i = 0; i < kW*kH; ++i)
+                if (rgba[i*4+0]>24 || rgba[i*4+1]>24 || rgba[i*4+2]>40) ++boxOnlyPx;
+            std::printf("[CSG/ablation] Box only | px=%d | %.0f ms\n", boxOnlyPx, ms2);
+        }));
+    }
+    ASSERT_GT(boxOnlyPx, 1000) << "Box-only baseline rendered too few pixels to be a useful ablation";
 
-        std::vector<uint8_t> rgba; double ms = 0.0;
-        ASSERT_NO_FATAL_FAILURE(RenderToRgba(nodes, bricks, mats, cfgBuf, instBuf,
-                                             sdfBuf, lookBuf, pc, kW, kH, rgba, ms));
+    // --- Pass B: Subtract(Box, Sphere) ---
+    int csgPx = 0;
+    {
+        Vixen::SVO::RecipeRegistry regCsg;
+        Vixen::SVO::RecipeRegistry::RecipeEntry eCsg{};
+        eCsg.bytecode = { boxInst, sphInst, subInst };
+        ASSERT_EQ(regCsg.Register(100u, eCsg), Vixen::SVO::RecipeRegistry::RegisterResult::Ok);
+        auto csgResult = Vixen::SVO::BakeRegistryToPool(regCsg, bakeCfg);
+        ASSERT_TRUE(csgResult.ok) << csgResult.err;
+        ASSERT_EQ(csgResult.pool.count, 1u);
 
-        // Write PNG.
-        const char* outPath = "/tmp/recipe_gate.png";
-        {
-            std::vector<uint8_t> rgb(size_t(kW)*kH*3);
-            for (uint32_t i = 0; i < kW*kH; ++i) {
-                rgb[i*3+0]=rgba[i*4+0]; rgb[i*3+1]=rgba[i*4+1]; rgb[i*3+2]=rgba[i*4+2];
+        BodyOctreeSceneNodeType nt("BodyOctreeScene");
+        auto nb = nt.CreateInstance("csg_gate");
+        auto* nd = dynamic_cast<BodyOctreeSceneNode*>(nb.get());
+        ASSERT_NE(nd, nullptr);
+        nd->SetRecipePool(std::move(csgResult.pool));
+
+        ASSERT_NO_FATAL_FAILURE(RunNode(nd, nb, instances,
+            [&](VkBuffer ns, VkBuffer br, VkBuffer mt, VkBuffer cfg,
+                VkBuffer inst, VkBuffer sdf, VkBuffer lk) {
+            ASSERT_NE(ns,   VK_NULL_HANDLE);
+            ASSERT_NE(cfg,  VK_NULL_HANDLE);
+            ASSERT_NE(inst, VK_NULL_HANDLE);
+
+            std::vector<uint8_t> rgba; double ms = 0.0;
+            ASSERT_NO_FATAL_FAILURE(RenderToRgba(ns,br,mt,cfg,inst,sdf,lk,sharedPc,kW,kH,rgba,ms));
+
+            const char* outPath = "/tmp/recipe_gate.png";
+            {
+                std::vector<uint8_t> rgb(size_t(kW)*kH*3);
+                for (uint32_t i = 0; i < kW*kH; ++i) {
+                    rgb[i*3+0]=rgba[i*4+0]; rgb[i*3+1]=rgba[i*4+1]; rgb[i*3+2]=rgba[i*4+2];
+                }
+                stbi_write_png(outPath, kW, kH, 3, rgb.data(), kW*3);
             }
-            stbi_write_png(outPath, kW, kH, 3, rgb.data(), kW*3);
-        }
 
-        int hitPixels = 0;
-        for (uint32_t i = 0; i < kW*kH; ++i)
-            if (rgba[i*4+0]>24 || rgba[i*4+1]>24 || rgba[i*4+2]>40) ++hitPixels;
+            for (uint32_t i = 0; i < kW*kH; ++i)
+                if (rgba[i*4+0]>24 || rgba[i*4+1]>24 || rgba[i*4+2]>40) ++csgPx;
 
-        std::printf("[CSG] Subtract(Box,Sphere) | hitPixels=%d | render=%.0f ms | -> %s\n",
-                    hitPixels, ms, outPath);
+            std::printf("[CSG] Subtract(Box,Sphere) | px=%d | render=%.0f ms | -> %s\n",
+                        csgPx, ms, outPath);
+        }));
+    }
 
-        EXPECT_GT(hitPixels, 3000)
-            << "Expected box-minus-sphere body to fill >3000 pixels. PNG: " << outPath;
-    }));
+    std::printf("[CSG/delta] boxOnly=%d  csg=%d  delta=%d\n", boxOnlyPx, csgPx, boxOnlyPx - csgPx);
+
+    EXPECT_GT(csgPx, 3000)
+        << "CSG body rendered too few pixels (degenerate solid?)";
+    // Ablation: real Subtract carves a ~16-voxel-radius notch from the +z face.
+    // A no-op Subtract → delta ≈ 0 → fails. Target: delta > 500.
+    EXPECT_GT(boxOnlyPx - csgPx, 500)
+        << "Subtract carved less than 500 pixels from the box — Subtract may be a no-op. "
+        << "boxOnly=" << boxOnlyPx << " csg=" << csgPx;
 }
 
 // ---------------------------------------------------------------------------
