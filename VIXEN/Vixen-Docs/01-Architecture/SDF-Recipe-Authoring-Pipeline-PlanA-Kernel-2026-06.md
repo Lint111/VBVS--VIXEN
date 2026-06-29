@@ -44,13 +44,13 @@
 Cross-repo plan; segmented at the **repo seam** so each milestone is single-repo / single-worktree.
 Implementer = Sonnet, Validator = Opus, per milestone.
 
-- [ ] **M1 — Yeroket: produce + commit the generated reader** · Tasks **I1.1, I1.2, I1.3, I1.4 (Yeroket-side)**: canonical `RecipeContainer.cs` + C# writer → emit C++ structs → emit generic reader → rebuild DLL + generate/commit `RecipeContainer.g.h` + byte-identical golden + DLL. Worktree: Yeroket `.worktrees/recipe-container-format` (branch `feat/recipe-container-format`, off Yeroket `main`). Gate: `~/.dotnet/dotnet test -c Release Tests/SDFNodeGenerator.Tests.csproj` green. Deliverable: canonical container format + writer + emitted C++ reader, committed in Yeroket; `.g.h` on disk.
+- [x] **M1 — Yeroket: produce + commit the generated reader** · Tasks **I1.1, I1.2, I1.3, I1.4 (Yeroket-side)**: canonical `RecipeContainer.cs` + C# writer → emit C++ structs → emit generic reader → rebuild DLL + generate/commit `RecipeContainer.g.h` + byte-identical golden + DLL. Worktree: Yeroket `.worktrees/recipe-container-format` (branch `feat/recipe-container-format`, off Yeroket `main`). Gate: `~/.dotnet/dotnet test -c Release Tests/SDFNodeGenerator.Tests.csproj` green. Deliverable: canonical container format + writer + emitted C++ reader, committed in Yeroket; `.g.h` on disk.
 - [ ] **M2 — VIXEN: vendor + consume + parity** · Tasks **I1.4 (VIXEN-side), I1.5, I1.6**: vendor the Yeroket-committed `.g.h` into VIXEN → retire VIXEN's hand-written `SdfInstruction` mirror (alias the generated struct) → cross-repo writer↔reader parity test. Worktree: VIXEN `.claude/worktrees/recipe-container-vixen` (branch `feat/recipe-container-vixen`, off VIXEN `main`). Gate: `cmake --build build-wsl` green + the `test_recipe_*` suite + new `test_recipe_container_parity` pass.
 
 > **I1.4 is intentionally split at the repo seam** (justified exception to "never split a task"): its Yeroket half (produce/commit the artifact + DLL + golden) lands in M1; its VIXEN half (vendor the committed `.g.h`) opens M2. Each half is independently committable and testable; the handoff is the committed `.g.h` on disk in the Yeroket worktree.
 
 ### Progress Log
-- (none yet)
+- Milestone M1 (Tasks I1.1–I1.4 Yeroket-side): DONE · commits `d010388c`..`551729ab` (I1.1 `d010388c`, I1.2+I1.3 `e6b0131c`, I1.4 `8660c3a9`; fix-loop B1 `18286cef`, B2 `551729ab`) · Opus validator APPROVED — 2 blockers caught + closed (SdfOpCode enum-golden regression from a test-DLL float4 export; frozen `SdfInstruction` mirror → now reflected via `sdfInstructionSym`) · suite 99 pass / 4 pre-existing fail · `RecipeContainer.g.h` byte-identical & committed · 2026-06-29
 
 ---
 
