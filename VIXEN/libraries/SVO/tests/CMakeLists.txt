@@ -307,6 +307,44 @@ endif()
 gtest_discover_tests(test_recipe_pack_loader)
 
 # ===========================================================================
+# Octree Pool Tests (I3.1 — dynamic-N pool + I3.2 config-size formula)
+# ===========================================================================
+add_executable(test_octree_pool test_octree_pool.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_octree_pool PRIVATE
+        GTest::gtest_main SVO GaiaVoxelWorld VoxelComponents VoxelData)
+else()
+    target_link_libraries(test_octree_pool PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_octree_pool PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_octree_pool POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_octree_pool>
+        COMMENT "Copying TBB DLL for test_octree_pool")
+endif()
+gtest_discover_tests(test_octree_pool)
+
+# ===========================================================================
+# Recipe Baker Tests (I3.3 — BakeRegistryToPool, memory-budgeted fail-loud)
+# ===========================================================================
+add_executable(test_recipe_baker test_recipe_baker.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_recipe_baker PRIVATE
+        GTest::gtest_main SVO GaiaVoxelWorld VoxelComponents VoxelData)
+else()
+    target_link_libraries(test_recipe_baker PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_recipe_baker PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_recipe_baker POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_recipe_baker>
+        COMMENT "Copying TBB DLL for test_recipe_baker")
+endif()
+gtest_discover_tests(test_recipe_baker)
+
+# ===========================================================================
 # Sampler Tests
 # ===========================================================================
 # Tests NoiseSampler, SDFSampler, HeightmapSampler
