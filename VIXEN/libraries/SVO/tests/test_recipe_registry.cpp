@@ -1,8 +1,11 @@
 #include <gtest/gtest.h>
 #include "Recipe/RecipeRegistry.h"
+#include "Recipe/RecipeStack.h"
 using namespace Vixen::SVO;
 using Recipe::SdfInstruction;
 using Recipe::SdfOpCode;
+using Recipe::RecipeStackArity;
+using Recipe::StackArity;
 
 static SdfInstruction sphere(float r) {
     SdfInstruction in{};
@@ -83,4 +86,62 @@ TEST(RecipeRegistry, GetMutableStampsSlot) {
     ASSERT_NE(mut, nullptr);
     mut->octreeSlot = 0u;
     EXPECT_EQ(reg.Get(42u)->octreeSlot, 0u);
+}
+
+// --- Link regression: previously missing from arity table ---------------
+
+static SdfInstruction link() {
+    SdfInstruction in{};
+    in.opCode = (uint8_t)SdfOpCode::Link;
+    in.data[0] = 5.0f; in.data[1] = 2.0f; in.data[2] = 0.5f; // halfLen, majorR, minorR
+    return in;
+}
+
+static SdfInstruction makeUnion() {
+    SdfInstruction in{}; in.opCode = (uint8_t)SdfOpCode::Union; return in;
+}
+
+TEST(RecipeRegistry, LinkAcceptsValidRecipe) {
+    // {Link, Link, Union} is balanced (2 pushes, 1 binary pop) → Ok
+    RecipeRegistry reg;
+    RecipeRegistry::RecipeEntry e{};
+    e.bytecode = { link(), link(), makeUnion() };
+    EXPECT_EQ(reg.Register(20u, e), RecipeRegistry::RegisterResult::Ok);
+}
+
+TEST(RecipeRegistry, LinkRejectsStackOverflow) {
+    // 65 Link pushes, never popped → StackOverflow
+    RecipeRegistry reg;
+    RecipeRegistry::RecipeEntry e{};
+    for (int i = 0; i < 65; ++i) e.bytecode.push_back(link());
+    EXPECT_EQ(reg.Register(21u, e), RecipeRegistry::RegisterResult::StackOverflow);
+}
+
+// --- Drift-guard: every valid opcode must have non-trivial arity ---------
+// Catches missing entries in RecipeStackArity before they become bad accepts/rejects.
+// Legitimate no-ops (Output, ComposeFloat3) are explicitly excluded.
+
+TEST(RecipeRegistry, ArityTableCoversAllValidOpcodes) {
+    constexpr uint8_t kLegitimateNoOps[] = {
+        (uint8_t)SdfOpCode::Output,
+        (uint8_t)SdfOpCode::ComposeFloat3,
+    };
+    auto isLegitNoOp = [&](uint8_t v) {
+        for (auto n : kLegitimateNoOps) if (v == n) return true;
+        return false;
+    };
+
+    std::vector<uint8_t> missing;
+    for (int raw = 0; raw < 256; ++raw) {
+        uint8_t v = static_cast<uint8_t>(raw);
+        if (!IsValidSdfOpCode(v)) continue;
+        if (isLegitNoOp(v)) continue;
+        auto a = RecipeStackArity(static_cast<SdfOpCode>(v));
+        if (a.vPop == 0 && a.vPush == 0 && a.pPop == 0 && a.pPush == 0)
+            missing.push_back(v);
+    }
+
+    for (uint8_t v : missing)
+        ADD_FAILURE() << "opcode " << (int)v << " is valid but has zero arity — add to RecipeStackArity";
+    EXPECT_TRUE(missing.empty());
 }

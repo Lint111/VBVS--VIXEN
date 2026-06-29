@@ -41,6 +41,7 @@ inline StackArity RecipeStackArity(SdfOpCode op) {
         case SdfOpCode::TriangularPrism:
         case SdfOpCode::Pyramid:
         case SdfOpCode::HexPrism:
+        case SdfOpCode::Link:
         case SdfOpCode::PositionChannel:
         case SdfOpCode::DistanceTo:
         case SdfOpCode::PushParam:
