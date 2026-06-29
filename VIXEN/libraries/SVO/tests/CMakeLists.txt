@@ -253,6 +253,60 @@ set_target_properties(test_recipe_container_parity PROPERTIES FOLDER "Tests/SVO 
 gtest_discover_tests(test_recipe_container_parity)
 
 # ===========================================================================
+# Recipe Registry Tests (I2.1+I2.2 — RecipeRegistry core + StackOverflow guard)
+# ===========================================================================
+add_executable(test_recipe_registry test_recipe_registry.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_recipe_registry PRIVATE GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_recipe_registry PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_recipe_registry PROPERTIES FOLDER "Tests/SVO Tests")
+gtest_discover_tests(test_recipe_registry)
+
+# ===========================================================================
+# Recipe Manifest Tests (I2.3 — RecipeManifest model + validation)
+# ===========================================================================
+add_executable(test_recipe_manifest test_recipe_manifest.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_recipe_manifest PRIVATE GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_recipe_manifest PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_recipe_manifest PROPERTIES FOLDER "Tests/SVO Tests")
+gtest_discover_tests(test_recipe_manifest)
+
+# ===========================================================================
+# Recipe Ingest Tests (I2.4 — IngestBlob consumes the vendored reader)
+# ===========================================================================
+add_executable(test_recipe_ingest test_recipe_ingest.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_recipe_ingest PRIVATE GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_recipe_ingest PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_recipe_ingest PROPERTIES FOLDER "Tests/SVO Tests")
+gtest_discover_tests(test_recipe_ingest)
+
+# ===========================================================================
+# Recipe Pack Loader Tests (I2.5 — manifest+blobs->registry, fail-loud)
+# ===========================================================================
+add_executable(test_recipe_pack_loader test_recipe_pack_loader.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_recipe_pack_loader PRIVATE GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_recipe_pack_loader PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_recipe_pack_loader PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_recipe_pack_loader POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_recipe_pack_loader>
+        COMMENT "Copying TBB DLL for test_recipe_pack_loader")
+endif()
+gtest_discover_tests(test_recipe_pack_loader)
+
+# ===========================================================================
 # Sampler Tests
 # ===========================================================================
 # Tests NoiseSampler, SDFSampler, HeightmapSampler
