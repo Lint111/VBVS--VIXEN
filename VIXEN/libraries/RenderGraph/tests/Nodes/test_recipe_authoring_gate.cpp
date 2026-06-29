@@ -459,8 +459,8 @@ protected:
 //   Pass B — Subtract(Box,Sphere) → csgPx
 //
 // A no-op Subtract would leave csgPx ≈ boxOnlyPx (delta ≈ 0) and the delta
-// assert fails.  The real subtract carves a hemispherical notch (intersection
-// circle radius=16 voxels at z=36) that removes a large visible chunk.
+// assert fails.  The real subtract punches a through-tunnel (hole radius
+// ≈12.6 voxels at the z=36 face) that removes a large visible chunk.
 // ---------------------------------------------------------------------------
 TEST_F(RecipeAuthoringGateTest, CsgSubtractRendersNonTrivial) {
     std::printf("[ lavapipe ] %s\n", selectedDeviceName_.c_str());
@@ -575,7 +575,7 @@ TEST_F(RecipeAuthoringGateTest, CsgSubtractRendersNonTrivial) {
 
     EXPECT_GT(csgPx, 3000)
         << "CSG body rendered too few pixels (degenerate solid?)";
-    // Ablation: real Subtract carves a ~16-voxel-radius notch from the +z face.
+    // Ablation: real Subtract punches a through-tunnel (≈12.6-voxel-radius hole).
     // A no-op Subtract → delta ≈ 0 → fails. Target: delta > 500.
     EXPECT_GT(boxOnlyPx - csgPx, 500)
         << "Subtract carved less than 500 pixels from the box — Subtract may be a no-op. "
