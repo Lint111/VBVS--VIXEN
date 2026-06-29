@@ -352,6 +352,13 @@ Correctness bugs + the only-consumer's pain + legal hygiene. Wasted on no possib
 
 ### P4 — Deep-sim / voxel pillar (review Phase 3)
 
+> [!note] Destructible / deformable rendering direction
+> **AR#41 + AR#48 together are the real-time "edit a body's geometry at runtime" leg** (incremental
+> octree update + sim→render change bridge + GPU delta-upload). How they compose with the provider
+> model (Procedural → Materialized → incremental Stored; provider-LOD; promote-on-demand) is captured
+> in [[Destructible-Body-Rendering-Direction-2026-06]] (💡 FUTURE; first motivating consumer = UNDERTOW
+> modular ships).
+
 - [ ] **Complete SVO incremental update** [AR#41 blocker] — `updateBlock()` never patches
   `ChildDescriptors`, so voxels added to a previously-empty region are unreachable by ESVO
   traversal and the GPU never sees mutations until a full O(world) `rebuild()`. Implement
