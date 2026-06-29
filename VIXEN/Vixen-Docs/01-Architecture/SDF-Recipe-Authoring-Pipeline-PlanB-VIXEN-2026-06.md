@@ -54,6 +54,21 @@ bool ReadRecipeContainer(const uint8_t* blob, size_t len, RecipeContainerView& o
 
 ---
 
+## Milestone Map (post-brainstorm-context-manager — segmented 2026-06-29)
+
+**Plan A (Increment I1) is MERGED** to VIXEN `main` (`82c2707e`) + Yeroket `main` (`50b5ba16`): the generated `RecipeContainer.g.h` reader is vendored, `SdfInstruction` is the generated struct (aliased into `Vixen::SVO::Recipe`), and `SdfOpCode` lives in `Vixen::SVO::Recipe` (from `SdfOpCodes.g.h`). So **I2.4/I2.5's cross-repo reader dependency is already satisfied** — no Plan-A blocker remains. Consumers qualify both `Yeroket::Sdf::Generated::` (header/view/reader/SdfInstruction) and `Vixen::SVO::Recipe::` (SdfOpCode).
+
+All milestones run in ONE VIXEN worktree: `.claude/worktrees/recipe-registry-render` (branch `feat/recipe-registry-render`, off VIXEN `main`). Implementer = Sonnet, Validator = Opus, per milestone. Uses the plan's own Increment boundaries.
+
+- [ ] **M1 — I2: Registry + ingest + validation** · Tasks I2.1–I2.5: `RecipeRegistry` core (U32→{bytecode,bakeParams,octreeSlot}) + opcode/paramMask validation → `sp<64` stack-depth guard (shared `RecipeStackArity`) → `RecipeManifest` model → blob→registry `IngestBlob` (consumes the vendored reader) → `RecipePackLoader` (manifest+blobs, fail-loud). Gate: `test_recipe_registry`, `test_recipe_manifest`, `test_recipe_ingest`, `test_recipe_pack_loader` all green. All CPU/unit — no rendering.
+- [ ] **M2 — I3: Bake-to-pool + count-unbounded octree pool** · Tasks I3.1–I3.3: generalize `ConcatenatedOctrees` fixed-3→dynamic-N (drop `kMaxOctrees`) → per-octree `configs` UBO→SSBO + shader (drop `clamp(octreeIndex,0,2)`) → `RecipeBaker.BakeRegistryToPool` (memory-budgeted, fail-loud). Gate: `test_octree_pool` + the config-buffer-size unit test + `test_recipe_baker` green, no regression on `test_recipe_bake`/`test_sdf_bake`/`test_soa_sdf_serialize`, SVO+RenderGraph build green. (Shader render correctness proven in M3.)
+- [ ] **M3 — I4: Render binding + live gate + format doc** · Tasks I4.1–I4.3: `BodyOctreeSceneNode::SetRecipePool` (consume the baked pool) → **live lavapipe gate** rendering an authored `Subtract(Box,Sphere)` CSG recipe (protruding cutter; PNG-validated silhouette; no-regression on the default 3-body scene) → publish `Recipe-Container-Format-Contract-2026-06.md`. Gate: `test_recipe_pool_render` + the live `test_recipe_authoring_gate` PNG check (authoritative) + default-scene no-regression.
+
+### Progress Log
+- (none yet)
+
+---
+
 ## Increment I2 — Recipe registry + ingest + validation
 
 ### Task I2.1: RecipeRegistry core type
