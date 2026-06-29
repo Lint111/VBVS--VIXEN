@@ -237,6 +237,22 @@ set_target_properties(test_recipe_eval_parity PROPERTIES FOLDER "Tests/SVO Tests
 gtest_discover_tests(test_recipe_eval_parity)
 
 # ===========================================================================
+# Recipe Container Parity Test (I1.6 — C# writer blob round-trips via generated C++ reader)
+# Fixture bytes come from C# RecipeContainer.Serialize via the committed Yeroket dumper.
+# ===========================================================================
+add_executable(test_recipe_container_parity test_recipe_container_parity.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_recipe_container_parity PRIVATE GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_recipe_container_parity PRIVATE GTest::gtest_main)
+endif()
+target_compile_definitions(test_recipe_container_parity PRIVATE
+    RECIPE_CONTAINER_FIXTURE_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/tests/fixtures/recipe-container/sphere26.vrc"
+)
+set_target_properties(test_recipe_container_parity PROPERTIES FOLDER "Tests/SVO Tests")
+gtest_discover_tests(test_recipe_container_parity)
+
+# ===========================================================================
 # Sampler Tests
 # ===========================================================================
 # Tests NoiseSampler, SDFSampler, HeightmapSampler
