@@ -42,11 +42,13 @@ VIXEN/gatherer_test.txt
 # Local dev helper scripts (machine-specific absolute paths)
 /_ninja_*.bat
 
-# Runtime GPU calibration output (device-specific)
+# Runtime GPU calibration output (device-specific) — repo-root and legacy VIXEN/ locations
+/calibration/
 /VIXEN/calibration/
 
-# Regenerated SDI header (build artifact, no live consumer; siblings tracked intentionally)
-/VIXEN/generated/sdi/VoxelRayMarch_CompressedNames.h
+# Regenerated SDI headers (build artifacts; intentionally-tracked siblings stay tracked) — repo-root and legacy VIXEN/ locations
+/generated/sdi/
+/VIXEN/generated/sdi/
 
 # Cache directories
 .cache/
@@ -68,3 +70,6 @@ NUL
 
 # Agent worktrees (superpowers / EnterWorktree)
 .claude/worktrees/
+
+# CodeGraph local index (local tooling, regenerated; indexing is the user's choice)
+/.codegraph/
