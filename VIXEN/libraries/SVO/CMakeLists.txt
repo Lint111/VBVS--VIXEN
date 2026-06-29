@@ -44,6 +44,7 @@ add_library(SVO STATIC
     src/Serialization.cpp
     src/SceneGenerator.cpp  # Procedural voxel scene generation (relocated from RenderGraph — AR#3/#4 cycle break)
     # src/SVOFactory.cpp  # TODO: Implement
+    src/RecipePackLoader.cpp  # I2.5: manifest+blobs→registry, fail-loud
 )
 
 # ------------------------------------------------------------------------------

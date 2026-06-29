@@ -146,6 +146,15 @@ void BodyOctreeSceneNode::SetBakeRecipe(std::vector<Vixen::SVO::Recipe::SdfInstr
                   std::to_string(bakeRecipe_.size()) + " instructions — octree 0 will use recipe bake");
 }
 
+void BodyOctreeSceneNode::SetRecipePool(Vixen::SVO::ConcatenatedOctrees pool) {
+    providedPool_ = std::move(pool);
+    poolProvided_ = true;
+    octreesBuilt_ = false;   // force EnsureOctreesBuilt to pick up the new pool
+    recipeDirty_  = true;    // post-Compile: triggers Rematerialize on next Execute
+    NODE_LOG_INFO("[BodyOctreeSceneNode] SetRecipePool: " +
+                  std::to_string(providedPool_.count) + " octrees staged");
+}
+
 void BodyOctreeSceneNode::SetupImpl(TypedSetupContext& /*ctx*/) {
     // Graph-scope initialization only (no input access).
     NODE_LOG_DEBUG("[BodyOctreeSceneNode] Setup (graph-scope initialization)");
@@ -287,6 +296,16 @@ void BodyOctreeSceneNode::EnsureOctreesBuilt() {
         return;
     }
 
+    // I4.1: a pre-baked pool from SetRecipePool takes priority over ALL built-in paths.
+    if (poolProvided_) {
+        concatenated_ = providedPool_;   // ponytail: shallow copy (vector data owned by providedPool_)
+        octreesBuilt_ = true;
+        NODE_LOG_INFO("[BodyOctreeSceneNode] Using provided recipe pool (" +
+                      std::to_string(concatenated_.count) + " octrees, channelPool=" +
+                      std::to_string(concatenated_.channelPool.size()) + "B)");
+        return;
+    }
+
     // VIXEN_STORED_SDF_DEMO: bake the 3 body kinds as Stored-SDF octrees so the
     // Stored-SDF shader path (formatId == STORED_SDF, bindings 11/12) can be A/B'd
     // against the Procedural path (default when env var is unset).
@@ -420,15 +439,15 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device) {
         concatenated_.materials.empty() ? nullptr : concatenated_.materials.data(),
         materialsBuffer_, materialsMemory_, "octree materials SSBO");
 
-    // Config UBO: 3 x 432-byte OctreeConfig (std140, sizeof=432), uploaded contiguously. Always
-    // upload the full kMaxOctrees array so the slot covers every selectable index.
+    // Config SSBO (binding 5, std430): one 432-byte OctreeConfig per octree.
+    // ponytail: min 1 entry so the buffer is never zero-byte.
     const VkDeviceSize configSize =
-        static_cast<VkDeviceSize>(sizeof(Vixen::SVO::OctreeConfig)) *
-        Vixen::SVO::ConcatenatedOctrees::kMaxOctrees;
+        static_cast<VkDeviceSize>(std::max<uint32_t>(concatenated_.count, 1u)) *
+        static_cast<VkDeviceSize>(sizeof(Vixen::SVO::OctreeConfig));
     CreateHostBuffer(device, configSize,
-        VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-        concatenated_.configs.data(),
-        configBuffer_, configMemory_, "octree config UBO");
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        concatenated_.configs.empty() ? nullptr : concatenated_.configs.data(),
+        configBuffer_, configMemory_, "octree config SSBO");
 
     // Inc3 M2: Generic multi-channel pool buffer (binding 11) + brick-grid lookup (binding 12).
     // Pad to 1 byte when empty — binary/Procedural bodies leave channelPool empty;
@@ -495,7 +514,7 @@ void BodyOctreeSceneNode::Rematerialize() {
         NODE_LOG_ERROR("[BodyOctreeSceneNode] Rematerialize called with no device");
         return;
     }
-    NODE_LOG_INFO("[BodyOctreeSceneNode] Rematerialize: re-baking octree 0 from edited recipe");
+    NODE_LOG_INFO("[BodyOctreeSceneNode] Rematerialize: rebuilding octree buffers");
 
     // Rare, explicit edit path — safe to stall (mirrors the ring-grow vkDeviceWaitIdle).
     // Guarantees no in-flight command buffer still references the octree buffers we free.

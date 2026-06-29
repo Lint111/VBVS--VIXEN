@@ -106,11 +106,9 @@ struct GPUMaterial {
 static_assert(sizeof(GPUMaterial) == 32, "GPUMaterial must be 32 bytes (matches the shader palette stride)");
 
 /**
- * Octree configuration UBO. MUST match the shader's `OctreeConfig configs[3]`
- * std140 layout (BodyInstanceRayMarch.comp:91-113). `sizeof(OctreeConfig)` is the
- * ARRAY STRIDE the GPU reads `configs[i]` with — it MUST equal the shader's std140
- * element stride or configs[1]/configs[2] read garbage (see static_assert + the
- * stride trap below).
+ * Octree configuration record (one per octree in the runtime-sized SSBO at binding 5).
+ * `sizeof(OctreeConfig)` is the ARRAY STRIDE the GPU reads `configs[i]` with — it MUST
+ * equal 432 bytes or indices >0 read garbage (see static_assert + the stride trap below).
  *
  * ===================== std140 UBO-ARRAY-STRIDE TRAP (fixed 2026-06-20) ============
  * The shader's element is laid out by std140, where an ARRAY OF SCALARS rounds each
@@ -189,11 +187,9 @@ struct OctreeConfig {
 static_assert(sizeof(ChannelDesc) == 16,
               "ChannelDesc must be 16 bytes (4×uint32 = one std140 uvec4 lane)");
 static_assert(sizeof(OctreeConfig) == 432,
-              "OctreeConfig array stride must equal the shader's 432-byte std140 UBO element "
-              "stride (its trailing float[14] is std140-padded to 14*16 B; the compiled SPIR-V "
-              "decorates the configs[3] array with ArrayStride 432). BodyOctreeSceneNode uploads "
-              "std::array<OctreeConfig,3> at this struct's sizeof stride — a tighter sizeof "
-              "misaligns configs[1]/configs[2] and octreeIndex>0 bodies render NOTHING.");
+              "OctreeConfig must be 432 bytes — matches the SPIR-V ArrayStride 432 used by the "
+              "std430 SSBO at binding 5 (I3.2). BodyOctreeSceneNode uploads the vector at this "
+              "stride; a tighter sizeof misaligns configs[k>0] and those bodies render NOTHING.");
 static_assert(offsetof(OctreeConfig, nodeArrayBase) == 192,
               "nodeArrayBase must stay at offset 192 (a field the shader reads)");
 static_assert(offsetof(OctreeConfig, brickArrayBase) == 196,
@@ -315,12 +311,11 @@ struct SerializedOctree {
 };
 
 /**
- * <=3 ShellOctrees concatenated into shared node/brick buffers, plus per-octree
+ * N ShellOctrees concatenated into shared node/brick buffers, plus per-octree
  * configs (carrying nodeArrayBase / brickArrayBase) and count tables.
+ * Count is unbounded — the only limit is the memory budget applied by the baker.
  */
 struct ConcatenatedOctrees {
-    static constexpr size_t kMaxOctrees = 3;
-
     std::vector<uint8_t> nodes;      // octree0 nodes ++ octree1 nodes ++ ...
     std::vector<uint8_t> bricks;     // octree0 bricks ++ octree1 bricks ++ ...
     std::vector<uint8_t> materials;  // shared palette (identical across shells)
@@ -331,10 +326,10 @@ struct ConcatenatedOctrees {
                                           // uint32[bpa^3] where bpa = bricksPerAxis.
                                           // Per-octree size varies; M3 uploads them separately.
 
-    std::array<OctreeConfig, kMaxOctrees> configs{};
-    std::array<uint32_t, kMaxOctrees> nodeCounts{};
-    std::array<uint32_t, kMaxOctrees> brickCounts{};
-    uint32_t count = 0;  // number of octrees actually packed (<= kMaxOctrees)
+    std::vector<OctreeConfig> configs;    // per-octree config (size == count)
+    std::vector<uint32_t>     nodeCounts; // per-octree node count
+    std::vector<uint32_t>     brickCounts;// per-octree brick count
+    uint32_t count = 0;  // number of octrees packed (== configs.size())
 };
 
 /**
@@ -734,17 +729,16 @@ inline SerializedOctree SerializeSdf(const SdfBodyOctree& body) {
 // ===========================================================================
 
 /**
- * Concatenate <=3 ShellOctrees into shared node/brick buffers, recording each
- * octree's nodeArrayBase / brickArrayBase in its config (THE contract). Throws
- * std::length_error if given more than 3 octrees.
+ * Concatenate N ShellOctrees into shared node/brick buffers, recording each
+ * octree's nodeArrayBase / brickArrayBase in its config (THE contract).
+ * Count is unbounded.
  */
 inline ConcatenatedOctrees Concatenate(const std::vector<const ShellOctree*>& octrees) {
-    if (octrees.size() > ConcatenatedOctrees::kMaxOctrees) {
-        throw std::length_error("ShellOctreeGpu::Concatenate: at most 3 octrees supported");
-    }
-
     ConcatenatedOctrees cat;
     cat.count = static_cast<uint32_t>(octrees.size());
+    cat.configs.resize(octrees.size());
+    cat.nodeCounts.resize(octrees.size());
+    cat.brickCounts.resize(octrees.size());
 
     uint32_t nodeBase = 0;   // running element offset into the node buffer
     uint32_t brickBase = 0;  // running brick offset into the brick buffer
@@ -779,10 +773,9 @@ inline ConcatenatedOctrees Concatenate(const std::vector<const ShellOctree*>& oc
 }
 
 /**
- * Concatenate <=3 SdfBodyOctrees into shared node/brick/channelPool buffers.
+ * Concatenate N SdfBodyOctrees into shared node/brick/channelPool buffers.
  * Records per-octree nodeArrayBase, brickArrayBase, and poolBrickBase
- * (OctreeConfig.poolBrickBase@208) for each octree. Throws std::length_error
- * if given more than 3 octrees.
+ * (OctreeConfig.poolBrickBase@208) for each octree. Count is unbounded.
  *
  * poolBrickBase is the ELEMENT offset (in float units) of each octree's
  * first brick in the concatenated channelPool buffer — mirrors the
@@ -795,12 +788,11 @@ inline ConcatenatedOctrees Concatenate(const std::vector<const ShellOctree*>& oc
  * for the shader to index the right sub-table if sizes are equal.
  */
 inline ConcatenatedOctrees ConcatenateSdf(const std::vector<const SdfBodyOctree*>& octrees) {
-    if (octrees.size() > ConcatenatedOctrees::kMaxOctrees) {
-        throw std::length_error("ShellOctreeGpu::ConcatenateSdf: at most 3 octrees supported");
-    }
-
     ConcatenatedOctrees cat;
     cat.count = static_cast<uint32_t>(octrees.size());
+    cat.configs.resize(octrees.size());
+    cat.nodeCounts.resize(octrees.size());
+    cat.brickCounts.resize(octrees.size());
 
     uint32_t nodeBase    = 0;   // running node element offset
     uint32_t brickBase   = 0;   // running brick offset

@@ -125,9 +125,10 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
         octreeMaterialsDesc.usage = ResourceUsage::StorageBuffer | ResourceUsage::TransferDst;
         INIT_OUTPUT_DESC(OCTREE_MATERIALS_BUFFER, "octree_materials_buffer", ResourceLifetime::Persistent, octreeMaterialsDesc);
 
-        // Octree config UBO — 3 x 432-byte OctreeConfig (std140 array stride 432).
+        // Octree config SSBO (binding 5, std430) — N x 432-byte OctreeConfig.
+        // Changed from UBO to SSBO in I3.2 to support dynamic (count-unbounded) pool size.
         BufferDescriptor octreeConfigDesc{};
-        octreeConfigDesc.usage = ResourceUsage::UniformBuffer | ResourceUsage::TransferDst;
+        octreeConfigDesc.usage = ResourceUsage::StorageBuffer | ResourceUsage::TransferDst;
         INIT_OUTPUT_DESC(OCTREE_CONFIG_BUFFER, "octree_config_buffer", ResourceLifetime::Persistent, octreeConfigDesc);
 
         // Instance SSBO — per-body BodyInstanceGpu records.
