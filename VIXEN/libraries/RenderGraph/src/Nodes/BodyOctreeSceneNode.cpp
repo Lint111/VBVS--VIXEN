@@ -146,6 +146,15 @@ void BodyOctreeSceneNode::SetBakeRecipe(std::vector<Vixen::SVO::Recipe::SdfInstr
                   std::to_string(bakeRecipe_.size()) + " instructions — octree 0 will use recipe bake");
 }
 
+void BodyOctreeSceneNode::SetRecipePool(Vixen::SVO::ConcatenatedOctrees pool) {
+    providedPool_ = std::move(pool);
+    poolProvided_ = true;
+    octreesBuilt_ = false;   // force EnsureOctreesBuilt to pick up the new pool
+    recipeDirty_  = true;    // post-Compile: triggers Rematerialize on next Execute
+    NODE_LOG_INFO("[BodyOctreeSceneNode] SetRecipePool: " +
+                  std::to_string(providedPool_.count) + " octrees staged");
+}
+
 void BodyOctreeSceneNode::SetupImpl(TypedSetupContext& /*ctx*/) {
     // Graph-scope initialization only (no input access).
     NODE_LOG_DEBUG("[BodyOctreeSceneNode] Setup (graph-scope initialization)");
@@ -284,6 +293,16 @@ void BodyOctreeSceneNode::CleanupImpl(TypedCleanupContext& ctx) {
 
 void BodyOctreeSceneNode::EnsureOctreesBuilt() {
     if (octreesBuilt_) {
+        return;
+    }
+
+    // I4.1: a pre-baked pool from SetRecipePool takes priority over ALL built-in paths.
+    if (poolProvided_) {
+        concatenated_ = providedPool_;   // ponytail: shallow copy (vector data owned by providedPool_)
+        octreesBuilt_ = true;
+        NODE_LOG_INFO("[BodyOctreeSceneNode] Using provided recipe pool (" +
+                      std::to_string(concatenated_.count) + " octrees, channelPool=" +
+                      std::to_string(concatenated_.channelPool.size()) + "B)");
         return;
     }
 
