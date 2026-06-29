@@ -420,15 +420,15 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device) {
         concatenated_.materials.empty() ? nullptr : concatenated_.materials.data(),
         materialsBuffer_, materialsMemory_, "octree materials SSBO");
 
-    // Config UBO: 3 x 432-byte OctreeConfig (std140, sizeof=432), uploaded contiguously. Always
-    // upload the full kMaxOctrees array so the slot covers every selectable index.
+    // Config SSBO (binding 5, std430): one 432-byte OctreeConfig per octree.
+    // ponytail: min 1 entry so the buffer is never zero-byte.
     const VkDeviceSize configSize =
-        static_cast<VkDeviceSize>(sizeof(Vixen::SVO::OctreeConfig)) *
-        Vixen::SVO::ConcatenatedOctrees::kMaxOctrees;
+        static_cast<VkDeviceSize>(std::max<uint32_t>(concatenated_.count, 1u)) *
+        static_cast<VkDeviceSize>(sizeof(Vixen::SVO::OctreeConfig));
     CreateHostBuffer(device, configSize,
-        VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-        concatenated_.configs.data(),
-        configBuffer_, configMemory_, "octree config UBO");
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        concatenated_.configs.empty() ? nullptr : concatenated_.configs.data(),
+        configBuffer_, configMemory_, "octree config SSBO");
 
     // Inc3 M2: Generic multi-channel pool buffer (binding 11) + brick-grid lookup (binding 12).
     // Pad to 1 byte when empty — binary/Procedural bodies leave channelPool empty;

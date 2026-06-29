@@ -78,25 +78,20 @@ layout(std430, binding = 4) buffer RayTraceBuffer {
 };
 
 // ============================================================================
-// OCTREE CONFIG ARRAY (binding 5, std140, 432 B / element, 3 elements)
+// OCTREE CONFIG SSBO (binding 5, std430, 432 B / element, N elements)
 // ============================================================================
-// Struct layout must be byte-for-byte identical to the C++ OctreeConfig
-// (std140 432-byte padded struct, SPIR-V ArrayStride 432).
+// Struct layout must be byte-for-byte identical to the C++ OctreeConfig (432 B).
 //
-// IMPORTANT std140 scalar-array padding: in a std140 UBO, each element of a
-// float/int/uint array is padded to a vec4 stride (16 bytes), NOT 4 bytes.
-// An ARRAY-OF-STRUCT (like channels[8]) also has its base rounded up to 16-byte
-// alignment by std140, so the first element lands at the next 16-byte boundary.
+// LAYOUT NOTE (I3.2 — UBO→SSBO migration):
+//   Under std430, scalar arrays (float[], uint[]) stride at 4 B per element.
+//   The tail was previously `float _tailPad[5]` (80 B under std140's 16 B/elem stride).
+//   Under std430 that would be only 5*4=20 B, shrinking the struct to 372 B — WRONG.
+//   Fix: use `uvec4 _tailPad[5]` (vec4-aligned type, 16 B/elem under BOTH std140 and
+//   std430) → 5*16=80 B in both layouts → struct stays 432 B. ✓
+//   All other fields use vec4/mat4/uvec4 types that have identical alignment under
+//   both layouts (scalar ints/uints that are NOT in bare arrays are unaffected).
 //
-// Inc3 M3: bytes 200..431 carry the Stored-SDF descriptor and channel table.
-//   Five uints (200..219, 20 bytes) land at byte 220 = std140 aligns next array
-//   to 224. The _padChannels field at byte 220 makes this explicit on the CPU.
-//   channels[8] is declared as uvec4[8] (NOT a struct) to avoid per-member std140
-//   padding surprises; each uvec4 is 16 bytes (aligned naturally).
-//   After channels (224..351, 128 B), the tail needs 5 floats at std140
-//   16-byte strides: 5*16=80 bytes ending at 431, struct = 432 B total. ✓
-//
-// Byte offsets (GLSL std140 layout, confirmed from SPIR-V ArrayStride 432):
+// Byte offsets (std430 SSBO — identical to the old std140 UBO for all read fields):
 //   0   esvoMaxScale        int
 //   4   userMaxLevels       int
 //   8   brickDepthLevels    int
@@ -116,10 +111,9 @@ layout(std430, binding = 4) buffer RayTraceBuffer {
 //   208 poolBrickBase       uint  ← float-element offset into channelPool[]
 //   212 channelCount        uint  ← number of live channels in channels[]
 //   216 brickStrideFloats   uint  ← floats per brick (sum over all channels)
-//   220 (implicit std140 pad to 16-byte array alignment)
-//   224 channels[8]         uvec4 ← .x=semanticId .y=elemCount .z=channelBaseFloats .w=fieldKind
-//                                  8*16=128 B → ends at byte 352
-//   352 _tailPad[5]         float  5*16=80 B under std140 → struct = 432 B ✓
+//   220 _padChannels        uint  ← explicit 4-byte pad (std430: arrays are 16-aligned)
+//   224 channels[8]         uvec4 ← 8*16=128 B → ends at byte 352
+//   352 _tailPad[5]         uvec4   5*16=80 B (uvec4 stride=16 under std430) → 432 B ✓
 // ============================================================================
 struct OctreeConfig {
     int  esvoMaxScale;
@@ -143,13 +137,13 @@ struct OctreeConfig {
     uint poolBrickBase;       // byte 208: float-element offset into channelPool[]
     uint channelCount;        // byte 212: number of live channels in channels[]
     uint brickStrideFloats;   // byte 216: floats per brick (sum over all channels)
-    // bytes 220..223: implicit std140 pad before the 16-aligned array
+    uint _padChannels;        // byte 220: pad so channels[] is 16-byte aligned
     uvec4 channels[8];        // byte 224: .x=semanticId .y=elemCount .z=channelBaseFloats .w=fieldKind
-    float _tailPad[5];        // byte 352: std140 16-strided: 5*16=80 B → struct 432 B
+    uvec4 _tailPad[5];        // byte 352: 5*16=80 B (uvec4 stride is 16 under std430) → 432 B ✓
 };
 
-layout(std140, binding = 5) uniform OctreeConfigsUBO {
-    OctreeConfig configs[3];
+layout(std430, binding = 5) readonly buffer OctreeConfigsSSBO {
+    OctreeConfig configs[];
 };
 
 // ============================================================================
@@ -714,7 +708,7 @@ void main() {
             continue;  // procedural body fully handled; skip the ESVO path
         }
 
-        uint oi = clamp(inst.octreeIndex, 0u, 2u);
+        uint oi = inst.octreeIndex;  // index into runtime-sized configs[] SSBO (I3.2)
 
         // Inc2 M6: Stored-SDF bodies are NO LONGER special-cased here. They flow
         // through the SAME ESVO path as binary bodies below; the leaf hit-test inside
