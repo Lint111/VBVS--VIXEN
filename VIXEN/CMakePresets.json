@@ -14,9 +14,23 @@
         "CMAKE_MSVC_DEBUG_INFORMATION_FORMAT": "Embedded",
         "CMAKE_GTEST_DISCOVER_TESTS_DISCOVERY_MODE": "PRE_TEST"
       }
+    },
+    {
+      "name": "vixen-wsl",
+      "displayName": "VIXEN WSL (Linux/GCC + lavapipe software Vulkan)",
+      "description": "Native Linux/GCC build for WSL2. Ninja generator; auto-provisions the LunarG Vulkan SDK (glslc + headers) into ${sourceDir}/.vulkan-sdk on first configure (VIXEN_AUTO_PROVISION_VULKAN defaults ON). Mesa-Dozen (Vulkan-over-D3D12 GPU) provisioning is OFF — it builds Mesa from source (slow) and is unneeded for the offscreen lavapipe tests, which use the system software rasterizer. Run lavapipe tests with VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json and VK_LAYER_PATH=${sourceDir}/.vulkan-sdk/<ver>/x86_64/share/vulkan/explicit_layer.d. binaryDir is worktree-local (../build-wsl), parallel to the Windows ../build-ninja.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/../build-wsl",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++",
+        "VIXEN_AUTO_PROVISION_WSL_VULKAN": "OFF"
+      }
     }
   ],
   "buildPresets": [
-    { "name": "vixen-ninja", "configurePreset": "vixen-ninja" }
+    { "name": "vixen-ninja", "configurePreset": "vixen-ninja" },
+    { "name": "vixen-wsl", "configurePreset": "vixen-wsl" }
   ]
 }

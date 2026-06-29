@@ -92,6 +92,150 @@ endif()
 
 gtest_discover_tests(test_svo_types)
 
+add_executable(test_sdf_recipes
+    test_sdf_recipes.cpp
+)
+if(TARGET SVO)
+    target_link_libraries(test_sdf_recipes PRIVATE GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_sdf_recipes PRIVATE GTest::gtest_main)
+endif()
+gtest_discover_tests(test_sdf_recipes)
+
+# ===========================================================================
+# SoA-SDF Serialize Tests  (Inc2 M2 — SoA-SDF brick + grid-lookup + descriptor)
+# ===========================================================================
+add_executable(test_soa_sdf_serialize test_soa_sdf_serialize.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_soa_sdf_serialize PRIVATE
+        GTest::gtest_main SVO GaiaVoxelWorld VoxelComponents VoxelData)
+else()
+    target_link_libraries(test_soa_sdf_serialize PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_soa_sdf_serialize PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_soa_sdf_serialize POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_soa_sdf_serialize>
+        COMMENT "Copying TBB DLL for test_soa_sdf_serialize")
+endif()
+gtest_discover_tests(test_soa_sdf_serialize)
+
+# ===========================================================================
+# Stored-SDF March Mirror Tests  (gpu-shader-debug — CPU mirror of StoredSdf.glsl
+# marchBrickSdf + BodyInstanceRayMarch.comp handleLeafHitInstancedSdf, reproducing
+# the GPU's brick-aligned holes on the CPU for root-cause debugging)
+# ===========================================================================
+add_executable(test_stored_sdf_march_mirror test_stored_sdf_march_mirror.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_stored_sdf_march_mirror PRIVATE
+        GTest::gtest_main SVO GaiaVoxelWorld VoxelComponents VoxelData)
+else()
+    target_link_libraries(test_stored_sdf_march_mirror PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_stored_sdf_march_mirror PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_stored_sdf_march_mirror POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_stored_sdf_march_mirror>
+        COMMENT "Copying TBB DLL for test_stored_sdf_march_mirror")
+endif()
+gtest_discover_tests(test_stored_sdf_march_mirror)
+
+# ===========================================================================
+# Channel Format Tests  (Inc3 M1 — VIXEN channel vocabulary + OctreeConfig table)
+# ===========================================================================
+add_executable(test_channel_format test_channel_format.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_channel_format PRIVATE
+        GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_channel_format PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_channel_format PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_channel_format POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_channel_format>
+        COMMENT "Copying TBB DLL for test_channel_format")
+endif()
+gtest_discover_tests(test_channel_format)
+
+# ===========================================================================
+# SDF Bake Tests  (Inc2 M1 — recipe → narrow-band SDF voxels + body octree)
+# ===========================================================================
+add_executable(test_sdf_bake test_sdf_bake.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_sdf_bake PRIVATE
+        GTest::gtest_main SVO GaiaVoxelWorld VoxelComponents VoxelData)
+else()
+    target_link_libraries(test_sdf_bake PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_sdf_bake PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_sdf_bake POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_sdf_bake>
+        COMMENT "Copying TBB DLL for test_sdf_bake")
+endif()
+gtest_discover_tests(test_sdf_bake)
+
+# ===========================================================================
+# Recipe Codegen Tests (P2.2 M1 — instruction→HLSL emitter + SPIR-V compile gate)
+# ===========================================================================
+add_executable(test_recipe_codegen test_recipe_codegen.cpp)
+if(TARGET SVO AND TARGET ShaderManagement)
+    target_link_libraries(test_recipe_codegen PRIVATE
+        GTest::gtest_main SVO ShaderManagement)
+elseif(TARGET SVO)
+    target_link_libraries(test_recipe_codegen PRIVATE
+        GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_recipe_codegen PRIVATE GTest::gtest_main)
+endif()
+target_compile_definitions(test_recipe_codegen PRIVATE
+    SDF_CORE_KERNELS_HLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.hlsl"
+)
+set_target_properties(test_recipe_codegen PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_recipe_codegen POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_recipe_codegen>
+        COMMENT "Copying TBB DLL for test_recipe_codegen")
+endif()
+gtest_discover_tests(test_recipe_codegen)
+
+# ===========================================================================
+# Recipe Bake Parity Tests (P2.1 M1 — recipe-sphere bake == analytic-sphere bake)
+# ===========================================================================
+add_executable(test_recipe_bake test_recipe_bake.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_recipe_bake PRIVATE
+        GTest::gtest_main SVO GaiaVoxelWorld VoxelComponents VoxelData)
+else()
+    target_link_libraries(test_recipe_bake PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_recipe_bake PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_recipe_bake POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_recipe_bake>
+        COMMENT "Copying TBB DLL for test_recipe_bake")
+endif()
+gtest_discover_tests(test_recipe_bake)
+
+# ===========================================================================
+# Recipe Eval Parity Tests (P0 T4 — CPU stack-VM parity vs analytic golden)
+# ===========================================================================
+add_executable(test_recipe_eval_parity test_recipe_eval_parity.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_recipe_eval_parity PRIVATE GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_recipe_eval_parity PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_recipe_eval_parity PROPERTIES FOLDER "Tests/SVO Tests")
+gtest_discover_tests(test_recipe_eval_parity)
+
 # ===========================================================================
 # Sampler Tests
 # ===========================================================================

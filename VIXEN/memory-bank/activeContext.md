@@ -1,3 +1,17 @@
+> **⚠️ 2026-06-24 — SDF body rendering Inc1+Inc2+Inc3 + the Inc3 hole-fix DONE, merged + PUSHED to `origin/main` (`9c8d549e`).**
+> Bodies render as smooth per-voxel **multi-channel Stored SDF** (sdf+color+roughness) via a generic SoA channel
+> pool the shader reads by semantic; providers = Procedural + Stored + (next) Materialization. Plan/Progress:
+> `Vixen-Docs/01-Architecture/Voxel-MultiChannel-Stored-Inc-2026-06-Plan.md` (+ `…-Design.md`, content-contract
+> `Voxel-Content-Format-Contract-Design-2026-06.md`). **Inc3 hole-fix:** brick-aligned flecks root-caused to
+> `GaiaVoxelWorld::querySolidVoxels()`'s `Density>0` filter silently dropping a Stored-SDF body's fully-interior
+> bricks (Density = signed distance, negative inside) → fixed by occupancy-based brick selection
+> (`queryOccupiedVoxels` + `LaineKarrasOctree::setSignedDistanceField`); binary/Cornell path byte-unchanged.
+> Verified on the lavapipe offscreen render gate (smooth+displaced clean) + user real-GPU + MSVC no-regression.
+> **GOTCHA (Materialization / any Density-as-field body):** "solid = Density>0" is a BINARY-voxel assumption —
+> field-valued bodies MUST bin bricks by occupancy. Build: `vixen-wsl` preset (lavapipe) for SDF render tests;
+> MSVC `cmd.exe /c C:\cpp\_wt_build.bat VIXEN` for the app (launch via `run_stored_demo.bat`). Next: Materialization.
+> The 2026-06-21 banner below is prior context.
+
 > **⚠️ 2026-06-21 — loose ends cleared + consumer/WSL branch MERGED, all PUSHED to `origin/main` (`7d1de593`).**
 > Live handoff: `Vixen-Docs/05-Progress/Session-Handoff-2026-06-21.md`.
 > This session: (1) benchmark `idOutputImage` binding-9 VUID **fixed** (PickIdTargetNode in

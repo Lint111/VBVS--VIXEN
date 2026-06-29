@@ -6,6 +6,7 @@
 #include "VulkanDevice.h"
 
 #include <algorithm>
+#include <cstdlib>   // std::getenv
 #include <cstring>
 #include <stdexcept>
 #include <string>
@@ -137,6 +138,14 @@ void BodyOctreeSceneNode::SetInstances(std::vector<Vixen::SVO::BodyInstanceGpu> 
                   std::to_string(instanceCount_) + " instances staged for next Execute");
 }
 
+void BodyOctreeSceneNode::SetBakeRecipe(std::vector<Vixen::SVO::Recipe::SdfInstruction> prog) {
+    bakeRecipe_  = std::move(prog);
+    recipeDirty_ = true;   // P2.3: if already compiled, ExecuteImpl re-materializes on the next frame;
+                           //       if pre-Compile, CompileImpl bakes fresh and clears this.
+    NODE_LOG_INFO("[BodyOctreeSceneNode] SetBakeRecipe: " +
+                  std::to_string(bakeRecipe_.size()) + " instructions — octree 0 will use recipe bake");
+}
+
 void BodyOctreeSceneNode::SetupImpl(TypedSetupContext& /*ctx*/) {
     // Graph-scope initialization only (no input access).
     NODE_LOG_DEBUG("[BodyOctreeSceneNode] Setup (graph-scope initialization)");
@@ -187,20 +196,36 @@ void BodyOctreeSceneNode::CompileImpl(TypedCompileContext& ctx) {
 
     // 4) Publish outputs. INSTANCE_BUFFER emits ring slot 0 as a compile-time placeholder;
     //    ExecuteImpl overwrites it each frame with the current ring slot.
-    ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_NODES_BUFFER,     nodesBuffer_);
-    ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_BRICKS_BUFFER,    bricksBuffer_);
-    ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_MATERIALS_BUFFER, materialsBuffer_);
-    ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_CONFIG_BUFFER,    configBuffer_);
-    ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_BUFFER,         perFrame_.GetUniformBuffer(0));
-    ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_COUNT,          instanceCount_);
+    ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_NODES_BUFFER,         nodesBuffer_);
+    ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_BRICKS_BUFFER,        bricksBuffer_);
+    ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_MATERIALS_BUFFER,     materialsBuffer_);
+    ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_CONFIG_BUFFER,        configBuffer_);
+    ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_BUFFER,             perFrame_.GetUniformBuffer(0));
+    ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_COUNT,              instanceCount_);
+    // Inc2 M3: SDF + lookup buffers (bindings 11/12). Always emitted — placeholder
+    // for binary/Procedural, real data for Stored-SDF bodies.
+    ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_SDF_BUFFER,           sdfBuffer_);
+    ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_BRICKLOOKUP_BUFFER,   brickLookupBuffer_);
 
     NODE_LOG_INFO("[BodyOctreeSceneNode] Outputs published (octrees=" +
                   std::to_string(concatenated_.count) + ", instances=" +
                   std::to_string(instanceCount_) + ", ringSlots=" +
                   std::to_string(kRingSize) + ")");
+
+    // A fresh compile already baked the current recipe — no pending re-materialize.
+    recipeDirty_ = false;
 }
 
 void BodyOctreeSceneNode::ExecuteImpl(TypedExecuteContext& ctx) {
+    // P2.3: a runtime recipe edit (SetBakeRecipe after Compile) re-bakes + re-uploads here,
+    // at the fence-waited safe point — never on the recompile cascade.
+    bool octreeRepublished = false;
+    if (recipeDirty_) {
+        Rematerialize();
+        recipeDirty_      = false;
+        octreeRepublished = true;
+    }
+
     // Per-frame ring index from FrameSyncNode (clamp via modulo for safety).
     const uint32_t frameIndex = ctx.In(BodyOctreeSceneNodeConfig::CURRENT_FRAME_INDEX) % kRingSize;
 
@@ -228,6 +253,17 @@ void BodyOctreeSceneNode::ExecuteImpl(TypedExecuteContext& ctx) {
     ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_BUFFER, perFrame_.GetUniformBuffer(frameIndex));
     // Re-emit the count (it may change each frame if SetInstances was called).
     ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_COUNT, instanceCount_);
+
+    // Re-emit the octree slots with the freshly-created handles after a re-materialize,
+    // so GetOutput()->GetHandle() (and any per-frame descriptor re-bind) sees the new buffers.
+    if (octreeRepublished) {
+        ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_NODES_BUFFER,       nodesBuffer_);
+        ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_BRICKS_BUFFER,      bricksBuffer_);
+        ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_MATERIALS_BUFFER,   materialsBuffer_);
+        ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_CONFIG_BUFFER,      configBuffer_);
+        ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_SDF_BUFFER,         sdfBuffer_);
+        ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_BRICKLOOKUP_BUFFER, brickLookupBuffer_);
+    }
 }
 
 void BodyOctreeSceneNode::CleanupImpl(TypedCleanupContext& ctx) {
@@ -251,9 +287,91 @@ void BodyOctreeSceneNode::EnsureOctreesBuilt() {
         return;
     }
 
-    // Build one owning shell octree per kind. ShellOctree is move-only (unique_ptr
-    // members) and OWNS its world/registry/octree, so the cached vector keeps them
-    // alive for the node's lifetime — required because Serialize() reads the world.
+    // VIXEN_STORED_SDF_DEMO: bake the 3 body kinds as Stored-SDF octrees so the
+    // Stored-SDF shader path (formatId == STORED_SDF, bindings 11/12) can be A/B'd
+    // against the Procedural path (default when env var is unset).
+    if (std::getenv("VIXEN_STORED_SDF_DEMO")) {
+        NODE_LOG_INFO("[BodyOctreeSceneNode] VIXEN_STORED_SDF_DEMO: baking 3 Stored-SDF octrees");
+
+        // Grid: n=64 → bricksPerAxis=8 (2^(log2(64)-brickDepth=3) = 2^3 = 8).
+        // center=(32,32,32); radius 26 leaves a 6-voxel margin to the [0,64] walls.
+        // bandVoxels=2.5 → HONEST narrow-band SDF (interior + far-exterior bricks are
+        // unallocated). The renderer must traverse this sparse field correctly — see the
+        // "ESVO-leaf-hit traversal" plan in the Inc2 design/plan docs (the next step).
+        // (Live gate found the standalone marchStoredSdf flat sphere-trace mishandles the
+        //  sparse edges; the fix is to reuse the ESVO traversal with an SDF leaf-hit, NOT
+        //  to densify the data.)
+        constexpr int   kSdfN          = 64;
+        constexpr float kSdfCenter     = 32.0f;
+        constexpr float kSdfRadius     = 26.0f;  // 6-voxel margin to the [0,64] walls
+        constexpr float kSdfBand       = 2.5f;   // narrow band (honest sparse data)
+        constexpr int   kSdfBrickDepth = 3;
+
+        const glm::vec3 center(kSdfCenter, kSdfCenter, kSdfCenter);
+
+        // Bake 3 Stored-SDF bodies:
+        //   kind 0 — smooth sphere (left,   materialId=1 red)
+        //   kind 1 — displaced sphere (centre, materialId=2 green; amp≈2.7, freq≈0.375)
+        //   kind 2 — smooth sphere (right,  materialId=3 white)
+        //
+        // amp=2.7 ≈ 2.7 grid-voxels of displacement; freq=0.375 gives ≈3 sinusoidal
+        // cycles across the [0,64] grid. The displaced body is visibly distinct from
+        // the plain spheres without blowing out the narrow-band.
+        struct SdfKind {
+            uint32_t recipeId;
+            float    displaceAmp;
+            float    displaceFreq;
+        };
+        constexpr SdfKind kSdfKinds[kKindCount] = {
+            { Vixen::SVO::RECIPE_SPHERE,           0.0f, 0.0f   },  // kind 0: smooth
+            { Vixen::SVO::RECIPE_DISPLACED_SPHERE, 2.7f, 0.375f },  // kind 1: displaced
+            { Vixen::SVO::RECIPE_SPHERE,           0.0f, 0.0f   },  // kind 2: smooth
+        };
+
+        std::vector<Vixen::SVO::SdfBodyOctree> sdfOctrees;
+        sdfOctrees.reserve(kKindCount);
+
+        for (uint32_t k = 0; k < kKindCount; ++k) {
+            Vixen::SVO::SdfBakeResult baked;
+            // ponytail: recipe injection for octree 0 only; analytic path unchanged for k>0
+            if (k == 0 && !bakeRecipe_.empty()) {
+                NODE_LOG_INFO("[BodyOctreeSceneNode] octree 0: baking via recipe ("
+                              + std::to_string(bakeRecipe_.size()) + " instructions)");
+                baked = Vixen::SVO::BakeRecipeInstructionsToSdfWorld(
+                    bakeRecipe_.data(), static_cast<uint32_t>(bakeRecipe_.size()),
+                    center, kSdfN, kSdfBand, kSdfBrickDepth);
+            } else {
+                const SdfKind& sk = kSdfKinds[k];
+                Vixen::SVO::RecipeParams rp{};
+                rp.radius       = kSdfRadius;
+                rp.displaceAmp  = sk.displaceAmp;
+                rp.displaceFreq = sk.displaceFreq;
+                baked = Vixen::SVO::BakeRecipeToSdfWorld(sk.recipeId, center, rp, kSdfN, kSdfBand);
+            }
+            sdfOctrees.push_back(
+                Vixen::SVO::BuildSdfBodyOctree(baked, kSdfBrickDepth));
+        }
+
+        std::vector<const Vixen::SVO::SdfBodyOctree*> sdfPtrs;
+        sdfPtrs.reserve(sdfOctrees.size());
+        for (const Vixen::SVO::SdfBodyOctree& s : sdfOctrees) {
+            sdfPtrs.push_back(&s);
+        }
+
+        concatenated_ = Vixen::SVO::ConcatenateSdf(sdfPtrs);
+        octreesBuilt_ = true;
+
+        NODE_LOG_INFO("[BodyOctreeSceneNode] Stored-SDF: built " +
+                      std::to_string(concatenated_.count) + " SDF octrees (channelPool=" +
+                      std::to_string(concatenated_.channelPool.size()) + "B, lookup=" +
+                      std::to_string(concatenated_.brickGridLookup.size()) + "B)");
+        return;
+    }
+
+    // Default (binary shell octrees): Build one owning shell octree per kind.
+    // ShellOctree is move-only (unique_ptr members) and OWNS its world/registry/octree,
+    // so the cached vector keeps them alive for the node's lifetime — required because
+    // Serialize() reads the world.
     shellOctrees_.clear();
     shellOctrees_.reserve(kKindCount);
     for (uint32_t k = 0; k < kKindCount; ++k) {
@@ -302,7 +420,7 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device) {
         concatenated_.materials.empty() ? nullptr : concatenated_.materials.data(),
         materialsBuffer_, materialsMemory_, "octree materials SSBO");
 
-    // Config UBO: 3 x 256-byte OctreeConfig (std140), uploaded contiguously. Always
+    // Config UBO: 3 x 432-byte OctreeConfig (std140, sizeof=432), uploaded contiguously. Always
     // upload the full kMaxOctrees array so the slot covers every selectable index.
     const VkDeviceSize configSize =
         static_cast<VkDeviceSize>(sizeof(Vixen::SVO::OctreeConfig)) *
@@ -312,11 +430,31 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device) {
         concatenated_.configs.data(),
         configBuffer_, configMemory_, "octree config UBO");
 
+    // Inc3 M2: Generic multi-channel pool buffer (binding 11) + brick-grid lookup (binding 12).
+    // Pad to 1 byte when empty — binary/Procedural bodies leave channelPool empty;
+    // the shader only reads these when OctreeConfig.formatId == FORMAT_STORED_SDF (1u).
+    const VkDeviceSize sdfSize =
+        std::max<VkDeviceSize>(concatenated_.channelPool.size(), 1);
+    const VkDeviceSize brickLookupSize =
+        std::max<VkDeviceSize>(concatenated_.brickGridLookup.size(), 1);
+
+    CreateHostBuffer(device, sdfSize,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        concatenated_.channelPool.empty() ? nullptr : concatenated_.channelPool.data(),
+        sdfBuffer_, sdfMemory_, "channel pool SSBO");
+
+    CreateHostBuffer(device, brickLookupSize,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        concatenated_.brickGridLookup.empty() ? nullptr : concatenated_.brickGridLookup.data(),
+        brickLookupBuffer_, brickLookupMemory_, "brick-grid lookup SSBO");
+
     NODE_LOG_INFO("[BodyOctreeSceneNode] Created octree buffers (nodes=" +
                   std::to_string(static_cast<uint64_t>(nodesSize)) + "B, bricks=" +
                   std::to_string(static_cast<uint64_t>(bricksSize)) + "B, materials=" +
                   std::to_string(static_cast<uint64_t>(materialsSize)) + "B, config=" +
-                  std::to_string(static_cast<uint64_t>(configSize)) + "B)");
+                  std::to_string(static_cast<uint64_t>(configSize)) + "B, channelPool=" +
+                  std::to_string(static_cast<uint64_t>(sdfSize)) + "B, brickLookup=" +
+                  std::to_string(static_cast<uint64_t>(brickLookupSize)) + "B)");
 }
 
 void BodyOctreeSceneNode::EnsureRingAllocated(VulkanDevice* device, VkDeviceSize neededCapacity) {
@@ -351,7 +489,26 @@ void BodyOctreeSceneNode::EnsureRingAllocated(VulkanDevice* device, VkDeviceSize
                   std::to_string(static_cast<uint64_t>(neededCapacity)) + "B storage buffers");
 }
 
-void BodyOctreeSceneNode::DestroyBuffers() {
+void BodyOctreeSceneNode::Rematerialize() {
+    VulkanDevice* device = GetDevice();
+    if (!device) {
+        NODE_LOG_ERROR("[BodyOctreeSceneNode] Rematerialize called with no device");
+        return;
+    }
+    NODE_LOG_INFO("[BodyOctreeSceneNode] Rematerialize: re-baking octree 0 from edited recipe");
+
+    // Rare, explicit edit path — safe to stall (mirrors the ring-grow vkDeviceWaitIdle).
+    // Guarantees no in-flight command buffer still references the octree buffers we free.
+    vkDeviceWaitIdle(device->device);
+
+    octreesBuilt_ = false;     // force EnsureOctreesBuilt to re-bake + re-concatenate all 3 octrees
+    EnsureOctreesBuilt();      // octree 0 uses the new bakeRecipe_; octrees 1/2 unchanged
+
+    DestroyOctreeBuffers();    // ring is NOT touched
+    CreateOctreeBuffers(device);
+}
+
+void BodyOctreeSceneNode::DestroyOctreeBuffers() {
     if (!GetDevice()) return;
     VkDevice vkDevice = GetDevice()->device;
 
@@ -360,10 +517,16 @@ void BodyOctreeSceneNode::DestroyBuffers() {
         if (mem != VK_NULL_HANDLE) { vkFreeMemory(vkDevice, mem, nullptr);    mem = VK_NULL_HANDLE; }
     };
 
-    destroy(nodesBuffer_,     nodesMemory_);
-    destroy(bricksBuffer_,    bricksMemory_);
-    destroy(materialsBuffer_, materialsMemory_);
-    destroy(configBuffer_,    configMemory_);
+    destroy(nodesBuffer_,         nodesMemory_);
+    destroy(bricksBuffer_,        bricksMemory_);
+    destroy(materialsBuffer_,     materialsMemory_);
+    destroy(configBuffer_,        configMemory_);
+    destroy(sdfBuffer_,           sdfMemory_);         // Inc2 M3
+    destroy(brickLookupBuffer_,   brickLookupMemory_); // Inc2 M3
+}
+
+void BodyOctreeSceneNode::DestroyBuffers() {
+    DestroyOctreeBuffers();
 
     // FR-7: destroy the instance ring via PerFrameResources (mirrors DynamicInstanceBufferNode).
     perFrame_.Cleanup();

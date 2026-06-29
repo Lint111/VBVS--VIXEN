@@ -41,6 +41,7 @@
 #include "VulkanDevice.h"
 
 #include "ShellOctreeGpu.h"   // Vixen::SVO::BodyInstanceGpu
+#include "TestVkValidation.h"
 
 #include <vulkan/vulkan.h>
 
@@ -56,6 +57,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>   // setenv / unsetenv (VIXEN_STORED_SDF_DEMO bake gate)
 #include <cstring>
 #include <fstream>
 #include <string>
@@ -144,20 +146,20 @@ protected:
         // ("Invalid SPIR-V binary version 1.6 for target environment SPIR-V 1.5").
         appInfo.apiVersion       = VK_API_VERSION_1_3;
 
-        const char* layers[]     = {"VK_LAYER_KHRONOS_validation"};
-        const char* extensions[] = {VK_EXT_DEBUG_UTILS_EXTENSION_NAME};
+        // ponytail: validation is a debug aid — only enabled when the SDK layer is installed
+        const auto  enabledLayers = EnabledValidationLayers();
+        const char* extensions[]  = {VK_EXT_DEBUG_UTILS_EXTENSION_NAME};
 
         VkInstanceCreateInfo instInfo{};
         instInfo.sType                   = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
         instInfo.pApplicationInfo        = &appInfo;
-        instInfo.enabledLayerCount       = 1;
-        instInfo.ppEnabledLayerNames     = layers;
+        instInfo.enabledLayerCount       = static_cast<uint32_t>(enabledLayers.size());
+        instInfo.ppEnabledLayerNames     = enabledLayers.empty() ? nullptr : enabledLayers.data();
         instInfo.enabledExtensionCount   = 1;
         instInfo.ppEnabledExtensionNames = extensions;
 
         ASSERT_EQ(vkCreateInstance(&instInfo, nullptr, &instance_), VK_SUCCESS)
-            << "vkCreateInstance failed. Is the validation layer on VK_LAYER_PATH and "
-               "lavapipe on VK_ICD_FILENAMES?";
+            << "vkCreateInstance failed — is lavapipe on VK_ICD_FILENAMES?";
 
         ASSERT_NO_FATAL_FAILURE(PickSoftwarePhysicalDevice());
         ASSERT_TRUE(softwareConfirmed_)
@@ -343,6 +345,7 @@ protected:
     // The software (lavapipe) device MUST already be confirmed — asserted before submit.
     void RenderToRgba(VkBuffer nodesBuf, VkBuffer bricksBuf, VkBuffer materialsBuf,
                       VkBuffer configBuf, VkBuffer instanceBuf,
+                      VkBuffer sdfBuf, VkBuffer brickLookupBuf,
                       const PushConstants& pc, uint32_t w, uint32_t h,
                       std::vector<uint8_t>& outRgba /*w*h*4*/, double& outRenderMs) {
         ASSERT_TRUE(softwareConfirmed_) << "ABORT: not the software rasterizer; refusing to submit.";
@@ -353,6 +356,21 @@ protected:
         VkDeviceMemory traceMem = VK_NULL_HANDLE, counterMem = VK_NULL_HANDLE;
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, traceBuf, traceMem, true);
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, counterBuf, counterMem, true);
+
+        // SDF (11) + brick-lookup (12) bindings the shader statically declares. For binary
+        // bodies the shader never reads them at runtime (formatId==BINARY), but they MUST be
+        // bound to satisfy the pipeline layout. Callers without SDF data pass VK_NULL_HANDLE;
+        // create a 256-byte dummy here so the binding is always valid.
+        VkBuffer dummySdf = VK_NULL_HANDLE, dummyLookup = VK_NULL_HANDLE;
+        VkDeviceMemory dummySdfMem = VK_NULL_HANDLE, dummyLookupMem = VK_NULL_HANDLE;
+        if (sdfBuf == VK_NULL_HANDLE) {
+            CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummySdf, dummySdfMem, true);
+            sdfBuf = dummySdf;
+        }
+        if (brickLookupBuf == VK_NULL_HANDLE) {
+            CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummyLookup, dummyLookupMem, true);
+            brickLookupBuf = dummyLookup;
+        }
 
         // Offscreen output images: rgba8 colour (0) + r32ui id (9).
         const VkFormat kColorFmt = VK_FORMAT_R8G8B8A8_UNORM;
@@ -383,7 +401,7 @@ protected:
             lb.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
             return lb;
         };
-        const std::array<VkDescriptorSetLayoutBinding, 9> bindings = {
+        const std::array<VkDescriptorSetLayoutBinding, 11> bindings = {
             bind(0,  VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             bind(1,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(2,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
@@ -393,6 +411,8 @@ protected:
             bind(8,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(9,  VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             bind(10, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bind(11, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Inc2: SoA-SDF brick data
+            bind(12, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Inc2: brick-grid lookup
         };
         VkDescriptorSetLayoutCreateInfo dslci{};
         dslci.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -423,7 +443,7 @@ protected:
 
         const std::array<VkDescriptorPoolSize, 3> poolSizes = {{
             {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  2},
-            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 6},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 8},   // +2 for SDF (11) + lookup (12)
             {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1},
         }};
         VkDescriptorPoolCreateInfo dpci{};
@@ -449,6 +469,8 @@ protected:
         VkDescriptorBufferInfo configInfo{configBuf, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo counterInfo{counterBuf, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo instInfo{instanceBuf, 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo sdfInfo{sdfBuf, 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo lookupInfo{brickLookupBuf, 0, VK_WHOLE_SIZE};
 
         auto wImg = [&](uint32_t b, VkDescriptorImageInfo* info) {
             VkWriteDescriptorSet w2{};
@@ -464,7 +486,7 @@ protected:
             w2.descriptorType = t; w2.pBufferInfo = info;
             return w2;
         };
-        const std::array<VkWriteDescriptorSet, 9> writes = {
+        const std::array<VkWriteDescriptorSet, 11> writes = {
             wImg(0, &colorInfo),
             wBuf(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &nodesInfo),
             wBuf(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &bricksInfo),
@@ -474,6 +496,8 @@ protected:
             wBuf(8, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &counterInfo),
             wImg(9, &idInfo),
             wBuf(10, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &instInfo),
+            wBuf(11, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &sdfInfo),
+            wBuf(12, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &lookupInfo),
         };
         vkUpdateDescriptorSets(logicalDevice_, static_cast<uint32_t>(writes.size()),
                                writes.data(), 0, nullptr);
@@ -561,6 +585,8 @@ protected:
         vkDestroyImage(logicalDevice_, idImg, nullptr);    vkFreeMemory(logicalDevice_, idMem, nullptr);
         vkDestroyBuffer(logicalDevice_, traceBuf, nullptr);   vkFreeMemory(logicalDevice_, traceMem, nullptr);
         vkDestroyBuffer(logicalDevice_, counterBuf, nullptr); vkFreeMemory(logicalDevice_, counterMem, nullptr);
+        if (dummySdf != VK_NULL_HANDLE)    { vkDestroyBuffer(logicalDevice_, dummySdf, nullptr);    vkFreeMemory(logicalDevice_, dummySdfMem, nullptr); }
+        if (dummyLookup != VK_NULL_HANDLE) { vkDestroyBuffer(logicalDevice_, dummyLookup, nullptr); vkFreeMemory(logicalDevice_, dummyLookupMem, nullptr); }
     }
 };
 
@@ -617,6 +643,7 @@ PushConstants MakeCamera(const glm::vec3& eye, const glm::vec3& target,
 struct NodeBuffers {
     VkBuffer nodes = VK_NULL_HANDLE, bricks = VK_NULL_HANDLE, materials = VK_NULL_HANDLE;
     VkBuffer config = VK_NULL_HANDLE, instance = VK_NULL_HANDLE;
+    VkBuffer sdf = VK_NULL_HANDLE, brickLookup = VK_NULL_HANDLE;   // Inc2 bindings 11/12
 };
 
 }  // namespace
@@ -671,6 +698,7 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderRealShaderNearViewToPng) {
 
     std::vector<uint8_t> rgba; double renderMs = 0.0;
     ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, b.instance,
+                                         VK_NULL_HANDLE, VK_NULL_HANDLE,  // binary: dummy SDF/lookup
                                          pc, kW, kH, rgba, renderMs));
 
     std::vector<uint8_t> rgb(static_cast<size_t>(kW) * kH * 3);
@@ -773,6 +801,7 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderMultiKindBodiesProvesStrideFix) {
 
     std::vector<uint8_t> rgba; double renderMs = 0.0;
     ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, b.instance,
+                                         VK_NULL_HANDLE, VK_NULL_HANDLE,  // binary: dummy SDF/lookup
                                          pc, kW, kH, rgba, renderMs));
 
     // Per-kind hit classification by material hue (robust to Lambert dimming):
@@ -811,6 +840,544 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderMultiKindBodiesProvesStrideFix) {
     EXPECT_GT(redPixels,   500) << "kind 0 (octreeIndex 0) body did not render";
     EXPECT_GT(greenPixels, 500) << "kind 1 (octreeIndex 1) body did not render — stride fix regressed";
     EXPECT_GT(grayPixels,  500) << "kind 2 (octreeIndex 2) body did not render — stride fix regressed";
+
+    vkDeviceWaitIdle(logicalDevice_);
+    node->Cleanup(CleanupReason::FinalTeardown);
+    nodeBase.reset();
+}
+
+// ---------------------------------------------------------------------------
+// STORED-SDF render (Inc2 M6) — decisive proof of the ESVO-leaf-hit redesign.
+//
+// Bakes the 3 Stored-SDF body kinds (VIXEN_STORED_SDF_DEMO → the node's SDF path:
+// BakeRecipeToSdfWorld → BuildSdfBodyOctree → ConcatenateSdf; formatId=STORED_SDF;
+// bindings 11/12 populated) and renders them through the SHIPPED
+// BodyInstanceRayMarch.comp — which now drives the Stored-SDF iso-surface from the
+// ESVO octree traversal (handleLeafHitInstancedSdf + marchBrickSdf), NOT the retired
+// flat marchStoredSdf.
+//
+// Pre-redesign bug: POV/angle-dependent brick-aligned HOLES in the spheres.
+// Oracle: a SMOOTH sphere's silhouette must be SOLID — within each scanline's body
+// span there must be (almost) no interior background pixels. fillRatio =
+// bodyPixels/spanPixels ≈ 1.0 for a clean render; interior holes drop it well below.
+// Saves /tmp/glsl_sdf_smooth_near.png + /tmp/glsl_sdf_displaced_near.png for inspection.
+// ---------------------------------------------------------------------------
+TEST_F(BodyInstanceRayMarchRenderTest, RenderStoredSdfBodiesNoHoles) {
+    std::cout << "[ lavapipe ] selected physical device: '" << selectedDeviceName_
+              << "' (software rasterizer confirmed)\n";
+    ASSERT_TRUE(softwareConfirmed_);
+
+    using C = BodyOctreeSceneNodeConfig;
+    BodyOctreeSceneNodeType nodeType("BodyOctreeScene");
+    auto nodeBase = nodeType.CreateInstance("body_render_sdf");
+    auto* node = dynamic_cast<BodyOctreeSceneNode*>(nodeBase.get());
+    ASSERT_NE(node, nullptr);
+
+    Resource deviceRes; SetHandleVal<VulkanDevice*>(deviceRes, deviceShell_.get());
+    Resource poolRes;   SetHandleVal<VkCommandPool>(poolRes, commandPool_);
+    Resource frameRes;  uint32_t frameIndex = 0; SetHandleVal<uint32_t>(frameRes, frameIndex);
+    node->SetInput(C::VULKAN_DEVICE_IN_Slot::index,    0, &deviceRes);
+    node->SetInput(C::COMMAND_POOL_Slot::index,        0, &poolRes);
+    node->SetInput(C::CURRENT_FRAME_INDEX_Slot::index, 0, &frameRes);
+
+    // Body world transform: SerializeSdf sets localToWorld = scale(kWorldGridSize=10) (NOT the grid
+    // size), so the octree's normalized [0,1]^3 maps to a 10*renderScale world cube. The SDF sphere's
+    // iso-surface sits at grid radius 26 of 64 (normalized 0.40625). Hence (matching the proven binary
+    // helpers): world centre = worldPos + 0.5*10*renderScale = ShaderBodyCentre;
+    //           shell-extent  = 0.5*10*renderScale = ShaderBodyRadius (the SDF iso is ~0.81 of this).
+    // Place worldPos at origin; frame on the body's actual centre/extent.
+    constexpr float kRS = 2.0f;   // → body ~8 world units across, fills the 512^2 frame
+    const Vixen::SVO::BodyInstanceGpu frameInst = MakeInstance(0.0f, 0.0f, 0.0f, kRS, 0, 1.0f, 1.0f, 1.0f);
+
+    // Seed with one body so Compile's ring allocation is valid; bake as Stored-SDF.
+    node->SetInstances({ frameInst });
+    node->Setup();
+    ::setenv("VIXEN_STORED_SDF_DEMO", "1", /*overwrite=*/1);   // node bakes SDF in EnsureOctreesBuilt
+    ASSERT_NO_THROW(node->Compile());
+    ::unsetenv("VIXEN_STORED_SDF_DEMO");                       // clean for any later (binary) test
+
+    NodeBuffers b;
+    b.nodes       = node->GetOutput(C::OCTREE_NODES_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.bricks      = node->GetOutput(C::OCTREE_BRICKS_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.materials   = node->GetOutput(C::OCTREE_MATERIALS_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.config      = node->GetOutput(C::OCTREE_CONFIG_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.sdf         = node->GetOutput(C::OCTREE_SDF_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.brickLookup = node->GetOutput(C::OCTREE_BRICKLOOKUP_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    ASSERT_NE(b.config, VK_NULL_HANDLE);
+    ASSERT_NE(b.sdf, VK_NULL_HANDLE);
+    ASSERT_NE(b.brickLookup, VK_NULL_HANDLE);
+
+    ASSERT_EQ(sizeof(Vixen::SVO::OctreeConfig), 432u)
+        << "OctreeConfig must match the shader's 432-byte std140 configs[] ArrayStride";
+
+    constexpr uint32_t kW = 512, kH = 512;
+    const glm::vec3 focus = ShaderBodyCentre(frameInst);                       // worldPos + 5*renderScale
+    const float     R     = ShaderBodyRadius(frameInst);                       // 5*renderScale (shell extent)
+    const glm::vec3 eye   = focus + glm::normalize(glm::vec3(0.3f, 0.25f, 1.0f)) * (R * 4.0f);
+    const PushConstants pc = MakeCamera(eye, focus, kW, kH, 1);
+
+    // Render ONE Stored-SDF body (octreeIdx) alone, save a PNG, return its RGBA.
+    auto renderBody = [&](uint32_t octreeIdx, const char* pngPath,
+                          std::vector<uint8_t>& outRgba) {
+        node->SetInstances({ MakeInstance(0.0f, 0.0f, 0.0f, kRS, octreeIdx, 1.0f, 1.0f, 1.0f) });
+        frameIndex = 0; SetHandleVal<uint32_t>(frameRes, frameIndex);
+        node->Execute();
+        VkBuffer inst = node->GetOutput(C::INSTANCE_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+        ASSERT_NE(inst, VK_NULL_HANDLE);
+        double ms = 0.0;
+        RenderToRgba(b.nodes, b.bricks, b.materials, b.config, inst,
+                     b.sdf, b.brickLookup, pc, kW, kH, outRgba, ms);
+        std::vector<uint8_t> rgb(static_cast<size_t>(kW) * kH * 3);
+        int bodyPx = 0;
+        for (uint32_t i = 0; i < kW * kH; ++i) {
+            const uint8_t r = outRgba[i*4+0], g = outRgba[i*4+1], bl = outRgba[i*4+2];
+            rgb[i*3+0]=r; rgb[i*3+1]=g; rgb[i*3+2]=bl;
+            if (r > 24 || g > 24 || bl > 40) ++bodyPx;
+        }
+        EXPECT_NE(stbi_write_png(pngPath, kW, kH, 3, rgb.data(), kW * 3), 0)
+            << "stbi_write_png failed for " << pngPath;
+        std::printf("[SDF] octree %u | render=%.0f ms | body px=%d / %u | -> %s\n",
+                    octreeIdx, ms, bodyPx, kW * kH, pngPath);
+    };
+
+    // --- Smooth sphere (octree 0): STRICT solid-silhouette (no-holes) oracle ---
+    std::vector<uint8_t> smooth;
+    ASSERT_NO_FATAL_FAILURE(renderBody(0u, "/tmp/glsl_sdf_smooth_near.png", smooth));
+
+    uint64_t totalBody = 0, totalSpan = 0;
+    int bodyRows = 0, bodyPixels = 0;
+    for (uint32_t y = 0; y < kH; ++y) {
+        int first = -1, last = -1, cnt = 0;
+        for (uint32_t x = 0; x < kW; ++x) {
+            const uint8_t* px = &smooth[(static_cast<size_t>(y) * kW + x) * 4];
+            if (px[0] > 24 || px[1] > 24 || px[2] > 40) { if (first < 0) first = int(x); last = int(x); ++cnt; }
+        }
+        if (first >= 0) { totalBody += cnt; totalSpan += (last - first + 1); ++bodyRows; bodyPixels += cnt; }
+    }
+    const double fillRatio = (totalSpan > 0) ? double(totalBody) / double(totalSpan) : 0.0;
+    std::printf("[SDF] smooth sphere: bodyPx=%d rows=%d fillRatio=%.4f (1.0 = solid, holes drop it)\n",
+                bodyPixels, bodyRows, fillRatio);
+
+    EXPECT_GT(bodyPixels, 20000) << "Stored-SDF smooth sphere barely rendered — body not hit.";
+    EXPECT_GT(fillRatio, 0.97)
+        << "Stored-SDF smooth sphere has interior HOLES (fillRatio " << fillRatio
+        << " < 0.97) — the ESVO-leaf-hit redesign did not close the brick-aligned gaps.";
+
+    // --- Displaced sphere (octree 1): lenient coverage + PNG for inspection ---
+    std::vector<uint8_t> displaced;
+    ASSERT_NO_FATAL_FAILURE(renderBody(1u, "/tmp/glsl_sdf_displaced_near.png", displaced));
+    int dispBody = 0;
+    for (uint32_t i = 0; i < kW * kH; ++i) {
+        const uint8_t r = displaced[i*4+0], g = displaced[i*4+1], bl = displaced[i*4+2];
+        if (r > 24 || g > 24 || bl > 40) ++dispBody;
+    }
+    EXPECT_GT(dispBody, 20000) << "Stored-SDF displaced sphere barely rendered — body not hit.";
+
+    vkDeviceWaitIdle(logicalDevice_);
+    node->Cleanup(CleanupReason::FinalTeardown);
+    nodeBase.reset();
+}
+
+// ---------------------------------------------------------------------------
+// MULTI-CHANNEL render gate (Inc3 M4) — decisive proof that per-voxel color
+// and roughness channels reach the GPU shader and produce visible variation.
+//
+// Renders the smooth Stored-SDF sphere (octree 0) which is baked with:
+//   color = 0.5 + 0.5*cos(p*0.12 + {0, 2.094, 4.188})  (smooth RGB bands)
+//   roughness = clamp(0.2 + 0.6*fract(p.y*0.0625), 0, 1) (Y-stripe)
+//
+// Assertions:
+//   (a) SDF still SOLID -- fillRatio > 0.97 (no-regression from RenderStoredSdfBodiesNoHoles)
+//   (b) Per-voxel COLOR varies -- sample a horizontal row of body pixels; the
+//       per-channel range (max-min) must exceed 0.10 on at least one of R/G/B.
+//       A flat tint (color not routed to shader) would FAIL this.
+//   (c) PNG written to /tmp/glsl_sdf_multichannel.png for visual inspection.
+// ---------------------------------------------------------------------------
+TEST_F(BodyInstanceRayMarchRenderTest, RenderStoredSdfMultiChannel) {
+    std::cout << "[ lavapipe ] selected physical device: '" << selectedDeviceName_
+              << "' (software rasterizer confirmed)\n";
+    ASSERT_TRUE(softwareConfirmed_);
+
+    using C = BodyOctreeSceneNodeConfig;
+    BodyOctreeSceneNodeType nodeType("BodyOctreeScene");
+    auto nodeBase = nodeType.CreateInstance("body_render_multichannel");
+    auto* node = dynamic_cast<BodyOctreeSceneNode*>(nodeBase.get());
+    ASSERT_NE(node, nullptr);
+
+    Resource deviceRes; SetHandleVal<VulkanDevice*>(deviceRes, deviceShell_.get());
+    Resource poolRes;   SetHandleVal<VkCommandPool>(poolRes, commandPool_);
+    Resource frameRes;  uint32_t frameIndex = 0; SetHandleVal<uint32_t>(frameRes, frameIndex);
+    node->SetInput(C::VULKAN_DEVICE_IN_Slot::index,    0, &deviceRes);
+    node->SetInput(C::COMMAND_POOL_Slot::index,        0, &poolRes);
+    node->SetInput(C::CURRENT_FRAME_INDEX_Slot::index, 0, &frameRes);
+
+    constexpr float kRS = 2.0f;
+    const Vixen::SVO::BodyInstanceGpu frameInst = MakeInstance(0.0f, 0.0f, 0.0f, kRS, 0, 1.0f, 1.0f, 1.0f);
+
+    node->SetInstances({ frameInst });
+    node->Setup();
+    ::setenv("VIXEN_STORED_SDF_DEMO", "1", /*overwrite=*/1);
+    ASSERT_NO_THROW(node->Compile());
+    ::unsetenv("VIXEN_STORED_SDF_DEMO");
+
+    NodeBuffers b;
+    b.nodes       = node->GetOutput(C::OCTREE_NODES_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.bricks      = node->GetOutput(C::OCTREE_BRICKS_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.materials   = node->GetOutput(C::OCTREE_MATERIALS_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.config      = node->GetOutput(C::OCTREE_CONFIG_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.sdf         = node->GetOutput(C::OCTREE_SDF_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.brickLookup = node->GetOutput(C::OCTREE_BRICKLOOKUP_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    ASSERT_NE(b.config, VK_NULL_HANDLE);
+    ASSERT_NE(b.sdf, VK_NULL_HANDLE);
+    ASSERT_NE(b.brickLookup, VK_NULL_HANDLE);
+
+    ASSERT_EQ(sizeof(Vixen::SVO::OctreeConfig), 432u)
+        << "OctreeConfig must match the shader's 432-byte std140 configs[] ArrayStride";
+
+    constexpr uint32_t kW = 512, kH = 512;
+    const glm::vec3 focus = ShaderBodyCentre(frameInst);
+    const float     R     = ShaderBodyRadius(frameInst);
+    const glm::vec3 eye   = focus + glm::normalize(glm::vec3(0.3f, 0.25f, 1.0f)) * (R * 4.0f);
+    const PushConstants pc = MakeCamera(eye, focus, kW, kH, 1);
+
+    // Render the Stored-SDF sphere (octree 0) into RGBA.
+    node->SetInstances({ MakeInstance(0.0f, 0.0f, 0.0f, kRS, 0u, 1.0f, 1.0f, 1.0f) });
+    frameIndex = 0; SetHandleVal<uint32_t>(frameRes, frameIndex);
+    node->Execute();
+    VkBuffer inst = node->GetOutput(C::INSTANCE_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    ASSERT_NE(inst, VK_NULL_HANDLE);
+
+    std::vector<uint8_t> rgba; double renderMs = 0.0;
+    ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, inst,
+                                          b.sdf, b.brickLookup, pc, kW, kH, rgba, renderMs));
+
+    // ------------------------------------------------------------------
+    // (a) SDF solid: fillRatio > 0.97 (no-regression oracle)
+    // ------------------------------------------------------------------
+    uint64_t totalBody = 0, totalSpan = 0;
+    int bodyRows = 0, bodyPixels = 0;
+    for (uint32_t y = 0; y < kH; ++y) {
+        int first = -1, last = -1, cnt = 0;
+        for (uint32_t x = 0; x < kW; ++x) {
+            const uint8_t* px = &rgba[(static_cast<size_t>(y) * kW + x) * 4];
+            if (px[0] > 24 || px[1] > 24 || px[2] > 40) {
+                if (first < 0) first = int(x); last = int(x); ++cnt;
+            }
+        }
+        if (first >= 0) { totalBody += cnt; totalSpan += (last - first + 1); ++bodyRows; bodyPixels += cnt; }
+    }
+    const double fillRatio = (totalSpan > 0) ? double(totalBody) / double(totalSpan) : 0.0;
+    std::printf("[MULTICHANNEL] smooth sphere: bodyPx=%d rows=%d fillRatio=%.4f\n",
+                bodyPixels, bodyRows, fillRatio);
+
+    EXPECT_GT(bodyPixels, 20000) << "Multi-channel Stored-SDF sphere barely rendered.";
+    EXPECT_GT(fillRatio, 0.97)
+        << "Multi-channel Stored-SDF sphere has HOLES (fillRatio=" << fillRatio << " < 0.97)";
+
+    // ------------------------------------------------------------------
+    // (b) Per-voxel color varies: scan a horizontal row near the centre of the
+    //     sphere disk, collect body pixels, and assert that the range of at
+    //     least one channel (R/G/B) exceeds 0.10 (flat tint would FAIL).
+    // ------------------------------------------------------------------
+    // Pick the row in the vertical-centre half with the most body pixels.
+    uint32_t bestRow = kH / 2;
+    int bestCnt = 0;
+    for (uint32_t y = kH / 4; y < 3 * kH / 4; ++y) {
+        int cnt = 0;
+        for (uint32_t x = 0; x < kW; ++x) {
+            const uint8_t* px = &rgba[(static_cast<size_t>(y) * kW + x) * 4];
+            if (px[0] > 24 || px[1] > 24 || px[2] > 40) ++cnt;
+        }
+        if (cnt > bestCnt) { bestCnt = cnt; bestRow = y; }
+    }
+
+    float rMin = 1.0f, rMax = 0.0f;
+    float gMin = 1.0f, gMax = 0.0f;
+    float blMin = 1.0f, blMax = 0.0f;
+    int rowBodyPx = 0;
+    for (uint32_t x = 0; x < kW; ++x) {
+        const uint8_t* px = &rgba[(static_cast<size_t>(bestRow) * kW + x) * 4];
+        if (!(px[0] > 24 || px[1] > 24 || px[2] > 40)) continue;
+        ++rowBodyPx;
+        const float rf  = px[0] / 255.0f;
+        const float gf  = px[1] / 255.0f;
+        const float bff = px[2] / 255.0f;
+        if (rf  < rMin)  rMin  = rf;   if (rf  > rMax)  rMax  = rf;
+        if (gf  < gMin)  gMin  = gf;   if (gf  > gMax)  gMax  = gf;
+        if (bff < blMin) blMin = bff;  if (bff > blMax) blMax = bff;
+    }
+    const float rRange  = rMax  - rMin;
+    const float gRange  = gMax  - gMin;
+    const float blRange = blMax - blMin;
+    std::printf("[MULTICHANNEL] color range row=%u bodyPx=%d | R=[%.3f,%.3f] range=%.3f | "
+                "G=[%.3f,%.3f] range=%.3f | B=[%.3f,%.3f] range=%.3f\n",
+                bestRow, rowBodyPx, rMin, rMax, rRange, gMin, gMax, gRange, blMin, blMax, blRange);
+
+    const float maxRange = (rRange > gRange) ? (rRange > blRange ? rRange : blRange)
+                                              : (gRange > blRange ? gRange : blRange);
+    EXPECT_GT(maxRange, 0.10f)
+        << "Per-voxel color shows no variation (max channel range=" << maxRange
+        << ") -- color channel is NOT reaching the shader (flat tint / color not wired).";
+
+    // ------------------------------------------------------------------
+    // (c) Write PNG for visual inspection
+    // ------------------------------------------------------------------
+    std::vector<uint8_t> rgb(static_cast<size_t>(kW) * kH * 3);
+    for (uint32_t i = 0; i < kW * kH; ++i) {
+        rgb[i * 3 + 0] = rgba[i * 4 + 0];
+        rgb[i * 3 + 1] = rgba[i * 4 + 1];
+        rgb[i * 3 + 2] = rgba[i * 4 + 2];
+    }
+    const char* outPath = "/tmp/glsl_sdf_multichannel.png";
+    EXPECT_NE(stbi_write_png(outPath, kW, kH, 3, rgb.data(), kW * 3), 0)
+        << "stbi_write_png failed for " << outPath;
+    std::printf("[MULTICHANNEL] %ux%u | render=%.0f ms | -> %s\n", kW, kH, renderMs, outPath);
+
+    vkDeviceWaitIdle(logicalDevice_);
+    node->Cleanup(CleanupReason::FinalTeardown);
+    nodeBase.reset();
+}
+
+// ---------------------------------------------------------------------------
+// P2.1 M2 — Recipe-baked body render gate.
+//
+// Injects a sphere∪sphere peanut recipe into octree 0 via SetBakeRecipe before
+// Compile. The resulting body cannot be produced by any hardcoded recipe, which
+// proves the materialization path (recipe → BakeRecipeInstructionsToSdfWorld →
+// Stored octree → shipped BodyInstanceRayMarch.comp shader) end-to-end.
+//
+// Oracle: peanut silhouette is SOLID — fillRatio > 0.97, bodyPixels > 20000.
+// PNG: /tmp/glsl_sdf_recipe_peanut.png (controller reads it).
+// ---------------------------------------------------------------------------
+TEST_F(BodyInstanceRayMarchRenderTest, RenderRecipeBakedBody) {
+    std::cout << "[ lavapipe ] selected physical device: '" << selectedDeviceName_
+              << "' (software rasterizer confirmed)\n";
+    ASSERT_TRUE(softwareConfirmed_);
+
+    using C = BodyOctreeSceneNodeConfig;
+    BodyOctreeSceneNodeType nodeType("BodyOctreeScene");
+    auto nodeBase = nodeType.CreateInstance("body_render_recipe");
+    auto* node = dynamic_cast<BodyOctreeSceneNode*>(nodeBase.get());
+    ASSERT_NE(node, nullptr);
+
+    Resource deviceRes; SetHandleVal<VulkanDevice*>(deviceRes, deviceShell_.get());
+    Resource poolRes;   SetHandleVal<VkCommandPool>(poolRes, commandPool_);
+    Resource frameRes;  uint32_t frameIndex = 0; SetHandleVal<uint32_t>(frameRes, frameIndex);
+    node->SetInput(C::VULKAN_DEVICE_IN_Slot::index,    0, &deviceRes);
+    node->SetInput(C::COMMAND_POOL_Slot::index,        0, &poolRes);
+    node->SetInput(C::CURRENT_FRAME_INDEX_Slot::index, 0, &frameRes);
+
+    constexpr float kRS = 2.0f;
+    const Vixen::SVO::BodyInstanceGpu frameInst = MakeInstance(0.0f, 0.0f, 0.0f, kRS, 0, 1.0f, 1.0f, 1.0f);
+    node->SetInstances({ frameInst });
+
+    // Build a sphere∪sphere peanut recipe in grid space (64^3).
+    // Two overlapping spheres at x=26 and x=38, radius=16 each → forms a peanut
+    // shape the hardcoded recipes cannot produce.
+    auto makeSph = [](glm::vec3 c, float r) {
+        Vixen::SVO::Recipe::SdfInstruction in{};
+        in.opCode  = static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::Sphere);
+        in.data[0] = c.x; in.data[1] = c.y; in.data[2] = c.z; in.data[3] = r;
+        return in;
+    };
+    Vixen::SVO::Recipe::SdfInstruction uni{};
+    uni.opCode = static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::Union);
+
+    node->SetBakeRecipe({
+        makeSph({26.0f, 32.0f, 32.0f}, 16.0f),  // left lobe
+        makeSph({38.0f, 32.0f, 32.0f}, 16.0f),  // right lobe
+        uni                                       // union → peanut
+    });
+
+    node->Setup();
+    ::setenv("VIXEN_STORED_SDF_DEMO", "1", /*overwrite=*/1);
+    ASSERT_NO_THROW(node->Compile());
+    ::unsetenv("VIXEN_STORED_SDF_DEMO");
+
+    NodeBuffers b;
+    b.nodes       = node->GetOutput(C::OCTREE_NODES_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.bricks      = node->GetOutput(C::OCTREE_BRICKS_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.materials   = node->GetOutput(C::OCTREE_MATERIALS_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.config      = node->GetOutput(C::OCTREE_CONFIG_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.sdf         = node->GetOutput(C::OCTREE_SDF_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.brickLookup = node->GetOutput(C::OCTREE_BRICKLOOKUP_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    ASSERT_NE(b.config,      VK_NULL_HANDLE);
+    ASSERT_NE(b.sdf,         VK_NULL_HANDLE);
+    ASSERT_NE(b.brickLookup, VK_NULL_HANDLE);
+
+    ASSERT_EQ(sizeof(Vixen::SVO::OctreeConfig), 432u)
+        << "OctreeConfig must match the shader's 432-byte std140 configs[] ArrayStride";
+
+    constexpr uint32_t kW = 512, kH = 512;
+    const glm::vec3 focus = ShaderBodyCentre(frameInst);
+    const float     R     = ShaderBodyRadius(frameInst);
+    const glm::vec3 eye   = focus + glm::normalize(glm::vec3(0.3f, 0.25f, 1.0f)) * (R * 4.0f);
+    const PushConstants pc = MakeCamera(eye, focus, kW, kH, 1);
+
+    // Render octree 0 (recipe-baked peanut).
+    node->SetInstances({ MakeInstance(0.0f, 0.0f, 0.0f, kRS, 0u, 1.0f, 1.0f, 1.0f) });
+    frameIndex = 0; SetHandleVal<uint32_t>(frameRes, frameIndex);
+    node->Execute();
+    VkBuffer inst = node->GetOutput(C::INSTANCE_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    ASSERT_NE(inst, VK_NULL_HANDLE);
+
+    std::vector<uint8_t> rgba; double ms = 0.0;
+    ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, inst,
+                                         b.sdf, b.brickLookup, pc, kW, kH, rgba, ms));
+
+    // Write PNG (controller reads this to verify visually).
+    const char* outPath = "/tmp/glsl_sdf_recipe_peanut.png";
+    {
+        std::vector<uint8_t> rgb(static_cast<size_t>(kW) * kH * 3);
+        for (uint32_t i = 0; i < kW * kH; ++i) {
+            rgb[i*3+0] = rgba[i*4+0]; rgb[i*3+1] = rgba[i*4+1]; rgb[i*3+2] = rgba[i*4+2];
+        }
+        EXPECT_NE(stbi_write_png(outPath, kW, kH, 3, rgb.data(), kW * 3), 0)
+            << "stbi_write_png failed for " << outPath;
+    }
+
+    // Solid-silhouette oracle (same as RenderStoredSdfBodiesNoHoles smooth sphere check).
+    uint64_t totalBody = 0, totalSpan = 0;
+    int bodyRows = 0, bodyPixels = 0;
+    for (uint32_t y = 0; y < kH; ++y) {
+        int first = -1, last = -1, cnt = 0;
+        for (uint32_t x = 0; x < kW; ++x) {
+            const uint8_t* px = &rgba[(static_cast<size_t>(y) * kW + x) * 4];
+            if (px[0] > 24 || px[1] > 24 || px[2] > 40) {
+                if (first < 0) first = int(x); last = int(x); ++cnt;
+            }
+        }
+        if (first >= 0) { totalBody += cnt; totalSpan += (last - first + 1); ++bodyRows; bodyPixels += cnt; }
+    }
+    const double fillRatio = (totalSpan > 0) ? double(totalBody) / double(totalSpan) : 0.0;
+    std::printf("[RECIPE] peanut: bodyPx=%d rows=%d fillRatio=%.4f | render=%.0f ms | -> %s\n",
+                bodyPixels, bodyRows, fillRatio, ms, outPath);
+
+    EXPECT_GT(bodyPixels, 20000) << "recipe-baked body barely rendered";
+    EXPECT_GT(fillRatio, 0.97)   << "recipe-baked body has interior holes (fillRatio=" << fillRatio << ")";
+
+    vkDeviceWaitIdle(logicalDevice_);
+    node->Cleanup(CleanupReason::FinalTeardown);
+    nodeBase.reset();
+}
+
+// ---------------------------------------------------------------------------
+// P2.3 M2 — Live edit → re-materialize → re-render gate.
+//
+// Renders octree 0 as a single sphere (A), edits the recipe to a sphere∪sphere
+// peanut (B) via SetBakeRecipe AFTER Compile, drives one Execute (which
+// re-materializes), re-reads the (new) handles, and re-renders. B must be a
+// WIDER body than A — proving the GPU saw the edit with no graph rebuild.
+//
+// PNGs: /tmp/glsl_sdf_remat_A.png (sphere), /tmp/glsl_sdf_remat_B.png (peanut).
+// ---------------------------------------------------------------------------
+TEST_F(BodyInstanceRayMarchRenderTest, RematerializeEditLoop) {
+    ASSERT_TRUE(softwareConfirmed_);
+    using C = BodyOctreeSceneNodeConfig;
+
+    BodyOctreeSceneNodeType nodeType("BodyOctreeScene");
+    auto nodeBase = nodeType.CreateInstance("body_render_remat");
+    auto* node = dynamic_cast<BodyOctreeSceneNode*>(nodeBase.get());
+    ASSERT_NE(node, nullptr);
+
+    Resource deviceRes; SetHandleVal<VulkanDevice*>(deviceRes, deviceShell_.get());
+    Resource poolRes;   SetHandleVal<VkCommandPool>(poolRes, commandPool_);
+    Resource frameRes;  uint32_t frameIndex = 0; SetHandleVal<uint32_t>(frameRes, frameIndex);
+    node->SetInput(C::VULKAN_DEVICE_IN_Slot::index,    0, &deviceRes);
+    node->SetInput(C::COMMAND_POOL_Slot::index,        0, &poolRes);
+    node->SetInput(C::CURRENT_FRAME_INDEX_Slot::index, 0, &frameRes);
+
+    constexpr float kRS = 2.0f;
+    const Vixen::SVO::BodyInstanceGpu frameInst = MakeInstance(0.0f, 0.0f, 0.0f, kRS, 0, 1.0f, 1.0f, 1.0f);
+    node->SetInstances({ frameInst });
+
+    auto makeSph = [](glm::vec3 c, float r) {
+        Vixen::SVO::Recipe::SdfInstruction in{};
+        in.opCode  = static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::Sphere);
+        in.data[0] = c.x; in.data[1] = c.y; in.data[2] = c.z; in.data[3] = r;
+        return in;
+    };
+    Vixen::SVO::Recipe::SdfInstruction uni{};
+    uni.opCode = static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::Union);
+
+    // Recipe A: a single centred sphere (one round lobe).
+    node->SetBakeRecipe({ makeSph({32.0f, 32.0f, 32.0f}, 18.0f) });
+
+    node->Setup();
+    // Keep STORED_SDF_DEMO set across BOTH executes — the edit Execute's Rematerialize()
+    // re-runs EnsureOctreesBuilt(), which gates on this env var.
+    ::setenv("VIXEN_STORED_SDF_DEMO", "1", /*overwrite=*/1);
+    ASSERT_NO_THROW(node->Compile());      // bakes recipe A; clears recipeDirty_
+    ASSERT_NO_THROW(node->Execute());      // uploads instance; no re-materialize (not dirty)
+
+    constexpr uint32_t kW = 512, kH = 512;
+    const glm::vec3 focus = ShaderBodyCentre(frameInst);
+    const float     R     = ShaderBodyRadius(frameInst);
+    const glm::vec3 eye   = focus + glm::normalize(glm::vec3(0.3f, 0.25f, 1.0f)) * (R * 4.0f);
+    const PushConstants pc = MakeCamera(eye, focus, kW, kH, 1);
+
+    // Re-reads handles each call so a re-materialized (recreated) buffer is picked up.
+    auto renderAndMeasure = [&](const char* png, int& outWidth, int& outBodyPx) {
+        NodeBuffers b;
+        b.nodes       = node->GetOutput(C::OCTREE_NODES_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+        b.bricks      = node->GetOutput(C::OCTREE_BRICKS_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+        b.materials   = node->GetOutput(C::OCTREE_MATERIALS_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+        b.config      = node->GetOutput(C::OCTREE_CONFIG_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+        b.sdf         = node->GetOutput(C::OCTREE_SDF_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+        b.brickLookup = node->GetOutput(C::OCTREE_BRICKLOOKUP_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+        VkBuffer inst = node->GetOutput(C::INSTANCE_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+        ASSERT_NE(b.sdf, VK_NULL_HANDLE);
+        ASSERT_NE(inst,  VK_NULL_HANDLE);
+
+        std::vector<uint8_t> rgba; double ms = 0.0;
+        ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, inst,
+                                             b.sdf, b.brickLookup, pc, kW, kH, rgba, ms));
+        {
+            std::vector<uint8_t> rgb(static_cast<size_t>(kW) * kH * 3);
+            for (uint32_t i = 0; i < kW * kH; ++i) {
+                rgb[i*3+0] = rgba[i*4+0]; rgb[i*3+1] = rgba[i*4+1]; rgb[i*3+2] = rgba[i*4+2];
+            }
+            EXPECT_NE(stbi_write_png(png, kW, kH, 3, rgb.data(), kW*3), 0)
+                << "stbi_write_png failed for " << png;
+        }
+        int minX = int(kW), maxX = -1, bodyPx = 0;
+        for (uint32_t y = 0; y < kH; ++y) for (uint32_t x = 0; x < kW; ++x) {
+            const uint8_t* px = &rgba[(static_cast<size_t>(y)*kW + x)*4];
+            if (px[0] > 24 || px[1] > 24 || px[2] > 40) {
+                if (int(x) < minX) minX = int(x);
+                if (int(x) > maxX) maxX = int(x);
+                ++bodyPx;
+            }
+        }
+        outWidth  = (maxX < minX) ? 0 : (maxX - minX + 1);
+        outBodyPx = bodyPx;
+    };
+
+    // --- render A (single sphere) ---
+    int widthA = 0, pxA = 0;
+    renderAndMeasure("/tmp/glsl_sdf_remat_A.png", widthA, pxA);
+
+    // --- EDIT at runtime: sphere∪sphere peanut (two offset lobes, wider than A) ---
+    node->SetBakeRecipe({
+        makeSph({24.0f, 32.0f, 32.0f}, 16.0f),
+        makeSph({40.0f, 32.0f, 32.0f}, 16.0f),
+        uni
+    });
+    frameIndex = 0; SetHandleVal<uint32_t>(frameRes, frameIndex);
+    ASSERT_NO_THROW(node->Execute());       // recipeDirty_ -> Rematerialize + re-emit octree slots
+    ::unsetenv("VIXEN_STORED_SDF_DEMO");
+
+    // --- render B (re-reads the NEW handles post-rematerialize) ---
+    int widthB = 0, pxB = 0;
+    renderAndMeasure("/tmp/glsl_sdf_remat_B.png", widthB, pxB);
+
+    std::printf("[REMAT] A: width=%d px=%d  B: width=%d px=%d  (B = wider peanut)\n",
+                widthA, pxA, widthB, pxB);
+    EXPECT_GT(widthA, 0) << "shape A (sphere) did not render";
+    EXPECT_GT(pxB, 20000) << "shape B barely rendered";
+    EXPECT_GT(widthB, static_cast<int>(widthA * 1.15f))
+        << "edit did NOT re-materialize: B not wider than A (widthA=" << widthA
+        << " widthB=" << widthB << ")";
 
     vkDeviceWaitIdle(logicalDevice_);
     node->Cleanup(CleanupReason::FinalTeardown);

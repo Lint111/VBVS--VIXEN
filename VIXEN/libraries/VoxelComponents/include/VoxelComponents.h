@@ -451,6 +451,7 @@ struct VolumeGrid {
 VOXEL_COMPONENT_SCALAR(Density, "density", float, 1.0f)
 VOXEL_COMPONENT_SCALAR(Material, "material", uint32_t, 0)
 VOXEL_COMPONENT_SCALAR(EmissionIntensity, "emission_intensity", float, 0.0f)
+VOXEL_COMPONENT_SCALAR(Roughness, "roughness", float, 0.5f)
 
 // Vec3 attributes with Gaia layout control
 VOXEL_COMPONENT_VEC3(Color, "color", r, g, b, AoS, 1.0f, 1.0f, 1.0f)
@@ -488,6 +489,7 @@ enum class ComponentAccessType { Value, Ref };
     APPLY_MACRO(macro, Density) \
     APPLY_MACRO(macro, Material) \
     APPLY_MACRO(macro, EmissionIntensity) \
+    APPLY_MACRO(macro, Roughness) \
     APPLY_MACRO(macro, Color) \
     APPLY_MACRO(macro, Normal) \
     APPLY_MACRO(macro, Emission) \

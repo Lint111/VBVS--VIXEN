@@ -1,4 +1,5 @@
 #include "ShaderCompiler.h"
+#define ENABLE_HLSL  // unlock glslang HLSL frontend API (setHlslIoMapping, setEnvTargetHlslFunctionality1)
 #include <glslang/Public/ShaderLang.h>
 #include <glslang/Public/ResourceLimits.h>
 #include <glslang/SPIRV/GlslangToSpv.h>
@@ -114,7 +115,19 @@ CompilationOutput ShaderCompiler::CompileInternal(
 
     // Configure environment
     int vulkanVersion = options.targetVulkanVersion;
-    shader.setEnvInput(glslang::EShSourceGlsl, shaderStage, glslang::EShClientVulkan, vulkanVersion);
+    const glslang::EShSource srcLang =
+        (options.sourceLanguage == CompilationOptions::SourceLanguage::HLSL) ? glslang::EShSourceHlsl
+                                                                              : glslang::EShSourceGlsl;
+    shader.setEnvInput(srcLang, shaderStage, glslang::EShClientVulkan, vulkanVersion);
+    if (options.sourceLanguage == CompilationOptions::SourceLanguage::HLSL) {
+        // NOTE: do NOT call setEnvTargetHlslFunctionality1() — it declares the
+        // SPV_GOOGLE_hlsl_functionality1 SPIR-V extension (preserves HLSL
+        // register/semantic decorations) which requires the device to enable
+        // VK_GOOGLE_hlsl_functionality1, else vkCreateShaderModule trips
+        // VUID-VkShaderModuleCreateInfo-pCode-08742 on real GPUs. VIXEN doesn't
+        // need those decorations — setHlslIoMapping(true) does register→binding.
+        shader.setHlslIoMapping(true);   // honor [[vk::binding]] / register→binding
+    }
     shader.setEnvClient(glslang::EShClientVulkan, static_cast<glslang::EShTargetClientVersion>(vulkanVersion));
 
     // Convert shorthand SPIR-V version (e.g., 150 for v1.5) to proper encoding

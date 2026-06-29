@@ -324,10 +324,22 @@ message(STATUS "[RenderGraph Tests] Added: test_body_octree_lifetime (lavapipe l
 # gate the whole rule on its existence so the rest of the suite still builds. Without the gate,
 # the missing glslc fails the entire ninja build ("system cannot find the path specified").
 set(_brm_shader_dir "${VIXEN_SHADER_SOURCE_DIR}")
-set(_brm_glslc "${_brm_shader_dir}/../.vulkan-sdk/1.4.350.1/x86_64/bin/glslc")
+# Locate glslc from the auto-provisioned Vulkan SDK (ProvisionVulkan.cmake) rather than a
+# hardcoded version path, so a clean WSL configure (which downloads the SDK) finds it and a
+# version bump (VIXEN_VULKAN_SDK_VERSION) doesn't silently skip this test. Falls back to the
+# legacy relative path if the provisioning vars are unset (e.g. a system-SDK build).
+if(DEFINED VIXEN_VULKAN_CACHE_DIR AND DEFINED VIXEN_VULKAN_SDK_VERSION)
+    set(_brm_glslc "${VIXEN_VULKAN_CACHE_DIR}/${VIXEN_VULKAN_SDK_VERSION}/x86_64/bin/glslc")
+else()
+    set(_brm_glslc "${_brm_shader_dir}/../.vulkan-sdk/1.4.350.1/x86_64/bin/glslc")
+endif()
 if(EXISTS "${_brm_glslc}")
 set(_brm_src "${_brm_shader_dir}/BodyInstanceRayMarch.comp")
 set(_brm_spv "${CMAKE_CURRENT_BINARY_DIR}/BodyInstanceRayMarch.spv")
+
+# DEPEND on the .comp AND every .glsl it may #include — otherwise editing an include
+# (e.g. StoredSdf.glsl / ESVOTraversal.glsl) leaves the .spv stale ("ninja: no work to do").
+file(GLOB _brm_includes CONFIGURE_DEPENDS "${_brm_shader_dir}/*.glsl")
 
 add_custom_command(
     OUTPUT  ${_brm_spv}
@@ -337,7 +349,7 @@ add_custom_command(
             --target-env=vulkan1.3
             ${_brm_src}
             -o ${_brm_spv}
-    DEPENDS ${_brm_src}
+    DEPENDS ${_brm_src} ${_brm_includes}
     COMMENT "Compiling BodyInstanceRayMarch.comp -> SPIR-V (bundled glslc)"
     VERBATIM)
 add_custom_target(body_instance_raymarch_spv DEPENDS ${_brm_spv})
@@ -361,9 +373,69 @@ target_compile_definitions(test_body_instance_raymarch_render PRIVATE
     GLSL_RAYMARCH_SPV="${_brm_spv}")
 
 set_target_properties(test_body_instance_raymarch_render PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_body_instance_raymarch_render)
+# DISCOVERY_MODE PRE_TEST: defer the --gtest_list_tests invocation to ctest run-time,
+# not POST_BUILD. This prevents the Vulkan-init timeout from making the build "FAILED"
+# (the known MSB3073 / 5s discovery timeout flake — see friction log 2026-06-13).
+gtest_discover_tests(test_body_instance_raymarch_render
+    DISCOVERY_MODE PRE_TEST
+    DISCOVERY_TIMEOUT 120)
 
 message(STATUS "[RenderGraph Tests] Added: test_body_instance_raymarch_render (lavapipe real-shader render)")
 else()
     message(STATUS "[RenderGraph Tests] SKIPPED test_body_instance_raymarch_render — bundled glslc not provisioned at ${_brm_glslc} (lavapipe/WSL-only test)")
+endif()
+
+# ===========================================================================
+# P2.2 M2 — Procedural recipe live compute render (lavapipe, compile realization)
+# ===========================================================================
+# Emits an all-HLSL compute shader from SdfInstruction[], compiles it via
+# ShaderCompiler (HLSL→SPIR-V at test run time), dispatches on lavapipe with a
+# minimal 1-binding (storage-image) + push-constant compute harness.
+# No pre-compiled .spv needed (ShaderCompiler handles it at runtime).
+# Same SAFETY contract as test_body_instance_raymarch_render (lavapipe-only).
+if(TARGET ShaderManagement)
+# NOTE: SVO target is not visible at this include scope (subdirectory ordering),
+# same as test_body_instance_raymarch_render. SVO headers + ShaderCompiler reach
+# the test transitively via RENDERGRAPH_TEST_COMMON_LIBS (which includes ShaderManagement).
+
+add_executable(test_procedural_recipe_render
+    Nodes/test_procedural_recipe_render.cpp
+)
+
+target_link_libraries(test_procedural_recipe_render PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+# Optional explicit SVO link (no-op at this scope, transitive via RENDERGRAPH_TEST_COMMON_LIBS).
+if(TARGET SVO)
+    target_link_libraries(test_procedural_recipe_render PRIVATE SVO)
+endif()
+
+if(TARGET stb)
+    target_link_libraries(test_procedural_recipe_render PRIVATE stb)
+else()
+    target_include_directories(test_procedural_recipe_render PRIVATE
+        "${CMAKE_BINARY_DIR}/_deps/stb-src")
+endif()
+
+# SDF_CORE_KERNELS_HLSL_PATH: same path as used by test_recipe_codegen.
+target_compile_definitions(test_procedural_recipe_render PRIVATE
+    SDF_CORE_KERNELS_HLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.hlsl"
+)
+
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_procedural_recipe_render POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb>
+            $<TARGET_FILE_DIR:test_procedural_recipe_render>
+        COMMENT "Copying TBB DLL for test_procedural_recipe_render")
+endif()
+
+set_target_properties(test_procedural_recipe_render PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+# PRE_TEST discovery to avoid Vulkan-init timeout during build (same as raymarch render test).
+gtest_discover_tests(test_procedural_recipe_render
+    DISCOVERY_MODE PRE_TEST
+    DISCOVERY_TIMEOUT 120)
+
+message(STATUS "[RenderGraph Tests] Added: test_procedural_recipe_render (P2.2 M2 live procedural compute)")
+else()
+    message(STATUS "[RenderGraph Tests] SKIPPED test_procedural_recipe_render — ShaderManagement not available")
 endif()

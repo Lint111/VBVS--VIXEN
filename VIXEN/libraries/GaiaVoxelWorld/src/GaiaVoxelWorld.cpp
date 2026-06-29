@@ -286,6 +286,22 @@ std::vector<GaiaVoxelWorld::EntityID> GaiaVoxelWorld::querySolidVoxels() const {
     return results;
 }
 
+std::vector<GaiaVoxelWorld::EntityID> GaiaVoxelWorld::queryOccupiedVoxels() const {
+    std::vector<EntityID> results;
+
+    // Occupancy = "the voxel entity exists at this cell", independent of the SIGN
+    // of its stored field. For a signed-distance body the Density carries the SDF
+    // (negative inside), so unlike querySolidVoxels() we do NOT drop density<=0
+    // voxels — every entity with a position is occupied. Entities without a Density
+    // component are still occupied (mirrors the Material-only case in querySolidVoxels).
+    auto query = m_impl->world.query().all<MortonKey>();
+    query.each([&](gaia::ecs::Entity entity) {
+        results.push_back(entity);
+    });
+
+    return results;
+}
+
 size_t GaiaVoxelWorld::countVoxelsInRegion(const glm::vec3& min, const glm::vec3& max) const {
     size_t count = 0;
 

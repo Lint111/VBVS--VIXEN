@@ -7,6 +7,7 @@
 
 #include "ShellOctree.h"      // Vixen::SVO::ShellOctree, BuildShellOctree
 #include "ShellOctreeGpu.h"   // Vixen::SVO::{Concatenate, ConcatenatedOctrees, BodyInstanceGpu, PackInstances}
+#include "Recipe/SdfInstruction.h"  // Vixen::SVO::Recipe::SdfInstruction
 
 #include <cstdint>
 #include <memory>
@@ -77,6 +78,16 @@ public:
      */
     void SetInstances(std::vector<Vixen::SVO::BodyInstanceGpu> instances);
 
+    /**
+     * @brief Inject an SdfInstruction recipe for octree 0's bake.
+     *
+     * When non-empty and VIXEN_STORED_SDF_DEMO is set, octree 0 is baked via
+     * BakeRecipeInstructionsToSdfWorld instead of the hardcoded analytic path.
+     * Octrees 1/2 remain on the analytic path. Empty (default) = no change.
+     * // ponytail: guard keeps analytic path byte-identical when recipe is absent
+     */
+    void SetBakeRecipe(std::vector<Vixen::SVO::Recipe::SdfInstruction> prog);
+
 protected:
     void SetupImpl(TypedSetupContext& ctx) override;
     void CompileImpl(TypedCompileContext& ctx) override;
@@ -90,6 +101,8 @@ private:
     void EnsureRingAllocated(Vixen::Vulkan::Resources::VulkanDevice* device,
                              VkDeviceSize neededCapacity);            // allocate/grow instance ring
     void DestroyBuffers();
+    void DestroyOctreeBuffers();   // P2.3: destroy ONLY the 6 octree/channel buffers (ring untouched)
+    void Rematerialize();          // P2.3: re-bake octree 0 + recreate octree buffers (behind vkDeviceWaitIdle)
 
     // Build constants (one shell per kind; depth/material chosen here).
     static constexpr int      kShellDepth = 6;   // 2^6 = 64 cells/axis
@@ -103,6 +116,10 @@ private:
     std::vector<Vixen::SVO::ShellOctree>   shellOctrees_;
     Vixen::SVO::ConcatenatedOctrees        concatenated_;
     bool                                   octreesBuilt_ = false;
+    bool                                   recipeDirty_  = false;  // P2.3: set by SetBakeRecipe post-Compile; re-materialize on next Execute
+
+    // Optional recipe for octree 0 (P2.1 materialization). Empty = analytic path.
+    std::vector<Vixen::SVO::Recipe::SdfInstruction> bakeRecipe_;
 
     // Current instance list (set by SetInstances; uploaded in ExecuteImpl).
     std::vector<Vixen::SVO::BodyInstanceGpu> instances_;
@@ -112,14 +129,21 @@ private:
     int32_t                                  instanceCount_ = 0;
 
     // --- GPU resources (persistent across recompile; freed only at FinalTeardown) ---
-    VkBuffer       nodesBuffer_     = VK_NULL_HANDLE;
-    VkDeviceMemory nodesMemory_     = VK_NULL_HANDLE;
-    VkBuffer       bricksBuffer_    = VK_NULL_HANDLE;
-    VkDeviceMemory bricksMemory_    = VK_NULL_HANDLE;
-    VkBuffer       materialsBuffer_ = VK_NULL_HANDLE;
-    VkDeviceMemory materialsMemory_ = VK_NULL_HANDLE;
-    VkBuffer       configBuffer_    = VK_NULL_HANDLE;
-    VkDeviceMemory configMemory_    = VK_NULL_HANDLE;
+    VkBuffer       nodesBuffer_          = VK_NULL_HANDLE;
+    VkDeviceMemory nodesMemory_          = VK_NULL_HANDLE;
+    VkBuffer       bricksBuffer_         = VK_NULL_HANDLE;
+    VkDeviceMemory bricksMemory_         = VK_NULL_HANDLE;
+    VkBuffer       materialsBuffer_      = VK_NULL_HANDLE;
+    VkDeviceMemory materialsMemory_      = VK_NULL_HANDLE;
+    VkBuffer       configBuffer_         = VK_NULL_HANDLE;
+    VkDeviceMemory configMemory_         = VK_NULL_HANDLE;
+    // Inc3 M2: generic channel pool buffer (shader binding 11) + brick-grid lookup (shader binding 12).
+    // Created with a 1-byte placeholder when concatenated_.channelPool is empty
+    // (binary/Procedural path — non-regression invariant: descriptor set always valid).
+    VkBuffer       sdfBuffer_            = VK_NULL_HANDLE;
+    VkDeviceMemory sdfMemory_            = VK_NULL_HANDLE;
+    VkBuffer       brickLookupBuffer_    = VK_NULL_HANDLE;
+    VkDeviceMemory brickLookupMemory_    = VK_NULL_HANDLE;
 
     // Instance SSBO ring (one buffer per frame-in-flight — never freed on the tick path).
     PerFrameResources perFrame_;

@@ -65,3 +65,6 @@ NUL
 *.tmp
 *.bak
 *~
+
+# Agent worktrees (superpowers / EnterWorktree)
+.claude/worktrees/

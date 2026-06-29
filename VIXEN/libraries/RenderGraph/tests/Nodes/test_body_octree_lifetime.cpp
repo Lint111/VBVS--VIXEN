@@ -44,6 +44,7 @@
 #include "VulkanDevice.h"
 
 #include "ShellOctreeGpu.h"                          // Vixen::SVO::BodyInstanceGpu
+#include "TestVkValidation.h"
 
 #include <vulkan/vulkan.h>
 
@@ -153,11 +154,12 @@ protected:
         appInfo.pApplicationName = "test_body_octree_lifetime";
         appInfo.apiVersion       = VK_API_VERSION_1_2;
 
-        const char* layers[]     = {"VK_LAYER_KHRONOS_validation"};
-        const char* extensions[] = {VK_EXT_DEBUG_UTILS_EXTENSION_NAME};
+        // ponytail: validation is a debug aid — only enabled when the SDK layer is installed
+        const auto  enabledLayers = EnabledValidationLayers();
+        const char* extensions[]  = {VK_EXT_DEBUG_UTILS_EXTENSION_NAME};
 
         // Wire the messenger into instance creation so create/destroy-instance messages
-        // are also captured.
+        // are also captured (no-op when the layer is absent — messages simply don't arrive).
         VkDebugUtilsMessengerCreateInfoEXT msgInfo{};
         msgInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
         msgInfo.messageSeverity =
@@ -173,23 +175,25 @@ protected:
         instInfo.sType                   = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
         instInfo.pNext                   = &msgInfo;  // capture instance-scope messages too
         instInfo.pApplicationInfo        = &appInfo;
-        instInfo.enabledLayerCount       = 1;
-        instInfo.ppEnabledLayerNames     = layers;
+        instInfo.enabledLayerCount       = static_cast<uint32_t>(enabledLayers.size());
+        instInfo.ppEnabledLayerNames     = enabledLayers.empty() ? nullptr : enabledLayers.data();
         instInfo.enabledExtensionCount   = 1;
         instInfo.ppEnabledExtensionNames = extensions;
 
         VkResult res = vkCreateInstance(&instInfo, nullptr, &instance_);
         ASSERT_EQ(res, VK_SUCCESS)
-            << "vkCreateInstance failed (rc=" << res << "). Is the validation layer on "
-               "VK_LAYER_PATH and lavapipe on VK_ICD_FILENAMES?";
+            << "vkCreateInstance failed (rc=" << res << ") — is lavapipe on VK_ICD_FILENAMES?";
 
-        pfnCreateMessenger_ = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(
-            vkGetInstanceProcAddr(instance_, "vkCreateDebugUtilsMessengerEXT"));
-        pfnDestroyMessenger_ = reinterpret_cast<PFN_vkDestroyDebugUtilsMessengerEXT>(
-            vkGetInstanceProcAddr(instance_, "vkDestroyDebugUtilsMessengerEXT"));
-        ASSERT_NE(pfnCreateMessenger_, nullptr) << "vkCreateDebugUtilsMessengerEXT not found";
-        ASSERT_NE(pfnDestroyMessenger_, nullptr);
-        ASSERT_EQ(pfnCreateMessenger_(instance_, &msgInfo, nullptr, &messenger_), VK_SUCCESS);
+        // Messenger requires the layer to deliver messages; skip wiring if layer is absent.
+        if (!enabledLayers.empty()) {
+            pfnCreateMessenger_ = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(
+                vkGetInstanceProcAddr(instance_, "vkCreateDebugUtilsMessengerEXT"));
+            pfnDestroyMessenger_ = reinterpret_cast<PFN_vkDestroyDebugUtilsMessengerEXT>(
+                vkGetInstanceProcAddr(instance_, "vkDestroyDebugUtilsMessengerEXT"));
+            ASSERT_NE(pfnCreateMessenger_, nullptr) << "vkCreateDebugUtilsMessengerEXT not found";
+            ASSERT_NE(pfnDestroyMessenger_, nullptr);
+            ASSERT_EQ(pfnCreateMessenger_(instance_, &msgInfo, nullptr, &messenger_), VK_SUCCESS);
+        }
 
         // ---- Physical device: software (lavapipe) ONLY -------------------------
         ASSERT_NO_FATAL_FAILURE(PickSoftwarePhysicalDevice());

@@ -553,29 +553,86 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // near-white per instance (slight warm/neutral/cool bias) so each stays bright and the three are
     // distinguishable by both base material and tint.
     {
-        constexpr float kScale = 0.75f;                 // shell side = 64*0.75 = 48 units (spacing 50 keeps them separate)
-        constexpr float kHalf  = 32.0f * kScale;        // base shell half-extent after scale (=24)
-        auto placeCentered = [&](float cx, float cy, float cz,
-                                 float r, float g, float b, uint32_t kind) {
-            Vixen::SVO::BodyInstanceGpu inst{};
-            inst.worldPos[0] = cx - kHalf;
-            inst.worldPos[1] = cy - kHalf;
-            inst.worldPos[2] = cz - kHalf;
-            inst.renderScale = kScale;
-            inst.color[0]    = r;
-            inst.color[1]    = g;
-            inst.color[2]    = b;
-            inst.octreeIndex = kind;
-            return inst;
-        };
-        std::vector<Vixen::SVO::BodyInstanceGpu> defaultBodies = {
-            placeCentered( 14.0f, 64.0f, 64.0f, 1.00f, 0.95f, 0.85f, 0u),  // left   — warm-white tint × red kind
-            placeCentered( 64.0f, 64.0f, 64.0f, 0.90f, 1.00f, 0.90f, 1u),  // center — neutral white  × green kind
-            placeCentered(114.0f, 64.0f, 64.0f, 0.85f, 0.90f, 1.00f, 2u),  // right  — cool tint      × white kind
-        };
-        if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))) {
-            bodyScene->SetInstances(std::move(defaultBodies));
-            mainLogger->Info("[BuildRenderGraph] Seeded 3 default body instances (standalone fallback; a host's SetBodyInstances overrides these)");
+        if (std::getenv("VIXEN_STORED_SDF_DEMO")) {
+            // VIXEN_STORED_SDF_DEMO — Stored-SDF bodies (Increment 2, M5 Task 10).
+            // EnsureOctreesBuilt has baked 3 SdfBodyOctrees (kinds 0/1/2) via ConcatenateSdf,
+            // setting configs[k].formatId = STORED_SDF and populating the sdfBricks /
+            // brickGridLookup buffers (bindings 11/12). Instances use providerKind=0 (STORED)
+            // and octreeIndex=0/1/2 to select the per-kind OctreeConfig.
+            //
+            // Transform convention (binary-shell / marchStoredSdf AABB):
+            //   renderScale = 0.75       — scales grid-voxel [0,64] into world units
+            //   worldPos    = center - 32*0.75 = center - 24
+            //     → de-instance transform: instOrigin = (rayOrigin - worldPos) / renderScale
+            //       so a ray at world center maps to grid (32,32,32) = [0,64] AABB center.
+            //
+            // Body centers in world space (same spread as the Procedural seed so the
+            // default camera (X=64, Z=300, looking -Z) frames all three):
+            //   left   center = (14, 64, 64)  → worldPos = (14-24, 64-24, 64-24) = (-10, 40, 40)
+            //   centre center = (64, 64, 64)  → worldPos = (64-24, 64-24, 64-24) = ( 40, 40, 40)
+            //   right  center = (114,64, 64)  → worldPos = (114-24,64-24, 64-24) = ( 90, 40, 40)
+            constexpr float kRenderScale = 0.75f;
+            constexpr float kHalf        = 32.0f * kRenderScale;  // = 24.0f
+
+            auto placeStored = [&](float cx, float cy, float cz,
+                                   float r, float g, float b,
+                                   uint32_t octreeIdx) {
+                Vixen::SVO::BodyInstanceGpu inst{};
+                inst.worldPos[0]  = cx - kHalf;  // worldPos = center - 24 per axis
+                inst.worldPos[1]  = cy - kHalf;
+                inst.worldPos[2]  = cz - kHalf;
+                inst.renderScale  = kRenderScale;
+                inst.color[0]     = r;
+                inst.color[1]     = g;
+                inst.color[2]     = b;
+                inst.octreeIndex  = octreeIdx;    // selects configs[k] (incl. formatId)
+                inst.providerKind = 0u;           // PROVIDER_STORED: octree/Stored path
+                inst.recipeId     = 0u;           // unused by Stored path
+                return inst;
+            };
+            std::vector<Vixen::SVO::BodyInstanceGpu> storedBodies = {
+                placeStored( 14.0f, 64.0f, 64.0f, 1.00f, 0.95f, 0.85f, 0u),  // left   — smooth sphere   (kind 0, red)
+                placeStored( 64.0f, 64.0f, 64.0f, 0.55f, 0.75f, 1.00f, 1u),  // centre — displaced sphere (kind 1, green)
+                placeStored(114.0f, 64.0f, 64.0f, 0.85f, 0.90f, 1.00f, 2u),  // right  — smooth sphere   (kind 2, white)
+            };
+            if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))) {
+                bodyScene->SetInstances(std::move(storedBodies));
+                mainLogger->Info("[BuildRenderGraph] VIXEN_STORED_SDF_DEMO: seeded 3 Stored-SDF body instances");
+            }
+        } else {
+            // Default — Procedural SDF bodies (Increment 1): true smooth spheres, no octree.
+            // worldPos = world centre; recipeParams = (radius, displaceAmp, displaceFreq).
+            // Radius 24 matches the prior Stored shells' on-screen size (kHalf=24), so the
+            // default camera frames all three. providerKind=1 selects the Procedural path.
+            constexpr float kRadius = 24.0f;
+            auto placeProcedural = [&](float cx, float cy, float cz,
+                                       float r, float g, float b,
+                                       uint32_t recipeId, float amp, float freq) {
+                Vixen::SVO::BodyInstanceGpu inst{};
+                inst.worldPos[0] = cx;
+                inst.worldPos[1] = cy;
+                inst.worldPos[2] = cz;
+                inst.renderScale = 1.0f;            // unused by Procedural
+                inst.color[0]    = r;
+                inst.color[1]    = g;
+                inst.color[2]    = b;
+                inst.octreeIndex = 0u;              // unused by Procedural
+                inst.providerKind = 1u;             // PROVIDER_PROCEDURAL
+                inst.recipeId     = recipeId;       // 0 = sphere, 1 = displaced sphere
+                inst.recipeParams[0] = kRadius;
+                inst.recipeParams[1] = amp;
+                inst.recipeParams[2] = freq;
+                return inst;
+            };
+            std::vector<Vixen::SVO::BodyInstanceGpu> defaultBodies = {
+                placeProcedural( 14.0f, 64.0f, 64.0f, 1.00f, 0.95f, 0.85f, 0u, 0.0f, 0.0f),  // left   — smooth star/sphere
+                placeProcedural( 64.0f, 64.0f, 64.0f, 0.55f, 0.75f, 1.00f, 1u, 2.0f, 0.5f),  // centre — displaced planet
+                placeProcedural(114.0f, 64.0f, 64.0f, 0.85f, 0.90f, 1.00f, 0u, 0.0f, 0.0f),  // right  — smooth sphere
+            };
+            if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))) {
+                bodyScene->SetInstances(std::move(defaultBodies));
+                mainLogger->Info("[BuildRenderGraph] Seeded 3 Procedural SDF body instances (standalone fallback)");
+            }
         }
     }
 
@@ -1079,7 +1136,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
         mainLogger->Info("[BuildRenderGraph] Connected debug/counters: binding 4 (voxelGridNode debug capture), binding 8 (voxelGridNode shader counters)");
     }
 
-    // Binding 10: BodyInstanceBuffer (SSBO) — per-body BodyInstanceGpu records (32 B each).
+    // Binding 10: BodyInstanceBuffer (SSBO) — per-body BodyInstanceGpu records (64 B each).
     // M-wire Task 8: this is the NEW binding not present in the dense path.
     batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_BUFFER,
                           descriptorGatherer, 10,  // Binding 10: BodyInstanceBuffer
@@ -1087,6 +1144,22 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     if (mainLogger && mainLogger->IsEnabled()) {
         mainLogger->Info("[BuildRenderGraph] Connected body instance SSBO at binding 10 (BodyOctreeSceneNode)");
+    }
+
+    // Inc2 M3: Binding 11: SoA-SDF brick SSBO (float[] per-voxel SDF values).
+    // Placeholder (1-byte pad) for binary/Procedural bodies; populated by ConcatenateSdf for Stored-SDF.
+    // Shader only reads this when OctreeConfig.formatId == FORMAT_STORED_SDF (1u) — dead code for current bodies.
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_SDF_BUFFER,
+                          descriptorGatherer, 11,  // Binding 11: SdfBrickBuffer
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
+    // Inc2 M3: Binding 12: Brick-grid lookup SSBO (uint32[bpa^3] grid-coord→brickIndex table).
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_BRICKLOOKUP_BUFFER,
+                          descriptorGatherer, 12,  // Binding 12: BrickLookupBuffer
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info("[BuildRenderGraph] Connected SoA-SDF buffer at binding 11, brick-grid lookup at binding 12 (Inc2 M3)");
     }
 
     // Swapchain connections to descriptor set and dispatch

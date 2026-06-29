@@ -369,6 +369,21 @@ public:
     std::vector<EntityID> querySolidVoxels() const;
 
     /**
+     * Query all OCCUPIED voxels — every entity carrying a Density component,
+     * regardless of the sign of that density (entities with no Density are also
+     * included, matching querySolidVoxels' "Material-only voxel is solid" rule).
+     *
+     * This is the occupancy predicate for SIGNED-FIELD bodies (Stored-SDF). There,
+     * Density IS the signed distance (negative INSIDE the surface), so the
+     * querySolidVoxels() `density > 0` test wrongly drops every fully-interior
+     * voxel — and with it every all-interior brick — leaving holes in the octree's
+     * brick set (absent from both the grid lookup and the channel pool). Selecting
+     * by occupancy keeps interior bricks, so the field is hole-free everywhere a
+     * surface stencil can reach. Binary/Cornell rebuilds keep querySolidVoxels().
+     */
+    std::vector<EntityID> queryOccupiedVoxels() const;
+
+    /**
      * Count voxels in region (faster than queryRegion().size()).
      */
     size_t countVoxelsInRegion(const glm::vec3& min, const glm::vec3& max) const;
