@@ -92,13 +92,11 @@ Two distinct capabilities fall out, smallest first:
    hand-padded `std430` structs. Blocked-as-a-quick-win by: OctreeConfig is
    shared (ShellOctreeGpu + CashSystem + VoxelSceneCacher) and SDI headers are
    untracked build artifacts → needs a build-ordering decision.
-   **Prerequisite found 2026-06-29:** `SpirvReflector` currently surfaces only the
-   *top-level* members of a descriptor block — it does NOT recurse into a nested
-   struct member (the `OctreeConfig` element of `configs[]`), so neither per-field
-   drift-guarding nor struct generation is possible until the reflector recurses
-   nested SSBO structs. (That is why the landed drift-guard checks element *size*
-   only — see below.) Extending `SpirvReflector::ConvertStructDefinition` to recurse
-   is the small enabling change.
+   **Prerequisite DONE 2026-07-02:** `SpirvReflector` now recurses nested SSBO struct
+   members (`ExtractBlockMembers` recurses on the nested-struct branch; `SpirvStructMember`
+   gained a nested `members` vector), so the drift-guard checks **per-field offsets** (see
+   below). The remaining capability-2 step is generating the C++ binding struct from that
+   reflection (still gated by the shared-struct + build-ordering decision above).
 3. **Runtime kernel compile path.** codegen kernel fragment →
    `ShaderBundleBuilder` → reflect → SDI → `RecipeRegistry` opcode registration →
    VM dispatch. This is the "register a new opcode at load" capability. Requires
@@ -134,11 +132,10 @@ code. Do **not** over-engineer a shader sandbox.
   runtime-compiled kernels.
 - `RecipeRegistry` (`libraries/SVO/include/Recipe/`) + `SdfOpCodes.g.h` — where a
   mod-contributed opcode id registers.
-- **OctreeConfig SDI drift-guard** (`test_octree_config_sdi_parity`, landed this
-  session) — the pattern for keeping a hand-written binding struct honest against
-  the shader's reflected layout; the seed of capability (2). Today it asserts the
-  `configs[]` element *size* (432) only, because the reflector doesn't yet expose
-  nested struct member offsets (see capability 2 prerequisite).
+- **OctreeConfig SDI drift-guard** (`test_octree_config_sdi_parity`) — keeps the
+  hand-written binding struct honest against the shader's reflected layout; the seed
+  of capability (2). Asserts the `configs[]` element size (432) **and per-field byte
+  offsets** (SpirvReflector recurses nested SSBO members as of 2026-07-02).
 
 ## Why now / why not
 

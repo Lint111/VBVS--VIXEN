@@ -1,7 +1,7 @@
 /**
  * @file test_octree_config_sdi_parity.cpp
- * @brief Drift-guard: the C++ `Vixen::SVO::OctreeConfig` element size MUST match the
- *        layout the shipped `BodyInstanceRayMarch.comp` actually compiles to.
+ * @brief Drift-guard: the C++ `Vixen::SVO::OctreeConfig` layout MUST match the layout
+ *        the shipped `BodyInstanceRayMarch.comp` actually compiles to.
  *
  * The shader-side `OctreeConfig` struct and the `configs[]` SSBO at binding 5 are
  * hand-maintained to be byte-identical to the C++ struct (the shader even says so:
@@ -12,18 +12,12 @@
  * tighter element size misaligns configs[k>0] and those bodies render nothing).
  *
  * This makes the contract a FRAMEWORK-DRIVEN, repeatable gate: it reflects the built
- * SPIR-V via ShaderManagement's SpirvReflector (SPIRV-Reflect) and asserts the reflected
- * `configs[]` element size equals `sizeof(OctreeConfig)` (== 432). Pure CPU — reflection
- * only, no Vulkan device / no render.
- *
- * SCOPE / known limitation: the current `SpirvReflector` surfaces only the top-level
- * members of a descriptor block; it does NOT recurse into a nested struct member (here,
- * the `OctreeConfig` element of `configs[]`). So this guards the ELEMENT SIZE / std430
- * stride (the failure class that actually bit us) but not per-field offsets within the
- * struct. Per-field offset parity needs the reflector to surface nested-struct members —
- * tracked in [[Runtime-Kernel-Pipeline-Direction-2026-06]] as a follow-up. The C++ side's
- * field offsets remain pinned by the `static_assert(offsetof(...))` battery in
- * ShellOctreeGpu.h.
+ * SPIR-V via ShaderManagement's SpirvReflector (SPIRV-Reflect) and asserts BOTH
+ *   (a) the `configs[]` element SIZE == sizeof(OctreeConfig) (== 432, the std430 stride), and
+ *   (b) each field the shader reads sits at the same byte OFFSET as the C++ struct.
+ * SpirvReflector recurses nested SSBO struct members, so the `OctreeConfig` element's
+ * fields are surfaced with per-field offsets. Pure CPU — reflection only, no Vulkan
+ * device / no render.
  *
  * GLSL_RAYMARCH_SPV (path to the build-time-compiled BodyInstanceRayMarch.spv) is
  * supplied by CMake, reusing the same `body_instance_raymarch_spv` custom target the
@@ -72,12 +66,19 @@ const SpirvStructMember* FindMember(const SpirvReflectionData& r, const std::str
     return nullptr;
 }
 
+// A named sub-member of a struct member (by name).
+const SpirvStructMember* FindSubMember(const SpirvStructMember& parent, const std::string& name) {
+    for (const auto& m : parent.members)
+        if (m.name == name) return &m;
+    return nullptr;
+}
+
 }  // namespace
 
 // Catches a future edit to BodyInstanceRayMarch.comp's OctreeConfig / OctreeConfigsSSBO
-// (or to the C++ struct) that changes the std430 element size — the exact failure the
-// recipe pool work hit and verified by hand.
-TEST(OctreeConfigSdiParity, ReflectedElementSizeMatchesCppStruct) {
+// (or to the C++ struct) that desyncs the two — the exact failure the recipe pool work
+// hit and verified by hand.
+TEST(OctreeConfigSdiParity, ReflectedLayoutMatchesCppStruct) {
     using Vixen::SVO::OctreeConfig;
 
     const std::vector<uint32_t> spirv = ReadSpirv(GLSL_RAYMARCH_SPV);
@@ -87,37 +88,52 @@ TEST(OctreeConfigSdiParity, ReflectedElementSizeMatchesCppStruct) {
     auto refl = reflector.ReflectStage(spirv, ShaderStage::Compute);
     ASSERT_NE(refl, nullptr) << "SPIR-V reflection failed";
 
-    // Compact dump of what the shader compiled to — keeps the observed layout in the test
-    // log next to the asserts (and is the first thing to read if this ever fails). Includes
-    // descriptor sets so a future per-field strengthening has the binding map on hand.
-    std::cout << "[reflected struct definitions]\n";
-    for (const auto& sd : refl->structDefinitions) {
-        std::cout << "  struct '" << sd.name << "' size=" << sd.sizeInBytes
-                  << " members=" << sd.members.size() << "\n";
-        for (const auto& m : sd.members) {
-            std::cout << "    ." << m.name << " offset=" << m.offset
-                      << " arrayStride=" << m.arrayStride
-                      << " elemSize=" << m.type.sizeInBytes << "\n";
-        }
-    }
-    std::cout << "[descriptor sets]\n";
-    for (const auto& kv : refl->descriptorSets) {
-        for (const auto& b : kv.second) {
-            std::cout << "  set=" << kv.first << " binding=" << b.binding
-                      << " name='" << b.name << "' structDefIndex=" << b.structDefIndex << "\n";
-        }
-    }
-
-    // The element size of the configs[] SSBO member is the std430 stride the recipe pool
-    // work verified by hand (432). It must equal the C++ element size, or configs[k>0]
-    // misaligns on the GPU.
+    // Locate the configs[] SSBO member (its element type is the OctreeConfig struct).
     const SpirvStructMember* configs = FindMember(*refl, "configs");
     ASSERT_NE(configs, nullptr)
         << "reflection has no member 'configs' — OctreeConfigsSSBO changed or names were stripped";
 
+    // Compact dump of the reflected OctreeConfig element next to the asserts (first thing
+    // to read if this fails).
+    std::cout << "[reflected OctreeConfig element] size=" << configs->type.sizeInBytes
+              << " members=" << configs->members.size() << "\n";
+    for (const auto& m : configs->members) {
+        std::cout << "    ." << m.name << " offset=" << m.offset << "\n";
+    }
+
+    // (a) Element SIZE == C++ element size (the std430 stride the recipe pool work verified
+    // by hand; a tighter element misaligns configs[k>0] on the GPU).
     EXPECT_EQ(static_cast<std::size_t>(configs->type.sizeInBytes), sizeof(OctreeConfig))
         << "configs[] element size (" << configs->type.sizeInBytes
         << ") != sizeof(OctreeConfig) (" << sizeof(OctreeConfig) << ") — std430 restride drift";
     EXPECT_EQ(configs->type.sizeInBytes, 432u)
         << "configs[] element size must be 432 (Inc3 M3 / I3.2 contract)";
+
+    // (b) Per-field byte offsets. The SpirvReflector now recurses nested struct members.
+    ASSERT_FALSE(configs->members.empty())
+        << "SpirvReflector did not surface nested OctreeConfig members — recursion regressed";
+
+    // Fields the shader reads, present identically on both sides. (gridMin/gridMax are vec3
+    // in the shader vs scalar triples in C++, and channels[] is uvec4 vs ChannelDesc — same
+    // bytes, different member shape — so they are intentionally not name-matched here; the
+    // element-size check above covers the total.)
+    struct Field { const char* name; std::size_t cppOffset; };
+    const Field fields[] = {
+        {"localToWorld",      offsetof(OctreeConfig, localToWorld)},      //  64
+        {"worldToLocal",      offsetof(OctreeConfig, worldToLocal)},      // 128
+        {"nodeArrayBase",     offsetof(OctreeConfig, nodeArrayBase)},     // 192
+        {"brickArrayBase",    offsetof(OctreeConfig, brickArrayBase)},    // 196
+        {"formatId",          offsetof(OctreeConfig, formatId)},          // 200
+        {"bricksPerAxisSdf",  offsetof(OctreeConfig, bricksPerAxisSdf)},  // 204
+        {"poolBrickBase",     offsetof(OctreeConfig, poolBrickBase)},     // 208
+        {"channelCount",      offsetof(OctreeConfig, channelCount)},      // 212
+        {"brickStrideFloats", offsetof(OctreeConfig, brickStrideFloats)}, // 216
+    };
+    for (const auto& f : fields) {
+        const SpirvStructMember* sm = FindSubMember(*configs, f.name);
+        ASSERT_NE(sm, nullptr) << "shader OctreeConfig is missing field '" << f.name << "'";
+        EXPECT_EQ(static_cast<std::size_t>(sm->offset), f.cppOffset)
+            << "offset drift on '" << f.name << "': shader=" << sm->offset
+            << " C++=" << f.cppOffset;
+    }
 }
