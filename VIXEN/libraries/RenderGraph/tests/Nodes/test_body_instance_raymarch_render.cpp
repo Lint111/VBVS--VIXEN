@@ -407,7 +407,7 @@ protected:
             bind(2,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(3,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(4,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(5,  VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER),
+            bind(5,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // I3.2: configs UBO→SSBO (runtime-sized)
             bind(8,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(9,  VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             bind(10, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
@@ -441,10 +441,9 @@ protected:
         ASSERT_EQ(vkCreateComputePipelines(logicalDevice_, VK_NULL_HANDLE, 1, &cpci, nullptr, &pipeline),
                   VK_SUCCESS);
 
-        const std::array<VkDescriptorPoolSize, 3> poolSizes = {{
+        const std::array<VkDescriptorPoolSize, 2> poolSizes = {{
             {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  2},
-            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 8},   // +2 for SDF (11) + lookup (12)
-            {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 9},   // 1(nodes)+1(bricks)+1(mats)+1(trace)+1(config)+1(counter)+1(inst)+1(sdf)+1(lookup)
         }};
         VkDescriptorPoolCreateInfo dpci{};
         dpci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -492,7 +491,7 @@ protected:
             wBuf(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &bricksInfo),
             wBuf(3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &matsInfo),
             wBuf(4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &traceInfo),
-            wBuf(5, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, &configInfo),
+            wBuf(5, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &configInfo),  // I3.2: SSBO
             wBuf(8, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &counterInfo),
             wImg(9, &idInfo),
             wBuf(10, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &instInfo),

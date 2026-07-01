@@ -381,6 +381,60 @@ gtest_discover_tests(test_body_instance_raymarch_render
     DISCOVERY_TIMEOUT 120)
 
 message(STATUS "[RenderGraph Tests] Added: test_body_instance_raymarch_render (lavapipe real-shader render)")
+
+# ===========================================================================
+# I4.1 — SetRecipePool pool render gate (lavapipe): 4 baked SDF recipes,
+# one instance per octreeIndex, asserts all 4 bodies produce visible pixels.
+# ===========================================================================
+add_executable(test_recipe_pool_render
+    Nodes/test_recipe_pool_render.cpp
+)
+add_dependencies(test_recipe_pool_render body_instance_raymarch_spv)
+target_link_libraries(test_recipe_pool_render PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+if(TARGET SVO)
+    target_link_libraries(test_recipe_pool_render PRIVATE SVO)
+endif()
+if(TARGET stb)
+    target_link_libraries(test_recipe_pool_render PRIVATE stb)
+else()
+    target_include_directories(test_recipe_pool_render PRIVATE
+        "${CMAKE_BINARY_DIR}/_deps/stb-src")
+endif()
+target_compile_definitions(test_recipe_pool_render PRIVATE
+    GLSL_RAYMARCH_SPV="${_brm_spv}")
+set_target_properties(test_recipe_pool_render PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_recipe_pool_render
+    DISCOVERY_MODE PRE_TEST
+    DISCOVERY_TIMEOUT 120)
+message(STATUS "[RenderGraph Tests] Added: test_recipe_pool_render (I4.1 pool render gate)")
+
+# ===========================================================================
+# I4.2 — Recipe authoring live gate (lavapipe):
+#   a) Subtract(Box, Sphere) CSG recipe renders a non-trivial solid.
+#   b) Default 3-shell scene regression confirms the M2 SSBO fix holds.
+# ===========================================================================
+add_executable(test_recipe_authoring_gate
+    Nodes/test_recipe_authoring_gate.cpp
+)
+add_dependencies(test_recipe_authoring_gate body_instance_raymarch_spv)
+target_link_libraries(test_recipe_authoring_gate PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+if(TARGET SVO)
+    target_link_libraries(test_recipe_authoring_gate PRIVATE SVO)
+endif()
+if(TARGET stb)
+    target_link_libraries(test_recipe_authoring_gate PRIVATE stb)
+else()
+    target_include_directories(test_recipe_authoring_gate PRIVATE
+        "${CMAKE_BINARY_DIR}/_deps/stb-src")
+endif()
+target_compile_definitions(test_recipe_authoring_gate PRIVATE
+    GLSL_RAYMARCH_SPV="${_brm_spv}")
+set_target_properties(test_recipe_authoring_gate PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_recipe_authoring_gate
+    DISCOVERY_MODE PRE_TEST
+    DISCOVERY_TIMEOUT 120)
+message(STATUS "[RenderGraph Tests] Added: test_recipe_authoring_gate (I4.2 CSG + regression)")
+
 else()
     message(STATUS "[RenderGraph Tests] SKIPPED test_body_instance_raymarch_render — bundled glslc not provisioned at ${_brm_glslc} (lavapipe/WSL-only test)")
 endif()
