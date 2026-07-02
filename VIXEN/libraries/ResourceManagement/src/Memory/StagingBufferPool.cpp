@@ -22,9 +22,19 @@ StagingBufferPool::StagingBufferPool(
     , budgetManager_(budgetManager)
 {
     assert(budgetManager_ != nullptr && "StagingBufferPool requires DeviceBudgetManager");
+    // NumBuckets size classes double from minBufferSize; if that doesn't reach
+    // maxBufferSize, GetBucketIndex's clamp to the last bucket silently pools
+    // every larger request into a bucket whose buffers are capped well below
+    // what's being requested (undersized buffers are still memory-safe -- see
+    // AcquireFromBucket's requestedSize check -- but every such acquisition
+    // misses the pool and falls back to AllocateNewBuffer, defeating pooling
+    // for that whole size range). Catch the misconfiguration here instead.
+    assert((config_.minBufferSize << (NumBuckets - 1)) >= config_.maxBufferSize &&
+           "StagingBufferPool::Config: minBufferSize doubled NumBuckets times must reach "
+           "maxBufferSize, or requests above the last bucket's cap will bypass pooling");
 
     // Initialize size-class buckets
-    // Bucket 0: 64KB, Bucket 1: 128KB, ..., Bucket 11: 64MB
+    // Bucket 0: minBufferSize, Bucket 1: minBufferSize*2, ..., Bucket NumBuckets-1: maxBufferSize
     VkDeviceSize size = config_.minBufferSize;
     for (size_t i = 0; i < NumBuckets && size <= config_.maxBufferSize; ++i) {
         buckets_[i].minSize = size;
@@ -295,6 +305,44 @@ StagingBufferPool::AcquireFromBucket(size_t bucketIndex, VkDeviceSize requestedS
         }
         handle = bucket.available.front();
         bucket.available.pop_front();
+    }
+
+    // The last bucket clamps every request >= its floor to the same index
+    // (GetBucketIndex's `(std::min)(index, NumBuckets - 1)`), so a pooled
+    // buffer sized for an earlier, smaller request in that bucket can be
+    // smaller than requestedSize. Handing it back would let the caller's
+    // memcpy(mappedData, src, requestedSize) write past the allocation.
+    // Every buffer in this bucket was itself allocated at exactly
+    // GetBucketSize(bucketIndex) (AcquireBuffer always calls AllocateNewBuffer
+    // with the bucket size, never the raw request), which is also exactly what
+    // AcquireBuffer's caller already reserved via TryReserveStagingQuota before
+    // calling us. So: destroy the undersized buffer WITHOUT releasing its
+    // quota (AllocateNewBuffer's same-size replacement below reuses that
+    // reservation) -- releasing it here would let stagingQuotaUsed_ under-count
+    // by bucketSize the moment the replacement buffer is allocated.
+    {
+        BufferRecord toDestroy;
+        bool undersized = false;
+        {
+            std::lock_guard<std::mutex> lock(recordsMutex_);
+            auto it = records_.find(handle);
+            if (it == records_.end()) {
+                return std::nullopt;  // Record was destroyed
+            }
+            undersized = it->second.size < requestedSize;
+            if (undersized) {
+                toDestroy = it->second;
+                records_.erase(it);
+            }
+        }
+        if (undersized) {
+            if (toDestroy.mappedData && budgetManager_->GetAllocator()) {
+                budgetManager_->GetAllocator()->UnmapBuffer(toDestroy.allocation);
+            }
+            budgetManager_->FreeBuffer(toDestroy.allocation);
+            totalPooledBytes_.fetch_sub(toDestroy.size, std::memory_order_relaxed);
+            return std::nullopt;  // Caller (AcquireBuffer) falls through to AllocateNewBuffer.
+        }
     }
 
     // Mark as in use
