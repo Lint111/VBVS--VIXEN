@@ -143,3 +143,10 @@ endif()
 # way without hand-writing a POST_BUILD copy [FR-10]. Path is rooted at VIXEN_ROOT (not
 # CMAKE_SOURCE_DIR) so it resolves when the engine is add_subdirectory'd into a super-build.
 vixen_stage_assets(VIXEN ${VIXEN_ROOT}/libraries/RenderGraph/assets DEST assets)
+
+# ----------------------------------------------------------------------------
+# test_fail_scenario_sweep: boots the real VixenApp graph under gtest. Configured HERE (not from
+# libraries/RenderGraph/tests/) because it links VixenApp, which only exists once this file has
+# run — see FailScenarios/test_fail_scenario_sweep.cmake for why.
+# ----------------------------------------------------------------------------
+include(${VIXEN_ROOT}/libraries/RenderGraph/tests/FailScenarios/test_fail_scenario_sweep.cmake)

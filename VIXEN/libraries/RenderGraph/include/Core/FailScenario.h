@@ -5,6 +5,7 @@
 #if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
 
 #include <vulkan/vulkan.h>
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -86,6 +87,13 @@ private:
     Armed slots_[3];
     static constexpr size_t Idx(FaultSite s) { return static_cast<size_t>(s); }
 };
+
+// Global validation-error counter (Task 4 Step 4): bumped by InstanceNode's VK_EXT_debug_report
+// callback whenever the layer reports VK_DEBUG_REPORT_ERROR_BIT_EXT. The sweep runner resets it
+// before each scenario and asserts it stayed 0 (global pass criterion 2).
+uint32_t ValidationErrorCount();
+void ResetValidationErrorCount();
+namespace detail { void BumpValidationError(); }
 
 } // namespace FailScenario
 } // namespace Vixen::RenderGraph

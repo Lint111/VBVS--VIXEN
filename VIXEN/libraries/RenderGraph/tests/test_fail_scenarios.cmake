@@ -10,3 +10,9 @@ if(TARGET GTest::gtest_main)
     gtest_discover_tests(test_fail_scenario_registry)
     message(STATUS "✓ test_fail_scenario_registry configured")
 endif()
+
+# test_fail_scenario_sweep links VixenApp (application/main), which does not exist yet at this point
+# in the configure (root CMakeLists.txt: add_subdirectory(libraries) precedes
+# add_subdirectory(application)). It is configured separately from
+# FailScenarios/test_fail_scenario_sweep.cmake, included from application/main/CMakeLists.txt where
+# VixenApp is already a real target — see that file's tail.

@@ -38,5 +38,15 @@ VkResult FaultInjector::Filter(FaultSite s, VkResult real) {
 }
 bool FaultInjector::IsArmed(FaultSite s) const { return slots_[Idx(s)].armed; }
 
+namespace {
+    std::atomic<uint32_t>& ValidationErrorCounter() {
+        static std::atomic<uint32_t> counter{0};
+        return counter;
+    }
+}
+uint32_t ValidationErrorCount() { return ValidationErrorCounter().load(std::memory_order_relaxed); }
+void ResetValidationErrorCount() { ValidationErrorCounter().store(0, std::memory_order_relaxed); }
+namespace detail { void BumpValidationError() { ValidationErrorCounter().fetch_add(1, std::memory_order_relaxed); } }
+
 } // namespace
 #endif

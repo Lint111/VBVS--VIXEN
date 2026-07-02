@@ -8,6 +8,10 @@
 #include <algorithm>
 #include <cstring>
 
+#if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
+#include "Core/FailScenario.h"
+#endif
+
 #define GLFW_INCLUDE_NONE   // don't pull in <GL/gl.h> (absent on headless/WSL); Vulkan-only below
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -171,15 +175,70 @@ void InstanceNode::CreateVulkanInstance() {
 
     NODE_LOG_INFO("[InstanceNode] Vulkan instance created successfully");
     NODE_LOG_INFO("[InstanceNode] VkInstance handle: " + std::to_string(reinterpret_cast<uint64_t>(instance)));
+
+#if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
+    CreateDebugReportCallback();
+#endif
 }
 
 void InstanceNode::DestroyVulkanInstance() {
     if (instance != VK_NULL_HANDLE) {
+#if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
+        DestroyDebugReportCallback();
+#endif
         NODE_LOG_INFO("[InstanceNode] Destroying Vulkan instance");
         vkDestroyInstance(instance, nullptr);
         instance = VK_NULL_HANDLE;
     }
 }
+
+#if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
+namespace {
+VKAPI_ATTR VkBool32 VKAPI_CALL FailScenarioDebugReportCallback(
+    VkDebugReportFlagsEXT flags, VkDebugReportObjectTypeEXT, uint64_t, size_t,
+    int32_t, const char* pLayerPrefix, const char* pMessage, void*) {
+    if (flags & VK_DEBUG_REPORT_ERROR_BIT_EXT) {
+        FailScenario::detail::BumpValidationError();
+        std::cerr << "[VkValidation][" << (pLayerPrefix ? pLayerPrefix : "?") << "] " << pMessage << std::endl;
+    }
+    return VK_FALSE;  // never abort the call that triggered it
+}
+} // namespace
+
+void InstanceNode::CreateDebugReportCallback() {
+    // Only meaningful when VK_EXT_debug_report was actually enabled (validation layer present) —
+    // a no-op elsewhere (e.g. a machine with only the lavapipe ICD, no Vulkan SDK).
+    const bool extensionEnabled = std::any_of(
+        enabledExtensions.begin(), enabledExtensions.end(),
+        [](const char* e) { return std::strcmp(e, VK_EXT_DEBUG_REPORT_EXTENSION_NAME) == 0; });
+    if (!extensionEnabled) return;
+
+    auto createFn = reinterpret_cast<PFN_vkCreateDebugReportCallbackEXT>(
+        vkGetInstanceProcAddr(instance, "vkCreateDebugReportCallbackEXT"));
+    if (!createFn) {
+        NODE_LOG_WARNING("[InstanceNode] VK_EXT_debug_report enabled but vkCreateDebugReportCallbackEXT not found");
+        return;
+    }
+
+    VkDebugReportCallbackCreateInfoEXT createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT;
+    createInfo.flags = VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT;
+    createInfo.pfnCallback = FailScenarioDebugReportCallback;
+
+    if (createFn(instance, &createInfo, nullptr, &debugReportCallback_) != VK_SUCCESS) {
+        NODE_LOG_WARNING("[InstanceNode] Failed to create VK_EXT_debug_report callback");
+        debugReportCallback_ = VK_NULL_HANDLE;
+    }
+}
+
+void InstanceNode::DestroyDebugReportCallback() {
+    if (debugReportCallback_ == VK_NULL_HANDLE) return;
+    auto destroyFn = reinterpret_cast<PFN_vkDestroyDebugReportCallbackEXT>(
+        vkGetInstanceProcAddr(instance, "vkDestroyDebugReportCallbackEXT"));
+    if (destroyFn) destroyFn(instance, debugReportCallback_, nullptr);
+    debugReportCallback_ = VK_NULL_HANDLE;
+}
+#endif
 
 void InstanceNode::ValidateAndFilterExtensions() {
     // Enumerate available instance extensions
