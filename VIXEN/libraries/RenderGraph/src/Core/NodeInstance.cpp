@@ -238,17 +238,16 @@ EventBus::EventSubscriptionID NodeInstance::SubscribeToMessage(
         return 0;  // No bus available
     }
 
-    // Delegate to ScopedSubscriptions for RAII management
-    // Note: Subscription IDs are tracked internally by ScopedSubscriptions
-    EventBus::EventSubscriptionID id = messageBus->Subscribe(type, std::move(handler));
-    // Register with ScopedSubscriptions to ensure automatic cleanup
-    subscriptions_.GetBus();  // Ensure bus is set
+    // Route through ScopedSubscriptions so the subscription is auto-unsubscribed when this node is
+    // destroyed, instead of outliving it and firing against a dangling `this` if a message was
+    // still queued on the bus at teardown. subscriptions_ previously only had its bus_ pointer set
+    // here without ever tracking the actual subscription ID -- UnsubscribeAll() had nothing to
+    // unsubscribe, so the subscription lived until the MessageBus itself was destroyed, well past
+    // this node's lifetime. See ShaderLibraryNode::OnDeviceMetadata for the crash this caused.
     if (!subscriptions_.GetBus()) {
         subscriptions_.SetBus(messageBus);
     }
-    // TODO: Consider redesigning this API to fully leverage ScopedSubscriptions
-    // For now, we maintain backward compatibility with ID-based API
-    return id;
+    return subscriptions_.Subscribe(type, std::move(handler));
 }
 
 EventBus::EventSubscriptionID NodeInstance::SubscribeToCategory(
@@ -259,14 +258,11 @@ EventBus::EventSubscriptionID NodeInstance::SubscribeToCategory(
         return 0;  // No bus available
     }
 
-    // Delegate to messageBus directly (backward compatibility)
-    // TODO: Consider adding SubscribeCategory to ScopedSubscriptions
-    EventBus::EventSubscriptionID id = messageBus->SubscribeCategory(category, std::move(handler));
-    // Ensure ScopedSubscriptions has the bus reference for cleanup
+    // Route through ScopedSubscriptions (see SubscribeToMessage above for why).
     if (!subscriptions_.GetBus()) {
         subscriptions_.SetBus(messageBus);
     }
-    return id;
+    return subscriptions_.SubscribeCategory(category, std::move(handler));
 }
 
 void NodeInstance::UnsubscribeFromMessage(EventBus::EventSubscriptionID subscriptionId) {
