@@ -22,11 +22,12 @@
 
 ## Milestone Map (post-brainstorm-context-manager)
 
-- [ ] **B1 — non-scalar layout on the Yeroket core** · Tasks 1–2 (Yeroket, isolated worktree). Extend `GpuStructModel` + tool loader for `Float3`/`Mat4`/nested/array/pad (Task 1), rewrite the C++/GLSL emitters (Task 2). Gate: `~/.dotnet/dotnet test CodegenTool~/Tests` green (existing 9 + ported compound tests). Merge to Yeroket main after validation.
+- [x] **B1 — non-scalar layout on the Yeroket core** · Tasks 1–2 (Yeroket, isolated worktree). Extend `GpuStructModel` + tool loader for `Float3`/`Mat4`/nested/array/pad (Task 1), rewrite the C++/GLSL emitters (Task 2). Gate: `~/.dotnet/dotnet test CodegenTool~/Tests` green (existing 9 + ported compound tests). Merge to Yeroket main after validation.
 - [ ] **B2 — canonical OctreeConfig + generate + parity** · Tasks 3–4 (VIXEN `feat/config-codegen`). Author canonical `OctreeConfig`/`ChannelDesc`, generate + commit artifacts + dotnet-gated CMake golden gate (Task 3); C++ parity gtest + compile-smokes (Task 4). Gate: golden `--check` clean + parity gtest green + g++ smoke.
 
 ### Progress Log
 _(controller appends one line per milestone: `- Milestone Bx: DONE · commits <short>..<short> · Opus validator OK · <date>`)_
+- Milestone B1 (Tasks 1–2): DONE · Yeroket commits `ccfe4337` (non-scalar std430 model + testable loader) / `ca4eb7ad` (C++/GLSL emitters + compound tests + rebuilt analyzer DLL) · gate `dotnet test CodegenTool~/Tests` = **16/16 green** (controller-run) · Opus validator APPROVED (all 8 points; port fidelity exact; both deviations SOUND — (1) `netstandard.dll` added to Roslyn refs is a real bind fix: the netstandard2.0 `[GpuArray(int)]` ctor param is a TypeRef into the netstandard facade so `ConstructorArguments` is empty without it; (2) `out string?`→`out string` avoids CS8632 under the analyzer's `Nullable=disable`) · MERGED to Yeroket main (FF `f06ef6bc`→`ca4eb7ad`; worktree + branch cleaned up) · 2026-07-02
 
 ---
 
