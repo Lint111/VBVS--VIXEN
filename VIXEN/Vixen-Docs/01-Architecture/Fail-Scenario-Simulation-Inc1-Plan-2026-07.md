@@ -21,6 +21,18 @@
 - Live-run gates are authoritative: a task claiming render behavior must show a live run's output, not just compilation.
 - Work on branch `feat/fail-scenario-sim` (create in Task 1). Commit per task; do NOT push.
 
+## Milestone Map (post-brainstorm-context-manager · locked 2026-07-02)
+
+- M1 — Foundations: Tasks 1-3 (registry+macros, FaultInjector+sites, window seam) — Sonnet implementer
+- M2 — Live harness: Tasks 4-5 (AppHarness, sweep runner) — Sonnet implementer
+- M3 — Scenarios + proof: Tasks 6-8 (declarations, DeviceLostRecovery, compile-out + docs) — Sonnet implementer
+
+Worktree: `.claude/worktrees/fail-scenario-sim` · branch `feat/fail-scenario-sim` (docs commit `eeda8aae`).
+
+## Progress Log
+
+(appended per milestone by the controller)
+
 ## File Structure (locked)
 
 ```
