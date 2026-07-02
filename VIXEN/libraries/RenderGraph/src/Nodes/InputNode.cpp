@@ -124,24 +124,24 @@ void InputNode::SyncConfigFromParams() {
     // like BenchmarkGraphFactory pass MouseCaptureMode values) but is folded into config_.cursorMode,
     // the single source of truth ApplyCursorMode/InitializeMouseCapture now read. Free and Disabled
     // both meant "don't capture" in the old gate (ExecuteImpl only special-cased CenterLock), so both
-    // map to Normal.
-    const int legacyDefault = config_.cursorMode == InputConfig::CursorMode::CenterLock
-        ? static_cast<int>(MouseCaptureMode::CenterLock)
-        : static_cast<int>(MouseCaptureMode::Free);
-    const int captureMode = GetParameterValue<int>(InputNodeConfig::PARAM_MOUSE_CAPTURE_MODE, legacyDefault);
-    const auto newCursorMode = static_cast<MouseCaptureMode>(captureMode) == MouseCaptureMode::CenterLock
-        ? InputConfig::CursorMode::CenterLock
-        : InputConfig::CursorMode::Normal;
-
-    const int orbitButton = GetParameterValue<int>(InputNodeConfig::PARAM_ORBIT_BUTTON,
-                                                     static_cast<int>(config_.orbitButton));
-    const auto newOrbitButton = static_cast<InputConfig::OrbitButton>(orbitButton);
-
-    if (newCursorMode != config_.cursorMode) {
-        config_.cursorMode = newCursorMode;
-        ApplyCursorMode();
+    // map to Normal. An UNSET param means "no opinion" — config_ (which can hold Hidden, a mode with
+    // no legacy wire value) is left untouched; only an explicit param write folds in.
+    if (GetParameter(InputNodeConfig::PARAM_MOUSE_CAPTURE_MODE) != nullptr) {
+        const int captureMode = GetParameterValue<int>(InputNodeConfig::PARAM_MOUSE_CAPTURE_MODE, 0);
+        const auto newCursorMode = static_cast<MouseCaptureMode>(captureMode) == MouseCaptureMode::CenterLock
+            ? InputConfig::CursorMode::CenterLock
+            : InputConfig::CursorMode::Normal;
+        if (newCursorMode != config_.cursorMode) {
+            config_.cursorMode = newCursorMode;
+            ApplyCursorMode();
+        }
     }
-    config_.orbitButton = newOrbitButton;
+
+    if (GetParameter(InputNodeConfig::PARAM_ORBIT_BUTTON) != nullptr) {
+        config_.orbitButton = static_cast<InputConfig::OrbitButton>(
+            GetParameterValue<int>(InputNodeConfig::PARAM_ORBIT_BUTTON,
+                                   static_cast<int>(config_.orbitButton)));
+    }
 }
 
 void InputNode::ApplyCursorMode() {
