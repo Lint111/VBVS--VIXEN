@@ -33,6 +33,8 @@ Worktree: `.claude/worktrees/fail-scenario-sim` · branch `feat/fail-scenario-si
 
 (appended per milestone by the controller)
 
+- Milestone 1 (Tasks 1-3): DONE · commits a436f227..8b03f8ee · Opus validator OK (tests re-run green; nm zero-footprint proven) · 2026-07-02 · NOTES for later milestones: real buildable targets are RenderGraphCore/RenderGraphNodes/VIXEN (plan shorthand "RenderGraph"/"VixenApp"; VixenApp static lib still valid as a LINK target); ctest discovery is broken repo-wide pre-existing (root enable_testing() runs after add_subdirectory(libraries)) — run gtest binaries directly from build-wsl.
+
 ## File Structure (locked)
 
 ```
@@ -128,9 +130,9 @@ Test-side (`ScenarioHarness.h`): `class AppHarness` — `bool Boot(); bool RunFr
 - Consumes: `Core/NodeRegistration.h` idiom (read it first — mirror the thunk pattern exactly).
 - Produces: everything in the "Interface contract" block above except `FaultInjector` (Task 2) and `ScenarioContext` (Task 4).
 
-- [ ] **Step 0:** `git checkout -b feat/fail-scenario-sim` (verify: `git rev-parse --abbrev-ref HEAD` prints the branch — rtk masks exit codes).
+- [x] **Step 0:** `git checkout -b feat/fail-scenario-sim` (verify: `git rev-parse --abbrev-ref HEAD` prints the branch — rtk masks exit codes).
 
-- [ ] **Step 1: Write the failing test** (`test_fail_scenario_registry.cpp`):
+- [x] **Step 1: Write the failing test** (`test_fail_scenario_registry.cpp`):
 
 ```cpp
 #include "Core/FailScenario.h"
@@ -179,7 +181,7 @@ TEST(FailScenarioRegistry, FindUnknownTypeReturnsNull) {
 }
 ```
 
-- [ ] **Step 2: CMake wiring.** Root `CMakeLists.txt`: `option(VIXEN_FAIL_SCENARIOS "Compile fail-scenario declarations, injection seams, and harness" OFF)` and, when ON, `add_compile_definitions(VIXEN_FAIL_SCENARIOS=1)` (global — nodes, app, and tests all need one consistent view). New `test_fail_scenarios.cmake` (mirror `test_graph_systems.cmake` structure):
+- [x] **Step 2: CMake wiring.** Root `CMakeLists.txt`: `option(VIXEN_FAIL_SCENARIOS "Compile fail-scenario declarations, injection seams, and harness" OFF)` and, when ON, `add_compile_definitions(VIXEN_FAIL_SCENARIOS=1)` (global — nodes, app, and tests all need one consistent view). New `test_fail_scenarios.cmake` (mirror `test_graph_systems.cmake` structure):
 
 ```cmake
 if(NOT VIXEN_FAIL_SCENARIOS)
@@ -196,10 +198,10 @@ if(TARGET GTest::gtest_main)
 endif()
 ```
 
-- [ ] **Step 3: Run the test to verify it fails** (header doesn't exist yet):
+- [x] **Step 3: Run the test to verify it fails** (header doesn't exist yet):
 `cmake -B build-wsl -DVIXEN_FAIL_SCENARIOS=ON` (keep all pre-existing cache args) then `cmake --build build-wsl --target test_fail_scenario_registry`. Expected: FAIL — `Core/FailScenario.h: No such file`.
 
-- [ ] **Step 4: Implement** `FailScenario.h`:
+- [x] **Step 4: Implement** `FailScenario.h`:
 
 ```cpp
 #pragma once
@@ -372,11 +374,11 @@ bool FaultInjector::IsArmed(FaultSite s) const { return slots_[Idx(s)].armed; }
 #endif
 ```
 
-- [ ] **Step 5: Run test to verify it passes:** `cmake --build build-wsl --target test_fail_scenario_registry && ctest --test-dir build-wsl -R FailScenarioRegistry --output-on-failure`. Expected: 3/3 PASS.
+- [x] **Step 5: Run test to verify it passes:** `cmake --build build-wsl --target test_fail_scenario_registry && ctest --test-dir build-wsl -R FailScenarioRegistry --output-on-failure`. Expected: 3/3 PASS.
 
-- [ ] **Step 6: OFF-branch compile check:** configure a scratch dir `cmake -B build-wsl-off -DVIXEN_FAIL_SCENARIOS=OFF <same args>` and build only `RenderGraph`. Expected: clean build (macros expand to nothing; no new symbols). Delete `build-wsl-off` after Task 8 reuses it.
+- [x] **Step 6: OFF-branch compile check:** configure a scratch dir `cmake -B build-wsl-off -DVIXEN_FAIL_SCENARIOS=OFF <same args>` and build only `RenderGraph`. Expected: clean build (macros expand to nothing; no new symbols). Delete `build-wsl-off` after Task 8 reuses it.
 
-- [ ] **Step 7: Commit** `feat(fail-scenarios): declaration schema + self-registering ScenarioRegistry behind VIXEN_FAIL_SCENARIOS (Task 1)`.
+- [x] **Step 7: Commit** `feat(fail-scenarios): declaration schema + self-registering ScenarioRegistry behind VIXEN_FAIL_SCENARIOS (Task 1)`.
 
 ---
 
@@ -394,7 +396,7 @@ bool FaultInjector::IsArmed(FaultSite s) const { return slots_[Idx(s)].armed; }
 - Consumes: `FaultInjector`, `VIXEN_FAULT_FILTER` from Task 1.
 - Produces: `RenderGraph::GetFaultInjector()` (flag-gated); the three live sites filter through it. `VIXEN_SIMULATE_DEVICE_LOSS` env now arms `FenceWait` instead of latching directly.
 
-- [ ] **Step 1: Failing unit tests** (append to `test_fail_scenario_registry.cpp`):
+- [x] **Step 1: Failing unit tests** (append to `test_fail_scenario_registry.cpp`):
 
 ```cpp
 TEST(FaultInjector, ArmOnceFiresExactlyOncePerSite) {
@@ -411,7 +413,7 @@ TEST(FaultInjector, ArmOnceFiresExactlyOncePerSite) {
 
 Run: expected PASS immediately (impl landed in Task 1) — these lock the semantics before the live sites depend on them. If any fail, fix `FaultInjector` first.
 
-- [ ] **Step 2: Graph member.** `RenderGraph.h` — inside `class RenderGraph`, next to the device-loss members:
+- [x] **Step 2: Graph member.** `RenderGraph.h` — inside `class RenderGraph`, next to the device-loss members:
 
 ```cpp
 #if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
@@ -428,7 +430,7 @@ private:
 
 Add `#include "Core/FailScenario.h"` to `RenderGraph.h` (the header is self-neutralizing when off).
 
-- [ ] **Step 3: The three sites.** Each is a one-line filter on the REAL result (the real call still executes — same healthy-device fidelity argument as `VIXEN_SIMULATE_DEVICE_LOSS`, documented in the spec §3.3):
+- [x] **Step 3: The three sites.** Each is a one-line filter on the REAL result (the real call still executes — same healthy-device fidelity argument as `VIXEN_SIMULATE_DEVICE_LOSS`, documented in the spec §3.3):
 
 `SwapChainNode.cpp` `AcquireNextImage` — wrap the existing call (line ~298-305) so the OFF branch reduces to exactly the original expression (no self-assignment):
 ```cpp
@@ -456,7 +458,7 @@ Add `#include "Core/FailScenario.h"` to `RenderGraph.h` (the header is self-neut
 
 Add `#include "Core/FailScenario.h"` to each .cpp.
 
-- [ ] **Step 4: Migrate the env hook.** In `RenderGraph.cpp` `RenderFrame()` (lines 698-715): keep the env parse, but replace the direct `NotifyDeviceLost(...)` latch with arming the injector — the loss now surfaces through the REAL detection path (FrameSyncNode's fence wait), which is strictly more faithful. Wrap the whole hook in the flag (spec decision: dormant runtime instrumentation moves behind the compile flag):
+- [x] **Step 4: Migrate the env hook.** In `RenderGraph.cpp` `RenderFrame()` (lines 698-715): keep the env parse, but replace the direct `NotifyDeviceLost(...)` latch with arming the injector — the loss now surfaces through the REAL detection path (FrameSyncNode's fence wait), which is strictly more faithful. Wrap the whole hook in the flag (spec decision: dormant runtime instrumentation moves behind the compile flag):
 
 ```cpp
 #if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
@@ -478,11 +480,11 @@ Add `#include "Core/FailScenario.h"` to each .cpp.
 
 Also wrap the `simulateDeviceLossFrame_`/`deviceLossSimulated_` member declarations in `RenderGraph.h` in the same `#if` (they are now scenario-build-only state).
 
-- [ ] **Step 5: Full library rebuild both ways.** `cmake --build build-wsl --target RenderGraph VixenApp -- -k 0` (flag ON) and the same in `build-wsl-off` (flag OFF). Expected: both clean. The OFF build proves the sites reduce to the bare expressions.
+- [x] **Step 5: Full library rebuild both ways.** `cmake --build build-wsl --target RenderGraph VixenApp -- -k 0` (flag ON) and the same in `build-wsl-off` (flag OFF). Expected: both clean. The OFF build proves the sites reduce to the bare expressions.
 
-- [ ] **Step 6: Run existing render tests for no-regression** (the touched nodes are on every render path): `ctest --test-dir build-wsl -R "render|swapchain|frame_sync" --output-on-failure`. Expected: same pass set as before the change (compare against a pre-change run if unsure — no new failures).
+- [x] **Step 6: Run existing render tests for no-regression** (the touched nodes are on every render path): `ctest --test-dir build-wsl -R "render|swapchain|frame_sync" --output-on-failure`. Expected: same pass set as before the change (compare against a pre-change run if unsure — no new failures).
 
-- [ ] **Step 7: Commit** `feat(fail-scenarios): graph-owned FaultInjector + Acquire/Present/FenceWait fault points; VIXEN_SIMULATE_DEVICE_LOSS arms FenceWait (Task 2)`.
+- [x] **Step 7: Commit** `feat(fail-scenarios): graph-owned FaultInjector + Acquire/Present/FenceWait fault points; VIXEN_SIMULATE_DEVICE_LOSS arms FenceWait (Task 2)`.
 
 ---
 
@@ -497,7 +499,7 @@ Also wrap the `simulateDeviceLossFrame_`/`deviceLossSimulated_` member declarati
 - Consumes: nothing new.
 - Produces: `WindowNode::WindowEvent` public; `InjectWindowEvent(WindowEvent::Type, uint32_t w = 0, uint32_t h = 0)` and `PendingEventCountForTest()` (both flag-gated); hidden-window support via `VIXEN_HIDDEN_WINDOW=1` env (flag-gated).
 
-- [ ] **Step 1: Failing test:**
+- [x] **Step 1: Failing test:**
 
 ```cpp
 #include "Nodes/WindowNode.h"
@@ -514,7 +516,7 @@ TEST(WindowSeam, InjectQueuesEventsThreadSafely) {
 
 Run: FAIL — `WindowEvent` is private / methods missing.
 
-- [ ] **Step 2: Implement.** In `WindowNode.h`: move the `struct WindowEvent {...}` block (currently private, lines ~71-76) into the `public:` section (type visibility only — no state exposed, no ABI change). Below the state queries add:
+- [x] **Step 2: Implement.** In `WindowNode.h`: move the `struct WindowEvent {...}` block (currently private, lines ~71-76) into the `public:` section (type visibility only — no state exposed, no ABI change). Below the state queries add:
 
 ```cpp
 #if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
@@ -542,7 +544,7 @@ size_t WindowNode::PendingEventCountForTest() const {
 
 (`eventMutex` must be declared `mutable` OR keep the `const_cast` — prefer `mutable std::recursive_mutex eventMutex;`, it is already used for logically-const queue protection.)
 
-- [ ] **Step 3: Hidden-window hint** (needed by Task 4's unattended runner). In `CompileImpl`, right before `glfwCreateWindow` (line ~72):
+- [x] **Step 3: Hidden-window hint** (needed by Task 4's unattended runner). In `CompileImpl`, right before `glfwCreateWindow` (line ~72):
 
 ```cpp
 #if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
@@ -552,9 +554,9 @@ size_t WindowNode::PendingEventCountForTest() const {
 #endif
 ```
 
-- [ ] **Step 4: Run tests:** registry target rebuild + `ctest -R "WindowSeam|FailScenarioRegistry|FaultInjector"`. Expected: all PASS. Also rebuild `build-wsl-off` `RenderGraph` — clean (proves the seam vanishes).
+- [x] **Step 4: Run tests:** registry target rebuild + `ctest -R "WindowSeam|FailScenarioRegistry|FaultInjector"`. Expected: all PASS. Also rebuild `build-wsl-off` `RenderGraph` — clean (proves the seam vanishes).
 
-- [ ] **Step 5: Commit** `feat(fail-scenarios): WindowNode stimulus seam + hidden-window env (Task 3)`.
+- [x] **Step 5: Commit** `feat(fail-scenarios): WindowNode stimulus seam + hidden-window env (Task 3)`.
 
 ---
 
