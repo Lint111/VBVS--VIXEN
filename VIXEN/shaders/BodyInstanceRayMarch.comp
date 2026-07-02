@@ -115,32 +115,7 @@ layout(std430, binding = 4) buffer RayTraceBuffer {
 //   224 channels[8]         uvec4 ← 8*16=128 B → ends at byte 352
 //   352 _tailPad[5]         uvec4   5*16=80 B (uvec4 stride=16 under std430) → 432 B ✓
 // ============================================================================
-struct OctreeConfig {
-    int  esvoMaxScale;
-    int  userMaxLevels;
-    int  brickDepthLevels;
-    int  brickSize;
-    int  minESVOScale;
-    int  brickESVOScale;
-    int  bricksPerAxis;
-    int  _padding1;
-    vec3 gridMin;
-    float _padding2;
-    vec3 gridMax;
-    float _padding3;
-    mat4 localToWorld;
-    mat4 worldToLocal;
-    int  nodeArrayBase;       // byte 192: base index into esvoNodes[]
-    int  brickArrayBase;      // byte 196: base index into brickData[] (brick units)
-    uint formatId;            // byte 200: 0=FORMAT_BINARY, 1=FORMAT_STORED_SDF
-    uint bricksPerAxisSdf;    // byte 204: brick-grid cube side length
-    uint poolBrickBase;       // byte 208: float-element offset into channelPool[]
-    uint channelCount;        // byte 212: number of live channels in channels[]
-    uint brickStrideFloats;   // byte 216: floats per brick (sum over all channels)
-    uint _padChannels;        // byte 220: pad so channels[] is 16-byte aligned
-    uvec4 channels[8];        // byte 224: .x=semanticId .y=elemCount .z=channelBaseFloats .w=fieldKind
-    uvec4 _tailPad[5];        // byte 352: 5*16=80 B (uvec4 stride is 16 under std430) → 432 B ✓
-};
+#include "Generated/OctreeConfig.glsl"   // generated single-source struct (Phase C); was an inline copy
 
 layout(std430, binding = 5) readonly buffer OctreeConfigsSSBO {
     OctreeConfig configs[];
