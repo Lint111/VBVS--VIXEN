@@ -150,6 +150,24 @@ else()
     add_compile_definitions(VIXEN_DEBUG_BUILD=0)
 endif()
 
+# Descriptor resource lifecycle tracking (Debug/DescriptorResourceTracker.h) - records every
+# DescriptorResourceEntry creation/extraction/bind event (source location, handle value, node
+# name) into a thread-safe registry, with optional real-time console printing. Used to diagnose
+# descriptor-write bugs (stale/null handles, binding mismatches) that are otherwise very hard to
+# localize from a Release stack trace. Debug-only; compiles to zero-overhead no-ops otherwise, so
+# it can never leak perf/verbosity into Release/RelWithDebInfo. Off by default even in Debug -
+# opt in per debugging session (it's tens of thousands of events/run - see the header's own note).
+option(VIXEN_ENABLE_DESCRIPTOR_TRACKING "Track DescriptorSetNode resource lifecycle events (Debug builds only)" OFF)
+if(VIXEN_ENABLE_DESCRIPTOR_TRACKING)
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+        message(STATUS "Descriptor resource tracking enabled (VIXEN_DEBUG_DESCRIPTOR_TRACKING)")
+        add_compile_definitions(VIXEN_DEBUG_DESCRIPTOR_TRACKING=1)
+    else()
+        message(WARNING "VIXEN_ENABLE_DESCRIPTOR_TRACKING requires Debug build type; ignoring "
+                         "(current CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}). Set CMAKE_BUILD_TYPE=Debug.")
+    endif()
+endif()
+
 # Self-provision Vulkan: download the prebuilt SDK into a cache if none is found, so a consumer only
 # ever builds VIXEN (never installs Vulkan by hand). The legacy locate logic below then simply finds
 # the provisioned SDK and sets VULKAN_PATH / VULKAN_TRIMMED_BUILD_ACTIVE as before.

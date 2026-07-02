@@ -66,6 +66,17 @@ struct SwapChainPublicVariables : public Vixen::Vulkan::Resources::IRenderTarget
 	// Extends of the swapchain images
 	VkExtent2D Extent;
 
+    // ACTUAL usage flags the swapchain images were created with (set right after
+    // vkCreateSwapchainKHR succeeds -- see VulkanSwapChain::CreateSwapChainColorImages). May be a
+    // strict subset of what was requested via SetImageUsageFlags(): GetSupportedFormats() drops
+    // VK_IMAGE_USAGE_STORAGE_BIT when the negotiated surface format lacks
+    // VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT (common on software rasterizers). Consumers that intend
+    // to bind a swapchain image as VK_DESCRIPTOR_TYPE_STORAGE_IMAGE MUST check
+    // (ImageUsageFlags & VK_IMAGE_USAGE_STORAGE_BIT) here -- not assume the request succeeded --
+    // or risk VUID-VkWriteDescriptorSet-descriptorType-00339 (segfaults inside some drivers rather
+    // than erroring cleanly).
+    VkImageUsageFlags ImageUsageFlags = 0;
+
     // IRenderTarget interface implementation
     uint32_t    GetImageCount()   const override { return swapChainImageCount; }
     uint32_t    GetCurrentIndex() const override { return currentColorBuffer; }
@@ -73,6 +84,7 @@ struct SwapChainPublicVariables : public Vixen::Vulkan::Resources::IRenderTarget
     VkImageView GetView(uint32_t i)  const override { return i < colorBuffers.size() ? colorBuffers[i].view  : VK_NULL_HANDLE; }
     VkFormat    GetFormat()   const override { return Format; }
     VkExtent2D  GetExtent()   const override { return Extent; }
+    VkImageUsageFlags GetImageUsageFlags() const override { return ImageUsageFlags; }
 
     operator VkSurfaceKHR() const {
         return surface;
@@ -125,6 +137,16 @@ class VulkanSwapChain : public ILoggable {
 
     // Image usage configuration
     void SetImageUsageFlags(VkImageUsageFlags flags);
+    // Returns the ACTUAL usage flags the swapchain images were created with -- may differ from
+    // what SetImageUsageFlags() requested. GetSupportedFormats() silently drops
+    // VK_IMAGE_USAGE_STORAGE_BIT when the negotiated surface format lacks
+    // VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT (software rasterizers / some layered drivers), to keep
+    // swapchain creation itself valid. Callers that bind a swapchain image as a
+    // VK_DESCRIPTOR_TYPE_STORAGE_IMAGE descriptor MUST check this (not the flags they requested)
+    // before doing so -- binding a non-storage-capable image as STORAGE_IMAGE is
+    // VUID-VkWriteDescriptorSet-descriptorType-00339 and segfaults inside some drivers rather than
+    // erroring cleanly.
+    VkImageUsageFlags GetImageUsageFlags() const { return imageUsageFlags; }
 
     private:
 

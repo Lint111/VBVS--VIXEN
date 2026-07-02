@@ -17,6 +17,10 @@ namespace ShaderManagement {
     struct SpirvDescriptorBinding;
 }
 
+namespace Vixen::Vulkan::Resources {
+    struct IRenderTarget;
+}
+
 namespace Vixen::RenderGraph {
 
 /**
@@ -160,6 +164,11 @@ private:
      * @param descriptorBindings Shader bindings metadata
      * @param imageInfos Output vector for image infos (keep alive for vkUpdateDescriptorSets)
      * @param bufferInfos Output vector for buffer infos (keep alive for vkUpdateDescriptorSets)
+     * @param roleFilter Filter to process (Dependency or Execute)
+     * @param swapchainInfo Optional -- the SWAPCHAIN_INFO input (IRenderTarget*), used to check
+     *        IRenderTarget::SupportsStorageImage() before binding a bare VkImageView as
+     *        VK_DESCRIPTOR_TYPE_STORAGE_IMAGE (see HandleStorageImage). Pass nullptr if this node
+     *        has no swapchain input (e.g. an offscreen-only graph) -- the check is then skipped.
      * @return VkWriteDescriptorSet array ready for vkUpdateDescriptorSets
      */
     std::vector<VkWriteDescriptorSet> BuildDescriptorWrites(
@@ -168,7 +177,8 @@ private:
         const std::vector<::ShaderManagement::SpirvDescriptorBinding>& descriptorBindings,
         std::vector<VkDescriptorImageInfo>& imageInfos,
         std::vector<VkDescriptorBufferInfo>& bufferInfos,
-        SlotRole roleFilter = SlotRole::Dependency  // Filter to process (Dependency or Execute)
+        SlotRole roleFilter = SlotRole::Dependency,
+        Vixen::Vulkan::Resources::IRenderTarget* swapchainInfo = nullptr
     );
 
     // Descriptor write helpers - extracted from BuildDescriptorWrites for readability
@@ -185,7 +195,9 @@ private:
         uint32_t imageIndex,
         VkWriteDescriptorSet& write,
         std::vector<VkDescriptorImageInfo>& imageInfos,
-        std::vector<VkWriteDescriptorSet>& writes
+        std::vector<VkWriteDescriptorSet>& writes,
+        const DescriptorResourceEntry* entry = nullptr,  // Optional: for tracking
+        Vixen::Vulkan::Resources::IRenderTarget* swapchainInfo = nullptr  // Optional: usage-flag check for bare VkImageView
     );
     void HandleSampledImage(
         const ::ShaderManagement::SpirvDescriptorBinding& binding,
@@ -193,14 +205,16 @@ private:
         uint32_t imageIndex,
         VkWriteDescriptorSet& write,
         std::vector<VkDescriptorImageInfo>& imageInfos,
-        std::vector<VkWriteDescriptorSet>& writes
+        std::vector<VkWriteDescriptorSet>& writes,
+        const DescriptorResourceEntry* entry = nullptr  // Optional: for tracking
     );
     void HandleSampler(
         const ::ShaderManagement::SpirvDescriptorBinding& binding,
         const DescriptorHandleVariant& resourceVariant,
         VkWriteDescriptorSet& write,
         std::vector<VkDescriptorImageInfo>& imageInfos,
-        std::vector<VkWriteDescriptorSet>& writes
+        std::vector<VkWriteDescriptorSet>& writes,
+        const DescriptorResourceEntry* entry = nullptr  // Optional: for tracking
     );
     void HandleCombinedImageSampler(
         const ::ShaderManagement::SpirvDescriptorBinding& binding,
@@ -210,7 +224,8 @@ private:
         size_t bindingIdx,
         VkWriteDescriptorSet& write,
         std::vector<VkDescriptorImageInfo>& imageInfos,
-        std::vector<VkWriteDescriptorSet>& writes
+        std::vector<VkWriteDescriptorSet>& writes,
+        const DescriptorResourceEntry* entry = nullptr  // Optional: for tracking
     );
     void HandleBuffer(
         const ::ShaderManagement::SpirvDescriptorBinding& binding,
@@ -226,7 +241,8 @@ private:
         VkWriteDescriptorSet& write,
         std::vector<VkWriteDescriptorSetAccelerationStructureKHR>& accelInfos,
         std::vector<VkAccelerationStructureKHR>& accelHandles,
-        std::vector<VkWriteDescriptorSet>& writes
+        std::vector<VkWriteDescriptorSet>& writes,
+        const DescriptorResourceEntry* entry = nullptr  // Optional: for tracking
     );
 
     // Storage for acceleration structure write info (must persist until vkUpdateDescriptorSets completes)

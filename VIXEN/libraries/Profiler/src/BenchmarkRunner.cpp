@@ -1019,6 +1019,32 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
             }
         }
 
+        // compute-pipeline tests statically write outputImage (binding 0) as
+        // VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, bound directly to the swapchain's current image
+        // (BenchmarkGraphFactory's CURRENT_FRAME_IMAGE_VIEW -> BINDING_OUTPUT_IMAGE connection).
+        // The swapchain's negotiated surface format can lack VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT
+        // (common on software rasterizers / some layered drivers), in which case
+        // GetSupportedFormats() silently strips VK_IMAGE_USAGE_STORAGE_BIT to keep swapchain
+        // creation itself valid -- DescriptorSetNode::HandleStorageImage correctly refuses to bind
+        // such an image (VUID-VkWriteDescriptorSet-descriptorType-00339), but that still leaves a
+        // hole in the descriptor set that vkCmdDispatch cannot legally consume
+        // (VUID-vkCmdDispatch-None-08114) and drivers may not error cleanly. Compute-to-swapchain
+        // is fundamentally unsupported on this device+format, so skip the whole test up front --
+        // mirrors the RTX-capability skip above, just checked against the swapchain's actual
+        // negotiated usage rather than a static device capability.
+        if (testConfig.pipeline == "compute") {
+            auto* swapchainNode = dynamic_cast<RG::SwapChainNode*>(
+                renderGraph->GetInstanceByName("benchmark_swapchain"));
+            const auto* swapchainPublic = swapchainNode ? swapchainNode->GetSwapchainPublic() : nullptr;
+            if (swapchainPublic && !swapchainPublic->SupportsStorageImage()) {
+                std::cout << " SKIPPED (swapchain format lacks VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT -- "
+                             "compute-to-swapchain unsupported on this device)" << std::endl;
+                FinalizeCurrentTest();
+                renderGraph.reset();
+                continue;
+            }
+        }
+
         // Capture BLAS/TLAS build timing for hardware_rt pipeline
         if (testConfig.pipeline == "hardware_rt") {
             auto* asNode = dynamic_cast<RG::AccelerationStructureNode*>(

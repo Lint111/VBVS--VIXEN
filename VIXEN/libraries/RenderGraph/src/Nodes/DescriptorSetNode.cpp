@@ -17,11 +17,6 @@
 // Event subscription
 #include "EventTypes/RenderGraphEvents.h"
 
-// Disable verbose BuildDescriptorWrites debug output for clean benchmark/production builds
-#ifndef VIXEN_ENABLE_DESCRIPTOR_WRITE_LOGS
-#define VIXEN_ENABLE_DESCRIPTOR_WRITE_LOGS 0
-#endif
-
 namespace Vixen::RenderGraph {
 
 // ===== NODE TYPE =====
@@ -321,6 +316,10 @@ void DescriptorSetNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // DescriptorResourceEntry contains: handle + slotRole + debugCapture
     auto shaderBundle = ctx.In(DescriptorSetNodeConfig::SHADER_DATA_BUNDLE);
     auto descriptorResources = ctx.In(DescriptorSetNodeConfig::DESCRIPTOR_RESOURCES);
+    // Required input (see CompileImpl); pass through so HandleStorageImage can check
+    // IRenderTarget::SupportsStorageImage() before binding a swapchain-derived VkImageView as
+    // VK_DESCRIPTOR_TYPE_STORAGE_IMAGE (VUID-VkWriteDescriptorSet-descriptorType-00339).
+    Vixen::Vulkan::Resources::IRenderTarget* swapchainInfo = ctx.In(DescriptorSetNodeConfig::SWAPCHAIN_INFO);
 
     NODE_LOG_DEBUG("[DescriptorSetNode::Execute] Frame " + std::to_string(imageIndex) +
                   " - Received DESCRIPTOR_RESOURCES with " + std::to_string(descriptorResources.size()) + " entries:");
@@ -351,19 +350,20 @@ void DescriptorSetNode::ExecuteImpl(TypedExecuteContext& ctx) {
         for (uint32_t i = 0; i < static_cast<uint32_t>(descriptorSets.size()); i++) {
             auto dependencyWrites = BuildDescriptorWrites(i, descriptorResources, descriptorBindings,
                                                          perFrameImageInfos[i], perFrameBufferInfos[i],
-                                                         SlotRole::Dependency);
+                                                         SlotRole::Dependency, swapchainInfo);
             if (!dependencyWrites.empty()) {
-                std::cout << "[vkUpdateDescriptorSets-Dependency] About to update " << dependencyWrites.size() << " descriptors for frame " << i << std::endl;
-                std::cout << "  bufferInfos[" << i << "] data()=" << reinterpret_cast<uint64_t>(perFrameBufferInfos[i].data())
-                          << ", size=" << perFrameBufferInfos[i].size() << ", capacity=" << perFrameBufferInfos[i].capacity() << std::endl;
-                for (size_t w = 0; w < dependencyWrites.size(); w++) {
-                    const auto& dw = dependencyWrites[w];
-                    if (dw.pBufferInfo) {
-                        std::cout << "  write[" << w << "] binding=" << dw.dstBinding
-                                  << ", pBufferInfo=" << reinterpret_cast<uint64_t>(dw.pBufferInfo)
-                                  << ", VkBuffer=" << reinterpret_cast<uint64_t>(dw.pBufferInfo->buffer) << std::endl;
-                    }
+#if VIXEN_DEBUG_DESCRIPTOR_TRACKING
+                for (const auto& dw : dependencyWrites) {
+                    uint64_t infoPtr = dw.pBufferInfo ? reinterpret_cast<uint64_t>(dw.pBufferInfo)
+                                                       : reinterpret_cast<uint64_t>(dw.pImageInfo);
+                    ::Vixen::RenderGraph::Debug::DescriptorResourceRegistry::GetRegistry().RecordEvent(
+                        ::Vixen::RenderGraph::Debug::ResourceEventType::BoundToDescriptor,
+                        Debug::InvalidTrackingId, dw.dstBinding, infoPtr,
+                        dw.pBufferInfo ? "VkWriteDescriptorSet(buffer)" : "VkWriteDescriptorSet(image)",
+                        GetInstanceName(),
+                        "vkUpdateDescriptorSets-Dependency frame=" + std::to_string(i));
                 }
+#endif
                 vkUpdateDescriptorSets(GetDevice()->device, static_cast<uint32_t>(dependencyWrites.size()), dependencyWrites.data(), 0, nullptr);
                 NODE_LOG_DEBUG("[DescriptorSetNode::Execute] Bound " + std::to_string(dependencyWrites.size()) + " Dependency descriptor(s) for frame " + std::to_string(i));
             }
@@ -375,7 +375,7 @@ void DescriptorSetNode::ExecuteImpl(TypedExecuteContext& ctx) {
     NODE_LOG_DEBUG("[DescriptorSetNode::Execute] Building Execute writes for frame " + std::to_string(imageIndex));
     auto writes = BuildDescriptorWrites(imageIndex, descriptorResources, descriptorBindings,
                                        perFrameImageInfos[imageIndex], perFrameBufferInfos[imageIndex],
-                                       SlotRole::Execute);
+                                       SlotRole::Execute, swapchainInfo);
 
     // DEBUG: Use INFO level to see in console
     static int debugFrameCount = 0;
@@ -493,9 +493,35 @@ void DescriptorSetNode::HandleStorageImage(
     uint32_t imageIndex,
     VkWriteDescriptorSet& write,
     std::vector<VkDescriptorImageInfo>& imageInfos,
-    std::vector<VkWriteDescriptorSet>& writes
+    std::vector<VkWriteDescriptorSet>& writes,
+    const DescriptorResourceEntry* entry,
+    Vixen::Vulkan::Resources::IRenderTarget* swapchainInfo
 ) {
     NODE_LOG_DEBUG("[HandleStorageImage] Binding " + std::to_string(binding.binding) + " (" + binding.name + ")");
+
+    // Both branches below can end up binding an image that ultimately came from swapchainInfo
+    // (the SWAPCHAIN_INFO input) as VK_DESCRIPTOR_TYPE_STORAGE_IMAGE. swapchainInfo's negotiated
+    // usage flags may be a strict subset of what was requested -- e.g. the swapchain silently
+    // drops VK_IMAGE_USAGE_STORAGE_BIT when the negotiated surface format lacks
+    // VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT (common on software rasterizers / some layered
+    // drivers). Binding such an image as STORAGE_IMAGE anyway is
+    // VUID-VkWriteDescriptorSet-descriptorType-00339 -- some drivers (lavapipe, Dozen) segfault
+    // inside vkUpdateDescriptorSets/vkQueueSubmit rather than erroring cleanly, so this MUST be
+    // caught here (an "easy check" helper -- IRenderTarget::SupportsStorageImage() -- exists
+    // specifically so every STORAGE_IMAGE-binding call site can guard itself the same way).
+    // swapchainInfo is null only when this node genuinely has no swapchain input (offscreen-only
+    // graphs) -- skip the check in that case rather than block a legitimately swapchain-free path.
+    if (swapchainInfo && !swapchainInfo->SupportsStorageImage()) {
+        NODE_LOG_ERROR("[HandleStorageImage] Binding " + std::to_string(binding.binding) +
+                      " (" + binding.name + ") wants to bind an image as STORAGE_IMAGE, but this "
+                      "graph's swapchain images were created WITHOUT VK_IMAGE_USAGE_STORAGE_BIT "
+                      "(negotiated surface format lacks VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT -- "
+                      "typical on software rasterizers). Skipping this write to avoid "
+                      "VUID-VkWriteDescriptorSet-descriptorType-00339. The compute pipeline cannot "
+                      "write directly to this swapchain on this device/format; render to an "
+                      "intermediate storage-capable image and blit/copy to the swapchain instead.");
+        return;
+    }
 
     // Storage images don't need samplers
     // Check for SwapChainPublicInfo (per-frame image views)
@@ -511,6 +537,13 @@ void DescriptorSetNode::HandleStorageImage(
             writes.push_back(write);
             NODE_LOG_DEBUG("[HandleStorageImage] Created write for SwapChainPublicVariables, imageView=" +
                           std::to_string(reinterpret_cast<uint64_t>(imageInfo.imageView)));
+#if VIXEN_DEBUG_DESCRIPTOR_TRACKING
+            Debug::TrackingId trackingId = entry ? entry->debugMetadata.trackingId : Debug::InvalidTrackingId;
+            TRACK_HANDLE_BOUND(trackingId, binding.binding,
+                             reinterpret_cast<uint64_t>(imageInfo.imageView),
+                             "VkImageView(swapchain)",
+                             GetInstanceName() + "::HandleStorageImage");
+#endif
         } else {
             NODE_LOG_DEBUG("[HandleStorageImage] WARNING: SwapChainPublicVariables null or imageIndex out of range");
         }
@@ -527,9 +560,16 @@ void DescriptorSetNode::HandleStorageImage(
         writes.push_back(write);
         NODE_LOG_DEBUG("[HandleStorageImage] Created write for VkImageView=" +
                       std::to_string(reinterpret_cast<uint64_t>(imageView)));
+#if VIXEN_DEBUG_DESCRIPTOR_TRACKING
+        Debug::TrackingId trackingId = entry ? entry->debugMetadata.trackingId : Debug::InvalidTrackingId;
+        TRACK_HANDLE_BOUND(trackingId, binding.binding,
+                         reinterpret_cast<uint64_t>(imageView),
+                         "VkImageView",
+                         GetInstanceName() + "::HandleStorageImage");
+#endif
     } else {
-        NODE_LOG_DEBUG("[HandleStorageImage] WARNING: Resource variant is neither SwapChainPublicVariables nor VkImageView, variant index=" +
-                      std::to_string(resourceVariant.index()));
+        NODE_LOG_WARNING("[HandleStorageImage] Resource variant is neither SwapChainPublicVariables nor VkImageView, variant index=" +
+                      std::to_string(resourceVariant.index()) + " for binding " + std::to_string(binding.binding));
     }
 }
 
@@ -539,7 +579,8 @@ void DescriptorSetNode::HandleSampledImage(
     uint32_t imageIndex,
     VkWriteDescriptorSet& write,
     std::vector<VkDescriptorImageInfo>& imageInfos,
-    std::vector<VkWriteDescriptorSet>& writes
+    std::vector<VkWriteDescriptorSet>& writes,
+    const DescriptorResourceEntry* entry
 ) {
     // Sampled images are used with separate samplers
     // Samplers should be in the same descriptor set (validated by ShaderDataBundle)
@@ -569,6 +610,13 @@ void DescriptorSetNode::HandleSampledImage(
         NODE_LOG_DEBUG("[DescriptorSetNode::HandleSampledImage] Bound SAMPLED_IMAGE '" +
                       binding.name + "' at binding " + std::to_string(binding.binding) +
                       " (sampler should be separate)");
+#if VIXEN_DEBUG_DESCRIPTOR_TRACKING
+        Debug::TrackingId trackingId = entry ? entry->debugMetadata.trackingId : Debug::InvalidTrackingId;
+        TRACK_HANDLE_BOUND(trackingId, binding.binding,
+                         reinterpret_cast<uint64_t>(imageView),
+                         "VkImageView(sampled)",
+                         GetInstanceName() + "::HandleSampledImage");
+#endif
     }
 }
 
@@ -577,7 +625,8 @@ void DescriptorSetNode::HandleSampler(
     const DescriptorHandleVariant& resourceVariant,
     VkWriteDescriptorSet& write,
     std::vector<VkDescriptorImageInfo>& imageInfos,
-    std::vector<VkWriteDescriptorSet>& writes
+    std::vector<VkWriteDescriptorSet>& writes,
+    const DescriptorResourceEntry* entry
 ) {
     // Standalone sampler descriptor (no image)
     if (std::holds_alternative<VkSampler>(resourceVariant)) {
@@ -589,6 +638,13 @@ void DescriptorSetNode::HandleSampler(
         imageInfos.push_back(imageInfo);
         write.pImageInfo = &imageInfos.back();
         writes.push_back(write);
+#if VIXEN_DEBUG_DESCRIPTOR_TRACKING
+        Debug::TrackingId trackingId = entry ? entry->debugMetadata.trackingId : Debug::InvalidTrackingId;
+        TRACK_HANDLE_BOUND(trackingId, binding.binding,
+                         reinterpret_cast<uint64_t>(sampler),
+                         "VkSampler",
+                         GetInstanceName() + "::HandleSampler");
+#endif
     }
     // Handle vector of samplers (for array bindings)
     else if (std::holds_alternative<std::vector<VkSampler>>(resourceVariant)) {
@@ -606,6 +662,13 @@ void DescriptorSetNode::HandleSampler(
             write.pImageInfo = &imageInfos[startIdx];
             write.descriptorCount = static_cast<uint32_t>(samplerArray.size());
             writes.push_back(write);
+#if VIXEN_DEBUG_DESCRIPTOR_TRACKING
+            Debug::TrackingId trackingId = entry ? entry->debugMetadata.trackingId : Debug::InvalidTrackingId;
+            TRACK_HANDLE_BOUND(trackingId, binding.binding,
+                             samplerArray.size(),
+                             "std::vector<VkSampler>",
+                             GetInstanceName() + "::HandleSampler");
+#endif
         }
     }
 }
@@ -618,7 +681,8 @@ void DescriptorSetNode::HandleCombinedImageSampler(
     size_t bindingIdx,
     VkWriteDescriptorSet& write,
     std::vector<VkDescriptorImageInfo>& imageInfos,
-    std::vector<VkWriteDescriptorSet>& writes
+    std::vector<VkWriteDescriptorSet>& writes,
+    const DescriptorResourceEntry* entry
 ) {
     // Handle combined image sampler (image + sampler)
     // Check for ImageSamplerPair first (new type-safe approach)
@@ -645,6 +709,13 @@ void DescriptorSetNode::HandleCombinedImageSampler(
                       binding.name + "' at binding " + std::to_string(binding.binding) +
                       " (imageView=" + std::to_string(reinterpret_cast<uint64_t>(pair.imageView)) +
                       ", sampler=" + std::to_string(reinterpret_cast<uint64_t>(pair.sampler)) + ")");
+#if VIXEN_DEBUG_DESCRIPTOR_TRACKING
+        Debug::TrackingId trackingId = entry ? entry->debugMetadata.trackingId : Debug::InvalidTrackingId;
+        TRACK_HANDLE_BOUND(trackingId, binding.binding,
+                         reinterpret_cast<uint64_t>(pair.imageView),
+                         "ImageSamplerPair",
+                         GetInstanceName() + "::HandleCombinedImageSampler");
+#endif
     }
     // Fallback: Legacy approach with separate ImageView and Sampler resources
     else if (std::holds_alternative<VkImageView>(resourceVariant)) {
@@ -665,9 +736,16 @@ void DescriptorSetNode::HandleCombinedImageSampler(
                       binding.name + "' at binding " + std::to_string(binding.binding) +
                       " (imageView=" + std::to_string(reinterpret_cast<uint64_t>(imageView)) +
                       ", sampler=" + std::to_string(reinterpret_cast<uint64_t>(sampler)) + ") [legacy]");
+#if VIXEN_DEBUG_DESCRIPTOR_TRACKING
+        Debug::TrackingId trackingId = entry ? entry->debugMetadata.trackingId : Debug::InvalidTrackingId;
+        TRACK_HANDLE_BOUND(trackingId, binding.binding,
+                         reinterpret_cast<uint64_t>(imageView),
+                         "VkImageView(legacy_combined)",
+                         GetInstanceName() + "::HandleCombinedImageSampler");
+#endif
 
         if (sampler == VK_NULL_HANDLE) {
-            NODE_LOG_DEBUG("[DescriptorSetNode::HandleCombinedImageSampler] WARNING: Combined image sampler at binding " +
+            NODE_LOG_WARNING("[DescriptorSetNode::HandleCombinedImageSampler] Combined image sampler at binding " +
                           std::to_string(binding.binding) + " has no sampler (VK_NULL_HANDLE)");
         }
     }
@@ -697,6 +775,13 @@ void DescriptorSetNode::HandleCombinedImageSampler(
             write.pImageInfo = &imageInfos[startIdx];
             write.descriptorCount = static_cast<uint32_t>(imageViewArray.size());
             writes.push_back(write);
+#if VIXEN_DEBUG_DESCRIPTOR_TRACKING
+            Debug::TrackingId trackingId = entry ? entry->debugMetadata.trackingId : Debug::InvalidTrackingId;
+            TRACK_HANDLE_BOUND(trackingId, binding.binding,
+                             imageViewArray.size(),
+                             "std::vector<VkImageView>(combined)",
+                             GetInstanceName() + "::HandleCombinedImageSampler");
+#endif
         }
     }
 }
@@ -719,7 +804,10 @@ void DescriptorSetNode::HandleBuffer(
         bufferInfos.push_back(bufferInfo);
         write.pBufferInfo = &bufferInfos.back();
         if (bufferInfos.capacity() != oldCap) {
-            std::cout << "[HandleBuffer] WARNING: bufferInfos reallocated! " << oldCap << " -> " << bufferInfos.capacity() << std::endl;
+            NODE_LOG_WARNING("[HandleBuffer] bufferInfos reallocated during write construction (binding " +
+                          std::to_string(binding.binding) + "): " + std::to_string(oldCap) + " -> " +
+                          std::to_string(bufferInfos.capacity()) +
+                          " - earlier writes' pBufferInfo pointers in this call may now be dangling");
         }
         writes.push_back(write);
 
@@ -740,7 +828,8 @@ void DescriptorSetNode::HandleAccelerationStructure(
     VkWriteDescriptorSet& write,
     std::vector<VkWriteDescriptorSetAccelerationStructureKHR>& accelInfos,
     std::vector<VkAccelerationStructureKHR>& accelHandles,
-    std::vector<VkWriteDescriptorSet>& writes
+    std::vector<VkWriteDescriptorSet>& writes,
+    const DescriptorResourceEntry* entry
 ) {
     if (std::holds_alternative<VkAccelerationStructureKHR>(resourceVariant)) {
         VkAccelerationStructureKHR accel = std::get<VkAccelerationStructureKHR>(resourceVariant);
@@ -762,6 +851,13 @@ void DescriptorSetNode::HandleAccelerationStructure(
 
         NODE_LOG_DEBUG("[HandleAccelerationStructure] Bound ACCELERATION_STRUCTURE '" +
                       binding.name + "' at binding " + std::to_string(binding.binding));
+#if VIXEN_DEBUG_DESCRIPTOR_TRACKING
+        Debug::TrackingId trackingId = entry ? entry->debugMetadata.trackingId : Debug::InvalidTrackingId;
+        TRACK_HANDLE_BOUND(trackingId, binding.binding,
+                         reinterpret_cast<uint64_t>(accel),
+                         "VkAccelerationStructureKHR",
+                         GetInstanceName() + "::HandleAccelerationStructure");
+#endif
     } else {
         NODE_LOG_WARNING("[HandleAccelerationStructure] Expected VkAccelerationStructureKHR but got variant index " +
                         std::to_string(resourceVariant.index()) + " for binding " + std::to_string(binding.binding));
@@ -774,7 +870,8 @@ std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
     const std::vector<ShaderManagement::SpirvDescriptorBinding>& descriptorBindings,
     std::vector<VkDescriptorImageInfo>& imageInfos,
     std::vector<VkDescriptorBufferInfo>& bufferInfos,
-    SlotRole roleFilter
+    SlotRole roleFilter,
+    Vixen::Vulkan::Resources::IRenderTarget* swapchainInfo
 ) {
     std::vector<VkWriteDescriptorSet> writes;
     writes.reserve(descriptorBindings.size());
@@ -787,14 +884,11 @@ std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
     // CRITICAL: Reserve space to prevent reallocation during iteration
     // When vectors reallocate, all pointers (write.pImageInfo, write.pBufferInfo, pNext) become invalid
     // Reserve enough space for worst-case: all bindings could be image descriptors
-    size_t oldBufSize = bufferInfos.size();
-    size_t oldBufCap = bufferInfos.capacity();
+    const size_t bufCapBeforeReserve = bufferInfos.capacity();
     imageInfos.reserve(imageInfos.size() + descriptorBindings.size());
     bufferInfos.reserve(bufferInfos.size() + descriptorBindings.size());
-#if VIXEN_ENABLE_DESCRIPTOR_WRITE_LOGS
-    std::cout << "[BuildDescriptorWrites] bufferInfos: size=" << oldBufSize << "->" << bufferInfos.size()
-              << ", capacity=" << oldBufCap << "->" << bufferInfos.capacity() << std::endl;
-#endif
+    NODE_LOG_DEBUG("[BuildDescriptorWrites] bufferInfos reserve: size=" + std::to_string(bufferInfos.size()) +
+                  ", capacity=" + std::to_string(bufCapBeforeReserve) + "->" + std::to_string(bufferInfos.capacity()));
     // Also clear and reserve acceleration structure storage (uses member vectors)
     perFrameAccelInfos.clear();
     perFrameAccelHandles.clear();
@@ -814,18 +908,12 @@ std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
 
         NODE_LOG_DEBUG("[BuildDescriptorWrites] Binding " + std::to_string(binding.binding) + " passed filter, processing...");
 
-        // Extract handle lazily from entry (GetHandle() queries current Resource state)
+        // Extract handle lazily from entry (GetHandle() queries current Resource state).
+        // GetHandle() already records a TRACK_HANDLE_EXTRACTED event under
+        // VIXEN_DEBUG_DESCRIPTOR_TRACKING (see DescriptorResourceEntry::GetHandle in
+        // CompileTimeResourceSystem.h) - no separate print needed here.
         const auto& resourceEntry = descriptorResources[binding.binding];
         const auto resourceVariant = resourceEntry.GetHandle();
-
-#if VIXEN_ENABLE_DESCRIPTOR_WRITE_LOGS
-        // Debug: print what handle we're about to use
-        if (std::holds_alternative<VkBuffer>(resourceVariant)) {
-            VkBuffer buf = std::get<VkBuffer>(resourceVariant);
-            std::cout << "[BuildDescriptorWrites] binding=" << binding.binding
-                      << ", VkBuffer=" << reinterpret_cast<uint64_t>(buf) << std::endl;
-        }
-#endif
 
         // Initialize write descriptor
         VkWriteDescriptorSet write{};
@@ -839,19 +927,19 @@ std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
         // Dispatch to type-specific handlers
         switch (binding.descriptorType) {
             case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
-                HandleStorageImage(binding, resourceVariant, imageIndex, write, imageInfos, writes);
+                HandleStorageImage(binding, resourceVariant, imageIndex, write, imageInfos, writes, &resourceEntry, swapchainInfo);
                 break;
 
             case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
-                HandleSampledImage(binding, resourceVariant, imageIndex, write, imageInfos, writes);
+                HandleSampledImage(binding, resourceVariant, imageIndex, write, imageInfos, writes, &resourceEntry);
                 break;
 
             case VK_DESCRIPTOR_TYPE_SAMPLER:
-                HandleSampler(binding, resourceVariant, write, imageInfos, writes);
+                HandleSampler(binding, resourceVariant, write, imageInfos, writes, &resourceEntry);
                 break;
 
             case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
-                HandleCombinedImageSampler(binding, resourceVariant, descriptorResources, imageIndex, bindingIdx, write, imageInfos, writes);
+                HandleCombinedImageSampler(binding, resourceVariant, descriptorResources, imageIndex, bindingIdx, write, imageInfos, writes, &resourceEntry);
                 break;
 
             case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
@@ -860,7 +948,7 @@ std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
                 break;
 
             case VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR:
-                HandleAccelerationStructure(binding, resourceVariant, write, perFrameAccelInfos, perFrameAccelHandles, writes);
+                HandleAccelerationStructure(binding, resourceVariant, write, perFrameAccelInfos, perFrameAccelHandles, writes, &resourceEntry);
                 break;
 
             default:

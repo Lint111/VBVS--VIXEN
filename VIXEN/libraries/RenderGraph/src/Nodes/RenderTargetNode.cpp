@@ -117,9 +117,10 @@ void RenderTargetNode::CreateTarget(VulkanDevice* device) {
     VkPhysicalDeviceMemoryProperties memProps{};
     vkGetPhysicalDeviceMemoryProperties(physDev, &memProps);
 
-    target_.format       = format_;
-    target_.extent       = {width_, height_};
-    target_.currentIndex = 0;
+    target_.format          = format_;
+    target_.extent          = {width_, height_};
+    target_.imageUsageFlags = usage_;
+    target_.currentIndex    = 0;
     target_.buffers.resize(imageCount_);
 
     for (auto& b : target_.buffers) {
