@@ -176,13 +176,17 @@ void WindowNode::ProcessPendingEvents() {
     for (const auto& event : eventsToProcess) {
         if (event.type == WindowEvent::Type::Resize) {
             // No ctx here (this runs outside node Execute()) -- update state + bus-publish the resize
-            // so SwapChainNode still hears about it and marks itself dirty; the graph-slot outputs
-            // (ctx.Out) get republished by CompileImpl the next time this node recompiles, which the
-            // resize itself triggers via MarkNeedsRecompile() -> the same path ExecuteImpl uses.
+            // so SwapChainNode still hears about it and marks itself dirty. The graph-slot outputs
+            // (WIDTH_OUT/HEIGHT_OUT) can only be republished by CompileImpl, so mark THIS node for
+            // recompile too: WindowNode recompiles first in execution order, CompileImpl republishes
+            // the slots (window/surface persist across recompile by design), and the dependent-marking
+            // cascade refreshes SwapChainNode + the pick/viewport consumers. While paused the recompile
+            // defers and runs on the restore Update -- exactly the desired timing.
             if (event.width != width || event.height != height) {
                 width = event.width;
                 height = event.height;
                 wasResized = true;
+                MarkNeedsRecompile();
 
                 if (GetMessageBus()) {
                     GetMessageBus()->Publish(
