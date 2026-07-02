@@ -184,6 +184,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     // --- Input Node ---
     NodeHandle inputNode = renderGraph->AddNode<InputNodeType>("input_handler");
+    inputNode_ = inputNode;                          // store for Update()'s live ProcessPendingInput() lookup
 
     // --- Pick ID Target (AR#35 GPU picking P1: R32_UINT storage-image ring at binding 9) ---
     NodeHandle pickIdTargetNode = renderGraph->AddNode<PickIdTargetNodeType>("pick_id_target");

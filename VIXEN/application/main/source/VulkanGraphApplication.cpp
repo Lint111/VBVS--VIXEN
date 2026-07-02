@@ -25,6 +25,7 @@
 // UIRenderNode.h (and any RmlUi/robin_hood header) — BodyOctreeSceneNode.h pulls in gaia.h, whose
 // std::hash<> specialisations must be visible before RmlUi's bundled robin_hood.h wraps them.
 #include "Nodes/WindowNode.h"
+#include "Nodes/InputNode.h"
 #include "Nodes/BodyOctreeSceneNode.h"        // M-wire: SetBodyInstances() downcast target (gaia — before UIRenderNode.h)
 #include "Nodes/UIRenderNode.h"               // GetUiRenderNode() downcast target (RmlUi — after BodyOctreeSceneNode.h)
 #include "Nodes/UISelectionProviderNode.h"    // GetUiSelectionProviderNode() downcast target
@@ -363,6 +364,18 @@ void VulkanGraphApplication::Update() {
         if (renderGraph) {
             if (auto* window = static_cast<WindowNode*>(renderGraph->GetInstance(windowNode_))) {
                 window->ProcessPendingEvents();
+            }
+        }
+
+        // Same "input never rides the render graph's gates" hook, generalized to InputNode
+        // (input-rework slice 1): drain its GLFW callback queue unconditionally too, right beside
+        // WindowNode's own drain above. Same lookup pattern, same null-guard (a graph without an
+        // InputNode -- e.g. the demo/benchmark graph builders -- leaves inputNode_ default-
+        // constructed, GetInstance returns null, and this is skipped, matching windowNode_'s
+        // existing convention just above).
+        if (renderGraph) {
+            if (auto* input = static_cast<InputNode*>(renderGraph->GetInstance(inputNode_))) {
+                input->ProcessPendingInput();
             }
         }
 
