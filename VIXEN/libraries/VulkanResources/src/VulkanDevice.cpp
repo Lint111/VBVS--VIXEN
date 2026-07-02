@@ -190,6 +190,31 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
 
     VK_CHECK(vkCreateDevice(*gpu, &deviceInfo, nullptr, &device), "Failed to create logical device");
 
+    // Defense against a non-conformant driver lying about synchronization2: the feature bit above
+    // was self-reported true by vkGetPhysicalDeviceFeatures2 (Dozen, WSL2's Vulkan-over-D3D12
+    // driver, explicitly warns "not a conformant Vulkan implementation, testing use only" at
+    // startup) and vkCreateDevice succeeded with it enabled, but that's a promise about the
+    // FEATURE BIT, not proof the driver actually exports the FUNCTION -- a non-conformant ICD can
+    // claim the bit and still leave vkCmdPipelineBarrier2's dispatch-table entry null. Every
+    // ComputeDispatchNode/MultiDispatchNode/PassRecorder/etc. call to it is unconditional (this
+    // capability is mandatory, not optional -- see the hard-error above), so a null entry point
+    // crashes the FIRST render frame with a null-function-pointer SIGSEGV deep in RenderFrame(),
+    // far from this device-creation code and impossible to diagnose from the crash site alone.
+    // Catch the lie here instead, at the one place that already knows synchronization2 is
+    // supposed to be guaranteed, with a clear error naming the actual driver.
+    if (vkGetDeviceProcAddr(device, "vkCmdPipelineBarrier2") == nullptr) {
+        VkPhysicalDeviceProperties props{};
+        vkGetPhysicalDeviceProperties(*gpu, &props);
+        vkDestroyDevice(device, nullptr);
+        device = VK_NULL_HANDLE;
+        throw std::runtime_error(
+            std::string("GPU driver '") + props.deviceName + "' reports synchronization2 support "
+            "(the Vulkan 1.3 feature bit) but does not export vkCmdPipelineBarrier2 -- a "
+            "non-conformant driver bug (known on Mesa Dozen / WSL2's Vulkan-over-D3D12 path). "
+            "The renderer requires a real synchronization2 implementation; there is no legacy "
+            "vkCmdPipelineBarrier fallback path.");
+    }
+
     // The capability graph was built before device creation (so feature enablement could be
     // gated through it). Now record the device extensions that were actually enabled, then
     // invalidate cached results so subsequent queries see the populated extension set.
