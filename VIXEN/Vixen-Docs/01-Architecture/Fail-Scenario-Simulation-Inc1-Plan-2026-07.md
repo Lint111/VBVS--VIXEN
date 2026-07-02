@@ -34,6 +34,7 @@ Worktree: `.claude/worktrees/fail-scenario-sim` · branch `feat/fail-scenario-si
 (appended per milestone by the controller)
 
 - Milestone 1 (Tasks 1-3): DONE · commits a436f227..8b03f8ee · Opus validator OK (tests re-run green; nm zero-footprint proven) · 2026-07-02 · NOTES for later milestones: real buildable targets are RenderGraphCore/RenderGraphNodes/VIXEN (plan shorthand "RenderGraph"/"VixenApp"; VixenApp static lib still valid as a LINK target); ctest discovery is broken repo-wide pre-existing (root enable_testing() runs after add_subdirectory(libraries)) — run gtest binaries directly from build-wsl.
+- Milestone 2 (Tasks 4-5): DONE · commits caa59f43..b65bf35c · Opus validator OK (live gate re-run: BootWarmupTeardown PASSED on WSLg + Dozen ICD real GPU; OFF-build clean, zero scenario symbols) · 2026-07-02 · NOTES: sweep target relocated to application/main/CMakeLists.txt:152 include of FailScenarios/test_fail_scenario_sweep.cmake (libraries/ configures before application/, so `if(TARGET VixenApp)` was vacuously false at the plan's placement — registry target unchanged); InstanceNode gained a flag-gated VK_EXT_debug_report callback (none existed) feeding FailScenario::ValidationErrorCount(); VACUITY: VK_LAYER_KHRONOS_validation is NOT installed on this box → the 0-validation-errors criterion is vacuous locally (layer-if-installed pattern holds; becomes real wherever the layer exists).
 
 ## File Structure (locked)
 
@@ -573,7 +574,7 @@ size_t WindowNode::PendingEventCountForTest() const {
 - Consumes: `VixenApp` library (`VulkanGraphApplication`: `Initialize/Prepare/IsPrepared/GetLastError/Update/Render/GetRenderGraph/GetWindowHandle`); `TestVkValidation.h` `EnabledValidationLayers()`; global `deviceExtensionNames`/`instanceExtensionNames`/`layerNames` (from `VulkanGlobalNames.h`, initialized exactly like `main.cpp:18-43`).
 - Produces: `AppHarness` and `ScenarioContext` per the interface contract block. `FailScenario::ValidationErrorCount()` (flag-gated global counter).
 
-- [ ] **Step 1: Failing test** (`test_fail_scenario_sweep.cpp` — custom main, no gtest_main):
+- [x] **Step 1: Failing test** (`test_fail_scenario_sweep.cpp` — custom main, no gtest_main):
 
 ```cpp
 #include "ScenarioHarness.h"
@@ -592,7 +593,7 @@ int main(int argc, char** argv) {
 }
 ```
 
-- [ ] **Step 2: CMake target** (append to `test_fail_scenarios.cmake`, inside the existing gates):
+- [x] **Step 2: CMake target** (append to `test_fail_scenarios.cmake`, inside the existing gates):
 
 ```cmake
 if(TARGET VixenApp AND TARGET GTest::gtest)
@@ -612,7 +613,7 @@ endif()
 
 (If `glfw` isn't a visible target name here, check how `RenderGraph`'s CMake links it and reuse that — VixenApp propagates most of it PUBLICly; try without the explicit `glfw` first.)
 
-- [ ] **Step 3: Verify it fails to build** (ScenarioHarness.h missing), then **implement**. `ScenarioHarness.h`:
+- [x] **Step 3: Verify it fails to build** (ScenarioHarness.h missing), then **implement**. `ScenarioHarness.h`:
 
 ```cpp
 #pragma once
@@ -748,11 +749,11 @@ bool ScenarioContextImpl::ApplyStimulus(const WindowStimulus& ws) {
 }
 ```
 
-- [ ] **Step 4: Validation-error counter.** Read `InstanceNode.cpp`, find the `VK_EXT_DEBUG_REPORT` callback it installs (it logs validation messages). Add to `FailScenario.h` (ON branch): `uint32_t ValidationErrorCount(); void ResetValidationErrorCount(); namespace detail { void BumpValidationError(); }` backed by a `std::atomic<uint32_t>` in `FailScenario.cpp`; in the callback, under `#if VIXEN_FAIL_SCENARIOS`, call `detail::BumpValidationError()` when the flags contain `VK_DEBUG_REPORT_ERROR_BIT_EXT`. If InstanceNode installs NO callback (only the layer's stderr), install one under the flag when `VK_EXT_debug_report` was enabled — follow whatever the file already does; keep it minimal and flag-gated.
+- [x] **Step 4: Validation-error counter.** Read `InstanceNode.cpp`, find the `VK_EXT_DEBUG_REPORT` callback it installs (it logs validation messages). Add to `FailScenario.h` (ON branch): `uint32_t ValidationErrorCount(); void ResetValidationErrorCount(); namespace detail { void BumpValidationError(); }` backed by a `std::atomic<uint32_t>` in `FailScenario.cpp`; in the callback, under `#if VIXEN_FAIL_SCENARIOS`, call `detail::BumpValidationError()` when the flags contain `VK_DEBUG_REPORT_ERROR_BIT_EXT`. If InstanceNode installs NO callback (only the layer's stderr), install one under the flag when `VK_EXT_debug_report` was enabled — follow whatever the file already does; keep it minimal and flag-gated.
 
-- [ ] **Step 5: Live gate.** `cmake --build build-wsl --target test_fail_scenario_sweep && ctest --test-dir build-wsl -R BootWarmupTeardown --output-on-failure`. Expected: PASS on WSL (WSLg display + lavapipe), zero validation errors, clean teardown, no window visible. If `DisplayAvailable()` is false in your environment, the test must `GTEST_SKIP()` with the boot-failure reason (wire that: `if (!AppHarness::DisplayAvailable()) GTEST_SKIP() << "...";` at the top of the test) — but on this project's WSLg box it should RUN; a skip here means investigate before proceeding.
+- [x] **Step 5: Live gate.** `cmake --build build-wsl --target test_fail_scenario_sweep && ctest --test-dir build-wsl -R BootWarmupTeardown --output-on-failure`. Expected: PASS on WSL (WSLg display + lavapipe), zero validation errors, clean teardown, no window visible. If `DisplayAvailable()` is false in your environment, the test must `GTEST_SKIP()` with the boot-failure reason (wire that: `if (!AppHarness::DisplayAvailable()) GTEST_SKIP() << "...";` at the top of the test) — but on this project's WSLg box it should RUN; a skip here means investigate before proceeding.
 
-- [ ] **Step 6: Commit** `feat(fail-scenarios): AppHarness boots real app graph hidden + validation-error counter (Task 4)`.
+- [x] **Step 6: Commit** `feat(fail-scenarios): AppHarness boots real app graph hidden + validation-error counter (Task 4)`.
 
 ---
 
@@ -765,7 +766,7 @@ bool ScenarioContextImpl::ApplyStimulus(const WindowStimulus& ws) {
 - Consumes: `ScenarioRegistry::ForEach`, `ReplayScenarioRegistrars`, `AppHarness`, `ScenarioContext`.
 - Produces: one gtest case per declared scenario, named `FailScenarioSweep/<NodeType>.<ScenarioId>` — parallelizable, filterable; each boots its own harness (isolation), applies the stimulus/fault, enforces the global criteria, then runs the declaration's contract. Scenarios whose node type is absent from the assembled graph are skipped (that IS the enumerator: registry × assembled graph).
 
-- [ ] **Step 1: Write the runner** (this is infrastructure — its "failing test" is Step 2's run against zero declarations, which must produce zero cases and pass; declarations arrive in Task 6):
+- [x] **Step 1: Write the runner** (this is infrastructure — its "failing test" is Step 2's run against zero declarations, which must produce zero cases and pass; declarations arrive in Task 6):
 
 ```cpp
 // Dynamic registration: one test per declared scenario (gtest RegisterTest).
@@ -842,9 +843,9 @@ int main(int argc, char** argv) {
 
 Notes for the implementer: (a) keep the Task-4 `BootWarmupTeardown` TEST — it is the canary that isolates environment breakage from scenario breakage. (b) the `FindByTypeName` skip completes the enumerator semantics: registry (declared scenarios) × assembled graph (types present) = the swept matrix. (c) `gtest_discover_tests` discovers dynamic tests via `--gtest_list_tests` at build time — it runs the binary, which is safe: listing does not boot Vulkan (registration only touches the registry). Verify `ctest -N` shows the cases after Task 6 adds declarations.
 
-- [ ] **Step 2: Run with zero declarations:** rebuild + `ctest --test-dir build-wsl -R FailScenario --output-on-failure`. Expected: registry unit tests + `BootWarmupTeardown` pass; zero `FailScenarioSweep_*` cases (none declared yet); exit success.
+- [x] **Step 2: Run with zero declarations:** rebuild + `ctest --test-dir build-wsl -R FailScenario --output-on-failure`. Expected: registry unit tests + `BootWarmupTeardown` pass; zero `FailScenarioSweep_*` cases (none declared yet); exit success.
 
-- [ ] **Step 3: Commit** `feat(fail-scenarios): dynamic per-scenario sweep runner with global pass criteria (Task 5)`.
+- [x] **Step 3: Commit** `feat(fail-scenarios): dynamic per-scenario sweep runner with global pass criteria (Task 5)`.
 
 ---
 
