@@ -10,7 +10,7 @@ public static class GlslStructEmitter
         ScalarKind.U32 => "uint",
         ScalarKind.I32 => "int",
         ScalarKind.F32 => "float",
-        _ => "uint",
+        _ => throw new System.NotSupportedException($"unmapped ScalarKind {k}"),
     };
 
     public static string Emit(StructModel m)
@@ -24,6 +24,7 @@ public static class GlslStructEmitter
         foreach (var f in m.Fields) sb.AppendLine($"    {Glsl(f.Kind)} {f.Name};");
         sb.AppendLine("};");
         sb.AppendLine($"#endif // {guard}");
-        return sb.ToString();
+        // Normalize to LF so emitted bytes are host-independent.
+        return sb.ToString().Replace("\r\n", "\n");
     }
 }

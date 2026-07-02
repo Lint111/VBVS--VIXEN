@@ -10,7 +10,7 @@ public static class CppStructEmitter
         ScalarKind.U32 => "uint32_t",
         ScalarKind.I32 => "int32_t",
         ScalarKind.F32 => "float",
-        _ => "uint32_t",
+        _ => throw new System.NotSupportedException($"unmapped ScalarKind {k}"),
     };
 
     public static string Emit(StructModel m)
@@ -28,6 +28,8 @@ public static class CppStructEmitter
         foreach (var f in m.Fields)
             sb.AppendLine($"static_assert(offsetof({m.Name}, {f.Name}) == {f.Offset}, \"{f.Name}@{f.Offset}\");");
         sb.AppendLine("} // namespace Vixen::Gpu");
-        return sb.ToString();
+        // Normalize to LF so emitted bytes are host-independent (the byte-identical
+        // golden guarantee must not depend on Environment.NewLine).
+        return sb.ToString().Replace("\r\n", "\n");
     }
 }
