@@ -696,23 +696,21 @@ bool RenderGraph::RecoverFromDeviceLoss() {
 }
 
 VkResult RenderGraph::RenderFrame() {
-    // AR#1 Phase 3: device-loss fault-injection hook (no-op unless VIXEN_SIMULATE_DEVICE_LOSS is set).
-    // Parse the env once; then latch a synthetic loss exactly once at the configured render-frame so the
-    // teardown+rebuild recovery path runs in a live run. The rebuild is valid on a healthy device too, so
-    // this faithfully exercises RecoverFromDeviceLoss without needing a real TDR.
+#if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
+    // Fail-scenario migration of the AR#1 Phase-3 harness: VIXEN_SIMULATE_DEVICE_LOSS=<frame> arms a
+    // one-shot FenceWait fault, so the synthetic loss is DETECTED by FrameSyncNode's real fence-wait
+    // path (NotifyDeviceLost fires from the node, not from here). Compiled out of real builds.
     if (simulateDeviceLossFrame_ == -2) {
         const char* env = std::getenv("VIXEN_SIMULATE_DEVICE_LOSS");
         simulateDeviceLossFrame_ = -1;
-        if (env) {
-            int parsed = std::atoi(env);
-            simulateDeviceLossFrame_ = (parsed > 0) ? parsed : 120;  // truthy-but-non-numeric -> default frame
-        }
+        if (env) { int parsed = std::atoi(env); simulateDeviceLossFrame_ = (parsed > 0) ? parsed : 120; }
     }
     if (!deviceLossSimulated_ && simulateDeviceLossFrame_ >= 0 &&
         globalFrameIndex >= static_cast<uint64_t>(simulateDeviceLossFrame_)) {
         deviceLossSimulated_ = true;
-        NotifyDeviceLost("VIXEN_SIMULATE_DEVICE_LOSS (synthetic fault injection)");
+        GetFaultInjector()->ArmOnce(FailScenario::FaultSite::FenceWait, VK_ERROR_DEVICE_LOST);
     }
+#endif
 
     // AR#1 Phase 3: once the device is lost, every GPU call is invalid. Report it as a distinct status
     // (not Phase 2a's generic VK_ERROR_UNKNOWN) on every subsequent frame so the trigger can route to

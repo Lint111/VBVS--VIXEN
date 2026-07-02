@@ -2,6 +2,7 @@
 #include "Core/NodeRegistration.h"
 #include "Data/Nodes/FrameSyncNodeConfig.h"  // Phase 0.4: For CURRENT_FRAME_INDEX input
 #include "Core/RenderGraph.h"
+#include "Core/FailScenario.h"
 #include "VulkanDevice.h"
 #include "Core/NodeLogging.h"
 #include "EventTypes/RenderGraphEvents.h"
@@ -295,14 +296,15 @@ uint32_t SwapChainNode::AcquireNextImage(VkSemaphore presentCompleteSemaphore) {
     }
 
     auto* devicePtr = GetDevice();
-    VkResult result = swapChainWrapper->fpAcquireNextImageKHR(
-        devicePtr->device,
-        swapChainWrapper->scPublicVars.swapChain,
-        UINT64_MAX, // Timeout
-        presentCompleteSemaphore,
-        VK_NULL_HANDLE, // Fence
-        &currentImageIndex
-    );
+    VkResult result = VIXEN_FAULT_FILTER(GetOwningGraph(), Acquire,
+        swapChainWrapper->fpAcquireNextImageKHR(
+            devicePtr->device,
+            swapChainWrapper->scPublicVars.swapChain,
+            UINT64_MAX, // Timeout
+            presentCompleteSemaphore,
+            VK_NULL_HANDLE, // Fence
+            &currentImageIndex
+        ));
 
     // Handle out-of-date swapchain
     if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {

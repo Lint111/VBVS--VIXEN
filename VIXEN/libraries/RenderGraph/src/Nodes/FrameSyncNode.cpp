@@ -1,6 +1,7 @@
 #include "Nodes/FrameSyncNode.h"
 #include "Core/NodeRegistration.h"
 #include "Core/RenderGraph.h"
+#include "Core/FailScenario.h"
 #include "VulkanDevice.h"
 #include "Core/NodeLogging.h"
 #include <stdexcept>
@@ -144,7 +145,8 @@ void FrameSyncNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // This ensures the previous frame using this flight's resources has completed
     // Without this wait, we could reuse semaphores that are still in use by the presentation engine
     VkFence currentFence = frameSyncData[currentFrameIndex].inFlightFence;
-    VkResult waitResult = vkWaitForFences(device->device, 1, &currentFence, VK_TRUE, UINT64_MAX);
+    VkResult waitResult = VIXEN_FAULT_FILTER(GetOwningGraph(), FenceWait,
+                              vkWaitForFences(device->device, 1, &currentFence, VK_TRUE, UINT64_MAX));
 
     // AR#1 Phase 3 (Increment 1): this fence wait runs every frame and is the universal, earliest
     // backstop for device loss — when the GPU device is lost, the submitted work never completes and

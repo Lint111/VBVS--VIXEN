@@ -2,6 +2,8 @@
 #include "Core/NodeRegistration.h"
 #include "VulkanDevice.h"
 #include "Core/NodeLogging.h"
+#include "Core/RenderGraph.h"
+#include "Core/FailScenario.h"
 
 namespace Vixen::RenderGraph {
 
@@ -126,7 +128,7 @@ VkResult PresentNode::Present(Context& ctx) {
 
 
     // Queue present
-    lastResult = fpQueuePresent(device->queue, &presentInfo);
+    lastResult = VIXEN_FAULT_FILTER(GetOwningGraph(), Present, fpQueuePresent(device->queue, &presentInfo));
 
     // Wait for device idle if requested (for compatibility with current behavior)
     if (waitForIdle && lastResult == VK_SUCCESS && device != nullptr) {

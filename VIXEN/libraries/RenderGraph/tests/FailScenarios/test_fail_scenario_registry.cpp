@@ -44,3 +44,14 @@ TEST(FailScenarioRegistry, FindUnknownTypeReturnsNull) {
     ReplayScenarioRegistrars();
     EXPECT_EQ(ScenarioRegistry::Instance().Find("NoSuchNode"), nullptr);
 }
+
+TEST(FaultInjector, ArmOnceFiresExactlyOncePerSite) {
+    FaultInjector fi;
+    EXPECT_EQ(fi.Filter(FaultSite::Acquire, VK_SUCCESS), VK_SUCCESS);       // unarmed: passthrough
+    fi.ArmOnce(FaultSite::Acquire, VK_ERROR_OUT_OF_DATE_KHR);
+    EXPECT_TRUE(fi.IsArmed(FaultSite::Acquire));
+    EXPECT_FALSE(fi.IsArmed(FaultSite::Present));                           // per-site isolation
+    EXPECT_EQ(fi.Filter(FaultSite::Present, VK_SUCCESS), VK_SUCCESS);       // other site unaffected
+    EXPECT_EQ(fi.Filter(FaultSite::Acquire, VK_SUCCESS), VK_ERROR_OUT_OF_DATE_KHR);
+    EXPECT_EQ(fi.Filter(FaultSite::Acquire, VK_SUCCESS), VK_SUCCESS);       // once only
+}

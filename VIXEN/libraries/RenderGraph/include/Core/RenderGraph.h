@@ -27,6 +27,7 @@
 #include "Core/FrameSyncScheduler.h"     // Auto-sync P2: frame sync schedule
 #include "Core/VirtualResourceAccessTracker.h"  // Sprint 6.5: Per-task tracking
 #include "Core/TBBVirtualTaskExecutor.h"        // Sprint 6.5: Virtual task execution
+#include "Core/FailScenario.h"                  // Inc 1: self-neutralizing when VIXEN_FAIL_SCENARIOS is off
 #include <memory>
 #include <string>
 #include <vector>
@@ -902,12 +903,25 @@ private:
     // keeps returning VK_ERROR_DEVICE_LOST and RecoverFromDeviceLoss() refuses to retry, so the host
     // aborts instead of spinning on an unrecoverable device.
     bool deviceLostUnrecoverable_ = false;
+#if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
     // Fault-injection test hook (VIXEN_SIMULATE_DEVICE_LOSS=<render-frame>). -2 = env not yet parsed,
     // -1 = disabled, >=0 = latch a synthetic device loss once at that globalFrameIndex. The teardown +
     // rebuild are valid on a healthy device too (vkDestroy*/recreate don't require a truly-lost device),
-    // so this faithfully exercises RecoverFromDeviceLoss() in a live run. Off (env unset) in normal runs.
+    // so this faithfully exercises RecoverFromDeviceLoss() in a live run. Scenario-build-only state.
     int simulateDeviceLossFrame_ = -2;
     bool deviceLossSimulated_ = false;
+#endif
+
+#if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
+public:
+    // Fail-scenario fault injection (test builds only): dormant unless a scenario arms it.
+    FailScenario::FaultInjector* GetFaultInjector() {
+        if (!faultInjector_) faultInjector_ = std::make_unique<FailScenario::FaultInjector>();
+        return faultInjector_.get();
+    }
+private:
+    std::unique_ptr<FailScenario::FaultInjector> faultInjector_;
+#endif
 
     // Event-driven recompilation
     std::set<NodeHandle> dirtyNodes;
