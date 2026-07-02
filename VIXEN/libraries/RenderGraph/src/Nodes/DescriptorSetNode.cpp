@@ -309,6 +309,14 @@ void DescriptorSetNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // Get current image index to select correct per-frame descriptor set
     uint32_t imageIndex = ctx.In(DescriptorSetNodeConfig::IMAGE_INDEX);
 
+    // Honor the out-of-date skip sentinel from SwapChainNode (UINT32_MAX = no image this
+    // frame); descriptorSets/perFrame* are indexed by imageIndex, same guard as the other
+    // IMAGE_INDEX consumers. Missing this was the maximize/fullscreen segfault.
+    if (imageIndex == UINT32_MAX || imageIndex >= descriptorSets.size()) {
+        NODE_LOG_WARNING("DescriptorSetNode: Invalid image index - skipping frame");
+        return;
+    }
+
     // Get descriptor inputs
     // DescriptorResourceEntry contains: handle + slotRole + debugCapture
     auto shaderBundle = ctx.In(DescriptorSetNodeConfig::SHADER_DATA_BUNDLE);

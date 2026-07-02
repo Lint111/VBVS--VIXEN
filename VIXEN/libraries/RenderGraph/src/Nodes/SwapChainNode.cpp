@@ -184,6 +184,13 @@ void SwapChainNode::ExecuteImpl(TypedExecuteContext& ctx) {
         // idle, and the whole render loop deadlocks on the next fence/idle wait. This was the
         // window-resize hang.
         ctx.Out(SwapChainNodeConfig::IMAGE_INDEX, UINT32_MAX);
+        // ALSO stop the rest of this frame centrally: relying on every downstream consumer to guard
+        // the sentinel individually proved fragile (six of ten guards were missing or placed after
+        // the first per-image indexing — the maximize/fullscreen segfault). The abort skips them
+        // wholesale; the per-node guards stay as second-layer defense.
+        if (auto* graph = GetOwningGraph()) {
+            graph->AbortCurrentFrame();
+        }
         return;
     }
 

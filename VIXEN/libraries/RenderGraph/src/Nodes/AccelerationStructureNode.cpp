@@ -162,6 +162,14 @@ void AccelerationStructureNode::ExecuteImpl(TypedExecuteContext& ctx) {
         // Get image index from input (optional, defaults to 0 if not connected)
         uint32_t imageIndex = ctx.In(AccelerationStructureNodeConfig::IMAGE_INDEX);
 
+        // Honor the out-of-date skip sentinel from SwapChainNode (UINT32_MAX = no image
+        // this frame); DynamicTLAS is indexed per-frame, same guard as the other consumers.
+        if (imageIndex == UINT32_MAX) {
+            NODE_LOG_WARNING("AccelerationStructureNode: Invalid image index - skipping frame");
+            ctx.Out(AccelerationStructureNodeConfig::TLAS_HANDLE, VK_NULL_HANDLE);
+            return;
+        }
+
         // Update instances and rebuild TLAS if dirty
         dynamicTLAS_->UpdateInstances(imageIndex, *instanceManager_);
 

@@ -137,15 +137,17 @@ void PassGroupNode::ExecuteImpl(VariadicExecuteContext& ctx) {
         ctx.In(PassGroupNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
     VkFence inFlightFence = ctx.In(PassGroupNodeConfig::IN_FLIGHT_FENCE);
 
-    // Two-tier indexing: imageAvailable by frame, renderComplete by image
-    VkSemaphore imageAvailableSemaphore  = imageAvailableSemaphores[currentFrameIndex];
-    VkSemaphore renderCompleteSemaphore  = renderCompleteSemaphores[imageIndex];
-
-    // Guard against invalid image index
+    // Guard against the invalid-image sentinel BEFORE the per-image semaphore indexing
+    // (UINT32_MAX is SwapChainNode's out-of-date skip sentinel; also keeps the fence reset
+    // below from running on a skipped frame).
     if (imageIndex == UINT32_MAX || imageIndex >= commandBuffers_.size()) {
         NODE_LOG_WARNING("[PassGroupNode] Invalid image index - skipping frame");
         return;
     }
+
+    // Two-tier indexing: imageAvailable by frame, renderComplete by image
+    VkSemaphore imageAvailableSemaphore  = imageAvailableSemaphores[currentFrameIndex];
+    VkSemaphore renderCompleteSemaphore  = renderCompleteSemaphores[imageIndex];
 
     VkCommandBuffer cmd = commandBuffers_.GetValue(imageIndex);
 

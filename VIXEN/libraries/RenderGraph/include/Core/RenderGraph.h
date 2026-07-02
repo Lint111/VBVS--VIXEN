@@ -451,6 +451,22 @@ public:
     bool IsDeviceLost() const { return deviceLost_; }
 
     /**
+     * @brief Abort the remainder of the current frame's node execution.
+     *
+     * Called mid-frame by a node that discovers the frame cannot proceed — canonically
+     * SwapChainNode when acquire returns OUT_OF_DATE (window resize/maximize) and publishes the
+     * IMAGE_INDEX = UINT32_MAX skip sentinel. The sequential execute loop stops before the next
+     * node, so downstream consumers of per-image state (semaphore/command-buffer/descriptor
+     * arrays indexed by image) are skipped wholesale instead of each needing its own sentinel
+     * guard — six of ten consumers historically got that guard wrong (missing or after first
+     * use). Per-node guards remain as second-layer defense. Cleared at the top of RenderFrame().
+     */
+    void AbortCurrentFrame() { frameAborted_ = true; }
+
+    /** @brief True while the current frame's execution has been aborted (see AbortCurrentFrame). */
+    bool IsFrameAborted() const { return frameAborted_; }
+
+    /**
      * @brief Rebuild the whole graph on a fresh GPU device after a latched device loss.
      *
      * Ordering-correct full rebuild — the dirty-recompile cascade canNOT be reused for this: it
@@ -893,6 +909,10 @@ private:
     // AR#16: set by ExecuteCleanup (shutdown). RenderFrame() checks this so it never executes a node
     // against destroyed resources (the render loop can iterate once more after WindowCloseEvent).
     bool isCleanedUp = false;
+
+    // Frame abort (see AbortCurrentFrame): set mid-frame by SwapChainNode's out-of-date skip path,
+    // checked by the sequential execute loop, cleared at the top of every RenderFrame().
+    bool frameAborted_ = false;
 
     // Device-loss recovery (AR#1 Error-Model Phase 3). Latched by NotifyDeviceLost() when a node sees
     // VK_ERROR_DEVICE_LOST; checked by RenderFrame() which then returns VK_ERROR_DEVICE_LOST distinctly

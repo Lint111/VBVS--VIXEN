@@ -163,6 +163,15 @@ void ComputeDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
     const std::vector<VkSemaphore>& renderCompleteSemaphores = ctx.In(ComputeDispatchNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
     VkFence inFlightFence = ctx.In(ComputeDispatchNodeConfig::IN_FLIGHT_FENCE);
 
+    // Guard against the invalid-image sentinel BEFORE any per-image indexing or side effect:
+    // renderCompleteSemaphores[imageIndex] below read OOB on UINT32_MAX (the maximize crash),
+    // and skipping before the fence reset keeps the frame fence signalled so the next
+    // FrameSyncNode wait can't deadlock on a skipped frame.
+    if (imageIndex == UINT32_MAX || imageIndex >= commandBuffers.size()) {
+        NODE_LOG_WARNING("ComputeDispatchNode: Invalid image index - skipping frame");
+        return;
+    }
+
     // Two-tier indexing: imageAvailable by frame, renderComplete by image
     VkSemaphore imageAvailableSemaphore = imageAvailableSemaphores[currentFrameIndex];
     VkSemaphore renderCompleteSemaphore = renderCompleteSemaphores[imageIndex];
@@ -199,12 +208,6 @@ void ComputeDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
                 sample.Cancel();  // No valid measurement
             }
         }
-    }
-
-    // Guard against invalid image index
-    if (imageIndex == UINT32_MAX || imageIndex >= commandBuffers.size()) {
-        NODE_LOG_WARNING("ComputeDispatchNode: Invalid image index - skipping frame");
-        return;
     }
 
     // Detect if inputs changed (mark all command buffers dirty if so)

@@ -788,6 +788,9 @@ VkResult RenderGraph::RenderFrame() {
     // undefined behaviour across a C# host boundary (UNDERTOW). Frame-end cleanup below still runs.
     VkResult frameResult = VK_SUCCESS;
 
+    // Fresh frame: clear any abort latched by last frame's out-of-date acquire (AbortCurrentFrame).
+    frameAborted_ = false;
+
     // Execute all nodes
     // Sprint 6.4: Support both sequential and parallel execution modes
     if (parallelExecutionEnabled_) {
@@ -855,6 +858,15 @@ VkResult RenderGraph::RenderFrame() {
         // =====================================================================
         // Nodes handle their own synchronization, command recording, and presentation
         for (NodeInstance* node : executionOrder) {
+            // Frame aborted mid-execution (e.g. swapchain OUT_OF_DATE at acquire): stop before the
+            // next node — per-image state is invalid until the resize recompile runs. See
+            // AbortCurrentFrame(); the skipped nodes' per-node sentinel guards stay as backup.
+            if (frameAborted_) {
+                GRAPH_LOG_INFO("[RenderGraph::RenderFrame] Frame aborted before node '" +
+                               node->GetInstanceName() + "' — skipping the rest of this frame");
+                break;
+            }
+
             if (node->GetState() == NodeState::Ready ||
                 node->GetState() == NodeState::Compiled ||
                 node->GetState() == NodeState::Complete) {  // Execute completed nodes again each frame
