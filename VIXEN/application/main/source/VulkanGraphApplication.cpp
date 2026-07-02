@@ -355,6 +355,17 @@ void VulkanGraphApplication::Update() {
             renderGraph->UpdateTime();
         }
 
+        // Drain the WindowNode's own GLFW callback queue FIRST, unconditionally -- independent of node
+        // Execute() (RenderFrame() skips ALL node Execute() while renderPaused, including WindowNode's
+        // own, so a Restore/Maximize queued by glfwPollEvents() while minimized would otherwise never
+        // reach the bus and renderPaused could never clear: a permanent freeze on minimize). See
+        // WindowNode::ProcessPendingEvents() for the full explanation.
+        if (renderGraph) {
+            if (auto* window = static_cast<WindowNode*>(renderGraph->GetInstance(windowNode_))) {
+                window->ProcessPendingEvents();
+            }
+        }
+
         // Process events + deferred recompilation here (not in render) so updates run without rendering
         // (minimized windows), at a different rate, and event-driven invalidation is handled.
         if (renderGraph) {

@@ -52,6 +52,16 @@ public:
     bool WasResized() const { return wasResized; }
     void ClearResizeFlag() { wasResized = false; }
 
+    // Drain pendingEvents and publish the resulting bus messages (Close/Resize/Minimize/Maximize/
+    // Restore/Focus/Unfocus), independent of node Execute(). RenderGraph::RenderFrame() skips node
+    // Execute() entirely while renderPaused (see ExecuteImpl's comment) — including this node's own —
+    // so a Restore/Maximize event queued by glfwPollEvents() while minimized would otherwise never
+    // reach HandleWindowStateChange, and renderPaused could never clear (permanent freeze on
+    // minimize). The host calls this once per frame from Update(), which always runs regardless of
+    // pause state. ExecuteImpl still calls it too (via the shared drain), so no behavior change on
+    // the normal unpaused path; draining an already-empty queue is a no-op either way.
+    void ProcessPendingEvents();
+
 protected:
 	// Template method pattern - override *Impl() methods
 	void SetupImpl(TypedSetupContext& ctx) override;
@@ -76,6 +86,10 @@ private:
     };
     std::vector<WindowEvent> pendingEvents;
     std::recursive_mutex eventMutex;  // Protect event queue
+
+    // Shared tail of ExecuteImpl / ProcessPendingEvents: publish everything except Resize (which each
+    // caller handles itself, since only ExecuteImpl has a ctx to republish graph-slot outputs through).
+    void PublishNonResizeEvent(const WindowEvent& event);
 
     uint32_t width = 0;
     uint32_t height = 0;
