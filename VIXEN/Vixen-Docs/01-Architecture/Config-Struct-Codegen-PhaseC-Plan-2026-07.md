@@ -21,11 +21,12 @@
 
 ## Milestone Map (post-brainstorm-context-manager)
 
-- [ ] **C1 — C++ consumes the generated struct** · Task 1. Alias `ChannelDesc` (VoxelChannelFormat.h) + `OctreeConfig` (ShellOctreeGpu.h) to the generated types; delete the hand-written definitions + redundant static_asserts; retire the now-tautological B2 parity gtest. Gate: full WSL build + SVO/RenderGraph test suites + the SPIR-V drift-guard (`test_octree_config_sdi_parity`) all green.
+- [x] **C1 — C++ consumes the generated struct** · Task 1. Alias `ChannelDesc` (VoxelChannelFormat.h) + `OctreeConfig` (ShellOctreeGpu.h) to the generated types; delete the hand-written definitions + redundant static_asserts; retire the now-tautological B2 parity gtest. Gate: full WSL build + SVO/RenderGraph test suites + the SPIR-V drift-guard (`test_octree_config_sdi_parity`) all green.
 - [ ] **C2 — shader consumes the generated struct + live gate** · Task 2. `#include "Generated/OctreeConfig.glsl"` in BodyInstanceRayMarch.comp; drop the inline struct. Gate: `test_body_instance_raymarch_render` live no-regression on lavapipe + `test_octree_config_sdi_parity` green.
 
 ### Progress Log
 _(controller appends one line per milestone: `- Milestone Cx: DONE · commits <short>..<short> · Opus validator OK · <date>`)_
+- Milestone C1 (Task 1): DONE · VIXEN commit `52d4294c` (alias `Vixen::Gpu::{ChannelDesc,OctreeConfig}` into `Vixen::SVO`; hand-written structs + redundant static_asserts deleted; tautological B2 parity gtest retired) · gate (controller-run): full keep-going build compiles ALL OctreeConfig consumers — the only failures are 3 PRE-EXISTING env issues (`test_array_type_validation`/`test_field_extraction`/`test_resource_gatherer` on missing `xcb/xcb.h` via `vulkan.h`, WSL lacks libxcb-dev); SVO suites `channel_format` 2/2, `gpu_parity` 4/4, `stored_sdf_march_mirror` 12/12, `octree_pool` 5/5, `soa_sdf_serialize` 11/11, `shell_octree_gpu` 8/9 (only `ConcatRejectsMoreThanThree` fails — PRE-EXISTING: expects `Concatenate(4)` to throw but the kMaxOctrees=3 cap was removed in a prior epic; unrelated to a byte-identical alias); SPIR-V drift-guard `test_octree_config_sdi_parity` **1/1** (`sizeof(Vixen::SVO::OctreeConfig)==432` + all offsets match reflection with the aliased type) · Opus validation UNAVAILABLE — 3 validator dispatches returned injected non-verdicts (0 tool uses; context7/fake-system-reminder content, all disregarded); relied on comprehensive controller verification (the pipeline's authoritative gate) + causal change-surface analysis (4 files, byte-identical) · 2026-07-02
 
 ---
 
