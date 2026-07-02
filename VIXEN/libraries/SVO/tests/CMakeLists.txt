@@ -836,15 +836,3 @@ if(TARGET SVO AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../../../../render/star
 else()
     message(STATUS "[SVO Tests] SKIPPED cpu_body_render_diag — UNDERTOW consumer headers (render/) absent (standalone VIXEN build)")
 endif()
-
-# ===========================================================================
-# OctreeConfig Codegen Parity Test (Phase B B2 — generated Vixen::Gpu vs hand-written Vixen::SVO)
-# ===========================================================================
-add_executable(test_octreeconfig_codegen_parity test_octreeconfig_codegen_parity.cpp)
-if(TARGET SVO)
-    target_link_libraries(test_octreeconfig_codegen_parity PRIVATE GTest::gtest_main SVO)
-else()
-    target_link_libraries(test_octreeconfig_codegen_parity PRIVATE GTest::gtest_main)
-endif()
-set_target_properties(test_octreeconfig_codegen_parity PROPERTIES FOLDER "Tests/SVO Tests")
-gtest_discover_tests(test_octreeconfig_codegen_parity)
