@@ -5,6 +5,7 @@
 #include "Core/NodeLogging.h"
 #include "Message.h"
 #include "EventTypes/RenderGraphEvents.h"
+#include <cstdlib>  // std::getenv (VIXEN_HIDDEN_WINDOW, fail-scenario runner)
 
 #define GLFW_INCLUDE_NONE   // don't pull in <GL/gl.h> (absent on headless/WSL); Vulkan-only below
 #define GLFW_INCLUDE_VULKAN
@@ -68,6 +69,12 @@ void WindowNode::CompileImpl(TypedCompileContext& ctx) {
         // Vulkan rendering: tell GLFW not to create an OpenGL context.
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
         glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
+
+#if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
+        // Fail-scenario runner: create the window hidden so the sweep runs unattended.
+        if (const char* hid = std::getenv("VIXEN_HIDDEN_WINDOW"); hid && hid[0] == '1')
+            glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
+#endif
 
         window = glfwCreateWindow(static_cast<int>(width), static_cast<int>(height),
                                   "Vixen Render Graph", nullptr, nullptr);
@@ -218,6 +225,17 @@ void WindowNode::OnWindowIconify(GLFWwindow* w, int iconified) {
     std::lock_guard<std::recursive_mutex> lock(self->eventMutex);
     self->pendingEvents.push_back({iconified ? WindowEvent::Type::Minimize : WindowEvent::Type::Restore});
 }
+
+#if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
+void WindowNode::InjectWindowEvent(WindowEvent::Type type, uint32_t w, uint32_t h) {
+    std::lock_guard<std::recursive_mutex> lock(eventMutex);
+    pendingEvents.push_back(WindowEvent{ type, w, h });
+}
+size_t WindowNode::PendingEventCountForTest() const {
+    std::lock_guard<std::recursive_mutex> lock(eventMutex);
+    return pendingEvents.size();
+}
+#endif
 
 void WindowNode::CleanupImpl(TypedCleanupContext& ctx) {
     // Window + surface are PERSISTENT: a recompile (e.g. swapchain recreation) must NOT destroy them --

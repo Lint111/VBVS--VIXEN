@@ -2,6 +2,7 @@
 #include "Core/NodeType.h"
 #include "Core/NodeInstance.h"  // FakeNodeType::CreateInstance returns unique_ptr<NodeInstance> by value;
                                  // the type must be complete here for the destructor to instantiate.
+#include "Nodes/WindowNode.h"
 #include <gtest/gtest.h>
 
 using namespace Vixen::RenderGraph;
@@ -54,4 +55,14 @@ TEST(FaultInjector, ArmOnceFiresExactlyOncePerSite) {
     EXPECT_EQ(fi.Filter(FaultSite::Present, VK_SUCCESS), VK_SUCCESS);       // other site unaffected
     EXPECT_EQ(fi.Filter(FaultSite::Acquire, VK_SUCCESS), VK_ERROR_OUT_OF_DATE_KHR);
     EXPECT_EQ(fi.Filter(FaultSite::Acquire, VK_SUCCESS), VK_SUCCESS);       // once only
+}
+
+TEST(WindowSeam, InjectQueuesEventsThreadSafely) {
+    Vixen::RenderGraph::WindowNodeType type;
+    auto node = type.CreateInstance("test_window");
+    auto* wn = static_cast<Vixen::RenderGraph::WindowNode*>(node.get());
+    using WE = Vixen::RenderGraph::WindowNode::WindowEvent;
+    wn->InjectWindowEvent(WE::Type::Resize, 1920, 1080);
+    wn->InjectWindowEvent(WE::Type::Maximize);
+    EXPECT_EQ(wn->PendingEventCountForTest(), 2u);
 }
