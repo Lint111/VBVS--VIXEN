@@ -52,9 +52,9 @@
 //              (VoxelSceneCacher.cpp:601-636).
 //
 // ===========================================================================
-// PER-OCTREE BASE OFFSETS — THE CONTRACT (for <=3-octree concatenation)
+// PER-OCTREE BASE OFFSETS — THE CONTRACT (unbounded-count concatenation)
 // ===========================================================================
-// Concatenate() packs <=3 octrees into ONE `nodes` buffer and ONE `bricks`
+// Concatenate() packs N octrees into ONE `nodes` buffer and ONE `bricks`
 // buffer (verbatim append, in input order) and records, for octree k:
 //   - configs[k].nodeArrayBase  = element offset of octree k's first node
 //   - configs[k].brickArrayBase = element offset of octree k's first brick
@@ -133,76 +133,11 @@ static_assert(sizeof(GPUMaterial) == 32, "GPUMaterial must be 32 bytes (matches 
  * CashSystem::OctreeConfig.) Do NOT change the offset of any field at <200; keep the
  * struct exactly 432 bytes so the array stride matches the shader.
  */
-struct OctreeConfig {
-    int32_t esvoMaxScale;       // Always 22 (ESVO normalized space)
-    int32_t userMaxLevels;      // octree maxLevels (== depth + brickDepthLevels for a shell)
-    int32_t brickDepthLevels;   // 3 for 8^3 bricks
-    int32_t brickSize;          // 1 << brickDepthLevels == 8
-
-    int32_t minESVOScale;       // esvoMaxScale - userMaxLevels + 1
-    int32_t brickESVOScale;     // scale at which nodes are brick parents
-    int32_t bricksPerAxis;      // octree->bricksPerAxis
-    int32_t _padding1;          // pad to 16-byte alignment
-
-    float gridMinX, gridMinY, gridMinZ;
-    float _padding2;            // pad vec3 -> vec4
-
-    float gridMaxX, gridMaxY, gridMaxZ;
-    float _padding3;            // pad vec3 -> vec4
-
-    glm::mat4 localToWorld;     // 64 bytes (offset 64)
-    glm::mat4 worldToLocal;     // 64 bytes (offset 128)
-
-    int32_t nodeArrayBase;      // offset 192: element offset of this octree's first node
-    int32_t brickArrayBase;     // offset 196: brick offset of this octree's first brick
-
-    // ===========================================================================
-    // Tail (bytes 200..431 = 232 bytes): shader never reads these; the ONLY
-    // constraint is sizeof(OctreeConfig)==432. Layout (Inc3 M3 — std140-aligned):
-    //
-    //   byte 200: formatId         (uint32) — 0=FORMAT_BINARY, 1=FORMAT_STORED_SDF
-    //   byte 204: bricksPerAxisSdf (uint32) — grid side for the SDF brick lookup
-    //   byte 208: poolBrickBase    (uint32) — element offset (floats) of first SDF brick
-    //             in the concatenated pool (replaces the Inc2 sdfBrickArrayBase alias).
-    //   byte 212: channelCount     (uint32) — number of live channels in channels[]
-    //   byte 216: brickStrideFloats(uint32) — floats per brick across ALL channels
-    //   byte 220: _padChannels     (uint32) — std140 array-alignment pad (channels[] is
-    //             an ARRAY in the GLSL std140 UBO, so its base must be 16-byte aligned;
-    //             the GPU reads channels[0] at byte 224, not 220).
-    //   byte 224: ChannelDesc channels[kMaxChannels] — kMaxChannels=8, 16 B each = 128 B
-    //             → ends at byte 352.
-    //   bytes 352..431: _tailPad[20] (uint32) — 80 bytes, kept zero.
-    //
-    // Budget check: 4+4+4+4+4+4+128+80 = 232 bytes = 432-200. ✓
-    // ===========================================================================
-    uint32_t formatId;              // byte 200: 0 = FORMAT_BINARY, 1 = FORMAT_STORED_SDF
-    uint32_t bricksPerAxisSdf;      // byte 204: grid side for the SDF brick lookup table
-    uint32_t poolBrickBase;         // byte 208: element offset (floats) into the pool
-    uint32_t channelCount;          // byte 212: number of live channels in channels[]
-    uint32_t brickStrideFloats;     // byte 216: floats per brick (sum over all channels)
-    uint32_t _padChannels;          // byte 220: std140 array-alignment pad (channels[] must be 16-aligned)
-    ChannelDesc channels[kMaxChannels]; // bytes 224..351: per-channel descriptors (Inc3 M3)
-    uint32_t _tailPad[20];          // bytes 352..431: pad to 432 bytes (20 × 4 = 80)
-};
-static_assert(sizeof(ChannelDesc) == 16,
-              "ChannelDesc must be 16 bytes (4×uint32 = one std140 uvec4 lane)");
-static_assert(sizeof(OctreeConfig) == 432,
-              "OctreeConfig must be 432 bytes — matches the SPIR-V ArrayStride 432 used by the "
-              "std430 SSBO at binding 5 (I3.2). BodyOctreeSceneNode uploads the vector at this "
-              "stride; a tighter sizeof misaligns configs[k>0] and those bodies render NOTHING.");
-static_assert(offsetof(OctreeConfig, nodeArrayBase) == 192,
-              "nodeArrayBase must stay at offset 192 (a field the shader reads)");
-static_assert(offsetof(OctreeConfig, brickArrayBase) == 196,
-              "brickArrayBase must stay at offset 196 (a field the shader reads)");
-static_assert(offsetof(OctreeConfig, localToWorld) == 64 && offsetof(OctreeConfig, worldToLocal) == 128,
-              "the two mat4s the shader reads must stay at offsets 64 / 128");
-static_assert(offsetof(OctreeConfig, formatId)          == 200, "formatId@200");
-static_assert(offsetof(OctreeConfig, bricksPerAxisSdf)  == 204, "bricksPerAxisSdf@204");
-static_assert(offsetof(OctreeConfig, poolBrickBase)     == 208, "poolBrickBase@208");
-static_assert(offsetof(OctreeConfig, channelCount)      == 212, "channelCount@212");
-static_assert(offsetof(OctreeConfig, brickStrideFloats) == 216, "brickStrideFloats@216");
-static_assert(offsetof(OctreeConfig, _padChannels)       == 220, "_padChannels@220");
-static_assert(offsetof(OctreeConfig, channels)          == 224, "channels[0]@224 (std140 array-alignment)");
+// OctreeConfig is generated from the canonical [GpuStruct] (Phase C). Its 432 B
+// std430 layout + full sizeof/offsetof static_assert battery live in the generated
+// header (included transitively via VoxelChannelFormat.h). ChannelDesc is aliased
+// there too. All consumers keep the Vixen::SVO::OctreeConfig spelling.
+using Vixen::Gpu::OctreeConfig;
 
 // ============================================================================
 // Inc2 Stored-SDF descriptor helpers (thin shims over named fields, Inc3 M1)
@@ -725,7 +660,7 @@ inline SerializedOctree SerializeSdf(const SdfBodyOctree& body) {
 }
 
 // ===========================================================================
-// Multi-octree concatenation (<= 3)
+// Multi-octree concatenation (unbounded count)
 // ===========================================================================
 
 /**

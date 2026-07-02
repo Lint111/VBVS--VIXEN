@@ -435,6 +435,29 @@ gtest_discover_tests(test_recipe_authoring_gate
     DISCOVERY_TIMEOUT 120)
 message(STATUS "[RenderGraph Tests] Added: test_recipe_authoring_gate (I4.2 CSG + regression)")
 
+# ===========================================================================
+# OctreeConfig <-> shader SDI layout drift-guard (CPU reflection, no render).
+# Reflects the built BodyInstanceRayMarch SPIR-V via ShaderManagement's SpirvReflector
+# and asserts the C++ Vixen::SVO::OctreeConfig layout matches it (per-field offsets +
+# configs[] array stride == sizeof). Replaces the hand-eyeballed SPIR-V layout check.
+# Pure CPU (reflection only) — no lavapipe / no GPU. Reuses the same compiled .spv.
+# ===========================================================================
+add_executable(test_octree_config_sdi_parity
+    Nodes/test_octree_config_sdi_parity.cpp
+)
+add_dependencies(test_octree_config_sdi_parity body_instance_raymarch_spv)
+target_link_libraries(test_octree_config_sdi_parity PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+if(TARGET SVO)
+    target_link_libraries(test_octree_config_sdi_parity PRIVATE SVO)
+endif()
+target_compile_definitions(test_octree_config_sdi_parity PRIVATE
+    GLSL_RAYMARCH_SPV="${_brm_spv}")
+set_target_properties(test_octree_config_sdi_parity PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_octree_config_sdi_parity
+    DISCOVERY_MODE PRE_TEST
+    DISCOVERY_TIMEOUT 120)
+message(STATUS "[RenderGraph Tests] Added: test_octree_config_sdi_parity (SDI layout drift-guard)")
+
 else()
     message(STATUS "[RenderGraph Tests] SKIPPED test_body_instance_raymarch_render — bundled glslc not provisioned at ${_brm_glslc} (lavapipe/WSL-only test)")
 endif()
