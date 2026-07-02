@@ -32,10 +32,11 @@
 
 ## Milestone Map (post-brainstorm-context-manager)
 - [x] **A1 — attributes + emitter core** · Tasks 1–4: shared attributes lib + port std430 model + C++/GLSL emitters into the core, with NUnit golden tests. Gate: `~/.dotnet/dotnet test` (the CodegenTool tests) green for model+emitters.
-- [ ] **A2 — console tool + proof** · Tasks 5–6: `CodegenTool` CLI + `SkeletonConfig` proof + generate/`--check` golden. Gate: `dotnet test` green + `dotnet run` generates `SkeletonConfig.g.h`/`.glsl` and `--check` is clean.
+- [x] **A2 — console tool + proof** · Tasks 5–6: `CodegenTool` CLI + `SkeletonConfig` proof + generate/`--check` golden. Gate: `dotnet test` green + `dotnet run` generates `SkeletonConfig.g.h`/`.glsl` and `--check` is clean.
 
 ### Progress Log
 - Milestone A1 (Tasks 1–4): DONE · Yeroket worktree `feat/gpustruct-codegen-phaseA` commits `d54c0961` (attrs lib) / `4c2f7029` (std430 scalar model) / `1f878065` (C++ emitter) / `7d108fad` (GLSL emitter) · gate `~/.dotnet/dotnet test CodegenTool~/Tests` = **8/8 green** (controller-run) · Opus review APPROVED (controller-direct): faithful port of P0 into `Yeroket.KernelFramework.Codegen`; netstandard2.0 adaptation `record`→sealed-class (SourceGenerator~ can't use `IsExternalInit`) — sound; shared `[GpuStruct]`/`[GpuArray]`/`Float3`/`Mat4` in `Yeroket.Util.KernelFramework`; isolation held (worktree-only) · 2026-07-02
+- Milestone A2 (Tasks 5–6): DONE · Yeroket worktree `feat/gpustruct-codegen-phaseA` commits `99071bab` (CodegenTool CLI generate/`--check`) / `779a73e4` (SkeletonConfig proof + generated C++/GLSL) / `f5d10c26` (rebuild analyzer DLL to include A1 emitters) · gate (controller-run): `dotnet test CodegenTool~/Tests` = **9/9 green** + real-CLI `--check` vs committed artifacts = exit 0 (zero drift) + g++ `-fsyntax-only` on `.g.h` = pass (glslc skipped — no Vulkan SDK) · Opus validator APPROVED (all 7 points): faithful fold of P0 `Program`+`CompilationLoader`; attributes DLL referenced by reflection (`typeof(GpuStructAttribute).Assembly.Location`) not hardcoded; `[GpuStruct]` matched by name + `--struct <Name>` selector (multi-struct-ready); LF-normalized artifacts; csproj deviations sound (`DefaultItemExcludes` for nested tests/sample, `Nullable=enable` P0-carryover); DLL-sync commit = right call per precedent `8660c3a9`. Non-blocking: usage/not-found exit code 2 is P0-faithful + std Unix convention. Isolation held (worktree-only, no push/merge) · 2026-07-02
 
 ---
 
