@@ -11,6 +11,19 @@ struct GLFWwindow;  // GLFW/glfw3.h is included in the .cpp; the header only nee
 
 namespace Vixen::RenderGraph {
 
+/// Application-facing input policy (spec 2026-07-02-input-rework-slice1). Owned by InputNode;
+/// set at graph build via SetInputConfig, key fields mirrored as node params for live tuning
+/// (the runtime console reaches them via setparam input_handler ...).
+struct InputConfig {
+    enum class CursorMode  : uint8_t { Normal = 0, Hidden = 1, CenterLock = 2 };
+    enum class OrbitButton : uint8_t { RightMouse = 0, LeftDrag = 1, Always = 2 /*legacy*/ };
+    CursorMode  cursorMode      = CursorMode::Normal;      // V1 fix: visible OS cursor by default
+    OrbitButton orbitButton     = OrbitButton::RightMouse; // V2 fix (consumed by CameraNode in M4)
+    float       dragThresholdPx = 4.0f;   // in-press motion below this stays a "click"
+    bool        wheelZoom       = true;   // scroll drives orbit distance (M4)
+    float       wheelZoomSpeed  = 2.0f;   // world units per notch
+};
+
 /**
  * @brief Node type for input handling
  */
@@ -47,6 +60,11 @@ public:
     /// Get the current input state (updated each frame)
     const InputState& GetInputState() const { return inputState_; }
 
+    /// Set the application-facing input policy (graph-build time). Re-applies the cursor mode
+    /// immediately if the window already exists (SetInputConfig can run after CompileImpl too).
+    void SetInputConfig(const InputConfig& config);
+    const InputConfig& Config() const { return config_; }
+
 protected:
     void SetupImpl(TypedSetupContext& ctx) override;
     void CompileImpl(TypedCompileContext& ctx) override;
@@ -65,6 +83,13 @@ private:
     void UpdateDeltaTime();
     void InitializeMouseCapture();
     void RecenterMouse();
+
+    // Re-applies config_.cursorMode via glfwSetInputMode (idempotent; no-op if window is null).
+    void ApplyCursorMode();
+    // Per-frame live-param sync: mouse_capture_mode/orbit_button can change between frames via
+    // SetParameter (no callback exists on NodeParameterManager — see InputConfig doc comment),
+    // so ExecuteImpl re-reads them and folds any change into config_ before polling.
+    void SyncConfigFromParams();
 
     // Poll GLFW input state
     void PollKeyboard();
@@ -92,8 +117,8 @@ private:
     std::unordered_map<EventBus::KeyCode, KeyState> keyStates;
 
     // Configuration parameters
-    bool enabled_ = true;                                       // Enable/disable input polling
-    MouseCaptureMode mouseCaptureMode_ = MouseCaptureMode::CenterLock;  // Mouse capture behavior
+    bool enabled_ = true;   // Enable/disable input polling
+    InputConfig config_;    // cursorMode/orbitButton mirrored live from mouse_capture_mode/orbit_button params
 
     // Mouse state
     int32_t lastMouseX = 0;

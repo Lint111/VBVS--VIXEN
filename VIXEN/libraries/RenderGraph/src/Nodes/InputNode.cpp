@@ -106,14 +106,62 @@ void InputNode::SetupImpl(TypedSetupContext& ctx) {
     lastFrameTime = std::chrono::steady_clock::now();
     mouseCaptured = false;
 
-    // Read parameters
     enabled_ = GetParameterValue<bool>(InputNodeConfig::PARAM_ENABLED, true);
-    int captureMode = GetParameterValue<int>(InputNodeConfig::PARAM_MOUSE_CAPTURE_MODE,
-                                              static_cast<int>(MouseCaptureMode::CenterLock));
-    mouseCaptureMode_ = static_cast<MouseCaptureMode>(captureMode);
+    SyncConfigFromParams();
 
     NODE_LOG_INFO("[InputNode] enabled=" + std::to_string(enabled_) +
-                  ", mouse_capture_mode=" + std::to_string(captureMode));
+                  ", cursor_mode=" + std::to_string(static_cast<int>(config_.cursorMode)) +
+                  ", orbit_button=" + std::to_string(static_cast<int>(config_.orbitButton)));
+}
+
+void InputNode::SetInputConfig(const InputConfig& config) {
+    config_ = config;
+    ApplyCursorMode();
+}
+
+void InputNode::SyncConfigFromParams() {
+    // mouse_capture_mode keeps its legacy MouseCaptureMode encoding on the wire (existing callers
+    // like BenchmarkGraphFactory pass MouseCaptureMode values) but is folded into config_.cursorMode,
+    // the single source of truth ApplyCursorMode/InitializeMouseCapture now read. Free and Disabled
+    // both meant "don't capture" in the old gate (ExecuteImpl only special-cased CenterLock), so both
+    // map to Normal.
+    const int legacyDefault = config_.cursorMode == InputConfig::CursorMode::CenterLock
+        ? static_cast<int>(MouseCaptureMode::CenterLock)
+        : static_cast<int>(MouseCaptureMode::Free);
+    const int captureMode = GetParameterValue<int>(InputNodeConfig::PARAM_MOUSE_CAPTURE_MODE, legacyDefault);
+    const auto newCursorMode = static_cast<MouseCaptureMode>(captureMode) == MouseCaptureMode::CenterLock
+        ? InputConfig::CursorMode::CenterLock
+        : InputConfig::CursorMode::Normal;
+
+    const int orbitButton = GetParameterValue<int>(InputNodeConfig::PARAM_ORBIT_BUTTON,
+                                                     static_cast<int>(config_.orbitButton));
+    const auto newOrbitButton = static_cast<InputConfig::OrbitButton>(orbitButton);
+
+    if (newCursorMode != config_.cursorMode) {
+        config_.cursorMode = newCursorMode;
+        ApplyCursorMode();
+    }
+    config_.orbitButton = newOrbitButton;
+}
+
+void InputNode::ApplyCursorMode() {
+    if (!window) return;
+    switch (config_.cursorMode) {
+        case InputConfig::CursorMode::Normal:
+            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+            mouseCaptured = false;
+            break;
+        case InputConfig::CursorMode::Hidden:
+            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_HIDDEN);
+            mouseCaptured = false;
+            break;
+        case InputConfig::CursorMode::CenterLock:
+            // Deferred to InitializeMouseCapture (ExecuteImpl) so the last-mouse-position seed
+            // stays colocated with the GLFW_CURSOR_DISABLED call; just clear the latch here so
+            // that call fires again on the next ExecuteImpl.
+            mouseCaptured = false;
+            break;
+    }
 }
 
 void InputNode::CompileImpl(TypedCompileContext& ctx) {
@@ -121,6 +169,12 @@ void InputNode::CompileImpl(TypedCompileContext& ctx) {
 
     // Validate WINDOW input using helper
     window = ValidateInput<GLFWwindow*>(ctx, "WINDOW", InputNodeConfig::WINDOW);
+
+    // config_ may have been set via SetInputConfig before the window existed (graph-build order
+    // is app-defined); ApplyCursorMode no-oped then, so re-apply now that window is live. Normal/
+    // CenterLock also get a chance via SyncConfigFromParams each frame, but Hidden has no param
+    // path, so this is its only application point besides a direct SetInputConfig post-Compile.
+    ApplyCursorMode();
 
     NODE_LOG_INFO("[InputNode] Window received successfully");
 }
@@ -137,8 +191,11 @@ void InputNode::ExecuteImpl(TypedExecuteContext& ctx) {
         return;
     }
 
+    // Live param re-apply (no callback exists on SetParameter — see SyncConfigFromParams doc).
+    SyncConfigFromParams();
+
     // Initialize mouse capture based on capture mode
-    if (!mouseCaptured && window && mouseCaptureMode_ == MouseCaptureMode::CenterLock) {
+    if (!mouseCaptured && window && config_.cursorMode == InputConfig::CursorMode::CenterLock) {
         InitializeMouseCapture();
     }
 
