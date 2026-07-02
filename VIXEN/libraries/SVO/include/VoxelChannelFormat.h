@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include "Generated/OctreeConfig.g.h"   // Vixen::Gpu::{ChannelDesc,OctreeConfig} — generated single-source (Phase C)
 namespace Vixen::SVO {
 // Semantic identity of a per-voxel channel (the engine's reusable vocabulary).
 enum SemanticId : uint32_t {
@@ -15,5 +16,5 @@ inline uint32_t SemanticElemCount(SemanticId s) {
 }
 constexpr uint32_t kVoxelsPerBrick = 512u;          // 8^3, no apron (Inc2 as-built)
 constexpr uint32_t kMaxChannels    = 8u;            // fits the OctreeConfig tail (<= ~12)
-struct ChannelDesc { uint32_t semanticId, elemCount, channelBaseFloats, fieldKind; };  // = 1 uvec4
+using Vixen::Gpu::ChannelDesc;   // was a hand-written struct; now the generated single-source type (Phase C)
 }  // namespace Vixen::SVO

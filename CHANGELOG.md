@@ -5,6 +5,29 @@ All notable changes to VIXEN will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Documentation
+- Rewrote the repository `README.md` and `VIXEN/README.md` to reflect the pivot from voxel
+  ray-tracing research platform to reusable, moddable game render engine (for *Undertow*) with the
+  SDF/Recipe/CSG procedural-content codegen system. De-duplicated the two READMEs (root = overview,
+  engine = build/layout quick reference).
+- Corrected `VIXEN/DOCUMENTATION_INDEX.md` (removed false "Phase K/L COMPLETE" status) and refreshed
+  the root `DOCUMENTATION_INDEX.md`; both now point to `Vixen-Docs/` as canonical.
+- `libraries/README.md` now documents all 14 libraries (was 6).
+
+### Changed
+- Archived finished/superseded docs (July 2026 cleanup): session transcripts, feature proposals,
+  MCP-dev notes, and completed Sprint4–6.5 logs moved to `Vixen-Docs/_archive/2026-07/`; root
+  planning/review docs and the resolved deletion-incident post-mortems moved to
+  `VIXEN/archive/2026-07-cleanup/`.
+
+### Removed
+- Deleted loose build spew from the repo root: `bash.exe.stackdump`, stray `comp.spv` / `rchit.spv`.
+- Untracked regeneratable SPIR-V build copies under `generated/` and stale Python bytecode; the
+  source-referenced SDI headers (`generated/sdi/*.h`) and runtime shader assets (`shaders/*.spv`)
+  remain tracked. Added `.gitignore` rules for `*.stackdump`, `generated/*.spv`, and `__pycache__/`.
+
 ## [0.1.0] - 2025-11-10
 
 ### Overview

@@ -2,7 +2,15 @@
 
 **Complete guide to all documentation in the VIXEN project.**
 
-Welcome to the VIXEN documentation. This index organizes all documentation by topic and difficulty level to help you find what you need.
+Welcome to the VIXEN documentation. This index organizes documentation by topic and difficulty
+level to help you find what you need.
+
+> **Status (2026-07):** VIXEN is evolving from a voxel ray-tracing research platform into a
+> reusable, moddable **game render engine** (consumed by the *Undertow* game), with an
+> **SDF/Recipe/CSG** procedural-content codegen system in active development. The research track
+> is feature-complete. The **canonical** docs are the Obsidian vault at
+> [`VIXEN/Vixen-Docs/`](VIXEN/Vixen-Docs/); the `documentation/` links below are legacy reference,
+> partially superseded by the vault.
 
 ---
 
@@ -28,7 +36,7 @@ Welcome to the VIXEN documentation. This index organizes all documentation by to
 | [productContext.md](memory-bank/productContext.md) | Problem statement, research goals, design philosophy |
 | [systemPatterns.md](memory-bank/systemPatterns.md) | 16+ architecture patterns (Typed Node, Resource Variant, EventBus, etc.) |
 | [techContext.md](memory-bank/techContext.md) | Technology stack, build system, development environment |
-| [activeContext.md](memory-bank/activeContext.md) | Current focus (Phase H - Voxel Infrastructure), recent changes |
+| [activeContext.md](memory-bank/activeContext.md) | Current focus (game-engine-library + SDF/Recipe system), recent changes |
 | [progress.md](memory-bank/progress.md) | Implementation status, completed systems, roadmap |
 
 ---
@@ -108,10 +116,12 @@ Welcome to the VIXEN documentation. This index organizes all documentation by to
 
 ---
 
-## 🔬 Research: Voxel Ray Tracing
+## 🔬 Research: Voxel Ray Tracing *(heritage — feature-complete)*
 
-### Academic Research Platform
-**4 pipeline architectures, 180-config test matrix, May 2026 publication target**
+### Origin: Academic Research Platform
+**4 pipeline architectures, 180-config test matrix. Research feature-complete and paper drafted;
+the reusable voxel/RT systems (SVO, ray-marching, hardware RT, profiling) carry forward into the
+game-engine track.**
 
 ### Overview & Planning
 | File | Description | Level |
@@ -302,4 +312,8 @@ When adding new documentation:
 
 ---
 
-**Last Updated**: November 2025 (Phase H - Voxel Infrastructure 60% complete)
+**Last Updated**: July 2026 — game-engine-library track active; SDF/Recipe/CSG in development;
+voxel ray-tracing research feature-complete. Canonical docs: [`VIXEN/Vixen-Docs/`](VIXEN/Vixen-Docs/).
+
+> Note: the `documentation/` and `memory-bank/` links in this index are relative to the `VIXEN/`
+> engine directory. Browse them under [`VIXEN/`](VIXEN/) or use the canonical vault above.

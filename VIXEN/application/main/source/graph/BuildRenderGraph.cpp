@@ -1117,8 +1117,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                           descriptorGatherer, VoxelRayMarch::traceWriteIndex::BINDING,
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute | SlotRole::Debug));
 
-    // Binding 5: OctreeConfigsUBO (3 x 256 B std140 array) - per-kind octree config
-    // BodyOctreeSceneNode outputs OCTREE_CONFIG_BUFFER sized to 3 x kMaxOctrees entries.
+    // Binding 5: OctreeConfigsSSBO (std430, N x 432 B) — runtime-sized per-octree config (I3.2).
     batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_CONFIG_BUFFER,
                           descriptorGatherer, 5,  // Binding 5 (hardcoded; no SDI regen yet)
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));

@@ -228,6 +228,10 @@ void ExtractBlockMembers(
                 ? member.type_description->type_name
                 : "NestedStruct";
             spirvMember.type.sizeInBytes = member.size;
+            // Recurse so a nested struct (e.g. the element type of an SSBO
+            // array-of-struct like `OctreeConfig configs[]`) surfaces its own
+            // members with per-field offsets (relative to the nested struct).
+            ExtractBlockMembers(&member, spirvMember.members);
         }
         // Other types - use type_description
         else {

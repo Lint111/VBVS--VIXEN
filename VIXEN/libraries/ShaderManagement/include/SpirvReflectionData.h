@@ -64,10 +64,15 @@ struct SpirvTypeInfo {
 struct SpirvStructMember {
     std::string name;
     SpirvTypeInfo type;
-    uint32_t offset = 0;           // Byte offset within struct
+    uint32_t offset = 0;           // Byte offset within the enclosing struct
     uint32_t arrayStride = 0;      // For arrays: stride between elements
     uint32_t matrixStride = 0;     // For matrices: stride between columns
     bool isRowMajor = false;       // Matrix layout
+
+    // Sub-members, populated when this member is itself a struct (e.g. the element
+    // type of an SSBO array-of-struct). Offsets in `members` are relative to THIS
+    // struct. Empty for scalar / vector / matrix / array-of-scalar members.
+    std::vector<SpirvStructMember> members;
 };
 
 /**

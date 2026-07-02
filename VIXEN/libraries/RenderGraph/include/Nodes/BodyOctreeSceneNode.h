@@ -88,6 +88,16 @@ public:
      */
     void SetBakeRecipe(std::vector<Vixen::SVO::Recipe::SdfInstruction> prog);
 
+    /**
+     * @brief Consume a pre-baked recipe pool (I4.1).
+     *
+     * When set, EnsureOctreesBuilt bypasses the hardcoded shell/SDF archetypes
+     * and uses this pool directly.  Parallels SetBakeRecipe/Rematerialize:
+     *   - called pre-Compile  → pool is used on next Compile;
+     *   - called post-Compile → sets recipeDirty_ so ExecuteImpl re-materializes.
+     */
+    void SetRecipePool(Vixen::SVO::ConcatenatedOctrees pool);
+
 protected:
     void SetupImpl(TypedSetupContext& ctx) override;
     void CompileImpl(TypedCompileContext& ctx) override;
@@ -120,6 +130,11 @@ private:
 
     // Optional recipe for octree 0 (P2.1 materialization). Empty = analytic path.
     std::vector<Vixen::SVO::Recipe::SdfInstruction> bakeRecipe_;
+
+    // I4.1: pre-baked pool from BakeRegistryToPool. When set, EnsureOctreesBuilt
+    // skips the hardcoded shell/SDF archetypes and uses this pool directly.
+    Vixen::SVO::ConcatenatedOctrees providedPool_;
+    bool                             poolProvided_ = false;
 
     // Current instance list (set by SetInstances; uploaded in ExecuteImpl).
     std::vector<Vixen::SVO::BodyInstanceGpu> instances_;
