@@ -174,6 +174,10 @@ endif()
 include(cmake/ProvisionVulkan.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/ProvisionWslVulkan.cmake)
 
+# Detect (and optionally auto-provision) gdb — needed to get a real backtrace on the
+# vixen-wsl-debug preset. Sets VIXEN_GDB_EXECUTABLE and the vixen_add_gdb_target() function.
+include(cmake/ProvisionGdb.cmake)
+
 # Reusable runtime-asset staging helper (vixen_stage_assets) for apps + consumers.
 include(cmake/VixenAssets.cmake)
 

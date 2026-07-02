@@ -315,5 +315,9 @@ add_custom_command(TARGET benchmark_package POST_BUILD
 # Set folder for Visual Studio
 set_target_properties(benchmark_package PROPERTIES FOLDER "Application")
 
+# Convenience debug-run target (no-op if gdb isn't available — see cmake/ProvisionGdb.cmake):
+#   cmake --build build/wsl-debug --target gdb-vixen_benchmark
+vixen_add_gdb_target(vixen_benchmark)
+
 message(STATUS "VIXEN Benchmark: Configured headless compute benchmark tool")
 message(STATUS "VIXEN Benchmark: Use 'cmake --build build --config Release --target benchmark_package' to create standalone package")

@@ -4,6 +4,9 @@
 # Auto-provisioned X11 windowing dev cache (ProvisionWindowingDeps.cmake)
 .windowing-deps/
 
+# Auto-provisioned gdb cache (ProvisionGdb.cmake, VIXEN_AUTO_PROVISION_GDB=ON)
+.gdb-deps/
+
 # Visual Studio files
 .vs/
 *.suo
