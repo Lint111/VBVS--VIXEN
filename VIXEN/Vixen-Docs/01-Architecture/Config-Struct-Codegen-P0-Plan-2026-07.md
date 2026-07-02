@@ -20,6 +20,19 @@
 
 ---
 
+## Milestone Map (post-brainstorm-context-manager — segmented 2026-07-02)
+
+Run on branch `feat/config-struct-codegen` (main checkout, sequential milestones). Implementer = Sonnet, Validator = Opus, per milestone. Controller runs the gates.
+
+- [x] **M1 — The codegen tool** · Tasks 1–5: `[GpuStruct]` attribute → std430 scalar layout model → C++ emitter → GLSL emitter → Roslyn `Compilation` loader + CLI (generate/`--check`). Gate: `~/.dotnet/dotnet test VIXEN/codegen/Vixen.Codegen.Tests` all green.
+- [ ] **M2 — Wire into VIXEN + golden gate** · Tasks 6–7: `SkeletonConfig` canonical + committed artifacts → CMake dotnet-gated golden gate (must BITE on tamper) + glslc/g++ compile-smoke of both backends. Gate: `cmake --build --preset vixen-wsl --target codegen_check` + the compile-smokes.
+
+### Progress Log
+- Milestone M1 (Tasks 1–5): DONE · commits `01d7f65f`..`3b36c824` (attr `01d7f65f` / model `8301333b` / C++ emit `eedc377b` / GLSL emit `04594a58` / loader+CLI `3b36c824`) · gate `~/.dotnet/dotnet test` = **5/5 green** (controller-run) · Opus review **APPROVED** (controller-direct — validator `p0-m1-val` stalled idle without delivering; std430 model / both emitters / CLI-`--check` verified correct; 3 benign plan-omission deviations: `using System`, `using System.Linq`, stub `Program.cs` replaced in Task 5) · 2026-07-02
+  - Non-blocking (defer to P1): `CompilationLoader` silently ignores schema compile diagnostics; emitter default switch arms are unreachable (harmless).
+
+---
+
 ## File Structure
 
 | File | Responsibility |
