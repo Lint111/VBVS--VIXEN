@@ -31,11 +31,11 @@
 | `CodegenTool~/sample/SkeletonConfig.cs` | the Phase-A proof schema (`[GpuStruct]` 2 scalars). |
 
 ## Milestone Map (post-brainstorm-context-manager)
-- [ ] **A1 — attributes + emitter core** · Tasks 1–4: shared attributes lib + port std430 model + C++/GLSL emitters into the core, with NUnit golden tests. Gate: `~/.dotnet/dotnet test` (the CodegenTool tests) green for model+emitters.
+- [x] **A1 — attributes + emitter core** · Tasks 1–4: shared attributes lib + port std430 model + C++/GLSL emitters into the core, with NUnit golden tests. Gate: `~/.dotnet/dotnet test` (the CodegenTool tests) green for model+emitters.
 - [ ] **A2 — console tool + proof** · Tasks 5–6: `CodegenTool` CLI + `SkeletonConfig` proof + generate/`--check` golden. Gate: `dotnet test` green + `dotnet run` generates `SkeletonConfig.g.h`/`.glsl` and `--check` is clean.
 
 ### Progress Log
-- (pending A1)
+- Milestone A1 (Tasks 1–4): DONE · Yeroket worktree `feat/gpustruct-codegen-phaseA` commits `d54c0961` (attrs lib) / `4c2f7029` (std430 scalar model) / `1f878065` (C++ emitter) / `7d108fad` (GLSL emitter) · gate `~/.dotnet/dotnet test CodegenTool~/Tests` = **8/8 green** (controller-run) · Opus review APPROVED (controller-direct): faithful port of P0 into `Yeroket.KernelFramework.Codegen`; netstandard2.0 adaptation `record`→sealed-class (SourceGenerator~ can't use `IsExternalInit`) — sound; shared `[GpuStruct]`/`[GpuArray]`/`Float3`/`Mat4` in `Yeroket.Util.KernelFramework`; isolation held (worktree-only) · 2026-07-02
 
 ---
 
