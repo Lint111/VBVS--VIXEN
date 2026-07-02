@@ -548,3 +548,37 @@ void SwapChainNode::DestroyPerImageSyncResources() {
 
 // Self-registration (M3): registrar kept in this TU; RenderGraphNodes is whole-archived so it is not stripped.
 VIXEN_REGISTER_NODE(Vixen::RenderGraph::SwapChainNodeType);
+
+// ====== Fail scenarios (compiled out of real builds — see Fail-Scenario-Simulation-Design-2026-07) ======
+// Contracts use ScenarioContext::Fail/Skip, NEVER gtest macros (this is an engine TU).
+#if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
+namespace FS = Vixen::RenderGraph::FailScenario;
+VIXEN_FAIL_SCENARIOS_DECLARE(Vixen::RenderGraph::SwapChainNodeType,
+    // KI-003: forcing Acquire to OUT_OF_DATE/SUBOPTIMAL crashes GeometryRenderNode, which indexes
+    // renderCompleteSemaphores[imageIndex] with the propagated IMAGE_INDEX=UINT32_MAX before its own
+    // UINT32_MAX guard (present but ~29 lines too late). Pre-existing latent bug, not caused by this
+    // scenario code — reproducing it deterministically IS the point; gated report-not-block per
+    // Fail-Scenario-Simulation Inc 1 protocol. Remove knownIssueId once GeometryRenderNode is fixed.
+    VIXEN_SCENARIO(AcquireOutOfDate,
+        FS::VkTransient{ .site = FS::FaultSite::Acquire, .result = VK_ERROR_OUT_OF_DATE_KHR },
+        [](FS::ScenarioContext& c) {
+            // Recovery contract: the deferred-recompile path recreates the swapchain and
+            // rendering continues (global criteria already assert progress); the node must
+            // not be stuck skipping frames — image index becomes valid again.
+            auto* sc = c.SwapChain();
+            if (!sc) { c.Fail("no SwapChain node reachable from harness"); return; }
+            if (sc->GetCurrentImageIndex() == UINT32_MAX)
+                c.Fail("swapchain never recovered from OUT_OF_DATE (image index still invalid)");
+        },
+        "KI-003"),
+    VIXEN_SCENARIO(AcquireSuboptimal,
+        FS::VkTransient{ .site = FS::FaultSite::Acquire, .result = VK_SUBOPTIMAL_KHR },
+        [](FS::ScenarioContext& c) {
+            auto* sc = c.SwapChain();
+            if (!sc) { c.Fail("no SwapChain node reachable from harness"); return; }
+            if (sc->GetCurrentImageIndex() == UINT32_MAX)
+                c.Fail("swapchain stuck on invalid image index after SUBOPTIMAL");
+        },
+        "KI-003")  // same crash site: SUBOPTIMAL hits the identical OUT_OF_DATE||SUBOPTIMAL branch
+);
+#endif

@@ -11,6 +11,29 @@ Living log of confirmed-but-unfixed issues. Each entry: symptom, root cause, imp
 
 ---
 
+## KI-003 — `GeometryRenderNode` crashes (SIGSEGV) when `SwapChainNode` reports `IMAGE_INDEX = UINT32_MAX`
+
+**Discovered:** 2026-07-02, by the `FailScenarioSweep_SwapChain.AcquireOutOfDate` fail-scenario (Fail-Scenario-Simulation-Design-2026-07.md, Inc 1 Task 6) — the first thing to deterministically force `VK_ERROR_OUT_OF_DATE_KHR` out of `vkAcquireNextImageKHR` on this dev box; no real GPU/driver here has apparently ever returned it outside a human-timed window resize.
+
+**Symptom:** live-gated on WSLg + WSL2 Dozen ICD. `./build-wsl/application/main/test_fail_scenario_sweep --gtest_filter='FailScenarioSweep_SwapChain.AcquireOutOfDate'` dumps core (confirmed via `timeout ... ; echo EXIT_CODE=$?` → `timeout: the monitored command dumped core`). No gdb/lldb was available in this environment to pull a symbolized backtrace; the crash was isolated from log analysis instead — exactly 31 `VoxelGridNode::ExecuteImpl ENTERED` cycles run (30-frame warmup + the 1 frame where the fault fires), zero `SwapChainNode::Compile`/`RECOMPILATION TRIGGERED` lines ever appear, and the process dies silently mid-frame with no gtest `[  FAILED  ]`/assertion/signal text — consistent with a hard SIGSEGV inside frame N+1's execution, not a hang (the harness's 60s watchdog never has a chance to fire).
+
+**Root cause (confirmed by source read, not just log inference):** `SwapChainNode::AcquireNextImage` (`SwapChainNode.cpp:309-330`) correctly detects `VK_ERROR_OUT_OF_DATE_KHR`/`VK_SUBOPTIMAL_KHR`, calls `MarkNeedsRecompile()`, and returns `UINT32_MAX`. `MarkNeedsRecompile()` only sets a **deferred** flag while the node is `Executing` — it does not recompile synchronously. `SwapChainNode::ExecuteImpl` (`SwapChainNode.cpp:179-189`) is correctly guarded and publishes `ctx.Out(IMAGE_INDEX, UINT32_MAX)` before returning early. But `RenderGraph::RenderFrame`'s per-frame node loop does not stop or skip remaining nodes this frame after a deferred-recompile flag is set — it continues executing the rest of `executionOrder` in the same frame. `GeometryRenderNode::ExecuteImpl` (`GeometryRenderNode.cpp`) reads that propagated `IMAGE_INDEX = UINT32_MAX` and indexes `renderCompleteSemaphores[imageIndex]` around line 165 — an **unchecked `operator[]`** — before its own `imageIndex == UINT32_MAX` guard, which exists but sits ~29 lines later (around line 194), gating only the command-buffer/submit logic. `UINT32_MAX * sizeof(VkSemaphore)` (~34GB) past the vector's data pointer lands on an unmapped page → SIGSEGV.
+
+**Impact:** High in principle (any real OUT_OF_DATE/SUBOPTIMAL swapchain result — the standard signal for "recreate on resize/present-mode-change" — crashes the app instead of skipping the frame), but had zero prior observed impact because nothing on this dev box previously drove that Vulkan return code deterministically. This is plausibly related to (though not proven identical to) the user's separately-tracked live fullscreen-button crash class — same "swapchain reports an extent/index change, a downstream node doesn't defend against the transient invalid state" shape — but this KI is scoped to the concretely reproduced `GeometryRenderNode` crash only; do not conflate until confirmed.
+
+**Fix options:**
+1. Move the `imageIndex == UINT32_MAX` guard in `GeometryRenderNode::ExecuteImpl` to immediately after reading `IMAGE_INDEX` from the input context, before any indexing use (smallest, most local fix).
+2. Harden `RenderGraph::RenderFrame` to stop executing (or skip-with-a-safe-default) the remaining nodes in `executionOrder` for the current frame once any node sets a deferred-recompile flag mid-frame — addresses the general "a frame with a just-invalidated swapchain must not let downstream nodes assume valid state" class, not just this one call site.
+3. Both: local guard now (unblocks this scenario), graph-level hardening as a follow-up hardening pass.
+
+**Recommended:** option 1 first (small, addresses the crash directly and lets this scenario go green), option 2 as a follow-up robustness item — this is the user's call, per Fail-Scenario-Simulation Inc 1's protocol of report-not-fix for scenarios that reproduce a bug class.
+
+**Reproduction:** `cmake --build build-wsl --target test_fail_scenario_sweep -- -k 0` (VIXEN_FAIL_SCENARIOS=ON) then `./build-wsl/application/main/test_fail_scenario_sweep --gtest_filter='FailScenarioSweep_SwapChain.AcquireOutOfDate'`.
+
+**Severity:** High (crash) / Low current exposure (never fired on real hardware here before) · **Status:** OPEN — scenario gated via `knownIssueId = "KI-003"` (Fail-Scenario-Simulation Inc 1, `FailScenarioSweep_SwapChain.AcquireOutOfDate`); remove that gate once fixed, at which point the scenario becomes the permanent regression gate for this bug.
+
+---
+
 ## KI-001 — 3 RenderGraph tests fail to build: missing `xcb/xcb.h` (WSL env)
 
 **Discovered:** 2026-07-02 (during the config-struct codegen epic full-build gate; pre-existing, not caused by that work).

@@ -146,3 +146,16 @@ VkResult PresentNode::Present(Context& ctx) {
 
 // Self-registration (M3): registrar kept in this TU; RenderGraphNodes is whole-archived so it is not stripped.
 VIXEN_REGISTER_NODE(Vixen::RenderGraph::PresentNodeType);
+
+#if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
+namespace FS = Vixen::RenderGraph::FailScenario;
+VIXEN_FAIL_SCENARIOS_DECLARE(Vixen::RenderGraph::PresentNodeType,
+    VIXEN_SCENARIO(PresentOutOfDate,
+        FS::VkTransient{ .site = FS::FaultSite::Present, .result = VK_ERROR_OUT_OF_DATE_KHR },
+        // Minimal contract: no crash + continued progress (global criteria). NOTE (from planning
+        // exploration): PresentNode currently IGNORES the present result — nothing consumes
+        // PRESENT_RESULT to trigger recreation. This scenario documents today's tolerated behavior;
+        // when present-driven recreation is implemented, tighten this contract to assert it.
+        [](FS::ScenarioContext&) {})
+);
+#endif
