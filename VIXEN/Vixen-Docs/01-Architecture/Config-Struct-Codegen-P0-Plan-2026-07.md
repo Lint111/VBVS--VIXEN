@@ -25,11 +25,17 @@
 Run on branch `feat/config-struct-codegen` (main checkout, sequential milestones). Implementer = Sonnet, Validator = Opus, per milestone. Controller runs the gates.
 
 - [x] **M1 — The codegen tool** · Tasks 1–5: `[GpuStruct]` attribute → std430 scalar layout model → C++ emitter → GLSL emitter → Roslyn `Compilation` loader + CLI (generate/`--check`). Gate: `~/.dotnet/dotnet test VIXEN/codegen/Vixen.Codegen.Tests` all green.
-- [ ] **M2 — Wire into VIXEN + golden gate** · Tasks 6–7: `SkeletonConfig` canonical + committed artifacts → CMake dotnet-gated golden gate (must BITE on tamper) + glslc/g++ compile-smoke of both backends. Gate: `cmake --build --preset vixen-wsl --target codegen_check` + the compile-smokes.
+- [x] **M2 — Wire into VIXEN + golden gate** · Tasks 6–7: `SkeletonConfig` canonical + committed artifacts → CMake dotnet-gated golden gate (must BITE on tamper) + glslc/g++ compile-smoke of both backends. Gate: `cmake --build --preset vixen-wsl --target codegen_check` + the compile-smokes.
 
 ### Progress Log
 - Milestone M1 (Tasks 1–5): DONE · commits `01d7f65f`..`3b36c824` (attr `01d7f65f` / model `8301333b` / C++ emit `eedc377b` / GLSL emit `04594a58` / loader+CLI `3b36c824`) · gate `~/.dotnet/dotnet test` = **5/5 green** (controller-run) · Opus review **APPROVED** (controller-direct — validator `p0-m1-val` stalled idle without delivering; std430 model / both emitters / CLI-`--check` verified correct; 3 benign plan-omission deviations: `using System`, `using System.Linq`, stub `Program.cs` replaced in Task 5) · 2026-07-02
-  - Non-blocking (defer to P1): `CompilationLoader` silently ignores schema compile diagnostics; emitter default switch arms are unreachable (harmless).
+  - Validator `p0-m1-val` APPROVED (delivered after a ping) + surfaced findings:
+    - **[A] FIX-BEFORE-MERGE** — both emitters use `StringBuilder.AppendLine` → `Environment.NewLine`, so emitted bytes are host-dependent (`\r\n` vs `\n`). Undermines the byte-identical golden guarantee (benign in the WSL flow — both `\n` + `* text=auto` — so it does NOT disturb M2). Fix: emit `'\n'` explicitly. Apply as a hardening pass after M2 (byte-identical on WSL → golden stays green).
+    - **[B]** emitter default switch arms (`_ => "uint32_t"` / `"uint"`) should `throw` to match `StructModel`'s fail-loud; unreachable in P0. (Fold into the [A] pass.)
+    - **[C]** `StructModel` should add `!f.IsImplicitlyDeclared` when P1 adds properties (auto-prop backing fields). **[D]** `Program.Write` bare-filename guard (cosmetic). `CompilationLoader` should surface schema compile diagnostics. → all **P1**.
+- Milestone M2 (Tasks 6–7): DONE · commits `0bba1ec6` (SkeletonConfig canonical + generated C++/GLSL) / `aa3bbf73` (CMake golden gate + regen + wiring) · gate (controller-run): `codegen_check` rc 0, tamper rc 1 + `STALE:` (gate **bites**), C++ g++ + GLSL glslc compile-smokes OK, main-build configure rc 0 (new subdir doesn't break it) · artifacts verified (`SkeletonConfig.g.h` sizeof 8/version@0/payload@4; `.glsl` guard+struct) · CMake gate dotnet-gated (`return()` when absent — D8) · 2026-07-02
+  - Deviation (doc-only): the preset runs from `VIXEN/` (CMakePresets.json location), not repo root — no code change.
+  - **★ P0 milestones (M1+M2) COMPLETE.** Remaining before finish: apply the [A]/[B] newline+fail-loud hardening (controller), then final whole-diff Opus review.
 
 ---
 
