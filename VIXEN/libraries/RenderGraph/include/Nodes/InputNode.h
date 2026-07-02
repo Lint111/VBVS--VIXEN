@@ -138,10 +138,11 @@ private:
     // position AT that press, not the end-of-frame position.
     void FoldEvent(const InputEvent& event);
 
-    // Copies the canonical drained state (+ pendingClicks_) into inputState_ and publishes the
-    // real-payload bus events for ANY edges since the last Execute (ExecuteImpl's ProcessedThisFrame
-    // step — see .cpp). Kept out of ExecuteImpl's body only so the "what gets copied" list has one
-    // definition site next to FoldEvent.
+    // Copies the canonical drained state (+ pendingClicks_) into inputState_. The mouse/scroll bus
+    // events with real payloads are published from FoldEvent (as each event is folded, in fold
+    // order), NOT from here — this only publishes the ESC WindowCloseEvent, a one-shot check against
+    // the keyStates map this method's loop already walks. Kept out of ExecuteImpl's body only so the
+    // "what gets copied" list has one definition site next to FoldEvent.
     void PopulateInputState();
 
     // Window handle for input context (cross-platform GLFW handle)

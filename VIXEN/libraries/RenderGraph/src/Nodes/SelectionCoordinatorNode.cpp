@@ -37,7 +37,6 @@ SelectionCoordinatorNode::SelectionCoordinatorNode(
 
 void SelectionCoordinatorNode::SetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_INFO("[SelectionCoordinator] setup");
-    lastLeftDown_   = false;
     selectionCount_ = 0;
 }
 
@@ -58,10 +57,15 @@ void SelectionCoordinatorNode::ExecuteImpl(TypedExecuteContext& ctx) {
         return;  // no input state this frame
     }
 
-    // Edge-detect the left-button press: fire only on the down-edge.
-    const bool leftDown = input->mouseButtons[0];
-    const bool pressedThisFrame = leftDown && !lastLeftDown_;
-    lastLeftDown_ = leftDown;
+    // Find the left-button press entry to resolve on (input-rework slice 1 M3: the shared click
+    // list replaces the old private lastLeftDown_ edge detector). Several presses in one frame:
+    // the LAST one wins — matches the old single-poll semantics.
+    bool pressedThisFrame = false;
+    for (const ClickEvent& click : input->clicksThisFrame) {
+        if (click.button == static_cast<int>(EventBus::MouseButton::Left) && click.pressed) {
+            pressedThisFrame = true;
+        }
+    }
 
     if (!pressedThisFrame) {
         return;  // cheap: only resolve on a click edge
@@ -141,9 +145,11 @@ void SelectionCoordinatorNode::ExecuteImpl(TypedExecuteContext& ctx) {
 
 void SelectionCoordinatorNode::CleanupImpl(TypedCleanupContext& ctx) {
     NODE_LOG_INFO("[SelectionCoordinator] cleanup");
-    // Reset the click edge. The SelectionSet is intentionally NOT cleared here — selection is durable
-    // state, and Cleanup runs on recompile (e.g. swapchain resize); a resize should not wipe it.
-    lastLeftDown_ = false;
+    // Nothing to reset: the click edge now lives in InputState.clicksThisFrame (owned by InputNode),
+    // not this node — the duplicate-fire-after-recompile bug (a private edge reset losing track of
+    // an in-progress press across a recompile) dies with that state. The SelectionSet is
+    // intentionally NOT cleared here — selection is durable state, and Cleanup runs on recompile
+    // (e.g. swapchain resize); a resize should not wipe it.
 }
 
 } // namespace Vixen::RenderGraph

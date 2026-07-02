@@ -80,9 +80,6 @@ private:
     // ----- Provider config -----
     int priority_ = 10;  ///< Layer priority (PARAM_PRIORITY) stamped on every candidate (UI > world).
 
-    // Edge detection for the left mouse button (resolve on the down-edge only).
-    bool lastLeftDown_ = false;
-
     // The id of the element clicked on the latest hit-mask-passing down-edge, awaiting a host drain. Set
     // only on a confirmed UI hit (after the mask test), cleared by DrainClickedElementId(). Empty = no
     // pending click. Distinct from the SelectionCandidate payload (a HASH for the coordinator) — this is

@@ -42,14 +42,16 @@ public:
  * object's methods verbatim). The only structural changes are node-shaped:
  *   - the device is the base NodeInstance::device (SetDevice in CompileImpl from
  *     the VULKAN_DEVICE input; GetDevice() in Execute/Cleanup) — no device member;
- *   - it edge-detects the left button itself (a provider only resolves on click);
+ *   - it looks for a left-button press entry in InputState.clicksThisFrame (a
+ *     provider only resolves on click; input-rework slice 1 M3 — the shared click
+ *     list, not a private per-node edge detector);
  *   - it emits a SelectionCandidate (hit + id + priority + depth + worldPos) every
  *     Execute (hit=false off the click edge / on a miss) instead of returning a
  *     std::optional<Hit> to a coordinator that drove it.
  *
  * It owns a lazily-created host-visible staging buffer for the buffer's lifetime
- * (freed in CleanupImpl — RAII). Off the click edge the per-frame cost is an edge
- * comparison and one slot write.
+ * (freed in CleanupImpl — RAII). Off the click edge the per-frame cost is a scan of
+ * clicksThisFrame (typically empty) and one slot write.
  */
 class VoxelSelectionProviderNode : public TypedNode<VoxelSelectionProviderNodeConfig> {
 public:
@@ -93,9 +95,6 @@ private:
 
     // ----- Provider config -----
     int priority_ = 0;  ///< Layer priority (PARAM_PRIORITY) stamped on every candidate.
-
-    // Edge detection for the left mouse button (resolve on the down-edge only).
-    bool lastLeftDown_ = false;
 
     // Pick-ID encoding (must match the shader's imageStore at binding 9):
     //   pickID = hit ? ((brickIndex << 10) | (voxelLinearIdx & 0x3FF)) : kMissSentinel.

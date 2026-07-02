@@ -240,6 +240,16 @@ void InputNode::RegisterCallbacks() {
     // correct even if a NEW InputNode instance ends up owning the same GLFWwindow*.
     WindowToInputNodeRegistry()[window] = this;
 
+    // Seed the canonical cursor position NOW, before any CursorPos callback has fired. Without this,
+    // firstCursorEvent_ stays true and cursorPos_ stays (0,0) until the first mouse-move event — so a
+    // click landing before the cursor ever moves (e.g. immediately after window focus) would carry
+    // (0,0) as its ClickEvent position instead of the real cursor location. This does not set
+    // firstCursorEvent_ = false: the first real CursorPos event still seeds without a spurious delta,
+    // it just seeds from (correctly) the same position instead of (0,0).
+    double seedX = 0.0, seedY = 0.0;
+    glfwGetCursorPos(window, &seedX, &seedY);
+    cursorPos_ = glm::vec2(static_cast<float>(seedX), static_cast<float>(seedY));
+
     glfwSetMouseButtonCallback(window, &InputNode::OnMouseButton);
     glfwSetCursorPosCallback(window, &InputNode::OnCursorPos);
     glfwSetScrollCallback(window, &InputNode::OnScroll);

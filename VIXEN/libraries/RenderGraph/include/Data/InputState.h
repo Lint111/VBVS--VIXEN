@@ -54,16 +54,23 @@ struct InputState {
     float deltaTime = 0.0f;  // Seconds since last frame
 
     /**
-     * @brief Clear per-frame state (pressed/released flags)
+     * @brief Clear per-frame state (pressed/released flags, click/wheel edge data)
      * Call at the start of each frame before polling
      *
      * NOTE: mouseDelta is NOT cleared here because it's computed by InputNode from drained cursor
      * events before BeginFrame() is called. Clearing would lose the frame's delta. The delta is
      * used by consumers (CameraNode) and should persist until the next frame.
+     *
+     * clicksThisFrame and wheelDelta ARE per-frame edge data (like keyPressed/keyReleased, not like
+     * mouseDelta) and must be cleared here — otherwise a disabled InputNode's early-return in
+     * ExecuteImpl (`!enabled_`) re-outputs the same stale clicks/wheel delta every frame instead of
+     * an empty frame.
      */
     void BeginFrame() {
         keyPressed.clear();
         keyReleased.clear();
+        clicksThisFrame.clear();
+        wheelDelta = glm::vec2(0.0f);
         // NOTE: mouseDelta is preserved (computed by InputNode, not cleared here)
     }
 
