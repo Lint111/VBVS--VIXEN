@@ -52,9 +52,9 @@
 //              (VoxelSceneCacher.cpp:601-636).
 //
 // ===========================================================================
-// PER-OCTREE BASE OFFSETS — THE CONTRACT (for <=3-octree concatenation)
+// PER-OCTREE BASE OFFSETS — THE CONTRACT (unbounded-count concatenation)
 // ===========================================================================
-// Concatenate() packs <=3 octrees into ONE `nodes` buffer and ONE `bricks`
+// Concatenate() packs N octrees into ONE `nodes` buffer and ONE `bricks`
 // buffer (verbatim append, in input order) and records, for octree k:
 //   - configs[k].nodeArrayBase  = element offset of octree k's first node
 //   - configs[k].brickArrayBase = element offset of octree k's first brick
@@ -660,7 +660,7 @@ inline SerializedOctree SerializeSdf(const SdfBodyOctree& body) {
 }
 
 // ===========================================================================
-// Multi-octree concatenation (<= 3)
+// Multi-octree concatenation (unbounded count)
 // ===========================================================================
 
 /**

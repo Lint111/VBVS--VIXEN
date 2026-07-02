@@ -176,13 +176,40 @@ TEST(ShellOctreeGpu, ConcatRecordsPerOctreeBaseOffsets) {
                              sb.bricks.data(), sb.bricks.size()));
 }
 
-TEST(ShellOctreeGpu, ConcatRejectsMoreThanThree) {
+// Concatenate() count is unbounded (kMaxOctrees cap removed - see the
+// recipe-authoring epic / OctreePool.ConcatenatesMoreThanThreeSdfOctrees for
+// the ConcatenateSdf sibling coverage). 4 octrees must succeed and produce a
+// valid combined pool, not throw.
+TEST(ShellOctreeGpu, ConcatAcceptsMoreThanThree) {
     auto a = BuildShellOctree(4, 1);
     auto b = BuildShellOctree(4, 2);
     auto c = BuildShellOctree(4, 3);
     auto d = BuildShellOctree(4, 4);
     std::vector<const ShellOctree*> four = {&a, &b, &c, &d};
-    EXPECT_THROW(Concatenate(four), std::length_error);
+
+    const ConcatenatedOctrees cat = Concatenate(four);
+
+    ASSERT_EQ(cat.count, 4u);
+    EXPECT_EQ(cat.configs.size(), 4u);
+    EXPECT_EQ(cat.nodeCounts.size(), 4u);
+    EXPECT_EQ(cat.brickCounts.size(), 4u);
+
+    // Bases must be non-decreasing (each octree is appended after the previous).
+    for (uint32_t k = 1; k < cat.count; ++k) {
+        EXPECT_GE(cat.configs[k].nodeArrayBase, cat.configs[k - 1].nodeArrayBase)
+            << "nodeArrayBase must be non-decreasing at k=" << k;
+        EXPECT_GE(cat.configs[k].brickArrayBase, cat.configs[k - 1].brickArrayBase)
+            << "brickArrayBase must be non-decreasing at k=" << k;
+    }
+
+    // Concatenated buffers are exactly the sum of the parts (byte sizes;
+    // nodeCounts/brickCounts are element counts - see SerializedOctree::kBrickStrideBytes).
+    const uint32_t totalNodes = cat.nodeCounts[0] + cat.nodeCounts[1] +
+                                 cat.nodeCounts[2] + cat.nodeCounts[3];
+    const uint32_t totalBricks = cat.brickCounts[0] + cat.brickCounts[1] +
+                                  cat.brickCounts[2] + cat.brickCounts[3];
+    EXPECT_EQ(cat.nodes.size(), totalNodes * sizeof(ChildDescriptor));
+    EXPECT_EQ(cat.bricks.size(), totalBricks * SerializedOctree::kBrickStrideBytes);
 }
 
 // ---------------------------------------------------------------------------
