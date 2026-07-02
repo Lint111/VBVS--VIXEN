@@ -362,6 +362,12 @@ add_subdirectory(shaders)
 
 add_subdirectory(libraries)
 
+# Config-struct codegen golden gate (no-ops without dotnet). Opt-out with -DVIXEN_CODEGEN_GATE=OFF.
+option(VIXEN_CODEGEN_GATE "Run the config-struct codegen golden check" ON)
+if(VIXEN_CODEGEN_GATE)
+    add_subdirectory(codegen)
+endif()
+
 # ============================================================================
 # GENERATED VERSION HEADER (AR#13)
 # ============================================================================
