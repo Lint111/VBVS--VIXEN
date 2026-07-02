@@ -40,6 +40,15 @@ struct InputState {
     glm::vec2 wheelDelta{0.0f};      // Scroll offsets this frame (x=horizontal, y=vertical)
     std::vector<ClickEvent> clicksThisFrame;  // Every press+release edge since last frame, in order
 
+    // InputConfig fields CameraNode needs (input-rework M4), mirrored in by InputNode::
+    // PopulateInputState each frame. CameraNode has no InputNode reference — only this InputState
+    // slot — so riding the existing data path here is cheaper than a new graph-slot/lookup type
+    // for 4 read-only scalars a single other consumer wants.
+    uint8_t orbitButton = 0;      // InputConfig::OrbitButton: 0=RightMouse, 1=LeftDrag, 2=Always
+    float dragThresholdPx = 4.0f; // in-press motion below this stays a "click" (LeftDrag mode)
+    bool wheelZoom = true;        // scroll drives orbit distance
+    float wheelZoomSpeed = 2.0f;  // world units per wheel notch
+
     // Keyboard state (bitfield for fast queries)
     // Using unordered_map for sparse storage (only tracking keys we care about)
     std::unordered_map<EventBus::KeyCode, bool> keyDown;       // Currently held

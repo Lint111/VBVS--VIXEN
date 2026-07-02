@@ -178,9 +178,22 @@ void InputNode::SyncConfigFromParams() {
     }
 
     if (GetParameter(InputNodeConfig::PARAM_ORBIT_BUTTON) != nullptr) {
-        config_.orbitButton = static_cast<InputConfig::OrbitButton>(
-            GetParameterValue<int>(InputNodeConfig::PARAM_ORBIT_BUTTON,
-                                   static_cast<int>(config_.orbitButton)));
+        const int raw = GetParameterValue<int>(InputNodeConfig::PARAM_ORBIT_BUTTON,
+                                                static_cast<int>(config_.orbitButton));
+        // Clamp: an out-of-range int (bad setparam, stale wire value) must degrade to the safe
+        // default (RightMouse) rather than UB on the enum switch in CameraNode — M4 carry-forward.
+        if (raw < static_cast<int>(InputConfig::OrbitButton::RightMouse) ||
+            raw > static_cast<int>(InputConfig::OrbitButton::Always)) {
+            static bool warned = false;
+            if (!warned) {
+                NODE_LOG_WARNING("[InputNode] orbit_button param out of range (" + std::to_string(raw) +
+                                 "), defaulting to RightMouse");
+                warned = true;
+            }
+            config_.orbitButton = InputConfig::OrbitButton::RightMouse;
+        } else {
+            config_.orbitButton = static_cast<InputConfig::OrbitButton>(raw);
+        }
     }
 }
 
@@ -465,6 +478,13 @@ void InputNode::PopulateInputState() {
     inputState_.mouseButtons[2] = buttonDown_[2];
     inputState_.wheelDelta = pendingScroll_;
     inputState_.clicksThisFrame = pendingClicks_;
+
+    // Mirror the config fields CameraNode needs (M4) — see InputState.h's doc comment for why
+    // this rides the existing slot instead of a new connection.
+    inputState_.orbitButton = static_cast<uint8_t>(config_.orbitButton);
+    inputState_.dragThresholdPx = config_.dragThresholdPx;
+    inputState_.wheelZoom = config_.wheelZoom;
+    inputState_.wheelZoomSpeed = config_.wheelZoomSpeed;
 
     // RETENTION RULE: clear the per-frame accumulators only AFTER the copy above, not before/
     // during. If this Execute is skipped (render graph paused/recompiling — RenderFrame() skips
