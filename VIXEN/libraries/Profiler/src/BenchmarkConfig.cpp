@@ -177,20 +177,19 @@ uint64_t GetAvailableHostMemory() {
 /// @param screenWidth Screen width
 /// @param screenHeight Screen height
 /// @param shaderName Shader file name (to detect compression)
-/// @param gpuIndex GPU index
+/// @param availableGPU Available GPU memory in bytes (query once per run, not per test)
+/// @param availableHost Available host memory in bytes (query once per run, not per test)
 /// @param verbose Print memory info if true
 /// @return true if test should be skipped
 bool ShouldSkipTestForMemory(uint32_t resolution, uint32_t screenWidth, uint32_t screenHeight,
-                              const std::string& shaderName, uint32_t gpuIndex, bool verbose) {
+                              const std::string& shaderName, uint64_t availableGPU,
+                              uint64_t availableHost, bool verbose) {
     // Detect if shader uses DXT compression
     bool isCompressed = (shaderName.find("_Compressed") != std::string::npos ||
                          shaderName.find("Compressed") != std::string::npos);
 
     uint64_t estimatedGPU = EstimateGPUMemory(resolution, screenWidth, screenHeight, isCompressed);
     uint64_t estimatedHost = EstimateHostMemory(resolution, screenWidth, screenHeight);
-
-    uint64_t availableGPU = GetAvailableGPUMemory(gpuIndex);
-    uint64_t availableHost = GetAvailableHostMemory();
 
     // Convert to GB for logging
     double estimatedGPU_GB = estimatedGPU / (1024.0 * 1024.0 * 1024.0);
@@ -539,6 +538,13 @@ void BenchmarkSuiteConfig::GenerateTestsFromMatrix() {
         std::cout << "\n[Benchmark] Generating test matrix with memory checks..." << std::endl;
     }
 
+    // Query available memory ONCE for the whole matrix — GetAvailableGPUMemory() creates and
+    // destroys a full VkInstance internally, which is expensive (and, on some WSL2 ICDs like
+    // Mesa Dozen, unreliable) to repeat per test config. gpuIndex/available memory don't change
+    // across the matrix, so hoist both queries out of the per-config loop.
+    uint64_t availableGPU = GetAvailableGPUMemory(gpuIndex);
+    uint64_t availableHost = GetAvailableHostMemory();
+
     // Generate tests from matrix configuration
     for (const auto& [pipelineName, pipelineMatrix] : pipelineMatrices) {
         if (!pipelineMatrix.enabled) {
@@ -554,7 +560,7 @@ void BenchmarkSuiteConfig::GenerateTestsFromMatrix() {
 
                         // Check if this test would exceed available memory
                         if (ShouldSkipTestForMemory(resolution, renderSize.width, renderSize.height,
-                                                    shaderName, gpuIndex, verbose)) {
+                                                    shaderName, availableGPU, availableHost, verbose)) {
                             skippedCount++;
                             continue;
                         }
