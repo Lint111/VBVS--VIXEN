@@ -218,3 +218,29 @@ void FrameSyncNode::CleanupImpl(TypedCleanupContext& ctx) {
 
 // Self-registration (M3): registrar kept in this TU; RenderGraphNodes is whole-archived so it is not stripped.
 VIXEN_REGISTER_NODE(Vixen::RenderGraph::FrameSyncNodeType);
+
+#if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
+namespace FS = Vixen::RenderGraph::FailScenario;
+VIXEN_FAIL_SCENARIOS_DECLARE(Vixen::RenderGraph::FrameSyncNodeType,
+    // KI-004: forcing VK_ERROR_DEVICE_LOST here crashes (SIGABRT via an invalid-commandBuffer loader
+    // check). RenderFrame's sequential Execute loop has no deviceLost_ check between node iterations,
+    // so ComputeDispatchNode (downstream of FrameSyncNode) still executes on the SAME condemned frame
+    // and submits against a command buffer that RecoverFromDeviceLoss's teardown races out from under
+    // it. Pre-existing gap in the device-loss recovery orchestration, not caused by this scenario code
+    // — reproducing it deterministically IS the point; gated report-not-block per Fail-Scenario-
+    // Simulation Inc 1 protocol. Remove knownIssueId once RenderGraph.cpp's frame loop is fixed.
+    VIXEN_SCENARIO(DeviceLostRecovery,
+        FS::VkTransient{ .site = FS::FaultSite::FenceWait, .result = VK_ERROR_DEVICE_LOST },
+        // The one-shot forced VK_ERROR_DEVICE_LOST drives the REAL detection path
+        // (this node's fence wait → NotifyDeviceLost → RenderFrame returns DEVICE_LOST →
+        // app Render() → RecoverFromDeviceLoss teardown-reverse/rebuild-forward). On the
+        // healthy lavapipe device the rebuild succeeds — the global criteria then prove
+        // 30 frames of continuous post-recovery rendering with zero validation errors,
+        // which is exactly the manual VIXEN_SIMULATE_DEVICE_LOSS gate, automated.
+        [](FS::ScenarioContext& c) {
+            if (c.Graph()->IsDeviceLost())
+                c.Fail("device-lost latch still set — recovery did not complete");
+        },
+        "KI-004")
+);
+#endif
