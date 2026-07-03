@@ -26,6 +26,18 @@ namespace Vixen::RenderGraph {
 struct HudFactionIn { const char* name; float grievance; bool focused; bool known; bool inLens; uint8_t recentEventAge; };
 struct HudEventIn   { const char* kind; int tick; };
 
+// Host-facing inspect input (selected-or-not detail row for the T1 inspect panel).
+// Mirrors undertow's HudInspect wire section; strength == -1 is the body-pick sentinel.
+struct HudInspectIn {
+    bool selected;
+    const char* name;
+    float maxGrievance;
+    float strength;
+    const char* topRelName;
+    float topRelSig;
+    const char* cause;
+};
+
 /**
  * @brief Node type for rendering an RmlUi document (data-driven UI) into the swapchain.
  */
@@ -56,7 +68,8 @@ public:
     /// the lens enum to its display name, and dirties all bound vars.
     void SetHudView(int tick, int bodyCount, int activeLens, int activeLensCount,
                     std::span<const HudFactionIn> factions,
-                    std::span<const HudEventIn> events);
+                    std::span<const HudEventIn> events,
+                    const HudInspectIn& inspect);
 
     /// S1a compatibility shim — delegates to SetHudView with empty lists.
     void SetHudData(int tick, int bodyCount);
@@ -115,12 +128,24 @@ private:
     struct HudFaction { Rml::String name; float grievance = 0.f; bool focused = false; bool known = false; bool inLens = false; bool recentChanged = false; };
     struct HudEvent   { Rml::String kind; int tick = 0; };
 
+    // Rml-owned mirror of HudInspectIn bound as the "inspect" struct in the "hud" data model.
+    struct HudInspect {
+        bool selected = false;
+        Rml::String name;
+        float maxGrievance = 0.0f;
+        float strength = 0.0f;
+        Rml::String topRelName;
+        float topRelSig = 0.0f;
+        Rml::String cause;
+    };
+
     int tick_ = 0;
     int bodyCount_ = 0;
     Rml::String activeLensName_ = "None";  // the active map lens's display name (LensKind 0-3 → None/Intel/Logistics/Threat)
     int activeLensCount_ = 0;              // number of entities the active lens spans (0 when None)
     std::vector<HudFaction> factions_;
     std::vector<HudEvent>   events_;
+    HudInspect              inspect_;
     Rml::DataModelHandle    hudModel_;
 };
 

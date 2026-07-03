@@ -125,6 +125,15 @@ void UIRenderNode::CompileImpl(TypedCompileContext& ctx) {
                     eh.RegisterMember("kind", &HudEvent::kind);
                     eh.RegisterMember("tick", &HudEvent::tick);
                 }
+                if (auto ih = c.RegisterStruct<HudInspect>()) {
+                    ih.RegisterMember("selected",     &HudInspect::selected);
+                    ih.RegisterMember("name",         &HudInspect::name);
+                    ih.RegisterMember("maxGrievance", &HudInspect::maxGrievance);
+                    ih.RegisterMember("strength",     &HudInspect::strength);
+                    ih.RegisterMember("topRelName",   &HudInspect::topRelName);
+                    ih.RegisterMember("topRelSig",    &HudInspect::topRelSig);
+                    ih.RegisterMember("cause",        &HudInspect::cause);
+                }
                 c.RegisterArray<std::vector<HudFaction>>();
                 c.RegisterArray<std::vector<HudEvent>>();
                 c.Bind("tick",            &tick_);
@@ -133,6 +142,7 @@ void UIRenderNode::CompileImpl(TypedCompileContext& ctx) {
                 c.Bind("activeLensCount", &activeLensCount_);
                 c.Bind("factions",        &factions_);
                 c.Bind("events",          &events_);
+                c.Bind("inspect",         &inspect_);
                 hudModel_ = c.GetModelHandle();
             }
             document_ = context_->LoadDocument(docPath);
@@ -319,7 +329,8 @@ void UIRenderNode::ExecuteImpl(TypedExecuteContext& ctx) {
 
 void UIRenderNode::SetHudView(int tick, int bodyCount, int activeLens, int activeLensCount,
                               std::span<const HudFactionIn> factions,
-                              std::span<const HudEventIn> events) {
+                              std::span<const HudEventIn> events,
+                              const HudInspectIn& inspect) {
     tick_      = tick;
     bodyCount_ = bodyCount;
     // Map the raw LensKind (0-3) to its display name for the HUD label (matches the C# LensKind enum).
@@ -342,6 +353,14 @@ void UIRenderNode::SetHudView(int tick, int bodyCount, int activeLens, int activ
     for (const HudEventIn& e : events)
         events_.push_back({e.kind ? Rml::String(e.kind) : Rml::String{}, e.tick});
 
+    inspect_.selected     = inspect.selected;
+    inspect_.name         = inspect.name ? inspect.name : "";
+    inspect_.maxGrievance = inspect.maxGrievance;
+    inspect_.strength     = inspect.strength;
+    inspect_.topRelName   = inspect.topRelName ? inspect.topRelName : "";
+    inspect_.topRelSig    = inspect.topRelSig;
+    inspect_.cause        = inspect.cause ? inspect.cause : "";
+
     if (hudModel_) {
         hudModel_.DirtyVariable("tick");
         hudModel_.DirtyVariable("bodyCount");
@@ -349,11 +368,12 @@ void UIRenderNode::SetHudView(int tick, int bodyCount, int activeLens, int activ
         hudModel_.DirtyVariable("activeLensCount");
         hudModel_.DirtyVariable("factions");
         hudModel_.DirtyVariable("events");
+        hudModel_.DirtyVariable("inspect");
     }
 }
 
 void UIRenderNode::SetHudData(int tick, int bodyCount) {
-    SetHudView(tick, bodyCount, 0, 0, {}, {});
+    SetHudView(tick, bodyCount, 0, 0, {}, {}, HudInspectIn{false, "", 0.0f, 0.0f, "", 0.0f, ""});
 }
 
 void UIRenderNode::CleanupImpl(TypedCleanupContext& ctx) {
