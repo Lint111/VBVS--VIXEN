@@ -15,6 +15,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <span>
 
 namespace Vixen::RenderGraph {
@@ -65,45 +66,35 @@ std::filesystem::file_time_type LatestUiMtime(const std::string& rmlPath) {
     return latest;
 }
 
-// Make a memory-loaded RML document self-contained: inject the ALREADY-CONCATENATED RCSS text (the
-// host already joined the ui_document's ordered Rcss list into one stylesheet string) as a <style>
-// block in <head>, so LoadDocumentFromMemory needs no FileInterface path resolution for the stylesheet.
-// Any <link type="text/rcss" .../> in the source RML is dropped (the inline <style> replaces it).
-std::string InlineRcss(const std::string& rml, const std::string& rcss) {
-    std::string out;
-    out.reserve(rml.size() + rcss.size() + 32);
-    size_t pos = 0;
-    while (pos < rml.size()) {
-        // Drop any <link ... type="text/rcss" ...> line (the on-disk stylesheet reference).
-        size_t linkPos = rml.find("<link", pos);
-        size_t headEnd = rml.find("</head>", pos);
-        if (linkPos != std::string::npos && (headEnd == std::string::npos || linkPos < headEnd)) {
-            size_t tagEnd = rml.find('>', linkPos);
-            if (tagEnd == std::string::npos) { out.append(rml, pos, std::string::npos); break; }
-            std::string tag = rml.substr(linkPos, tagEnd - linkPos + 1);
-            if (tag.find("text/rcss") != std::string::npos) {
-                out.append(rml, pos, linkPos - pos);
-                pos = tagEnd + 1;
-                continue;
-            }
-            // Not an RCSS link — copy through up to and including this tag, keep scanning.
-            out.append(rml, pos, tagEnd - pos + 1);
-            pos = tagEnd + 1;
-            continue;
-        }
-        break;
-    }
-    out.append(rml, pos, std::string::npos);
+// Materialize the host-provided baked ui_document (RML + already-concatenated RCSS) to a temp dir and
+// return the RML file path, so the engine loads it through the SAME file-based Rml::LoadDocument path
+// that renders correctly. RmlUi's inline-<style> parsing does NOT reliably apply RCSS that contains
+// CSS child-combinators / '<'-adjacent tokens (the document parses with children but lays out to
+// zero size), whereas an external <link type="text/rcss" href="hud.rcss"> resolves + applies fully.
+// So we write hud.rcss beside hud.rml and ensure the RML links it (rewriting/ inserting the <link>).
+// Returns the temp RML path (empty on failure → caller keeps whatever fallback it has).
+std::string MaterializeDocToTemp(const std::string& rml, const std::string& rcss) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    fs::path dir = fs::temp_directory_path(ec) / "undertow-ui";
+    fs::create_directories(dir, ec);
+    const fs::path rcssPath = dir / "hud.rcss";
+    const fs::path rmlPath  = dir / "hud.rml";
 
-    if (!rcss.empty()) {
+    { std::ofstream f(rcssPath, std::ios::binary); if (!f) return {}; f.write(rcss.data(), (std::streamsize)rcss.size()); }
+
+    // Ensure the RML references the sibling stylesheet by relative name. If it already has an rcss
+    // <link>, leave it (it resolves relative to the RML's dir = our temp dir, where we wrote hud.rcss).
+    // If it has none, inject one before </head>.
+    std::string out = rml;
+    if (out.find("text/rcss") == std::string::npos) {
+        const std::string link = "<link type=\"text/rcss\" href=\"hud.rcss\"/>";
         size_t headEnd = out.find("</head>");
-        std::string styleBlock = "<style>" + rcss + "</style>";
-        if (headEnd != std::string::npos)
-            out.insert(headEnd, styleBlock);
-        else
-            out = styleBlock + out;   // no <head> — prepend so the style still registers
+        if (headEnd != std::string::npos) out.insert(headEnd, link);
+        else out = link + out;
     }
-    return out;
+    { std::ofstream f(rmlPath, std::ios::binary); if (!f) return {}; f.write(out.data(), (std::streamsize)out.size()); }
+    return rmlPath.string();
 }
 }  // namespace
 
@@ -183,11 +174,11 @@ void UIRenderNode::CompileImpl(TypedCompileContext& ctx) {
             }
             if (haveDocSource_) {
                 // Baked delivery (Phase A): the host already fetched core:hud from the content pack and
-                // pushed it via SetDocumentSource. Inline the RCSS so the memory doc is self-contained
-                // (no FileInterface path resolution needed).
-                std::string rml = InlineRcss(docSourceRml_, docSourceRcss_);
-                document_ = context_->LoadDocumentFromMemory(rml, "memory://core/hud.rml");
-                docSourceLoaded_ = true;
+                // pushed it via SetDocumentSource. Materialize it to a temp dir + load through the
+                // file path (the memory + inline-<style> path parses but lays out to zero size).
+                std::string tmp = MaterializeDocToTemp(docSourceRml_, docSourceRcss_);
+                document_ = tmp.empty() ? nullptr : context_->LoadDocument(tmp);
+                docSourceLoaded_ = !tmp.empty();
             } else {
                 document_ = context_->LoadDocument(docPath);
             }
@@ -214,18 +205,22 @@ void UIRenderNode::CompileImpl(TypedCompileContext& ctx) {
         if (haveDocSource_ && !docSourceLoaded_) {
             Rml::Factory::ClearStyleSheetCache();
             if (document_) context_->UnloadDocument(document_);
-            std::string rml = InlineRcss(docSourceRml_, docSourceRcss_);
-            document_ = context_->LoadDocumentFromMemory(rml, "memory://core/hud.rml");
+            std::string tmp = MaterializeDocToTemp(docSourceRml_, docSourceRcss_);
+            document_ = tmp.empty() ? nullptr : context_->LoadDocument(tmp);
             if (document_) document_->Show();
-            docSourceLoaded_ = true;
+            docSourceLoaded_ = !tmp.empty();
         }
 
-        // Live hot-reload (dev only). CPU-SIDE DOCUMENT SWAP ONLY — never touch the persistent GPU sync
-        // objects (the destroy-while-in-flight race that kernel-panics WSL). Old document geometry routes
-        // through the render interface's frames-in-flight deferred-delete; UnloadDocument defers the C++
-        // destroy to the next Context::Update(). The "hud" data model is Context-level so it survives the
-        // reload — the new document re-binds via data-model="hud", and SetHudView keeps feeding it.
-        // ClearStyleSheetCache() must precede LoadDocument so edited RCSS actually takes effect.
+        // Live hot-reload: reload the on-disk document when its mtime advanced. This branch runs on any
+        // recompile of this node; the host drives the recompile explicitly (it watches the file mtime and
+        // MarkNeedsRecompile()s the UI node on change — see the render loop's UI-live-reload watch) rather
+        // than us polling every frame in ExecuteImpl. CPU-SIDE DOCUMENT SWAP ONLY — never touch the
+        // persistent GPU sync objects (the destroy-while-in-flight race that kernel-panics WSL). Old
+        // document geometry routes through the render interface's frames-in-flight deferred-delete;
+        // UnloadDocument defers the C++ destroy to the next Context::Update(). The "hud" data model is
+        // Context-level so it survives the reload — the new document re-binds via data-model="hud", and
+        // SetHudView keeps feeding it. ClearStyleSheetCache() must precede LoadDocument so edited RCSS
+        // actually takes effect. No-op on the baked/from-memory path (resolvedDocPath_ is empty there).
         if (std::getenv("VIXEN_UI_LIVE") && !resolvedDocPath_.empty()) {
             std::filesystem::file_time_type mtime = LatestUiMtime(resolvedDocPath_);
             if (mtime > lastUiWriteTime_) {
@@ -234,6 +229,7 @@ void UIRenderNode::CompileImpl(TypedCompileContext& ctx) {
                 document_ = context_->LoadDocument(resolvedDocPath_);
                 if (document_) document_->Show();
                 lastUiWriteTime_ = mtime;
+                LOG_INFO("[UIRenderNode] live-reloaded UI document: " + resolvedDocPath_);
             }
         }
     }
