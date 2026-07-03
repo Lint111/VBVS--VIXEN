@@ -22,6 +22,7 @@ namespace Vixen::RenderGraph { class UIRenderNode; }  // composite HUD node; rea
 namespace Vixen::RenderGraph { class UISelectionProviderNode; }  // UI hit-test provider; real include only in the .cpp
 namespace Vixen::RenderGraph { class BodyOctreeSceneNode; }  // M-wire: sparse shell octree upload node; real include in .cpp
 namespace Vixen::SVO { struct BodyInstanceGpu; }  // M-wire: per-body GPU instance record (64 bytes)
+namespace Vixen::SVO { struct ConcatenatedOctrees; }  // I4.1: pre-baked recipe pool (SetRecipePool passthrough)
 
 using namespace Vixen::Vulkan::Resources;
 using namespace Vixen::RenderGraph;
@@ -185,6 +186,10 @@ public:
     // M-wire: push the current per-body instance list into BodyOctreeSceneNode so it re-uploads the
     // SSBO on the next compile tick. Replaces the StarSystemGenerator + MarkVoxelSceneDirty flow.
     void SetBodyInstances(std::vector<Vixen::SVO::BodyInstanceGpu> instances);
+    // Push a pre-baked recipe pool into BodyOctreeSceneNode (I4.1 SetRecipePool passthrough, mirrors
+    // SetBodyInstances above). A host that owns document/recipe authoring (e.g. vixen_editor) uses this
+    // to swap the render source without hand-rolling a NodeTypeRegistry lookup.
+    void SetRecipePool(Vixen::SVO::ConcatenatedOctrees pool);
     // Expose the GLFW window handle so the host can poll input (e.g. Space/period for pause/step).
     // Queries the WindowNode LIVE each call (the node owns the window post-de-own refactor + persists
     // across recompiles) — no cached handle, so no dangling-pointer window-capture bug.

@@ -584,6 +584,18 @@ void VulkanGraphApplication::SetBodyInstances(std::vector<Vixen::SVO::BodyInstan
     }
 }
 
+void VulkanGraphApplication::SetRecipePool(Vixen::SVO::ConcatenatedOctrees pool) {
+    // I4.1 passthrough: forward a pre-baked recipe pool to BodyOctreeSceneNode. Mirrors
+    // SetBodyInstances above — same live GetInstance lookup, same null-guard.
+    auto* node = static_cast<Vixen::RenderGraph::BodyOctreeSceneNode*>(
+        renderGraph->GetInstance(bodyOctreeSceneNode_));
+    if (node) {
+        node->SetRecipePool(std::move(pool));
+    } else if (mainLogger) {
+        mainLogger->Warning("[VulkanGraphApplication::SetRecipePool] bodyOctreeSceneNode_ not found — pool not applied");
+    }
+}
+
 GLFWwindow* VulkanGraphApplication::GetWindowHandle() const {
     // Live lookup — the WindowNode owns the window (post-de-own refactor) and persists across
     // recompiles, so never cache the pointer (that was the dangling-window bug the refactor removed).

@@ -42,6 +42,18 @@ lavapipe gates), Python 3 (generated codec, no deps beyond stdlib `struct`/`data
 
 ---
 
+## Milestone Map (context-manager pipeline, pinned 2026-07-03)
+
+| # | Milestone | Repo/worktree | Implementer | Validator |
+|---|---|---|---|---|
+| M1 | Canonical VoxelDocument + C++ reader/writer emission | Yeroket `.worktrees/voxeldoc-inc1` | Sonnet | Opus |
+| M2 | Python codec + opcode constants + C#↔Python golden | Yeroket `.worktrees/voxeldoc-inc1` | Sonnet | Opus |
+| M3 | Vendor artifacts + VoxelDocumentFlattener + parity tests | VIXEN `.claude/worktrees/voxel-authoring-inc1` | Sonnet | Opus |
+| M4 | `vixen_editor` app: load/render/toggle/save + live gate | VIXEN `.claude/worktrees/voxel-authoring-inc1` | Sonnet | Opus |
+| M5 | Docs, index, handoff | both | Sonnet | Opus |
+
+---
+
 ## M1 (Yeroket) — canonical `VoxelDocument` + C++ reader/writer emission
 
 **Worktree:** `/home/liory/Github/Yeroket-Fantasy/.worktrees/voxeldoc-inc1`
@@ -313,3 +325,7 @@ gate test output pasted. **Commit** `feat(editor): vixen_editor app — document
 ## Progress
 
 *(appended by the pipeline — one entry per milestone: status, commits, fresh test output)*
+
+- **M3 (vendor artifacts + VoxelDocumentFlattener + parity tests): DONE** · VIXEN `feat/voxel-authoring-inc1` commit `0d27f179` (single commit, 7 files, 800 insertions, on top of `de5f43a3`) · NOTE: first implementer attempt stalled twice (silent 10-20 min gaps with zero file/commit activity, unreachable via SendMessage — root cause unclear, possibly Monitor/background-wait overhead without proactive reporting per the eventual v2 self-report); a fresh continuation agent (v2) picked up the stalled agent's already-good uncommitted code as-is rather than restarting, verified every referenced symbol via CodeGraph before building, fixed one real but minor bug (missing `#include "Recipe/RecipeRegistry.h"` in the test file), built and committed · new tests `test_voxel_document_flatten` 8/8 PASSED (golden decode, grid-parity vs independent oracle, ref-formula sanity, enabledOverride byte-equality, zero-enabled/unknown-op/deep-stack error paths, registry-consumable) · regression: 10 pre-existing SVO recipe test binaries, 132/132 PASSED, zero regressions (incl. `test_recipe_eval_parity` 91/91) · vendored `VoxelDocument.g.h` sha256 `25242bda…503ee` byte-identical to Yeroket source, no hand-edits · **opcode/packing mapping validator-verified against the REAL vendored enum** (not the comment): layerOp 0→Union(24), 1→SmoothUnion(25), 2→Subtract(26), 3→Intersect(28) — correctly dodges the SmoothSubtract(27)/SmoothIntersect(29) off-by-one trap; blend radius in `data[2]`/Data0.z cross-checked against `evalRecipe`'s SmoothUnion read · Opus validator **APPROVED**, no issues · 2026-07-03
+- **M2 (Python codec + opcode constants + C#↔Python golden): DONE** · Yeroket `feat/voxel-document-inc1` commits `68c8768b, 23dd6897, 9b87281a, 16a007a2` (HEAD `16a007a2`; history rewritten once to purge non-deterministic dll rebuilds — old `a420e89c`/`78675ccd` replaced content-identically, validator-verified) · suite `Failed: 4 (pre-existing), Passed: 135, Total: 139` · artifacts (Yeroket worktree `Packages/com.utility.sdf/Runtime/GPU/Generated/`, gitignored-materialized): `voxel_document.py`, `sdf_op_codes.py`, `sample_tri_layer.vxd` (588 B = 32+16+3×(48+132); base Box ∪ SmoothUnion Sphere r=0.15 − Subtract Cylinder halfHeight 1.5 > box halfExtent 1.0, protrudes both faces; 1 sdf channel semanticId=0/fieldKind=1) · packing canonically cited: combine InputMask=3, smoothness **Data0.z**; Sphere `data=(0,0,0,r)`, Box `(hx,hy,hz,0)`, Cylinder `(halfHeight,radius,0,0)` · BONUS: opcode-catalogue golden now asserts vs the REAL 87-op canonical set (closes the old "stage-3 stubs the kernel set" gap) · GOTCHA surfaced: 4 files in that Generated/ dir ARE git-tracked (RecipeContainer.g.h, SdfCoreKernels.g.hlsl/.hpp, SdfOpCodes.g.h — pre-gitignore adds); never blind-`rm -rf` the dir · Opus validator **APPROVED** (initial ISSUES: 1 Minor dll-hygiene → fixed → targeted re-check APPROVED) · 2026-07-03
+- **M1 (canonical VoxelDocument + C++ emission): DONE** · Yeroket `feat/voxel-document-inc1` commits `7fd19765..039536b5` · new tests 19/19 green; full suite `Failed: 4, Passed: 119, Total: 123` — the 4 are pre-existing RefKindEnforcementTests (validator-confirmed: last touched `176f7ca7`, before base) · artifact `Packages/com.utility.sdf/Runtime/GPU/Generated/VoxelDocument.g.h` byte-stable (sha256 `25242bda…` across two regens; dir gitignored like RecipeContainer.g.h — VIXEN vendors the tracked copy in M3; NOTE: it `#include "RecipeContainer.g.h"` for SdfInstruction, vendor side-by-side) · Opus validator **APPROVED** · 2026-07-03
