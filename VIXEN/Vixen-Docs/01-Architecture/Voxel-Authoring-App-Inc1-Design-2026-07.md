@@ -174,17 +174,21 @@ umbrella design's own slice sequencing:
    drawn layer, brush-stroke authoring UI) AND the runtime dig/build consumer path (undertow-side, later).
    This is the next slice per the umbrella; Inc1 deliberately reserved `LayerRecord.type==1` and rejects it
    at the reader, so the format already has the seam.
-2. **Bake center-offset cleanup (possible Inc2 prerequisite):** `BakeSdfWorld` samples raw grid-integer
-   coordinates with no center-offset applied (`RecipeBakeConfig::center` is metadata-only today). Every
-   existing render-gate test — including this increment's — hand-authors positive-octant coordinates to
-   work around it. Drawn/brush authoring (Slice 3) will make object-centered documents much more common
-   than the current CSG-primitive goldens, so this is worth fixing properly (apply `center` at bake time)
-   rather than continuing to work around it, ideally *before* Slice 3 adds more content that would need the
-   same workaround.
-3. **Slice 4 — query-aware asset config**: data-injection, placement/cardinality, mechanic conformance.
+2. **Bake center-offset — FIXED (Inc2a, 2026-07-03):** `BakeRecipeInstructionsToSdfWorld` now applies
+   `center` (`p - center` at eval, matching `evalSdf`'s existing convention on the analytic path).
+   Recipe programs are authored object-centered; every existing hand-placed-at-grid-center test/recipe
+   was migrated. See [[Voxel-Authoring-App-Inc2a-BakeCenter-Plan-2026-07]].
+3. **Panel/viewport concept with auto-fit centering (Inc2b, NOT YET PLANNED):** a sub-window/viewport
+   abstraction inside `vixen_editor` that owns its own render context and derives `center` automatically
+   from the loaded document's actual geometry bounds (bounds-midpoint auto-fit) whenever a document loads
+   or its layers change — removing the need for ANY caller (editor or future consumers) to pass `center`
+   by hand. Deliberately deferred past Inc2a to keep that fix small and mechanical; plan properly once
+   Slice 3 (drawn layers/brushes, item 1 below) creates a second real multi-view consumer to design
+   against, rather than speculatively now.
+4. **Slice 4 — query-aware asset config**: data-injection, placement/cardinality, mechanic conformance.
    Undertow-side increment; no VIXEN format change expected, but the query-injector role (§4c/§4d of the
    umbrella) may want new document metadata.
-4. **Slice 5 — Blender addon**: the Python *field-eval* visitor (transpiler-equivalence in Python, Q2 in
+5. **Slice 5 — Blender addon**: the Python *field-eval* visitor (transpiler-equivalence in Python, Q2 in
    §3) plus the actual Blender-side import/export UI and live bridge. Inc1 already shipped the Python
    *codec* (`voxel_document.py`/`sdf_op_codes.py`) as the structural seam; this slice is pure consumption
    of that seam plus the new eval visitor.
