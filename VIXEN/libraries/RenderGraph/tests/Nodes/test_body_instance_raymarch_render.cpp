@@ -1170,9 +1170,17 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderRecipeBakedBody) {
     const Vixen::SVO::BodyInstanceGpu frameInst = MakeInstance(0.0f, 0.0f, 0.0f, kRS, 0, 1.0f, 1.0f, 1.0f);
     node->SetInstances({ frameInst });
 
-    // Build a sphere∪sphere peanut recipe in grid space (64^3).
-    // Two overlapping spheres at x=26 and x=38, radius=16 each → forms a peanut
-    // shape the hardcoded recipes cannot produce.
+    // Build a sphere∪sphere peanut recipe, OBJECT-CENTERED (Inc2a re-derivation): the node's
+    // VIXEN_STORED_SDF_DEMO path bakes bakeRecipe_ via BakeRecipeInstructionsToSdfWorld with
+    // center=(32,32,32) (BodyOctreeSceneNode.cpp's kSdfCenter), which now applies `p - center`
+    // before evalRecipe -- and Sphere's data[0..2] is its OWN local center offset, added on top
+    // of that already-centered point. So a sphere must be authored RELATIVE to local origin, not
+    // at the old raw-grid-absolute (26/38, 32, 32) (which pre-fix coincided with grid-absolute
+    // since center was ignored; post-fix that same value would double-offset by center, landing
+    // near grid (-6,0,0)/(6,0,0) as an absolute coordinate rather than the intended local one).
+    // Two overlapping spheres at local x=-6 and x=+6, radius=16 each → forms a peanut shape the
+    // hardcoded recipes cannot produce; center=(32,32,32) places the pair back at grid (26,32,32)
+    // / (38,32,32) -- the same effective grid position as before the fix.
     auto makeSph = [](glm::vec3 c, float r) {
         Vixen::SVO::Recipe::SdfInstruction in{};
         in.opCode  = static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::Sphere);
@@ -1183,9 +1191,9 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderRecipeBakedBody) {
     uni.opCode = static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::Union);
 
     node->SetBakeRecipe({
-        makeSph({26.0f, 32.0f, 32.0f}, 16.0f),  // left lobe
-        makeSph({38.0f, 32.0f, 32.0f}, 16.0f),  // right lobe
-        uni                                       // union → peanut
+        makeSph({-6.0f, 0.0f, 0.0f}, 16.0f),  // left lobe (local; grid-absolute 26,32,32)
+        makeSph({ 6.0f, 0.0f, 0.0f}, 16.0f),  // right lobe (local; grid-absolute 38,32,32)
+        uni                                     // union → peanut
     });
 
     node->Setup();
@@ -1299,8 +1307,11 @@ TEST_F(BodyInstanceRayMarchRenderTest, RematerializeEditLoop) {
     Vixen::SVO::Recipe::SdfInstruction uni{};
     uni.opCode = static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::Union);
 
-    // Recipe A: a single centred sphere (one round lobe).
-    node->SetBakeRecipe({ makeSph({32.0f, 32.0f, 32.0f}, 18.0f) });
+    // Recipe A: a single centred sphere (one round lobe). Inc2a: object-centered (local
+    // origin) -- center=(32,32,32) (kSdfCenter) places it at grid (32,32,32), same effective
+    // position as the old grid-absolute (32,32,32) (this one was already at grid-center, so
+    // migrating to local (0,0,0) is a no-op in effective grid position).
+    node->SetBakeRecipe({ makeSph({0.0f, 0.0f, 0.0f}, 18.0f) });
 
     node->Setup();
     // Keep STORED_SDF_DEMO set across BOTH executes — the edit Execute's Rematerialize()
@@ -1357,9 +1368,11 @@ TEST_F(BodyInstanceRayMarchRenderTest, RematerializeEditLoop) {
     renderAndMeasure("/tmp/glsl_sdf_remat_A.png", widthA, pxA);
 
     // --- EDIT at runtime: sphere∪sphere peanut (two offset lobes, wider than A) ---
+    // Inc2a: object-centered (local); center=(32,32,32) places the pair back at the same
+    // effective grid position as the old grid-absolute (24,32,32)/(40,32,32).
     node->SetBakeRecipe({
-        makeSph({24.0f, 32.0f, 32.0f}, 16.0f),
-        makeSph({40.0f, 32.0f, 32.0f}, 16.0f),
+        makeSph({-8.0f, 0.0f, 0.0f}, 16.0f),
+        makeSph({ 8.0f, 0.0f, 0.0f}, 16.0f),
         uni
     });
     frameIndex = 0; SetHandleVal<uint32_t>(frameRes, frameIndex);

@@ -4,18 +4,30 @@
  *
  * Two tests:
  *   1. CsgSubtractRendersNonTrivial — bakes a Subtract(Box, Sphere) recipe where the
- *      sphere centre sits at the z-midpoint of the box (voxel z=18, r=22), spanning
- *      the full [0,36] box depth → through-tunnel → ablation delta (boxOnly-csg>500).
+ *      sphere (local centre=(0,0,0), r=28) sits at the box's local z-midpoint, spanning
+ *      the full [-26,26] box depth → through-tunnel → ablation delta (boxOnly-csg>500).
  *   2. DefaultSceneRegression — renders the standard 3-shell-octree scene (no recipe
  *      pool) to confirm the M2 SSBO binding-5 change didn't break the base path;
  *      saves /tmp/recipe_default_scene.png.
  *
  * Box SDF notes (SdfRecipeEval.cpp / SdfCore_Box):
- *   sdBox(abs(p), halfExtents) — interior where all |pos.i| < halfExtent.
- *   Box(36,36,36) occupies [0,36]^3 in the positive domain.
- *   Sphere(32,32,18, r=22): centre at z-midpoint of the box; spans z ∈ [-4,40]
- *     → THROUGH-TUNNEL (not a depression), hole radius at z=36 face ≈ 12.6 voxels.
- *     Rays through the tunnel find no subtract surface within [0,64]³ → black pixels.
+ *   sdBox(abs(pos), halfExtents) — interior where all |pos.i| < halfExtent. Box has no
+ *   position field, so it is always centered at the eval point passed to it.
+ *
+ * Inc2a re-derivation (BakeRecipeInstructionsToSdfWorld now applies `center`, p - center,
+ * before evalRecipe -- matching evalSdf's convention): both primitives are authored
+ * OBJECT-CENTERED (local origin) instead of the old raw-grid-absolute convention, and
+ * RecipeBakeConfig's default center=(32,32,32) places them in the grid at bake time.
+ *   Box(26,26,26): local-centered box spans local [-26,26] -> grid [6,58] once centered,
+ *     safely inside the visible [0,64) grid (6-voxel margin to each wall). The old
+ *     halfExtents=36 relied on the box sitting UNCENTERED at raw grid [0,36] pre-fix --
+ *     post-fix that same value would center the box at grid-32 and push its surface to
+ *     grid [-4,68], entirely OUTSIDE [0,64), baking zero voxels.
+ *   Sphere(local centre=(0,0,0), r=28): centred at the box's local z-midpoint (0, since the
+ *     box is symmetric about local origin); spans local z ∈ [-28,28], which COVERS the full
+ *     [-26,26] box z-depth → THROUGH-TUNNEL (not a depression), hole radius at the box's
+ *     z=26 face ≈ 10.4 voxels (sqrt(28²-26²)). Rays through the tunnel find no subtract
+ *     surface within the baked domain → black pixels.
  *
  * SAFETY — LAVAPIPE ONLY: identical contract to test_body_instance_raymarch_render.cpp.
  *
@@ -469,19 +481,31 @@ TEST_F(RecipeAuthoringGateTest, CsgSubtractRendersNonTrivial) {
     using SdfI  = Vixen::SVO::Recipe::SdfInstruction;
     using SdfOp = Vixen::SVO::Recipe::SdfOpCode;
 
-    // Box(halfExtents=36,36,36): occupies [0,36]^3 in the 64^3 grid.
-    // SdfCore_Box uses abs(p), so the interior is where all |pos.i| < 36.
+    // Inc2a re-derivation: BakeRecipeInstructionsToSdfWorld now applies `center`
+    // (p - center) before evalRecipe, so both Box and Sphere are authored OBJECT-CENTERED
+    // (relative to local origin) instead of the old raw-grid-absolute convention. Box has no
+    // position field (SdfCore_Box uses abs(pos)) so it is always centered at local origin;
+    // halfExtents=26 keeps its surface ([-26,26] -> grid [6,58] once RecipeBakeConfig's default
+    // center=(32,32,32) is applied) safely inside the visible [0,64) grid with a 6-voxel margin
+    // (mirrors the kSdfRadius=26 margin convention used elsewhere, e.g. BodyOctreeSceneNode.cpp).
+    // (Old halfExtents=36 pre-fix relied on the box sitting UNCENTERED in the positive octant
+    // [0,36] -- post-fix that same 36 would center the box at grid-32 and push its surface to
+    // grid [-4,68], entirely OUTSIDE [0,64), baking zero voxels -- exactly the fresh boxOnlyPx=0
+    // failure this migration fixes.)
     SdfI boxInst{}; boxInst.opCode = uint8_t(SdfOp::Box);
-    boxInst.data[0] = 36.0f; boxInst.data[1] = 36.0f; boxInst.data[2] = 36.0f;
+    boxInst.data[0] = 26.0f; boxInst.data[1] = 26.0f; boxInst.data[2] = 26.0f;
 
-    // Sphere(centre=(32,32,18), r=22): placed at the z-midpoint of the box.
-    //   Sphere spans z ∈ [18-22, 18+22] = [-4, 40], which COVERS the full [0,36] box
-    //   z-depth → creates a THROUGH-TUNNEL (not just a depression).
-    //   Hole radius at z=36 face: sqrt(22²-18²) = sqrt(160) ≈ 12.6 voxels.
+    // Sphere(local centre=(0,0,0), r=28): Sphere's data[0..2] is its OWN local center offset,
+    // applied on top of the already-centered eval point -- so it must also be authored
+    // object-centered (local, relative to the box's local origin), not at the old raw-grid
+    // absolute (32,32,18). The box's local z-midpoint is 0 (box spans [-26,26], symmetric about
+    // local origin), so a sphere centered at local (0,0,0) already sits at the z-midpoint.
+    //   Sphere spans z ∈ [-28,28], which COVERS the full [-26,26] box z-depth → THROUGH-TUNNEL.
+    //   Hole radius at the box's z=26 face: sqrt(28²-26²) = sqrt(108) ≈ 10.4 voxels.
     //   Rays through the hole see no surface within the baking domain → black pixels.
     SdfI sphInst{}; sphInst.opCode = uint8_t(SdfOp::Sphere);
-    sphInst.data[0] = 32.0f; sphInst.data[1] = 32.0f; sphInst.data[2] = 18.0f;
-    sphInst.data[3] = 22.0f;
+    sphInst.data[0] = 0.0f; sphInst.data[1] = 0.0f; sphInst.data[2] = 0.0f;
+    sphInst.data[3] = 28.0f;
 
     SdfI subInst{}; subInst.opCode = uint8_t(SdfOp::Subtract);
 
