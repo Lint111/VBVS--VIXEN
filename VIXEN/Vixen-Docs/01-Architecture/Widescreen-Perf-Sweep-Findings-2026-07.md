@@ -215,3 +215,17 @@ D1 fixed — swapchain now tracks the requested size; first honest cross-size sc
 | 2560x1440 | 2560x1440 | 2.18 ms | 7.63 ms | 131 | 26.1 ms |
 
 Mrays/s ~constant (~2000) => clean linear pixel scaling; 0 recompilation storms. NOTE: at 1440p the ray-march is only ~2.2 ms of a ~7.6 ms frame — non-dispatch cost (~5.4 ms) + chronic p99 spikes (26 ms) now dominate; M5's attribution targets exactly that.
+
+### M2 gate (2026-07-03, 2560x1440 fresh window, 600 frames, vs M1 row)
+
+Counters compiled out of the live shader (rank 2):
+
+| Metric | M1 (counters in) | M2 (counters out) | Delta |
+|---|---|---|---|
+| Dispatch GPU | 2.18 ms | 1.38 ms | -37% |
+| Mrays/s | 1917 | 2700 | +41% |
+| Frame avg | 7.63 ms | 3.76 ms | -51% |
+| FPS | 131 | 266 | +103% |
+| p99 | 26.1 ms | 17.3 ms | -34% |
+
+Frame-time halving exceeds the dispatch delta — the HOST_VISIBLE|HOST_COHERENT atomic traffic taxed the whole pipeline, not just the dispatch. Rank-2's "10-25%" estimate was conservative on this GPU. API note: ShaderBundleBuilder::SetStageDefines does whole-word token substitution (cannot inject `#ifdef` defines) — counters re-enable only by hand-editing the shader.

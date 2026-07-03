@@ -144,10 +144,12 @@ layout(std430, binding = 10) readonly buffer BodyInstanceBuffer {
 // ============================================================================
 // SHADER COUNTERS (Performance Metrics)
 // ============================================================================
-// ENABLE_SHADER_COUNTERS is injected as a preprocessor define by
-// BuildRenderGraph.cpp only when VIXEN_SHADER_COUNTERS=1 is set; the live app
-// compiles this shader without it, so the calls below resolve to the
-// no-op stubs in ShaderCounters.glsl and binding 8 does not exist.
+// The live app compiles this shader WITHOUT ENABLE_SHADER_COUNTERS, so the
+// calls below resolve to the no-op stubs in ShaderCounters.glsl and binding 8
+// does not exist in the reflected interface. There is NO runtime opt-in:
+// ShaderBundleBuilder::SetStageDefines does token substitution, not #define
+// injection (see BuildRenderGraph.cpp), so re-enabling counters means
+// hand-adding `#define ENABLE_SHADER_COUNTERS` here (and re-wiring binding 8).
 #define SHADER_COUNTERS_BINDING 8
 #include "ShaderCounters.glsl"
 

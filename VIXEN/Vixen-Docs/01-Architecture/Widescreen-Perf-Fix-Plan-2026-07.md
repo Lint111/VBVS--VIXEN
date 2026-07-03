@@ -332,7 +332,7 @@ Grouping = the plan's own milestone headers, verbatim (post-brainstorm-context-m
 ## Milestone progress (updated by the execution pipeline)
 
 - [x] M1 — parameter integrity
-- [ ] M2 — shader counters compiled out
+- [x] M2 — shader counters compiled out
 - [ ] M3 — resize-path robustness
 - [ ] M4 — render-scale decoupling
 - [ ] M5 — p99 hitch attribution + bounded fixes
@@ -340,6 +340,7 @@ Grouping = the plan's own milestone headers, verbatim (post-brainstorm-context-m
 
 ## Progress Log
 
+- M2 (Task M2.1): DONE · commit 8509f58b (+comment fix) · Opus validator: functionally APPROVED, one LOW doc comment fixed controller-side · real-GPU 1440p: frame 7.63->3.76 ms (FPS 131->266), dispatch 2.18->1.38 ms · NOTE: SetStageDefines cannot inject #ifdef defines (token substitution) — no env opt-in possible · 2026-07-03
 - M1 (Tasks M1.1-M1.2): DONE · commits 4af408ff..358f2c0a · Opus validator APPROVED · real-GPU gate: resolutions now honest, dispatch scales linearly (see findings appendix) · 2026-07-03
 
 - Prep: sweep + measurements complete; instrumentation (D2 timestamp fix, frame timer, env overrides, resize probe) and both docs authored · 2026-07-03
