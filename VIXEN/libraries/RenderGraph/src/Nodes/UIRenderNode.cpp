@@ -154,26 +154,21 @@ void UIRenderNode::CompileImpl(TypedCompileContext& ctx) {
             // LoadDocument() — type info must exist before the document references the vars.
             if (Rml::DataModelConstructor c = context_->CreateDataModel("hud")) {
                 if (auto fh = c.RegisterStruct<HudFaction>()) {
-                    fh.RegisterMember("name",          &HudFaction::name);
-                    fh.RegisterMember("grievance",     &HudFaction::grievance);
-                    fh.RegisterMember("focused",       &HudFaction::focused);
-                    fh.RegisterMember("known",         &HudFaction::known);
-                    fh.RegisterMember("inLens",        &HudFaction::inLens);
+#define UT_HUD_REG(name, type) fh.RegisterMember(#name, &HudFaction::name);
+                    HUD_FACTION_MEMBERS(UT_HUD_REG)
+#undef UT_HUD_REG
                     // T3 Juice: recentChanged drives data-class-changed on the faction row → .changed CSS pulse.
                     fh.RegisterMember("recentChanged", &HudFaction::recentChanged);
                 }
                 if (auto eh = c.RegisterStruct<HudEvent>()) {
-                    eh.RegisterMember("kind", &HudEvent::kind);
-                    eh.RegisterMember("tick", &HudEvent::tick);
+#define UT_HUD_REG(name, type) eh.RegisterMember(#name, &HudEvent::name);
+                    HUD_EVENT_MEMBERS(UT_HUD_REG)
+#undef UT_HUD_REG
                 }
                 if (auto ih = c.RegisterStruct<HudInspect>()) {
-                    ih.RegisterMember("selected",     &HudInspect::selected);
-                    ih.RegisterMember("name",         &HudInspect::name);
-                    ih.RegisterMember("maxGrievance", &HudInspect::maxGrievance);
-                    ih.RegisterMember("strength",     &HudInspect::strength);
-                    ih.RegisterMember("topRelName",   &HudInspect::topRelName);
-                    ih.RegisterMember("topRelSig",    &HudInspect::topRelSig);
-                    ih.RegisterMember("cause",        &HudInspect::cause);
+#define UT_HUD_REG(name, type) ih.RegisterMember(#name, &HudInspect::name);
+                    HUD_INSPECT_MEMBERS(UT_HUD_REG)
+#undef UT_HUD_REG
                 }
                 c.RegisterArray<std::vector<HudFaction>>();
                 c.RegisterArray<std::vector<HudEvent>>();
@@ -418,7 +413,9 @@ void UIRenderNode::SetHudView(int tick, int bodyCount, int activeLens, int activ
     events_.clear();
     events_.reserve(events.size());
     for (const HudEventIn& e : events)
-        events_.push_back({e.kind ? Rml::String(e.kind) : Rml::String{}, e.tick});
+        events_.push_back({e.kind ? Rml::String(e.kind) : Rml::String{}, e.tick,
+                           e.perpName ? Rml::String(e.perpName) : Rml::String{},
+                           e.victimName ? Rml::String(e.victimName) : Rml::String{}});
 
     inspect_.selected     = inspect.selected;
     inspect_.name         = inspect.name ? inspect.name : "";

@@ -4,6 +4,7 @@
 #include "Data/Nodes/UIRenderNodeConfig.h"
 #include "Ui/VixenRmlRenderInterface.h"
 #include "Ui/VixenRmlSystemInterface.h"
+#include "hud_data_model.g.h"
 
 #include <RmlUi/Core/DataModelHandle.h>
 #include <RmlUi/Core/Types.h>  // Rml::String
@@ -24,7 +25,7 @@ namespace Vixen::RenderGraph {
 /// T3 Juice: recentEventAge = ticks since most recent world event involving this faction as
 /// perp or victim (255 = no recent event within K ticks); drives the .changed CSS pulse.
 struct HudFactionIn { const char* name; float grievance; bool focused; bool known; bool inLens; uint8_t recentEventAge; };
-struct HudEventIn   { const char* kind; int tick; };
+struct HudEventIn   { const char* kind; int tick; const char* perpName; const char* victimName; };
 
 // Host-facing inspect input (selected-or-not detail row for the T1 inspect panel).
 // Mirrors undertow's HudInspect wire section; strength == -1 is the body-pick sentinel.
@@ -148,19 +149,13 @@ private:
     // bound as scalars; factions_ / events_ are bound as arrays (data-for in the HUD document).
     // T3 Juice: recentChanged = true when recentEventAge < kJuiceK (i.e. the faction recently appeared
     // in a world event as perp or victim); drives the .changed CSS class on the faction row.
-    struct HudFaction { Rml::String name; float grievance = 0.f; bool focused = false; bool known = false; bool inLens = false; bool recentChanged = false; };
-    struct HudEvent   { Rml::String kind; int tick = 0; };
+#define UT_HUD_FIELD(name, type) type name{};
+    struct HudFaction { HUD_FACTION_MEMBERS(UT_HUD_FIELD) bool recentChanged = false; };  // recentChanged: host-derived, appended
+    struct HudEvent   { HUD_EVENT_MEMBERS(UT_HUD_FIELD) };
 
     // Rml-owned mirror of HudInspectIn bound as the "inspect" struct in the "hud" data model.
-    struct HudInspect {
-        bool selected = false;
-        Rml::String name;
-        float maxGrievance = 0.0f;
-        float strength = 0.0f;
-        Rml::String topRelName;
-        float topRelSig = 0.0f;
-        Rml::String cause;
-    };
+    struct HudInspect { HUD_INSPECT_MEMBERS(UT_HUD_FIELD) };
+#undef UT_HUD_FIELD
 
     int tick_ = 0;
     int bodyCount_ = 0;
