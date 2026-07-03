@@ -6,6 +6,7 @@
 #include "Data/Nodes/CameraNodeConfig.h"
 #include "Data/CameraData.h"
 #include <glm/glm.hpp>
+#include <cmath>
 #include <memory>
 
 // Forward declarations
@@ -45,6 +46,11 @@ public:
         NodeType* nodeType
     );
     ~CameraNode() override = default;
+
+    /// Live camera as rendered this frame (orbit-derived position + basis). The pose PARAMS are
+    /// only setup-time requests; anything that needs the actual view (e.g. the host's CPU body
+    /// pick) must read this, not the params — they diverge as soon as the user orbits/zooms.
+    const CameraData& GetCurrentCameraData() const { return currentCameraData; }
 
 protected:
     void SetupImpl(TypedSetupContext& ctx) override;
@@ -100,8 +106,14 @@ private:
     float mouseSmoothingFactor = 0.6f;  // 0=no smoothing, 1=instant (0.6 = responsive)
     float maxRotationDeltaPerFrame = 100.0f;  // Max pixels per frame to prevent jumps
 
-    // Setup state tracking (prevent camera reset on recompilation)
-    bool initialSetupComplete = false;
+    // Last-applied pose-param values (NaN = never applied). SetupImpl re-runs on EVERY graph
+    // recompile (resize, any node's param edit) — applying a pose param only when its stored
+    // value actually changed keeps recompiles from snapping the live orbit camera back to t0,
+    // while setcam/lookcam-style param writes still land exactly once.
+    float lastParamCamX_ = NAN, lastParamCamY_ = NAN, lastParamCamZ_ = NAN;
+    float lastParamYaw_ = NAN, lastParamPitch_ = NAN;
+    float lastParamOrbitCX_ = NAN, lastParamOrbitCY_ = NAN, lastParamOrbitCZ_ = NAN;
+    float lastParamOrbitDist_ = NAN;
 };
 
 } // namespace Vixen::RenderGraph

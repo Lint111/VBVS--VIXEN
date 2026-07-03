@@ -74,6 +74,13 @@ CONSTEXPR_NODE_CONFIG(CameraNodeConfig,
     static constexpr const char* PARAM_YAW = "yaw";
     static constexpr const char* PARAM_PITCH = "pitch";
     static constexpr const char* PARAM_GRID_RESOLUTION = "grid_resolution";
+    // Orbit-model pose requests: the render camera IS an orbit camera (position derived from
+    // orbitCenter + yaw/pitch/orbitDistance every Execute — camera_x/y/z only seed the pre-orbit
+    // state). These let a host/console re-anchor the orbit (e.g. click-to-fly to a body).
+    static constexpr const char* PARAM_ORBIT_CENTER_X = "orbit_center_x";
+    static constexpr const char* PARAM_ORBIT_CENTER_Y = "orbit_center_y";
+    static constexpr const char* PARAM_ORBIT_CENTER_Z = "orbit_center_z";
+    static constexpr const char* PARAM_ORBIT_DISTANCE = "orbit_distance";
 
     // Per-frame resources (ring buffer)
     static constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 4;

@@ -43,14 +43,29 @@ void CameraNode::SetupImpl(TypedSetupContext& ctx) {
     farPlane = GetParameterValue<float>(CameraNodeConfig::PARAM_FAR_PLANE, 1000.0f);
     gridResolution = GetParameterValue<uint32_t>(CameraNodeConfig::PARAM_GRID_RESOLUTION, 128u);
 
-    // ALWAYS read camera parameters on setup (for debugging)
-    // TODO: Restore initialSetupComplete check after fixing camera position
-    cameraPosition.x = GetParameterValue<float>(CameraNodeConfig::PARAM_CAMERA_X, 0.0f);
-    cameraPosition.y = GetParameterValue<float>(CameraNodeConfig::PARAM_CAMERA_Y, 0.0f);
-    cameraPosition.z = GetParameterValue<float>(CameraNodeConfig::PARAM_CAMERA_Z, 3.0f);
-
-    yaw = GetParameterValue<float>(CameraNodeConfig::PARAM_YAW, 0.0f);
-    pitch = GetParameterValue<float>(CameraNodeConfig::PARAM_PITCH, 0.0f);
+    // Pose params are REQUESTS, applied only when their stored value changed since the last
+    // apply (NaN sentinel = first sight always applies). Setup re-runs on every recompile —
+    // resize, any node's SetParameter — and the old unconditional re-read snapped the live
+    // input-driven orbit camera back to its t0 pose each time.
+    auto applyIfChanged = [&](const char* name, float& lastApplied, auto&& apply) {
+        if (GetParameter(name) == nullptr) return;          // never set on this node
+        const float v = GetParameterValue<float>(name, 0.0f);
+        if (!std::isnan(lastApplied) && v == lastApplied) return;
+        apply(v);
+        lastApplied = v;
+    };
+    applyIfChanged(CameraNodeConfig::PARAM_CAMERA_X, lastParamCamX_, [&](float v) { cameraPosition.x = v; });
+    applyIfChanged(CameraNodeConfig::PARAM_CAMERA_Y, lastParamCamY_, [&](float v) { cameraPosition.y = v; });
+    applyIfChanged(CameraNodeConfig::PARAM_CAMERA_Z, lastParamCamZ_, [&](float v) { cameraPosition.z = v; });
+    applyIfChanged(CameraNodeConfig::PARAM_YAW,   lastParamYaw_,   [&](float v) { yaw = v; });
+    applyIfChanged(CameraNodeConfig::PARAM_PITCH, lastParamPitch_, [&](float v) { pitch = v; });
+    // Orbit-model pose requests (host click-to-fly / console): re-anchor the orbit camera.
+    applyIfChanged(CameraNodeConfig::PARAM_ORBIT_CENTER_X, lastParamOrbitCX_, [&](float v) { orbitCenter.x = v; });
+    applyIfChanged(CameraNodeConfig::PARAM_ORBIT_CENTER_Y, lastParamOrbitCY_, [&](float v) { orbitCenter.y = v; });
+    applyIfChanged(CameraNodeConfig::PARAM_ORBIT_CENTER_Z, lastParamOrbitCZ_, [&](float v) { orbitCenter.z = v; });
+    applyIfChanged(CameraNodeConfig::PARAM_ORBIT_DISTANCE, lastParamOrbitDist_, [&](float v) {
+        orbitDistance = glm::clamp(v, kOrbitDistanceMin, kOrbitDistanceMax);
+    });
 
     NODE_LOG_INFO("Camera position: (" + std::to_string(cameraPosition.x) + ", " +
                   std::to_string(cameraPosition.y) + ", " + std::to_string(cameraPosition.z) +
