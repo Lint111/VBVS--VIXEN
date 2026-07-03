@@ -229,3 +229,18 @@ Counters compiled out of the live shader (rank 2):
 | p99 | 26.1 ms | 17.3 ms | -34% |
 
 Frame-time halving exceeds the dispatch delta — the HOST_VISIBLE|HOST_COHERENT atomic traffic taxed the whole pipeline, not just the dispatch. Rank-2's "10-25%" estimate was conservative on this GPU. API note: ShaderBundleBuilder::SetStageDefines does whole-word token substitution (cannot inject `#ifdef` defines) — counters re-enable only by hand-editing the shader.
+
+### M3 gate (2026-07-03, resize probe 500x500 -> 2560x1440 @ frame 600, real GPU)
+
+Resize-path robustness (ranks 3/7/8 + rank-5 correctness):
+
+| Metric | Pre-M3 baseline | Post-M3 |
+|---|---|---|
+| Transition-window p99 | 40.8 ms | 25.5 ms |
+| Recompilations per resize | 1 | 1 (now deduped: 10 nodes, each exactly once) |
+| In-use teardown VUIDs | 10 + segfault (exposed on lavapipe) | 0 |
+| Post-resize steady | ~4.8 ms / 210 FPS | ~4.8 ms / 205-215 FPS |
+
+Bonus root-cause fix: recreation waves never waited for in-flight GPU work before teardown (pre-existing; masked by luck until M3 made the wave deterministic). Fix: WaitForGraphDevicesIdle gated on pausedForRecreation_ — ordinary recompiles stay wait-free; validator empirically confirmed the OUT_OF_DATE acquire publishes PAUSE_START before every resize wave.
+
+Follow-ups recorded (pre-existing, NOT M3 regressions): (a) ~10-20x VUID-vkCmdDispatch-None-08114 at startup frames 0-99; (b) one-frame ~10-20x VUID-vkCmdBindPipeline-pipeline-parameter burst right after the resize recompile (descriptor rebind timing — M5 candidate); (c) MINOR: QueryCurrentSurfaceExtent lacks the 0xFFFFFFFF undefined-extent guard (Wayland-only storm risk — folded into M4); (d) post-resize steady frames ~1 ms slower than fresh-window at the same extent (M5 attribution target); (e) NODE_LOG_INFO lines from SwapChainNode/PickIdTargetNode don't surface in app logs in this config (observability gap).
