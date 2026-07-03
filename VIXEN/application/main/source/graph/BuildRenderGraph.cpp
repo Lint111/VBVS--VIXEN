@@ -462,6 +462,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
 #endif
                .AddStageFromFile(ShaderManagement::ShaderStage::Compute, compPath, "main");
 
+        // Shader counters (perf sweep rank 2) are compiled OUT unconditionally: the live
+        // app has no consumer for them, and every pixel was paying 3-4 unread atomic RMWs
+        // into a HOST_COHERENT SSBO. No env opt-in — ShaderBundleBuilder::SetStageDefines
+        // does line-level token substitution, not textual #define injection, so it cannot
+        // drive ShaderCounters.glsl's #ifdef ENABLE_SHADER_COUNTERS guard (verified: passing
+        // an empty-value define here turns "#ifdef ENABLE_SHADER_COUNTERS" into "#ifdef ",
+        // a glslang compile error). Re-enable by hand-editing this .comp's #define if needed.
+
         if (mainLogger && mainLogger->IsEnabled()) {
             mainLogger->Info("[BuildRenderGraph] Using BodyInstanceRayMarch shader: " + compPath.string());
             mainLogger->Info("[BuildRenderGraph] Octree buffers at bindings 1/2/3/5 (BodyOctreeSceneNode); instances at binding 10");
@@ -1130,15 +1138,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
                           descriptorGatherer, 9,  // Binding 9: idOutputImage
                           SlotRoleModifier(SlotRole::Execute));
 
-    // Binding 8: ShaderCounters — BodyInstanceRayMarch.comp uses ENABLE_SHADER_COUNTERS at binding 8
-    // exactly like the compressed variant did. Still sourced from voxelGridNode (the only node with
-    // this buffer; BodyOctreeSceneNode has no shader counters). Must be bound to avoid UB.
-    batch.Connect(voxelGridNode, VoxelGridNodeConfig::SHADER_COUNTERS_BUFFER,
-                          descriptorGatherer, 8,  // Binding 8: ShaderCountersBuffer
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-
+    // Binding 8: ShaderCounters is compiled out of BodyInstanceRayMarch.comp unconditionally
+    // (see shader builder above), so binding 8 no longer exists in the reflected SPIR-V —
+    // wiring a descriptor for a binding the shader doesn't declare is itself a validation
+    // error, so this Connect() is deliberately removed, not just disabled.
     if (mainLogger && mainLogger->IsEnabled()) {
-        mainLogger->Info("[BuildRenderGraph] Connected debug/counters: binding 4 (voxelGridNode debug capture), binding 8 (voxelGridNode shader counters)");
+        mainLogger->Info("[BuildRenderGraph] Connected debug: binding 4 (voxelGridNode debug capture); shader counters (binding 8) compiled out");
     }
 
     // Binding 10: BodyInstanceBuffer (SSBO) — per-body BodyInstanceGpu records (64 B each).
