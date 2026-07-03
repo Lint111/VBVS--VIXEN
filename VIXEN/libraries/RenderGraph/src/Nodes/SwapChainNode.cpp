@@ -311,11 +311,16 @@ uint32_t SwapChainNode::AcquireNextImage(VkSemaphore presentCompleteSemaphore) {
         &currentImageIndex
     );
 
-    // Handle out-of-date swapchain
-    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
-        NODE_LOG_INFO("SwapChainNode: Swapchain out of date/suboptimal, marking for recreation");
+    // VK_ERROR_OUT_OF_DATE_KHR: the acquire genuinely failed -- currentImageIndex is not valid,
+    // there is nothing to render/present this frame. Abort it and recreate.
+    if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+        NODE_LOG_INFO("SwapChainNode: Swapchain out of date, marking for recreation");
 
-        // Publish render pause event for swapchain recreation
+        // Publish render pause event for swapchain recreation. RenderGraph::RenderFrame() checks
+        // renderPaused BEFORE this frame's nodes execute and returns early when set, so pausing
+        // here is what actually makes "abort this frame" take effect -- MUST NOT be published for
+        // the VK_SUBOPTIMAL_KHR case below, or that frame gets silently skipped too despite having
+        // a valid, already-signaled acquire (the bug this split fixes).
         if (GetMessageBus()) {
             GetMessageBus()->Publish(
                 std::make_unique<EventTypes::RenderPauseEvent>(
@@ -333,7 +338,23 @@ uint32_t SwapChainNode::AcquireNextImage(VkSemaphore presentCompleteSemaphore) {
         // Recompilation will happen in the next Update() cycle
         return UINT32_MAX;
     }
-    else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
+    // VK_SUBOPTIMAL_KHR: per spec, the acquire SUCCEEDED -- currentImageIndex is valid and
+    // presentCompleteSemaphore IS signaled; the driver is only hinting the surface no longer
+    // matches ideal presentation parameters (seen routinely on Mesa Dozen/WSL2's Vulkan-over-D3D12
+    // path, rarely on llvmpipe). The old code lumped this in with OUT_OF_DATE, discarding a
+    // genuinely-acquired image and its signaled semaphore without ever presenting it -- on the
+    // NEXT acquire, the validation layer (correctly) flags a later frame's swapchain image as "not
+    // acquired since the last present" the moment it's transitioned
+    // (UNASSIGNED-non-acquired-swapchain-image-used), because the leaked acquire desynced the
+    // acquire/present pairing the whole rest of the API tracks. Render and present this frame
+    // normally; only schedule the recreation for later (no pause -- see the OUT_OF_DATE case
+    // above for why publishing one here would silently skip this frame anyway).
+    else if (result == VK_SUBOPTIMAL_KHR) {
+        NODE_LOG_INFO("SwapChainNode: Swapchain suboptimal, rendering this frame and marking for recreation");
+        MarkNeedsRecompile();
+        return currentImageIndex;
+    }
+    else if (result != VK_SUCCESS) {
         std::string errorMsg = "SwapChainNode: failed to acquire swapchain image";
         NODE_LOG_ERROR(errorMsg);
         throw std::runtime_error(errorMsg);

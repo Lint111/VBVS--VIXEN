@@ -128,8 +128,13 @@ VkResult PresentNode::Present(Context& ctx) {
     // Queue present
     lastResult = fpQueuePresent(device->queue, &presentInfo);
 
-    // Wait for device idle if requested (for compatibility with current behavior)
-    if (waitForIdle && lastResult == VK_SUCCESS && device != nullptr) {
+    // Wait for device idle if requested (for compatibility with current behavior). VK_SUBOPTIMAL_KHR
+    // means the present itself succeeded (the image was submitted; the driver is only hinting the
+    // swapchain should be recreated soon -- see SwapChainNode::AcquireNextImage for the matching
+    // acquire-side handling) -- treat it the same as VK_SUCCESS here, or Dozen (which returns
+    // VK_SUBOPTIMAL_KHR routinely) permanently loses this idle-wait's synchronization margin.
+    const bool presentSucceeded = (lastResult == VK_SUCCESS || lastResult == VK_SUBOPTIMAL_KHR);
+    if (waitForIdle && presentSucceeded && device != nullptr) {
         vkDeviceWaitIdle(device->device);
     }
 
