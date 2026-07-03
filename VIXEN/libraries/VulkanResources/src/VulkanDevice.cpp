@@ -1,5 +1,4 @@
 #include "VulkanDevice.h"
-#include "VulkanGlobalNames.h"  // vixenCmdPipelineBarrier2
 
 // Upload infrastructure (Sprint 5 Phase 2.5.3)
 #include "Memory/BatchedUploader.h"
@@ -141,7 +140,7 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
 
     // synchronization2 is REQUIRED — the renderer records all GPU barriers via
     // vkCmdPipelineBarrier2KHR (ComputeDispatchNode, MultiDispatchNode, PassRecorder, and 6 more
-    // call sites; see vixenCmdPipelineBarrier2 in VulkanGlobalNames.h). Gated through the
+    // call sites; see the per-device VulkanDevice::fpCmdPipelineBarrier2). Gated through the
     // capability graph like timelineSemaphore/bufferDeviceAddress; unlike those it is mandatory,
     // so a device that lacks it is a hard error (cf. shaderStorageImageWriteWithoutFormat below).
     //
@@ -211,29 +210,28 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
 
     VK_CHECK(vkCreateDevice(*gpu, &deviceInfo, nullptr, &device), "Failed to create logical device");
 
-    // Resolve the promoted-or-extension entry point for every barrier call site to use (see
-    // vixenCmdPipelineBarrier2 in VulkanGlobalNames.h) via the KHR-suffixed name -- correct
-    // whether the driver negotiated real 1.3 core (where core and KHR names alias the same
-    // pointer) or is 1.2-plus-extension like Dozen (where only the KHR name resolves; the bare
-    // core name's dispatch-table entry is null per spec on a non-1.3 apiVersion). A null result
-    // here means the extensions.push_back() above didn't take -- e.g. HasExtension's driver-side
-    // enumeration disagreeing with the request -- which is a genuine, unexpected environment
+    // Resolve THIS device's promoted-or-extension synchronization2 entry points (per-instance
+    // members — see fpCmdPipelineBarrier2/fpQueueSubmit2 in VulkanDevice.h) via the KHR-suffixed
+    // names -- correct whether the driver negotiated real 1.3 core (where core and KHR names alias
+    // the same pointer) or is 1.2-plus-extension like Dozen (where only the KHR name resolves; the
+    // bare core name's dispatch-table entry is null per spec on a non-1.3 apiVersion). A null
+    // result here means the extensions.push_back() above didn't take -- e.g. HasExtension's
+    // driver-side enumeration disagreeing with the request -- a genuine, unexpected environment
     // problem worth failing loudly on rather than segfaulting three frames into the first render.
-    vixenCmdPipelineBarrier2 = reinterpret_cast<PFN_vkCmdPipelineBarrier2KHR>(
+    fpCmdPipelineBarrier2 = reinterpret_cast<PFN_vkCmdPipelineBarrier2KHR>(
         vkGetDeviceProcAddr(device, "vkCmdPipelineBarrier2KHR"));
-    // Same extension bundle, same promotion gap, same resolution strategy (see
-    // vixenQueueSubmit2 in VulkanGlobalNames.h) -- vkQueueSubmit2 is part of
-    // VK_KHR_synchronization2 alongside vkCmdPipelineBarrier2, not a separate capability.
-    vixenQueueSubmit2 = reinterpret_cast<PFN_vkQueueSubmit2KHR>(
+    // Same extension bundle, same promotion gap, same resolution strategy -- vkQueueSubmit2 is
+    // part of VK_KHR_synchronization2 alongside vkCmdPipelineBarrier2, not a separate capability.
+    fpQueueSubmit2 = reinterpret_cast<PFN_vkQueueSubmit2KHR>(
         vkGetDeviceProcAddr(device, "vkQueueSubmit2KHR"));
-    if (!vixenCmdPipelineBarrier2 || !vixenQueueSubmit2) {
+    if (!fpCmdPipelineBarrier2 || !fpQueueSubmit2) {
         VkPhysicalDeviceProperties props{};
         vkGetPhysicalDeviceProperties(*gpu, &props);
         vkDestroyDevice(device, nullptr);
         device = VK_NULL_HANDLE;
         throw std::runtime_error(
             std::string("GPU driver '") + props.deviceName + "' reports synchronization2 support "
-            "but " + (!vixenCmdPipelineBarrier2 ? "vkCmdPipelineBarrier2KHR" : "vkQueueSubmit2KHR") +
+            "but " + (!fpCmdPipelineBarrier2 ? "vkCmdPipelineBarrier2KHR" : "vkQueueSubmit2KHR") +
             " failed to resolve even with VK_KHR_synchronization2 requested as a device "
             "extension. The renderer requires a real synchronization2 implementation; there is "
             "no legacy vkCmdPipelineBarrier/vkQueueSubmit fallback path.");
@@ -547,7 +545,7 @@ uint32_t VulkanDevice::RecordUpdates(VkCommandBuffer cmd, uint32_t imageIndex) {
     if (!updater_ || !cmd) {
         return 0;
     }
-    return updater_->RecordAll(cmd, imageIndex, vixenCmdPipelineBarrier2);
+    return updater_->RecordAll(cmd, imageIndex, fpCmdPipelineBarrier2);
 }
 
 bool VulkanDevice::HasUpdateSupport() const {

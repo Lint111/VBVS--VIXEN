@@ -140,10 +140,10 @@ public:
      *
      * @param cmd Active command buffer in recording state
      * @param imageIndex Frame index to record
-     * @param cmdPipelineBarrier2 Resolved vkCmdPipelineBarrier2KHR entry point, passed in by the
-     *        caller (ResourceManagement has no dependency on VulkanResources, where the shared,
-     *        process-global resolved pointer lives -- see vixenCmdPipelineBarrier2 in
-     *        VulkanGlobalNames.h -- so it can't be reached directly from this library). Used only
+     * @param cmdPipelineBarrier2 Resolved vkCmdPipelineBarrier2KHR entry point of the RECORDING
+     *        device, passed in by the caller (ResourceManagement has no dependency on
+     *        VulkanResources, where the per-device pointer lives -- see
+     *        VulkanDevice::fpCmdPipelineBarrier2 -- so it can't be reached from this library). Used only
      *        when config_.insertBarriers is true and at least one pending update needs a
      *        pre-barrier; pass nullptr to disable barrier insertion outright instead of crashing
      *        on an unresolved pointer.

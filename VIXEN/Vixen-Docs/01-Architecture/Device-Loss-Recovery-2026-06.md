@@ -1,8 +1,8 @@
 ---
 tags: [architecture, error-model, refactor, AR1, device-loss, recovery, phase3]
 created: 2026-06-13
-status: phase 3 — Inc 1 + Inc 2 DONE. Device-loss recovery fully working: rebuild on a fresh device, resume rendering indefinitely, zero validation errors. (Inc 3 = automated test + remaining detection sites.)
-related: ["[[Error-Model-Refactor-2026-06]]", "[[Window-Abstraction-Design-2026-06]]", "[[Architecture-Review-Game-Renderer-2026-06-12]]"]
+status: phase 3 — Inc 1 + Inc 2 DONE. Device-loss recovery fully working: rebuild on a fresh device, resume rendering indefinitely, zero validation errors. Inc 3's "promote the fault-injection harness into an automated test" is DONE (2026-07-02, see Fail-Scenario-Simulation-Design-2026-07.md, DeviceLostRecovery scenario) — and it found a real bug: frame-precise fault timing (not reliably reachable by hand) crashes recovery. Filed as KI-004 (Known-Issues.md); scenario gated report-not-block until fixed.
+related: ["[[Error-Model-Refactor-2026-06]]", "[[Window-Abstraction-Design-2026-06]]", "[[Architecture-Review-Game-Renderer-2026-06-12]]", "[[Fail-Scenario-Simulation-Design-2026-07]]"]
 ---
 
 # Device-Loss Recovery (AR#1, Error-Model Phase 3) — Design
@@ -157,6 +157,20 @@ surfaces here within one frame. Secondary sites (acquire/present/submit) are wir
 - **Increment 3 — hardening + coverage + tests.** Wire the remaining acquire/present/submit detection
   sites; promote the fault-injection harness into an automated test; exercise the unrecoverable-loss
   terminal path; live-app no-regression validation.
+  - ✅ **"Promote the fault-injection harness into an automated test" — DONE 2026-07-02** (see
+    `[[Fail-Scenario-Simulation-Design-2026-07]]`, `DeviceLostRecovery` scenario in
+    `FrameSyncNode.cpp`). The env hook (`VIXEN_SIMULATE_DEVICE_LOSS`) now arms the same
+    `FaultSite::FenceWait` injection point the scenario uses — flag-gated behind
+    `VIXEN_FAIL_SCENARIOS`, absent from real builds. Automating this immediately found a real bug
+    (**KI-004**, `Known-Issues.md`): forcing device loss precisely enough to land mid-frame-loop
+    (something a human timing a real TDR essentially never does) crashes recovery — a node
+    downstream of `FrameSyncNode` in the same frame still executes and submits against a resource
+    `RecoverFromDeviceLoss`'s teardown is racing to free. Root cause: `RenderGraph::RenderFrame`'s
+    sequential Execute loop has no `deviceLost_` check between node iterations. The scenario is
+    currently gated (`knownIssueId = "KI-004"`, reports but doesn't block the sweep); once
+    `RenderGraph.cpp`'s frame loop is fixed to stop executing nodes the instant a fault lands, remove
+    the gate and this scenario becomes the permanent regression test for both the original recovery
+    path AND this new race.
 
 ## 7. Acceptance
 
@@ -168,5 +182,7 @@ surfaces here within one frame. Secondary sites (acquire/present/submit) are wir
 - ✅ Post-recovery rendering is stable across frames (UAF + VUID fixes; 600k+ post-recovery log lines).
 - ⬜ An unrecoverable loss (device gone) terminates gracefully via status, with no infinite spin
   (`deviceLostUnrecoverable_` path — coded, not yet exercised since the simulated device is healthy). Inc 3.
-- ⬜ Automated simulated device-loss test (Inc 3); live app unaffected with the env var unset (holds:
-  recovery code is dormant unless a real loss or the env var triggers it).
+- ✅ Automated simulated device-loss test exists (Inc 3, `DeviceLostRecovery` fail-scenario,
+  2026-07-02); live app unaffected with the env var unset and `VIXEN_FAIL_SCENARIOS` off (holds:
+  recovery code is dormant unless a real loss or the env var triggers it; whole feature compiles
+  out). The test currently reproduces KI-004 rather than passing clean — gated, not yet green.

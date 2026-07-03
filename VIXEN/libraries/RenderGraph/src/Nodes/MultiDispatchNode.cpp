@@ -3,7 +3,6 @@
 #include "Data/Nodes/MultiDispatchNodeConfig.h"
 #include "Core/RenderGraph.h"  // Sprint 6.3: For TaskProfileRegistry access
 #include "VulkanDevice.h"
-#include "VulkanGlobalNames.h"  // vixenCmdPipelineBarrier2
 #include "VulkanSwapChain.h"
 #include "Core/NodeLogging.h"
 
@@ -659,7 +658,7 @@ void MultiDispatchNode::InsertAutoBarrier(VkCommandBuffer cmdBuffer) {
     dependencyInfo.memoryBarrierCount = 1;
     dependencyInfo.pMemoryBarriers = &memoryBarrier;
 
-    vixenCmdPipelineBarrier2(cmdBuffer, &dependencyInfo);
+    vulkanDevice_->fpCmdPipelineBarrier2(cmdBuffer, &dependencyInfo);
 }
 
 void MultiDispatchNode::RecordBarrier(
@@ -687,7 +686,7 @@ void MultiDispatchNode::RecordBarrier(
         dependencyInfo.pImageMemoryBarriers = barrier.imageBarriers.data();
     }
 
-    vixenCmdPipelineBarrier2(cmdBuffer, &dependencyInfo);
+    vulkanDevice_->fpCmdPipelineBarrier2(cmdBuffer, &dependencyInfo);
 }
 
 // ============================================================================

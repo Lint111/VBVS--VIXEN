@@ -1,10 +1,13 @@
 #include "Headers.h"
 #include "Nodes/WindowNode.h"
 #include "Core/NodeRegistration.h"
+#include "Core/FailScenario.h"
+#include "Nodes/SwapChainNode.h"  // fail-scenario contracts below call SwapChainNode member accessors
 #include "VulkanDevice.h"
 #include "Core/NodeLogging.h"
 #include "Message.h"
 #include "EventTypes/RenderGraphEvents.h"
+#include <cstdlib>  // std::getenv (VIXEN_HIDDEN_WINDOW, fail-scenario runner)
 
 #define GLFW_INCLUDE_NONE   // don't pull in <GL/gl.h> (absent on headless/WSL); Vulkan-only below
 #define GLFW_INCLUDE_VULKAN
@@ -68,6 +71,12 @@ void WindowNode::CompileImpl(TypedCompileContext& ctx) {
         // Vulkan rendering: tell GLFW not to create an OpenGL context.
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
         glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
+
+#if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
+        // Fail-scenario runner: create the window hidden so the sweep runs unattended.
+        if (const char* hid = std::getenv("VIXEN_HIDDEN_WINDOW"); hid && hid[0] == '1')
+            glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
+#endif
 
         window = glfwCreateWindow(static_cast<int>(width), static_cast<int>(height),
                                   "Vixen Render Graph", nullptr, nullptr);
@@ -275,6 +284,17 @@ void WindowNode::OnWindowIconify(GLFWwindow* w, int iconified) {
     self->pendingEvents.push_back({iconified ? WindowEvent::Type::Minimize : WindowEvent::Type::Restore});
 }
 
+#if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
+void WindowNode::InjectWindowEvent(WindowEvent::Type type, uint32_t w, uint32_t h) {
+    std::lock_guard<std::recursive_mutex> lock(eventMutex);
+    pendingEvents.push_back(WindowEvent{ type, w, h });
+}
+size_t WindowNode::PendingEventCountForTest() const {
+    std::lock_guard<std::recursive_mutex> lock(eventMutex);
+    return pendingEvents.size();
+}
+#endif
+
 void WindowNode::CleanupImpl(TypedCleanupContext& ctx) {
     // Window + surface are PERSISTENT: a recompile (e.g. swapchain recreation) must NOT destroy them --
     // only the swapchain follows recompiles. Tear them down solely on final application teardown.
@@ -304,3 +324,41 @@ void WindowNode::CleanupImpl(TypedCleanupContext& ctx) {
 
 // Self-registration (M3): registrar kept in this TU; RenderGraphNodes is whole-archived so it is not stripped.
 VIXEN_REGISTER_NODE(Vixen::RenderGraph::WindowNodeType);
+
+#if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
+namespace FS = Vixen::RenderGraph::FailScenario;
+VIXEN_FAIL_SCENARIOS_DECLARE(Vixen::RenderGraph::WindowNodeType,
+    VIXEN_SCENARIO(ResizeLargeExtentJump,   // deterministic fullscreen-class repro (extent jump)
+        FS::WindowStimulus{ .kind = FS::WindowStimulus::Kind::ResizeTo, .width = 1920, .height = 1080 },
+        [](FS::ScenarioContext& c) {
+            auto* sc = c.SwapChain();
+            if (!sc) { c.Fail("no SwapChain node reachable from harness"); return; }
+            if (sc->GetWidth() != 1920u || sc->GetHeight() != 1080u)
+                c.Fail("swapchain never recreated at the new extent: got " +
+                       std::to_string(sc->GetWidth()) + "x" + std::to_string(sc->GetHeight()) +
+                       ", expected 1920x1080");
+        }),
+    VIXEN_SCENARIO(MaximizeLikeFullscreenButton,   // the literal user gesture (WM-dependent)
+        FS::WindowStimulus{ .kind = FS::WindowStimulus::Kind::Maximize },
+        [](FS::ScenarioContext& c) {
+            // Extent after maximize is WM-decided: assert swapchain matches the REAL framebuffer.
+            int fw = 0, fh = 0;
+            glfwGetFramebufferSize(c.Window(), &fw, &fh);
+            auto* sc = c.SwapChain();
+            if (!sc) { c.Fail("no SwapChain node reachable from harness"); return; }
+            if (sc->GetWidth() != static_cast<uint32_t>(fw) || sc->GetHeight() != static_cast<uint32_t>(fh))
+                c.Fail("swapchain extent " + std::to_string(sc->GetWidth()) + "x" +
+                       std::to_string(sc->GetHeight()) + " does not match maximized framebuffer " +
+                       std::to_string(fw) + "x" + std::to_string(fh));
+        }),
+    VIXEN_SCENARIO(MinimizeThenRestore,
+        FS::WindowStimulus{ .kind = FS::WindowStimulus::Kind::Minimize },
+        [](FS::ScenarioContext& c) {
+            // Minimized: must not crash or hang (global criteria cover the frames while iconified).
+            // Then restore and require rendering to resume.
+            if (!c.ApplyStimulus(FS::WindowStimulus{ .kind = FS::WindowStimulus::Kind::Restore }))
+                c.Skip("WM refused restore on the hidden window");
+            if (!c.RunFrames(30)) c.Fail("rendering did not resume after restore");
+        })
+);
+#endif

@@ -164,6 +164,7 @@ set(RENDERGRAPH_DATA_CORE_SOURCES
 set(RENDERGRAPH_CORE_SOURCES
     # Note: Memory/Lifetime sources moved to ResourceManagement library
     # Note: ConnectionRule.cpp split into Connection/ folder
+    src/Core/FailScenario.cpp  # Inc 1: whole file compiles out when VIXEN_FAIL_SCENARIOS is OFF
     src/Core/GPUPerformanceLogger.cpp
     src/Core/GPUQueryManager.cpp  # Sprint 6.3: Task #344 - Query pool coordinator
     src/Core/GraphLifecycleHooks.cpp
