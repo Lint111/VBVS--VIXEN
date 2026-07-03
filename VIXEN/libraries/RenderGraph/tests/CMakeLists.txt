@@ -58,6 +58,20 @@ set_target_properties(test_typednode_helpers PROPERTIES FOLDER "Tests/RenderGrap
 
 gtest_discover_tests(test_typednode_helpers)
 
+add_executable(test_node_parameter_manager Core/test_node_parameter_manager.cpp)
+
+# Link against the RenderGraph library target - includes propagate automatically
+if(TARGET RenderGraph)
+    target_link_libraries(test_node_parameter_manager PRIVATE GTest::gtest_main RenderGraph)
+else()
+    target_link_libraries(test_node_parameter_manager PRIVATE GTest::gtest_main)
+endif()
+
+# Visual Studio solution folder organization
+set_target_properties(test_node_parameter_manager PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+gtest_discover_tests(test_node_parameter_manager)
+
 # Typed runtime accumulation-gather (InAll<T> fan-in) — CPU-only, no device
 add_executable(test_accumulation_gather test_accumulation_gather.cpp)
 
