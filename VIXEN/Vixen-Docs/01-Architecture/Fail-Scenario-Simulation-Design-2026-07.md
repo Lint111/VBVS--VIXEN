@@ -1,8 +1,8 @@
 ---
 tags: [architecture, fail-scenarios, fault-injection, validation, error-model, design]
 created: 2026-07-02
-status: design approved 2026-07-02 (user). Not yet implemented — next step is the Inc 1 implementation plan.
-related: ["[[Error-Model-Refactor-2026-06]]", "[[Device-Loss-Recovery-2026-06]]", "[[RenderGraph-System]]"]
+status: Inc 1 implemented (2026-07-02); scenarios live in the sweep (see Fail-Scenario-Simulation-Inc1-Plan). Inc 2 (coverage + gate target + tamper self-test) next.
+related: ["[[Error-Model-Refactor-2026-06]]", "[[Device-Loss-Recovery-2026-06]]", "[[RenderGraph-System]]", "[[Fail-Scenario-Simulation-Inc1-Plan-2026-07]]"]
 ---
 
 # Fail-Scenario Simulation (Build-Time Graph Fault-Injection Gate) — Design
