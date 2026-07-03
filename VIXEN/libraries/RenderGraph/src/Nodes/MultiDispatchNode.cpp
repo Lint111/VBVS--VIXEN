@@ -658,7 +658,7 @@ void MultiDispatchNode::InsertAutoBarrier(VkCommandBuffer cmdBuffer) {
     dependencyInfo.memoryBarrierCount = 1;
     dependencyInfo.pMemoryBarriers = &memoryBarrier;
 
-    vkCmdPipelineBarrier2(cmdBuffer, &dependencyInfo);
+    vulkanDevice_->fpCmdPipelineBarrier2(cmdBuffer, &dependencyInfo);
 }
 
 void MultiDispatchNode::RecordBarrier(
@@ -686,7 +686,7 @@ void MultiDispatchNode::RecordBarrier(
         dependencyInfo.pImageMemoryBarriers = barrier.imageBarriers.data();
     }
 
-    vkCmdPipelineBarrier2(cmdBuffer, &dependencyInfo);
+    vulkanDevice_->fpCmdPipelineBarrier2(cmdBuffer, &dependencyInfo);
 }
 
 // ============================================================================

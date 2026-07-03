@@ -464,6 +464,11 @@ void RenderGraph::RegisterPostNodeCompileCallback(PostNodeCompileCallback callba
     postNodeCompileCallbacks.push_back(std::move(callback));
 }
 
+void RenderGraph::RegisterPostNodeExecuteCallback(const std::string& nodeInstanceName,
+                                                   PostNodeExecuteCallback callback) {
+    postNodeExecuteCallbacks.emplace(nodeInstanceName, std::move(callback));
+}
+
 void RenderGraph::SetDeviceBudgetManager(std::shared_ptr<DeviceBudgetManager> manager) {
     deviceBudgetManager_ = std::move(manager);
 
@@ -605,6 +610,14 @@ void RenderGraph::Execute(VkCommandBuffer commandBuffer) {
 }
 
 void RenderGraph::NotifyDeviceLost(const std::string& site) {
+    // KI-004: a lost device invalidates every remaining node execution in this frame — abort the frame
+    // via the central abort (same mechanism as the out-of-date acquire path) so no node downstream of
+    // the detection site records/submits against objects RecoverFromDeviceLoss is about to tear down.
+    // Latching only deviceLost_ was not enough: the Execute loop checks frameAborted_ between nodes,
+    // but deviceLost_ only at frame END, so a downstream ComputeDispatch still submitted on the
+    // condemned frame and raced the recovery teardown (loader-level invalid-commandBuffer abort).
+    // Set before the idempotency return: a repeat mid-frame detection must keep the abort armed.
+    AbortCurrentFrame();
     // AR#1 Phase 3, Increment 1. Idempotent latch: the first detection wins so we report a single,
     // coherent device-loss origin even though several GPU calls (submit/present/wait) may all fail in
     // the same frame. The device + every child object is invalid from here; RenderFrame() short-circuits
@@ -696,23 +709,21 @@ bool RenderGraph::RecoverFromDeviceLoss() {
 }
 
 VkResult RenderGraph::RenderFrame() {
-    // AR#1 Phase 3: device-loss fault-injection hook (no-op unless VIXEN_SIMULATE_DEVICE_LOSS is set).
-    // Parse the env once; then latch a synthetic loss exactly once at the configured render-frame so the
-    // teardown+rebuild recovery path runs in a live run. The rebuild is valid on a healthy device too, so
-    // this faithfully exercises RecoverFromDeviceLoss without needing a real TDR.
+#if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
+    // Fail-scenario migration of the AR#1 Phase-3 harness: VIXEN_SIMULATE_DEVICE_LOSS=<frame> arms a
+    // one-shot FenceWait fault, so the synthetic loss is DETECTED by FrameSyncNode's real fence-wait
+    // path (NotifyDeviceLost fires from the node, not from here). Compiled out of real builds.
     if (simulateDeviceLossFrame_ == -2) {
         const char* env = std::getenv("VIXEN_SIMULATE_DEVICE_LOSS");
         simulateDeviceLossFrame_ = -1;
-        if (env) {
-            int parsed = std::atoi(env);
-            simulateDeviceLossFrame_ = (parsed > 0) ? parsed : 120;  // truthy-but-non-numeric -> default frame
-        }
+        if (env) { int parsed = std::atoi(env); simulateDeviceLossFrame_ = (parsed > 0) ? parsed : 120; }
     }
     if (!deviceLossSimulated_ && simulateDeviceLossFrame_ >= 0 &&
         globalFrameIndex >= static_cast<uint64_t>(simulateDeviceLossFrame_)) {
         deviceLossSimulated_ = true;
-        NotifyDeviceLost("VIXEN_SIMULATE_DEVICE_LOSS (synthetic fault injection)");
+        GetFaultInjector()->ArmOnce(FailScenario::FaultSite::FenceWait, VK_ERROR_DEVICE_LOST);
     }
+#endif
 
     // AR#1 Phase 3: once the device is lost, every GPU call is invalid. Report it as a distinct status
     // (not Phase 2a's generic VK_ERROR_UNKNOWN) on every subsequent frame so the trigger can route to
@@ -893,6 +904,18 @@ VkResult RenderGraph::RenderFrame() {
                 }
 
                 node->SetState(NodeState::Complete);
+
+                // Post-execute callbacks (e.g. FrameCapture reading the swapchain image between
+                // the render node writing it and PresentNode releasing it back to the swapchain --
+                // see RegisterPostNodeExecuteCallback). Fires here, not after the whole frame, so
+                // registrants see the node's output in the state IT left it in, not whatever a
+                // later node (present, most commonly) has since done to the same resource.
+                if (!postNodeExecuteCallbacks.empty()) {
+                    auto [begin, end] = postNodeExecuteCallbacks.equal_range(node->GetInstanceName());
+                    for (auto it = begin; it != end; ++it) {
+                        it->second(node);
+                    }
+                }
 
                 // Check if this node was marked for recompilation during execution
                 if (node->HasDeferredRecompile()) {

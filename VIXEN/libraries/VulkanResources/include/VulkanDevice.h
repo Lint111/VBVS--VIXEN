@@ -62,6 +62,15 @@ public:
     uint32_t queueFamilyCount;
     VkPhysicalDeviceFeatures deviceFeatures; // physical device features
 
+    // Per-DEVICE synchronization2 entry points, resolved in CreateDevice() via
+    // vkGetDeviceProcAddr(device, "...KHR") — the KHR-suffixed names resolve on both genuine
+    // 1.3-core drivers and 1.2+VK_KHR_synchronization2 drivers (Mesa Dozen). These are device-level
+    // dispatch pointers and MUST live per-instance, not in a process global: two live devices (or a
+    // device recreated during device-loss recovery) each need their own resolved pointers — a
+    // global would silently dispatch one device's calls through another device's driver entry.
+    PFN_vkCmdPipelineBarrier2KHR fpCmdPipelineBarrier2 = nullptr;
+    PFN_vkQueueSubmit2KHR fpQueueSubmit2 = nullptr;
+
     VulkanLayerAndExtension layerExtension;
 
     //this class exposes the below functions to the outer world

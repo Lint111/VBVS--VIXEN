@@ -150,6 +150,14 @@ else()
     add_compile_definitions(VIXEN_DEBUG_BUILD=0)
 endif()
 
+# Fail-scenario simulation (Inc 1): declarations, injection seams, and the live sweep harness.
+# OFF by default — zero footprint in real builds (everything guarded compiles out). ON must be a
+# global, consistent view (nodes, app, and tests all see the same macro expansion).
+option(VIXEN_FAIL_SCENARIOS "Compile fail-scenario declarations, injection seams, and harness" OFF)
+if(VIXEN_FAIL_SCENARIOS)
+    add_compile_definitions(VIXEN_FAIL_SCENARIOS=1)
+endif()
+
 # Descriptor resource lifecycle tracking (Debug/DescriptorResourceTracker.h) - records every
 # DescriptorResourceEntry creation/extraction/bind event (source location, handle value, node
 # name) into a thread-safe registry, with optional real-time console printing. Used to diagnose

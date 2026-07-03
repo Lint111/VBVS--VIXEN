@@ -52,6 +52,22 @@ public:
     bool WasResized() const { return wasResized; }
     void ClearResizeFlag() { wasResized = false; }
 
+    // Window event queue for deferred processing in Execute(). Public: type visibility only
+    // (moved out of private: for the fail-scenario stimulus seam below) — no state exposed.
+    struct WindowEvent {
+        enum class Type { Resize, Close, Minimize, Maximize, Restore, Focus, Unfocus };
+        Type type;
+        uint32_t width = 0;   // For Resize events
+        uint32_t height = 0;  // For Resize events
+    };
+
+#if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
+    // Fail-scenario seam: enqueue a synthetic event exactly where the GLFW callbacks do; the next
+    // ExecuteImpl drains it through the production path (width/height update → MessageBus publish).
+    void InjectWindowEvent(WindowEvent::Type type, uint32_t w = 0, uint32_t h = 0);
+    size_t PendingEventCountForTest() const;
+#endif
+
     // Drain pendingEvents and publish the resulting bus messages (Close/Resize/Minimize/Maximize/
     // Restore/Focus/Unfocus), independent of node Execute(). RenderGraph::RenderFrame() skips node
     // Execute() entirely while renderPaused (see ExecuteImpl's comment) — including this node's own —
@@ -77,15 +93,10 @@ private:
     static void OnWindowIconify(GLFWwindow* w, int iconified);
     static WindowNode* FromGlfw(GLFWwindow* w);
 
-    // Window event queue for deferred processing in Execute()
-    struct WindowEvent {
-        enum class Type { Resize, Close, Minimize, Maximize, Restore, Focus, Unfocus };
-        Type type;
-        uint32_t width = 0;   // For Resize events
-        uint32_t height = 0;  // For Resize events
-    };
+    // Window event queue for deferred processing in Execute(). WindowEvent itself is declared
+    // public: above (fail-scenario stimulus seam needs the type visible; no state exposed here).
     std::vector<WindowEvent> pendingEvents;
-    std::recursive_mutex eventMutex;  // Protect event queue
+    mutable std::recursive_mutex eventMutex;  // Protect event queue; mutable for logically-const queries
 
     // Shared tail of ExecuteImpl / ProcessPendingEvents: publish everything except Resize (which each
     // caller handles itself, since only ExecuteImpl has a ctx to republish graph-slot outputs through).

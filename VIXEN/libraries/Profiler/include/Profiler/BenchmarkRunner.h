@@ -350,6 +350,17 @@ private:
     // Frame capture for debugging
     std::shared_ptr<FrameCapture> frameCapture_;
     bool midFrameCaptured_ = false;  // Track if mid-frame capture done for current test
+    // Current render-loop position, updated once per iteration in RunSuiteWithWindow before
+    // RenderFrame() runs. Read by the post-node-execute frame-capture callback (registered on
+    // "benchmark_dispatch") so it can compute the same midFrame trigger without needing to
+    // reference-capture the render loop's local `frame`/`totalFrames` variables -- the callback is
+    // registered once per test graph but must see live, per-frame values, and a member updated
+    // just before the call that can invoke it is simpler and safer than loop-variable lifetime
+    // reasoning across RegisterPostNodeExecuteCallback's stored std::function. Named distinctly
+    // from the existing currentFrame_/currentTestIndex_ (overall suite/test progress tracking) --
+    // this is scoped purely to the frame-capture callback's own trigger logic.
+    uint32_t captureLoopFrame_ = 0;
+    uint32_t captureLoopTotalFrames_ = 0;
 
     // Acceleration structure build timing (captured during graph setup)
     float currentBlasBuildTimeMs_ = 0.0f;

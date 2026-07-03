@@ -44,7 +44,7 @@ struct BatchedUpdaterStats {
  * updater.Queue(std::make_unique<BufferWriteRequest>(...));
  *
  * // During command buffer recording
- * updater.RecordAll(cmdBuffer, currentImageIndex);
+ * updater.RecordAll(cmdBuffer, currentImageIndex, resolvedCmdPipelineBarrier2Fn);
  * @endcode
  *
  * Thread-safe: Yes (for Queue operations)
@@ -140,9 +140,17 @@ public:
      *
      * @param cmd Active command buffer in recording state
      * @param imageIndex Frame index to record
+     * @param cmdPipelineBarrier2 Resolved vkCmdPipelineBarrier2KHR entry point of the RECORDING
+     *        device, passed in by the caller (ResourceManagement has no dependency on
+     *        VulkanResources, where the per-device pointer lives -- see
+     *        VulkanDevice::fpCmdPipelineBarrier2 -- so it can't be reached from this library). Used only
+     *        when config_.insertBarriers is true and at least one pending update needs a
+     *        pre-barrier; pass nullptr to disable barrier insertion outright instead of crashing
+     *        on an unresolved pointer.
      * @return Number of updates recorded
      */
-    uint32_t RecordAll(VkCommandBuffer cmd, uint32_t imageIndex);
+    uint32_t RecordAll(VkCommandBuffer cmd, uint32_t imageIndex,
+                        PFN_vkCmdPipelineBarrier2KHR cmdPipelineBarrier2);
 
     /**
      * @brief Clear pending updates for a frame without recording

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vector>
+#include <vulkan/vulkan.h>
 
 #if defined(__linux__)
 #include <cstdlib>
@@ -14,6 +15,14 @@
 inline std::vector<const char*> deviceExtensionNames;
 inline std::vector<const char*> layerNames;
 inline std::vector<const char*> instanceExtensionNames;
+
+// NOTE (multi-device correctness): the synchronization2 entry points (vkCmdPipelineBarrier2KHR /
+// vkQueueSubmit2KHR) previously lived here as process-global function pointers. They are
+// DEVICE-LEVEL dispatch pointers, so globals break any scenario with more than one live VkDevice
+// and leave a stale-dispatch window during device-loss recovery. They now live as per-instance
+// members on VulkanDevice (fpCmdPipelineBarrier2 / fpQueueSubmit2, resolved in CreateDevice) —
+// call sites reach them through their VulkanDevice*, or receive the PFN as an explicit parameter
+// where no device reference is in scope (BatchedUpdater::RecordAll, PassRecorder).
 
 // On WSL2 the real GPU is reachable only via Mesa Dozen (Vulkan-over-D3D12); the loader's default
 // ICD discovery finds only software Vulkan (lavapipe/llvmpipe), which is why letting this go unset

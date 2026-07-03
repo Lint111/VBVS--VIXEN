@@ -140,6 +140,15 @@ include(test_core_systems.cmake)
 include(test_critical_nodes.cmake)
 
 # ===========================================================================
+# Fail-Scenario Simulation Tests
+# ===========================================================================
+# Validates the fail-scenario declaration schema, self-registering
+# ScenarioRegistry, and (later milestones) the live sweep harness.
+# Gated on VIXEN_FAIL_SCENARIOS (returns early when OFF).
+
+include(test_fail_scenarios.cmake)
+
+# ===========================================================================
 # Descriptor Resource Gatherer - Comprehensive Test Suite
 # ===========================================================================
 # This test suite validates DescriptorResourceGathererNode (Phase G):

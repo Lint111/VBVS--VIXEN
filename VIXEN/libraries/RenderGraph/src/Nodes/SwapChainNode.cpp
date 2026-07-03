@@ -2,6 +2,7 @@
 #include "Core/NodeRegistration.h"
 #include "Data/Nodes/FrameSyncNodeConfig.h"  // Phase 0.4: For CURRENT_FRAME_INDEX input
 #include "Core/RenderGraph.h"
+#include "Core/FailScenario.h"
 #include "VulkanDevice.h"
 #include "Core/NodeLogging.h"
 #include "EventTypes/RenderGraphEvents.h"
@@ -302,20 +303,26 @@ uint32_t SwapChainNode::AcquireNextImage(VkSemaphore presentCompleteSemaphore) {
     }
 
     auto* devicePtr = GetDevice();
-    VkResult result = swapChainWrapper->fpAcquireNextImageKHR(
-        devicePtr->device,
-        swapChainWrapper->scPublicVars.swapChain,
-        UINT64_MAX, // Timeout
-        presentCompleteSemaphore,
-        VK_NULL_HANDLE, // Fence
-        &currentImageIndex
-    );
+    VkResult result = VIXEN_FAULT_FILTER(GetOwningGraph(), Acquire,
+        swapChainWrapper->fpAcquireNextImageKHR(
+            devicePtr->device,
+            swapChainWrapper->scPublicVars.swapChain,
+            UINT64_MAX, // Timeout
+            presentCompleteSemaphore,
+            VK_NULL_HANDLE, // Fence
+            &currentImageIndex
+        ));
 
-    // Handle out-of-date swapchain
-    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
-        NODE_LOG_INFO("SwapChainNode: Swapchain out of date/suboptimal, marking for recreation");
+    // VK_ERROR_OUT_OF_DATE_KHR: the acquire genuinely failed -- currentImageIndex is not valid,
+    // there is nothing to render/present this frame. Abort it and recreate.
+    if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+        NODE_LOG_INFO("SwapChainNode: Swapchain out of date, marking for recreation");
 
-        // Publish render pause event for swapchain recreation
+        // Publish render pause event for swapchain recreation. RenderGraph::RenderFrame() checks
+        // renderPaused BEFORE this frame's nodes execute and returns early when set, so pausing
+        // here is what actually makes "abort this frame" take effect -- MUST NOT be published for
+        // the VK_SUBOPTIMAL_KHR case below, or that frame gets silently skipped too despite having
+        // a valid, already-signaled acquire (the bug this split fixes).
         if (GetMessageBus()) {
             GetMessageBus()->Publish(
                 std::make_unique<EventTypes::RenderPauseEvent>(
@@ -333,7 +340,23 @@ uint32_t SwapChainNode::AcquireNextImage(VkSemaphore presentCompleteSemaphore) {
         // Recompilation will happen in the next Update() cycle
         return UINT32_MAX;
     }
-    else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
+    // VK_SUBOPTIMAL_KHR: per spec, the acquire SUCCEEDED -- currentImageIndex is valid and
+    // presentCompleteSemaphore IS signaled; the driver is only hinting the surface no longer
+    // matches ideal presentation parameters (seen routinely on Mesa Dozen/WSL2's Vulkan-over-D3D12
+    // path, rarely on llvmpipe). The old code lumped this in with OUT_OF_DATE, discarding a
+    // genuinely-acquired image and its signaled semaphore without ever presenting it -- on the
+    // NEXT acquire, the validation layer (correctly) flags a later frame's swapchain image as "not
+    // acquired since the last present" the moment it's transitioned
+    // (UNASSIGNED-non-acquired-swapchain-image-used), because the leaked acquire desynced the
+    // acquire/present pairing the whole rest of the API tracks. Render and present this frame
+    // normally; only schedule the recreation for later (no pause -- see the OUT_OF_DATE case
+    // above for why publishing one here would silently skip this frame anyway).
+    else if (result == VK_SUBOPTIMAL_KHR) {
+        NODE_LOG_INFO("SwapChainNode: Swapchain suboptimal, rendering this frame and marking for recreation");
+        MarkNeedsRecompile();
+        return currentImageIndex;
+    }
+    else if (result != VK_SUCCESS) {
         std::string errorMsg = "SwapChainNode: failed to acquire swapchain image";
         NODE_LOG_ERROR(errorMsg);
         throw std::runtime_error(errorMsg);
@@ -553,3 +576,36 @@ void SwapChainNode::DestroyPerImageSyncResources() {
 
 // Self-registration (M3): registrar kept in this TU; RenderGraphNodes is whole-archived so it is not stripped.
 VIXEN_REGISTER_NODE(Vixen::RenderGraph::SwapChainNodeType);
+
+// ====== Fail scenarios (compiled out of real builds — see Fail-Scenario-Simulation-Design-2026-07) ======
+// Contracts use ScenarioContext::Fail/Skip, NEVER gtest macros (this is an engine TU).
+#if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
+namespace FS = Vixen::RenderGraph::FailScenario;
+VIXEN_FAIL_SCENARIOS_DECLARE(Vixen::RenderGraph::SwapChainNodeType,
+    // KI-003 (RESOLVED by main 9d95bd75 "fix(render): fullscreen/maximize segfault — central frame
+    // abort on out-of-date acquire", merged 2026-07-03): forcing Acquire to OUT_OF_DATE/SUBOPTIMAL
+    // used to crash GeometryRenderNode via an unguarded renderCompleteSemaphores[imageIndex] index.
+    // RenderGraph::AbortCurrentFrame() now stops the sequential Execute loop the instant SwapChainNode
+    // publishes the UINT32_MAX sentinel, so every downstream per-image consumer is skipped wholesale
+    // this frame. These scenarios are the permanent regression gate for that fix — no knownIssueId.
+    VIXEN_SCENARIO(AcquireOutOfDate,
+        FS::VkTransient{ .site = FS::FaultSite::Acquire, .result = VK_ERROR_OUT_OF_DATE_KHR },
+        [](FS::ScenarioContext& c) {
+            // Recovery contract: the deferred-recompile path recreates the swapchain and
+            // rendering continues (global criteria already assert progress); the node must
+            // not be stuck skipping frames — image index becomes valid again.
+            auto* sc = c.SwapChain();
+            if (!sc) { c.Fail("no SwapChain node reachable from harness"); return; }
+            if (sc->GetCurrentImageIndex() == UINT32_MAX)
+                c.Fail("swapchain never recovered from OUT_OF_DATE (image index still invalid)");
+        }),
+    VIXEN_SCENARIO(AcquireSuboptimal,
+        FS::VkTransient{ .site = FS::FaultSite::Acquire, .result = VK_SUBOPTIMAL_KHR },
+        [](FS::ScenarioContext& c) {
+            auto* sc = c.SwapChain();
+            if (!sc) { c.Fail("no SwapChain node reachable from harness"); return; }
+            if (sc->GetCurrentImageIndex() == UINT32_MAX)
+                c.Fail("swapchain stuck on invalid image index after SUBOPTIMAL");
+        })
+);
+#endif

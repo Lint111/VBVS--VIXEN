@@ -60,6 +60,10 @@ public:
     uint32_t GetCurrentImageIndex() const { return currentImageIndex; }
     // Phase 0.2: Removed GetImageAvailableSemaphore() - semaphores managed by FrameSyncNode
     VkFormat GetFormat() const;
+    // Unconditional trivial const accessors (fail-scenario window-stimulus contracts need these to
+    // compare the swapchain's actual extent against the expected post-resize extent).
+    uint32_t GetWidth() const { return width; }
+    uint32_t GetHeight() const { return height; }
 
     // Set the VulkanSwapChain wrapper to use
     void SetSwapChainWrapper(VulkanSwapChain* swapchain);

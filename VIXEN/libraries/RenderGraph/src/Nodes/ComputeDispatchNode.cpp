@@ -310,7 +310,7 @@ void ComputeDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
     si.pSignalSemaphoreInfos    = signals.data();
 
     // Submit to graphics queue via synchronization2
-    VkResult result = vkQueueSubmit2(vulkanDevice->queue, 1, &si, submitFence);
+    VkResult result = vulkanDevice->fpQueueSubmit2(vulkanDevice->queue, 1, &si, submitFence);
     if (result != VK_SUCCESS) {
         throw std::runtime_error("[ComputeDispatchNode::ExecuteImpl] Failed to submit command buffer (vkQueueSubmit2): " + std::to_string(result));
     }
@@ -469,7 +469,7 @@ void ComputeDispatchNode::ReplayEntryBarriers(
     dep.pImageMemoryBarriers    = imageBarriers.data();
     dep.memoryBarrierCount      = static_cast<uint32_t>(memBarriers.size());
     dep.pMemoryBarriers         = memBarriers.data();
-    vkCmdPipelineBarrier2(cmd, &dep);
+    GetDevice()->fpCmdPipelineBarrier2(cmd, &dep);
 }
 
 // Fallback barrier2: UNDEFINED → GENERAL (TOP_OF_PIPE/0 → COMPUTE_SHADER/SHADER_STORAGE_WRITE).
@@ -491,7 +491,7 @@ void ComputeDispatchNode::TransitionImageToGeneralBarrier2(VkCommandBuffer cmdBu
     dep.sType                   = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
     dep.imageMemoryBarrierCount = 1;
     dep.pImageMemoryBarriers    = &ib;
-    vkCmdPipelineBarrier2(cmdBuffer, &dep);
+    GetDevice()->fpCmdPipelineBarrier2(cmdBuffer, &dep);
 }
 
 void ComputeDispatchNode::BindComputePipeline(VkCommandBuffer cmdBuffer, VkPipeline pipeline, VkPipelineLayout layout, VkDescriptorSet descriptorSet) {
@@ -587,7 +587,7 @@ void ComputeDispatchNode::TransitionImageToPresentBarrier2(VkCommandBuffer cmdBu
     dep.sType                   = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
     dep.imageMemoryBarrierCount = 1;
     dep.pImageMemoryBarriers    = &ib;
-    vkCmdPipelineBarrier2(cmdBuffer, &dep);
+    GetDevice()->fpCmdPipelineBarrier2(cmdBuffer, &dep);
 }
 
 // ============================================================================

@@ -1198,6 +1198,69 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
         }
         midFrameCaptured_ = false;  // Reset for this test
 
+        // Frame capture must run BETWEEN "benchmark_dispatch" writing the swapchain image and
+        // PresentNode releasing it back to the swapchain (vkQueuePresentKHR), not after the whole
+        // RenderFrame() call -- reading it post-present touches a presentable image the app no
+        // longer owns per the Vulkan spec, regardless of synchronization
+        // (UNASSIGNED-non-acquired-swapchain-image-used; root-caused 2026-07-03: this doesn't need
+        // an acquire/present race, an old capture-after-RenderFrame() literally always did this).
+        // RegisterPostNodeExecuteCallback fires synchronously inside RenderFrame()'s node loop,
+        // right after "benchmark_dispatch"::Execute() returns and before the next node (present)
+        // runs, so the image is still legitimately owned here. renderGraph.get() is captured by
+        // raw pointer -- safe because the callback only ever fires from within this same
+        // renderGraph's own RenderFrame() call, during this test's render loop below, well before
+        // renderGraph is reset/destroyed at the end of this test.
+        if (frameCapture_) {
+            RG::RenderGraph* graphPtr = renderGraph.get();
+            renderGraph->RegisterPostNodeExecuteCallback(
+                "benchmark_dispatch",
+                [this, graphPtr, &testConfig, &config](RG::NodeInstance* /*dispatchNode*/) {
+                    if (!frameCapture_ || !frameCapture_->IsInitialized()) {
+                        return;
+                    }
+                    auto* swapchainNode = dynamic_cast<RG::SwapChainNode*>(
+                        graphPtr->GetInstanceByName("benchmark_swapchain"));
+                    if (!swapchainNode) {
+                        return;
+                    }
+                    const auto* swapchainVars = swapchainNode->GetSwapchainPublic();
+                    uint32_t imageIndex = swapchainNode->GetCurrentImageIndex();
+
+                    // Automatic mid-frame capture (quarter resolution)
+                    uint32_t midFrame = captureLoopTotalFrames_ / 2;
+                    if (captureLoopFrame_ == midFrame && !midFrameCaptured_) {
+                        CaptureConfig captureConfig;
+                        captureConfig.outputPath = outputDirectory_;
+                        captureConfig.testName = testConfig.testId;
+                        captureConfig.frameNumber = captureLoopFrame_;
+                        captureConfig.resolution = CaptureResolution::Quarter;
+
+                        auto captureResult = frameCapture_->Capture(swapchainVars, imageIndex, captureConfig);
+                        midFrameCaptured_ = true;
+                        if (config.verbose && captureResult.success) {
+                            std::cout << "  [Capture] Mid-frame saved: " << captureResult.savedPath << std::endl;
+                        }
+                    }
+
+                    // Manual capture on 'C' key (full resolution)
+                    auto* inputNode = dynamic_cast<RG::InputNode*>(
+                        graphPtr->GetInstanceByName("benchmark_input"));
+                    if (inputNode && inputNode->GetInputState().IsKeyPressed(Vixen::EventBus::KeyCode::C)) {
+                        CaptureConfig captureConfig;
+                        captureConfig.outputPath = outputDirectory_;
+                        captureConfig.testName = testConfig.testId;
+                        captureConfig.frameNumber = captureLoopFrame_;
+                        captureConfig.resolution = CaptureResolution::Full;
+
+                        auto captureResult = frameCapture_->Capture(swapchainVars, imageIndex, captureConfig);
+                        if (captureResult.success) {
+                            std::cout << "  [Capture] Manual capture saved: " << captureResult.savedPath << std::endl;
+                        }
+                    }
+                }
+            );
+        }
+
         // Frame timing variables
         auto profilingStartTime = std::chrono::high_resolution_clock::now();
 
@@ -1232,60 +1295,21 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
 
             renderGraph->RecompileDirtyNodes();
 
+            // Read by the "benchmark_dispatch" post-execute frame-capture callback registered
+            // above -- must be current before RenderFrame() runs, since the callback fires
+            // synchronously from inside it.
+            captureLoopFrame_ = frame;
+            captureLoopTotalFrames_ = totalFrames;
+
             VkResult result = renderGraph->RenderFrame();
             if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
                 // Non-fatal warning
             }
 
-            // ============================================================
-            // Frame capture for debugging (before timing measurement)
-            // ============================================================
-            if (frameCapture_ && frameCapture_->IsInitialized()) {
-                // Get swapchain node for image access
-                auto* swapchainNode = dynamic_cast<RG::SwapChainNode*>(
-                    renderGraph->GetInstanceByName("benchmark_swapchain"));
-                
-                // Get input node for 'C' key capture trigger
-                auto* inputNode = dynamic_cast<RG::InputNode*>(
-                    renderGraph->GetInstanceByName("benchmark_input"));
-
-                if (swapchainNode) {
-                    const auto* swapchainVars = swapchainNode->GetSwapchainPublic();
-                    uint32_t imageIndex = swapchainNode->GetCurrentImageIndex();
-
-                    // Automatic mid-frame capture (quarter resolution)
-                    uint32_t midFrame = totalFrames / 2;
-                    if (frame == midFrame && !midFrameCaptured_) {
-                        CaptureConfig captureConfig;
-                        captureConfig.outputPath = outputDirectory_;
-                        captureConfig.testName = testConfig.testId;
-                        captureConfig.frameNumber = frame;
-                        captureConfig.resolution = CaptureResolution::Quarter;
-
-                        auto captureResult = frameCapture_->Capture(swapchainVars, imageIndex, captureConfig);
-                        midFrameCaptured_ = true;
-                        if (config.verbose && captureResult.success) {
-                            std::cout << "  [Capture] Mid-frame saved: " << captureResult.savedPath << std::endl;
-                        }
-                    }
-
-                    // Manual capture on 'C' key (full resolution)
-                    if (inputNode) {
-                        if (inputNode->GetInputState().IsKeyPressed(Vixen::EventBus::KeyCode::C)) {
-                            CaptureConfig captureConfig;
-                            captureConfig.outputPath = outputDirectory_;
-                            captureConfig.testName = testConfig.testId;
-                            captureConfig.frameNumber = frame;
-                            captureConfig.resolution = CaptureResolution::Full;
-
-                            auto captureResult = frameCapture_->Capture(swapchainVars, imageIndex, captureConfig);
-                            if (captureResult.success) {
-                                std::cout << "  [Capture] Manual capture saved: " << captureResult.savedPath << std::endl;
-                            }
-                        }
-                    }
-                }
-            }
+            // Frame capture (mid-frame automatic + 'C'-key manual) now runs via the
+            // RegisterPostNodeExecuteCallback registered on "benchmark_dispatch" above, between
+            // that node writing the swapchain image and PresentNode releasing it -- see the
+            // registration site for why capturing after RenderFrame() returns was invalid.
 
             // CPU frame timing end
             auto frameEnd = std::chrono::high_resolution_clock::now();

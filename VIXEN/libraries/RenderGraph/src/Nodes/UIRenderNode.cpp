@@ -89,6 +89,7 @@ void UIRenderNode::CompileImpl(TypedCompileContext& ctx) {
 
     device_ = device->device;
     queue_ = device->queue;
+    fpQueueSubmit2_ = device->fpQueueSubmit2;  // per-device PFN, refreshed each compile (valid after device-loss recovery)
     extent_ = sc->GetExtent();
 
     composite_ = GetParameterValue<bool>(UIRenderNodeConfig::PARAM_COMPOSITE, false);
@@ -310,7 +311,7 @@ void UIRenderNode::ExecuteImpl(TypedExecuteContext& ctx) {
     si.pCommandBufferInfos      = &cmdInfo;
     si.signalSemaphoreInfoCount = static_cast<uint32_t>(signals.size());
     si.pSignalSemaphoreInfos    = signals.data();
-    vkQueueSubmit2(queue_, 1, &si, inFlightFence);
+    fpQueueSubmit2_(queue_, 1, &si, inFlightFence);
 
     ctx.Out(UIRenderNodeConfig::COMMAND_BUFFERS, cmd);
     ctx.Out(UIRenderNodeConfig::RENDER_COMPLETE_SEMAPHORE, signalSem);
@@ -374,12 +375,21 @@ void UIRenderNode::CleanupImpl(TypedCleanupContext& ctx) {
     // recompile (Cleanup → Compile), and distinguishing that from a true shutdown via NeedsRecompile()
     // is unreliable under the cascading recompiles a resize produces. RmlUi is torn down only on FINAL
     // teardown, in the strict order required by RmlUi (see below).
-    if (ctx.reason != CleanupReason::FinalTeardown) {
+    // KI-004 root cause lived here: this early-return previously covered EVERY non-final reason,
+    // INCLUDING CleanupReason::DeviceLost — so the per-image command buffers (allocated from the
+    // now-destroyed device's pool) and RmlUi's GPU objects survived a device-loss teardown, and
+    // CompileImpl's image-count guard (count unchanged post-recovery) reused them: the first
+    // post-recovery frame hit vkBeginCommandBuffer on a freed handle (loader-level
+    // invalid-commandBuffer abort). Persistence is only valid while the DEVICE survives, i.e.
+    // across a Recompile. On DeviceLost the full teardown below is safe: RecoverFromDeviceLoss
+    // calls WaitForGraphDevicesIdle() before the teardown pass, and vkDestroy*/vkFree* on a lost
+    // device are spec-required to remain safe.
+    if (ctx.reason == CleanupReason::Recompile) {
         return;  // recompile: keep all persistent resources (command buffers + present semaphores + RmlUi)
     }
 
-    // Final teardown: the graph's ExecuteCleanup waited the device idle (RenderGraph DeInitialize calls
-    // vkDeviceWaitIdle before cleanup), so freeing these GPU objects here is safe.
+    // Final teardown or device loss: the device was drained (RenderGraph DeInitialize's
+    // vkDeviceWaitIdle, or RecoverFromDeviceLoss's WaitForGraphDevicesIdle), so freeing is safe.
     FreeCommandBuffers();
     DestroyCompositeSemaphores();  // owned per-image present semaphores (composite mode)
     syncImageCount_ = 0;

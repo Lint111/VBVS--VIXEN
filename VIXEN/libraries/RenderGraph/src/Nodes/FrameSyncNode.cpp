@@ -1,6 +1,7 @@
 #include "Nodes/FrameSyncNode.h"
 #include "Core/NodeRegistration.h"
 #include "Core/RenderGraph.h"
+#include "Core/FailScenario.h"
 #include "VulkanDevice.h"
 #include "Core/NodeLogging.h"
 #include <stdexcept>
@@ -144,7 +145,8 @@ void FrameSyncNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // This ensures the previous frame using this flight's resources has completed
     // Without this wait, we could reuse semaphores that are still in use by the presentation engine
     VkFence currentFence = frameSyncData[currentFrameIndex].inFlightFence;
-    VkResult waitResult = vkWaitForFences(device->device, 1, &currentFence, VK_TRUE, UINT64_MAX);
+    VkResult waitResult = VIXEN_FAULT_FILTER(GetOwningGraph(), FenceWait,
+                              vkWaitForFences(device->device, 1, &currentFence, VK_TRUE, UINT64_MAX));
 
     // AR#1 Phase 3 (Increment 1): this fence wait runs every frame and is the universal, earliest
     // backstop for device loss — when the GPU device is lost, the submitted work never completes and
@@ -202,8 +204,9 @@ void FrameSyncNode::CleanupImpl(TypedCleanupContext& ctx) {
 
     // P5a M1: the per-loop timeline semaphore is PERSISTENT across recompile (resize/recompile must
     // NOT destroy it — that would reset the monotonic counter and collide with frames still in
-    // flight). Torn down only on FinalTeardown, mirroring UIRenderNode's persistent-resource rationale.
-    if (ctx.reason == CleanupReason::FinalTeardown &&
+    // flight). Torn down on FinalTeardown AND DeviceLost (a device-scoped object cannot outlive its
+    // device; frameBase_ is CPU-side, so timeline monotonicity survives the recreate). KI-004 class.
+    if (ctx.reason != CleanupReason::Recompile &&
         timelineSemaphore_ != VK_NULL_HANDLE &&
         device != nullptr && device->device != VK_NULL_HANDLE) {
         vkDestroySemaphore(device->device, timelineSemaphore_, nullptr);
@@ -216,3 +219,25 @@ void FrameSyncNode::CleanupImpl(TypedCleanupContext& ctx) {
 
 // Self-registration (M3): registrar kept in this TU; RenderGraphNodes is whole-archived so it is not stripped.
 VIXEN_REGISTER_NODE(Vixen::RenderGraph::FrameSyncNodeType);
+
+#if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
+namespace FS = Vixen::RenderGraph::FailScenario;
+VIXEN_FAIL_SCENARIOS_DECLARE(Vixen::RenderGraph::FrameSyncNodeType,
+    // Hard regression gate for KI-004 (resolved — two fixes): (1) NotifyDeviceLost() arms the
+    // central frame abort so no downstream node executes on the condemned frame; (2) UIRenderNode
+    // tears down its persistent per-image command buffers + RmlUi GPU objects on DeviceLost
+    // (persistence is only valid across Recompile, where the device survives).
+    VIXEN_SCENARIO(DeviceLostRecovery,
+        FS::VkTransient{ .site = FS::FaultSite::FenceWait, .result = VK_ERROR_DEVICE_LOST },
+        // The one-shot forced VK_ERROR_DEVICE_LOST drives the REAL detection path
+        // (this node's fence wait → NotifyDeviceLost → frame aborts → RenderFrame returns
+        // DEVICE_LOST → app Render() → RecoverFromDeviceLoss teardown-reverse/rebuild-forward).
+        // On the healthy device the rebuild succeeds — the global criteria then prove
+        // 30 frames of continuous post-recovery rendering, which is exactly the manual
+        // VIXEN_SIMULATE_DEVICE_LOSS gate, automated.
+        [](FS::ScenarioContext& c) {
+            if (c.Graph()->IsDeviceLost())
+                c.Fail("device-lost latch still set — recovery did not complete");
+        })
+);
+#endif

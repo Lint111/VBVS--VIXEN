@@ -61,6 +61,16 @@ private:
     void ValidateAndFilterExtensions();
     void ValidateAndFilterLayers();
     void DestroyVulkanInstance();
+
+#if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
+    // Fail-scenario validation-error counter (Task 4 Step 4): VK_EXT_debug_report is the only
+    // way to observe validation-layer output programmatically. No production callback existed
+    // before this — installed only when the extension was actually enabled (validation layer
+    // present), so it is a no-op on lavapipe-without-SDK machines.
+    VkDebugReportCallbackEXT debugReportCallback_ = VK_NULL_HANDLE;
+    void CreateDebugReportCallback();
+    void DestroyDebugReportCallback();
+#endif
 };
 
 } // namespace Vixen::RenderGraph
