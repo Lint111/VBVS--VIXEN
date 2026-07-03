@@ -225,6 +225,26 @@ endif()
 gtest_discover_tests(test_recipe_bake)
 
 # ===========================================================================
+# Recipe Bake Center Test (Inc2a Task 1 — proves BakeRecipeInstructionsToSdfWorld
+# honors `center`, mirroring evalSdf's existing p - center convention)
+# ===========================================================================
+add_executable(test_recipe_bake_center test_recipe_bake_center.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_recipe_bake_center PRIVATE
+        GTest::gtest_main SVO GaiaVoxelWorld VoxelComponents VoxelData)
+else()
+    target_link_libraries(test_recipe_bake_center PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_recipe_bake_center PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_recipe_bake_center POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_recipe_bake_center>
+        COMMENT "Copying TBB DLL for test_recipe_bake_center")
+endif()
+gtest_discover_tests(test_recipe_bake_center)
+
+# ===========================================================================
 # Recipe Eval Parity Tests (P0 T4 — CPU stack-VM parity vs analytic golden)
 # ===========================================================================
 add_executable(test_recipe_eval_parity test_recipe_eval_parity.cpp)
