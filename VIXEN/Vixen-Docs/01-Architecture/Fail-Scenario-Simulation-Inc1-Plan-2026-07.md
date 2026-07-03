@@ -35,6 +35,7 @@ Worktree: `.claude/worktrees/fail-scenario-sim` · branch `feat/fail-scenario-si
 
 - Milestone 1 (Tasks 1-3): DONE · commits a436f227..8b03f8ee · Opus validator OK (tests re-run green; nm zero-footprint proven) · 2026-07-02 · NOTES for later milestones: real buildable targets are RenderGraphCore/RenderGraphNodes/VIXEN (plan shorthand "RenderGraph"/"VixenApp"; VixenApp static lib still valid as a LINK target); ctest discovery is broken repo-wide pre-existing (root enable_testing() runs after add_subdirectory(libraries)) — run gtest binaries directly from build-wsl.
 - Milestone 2 (Tasks 4-5): DONE · commits caa59f43..b65bf35c · Opus validator OK (live gate re-run: BootWarmupTeardown PASSED on WSLg + Dozen ICD real GPU; OFF-build clean, zero scenario symbols) · 2026-07-02 · NOTES: sweep target relocated to application/main/CMakeLists.txt:152 include of FailScenarios/test_fail_scenario_sweep.cmake (libraries/ configures before application/, so `if(TARGET VixenApp)` was vacuously false at the plan's placement — registry target unchanged); InstanceNode gained a flag-gated VK_EXT_debug_report callback (none existed) feeding FailScenario::ValidationErrorCount(); VACUITY: VK_LAYER_KHRONOS_validation is NOT installed on this box → the 0-validation-errors criterion is vacuous locally (layer-if-installed pattern holds; becomes real wherever the layer exists).
+- Milestone 3 (Tasks 6-8) + merge + re-gate: DONE · commits 5686b5ba/58f50c0d/c54b2168 + merge 1df4ac4d (main 03a4880e in) + re-gate 8db687f1 · Opus validator OK (all gates re-run) · 2026-07-03 · OUTCOMES: 7 scenarios live — AcquireOutOfDate/AcquireSuboptimal HARD-PASS (were KI-003 crashes; fixed by main 9d95bd75 AbortCurrentFrame — the fullscreen-segfault fix — now permanently regression-gated); PresentOutOfDate + MaximizeLikeFullscreenButton PASS; ResizeLargeExtentJump + MinimizeThenRestore honest SKIP (WM refuses ops on hidden WSLg window — coverage gap, revisit with visible-window local mode/Xvfb); DeviceLostRecovery = OPEN KI-004 (recovery completes then downstream node records on dead command buffer → SIGABRT; RenderFrame's loop checks frameAborted_ but never deviceLost_ between nodes; FIX: wire AbortCurrentFrame() from FrameSyncNode's device-loss branch). Compile-out on fresh post-merge archives: OFF=0 / ON=86 PASS. GATE SEMANTICS: whole-binary sweep run cannot go green while a KI-gated scenario CRASHES (process dies before the skip-report) — per-case invocation is the green path; fine once ctest per-case discovery works (root enable_testing() ordering bug, still open repo-wide).
 
 ## File Structure (locked)
 
@@ -860,9 +861,9 @@ Notes for the implementer: (a) keep the Task-4 `BootWarmupTeardown` TEST — it 
 - Consumes: everything above.
 - Produces: 6 live scenarios. `SwapChainNode::GetWidth()/GetHeight()`.
 
-- [ ] **Step 1: Getters.** `SwapChainNode.h` public section: `uint32_t GetWidth() const { return width; } uint32_t GetHeight() const { return height; }` (unconditional — trivial const accessors).
+- [x] **Step 1: Getters.** `SwapChainNode.h` public section: `uint32_t GetWidth() const { return width; } uint32_t GetHeight() const { return height; }` (unconditional — trivial const accessors).
 
-- [ ] **Step 2: SwapChainNode declarations** (bottom of `SwapChainNode.cpp`, after the existing `VIXEN_REGISTER_NODE` if present there — otherwise just at file end; add `#include "Core/FailScenario.h"` at top):
+- [x] **Step 2: SwapChainNode declarations** (bottom of `SwapChainNode.cpp`, after the existing `VIXEN_REGISTER_NODE` if present there — otherwise just at file end; add `#include "Core/FailScenario.h"` at top):
 
 ```cpp
 // ====== Fail scenarios (compiled out of real builds — see Fail-Scenario-Simulation-Design-2026-07) ======
@@ -896,7 +897,7 @@ VIXEN_FAIL_SCENARIOS_DECLARE(Vixen::RenderGraph::SwapChainNodeType,
 (The `#if` guard wraps alias + declarations together in every declaring .cpp: the `namespace FS` alias references
 `FailScenario` symbols that only exist when the flag is on — the macros alone compiling to nothing is not enough.)
 
-- [ ] **Step 3: PresentNode declaration** (bottom of `PresentNode.cpp`, next to its `VIXEN_REGISTER_NODE`):
+- [x] **Step 3: PresentNode declaration** (bottom of `PresentNode.cpp`, next to its `VIXEN_REGISTER_NODE`):
 
 ```cpp
 #if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
@@ -913,7 +914,7 @@ VIXEN_FAIL_SCENARIOS_DECLARE(Vixen::RenderGraph::PresentNodeType,
 #endif
 ```
 
-- [ ] **Step 4: WindowNode declarations** (bottom of `WindowNode.cpp`) — the motivating class:
+- [x] **Step 4: WindowNode declarations** (bottom of `WindowNode.cpp`) — the motivating class:
 
 ```cpp
 #if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
@@ -957,13 +958,13 @@ VIXEN_FAIL_SCENARIOS_DECLARE(Vixen::RenderGraph::WindowNodeType,
 
 (`WindowNode.cpp` already includes GLFW ✓; add `#include "Core/FailScenario.h"` and `#include "Nodes/SwapChainNode.h"` — the contracts call `SwapChainNode` methods, and the forward declaration in FailScenario.h is not enough for member access.)
 
-- [ ] **Step 5: Live sweep — the moment of truth.** Rebuild, then `ctest --test-dir build-wsl -R FailScenarioSweep --output-on-failure`. Expected outcomes and what each means:
+- [x] **Step 5: Live sweep — the moment of truth.** Rebuild, then `ctest --test-dir build-wsl -R FailScenarioSweep --output-on-failure`. Expected outcomes and what each means:
   - `AcquireOutOfDate`/`AcquireSuboptimal`: PASS (this path has a historical fix and should hold).
   - `PresentOutOfDate`: PASS (trivially — documented above).
   - `ResizeLargeExtentJump`: **this is the fullscreen-crash-class probe.** If it FAILS (crash, hang, validation errors, or stale extent) → the harness has reproduced the bug class headlessly: capture the full output, file a `KI-003` entry in `Vixen-Docs/04-Development/Known-Issues.md` (symptom = the test output; this is the fullscreen-button crash's class), set `.knownIssueId = "KI-003"` on the scenario (4th `VIXEN_SCENARIO` argument) so the gate reports-but-does-not-block, and re-run to green. Do NOT fix the underlying bug in this task — root-causing it is the user's parallel debugging work; the scenario becomes its permanent regression gate once fixed (then remove `knownIssueId`).
   - `MaximizeLikeFullscreenButton`/`MinimizeThenRestore`: PASS or SKIP (WM-refused, reported honestly). A SKIP is acceptable on WSLg; note it in the commit message.
-- [ ] **Step 6: No-regression:** run the render-test subset from Task 2 Step 6 again — unchanged results.
-- [ ] **Step 7: Commit** `feat(fail-scenarios): first 6 scenarios — swapchain transients + window stimuli (fullscreen class) (Task 6)` — include the live sweep summary (pass/skip/known-issue counts) in the body.
+- [x] **Step 6: No-regression:** run the render-test subset from Task 2 Step 6 again — unchanged results.
+- [x] **Step 7: Commit** `feat(fail-scenarios): first 6 scenarios — swapchain transients + window stimuli (fullscreen class) (Task 6)` — include the live sweep summary (pass/skip/known-issue counts) in the body.
 
 ---
 
@@ -976,7 +977,7 @@ VIXEN_FAIL_SCENARIOS_DECLARE(Vixen::RenderGraph::WindowNodeType,
 - Consumes: `FenceWait` fault point (Task 2), runner (Task 5). The app's `Render()` already routes `VK_ERROR_DEVICE_LOST` → `RecoverFromDeviceLoss()` → continue (`VulkanGraphApplication.cpp:309-323`).
 - Produces: the automated device-loss test that Device-Loss-Recovery Inc 3 deferred.
 
-- [ ] **Step 1: Declaration** (bottom of `FrameSyncNode.cpp`; add the FailScenario include):
+- [x] **Step 1: Declaration** (bottom of `FrameSyncNode.cpp`; add the FailScenario include):
 
 ```cpp
 #if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
@@ -1000,10 +1001,10 @@ VIXEN_FAIL_SCENARIOS_DECLARE(Vixen::RenderGraph::FrameSyncNodeType,
 
 (If `IsDeviceLost()` is not public on `RenderGraph`, it exists per Device-Loss Inc 1 — check `RenderGraph.h`; add a `bool IsDeviceLost() const { return deviceLost_; }` if it was never exposed.)
 
-- [ ] **Step 2: Live gate:** `ctest --test-dir build-wsl -R DeviceLostRecovery --output-on-failure`. Expected: PASS — log shows the full teardown-reverse/rebuild-forward ("RECOVERY COMPLETE") followed by 30 clean frames. This is the promotion of the manual harness to an automated test.
-- [ ] **Step 3: Confirm the env var still works** (it now arms the same site): `VIXEN_SIMULATE_DEVICE_LOSS=60 ./build-wsl/<path>/test_fail_scenario_sweep --gtest_filter='*BootWarmupTeardown*'` — wait, warmup is only 30 frames; instead run the standalone app briefly if convenient, or set `=10`: `VIXEN_SIMULATE_DEVICE_LOSS=10 ... --gtest_filter='*BootWarmupTeardown*'`. Expected: recovery fires during warmup and the test still passes (Render() self-heals). This proves the migration preserved the manual tool.
-- [ ] **Step 4: Update docs:** `Device-Loss-Recovery-2026-06.md` — mark Inc 3's "promote the fault-injection harness into an automated test" ✅ with a pointer to this plan; note the env hook now arms `FenceWait` (flag-gated, absent from real builds).
-- [ ] **Step 5: Commit** `feat(fail-scenarios): DeviceLostRecovery scenario — device-loss harness promoted to automated gate (Task 7)`.
+- [x] **Step 2: Live gate:** `ctest --test-dir build-wsl -R DeviceLostRecovery --output-on-failure`. Expected: PASS — log shows the full teardown-reverse/rebuild-forward ("RECOVERY COMPLETE") followed by 30 clean frames. This is the promotion of the manual harness to an automated test.
+- [x] **Step 3: Confirm the env var still works** (it now arms the same site): `VIXEN_SIMULATE_DEVICE_LOSS=60 ./build-wsl/<path>/test_fail_scenario_sweep --gtest_filter='*BootWarmupTeardown*'` — wait, warmup is only 30 frames; instead run the standalone app briefly if convenient, or set `=10`: `VIXEN_SIMULATE_DEVICE_LOSS=10 ... --gtest_filter='*BootWarmupTeardown*'`. Expected: recovery fires during warmup and the test still passes (Render() self-heals). This proves the migration preserved the manual tool.
+- [x] **Step 4: Update docs:** `Device-Loss-Recovery-2026-06.md` — mark Inc 3's "promote the fault-injection harness into an automated test" ✅ with a pointer to this plan; note the env hook now arms `FenceWait` (flag-gated, absent from real builds).
+- [x] **Step 5: Commit** `feat(fail-scenarios): DeviceLostRecovery scenario — device-loss harness promoted to automated gate (Task 7)`.
 
 ---
 
@@ -1015,7 +1016,7 @@ VIXEN_FAIL_SCENARIOS_DECLARE(Vixen::RenderGraph::FrameSyncNodeType,
 
 **Interfaces:** none new.
 
-- [ ] **Step 1: The proof script:**
+- [x] **Step 1: The proof script:**
 
 ```bash
 #!/usr/bin/env bash
@@ -1033,10 +1034,10 @@ echo "ON-build  scenario symbols: $ON_COUNT (must be > 0)"
 [ "$OFF_COUNT" -eq 0 ] && [ "$ON_COUNT" -gt 0 ] && echo "COMPILE-OUT PROOF: PASS" || { echo "FAIL"; exit 1; }
 ```
 
-- [ ] **Step 2: Run it.** Build `RenderGraph VixenApp` in `build-wsl-off` (OFF) if stale, then `bash scripts/check_fail_scenario_compile_out.sh build-wsl-off build-wsl`. Expected: `COMPILE-OUT PROOF: PASS`. (On MSVC artifacts the same check would use `dumpbin /symbols`; WSL/GCC proof satisfies Inc 1 — note MSVC parity as an Inc 2 CI item.)
-- [ ] **Step 3: Full suite sanity:** `cmake --build build-wsl -- -k 0` (whole tree, flag ON) and `ctest --test-dir build-wsl -R "FailScenario|render" --output-on-failure`. Expected: everything green (or the documented knownIssue skips).
-- [ ] **Step 4: Spec status update:** design doc frontmatter `status:` → "Inc 1 implemented ({date}); scenarios live in the sweep (see Fail-Scenario-Simulation-Inc1-Plan). Inc 2 (coverage + gate target + tamper self-test) next." Also add the plan doc to `related:`.
-- [ ] **Step 5: Commit** `feat(fail-scenarios): Inc 1 complete — empirical compile-out proof + docs (Task 8)`. Do not push; do not merge — integration is a user decision (superpowers:finishing-a-development-branch).
+- [x] **Step 2: Run it.** Build `RenderGraph VixenApp` in `build-wsl-off` (OFF) if stale, then `bash scripts/check_fail_scenario_compile_out.sh build-wsl-off build-wsl`. Expected: `COMPILE-OUT PROOF: PASS`. (On MSVC artifacts the same check would use `dumpbin /symbols`; WSL/GCC proof satisfies Inc 1 — note MSVC parity as an Inc 2 CI item.)
+- [x] **Step 3: Full suite sanity:** `cmake --build build-wsl -- -k 0` (whole tree, flag ON) and `ctest --test-dir build-wsl -R "FailScenario|render" --output-on-failure`. Expected: everything green (or the documented knownIssue skips).
+- [x] **Step 4: Spec status update:** design doc frontmatter `status:` → "Inc 1 implemented ({date}); scenarios live in the sweep (see Fail-Scenario-Simulation-Inc1-Plan). Inc 2 (coverage + gate target + tamper self-test) next." Also add the plan doc to `related:`.
+- [x] **Step 5: Commit** `feat(fail-scenarios): Inc 1 complete — empirical compile-out proof + docs (Task 8)`. Do not push; do not merge — integration is a user decision (superpowers:finishing-a-development-branch).
 
 ---
 
