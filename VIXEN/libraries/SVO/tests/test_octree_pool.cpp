@@ -24,9 +24,10 @@ static Recipe::SdfInstruction sphereI(glm::vec3 c, float r) {
 
 // Build one SdfBodyOctree from a sphere recipe at low resolution (n=16, band=2).
 static SdfBodyOctree makeSphere(float radius) {
-    Recipe::SdfInstruction prog = sphereI(glm::vec3(8, 8, 8), radius);
+    const glm::vec3 gridCenter(8, 8, 8);   // n=16 grid, so its center is (8,8,8)
+    Recipe::SdfInstruction prog = sphereI(glm::vec3(0, 0, 0), radius);  // object-centered
     auto baked = BakeRecipeInstructionsToSdfWorld(&prog, 1,
-                     glm::vec3(8, 8, 8), /*n=*/16, /*band=*/2.0f, /*brickDepth=*/3);
+                     gridCenter, /*n=*/16, /*band=*/2.0f, /*brickDepth=*/3);
     return BuildSdfBodyOctree(baked, 3);
 }
 
