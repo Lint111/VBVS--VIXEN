@@ -1,7 +1,6 @@
 // Copyright (C) 2025 Lior Yanai (eLiorg). Licensed under the MIT License.
 
 #include "Core/PassRecorder.h"
-#include "VulkanGlobalNames.h"  // vixenCmdPipelineBarrier2
 
 #include <stdexcept>
 #include <variant>
@@ -18,7 +17,8 @@ namespace Vixen::RenderGraph {
 /// Image barriers are a deliberate P5 no-op stub — `GroupBarrier.resource`
 /// is a node-local identity (often a sentinel) and cannot be resolved to a
 /// VkImage without the swapchain correlation work deferred to P5.
-void ReplayGroupBarriers(VkCommandBuffer cmd, const std::vector<GroupBarrier>& barriers) {
+void ReplayGroupBarriers(VkCommandBuffer cmd, const std::vector<GroupBarrier>& barriers,
+                         PFN_vkCmdPipelineBarrier2KHR cmdPipelineBarrier2) {
     if (barriers.empty()) return;
 
     std::vector<VkMemoryBarrier2> memBarriers;
@@ -45,7 +45,7 @@ void ReplayGroupBarriers(VkCommandBuffer cmd, const std::vector<GroupBarrier>& b
     dep.sType              = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
     dep.memoryBarrierCount = static_cast<uint32_t>(memBarriers.size());
     dep.pMemoryBarriers    = memBarriers.data();
-    vixenCmdPipelineBarrier2(cmd, &dep);
+    cmdPipelineBarrier2(cmd, &dep);
 }
 
 // ============================================================================
@@ -173,10 +173,11 @@ static void RecordOneStep(VkCommandBuffer cmd, const RenderPassStep& step, uint3
 // ============================================================================
 
 void RecordPassGroup(VkCommandBuffer cmd, const std::vector<PassStep>& passes,
-                     const FrameSyncSchedule& schedule, uint32_t imageIndex) {
+                     const FrameSyncSchedule& schedule, uint32_t imageIndex,
+                     PFN_vkCmdPipelineBarrier2KHR cmdPipelineBarrier2) {
     for (uint32_t i = 0; i < static_cast<uint32_t>(passes.size()); ++i) {
         if (i < static_cast<uint32_t>(schedule.groups.size())) {
-            ReplayGroupBarriers(cmd, schedule.groups[i].entryBarriers);
+            ReplayGroupBarriers(cmd, schedule.groups[i].entryBarriers, cmdPipelineBarrier2);
         }
         std::visit([&](const auto& step) { RecordOneStep(cmd, step, imageIndex); }, passes[i]);
     }

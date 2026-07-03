@@ -204,8 +204,9 @@ void FrameSyncNode::CleanupImpl(TypedCleanupContext& ctx) {
 
     // P5a M1: the per-loop timeline semaphore is PERSISTENT across recompile (resize/recompile must
     // NOT destroy it — that would reset the monotonic counter and collide with frames still in
-    // flight). Torn down only on FinalTeardown, mirroring UIRenderNode's persistent-resource rationale.
-    if (ctx.reason == CleanupReason::FinalTeardown &&
+    // flight). Torn down on FinalTeardown AND DeviceLost (a device-scoped object cannot outlive its
+    // device; frameBase_ is CPU-side, so timeline monotonicity survives the recreate). KI-004 class.
+    if (ctx.reason != CleanupReason::Recompile &&
         timelineSemaphore_ != VK_NULL_HANDLE &&
         device != nullptr && device->device != VK_NULL_HANDLE) {
         vkDestroySemaphore(device->device, timelineSemaphore_, nullptr);
@@ -222,13 +223,10 @@ VIXEN_REGISTER_NODE(Vixen::RenderGraph::FrameSyncNodeType);
 #if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
 namespace FS = Vixen::RenderGraph::FailScenario;
 VIXEN_FAIL_SCENARIOS_DECLARE(Vixen::RenderGraph::FrameSyncNodeType,
-    // KI-004 (still open, see Known-Issues.md): NotifyDeviceLost() now arms the central frame
-    // abort, which closed the ORIGINAL race (a downstream node executing on the condemned frame
-    // before recovery). A second, distinct bug remains: the first frame after RecoverFromDeviceLoss
-    // completes still crashes in ComputeDispatchNode with an invalid-commandBuffer loader error,
-    // despite a freshly-allocated (non-stale) handle and a correctly-fresh (non-aborted) frame.
-    // Root cause not yet isolated. Stays gated report-not-block per Fail-Scenario-Simulation Inc 1
-    // protocol. Remove knownIssueId once the post-recovery command-buffer lifecycle bug is fixed.
+    // Hard regression gate for KI-004 (resolved — two fixes): (1) NotifyDeviceLost() arms the
+    // central frame abort so no downstream node executes on the condemned frame; (2) UIRenderNode
+    // tears down its persistent per-image command buffers + RmlUi GPU objects on DeviceLost
+    // (persistence is only valid across Recompile, where the device survives).
     VIXEN_SCENARIO(DeviceLostRecovery,
         FS::VkTransient{ .site = FS::FaultSite::FenceWait, .result = VK_ERROR_DEVICE_LOST },
         // The one-shot forced VK_ERROR_DEVICE_LOST drives the REAL detection path
@@ -240,7 +238,6 @@ VIXEN_FAIL_SCENARIOS_DECLARE(Vixen::RenderGraph::FrameSyncNodeType,
         [](FS::ScenarioContext& c) {
             if (c.Graph()->IsDeviceLost())
                 c.Fail("device-lost latch still set — recovery did not complete");
-        },
-        "KI-004")
+        })
 );
 #endif

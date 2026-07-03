@@ -83,6 +83,7 @@ private:
     bool initialized_ = false;
     VkDevice device_ = VK_NULL_HANDLE;
     VkQueue queue_ = VK_NULL_HANDLE;
+    PFN_vkQueueSubmit2KHR fpQueueSubmit2_ = nullptr;  // cached from VulkanDevice each compile
     VkCommandPool commandPool_ = VK_NULL_HANDLE;
     VkRenderPass renderPass_ = VK_NULL_HANDLE;   // consumed from RenderPassNode (not owned)
     VkExtent2D extent_{};

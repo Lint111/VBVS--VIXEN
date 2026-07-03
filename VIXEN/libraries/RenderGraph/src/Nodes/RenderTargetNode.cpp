@@ -101,7 +101,10 @@ void RenderTargetNode::ExecuteImpl(TypedExecuteContext& ctx) {
 
 void RenderTargetNode::CleanupImpl(TypedCleanupContext& ctx) {
     // FR-7: persist across recompile; release only on final application teardown.
-    if (ctx.reason != CleanupReason::FinalTeardown) {
+    // Keep persistent resources ONLY across a Recompile (the device survives). On DeviceLost the
+    // device and every child object are gone — keeping them (the old '!= FinalTeardown' guard)
+    // left stale handles that crashed the first post-recovery use/teardown (KI-004 class).
+    if (ctx.reason == CleanupReason::Recompile) {
         NODE_LOG_INFO("[RenderTargetNode] Cleanup (recompile) - keeping persistent offscreen target");
         return;
     }

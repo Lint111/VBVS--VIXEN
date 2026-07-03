@@ -166,7 +166,8 @@ void PassGroupNode::ExecuteImpl(VariadicExecuteContext& ctx) {
     }
 
     // ---- Record all passes (barriers + compute dispatches + graphics draws) ----
-    RecordPassGroup(cmd, passes_, intraSchedule_, imageIndex);
+    RecordPassGroup(cmd, passes_, intraSchedule_, imageIndex,
+                    GetDevice()->fpCmdPipelineBarrier2);  // per-device barrier2 entry point (injected)
 
     // ---- End command buffer ----
     result = vkEndCommandBuffer(cmd);
