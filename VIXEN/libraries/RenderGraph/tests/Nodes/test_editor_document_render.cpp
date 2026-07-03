@@ -13,14 +13,15 @@
  * file's own probe: at grid x in [0,0.3], z=0, the surface is void up past y=1.6 with the cut,
  * solid at y=0.98 without it).
  *
- * NOTE on scale: BakeRecipeInstructionsToSdfWorld samples the SDF at RAW grid-integer coordinates
- * in [0,n)^3 (n=64, the flattener's fixed bake resolution) -- RecipeBakeConfig::center is stored
- * as metadata only and does NOT offset the sample position. The golden document's geometry is
- * centered at grid-space origin with ~2-unit extent (verified by the flatten test's own [-2,2]^3
- * parity sweep), so only its positive-octant corner intersects the visible [0,64) grid; the render
- * below deliberately frames a camera on that corner rather than the whole shape. This is a
- * property of the golden asset's authoring convention (object-centered, not the "positive-octant"
- * convention other render-gate recipes use), not a defect in the flattener or this test.
+ * NOTE on scale (Inc2a re-derivation): BakeRecipeInstructionsToSdfWorld now applies `center`
+ * (`p - center` at eval, see SdfBake.h) exactly like the analytic bake path, so the golden
+ * document's object-centered geometry (authored near local origin, ~[-1.5,1.5] extent) is baked
+ * AT RecipeBakeConfig::center's default grid position (32,32,32) -- no longer clipped to the
+ * positive-octant corner as it was pre-fix. Grid-to-world: (kWorldGridSize/n)*renderScale =
+ * (10/64)*5 = 0.78125, so grid-center (32,32,32) -> world (25,25,25); this is the camera target
+ * below (previously the corner-workaround target of world ~(0.39,0.39,0.39), which pre-fix was
+ * the only place the geometry actually rendered -- post-fix that point is empty space, which is
+ * exactly the fresh 0-hit-pixel failure this task's re-derivation fixes).
  *
  * SAFETY -- LAVAPIPE ONLY: identical contract to test_recipe_pool_render.cpp.
  *
@@ -475,9 +476,10 @@ protected:
         node->SetRecipePool(std::move(pool));
 
         // renderScale=5.0 — see EditorApplication::ApplyDocumentToScene's comment: the golden
-        // document's geometry occupies grid-space [0,~2] (out of the 64-grid the bake samples),
-        // and the shader's base-octree world frame is a fixed [0,10] span (kWorldGridSize=10),
-        // so grid [0,2] -> base-world [0,0.3125] -> renderScale=5 -> world [0,~1.56].
+        // document's object-centered geometry (~[-1.5,1.5] extent) is now baked AT
+        // RecipeBakeConfig::center's default grid position (32,32,32) (Inc2a fix), and the
+        // shader's base-octree world frame is a fixed [0,10] span (kWorldGridSize=10), so
+        // grid-to-world = (10/64)*5 = 0.78125; grid-center (32,32,32) -> world (25,25,25).
         Vixen::SVO::BodyInstanceGpu inst{};
         inst.worldPos[0] = 0.0f; inst.worldPos[1] = 0.0f; inst.worldPos[2] = 0.0f;
         inst.renderScale = 5.0f;
@@ -534,13 +536,14 @@ TEST_F(EditorDocumentRenderTest, GoldenDocumentAllLayersRendersVisibleBody) {
     ASSERT_TRUE(bakeResult.ok) << bakeResult.err;
     ASSERT_EQ(bakeResult.pool.count, 1u);
 
-    // Camera: frame the golden's positive-octant corner (its whole geometry, centered at
-    // grid-space origin, only has valid data in [0,~2]^3 -- see file header). worldPos=(0,0,0),
-    // renderScale=5.0 and the shader's fixed [0,10] base-octree world span map grid [0,~1] (the
-    // box's positive-octant half) to world [0,~0.78] -- see RenderPool's renderScale comment.
+    // Camera: frame the golden's whole geometry, now correctly centered at grid (32,32,32) —
+    // Inc2a's bake-center fix (BakeRecipeInstructionsToSdfWorld applies `center`) means the
+    // object-centered document no longer clips to the positive-octant corner (pre-fix behavior).
+    // worldPos=(0,0,0), renderScale=5.0, grid-to-world=(10/64)*5=0.78125 -- see RenderPool's
+    // renderScale comment. grid-center (32,32,32) -> world (25,25,25).
     constexpr uint32_t kW = 512, kH = 512;
     constexpr float kGridToWorld = 0.15625f * 5.0f;  // (kWorldGridSize/n) * renderScale
-    const glm::vec3 target(0.5f * kGridToWorld, 0.5f * kGridToWorld, 0.5f * kGridToWorld);
+    const glm::vec3 target(32.0f * kGridToWorld, 32.0f * kGridToWorld, 32.0f * kGridToWorld);
     const glm::vec3 eye = target + glm::vec3(1.6f, 1.3f, 1.6f);
     const PushConstants pc = MakeCamera(eye, target, kW, kH, 1);
 
@@ -556,7 +559,11 @@ TEST_F(EditorDocumentRenderTest, GoldenDocumentAllLayersRendersVisibleBody) {
     }
 
     std::printf("[EDITOR] all-layers render | hitPixels=%d -> /tmp/editor_document_render_with_cut.png\n", hitPixels);
-    EXPECT_GT(hitPixels, 500) << "Golden document produced too few hit pixels -- body may not be visible";
+    // Inc2a re-derivation: post-fix, the whole object-centered body is framed (not clipped to a
+    // corner), so a fresh lavapipe run measures hitPixels=221250 (of 512*512=262144, ~84% fill) --
+    // far above the old corner-workaround's weak >500 bound. 50000 keeps wide margin below the
+    // measured value while still meaningfully gating "is the body visible at all".
+    EXPECT_GT(hitPixels, 50000) << "Golden document produced too few hit pixels -- body may not be visible";
 }
 
 // ---------------------------------------------------------------------------
@@ -576,14 +583,17 @@ TEST_F(EditorDocumentRenderTest, DisablingCutLayerChangesTopFaceSilhouette) {
     ASSERT_TRUE(Yeroket::Sdf::Generated::ReadVoxelDocument(raw.data(), raw.size(), view));
 
     constexpr uint32_t kW = 512, kH = 512;
-    // Look down at the cylinder bore's footprint (x,z near grid-origin, inside the 0.35-radius
-    // bore) from a steep angle so a disabled cut shows solid box-top colour and an enabled cut
-    // shows void/background through the hole -- an outline change directly under the camera's
-    // centre pixel, not an interior-only depression a silhouette test would miss. Grid->world:
-    // (kWorldGridSize/n)*renderScale = 0.15625*5 = 0.78125 (see RenderPool's comment); bore
-    // footprint grid (0.1,0.1) and box-top grid y=0.98 (both verified numerically beforehand).
+    // Look down at the cylinder bore's footprint (x,z near the object's LOCAL origin, inside the
+    // 0.35-radius bore) from a steep angle so a disabled cut shows solid box-top colour and an
+    // enabled cut shows void/background through the hole -- an outline change directly under the
+    // camera's centre pixel, not an interior-only depression a silhouette test would miss.
+    // Inc2a: the object-centered document is now baked AT grid-center (32,32,32) (Inc2a's
+    // bake-center fix), so a local-space point (lx,ly,lz) lands at grid (32+lx, 32+ly, 32+lz).
+    // Grid->world: (kWorldGridSize/n)*renderScale = 0.15625*5 = 0.78125 (see RenderPool's
+    // comment); local bore footprint (0.1,0.1) and local box-top y=0.98 (both verified
+    // numerically beforehand, unchanged by the centering fix -- it's a local-space fact).
     constexpr float kGridToWorld = 0.15625f * 5.0f;
-    const glm::vec3 target(0.1f * kGridToWorld, 0.98f * kGridToWorld, 0.1f * kGridToWorld);
+    const glm::vec3 target((32.0f + 0.1f) * kGridToWorld, (32.0f + 0.98f) * kGridToWorld, (32.0f + 0.1f) * kGridToWorld);
     const glm::vec3 eye = target + glm::vec3(0.35f, 1.3f, 0.35f);  // steep but non-degenerate angle
     const PushConstants pc = MakeCamera(eye, target, kW, kH, 1);
 
@@ -632,7 +642,12 @@ TEST_F(EditorDocumentRenderTest, DisablingCutLayerChangesTopFaceSilhouette) {
         << "Disabling the cut layer should fill in the punched-through hole, increasing hit count";
     // And the top-face region directly over the bore must differ at the pixel level -- proves
     // the toggle actually changed the rendered geometry there, not just an aggregate elsewhere.
-    EXPECT_GT(centreDiffPixels, 50)
+    // Inc2a re-derivation: the corrected centering means the camera looks dead-center at the
+    // bore (not an off-corner view), so a fresh lavapipe run measures centreDiffPixels=6400 --
+    // literally the ENTIRE 80x80=6400 sampled region differs (with-cut=void, no-cut=solid box
+    // top). 3000 keeps wide margin below the measured value while still meaningfully gating
+    // "did the toggle change geometry here" (old weak bound was >50, out of the same 6400).
+    EXPECT_GT(centreDiffPixels, 3000)
         << "Expected a real pixel-level difference under the cylinder bore; toggle may not be wired";
 }
 
