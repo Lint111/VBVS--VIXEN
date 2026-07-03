@@ -64,6 +64,47 @@ std::filesystem::file_time_type LatestUiMtime(const std::string& rmlPath) {
     }
     return latest;
 }
+
+// Make a memory-loaded RML document self-contained: inject the ALREADY-CONCATENATED RCSS text (the
+// host already joined the ui_document's ordered Rcss list into one stylesheet string) as a <style>
+// block in <head>, so LoadDocumentFromMemory needs no FileInterface path resolution for the stylesheet.
+// Any <link type="text/rcss" .../> in the source RML is dropped (the inline <style> replaces it).
+std::string InlineRcss(const std::string& rml, const std::string& rcss) {
+    std::string out;
+    out.reserve(rml.size() + rcss.size() + 32);
+    size_t pos = 0;
+    while (pos < rml.size()) {
+        // Drop any <link ... type="text/rcss" ...> line (the on-disk stylesheet reference).
+        size_t linkPos = rml.find("<link", pos);
+        size_t headEnd = rml.find("</head>", pos);
+        if (linkPos != std::string::npos && (headEnd == std::string::npos || linkPos < headEnd)) {
+            size_t tagEnd = rml.find('>', linkPos);
+            if (tagEnd == std::string::npos) { out.append(rml, pos, std::string::npos); break; }
+            std::string tag = rml.substr(linkPos, tagEnd - linkPos + 1);
+            if (tag.find("text/rcss") != std::string::npos) {
+                out.append(rml, pos, linkPos - pos);
+                pos = tagEnd + 1;
+                continue;
+            }
+            // Not an RCSS link — copy through up to and including this tag, keep scanning.
+            out.append(rml, pos, tagEnd - pos + 1);
+            pos = tagEnd + 1;
+            continue;
+        }
+        break;
+    }
+    out.append(rml, pos, std::string::npos);
+
+    if (!rcss.empty()) {
+        size_t headEnd = out.find("</head>");
+        std::string styleBlock = "<style>" + rcss + "</style>";
+        if (headEnd != std::string::npos)
+            out.insert(headEnd, styleBlock);
+        else
+            out = styleBlock + out;   // no <head> — prepend so the style still registers
+    }
+    return out;
+}
 }  // namespace
 
 std::unique_ptr<NodeInstance> UIRenderNodeType::CreateInstance(const std::string& instanceName) const {
@@ -145,12 +186,23 @@ void UIRenderNode::CompileImpl(TypedCompileContext& ctx) {
                 c.Bind("inspect",         &inspect_);
                 hudModel_ = c.GetModelHandle();
             }
-            document_ = context_->LoadDocument(docPath);
+            if (haveDocSource_) {
+                // Baked delivery (Phase A): the host already fetched core:hud from the content pack and
+                // pushed it via SetDocumentSource. Inline the RCSS so the memory doc is self-contained
+                // (no FileInterface path resolution needed).
+                std::string rml = InlineRcss(docSourceRml_, docSourceRcss_);
+                document_ = context_->LoadDocumentFromMemory(rml, "core:hud");
+            } else {
+                document_ = context_->LoadDocument(docPath);
+            }
             if (document_) document_->Show();
             // Cache the resolved path + initial mtime so the recompile branch can detect on-disk edits
-            // (live hot-reload; dormant unless VIXEN_UI_LIVE is set).
-            resolvedDocPath_ = docPath;
-            lastUiWriteTime_ = LatestUiMtime(docPath);
+            // (live hot-reload; dormant unless VIXEN_UI_LIVE is set). Meaningless (and skipped) for the
+            // memory-loaded path — there's no on-disk file to watch.
+            if (!haveDocSource_) {
+                resolvedDocPath_ = docPath;
+                lastUiWriteTime_ = LatestUiMtime(docPath);
+            }
         }
         initialized_ = true;
     } else if (context_) {
@@ -374,6 +426,13 @@ void UIRenderNode::SetHudView(int tick, int bodyCount, int activeLens, int activ
 
 void UIRenderNode::SetHudData(int tick, int bodyCount) {
     SetHudView(tick, bodyCount, 0, 0, {}, {}, HudInspectIn{false, "", 0.0f, 0.0f, "", 0.0f, ""});
+}
+
+void UIRenderNode::SetDocumentSource(const std::string& rml, const std::string& rcss) {
+    docSourceRml_ = rml;
+    docSourceRcss_ = rcss;
+    haveDocSource_ = !rml.empty();
+    if (initialized_) MarkNeedsRecompile();   // re-load on the next compile so the doc swaps in
 }
 
 void UIRenderNode::CleanupImpl(TypedCleanupContext& ctx) {

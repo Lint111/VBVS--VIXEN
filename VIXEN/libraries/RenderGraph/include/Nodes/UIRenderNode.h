@@ -86,6 +86,11 @@ public:
     /// exercise the setter/copy without a live RmlUi data model).
     [[nodiscard]] const auto& InspectForTest() const { return inspect_; }
 
+    /// Provide the UI document as in-memory RML + RCSS (from the baked content pack), instead of a
+    /// loose on-disk file. Takes effect on the next Compile (the initial one, or a future recompile).
+    /// An empty rml keeps the file-path fallback (dev/demo path via RML_DOCUMENT_PATH).
+    void SetDocumentSource(const std::string& rml, const std::string& rcss);
+
 protected:
     void SetupImpl(TypedSetupContext& ctx) override;
     void CompileImpl(TypedCompileContext& ctx) override;
@@ -123,6 +128,14 @@ private:
     // edit and swap the document CPU-side (never touching the persistent GPU sync objects).
     std::string resolvedDocPath_;
     std::filesystem::file_time_type lastUiWriteTime_{};
+
+    // Baked-document delivery (Phase A): the host-provided in-memory RML + RCSS from the content
+    // pack's core:hud ui_document. When haveDocSource_ is set, CompileImpl's initial load uses
+    // LoadDocumentFromMemory instead of the file path; the live hot-reload branch above stays on
+    // the file path only (dev override, gated on VIXEN_UI_LIVE).
+    std::string docSourceRml_;
+    std::string docSourceRcss_;
+    bool haveDocSource_ = false;
 
     // S1b: Rml data model members. Structs are registered with RegisterStruct<> / RegisterArray<>
     // in CompileImpl before LoadDocument. tick_ / bodyCount_ / activeLensName_ / activeLensCount_ are
