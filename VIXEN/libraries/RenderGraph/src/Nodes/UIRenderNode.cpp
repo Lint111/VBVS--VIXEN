@@ -4,6 +4,7 @@
 #include "Core/FrameSyncSchedule.h"     // SubmitGroup, SyncEdge, FindGroupForNode
 
 #include "VulkanDevice.h"
+#include "VulkanGlobalNames.h"  // vixenQueueSubmit2
 #include "VulkanSwapChain.h"
 
 #include <RmlUi/Core.h>
@@ -310,7 +311,7 @@ void UIRenderNode::ExecuteImpl(TypedExecuteContext& ctx) {
     si.pCommandBufferInfos      = &cmdInfo;
     si.signalSemaphoreInfoCount = static_cast<uint32_t>(signals.size());
     si.pSignalSemaphoreInfos    = signals.data();
-    vkQueueSubmit2(queue_, 1, &si, inFlightFence);
+    vixenQueueSubmit2(queue_, 1, &si, inFlightFence);
 
     ctx.Out(UIRenderNodeConfig::COMMAND_BUFFERS, cmd);
     ctx.Out(UIRenderNodeConfig::RENDER_COMPLETE_SEMAPHORE, signalSem);

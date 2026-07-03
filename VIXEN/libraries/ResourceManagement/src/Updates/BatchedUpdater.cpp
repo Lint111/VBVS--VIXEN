@@ -80,7 +80,8 @@ bool BatchedUpdater::HasPending(uint32_t imageIndex) const {
 // RECORDING API
 // ============================================================================
 
-uint32_t BatchedUpdater::RecordAll(VkCommandBuffer cmd, uint32_t imageIndex) {
+uint32_t BatchedUpdater::RecordAll(VkCommandBuffer cmd, uint32_t imageIndex,
+                                    PFN_vkCmdPipelineBarrier2KHR cmdPipelineBarrier2) {
     if (!cmd || !ValidateImageIndex(imageIndex)) {
         return 0;
     }
@@ -110,7 +111,7 @@ uint32_t BatchedUpdater::RecordAll(VkCommandBuffer cmd, uint32_t imageIndex) {
     for (auto& update : updates) {
         if (update) {
             // Insert pre-barriers if needed
-            if (config_.insertBarriers && update->RequiresBarriers()) {
+            if (config_.insertBarriers && update->RequiresBarriers() && cmdPipelineBarrier2) {
                 // Memory barrier before operation
                 VkMemoryBarrier2 barrier{};
                 barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2;
@@ -125,7 +126,7 @@ uint32_t BatchedUpdater::RecordAll(VkCommandBuffer cmd, uint32_t imageIndex) {
                 depInfo.memoryBarrierCount = 1;
                 depInfo.pMemoryBarriers = &barrier;
 
-                vkCmdPipelineBarrier2(cmd, &depInfo);
+                cmdPipelineBarrier2(cmd, &depInfo);
             }
 
             update->Record(cmd);

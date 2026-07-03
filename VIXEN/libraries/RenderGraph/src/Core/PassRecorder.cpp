@@ -1,6 +1,7 @@
 // Copyright (C) 2025 Lior Yanai (eLiorg). Licensed under the MIT License.
 
 #include "Core/PassRecorder.h"
+#include "VulkanGlobalNames.h"  // vixenCmdPipelineBarrier2
 
 #include <stdexcept>
 #include <variant>
@@ -44,7 +45,7 @@ void ReplayGroupBarriers(VkCommandBuffer cmd, const std::vector<GroupBarrier>& b
     dep.sType              = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
     dep.memoryBarrierCount = static_cast<uint32_t>(memBarriers.size());
     dep.pMemoryBarriers    = memBarriers.data();
-    vkCmdPipelineBarrier2(cmd, &dep);
+    vixenCmdPipelineBarrier2(cmd, &dep);
 }
 
 // ============================================================================

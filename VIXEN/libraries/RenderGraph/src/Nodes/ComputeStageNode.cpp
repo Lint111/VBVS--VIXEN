@@ -18,6 +18,7 @@
 #include "Core/RenderGraph.h"
 #include "Data/Nodes/ComputeStageNodeConfig.h"
 #include "VulkanDevice.h"
+#include "VulkanGlobalNames.h"  // vixenCmdPipelineBarrier2
 #include "ShaderDataBundle.h"
 #include "IRenderTarget.h"
 #include "Core/NodeLogging.h"
@@ -219,7 +220,7 @@ void ComputeStageNode::ExecuteImpl(TypedExecuteContext& ctx) {
     si.signalSemaphoreInfoCount = static_cast<uint32_t>(signals.size());
     si.pSignalSemaphoreInfos    = signals.data();
 
-    VkResult result = vkQueueSubmit2(GetDevice()->queue, 1, &si, submitFence);
+    VkResult result = vixenQueueSubmit2(GetDevice()->queue, 1, &si, submitFence);
     if (result != VK_SUCCESS) {
         throw std::runtime_error("[ComputeStageNode::ExecuteImpl] vkQueueSubmit2 failed: " +
                                  std::to_string(result));
@@ -343,7 +344,7 @@ void ComputeStageNode::TransitionImageToGeneralBarrier2(VkCommandBuffer cmd, VkI
     VkDependencyInfo dep{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
     dep.imageMemoryBarrierCount = 1;
     dep.pImageMemoryBarriers    = &ib;
-    vkCmdPipelineBarrier2(cmd, &dep);
+    vixenCmdPipelineBarrier2(cmd, &dep);
 }
 
 void ComputeStageNode::TransitionImageToPresentBarrier2(VkCommandBuffer cmd, VkImage image) {
@@ -362,7 +363,7 @@ void ComputeStageNode::TransitionImageToPresentBarrier2(VkCommandBuffer cmd, VkI
     VkDependencyInfo dep{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
     dep.imageMemoryBarrierCount = 1;
     dep.pImageMemoryBarriers    = &ib;
-    vkCmdPipelineBarrier2(cmd, &dep);
+    vixenCmdPipelineBarrier2(cmd, &dep);
 }
 
 // ============================================================================
