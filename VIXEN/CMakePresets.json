@@ -5,9 +5,9 @@
     {
       "name": "vixen-ninja",
       "displayName": "VIXEN Ninja + sccache (fast incremental)",
-      "description": "Ninja generator so CMAKE_CXX_COMPILER_LAUNCHER (sccache) is honored and dependency tracking is fine-grained. Embedded (/Z7) debug info is required for sccache to cache MSVC debug builds (separate-PDB /Zi is non-cacheable and causes C1041 under parallel cl.exe). gtest_discover_tests runs at test time (PRE_TEST), not build time, so the build never executes test exes. Requires an MSVC environment (run from a VS Developer prompt or after vcvars64.bat).",
+      "description": "Ninja generator so CMAKE_CXX_COMPILER_LAUNCHER (sccache) is honored and dependency tracking is fine-grained. Embedded (/Z7) debug info is required for sccache to cache MSVC debug builds (separate-PDB /Zi is non-cacheable and causes C1041 under parallel cl.exe). gtest_discover_tests runs at test time (PRE_TEST), not build time, so the build never executes test exes. Requires an MSVC environment (run from a VS Developer prompt or after vcvars64.bat). binaryDir lives under the consolidated ../build/ parent alongside every other preset's output.",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/../build-ninja",
+      "binaryDir": "${sourceDir}/../build/ninja",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_POLICY_DEFAULT_CMP0141": "NEW",
@@ -18,11 +18,24 @@
     {
       "name": "vixen-wsl",
       "displayName": "VIXEN WSL (Linux/GCC + lavapipe software Vulkan)",
-      "description": "Native Linux/GCC build for WSL2. Ninja generator; auto-provisions the LunarG Vulkan SDK (glslc + headers) into ${sourceDir}/.vulkan-sdk on first configure (VIXEN_AUTO_PROVISION_VULKAN defaults ON). Mesa-Dozen (Vulkan-over-D3D12 GPU) provisioning is OFF — it builds Mesa from source (slow) and is unneeded for the offscreen lavapipe tests, which use the system software rasterizer. Run lavapipe tests with VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json and VK_LAYER_PATH=${sourceDir}/.vulkan-sdk/<ver>/x86_64/share/vulkan/explicit_layer.d. binaryDir is worktree-local (../build-wsl), parallel to the Windows ../build-ninja.",
+      "description": "Native Linux/GCC build for WSL2. Ninja generator; auto-provisions the LunarG Vulkan SDK (glslc + headers) into ${sourceDir}/.vulkan-sdk on first configure (VIXEN_AUTO_PROVISION_VULKAN defaults ON). Mesa-Dozen (Vulkan-over-D3D12 GPU) provisioning is OFF by default — it builds Mesa from source (slow) and is unneeded for the offscreen lavapipe tests, which use the system software rasterizer; set VIXEN_AUTO_PROVISION_WSL_VULKAN=ON to get a real-GPU app run instead. Run lavapipe tests with VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json and VK_LAYER_PATH=${sourceDir}/.vulkan-sdk/<ver>/x86_64/share/vulkan/explicit_layer.d. binaryDir lives under the consolidated ../build/ parent, alongside ../build/ninja and ../build/wsl-debug.",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/../build-wsl",
+      "binaryDir": "${sourceDir}/../build/wsl",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++",
+        "VIXEN_AUTO_PROVISION_WSL_VULKAN": "OFF"
+      }
+    },
+    {
+      "name": "vixen-wsl-debug",
+      "displayName": "VIXEN WSL Debug (Linux/GCC, unoptimized, descriptor tracking available)",
+      "description": "Same Linux/GCC/WSL2 setup as vixen-wsl, but CMAKE_BUILD_TYPE=Debug (unoptimized, real symbols — needed for gdb/lldb backtraces, since vixen-wsl's Release build inlines/optimizes away the frames a debugger needs). Also the only preset where VIXEN_ENABLE_DESCRIPTOR_TRACKING is settable (it hard-requires Debug — see Debug/DescriptorResourceTracker.h and the root CMakeLists.txt gate). Pass -DVIXEN_ENABLE_DESCRIPTOR_TRACKING=ON to turn on descriptor resource lifecycle tracking for this configure.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/../build/wsl-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_C_COMPILER": "gcc",
         "CMAKE_CXX_COMPILER": "g++",
         "VIXEN_AUTO_PROVISION_WSL_VULKAN": "OFF"
@@ -31,6 +44,7 @@
   ],
   "buildPresets": [
     { "name": "vixen-ninja", "configurePreset": "vixen-ninja" },
-    { "name": "vixen-wsl", "configurePreset": "vixen-wsl" }
+    { "name": "vixen-wsl", "configurePreset": "vixen-wsl" },
+    { "name": "vixen-wsl-debug", "configurePreset": "vixen-wsl-debug" }
   ]
 }

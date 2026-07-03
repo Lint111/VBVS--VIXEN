@@ -168,6 +168,7 @@ private:
     NodeHandle voxelGridNode_{};                     // dense debug-buffer node (still in graph; no longer the render source)
     NodeHandle bodyOctreeSceneNode_{};               // M-wire: sparse shell octree node (bindings 1/2/3/5/10)
     NodeHandle windowNode_{};                        // stored so GetWindowHandle() can query the WindowNode live
+    NodeHandle inputNode_{};                         // stored so Update() can drain InputNode's event queue live (input-rework slice 1)
     NodeHandle uiRenderNode_{};                      // stored so GetUiRenderNode() can query the composite UI node live
     NodeHandle uiSelectionProviderNode_{};           // stored so GetUiSelectionProviderNode() can drain HUD clicks live
 

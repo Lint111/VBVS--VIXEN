@@ -464,6 +464,11 @@ void RenderGraph::RegisterPostNodeCompileCallback(PostNodeCompileCallback callba
     postNodeCompileCallbacks.push_back(std::move(callback));
 }
 
+void RenderGraph::RegisterPostNodeExecuteCallback(const std::string& nodeInstanceName,
+                                                   PostNodeExecuteCallback callback) {
+    postNodeExecuteCallbacks.emplace(nodeInstanceName, std::move(callback));
+}
+
 void RenderGraph::SetDeviceBudgetManager(std::shared_ptr<DeviceBudgetManager> manager) {
     deviceBudgetManager_ = std::move(manager);
 
@@ -786,6 +791,9 @@ VkResult RenderGraph::RenderFrame() {
     // undefined behaviour across a C# host boundary (UNDERTOW). Frame-end cleanup below still runs.
     VkResult frameResult = VK_SUCCESS;
 
+    // Fresh frame: clear any abort latched by last frame's out-of-date acquire (AbortCurrentFrame).
+    frameAborted_ = false;
+
     // Execute all nodes
     // Sprint 6.4: Support both sequential and parallel execution modes
     if (parallelExecutionEnabled_) {
@@ -853,6 +861,15 @@ VkResult RenderGraph::RenderFrame() {
         // =====================================================================
         // Nodes handle their own synchronization, command recording, and presentation
         for (NodeInstance* node : executionOrder) {
+            // Frame aborted mid-execution (e.g. swapchain OUT_OF_DATE at acquire): stop before the
+            // next node — per-image state is invalid until the resize recompile runs. See
+            // AbortCurrentFrame(); the skipped nodes' per-node sentinel guards stay as backup.
+            if (frameAborted_) {
+                GRAPH_LOG_INFO("[RenderGraph::RenderFrame] Frame aborted before node '" +
+                               node->GetInstanceName() + "' — skipping the rest of this frame");
+                break;
+            }
+
             if (node->GetState() == NodeState::Ready ||
                 node->GetState() == NodeState::Compiled ||
                 node->GetState() == NodeState::Complete) {  // Execute completed nodes again each frame
@@ -879,6 +896,18 @@ VkResult RenderGraph::RenderFrame() {
                 }
 
                 node->SetState(NodeState::Complete);
+
+                // Post-execute callbacks (e.g. FrameCapture reading the swapchain image between
+                // the render node writing it and PresentNode releasing it back to the swapchain --
+                // see RegisterPostNodeExecuteCallback). Fires here, not after the whole frame, so
+                // registrants see the node's output in the state IT left it in, not whatever a
+                // later node (present, most commonly) has since done to the same resource.
+                if (!postNodeExecuteCallbacks.empty()) {
+                    auto [begin, end] = postNodeExecuteCallbacks.equal_range(node->GetInstanceName());
+                    for (auto it = begin; it != end; ++it) {
+                        it->second(node);
+                    }
+                }
 
                 // Check if this node was marked for recompilation during execution
                 if (node->HasDeferredRecompile()) {

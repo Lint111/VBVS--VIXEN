@@ -184,6 +184,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     // --- Input Node ---
     NodeHandle inputNode = renderGraph->AddNode<InputNodeType>("input_handler");
+    inputNode_ = inputNode;                          // store for Update()'s live ProcessPendingInput() lookup
 
     // --- Pick ID Target (AR#35 GPU picking P1: R32_UINT storage-image ring at binding 9) ---
     NodeHandle pickIdTargetNode = renderGraph->AddNode<PickIdTargetNodeType>("pick_id_target");
@@ -368,7 +369,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     // Present parameters (needed for both graphics and compute)
     auto* present = static_cast<PresentNode*>(renderGraph->GetInstance(presentNode));
-    present->SetParameter(PresentNodeConfig::WAIT_FOR_IDLE, true);
+    // Critique R6: no vkDeviceWaitIdle per present. The frame is already paced by the
+    // per-flight in-flight fences + imageAvailable/renderComplete semaphores (+ per-image
+    // present fences when VK_EXT_swapchain_maintenance1 is available — SwapChainNode waits
+    // them after acquire). The full device drain serialized every frame and dominated frame
+    // time through the WSLg paravirtualized device (~186ms/frame measured at 500x500).
+    present->SetParameter(PresentNodeConfig::WAIT_FOR_IDLE, false);
 
     // Phase 0.4: Loop ID constant (connects to LoopBridgeNode) - needed for both graphics and compute
     auto* loopIDConst = static_cast<ConstantNode*>(renderGraph->GetInstance(physicsLoopIDConstant));

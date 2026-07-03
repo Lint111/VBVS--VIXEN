@@ -74,6 +74,15 @@ target_compile_definitions(vixen_benchmark
         VIXEN_SHADER_SOURCE_DIR="${VIXEN_SHADER_SOURCE_DIR}"
 )
 
+# WSL2 GPU Vulkan: pass the provisioned Mesa Dozen ICD path (set by cmake/ProvisionWslVulkan.cmake at
+# top-level configure, which runs before this subdirectory). Empty/undefined off WSL, in which case
+# VixenSelectWslGpuIcd() (VulkanGlobalNames.h) compiles to a no-op. Without this, vixen_benchmark has
+# no path to the real GPU at all and silently falls back to software Vulkan (lavapipe/llvmpipe) on
+# every WSL2 run -- see application/main/CMakeLists.txt for the same wiring on VixenApp.
+if(VIXEN_WSL_DZN_ICD)
+    target_compile_definitions(vixen_benchmark PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
+endif()
+
 # ============================================================================
 # Compiler Settings
 # ============================================================================
@@ -314,6 +323,10 @@ add_custom_command(TARGET benchmark_package POST_BUILD
 
 # Set folder for Visual Studio
 set_target_properties(benchmark_package PROPERTIES FOLDER "Application")
+
+# Convenience debug-run target (no-op if gdb isn't available — see cmake/ProvisionGdb.cmake):
+#   cmake --build build/wsl-debug --target gdb-vixen_benchmark
+vixen_add_gdb_target(vixen_benchmark)
 
 message(STATUS "VIXEN Benchmark: Configured headless compute benchmark tool")
 message(STATUS "VIXEN Benchmark: Use 'cmake --build build --config Release --target benchmark_package' to create standalone package")

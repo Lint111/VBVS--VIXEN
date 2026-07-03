@@ -432,6 +432,10 @@ void VulkanSwapChain::CreateSwapChainColorImages(VkDevice device)
     if (result != VK_SUCCESS) {
         throw std::runtime_error(std::string("VulkanSwapChain::CreateSwapChainColorImages - fpCreateSwapchainKHR failed: ") + std::to_string(static_cast<int>(result)));
     }
+    // Mirror the ACTUAL negotiated usage flags (post STORAGE-bit-drop, see GetSupportedFormats)
+    // onto the public struct so graph consumers (e.g. DescriptorSetNode::HandleStorageImage) can
+    // check what the swapchain images were really created with, not what was requested.
+    scPublicVars.ImageUsageFlags = imageUsageFlags;
 
     // Get the number of swapchain images
     result = fpGetSwapchainImagesKHR(device, scPublicVars.swapChain, &scPublicVars.swapChainImageCount, nullptr);

@@ -4,6 +4,7 @@
 #include "Core/FrameSyncSchedule.h"     // SubmitGroup, SyncEdge, FindGroupForNode
 
 #include "VulkanDevice.h"
+#include "VulkanGlobalNames.h"  // vixenQueueSubmit2
 #include "VulkanSwapChain.h"
 
 #include <RmlUi/Core.h>
@@ -112,11 +113,13 @@ void UIRenderNode::CompileImpl(TypedCompileContext& ctx) {
             // LoadDocument() — type info must exist before the document references the vars.
             if (Rml::DataModelConstructor c = context_->CreateDataModel("hud")) {
                 if (auto fh = c.RegisterStruct<HudFaction>()) {
-                    fh.RegisterMember("name",      &HudFaction::name);
-                    fh.RegisterMember("grievance", &HudFaction::grievance);
-                    fh.RegisterMember("focused",   &HudFaction::focused);
-                    fh.RegisterMember("known",     &HudFaction::known);
-                    fh.RegisterMember("inLens",    &HudFaction::inLens);
+                    fh.RegisterMember("name",          &HudFaction::name);
+                    fh.RegisterMember("grievance",     &HudFaction::grievance);
+                    fh.RegisterMember("focused",       &HudFaction::focused);
+                    fh.RegisterMember("known",         &HudFaction::known);
+                    fh.RegisterMember("inLens",        &HudFaction::inLens);
+                    // T3 Juice: recentChanged drives data-class-changed on the faction row → .changed CSS pulse.
+                    fh.RegisterMember("recentChanged", &HudFaction::recentChanged);
                 }
                 if (auto eh = c.RegisterStruct<HudEvent>()) {
                     eh.RegisterMember("kind", &HudEvent::kind);
@@ -308,7 +311,7 @@ void UIRenderNode::ExecuteImpl(TypedExecuteContext& ctx) {
     si.pCommandBufferInfos      = &cmdInfo;
     si.signalSemaphoreInfoCount = static_cast<uint32_t>(signals.size());
     si.pSignalSemaphoreInfos    = signals.data();
-    vkQueueSubmit2(queue_, 1, &si, inFlightFence);
+    vixenQueueSubmit2(queue_, 1, &si, inFlightFence);
 
     ctx.Out(UIRenderNodeConfig::COMMAND_BUFFERS, cmd);
     ctx.Out(UIRenderNodeConfig::RENDER_COMPLETE_SEMAPHORE, signalSem);
@@ -324,10 +327,15 @@ void UIRenderNode::SetHudView(int tick, int bodyCount, int activeLens, int activ
     activeLensName_  = (activeLens >= 0 && activeLens < 4) ? kLensNames[activeLens] : "None";
     activeLensCount_ = activeLensCount;
 
+    // T3 Juice: a faction is "recently changed" when its recentEventAge is within the K-tick window
+    // (matching the C# RecentEventK constant in UndertowSim.ProjectFrame; 255 = no recent event).
+    static constexpr uint8_t kJuiceK = 20;
     factions_.clear();
     factions_.reserve(factions.size());
     for (const HudFactionIn& f : factions)
-        factions_.push_back({f.name ? Rml::String(f.name) : Rml::String{}, f.grievance, f.focused, f.known, f.inLens});
+        factions_.push_back({f.name ? Rml::String(f.name) : Rml::String{},
+                             f.grievance, f.focused, f.known, f.inLens,
+                             f.recentEventAge < kJuiceK});
 
     events_.clear();
     events_.reserve(events.size());

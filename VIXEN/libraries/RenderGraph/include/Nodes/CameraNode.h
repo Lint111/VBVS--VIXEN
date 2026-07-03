@@ -77,10 +77,21 @@ private:
     glm::vec3 orbitCenter{5.0f, 5.0f, 5.0f};  // Center of grid (10/2 for 10^3 world size)
     float orbitDistance = 30.0f;  // Distance from orbit center (scaled for 10^3 world)
 
+    // Orbit distance bounds (keeps camera inside the 128^3 world). Shared by W/S zoom
+    // (ApplyMovement) and wheel zoom (ExecuteImpl, M4) so both paths agree on one ceiling.
+    static constexpr float kOrbitDistanceMin = 5.0f;
+    static constexpr float kOrbitDistanceMax = 120.0f;
+
     // Accumulated input deltas (cleared after applying)
     glm::vec3 movementDelta{0.0f};  // Local-space WASD + global Y for QE
     glm::vec2 rotationDelta{0.0f};  // Yaw/pitch from mouse (raw accumulation)
     glm::vec2 smoothedRotationDelta{0.0f};  // Smoothed rotation for jitter reduction
+
+    // LeftDrag orbit-gate state (input-rework M4): tracks cumulative in-press motion since the
+    // left button went down, so a press stays a click below InputState::dragThresholdPx and only
+    // becomes an orbit-drag once crossed. Reset on release.
+    float dragAccumPx_ = 0.0f;
+    bool dragThresholdCrossed_ = false;
 
     // Camera control parameters
     float moveSpeed = 20.0f;       // Horizontal movement: units per second (scaled for 10^3 world)

@@ -44,8 +44,7 @@ void UISelectionProviderNode::SetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_INFO("[UISelectionProvider] setup");
     // Provider layer priority (UI layer = 10 by default, > the voxel world's 0 so the HUD occludes
     // the world). Read once at graph-scope setup.
-    priority_     = GetParameterValue<int>(UISelectionProviderNodeConfig::PARAM_PRIORITY, 10);
-    lastLeftDown_ = false;
+    priority_ = GetParameterValue<int>(UISelectionProviderNodeConfig::PARAM_PRIORITY, 10);
 }
 
 void UISelectionProviderNode::ExecuteImpl(TypedExecuteContext& ctx) {
@@ -64,12 +63,17 @@ void UISelectionProviderNode::ExecuteImpl(TypedExecuteContext& ctx) {
         return;  // no input state this frame
     }
 
-    // Edge-detect the left-button press: hit-test only on the down-edge (no per-frame hit-test).
-    const bool leftDown = input->mouseButtons[0];
-    const bool pressedThisFrame = leftDown && !lastLeftDown_;
-    lastLeftDown_ = leftDown;
-
-    if (!pressedThisFrame) {
+    // Find the left-button press entry to hit-test (input-rework slice 1 M3: the shared click list
+    // replaces the old private lastLeftDown_ edge detector). If several presses land in one frame,
+    // the LAST one wins — matches the old single-poll semantics (only the final down-state before
+    // Execute was ever observable), just extended to not lose the intermediate ones' bus events.
+    const ClickEvent* pressEntry = nullptr;
+    for (const ClickEvent& click : input->clicksThisFrame) {
+        if (click.button == static_cast<int>(EventBus::MouseButton::Left) && click.pressed) {
+            pressEntry = &click;
+        }
+    }
+    if (!pressEntry) {
         ctx.Out(UISelectionProviderNodeConfig::CANDIDATE, candidate);
         return;  // cheap: only hit-test on a click edge
     }
@@ -83,9 +87,10 @@ void UISelectionProviderNode::ExecuteImpl(TypedExecuteContext& ctx) {
         return;
     }
 
-    // Hit-test the cursor position against the live HUD. GetElementAtPoint returns the topmost
-    // element under the point, or nullptr on a miss (cursor over empty/transparent UI area).
-    const glm::vec2 cursor = input->mousePosition;
+    // Hit-test the cursor position AT THE PRESS EVENT (not the end-of-frame cursor position) against
+    // the live HUD. GetElementAtPoint returns the topmost element under the point, or nullptr on a
+    // miss (cursor over empty/transparent UI area).
+    const glm::vec2 cursor(pressEntry->x, pressEntry->y);
     Rml::Element* hitElement = context->GetElementAtPoint(
         Rml::Vector2f(cursor.x, cursor.y));
 

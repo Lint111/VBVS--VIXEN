@@ -2,9 +2,22 @@
 
 #include <glm/glm.hpp>
 #include <unordered_map>
+#include <vector>
 #include "InputEvents.h"
 
 namespace Vixen::RenderGraph {
+
+/// One press or release edge, event-derived (input-rework slice 1, critique V4 loss-half): a
+/// press+release inside a single frame is TWO entries here, not a collapsed non-edge the way a
+/// single per-frame poll would see it. x/y are the cursor position AT that event (fold-order),
+/// not the end-of-frame position — fixes click-position skew during fast motion for consumers
+/// that hit-test against it.
+struct ClickEvent {
+    int button = 0;      // EventBus::MouseButton value (0=left, 1=right, 2=middle)
+    bool pressed = false;  // true=press edge, false=release edge
+    float x = 0.0f;
+    float y = 0.0f;
+};
 
 /**
  * @brief Immediate-mode input state (polled once per frame)
@@ -14,12 +27,27 @@ namespace Vixen::RenderGraph {
  * - No event flooding (hundreds of events → 1 poll)
  * - Predictable timing (always 1 sample per frame)
  * - Efficient (single Win32 API call, not hundreds)
+ *
+ * Producer is now GLFW callbacks -> a queue -> InputNode::ProcessPendingInput() (input-rework
+ * slice 1); this struct stays the poll-shaped consumer contract, populated once per Execute from
+ * that drained state so existing readers (CameraNode, the selection providers) are unaffected.
  */
 struct InputState {
     // Mouse state (updated once per frame)
     glm::vec2 mouseDelta{0.0f};      // Pixel delta this frame (smooth, no jitter)
     glm::vec2 mousePosition{0.0f};   // Current position in window coordinates
     bool mouseButtons[3]{false};     // [0]=left, [1]=right, [2]=middle
+    glm::vec2 wheelDelta{0.0f};      // Scroll offsets this frame (x=horizontal, y=vertical)
+    std::vector<ClickEvent> clicksThisFrame;  // Every press+release edge since last frame, in order
+
+    // InputConfig fields CameraNode needs (input-rework M4), mirrored in by InputNode::
+    // PopulateInputState each frame. CameraNode has no InputNode reference — only this InputState
+    // slot — so riding the existing data path here is cheaper than a new graph-slot/lookup type
+    // for 4 read-only scalars a single other consumer wants.
+    uint8_t orbitButton = 0;      // InputConfig::OrbitButton: 0=RightMouse, 1=LeftDrag, 2=Always
+    float dragThresholdPx = 4.0f; // in-press motion below this stays a "click" (LeftDrag mode)
+    bool wheelZoom = true;        // scroll drives orbit distance
+    float wheelZoomSpeed = 2.0f;  // world units per wheel notch
 
     // Keyboard state (bitfield for fast queries)
     // Using unordered_map for sparse storage (only tracking keys we care about)
@@ -35,17 +63,24 @@ struct InputState {
     float deltaTime = 0.0f;  // Seconds since last frame
 
     /**
-     * @brief Clear per-frame state (pressed/released flags)
+     * @brief Clear per-frame state (pressed/released flags, click/wheel edge data)
      * Call at the start of each frame before polling
      *
-     * NOTE: mouseDelta is NOT cleared here because it's calculated by PollMouse()
-     * after polling but before BeginFrame() is called. Clearing would lose the frame's delta.
-     * The delta is used by consumers (CameraNode) and should persist until the next frame.
+     * NOTE: mouseDelta is NOT cleared here because it's computed by InputNode from drained cursor
+     * events before BeginFrame() is called. Clearing would lose the frame's delta. The delta is
+     * used by consumers (CameraNode) and should persist until the next frame.
+     *
+     * clicksThisFrame and wheelDelta ARE per-frame edge data (like keyPressed/keyReleased, not like
+     * mouseDelta) and must be cleared here — otherwise a disabled InputNode's early-return in
+     * ExecuteImpl (`!enabled_`) re-outputs the same stale clicks/wheel delta every frame instead of
+     * an empty frame.
      */
     void BeginFrame() {
         keyPressed.clear();
         keyReleased.clear();
-        // NOTE: mouseDelta is preserved (calculated in PollMouse, not cleared here)
+        clicksThisFrame.clear();
+        wheelDelta = glm::vec2(0.0f);
+        // NOTE: mouseDelta is preserved (computed by InputNode, not cleared here)
     }
 
     /**

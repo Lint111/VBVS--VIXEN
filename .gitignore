@@ -34,12 +34,11 @@
 *.vcxproj
 VIXEN/gatherer_test.txt
 
-# Build output (CMake / Visual Studio / Ninja) — repo-root and legacy VIXEN/ locations
+# Build output (CMake / Visual Studio / Ninja) — one centralized parent covers every preset's
+# binaryDir (build/wsl, build/ninja, build/wsl-debug, ...) so a NEW preset never needs a new
+# gitignore entry. Legacy VIXEN/build/ kept for any pre-consolidation local build dirs.
 /build/
-/build-ninja/
-/build-wsl/
 /VIXEN/build/
-/VIXEN/build-wsl/
 
 # Local dev helper scripts (machine-specific absolute paths)
 /_ninja_*.bat

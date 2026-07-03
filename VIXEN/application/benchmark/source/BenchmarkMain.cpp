@@ -75,6 +75,18 @@ int main(int argc, char* argv[]) {
     auto mainLogger = std::make_shared<Vixen::Log::Logger>("BenchmarkMain", true);
     mainLogger->SetTerminalOutput(true);
 
+    // WSL2: select the provisioned Mesa Dozen ICD before ANY Vulkan instance is created below --
+    // including --list-gpus, which creates one on its own before the normal suite path does. No-op
+    // off WSL / when already configured. Same canonical GPU-selection path VixenApp uses (see
+    // VulkanGlobalNames.h); without this call vixen_benchmark always falls back to software Vulkan
+    // on WSL2 regardless of what cmake/ProvisionWslVulkan.cmake provisioned.
+    if (const char* dznIcd = VixenSelectWslGpuIcd()) {
+        mainLogger->Info(std::string("[VixenSelectWslGpuIcd] WSL2 GPU: selected Dozen ICD ") + dznIcd);
+    }
+    if (const char* layerPath = VixenSelectValidationLayerPath()) {
+        mainLogger->Info(std::string("[VixenSelectValidationLayerPath] validation layers active (VK_LAYER_PATH=") + layerPath + ")");
+    }
+
     // Parse command line arguments
     auto opts = ParseCommandLine(argc, argv);
 

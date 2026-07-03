@@ -52,14 +52,8 @@ if(VULKAN_TRIMMED_BUILD_ACTIVE OR NOT VULKAN_TRIMMED_BUILD)
     # Visual Studio solution folder organization
     set_target_properties(test_array_type_validation PROPERTIES FOLDER "Tests/RenderGraph Tests")
 
-    # Platform defines for Vulkan headers
-    if(UNIX AND NOT APPLE)
-        target_compile_definitions(test_array_type_validation PRIVATE VK_USE_PLATFORM_XCB_KHR)
-    elseif(WIN32)
-        target_compile_definitions(test_array_type_validation PRIVATE VK_USE_PLATFORM_WIN32_KHR)
-    elseif(APPLE)
-        target_compile_definitions(test_array_type_validation PRIVATE VK_USE_PLATFORM_MACOS_MVK)
-    endif()
+    # Header-only type-trait validation - no window-surface platform needed
+    # (unlike test_core_systems.cmake etc., this test never links a real Vulkan surface)
 
     # Mark as trimmed build compatible
     set_target_properties(test_array_type_validation PROPERTIES
@@ -121,14 +115,7 @@ if(VULKAN_TRIMMED_BUILD_ACTIVE OR NOT VULKAN_TRIMMED_BUILD)
     # Set C++23 (required for advanced template features)
     target_compile_features(test_field_extraction PRIVATE cxx_std_23)
 
-    # Platform defines for Vulkan headers
-    if(UNIX AND NOT APPLE)
-        target_compile_definitions(test_field_extraction PRIVATE VK_USE_PLATFORM_XCB_KHR)
-    elseif(WIN32)
-        target_compile_definitions(test_field_extraction PRIVATE VK_USE_PLATFORM_WIN32_KHR)
-    elseif(APPLE)
-        target_compile_definitions(test_field_extraction PRIVATE VK_USE_PLATFORM_MACOS_MVK)
-    endif()
+    # Header-only field-extraction validation - no window-surface platform needed
 
     # Mark as trimmed build compatible
     set_target_properties(test_field_extraction PROPERTIES
@@ -182,14 +169,7 @@ if(VULKAN_TRIMMED_BUILD_ACTIVE OR NOT VULKAN_TRIMMED_BUILD)
     # Visual Studio solution folder organization
     set_target_properties(test_resource_gatherer PROPERTIES FOLDER "Tests/RenderGraph Tests")
 
-    # Platform defines for Vulkan headers
-    if(UNIX AND NOT APPLE)
-        target_compile_definitions(test_resource_gatherer PRIVATE VK_USE_PLATFORM_XCB_KHR)
-    elseif(WIN32)
-        target_compile_definitions(test_resource_gatherer PRIVATE VK_USE_PLATFORM_WIN32_KHR)
-    elseif(APPLE)
-        target_compile_definitions(test_resource_gatherer PRIVATE VK_USE_PLATFORM_MACOS_MVK)
-    endif()
+    # Header-only resource-gatherer validation - no window-surface platform needed
 
     # Mark as trimmed build compatible
     set_target_properties(test_resource_gatherer PROPERTIES

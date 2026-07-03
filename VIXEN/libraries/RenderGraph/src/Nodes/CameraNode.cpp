@@ -131,9 +131,47 @@ void CameraNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // Modern polling-based input: Read InputState once per frame
     InputStatePtr inputState = ctx.In(CameraNodeConfig::INPUT_STATE);
     if (inputState) {
-        // Accumulate mouse delta from polled state
-        rotationDelta.x += inputState->mouseDelta.x;
-        rotationDelta.y += inputState->mouseDelta.y;
+        // Orbit gate (critique V2, M4): mouseDelta only drives rotation while the configured
+        // orbit control is engaged, per InputConfig::OrbitButton (mirrored via InputState —
+        // CameraNode has no InputNode reference, see InputState.h). Buttons: [0]=left,[1]=right.
+        bool orbitEngaged = false;
+        switch (inputState->orbitButton) {
+            case 0: {  // RightMouse: apply only while the right button is held
+                orbitEngaged = inputState->mouseButtons[1];
+                break;
+            }
+            case 1: {  // LeftDrag: apply only once cumulative in-press motion crosses the
+                       // threshold; below it the press stays a click for the selection path.
+                if (inputState->mouseButtons[0]) {
+                    dragAccumPx_ += glm::length(inputState->mouseDelta);
+                    if (dragAccumPx_ > inputState->dragThresholdPx) {
+                        dragThresholdCrossed_ = true;
+                    }
+                } else {
+                    dragAccumPx_ = 0.0f;
+                    dragThresholdCrossed_ = false;
+                }
+                orbitEngaged = dragThresholdCrossed_;
+                break;
+            }
+            default:  // 2=Always (legacy) and any unrecognized value: unconditional, matches
+                      // pre-M4 behavior. InputNode clamps the live param, so this is a static
+                      // wire-value guard, not the primary validation.
+                orbitEngaged = true;
+                break;
+        }
+
+        if (orbitEngaged) {
+            rotationDelta.x += inputState->mouseDelta.x;
+            rotationDelta.y += inputState->mouseDelta.y;
+        }
+
+        // Wheel zoom: fold scroll into orbit distance, reusing ApplyMovement's W/S clamp
+        // (kOrbitDistanceMin/Max) so both paths agree on the world-bounds ceiling.
+        if (inputState->wheelZoom && inputState->wheelDelta.y != 0.0f) {
+            orbitDistance -= inputState->wheelDelta.y * inputState->wheelZoomSpeed;
+            orbitDistance = glm::clamp(orbitDistance, kOrbitDistanceMin, kOrbitDistanceMax);
+        }
 
         // Arrow keys for smooth look rotation (scaled for comfortable speed)
         float lookHorizontal = inputState->GetAxisLookHorizontal();
@@ -271,7 +309,7 @@ void CameraNode::ApplyMovement(float deltaTime) {
     // W/S controls zoom (orbit distance)
     float zoomSpeed = 100.0f;  // Scaled for 128^3 world
     orbitDistance -= movementDelta.z * zoomSpeed * deltaTime;  // W zooms in, S zooms out
-    orbitDistance = glm::clamp(orbitDistance, 5.0f, 120.0f);  // Keep camera inside 128^3 world bounds
+    orbitDistance = glm::clamp(orbitDistance, kOrbitDistanceMin, kOrbitDistanceMax);  // Keep camera inside 128^3 world bounds
 
     // A/D and Q/E move the orbit center
     glm::vec3 moveVector(0.0f);

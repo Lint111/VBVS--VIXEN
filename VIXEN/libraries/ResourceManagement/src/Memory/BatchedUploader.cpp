@@ -25,9 +25,12 @@ BatchedUploader::BatchedUploader(
     assert(queue_ != VK_NULL_HANDLE && "BatchedUploader requires valid VkQueue");
     assert(budgetManager_ != nullptr && "BatchedUploader requires DeviceBudgetManager");
 
-    // Create staging buffer pool
+    // Create staging buffer pool. minBufferSize must reach maxBufferSize within
+    // StagingBufferPool::NumBuckets (12) doublings, or requests above the last
+    // bucket's cap silently bypass pooling (see StagingBufferPool's ctor
+    // assert) -- 64 KB << 11 = 128 MB comfortably covers the 64 MB max below.
     StagingBufferPool::Config poolConfig{
-        .minBufferSize = 4 * 1024,           // 4 KB min
+        .minBufferSize = 64 * 1024,          // 64 KB min
         .maxBufferSize = 64 * 1024 * 1024,   // 64 MB max
         .maxPooledBuffersPerBucket = 8,
         .maxTotalPooledBytes = 256 * 1024 * 1024,  // 256 MB pool

@@ -3,6 +3,7 @@
 #include "Core/RenderGraph.h"
 #include "Data/Nodes/ComputeDispatchNodeConfig.h"
 #include "VulkanDevice.h"
+#include "VulkanGlobalNames.h"  // vixenCmdPipelineBarrier2
 #include "Core/ComputePerformanceLogger.h"
 #include "Core/GPUPerformanceLogger.h"
 #include "Core/TaskProfiles/SimpleTaskProfile.h"  // Sprint 6.5: Profile integration
@@ -163,6 +164,15 @@ void ComputeDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
     const std::vector<VkSemaphore>& renderCompleteSemaphores = ctx.In(ComputeDispatchNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
     VkFence inFlightFence = ctx.In(ComputeDispatchNodeConfig::IN_FLIGHT_FENCE);
 
+    // Guard against the invalid-image sentinel BEFORE any per-image indexing or side effect:
+    // renderCompleteSemaphores[imageIndex] below read OOB on UINT32_MAX (the maximize crash),
+    // and skipping before the fence reset keeps the frame fence signalled so the next
+    // FrameSyncNode wait can't deadlock on a skipped frame.
+    if (imageIndex == UINT32_MAX || imageIndex >= commandBuffers.size()) {
+        NODE_LOG_WARNING("ComputeDispatchNode: Invalid image index - skipping frame");
+        return;
+    }
+
     // Two-tier indexing: imageAvailable by frame, renderComplete by image
     VkSemaphore imageAvailableSemaphore = imageAvailableSemaphores[currentFrameIndex];
     VkSemaphore renderCompleteSemaphore = renderCompleteSemaphores[imageIndex];
@@ -199,12 +209,6 @@ void ComputeDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
                 sample.Cancel();  // No valid measurement
             }
         }
-    }
-
-    // Guard against invalid image index
-    if (imageIndex == UINT32_MAX || imageIndex >= commandBuffers.size()) {
-        NODE_LOG_WARNING("ComputeDispatchNode: Invalid image index - skipping frame");
-        return;
     }
 
     // Detect if inputs changed (mark all command buffers dirty if so)
@@ -307,7 +311,7 @@ void ComputeDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
     si.pSignalSemaphoreInfos    = signals.data();
 
     // Submit to graphics queue via synchronization2
-    VkResult result = vkQueueSubmit2(vulkanDevice->queue, 1, &si, submitFence);
+    VkResult result = vixenQueueSubmit2(vulkanDevice->queue, 1, &si, submitFence);
     if (result != VK_SUCCESS) {
         throw std::runtime_error("[ComputeDispatchNode::ExecuteImpl] Failed to submit command buffer (vkQueueSubmit2): " + std::to_string(result));
     }
@@ -466,7 +470,7 @@ void ComputeDispatchNode::ReplayEntryBarriers(
     dep.pImageMemoryBarriers    = imageBarriers.data();
     dep.memoryBarrierCount      = static_cast<uint32_t>(memBarriers.size());
     dep.pMemoryBarriers         = memBarriers.data();
-    vkCmdPipelineBarrier2(cmd, &dep);
+    vixenCmdPipelineBarrier2(cmd, &dep);
 }
 
 // Fallback barrier2: UNDEFINED → GENERAL (TOP_OF_PIPE/0 → COMPUTE_SHADER/SHADER_STORAGE_WRITE).
@@ -488,7 +492,7 @@ void ComputeDispatchNode::TransitionImageToGeneralBarrier2(VkCommandBuffer cmdBu
     dep.sType                   = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
     dep.imageMemoryBarrierCount = 1;
     dep.pImageMemoryBarriers    = &ib;
-    vkCmdPipelineBarrier2(cmdBuffer, &dep);
+    vixenCmdPipelineBarrier2(cmdBuffer, &dep);
 }
 
 void ComputeDispatchNode::BindComputePipeline(VkCommandBuffer cmdBuffer, VkPipeline pipeline, VkPipelineLayout layout, VkDescriptorSet descriptorSet) {
@@ -584,7 +588,7 @@ void ComputeDispatchNode::TransitionImageToPresentBarrier2(VkCommandBuffer cmdBu
     dep.sType                   = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
     dep.imageMemoryBarrierCount = 1;
     dep.pImageMemoryBarriers    = &ib;
-    vkCmdPipelineBarrier2(cmdBuffer, &dep);
+    vixenCmdPipelineBarrier2(cmdBuffer, &dep);
 }
 
 // ============================================================================

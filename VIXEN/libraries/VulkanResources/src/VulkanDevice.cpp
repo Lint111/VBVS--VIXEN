@@ -1,4 +1,5 @@
 #include "VulkanDevice.h"
+#include "VulkanGlobalNames.h"  // vixenCmdPipelineBarrier2
 
 // Upload infrastructure (Sprint 5 Phase 2.5.3)
 #include "Memory/BatchedUploader.h"
@@ -138,20 +139,40 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
         pNextChainEnd = reinterpret_cast<void**>(AppendToPNext(pNextChainEnd, &vulkan12Features));
     }
 
-    // Vulkan 1.3 core: synchronization2 is REQUIRED — the renderer records all GPU barriers via
-    // vkCmdPipelineBarrier2 (ComputeDispatchNode, MultiDispatchNode). Gated through the capability
-    // graph like timelineSemaphore/bufferDeviceAddress; unlike those it is mandatory, so a device
-    // that lacks it is a hard error (cf. shaderStorageImageWriteWithoutFormat above).
+    // synchronization2 is REQUIRED — the renderer records all GPU barriers via
+    // vkCmdPipelineBarrier2KHR (ComputeDispatchNode, MultiDispatchNode, PassRecorder, and 6 more
+    // call sites; see vixenCmdPipelineBarrier2 in VulkanGlobalNames.h). Gated through the
+    // capability graph like timelineSemaphore/bufferDeviceAddress; unlike those it is mandatory,
+    // so a device that lacks it is a hard error (cf. shaderStorageImageWriteWithoutFormat below).
+    //
+    // Requested BOTH ways deliberately, not redundantly: the VkPhysicalDeviceVulkan13Features
+    // struct below only takes effect when the negotiated apiVersion is >= 1.3 (a 1.2 driver
+    // silently ignores it, even though vkGetPhysicalDeviceFeatures2 still reports the feature bit
+    // true via the same query path a pre-1.3 driver uses for its extension-level struct) --
+    // discovered via Mesa Dozen (WSL2's Vulkan-over-D3D12 driver): it reports apiVersion 1.2.318,
+    // synchronization2=TRUE, and implements VK_KHR_synchronization2 as a genuine, working
+    // extension (confirmed live: vkGetDeviceProcAddr("vkCmdPipelineBarrier2KHR") resolves to a
+    // valid, callable pointer once the extension is in ppEnabledExtensionNames) -- it was VIXEN
+    // never asking for it as an extension, not a driver bug, that left the promotion unresolved
+    // and crashed the first render frame on a null vkCmdPipelineBarrier2 (bare core name, which a
+    // 1.2 device's loader correctly returns null for per spec). Explicitly requesting the
+    // extension makes this correct on 1.2-plus-extension drivers (Dozen today) and is a no-op
+    // pNext addition (safely ignored) on genuine 1.3-core drivers.
     // This local must outlive vkCreateDevice() below; it is scoped to this function.
     VkPhysicalDeviceVulkan13Features vulkan13Features{};
     vulkan13Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
     if (!capabilityGraph_.IsCapabilityAvailable("DeviceFeature:synchronization2")) {
         throw std::runtime_error(
-            "GPU does not support synchronization2 (Vulkan 1.3 core) - required: the renderer "
-            "records all GPU barriers via vkCmdPipelineBarrier2.");
+            "GPU does not support synchronization2 (Vulkan 1.3 core or VK_KHR_synchronization2 "
+            "extension) - required: the renderer records all GPU barriers via "
+            "vkCmdPipelineBarrier2KHR.");
     }
     vulkan13Features.synchronization2 = VK_TRUE;
     pNextChainEnd = reinterpret_cast<void**>(AppendToPNext(pNextChainEnd, &vulkan13Features));
+
+    if (!HasExtension(extensions, VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME)) {
+        extensions.push_back(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
+    }
 
     vkGetPhysicalDeviceFeatures(*gpu, &deviceFeatures);
 
@@ -189,6 +210,34 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
     deviceInfo.pEnabledFeatures = nullptr;  // Must be NULL when using VkPhysicalDeviceFeatures2
 
     VK_CHECK(vkCreateDevice(*gpu, &deviceInfo, nullptr, &device), "Failed to create logical device");
+
+    // Resolve the promoted-or-extension entry point for every barrier call site to use (see
+    // vixenCmdPipelineBarrier2 in VulkanGlobalNames.h) via the KHR-suffixed name -- correct
+    // whether the driver negotiated real 1.3 core (where core and KHR names alias the same
+    // pointer) or is 1.2-plus-extension like Dozen (where only the KHR name resolves; the bare
+    // core name's dispatch-table entry is null per spec on a non-1.3 apiVersion). A null result
+    // here means the extensions.push_back() above didn't take -- e.g. HasExtension's driver-side
+    // enumeration disagreeing with the request -- which is a genuine, unexpected environment
+    // problem worth failing loudly on rather than segfaulting three frames into the first render.
+    vixenCmdPipelineBarrier2 = reinterpret_cast<PFN_vkCmdPipelineBarrier2KHR>(
+        vkGetDeviceProcAddr(device, "vkCmdPipelineBarrier2KHR"));
+    // Same extension bundle, same promotion gap, same resolution strategy (see
+    // vixenQueueSubmit2 in VulkanGlobalNames.h) -- vkQueueSubmit2 is part of
+    // VK_KHR_synchronization2 alongside vkCmdPipelineBarrier2, not a separate capability.
+    vixenQueueSubmit2 = reinterpret_cast<PFN_vkQueueSubmit2KHR>(
+        vkGetDeviceProcAddr(device, "vkQueueSubmit2KHR"));
+    if (!vixenCmdPipelineBarrier2 || !vixenQueueSubmit2) {
+        VkPhysicalDeviceProperties props{};
+        vkGetPhysicalDeviceProperties(*gpu, &props);
+        vkDestroyDevice(device, nullptr);
+        device = VK_NULL_HANDLE;
+        throw std::runtime_error(
+            std::string("GPU driver '") + props.deviceName + "' reports synchronization2 support "
+            "but " + (!vixenCmdPipelineBarrier2 ? "vkCmdPipelineBarrier2KHR" : "vkQueueSubmit2KHR") +
+            " failed to resolve even with VK_KHR_synchronization2 requested as a device "
+            "extension. The renderer requires a real synchronization2 implementation; there is "
+            "no legacy vkCmdPipelineBarrier/vkQueueSubmit fallback path.");
+    }
 
     // The capability graph was built before device creation (so feature enablement could be
     // gated through it). Now record the device extensions that were actually enabled, then
@@ -498,7 +547,7 @@ uint32_t VulkanDevice::RecordUpdates(VkCommandBuffer cmd, uint32_t imageIndex) {
     if (!updater_ || !cmd) {
         return 0;
     }
-    return updater_->RecordAll(cmd, imageIndex);
+    return updater_->RecordAll(cmd, imageIndex, vixenCmdPipelineBarrier2);
 }
 
 bool VulkanDevice::HasUpdateSupport() const {

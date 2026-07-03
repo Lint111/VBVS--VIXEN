@@ -414,11 +414,32 @@ public:
      *
      * @param category Category flags to match
      * @param handler Handler receiving BaseEventMessage (must cast manually)
+     * @return Subscription ID (0 if no bus is set)
      */
-    void SubscribeCategory(EventCategory category, MessageHandler handler) {
-        if (!bus_) return;
+    EventSubscriptionID SubscribeCategory(EventCategory category, MessageHandler handler) {
+        if (!bus_) return 0;
         auto id = bus_->SubscribeCategory(category, std::move(handler));
         ids_.push_back(id);
+        return id;
+    }
+
+    /**
+     * @brief Subscribe to a specific message type, returning the raw ID (untyped/backward-compat form)
+     *
+     * Mirrors NodeInstance::SubscribeToMessage's ID-based API so callers that need the returned
+     * EventSubscriptionID (e.g. for a later explicit UnsubscribeFromMessage) still get RAII
+     * auto-cleanup for free. Prefer the templated Subscribe<EventType>() above for new code that
+     * doesn't need the ID.
+     *
+     * @param type Message type to subscribe to
+     * @param handler Callback receiving BaseEventMessage (must cast manually)
+     * @return Subscription ID (0 if no bus is set)
+     */
+    EventSubscriptionID Subscribe(MessageType type, MessageHandler handler) {
+        if (!bus_) return 0;
+        auto id = bus_->Subscribe(type, std::move(handler));
+        ids_.push_back(id);
+        return id;
     }
 
     /**

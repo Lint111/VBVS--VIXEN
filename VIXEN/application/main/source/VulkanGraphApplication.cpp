@@ -2,8 +2,6 @@
 #include "VulkanSwapChain.h"
 #include "MeshData.h"
 #include "Logger.h"
-#include <cstdlib>     // std::getenv / ::setenv for the WSL2 Dozen ICD selection
-#include <filesystem>  // std::filesystem::exists for the WSL2 Dozen ICD selection
 #include <cmath>       // std::tan for the LOD ray-cone (raySizeCoef) computation
 
 #define GLFW_INCLUDE_NONE   // don't pull in <GL/gl.h> (absent on headless/WSL); Vulkan-only below
@@ -25,6 +23,7 @@
 // UIRenderNode.h (and any RmlUi/robin_hood header) — BodyOctreeSceneNode.h pulls in gaia.h, whose
 // std::hash<> specialisations must be visible before RmlUi's bundled robin_hood.h wraps them.
 #include "Nodes/WindowNode.h"
+#include "Nodes/InputNode.h"
 #include "Nodes/BodyOctreeSceneNode.h"        // M-wire: SetBodyInstances() downcast target (gaia — before UIRenderNode.h)
 #include "Nodes/UIRenderNode.h"               // GetUiRenderNode() downcast target (RmlUi — after BodyOctreeSceneNode.h)
 #include "Nodes/UISelectionProviderNode.h"    // GetUiSelectionProviderNode() downcast target
@@ -72,58 +71,19 @@ VulkanGraphApplication::~VulkanGraphApplication() {
     DeInitialize();
 }
 
-namespace {
-// On WSL2 the GPU is reachable only via Mesa Dozen (Vulkan-over-D3D12). If the build provisioned
-// Dozen (the VIXEN_WSL_DZN_ICD compile-def, set by cmake/ProvisionWslVulkan.cmake) and the user
-// hasn't already chosen an ICD, point the Vulkan loader at it before any instance/ICD work. No-op
-// off WSL (no /dev/dxg), when VK_ICD_FILENAMES is already set, or when the manifest is missing.
-// libd3d12.so is already on the loader path via WSL's ld.wsl.conf, so no LD_LIBRARY_PATH change is
-// needed. Native (non-WSL) hosts have no /dev/dxg, so this never alters their behaviour. Returns the
-// ICD path it selected (so the caller can log it in member scope), or nullptr if it did nothing.
-const char* SelectWslGpuIcd() {
-#if defined(__linux__) && defined(VIXEN_WSL_DZN_ICD)
-    const char* icd = VIXEN_WSL_DZN_ICD;
-    if (icd && icd[0] != '\0'
-        && std::filesystem::exists("/dev/dxg")
-        && std::getenv("VK_ICD_FILENAMES") == nullptr
-        && std::filesystem::exists(icd)) {
-        ::setenv("VK_ICD_FILENAMES", icd, /*overwrite=*/0);
-        return icd;
-    }
-#endif
-    return nullptr;
-}
-
-// When the build enabled validation (VIXEN_VULKAN_VALIDATION) with an auto-provisioned SDK, point the
-// Vulkan loader at the provisioned validation-layer manifests (VK_LAYER_PATH) and force-enable the
-// layer (VK_INSTANCE_LAYERS) before instance creation — self-contained, no manual env. The validation
-// layer catches invalid GPU ops CPU-side (a log, not a kernel panic — critical on WSL/Dozen). No-op
-// when not built with validation, or when the user already configured layers. Returns the path or null.
-const char* SelectValidationLayerPath() {
-#if defined(__linux__) && defined(VIXEN_VK_LAYER_PATH)
-    const char* lp = VIXEN_VK_LAYER_PATH;
-    if (lp && lp[0] != '\0' && std::filesystem::exists(lp)) {
-        if (std::getenv("VK_LAYER_PATH") == nullptr) ::setenv("VK_LAYER_PATH", lp, /*overwrite=*/0);
-        if (std::getenv("VK_INSTANCE_LAYERS") == nullptr)
-            ::setenv("VK_INSTANCE_LAYERS", "VK_LAYER_KHRONOS_validation", /*overwrite=*/0);
-        return lp;
-    }
-#endif
-    return nullptr;
-}
-}  // namespace
-
 void VulkanGraphApplication::Initialize() {
     mainLogger->Debug("VulkanGraphApplication::Initialize() - START");
     mainLogger->Info("VulkanGraphApplication Initialize START");
 
     // WSL2: select the provisioned Mesa Dozen ICD before the base creates the Vulkan instance below
     // (no-op off WSL / when already configured). Must precede VulkanApplicationBase::Initialize().
-    if (const char* dznIcd = SelectWslGpuIcd()) {
-        mainLogger->Info(std::string("[SelectWslGpuIcd] WSL2 GPU: selected Dozen ICD ") + dznIcd);
+    // Shared with vixen_benchmark (see VulkanGlobalNames.h) so every VIXEN binary uses the same
+    // canonical GPU-selection path instead of silently falling back to software Vulkan.
+    if (const char* dznIcd = VixenSelectWslGpuIcd()) {
+        mainLogger->Info(std::string("[VixenSelectWslGpuIcd] WSL2 GPU: selected Dozen ICD ") + dznIcd);
     }
-    if (const char* layerPath = SelectValidationLayerPath()) {
-        mainLogger->Info(std::string("[SelectValidationLayerPath] validation layers active (VK_LAYER_PATH=") + layerPath + ")");
+    if (const char* layerPath = VixenSelectValidationLayerPath()) {
+        mainLogger->Info(std::string("[VixenSelectValidationLayerPath] validation layers active (VK_LAYER_PATH=") + layerPath + ")");
     }
 
     mainLogger->Debug("About to call VulkanApplicationBase::Initialize()");
@@ -353,6 +313,29 @@ void VulkanGraphApplication::Update() {
         // Graph time (used by nodes for frame-rate independent animations)
         if (renderGraph) {
             renderGraph->UpdateTime();
+        }
+
+        // Drain the WindowNode's own GLFW callback queue FIRST, unconditionally -- independent of node
+        // Execute() (RenderFrame() skips ALL node Execute() while renderPaused, including WindowNode's
+        // own, so a Restore/Maximize queued by glfwPollEvents() while minimized would otherwise never
+        // reach the bus and renderPaused could never clear: a permanent freeze on minimize). See
+        // WindowNode::ProcessPendingEvents() for the full explanation.
+        if (renderGraph) {
+            if (auto* window = static_cast<WindowNode*>(renderGraph->GetInstance(windowNode_))) {
+                window->ProcessPendingEvents();
+            }
+        }
+
+        // Same "input never rides the render graph's gates" hook, generalized to InputNode
+        // (input-rework slice 1): drain its GLFW callback queue unconditionally too, right beside
+        // WindowNode's own drain above. Same lookup pattern, same null-guard (a graph without an
+        // InputNode -- e.g. the demo/benchmark graph builders -- leaves inputNode_ default-
+        // constructed, GetInstance returns null, and this is skipped, matching windowNode_'s
+        // existing convention just above).
+        if (renderGraph) {
+            if (auto* input = static_cast<InputNode*>(renderGraph->GetInstance(inputNode_))) {
+                input->ProcessPendingInput();
+            }
         }
 
         // Process events + deferred recompilation here (not in render) so updates run without rendering

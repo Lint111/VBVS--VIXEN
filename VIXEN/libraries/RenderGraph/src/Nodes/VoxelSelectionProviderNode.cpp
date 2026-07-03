@@ -58,8 +58,7 @@ VoxelSelectionProviderNode::VoxelSelectionProviderNode(
 void VoxelSelectionProviderNode::SetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_INFO("[VoxelSelectionProvider] setup");
     // Provider layer priority (world layer = 0 by default). Read once at graph-scope setup.
-    priority_     = GetParameterValue<int>(VoxelSelectionProviderNodeConfig::PARAM_PRIORITY, 0);
-    lastLeftDown_ = false;
+    priority_ = GetParameterValue<int>(VoxelSelectionProviderNodeConfig::PARAM_PRIORITY, 0);
 }
 
 void VoxelSelectionProviderNode::CompileImpl(TypedCompileContext& ctx) {
@@ -100,10 +99,16 @@ void VoxelSelectionProviderNode::ExecuteImpl(TypedExecuteContext& ctx) {
         return;  // no input state this frame
     }
 
-    // Edge-detect the left-button press: resolve only on the down-edge (no per-frame readback).
-    const bool leftDown = input->mouseButtons[0];
-    const bool pressedThisFrame = leftDown && !lastLeftDown_;
-    lastLeftDown_ = leftDown;
+    // Find the left-button press entry (input-rework slice 1 M3: the shared click list replaces
+    // the old private lastLeftDown_ edge detector). Several presses in one frame: the LAST one
+    // wins — matches the old single-poll semantics (the readback is a single crosshair sample, not
+    // per-press, so only whether a press happened this frame matters here).
+    bool pressedThisFrame = false;
+    for (const ClickEvent& click : input->clicksThisFrame) {
+        if (click.button == static_cast<int>(EventBus::MouseButton::Left) && click.pressed) {
+            pressedThisFrame = true;
+        }
+    }
 
     if (!pressedThisFrame) {
         ctx.Out(VoxelSelectionProviderNodeConfig::CANDIDATE, candidate);
@@ -324,9 +329,10 @@ void VoxelSelectionProviderNode::CleanupImpl(TypedCleanupContext& ctx) {
     // NodeInstance and is re-set every CompileImpl via SetDevice(), so it is intentionally not
     // reset here; drop the cached Dependency handles (re-acquired next CompileImpl).
     DestroyStagingBuffer();
-    commandPool_  = VK_NULL_HANDLE;
-    idImage_      = VK_NULL_HANDLE;
-    lastLeftDown_ = false;
+    commandPool_ = VK_NULL_HANDLE;
+    idImage_     = VK_NULL_HANDLE;
+    // No click-edge state to reset: it lives in InputState.clicksThisFrame (owned by InputNode), not
+    // this node — the duplicate-fire-after-recompile bug dies with that private state.
 }
 
 } // namespace Vixen::RenderGraph

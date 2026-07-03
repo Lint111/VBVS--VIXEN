@@ -131,7 +131,10 @@ void WindowNode::ExecuteImpl(TypedExecuteContext& ctx) {
         shouldClose = true;
     }
 
-    // --- the rest is platform-neutral: drain the queued events and publish to the MessageBus ---
+    // Drain + publish (shared with the always-runs ProcessPendingEvents(), see the header comment).
+    // Resize is handled separately below because republishing its graph-slot outputs needs ctx, which
+    // only exists during a real node Execute() -- i.e. exactly the case renderPaused skips, so a resize
+    // queued while paused is instead re-applied by CompileImpl on the next (unpaused) recompile.
     std::vector<WindowEvent> eventsToProcess;
     {
         std::lock_guard<std::recursive_mutex> lock(eventMutex);
@@ -139,60 +142,113 @@ void WindowNode::ExecuteImpl(TypedExecuteContext& ctx) {
     }
 
     for (const auto& event : eventsToProcess) {
-        switch (event.type) {
-            case WindowEvent::Type::Resize:
-                if (event.width != width || event.height != height) {
-                    width = event.width;
-                    height = event.height;
-                    wasResized = true;
+        if (event.type == WindowEvent::Type::Resize) {
+            if (event.width != width || event.height != height) {
+                width = event.width;
+                height = event.height;
+                wasResized = true;
 
-                    ctx.Out(WindowNodeConfig::WIDTH_OUT, event.width);
-                    ctx.Out(WindowNodeConfig::HEIGHT_OUT, event.height);
+                ctx.Out(WindowNodeConfig::WIDTH_OUT, event.width);
+                ctx.Out(WindowNodeConfig::HEIGHT_OUT, event.height);
 
-                    if (GetMessageBus()) {
-                        GetMessageBus()->Publish(
-                            std::make_unique<EventTypes::WindowResizedMessage>(
-                                instanceId,
-                                event.width,
-                                event.height
-                            )
-                        );
-                    }
-
-                    NODE_LOG_INFO("[WindowNode] Processed resize: " + std::to_string(event.width) + "x" + std::to_string(event.height));
-                }
-                break;
-
-            case WindowEvent::Type::Close:
-                shouldClose = true;
                 if (GetMessageBus()) {
                     GetMessageBus()->Publish(
-                        std::make_unique<EventBus::WindowCloseEvent>(instanceId)
+                        std::make_unique<EventTypes::WindowResizedMessage>(
+                            instanceId,
+                            event.width,
+                            event.height
+                        )
                     );
                 }
-                break;
 
-            case WindowEvent::Type::Minimize:
-            case WindowEvent::Type::Maximize:
-            case WindowEvent::Type::Restore:
-            case WindowEvent::Type::Focus:
-            case WindowEvent::Type::Unfocus:
-                if (GetMessageBus()) {
-                    EventBus::WindowStateChangeEvent::State state;
-                    switch (event.type) {
-                        case WindowEvent::Type::Minimize: state = EventBus::WindowStateChangeEvent::State::Minimized; break;
-                        case WindowEvent::Type::Maximize: state = EventBus::WindowStateChangeEvent::State::Maximized; break;
-                        case WindowEvent::Type::Restore: state = EventBus::WindowStateChangeEvent::State::Restored; break;
-                        case WindowEvent::Type::Focus: state = EventBus::WindowStateChangeEvent::State::Focused; break;
-                        case WindowEvent::Type::Unfocus: state = EventBus::WindowStateChangeEvent::State::Unfocused; break;
-                        default: continue;
-                    }
-                    GetMessageBus()->Publish(
-                        std::make_unique<EventBus::WindowStateChangeEvent>(instanceId, state)
-                    );
-                }
-                break;
+                NODE_LOG_INFO("[WindowNode] Processed resize: " + std::to_string(event.width) + "x" + std::to_string(event.height));
+            }
+            continue;
         }
+        PublishNonResizeEvent(event);
+    }
+}
+
+void WindowNode::ProcessPendingEvents() {
+    // Always-runs counterpart to the drain half of ExecuteImpl (see the header comment for why this
+    // needs to exist separately: RenderFrame() skips node Execute() entirely while renderPaused).
+    if (window && glfwWindowShouldClose(window)) {
+        shouldClose = true;
+    }
+
+    std::vector<WindowEvent> eventsToProcess;
+    {
+        std::lock_guard<std::recursive_mutex> lock(eventMutex);
+        eventsToProcess.swap(pendingEvents);
+    }
+
+    for (const auto& event : eventsToProcess) {
+        if (event.type == WindowEvent::Type::Resize) {
+            // No ctx here (this runs outside node Execute()) -- update state + bus-publish the resize
+            // so SwapChainNode still hears about it and marks itself dirty. The graph-slot outputs
+            // (WIDTH_OUT/HEIGHT_OUT) can only be republished by CompileImpl, so mark THIS node for
+            // recompile too: WindowNode recompiles first in execution order, CompileImpl republishes
+            // the slots (window/surface persist across recompile by design), and the dependent-marking
+            // cascade refreshes SwapChainNode + the pick/viewport consumers. While paused the recompile
+            // defers and runs on the restore Update -- exactly the desired timing.
+            if (event.width != width || event.height != height) {
+                width = event.width;
+                height = event.height;
+                wasResized = true;
+                MarkNeedsRecompile();
+
+                if (GetMessageBus()) {
+                    GetMessageBus()->Publish(
+                        std::make_unique<EventTypes::WindowResizedMessage>(
+                            instanceId,
+                            event.width,
+                            event.height
+                        )
+                    );
+                }
+
+                NODE_LOG_INFO("[WindowNode] Processed resize (paused path): " + std::to_string(event.width) + "x" + std::to_string(event.height));
+            }
+            continue;
+        }
+        PublishNonResizeEvent(event);
+    }
+}
+
+void WindowNode::PublishNonResizeEvent(const WindowEvent& event) {
+    switch (event.type) {
+        case WindowEvent::Type::Close:
+            shouldClose = true;
+            if (GetMessageBus()) {
+                GetMessageBus()->Publish(
+                    std::make_unique<EventBus::WindowCloseEvent>(instanceId)
+                );
+            }
+            break;
+
+        case WindowEvent::Type::Minimize:
+        case WindowEvent::Type::Maximize:
+        case WindowEvent::Type::Restore:
+        case WindowEvent::Type::Focus:
+        case WindowEvent::Type::Unfocus:
+            if (GetMessageBus()) {
+                EventBus::WindowStateChangeEvent::State state;
+                switch (event.type) {
+                    case WindowEvent::Type::Minimize: state = EventBus::WindowStateChangeEvent::State::Minimized; break;
+                    case WindowEvent::Type::Maximize: state = EventBus::WindowStateChangeEvent::State::Maximized; break;
+                    case WindowEvent::Type::Restore: state = EventBus::WindowStateChangeEvent::State::Restored; break;
+                    case WindowEvent::Type::Focus: state = EventBus::WindowStateChangeEvent::State::Focused; break;
+                    case WindowEvent::Type::Unfocus: state = EventBus::WindowStateChangeEvent::State::Unfocused; break;
+                    default: return;
+                }
+                GetMessageBus()->Publish(
+                    std::make_unique<EventBus::WindowStateChangeEvent>(instanceId, state)
+                );
+            }
+            break;
+
+        default:
+            break;  // Resize is handled by the caller, not here.
     }
 }
 

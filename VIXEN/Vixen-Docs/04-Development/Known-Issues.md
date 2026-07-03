@@ -63,46 +63,41 @@ Ruled out during investigation (confirmed clean, no need to re-check): `RecoverF
 
 ---
 
-## KI-001 — 3 RenderGraph tests fail to build: missing `xcb/xcb.h` (WSL env)
+## Resolved
+
+### KI-001 — 3 RenderGraph tests fail to build: missing `xcb/xcb.h` (WSL env)
 
 **Discovered:** 2026-07-02 (during the config-struct codegen epic full-build gate; pre-existing, not caused by that work).
+**Resolved:** 2026-07-02.
 
-**Symptom:** a full `cmake --build build-wsl -- -k 0` fails to compile 3 test TUs:
+**Symptom:** a full `cmake --build build-wsl -- -k 0` failed to compile 3 test TUs:
 - `libraries/RenderGraph/tests/test_array_type_validation.cpp`
 - `libraries/RenderGraph/tests/test_field_extraction.cpp`
 - `libraries/RenderGraph/tests/test_resource_gatherer.cpp`
 
 Error (all three, identical): `.vulkan-sdk/1.4.350.1/x86_64/Include/vulkan/vulkan.h:52:10: fatal error: xcb/xcb.h: No such file or directory`.
 
-**Root cause:** `vulkan.h` includes `<xcb/xcb.h>` when `VK_USE_PLATFORM_XCB_KHR` is defined; the WSL build environment has no XCB development headers installed (`libxcb1-dev` / `libxcb-*-dev`). These three tests pull the full Vulkan platform header (transitively) rather than a headless subset.
+**Root cause:** `vulkan.h` includes `<xcb/xcb.h>` when `VK_USE_PLATFORM_XCB_KHR` is defined; the WSL build environment has no XCB development headers installed (`libxcb1-dev` / `libxcb-*-dev`). These three tests pulled the full Vulkan platform header (transitively) rather than a headless subset — despite `test_type_system.cmake`'s own header stating "Compatible with VULKAN_TRIMMED_BUILD (headers only, no Vulkan runtime needed)".
 
-**Impact:** medium (local/WSL). These 3 tests cannot build here. The offscreen/lavapipe render tests and SPIR-V-reflection tests are UNAFFECTED (they don't require the XCB surface platform) — e.g. `test_body_instance_raymarch_render` and `test_octree_config_sdi_parity` build + pass. A CI/host with the xcb dev package would not hit this.
+**Fix applied (option 2 — root-cause):** removed the `VK_USE_PLATFORM_{XCB,WIN32,MACOS}_KHR` `target_compile_definitions` blocks from all 3 targets in `libraries/RenderGraph/tests/test_type_system.cmake`. These are header-only compile-time/type-trait tests that never link a real Vulkan surface; no sibling headless `.cmake` in the same directory (`test_core_systems.cmake`, `test_critical_nodes.cmake`, `test_graph_systems.cmake`, `test_voxel_systems.cmake`) defines a platform macro at all — this file was the outlier.
 
-**Fix options (pick one):**
-1. Install the XCB dev headers in the WSL env: `sudo apt-get install libxcb1-dev libxcb-*-dev` (fastest; unblocks locally, but every dev must do it).
-2. Do not define `VK_USE_PLATFORM_XCB_KHR` for headless test targets — they need no window surface. Scope the platform define to the app/windowing targets only.
-3. CMake-gate these 3 tests on XCB header availability (`check_include_file`), skipping them with a `message(STATUS ...)` when absent (mirrors the existing dotnet-gated / SDK-gated patterns).
+**Verified:** all 3 targets build clean and pass at runtime on WSL (no XCB headers installed) — `test_array_type_validation`, `test_field_extraction`, `test_resource_gatherer` all print their `✅ ALL TESTS PASSED` banners, exit 0.
 
-**Recommended:** option 2 (root-cause: headless tests shouldn't require a window-surface platform), with option 1 as the immediate unblock.
-
-**Severity:** Medium · **Status:** OPEN
+**Severity:** Medium · **Status:** RESOLVED
 
 ---
 
-## KI-002 — `test_shell_octree_gpu.ConcatRejectsMoreThanThree` fails (stale test vs removed cap)
+### KI-002 — `test_shell_octree_gpu.ConcatRejectsMoreThanThree` fails (stale test vs removed cap)
 
 **Discovered:** 2026-07-02 (config-struct codegen C1 gate; pre-existing, unrelated to that byte-identical struct alias).
+**Resolved:** 2026-07-02.
 
-**Symptom:** `test_shell_octree_gpu` is 8/9 — `ShellOctreeGpu.ConcatRejectsMoreThanThree` (`libraries/SVO/tests/test_shell_octree_gpu.cpp:179`) fails. The test builds 4 shell octrees and asserts `EXPECT_THROW(Concatenate(four), std::length_error)`.
+**Symptom:** `test_shell_octree_gpu` was 8/9 — `ShellOctreeGpu.ConcatRejectsMoreThanThree` (`libraries/SVO/tests/test_shell_octree_gpu.cpp:179`) failed. The test built 4 shell octrees and asserted `EXPECT_THROW(Concatenate(four), std::length_error)`.
 
-**Root cause:** the `kMaxOctrees = 3` cap was intentionally removed in the earlier recipe-authoring epic (the octree pool became memory-budgeted / count-unbounded — see the `recipe-authoring-pipeline-shipped` work). `Concatenate` no longer throws for >3 octrees, so the test's `EXPECT_THROW` fails. The test was not updated when the cap was removed.
+**Root cause:** the `kMaxOctrees = 3` cap was intentionally removed in the earlier recipe-authoring epic (the octree pool became memory-budgeted / count-unbounded — see the `recipe-authoring-pipeline-shipped` work; `ShellOctreeGpu.h`'s own `Concatenate()` docstring already read "Count is unbounded", and the sibling `ConcatenateSdf()` had a matching `OctreePool.ConcatenatesMoreThanThreeSdfOctrees` accept-test). `Concatenate` only throws `std::invalid_argument` on a null pointer, never on count, so the stale `EXPECT_THROW` failed. The test was never updated when the cap was removed.
 
-**Impact:** low. This is a STALE TEST, not a functional regression — the unbounded-concat behavior is the intended design. But it leaves the SVO suite permanently red (1 test), which erodes the "green suite" signal.
+**Fix applied (option 1 — genuinely unbounded):** renamed the test to `ConcatAcceptsMoreThanThree` and rewrote it to assert `Concatenate(four)` succeeds and produces a valid combined pool — `count == 4`, per-octree `nodeArrayBase`/`brickArrayBase` non-decreasing, and the concatenated `nodes`/`bricks` byte buffers equal to the sum of per-octree element counts times their stride (`sizeof(ChildDescriptor)` / `SerializedOctree::kBrickStrideBytes`), mirroring the existing `ConcatRecordsPerOctreeBaseOffsets` test's assertion style. Also corrected 3 stale "<=3 octrees" comment headers in `ShellOctreeGpu.h` (lines 55/57/663) that contradicted the function's own "Count is unbounded" docstring.
 
-**Fix options:**
-1. If concat is now genuinely unbounded: replace the test with one asserting `Concatenate(four)` SUCCEEDS and produces a valid combined octree (rename e.g. `ConcatAcceptsMoreThanThree`).
-2. If a new upper bound exists (e.g. a memory-budget or `kMaxChannels`-style limit): assert rejection at that real boundary instead of 3.
+**Verified:** `test_shell_octree_gpu` is 9/9 passing at runtime (lavapipe-free, headless gtest).
 
-**Recommended:** confirm the intended concat contract (unbounded vs new-limit), then option 1 or 2 accordingly.
-
-**Severity:** Low · **Status:** OPEN
+**Severity:** Low · **Status:** RESOLVED

@@ -60,9 +60,6 @@ private:
     // ----- Selection state (the node is the single source of truth) -----
     SelectionSet set_;  ///< The durable selection set this node owns.
 
-    // Edge detection for the left mouse button (fire on the down-edge only).
-    bool lastLeftDown_ = false;
-
     // Status mirrored to the SELECTION_COUNT output (size of the set after the last pick).
     uint32_t selectionCount_ = 0;
 };

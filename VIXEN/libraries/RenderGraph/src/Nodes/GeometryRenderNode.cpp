@@ -152,6 +152,14 @@ void GeometryRenderNode::ExecuteImpl(TypedExecuteContext& ctx) {
     const std::vector<VkSemaphore>& renderCompleteSemaphores = ctx.In(GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
     VkFence inFlightFence = ctx.In(GeometryRenderNodeConfig::IN_FLIGHT_FENCE);
 
+    // Guard against the invalid-image sentinel BEFORE any per-image indexing or side effect:
+    // renderCompleteSemaphores[imageIndex] below reads OOB on UINT32_MAX, and skipping before
+    // the fence reset keeps the frame fence signalled for the next FrameSyncNode wait.
+    if (imageIndex == UINT32_MAX || imageIndex >= commandBuffers.size()) {
+        NODE_LOG_WARNING("GeometryRenderNode: Invalid image index - skipping frame");
+        return;
+    }
+
     // Phase 0.6: CORRECT per Vulkan guide - Two-tier indexing
     // https://docs.vulkan.org/guide/latest/swapchain_semaphore_reuse.html
     //
@@ -188,12 +196,6 @@ void GeometryRenderNode::ExecuteImpl(TypedExecuteContext& ctx) {
                 sample.Cancel();  // No valid measurement
             }
         }
-    }
-
-    // Guard against invalid image index (swapchain out of date)
-    if (imageIndex == UINT32_MAX || imageIndex >= commandBuffers.size()) {
-        NODE_LOG_WARNING("GeometryRenderNode: Invalid image index - skipping frame");
-        return;
     }
 
     // Phase 0.3: Detect if inputs changed (mark all command buffers dirty if so)
