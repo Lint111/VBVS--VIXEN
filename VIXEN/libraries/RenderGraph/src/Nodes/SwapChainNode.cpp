@@ -582,11 +582,12 @@ VIXEN_REGISTER_NODE(Vixen::RenderGraph::SwapChainNodeType);
 #if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
 namespace FS = Vixen::RenderGraph::FailScenario;
 VIXEN_FAIL_SCENARIOS_DECLARE(Vixen::RenderGraph::SwapChainNodeType,
-    // KI-003: forcing Acquire to OUT_OF_DATE/SUBOPTIMAL crashes GeometryRenderNode, which indexes
-    // renderCompleteSemaphores[imageIndex] with the propagated IMAGE_INDEX=UINT32_MAX before its own
-    // UINT32_MAX guard (present but ~29 lines too late). Pre-existing latent bug, not caused by this
-    // scenario code — reproducing it deterministically IS the point; gated report-not-block per
-    // Fail-Scenario-Simulation Inc 1 protocol. Remove knownIssueId once GeometryRenderNode is fixed.
+    // KI-003 (RESOLVED by main 9d95bd75 "fix(render): fullscreen/maximize segfault — central frame
+    // abort on out-of-date acquire", merged 2026-07-03): forcing Acquire to OUT_OF_DATE/SUBOPTIMAL
+    // used to crash GeometryRenderNode via an unguarded renderCompleteSemaphores[imageIndex] index.
+    // RenderGraph::AbortCurrentFrame() now stops the sequential Execute loop the instant SwapChainNode
+    // publishes the UINT32_MAX sentinel, so every downstream per-image consumer is skipped wholesale
+    // this frame. These scenarios are the permanent regression gate for that fix — no knownIssueId.
     VIXEN_SCENARIO(AcquireOutOfDate,
         FS::VkTransient{ .site = FS::FaultSite::Acquire, .result = VK_ERROR_OUT_OF_DATE_KHR },
         [](FS::ScenarioContext& c) {
@@ -597,8 +598,7 @@ VIXEN_FAIL_SCENARIOS_DECLARE(Vixen::RenderGraph::SwapChainNodeType,
             if (!sc) { c.Fail("no SwapChain node reachable from harness"); return; }
             if (sc->GetCurrentImageIndex() == UINT32_MAX)
                 c.Fail("swapchain never recovered from OUT_OF_DATE (image index still invalid)");
-        },
-        "KI-003"),
+        }),
     VIXEN_SCENARIO(AcquireSuboptimal,
         FS::VkTransient{ .site = FS::FaultSite::Acquire, .result = VK_SUBOPTIMAL_KHR },
         [](FS::ScenarioContext& c) {
@@ -606,7 +606,6 @@ VIXEN_FAIL_SCENARIOS_DECLARE(Vixen::RenderGraph::SwapChainNodeType,
             if (!sc) { c.Fail("no SwapChain node reachable from harness"); return; }
             if (sc->GetCurrentImageIndex() == UINT32_MAX)
                 c.Fail("swapchain stuck on invalid image index after SUBOPTIMAL");
-        },
-        "KI-003")  // same crash site: SUBOPTIMAL hits the identical OUT_OF_DATE||SUBOPTIMAL branch
+        })
 );
 #endif
