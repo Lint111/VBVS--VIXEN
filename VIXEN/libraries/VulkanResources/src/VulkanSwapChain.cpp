@@ -93,15 +93,7 @@ void VulkanSwapChain::DestroySwapChain(VkDevice device)
         return;
     }
 
-    // Destroy image views
-    for (uint32_t i = 0; i < scPublicVars.colorBuffers.size(); i++) {
-        if(scPublicVars.colorBuffers[i].view != VK_NULL_HANDLE) {
-            vkDestroyImageView(device, scPublicVars.colorBuffers[i].view, nullptr);
-            scPublicVars.colorBuffers[i].view = VK_NULL_HANDLE;
-        }
-    }
-    scPublicVars.colorBuffers.clear();
-    scPrivateVars.swapChainImages.clear();
+    DestroyImageViewsOnly(device);
 
     // Destroy swap chain (but not the surface - it stays alive)
     if(scPublicVars.swapChain != VK_NULL_HANDLE) {
@@ -112,6 +104,22 @@ void VulkanSwapChain::DestroySwapChain(VkDevice device)
             scPublicVars.currentColorBuffer = 0;
         }
     }
+}
+
+void VulkanSwapChain::DestroyImageViewsOnly(VkDevice device)
+{
+    if (device == VK_NULL_HANDLE) {
+        return;
+    }
+
+    for (uint32_t i = 0; i < scPublicVars.colorBuffers.size(); i++) {
+        if(scPublicVars.colorBuffers[i].view != VK_NULL_HANDLE) {
+            vkDestroyImageView(device, scPublicVars.colorBuffers[i].view, nullptr);
+            scPublicVars.colorBuffers[i].view = VK_NULL_HANDLE;
+        }
+    }
+    scPublicVars.colorBuffers.clear();
+    scPrivateVars.swapChainImages.clear();
 }
 
 void VulkanSwapChain::DestroySurface(VkInstance instance)
@@ -347,6 +355,13 @@ VulkanStatus VulkanSwapChain::GetSurfaceCapabilitiesAndPresentMode(VkPhysicalDev
     return {};  // success
 }
 
+VkExtent2D VulkanSwapChain::QueryCurrentSurfaceExtent(VkPhysicalDevice gpu) const
+{
+    VkSurfaceCapabilitiesKHR caps{};
+    fpGetPhysicalDeviceSurfaceCapabilitiesKHR(gpu, scPublicVars.surface, &caps);
+    return caps.currentExtent;
+}
+
 void VulkanSwapChain::ManagePresentMode()
 {
     // Prioritize IMMEDIATE for maximum uncapped FPS
@@ -393,7 +408,7 @@ void VulkanSwapChain::ManagePresentMode()
     }
 }
 
-void VulkanSwapChain::CreateSwapChainColorImages(VkDevice device)
+void VulkanSwapChain::CreateSwapChainColorImages(VkDevice device, VkSwapchainKHR oldSwapchain)
 {
     VkResult result;
 
@@ -419,7 +434,7 @@ void VulkanSwapChain::CreateSwapChainColorImages(VkDevice device)
     scInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
     scInfo.imageArrayLayers = 1;
     scInfo.presentMode = scPrivateVars.swapChainPresentMode;
-    scInfo.oldSwapchain = VK_NULL_HANDLE;
+    scInfo.oldSwapchain = oldSwapchain;
     scInfo.clipped = VK_TRUE;
     scInfo.imageColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
     scInfo.imageUsage = imageUsageFlags;
@@ -427,11 +442,20 @@ void VulkanSwapChain::CreateSwapChainColorImages(VkDevice device)
     scInfo.queueFamilyIndexCount = 0;
     scInfo.pQueueFamilyIndices = nullptr;
 
-    // Create the swapchain object
-    result = fpCreateSwapchainKHR(device, &scInfo, nullptr, &scPublicVars.swapChain);
+    // Create the new swapchain. Per the Vulkan retirement model, oldSwapchain (if not VK_NULL_HANDLE)
+    // becomes retired but remains a valid handle until explicitly destroyed -- destroy it only AFTER
+    // this succeeds, so a failed recreation doesn't leave us without any swapchain at all.
+    VkSwapchainKHR newSwapchain = VK_NULL_HANDLE;
+    result = fpCreateSwapchainKHR(device, &scInfo, nullptr, &newSwapchain);
     if (result != VK_SUCCESS) {
         throw std::runtime_error(std::string("VulkanSwapChain::CreateSwapChainColorImages - fpCreateSwapchainKHR failed: ") + std::to_string(static_cast<int>(result)));
     }
+
+    if (oldSwapchain != VK_NULL_HANDLE && fpDestroySwapchainKHR) {
+        fpDestroySwapchainKHR(device, oldSwapchain, nullptr);
+    }
+    scPublicVars.swapChain = newSwapchain;
+
     // Mirror the ACTUAL negotiated usage flags (post STORAGE-bit-drop, see GetSupportedFormats)
     // onto the public struct so graph consumers (e.g. DescriptorSetNode::HandleStorageImage) can
     // check what the swapchain images were really created with, not what was requested.

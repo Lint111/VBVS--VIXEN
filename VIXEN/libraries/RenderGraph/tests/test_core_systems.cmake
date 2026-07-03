@@ -104,6 +104,33 @@ gtest_discover_tests(test_resource_dependency_tracker)
 message(STATUS "[RenderGraph Tests] Added: test_resource_dependency_tracker")
 
 # ---------------------------------------------------------------------------
+# RenderGraph::RecompileDirtyNodes wave-cascade dedup
+# ---------------------------------------------------------------------------
+# Full NodeInstance/RenderGraph integration (the case test_resource_dependency_tracker's
+# comment above defers to an "integration test suite"): builds a real diamond-shaped graph
+# and asserts each node recompiles exactly once per dirty wave, not once per incoming
+# dependency path (Widescreen-Perf-Sweep-Findings-2026-07.md rank 8).
+
+add_executable(test_recompile_dedup
+    Core/test_recompile_dedup.cpp
+)
+
+target_include_directories(test_recompile_dedup PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include
+)
+
+target_link_libraries(test_recompile_dedup PRIVATE
+    GTest::gtest_main
+    RenderGraph
+)
+
+set_target_properties(test_recompile_dedup PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+gtest_discover_tests(test_recompile_dedup)
+
+message(STATUS "[RenderGraph Tests] Added: test_recompile_dedup")
+
+# ---------------------------------------------------------------------------
 # PerFrameResources Tests
 # ---------------------------------------------------------------------------
 # Validates PerFrameResources class (Core infrastructure):

@@ -217,34 +217,49 @@ void SwapChainNode::CleanupImpl(TypedCleanupContext& ctx) {
     // (same safe point the existing swapchain teardown relies on).
     DestroyPerImageSyncResources();
 
-    // Cleanup swapchain wrapper if we own it
-    if (swapChainWrapper) {
-        // Get VkInstance for surface destruction
-        VkInstance instance = VK_NULL_HANDLE;
-        VkDevice device = VK_NULL_HANDLE;
-
-        try {
-            // Cleanup-time access only - use GetInput directly
-            Resource* res = NodeInstance::GetInput(SwapChainNodeConfig::INSTANCE.index, 0);
-            if (res) {
-                instance = res->GetHandle<VkInstance>();
-            }
-        } catch (...) {
-            // Instance might not be available during shutdown - that's ok
-        }
-
-        auto* dev = GetDevice();
-        if (dev != nullptr) {
-            device = dev->device;
-        }
-
-        // Destroy all Vulkan resources (wrapper loads extension pointers automatically if needed)
-        swapChainWrapper->Destroy(device, instance);
-
-        // Delete wrapper object
-        delete swapChainWrapper;
-        swapChainWrapper = nullptr;
+    if (!swapChainWrapper) {
+        return;
     }
+
+    auto* dev = GetDevice();
+    VkDevice device = (dev != nullptr) ? dev->device : VK_NULL_HANDLE;
+
+    // The VkSurfaceKHR is PERSISTENT across recompiles, mirroring WindowNode's window+surface
+    // (see WindowNode.cpp CleanupImpl). Destroying/recreating the surface every recompile (the old
+    // unconditional Destroy() below) was pure waste -- the surface doesn't depend on extent. Tear
+    // it down only on final teardown.
+    //
+    // The swapchain HANDLE itself also survives a recompile here: only the per-image views (tied to
+    // the old swapchain's images) are destroyed now. CreateSwapchainAndViews() passes the still-live
+    // handle as oldSwapchain to vkCreateSwapchainKHR and destroys it only after the new swapchain is
+    // created successfully, letting the driver recycle/hand over presentation state instead of a
+    // cold recreation.
+    if (ctx.reason != CleanupReason::FinalTeardown) {
+        NODE_LOG_INFO("[SwapChainNode::CleanupImpl] Recompile - destroying image views only, keeping surface + swapchain (for oldSwapchain reuse)");
+        swapChainWrapper->DestroyImageViewsOnly(device);
+        return;
+    }
+
+    NODE_LOG_INFO("[SwapChainNode::CleanupImpl] Final teardown - destroying swapchain + surface");
+
+    // Get VkInstance for surface destruction
+    VkInstance instance = VK_NULL_HANDLE;
+    try {
+        // Cleanup-time access only - use GetInput directly
+        Resource* res = NodeInstance::GetInput(SwapChainNodeConfig::INSTANCE.index, 0);
+        if (res) {
+            instance = res->GetHandle<VkInstance>();
+        }
+    } catch (...) {
+        // Instance might not be available during shutdown - that's ok
+    }
+
+    // Destroy all Vulkan resources (wrapper loads extension pointers automatically if needed)
+    swapChainWrapper->Destroy(device, instance);
+
+    // Delete wrapper object
+    delete swapChainWrapper;
+    swapChainWrapper = nullptr;
 }
 
 VkSwapchainKHR SwapChainNode::GetSwapchain() const {
@@ -352,8 +367,24 @@ uint32_t SwapChainNode::AcquireNextImage(VkSemaphore presentCompleteSemaphore) {
     // normally; only schedule the recreation for later (no pause -- see the OUT_OF_DATE case
     // above for why publishing one here would silently skip this frame anyway).
     else if (result == VK_SUBOPTIMAL_KHR) {
-        NODE_LOG_INFO("SwapChainNode: Swapchain suboptimal, rendering this frame and marking for recreation");
-        MarkNeedsRecompile();
+        // A same-extent recreation can never clear SUBOPTIMAL -- on Dozen/WSL2-class drivers that
+        // keep reporting it after recreating at the unchanged extent, unconditionally recompiling
+        // here turns into a swapchain recreation + transitive recompile cascade every single frame
+        // (Widescreen-Perf-Sweep-Findings-2026-07.md rank 3). Only recreate when the surface's
+        // currentExtent has actually diverged from the live swapchain's extent.
+        VkExtent2D surfaceExtent = swapChainWrapper->QueryCurrentSurfaceExtent(*GetDevice()->gpu);
+        const VkExtent2D& liveExtent = swapChainWrapper->scPublicVars.Extent;
+        if (surfaceExtent.width == liveExtent.width && surfaceExtent.height == liveExtent.height) {
+            NODE_LOG_DEBUG("SwapChainNode: Swapchain suboptimal but extent unchanged ("
+                          + std::to_string(liveExtent.width) + "x" + std::to_string(liveExtent.height)
+                          + ") - rendering this frame, skipping recreation");
+        } else {
+            NODE_LOG_INFO("[SwapChainNode] SUBOPTIMAL with extent change "
+                          + std::to_string(liveExtent.width) + "x" + std::to_string(liveExtent.height)
+                          + " -> " + std::to_string(surfaceExtent.width) + "x" + std::to_string(surfaceExtent.height)
+                          + " -- recreating");
+            MarkNeedsRecompile();
+        }
         return currentImageIndex;
     }
     else if (result != VK_SUCCESS) {
@@ -428,8 +459,15 @@ void SwapChainNode::LoadExtensionsAndCreateSurface(VkInstance instance, GLFWwind
     }
     NODE_LOG_INFO("[SwapChainNode] Extension function pointers loaded successfully");
 
+    // The surface is PERSISTENT across recompiles (CleanupImpl keeps it alive on
+    // CleanupReason::Recompile -- see CleanupImpl). Only create it once; a later recompile reuses
+    // the same VkSurfaceKHR, matching WindowNode's window+surface persistence.
+    if (swapChainWrapper->scPublicVars.surface != VK_NULL_HANDLE) {
+        NODE_LOG_INFO("[SwapChainNode] Reusing persistent surface across recompile");
+        return;
+    }
+
     // Create the surface (cross-platform via GLFW)
-    // Note: Old resources were already destroyed in CleanupImpl before Setup created fresh wrapper
     result = swapChainWrapper->CreateSurface(instance, window);
     if (result != VK_SUCCESS) {
         std::string errorMsg = "SwapChainNode: Failed to create VkSurfaceKHR";
@@ -463,15 +501,17 @@ void SwapChainNode::SetupFormatsAndCapabilities(uint32_t graphicsQueueIndex) {
 void SwapChainNode::CreateSwapchainAndViews() {
     NODE_LOG_INFO("[SwapChainNode] Creating swapchain and image views...");
 
-    // If this is a recompilation (swapchain already exists), destroy old swapchain first
-    // This is necessary because vkCreateSwapchainKHR fails with VK_ERROR_OUT_OF_DATE_KHR if old swapchain exists
-    if (swapChainWrapper->scPublicVars.swapChain != VK_NULL_HANDLE) {
-        NODE_LOG_INFO("[SwapChainNode] Destroying existing swapchain for recreation");
-        swapChainWrapper->DestroySwapChain(GetDevice()->device);
+    // If this is a recompilation, the OLD swapchain handle is still alive (CleanupImpl only
+    // destroyed the per-image views on Recompile -- see CleanupImpl) -- pass it as oldSwapchain so
+    // the driver can reuse/hand over presentation state instead of a cold recreation. The old handle
+    // is destroyed by CreateSwapChainColorImages itself, only after the new one succeeds.
+    VkSwapchainKHR oldSwapchain = swapChainWrapper->scPublicVars.swapChain;
+    if (oldSwapchain != VK_NULL_HANDLE) {
+        NODE_LOG_INFO("[SwapChainNode] Recreating with oldSwapchain reuse");
     }
 
     // Create the swapchain with configured settings
-    swapChainWrapper->CreateSwapChainColorImages(GetDevice()->device);
+    swapChainWrapper->CreateSwapChainColorImages(GetDevice()->device, oldSwapchain);
 
     // Create image views for each swapchain image
     // Note: We pass VK_NULL_HANDLE for command buffer since image views don't need it
@@ -495,6 +535,15 @@ void SwapChainNode::CreateSwapchainAndViews() {
         NODE_LOG_ERROR(errorMsg);
         throw std::runtime_error(errorMsg);
     }
+
+    // Storm discriminator: every ACTUAL (re)creation logs here at INFO, regardless of what triggered
+    // this CompileImpl (initial setup, real resize, or a SUBOPTIMAL guard that decided to proceed).
+    // A resize probe should show exactly one of these per genuine size change. scPublicVars.Extent
+    // is already authoritative here -- set by GetSurfaceCapabilitiesAndPresentMode, which runs
+    // (via SetupFormatsAndCapabilities) before this method.
+    NODE_LOG_INFO("[SwapChainNode] swapchain (re)created "
+                  + std::to_string(swapChainWrapper->scPublicVars.Extent.width) + "x"
+                  + std::to_string(swapChainWrapper->scPublicVars.Extent.height));
 
     // NOTE: the public Extent is set authoritatively during capability resolution
     // (GetSurfaceCapabilitiesAndPresentMode) to match the actual swapchain image extent. We
