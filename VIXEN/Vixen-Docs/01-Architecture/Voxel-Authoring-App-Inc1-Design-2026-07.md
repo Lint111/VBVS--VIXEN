@@ -164,3 +164,27 @@ flatten(doc):
 
 No pushes, no merges to main without explicit user go-ahead. Plan of record:
 [[Voxel-Authoring-App-Inc1-Plan-2026-07]].
+
+## 9. Next steps (Inc2 candidates, pointer only — not a plan)
+
+Inc1 is complete (M1–M5, all Opus-approved). Priority order for the next planning session, per the
+umbrella design's own slice sequencing:
+
+1. **Slice 3 — drawn layers/brushes** (both facets together): editor-side sculpt tools (add a `type=1`
+   drawn layer, brush-stroke authoring UI) AND the runtime dig/build consumer path (undertow-side, later).
+   This is the next slice per the umbrella; Inc1 deliberately reserved `LayerRecord.type==1` and rejects it
+   at the reader, so the format already has the seam.
+2. **Bake center-offset cleanup (possible Inc2 prerequisite):** `BakeSdfWorld` samples raw grid-integer
+   coordinates with no center-offset applied (`RecipeBakeConfig::center` is metadata-only today). Every
+   existing render-gate test — including this increment's — hand-authors positive-octant coordinates to
+   work around it. Drawn/brush authoring (Slice 3) will make object-centered documents much more common
+   than the current CSG-primitive goldens, so this is worth fixing properly (apply `center` at bake time)
+   rather than continuing to work around it, ideally *before* Slice 3 adds more content that would need the
+   same workaround.
+3. **Slice 4 — query-aware asset config**: data-injection, placement/cardinality, mechanic conformance.
+   Undertow-side increment; no VIXEN format change expected, but the query-injector role (§4c/§4d of the
+   umbrella) may want new document metadata.
+4. **Slice 5 — Blender addon**: the Python *field-eval* visitor (transpiler-equivalence in Python, Q2 in
+   §3) plus the actual Blender-side import/export UI and live bridge. Inc1 already shipped the Python
+   *codec* (`voxel_document.py`/`sdf_op_codes.py`) as the structural seam; this slice is pure consumption
+   of that seam plus the new eval visitor.
