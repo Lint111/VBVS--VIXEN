@@ -82,6 +82,10 @@ public:
     /// composite pass, or the live-reload state. Returns nullptr if the context failed to create.
     [[nodiscard]] Rml::Context* GetUiContext() const { return context_; }
 
+    /// Test-only accessor: the Rml-owned mirror of the last-pushed inspect row (headless unit tests
+    /// exercise the setter/copy without a live RmlUi data model).
+    [[nodiscard]] const auto& InspectForTest() const { return inspect_; }
+
 protected:
     void SetupImpl(TypedSetupContext& ctx) override;
     void CompileImpl(TypedCompileContext& ctx) override;

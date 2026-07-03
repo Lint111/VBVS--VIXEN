@@ -360,3 +360,22 @@ TEST_F(HudSmokeTest, S1b_SetHudViewApiCompiles) {
     EXPECT_STREQ(es[0].kind, "war");
     EXPECT_EQ(es[0].tick, 81);
 }
+
+// Verify SetHudView copies the inspect row into the Rml-owned mirror (and clears it on
+// selected=false). No GPU/context init needed — SetHudView's inspect copy is pure data.
+TEST(UIRenderNodeInspect, SetHudViewCopiesInspectRow) {
+    Vixen::RenderGraph::UIRenderNodeType type;
+    Vixen::RenderGraph::UIRenderNode node("inspect_test", &type);
+
+    Vixen::RenderGraph::HudInspectIn in{true, "Ceres Combine", 3.5f, -1.0f, "", 0.0f, "at war with X"};
+    node.SetHudView(0, 0, 0, 0, {}, {}, in);
+    const auto& insp = node.InspectForTest();
+    EXPECT_TRUE(insp.selected);
+    EXPECT_EQ(insp.name, "Ceres Combine");
+    EXPECT_FLOAT_EQ(insp.strength, -1.0f);
+    EXPECT_EQ(insp.cause, "at war with X");
+
+    Vixen::RenderGraph::HudInspectIn cleared{false, "", 0.0f, 0.0f, "", 0.0f, ""};
+    node.SetHudView(0, 0, 0, 0, {}, {}, cleared);
+    EXPECT_FALSE(node.InspectForTest().selected);
+}
