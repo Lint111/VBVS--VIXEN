@@ -92,13 +92,15 @@ bool EditorApplication::ApplyDocumentToScene() {
     // Single body instance selecting the pool's only slot (octreeIndex=0, providerKind
     // defaults to 0/Stored) — mirrors test_recipe_pool_render.cpp's per-slot instance pattern.
     //
-    // renderScale=5.0: the golden-style document authoring convention centres geometry at
-    // grid-space origin with a small (~2-unit) extent (see VoxelDocumentFlattener.h / the M3
-    // flatten test's [-2,2]^3 parity sweep) — unlike other render-gate recipes, which are
-    // authored with large positive-octant coordinates. BakeRecipeInstructionsToSdfWorld samples
-    // at raw grid indices [0,64), and the shader's base-octree world frame spans a fixed
-    // [0,10] world units (BodyInstanceRayMarch.comp / ShellOctreeGpu.h's kWorldGridSize=10), so
-    // a grid-space extent of ~2 voxels maps to only ~0.3 world units before renderScale — too
+    // renderScale=5.0: the golden-style document authoring convention is object-centered —
+    // geometry is authored near local origin with a small (~2-unit) extent (see
+    // VoxelDocumentFlattener.h / the M3 flatten test's [-2,2]^3 parity sweep) — unlike other
+    // render-gate recipes, which are authored with large positive-octant coordinates.
+    // BakeRecipeInstructionsToSdfWorld now applies `center` (Inc2a fix: `p - center` at eval),
+    // so this object-centered geometry bakes AT RecipeBakeConfig::center's default grid
+    // position (32,32,32), not raw grid origin. The shader's base-octree world frame spans a
+    // fixed [0,10] world units (BodyInstanceRayMarch.comp / ShellOctreeGpu.h's kWorldGridSize=10),
+    // so a grid-space extent of ~2 voxels maps to only ~0.3 world units before renderScale — too
     // small to frame usefully. renderScale=5 brings that up to a comfortable ~1.5 world units.
     Vixen::SVO::BodyInstanceGpu inst{};
     inst.worldPos[0] = 0.0f; inst.worldPos[1] = 0.0f; inst.worldPos[2] = 0.0f;
