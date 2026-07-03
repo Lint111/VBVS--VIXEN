@@ -256,8 +256,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     // Window parameters
     auto* window = static_cast<WindowNode*>(renderGraph->GetInstance(windowNode));
-    window->SetParameter(WindowNodeConfig::PARAM_WIDTH, width);
-    window->SetParameter(WindowNodeConfig::PARAM_HEIGHT, height);
+    window->SetParameter(WindowNodeConfig::PARAM_WIDTH, static_cast<uint32_t>(width));
+    window->SetParameter(WindowNodeConfig::PARAM_HEIGHT, static_cast<uint32_t>(height));
 
     // Device parameters (default GPU = 0)
     auto* device = static_cast<DeviceNode*>(renderGraph->GetInstance(deviceNode));
