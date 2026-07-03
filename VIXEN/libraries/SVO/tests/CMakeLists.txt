@@ -307,6 +307,28 @@ endif()
 gtest_discover_tests(test_recipe_pack_loader)
 
 # ===========================================================================
+# Voxel Document Flatten Tests (Voxel-Authoring Inc1 M3 — VoxelDocumentFlattener,
+# document -> VRC1 recipe blob, consumable unchanged by the existing registry/pool path)
+# ===========================================================================
+add_executable(test_voxel_document_flatten test_voxel_document_flatten.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_voxel_document_flatten PRIVATE GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_voxel_document_flatten PRIVATE GTest::gtest_main)
+endif()
+target_compile_definitions(test_voxel_document_flatten PRIVATE
+    SAMPLE_TRI_LAYER_VXD_PATH="${CMAKE_SOURCE_DIR}/BuiltAssets/documents/sample_tri_layer.vxd"
+)
+set_target_properties(test_voxel_document_flatten PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_voxel_document_flatten POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_voxel_document_flatten>
+        COMMENT "Copying TBB DLL for test_voxel_document_flatten")
+endif()
+gtest_discover_tests(test_voxel_document_flatten)
+
+# ===========================================================================
 # Octree Pool Tests (I3.1 — dynamic-N pool + I3.2 config-size formula)
 # ===========================================================================
 add_executable(test_octree_pool test_octree_pool.cpp)

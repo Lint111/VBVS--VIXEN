@@ -1,0 +1,120 @@
+
+#pragma once
+#include <cstdint>
+#include <stddef.h>
+#include "RecipeContainer.g.h"   // reuses SdfInstruction (132 B) — not redefined here
+// <provenance: generated from Yeroket.GraphFramework.VM — do not edit by hand>
+namespace Yeroket::Sdf::Generated {
+
+struct VoxelDocumentHeader {
+    uint32_t magic; uint32_t formatVersion; uint32_t channelCount; uint32_t layerCount; uint32_t reserved0; uint32_t reserved1; uint32_t reserved2; uint32_t reserved3;
+};
+static_assert(sizeof(VoxelDocumentHeader) == 32, "VoxelDocumentHeader must be 32 B");
+
+struct VoxelDocChannel {
+    uint32_t semanticId; uint32_t elemCount; uint32_t channelBaseFloats; uint32_t fieldKind;
+};
+static_assert(sizeof(VoxelDocChannel) == 16, "VoxelDocChannel must be 16 B");
+
+struct VoxelDocLayerHeader {         // mirrors C# VoxelDocLayerHeaderBlit (48 B)
+    uint8_t type; uint8_t op; uint8_t enabled; uint8_t pad0; float blendRadius; uint8_t nameBytes[32]; uint32_t instructionCount; uint32_t pad1;
+};
+static_assert(sizeof(VoxelDocLayerHeader) == 48, "VoxelDocLayerHeader must be 48 B");
+
+struct VoxelDocLayerView {
+    const VoxelDocLayerHeader* header;
+    const SdfInstruction* instructions;
+};
+
+struct VoxelDocumentView {
+    VoxelDocumentHeader header;
+    const VoxelDocChannel* channels;
+    VoxelDocLayerView layers[256];   // capacity bound — LayerCount is authoritative
+};
+
+inline bool ReadVoxelDocument(const uint8_t* blob, size_t len, VoxelDocumentView& out) {
+    if (!blob || len < sizeof(VoxelDocumentHeader)) return false;
+    VoxelDocumentHeader h{};
+    for (size_t i = 0; i < sizeof(VoxelDocumentHeader); ++i)
+        reinterpret_cast<uint8_t*>(&h)[i] = blob[i];
+    if (h.magic != 0x31434456u) return false;          // 'VDC1'
+    if (h.formatVersion != 1u) return false;
+    if (h.layerCount > 256) return false;   // VoxelDocLayerView capacity bound
+
+    size_t offset = sizeof(VoxelDocumentHeader);
+    size_t need = offset + (size_t)h.channelCount * sizeof(VoxelDocChannel);
+    if (need > len) return false;
+    const VoxelDocChannel* channels = reinterpret_cast<const VoxelDocChannel*>(blob + offset);
+    for (uint32_t c = 0; c < h.channelCount; ++c)
+        if (channels[c].channelBaseFloats != 0) return false;   // bake-time-assigned, never authored
+    offset += (size_t)h.channelCount * sizeof(VoxelDocChannel);
+
+    VoxelDocumentView view{};
+    view.header = h;
+    view.channels = channels;
+    for (uint32_t l = 0; l < h.layerCount; ++l) {
+        need = offset + sizeof(VoxelDocLayerHeader);
+        if (need > len) return false;
+        const VoxelDocLayerHeader* lh = reinterpret_cast<const VoxelDocLayerHeader*>(blob + offset);
+        if (lh->type != 0) return false;   // drawn (type 1) is RESERVED for Inc2
+        offset += sizeof(VoxelDocLayerHeader);
+        need = offset + (size_t)lh->instructionCount * sizeof(SdfInstruction);
+        if (need > len) return false;
+        view.layers[l].header = lh;
+        view.layers[l].instructions = reinterpret_cast<const SdfInstruction*>(blob + offset);
+        offset += (size_t)lh->instructionCount * sizeof(SdfInstruction);
+    }
+    if (offset != len) return false;   // strict total-length check
+    out = view;
+    return true;
+}
+
+// Minimal writer: caller supplies pre-flattened channel/layer/instruction
+// spans; this assembles the exact VDC1 byte layout ReadVoxelDocument expects.
+// The editor (later milestone) is expected to build these spans from its
+// in-memory layer-stack model before calling this.
+struct VoxelDocLayerWrite {
+    VoxelDocLayerHeader header;
+    const SdfInstruction* instructions;   // header.instructionCount entries
+};
+inline bool WriteVoxelDocument(
+    const VoxelDocChannel* channels, uint32_t channelCount,
+    const VoxelDocLayerWrite* layers, uint32_t layerCount,
+    uint8_t* outBuf, size_t outCap, size_t& outLen) {
+    size_t need = sizeof(VoxelDocumentHeader) + (size_t)channelCount * sizeof(VoxelDocChannel);
+    for (uint32_t l = 0; l < layerCount; ++l)
+        need += sizeof(VoxelDocLayerHeader) + (size_t)layers[l].header.instructionCount * sizeof(SdfInstruction);
+    if (!outBuf || outCap < need) { outLen = need; return false; }
+
+    VoxelDocumentHeader h{};
+    h.magic = 0x31434456u;
+    h.formatVersion = 1u;
+    h.channelCount = channelCount;
+    h.layerCount = layerCount;
+    size_t offset = 0;
+    for (size_t i = 0; i < sizeof(VoxelDocumentHeader); ++i)
+        outBuf[offset + i] = reinterpret_cast<const uint8_t*>(&h)[i];
+    offset += sizeof(VoxelDocumentHeader);
+
+    for (uint32_t c = 0; c < channelCount; ++c) {
+        for (size_t i = 0; i < sizeof(VoxelDocChannel); ++i)
+            outBuf[offset + i] = reinterpret_cast<const uint8_t*>(&channels[c])[i];
+        offset += sizeof(VoxelDocChannel);
+    }
+
+    for (uint32_t l = 0; l < layerCount; ++l) {
+        const VoxelDocLayerWrite& lw = layers[l];
+        for (size_t i = 0; i < sizeof(VoxelDocLayerHeader); ++i)
+            outBuf[offset + i] = reinterpret_cast<const uint8_t*>(&lw.header)[i];
+        offset += sizeof(VoxelDocLayerHeader);
+        size_t instBytes = (size_t)lw.header.instructionCount * sizeof(SdfInstruction);
+        for (size_t i = 0; i < instBytes; ++i)
+            outBuf[offset + i] = reinterpret_cast<const uint8_t*>(lw.instructions)[i];
+        offset += instBytes;
+    }
+
+    outLen = offset;
+    return true;
+}
+
+} // namespace Yeroket::Sdf::Generated
