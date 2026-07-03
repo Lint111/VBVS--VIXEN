@@ -50,8 +50,13 @@ void EditorApplication::BuildRenderGraph() {
     VulkanGraphApplication::BuildRenderGraph();
 
     if (auto* ui = GetUiRenderNode()) {
+        // Matches the "assets/ui/<doc>.rml" convention BuildRenderGraph.cpp uses for hud.rml —
+        // ResolveUiAsset (UIRenderNode.cpp) strips the "assets/" prefix when resolving against
+        // VIXEN_UI_SOURCE_DIR/VIXEN_UI_ASSET_SOURCE_DIR, and checks the literal path relative to
+        // CWD otherwise; a bare "editor.rml" (no prefix) fails both and RmlUi logs "Unable to
+        // open file editor.rml" (found via the windowed smoke test).
         ui->SetParameter(Vixen::RenderGraph::UIRenderNodeConfig::RML_DOCUMENT_PATH,
-                          std::string("editor.rml"));
+                          std::string("assets/ui/editor.rml"));
     }
 
     if (!ApplyDocumentToScene()) {
