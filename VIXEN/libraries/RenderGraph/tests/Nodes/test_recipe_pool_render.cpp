@@ -438,7 +438,7 @@ TEST_F(RecipePoolRenderTest, FourRecipesAllRender) {
     };
     for (auto& r : recipes) {
         Vixen::SVO::RecipeRegistry::RecipeEntry e{};
-        e.bytecode = { makeSphere(32.0f,32.0f,32.0f, r.radius) };
+        e.bytecode = { makeSphere(0.0f,0.0f,0.0f, r.radius) };  // object-centered
         ASSERT_EQ(reg.Register(r.id, e), Vixen::SVO::RecipeRegistry::RegisterResult::Ok);
     }
 
