@@ -188,12 +188,19 @@ void CameraNode::ExecuteImpl(TypedExecuteContext& ctx) {
             orbitDistance = glm::clamp(orbitDistance, kOrbitDistanceMin, kOrbitDistanceMax);
         }
 
+        // A recompile/WSLg stall must not teleport the camera (field bug 2026-07-03: latched
+        // arrows at 500·dt flew the camera hundreds of units during multi-second stalls). Clamp
+        // the dt used for ALL input application, including the arrow-look term below.
+        const float clampedDt = glm::min(inputState->deltaTime, 0.1f);
+
         // Arrow keys for smooth look rotation (scaled for comfortable speed)
         float lookHorizontal = inputState->GetAxisLookHorizontal();
         float lookVertical = inputState->GetAxisLookVertical();
-        const float arrowKeyLookSpeed = 500.0f;  // Increased for faster orbit rotation
-        rotationDelta.x += lookHorizontal * arrowKeyLookSpeed * inputState->deltaTime;
-        rotationDelta.y -= lookVertical * arrowKeyLookSpeed * inputState->deltaTime;  // Inverted Y
+        // 120 (was 500): at the 0.1s dt clamp that's 12 rad/s peak instead of 50 rad/s — 500·dt at
+        // a 57ms stall frame (28 rad/s) was uncontrollable even before the clamp existed.
+        const float arrowKeyLookSpeed = 120.0f;
+        rotationDelta.x += lookHorizontal * arrowKeyLookSpeed * clampedDt;
+        rotationDelta.y -= lookVertical * arrowKeyLookSpeed * clampedDt;  // Inverted Y
 
         // Get keyboard movement axes
         float horizontal = inputState->GetAxisHorizontal();
@@ -205,8 +212,9 @@ void CameraNode::ExecuteImpl(TypedExecuteContext& ctx) {
         movementDelta.y += upDown;
     }
 
-    // Apply accumulated input deltas to camera state
-    float deltaTime = inputState ? inputState->deltaTime : (1.0f / 60.0f);
+    // Apply accumulated input deltas to camera state. Same stall-proofing clamp as above (0.1s
+    // max) — ApplyMovement's zoom/pan speeds are also dt-scaled and would otherwise teleport too.
+    float deltaTime = glm::min(inputState ? inputState->deltaTime : (1.0f / 60.0f), 0.1f);
     ApplyInputDeltas(deltaTime);
 
     // Update camera data with current state

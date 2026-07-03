@@ -121,6 +121,13 @@ private:
     // recompiles, including window re-entry after a graph rebuild targeting a new instance).
     void RegisterCallbacks();
 
+    // Clears every tracked key/button down-state on focus loss. WSLg RAIL (and some window
+    // managers) can swallow key-release events across a focus transition (e.g. alt-tab while an
+    // arrow key is held) — without this a "latched" key never sees its release edge and drives
+    // the camera forever. cursorPos_ and the per-frame accumulators are left alone: only down-state
+    // is suspect, not position/motion.
+    void ClearInputOnFocusLoss();
+
     // Static GLFW trampolines (GLFW callbacks are free functions/static; WindowNode already owns
     // glfwSetWindowUserPointer for its own 4 callbacks — see the .cpp's WindowToInputNodeRegistry
     // for why these route through a SEPARATE map instead of sharing that user pointer).
@@ -154,6 +161,11 @@ private:
     // Configuration parameters
     bool enabled_ = true;   // Enable/disable input polling
     InputConfig config_;    // cursorMode/orbitButton mirrored live from mouse_capture_mode/orbit_button params
+
+    // Guards the one-time WindowStateChangeEvent subscription (SetupImpl re-runs on every
+    // recompile; without this guard the subscription would accumulate, mirrors SwapChainNode's
+    // resizeSubscribed_ idiom).
+    bool focusSubscribed_ = false;
 
     // --- Event queue (GLFW callback thread... in practice GLFW callbacks fire synchronously
     // inside glfwPollEvents() on the main thread, but the mutex is cheap insurance + matches the

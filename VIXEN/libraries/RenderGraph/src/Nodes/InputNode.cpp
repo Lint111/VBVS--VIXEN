@@ -2,6 +2,7 @@
 #include "Core/NodeRegistration.h"
 #include "Core/NodeLogging.h"
 #include "NodeHelpers/ValidationHelpers.h"
+#include "Message.h"
 #include <iostream>
 #include <unordered_map>
 
@@ -148,6 +149,24 @@ void InputNode::SetupImpl(TypedSetupContext& ctx) {
 
     enabled_ = GetParameterValue<bool>(InputNodeConfig::PARAM_ENABLED, true);
     SyncConfigFromParams();
+
+    // Subscribe to focus-loss ONCE (SetupImpl re-runs on every recompile — see SwapChainNode's
+    // resizeSubscribed_ for the same guard idiom). WindowNode already publishes
+    // WindowStateChangeEvent(Focused/Unfocused) from its GLFW focus callback; no new callback
+    // slot needed (GLFW focus callbacks are WindowNode's single owned slot).
+    if (GetMessageBus() && !focusSubscribed_) {
+        focusSubscribed_ = true;
+        SubscribeToMessage(
+            EventBus::WindowStateChangeEvent::TYPE,
+            [this](const EventBus::BaseEventMessage& msg) -> bool {
+                const auto& stateMsg = static_cast<const EventBus::WindowStateChangeEvent&>(msg);
+                if (stateMsg.newState == EventBus::WindowStateChangeEvent::State::Unfocused) {
+                    ClearInputOnFocusLoss();
+                }
+                return true;
+            }
+        );
+    }
 
     NODE_LOG_INFO("[InputNode] enabled=" + std::to_string(enabled_) +
                   ", cursor_mode=" + std::to_string(static_cast<int>(config_.cursorMode)) +
@@ -553,6 +572,14 @@ void InputNode::InitializeMouseCapture() {
 void InputNode::RecenterMouse() {
     // No-op under GLFW: GLFW_CURSOR_DISABLED recenters internally and reports virtual unbounded
     // motion, so the old Win32 manual SetCursorPos recentering is unnecessary.
+}
+
+void InputNode::ClearInputOnFocusLoss() {
+    for (auto& [key, state] : keyStates) {
+        state.isDown = false;
+    }
+    buttonDown_[0] = buttonDown_[1] = buttonDown_[2] = false;
+    NODE_LOG_INFO("[InputNode] Focus lost - cleared latched key/button state");
 }
 
 } // namespace Vixen::RenderGraph
