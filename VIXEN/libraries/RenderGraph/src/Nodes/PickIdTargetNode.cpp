@@ -71,11 +71,27 @@ void PickIdTargetNode::CompileImpl(TypedCompileContext& ctx) {
                                  std::to_string(width_) + "x" + std::to_string(height_) + ")");
     }
 
-    // FR-7: images are persistent across recompile — only create once. (A future
-    // followSwapchainExtent mode would recreate here when the extent changes.)
+    // FR-7 + followSwapchainExtent: images are persistent across a same-size recompile, but MUST
+    // follow the swapchain extent -- a stale ring left at the startup size means the compute shader
+    // imageStores out of bounds of it after a resize (undefined behavior) and click readback reads
+    // outside the image. Recreate whenever the incoming extent differs from what the ring was built
+    // at; this only fires on a genuine resize (the standard resize->recompile cascade), never per-frame.
     if (images_.empty()) {
         imageCount_ = PICK_ID_FRAMES_IN_FLIGHT;
         CreateImages(GetDevice(), commandPool);
+        ringWidth_ = width_;
+        ringHeight_ = height_;
+    } else if (width_ != ringWidth_ || height_ != ringHeight_) {
+        NODE_LOG_INFO("[PickIdTargetNode] Extent changed (" + std::to_string(ringWidth_) + "x" +
+                      std::to_string(ringHeight_) + " -> " + std::to_string(width_) + "x" +
+                      std::to_string(height_) + ") - recreating pick-ID ring");
+        DestroyImages();
+        imageCount_ = PICK_ID_FRAMES_IN_FLIGHT;
+        CreateImages(GetDevice(), commandPool);
+        ringWidth_ = width_;
+        ringHeight_ = height_;
+        NODE_LOG_INFO("[PickIdTargetNode] ring recreated " + std::to_string(ringWidth_) + "x" +
+                      std::to_string(ringHeight_));
     } else {
         NODE_LOG_INFO("[PickIdTargetNode] Reusing persistent pick-ID images across recompile");
     }

@@ -1583,6 +1583,18 @@ void RenderGraph::RecompileDirtyNodes() {
         return;
     }
 
+    // A swapchain-recreation wave destroys resources (fences, image views, the swapchain itself,
+    // per-image command buffers/descriptor pools) that may still be in flight on the GPU from the
+    // last frame submitted before the pause. The general no-wait-during-recompile policy below is
+    // safe for ordinary dirty nodes (FrameSyncNode's per-frame sync covers those), but a resize wave
+    // tears down nearly the whole graph's per-image resources in one pass -- without a hard
+    // synchronization point here, CleanupImpl calls hit "still in use" validation errors (and can
+    // segfault) on any driver that doesn't happen to have finished the prior frame yet. Bound to
+    // ONLY the recreation case so ordinary recompiles keep the fast, wait-free path.
+    if (pausedForRecreation_) {
+        WaitForGraphDevicesIdle({});
+    }
+
     // Log which nodes triggered recompilation
     GRAPH_LOG_INFO("[RenderGraph::RecompileDirtyNodes] ===== RECOMPILATION TRIGGERED =====");
     GRAPH_LOG_INFO("[RenderGraph::RecompileDirtyNodes] Dirty nodes count: " + std::to_string(dirtyNodes.size()));
@@ -1626,130 +1638,103 @@ void RenderGraph::RecompileDirtyNodes() {
     // Track which nodes failed during this recompilation
     std::unordered_set<NodeInstance*> failedNodes;
 
-    // Keep recompiling until there are no more dirty nodes
-    // (recompiling a node may mark its dependents as dirty)
-    while (!dirtyNodes.empty()) {
-        GRAPH_LOG_INFO("[RenderGraph] Recompiling " + std::to_string(dirtyNodes.size()) + " dirty nodes");
+    // Compute the full transitive closure of the dirty wave UP FRONT, then recompile each node
+    // exactly once, in topological order. The previous implementation re-derived and re-marked
+    // "all dependents" after EVERY node recompile inside a while-loop: a node reachable via two
+    // ancestors (the common diamond shape A->B, A->C, B->D, C->D) got marked dirty and recompiled
+    // once per incoming path, and deep chains recompiled O(depth) times each -- O(depth^2) total
+    // node-recompiles per resize, including the swapchain itself on some paths
+    // (Widescreen-Perf-Sweep-Findings-2026-07.md rank 8). Seeding the closure from the ORIGINAL
+    // dirty set and expanding via cleanupStack.GetAllDependents (already a transitive-closure query)
+    // means every affected node is visited exactly once.
+    std::unordered_set<NodeHandle> closure(dirtyNodes.begin(), dirtyNodes.end());
+    for (NodeHandle handle : dirtyNodes) {
+        if (!handle.IsValid() || handle.index >= instances.size()) continue;
+        for (NodeHandle dep : cleanupStack.GetAllDependents(handle)) {
+            closure.insert(dep);
+        }
+    }
+    dirtyNodes.clear();
 
-        // Convert dirty handles to set of node pointers for fast lookup
-        std::unordered_set<NodeInstance*> dirtyNodeSet;
-        for (NodeHandle handle : dirtyNodes) {
-            if (handle.IsValid() && handle.index < instances.size()) {
-                NodeInstance* node = instances[handle.index].get();
-                if (node) {
-                    dirtyNodeSet.insert(node);
-                }
+    GRAPH_LOG_INFO("[RenderGraph] Recompiling " + std::to_string(closure.size())
+                  + " nodes in this wave (transitive closure)");
+
+    // Collect nodes to recompile in execution order (respects dependencies), deduped by the set above.
+    std::vector<NodeInstance*> nodesToRecompile;
+    for (NodeInstance* node : executionOrder) {
+        if (!node) continue;
+        if (closure.count(node->GetHandle()) > 0) {
+            nodesToRecompile.push_back(node);
+        }
+    }
+
+    // Recompile each node exactly once, in topological order.
+    // Note: We skip vkDeviceWaitIdle during recompilation because:
+    // 1. FrameSyncNode already handles frame-in-flight synchronization
+    // 2. Node pointers may be stale during cleanup (accessing node->GetDevice() unsafe)
+    // 3. Individual nodes handle their own device waits in CleanupImpl if needed
+    for (NodeInstance* node : nodesToRecompile) {
+        // Check if any input dependencies failed during this recompilation
+        bool dependencyFailed = false;
+        std::vector<NodeInstance*> dependencies = dependencyTracker.GetDependenciesForNode(node);
+        for (NodeInstance* dep : dependencies) {
+            if (failedNodes.count(dep) > 0) {
+                dependencyFailed = true;
+                GRAPH_LOG_WARNING("[RenderGraph] Skipping node '" + node->GetInstanceName() +
+                                "' - dependency '" + dep->GetInstanceName() + "' failed to recompile");
+                break;
             }
         }
 
-        // Collect nodes to recompile in execution order (respects dependencies)
-        std::vector<NodeInstance*> nodesToRecompile;
-        for (NodeInstance* node : executionOrder) {
-            if (dirtyNodeSet.count(node) > 0) {
-                nodesToRecompile.push_back(node);
-            }
+        if (dependencyFailed) {
+            // Mark this node as failed and re-add to dirty set for the NEXT RecompileDirtyNodes() call.
+            failedNodes.insert(node);
+            MarkNodeNeedsRecompile(node->GetHandle());
+            allNodesSucceeded = false;
+            continue;
         }
 
-        // Clear dirty set before recompiling this batch
-        dirtyNodes.clear();
+        GRAPH_LOG_INFO("[RenderGraph] Recompiling node: " + node->GetInstanceName());
 
-        // Recompile each dirty node
-        // Note: We skip vkDeviceWaitIdle during recompilation because:
-        // 1. FrameSyncNode already handles frame-in-flight synchronization
-        // 2. Node pointers may be stale during cleanup (accessing node->GetDevice() unsafe)
-        // 3. Individual nodes handle their own device waits in CleanupImpl if needed
+        try {
+            // Call cleanup first (destroy old resources). This is a RECOMPILE, not final teardown:
+            // nodes owning persistent-across-recompile resources (e.g. the OS window) keep them.
+            node->Cleanup(CleanupReason::Recompile);
 
-        for (NodeInstance* node : nodesToRecompile) {
-            if (!node) continue;
+            // Ensure node has a chance to recreate transient objects (e.g., swapchain wrapper)
+            // Some nodes may not have device inputs available immediately; if Setup/Compile
+            // fails we'll catch and defer the recompilation to a later safe point.
+            node->Setup();
 
-            // Check if any input dependencies failed during this recompilation
-            bool dependencyFailed = false;
-            std::vector<NodeInstance*> dependencies = dependencyTracker.GetDependenciesForNode(node);
-            for (NodeInstance* dep : dependencies) {
-                if (failedNodes.count(dep) > 0) {
-                    dependencyFailed = true;
-                    GRAPH_LOG_WARNING("[RenderGraph] Skipping node '" + node->GetInstanceName() +
-                                    "' - dependency '" + dep->GetInstanceName() + "' failed to recompile");
-                    break;
-                }
-            }
-    
-            if (dependencyFailed) {
-                // Mark this node as failed and re-add to dirty set
-                failedNodes.insert(node);
-                for (uint32_t i = 0; i < instances.size(); ++i) {
-                    if (instances[i].get() == node) {
-                        MarkNodeNeedsRecompile(CreateHandle(i));
-                        break;
-                    }
-                }
-                allNodesSucceeded = false;
-                continue;
-            }
+            // Recompile (create new resources)
+            // Reset per-input "used in compile" markers so the Compile() pass
+            // can record which inputs are actually used during compilation.
+            node->ResetInputsUsedInCompile();
+            node->Compile();
 
-            GRAPH_LOG_INFO("[RenderGraph] Recompiling node: " + node->GetInstanceName());
-    
-            try {
-                // Call cleanup first (destroy old resources). This is a RECOMPILE, not final teardown:
-                // nodes owning persistent-across-recompile resources (e.g. the OS window) keep them.
-                node->Cleanup(CleanupReason::Recompile);
-    
-                // Ensure node has a chance to recreate transient objects (e.g., swapchain wrapper)
-                // Some nodes may not have device inputs available immediately; if Setup/Compile
-                // fails we'll catch and defer the recompilation to a later safe point.
-                node->Setup();
-    
-                // Recompile (create new resources)
-                // Reset per-input "used in compile" markers so the Compile() pass
-                // can record which inputs are actually used during compilation.
-                node->ResetInputsUsedInCompile();
-                node->Compile();
-                
-                // Clear recompilation flag - node is now compiled
-                node->ClearNeedsRecompile();
+            // Clear recompilation flag - node is now compiled
+            node->ClearNeedsRecompile();
 
-                // Reset cleanup flag so node can be cleaned up again on next recompilation
-                node->ResetCleanupFlag();
+            // Reset cleanup flag so node can be cleaned up again on next recompilation
+            node->ResetCleanupFlag();
 
-                // Reset the CleanupStack's executed flag for this node
-                cleanupStack.ResetExecuted(node->GetHandle());
-    
-                // Mark all dependent nodes (consumers of this node's outputs) as dirty
-                // The cleanup stack tracks the dependency graph: provider -> dependents
-                // We need to compile in the opposite direction: when a provider recompiles,
-                // all its dependents need to recompile
-                NodeHandle nodeHandle = node->GetHandle();
-                std::unordered_set<NodeHandle> dependentHandles = cleanupStack.GetAllDependents(nodeHandle);
+            // Reset the CleanupStack's executed flag for this node
+            cleanupStack.ResetExecuted(node->GetHandle());
 
-                for (NodeHandle depHandle : dependentHandles) {
-                    if (depHandle.IsValid() && depHandle.index < instances.size()) {
-                        NodeInstance* dependent = instances[depHandle.index].get();
-                        if (dependent) {
-                            GRAPH_LOG_INFO("[RenderGraph] Marking dependent node '" + dependent->GetInstanceName() +
-                                         "' for recompilation");
-                            dependent->MarkNeedsRecompile();
-                        }
-                    }
-                }
-            } catch (const std::exception& e) {
-                GRAPH_LOG_ERROR("[RenderGraph] Failed to recompile node '" + node->GetInstanceName() +
-                              "' - deferring. Error: " + std::string(e.what()));
-    
-                // Re-add to dirty set to retry next frame
-                // Find the node index to create a handle
-                for (uint32_t i = 0; i < instances.size(); ++i) {
-                    if (instances[i].get() == node) {
-                        MarkNodeNeedsRecompile(CreateHandle(i));
-                        break;
-                    }
-                }
-    
-                // Mark that at least one node failed
-                failedNodes.insert(node);
-                allNodesSucceeded = false;
-            }
-        } // End for (NodeInstance* node : nodesToRecompile)
-    } // End while loop
+            // Dependents were already folded into the closure above (and will recompile later in
+            // this same pass, since executionOrder is topological) -- no per-node re-marking needed.
+        } catch (const std::exception& e) {
+            GRAPH_LOG_ERROR("[RenderGraph] Failed to recompile node '" + node->GetInstanceName() +
+                          "' - deferring. Error: " + std::string(e.what()));
+
+            // Re-add to dirty set to retry on the next RecompileDirtyNodes() call.
+            MarkNodeNeedsRecompile(node->GetHandle());
+
+            // Mark that at least one node failed
+            failedNodes.insert(node);
+            allNodesSucceeded = false;
+        }
+    } // End for (NodeInstance* node : nodesToRecompile)
 
     // Update graph compiled state
     if (allNodesSucceeded && dirtyNodes.empty()) {

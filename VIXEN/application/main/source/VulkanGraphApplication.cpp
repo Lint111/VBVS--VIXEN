@@ -3,6 +3,7 @@
 #include "MeshData.h"
 #include "Logger.h"
 #include <cmath>       // std::tan for the LOD ray-cone (raySizeCoef) computation
+#include <cstdlib>     // std::getenv/atoi for VIXEN_WINDOW_WIDTH/HEIGHT overrides
 
 #define GLFW_INCLUDE_NONE   // don't pull in <GL/gl.h> (absent on headless/WSL); Vulkan-only below
 #define GLFW_INCLUDE_VULKAN
@@ -58,6 +59,17 @@ VulkanGraphApplication::VulkanGraphApplication()
       graphCompiled(false),
       width(500),
       height(500) {
+
+    // Perf measurement (perf sweep 2026-07): fixed A/B window sizes without a rebuild.
+    // VIXEN_WINDOW_WIDTH / VIXEN_WINDOW_HEIGHT override the 500x500 default when set.
+    if (const char* env = std::getenv("VIXEN_WINDOW_WIDTH")) {
+        const int v = std::atoi(env);
+        if (v > 0) width = v;
+    }
+    if (const char* env = std::getenv("VIXEN_WINDOW_HEIGHT")) {
+        const int v = std::atoi(env);
+        if (v > 0) height = v;
+    }
 
     // Enable main logger for application-level logging
     if (mainLogger) {
@@ -323,6 +335,34 @@ void VulkanGraphApplication::Update() {
         if (renderGraph) {
             if (auto* window = static_cast<WindowNode*>(renderGraph->GetInstance(windowNode_))) {
                 window->ProcessPendingEvents();
+            }
+        }
+
+        // Perf measurement (perf sweep 2026-07): env-gated one-shot programmatic resize that
+        // reproduces the "enter wide screen mode" gesture unattended. At update tick
+        // VIXEN_RESIZE_AT_FRAME, resize the live window to VIXEN_RESIZE_WIDTH x VIXEN_RESIZE_HEIGHT
+        // (defaults 2560x1440) through the exact same GLFW callback -> WindowResizedMessage path a
+        // user-driven maximize takes.
+        if (renderGraph) {
+            static const long resizeAtFrame = [] {
+                const char* env = std::getenv("VIXEN_RESIZE_AT_FRAME");
+                return env ? std::strtol(env, nullptr, 10) : 0L;
+            }();
+            static long updateTick = 0;
+            ++updateTick;
+            if (resizeAtFrame > 0 && updateTick == resizeAtFrame) {
+                if (auto* window = static_cast<WindowNode*>(renderGraph->GetInstance(windowNode_))) {
+                    if (GLFWwindow* glfwWin = window->GetWindow()) {
+                        int w = 2560, h = 1440;
+                        if (const char* e = std::getenv("VIXEN_RESIZE_WIDTH"))  { const int v = std::atoi(e); if (v > 0) w = v; }
+                        if (const char* e = std::getenv("VIXEN_RESIZE_HEIGHT")) { const int v = std::atoi(e); if (v > 0) h = v; }
+                        if (mainLogger) {
+                            mainLogger->Info("[PerfProbe] programmatic resize to " + std::to_string(w) + "x" + std::to_string(h)
+                                             + " at update tick " + std::to_string(updateTick));
+                        }
+                        glfwSetWindowSize(glfwWin, w, h);
+                    }
+                }
             }
         }
 

@@ -23,6 +23,28 @@
 
 include_guard(GLOBAL)
 
+# Convenience debug-run targets: `cmake --build <dir> --target gdb-<exe-target>` runs that
+# executable under gdb. Call vixen_add_gdb_target(<exe-target>) after add_executable(<exe-target>);
+# no-op (and no error) if gdb isn't available, so callers don't need to guard every call site.
+# Defined BEFORE the non-Linux early-return below so that contract also holds on Windows, where
+# VIXEN_GDB_EXECUTABLE is never set and the function must still exist as a no-op.
+function(vixen_add_gdb_target EXE_TARGET)
+    if(NOT VIXEN_GDB_EXECUTABLE)
+        return()
+    endif()
+    if(NOT TARGET ${EXE_TARGET})
+        message(WARNING "VIXEN: vixen_add_gdb_target(${EXE_TARGET}) called before add_executable(${EXE_TARGET})")
+        return()
+    endif()
+    add_custom_target(gdb-${EXE_TARGET}
+        COMMAND ${VIXEN_GDB_EXECUTABLE} -q --args $<TARGET_FILE:${EXE_TARGET}> ${VIXEN_GDB_ARGS}
+        DEPENDS ${EXE_TARGET}
+        WORKING_DIRECTORY $<TARGET_FILE_DIR:${EXE_TARGET}>
+        USES_TERMINAL
+        COMMENT "VIXEN: launching ${EXE_TARGET} under gdb"
+    )
+endfunction()
+
 # gdb is a Linux/WSL debugging tool; Windows uses its own debugger (Visual Studio / windbg).
 if(NOT (UNIX AND NOT APPLE))
     return()
@@ -86,22 +108,4 @@ if(EXISTS "${VIXEN_GDB_CACHE_DIR}" AND NOT TARGET vixen-uninstall-gdb)
         COMMENT "VIXEN: removing provisioned gdb cache (${VIXEN_GDB_CACHE_DIR})")
 endif()
 
-# Convenience debug-run targets: `cmake --build <dir> --target gdb-<exe-target>` runs that
-# executable under gdb. Call vixen_add_gdb_target(<exe-target>) after add_executable(<exe-target>);
-# no-op (and no error) if gdb isn't available, so callers don't need to guard every call site.
-function(vixen_add_gdb_target EXE_TARGET)
-    if(NOT VIXEN_GDB_EXECUTABLE)
-        return()
-    endif()
-    if(NOT TARGET ${EXE_TARGET})
-        message(WARNING "VIXEN: vixen_add_gdb_target(${EXE_TARGET}) called before add_executable(${EXE_TARGET})")
-        return()
-    endif()
-    add_custom_target(gdb-${EXE_TARGET}
-        COMMAND ${VIXEN_GDB_EXECUTABLE} -q --args $<TARGET_FILE:${EXE_TARGET}> ${VIXEN_GDB_ARGS}
-        DEPENDS ${EXE_TARGET}
-        WORKING_DIRECTORY $<TARGET_FILE_DIR:${EXE_TARGET}>
-        USES_TERMINAL
-        COMMENT "VIXEN: launching ${EXE_TARGET} under gdb"
-    )
-endfunction()
+# vixen_add_gdb_target() is defined at the top of this file, before the non-Linux early-return.

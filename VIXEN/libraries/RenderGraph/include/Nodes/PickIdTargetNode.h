@@ -70,6 +70,11 @@ private:
     uint32_t                                height_      = 0;
     uint32_t                                imageCount_  = 0;
     uint32_t                                currentIndex_ = 0;
+    // Extent the ring's images_ were actually created at. Compared against the incoming
+    // WIDTH/HEIGHT each CompileImpl to detect a real resize (width_/height_ themselves get
+    // overwritten with the new incoming extent before that comparison could happen).
+    uint32_t                                ringWidth_   = 0;
+    uint32_t                                ringHeight_  = 0;
     static constexpr VkFormat               kFormat      = VK_FORMAT_R32_UINT;
 };
 

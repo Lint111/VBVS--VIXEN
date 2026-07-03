@@ -36,7 +36,9 @@ GPUTimestampQuery::GPUTimestampQuery(VulkanDevice* device, uint32_t framesInFlig
     frameData_.resize(framesInFlight_);
     for (auto& frame : frameData_) {
         frame.results.resize(maxTimestamps_, 0);
+        frame.available.resize(maxTimestamps_, 0);
     }
+    readScratch_.resize(static_cast<size_t>(maxTimestamps_) * 2, 0);
 
     if (timestampSupported_) {
         CreateQueryPools();
@@ -54,6 +56,7 @@ GPUTimestampQuery::GPUTimestampQuery(GPUTimestampQuery&& other) noexcept
     , timestampSupported_(other.timestampSupported_)
     , timestampPeriod_(other.timestampPeriod_)
     , frameData_(std::move(other.frameData_))
+    , readScratch_(std::move(other.readScratch_))
 {
     other.device_ = nullptr;
     other.frameData_.clear();
@@ -68,6 +71,7 @@ GPUTimestampQuery& GPUTimestampQuery::operator=(GPUTimestampQuery&& other) noexc
         timestampSupported_ = other.timestampSupported_;
         timestampPeriod_ = other.timestampPeriod_;
         frameData_ = std::move(other.frameData_);
+        readScratch_ = std::move(other.readScratch_);
 
         other.device_ = nullptr;
         other.frameData_.clear();
@@ -177,25 +181,32 @@ bool GPUTimestampQuery::ReadResults(uint32_t frameIndex) {
         return false;
     }
 
-    // Only read queries that were actually written (2: start and end timestamp)
-    // We allocate maxTimestamps_ for flexibility, but only use 2 currently
-    const uint32_t queriesToRead = 2;
+    // Read the WHOLE pool with per-query availability. Slots are allocated as pairs
+    // (GPUQueryManager maps slot i -> queries 2i/2i+1), so the old fixed [0,2) read
+    // window only ever served slot 0 — every other consumer silently read zeros.
+    // Availability (rather than a plain batch read) keeps this non-blocking when some
+    // queries in the pool were reset but never written this frame: VK_NOT_READY then
+    // just means "not every query is available", and the per-query flags are authoritative.
     VkResult result = vkGetQueryPoolResults(
         device_->device,
         frame.timestampPool,
-        0, queriesToRead,
-        queriesToRead * sizeof(uint64_t),
-        frame.results.data(),
-        sizeof(uint64_t),
-        VK_QUERY_RESULT_64_BIT  // No WAIT_BIT - return immediately if not ready
+        0, maxTimestamps_,
+        readScratch_.size() * sizeof(uint64_t),
+        readScratch_.data(),
+        2 * sizeof(uint64_t),
+        VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WITH_AVAILABILITY_BIT
     );
 
-    if (result == VK_SUCCESS) {
-        frame.resultsValid = true;
-        return true;
+    if (result != VK_SUCCESS && result != VK_NOT_READY) {
+        return false;
     }
 
-    return false;
+    for (uint32_t i = 0; i < maxTimestamps_; ++i) {
+        frame.results[i] = readScratch_[i * 2];
+        frame.available[i] = (readScratch_[i * 2 + 1] != 0) ? 1 : 0;
+    }
+    frame.resultsValid = true;
+    return true;
 }
 
 float GPUTimestampQuery::GetElapsedMs(uint32_t frameIndex, uint32_t startQuery, uint32_t endQuery) const {
@@ -209,6 +220,12 @@ uint64_t GPUTimestampQuery::GetElapsedNs(uint32_t frameIndex, uint32_t startQuer
 
     const auto& frame = frameData_[frameIndex];
     if (!frame.resultsValid || startQuery >= maxTimestamps_ || endQuery >= maxTimestamps_) {
+        return 0;
+    }
+
+    // Pair never written this frame (or GPU not yet finished) — without this check,
+    // zeros from reset-but-unwritten queries would alias as a valid 0ns measurement
+    if (!frame.available[startQuery] || !frame.available[endQuery]) {
         return 0;
     }
 
