@@ -114,6 +114,11 @@ private:
     float lastParamYaw_ = NAN, lastParamPitch_ = NAN;
     float lastParamOrbitCX_ = NAN, lastParamOrbitCY_ = NAN, lastParamOrbitCZ_ = NAN;
     float lastParamOrbitDist_ = NAN;
+
+    // Last-seen pose_seq value (NaN = never seen). A change here (including the first sight)
+    // forces every PRESENT pose param to reapply this SetupImpl regardless of lastApplied — see
+    // CameraNodeConfig::PARAM_POSE_SEQ.
+    float lastPoseSeq_ = NAN;
 };
 
 } // namespace Vixen::RenderGraph

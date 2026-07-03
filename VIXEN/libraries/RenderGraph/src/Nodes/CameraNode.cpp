@@ -43,6 +43,19 @@ void CameraNode::SetupImpl(TypedSetupContext& ctx) {
     farPlane = GetParameterValue<float>(CameraNodeConfig::PARAM_FAR_PLANE, 1000.0f);
     gridResolution = GetParameterValue<uint32_t>(CameraNodeConfig::PARAM_GRID_RESOLUTION, 128u);
 
+    // pose_seq: the host bumps this on every console pose write (setcam/lookcam/pick-flight).
+    // A change (including first sight) forces every PRESENT pose param below to reapply even if
+    // its value is unchanged from lastApplied — otherwise a reset to an already-current value
+    // (e.g. `lookcam 0 0` when yaw/pitch are already 0) was a silent no-op.
+    bool forceApply = false;
+    if (GetParameter(CameraNodeConfig::PARAM_POSE_SEQ) != nullptr) {
+        const float seq = GetParameterValue<float>(CameraNodeConfig::PARAM_POSE_SEQ, 0.0f);
+        if (std::isnan(lastPoseSeq_) || seq != lastPoseSeq_) {
+            forceApply = true;
+            lastPoseSeq_ = seq;
+        }
+    }
+
     // Pose params are REQUESTS, applied only when their stored value changed since the last
     // apply (NaN sentinel = first sight always applies). Setup re-runs on every recompile —
     // resize, any node's SetParameter — and the old unconditional re-read snapped the live
@@ -50,7 +63,7 @@ void CameraNode::SetupImpl(TypedSetupContext& ctx) {
     auto applyIfChanged = [&](const char* name, float& lastApplied, auto&& apply) {
         if (GetParameter(name) == nullptr) return;          // never set on this node
         const float v = GetParameterValue<float>(name, 0.0f);
-        if (!std::isnan(lastApplied) && v == lastApplied) return;
+        if (!forceApply && !std::isnan(lastApplied) && v == lastApplied) return;
         apply(v);
         lastApplied = v;
     };

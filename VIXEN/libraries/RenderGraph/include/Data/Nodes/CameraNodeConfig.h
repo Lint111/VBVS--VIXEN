@@ -81,6 +81,12 @@ CONSTEXPR_NODE_CONFIG(CameraNodeConfig,
     static constexpr const char* PARAM_ORBIT_CENTER_Y = "orbit_center_y";
     static constexpr const char* PARAM_ORBIT_CENTER_Z = "orbit_center_z";
     static constexpr const char* PARAM_ORBIT_DISTANCE = "orbit_distance";
+    // Forces reapply of every present pose param this SetupImpl even when its value is unchanged
+    // from lastApplied (the applyIfChanged change-tracking normally skips a same-value write).
+    // Field bug 2026-07-03: a console reset to a pose already equal to the stored value (e.g.
+    // `lookcam 0 0` when yaw/pitch are already 0) was a silent no-op. The host bumps this on every
+    // console pose write; CameraNode treats any change in its value as "reapply everything present".
+    static constexpr const char* PARAM_POSE_SEQ = "pose_seq";
 
     // Per-frame resources (ring buffer)
     static constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 4;
