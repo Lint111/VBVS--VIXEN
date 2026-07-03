@@ -331,7 +331,7 @@ Grouping = the plan's own milestone headers, verbatim (post-brainstorm-context-m
 
 ## Milestone progress (updated by the execution pipeline)
 
-- [ ] M1 — parameter integrity
+- [x] M1 — parameter integrity
 - [ ] M2 — shader counters compiled out
 - [ ] M3 — resize-path robustness
 - [ ] M4 — render-scale decoupling
@@ -339,5 +339,7 @@ Grouping = the plan's own milestone headers, verbatim (post-brainstorm-context-m
 - [ ] M6 — CPU-floor hygiene + close-out
 
 ## Progress Log
+
+- M1 (Tasks M1.1-M1.2): DONE · commits 4af408ff..358f2c0a · Opus validator APPROVED · real-GPU gate: resolutions now honest, dispatch scales linearly (see findings appendix) · 2026-07-03
 
 - Prep: sweep + measurements complete; instrumentation (D2 timestamp fix, frame timer, env overrides, resize probe) and both docs authored · 2026-07-03

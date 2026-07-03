@@ -198,3 +198,20 @@ At the moment of maximize the user gets hit twice. **During** the resize: a full
 3. The benchmark's per-frame counter readback fence-waits every frame (`BenchmarkRunner.cpp:1366-1405`) — comment it out for pipelined timings.
 4. Keep the removed per-frame `[KI004-DIAG]` `NODE_LOG_ERROR` (formerly `ComputeDispatchNode.cpp:175-178`) out of any measurement build.
 5. Fixing `raySizeCoef` staleness will legitimately *increase* large-window cost — record it as a known step in before/after comparisons.
+
+
+---
+
+## Appendix: per-milestone gate measurements
+
+### M1 gate (2026-07-03, worktree Release, real GPU, fresh windows, 600 frames)
+
+D1 fixed — swapchain now tracks the requested size; first honest cross-size scaling:
+
+| Requested | Swapchain | Dispatch GPU | Frame avg | FPS | p99 |
+|---|---|---|---|---|---|
+| 500x500 | 500x500 | 0.14 ms | 1.75 ms | 573 | 9.0 ms |
+| 1920x1080 | 1920x1080 | 1.22 ms | 6.43 ms | 156 | 23.2 ms |
+| 2560x1440 | 2560x1440 | 2.18 ms | 7.63 ms | 131 | 26.1 ms |
+
+Mrays/s ~constant (~2000) => clean linear pixel scaling; 0 recompilation storms. NOTE: at 1440p the ray-march is only ~2.2 ms of a ~7.6 ms frame — non-dispatch cost (~5.4 ms) + chronic p99 spikes (26 ms) now dominate; M5's attribution targets exactly that.
