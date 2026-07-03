@@ -29,6 +29,7 @@
 ## Progress Log
 
 - Milestone 1 (Tasks 1-4): DONE · commits d93b1e49..6cee271d · Opus validator APPROVED (clean tree, no findings, independent rebuild of test_recipe_bake_center/test_recipe_bake/test_octree_pool/test_recipe_baker/test_recipe_pool_render all green) · 2026-07-03
+- Milestone 2 (Tasks 5-7): DONE · commits dae53bcd..56a0c93d · Opus validator APPROVED (clean tree, no findings; Task 5 legitimately expanded scope to migrate 2 additional files — test_recipe_authoring_gate.cpp, test_body_instance_raymarch_render.cpp — whose hidden hand-placed coordinates the plan's original grep missed but which would have silently broken post-fix; Task 6 re-derived the editor/M4 live-gate camera + pixel-count baseline from a fresh lavapipe run since center=(32,32,32) is non-zero; independent rebuild of test_recipe_bake_center/test_recipe_authoring_gate/test_body_instance_raymarch_render/test_editor_document_render reproduced the exact reported numbers) · 2026-07-03 · **Inc2a plan COMPLETE.**
 
 ---
 
@@ -323,19 +324,19 @@ git status -sb
 - Consumes: nothing new.
 - Produces: nothing new — pure verification task, migrating `test_recipe_authoring_gate.cpp` only if it turns out to have hand-placed coordinates the earlier grep missed (unlikely — the grep found zero matches — but this task's job is to CONFIRM that by reading the file, not trust the grep blindly).
 
-- [ ] **Step 1: Read `test_recipe_authoring_gate.cpp` in full**
+- [x] **Step 1: Read `test_recipe_authoring_gate.cpp` in full**
 
 Look for any `SdfInstruction`/`sphereInstr`/`Sphere`/`Box`/`Cylinder`-style hand-authored primitive with coordinates that assume the old grid-absolute convention. If the earlier grep's "0 matches" holds up (the file likely loads a pre-flattened recipe blob or constructs instructions via a different helper this plan hasn't seen), no code change is needed — just confirm and move on.
 
-- [ ] **Step 2: If hand-placed coordinates ARE found, migrate them**
+- [x] **Step 2: If hand-placed coordinates ARE found, migrate them**
 
 Apply the same pattern as Task 3/4: change the primitive's own authored coordinate to `(0,0,0)` (or whatever offset from the test's actual local origin makes sense), relying on whatever `center` value that call path already uses to place it correctly. Show the actual before/after in your commit if this step does anything — if Step 1 found nothing, skip this step and Step 3 entirely, note "no hand-placed coordinates found, no change needed" in the final report.
 
-- [ ] **Step 3: Confirm `BodyOctreeSceneNode.cpp`'s analytic-kind branch (`k>0`, `BakeRecipeToSdfWorld`) is unaffected**
+- [x] **Step 3: Confirm `BodyOctreeSceneNode.cpp`'s analytic-kind branch (`k>0`, `BakeRecipeToSdfWorld`) is unaffected**
 
 Read `VIXEN/libraries/RenderGraph/src/Nodes/BodyOctreeSceneNode.cpp:358-374` and confirm the `k>0` branch calls `Vixen::SVO::BakeRecipeToSdfWorld` (not `BakeRecipeInstructionsToSdfWorld`) — this function is untouched by Task 2, so this branch's behavior is unchanged. Confirm the `k==0` branch (`bakeRecipe_`, the recipe-instruction path M3/M4 actually exercise) is the only one affected by Task 2's fix, and that `center` there (the `center` local variable passed to `BakeRecipeInstructionsToSdfWorld` at line ~363) is whatever this node already computes — read enough surrounding context to know what value it is (likely a per-instance world position, not necessarily `(32,32,32)`), so Task 6's editor gate re-verification knows what to expect.
 
-- [ ] **Step 4: If Task 2 changes anything for this file, build and test; otherwise just document the read-only finding**
+- [x] **Step 4: If Task 2 changes anything for this file, build and test; otherwise just document the read-only finding**
 
 If Step 2 found and fixed anything, run the relevant test target and commit per the same pattern as Task 3/4. If Step 1/3 found nothing to change, no commit is needed for this task — fold the finding into Task 6's report instead.
 
@@ -351,25 +352,25 @@ If Step 2 found and fixed anything, run the relevant test target and commit per 
 - Consumes: Task 2's fixed `BakeRecipeInstructionsToSdfWorld`; `Vixen::SVO::FlattenVoxelDocument` (M3, UNCHANGED — the fix is entirely inside the bake step, downstream of flattening); the existing golden `VIXEN/BuiltAssets/documents/sample_tri_layer.vxd` (UNCHANGED — its geometry was already authored object-centered near `(0,0,0)`, which is WHY M4 had to camera-frame the positive-octant corner as a workaround in the first place).
 - Produces: nothing new — this task re-derives and re-verifies M4's live-gate numbers under corrected behavior; it does NOT change the golden document or the flattener.
 
-- [ ] **Step 1: Determine what `center` value `EditorApplication::ApplyDocumentToScene` currently passes to the bake call, and whether the fix changes what renders**
+- [x] **Step 1: Determine what `center` value `EditorApplication::ApplyDocumentToScene` currently passes to the bake call, and whether the fix changes what renders**
 
 Read `VIXEN/application/editor/source/EditorApplication.cpp`'s `ApplyDocumentToScene` (and whatever it calls into — likely `BodyOctreeSceneNode`'s `bakeRecipe_`/`SetRecipePool` path from Task 5 Step 3) to find the actual `center` value used today. Two possible outcomes:
   - **If `center` is `(0,0,0)` today** (i.e. the editor never explicitly centers): before this fix, the golden's object-centered geometry (Box/Sphere/Cylinder near local `(0,0,0)`) landed at raw grid `(0,0,0)` too (since `center` was ignored either way) — so the fix is a no-op for THIS specific center value, and M4's positive-octant-corner workaround and its exact pixel numbers (`hitWithCut=10190 hitNoCut=96288 centreDiffPixels=5564`) should be UNCHANGED. In this case, skip to Step 4 (just re-run the existing gate to confirm the numbers are exact-match, no code change needed) and Step 2/3 are not needed.
   - **If `center` is non-zero** (e.g. grid-center `(32,32,32)` or similar, matching the `RecipeBaker.h` default): the fix will now correctly place the golden's object-centered geometry AT that center — meaning the geometry becomes fully visible and centered in the grid (a strictly BETTER outcome than M4's clipped-corner workaround), but M4's OLD camera coordinates and pixel-count baselines (derived specifically for the old clipped-corner case) will no longer be valid and must be re-derived. Proceed to Step 2.
 
-- [ ] **Step 2 (only if center is non-zero): Update `EditorApplication::ApplyDocumentToScene`'s renderScale/camera assumptions if needed**
+- [x] **Step 2 (only if center is non-zero): Update `EditorApplication::ApplyDocumentToScene`'s renderScale/camera assumptions if needed**
 
 If the editor's `renderScale=5.0f` (set by M4 specifically to make the clipped-corner geometry visible) is still appropriate now that the FULL golden geometry is visible and centered, no change is needed here — re-derive by inspecting the golden's actual extent (Box halfExtents=1, Sphere r=0.6, Cylinder halfHeight=1.5) against the same `kWorldGridSize=10`/grid-to-world factor math M4 used (documented in `Voxel-Authoring-App-Inc1-Design-2026-07.md` and M4's validated report) to confirm the object still fits sensibly in view. Adjust `renderScale` only if the math shows the object would be clipped or too small/large at the current value — show your derivation, don't guess.
 
-- [ ] **Step 3 (only if center is non-zero): Re-derive `test_editor_document_render.cpp`'s ablation gate numbers from scratch**
+- [x] **Step 3 (only if center is non-zero): Re-derive `test_editor_document_render.cpp`'s ablation gate numbers from scratch**
 
 Re-run the gate test with the corrected bake. If the numbers differ from M4's old baseline (`hitWithCut=10190 hitNoCut=96288 centreDiffPixels=5564`), that is EXPECTED (the geometry is now rendered correctly/fully instead of clipped to a corner) — update the test's hard-coded expected constants to the new fresh values, and re-verify the ablation is STILL decisive (a large, non-marginal difference between cut-enabled and cut-disabled, ideally re-confirm visually via the PNG output the same way M4's validator did — read the produced PNG and describe what you see, don't just trust a number). If camera eye/target coordinates need updating because the object moved, re-derive them the same way M4 did (grid-to-world factor math, shown work, not guessed).
 
-- [ ] **Step 4: Build everything touched and run the full verification suite**
+- [x] **Step 4: Build everything touched and run the full verification suite**
 
 Run: full WSL build (`cmake --build <build-dir> --parallel 8`), then run in order: `test_recipe_bake_center` (Task 1, new), `test_recipe_bake`, `test_octree_pool`, `test_recipe_baker`, `test_recipe_pool_render`, `test_recipe_authoring_gate`, `test_body_octree_lifetime`, `test_body_instance_raymarch_render`, `test_voxel_document_flatten`, `test_editor_document_render`. ALL must pass. Paste real fresh output for the full list — this is the milestone's gate, do not skip any of these binaries.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add VIXEN/application/editor/source/EditorApplication.cpp VIXEN/libraries/RenderGraph/tests/Nodes/test_editor_document_render.cpp
@@ -393,7 +394,7 @@ git status -sb
 - Consumes: nothing.
 - Produces: nothing — pure docs task.
 
-- [ ] **Step 1: Update the doc**
+- [x] **Step 1: Update the doc**
 
 Change item 2 of `## 9. Next steps` from describing the bake center-offset issue as a TODO to recording it as DONE (Inc2a), and add a new item documenting the panel/viewport auto-fit-from-bounds concept as the follow-up (Inc2b, not yet planned):
 
@@ -412,7 +413,7 @@ Change item 2 of `## 9. Next steps` from describing the bake center-offset issue
 ```
 (Renumber the remaining original items 3/4 — Slice 4/Slice 5 — to 4/5.)
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add VIXEN/Vixen-Docs/01-Architecture/Voxel-Authoring-App-Inc1-Design-2026-07.md
