@@ -136,6 +136,12 @@ private:
     std::string docSourceRml_;
     std::string docSourceRcss_;
     bool haveDocSource_ = false;
+    // True once the in-memory document has actually been LoadDocumentFromMemory'd. The host sets
+    // haveDocSource_ (via SetDocumentSource) AFTER Prepare() has already run the initial Compile —
+    // so the first load took the file path; SetDocumentSource then MarkNeedsRecompile()s, and the
+    // recompile branch loads from memory when haveDocSource_ && !docSourceLoaded_. Guards against
+    // reloading the memory doc on every subsequent resize recompile.
+    bool docSourceLoaded_ = false;
 
     // S1b: Rml data model members. Structs are registered with RegisterStruct<> / RegisterArray<>
     // in CompileImpl before LoadDocument. tick_ / bodyCount_ / activeLensName_ / activeLensCount_ are

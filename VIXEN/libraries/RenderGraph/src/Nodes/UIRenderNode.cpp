@@ -191,7 +191,8 @@ void UIRenderNode::CompileImpl(TypedCompileContext& ctx) {
                 // pushed it via SetDocumentSource. Inline the RCSS so the memory doc is self-contained
                 // (no FileInterface path resolution needed).
                 std::string rml = InlineRcss(docSourceRml_, docSourceRcss_);
-                document_ = context_->LoadDocumentFromMemory(rml, "core:hud");
+                document_ = context_->LoadDocumentFromMemory(rml, "memory://core/hud.rml");
+                docSourceLoaded_ = true;
             } else {
                 document_ = context_->LoadDocument(docPath);
             }
@@ -209,6 +210,20 @@ void UIRenderNode::CompileImpl(TypedCompileContext& ctx) {
         // Recompile (window resize): RenderPassNode/FramebufferNode rebuilt the render pass +
         // framebuffers for the new extent; just re-fit the RmlUi document to the new size.
         context_->SetDimensions(Rml::Vector2i(static_cast<int>(extent_.width), static_cast<int>(extent_.height)));
+
+        // Baked delivery (Phase A) — deferred first load. The host calls SetDocumentSource AFTER
+        // Prepare() has already run the initial Compile (which took the file path, since the loose
+        // hud.rml is gone → an empty document), then MarkNeedsRecompile()s. Load the memory doc here
+        // on that recompile. Same CPU-side-only swap discipline as the hot-reload below (never touches
+        // the persistent GPU sync objects). One-shot via docSourceLoaded_.
+        if (haveDocSource_ && !docSourceLoaded_) {
+            Rml::Factory::ClearStyleSheetCache();
+            if (document_) context_->UnloadDocument(document_);
+            std::string rml = InlineRcss(docSourceRml_, docSourceRcss_);
+            document_ = context_->LoadDocumentFromMemory(rml, "memory://core/hud.rml");
+            if (document_) document_->Show();
+            docSourceLoaded_ = true;
+        }
 
         // Live hot-reload (dev only). CPU-SIDE DOCUMENT SWAP ONLY — never touch the persistent GPU sync
         // objects (the destroy-while-in-flight race that kernel-panics WSL). Old document geometry routes
