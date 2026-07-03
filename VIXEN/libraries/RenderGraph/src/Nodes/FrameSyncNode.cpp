@@ -222,21 +222,21 @@ VIXEN_REGISTER_NODE(Vixen::RenderGraph::FrameSyncNodeType);
 #if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
 namespace FS = Vixen::RenderGraph::FailScenario;
 VIXEN_FAIL_SCENARIOS_DECLARE(Vixen::RenderGraph::FrameSyncNodeType,
-    // KI-004: forcing VK_ERROR_DEVICE_LOST here crashes (SIGABRT via an invalid-commandBuffer loader
-    // check). RenderFrame's sequential Execute loop has no deviceLost_ check between node iterations,
-    // so ComputeDispatchNode (downstream of FrameSyncNode) still executes on the SAME condemned frame
-    // and submits against a command buffer that RecoverFromDeviceLoss's teardown races out from under
-    // it. Pre-existing gap in the device-loss recovery orchestration, not caused by this scenario code
-    // — reproducing it deterministically IS the point; gated report-not-block per Fail-Scenario-
-    // Simulation Inc 1 protocol. Remove knownIssueId once RenderGraph.cpp's frame loop is fixed.
+    // KI-004 (still open, see Known-Issues.md): NotifyDeviceLost() now arms the central frame
+    // abort, which closed the ORIGINAL race (a downstream node executing on the condemned frame
+    // before recovery). A second, distinct bug remains: the first frame after RecoverFromDeviceLoss
+    // completes still crashes in ComputeDispatchNode with an invalid-commandBuffer loader error,
+    // despite a freshly-allocated (non-stale) handle and a correctly-fresh (non-aborted) frame.
+    // Root cause not yet isolated. Stays gated report-not-block per Fail-Scenario-Simulation Inc 1
+    // protocol. Remove knownIssueId once the post-recovery command-buffer lifecycle bug is fixed.
     VIXEN_SCENARIO(DeviceLostRecovery,
         FS::VkTransient{ .site = FS::FaultSite::FenceWait, .result = VK_ERROR_DEVICE_LOST },
         // The one-shot forced VK_ERROR_DEVICE_LOST drives the REAL detection path
-        // (this node's fence wait → NotifyDeviceLost → RenderFrame returns DEVICE_LOST →
-        // app Render() → RecoverFromDeviceLoss teardown-reverse/rebuild-forward). On the
-        // healthy lavapipe device the rebuild succeeds — the global criteria then prove
-        // 30 frames of continuous post-recovery rendering with zero validation errors,
-        // which is exactly the manual VIXEN_SIMULATE_DEVICE_LOSS gate, automated.
+        // (this node's fence wait → NotifyDeviceLost → frame aborts → RenderFrame returns
+        // DEVICE_LOST → app Render() → RecoverFromDeviceLoss teardown-reverse/rebuild-forward).
+        // On the healthy device the rebuild succeeds — the global criteria then prove
+        // 30 frames of continuous post-recovery rendering, which is exactly the manual
+        // VIXEN_SIMULATE_DEVICE_LOSS gate, automated.
         [](FS::ScenarioContext& c) {
             if (c.Graph()->IsDeviceLost())
                 c.Fail("device-lost latch still set — recovery did not complete");

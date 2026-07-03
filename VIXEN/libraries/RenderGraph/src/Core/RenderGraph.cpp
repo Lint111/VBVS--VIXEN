@@ -610,6 +610,14 @@ void RenderGraph::Execute(VkCommandBuffer commandBuffer) {
 }
 
 void RenderGraph::NotifyDeviceLost(const std::string& site) {
+    // KI-004: a lost device invalidates every remaining node execution in this frame — abort the frame
+    // via the central abort (same mechanism as the out-of-date acquire path) so no node downstream of
+    // the detection site records/submits against objects RecoverFromDeviceLoss is about to tear down.
+    // Latching only deviceLost_ was not enough: the Execute loop checks frameAborted_ between nodes,
+    // but deviceLost_ only at frame END, so a downstream ComputeDispatch still submitted on the
+    // condemned frame and raced the recovery teardown (loader-level invalid-commandBuffer abort).
+    // Set before the idempotency return: a repeat mid-frame detection must keep the abort armed.
+    AbortCurrentFrame();
     // AR#1 Phase 3, Increment 1. Idempotent latch: the first detection wins so we report a single,
     // coherent device-loss origin even though several GPU calls (submit/present/wait) may all fail in
     // the same frame. The device + every child object is invalid from here; RenderFrame() short-circuits
