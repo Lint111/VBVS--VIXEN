@@ -21,6 +21,17 @@
 
 ---
 
+## Milestone Map
+
+- **Milestone 1 (Tasks 1-4): Core fix + mechanical test migration.** TDD red test proving the bug (Task 1), the one-line eval-closure fix making it green (Task 2), then migrate `test_recipe_bake.cpp`/`test_octree_pool.cpp` (Task 3) and `test_recipe_baker.cpp`/`test_recipe_pool_render.cpp` (Task 4) to object-centered authoring. Produces a fully working, fully tested fix.
+- **Milestone 2 (Tasks 5-7): Verification sweep + editor re-gate + docs closeout.** Confirm no hidden coordinate assumptions were missed (Task 5), re-verify `vixen_editor` + M4's live gate against corrected centering, re-deriving numbers from scratch if needed (Task 6), and update the design doc's Next-steps section (Task 7).
+
+## Progress Log
+
+- Milestone 1 (Tasks 1-4): DONE · commits d93b1e49..6cee271d · Opus validator APPROVED (clean tree, no findings, independent rebuild of test_recipe_bake_center/test_recipe_bake/test_octree_pool/test_recipe_baker/test_recipe_pool_render all green) · 2026-07-03
+
+---
+
 ### Task 1: Prove the bug — a failing test on the current (broken) behavior
 
 **Files:**
@@ -33,7 +44,7 @@
 - Consumes: `Vixen::SVO::Recipe::SdfInstruction`, `Vixen::SVO::Recipe::SdfOpCode::Sphere` (existing, vendored types).
 - Produces: nothing new — this is a pure test task establishing the red state.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```cpp
 // VIXEN/libraries/SVO/tests/test_recipe_bake_center.cpp
@@ -94,16 +105,16 @@ TEST(RecipeBakeCenter, ObjectCenteredSphereBakesAtRequestedGridCenter) {
 }
 ```
 
-- [ ] **Step 2: Register the test target**
+- [x] **Step 2: Register the test target**
 
 Add to `VIXEN/libraries/SVO/tests/CMakeLists.txt` (find the existing block for `test_recipe_bake` and copy its structure exactly, e.g. `add_executable(test_recipe_bake_center test_recipe_bake_center.cpp)` + the same `target_link_libraries`/`gtest_discover_tests` calls with the new target name).
 
-- [ ] **Step 3: Build and run to confirm it FAILS (proving the bug)**
+- [x] **Step 3: Build and run to confirm it FAILS (proving the bug)**
 
 Run: `cmake --build <build-dir> --target test_recipe_bake_center -- -j8` then run the resulting binary directly.
 Expected: **FAIL** — either `atCenter` has no value (sphere didn't land at grid-center) or `atOrigin` unexpectedly has a value (sphere is still sitting at raw grid-origin). This is the expected RED state proving the bug exists; do not proceed to Task 2 without seeing this fail first.
 
-- [ ] **Step 4: Commit the red test**
+- [x] **Step 4: Commit the red test**
 
 ```bash
 git add VIXEN/libraries/SVO/tests/test_recipe_bake_center.cpp VIXEN/libraries/SVO/tests/CMakeLists.txt
@@ -126,7 +137,7 @@ git status -sb
 - Consumes: `Vixen::SVO::Recipe::evalRecipe(const Recipe::SdfInstruction* prog, uint32_t count, const glm::vec3& p) -> float` (existing, UNCHANGED — this fix does not touch `evalRecipe` itself, only what coordinate it's called with).
 - Produces: `BakeRecipeInstructionsToSdfWorld`'s external signature and return type (`SdfBakeResult`) are UNCHANGED — this is a pure internal-behavior fix, callers do not need to change their call syntax (only the VALUES they pass, per Task 3+).
 
-- [ ] **Step 1: Apply the fix**
+- [x] **Step 1: Apply the fix**
 
 ```cpp
 // VIXEN/libraries/SVO/include/SdfBake.h — replace lines 169-178
@@ -148,12 +159,12 @@ inline SdfBakeResult BakeRecipeInstructionsToSdfWorld(const Recipe::SdfInstructi
 }
 ```
 
-- [ ] **Step 2: Run Task 1's test to confirm it now PASSES**
+- [x] **Step 2: Run Task 1's test to confirm it now PASSES**
 
 Run: `cmake --build <build-dir> --target test_recipe_bake_center -- -j8` then run the binary.
 Expected: **PASS** — both assertions in `ObjectCenteredSphereBakesAtRequestedGridCenter` succeed.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add VIXEN/libraries/SVO/include/SdfBake.h
@@ -182,11 +193,11 @@ git status -sb
 - Consumes: Task 2's fixed `BakeRecipeInstructionsToSdfWorld` (same signature, corrected behavior).
 - Produces: nothing new — these are existing tests being migrated to the new authoring convention with IDENTICAL expected outcomes (same allocated/not-allocated voxels, same sampled distances), just re-expressed so the primitive is authored at local-origin and `center` does the placement instead of both being hard-coded to the same absolute value.
 
-- [ ] **Step 1: Read the current test bodies in full before editing**
+- [x] **Step 1: Read the current test bodies in full before editing**
 
 Read `VIXEN/libraries/SVO/tests/test_recipe_bake.cpp` (full file, it's short — under 40 lines per the earlier grep) and `VIXEN/libraries/SVO/tests/test_octree_pool.cpp` (full file) to see every call site, not just the ones already found by grep — confirm there are no other hand-placed-at-center instructions beyond what's documented here.
 
-- [ ] **Step 2: Migrate `test_recipe_bake.cpp`**
+- [x] **Step 2: Migrate `test_recipe_bake.cpp`**
 
 Change the `RecipeSphereEqualsAnalyticSphere` test from:
 ```cpp
@@ -204,7 +215,7 @@ auto recipe = BakeRecipeInstructionsToSdfWorld(prog, 1, c, n, band, 3);
 ```
 The `analytic` comparison line (`BakeRecipeToSdfWorld(RECIPE_SPHERE, c, RecipeParams{...}, n, band, 3)`) is UNCHANGED — that path already applies `center` correctly via `evalSdf`, so no edit needed there. The test's assertion loop (comparing `analytic.sampleStored(p)` vs `recipe.sampleStored(p)` at absolute grid points like `(32,32,6)`, `(32,32,32)`) is UNCHANGED — both bake results should still agree at those absolute grid points, since both paths now correctly place a radius-`r` sphere AT `c`.
 
-- [ ] **Step 3: Migrate `test_octree_pool.cpp`**
+- [x] **Step 3: Migrate `test_octree_pool.cpp`**
 
 Change:
 ```cpp
@@ -227,12 +238,12 @@ static SdfBodyOctree makeSphere(float radius) {
 ```
 All call sites of `makeSphere(...)` in this file are unaffected (they only pass `radius`, the function signature is unchanged).
 
-- [ ] **Step 4: Build and run both test binaries, confirm identical PASS results to before this task**
+- [x] **Step 4: Build and run both test binaries, confirm identical PASS results to before this task**
 
 Run: `cmake --build <build-dir> --target test_recipe_bake test_octree_pool -- -j8` then run both binaries.
 Expected: **PASS**, same test count and names as before this migration (this is a behavior-preserving refactor of the test's own authoring, not a change to what's being verified).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add VIXEN/libraries/SVO/tests/test_recipe_bake.cpp VIXEN/libraries/SVO/tests/test_octree_pool.cpp
@@ -256,17 +267,17 @@ git status -sb
 - Consumes: `RecipeBakeConfig::center` (existing, `VIXEN/libraries/SVO/include/Recipe/RecipeBaker.h:23`, default `{32.f, 32.f, 32.f}`, UNCHANGED by this plan) — these tests rely on `RecipeBaker.h`'s `BakeRegistryToPool` which already threads `cfg.center` into `BakeRecipeInstructionsToSdfWorld` (confirmed at `RecipeBaker.h:73-76`), so once Task 2's fix lands, `cfg.center`'s default value will finally take real effect here.
 - Produces: nothing new — behavior-preserving migration, same as Task 3.
 
-- [ ] **Step 1: Read both files in full before editing**
+- [x] **Step 1: Read both files in full before editing**
 
 Read `VIXEN/libraries/SVO/tests/test_recipe_baker.cpp` and `VIXEN/libraries/RenderGraph/tests/Nodes/test_recipe_pool_render.cpp` in full to get exact current line numbers and confirm no other hand-placed coordinates exist beyond what the earlier grep found (the grep only searched for `glm::vec3(32` and `cfg.center`/`.center =` patterns — re-read to be sure nothing was missed, e.g. a differently-formatted literal).
 
-- [ ] **Step 2: Migrate `test_recipe_baker.cpp`**
+- [x] **Step 2: Migrate `test_recipe_baker.cpp`**
 
 For each of the 4 `sphereInstr(glm::vec3(32, 32, 32), <radius>)` call sites found, change the coordinate argument to `glm::vec3(0, 0, 0)`. Since these tests bake via `RecipeBaker.h`'s `BakeRegistryToPool` (which uses `RecipeBakeConfig::center`, default `(32,32,32)`), leaving the config's default center unchanged means the sphere still ends up at grid `(32,32,32)` post-fix — same effective geometry, now authored object-centered.
 
 Confirm by reading the file: if any of these 4 tests explicitly construct a `RecipeBakeConfig` with a NON-default `center`, that config's `center` value (not `(32,32,32)`) is what the instruction's new `(0,0,0)`-centered coordinate should resolve against — use the actual config value from each test, not a blanket assumption.
 
-- [ ] **Step 3: Migrate `test_recipe_pool_render.cpp`**
+- [x] **Step 3: Migrate `test_recipe_pool_render.cpp`**
 
 Change:
 ```cpp
@@ -283,12 +294,12 @@ e.bytecode = { makeSphere(0.0f, 0.0f, 0.0f, r.radius) };
 ```
 Read the surrounding context first to confirm this is baked via a path that uses `RecipeBakeConfig`'s default `(32,32,32)` center (e.g. via `RecipeRegistry`/`RecipeBaker.h`, not a raw direct call to `BakeRecipeInstructionsToSdfWorld` with a different center) — if it's a different bake entry point, use the actual center value that path applies, found by reading the code, not assumed.
 
-- [ ] **Step 4: Build and run both, confirm identical PASS results to before this task**
+- [x] **Step 4: Build and run both, confirm identical PASS results to before this task**
 
 Run: `cmake --build <build-dir> --target test_recipe_baker test_recipe_pool_render -- -j8` then run both binaries (or via the RenderGraph tests target if `test_recipe_pool_render` requires the full graph test harness — check how it's normally invoked).
 Expected: **PASS**, same test names/counts, same camera/geometry assertions passing as before (these tests' *expected outcomes* describe geometry at `(32,32,32)` in world/grid terms, which is preserved since `RecipeBakeConfig::center` still defaults to `(32,32,32)` — only the *instruction's own authored coordinate* changes from `(32,32,32)` to `(0,0,0)`).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add VIXEN/libraries/SVO/tests/test_recipe_baker.cpp VIXEN/libraries/RenderGraph/tests/Nodes/test_recipe_pool_render.cpp
