@@ -1583,6 +1583,18 @@ void RenderGraph::RecompileDirtyNodes() {
         return;
     }
 
+    // A swapchain-recreation wave destroys resources (fences, image views, the swapchain itself,
+    // per-image command buffers/descriptor pools) that may still be in flight on the GPU from the
+    // last frame submitted before the pause. The general no-wait-during-recompile policy below is
+    // safe for ordinary dirty nodes (FrameSyncNode's per-frame sync covers those), but a resize wave
+    // tears down nearly the whole graph's per-image resources in one pass -- without a hard
+    // synchronization point here, CleanupImpl calls hit "still in use" validation errors (and can
+    // segfault) on any driver that doesn't happen to have finished the prior frame yet. Bound to
+    // ONLY the recreation case so ordinary recompiles keep the fast, wait-free path.
+    if (pausedForRecreation_) {
+        WaitForGraphDevicesIdle({});
+    }
+
     // Log which nodes triggered recompilation
     GRAPH_LOG_INFO("[RenderGraph::RecompileDirtyNodes] ===== RECOMPILATION TRIGGERED =====");
     GRAPH_LOG_INFO("[RenderGraph::RecompileDirtyNodes] Dirty nodes count: " + std::to_string(dirtyNodes.size()));
