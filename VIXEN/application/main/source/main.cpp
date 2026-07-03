@@ -5,6 +5,10 @@
 #include <Logger.h>
 #include <cstdlib>  // std::getenv for VIXEN_LOG_LEVEL
 #include <string>
+#include <array>      // frame-time rolling window (perf instrumentation)
+#include <algorithm>  // std::sort for p99
+#include <chrono>     // steady_clock frame timing
+#include <cstdio>     // std::snprintf
 
 // Validation layers/extensions are gated by the cross-platform VIXEN_VULKAN_VALIDATION
 // symbol (set by cmake/ProvisionVulkan.cmake from the build type), NOT the MSVC-only
@@ -85,10 +89,50 @@ int main(int argc, char** argv) {
         }
 
         mainLogger->Info("Entering render loop...");
+        // Perf measurement instrumentation (perf sweep 2026-07):
+        //   - rolling CPU frame-time summary (avg/p99/FPS) every 120 frames
+        //   - VIXEN_EXIT_AFTER_FRAMES=<n>: close cleanly after n frames (unattended A/B runs;
+        //     exits through the same path as a window close so logs flush via ExtractLogs)
+        long exitAfterFrames = 0;
+        if (const char* env = std::getenv("VIXEN_EXIT_AFTER_FRAMES")) {
+            exitAfterFrames = std::strtol(env, nullptr, 10);
+        }
+        constexpr size_t kFrameWindow = 120;
+        std::array<double, kFrameWindow> frameTimesMs{};
+        uint64_t frameCounter = 0;
+        auto lastFrameStart = std::chrono::steady_clock::now();
         bool isWindowOpen = true;
         while(isWindowOpen) {
             appObj -> Update();
             isWindowOpen = appObj->Render();
+
+            const auto now = std::chrono::steady_clock::now();
+            frameTimesMs[frameCounter % kFrameWindow] =
+                std::chrono::duration<double, std::milli>(now - lastFrameStart).count();
+            lastFrameStart = now;
+            ++frameCounter;
+
+            if (frameCounter % kFrameWindow == 0) {
+                std::array<double, kFrameWindow> sorted = frameTimesMs;
+                std::sort(sorted.begin(), sorted.end());
+                double sum = 0.0;
+                for (double v : sorted) sum += v;
+                const double avg = sum / static_cast<double>(kFrameWindow);
+                const double p99 = sorted[(kFrameWindow * 99) / 100];
+                char buf[160];
+                std::snprintf(buf, sizeof(buf),
+                              "[FrameTimer] frames %llu-%llu: avg %.3f ms (%.1f FPS) | p99 %.3f ms",
+                              static_cast<unsigned long long>(frameCounter - kFrameWindow),
+                              static_cast<unsigned long long>(frameCounter),
+                              avg, avg > 0.0 ? 1000.0 / avg : 0.0, p99);
+                mainLogger->Info(buf);
+            }
+
+            if (exitAfterFrames > 0 && frameCounter >= static_cast<uint64_t>(exitAfterFrames)) {
+                mainLogger->Info("[FrameTimer] VIXEN_EXIT_AFTER_FRAMES=" + std::to_string(exitAfterFrames)
+                                 + " reached - closing");
+                isWindowOpen = false;
+            }
         }
 
         mainLogger->Info("Cleaning up...");

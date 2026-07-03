@@ -120,6 +120,7 @@ private:
     struct PerFrameData {
         VkQueryPool timestampPool = VK_NULL_HANDLE;
         std::vector<uint64_t> results;
+        std::vector<uint8_t> available;  // Per-query availability from the last ReadResults
         bool resultsValid = false;
         bool hasBeenWritten = false;  // Track if timestamps were written this frame
     };
@@ -132,6 +133,7 @@ private:
     uint32_t maxTimestamps_ = 4;
     bool timestampSupported_ = false;
     float timestampPeriod_ = 0.0f;
+    std::vector<uint64_t> readScratch_;  // [value, availability] pairs; sized once to avoid per-frame allocs
 
     std::vector<PerFrameData> frameData_;
 };
