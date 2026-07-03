@@ -464,6 +464,11 @@ void RenderGraph::RegisterPostNodeCompileCallback(PostNodeCompileCallback callba
     postNodeCompileCallbacks.push_back(std::move(callback));
 }
 
+void RenderGraph::RegisterPostNodeExecuteCallback(const std::string& nodeInstanceName,
+                                                   PostNodeExecuteCallback callback) {
+    postNodeExecuteCallbacks.emplace(nodeInstanceName, std::move(callback));
+}
+
 void RenderGraph::SetDeviceBudgetManager(std::shared_ptr<DeviceBudgetManager> manager) {
     deviceBudgetManager_ = std::move(manager);
 
@@ -893,6 +898,18 @@ VkResult RenderGraph::RenderFrame() {
                 }
 
                 node->SetState(NodeState::Complete);
+
+                // Post-execute callbacks (e.g. FrameCapture reading the swapchain image between
+                // the render node writing it and PresentNode releasing it back to the swapchain --
+                // see RegisterPostNodeExecuteCallback). Fires here, not after the whole frame, so
+                // registrants see the node's output in the state IT left it in, not whatever a
+                // later node (present, most commonly) has since done to the same resource.
+                if (!postNodeExecuteCallbacks.empty()) {
+                    auto [begin, end] = postNodeExecuteCallbacks.equal_range(node->GetInstanceName());
+                    for (auto it = begin; it != end; ++it) {
+                        it->second(node);
+                    }
+                }
 
                 // Check if this node was marked for recompilation during execution
                 if (node->HasDeferredRecompile()) {

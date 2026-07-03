@@ -203,6 +203,29 @@ public:
     void RegisterPostNodeCompileCallback(PostNodeCompileCallback callback);
 
     /**
+     * @brief Register a callback to be invoked after a specific node executes, EVERY frame
+     *
+     * Fires in RenderFrame()'s sequential execution loop, immediately after the named node's
+     * Execute() returns and before the NEXT node in topological order runs. Use this to read/copy
+     * a resource a node produced while it's still in the state that node left it in -- e.g.
+     * capturing the swapchain image between a compute/render node writing to it and PresentNode
+     * releasing it back to the swapchain (vkQueuePresentKHR makes it "not acquired"; reading it
+     * after RenderFrame() returns touches an unowned presentable image, which is invalid per spec
+     * regardless of synchronization -- see FrameCapture's registration in BenchmarkRunner for the
+     * motivating case).
+     *
+     * Unlike RegisterPostNodeCompileCallback (fires once per node, at Compile() time), this fires
+     * every frame the named node executes -- keep registered callbacks cheap or internally gated
+     * (a "should I actually capture this frame" check), since they run on the render hot path.
+     * No-op (never invoked) if no node with the given name exists at fire time.
+     *
+     * @param nodeInstanceName Exact NodeInstance::GetInstanceName() to fire after
+     * @param callback Function taking the just-executed NodeInstance
+     */
+    using PostNodeExecuteCallback = std::function<void(NodeInstance*)>;
+    void RegisterPostNodeExecuteCallback(const std::string& nodeInstanceName, PostNodeExecuteCallback callback);
+
+    /**
      * @brief Check if graph is compiled
      */
     bool IsCompiled() const { return isCompiled; }
@@ -892,6 +915,11 @@ private:
     std::vector<std::unique_ptr<NodeInstance>> instances;
     std::map<std::string, NodeHandle> nameToHandle;
     std::vector<PostNodeCompileCallback> postNodeCompileCallbacks;  // Callbacks executed after each node compiles
+    // Callbacks executed every frame, right after the named node's Execute() returns (see
+    // RegisterPostNodeExecuteCallback). Keyed by node instance name, not NodeHandle, so callers
+    // can register before AddNode() runs (matches RegisterPostNodeCompileCallback's no-ordering-
+    // requirement contract) -- looked up by name in the hot RenderFrame() execution loop.
+    std::unordered_multimap<std::string, PostNodeExecuteCallback> postNodeExecuteCallbacks;
     std::map<NodeTypeId, std::vector<NodeInstance*>> instancesByType;
     
     // Resources (lifetime management only - nodes are the logical containers)
