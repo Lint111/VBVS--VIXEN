@@ -256,7 +256,8 @@ TEST(NodeParameterManager, GenuineMismatchReturnsDefault) {
 - Modify: `VIXEN/libraries/RenderGraph/src/Nodes/UIRenderNode.cpp` — add a `GPUPerformanceLogger` exactly like `ComputeDispatchNode.cpp:116-140` (allocate a query slot, RecordDispatchStart/End around the render pass, CollectResults per frame; the D2 fix makes multi-slot timing work now).
 - Modify: `VIXEN/application/main/source/main.cpp` frame-timer block — when a frame exceeds 3× the rolling window median, log `"[FrameTimer] OUTLIER frame N: X.XXX ms"` (compute median from the sorted copy already produced each 120-frame window; keep last window's median for the check).
 
-- [ ] Steps: implement → WSL build green → real-GPU resize probe run → collect: per-outlier, does UI-pass GPU ms or dispatch GPU ms spike, or neither (⇒ CPU/present)? Write the attribution verdict + numbers into the findings appendix. Commit.
+- [x] Steps: implement → WSL build green → real-GPU resize probe run → collect: per-outlier, does UI-pass GPU ms or dispatch GPU ms spike, or neither (⇒ CPU/present)? Write the attribution verdict + numbers into the findings appendix. Commit.
+  - Done 2026-07-04 on lavapipe (real-GPU re-run still pending, controller gate). UI-pass GPUPerformanceLogger added (slot 2), outlier logger added and caught the resize hitch (frame 154, 28.7ms). GPU-summary lines don't fire on this lavapipe ICD for either logger (pre-existing, confirmed also true of the already-shipped ComputeDispatchNode timer) — attribution is CPU/log-correlation only in this environment. See findings appendix M5 gate.
 
 ### Task M5.2: Fix the confirmed growth: per-frame descriptor scratch is bounded
 
@@ -264,12 +265,14 @@ TEST(NodeParameterManager, GenuineMismatchReturnsDefault) {
 - Modify: `VIXEN/libraries/RenderGraph/src/Nodes/DescriptorSetNode.cpp` — locate `perFrameImageInfos`/`perFrameBufferInfos`; they must be reset (`.clear()`, capacity retained) at the top of each frame's update instead of growing forever. Mind pointer stability: `vkUpdateDescriptorSets` consumes the arrays synchronously, so clearing at frame start is safe; growth *within* one frame must still `reserve()` up front so `VkDescriptorImageInfo*` pointers into the vector don't dangle mid-build (reserve to the binding count before filling).
 - Test: if a DescriptorSetNode unit test exists, extend it: run the update path 3 times, assert the containers' `size()` does not grow monotonically across frames.
 
-- [ ] Steps: failing/extended test → implement → suite green → lavapipe 500-frame soak (frame time at frame 450 not worse than at frame 50) → commit.
+- [x] Steps: failing/extended test → implement → suite green → lavapipe 500-frame soak (frame time at frame 450 not worse than at frame 50) → commit.
+  - Done 2026-07-04. No dedicated DescriptorSetNode unit test exists to extend; demonstrated via a temporary stderr size-probe soak instead (removed before commit) — see findings appendix M5 gate for before/after numbers. RenderGraph suite green post-fix.
 
 ### Task M5.3: Act on the M5.1 verdict (bounded scope)
 
-- [ ] If the outliers attribute to a component with a **confirmed** finding (present path, UI geometry rebuild, descriptor updates), implement that specific fix in this milestone IF it is `fixCost: small` per the findings doc; otherwise write it up as a follow-up in the findings appendix with the measured evidence and STOP (do not improvise unverified fixes). Acceptance either way: the appendix contains the attribution table; if a fix landed, post-resize p99 ≤ 2× median sustained on the real-GPU probe.
-- [ ] Commit.
+- [x] If the outliers attribute to a component with a **confirmed** finding (present path, UI geometry rebuild, descriptor updates), implement that specific fix in this milestone IF it is `fixCost: small` per the findings doc; otherwise write it up as a follow-up in the findings appendix with the measured evidence and STOP (do not improvise unverified fixes). Acceptance either way: the appendix contains the attribution table; if a fix landed, post-resize p99 ≤ 2× median sustained on the real-GPU probe.
+  - Done 2026-07-04: L2 root-caused precisely (a cache-key granularity mismatch between `PipelineLayoutCacher` (correctly keyed on the live descriptor-set-layout handle) and `ComputePipelineCacher` (keyed on a resize-invariant shader/interface string) — the pipeline cache hands back a stale wrapper referencing the just-destroyed layout for one frame). This is a fix to shared `CashSystem` cache infrastructure, not a cheap ordering/skip-frame change, so per the milestone's bounded scope it is filed as a follow-up (not fixed) with the full mechanism and reproduction steps in the findings appendix. L1 attribution is inconclusive (extent-confounded in this probe; GPU-summary gap blocks a cleaner read) — also filed, not fixed. No unverified fix was improvised.
+- [x] Commit.
 
 ---
 
@@ -335,7 +338,7 @@ Grouping = the plan's own milestone headers, verbatim (post-brainstorm-context-m
 - [x] M2 — shader counters compiled out
 - [x] M3 — resize-path robustness
 - [x] M4 — render-scale decoupling
-- [ ] M5 — p99 hitch attribution + bounded fixes
+- [x] M5 — p99 hitch attribution + bounded fixes
 - [ ] M6 — CPU-floor hygiene + close-out
 
 ## Progress Log
