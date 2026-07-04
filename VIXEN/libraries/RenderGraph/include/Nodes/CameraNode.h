@@ -31,6 +31,16 @@ public:
 };
 
 /**
+ * @brief Which pose model currently drives CameraNode's position/orientation.
+ *
+ * FreeFly: cameraPosition == flyPosition, driven directly by WASD/QE/middle-drag.
+ * Orbit: cameraPosition derived from orbitCenter + orbit(yaw, pitch, orbitDistance), as before
+ * this feature existed. The two pose models never mix mid-frame — UpdateCameraData branches on
+ * this exactly once per Execute.
+ */
+enum class CameraMode : uint8_t { FreeFly = 0, Orbit = 1 };
+
+/**
  * @brief Camera uniform buffer node for raymarching shaders
  *
  * Creates per-frame uniform buffers containing camera matrices and parameters.
@@ -88,6 +98,26 @@ private:
     static constexpr float kOrbitDistanceMin = 5.0f;
     static constexpr float kOrbitDistanceMax = 120.0f;
 
+    // Which pose model is currently active. Starts in FreeFly (spec 2026-07-04): a player should
+    // be able to fly around before ever clicking a body into orbit.
+    CameraMode mode = CameraMode::FreeFly;
+
+    // Free-fly pose — independent of orbitCenter/yaw/pitch/orbitDistance above. Arbitrary start;
+    // if the player enters Orbit first via a body click this is irrelevant until the next F-key
+    // exit reseeds it from the orbit-derived pose (see ExecuteImpl).
+    glm::vec3 flyPosition{0.0f, 5.0f, 30.0f};
+    float flyYaw = 0.0f;
+    float flyPitch = 0.0f;
+    float flySpeed = 20.0f;               // units/sec, scroll-wheel adjustable in FreeFly
+    static constexpr float kFlySpeedMin = 2.0f;
+    static constexpr float kFlySpeedMax = 200.0f;
+    static constexpr float kFlySpeedScrollFactor = 1.15f;  // multiplicative step per wheel notch
+
+    // Tab toggles this in FreeFly only. World: WASD always moves along world X/Z. Local: WASD
+    // moves relative to camera facing (flattened to the horizontal plane). Q/E are always world Y
+    // regardless of this flag (spec 2026-07-04 decision 6).
+    bool localMovement = false;
+
     // Accumulated input deltas (cleared after applying)
     glm::vec3 movementDelta{0.0f};  // Local-space WASD + global Y for QE
     glm::vec2 rotationDelta{0.0f};  // Yaw/pitch from mouse (raw accumulation)
@@ -114,6 +144,7 @@ private:
     float lastParamYaw_ = NAN, lastParamPitch_ = NAN;
     float lastParamOrbitCX_ = NAN, lastParamOrbitCY_ = NAN, lastParamOrbitCZ_ = NAN;
     float lastParamOrbitDist_ = NAN;
+    float lastParamCameraMode_ = NAN;   // mirrors the other lastParam*_ change-tracking fields
 
     // Last-seen pose_seq value (NaN = never seen). A change here (including the first sight)
     // forces every PRESENT pose param to reapply this SetupImpl regardless of lastApplied — see

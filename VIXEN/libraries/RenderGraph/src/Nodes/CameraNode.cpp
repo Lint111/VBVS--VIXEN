@@ -79,6 +79,9 @@ void CameraNode::SetupImpl(TypedSetupContext& ctx) {
     applyIfChanged(CameraNodeConfig::PARAM_ORBIT_DISTANCE, lastParamOrbitDist_, [&](float v) {
         orbitDistance = glm::clamp(v, kOrbitDistanceMin, kOrbitDistanceMax);
     });
+    applyIfChanged(CameraNodeConfig::PARAM_CAMERA_MODE, lastParamCameraMode_, [&](float v) {
+        mode = (v >= 0.5f) ? CameraMode::Orbit : CameraMode::FreeFly;
+    });
 
     NODE_LOG_INFO("Camera position: (" + std::to_string(cameraPosition.x) + ", " +
                   std::to_string(cameraPosition.y) + ", " + std::to_string(cameraPosition.z) +
@@ -250,23 +253,36 @@ void CameraNode::UpdateCameraData(float aspectRatio) {
     // This flips the projection to match OpenGL conventions used in our shaders
     projection[1][1] *= -1.0f;
 
-    // ORBIT MODE: Camera orbits around orbitCenter
-    // yaw/pitch control the orbit angle, camera looks at orbitCenter
-    // Camera position is computed from orbit parameters
-    glm::vec3 orbitOffset;
-    orbitOffset.x = orbitDistance * cos(pitch) * sin(yaw);
-    orbitOffset.y = orbitDistance * sin(pitch);
-    orbitOffset.z = orbitDistance * cos(pitch) * cos(yaw);
+    glm::vec3 forward;
+    glm::vec3 lookAtTarget;
 
-    cameraPosition = orbitCenter + orbitOffset;
+    if (mode == CameraMode::FreeFly) {
+        // FREE-FLY MODE: cameraPosition IS flyPosition; forward derived from flyYaw/flyPitch
+        // using the same spherical convention CameraNode already uses elsewhere (CompileImpl's
+        // initial-vectors block), just driven by the fly angles instead of yaw/pitch.
+        forward.x = cos(flyPitch) * sin(flyYaw);
+        forward.y = sin(flyPitch);
+        forward.z = -cos(flyPitch) * cos(flyYaw);
+        forward = glm::normalize(forward);
 
-    // Forward direction points toward orbit center
-    glm::vec3 forward = glm::normalize(orbitCenter - cameraPosition);
+        cameraPosition = flyPosition;
+        lookAtTarget = cameraPosition + forward;
+    } else {
+        // ORBIT MODE: Camera orbits around orbitCenter (unchanged from pre-dual-mode behavior)
+        glm::vec3 orbitOffset;
+        orbitOffset.x = orbitDistance * cos(pitch) * sin(yaw);
+        orbitOffset.y = orbitDistance * sin(pitch);
+        orbitOffset.z = orbitDistance * cos(pitch) * cos(yaw);
+
+        cameraPosition = orbitCenter + orbitOffset;
+        forward = glm::normalize(orbitCenter - cameraPosition);
+        lookAtTarget = orbitCenter;
+    }
 
     glm::vec3 right = glm::normalize(glm::cross(forward, glm::vec3(0.0f, 1.0f, 0.0f)));
     glm::vec3 up = glm::normalize(glm::cross(right, forward));
 
-    glm::mat4 view = glm::lookAt(cameraPosition, orbitCenter, glm::vec3(0.0f, 1.0f, 0.0f));
+    glm::mat4 view = glm::lookAt(cameraPosition, lookAtTarget, glm::vec3(0.0f, 1.0f, 0.0f));
 
     // Update camera data struct
     // MUST match shader PushConstants layout in VoxelRayMarch.comp!
