@@ -334,12 +334,13 @@ Grouping = the plan's own milestone headers, verbatim (post-brainstorm-context-m
 - [x] M1 — parameter integrity
 - [x] M2 — shader counters compiled out
 - [x] M3 — resize-path robustness
-- [ ] M4 — render-scale decoupling
+- [x] M4 — render-scale decoupling
 - [ ] M5 — p99 hitch attribution + bounded fixes
 - [ ] M6 — CPU-floor hygiene + close-out
 
 ## Progress Log
 
+- M4 (Tasks M4.1-M4.4 + 0xFFFFFFFF guard): DONE · commits 83088039..5b2da8a4 · Opus validator APPROVED (barriers, legacy purity, descriptor cascade code-verified) · real-GPU A/B @1440p: dispatch 1.40->0.38 ms at scale 0.5 (27%, target 25-30%), FPS 172->306 · raySizeCoef now honest (exact 1/height, recomputed via cascade) — correct-LOD cost visible at scale 1.0 as predicted (rank 6) · found+fixed pre-existing barrier oldLayout=UNDEFINED assumption (per-image first-use tracking) · 2026-07-04
 - M3 (Tasks M3.1-M3.4 + device-idle fix): DONE · commits 9a17879b..8f89d69d · Opus validator APPROVED (pausedForRecreation_ flag path empirically confirmed; MINOR 0xFFFFFFFF currentExtent guard deferred to M4) · live gate found+fixed a PRE-EXISTING use-in-flight teardown crash (missing device-idle wait on recreation waves) · real-GPU: transition p99 40.8->25.5 ms, 1 recompilation, 0 in-use VUIDs · NOTE for M5: post-resize steady frames ~1 ms slower than fresh-window at same size · 2026-07-03
 - M2 (Task M2.1): DONE · commit 8509f58b (+comment fix) · Opus validator: functionally APPROVED, one LOW doc comment fixed controller-side · real-GPU 1440p: frame 7.63->3.76 ms (FPS 131->266), dispatch 2.18->1.38 ms · NOTE: SetStageDefines cannot inject #ifdef defines (token substitution) — no env opt-in possible · 2026-07-03
 - M1 (Tasks M1.1-M1.2): DONE · commits 4af408ff..358f2c0a · Opus validator APPROVED · real-GPU gate: resolutions now honest, dispatch scales linearly (see findings appendix) · 2026-07-03

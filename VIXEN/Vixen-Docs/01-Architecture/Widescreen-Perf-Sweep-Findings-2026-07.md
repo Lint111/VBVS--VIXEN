@@ -244,3 +244,16 @@ Resize-path robustness (ranks 3/7/8 + rank-5 correctness):
 Bonus root-cause fix: recreation waves never waited for in-flight GPU work before teardown (pre-existing; masked by luck until M3 made the wave deterministic). Fix: WaitForGraphDevicesIdle gated on pausedForRecreation_ — ordinary recompiles stay wait-free; validator empirically confirmed the OUT_OF_DATE acquire publishes PAUSE_START before every resize wave.
 
 Follow-ups recorded (pre-existing, NOT M3 regressions): (a) ~10-20x VUID-vkCmdDispatch-None-08114 at startup frames 0-99; (b) one-frame ~10-20x VUID-vkCmdBindPipeline-pipeline-parameter burst right after the resize recompile (descriptor rebind timing — M5 candidate); (c) MINOR: QueryCurrentSurfaceExtent lacks the 0xFFFFFFFF undefined-extent guard (Wayland-only storm risk — folded into M4); (d) post-resize steady frames ~1 ms slower than fresh-window at the same extent (M5 attribution target); (e) NODE_LOG_INFO lines from SwapChainNode/PickIdTargetNode don't surface in app logs in this config (observability gap).
+
+### M4 gate (2026-07-04, 2560x1440 fresh window, 600 frames, real GPU)
+
+Render-scale decoupling (rank 1) + honest LOD (rank 6):
+
+| Metric | scale 1.0 | scale 0.5 | ratio |
+|---|---|---|---|
+| Dispatch GPU | 1.40 ms | 0.38 ms | 27% (acceptance: 25-30%) |
+| Render target | 2560x1440 | 1280x720 | correct |
+| Frame avg / FPS | 5.80 ms / 172 | 3.26 ms / 306 | +78% FPS |
+| raySizeCoef | 0.000545 @1440 | 0.001091 @720 | exact 1/height |
+
+Notes: scale-1.0 frame is 5.8 ms vs M2's 3.76 ms — the predicted rank-6 correction (the frozen 500px raySizeCoef had been under-detailing large windows; LOD is now honest and render scale is the knob that buys the cost back). Bonus fix: the GENERAL-transition barrier hardcoded oldLayout=UNDEFINED (wrong for steady-state render-target re-entry) — replaced with per-image first-use tracking; validator confirmed fresh post-resize handles correctly re-treat as UNDEFINED. p99 remains 18-20 ms — M5's target. Visual gate: full-window image at 0.5, softer (user-eyeball + construction proof; no PNG hook in the app — observability gap noted).
