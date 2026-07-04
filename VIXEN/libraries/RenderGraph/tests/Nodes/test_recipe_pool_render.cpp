@@ -1,21 +1,21 @@
 /**
  * @file test_recipe_pool_render.cpp
- * @brief I4.1 — BodyOctreeSceneNode::SetRecipePool live render gate (lavapipe).
+ * @brief I4.1 — BodyOctreeSceneNode::SetRecipePool live render gate.
  *
  * Bakes 4 SDF sphere recipes of distinct radii into a pool, calls SetRecipePool,
- * renders 4 instances (one per octreeIndex) on lavapipe, and asserts that all 4
+ * renders 4 instances (one per octreeIndex), and asserts that all 4
  * bodies produce visible hit pixels.
  *
  * This is the first test that exercises the M2 SSBO change (binding 5 = STORAGE)
  * at runtime via the BodyOctreeSceneNode path. If the SSBO wiring is wrong the
  * shader reads garbage configs and all bodies render blank.
  *
- * SAFETY — LAVAPIPE ONLY: identical contract to test_body_instance_raymarch_render.cpp.
- * lavapipe device is hard-asserted before any vkQueueSubmit.
+ * DEVICE SELECTION: identical contract to test_body_instance_raymarch_render.cpp —
+ * prefers Mesa-Dozen (the real GPU) via VixenSelectWslGpuIcd(), falls back to
+ * lavapipe. An unrecognized device is hard-asserted against before any vkQueueSubmit.
  *
- * Run:
- *   VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json \
- *   ./test_recipe_pool_render
+ * Run: ./test_recipe_pool_render
+ *   (set VK_ICD_FILENAMES explicitly to force a specific ICD, e.g. for comparison.)
  *
  * Output: /tmp/recipe_pool_render.png (512x512 RGBA8, 4-body scene).
  */
@@ -33,6 +33,7 @@
 #include "Recipe/RecipeRegistry.h"
 #include "Recipe/RecipeBaker.h"
 #include "TestVkValidation.h"
+#include "VulkanGlobalNames.h"  // VixenSelectWslGpuIcd
 
 #include <vulkan/vulkan.h>
 
@@ -132,12 +133,16 @@ protected:
 
     static bool LooksLikeSoftware(const VkPhysicalDeviceProperties& p) {
         std::string n(p.deviceName); for (char& c : n) c = char(::tolower(c));
-        return (n.find("llvmpipe") != std::string::npos ||
-                n.find("lavapipe") != std::string::npos) &&
-               p.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU;
+        const bool isSoftware =
+            (n.find("llvmpipe") != std::string::npos ||
+             n.find("lavapipe") != std::string::npos) &&
+            p.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU;
+        const bool isDozen = n.find("direct3d12") != std::string::npos;
+        return isSoftware || isDozen;
     }
 
     void SetUp() override {
+        VixenSelectWslGpuIcd();
         VkApplicationInfo ai{}; ai.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
         ai.pApplicationName = "test_recipe_pool_render"; ai.apiVersion = VK_API_VERSION_1_3;
         const auto layers = EnabledValidationLayers();
@@ -164,7 +169,7 @@ protected:
 
     void PickSoftwareDevice() {
         uint32_t cnt = 0; ASSERT_EQ(vkEnumeratePhysicalDevices(instance_, &cnt, nullptr), VK_SUCCESS);
-        ASSERT_GT(cnt, 0u) << "No Vulkan devices. Is VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json set?";
+        ASSERT_GT(cnt, 0u) << "No Vulkan devices visible.";
         std::vector<VkPhysicalDevice> devs(cnt);
         ASSERT_EQ(vkEnumeratePhysicalDevices(instance_, &cnt, devs.data()), VK_SUCCESS);
         for (auto dev : devs) {

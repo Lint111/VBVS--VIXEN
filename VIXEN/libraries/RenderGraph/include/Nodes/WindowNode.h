@@ -105,6 +105,26 @@ private:
     uint32_t width = 0;
     uint32_t height = 0;
 
+    // Resize debounce (trailing edge): a live drag fires roughly one WindowResizedMessage per app
+    // tick, and each one used to trigger a full SwapChainNode recreation + transitive recompile of
+    // ~10 nodes -- 16 recompile waves were observed for a single "slow" drag gesture, starving the
+    // render loop enough that the OS compositor showed stale/ghosted frames and input lagged. Instead
+    // of acting on every drained Resize event, remember the latest size and only apply it (publish +
+    // MarkNeedsRecompile) once kResizeDebounceSeconds has passed with no newer resize -- collapsing a
+    // whole drag into a small, bounded number of recompiles while still always settling on the FINAL
+    // size (never dropped, just deferred). Checked from both ExecuteImpl and ProcessPendingEvents so
+    // the debounce applies whether or not rendering is paused.
+    static constexpr double kResizeDebounceSeconds = 0.1;
+    bool hasPendingResize_ = false;
+    uint32_t pendingResizeWidth_ = 0;
+    uint32_t pendingResizeHeight_ = 0;
+    double lastResizeEventTime_ = 0.0;
+
+    // Records a drained Resize event as the new pending target (does not apply it yet).
+    void RecordPendingResize(uint32_t w, uint32_t h);
+    // True once kResizeDebounceSeconds has elapsed since the last recorded resize event.
+    bool PendingResizeIsSettled() const;
+
     GLFWwindow* window = nullptr;
     VkSurfaceKHR surface = VK_NULL_HANDLE;  // Created with the window; both persist across recompiles, destroyed only at final teardown
 

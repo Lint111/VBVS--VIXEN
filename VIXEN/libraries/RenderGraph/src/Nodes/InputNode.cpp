@@ -314,6 +314,12 @@ void InputNode::QueueEvent(const InputEvent& event) {
     pendingInput_.push_back(event);
 }
 
+#if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
+void InputNode::InjectMouseButton(int button, int action) {
+    QueueEvent({InputEvent::Type::MouseButton, button, action, 0.0, 0.0});
+}
+#endif
+
 void InputNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // Calculate delta time
     UpdateDeltaTime();

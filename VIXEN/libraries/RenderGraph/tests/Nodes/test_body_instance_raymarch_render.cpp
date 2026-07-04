@@ -1,7 +1,7 @@
 /**
  * @file test_body_instance_raymarch_render.cpp
- * @brief Render the REAL GPU ray-march shader (BodyInstanceRayMarch.comp) to a PNG
- *        on lavapipe (software Vulkan, CPU). The decisive crack test.
+ * @brief Render the REAL GPU ray-march shader (BodyInstanceRayMarch.comp) to a PNG.
+ *        The decisive crack test.
  *
  * The CPU reference renderer (cpu_body_render_main.cpp) draws the SP2 body scene by
  * the SVO library's CPU castRay path and shows dark "+" brick-boundary cracks at the
@@ -10,20 +10,17 @@
  * directly comparable: does the shipped renderer crack the same way, or render clean?
  *
  * ===========================================================================
- *  SAFETY — LAVAPIPE ONLY (identical contract to test_body_octree_lifetime.cpp)
+ *  DEVICE SELECTION (identical contract to test_body_octree_lifetime.cpp)
  * ===========================================================================
- * lavapipe (llvmpipe) is a pure-CPU LLVM rasterizer that NEVER touches the
- * WSL2/Mesa-Dozen (Vulkan-over-D3D12) path. The harness forces lavapipe two ways:
- *   1. The runner sets VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json.
- *   2. PickSoftwarePhysicalDevice() selects ONLY a device whose deviceName contains
- *      "llvmpipe"/"lavapipe" AND deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU, and the
- *      fixture HARD-ASSERTS softwareConfirmed_ before ANY vkQueueSubmit. If the chosen
- *      device is not the software rasterizer the test FAILS and never submits.
+ * Uses VixenSelectWslGpuIcd() so this runs on Mesa-Dozen (the real GPU) when
+ * provisioned on WSL2, falling back to lavapipe otherwise — see
+ * test_body_octree_lifetime.cpp's file header for the 2026-07-04 re-verification
+ * that both paths are safe. IsAcceptableDevice() still hard-asserts the selected
+ * device is one of the two verified ones before ANY vkQueueSubmit; an unrecognized
+ * device fails the test loud rather than risk it.
  *
- * Run:
- *   VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json \
- *   VK_LAYER_PATH=<...>/.vulkan-sdk/1.4.350.1/x86_64/share/vulkan/explicit_layer.d \
- *   ./test_body_instance_raymarch_render
+ * Run: ./test_body_instance_raymarch_render
+ *   (set VK_ICD_FILENAMES explicitly to force a specific ICD, e.g. for comparison.)
  *
  * Output: /tmp/glsl_shader_near.png  (512x512 RGBA8, the shipped shader's NEAR view).
  *
@@ -42,6 +39,7 @@
 
 #include "ShellOctreeGpu.h"   // Vixen::SVO::BodyInstanceGpu
 #include "TestVkValidation.h"
+#include "VulkanGlobalNames.h"  // VixenSelectWslGpuIcd
 
 #include <vulkan/vulkan.h>
 
@@ -127,17 +125,25 @@ protected:
 
     std::unique_ptr<VulkanDevice> deviceShell_;
 
+    // Accepts the two devices this test has been verified against: the software
+    // rasterizer (llvmpipe/lavapipe, CPU) or Mesa-Dozen (Vulkan-over-D3D12). Rejects
+    // anything else — an untriaged device still fails loud rather than risk it.
     static bool LooksLikeSoftware(const VkPhysicalDeviceProperties& props) {
         std::string name(props.deviceName);
         for (char& c : name) c = static_cast<char>(::tolower(c));
-        const bool nameSays =
-            name.find("llvmpipe") != std::string::npos ||
-            name.find("lavapipe") != std::string::npos;
-        const bool typeSays = props.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU;
-        return nameSays && typeSays;
+        const bool isSoftware =
+            (name.find("llvmpipe") != std::string::npos ||
+             name.find("lavapipe") != std::string::npos) &&
+            props.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU;
+        const bool isDozen = name.find("direct3d12") != std::string::npos;
+        return isSoftware || isDozen;
     }
 
     void SetUp() override {
+        // Same call every VIXEN executable makes before any Vulkan instance: auto-selects
+        // Dozen on WSL2 when provisioned and no ICD was already chosen.
+        VixenSelectWslGpuIcd();
+
         VkApplicationInfo appInfo{};
         appInfo.sType            = VK_STRUCTURE_TYPE_APPLICATION_INFO;
         appInfo.pApplicationName = "test_body_instance_raymarch_render";
@@ -159,12 +165,13 @@ protected:
         instInfo.ppEnabledExtensionNames = extensions;
 
         ASSERT_EQ(vkCreateInstance(&instInfo, nullptr, &instance_), VK_SUCCESS)
-            << "vkCreateInstance failed — is lavapipe on VK_ICD_FILENAMES?";
+            << "vkCreateInstance failed — is a Vulkan device available?";
 
         ASSERT_NO_FATAL_FAILURE(PickSoftwarePhysicalDevice());
         ASSERT_TRUE(softwareConfirmed_)
             << "Refusing to run: selected device '" << selectedDeviceName_
-            << "' is NOT the software rasterizer. Aborting before any vkQueueSubmit.";
+            << "' is not a verified device (software rasterizer or Dozen). "
+               "Aborting before any vkQueueSubmit.";
 
         ASSERT_NO_FATAL_FAILURE(CreateLogicalDevice());
         ASSERT_NO_FATAL_FAILURE(CreateCommandPool());
@@ -192,8 +199,7 @@ protected:
     void PickSoftwarePhysicalDevice() {
         uint32_t count = 0;
         ASSERT_EQ(vkEnumeratePhysicalDevices(instance_, &count, nullptr), VK_SUCCESS);
-        ASSERT_GT(count, 0u) << "No Vulkan physical devices visible. Is lavapipe forced via "
-                                "VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json?";
+        ASSERT_GT(count, 0u) << "No Vulkan physical devices visible.";
         std::vector<VkPhysicalDevice> devices(count);
         ASSERT_EQ(vkEnumeratePhysicalDevices(instance_, &count, devices.data()), VK_SUCCESS);
         for (VkPhysicalDevice dev : devices) {

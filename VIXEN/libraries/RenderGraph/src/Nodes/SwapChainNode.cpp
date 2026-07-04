@@ -64,6 +64,9 @@ void SwapChainNode::SetupImpl(TypedSetupContext& ctx) {
 void SwapChainNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[SwapChainNode::Compile] ===== RECOMPILATION TRIGGERED =====");
     NODE_LOG_INFO("[SwapChainNode::Compile] START");
+#if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
+    ++compileCount_;
+#endif
 
     // Access device input (compile-time dependency)
     SetDevice(ctx.In(SwapChainNodeConfig::VULKAN_DEVICE_IN));

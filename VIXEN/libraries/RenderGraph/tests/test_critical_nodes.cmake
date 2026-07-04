@@ -278,14 +278,14 @@ gtest_discover_tests(test_mvp_uniform_node)
 
 message(STATUS "[RenderGraph Tests] Added: test_mvp_uniform_node (AR#31)")
 
-# BodyOctreeSceneNode software-Vulkan (lavapipe) LIFETIME test.
+# BodyOctreeSceneNode GPU-resource LIFETIME test.
 # Drives the REAL node lifecycle (Compile -> Execute ring cycles -> grow -> Cleanup
-# recompile/teardown -> device destroy) on the lavapipe CPU rasterizer under the
-# Khronos validation layer, asserting NO lifetime errors (destroy-while-bound,
-# double-free, leaked objects). Links the same set as the FR-7 ring sibling
-# test_dynamic_instance_buffer_node; SVO (ShellOctree/PackInstances) comes in via
-# the RenderGraph link closure. See the file header for the SAFETY contract and the
-# required VK_ICD_FILENAMES (lavapipe) + VK_LAYER_PATH (validation) run-time env.
+# recompile/teardown -> device destroy) on a real device under the Khronos validation
+# layer, asserting NO lifetime errors (destroy-while-bound, double-free, leaked objects).
+# Links the same set as the FR-7 ring sibling test_dynamic_instance_buffer_node; SVO
+# (ShellOctree/PackInstances) comes in via the RenderGraph link closure. Uses
+# VixenSelectWslGpuIcd() (see the file header) to prefer Mesa-Dozen (the real GPU) on
+# WSL2, falling back to lavapipe otherwise — no VK_ICD_FILENAMES env needed by default.
 add_executable(test_body_octree_lifetime
     Nodes/test_body_octree_lifetime.cpp
 )
@@ -294,22 +294,26 @@ target_link_libraries(test_body_octree_lifetime PRIVATE ${RENDERGRAPH_TEST_COMMO
 if(TARGET SVO)
     target_link_libraries(test_body_octree_lifetime PRIVATE SVO)
 endif()
+if(VIXEN_WSL_DZN_ICD)
+    target_compile_definitions(test_body_octree_lifetime PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
+endif()
 
 # Visual Studio solution folder organization
 set_target_properties(test_body_octree_lifetime PROPERTIES FOLDER "Tests/RenderGraph Tests")
 gtest_discover_tests(test_body_octree_lifetime)
 
-message(STATUS "[RenderGraph Tests] Added: test_body_octree_lifetime (lavapipe lifetime)")
+message(STATUS "[RenderGraph Tests] Added: test_body_octree_lifetime (real-GPU lifetime)")
 
 # ===========================================================================
-# BodyInstanceRayMarch.comp REAL-SHADER render-to-PNG test (lavapipe).
+# BodyInstanceRayMarch.comp REAL-SHADER render-to-PNG test.
 # ===========================================================================
 # Compiles the SHIPPED ray-march compute shader to SPIR-V at build time with the
-# bundled glslc, then renders the SP2 body scene through it on the lavapipe CPU
-# rasterizer and dumps /tmp/glsl_shader_near.png. Same SAFETY contract + env as
-# test_body_octree_lifetime (lavapipe ICD + validation layer; software device is
-# hard-asserted before any vkQueueSubmit). The PNG is directly comparable to the
-# CPU castRay reference (cpu_body_render NEAR view) to settle the brick-crack Q.
+# bundled glslc, then renders the SP2 body scene through it (Dozen preferred, lavapipe
+# fallback — see test_body_octree_lifetime.cpp's file header) and dumps
+# /tmp/glsl_shader_near.png. Same device-selection + validation-layer contract as
+# test_body_octree_lifetime (an unrecognized device is hard-asserted against before
+# any vkQueueSubmit). The PNG is directly comparable to the CPU castRay reference
+# (cpu_body_render NEAR view) to settle the brick-crack Q.
 # NOTE: do NOT gate on if(TARGET SVO) — at the point tests/CMakeLists.txt includes
 # this file the SVO target is not yet visible in this directory scope (subdirectory
 # ordering). SVO symbols (ShellOctree/BodyInstanceGpu, header-only + lib) reach this
@@ -318,10 +322,10 @@ message(STATUS "[RenderGraph Tests] Added: test_body_octree_lifetime (lavapipe l
 
 # --- Compile BodyInstanceRayMarch.comp -> SPIR-V with the bundled glslc ---
 # VIXEN_SHADER_SOURCE_DIR is <VIXEN>/shaders; the bundled SDK sits beside it.
-# This is a lavapipe/WSL-only test: it needs the auto-provisioned Linux LunarG SDK's glslc
-# (and lavapipe at run time). On environments where Vulkan came from the system (so the SDK
-# cache was never provisioned — e.g. the Windows/MSVC build), the bundled glslc is absent;
-# gate the whole rule on its existence so the rest of the suite still builds. Without the gate,
+# This is a WSL-only test: it needs the auto-provisioned Linux LunarG SDK's glslc.
+# On environments where Vulkan came from the system (so the SDK cache was never
+# provisioned — e.g. the Windows/MSVC build), the bundled glslc is absent; gate the
+# whole rule on its existence so the rest of the suite still builds. Without the gate,
 # the missing glslc fails the entire ninja build ("system cannot find the path specified").
 set(_brm_shader_dir "${VIXEN_SHADER_SOURCE_DIR}")
 # Locate glslc from the auto-provisioned Vulkan SDK (ProvisionVulkan.cmake) rather than a
@@ -371,6 +375,9 @@ else()
 endif()
 target_compile_definitions(test_body_instance_raymarch_render PRIVATE
     GLSL_RAYMARCH_SPV="${_brm_spv}")
+if(VIXEN_WSL_DZN_ICD)
+    target_compile_definitions(test_body_instance_raymarch_render PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
+endif()
 
 set_target_properties(test_body_instance_raymarch_render PROPERTIES FOLDER "Tests/RenderGraph Tests")
 # DISCOVERY_MODE PRE_TEST: defer the --gtest_list_tests invocation to ctest run-time,
@@ -380,10 +387,10 @@ gtest_discover_tests(test_body_instance_raymarch_render
     DISCOVERY_MODE PRE_TEST
     DISCOVERY_TIMEOUT 120)
 
-message(STATUS "[RenderGraph Tests] Added: test_body_instance_raymarch_render (lavapipe real-shader render)")
+message(STATUS "[RenderGraph Tests] Added: test_body_instance_raymarch_render (real-shader render)")
 
 # ===========================================================================
-# I4.1 — SetRecipePool pool render gate (lavapipe): 4 baked SDF recipes,
+# I4.1 — SetRecipePool pool render gate: 4 baked SDF recipes,
 # one instance per octreeIndex, asserts all 4 bodies produce visible pixels.
 # ===========================================================================
 add_executable(test_recipe_pool_render
@@ -402,6 +409,9 @@ else()
 endif()
 target_compile_definitions(test_recipe_pool_render PRIVATE
     GLSL_RAYMARCH_SPV="${_brm_spv}")
+if(VIXEN_WSL_DZN_ICD)
+    target_compile_definitions(test_recipe_pool_render PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
+endif()
 set_target_properties(test_recipe_pool_render PROPERTIES FOLDER "Tests/RenderGraph Tests")
 gtest_discover_tests(test_recipe_pool_render
     DISCOVERY_MODE PRE_TEST
@@ -409,8 +419,8 @@ gtest_discover_tests(test_recipe_pool_render
 message(STATUS "[RenderGraph Tests] Added: test_recipe_pool_render (I4.1 pool render gate)")
 
 # ===========================================================================
-# Voxel Authoring Inc1 M4 — vixen_editor's load/flatten/bake/render/toggle path
-# (lavapipe): golden document renders, then a cut-layer ablation asserts a real
+# Voxel Authoring Inc1 M4 — vixen_editor's load/flatten/bake/render/toggle path:
+# golden document renders, then a cut-layer ablation asserts a real
 # pixel-level top-face difference (the cylinder punches through the box).
 # ===========================================================================
 add_executable(test_editor_document_render
@@ -430,6 +440,9 @@ endif()
 target_compile_definitions(test_editor_document_render PRIVATE
     GLSL_RAYMARCH_SPV="${_brm_spv}"
     VXD_GOLDEN_PATH="${VIXEN_ROOT}/BuiltAssets/documents/sample_tri_layer.vxd")
+if(VIXEN_WSL_DZN_ICD)
+    target_compile_definitions(test_editor_document_render PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
+endif()
 set_target_properties(test_editor_document_render PROPERTIES FOLDER "Tests/RenderGraph Tests")
 gtest_discover_tests(test_editor_document_render
     DISCOVERY_MODE PRE_TEST
@@ -437,7 +450,7 @@ gtest_discover_tests(test_editor_document_render
 message(STATUS "[RenderGraph Tests] Added: test_editor_document_render (Voxel Authoring Inc1 M4 editor live gate)")
 
 # ===========================================================================
-# I4.2 — Recipe authoring live gate (lavapipe):
+# I4.2 — Recipe authoring live gate:
 #   a) Subtract(Box, Sphere) CSG recipe renders a non-trivial solid.
 #   b) Default 3-shell scene regression confirms the M2 SSBO fix holds.
 # ===========================================================================
@@ -457,6 +470,9 @@ else()
 endif()
 target_compile_definitions(test_recipe_authoring_gate PRIVATE
     GLSL_RAYMARCH_SPV="${_brm_spv}")
+if(VIXEN_WSL_DZN_ICD)
+    target_compile_definitions(test_recipe_authoring_gate PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
+endif()
 set_target_properties(test_recipe_authoring_gate PROPERTIES FOLDER "Tests/RenderGraph Tests")
 gtest_discover_tests(test_recipe_authoring_gate
     DISCOVERY_MODE PRE_TEST
@@ -487,17 +503,17 @@ gtest_discover_tests(test_octree_config_sdi_parity
 message(STATUS "[RenderGraph Tests] Added: test_octree_config_sdi_parity (SDI layout drift-guard)")
 
 else()
-    message(STATUS "[RenderGraph Tests] SKIPPED test_body_instance_raymarch_render — bundled glslc not provisioned at ${_brm_glslc} (lavapipe/WSL-only test)")
+    message(STATUS "[RenderGraph Tests] SKIPPED test_body_instance_raymarch_render — bundled glslc not provisioned at ${_brm_glslc} (WSL-only test)")
 endif()
 
 # ===========================================================================
-# P2.2 M2 — Procedural recipe live compute render (lavapipe, compile realization)
+# P2.2 M2 — Procedural recipe live compute render (compile realization)
 # ===========================================================================
 # Emits an all-HLSL compute shader from SdfInstruction[], compiles it via
-# ShaderCompiler (HLSL→SPIR-V at test run time), dispatches on lavapipe with a
+# ShaderCompiler (HLSL→SPIR-V at test run time), dispatches with a
 # minimal 1-binding (storage-image) + push-constant compute harness.
 # No pre-compiled .spv needed (ShaderCompiler handles it at runtime).
-# Same SAFETY contract as test_body_instance_raymarch_render (lavapipe-only).
+# Same device-selection contract as test_body_instance_raymarch_render.
 if(TARGET ShaderManagement)
 # NOTE: SVO target is not visible at this include scope (subdirectory ordering),
 # same as test_body_instance_raymarch_render. SVO headers + ShaderCompiler reach
@@ -524,6 +540,9 @@ endif()
 target_compile_definitions(test_procedural_recipe_render PRIVATE
     SDF_CORE_KERNELS_HLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.hlsl"
 )
+if(VIXEN_WSL_DZN_ICD)
+    target_compile_definitions(test_procedural_recipe_render PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
+endif()
 
 if(TARGET TBB::tbb)
     add_custom_command(TARGET test_procedural_recipe_render POST_BUILD

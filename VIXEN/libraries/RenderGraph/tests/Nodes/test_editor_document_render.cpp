@@ -1,6 +1,6 @@
 /**
  * @file test_editor_document_render.cpp
- * @brief Inc1 M4 — vixen_editor's load/flatten/bake/render/toggle path, live-gated on lavapipe.
+ * @brief Inc1 M4 — vixen_editor's load/flatten/bake/render/toggle path, live-gated on a real device.
  *
  * Loads the golden sample_tri_layer.vxd (base=Box(1,1,1), bulge=Sphere(r=0.6) SmoothUnion
  * k=0.15, cut=Cylinder(halfHeight=1.5,radius=0.35) Subtract), flattens+bakes+renders it through
@@ -23,11 +23,11 @@
  * the only place the geometry actually rendered -- post-fix that point is empty space, which is
  * exactly the fresh 0-hit-pixel failure this task's re-derivation fixes).
  *
- * SAFETY -- LAVAPIPE ONLY: identical contract to test_recipe_pool_render.cpp.
+ * DEVICE SELECTION: identical contract to test_recipe_pool_render.cpp — prefers
+ * Mesa-Dozen (the real GPU) via VixenSelectWslGpuIcd(), falls back to lavapipe.
  *
- * Run:
- *   VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json \
- *   ./test_editor_document_render
+ * Run: ./test_editor_document_render
+ *   (set VK_ICD_FILENAMES explicitly to force a specific ICD, e.g. for comparison.)
  *
  * Output: /tmp/editor_document_render_{with,without}_cut.png (512x512 RGBA8).
  */
@@ -48,6 +48,7 @@
 #include "Recipe/generated/RecipeContainer.g.h"
 #include "Recipe/VoxelDocumentFlattener.h"
 #include "TestVkValidation.h"
+#include "VulkanGlobalNames.h"  // VixenSelectWslGpuIcd
 
 #include <vulkan/vulkan.h>
 
@@ -171,12 +172,16 @@ protected:
 
     static bool LooksLikeSoftware(const VkPhysicalDeviceProperties& p) {
         std::string n(p.deviceName); for (char& c : n) c = char(::tolower(c));
-        return (n.find("llvmpipe") != std::string::npos ||
-                n.find("lavapipe") != std::string::npos) &&
-               p.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU;
+        const bool isSoftware =
+            (n.find("llvmpipe") != std::string::npos ||
+             n.find("lavapipe") != std::string::npos) &&
+            p.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU;
+        const bool isDozen = n.find("direct3d12") != std::string::npos;
+        return isSoftware || isDozen;
     }
 
     void SetUp() override {
+        VixenSelectWslGpuIcd();
         VkApplicationInfo ai{}; ai.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
         ai.pApplicationName = "test_editor_document_render"; ai.apiVersion = VK_API_VERSION_1_3;
         const auto layers = EnabledValidationLayers();
@@ -203,7 +208,7 @@ protected:
 
     void PickSoftwareDevice() {
         uint32_t cnt = 0; ASSERT_EQ(vkEnumeratePhysicalDevices(instance_, &cnt, nullptr), VK_SUCCESS);
-        ASSERT_GT(cnt, 0u) << "No Vulkan devices. Is VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json set?";
+        ASSERT_GT(cnt, 0u) << "No Vulkan devices visible.";
         std::vector<VkPhysicalDevice> devs(cnt);
         ASSERT_EQ(vkEnumeratePhysicalDevices(instance_, &cnt, devs.data()), VK_SUCCESS);
         for (auto dev : devs) {
@@ -522,7 +527,7 @@ protected:
 // M4 — load -> flatten -> bake -> render (all layers enabled): asserts a visible body.
 // ---------------------------------------------------------------------------
 TEST_F(EditorDocumentRenderTest, GoldenDocumentAllLayersRendersVisibleBody) {
-    std::printf("[ lavapipe ] %s\n", selectedDeviceName_.c_str());
+    std::printf("[ device ] %s\n", selectedDeviceName_.c_str());
     ASSERT_TRUE(softwareConfirmed_);
 
     const auto raw = ReadFile(VXD_GOLDEN_PATH);

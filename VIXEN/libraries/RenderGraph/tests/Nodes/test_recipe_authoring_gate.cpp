@@ -1,6 +1,6 @@
 /**
  * @file test_recipe_authoring_gate.cpp
- * @brief I4.2 — Live lavapipe CSG recipe render gate.
+ * @brief I4.2 — Live CSG recipe render gate.
  *
  * Two tests:
  *   1. CsgSubtractRendersNonTrivial — bakes a Subtract(Box, Sphere) recipe where the
@@ -29,11 +29,11 @@
  *     z=26 face ≈ 10.4 voxels (sqrt(28²-26²)). Rays through the tunnel find no subtract
  *     surface within the baked domain → black pixels.
  *
- * SAFETY — LAVAPIPE ONLY: identical contract to test_body_instance_raymarch_render.cpp.
+ * DEVICE SELECTION: identical contract to test_body_instance_raymarch_render.cpp —
+ * prefers Mesa-Dozen (the real GPU) via VixenSelectWslGpuIcd(), falls back to lavapipe.
  *
- * Run:
- *   VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json \
- *   ./test_recipe_authoring_gate
+ * Run: ./test_recipe_authoring_gate
+ *   (set VK_ICD_FILENAMES explicitly to force a specific ICD, e.g. for comparison.)
  */
 
 #include <gtest/gtest.h>
@@ -49,6 +49,7 @@
 #include "Recipe/RecipeRegistry.h"
 #include "Recipe/RecipeBaker.h"
 #include "TestVkValidation.h"
+#include "VulkanGlobalNames.h"  // VixenSelectWslGpuIcd
 
 #include <vulkan/vulkan.h>
 
@@ -131,7 +132,7 @@ PushConstants MakeCamera(const glm::vec3& eye, const glm::vec3& target,
 }  // namespace
 
 // ---------------------------------------------------------------------------
-// Lavapipe render fixture (mirrors test_body_instance_raymarch_render.cpp).
+// Render fixture (mirrors test_body_instance_raymarch_render.cpp).
 // ---------------------------------------------------------------------------
 class RecipeAuthoringGateTest : public ::testing::Test {
 protected:
@@ -147,12 +148,16 @@ protected:
 
     static bool IsSoftware(const VkPhysicalDeviceProperties& p) {
         std::string n(p.deviceName); for (char& c : n) c = char(::tolower(c));
-        return (n.find("llvmpipe") != std::string::npos ||
-                n.find("lavapipe") != std::string::npos) &&
-               p.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU;
+        const bool isSoftware =
+            (n.find("llvmpipe") != std::string::npos ||
+             n.find("lavapipe") != std::string::npos) &&
+            p.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU;
+        const bool isDozen = n.find("direct3d12") != std::string::npos;
+        return isSoftware || isDozen;
     }
 
     void SetUp() override {
+        VixenSelectWslGpuIcd();
         VkApplicationInfo ai{}; ai.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
         ai.pApplicationName = "test_recipe_authoring_gate"; ai.apiVersion = VK_API_VERSION_1_3;
         const auto layers = EnabledValidationLayers();
@@ -165,7 +170,8 @@ protected:
         ASSERT_EQ(vkCreateInstance(&ci, nullptr, &instance_), VK_SUCCESS);
         ASSERT_NO_FATAL_FAILURE(PickSoftwareDevice());
         ASSERT_TRUE(softwareConfirmed_)
-            << "Refusing: '" << selectedDeviceName_ << "' is not the software rasterizer.";
+            << "Refusing: '" << selectedDeviceName_ << "' is not a verified device "
+               "(software rasterizer or Dozen).";
         ASSERT_NO_FATAL_FAILURE(CreateLogicalDevice());
         ASSERT_NO_FATAL_FAILURE(CreateCmdPool());
         deviceShell_ = std::make_unique<VulkanDevice>(&physicalDevice_);
@@ -181,7 +187,7 @@ protected:
 
     void PickSoftwareDevice() {
         uint32_t cnt = 0; ASSERT_EQ(vkEnumeratePhysicalDevices(instance_, &cnt, nullptr), VK_SUCCESS);
-        ASSERT_GT(cnt, 0u) << "No Vulkan devices. Set VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json";
+        ASSERT_GT(cnt, 0u) << "No Vulkan devices visible.";
         std::vector<VkPhysicalDevice> devs(cnt);
         ASSERT_EQ(vkEnumeratePhysicalDevices(instance_, &cnt, devs.data()), VK_SUCCESS);
         for (auto dev : devs) {
@@ -475,7 +481,7 @@ protected:
 // ≈12.6 voxels at the z=36 face) that removes a large visible chunk.
 // ---------------------------------------------------------------------------
 TEST_F(RecipeAuthoringGateTest, CsgSubtractRendersNonTrivial) {
-    std::printf("[ lavapipe ] %s\n", selectedDeviceName_.c_str());
+    std::printf("[ device ] %s\n", selectedDeviceName_.c_str());
     ASSERT_TRUE(softwareConfirmed_);
 
     using SdfI  = Vixen::SVO::Recipe::SdfInstruction;
@@ -614,7 +620,7 @@ TEST_F(RecipeAuthoringGateTest, CsgSubtractRendersNonTrivial) {
 // Saves /tmp/recipe_default_scene.png.
 // ---------------------------------------------------------------------------
 TEST_F(RecipeAuthoringGateTest, DefaultSceneRegression) {
-    std::printf("[ lavapipe ] %s\n", selectedDeviceName_.c_str());
+    std::printf("[ device ] %s\n", selectedDeviceName_.c_str());
     ASSERT_TRUE(softwareConfirmed_);
 
     BodyOctreeSceneNodeType nodeType("BodyOctreeScene");

@@ -74,6 +74,13 @@ public:
     // Recreate swapchain (for resize handling)
     void Recreate(uint32_t newWidth, uint32_t newHeight);
 
+#if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
+    // Fail-scenario seam: how many times CompileImpl has run (recreations + the initial compile),
+    // so a regression test can assert a burst of resize events collapses into a bounded number of
+    // recompiles instead of one per event.
+    uint32_t CompileCountForTest() const { return compileCount_; }
+#endif
+
 protected:
     // Template method pattern - override *Impl() methods
     void SetupImpl(TypedSetupContext& ctx) override;
@@ -120,6 +127,10 @@ private:
     // subscriptions don't accumulate (each accumulated sub fires an extra MarkNeedsRecompile,
     // turning one resize into a storm of recompiles).
     bool resizeSubscribed_ = false;
+
+#if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
+    uint32_t compileCount_ = 0;
+#endif
 };
 
 } // namespace Vixen::RenderGraph

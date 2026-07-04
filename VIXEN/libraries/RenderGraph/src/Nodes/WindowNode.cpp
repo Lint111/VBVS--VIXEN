@@ -119,6 +119,17 @@ void WindowNode::CompileImpl(TypedCompileContext& ctx) {
                   ", height=" + std::to_string(height) + ")");
 }
 
+void WindowNode::RecordPendingResize(uint32_t w, uint32_t h) {
+    hasPendingResize_ = true;
+    pendingResizeWidth_ = w;
+    pendingResizeHeight_ = h;
+    lastResizeEventTime_ = glfwGetTime();
+}
+
+bool WindowNode::PendingResizeIsSettled() const {
+    return hasPendingResize_ && (glfwGetTime() - lastResizeEventTime_) >= kResizeDebounceSeconds;
+}
+
 void WindowNode::ExecuteImpl(TypedExecuteContext& ctx) {
     slotIndex = ctx.taskIndex;
 
@@ -143,29 +154,47 @@ void WindowNode::ExecuteImpl(TypedExecuteContext& ctx) {
 
     for (const auto& event : eventsToProcess) {
         if (event.type == WindowEvent::Type::Resize) {
+            // Debounce (trailing edge): record the latest size but don't act yet -- a live drag fires
+            // roughly one of these per tick, and acting on every one used to trigger a full
+            // SwapChainNode recreation + transitive recompile of ~10 nodes per event (16 waves
+            // observed for a single "slow" drag), starving the render loop enough that the compositor
+            // showed stale/ghosted frames and input lagged. Applied below, once settled.
             if (event.width != width || event.height != height) {
-                width = event.width;
-                height = event.height;
-                wasResized = true;
-
-                ctx.Out(WindowNodeConfig::WIDTH_OUT, event.width);
-                ctx.Out(WindowNodeConfig::HEIGHT_OUT, event.height);
-
-                if (GetMessageBus()) {
-                    GetMessageBus()->Publish(
-                        std::make_unique<EventTypes::WindowResizedMessage>(
-                            instanceId,
-                            event.width,
-                            event.height
-                        )
-                    );
-                }
-
-                NODE_LOG_INFO("[WindowNode] Processed resize: " + std::to_string(event.width) + "x" + std::to_string(event.height));
+                RecordPendingResize(event.width, event.height);
             }
             continue;
         }
         PublishNonResizeEvent(event);
+    }
+
+    // Apply a settled pending resize (may fire on a tick with no new event this frame -- that's the
+    // whole point of a trailing-edge debounce: react once activity has actually stopped).
+    if (PendingResizeIsSettled()) {
+        width = pendingResizeWidth_;
+        height = pendingResizeHeight_;
+        wasResized = true;
+        hasPendingResize_ = false;
+
+        ctx.Out(WindowNodeConfig::WIDTH_OUT, width);
+        ctx.Out(WindowNodeConfig::HEIGHT_OUT, height);
+
+        // Mark self dirty too (mirrors ProcessPendingEvents): SwapChainNode independently marks
+        // itself dirty via its own WindowResizedMessage subscription, but PickIdTargetNode/
+        // VoxelSelectionProviderNode are dependents of THIS node (not SwapChainNode) for their
+        // WIDTH/HEIGHT/VIEWPORT_WIDTH/VIEWPORT_HEIGHT inputs. Without this, they never enter the
+        // resize recompile wave: the pick-ID ring stays stale at the old extent while
+        // VoxelSelectionProviderNode reads the new extent live every frame, so the next click's
+        // readback copy samples outside the ring image's bounds (undefined behavior, observed as a
+        // crash on lavapipe).
+        MarkNeedsRecompile();
+
+        if (GetMessageBus()) {
+            GetMessageBus()->Publish(
+                std::make_unique<EventTypes::WindowResizedMessage>(instanceId, width, height)
+            );
+        }
+
+        NODE_LOG_INFO("[WindowNode] Processed resize: " + std::to_string(width) + "x" + std::to_string(height));
     }
 }
 
@@ -184,34 +213,36 @@ void WindowNode::ProcessPendingEvents() {
 
     for (const auto& event : eventsToProcess) {
         if (event.type == WindowEvent::Type::Resize) {
-            // No ctx here (this runs outside node Execute()) -- update state + bus-publish the resize
-            // so SwapChainNode still hears about it and marks itself dirty. The graph-slot outputs
-            // (WIDTH_OUT/HEIGHT_OUT) can only be republished by CompileImpl, so mark THIS node for
-            // recompile too: WindowNode recompiles first in execution order, CompileImpl republishes
-            // the slots (window/surface persist across recompile by design), and the dependent-marking
-            // cascade refreshes SwapChainNode + the pick/viewport consumers. While paused the recompile
-            // defers and runs on the restore Update -- exactly the desired timing.
+            // Same trailing-edge debounce as ExecuteImpl -- record only, apply once settled below.
             if (event.width != width || event.height != height) {
-                width = event.width;
-                height = event.height;
-                wasResized = true;
-                MarkNeedsRecompile();
-
-                if (GetMessageBus()) {
-                    GetMessageBus()->Publish(
-                        std::make_unique<EventTypes::WindowResizedMessage>(
-                            instanceId,
-                            event.width,
-                            event.height
-                        )
-                    );
-                }
-
-                NODE_LOG_INFO("[WindowNode] Processed resize (paused path): " + std::to_string(event.width) + "x" + std::to_string(event.height));
+                RecordPendingResize(event.width, event.height);
             }
             continue;
         }
         PublishNonResizeEvent(event);
+    }
+
+    // No ctx here (this runs outside node Execute()) -- update state + bus-publish the resize so
+    // SwapChainNode still hears about it and marks itself dirty. The graph-slot outputs
+    // (WIDTH_OUT/HEIGHT_OUT) can only be republished by CompileImpl, so mark THIS node for recompile
+    // too: WindowNode recompiles first in execution order, CompileImpl republishes the slots
+    // (window/surface persist across recompile by design), and the dependent-marking cascade
+    // refreshes SwapChainNode + the pick/viewport consumers. While paused the recompile defers and
+    // runs on the restore Update -- exactly the desired timing.
+    if (PendingResizeIsSettled()) {
+        width = pendingResizeWidth_;
+        height = pendingResizeHeight_;
+        wasResized = true;
+        hasPendingResize_ = false;
+        MarkNeedsRecompile();
+
+        if (GetMessageBus()) {
+            GetMessageBus()->Publish(
+                std::make_unique<EventTypes::WindowResizedMessage>(instanceId, width, height)
+            );
+        }
+
+        NODE_LOG_INFO("[WindowNode] Processed resize (paused path): " + std::to_string(width) + "x" + std::to_string(height));
     }
 }
 

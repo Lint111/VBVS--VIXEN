@@ -48,6 +48,15 @@ public:
     PickIdTargetNode(const std::string& instanceName, NodeType* nodeType);
     ~PickIdTargetNode() override = default;
 
+#if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
+    // Fail-scenario seam: the extent the ring's images_ were actually created at, so a regression
+    // test can assert directly on "did the ring follow a resize" without depending on the
+    // out-of-bounds copy in ReadCenterPixel happening to segfault (that's undefined behavior --
+    // whether it faults depends on allocator/page layout, not on whether the bug is present).
+    uint32_t RingWidthForTest() const { return ringWidth_; }
+    uint32_t RingHeightForTest() const { return ringHeight_; }
+#endif
+
 protected:
     void SetupImpl(TypedSetupContext&    ctx) override;
     void CompileImpl(TypedCompileContext& ctx) override;
