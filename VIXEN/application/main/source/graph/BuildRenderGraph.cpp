@@ -512,9 +512,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Orbit mode: yaw=0 means camera at +Z looking toward orbitCenter
     // yaw=pi means camera at -Z looking toward +Z (into the grid)
     // For camera at +Z looking toward grid, use yaw=0
-    camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_X, 64.0f);   // Center X (ignored in orbit mode)
-    camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Y, 64.0f);   // Center Y (ignored in orbit mode)
-    camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Z, 300.0f);  // Outside grid (ignored in orbit mode)
+    camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_POSITION, glm::vec3(64.0f, 64.0f, 300.0f));  // ignored in orbit mode
     camera->SetParameter(CameraNodeConfig::PARAM_YAW, 0.0f);         // Camera at +Z, looking toward -Z
     camera->SetParameter(CameraNodeConfig::PARAM_PITCH, 0.0f);
 

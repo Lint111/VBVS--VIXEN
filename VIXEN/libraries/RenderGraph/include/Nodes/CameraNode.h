@@ -145,6 +145,17 @@ private:
     // recompile (resize, any node's param edit) — applying a pose param only when its stored
     // value actually changed keeps recompiles from snapping the live orbit camera back to t0,
     // while setcam/lookcam-style param writes still land exactly once.
+    // Last-applied pose-param tracking for the NEW Vec3/Mat4 params (spec 2026-07-04
+    // camera-transform-refactor). NaN doesn't generalize as a "never applied" sentinel for
+    // vec3/mat4 (no natural all-NaN check without per-component comparison), so these use an
+    // explicit `bool hasApplied` flag instead, paired with the last-applied value for
+    // change-detection (mirrors the float applyIfChanged's semantics exactly, just typed).
+    bool hasAppliedCameraPosition_ = false;
+    glm::vec3 lastCameraPosition_{0.0f};
+    bool hasAppliedOrbitCenter_ = false;
+    glm::vec3 lastOrbitCenter_{0.0f};
+    bool hasAppliedInitialFlyTransform_ = false;
+    glm::mat4 lastInitialFlyTransform_{1.0f};
     float lastParamYaw_ = NAN, lastParamPitch_ = NAN;
     float lastParamOrbitDist_ = NAN;
     float lastParamCameraMode_ = NAN;   // mirrors the other lastParam*_ change-tracking fields

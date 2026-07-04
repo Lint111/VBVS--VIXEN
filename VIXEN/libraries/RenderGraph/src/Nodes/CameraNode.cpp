@@ -67,26 +67,46 @@ void CameraNode::SetupImpl(TypedSetupContext& ctx) {
         apply(v);
         lastApplied = v;
     };
-    applyIfChanged(CameraNodeConfig::PARAM_CAMERA_X, lastParamCamX_, [&](float v) { cameraPosition.x = v; });
-    applyIfChanged(CameraNodeConfig::PARAM_CAMERA_Y, lastParamCamY_, [&](float v) { cameraPosition.y = v; });
-    applyIfChanged(CameraNodeConfig::PARAM_CAMERA_Z, lastParamCamZ_, [&](float v) { cameraPosition.z = v; });
-    applyIfChanged(CameraNodeConfig::PARAM_YAW,   lastParamYaw_,   [&](float v) { yaw = v; });
-    applyIfChanged(CameraNodeConfig::PARAM_PITCH, lastParamPitch_, [&](float v) { pitch = v; });
+    // Vec3/Mat4-typed parallel (spec 2026-07-04): same semantics, typed for the new collapsed
+    // pose params — a bool `hasApplied` flag replaces the NaN sentinel since vec3/mat4 have no
+    // natural "unset" value to compare against.
+    auto applyIfChangedV3 = [&](const char* name, bool& hasApplied, glm::vec3& lastApplied, auto&& apply) {
+        if (GetParameter(name) == nullptr) return;
+        const glm::vec3 v = GetParameterValue<glm::vec3>(name, glm::vec3(0.0f));
+        if (!forceApply && hasApplied && v == lastApplied) return;
+        apply(v);
+        lastApplied = v;
+        hasApplied = true;
+    };
+    auto applyIfChangedM4 = [&](const char* name, bool& hasApplied, glm::mat4& lastApplied, auto&& apply) {
+        if (GetParameter(name) == nullptr) return;
+        const glm::mat4 v = GetParameterValue<glm::mat4>(name, glm::mat4(1.0f));
+        if (!forceApply && hasApplied && v == lastApplied) return;
+        apply(v);
+        lastApplied = v;
+        hasApplied = true;
+    };
+    applyIfChangedV3(CameraNodeConfig::PARAM_CAMERA_POSITION, hasAppliedCameraPosition_, lastCameraPosition_,
+        [&](const glm::vec3& v) { Vixen::RenderGraph::SetPosition(transform, v); });
+    applyIfChanged(CameraNodeConfig::PARAM_YAW, lastParamYaw_, [&](float v) {
+        transform = Vixen::RenderGraph::ComposeTransform(Vixen::RenderGraph::ExtractPosition(transform), v,
+            Vixen::RenderGraph::ExtractYawPitch(transform).second);
+    });
+    applyIfChanged(CameraNodeConfig::PARAM_PITCH, lastParamPitch_, [&](float v) {
+        transform = Vixen::RenderGraph::ComposeTransform(Vixen::RenderGraph::ExtractPosition(transform),
+            Vixen::RenderGraph::ExtractYawPitch(transform).first, v);
+    });
     // Orbit-model pose requests (host click-to-fly / console): re-anchor the orbit camera.
-    applyIfChanged(CameraNodeConfig::PARAM_ORBIT_CENTER_X, lastParamOrbitCX_, [&](float v) { orbitCenter.x = v; });
-    applyIfChanged(CameraNodeConfig::PARAM_ORBIT_CENTER_Y, lastParamOrbitCY_, [&](float v) { orbitCenter.y = v; });
-    applyIfChanged(CameraNodeConfig::PARAM_ORBIT_CENTER_Z, lastParamOrbitCZ_, [&](float v) { orbitCenter.z = v; });
+    applyIfChangedV3(CameraNodeConfig::PARAM_ORBIT_CENTER, hasAppliedOrbitCenter_, lastOrbitCenter_,
+        [&](const glm::vec3& v) { orbitCenter = v; });
     applyIfChanged(CameraNodeConfig::PARAM_ORBIT_DISTANCE, lastParamOrbitDist_, [&](float v) {
         orbitDistance = glm::clamp(v, kOrbitDistanceMin, kOrbitDistanceMax);
     });
     applyIfChanged(CameraNodeConfig::PARAM_CAMERA_MODE, lastParamCameraMode_, [&](float v) {
         mode = (v >= 0.5f) ? CameraMode::Orbit : CameraMode::FreeFly;
     });
-    applyIfChanged(CameraNodeConfig::PARAM_INITIAL_FLY_X, lastParamInitialFlyX_, [&](float v) { flyPosition.x = v; });
-    applyIfChanged(CameraNodeConfig::PARAM_INITIAL_FLY_Y, lastParamInitialFlyY_, [&](float v) { flyPosition.y = v; });
-    applyIfChanged(CameraNodeConfig::PARAM_INITIAL_FLY_Z, lastParamInitialFlyZ_, [&](float v) { flyPosition.z = v; });
-    applyIfChanged(CameraNodeConfig::PARAM_INITIAL_FLY_YAW, lastParamInitialFlyYaw_, [&](float v) { flyYaw = v; });
-    applyIfChanged(CameraNodeConfig::PARAM_INITIAL_FLY_PITCH, lastParamInitialFlyPitch_, [&](float v) { flyPitch = v; });
+    applyIfChangedM4(CameraNodeConfig::PARAM_INITIAL_FLY_TRANSFORM, hasAppliedInitialFlyTransform_, lastInitialFlyTransform_,
+        [&](const glm::mat4& v) { transform = v; });
 
     {
         const glm::vec3 pos = Vixen::RenderGraph::ExtractPosition(transform);
