@@ -82,6 +82,11 @@ void CameraNode::SetupImpl(TypedSetupContext& ctx) {
     applyIfChanged(CameraNodeConfig::PARAM_CAMERA_MODE, lastParamCameraMode_, [&](float v) {
         mode = (v >= 0.5f) ? CameraMode::Orbit : CameraMode::FreeFly;
     });
+    applyIfChanged(CameraNodeConfig::PARAM_INITIAL_FLY_X, lastParamInitialFlyX_, [&](float v) { flyPosition.x = v; });
+    applyIfChanged(CameraNodeConfig::PARAM_INITIAL_FLY_Y, lastParamInitialFlyY_, [&](float v) { flyPosition.y = v; });
+    applyIfChanged(CameraNodeConfig::PARAM_INITIAL_FLY_Z, lastParamInitialFlyZ_, [&](float v) { flyPosition.z = v; });
+    applyIfChanged(CameraNodeConfig::PARAM_INITIAL_FLY_YAW, lastParamInitialFlyYaw_, [&](float v) { flyYaw = v; });
+    applyIfChanged(CameraNodeConfig::PARAM_INITIAL_FLY_PITCH, lastParamInitialFlyPitch_, [&](float v) { flyPitch = v; });
 
     NODE_LOG_INFO("Camera position: (" + std::to_string(cameraPosition.x) + ", " +
                   std::to_string(cameraPosition.y) + ", " + std::to_string(cameraPosition.z) +

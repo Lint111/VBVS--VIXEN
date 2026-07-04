@@ -85,6 +85,16 @@ CONSTEXPR_NODE_CONFIG(CameraNodeConfig,
     // values). Same pose-param semantics as the orbit params above: applied via applyIfChanged,
     // forced to reapply whenever PARAM_POSE_SEQ changes.
     static constexpr const char* PARAM_CAMERA_MODE = "camera_mode";
+    // Initial free-fly pose (spec 2026-07-04 camera-scale-awareness): the host computes a
+    // scene-scale-aware starting position/orientation (from the same RenderWindow used to frame
+    // the voxel-grid section) and sends it once at boot, or again on the `resetcam` console
+    // command. Same pose-param semantics as the params above: applied via applyIfChanged, forced
+    // to reapply whenever PARAM_POSE_SEQ changes. Only meaningful while mode == FreeFly.
+    static constexpr const char* PARAM_INITIAL_FLY_X = "initial_fly_x";
+    static constexpr const char* PARAM_INITIAL_FLY_Y = "initial_fly_y";
+    static constexpr const char* PARAM_INITIAL_FLY_Z = "initial_fly_z";
+    static constexpr const char* PARAM_INITIAL_FLY_YAW = "initial_fly_yaw";
+    static constexpr const char* PARAM_INITIAL_FLY_PITCH = "initial_fly_pitch";
     // Forces reapply of every present pose param this SetupImpl even when its value is unchanged
     // from lastApplied (the applyIfChanged change-tracking normally skips a same-value write).
     // Field bug 2026-07-03: a console reset to a pose already equal to the stored value (e.g.

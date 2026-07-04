@@ -62,6 +62,12 @@ public:
     /// pick) must read this, not the params — they diverge as soon as the user orbits/zooms.
     const CameraData& GetCurrentCameraData() const { return currentCameraData; }
 
+    /// Live pose model (spec 2026-07-04): lets the host detect a mode transition it didn't
+    /// trigger itself (e.g. the F-key Orbit->FreeFly exit, which is handled entirely inside
+    /// ExecuteImpl — the host has no other way to know it happened). Poll once per tick and
+    /// compare against the previously-polled value to detect the edge.
+    CameraMode GetMode() const { return mode; }
+
 protected:
     void SetupImpl(TypedSetupContext& ctx) override;
     void CompileImpl(TypedCompileContext& ctx) override;
@@ -144,6 +150,8 @@ private:
     float lastParamOrbitCX_ = NAN, lastParamOrbitCY_ = NAN, lastParamOrbitCZ_ = NAN;
     float lastParamOrbitDist_ = NAN;
     float lastParamCameraMode_ = NAN;   // mirrors the other lastParam*_ change-tracking fields
+    float lastParamInitialFlyX_ = NAN, lastParamInitialFlyY_ = NAN, lastParamInitialFlyZ_ = NAN;
+    float lastParamInitialFlyYaw_ = NAN, lastParamInitialFlyPitch_ = NAN;
 
     // Last-seen pose_seq value (NaN = never seen). A change here (including the first sight)
     // forces every PRESENT pose param to reapply this SetupImpl regardless of lastApplied — see
