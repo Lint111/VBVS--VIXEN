@@ -164,7 +164,6 @@ private:
 
     // ====== Phase 0.4: Loop System ======
     uint32_t physicsLoopID = 0;                      // Physics loop at 60Hz
-    uint32_t simLoopID = 0;                          // Logic loop for the embedded sim (fixed cadence)
     NodeHandle voxelGridNode_{};                     // dense debug-buffer node (still in graph; no longer the render source)
     NodeHandle bodyOctreeSceneNode_{};               // M-wire: sparse shell octree node (bindings 1/2/3/5/10)
     NodeHandle windowNode_{};                        // stored so GetWindowHandle() can query the WindowNode live
@@ -176,9 +175,6 @@ private:
     // are managed by the render graph nodes, not the application
 
 public:
-    // --- Embedded-sim driver seams (host-driven; VIXEN-agnostic) -----------------------------------
-    // True when the SimLoop's fixed timestep is due this frame; outDt = that fixed timestep (seconds).
-    bool ShouldStepLogic(double& outDt);
     // Mark the dense voxel scene for regeneration (kept for legacy/demo callers; not called by the
     // body render path post M-wire — bodies are pushed via SetBodyInstances instead).
     void MarkVoxelSceneDirty();

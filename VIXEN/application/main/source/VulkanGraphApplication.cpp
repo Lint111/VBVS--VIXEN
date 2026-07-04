@@ -178,16 +178,6 @@ void VulkanGraphApplication::Initialize() {
     mainLogger->Debug("Physics loop registered with ID: " + std::to_string(physicsLoopID));
     mainLogger->Info("Registered PhysicsLoop (60Hz) with ID: " + std::to_string(physicsLoopID));
 
-    // Register sim logic loop at 30Hz (decoupled from render fps; drives the embedded sim)
-    simLoopID = renderGraph->RegisterLoop(LoopConfig{
-        1.0 / 30.0,                                  // 30Hz logic cadence
-        "SimLoop",
-        LoopCatchupMode::MultipleSteps,
-        0.25  // Max 250ms catchup
-    });
-    mainLogger->Debug("Sim loop registered with ID: " + std::to_string(simLoopID));
-    mainLogger->Info("Registered SimLoop (30Hz) with ID: " + std::to_string(simLoopID));
-
     if (mainLogger) {
         mainLogger->Info("VulkanGraphApplication initialized successfully");
     }
@@ -593,18 +583,6 @@ void VulkanGraphApplication::EnableNodeLogger(const std::string& nodeName, bool 
             mainLogger->Warning("Node '" + nodeName + "' has no logger");
         }
     }
-}
-
-// --- Embedded-sim driver seams -------------------------------------------------------------------
-
-bool VulkanGraphApplication::ShouldStepLogic(double& outDt) {
-    const auto* ref = renderGraph->GetLoopManager().GetLoopReference(simLoopID);
-    if (ref != nullptr && ref->shouldExecuteThisFrame) {
-        outDt = 1.0 / 30.0;                         // the SimLoop's fixed timestep
-        return true;
-    }
-    outDt = 0.0;
-    return false;
 }
 
 void VulkanGraphApplication::MarkVoxelSceneDirty() {
