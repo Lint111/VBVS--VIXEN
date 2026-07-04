@@ -107,6 +107,12 @@ void CameraNode::SetupImpl(TypedSetupContext& ctx) {
     });
     applyIfChangedM4(CameraNodeConfig::PARAM_INITIAL_FLY_TRANSFORM, hasAppliedInitialFlyTransform_, lastInitialFlyTransform_,
         [&](const glm::mat4& v) { transform = v; });
+    applyIfChanged(CameraNodeConfig::PARAM_SCENE_SCALE, lastParamSceneScale_, [&](float v) {
+        sceneScale = v;
+        flySpeed = sceneScale * 0.2f;
+        moveSpeed = sceneScale * 0.2f;
+        zoomSpeed = sceneScale * 0.2f;
+    });
 
     {
         const glm::vec3 pos = Vixen::RenderGraph::ExtractPosition(transform);
@@ -369,11 +375,10 @@ void CameraNode::ApplyMovement(float deltaTime) {
         newPos.y += movementDelta.y * flySpeed * deltaTime;
         Vixen::RenderGraph::SetPosition(transform, newPos);
     } else {
-        // ORBIT MODE (unchanged):
+        // ORBIT MODE (unchanged control scheme; zoomSpeed now a scale-derived member field):
         // W/S: Zoom in/out (change orbit distance)
         // A/D: Move orbit center left/right (X axis)
         // Q/E: Move orbit center up/down (Y axis)
-        float zoomSpeed = 100.0f;  // Scaled for 128^3 world
         orbitDistance -= movementDelta.z * zoomSpeed * deltaTime;  // W zooms in, S zooms out
         orbitDistance = glm::clamp(orbitDistance, kOrbitDistanceMin, kOrbitDistanceMax);
 

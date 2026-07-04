@@ -90,6 +90,11 @@ CONSTEXPR_NODE_CONFIG(CameraNodeConfig,
     // Mat4-typed applyIfChanged variant, forced to reapply whenever PARAM_POSE_SEQ changes. Only
     // meaningful while mode == FreeFly.
     static constexpr const char* PARAM_INITIAL_FLY_TRANSFORM = "initial_fly_transform";
+    // Scene-scale reference (spec 2026-07-04 camera-speed-scale-derived): the host sends
+    // win.halfExtent once at boot (and again on resetcam) so CameraNode can derive
+    // flySpeed/zoomSpeed/moveSpeed proportional to the ACTUAL system's extent instead of a fixed
+    // constant tuned for a much larger world.
+    static constexpr const char* PARAM_SCENE_SCALE = "scene_scale";
     // Forces reapply of every present pose param this SetupImpl even when its value is unchanged
     // from lastApplied (the applyIfChanged change-tracking normally skips a same-value write).
     // Field bug 2026-07-03: a console reset to a pose already equal to the stored value (e.g.

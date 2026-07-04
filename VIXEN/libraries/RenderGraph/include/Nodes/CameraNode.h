@@ -119,7 +119,12 @@ private:
     // Free-fly's own initial seed is set directly into `transform` in the constructor (see
     // CameraNode.cpp) rather than tracked as separate fields here — both modes now share the one
     // `transform` field above.
-    float flySpeed = 20.0f;               // units/sec, scroll-wheel adjustable in FreeFly
+    // sceneScale (spec 2026-07-04 camera-speed-scale-derived): the host-sent win.halfExtent,
+    // used to derive flySpeed/zoomSpeed/moveSpeed proportional to the system's actual extent.
+    // Default 1.0f is a placeholder until the first PARAM_SCENE_SCALE arrives at boot — never
+    // divided into, only multiplied, so a stale default can't produce a divide-by-zero.
+    float sceneScale = 1.0f;
+    float flySpeed = sceneScale * 0.2f;   // units/sec, scroll-wheel adjustable in FreeFly
     static constexpr float kFlySpeedMin = 2.0f;
     static constexpr float kFlySpeedMax = 200.0f;
     static constexpr float kFlySpeedScrollFactor = 1.15f;  // multiplicative step per wheel notch
@@ -134,9 +139,13 @@ private:
     glm::vec2 rotationDelta{0.0f};  // Yaw/pitch from mouse (raw accumulation)
     glm::vec2 smoothedRotationDelta{0.0f};  // Smoothed rotation for jitter reduction
 
-    // Camera control parameters
-    float moveSpeed = 20.0f;       // Horizontal movement: units per second (scaled for 10^3 world)
-    float verticalSpeed = 20.0f;   // Vertical movement (QE): units per second
+    // Camera control parameters — moveSpeed/zoomSpeed now DERIVED from sceneScale (spec 2026-07-04
+    // camera-speed-scale-derived), set alongside flySpeed whenever PARAM_SCENE_SCALE changes.
+    // zoomSpeed was previously a local variable inside ApplyMovement's Orbit branch; promoted to a
+    // member field so it updates in the same place as flySpeed/moveSpeed.
+    float moveSpeed = sceneScale * 0.2f;   // Horizontal movement: units per second
+    float zoomSpeed = sceneScale * 0.2f;   // Orbit W/S distance-zoom speed
+    float verticalSpeed = 20.0f;   // Vertical movement (QE): units per second (unused — see note below; left as-is, out of this fix's scope)
     float mouseSensitivity = 0.0015f;  // Radians per pixel (reduced from 0.004 for less sensitivity)
     float mouseSmoothingFactor = 0.6f;  // 0=no smoothing, 1=instant (0.6 = responsive)
     float maxRotationDeltaPerFrame = 100.0f;  // Max pixels per frame to prevent jumps
@@ -159,6 +168,7 @@ private:
     float lastParamYaw_ = NAN, lastParamPitch_ = NAN;
     float lastParamOrbitDist_ = NAN;
     float lastParamCameraMode_ = NAN;   // mirrors the other lastParam*_ change-tracking fields
+    float lastParamSceneScale_ = NAN;   // tracks PARAM_SCENE_SCALE (plain float, same pattern)
 
     // Last-seen pose_seq value (NaN = never seen). A change here (including the first sight)
     // forces every PRESENT pose param to reapply this SetupImpl regardless of lastApplied — see
