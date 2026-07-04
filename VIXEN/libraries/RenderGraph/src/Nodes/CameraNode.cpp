@@ -112,6 +112,12 @@ void CameraNode::SetupImpl(TypedSetupContext& ctx) {
         flySpeed = sceneScale * 0.2f;
         moveSpeed = sceneScale * 0.2f;
         zoomSpeed = sceneScale * 0.2f;
+        // Field bug 2026-07-04: the orbit-distance clamp bounds must scale too, or a fixed floor
+        // (the old 5.0) silently overrides doPick's correctly-computed tiny orbit distance,
+        // flinging the camera far away from whatever body was just clicked.
+        kOrbitDistanceMin = sceneScale * 0.001f;
+        kOrbitDistanceMax = sceneScale * 2.0f;
+        orbitDistance = glm::clamp(orbitDistance, kOrbitDistanceMin, kOrbitDistanceMax);
     });
 
     {

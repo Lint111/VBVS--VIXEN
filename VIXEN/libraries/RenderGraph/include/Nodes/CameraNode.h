@@ -107,10 +107,13 @@ private:
     float orbitYaw = 0.0f;    // orbit angle around orbitCenter (was the shared `yaw` field pre-refactor)
     float orbitPitch = 0.0f;  // orbit angle around orbitCenter (was the shared `pitch` field pre-refactor)
 
-    // Orbit distance bounds (keeps camera inside the 128^3 world). Shared by W/S zoom
-    // (ApplyMovement) and wheel zoom (ExecuteImpl, M4) so both paths agree on one ceiling.
-    static constexpr float kOrbitDistanceMin = 5.0f;
-    static constexpr float kOrbitDistanceMax = 120.0f;
+    // Orbit distance bounds — DERIVED from sceneScale (field bug 2026-07-04: fixed 5.0/120.0
+    // constants from the old 128^3-world scale silently clamped doPick's correctly-computed tiny
+    // orbit distance (e.g. 0.0012 AU) up to 5.0 — 4000x too far, reading as "camera flies away
+    // when I click a body". Shared by W/S zoom (ApplyMovement), wheel zoom (ExecuteImpl), and
+    // PARAM_ORBIT_DISTANCE's applyIfChanged (SetupImpl) so all three paths agree on one bound.
+    float kOrbitDistanceMin = 0.005f;   // sceneScale * 0.001 once the first PARAM_SCENE_SCALE arrives
+    float kOrbitDistanceMax = 10.0f;    // sceneScale * 2.0 once the first PARAM_SCENE_SCALE arrives
 
     // Which pose model is currently active. Starts in FreeFly (spec 2026-07-04): a player should
     // be able to fly around before ever clicking a body into orbit.
