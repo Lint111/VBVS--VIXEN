@@ -170,12 +170,10 @@ Yeroket suite fails if any pinned literal moves.
   `git checkout --` it before committing.
 - **Smoothness for `SmoothUnion` packs into `SdfInstruction.data[2]`** (i.e. `Data0.z`), not `.x` — verified
   against the real vendored opcode enum during M3, not assumed from a comment.
-- **`BakeSdfWorld` samples raw grid-integer coordinates with no center-offset.** `RecipeBakeConfig::center`
-  is metadata-only and not applied at bake time, so an object authored "centered at the origin" only lands
-  correctly in the grid's positive octant corner. Every existing render-gate test (including this
-  increment's) hand-authors positive coordinates to work around this rather than fixing the bake path — see
-  §"Next steps" in the design doc for a proposal to resolve this properly before Inc2 builds further on
-  top of it.
+- **`BakeRecipeInstructionsToSdfWorld` correctly applies `center`** (`p - center` at eval, matching the
+  analytic `evalSdf` convention) — fixed in Inc2a. Recipes are authored OBJECT-CENTERED (local origin);
+  `center`/`RecipeBakeConfig::center` places them in the grid at bake time. See
+  [[../01-Architecture/Voxel-Authoring-App-Inc2a-BakeCenter-Plan-2026-07]].
 - **GLFW on headless WSL** needs `#define GLFW_INCLUDE_NONE` before `#include <GLFW/glfw3.h>`, otherwise it
   pulls in `<GL/gl.h>`, which isn't present.
 - **Header-order hazard**: any translation unit that includes both a "gaia-pulling" header
