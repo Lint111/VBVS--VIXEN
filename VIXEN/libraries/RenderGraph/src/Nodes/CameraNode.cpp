@@ -299,7 +299,11 @@ void CameraNode::UpdateCameraData(float aspectRatio) {
 }
 
 void CameraNode::ExitOrbitToFreeFly() {
+    // Seed from the current orbit-derived pose so the view doesn't jump on transition.
     flyPosition = cameraPosition;
+    const glm::vec3& fwd = currentCameraData.cameraDir;
+    flyPitch = std::asin(glm::clamp(fwd.y, -1.0f, 1.0f));
+    flyYaw = std::atan2(fwd.x, -fwd.z);
     mode = CameraMode::FreeFly;
 }
 
