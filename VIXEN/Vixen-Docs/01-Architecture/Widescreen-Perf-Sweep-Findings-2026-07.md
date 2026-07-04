@@ -1,6 +1,6 @@
 # Widescreen Perf Sweep — Verified Findings & Measurements (2026-07)
 
-**Status:** ANALYSIS OF RECORD for the widescreen-FPS-drop fix program. Companion plan: `Widescreen-Perf-Fix-Plan-2026-07.md`.
+**Status:** PROGRAM COMPLETE (2026-07-04) — all six milestones (M1-M6) shipped. ANALYSIS OF RECORD for the widescreen-FPS-drop fix program. Companion plan: `Widescreen-Perf-Fix-Plan-2026-07.md`.
 **Provenance:** 10-subsystem multi-agent sweep (88 raw findings → 63 canonical → top-32 verified by two adversarial lenses each → 12 confirmed / 10 plausible / 10 rejected), followed by empirical A/B measurement on the real GPU (Release/Ninja build, validation off, IMMEDIATE present). Full machine-readable result: session scratchpad `sweep_result.json`.
 
 ---
@@ -295,5 +295,28 @@ p99 hitch attribution + rank-9 fix + Critical GPU-timing regression caught and f
 **Critical caught mid-milestone**: M5.1's UIRenderNode GPU timer made it a 2nd per-frame GPUQueryManager::BeginFrame caller; BeginFrame did a WHOLE-POOL reset, so UI's call (after compute in the same frame) wiped ComputeDispatchNode's timestamps -> real-GPU Dispatch: summaries vanished (0 lines). Root-fixed (not a band-aid): BeginFrame changed to per-slot reset (ResetQueryRange on just that slot's query pair) -> multi-consumer coordination problem removed structurally, no "one owner" convention needed. Opus-validated twice (found the issue, then approved the fix) with a regression test proving slot isolation.
 
 **L2 (filed, not fixed — shared CashSystem infra, correctly out of bounded scope)**: ComputePipelineCacher::ComputeKey hashes shaderKey + a resize-invariant layout STRING while PipelineLayoutCacher keys the live VkDescriptorSetLayout handle -> one-frame stale-pipeline-cache hit after every resize (the VUID-vkCmdBindPipeline burst). Also noted: DescriptorSetNode/ComputePipelineNode CleanupImpl destroy unconditionally on every recompile (no CleanupReason::Recompile persistence guard — same class as KI-004). Both -> Known-Issues follow-ups at close-out.
+
+### M6 gate (2026-07-04, WSL build + unit tests — CPU-only hygiene, no live-GPU gate needed)
+
+**M6.1 (rank 11 fix):** `NODE_LOG_*`/`NODE_LOG_*_OBJ` macros (`NodeLogging.h`) now check `nodeLogger->IsEnabled()` AND `Logger::GetGlobalMinLevel() <= <this macro's level>` before evaluating the `msg` argument, so a disabled level no longer pays for the caller's `std::string` concatenation. Mirrors the filtering `Logger::Log()` already applied internally — observable output for enabled levels is unchanged. Verified: `test_logger_basic` 22/22, `test_rendergraph_basic` 3/3, `test_rendergraph_dependency` 4/4, `test_node_self_registration` 2/2, `test_device_node` 22/22, `test_typednode_helpers` 2/2 — all green, no regressions.
+
+**M6.2 (rank 12 fix):** `GraphLifecycleHooks::RegisterNodeHook` gained an optional `targetNode` parameter; `ExecuteNodeHooks` now looks its target node up in a `std::unordered_map<NodeInstance*, vector<NodeHookEntry>[phases]>` instead of every node's Execute()/Compile()/Setup()/Cleanup() walking every registered node hook in the graph and self-filtering by identity (the O(nodes x hooks) pattern from rank 12). `VariadicConnectionRule.cpp`'s two `RegisterNodeHook` call sites (its only production callers) now pass their real target node instead of self-filtering inside the callback body. New `test_graph_lifecycle_hooks.cpp` proves a hook registered for node A is never invoked when node B executes (not filtered-after-invoked — literally never called), plus untargeted/targeted coexistence and `ClearNodeHooks` coverage: 4/4 passing. No regressions: `test_connection_rule` 109/109, `test_accumulation_gather` 3/3, `test_multidispatch_integration` 22/22.
+
+---
+
+## PROGRAM COMPLETE (2026-07-04)
+
+All six milestones shipped. Headline before/after at 2560x1440 (default 3-procedural-body scene):
+
+| Metric | Before program | After program |
+|---|---|---|
+| Frame time | ~7.6 ms | ~3.9-4.5 ms |
+| FPS | ~131 | ~220-260 |
+| Steady p99 | 17-26 ms | 15-16 ms |
+| Fresh-window resolution (D1) | ALWAYS 800x600 regardless of requested size | honors requested size |
+
+Also fixed along the way: a genuine engine crash (in-flight resource teardown racing device-loss/resize recovery — the KI-004 persistent-handle class), plus 3 other real bugs found during measurement (D1 always-800x600 param-type mismatch, D2 dead GPU timing instrument for slots >=1, the M5 mid-milestone GPUQueryManager::BeginFrame whole-pool-reset regression that briefly zeroed real-GPU Dispatch summaries).
+
+Filed-not-fixed follow-ups (bounded out of this program's scope, tracked in `Known-Issues.md`): KI-005 (ComputePipelineCacher/PipelineLayoutCacher cache-key granularity mismatch — one-frame stale-pipeline-bind VUID burst per resize), KI-006 (DescriptorSetNode/ComputePipelineNode CleanupImpl unconditional teardown — the KI-004 pattern class, not yet applied here), KI-007 (`ComputeDispatchNode::seenRenderTargetImages_` unpruned stale handles — tiny), KI-008 (lavapipe no longer usable for this project — standing rule, all forward-looking plan-doc references corrected to the real-GPU/Mesa-Dozen path).
 
 **Remaining real-GPU tail**: 114 outlier frames in the 11-18ms range persist post-fix — genuine driver/compositor jitter, not the rank-9 leak (which is fully closed). Not chased further; outside this milestone's bounded scope.
