@@ -330,6 +330,14 @@ bool VulkanDevice::HasPresentSupport() const {
     return (graphicsQueueWithPresentIndex == graphicsQueueIndex);
 }
 
+bool VulkanDevice::RequiresFullImageTransfers() const {
+    if (graphicsQueueIndex >= queueFamilyProperties.size()) {
+        return false;
+    }
+    const VkExtent3D& granularity = queueFamilyProperties[graphicsQueueIndex].minImageTransferGranularity;
+    return granularity.width == 0 && granularity.height == 0 && granularity.depth == 0;
+}
+
 PFN_vkQueuePresentKHR VulkanDevice::GetPresentFunction() const {
     // vkQueuePresentKHR is always available when VK_KHR_swapchain extension is enabled
     // Return the standard function pointer

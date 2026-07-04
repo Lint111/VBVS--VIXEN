@@ -170,6 +170,18 @@ gtest_discover_tests(test_render_target_node)
 
 message(STATUS "[RenderGraph Tests] Added: test_render_target_node (AR#28)")
 
+# ComputeDispatchNode KI-007 fix Tests — pure unit tests, no device (see the test file header)
+add_executable(test_compute_dispatch_node
+    Nodes/test_compute_dispatch_node.cpp
+)
+
+target_link_libraries(test_compute_dispatch_node PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+
+set_target_properties(test_compute_dispatch_node PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_compute_dispatch_node)
+
+message(STATUS "[RenderGraph Tests] Added: test_compute_dispatch_node (KI-007 render-target layout tracking)")
+
 # Blend mode recipe + config Tests (AR#32) — pure unit tests, no device
 add_executable(test_blend_mode
     Nodes/test_blend_mode.cpp

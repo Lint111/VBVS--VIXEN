@@ -101,7 +101,14 @@ void RenderPassNode::CompileImpl(TypedCompileContext& ctx) {
     cacheParams.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     cacheParams.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     cacheParams.srcAccessMask = 0;
-    cacheParams.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    // LOAD_OP_LOAD reads the attachment's existing contents as part of the render pass's implicit
+    // initial-layout transition; without COLOR_ATTACHMENT_READ_BIT here the external dependency only
+    // orders the WRITE that follows, not that read, so anything that wrote the image just before
+    // this render pass (e.g. a compute blit) races the LOAD — SYNC-HAZARD-READ-AFTER-WRITE at
+    // vkCmdBeginRenderPass, and (once other synchronization is otherwise correct) the render view
+    // flicker this was chasing (KI-009).
+    cacheParams.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+        (colorLoadOp == AttachmentLoadOp::Load ? VK_ACCESS_COLOR_ATTACHMENT_READ_BIT : 0);
 
     // Register and get cacher using helper
     auto* cacher = RegisterCacherIfNeeded<

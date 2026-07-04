@@ -10,6 +10,9 @@
 #include "Nodes/UIRenderNode.h"               // AFTER the Recipe/gaia includes above
 #include "Nodes/UISelectionProviderNode.h"
 #include "Data/Nodes/UIRenderNodeConfig.h"
+#include "Nodes/CameraNode.h"
+#include "Data/Nodes/CameraNodeConfig.h"
+#include "Core/RenderGraph.h"
 #include <Logger.h>
 
 #define GLFW_INCLUDE_NONE   // don't pull in <GL/gl.h> (absent on headless/WSL builds)
@@ -57,6 +60,36 @@ void EditorApplication::BuildRenderGraph() {
         // open file editor.rml" (found via the windowed smoke test).
         ui->SetParameter(Vixen::RenderGraph::UIRenderNodeConfig::RML_DOCUMENT_PATH,
                           std::string("assets/ui/editor.rml"));
+    }
+
+    // Frame the loaded document by default: the interactive graph's CameraNode otherwise keeps
+    // its main-app orbit defaults (center=(5,5,5), distance=30 — tuned for the Cornell-box demo
+    // scene), which has no relationship to where the editor's object-centered geometry actually
+    // bakes. Ray-march world-position formula: p_world = p_base*renderScale + worldPos (see
+    // BodyInstanceRayMarch.comp); ApplyDocumentToScene uses worldPos=(0,0,0), renderScale=5.0,
+    // and RecipeBakeConfig's default center=(32,32,32) at resolution n=64, so grid-to-world =
+    // (kWorldGridSize/n)*renderScale = (10/64)*5 = 0.78125 and the baked center sits at world
+    // (25,25,25) — same target test_editor_document_render.cpp uses.
+    //
+    // Distance: the golden document's base layer is Box(1,1,1) (halfExtents=1 in grid/local
+    // space -- see that test's file header), so in world space (x*renderScale) its half-extent
+    // is 5 units, half-diagonal ~8.66. At the raymarch camera's 45-deg FOV, a distance camera
+    // ends up INSIDE the box below ~21 units (tan(22.5deg)*dist >= half-diagonal). The test's own
+    // eye offset (|(1.6,1.3,1.6)| ~= 2.6) only worked there because RenderPool's harness frames a
+    // single octree slot directly, bypassing this scale entirely -- copying it into the
+    // interactive app put the camera inside the box (verified: a flat, edgeless green fill with
+    // no visible faces, flickering against black -- the near/far-plane and self-intersection
+    // symptom of a camera embedded in solid geometry). 30 world units (matching the main app's
+    // original default, which was tuned for objects at this same ~10-unit scale) comfortably
+    // clears the half-diagonal with margin.
+    if (auto* cameraInst = GetRenderGraph() ? GetRenderGraph()->GetInstanceByName("raymarch_camera") : nullptr) {
+        using CC = Vixen::RenderGraph::CameraNodeConfig;
+        constexpr float kGridToWorld = (10.0f / 64.0f) * 5.0f;  // (kWorldGridSize/n) * renderScale
+        constexpr float kBakeCenterGrid = 32.0f;
+        cameraInst->SetParameter(CC::PARAM_ORBIT_CENTER_X, kBakeCenterGrid * kGridToWorld);
+        cameraInst->SetParameter(CC::PARAM_ORBIT_CENTER_Y, kBakeCenterGrid * kGridToWorld);
+        cameraInst->SetParameter(CC::PARAM_ORBIT_CENTER_Z, kBakeCenterGrid * kGridToWorld);
+        cameraInst->SetParameter(CC::PARAM_ORBIT_DISTANCE, 30.0f);
     }
 
     if (!ApplyDocumentToScene()) {

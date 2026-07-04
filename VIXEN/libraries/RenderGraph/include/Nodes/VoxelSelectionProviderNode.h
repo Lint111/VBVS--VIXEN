@@ -68,14 +68,20 @@ protected:
     void CleanupImpl(TypedCleanupContext& ctx) override;
 
 private:
-    // Lazily create the host-visible staging buffer for the single readback texel.
-    // Created once (first readback) and reused — picks are infrequent. Returns true
-    // when the staging buffer is ready. (Was VoxelSelectionProvider::EnsureStagingBuffer.)
-    bool EnsureStagingBuffer();
+    // Lazily (re)create the host-visible staging buffer, sized for `bytesNeeded`. Reused
+    // across clicks as long as the requested size doesn't grow (e.g. a window resize on
+    // the KI-012 full-image path); recreated on growth. Returns true when ready.
+    // (Was VoxelSelectionProvider::EnsureStagingBuffer, now size-parameterized for KI-012.)
+    bool EnsureStagingBuffer(VkDeviceSize bytesNeeded);
 
-    // Record the one-shot center-texel copy on commandPool_, submit on
-    // GetDevice()->queue with a fresh fence, wait it, then map the staged uint32 into
-    // pickIDOut. Returns true on success. (Was VoxelSelectionProvider::ReadCenterPixel.)
+    // Record the one-shot readback copy on commandPool_, submit on GetDevice()->queue with
+    // a fresh fence, wait it, then map the staged pixel(s) and extract the center texel into
+    // pickIDOut. Returns true on success. Branches on requiresFullImageTransfers_ (KI-012):
+    // when the graphics queue family's minImageTransferGranularity is (0,0,0), a sub-region
+    // copy (the single center texel at an arbitrary offset) is a spec violation on that queue
+    // — some drivers (Dozen) tolerate it anyway, but this isn't guaranteed elsewhere — so that
+    // case copies the WHOLE id image to a full-size staging buffer and indexes the center
+    // texel on the CPU side instead. (Was VoxelSelectionProvider::ReadCenterPixel.)
     bool ReadCenterPixel(uint32_t width, uint32_t height, uint32_t& pickIDOut);
 
     // Free the staging buffer + memory (idempotent). Called from CleanupImpl and on
@@ -88,10 +94,17 @@ private:
     VkCommandPool commandPool_ = VK_NULL_HANDLE;
     VkImage       idImage_     = VK_NULL_HANDLE;
 
-    // ----- Host-visible staging buffer for the single readback texel (R32_UINT) -----
+    // KI-012: cached once per Compile from GetDevice()->RequiresFullImageTransfers() — whether
+    // this device's graphics queue family requires whole-image transfers (see VulkanDevice.h).
+    bool requiresFullImageTransfers_ = false;
+
+    // ----- Host-visible staging buffer for the readback -----
+    // Sized for one R32_UINT texel on the common path, or the whole id image
+    // (stagingWidth_ * stagingHeight_ * sizeof(uint32_t)) when requiresFullImageTransfers_.
     VkBuffer       stagingBuffer_ = VK_NULL_HANDLE;
     VkDeviceMemory stagingMemory_ = VK_NULL_HANDLE;
-    static constexpr VkDeviceSize kStagingSize = sizeof(uint32_t);  // one R32_UINT texel
+    VkDeviceSize   stagingCapacity_ = 0;  // bytes actually allocated; EnsureStagingBuffer grows-only
+    static constexpr VkDeviceSize kSingleTexelSize = sizeof(uint32_t);  // one R32_UINT texel
 
     // ----- Provider config -----
     int priority_ = 0;  ///< Layer priority (PARAM_PRIORITY) stamped on every candidate.

@@ -394,13 +394,13 @@ void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cm
     // node-managed in Tier-1. The render target's FIRST write to a given image handle is
     // UNDEFINED->GENERAL (fresh/recreated image); every subsequent write to that SAME handle
     // follows a blit that left it TRANSFER_SRC_OPTIMAL, so the barrier's declared oldLayout must
-    // match (seenRenderTargetImages_ tracks which applies; RenderTargetNode's persistent-across-
-    // same-extent-recompile lifecycle means "new Compile" does NOT imply "new image").
+    // match the image's ACTUAL last-recorded layout (renderTargetImageLayouts_ tracks it exactly,
+    // not a seen/not-seen guess — see KI-007 and DecideRenderTargetPriorLayoutAndUpdate's comment;
+    // RenderTargetNode's persistent-across-same-extent-recompile lifecycle means "new Compile"
+    // does NOT imply "new image").
     if (renderTargetInfo) {
-        bool alreadySeen = !seenRenderTargetImages_.insert(writeImage).second;
-        VkImageLayout priorLayout = alreadySeen
-            ? VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
-            : VK_IMAGE_LAYOUT_UNDEFINED;
+        VkImageLayout priorLayout = DecideRenderTargetPriorLayoutAndUpdate(
+            renderTargetImageLayouts_, writeImage, VK_IMAGE_LAYOUT_GENERAL);
         TransitionImageToGeneralBarrier2(cmdBuffer, writeImage, priorLayout);
     } else {
         TransitionImageToGeneralBarrier2(cmdBuffer, writeImage);
@@ -647,7 +647,19 @@ void ComputeDispatchNode::BlitRenderTargetToSwapchain(
     VkImage renderTargetImage = renderTarget->GetCurrentImage();
     VkExtent2D srcExtent = renderTarget->GetExtent();
 
-    // --- Entry barriers: render target GENERAL->TRANSFER_SRC, swapchain UNDEFINED->TRANSFER_DST ---
+    // Swapchain-side counterpart to the KI-007 fix: the entry barrier below used to hardcode
+    // oldLayout=UNDEFINED for the swapchain image on EVERY frame, but that's only true for a
+    // swapchain image's true first use. On the leaveImageInGeneral path, the downstream UI render
+    // pass (PARAM_INITIAL_LAYOUT=General, PARAM_FINAL_LAYOUT=PresentSrc) moves this SAME image
+    // handle GENERAL->PRESENT_SRC_KHR and then vkQueuePresentKHR leaves it there — so the NEXT time
+    // this ring slot's image index comes back around, its real layout is PRESENT_SRC_KHR, not
+    // UNDEFINED. Declaring UNDEFINED anyway produced VUID-vkCmdDraw-None-09600 at the UI render
+    // pass's first draw (the render pass's initialLayout=General assertion was already false by
+    // the time the pass began), the root cause of the render-view flicker (KI-009).
+    const VkImageLayout swapchainPriorLayout = DecideRenderTargetPriorLayoutAndUpdate(
+        renderTargetImageLayouts_, swapchainImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+    // --- Entry barriers: render target GENERAL->TRANSFER_SRC, swapchain ?->TRANSFER_DST ---
     VkImageMemoryBarrier2 entryBarriers[2]{};
 
     entryBarriers[0].sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
@@ -663,9 +675,17 @@ void ComputeDispatchNode::BlitRenderTargetToSwapchain(
     entryBarriers[0].subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
 
     entryBarriers[1].sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
-    entryBarriers[1].srcStageMask        = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
+    // srcStageMask must match (or come after) the acquire semaphore's wait stage
+    // (VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, set on this command buffer's submit — see
+    // acquireWait.stageMask above) so this barrier actually chains an execution dependency off
+    // that wait. TOP_OF_PIPE_BIT here (the old value) is a no-op source that doesn't synchronize
+    // with anything, which is only harmless when oldLayout is a true first-use UNDEFINED (nothing
+    // to wait for) — once the swapchain-tracking fix above declares a real prior layout
+    // (PRESENT_SRC_KHR from a previous frame's present), this must correctly wait on the acquire,
+    // else validation reports SYNC-HAZARD-WRITE-AFTER-READ against vkAcquireNextImageKHR.
+    entryBarriers[1].srcStageMask        = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
     entryBarriers[1].srcAccessMask       = VK_ACCESS_2_NONE;
-    entryBarriers[1].oldLayout           = VK_IMAGE_LAYOUT_UNDEFINED;
+    entryBarriers[1].oldLayout           = swapchainPriorLayout;
     entryBarriers[1].dstStageMask        = VK_PIPELINE_STAGE_2_BLIT_BIT;
     entryBarriers[1].dstAccessMask       = VK_ACCESS_2_TRANSFER_WRITE_BIT;
     entryBarriers[1].newLayout           = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
@@ -679,6 +699,13 @@ void ComputeDispatchNode::BlitRenderTargetToSwapchain(
     entryDep.imageMemoryBarrierCount = 2;
     entryDep.pImageMemoryBarriers    = entryBarriers;
     GetDevice()->fpCmdPipelineBarrier2(cmdBuffer, &entryDep);
+
+    // KI-007: this command buffer's compute write already transitioned renderTargetImage to
+    // GENERAL earlier in the SAME recording (guaranteeing entryBarriers[0]'s hardcoded
+    // oldLayout=GENERAL above is correct), and this barrier just moved it to
+    // TRANSFER_SRC_OPTIMAL — record that so the NEXT command buffer that reuses this ring slot
+    // (a future frame) declares the correct oldLayout instead of guessing.
+    renderTargetImageLayouts_[renderTargetImage] = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
 
     // --- Blit (LINEAR filter — upscales/downscales src extent to dst extent) ---
     VkImageBlit blit{};
@@ -715,6 +742,14 @@ void ComputeDispatchNode::BlitRenderTargetToSwapchain(
         exitBarrier.dstAccessMask = VK_ACCESS_2_NONE;
         exitBarrier.newLayout     = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
     }
+
+    // Either way, this ring slot's image ends the frame at PRESENT_SRC_KHR by the time it's reused:
+    // on the leaveImageInGeneral path this function hands it to the UI render pass in GENERAL, but
+    // that pass's own finalLayout=PresentSrc (BuildRenderGraph.cpp) plus the present call moves it
+    // there before this same image index comes back around. Track that real end state (not the
+    // intermediate GENERAL this function leaves it in) so next frame's entry barrier above declares
+    // the correct oldLayout instead of hardcoding UNDEFINED.
+    renderTargetImageLayouts_[swapchainImage] = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
     VkDependencyInfo exitDep{};
     exitDep.sType                   = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;

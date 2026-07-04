@@ -127,6 +127,16 @@ void RenderTargetNode::ExecuteImpl(TypedExecuteContext& ctx) {
     if (target_.GetImageCount() > 0) {
         target_.currentIndex = (target_.currentIndex + 1) % target_.GetImageCount();
     }
+
+    // CompileImpl publishes CURRENT_VIEW once, frozen at whatever ring slot currentIndex was at
+    // compile time. DescriptorSetNode binds binding 0 from that value every frame (it never
+    // re-reads RENDER_TARGET/GetCurrentView() itself), while ComputeDispatchNode's barrier and
+    // dispatch resolve the image via the live IRenderTarget*/GetCurrentImage() above — so without
+    // republishing here the descriptor's bound view and the barrier/dispatch's actual image are
+    // the same physical ring slot on at most one frame in every imageCount, and mismatched
+    // (wrong layout at draw/dispatch time — VUID-vkCmdDraw-None-09600, visible as flicker,
+    // KI-009) on every other frame.
+    ctx.Out(RenderTargetNodeConfig::CURRENT_VIEW, target_.GetCurrentView());
 }
 
 void RenderTargetNode::CleanupImpl(TypedCleanupContext& ctx) {

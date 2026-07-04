@@ -86,6 +86,14 @@ public:
     bool HasPresentSupport() const;
     PFN_vkQueuePresentKHR GetPresentFunction() const;
 
+    // KI-012: some queue families (e.g. Mesa Dozen's transfer-capable graphics queue) report
+    // minImageTransferGranularity = (0,0,0), which per spec means vkCmdCopyImageToBuffer/
+    // vkCmdCopyBufferToImage on that queue only accept whole-image copies at offset (0,0,0) -- any
+    // sub-region copy (e.g. a single-texel readback) is a spec violation there even though some
+    // drivers tolerate it anyway. Checked once from the already-queried queueFamilyProperties
+    // (GetPhysicalDeviceQueuesAndProperties), not re-queried per call site.
+    bool RequiresFullImageTransfers() const;
+
     // ===== RTX Support (Phase K) =====
 
     /**

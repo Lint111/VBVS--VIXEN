@@ -11,6 +11,42 @@ Living log of confirmed-but-unfixed issues. Each entry: symptom, root cause, imp
 
 ---
 
+## KI-013 — `FailScenarioSweep_FrameSync.DeviceLostRecovery` segfaults inside Dozen's swapchain-image destroy path (regression against KI-004's documented-fixed state)
+
+**Discovered:** 2026-07-04, while verifying the KI-012 pick-ID fix didn't regress `test_fail_scenario_sweep` — running the FULL suite in one process segfaults right after `ResizeBurstDoesNotRecompileOncePerEvent`, before `FailScenarioSweep_FrameSync.DeviceLostRecovery` completes. Confirmed via `git stash` that this reproduces byte-identically at the pre-KI-012/pre-flicker-fix baseline (`origin/main` `9ddbb854`) — **not** caused by anything landed this session.
+
+**Symptom:** `DeviceLostRecovery` (run alone, isolated — same crash) segfaults during `RenderGraph::RecoverFromDeviceLoss()`'s rebuild phase, specifically while rebuilding `main_swapchain` (`SwapChainNode::CompileImpl` → `CreateSwapchainAndViews` → `VulkanSwapChain::CreateSwapChainColorImages`). GDB backtrace:
+```
+Thread 1 received signal SIGSEGV
+#0  0x... in ?? ()
+#1  wsi_destroy_image () from .../libvulkan_dzn.so
+#2  x11_swapchain_destroy () from .../libvulkan_dzn.so
+#3  VulkanSwapChain::CreateSwapChainColorImages(VkDevice_T*, VkSwapchainKHR_T*)
+#4  SwapChainNode::CreateSwapchainAndViews()
+#5  SwapChainNode::CompileImpl(...)
+#6  NodeInstance::Compile()
+#7  RenderGraph::RecoverFromDeviceLoss()
+#8  VulkanGraphApplication::Render()
+```
+
+**Root cause (not yet fully diagnosed):** a function named `CreateSwapChainColorImages` calling into the driver's `wsi_destroy_image`/`x11_swapchain_destroy` internals suggests `SwapChainNode`'s recreate path is passing a stale or already-destroyed `VkSwapchainKHR`/image handle to the driver during the device-loss recovery rebuild — i.e. the recovery path doesn't fully separate "destroy old swapchain resources" from "create new ones," or a resource that survived the earlier teardown wave (per KI-004's original class of bug — "nodes/resources surviving device-loss recovery with stale device state") gets handed back into a create call that internally tries to destroy it again. This may be a genuine regression of KI-004 (documented "RESOLVED... passing as hard gate" as of 2026-07-03) — possibly reintroduced by later work on this branch (M4 render-scale decoupling, widescreen-perf-fix M1-M6, or the P5 auto-sync work, all landed after KI-004's fix date) that didn't re-run this specific fail-scenario gate.
+
+**Impact:** `test_fail_scenario_sweep`'s device-loss-recovery regression gate is currently a crash, not a pass/fail signal — device-loss recovery (a real, user-facing reliability feature) may be silently broken again. Does not affect `vixen_editor`'s normal (non-device-loss) operation.
+
+**Reproduction:** `./build/wsl/application/main/test_fail_scenario_sweep --gtest_filter='FailScenarioSweep_FrameSync.DeviceLostRecovery'` (segfaults alone, no other tests needed) or `gdb -batch -ex run -ex bt --args ./build/wsl/application/main/test_fail_scenario_sweep --gtest_filter='*DeviceLostRecovery*'` for the trace above.
+
+**Fix options:** not investigated — this needs its own dedicated debugging session (likely another KI-004-style multi-layer teardown/rebuild-ordering bug). Start by diffing `SwapChainNode`'s Cleanup/Compile against what KI-004's original fix (`RenderGraph.cpp`'s `CleanupReason::DeviceLost` handling) guaranteed, and check whether `VulkanSwapChain::CreateSwapChainColorImages` is being called with a swapchain handle that a prior teardown step already destroyed.
+
+**Severity:** High (crash in a documented-fixed regression gate for a real reliability feature) · **Status:** OPEN — found this session as a side-effect of verifying an unrelated fix; not investigated further (out of scope for KI-012/KI-009's fixes)
+
+---
+
+## Test-suite note (not a KI): `test_fail_scenario_sweep` is flaky under the Vulkan validation layer
+
+Running any SINGLE `FailScenarioSweep*` test that does a live resize+recompile (e.g. `LiveResizeRecompilesPickIdRing`) under `VK_LAYER_KHRONOS_validation` alone can segfault (`vkCmdBindPipeline` referencing an already-deleted `VkDescriptorSetLayout`, stale command-buffer-in-use errors, then SIGSEGV) — but the SAME test passes cleanly with `[ PASSED ]` when run without the validation layer. This reproduces identically both before and after this session's changes, so it's pre-existing validation-layer/test-timing interaction, not a functional regression. Use the validation layer for spot-checking specific VUIDs on `vixen_editor` directly (as this session did for KI-009/KI-012); trust the plain (no-validation-layer) test run for pass/fail signal on `test_fail_scenario_sweep`.
+
+---
+
 ## KI-008 — lavapipe is no longer usable for this project
 
 **Discovered:** 2026-07-04, standing rule for the widescreen-perf-fix program's worktrees.
@@ -25,19 +61,63 @@ Living log of confirmed-but-unfixed issues. Each entry: symptom, root cause, imp
 
 ---
 
-## KI-007 — `ComputeDispatchNode::seenRenderTargetImages_` never prunes stale `VkImage` handles across resizes
+## Resolved (see below)
 
-**File/line:** `libraries/RenderGraph/include/Nodes/ComputeDispatchNode.h:125` (declaration), `libraries/RenderGraph/src/Nodes/ComputeDispatchNode.cpp:397-404` (usage).
+### KI-012 — `VoxelSelectionProviderNode`'s pick-ID readback violates queue transfer-granularity on Dozen
 
-**Symptom:** `seenRenderTargetImages_` is a `std::set<VkImage>` used to pick the correct `oldLayout` (`UNDEFINED` vs `TRANSFER_SRC_OPTIMAL`) for the render-target image's WSI-acquire barrier, keyed on whether a given `VkImage` handle has been seen before. Entries are only ever inserted (`.insert(writeImage)`), never erased.
+**Discovered:** 2026-07-04, live-gate run of `vixen_editor` under `VK_LAYER_KHRONOS_validation` while chasing KI-009/render flicker (unrelated — surfaced only on a mouse click, not idle rendering).
 
-**Root cause:** every window resize destroys and recreates the swapchain/render-target images, producing new `VkImage` handles; the old handles become dead entries in the set. Nothing prunes them, so the set grows by one stale entry per resize for the lifetime of the node.
+**File/line:** `libraries/RenderGraph/src/Nodes/VoxelSelectionProviderNode.cpp` (`ReadCenterPixel`), `libraries/VulkanResources/{include,src}/VulkanDevice.cpp` (`RequiresFullImageTransfers`).
 
-**Impact:** tiny and real — not a correctness bug (stale handles are never looked up again, since a destroyed `VkImage` is never re-issued to compare against), just an unbounded-in-principle memory/lookup-cost growth tied to resize frequency. Not a practical concern at normal resize rates; flagged for completeness, not urgency.
+**Symptom:** on every click, two validation errors:
+```
+VUID-vkCmdCopyImageToBuffer-imageOffset-07747
+pRegions[0].imageOffset (x = 250, y = 250, z = 0) must be (0, 0, 0) when the command buffer's
+queue family minImageTransferGranularity is (0, 0, 0) as this queue doesn't allow for any offset.
+pRegions[0].imageExtent (width = 1, height = 1, depth = 1) must match the image subresource
+extent (width = 500, height = 500, depth = 1) when ... this queue only allows full image copies.
+```
 
-**Fix options:** clear the set (or erase the specific old handle) whenever `RenderTargetNode` reports a new image for the same slot, e.g. on `CleanupImpl(reason=Recompile)`/recompile-driven image replacement.
+**Root cause:** the code copied a single 1×1 texel at an arbitrary offset (the cursor's pick position) out of the full-size ID image — a partial-image-region copy. Dozen's (Mesa Vulkan-over-D3D12) transfer-capable queue family reports `minImageTransferGranularity = (0,0,0)`, which per spec means that queue **only accepts whole-image copies at offset (0,0,0)** — no sub-region copies at all. lavapipe apparently tolerated this (hence it went unnoticed until the lavapipe-removal work this session put Dozen in the default path).
 
-**Severity:** Low · **Status:** OPEN (filed, not fixed — out of the widescreen-perf-fix program's bounded scope)
+**Fix (2026-07-04):** checked once at startup, not re-queried per click, following the existing "ask `VulkanDevice` about queue capabilities" convention (alongside `HasPresentSupport()`): added `VulkanDevice::RequiresFullImageTransfers()`, computed from the already-queried `queueFamilyProperties[graphicsQueueIndex].minImageTransferGranularity == (0,0,0)`. `VoxelSelectionProviderNode::CompileImpl` caches this once per Compile (`requiresFullImageTransfers_`); `ReadCenterPixel` branches on it — the common per-click path (single-texel sub-region copy) is unchanged for devices with real transfer granularity, while devices that need whole-image transfers copy the ENTIRE id image into a (grow-only, reused-across-clicks) full-size staging buffer and index the center texel on the CPU side instead.
+
+**Verification:** full build + `test_fail_scenario_sweep` (excluding the pre-existing `DeviceLostRecovery` crash, see KI-013) — 7/7 pass, 2 skipped by the tests' own logic, 0 regressions. `LiveResizeRecompilesPickIdRing` (which injects a real click and exercises the readback) passes cleanly without the validation layer; the same test is separately flaky under the validation layer alone (see the test-suite note above), unrelated to this fix.
+
+**Severity:** Low (worked today even before the fix, spec-invalid, not on the hot/idle render path) · **Status:** RESOLVED
+
+### KI-009 — `vixen_editor` render view flickers black/content on real GPU; VUID-vkCmdDraw-None-09600 layout mismatch
+
+**Discovered:** 2026-07-04, investigating a user report that vixen_editor's render viewport alternates between showing the loaded geometry and solid black/dark-blue, at idle (no interaction needed to reproduce; camera framing was a separate, already-fixed bug that didn't affect this).
+
+**File/line:** `libraries/RenderGraph/src/Nodes/RenderTargetNode.cpp` (`ExecuteImpl`).
+
+**Symptom:** every few frames, `vkQueueSubmit2KHR` reported `VUID-vkCmdDraw-None-09600` (the descriptor-layout-mismatch VUID, applied here to the compute dispatch that binds the render target as a `STORAGE_IMAGE` — validation's message text says "draw" but the same rule governs a bound descriptor read by any command, dispatch included): `VkImage` (the offscreen render-target ring) expected in `VK_IMAGE_LAYOUT_GENERAL`, actually `UNDEFINED` or `TRANSFER_SRC_OPTIMAL`. Visually: UI panel stable, only the 3D render area flickered.
+
+**Root cause:** `RenderTargetNode` maintains a ring of `imageCount_` offscreen images and rotates `currentIndex` every frame in `ExecuteImpl` (`currentIndex = (currentIndex + 1) % imageCount`) — but published its `CURRENT_VIEW` output **only once, in `CompileImpl`**, frozen at whatever ring slot `currentIndex` happened to be at compile time (slot 0). `DescriptorSetNode` binds the compute shader's binding-0 `STORAGE_IMAGE` descriptor from that frozen `CURRENT_VIEW` every frame (correctly re-writing the descriptor set each Execute, but always with the SAME stale image view) — while `ComputeDispatchNode` resolves the image it actually barriers-and-dispatches against via the LIVE `IRenderTarget::GetCurrentImage()` (`RENDER_TARGET_INFO`, following the rotating `currentIndex`). The descriptor's bound image and the barrier/dispatch's actual image are the same physical ring slot on only one phase out of every `imageCount` frames — every other frame they're two different images, so the barrier's careful `GENERAL` transition (already correct per KI-007's fix) applies to the WRONG slot from the descriptor's point of view.
+
+**Fix (2026-07-04):** `RenderTargetNode::ExecuteImpl` now re-publishes `CURRENT_VIEW` (`ctx.Out(RenderTargetNodeConfig::CURRENT_VIEW, target_.GetCurrentView())`) immediately after advancing `currentIndex`, so the descriptor set tracks the live ring slot every frame instead of a compile-time snapshot.
+
+**Two adjacent, independently-real synchronization bugs found and fixed en route** (neither was the flicker's actual cause, but both were genuine spec violations caught by `VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT`):
+- `ComputeDispatchNode::BlitRenderTargetToSwapchain`'s swapchain-image entry barrier used `srcStageMask = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT` — a no-op source that doesn't chain an execution dependency with the WSI acquire semaphore's wait (declared at `VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT` on this command buffer's submit). Harmless only while `oldLayout` was always `UNDEFINED` (nothing to wait for); once real prior-layout tracking was added (see below) this produced `SYNC-HAZARD-WRITE-AFTER-READ` against `vkAcquireNextImageKHR`. Fixed by changing `srcStageMask` to `VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT`.
+- The same function's swapchain entry barrier also hardcoded `oldLayout = VK_IMAGE_LAYOUT_UNDEFINED` unconditionally, when the swapchain image's real layout after the first frame is `VK_IMAGE_LAYOUT_PRESENT_SRC_KHR` (left there by the UI render pass's `finalLayout` + present). Fixed the same way as KI-007 — tracked via the same `renderTargetImageLayouts_` map, keyed by the swapchain image handle too.
+- `RenderPassNode.cpp`'s UI composite render pass subpass-external dependency (built via `libraries/CashSystem/src/RenderPassCacher.cpp`) hardcoded `dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT` only. Since this render pass uses `LOAD_OP_LOAD`, the implicit initial-layout transition also needs `COLOR_ATTACHMENT_READ_BIT` to synchronize against the LOAD read — its absence produced `SYNC-HAZARD-READ-AFTER-WRITE` at `vkCmdBeginRenderPass`. Fixed by adding `VK_ACCESS_COLOR_ATTACHMENT_READ_BIT` to `dstAccessMask` whenever `colorLoadOp == Load`.
+
+**Verification:** live-gate run of `vixen_editor` under `VK_LAYER_KHRONOS_validation` + synchronization validation: `VUID-vkCmdDraw-None-09600` and both `SYNC-HAZARD-*` messages are gone after all three fixes (confirmed zero occurrences across a multi-second run cycling all 4 ring slots repeatedly). Two unrelated, pre-existing validation messages remain (`VUID-vkCmdCopyImageToBuffer-imageOffset-07747` — see KI-012; `VUID-vkGetQueryPoolResults-None-09401` — GPU perf-logger query pool not reset before first read, not yet triaged).
+
+**Severity:** Medium (visual only, no crash, no data loss) · **Status:** RESOLVED
+
+### KI-007 — `ComputeDispatchNode::seenRenderTargetImages_` never prunes stale `VkImage` handles across resizes
+
+**File/line:** `libraries/RenderGraph/include/Nodes/ComputeDispatchNode.h` (was `seenRenderTargetImages_`, now `renderTargetImageLayouts_`), `libraries/RenderGraph/src/Nodes/ComputeDispatchNode.cpp` (`RecordComputeCommands`/`BlitRenderTargetToSwapchain`).
+
+**Symptom (as originally filed):** `seenRenderTargetImages_` was a `std::set<VkImage>` used to pick the correct `oldLayout` (`UNDEFINED` vs `TRANSFER_SRC_OPTIMAL`) for the render-target image's WSI-acquire barrier, keyed on whether a given `VkImage` handle had been seen before. Entries were only ever inserted, never erased, and — worse than originally filed — the seen/not-seen scheme was also simply WRONG once multiple frames are in flight: it assumed every handle strictly alternates GENERAL<->TRANSFER_SRC_OPTIMAL in lockstep, which doesn't hold when a command buffer is re-recorded against a ring slot whose actual last transition doesn't match that two-state guess.
+
+**Fix (2026-07-04):** replaced the set with `std::unordered_map<VkImage, VkImageLayout> renderTargetImageLayouts_`, tracking the ACTUAL last-recorded layout per handle (updated at both the compute-write entry barrier and the post-blit exit barrier), via a small pure/testable free function `DecideRenderTargetPriorLayoutAndUpdate` (`ComputeDispatchNode.h`). Exact instead of guessed; also incidentally fixes the original unbounded-growth complaint (the map is keyed the same way but now semantically correct, and could be pruned the same way if that's ever a real concern).
+
+**Verification:** 4 new unit tests in `test_compute_dispatch_node.cpp` (first-use-is-undefined, second-use-reports-real-tracked-layout, distinct-ring-slots-tracked-independently, map-updates-to-new-layout) — all pass. Does NOT fix the visible flicker/VUID-vkCmdDraw-None-09600 symptom that prompted this investigation — see KI-009 above; this was a real bug found along the way, not the one being chased.
+
+**Severity:** Low (as filed) · **Status:** RESOLVED
 
 ---
 
