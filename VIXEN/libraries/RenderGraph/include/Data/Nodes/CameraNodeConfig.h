@@ -81,6 +81,10 @@ CONSTEXPR_NODE_CONFIG(CameraNodeConfig,
     static constexpr const char* PARAM_ORBIT_CENTER_Y = "orbit_center_y";
     static constexpr const char* PARAM_ORBIT_CENTER_Z = "orbit_center_z";
     static constexpr const char* PARAM_ORBIT_DISTANCE = "orbit_distance";
+    // Camera mode pose request (0=FreeFly, 1=Orbit — matches CameraNode::CameraMode's underlying
+    // values). Same pose-param semantics as the orbit params above: applied via applyIfChanged,
+    // forced to reapply whenever PARAM_POSE_SEQ changes.
+    static constexpr const char* PARAM_CAMERA_MODE = "camera_mode";
     // Forces reapply of every present pose param this SetupImpl even when its value is unchanged
     // from lastApplied (the applyIfChanged change-tracking normally skips a same-value write).
     // Field bug 2026-07-03: a console reset to a pose already equal to the stored value (e.g.
