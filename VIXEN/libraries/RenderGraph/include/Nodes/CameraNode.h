@@ -71,6 +71,11 @@ protected:
 private:
     void UpdateCameraData(float aspectRatio);
 
+    // Orbit -> FreeFly transition (F key). Seeds flyPosition/flyYaw/flyPitch from the current
+    // orbit-derived pose so the view doesn't jump. Implemented fully in a later change; stubbed
+    // here so ExecuteImpl's F-key read has something to call.
+    void ExitOrbitToFreeFly();
+
     // Apply accumulated input deltas to camera state
     void ApplyInputDeltas(float deltaTime);
     void ApplyRotation();
@@ -122,12 +127,6 @@ private:
     glm::vec3 movementDelta{0.0f};  // Local-space WASD + global Y for QE
     glm::vec2 rotationDelta{0.0f};  // Yaw/pitch from mouse (raw accumulation)
     glm::vec2 smoothedRotationDelta{0.0f};  // Smoothed rotation for jitter reduction
-
-    // LeftDrag orbit-gate state (input-rework M4): tracks cumulative in-press motion since the
-    // left button went down, so a press stays a click below InputState::dragThresholdPx and only
-    // becomes an orbit-drag once crossed. Reset on release.
-    float dragAccumPx_ = 0.0f;
-    bool dragThresholdCrossed_ = false;
 
     // Camera control parameters
     float moveSpeed = 20.0f;       // Horizontal movement: units per second (scaled for 10^3 world)

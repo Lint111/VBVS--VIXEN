@@ -33,6 +33,7 @@ enum class KeyCode : uint32_t {
     Q = 0x51,  // 'Q'
     E = 0x45,  // 'E'
     C = 0x43,  // 'C' - Frame capture trigger
+    F = 0x46,  // 'F' - Orbit -> Free-fly transition
 
     // Special keys
     Space = 0x20,
@@ -40,6 +41,7 @@ enum class KeyCode : uint32_t {
     Ctrl = 0x11,
     Alt = 0x12,
     Escape = 0x1B,
+    Tab = 0x09,  // World/local movement toggle (FreeFly)
 
     // Arrow keys
     Left = 0x25,

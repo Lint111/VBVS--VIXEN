@@ -18,12 +18,9 @@ namespace Vixen::RenderGraph {
 /// (the runtime console reaches them via setparam input_handler ...).
 struct InputConfig {
     enum class CursorMode  : uint8_t { Normal = 0, Hidden = 1, CenterLock = 2 };
-    enum class OrbitButton : uint8_t { RightMouse = 0, LeftDrag = 1, Always = 2 /*legacy*/ };
     CursorMode  cursorMode      = CursorMode::Normal;      // V1 fix: visible OS cursor by default
-    OrbitButton orbitButton     = OrbitButton::RightMouse; // V2 fix (consumed by CameraNode in M4)
-    float       dragThresholdPx = 4.0f;   // in-press motion below this stays a "click"
-    bool        wheelZoom       = true;   // scroll drives orbit distance (M4)
-    float       wheelZoomSpeed  = 2.0f;   // world units per notch
+    bool        wheelZoom       = true;   // scroll drives orbit distance (Orbit mode) / fly speed (FreeFly mode)
+    float       wheelZoomSpeed  = 2.0f;   // world units per notch (Orbit) / speed-multiplier exponent base (FreeFly)
 };
 
 /**

@@ -40,7 +40,6 @@ namespace InputNodeCounts {
  *   - enabled (bool): Enable/disable input polling (default: true)
  *   - mouse_capture_mode (int): MouseCaptureMode enum value (default: CenterLock; mirrors
  *     InputNode's InputConfig::cursorMode, whose own default is Normal — see InputNode.h)
- *   - orbit_button (int): InputConfig::OrbitButton enum value (default: RightMouse)
  */
 CONSTEXPR_NODE_CONFIG(InputNodeConfig,
                       InputNodeCounts::INPUTS,
@@ -61,7 +60,6 @@ CONSTEXPR_NODE_CONFIG(InputNodeConfig,
     // ===== PARAMETERS =====
     static constexpr const char* PARAM_ENABLED = "enabled";           // bool: Enable input polling
     static constexpr const char* PARAM_MOUSE_CAPTURE_MODE = "mouse_capture_mode";  // int: MouseCaptureMode enum
-    static constexpr const char* PARAM_ORBIT_BUTTON = "orbit_button";  // int: InputConfig::OrbitButton enum
 
     // Constructor for runtime descriptor initialization
     InputNodeConfig() {

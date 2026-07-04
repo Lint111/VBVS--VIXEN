@@ -162,46 +162,12 @@ void CameraNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // Modern polling-based input: Read InputState once per frame
     InputStatePtr inputState = ctx.In(CameraNodeConfig::INPUT_STATE);
     if (inputState) {
-        // Orbit gate (critique V2, M4): mouseDelta only drives rotation while the configured
-        // orbit control is engaged, per InputConfig::OrbitButton (mirrored via InputState —
-        // CameraNode has no InputNode reference, see InputState.h). Buttons: [0]=left,[1]=right.
-        bool orbitEngaged = false;
-        switch (inputState->orbitButton) {
-            case 0: {  // RightMouse: apply only while the right button is held
-                orbitEngaged = inputState->mouseButtons[1];
-                break;
-            }
-            case 1: {  // LeftDrag: apply only once cumulative in-press motion crosses the
-                       // threshold; below it the press stays a click for the selection path.
-                if (inputState->mouseButtons[0]) {
-                    dragAccumPx_ += glm::length(inputState->mouseDelta);
-                    if (dragAccumPx_ > inputState->dragThresholdPx) {
-                        dragThresholdCrossed_ = true;
-                    }
-                } else {
-                    dragAccumPx_ = 0.0f;
-                    dragThresholdCrossed_ = false;
-                }
-                orbitEngaged = dragThresholdCrossed_;
-                break;
-            }
-            default:  // 2=Always (legacy) and any unrecognized value: unconditional, matches
-                      // pre-M4 behavior. InputNode clamps the live param, so this is a static
-                      // wire-value guard, not the primary validation.
-                orbitEngaged = true;
-                break;
-        }
-
-        if (orbitEngaged) {
+        // Rotation: middle-mouse-drag always rotates, in both modes, unconditionally (spec
+        // 2026-07-04 decision 4 — replaces the old button-gated orbitEngaged switch entirely;
+        // OrbitButton::RightMouse/LeftDrag/Always no longer exist as a choice).
+        if (inputState->mouseButtons[2]) {
             rotationDelta.x += inputState->mouseDelta.x;
             rotationDelta.y += inputState->mouseDelta.y;
-        }
-
-        // Wheel zoom: fold scroll into orbit distance, reusing ApplyMovement's W/S clamp
-        // (kOrbitDistanceMin/Max) so both paths agree on the world-bounds ceiling.
-        if (inputState->wheelZoom && inputState->wheelDelta.y != 0.0f) {
-            orbitDistance -= inputState->wheelDelta.y * inputState->wheelZoomSpeed;
-            orbitDistance = glm::clamp(orbitDistance, kOrbitDistanceMin, kOrbitDistanceMax);
         }
 
         // A recompile/WSLg stall must not teleport the camera (field bug 2026-07-03: latched
@@ -218,6 +184,22 @@ void CameraNode::ExecuteImpl(TypedExecuteContext& ctx) {
         rotationDelta.x += lookHorizontal * arrowKeyLookSpeed * clampedDt;
         rotationDelta.y -= lookVertical * arrowKeyLookSpeed * clampedDt;  // Inverted Y
 
+        // Tab toggles world/local movement — FreeFly only (spec 2026-07-04 decision 2).
+        if (mode == CameraMode::FreeFly && inputState->IsKeyPressed(EventBus::KeyCode::Tab)) {
+            localMovement = !localMovement;
+        }
+
+        // Wheel: adjusts orbit distance (Orbit mode, unchanged) or fly speed (FreeFly mode, new).
+        if (inputState->wheelZoom && inputState->wheelDelta.y != 0.0f) {
+            if (mode == CameraMode::Orbit) {
+                orbitDistance -= inputState->wheelDelta.y * inputState->wheelZoomSpeed;
+                orbitDistance = glm::clamp(orbitDistance, kOrbitDistanceMin, kOrbitDistanceMax);
+            } else {
+                flySpeed *= std::pow(kFlySpeedScrollFactor, inputState->wheelDelta.y);
+                flySpeed = glm::clamp(flySpeed, kFlySpeedMin, kFlySpeedMax);
+            }
+        }
+
         // Get keyboard movement axes
         float horizontal = inputState->GetAxisHorizontal();
         float vertical = inputState->GetAxisVertical();
@@ -226,6 +208,13 @@ void CameraNode::ExecuteImpl(TypedExecuteContext& ctx) {
         movementDelta.x += horizontal;
         movementDelta.z += vertical;
         movementDelta.y += upDown;
+
+        // F key: Orbit -> FreeFly, seeded from the current orbit-derived pose (Task 4 fills this
+        // transition's body — placeholder guard kept here so the key is read in the same place as
+        // every other per-frame input, per this node's existing convention).
+        if (mode == CameraMode::Orbit && inputState->IsKeyPressed(EventBus::KeyCode::F)) {
+            ExitOrbitToFreeFly();
+        }
     }
 
     // Apply accumulated input deltas to camera state. Same stall-proofing clamp as above (0.1s
@@ -309,6 +298,11 @@ void CameraNode::UpdateCameraData(float aspectRatio) {
     }
 }
 
+void CameraNode::ExitOrbitToFreeFly() {
+    flyPosition = cameraPosition;
+    mode = CameraMode::FreeFly;
+}
+
 void CameraNode::CleanupImpl(TypedCleanupContext& ctx) {
     NODE_LOG_INFO("CameraNode cleanup");
 
@@ -335,13 +329,15 @@ void CameraNode::ApplyRotation() {
     // Apply exponential smoothing to reduce jitter
     smoothedRotationDelta = glm::mix(smoothedRotationDelta, rotationDelta, mouseSmoothingFactor);
 
-    // Apply smoothed rotation
-    yaw += smoothedRotationDelta.x * mouseSensitivity;
-    pitch -= smoothedRotationDelta.y * mouseSensitivity;
+    float& targetYaw = (mode == CameraMode::FreeFly) ? flyYaw : yaw;
+    float& targetPitch = (mode == CameraMode::FreeFly) ? flyPitch : pitch;
+
+    targetYaw += smoothedRotationDelta.x * mouseSensitivity;
+    targetPitch -= smoothedRotationDelta.y * mouseSensitivity;
 
     // Clamp pitch to avoid gimbal lock
     const float maxPitch = glm::radians(89.0f);
-    pitch = glm::clamp(pitch, -maxPitch, maxPitch);
+    targetPitch = glm::clamp(targetPitch, -maxPitch, maxPitch);
 
     // Clear raw rotation delta
     rotationDelta = glm::vec2(0.0f);
@@ -353,25 +349,37 @@ void CameraNode::ApplyMovement(float deltaTime) {
         return;
     }
 
-    // ORBIT MODE:
-    // W/S: Zoom in/out (change orbit distance)
-    // A/D: Move orbit center left/right (X axis)
-    // Q/E: Move orbit center up/down (Y axis)
+    if (mode == CameraMode::FreeFly) {
+        // W/S/A/D: forward/back/strafe. World mode projects onto world X/Z regardless of facing
+        // (matches Orbit's existing A/D-moves-center convention). Local mode uses camera facing,
+        // flattened to the horizontal plane so looking down doesn't dive you into the ground.
+        glm::vec3 moveForward, moveRight;
+        if (localMovement) {
+            moveForward = glm::vec3(sin(flyYaw), 0.0f, -cos(flyYaw));
+            moveRight = glm::vec3(cos(flyYaw), 0.0f, sin(flyYaw));
+        } else {
+            moveForward = glm::vec3(0.0f, 0.0f, -1.0f);
+            moveRight = glm::vec3(1.0f, 0.0f, 0.0f);
+        }
+        flyPosition += moveForward * movementDelta.z * flySpeed * deltaTime;
+        flyPosition += moveRight * movementDelta.x * flySpeed * deltaTime;
+        // Q/E: always world Y up/down, unconditionally (spec 2026-07-04 decision 6).
+        flyPosition.y += movementDelta.y * flySpeed * deltaTime;
+    } else {
+        // ORBIT MODE (unchanged):
+        // W/S: Zoom in/out (change orbit distance)
+        // A/D: Move orbit center left/right (X axis)
+        // Q/E: Move orbit center up/down (Y axis)
+        float zoomSpeed = 100.0f;  // Scaled for 128^3 world
+        orbitDistance -= movementDelta.z * zoomSpeed * deltaTime;  // W zooms in, S zooms out
+        orbitDistance = glm::clamp(orbitDistance, kOrbitDistanceMin, kOrbitDistanceMax);
 
-    // W/S controls zoom (orbit distance)
-    float zoomSpeed = 100.0f;  // Scaled for 128^3 world
-    orbitDistance -= movementDelta.z * zoomSpeed * deltaTime;  // W zooms in, S zooms out
-    orbitDistance = glm::clamp(orbitDistance, kOrbitDistanceMin, kOrbitDistanceMax);  // Keep camera inside 128^3 world bounds
+        glm::vec3 moveVector(0.0f);
+        moveVector.x = movementDelta.x;  // A/D moves left/right (X axis)
+        moveVector.y = movementDelta.y;  // Q/E moves up/down (Y axis)
+        orbitCenter += moveVector * moveSpeed * deltaTime;
+    }
 
-    // A/D and Q/E move the orbit center
-    glm::vec3 moveVector(0.0f);
-    moveVector.x = movementDelta.x;  // A/D moves left/right (X axis)
-    moveVector.y = movementDelta.y;  // Q/E moves up/down (Y axis)
-
-    // Apply movement to orbit center
-    orbitCenter += moveVector * moveSpeed * deltaTime;
-
-    // Clear movement delta
     movementDelta = glm::vec3(0.0f);
 }
 

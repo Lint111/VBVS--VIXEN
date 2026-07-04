@@ -29,6 +29,7 @@ int KeyCodeToGlfw(EventBus::KeyCode key) {
         case KeyCode::Q: return GLFW_KEY_Q;
         case KeyCode::E: return GLFW_KEY_E;
         case KeyCode::C: return GLFW_KEY_C;
+        case KeyCode::F: return GLFW_KEY_F;
         // Digits
         case KeyCode::Key0: return GLFW_KEY_0;
         case KeyCode::Key1: return GLFW_KEY_1;
@@ -46,6 +47,7 @@ int KeyCodeToGlfw(EventBus::KeyCode key) {
         case KeyCode::Ctrl:   return GLFW_KEY_LEFT_CONTROL;
         case KeyCode::Alt:    return GLFW_KEY_LEFT_ALT;
         case KeyCode::Escape: return GLFW_KEY_ESCAPE;
+        case KeyCode::Tab:    return GLFW_KEY_TAB;
         // Arrow keys
         case KeyCode::Left:   return GLFW_KEY_LEFT;
         case KeyCode::Right:  return GLFW_KEY_RIGHT;
@@ -63,8 +65,8 @@ const std::unordered_map<int, EventBus::KeyCode>& GlfwToKeyCodeMap() {
     static const std::unordered_map<int, EventBus::KeyCode> map = [] {
         using EventBus::KeyCode;
         constexpr KeyCode kTracked[] = {
-            KeyCode::W, KeyCode::A, KeyCode::S, KeyCode::D, KeyCode::Q, KeyCode::E, KeyCode::C,
-            KeyCode::Space, KeyCode::Shift, KeyCode::Ctrl, KeyCode::Alt, KeyCode::Escape,
+            KeyCode::W, KeyCode::A, KeyCode::S, KeyCode::D, KeyCode::Q, KeyCode::E, KeyCode::C, KeyCode::F,
+            KeyCode::Space, KeyCode::Shift, KeyCode::Ctrl, KeyCode::Alt, KeyCode::Escape, KeyCode::Tab,
             KeyCode::Left, KeyCode::Right, KeyCode::Up, KeyCode::Down,
             KeyCode::Key0, KeyCode::Key1, KeyCode::Key2, KeyCode::Key3, KeyCode::Key4,
             KeyCode::Key5, KeyCode::Key6, KeyCode::Key7, KeyCode::Key8, KeyCode::Key9,
@@ -122,6 +124,7 @@ InputNode::InputNode(
     keyStates[KeyCode::Ctrl] = KeyState{};
     keyStates[KeyCode::Alt] = KeyState{};
     keyStates[KeyCode::Escape] = KeyState{};
+    keyStates[KeyCode::Tab] = KeyState{};
     // Arrow keys for look rotation
     keyStates[KeyCode::Left] = KeyState{};
     keyStates[KeyCode::Right] = KeyState{};
@@ -140,6 +143,8 @@ InputNode::InputNode(
     keyStates[KeyCode::Key9] = KeyState{};
     // Frame capture key
     keyStates[KeyCode::C] = KeyState{};
+    // Orbit -> Free-fly transition key
+    keyStates[KeyCode::F] = KeyState{};
 }
 
 void InputNode::SetupImpl(TypedSetupContext& ctx) {
@@ -169,8 +174,7 @@ void InputNode::SetupImpl(TypedSetupContext& ctx) {
     }
 
     NODE_LOG_INFO("[InputNode] enabled=" + std::to_string(enabled_) +
-                  ", cursor_mode=" + std::to_string(static_cast<int>(config_.cursorMode)) +
-                  ", orbit_button=" + std::to_string(static_cast<int>(config_.orbitButton)));
+                  ", cursor_mode=" + std::to_string(static_cast<int>(config_.cursorMode)));
 }
 
 void InputNode::SetInputConfig(const InputConfig& config) {
@@ -193,25 +197,6 @@ void InputNode::SyncConfigFromParams() {
         if (newCursorMode != config_.cursorMode) {
             config_.cursorMode = newCursorMode;
             ApplyCursorMode();
-        }
-    }
-
-    if (GetParameter(InputNodeConfig::PARAM_ORBIT_BUTTON) != nullptr) {
-        const int raw = GetParameterValue<int>(InputNodeConfig::PARAM_ORBIT_BUTTON,
-                                                static_cast<int>(config_.orbitButton));
-        // Clamp: an out-of-range int (bad setparam, stale wire value) must degrade to the safe
-        // default (RightMouse) rather than UB on the enum switch in CameraNode — M4 carry-forward.
-        if (raw < static_cast<int>(InputConfig::OrbitButton::RightMouse) ||
-            raw > static_cast<int>(InputConfig::OrbitButton::Always)) {
-            static bool warned = false;
-            if (!warned) {
-                NODE_LOG_WARNING("[InputNode] orbit_button param out of range (" + std::to_string(raw) +
-                                 "), defaulting to RightMouse");
-                warned = true;
-            }
-            config_.orbitButton = InputConfig::OrbitButton::RightMouse;
-        } else {
-            config_.orbitButton = static_cast<InputConfig::OrbitButton>(raw);
         }
     }
 }
@@ -500,8 +485,6 @@ void InputNode::PopulateInputState() {
 
     // Mirror the config fields CameraNode needs (M4) — see InputState.h's doc comment for why
     // this rides the existing slot instead of a new connection.
-    inputState_.orbitButton = static_cast<uint8_t>(config_.orbitButton);
-    inputState_.dragThresholdPx = config_.dragThresholdPx;
     inputState_.wheelZoom = config_.wheelZoom;
     inputState_.wheelZoomSpeed = config_.wheelZoomSpeed;
 
