@@ -15,6 +15,7 @@ Fast-access reference for Claude Code. Read this file first for any documentatio
 
 | Date | Topic | File |
 |------|-------|------|
+| 2026-07-03 | Voxel authoring editor Inc1 (VoxelDocument format + vixen_editor app) | [[../01-Architecture/Voxel-Authoring-App-Inc1-Design-2026-07]] |
 | 2026-06-14 | Embedding VIXEN in a host (find_package → EngineContext → own-the-loop) [AR#12] | [[../06-Embedding/Hosting-VIXEN]] |
 | 2026-06-12 | Consumer feedback / feature requests (UNDERTOW integration) | [[../05-Progress/features/consumer-feedback-undertow]] |
 | 2026-01-04 | Sprint 6.0.1: Unified Connection System COMPLETE | [[../05-Progress/features/Sprint6.0.1-Unified-Connection-System]] |
@@ -30,6 +31,7 @@ Fast-access reference for Claude Code. Read this file first for any documentatio
 | RenderGraph connection API | [[../05-Progress/features/Sprint6.0.1-Unified-Connection-System]] |
 | Vulkan pipeline | [[../01-Architecture/Vulkan-Pipeline]] |
 | Type system | [[../01-Architecture/Type-System]] |
+| Voxel authoring app Inc1 (VoxelDocument format, flatten-to-VRC1, vixen_editor) | [[../01-Architecture/Voxel-Authoring-App-Inc1-Design-2026-07]] |
 
 ---
 
@@ -116,6 +118,10 @@ Fast-access reference for Claude Code. Read this file first for any documentatio
 ### Specialized
 - CameraNode, VoxelGridNode, LoopBridgeNode, ConstantNode
 
+### Applications
+- `application/main` — the standalone `VIXEN.exe` (default 3-body scene)
+- `application/editor` — `vixen_editor`: loads a `.vxd` VoxelDocument, layer-list UI (RmlUi), live preview via the existing recipe-pool render path (see [[../01-Architecture/Voxel-Authoring-App-Inc1-Design-2026-07]])
+
 ---
 
 ## Code Paths
@@ -127,6 +133,8 @@ Fast-access reference for Claude Code. Read this file first for any documentatio
 | Node configs | `libraries/RenderGraph/include/Data/Nodes/` |
 | SVO library | `libraries/SVO/` |
 | Shaders | `shaders/` |
+| Main application | `application/main/` |
+| Voxel authoring editor app | `application/editor/` |
 
 ---
 

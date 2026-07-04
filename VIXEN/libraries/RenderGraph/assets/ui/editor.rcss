@@ -1,0 +1,80 @@
+body {
+    font-family: LatoLatin;
+    font-size: 16px;
+    color: #d0d0d0;
+    /* Stretch the document to fill the whole context (viewport) — same full-window idiom as
+       hud.rcss. Without this the body has only out-of-flow (position:absolute) children and
+       collapses to 0x0, so #panel's top/left anchors resolve against a zero-sized block and
+       land off-screen. */
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+}
+
+#panel {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    width: 240px;
+    padding: 8px 12px;
+    background-color: #1a1a2ecc;
+    border-width: 1px;
+    border-color: #4060a0;
+    pointer-events: none;  /* panel background is read-only; the checkboxes opt back in */
+}
+
+.title {
+    display: block;
+    color: #90c0ff;
+    font-size: 14px;
+    margin-bottom: 6px;
+    border-bottom-width: 1px;
+    border-color: #303050;
+    padding-bottom: 4px;
+}
+
+.row {
+    display: block;
+    margin-top: 6px;
+}
+
+.checkbox {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    margin-right: 8px;
+    vertical-align: middle;
+    background-color: #303050;
+    border-width: 1px;
+    border-color: #6080c0;
+    pointer-events: auto;  /* interactive — clicks reach UISelectionProviderNode's hit-test */
+}
+
+.checkbox.checked {
+    background-color: #60a0ff;
+}
+
+.col-name {
+    display: inline-block;
+    width: 70px;
+    color: #e0d0b0;
+}
+
+.col-op {
+    display: inline-block;
+    color: #90c0ff;
+    font-size: 13px;
+}
+
+.hint {
+    display: block;
+    margin-top: 10px;
+    color: #707090;
+    font-size: 12px;
+    border-top-width: 1px;
+    border-color: #303050;
+    padding-top: 6px;
+}

@@ -14,11 +14,11 @@ static Recipe::SdfInstruction sphereInstr(glm::vec3 c, float r) {
 
 TEST(RecipeBake, RecipeSphereEqualsAnalyticSphere) {
     const int n = 64;
-    const glm::vec3 c(32, 32, 32);
+    const glm::vec3 c(32, 32, 32);   // grid center — passed as `center`, not baked into the instruction
     const float r = 26.0f, band = 2.5f;
 
     auto analytic = BakeRecipeToSdfWorld(RECIPE_SPHERE, c, RecipeParams{r, 0, 0, 0, 0, 0}, n, band, 3);
-    Recipe::SdfInstruction prog[] = { sphereInstr(c, r) };
+    Recipe::SdfInstruction prog[] = { sphereInstr(glm::vec3(0, 0, 0), r) };  // object-centered
     auto recipe = BakeRecipeInstructionsToSdfWorld(prog, 1, c, n, band, 3);
 
     int checked = 0;

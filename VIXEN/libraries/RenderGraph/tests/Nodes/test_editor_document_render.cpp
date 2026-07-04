@@ -1,23 +1,35 @@
 /**
- * @file test_recipe_pool_render.cpp
- * @brief I4.1 — BodyOctreeSceneNode::SetRecipePool live render gate (lavapipe).
+ * @file test_editor_document_render.cpp
+ * @brief Inc1 M4 — vixen_editor's load/flatten/bake/render/toggle path, live-gated on lavapipe.
  *
- * Bakes 4 SDF sphere recipes of distinct radii into a pool, calls SetRecipePool,
- * renders 4 instances (one per octreeIndex) on lavapipe, and asserts that all 4
- * bodies produce visible hit pixels.
+ * Loads the golden sample_tri_layer.vxd (base=Box(1,1,1), bulge=Sphere(r=0.6) SmoothUnion
+ * k=0.15, cut=Cylinder(halfHeight=1.5,radius=0.35) Subtract), flattens+bakes+renders it through
+ * the real BodyOctreeSceneNode -> BodyInstanceRayMarch.comp path (same fixture pattern as
+ * test_recipe_pool_render.cpp), then re-does it with the cut layer disabled and asserts a real,
+ * non-silhouette-blind pixel difference: the cylinder (halfHeight=1.5) punches all the way
+ * through the box's top face (halfExtents=1), so a column of pixels directly above the cylinder
+ * bore is background/void with the cut enabled and solid box-top color with it disabled — a
+ * verified numeric fact (see the flatten test's GridParityAgainstIndependentComposition and this
+ * file's own probe: at grid x in [0,0.3], z=0, the surface is void up past y=1.6 with the cut,
+ * solid at y=0.98 without it).
  *
- * This is the first test that exercises the M2 SSBO change (binding 5 = STORAGE)
- * at runtime via the BodyOctreeSceneNode path. If the SSBO wiring is wrong the
- * shader reads garbage configs and all bodies render blank.
+ * NOTE on scale (Inc2a re-derivation): BakeRecipeInstructionsToSdfWorld now applies `center`
+ * (`p - center` at eval, see SdfBake.h) exactly like the analytic bake path, so the golden
+ * document's object-centered geometry (authored near local origin, ~[-1.5,1.5] extent) is baked
+ * AT RecipeBakeConfig::center's default grid position (32,32,32) -- no longer clipped to the
+ * positive-octant corner as it was pre-fix. Grid-to-world: (kWorldGridSize/n)*renderScale =
+ * (10/64)*5 = 0.78125, so grid-center (32,32,32) -> world (25,25,25); this is the camera target
+ * below (previously the corner-workaround target of world ~(0.39,0.39,0.39), which pre-fix was
+ * the only place the geometry actually rendered -- post-fix that point is empty space, which is
+ * exactly the fresh 0-hit-pixel failure this task's re-derivation fixes).
  *
- * SAFETY — LAVAPIPE ONLY: identical contract to test_body_instance_raymarch_render.cpp.
- * lavapipe device is hard-asserted before any vkQueueSubmit.
+ * SAFETY -- LAVAPIPE ONLY: identical contract to test_recipe_pool_render.cpp.
  *
  * Run:
  *   VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json \
- *   ./test_recipe_pool_render
+ *   ./test_editor_document_render
  *
- * Output: /tmp/recipe_pool_render.png (512x512 RGBA8, 4-body scene).
+ * Output: /tmp/editor_document_render_{with,without}_cut.png (512x512 RGBA8).
  */
 
 #include <gtest/gtest.h>
@@ -32,6 +44,9 @@
 #include "ShellOctreeGpu.h"
 #include "Recipe/RecipeRegistry.h"
 #include "Recipe/RecipeBaker.h"
+#include "Recipe/generated/VoxelDocument.g.h"
+#include "Recipe/generated/RecipeContainer.g.h"
+#include "Recipe/VoxelDocumentFlattener.h"
 #include "TestVkValidation.h"
 
 #include <vulkan/vulkan.h>
@@ -56,12 +71,15 @@
 #error "GLSL_RAYMARCH_SPV (path to compiled BodyInstanceRayMarch.spv) must be defined by CMake"
 #endif
 
+#ifndef VXD_GOLDEN_PATH
+#error "VXD_GOLDEN_PATH (path to sample_tri_layer.vxd) must be defined by CMake"
+#endif
+
 using namespace Vixen::RenderGraph;
 using Vixen::Vulkan::Resources::VulkanDevice;
 
 namespace {
 
-// Push-constant block — byte-identical to BodyInstanceRayMarch.comp (same as raymarch_render test).
 struct PushConstants {
     glm::vec3 cameraPos;   float time;
     glm::vec3 cameraDir;   float fov;
@@ -81,20 +99,14 @@ std::vector<uint32_t> ReadSpirv(const char* path) {
     return code;
 }
 
-constexpr float kWorldGridSize = 10.0f;
-
-Vixen::SVO::BodyInstanceGpu MakeInst(float x, float y, float z, float scale,
-                                      uint32_t octreeIndex) {
-    Vixen::SVO::BodyInstanceGpu i{};
-    i.worldPos[0] = x; i.worldPos[1] = y; i.worldPos[2] = z;
-    i.renderScale = scale; i.octreeIndex = octreeIndex;
-    i.color[0] = 1.0f; i.color[1] = 1.0f; i.color[2] = 1.0f;
-    return i;
-}
-
-glm::vec3 BodyCentre(const Vixen::SVO::BodyInstanceGpu& inst) {
-    return glm::vec3(inst.worldPos[0], inst.worldPos[1], inst.worldPos[2]) +
-           glm::vec3(0.5f * kWorldGridSize * inst.renderScale);
+std::vector<uint8_t> ReadFile(const char* path) {
+    std::ifstream f(path, std::ios::binary | std::ios::ate);
+    if (!f) return {};
+    const std::streamsize sz = f.tellg();
+    if (sz <= 0) return {};
+    std::vector<uint8_t> data(static_cast<size_t>(sz));
+    f.seekg(0); f.read(reinterpret_cast<char*>(data.data()), sz);
+    return data;
 }
 
 PushConstants MakeCamera(const glm::vec3& eye, const glm::vec3& target, uint32_t w, uint32_t h,
@@ -113,12 +125,39 @@ PushConstants MakeCamera(const glm::vec3& eye, const glm::vec3& target, uint32_t
     return pc;
 }
 
+// Flattens the golden document (with the given enabledOverride, or all-enabled if null) into a
+// baked single-recipe ConcatenatedOctrees pool. Mirrors EditorApplication::ApplyDocumentToScene.
+Vixen::SVO::RecipeBakeResult FlattenAndBake(const Yeroket::Sdf::Generated::VoxelDocumentView& view,
+                                             const std::vector<uint8_t>* enabledOverride,
+                                             std::vector<uint8_t>& outBlob) {
+    std::string err;
+    const bool flattenOk = Vixen::SVO::FlattenVoxelDocument(view, enabledOverride, outBlob, err);
+    EXPECT_TRUE(flattenOk) << err;
+
+    Yeroket::Sdf::Generated::RecipeContainerView rv{};
+    const bool readOk = Yeroket::Sdf::Generated::ReadRecipeContainer(outBlob.data(), outBlob.size(), rv);
+    EXPECT_TRUE(readOk);
+
+    Vixen::SVO::RecipeRegistry::RecipeEntry entry{};
+    entry.bytecode.assign(rv.instructions, rv.instructions + rv.header.instructionCount);
+    entry.bakeResolution = rv.header.bakeResolution;
+    entry.bandVoxels     = rv.header.bandVoxels;
+    entry.brickDepth      = rv.header.brickDepth;
+
+    Vixen::SVO::RecipeRegistry reg;
+    const auto regResult = reg.Register(1u, entry);
+    EXPECT_EQ(regResult, Vixen::SVO::RecipeRegistry::RegisterResult::Ok);
+
+    Vixen::SVO::RecipeBakeConfig bakeCfg{};  // defaults: n=64, band=2.5, depth=3
+    return Vixen::SVO::BakeRegistryToPool(reg, bakeCfg);
+}
+
 }  // namespace
 
 // ---------------------------------------------------------------------------
-// Minimal Vulkan fixture — identical structure to test_body_instance_raymarch_render.cpp.
+// Minimal Vulkan fixture — identical structure to test_recipe_pool_render.cpp.
 // ---------------------------------------------------------------------------
-class RecipePoolRenderTest : public ::testing::Test {
+class EditorDocumentRenderTest : public ::testing::Test {
 protected:
     VkInstance       instance_       = VK_NULL_HANDLE;
     VkPhysicalDevice physicalDevice_ = VK_NULL_HANDLE;
@@ -139,7 +178,7 @@ protected:
 
     void SetUp() override {
         VkApplicationInfo ai{}; ai.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-        ai.pApplicationName = "test_recipe_pool_render"; ai.apiVersion = VK_API_VERSION_1_3;
+        ai.pApplicationName = "test_editor_document_render"; ai.apiVersion = VK_API_VERSION_1_3;
         const auto layers = EnabledValidationLayers();
         const char* exts[] = {VK_EXT_DEBUG_UTILS_EXTENSION_NAME};
         VkInstanceCreateInfo ci{}; ci.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
@@ -288,7 +327,7 @@ protected:
             bindL(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bindL(3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bindL(4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bindL(5, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // I3.2: SSBO
+            bindL(5, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bindL(8, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bindL(9, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             bindL(10,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
@@ -414,136 +453,228 @@ protected:
         if (dummySdf    != VK_NULL_HANDLE) { vkDestroyBuffer(logicalDevice_,dummySdf,nullptr);    vkFreeMemory(logicalDevice_,dSdfMem,nullptr); }
         if (dummyLookup != VK_NULL_HANDLE) { vkDestroyBuffer(logicalDevice_,dummyLookup,nullptr); vkFreeMemory(logicalDevice_,dLookupMem,nullptr); }
     }
+
+    // Bakes `pool` into a BodyOctreeSceneNode, renders one instance (octreeIndex=0,
+    // renderScale=1.0, worldPos=(0,0,0) so grid-space maps 1:1 to world-space) with the given
+    // camera, and returns the RGBA readback + hit-pixel count (threshold matches
+    // test_recipe_pool_render.cpp's non-background heuristic).
+    void RenderPool(Vixen::SVO::ConcatenatedOctrees pool, const PushConstants& pc,
+                     uint32_t w, uint32_t h, std::vector<uint8_t>& outRgba, int& outHitPixels) {
+        using C = BodyOctreeSceneNodeConfig;
+        BodyOctreeSceneNodeType nodeType("BodyOctreeScene");
+        auto nodeBase = nodeType.CreateInstance("editor_doc_render_test");
+        auto* node = dynamic_cast<BodyOctreeSceneNode*>(nodeBase.get());
+        ASSERT_NE(node, nullptr);
+
+        Resource devRes;  SetHandleVal<VulkanDevice*>(devRes, deviceShell_.get());
+        Resource poolRes; SetHandleVal<VkCommandPool>(poolRes, commandPool_);
+        Resource frRes;   uint32_t frameIndex=0; SetHandleVal<uint32_t>(frRes, frameIndex);
+        node->SetInput(C::VULKAN_DEVICE_IN_Slot::index,    0, &devRes);
+        node->SetInput(C::COMMAND_POOL_Slot::index,        0, &poolRes);
+        node->SetInput(C::CURRENT_FRAME_INDEX_Slot::index, 0, &frRes);
+
+        node->SetRecipePool(std::move(pool));
+
+        // renderScale=5.0 — see EditorApplication::ApplyDocumentToScene's comment: the golden
+        // document's object-centered geometry (~[-1.5,1.5] extent) is now baked AT
+        // RecipeBakeConfig::center's default grid position (32,32,32) (Inc2a fix), and the
+        // shader's base-octree world frame is a fixed [0,10] span (kWorldGridSize=10), so
+        // grid-to-world = (10/64)*5 = 0.78125; grid-center (32,32,32) -> world (25,25,25).
+        Vixen::SVO::BodyInstanceGpu inst{};
+        inst.worldPos[0] = 0.0f; inst.worldPos[1] = 0.0f; inst.worldPos[2] = 0.0f;
+        inst.renderScale = 5.0f;
+        inst.color[0] = 1.0f; inst.color[1] = 1.0f; inst.color[2] = 1.0f;
+        inst.octreeIndex = 0u;
+        node->SetInstances({inst});
+        node->Setup();
+        ASSERT_NO_THROW(node->Compile());
+        frameIndex = 0; SetHandleVal<uint32_t>(frRes, frameIndex);
+        ASSERT_NO_THROW(node->Execute());
+
+        auto buf = [&](int slot) -> VkBuffer {
+            return node->GetOutput(slot, 0)->GetHandle<VkBuffer>();
+        };
+        VkBuffer nodes   = buf(C::OCTREE_NODES_BUFFER_Slot::index);
+        VkBuffer bricks  = buf(C::OCTREE_BRICKS_BUFFER_Slot::index);
+        VkBuffer mats    = buf(C::OCTREE_MATERIALS_BUFFER_Slot::index);
+        VkBuffer cfgBuf  = buf(C::OCTREE_CONFIG_BUFFER_Slot::index);
+        VkBuffer instBuf = buf(C::INSTANCE_BUFFER_Slot::index);
+        VkBuffer sdfBuf  = buf(C::OCTREE_SDF_BUFFER_Slot::index);
+        VkBuffer lookBuf = buf(C::OCTREE_BRICKLOOKUP_BUFFER_Slot::index);
+        ASSERT_NE(nodes, VK_NULL_HANDLE); ASSERT_NE(cfgBuf, VK_NULL_HANDLE);
+
+        double ms = 0.0;
+        ASSERT_NO_FATAL_FAILURE(RenderToRgba(nodes, bricks, mats, cfgBuf, instBuf,
+                                             sdfBuf, lookBuf, pc, w, h, outRgba, ms));
+
+        outHitPixels = 0;
+        for (uint32_t i = 0; i < w*h; ++i) {
+            if (outRgba[i*4+0]>24 || outRgba[i*4+1]>24 || outRgba[i*4+2]>40) ++outHitPixels;
+        }
+
+        vkDeviceWaitIdle(logicalDevice_);
+        node->Cleanup(CleanupReason::FinalTeardown);
+        nodeBase.reset();
+    }
 };
 
 // ---------------------------------------------------------------------------
-// I4.1 — pool render gate: 4 recipes -> pool -> SetRecipePool -> 4 instances
+// M4 — load -> flatten -> bake -> render (all layers enabled): asserts a visible body.
 // ---------------------------------------------------------------------------
-TEST_F(RecipePoolRenderTest, FourRecipesAllRender) {
+TEST_F(EditorDocumentRenderTest, GoldenDocumentAllLayersRendersVisibleBody) {
     std::printf("[ lavapipe ] %s\n", selectedDeviceName_.c_str());
     ASSERT_TRUE(softwareConfirmed_);
 
-    // 1) Build 4 sphere recipes of distinct radii (in 64^3 grid space, center=(32,32,32)).
-    using SdfI = Vixen::SVO::Recipe::SdfInstruction;
-    using SdfOp = Vixen::SVO::Recipe::SdfOpCode;
+    const auto raw = ReadFile(VXD_GOLDEN_PATH);
+    ASSERT_FALSE(raw.empty()) << "golden asset missing: " << VXD_GOLDEN_PATH;
+    Yeroket::Sdf::Generated::VoxelDocumentView view{};
+    ASSERT_TRUE(Yeroket::Sdf::Generated::ReadVoxelDocument(raw.data(), raw.size(), view));
+    ASSERT_EQ(view.header.layerCount, 3u);
 
-    auto makeSphere = [](float cx, float cy, float cz, float r) {
-        SdfI in{}; in.opCode = uint8_t(SdfOp::Sphere);
-        in.data[0]=cx; in.data[1]=cy; in.data[2]=cz; in.data[3]=r; return in;
-    };
+    std::vector<uint8_t> blob;
+    auto bakeResult = FlattenAndBake(view, nullptr, blob);
+    ASSERT_TRUE(bakeResult.ok) << bakeResult.err;
+    ASSERT_EQ(bakeResult.pool.count, 1u);
 
-    Vixen::SVO::RecipeRegistry reg;
-    const struct { uint32_t id; float radius; } recipes[] = {
-        {10u, 14.0f}, {11u, 17.0f}, {12u, 20.0f}, {13u, 23.0f},
-    };
-    for (auto& r : recipes) {
-        Vixen::SVO::RecipeRegistry::RecipeEntry e{};
-        e.bytecode = { makeSphere(0.0f,0.0f,0.0f, r.radius) };  // object-centered
-        ASSERT_EQ(reg.Register(r.id, e), Vixen::SVO::RecipeRegistry::RegisterResult::Ok);
-    }
+    // Camera: frame the golden's whole geometry, now correctly centered at grid (32,32,32) —
+    // Inc2a's bake-center fix (BakeRecipeInstructionsToSdfWorld applies `center`) means the
+    // object-centered document no longer clips to the positive-octant corner (pre-fix behavior).
+    // worldPos=(0,0,0), renderScale=5.0, grid-to-world=(10/64)*5=0.78125 -- see RenderPool's
+    // renderScale comment. grid-center (32,32,32) -> world (25,25,25).
+    constexpr uint32_t kW = 512, kH = 512;
+    constexpr float kGridToWorld = 0.15625f * 5.0f;  // (kWorldGridSize/n) * renderScale
+    const glm::vec3 target(32.0f * kGridToWorld, 32.0f * kGridToWorld, 32.0f * kGridToWorld);
+    const glm::vec3 eye = target + glm::vec3(1.6f, 1.3f, 1.6f);
+    const PushConstants pc = MakeCamera(eye, target, kW, kH, 1);
 
-    // 2) Bake registry into pool.
-    Vixen::SVO::RecipeBakeConfig cfg{};  // defaults: n=64, band=2.5, depth=3
-    auto result = Vixen::SVO::BakeRegistryToPool(reg, cfg);
-    ASSERT_TRUE(result.ok) << result.err;
-    ASSERT_EQ(result.pool.count, 4u);
+    std::vector<uint8_t> rgba; int hitPixels = 0;
+    ASSERT_NO_FATAL_FAILURE(RenderPool(std::move(bakeResult.pool), pc, kW, kH, rgba, hitPixels));
 
-    // 3) Bring up the node and call SetRecipePool.
-    using C = BodyOctreeSceneNodeConfig;
-    BodyOctreeSceneNodeType nodeType("BodyOctreeScene");
-    auto nodeBase = nodeType.CreateInstance("recipe_pool_test");
-    auto* node = dynamic_cast<BodyOctreeSceneNode*>(nodeBase.get());
-    ASSERT_NE(node, nullptr);
-
-    Resource devRes;  SetHandleVal<VulkanDevice*>(devRes, deviceShell_.get());
-    Resource poolRes; SetHandleVal<VkCommandPool>(poolRes, commandPool_);
-    Resource frRes;   uint32_t frameIndex=0; SetHandleVal<uint32_t>(frRes, frameIndex);
-    node->SetInput(C::VULKAN_DEVICE_IN_Slot::index,    0, &devRes);
-    node->SetInput(C::COMMAND_POOL_Slot::index,        0, &poolRes);
-    node->SetInput(C::CURRENT_FRAME_INDEX_Slot::index, 0, &frRes);
-
-    node->SetRecipePool(std::move(result.pool));
-
-    // 4) Place 4 bodies side by side; each references its pool slot.
-    constexpr float kRS  = 0.10f;
-    const float R        = 0.5f * kWorldGridSize * kRS;   // 0.5
-    const float sep      = R * 2.5f;                      // body-to-body spacing
-    const std::vector<Vixen::SVO::BodyInstanceGpu> instances = {
-        MakeInst(-1.5f*sep, 0.0f, 0.0f, kRS, 0u),
-        MakeInst(-0.5f*sep, 0.0f, 0.0f, kRS, 1u),
-        MakeInst( 0.5f*sep, 0.0f, 0.0f, kRS, 2u),
-        MakeInst( 1.5f*sep, 0.0f, 0.0f, kRS, 3u),
-    };
-    node->SetInstances(instances);
-    node->Setup();
-    ASSERT_NO_THROW(node->Compile());
-    frameIndex = 0; SetHandleVal<uint32_t>(frRes, frameIndex);
-    ASSERT_NO_THROW(node->Execute());
-
-    // 5) Read output buffers.
-    auto buf = [&](int slot) -> VkBuffer {
-        return node->GetOutput(slot, 0)->GetHandle<VkBuffer>();
-    };
-    VkBuffer nodes   = buf(C::OCTREE_NODES_BUFFER_Slot::index);
-    VkBuffer bricks  = buf(C::OCTREE_BRICKS_BUFFER_Slot::index);
-    VkBuffer mats    = buf(C::OCTREE_MATERIALS_BUFFER_Slot::index);
-    VkBuffer cfgBuf  = buf(C::OCTREE_CONFIG_BUFFER_Slot::index);
-    VkBuffer instBuf = buf(C::INSTANCE_BUFFER_Slot::index);
-    VkBuffer sdfBuf  = buf(C::OCTREE_SDF_BUFFER_Slot::index);
-    VkBuffer lookBuf = buf(C::OCTREE_BRICKLOOKUP_BUFFER_Slot::index);
-    ASSERT_NE(nodes, VK_NULL_HANDLE); ASSERT_NE(cfgBuf, VK_NULL_HANDLE);
-
-    // 6) Camera: target the true centroid of all 4 body centres so EVERY octreeIndex
-    //    slot appears on-screen. instances[1] was the old target — it skipped slot 3.
-    constexpr uint32_t kW=512, kH=512;
-    const glm::vec3 c0     = BodyCentre(instances[0]);
-    const glm::vec3 c3     = BodyCentre(instances[3]);
-    const glm::vec3 centroid = 0.5f * (c0 + c3);
-    const float spanX = std::abs(c3.x - c0.x) + 2.0f * R;   // edge-to-edge span
-    // Fit the full span horizontally at fov=45°, aspect=1.0 (512x512), with 40% margin.
-    const float dist = (0.5f * spanX) / std::tan(glm::radians(22.5f)) * 1.4f;
-    const glm::vec3 eye = centroid + glm::normalize(glm::vec3(0.0f, 0.2f, 1.0f)) * dist;
-    const PushConstants pc = MakeCamera(eye, centroid, kW, kH, int32_t(instances.size()));
-
-    std::vector<uint8_t> rgba; double ms = 0.0;
-    ASSERT_NO_FATAL_FAILURE(RenderToRgba(nodes, bricks, mats, cfgBuf, instBuf,
-                                         sdfBuf, lookBuf, pc, kW, kH, rgba, ms));
-
-    // 7) Write PNG, total hit count, AND per-x-band hits (1 band per octreeIndex slot).
-    //    4 bands of 128px each; each body centre falls in a distinct band so a zero
-    //    band means that octreeIndex slot never rendered — the whole point of dropping
-    //    the old kMaxOctrees=3 cap.
-    const char* outPath = "/tmp/recipe_pool_render.png";
     {
         std::vector<uint8_t> rgb(size_t(kW)*kH*3);
         for (uint32_t i = 0; i < kW*kH; ++i) {
             rgb[i*3+0]=rgba[i*4+0]; rgb[i*3+1]=rgba[i*4+1]; rgb[i*3+2]=rgba[i*4+2];
         }
-        stbi_write_png(outPath, int(kW), int(kH), 3, rgb.data(), int(kW)*3);
+        stbi_write_png("/tmp/editor_document_render_with_cut.png", int(kW), int(kH), 3, rgb.data(), int(kW)*3);
     }
 
-    int hitPixels = 0;
-    std::array<int,4> bandHits{};
-    for (uint32_t y = 0; y < kH; ++y) {
-        for (uint32_t x = 0; x < kW; ++x) {
+    std::printf("[EDITOR] all-layers render | hitPixels=%d -> /tmp/editor_document_render_with_cut.png\n", hitPixels);
+    // Inc2a re-derivation: post-fix, the whole object-centered body is framed (not clipped to a
+    // corner), so a fresh lavapipe run measures hitPixels=221250 (of 512*512=262144, ~84% fill) --
+    // far above the old corner-workaround's weak >500 bound. 50000 keeps wide margin below the
+    // measured value while still meaningfully gating "is the body visible at all".
+    EXPECT_GT(hitPixels, 50000) << "Golden document produced too few hit pixels -- body may not be visible";
+}
+
+// ---------------------------------------------------------------------------
+// M4 — ablation gate: vary ONLY the "cut" layer's enabled bit, assert a real pixel-level
+// difference at the cylinder bore's top-face location (NOT just an aggregate count, and NOT
+// silhouette-blind -- the cylinder (halfHeight=1.5) punches all the way through the box
+// (halfExtents=1)'s top face, so this is a genuine outline/hole difference, verified numerically
+// via evalRecipe before writing this test: at grid (x in [0,0.3], z=0) the surface is void up to
+// y>1.6 with the cut enabled, solid at y=0.98 with it disabled).
+// ---------------------------------------------------------------------------
+TEST_F(EditorDocumentRenderTest, DisablingCutLayerChangesTopFaceSilhouette) {
+    ASSERT_TRUE(softwareConfirmed_);
+
+    const auto raw = ReadFile(VXD_GOLDEN_PATH);
+    ASSERT_FALSE(raw.empty());
+    Yeroket::Sdf::Generated::VoxelDocumentView view{};
+    ASSERT_TRUE(Yeroket::Sdf::Generated::ReadVoxelDocument(raw.data(), raw.size(), view));
+
+    constexpr uint32_t kW = 512, kH = 512;
+    // Look down at the cylinder bore's footprint (x,z near the object's LOCAL origin, inside the
+    // 0.35-radius bore) from a steep angle so a disabled cut shows solid box-top colour and an
+    // enabled cut shows void/background through the hole -- an outline change directly under the
+    // camera's centre pixel, not an interior-only depression a silhouette test would miss.
+    // Inc2a: the object-centered document is now baked AT grid-center (32,32,32) (Inc2a's
+    // bake-center fix), so a local-space point (lx,ly,lz) lands at grid (32+lx, 32+ly, 32+lz).
+    // Grid->world: (kWorldGridSize/n)*renderScale = 0.15625*5 = 0.78125 (see RenderPool's
+    // comment); local bore footprint (0.1,0.1) and local box-top y=0.98 (both verified
+    // numerically beforehand, unchanged by the centering fix -- it's a local-space fact).
+    constexpr float kGridToWorld = 0.15625f * 5.0f;
+    const glm::vec3 target((32.0f + 0.1f) * kGridToWorld, (32.0f + 0.98f) * kGridToWorld, (32.0f + 0.1f) * kGridToWorld);
+    const glm::vec3 eye = target + glm::vec3(0.35f, 1.3f, 0.35f);  // steep but non-degenerate angle
+    const PushConstants pc = MakeCamera(eye, target, kW, kH, 1);
+
+    std::vector<uint8_t> blobWithCut, blobNoCut;
+    auto bakeWithCut = FlattenAndBake(view, nullptr, blobWithCut);
+    ASSERT_TRUE(bakeWithCut.ok) << bakeWithCut.err;
+
+    std::vector<uint8_t> enabledOverride = {1, 1, 0};  // base, bulge enabled; cut DISABLED
+    auto bakeNoCut = FlattenAndBake(view, &enabledOverride, blobNoCut);
+    ASSERT_TRUE(bakeNoCut.ok) << bakeNoCut.err;
+
+    std::vector<uint8_t> rgbaWithCut, rgbaNoCut;
+    int hitWithCut = 0, hitNoCut = 0;
+    ASSERT_NO_FATAL_FAILURE(RenderPool(std::move(bakeWithCut.pool), pc, kW, kH, rgbaWithCut, hitWithCut));
+    ASSERT_NO_FATAL_FAILURE(RenderPool(std::move(bakeNoCut.pool),  pc, kW, kH, rgbaNoCut,  hitNoCut));
+
+    auto writePng = [&](const char* path, const std::vector<uint8_t>& rgba) {
+        std::vector<uint8_t> rgb(size_t(kW)*kH*3);
+        for (uint32_t i = 0; i < kW*kH; ++i) {
+            rgb[i*3+0]=rgba[i*4+0]; rgb[i*3+1]=rgba[i*4+1]; rgb[i*3+2]=rgba[i*4+2];
+        }
+        stbi_write_png(path, int(kW), int(kH), 3, rgb.data(), int(kW)*3);
+    };
+    writePng("/tmp/editor_document_render_with_cut.png", rgbaWithCut);
+    writePng("/tmp/editor_document_render_without_cut.png", rgbaNoCut);
+
+    // Sample a small region around screen-centre (where the camera looks straight down through
+    // the bore) and count differing pixels between the two renders.
+    int centreDiffPixels = 0;
+    constexpr uint32_t kRegionHalf = 40;
+    for (uint32_t y = kH/2 - kRegionHalf; y < kH/2 + kRegionHalf; ++y) {
+        for (uint32_t x = kW/2 - kRegionHalf; x < kW/2 + kRegionHalf; ++x) {
             const uint32_t i = y*kW + x;
-            if (rgba[i*4+0]>24 || rgba[i*4+1]>24 || rgba[i*4+2]>40) {
-                ++hitPixels;
-                ++bandHits[x / (kW/4)];   // 4 equal horizontal bands
-            }
+            const int dr = int(rgbaWithCut[i*4+0]) - int(rgbaNoCut[i*4+0]);
+            const int dg = int(rgbaWithCut[i*4+1]) - int(rgbaNoCut[i*4+1]);
+            const int db = int(rgbaWithCut[i*4+2]) - int(rgbaNoCut[i*4+2]);
+            if (std::abs(dr) > 16 || std::abs(dg) > 16 || std::abs(db) > 16) ++centreDiffPixels;
         }
     }
-    std::printf("[POOL] 4-body render | total=%d | bands=[%d,%d,%d,%d] | render=%.0f ms | -> %s\n",
-                hitPixels, bandHits[0], bandHits[1], bandHits[2], bandHits[3], ms, outPath);
 
-    EXPECT_GT(hitPixels, 2000) << "Total hit pixel count too low";
-    // Each x-band must have hits — proves all 4 octreeIndex slots actually rendered.
-    for (int band = 0; band < 4; ++band)
-        EXPECT_GT(bandHits[band], 50)
-            << "octreeIndex " << band << " band[" << band << "]=" << bandHits[band]
-            << " — slot may not have rendered";
+    std::printf("[EDITOR/ablation] hitWithCut=%d hitNoCut=%d centreDiffPixels=%d (region=%ux%u)\n",
+                hitWithCut, hitNoCut, centreDiffPixels, kRegionHalf*2, kRegionHalf*2);
 
-    vkDeviceWaitIdle(logicalDevice_);
-    node->Cleanup(CleanupReason::FinalTeardown);
-    nodeBase.reset();
+    // The disabled-cut render must show MORE solid pixels overall (the hole gets filled in).
+    EXPECT_GT(hitNoCut, hitWithCut)
+        << "Disabling the cut layer should fill in the punched-through hole, increasing hit count";
+    // And the top-face region directly over the bore must differ at the pixel level -- proves
+    // the toggle actually changed the rendered geometry there, not just an aggregate elsewhere.
+    // Inc2a re-derivation: the corrected centering means the camera looks dead-center at the
+    // bore (not an off-corner view), so a fresh lavapipe run measures centreDiffPixels=6400 --
+    // literally the ENTIRE 80x80=6400 sampled region differs (with-cut=void, no-cut=solid box
+    // top). 3000 keeps wide margin below the measured value while still meaningfully gating
+    // "did the toggle change geometry here" (old weak bound was >50, out of the same 6400).
+    EXPECT_GT(centreDiffPixels, 3000)
+        << "Expected a real pixel-level difference under the cylinder bore; toggle may not be wired";
+}
+
+// ---------------------------------------------------------------------------
+// M4 — determinism: flattening the same document+override twice must be byte-identical.
+// ---------------------------------------------------------------------------
+TEST_F(EditorDocumentRenderTest, FlattenIsDeterministic) {
+    const auto raw = ReadFile(VXD_GOLDEN_PATH);
+    ASSERT_FALSE(raw.empty());
+    Yeroket::Sdf::Generated::VoxelDocumentView view{};
+    ASSERT_TRUE(Yeroket::Sdf::Generated::ReadVoxelDocument(raw.data(), raw.size(), view));
+
+    std::vector<uint8_t> blobA, blobB;
+    std::string errA, errB;
+    ASSERT_TRUE(Vixen::SVO::FlattenVoxelDocument(view, nullptr, blobA, errA)) << errA;
+    ASSERT_TRUE(Vixen::SVO::FlattenVoxelDocument(view, nullptr, blobB, errB)) << errB;
+
+    ASSERT_EQ(blobA.size(), blobB.size());
+    EXPECT_EQ(std::memcmp(blobA.data(), blobB.data(), blobA.size()), 0)
+        << "Flattening the same document twice produced different bytes";
+
+    // Also verify determinism with a non-trivial override applied.
+    std::vector<uint8_t> ov = {1, 0, 1};
+    std::vector<uint8_t> blobC, blobD;
+    std::string errC, errD;
+    ASSERT_TRUE(Vixen::SVO::FlattenVoxelDocument(view, &ov, blobC, errC)) << errC;
+    ASSERT_TRUE(Vixen::SVO::FlattenVoxelDocument(view, &ov, blobD, errD)) << errD;
+    ASSERT_EQ(blobC.size(), blobD.size());
+    EXPECT_EQ(std::memcmp(blobC.data(), blobD.data(), blobC.size()), 0);
 }

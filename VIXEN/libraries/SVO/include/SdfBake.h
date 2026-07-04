@@ -167,13 +167,18 @@ inline SdfBakeResult BakeRecipeToSdfWorld(uint32_t recipeId, const glm::vec3& ce
 }
 
 // Recipe-instruction path — evaluates a P0 SdfInstruction[] program via the CPU stack-VM.
+// The program is authored in OBJECT-CENTERED space (matching evalSdf's
+// convention on the analytic path): `center` is subtracted from the grid
+// sample point before evaluation, so a primitive authored at local (0,0,0)
+// lands at `center` in the grid. This mirrors evalSdf's `p - center` exactly
+// (SdfBake.h ~line 45) — the two bake paths are now consistent.
 inline SdfBakeResult BakeRecipeInstructionsToSdfWorld(const Recipe::SdfInstruction* prog,
                                                       uint32_t count,
                                                       const glm::vec3& center,
                                                       int n, float bandVoxels,
                                                       int brickDepth = 3) {
     return BakeSdfWorld(
-        [&](const glm::vec3& p) { return Recipe::evalRecipe(prog, count, p); },
+        [&](const glm::vec3& p) { return Recipe::evalRecipe(prog, count, p - center); },
         center, n, bandVoxels, brickDepth);
 }
 

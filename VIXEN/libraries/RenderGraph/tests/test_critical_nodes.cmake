@@ -409,6 +409,34 @@ gtest_discover_tests(test_recipe_pool_render
 message(STATUS "[RenderGraph Tests] Added: test_recipe_pool_render (I4.1 pool render gate)")
 
 # ===========================================================================
+# Voxel Authoring Inc1 M4 — vixen_editor's load/flatten/bake/render/toggle path
+# (lavapipe): golden document renders, then a cut-layer ablation asserts a real
+# pixel-level top-face difference (the cylinder punches through the box).
+# ===========================================================================
+add_executable(test_editor_document_render
+    Nodes/test_editor_document_render.cpp
+)
+add_dependencies(test_editor_document_render body_instance_raymarch_spv)
+target_link_libraries(test_editor_document_render PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+if(TARGET SVO)
+    target_link_libraries(test_editor_document_render PRIVATE SVO)
+endif()
+if(TARGET stb)
+    target_link_libraries(test_editor_document_render PRIVATE stb)
+else()
+    target_include_directories(test_editor_document_render PRIVATE
+        "${CMAKE_BINARY_DIR}/_deps/stb-src")
+endif()
+target_compile_definitions(test_editor_document_render PRIVATE
+    GLSL_RAYMARCH_SPV="${_brm_spv}"
+    VXD_GOLDEN_PATH="${VIXEN_ROOT}/BuiltAssets/documents/sample_tri_layer.vxd")
+set_target_properties(test_editor_document_render PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_editor_document_render
+    DISCOVERY_MODE PRE_TEST
+    DISCOVERY_TIMEOUT 120)
+message(STATUS "[RenderGraph Tests] Added: test_editor_document_render (Voxel Authoring Inc1 M4 editor live gate)")
+
+# ===========================================================================
 # I4.2 — Recipe authoring live gate (lavapipe):
 #   a) Subtract(Box, Sphere) CSG recipe renders a non-trivial solid.
 #   b) Default 3-shell scene regression confirms the M2 SSBO fix holds.

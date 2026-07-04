@@ -225,6 +225,26 @@ endif()
 gtest_discover_tests(test_recipe_bake)
 
 # ===========================================================================
+# Recipe Bake Center Test (Inc2a Task 1 — proves BakeRecipeInstructionsToSdfWorld
+# honors `center`, mirroring evalSdf's existing p - center convention)
+# ===========================================================================
+add_executable(test_recipe_bake_center test_recipe_bake_center.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_recipe_bake_center PRIVATE
+        GTest::gtest_main SVO GaiaVoxelWorld VoxelComponents VoxelData)
+else()
+    target_link_libraries(test_recipe_bake_center PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_recipe_bake_center PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_recipe_bake_center POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_recipe_bake_center>
+        COMMENT "Copying TBB DLL for test_recipe_bake_center")
+endif()
+gtest_discover_tests(test_recipe_bake_center)
+
+# ===========================================================================
 # Recipe Eval Parity Tests (P0 T4 — CPU stack-VM parity vs analytic golden)
 # ===========================================================================
 add_executable(test_recipe_eval_parity test_recipe_eval_parity.cpp)
@@ -305,6 +325,28 @@ if(TARGET TBB::tbb)
         COMMENT "Copying TBB DLL for test_recipe_pack_loader")
 endif()
 gtest_discover_tests(test_recipe_pack_loader)
+
+# ===========================================================================
+# Voxel Document Flatten Tests (Voxel-Authoring Inc1 M3 — VoxelDocumentFlattener,
+# document -> VRC1 recipe blob, consumable unchanged by the existing registry/pool path)
+# ===========================================================================
+add_executable(test_voxel_document_flatten test_voxel_document_flatten.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_voxel_document_flatten PRIVATE GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_voxel_document_flatten PRIVATE GTest::gtest_main)
+endif()
+target_compile_definitions(test_voxel_document_flatten PRIVATE
+    SAMPLE_TRI_LAYER_VXD_PATH="${CMAKE_SOURCE_DIR}/BuiltAssets/documents/sample_tri_layer.vxd"
+)
+set_target_properties(test_voxel_document_flatten PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_voxel_document_flatten POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_voxel_document_flatten>
+        COMMENT "Copying TBB DLL for test_voxel_document_flatten")
+endif()
+gtest_discover_tests(test_voxel_document_flatten)
 
 # ===========================================================================
 # Octree Pool Tests (I3.1 — dynamic-N pool + I3.2 config-size formula)
