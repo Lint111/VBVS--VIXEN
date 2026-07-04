@@ -88,9 +88,11 @@ void CameraNode::SetupImpl(TypedSetupContext& ctx) {
     applyIfChanged(CameraNodeConfig::PARAM_INITIAL_FLY_YAW, lastParamInitialFlyYaw_, [&](float v) { flyYaw = v; });
     applyIfChanged(CameraNodeConfig::PARAM_INITIAL_FLY_PITCH, lastParamInitialFlyPitch_, [&](float v) { flyPitch = v; });
 
-    NODE_LOG_INFO("Camera position: (" + std::to_string(cameraPosition.x) + ", " +
-                  std::to_string(cameraPosition.y) + ", " + std::to_string(cameraPosition.z) +
-                  "), yaw=" + std::to_string(yaw) + ", pitch=" + std::to_string(pitch));
+    {
+        const glm::vec3 pos = Vixen::RenderGraph::ExtractPosition(transform);
+        NODE_LOG_INFO("Camera position: (" + std::to_string(pos.x) + ", " +
+                      std::to_string(pos.y) + ", " + std::to_string(pos.z) + ")");
+    }
 
     // Modern polling-based input (GLFW/SDL2 style)
     // No event subscriptions needed - we poll InputState once per frame in ExecuteImpl
@@ -111,42 +113,10 @@ void CameraNode::CompileImpl(TypedCompileContext& ctx) {
     float aspectRatio = static_cast<float>(swapchainInfo->GetExtent().width) /
                         static_cast<float>(swapchainInfo->GetExtent().height);
 
-    // Compute initial camera vectors
-    glm::vec3 forward;
-    forward.x = cos(pitch) * sin(yaw);
-    forward.y = sin(pitch);
-    forward.z = -cos(pitch) * cos(yaw);
-    forward = glm::normalize(forward);
-
-    glm::vec3 right = glm::normalize(glm::cross(forward, glm::vec3(0.0f, 1.0f, 0.0f)));
-    glm::vec3 up = glm::normalize(glm::cross(right, forward));
-
-    // Create projection and view matrices
-    glm::mat4 projection = glm::perspective(
-        glm::radians(fov),
-        aspectRatio,
-        nearPlane,
-        farPlane
-    );
-
-    // Vulkan Y-flip: Vulkan's clip space has Y pointing down, unlike OpenGL
-    projection[1][1] *= -1.0f;
-
-    glm::vec3 target = cameraPosition + forward;
-    glm::mat4 view = glm::lookAt(cameraPosition, target, glm::vec3(0.0f, 1.0f, 0.0f));
-
-    // Fill initial camera data
-    // MUST match shader PushConstants layout in VoxelRayMarch.comp!
-    currentCameraData.cameraPos = cameraPosition;
-    currentCameraData.time = 0.0f;  // Will be updated per-frame
-    currentCameraData.cameraDir = forward;
-    currentCameraData.fov = fov;    // Degrees (shader converts to radians)
-    currentCameraData.cameraUp = up;
-    currentCameraData.aspect = aspectRatio;
-    currentCameraData.cameraRight = right;
-    currentCameraData.debugMode = 0;  // Normal rendering mode
-    currentCameraData.invProjection = glm::inverse(projection);
-    currentCameraData.invView = glm::inverse(view);
+    // Reuse the same per-frame update path for the very first frame too — `transform` already
+    // holds the FreeFly boot seed from the field initializer, so this produces byte-identical
+    // output to the old hand-duplicated version of this same math.
+    UpdateCameraData(aspectRatio);
 
     // Output pointer to the camera data struct
     ctx.Out(CameraNodeConfig::CAMERA_DATA, const_cast<const CameraData&>(currentCameraData));
@@ -247,36 +217,25 @@ void CameraNode::UpdateCameraData(float aspectRatio) {
     // This flips the projection to match OpenGL conventions used in our shaders
     projection[1][1] *= -1.0f;
 
-    glm::vec3 forward;
-    glm::vec3 lookAtTarget;
-
-    if (mode == CameraMode::FreeFly) {
-        // FREE-FLY MODE: cameraPosition IS flyPosition; forward derived from flyYaw/flyPitch
-        // using the same spherical convention CameraNode already uses elsewhere (CompileImpl's
-        // initial-vectors block), just driven by the fly angles instead of yaw/pitch.
-        forward.x = cos(flyPitch) * sin(flyYaw);
-        forward.y = sin(flyPitch);
-        forward.z = -cos(flyPitch) * cos(flyYaw);
-        forward = glm::normalize(forward);
-
-        cameraPosition = flyPosition;
-        lookAtTarget = cameraPosition + forward;
-    } else {
-        // ORBIT MODE: Camera orbits around orbitCenter (unchanged from pre-dual-mode behavior)
+    if (mode == CameraMode::Orbit) {
+        // ORBIT MODE: compute the orbit-derived position/look-at, then rebuild `transform` as
+        // the SAME inverse-lookAt shape ComposeTransform produces — both modes converge on one
+        // representation, only what feeds glm::lookAt differs (a composed forward vs. an
+        // explicit look-at target).
         glm::vec3 orbitOffset;
-        orbitOffset.x = orbitDistance * cos(pitch) * sin(yaw);
-        orbitOffset.y = orbitDistance * sin(pitch);
-        orbitOffset.z = orbitDistance * cos(pitch) * cos(yaw);
-
-        cameraPosition = orbitCenter + orbitOffset;
-        forward = glm::normalize(orbitCenter - cameraPosition);
-        lookAtTarget = orbitCenter;
+        orbitOffset.x = orbitDistance * cos(orbitPitch) * sin(orbitYaw);
+        orbitOffset.y = orbitDistance * sin(orbitPitch);
+        orbitOffset.z = orbitDistance * cos(orbitPitch) * cos(orbitYaw);
+        const glm::vec3 cameraPos = orbitCenter + orbitOffset;
+        transform = glm::inverse(glm::lookAt(cameraPos, orbitCenter, glm::vec3(0.0f, 1.0f, 0.0f)));
     }
+    // FreeFly mode: `transform` is already current — ApplyRotation/ApplyMovement wrote it
+    // directly this frame (or it's unchanged from the last frame if there was no input).
 
-    glm::vec3 right = glm::normalize(glm::cross(forward, glm::vec3(0.0f, 1.0f, 0.0f)));
-    glm::vec3 up = glm::normalize(glm::cross(right, forward));
-
-    glm::mat4 view = glm::lookAt(cameraPosition, lookAtTarget, glm::vec3(0.0f, 1.0f, 0.0f));
+    const glm::vec3 cameraPosition = Vixen::RenderGraph::ExtractPosition(transform);
+    const glm::vec3 forward = glm::normalize(-glm::vec3(transform[2]));
+    const glm::vec3 right = glm::normalize(glm::vec3(transform[0]));
+    const glm::vec3 up = glm::normalize(glm::vec3(transform[1]));
 
     // Update camera data struct
     // MUST match shader PushConstants layout in VoxelRayMarch.comp!
@@ -289,12 +248,12 @@ void CameraNode::UpdateCameraData(float aspectRatio) {
     currentCameraData.cameraRight = right;
     // debugMode is set via input (not updated here)
     currentCameraData.invProjection = glm::inverse(projection);
-    currentCameraData.invView = glm::inverse(view);
+    currentCameraData.invView = transform;   // `transform` IS the inverse-view matrix already —
+                                              // no local `view`/`glm::inverse` round-trip needed.
 
     // DEBUG: Log camera state once
     static bool loggedCamera = false;
     if (!loggedCamera) {
-        NODE_LOG_DEBUG("[CameraNode] Camera params: yaw=" + std::to_string(yaw) + ", pitch=" + std::to_string(pitch));
         NODE_LOG_DEBUG("[CameraNode] Camera position: (" + std::to_string(cameraPosition.x) + ", " + std::to_string(cameraPosition.y) + ", " + std::to_string(cameraPosition.z) + ")");
         NODE_LOG_DEBUG("[CameraNode] forward = (" + std::to_string(forward.x) + ", " + std::to_string(forward.y) + ", " + std::to_string(forward.z) + ")");
         NODE_LOG_DEBUG("[CameraNode] right = (" + std::to_string(right.x) + ", " + std::to_string(right.y) + ", " + std::to_string(right.z) + ")");
@@ -304,11 +263,10 @@ void CameraNode::UpdateCameraData(float aspectRatio) {
 }
 
 void CameraNode::ExitOrbitToFreeFly() {
-    // Seed from the current orbit-derived pose so the view doesn't jump on transition.
-    flyPosition = cameraPosition;
-    const glm::vec3& fwd = currentCameraData.cameraDir;
-    flyPitch = std::asin(glm::clamp(fwd.y, -1.0f, 1.0f));
-    flyYaw = std::atan2(fwd.x, -fwd.z);
+    // `transform` already holds the current orbit-derived pose (both modes share the one field)
+    // — there is nothing to copy or reseed. Only the mode flag needs to flip; UpdateCameraData's
+    // FreeFly branch will simply stop overwriting `transform` from orbitCenter/orbitDistance next
+    // frame, leaving it exactly where it was at the moment of the transition (no jump).
     mode = CameraMode::FreeFly;
 }
 
@@ -338,15 +296,27 @@ void CameraNode::ApplyRotation() {
     // Apply exponential smoothing to reduce jitter
     smoothedRotationDelta = glm::mix(smoothedRotationDelta, rotationDelta, mouseSmoothingFactor);
 
-    float& targetYaw = (mode == CameraMode::FreeFly) ? flyYaw : yaw;
-    float& targetPitch = (mode == CameraMode::FreeFly) ? flyPitch : pitch;
-
-    targetYaw += smoothedRotationDelta.x * mouseSensitivity;
-    targetPitch -= smoothedRotationDelta.y * mouseSensitivity;
-
-    // Clamp pitch to avoid gimbal lock
-    const float maxPitch = glm::radians(89.0f);
-    targetPitch = glm::clamp(targetPitch, -maxPitch, maxPitch);
+    if (mode == CameraMode::FreeFly) {
+        // Extract the CURRENT angle from the transform (never stored separately), apply the
+        // smoothed delta, then rebuild the transform from scratch — no incremental rotation, so
+        // no drift accumulates on `transform` itself (spec 2026-07-04 decision 2).
+        auto [curYaw, curPitch] = Vixen::RenderGraph::ExtractYawPitch(transform);
+        float newYaw = curYaw + smoothedRotationDelta.x * mouseSensitivity;
+        float newPitch = curPitch - smoothedRotationDelta.y * mouseSensitivity;
+        const float maxPitch = glm::radians(89.0f);
+        newPitch = glm::clamp(newPitch, -maxPitch, maxPitch);
+        transform = Vixen::RenderGraph::ComposeTransform(
+            Vixen::RenderGraph::ExtractPosition(transform), newYaw, newPitch);
+    } else {
+        // Orbit mode: yaw/pitch still accumulate as transient locals feeding the orbit-sphere
+        // formula in UpdateCameraData — the ORBIT ANGLE is not the same thing as "the camera's
+        // own look direction" (the camera always looks AT orbitCenter in this mode), so it's
+        // tracked separately from `transform`'s orientation.
+        orbitYaw += smoothedRotationDelta.x * mouseSensitivity;
+        orbitPitch -= smoothedRotationDelta.y * mouseSensitivity;
+        const float maxPitch = glm::radians(89.0f);
+        orbitPitch = glm::clamp(orbitPitch, -maxPitch, maxPitch);
+    }
 
     // Clear raw rotation delta
     rotationDelta = glm::vec2(0.0f);
@@ -362,18 +332,22 @@ void CameraNode::ApplyMovement(float deltaTime) {
         // W/S/A/D: forward/back/strafe. World mode projects onto world X/Z regardless of facing
         // (matches Orbit's existing A/D-moves-center convention). Local mode uses camera facing,
         // flattened to the horizontal plane so looking down doesn't dive you into the ground.
+        auto [curYaw, curPitch] = Vixen::RenderGraph::ExtractYawPitch(transform);
+        (void)curPitch;  // only yaw is needed for flattened local-mode movement
         glm::vec3 moveForward, moveRight;
         if (localMovement) {
-            moveForward = glm::vec3(sin(flyYaw), 0.0f, -cos(flyYaw));
-            moveRight = glm::vec3(cos(flyYaw), 0.0f, sin(flyYaw));
+            moveForward = glm::vec3(sin(curYaw), 0.0f, -cos(curYaw));
+            moveRight = glm::vec3(cos(curYaw), 0.0f, sin(curYaw));
         } else {
             moveForward = glm::vec3(0.0f, 0.0f, -1.0f);
             moveRight = glm::vec3(1.0f, 0.0f, 0.0f);
         }
-        flyPosition += moveForward * movementDelta.z * flySpeed * deltaTime;
-        flyPosition += moveRight * movementDelta.x * flySpeed * deltaTime;
+        glm::vec3 newPos = Vixen::RenderGraph::ExtractPosition(transform);
+        newPos += moveForward * movementDelta.z * flySpeed * deltaTime;
+        newPos += moveRight * movementDelta.x * flySpeed * deltaTime;
         // Q/E: always world Y up/down, unconditionally (spec 2026-07-04 decision 6).
-        flyPosition.y += movementDelta.y * flySpeed * deltaTime;
+        newPos.y += movementDelta.y * flySpeed * deltaTime;
+        Vixen::RenderGraph::SetPosition(transform, newPos);
     } else {
         // ORBIT MODE (unchanged):
         // W/S: Zoom in/out (change orbit distance)

@@ -5,6 +5,7 @@
 #include "Core/NodeLogging.h"
 #include "Data/Nodes/CameraNodeConfig.h"
 #include "Data/CameraData.h"
+#include "Data/CameraTransform.h"
 #include <glm/glm.hpp>
 #include <cmath>
 #include <memory>
@@ -91,10 +92,10 @@ private:
     // Current camera data struct
     CameraData currentCameraData;
 
-    // Camera state
-    glm::vec3 cameraPosition{0.0f, 0.0f, 3.0f};
-    float yaw = 0.0f;
-    float pitch = 0.0f;
+    // Camera state — ONE stored pose (position + orientation) for BOTH FreeFly and Orbit mode
+    // (spec 2026-07-04 camera-transform-refactor). Rebuilt fresh from angle every frame via
+    // ComposeTransform — never incrementally rotated, so there is nothing to accumulate drift on.
+    glm::mat4 transform = Vixen::RenderGraph::ComposeTransform(glm::vec3(0.0f, 5.0f, 30.0f), 0.0f, 0.0f);
     float fov = 45.0f;
     float nearPlane = 0.1f;
     float farPlane = 5000.0f;  // Extended for far viewing
@@ -103,6 +104,8 @@ private:
     // Orbit mode: WASD/QE moves orbit center, arrow keys rotate around it
     glm::vec3 orbitCenter{5.0f, 5.0f, 5.0f};  // Center of grid (10/2 for 10^3 world size)
     float orbitDistance = 30.0f;  // Distance from orbit center (scaled for 10^3 world)
+    float orbitYaw = 0.0f;    // orbit angle around orbitCenter (was the shared `yaw` field pre-refactor)
+    float orbitPitch = 0.0f;  // orbit angle around orbitCenter (was the shared `pitch` field pre-refactor)
 
     // Orbit distance bounds (keeps camera inside the 128^3 world). Shared by W/S zoom
     // (ApplyMovement) and wheel zoom (ExecuteImpl, M4) so both paths agree on one ceiling.
@@ -113,12 +116,9 @@ private:
     // be able to fly around before ever clicking a body into orbit.
     CameraMode mode = CameraMode::FreeFly;
 
-    // Free-fly pose — independent of orbitCenter/yaw/pitch/orbitDistance above. Arbitrary start;
-    // if the player enters Orbit first via a body click this is irrelevant until the next F-key
-    // exit reseeds it from the orbit-derived pose (see ExecuteImpl).
-    glm::vec3 flyPosition{0.0f, 5.0f, 30.0f};
-    float flyYaw = 0.0f;
-    float flyPitch = 0.0f;
+    // Free-fly's own initial seed is set directly into `transform` in the constructor (see
+    // CameraNode.cpp) rather than tracked as separate fields here — both modes now share the one
+    // `transform` field above.
     float flySpeed = 20.0f;               // units/sec, scroll-wheel adjustable in FreeFly
     static constexpr float kFlySpeedMin = 2.0f;
     static constexpr float kFlySpeedMax = 200.0f;
@@ -145,13 +145,9 @@ private:
     // recompile (resize, any node's param edit) — applying a pose param only when its stored
     // value actually changed keeps recompiles from snapping the live orbit camera back to t0,
     // while setcam/lookcam-style param writes still land exactly once.
-    float lastParamCamX_ = NAN, lastParamCamY_ = NAN, lastParamCamZ_ = NAN;
     float lastParamYaw_ = NAN, lastParamPitch_ = NAN;
-    float lastParamOrbitCX_ = NAN, lastParamOrbitCY_ = NAN, lastParamOrbitCZ_ = NAN;
     float lastParamOrbitDist_ = NAN;
     float lastParamCameraMode_ = NAN;   // mirrors the other lastParam*_ change-tracking fields
-    float lastParamInitialFlyX_ = NAN, lastParamInitialFlyY_ = NAN, lastParamInitialFlyZ_ = NAN;
-    float lastParamInitialFlyYaw_ = NAN, lastParamInitialFlyPitch_ = NAN;
 
     // Last-seen pose_seq value (NaN = never seen). A change here (including the first sight)
     // forces every PRESENT pose param to reapply this SetupImpl regardless of lastApplied — see
