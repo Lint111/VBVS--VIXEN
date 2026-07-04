@@ -366,7 +366,7 @@ void MultiDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
         uint32_t queryFrameIndex = currentFrameIndex % framesInFlight;
 
         // Begin frame and write start timestamp
-        queryManager_->BeginFrame(cmdBuffer, queryFrameIndex);
+        queryManager_->BeginFrame(cmdBuffer, queryFrameIndex, querySlot_);
         queryManager_->WriteTimestamp(cmdBuffer, queryFrameIndex, querySlot_,
             VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT);
     }

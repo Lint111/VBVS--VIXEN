@@ -211,11 +211,25 @@ TEST_F(GPUQueryManagerTest, FreeInvalidSlotDoesNothing) {
 
 TEST_F(GPUQueryManagerTest, BeginFrameWithInvalidFrameIndexThrows) {
     GPUQueryManager manager(mockDevice, kDefaultFramesInFlight, kDefaultMaxConsumers);
+    auto slot = manager.AllocateQuerySlot("TestConsumer");
     VkCommandBuffer dummyCmd = VK_NULL_HANDLE;
 
     EXPECT_THROW({
-        manager.BeginFrame(dummyCmd, kDefaultFramesInFlight);  // Index out of range
+        manager.BeginFrame(dummyCmd, kDefaultFramesInFlight, slot);  // Index out of range
     }, std::out_of_range);
+}
+
+TEST_F(GPUQueryManagerTest, BeginFrameWithInvalidSlotThrows) {
+    GPUQueryManager manager(mockDevice, kDefaultFramesInFlight, kDefaultMaxConsumers);
+    VkCommandBuffer dummyCmd = VK_NULL_HANDLE;
+
+    EXPECT_THROW({
+        manager.BeginFrame(dummyCmd, 0, GPUQueryManager::INVALID_SLOT);
+    }, std::invalid_argument);
+
+    EXPECT_THROW({
+        manager.BeginFrame(dummyCmd, 0, 5);  // Slot 5 not allocated
+    }, std::invalid_argument);
 }
 
 TEST_F(GPUQueryManagerTest, WriteTimestampWithInvalidFrameIndexThrows) {
@@ -382,6 +396,41 @@ TEST_F(GPUQueryManagerTest, MultipleConsumersCanAllocateSeparateSlots) {
     EXPECT_NE(profilerSlot, loggerSlot);
 
     EXPECT_EQ(manager.GetAllocatedSlotCount(), 3u);
+}
+
+TEST_F(GPUQueryManagerTest, BeginFrameOnOneSlotDoesNotDisturbAnotherSlotsWrittenFlags) {
+    // Regression test for the M5 shared-pool bug: a per-frame whole-pool reset in
+    // BeginFrame let a second consumer (e.g. UIRenderNode) wipe a first consumer's
+    // (e.g. ComputeDispatchNode) already-recorded timestamps in the same frame's
+    // command buffer, since both called BeginFrame() on the one shared GPUQueryManager.
+    GPUQueryManager manager(mockDevice, kDefaultFramesInFlight, kDefaultMaxConsumers);
+
+    auto slotA = manager.AllocateQuerySlot("ConsumerA");
+    auto slotB = manager.AllocateQuerySlot("ConsumerB");
+    VkCommandBuffer dummyCmd = VK_NULL_HANDLE;
+    constexpr uint32_t frameIndex = 0;
+
+    // Consumer A begins its frame and writes both of its timestamps.
+    manager.BeginFrame(dummyCmd, frameIndex, slotA);
+    manager.WriteTimestamp(dummyCmd, frameIndex, slotA, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT);
+    manager.WriteTimestamp(dummyCmd, frameIndex, slotA, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
+
+    // Consumer B begins its own frame later in the same command buffer/frame.
+    manager.BeginFrame(dummyCmd, frameIndex, slotB);
+
+    // Consumer A's written-flags must survive Consumer B's BeginFrame. WriteTimestamp()
+    // throws once both start+end are already written for a slot, so a 3rd call on slot A
+    // throwing proves its flags are still {true, true} — with the old whole-pool-reset bug,
+    // Consumer B's BeginFrame would have cleared slot A back to {false, false} and this call
+    // would silently succeed (re-arming as a fresh "start" write) instead of throwing.
+    EXPECT_THROW({
+        manager.WriteTimestamp(dummyCmd, frameIndex, slotA, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT);
+    }, std::logic_error);
+
+    // Consumer B has not written anything yet, so its first write must succeed (not throw).
+    EXPECT_NO_THROW({
+        manager.WriteTimestamp(dummyCmd, frameIndex, slotB, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT);
+    });
 }
 
 TEST_F(GPUQueryManagerTest, ConsumerNamesAreMaintainedIndependently) {

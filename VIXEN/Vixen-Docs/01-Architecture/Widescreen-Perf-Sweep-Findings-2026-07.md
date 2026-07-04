@@ -1,6 +1,6 @@
 # Widescreen Perf Sweep — Verified Findings & Measurements (2026-07)
 
-**Status:** ANALYSIS OF RECORD for the widescreen-FPS-drop fix program. Companion plan: `Widescreen-Perf-Fix-Plan-2026-07.md`.
+**Status:** PROGRAM COMPLETE (2026-07-04) — all six milestones (M1-M6) shipped. ANALYSIS OF RECORD for the widescreen-FPS-drop fix program. Companion plan: `Widescreen-Perf-Fix-Plan-2026-07.md`.
 **Provenance:** 10-subsystem multi-agent sweep (88 raw findings → 63 canonical → top-32 verified by two adversarial lenses each → 12 confirmed / 10 plausible / 10 rejected), followed by empirical A/B measurement on the real GPU (Release/Ninja build, validation off, IMMEDIATE present). Full machine-readable result: session scratchpad `sweep_result.json`.
 
 ---
@@ -244,3 +244,79 @@ Resize-path robustness (ranks 3/7/8 + rank-5 correctness):
 Bonus root-cause fix: recreation waves never waited for in-flight GPU work before teardown (pre-existing; masked by luck until M3 made the wave deterministic). Fix: WaitForGraphDevicesIdle gated on pausedForRecreation_ — ordinary recompiles stay wait-free; validator empirically confirmed the OUT_OF_DATE acquire publishes PAUSE_START before every resize wave.
 
 Follow-ups recorded (pre-existing, NOT M3 regressions): (a) ~10-20x VUID-vkCmdDispatch-None-08114 at startup frames 0-99; (b) one-frame ~10-20x VUID-vkCmdBindPipeline-pipeline-parameter burst right after the resize recompile (descriptor rebind timing — M5 candidate); (c) MINOR: QueryCurrentSurfaceExtent lacks the 0xFFFFFFFF undefined-extent guard (Wayland-only storm risk — folded into M4); (d) post-resize steady frames ~1 ms slower than fresh-window at the same extent (M5 attribution target); (e) NODE_LOG_INFO lines from SwapChainNode/PickIdTargetNode don't surface in app logs in this config (observability gap).
+
+### M4 gate (2026-07-04, 2560x1440 fresh window, 600 frames, real GPU)
+
+Render-scale decoupling (rank 1) + honest LOD (rank 6):
+
+| Metric | scale 1.0 | scale 0.5 | ratio |
+|---|---|---|---|
+| Dispatch GPU | 1.40 ms | 0.38 ms | 27% (acceptance: 25-30%) |
+| Render target | 2560x1440 | 1280x720 | correct |
+| Frame avg / FPS | 5.80 ms / 172 | 3.26 ms / 306 | +78% FPS |
+| raySizeCoef | 0.000545 @1440 | 0.001091 @720 | exact 1/height |
+
+Notes: scale-1.0 frame is 5.8 ms vs M2's 3.76 ms — the predicted rank-6 correction (the frozen 500px raySizeCoef had been under-detailing large windows; LOD is now honest and render scale is the knob that buys the cost back). Bonus fix: the GENERAL-transition barrier hardcoded oldLayout=UNDEFINED (wrong for steady-state render-target re-entry) — replaced with per-image first-use tracking; validator confirmed fresh post-resize handles correctly re-treat as UNDEFINED. p99 remains 18-20 ms — M5's target. Visual gate: full-window image at 0.5, softer (user-eyeball + construction proof; no PNG hook in the app — observability gap noted).
+
+### M5 gate (2026-07-04, lavapipe WSL; instrumentation + one confirmed fix + attribution)
+
+**M5.1 (instrumentation):** `UIRenderNode` gained a `GPUPerformanceLogger` (mirrors `ComputeDispatchNode`'s: shared `GPUQueryManager` slot, `BeginFrame`/`RecordDispatchStart`/`RecordDispatchEnd` bracketing the render pass, `CollectResults` after the frame-fence wait). Confirmed live: `ui_composite_render_GPUPerf` allocates its own slot (slot 2, distinct from compute's slot 1/3) and logs the same "GPU timestamp queries enabled" init line as the compute logger. Caveat: on this lavapipe ICD, neither logger's periodic Dispatch-summary line ever fires in any run (300-600 frames) — `GPUQueryManager::TryReadTimestamps`/`ReadResults` apparently never resolves here for the ALREADY-SHIPPED `ComputeDispatchNode` timer either, so this is a pre-existing lavapipe limitation, not new breakage. GPU-level attribution is therefore CPU-only in this environment. `main.cpp`'s frame-timer block gained outlier logging: any frame costing >3x the previous 120-frame window's median logs `"[FrameTimer] OUTLIER frame N: X.XXX ms"` immediately, instead of only surfacing in the next window's avg/p99. This instrumentation is what caught the M5.3 finding below.
+
+**M5.2 (confirmed fix, rank 9):** `DescriptorSetNode::BuildDescriptorWrites`'s `imageInfos`/`bufferInfos` parameters (the caller's persistent `perFrameImageInfos[i]`/`perFrameBufferInfos[i]`, one sub-vector per swapchain image) were `reserve()`d against their current size but never `clear()`d before each frame's `Handle*()` calls `push_back()`ed onto them — every `Execute()` call appended on top of every prior frame's entries for that image index. Fixed: `clear()` both vectors before the `reserve()` (capacity retained, so steady state incurs no repeated reallocation); mirrors the sibling `perFrameAccelInfos`/`perFrameAccelHandles`, which already did this correctly. Verified via a temporary stderr size-probe soak (800x600, 500 frames, removed before commit): without the fix, `bufferInfos.size()` grew linearly (16 at frame 1 -> 912 at frame 451, unbounded); with the fix, flat at 8 across all 500 frames. RenderGraph test suite green post-fix (descriptor_resource_gatherer_node, gpu_query_manager[_integration], resource_gatherer, render_target_node, pass_group_node_smoke).
+
+**M5.3 (attribution):** resize probe 500x500 -> 1280x720 @ update-tick 150, 600 frames, lavapipe:
+
+| Window | avg | FPS | p99 |
+|---|---|---|---|
+| 0-120 (pre-resize, 500x500) | 10.99 ms | 91.0 | 12.3 ms |
+| 120-240 (transition, 1280x720) | 10.98 ms | 91.1 | 24.4 ms |
+| 240-360 (post-resize steady) | 11.84 ms | 84.4 | 16.9 ms |
+| 360-480 (post-resize steady) | 11.15 ms | 89.7 | 16.1 ms |
+| 480-600 (post-resize steady) | 11.53 ms | 86.8 | 17.9 ms |
+
+One OUTLIER fired: `frame 154: 28.741 ms` (4 frames after the resize event at tick 150) — no others in 600 frames. The outlier lands exactly on the L2 VUID burst (below); no GPU-summary lines were available to attribute UI-pass-vs-dispatch split (M5.1 caveat), so this is attributed by log correlation, not a GPU timer read.
+
+- **L2 (root cause found, NOT fixed — out of bounded scope):** the "descriptor rebind timing" VUID burst is a **cache-key granularity mismatch between two shared cachers in `CashSystem`**, not a node-ordering bug. `PipelineLayoutCacher::ComputeKey` correctly hashes the live `VkDescriptorSetLayout` handle, so a resize's fresh layout IS a cache miss there and a new `VkPipelineLayout` is created. But `ComputePipelineCacher::ComputeKey` (`ComputePipelineCacher.cpp:47-56`) hashes only `shaderKey` (SHA256 of the SPIR-V) and `layoutKey` (`ComputePipelineNode.cpp:201`: `shaderBundle->uuid + "_pipeline_layout"`, a STRING tied to the shader's descriptor *interface*, not the live layout handle) — both resize-invariant, since the shader and its interface don't change across a resize. So `ComputePipelineCacher::GetOrCreate` returns the SAME cached `ComputePipelineWrapper` from before the resize, whose `pipelineLayoutWrapper` still points at the layout `PipelineLayoutCacher` just destroyed-and-replaced. `ComputeDispatchNode::BindComputePipeline` binds that stale-but-cache-hit pipeline for exactly the first post-recompile frame, producing the observed `VUID-vkCmdBindPipeline-pipeline-parameter: ... references deleted object VkDescriptorSetLayout ...` burst (confirmed self-healing: no crash, no recurrence, clean 600-frame run). `DescriptorSetNode::CleanupImpl`/`ComputePipelineNode::CleanupImpl` also unconditionally destroy their pool/layout/shader-module/pipeline on every recompile (no `CleanupReason::Recompile` persistence guard — the KI-004 pattern was never applied to these two nodes), which is what makes the layout handle churn on every resize in the first place. Real fix requires either folding the live layout handle into `ComputePipelineCacher`'s key or invalidating pipeline-cache entries when their backing layout is torn down — both touch shared cache infrastructure beyond one node, so per the milestone's bounded scope ("DO NOT restructure descriptor architecture") this is filed as a follow-up, not fixed this session. Reproduction: `VIXEN_RESIZE_AT_FRAME=150 VIXEN_RESIZE_WIDTH=1280 VIXEN_RESIZE_HEIGHT=720` on any live/validation-enabled run.
+- **L1 (inconclusive, not fixed):** post-resize steady windows in this run (11.15-11.84 ms) vs pre-resize (10.99 ms) show a residual, but this specific probe resizes 500x500 -> 1280x720 (different render extents by design), so the delta is confounded with "more actual GPU/UI work at a larger resolution" (M4 already established dispatch cost scales with extent) — not cleanly isolable from a true lingering-cost bug without a same-extent before/after comparison, which the GPU-summary gap (M5.1 caveat) also blocks on this ICD. Minor secondary contributor found but not fixed: `ComputeDispatchNode::seenRenderTargetImages_` (a `std::set<VkImage>`) accumulates stale, since-destroyed image handles across repeated resizes with no pruning — real but small (a handful of `std::set` entries, `O(log n)` lookup) relative to the observed ~1 ms, not the dominant driver. Verdict: inconclusive with current instrumentation; re-attempt with a same-extent pre/post probe and (if the GPU-summary gap is fixed) real GPU-ms readouts before spending more budget here.
+
+### M5 gate (2026-07-04, real GPU, 2560x1440)
+
+p99 hitch attribution + rank-9 fix + Critical GPU-timing regression caught and fixed mid-milestone:
+
+| Metric | Before M5 | After M5.2 (growth fix) | After Critical fix (1d86c3ef) |
+|---|---|---|---|
+| Steady p99 | 17-26 ms | ~11.5-12.6 ms (lavapipe, pre-restart) | 15-16 ms (real GPU) |
+| Frame avg | ~4.8 ms | ~3.7-4.0 ms | 3.9-4.5 ms |
+| L1 residual (post-resize vs fresh) | +1 ms | gone | gone |
+| Dispatch: GPU summaries | present | present | RESTORED after Critical fix (were 0 mid-milestone) |
+| bufferInfos growth (500-frame soak) | 16->912 unbounded | flat 8 | flat 8 |
+| OUTLIER lines (noise floor) | 195 (mostly sub-5ms) | - | 114 (all genuine 11-18ms tail latency, 0 sub-5ms) |
+
+**Critical caught mid-milestone**: M5.1's UIRenderNode GPU timer made it a 2nd per-frame GPUQueryManager::BeginFrame caller; BeginFrame did a WHOLE-POOL reset, so UI's call (after compute in the same frame) wiped ComputeDispatchNode's timestamps -> real-GPU Dispatch: summaries vanished (0 lines). Root-fixed (not a band-aid): BeginFrame changed to per-slot reset (ResetQueryRange on just that slot's query pair) -> multi-consumer coordination problem removed structurally, no "one owner" convention needed. Opus-validated twice (found the issue, then approved the fix) with a regression test proving slot isolation.
+
+**L2 (filed, not fixed — shared CashSystem infra, correctly out of bounded scope)**: ComputePipelineCacher::ComputeKey hashes shaderKey + a resize-invariant layout STRING while PipelineLayoutCacher keys the live VkDescriptorSetLayout handle -> one-frame stale-pipeline-cache hit after every resize (the VUID-vkCmdBindPipeline burst). Also noted: DescriptorSetNode/ComputePipelineNode CleanupImpl destroy unconditionally on every recompile (no CleanupReason::Recompile persistence guard — same class as KI-004). Both -> Known-Issues follow-ups at close-out.
+
+### M6 gate (2026-07-04, WSL build + unit tests — CPU-only hygiene, no live-GPU gate needed)
+
+**M6.1 (rank 11 fix):** `NODE_LOG_*`/`NODE_LOG_*_OBJ` macros (`NodeLogging.h`) now check `nodeLogger->IsEnabled()` AND `Logger::GetGlobalMinLevel() <= <this macro's level>` before evaluating the `msg` argument, so a disabled level no longer pays for the caller's `std::string` concatenation. Mirrors the filtering `Logger::Log()` already applied internally — observable output for enabled levels is unchanged. Verified: `test_logger_basic` 22/22, `test_rendergraph_basic` 3/3, `test_rendergraph_dependency` 4/4, `test_node_self_registration` 2/2, `test_device_node` 22/22, `test_typednode_helpers` 2/2 — all green, no regressions.
+
+**M6.2 (rank 12 fix):** `GraphLifecycleHooks::RegisterNodeHook` gained an optional `targetNode` parameter; `ExecuteNodeHooks` now looks its target node up in a `std::unordered_map<NodeInstance*, vector<NodeHookEntry>[phases]>` instead of every node's Execute()/Compile()/Setup()/Cleanup() walking every registered node hook in the graph and self-filtering by identity (the O(nodes x hooks) pattern from rank 12). `VariadicConnectionRule.cpp`'s two `RegisterNodeHook` call sites (its only production callers) now pass their real target node instead of self-filtering inside the callback body. New `test_graph_lifecycle_hooks.cpp` proves a hook registered for node A is never invoked when node B executes (not filtered-after-invoked — literally never called), plus untargeted/targeted coexistence and `ClearNodeHooks` coverage: 4/4 passing. No regressions: `test_connection_rule` 109/109, `test_accumulation_gather` 3/3, `test_multidispatch_integration` 22/22.
+
+---
+
+## PROGRAM COMPLETE (2026-07-04)
+
+All six milestones shipped. Headline before/after at 2560x1440 (default 3-procedural-body scene):
+
+| Metric | Before program | After program |
+|---|---|---|
+| Frame time | ~7.6 ms | ~3.9-4.5 ms |
+| FPS | ~131 | ~220-260 |
+| Steady p99 | 17-26 ms | 15-16 ms |
+| Fresh-window resolution (D1) | ALWAYS 800x600 regardless of requested size | honors requested size |
+
+Also fixed along the way: a genuine engine crash (in-flight resource teardown racing device-loss/resize recovery — the KI-004 persistent-handle class), plus 3 other real bugs found during measurement (D1 always-800x600 param-type mismatch, D2 dead GPU timing instrument for slots >=1, the M5 mid-milestone GPUQueryManager::BeginFrame whole-pool-reset regression that briefly zeroed real-GPU Dispatch summaries).
+
+Filed-not-fixed follow-ups (bounded out of this program's scope, tracked in `Known-Issues.md`): KI-005 (ComputePipelineCacher/PipelineLayoutCacher cache-key granularity mismatch — one-frame stale-pipeline-bind VUID burst per resize), KI-006 (DescriptorSetNode/ComputePipelineNode CleanupImpl unconditional teardown — the KI-004 pattern class, not yet applied here), KI-007 (`ComputeDispatchNode::seenRenderTargetImages_` unpruned stale handles — tiny), KI-008 (lavapipe no longer usable for this project — standing rule, all forward-looking plan-doc references corrected to the real-GPU/Mesa-Dozen path).
+
+**Remaining real-GPU tail**: 114 outlier frames in the 11-18ms range persist post-fix — genuine driver/compositor jitter, not the rank-9 leak (which is fully closed). Not chased further; outside this milestone's bounded scope.

@@ -25,10 +25,16 @@ void GraphLifecycleHooks::RegisterGraphHook(
 void GraphLifecycleHooks::RegisterNodeHook(
     NodeLifecyclePhase phase,
     NodeLifecycleCallback callback,
-    const std::string& debugName
+    const std::string& debugName,
+    NodeInstance* targetNode
 ) {
     size_t index = static_cast<size_t>(phase);
-    nodeHooks_[index].push_back({callback, debugName});
+
+    if (targetNode) {
+        targetedNodeHooks_[targetNode][index].push_back({callback, debugName});
+    } else {
+        nodeHooks_[index].push_back({callback, debugName});
+    }
 
     if (!debugName.empty()) {
         LOG_DEBUG("Registered node hook '" + debugName +
@@ -64,28 +70,40 @@ void GraphLifecycleHooks::ExecuteGraphHooks(GraphLifecyclePhase phase, RenderGra
 
 void GraphLifecycleHooks::ExecuteNodeHooks(NodeLifecyclePhase phase, NodeInstance* node) {
     size_t index = static_cast<size_t>(phase);
-    const auto& hooks = nodeHooks_[index];
+    const auto& globalHooks = nodeHooks_[index];
 
-    if (hooks.empty()) {
+    auto targetedIt = targetedNodeHooks_.find(node);
+    const bool hasTargeted = targetedIt != targetedNodeHooks_.end() &&
+                              !targetedIt->second[index].empty();
+
+    if (globalHooks.empty() && !hasTargeted) {
         return;
     }
 
-    LOG_DEBUG("Executing " + std::to_string(hooks.size()) +
+    auto runHooks = [&](const std::vector<NodeHookEntry>& hooks) {
+        for (const auto& entry : hooks) {
+            if (!entry.debugName.empty()) {
+                LOG_DEBUG("  Executing: " + entry.debugName);
+            }
+
+            try {
+                entry.callback(node);
+            } catch (const std::exception& e) {
+                LOG_ERROR("ERROR in node hook '" + entry.debugName +
+                         "' for node '" + node->GetInstanceName() + "': " + std::string(e.what()));
+                throw;
+            }
+        }
+    };
+
+    size_t totalHooks = globalHooks.size() + (hasTargeted ? targetedIt->second[index].size() : 0);
+    LOG_DEBUG("Executing " + std::to_string(totalHooks) +
              " node hooks for phase: " + std::string(GetPhaseName(phase)) +
              " on node: " + node->GetInstanceName());
 
-    for (const auto& entry : hooks) {
-        if (!entry.debugName.empty()) {
-            LOG_DEBUG("  Executing: " + entry.debugName);
-        }
-
-        try {
-            entry.callback(node);
-        } catch (const std::exception& e) {
-            LOG_ERROR("ERROR in node hook '" + entry.debugName +
-                     "' for node '" + node->GetInstanceName() + "': " + std::string(e.what()));
-            throw;
-        }
+    runHooks(globalHooks);
+    if (hasTargeted) {
+        runHooks(targetedIt->second[index]);
     }
 }
 
@@ -96,6 +114,7 @@ void GraphLifecycleHooks::ClearAll() {
     for (auto& hooks : nodeHooks_) {
         hooks.clear();
     }
+    targetedNodeHooks_.clear();
 }
 
 void GraphLifecycleHooks::ClearGraphHooks(GraphLifecyclePhase phase) {
@@ -106,6 +125,9 @@ void GraphLifecycleHooks::ClearGraphHooks(GraphLifecyclePhase phase) {
 void GraphLifecycleHooks::ClearNodeHooks(NodeLifecyclePhase phase) {
     size_t index = static_cast<size_t>(phase);
     nodeHooks_[index].clear();
+    for (auto& [node, hooksByPhase] : targetedNodeHooks_) {
+        hooksByPhase[index].clear();
+    }
 }
 
 const char* GraphLifecycleHooks::GetPhaseName(GraphLifecyclePhase phase) {

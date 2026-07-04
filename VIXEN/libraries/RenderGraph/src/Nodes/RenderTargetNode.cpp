@@ -3,6 +3,9 @@
 #include "Core/RenderGraph.h"
 #include "Core/NodeLogging.h"
 #include "VulkanDevice.h"
+#include <algorithm>
+#include <cmath>
+#include <limits>
 #include <stdexcept>
 
 // Default frames-in-flight when not specified by the user.
@@ -58,9 +61,18 @@ void RenderTargetNode::SetupImpl(TypedSetupContext& ctx) {
                   RenderTargetNodeConfig::PARAM_USAGE,
                   static_cast<uint32_t>(VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
                                         VK_IMAGE_USAGE_SAMPLED_BIT)));
+    scale_  = GetParameterValue<float>(RenderTargetNodeConfig::PARAM_SCALE, 1.0f);
 
     NODE_LOG_INFO("[RenderTargetNode] Setup complete: " +
                   std::to_string(width_) + "x" + std::to_string(height_));
+}
+
+VkExtent2D RenderTargetNode::ComputeFollowExtent(VkExtent2D source, float scale) {
+    // Clamp scale to (0,1]: 0 or negative would produce a degenerate/zero-area target.
+    float clampedScale = std::clamp(scale, std::numeric_limits<float>::min(), 1.0f);
+    uint32_t w = static_cast<uint32_t>(std::ceil(static_cast<double>(source.width)  * clampedScale));
+    uint32_t h = static_cast<uint32_t>(std::ceil(static_cast<double>(source.height) * clampedScale));
+    return { std::max(w, 1u), std::max(h, 1u) };
 }
 
 void RenderTargetNode::CompileImpl(TypedCompileContext& ctx) {
@@ -71,13 +83,31 @@ void RenderTargetNode::CompileImpl(TypedCompileContext& ctx) {
         throw std::runtime_error("[RenderTargetNode] VULKAN_DEVICE_IN is null");
     }
 
-    // FR-7: images are persistent across recompile — only create once.
-    // A future followSwapchainExtent mode will recreate here when extent changes.
+    // Follow-swapchain mode: EXTENT_SOURCE connected means this node is a transitive dependent
+    // of whatever publishes it (typically SwapChainNode) and is recompiled through the standard
+    // resize cascade — re-derive width_/height_ here every Compile.
+    IRenderTarget* extentSource = ctx.In(RenderTargetNodeConfig::EXTENT_SOURCE);
+    bool extentChanged = false;
+    if (extentSource) {
+        VkExtent2D computed = ComputeFollowExtent(extentSource->GetExtent(), scale_);
+        extentChanged = (computed.width != width_) || (computed.height != height_);
+        width_  = computed.width;
+        height_ = computed.height;
+    }
+
+    // imageCount_ == 0 means "derive from the engine default frames-in-flight"
+    if (imageCount_ == 0) {
+        imageCount_ = DEFAULT_FRAMES_IN_FLIGHT;
+    }
+
+    // FR-7: images are persistent across recompile — only (re)create when first-time or the
+    // computed extent actually changed.
     if (target_.buffers.empty()) {
-        // imageCount_ == 0 means "derive from the engine default frames-in-flight"
-        if (imageCount_ == 0) {
-            imageCount_ = DEFAULT_FRAMES_IN_FLIGHT;
-        }
+        CreateTarget(device_);
+    } else if (extentChanged) {
+        NODE_LOG_INFO("[RenderTargetNode] EXTENT_SOURCE extent changed — recreating offscreen target at " +
+                      std::to_string(width_) + "x" + std::to_string(height_));
+        DestroyTarget();
         CreateTarget(device_);
     } else {
         NODE_LOG_INFO("[RenderTargetNode] Reusing persistent offscreen target across recompile");

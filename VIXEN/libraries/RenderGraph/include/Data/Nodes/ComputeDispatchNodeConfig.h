@@ -25,7 +25,7 @@ using IDebugCapture = Debug::IDebugCapture;
 // ============================================================================
 
 namespace ComputeDispatchNodeCounts {
-    static constexpr size_t INPUTS = 17;  // +TIMELINE_SEMAPHORE_IN, +TIMELINE_FRAME_BASE_IN (P5b M1)
+    static constexpr size_t INPUTS = 18;  // +TIMELINE_SEMAPHORE_IN, +TIMELINE_FRAME_BASE_IN (P5b M1), +RENDER_TARGET_INFO (M4)
     static constexpr size_t OUTPUTS = 4;  // Added DEBUG_CAPTURE_OUT output
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -116,6 +116,11 @@ CONSTEXPR_NODE_CONFIG(ComputeDispatchNodeConfig,
      * Execute-only: swapchain info only needed during dispatch, not during pipeline creation.
      * Auto-sync P3: ComputeStorageWrite — the compute shader storage-writes the swapchain image.
      * ReadWrite mutability so the tracker records this node as a writer for hazard detection.
+     * M4 note: when RENDER_TARGET_INFO is ALSO connected, the shader no longer storage-writes this
+     * image directly (it blit-writes it instead — see BlitRenderTargetToSwapchain); this
+     * declaration is then an over-approximation kept for Tier-1 (the current voxel path only bakes
+     * buffer/memory barriers from AccessKind, not image barriers — see ComputeDispatchNode.cpp's
+     * ReplayEntryBarriers comment). Revisit if/when Tier-2 image-barrier baking lands.
      */
     INPUT_SLOT_SYNC(SWAPCHAIN_INFO, Vixen::Vulkan::Resources::IRenderTarget*, 5,
         SlotNullability::Required,
@@ -229,6 +234,23 @@ CONSTEXPR_NODE_CONFIG(ComputeDispatchNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
+    /**
+     * @brief Optional offscreen render target (M4: render-scale decoupling).
+     * When connected, the compute shader's storage-image output, dispatch dimensions, and GPU
+     * perf-logger extent all derive from THIS target instead of SWAPCHAIN_INFO; after the dispatch,
+     * ComputeDispatchNode records the barriers + vkCmdBlitImage from this target's current image to
+     * the swapchain image (still SWAPCHAIN_INFO). When NOT connected, behavior is byte-identical to
+     * today (dispatch writes the swapchain image directly; no blit) — the benchmark graph and other
+     * demo graphs that never wire this input are unaffected.
+     * Execute-only: ReadWrite so the auto-sync tracker records this node as its writer.
+     */
+    INPUT_SLOT_SYNC(RENDER_TARGET_INFO, Vixen::Vulkan::Resources::IRenderTarget*, 17,
+        SlotNullability::Optional,
+        SlotRole::Execute,
+        SlotMutability::ReadWrite,
+        SlotScope::NodeLevel,
+        ::Vixen::RenderGraph::AccessKind::ComputeStorageWrite);
+
     // ===== OUTPUTS (4) =====
 
     /**
@@ -312,6 +334,10 @@ CONSTEXPR_NODE_CONFIG(ComputeDispatchNodeConfig,
 
         HandleDescriptor frameBaseDesc{"uint64_t"};
         INIT_INPUT_DESC(TIMELINE_FRAME_BASE_IN, "timeline_frame_base_in", ResourceLifetime::Transient, frameBaseDesc);
+
+        // M4: optional offscreen render target (render-scale decoupling)
+        HandleDescriptor renderTargetDesc{"IRenderTarget*"};
+        INIT_INPUT_DESC(RENDER_TARGET_INFO, "render_target_info", ResourceLifetime::Persistent, renderTargetDesc);
 
         // Initialize output descriptors
         HandleDescriptor cmdBufferDesc{"VkCommandBuffer"};

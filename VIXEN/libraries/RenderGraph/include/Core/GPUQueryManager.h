@@ -41,7 +41,7 @@ using namespace Vixen::Vulkan::Resources;
  * // Each frame:
  * uint32_t frameIdx = currentFrameIndex % framesInFlight;
  *
- * queryMgr->BeginFrame(cmdBuffer, frameIdx);
+ * queryMgr->BeginFrame(cmdBuffer, frameIdx, profilerSlot);
  * queryMgr->WriteTimestamp(cmdBuffer, frameIdx, profilerSlot, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT);
  * // ... GPU work ...
  * queryMgr->WriteTimestamp(cmdBuffer, frameIdx, profilerSlot, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
@@ -138,14 +138,18 @@ public:
     // ========================================================================
 
     /**
-     * @brief Begin frame - reset queries for all slots
+     * @brief Begin frame for one consumer slot - reset queries for that slot only
      *
-     * Call at start of frame before any WriteTimestamp calls.
+     * Call once per consumer, before that consumer's WriteTimestamp calls. Resets only
+     * this slot's 2 physical queries (and clears only this slot's written-flags), so
+     * multiple consumers recording into the same command buffer in the same frame don't
+     * clobber each other's already-written timestamps.
      *
      * @param cmdBuffer Command buffer to record reset into
      * @param frameIndex Frame-in-flight index (0 to framesInFlight-1)
+     * @param slot Query slot handle for the consumer beginning its recording
      */
-    void BeginFrame(VkCommandBuffer cmdBuffer, uint32_t frameIndex);
+    void BeginFrame(VkCommandBuffer cmdBuffer, uint32_t frameIndex, QuerySlotHandle slot);
 
     /**
      * @brief Write timestamp for a specific consumer slot

@@ -883,10 +883,20 @@ std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
 
     // CRITICAL: Reserve space to prevent reallocation during iteration
     // When vectors reallocate, all pointers (write.pImageInfo, write.pBufferInfo, pNext) become invalid
-    // Reserve enough space for worst-case: all bindings could be image descriptors
+    // Reserve enough space for worst-case: all bindings could be image descriptors.
+    // M5.2: imageInfos/bufferInfos are the caller's persistent perFrameImageInfos[i]/
+    // perFrameBufferInfos[i] sub-vectors (one per swapchain image, reused every Execute). They must
+    // be cleared here FIRST -- capacity is retained by clear(), so this call's reserve() below only
+    // grows the buffer, it never shrinks it or invalidates already-empty storage. Without this, every
+    // frame's Handle*() calls push_back() on top of every PRIOR frame's entries for that image index,
+    // so the vectors (and vkUpdateDescriptorSets' pImageInfo/pBufferInfo working set) grow unbounded
+    // for the life of the process. Mirrors the perFrameAccelInfos/perFrameAccelHandles clear() below,
+    // which already got this right.
+    imageInfos.clear();
+    bufferInfos.clear();
     const size_t bufCapBeforeReserve = bufferInfos.capacity();
-    imageInfos.reserve(imageInfos.size() + descriptorBindings.size());
-    bufferInfos.reserve(bufferInfos.size() + descriptorBindings.size());
+    imageInfos.reserve(descriptorBindings.size());
+    bufferInfos.reserve(descriptorBindings.size());
     NODE_LOG_DEBUG("[BuildDescriptorWrites] bufferInfos reserve: size=" + std::to_string(bufferInfos.size()) +
                   ", capacity=" + std::to_string(bufCapBeforeReserve) + "->" + std::to_string(bufferInfos.capacity()));
     // Also clear and reserve acceleration structure storage (uses member vectors)

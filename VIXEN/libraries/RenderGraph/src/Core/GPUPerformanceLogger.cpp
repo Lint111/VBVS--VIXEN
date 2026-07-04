@@ -38,7 +38,7 @@ GPUPerformanceLogger::GPUPerformanceLogger(const std::string& name, std::shared_
 
 void GPUPerformanceLogger::BeginFrame(VkCommandBuffer cmdBuffer, uint32_t frameIndex) {
     if (queryManager_ && querySlot_ != GPUQueryManager::INVALID_SLOT) {
-        queryManager_->BeginFrame(cmdBuffer, frameIndex);
+        queryManager_->BeginFrame(cmdBuffer, frameIndex, querySlot_);
     }
 }
 

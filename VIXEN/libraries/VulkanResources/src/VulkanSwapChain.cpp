@@ -358,7 +358,22 @@ VulkanStatus VulkanSwapChain::GetSurfaceCapabilitiesAndPresentMode(VkPhysicalDev
 VkExtent2D VulkanSwapChain::QueryCurrentSurfaceExtent(VkPhysicalDevice gpu) const
 {
     VkSurfaceCapabilitiesKHR caps{};
-    fpGetPhysicalDeviceSurfaceCapabilitiesKHR(gpu, scPublicVars.surface, &caps);
+    VkResult result = fpGetPhysicalDeviceSurfaceCapabilitiesKHR(gpu, scPublicVars.surface, &caps);
+    if (result != VK_SUCCESS) {
+        // Query failed (transient / surface lost) — report the live swapchain extent so the
+        // SUBOPTIMAL-handling caller's "extent unchanged" comparison degrades to a safe no-op
+        // recreation-skip instead of comparing against zeroed capabilities.
+        return scPublicVars.Extent;
+    }
+    // 0xFFFFFFFF (UINT32_MAX) is the spec's "surface size is undefined, follows the requested
+    // image extent" sentinel (mirrors the same guard in GetSurfaceCapabilitiesAndPresentMode:339)
+    // -- a Wayland-class surface can report this. Raw-comparing it against the live pixel extent
+    // in SwapChainNode's SUBOPTIMAL handler would (almost) never match, forcing an unnecessary
+    // recreation on every SUBOPTIMAL acquire -- a per-frame recreation storm risk (rank 3). Report
+    // the live extent instead so that comparison is a stable no-op until a real size change lands.
+    if (caps.currentExtent.width == 0xFFFFFFFFu || caps.currentExtent.height == 0xFFFFFFFFu) {
+        return scPublicVars.Extent;
+    }
     return caps.currentExtent;
 }
 
