@@ -12,7 +12,7 @@ using IRenderTarget = Vixen::Vulkan::Resources::IRenderTarget;
 
 // Compile-time slot counts (declared early for reuse)
 namespace RenderTargetNodeCounts {
-    static constexpr size_t INPUTS  = 1;  // VULKAN_DEVICE_IN
+    static constexpr size_t INPUTS  = 2;  // VULKAN_DEVICE_IN, EXTENT_SOURCE
     static constexpr size_t OUTPUTS = 4;  // RENDER_TARGET, CURRENT_VIEW, WIDTH_OUT, HEIGHT_OUT
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -21,17 +21,20 @@ namespace RenderTargetNodeCounts {
  * @brief Pure constexpr resource configuration for RenderTargetNode
  *
  * Allocates an offscreen color render target (imageCount images, one per in-flight frame).
- * followSwapchainExtent / resize is deliberately deferred to a follow-up; this first node
- * takes explicit width / height parameters (see PARAM_WIDTH / PARAM_HEIGHT).
+ * Sizing: EXPLICIT width/height params by default, or FOLLOW-SWAPCHAIN mode when EXTENT_SOURCE
+ * is connected — extent = ceil(sourceExtent * PARAM_SCALE), recomputed and the image recreated
+ * whenever the computed extent changes (driven by the standard resize->recompile cascade; see
+ * M4.1 in Widescreen-Perf-Fix-Plan-2026-07.md).
  *
- * Inputs: 1
- *   - VULKAN_DEVICE_IN (VulkanDevice*) - Device for allocation
+ * Inputs: 2
+ *   - VULKAN_DEVICE_IN (VulkanDevice*)  - Device for allocation
+ *   - EXTENT_SOURCE    (IRenderTarget*) - Optional. When connected, drives follow-swapchain sizing.
  * Outputs: 4
  *   - RENDER_TARGET (IRenderTarget*) - Offscreen color target (RenderTargetData)
  *   - CURRENT_VIEW  (VkImageView)    - View for the current in-flight buffer
  *   - WIDTH_OUT     (uint32_t)       - Render target width
  *   - HEIGHT_OUT    (uint32_t)       - Render target height
- * Parameters: width, height, format, imageCount, usage
+ * Parameters: width, height, format, imageCount, usage, scale
  */
 CONSTEXPR_NODE_CONFIG(RenderTargetNodeConfig,
                       RenderTargetNodeCounts::INPUTS,
@@ -41,6 +44,15 @@ CONSTEXPR_NODE_CONFIG(RenderTargetNodeConfig,
     // ----- Input slots -----
     INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevice*, 0,
         SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
+    // Optional: when connected, RenderTargetNode becomes a transitive dependent of whatever
+    // publishes this (typically SwapChainNode::SWAPCHAIN_PUBLIC) and re-derives its extent from
+    // it on every Compile — including resize recompiles, via the standard cascade.
+    INPUT_SLOT(EXTENT_SOURCE, IRenderTarget*, 1,
+        SlotNullability::Optional,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
@@ -68,12 +80,19 @@ CONSTEXPR_NODE_CONFIG(RenderTargetNodeConfig,
     static constexpr const char* PARAM_FORMAT      = "format";       // VkFormat stored as uint32_t
     static constexpr const char* PARAM_IMAGE_COUNT = "imageCount";   // 0 => use MAX_FRAMES_IN_FLIGHT
     static constexpr const char* PARAM_USAGE       = "usage";        // VkImageUsageFlags as uint32_t
+    // Only used when EXTENT_SOURCE is connected: target extent = ceil(sourceExtent * scale),
+    // clamped to (0,1]. Default 1.0 = same resolution as the source (render-scale disabled).
+    static constexpr const char* PARAM_SCALE       = "scale";
 
     // ----- Constructor: runtime descriptor initialization -----
     RenderTargetNodeConfig() {
         // Input: VulkanDevice
         HandleDescriptor deviceDesc{"VulkanDevice*"};
         INIT_INPUT_DESC(VULKAN_DEVICE_IN, "vulkan_device", ResourceLifetime::Persistent, deviceDesc);
+
+        // Input: optional follow-swapchain extent source
+        HandleDescriptor extentSrcDesc{"IRenderTarget*"};
+        INIT_INPUT_DESC(EXTENT_SOURCE, "extent_source", ResourceLifetime::Persistent, extentSrcDesc);
 
         // Output: IRenderTarget* (persistent — survives recompile, per FR-7)
         HandleDescriptor rtDesc{"IRenderTarget*"};
@@ -95,6 +114,11 @@ CONSTEXPR_NODE_CONFIG(RenderTargetNodeConfig,
     static_assert(!VULKAN_DEVICE_IN_Slot::nullable, "VULKAN_DEVICE_IN must not be nullable");
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>,
                   "VULKAN_DEVICE_IN must be VulkanDevice*");
+
+    static_assert(EXTENT_SOURCE_Slot::index == 1, "EXTENT_SOURCE must be at index 1");
+    static_assert(EXTENT_SOURCE_Slot::nullable, "EXTENT_SOURCE must be optional");
+    static_assert(std::is_same_v<EXTENT_SOURCE_Slot::Type, IRenderTarget*>,
+                  "EXTENT_SOURCE must be IRenderTarget*");
 
     static_assert(RENDER_TARGET_Slot::index == 0, "RENDER_TARGET must be at index 0");
     static_assert(!RENDER_TARGET_Slot::nullable, "RENDER_TARGET must not be nullable");

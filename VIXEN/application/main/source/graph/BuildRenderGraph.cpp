@@ -10,7 +10,8 @@
 // LaineKarrasOctree -> ISVOStructure), whose std::hash<> specialisations must be visible before
 // RmlUi's bundled robin_hood.h wraps them.
 #include "VulkanGraphApplication.h"
-#include <cmath>  // std::tan for the LOD ray-cone (raySizeCoef) computation
+#include <cmath>    // std::tan for the LOD ray-cone (raySizeCoef) computation
+#include <cstdlib>  // std::strtof for the VIXEN_RENDER_SCALE env parse (M4)
 #include "Connection/ConnectionModifier.h"
 #include "Connection/Modifiers/FieldExtractionModifier.h"
 #include "Connection/Modifiers/AccumulationSortConfig.h"  // SEL-P3: accumulation-connect sort key (provider fan-in)
@@ -39,7 +40,9 @@
 #include "Data/Nodes/PickIdTargetNodeConfig.h"
 #include "Data/Nodes/PresentNodeConfig.h"
 #include "Data/Nodes/PushConstantGathererNodeConfig.h"
+#include "Data/Nodes/RaySizeCoefNodeConfig.h"  // M4: live LOD ray-cone recompute
 #include "Data/Nodes/RenderPassNodeConfig.h"
+#include "Data/Nodes/RenderTargetNodeConfig.h"  // M4: render-scale decoupling offscreen target
 #include "Data/Nodes/SelectionCoordinatorNodeConfig.h"
 #include "Data/Nodes/ShaderLibraryNodeConfig.h"
 #include "Data/Nodes/SwapChainNodeConfig.h"
@@ -72,7 +75,9 @@
 #include "Nodes/PickIdTargetNode.h"
 #include "Nodes/PresentNode.h"
 #include "Nodes/PushConstantGathererNode.h"
+#include "Nodes/RaySizeCoefNode.h"  // M4: live LOD ray-cone recompute
 #include "Nodes/RenderPassNode.h"
+#include "Nodes/RenderTargetNode.h"  // M4: render-scale decoupling offscreen target
 #include "Nodes/SelectionCoordinatorNode.h"
 #include "Nodes/ShaderLibraryNode.h"
 #include "Nodes/SwapChainNode.h"
@@ -170,6 +175,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
     NodeHandle computeDispatch = renderGraph->AddNode<ComputeDispatchNodeType>("test_dispatch");
     NodeHandle frameSyncNode = renderGraph->AddNode<FrameSyncNodeType>("frame_sync");
 
+    // M4: offscreen render target the compute dispatch writes into (render-scale decoupling).
+    // Sized by EXTENT_SOURCE (the swapchain) x PARAM_SCALE; ComputeDispatchNode blits it to the
+    // swapchain after dispatch. See Widescreen-Perf-Fix-Plan-2026-07.md M4.
+    NodeHandle renderTargetNode = renderGraph->AddNode<RenderTargetNodeType>("compute_render_target");
+
     // --- Ray Marching Nodes ---
     NodeHandle cameraNode = renderGraph->AddNode<CameraNodeType>("raymarch_camera");
     NodeHandle voxelGridNode = renderGraph->AddNode<VoxelGridNodeType>("voxel_grid");
@@ -222,9 +232,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
     NodeHandle physicsLoopIDConstant = renderGraph->AddNode<ConstantNodeType>("physics_loop_id");
 
     // M-wire Task 8: push constants for BodyInstanceRayMarch.comp (fields 8 and 9).
-    // raySizeCoef = 0.0 disables LOD (full-detail traversal); set non-zero for screen-space LOD.
+    // raySizeCoef: LOD cone-spread constant, recomputed LIVE from the render target's height every
+    // Compile (M4 — was a ConstantNode frozen at graph-build time, see RaySizeCoefNodeConfig).
     // raySizeBias = 0.0 (pinhole camera; no bias at origin).
-    NodeHandle raySizeCoefConstant = renderGraph->AddNode<ConstantNodeType>("ray_size_coef");
+    NodeHandle raySizeCoefNode = renderGraph->AddNode<RaySizeCoefNodeType>("ray_size_coef");
     NodeHandle raySizeBiasConstant = renderGraph->AddNode<ConstantNodeType>("ray_size_bias");
     
     NodeHandle debugCaptureNode = renderGraph->AddNode<DebugBufferReaderNodeType>("debug_capture");
@@ -262,6 +273,30 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Device parameters (default GPU = 0)
     auto* device = static_cast<DeviceNode*>(renderGraph->GetInstance(deviceNode));
     device->SetParameter(DeviceNodeConfig::PARAM_GPU_INDEX, 0u);
+
+    // M4: render-scale decoupling. VIXEN_RENDER_SCALE in (0,1] shrinks the offscreen target the
+    // compute dispatch writes into relative to the swapchain; ComputeDispatchNode blits it back up.
+    // Default 1.0 = same resolution as the swapchain (render-scale disabled, byte-identical to pre-M4).
+    float renderScale = 1.0f;
+    if (const char* renderScaleEnv = std::getenv("VIXEN_RENDER_SCALE")) {
+        renderScale = std::strtof(renderScaleEnv, nullptr);
+        if (!(renderScale > 0.0f) || renderScale > 1.0f) {
+            if (mainLogger && mainLogger->IsEnabled()) {
+                mainLogger->Warning("[BuildRenderGraph] VIXEN_RENDER_SCALE=" + std::string(renderScaleEnv) +
+                                    " out of (0,1] — clamping to 1.0");
+            }
+            renderScale = 1.0f;
+        }
+    }
+    auto* renderTarget = static_cast<RenderTargetNode*>(renderGraph->GetInstance(renderTargetNode));
+    renderTarget->SetParameter(RenderTargetNodeConfig::PARAM_SCALE, renderScale);
+    // STORAGE for the compute imageStore; TRANSFER_SRC for the blit-to-swapchain source.
+    renderTarget->SetParameter(RenderTargetNodeConfig::PARAM_USAGE,
+        static_cast<uint32_t>(VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT));
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info("[BuildRenderGraph] Render-scale=" + std::to_string(renderScale) +
+                         " (VIXEN_RENDER_SCALE env; 1.0 = full resolution)");
+    }
 
     // DISABLED FOR COMPUTE TEST: Graphics pipeline parameters
     /*
@@ -387,25 +422,18 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // configure CameraNode (PARAM_FOV, below) and to derive the LOD ray-cone spread (raySizeCoef).
     constexpr float kRaymarchCameraFovDegrees = 45.0f;
 
-    // M-wire Task 8: set LOD push constant values (fields 8 and 9 of BodyInstanceRayMarch.comp).
+    // M-wire Task 8 / M4: set LOD push constant values (fields 8 and 9 of BodyInstanceRayMarch.comp).
     // raySizeCoef is the ray cone spread per unit distance — drives the screen-space-error LOD
-    // stop in BodyInstanceRayMarch.comp (gated on raySizeCoef > 0.0). Match the reference
-    // SVOLOD.h::LODParameters::fromCamera: 2*tan((fovY / screenHeight) / 2), with fovY in radians
-    // and screenHeight the swapchain pixel height (the same `height` used for dispatch dims below).
-    // kRaymarchCameraFovDegrees is the vertical FOV; it is fed to CameraNode (PARAM_FOV) below so
-    // the two stay in lock-step. raySizeBias = 0.0 (pinhole camera; zero cone diameter at origin).
-    const float fovYRadians   = kRaymarchCameraFovDegrees * (3.14159265358979323846f / 180.0f);
-    const float screenHeightF = static_cast<float>(height);
-    const float raySizeCoef   = 2.0f * std::tan((fovYRadians / screenHeightF) * 0.5f);
-    auto* raySizeCoefConst = static_cast<ConstantNode*>(renderGraph->GetInstance(raySizeCoefConstant));
-    raySizeCoefConst->SetValue<float>(raySizeCoef);   // 2*tan(fovY/h/2): LOD enabled (Task 7)
+    // stop in BodyInstanceRayMarch.comp (gated on raySizeCoef > 0.0). RaySizeCoefNode recomputes it
+    // LIVE every Compile from the render target's live height (wired below, once renderTargetNode
+    // is in scope) — was a one-shot ConstantNode frozen at the INITIAL window height (rank 6: a
+    // resize left it stale, silently under-detailing large windows). kRaymarchCameraFovDegrees is
+    // the vertical FOV; fed to both CameraNode (PARAM_FOV) and RaySizeCoefNode so they stay in
+    // lock-step. raySizeBias = 0.0 (pinhole camera; zero cone diameter at origin).
+    auto* raySizeCoef = static_cast<RaySizeCoefNode*>(renderGraph->GetInstance(raySizeCoefNode));
+    raySizeCoef->SetParameter(RaySizeCoefNodeConfig::PARAM_FOV_DEGREES, kRaymarchCameraFovDegrees);
     auto* raySizeBiasConst = static_cast<ConstantNode*>(renderGraph->GetInstance(raySizeBiasConstant));
     raySizeBiasConst->SetValue<float>(0.0f);   // 0.0 = pinhole camera bias
-    if (mainLogger && mainLogger->IsEnabled()) {
-        mainLogger->Info("[BuildRenderGraph] LOD raySizeCoef=" + std::to_string(raySizeCoef) +
-                         " (fov=" + std::to_string(kRaymarchCameraFovDegrees) + " deg, screenHeight=" +
-                         std::to_string(height) + ")");
-    }
 
     auto* frameSync = static_cast<FrameSyncNode*>(renderGraph->GetInstance(frameSyncNode));
 
@@ -973,8 +1001,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Selection (SEL-P2) — providers are NODES. The voxel provider node copies the crosshair texel of
     // PickIdTargetNode's ID image (binding-9 target) via a one-shot fenced copy on a left-click edge,
     // decodes brick/voxel, and emits a SelectionCandidate. Its inputs: per-frame InputState; the ID
-    // VkImage; device + command pool for the one-shot copy; the frame-in-flight index; the swapchain
-    // viewport size (for the center offset).
+    // VkImage; device + command pool for the one-shot copy; the frame-in-flight index; the RENDER
+    // viewport size (M4 — matches the pick-ID image's own extent, for the center offset).
     batch.Connect(inputNode, InputNodeConfig::INPUT_STATE,
                   voxelSelectionProviderNode, VoxelSelectionProviderNodeConfig::INPUT_STATE)
          .Connect(pickIdTargetNode, PickIdTargetNodeConfig::ID_IMAGE,
@@ -985,9 +1013,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   voxelSelectionProviderNode, VoxelSelectionProviderNodeConfig::COMMAND_POOL)
          .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
                   voxelSelectionProviderNode, VoxelSelectionProviderNodeConfig::CURRENT_FRAME_INDEX)
-         .Connect(windowNode, WindowNodeConfig::WIDTH_OUT,
+         // M4.4: the crosshair readback samples PickIdTargetNode's ring, which now follows the
+         // RENDER extent (not the window) — VIEWPORT_WIDTH/HEIGHT must be the same extent so
+         // width/2,height/2 lands on the actual image center. Was windowNode::WIDTH_OUT/HEIGHT_OUT.
+         .Connect(renderTargetNode, RenderTargetNodeConfig::WIDTH_OUT,
                   voxelSelectionProviderNode, VoxelSelectionProviderNodeConfig::VIEWPORT_WIDTH)
-         .Connect(windowNode, WindowNodeConfig::HEIGHT_OUT,
+         .Connect(renderTargetNode, RenderTargetNodeConfig::HEIGHT_OUT,
                   voxelSelectionProviderNode, VoxelSelectionProviderNodeConfig::VIEWPORT_HEIGHT);
 
     // SEL-P3 UI provider: only needs per-frame InputState (cursor position + left button). It reads
@@ -1012,17 +1043,20 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   ConnectionMeta{}.With<AccumulationSortConfig>(1));
 
     // Pick ID target (AR#35 GPU picking P1): allocate the R32_UINT storage-image ring sized to the
-    // window, transition it to GENERAL once, and expose the current frame's view for binding 9.
-    // Device + command pool drive allocation + the one-shot UNDEFINED->GENERAL transition; the frame
-    // index advances the ring each Execute. The ID_IMAGE_VIEW -> descriptorGatherer binding-9 wiring
-    // is below, beside the other compute descriptor connections.
+    // RENDER extent (M4.4 — was the window; the compute shader now writes the offscreen render
+    // target, not the swapchain, so the pick-ID image must match ITS resolution or the shader's
+    // per-pixel idOutputImage writes go out of bounds / land at the wrong texel under scale<1),
+    // transition it to GENERAL once, and expose the current frame's view for binding 9. Device +
+    // command pool drive allocation + the one-shot UNDEFINED->GENERAL transition; the frame index
+    // advances the ring each Execute. The ID_IMAGE_VIEW -> descriptorGatherer binding-9 wiring is
+    // below, beside the other compute descriptor connections.
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   pickIdTargetNode, PickIdTargetNodeConfig::VULKAN_DEVICE_IN)
          .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
                   pickIdTargetNode, PickIdTargetNodeConfig::COMMAND_POOL)
-         .Connect(windowNode, WindowNodeConfig::WIDTH_OUT,
+         .Connect(renderTargetNode, RenderTargetNodeConfig::WIDTH_OUT,
                   pickIdTargetNode, PickIdTargetNodeConfig::WIDTH)
-         .Connect(windowNode, WindowNodeConfig::HEIGHT_OUT,
+         .Connect(renderTargetNode, RenderTargetNodeConfig::HEIGHT_OUT,
                   pickIdTargetNode, PickIdTargetNodeConfig::HEIGHT)
          .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
                   pickIdTargetNode, PickIdTargetNodeConfig::CURRENT_FRAME_INDEX);
@@ -1079,9 +1113,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Field indices match shader reflection order: cameraPos(0),time(1),cameraDir(2),fov(3),
     // cameraUp(4),aspect(5),cameraRight(6),debugMode(7), raySizeCoef(8),raySizeBias(9),instanceCount(10).
     // raySizeCoef (binding 8): LOD cone-spread constant; 0.0 disables LOD (full-detail traversal).
-    batch.Connect(raySizeCoefConstant, ConstantNodeConfig::OUTPUT,
+    // M4: value now comes from RaySizeCoefNode, recomputed live at Compile from the render target's
+    // height (Dependency|Execute — Compile-derived but still read into the per-frame push constants,
+    // mirroring instanceCount below).
+    batch.Connect(raySizeCoefNode, RaySizeCoefNodeConfig::RAY_SIZE_COEF,
                           pushConstantGatherer, 8,  // push constant field 8: float raySizeCoef
-                          SlotRoleModifier(SlotRole::Execute));
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
     // raySizeBias (binding 9): LOD origin cone size; 0.0 for pinhole camera.
     batch.Connect(raySizeBiasConstant, ConstantNodeConfig::OUTPUT,
                           pushConstantGatherer, 9,  // push constant field 9: float raySizeBias
@@ -1093,11 +1130,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     // Connect ray marching resources to descriptor gatherer using VoxelRayMarchNames.h bindings
     // Binding 0: outputImage - Transient (Execute-only), others are Persistent (Dependency|Execute)
-    // Binding 0: outputImage (swapchain image view) - changes per frame
+    // Binding 0: outputImage — M4: now the offscreen render target's view, wired further down
+    // (beside the rest of the M4 render-target connections) once renderTargetNode exists in scope.
     // Note: outputImage is not in SDI (writeonly image) so we use literal binding index 0
-    batch.Connect(swapChainNode, SwapChainNodeConfig::CURRENT_FRAME_IMAGE_VIEW,
-                          descriptorGatherer, 0,  // outputImage at binding 0
-                          SlotRoleModifier(SlotRole::Execute));
 
     // M-wire Task 8: bindings 1/2/3/5 now come from BodyOctreeSceneNode (sparse shell octrees).
     // Slot names are identical to VoxelGridNode's octree outputs (by design in BodyOctreeSceneNodeConfig).
@@ -1184,6 +1219,31 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   computeDispatch, ComputeDispatchNodeConfig::SWAPCHAIN_INFO)
          .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
                   computeDispatch, ComputeDispatchNodeConfig::IMAGE_INDEX);
+
+    // M4: render-scale decoupling. The offscreen render target follows the swapchain's extent
+    // (EXTENT_SOURCE), scaled by PARAM_SCALE (set above from VIXEN_RENDER_SCALE); it rides the
+    // standard resize->recompile cascade — no per-frame extent checks anywhere in this wiring.
+    // ComputeDispatchNode's RENDER_TARGET_INFO input makes it dispatch into and blit from this
+    // target instead of writing the swapchain image directly.
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  renderTargetNode, RenderTargetNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+                  renderTargetNode, RenderTargetNodeConfig::EXTENT_SOURCE)
+         .Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
+                  computeDispatch, ComputeDispatchNodeConfig::RENDER_TARGET_INFO,
+                  SlotRoleModifier(SlotRole::Execute));
+
+    // M4: the compute shader's output image (binding 0) is now the offscreen render target's
+    // current view, not the swapchain's — the swapchain is written only by the blit inside
+    // ComputeDispatchNode. Was: swapChainNode::CURRENT_FRAME_IMAGE_VIEW -> descriptorGatherer 0.
+    batch.Connect(renderTargetNode, RenderTargetNodeConfig::CURRENT_VIEW,
+                          descriptorGatherer, 0,  // outputImage at binding 0
+                          SlotRoleModifier(SlotRole::Execute));
+
+    // M4.3: raySizeCoef derives from the render target's live height (rank 6) — rides the same
+    // resize->recompile cascade as the render target itself.
+    batch.Connect(renderTargetNode, RenderTargetNodeConfig::HEIGHT_OUT,
+                  raySizeCoefNode, RaySizeCoefNodeConfig::HEIGHT);
 
     // Sync connections
     batch.Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,

@@ -251,6 +251,7 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/DebugBufferReaderNode.cpp
     src/Nodes/DepthBufferNode.cpp
     src/Nodes/RenderTargetNode.cpp
+    src/Nodes/RaySizeCoefNode.cpp       # M4: live LOD ray-cone recompute from render-target height
     src/Nodes/PickIdTargetNode.cpp
     src/Nodes/InstanceBufferNode.cpp
     src/Nodes/StorageBufferNode.cpp     # auto-sync P4 M4: generic arbitrary-sized SSBO node

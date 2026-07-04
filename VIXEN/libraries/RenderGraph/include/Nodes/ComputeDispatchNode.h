@@ -74,10 +74,25 @@ private:
     void ReplayEntryBarriers(VkCommandBuffer cmd, const SubmitGroup& group,
                              uint32_t imageIndex,
                              Vixen::Vulkan::Resources::IRenderTarget* swapchainInfo);
-    void TransitionImageToGeneralBarrier2(VkCommandBuffer cmdBuffer, VkImage image);
+    // oldLayout defaults to UNDEFINED (WSI acquire / first-use contract, pre-M4 behavior). M4 passes
+    // the render target's actual prior layout (TRANSFER_SRC_OPTIMAL after a blit) on every frame
+    // after the first, so the barrier's declared oldLayout matches what synchronization validation
+    // actually tracked instead of relying on UNDEFINED's "discard, don't care" escape hatch.
+    void TransitionImageToGeneralBarrier2(VkCommandBuffer cmdBuffer, VkImage image,
+                                          VkImageLayout oldLayout = VK_IMAGE_LAYOUT_UNDEFINED);
     void TransitionImageToPresentBarrier2(VkCommandBuffer cmdBuffer, VkImage image);
     void BindComputePipeline(VkCommandBuffer cmdBuffer, VkPipeline pipeline, VkPipelineLayout layout, VkDescriptorSet descriptorSet);
     void SetPushConstants(Context& ctx, VkCommandBuffer cmdBuffer, VkPipelineLayout layout, const void* pushConstantData);
+
+    // M4: render-scale decoupling. When RENDER_TARGET_INFO is connected, blits the offscreen
+    // render target (already written by the dispatch, still GENERAL) to the swapchain image,
+    // ending in the same layout contract RecordComputeCommands already applies to the swapchain
+    // (leaveImageInGeneral -> GENERAL for the UI pass, else -> PRESENT_SRC).
+    void BlitRenderTargetToSwapchain(VkCommandBuffer cmdBuffer,
+                                     Vixen::Vulkan::Resources::IRenderTarget* renderTarget,
+                                     VkImage swapchainImage,
+                                     VkExtent2D swapchainExtent,
+                                     bool leaveImageInGeneral);
 
     // Device and command pool references
     VulkanDevice* vulkanDevice = nullptr;
@@ -99,6 +114,15 @@ private:
 
     // Task profile for cost estimation (Sprint 6.5: Profile integration)
     ITaskProfile* gpuProfile_ = nullptr;
+
+    // M4: tracks which render-target VkImage handles (the ring has imageCount_ of them, cycling
+    // per in-flight frame) this node has already written at least once. RenderTargetNode keeps its
+    // images persistent across a same-extent recompile (FR-7), so a new Compile does NOT imply new
+    // handles — only compare-and-update against the actual handle tells us whether THIS image is a
+    // first-use (fresh/recreated -> true prior layout is UNDEFINED) or a steady-state write (its
+    // last write's blit left it TRANSFER_SRC_OPTIMAL, unchanged since). A std::set (not a single
+    // scalar) because the ring cycles through multiple distinct handles per frame-in-flight index.
+    std::set<VkImage> seenRenderTargetImages_;
 
 public:
     /// Get GPU performance logger for external metrics extraction
