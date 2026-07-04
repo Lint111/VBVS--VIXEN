@@ -2,9 +2,11 @@
 #include "Core/NodeRegistration.h"
 #include "Core/RenderGraph.h"           // GetOwningGraph()->GetFrameSyncSchedule()
 #include "Core/FrameSyncSchedule.h"     // SubmitGroup, SyncEdge, FindGroupForNode
+#include "Core/NodeLogging.h"
 
 #include "VulkanDevice.h"
 #include "VulkanSwapChain.h"
+#include "Core/GPUQueryManager.h"
 
 #include <RmlUi/Core.h>
 #include <RmlUi/Core/Context.h>
@@ -143,6 +145,23 @@ void UIRenderNode::CompileImpl(TypedCompileContext& ctx) {
             lastUiWriteTime_ = LatestUiMtime(docPath);
         }
         initialized_ = true;
+
+        // M5.1: GPU timing for the UI render pass, using the same centralized GPUQueryManager
+        // ComputeDispatchNode uses (VulkanDevice-owned, slot-allocated) — lets a p99 hitch be
+        // attributed to the UI pass specifically instead of guessed at.
+        auto* queryMgrPtr = static_cast<GPUQueryManager*>(device->GetQueryManager());
+        if (queryMgrPtr) {
+            auto queryManager = std::shared_ptr<GPUQueryManager>(queryMgrPtr, [](GPUQueryManager*){});
+            gpuPerfLogger_ = std::make_shared<GPUPerformanceLogger>(GetInstanceName(), queryManager);
+            gpuPerfLogger_->SetEnabled(true);
+            gpuPerfLogger_->SetLogFrequency(120);  // ~2s at 60fps, matches ComputeDispatchNode
+            gpuPerfLogger_->SetPrintToTerminal(false);
+            if (nodeLogger) {
+                nodeLogger->AddChild(gpuPerfLogger_);
+            }
+        } else {
+            NODE_LOG_WARNING("[UIRenderNode] GPUQueryManager not available from VulkanDevice");
+        }
     } else if (context_) {
         // Recompile (window resize): RenderPassNode/FramebufferNode rebuilt the render pass +
         // framebuffers for the new extent; just re-fit the RmlUi document to the new size.
@@ -212,9 +231,16 @@ void UIRenderNode::DestroyCompositeSemaphores() {
     uiCompleteSemaphores_.clear();
 }
 
-void UIRenderNode::RecordFrame(VkCommandBuffer cmd, VkFramebuffer framebuffer) {
+void UIRenderNode::RecordFrame(VkCommandBuffer cmd, VkFramebuffer framebuffer, uint32_t frameIndex) {
     VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     vkBeginCommandBuffer(cmd, &bi);
+
+    // M5.1: reset this frame-in-flight's query slot, then bracket the render pass with start/end
+    // timestamps (mirrors ComputeDispatchNode's BeginFrame/RecordDispatchStart/RecordDispatchEnd).
+    if (gpuPerfLogger_) {
+        gpuPerfLogger_->BeginFrame(cmd, frameIndex);
+        gpuPerfLogger_->RecordDispatchStart(cmd, frameIndex);
+    }
 
     VkClearValue clear{};
     clear.color = {{0.05f, 0.05f, 0.08f, 1.0f}};
@@ -235,6 +261,11 @@ void UIRenderNode::RecordFrame(VkCommandBuffer cmd, VkFramebuffer framebuffer) {
     }
 
     vkCmdEndRenderPass(cmd);
+
+    if (gpuPerfLogger_) {
+        gpuPerfLogger_->RecordDispatchEnd(cmd, frameIndex, extent_.width, extent_.height);
+    }
+
     vkEndCommandBuffer(cmd);
 }
 
@@ -258,8 +289,14 @@ void UIRenderNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // the upstream compute submitted with no fence). Safe: FrameSyncNode already waited on it.
     vkResetFences(device_, 1, &inFlightFence);
 
+    // Collect the previous use of this frame-in-flight's query slot (results are ready now that its
+    // fence has been waited on), same placement as ComputeDispatchNode::ExecuteImpl.
+    if (gpuPerfLogger_) {
+        gpuPerfLogger_->CollectResults(currentFrameIndex);
+    }
+
     VkCommandBuffer cmd = commandBuffers_[imageIndex];
-    RecordFrame(cmd, framebuffers[imageIndex]);
+    RecordFrame(cmd, framebuffers[imageIndex], currentFrameIndex);
 
     // P5b M1: read timeline primitives (Optional — VK_NULL_HANDLE / 0 if not wired)
     VkSemaphore timelineSem = ctx.In(UIRenderNodeConfig::TIMELINE_SEMAPHORE_IN);

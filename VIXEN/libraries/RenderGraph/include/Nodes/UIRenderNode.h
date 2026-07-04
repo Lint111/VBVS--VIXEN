@@ -1,6 +1,7 @@
 #pragma once
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
+#include "Core/GPUPerformanceLogger.h"
 #include "Data/Nodes/UIRenderNodeConfig.h"
 #include "Ui/VixenRmlRenderInterface.h"
 #include "Ui/VixenRmlSystemInterface.h"
@@ -69,6 +70,10 @@ public:
     /// composite pass, or the live-reload state. Returns nullptr if the context failed to create.
     [[nodiscard]] Rml::Context* GetUiContext() const { return context_; }
 
+    /// Get GPU performance logger for external metrics extraction (M5.1; mirrors ComputeDispatchNode).
+    /// @return Pointer to GPUPerformanceLogger, or nullptr if not initialized.
+    [[nodiscard]] GPUPerformanceLogger* GetGPUPerformanceLogger() const { return gpuPerfLogger_.get(); }
+
 protected:
     void SetupImpl(TypedSetupContext& ctx) override;
     void CompileImpl(TypedCompileContext& ctx) override;
@@ -78,7 +83,7 @@ protected:
 private:
     void FreeCommandBuffers();  // free the per-image command buffers (no device wait)
     void DestroyCompositeSemaphores();  // destroy the owned per-image "ui complete" semaphores
-    void RecordFrame(VkCommandBuffer cmd, VkFramebuffer framebuffer);
+    void RecordFrame(VkCommandBuffer cmd, VkFramebuffer framebuffer, uint32_t frameIndex);
 
     bool initialized_ = false;
     VkDevice device_ = VK_NULL_HANDLE;
@@ -122,6 +127,11 @@ private:
     std::vector<HudFaction> factions_;
     std::vector<HudEvent>   events_;
     Rml::DataModelHandle    hudModel_;
+
+    // GPU timing (M5.1, mirrors ComputeDispatchNode's gpuPerfLogger_): times the render-pass
+    // recording (BeginRenderPass..EndRenderPass) so a p99 hitch can be attributed to the UI pass
+    // vs. the compute dispatch vs. neither (CPU/present).
+    std::shared_ptr<GPUPerformanceLogger> gpuPerfLogger_;
 };
 
 } // namespace Vixen::RenderGraph

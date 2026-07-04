@@ -102,15 +102,27 @@ int main(int argc, char** argv) {
         uint64_t frameCounter = 0;
         auto lastFrameStart = std::chrono::steady_clock::now();
         bool isWindowOpen = true;
+        // M5.1: outlier-frame logging. lastWindowMedian_ persists the PREVIOUS completed window's
+        // median frame time; any frame costing >3x that gets its own log line the instant it happens,
+        // instead of waiting to be buried in the next window's avg/p99 summary. 0 (no prior window yet)
+        // disables the check for the first kFrameWindow frames.
+        double lastWindowMedian = 0.0;
         while(isWindowOpen) {
             appObj -> Update();
             isWindowOpen = appObj->Render();
 
             const auto now = std::chrono::steady_clock::now();
-            frameTimesMs[frameCounter % kFrameWindow] =
-                std::chrono::duration<double, std::milli>(now - lastFrameStart).count();
+            const double thisFrameMs = std::chrono::duration<double, std::milli>(now - lastFrameStart).count();
+            frameTimesMs[frameCounter % kFrameWindow] = thisFrameMs;
             lastFrameStart = now;
             ++frameCounter;
+
+            if (lastWindowMedian > 0.0 && thisFrameMs > 3.0 * lastWindowMedian) {
+                char obuf[128];
+                std::snprintf(obuf, sizeof(obuf), "[FrameTimer] OUTLIER frame %llu: %.3f ms",
+                              static_cast<unsigned long long>(frameCounter), thisFrameMs);
+                mainLogger->Info(obuf);
+            }
 
             if (frameCounter % kFrameWindow == 0) {
                 std::array<double, kFrameWindow> sorted = frameTimesMs;
@@ -119,6 +131,7 @@ int main(int argc, char** argv) {
                 for (double v : sorted) sum += v;
                 const double avg = sum / static_cast<double>(kFrameWindow);
                 const double p99 = sorted[(kFrameWindow * 99) / 100];
+                const double median = sorted[kFrameWindow / 2];
                 char buf[160];
                 std::snprintf(buf, sizeof(buf),
                               "[FrameTimer] frames %llu-%llu: avg %.3f ms (%.1f FPS) | p99 %.3f ms",
@@ -126,6 +139,7 @@ int main(int argc, char** argv) {
                               static_cast<unsigned long long>(frameCounter),
                               avg, avg > 0.0 ? 1000.0 / avg : 0.0, p99);
                 mainLogger->Info(buf);
+                lastWindowMedian = median;
             }
 
             if (exitAfterFrames > 0 && frameCounter >= static_cast<uint64_t>(exitAfterFrames)) {
