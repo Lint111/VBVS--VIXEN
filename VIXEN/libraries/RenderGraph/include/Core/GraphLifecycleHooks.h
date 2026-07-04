@@ -4,6 +4,7 @@
 #include <functional>
 #include <vector>
 #include <string>
+#include <unordered_map>
 
 namespace Vixen::RenderGraph {
 
@@ -85,11 +86,18 @@ public:
      * @param phase When to execute the callback
      * @param callback Function to execute (receives node instance)
      * @param debugName Optional name for debugging/logging
+     * @param targetNode If non-null, the callback only runs when ExecuteNodeHooks
+     *        is called for this exact node, so ExecuteNodeHooks avoids invoking
+     *        hooks that belong to every other node in the graph. If null, the
+     *        callback is a global hook and runs for every node in the phase
+     *        (matches prior self-filtering-by-identity behavior for callers
+     *        that don't know their target node up front).
      */
     void RegisterNodeHook(
         NodeLifecyclePhase phase,
         NodeLifecycleCallback callback,
-        const std::string& debugName = ""
+        const std::string& debugName = "",
+        NodeInstance* targetNode = nullptr
     );
 
     /**
@@ -144,7 +152,14 @@ private:
 
     // Storage for each phase (indexed by enum value)
     std::vector<GraphHookEntry> graphHooks_[6];  // 6 GraphLifecyclePhase values
+
+    // Untargeted (global) node hooks: run for every node in the phase.
     std::vector<NodeHookEntry> nodeHooks_[8];    // 8 NodeLifecyclePhase values
+
+    // Targeted node hooks: only run when ExecuteNodeHooks is called for the
+    // specific node they were registered against, so a node's Execute() no
+    // longer walks every other node's hooks just to self-filter them out.
+    std::unordered_map<NodeInstance*, std::vector<NodeHookEntry>[8]> targetedNodeHooks_;
 };
 
 } // namespace Vixen::RenderGraph
