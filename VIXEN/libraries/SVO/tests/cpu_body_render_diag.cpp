@@ -283,7 +283,7 @@ int main() {
         {-2.6,  0.4,  0.6, kEarth, 1 },
         { 1.6,  0.18, 0.3 + 0.42, kLuna, 2 },
     };
-    const std::vector<BodyInstance> insts = BuildBodyInstances(bodies);
+    const std::vector<BodyInstance> insts = BuildBodyInstances(bodies, DeriveBaseRenderRadiusAu(bodies));
 
     // scene[1] = inner planet (index 1 mirrors cpu_body_render_main.cpp line 337)
     const BodyInstance& focusBi = insts[1];

@@ -281,7 +281,7 @@ int main() {
         {-2.6,  0.4,  0.6, kEarth, 1 },  // a third planet, off-plane
         { 1.6,  0.18, 0.3 + 0.42, kLuna, 2 }, // moon hugging the inner planet
     };
-    const std::vector<BodyInstance> insts = BuildBodyInstances(bodies);
+    const std::vector<BodyInstance> insts = BuildBodyInstances(bodies, DeriveBaseRenderRadiusAu(bodies));
 
     // Bind each logical instance to its built octree + world.
     std::vector<SceneInstance> scene;
