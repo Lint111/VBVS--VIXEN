@@ -230,16 +230,30 @@ void SwapChainNode::CleanupImpl(TypedCleanupContext& ctx) {
     // The VkSurfaceKHR is PERSISTENT across recompiles, mirroring WindowNode's window+surface
     // (see WindowNode.cpp CleanupImpl). Destroying/recreating the surface every recompile (the old
     // unconditional Destroy() below) was pure waste -- the surface doesn't depend on extent. Tear
-    // it down only on final teardown.
+    // it down only on final teardown. This holds for DeviceLost too: VkSurfaceKHR is INSTANCE-scoped
+    // (created against VkInstance, not VkDevice), so it survives a device recreation untouched.
     //
-    // The swapchain HANDLE itself also survives a recompile here: only the per-image views (tied to
-    // the old swapchain's images) are destroyed now. CreateSwapchainAndViews() passes the still-live
-    // handle as oldSwapchain to vkCreateSwapchainKHR and destroys it only after the new swapchain is
-    // created successfully, letting the driver recycle/hand over presentation state instead of a
-    // cold recreation.
-    if (ctx.reason != CleanupReason::FinalTeardown) {
+    // The swapchain HANDLE, however, is DEVICE-scoped and must NOT be treated like Recompile on
+    // DeviceLost. On an ordinary Recompile the handle survives because the SAME device recreates it
+    // (CreateSwapchainAndViews() passes the still-live handle as oldSwapchain to vkCreateSwapchainKHR
+    // and destroys it only after the new one is created, letting the driver recycle/hand over
+    // presentation state). On DeviceLost, RenderGraph::RecoverFromDeviceLoss() has DeviceNode create
+    // an entirely NEW VulkanDevice (RenderGraph.cpp) -- the old swapchain handle belongs to the OLD,
+    // about-to-be-destroyed device. Passing it as oldSwapchain into the NEW device's
+    // fpCreateSwapchainKHR/fpDestroySwapchainKHR (resolved via the new device's dispatch table) is
+    // exactly the KI-004 class of bug (a resource carrying stale device state across recovery) and
+    // segfaults deep in the driver (KI-013) -- so DeviceLost must destroy the swapchain handle now,
+    // against the OLD (still valid, merely lost) device, same as FinalTeardown would, while still
+    // keeping the surface alive like a Recompile.
+    if (ctx.reason == CleanupReason::Recompile) {
         NODE_LOG_INFO("[SwapChainNode::CleanupImpl] Recompile - destroying image views only, keeping surface + swapchain (for oldSwapchain reuse)");
         swapChainWrapper->DestroyImageViewsOnly(device);
+        return;
+    }
+
+    if (ctx.reason == CleanupReason::DeviceLost) {
+        NODE_LOG_INFO("[SwapChainNode::CleanupImpl] DeviceLost - destroying swapchain + image views (device-scoped; cannot survive a device recreation), keeping surface");
+        swapChainWrapper->DestroySwapChain(device);
         return;
     }
 

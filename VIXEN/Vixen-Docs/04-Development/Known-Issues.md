@@ -11,36 +11,6 @@ Living log of confirmed-but-unfixed issues. Each entry: symptom, root cause, imp
 
 ---
 
-## KI-013 — `FailScenarioSweep_FrameSync.DeviceLostRecovery` segfaults inside Dozen's swapchain-image destroy path (regression against KI-004's documented-fixed state)
-
-**Discovered:** 2026-07-04, while verifying the KI-012 pick-ID fix didn't regress `test_fail_scenario_sweep` — running the FULL suite in one process segfaults right after `ResizeBurstDoesNotRecompileOncePerEvent`, before `FailScenarioSweep_FrameSync.DeviceLostRecovery` completes. Confirmed via `git stash` that this reproduces byte-identically at the pre-KI-012/pre-flicker-fix baseline (`origin/main` `9ddbb854`) — **not** caused by anything landed this session.
-
-**Symptom:** `DeviceLostRecovery` (run alone, isolated — same crash) segfaults during `RenderGraph::RecoverFromDeviceLoss()`'s rebuild phase, specifically while rebuilding `main_swapchain` (`SwapChainNode::CompileImpl` → `CreateSwapchainAndViews` → `VulkanSwapChain::CreateSwapChainColorImages`). GDB backtrace:
-```
-Thread 1 received signal SIGSEGV
-#0  0x... in ?? ()
-#1  wsi_destroy_image () from .../libvulkan_dzn.so
-#2  x11_swapchain_destroy () from .../libvulkan_dzn.so
-#3  VulkanSwapChain::CreateSwapChainColorImages(VkDevice_T*, VkSwapchainKHR_T*)
-#4  SwapChainNode::CreateSwapchainAndViews()
-#5  SwapChainNode::CompileImpl(...)
-#6  NodeInstance::Compile()
-#7  RenderGraph::RecoverFromDeviceLoss()
-#8  VulkanGraphApplication::Render()
-```
-
-**Root cause (not yet fully diagnosed):** a function named `CreateSwapChainColorImages` calling into the driver's `wsi_destroy_image`/`x11_swapchain_destroy` internals suggests `SwapChainNode`'s recreate path is passing a stale or already-destroyed `VkSwapchainKHR`/image handle to the driver during the device-loss recovery rebuild — i.e. the recovery path doesn't fully separate "destroy old swapchain resources" from "create new ones," or a resource that survived the earlier teardown wave (per KI-004's original class of bug — "nodes/resources surviving device-loss recovery with stale device state") gets handed back into a create call that internally tries to destroy it again. This may be a genuine regression of KI-004 (documented "RESOLVED... passing as hard gate" as of 2026-07-03) — possibly reintroduced by later work on this branch (M4 render-scale decoupling, widescreen-perf-fix M1-M6, or the P5 auto-sync work, all landed after KI-004's fix date) that didn't re-run this specific fail-scenario gate.
-
-**Impact:** `test_fail_scenario_sweep`'s device-loss-recovery regression gate is currently a crash, not a pass/fail signal — device-loss recovery (a real, user-facing reliability feature) may be silently broken again. Does not affect `vixen_editor`'s normal (non-device-loss) operation.
-
-**Reproduction:** `./build/wsl/application/main/test_fail_scenario_sweep --gtest_filter='FailScenarioSweep_FrameSync.DeviceLostRecovery'` (segfaults alone, no other tests needed) or `gdb -batch -ex run -ex bt --args ./build/wsl/application/main/test_fail_scenario_sweep --gtest_filter='*DeviceLostRecovery*'` for the trace above.
-
-**Fix options:** not investigated — this needs its own dedicated debugging session (likely another KI-004-style multi-layer teardown/rebuild-ordering bug). Start by diffing `SwapChainNode`'s Cleanup/Compile against what KI-004's original fix (`RenderGraph.cpp`'s `CleanupReason::DeviceLost` handling) guaranteed, and check whether `VulkanSwapChain::CreateSwapChainColorImages` is being called with a swapchain handle that a prior teardown step already destroyed.
-
-**Severity:** High (crash in a documented-fixed regression gate for a real reliability feature) · **Status:** OPEN — found this session as a side-effect of verifying an unrelated fix; not investigated further (out of scope for KI-012/KI-009's fixes)
-
----
-
 ## Test-suite note (not a KI): `test_fail_scenario_sweep` is flaky under the Vulkan validation layer
 
 Running any SINGLE `FailScenarioSweep*` test that does a live resize+recompile (e.g. `LiveResizeRecompilesPickIdRing`) under `VK_LAYER_KHRONOS_validation` alone can segfault (`vkCmdBindPipeline` referencing an already-deleted `VkDescriptorSetLayout`, stale command-buffer-in-use errors, then SIGSEGV) — but the SAME test passes cleanly with `[ PASSED ]` when run without the validation layer. This reproduces identically both before and after this session's changes, so it's pre-existing validation-layer/test-timing interaction, not a functional regression. Use the validation layer for spot-checking specific VUIDs on `vixen_editor` directly (as this session did for KI-009/KI-012); trust the plain (no-validation-layer) test run for pass/fail signal on `test_fail_scenario_sweep`.
@@ -62,6 +32,34 @@ Running any SINGLE `FailScenarioSweep*` test that does a live resize+recompile (
 ---
 
 ## Resolved (see below)
+
+### KI-013 — `FailScenarioSweep_FrameSync.DeviceLostRecovery` segfaults inside Dozen's swapchain-image destroy path (regression against KI-004's documented-fixed state)
+
+**Discovered:** 2026-07-04, while verifying the KI-012 pick-ID fix didn't regress `test_fail_scenario_sweep` — running the FULL suite in one process segfaulted right after `ResizeBurstDoesNotRecompileOncePerEvent`, before `FailScenarioSweep_FrameSync.DeviceLostRecovery` completed. Confirmed via `git stash` that this reproduced byte-identically at the pre-KI-012/pre-flicker-fix baseline (`origin/main` `9ddbb854`) — not caused by that session's other changes.
+
+**File/line:** `libraries/RenderGraph/src/Nodes/SwapChainNode.cpp` (`CleanupImpl`).
+
+**Symptom:** `DeviceLostRecovery` (run alone, isolated — same crash) segfaulted during `RenderGraph::RecoverFromDeviceLoss()`'s rebuild phase, specifically while rebuilding `main_swapchain` (`SwapChainNode::CompileImpl` → `CreateSwapchainAndViews` → `VulkanSwapChain::CreateSwapChainColorImages`). GDB backtrace:
+```
+Thread 1 received signal SIGSEGV
+#0  0x... in ?? ()
+#1  wsi_destroy_image () from .../libvulkan_dzn.so
+#2  x11_swapchain_destroy () from .../libvulkan_dzn.so
+#3  VulkanSwapChain::CreateSwapChainColorImages(VkDevice_T*, VkSwapchainKHR_T*)
+#4  SwapChainNode::CreateSwapchainAndViews()
+#5  SwapChainNode::CompileImpl(...)
+#6  NodeInstance::Compile()
+#7  RenderGraph::RecoverFromDeviceLoss()
+#8  VulkanGraphApplication::Render()
+```
+
+**Root cause:** `SwapChainNode::CleanupImpl` treated `CleanupReason::Recompile` and `CleanupReason::DeviceLost` identically (`if (ctx.reason != CleanupReason::FinalTeardown)`) — both took the "keep the swapchain HANDLE alive across the boundary, destroy only per-image views" branch, so that `CreateSwapchainAndViews()` could pass the still-live handle as `oldSwapchain` for the driver to recycle/hand over presentation state. That's correct for `Recompile` (the SAME `VkDevice` recreates it), but wrong for `DeviceLost`: `RenderGraph::RecoverFromDeviceLoss()` has `DeviceNode::CompileImpl` create an entirely NEW `VulkanDevice` (`RenderGraph.cpp`) before `SwapChainNode` rebuilds — a `VkSwapchainKHR` is device-scoped, so the old handle belongs to the OLD, about-to-be-destroyed device. Passing it as `oldSwapchain` into the NEW device's `fpCreateSwapchainKHR`/`fpDestroySwapchainKHR` (resolved via the new device's dispatch table) is exactly the KI-004 bug class (a resource carrying stale device state across recovery) and segfaults deep in the driver's swapchain-destroy internals. The `VkSurfaceKHR`, by contrast, is instance-scoped and correctly survives a device recreation untouched.
+
+**Fix (2026-07-04):** split the `Recompile`/`DeviceLost` branches. `Recompile` keeps the existing behavior (`DestroyImageViewsOnly`, swapchain handle survives for reuse). `DeviceLost` now calls `swapChainWrapper->DestroySwapChain(device)` — destroys the image views AND the swapchain handle (against the OLD, still-valid-but-lost device, which is safe per the `CleanupReason::DeviceLost` doc comment: calls against a lost device are expected to be harmless/no-ops), leaving `scPublicVars.swapChain = VK_NULL_HANDLE` so the later rebuild's `CreateSwapchainAndViews()` correctly does a cold creation (`oldSwapchain = VK_NULL_HANDLE`) against the new device instead of handing it a foreign-device handle. The surface is untouched in both branches (survives, as before).
+
+**Verification:** `FailScenarioSweep_FrameSync.DeviceLostRecovery` passes in isolation (previously segfaulted) — log shows "RECOVERY COMPLETE: rendering resumes on the new device". Full `test_fail_scenario_sweep` suite: 10/10 tests run to completion (previously crashed after test 3/10) — 8 passed, 2 skipped by their own logic (pre-existing, unrelated). Full project rebuild + all 7 render-gate test suites (28 tests) re-verified passing with zero regressions.
+
+**Severity:** High (crash in a documented-fixed regression gate for a real reliability feature) · **Status:** RESOLVED
 
 ### KI-012 — `VoxelSelectionProviderNode`'s pick-ID readback violates queue transfer-granularity on Dozen
 
