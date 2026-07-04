@@ -236,6 +236,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Compile (M4 — was a ConstantNode frozen at graph-build time, see RaySizeCoefNodeConfig).
     // raySizeBias = 0.0 (pinhole camera; no bias at origin).
     NodeHandle raySizeCoefNode = renderGraph->AddNode<RaySizeCoefNodeType>("ray_size_coef");
+    // Node loggers default DISABLED; the "[LOD] raySizeCoef recomputed" line is a live-gate signal
+    // for the resize->recompile cascade (M4.3), so enable it (mirrors voxelSelectionProviderNode below).
+    if (auto* rscInst = renderGraph->GetInstance(raySizeCoefNode)) {
+        if (auto* rl = rscInst->GetLogger()) { rl->SetEnabled(true); rl->SetTerminalOutput(true); }
+    }
     NodeHandle raySizeBiasConstant = renderGraph->AddNode<ConstantNodeType>("ray_size_bias");
     
     NodeHandle debugCaptureNode = renderGraph->AddNode<DebugBufferReaderNodeType>("debug_capture");
