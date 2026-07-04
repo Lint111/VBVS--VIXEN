@@ -153,25 +153,28 @@ std::string GPUQueryManager::GetSlotConsumerName(QuerySlotHandle slot) const {
 // COMMAND BUFFER RECORDING
 // ========================================================================
 
-void GPUQueryManager::BeginFrame(VkCommandBuffer cmdBuffer, uint32_t frameIndex) {
+void GPUQueryManager::BeginFrame(VkCommandBuffer cmdBuffer, uint32_t frameIndex, QuerySlotHandle slot) {
     if (frameIndex >= framesInFlight_) {
         throw std::out_of_range("GPUQueryManager::BeginFrame: frameIndex out of range");
     }
+
+    if (!IsSlotAllocated(slot)) {
+        throw std::invalid_argument("GPUQueryManager::BeginFrame: invalid or unallocated slot");
+    }
+
+    // Clear this slot's tracking so a fresh TryReadTimestamps triggers a re-read
+    auto& frame = frameData_[frameIndex];
+    frame.resultsRead = false;
+    frame.slots[slot].startWritten = false;
+    frame.slots[slot].endWritten = false;
 
     if (!query_) {
         return;  // Queries not supported or released
     }
 
-    // Reset all queries for this frame
-    query_->ResetQueries(cmdBuffer, frameIndex);
-
-    // Clear per-frame tracking
-    auto& frame = frameData_[frameIndex];
-    frame.resultsRead = false;
-    for (auto& slot : frame.slots) {
-        slot.startWritten = false;
-        slot.endWritten = false;
-    }
+    // Reset only this slot's 2 physical queries — other consumers' already-written
+    // timestamps earlier in this frame's command buffer must survive.
+    query_->ResetQueryRange(cmdBuffer, frameIndex, slots_[slot].startQueryIndex, 2);
 }
 
 void GPUQueryManager::WriteTimestamp(VkCommandBuffer cmdBuffer, uint32_t frameIndex,
@@ -184,14 +187,12 @@ void GPUQueryManager::WriteTimestamp(VkCommandBuffer cmdBuffer, uint32_t frameIn
         throw std::invalid_argument("GPUQueryManager::WriteTimestamp: invalid or unallocated slot");
     }
 
-    if (!query_) {
-        return;  // Queries not supported or released
-    }
-
     auto& frame = frameData_[frameIndex];
     auto& slotData = frame.slots[slot];
 
-    // Determine which timestamp to write (start or end)
+    // Determine which timestamp to write (start or end). Bookkeeping (written-flags) is
+    // tracked even without a live query_ (timestamps unsupported/released/mock device) so
+    // slot state stays consistent and testable independent of GPU availability.
     uint32_t queryIndex;
     if (!slotData.startWritten) {
         // Write start timestamp
@@ -204,6 +205,10 @@ void GPUQueryManager::WriteTimestamp(VkCommandBuffer cmdBuffer, uint32_t frameIn
     } else {
         // Both timestamps already written - this is likely a bug in consumer code
         throw std::logic_error("GPUQueryManager::WriteTimestamp: slot already has both timestamps written");
+    }
+
+    if (!query_) {
+        return;  // Queries not supported or released
     }
 
     query_->WriteTimestamp(cmdBuffer, frameIndex, pipelineStage, queryIndex);

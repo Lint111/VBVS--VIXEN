@@ -77,6 +77,20 @@ public:
     void ResetQueries(VkCommandBuffer cmdBuffer, uint32_t frameIndex);
 
     /**
+     * @brief Reset a subrange of queries for a specific frame (call at start of a consumer's turn)
+     *
+     * Unlike ResetQueries (whole pool), this only resets [firstQuery, firstQuery+queryCount),
+     * so multiple consumers sharing one pool can each reset only their own slot without
+     * clobbering queries already written by other consumers earlier in the same frame.
+     *
+     * @param cmdBuffer Command buffer to record reset into
+     * @param frameIndex Frame-in-flight index (0 to framesInFlight-1)
+     * @param firstQuery First physical query index to reset
+     * @param queryCount Number of queries to reset
+     */
+    void ResetQueryRange(VkCommandBuffer cmdBuffer, uint32_t frameIndex, uint32_t firstQuery, uint32_t queryCount);
+
+    /**
      * @brief Write timestamp for a specific frame
      * @param cmdBuffer Command buffer to record into
      * @param frameIndex Frame-in-flight index

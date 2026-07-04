@@ -147,6 +147,19 @@ void GPUTimestampQuery::ResetQueries(VkCommandBuffer cmdBuffer, uint32_t frameIn
     }
 }
 
+void GPUTimestampQuery::ResetQueryRange(VkCommandBuffer cmdBuffer, uint32_t frameIndex,
+                                         uint32_t firstQuery, uint32_t queryCount) {
+    if (!timestampSupported_ || frameIndex >= framesInFlight_ || queryCount == 0) {
+        return;
+    }
+
+    auto& frame = frameData_[frameIndex];
+    if (frame.timestampPool != VK_NULL_HANDLE) {
+        vkCmdResetQueryPool(cmdBuffer, frame.timestampPool, firstQuery, queryCount);
+        frame.resultsValid = false;
+    }
+}
+
 void GPUTimestampQuery::WriteTimestamp(VkCommandBuffer cmdBuffer, uint32_t frameIndex,
                                         VkPipelineStageFlagBits pipelineStage, uint32_t queryIndex) {
     if (!timestampSupported_ || frameIndex >= framesInFlight_ || queryIndex >= maxTimestamps_) {

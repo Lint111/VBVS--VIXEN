@@ -103,8 +103,10 @@ int main(int argc, char** argv) {
         auto lastFrameStart = std::chrono::steady_clock::now();
         bool isWindowOpen = true;
         // M5.1: outlier-frame logging. lastWindowMedian_ persists the PREVIOUS completed window's
-        // median frame time; any frame costing >3x that gets its own log line the instant it happens,
-        // instead of waiting to be buried in the next window's avg/p99 summary. 0 (no prior window yet)
+        // median frame time; any frame costing >3x that AND >5ms absolute gets its own log line the
+        // instant it happens, instead of waiting to be buried in the next window's avg/p99 summary.
+        // The absolute floor keeps sub-millisecond noise (e.g. a ~0.45ms median) from producing a
+        // flood of "outliers" that are really just measurement jitter. 0 (no prior window yet)
         // disables the check for the first kFrameWindow frames.
         double lastWindowMedian = 0.0;
         while(isWindowOpen) {
@@ -117,7 +119,7 @@ int main(int argc, char** argv) {
             lastFrameStart = now;
             ++frameCounter;
 
-            if (lastWindowMedian > 0.0 && thisFrameMs > 3.0 * lastWindowMedian) {
+            if (lastWindowMedian > 0.0 && thisFrameMs > 3.0 * lastWindowMedian && thisFrameMs > 5.0) {
                 char obuf[128];
                 std::snprintf(obuf, sizeof(obuf), "[FrameTimer] OUTLIER frame %llu: %.3f ms",
                               static_cast<unsigned long long>(frameCounter), thisFrameMs);
