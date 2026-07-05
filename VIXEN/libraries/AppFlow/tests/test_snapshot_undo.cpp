@@ -1,6 +1,7 @@
 // Built + run by Milestone 3 (Task 7 CMake); this milestone verifies via standalone compile.
 #include <gtest/gtest.h>
 #include "ActionStack.h"
+#include "LayerController.h"
 #include "generated/AppFlow.g.h"
 #include <cstring>
 using namespace Vixen::AppFlow;
@@ -42,4 +43,51 @@ TEST(SnapshotUndo, GenericOverFootprintSize) {
     EXPECT_EQ(big, 0ull);
     st.Undo();
     EXPECT_EQ(big, 0xAAAAAAAABBBBBBBBull);
+}
+
+// The design headline: undo-via-inverse and undo-via-snapshot of an equivalent change
+// leave LayerController in byte-identical state.
+TEST(SnapshotUndo, InverseAndSnapshotParity) {
+    // Path A — inverse: toggle layer 2 via a self-inverse apply.
+    LayerController a; a.SetLayerCount(3);
+    ActionStack sa;
+    sa.LoadActions(AppFlowContainerView::actions().data(), AppFlowContainerView::actions().size());
+    sa.Dispatch(FlowActionId::ToggleLayer, [&](bool /*fwd*/){ a.Toggle(2); });  // self-inverse: toggle both ways
+    sa.Undo();
+
+    // Path B — snapshot: same net change, undone by restoring the footprint.
+    LayerController b; b.SetLayerCount(3);
+    ActionStack sb;
+    sb.LoadActions(AppFlowContainerView::actions().data(), AppFlowContainerView::actions().size());
+    uint32_t mask = b.Mask();
+    sb.DispatchWithSnapshot(FlowActionId::ToggleLayer, &mask, sizeof(mask),
+                            [&](bool fwd){ if (fwd) { b.Toggle(2); mask = b.Mask(); } },
+                            [&]{ b.SetMask(mask); });
+    sb.Undo();
+
+    EXPECT_EQ(a.Mask(), b.Mask());          // both back to 0b111
+    EXPECT_EQ(a.Snapshot().enabledMask, b.Snapshot().enabledMask);
+}
+
+// A group mixing a self-inverse and a snapshot action undoes as one unit, both reversed.
+TEST(SnapshotUndo, MixedGroupUndoesAsOneUnit) {
+    LayerController lc; lc.SetLayerCount(3);
+    ActionStack st;
+    st.LoadActions(AppFlowContainerView::actions().data(), AppFlowContainerView::actions().size());
+    uint32_t mask = lc.Mask();
+    st.BeginGroup(1);
+    st.Dispatch(FlowActionId::ToggleLayer, [&](bool){ lc.Toggle(0); });                     // inverse
+    mask = lc.Mask();  // keep the footprint synced to lc right before ITS OWN dispatch snapshots
+                        // it — DispatchWithSnapshot saves whatever bytes are in `footprint` at call
+                        // time, not lc's live state; a stale footprint captures the wrong baseline
+                        // and corrupts the sibling inverse entry's effect when a strict-reverse
+                        // Undo composes both restores (see ActionStack::Undo doc).
+    st.DispatchWithSnapshot(FlowActionId::ToggleLayer, &mask, sizeof(mask),
+                            [&](bool fwd){ if (fwd) { lc.Toggle(1); mask = lc.Mask(); } },
+                            [&]{ lc.SetMask(mask); });                                        // snapshot
+    st.EndGroup();
+    EXPECT_EQ(lc.Mask(), 0b100u);           // layers 0 and 1 disabled
+    EXPECT_EQ(st.Undo(), DispatchResult::Ok);
+    EXPECT_EQ(lc.Mask(), 0b111u);           // ONE undo reverted BOTH
+    EXPECT_EQ(st.UndoDepth(), 0u);
 }
