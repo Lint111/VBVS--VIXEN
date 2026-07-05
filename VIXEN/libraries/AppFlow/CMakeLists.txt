@@ -9,6 +9,7 @@ set(APPFLOW_HEADERS
     include/ActionStack.h
     include/FlowStateMachine.h
     include/BindingStore.h
+    include/LayerController.h
     include/AppFlowRuntime.h
 )
 set(APPFLOW_SOURCES
@@ -16,6 +17,7 @@ set(APPFLOW_SOURCES
     src/ActionStack.cpp
     src/FlowStateMachine.cpp
     src/BindingStore.cpp
+    src/LayerController.cpp
     src/AppFlowRuntime.cpp
 )
 add_library(AppFlow STATIC ${APPFLOW_HEADERS} ${APPFLOW_SOURCES})

@@ -1,8 +1,11 @@
 #pragma once
-// EditorDocumentModel — Inc1 editor state: a loaded VoxelDocument (VDC1) plus the one
-// mutable edit the app supports (per-layer enabled override) and the flatten/save seam.
-// Kept Vulkan-free and app-free so the headless live-gate test can drive the same load/
-// flatten/save code paths the real vixen_editor app uses, without pulling in the graph.
+// EditorDocumentModel — Inc1 editor state: a loaded VoxelDocument (VDC1) plus the
+// flatten/save seam. Inc-2: the per-layer enabled state moved out to LayerController (the
+// app owns it as the source of truth, dispatched through AppFlowRuntime) — the model is now
+// a pure function of a caller-supplied enabledMask bitmask and holds no mutable edit state
+// of its own. Kept Vulkan-free and app-free so the headless live-gate test can drive the
+// same load/flatten/save code paths the real vixen_editor app uses, without pulling in the
+// graph.
 #include <cstdint>
 #include <fstream>
 #include <string>
@@ -15,8 +18,9 @@
 
 namespace Vixen::Editor {
 
-// Loads a .vxd file, keeps the raw bytes alive (VoxelDocumentView holds pointers into
-// them), and tracks the per-layer enabled override the UI toggle mutates.
+// Loads a .vxd file and keeps the raw bytes alive (VoxelDocumentView holds pointers into
+// them). Enabled/disabled per layer is supplied by the caller at flatten/save time as an
+// enabledMask bitmask (bit i = layer i), not tracked here.
 class EditorDocumentModel {
 public:
     // Reads the file at path into rawBytes_ and parses it via ReadVoxelDocument. Returns
@@ -35,9 +39,6 @@ public:
             return false;
         }
         sourcePath_ = path;
-        enabledOverride_.resize(view_.header.layerCount);
-        for (uint32_t i = 0; i < view_.header.layerCount; ++i)
-            enabledOverride_[i] = view_.layers[i].header->enabled;
         return true;
     }
 
@@ -64,33 +65,23 @@ public:
         }
     }
 
-    bool IsEnabled(uint32_t i) const { return enabledOverride_[i] != 0; }
-
-    // Toggle a layer's enabled override and mark the model dirty. Does NOT re-flatten —
-    // the caller re-flattens on its own cadence (editor: next Execute; test: immediately).
-    void ToggleLayer(uint32_t i) {
-        enabledOverride_[i] = enabledOverride_[i] ? 0 : 1;
-        dirty_ = true;
-    }
-
-    bool ConsumeDirty() {
-        const bool d = dirty_;
-        dirty_ = false;
-        return d;
-    }
-
-    // Flattens the document (with the current enabledOverride_) into a VRC1 blob.
-    bool Flatten(std::vector<uint8_t>& outVrc1Blob, std::string& err) const {
-        return Vixen::SVO::FlattenVoxelDocument(view_, &enabledOverride_, outVrc1Blob, err);
+    // Flattens the document (with the caller-supplied enabledMask, bit i = layer i) into a
+    // VRC1 blob.
+    bool Flatten(uint32_t enabledMask, std::vector<uint8_t>& outVrc1Blob, std::string& err) const {
+        std::vector<uint8_t> ovr(view_.header.layerCount);
+        for (uint32_t i = 0; i < view_.header.layerCount; ++i)
+            ovr[i] = (enabledMask >> i) & 1u;
+        return Vixen::SVO::FlattenVoxelDocument(view_, &ovr, outVrc1Blob, err);
     }
 
     // Flattens + parses the VRC1 blob into a RecipeRegistry::RecipeEntry ready to
     // Register()/bake. Bridges the VRC1 blob's header fields (bakeResolution/bandVoxels/
     // brickDepth) and instruction span into the entry the existing RecipeRegistry/
     // RecipeBaker path (test_recipe_pool_render.cpp's pattern) consumes unchanged.
-    bool FlattenToRecipeEntry(Vixen::SVO::RecipeRegistry::RecipeEntry& outEntry, std::string& err) const {
+    bool FlattenToRecipeEntry(uint32_t enabledMask, Vixen::SVO::RecipeRegistry::RecipeEntry& outEntry,
+                               std::string& err) const {
         std::vector<uint8_t> blob;
-        if (!Flatten(blob, err)) return false;
+        if (!Flatten(enabledMask, blob, err)) return false;
 
         Yeroket::Sdf::Generated::RecipeContainerView rv{};
         if (!Yeroket::Sdf::Generated::ReadRecipeContainer(blob.data(), blob.size(), rv)) {
@@ -106,17 +97,18 @@ public:
         return true;
     }
 
-    // Reconstructs the document bytes with `enabled` replaced by enabledOverride_
-    // (everything else unchanged) and writes them to outPath. Uses WriteVoxelDocument
-    // with layer headers copied from the original view (only .enabled patched).
-    bool Save(const std::string& outPath, std::string& err) const {
+    // Reconstructs the document bytes with `enabled` replaced by the caller-supplied
+    // enabledMask (everything else unchanged) and writes them to outPath. Uses
+    // WriteVoxelDocument with layer headers copied from the original view (only .enabled
+    // patched).
+    bool Save(uint32_t enabledMask, const std::string& outPath, std::string& err) const {
         using namespace Yeroket::Sdf::Generated;
 
         std::vector<VoxelDocLayerHeader> headers(view_.header.layerCount);
         std::vector<VoxelDocLayerWrite> writes(view_.header.layerCount);
         for (uint32_t i = 0; i < view_.header.layerCount; ++i) {
             headers[i] = *view_.layers[i].header;
-            headers[i].enabled = enabledOverride_[i];
+            headers[i].enabled = (enabledMask >> i) & 1u;
             writes[i].header = headers[i];
             writes[i].instructions = view_.layers[i].instructions;
         }
@@ -145,8 +137,6 @@ private:
     std::vector<uint8_t> rawBytes_;
     Yeroket::Sdf::Generated::VoxelDocumentView view_{};
     std::string sourcePath_;
-    std::vector<uint8_t> enabledOverride_;
-    bool dirty_ = false;
 };
 
 }  // namespace Vixen::Editor

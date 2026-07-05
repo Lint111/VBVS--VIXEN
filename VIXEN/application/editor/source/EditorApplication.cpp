@@ -43,6 +43,7 @@ bool EditorApplication::LoadDocument(const std::string& path) {
         return false;
     }
     documentPath_ = path;
+    layers_.SetLayerCount(doc_.LayerCount());  // Inc-2: (re)sync the mask to the freshly loaded doc
     return true;
 }
 
@@ -100,7 +101,7 @@ void EditorApplication::BuildRenderGraph() {
 
 bool EditorApplication::ApplyDocumentToScene() {
     Vixen::SVO::RecipeRegistry::RecipeEntry entry;
-    if (!doc_.FlattenToRecipeEntry(entry, lastEditorError_)) {
+    if (!doc_.FlattenToRecipeEntry(layers_.Mask(), entry, lastEditorError_)) {
         return false;
     }
 
@@ -146,8 +147,10 @@ bool EditorApplication::ApplyDocumentToScene() {
 }
 
 void EditorApplication::ToggleLayer(uint32_t layerIndex) {
-    if (layerIndex >= doc_.LayerCount()) return;
-    doc_.ToggleLayer(layerIndex);
+    // LayerController itself no-ops out-of-range (i >= LayerCount()); Toggle's bool return
+    // (false = no-op) tells us whether to mark dirty.
+    if (!layers_.Toggle(layerIndex)) return;
+    dirty_ = true;
 }
 
 bool EditorApplication::SaveDocument() {
@@ -155,7 +158,7 @@ bool EditorApplication::SaveDocument() {
     const std::string base = (dot == std::string::npos) ? documentPath_ : documentPath_.substr(0, dot);
     const std::string outPath = base + ".edited.vxd";
 
-    if (!doc_.Save(outPath, lastEditorError_)) {
+    if (!doc_.Save(layers_.Mask(), outPath, lastEditorError_)) {
         return false;
     }
     lastSavedPath_ = outPath;
@@ -191,7 +194,9 @@ void EditorApplication::Update() {
     // Re-flatten + re-upload on the next tick after a toggle (dirty-flag pattern — no
     // MarkNeedsRecompile; SetRecipePool inside ApplyDocumentToScene already sets the
     // BodyOctreeSceneNode's own recipeDirty_ flag for the in-Execute re-materialize).
-    if (doc_.ConsumeDirty()) {
+    // Inc-2: dirty_ is now owned here (the model no longer tracks edit state).
+    if (dirty_) {
+        dirty_ = false;
         if (!ApplyDocumentToScene()) {
             logger_->Error("[EditorApplication] toggle re-apply failed: " + lastEditorError_);
         }

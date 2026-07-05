@@ -14,7 +14,7 @@ add_executable(vixen_editor
 
 target_include_directories(vixen_editor PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
-target_link_libraries(vixen_editor PRIVATE VixenApp)
+target_link_libraries(vixen_editor PRIVATE VixenApp AppFlow)
 
 # Default document path (no argv[1]) resolves relative to the source-tree BuiltAssets dir, not
 # the exe's CWD -- so `vixen_editor` works from any working directory.
