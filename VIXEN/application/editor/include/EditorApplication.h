@@ -61,5 +61,7 @@ private:
     std::string lastEditorError_;
     std::string lastSavedPath_;
     bool sKeyWasDown_ = false;  // edge-detect for the Save keybinding
+    bool ctrlZWasDown_ = false;  // edge-detect for the Undo keybinding
+    bool ctrlYWasDown_ = false;  // edge-detect for the Redo keybinding
     std::shared_ptr<Vixen::Log::Logger> logger_ = std::make_shared<Vixen::Log::Logger>("editor", true);
 };

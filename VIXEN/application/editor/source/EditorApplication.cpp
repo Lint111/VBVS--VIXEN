@@ -189,6 +189,18 @@ void EditorApplication::Update() {
             }
         }
         sKeyWasDown_ = sKeyDown;
+
+        // Undo/redo keybindings: Ctrl+Z / Ctrl+Y, edge-detected (press-only). rt_.Undo()/Redo()
+        // re-run the stored apply lambda (set inside ToggleLayer), which sets dirty_ — the
+        // dirty_ re-flatten tail below reuses the same path a toggle uses; no new re-flatten call.
+        const bool ctrl = glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS
+                       || glfwGetKey(window, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS;
+        const bool zDown = ctrl && glfwGetKey(window, GLFW_KEY_Z) == GLFW_PRESS;
+        const bool yDown = ctrl && glfwGetKey(window, GLFW_KEY_Y) == GLFW_PRESS;
+        if (zDown && !ctrlZWasDown_) rt_.Undo();
+        if (yDown && !ctrlYWasDown_) rt_.Redo();
+        ctrlZWasDown_ = zDown;
+        ctrlYWasDown_ = yDown;
     }
 
     // Re-flatten + re-upload on the next tick after a toggle (dirty-flag pattern — no
