@@ -26,7 +26,7 @@
 Execution via post-brainstorm-context-manager in worktree `.claude/worktrees/appflow-inc1` (branch `worktree-appflow-inc1`). Implementers = Sonnet 5 / medium; validators + final review = Opus / high.
 
 - **Milestone 1 — Contract (Tasks 1–2): ✅ DONE** — declare reference vocabulary + generate `AppFlow.g.h` + golden test. **Codegen decision (RESOLVED):** Yeroket `CodegenTool~` emits ONLY `[GpuStruct]` structs (no enum/table/reader emitter) → took plan Outcome 2: `AppFlowReference.cs` canonical + documented, `AppFlow.g.h` HAND-AUTHORED to match (both carry `TODO(appflow-codegen)` for a future real emitter). No Yeroket edit. No `codegen/CMakeLists.txt` regen target (nothing to regen yet).
-- **Milestone 2 — Core primitives (Tasks 3, 4, 5, 5b):** `AppFlowEvents.h`/`AppFlowResults.h` + `FlowStateMachine` + `ActionStack` + `BindingStore`. Four pure-logic C++ units, offline gtests.
+- **Milestone 2 — Core primitives (Tasks 3, 4, 5, 5b): ✅ DONE** — `AppFlowEvents.h`/`AppFlowResults.h` + `FlowStateMachine` + `ActionStack` + `BindingStore`. Four pure-logic C++ units, offline gtests. All 3 test units compiled+linked+ran GREEN against vendored gtest (3/3 + 4/4 + 3/3) a milestone early. Validator wrote 6 extra adversarial probes for the untested auto-group/empty-selector paths — all correct.
 - **Milestone 3 — Integration + build (Tasks 6–7):** `AppFlowLoader` + `AppFlowRuntime` (`DispatchBySelector` spine) + CMake wiring + full green suite.
 - **Milestone 4 — Close-out (Task 8):** verify from fresh output + record the codegen-tool decision. Folds into the Finish step.
 
@@ -34,6 +34,7 @@ Execution via post-brainstorm-context-manager in worktree `.claude/worktrees/app
 
 - (pipeline started 2026-07-05; entries appended per milestone)
 - Milestone 1 (Tasks 1–2): DONE · commits 5bb5c465..b70d9114 · Opus validator APPROVED (7/7 checks, symbol-by-symbol; std::span-constexpr trap verified avoided) · codegen Outcome-2 (hand-authored header) · nits handled (Yeroket DLL reverted to HEAD ca4eb7ad; redundant `using` left cosmetic) · 2026-07-05
+- Milestone 2 (Tasks 3, 4, 5, 5b): DONE · commits a7e13d5e..3adf90c5 (11 files, all added) · Opus validator APPROVED (7/7 via full compile+link+run: FSM 3/3, ActionStack 4/4, BindingStore 3/3; +6 adversarial probes for untested paths all pass) · error model clean (zero throw); C++23 verified · Yeroket clean · 2026-07-05
 
 ## Increment roadmap (context; only Inc 1 is planned in detail below)
 
