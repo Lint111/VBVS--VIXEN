@@ -50,6 +50,8 @@
   - Drives the REAL `AppFlowRuntime` (Load → Layers().SetLayerCount(3) → ToggleLayer(2, onChanged) → Undo), no mask bypass; `renderMask` re-reads the current mask each call so the toggle genuinely changes the flattener input. **A broken/no-op undo WOULD fail this gate** (would leave mask=0b011, memcmp fails; the `changed==2` assertion also catches a missing inverse). Render body extracted verbatim from `test_editor_document_render.cpp`'s ablation test (cut-layer index 2, same camera/threshold); template's own ablation re-run green as GPU-path sanity.
   - Structural rule honored: 2 files only (test .cpp +602, test_critical_nodes.cmake +35 linking AppFlow via `if(TARGET AppFlow)`); NO AppFlow-lib source touched. Tree clean.
   - **DURABLE (env):** VixenSelectWslGpuIcd resolves to a REAL GPU (D3D12/dzn RTX 3060) here, not lavapipe — GPU render tests genuinely run headless but take ~25-50s. `cmake --build` auto-backgrounds in this harness; overlapping builds of one link target race and truncate the binary — build one target at a time, block on the process. First VIXEN configure with -DBUILD_TESTS=ON ~500s (network FetchContent), reconfigure ~115s. (Logged to ~/.claude/friction.md.)
+- Milestone 5 (Task 7): DONE · commit TBD · 2026-07-05
+  - **★ Inc-2 COMPLETE ★** Full offline AppFlow suite from fresh `cmake --build` (single invocation, all 7 targets): **27/27 PASS**, zero Inc-1 regression — `test_layer_controller` 4/4, `test_snapshot_undo` 6/6 (Inc-2 new); `test_appflow_golden` 4/4, `test_flow_state_machine` 3/3, `test_action_stack` 4/4, `test_binding_store` 3/3, `test_appflow_loader` 3/3 (Inc-1, byte-identical pass counts to M3 baseline). GPU render-gate `test_appflow_editor_toggle_render` re-run fresh (rebuilt, no-op — binary already current): **PASSED** on real hardware (D3D12/dzn, RTX 3060 Laptop GPU), boreDiffPixels=6400/6400 matching the M4-recorded value exactly, 29.2s. Inc-2 (LayerController + generic snapshot-fallback undo + runtime re-flatten seam + GPU toggle→undo proof) is done end-to-end.
 
 ---
 
@@ -463,11 +465,11 @@ git commit -m "test(appflow): headless GPU render-gate — toggle→re-flatten�
 **Files:**
 - Modify: `VIXEN/Vixen-Docs/01-Architecture/AppFlow-Framework-Inc2-Plan-2026-07.md` (mark DONE + Progress Log)
 
-- [ ] **Step 1: Full offline suite from fresh output.** Rebuild + run all AppFlow test binaries (Inc-1 + Inc-2): `test_appflow_golden`, `test_flow_state_machine`, `test_action_stack`, `test_binding_store`, `test_appflow_loader`, `test_layer_controller`, `test_snapshot_undo`. Paste the pass counts. Confirm no Inc-1 regression.
+- [x] **Step 1: Full offline suite from fresh output.** Rebuild + run all AppFlow test binaries (Inc-1 + Inc-2): `test_appflow_golden`, `test_flow_state_machine`, `test_action_stack`, `test_binding_store`, `test_appflow_loader`, `test_layer_controller`, `test_snapshot_undo`. Paste the pass counts. Confirm no Inc-1 regression.
 
-- [ ] **Step 2: Confirm the GPU gate** `test_appflow_editor_toggle_render` PASSes (the authoritative proof; live-run-is-authoritative rule).
+- [x] **Step 2: Confirm the GPU gate** `test_appflow_editor_toggle_render` PASSes (the authoritative proof; live-run-is-authoritative rule).
 
-- [ ] **Step 3: Commit the close-out.**
+- [x] **Step 3: Commit the close-out.**
 
 ```bash
 git add VIXEN/Vixen-Docs/01-Architecture/AppFlow-Framework-Inc2-Plan-2026-07.md
