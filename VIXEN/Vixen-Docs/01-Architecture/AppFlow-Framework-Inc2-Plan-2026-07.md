@@ -45,6 +45,11 @@
   - Task 4: `AppFlowRuntime` owns `LayerController` (`Layers()`), `ToggleLayer(index, onChanged)` = self-inverse `stack_.Dispatch` that flips `layers_.Toggle` + fires onChanged on BOTH apply and undo + publishes ActionApplied. Task 5: `EditorDocumentModel::{Flatten,FlattenToRecipeEntry,Save}` take `uint32_t enabledMask` → `vector<uint8_t> ovr(layerCount)` fed to FlattenVoxelDocument's `enabledOverride`; `enabledOverride_`/`ToggleLayer`/`IsEnabled`/`ConsumeDirty` REMOVED (zero dangling refs). EditorApplication owns `LayerController layers_` + `bool dirty_`, routes toggle/save/apply through it.
   - **TWO BEYOND-PLAN CMAKE FIXES (validator-confirmed necessary, not scope creep):** (a) `libraries/AppFlow/CMakeLists.txt` — M1 created LayerController.h/.cpp but NEVER registered them in APPFLOW_SOURCES (the M1 syntax-only gate couldn't catch this; AppFlowRuntime now embeds a LayerController so its symbols must link) → added both. (b) `application/editor/CMakeLists.txt` — `vixen_editor` didn't link AppFlow → added `AppFlow` to target_link_libraries. **DURABLE: a source-file that isn't in its lib's CMake source list passes every offline `-fsyntax-only` gate but fails to link — the CMake registration must land in the SAME milestone that adds the file, or the first real build catches it late.**
   - Data-flow §3 coherent end-to-end (runtime ToggleLayer→mask→flatten proven at unit level); nothing missing for M4's GPU gate.
+- Milestone 4 (Task 6): DONE · commit ccaee646 · Opus validator APPROVED (independently re-rendered on GPU + own PNG hashes) · 2026-07-05
+  - **AUTHORITATIVE LIVE GATE — GPU-PROVEN.** `test_appflow_editor_toggle_render` PASSED on a REAL GPU (Microsoft D3D12/dzn on an RTX 3060 — this env resolves to real hardware via VixenSelectWslGpuIcd, NOT lavapipe; renders ~25-50s). boreDiffPixels=6400/6400 (full 80×80 bore region changed on toggle, ≫ the >3000 threshold). Validator's OWN md5sums (stale PNGs deleted first): initial `23656fe3…` == undone `23656fe3…` byte-for-byte; toggled `67870990…` differs. Undo proof is an EXACT full-RGBA-buffer memcmp (stronger than PNG equality).
+  - Drives the REAL `AppFlowRuntime` (Load → Layers().SetLayerCount(3) → ToggleLayer(2, onChanged) → Undo), no mask bypass; `renderMask` re-reads the current mask each call so the toggle genuinely changes the flattener input. **A broken/no-op undo WOULD fail this gate** (would leave mask=0b011, memcmp fails; the `changed==2` assertion also catches a missing inverse). Render body extracted verbatim from `test_editor_document_render.cpp`'s ablation test (cut-layer index 2, same camera/threshold); template's own ablation re-run green as GPU-path sanity.
+  - Structural rule honored: 2 files only (test .cpp +602, test_critical_nodes.cmake +35 linking AppFlow via `if(TARGET AppFlow)`); NO AppFlow-lib source touched. Tree clean.
+  - **DURABLE (env):** VixenSelectWslGpuIcd resolves to a REAL GPU (D3D12/dzn RTX 3060) here, not lavapipe — GPU render tests genuinely run headless but take ~25-50s. `cmake --build` auto-backgrounds in this harness; overlapping builds of one link target race and truncate the binary — build one target at a time, block on the process. First VIXEN configure with -DBUILD_TESTS=ON ~500s (network FetchContent), reconfigure ~115s. (Logged to ~/.claude/friction.md.)
 
 ---
 
@@ -410,7 +415,7 @@ git commit -m "refactor(appflow): editor reads layer mask from LayerController; 
 **Interfaces:**
 - Consumes: `AppFlowRuntime` + `LayerController` (Tasks 1–4); the render harness pattern from `test_editor_document_render.cpp` (Vulkan bring-up via `VixenSelectWslGpuIcd` + software device, `BodyOctreeSceneNode`, bake via `RecipeRegistry`/`RecipeBaker`, PNG via `stb_image_write`, bore-column pixel-diff).
 
-- [ ] **Step 1: Write the test.** Model it on `test_editor_document_render.cpp` (read that file first). Structure:
+- [x] **Step 1: Write the test.** Model it on `test_editor_document_render.cpp` (read that file first). Structure:
 
 ```cpp
 // Headless GPU gate: a ToggleLayer dispatched through AppFlowRuntime re-flattens + renders;
@@ -436,15 +441,15 @@ TEST(AppFlowEditorToggleRender, ToggleThenUndoRestoresRender) {
 
 Extract the render-a-mask-to-pixels body verbatim from `test_editor_document_render.cpp` (its flatten→register→bake→render path), parameterized by the enabled mask. Use the SAME `CUT_LAYER_INDEX` (the "cut" layer, index 2 in the golden doc) whose toggle produces the bore-column difference that test already relies on.
 
-- [ ] **Step 2: Register + build.** Add the test to the CMake in `VIXEN/libraries/RenderGraph/tests/Nodes/` (find how `test_editor_document_render` is added — likely a `foreach`/`add_executable` + `target_link_libraries(... RenderGraph SVO ...)`); add `AppFlow` to its link libraries. Build: `cmake --build build --target test_appflow_editor_toggle_render --parallel 16` → 0 errors.
+- [x] **Step 2: Register + build.** Add the test to the CMake in `VIXEN/libraries/RenderGraph/tests/Nodes/` (find how `test_editor_document_render` is added — likely a `foreach`/`add_executable` + `target_link_libraries(... RenderGraph SVO ...)`); add `AppFlow` to its link libraries. Build: `cmake --build build --target test_appflow_editor_toggle_render --parallel 16` → 0 errors.
 
-- [ ] **Step 3: Run the gate (headless, lavapipe/software).**
+- [x] **Step 3: Run the gate (headless, lavapipe/software).**
 
 Run: `build/libraries/RenderGraph/tests/Nodes/test_appflow_editor_toggle_render --gtest_brief=1` (or wherever it lands — mirror `test_editor_document_render`'s output path).
 Expected: PASS — `ToggleThenUndoRestoresRender`. Inspect `/tmp/appflow_toggle_*.png`: initial and undone identical, toggled visibly different at the bore.
 If the ICD isn't found, set the Dozen ICD as `test_editor_document_render` does (it calls `VixenSelectWslGpuIcd` in-process).
 
-- [ ] **Step 4: Commit.**
+- [x] **Step 4: Commit.**
 
 ```bash
 git add VIXEN/libraries/RenderGraph/tests/Nodes/test_appflow_editor_toggle_render.cpp VIXEN/libraries/RenderGraph/tests/Nodes/CMakeLists.txt
