@@ -173,6 +173,14 @@ the one GPU test on lavapipe headless is the authoritative proof (live-run-is-au
 - **`EditorDocumentModel` gains a dependency on `LayerController`** for the mask read (a small change
   to its `Flatten`/`FlattenToRecipeEntry` signature). This is the intended consolidation — layer state
   moves into AppFlow.
+- **Snapshot footprint lifetime (added post-Inc-2, final-review note).** `DispatchWithSnapshot` stores a
+  raw `void* footprint` in the Entry and `memcpy`s bytes back to it on undo; §5 guards the footprint
+  *size* (load-time) but NOT its *lifetime*. In Inc-2 this is harmless — there are ZERO snapshot-mode
+  production callers (the live ToggleLayer path is inverse-mode, `footprint==nullptr`); only the tests
+  use snapshot mode, with locals that outlive `Undo()`. **The FIRST real snapshot-mode action (Inc-2b/
+  Inc-3) MUST pass a footprint that outlives every Undo of that entry** — i.e. a stable owned buffer, not
+  a stack local or an element of a reallocating container. Consider having the runtime own the snapshot
+  target (or store the snapshot by value only) when snapshot-mode gains a live consumer.
 
 ---
 
