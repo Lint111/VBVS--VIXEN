@@ -30,7 +30,10 @@
 
 ## Progress Log
 
-- (pipeline not yet started; entries appended per milestone)
+- Milestone 1 (Tasks 1–2): DONE · commits 0e81dc3f (Task 1), 50b1e52e (Task 2) · Opus validator APPROVED (re-built editor Windows-side + re-ran M4 gate on WSL/Dozen) · 2026-07-05
+  - `EditorApplication` owns `AppFlowRuntime rt_{nullptr,0}` (raw `LayerController layers_` removed); `LoadDocument` calls `rt_.Load()` THEN `rt_.Layers().SetLayerCount()` (Load-bearing — populates the action table `ToggleLayer` dispatches against; without it every toggle silently no-ops; ordering guaranteed by main.cpp Load→Initialize→Update). `ToggleLayer` → `rt_.ToggleLayer(i, [this]{dirty_=true;})` (through ActionStack → undoable). Ctrl+Z→`rt_.Undo()` / Ctrl+Y→`rt_.Redo()` edge-detected in Update; both reuse the UNCHANGED `dirty_`→ApplyDocumentToScene tail (no duplicate re-flatten). `ParseLayerToggleId`/DrainClickedElementId click path unchanged (BindingStore deferred to Inc-3).
+  - Editor builds+links Windows-side (663/663 first build; incremental relink clean; AppFlow already on the editor link line from Inc-2). M4 headless gate `test_appflow_editor_toggle_render` PASSED (boreDiffPixels=6400) — validator re-ran on WSL/Dozen. AppFlow libs + AppFlow.g.h UNTOUCHED; tree clean.
+  - **DURABLE (env): the GPU-shader render tests only build on the WSL side** — `test_critical_nodes.cmake` gates that test group on the WSL-provisioned Linux glslc, so a Windows/MSVC configure SKIPS them. So: editor/app builds go Windows-side (fast); the GPU render-gate tests run WSL-side (Dozen/RTX 3060). M3's windowed gate must account for this split. Also: the harness "task completed" notification can fire while ninja is STILL running — verify via `tasklist.exe|grep ninja` / `pgrep ninja` before trusting a build finished (both M1 workers hit this; already in the friction log).
 
 ---
 
@@ -59,11 +62,11 @@
 - Consumes: `Vixen::AppFlow::AppFlowRuntime` (Inc-2) — `Load() → LoadResult`, `Layers() → LayerController&`, `ToggleLayer(uint32_t, std::function<void()>) → DispatchResult`. `LayerController::{SetLayerCount,Mask}`.
 - Produces: `EditorApplication` with an owned `rt_` and no raw `layers_`; `ToggleLayer` dispatches through the ActionStack.
 
-- [ ] **Step 1: Read the current seam.** Via `codegraph explore "EditorApplication.h EditorApplication.cpp layers_ ToggleLayer ApplyDocumentToScene SaveDocument LoadDocument"`. Note every `layers_` use: `EditorApplication.h` (the member), `LoadDocument` (`layers_.SetLayerCount`), `ApplyDocumentToScene` (`layers_.Mask()`), `SaveDocument` (`layers_.Mask()`), `ToggleLayer` (`layers_.Toggle` + `dirty_`).
+- [x] **Step 1: Read the current seam.** Via `codegraph explore "EditorApplication.h EditorApplication.cpp layers_ ToggleLayer ApplyDocumentToScene SaveDocument LoadDocument"`. Note every `layers_` use: `EditorApplication.h` (the member), `LoadDocument` (`layers_.SetLayerCount`), `ApplyDocumentToScene` (`layers_.Mask()`), `SaveDocument` (`layers_.Mask()`), `ToggleLayer` (`layers_.Toggle` + `dirty_`).
 
-- [ ] **Step 2: Swap the member in the header.** In `EditorApplication.h`: `#include "AppFlowRuntime.h"`. Replace the `Vixen::AppFlow::LayerController layers_;` member with `Vixen::AppFlow::AppFlowRuntime rt_{nullptr, 0};` (bus=nullptr — Publish no-ops; sender=0). Keep `bool dirty_ = false;` and `bool sKeyWasDown_ = false;`. (If the header currently includes `LayerController.h` and nothing else uses it directly, that include can stay or go — AppFlowRuntime.h pulls it transitively; leave it to avoid churn.)
+- [x] **Step 2: Swap the member in the header.** In `EditorApplication.h`: `#include "AppFlowRuntime.h"`. Replace the `Vixen::AppFlow::LayerController layers_;` member with `Vixen::AppFlow::AppFlowRuntime rt_{nullptr, 0};` (bus=nullptr — Publish no-ops; sender=0). Keep `bool dirty_ = false;` and `bool sKeyWasDown_ = false;`. (If the header currently includes `LayerController.h` and nothing else uses it directly, that include can stay or go — AppFlowRuntime.h pulls it transitively; leave it to avoid churn.)
 
-- [ ] **Step 3: Rewire the `.cpp` call sites** (use `search-and-replace` for the mechanical `layers_.Mask()` → `rt_.Layers().Mask()` occurrences — there are 2 — then hand-edit the two structural ones):
+- [x] **Step 3: Rewire the `.cpp` call sites** (use `search-and-replace` for the mechanical `layers_.Mask()` → `rt_.Layers().Mask()` occurrences — there are 2 — then hand-edit the two structural ones):
   - `LoadDocument`: after `doc_.Load(...)` succeeds, replace `layers_.SetLayerCount(doc_.LayerCount());` with:
     ```cpp
     rt_.Load();  // load the AppFlow reference vocab (state/action tables)
@@ -78,7 +81,7 @@
     rt_.ToggleLayer(layerIndex, [this]{ dirty_ = true; });
     ```
 
-- [ ] **Step 4: Build the editor Windows-side + confirm it links.** Configure once if needed, then build the editor target:
+- [x] **Step 4: Build the editor Windows-side + confirm it links.** Configure once if needed, then build the editor target:
   ```
   cmd.exe /c "C:\\cpp\\VBVS--VIXEN\\VIXEN\\temp\\win_configure.bat"   # if not configured
   ```
@@ -88,7 +91,7 @@
   ```
   Watch with a foreground poll loop (do NOT overlap builds). Expected: 0 errors, editor links. (`AppFlow` is already on the editor's link line from Inc-2 — confirm; if missing, that's the one CMake add.)
 
-- [ ] **Step 5: Commit.**
+- [x] **Step 5: Commit.**
   ```bash
   git add VIXEN/application/editor/include/EditorApplication.h VIXEN/application/editor/source/EditorApplication.cpp
   git commit -m "refactor(editor): EditorApplication owns AppFlowRuntime; toggle routes through the ActionStack (Inc-2b)"
@@ -106,9 +109,9 @@
 - Consumes: `rt_.Undo() → DispatchResult`, `rt_.Redo() → DispatchResult` (Inc-2); `GetWindowHandle()` + `glfwGetKey` (existing).
 - Produces: live undo/redo in the windowed editor.
 
-- [ ] **Step 1: Add the edge-detect members.** In `EditorApplication.h` next to `sKeyWasDown_`: `bool ctrlZWasDown_ = false; bool ctrlYWasDown_ = false;`.
+- [x] **Step 1: Add the edge-detect members.** In `EditorApplication.h` next to `sKeyWasDown_`: `bool ctrlZWasDown_ = false; bool ctrlYWasDown_ = false;`.
 
-- [ ] **Step 2: Add the keybinding block in `Update`.** Inside the existing `if (GLFWwindow* window = GetWindowHandle())` block (alongside the `S`-save edge-detect), add:
+- [x] **Step 2: Add the keybinding block in `Update`.** Inside the existing `if (GLFWwindow* window = GetWindowHandle())` block (alongside the `S`-save edge-detect), add:
   ```cpp
   const bool ctrl = glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS
                  || glfwGetKey(window, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS;
@@ -121,16 +124,16 @@
   ```
   No new re-flatten call: `rt_.Undo()`/`Redo()` re-run the stored apply lambda which sets `dirty_`, and the existing `if (dirty_) { ... ApplyDocumentToScene(); }` tail re-flattens.
 
-- [ ] **Step 3: Build the editor Windows-side (as Task 1 Step 4).** Expected: 0 errors.
+- [x] **Step 3: Build the editor Windows-side (as Task 1 Step 4).** Expected: 0 errors.
 
-- [ ] **Step 4: No-regression — the M4 headless gate.** The AppFlow libs are untouched, but confirm `test_appflow_editor_toggle_render` still builds + passes (it's the toggle/undo logic proof). Build + run it Windows-side (single target):
+- [x] **Step 4: No-regression — the M4 headless gate.** The AppFlow libs are untouched, but confirm `test_appflow_editor_toggle_render` still builds + passes (it's the toggle/undo logic proof). Build + run it Windows-side (single target):
   ```
   cmd.exe /c "...\\win_build.bat"   # target test_appflow_editor_toggle_render
   # run the binary under the win build tree, --gtest_brief=0
   ```
   Expected: PASS. (If Windows-side GPU differs, WSL fallback is acceptable for this pre-existing headless gate.)
 
-- [ ] **Step 5: Commit.**
+- [x] **Step 5: Commit.**
   ```bash
   git add VIXEN/application/editor/include/EditorApplication.h VIXEN/application/editor/source/EditorApplication.cpp
   git commit -m "feat(editor): Ctrl+Z/Ctrl+Y live undo-redo through AppFlowRuntime (Inc-2b)"
