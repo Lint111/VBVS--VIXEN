@@ -40,6 +40,11 @@
 - Milestone 2 (Tasks 2–3): DONE · commits 96a16aaf (Task 2), 72e04ee9 (Task 3) · Opus validator APPROVED · 2026-07-05
   - `ActionStack::DispatchWithSnapshot` — generic snapshot-fallback undo, keys off `footprintBytes` via memcpy, zero LayerState knowledge. `Entry` gained snapshot fields (all default-init so Inc-1 aggregate init keeps `IsSnapshot()==false` → no regression). `Undo` iterates rbegin→rend (LIFO-correct), branches snapshot(memcpy back + onRestore) vs inverse(apply(false)); `Redo` re-runs apply(true) forward for both.
   - **PLAN-TEST FIX (deviation from the verbatim plan, validator-confirmed correct):** the plan's `MixedGroupUndoesAsOneUnit` had a latent bug — the snapshot's shadow `mask` var wasn't re-synced to `lc.Mask()` after the sibling inverse entry ran, so it snapshotted a stale baseline. Implementer added one line `mask = lc.Mask();` before the snapshot `DispatchWithSnapshot` call (test_snapshot_undo.cpp:80) rather than change `Undo`. Opus independently hand-traced both versions: flipping `Undo` to forward-order would mask the bug by luck AND regress LIFO for order-dependent inverse groups — the test was wrong, not the engine. Undo left unchanged (byte-identical across both commits).
+- Milestone 3 (Tasks 4–5): DONE · commits a15a35e2 (Task 4), eb6be60d (Task 5) · Opus validator APPROVED (re-ran gate independently) · 2026-07-05
+  - **First runnable gate — GREEN.** AppFlow suite 27/27: test_layer_controller 4/4, test_snapshot_undo 6/6 (incl. Task-4 RuntimeToggleLayerAndUndoFireOnChanged), Inc-1 no-regression 17/17 (action_stack 4, golden 4, fsm 3, binding 3, loader 3). `vixen_editor` builds + LINKS clean (force-recompiled to rule out stale objects).
+  - Task 4: `AppFlowRuntime` owns `LayerController` (`Layers()`), `ToggleLayer(index, onChanged)` = self-inverse `stack_.Dispatch` that flips `layers_.Toggle` + fires onChanged on BOTH apply and undo + publishes ActionApplied. Task 5: `EditorDocumentModel::{Flatten,FlattenToRecipeEntry,Save}` take `uint32_t enabledMask` → `vector<uint8_t> ovr(layerCount)` fed to FlattenVoxelDocument's `enabledOverride`; `enabledOverride_`/`ToggleLayer`/`IsEnabled`/`ConsumeDirty` REMOVED (zero dangling refs). EditorApplication owns `LayerController layers_` + `bool dirty_`, routes toggle/save/apply through it.
+  - **TWO BEYOND-PLAN CMAKE FIXES (validator-confirmed necessary, not scope creep):** (a) `libraries/AppFlow/CMakeLists.txt` — M1 created LayerController.h/.cpp but NEVER registered them in APPFLOW_SOURCES (the M1 syntax-only gate couldn't catch this; AppFlowRuntime now embeds a LayerController so its symbols must link) → added both. (b) `application/editor/CMakeLists.txt` — `vixen_editor` didn't link AppFlow → added `AppFlow` to target_link_libraries. **DURABLE: a source-file that isn't in its lib's CMake source list passes every offline `-fsyntax-only` gate but fails to link — the CMake registration must land in the SAME milestone that adds the file, or the first real build catches it late.**
+  - Data-flow §3 coherent end-to-end (runtime ToggleLayer→mask→flatten proven at unit level); nothing missing for M4's GPU gate.
 
 ---
 
@@ -307,7 +312,7 @@ git commit -m "test(appflow): inverse-vs-snapshot parity + mixed-group undo (Inc
 - Consumes: `LayerController` (Task 1), `ActionStack` inverse + `DispatchWithSnapshot` (Tasks 2–3), existing `AppFlowRuntime` (Inc-1).
 - Produces: `AppFlowRuntime` gains `LayerController& Layers()`, and `DispatchResult ToggleLayer(uint32_t index, std::function<void()> onChanged)` — dispatches a self-inverse `ToggleLayer` action that flips `Layers().Toggle(index)`, calls `onChanged` (the re-flatten hook) after each apply/undo, and publishes `ActionApplied`. Undo/Redo already publish (Inc-1) — `onChanged` must also fire on undo/redo, so the runtime wires `onChanged` into the ApplyFn (called on both forward and inverse).
 
-- [ ] **Step 1: Write the failing test** (`tests/test_snapshot_undo.cpp` or a small addition to a runtime test — put it in `test_snapshot_undo.cpp` to avoid a new file):
+- [x] **Step 1: Write the failing test** (`tests/test_snapshot_undo.cpp` or a small addition to a runtime test — put it in `test_snapshot_undo.cpp` to avoid a new file):
 
 ```cpp
 #include "AppFlowRuntime.h"
@@ -326,9 +331,9 @@ TEST(SnapshotUndo, RuntimeToggleLayerAndUndoFireOnChanged) {
 }
 ```
 
-- [ ] **Step 2: Run to verify it fails.** `g++ -std=c++23 -fsyntax-only -I VIXEN/libraries/AppFlow/include VIXEN/libraries/AppFlow/tests/test_snapshot_undo.cpp` → FAIL (`Layers()`/`ToggleLayer` undefined on runtime).
+- [x] **Step 2: Run to verify it fails.** `g++ -std=c++23 -fsyntax-only -I VIXEN/libraries/AppFlow/include VIXEN/libraries/AppFlow/tests/test_snapshot_undo.cpp` → FAIL (`Layers()`/`ToggleLayer` undefined on runtime).
 
-- [ ] **Step 3: Write the implementation.** Add `LayerController layers_;` member to `AppFlowRuntime` + `LayerController& Layers() { return layers_; }`. Implement `ToggleLayer(index, onChanged)`:
+- [x] **Step 3: Write the implementation.** Add `LayerController layers_;` member to `AppFlowRuntime` + `LayerController& Layers() { return layers_; }`. Implement `ToggleLayer(index, onChanged)`:
 
 ```cpp
 DispatchResult AppFlowRuntime::ToggleLayer(uint32_t index, std::function<void()> onChanged) {
@@ -347,9 +352,9 @@ DispatchResult AppFlowRuntime::ToggleLayer(uint32_t index, std::function<void()>
 
 Because `stack_.Undo()` runs `apply(false)` (which toggles back + fires onChanged) and Inc-1's `Undo()` already publishes `ActionUndone`, no extra wiring is needed for undo — verify `onChanged` fires on undo via the test.
 
-- [ ] **Step 4: Verify compile.** `g++ -std=c++23 -fsyntax-only -I VIXEN/libraries/AppFlow/include -I VIXEN/libraries/EventBus/include VIXEN/libraries/AppFlow/src/AppFlowRuntime.cpp` → clean.
+- [x] **Step 4: Verify compile.** `g++ -std=c++23 -fsyntax-only -I VIXEN/libraries/AppFlow/include -I VIXEN/libraries/EventBus/include VIXEN/libraries/AppFlow/src/AppFlowRuntime.cpp` → clean.
 
-- [ ] **Step 5: Commit.**
+- [x] **Step 5: Commit.**
 
 ```bash
 git add VIXEN/libraries/AppFlow/include/AppFlowRuntime.h VIXEN/libraries/AppFlow/src/AppFlowRuntime.cpp VIXEN/libraries/AppFlow/tests/test_snapshot_undo.cpp
@@ -369,13 +374,13 @@ git commit -m "feat(appflow): AppFlowRuntime owns LayerController + ToggleLayer/
 - Consumes: `LayerController` (Task 1), the AppFlow runtime (Task 4).
 - Produces: `EditorDocumentModel::Flatten(uint32_t enabledMask, std::vector<uint8_t>& out, std::string& err)` and `FlattenToRecipeEntry(uint32_t enabledMask, RecipeEntry& out, std::string& err)` — the mask replaces the removed internal `enabledOverride_`.
 
-- [ ] **Step 1: Write the failing test** — the CMake build itself is the gate here; there's no new unit beyond Tasks 1–4. First register the offline targets so the previous tasks' tests can actually run. Add to `VIXEN/libraries/AppFlow/tests/CMakeLists.txt`'s test-name list: `test_layer_controller` and `test_snapshot_undo` (mirroring the existing `foreach(t ...)` pattern that builds one exe per test, links `GTest::gtest_main AppFlow`).
+- [x] **Step 1: Write the failing test** — the CMake build itself is the gate here; there's no new unit beyond Tasks 1–4. First register the offline targets so the previous tasks' tests can actually run. Add to `VIXEN/libraries/AppFlow/tests/CMakeLists.txt`'s test-name list: `test_layer_controller` and `test_snapshot_undo` (mirroring the existing `foreach(t ...)` pattern that builds one exe per test, links `GTest::gtest_main AppFlow`).
 
-- [ ] **Step 2: Refactor `EditorDocumentModel`.** Change `Flatten` to `bool Flatten(uint32_t enabledMask, std::vector<uint8_t>& outVrc1Blob, std::string& err) const` — build a `std::vector<uint8_t> ovr(view_.header.layerCount)` from the mask (`ovr[i] = (enabledMask>>i)&1u`) and pass `&ovr` to `FlattenVoxelDocument`. Same for `FlattenToRecipeEntry(uint32_t enabledMask, ...)`. Delete `enabledOverride_`, `ToggleLayer`, `IsEnabled`, `ConsumeDirty`, and the `enabledOverride_` init in `Load`. `Save` currently reads `enabledOverride_` — change it to take an `enabledMask` param too (`bool Save(uint32_t enabledMask, const std::string& outPath, std::string& err) const`) and derive the per-layer `.enabled` from the mask bit.
+- [x] **Step 2: Refactor `EditorDocumentModel`.** Change `Flatten` to `bool Flatten(uint32_t enabledMask, std::vector<uint8_t>& outVrc1Blob, std::string& err) const` — build a `std::vector<uint8_t> ovr(view_.header.layerCount)` from the mask (`ovr[i] = (enabledMask>>i)&1u`) and pass `&ovr` to `FlattenVoxelDocument`. Same for `FlattenToRecipeEntry(uint32_t enabledMask, ...)`. Delete `enabledOverride_`, `ToggleLayer`, `IsEnabled`, `ConsumeDirty`, and the `enabledOverride_` init in `Load`. `Save` currently reads `enabledOverride_` — change it to take an `enabledMask` param too (`bool Save(uint32_t enabledMask, const std::string& outPath, std::string& err) const`) and derive the per-layer `.enabled` from the mask bit.
 
-- [ ] **Step 3: Fix `EditorApplication.cpp` call sites** so it compiles (full windowed rewire is Inc-2b — here, minimal): `ApplyDocumentToScene` calls `doc_.FlattenToRecipeEntry(mask, entry, err)` where `mask` comes from a new `LayerController layers_;` member on `EditorApplication` (init `layers_.SetLayerCount(doc_.LayerCount())` after load). `ToggleLayer(i)` becomes `layers_.Toggle(i)` + set a re-apply flag. `Update`'s `ConsumeDirty()` gate becomes a local `bool dirty_` the toggle sets (EditorApplication owns the dirty flag now that the model doesn't). `SaveDocument` calls `doc_.Save(layers_.Mask(), outPath, err)`. Keep the existing `DrainClickedElementId`/`ParseLayerToggleId`/`glfwGetKey(S)` input path AS-IS (Inc-2b replaces it) — just have it drive `layers_` instead of `doc_`.
+- [x] **Step 3: Fix `EditorApplication.cpp` call sites** so it compiles (full windowed rewire is Inc-2b — here, minimal): `ApplyDocumentToScene` calls `doc_.FlattenToRecipeEntry(mask, entry, err)` where `mask` comes from a new `LayerController layers_;` member on `EditorApplication` (init `layers_.SetLayerCount(doc_.LayerCount())` after load). `ToggleLayer(i)` becomes `layers_.Toggle(i)` + set a re-apply flag. `Update`'s `ConsumeDirty()` gate becomes a local `bool dirty_` the toggle sets (EditorApplication owns the dirty flag now that the model doesn't). `SaveDocument` calls `doc_.Save(layers_.Mask(), outPath, err)`. Keep the existing `DrainClickedElementId`/`ParseLayerToggleId`/`glfwGetKey(S)` input path AS-IS (Inc-2b replaces it) — just have it drive `layers_` instead of `doc_`.
 
-- [ ] **Step 4: Configure + build the offline targets, run them.**
+- [x] **Step 4: Configure + build the offline targets, run them.**
 
 Run:
 ```
@@ -387,7 +392,7 @@ Then run the binaries directly (KI-014 — no ctest):
 `build/libraries/AppFlow/tests/test_snapshot_undo --gtest_brief=1` → Expected: all PASS
 Also build the editor to confirm the refactor compiles: `cmake --build build --target vixen_editor` (or the editor target name — find it in `VIXEN/application/editor/CMakeLists.txt`) → 0 errors.
 
-- [ ] **Step 5: Commit.**
+- [x] **Step 5: Commit.**
 
 ```bash
 git add VIXEN/application/editor/include/EditorDocumentModel.h VIXEN/application/editor/source/EditorApplication.cpp VIXEN/libraries/AppFlow/tests/CMakeLists.txt
