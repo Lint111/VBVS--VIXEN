@@ -351,6 +351,50 @@ Debug and reused cached artifacts). All fixed on `claude/wsl-build-portability`.
 - **Status:** FIXED (`ShaderLibraryNode.h`, `ShaderCompiler.h`, `shader_compilation_cacher.cpp`,
   branch `claude/wsl-build-portability`).
 
+### FR-24 — Even with Dozen (FR-20), WSL2 render throughput is 10-25x slower than native Windows on the same GPU/hardware
+- **Context:** FR-20 got GPU rendering working on WSL2 via Mesa **Dozen** (Vulkan-over-D3D12
+  translation), reporting "~150 fps ray-march, 0 device removals" at the time. Follow-up
+  investigation (2026-07-05, UNDERTOW's `undertow_host` consumer, prompted by a live "camera
+  movement feels like huge steps" complaint) measured the SAME render workload — same content, same
+  compute-dispatch code path, same physical machine — side-by-side on WSL2/Dozen vs. a from-scratch
+  native Windows/MSVC build of the identical commit, using the engine's own existing per-phase
+  frame-timing instrumentation (`main.cpp`'s `phTotalMs`/`phSimMs`/`phUpdateMs`/`phRenderMs`, logged
+  every 30 frames).
+- **Measurement (500×500 window, identical scene, identical binary provenance):**
+  - **WSL2 + Dozen:** `total` ≈ 25-45ms/frame (22-40 FPS). `render` alone is ~99% of frame time;
+    `sim`/`update` are consistently microseconds on both platforms, ruling out application-level
+    logic as the bottleneck.
+  - **Native Windows (same GPU, real Vulkan ICD, no translation layer):** `total` ≈ 1.2-5.6ms/frame
+    (180-800+ FPS).
+  - That's a **~10-25x** throughput gap attributable to the platform/driver stack alone, not the
+    render workload, the render-graph design, or anything UNDERTOW's own integration does — the
+    *only* variable that changed between the two runs was WSL2/Dozen vs. native Windows.
+- **Root cause (not fully isolated, only bounded):** `dzn` is Mesa's own explicitly-labeled
+  compatibility shim ("dzn is not a conformant Vulkan implementation, testing use only" — printed by
+  the driver itself at init), translating every Vulkan call through D3D12 and then through WSL2's
+  GPU paravirtualization (`dxgkrnl`) to the host driver. For a compute-dispatch-heavy engine (voxel
+  SVO ray-marching — many small dispatches/barriers/pipeline-state changes per frame), that's
+  multiple extra translation hops per draw/dispatch call that a native Vulkan or native D3D12 path
+  doesn't pay. This investigation did not further isolate how much of the 10-25x is Dozen's
+  per-call translation overhead specifically vs. WSL2's GPU-virtualization layer generally (dxgkrnl)
+  vs. some other WSL-specific cost — only that removing "WSL2" from the equation entirely removes
+  the slowdown.
+- **Consumer impact:** any `VixenApp` consumer doing interactive/real-time rendering under WSL2
+  should expect single-digit-to-tens-of-FPS even with Dozen correctly configured (FR-20's fix is
+  working as designed — this is a ceiling ON TOP of that fix, not a regression from it). Frame-time-
+  sensitive work (camera feel, animation smoothness, anything gated on a target framerate) is
+  materially misleading to tune while developing under WSL2 — the SAME code that feels choppy at
+  ~30fps on WSL2 can run at 200-800fps natively on identical hardware.
+- **Suggested fix / mitigation:** no engine-side fix is known or expected — this looks like an
+  inherent cost of the Dozen/WSL2 translation stack, not a VIXEN bug. The practical mitigation is
+  workflow-level: prefer building and running interactive/perf-sensitive checks on native Windows
+  when both environments are available, using WSL2 primarily for logic/headless work where the
+  render throughput doesn't matter. (UNDERTOW's own CLAUDE.md now documents this as a house rule —
+  see the "WSL vs. native Windows" note there.) If VIXEN wants to reduce the gap, profiling exactly
+  which stage of the dzn/dxgkrnl round-trip dominates (a task this investigation didn't reach) would
+  be the next step, but no consumer-side workaround for the throughput ceiling itself is known.
+- **Status:** OPEN (documented ceiling, not something UNDERTOW or VIXEN currently has a fix for).
+
 ---
 
 ## Adding entries
