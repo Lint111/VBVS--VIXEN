@@ -37,6 +37,9 @@
 - Milestone 1 (Task 1): DONE · commit 23fe1de3 · Opus validator APPROVED · 2026-07-05
   - Bitmask logic hand-traced (all 4 tests pass); n==32 shift-overflow guarded via `(count_>=32u)?0xFFFFFFFFu:((1u<<count_)-1u)` ternary short-circuit. Consumes Generated::LayerState (no regen). Tree clean.
   - **gtest mechanism (pipeline note):** provided by FetchContent — `VIXEN/dependencies/CMakeLists.txt:158-192` (googletest v1.14.0), `add_subdirectory(dependencies)` runs before `add_subdirectory(libraries)` so `GTest::gtest_main` alias exists for AppFlow test link. **It's a NETWORK fetch — no cached `_deps` in this worktree, so the first `cmake -B build -DBUILD_TESTS=ON` (M3/Task 5) needs internet to clone googletest and will take longer.** Offline, only `-fsyntax-only` gates are possible (why M1/M2 can't run gtest until M3).
+- Milestone 2 (Tasks 2–3): DONE · commits 96a16aaf (Task 2), 72e04ee9 (Task 3) · Opus validator APPROVED · 2026-07-05
+  - `ActionStack::DispatchWithSnapshot` — generic snapshot-fallback undo, keys off `footprintBytes` via memcpy, zero LayerState knowledge. `Entry` gained snapshot fields (all default-init so Inc-1 aggregate init keeps `IsSnapshot()==false` → no regression). `Undo` iterates rbegin→rend (LIFO-correct), branches snapshot(memcpy back + onRestore) vs inverse(apply(false)); `Redo` re-runs apply(true) forward for both.
+  - **PLAN-TEST FIX (deviation from the verbatim plan, validator-confirmed correct):** the plan's `MixedGroupUndoesAsOneUnit` had a latent bug — the snapshot's shadow `mask` var wasn't re-synced to `lc.Mask()` after the sibling inverse entry ran, so it snapshotted a stale baseline. Implementer added one line `mask = lc.Mask();` before the snapshot `DispatchWithSnapshot` call (test_snapshot_undo.cpp:80) rather than change `Undo`. Opus independently hand-traced both versions: flipping `Undo` to forward-order would mask the bug by luck AND regress LIFO for order-dependent inverse groups — the test was wrong, not the engine. Undo left unchanged (byte-identical across both commits).
 
 ---
 
@@ -143,7 +146,7 @@ git commit -m "feat(appflow): LayerController — layer enabled-mask source of t
 - Consumes: existing `ActionStack` (Inc-1: `LoadActions`, `BeginGroup`/`EndGroup`, `Dispatch(id, ApplyFn)`, `Undo`/`Redo`, `UndoDepth`/`RedoDepth`; `Entry{id, apply}`, `Group{id, entries}`).
 - Produces: new method `DispatchResult DispatchWithSnapshot(FlowActionId id, void* footprint, uint32_t footprintBytes, ApplyFn apply, std::function<void()> onRestore)` and an extended `Entry` that can be inverse-mode (Inc-1) OR snapshot-mode. `Undo`/`Redo` handle both entry modes.
 
-- [ ] **Step 1: Write the failing test** (in `tests/test_snapshot_undo.cpp`, new file):
+- [x] **Step 1: Write the failing test** (in `tests/test_snapshot_undo.cpp`, new file):
 
 ```cpp
 #include <gtest/gtest.h>
@@ -193,9 +196,9 @@ TEST(SnapshotUndo, GenericOverFootprintSize) {
 }
 ```
 
-- [ ] **Step 2: Run to verify it fails.** `g++ -std=c++23 -fsyntax-only -I VIXEN/libraries/AppFlow/include VIXEN/libraries/AppFlow/tests/test_snapshot_undo.cpp` → Expected: FAIL (`DispatchWithSnapshot` undefined).
+- [x] **Step 2: Run to verify it fails.** `g++ -std=c++23 -fsyntax-only -I VIXEN/libraries/AppFlow/include VIXEN/libraries/AppFlow/tests/test_snapshot_undo.cpp` → Expected: FAIL (`DispatchWithSnapshot` undefined).
 
-- [ ] **Step 3: Write the implementation.** In `ActionStack.h`, extend `Entry` to carry snapshot mode:
+- [x] **Step 3: Write the implementation.** In `ActionStack.h`, extend `Entry` to carry snapshot mode:
 
 ```cpp
 struct Entry {
@@ -212,9 +215,9 @@ struct Entry {
 
 Declare `DispatchResult DispatchWithSnapshot(FlowActionId id, void* footprint, uint32_t footprintBytes, ApplyFn apply, std::function<void()> onRestore);`. In `.cpp`: it mirrors `Dispatch` (unknown id → RejectedByState; clear redo_; open/append group) but BEFORE `apply(true)` it `snapshot.resize(footprintBytes); std::memcpy(snapshot.data(), footprint, footprintBytes);` and stores `footprint`/`footprintBytes`/`onRestore` on the entry. In `Undo`, for each entry in reverse: if `IsSnapshot()` → `std::memcpy(footprint, snapshot.data(), footprintBytes); if (onRestore) onRestore();` else `apply(false)`. In `Redo`, forward order: `apply(true)` for both modes (snapshot re-runs the forward apply; the redo's own snapshot for a subsequent undo is re-taken — for Inc-2 simplicity, re-snapshot on redo is NOT required since the test only does undo-then-redo once; document that a second undo after redo uses the original snapshot, which is correct because the footprint was restored forward to the same post-apply state). Add `#include <cstring>`.
 
-- [ ] **Step 4: Verify compile** both header consumers + the impl: `g++ -std=c++23 -fsyntax-only -I VIXEN/libraries/AppFlow/include VIXEN/libraries/AppFlow/src/ActionStack.cpp` → clean.
+- [x] **Step 4: Verify compile** both header consumers + the impl: `g++ -std=c++23 -fsyntax-only -I VIXEN/libraries/AppFlow/include VIXEN/libraries/AppFlow/src/ActionStack.cpp` → clean.
 
-- [ ] **Step 5: Commit.**
+- [x] **Step 5: Commit.**
 
 ```bash
 git add VIXEN/libraries/AppFlow/include/ActionStack.h VIXEN/libraries/AppFlow/src/ActionStack.cpp VIXEN/libraries/AppFlow/tests/test_snapshot_undo.cpp
@@ -231,7 +234,7 @@ git commit -m "feat(appflow): ActionStack generic snapshot-fallback undo path (I
 **Interfaces:**
 - Consumes: `ActionStack` (Inc-1 `Dispatch` inverse path + Task-2 `DispatchWithSnapshot`), `LayerController` (Task 1).
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
 
 ```cpp
 #include "LayerController.h"
@@ -280,13 +283,13 @@ TEST(SnapshotUndo, MixedGroupUndoesAsOneUnit) {
 }
 ```
 
-- [ ] **Step 2: Run to verify it fails.** `g++ -std=c++23 -fsyntax-only -I VIXEN/libraries/AppFlow/include VIXEN/libraries/AppFlow/tests/test_snapshot_undo.cpp` → FAIL only if the impl is wrong; if Task 2 is correct these compile — the point is they must PASS once built (Task 5). If the mixed-group reverse-order handling is wrong they'll fail at runtime.
+- [x] **Step 2: Run to verify it fails.** `g++ -std=c++23 -fsyntax-only -I VIXEN/libraries/AppFlow/include VIXEN/libraries/AppFlow/tests/test_snapshot_undo.cpp` → FAIL only if the impl is wrong; if Task 2 is correct these compile — the point is they must PASS once built (Task 5). If the mixed-group reverse-order handling is wrong they'll fail at runtime.
 
-- [ ] **Step 3: No new implementation expected** — Tasks 1–2 should already satisfy these. If `MixedGroupUndoesAsOneUnit` reveals a reverse-order bug (snapshot + inverse in one group), fix `ActionStack::Undo` so it walks entries in strict reverse regardless of mode. Document any fix.
+- [x] **Step 3: No new implementation expected** — Tasks 1–2 should already satisfy these. If `MixedGroupUndoesAsOneUnit` reveals a reverse-order bug (snapshot + inverse in one group), fix `ActionStack::Undo` so it walks entries in strict reverse regardless of mode. Document any fix.
 
-- [ ] **Step 4: Verify compile.** As Step 2.
+- [x] **Step 4: Verify compile.** As Step 2.
 
-- [ ] **Step 5: Commit.**
+- [x] **Step 5: Commit.**
 
 ```bash
 git add VIXEN/libraries/AppFlow/tests/test_snapshot_undo.cpp VIXEN/libraries/AppFlow/src/ActionStack.cpp
