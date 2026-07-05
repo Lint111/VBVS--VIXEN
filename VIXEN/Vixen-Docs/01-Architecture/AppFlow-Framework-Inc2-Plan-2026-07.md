@@ -34,7 +34,9 @@
 
 ## Progress Log
 
-- (pipeline not yet started; entries appended per milestone)
+- Milestone 1 (Task 1): DONE · commit 23fe1de3 · Opus validator APPROVED · 2026-07-05
+  - Bitmask logic hand-traced (all 4 tests pass); n==32 shift-overflow guarded via `(count_>=32u)?0xFFFFFFFFu:((1u<<count_)-1u)` ternary short-circuit. Consumes Generated::LayerState (no regen). Tree clean.
+  - **gtest mechanism (pipeline note):** provided by FetchContent — `VIXEN/dependencies/CMakeLists.txt:158-192` (googletest v1.14.0), `add_subdirectory(dependencies)` runs before `add_subdirectory(libraries)` so `GTest::gtest_main` alias exists for AppFlow test link. **It's a NETWORK fetch — no cached `_deps` in this worktree, so the first `cmake -B build -DBUILD_TESTS=ON` (M3/Task 5) needs internet to clone googletest and will take longer.** Offline, only `-fsyntax-only` gates are possible (why M1/M2 can't run gtest until M3).
 
 ---
 
@@ -70,7 +72,7 @@
 - Consumes: `Generated::LayerState` (from `generated/AppFlow.g.h` — `struct LayerState { uint32_t enabledMask; }`).
 - Produces: `class Vixen::AppFlow::LayerController` with `SetLayerCount(uint32_t)`, `uint32_t LayerCount() const`, `bool IsEnabled(uint32_t) const`, `bool Toggle(uint32_t)`, `uint32_t Mask() const`, `void SetMask(uint32_t)`, `Generated::LayerState Snapshot() const`, `void Restore(const Generated::LayerState&)`.
 
-- [ ] **Step 1: Write the failing test.**
+- [x] **Step 1: Write the failing test.**
 
 ```cpp
 #include <gtest/gtest.h>
@@ -117,13 +119,13 @@ TEST(LayerController, SnapshotRestoreRoundTrips) {
 }
 ```
 
-- [ ] **Step 2: Run to verify it fails.** No CMake target yet (added Task 5). Verify via standalone compile: `g++ -std=c++23 -fsyntax-only -I VIXEN/libraries/AppFlow/include VIXEN/libraries/AppFlow/tests/test_layer_controller.cpp` → Expected: FAIL (`LayerController.h` not found / undefined).
+- [x] **Step 2: Run to verify it fails.** No CMake target yet (added Task 5). Verify via standalone compile: `g++ -std=c++23 -fsyntax-only -I VIXEN/libraries/AppFlow/include VIXEN/libraries/AppFlow/tests/test_layer_controller.cpp` → Expected: FAIL (`LayerController.h` not found / undefined).
 
-- [ ] **Step 3: Write the implementation.** `LayerController.h` declares the class; `.cpp` implements it. Store `uint32_t mask_ = 0`, `uint32_t count_ = 0`. `SetLayerCount(n)`: clamp `n<=32` (assert or clamp — document; the design caps at 32), set `count_=n`, `mask_ = (n>=32) ? 0xFFFFFFFFu : ((1u<<n)-1u)` (all-enabled). `IsEnabled(i)`: `i<count_ && (mask_>>i)&1u`. `Toggle(i)`: if `i>=count_` return false; `mask_ ^= (1u<<i)`; return true. `Mask()`: `mask_`. `SetMask(m)`: `mask_ = m & ((count_>=32)?0xFFFFFFFFu:((1u<<count_)-1u))`. `Snapshot()`: `{mask_}`. `Restore(s)`: `SetMask(s.enabledMask)`.
+- [x] **Step 3: Write the implementation.** `LayerController.h` declares the class; `.cpp` implements it. Store `uint32_t mask_ = 0`, `uint32_t count_ = 0`. `SetLayerCount(n)`: clamp `n<=32` (assert or clamp — document; the design caps at 32), set `count_=n`, `mask_ = (n>=32) ? 0xFFFFFFFFu : ((1u<<n)-1u)` (all-enabled). `IsEnabled(i)`: `i<count_ && (mask_>>i)&1u`. `Toggle(i)`: if `i>=count_` return false; `mask_ ^= (1u<<i)`; return true. `Mask()`: `mask_`. `SetMask(m)`: `mask_ = m & ((count_>=32)?0xFFFFFFFFu:((1u<<count_)-1u))`. `Snapshot()`: `{mask_}`. `Restore(s)`: `SetMask(s.enabledMask)`.
 
-- [ ] **Step 4: Verify compile.** `g++ -std=c++23 -fsyntax-only -I VIXEN/libraries/AppFlow/include VIXEN/libraries/AppFlow/src/LayerController.cpp` → Expected: clean.
+- [x] **Step 4: Verify compile.** `g++ -std=c++23 -fsyntax-only -I VIXEN/libraries/AppFlow/include VIXEN/libraries/AppFlow/src/LayerController.cpp` → Expected: clean.
 
-- [ ] **Step 5: Commit.**
+- [x] **Step 5: Commit.**
 
 ```bash
 git add VIXEN/libraries/AppFlow/include/LayerController.h VIXEN/libraries/AppFlow/src/LayerController.cpp VIXEN/libraries/AppFlow/tests/test_layer_controller.cpp
