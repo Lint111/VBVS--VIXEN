@@ -23,6 +23,7 @@ struct OctreeConfig {
     uint brickStrideFloats;
     uint _padChannels;
     uvec4 channels[8];
-    uint _tailPad[20];
+    uint mipPoolBase;
+    uint _tailPad[19];
 };
 #endif // OCTREECONFIG_GLSL

@@ -43,7 +43,8 @@ struct OctreeConfig {
     uint32_t brickStrideFloats;
     uint32_t _padChannels;
     ChannelDesc channels[8];
-    uint32_t _tailPad[20];
+    uint32_t mipPoolBase;
+    uint32_t _tailPad[19];
 };
 static_assert(sizeof(OctreeConfig) == 432, "OctreeConfig std430 size");
 static_assert(offsetof(OctreeConfig, esvoMaxScale) == 0, "esvoMaxScale@0");
@@ -67,5 +68,6 @@ static_assert(offsetof(OctreeConfig, channelCount) == 212, "channelCount@212");
 static_assert(offsetof(OctreeConfig, brickStrideFloats) == 216, "brickStrideFloats@216");
 static_assert(offsetof(OctreeConfig, _padChannels) == 220, "_padChannels@220");
 static_assert(offsetof(OctreeConfig, channels) == 224, "channels@224");
-static_assert(offsetof(OctreeConfig, _tailPad) == 352, "_tailPad@352");
+static_assert(offsetof(OctreeConfig, mipPoolBase) == 352, "mipPoolBase@352");
+static_assert(offsetof(OctreeConfig, _tailPad) == 356, "_tailPad@356");
 } // namespace Vixen::Gpu

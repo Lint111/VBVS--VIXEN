@@ -185,6 +185,14 @@ inline void setSdfBrickArrayBase(OctreeConfig& c, uint32_t base) {
 inline void setDescriptorBricksPerAxis(OctreeConfig& c, uint32_t bpa) {
     c.bricksPerAxisSdf = bpa;
 }
+/// Read the mipPoolBase (Sparse-Mip ESVO LOD Inc1 M1 Task 3) from OctreeConfig (byte 352).
+inline uint32_t mipPoolBaseOf(const OctreeConfig& c) {
+    return c.mipPoolBase;
+}
+/// Write mipPoolBase into the OctreeConfig tail.
+inline void setMipPoolBase(OctreeConfig& c, uint32_t base) {
+    c.mipPoolBase = base;
+}
 
 // ===========================================================================
 // Serialized output
@@ -214,6 +222,16 @@ struct SerializedOctree {
 
     std::vector<uint8_t> brickGridLookup; // uint32[bricksPerAxis^3]: grid-coord→brickIndex,
                                           // 0xFFFFFFFF = unallocated brick.
+
+    // Sparse-Mip ESVO LOD Inc1 M1 Task 3 — per-node, per-channel filtered mip
+    // pool (bottom-up bake fill, MipBake.h::BakeMipPool). SoA layout mirrors
+    // channelPool's read-by-semantic convention but at NODE granularity:
+    //   mipPool[nodeIdx * channelCount + channelIdx] -> one packed MipSample
+    //   (2 floats: value, coverage), stride sizeof(MipSample) bytes.
+    // Empty (zero-size) unless the caller populates it via SetMipPool below —
+    // M1's bake/serialize is opt-in per Task's own scope (existing SerializeSdf
+    // callers are unaffected until they choose to call it).
+    std::vector<uint8_t> mipPool;
 
     uint32_t nodeCount = 0;   // == nodes.size() / sizeof(ChildDescriptor)
     uint32_t brickCount = 0;  // == bricks.size() / kBrickStrideBytes
@@ -260,6 +278,11 @@ struct ConcatenatedOctrees {
     std::vector<uint8_t> brickGridLookup; // octrees concatenated; each sub-table is
                                           // uint32[bpa^3] where bpa = bricksPerAxis.
                                           // Per-octree size varies; M3 uploads them separately.
+
+    // Sparse-Mip ESVO LOD Inc1 M1 Task 3 — concatenated per-octree mip pools
+    // (empty unless the caller populated each SerializedOctree::mipPool before
+    // concatenation — see ConcatenateSdf).
+    std::vector<uint8_t> mipPool;
 
     std::vector<OctreeConfig> configs;    // per-octree config (size == count)
     std::vector<uint32_t>     nodeCounts; // per-octree node count
@@ -744,6 +767,13 @@ inline ConcatenatedOctrees ConcatenateSdf(const std::vector<const SdfBodyOctree*
         s.config.nodeArrayBase  = static_cast<int32_t>(nodeBase);
         s.config.brickArrayBase = static_cast<int32_t>(brickBase);
         setSdfBrickArrayBase(s.config, poolBase);  // poolBrickBase = poolBase
+        // mipPoolBase is intentionally left at its default (0): SerializeSdf
+        // never populates mip pools (opt-in, see MipBake.h), and this plain
+        // ConcatenateSdf does not bake them either — ConcatenateSdfWithMips
+        // (MipBake.h) is the mip-aware sibling that stamps mipPoolBase and
+        // appends cat.mipPool. Leaving it untouched here (rather than
+        // advancing it against empty data) keeps mipPoolBase==0 meaningfully
+        // "no mip pool" for every octree, matching cat.mipPool staying empty.
 
         cat.configs[k]     = s.config;
         cat.nodeCounts[k]  = s.nodeCount;
