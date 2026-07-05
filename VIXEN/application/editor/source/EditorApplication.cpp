@@ -43,7 +43,8 @@ bool EditorApplication::LoadDocument(const std::string& path) {
         return false;
     }
     documentPath_ = path;
-    layers_.SetLayerCount(doc_.LayerCount());  // Inc-2: (re)sync the mask to the freshly loaded doc
+    rt_.Load();  // load the AppFlow reference vocab (state/action tables)
+    rt_.Layers().SetLayerCount(doc_.LayerCount());  // (re)sync the mask to the freshly loaded doc
     return true;
 }
 
@@ -101,7 +102,7 @@ void EditorApplication::BuildRenderGraph() {
 
 bool EditorApplication::ApplyDocumentToScene() {
     Vixen::SVO::RecipeRegistry::RecipeEntry entry;
-    if (!doc_.FlattenToRecipeEntry(layers_.Mask(), entry, lastEditorError_)) {
+    if (!doc_.FlattenToRecipeEntry(rt_.Layers().Mask(), entry, lastEditorError_)) {
         return false;
     }
 
@@ -147,10 +148,9 @@ bool EditorApplication::ApplyDocumentToScene() {
 }
 
 void EditorApplication::ToggleLayer(uint32_t layerIndex) {
-    // LayerController itself no-ops out-of-range (i >= LayerCount()); Toggle's bool return
-    // (false = no-op) tells us whether to mark dirty.
-    if (!layers_.Toggle(layerIndex)) return;
-    dirty_ = true;
+    // Route through the ActionStack so the toggle is undoable; onChanged fires on BOTH the
+    // forward apply AND on rt_.Undo()'s inverse, so a later Ctrl+Z re-flattens too.
+    rt_.ToggleLayer(layerIndex, [this]{ dirty_ = true; });
 }
 
 bool EditorApplication::SaveDocument() {
@@ -158,7 +158,7 @@ bool EditorApplication::SaveDocument() {
     const std::string base = (dot == std::string::npos) ? documentPath_ : documentPath_.substr(0, dot);
     const std::string outPath = base + ".edited.vxd";
 
-    if (!doc_.Save(layers_.Mask(), outPath, lastEditorError_)) {
+    if (!doc_.Save(rt_.Layers().Mask(), outPath, lastEditorError_)) {
         return false;
     }
     lastSavedPath_ = outPath;

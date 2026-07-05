@@ -11,7 +11,7 @@
 // in-Execute re-materialize — no MarkNeedsRecompile).
 #include "VulkanGraphApplication.h"
 #include "EditorDocumentModel.h"
-#include "LayerController.h"
+#include "AppFlowRuntime.h"
 #include <Logger.h>
 
 #include <memory>
@@ -52,10 +52,11 @@ public:
 private:
     std::string documentPath_;
     Vixen::Editor::EditorDocumentModel doc_;
-    // Inc-2: the layer enabled-mask source of truth, moved out of EditorDocumentModel — the
-    // app owns it directly (SetLayerCount(doc_.LayerCount()) after load); the model reads it
-    // back only as an explicit mask param at flatten/save call sites.
-    Vixen::AppFlow::LayerController layers_;
+    // Inc-2b: the editor owns an AppFlowRuntime (bus=nullptr — Publish no-ops; the editor
+    // doesn't consume the events yet) so toggle/undo/redo route through the ActionStack
+    // instead of mutating LayerController directly. Layers() exposes the same mask source
+    // of truth Inc-2's raw layers_ member used.
+    Vixen::AppFlow::AppFlowRuntime rt_{nullptr, /*sender*/0};
     bool dirty_ = false;  // set on toggle; drives the next-tick re-flatten (was doc_.ConsumeDirty())
     std::string lastEditorError_;
     std::string lastSavedPath_;
