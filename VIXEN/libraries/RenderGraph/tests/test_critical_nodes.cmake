@@ -462,6 +462,41 @@ gtest_discover_tests(test_editor_document_render
 message(STATUS "[RenderGraph Tests] Added: test_editor_document_render (Voxel Authoring Inc1 M4 editor live gate)")
 
 # ===========================================================================
+# AppFlow Inc-2 M4 — headless GPU render-gate: a ToggleLayer dispatched through
+# AppFlowRuntime re-flattens + re-bakes + re-renders the golden document, and Undo()
+# restores the render byte-for-byte. Links AppFlow (offline-only lib) alongside
+# RenderGraph + SVO — the GPU dependency lives in this test, not in the AppFlow lib.
+# ===========================================================================
+add_executable(test_appflow_editor_toggle_render
+    Nodes/test_appflow_editor_toggle_render.cpp
+)
+add_dependencies(test_appflow_editor_toggle_render body_instance_raymarch_spv)
+target_link_libraries(test_appflow_editor_toggle_render PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+if(TARGET SVO)
+    target_link_libraries(test_appflow_editor_toggle_render PRIVATE SVO)
+endif()
+if(TARGET AppFlow)
+    target_link_libraries(test_appflow_editor_toggle_render PRIVATE AppFlow)
+endif()
+if(TARGET stb)
+    target_link_libraries(test_appflow_editor_toggle_render PRIVATE stb)
+else()
+    target_include_directories(test_appflow_editor_toggle_render PRIVATE
+        "${CMAKE_BINARY_DIR}/_deps/stb-src")
+endif()
+target_compile_definitions(test_appflow_editor_toggle_render PRIVATE
+    GLSL_RAYMARCH_SPV="${_brm_spv}"
+    VXD_GOLDEN_PATH="${VIXEN_ROOT}/BuiltAssets/documents/sample_tri_layer.vxd")
+if(VIXEN_WSL_DZN_ICD)
+    target_compile_definitions(test_appflow_editor_toggle_render PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
+endif()
+set_target_properties(test_appflow_editor_toggle_render PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_appflow_editor_toggle_render
+    DISCOVERY_MODE PRE_TEST
+    DISCOVERY_TIMEOUT 120)
+message(STATUS "[RenderGraph Tests] Added: test_appflow_editor_toggle_render (AppFlow Inc-2 M4 GPU render-gate)")
+
+# ===========================================================================
 # I4.2 — Recipe authoring live gate:
 #   a) Subtract(Box, Sphere) CSG recipe renders a non-trivial solid.
 #   b) Default 3-shell scene regression confirms the M2 SSBO fix holds.
