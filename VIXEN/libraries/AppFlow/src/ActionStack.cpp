@@ -1,5 +1,6 @@
 #include "ActionStack.h"
 #include <algorithm>
+#include <cstring>
 
 namespace Vixen::AppFlow {
 
@@ -45,6 +46,35 @@ DispatchResult ActionStack::Dispatch(FlowActionId id, ApplyFn apply) {
     return DispatchResult::Ok;
 }
 
+DispatchResult ActionStack::DispatchWithSnapshot(FlowActionId id, void* footprint,
+                                                  uint32_t footprintBytes, ApplyFn apply,
+                                                  std::function<void()> onRestore) {
+    if (!IsKnownAction(id)) {
+        return DispatchResult::RejectedByState;
+    }
+
+    Entry entry{id, apply};
+    entry.footprint = footprint;
+    entry.footprintBytes = footprintBytes;
+    entry.snapshot.resize(footprintBytes);
+    std::memcpy(entry.snapshot.data(), footprint, footprintBytes);
+    entry.onRestore = std::move(onRestore);
+
+    apply(true);
+    redo_.clear();
+
+    if (hasOpenGroup_) {
+        // Caller has an explicit BeginGroup()/EndGroup() bracket open — accumulate into it.
+        openGroup_.entries.push_back(std::move(entry));
+    } else {
+        // No explicit group — auto-open a singleton group for this one dispatch.
+        Group g{0, {}};
+        g.entries.push_back(std::move(entry));
+        undo_.push_back(std::move(g));
+    }
+    return DispatchResult::Ok;
+}
+
 DispatchResult ActionStack::Undo() {
     if (undo_.empty()) {
         return DispatchResult::NothingToUndo;
@@ -52,7 +82,12 @@ DispatchResult ActionStack::Undo() {
     Group g = std::move(undo_.back());
     undo_.pop_back();
     for (auto it = g.entries.rbegin(); it != g.entries.rend(); ++it) {
-        it->apply(false);
+        if (it->IsSnapshot()) {
+            std::memcpy(it->footprint, it->snapshot.data(), it->footprintBytes);
+            if (it->onRestore) it->onRestore();
+        } else {
+            it->apply(false);
+        }
     }
     redo_.push_back(std::move(g));
     return DispatchResult::Ok;
