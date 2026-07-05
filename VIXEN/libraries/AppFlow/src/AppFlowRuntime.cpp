@@ -17,6 +17,15 @@ void AppFlowRuntime::Publish(AppFlowChangedEvent::Kind kind, FlowStateId state,
     bus_->PublishImmediate(evt);
 }
 
+// NOTE (Inc-1 filler-field convention — read before consuming AppFlowChangedEvent):
+// For kinds where a field isn't semantically meaningful, the publishers below pass a
+// FILLER value, NOT a sentinel: StateChanged/ActionUndone/ActionRedone pass
+// action = FlowActionId{}, which value-inits to 0 == FlowActionId::ToggleLayer (a VALID
+// id, not "none"). Inc-1 consumers key off `kind` (+ publish count) and never read
+// `.action` on those kinds, so this is safe today. A future consumer MUST key off `kind`
+// and not read `.action` on non-Action* kinds. Inc-2 should either carry the affected id
+// or add an explicit "none" sentinel (there is no reserved sentinel enumerator yet).
+
 LoadResult AppFlowRuntime::Load() {
     return AppFlowLoader::Load(AppFlowContainerView{}, fsm_, stack_, bindings_);
 }

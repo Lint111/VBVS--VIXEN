@@ -284,3 +284,19 @@ Error (all three, identical): `.vulkan-sdk/1.4.350.1/x86_64/Include/vulkan/vulka
 **Impact was:** High in principle (any real OUT_OF_DATE/SUBOPTIMAL swapchain result crashed the app instead of skipping the frame); this KI's crash was ONE INSTANCE of the user's separately-tracked live fullscreen-button crash class (same "swapchain reports an extent/index change, a downstream node doesn't defend against the transient invalid state" shape) — confirmed identical by the shared fixing commit, not merely plausibly related as originally noted.
 
 **Severity:** High (crash) · **Status:** RESOLVED
+
+---
+
+### KI-014 — Library tests are not `ctest`-discoverable project-wide (`enable_testing()` ordered after `add_subdirectory(libraries)`)
+
+**Discovered:** 2026-07-05, during AppFlow Inc-1 Milestone 3 (the first library added since; the gap is pre-existing and affects every VIXEN library, not AppFlow specifically).
+
+**Symptom:** `ctest --test-dir <build> -N` (or `-R <anything>`) reports `Total Tests: 0` for the ENTIRE project — no library's gtest targets are discovered, despite every library's `tests/CMakeLists.txt` calling `gtest_discover_tests`. No `CTestTestfile.cmake` is generated under `build/libraries/<lib>/tests/`.
+
+**Root cause:** `VIXEN/CMakeLists.txt` calls `add_subdirectory(libraries)` (line ~393) BEFORE `enable_testing()` (line ~445, inside the `if(BUILD_TESTS)` "TESTING INFRASTRUCTURE" block near the bottom). `gtest_discover_tests` only registers CTest entries when testing was enabled at the point the subdirectory was processed; because `enable_testing()` runs afterward, no library subdirectory ever sees an enabled test harness, so nothing is registered with CTest. Verified project-wide: SVO, RenderGraph, CashSystem, EventBus, AppFlow, etc. all lack a generated `CTestTestfile.cmake`.
+
+**Workaround (current, documented):** run the gtest binaries directly — `./build/libraries/<lib>/tests/[Debug/]test_*[.exe] --gtest_brief=1` — which is already `VIXEN/CLAUDE.md`'s documented test command. AppFlow Inc-1's suite (17 tests) was gated this way (build the 5 test targets, run each binary; all exit 0).
+
+**Fix direction (not applied — out of scope for the AppFlow work that found it):** move `enable_testing()` (and the `include(GoogleTest)`/`FetchContent` gtest setup it depends on) ABOVE `add_subdirectory(libraries)` in `VIXEN/CMakeLists.txt`, gated by `if(BUILD_TESTS)`. Then `ctest --test-dir <build>` would discover all library tests. Low-risk, mechanical, but touches the top-level build ordering — worth its own small verified change so the full suite is CI-runnable via one `ctest` invocation.
+
+**Severity:** Low (tests run fine directly; only the aggregate `ctest` runner is affected) · **Status:** OPEN
