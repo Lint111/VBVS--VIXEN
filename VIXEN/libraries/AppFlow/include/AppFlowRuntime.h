@@ -1,10 +1,12 @@
 #pragma once
+#include <functional>
 #include <string>
 #include "AppFlowEvents.h"
 #include "AppFlowResults.h"
 #include "ActionStack.h"
 #include "BindingStore.h"
 #include "FlowStateMachine.h"
+#include "LayerController.h"
 #include "MessageBus.h"
 
 namespace Vixen::AppFlow {
@@ -46,6 +48,15 @@ public:
     DispatchResult Undo();
     DispatchResult Redo();
 
+    // Inc-2: the layer enabled-mask source of truth (design §2.1/§2.3), owned by the runtime
+    // so a consumer (editor) drives it through dispatch rather than mutating it directly.
+    LayerController& Layers() { return layers_; }
+
+    // Self-inverse ToggleLayer dispatch: flips Layers().Toggle(index) on both forward apply
+    // and undo (the same apply lambda runs either way — see ActionStack::Undo's inverse path),
+    // firing onChanged (the caller's re-flatten hook) each time. Publishes ActionApplied on Ok.
+    DispatchResult ToggleLayer(uint32_t index, std::function<void()> onChanged);
+
 private:
     void Publish(AppFlowChangedEvent::Kind kind, Generated::FlowStateId state,
                  Generated::FlowActionId action, uint32_t group);
@@ -55,6 +66,7 @@ private:
     FlowStateMachine fsm_;
     ActionStack stack_;
     BindingStore bindings_;
+    LayerController layers_;
 };
 
 } // namespace Vixen::AppFlow

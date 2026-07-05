@@ -1,6 +1,7 @@
-// Built + run by Milestone 3 (Task 7 CMake); this milestone verifies via standalone compile.
+// Built + run by Milestone 3 (Task 5 CMake registration).
 #include <gtest/gtest.h>
 #include "ActionStack.h"
+#include "AppFlowRuntime.h"
 #include "LayerController.h"
 #include "generated/AppFlow.g.h"
 #include <cstring>
@@ -90,4 +91,19 @@ TEST(SnapshotUndo, MixedGroupUndoesAsOneUnit) {
     EXPECT_EQ(st.Undo(), DispatchResult::Ok);
     EXPECT_EQ(lc.Mask(), 0b111u);           // ONE undo reverted BOTH
     EXPECT_EQ(st.UndoDepth(), 0u);
+}
+
+// Task 4: AppFlowRuntime owns LayerController + a self-inverse ToggleLayer dispatch whose
+// onChanged (re-flatten) hook fires on both forward apply and undo.
+TEST(SnapshotUndo, RuntimeToggleLayerAndUndoFireOnChanged) {
+    AppFlowRuntime rt(nullptr, /*sender*/1);
+    ASSERT_EQ(rt.Load(), LoadResult::Ok);
+    rt.Layers().SetLayerCount(3);
+    int changed = 0;
+    EXPECT_EQ(rt.ToggleLayer(2, [&]{ ++changed; }), DispatchResult::Ok);
+    EXPECT_FALSE(rt.Layers().IsEnabled(2));
+    EXPECT_EQ(changed, 1);                 // onChanged fired on apply
+    EXPECT_EQ(rt.Undo(), DispatchResult::Ok);
+    EXPECT_TRUE(rt.Layers().IsEnabled(2)); // reverted
+    EXPECT_EQ(changed, 2);                 // onChanged fired again on undo
 }

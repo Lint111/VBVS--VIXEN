@@ -71,4 +71,17 @@ DispatchResult AppFlowRuntime::Redo() {
     return result;
 }
 
+DispatchResult AppFlowRuntime::ToggleLayer(uint32_t index, std::function<void()> onChanged) {
+    // Self-inverse: the same apply toggles both forward and inverse; onChanged fires on both.
+    auto apply = [this, index, onChanged](bool /*forward*/) {
+        layers_.Toggle(index);
+        if (onChanged) onChanged();
+    };
+    const DispatchResult r = stack_.Dispatch(FlowActionId::ToggleLayer, apply);
+    if (r == DispatchResult::Ok) {
+        Publish(AppFlowChangedEvent::Kind::ActionApplied, fsm_.Current(), FlowActionId::ToggleLayer, 0);
+    }
+    return r;
+}
+
 } // namespace Vixen::AppFlow
