@@ -315,6 +315,43 @@ undoable + groupable) → publish `AppFlowChangedEvent`.
 3. **`[Action]` (AI/sim) stays distinct and composes:** an AppFlow `FlowAction` MAY emit a sim command;
    they never merge. Two concepts remain — AI-scored sim actions vs. reversible UI/app-flow actions.
 
+## 7d. Render-loop lifecycle consolidation — canonical `graph.Run()` (folded increment)
+
+A sibling concern folded into this program (decision 2026-07-05): consolidate the render-loop
+lifecycle so a dispatch entry point does not hand-roll it. This was previously scoped in
+`Architecture-Review-Game-Renderer-2026-06-12.md` — "stable engine facade with **host-owned frame
+loop**" (§ readiness), "**inverted frame-loop control**" (target-state), "multi-graph/multi-view
+lifecycle under one device; clean teardown/re-init", and the named hard liability "**loop ticking
+dead in the `RenderFrame()` path**".
+
+**The problem today:** `RenderGraph::RenderFrame()` is the per-frame tick, but the *loop* around it
+(build → compile → `glfwPollEvents` → `RenderFrame` → `VK_ERROR_DEVICE_LOST` recovery → shutdown-flag
+check) is hand-rolled in `VulkanGraphApplication::Render` and **duplicated across three dispatch entry
+points**: `application/main/source/main.cpp`, `application/editor/source/main.cpp`, and the undertow
+host. Every entry point re-implements the same lifecycle plumbing and can get it subtly wrong. There
+is no canonical lifecycle owner.
+
+**The target:** a canonical run surface on the graph/engine so a dispatch entry point is just a thin
+wrapper. Two shapes, both provided:
+- `RenderGraph::Run()` (or an `EngineContext::Run()`) — **engine-owned loop**: builds/compiles once,
+  then runs the poll→tick→recover→shutdown loop internally until a stop signal, owning its own
+  lifecycle. Standalone `main()` becomes `engine.Run();`.
+- `RenderGraph::Tick()` — **host-owned loop** (inverted control, for a host like undertow that owns its
+  own outer loop / interleaves sim): one iteration of poll→tick→recover, returning a status the host
+  loops on. `Run()` is implemented as `while (running) Tick();`.
+
+This subsumes the scattered lifecycle logic (`Prepare`/`Render`/device-loss recovery/shutdown-flag)
+into one place, retires the dead loop-ticking path, and makes the three entry points collapse to a
+handful of lines each. It composes with AppFlow: the AppFlow runtime's per-frame work (draining UI
+selections → dispatching bound actions, consuming `ConsumeDirty`) becomes a registered step inside the
+canonical tick, not another hand-wired branch in each app's `Update()`.
+
+**Why it belongs in this program:** AppFlow's whole thesis is "one seam owns app-flow lifecycle so
+entry points don't each reinvent it." `graph.Run()` is the *render-loop* half of that same thesis —
+the engine-lifecycle sibling of the app-flow-state consolidation. Kept as its own increment (it is a
+RenderGraph refactor touching the entry points, orthogonal to the state/action contract), planned
+after the Inc-1 walking skeleton proves the AppFlow spine.
+
 ## 8. Scope — V1 vs. deferred
 
 **V1 (this program's first spec + plan):**
@@ -331,6 +368,9 @@ undoable + groupable) → publish `AppFlowChangedEvent`.
 - `EditorApplication` re-expressed on the framework as the live proof.
 
 **Deferred (architect now, build later — append-only extension points reserved in V1):**
+- **Render-loop lifecycle consolidation — canonical `graph.Run()`/`Tick()`** (§7d): its own increment
+  (a RenderGraph refactor + entry-point dedup, orthogonal to the state/action contract), planned after
+  the Inc-1 walking skeleton. Previously scoped in Architecture-Review-Game-Renderer-2026-06-12.
 - **undertow migration** — retire `Undertow.Sim/UiActions/` into an authoring/serialization front-end
   over the AppFlow contract (undertow's `ui_binding` UTDL → an AppFlow-binding serialization). undertow
   becomes consumer #2; its cross-repo pin + C-ABI wiring make this its own increment (see roadmap Inc 3+).
