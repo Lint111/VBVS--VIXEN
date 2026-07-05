@@ -27,14 +27,17 @@ Execution via post-brainstorm-context-manager in worktree `.claude/worktrees/app
 
 - **Milestone 1 — Contract (Tasks 1–2): ✅ DONE** — declare reference vocabulary + generate `AppFlow.g.h` + golden test. **Codegen decision (RESOLVED):** Yeroket `CodegenTool~` emits ONLY `[GpuStruct]` structs (no enum/table/reader emitter) → took plan Outcome 2: `AppFlowReference.cs` canonical + documented, `AppFlow.g.h` HAND-AUTHORED to match (both carry `TODO(appflow-codegen)` for a future real emitter). No Yeroket edit. No `codegen/CMakeLists.txt` regen target (nothing to regen yet).
 - **Milestone 2 — Core primitives (Tasks 3, 4, 5, 5b): ✅ DONE** — `AppFlowEvents.h`/`AppFlowResults.h` + `FlowStateMachine` + `ActionStack` + `BindingStore`. Four pure-logic C++ units, offline gtests. All 3 test units compiled+linked+ran GREEN against vendored gtest (3/3 + 4/4 + 3/3) a milestone early. Validator wrote 6 extra adversarial probes for the untested auto-group/empty-selector paths — all correct.
-- **Milestone 3 — Integration + build (Tasks 6–7):** `AppFlowLoader` + `AppFlowRuntime` (`DispatchBySelector` spine) + CMake wiring + full green suite.
-- **Milestone 4 — Close-out (Task 8):** verify from fresh output + record the codegen-tool decision. Folds into the Finish step.
+- **Milestone 3 — Integration + build (Tasks 6–7): ✅ DONE** — `AppFlowLoader` + `AppFlowRuntime` (`DispatchBySelector` spine) + CMake wiring + full green suite. **17/17 PASS via the real VIXEN CMake build** (validator independently reproduced from a clean rebuild). Walking skeleton functional.
+- **Milestone 4 — Close-out (Task 8): folds into the Finish step** — verify from fresh output + record the codegen-tool decision + Known-Issues (ctest gap).
 
 ## Progress Log
 
 - (pipeline started 2026-07-05; entries appended per milestone)
 - Milestone 1 (Tasks 1–2): DONE · commits 5bb5c465..b70d9114 · Opus validator APPROVED (7/7 checks, symbol-by-symbol; std::span-constexpr trap verified avoided) · codegen Outcome-2 (hand-authored header) · nits handled (Yeroket DLL reverted to HEAD ca4eb7ad; redundant `using` left cosmetic) · 2026-07-05
 - Milestone 2 (Tasks 3, 4, 5, 5b): DONE · commits a7e13d5e..3adf90c5 (11 files, all added) · Opus validator APPROVED (7/7 via full compile+link+run: FSM 3/3, ActionStack 4/4, BindingStore 3/3; +6 adversarial probes for untested paths all pass) · error model clean (zero throw); C++23 verified · Yeroket clean · 2026-07-05
+- Milestone 3 (Tasks 6–7): DONE · commits 2cd8ab70..30bcc4b7 (8 files, 283 insertions) · Opus validator APPROVED — independently reproduced 17/17 PASS from a clean rebuild via the real VIXEN CMake build (golden 4 + FSM 3 + ActionStack 4 + BindingStore 3 + loader/runtime 3), incl. the `DispatchBySelectorRunsBoundActionUndoably` walking-skeleton spine · only shared CMake change = 1 `add_subdirectory(AppFlow)` insert · Yeroket clean · 2026-07-05
+- **Known-Issue found (pre-existing, project-wide):** `VIXEN/CMakeLists.txt` calls `add_subdirectory(libraries)` (:393) BEFORE `enable_testing()` (:445), so no library's tests are `ctest`-discoverable (`ctest -N` → 0 tests project-wide). Run gtest binaries directly (CLAUDE.md's documented method). Not AppFlow-specific → Known-Issues entry.
+- **Inc-2 note:** `AppFlowChangedEvent` carries filler `state`/`action` for kinds where they aren't meaningful (e.g. ActionUndone/Redone carry FlowActionId{}=ToggleLayer id 0, StateChanged carries a filler action). Inc-1 tests don't assert them; before Inc-2 wires real consumers, either populate the affected id or document that consumers must key off `kind`.
 
 ## Increment roadmap (context; only Inc 1 is planned in detail below)
 
