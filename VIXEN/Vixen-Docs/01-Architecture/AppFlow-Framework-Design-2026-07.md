@@ -245,15 +245,15 @@ for 4–5.
 
 ---
 
-## 9. Open decision for spec review
+## 9. Resolved decision — Tier-2 home
 
-**Where does Tier 2 (the app-flow vocabulary module) first live?**
-- **(a)** A **generic reference app-flow module VIXEN ships** (so `EditorApplication` works out-of-box),
-  with undertow authoring its own vocabulary on top. Favors engine-first, immediate C++ editor value.
-- **(b)** **undertow authors the only consumer module initially**; VIXEN ships just the runtime +
-  emitter, no reference vocabulary. Favors not pre-guessing the vocabulary.
+**Where does Tier 2 (the app-flow vocabulary module) first live? → DECIDED: (a).**
 
-Recommendation: **(a)** — a minimal generic reference module (states: Editing/Simulating/Paused;
-actions: ToggleLayer/SetParam; the editor's 3 layers) so the framework has a live in-repo consumer and
-the `EditorApplication` live gate exists without depending on undertow. undertow extends it as a second
-consumer, proving the multi-consumer claim.
+VIXEN ships a **minimal generic reference app-flow module** (states: Editing/Simulating/Paused;
+actions: ToggleLayer/SetParam; the editor's 3 layers: base/bulge/cut) so the framework has a live
+in-repo consumer and the `EditorApplication` live gate exists **without depending on undertow**.
+undertow later extends it as a second consumer, proving the multi-consumer claim by construction.
+
+Rejected alternative (b): undertow authors the only consumer initially, VIXEN ships just runtime +
+emitter. Rejected because it defers the live gate onto a cross-repo dependency and leaves the C++
+editor with no framework consumer to validate against.
