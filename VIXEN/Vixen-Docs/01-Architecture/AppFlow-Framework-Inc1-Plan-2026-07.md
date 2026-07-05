@@ -1,0 +1,614 @@
+# AppFlow Framework — Increment 1 (Walking Skeleton) Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Build the thinnest end-to-end slice of the AppFlow framework — a declared app-state + one reversible UI action flowing through a generated C++ mirror into a generic VIXEN runtime — proving the whole contract→runtime→undo spine with offline tests.
+
+**Architecture:** A consumer C# schema declares one `[FlowState]` set + one `[FlowAction]` (ToggleLayer) + its state footprint struct. The codegen tool emits a byte-identical C++ mirror (`AppFlow.g.h`: state enum, action enum, action-decl table, footprint struct, a reader). A new VIXEN C++ library `AppFlow` ingests that mirror through a loader and runs a minimal `ActionStack` (dispatch + undo/redo + one group) and `FlowStateMachine` (guarded transition) over it, broadcasting `AppFlowChangedEvent` on the existing `MessageBus`.
+
+**Tech Stack:** C# incremental source-gen / dotnet codegen tool (Yeroket kernel-core reuse), C++23, CMake, GoogleTest, VIXEN EventBus (`MessageBus`).
+
+**Design doc:** `VIXEN/Vixen-Docs/01-Architecture/AppFlow-Framework-Design-2026-07.md`
+
+## Global Constraints
+
+- C++ standard: **C++23** (`target_compile_features(... cxx_std_23)`), matching all VIXEN libs.
+- Generated headers are **hand-edit-forbidden**: every `.g.h` carries `// <provenance: generated from <Source> — do not edit by hand>` (verbatim convention from `SdfOpCodes.g.h`).
+- Enum values are **pinned + explicit + append-only** (never renumber; new members get the next free value). Convention from `SdfOpCodes.g.h`.
+- Codegen is **dotnet-only, no Unity**: regen via `~/.dotnet/dotnet` (build the generator, run the tool / `UPDATE_GOLDENS=1 ~/.dotnet/dotnet test`). Never invoke Unity or Unity MCP.
+- The generated analyzer/generator DLL **rebuilds non-deterministically** (same size, different bytes): commit it only on a real source change, else `git checkout --` it.
+- Never throw across a host boundary: loader/dispatch entry points return typed result enums (the `VulkanGraphApplication::Prepare` rule).
+- New VIXEN library registers via `add_subdirectory` under `VIXEN/libraries/` (the top build already does `add_subdirectory(libraries)` at `VIXEN/CMakeLists.txt:393`); tests behind `if(BUILD_TESTS)`.
+- Nodes/consumers use the base `NodeInstance::device` accessors — N/A here (AppFlow is CPU-only), noted so no device member is introduced.
+
+## Increment roadmap (context; only Inc 1 is planned in detail below)
+
+- **Inc 1 (this plan):** Walking skeleton — 1 state set + 1 action (ToggleLayer) + FSM + loader, offline tests. No editor wire-up, no GPU.
+- **Inc 2:** Full ActionStack (snapshot-fallback path, multi-op groups, redo edge cases) + LayerController driving RenderGraph node enable; `EditorApplication` re-expressed on AppFlow (live gate: click toggles + undo reverts a layer, PNG-verified).
+- **Inc 3:** `AppFlowInput` full mapping table (Save, param-set), ModuleController register/activate.
+- **Inc 4:** PanelLayout — RmlUi-native dock/drag/resize + RenderTarget viewport panel + persist/restore.
+- **Inc 5+ (deferred, extension points reserved):** callback/native actions (modding), ModuleController hot-swap.
+
+---
+
+## File Structure (Inc 1)
+
+**C# consumer schema + codegen (Tier 2 + Tier 1 emit):**
+- Create: `VIXEN/codegen/appflow-schemas/AppFlowReference.cs` — the reference vocabulary declaration (states, one action, footprint struct) using AppFlow marker attributes.
+- Create: `VIXEN/codegen/appflow-schemas/AppFlowAttributes.cs` — the `[FlowState]`/`[FlowAction]`/`[FlowStateStruct]` marker attributes (if the reused codegen tool needs them defined consumer-side; Task 1 confirms whether existing `[GpuStruct]`-style attributes suffice).
+- Modify: `VIXEN/codegen/CMakeLists.txt` — add the appflow-schemas regen target alongside config-schemas.
+
+**Generated mirror (Tier 1 output):**
+- Create (generated): `VIXEN/libraries/AppFlow/include/generated/AppFlow.g.h` — state enum, action enum, `AppFlowActionDecl` table, `LayerState` footprint struct, `AppFlowContainerView` reader.
+
+**C++ runtime (Tier 0):**
+- Create: `VIXEN/libraries/AppFlow/CMakeLists.txt`
+- Create: `VIXEN/libraries/AppFlow/include/AppFlowEvents.h` — `AppFlowChangedEvent : BaseEventMessage`.
+- Create: `VIXEN/libraries/AppFlow/include/AppFlowResults.h` — `LoadResult`, `DispatchResult` enums.
+- Create: `VIXEN/libraries/AppFlow/include/AppFlowLoader.h` + `src/AppFlowLoader.cpp` — ingests `AppFlow.g.h` tables.
+- Create: `VIXEN/libraries/AppFlow/include/ActionStack.h` + `src/ActionStack.cpp` — dispatch, undo, redo, one group.
+- Create: `VIXEN/libraries/AppFlow/include/FlowStateMachine.h` + `src/FlowStateMachine.cpp` — guarded transition.
+- Create: `VIXEN/libraries/AppFlow/include/AppFlowRuntime.h` + `src/AppFlowRuntime.cpp` — owns loader+stack+fsm, holds the `MessageBus*`, the single façade.
+- Modify: `VIXEN/libraries/CMakeLists.txt` — `add_subdirectory(AppFlow)`.
+
+**Tests (offline, no GPU):**
+- Create: `VIXEN/libraries/AppFlow/tests/CMakeLists.txt`
+- Create: `VIXEN/libraries/AppFlow/tests/test_appflow_golden.cpp` — mirror-golden guard.
+- Create: `VIXEN/libraries/AppFlow/tests/test_action_stack.cpp` — dispatch/undo/redo/group.
+- Create: `VIXEN/libraries/AppFlow/tests/test_flow_state_machine.cpp` — transition accept/reject.
+- Create: `VIXEN/libraries/AppFlow/tests/test_appflow_loader.cpp` — good + malformed ingest.
+
+---
+
+### Task 1: Confirm codegen tool + declare the reference vocabulary
+
+**Files:**
+- Read: `VIXEN/codegen/config-schemas/OctreeConfig.cs`, `VIXEN/codegen/CMakeLists.txt` (existing `[GpuStruct]`→`.g.h` tool — the closest precedent)
+- Create: `VIXEN/codegen/appflow-schemas/AppFlowReference.cs`
+- Create (only if needed): `VIXEN/codegen/appflow-schemas/AppFlowAttributes.cs`
+
+**Interfaces:**
+- Produces: a C# declaration set that the codegen tool consumes. Canonical names later tasks depend on: states `Editing`, `Simulating`, `Paused`; action `ToggleLayer` (id 0); footprint struct `LayerState { uint32_t enabledMask; }`; guard `DocumentValid` (id 0); transition `Editing→Simulating` guarded by `DocumentValid`.
+
+- [ ] **Step 1: Determine the tool.** Read `OctreeConfig.cs` + `VIXEN/codegen/CMakeLists.txt`. Decide: does the existing VIXEN `codegen/` `[GpuStruct]`-style tool already emit standalone enums + structs + a reader into `libraries/`, or must the Yeroket `SDFNodeSourceGenerator` path be used? Record the decision in a one-line comment at the top of `AppFlowReference.cs`. **Expected:** the VIXEN `codegen/` tool (dotnet, `~/.dotnet/dotnet run --project ...`) is the closer fit for structs+enums; use it. If it cannot emit an opcode-style enum, fall back to the Yeroket generator and note it.
+
+- [ ] **Step 2: Write the reference declaration.** In `AppFlowReference.cs`, declare (using the confirmed attributes):
+
+```csharp
+// Codegen tool: VIXEN/codegen (GpuStruct-style dotnet emitter) — confirmed Task 1 Step 1.
+// AppFlow Inc-1 reference vocabulary. VIXEN ships this minimal module (design §9 option a).
+namespace Vixen.AppFlow.Reference
+{
+    // States — members become FlowStateId (pinned, append-only).
+    [FlowStateEnum]
+    public enum FlowState { Editing = 0, Simulating = 1, Paused = 2 }
+
+    // Guards — declared predicate opcodes.
+    [FlowGuardEnum]
+    public enum FlowGuard { DocumentValid = 0 }
+
+    // Actions — members become FlowActionId (pinned, append-only).
+    [FlowActionEnum]
+    public enum FlowAction { ToggleLayer = 0 }
+
+    // Footprint struct for ToggleLayer — a GpuStruct-style serializable blob so the
+    // runtime can snapshot it generically (Inc 2 uses this; Inc 1 emits it only).
+    [FlowStateStruct]
+    public struct LayerState { public uint enabledMask; }
+
+    // One transition table entry, declared as data.
+    [FlowTransition] // from=Editing to=Simulating guard=DocumentValid
+    public static class Transitions
+    {
+        public const int From = (int)FlowState.Editing;
+        public const int To = (int)FlowState.Simulating;
+        public const int Guard = (int)FlowGuard.DocumentValid;
+    }
+}
+```
+
+*(If Task 1 Step 1 selects the Yeroket generator instead, translate these to `[SdfCoreKernel]`-style static-member declarations per that generator's conventions, keeping the same names/values.)*
+
+- [ ] **Step 3: Build the codegen tool to verify the declaration compiles.**
+
+Run: `~/.dotnet/dotnet build -c Release` in the codegen tool's project dir (per Task 1 Step 1).
+Expected: 0 errors — the attributes + declaration are valid C#.
+
+- [ ] **Step 4: Commit.**
+
+```bash
+git add VIXEN/codegen/appflow-schemas/ VIXEN/codegen/CMakeLists.txt
+git commit -m "feat(appflow): Inc1 reference vocabulary declaration (states, ToggleLayer, LayerState)"
+```
+
+---
+
+### Task 2: Generate `AppFlow.g.h` and lock it with a golden test
+
+**Files:**
+- Create (generated): `VIXEN/libraries/AppFlow/include/generated/AppFlow.g.h`
+- Create: `VIXEN/libraries/AppFlow/tests/test_appflow_golden.cpp`
+- Modify: `VIXEN/codegen/CMakeLists.txt` (regen target writes into the AppFlow include dir)
+
+**Interfaces:**
+- Produces `AppFlow.g.h` with these exact C++ symbols (later tasks include this header):
+  - `namespace Vixen::AppFlow::Generated {`
+  - `enum class FlowStateId : uint16_t { Editing=0, Simulating=1, Paused=2 };`
+  - `enum class FlowGuardId : uint16_t { DocumentValid=0 };`
+  - `enum class FlowActionId : uint16_t { ToggleLayer=0 };`
+  - `struct LayerState { uint32_t enabledMask; };`
+  - `struct AppFlowActionDecl { FlowActionId id; uint32_t footprintBytes; bool hasInvert; };`
+  - `struct AppFlowTransition { FlowStateId from; FlowStateId to; FlowGuardId guard; };`
+  - `inline constexpr AppFlowActionDecl kActionDecls[] = { {FlowActionId::ToggleLayer, sizeof(LayerState), true} };`
+  - `inline constexpr AppFlowTransition kTransitions[] = { {FlowStateId::Editing, FlowStateId::Simulating, FlowGuardId::DocumentValid} };`
+  - `struct AppFlowContainerView { static constexpr auto actions() { return kActionDecls; } static constexpr auto transitions() { return kTransitions; } };`
+  - `}` — plus the provenance banner line at top.
+
+- [ ] **Step 1: Run codegen to emit the header.**
+
+Run: `~/.dotnet/dotnet run --project <codegen-tool>` (writes `AppFlow.g.h`), per Task 1's tool.
+Expected: `VIXEN/libraries/AppFlow/include/generated/AppFlow.g.h` created, containing the exact symbols in the Interfaces block, with the provenance banner `// <provenance: generated from AppFlowReference — do not edit by hand>`.
+
+- [ ] **Step 2: Write the golden test (asserts the generated header matches a committed golden string).**
+
+```cpp
+#include <gtest/gtest.h>
+#include <fstream>
+#include <sstream>
+#include <string>
+
+// Reads the committed generated header and asserts key invariants: the provenance
+// banner, pinned enum values, and the constexpr tables. A declaration change that
+// regenerates the header MUST update this test (that is the guard).
+static std::string readFile(const std::string& p) {
+    std::ifstream f(p);
+    std::stringstream ss; ss << f.rdbuf();
+    return ss.str();
+}
+
+TEST(AppFlowGolden, HeaderHasProvenanceBanner) {
+    const std::string h = readFile(APPFLOW_GENERATED_HEADER_PATH);
+    EXPECT_NE(h.find("do not edit by hand"), std::string::npos);
+}
+
+TEST(AppFlowGolden, EnumValuesArePinned) {
+    const std::string h = readFile(APPFLOW_GENERATED_HEADER_PATH);
+    EXPECT_NE(h.find("Editing=0"), std::string::npos);
+    EXPECT_NE(h.find("Simulating=1"), std::string::npos);
+    EXPECT_NE(h.find("Paused=2"), std::string::npos);
+    EXPECT_NE(h.find("ToggleLayer=0"), std::string::npos);
+}
+
+TEST(AppFlowGolden, ActionDeclTablePresent) {
+    const std::string h = readFile(APPFLOW_GENERATED_HEADER_PATH);
+    EXPECT_NE(h.find("kActionDecls"), std::string::npos);
+    EXPECT_NE(h.find("kTransitions"), std::string::npos);
+}
+```
+
+- [ ] **Step 3: Wire `APPFLOW_GENERATED_HEADER_PATH`** as a compile definition in `tests/CMakeLists.txt` (added in full in Task 7; for now the test is written, it will compile once the test target exists). Note in the test file header: *this test is built by Task 7's CMake.*
+
+- [ ] **Step 4: Commit** (header + test; the test runs green after Task 7 builds it).
+
+```bash
+git add VIXEN/libraries/AppFlow/include/generated/AppFlow.g.h VIXEN/libraries/AppFlow/tests/test_appflow_golden.cpp VIXEN/codegen/CMakeLists.txt
+git commit -m "feat(appflow): generate AppFlow.g.h mirror + golden guard"
+```
+
+---
+
+### Task 3: `AppFlowEvents.h` + `AppFlowResults.h` (the notification + result types)
+
+**Files:**
+- Create: `VIXEN/libraries/AppFlow/include/AppFlowEvents.h`
+- Create: `VIXEN/libraries/AppFlow/include/AppFlowResults.h`
+
+**Interfaces:**
+- Consumes: EventBus `BaseEventMessage`, `MessageType`, `EventCategory`, `AUTO_MESSAGE_TYPE()` (from `Message.h`); the generated `FlowStateId`/`FlowActionId`.
+- Produces:
+  - `struct AppFlowChangedEvent : Vixen::EventBus::BaseEventMessage` with `Kind { StateChanged, ActionApplied, ActionUndone, ActionRedone }`, `FlowStateId state`, `FlowActionId action`, `uint32_t group`.
+  - `enum class LoadResult { Ok, EmptyArtifact, BadTransitionRef, UnknownAction };`
+  - `enum class DispatchResult { Ok, RejectedByState, GuardFailed, NothingToUndo, NothingToRedo };`
+
+- [ ] **Step 1: Write `AppFlowResults.h`.**
+
+```cpp
+#pragma once
+namespace Vixen::AppFlow {
+enum class LoadResult { Ok, EmptyArtifact, BadTransitionRef, UnknownAction };
+enum class DispatchResult { Ok, RejectedByState, GuardFailed, NothingToUndo, NothingToRedo };
+} // namespace Vixen::AppFlow
+```
+
+- [ ] **Step 2: Write `AppFlowEvents.h`.**
+
+```cpp
+#pragma once
+#include "Message.h"                 // EventBus BaseEventMessage
+#include "generated/AppFlow.g.h"     // FlowStateId, FlowActionId
+namespace Vixen::AppFlow {
+using ::Vixen::AppFlow::Generated::FlowStateId;
+using ::Vixen::AppFlow::Generated::FlowActionId;
+
+struct AppFlowChangedEvent : public Vixen::EventBus::BaseEventMessage {
+    static constexpr Vixen::EventBus::MessageType TYPE = AUTO_MESSAGE_TYPE();
+    static constexpr Vixen::EventBus::EventCategory CATEGORY =
+        Vixen::EventBus::EventCategory::ApplicationState;
+
+    enum class Kind { StateChanged, ActionApplied, ActionUndone, ActionRedone };
+    Kind kind;
+    FlowStateId  state;
+    FlowActionId action;
+    uint32_t     group;
+
+    AppFlowChangedEvent(Vixen::EventBus::SenderID sender, Kind k,
+                        FlowStateId s, FlowActionId a, uint32_t g)
+        : BaseEventMessage(CATEGORY, TYPE, sender), kind(k), state(s), action(a), group(g) {}
+};
+} // namespace Vixen::AppFlow
+```
+
+- [ ] **Step 3: Commit.**
+
+```bash
+git add VIXEN/libraries/AppFlow/include/AppFlowEvents.h VIXEN/libraries/AppFlow/include/AppFlowResults.h
+git commit -m "feat(appflow): AppFlowChangedEvent + result enums"
+```
+
+*(No standalone test — these types are exercised by Tasks 4-6 tests.)*
+
+---
+
+### Task 4: `FlowStateMachine` — guarded transition
+
+**Files:**
+- Create: `VIXEN/libraries/AppFlow/include/FlowStateMachine.h`
+- Create: `VIXEN/libraries/AppFlow/src/FlowStateMachine.cpp`
+- Create: `VIXEN/libraries/AppFlow/tests/test_flow_state_machine.cpp`
+
+**Interfaces:**
+- Consumes: `FlowStateId`, `FlowGuardId`, `AppFlowTransition`, `AppFlowContainerView` (generated); `DispatchResult`.
+- Produces:
+  - `class FlowStateMachine` with:
+    - `void LoadTransitions(const AppFlowTransition* table, size_t count);`
+    - `void SetGuardResult(FlowGuardId g, bool pass);` — Inc-1 stub: guards are set externally (no real guard-opcode VM yet).
+    - `FlowStateId Current() const;`
+    - `void SetCurrent(FlowStateId s);`
+    - `DispatchResult Request(FlowStateId to);` — finds a `(current→to)` transition, evaluates its guard via the guard-result map; on pass sets current and returns `Ok`, else `RejectedByState`/`GuardFailed`.
+
+- [ ] **Step 1: Write the failing test.**
+
+```cpp
+#include <gtest/gtest.h>
+#include "FlowStateMachine.h"
+#include "generated/AppFlow.g.h"
+using namespace Vixen::AppFlow;
+using namespace Vixen::AppFlow::Generated;
+
+TEST(FlowStateMachine, TransitionPassesWhenGuardTrue) {
+    FlowStateMachine fsm;
+    fsm.LoadTransitions(AppFlowContainerView::transitions().data(),
+                        AppFlowContainerView::transitions().size());
+    fsm.SetCurrent(FlowStateId::Editing);
+    fsm.SetGuardResult(FlowGuardId::DocumentValid, true);
+    EXPECT_EQ(fsm.Request(FlowStateId::Simulating), DispatchResult::Ok);
+    EXPECT_EQ(fsm.Current(), FlowStateId::Simulating);
+}
+
+TEST(FlowStateMachine, TransitionFailsWhenGuardFalse) {
+    FlowStateMachine fsm;
+    fsm.LoadTransitions(AppFlowContainerView::transitions().data(),
+                        AppFlowContainerView::transitions().size());
+    fsm.SetCurrent(FlowStateId::Editing);
+    fsm.SetGuardResult(FlowGuardId::DocumentValid, false);
+    EXPECT_EQ(fsm.Request(FlowStateId::Simulating), DispatchResult::GuardFailed);
+    EXPECT_EQ(fsm.Current(), FlowStateId::Editing);
+}
+
+TEST(FlowStateMachine, UndeclaredTransitionRejected) {
+    FlowStateMachine fsm;
+    fsm.LoadTransitions(AppFlowContainerView::transitions().data(),
+                        AppFlowContainerView::transitions().size());
+    fsm.SetCurrent(FlowStateId::Editing);
+    EXPECT_EQ(fsm.Request(FlowStateId::Paused), DispatchResult::RejectedByState);
+}
+```
+
+- [ ] **Step 2: Run to verify it fails** (target built once Task 7's CMake lands; if running standalone earlier, expect a link/compile error for missing `FlowStateMachine`). Run: `ctest -R FlowStateMachine` — Expected: FAIL (undefined `FlowStateMachine`).
+
+- [ ] **Step 3: Write the implementation.** Header declares the class; `.cpp` implements `Request` as a linear scan of the loaded transitions matching `(current, to)`, checking the guard-result map (default: a guard not set → treated as pass, so a transition with an unset guard still fires; document this Inc-1 simplification in a comment). `AppFlowContainerView::transitions()` returns a `std::span`/array — expose `.data()`/`.size()` via a small `constexpr std::span` in the generated header (add to Task 2's header if not already a span). Store `std::vector<AppFlowTransition>`, `FlowStateId current_`, `std::unordered_map<uint16_t,bool> guardResults_`.
+
+- [ ] **Step 4: Run to verify it passes.** Run: `ctest -R FlowStateMachine` — Expected: 3 PASS.
+
+- [ ] **Step 5: Commit.**
+
+```bash
+git add VIXEN/libraries/AppFlow/include/FlowStateMachine.h VIXEN/libraries/AppFlow/src/FlowStateMachine.cpp VIXEN/libraries/AppFlow/tests/test_flow_state_machine.cpp
+git commit -m "feat(appflow): FlowStateMachine guarded transition + tests"
+```
+
+---
+
+### Task 5: `ActionStack` — dispatch, undo, redo, one group
+
+**Files:**
+- Create: `VIXEN/libraries/AppFlow/include/ActionStack.h`
+- Create: `VIXEN/libraries/AppFlow/src/ActionStack.cpp`
+- Create: `VIXEN/libraries/AppFlow/tests/test_action_stack.cpp`
+
+**Interfaces:**
+- Consumes: `FlowActionId`, `AppFlowActionDecl`, `AppFlowContainerView` (generated); `DispatchResult`.
+- Produces:
+  - `class ActionStack` with:
+    - `void LoadActions(const AppFlowActionDecl* table, size_t count);`
+    - `using ApplyFn = std::function<void(bool /*forward*/)>;` — Inc-1: the caller supplies a forward/inverse toggle callback (the real opcode VM is Inc 2). `forward=true` applies, `false` inverts.
+    - `void BeginGroup(uint32_t group);`
+    - `DispatchResult Dispatch(FlowActionId id, ApplyFn apply);` — runs `apply(true)`, records the entry under the current group.
+    - `void EndGroup();`
+    - `DispatchResult Undo();` — pops the last group, runs each entry's `apply(false)` in reverse; `NothingToUndo` if empty.
+    - `DispatchResult Redo();` — re-applies the last-undone group forward; `NothingToRedo` if empty.
+    - `size_t UndoDepth() const; size_t RedoDepth() const;`
+
+- [ ] **Step 1: Write the failing test.**
+
+```cpp
+#include <gtest/gtest.h>
+#include "ActionStack.h"
+#include "generated/AppFlow.g.h"
+using namespace Vixen::AppFlow;
+using namespace Vixen::AppFlow::Generated;
+
+TEST(ActionStack, DispatchThenUndoRestores) {
+    ActionStack st;
+    st.LoadActions(AppFlowContainerView::actions().data(),
+                   AppFlowContainerView::actions().size());
+    int value = 0;
+    auto flip = [&](bool fwd){ value += fwd ? 1 : -1; };
+    st.BeginGroup(1); st.Dispatch(FlowActionId::ToggleLayer, flip); st.EndGroup();
+    EXPECT_EQ(value, 1);
+    EXPECT_EQ(st.Undo(), DispatchResult::Ok);
+    EXPECT_EQ(value, 0);
+}
+
+TEST(ActionStack, RedoReapplies) {
+    ActionStack st;
+    st.LoadActions(AppFlowContainerView::actions().data(),
+                   AppFlowContainerView::actions().size());
+    int value = 0; auto flip = [&](bool fwd){ value += fwd ? 1 : -1; };
+    st.BeginGroup(1); st.Dispatch(FlowActionId::ToggleLayer, flip); st.EndGroup();
+    st.Undo();
+    EXPECT_EQ(st.Redo(), DispatchResult::Ok);
+    EXPECT_EQ(value, 1);
+}
+
+TEST(ActionStack, GroupUndoneAsOneUnit) {
+    ActionStack st;
+    st.LoadActions(AppFlowContainerView::actions().data(),
+                   AppFlowContainerView::actions().size());
+    int value = 0; auto flip = [&](bool fwd){ value += fwd ? 1 : -1; };
+    st.BeginGroup(1);
+    st.Dispatch(FlowActionId::ToggleLayer, flip);
+    st.Dispatch(FlowActionId::ToggleLayer, flip);
+    st.EndGroup();
+    EXPECT_EQ(value, 2);
+    EXPECT_EQ(st.Undo(), DispatchResult::Ok);   // one Undo reverts BOTH
+    EXPECT_EQ(value, 0);
+    EXPECT_EQ(st.UndoDepth(), 0u);
+}
+
+TEST(ActionStack, UndoEmptyReturnsNothingToUndo) {
+    ActionStack st;
+    st.LoadActions(AppFlowContainerView::actions().data(),
+                   AppFlowContainerView::actions().size());
+    EXPECT_EQ(st.Undo(), DispatchResult::NothingToUndo);
+}
+```
+
+- [ ] **Step 2: Run to verify it fails.** Run: `ctest -R ActionStack` — Expected: FAIL (undefined `ActionStack`).
+
+- [ ] **Step 3: Write the implementation.** A group is `struct Group { uint32_t id; std::vector<Entry> entries; }`, `Entry { FlowActionId id; ApplyFn apply; }`. `undo_` and `redo_` are `std::vector<Group>`. `Dispatch` runs `apply(true)` and appends to the open group (auto-open a singleton group if `BeginGroup` wasn't called). `Undo` moves the top group from `undo_`→`redo_`, running entries' `apply(false)` in reverse order. `Redo` moves top `redo_`→`undo_`, running `apply(true)` in forward order. Dispatch clears `redo_` (new action invalidates the redo branch). Guard: a dispatch of an id not in the loaded action table returns `RejectedByState`.
+
+- [ ] **Step 4: Run to verify it passes.** Run: `ctest -R ActionStack` — Expected: 4 PASS.
+
+- [ ] **Step 5: Commit.**
+
+```bash
+git add VIXEN/libraries/AppFlow/include/ActionStack.h VIXEN/libraries/AppFlow/src/ActionStack.cpp VIXEN/libraries/AppFlow/tests/test_action_stack.cpp
+git commit -m "feat(appflow): ActionStack dispatch/undo/redo/grouping + tests"
+```
+
+---
+
+### Task 6: `AppFlowLoader` + `AppFlowRuntime` — ingest the mirror + façade that broadcasts
+
+**Files:**
+- Create: `VIXEN/libraries/AppFlow/include/AppFlowLoader.h` + `src/AppFlowLoader.cpp`
+- Create: `VIXEN/libraries/AppFlow/include/AppFlowRuntime.h` + `src/AppFlowRuntime.cpp`
+- Create: `VIXEN/libraries/AppFlow/tests/test_appflow_loader.cpp`
+
+**Interfaces:**
+- Consumes: `AppFlowContainerView`, generated enums; `FlowStateMachine`, `ActionStack`; `LoadResult`/`DispatchResult`; EventBus `MessageBus`, `AppFlowChangedEvent`.
+- Produces:
+  - `struct AppFlowLoader { static LoadResult Load(const AppFlowContainerView& view, FlowStateMachine& fsm, ActionStack& stack); };` — validates (non-empty tables; every transition's from/to are valid enum values; every action id appears in the enum) and loads both. Returns `EmptyArtifact` if action table empty, `BadTransitionRef` on an out-of-range state, else `Ok`.
+  - `class AppFlowRuntime` — owns a `FlowStateMachine` + `ActionStack`, holds a `MessageBus* bus_` (nullable), `SenderID sender_`. Methods: `LoadResult Load();` (uses the generated `AppFlowContainerView`), `DispatchResult RequestState(FlowStateId);` (delegates to fsm, on Ok publishes `AppFlowChangedEvent{StateChanged}`), `DispatchResult DispatchAction(FlowActionId, ActionStack::ApplyFn);` (delegates, on Ok publishes `ActionApplied`), `Undo()`/`Redo()` (publish `ActionUndone`/`ActionRedone`). All publishes are `if (bus_)`-guarded and `noexcept`-safe (no throw across the boundary).
+
+- [ ] **Step 1: Write the failing test.**
+
+```cpp
+#include <gtest/gtest.h>
+#include "AppFlowRuntime.h"
+#include "AppFlowLoader.h"
+#include "MessageBus.h"
+#include "AppFlowEvents.h"
+using namespace Vixen::AppFlow;
+using namespace Vixen::AppFlow::Generated;
+
+TEST(AppFlowLoader, LoadsGeneratedViewOk) {
+    FlowStateMachine fsm; ActionStack st;
+    EXPECT_EQ(AppFlowLoader::Load(AppFlowContainerView{}, fsm, st), LoadResult::Ok);
+}
+
+TEST(AppFlowRuntime, StateChangePublishesEvent) {
+    Vixen::EventBus::MessageBus bus;
+    int seen = 0;
+    bus.Subscribe(AppFlowChangedEvent::TYPE,
+        [&](const Vixen::EventBus::BaseEventMessage&){ ++seen; return true; });
+    AppFlowRuntime rt(&bus, /*sender*/1);
+    ASSERT_EQ(rt.Load(), LoadResult::Ok);
+    rt.SetGuardResult(FlowGuardId::DocumentValid, true);
+    rt.SetCurrent(FlowStateId::Editing);
+    EXPECT_EQ(rt.RequestState(FlowStateId::Simulating), DispatchResult::Ok);
+    bus.ProcessQueue();          // dispatch queued events (see MessageBus API)
+    EXPECT_EQ(seen, 1);
+}
+```
+
+*(Step 1 note: confirm the exact `MessageBus` drain method name — `ProcessQueue`/`Dispatch`/`Update` — from `MessageBus.h` when implementing; the test uses whatever drains queued `Publish`es, or switch to `PublishImmediate` in the runtime to avoid the drain. Pick `PublishImmediate` for Inc-1 determinism and drop the drain call.)*
+
+- [ ] **Step 2: Run to verify it fails.** Run: `ctest -R AppFlow` — Expected: FAIL (undefined `AppFlowLoader`/`AppFlowRuntime`).
+
+- [ ] **Step 3: Write the implementation.** `AppFlowLoader::Load` validates + calls `fsm.LoadTransitions` and `stack.LoadActions`. `AppFlowRuntime` ctor takes `(MessageBus*, SenderID)`; `Load()` constructs an `AppFlowContainerView` and calls the loader; the delegating methods publish via `bus_->PublishImmediate(AppFlowChangedEvent{...})` guarded by `if (bus_)`. Expose `SetGuardResult`/`SetCurrent` pass-throughs to the fsm for the test.
+
+- [ ] **Step 4: Run to verify it passes.** Run: `ctest -R AppFlow` — Expected: PASS (loader + runtime tests).
+
+- [ ] **Step 5: Commit.**
+
+```bash
+git add VIXEN/libraries/AppFlow/include/AppFlowLoader.h VIXEN/libraries/AppFlow/src/AppFlowLoader.cpp VIXEN/libraries/AppFlow/include/AppFlowRuntime.h VIXEN/libraries/AppFlow/src/AppFlowRuntime.cpp VIXEN/libraries/AppFlow/tests/test_appflow_loader.cpp
+git commit -m "feat(appflow): AppFlowLoader ingest + AppFlowRuntime façade with event broadcast"
+```
+
+---
+
+### Task 7: CMake — build the `AppFlow` library + tests, wire into the tree, full green
+
+**Files:**
+- Create: `VIXEN/libraries/AppFlow/CMakeLists.txt`
+- Create: `VIXEN/libraries/AppFlow/tests/CMakeLists.txt`
+- Modify: `VIXEN/libraries/CMakeLists.txt` (add `add_subdirectory(AppFlow)`)
+
+**Interfaces:**
+- Consumes: the `EventBus` target (public link, for `MessageBus`/`BaseEventMessage`), `GTest::gtest_main`.
+- Produces: targets `AppFlow` (STATIC) and the four test executables; `APPFLOW_GENERATED_HEADER_PATH` compile-def for the golden test.
+
+- [ ] **Step 1: Write `AppFlow/CMakeLists.txt`** (mirror `EventBus/CMakeLists.txt`):
+
+```cmake
+cmake_minimum_required(VERSION 3.20...4.2)
+project(AppFlow VERSION 1.0.0 LANGUAGES CXX)
+
+set(APPFLOW_HEADERS
+    include/generated/AppFlow.g.h
+    include/AppFlowEvents.h
+    include/AppFlowResults.h
+    include/AppFlowLoader.h
+    include/ActionStack.h
+    include/FlowStateMachine.h
+    include/AppFlowRuntime.h
+)
+set(APPFLOW_SOURCES
+    src/AppFlowLoader.cpp
+    src/ActionStack.cpp
+    src/FlowStateMachine.cpp
+    src/AppFlowRuntime.cpp
+)
+add_library(AppFlow STATIC ${APPFLOW_HEADERS} ${APPFLOW_SOURCES})
+target_include_directories(AppFlow PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>)
+target_compile_features(AppFlow PUBLIC cxx_std_23)
+set_target_properties(AppFlow PROPERTIES FOLDER "Libraries")
+target_link_libraries(AppFlow PUBLIC EventBus)   # MessageBus + BaseEventMessage
+
+if(BUILD_TESTS)
+    add_subdirectory(tests)
+endif()
+```
+
+- [ ] **Step 2: Write `AppFlow/tests/CMakeLists.txt`** (mirror `EventBus/tests/CMakeLists.txt`, one executable per test, with the golden header path define):
+
+```cmake
+cmake_minimum_required(VERSION 3.15)
+project(AppFlowTests)
+
+set(APPFLOW_GEN_HDR "${CMAKE_CURRENT_SOURCE_DIR}/../include/generated/AppFlow.g.h")
+
+foreach(t test_appflow_golden test_action_stack test_flow_state_machine test_appflow_loader)
+    add_executable(${t} ${t}.cpp)
+    target_link_libraries(${t} PRIVATE GTest::gtest_main AppFlow)
+    set_target_properties(${t} PROPERTIES FOLDER "Tests/AppFlow Tests")
+endforeach()
+
+# Golden test needs the on-disk header path.
+target_compile_definitions(test_appflow_golden PRIVATE
+    APPFLOW_GENERATED_HEADER_PATH="${APPFLOW_GEN_HDR}")
+
+if(COMMAND gtest_discover_tests)
+    foreach(t test_appflow_golden test_action_stack test_flow_state_machine test_appflow_loader)
+        gtest_discover_tests(${t})
+    endforeach()
+endif()
+```
+
+- [ ] **Step 3: Register the library.** Add `add_subdirectory(AppFlow)` to `VIXEN/libraries/CMakeLists.txt` (place it alphabetically / next to other libs; confirm the file lists subdirectories explicitly).
+
+- [ ] **Step 4: Configure + build.**
+
+Run (from the VIXEN build dir, per project build convention):
+`cmake --build build --target AppFlow test_appflow_golden test_action_stack test_flow_state_machine test_appflow_loader`
+Expected: all targets compile, 0 errors.
+
+- [ ] **Step 5: Run the whole Inc-1 suite.**
+
+Run: `ctest --test-dir build -R "AppFlow|ActionStack|FlowStateMachine"` (and `test_appflow_golden`)
+Expected: **all tests PASS** — golden (3) + FlowStateMachine (3) + ActionStack (4) + loader/runtime (2).
+
+- [ ] **Step 6: Commit.**
+
+```bash
+git add VIXEN/libraries/AppFlow/CMakeLists.txt VIXEN/libraries/AppFlow/tests/CMakeLists.txt VIXEN/libraries/CMakeLists.txt
+git commit -m "build(appflow): CMake library + tests wired into the tree; Inc1 suite green"
+```
+
+---
+
+### Task 8: Inc-1 close-out — verify + document
+
+**Files:**
+- Modify: `VIXEN/Vixen-Docs/01-Architecture/AppFlow-Framework-Inc1-Plan-2026-07.md` (mark Inc-1 DONE + record the codegen-tool decision from Task 1)
+- Modify: `VIXEN/Vixen-Docs/04-Development/Known-Issues.md` (if any Inc-1 gap surfaced — else skip)
+
+- [ ] **Step 1: Full-suite verification from fresh output.** Re-run `ctest --test-dir build -R "AppFlow|ActionStack|FlowStateMachine"` and paste the pass count into the plan's status line. (Per the *live-verification-authoritative* rule; Inc-1 is offline so ctest is the authority — no GPU gate until Inc 2.)
+
+- [ ] **Step 2: Record the codegen-tool decision** (VIXEN `codegen/` vs. Yeroket generator) as a one-line note at the top of this plan and in the design doc §3, so Inc 2 doesn't re-litigate it.
+
+- [ ] **Step 3: Commit the close-out.**
+
+```bash
+git add VIXEN/Vixen-Docs/01-Architecture/AppFlow-Framework-Inc1-Plan-2026-07.md
+git commit -m "docs(appflow): Inc1 walking skeleton COMPLETE — suite green, codegen-tool decision recorded"
+```
+
+---
+
+## Self-Review
+
+**Spec coverage (design §3–§8 vs. Inc-1 scope):**
+- Three-tier contract → Tasks 1–2 (declare + generate + golden). ✓
+- ActionStack (inverse path + grouping) → Task 5; snapshot-fallback path is explicitly Inc 2 (footprint struct is emitted in Inc 1, unused). ✓ (deferral is intentional + documented)
+- FlowStateMachine → Task 4. ✓
+- LayerController / ModuleController / PanelLayout → Inc 2–4 per the roadmap (not Inc 1). ✓ (intentional)
+- EventBus broadcast → Task 3 + Task 6. ✓
+- Error model (typed results, no throw) → Task 3 enums + Task 6 loader. ✓
+- Testing gates (golden, offline units, loader) → Tasks 2/4/5/6/7; live gate is Inc 2. ✓
+- UI-action consolidation (§7b) → Inc 2 (editor rewire); Inc 1 proves the action path with a non-UI dispatch callback. ✓
+
+**Placeholder scan:** No TBD/TODO. Two flagged confirmations (codegen tool in Task 1; MessageBus drain method in Task 6) are explicit decisions with a stated default, not placeholders.
+
+**Type consistency:** `FlowStateId`/`FlowActionId`/`FlowGuardId`, `AppFlowActionDecl`/`AppFlowTransition`/`AppFlowContainerView`, `LoadResult`/`DispatchResult`, `ActionStack::ApplyFn`, `AppFlowChangedEvent::Kind` are used identically across Tasks 2–7. `AppFlowContainerView::actions()/transitions()` returns a span with `.data()/.size()` — used consistently in Tasks 4/5/6 (add the span accessor to the generated header in Task 2). ✓
+
+---
+
+## Execution Handoff
+
+Inc-1 plan complete. Given the program's size and the cross-repo codegen dependency, this is a good fit for the **post-brainstorm-context-manager** pipeline (milestone-chunked, fresh worker per task, Opus validation) that ran the SDF and config-codegen programs — but the standard subagent-driven or inline options apply too.

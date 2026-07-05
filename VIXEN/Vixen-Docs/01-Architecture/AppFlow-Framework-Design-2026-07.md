@@ -227,6 +227,65 @@ for 4–5.
 
 ---
 
+## 7b. UI-action consolidation (boundary)
+
+A primary motivation is consolidating the editor's hand-wired UI interactions
+(`EditorApplication::Update`'s `DrainClickedElementId`→`ParseLayerToggleId`→`ToggleLayer`, the raw
+`glfwGetKey(S)` save poll, the `ConsumeDirty` re-apply) into declared `FlowAction`s. The seam is
+`AppFlowInput`: a **declared mapping table** (`"#layer-0-toggle" → FlowActionId::ToggleLayer`,
+`KEY_S → FlowActionId::Save`) replacing the bespoke per-interaction branches.
+
+**Boundary — what consolidates vs. what does not:**
+- **Consolidates:** the *interaction→action* wiring. UI actions become declared `FlowAction`s dispatched
+  through `ActionStack` (so they are undoable/groupable), selected by the `AppFlowInput` table instead
+  of hand-written `if`-branches.
+- **Does NOT move:** the *input/selection mechanism* — `UISelectionProviderNode`, the RmlUi hit-test,
+  `SelectionCoordinator`/`SelectionSet`. AppFlow **consumes** their events; it does not replace them.
+  Selection (voxel/UI picking) stays a separate concern; conflating it with app-flow actions would
+  recreate the tangle in a new place.
+
+Rule: **input/selection produces events → `AppFlowInput` maps events to declared actions → `ActionStack`
+executes them undoably.** Consequence for Inc 1: the editor's layer-toggle is the walking-skeleton's
+proof action, so UI-action consolidation is validated by construction in Inc 1 (not a later increment)
+and completed (Save, param-set, …) as the vocabulary grows.
+
+## 7c. Prior art — undertow's existing UI-action layer (alignment)
+
+undertow already ships a working UI-action layer (`Undertow.Sim/UiActions/`). AppFlow must **compose
+with it, not duplicate it**:
+
+- **`UiActionRegistry`** — source of truth for "what UI actions exist", keyed by **namespaced name**
+  (`core:move-haul`) with a **typed param signature** (`UiParamSchema{name, UiParamType}`) + a handler
+  delegate. Hand-registered, not attribute-declared.
+- **`ui_binding`** (authored UTDL doc, parsed by `UiBindingParser`) — wires an **RML selector** → an
+  action **name** + `on` event (default `click`) + an ordered `{name, source}` param list read from the
+  DOM at click time.
+- **`UiBindingTable`** — resolved/validated bindings keyed by selector; unknown-action/bad-param
+  bindings are warn-skipped (inert). First-win, idempotent, never throws.
+- **`[Action]`** (separate seam) — the sim/faction AI-scored action system. NOT a UI/editor command.
+
+**Three consequences for AppFlow:**
+
+1. **AppFlow is the reversible *execution* layer beneath `ui_binding`, not a replacement for it.**
+   undertow already solved "RML selector → named action + typed params" as authored data (better than a
+   compiled mapping table — it's moddable UTDL). What that layer LACKS is undo/grouping/reversal — its
+   handlers are fire-and-forget delegates (the code notes handlers are placeholders, firing is "later").
+   The seam: **`ui_binding` resolves selector→action+params → dispatches into AppFlow's `ActionStack`**,
+   which supplies reversibility + grouping. AppFlow owns undo/state; undertow's layer owns
+   authoring/binding/params. For undertow, `AppFlowInput` is *undertow's `UiBindingTable`* — AppFlow
+   consumes its resolved bindings rather than shipping a rival table. (VIXEN's own editor, lacking UTDL,
+   uses a minimal built-in mapping — but the contract is the same: selector/event → action + params.)
+
+2. **The action contract must carry a typed param signature (like `UiParamSchema[]`), not bare enum ids.**
+   Inc-1's param-less `ToggleLayer` enum is a skeleton; the real `[FlowAction]` grows a declared param
+   signature so a `ui_binding`'s `{name, source}` params flow through generically. Deferred to the
+   increment that wires undertow (not Inc 1), but the contract is shaped for it now.
+
+3. **Three distinct "action" concepts stay distinct and compose:** `[Action]` (AI/sim), `UiAction`
+   (UI→command binding), `FlowAction` (app-flow/editor command **with reversal**). A `UiAction` handler
+   MAY dispatch a `FlowAction` (to gain undo); a `FlowAction` MAY emit a sim command. They compose; they
+   never merge.
+
 ## 8. Scope — V1 vs. deferred
 
 **V1 (this program's first spec + plan):**
