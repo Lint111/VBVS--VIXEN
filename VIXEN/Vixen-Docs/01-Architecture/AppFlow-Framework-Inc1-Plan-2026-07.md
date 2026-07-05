@@ -21,6 +21,19 @@
 - New VIXEN library registers via `add_subdirectory` under `VIXEN/libraries/` (the top build already does `add_subdirectory(libraries)` at `VIXEN/CMakeLists.txt:393`); tests behind `if(BUILD_TESTS)`.
 - Nodes/consumers use the base `NodeInstance::device` accessors — N/A here (AppFlow is CPU-only), noted so no device member is introduced.
 
+## Milestone Map (context-manager pipeline — grouping confirmed 2026-07-05)
+
+Execution via post-brainstorm-context-manager in worktree `.claude/worktrees/appflow-inc1` (branch `worktree-appflow-inc1`). Implementers = Sonnet 5 / medium; validators + final review = Opus / high.
+
+- **Milestone 1 — Contract (Tasks 1–2):** declare reference vocabulary + generate `AppFlow.g.h` + golden test. Resolves the codegen-tool open decision empirically (Yeroket `CodegenTool~` at `$HOME/Github/Yeroket-Fantasy/…/CodegenTool~` — confirm it emits enums+reader, or extend it; Yeroket is CROSS-TREE, gated).
+- **Milestone 2 — Core primitives (Tasks 3, 4, 5, 5b):** `AppFlowEvents.h`/`AppFlowResults.h` + `FlowStateMachine` + `ActionStack` + `BindingStore`. Four pure-logic C++ units, offline gtests.
+- **Milestone 3 — Integration + build (Tasks 6–7):** `AppFlowLoader` + `AppFlowRuntime` (`DispatchBySelector` spine) + CMake wiring + full green suite.
+- **Milestone 4 — Close-out (Task 8):** verify from fresh output + record the codegen-tool decision. Folds into the Finish step.
+
+## Progress Log
+
+- (pipeline started 2026-07-05; entries appended per milestone)
+
 ## Increment roadmap (context; only Inc 1 is planned in detail below)
 
 - **Inc 1 (this plan):** Walking skeleton — 1 state set + 1 action (ToggleLayer, typed param sig) + `BindingStore` (selector→action, first-win/warn-skip) + FSM + loader, offline tests. Proves the generalized UI-action spine end-to-end. No editor wire-up, no GPU.
