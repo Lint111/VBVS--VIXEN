@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build the thinnest end-to-end slice of the AppFlow framework — a declared app-state + one reversible UI action flowing through a generated C++ mirror into a generic VIXEN runtime — proving the whole contract→runtime→undo spine with offline tests.
+**Goal:** Build the thinnest end-to-end slice of the AppFlow framework — a declared app-state + one reversible UI action, resolved from an element SELECTOR through the (generalized-from-undertow) binding store, flowing through a generated C++ mirror into a generic VIXEN runtime — proving the whole contract→binding→runtime→undo spine with offline tests.
 
-**Architecture:** A consumer C# schema declares one `[FlowState]` set + one `[FlowAction]` (ToggleLayer) + its state footprint struct. The codegen tool emits a byte-identical C++ mirror (`AppFlow.g.h`: state enum, action enum, action-decl table, footprint struct, a reader). A new VIXEN C++ library `AppFlow` ingests that mirror through a loader and runs a minimal `ActionStack` (dispatch + undo/redo + one group) and `FlowStateMachine` (guarded transition) over it, broadcasting `AppFlowChangedEvent` on the existing `MessageBus`.
+**Architecture:** AppFlow is the **generalization of undertow's UI-action system** (`Undertow.Sim/UiActions/`) into an engine-owned contract (design §7c). A consumer C# schema declares one `[FlowState]` set + one `[FlowAction]` (ToggleLayer, with a **typed param signature**) + its state footprint struct. The codegen tool emits a byte-identical C++ mirror (`AppFlow.g.h`: state enum, action enum, action-decl table **incl. param signature**, footprint struct, a reader). A new VIXEN C++ library `AppFlow` ingests that mirror through a loader, resolves an element-selector→action binding through a `BindingStore` (the engine-owned generalization of undertow's `UiBindingTable` — first-win, warn-skip-inert), and runs a minimal `ActionStack` (dispatch + undo/redo + one group) and `FlowStateMachine` (guarded transition) over it, broadcasting `AppFlowChangedEvent` on the existing `MessageBus`. **undertow becomes consumer #1 of this system, not its owner.**
 
 **Tech Stack:** C# incremental source-gen / dotnet codegen tool (Yeroket kernel-core reuse), C++23, CMake, GoogleTest, VIXEN EventBus (`MessageBus`).
 
@@ -23,11 +23,11 @@
 
 ## Increment roadmap (context; only Inc 1 is planned in detail below)
 
-- **Inc 1 (this plan):** Walking skeleton — 1 state set + 1 action (ToggleLayer) + FSM + loader, offline tests. No editor wire-up, no GPU.
-- **Inc 2:** Full ActionStack (snapshot-fallback path, multi-op groups, redo edge cases) + LayerController driving RenderGraph node enable; `EditorApplication` re-expressed on AppFlow (live gate: click toggles + undo reverts a layer, PNG-verified).
-- **Inc 3:** `AppFlowInput` full mapping table (Save, param-set), ModuleController register/activate.
+- **Inc 1 (this plan):** Walking skeleton — 1 state set + 1 action (ToggleLayer, typed param sig) + `BindingStore` (selector→action, first-win/warn-skip) + FSM + loader, offline tests. Proves the generalized UI-action spine end-to-end. No editor wire-up, no GPU.
+- **Inc 2:** Full ActionStack (snapshot-fallback path, multi-op groups, redo edge cases) + LayerController driving RenderGraph node enable; `EditorApplication` re-expressed on AppFlow with a built-in binding set (live gate: click toggles + undo reverts a layer, PNG-verified).
+- **Inc 3:** Full binding param-source resolution (DOM/event `{name, source}` read at click time), Save/param-set actions, ModuleController register/activate.
 - **Inc 4:** PanelLayout — RmlUi-native dock/drag/resize + RenderTarget viewport panel + persist/restore.
-- **Inc 5+ (deferred, extension points reserved):** callback/native actions (modding), ModuleController hot-swap.
+- **Inc 5+ (deferred, extension points reserved):** **undertow migration** — retire `Undertow.Sim/UiActions/` into an authoring/serialization front-end over the AppFlow contract (undertow = consumer #2); callback/native actions (modding); ModuleController hot-swap.
 
 ---
 
@@ -48,7 +48,8 @@
 - Create: `VIXEN/libraries/AppFlow/include/AppFlowLoader.h` + `src/AppFlowLoader.cpp` — ingests `AppFlow.g.h` tables.
 - Create: `VIXEN/libraries/AppFlow/include/ActionStack.h` + `src/ActionStack.cpp` — dispatch, undo, redo, one group.
 - Create: `VIXEN/libraries/AppFlow/include/FlowStateMachine.h` + `src/FlowStateMachine.cpp` — guarded transition.
-- Create: `VIXEN/libraries/AppFlow/include/AppFlowRuntime.h` + `src/AppFlowRuntime.cpp` — owns loader+stack+fsm, holds the `MessageBus*`, the single façade.
+- Create: `VIXEN/libraries/AppFlow/include/BindingStore.h` + `src/BindingStore.cpp` — engine-owned generalization of undertow's `UiBindingTable` + `UiActionRegistry` resolution: register actions (name+param sig), resolve a binding (selector→action, validate params), `TryGetForSelector`. First-win, warn-skip-inert, never throws.
+- Create: `VIXEN/libraries/AppFlow/include/AppFlowRuntime.h` + `src/AppFlowRuntime.cpp` — owns loader+stack+fsm+bindings, holds the `MessageBus*`, the single façade.
 - Modify: `VIXEN/libraries/CMakeLists.txt` — `add_subdirectory(AppFlow)`.
 
 **Tests (offline, no GPU):**
@@ -56,6 +57,7 @@
 - Create: `VIXEN/libraries/AppFlow/tests/test_appflow_golden.cpp` — mirror-golden guard.
 - Create: `VIXEN/libraries/AppFlow/tests/test_action_stack.cpp` — dispatch/undo/redo/group.
 - Create: `VIXEN/libraries/AppFlow/tests/test_flow_state_machine.cpp` — transition accept/reject.
+- Create: `VIXEN/libraries/AppFlow/tests/test_binding_store.cpp` — resolve selector→action, unknown-action/bad-param warn-skip, first-win.
 - Create: `VIXEN/libraries/AppFlow/tests/test_appflow_loader.cpp` — good + malformed ingest.
 
 ---
@@ -90,6 +92,22 @@ namespace Vixen.AppFlow.Reference
     // Actions — members become FlowActionId (pinned, append-only).
     [FlowActionEnum]
     public enum FlowAction { ToggleLayer = 0 }
+
+    // Param wire types — mirror undertow's UiParamType (String/Int/Float/EntityRef),
+    // the generalized UI-action param contract (design §7c).
+    [FlowParamTypeEnum]
+    public enum FlowParamType { String = 0, Int = 1, Float = 2, EntityRef = 3 }
+
+    // Action param signature — ToggleLayer takes one Int param `layerIndex`. Declared
+    // so the typed-param path (validate + carry) is proven non-vacuously in Inc 1.
+    // Mirrors UiActionRegistry's UiParamSchema[] signature.
+    [FlowActionParams(nameof(FlowAction.ToggleLayer))]
+    public static class ToggleLayerParams
+    {
+        // name → type; the generator emits a param-schema table entry per action.
+        public const string Param0Name = "layerIndex";
+        public const int    Param0Type = (int)FlowParamType.Int;
+    }
 
     // Footprint struct for ToggleLayer — a GpuStruct-style serializable blob so the
     // runtime can snapshot it generically (Inc 2 uses this; Inc 1 emits it only).
@@ -136,12 +154,15 @@ git commit -m "feat(appflow): Inc1 reference vocabulary declaration (states, Tog
   - `enum class FlowStateId : uint16_t { Editing=0, Simulating=1, Paused=2 };`
   - `enum class FlowGuardId : uint16_t { DocumentValid=0 };`
   - `enum class FlowActionId : uint16_t { ToggleLayer=0 };`
+  - `enum class FlowParamType : uint8_t { String=0, Int=1, Float=2, EntityRef=3 };`  *(mirrors undertow `UiParamType`)*
   - `struct LayerState { uint32_t enabledMask; };`
-  - `struct AppFlowActionDecl { FlowActionId id; uint32_t footprintBytes; bool hasInvert; };`
+  - `struct FlowParamSchema { const char* name; FlowParamType type; };`  *(mirrors undertow `UiParamSchema`)*
+  - `struct AppFlowActionDecl { FlowActionId id; uint32_t footprintBytes; bool hasInvert; const FlowParamSchema* params; uint32_t paramCount; };`
   - `struct AppFlowTransition { FlowStateId from; FlowStateId to; FlowGuardId guard; };`
-  - `inline constexpr AppFlowActionDecl kActionDecls[] = { {FlowActionId::ToggleLayer, sizeof(LayerState), true} };`
+  - `inline constexpr FlowParamSchema kToggleLayerParams[] = { {"layerIndex", FlowParamType::Int} };`
+  - `inline constexpr AppFlowActionDecl kActionDecls[] = { {FlowActionId::ToggleLayer, sizeof(LayerState), true, kToggleLayerParams, 1} };`
   - `inline constexpr AppFlowTransition kTransitions[] = { {FlowStateId::Editing, FlowStateId::Simulating, FlowGuardId::DocumentValid} };`
-  - `struct AppFlowContainerView { static constexpr auto actions() { return kActionDecls; } static constexpr auto transitions() { return kTransitions; } };`
+  - `struct AppFlowContainerView { static constexpr std::span<const AppFlowActionDecl> actions() { return kActionDecls; } static constexpr std::span<const AppFlowTransition> transitions() { return kTransitions; } };`  *(`#include <span>`)*
   - `}` — plus the provenance banner line at top.
 
 - [ ] **Step 1: Run codegen to emit the header.**
@@ -183,6 +204,14 @@ TEST(AppFlowGolden, ActionDeclTablePresent) {
     const std::string h = readFile(APPFLOW_GENERATED_HEADER_PATH);
     EXPECT_NE(h.find("kActionDecls"), std::string::npos);
     EXPECT_NE(h.find("kTransitions"), std::string::npos);
+}
+
+TEST(AppFlowGolden, ParamSignatureEmitted) {
+    // The typed param signature (generalized from undertow UiParamSchema) is core, not deferred.
+    const std::string h = readFile(APPFLOW_GENERATED_HEADER_PATH);
+    EXPECT_NE(h.find("FlowParamType"), std::string::npos);
+    EXPECT_NE(h.find("kToggleLayerParams"), std::string::npos);
+    EXPECT_NE(h.find("\"layerIndex\""), std::string::npos);
 }
 ```
 
@@ -419,6 +448,94 @@ git commit -m "feat(appflow): ActionStack dispatch/undo/redo/grouping + tests"
 
 ---
 
+### Task 5b: `BindingStore` — generalized UI-action registry + binding resolution (undertow's `UiActionRegistry`/`UiBindingTable`, engine-owned)
+
+This is the walking-skeleton's proof that AppFlow **generalizes** undertow's UI-action system: register actions with a typed param signature, resolve a `selector → action` binding with param-name validation, warn-skip inert bindings, first-win. Semantics are copied verbatim from undertow's `UiActionRegistry`/`UiBindingTable`/`LoadUiBindingsInto` (design §7c) — this is a lift into the engine, not a redesign.
+
+**Files:**
+- Create: `VIXEN/libraries/AppFlow/include/BindingStore.h`
+- Create: `VIXEN/libraries/AppFlow/src/BindingStore.cpp`
+- Create: `VIXEN/libraries/AppFlow/tests/test_binding_store.cpp`
+
+**Interfaces:**
+- Consumes: `FlowActionId`, `FlowParamSchema`, `AppFlowActionDecl`, `AppFlowContainerView` (generated); `DispatchResult`.
+- Produces:
+  - `struct BoundAction { FlowActionId action; std::string on; std::vector<std::pair<std::string,std::string>> params; };` — a resolved binding (mirrors undertow `BoundUiAction`: action + event + `{name, source}` params).
+  - `class BindingStore` with:
+    - `void RegisterActions(std::span<const AppFlowActionDecl> decls);` — populate the action registry from the generated table (name via `FlowActionId`, param signature via each decl's `params`/`paramCount`).
+    - `struct BindingSpec { std::string selector; FlowActionId action; std::string on; std::vector<std::pair<std::string,std::string>> params; };` — an authored binding to resolve (the consumer-neutral form of a `ui_binding`).
+    - `bool AddBinding(const BindingSpec& spec, std::string& warn);` — undertow's `LoadUiBindingsInto` algorithm: verify `action` is registered (else `warn="unknown action … inert"`, return false); validate every param name against the action's signature (else `warn="unknown param … inert"`, return false); first-win `Add` under `selector` (already-present selector → return false, no overwrite). Never throws.
+    - `bool TryGetForSelector(const std::string& selector, BoundAction& out) const;` — mirror undertow `UiBindingTable::TryGetForSelector`.
+    - `size_t BindingCount() const;`
+
+- [ ] **Step 1: Write the failing test.**
+
+```cpp
+#include <gtest/gtest.h>
+#include "BindingStore.h"
+#include "generated/AppFlow.g.h"
+using namespace Vixen::AppFlow;
+using namespace Vixen::AppFlow::Generated;
+
+static BindingStore makeStore() {
+    BindingStore s;
+    s.RegisterActions(AppFlowContainerView::actions());
+    return s;
+}
+
+TEST(BindingStore, ResolvesSelectorToBoundAction) {
+    auto s = makeStore();
+    std::string warn;
+    BindingStore::BindingSpec spec{"#layer-0-toggle", FlowActionId::ToggleLayer, "click",
+                                   {{"layerIndex", "dom:attr:data-layer"}}};
+    EXPECT_TRUE(s.AddBinding(spec, warn));
+    EXPECT_TRUE(warn.empty());
+    BoundAction out;
+    ASSERT_TRUE(s.TryGetForSelector("#layer-0-toggle", out));
+    EXPECT_EQ(out.action, FlowActionId::ToggleLayer);
+    EXPECT_EQ(out.on, "click");
+    ASSERT_EQ(out.params.size(), 1u);
+    EXPECT_EQ(out.params[0].first, "layerIndex");
+}
+
+TEST(BindingStore, UnknownParamWarnsAndSkips) {
+    auto s = makeStore();
+    std::string warn;
+    BindingStore::BindingSpec spec{"#x", FlowActionId::ToggleLayer, "click",
+                                   {{"notAParam", "dom:attr:foo"}}};
+    EXPECT_FALSE(s.AddBinding(spec, warn));
+    EXPECT_NE(warn.find("unknown param"), std::string::npos);
+    BoundAction out;
+    EXPECT_FALSE(s.TryGetForSelector("#x", out));   // inert — never landed
+}
+
+TEST(BindingStore, FirstWinKeepsExisting) {
+    auto s = makeStore();
+    std::string warn;
+    BindingStore::BindingSpec a{"#sel", FlowActionId::ToggleLayer, "click", {}};
+    BindingStore::BindingSpec b{"#sel", FlowActionId::ToggleLayer, "dblclick", {}};
+    EXPECT_TRUE(s.AddBinding(a, warn));
+    EXPECT_FALSE(s.AddBinding(b, warn));            // selector taken → first-win, no overwrite
+    BoundAction out; ASSERT_TRUE(s.TryGetForSelector("#sel", out));
+    EXPECT_EQ(out.on, "click");                     // the first binding survives
+}
+```
+
+- [ ] **Step 2: Run to verify it fails.** Run: `ctest -R BindingStore` — Expected: FAIL (undefined `BindingStore`).
+
+- [ ] **Step 3: Write the implementation.** Registry: `std::unordered_map<uint16_t /*FlowActionId*/, std::vector<FlowParamSchema>>` filled from the decls. Bindings: `std::unordered_map<std::string, BoundAction>`. `AddBinding` follows undertow's algorithm exactly (registered-action check → param-name validation loop over the signature → first-win insert). Param validation: every spec param name must appear in the action's schema (undertow `ValidateParams`). Empty/duplicate selector → false. Never throw.
+
+- [ ] **Step 4: Run to verify it passes.** Run: `ctest -R BindingStore` — Expected: 3 PASS.
+
+- [ ] **Step 5: Commit.**
+
+```bash
+git add VIXEN/libraries/AppFlow/include/BindingStore.h VIXEN/libraries/AppFlow/src/BindingStore.cpp VIXEN/libraries/AppFlow/tests/test_binding_store.cpp
+git commit -m "feat(appflow): BindingStore — generalized UI-action registry + resolution (from undertow UiBindingTable)"
+```
+
+---
+
 ### Task 6: `AppFlowLoader` + `AppFlowRuntime` — ingest the mirror + façade that broadcasts
 
 **Files:**
@@ -427,10 +544,10 @@ git commit -m "feat(appflow): ActionStack dispatch/undo/redo/grouping + tests"
 - Create: `VIXEN/libraries/AppFlow/tests/test_appflow_loader.cpp`
 
 **Interfaces:**
-- Consumes: `AppFlowContainerView`, generated enums; `FlowStateMachine`, `ActionStack`; `LoadResult`/`DispatchResult`; EventBus `MessageBus`, `AppFlowChangedEvent`.
+- Consumes: `AppFlowContainerView`, generated enums; `FlowStateMachine`, `ActionStack`, `BindingStore` (Task 5b); `LoadResult`/`DispatchResult`; EventBus `MessageBus`, `AppFlowChangedEvent`.
 - Produces:
-  - `struct AppFlowLoader { static LoadResult Load(const AppFlowContainerView& view, FlowStateMachine& fsm, ActionStack& stack); };` — validates (non-empty tables; every transition's from/to are valid enum values; every action id appears in the enum) and loads both. Returns `EmptyArtifact` if action table empty, `BadTransitionRef` on an out-of-range state, else `Ok`.
-  - `class AppFlowRuntime` — owns a `FlowStateMachine` + `ActionStack`, holds a `MessageBus* bus_` (nullable), `SenderID sender_`. Methods: `LoadResult Load();` (uses the generated `AppFlowContainerView`), `DispatchResult RequestState(FlowStateId);` (delegates to fsm, on Ok publishes `AppFlowChangedEvent{StateChanged}`), `DispatchResult DispatchAction(FlowActionId, ActionStack::ApplyFn);` (delegates, on Ok publishes `ActionApplied`), `Undo()`/`Redo()` (publish `ActionUndone`/`ActionRedone`). All publishes are `if (bus_)`-guarded and `noexcept`-safe (no throw across the boundary).
+  - `struct AppFlowLoader { static LoadResult Load(const AppFlowContainerView& view, FlowStateMachine& fsm, ActionStack& stack, BindingStore& bindings); };` — validates (non-empty tables; every transition's from/to are valid enum values; every action id appears in the enum) and loads all three (fsm transitions, stack actions, `bindings.RegisterActions(view.actions())`). Returns `EmptyArtifact` if action table empty, `BadTransitionRef` on an out-of-range state, else `Ok`.
+  - `class AppFlowRuntime` — owns a `FlowStateMachine` + `ActionStack` + `BindingStore`, holds a `MessageBus* bus_` (nullable), `SenderID sender_`. Methods: `LoadResult Load();` (uses the generated `AppFlowContainerView`), `DispatchResult RequestState(FlowStateId);` (delegates to fsm, on Ok publishes `AppFlowChangedEvent{StateChanged}`), `DispatchResult DispatchAction(FlowActionId, ActionStack::ApplyFn);` (delegates, on Ok publishes `ActionApplied`), **`DispatchResult DispatchBySelector(const std::string& selector, ActionStack::ApplyFn);`** (the end-to-end spine: `bindings_.TryGetForSelector` → dispatch the bound action through the stack → publish; miss → `RejectedByState`), `bool AddBinding(const BindingStore::BindingSpec&, std::string& warn);` (pass-through so tests/consumers author bindings), `Undo()`/`Redo()` (publish `ActionUndone`/`ActionRedone`). All publishes are `if (bus_)`-guarded and `noexcept`-safe (no throw across the boundary).
 
 - [ ] **Step 1: Write the failing test.**
 
@@ -444,8 +561,8 @@ using namespace Vixen::AppFlow;
 using namespace Vixen::AppFlow::Generated;
 
 TEST(AppFlowLoader, LoadsGeneratedViewOk) {
-    FlowStateMachine fsm; ActionStack st;
-    EXPECT_EQ(AppFlowLoader::Load(AppFlowContainerView{}, fsm, st), LoadResult::Ok);
+    FlowStateMachine fsm; ActionStack st; BindingStore bindings;
+    EXPECT_EQ(AppFlowLoader::Load(AppFlowContainerView{}, fsm, st, bindings), LoadResult::Ok);
 }
 
 TEST(AppFlowRuntime, StateChangePublishesEvent) {
@@ -458,8 +575,25 @@ TEST(AppFlowRuntime, StateChangePublishesEvent) {
     rt.SetGuardResult(FlowGuardId::DocumentValid, true);
     rt.SetCurrent(FlowStateId::Editing);
     EXPECT_EQ(rt.RequestState(FlowStateId::Simulating), DispatchResult::Ok);
-    bus.ProcessQueue();          // dispatch queued events (see MessageBus API)
-    EXPECT_EQ(seen, 1);
+    EXPECT_EQ(seen, 1);          // PublishImmediate — no drain needed (see Step 1 note)
+}
+
+// THE walking-skeleton spine, end to end: a UI selector resolves (via the generalized
+// binding store) to a bound action, which dispatches undoably through the stack.
+TEST(AppFlowRuntime, DispatchBySelectorRunsBoundActionUndoably) {
+    AppFlowRuntime rt(nullptr, /*sender*/1);
+    ASSERT_EQ(rt.Load(), LoadResult::Ok);
+    std::string warn;
+    ASSERT_TRUE(rt.AddBinding(
+        {"#layer-0-toggle", FlowActionId::ToggleLayer, "click",
+         {{"layerIndex", "dom:attr:data-layer"}}}, warn));
+    int value = 0;
+    auto flip = [&](bool fwd){ value += fwd ? 1 : -1; };
+    EXPECT_EQ(rt.DispatchBySelector("#layer-0-toggle", flip), DispatchResult::Ok);
+    EXPECT_EQ(value, 1);
+    EXPECT_EQ(rt.Undo(), DispatchResult::Ok);
+    EXPECT_EQ(value, 0);
+    EXPECT_EQ(rt.DispatchBySelector("#no-binding", flip), DispatchResult::RejectedByState);
 }
 ```
 
@@ -467,15 +601,15 @@ TEST(AppFlowRuntime, StateChangePublishesEvent) {
 
 - [ ] **Step 2: Run to verify it fails.** Run: `ctest -R AppFlow` — Expected: FAIL (undefined `AppFlowLoader`/`AppFlowRuntime`).
 
-- [ ] **Step 3: Write the implementation.** `AppFlowLoader::Load` validates + calls `fsm.LoadTransitions` and `stack.LoadActions`. `AppFlowRuntime` ctor takes `(MessageBus*, SenderID)`; `Load()` constructs an `AppFlowContainerView` and calls the loader; the delegating methods publish via `bus_->PublishImmediate(AppFlowChangedEvent{...})` guarded by `if (bus_)`. Expose `SetGuardResult`/`SetCurrent` pass-throughs to the fsm for the test.
+- [ ] **Step 3: Write the implementation.** `AppFlowLoader::Load` validates + calls `fsm.LoadTransitions`, `stack.LoadActions`, and `bindings.RegisterActions(view.actions())`. `AppFlowRuntime` ctor takes `(MessageBus*, SenderID)` and owns a `FlowStateMachine` + `ActionStack` + `BindingStore`; `Load()` constructs an `AppFlowContainerView` and calls the loader with all three; `AddBinding` forwards to the store; `DispatchBySelector` does `bindings_.TryGetForSelector` → on hit `stack_.Dispatch(bound.action, apply)` + publish `ActionApplied`, on miss returns `RejectedByState`; the delegating methods publish via `bus_->PublishImmediate(AppFlowChangedEvent{...})` guarded by `if (bus_)`. Expose `SetGuardResult`/`SetCurrent` pass-throughs to the fsm for the test.
 
-- [ ] **Step 4: Run to verify it passes.** Run: `ctest -R AppFlow` — Expected: PASS (loader + runtime tests).
+- [ ] **Step 4: Run to verify it passes.** Run: `ctest -R AppFlow` — Expected: PASS (loader + runtime tests incl. `DispatchBySelectorRunsBoundActionUndoably`).
 
 - [ ] **Step 5: Commit.**
 
 ```bash
 git add VIXEN/libraries/AppFlow/include/AppFlowLoader.h VIXEN/libraries/AppFlow/src/AppFlowLoader.cpp VIXEN/libraries/AppFlow/include/AppFlowRuntime.h VIXEN/libraries/AppFlow/src/AppFlowRuntime.cpp VIXEN/libraries/AppFlow/tests/test_appflow_loader.cpp
-git commit -m "feat(appflow): AppFlowLoader ingest + AppFlowRuntime façade with event broadcast"
+git commit -m "feat(appflow): AppFlowLoader ingest + AppFlowRuntime façade (DispatchBySelector spine) with event broadcast"
 ```
 
 ---
@@ -504,12 +638,14 @@ set(APPFLOW_HEADERS
     include/AppFlowLoader.h
     include/ActionStack.h
     include/FlowStateMachine.h
+    include/BindingStore.h
     include/AppFlowRuntime.h
 )
 set(APPFLOW_SOURCES
     src/AppFlowLoader.cpp
     src/ActionStack.cpp
     src/FlowStateMachine.cpp
+    src/BindingStore.cpp
     src/AppFlowRuntime.cpp
 )
 add_library(AppFlow STATIC ${APPFLOW_HEADERS} ${APPFLOW_SOURCES})
@@ -533,7 +669,7 @@ project(AppFlowTests)
 
 set(APPFLOW_GEN_HDR "${CMAKE_CURRENT_SOURCE_DIR}/../include/generated/AppFlow.g.h")
 
-foreach(t test_appflow_golden test_action_stack test_flow_state_machine test_appflow_loader)
+foreach(t test_appflow_golden test_action_stack test_flow_state_machine test_binding_store test_appflow_loader)
     add_executable(${t} ${t}.cpp)
     target_link_libraries(${t} PRIVATE GTest::gtest_main AppFlow)
     set_target_properties(${t} PROPERTIES FOLDER "Tests/AppFlow Tests")
@@ -544,7 +680,7 @@ target_compile_definitions(test_appflow_golden PRIVATE
     APPFLOW_GENERATED_HEADER_PATH="${APPFLOW_GEN_HDR}")
 
 if(COMMAND gtest_discover_tests)
-    foreach(t test_appflow_golden test_action_stack test_flow_state_machine test_appflow_loader)
+    foreach(t test_appflow_golden test_action_stack test_flow_state_machine test_binding_store test_appflow_loader)
         gtest_discover_tests(${t})
     endforeach()
 endif()
@@ -555,13 +691,13 @@ endif()
 - [ ] **Step 4: Configure + build.**
 
 Run (from the VIXEN build dir, per project build convention):
-`cmake --build build --target AppFlow test_appflow_golden test_action_stack test_flow_state_machine test_appflow_loader`
+`cmake --build build --target AppFlow test_appflow_golden test_action_stack test_flow_state_machine test_binding_store test_appflow_loader`
 Expected: all targets compile, 0 errors.
 
 - [ ] **Step 5: Run the whole Inc-1 suite.**
 
-Run: `ctest --test-dir build -R "AppFlow|ActionStack|FlowStateMachine"` (and `test_appflow_golden`)
-Expected: **all tests PASS** — golden (3) + FlowStateMachine (3) + ActionStack (4) + loader/runtime (2).
+Run: `ctest --test-dir build -R "AppFlow|ActionStack|FlowStateMachine|BindingStore"` (and `test_appflow_golden`)
+Expected: **all tests PASS** — golden (4) + FlowStateMachine (3) + ActionStack (4) + BindingStore (3) + loader/runtime (3).
 
 - [ ] **Step 6: Commit.**
 
@@ -578,7 +714,7 @@ git commit -m "build(appflow): CMake library + tests wired into the tree; Inc1 s
 - Modify: `VIXEN/Vixen-Docs/01-Architecture/AppFlow-Framework-Inc1-Plan-2026-07.md` (mark Inc-1 DONE + record the codegen-tool decision from Task 1)
 - Modify: `VIXEN/Vixen-Docs/04-Development/Known-Issues.md` (if any Inc-1 gap surfaced — else skip)
 
-- [ ] **Step 1: Full-suite verification from fresh output.** Re-run `ctest --test-dir build -R "AppFlow|ActionStack|FlowStateMachine"` and paste the pass count into the plan's status line. (Per the *live-verification-authoritative* rule; Inc-1 is offline so ctest is the authority — no GPU gate until Inc 2.)
+- [ ] **Step 1: Full-suite verification from fresh output.** Re-run `ctest --test-dir build -R "AppFlow|ActionStack|FlowStateMachine|BindingStore"` and paste the pass count into the plan's status line. (Per the *live-verification-authoritative* rule; Inc-1 is offline so ctest is the authority — no GPU gate until Inc 2.)
 
 - [ ] **Step 2: Record the codegen-tool decision** (VIXEN `codegen/` vs. Yeroket generator) as a one-line note at the top of this plan and in the design doc §3, so Inc 2 doesn't re-litigate it.
 
@@ -594,18 +730,20 @@ git commit -m "docs(appflow): Inc1 walking skeleton COMPLETE — suite green, co
 ## Self-Review
 
 **Spec coverage (design §3–§8 vs. Inc-1 scope):**
-- Three-tier contract → Tasks 1–2 (declare + generate + golden). ✓
+- Three-tier contract, incl. typed param signature (§7c core) → Tasks 1–2 (declare + generate + golden `ParamSignatureEmitted`). ✓
+- UI-action generalization (§7c): engine-owned action registry + `BindingStore` (from undertow `UiActionRegistry`/`UiBindingTable`) + resolution algorithm → Task 5b, with the end-to-end `DispatchBySelector` spine in Task 6. ✓
 - ActionStack (inverse path + grouping) → Task 5; snapshot-fallback path is explicitly Inc 2 (footprint struct is emitted in Inc 1, unused). ✓ (deferral is intentional + documented)
 - FlowStateMachine → Task 4. ✓
 - LayerController / ModuleController / PanelLayout → Inc 2–4 per the roadmap (not Inc 1). ✓ (intentional)
+- undertow migration (§8 deferred) → Inc 5+ roadmap; Inc 1 shapes the contract for it (param sig + BindingStore) but does not touch undertow. ✓ (intentional)
 - EventBus broadcast → Task 3 + Task 6. ✓
-- Error model (typed results, no throw) → Task 3 enums + Task 6 loader. ✓
-- Testing gates (golden, offline units, loader) → Tasks 2/4/5/6/7; live gate is Inc 2. ✓
-- UI-action consolidation (§7b) → Inc 2 (editor rewire); Inc 1 proves the action path with a non-UI dispatch callback. ✓
+- Error model (typed results, no throw) → Task 3 enums + Task 6 loader; BindingStore warn-skip-inert → Task 5b. ✓
+- Testing gates (golden, offline units, loader, binding resolution) → Tasks 2/4/5/5b/6/7; live gate is Inc 2. ✓
+- UI-action consolidation (§7b) → Inc 1 proves the selector→binding→action→undo spine end-to-end (Task 6 `DispatchBySelectorRunsBoundActionUndoably`); editor rewire is Inc 2. ✓
 
-**Placeholder scan:** No TBD/TODO. Two flagged confirmations (codegen tool in Task 1; MessageBus drain method in Task 6) are explicit decisions with a stated default, not placeholders.
+**Placeholder scan:** No TBD/TODO. Two flagged confirmations (codegen tool in Task 1; MessageBus drain method in Task 6 — defaulted to `PublishImmediate`) are explicit decisions with a stated default, not placeholders.
 
-**Type consistency:** `FlowStateId`/`FlowActionId`/`FlowGuardId`, `AppFlowActionDecl`/`AppFlowTransition`/`AppFlowContainerView`, `LoadResult`/`DispatchResult`, `ActionStack::ApplyFn`, `AppFlowChangedEvent::Kind` are used identically across Tasks 2–7. `AppFlowContainerView::actions()/transitions()` returns a span with `.data()/.size()` — used consistently in Tasks 4/5/6 (add the span accessor to the generated header in Task 2). ✓
+**Type consistency:** `FlowStateId`/`FlowActionId`/`FlowGuardId`/`FlowParamType`, `FlowParamSchema`, `AppFlowActionDecl`/`AppFlowTransition`/`AppFlowContainerView`, `LoadResult`/`DispatchResult`, `ActionStack::ApplyFn`, `BindingStore::BindingSpec`/`BoundAction`, `AppFlowChangedEvent::Kind` are used identically across Tasks 2–7. `AppFlowContainerView::actions()/transitions()` returns `std::span` with `.data()/.size()` — used consistently in Tasks 4/5/5b/6 (span accessor added to the generated header in Task 2). `AppFlowLoader::Load` takes `(view, fsm, stack, bindings)` consistently in Tasks 5b/6. ✓
 
 ---
 

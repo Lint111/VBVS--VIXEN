@@ -20,11 +20,22 @@ There is today **no** command/action abstraction, **no** undo/redo, **no** app-f
 and **no** generic panel/layout system. The only durable-state-with-modifiers precedent is
 `SelectionSet` (Replace/Add/Toggle/Range), and it is scoped strictly to selection.
 
+**The one system that DOES exist lives in the wrong place.** undertow has a real, working UI-action
+system — `Undertow.Sim/UiActions/` (`UiActionRegistry`, `ui_binding` UTDL, `UiBindingTable`): named,
+typed-param UI actions bound to RML selectors, resolved + validated at content load, moddable. But it
+is **undertow-specific** — an engine-level concern (UI actions binding to render elements) trapped
+inside a game's sim library, and it stops at *resolution* (its handlers are placeholders; firing +
+undo were deferred as "later"). It is an outlier: exactly the kind of consumer-owned mechanism the
+project rule *"VIXEN owns the content format, not the consumer"* says belongs in the engine.
+
 **Goal:** a framework for app-flow management — reversible actions with grouping, an app-flow state
-machine, layer control, module control, and panel/layout composition — that **external consumers
-latch into** through VIXEN's already-proven cross-consumer contract mechanism (the Yeroket
-single-source codegen used for SDF op-codes and `[GpuStruct]` config), so the UI system interacts
-with app state through one seam instead of N bespoke wirings.
+machine, layer control, module control, and panel/layout composition — built by **generalizing
+undertow's UI-action system into an engine-owned contract** and completing the half it left undone
+(firing, undo, grouping, reversal). Consumers **latch into** it through VIXEN's already-proven
+cross-consumer contract mechanism (the Yeroket single-source codegen used for SDF op-codes and
+`[GpuStruct]` config), so the UI system interacts with app state through one seam instead of N bespoke
+wirings. **undertow becomes consumer #1 of a general system — not the owner of a bespoke one** — the
+same relationship it already has to the SDF recipe format and the config-struct codegen.
 
 ---
 
@@ -158,9 +169,10 @@ layers, ModuleController modules, PanelLayout panels). One ingest, mirroring `Re
 
 ```
 UI click (RmlUi #layer-0-toggle)
-  → UISelectionProviderNode drains element id                          [EXISTING]
-  → AppFlowInput maps "#layer-0-toggle" → FlowActionId::ToggleLayer     [NEW: table lookup, no string parse]
-  → ActionStack.Begin(group) ... Dispatch(ToggleLayer, args) ... Commit()
+  → UISelectionProviderNode drains element selector                     [EXISTING]
+  → BindingStore.TryGetForSelector("#layer-0-toggle") → bound action + params   [GENERALIZED from undertow UiBindingTable]
+       (bindings were resolved at load: name→action key, param names validated, first-win — undertow's LoadUiBindingsInto algorithm)
+  → ActionStack.Begin(group) ... Dispatch(action, params) ... Commit()   [THE half undertow deferred — firing]
        • has invert-opseq?  → record forward + inverse ops on the stack
        • no invert?         → snapshot footprint(LayerState) before, apply, snapshot after
        • apply = execute the action's opcode/state-delta on the declared state
@@ -168,6 +180,12 @@ UI click (RmlUi #layer-0-toggle)
   → MessageBus.Publish(AppFlowChangedEvent{changed: LayerState, group})  [EXISTING bus]
   → RmlUi HUD + undertow react (same as SelectionChangedEvent today)      [EXISTING pattern]
 ```
+
+The selector→binding→action resolution is undertow's, generalized: `BindingStore` is the engine-owned
+`UiBindingTable`; the load-time resolution is `LoadUiBindingsInto`. `params` carry through the
+declared param signature (undertow's `UiParamSchema[]` → the `[FlowAction]` param contract). VIXEN's
+own editor authors a minimal built-in binding set; undertow authors via UTDL `ui_binding` (a
+serialization of the same contract) — same store, same resolution, different authoring front-ends.
 
 **Undo/redo:** `ActionStack.Undo()` pops the last **group** (one gesture = one unit), walks its ops
 backward (run inverse-opseq, or restore pre-snapshot), republishes `AppFlowChangedEvent`. Redo
@@ -231,9 +249,11 @@ for 4–5.
 
 A primary motivation is consolidating the editor's hand-wired UI interactions
 (`EditorApplication::Update`'s `DrainClickedElementId`→`ParseLayerToggleId`→`ToggleLayer`, the raw
-`glfwGetKey(S)` save poll, the `ConsumeDirty` re-apply) into declared `FlowAction`s. The seam is
-`AppFlowInput`: a **declared mapping table** (`"#layer-0-toggle" → FlowActionId::ToggleLayer`,
-`KEY_S → FlowActionId::Save`) replacing the bespoke per-interaction branches.
+`glfwGetKey(S)` save poll, the `ConsumeDirty` re-apply) into declared `FlowAction`s dispatched through
+the generalized binding store (§7c). The seam is `BindingStore` (the engine-owned generalization of
+undertow's `UiBindingTable`): a resolved `selector/event → action + params` mapping replacing the
+bespoke per-interaction branches — VIXEN's editor authors a minimal built-in binding set; undertow
+authors via UTDL `ui_binding`.
 
 **Boundary — what consolidates vs. what does not:**
 - **Consolidates:** the *interaction→action* wiring. UI actions become declared `FlowAction`s dispatched
@@ -249,57 +269,73 @@ executes them undoably.** Consequence for Inc 1: the editor's layer-toggle is th
 proof action, so UI-action consolidation is validated by construction in Inc 1 (not a later increment)
 and completed (Save, param-set, …) as the vocabulary grows.
 
-## 7c. Prior art — undertow's existing UI-action layer (alignment)
+## 7c. Generalizing undertow's UI-action system into AppFlow
 
-undertow already ships a working UI-action layer (`Undertow.Sim/UiActions/`). AppFlow must **compose
-with it, not duplicate it**:
+AppFlow's UI-action layer **is** the generalization of undertow's `Undertow.Sim/UiActions/`. This is
+not "compose beside undertow" — it is "lift undertow's proven mechanism up into the engine, complete
+the half it deferred, and make undertow consumer #1." Everything undertow got right is preserved
+field-for-field; the framework adds firing + reversal.
 
-- **`UiActionRegistry`** — source of truth for "what UI actions exist", keyed by **namespaced name**
-  (`core:move-haul`) with a **typed param signature** (`UiParamSchema{name, UiParamType}`) + a handler
-  delegate. Hand-registered, not attribute-declared.
-- **`ui_binding`** (authored UTDL doc, parsed by `UiBindingParser`) — wires an **RML selector** → an
-  action **name** + `on` event (default `click`) + an ordered `{name, source}` param list read from the
-  DOM at click time.
-- **`UiBindingTable`** — resolved/validated bindings keyed by selector; unknown-action/bad-param
-  bindings are warn-skipped (inert). First-win, idempotent, never throws.
-- **`[Action]`** (separate seam) — the sim/faction AI-scored action system. NOT a UI/editor command.
+**Field-by-field generalization** (undertow's outlier → AppFlow's engine-owned equivalent):
 
-**Three consequences for AppFlow:**
+| undertow (`Undertow.Sim/UiActions/`) | AppFlow (engine-owned) | Change |
+|---|---|---|
+| `UiActionRegistry` — actions by namespaced name + `UiParamSchema[]` signature + handler delegate; hand-registered | AppFlow **action registry** — actions declared via the codegen contract, name + **typed param signature** carried in `AppFlow.g.h` | hand-registered → **declared** (any consumer, not just sim) |
+| `UiParamType { String, Int, Float, EntityRef }` + `UiParamSchema{name,type}` | AppFlow **param signature** on `[FlowAction]` | promoted to core contract |
+| `ui_binding` UTDL (`element`=RML selector, `on`=event, `action`=name, ordered `{name,source}` params) | AppFlow **binding format** — engine-owned, one serialization for all consumers; undertow's `ui_binding` becomes a serialization *of* it | format moves VIXEN-side; UTDL authoring preserved |
+| `UiBindingTable` (selector → `BoundUiAction`; first-win; warn-skip inert; never throws) | AppFlow **resolved-binding store** — **same semantics kept verbatim** | none — adopt as-is |
+| `ContentLoader.LoadUiBindingsInto` (resolve name→key, `ValidateParams`, first-win `Add`, warn-skip) | AppFlow **loader resolution pipeline** — same algorithm | generalized off `sim`, onto the registry |
+| Handlers = fire-and-forget placeholders; "firing is later" | **`ActionStack`** — firing + undo + grouping + reversal | **THE half AppFlow adds** |
+| `[Action]` (AI/faction, IAUS-scored) | *unchanged, separate* | NOT a UI/editor command — stays in the sim |
 
-1. **AppFlow is the reversible *execution* layer beneath `ui_binding`, not a replacement for it.**
-   undertow already solved "RML selector → named action + typed params" as authored data (better than a
-   compiled mapping table — it's moddable UTDL). What that layer LACKS is undo/grouping/reversal — its
-   handlers are fire-and-forget delegates (the code notes handlers are placeholders, firing is "later").
-   The seam: **`ui_binding` resolves selector→action+params → dispatches into AppFlow's `ActionStack`**,
-   which supplies reversibility + grouping. AppFlow owns undo/state; undertow's layer owns
-   authoring/binding/params. For undertow, `AppFlowInput` is *undertow's `UiBindingTable`* — AppFlow
-   consumes its resolved bindings rather than shipping a rival table. (VIXEN's own editor, lacking UTDL,
-   uses a minimal built-in mapping — but the contract is the same: selector/event → action + params.)
+**The resolution algorithm AppFlow adopts wholesale** (undertow's `LoadUiBindingsInto`, proven
+deterministic / never-throws / mod-friendly):
 
-2. **The action contract must carry a typed param signature (like `UiParamSchema[]`), not bare enum ids.**
-   Inc-1's param-less `ToggleLayer` enum is a skeleton; the real `[FlowAction]` grows a declared param
-   signature so a `ui_binding`'s `{name, source}` params flow through generically. Deferred to the
-   increment that wires undertow (not Inc 1), but the contract is shaped for it now.
+```
+for each authored binding:
+  resolve action name → key against the registry     → warn "unknown action, inert" + skip on miss
+  validate param names against the action's signature → warn "unknown param, inert"  + skip on miss
+  add (element-selector → bound action + params) to the table, FIRST-WIN (idempotent re-registration)
+```
 
-3. **Three distinct "action" concepts stay distinct and compose:** `[Action]` (AI/sim), `UiAction`
-   (UI→command binding), `FlowAction` (app-flow/editor command **with reversal**). A `UiAction` handler
-   MAY dispatch a `FlowAction` (to gain undo); a `FlowAction` MAY emit a sim command. They compose; they
-   never merge.
+**What AppFlow completes (undertow's deferred half):** the click-time consume seam does not exist in
+undertow — its pipeline stops at a resolved `UiBindingTable`; nothing fires. AppFlow supplies:
+selector-hit → `TryGetForSelector` → dispatch the bound action **through `ActionStack`** (so it is
+undoable + groupable) → publish `AppFlowChangedEvent`.
+
+**Consequences:**
+
+1. **The typed param signature is core to the `[FlowAction]` contract from the start** (not a deferred
+   refinement) — because a binding's `{name, source}` params must validate + flow through generically,
+   exactly as `UiActionRegistry.ValidateParams` does today.
+2. **undertow migrates from owning to consuming:** `Undertow.Sim/UiActions/` is retired into an
+   authoring/serialization front-end over the AppFlow contract; the registry + table + resolution move
+   engine-side. (Migration is a later increment — see the roadmap — but the contract is shaped for it
+   now so undertow is a clean consumer, not a special case.)
+3. **`[Action]` (AI/sim) stays distinct and composes:** an AppFlow `FlowAction` MAY emit a sim command;
+   they never merge. Two concepts remain — AI-scored sim actions vs. reversible UI/app-flow actions.
 
 ## 8. Scope — V1 vs. deferred
 
 **V1 (this program's first spec + plan):**
-- The contract: `[FlowState]`/`[FlowTransition]`/`[FlowAction]`/`[FlowLayer]`/`[FlowModule]`/`[FlowPanel]`
-  attributes (Tier 2), Yeroket emitter → `AppFlow.g.h` (Tier 1), the reader.
+- The contract: `[FlowState]`/`[FlowTransition]`/`[FlowAction]` **(with a typed param signature —
+  core, per §7c)** /`[FlowLayer]`/`[FlowModule]`/`[FlowPanel]` attributes (Tier 2), emitter →
+  `AppFlow.g.h` (Tier 1), the reader.
 - VIXEN `AppFlow` runtime: ActionStack (inverse + snapshot-fallback + grouping), FlowStateMachine,
-  LayerController, `AppFlowLoader`, `AppFlowChangedEvent` wiring, `AppFlowInput` mapping.
+  LayerController, `AppFlowLoader`, `AppFlowChangedEvent` wiring.
+- **UI-action generalization (§7c):** the engine-owned action registry (name + param signature),
+  `BindingStore` (generalized `UiBindingTable` — first-win, warn-skip-inert), and the load-time
+  resolution pipeline (generalized `LoadUiBindingsInto`).
 - ModuleController **register/activate** (swap may slip — see below).
 - PanelLayout: RmlUi-native dock/drag/resize + RenderTarget viewport panel + persist/restore.
 - `EditorApplication` re-expressed on the framework as the live proof.
 
 **Deferred (architect now, build later — append-only extension points reserved in V1):**
+- **undertow migration** — retire `Undertow.Sim/UiActions/` into an authoring/serialization front-end
+  over the AppFlow contract (undertow's `ui_binding` UTDL → an AppFlow-binding serialization). undertow
+  becomes consumer #2; its cross-repo pin + C-ABI wiring make this its own increment (see roadmap Inc 3+).
 - **Callback / native actions** (`[FlowAction(native: true)]`) — the modding escape hatch.
-- **ModuleController hot-swap** of large modules (register/activate ships in V1; swap may be Inc 2).
+- **ModuleController hot-swap** of large modules (register/activate ships in V1; swap may be a later inc).
 - Anything requiring the callback boundary (arbitrary consumer logic in-engine).
 
 ---
