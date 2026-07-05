@@ -92,6 +92,17 @@ public:
     /// An empty rml keeps the file-path fallback (dev/demo path via RML_DOCUMENT_PATH).
     void SetDocumentSource(const std::string& rml, const std::string& rcss);
 
+    /// Debug-only side door (spec 2026-07-05 f12-debug-overlay): sets the authored hidden
+    /// #debug-overlay element's inner RML directly, bypassing the schema-generated SetHudView path
+    /// entirely — this is host-injected debug text, not authored game content. No-op if the document
+    /// doesn't exist yet or has no such element (e.g. an older/modded HUD without it).
+    void SetDebugText(const std::string& text);
+
+    /// Toggle the #debug-overlay element's visibility (display: block / none), independent of
+    /// SetDebugText's content — lets F12 take effect instantly even between the 30-frame windows
+    /// SetDebugText's content refreshes on. No-op under the same conditions as SetDebugText.
+    void SetDebugOverlayVisible(bool visible);
+
 protected:
     void SetupImpl(TypedSetupContext& ctx) override;
     void CompileImpl(TypedCompileContext& ctx) override;

@@ -443,6 +443,20 @@ void UIRenderNode::SetDocumentSource(const std::string& rml, const std::string& 
     if (initialized_) MarkNeedsRecompile();   // re-load on the next compile so the doc swaps in
 }
 
+void UIRenderNode::SetDebugText(const std::string& text) {
+    if (!document_) return;
+    Rml::Element* overlay = document_->GetElementById("debug-overlay");
+    if (!overlay) return;
+    overlay->SetInnerRML(text.c_str());
+}
+
+void UIRenderNode::SetDebugOverlayVisible(bool visible) {
+    if (!document_) return;
+    Rml::Element* overlay = document_->GetElementById("debug-overlay");
+    if (!overlay) return;
+    overlay->SetProperty("display", visible ? "block" : "none");
+}
+
 void UIRenderNode::CleanupImpl(TypedCleanupContext& ctx) {
     if (device_ == VK_NULL_HANDLE) return;
 

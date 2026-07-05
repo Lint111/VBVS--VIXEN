@@ -379,3 +379,16 @@ TEST(UIRenderNodeInspect, SetHudViewCopiesInspectRow) {
     node.SetHudView(0, 0, 0, 0, {}, {}, cleared);
     EXPECT_FALSE(node.InspectForTest().selected);
 }
+
+// Verify SetDebugText / SetDebugOverlayVisible are safe no-ops before the document exists (spec
+// 2026-07-05 f12-debug-overlay): the node is never Compile()'d here, so document_ stays null —
+// exactly the state these methods must tolerate for an older/modded HUD with no #debug-overlay.
+TEST(UIRenderNodeDebugOverlay, SetDebugTextAndVisibleNoopWithoutDocument) {
+    Vixen::RenderGraph::UIRenderNodeType type;
+    Vixen::RenderGraph::UIRenderNode node("debug_overlay_test", &type);
+
+    // Must not crash with no document at all.
+    node.SetDebugText("total=12.3ms sim=0.1ms update=0.2ms render=12.0ms fps=81.3");
+    node.SetDebugOverlayVisible(true);
+    node.SetDebugOverlayVisible(false);
+}
