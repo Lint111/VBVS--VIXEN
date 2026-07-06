@@ -267,6 +267,38 @@ Task 10's existing bullet list, not rewrite the task.
   narrowing-FOV-decreases-level direction assertion (1 < 6). Level convention matches
   `LaineKarrasOctree.h`'s `ESVOTraversalState::scale` (0=finest/leaf, root at `ESVO_MAX_SCALE`).
 
+- **M4b DONE (2026-07-06):** Frustum containment + hysteresis: no existing wired frustum test
+  (`SVOStreaming.h`'s `isBrickInFrustum` is declared-but-never-defined, no callers anywhere) — built new
+  `BuildFrustum`/`SphereIntersectsFrustum` (`libraries/SVO/include/FrustumCull.h`) from camera basis
+  vectors, with `kResidencyFrustumHysteresisDeg = 5.0f` as the named residency-check pad, separate from
+  the render/draw-culling frustum. `test_frustum_cull.cpp` (8 tests green): containment, behind-camera
+  reject, off-frustum-cone reject, the plan's own "close but behind camera" example, hysteresis-pad
+  actually widening the accepted cone, near/far-plane rejects.
+  GPU per-ray occlusion reject: added `SortInstancesFrontToBack` (`libraries/SVO/include/InstanceSort.h`
+  + `BodyOctreeSceneNode::SortInstancesFrontToBack`, `test_instance_sort.cpp` 5 tests green) and extended
+  `BodyInstanceRayMarch.comp`'s existing AABB-miss reject with an `entryTWorld > bestT` check — converts
+  the local grid-space AABB entry `t` back to world-space (mirroring `traverseOctreeInstanced`'s own
+  internal `rayStartWorld`/`tEntryWorld` conversion; a naive `renderScale`-reapplication double-counts
+  the scale already baked into `localToWorld` and silently breaks the comparison — caught by an added
+  temporary numeric debug dump, root-caused, fixed, dump removed). New binding 14
+  (`InstanceIterDebugBuffer`, per-instance traversal-iteration-count readback) is unconditionally
+  declared by the shader, so it was **added to the descriptor set/pipeline layout of every existing
+  test harness that builds this shader's pipeline** (`test_body_instance_raymarch_render`,
+  `test_mip_fallback_render`, `test_appflow_editor_toggle_render`, `test_editor_document_render`,
+  `test_recipe_authoring_gate`, `test_recipe_pool_render`) — omitting it crashed the Mesa-Dozen driver
+  with a segfault inside `libvulkan_dzn.so` (pipeline-layout/descriptor-set binding-count mismatch, no
+  clean Vulkan validation error without the validation layer enabled) rather than a clean rejection;
+  all 6 harnesses fixed via `search-and-replace`, full render suite re-verified green (15/15) after the
+  fix. New `test_body_instance_occlusion_reject.cpp` (2 tests green): a synthetic camera→occluder→target
+  line-up (front-to-back sorted, deliberately NOT pre-sorted in the raw array to prove the sort itself
+  matters) proves the occluded target AND a farther control both get exactly 0 traversal iterations once
+  the occluder's hit lands in `bestT`, vs the occluder's own normal non-zero count; a second test proves
+  a lone (non-occluded) instance still traverses normally. CPU-side residency occlusion gate: **deferred
+  to Inc2** — M5's bandwidth measurement (Task 12) has not run yet, and the app's actual default scene
+  (`BuildRenderGraph.cpp`'s 3 side-by-side Procedural bodies, radius 24, centres 50 units apart) is not
+  heavily-occluding, so there is no evidence yet that frustum+resolvability alone are insufficient; this
+  is the plan's own explicitly-legitimate default, not a silent skip.
+
 ---
 
 ## M1 — Mip sample bake + SoA serialize
