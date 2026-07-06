@@ -88,6 +88,55 @@ mechanism is warranted yet, or should itself wait for the nested-tree epic.
 
 ---
 
+## M1 Progress Log
+
+**M1 DONE (2026-07-06)**, on branch `feat/sparse-mip-esvo-inc2`. Added a new `TEST_F` to the
+existing `test_bandwidth_ab_measurement.cpp` (`libraries/RenderGraph/tests/Nodes/`) rather than a
+new file — same fixture (`BandwidthAbMeasurementTest`), same device/`DirectAllocator`/
+`DeviceBudgetManager`/`BatchedUploader` wiring already proven there, so no new build target.
+
+- **Scene**: 16 `BodyOctreeSceneNode` trees (same N as Inc1's endpoint measurement, for direct
+  comparability) — 5 positioned 8-40m straight ahead (near/in-frustum/resolvable under a 60°
+  FOV) and 11 positioned 1500-2500m straight ahead (far/below the brick-tier resolvability
+  threshold at that FOV, per `test_residency_trigger.cpp`'s own 2000m/60° reference point). Not
+  a 50/50 split chosen to prove a point — closer to "a few bodies the player is next to, many
+  more scattered across the rest of a large explorable region."
+- **Driven through the actual live trigger**: every tree starts mip-only (`RequestBrickResidency
+  (false)` before `Compile`, per the file's own documented INITIAL-vs-on-demand upload-path
+  caveat), then each tree's position is evaluated through `Vixen::SVO::
+  InstanceWantsBrickResidency` (`ResidencyTrigger.h`) — the same pure function
+  `VulkanGraphApplication::UpdateBodySceneResidency` calls per-instance every camera-changed
+  frame in the live app. Only trees the trigger actually grants get
+  `RequestBrickResidency(true)` called afterward; the rest are never touched, staying mip-only
+  exactly as the real trigger would leave them. This is NOT the existing A/B test's pattern
+  (which manually forces `RequestBrickResidency(true)` on every tree in one condition) — it is
+  the actual per-frame decision path.
+- **Measured (BatchedUploaderStats, real Mesa-Dozen GPU, WSL2, `vixen-wsl` preset)**: live
+  trigger granted residency to exactly 5 of 16 trees (matching the intended near/far
+  placement, asserted in the test). Mixed scene uploaded **8,362,320 bytes** vs. **26,759,424
+  bytes** for the same 16 trees all-resident (the existing test's own baseline, re-run inside
+  this test for self-containment) — **31.2% of baseline, i.e. a 68.8% reduction / 3.2x less
+  data moved**, reproduced byte-identical across repeated runs (no flake observed). Tracks the
+  5/16 = 31.25% near-body fraction almost exactly, as expected: these fixture trees have
+  uniform per-tree brick cost, so bytes scale with the resident fraction, not the tree count.
+- **Direction doc status banner updated** ([[Sparse-Mip-ESVO-LOD-Direction-2026-07]]): the
+  170-220x/100%-reduction number is now explicitly labeled the all-or-nothing extreme endpoint;
+  the new 3.2x/68.8%-reduction number is added alongside it as the realistic-mix data point for
+  this scene's specific 31%-resident ratio, with an explicit note that a different near/far
+  ratio would land at a different point between the two endpoints (scaling with resident
+  fraction, not fixed at either number) — matching this milestone's own instruction not to
+  let future readers over-read the extreme endpoint as typical.
+- **Live-run gate satisfied**: both `test_bandwidth_ab_measurement` tests (the original A/B
+  test and this new mixed-scene test) run and pass on the real Mesa-Dozen GPU (`vixen-wsl`
+  preset, `VK_ICD_FILENAMES` pointed at the WSL-provisioned `dzn_icd.json`) — 2/2 tests,
+  confirmed via direct re-execution (not just a single pass).
+- **Not done in this milestone** (out of scope per the plan): no changes to
+  `ResidencyTrigger.h`, `UpdateBodySceneResidency`, or any production residency-decision code —
+  M1 is purely a new measurement against the mechanism Inc1 already shipped. M2 (flaky-assertion
+  hardening), M3 (occlusion gate), M4 (GPU-LRU evaluation) remain open.
+
+---
+
 ## Notes for implementers
 
 - M1-M3 are Sonnet-medium implementable against Inc1's existing test fixtures and mechanisms (same
