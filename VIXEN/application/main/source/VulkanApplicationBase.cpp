@@ -84,3 +84,59 @@ void VulkanApplicationBase::InitializeVulkanCore() {
 
     mainLogger->Info("Vulkan core initialized successfully");
 }
+
+TickStatus VulkanApplicationBase::Tick() {
+    PreTick();                 // host prologue (default no-op)
+    Update();                  // existing per-frame update (derived)
+    const bool ok = Render();  // existing per-frame render + device-loss policy (derived)
+    PostTick();                // host epilogue (default no-op)
+    ++frameCounter_;
+
+    if (ok) {
+        if (exitAfterFrames_ > 0 && frameCounter_ >= exitAfterFrames_) {
+            return TickStatus::FrameLimitReached;
+        }
+        return TickStatus::Running;
+    }
+    // ok == false: name why, from state the derived class exposes. No new policy.
+    if (IsShutdownRequested())  return TickStatus::WindowClosed;
+    if (IsDeviceLostState())    return TickStatus::DeviceLostUnrecoverable;
+    return TickStatus::RenderError;
+}
+
+int VulkanApplicationBase::Run(const RunOptions& opts) {
+    exitAfterFrames_ = opts.exitAfterFrames;
+    try {
+        Initialize();
+        Prepare();
+        if (!IsPrepared()) {
+            if (mainLogger) mainLogger->Error("[Run] Prepare failed: " + GetLastError() + " - aborting before render loop");
+            DeInitialize();
+            return -1;
+        }
+        if (mainLogger) mainLogger->Info("[Run] Entering render loop...");
+
+        // FrameTimer is added in Task 3; until then enableFrameTimer is honored by a no-op.
+        TickStatus st = TickStatus::Running;
+        while ((st = Tick()) == TickStatus::Running) {
+            // (Task 3 inserts frame-timer recording here, gated by opts.enableFrameTimer.)
+        }
+
+        if (mainLogger) {
+            const char* reason =
+                st == TickStatus::WindowClosed           ? "window closed" :
+                st == TickStatus::FrameLimitReached      ? "frame limit reached" :
+                st == TickStatus::DeviceLostUnrecoverable? "device lost (unrecoverable)" :
+                                                           "render error";
+            mainLogger->Info(std::string("[Run] Render loop exited: ") + reason);
+        }
+        DeInitialize();
+        return (st == TickStatus::RenderError || st == TickStatus::DeviceLostUnrecoverable) ? -1 : 0;
+    } catch (const std::exception& e) {
+        if (mainLogger) mainLogger->Error(std::string("[Run] Uncaught exception: ") + e.what());
+        return -1;
+    } catch (...) {
+        if (mainLogger) mainLogger->Error("[Run] Uncaught unknown exception");
+        return -1;
+    }
+}

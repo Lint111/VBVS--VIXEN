@@ -142,6 +142,10 @@ protected:
      */
     void CompleteShutdown();
 
+    // graph.Run() consolidation: expose the two facts the base Tick() classifies on.
+    bool IsShutdownRequested() const override { return shutdownRequested; }
+    bool IsDeviceLostState()   const override { return renderGraph && renderGraph->IsDeviceLost(); }
+
 private:
     // ====== Engine (AR#7) ======
     // EngineContext OWNS the core graph subsystems (registry, bus, graph, and the autonomous

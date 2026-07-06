@@ -2,8 +2,11 @@
 
 namespace Vixen::Vulkan::Resources {
 
-VulkanInstance::VulkanInstance() {
-	// constructor
+VulkanInstance::VulkanInstance() : instance(VK_NULL_HANDLE) {
+	// Zero-init instance: without this, an object destructed before CreateInstance() ever runs
+	// (e.g. an offline test that never calls Initialize()) left `instance` holding indeterminate
+	// memory, so DestroyInstance()'s `if(instance != VK_NULL_HANDLE)` read garbage as a handle and
+	// crashed in vkDestroyInstance. Surfaced by the offline VulkanApplicationBase::Tick() gtest.
 }
 
 VulkanInstance::~VulkanInstance() {

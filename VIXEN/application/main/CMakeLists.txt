@@ -150,3 +150,4 @@ vixen_stage_assets(VIXEN ${VIXEN_ROOT}/libraries/RenderGraph/assets DEST assets)
 # run — see FailScenarios/test_fail_scenario_sweep.cmake for why.
 # ----------------------------------------------------------------------------
 include(${VIXEN_ROOT}/libraries/RenderGraph/tests/FailScenarios/test_fail_scenario_sweep.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/tests/test_app_run_tick.cmake)
