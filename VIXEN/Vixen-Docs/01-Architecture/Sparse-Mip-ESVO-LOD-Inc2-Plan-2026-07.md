@@ -79,7 +79,8 @@ mechanism is warranted yet, or should itself wait for the nested-tree epic.
   requested once the occluder moves aside or the target emerges past it. Implements the exact mechanism
   Inc1 §M4b already specified (coarse depth estimate from already-resident trees, front-to-back order
   reused from the GPU per-ray fix) — this milestone is "build what was already designed," not new design. ·
-  **✅ DONE 2026-07-06** — commit `2a6dc9aa`; see M3 Progress Log below.
+  **✅ DONE 2026-07-06** — commits `2a6dc9aa`, `68569f9b`, `2380f808` (the last fixes a
+  blocking self-occlusion bug found by independent Opus validation); see M3 Progress Log below.
 - **M4 — GigaVoxels GPU-LRU: evaluate, decide, document** · gate: a written go/no-build recommendation
   backed by evidence — at minimum, (a) confirm current/near-term resident-tree counts against the
   "tens to a few hundred bodies" threshold Inc1's own CPU-vs-GPU note used to justify staying CPU-side,
