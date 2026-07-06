@@ -250,7 +250,13 @@ that motivates the epic. The two are one gate.
   capability-graph gating note + Task 11's live gate) · gate: `VIXEN.exe` live run, three-scenario test
   (distance/zoom/orientation-driven) from Task 10's closing bullets, no stall/hitch, no regression.
   Depends on M4a + M4b both landing first — this is the integration milestone, not a fourth independent
-  mechanism.
+  mechanism. ·
+  **✅ DONE 2026-07-06** — commit `b895baf0`. `test_residency_trigger` 8/8 green (all three scenarios +
+  hysteresis + eviction symmetry); `VIXEN.exe` live gate 650 frames, 0 crashes/VUIDs/sync-hazards,
+  residency toggled correctly through far/near/yaw-sweep phases with flat ~6ms frame times through the
+  toggle-heavy window (no hitch from the async upload fix). No-regression: `test_partial_brick_upload`,
+  `test_mip_fallback_render`, `test_body_instance_occlusion_reject`, `test_resolvable_level`,
+  `test_frustum_cull`, `test_instance_sort` all green (31/31 across the 7 suites touched this milestone).
 - **M5 — Gate + verify: bandwidth claim** (Task 12) · controller/interactive · live A/B: N mip-only
   trees vs N fully-resident trees, measure actual bytes uploaded + frame time; no-regression suite.
 
@@ -431,6 +437,76 @@ Task 10's existing bullet list, not rewrite the task.
   (`BuildRenderGraph.cpp`'s 3 side-by-side Procedural bodies, radius 24, centres 50 units apart) is not
   heavily-occluding, so there is no evidence yet that frustum+resolvability alone are insufficient; this
   is the plan's own explicitly-legitimate default, not a silent skip.
+
+- **M4c DONE (2026-07-06):** commit `b895baf0` on top of M4b's work. Trigger wiring lives in a new
+  `Vixen::SVO::InstanceWantsBrickResidency` (`libraries/SVO/include/ResidencyTrigger.h`) — a pure,
+  dependency-free function combining M4a's `minResolvableLevel` + M4b's `BuildFrustum`/
+  `SphereIntersectsFrustum`, factored out specifically so the three-scenario test could exercise it
+  directly without a device/graph. `VulkanGraphApplication::UpdateBodySceneResidency()` (new, called
+  from `Update()`) does the live per-frame work: live `GetInstance` lookup of `cameraNode_`/
+  `bodyOctreeSceneNode_` (new `NodeHandle` member, mirroring `bodyOctreeSceneNode_`'s existing pattern),
+  change-detection against last-seen camera pos/dir/FOV (position+orientation+FOV all compared —
+  orientation matters independently per M4b), then per-instance `InstanceWantsBrickResidency` OR'd
+  across `bodyScene->GetInstances()` (new getter) to get the single per-tree binary decision (§0 scope).
+  `occluded(idx)` is NOT a parameter on `InstanceWantsBrickResidency` at all — the plan's own "degrades
+  gracefully to frustum+resolvability-only" language, implemented as an actual absent parameter rather
+  than a hardcoded always-false stub. Also wires `SortInstancesFrontToBack(cam.cameraPos)` into the same
+  per-frame call, closing the M4b Progress Log's explicit "zero call sites outside its own unit test"
+  gap — M4b's GPU per-ray occlusion reject is now live, not just proven in isolation.
+  - **M2 hitch note — investigated and FIXED, not just checked:** confirmed `UploadBrickPool`'s
+    `device->WaitAllUploads()` was still literally in the code (a full block-until-GPU-idle every
+    residency toggle). Replaced with async completion-tracking: `VulkanDevice::FlushUploads()`/
+    `IsUploadComplete(handle)` (thin new wrappers over `BatchedUploader::Flush()`/`ProcessCompletions()`/
+    `IsComplete()`, all pre-existing, unused API) plus a new `BodyOctreeSceneNode::PollBrickUploadCompletion()`
+    polled every `ExecuteImpl`, implementing a 2-phase state machine (brick upload completes → stamp
+    `brickResident`+queue config re-upload → config upload completes → settled) with two new pending-handle
+    members. Measured, not assumed: live-gate run shows flat ~6ms/160+FPS frame times straight through the
+    toggle-heavy window (dozens of true/false flips across ~1 second of sim time at 650 frames total) —
+    a synchronous stall at that toggle rate would have shown as visible frame-time spikes in the
+    `[FrameTimer]` log, and none appeared. `test_partial_brick_upload.cpp` updated for the new async
+    contract (found+fixed 2 real test-authoring issues surfaced by the change: `totalBytesUploaded` only
+    increments on observed GPU completion via `ProcessCompletions`, not synchronously at `Upload()` time;
+    and the "no re-upload on a later Execute" assertion had to account for the config re-upload's own
+    legitimate one-time `totalUploads` bump when `PollBrickUploadCompletion` first observes brick-upload
+    completion — the fixed test now drives both phases explicitly via `deviceShell_->WaitAllUploads()` +
+    extra `Execute()` ticks before asserting stability).
+  - **`test_residency_trigger.cpp` (8 tests, all green)** covers the plan's required THREE scenarios
+    distance/zoom/orientation-driven, not two — plus a hysteresis/no-thrash check and eviction-symmetry
+    checks on all three axes. Two real test-authoring bugs found and fixed while deriving it (both via
+    an independent Python geometric reimplementation used to numerically verify expected values before
+    trusting any assertion, not guessed): (1) a `right = cross(dir, up)` vs `cross(up, dir)` handedness
+    mismatch between the test's default `Camera` struct and its `Yawed()` helper silently flipped the
+    basis on every rotation including a `yawDeg=0` "no-op" call; (2) a body placed at 2000m for a
+    zoom-driven scenario was being rejected by the test's OWN `kFar=500` far-plane constant, not by
+    `minResolvableLevel` as the assertion intended — the frustum was doing the rejecting for the wrong
+    reason, silently passing for a test that would have stayed broken under a different kFar. Fixed by
+    widening the test's `kFar` to 5000 (a test-local constant, documented as intentionally divergent from
+    the app's real 500m far plane) and re-deriving all worked-example numbers via the same Python check
+    before encoding them as assertions.
+  - **Live gate (Task 11):** ran the real `VIXEN.exe` with `VIXEN_STORED_SDF_DEMO=1` (the residency
+    mechanism only applies to Stored-SDF bodies — the app's Procedural default path never touches
+    `bricksBuffer_`/mip pool at all, confirmed by reading `BuildRenderGraph.cpp`'s instance-seeding
+    block) plus a new `VIXEN_RESIDENCY_GATE_DEMO` env-gated scripted camera sweep (mirrors the existing
+    `VIXEN_RESIZE_AT_FRAME` precedent exactly: env-gated, frame-counted, in `Update()`) driving
+    `CameraNode::SetOrbitDistanceForTest`/`SetYawForTest` (2 new tiny public setters — direct live-member
+    writes to fields `ExecuteImpl` already reads every frame, no recompile needed) through far→near,
+    yaw-sweep, and near→far phases over 650 frames. Result: `RequestBrickResidency(false)` logged at
+    camDist=313 (far, mip-only, matches Task 11's "zero brick uploads" ask), multiple `true`/`false`
+    toggles during the zoom-in sweep as the 3 separately-placed bodies individually crossed the
+    resolvability threshold at different distances, 0 crashes/exceptions/VUIDs/SYNC-HAZARD lines, clean
+    exit at `VIXEN_EXIT_AFTER_FRAMES=650`. Considered (via a dedicated sub-investigation) adding a real
+    `InputNode` synthetic-input injector (there's a `VIXEN_FAIL_SCENARIOS`-gated precedent,
+    `InputNode::InjectMouseButton`) instead of the direct `CameraNode` setters, but that's a materially
+    bigger new mechanism (new injector methods + event plumbing) than this milestone's live-gate scope
+    warrants — noted as a cleaner future path if a later increment needs full input-path fidelity.
+  - **Eviction-policy decision: "stop requesting" only, no GPU-memory-reclaim, matches `UploadBrickPool`'s
+    pre-existing §0-scope comment.** Confirmed correct by the live gate itself, not just re-asserted: the
+    trigger now flips several times per second under realistic camera movement (directly observed in the
+    log), so actually freeing/reallocating the brick buffer on every `false` transition would require a
+    `Rematerialize`-style `vkDeviceWaitIdle` recreate at that same frequency — reintroducing the exact
+    class of hitch this milestone's WaitAllUploads fix just eliminated. Revisit only if M5's bandwidth
+    measurement shows the always-allocated-at-full-capacity buffer is itself a problem (a capacity
+    question, not a residency-toggle-frequency one).
 
 ---
 
