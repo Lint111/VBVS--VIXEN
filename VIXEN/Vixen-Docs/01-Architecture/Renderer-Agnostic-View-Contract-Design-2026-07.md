@@ -32,6 +32,12 @@ That is the renderer knowing what a "faction" is — engine code carrying a spec
 1. **No production caller feeds real HUD data.** `SetHudView`/`SetHudData` are invoked only by `test_ui_hud_smoke` (and *referenced* in main-app comments); no shipping app pushes real faction/event data. So relocating the projection + storage to the consumer is low-risk — nothing live depends on it.
 2. **RmlUi exposes a runtime (dynamically-typed) data-variable API beneath the ergonomic compile-time sugar.** `DataVariable.h` declares `VariableDefinition` (abstract), `ScalarDefinition`, `StructDefinition` with runtime `AddMember(const String&, UniquePtr<VariableDefinition>)`, `FuncDefinition`, and array definitions; `DataTypeRegister.h` declares `RegisterDefinition(FamilyId, UniquePtr<VariableDefinition>)`; and `DataVariable(VariableDefinition*, void* ptr)` pairs a definition with a raw pointer. This is the `RMLUICORE_API`-exposed layer under `RegisterStruct<T>()`. It means the engine can build a data model from a **runtime description** (names/types/offsets) bound to **raw consumer memory** — no compile-time `T` required. The generic host is real.
 
+### 1.1 The concrete pain this eliminates (the automated boundary layer)
+
+Today the consumer↔renderer **view boundary is maintained by hand**. In undertow, the view schema is duplicated across the seam — the C# sim side and the C++/renderer side each carry their own copy of the field layout — and they are kept in sync **manually, with a hand-bumped view version number** as the only guard against drift. Every field add/rename/reorder is a two-sided edit plus a version bump that someone must remember; a missed bump or a mismatched edit is a silent runtime desync (wrong bytes land in the wrong field, or the HUD reads garbage).
+
+This program makes that boundary layer **generated, not hand-maintained**: the single `[View]` schema is the source, and codegen emits every side of the seam coherently (renderer face + C# upload face). The generator *is* the sync — a schema change either regenerates both sides together or fails the build-time drift-guard (`--check`), so the two sides cannot silently diverge. **The manually-tracked view version is subsumed by a generated schema version/hash** the marshaler validates at load (see §5.4): mismatched consumer data vs. renderer blob is caught at the boundary, automatically, instead of relying on a human to bump and check a number. Eliminating this manual, error-prone, version-tracked boundary layer is a primary motivation for the program — not just a nicety.
+
 ---
 
 ## 2. Locked decisions
@@ -135,6 +141,10 @@ Both paths produce an identical live data model; the byte-exact HUD gate (D7) ca
 ### 5.3 Why the blob is honest (RmlUi ground truth)
 
 RmlUi's `RegisterStruct<T>()` is sugar over `StructDefinition` + `AddMember`; `Bind(name, &value)` is sugar over `DataVariable(definition, ptr)`. Building those directly from a runtime description is a supported, `RMLUICORE_API`-exposed use of the library — not a hack. (Confirmed: `DataVariable.h:73-150`, `DataTypeRegister.h:55-144`.)
+
+### 5.4 Generated schema version — subsuming the manual view version (§1.1)
+
+The reflection blob carries a **generated schema version** — a stable hash over the view's field names + types + order (and array element layouts), emitted by codegen. This replaces undertow's hand-bumped, hand-tracked view version with an automatic one that cannot go stale: any schema change changes the hash deterministically. At the boundary, the consumer's data stream carries the version the consumer was generated against, and the engine's blob carries the version the renderer was generated against; the marshaler compares them at model-load. A mismatch is a hard, logged boundary error (skip-register, visible empty view — never silent wrong-byte marshaling), exactly as §8 specifies for a blob/storage mismatch. Because both the C# upload face and the renderer blob derive from the same schema, a coherent regeneration produces matching versions on both sides automatically — the human never bumps or checks a number. (Native fast-path consumers, §5.1, get the equivalent guarantee at compile time: a schema change that isn't reflected in the consumer's storage types simply won't compile, and the `--check` golden guards the generated header itself.)
 
 ---
 
