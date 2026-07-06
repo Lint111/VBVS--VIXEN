@@ -375,6 +375,20 @@ original bug — it now passes cleanly.
   new, independent gate layered on top via `UpdateBodySceneResidency`, not a rewrite of the existing
   three mechanisms.
 
+**Opus validator: first pass ISSUES (2026-07-06), re-validated APPROVED after fix.** First pass found
+a genuine BLOCKING bug via a direct probe (candidate included in its own occluder set → self-occlusion
+on all 3 test bodies), correctly root-caused as identity, not epsilon (self-hit lands at
+`dist - radius`, ~24 units off, far outside any reasonable numeric-noise tolerance). Fix re-dispatched
+to the same implementer; re-validated independently: confirmed the `id`/`candidateId` exclusion is
+unconditional and geometry-independent (not a bigger epsilon), confirmed both wiring loops share one
+index scheme (no desync), re-derived the new tests' geometry in Python (self-occlusion test isolates
+the bug precisely; the over-broad-exclusion guard test proves a genuinely different resident tree
+still occludes correctly), re-ran all 14 occlusion-gate tests + 8 residency-trigger tests + 2 GPU
+occlusion-reject tests fresh, and — the decisive check — re-ran the 650-frame live gate independently
+and mapped all 9 transitions to frame numbers/camera distances by hand, confirming a 184-frame fully
+stable tail under continued camera motion (the settle-and-hold signature the fix should produce,
+not the every-frame thrash the bug would have produced). **APPROVED**, no remaining caveats.
+
 ---
 
 ## Notes for implementers
