@@ -27,9 +27,11 @@
  * Bore-region threshold: the editor's BuildRenderGraph frames the document with a general-purpose
  * orbit camera (EditorApplication.cpp's PARAM_ORBIT_* setup), NOT the M4 headless gate's bespoke
  * camera that looks straight down the cylinder bore -- so the visible delta from toggling the cut
- * layer off is real but small at this viewing angle (measured live: ~a few hundred pixels differ
- * in the full 500x500 frame, not the thousands M4's bore-aligned camera sees). kMinBoreDiffPixels
- * below is set from that live measurement, not copied from M4's threshold -- see BoreDiffPixels.
+ * layer off is real but small at this viewing angle (measured live: a coherent ~25x7 edge patch
+ * just above frame center changes; 63 pixels differ at all, 6 of them exceed the >16/channel gate
+ * criterion -- a clean anti-aliased silhouette-edge sliver, NOT the thousands M4's bore-aligned
+ * camera sees). kMinBoreDiffPixels below is set from that live measurement, not copied from M4's
+ * threshold -- see BoreDiffPixels. Deterministic: the PNGs are MD5-stable across runs.
  */
 
 #include <gtest/gtest.h>
