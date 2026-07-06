@@ -76,23 +76,23 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         COMMENT "[codegen] regenerate OctreeConfig.g.h/.glsl (Yeroket tool)"
         VERBATIM)
 
-    # --- EditorHud [View] schema via the same Yeroket tool (View Contract Inc-1) ---
+    # --- Hud [View] schema via the same Yeroket tool (View Contract Inc-2: renamed from EditorHud) ---
     set(_view_args
         run --project "${_yk_tool}" -c Release --
-        --schema "${_cg}/view-schemas" --view EditorHud
-        --out-header "${CMAKE_SOURCE_DIR}/libraries/RenderGraph/include/Generated/EditorHud.g.h")
-    add_custom_target(view_editorhud_check ALL
+        --schema "${_cg}/view-schemas" --view Hud
+        --out-header "${CMAKE_SOURCE_DIR}/libraries/RenderGraph/include/Generated/Hud.g.h")
+    add_custom_target(view_hud_check ALL
         COMMAND ${VIXEN_DOTNET} ${_view_args} --check
-        COMMENT "[codegen] golden check: EditorHud.g.h matches canonical [View] schema (Yeroket tool)"
+        COMMENT "[codegen] golden check: Hud.g.h matches canonical [View] schema (Yeroket tool)"
         VERBATIM)
-    add_custom_target(view_editorhud_regen
+    add_custom_target(view_hud_regen
         COMMAND ${VIXEN_DOTNET} ${_view_args}
-        COMMENT "[codegen] regenerate EditorHud.g.h (Yeroket tool)"
+        COMMENT "[codegen] regenerate Hud.g.h (Yeroket tool)"
         VERBATIM)
 else()
     message(WARNING "[codegen] KI-015: Yeroket kernel-codegen tool not found at ${_yk_tool} — "
-        "OctreeConfig/EditorHud golden DRIFT GUARDS DISABLED; the committed generated headers "
-        "(OctreeConfig.g.h/.glsl, EditorHud.g.h) are used as-is and will NOT be checked against "
+        "OctreeConfig/Hud golden DRIFT GUARDS DISABLED; the committed generated headers "
+        "(OctreeConfig.g.h/.glsl, Hud.g.h) are used as-is and will NOT be checked against "
         "their canonical schemas this configure. The Yeroket repo is WSL-only on this machine, so a "
         "Windows-side configure cannot reach it — run the WSL-side configure, mount \\\\wsl$, or pass "
         "-DYEROKET_ROOT=<path> to enable the guard.")
