@@ -1,6 +1,7 @@
 #pragma once
 #include "Ui/IView.h"
 #include "Generated/Hud.g.h"   // Vixen::Views::{HudFaction,HudEvent,HudBind,BindHudModel}
+#include "graph/HudFactionEventTypes.h"  // HudFactionIn/HudEventIn (kept RmlUi-free)
 #include <RmlUi/Core/DataModelHandle.h>
 #include <RmlUi/Core/Types.h>  // Rml::String
 #include <span>
@@ -8,12 +9,6 @@
 #include <cstdint>
 
 namespace Vixen::App {
-
-// Host-facing input types for the HUD projection (relocated from UIRenderNode — these are the
-// CONSUMER's vocabulary, not the engine's). recentEventAge: ticks since this faction's most recent
-// world event (255 = none within K); < kJuiceK -> recentChanged (drives the .changed CSS pulse).
-struct HudFactionIn { const char* name; float grievance; bool focused; bool known; bool inLens; uint8_t recentEventAge; };
-struct HudEventIn   { const char* kind; int tick; };
 
 // The main app's HUD view. Owns its storage, registers the "hud" data model via the generated
 // BindHudModel, and projects sim/host data into it. This is VIXEN's own native consumer of the

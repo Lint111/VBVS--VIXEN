@@ -29,6 +29,8 @@ add_library(VixenApp STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildAutoSyncDemoGraph.cpp  # auto-sync P4 M4
     ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildFanInDemoGraph.cpp     # auto-sync P5b M2 fan-in
     ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/HudView.cpp                # View Contract Inc-2: native IView consumer
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/HudViewBridge.cpp          # View Contract Inc-2: gaia-free seam for HudView.h (robin_hood ABI isolation)
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/StbImageWriteImpl.cpp            # View Contract Inc-2 Task 5: PNG-capture harness's stb_image_write TU
     ${HPP_FILES}
 )
 
@@ -51,6 +53,13 @@ target_link_libraries(VixenApp PUBLIC
     ${VULKAN_LIB_LIST}
     glm::glm
 )
+
+# View Contract Inc-2 Task 5: stb_image_write.h (Debug/RenderTargetReadback.h's PNG writer, called
+# from VulkanGraphApplication::CaptureHudFrameToPng) -- not transitively provided by RenderGraph.
+# Mirrors application/editor/CMakeLists.txt's identical guard.
+if(TARGET stb)
+    target_link_libraries(VixenApp PRIVATE stb)
+endif()
 
 # VULKAN_LIB_LIST carries the glslang/SPIRV-Tools static libs BY NAME (e.g. -lSPIRV-Tools), and is
 # PUBLIC above so it propagates to consumers — but their search directory is set at the engine root

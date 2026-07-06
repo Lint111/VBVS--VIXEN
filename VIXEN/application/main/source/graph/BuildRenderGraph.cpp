@@ -742,6 +742,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
     uiComposite->SetParameter(UIRenderNodeConfig::PARAM_COMPOSITE, true);
     uiComposite->SetParameter(UIRenderNodeConfig::RML_DOCUMENT_PATH, std::string("assets/ui/hud.rml"));
 
+    // View Contract Inc-2 Task 5: wire the app's native HudView onto the now-generic UI node.
+    // Routed through WireHudView (HudViewBridge) rather than a direct SetView call here -- this TU
+    // transitively includes BodyOctreeSceneNode.h's gaia.h (via the M-wire body-octree includes
+    // above), and gaia vendors a DIFFERENT VERSION of RmlUi's bundled robin_hood.h under the SAME
+    // include guard; the bridge is the one place HudView.h's RmlUi-touching inline code actually
+    // instantiates, in a TU that never sees gaia.h (see HudViewBridge.h's file header).
+    Vixen::App::WireHudView(*uiComposite, *hudView_);
+
     mainLogger->Info("Configured all node parameters (including camera, voxel grid, and UI composite pass)");
 
     // ===================================================================

@@ -9,7 +9,10 @@
 #include "error/VulkanError.h"
 #include "Time/EngineTime.h"
 #include "MessageBus.h"
+#include "graph/HudViewBridge.h"  // HudFactionIn/HudEventIn (gaia-free) + Make/Wire/PushHudView seam
 #include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -24,6 +27,19 @@ namespace Vixen::RenderGraph { class BodyOctreeSceneNode; }  // M-wire: sparse s
 namespace Vixen::RenderGraph { class CameraNode; }  // Sparse-Mip ESVO LOD Inc1 M4c: live camera-state readback for the residency trigger
 namespace Vixen::SVO { struct BodyInstanceGpu; }  // M-wire: per-body GPU instance record (64 bytes)
 namespace Vixen::SVO { struct ConcatenatedOctrees; }  // I4.1: pre-baked recipe pool (SetRecipePool passthrough)
+// View Contract Inc-2: HudView.h's real include lives ONLY in HudViewBridge.cpp (gaia-free) and
+// HudView.cpp itself -- NEVER in this header or in VulkanGraphApplication.cpp/BuildRenderGraph.cpp,
+// both of which transitively include BodyOctreeSceneNode.h's gaia.h. Root cause (not a style
+// preference): gaia vendors its OWN, DIFFERENT-VERSION copy of RmlUi's bundled robin_hood.h under
+// the SAME include guard (ROBIN_HOOD_H_INCLUDED) -- whichever copy a TU sees first silently wins
+// for that whole TU, so a TU seeing gaia's copy first compiles RmlUi's inline data-model template
+// code (RegisterStruct/RegisterDefinition) against the WRONG struct layout, an ODR/ABI mismatch
+// against the object RmlUi's own .cpp constructed (confirmed: 64 vs 56 bytes for the identical
+// robin_hood::unordered_flat_map<FamilyId,...> instantiation) -- manifesting as a null-pointer
+// access violation the instant that mismatched code touches the type registry. Held by unique_ptr
+// (constructed via MakeHudView(), an opaque factory in HudViewBridge.h) so this header needs only
+// the forward declaration.
+namespace Vixen::App { class HudView; }
 
 using namespace Vixen::Vulkan::Resources;
 using namespace Vixen::RenderGraph;
@@ -53,6 +69,12 @@ public:
     void Prepare() override;
     void Update() override;
     bool Render() override;
+    // View Contract Inc-2 Task 5: parses VIXEN_HUD_SCRIPT/VIXEN_HUD_CAPTURE_FRAMES/
+    // VIXEN_HUD_CAPTURE_DIR once and injects the scripted HUD payload due this tick (mirrors
+    // EditorApplication::PreTick's scripted-action injector — this app has no subclass, so the
+    // harness attaches here directly). Capture itself happens at the end of Update() (below the
+    // dirty_-equivalent point where the frame's render target is guaranteed populated).
+    void PreTick() override;
 
     // ====== Graph Management ======
 
@@ -204,6 +226,31 @@ private:
     NodeHandle inputNode_{};                         // stored so Update() can drain InputNode's event queue live (input-rework slice 1)
     NodeHandle uiRenderNode_{};                      // stored so GetUiRenderNode() can query the composite UI node live
     NodeHandle uiSelectionProviderNode_{};           // stored so GetUiSelectionProviderNode() can drain HUD clicks live
+
+    // View Contract Inc-2: the app's native IView, set on the UI node via SetView (BuildRenderGraph).
+    // Owned here (not by the node) — the node only holds a non-owning aliased shared_ptr, since
+    // hudView_ (a VulkanGraphApplication member) already outlives the graph it is wired into.
+    // Raw pointer, NOT std::unique_ptr<HudView> -- this header only forward-declares HudView (see
+    // above), and std::unique_ptr's implicit destructor needs the complete type at the point it is
+    // itself instantiated (this class's own destructor, defined in the gaia-touching
+    // VulkanGraphApplication.cpp) -- an incomplete-type-delete compile error. Constructed via
+    // MakeHudView() (ctor) and destroyed via DestroyHudView() (dtor), both HudViewBridge.h seams
+    // whose bodies live in HudViewBridge.cpp, the one gaia-free TU where HudView is complete.
+    Vixen::App::HudView* hudView_ = nullptr;
+
+    // Task 5: scripted HUD-inject + byte-exact capture harness (mirrors EditorApplication's
+    // VIXEN_EDITOR_SCRIPT/_CAPTURE_FRAMES/_CAPTURE_DIR harness — this app has no subclass, so it
+    // attaches directly here). All zero-cost/inert when VIXEN_HUD_* env vars are unset.
+    long hudUpdateTick_ = 0;               // local tick counter, independent of other counters in Update()
+    bool hudScriptParsed_ = false;         // guards the one-time env parse in PreTick()
+    std::vector<std::pair<long, char>> hudScript_;  // (frame, 'A'|'B') parsed from VIXEN_HUD_SCRIPT
+    std::vector<long> hudCaptureFrames_;   // parsed from VIXEN_HUD_CAPTURE_FRAMES
+    std::string hudCaptureDir_ = "temp";   // overridable via VIXEN_HUD_CAPTURE_DIR
+
+    // Reads main_swapchain's CURRENT image back to host RGBA8 and writes it as a PNG at `path`
+    // (mirrors EditorApplication::CaptureFrameToPng's device lookup, but reads the swapchain, not
+    // compute_render_target — see the .cpp definition's comment for why).
+    bool CaptureHudFrameToPng(const std::string& path, std::string& err);
 
     // NOTE: Command buffers, semaphores, and all Vulkan resources
     // are managed by the render graph nodes, not the application
