@@ -27,6 +27,20 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         COMMAND ${VIXEN_DOTNET} ${_oc_args}
         COMMENT "[codegen] regenerate OctreeConfig.g.h/.glsl (Yeroket tool)"
         VERBATIM)
+
+    # --- EditorHud [View] schema via the same Yeroket tool (View Contract Inc-1) ---
+    set(_view_args
+        run --project "${_yk_tool}" -c Release --
+        --schema "${_cg}/view-schemas" --view EditorHud
+        --out-header "${CMAKE_SOURCE_DIR}/libraries/RenderGraph/include/Generated/EditorHud.g.h")
+    add_custom_target(view_editorhud_check ALL
+        COMMAND ${VIXEN_DOTNET} ${_view_args} --check
+        COMMENT "[codegen] golden check: EditorHud.g.h matches canonical [View] schema (Yeroket tool)"
+        VERBATIM)
+    add_custom_target(view_editorhud_regen
+        COMMAND ${VIXEN_DOTNET} ${_view_args}
+        COMMENT "[codegen] regenerate EditorHud.g.h (Yeroket tool)"
+        VERBATIM)
 else()
-    message(STATUS "[codegen] Yeroket tool not found at ${_yk_tool} — skipping OctreeConfig golden gate")
+    message(STATUS "[codegen] Yeroket tool not found at ${_yk_tool} — skipping OctreeConfig/EditorHud golden gates")
 endif()
