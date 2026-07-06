@@ -22,7 +22,7 @@
 
 ## Milestone Map
 
-- **M1 — Core `Tick()`/`Run()` on the base + offline classification test** (Tasks 1–2): add the vocabulary + methods to `VulkanApplicationBase`, add the `IsShutdownRequested()` accessor to `VulkanGraphApplication`, prove `Tick()`'s status classification + hook order with an offline stub gtest. Deliverable: engine-owned loop surface, unit-proven, no entry point wired yet.
+- **M1 — Core `Tick()`/`Run()` on the base + offline classification test** (Tasks 1–2): add the vocabulary + methods to `VulkanApplicationBase`, add the `IsShutdownRequested()` accessor to `VulkanGraphApplication`, prove `Tick()`'s status classification + hook order with an offline stub gtest. Deliverable: engine-owned loop surface, unit-proven, no entry point wired yet. **✅ DONE.**
 - **M2 — Collapse the two mains onto `Run()` + `FrameTimer`** (Tasks 3–4): extract the standalone main's frame-timer into a `FrameTimer` helper gated by `RunOptions.enableFrameTimer`; collapse `application/main/source/main.cpp` and `application/editor/source/main.cpp` to `app->Run(opts)`. Deliverable: both mains thinned, standalone parity gate green.
 - **M3 — Editor injector → `PreTick()` + windowed gate + close-out** (Tasks 5–6): move the scripted-action injector from `EditorApplication::Update()` into a `PreTick()` override (capture dumps stay in `Update()`'s tail); prove the Inc-2b windowed gate passes byte-identically; update docs/known-issues + close out. Deliverable: full consolidation, byte-exact editor gate green.
 
@@ -620,7 +620,7 @@ git commit -m "docs(graphrun): consolidation complete — Run()/Tick() canonical
 
 _(Appended per milestone during execution.)_
 
-- _M1 (Task 1): pending_
+- **M1 (Task 1): DONE** · commit `1e696716` · offline `test_app_run_tick` 6/6 PASS (Opus validator independently rebuilt + re-ran) · Opus validator APPROVED · 2026-07-06. Note: surfaced + root-cause-fixed a pre-existing bug — `VulkanInstance::instance` was never initialized to `VK_NULL_HANDLE`, so the first destruct-without-`CreateInstance()` path (the offline stub app) crashed in `DestroyInstance()`; fixed with a member-init (authorized Task-1 file-set expansion). Two sound CMake corrections: `GTest::gtest_main` alone (not gtest+gtest_main) + a `BUILD_TESTS`/`TARGET` guard, matching repo convention.
 - _M2 (Tasks 3–4): pending_
 - _M3 (Tasks 5–6): pending_
 
