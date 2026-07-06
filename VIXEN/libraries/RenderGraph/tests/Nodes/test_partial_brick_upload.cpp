@@ -317,11 +317,34 @@ TEST_F(PartialBrickUploadTest, BricksAllocatedFullSizeButPopulatedOnlyAfterResid
     // upload to actually complete first — explicitly waited for below via WaitAllUploads(),
     // mirroring how a live render loop's PollBrickUploadCompletion() would observe it a few
     // frames later instead of the very same tick.
+    //
+    // IMPORTANT RACE NOTE (Inc2 M2 — root-caused via a debug trace, see the plan doc's M2
+    // Progress Log): PollBrickUploadCompletion() is ALSO called (unconditionally, every
+    // ExecuteImpl) on THIS SAME tick, right after UploadBrickPool() queues the brick upload
+    // just below (ExecuteImpl's ordering: UploadBrickPool() then PollBrickUploadCompletion(),
+    // both inside one call, no yield between them). Whether that same-tick poll already
+    // observes the brick upload complete — and immediately queues the phase-2 config
+    // re-upload right here on frame 1 — or not (deferring phase 2 to a later tick's poll) is
+    // a genuine, harmless race against how fast the driver signals the copy's fence: dzn/
+    // Dozen on an idle GPU can signal a tiny buffer copy's fence within microseconds of
+    // vkQueueSubmit, comfortably inside this same function call — confirmed via instrumented
+    // trace showing both orderings occur across repeated runs of the identical binary. The
+    // ORIGINAL bug in this test was asserting the config re-upload landed on a SPECIFIC fixed
+    // tick (always frame 2); this fix instead polls Execute() — the same non-blocking idiom
+    // PollBrickUploadCompletion itself uses, no fixed sleep — counting total uploads reached
+    // from a baseline taken BEFORE frame 1 (statsRightAfterRequest, always 0), since the
+    // config re-upload may legitimately land on frame 1's own Execute() call.
+    constexpr uint64_t kBrickUpload  = 1;  // UploadBrickPool's device->Upload() call
+    constexpr uint64_t kConfigReupload = 1;  // PollBrickUploadCompletion phase 2's device->Upload() call
+    const uint64_t kExpectedAfterBothPhases =
+        statsRightAfterRequest.totalUploads + kBrickUpload + kConfigReupload;
+    constexpr uint32_t kMaxPollTicks = 32;  // generous: production settles this in 1-2 ticks
+
     frameIndex = 1; SetHandleVal<uint32_t>(frRes, frameIndex);
     ASSERT_NO_THROW(node->Execute());
 
     const auto statsRightAfterExecute = uploaderObserver_->GetStats();
-    EXPECT_GT(statsRightAfterExecute.totalUploads, 0u)
+    EXPECT_GT(statsRightAfterExecute.totalUploads, statsRightAfterRequest.totalUploads)
         << "ExecuteImpl must service a pending residency request via BatchedUploader "
            "(Task 5's device->Upload() wiring), on the tick after the request was made — "
            "totalUploads increments synchronously inside BatchedUploader::Upload() itself, "
@@ -336,32 +359,39 @@ TEST_F(PartialBrickUploadTest, BricksAllocatedFullSizeButPopulatedOnlyAfterResid
     // signal for actual GPU-side completion.
 
     deviceShell_->WaitAllUploads();  // drive completion explicitly (async, so it isn't automatic)
-    const auto statsAfterExecute = uploaderObserver_->GetStats();
+    auto statsAfterExecute = uploaderObserver_->GetStats();
     EXPECT_GT(statsAfterExecute.totalBytesUploaded, 0u)
         << "Once the async upload completes, totalBytesUploaded must reflect it.";
 
-    // --- A later Execute with the same (already-serviced) request must not re-upload the
-    // BRICK data itself. This does NOT mean totalUploads freezes forever: the very next
-    // Execute's PollBrickUploadCompletion() observes the brick upload just completed and
-    // queues ONE follow-up config re-upload (stamping brickResident=1 — see
-    // PollBrickUploadCompletion's phase 2), which legitimately bumps totalUploads by
-    // exactly one. Drive that phase transition, then confirm a FURTHER Execute (once both
-    // phases have settled) is fully stable.
-    frameIndex = 2; SetHandleVal<uint32_t>(frRes, frameIndex);
-    ASSERT_NO_THROW(node->Execute());  // observes brick-upload completion, queues config re-upload
-    const auto statsAfterConfigQueued = uploaderObserver_->GetStats();
-    EXPECT_EQ(statsAfterConfigQueued.totalUploads, statsAfterExecute.totalUploads + 1)
-        << "Exactly one follow-up config re-upload is expected once the brick upload's "
-           "completion is observed (PollBrickUploadCompletion's phase 2) — not zero (this "
-           "IS new async work, not a re-upload of the same brick data) and not more than one.";
+    // --- Drive the state machine's remaining phase transition(s). This does NOT mean
+    // totalUploads freezes after the brick upload: SOME Execute tick (frame 1's own tick per
+    // the race note above, or a later one) observes the brick upload complete and queues ONE
+    // follow-up config re-upload (stamping brickResident=1 — PollBrickUploadCompletion's
+    // phase 2), which legitimately bumps totalUploads by exactly one over the pre-request
+    // baseline. Poll Execute() + WaitAllUploads() (bounded by kMaxPollTicks, not a fixed
+    // sleep) until totalUploads reaches that settled count — never assume which tick gets
+    // there, only that it eventually does, exactly once.
+    bool reachedSettledCount = (statsAfterExecute.totalUploads == kExpectedAfterBothPhases);
+    for (uint32_t pollTick = 1; !reachedSettledCount && pollTick <= kMaxPollTicks; ++pollTick) {
+        frameIndex += 1; SetHandleVal<uint32_t>(frRes, frameIndex);
+        ASSERT_NO_THROW(node->Execute());
+        deviceShell_->WaitAllUploads();  // drive whatever this tick queued to completion too
+        statsAfterExecute = uploaderObserver_->GetStats();
+        ASSERT_LE(statsAfterExecute.totalUploads, kExpectedAfterBothPhases)
+            << "totalUploads overshot the expected settled count (brick + exactly one config "
+               "re-upload) — more uploads happened than this state machine should ever queue "
+               "for a single residency request, a genuine correctness bug, not a timing issue.";
+        reachedSettledCount = (statsAfterExecute.totalUploads == kExpectedAfterBothPhases);
+    }
+    ASSERT_TRUE(reachedSettledCount)
+        << "totalUploads never reached the expected settled count (" << kExpectedAfterBothPhases
+        << ") within " << kMaxPollTicks << " Execute ticks — PollBrickUploadCompletion's phase 2 "
+           "(config re-upload) appears genuinely stuck, not merely slow to be observed.";
+    const auto statsFullySettled = statsAfterExecute;
 
-    deviceShell_->WaitAllUploads();  // drive the config re-upload's completion too
-    frameIndex = 3; SetHandleVal<uint32_t>(frRes, frameIndex);
-    ASSERT_NO_THROW(node->Execute());  // observes config-upload completion, both phases now settled
-    const auto statsFullySettled = uploaderObserver_->GetStats();
-
-    frameIndex = 4; SetHandleVal<uint32_t>(frRes, frameIndex);
-    ASSERT_NO_THROW(node->Execute());  // nothing pending — must be a true no-op now
+    // One more Execute tick with nothing pending must be a true no-op.
+    frameIndex += 1; SetHandleVal<uint32_t>(frRes, frameIndex);
+    ASSERT_NO_THROW(node->Execute());
     const auto statsAfterSecondExecute = uploaderObserver_->GetStats();
     EXPECT_EQ(statsAfterSecondExecute.totalUploads, statsFullySettled.totalUploads)
         << "Once both the brick upload and its config re-upload have fully settled, a later "
