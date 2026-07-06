@@ -8,7 +8,9 @@
 #include "ShellOctree.h"      // Vixen::SVO::ShellOctree, BuildShellOctree
 #include "ShellOctreeGpu.h"   // Vixen::SVO::{Concatenate, ConcatenatedOctrees, BodyInstanceGpu, PackInstances}
 #include "Recipe/SdfInstruction.h"  // Vixen::SVO::Recipe::SdfInstruction
+#include "InstanceSort.h"     // Vixen::SVO::SortInstancesFrontToBack (Inc1 M4b)
 
+#include <glm/glm.hpp>
 #include <cstdint>
 #include <memory>
 #include <vector>
@@ -77,6 +79,20 @@ public:
      * on every frame — the per-tick recompile cascade is gone entirely.
      */
     void SetInstances(std::vector<Vixen::SVO::BodyInstanceGpu> instances);
+
+    /**
+     * @brief Reorder the current instance list front-to-back by distance from
+     *        `cameraPos` (Sparse-Mip ESVO LOD Inc1 M4b).
+     *
+     * The shader's per-ray occlusion reject (BodyInstanceRayMarch.comp's
+     * `gridT.x > bestT` check against the running nearest-hit) only saves
+     * traversal work if closer instances are visited before farther ones in the
+     * instance loop — i.e. the array itself must already be near-to-far ordered,
+     * not sorted per-ray (that would defeat the point of a cheap, once-per-frame
+     * CPU sort). Call after SetInstances (or whenever the camera moves enough to
+     * change ordering) and before the next Execute uploads the ring slot.
+     */
+    void SortInstancesFrontToBack(const glm::vec3& cameraPos);
 
     /**
      * @brief Inject an SdfInstruction recipe for octree 0's bake.

@@ -139,6 +139,13 @@ void BodyOctreeSceneNode::SetInstances(std::vector<Vixen::SVO::BodyInstanceGpu> 
                   std::to_string(instanceCount_) + " instances staged for next Execute");
 }
 
+void BodyOctreeSceneNode::SortInstancesFrontToBack(const glm::vec3& cameraPos) {
+    // In-place; does NOT mark instanceCount_ dirty (count is unchanged by a reorder).
+    // ExecuteImpl uploads whatever order instances_ is currently in — same seam as
+    // SetInstances, just without replacing the list.
+    Vixen::SVO::SortInstancesFrontToBack(instances_, cameraPos);
+}
+
 void BodyOctreeSceneNode::SetBakeRecipe(std::vector<Vixen::SVO::Recipe::SdfInstruction> prog) {
     bakeRecipe_  = std::move(prog);
     recipeDirty_ = true;   // P2.3: if already compiled, ExecuteImpl re-materializes on the next frame;
