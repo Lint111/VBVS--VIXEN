@@ -218,22 +218,34 @@ that motivates the epic. The two are one gate.
 
 ## Milestone Map
 
-- **M1 — Mip sample bake + SoA serialize** (Tasks 1-3) · gate: `test_mip_sample_bake` gtest green.
+- **M1 — Mip sample bake + SoA serialize** (Tasks 1-3) · gate: `test_mip_sample_bake` gtest green. ·
+  **✅ DONE 2026-07-05** — commit `3abcac0c`, Opus-validated APPROVED.
 - **M2 — Brick-pool partial allocation + `BatchedUploader` wiring** (Tasks 4-6) · gate:
   `test_partial_brick_upload` gtest green (CPU-observable: buffer allocated, brick region unwritten
-  until requested) + controller-run `VIXEN.exe` link.
+  until requested) + controller-run `VIXEN.exe` link. ·
+  **✅ DONE 2026-07-06** — commit `1d3920f7`, Opus-validated APPROVED (both gates re-run live on real
+  Mesa-Dozen GPU by the validator, not just trusted).
 - **M3 — Shader fallback read (existence check + filtering dispatch)** (Tasks 7-9) · gate: shader
   compiles + lavapipe offscreen render test (mip-only tree renders a recognizable silhouette with
-  zero bricks uploaded).
+  zero bricks uploaded). ·
+  **✅ DONE 2026-07-06** — commits `aa125485`+`6bbf088f`, Opus-validated APPROVED. Also found+fixed a
+  real pre-existing regression (see Progress Log) and added GPU plumbing not in the original task list
+  (mip pool SSBO, `OctreeConfig.brickResident` field) needed to make the mechanism reachable at all.
 - **M4a — Resolvable-level formula** (Task 10, part 1: `minResolvableLevel` function + its two-scenario
   test) · gate: unit test green, pure CPU math, no GPU/render dependency. Split out of the original
-  single Task 10 2026-07-05 — see "Milestone re-split" note below.
+  single Task 10 2026-07-05 — see "Milestone re-split" note below. ·
+  **✅ DONE 2026-07-06** — commit `23c57149`, Opus-validated APPROVED.
 - **M4b — Frustum + occlusion gates** (Task 10, part 2: frustum containment reuse, hysteresis margin,
   the two-tier occlusion mechanism — GPU per-ray `bestT` reject + optional CPU-side residency
   occlusion gate) · gate: the GPU per-ray fix's iteration-count unit test green; the CPU-side gate's
   unit test green if built this increment (scope-decided per its own note, may defer to Inc2). Depends
   on M4a's formula existing (the combined trigger references `minResolvableLevel`), but is a distinct
-  mechanism with its own test surface — not folded into M4a.
+  mechanism with its own test surface — not folded into M4a. ·
+  **✅ DONE 2026-07-06** — commits `849e82b7`+`f634d549`, Opus-validated APPROVED. CPU-side occlusion
+  gate explicitly DEFERRED TO INC2 (legitimate scope call, validated). Built a new frustum-cull module
+  (nothing existing to reuse — confirmed dead-code `isBrickInFrustum` had zero callers) and fixed a
+  real coordinate-space bug in the occlusion reject (validator hand-traced it correct with a
+  non-unity `renderScale`).
 - **M4c — Trigger wiring + live gate** (Task 10, part 3: the combined `RequestBrickResidency` call +
   capability-graph gating note + Task 11's live gate) · gate: `VIXEN.exe` live run, three-scenario test
   (distance/zoom/orientation-driven) from Task 10's closing bullets, no stall/hitch, no regression.
@@ -254,6 +266,127 @@ new; implementers should treat each lettered milestone as covering the correspon
 Task 10's existing bullet list, not rewrite the task.
 
 ### Progress Log
+
+- **Milestone M1 (Tasks 1-3): DONE** · commit `3abcac0c` (worktree `feat/sparse-mip-esvo-inc1`,
+  branched from `main`@`7ec7bcc8`) · gates: `test_mip_sample_filter` 12/12, `test_mip_sample_bake` 4/4,
+  `test_soa_mip_serialize` 6/6, all green · no-regression 71/72 (one pre-existing, unrelated failure,
+  reproduced independently by both implementer and validator — see below) · Opus validator: **APPROVED**
+  · 2026-07-05.
+  - **Verified unknowns, resolved** (the plan had flagged both as "do not guess"): (1) the bottom-up
+    bake hook is `LaineKarrasOctree::rebuild` (`SVORebuild.cpp`), but its Phase 3 BFS reorder renumbers
+    nodes after Phase 2's bottom-up build, so mip computation is a **separate post-pass** over the
+    already-finalized (BFS-ordered) `childDescriptors` array — reverse-index iteration works because
+    Phase 3's BFS append order guarantees parent-index < all-child-indices (independently re-derived by
+    the validator from `SVORebuild.cpp:449-522` and `544-602`, not just trusted from the implementer).
+    (2) `OctreeConfig`'s free tail range is **352-432** (not the plan's guessed "≥200") — `OctreeConfig`
+    is now a Yeroket-kernel-codegen-generated struct; `mipPoolBase` landed at byte 352 via a proper
+    canonical-schema regen (`codegen/config-schemas/OctreeConfig.cs`), not a hand-edit — confirmed by
+    the generated header's static_assert battery (self-verifying: wouldn't compile if wrong).
+  - **KNOWN ISSUE (pre-existing, NOT introduced by M1, confirmed independently twice):**
+    `PartialBlockUpdateTest.AddNewBrick` in `test_octree_queries` fails on a clean `main`@`7ec7bcc8`
+    checkout ("Should have 2 bricks after updateBlock", expected 2 got 1) — reproduced by both the M1
+    implementer (stash-and-rebuild against clean tree) and the Opus validator independently (confirmed
+    `test_octree_queries`'s includes never touch anything M1 changed). Root cause not investigated
+    (out of scope for M1) — likely lives in `LaineKarrasOctree::updateBlock`. Should be logged in
+    `Vixen-Docs/04-Development/Known-Issues.md` alongside this project's other tracked KIs.
+  - **Non-blocking notes from validation, carried forward for M2/M3 (do NOT re-litigate in M1, but M3
+    must account for Note B before shipping the shader fallback read):**
+    - **Note A (test coverage gap):** M1's bake fixture (`bricksPerAxis=2`) has exactly one interior
+      level (the root) and explicitly asserts `anyNonLeafChild==false` — so the interior-from-non-leaf-
+      children branch (`MipBake.h:202-221`, the `nonLeafPosition` resolution) has zero test coverage,
+      though the validator hand-verified its logic against `SVORebuild.cpp` and judged it correct. A
+      multi-interior-level fixture (`bricksPerAxis≥4`) exercising this path should be added — good
+      opportunistic addition for whichever milestone next touches `MipBake.h`, not a blocking fix now.
+    - **Note B (real design gap M3 must resolve, not just a note):** brick-level LEAF nodes currently
+      get a **zero mip sample** — their index isn't a key in `leafToBrickView` (entries are keyed by
+      the parent), so the reverse-walk finds no children for a leaf and yields `{0,0}`. This is fine for
+      M1's own scope (mip samples fill the *interior*-stop hole; leaves have real brick data today), but
+      **M3's "brick not resident → read this leaf's mip sample" streaming-grace trigger (Task 7) would
+      read zeros for leaf nodes specifically** — the exact case M3 exists to handle. M3 must either (a)
+      give leaf nodes their own brick-reduction sample (the same reduction M1 already does for a
+      resident brick, just also stored even when the brick isn't resident), or (b) have the shader fall
+      back to the *parent's* sample when a leaf's own sample is unset. Flagging explicitly in M3's task
+      text (Task 7) below, not just here, so it isn't missed.
+
+- **Milestone M2 (Tasks 4-6): DONE** · commit `1d3920f7` (worktree `feat/sparse-mip-esvo-inc1`, on top
+  of M1's `3abcac0c`) · gate: `test_partial_brick_upload` green (re-run live by the validator, 1135ms,
+  real Mesa-Dozen WSL2 GPU) + `VIXEN.exe` links and boots (validator ran it 600 frames itself, 235-251
+  FPS, 0 VUIDs/exceptions/ERROR lines, clean exit) · Opus validator: **APPROVED** · 2026-07-06.
+  - **Verified unknowns, resolved** (both flagged "do not guess" in the plan): (1) the existing
+    `hasBrick()`/`INVALID_BRICK_INDEX` sentinel (`SVOTypes.h:102-104`) IS sufficient on its own — it
+    reads `ChildDescriptor.contourPointer`, which lives in the CPU-baked node array, never in the brick
+    buffer; independently confirmed shader-side too (`handleLeafHitInstanced` reads `fetchESVONode`'s
+    node buffer, never brick-buffer contents, to decide presence) — no new GPU-side "is this brick
+    uploaded" flag was needed. (2) `BodyOctreeSceneNode` already has `BatchedUploader` access with no
+    new plumbing: `VulkanDevice::Upload`/`WaitAllUploads` wrap a `uploader_` that `DeviceNode` already
+    constructs (`DirectAllocator→DeviceBudgetManager→BatchedUploader`) and wires at every graph's
+    Compile time — the node's existing `GetDevice()` was sufficient.
+  - **Non-blocking notes carried forward, threaded into the relevant later milestones' own task text
+    below (do not re-litigate in M2):**
+    - **M4c note (async completion-tracking):** M2's `UploadBrickPool` calls `uploader_->WaitIdle()` —
+      narrower than `Rematerialize`'s existing full-`vkDeviceWaitIdle` precedent (real precedent,
+      confirmed), so not a defect for M2's own "rare, explicit residency change" use. But once M4c
+      starts calling `RequestBrickResidency` on every camera-driven distance/FOV/frustum change, a
+      synchronous wait-idle per toggle could hitch — `BatchedUploader` already tracks upload handles, so
+      switching to async completion-tracking before M4c's on-demand triggering ships is the fix. Flagged
+      in M4c's own task text below, not just here.
+    - **KI (known issue, log separately):** most of `libraries/RenderGraph/tests/Nodes/*.cpp` (e.g.
+      `test_body_octree_lifetime.cpp`) are not registered in any CMakeLists at all — confirmed by both
+      implementer and validator (25 `test_*.cpp` under `Nodes/` vs. only 30 total `add_executable`
+      entries). Distinct from the already-tracked KI-014 (ctest discovery gap). Out of scope for this
+      increment (a full test-registration cleanup is bigger than M2/M3), but should be logged in
+      `Vixen-Docs/04-Development/Known-Issues.md` alongside KI-014 and M1's pre-existing
+      `PartialBlockUpdateTest.AddNewBrick` failure so it isn't silently forgotten.
+
+- **Milestone M3 (Tasks 7-9 + a pre-req fix): DONE** · commits `aa125485` (leaf-zero-sample fix) +
+  `6bbf088f` (Tasks 7-9) on top of M2's `1d3920f7` · gate: `test_mip_fallback_render` green on real
+  lavapipe (mip-only 107,457px vs. resident 27,752px, both re-run live by the validator, exact match on
+  the first and 3px raster-jitter on the second) + full no-regression suite (97/97 clean build; only the
+  already-known `PartialBlockUpdateTest.AddNewBrick` failure, confirmed still pre-existing and untouched
+  by M3's changes) + `VIXEN.exe` links · Opus validator: **APPROVED** · 2026-07-06.
+  - **RESOLVED M1 validator Note B** (leaf nodes previously got a zero mip sample): chose option (a) —
+    extended the bake pass with a second pass that resolves each brick-leaf's own final node index and
+    fills its mip-pool slot with its brick's filtered reduction, over option (b) (ancestor fallback),
+    specifically to keep Task 7 and Task 8 landing on one identical `mip[nodeIdx]`/`shadeFromMipSample`
+    read path per the plan's explicit "both triggers share one code path" requirement. The leaf-index
+    math (`childPointer + popcount(valid&~leaf) + leavesBefore`) is a single shared GLSL function
+    (`resolveLeafDescriptorIndex`, used by both the leaf-hit handler and the mip fallback) — the C++
+    bake-side necessarily mirrors the same formula rather than literally sharing code across languages
+    (validator's minor note: a future index-math change must keep both sides in sync manually, since
+    there's no cross-language sharing mechanism here). Verified via an independently-derived test oracle
+    (`IndependentReduceBrickSdf`, reads raw brick data directly, not circular).
+  - **REAL PRE-EXISTING REGRESSION FOUND AND FIXED (highest-risk item this milestone, independently
+    verified via exact grep/line evidence, not just trusted):** M2 shipped with `residencyRequested_`
+    defaulting to `false` (`BodyOctreeSceneNode.h:148` in `1d3920f7`) and **zero production call sites**
+    ever called `RequestBrickResidency` — meaning every existing binary/Procedural/Stored body in the
+    engine was silently getting an allocated-but-unpopulated brick buffer the moment residency became a
+    real gate, invisible before M3 because nothing checked residency yet. `CreateOctreeBuffers`'s single
+    gating expression (`BodyOctreeSceneNode.cpp:467`, `(residencyRequested_ && !bricks.empty()) ? data :
+    nullptr`) is the one path every caller flows through, so flipping the default to `true` (mip-only
+    streaming becomes opt-in via explicit `RequestBrickResidency(false)`) restores pre-Inc1 behavior for
+    every existing caller uniformly, with no caller left in a different state than before. `test_partial_
+    brick_upload` (M2) was correctly updated to explicitly opt out rather than accidentally rely on the
+    old default.
+  - **New GPU plumbing added beyond the original Task 7-9 text** (necessary, not scope creep — the
+    mechanism was otherwise unreachable): a new `OctreeConfig.brickResident` field (byte 356, regenerated
+    via the canonical Yeroket kernel-codegen schema — confirmed genuinely regenerated via the golden
+    check in the build, `[codegen] golden check: OctreeConfig.g.h/.glsl match canonical`, not hand-patched)
+    because M2's `hasBrick()`/`contourPointer` sentinel (confirmed sufficient by M2's own validator) answers
+    a DIFFERENT question ("does this node have a brick pointer at all") than Task 7 needs ("is that
+    brick's data actually uploaded") — the two milestones' conclusions are consistent, not in tension,
+    once the distinct questions are made explicit. Also added: a new mip-pool SSBO (binding 13) with full
+    `BodyOctreeSceneNode` lifecycle wiring, and `MipFallback.glsl` (`readMipSample`/`shadeFromMipSample`).
+    Binding 13 required updating 5 existing render-gate test files' hardcoded descriptor-set
+    construction (`test_body_instance_raymarch_render`, `test_recipe_pool_render`,
+    `test_appflow_editor_toggle_render`, `test_editor_document_render`, `test_recipe_authoring_gate`) —
+    spot-checked by the validator, consistent and correct.
+  - **Non-blocking notes (no re-dispatch needed, informational only):** the ~3.9x pixel-count difference
+    between mip-only and resident renders was sanity-checked by the validator via direct visual PNG
+    inspection (coarse blocky sphere from the hard-switch mip fallback vs. a soft true iso-surface limb —
+    geometrically consistent with the stated narrow-band-plus-hard-edge explanation, not a bug); the
+    leaf-bake unit fixture has a degenerate root that doesn't exercise the `totalNonLeafChildren` offset
+    term in isolation (covered end-to-end by the render gate instead — minor unit-test coverage gap, not
+    a defect).
 
 - **M4a DONE (2026-07-06):** `minResolvableLevel(distance, fovRadians, screenHeightPx, leafSize_m,
   pxThreshold)` implemented in `libraries/SVO/include/ResolvableLevel.h`. Verified `RaySizeCoefNode`
@@ -309,10 +442,10 @@ dependency on the upload-path changes (M2) and can be built/tested purely CPU-si
 sequencing as Stored-SDF Inc2's M1 (bake) before M3 (GPU integration).
 
 ### Task 1 — `MipSample` type + per-channel filtering semantics
-- [ ] Define `MipSample` (or per-channel variants) mirroring the existing multi-channel SoA shape
+- [x] Define `MipSample` (or per-channel variants) mirroring the existing multi-channel SoA shape
   (`VoxelChannelFormat.h`'s `SemanticId`/`FieldKind`) — read-by-semantic like the Inc3 channel pool,
   not a new parallel format.
-- [ ] Implement filtering per [[Sparse-Mip-ESVO-LOD-Direction-2026-07]] §"Design decisions" point 3:
+- [x] Implement filtering per [[Sparse-Mip-ESVO-LOD-Direction-2026-07]] §"Design decisions" point 3:
   - `SEM_COLOR`/`SEM_ROUGHNESS`/etc: weighted mean by child coverage (a `min(childCount,8)`-weighted
     average, coverage = fraction of the 8 child octants that are non-empty).
   - `SEM_SDF` (`FK_DISTANCE`): **conservative min-magnitude**, not mean — take the child sample with
@@ -320,34 +453,34 @@ sequencing as Stored-SDF Inc2's M1 (bake) before M3 (GPU integration).
     test that a mean-filtered SDF at a level would produce a false-positive/negative surface crossing
     that min-magnitude avoids (this is the Inc3-lesson regression case: write a bake fixture where a
     naive mean *would* misplace the surface and assert the min-magnitude result doesn't).
-- [ ] Unit test: `test_mip_sample_filter.cpp` — pure math, no octree needed. Verify color-mean and
+- [x] Unit test: `test_mip_sample_filter.cpp` — pure math, no octree needed. Verify color-mean and
   SDF-min-magnitude on hand-constructed child-sample fixtures (uniform fill, half-empty, and the
   adversarial SDF case above).
 
 ### Task 2 — Bottom-up bake-time fill
-- [ ] In the bake path (wherever `SerializeSdf`/octree construction already walks bottom-up to build
+- [x] In the bake path (wherever `SerializeSdf`/octree construction already walks bottom-up to build
   `ChildDescriptor`s — verify exact hook via `codegraph_explore "SVORebuild bottom-up octree build
   hierarchy"` before writing, do not assume the entry point without checking current code), add a
   post-pass (or fold into the existing pass) that computes each interior node's `MipSample` from its
   children's samples/leaf values, one level at a time, root-ward.
-- [ ] Ordinal indexing: per-level SoA pool indexed by the **same level-local node ordinal as the
+- [x] Ordinal indexing: per-level SoA pool indexed by the **same level-local node ordinal as the
   existing serialization order** (direction doc §"Design decisions" point 1) — do not invent a new
   addressing scheme; verify against how `SerializeSdf` already assigns node order and reuse it
   directly.
-- [ ] Unit test: `test_mip_sample_bake.cpp` — bake a small multi-level test octree (reuse the Inc2/Inc3
+- [x] Unit test: `test_mip_sample_bake.cpp` — bake a small multi-level test octree (reuse the Inc2/Inc3
   bake fixtures), assert every interior level's samples are present and match Task 1's filter applied
   to the actual child data (not just "non-zero" — exact value assertions).
 
 ### Task 3 — `SerializedOctree`/`ConcatenatedOctrees` carries the mip pool
-- [ ] Add `mipPool` (bytes) + `mipPoolBase`-per-octree (mirrors `poolBrickBase` for the existing
+- [x] Add `mipPool` (bytes) + `mipPoolBase`-per-octree (mirrors `poolBrickBase` for the existing
   channel pool, `ShellOctreeGpu.h:181-187`) to `SerializedOctree` and `ConcatenatedOctrees`.
-- [ ] `ConcatenateSdf` appends each octree's `mipPool` and stamps the per-octree base offset, same
+- [x] `ConcatenateSdf` appends each octree's `mipPool` and stamps the per-octree base offset, same
   pattern as the existing `channelPool`/`brickGridLookup` append loop (`ShellOctreeGpu.h:754-757`).
-- [ ] Extend `OctreeConfig` tail with `mipPoolBase` (verify free byte range before picking an offset —
+- [x] Extend `OctreeConfig` tail with `mipPoolBase` (verify free byte range before picking an offset —
   the tail is documented as bytes ≥200 in the 432-byte std140 struct; confirm current occupancy via
   `codegraph_explore "OctreeConfig tail bytes used formatId bricksPerAxis poolBrickBase"` before
   claiming a byte range, do not guess).
-- [ ] Unit test: `test_soa_mip_serialize.cpp` (mirrors `test_soa_sdf_serialize.cpp`) — round-trip a
+- [x] Unit test: `test_soa_mip_serialize.cpp` (mirrors `test_soa_sdf_serialize.cpp`) — round-trip a
   baked octree through `ConcatenateSdf`, assert the mip pool bytes match the bake-time samples at the
   expected ordinal offsets.
 
@@ -366,42 +499,42 @@ dstBuffer, dstOffset)`, staged through a pooled ring of staging buffers, async, 
 but nothing in the octree path calls it today. This milestone wires it in.
 
 ### Task 4 — Brick buffer allocated at full capacity, uploaded empty
-- [ ] Change `CreateOctreeBuffers`'s brick-buffer creation: allocate `bricksBuffer_` sized for the
+- [x] Change `CreateOctreeBuffers`'s brick-buffer creation: allocate `bricksBuffer_` sized for the
   tree's **full** brick count (from `ConcatenatedOctrees::brickCounts`/the per-channel stride math in
   `VoxelChannelFormat.h`), but do NOT populate it from `concatenated_.bricks.data()` unconditionally —
   gate initial population behind a per-octree "residency request" flag that defaults to **false** (no
   bricks requested = mip-only tree).
-- [ ] Verify the existing `hasBrick()`/`INVALID_BRICK_INDEX` sentinel (`SVOTypes.h:102-104`) already
+- [x] Verify the existing `hasBrick()`/`INVALID_BRICK_INDEX` sentinel (`SVOTypes.h:102-104`) already
   means "this leaf has no brick" — confirm (do not assume) that a brick-pool region left
   **unwritten-but-allocated** is safely distinguishable from **populated** at the shader side; if the
   current sentinel lives in `ChildDescriptor.contourPointer` (CPU-side, always correct regardless of
   GPU buffer contents) this is already sufficient and no new GPU-side "is this brick uploaded" flag is
   needed — verify this claim against current code before building a redundant flag.
-- [ ] Unit test: `test_partial_brick_upload.cpp` — create a tree's buffers with residency-request=false,
+- [x] Unit test: `test_partial_brick_upload.cpp` — create a tree's buffers with residency-request=false,
   assert node buffer + mip pool are populated, brick buffer is allocated (correct size) but the CPU
   mirror / readback shows it untouched (or: assert `hasBrick()` on every leaf still correctly reports
   false until a brick is actually uploaded, if the sentinel is descriptor-side not buffer-side —
   resolve this ambiguity as part of writing the test, it's the crux of the milestone).
 
 ### Task 5 — Wire `BatchedUploader` for brick population
-- [ ] Replace `CreateOctreeBuffers`'s direct `concatenated_.bricks.data()` write with a
+- [x] Replace `CreateOctreeBuffers`'s direct `concatenated_.bricks.data()` write with a
   `BatchedUploader::Upload(brickBytes, size, bricksBuffer_, dstOffset)` call for the bricks that ARE
   being populated at a given time (initially: all-or-nothing per §0 scope, so this is "upload
   everything via BatchedUploader instead of the host-visible direct-write path" as the mechanical
   first step — enables per-brick granularity later without re-architecting).
-- [ ] Determine (verify against current code, do not assume) whether `BodyOctreeSceneNode` currently
+- [x] Determine (verify against current code, do not assume) whether `BodyOctreeSceneNode` currently
   has access to a `BatchedUploader` instance, or whether one needs to be constructed/threaded in —
   check `VulkanDevice`/render-graph-wide uploader ownership via `codegraph_explore "BatchedUploader
   construction ownership where is it instantiated"` before assuming a global exists.
-- [ ] Unit test/controller gate: `VIXEN.exe` links and boots with the existing default scene rendering
+- [x] Unit test/controller gate: `VIXEN.exe` links and boots with the existing default scene rendering
   unchanged (no-regression — this task swaps the upload mechanism, not the data).
 
 ### Task 6 — Residency-request API on `BodyOctreeSceneNode`
-- [ ] Add `RequestBrickResidency(octreeIndex, bool resident)` (name TBD at implementation time) —
+- [x] Add `RequestBrickResidency(octreeIndex, bool resident)` (name TBD at implementation time) —
   mirrors the existing `SetBakeRecipe`/`SetRecipePool` dirty-flag pattern (`BodyOctreeSceneNode.h:89-99`):
   stash the request, mark dirty, `ExecuteImpl` performs the actual `BatchedUploader` call next frame
   (do not upload synchronously inside the setter — matches the established pattern in this file).
-- [ ] Unit test: call `RequestBrickResidency(idx, true)` on a mip-only tree, tick `ExecuteImpl`, assert
+- [x] Unit test: call `RequestBrickResidency(idx, true)` on a mip-only tree, tick `ExecuteImpl`, assert
   bricks are now populated (readback or the `hasBrick()` check from Task 4).
 
 **Gate:** `test_partial_brick_upload` green + `VIXEN.exe` links (controller-run) with no visual
@@ -412,33 +545,33 @@ regression on the existing default scene.
 ## M3 — Shader fallback read
 
 ### Task 7 — Existence check at leaf hit
-- [ ] In `BodyInstanceRayMarch.comp`'s leaf hit-test (`handleLeafHitInstancedSdf`/
+- [x] In `BodyInstanceRayMarch.comp`'s leaf hit-test (`handleLeafHitInstancedSdf`/
   `handleLeafHitInstanced`, per the M6 redesign in Stored-SDF Inc2), add the check: if
   `hasBrick()`/the equivalent GPU-side condition indicates no resident brick at this leaf, **do not
   march** — instead read `mip[level][ordinal]` for this node using the level/ordinal already tracked
   by `ESVOTraversalState` (`scale`, and whatever ordinal-tracking already exists in the traversal —
   verify exact field names via `codegraph_explore` before writing, per the direction doc's point 2
   "verify spare-bit vs sentinel cost in the real node/offset layout").
-- [ ] Shade using the mip sample directly (v1 = hard switch, no lerp, per direction doc point 4) —
+- [x] Shade using the mip sample directly (v1 = hard switch, no lerp, per direction doc point 4) —
   produces a flat-shaded or coarse-normal representation of that node's extent, not an iso-surface
   march.
 
 ### Task 8 — LOD-cutoff fallback (the other trigger)
-- [ ] Before attempting to descend further, check `raySizeCoef`'s existing footprint-vs-voxel-size
+- [x] Before attempting to descend further, check `raySizeCoef`'s existing footprint-vs-voxel-size
   test; if the cutoff says stop, read the mip sample at the current level **without checking brick
   residency at all** — this is the "deliberate LOD" trigger from the direction doc's "two triggers,
   one read path," distinct from Task 7's "streaming grace" trigger, but landing on the identical
   `mip[level][ordinal]` read.
-- [ ] Verify both triggers share one code path (per the direction doc's explicit "both land on
+- [x] Verify both triggers share one code path (per the direction doc's explicit "both land on
   `mip[level][ordinal]`") rather than accidentally forking into two shader branches that could drift.
 
 ### Task 9 — Lavapipe render gate
-- [ ] Offscreen render test (mirrors the Stored-SDF M6 lavapipe gate style): a tree with brick
+- [x] Offscreen render test (mirrors the Stored-SDF M6 lavapipe gate style): a tree with brick
   residency-request left at `false` (never uploaded, per M2) renders a recognizable silhouette from
   its mip samples alone — assert non-trivial pixel coverage (fillRatio-style assertion, matching the
   Inc2 M6 precedent that a silhouette-only check isn't sufficient by itself — also assert the shape is
   roughly correct, not just "some pixels are lit").
-- [ ] No-regression: existing binary/Procedural/Stored bodies with residency-request=true (or bypassing
+- [x] No-regression: existing binary/Procedural/Stored bodies with residency-request=true (or bypassing
   the new check entirely) render identically to pre-Inc1.
 
 **Gate:** shader compiles, lavapipe offscreen render shows correct mip-only silhouette, no-regression
@@ -481,7 +614,7 @@ only level ≥0.7 (bricks now clearly resolvable — the trigger correctly reque
 purely from the FOV change, camera position untouched). This is the direct answer to "does zooming
 automatically update the upload requirements": **yes, by construction, because FOV is a term in the
 same formula distance is** — there is no separate telescope-mode code path.
-- [ ] Implement `minResolvableLevel(distance, fovRadians, screenHeightPx, leafSize_m, pxThreshold)` as
+- [x] Implement `minResolvableLevel(distance, fovRadians, screenHeightPx, leafSize_m, pxThreshold)` as
   a small pure function (CPU-side, called once per tree per residency re-check — NOT per-ray; the
   per-ray version of this same math is what `RaySizeCoefNode`/the shader traversal already does at
   finer grain via the LOD cutoff from M3/Task 8). Unit test against the worked values above (or the
@@ -500,7 +633,7 @@ same formula distance is** — there is no separate telescope-mode code path.
 > buildable once M4a's function signature is fixed, without waiting on M4a's own gate to fully land if
 > parallelizing, though this Plan runs milestones sequentially per the context-manager pipeline.
 
-- [ ] **Frustum containment is a second, independent gate — not folded into the distance/FOV formula.**
+- [x] **Frustum containment is a second, independent gate — not folded into the distance/FOV formula.**
   `minResolvableLevel` answers "how much detail is worth resolving," but a tree can be close and
   well within resolvable range while sitting entirely outside the view frustum (behind the camera, or
   off to the side beyond the FOV cone) — that's a direction/containment test, not a distance test, and
@@ -511,12 +644,12 @@ same formula distance is** — there is no separate telescope-mode code path.
   regardless of (b) — full trim, same as being out of resolvable range, and for Inc1 this is the
   correct behavior for ANY out-of-frustum tree, not just distant ones (a body 5m away but directly
   behind the camera should be exactly as brick-empty as one 10km away).
-- [ ] **Hysteresis margin on the frustum test**, not a hard edge: expand the culling frustum slightly
+- [x] **Hysteresis margin on the frustum test**, not a hard edge: expand the culling frustum slightly
   (a small angular/distance pad) for the *residency* check specifically (distinct from the render
   frustum used for actual draw culling) — otherwise panning the camera back and forth near the
   boundary re-triggers upload/evict every frame. Pick a pad wide enough that a normal look-around does
   not thrash; this is a tunable, not a formula, and should be a named constant, not inlined.
-- [ ] **Occlusion — a fourth, independent gate. Two distinct mechanisms at two different
+- [x] **Occlusion — a fourth, independent gate. Two distinct mechanisms at two different
   granularities; do not conflate them (correction 2026-07-05, after finding the existing per-ray AABB
   cull).** Frustum containment answers "is it within the view cone"; resolvability answers "is it big
   enough to matter"; neither answers "is something else already in front of it."
@@ -534,7 +667,7 @@ same formula distance is** — there is no separate telescope-mode code path.
      hitting the planet) AND frustum containment AND resolvability, yet needs zero bricks — the
      planet's already-resident geometry blocks every pixel it could show. Nothing today prevents
      requesting residency for it.
-- [ ] **Cheapest correct fix reuses the existing per-ray loop instead of adding a separate CPU-side
+- [x] **Cheapest correct fix reuses the existing per-ray loop instead of adding a separate CPU-side
   beam pre-pass.** The instance loop (`BodyInstanceRayMarch.comp:667-782`) already tracks `bestT`
   (nearest hit so far across all instances processed this ray). Sort instances **front-to-back**
   (by distance from camera, computed CPU-side when building the per-frame instance list — cheap, one
@@ -545,8 +678,9 @@ same formula distance is** — there is no separate telescope-mode code path.
   infrastructure, for the per-ray traversal-skip case. **This does not by itself gate CPU-side brick
   residency** (§ still needed below) — it only saves GPU traversal work for instances that already have
   bricks; it doesn't stop non-visible instances from having bricks uploaded in the first place.
-- [ ] **CPU-side residency occlusion gate — separate from the GPU per-ray fix above, genuinely new,
-  scope-decide at implementation time.** For the "should we upload bricks for tree X at all" decision,
+- [ ] **DEFERRED TO INC2 (2026-07-06, explicit scope decision, Opus-validated as legitimate — see
+  Progress Log)**: CPU-side residency occlusion gate — separate from the GPU per-ray fix above, genuinely new,
+  scope-decide at implementation time. For the "should we upload bricks for tree X at all" decision,
   the cheap version: for each frustum-passing, resolvable candidate, test its bounding-volume center
   (and a few sample points) against a **coarse depth estimate** built from already brick-resident
   trees only (e.g. one representative ray per resident tree toward the candidate's direction; if it
@@ -557,16 +691,17 @@ same formula distance is** — there is no separate telescope-mode code path.
   deliver the claimed win on the initial test scenes (no heavily-occluding geometry), defer this to
   Inc2; if the scenes include occluders (moon behind planet, ships behind a station) and bandwidth
   doesn't improve as expected, build this before declaring Inc1 done.
-- [ ] Unit test for the GPU per-ray fix (front-to-back + `gridT.x > bestT` reject): a synthetic
+- [x] Unit test for the GPU per-ray fix (front-to-back + `gridT.x > bestT` reject): a synthetic
   three-body line-up (camera → occluder → occluded target) asserts the occluded target's traversal is
   skipped (not just its hit discarded) once the occluder's hit is recorded — verify via iteration-count
   instrumentation (`DebugRaySample`/`dbg.iterationCount`, already present in the shader) showing the
   occluded instance did zero traversal iterations, not just "no visible pixel difference."
-- [ ] Unit test for the CPU-side residency gate (if built this increment): same three-body line-up,
+- [ ] N/A — DEFERRED TO INC2 along with the gate it would test (see above). Unit test for the CPU-side
+  residency gate (if built this increment): same three-body line-up,
   occluder already brick-resident, asserts the occluded target's residency is NOT requested despite
   passing frustum + resolvability; moving the occluder aside (or letting the target emerge past it)
   triggers residency request once unoccluded.
-- [ ] **CPU is the right home for the residency gate at Inc1's scale — do not move it to compute/mesh
+- [x] **CPU is the right home for the residency gate at Inc1's scale — do not move it to compute/mesh
   shaders now (checked 2026-07-05, not a guess).** The gate (frustum + `minResolvableLevel` + coarse
   occlusion samples) runs once per candidate tree per re-check, not per-pixel; at the tree counts this
   increment and undertow's near-term target actually involve (tens to a few hundred bodies, per
@@ -589,6 +724,31 @@ to Inc2, in which case this gate is "N/A, deferred" rather than a failure).
 > Part 3 of Task 10 + all of Task 11. The integration milestone — ties M4a's formula and M4b's gates
 > together into the actual `RequestBrickResidency` call, notes the capability-graph gating path for any
 > future GPU-scheduling variant, and runs the live render gate. Depends on M4a + M4b both landing.
+
+> **M2 validator note (carried forward from the M2 Progress Log — read before wiring the trigger loop
+> here):** M2's `UploadBrickPool` calls `uploader_->WaitIdle()` on every residency toggle — fine for
+> M2's own "rare, explicit change" scope, but THIS milestone is exactly what turns residency toggles
+> from rare into "every frame the camera moves/zooms/rotates enough." Re-evaluating the trigger per
+> Task 10's three-scenario cadence and calling a synchronous wait-idle each time it flips could cause a
+> real, measurable hitch. Before wiring the live trigger loop, check whether `WaitAllUploads()`/
+> `WaitIdle()` is still being called synchronously from the residency path, and if the re-check cadence
+> is frequent enough for it to matter, switch to async completion-tracking (`BatchedUploader` already
+> tracks upload handles — the plumbing exists, this is a call-site change, not new infrastructure).
+> Don't ship this milestone with a blocking stall on every residency re-check without at least
+> confirming empirically (Task 11's live gate) that it doesn't hitch.
+
+> **M4b validator note (carried forward from the M4b Progress Log — read before wiring
+> `frustumContains`/occlusion into the live loop):** `SortInstancesFrontToBack`
+> (`libraries/SVO/include/InstanceSort.h` + `BodyOctreeSceneNode::SortInstancesFrontToBack`) is real,
+> tested (5/5 green), and exposed on the node — but as of M4b it is called ONLY from the occlusion unit
+> test, with zero call sites in `BuildRenderGraph.cpp`/`ExecuteImpl`/any camera-update path. This is
+> correct per the milestone split (live wiring was always M4c's job, not M4b's — M4b's own gate only
+> required the iteration-count unit test), but it means the GPU per-ray occlusion reject built in M4b
+> does nothing in the actual live render path until THIS milestone calls
+> `SortInstancesFrontToBack` somewhere in the per-frame instance-building flow. Do not assume M4b's work
+> is "live" just because it's committed and tested — wire the actual call as part of this milestone's
+> trigger-loop work, and confirm via Task 11's live gate that occlusion-based residency skipping is
+> actually observable at runtime, not just proven in isolation.
 
 - [ ] Wire `RequestBrickResidency(idx, frustumContains(idx) && minResolvableLevel(d, fov, h) <= brickLevel && !occluded(idx))`
   as the actual trigger (brick tier at `~kShellDepth` per `BodyOctreeSceneNode.h:118`; `occluded(idx)`
