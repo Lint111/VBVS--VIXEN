@@ -297,6 +297,8 @@ void BenchmarkGraphFactory::ConnectComputeRayMarch(
     // FrameSync -> SwapChain
     batch.Connect(infra.frameSync, RG::FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
                   infra.swapchain, RG::SwapChainNodeConfig::CURRENT_FRAME_INDEX)
+         .Connect(infra.frameSync, RG::FrameSyncNodeConfig::IN_FLIGHT_FENCE,
+                  infra.swapchain, RG::SwapChainNodeConfig::IN_FLIGHT_FENCE)  // per-image in-flight fence tracking
          .Connect(infra.frameSync, RG::FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
                   infra.swapchain, RG::SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
     // FR-3: renderComplete + presentFences are produced by swapchain (sized to the actual image count).
@@ -848,6 +850,8 @@ void BenchmarkGraphFactory::ConnectFragmentRayMarch(
     // FrameSync -> SwapChain
     batch.Connect(infra.frameSync, RG::FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
                   infra.swapchain, RG::SwapChainNodeConfig::CURRENT_FRAME_INDEX)
+         .Connect(infra.frameSync, RG::FrameSyncNodeConfig::IN_FLIGHT_FENCE,
+                  infra.swapchain, RG::SwapChainNodeConfig::IN_FLIGHT_FENCE)  // per-image in-flight fence tracking
          .Connect(infra.frameSync, RG::FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
                   infra.swapchain, RG::SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
     // FR-3: renderComplete + presentFences are produced by swapchain (sized to the actual image count).
@@ -1267,6 +1271,8 @@ void BenchmarkGraphFactory::ConnectHardwareRT(
     // FrameSync -> SwapChain
     batch.Connect(infra.frameSync, RG::FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
                   infra.swapchain, RG::SwapChainNodeConfig::CURRENT_FRAME_INDEX)
+         .Connect(infra.frameSync, RG::FrameSyncNodeConfig::IN_FLIGHT_FENCE,
+                  infra.swapchain, RG::SwapChainNodeConfig::IN_FLIGHT_FENCE)  // per-image in-flight fence tracking
          .Connect(infra.frameSync, RG::FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
                   infra.swapchain, RG::SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
     // FR-3: renderComplete + presentFences are produced by swapchain (sized to the actual image count).

@@ -192,6 +192,14 @@ void CapabilityGraph::BuildStandardCapabilities() {
     auto timelineSemaphore = CreateCapability<DeviceFeatureCapability>(
         "DeviceFeature:timelineSemaphore", "timelineSemaphore");
 
+    // hostQueryReset (core Vulkan 1.2). Lets GPUTimestampQuery reset its per-frame timestamp query
+    // pools on the host (vkResetQueryPool) at creation, so the first vkGetQueryPoolResults reads an
+    // initialised pool instead of an unreset one (the VUID-vkGetQueryPoolResults-None-09401 startup
+    // burst). Gated through the graph; enablement lives in VulkanDevice. Optional — the query code
+    // falls back to GPU-side resets when unsupported.
+    auto hostQueryReset = CreateCapability<DeviceFeatureCapability>(
+        "DeviceFeature:hostQueryReset", "hostQueryReset");
+
     // synchronization2 (core Vulkan 1.3). REQUIRED: the renderer records all GPU barriers via
     // vkCmdPipelineBarrier2 (ComputeDispatchNode, MultiDispatchNode); without it every barrier2
     // call fails validation (VUID-vkCmdPipelineBarrier2-synchronization2-03848). Gated through the

@@ -233,6 +233,14 @@ private:
     struct PerFrameSlotData {
         bool startWritten = false;  // Track if start timestamp was written
         bool endWritten = false;    // Track if end timestamp was written
+        // True once this (frame-slot, consumer-slot) pair has had BeginFrame called at least once,
+        // i.e. its 2 physical queries have been reset in a command buffer that was subsequently
+        // submitted. Reads (vkGetQueryPoolResults) BEFORE this is true would hit queries that were
+        // never reset on the GPU → VUID-vkGetQueryPoolResults-None-09401 ("query not reset"), the
+        // startup burst before each per-flight slot completes its first reset→write→submit cycle.
+        // Set in BeginFrame (which happens AFTER the frame's CollectResults read), so it gates the
+        // first read to the slot's SECOND encounter — by which point the first reset has executed.
+        bool resetRecorded = false;
     };
 
     struct PerFrameData {
@@ -251,6 +259,9 @@ private:
 
     [[nodiscard]] bool IsSlotValid(QuerySlotHandle slot) const;
     [[nodiscard]] bool IsSlotAllocated(QuerySlotHandle slot) const;
+    // True once every allocated slot for this frame-in-flight has been reset in a submitted command
+    // buffer at least once (gates the whole-pool vkGetQueryPoolResults read — see the .cpp).
+    [[nodiscard]] bool AllAllocatedSlotsReset(uint32_t frameIndex) const;
 };
 
 } // namespace Vixen::RenderGraph

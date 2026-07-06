@@ -178,6 +178,31 @@ void SwapChainNode::ExecuteImpl(TypedExecuteContext& ctx) {
         }
     }
 
+    // Per-image in-flight fence wait (canonical imagesInFlight pattern). The command buffers,
+    // descriptor sets, and timestamp query pools that downstream nodes reuse are keyed by IMAGE
+    // index, but FrameSyncNode only waits on the per-FLIGHT fence (currentFrameIndex). With
+    // MAX_FRAMES_IN_FLIGHT (4) != swapchain image count (typically 3) the flight ring and image
+    // ring desync, so the per-flight wait does NOT prove the previous submission that touched THIS
+    // image's resources has finished — the root cause of the re-record/re-submit/descriptor-update
+    // -while-pending validation errors (VUID-vkBeginCommandBuffer-00049, -vkQueueSubmit2-03875,
+    // -vkUpdateDescriptorSets-None-03047, -vkGetQueryPoolResults-None-09401). Wait on whichever
+    // flight fence last guarded this image before its resources are reused, then stamp it with the
+    // current frame's fence. This is a CPU-side ordering wait only (no vkDeviceWaitIdle): with
+    // flights > images it serialises just enough that a given image is never in two submissions at
+    // once, while still allowing the other images to remain in flight.
+    if (currentImageIndex != UINT32_MAX && GetDevice() != nullptr &&
+        currentImageIndex < imagesInFlight.size()) {
+        VkFence imageFence = imagesInFlight[currentImageIndex];
+        if (imageFence != VK_NULL_HANDLE) {
+            vkWaitForFences(GetDevice()->device, 1, &imageFence, VK_TRUE, UINT64_MAX);
+        }
+        // Record the fence that will guard this image's work THIS frame, so a future frame that
+        // reuses this image index waits on it. The consumer nodes reset + submit with this same
+        // per-flight fence (ComputeDispatchNode/GeometryRenderNode/UIRenderNode), so by the time
+        // this image comes back around the fence has been signalled by that submission.
+        imagesInFlight[currentImageIndex] = ctx.In(SwapChainNodeConfig::IN_FLIGHT_FENCE);
+    }
+
     // If swapchain is out of date, skip this frame.
     if (currentImageIndex == UINT32_MAX) {
         NODE_LOG_INFO("SwapChainNode: Skipping frame due to out-of-date swapchain");
@@ -618,6 +643,10 @@ void SwapChainNode::CreatePerImageSyncResources() {
         }
     }
 
+    // Per-image in-flight fence tracking: one non-owning slot per image, reset to VK_NULL_HANDLE
+    // (image not yet used). Sized here so it always matches the actual swapchain image count.
+    imagesInFlight.assign(imageCount, VK_NULL_HANDLE);
+
     NODE_LOG_INFO("[SwapChainNode] Created " + std::to_string(renderCompleteSemaphores.size())
                   + " renderComplete semaphores + " + std::to_string(presentFences.size())
                   + " present fences (swapchain image count = " + std::to_string(imageCount) + ")");
@@ -636,6 +665,8 @@ void SwapChainNode::DestroyPerImageSyncResources() {
     }
     renderCompleteSemaphores.clear();
     presentFences.clear();
+    // Non-owning: the fences belong to FrameSyncNode, so only drop our references (never destroy).
+    imagesInFlight.clear();
 }
 
 } // namespace Vixen::RenderGraph

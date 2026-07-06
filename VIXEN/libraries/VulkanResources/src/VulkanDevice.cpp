@@ -134,6 +134,17 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
         vulkan12Features.bufferDeviceAddress = VK_TRUE;
         needVulkan12Features = true;
     }
+    // hostQueryReset (Vulkan 1.2 core): lets the CPU reset a query pool via vkResetQueryPool without
+    // a command buffer. GPUTimestampQuery resets its per-frame timestamp pools on the host at
+    // creation so the very first vkGetQueryPoolResults (the startup/first-frames window, before each
+    // per-flight pool has completed its first cmd-buffer reset→write→submit cycle) reads an
+    // initialized pool instead of an unreset one — the VUID-vkGetQueryPoolResults-None-09401 startup
+    // burst. When the GPU lacks the feature, GPUTimestampQuery falls back to GPU-side resets only
+    // (HasCapability check there), so this is a strict improvement, never a hard dependency.
+    if (capabilityGraph_.IsCapabilityAvailable("DeviceFeature:hostQueryReset")) {
+        vulkan12Features.hostQueryReset = VK_TRUE;
+        needVulkan12Features = true;
+    }
     if (needVulkan12Features) {
         pNextChainEnd = reinterpret_cast<void**>(AppendToPNext(pNextChainEnd, &vulkan12Features));
     }
@@ -488,6 +499,9 @@ std::vector<std::string> VulkanDevice::QueryAvailableDeviceFeatures() const {
 
     if (vulkan12.timelineSemaphore) {
         supported.emplace_back("timelineSemaphore");
+    }
+    if (vulkan12.hostQueryReset) {
+        supported.emplace_back("hostQueryReset");
     }
     if (vulkan13.synchronization2) {
         supported.emplace_back("synchronization2");
