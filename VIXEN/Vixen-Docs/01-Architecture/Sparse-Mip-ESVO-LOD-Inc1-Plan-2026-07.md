@@ -257,6 +257,9 @@ that motivates the epic. The two are one gate.
   toggle-heavy window (no hitch from the async upload fix). No-regression: `test_partial_brick_upload`,
   `test_mip_fallback_render`, `test_body_instance_occlusion_reject`, `test_resolvable_level`,
   `test_frustum_cull`, `test_instance_sort` all green (31/31 across the 7 suites touched this milestone).
+  Opus-validated **APPROVED** — validator independently traced the async upload state machine's
+  overlapping-request race (clean) and ran a control (static-camera, zero-toggle) comparison proving the
+  frame-time claim more rigorously than reported (see Progress Log correction) — no code changes needed.
 - **M5 — Gate + verify: bandwidth claim** (Task 12) · controller/interactive · live A/B: N mip-only
   trees vs N fully-resident trees, measure actual bytes uploaded + frame time; no-regression suite.
 
@@ -470,6 +473,15 @@ Task 10's existing bullet list, not rewrite the task.
     legitimate one-time `totalUploads` bump when `PollBrickUploadCompletion` first observes brick-upload
     completion — the fixed test now drives both phases explicitly via `deviceShell_->WaitAllUploads()` +
     extra `Execute()` ticks before asserting stability).
+    - **Validator correction to the frame-time claim above (2026-07-06, doc-phrasing only, no code
+      change needed):** "flat ~6ms... none [of the spikes] appear" is slightly overstated — the
+      validator's own re-run found the `[FrameTimer]` OUTLIER detector logs 24 spikes in the toggle-heavy
+      run. But a CONTROL run (same demo, static camera, zero toggles/uploads) shows the **identical 24
+      outliers** at the same FPS bands, including 4 spikes landing in the pure-far/no-upload phase — i.e.
+      the spikes are ambient WSLg/Dozen jitter, present with or without any residency toggling at all.
+      The substantive claim (the async fix adds no measurable toggle-induced cost) is confirmed CORRECT
+      and more rigorously than the original phrasing suggested (a same-vs-control comparison, not just
+      "looks flat") — only the "none appear" wording was imprecise.
   - **`test_residency_trigger.cpp` (8 tests, all green)** covers the plan's required THREE scenarios
     distance/zoom/orientation-driven, not two — plus a hysteresis/no-thrash check and eviction-symmetry
     checks on all three axes. Two real test-authoring bugs found and fixed while deriving it (both via
@@ -507,6 +519,15 @@ Task 10's existing bullet list, not rewrite the task.
     class of hitch this milestone's WaitAllUploads fix just eliminated. Revisit only if M5's bandwidth
     measurement shows the always-allocated-at-full-capacity buffer is itself a problem (a capacity
     question, not a residency-toggle-frequency one).
+  - **Opus validator: APPROVED** (2026-07-06) — independently traced the async state machine's
+    overlapping-request handling by hand (monotonic, never-reused, never-pruned upload handles; a `false`
+    arriving mid-flight is a correct no-op, not stale corruption; the one identified edge — a
+    `true→false→true` cycle within one in-flight window — re-queues an identical-byte upload, wasteful
+    but not incorrect), rebuilt and re-ran all 7 touched test suites from source, re-ran the live gate
+    plus an original CONTROL run (static camera, zero toggles) that proved the async fix's frame-time
+    claim more rigorously than originally stated (see the correction above) — no findings required a
+    code change; this is the highest-stakes milestone in the increment before M5 and the validator gave
+    it full independent scrutiny rather than trusting a clean live-gate run at face value.
 
 ---
 
@@ -826,13 +847,13 @@ to Inc2, in which case this gate is "N/A, deferred" rather than a failure).
 > trigger-loop work, and confirm via Task 11's live gate that occlusion-based residency skipping is
 > actually observable at runtime, not just proven in isolation.
 
-- [ ] Wire `RequestBrickResidency(idx, frustumContains(idx) && minResolvableLevel(d, fov, h) <= brickLevel && !occluded(idx))`
+- [x] Wire `RequestBrickResidency(idx, frustumContains(idx) && minResolvableLevel(d, fov, h) <= brickLevel && !occluded(idx))`
   as the actual trigger (brick tier at `~kShellDepth` per `BodyOctreeSceneNode.h:118`; `occluded(idx)`
   is the Inc1-optional gate above — defaults to `false`/always-pass if not built this increment, so the
   formula degrades gracefully to the frustum+resolvability-only trigger), re-evaluated whenever camera
   distance, FOV, **or orientation** changes materially — orientation matters because it's what moves a
   tree in/out of the frustum independent of distance or zoom, and also changes what occludes what.
-- [ ] Unit/controller test: **three** scenarios, not two — (a) camera moves toward a stationary body at
+- [x] Unit/controller test: **three** scenarios, not two — (a) camera moves toward a stationary body at
   fixed FOV/orientation (distance-driven), (b) camera stays fixed while FOV narrows
   (telescope/zoom-driven), and (c) camera stays fixed distance/FOV but **rotates** so a body moves from
   in-frustum to out-of-frustum and back (orientation-driven, the case distance/FOV alone can't cover) —
@@ -845,7 +866,7 @@ to Inc2, in which case this gate is "N/A, deferred" rather than a failure).
   decide based on what M5's measurement actually needs.
 
 ### Task 11 — Live gate
-- [ ] `VIXEN.exe` run: place N bodies at far distance (mip-only), confirm they render (coarse but
+- [x] `VIXEN.exe` run: place N bodies at far distance (mip-only), confirm they render (coarse but
   correct) with zero brick uploads; move camera close to one, confirm it resolves to full detail; move
   away, confirm behavior is stable (no crash/leak on repeated request/de-request cycles).
 
