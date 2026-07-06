@@ -299,6 +299,13 @@ bool EditorApplication::SaveDocument() {
 void EditorApplication::Update() {
     VulkanGraphApplication::Update();
 
+    // Inc-2b M3 (carried over from the M2 validator): the base VulkanGraphApplication::Update's
+    // try/catch (VulkanGraphApplication.cpp) is scoped to that method's OWN body -- it returns
+    // before control reaches here, so nothing below is actually covered by it. A prior version of
+    // this comment claimed otherwise; wrap this override's own body in its own guard (mirroring
+    // the base method's catch shape) so the no-throw-across-the-tick contract (design §5) really
+    // holds for the toggle/undo/capture/script code added in Inc-2b, not just by assertion.
+    try {
     // Inc-2b Task 4: parse VIXEN_EDITOR_SCRIPT / VIXEN_EDITOR_CAPTURE_FRAMES /
     // VIXEN_EDITOR_CAPTURE_DIR exactly once (mirrors VulkanGraphApplication.cpp's
     // VIXEN_RESIZE_AT_FRAME static-init-on-first-use pattern, adapted to a per-instance flag
@@ -379,9 +386,9 @@ void EditorApplication::Update() {
     // Inc-2b Task 4: dump a capture PNG if this tick is scripted for one. Placed AFTER the
     // dirty_ re-flatten tail so a capture on the same tick as a scripted toggle reflects the
     // post-toggle scene. A capture failure is logged, never thrown -- CaptureFrameToPng already
-    // never crashes the frame loop, and this call site preserves that (both live inside the
-    // base VulkanGraphApplication::Update's try/catch via the call at the top of this method --
-    // there is nothing here that can throw past it regardless).
+    // never crashes the frame loop, and this call site preserves that; the try/catch around this
+    // whole override body is the actual backstop (see the M3 comment above), not a claim about
+    // the base method's guard.
     for (const long captureFrame : captureFrames_) {
         if (captureFrame != updateTick_) continue;
         const std::string path = captureDir_ + "/editor_capture_" + std::to_string(updateTick_) + ".png";
@@ -389,5 +396,12 @@ void EditorApplication::Update() {
         if (!CaptureFrameToPng(path, captureErr)) {
             logger_->Error("[EditorApplication] CaptureFrameToPng failed for " + path + ": " + captureErr);
         }
+    }
+    } catch (const std::exception& e) {
+        lastEditorError_ = std::string("Update failed: ") + e.what();
+        logger_->Error("[EditorApplication] Update: " + lastEditorError_);
+    } catch (...) {
+        lastEditorError_ = "Update failed: unknown (non-std) exception";
+        logger_->Error("[EditorApplication] Update: " + lastEditorError_);
     }
 }
