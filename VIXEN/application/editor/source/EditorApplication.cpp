@@ -323,7 +323,6 @@ void EditorApplication::Update() {
             captureDir_ = dirEnv;
         }
     }
-    ++updateTick_;
 
     // Inject any scripted action due this tick through the SAME methods the interactive input
     // path calls (ToggleLayer / rt_.Undo / rt_.Redo) -- so the harness exercises the real
@@ -397,6 +396,17 @@ void EditorApplication::Update() {
             logger_->Error("[EditorApplication] CaptureFrameToPng failed for " + path + ": " + captureErr);
         }
     }
+
+    // Advanced AFTER this tick's script/capture checks above compare against it, so updateTick_
+    // is 0 on the very first Update() call rather than 1 (the pre-existing ++ prefix here made a
+    // scripted "@0"/capture-frame-0 entry permanently un-hittable -- found live via the M3
+    // windowed gate: editor_capture_0.png never appeared even though captureFrames_ contained 0).
+    // Note frame 0 is still not a useful CAPTURE frame regardless of this fix -- Update() ticks
+    // BEFORE the render loop's first Render() call (main.cpp: `Update(); Render();` per
+    // iteration), so a tick-0 capture still reads compute_render_target before anything has ever
+    // been drawn into it (an all-black PNG). Scripted ACTIONS (toggle/undo/redo) at frame 0 are
+    // unaffected by that -- they mutate the mask/ActionStack regardless of what's on screen yet.
+    ++updateTick_;
     } catch (const std::exception& e) {
         lastEditorError_ = std::string("Update failed: ") + e.what();
         logger_->Error("[EditorApplication] Update: " + lastEditorError_);

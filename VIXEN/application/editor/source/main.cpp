@@ -2,6 +2,7 @@
 #include "VulkanApplicationBase.h"
 #include "VulkanGlobalNames.h"
 #include <Logger.h>
+#include <cstdint>
 #include <cstdlib>
 #include <memory>
 #include <string>
@@ -80,10 +81,27 @@ int main(int argc, char** argv) {
         }
 
         mainLogger->Info("Entering render loop...");
+        // Inc-2b M3: VIXEN_EXIT_AFTER_FRAMES=<n> -- close cleanly after n frames, mirroring
+        // application/main/source/main.cpp's identical knob (same env name, same semantics: a
+        // frame-counted clean exit through the normal DeInitialize() path, not a window-close
+        // event). Needed so an unattended scripted run (VIXEN/temp/run_editor_script.bat) can
+        // self-terminate -- without this the editor's own main.cpp had no exit knob at all and a
+        // scripted windowed gate would hang forever waiting for a window the harness never closes.
+        long exitAfterFrames = 0;
+        if (const char* env = std::getenv("VIXEN_EXIT_AFTER_FRAMES")) {
+            exitAfterFrames = std::strtol(env, nullptr, 10);
+        }
+        uint64_t frameCounter = 0;
         bool isWindowOpen = true;
         while (isWindowOpen) {
             appObj->Update();
             isWindowOpen = appObj->Render();
+            ++frameCounter;
+            if (exitAfterFrames > 0 && frameCounter >= static_cast<uint64_t>(exitAfterFrames)) {
+                mainLogger->Info("[EditorMain] VIXEN_EXIT_AFTER_FRAMES=" + std::to_string(exitAfterFrames)
+                                 + " reached - closing");
+                isWindowOpen = false;
+            }
         }
 
         mainLogger->Info("Cleaning up...");
