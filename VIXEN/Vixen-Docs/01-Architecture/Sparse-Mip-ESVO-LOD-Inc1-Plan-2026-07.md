@@ -255,7 +255,17 @@ Task 10's existing bullet list, not rewrite the task.
 
 ### Progress Log
 
-*(empty — not started)*
+- **M4a DONE (2026-07-06):** `minResolvableLevel(distance, fovRadians, screenHeightPx, leafSize_m,
+  pxThreshold)` implemented in `libraries/SVO/include/ResolvableLevel.h`. Verified `RaySizeCoefNode`
+  (`RaySizeCoefNode.h/.cpp`) has no single hardcoded FOV/screen-height constant to match — FOV is a
+  runtime parameter (`PARAM_FOV_DEGREES`, default 45°) recomputed per-resize via the compile cascade —
+  so the plan's 1080p/60°FOV/1px-threshold worked example is just the example's own chosen inputs, not
+  a project-wide constant; the new function's parameters are independent inputs, consistent either way.
+  `test_resolvable_level.cpp` (5 tests, all green): both axes covered — fixed-FOV/varying-distance
+  (reproduces the plan's raw log2≈5.6 → ceil 6 at 500m/60°FOV) and fixed-distance/varying-FOV (reproduces
+  raw log2≈0.69 → ceil 1 at 500m/2°telescope), plus monotonicity checks on each axis and an explicit
+  narrowing-FOV-decreases-level direction assertion (1 < 6). Level convention matches
+  `LaineKarrasOctree.h`'s `ESVOTraversalState::scale` (0=finest/leaf, root at `ESVO_MAX_SCALE`).
 
 ---
 

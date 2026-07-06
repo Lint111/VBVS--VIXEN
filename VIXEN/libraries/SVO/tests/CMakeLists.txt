@@ -222,6 +222,27 @@ endif()
 gtest_discover_tests(test_mip_sample_bake)
 
 # ===========================================================================
+# Resolvable-Level Formula Tests  (Sparse-Mip ESVO LOD Inc1 M4a Task 10 part 1
+# — pure math, no octree/GPU needed: minResolvableLevel(distance, fovRadians,
+# screenHeightPx, leafSize_m, pxThreshold), both distance- and FOV-driven axes)
+# ===========================================================================
+add_executable(test_resolvable_level test_resolvable_level.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_resolvable_level PRIVATE
+        GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_resolvable_level PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_resolvable_level PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_resolvable_level POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_resolvable_level>
+        COMMENT "Copying TBB DLL for test_resolvable_level")
+endif()
+gtest_discover_tests(test_resolvable_level)
+
+# ===========================================================================
 # SDF Bake Tests  (Inc2 M1 — recipe → narrow-band SDF voxels + body octree)
 # ===========================================================================
 add_executable(test_sdf_bake test_sdf_bake.cpp)
