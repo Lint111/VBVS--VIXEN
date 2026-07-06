@@ -43,7 +43,7 @@
 
 ## Milestone Map
 
-- **M1 — Rename EditorHud→Hud (Yeroket-neutral; VIXEN-side rename of Inc-1 artifacts, re-anchor golden).** Tasks 1-2. Deliverable: `Hud.cs`/`Hud.g.h`/`HudBind`/`BindHudModel`/`view_hud_*` targets; golden test re-anchored + green; model name `"hud"`. No behavior change, node still hand-written.
+- **M1 — Rename EditorHud→Hud (Yeroket-neutral; VIXEN-side rename of Inc-1 artifacts, re-anchor golden).** Tasks 1-2. Deliverable: `Hud.cs`/`Hud.g.h`/`HudBind`/`BindHudModel`/`view_hud_*` targets; golden test re-anchored + green; model name `"hud"`. No behavior change, node still hand-written. **✅ DONE.**
 - **M2 — Generic view-host + native Hud consumer (the decouple + live wire).** Tasks 3-5. Deliverable: `UIRenderNode` is view-agnostic (`IView` seam); a native `HudView` consumer in the main app calls `BindHudModel`; the live HUD renders through it. Includes the byte-exact real-GPU PNG gate.
 - **M3 — RML markup partial emit + compose + close-out.** Tasks 6-8. Deliverable: Yeroket `RmlMarkupEmitter` generates the data-binding partial; `hud.rml` composes it; `test_ui_hud_smoke` migrated; full gate green; docs closed.
 
@@ -686,7 +686,7 @@ git commit -m "feat(view-contract): generate + compose Hud RML data-binding part
 
 _(Appended per milestone during execution.)_
 
-- _M1 (Tasks 1–2, VIXEN rename + golden re-anchor): pending_
+- **M1 (Tasks 1–2, VIXEN rename + golden re-anchor): DONE** · commits `21e41247` (Task 1 — rename schema/header/CMake) + `1a108ceb` (Task 2 — golden re-anchor) on `worktree-view-contract-inc2` · clean `git mv` renames (`EditorHud.cs=>Hud.cs`, `EditorHud.g.h=>Hud.g.h`, `test_view_editorhud_golden.cpp=>test_view_hud_golden.cpp`); symbols `HudBind`/`BindHudModel`; targets `view_hud_check`/`view_hud_regen`/`test_view_hud_golden`; macro `VIEW_HUD_G_H`; model name unified `"hud"`; `HudFaction`/`HudEvent` UNCHANGED (correct); node UNTOUCHED (no behavior change) · `test_view_hud_golden` **2/2 PASS** (fresh Windows-side ninja rebuild) · `view_hud_check` `--check` exit 0 (WSL-side, header == regen) · golden `kExpected` = same 18-token Inc-1 sequence, re-anchored to the canonical schema + future `HudView::Register` (not the soon-deleted node block) · Opus validator APPROVED (independent fresh rebuild + re-run) · Yeroket `SDFNodeGenerator.dll` churn reverted, both repos clean · 2026-07-06. Only rename residue = a provenance comment (`codegen/CMakeLists.txt:79`).
 - _M2 (Tasks 3–5, generic host + HudView consumer + live gate): pending_
 - _M3 (Tasks 6–8, smoke migrate + markup emit + compose + close-out): pending_
 
