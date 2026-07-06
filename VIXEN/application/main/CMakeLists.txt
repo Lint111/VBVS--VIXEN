@@ -28,6 +28,7 @@ add_library(VixenApp STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildInstancingDemoGraph.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildAutoSyncDemoGraph.cpp  # auto-sync P4 M4
     ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildFanInDemoGraph.cpp     # auto-sync P5b M2 fan-in
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/HudView.cpp                # View Contract Inc-2: native IView consumer
     ${HPP_FILES}
 )
 
@@ -151,3 +152,4 @@ vixen_stage_assets(VIXEN ${VIXEN_ROOT}/libraries/RenderGraph/assets DEST assets)
 # ----------------------------------------------------------------------------
 include(${VIXEN_ROOT}/libraries/RenderGraph/tests/FailScenarios/test_fail_scenario_sweep.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/tests/test_app_run_tick.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/tests/test_hud_view.cmake)

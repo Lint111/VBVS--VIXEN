@@ -76,11 +76,13 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         COMMENT "[codegen] regenerate OctreeConfig.g.h/.glsl (Yeroket tool)"
         VERBATIM)
 
-    # --- Hud [View] schema via the same Yeroket tool (View Contract Inc-2: renamed from EditorHud) ---
+    # --- Hud [View] schema via the same Yeroket tool (View Contract Inc-2: renamed from EditorHud).
+    # The generated header lives under application/main — it is a CONSUMER artifact (the native
+    # HudView), not an engine one; the engine only sees the generic Ui/IView.h seam.
     set(_view_args
         run --project "${_yk_tool}" -c Release --
         --schema "${_cg}/view-schemas" --view Hud
-        --out-header "${CMAKE_SOURCE_DIR}/libraries/RenderGraph/include/Generated/Hud.g.h")
+        --out-header "${CMAKE_SOURCE_DIR}/application/main/include/Generated/Hud.g.h")
     add_custom_target(view_hud_check ALL
         COMMAND ${VIXEN_DOTNET} ${_view_args} --check
         COMMENT "[codegen] golden check: Hud.g.h matches canonical [View] schema (Yeroket tool)"

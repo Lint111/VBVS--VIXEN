@@ -642,8 +642,12 @@ if(TARGET GTest::gtest_main)
         RenderGraph
     )
 
+    # Hud.g.h is now a CONSUMER artifact (application/main) — the golden still verifies it, but
+    # needs the app's include dir to resolve "Generated/Hud.g.h" (View Contract Inc-2, Task 4).
+    target_include_directories(test_view_hud_golden PRIVATE ${CMAKE_SOURCE_DIR}/application/main/include)
+
     target_compile_definitions(test_view_hud_golden PRIVATE
-        VIEW_HUD_G_H="${CMAKE_SOURCE_DIR}/libraries/RenderGraph/include/Generated/Hud.g.h")
+        VIEW_HUD_G_H="${CMAKE_SOURCE_DIR}/application/main/include/Generated/Hud.g.h")
 
     set_target_properties(test_view_hud_golden PROPERTIES FOLDER "Tests/RenderGraph Tests")
 
