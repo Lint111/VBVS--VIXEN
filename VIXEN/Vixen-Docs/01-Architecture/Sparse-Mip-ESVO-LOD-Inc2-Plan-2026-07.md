@@ -90,7 +90,7 @@ mechanism is warranted yet, or should itself wait for the nested-tree epic.
   primitive before hand-rolling per Inc1's own note, GPU-side LRU list maintenance, `CapabilityGraph`
   gating tier). If neither condition has changed, this milestone's gate is the documented "not yet"
   decision itself, with the specific numbers that would flip it — not a build. ·
-  **✅ DONE 2026-07-06** — commit `<pending>` (this milestone's own doc commit); decision: **not yet,
+  **✅ DONE 2026-07-06** — commit `463ca2a8` (this milestone's own doc commit); decision: **not yet,
   documented "no-build" with specific flip triggers** — see M4 Progress Log below.
 
 ---
