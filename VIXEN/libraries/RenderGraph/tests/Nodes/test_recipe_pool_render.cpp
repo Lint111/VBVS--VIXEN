@@ -264,10 +264,11 @@ protected:
         VkDeviceMemory traceMem=VK_NULL_HANDLE, ctrMem=VK_NULL_HANDLE;
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, traceBuf, traceMem, true);
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, ctrBuf, ctrMem, true);
-        VkBuffer dummySdf=VK_NULL_HANDLE, dummyLookup=VK_NULL_HANDLE;
-        VkDeviceMemory dSdfMem=VK_NULL_HANDLE, dLookupMem=VK_NULL_HANDLE;
+        VkBuffer dummySdf=VK_NULL_HANDLE, dummyLookup=VK_NULL_HANDLE, dummyMip=VK_NULL_HANDLE;
+        VkDeviceMemory dSdfMem=VK_NULL_HANDLE, dLookupMem=VK_NULL_HANDLE, dMipMem=VK_NULL_HANDLE;
         if (sdf    == VK_NULL_HANDLE) { CreateHostBuffer(256,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummySdf,dSdfMem,true); sdf = dummySdf; }
         if (lookup == VK_NULL_HANDLE) { CreateHostBuffer(256,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummyLookup,dLookupMem,true); lookup = dummyLookup; }
+        CreateHostBuffer(256,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummyMip,dMipMem,true);
 
         VkImage colorImg=VK_NULL_HANDLE, idImg=VK_NULL_HANDLE;
         VkDeviceMemory colorMem=VK_NULL_HANDLE, idMem=VK_NULL_HANDLE;
@@ -287,7 +288,7 @@ protected:
             VkDescriptorSetLayoutBinding lb{}; lb.binding=b; lb.descriptorType=t;
             lb.descriptorCount=1; lb.stageFlags=VK_SHADER_STAGE_COMPUTE_BIT; return lb;
         };
-        const std::array<VkDescriptorSetLayoutBinding,11> bindings = {
+        const std::array<VkDescriptorSetLayoutBinding,12> bindings = {
             bindL(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             bindL(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bindL(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
@@ -299,6 +300,7 @@ protected:
             bindL(10,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bindL(11,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bindL(12,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bindL(13,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
         };
         VkDescriptorSetLayoutCreateInfo dslci{}; dslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         dslci.bindingCount = uint32_t(bindings.size()); dslci.pBindings = bindings.data();
@@ -320,7 +322,7 @@ protected:
 
         const std::array<VkDescriptorPoolSize,2> poolSizes = {{
             {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  2},
-            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 9},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 10},
         }};
         VkDescriptorPoolCreateInfo dpci{}; dpci.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         dpci.maxSets=1; dpci.poolSizeCount=uint32_t(poolSizes.size()); dpci.pPoolSizes=poolSizes.data();
@@ -336,7 +338,7 @@ protected:
         VkDescriptorBufferInfo nodesI{nodes,0,VK_WHOLE_SIZE}, bricksI{bricks,0,VK_WHOLE_SIZE},
             matsI{mats,0,VK_WHOLE_SIZE}, traceI{traceBuf,0,VK_WHOLE_SIZE}, cfgI{cfg,0,VK_WHOLE_SIZE},
             ctrI{ctrBuf,0,VK_WHOLE_SIZE}, instI{inst,0,VK_WHOLE_SIZE},
-            sdfI{sdf,0,VK_WHOLE_SIZE}, lookupI{lookup,0,VK_WHOLE_SIZE};
+            sdfI{sdf,0,VK_WHOLE_SIZE}, lookupI{lookup,0,VK_WHOLE_SIZE}, mipI{dummyMip,0,VK_WHOLE_SIZE};
 
         auto wI = [&](uint32_t b, VkDescriptorImageInfo* info) {
             VkWriteDescriptorSet w{}; w.sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -348,9 +350,9 @@ protected:
             w.dstSet=ds; w.dstBinding=b; w.descriptorCount=1;
             w.descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; w.pBufferInfo=info; return w;
         };
-        const std::array<VkWriteDescriptorSet,11> writes = {
+        const std::array<VkWriteDescriptorSet,12> writes = {
             wI(0,&colImg), wB(1,&nodesI), wB(2,&bricksI), wB(3,&matsI), wB(4,&traceI),
-            wB(5,&cfgI), wB(8,&ctrI), wI(9,&idImgI), wB(10,&instI), wB(11,&sdfI), wB(12,&lookupI)
+            wB(5,&cfgI), wB(8,&ctrI), wI(9,&idImgI), wB(10,&instI), wB(11,&sdfI), wB(12,&lookupI), wB(13,&mipI)
         };
         vkUpdateDescriptorSets(logicalDevice_, uint32_t(writes.size()), writes.data(), 0, nullptr);
 
@@ -418,6 +420,7 @@ protected:
         vkDestroyBuffer(logicalDevice_,ctrBuf,nullptr);   vkFreeMemory(logicalDevice_,ctrMem,nullptr);
         if (dummySdf    != VK_NULL_HANDLE) { vkDestroyBuffer(logicalDevice_,dummySdf,nullptr);    vkFreeMemory(logicalDevice_,dSdfMem,nullptr); }
         if (dummyLookup != VK_NULL_HANDLE) { vkDestroyBuffer(logicalDevice_,dummyLookup,nullptr); vkFreeMemory(logicalDevice_,dLookupMem,nullptr); }
+        vkDestroyBuffer(logicalDevice_,dummyMip,nullptr); vkFreeMemory(logicalDevice_,dMipMem,nullptr);
     }
 };
 

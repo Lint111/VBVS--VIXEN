@@ -145,7 +145,15 @@ private:
     // residencyRequested_ gates whether its contents have actually been populated.
     // brickResidencyDirty_ mirrors recipeDirty_'s pattern: RequestBrickResidency only stashes
     // the request; ExecuteImpl performs the BatchedUploader call next frame.
-    bool                                    residencyRequested_  = false;
+    //
+    // Default TRUE (Inc1 M3 fix — was FALSE at M2 landing, which silently regressed every
+    // caller that never calls RequestBrickResidency: no production call site does, so
+    // brick population was skipped entirely for the app's default scene and any binary/
+    // Procedural/Stored body until M3's shader change made the gap observable
+    // (RenderMultiKindBodiesProvesStrideFix failing pre-M3-fix proved this against the real
+    // shader). Mip-only ("streaming") behavior is now opt-in via RequestBrickResidency(false),
+    // not the silent default — matches pre-Inc1 behavior for every existing caller.
+    bool                                    residencyRequested_  = true;
     bool                                    brickPoolUploaded_   = false;
     bool                                    brickResidencyDirty_ = false;
 
@@ -180,6 +188,11 @@ private:
     VkDeviceMemory sdfMemory_            = VK_NULL_HANDLE;
     VkBuffer       brickLookupBuffer_    = VK_NULL_HANDLE;
     VkDeviceMemory brickLookupMemory_    = VK_NULL_HANDLE;
+    // Sparse-Mip ESVO LOD Inc1 M3: mip sample pool buffer (shader binding 13).
+    // Created with a 1-byte placeholder when concatenated_.mipPool is empty
+    // (a tree that was never mip-baked — ConcatenateSdf's plain, non-mip sibling).
+    VkBuffer       mipPoolBuffer_        = VK_NULL_HANDLE;
+    VkDeviceMemory mipPoolMemory_        = VK_NULL_HANDLE;
 
     // Instance SSBO ring (one buffer per frame-in-flight — never freed on the tick path).
     PerFrameResources perFrame_;

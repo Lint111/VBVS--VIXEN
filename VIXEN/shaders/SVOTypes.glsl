@@ -114,6 +114,21 @@ uint countLeavesBefore(uint validMask, uint leafMask, int childIndex) {
     return bitCount(leafChildren & mask);
 }
 
+// Resolve a leaf child's own final node-array index (its slot in esvoNodes[],
+// the same ordinal MipBake.h's leaf-zero-sample fix and the traversal's
+// mip[level][ordinal] fallback both address). Non-leaf children are stored
+// contiguously first, then leaf children (SVORebuild.cpp PHASE 3) — mirrors
+// handleLeafHitInstanced's own leafDescriptorIndex computation exactly, moved
+// here so the traversal loop can resolve it too (Sparse-Mip ESVO LOD Inc1 M3
+// Task 7 needs it BEFORE deciding whether to call the leaf-hit handler at all).
+uint resolveLeafDescriptorIndex(uvec2 parentDescriptor, uint validMask, uint leafMask,
+                                int localChildIdx) {
+    uint childPointer          = getChildPointer(parentDescriptor);
+    uint totalInternalChildren = bitCount(validMask & ~leafMask);
+    uint leafChildrenBeforeMe  = countLeavesBefore(validMask, leafMask, localChildIdx);
+    return childPointer + totalInternalChildren + leafChildrenBeforeMe;
+}
+
 // ============================================================================
 // OCTANT MIRRORING (ESVO ray-direction space)
 // ============================================================================

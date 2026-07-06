@@ -67,6 +67,17 @@ layout(std430, binding = 3) readonly buffer MaterialBuffer {
 layout(std430, binding = 11) readonly buffer ChannelPoolBuffer { float channelPool[]; };
 layout(std430, binding = 12) readonly buffer BrickLookupBuffer { uint  brickLookup[]; };
 
+// ============================================================================
+// SPARSE-MIP ESVO LOD BUFFERS (Inc1 M3 — binding 13)
+// ============================================================================
+// Per-level filtered value sample, one per octree node, one lane per live
+// channel — mipPool[mipPoolBase + nodeIdx*channelCount + channelIdx] packs
+// a MipSample (2 floats: value, coverage). Bound as a 1-byte placeholder
+// when a tree was never mip-baked (concatenated_.mipPool empty); the shader
+// only reads it when a leaf's brick is not resident (Task 7) or the LOD
+// cutoff says stop (Task 8) — dead code otherwise.
+layout(std430, binding = 13) readonly buffer MipPoolBuffer { float mipPool[]; };
+
 #define FORMAT_BINARY     0u
 #define FORMAT_STORED_SDF 1u
 
@@ -223,6 +234,7 @@ int g_brickArrayBase = 0;   // configs[g_octreeIdx].brickArrayBase
 #include "Lighting.glsl"
 #include "SdfRecipes.glsl"
 #include "StoredSdf.glsl"    // Inc2 M4: trilinear SDF fetch + sphere-trace handler
+#include "MipFallback.glsl"  // Inc1 M3: sparse-mip ESVO LOD shader-side fallback read
 
 // Provider kinds (mirror ShellOctreeGpu.h ProviderKind + SdfRecipes.h).
 #define PROVIDER_STORED     0u
@@ -356,10 +368,8 @@ bool handleLeafHitInstanced(TraversalState state, RayCoefficients coef,
     int localChildIdx = mirroredToLocalOctant(state.idx, coef.octant_mask);
     if (localChildIdx < 0 || localChildIdx > 7) return false;
 
-    uint childPointer          = getChildPointer(parentDescriptor);
-    uint totalInternalChildren = bitCount(validMask & ~leafMask);
-    uint leafChildrenBeforeMe  = countLeavesBefore(validMask, leafMask, localChildIdx);
-    uint leafDescriptorIndex   = childPointer + totalInternalChildren + leafChildrenBeforeMe;
+    uint leafDescriptorIndex = resolveLeafDescriptorIndex(parentDescriptor, validMask, leafMask,
+                                                          localChildIdx);
 
     uvec2 leafDescriptor = fetchESVONode(leafDescriptorIndex);  // uses our macro → base-offset
     uint  localBrickIdx  = getContourPointer(leafDescriptor);
@@ -537,21 +547,43 @@ bool traverseOctreeInstanced(vec3 rayOrigin, vec3 rayDir,
 
             if (isLeaf) {
                 float tBias = tEntryWorld;
-                // Inc3 M3: dispatch the leaf hit-test by content format. Stored-SDF
-                // bricks march the trilinear iso-surface and sample per-voxel color +
-                // roughness; binary bricks DDA voxels (roughness defaults to 0.5).
-                bool leafHit;
-                if (octreeConfig.formatId == FORMAT_STORED_SDF) {
-                    leafHit = handleLeafHitInstancedSdf(state, coef, rayDir, tBias,
-                                                        hitColor, hitNormal, hitT,
-                                                        hitRoughness,
-                                                        hitBrickIndex, hitVoxelLinearIdx);
+
+                // Sparse-Mip ESVO LOD Inc1 M3 Task 7: "streaming grace" trigger.
+                // A non-resident brick (allocated but not yet uploaded — M2) must
+                // NOT march (marchBrickInstanced/marchBrickSdf would read
+                // zero-filled/garbage buffer contents); fall back to this leaf's
+                // own mip sample instead. Checked BEFORE the formatId dispatch so
+                // both content formats share the identical mip[nodeIdx] read path.
+                bool leafHit = false;
+                if (octreeConfig.brickResident == 0u) {
+                    int localChildIdx = mirroredToLocalOctant(state.idx, coef.octant_mask);
+                    if (localChildIdx >= 0 && localChildIdx <= 7) {
+                        uint leafDescriptorIndex = resolveLeafDescriptorIndex(
+                            parent_descriptor, validMask, leafMask, localChildIdx);
+                        leafHit = shadeFromMipSample(leafDescriptorIndex, hitColor, hitNormal);
+                        if (leafHit) {
+                            hitT              = tEntryWorld + state.t_min;
+                            hitRoughness      = 0.5;
+                            hitBrickIndex     = 0u;
+                            hitVoxelLinearIdx = 0u;
+                        }
+                    }
                 } else {
-                    hitRoughness = 0.5;  // binary path: default roughness
-                    leafHit = handleLeafHitInstanced(state, coef, rayStartWorld, rayDir, tBias,
-                                                     parent_descriptor, validMask, leafMask,
-                                                     stack, hitColor, hitNormal, hitT,
-                                                     hitBrickIndex, hitVoxelLinearIdx);
+                    // Inc3 M3: dispatch the leaf hit-test by content format. Stored-SDF
+                    // bricks march the trilinear iso-surface and sample per-voxel color +
+                    // roughness; binary bricks DDA voxels (roughness defaults to 0.5).
+                    if (octreeConfig.formatId == FORMAT_STORED_SDF) {
+                        leafHit = handleLeafHitInstancedSdf(state, coef, rayDir, tBias,
+                                                            hitColor, hitNormal, hitT,
+                                                            hitRoughness,
+                                                            hitBrickIndex, hitVoxelLinearIdx);
+                    } else {
+                        hitRoughness = 0.5;  // binary path: default roughness
+                        leafHit = handleLeafHitInstanced(state, coef, rayStartWorld, rayDir, tBias,
+                                                         parent_descriptor, validMask, leafMask,
+                                                         stack, hitColor, hitNormal, hitT,
+                                                         hitBrickIndex, hitVoxelLinearIdx);
+                    }
                 }
                 if (leafHit) {
                     endRayTrace(true);
@@ -570,17 +602,25 @@ bool traverseOctreeInstanced(vec3 rayOrigin, vec3 rayDir,
                 // tc_max is the exit-t of the current voxel; scale_exp2 is its
                 // normalized size.  When the projected footprint (tv_max*coef +
                 // bias) covers ≥ 1 pixel we stop descending and shade here.
+                //
+                // Sparse-Mip ESVO LOD Inc1 M3 Task 8: the "deliberate LOD" trigger —
+                // distinct from Task 7's "streaming grace" trigger (brickResident==0u
+                // above), but landing on the IDENTICAL mip[nodeIdx] read path
+                // (shadeFromMipSample) so the two triggers cannot drift apart. This
+                // check does NOT look at brick residency at all: even a fully-resident
+                // tree stops here once its footprint is sub-pixel — state.parentPtr is
+                // this non-leaf node's own index (just fetched at the top of this
+                // iteration), the same ordinal MipBake.h bakes a sample for.
                 if (pc.raySizeCoef > 0.0 &&
                     tv_max * pc.raySizeCoef + pc.raySizeBias >= state.scale_exp2) {
-                    // Shade the coarse node with a flat normal (no brick DDA).
-                    // We derive a plausible world-space position from t_min and
-                    // compose a simple surface normal from the last step direction.
-                    hitT      = tEntryWorld + state.t_min;
-                    hitColor  = vec3(0.5);   // LOD-shaded nodes get neutral grey;
-                                             // the instance's color tint is applied
-                                             // in main() after this returns.
-                    hitNormal = vec3(0.0, 1.0, 0.0);  // placeholder; orbit view is
-                                                       // too far to matter
+                    hitT = tEntryWorld + state.t_min;
+                    if (!shadeFromMipSample(state.parentPtr, hitColor, hitNormal)) {
+                        // No mip coverage (binary/Procedural bodies, or an SDF octree
+                        // with no baked mip pool): fall back to the pre-M3 neutral-grey
+                        // placeholder shade — no visual regression for those bodies.
+                        hitColor  = vec3(0.5);
+                        hitNormal = vec3(0.0, 1.0, 0.0);
+                    }
                     hitBrickIndex     = 0u;
                     hitVoxelLinearIdx = 0u;
                     endRayTrace(true);

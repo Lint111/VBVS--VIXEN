@@ -378,6 +378,15 @@ protected:
             brickLookupBuf = dummyLookup;
         }
 
+        // Mip pool (13, Sparse-Mip ESVO LOD Inc1 M3): none of this test's callers baked a mip
+        // pool (all bodies here go through CreateOctreeBuffers/BodyOctreeSceneNode with
+        // residencyRequested_ defaulting true, so bricks are always fully resident and the
+        // shader's readMipSample bounds-checks against mipPool.length() and never touches
+        // this buffer at runtime) — a 256-byte dummy satisfies the pipeline layout.
+        VkBuffer dummyMip = VK_NULL_HANDLE;
+        VkDeviceMemory dummyMipMem = VK_NULL_HANDLE;
+        CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummyMip, dummyMipMem, true);
+
         // Offscreen output images: rgba8 colour (0) + r32ui id (9).
         const VkFormat kColorFmt = VK_FORMAT_R8G8B8A8_UNORM;
         const VkFormat kIdFmt    = VK_FORMAT_R32_UINT;
@@ -407,7 +416,7 @@ protected:
             lb.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
             return lb;
         };
-        const std::array<VkDescriptorSetLayoutBinding, 11> bindings = {
+        const std::array<VkDescriptorSetLayoutBinding, 12> bindings = {
             bind(0,  VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             bind(1,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(2,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
@@ -419,6 +428,7 @@ protected:
             bind(10, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(11, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Inc2: SoA-SDF brick data
             bind(12, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Inc2: brick-grid lookup
+            bind(13, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Inc1 M3: sparse-mip pool
         };
         VkDescriptorSetLayoutCreateInfo dslci{};
         dslci.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -449,7 +459,7 @@ protected:
 
         const std::array<VkDescriptorPoolSize, 2> poolSizes = {{
             {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  2},
-            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 9},   // 1(nodes)+1(bricks)+1(mats)+1(trace)+1(config)+1(counter)+1(inst)+1(sdf)+1(lookup)
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 10},  // 1(nodes)+1(bricks)+1(mats)+1(trace)+1(config)+1(counter)+1(inst)+1(sdf)+1(lookup)+1(mipPool)
         }};
         VkDescriptorPoolCreateInfo dpci{};
         dpci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -476,6 +486,7 @@ protected:
         VkDescriptorBufferInfo instInfo{instanceBuf, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo sdfInfo{sdfBuf, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo lookupInfo{brickLookupBuf, 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo mipInfo{dummyMip, 0, VK_WHOLE_SIZE};
 
         auto wImg = [&](uint32_t b, VkDescriptorImageInfo* info) {
             VkWriteDescriptorSet w2{};
@@ -491,7 +502,7 @@ protected:
             w2.descriptorType = t; w2.pBufferInfo = info;
             return w2;
         };
-        const std::array<VkWriteDescriptorSet, 11> writes = {
+        const std::array<VkWriteDescriptorSet, 12> writes = {
             wImg(0, &colorInfo),
             wBuf(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &nodesInfo),
             wBuf(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &bricksInfo),
@@ -503,6 +514,7 @@ protected:
             wBuf(10, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &instInfo),
             wBuf(11, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &sdfInfo),
             wBuf(12, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &lookupInfo),
+            wBuf(13, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &mipInfo),
         };
         vkUpdateDescriptorSets(logicalDevice_, static_cast<uint32_t>(writes.size()),
                                writes.data(), 0, nullptr);
@@ -592,6 +604,7 @@ protected:
         vkDestroyBuffer(logicalDevice_, counterBuf, nullptr); vkFreeMemory(logicalDevice_, counterMem, nullptr);
         if (dummySdf != VK_NULL_HANDLE)    { vkDestroyBuffer(logicalDevice_, dummySdf, nullptr);    vkFreeMemory(logicalDevice_, dummySdfMem, nullptr); }
         if (dummyLookup != VK_NULL_HANDLE) { vkDestroyBuffer(logicalDevice_, dummyLookup, nullptr); vkFreeMemory(logicalDevice_, dummyLookupMem, nullptr); }
+        vkDestroyBuffer(logicalDevice_, dummyMip, nullptr); vkFreeMemory(logicalDevice_, dummyMipMem, nullptr);
     }
 };
 

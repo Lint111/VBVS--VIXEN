@@ -226,6 +226,9 @@ void BodyOctreeSceneNode::CompileImpl(TypedCompileContext& ctx) {
     // for binary/Procedural, real data for Stored-SDF bodies.
     ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_SDF_BUFFER,           sdfBuffer_);
     ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_BRICKLOOKUP_BUFFER,   brickLookupBuffer_);
+    // Sparse-Mip ESVO LOD Inc1 M3: mip pool buffer (binding 13). Always emitted —
+    // placeholder for a tree that was never mip-baked, real data otherwise.
+    ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_MIPPOOL_BUFFER,       mipPoolBuffer_);
 
     NODE_LOG_INFO("[BodyOctreeSceneNode] Outputs published (octrees=" +
                   std::to_string(concatenated_.count) + ", instances=" +
@@ -290,6 +293,7 @@ void BodyOctreeSceneNode::ExecuteImpl(TypedExecuteContext& ctx) {
         ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_CONFIG_BUFFER,      configBuffer_);
         ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_SDF_BUFFER,         sdfBuffer_);
         ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_BRICKLOOKUP_BUFFER, brickLookupBuffer_);
+        ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_MIPPOOL_BUFFER,     mipPoolBuffer_);
     }
 }
 
@@ -469,6 +473,16 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device) {
         concatenated_.materials.empty() ? nullptr : concatenated_.materials.data(),
         materialsBuffer_, materialsMemory_, "octree materials SSBO");
 
+    // Inc1 M3 Task 7: stamp brickResident into every octree's config so the shader's
+    // leaf-hit existence check can distinguish "allocated but not populated" from
+    // "fully uploaded" — hasBrick()/contourPointer alone cannot (M2's descriptor
+    // pointer stays valid regardless of residency). Config bytes are re-uploaded
+    // below this same Compile/Rematerialize call, so this always reflects the
+    // brickPoolUploaded_ value just computed above.
+    for (auto& cfg : concatenated_.configs) {
+        Vixen::SVO::setBrickResident(cfg, brickPoolUploaded_);
+    }
+
     // Config SSBO (binding 5, std430): one 432-byte OctreeConfig per octree.
     // ponytail: min 1 entry so the buffer is never zero-byte.
     const VkDeviceSize configSize =
@@ -497,13 +511,25 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device) {
         concatenated_.brickGridLookup.empty() ? nullptr : concatenated_.brickGridLookup.data(),
         brickLookupBuffer_, brickLookupMemory_, "brick-grid lookup SSBO");
 
+    // Sparse-Mip ESVO LOD Inc1 M3: mip pool buffer (binding 13). Pad to 1 byte when empty
+    // — a tree that was never mip-baked (ConcatenateSdf's plain, non-mip sibling) leaves
+    // mipPool empty; the shader's readMipSample bounds-checks against mipPool.length()
+    // and never reads past it.
+    const VkDeviceSize mipPoolSize =
+        std::max<VkDeviceSize>(concatenated_.mipPool.size(), 1);
+    CreateHostBuffer(device, mipPoolSize,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        concatenated_.mipPool.empty() ? nullptr : concatenated_.mipPool.data(),
+        mipPoolBuffer_, mipPoolMemory_, "mip pool SSBO");
+
     NODE_LOG_INFO("[BodyOctreeSceneNode] Created octree buffers (nodes=" +
                   std::to_string(static_cast<uint64_t>(nodesSize)) + "B, bricks=" +
                   std::to_string(static_cast<uint64_t>(bricksSize)) + "B, materials=" +
                   std::to_string(static_cast<uint64_t>(materialsSize)) + "B, config=" +
                   std::to_string(static_cast<uint64_t>(configSize)) + "B, channelPool=" +
                   std::to_string(static_cast<uint64_t>(sdfSize)) + "B, brickLookup=" +
-                  std::to_string(static_cast<uint64_t>(brickLookupSize)) + "B)");
+                  std::to_string(static_cast<uint64_t>(brickLookupSize)) + "B, mipPool=" +
+                  std::to_string(static_cast<uint64_t>(mipPoolSize)) + "B)");
 }
 
 void BodyOctreeSceneNode::EnsureRingAllocated(VulkanDevice* device, VkDeviceSize neededCapacity) {
@@ -593,6 +619,27 @@ void BodyOctreeSceneNode::UploadBrickPool() {
     device->WaitAllUploads();
     brickPoolUploaded_ = true;
 
+    // Inc1 M3 Task 7: stamp + re-upload brickResident=1 into every octree's config now
+    // that the bricks are actually visible on the GPU. CreateOctreeBuffers already does
+    // this at Compile time; this handles the ExecuteImpl-only path (residency requested
+    // AFTER Compile, per RequestBrickResidency's dirty-flag contract) where the config
+    // buffer already exists and must be updated in place, not recreated.
+    for (auto& cfg : concatenated_.configs) {
+        Vixen::SVO::setBrickResident(cfg, true);
+    }
+    const VkDeviceSize configSize =
+        static_cast<VkDeviceSize>(concatenated_.configs.size()) *
+        static_cast<VkDeviceSize>(sizeof(Vixen::SVO::OctreeConfig));
+    if (configSize > 0) {
+        const auto cfgHandle = device->Upload(concatenated_.configs.data(), configSize, configBuffer_, 0);
+        if (cfgHandle == ResourceManagement::InvalidUploadHandle) {
+            NODE_LOG_ERROR("[BodyOctreeSceneNode] UploadBrickPool: config re-upload failed ("
+                          + std::to_string(static_cast<uint64_t>(configSize)) + "B)");
+        } else {
+            device->WaitAllUploads();
+        }
+    }
+
     NODE_LOG_INFO("[BodyOctreeSceneNode] UploadBrickPool: uploaded " +
                   std::to_string(static_cast<uint64_t>(size)) + "B via BatchedUploader");
 }
@@ -612,6 +659,7 @@ void BodyOctreeSceneNode::DestroyOctreeBuffers() {
     destroy(configBuffer_,        configMemory_);
     destroy(sdfBuffer_,           sdfMemory_);         // Inc2 M3
     destroy(brickLookupBuffer_,   brickLookupMemory_); // Inc2 M3
+    destroy(mipPoolBuffer_,       mipPoolMemory_);      // Inc1 M3
 }
 
 void BodyOctreeSceneNode::DestroyBuffers() {

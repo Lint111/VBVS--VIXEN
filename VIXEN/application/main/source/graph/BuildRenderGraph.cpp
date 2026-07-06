@@ -1208,8 +1208,15 @@ void VulkanGraphApplication::BuildRenderGraph() {
                           descriptorGatherer, 12,  // Binding 12: BrickLookupBuffer
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
+    // Sparse-Mip ESVO LOD Inc1 M3: Binding 13: mip pool SSBO (packed {value,coverage}
+    // floats, one per node/channel). Placeholder for a tree that was never mip-baked;
+    // read by the shader's leaf-existence (Task 7) and LOD-cutoff (Task 8) fallbacks.
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_MIPPOOL_BUFFER,
+                          descriptorGatherer, 13,  // Binding 13: MipPoolBuffer
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
     if (mainLogger && mainLogger->IsEnabled()) {
-        mainLogger->Info("[BuildRenderGraph] Connected SoA-SDF buffer at binding 11, brick-grid lookup at binding 12 (Inc2 M3)");
+        mainLogger->Info("[BuildRenderGraph] Connected SoA-SDF buffer at binding 11, brick-grid lookup at binding 12, mip pool at binding 13 (Inc1 M3)");
     }
 
     // Swapchain connections to descriptor set and dispatch

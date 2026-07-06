@@ -3,7 +3,7 @@ using Yeroket.Util.KernelFramework;
 // Canonical OctreeConfig — one source for C++ (Vixen::Gpu) + GLSL. 432 B std430.
 // Offsets (must match ShellOctreeGpu.h): gridMin@32, gridMax@48, localToWorld@64,
 // worldToLocal@128, nodeArrayBase@192, formatId@200, brickStrideFloats@216, channels@224,
-// mipPoolBase@352 (Sparse-Mip ESVO LOD Inc1 M1 Task 3).
+// mipPoolBase@352 (Sparse-Mip ESVO LOD Inc1 M1 Task 3), brickResident@356 (Inc1 M3 Task 7).
 [GpuStruct]
 public struct OctreeConfig
 {
@@ -41,5 +41,14 @@ public struct OctreeConfig
     // mirrors poolBrickBase's convention for the channel pool.
     public uint mipPoolBase; // @352
 
-    [GpuArray(19)] public uint _tailPad; // @356 (19 × 4 = 76 → ends 432)
+    // Sparse-Mip ESVO LOD Inc1 M3 Task 7: per-tree binary brick residency
+    // (§0 scope). 0 = bricksBuffer_ region for this octree is allocated but
+    // NOT populated (mip-only tree, M2's RequestBrickResidency(false)); 1 =
+    // fully uploaded. The shader's leaf-hit existence check reads THIS field,
+    // not hasBrick()/contourPointer — the descriptor's brick pointer stays
+    // valid regardless of residency (M2 Task 4), so it cannot itself signal
+    // "allocated but not yet uploaded."
+    public uint brickResident; // @356
+
+    [GpuArray(18)] public uint _tailPad; // @360 (18 × 4 = 72 → ends 432)
 }

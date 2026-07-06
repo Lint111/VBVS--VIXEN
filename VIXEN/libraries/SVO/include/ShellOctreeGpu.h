@@ -193,6 +193,18 @@ inline uint32_t mipPoolBaseOf(const OctreeConfig& c) {
 inline void setMipPoolBase(OctreeConfig& c, uint32_t base) {
     c.mipPoolBase = base;
 }
+/// Read brickResident (Sparse-Mip ESVO LOD Inc1 M3 Task 7) from OctreeConfig (byte 356).
+inline bool brickResidentOf(const OctreeConfig& c) {
+    return c.brickResident != 0u;
+}
+/// Write brickResident into the OctreeConfig tail — per-tree binary residency
+/// (§0 scope): 0 = bricksBuffer_ region allocated but not populated (mip-only),
+/// 1 = fully uploaded. The shader's leaf-hit existence check reads this field
+/// directly rather than hasBrick()/contourPointer, which stays valid regardless
+/// of residency (M2 Task 4) and so cannot itself signal "not yet uploaded."
+inline void setBrickResident(OctreeConfig& c, bool resident) {
+    c.brickResident = resident ? 1u : 0u;
+}
 
 // ===========================================================================
 // Serialized output

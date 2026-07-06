@@ -7,14 +7,22 @@
  * as DeviceNode::CreateDeviceBudgetManager does), and verifies:
  *
  *   Task 4 — CreateOctreeBuffers allocates bricksBuffer_ at the tree's FULL byte size
- *   regardless of whether residency was requested (no smaller placeholder buffer), but
- *   leaves it unpopulated (no memcpy/no upload) until RequestBrickResidency(true) is called.
+ *   regardless of whether residency was requested (no smaller placeholder buffer). This
+ *   test explicitly calls RequestBrickResidency(false) before Compile to construct the
+ *   mip-only precondition (unpopulated bricks) — residencyRequested_ defaults TRUE since
+ *   the M3 fix (see BodyOctreeSceneNode.h), so a caller that never touches this API keeps
+ *   pre-Inc1 behavior (bricks always populated).
  *
  *   Task 4's crux ("is hasBrick() already sufficient, or does a new GPU-side flag exist"):
  *   hasBrick() (SVOTypes.h) reads ChildDescriptor.contourPointer, which is serialized into
  *   nodesBuffer_ (the NODE array), not bricksBuffer_ — this test proves that buffer's
  *   contents are correct (and populated) independent of whether bricksBuffer_ itself has
- *   ever been written, confirming no redundant GPU-side "brick uploaded" flag is needed.
+ *   ever been written. That remains true for CPU-side buffer bookkeeping. M3 (Task 7)
+ *   later found the shader itself DOES need an explicit flag: contourPointer is a valid
+ *   brick pointer regardless of residency (it never changes), so it cannot by itself tell
+ *   the shader "the buffer this pointer indexes into hasn't been populated yet" — that
+ *   distinct signal is OctreeConfig.brickResident (byte 356), stamped by
+ *   CreateOctreeBuffers/UploadBrickPool, not read by this test.
  *
  *   Task 5 — brick population goes through BatchedUploader (device->Upload()), verified via
  *   BatchedUploaderStats (totalUploads/totalBytesUploaded increase only after residency is
@@ -261,6 +269,12 @@ TEST_F(PartialBrickUploadTest, BricksAllocatedFullSizeButPopulatedOnlyAfterResid
     node->SetInput(C::COMMAND_POOL_Slot::index,        0, &poolRes);
     node->SetInput(C::CURRENT_FRAME_INDEX_Slot::index, 0, &frRes);
 
+    // Inc1 M3 fix: residencyRequested_ now DEFAULTS true (matches pre-Inc1 behavior for
+    // every caller that never touches this API — see BodyOctreeSceneNode.h's default-flip
+    // comment). This test specifically wants the mip-only precondition (bricks NOT
+    // populated at Compile time), so it must opt out explicitly before Compile.
+    node->RequestBrickResidency(false);
+
     node->Setup();
     ASSERT_NO_THROW(node->Compile());
     ASSERT_NO_THROW(node->Execute());
@@ -276,13 +290,13 @@ TEST_F(PartialBrickUploadTest, BricksAllocatedFullSizeButPopulatedOnlyAfterResid
     vkGetBufferMemoryRequirements(logicalDevice_, bricksBuf, &bricksReq);
     EXPECT_GT(bricksReq.size, 0u);
 
-    // --- Task 5/6: no residency requested yet — BatchedUploader must show ZERO uploads.
-    // (Compile/Execute alone must not have populated bricks; CreateOctreeBuffers gates
-    // that behind residencyRequested_, defaulted false.)
+    // --- Task 5/6: residency was explicitly declined above — BatchedUploader must show
+    // ZERO uploads (Compile/Execute alone must not have populated bricks).
     const auto statsBeforeRequest = uploaderObserver_->GetStats();
     EXPECT_EQ(statsBeforeRequest.totalUploads, 0u)
         << "No brick upload should occur before RequestBrickResidency(true) — Task 4's "
-           "gate (residencyRequested_ defaults false) is the whole point of this milestone.";
+           "gate (residencyRequested_ explicitly set false above) is the whole point of "
+           "this milestone.";
 
     // --- Task 6: RequestBrickResidency only stashes the request; an Execute tick that
     // hasn't run yet must NOT have uploaded anything (proves the setter doesn't upload
