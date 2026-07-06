@@ -554,6 +554,28 @@ else()
 endif()
 
 # ===========================================================================
+# AppFlow Inc-2b M3 — windowed editor toggle/undo/redo capture assertion.
+# Reads the 4 PNGs VIXEN/temp/run_editor_script.bat's unattended vixen_editor.exe run dumps and
+# asserts the toggle/undo/redo relations (see test_editor_toggle_undo_capture.cpp's file header).
+# Pure file I/O (stb_image) -- no Vulkan/GPU, so deliberately registered OUTSIDE the glslc-gated
+# `if(EXISTS "${_brm_glslc}")` block above so it builds+runs on the Windows/MSVC side too, matching
+# where the windowed editor itself builds and runs (this whole increment is Windows-side-first).
+# ===========================================================================
+add_executable(test_editor_toggle_undo_capture
+    Nodes/test_editor_toggle_undo_capture.cpp
+)
+target_link_libraries(test_editor_toggle_undo_capture PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+if(TARGET stb)
+    target_link_libraries(test_editor_toggle_undo_capture PRIVATE stb)
+else()
+    target_include_directories(test_editor_toggle_undo_capture PRIVATE
+        "${CMAKE_BINARY_DIR}/_deps/stb-src")
+endif()
+set_target_properties(test_editor_toggle_undo_capture PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_editor_toggle_undo_capture)
+message(STATUS "[RenderGraph Tests] Added: test_editor_toggle_undo_capture (AppFlow Inc-2b M3 windowed gate assertion)")
+
+# ===========================================================================
 # P2.2 M2 — Procedural recipe live compute render (compile realization)
 # ===========================================================================
 # Emits an all-HLSL compute shader from SdfInstruction[], compiles it via
