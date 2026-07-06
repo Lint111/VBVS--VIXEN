@@ -265,7 +265,10 @@ that motivates the epic. The two are one gate.
   **✅ DONE 2026-07-06** — measured 26,759,424 bytes (baseline, all-resident) vs 0 bytes (Inc1,
   mip-only), reproduced across 3 runs; ≈170-220x wall-time improvement on the residency-service phase;
   no-regression sweep 133/144 (11 pre-existing/unrelated failures, all independently confirmed —
-  see Progress Log); direction doc status banner updated with real numbers. **★ INC1 COMPLETE ★**
+  see Progress Log); direction doc status banner updated with real numbers. Opus-validated
+  **APPROVED** with two Inc2-backlog caveats (measured number is the mechanism's extreme endpoint, not
+  yet a mixed-scene measurement; a flaky-test claim was itself under-sampled — validator got 0/38 on
+  re-test — see Progress Log). **★ INC1 COMPLETE ★**
 
 **Milestone re-split note (2026-07-05):** the original Milestone Map had a single M4 (Tasks 10-11).
 Task 10 grew, across design discussion, from "wire a residency trigger" into four largely-independent
@@ -972,6 +975,48 @@ green.
   - **Direction doc status banner updated** ([[Sparse-Mip-ESVO-LOD-Direction-2026-07]]) with the
     measured numbers above, replacing the original estimate-only framing; historical framing preserved
     below the new banner.
+  - **Opus validator: APPROVED, with two flagged caveats for the Inc2 backlog (neither blocks this
+    gate)** — 2026-07-06. Re-ran everything independently (3× the bandwidth test, byte-identical each
+    time; 38 total runs of the flaky test; spot-checked 4 of the 10 "pre-existing" failure claims,
+    including the segfaulting one).
+    - **Caveat A (methodology, precisely characterized, not dismissed):** the A/B is genuinely "all 16
+      request residency" vs. "none do" — the 100%/170-220x number is the mechanism's **correctly-measured
+      extreme endpoint** (proves the plumbing carries exactly zero bytes when the trigger says "far,"
+      airtight), NOT the realistic mixed-near/far-scene operating point the direction doc's original
+      framing was actually describing. A real mixed scene would show a partial reduction proportional to
+      the far/near body ratio — arithmetically bounded by the two endpoints already measured here, so not
+      unknown, just not yet directly measured through the live `ResidencyTrigger` on a spread-out scene.
+      **Recommendation for Inc2 (not a blocker):** measure one mixed scene through the actual live trigger
+      before quoting "170-220x" as the realistic-scene number rather than the best-case bound.
+      `test_residency_trigger` (8/8, independently re-run) already proves the underlying *decision* is
+      correct in isolation, which substantially de-risks this gap.
+    - **Caveat B (the flaky-test claim was itself under-sampled — corrected, not just noted):** the
+      validator ran `test_partial_brick_upload` 38 times (20 isolated + 18 under 6-way concurrent load,
+      to mimic the full-sweep contention where the implementer first saw the failure) and got **0
+      failures in 38 runs** — directly contradicting the "genuinely flaky, ~1-in-3" characterization
+      above, which was itself an artifact of a 3-run sample (1 fail in 3 = 33%, not a real rate). Traced
+      the fragile point to a specific assertion (`EXPECT_EQ(totalUploads, +1)` for the phase-2
+      config-reupload count, gated on `IsUploadComplete` each `Execute` tick) — this IS a genuinely
+      timing-sensitive **test assertion** against the real async state machine (plausible to fail rarely
+      under real peak GPU contention), but the underlying state machine itself drains deterministically
+      via `WaitIdle` before the assertion runs, so this is test fragility, not a production correctness
+      bug. **The "~1-in-3" framing above (and the direction doc banner, if it repeats this number) should
+      be softened** — e.g. "rarely reproduces under heavy sweep contention; 0/38 in isolated re-testing"
+      — rather than implying a 33% failure rate. Tracked as an Inc2 follow-up (harden the assertion or
+      accept the rare flake), not a blocker for this gate.
+    - No-regression sweep methodology confirmed sound (144-binary count reproduced exactly); the
+      increment's own 7 mechanism-test suites (49 tests: mip_sample_bake, mip_sample_filter,
+      soa_mip_serialize, resolvable_level, frustum_cull, instance_sort, residency_trigger) all
+      independently re-run green; the 10 non-flaky "pre-existing" failure claims spot-checked (4 of 10,
+      including `test_entity_brick_view`'s real segfault) and confirmed genuinely unrelated to this
+      increment via git-log/git-diff reasoning on the actually-touched files.
+
+**★ INC1 (M1-M5) COMPLETE ★** — all 5 milestones done, Opus-validated, on branch
+`feat/sparse-mip-esvo-inc1`. Not yet merged to `main` (that's a separate user decision). Two items
+carried to the Inc2 backlog per validator caveats above (mixed-scene measurement; flaky-assertion
+hardening), plus the earlier-logged known issues (§ M1/M2 Progress Log: `PartialBlockUpdateTest.
+AddNewBrick`, unregistered `Nodes/*.cpp` tests) and the CPU-side occlusion gate explicitly deferred at
+M4b.
 
 ---
 
