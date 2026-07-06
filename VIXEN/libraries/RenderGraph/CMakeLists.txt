@@ -324,6 +324,7 @@ set(RENDERGRAPH_UI_HEADERS
     include/Ui/VixenRmlSystemInterface.h
     include/Ui/UiShaderSpirv.h
     include/Ui/UiHitMask.h
+    include/Ui/IView.h
     include/Data/Nodes/UIRenderNodeConfig.h
     include/Nodes/UIRenderNode.h
 )

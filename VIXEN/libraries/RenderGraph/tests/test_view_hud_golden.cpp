@@ -24,6 +24,7 @@
 #include <regex>
 
 #include "Generated/Hud.g.h"   // the artifact under test
+#include "Ui/IView.h"
 #include "Ui/VixenRmlSystemInterface.h"
 
 namespace {
@@ -122,5 +123,31 @@ TEST(ViewHudGolden, GeneratedBindFunctionCompilesAndBinds) {
     EXPECT_TRUE(static_cast<bool>(c.GetModelHandle()));
 
     Rml::RemoveContext("view-golden");
+    Rml::Shutdown();
+}
+
+namespace {
+struct TrivialView : Vixen::RenderGraph::IView {
+    int x = 5;
+    const char* ModelName() const override { return "triv"; }
+    const char* DocumentPath() const override { return "assets/ui/hud.rml"; }
+    void Register(Rml::DataModelConstructor& c) override { c.Bind("x", &x); }
+};
+}  // namespace
+
+TEST(ViewHudGolden, IViewSeamIsViewAgnostic) {
+    Vixen::Ui::VixenRmlSystemInterface sysIface;
+    NullRenderInterface renderIface;
+    Rml::SetSystemInterface(&sysIface);
+    Rml::SetRenderInterface(&renderIface);
+    ASSERT_TRUE(Rml::Initialise());
+    Rml::Context* ctx = Rml::CreateContext("iview", Rml::Vector2i(64, 64));
+    ASSERT_NE(ctx, nullptr);
+    TrivialView v;
+    Rml::DataModelConstructor c = ctx->CreateDataModel(v.ModelName());
+    ASSERT_TRUE(static_cast<bool>(c));
+    v.Register(c);
+    EXPECT_TRUE(static_cast<bool>(c.GetModelHandle()));
+    Rml::RemoveContext("iview");
     Rml::Shutdown();
 }
