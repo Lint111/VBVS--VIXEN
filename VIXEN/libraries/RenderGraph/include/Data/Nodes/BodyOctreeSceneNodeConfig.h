@@ -10,7 +10,7 @@ using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 // Compile-time slot counts
 namespace BodyOctreeSceneNodeCounts {
     static constexpr size_t INPUTS  = 3;  // VULKAN_DEVICE_IN, COMMAND_POOL, CURRENT_FRAME_INDEX
-    static constexpr size_t OUTPUTS = 8;  // 4 octree buffers + 2 SDF buffers + instance buffer + instance count
+    static constexpr size_t OUTPUTS = 10;  // 4 octree buffers + 2 SDF buffers + instance buffer + instance count + 2 shell buffers
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -99,6 +99,19 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
+    // Surface-Shell ESVO cache: the CURRENT read slot's compact pool (binding 11
+    // replacement) + grid->shellSlot remap (binding 12 replacement). ExecuteImpl
+    // re-emits these each frame with slot [frame&1] so the render binds the last
+    // committed shell (mirrors INSTANCE_BUFFER's ring re-emit). Placeholder for
+    // binary/Procedural bodies (no shell derived).
+    OUTPUT_SLOT(SHELL_DATA_BUFFER, VkBuffer, 8,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
+    OUTPUT_SLOT(SHELL_LOOKUP_BUFFER, VkBuffer, 9,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
     // Constructor: runtime descriptor initialization
     BodyOctreeSceneNodeConfig() {
         // ----- Inputs -----
@@ -150,6 +163,15 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
         BufferDescriptor brickLookupDesc{};
         brickLookupDesc.usage = ResourceUsage::StorageBuffer | ResourceUsage::TransferDst;
         INIT_OUTPUT_DESC(OCTREE_BRICKLOOKUP_BUFFER, "octree_bricklookup_buffer", ResourceLifetime::Persistent, brickLookupDesc);
+
+        // Surface-Shell ESVO cache — compact pool + grid remap (current read slot).
+        BufferDescriptor shellDataDesc{};
+        shellDataDesc.usage = ResourceUsage::StorageBuffer | ResourceUsage::TransferDst;
+        INIT_OUTPUT_DESC(SHELL_DATA_BUFFER, "shell_data_buffer", ResourceLifetime::Persistent, shellDataDesc);
+
+        BufferDescriptor shellLookupDesc{};
+        shellLookupDesc.usage = ResourceUsage::StorageBuffer | ResourceUsage::TransferDst;
+        INIT_OUTPUT_DESC(SHELL_LOOKUP_BUFFER, "shell_lookup_buffer", ResourceLifetime::Persistent, shellLookupDesc);
     }
 
     // Automated config validation
@@ -170,6 +192,8 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
     static_assert(INSTANCE_COUNT_Slot::index == 5, "INSTANCE_COUNT must be at index 5");
     static_assert(OCTREE_SDF_BUFFER_Slot::index == 6, "OCTREE_SDF_BUFFER must be at index 6");
     static_assert(OCTREE_BRICKLOOKUP_BUFFER_Slot::index == 7, "OCTREE_BRICKLOOKUP_BUFFER must be at index 7");
+    static_assert(SHELL_DATA_BUFFER_Slot::index == 8, "SHELL_DATA_BUFFER must be at index 8");
+    static_assert(SHELL_LOOKUP_BUFFER_Slot::index == 9, "SHELL_LOOKUP_BUFFER must be at index 9");
 
     // ----- Type validations -----
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
@@ -182,6 +206,8 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
     static_assert(std::is_same_v<INSTANCE_COUNT_Slot::Type, int32_t>);
     static_assert(std::is_same_v<OCTREE_SDF_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<OCTREE_BRICKLOOKUP_BUFFER_Slot::Type, VkBuffer>);
+    static_assert(std::is_same_v<SHELL_DATA_BUFFER_Slot::Type, VkBuffer>);
+    static_assert(std::is_same_v<SHELL_LOOKUP_BUFFER_Slot::Type, VkBuffer>);
 };
 
 } // namespace Vixen::RenderGraph

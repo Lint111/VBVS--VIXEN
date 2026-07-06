@@ -485,6 +485,14 @@ void InputNode::PopulateInputState() {
     inputState_.wheelDelta = pendingScroll_;
     inputState_.clicksThisFrame = pendingClicks_;
 
+    // TEMP DEBUG: latch the last left-press pixel (persists across frames, unlike
+    // clicksThisFrame) for the ray-trace debug buffer to force-capture that exact ray.
+    for (const ClickEvent& click : pendingClicks_) {
+        if (click.button == 0 && click.pressed) {
+            inputState_.lastClickPixel = glm::ivec2(static_cast<int>(click.x), static_cast<int>(click.y));
+        }
+    }
+
     // Mirror the config fields CameraNode needs (M4) — see InputState.h's doc comment for why
     // this rides the existing slot instead of a new connection.
     inputState_.orbitButton = static_cast<uint8_t>(config_.orbitButton);

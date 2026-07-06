@@ -104,12 +104,16 @@ void VoxelSelectionProviderNode::ExecuteImpl(TypedExecuteContext& ctx) {
 
     // Find the left-button press entry (input-rework slice 1 M3: the shared click list replaces
     // the old private lastLeftDown_ edge detector). Several presses in one frame: the LAST one
-    // wins — matches the old single-poll semantics (the readback is a single crosshair sample, not
-    // per-press, so only whether a press happened this frame matters here).
+    // wins — matches the old single-poll semantics (only whether/where a press happened this
+    // frame matters here). x/y are the cursor position AT that press (ClickEvent's own
+    // fold-order field), so the pick follows the actual click position, not a fixed crosshair.
     bool pressedThisFrame = false;
+    float clickX = 0.0f, clickY = 0.0f;
     for (const ClickEvent& click : input->clicksThisFrame) {
         if (click.button == static_cast<int>(EventBus::MouseButton::Left) && click.pressed) {
             pressedThisFrame = true;
+            clickX = click.x;
+            clickY = click.y;
         }
     }
 
@@ -129,7 +133,7 @@ void VoxelSelectionProviderNode::ExecuteImpl(TypedExecuteContext& ctx) {
         return;
     }
 
-    // Read back the center texel of the current frame's pick-ID image.
+    // Read back the pixel under the actual cursor position of the current frame's pick-ID image.
     //
     // Which frame's image: PickIdTargetNode re-emits images_[frameIndex % count] as ID_IMAGE each
     // Execute and binds that same slot at binding 9, so the configured idImage_ is exactly the image
@@ -141,10 +145,17 @@ void VoxelSelectionProviderNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // ordering (this frame's dispatch not yet submitted) we read a complete, recent pickID — never a
     // torn write. If stale reads are ever observed under fast motion, the principled fallback is the
     // previous-completed-frame slot — not needed so far.
+    //
+    // Clamp the click position into the image: a click can legitimately land at the exact edge
+    // (e.g. width-1 rounding) or, transiently, just outside during a resize race.
+    const uint32_t targetX = static_cast<uint32_t>(glm::clamp(clickX, 0.0f, float(width) - 1.0f));
+    const uint32_t targetY = static_cast<uint32_t>(glm::clamp(clickY, 0.0f, float(height) - 1.0f));
+
     uint32_t pickID = kMissSentinel;
-    if (!ReadCenterPixel(width, height, pickID) || pickID == kMissSentinel) {
-        // Readback failed (see prior error log) or empty space under the crosshair — report a miss.
-        NODE_LOG_INFO("[VoxelSelectionProvider] click — miss (empty space under crosshair)");
+    if (!ReadPixelAt(width, height, targetX, targetY, pickID) || pickID == kMissSentinel) {
+        // Readback failed (see prior error log) or empty space under the cursor — report a miss.
+        NODE_LOG_INFO("[VoxelSelectionProvider] click — miss (empty space under cursor) pixel=(" +
+                      std::to_string(targetX) + "," + std::to_string(targetY) + ")");
         ctx.Out(VoxelSelectionProviderNodeConfig::CANDIDATE, candidate);
         return;
     }
@@ -162,7 +173,8 @@ void VoxelSelectionProviderNode::ExecuteImpl(TypedExecuteContext& ctx) {
     NODE_LOG_INFO("[VoxelSelectionProvider] click — HIT pickID=" + std::to_string(pickID) +
                   " brick=" + std::to_string(brickIndex) +
                   " voxel=" + std::to_string(voxelLinearIdx) +
-                  " priority=" + std::to_string(priority_));
+                  " priority=" + std::to_string(priority_) +
+                  " pixel=(" + std::to_string(targetX) + "," + std::to_string(targetY) + ")");
 
     ctx.Out(VoxelSelectionProviderNodeConfig::CANDIDATE, candidate);
 }
@@ -226,7 +238,9 @@ bool VoxelSelectionProviderNode::EnsureStagingBuffer(VkDeviceSize bytesNeeded) {
     return true;
 }
 
-bool VoxelSelectionProviderNode::ReadCenterPixel(uint32_t width, uint32_t height, uint32_t& pickIDOut) {
+bool VoxelSelectionProviderNode::ReadPixelAt(uint32_t width, uint32_t height,
+                                             uint32_t targetX, uint32_t targetY,
+                                             uint32_t& pickIDOut) {
     // KI-012: a queue family with minImageTransferGranularity=(0,0,0) only accepts whole-image
     // copies at offset (0,0,0) -- the single-texel sub-region copy below is a spec violation
     // there. Fall back to copying the whole id image and indexing the center texel on the CPU.
@@ -280,8 +294,8 @@ bool VoxelSelectionProviderNode::ReadCenterPixel(uint32_t width, uint32_t height
         region.imageOffset = { 0, 0, 0 };
         region.imageExtent = { width, height, 1 };
     } else {
-        region.imageOffset = { static_cast<int32_t>(width / 2),
-                               static_cast<int32_t>(height / 2), 0 };
+        region.imageOffset = { static_cast<int32_t>(targetX),
+                               static_cast<int32_t>(targetY), 0 };
         region.imageExtent = { 1, 1, 1 };
     }
 
@@ -326,8 +340,8 @@ bool VoxelSelectionProviderNode::ReadCenterPixel(uint32_t width, uint32_t height
     }
     if (requiresFullImageTransfers_) {
         const uint32_t* pixels = static_cast<const uint32_t*>(mapped);
-        const size_t centerIdx = static_cast<size_t>(height / 2) * width + (width / 2);
-        pickIDOut = pixels[centerIdx];
+        const size_t targetIdx = static_cast<size_t>(targetY) * width + targetX;
+        pickIDOut = pixels[targetIdx];
     } else {
         std::memcpy(&pickIDOut, mapped, sizeof(uint32_t));
     }

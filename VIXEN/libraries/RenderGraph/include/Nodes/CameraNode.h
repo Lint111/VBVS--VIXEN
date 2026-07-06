@@ -79,7 +79,11 @@ private:
 
     // Orbit distance bounds (keeps camera inside the 128^3 world). Shared by W/S zoom
     // (ApplyMovement) and wheel zoom (ExecuteImpl, M4) so both paths agree on one ceiling.
-    static constexpr float kOrbitDistanceMin = 5.0f;
+    // Min is a near-zero floor (not 0) only to avoid a degenerate/undefined view direction
+    // exactly at the orbit center — small enough to zoom arbitrarily close to fine surface
+    // detail (e.g. inspecting a sub-voxel artifact), which the old 5.0 floor (tuned for the
+    // main app's 10-unit Cornell-box demo scene) prevented for the editor's smaller objects.
+    static constexpr float kOrbitDistanceMin = 0.1f;
     static constexpr float kOrbitDistanceMax = 120.0f;
 
     // Accumulated input deltas (cleared after applying)

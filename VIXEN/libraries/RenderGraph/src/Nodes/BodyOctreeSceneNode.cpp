@@ -215,6 +215,10 @@ void BodyOctreeSceneNode::CompileImpl(TypedCompileContext& ctx) {
     // for binary/Procedural, real data for Stored-SDF bodies.
     ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_SDF_BUFFER,           sdfBuffer_);
     ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_BRICKLOOKUP_BUFFER,   brickLookupBuffer_);
+    // Surface-Shell ESVO cache — publish slot 0 as the compile-time placeholder;
+    // ExecuteImpl re-emits slot [frame&1] each frame (the last committed cache).
+    ctx.Out(BodyOctreeSceneNodeConfig::SHELL_DATA_BUFFER,           shellDataBuffer_[0]);
+    ctx.Out(BodyOctreeSceneNodeConfig::SHELL_LOOKUP_BUFFER,         shellLookupBuffer_[0]);
 
     NODE_LOG_INFO("[BodyOctreeSceneNode] Outputs published (octrees=" +
                   std::to_string(concatenated_.count) + ", instances=" +
@@ -236,7 +240,44 @@ void BodyOctreeSceneNode::ExecuteImpl(TypedExecuteContext& ctx) {
     }
 
     // Per-frame ring index from FrameSyncNode (clamp via modulo for safety).
-    const uint32_t frameIndex = ctx.In(BodyOctreeSceneNodeConfig::CURRENT_FRAME_INDEX) % kRingSize;
+    const uint32_t rawFrame   = ctx.In(BodyOctreeSceneNodeConfig::CURRENT_FRAME_INDEX);
+    const uint32_t frameIndex = rawFrame % kRingSize;
+
+    // --- Surface-Shell ESVO cache double-buffer (§B/§C) ---
+    // Render binds the CURRENT read slot [rawFrame&1] (last committed). A pending
+    // CPU dirty list (a value edit that did NOT force a full Rematerialize) is
+    // applied to the WRITE slot [(rawFrame+1)&1] here — a partial re-derive of only
+    // the dirty bricks, then re-uploaded to that slot's GPU buffer. Because the two
+    // GPU slots are DISTINCT VkBuffer objects, a render reading slot N and this
+    // revalidate writing slot N+1 touch disjoint Resource*; the FrameSyncScheduler
+    // (pointer-identity hazard keying) inserts no barrier between them.
+    VulkanDevice* device = GetDevice();
+    const uint32_t readSlot  = rawFrame & 1u;
+    const uint32_t writeSlot = (rawFrame + 1u) & 1u;
+    if (device && !octreeRepublished && !dirtyBricks_.empty() &&
+        !shellCache_[writeSlot].perOctree.empty() && concatenated_.count > 0u) {
+        // Value-edit revalidate for octree 0 (the primary Stored-SDF body): rewrite
+        // only the dirty bricks' data in the WRITE slot's compact octree-0 region,
+        // then re-upload that slot's GPU buffer. Distinct GPU slot => no barrier vs
+        // the render reading the READ slot.
+        Vixen::SVO::ShellPool& ws = shellCache_[writeSlot];
+        Vixen::SVO::ShellDeriveResult& r0 = ws.perOctree[0];
+        // The compact channelPool holds octree 0's shell bricks first (poolBrickBase
+        // 0), so RevalidateShellBricks can rewrite them in-place in the compact pool.
+        const uint32_t rewritten = Vixen::SVO::RevalidateShellBricks(
+            concatenated_, /*octreeIdx=*/0u, r0, dirtyBricks_, ws.compact.channelPool);
+        UploadShellSlot(device, writeSlot);
+        NODE_LOG_INFO("[BodyOctreeSceneNode] Shell revalidate: " +
+                      std::to_string(rewritten) + " shell slots updated from " +
+                      std::to_string(dirtyBricks_.size()) + " dirty bricks (write slot " +
+                      std::to_string(writeSlot) + ")");
+        dirtyBricks_.clear();
+    }
+    // Re-emit the CURRENT read slot so the render descriptor binds the committed cache.
+    if (shellDataBuffer_[readSlot] != VK_NULL_HANDLE) {
+        ctx.Out(BodyOctreeSceneNodeConfig::SHELL_DATA_BUFFER,   shellDataBuffer_[readSlot]);
+        ctx.Out(BodyOctreeSceneNodeConfig::SHELL_LOOKUP_BUFFER, shellLookupBuffer_[readSlot]);
+    }
 
     // Build the packed byte representation of the current instance list.
     // If empty, produce a valid 1-element placeholder so the SSBO is always non-null.
@@ -272,6 +313,10 @@ void BodyOctreeSceneNode::ExecuteImpl(TypedExecuteContext& ctx) {
         ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_CONFIG_BUFFER,      configBuffer_);
         ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_SDF_BUFFER,         sdfBuffer_);
         ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_BRICKLOOKUP_BUFFER, brickLookupBuffer_);
+        // Rematerialize re-derived + re-created the shell buffers (both slots) inside
+        // CreateOctreeBuffers; re-emit slot 0 so the render re-binds the fresh cache.
+        ctx.Out(BodyOctreeSceneNodeConfig::SHELL_DATA_BUFFER,         shellDataBuffer_[0]);
+        ctx.Out(BodyOctreeSceneNodeConfig::SHELL_LOOKUP_BUFFER,       shellLookupBuffer_[0]);
     }
 }
 
@@ -477,6 +522,12 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device) {
                   std::to_string(static_cast<uint64_t>(configSize)) + "B, channelPool=" +
                   std::to_string(static_cast<uint64_t>(sdfSize)) + "B, brickLookup=" +
                   std::to_string(static_cast<uint64_t>(brickLookupSize)) + "B)");
+
+    // Surface-Shell ESVO cache: derive the reachable shell of octree 0 from the
+    // just-created full pool into BOTH CPU slots, then bootstrap both GPU slots.
+    // Render binds SHELL_DATA/SHELL_LOOKUP (the compact pool) — never the full pool.
+    DeriveShellCache();
+    CreateShellBuffers(device);
 }
 
 void BodyOctreeSceneNode::EnsureRingAllocated(VulkanDevice* device, VkDeviceSize neededCapacity) {
@@ -530,6 +581,127 @@ void BodyOctreeSceneNode::Rematerialize() {
     CreateOctreeBuffers(device);
 }
 
+// ============================================================================
+// Surface-Shell ESVO cache
+// ============================================================================
+
+void BodyOctreeSceneNode::SetShellThickness(uint32_t dilation) {
+    const uint32_t clamped = dilation < 1u ? 1u : (dilation > 3u ? 3u : dilation);
+    if (clamped != shellDilation_) {
+        shellDilation_ = clamped;
+        NODE_LOG_INFO("[BodyOctreeSceneNode] SetShellThickness: shellDilation=" +
+                      std::to_string(shellDilation_));
+    }
+}
+
+void BodyOctreeSceneNode::DeriveShellCache() {
+    // Derive the reachable shell of EVERY octree into BOTH CPU double-buffer slots
+    // (bootstrap; byte-identical). Multi-octree safe: DeriveShellPool assembles a
+    // compact, render-equivalent ConcatenatedOctrees (compact pool + grid remap +
+    // per-octree poolBrickBase). No-op for binary/Procedural (no SDF pool).
+    if (concatenated_.count == 0u || concatenated_.channelPool.empty()) {
+        shellCache_[0] = Vixen::SVO::ShellPool{};
+        shellCache_[1] = Vixen::SVO::ShellPool{};
+        return;
+    }
+    Vixen::SVO::ShellDeriveParams params;
+    params.shellDilation = shellDilation_;
+    try {
+        Vixen::SVO::ShellPool derived =
+            Vixen::SVO::DeriveShellPool(concatenated_, params);
+        shellCache_[0] = derived;             // slot 0 (copy)
+        shellCache_[1] = std::move(derived);  // slot 1 (byte-identical bootstrap)
+
+        const Vixen::SVO::ShellPool& s = shellCache_[0];
+        NODE_LOG_INFO("[BodyOctreeSceneNode] Shell pool derived (dilation=" +
+                      std::to_string(shellDilation_) + ", octrees=" +
+                      std::to_string(s.compact.count) +
+                      "): pool " + std::to_string(s.sourcePoolBytes) + "B -> " +
+                      std::to_string(s.shellPoolBytes) + "B (" +
+                      (s.sourcePoolBytes ? std::to_string(
+                          100ull * s.shellPoolBytes / s.sourcePoolBytes) : std::string("100")) +
+                      "%), compact channelPool=" +
+                      std::to_string(s.compact.channelPool.size()) + "B lookup=" +
+                      std::to_string(s.compact.brickGridLookup.size()) + "B");
+    } catch (const std::exception& e) {
+        NODE_LOG_WARNING(std::string("[BodyOctreeSceneNode] Shell derive skipped: ") + e.what());
+        shellCache_[0] = Vixen::SVO::ShellPool{};
+        shellCache_[1] = Vixen::SVO::ShellPool{};
+    }
+}
+
+void BodyOctreeSceneNode::UploadShellSlot(VulkanDevice* device, uint32_t slot) {
+    slot &= 1u;
+    const Vixen::SVO::ShellPool& sp = shellCache_[slot];
+
+    // Compact pool (binding-11 replacement) — pad to 1 byte when empty so the
+    // descriptor is always valid (binary/Procedural non-regression invariant).
+    const VkDeviceSize dataSize =
+        std::max<VkDeviceSize>(sp.compact.channelPool.size(), 1);
+    const VkDeviceSize lookupSize =
+        std::max<VkDeviceSize>(sp.compact.brickGridLookup.size(), 1);
+
+    // (Re)create the slot buffers only if capacity changed (shell size is stable
+    // for a static doc; a re-derive at a new dilation may grow it).
+    auto ensure = [&](VkBuffer& buf, VkDeviceMemory& mem, VkDeviceSize& cap,
+                      VkDeviceSize needed, const void* data, size_t dataBytes,
+                      const char* ctx) {
+        if (buf != VK_NULL_HANDLE && cap >= needed) {
+            // Reuse: re-map and overwrite in place (host-coherent).
+            if (data && dataBytes > 0) {
+                void* mapped = nullptr;
+                if (vkMapMemory(device->device, mem, 0, dataBytes, 0, &mapped) == VK_SUCCESS) {
+                    std::memcpy(mapped, data, dataBytes);
+                    vkUnmapMemory(device->device, mem);
+                }
+            }
+            return;
+        }
+        // Recreate at the new capacity.
+        if (buf != VK_NULL_HANDLE) { vkDestroyBuffer(device->device, buf, nullptr); buf = VK_NULL_HANDLE; }
+        if (mem != VK_NULL_HANDLE) { vkFreeMemory(device->device, mem, nullptr);    mem = VK_NULL_HANDLE; }
+        CreateHostBuffer(device, needed, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                         (data && dataBytes > 0) ? data : nullptr, buf, mem, ctx);
+        cap = needed;
+    };
+
+    ensure(shellDataBuffer_[slot], shellDataMemory_[slot], shellDataCapacity_[slot],
+           dataSize, sp.compact.channelPool.empty() ? nullptr : sp.compact.channelPool.data(),
+           sp.compact.channelPool.size(), "shell data SSBO");
+    ensure(shellLookupBuffer_[slot], shellLookupMemory_[slot], shellLookupCapacity_[slot],
+           lookupSize, sp.compact.brickGridLookup.empty() ? nullptr : sp.compact.brickGridLookup.data(),
+           sp.compact.brickGridLookup.size(), "shell lookup SSBO");
+}
+
+void BodyOctreeSceneNode::CreateShellBuffers(VulkanDevice* device) {
+    // Bootstrap BOTH GPU slots from the (identical) CPU cache so frame 0's render
+    // reads a valid shell regardless of which slot &1 selects.
+    UploadShellSlot(device, 0);
+    UploadShellSlot(device, 1);
+
+    // The render reads binding 5 (OCTREE_CONFIG_BUFFER) for poolBrickBase /
+    // brickStrideFloats / bricksPerAxisSdf. The COMPACT pool re-packs bricks so its
+    // per-octree poolBrickBase differs from the source; rewrite the config buffer to
+    // the compact configs so binding-5 addressing matches the compact pool the
+    // render now reads. (For a single-octree pool poolBrickBase is 0 in both, so
+    // this is a no-op; it is the multi-octree correctness fix.)
+    const Vixen::SVO::ShellPool& sp = shellCache_[0];
+    if (!sp.compact.configs.empty() && configBuffer_ != VK_NULL_HANDLE) {
+        const VkDeviceSize cfgBytes =
+            sp.compact.configs.size() * sizeof(Vixen::SVO::OctreeConfig);
+        void* mapped = nullptr;
+        if (vkMapMemory(device->device, configMemory_, 0, cfgBytes, 0, &mapped) == VK_SUCCESS) {
+            std::memcpy(mapped, sp.compact.configs.data(), static_cast<size_t>(cfgBytes));
+            vkUnmapMemory(device->device, configMemory_);
+        }
+    }
+    NODE_LOG_INFO("[BodyOctreeSceneNode] Shell GPU buffers created (slot0 data=" +
+                  std::to_string(static_cast<uint64_t>(shellDataCapacity_[0])) + "B lookup=" +
+                  std::to_string(static_cast<uint64_t>(shellLookupCapacity_[0])) + "B; slot1 data=" +
+                  std::to_string(static_cast<uint64_t>(shellDataCapacity_[1])) + "B lookup=" +
+                  std::to_string(static_cast<uint64_t>(shellLookupCapacity_[1])) + "B)");
+}
+
 void BodyOctreeSceneNode::DestroyOctreeBuffers() {
     if (!GetDevice()) return;
     VkDevice vkDevice = GetDevice()->device;
@@ -545,6 +717,13 @@ void BodyOctreeSceneNode::DestroyOctreeBuffers() {
     destroy(configBuffer_,        configMemory_);
     destroy(sdfBuffer_,           sdfMemory_);         // Inc2 M3
     destroy(brickLookupBuffer_,   brickLookupMemory_); // Inc2 M3
+    // Surface-Shell ESVO cache — both double-buffer slots.
+    for (uint32_t i = 0; i < 2; ++i) {
+        destroy(shellDataBuffer_[i],   shellDataMemory_[i]);
+        destroy(shellLookupBuffer_[i], shellLookupMemory_[i]);
+        shellDataCapacity_[i]   = 0;
+        shellLookupCapacity_[i] = 0;
+    }
 }
 
 void BodyOctreeSceneNode::DestroyBuffers() {

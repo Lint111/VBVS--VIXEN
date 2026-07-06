@@ -50,3 +50,52 @@ TEST(PassGroupSchedule, IndependentResourcesNoBarrier) {
     ASSERT_EQ(s.groups.size(), 2u);
     EXPECT_TRUE(s.groups[1].entryBarriers.empty());
 }
+
+// ---------------------------------------------------------------------------
+// Surface-Shell ESVO cache — the double-buffer no-false-edge guarantee.
+//
+// Models the exact live scenario: the ray-march RENDER reads the CURRENT shell
+// slot N (shellData[0], grid remap lookup[0]); the ShellRevalidate COMPUTE writes
+// the NEXT slot N+1 (shellData[1]) while READING the shared full-interior SOURCE
+// pool. Because slot N and slot N+1 are DISTINCT Resource objects, and the render
+// never touches the source pool (it reads only the compact shell), there is ZERO
+// barrier between the render pass and the revalidate pass — they schedule
+// concurrently (no false hazard edge). This is the parallelism claim, proven.
+// ---------------------------------------------------------------------------
+TEST(PassGroupSchedule, ShellDoubleBufferRenderAndRevalidateNoBarrier) {
+    static const Resource* kShellSlotN   = reinterpret_cast<const Resource*>(0x10); // read by render
+    static const Resource* kShellLookupN = reinterpret_cast<const Resource*>(0x11); // read by render
+    static const Resource* kShellSlotN1  = reinterpret_cast<const Resource*>(0x20); // written by revalidate
+    static const Resource* kSourcePool   = reinterpret_cast<const Resource*>(0x30); // read by revalidate only
+
+    RenderPassStep render;
+    render.accesses = {
+        { kShellSlotN,   AccessKind::ComputeStorageRead, false },
+        { kShellLookupN, AccessKind::ComputeStorageRead, false },
+    };
+    ComputePassStep revalidate = Comp({
+        { kSourcePool,  AccessKind::ComputeStorageRead,  false },
+        { kShellSlotN1, AccessKind::ComputeStorageWrite, false },
+    });
+
+    // Order render-first then revalidate (as the live frame would record them).
+    std::vector<PassStep> passes = { render, revalidate };
+    FrameSyncSchedule s = BuildPassGroupSchedule(passes);
+    ASSERT_TRUE(s.valid);
+    ASSERT_EQ(s.groups.size(), 2u);
+
+    // The revalidate group (index 1) must have NO entry barrier: it shares no
+    // resource with the render (render's slot-N buffers are distinct objects from
+    // the revalidate's slot-N+1 write and its source read).
+    EXPECT_TRUE(s.groups[1].entryBarriers.empty())
+        << "false barrier between render (slot N) and revalidate (slot N+1); "
+           "double-buffer parallelism broken";
+    EXPECT_TRUE(s.groups[0].entryBarriers.empty());
+
+    // Reverse order (revalidate first) must ALSO produce zero barriers — the
+    // guarantee is order-independent because the resource sets are disjoint.
+    std::vector<PassStep> reversed = { revalidate, render };
+    FrameSyncSchedule s2 = BuildPassGroupSchedule(reversed);
+    ASSERT_EQ(s2.groups.size(), 2u);
+    EXPECT_TRUE(s2.groups[1].entryBarriers.empty());
+}

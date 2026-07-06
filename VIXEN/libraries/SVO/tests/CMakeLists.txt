@@ -181,6 +181,25 @@ endif()
 gtest_discover_tests(test_sdf_bake)
 
 # ===========================================================================
+# Shell Derive Tests (Surface-Shell ESVO cache — CPU classifier source of truth)
+# ===========================================================================
+add_executable(test_shell_derive test_shell_derive.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_shell_derive PRIVATE
+        GTest::gtest_main SVO GaiaVoxelWorld VoxelComponents VoxelData)
+else()
+    target_link_libraries(test_shell_derive PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_shell_derive PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_shell_derive POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_shell_derive>
+        COMMENT "Copying TBB DLL for test_shell_derive")
+endif()
+gtest_discover_tests(test_shell_derive)
+
+# ===========================================================================
 # Recipe Codegen Tests (P2.2 M1 — instruction→HLSL emitter + SPIR-V compile gate)
 # ===========================================================================
 add_executable(test_recipe_codegen test_recipe_codegen.cpp)
