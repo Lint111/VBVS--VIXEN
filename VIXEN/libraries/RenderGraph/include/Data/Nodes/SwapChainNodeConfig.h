@@ -31,7 +31,7 @@ using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
  */
 // Compile-time slot counts (declared early for reuse)
 namespace SwapChainNodeCounts {
-    static constexpr size_t INPUTS = 7;   // FR-3: renderComplete + presentFences moved to OUTPUTS (owned here)
+    static constexpr size_t INPUTS = 8;   // FR-3: renderComplete + presentFences moved to OUTPUTS (owned here); +IN_FLIGHT_FENCE (per-image fence tracking)
     static constexpr size_t OUTPUTS = 6;  // + RENDER_COMPLETE_SEMAPHORES_ARRAY, PRESENT_FENCES_ARRAY (per-image, sized to actual count)
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -81,6 +81,18 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
         SlotScope::NodeLevel);
 
     INPUT_SLOT(CURRENT_FRAME_INDEX, uint32_t, 6,
+        SlotNullability::Required,
+        SlotRole::Execute,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
+    // Per-image fence tracking: the current frame-in-flight fence (from FrameSyncNode). The command
+    // buffers, descriptor sets, and timestamp query pools reused downstream are keyed by IMAGE index,
+    // but FrameSyncNode only waits on the per-FLIGHT fence. When MAX_FRAMES_IN_FLIGHT != swapchain
+    // image count the two rings desync, so this node records which flight fence last guarded each
+    // image and waits on it before that image's resources are reused (the canonical imagesInFlight
+    // pattern). See SwapChainNode::ExecuteImpl.
+    INPUT_SLOT(IN_FLIGHT_FENCE, VkFence, 7,
         SlotNullability::Required,
         SlotRole::Execute,
         SlotMutability::ReadOnly,
@@ -151,6 +163,9 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
         HandleDescriptor frameIndexDesc{"uint32_t"};
         INIT_INPUT_DESC(CURRENT_FRAME_INDEX, "current_frame_index", ResourceLifetime::Transient, frameIndexDesc);
 
+        HandleDescriptor inFlightFenceDesc{"VkFence"};
+        INIT_INPUT_DESC(IN_FLIGHT_FENCE, "in_flight_fence", ResourceLifetime::Persistent, inFlightFenceDesc);
+
         INIT_OUTPUT_DESC(SWAPCHAIN_HANDLE, "swapchain_handle",
             ResourceLifetime::Persistent,
             BufferDescription{}  // Opaque handle for VkSwapchainKHR
@@ -203,6 +218,9 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
     static_assert(CURRENT_FRAME_INDEX_Slot::index == 6, "CURRENT_FRAME_INDEX must be at index 6");
     static_assert(!CURRENT_FRAME_INDEX_Slot::nullable, "CURRENT_FRAME_INDEX is required");
 
+    static_assert(IN_FLIGHT_FENCE_Slot::index == 7, "IN_FLIGHT_FENCE must be at index 7");
+    static_assert(!IN_FLIGHT_FENCE_Slot::nullable, "IN_FLIGHT_FENCE is required");
+
     static_assert(SWAPCHAIN_HANDLE_Slot::index == 0, "SWAPCHAIN_HANDLE must be at index 0");
     static_assert(!SWAPCHAIN_HANDLE_Slot::nullable, "SWAPCHAIN_HANDLE is required");
 
@@ -230,6 +248,7 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
     static_assert(std::is_same_v<IMAGE_AVAILABLE_SEMAPHORES_ARRAY_Slot::Type, const std::vector<VkSemaphore>&>);
     static_assert(std::is_same_v<RENDER_COMPLETE_SEMAPHORES_ARRAY_Slot::Type, const std::vector<VkSemaphore>&>);
     static_assert(std::is_same_v<CURRENT_FRAME_INDEX_Slot::Type, uint32_t>);
+    static_assert(std::is_same_v<IN_FLIGHT_FENCE_Slot::Type, VkFence>);
     static_assert(std::is_same_v<PRESENT_FENCES_ARRAY_Slot::Type, const std::vector<VkFence>&>);
 
     static_assert(std::is_same_v<SWAPCHAIN_HANDLE_Slot::Type, VkSwapchainKHR>);

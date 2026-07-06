@@ -97,6 +97,17 @@ void GPUTimestampQuery::CreateQueryPools() {
             timestampSupported_ = false;
             return;
         }
+
+        // Host-reset the freshly-created pool so its queries are in the reset state before ANY use.
+        // Without this, the first vkGetQueryPoolResults for a per-flight slot (the startup / first-
+        // frames window, before that slot has completed a cmd-buffer reset→write→submit cycle) reads
+        // an uninitialised pool → VUID-vkGetQueryPoolResults-None-09401 ("query not reset"). Requires
+        // the hostQueryReset feature (core Vulkan 1.2, enabled in VulkanDevice when supported). When
+        // the GPU lacks it, we skip this and rely on the GPU-side vkCmdResetQueryPool path only — the
+        // pre-existing behaviour, so this is a strict improvement.
+        if (device_->HasCapability("DeviceFeature:hostQueryReset")) {
+            vkResetQueryPool(device_->device, frame.timestampPool, 0, maxTimestamps_);
+        }
     }
 }
 

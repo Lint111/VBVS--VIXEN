@@ -108,6 +108,16 @@ private:
     std::vector<VkSemaphore> renderCompleteSemaphores;  // signaled by render, waited by present
     std::vector<VkFence> presentFences;                 // per-image present fences (VK_EXT_swapchain_maintenance1)
 
+    // Per-image in-flight fence tracking (canonical "imagesInFlight" pattern). Records which
+    // per-FLIGHT fence (from FrameSyncNode) last submitted work for each image. When
+    // MAX_FRAMES_IN_FLIGHT != swapchain image count, the flight ring and the image ring desync, so
+    // FrameSyncNode's per-flight wait does NOT guarantee the previous submission that touched THIS
+    // image's command buffer / descriptor set / query pool has completed. Before reusing an image
+    // we wait on its recorded fence, then stamp it with the current frame's fence. NOT owned (the
+    // fences belong to FrameSyncNode) — this is a non-owning bookkeeping map, so it is never
+    // destroyed here, only resized/cleared. Empty entry = image never used yet.
+    std::vector<VkFence> imagesInFlight;
+
     // Device handle is stored in the parent NodeInstance::device member
 
     // Phase 0.2: Semaphores now managed by FrameSyncNode (per-flight pattern)
