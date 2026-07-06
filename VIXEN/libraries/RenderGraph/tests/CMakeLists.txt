@@ -583,16 +583,24 @@ include(test_voxel_systems.cmake)
 #   - GetInnerRML() contains the substituted values 42 and 7
 #   - Rml::Shutdown() cleans up cleanly
 # Assets (font + hud.rml/hud.rcss) are staged next to the binary by POST_BUILD.
-
+#
+# View Contract Inc-2 (Task 6): the HUD data-model + faction/event projection now
+# lives in the main app's Vixen::App::HudView consumer, not UIRenderNode. This test
+# compiles HudView.cpp directly (not the VixenApp library, to avoid pulling in the
+# app's gaia-touching TUs) and adds application/main/include so "graph/HudView.h" /
+# "Generated/Hud.g.h" resolve — mirrors test_view_hud_golden's identical include dir.
 if(TARGET GTest::gtest_main)
     add_executable(test_ui_hud_smoke
         test_ui_hud_smoke.cpp
+        ${CMAKE_SOURCE_DIR}/application/main/source/graph/HudView.cpp
     )
 
     target_link_libraries(test_ui_hud_smoke PRIVATE
         GTest::gtest_main
         RenderGraph
     )
+
+    target_include_directories(test_ui_hud_smoke PRIVATE ${CMAKE_SOURCE_DIR}/application/main/include)
 
     # Stage the UI assets (font + rml + rcss) next to the test binary so
     # hud.rml / font paths resolve at test runtime.
