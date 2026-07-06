@@ -2,16 +2,64 @@
 # available (D8: normal builds compile committed artifacts; only regen needs .NET).
 # Canonical schemas live in config-schemas/; codegen is done by the Yeroket
 # kernel-codegen tool (D5: the tool lives in Yeroket, config is authored here).
-find_program(VIXEN_DOTNET NAMES dotnet HINTS "$ENV{HOME}/.dotnet")
+#
+# KI-015: both dotnet and the Yeroket repo are resolved from the user home. On a
+# WINDOWS-side configure `$ENV{HOME}` is empty (Windows uses USERPROFILE), so a
+# bare `$ENV{HOME}/...` hint silently missed and the drift guards were skipped
+# WITHOUT WARNING — a Windows build then looked "guarded" while the generated
+# headers were never checked. Fix: probe several home candidates for both the
+# tool and dotnet, keep the -DYEROKET_ROOT= override, and make EVERY not-found
+# path a loud message(WARNING) that names the guard as DISABLED. (The Yeroket
+# repo is WSL-only on this machine, so a Windows configure legitimately can't
+# reach it — but that must be surfaced, not swallowed.)
+
+# Candidate user-home roots, most-specific first. Any may be empty; EXISTS filters.
+set(_home_candidates "$ENV{HOME}" "$ENV{USERPROFILE}")
+# On a Windows configure, probe the current user's WSL home so the WSL-side clone
+# is still reachable when \\wsl$ is mounted (no-op when it isn't).
+if(DEFINED ENV{USERNAME})
+    list(APPEND _home_candidates "//wsl$/Ubuntu/home/$ENV{USERNAME}" "//wsl.localhost/Ubuntu/home/$ENV{USERNAME}")
+endif()
+
+# Robust dotnet discovery across both OS conventions + common install dirs.
+set(_dotnet_hints "")
+foreach(_h IN LISTS _home_candidates)
+    if(_h)
+        list(APPEND _dotnet_hints "${_h}/.dotnet")
+    endif()
+endforeach()
+find_program(VIXEN_DOTNET NAMES dotnet
+    HINTS ${_dotnet_hints}
+    PATHS "/usr/bin" "/usr/local/bin" "/usr/share/dotnet" "C:/Program Files/dotnet")
 if(NOT VIXEN_DOTNET)
-    message(STATUS "[codegen] dotnet not found — skipping regen/golden gate (committed artifacts used as-is)")
+    message(WARNING "[codegen] KI-015: dotnet not found (searched ${_dotnet_hints} + system paths) — "
+        "codegen regen/golden DRIFT GUARD DISABLED; committed generated headers are used as-is and "
+        "will NOT be checked against their canonical schemas this configure. Pass -DVIXEN_DOTNET=<path> "
+        "or run the WSL-side configure to enable the guard.")
     return()
 endif()
 
 set(_cg "${CMAKE_CURRENT_SOURCE_DIR}")
 
 # --- OctreeConfig via the Yeroket kernel-codegen tool (D5: config outside Yeroket, tool in Yeroket) ---
-set(YEROKET_ROOT "$ENV{HOME}/Github/Yeroket-Fantasy" CACHE PATH "Yeroket repo root (kernel-codegen tool)")
+# Resolve YEROKET_ROOT from the first home candidate that actually contains the repo,
+# so a Windows configure with USERPROFILE (or a mounted WSL home) still finds it.
+# -DYEROKET_ROOT= overrides the probe entirely.
+if(NOT DEFINED YEROKET_ROOT)
+    set(_yk_root "")
+    foreach(_h IN LISTS _home_candidates)
+        if(_h AND EXISTS "${_h}/Github/Yeroket-Fantasy/Packages/com.yeroket.utility.kernel-framework/CodegenTool~/CodegenTool.csproj")
+            set(_yk_root "${_h}/Github/Yeroket-Fantasy")
+            break()
+        endif()
+    endforeach()
+    # Fall back to the WSL-home default even if the probe missed, so the not-found
+    # WARNING below reports a meaningful path rather than an empty string.
+    if(NOT _yk_root)
+        set(_yk_root "$ENV{HOME}/Github/Yeroket-Fantasy")
+    endif()
+    set(YEROKET_ROOT "${_yk_root}" CACHE PATH "Yeroket repo root (kernel-codegen tool)")
+endif()
 set(_yk_tool "${YEROKET_ROOT}/Packages/com.yeroket.utility.kernel-framework/CodegenTool~")
 if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     set(_oc_args
@@ -42,5 +90,10 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         COMMENT "[codegen] regenerate EditorHud.g.h (Yeroket tool)"
         VERBATIM)
 else()
-    message(STATUS "[codegen] Yeroket tool not found at ${_yk_tool} — skipping OctreeConfig/EditorHud golden gates")
+    message(WARNING "[codegen] KI-015: Yeroket kernel-codegen tool not found at ${_yk_tool} — "
+        "OctreeConfig/EditorHud golden DRIFT GUARDS DISABLED; the committed generated headers "
+        "(OctreeConfig.g.h/.glsl, EditorHud.g.h) are used as-is and will NOT be checked against "
+        "their canonical schemas this configure. The Yeroket repo is WSL-only on this machine, so a "
+        "Windows-side configure cannot reach it — run the WSL-side configure, mount \\\\wsl$, or pass "
+        "-DYEROKET_ROOT=<path> to enable the guard.")
 endif()
