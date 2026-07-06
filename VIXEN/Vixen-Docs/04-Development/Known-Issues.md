@@ -11,6 +11,24 @@ Living log of confirmed-but-unfixed issues. Each entry: symptom, root cause, imp
 
 ---
 
+## KI-015 — codegen `--check` gates (`octreeconfig_check`, `view_editorhud_check`) silently no-op on a Windows-side CMake configure
+
+**Discovered:** 2026-07-06, during View Contract Codegen Inc-1 (M3 gate wiring).
+
+**Symptom:** `codegen/CMakeLists.txt` sets `YEROKET_ROOT` to `$ENV{HOME}/Github/Yeroket-Fantasy` and guards the codegen targets on `if(EXISTS "${_yk_tool}/CodegenTool.csproj")`. Under a Windows-side configure (`cmake.exe` inside `vcvars64`), `$ENV{HOME}` resolves against the *Windows* `HOME`, not WSL's — yielding a path like `/Github/Yeroket-Fantasy` that doesn't exist — so BOTH `octreeconfig_check` and the new `view_editorhud_check` are silently skipped ("Yeroket tool not found"). The Yeroket kernel-framework repo is a WSL-only clone here (no `\\wsl$` mount used), so no Windows path reaches it.
+
+**Root cause:** the schema→header drift guards depend on the Yeroket tool being reachable, but the `YEROKET_ROOT` default assumes a WSL `$ENV{HOME}`. This predates the view work and affects `octreeconfig_check` identically.
+
+**Impact:** on a Windows-side build the drift guards do not run — a hand-edit or stale generated header (`OctreeConfig` GLSL/C++, `EditorHud.g.h`) would NOT be caught at configure/build time. The gate logic itself is correct: verified via direct WSL-side `dotnet run … --check` (exit 0) for both `octreeconfig` and `view_editorhud`.
+
+**Fix options:** (a) resolve `YEROKET_ROOT` robustly across Windows/WSL configures (e.g. accept a `-DYEROKET_ROOT=` override + probe both a WSL `$ENV{HOME}` and a Windows-visible path); (b) run the codegen `--check` gates in CI on the WSL side explicitly; (c) emit a loud `message(WARNING …)` when the tool is not found instead of a silent skip, so a Windows configure surfaces "drift guard disabled" rather than passing quietly.
+
+**Severity:** low (guard-coverage gap on one configure path; the generators + `--check` are proven correct WSL-side) · **Status:** OPEN
+
+*(Related scope note, not a KI: the View Contract emitter's non-array nested-struct field path (`ViewFieldKind.Struct` → `Name*` bind pointer) is implemented but untested — every Inc-1 schema uses only scalars + `StructArray`. Add coverage when a single-struct view field is first used; tracked for a future View Contract increment, not a bug.)*
+
+---
+
 ## Test-suite note (not a KI): `test_fail_scenario_sweep` is flaky under the Vulkan validation layer
 
 Running any SINGLE `FailScenarioSweep*` test that does a live resize+recompile (e.g. `LiveResizeRecompilesPickIdRing`) under `VK_LAYER_KHRONOS_validation` alone can segfault (`vkCmdBindPipeline` referencing an already-deleted `VkDescriptorSetLayout`, stale command-buffer-in-use errors, then SIGSEGV) — but the SAME test passes cleanly with `[ PASSED ]` when run without the validation layer. This reproduces identically both before and after this session's changes, so it's pre-existing validation-layer/test-timing interaction, not a functional regression. Use the validation layer for spot-checking specific VUIDs on `vixen_editor` directly (as this session did for KI-009/KI-012); trust the plain (no-validation-layer) test run for pass/fail signal on `test_fail_scenario_sweep`.
