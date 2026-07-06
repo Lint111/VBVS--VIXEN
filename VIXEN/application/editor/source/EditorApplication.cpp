@@ -9,10 +9,12 @@
 #include "ShellOctreeGpu.h"
 #include "Nodes/UIRenderNode.h"               // AFTER the Recipe/gaia includes above
 #include "Nodes/UISelectionProviderNode.h"
+#include "Nodes/DeviceNode.h"                 // Task 3: VulkanDevice* + queue for CaptureFrameToPng
 #include "Data/Nodes/UIRenderNodeConfig.h"
 #include "Nodes/CameraNode.h"
 #include "Data/Nodes/CameraNodeConfig.h"
 #include "Core/RenderGraph.h"
+#include "Debug/RenderTargetReadback.h"       // Task 3: shared IRenderTarget -> PNG readback
 #include <Logger.h>
 
 #define GLFW_INCLUDE_NONE   // don't pull in <GL/gl.h> (absent on headless/WSL builds)
@@ -52,6 +54,17 @@ void EditorApplication::BuildRenderGraph() {
     // Build the full standard graph unmodified (window, body-octree scene, UI composite HUD),
     // then re-point the UI node at the editor's own document and replace the 3 default demo
     // bodies with the loaded VoxelDocument's single flattened recipe.
+    //
+    // Inc-2b Task 3 (capture-target decision): NO capture-specific node is added here. The
+    // standard graph built above already contains a "compute_render_target" RenderTargetNode
+    // (application/main/source/graph/BuildRenderGraph.cpp's M4 render-scale-decoupling target) --
+    // the offscreen target the compute voxel-raymarch dispatch writes the scene into every frame,
+    // BEFORE the UI composite blits it up to the swapchain. It is created with
+    // VK_IMAGE_USAGE_TRANSFER_SRC_BIT (for that same blit) and follows the swapchain extent 1:1
+    // by default, so it reliably holds the full rendered body (a toggle/undo/redo is visible
+    // there exactly as it is on screen) with zero new wiring and zero overhead when
+    // VIXEN_EDITOR_CAPTURE_FRAMES is unset (the node exists either way -- capture only adds a
+    // read-back, never a build-time cost). See CaptureFrameToPng (below) and EditorApplication.h.
     VulkanGraphApplication::BuildRenderGraph();
 
     if (auto* ui = GetUiRenderNode()) {
@@ -145,6 +158,48 @@ bool EditorApplication::ApplyDocumentToScene() {
     SetBodyInstances({inst});
 
     return true;
+}
+
+bool EditorApplication::CaptureFrameToPng(const std::string& path, std::string& err) {
+    // Live lookups every call -- never cache a node pointer (mirrors GetWindowHandle's rule;
+    // both the render target and the device node persist across recompile, but re-resolving by
+    // name is the established pattern for host-facing lookups in this app).
+    auto* graph = GetRenderGraph();
+    if (!graph) {
+        err = "CaptureFrameToPng: no render graph";
+        return false;
+    }
+
+    // See EditorApplication.h's captureFrames_/updateTick_ comment for why this reuses the
+    // standard graph's existing "compute_render_target" instance instead of adding a new one.
+    static constexpr const char* kCaptureTargetName = "compute_render_target";
+    auto* targetInst = graph->GetInstanceByName(kCaptureTargetName);
+    if (!targetInst) {
+        err = std::string("CaptureFrameToPng: instance '") + kCaptureTargetName + "' not found";
+        return false;
+    }
+    // RENDER_TARGET is RenderTargetNodeConfig output slot 0 (IRenderTarget*); read directly off
+    // the node's bundle rather than pulling in the typed config here for one slot index.
+    Resource* targetOutput = targetInst->GetOutput(0, 0);
+    if (!targetOutput) {
+        err = "CaptureFrameToPng: capture target has no RENDER_TARGET output yet (graph not compiled?)";
+        return false;
+    }
+    auto* renderTarget = targetOutput->GetHandle<Vixen::Vulkan::Resources::IRenderTarget*>();
+    if (!renderTarget) {
+        err = "CaptureFrameToPng: RENDER_TARGET output handle is null";
+        return false;
+    }
+
+    auto* deviceInst = static_cast<DeviceNode*>(graph->GetInstanceByName("main_device"));
+    if (!deviceInst || !deviceInst->GetVulkanDevice()) {
+        err = "CaptureFrameToPng: 'main_device' not found or has no VulkanDevice";
+        return false;
+    }
+    auto* device = deviceInst->GetVulkanDevice();
+
+    return Vixen::RenderGraph::Debug::CaptureRenderTargetToPng(
+        device, renderTarget, device->queue, device->graphicsQueueIndex, path, err);
 }
 
 void EditorApplication::ToggleLayer(uint32_t layerIndex) {

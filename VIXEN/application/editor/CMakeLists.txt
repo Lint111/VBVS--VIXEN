@@ -10,11 +10,18 @@ cmake_minimum_required(VERSION 3.15...4.2 FATAL_ERROR)
 add_executable(vixen_editor
     ${CMAKE_CURRENT_SOURCE_DIR}/source/main.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/source/EditorApplication.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/StbImageWriteImpl.cpp
 )
 
 target_include_directories(vixen_editor PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 target_link_libraries(vixen_editor PRIVATE VixenApp AppFlow)
+
+# Inc-2b Task 3: stb_image_write.h (Debug/RenderTargetReadback.h's PNG writer, called from
+# EditorApplication::CaptureFrameToPng) -- not transitively provided by VixenApp/RenderGraph.
+if(TARGET stb)
+    target_link_libraries(vixen_editor PRIVATE stb)
+endif()
 
 # Default document path (no argv[1]) resolves relative to the source-tree BuiltAssets dir, not
 # the exe's CWD -- so `vixen_editor` works from any working directory.

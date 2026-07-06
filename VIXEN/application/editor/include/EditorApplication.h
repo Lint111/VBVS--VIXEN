@@ -49,6 +49,15 @@ public:
     // can drive the exact same path the app uses without booting a window.
     bool ApplyDocumentToScene();
 
+    // Inc-2b Task 3: reads the capture render target's CURRENT image back to host RGBA8 and
+    // writes it as a PNG at `path`. Gated end-to-end on VIXEN_EDITOR_CAPTURE_FRAMES being set
+    // (see BuildRenderGraph -- the capture target itself is not created otherwise). Looks the
+    // target up LIVE by instance name every call (mirrors GetWindowHandle's live-lookup rule --
+    // never cache a node pointer); if the target doesn't exist (capture not enabled, or a
+    // recompile hasn't run yet) sets err and returns false without throwing. Public so the
+    // scripted-harness call site (Update) and a future assertion test can both drive it.
+    bool CaptureFrameToPng(const std::string& path, std::string& err);
+
 private:
     std::string documentPath_;
     Vixen::Editor::EditorDocumentModel doc_;
@@ -63,5 +72,18 @@ private:
     bool sKeyWasDown_ = false;  // edge-detect for the Save keybinding
     bool ctrlZWasDown_ = false;  // edge-detect for the Undo keybinding
     bool ctrlYWasDown_ = false;  // edge-detect for the Redo keybinding
+
+    // Inc-2b Task 3: capture-target decision (see BuildRenderGraph.cpp's file header comment for
+    // the plan's option A/B language): rather than adding a NEW RenderTargetNode instance to the
+    // editor graph, CaptureFrameToPng reads the standard graph's existing "compute_render_target"
+    // instance (added by the base VulkanGraphApplication::BuildRenderGraph, see
+    // application/main/source/graph/BuildRenderGraph.cpp) -- the offscreen target the compute
+    // voxel-raymarch dispatch renders the scene into every frame, BEFORE the UI composite blits
+    // it up to the swapchain. It already has VK_IMAGE_USAGE_TRANSFER_SRC_BIT set (for that same
+    // blit), is sized to follow the swapchain 1:1 by default, and reliably holds the full
+    // rendered body (toggle/undo/redo all show up there) with zero new node wiring. So there is
+    // no separate "capture target name" member -- the literal instance name is used directly at
+    // the one CaptureFrameToPng call site (kept as a local constant there, not duplicated here).
+
     std::shared_ptr<Vixen::Log::Logger> logger_ = std::make_shared<Vixen::Log::Logger>("editor", true);
 };
