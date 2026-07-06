@@ -1012,11 +1012,12 @@ green.
       increment via git-log/git-diff reasoning on the actually-touched files.
 
 **★ INC1 (M1-M5) COMPLETE ★** — all 5 milestones done, Opus-validated, on branch
-`feat/sparse-mip-esvo-inc1`. Not yet merged to `main` (that's a separate user decision). Two items
+`feat/sparse-mip-esvo-inc1`. **Merged to `main` 2026-07-06** (merge commit `ae12ba78`). Two items
 carried to the Inc2 backlog per validator caveats above (mixed-scene measurement; flaky-assertion
 hardening), plus the earlier-logged known issues (§ M1/M2 Progress Log: `PartialBlockUpdateTest.
 AddNewBrick`, unregistered `Nodes/*.cpp` tests) and the CPU-side occlusion gate explicitly deferred at
-M4b.
+M4b. **All four scoped and planned in [[Sparse-Mip-ESVO-LOD-Inc2-Plan-2026-07]]**, plus a scoped
+evaluation of the GigaVoxels GPU-LRU candidate note above.
 
 ---
 
