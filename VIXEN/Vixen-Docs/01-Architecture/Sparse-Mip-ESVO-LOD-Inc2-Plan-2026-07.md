@@ -78,7 +78,8 @@ mechanism is warranted yet, or should itself wait for the nested-tree epic.
   the occluded target's residency is NOT requested despite passing frustum + resolvability, and IS
   requested once the occluder moves aside or the target emerges past it. Implements the exact mechanism
   Inc1 §M4b already specified (coarse depth estimate from already-resident trees, front-to-back order
-  reused from the GPU per-ray fix) — this milestone is "build what was already designed," not new design.
+  reused from the GPU per-ray fix) — this milestone is "build what was already designed," not new design. ·
+  **✅ DONE 2026-07-06** — commit(s) pending; see M3 Progress Log below.
 - **M4 — GigaVoxels GPU-LRU: evaluate, decide, document** · gate: a written go/no-build recommendation
   backed by evidence — at minimum, (a) confirm current/near-term resident-tree counts against the
   "tens to a few hundred bodies" threshold Inc1's own CPU-vs-GPU note used to justify staying CPU-side,
@@ -223,6 +224,102 @@ Re-ran independently on real Mesa-Dozen GPU: **110/110 post-fix** (55 isolated +
 run, same ballpark as the implementer's 4/20, all at the exact flagged assertion line,
 `totalUploads` one short) by temporarily restoring the parent commit's test file, then correctly
 restored HEAD, rebuilt, and confirmed a clean tree matching `c8ea0534` before finishing.
+
+---
+
+## M3 Progress Log
+
+**M3 DONE (2026-07-06)**, on branch `feat/sparse-mip-esvo-inc2`. Built the CPU-side residency
+occlusion gate exactly as Inc1 §M4b specified (see that plan's "DEFERRED TO INC2" bullet) — a
+coarse, per-candidate ray-vs-sphere test against already brick-resident trees, not a new render
+pass or a full per-pixel occlusion query.
+
+- **New pure, dependency-free header** `libraries/SVO/include/OcclusionGate.h`, matching
+  `FrustumCull.h`/`ResolvableLevel.h`/`ResidencyTrigger.h`'s own no-node/no-GPU-type idiom (glm-only,
+  freestanding functions, unit-testable without a device/graph):
+  - `RaySphereNearestHit(rayOrigin, rayDir, sphereCentre, sphereRadius, outT)` — the coarse geometric
+    primitive: nearest non-negative ray-vs-sphere hit distance, or false on a miss/behind-origin sphere.
+  - `ResidentOccluder{ centre, radius }` — a minimal already-resident-tree record, deliberately NOT
+    `BodyInstanceGpu` itself (keeps the gate dependency-free the same way `ResidencyTrigger.h`
+    intentionally doesn't take node/device types).
+  - `IsOccludedByResidentTrees(cameraPos, candidateCentre, candidateDistance, residentOccluders)` — for
+    each resident occluder, casts the ONE representative ray `cameraPos -> candidateCentre` and checks
+    whether that occluder's bounding sphere is hit strictly closer than the candidate's own distance
+    (a small epsilon guards a resident tree's own sphere from self-occluding on float noise). Empty
+    `residentOccluders` (nothing resident yet) always returns false — the same graceful-degradation
+    path `ResidencyTrigger.h` documents for its own missing occlusion parameter.
+- **Wired into the live decision path**: `VulkanGraphApplication::UpdateBodySceneResidency()`
+  (`application/main/source/VulkanGraphApplication.cpp`) now builds a `residentOccluders` list from
+  `bodyScene->GetInstances()` (using the same `kResidencyBoundingRadius` constant `ResidencyTrigger.h`'s
+  call already uses) whenever the NEW member `lastResidencyGranted_` (declared in
+  `application/main/include/VulkanGraphApplication.h`) is true — i.e. the occlusion gate's "already
+  resident" input is the pool's state as of the LAST re-check, not whatever this frame is about to
+  decide (matches Inc1 M4b's "coarse depth estimate built from already brick-resident trees only," not
+  a self-referential same-frame set). The per-instance loop now requires BOTH
+  `InstanceWantsBrickResidency` (frustum+resolvability, unchanged) AND `!IsOccludedByResidentTrees`
+  before granting; `lastResidencyGranted_` is updated at the end of the function from the frame's own
+  decision, becoming next re-check's occlusion input. `SortInstancesFrontToBack`'s existing call site
+  is untouched — this milestone deliberately reuses that ordering's existence as a design precedent
+  (per Inc1 M4b's own note) but does NOT feed the sorted array positionally into the gate; the gate
+  tests actual world positions/radii, independent of array order.
+- **CPU-vs-GPU scale assumption re-confirmed, not just cited**: re-read Inc1 M4b's own reasoning
+  (`Sparse-Mip-ESVO-LOD-Inc1-Plan-2026-07.md` §M4b) and confirmed it still holds rather than taking it
+  on faith — `BodyOctreeSceneNode.cpp`'s existing instance cap and the undertow 60-300-body target are
+  unchanged since Inc1, and this milestone's own mechanism is O(candidates × residentTrees) ray-vs-sphere
+  tests, strictly cheaper per-pair than Inc1's own frustum+resolvability formula (no trig/log2, just a
+  dot-product quadratic). At tens-to-hundreds of trees this is trivially sub-millisecond single-threaded;
+  no GPU move warranted. Unchanged from Inc1's own conclusion — revisit only if the nested-tree epic
+  pushes resident-tree counts up by orders of magnitude, per that section's own caveat.
+- **New test** `libraries/SVO/tests/test_occlusion_gate.cpp` (11 tests, pure CPU, no device/graph —
+  mirrors `test_residency_trigger.cpp`'s own no-GPU convention rather than
+  `test_body_instance_occlusion_reject.cpp`'s GPU-device harness, since the gate under test here is
+  pure CPU logic, not a shader change):
+  - 3 isolated `RaySphereNearestHit` primitive checks (direct hit, off-axis miss, behind-origin miss).
+  - 4 isolated `IsOccludedByResidentTrees` checks (empty resident set never occludes; a blocking
+    resident sphere on-axis occludes; an off-axis resident sphere does not; a resident sphere FARTHER
+    than the candidate along the same ray does not).
+  - **The decisive test** (`OccludedTargetResidencyNotRequestedDespitePassingFrustumAndResolvability`):
+    three-body line-up (camera at origin → occluder at 50m → target at 200m, collinear), occluder
+    already brick-resident. First asserts (precondition) the target WOULD be granted residency by
+    frustum+resolvability alone — proving the subsequent rejection is actually the occlusion gate's
+    doing, not some other reason — then asserts the combined `WantsResidency` helper (mirroring
+    `UpdateBodySceneResidency`'s own AND-of-both-gates decision) returns false with the occluder present.
+  - **Emerge/move-aside symmetry** (the plan's explicit ask): `TargetResidencyRequestedOnceOccluderMovesAside`
+    (occluder relocated off the camera→target ray) and `TargetResidencyRequestedOnceItEmergesPastTheOccluder`
+    (target repositioned nearer than the occluder along the same ray) both assert residency is granted
+    again via the identical combined gate.
+  - Sanity check (`LoneCandidateGrantedWhenNothingResidentYet`): an empty resident set never itself
+    rejects an otherwise-qualifying candidate — the gate degrades gracefully, doesn't accidentally
+    reject everything.
+  - Registered in `libraries/SVO/tests/CMakeLists.txt` mirroring `test_residency_trigger`'s own block
+    (same `GTest::gtest_main SVO` link, same TBB-DLL-copy custom command, same
+    `Tests/SVO Tests` folder, `gtest_discover_tests`).
+- **Pre-existing, unrelated build breakage found and fixed while confirming the regression gate**:
+  `shaders/BodyInstanceRayMarch.comp`'s call to `handleLeafHitInstancedSdf` (line 634, Inc3 M3's
+  Stored-SDF dispatch branch) was missing the `stack` argument the function's own declared signature
+  requires (`inout StackEntry stack[STACK_SIZE]`, used internally by `marchBrickSdf`) — a genuine
+  arity-mismatch shader compile error, confirmed present BEFORE any of this milestone's own changes
+  (reproduced standalone via `glslc` after `git stash`-ing every M3 change, restored after confirming).
+  This blocked `test_body_instance_occlusion_reject` and the whole `VIXEN`/`VixenApp` targets from
+  building at all, which would have made this milestone's own regression-check gate impossible to
+  satisfy honestly. Fixed with the minimal one-line correction (added the missing `stack` argument at
+  the call site, matching the sibling `handleLeafHitInstanced` call two lines below it, which already
+  passes `stack` correctly) — not touched or extended beyond that.
+- **Live-run gate satisfied**:
+  - `test_occlusion_gate`: **11/11 passed** (pure CPU, no GPU needed).
+  - `test_residency_trigger`: **8/8 passed**, unchanged (regression check — `ResidencyTrigger.h` itself
+    was not modified this milestone).
+  - `test_body_instance_occlusion_reject`: **2/2 passed** on real Mesa-Dozen GPU (WSL2, `vixen-wsl`
+    preset; device `Microsoft Direct3D12 (NVIDIA GeForce RTX 3060 Laptop GPU)` via dzn) — regression
+    check for the GPU per-ray fix this milestone's occlusion gate is a CPU-side companion to (both
+    directions: occluded target/control ran 0 traversal iterations; the lone non-occluded instance ran
+    non-zero iterations, exactly as before). Pre-existing Vulkan validation warnings in this test's
+    output (SPIR-V 1.6-vs-1.5 target-env mismatch, a push-constant range note) are unrelated,
+    non-fatal, and unchanged from the shader's existing state — not introduced by this milestone.
+- **Not done in this milestone** (out of scope per the plan): M4 (GPU-LRU evaluation) remains open.
+  No changes to `ResidencyTrigger.h`, `FrustumCull.h`, or `InstanceSort.h` — the occlusion gate is a
+  new, independent gate layered on top via `UpdateBodySceneResidency`, not a rewrite of the existing
+  three mechanisms.
 
 ---
 

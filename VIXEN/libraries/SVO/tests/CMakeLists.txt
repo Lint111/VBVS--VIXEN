@@ -305,6 +305,27 @@ endif()
 gtest_discover_tests(test_residency_trigger)
 
 # ===========================================================================
+# CPU-Side Residency Occlusion Gate Tests  (Sparse-Mip ESVO LOD Inc2 M3 — deferred
+# from Inc1 M4b — pure math, no octree/GPU needed: RaySphereNearestHit,
+# IsOccludedByResidentTrees; three-body camera->occluder->target line-up)
+# ===========================================================================
+add_executable(test_occlusion_gate test_occlusion_gate.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_occlusion_gate PRIVATE
+        GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_occlusion_gate PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_occlusion_gate PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_occlusion_gate POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_occlusion_gate>
+        COMMENT "Copying TBB DLL for test_occlusion_gate")
+endif()
+gtest_discover_tests(test_occlusion_gate)
+
+# ===========================================================================
 # SDF Bake Tests  (Inc2 M1 — recipe → narrow-band SDF voxels + body octree)
 # ===========================================================================
 add_executable(test_sdf_bake test_sdf_bake.cpp)

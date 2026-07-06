@@ -632,6 +632,7 @@ bool traverseOctreeInstanced(vec3 rayOrigin, vec3 rayDir,
                     // roughness; binary bricks DDA voxels (roughness defaults to 0.5).
                     if (octreeConfig.formatId == FORMAT_STORED_SDF) {
                         leafHit = handleLeafHitInstancedSdf(state, coef, rayDir, tBias,
+                                                            stack,
                                                             hitColor, hitNormal, hitT,
                                                             hitRoughness,
                                                             hitBrickIndex, hitVoxelLinearIdx);

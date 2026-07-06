@@ -33,6 +33,9 @@
 // Sparse-Mip ESVO LOD Inc1 M4c: the combined residency trigger (M4a resolvability + M4b
 // frustum, factored out as a pure/testable function — see ResidencyTrigger.h).
 #include "ResidencyTrigger.h"
+// Sparse-Mip ESVO LOD Inc2 M3: CPU-side residency occlusion gate (Inc1 M4b's deferred
+// spec) — coarse ray-vs-sphere test of a candidate against already brick-resident trees.
+#include "OcclusionGate.h"
 #include <glm/gtx/norm.hpp>   // glm::distance2 (change-detection epsilon compares)
 
 #include <ShaderBundleBuilder.h>  // Phase G: Shader builder API (includes preprocessor support)
@@ -742,23 +745,42 @@ void VulkanGraphApplication::UpdateBodySceneResidency() {
     const float screenHeightPx = static_cast<float>(height > 0 ? height : 1080);
     const int brickTierLevel = Vixen::RenderGraph::BodyOctreeSceneNode::GetBrickTierLevel();
 
+    // Sparse-Mip ESVO LOD Inc2 M3: the CPU-side residency occlusion gate Inc1 M4b deferred.
+    // "Already brick-resident" here means resident as of the LAST re-check (lastResidencyGranted_),
+    // not whatever this frame is about to decide — occlusion is tested against what's actually
+    // uploaded right now, matching Inc1 M4b's "coarse depth estimate built from already
+    // brick-resident trees only" spec. When the shared pool isn't resident yet, occluders is
+    // empty and IsOccludedByResidentTrees degrades to always-false (frustum+resolvability-only),
+    // the same graceful-degradation path ResidencyTrigger.h itself documents.
+    std::vector<Vixen::SVO::ResidentOccluder> residentOccluders;
+    if (lastResidencyGranted_) {
+        for (const auto& inst : bodyScene->GetInstances()) {
+            residentOccluders.push_back(Vixen::SVO::ResidentOccluder{
+                glm::vec3(inst.worldPos[0], inst.worldPos[1], inst.worldPos[2]),
+                kResidencyBoundingRadius});
+        }
+    }
+
     // Per-tree binary residency (§0 scope): resident if ANY current instance, individually,
-    // wants bricks per ResidencyTrigger.h's combined frustum+resolvability test — the whole
-    // shared brick pool must be populated the moment even one instance needs it. occluded(idx)
-    // (M4b's CPU-side occlusion gate) is explicitly DEFERRED TO INC2 (see the plan's M4b
-    // Progress Log) — ResidencyTrigger.h's signature has no occlusion parameter at all, the
-    // documented graceful-degradation path, not a stubbed always-false placeholder.
+    // passes frustum+resolvability (ResidencyTrigger.h) AND is NOT occluded by an
+    // already brick-resident tree (OcclusionGate.h, Inc2 M3) — the whole shared brick
+    // pool must be populated the moment even one instance needs it and can see it.
     bool anyInstanceWantsBricks = false;
     for (const auto& inst : bodyScene->GetInstances()) {
         const glm::vec3 pos(inst.worldPos[0], inst.worldPos[1], inst.worldPos[2]);
-        if (Vixen::SVO::InstanceWantsBrickResidency(
+        if (!Vixen::SVO::InstanceWantsBrickResidency(
                 pos, kResidencyBoundingRadius,
                 cam.cameraPos, cam.cameraDir, cam.cameraUp, cam.cameraRight,
                 cam.fov, cam.aspect, screenHeightPx, /*nearDist=*/0.1f, /*farDist=*/500.0f,
                 brickTierLevel, kResidencyLeafSizeM, kResidencyPxThreshold)) {
-            anyInstanceWantsBricks = true;
-            break;
+            continue;  // fails frustum+resolvability regardless of occlusion
         }
+        const float distance = glm::distance(pos, cam.cameraPos);
+        if (Vixen::SVO::IsOccludedByResidentTrees(cam.cameraPos, pos, distance, residentOccluders)) {
+            continue;  // passes frustum+resolvability but an already-resident tree blocks it
+        }
+        anyInstanceWantsBricks = true;
+        break;
     }
     if (mainLogger && std::getenv("VIXEN_RESIDENCY_GATE_DEMO")) {
         static bool lastLoggedDecision = false;
@@ -773,6 +795,7 @@ void VulkanGraphApplication::UpdateBodySceneResidency() {
         }
     }
     bodyScene->RequestBrickResidency(anyInstanceWantsBricks);
+    lastResidencyGranted_ = anyInstanceWantsBricks;  // Inc2 M3: next re-check's occlusion-gate input
 
     // M4b: re-sort front-to-back so the shader's per-ray gridT.x>bestT occlusion reject
     // (BodyInstanceRayMarch.comp) actually has closer instances visited first in the

@@ -200,6 +200,13 @@ private:
     glm::vec3 lastResidencyCheckCameraDir_{0.0f};
     float     lastResidencyCheckFovDegrees_ = 0.0f;
     bool      residencyTriggerEverEvaluated_ = false;
+
+    // Sparse-Mip ESVO LOD Inc2 M3: whether the LAST residency re-check granted brick
+    // residency to this BodyOctreeSceneNode's shared pool — the CPU-side occlusion
+    // gate's "already brick-resident" input (Inc1 M4b's deferred spec: occlusion is
+    // tested against trees resident BEFORE this frame's own re-decision, not against
+    // whatever this frame is about to decide). Starts false (nothing resident pre-first-check).
+    bool      lastResidencyGranted_ = false;
     NodeHandle windowNode_{};                        // stored so GetWindowHandle() can query the WindowNode live
     NodeHandle inputNode_{};                         // stored so Update() can drain InputNode's event queue live (input-rework slice 1)
     NodeHandle uiRenderNode_{};                      // stored so GetUiRenderNode() can query the composite UI node live
