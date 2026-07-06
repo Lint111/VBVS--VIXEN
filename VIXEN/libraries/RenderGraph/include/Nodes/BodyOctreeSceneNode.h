@@ -98,6 +98,17 @@ public:
      */
     void SetRecipePool(Vixen::SVO::ConcatenatedOctrees pool);
 
+    /**
+     * @brief Request (or release) brick-pool residency (Sparse-Mip ESVO LOD Inc1 M2).
+     *
+     * Per §0 scope this is per-tree binary: bricksBuffer_ is always allocated at full
+     * capacity (CreateOctreeBuffers), but its contents are only populated once residency
+     * is requested. Stashes the request and marks dirty — mirrors SetBakeRecipe/
+     * SetRecipePool: ExecuteImpl performs the actual BatchedUploader call next frame,
+     * never synchronously inside this setter.
+     */
+    void RequestBrickResidency(bool resident);
+
 protected:
     void SetupImpl(TypedSetupContext& ctx) override;
     void CompileImpl(TypedCompileContext& ctx) override;
@@ -113,6 +124,7 @@ private:
     void DestroyBuffers();
     void DestroyOctreeBuffers();   // P2.3: destroy ONLY the 6 octree/channel buffers (ring untouched)
     void Rematerialize();          // P2.3: re-bake octree 0 + recreate octree buffers (behind vkDeviceWaitIdle)
+    void UploadBrickPool();        // Inc1 M2: BatchedUploader-driven brick population (ExecuteImpl-only)
 
     // Build constants (one shell per kind; depth/material chosen here).
     static constexpr int      kShellDepth = 6;   // 2^6 = 64 cells/axis
@@ -127,6 +139,15 @@ private:
     Vixen::SVO::ConcatenatedOctrees        concatenated_;
     bool                                   octreesBuilt_ = false;
     bool                                   recipeDirty_  = false;  // P2.3: set by SetBakeRecipe post-Compile; re-materialize on next Execute
+
+    // Sparse-Mip ESVO LOD Inc1 M2: per-tree binary brick residency (§0 scope — not
+    // per-brick). bricksBuffer_ is always allocated at full capacity in CreateOctreeBuffers;
+    // residencyRequested_ gates whether its contents have actually been populated.
+    // brickResidencyDirty_ mirrors recipeDirty_'s pattern: RequestBrickResidency only stashes
+    // the request; ExecuteImpl performs the BatchedUploader call next frame.
+    bool                                    residencyRequested_  = false;
+    bool                                    brickPoolUploaded_   = false;
+    bool                                    brickResidencyDirty_ = false;
 
     // Optional recipe for octree 0 (P2.1 materialization). Empty = analytic path.
     std::vector<Vixen::SVO::Recipe::SdfInstruction> bakeRecipe_;

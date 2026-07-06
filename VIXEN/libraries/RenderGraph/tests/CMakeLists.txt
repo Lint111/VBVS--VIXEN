@@ -722,6 +722,27 @@ else()
 endif()
 
 # ===========================================================================
+# Partial Brick Upload Test (Sparse-Mip ESVO LOD Inc1 M2)
+# ===========================================================================
+# Real Vulkan device required (software rasterizer or Mesa-Dozen on WSL2 — see
+# IsAcceptableDevice in the test file). Drives BodyOctreeSceneNode's real
+# Setup/Compile/Execute lifecycle against a real BatchedUploader (wired exactly as
+# DeviceNode::CreateDeviceBudgetManager does) to verify brick-pool residency gating.
+if(TARGET GTest::gtest_main)
+    add_executable(test_partial_brick_upload Nodes/test_partial_brick_upload.cpp)
+    if(TARGET RenderGraph)
+        target_link_libraries(test_partial_brick_upload PRIVATE GTest::gtest_main RenderGraph)
+    else()
+        target_link_libraries(test_partial_brick_upload PRIVATE GTest::gtest_main)
+    endif()
+    set_target_properties(test_partial_brick_upload PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    gtest_discover_tests(test_partial_brick_upload)
+    message(STATUS "✓ test_partial_brick_upload configured (Sparse-Mip ESVO LOD Inc1 M2)")
+else()
+    message(STATUS "⊗ test_partial_brick_upload skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
 # CompileTimeResourceSystem Tests
 # ===========================================================================
 # Test suite for compile-time type system validation, caching, and traits.

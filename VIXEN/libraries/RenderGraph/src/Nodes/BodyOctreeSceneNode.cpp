@@ -4,6 +4,7 @@
 #include "Core/NodeLogging.h"
 #include "Data/Nodes/FrameSyncNodeConfig.h"
 #include "VulkanDevice.h"
+#include "Memory/BatchedUploader.h"  // Inc1 M2: ResourceManagement::InvalidUploadHandle
 
 #include <algorithm>
 #include <cstdlib>   // std::getenv
@@ -155,6 +156,16 @@ void BodyOctreeSceneNode::SetRecipePool(Vixen::SVO::ConcatenatedOctrees pool) {
                   std::to_string(providedPool_.count) + " octrees staged");
 }
 
+void BodyOctreeSceneNode::RequestBrickResidency(bool resident) {
+    // Stash only — mirrors SetBakeRecipe/SetRecipePool's dirty-flag pattern. ExecuteImpl
+    // performs the actual BatchedUploader call next frame; never upload synchronously here.
+    residencyRequested_  = resident;
+    brickResidencyDirty_ = (resident != brickPoolUploaded_);
+    NODE_LOG_INFO(std::string("[BodyOctreeSceneNode] RequestBrickResidency: ") +
+                  (resident ? "true" : "false") + " (dirty=" +
+                  (brickResidencyDirty_ ? "true" : "false") + ")");
+}
+
 void BodyOctreeSceneNode::SetupImpl(TypedSetupContext& /*ctx*/) {
     // Graph-scope initialization only (no input access).
     NODE_LOG_DEBUG("[BodyOctreeSceneNode] Setup (graph-scope initialization)");
@@ -233,6 +244,13 @@ void BodyOctreeSceneNode::ExecuteImpl(TypedExecuteContext& ctx) {
         Rematerialize();
         recipeDirty_      = false;
         octreeRepublished = true;
+    }
+
+    // Inc1 M2: a residency request toggled since the last Execute is serviced here — the
+    // same fence-waited safe point recipeDirty_ uses, never synchronously in the setter.
+    if (brickResidencyDirty_) {
+        UploadBrickPool();
+        brickResidencyDirty_ = false;
     }
 
     // Per-frame ring index from FrameSyncNode (clamp via modulo for safety).
@@ -432,10 +450,19 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device) {
         concatenated_.nodes.empty() ? nullptr : concatenated_.nodes.data(),
         nodesBuffer_, nodesMemory_, "octree nodes SSBO");
 
+    // Inc1 M2: allocate the bricks SSBO at FULL capacity, but only populate it now if
+    // residency was already requested before this Compile (e.g. Rematerialize re-running
+    // with residencyRequested_ already true). Default is unpopulated ("mip-only tree") —
+    // ExecuteImpl's UploadBrickPool (via BatchedUploader) fills it lazily on request.
+    // hasBrick() (SVOTypes.h) reads ChildDescriptor.contourPointer, which lives in the
+    // NODE array (nodesBuffer_, populated above unconditionally) — never in bricksBuffer_
+    // itself, so an unwritten-but-allocated bricks buffer is already safely distinguishable
+    // from a populated one at traversal time; no additional GPU-side flag is needed.
     CreateHostBuffer(device, bricksSize,
         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-        concatenated_.bricks.empty() ? nullptr : concatenated_.bricks.data(),
+        (residencyRequested_ && !concatenated_.bricks.empty()) ? concatenated_.bricks.data() : nullptr,
         bricksBuffer_, bricksMemory_, "octree bricks SSBO");
+    brickPoolUploaded_ = residencyRequested_ && !concatenated_.bricks.empty();
 
     CreateHostBuffer(device, materialsSize,
         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
@@ -528,6 +555,46 @@ void BodyOctreeSceneNode::Rematerialize() {
 
     DestroyOctreeBuffers();    // ring is NOT touched
     CreateOctreeBuffers(device);
+}
+
+void BodyOctreeSceneNode::UploadBrickPool() {
+    VulkanDevice* device = GetDevice();
+    if (!device) {
+        NODE_LOG_ERROR("[BodyOctreeSceneNode] UploadBrickPool called with no device");
+        return;
+    }
+
+    // De-residency (false): Inc1 §0 scope is per-tree binary "not requested"/"fully
+    // uploaded" with no GPU-memory-reclaim requirement this increment (M4c's optional
+    // concern, decided by M5's bandwidth measurement) — "stop requesting" is sufficient;
+    // there is no brick data to un-write. Only handle the populate (true) direction here.
+    if (!residencyRequested_ || concatenated_.bricks.empty()) {
+        NODE_LOG_INFO("[BodyOctreeSceneNode] UploadBrickPool: no-op (residencyRequested_=" +
+                      std::string(residencyRequested_ ? "true" : "false") + ", bricks=" +
+                      std::to_string(concatenated_.bricks.size()) + "B)");
+        return;
+    }
+    if (brickPoolUploaded_) {
+        NODE_LOG_INFO("[BodyOctreeSceneNode] UploadBrickPool: already uploaded, skipping");
+        return;
+    }
+
+    const VkDeviceSize size = static_cast<VkDeviceSize>(concatenated_.bricks.size());
+    const auto handle = device->Upload(concatenated_.bricks.data(), size, bricksBuffer_, 0);
+    if (handle == ResourceManagement::InvalidUploadHandle) {
+        NODE_LOG_ERROR("[BodyOctreeSceneNode] UploadBrickPool: BatchedUploader::Upload failed ("
+                      + std::to_string(static_cast<uint64_t>(size)) + "B)");
+        return;
+    }
+
+    // Block until the GPU-side copy lands: brick residency is a rare, explicit request
+    // (mirrors Rematerialize's vkDeviceWaitIdle) — the caller (ExecuteImpl) needs the
+    // buffer's contents visible before this frame's descriptor reads it.
+    device->WaitAllUploads();
+    brickPoolUploaded_ = true;
+
+    NODE_LOG_INFO("[BodyOctreeSceneNode] UploadBrickPool: uploaded " +
+                  std::to_string(static_cast<uint64_t>(size)) + "B via BatchedUploader");
 }
 
 void BodyOctreeSceneNode::DestroyOctreeBuffers() {
