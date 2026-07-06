@@ -626,6 +626,35 @@ else()
 endif()
 
 # ===========================================================================
+# View Contract Inc-1: EditorHud golden-mirror gate (headless — no Vulkan required)
+# ===========================================================================
+# Proves the generated Generated/EditorHud.g.h RmlUi data-model registration block
+# (a) compiles + binds against a real Rml::DataModelConstructor, and (b) matches,
+# as a normalized ordered call sequence, the hand-written block in UIRenderNode.cpp.
+
+if(TARGET GTest::gtest_main)
+    add_executable(test_view_editorhud_golden
+        test_view_editorhud_golden.cpp
+    )
+
+    target_link_libraries(test_view_editorhud_golden PRIVATE
+        GTest::gtest_main
+        RenderGraph
+    )
+
+    target_compile_definitions(test_view_editorhud_golden PRIVATE
+        VIEW_EDITORHUD_G_H="${CMAKE_SOURCE_DIR}/libraries/RenderGraph/include/Generated/EditorHud.g.h")
+
+    set_target_properties(test_view_editorhud_golden PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+    gtest_discover_tests(test_view_editorhud_golden)
+
+    message(STATUS "✓ test_view_editorhud_golden configured (View Contract Inc-1: golden-mirror gate)")
+else()
+    message(STATUS "⊗ test_view_editorhud_golden skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
 # BarrierTypes Tests (auto-sync P1)
 # ===========================================================================
 # Validates AccessKind -> Vulkan sync-semantics mapping
