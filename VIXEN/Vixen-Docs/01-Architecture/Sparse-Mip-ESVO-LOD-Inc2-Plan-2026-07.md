@@ -212,6 +212,18 @@ the milestone's own framing), verified independently rather than assumed.
   via `git diff` — only the test file is modified); M3 (occlusion gate) and M4 (GPU-LRU evaluation)
   remain open.
 
+**Opus validator: APPROVED (2026-07-06)** — independently confirmed byte-identical production code
+(zero changes to `BodyOctreeSceneNode.cpp/.h`/`VulkanDevice.cpp` vs. parent `4795a36b`), read
+`ExecuteImpl`/`PollBrickUploadCompletion` directly and confirmed the no-yield same-tick
+config-reupload race is architecturally real (not just asserted), and verified the fix polls the
+real completion mechanism (bounded by `kMaxPollTicks=32`, `ASSERT_TRUE` on hang, `ASSERT_LE` still
+catching an over-upload regression) rather than loosening the assertion or adding a blind sleep.
+Re-ran independently on real Mesa-Dozen GPU: **110/110 post-fix** (55 isolated + 54 6-way concurrent
++ 1 single run), 0 failures; independently reproduced the pre-fix flake at **7/20** (own separate
+run, same ballpark as the implementer's 4/20, all at the exact flagged assertion line,
+`totalUploads` one short) by temporarily restoring the parent commit's test file, then correctly
+restored HEAD, rebuilt, and confirmed a clean tree matching `c8ea0534` before finishing.
+
 ---
 
 ## Notes for implementers
