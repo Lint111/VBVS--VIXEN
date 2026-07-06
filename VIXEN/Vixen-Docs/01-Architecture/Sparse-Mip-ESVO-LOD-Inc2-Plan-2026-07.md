@@ -70,7 +70,9 @@ mechanism is warranted yet, or should itself wait for the nested-tree epic.
   narrows it to `PollBrickUploadCompletion`'s phase-2 count), then either fix the assertion to tolerate
   the legitimate interleaving or fix a genuine state-machine bug if one is found — proven via a stress
   run (≥50 iterations under concurrent load, matching the validator's own reproduction methodology) with
-  zero failures after the fix, vs. a captured pre-fix failure for comparison.
+  zero failures after the fix, vs. a captured pre-fix failure for comparison. ·
+  **✅ DONE 2026-07-06** — test-only fix, production code untouched; 134/134 stress runs green
+  post-fix (see M2 Progress Log below).
 - **M3 — CPU-side residency occlusion gate** · gate: `test_body_instance_occlusion_reject`-style unit
   test (three-body line-up: camera → occluder → occluded target, occluder already brick-resident) proving
   the occluded target's residency is NOT requested despite passing frustum + resolvability, and IS
@@ -149,6 +151,66 @@ denied by the frustum far-plane (`kFarPlane=500m`) short-circuiting before the r
 runs, not by the resolvability threshold as currently described in the docs/test comments — both
 gates would deny regardless (resolvability crossover is 660m, still < 1500m), so the 5/16 decision
 and bandwidth numbers are unaffected; just an imprecise stated reason, not a re-dispatch.
+
+---
+
+## M2 Progress Log
+
+**M2 DONE (2026-07-06)**, on branch `feat/sparse-mip-esvo-inc2`. Root-caused and fixed the exact
+assertion Inc1's M5 validator flagged (`test_partial_brick_upload.cpp`, the `EXPECT_EQ(...totalUploads,
+...+1)` check for the phase-2 config-reupload count) — production code
+(`BodyOctreeSceneNode.cpp`) was **not touched**; this was a test-assertion timing bug (option (a) in
+the milestone's own framing), verified independently rather than assumed.
+
+- **Root cause, precisely**: `ExecuteImpl` calls `UploadBrickPool()` (queues the brick upload) and
+  then, **unconditionally, in the same call, with no yield in between**, `PollBrickUploadCompletion()`
+  (polls for completion of whatever is pending). The test assumed a fixed 2-tick cadence — frame 1
+  queues the brick upload, frame 2 observes its completion and queues the phase-2 config re-upload.
+  In reality, `PollBrickUploadCompletion()`'s completion check (`vkGetFenceStatus` via
+  `IsUploadComplete`/`ProcessCompletions`) can and does sometimes succeed **within frame 1's own
+  `ExecuteImpl` call** — dzn/Dozen signals a tiny buffer copy's fence within microseconds of
+  `vkQueueSubmit`, well inside the same function call, when the GPU is otherwise idle (i.e. this
+  race is *more* likely on an uncontended system, not less — the opposite of what "flaky under
+  concurrent load" suggested). When that happens, the config re-upload is queued on frame 1, not
+  frame 2; frame 2's poll then finds nothing pending (Phase 1 already cleared,
+  `pendingConfigUploadHandle_` already resolved via the test's own `WaitAllUploads()`), so the
+  fixed-tick assertion at old line 353 saw `totalUploads` unchanged instead of `+1` and failed.
+  Confirmed via an instrumented debug trace added temporarily to `BodyOctreeSceneNode.cpp` (removed
+  before commit — `git diff` shows zero production changes) printing the frame index and each
+  Phase-1/Phase-2 branch taken: captured runs where the trace showed `PollBrickUploadCompletion:
+  brick IS complete -> queuing config re-upload` firing during frame 1's own `ExecuteImpl`, and
+  other runs where the same check reported "not complete yet" and correctly deferred to frame 2 —
+  both are legitimate, correct outcomes of the real async state machine, not a state-machine bug.
+  No missed transition, no cross-handle race, no production defect found.
+- **Fix**: rewrote the test's post-brick-upload assertions (`test_partial_brick_upload.cpp`, the
+  block after the frame-1 `Execute()`+`WaitAllUploads()`) to poll — the same non-blocking idiom
+  `PollBrickUploadCompletion()` itself uses, no fixed sleep, no assumption about which tick — for
+  `totalUploads` to reach a baseline-relative **settled count** (`statsRightAfterRequest.totalUploads
+  + 1 brick-upload + 1 config-reupload`), bounded by `kMaxPollTicks = 32` (generous; production
+  settles in 1-2 ticks) so a genuine hang still fails loudly (`ASSERT_TRUE(reachedSettledCount)`).
+  Also added `ASSERT_LE(..., kExpectedAfterBothPhases)` inside the poll loop so an actual
+  over-upload regression (more than brick+config) would still fail as a correctness bug, not be
+  silently tolerated by the loosened polling. The baseline is taken from
+  `statsRightAfterRequest.totalUploads` (always 0, captured before `RequestBrickResidency(true)`),
+  not from a post-frame-1 snapshot — the first fix attempt used a post-frame-1 baseline and still
+  failed under stress (12/50), because if the config re-upload already happened on frame 1, that
+  baseline already included it, so the loop waited forever for a 3rd upload that would never come;
+  switching the baseline to before frame 1 fixed this.
+- **Proof (stress-tested on real Mesa-Dozen GPU, WSL2, `vixen-wsl` preset)**:
+  - **Pre-fix, isolated** (20 runs, standalone, matching Inc1's own methodology): **4/20 failures**
+    (iterations 7, 8, 9, 19), all at the same assertion line, all showing `totalUploads` stuck one
+    short of expected — a clean, reproducible repro of the exact Inc1-flagged flake, contradicting
+    Inc1's 0/38 controlled-retest finding but consistent with Inc1's "rare flake in the wild" note
+    (this run's higher rate is plausibly system-load-dependent, matching the "more likely when the
+    GPU is idle/fast" mechanism above).
+  - **Post-fix, isolated**: 50/50 passed, then a further 30/30 passed (80/80 total, 0 failures).
+  - **Post-fix, 6-way concurrent load** (matching the Inc1 validator's own concurrent-batch
+    methodology): 54/54 passed (9 batches of 6 simultaneous processes), 0 failures.
+  - **Combined post-fix total: 134/134 passed, 0 failures** — comfortably exceeds the milestone's
+    "≥50 iterations under concurrent load" gate.
+- **Not done in this milestone** (out of scope per the plan): no production code changes (confirmed
+  via `git diff` — only the test file is modified); M3 (occlusion gate) and M4 (GPU-LRU evaluation)
+  remain open.
 
 ---
 
