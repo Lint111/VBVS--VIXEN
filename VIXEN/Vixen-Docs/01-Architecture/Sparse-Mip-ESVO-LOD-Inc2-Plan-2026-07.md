@@ -63,7 +63,8 @@ mechanism is warranted yet, or should itself wait for the nested-tree epic.
   the actual live `ResidencyTrigger` (not the harness's manual `RequestBrickResidency` toggle) so the
   measurement reflects the real per-frame decision path, not an idealized bound. Update the direction
   doc's status banner to report both numbers (extreme-endpoint 170-220x, realistic-mix N%) so future
-  readers don't over-read the endpoint as typical.
+  readers don't over-read the endpoint as typical. ·
+  **✅ DONE 2026-07-06** — commit `84d1731f`, Opus-validated APPROVED.
 - **M2 — Harden `test_partial_brick_upload`'s flaky assertion** · gate: root-cause the exact race between
   the brick-upload completion poll and the config-reupload completion poll (Inc1's Progress Log already
   narrows it to `PollBrickUploadCompletion`'s phase-2 count), then either fix the assertion to tolerate
@@ -134,6 +135,20 @@ new file — same fixture (`BandwidthAbMeasurementTest`), same device/`DirectAll
   `ResidencyTrigger.h`, `UpdateBodySceneResidency`, or any production residency-decision code —
   M1 is purely a new measurement against the mechanism Inc1 already shipped. M2 (flaky-assertion
   hardening), M3 (occlusion gate), M4 (GPU-LRU evaluation) remain open.
+
+**Opus validator: APPROVED (2026-07-06)** — independently re-ran the test 4x on real Mesa-Dozen GPU
+(3x mixed-only + 1x full binary), byte-identical every time; confirmed the trigger call is genuine
+(residency-request set is *derived from* `InstanceWantsBrickResidency`'s boolean return, not a
+hardcoded set dressed up as a trigger call — the crux of this milestone); confirmed zero production
+code touched (diff = 1 test file + 2 docs only); independently checked the resolvability arithmetic
+and the per-tree byte math (exact to the byte: 26,759,424/16 × 5 = 8,362,320); verified tree
+integrity (clean, coherent, no stray artifacts from the implementer's `setsid nohup` build-detachment
+workaround); confirmed doc updates accurately distinguish the two numbers and don't overstate 3.2x as
+"the" realistic number. **One non-blocking nit for a future doc pass**: the far trees are actually
+denied by the frustum far-plane (`kFarPlane=500m`) short-circuiting before the resolvability formula
+runs, not by the resolvability threshold as currently described in the docs/test comments — both
+gates would deny regardless (resolvability crossover is 660m, still < 1500m), so the 5/16 decision
+and bandwidth numbers are unaffected; just an imprecise stated reason, not a re-dispatch.
 
 ---
 
