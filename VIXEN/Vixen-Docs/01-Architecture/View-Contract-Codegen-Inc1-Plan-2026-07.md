@@ -42,7 +42,7 @@
 
 ## Milestone Map
 
-- **M1 — `[View]` attribute + `--view` CLI skeleton + view model** (Tasks 1–2, Yeroket-only): add the `[View]` attribute, a `LoadViews` loader, a view-specific model builder (`ViewModel`) that handles string/bool/int/float + variable-length arrays + attribute-less row structs, and wire a `--view` branch into `Program.cs` that (for now) emits a trivial/empty header. Deliverable: the CLI accepts `--view EditorHud` and builds a `ViewModel` from the schema, unit-tested in C#. No emitter yet.
+- **M1 — `[View]` attribute + `--view` CLI skeleton + view model** (Tasks 1–2, Yeroket-only): add the `[View]` attribute, a `LoadViews` loader, a view-specific model builder (`ViewModel`) that handles string/bool/int/float + variable-length arrays + attribute-less row structs, and wire a `--view` branch into `Program.cs` that (for now) emits a trivial/empty header. Deliverable: the CLI accepts `--view EditorHud` and builds a `ViewModel` from the schema, unit-tested in C#. No emitter yet. **✅ DONE.**
 - **M2 — `RmlDataModelEmitter` + generated header + C# emitter tests** (Task 3, Yeroket-only): the emitter that walks `ViewModel` → the `BindEditorHudModel` registration block; C# unit tests asserting the emitted call sequence. Deliverable: `CodegenTool~ --view EditorHud` produces the full `EditorHud.g.h`, C#-tested.
 - **M3 — VIXEN schema + generated artifact + golden gate + CMake + close-out** (Tasks 4–5, VIXEN-side): author `EditorHud.cs` in VIXEN, generate + commit `EditorHud.g.h`, add the golden-mirror gtest (normalized sequence + standalone-compile), wire `view_editorhud_check`/`_regen` into CMake, run the full gate, close out. Deliverable: the whole spine proven end-to-end, byte-equivalent to `UIRenderNode`, no-regression.
 
@@ -781,7 +781,7 @@ git commit -m "test(view-contract): golden-mirror gate — generated EditorHud.g
 
 _(Appended per milestone during execution.)_
 
-- _M1 (Tasks 1–2, Yeroket): pending_
+- **M1 (Tasks 1–2, Yeroket): DONE** · Yeroket commits `c42533d2` ([View] attr + LoadViews) + `062117c2` (ViewModelBuilder + --view CLI branch + emitter stub) on `feat/view-contract-codegen` · C# suite 18/18 PASS (NUnit — plan's Xunit snippets faithfully translated; ViewLoaderTests + ViewModelTests green) · Opus validator APPROVED (independently re-ran 18/18, grep-confirmed `ViewModel.cs` has ZERO `StructLayout` refs + maps string→String/bool→Bool, ran the CLI end-to-end on the real EditorHud schema → exit 0 emitting `// placeholder`, confirmed stub-not-full + no bin/obj/dll committed + Yeroket-only) · 2026-07-06. Key: `ViewModelBuilder` is a SEPARATE view model (not the GPU-only `StructLayout` which throws on string/bool). DLL churn (`SDFNodeGenerator.dll`) `git checkout --`'d, not committed.
 - _M2 (Task 3, Yeroket): pending_
 - _M3 (Tasks 4–5, VIXEN): pending_
 
