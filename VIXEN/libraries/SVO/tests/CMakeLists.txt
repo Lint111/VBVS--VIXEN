@@ -284,6 +284,27 @@ endif()
 gtest_discover_tests(test_instance_sort)
 
 # ===========================================================================
+# Residency Trigger Tests  (Sparse-Mip ESVO LOD Inc1 M4c Task 10 part 3 —
+# pure math, no octree/GPU needed: InstanceWantsBrickResidency, the combined
+# M4a+M4b trigger, three scenarios — distance/zoom/orientation-driven)
+# ===========================================================================
+add_executable(test_residency_trigger test_residency_trigger.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_residency_trigger PRIVATE
+        GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_residency_trigger PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_residency_trigger PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_residency_trigger POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_residency_trigger>
+        COMMENT "Copying TBB DLL for test_residency_trigger")
+endif()
+gtest_discover_tests(test_residency_trigger)
+
+# ===========================================================================
 # SDF Bake Tests  (Inc2 M1 — recipe → narrow-band SDF voxels + body octree)
 # ===========================================================================
 add_executable(test_sdf_bake test_sdf_bake.cpp)

@@ -307,23 +307,65 @@ TEST_F(PartialBrickUploadTest, BricksAllocatedFullSizeButPopulatedOnlyAfterResid
         << "RequestBrickResidency must not upload synchronously inside the setter.";
 
     // --- Servicing the request: the NEXT Execute tick performs the actual upload.
+    // Inc1 M4c: UploadBrickPool now queues via device->Upload() + FlushUploads() WITHOUT
+    // blocking (was device->WaitAllUploads() — see BodyOctreeSceneNode.h's async-completion-
+    // tracking comment) — a per-toggle stall was fine for M2's "rare, explicit" residency
+    // change, but M4c's per-frame camera-driven re-check turns toggles frequent enough that
+    // it would hitch. So totalUploads (queued immediately inside BatchedUploader::Upload,
+    // synchronous) is asserted right after Execute(), but totalBytesUploaded (only
+    // incremented once ProcessCompletions() observes the GPU-side copy finished) needs the
+    // upload to actually complete first — explicitly waited for below via WaitAllUploads(),
+    // mirroring how a live render loop's PollBrickUploadCompletion() would observe it a few
+    // frames later instead of the very same tick.
     frameIndex = 1; SetHandleVal<uint32_t>(frRes, frameIndex);
     ASSERT_NO_THROW(node->Execute());
 
-    const auto statsAfterExecute = uploaderObserver_->GetStats();
-    EXPECT_GT(statsAfterExecute.totalUploads, 0u)
+    const auto statsRightAfterExecute = uploaderObserver_->GetStats();
+    EXPECT_GT(statsRightAfterExecute.totalUploads, 0u)
         << "ExecuteImpl must service a pending residency request via BatchedUploader "
-           "(Task 5's device->Upload() wiring), on the tick after the request was made.";
-    EXPECT_GT(statsAfterExecute.totalBytesUploaded, 0u);
+           "(Task 5's device->Upload() wiring), on the tick after the request was made — "
+           "totalUploads increments synchronously inside BatchedUploader::Upload() itself, "
+           "independent of GPU completion, so this is observable immediately.";
+    // NOTE: currentPendingBytes/currentPendingUploads only reflect BatchedUploader's
+    // PRE-FLUSH queue (pendingUploads_/pendingBytes_, reset to empty by Flush() — see
+    // BatchedUploader::Flush()'s own body) — UploadBrickPool calls FlushUploads()
+    // immediately after queuing, so by the time Execute() returns there is nothing left in
+    // that bucket to observe; the upload has moved to submittedBatches_ (in-flight, no stat
+    // exposes byte counts there). totalUploads above is the only synchronously-observable
+    // signal that something was queued; totalBytesUploaded (checked below) is the only
+    // signal for actual GPU-side completion.
 
-    // --- A second Execute with the same (already-serviced) request must NOT re-upload —
-    // BodyOctreeSceneNode::UploadBrickPool guards on brickPoolUploaded_.
+    deviceShell_->WaitAllUploads();  // drive completion explicitly (async, so it isn't automatic)
+    const auto statsAfterExecute = uploaderObserver_->GetStats();
+    EXPECT_GT(statsAfterExecute.totalBytesUploaded, 0u)
+        << "Once the async upload completes, totalBytesUploaded must reflect it.";
+
+    // --- A later Execute with the same (already-serviced) request must not re-upload the
+    // BRICK data itself. This does NOT mean totalUploads freezes forever: the very next
+    // Execute's PollBrickUploadCompletion() observes the brick upload just completed and
+    // queues ONE follow-up config re-upload (stamping brickResident=1 — see
+    // PollBrickUploadCompletion's phase 2), which legitimately bumps totalUploads by
+    // exactly one. Drive that phase transition, then confirm a FURTHER Execute (once both
+    // phases have settled) is fully stable.
     frameIndex = 2; SetHandleVal<uint32_t>(frRes, frameIndex);
-    ASSERT_NO_THROW(node->Execute());
+    ASSERT_NO_THROW(node->Execute());  // observes brick-upload completion, queues config re-upload
+    const auto statsAfterConfigQueued = uploaderObserver_->GetStats();
+    EXPECT_EQ(statsAfterConfigQueued.totalUploads, statsAfterExecute.totalUploads + 1)
+        << "Exactly one follow-up config re-upload is expected once the brick upload's "
+           "completion is observed (PollBrickUploadCompletion's phase 2) — not zero (this "
+           "IS new async work, not a re-upload of the same brick data) and not more than one.";
+
+    deviceShell_->WaitAllUploads();  // drive the config re-upload's completion too
+    frameIndex = 3; SetHandleVal<uint32_t>(frRes, frameIndex);
+    ASSERT_NO_THROW(node->Execute());  // observes config-upload completion, both phases now settled
+    const auto statsFullySettled = uploaderObserver_->GetStats();
+
+    frameIndex = 4; SetHandleVal<uint32_t>(frRes, frameIndex);
+    ASSERT_NO_THROW(node->Execute());  // nothing pending — must be a true no-op now
     const auto statsAfterSecondExecute = uploaderObserver_->GetStats();
-    EXPECT_EQ(statsAfterSecondExecute.totalUploads, statsAfterExecute.totalUploads)
-        << "An already-serviced residency request must not re-upload on a later Execute tick "
-           "with no new RequestBrickResidency call.";
+    EXPECT_EQ(statsAfterSecondExecute.totalUploads, statsFullySettled.totalUploads)
+        << "Once both the brick upload and its config re-upload have fully settled, a later "
+           "Execute tick with no new RequestBrickResidency call must not upload anything else.";
 
     node->Cleanup(CleanupReason::FinalTeardown);
     nodeBase.reset();

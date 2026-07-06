@@ -46,6 +46,34 @@ public:
     );
     ~CameraNode() override = default;
 
+    /**
+     * @brief Read back the camera state resolved by the most recent ExecuteImpl
+     *        (Sparse-Mip ESVO LOD Inc1 M4c).
+     *
+     * Lets a host-side per-frame tick (VulkanGraphApplication::Update) read the live
+     * camera position/direction/up/right/FOV without adding a new graph input pin on
+     * whatever node needs it — mirrors the live-GetInstance-lookup pattern already used
+     * by GetWindowHandle()/SetBodyInstances() (host reads/writes node state each tick,
+     * no new wiring). Returns whatever was last computed; empty/default before the
+     * first ExecuteImpl runs (mirrors every other node's pre-Compile state).
+     */
+    const CameraData& GetCurrentCameraData() const { return currentCameraData; }
+
+    /**
+     * @brief Directly set the live orbit distance/yaw (Sparse-Mip ESVO LOD Inc1 M4c live gate).
+     *
+     * `orbitDistance`/`yaw` are read every ExecuteImpl (no Setup-time-only re-fetch, unlike
+     * `fov`/`orbitCenter`) — mirrors the existing wheel-zoom/mouse-drag live-mutation path
+     * (CameraNode.cpp's ExecuteImpl) but driven directly by a host script instead of
+     * InputState, for an unattended VIXEN_RESIDENCY_GATE_DEMO run that needs to move the
+     * camera toward/away from a body over many frames with no real window/mouse. Clamped to
+     * the same [kOrbitDistanceMin, kOrbitDistanceMax] bounds every other zoom path respects.
+     */
+    void SetOrbitDistanceForTest(float distance) {
+        orbitDistance = glm::clamp(distance, kOrbitDistanceMin, kOrbitDistanceMax);
+    }
+    void SetYawForTest(float yawRadians) { yaw = yawRadians; }
+
 protected:
     void SetupImpl(TypedSetupContext& ctx) override;
     void CompileImpl(TypedCompileContext& ctx) override;

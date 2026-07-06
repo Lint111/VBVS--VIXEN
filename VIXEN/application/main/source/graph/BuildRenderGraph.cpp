@@ -182,6 +182,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     // --- Ray Marching Nodes ---
     NodeHandle cameraNode = renderGraph->AddNode<CameraNodeType>("raymarch_camera");
+    cameraNode_ = cameraNode;  // Sparse-Mip ESVO LOD Inc1 M4c: store for Update()'s live residency-trigger lookup
     NodeHandle voxelGridNode = renderGraph->AddNode<VoxelGridNodeType>("voxel_grid");
     voxelGridNode_ = voxelGridNode;                  // store for MarkVoxelSceneDirty() (debug buffers only; not the render source post M-wire)
 

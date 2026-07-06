@@ -526,6 +526,23 @@ void VulkanDevice::WaitAllUploads() {
     }
 }
 
+void VulkanDevice::FlushUploads() {
+    if (uploader_) {
+        uploader_->Flush();
+    }
+}
+
+bool VulkanDevice::IsUploadComplete(ResourceManagement::UploadHandle handle) const {
+    if (!uploader_) {
+        return true;  // no uploader configured — nothing to wait on
+    }
+    // ProcessCompletions() advances GPU-side fence/timeline polling; IsComplete() alone
+    // would never transition Pending/Submitted -> Completed without something driving
+    // that check, and nothing else in the app currently polls the uploader per frame.
+    uploader_->ProcessCompletions();
+    return uploader_->IsComplete(handle);
+}
+
 ResourceManagement::DeviceBudgetManager* VulkanDevice::GetBudgetManager() const {
     return budgetManager_.get();
 }

@@ -263,6 +263,12 @@ void BodyOctreeSceneNode::ExecuteImpl(TypedExecuteContext& ctx) {
         brickResidencyDirty_ = false;
     }
 
+    // Inc1 M4c: poll (non-blocking) for in-flight brick/config uploads queued by
+    // UploadBrickPool above, on THIS or an earlier frame — a multi-frame latency between
+    // "residency requested" and "brickResident actually visible on GPU" is expected and
+    // correct (that's the whole point of not blocking); every frame checks, no frame waits.
+    PollBrickUploadCompletion();
+
     // Per-frame ring index from FrameSyncNode (clamp via modulo for safety).
     const uint32_t frameIndex = ctx.In(BodyOctreeSceneNodeConfig::CURRENT_FRAME_INDEX) % kRingSize;
 
@@ -620,35 +626,63 @@ void BodyOctreeSceneNode::UploadBrickPool() {
         return;
     }
 
-    // Block until the GPU-side copy lands: brick residency is a rare, explicit request
-    // (mirrors Rematerialize's vkDeviceWaitIdle) — the caller (ExecuteImpl) needs the
-    // buffer's contents visible before this frame's descriptor reads it.
-    device->WaitAllUploads();
-    brickPoolUploaded_ = true;
+    // Inc1 M4c: kick off GPU execution without blocking (was device->WaitAllUploads(), a
+    // synchronous vkDeviceWaitIdle-equivalent stall) — M2's assumption that residency
+    // toggles are rare no longer holds once M4c re-checks the trigger every frame the
+    // camera moves/zooms/rotates. brickPoolUploaded_/brickResident are NOT flipped here;
+    // PollBrickUploadCompletion() (called every ExecuteImpl) advances the rest of this
+    // state machine once the GPU-side copy is actually visible, non-blocking.
+    device->FlushUploads();
+    pendingBrickUploadHandle_ = handle;
 
-    // Inc1 M3 Task 7: stamp + re-upload brickResident=1 into every octree's config now
-    // that the bricks are actually visible on the GPU. CreateOctreeBuffers already does
-    // this at Compile time; this handles the ExecuteImpl-only path (residency requested
-    // AFTER Compile, per RequestBrickResidency's dirty-flag contract) where the config
-    // buffer already exists and must be updated in place, not recreated.
-    for (auto& cfg : concatenated_.configs) {
-        Vixen::SVO::setBrickResident(cfg, true);
+    NODE_LOG_INFO("[BodyOctreeSceneNode] UploadBrickPool: queued " +
+                  std::to_string(static_cast<uint64_t>(size)) + "B via BatchedUploader (async)");
+}
+
+void BodyOctreeSceneNode::PollBrickUploadCompletion() {
+    VulkanDevice* device = GetDevice();
+    if (!device) {
+        return;
     }
-    const VkDeviceSize configSize =
-        static_cast<VkDeviceSize>(concatenated_.configs.size()) *
-        static_cast<VkDeviceSize>(sizeof(Vixen::SVO::OctreeConfig));
-    if (configSize > 0) {
-        const auto cfgHandle = device->Upload(concatenated_.configs.data(), configSize, configBuffer_, 0);
-        if (cfgHandle == ResourceManagement::InvalidUploadHandle) {
-            NODE_LOG_ERROR("[BodyOctreeSceneNode] UploadBrickPool: config re-upload failed ("
-                          + std::to_string(static_cast<uint64_t>(configSize)) + "B)");
-        } else {
-            device->WaitAllUploads();
+
+    // Phase 1: brick data in flight. Once visible, stamp brickResident=1 into the CPU-side
+    // config mirror and queue ITS upload — must not happen before the bricks land, or the
+    // shader could observe brickResident=1 while still reading stale/zeroed brick bytes.
+    if (pendingBrickUploadHandle_ != ResourceManagement::InvalidUploadHandle) {
+        if (!device->IsUploadComplete(pendingBrickUploadHandle_)) {
+            return;  // still in flight — check again next frame
         }
+        pendingBrickUploadHandle_ = ResourceManagement::InvalidUploadHandle;
+        brickPoolUploaded_ = true;
+
+        for (auto& cfg : concatenated_.configs) {
+            Vixen::SVO::setBrickResident(cfg, true);
+        }
+        const VkDeviceSize configSize =
+            static_cast<VkDeviceSize>(concatenated_.configs.size()) *
+            static_cast<VkDeviceSize>(sizeof(Vixen::SVO::OctreeConfig));
+        if (configSize > 0) {
+            const auto cfgHandle = device->Upload(concatenated_.configs.data(), configSize, configBuffer_, 0);
+            if (cfgHandle == ResourceManagement::InvalidUploadHandle) {
+                NODE_LOG_ERROR("[BodyOctreeSceneNode] PollBrickUploadCompletion: config re-upload failed ("
+                              + std::to_string(static_cast<uint64_t>(configSize)) + "B)");
+            } else {
+                device->FlushUploads();
+                pendingConfigUploadHandle_ = cfgHandle;
+            }
+        }
+        NODE_LOG_INFO("[BodyOctreeSceneNode] PollBrickUploadCompletion: brick pool visible on GPU");
+        return;  // one phase transition per call, matches the queue-then-poll-next-frame pattern
     }
 
-    NODE_LOG_INFO("[BodyOctreeSceneNode] UploadBrickPool: uploaded " +
-                  std::to_string(static_cast<uint64_t>(size)) + "B via BatchedUploader");
+    // Phase 2: config re-upload in flight (brickResident=1 becoming visible).
+    if (pendingConfigUploadHandle_ != ResourceManagement::InvalidUploadHandle) {
+        if (!device->IsUploadComplete(pendingConfigUploadHandle_)) {
+            return;
+        }
+        pendingConfigUploadHandle_ = ResourceManagement::InvalidUploadHandle;
+        NODE_LOG_INFO("[BodyOctreeSceneNode] PollBrickUploadCompletion: brickResident config visible on GPU");
+    }
 }
 
 void BodyOctreeSceneNode::DestroyOctreeBuffers() {

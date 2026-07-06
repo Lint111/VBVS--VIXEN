@@ -9,6 +9,7 @@
 #include "ShellOctreeGpu.h"   // Vixen::SVO::{Concatenate, ConcatenatedOctrees, BodyInstanceGpu, PackInstances}
 #include "Recipe/SdfInstruction.h"  // Vixen::SVO::Recipe::SdfInstruction
 #include "InstanceSort.h"     // Vixen::SVO::SortInstancesFrontToBack (Inc1 M4b)
+#include "Memory/BatchedUploader.h"  // ResourceManagement::UploadHandle/InvalidUploadHandle (Inc1 M4c)
 
 #include <glm/glm.hpp>
 #include <cstdint>
@@ -95,6 +96,15 @@ public:
     void SortInstancesFrontToBack(const glm::vec3& cameraPos);
 
     /**
+     * @brief Read back the current per-body instance list (Sparse-Mip ESVO LOD Inc1 M4c).
+     *
+     * Lets a host-side residency trigger (VulkanGraphApplication::UpdateBodySceneResidency)
+     * evaluate distance/frustum/resolvability per instance without the host needing to
+     * separately track whatever it last passed to SetInstances.
+     */
+    const std::vector<Vixen::SVO::BodyInstanceGpu>& GetInstances() const { return instances_; }
+
+    /**
      * @brief Inject an SdfInstruction recipe for octree 0's bake.
      *
      * When non-empty and VIXEN_STORED_SDF_DEMO is set, octree 0 is baked via
@@ -125,6 +135,15 @@ public:
      */
     void RequestBrickResidency(bool resident);
 
+    /**
+     * @brief Octree level at which this node's brick tier sits (Sparse-Mip ESVO LOD Inc1 M4c).
+     *
+     * Lets a host-side residency trigger compare minResolvableLevel(...) against the
+     * actual brick depth without duplicating kShellDepth's value as a magic number at
+     * the call site.
+     */
+    static constexpr int GetBrickTierLevel() { return kShellDepth; }
+
 protected:
     void SetupImpl(TypedSetupContext& ctx) override;
     void CompileImpl(TypedCompileContext& ctx) override;
@@ -141,6 +160,7 @@ private:
     void DestroyOctreeBuffers();   // P2.3: destroy ONLY the 6 octree/channel buffers (ring untouched)
     void Rematerialize();          // P2.3: re-bake octree 0 + recreate octree buffers (behind vkDeviceWaitIdle)
     void UploadBrickPool();        // Inc1 M2: BatchedUploader-driven brick population (ExecuteImpl-only)
+    void PollBrickUploadCompletion();  // Inc1 M4c: non-blocking completion check (replaces WaitAllUploads)
 
     // Build constants (one shell per kind; depth/material chosen here).
     static constexpr int      kShellDepth = 6;   // 2^6 = 64 cells/axis
@@ -172,6 +192,16 @@ private:
     bool                                    residencyRequested_  = true;
     bool                                    brickPoolUploaded_   = false;
     bool                                    brickResidencyDirty_ = false;
+
+    // Inc1 M4c: async completion-tracking for the brick-pool upload. M2's UploadBrickPool
+    // originally blocked on device->WaitAllUploads() every toggle — fine for a "rare,
+    // explicit" residency change, but M4c's per-frame camera-driven re-check turns toggles
+    // frequent enough that a synchronous wait-idle would hitch. Upload() now queues +
+    // FlushUploads()es without blocking; ExecuteImpl polls IsUploadComplete() each frame
+    // (cheap: a fence/timeline check, not a wait) and only flips brickPoolUploaded_ /
+    // stamps brickResident=1 into configs once the GPU-side copy is actually visible.
+    ResourceManagement::UploadHandle       pendingBrickUploadHandle_  = ResourceManagement::InvalidUploadHandle;
+    ResourceManagement::UploadHandle       pendingConfigUploadHandle_ = ResourceManagement::InvalidUploadHandle;
 
     // Optional recipe for octree 0 (P2.1 materialization). Empty = analytic path.
     std::vector<Vixen::SVO::Recipe::SdfInstruction> bakeRecipe_;

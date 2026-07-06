@@ -21,6 +21,7 @@ struct GLFWwindow;  // cross-platform window handle (GLFW); real include only in
 namespace Vixen::RenderGraph { class UIRenderNode; }  // composite HUD node; real include only in the .cpp
 namespace Vixen::RenderGraph { class UISelectionProviderNode; }  // UI hit-test provider; real include only in the .cpp
 namespace Vixen::RenderGraph { class BodyOctreeSceneNode; }  // M-wire: sparse shell octree upload node; real include in .cpp
+namespace Vixen::RenderGraph { class CameraNode; }  // Sparse-Mip ESVO LOD Inc1 M4c: live camera-state readback for the residency trigger
 namespace Vixen::SVO { struct BodyInstanceGpu; }  // M-wire: per-body GPU instance record (64 bytes)
 namespace Vixen::SVO { struct ConcatenatedOctrees; }  // I4.1: pre-baked recipe pool (SetRecipePool passthrough)
 
@@ -142,6 +143,22 @@ protected:
      */
     void CompleteShutdown();
 
+    /**
+     * @brief Sparse-Mip ESVO LOD Inc1 M4c: re-evaluate the brick-residency trigger against
+     *        the live camera state and re-sort instances front-to-back for the GPU per-ray
+     *        occlusion reject.
+     *
+     * Called every Update() tick (cheap: a live GetInstance lookup + a few dot products,
+     * no GPU work unless the gate actually flips) — mirrors SetBodyInstances'/
+     * SetRecipePool's live-uncached-pointer discipline. Combines M4a's minResolvableLevel
+     * + M4b's frustum containment (with hysteresis) into RequestBrickResidency's single
+     * trigger, re-checked whenever camera distance, FOV, OR orientation changes materially
+     * since the last check (a fixed per-frame re-evaluation would also work — the
+     * change-detection here only exists to avoid needless SortInstancesFrontToBack calls
+     * on a static camera, not because re-checking is expensive).
+     */
+    void UpdateBodySceneResidency();
+
 private:
     // ====== Engine (AR#7) ======
     // EngineContext OWNS the core graph subsystems (registry, bus, graph, and the autonomous
@@ -168,6 +185,17 @@ private:
     uint32_t simLoopID = 0;                          // Logic loop for the embedded sim (fixed cadence)
     NodeHandle voxelGridNode_{};                     // dense debug-buffer node (still in graph; no longer the render source)
     NodeHandle bodyOctreeSceneNode_{};               // M-wire: sparse shell octree node (bindings 1/2/3/5/10)
+    NodeHandle cameraNode_{};                        // Sparse-Mip ESVO LOD Inc1 M4c: live camera-state lookup for the residency trigger
+
+    // Sparse-Mip ESVO LOD Inc1 M4c: last camera state the residency trigger was evaluated
+    // against — change-detection only (avoids re-sorting/re-requesting every single frame
+    // on a static camera); NOT part of the trigger formula itself (that's stateless, per
+    // M4a/M4b). Default-constructed (all zero) so the FIRST Update() tick always evaluates
+    // (a zero cameraPos/cameraDir "changed" trivially from any real camera state).
+    glm::vec3 lastResidencyCheckCameraPos_{0.0f};
+    glm::vec3 lastResidencyCheckCameraDir_{0.0f};
+    float     lastResidencyCheckFovDegrees_ = 0.0f;
+    bool      residencyTriggerEverEvaluated_ = false;
     NodeHandle windowNode_{};                        // stored so GetWindowHandle() can query the WindowNode live
     NodeHandle inputNode_{};                         // stored so Update() can drain InputNode's event queue live (input-rework slice 1)
     NodeHandle uiRenderNode_{};                      // stored so GetUiRenderNode() can query the composite UI node live
