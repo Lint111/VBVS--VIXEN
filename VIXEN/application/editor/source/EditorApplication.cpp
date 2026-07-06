@@ -17,6 +17,9 @@
 #include "Debug/RenderTargetReadback.h"       // Task 3: shared IRenderTarget -> PNG readback
 #include <Logger.h>
 
+#include <cstdlib>
+#include <sstream>
+
 #define GLFW_INCLUDE_NONE   // don't pull in <GL/gl.h> (absent on headless/WSL builds)
 #include <GLFW/glfw3.h>
 
@@ -34,6 +37,78 @@ int ParseLayerToggleId(const std::string& id) {
     if (digits.empty()) return -1;
     for (char c : digits) if (c < '0' || c > '9') return -1;
     return std::stoi(digits);
+}
+
+// Inc-2b Task 4: parses "toggle:2@30,undo@60,redo@90" into ScriptedAction entries. A malformed
+// token (bad action name, missing '@frame', non-numeric frame/arg) is logged and SKIPPED --
+// never aborts the app (Global Constraint: VIXEN_EDITOR_SCRIPT malformed -> warn + continue).
+// `logger` may be null (never in practice here, but keeps this a free function testable in
+// isolation without a Logger instance).
+std::vector<EditorApplication::ScriptedAction> ParseEditorScript(const std::string& spec,
+                                                                  Vixen::Log::Logger* logger) {
+    std::vector<EditorApplication::ScriptedAction> actions;
+    std::stringstream ss(spec);
+    std::string token;
+    while (std::getline(ss, token, ',')) {
+        if (token.empty()) continue;
+        const size_t at = token.find('@');
+        if (at == std::string::npos) {
+            if (logger) logger->Warning("[EditorApplication] VIXEN_EDITOR_SCRIPT: skipping token missing '@frame': " + token);
+            continue;
+        }
+        const std::string actionPart = token.substr(0, at);
+        const std::string framePart  = token.substr(at + 1);
+        if (framePart.empty() || framePart.find_first_not_of("0123456789") != std::string::npos) {
+            if (logger) logger->Warning("[EditorApplication] VIXEN_EDITOR_SCRIPT: skipping token with non-numeric frame: " + token);
+            continue;
+        }
+        const long frame = std::strtol(framePart.c_str(), nullptr, 10);
+
+        const size_t colon = actionPart.find(':');
+        const std::string actionName = (colon == std::string::npos) ? actionPart : actionPart.substr(0, colon);
+
+        EditorApplication::ScriptedAction action;
+        action.frame = frame;
+        if (actionName == "toggle") {
+            if (colon == std::string::npos) {
+                if (logger) logger->Warning("[EditorApplication] VIXEN_EDITOR_SCRIPT: 'toggle' missing ':<layerIndex>': " + token);
+                continue;
+            }
+            const std::string arg = actionPart.substr(colon + 1);
+            if (arg.empty() || arg.find_first_not_of("0123456789") != std::string::npos) {
+                if (logger) logger->Warning("[EditorApplication] VIXEN_EDITOR_SCRIPT: 'toggle' has non-numeric layer index: " + token);
+                continue;
+            }
+            action.kind = EditorApplication::ScriptedAction::Kind::Toggle;
+            action.layerIndex = static_cast<uint32_t>(std::strtoul(arg.c_str(), nullptr, 10));
+        } else if (actionName == "undo") {
+            action.kind = EditorApplication::ScriptedAction::Kind::Undo;
+        } else if (actionName == "redo") {
+            action.kind = EditorApplication::ScriptedAction::Kind::Redo;
+        } else {
+            if (logger) logger->Warning("[EditorApplication] VIXEN_EDITOR_SCRIPT: unknown action, skipping: " + token);
+            continue;
+        }
+        actions.push_back(action);
+    }
+    return actions;
+}
+
+// Parses "0,45,75,105" into frame numbers. Malformed entries are skipped with a warning (same
+// never-abort contract as ParseEditorScript).
+std::vector<long> ParseCaptureFrames(const std::string& spec, Vixen::Log::Logger* logger) {
+    std::vector<long> frames;
+    std::stringstream ss(spec);
+    std::string token;
+    while (std::getline(ss, token, ',')) {
+        if (token.empty()) continue;
+        if (token.find_first_not_of("0123456789") != std::string::npos) {
+            if (logger) logger->Warning("[EditorApplication] VIXEN_EDITOR_CAPTURE_FRAMES: skipping non-numeric entry: " + token);
+            continue;
+        }
+        frames.push_back(std::strtol(token.c_str(), nullptr, 10));
+    }
+    return frames;
 }
 }  // namespace
 
@@ -224,6 +299,38 @@ bool EditorApplication::SaveDocument() {
 void EditorApplication::Update() {
     VulkanGraphApplication::Update();
 
+    // Inc-2b Task 4: parse VIXEN_EDITOR_SCRIPT / VIXEN_EDITOR_CAPTURE_FRAMES /
+    // VIXEN_EDITOR_CAPTURE_DIR exactly once (mirrors VulkanGraphApplication.cpp's
+    // VIXEN_RESIZE_AT_FRAME static-init-on-first-use pattern, adapted to a per-instance flag
+    // since these are member vectors, not process-wide statics). Unset envs parse to empty
+    // vectors, so every check below is a no-op -- zero behaviour change for the interactive editor.
+    if (!scriptParsed_) {
+        scriptParsed_ = true;
+        if (const char* scriptEnv = std::getenv("VIXEN_EDITOR_SCRIPT")) {
+            scriptedActions_ = ParseEditorScript(scriptEnv, logger_.get());
+        }
+        if (const char* captureEnv = std::getenv("VIXEN_EDITOR_CAPTURE_FRAMES")) {
+            captureFrames_ = ParseCaptureFrames(captureEnv, logger_.get());
+        }
+        if (const char* dirEnv = std::getenv("VIXEN_EDITOR_CAPTURE_DIR")) {
+            captureDir_ = dirEnv;
+        }
+    }
+    ++updateTick_;
+
+    // Inject any scripted action due this tick through the SAME methods the interactive input
+    // path calls (ToggleLayer / rt_.Undo / rt_.Redo) -- so the harness exercises the real
+    // click-equivalent -> ActionStack -> re-flatten -> undo dispatch, not a shortcut. Placed
+    // BEFORE the dirty_ re-flatten tail below so the re-flatten happens the same tick.
+    for (const auto& action : scriptedActions_) {
+        if (action.frame != updateTick_) continue;
+        switch (action.kind) {
+            case ScriptedAction::Kind::Toggle: ToggleLayer(action.layerIndex); break;
+            case ScriptedAction::Kind::Undo:   rt_.Undo(); break;
+            case ScriptedAction::Kind::Redo:   rt_.Redo(); break;
+        }
+    }
+
     // Drain UI clicks (S4 pattern) and toggle the matching layer's enabled override.
     if (auto* selection = GetUiSelectionProviderNode()) {
         const std::string clickedId = selection->DrainClickedElementId();
@@ -266,6 +373,21 @@ void EditorApplication::Update() {
         dirty_ = false;
         if (!ApplyDocumentToScene()) {
             logger_->Error("[EditorApplication] toggle re-apply failed: " + lastEditorError_);
+        }
+    }
+
+    // Inc-2b Task 4: dump a capture PNG if this tick is scripted for one. Placed AFTER the
+    // dirty_ re-flatten tail so a capture on the same tick as a scripted toggle reflects the
+    // post-toggle scene. A capture failure is logged, never thrown -- CaptureFrameToPng already
+    // never crashes the frame loop, and this call site preserves that (both live inside the
+    // base VulkanGraphApplication::Update's try/catch via the call at the top of this method --
+    // there is nothing here that can throw past it regardless).
+    for (const long captureFrame : captureFrames_) {
+        if (captureFrame != updateTick_) continue;
+        const std::string path = captureDir_ + "/editor_capture_" + std::to_string(updateTick_) + ".png";
+        std::string captureErr;
+        if (!CaptureFrameToPng(path, captureErr)) {
+            logger_->Error("[EditorApplication] CaptureFrameToPng failed for " + path + ": " + captureErr);
         }
     }
 }

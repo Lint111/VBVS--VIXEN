@@ -16,11 +16,21 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 class EditorApplication : public VulkanGraphApplication {
 public:
     // documentPath: .vxd to load. Empty = caller must call LoadDocument() before Prepare().
     explicit EditorApplication(std::string documentPath);
+
+    // Inc-2b Task 4: one parsed VIXEN_EDITOR_SCRIPT entry (e.g. "toggle:2@30" or "undo@60").
+    // Public (plain data, no invariants) so the free-function parser in EditorApplication.cpp's
+    // anonymous namespace can build a std::vector<ScriptedAction> without befriending it.
+    struct ScriptedAction {
+        long frame = 0;
+        enum class Kind { Toggle, Undo, Redo } kind = Kind::Undo;
+        uint32_t layerIndex = 0;  // only meaningful for Kind::Toggle
+    };
 
     void BuildRenderGraph() override;
     void Update() override;
@@ -73,9 +83,12 @@ private:
     bool ctrlZWasDown_ = false;  // edge-detect for the Undo keybinding
     bool ctrlYWasDown_ = false;  // edge-detect for the Redo keybinding
 
-    // Inc-2b Task 3: capture-target decision (see BuildRenderGraph.cpp's file header comment for
-    // the plan's option A/B language): rather than adding a NEW RenderTargetNode instance to the
-    // editor graph, CaptureFrameToPng reads the standard graph's existing "compute_render_target"
+    // Inc-2b Task 3/4: capture + script harness state, all zero-cost/inert when the two
+    // VIXEN_EDITOR_* env knobs are unset (see BuildRenderGraph + Update).
+    //
+    // Capture-target decision (see BuildRenderGraph.cpp's file header comment for the plan's
+    // option A/B language): rather than adding a NEW RenderTargetNode instance to the editor
+    // graph, CaptureFrameToPng reads the standard graph's existing "compute_render_target"
     // instance (added by the base VulkanGraphApplication::BuildRenderGraph, see
     // application/main/source/graph/BuildRenderGraph.cpp) -- the offscreen target the compute
     // voxel-raymarch dispatch renders the scene into every frame, BEFORE the UI composite blits
@@ -84,6 +97,12 @@ private:
     // rendered body (toggle/undo/redo all show up there) with zero new node wiring. So there is
     // no separate "capture target name" member -- the literal instance name is used directly at
     // the one CaptureFrameToPng call site (kept as a local constant there, not duplicated here).
+    long updateTick_ = 0;  // editor-local Update tick counter, independent of the base app's own counters
+
+    std::vector<ScriptedAction> scriptedActions_;   // parsed once from VIXEN_EDITOR_SCRIPT
+    std::vector<long> captureFrames_;               // parsed once from VIXEN_EDITOR_CAPTURE_FRAMES
+    std::string captureDir_ = "temp";               // overridable via VIXEN_EDITOR_CAPTURE_DIR
+    bool scriptParsed_ = false;                     // guards the one-time env parse in Update()
 
     std::shared_ptr<Vixen::Log::Logger> logger_ = std::make_shared<Vixen::Log::Logger>("editor", true);
 };
