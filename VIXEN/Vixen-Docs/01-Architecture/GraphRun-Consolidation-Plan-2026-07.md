@@ -23,7 +23,7 @@
 ## Milestone Map
 
 - **M1 — Core `Tick()`/`Run()` on the base + offline classification test** (Tasks 1–2): add the vocabulary + methods to `VulkanApplicationBase`, add the `IsShutdownRequested()` accessor to `VulkanGraphApplication`, prove `Tick()`'s status classification + hook order with an offline stub gtest. Deliverable: engine-owned loop surface, unit-proven, no entry point wired yet. **✅ DONE.**
-- **M2 — Collapse the two mains onto `Run()` + `FrameTimer`** (Tasks 3–4): extract the standalone main's frame-timer into a `FrameTimer` helper gated by `RunOptions.enableFrameTimer`; collapse `application/main/source/main.cpp` and `application/editor/source/main.cpp` to `app->Run(opts)`. Deliverable: both mains thinned, standalone parity gate green.
+- **M2 — Collapse the two mains onto `Run()` + `FrameTimer`** (Tasks 3–4): extract the standalone main's frame-timer into a `FrameTimer` helper gated by `RunOptions.enableFrameTimer`; collapse `application/main/source/main.cpp` and `application/editor/source/main.cpp` to `app->Run(opts)`. Deliverable: both mains thinned, standalone parity gate green. **✅ DONE.**
 - **M3 — Editor injector → `PreTick()` + windowed gate + close-out** (Tasks 5–6): move the scripted-action injector from `EditorApplication::Update()` into a `PreTick()` override (capture dumps stay in `Update()`'s tail); prove the Inc-2b windowed gate passes byte-identically; update docs/known-issues + close out. Deliverable: full consolidation, byte-exact editor gate green.
 
 ---
@@ -621,7 +621,7 @@ git commit -m "docs(graphrun): consolidation complete — Run()/Tick() canonical
 _(Appended per milestone during execution.)_
 
 - **M1 (Task 1): DONE** · commit `1e696716` · offline `test_app_run_tick` 6/6 PASS (Opus validator independently rebuilt + re-ran) · Opus validator APPROVED · 2026-07-06. Note: surfaced + root-cause-fixed a pre-existing bug — `VulkanInstance::instance` was never initialized to `VK_NULL_HANDLE`, so the first destruct-without-`CreateInstance()` path (the offline stub app) crashed in `DestroyInstance()`; fixed with a member-init (authorized Task-1 file-set expansion). Two sound CMake corrections: `GTest::gtest_main` alone (not gtest+gtest_main) + a `BUILD_TESTS`/`TARGET` guard, matching repo convention.
-- _M2 (Tasks 3–4): pending_
+- **M2 (Tasks 3–4): DONE** · commits `763b020c` (FrameTimer) + `d5b07047` (collapse mains) · standalone parity gate on real GPU (D3D12/dzn): exit 0, `[FrameTimer] frames 0-120` + `[Run] Render loop exited: frame limit reached` each once; offline 6/6 still green; both exes link clean · Opus validator independently re-ran the parity gate + traced the fix · Opus validator APPROVED · 2026-07-06. Note: the plan's Task-3 frame-timer wiring had an off-by-one — recording `Record()` INSIDE `while(Tick()==Running){...}` skips the terminal tick, so an exact `EXIT_AFTER_FRAMES=120` run dropped the `frames 0-120` window summary (`Record()` fires at `frameCounter%120==0`, exactly the FrameLimitReached tick). Fixed with `do{ st=Tick(); if(enableFrameTimer)Record(); }while(st==Running)` (records after every executed tick, matching old main.cpp's unconditional-per-iteration ordering); found live on the parity gate, validator-confirmed faithful, no over/under-count. Editor's real `bool LoadDocument(const std::string&)` + bool-check preserved before Run() (plan sketch's parameterless `LoadDocument()` was a simplification).
 - _M3 (Tasks 5–6): pending_
 
 ---
