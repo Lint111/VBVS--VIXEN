@@ -89,7 +89,9 @@ mechanism is warranted yet, or should itself wait for the nested-tree epic.
   buffer + usage buffer sizing, stream-compaction primitive — check for an existing VIXEN library
   primitive before hand-rolling per Inc1's own note, GPU-side LRU list maintenance, `CapabilityGraph`
   gating tier). If neither condition has changed, this milestone's gate is the documented "not yet"
-  decision itself, with the specific numbers that would flip it — not a build.
+  decision itself, with the specific numbers that would flip it — not a build. ·
+  **✅ DONE 2026-07-06** — commit `<pending>` (this milestone's own doc commit); decision: **not yet,
+  documented "no-build" with specific flip triggers** — see M4 Progress Log below.
 
 ---
 
@@ -391,6 +393,151 @@ not the every-frame thrash the bug would have produced). **APPROVED**, no remain
 
 ---
 
+## M4 Progress Log
+
+**M4 DONE (2026-07-06)**, on branch `feat/sparse-mip-esvo-inc2`. This is a decision-only milestone
+per its own gate definition — no request-buffer/GPU-LRU code was written. Both of the plan's own
+go/no-build conditions were re-checked against the actual current codebase and vault state (not
+assumed unchanged from Inc1), and the evidence-based conclusion is **not yet — document "no-build"
+with concrete flip triggers**, matching Inc1's own instruction not to build this speculatively.
+
+### (a) Resident-tree-count threshold — re-checked, one correction found
+
+Re-verified Inc1's own citation (`Sparse-Mip-ESVO-LOD-Inc1-Plan-2026-07.md:811-812`, "tens to a few
+hundred bodies, per `BodyOctreeSceneNode.cpp:666`'s existing `3*64` instance cap") directly against
+current code rather than taking it on faith, since Inc1 was written 2026-07-05 and this is now
+2026-07-06 with several intervening commits:
+
+- **The "`3*64` instance cap" citation does not describe any cap that ever existed.** The `3` was a
+  conflation of `ConcatenatedOctrees::kMaxOctrees = 3` — a cap on distinct **octree kinds/configs**
+  (introduced `81c916cc`, 2026-06-19), not on instance/body count — which was itself **removed** in
+  `89b71001` "refactor(svo): octree pool is dynamic-N — drop kMaxOctrees=3 cap (I3.1)" (2026-06-29,
+  i.e. *before* Inc1's plan doc was even written) and the shader-side `configs[3]` clamp dropped the
+  same day in `efe225b3`. A stale test still asserting the old cap was caught later as KI-002
+  (`75cca4b2`, 2026-07-02). `BodyOctreeSceneNode.cpp:666` today (901 lines) is a shell-dilation clamp
+  (`dilation > 3u ? 3u : dilation`) — unrelated to instance count entirely. Inc1's citation was already
+  stale at the moment it was written; this milestone corrects it rather than propagating it further.
+- **Actual current behavior: no instance-count cap exists, hard or soft.** The instance ring
+  (`BodyOctreeSceneNode::EnsureRingAllocated`, `BodyOctreeSceneNode.cpp:599-629`) is dynamic
+  grow-only — `instanceRingCapacity_` (`BodyOctreeSceneNode.h:303`) reallocates whenever
+  `neededCapacity` (derived directly from `Vixen::SVO::PackInstances(instances_).size()`) exceeds the
+  current capacity; no upper bound is checked or enforced anywhere in the call chain. Commit `3d964cfd`
+  (2026-07-03, "instance ring grows on SetInstances overflow") hardened this further by fixing a narrow
+  OOB-read window on overflow, confirming growth is a deliberately-supported, safe path, not an
+  incidental one. `test_body_octree_lifetime.cpp` (`kLargeCount = kSmallCount*8 = 32`) exists
+  specifically to exercise this grow-on-overflow path and passes.
+- **Actual current demo/test scene sizes remain small.** `VIXEN_STORED_SDF_DEMO` and the default
+  no-flag fallback scene both seed **3** body instances (`BuildRenderGraph.cpp:641-648` and
+  `:675-682`); `VIXEN_RESIDENCY_GATE_DEMO` reuses that same 3-body scene, only sweeping the camera.
+  The largest N used anywhere in this epic's own tests is Inc2 M1's `test_bandwidth_ab_measurement.cpp`
+  at **16** trees (`kNumTrees = 16`, confirmed still current) — chosen for direct comparability with
+  Inc1's own endpoint measurement, not because it reflects a ceiling.
+  `test_body_octree_lifetime.cpp`'s `kLargeCount = 32` is a ring-growth stress case, not a rendered
+  scene. None of these are within an order of magnitude of "a few hundred."
+- **The undertow target figure is unchanged and still the only number in the vault.** "60-300 bodies"
+  appears verbatim in 5 docs (`Sparse-Mip-ESVO-LOD-Direction-2026-07.md:9`,
+  `Sparse-Mip-ESVO-LOD-Inc1-Plan-2026-07.md:812`, this doc `:268`, `Widescreen-Perf-Fix-Plan-2026-07.md:318`,
+  `Widescreen-Perf-Sweep-Findings-2026-07.md:108,158`) — no doc anywhere in `Vixen-Docs/` updates or
+  supersedes this figure, and this milestone's own search found no newer number. The
+  `undertow-vixen-integration-map` memory note (last touched 2026-06-29) cites the same "60-300"
+  figure for "Path A (instances)."
+- **Net effect on the threshold check**: the specific citation Inc1 used (`3*64` cap) turns out never
+  to have existed, but the substantive conclusion it was defending — current/near-term scene sizes are
+  in the tens-to-low-hundreds, not hundreds-to-thousands — is **still correct** on the actual evidence
+  (3-16 in current tests/demos, 60-300 as the only documented target ceiling). The correction is to the
+  citation, not to the underlying number-order conclusion.
+
+### (b) Nested-tree epic scheduling status — checked, still purely a design doc
+
+Read `Tiered-ESVO-Observer-Addressing-Design-2026-07.md`'s own status header directly (not inferred):
+`status: Design (promoted from direction 2026-07-05) — NOT built, no increment started`, and its body
+text repeats this explicitly: *"Nothing here is built. No increment has been scoped or started. This
+is the doc a Plan would be written against, once the base mip-sampling epic in the parent direction
+doc has shipped (§9, sequencing)."* Checked for any movement past that status since 2026-07-05:
+
+- **No Inc1-style implementation plan doc exists for this epic.** Only one file matches
+  `*Tiered*`/`*Nested-ESVO*`/`*Tree-of-Trees*` anywhere in the repo — the design doc itself. Compare to
+  this epic's own sibling pattern: the mip-sampling epic has a Direction doc, then an Inc1 Plan doc,
+  then an Inc2 Plan doc (this file) — the nested-tree epic has only step one of that three-step
+  pattern.
+- **No branch, worktree, or commit activity toward it.** `git branch -a | grep -i "tier|nested|observ"`
+  returns nothing (checked against all local branches, all remote-tracking branches, and worktree
+  names — none reference tiers/nested-trees/observer-addressing). `git log --all --oneline --grep`
+  across "tier", "nested-tree", "tree-of-tree", "observer.address" (case-insensitive) surfaces only
+  this doc's own authoring commits (`0051949e`, `5e668c2b`) and unrelated false-positive matches from
+  other epics' commit messages that happen to contain the substring "tier" (e.g. AppFlow's
+  "Tier-2 home decision," RenderGraph's "Tier-1 barrier replay" — different meaning of "tier," nothing
+  to do with this design doc). One older, unrelated hit,
+  `423122ca "feat(proposal): Integrate GigaVoxels GPU-driven usage-based caching"` (2025-12-31,
+  6+ months before this design doc or even Inc1 existed, a `GaiaVoxelWorld` backend-expansion proposal
+  doc, different codebase area) — not connected to this epic's scheduling in any way.
+- **Conclusion: nested-tree work has not moved from "design doc" to "actively planned/in-progress."**
+  Condition (b) is unchanged from how Inc1's own note described it.
+
+### Decision: not yet — no-build, documented with concrete flip triggers
+
+Following the Inc1 note's own stated criterion precisely (`Sparse-Mip-ESVO-LOD-Inc1-Plan-2026-07.md:156-162`):
+this mechanism is motivated specifically by **large, partially-occluded/partially-visible single
+bodies** (a planet-scale tree) as **a natural companion to the nested-tree epic**, and Inc1's own
+instruction was "decide whether to build this once M5's bandwidth measurement is in and nested-tree
+work is actually scheduled, not before." M5 (Inc2 M1, done) is in. Nested-tree work is **not**
+scheduled — still a pure design doc, zero branches/commits/plan docs toward it (§b above). Resident
+tree counts remain in the low tens in every current test/demo, with 60-300 as the only documented
+future ceiling, still an order of magnitude below where a per-brick GPU request/LRU mechanism would
+be justified over the existing sub-millisecond CPU formula (§a above; M3's Progress Log already
+re-confirmed the CPU-side cost model independently for the occlusion gate at this same scale).
+**Neither condition has changed. The decision is no-build, matching the plan's own expected outcome —
+this was verified against current evidence, not assumed.**
+
+This is not a "let's not bother" default — both conditions were independently re-derived in this
+milestone (finding and correcting the stale `3*64` citation in the process) rather than copy-pasted
+from Inc1's note, and both point the same direction Inc1 already predicted.
+
+**No sub-plan produced** (per the plan's own gate: a sub-plan is only warranted "if either condition
+now favors building it"). For the record, in case a future revisit's evidence flips: no existing VIXEN
+stream-compaction/prefix-sum primitive was found (`grep -rl "prefix sum|StreamCompact|PrefixSum|ScanCompute"`
+across `libraries/` returns nothing) — a future build would need to either hand-roll one or bring in an
+external primitive, which Inc1's own note already flagged as worth checking before assuming; this
+milestone confirms the check comes back empty, information a future go-decision would need immediately.
+The `CapabilityGraph` gating tier Inc1 sketched (`DeviceExtensionCapability`/`DeviceFeatureCapability`
+composition, `VK_EXT_device_generated_commands` → persistent-thread/megakernel fallback →
+CPU-formula floor) remains architecturally sound and unchanged; nothing in this milestone's
+investigation invalidates it, it simply isn't needed yet.
+
+### Concrete triggers that would flip this decision
+
+A future reader re-evaluating this should treat **either** of the following as sufficient grounds to
+re-open M4-style build work, without needing to redo this whole investigation:
+
+1. **Resident-tree/instance counts actually reach the hundreds in a real scene** — not a synthetic
+   stress test like `test_body_octree_lifetime.cpp`'s `kLargeCount=32` (which exists to test ring
+   growth, not to represent a target scene), but an actual demo, benchmark, or undertow integration
+   scene instantiating on the order of 100+ concurrently-resident `BodyOctreeSceneNode` trees. Watch
+   specifically for the "60-300" figure (currently just a documented aspiration in 5 docs, never
+   exercised in any current test) becoming a real, run scene — that would put this epic's own
+   scale assumption ("tens to a few hundred... measurably sufficient") at its own stated edge.
+2. **`Tiered-ESVO-Observer-Addressing-Design-2026-07.md` gets an actual implementation plan doc** —
+   i.e. a sibling `Tiered-ESVO-*-Inc1-Plan-2026-0X.md` appears (matching this epic's own Direction →
+   Inc1-Plan → Inc2-Plan document lineage), or a branch/worktree is created specifically to build
+   against it, or its status header changes from "NOT built, no increment started" to anything
+   indicating active scoping. Either of these directly satisfies Inc1's own stated pre-condition
+   ("nested-tree work is actually scheduled").
+3. **A future increment finds the CPU-side occlusion gate (Inc2 M3) or residency formula
+   measurably failing to keep up** at real scene sizes actually being tested (not hypothesized) —
+   i.e. a profiler-measured per-frame CPU cost that stops being sub-millisecond. This would be direct
+   empirical evidence independent of tree-count guesses, and would justify revisiting even before
+   condition 1 or 2 individually crosses its own threshold.
+
+None of the three has occurred as of this milestone (2026-07-06). Re-check this section, not just the
+Inc1 note, on the next pass — it supersedes Inc1's `3*64` citation with the corrected reasoning above.
+
+**Opus validator:** not yet run for this milestone — pending the pipeline's own review pass. This
+Progress Log entry states plainly what was checked and how, so a validator can re-verify each factual
+claim (branch list, `git log --grep`, file greps, line numbers) independently rather than re-deriving
+the investigation from scratch.
+
+---
+
 ## Notes for implementers
 
 - M1-M3 are Sonnet-medium implementable against Inc1's existing test fixtures and mechanisms (same
@@ -400,6 +547,7 @@ not the every-frame thrash the bug would have produced). **APPROVED**, no remain
 - M4 is evaluation-first by design (per the Inc1 note's own instruction) — do not let an implementer
   jump straight to building the request-buffer/GPU-LRU mechanism without the go/no-build check landing
   first; the Inc1 note is explicit that at current tree counts the existing CPU formula is "measurably
-  sufficient."
+  sufficient." **DONE 2026-07-06**: the check landed "not yet" — see M4 Progress Log's "Concrete
+  triggers" for what would flip it before building anything here.
 - Live-run gate is authoritative for all GPU-touching work here (M1, M3) — per this project's standing
   rule, run and observe on real hardware or lavapipe/Dozen, not just static review.
