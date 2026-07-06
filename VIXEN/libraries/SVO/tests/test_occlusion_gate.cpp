@@ -56,14 +56,17 @@ bool WantsIgnoringOcclusion(const Camera& cam, const glm::vec3& bodyPos) {
 }
 
 // The combined decision the live app's UpdateBodySceneResidency makes per-instance:
-// frustum+resolvability AND not-occluded-by-an-already-resident-tree.
+// frustum+resolvability AND not-occluded-by-an-already-resident-tree. candidateId
+// mirrors the live wiring's own instance-index id (kNoOccluderId default is fine for
+// tests whose occluder set never includes the candidate itself).
 bool WantsResidency(const Camera& cam, const glm::vec3& bodyPos,
-                     const std::vector<ResidentOccluder>& residentOccluders) {
+                     const std::vector<ResidentOccluder>& residentOccluders,
+                     int candidateId = kNoOccluderId) {
     if (!WantsIgnoringOcclusion(cam, bodyPos)) {
         return false;
     }
     const float distance = glm::distance(bodyPos, cam.pos);
-    return !IsOccludedByResidentTrees(cam.pos, bodyPos, distance, residentOccluders);
+    return !IsOccludedByResidentTrees(cam.pos, bodyPos, distance, residentOccluders, candidateId);
 }
 }  // namespace
 
@@ -208,4 +211,103 @@ TEST(OcclusionGate, LoneCandidateGrantedWhenNothingResidentYet) {
     EXPECT_TRUE(WantsResidency(cam, bodyPos, /*residentOccluders=*/{}))
         << "With no already-resident trees, the occlusion gate must never itself "
            "reject an otherwise-qualifying candidate.";
+}
+
+// ---------------------------------------------------------------------------
+// Self-occlusion regression (found by independent Opus validation of the live
+// wiring, not by these tests originally -- see the Inc2 plan's M3 Progress Log
+// "self-occlusion thrash" note). VulkanGraphApplication::UpdateBodySceneResidency
+// builds `residentOccluders` from ALL current instances whenever the shared pool was
+// last resident, then tests EACH candidate against that SAME full set -- which
+// trivially includes the candidate's own bounding sphere. Without id-based exclusion,
+// the ray from the camera toward a candidate's own centre always "hits" that same
+// candidate's own sphere at `candidateDistance - radius`, comfortably closer than
+// `candidateDistance` itself -- nowhere near float noise, so no epsilon tweak could
+// fix it. Every earlier test above avoided this because its occluder set was always a
+// genuinely DIFFERENT body from the candidate; these tests deliberately reproduce the
+// live wiring's actual construction (full instance list, candidate included).
+// ---------------------------------------------------------------------------
+TEST(OcclusionGate, RaySphereNearestHit_ConfirmsTheSelfHitMechanismIsReal) {
+    // Isolated confirmation of the root-cause mechanism itself (not yet the fix): a
+    // ray toward a sphere's OWN centre always hits that sphere's own surface at
+    // distance-radius, well short of the centre. This is what makes naive full-list
+    // occluder construction dangerous without identity exclusion.
+    const glm::vec3 camPos(0.0f);
+    const glm::vec3 ownCentre(0.0f, 0.0f, 100.0f);
+    constexpr float kRadius = 24.0f;
+    float hitT = 0.0f;
+    ASSERT_TRUE(RaySphereNearestHit(camPos, glm::normalize(ownCentre), ownCentre, kRadius, hitT));
+    EXPECT_NEAR(hitT, 100.0f - kRadius, 1e-2f)
+        << "a ray toward a sphere's own centre must hit its own surface at "
+           "distance-radius -- confirming this is a real geometric self-hit, not a "
+           "coincidental float-noise artifact an epsilon could paper over.";
+}
+
+TEST(OcclusionGate, CandidateDoesNotSelfOccludeWhenPresentInItsOwnOccluderSet) {
+    // Direct reproduction of the validator's 3-body probe: a full occluder set built
+    // from every instance (as the live wiring does), each candidate assigned an id
+    // matching its own index -- exactly what UpdateBodySceneResidency constructs.
+    // Lateral offsets (+-100, up to 60 vertical) are deliberately wide relative to the
+    // 24-unit body radius so NONE of these three bodies' own camera-rays pass through
+    // a DIFFERENT body's sphere (verified numerically) -- isolating this test to prove
+    // ONLY the self-occlusion-exclusion behavior, not incidentally exercising genuine
+    // cross-body occlusion (that's the next test's job).
+    const Camera cam;
+    const std::vector<glm::vec3> positions = {
+        glm::vec3(0.0f, 0.0f, 50.0f),
+        glm::vec3(100.0f, 0.0f, 60.0f),
+        glm::vec3(-100.0f, 60.0f, 70.0f),
+    };
+    constexpr float kRadius = 24.0f;
+
+    std::vector<ResidentOccluder> residentOccluders;
+    for (size_t i = 0; i < positions.size(); ++i) {
+        residentOccluders.push_back(ResidentOccluder{positions[i], kRadius, static_cast<int>(i)});
+    }
+
+    // Precondition: each body qualifies on frustum+resolvability alone (otherwise a
+    // "not occluded" result would be meaningless -- it could just be failing the OTHER
+    // gate). All three sit directly ahead at moderate range, so this should hold.
+    for (size_t i = 0; i < positions.size(); ++i) {
+        ASSERT_TRUE(WantsIgnoringOcclusion(cam, positions[i]))
+            << "precondition failed for body " << i;
+    }
+
+    // THE bug the validator found: without id exclusion, ALL THREE would report
+    // occluded=true (each self-hits its own sphere). With id exclusion, each body is
+    // tested against the OTHER two only -- and since none of these three bodies sits
+    // behind another along its own camera ray (they're spread laterally, not
+    // collinear), none should be occluded by a genuinely different resident tree
+    // either.
+    for (size_t i = 0; i < positions.size(); ++i) {
+        const float distance = glm::distance(positions[i], cam.pos);
+        EXPECT_FALSE(IsOccludedByResidentTrees(
+            cam.pos, positions[i], distance, residentOccluders, static_cast<int>(i)))
+            << "body " << i << " must not self-occlude when its own bounding sphere "
+               "is (correctly) present in residentOccluders under its own id -- a "
+               "resident tree/pool can never occlude its own pending residency "
+               "decision.";
+    }
+}
+
+TEST(OcclusionGate, CandidateStillCorrectlyOccludedByADifferentResidentTreeWhenIdsDiffer) {
+    // Guards against an over-broad fix: id exclusion must skip ONLY the matching id,
+    // not accidentally suppress real occlusion by a genuinely different body.
+    const Camera cam;
+    const glm::vec3 occluderPos(0.0f, 0.0f, 50.0f);
+    const glm::vec3 targetPos(0.0f, 0.0f, 200.0f);  // same ray, farther -- genuinely occluded
+    constexpr float kRadius = 24.0f;
+    ASSERT_TRUE(WantsIgnoringOcclusion(cam, targetPos));
+
+    const std::vector<ResidentOccluder> residentOccluders = {
+        ResidentOccluder{occluderPos, kRadius, /*id=*/0},
+        ResidentOccluder{targetPos, kRadius, /*id=*/1},  // the target's own entry, id=1
+    };
+
+    // Target (id=1) tested against the full set: must skip its OWN entry (id=1) but
+    // still be correctly occluded by the DIFFERENT resident tree at id=0.
+    const float distance = glm::distance(targetPos, cam.pos);
+    EXPECT_TRUE(IsOccludedByResidentTrees(cam.pos, targetPos, distance, residentOccluders, /*candidateId=*/1))
+        << "excluding the candidate's own id must not also suppress genuine "
+           "occlusion by a DIFFERENT resident tree in the same set.";
 }

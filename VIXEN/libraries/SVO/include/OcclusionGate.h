@@ -46,9 +46,22 @@ namespace Vixen::SVO {
 // The live call site (VulkanGraphApplication::UpdateBodySceneResidency) builds this
 // from BodyOctreeSceneNode::GetInstances() + the residency-bounding-radius constant
 // it already uses for ResidencyTrigger.h, filtered to only currently-resident trees.
+//
+// `id` is an opaque caller-assigned identity (e.g. the instance's index in
+// BodyOctreeSceneNode::GetInstances()) -- NOT part of the geometry test itself, used
+// solely so IsOccludedByResidentTrees can skip an occluder that IS the candidate being
+// tested. A resident tree/pool cannot occlude its own pending residency decision --
+// that's not a coincidental self-hit to epsilon away, it is never a real occlusion,
+// regardless of how close the ray-entry distance happens to land to the candidate's
+// own distance. Pass kNoOccluderId (the default) when the caller has no meaningful
+// identity to attach (e.g. isolated unit tests constructing occluders that are
+// genuinely distinct bodies from the candidate).
+constexpr int kNoOccluderId = -1;
+
 struct ResidentOccluder {
     glm::vec3 centre{0.0f};
     float     radius = 0.0f;
+    int       id     = kNoOccluderId;
 };
 
 // Ray-vs-sphere nearest-hit distance along `rayDir` (assumed normalized) from
@@ -86,6 +99,21 @@ inline bool RaySphereNearestHit(
 // passed explicitly (rather than recomputed) so callers that already have it (the
 // residency trigger's own distance term) don't redundantly recompute glm::distance.
 //
+// `candidateId` identifies the candidate being tested (e.g. its own instance index) and
+// is compared against each occluder's `id`: an occluder whose id matches is skipped
+// entirely, REGARDLESS of geometry. This is a correctness requirement, not a tie-break --
+// a resident tree/pool can never occlude its own pending residency decision, and a naively
+// built occluder set (e.g. "every currently-resident instance," which trivially includes
+// the very candidate being evaluated when residency is a whole-pool decision) would
+// otherwise self-occlude on every call: the ray from the camera toward the candidate's
+// OWN centre always enters the candidate's OWN bounding sphere at
+// `candidateDistance - radius`, which is comfortably closer than `candidateDistance`
+// itself -- nowhere near float noise, so no epsilon could paper over it. Pass
+// kNoOccluderId for both if the caller has no meaningful identity to compare (matches
+// kNoOccluderId's own default, so two "no id" occluders/candidates never spuriously
+// exclude each other by accident... except when they legitimately should not: callers
+// with real distinct-body semantics should always assign real, distinct ids).
+//
 // A candidate coincident with the camera (zero-length ray direction) is never treated
 // as occluded -- there is no meaningful direction to test, and this can only happen in
 // a degenerate scene, not a real occlusion case.
@@ -93,7 +121,8 @@ inline bool IsOccludedByResidentTrees(
     const glm::vec3& cameraPos,
     const glm::vec3& candidateCentre,
     float candidateDistance,
-    const std::vector<ResidentOccluder>& residentOccluders) {
+    const std::vector<ResidentOccluder>& residentOccluders,
+    int candidateId = kNoOccluderId) {
     if (residentOccluders.empty() || candidateDistance <= 0.0f) {
         return false;  // nothing resident yet, or a degenerate zero-distance candidate
     }
@@ -104,15 +133,19 @@ inline bool IsOccludedByResidentTrees(
     }
     const glm::vec3 rayDir = toCandidate / len;
 
-    // A tiny epsilon so a resident tree's OWN bounding sphere (the candidate itself, if
-    // it happened to already be in residentOccluders) never self-occludes from a
-    // hit landing at t ~= candidateDistance due to floating-point noise.
-    constexpr float kSelfHitEpsilon = 1e-3f;
+    // Pure floating-point-noise guard only (NOT the self-occlusion fix -- that's the
+    // id comparison below). Kept tiny and purely defensive against a hit landing
+    // exactly at candidateDistance due to rounding on two genuinely distinct,
+    // touching/coincident bodies.
+    constexpr float kNumericNoiseEpsilon = 1e-4f;
 
     for (const ResidentOccluder& occluder : residentOccluders) {
+        if (candidateId != kNoOccluderId && occluder.id == candidateId) {
+            continue;  // a tree can never occlude its own pending residency decision
+        }
         float hitT = 0.0f;
         if (RaySphereNearestHit(cameraPos, rayDir, occluder.centre, occluder.radius, hitT)) {
-            if (hitT < candidateDistance - kSelfHitEpsilon) {
+            if (hitT < candidateDistance - kNumericNoiseEpsilon) {
                 return true;  // something already-resident blocks this candidate first
             }
         }

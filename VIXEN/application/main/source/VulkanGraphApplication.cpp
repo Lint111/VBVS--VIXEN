@@ -752,12 +752,23 @@ void VulkanGraphApplication::UpdateBodySceneResidency() {
     // brick-resident trees only" spec. When the shared pool isn't resident yet, occluders is
     // empty and IsOccludedByResidentTrees degrades to always-false (frustum+resolvability-only),
     // the same graceful-degradation path ResidencyTrigger.h itself documents.
+    //
+    // Each occluder's id is its OWN index in GetInstances() — required so a candidate is never
+    // tested against itself below (a tree/pool cannot occlude its own pending residency decision;
+    // see OcclusionGate.h's own comment on why this is a correctness fix, not an edge case: a
+    // naive full-instance-list occluder set trivially includes the candidate being evaluated
+    // whenever residency is a whole-pool decision, and the ray toward a candidate's own centre
+    // always "hits" its own bounding sphere well before reaching that centre).
+    const auto& instances = bodyScene->GetInstances();
     std::vector<Vixen::SVO::ResidentOccluder> residentOccluders;
     if (lastResidencyGranted_) {
-        for (const auto& inst : bodyScene->GetInstances()) {
+        residentOccluders.reserve(instances.size());
+        for (size_t i = 0; i < instances.size(); ++i) {
+            const auto& inst = instances[i];
             residentOccluders.push_back(Vixen::SVO::ResidentOccluder{
                 glm::vec3(inst.worldPos[0], inst.worldPos[1], inst.worldPos[2]),
-                kResidencyBoundingRadius});
+                kResidencyBoundingRadius,
+                static_cast<int>(i)});
         }
     }
 
@@ -766,7 +777,8 @@ void VulkanGraphApplication::UpdateBodySceneResidency() {
     // already brick-resident tree (OcclusionGate.h, Inc2 M3) — the whole shared brick
     // pool must be populated the moment even one instance needs it and can see it.
     bool anyInstanceWantsBricks = false;
-    for (const auto& inst : bodyScene->GetInstances()) {
+    for (size_t i = 0; i < instances.size(); ++i) {
+        const auto& inst = instances[i];
         const glm::vec3 pos(inst.worldPos[0], inst.worldPos[1], inst.worldPos[2]);
         if (!Vixen::SVO::InstanceWantsBrickResidency(
                 pos, kResidencyBoundingRadius,
@@ -776,8 +788,9 @@ void VulkanGraphApplication::UpdateBodySceneResidency() {
             continue;  // fails frustum+resolvability regardless of occlusion
         }
         const float distance = glm::distance(pos, cam.cameraPos);
-        if (Vixen::SVO::IsOccludedByResidentTrees(cam.cameraPos, pos, distance, residentOccluders)) {
-            continue;  // passes frustum+resolvability but an already-resident tree blocks it
+        if (Vixen::SVO::IsOccludedByResidentTrees(
+                cam.cameraPos, pos, distance, residentOccluders, static_cast<int>(i))) {
+            continue;  // passes frustum+resolvability but a DIFFERENT already-resident tree blocks it
         }
         anyInstanceWantsBricks = true;
         break;

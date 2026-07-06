@@ -300,22 +300,75 @@ pass or a full per-pixel occlusion query.
   requires (`inout StackEntry stack[STACK_SIZE]`, used internally by `marchBrickSdf`) — a genuine
   arity-mismatch shader compile error, confirmed present BEFORE any of this milestone's own changes
   (reproduced standalone via `glslc` after `git stash`-ing every M3 change, restored after confirming).
-  This blocked `test_body_instance_occlusion_reject` and the whole `VIXEN`/`VixenApp` targets from
-  building at all, which would have made this milestone's own regression-check gate impossible to
-  satisfy honestly. Fixed with the minimal one-line correction (added the missing `stack` argument at
-  the call site, matching the sibling `handleLeafHitInstanced` call two lines below it, which already
-  passes `stack` correctly) — not touched or extended beyond that.
-- **Live-run gate satisfied**:
-  - `test_occlusion_gate`: **11/11 passed** (pure CPU, no GPU needed).
-  - `test_residency_trigger`: **8/8 passed**, unchanged (regression check — `ResidencyTrigger.h` itself
-    was not modified this milestone).
-  - `test_body_instance_occlusion_reject`: **2/2 passed** on real Mesa-Dozen GPU (WSL2, `vixen-wsl`
-    preset; device `Microsoft Direct3D12 (NVIDIA GeForce RTX 3060 Laptop GPU)` via dzn) — regression
-    check for the GPU per-ray fix this milestone's occlusion gate is a CPU-side companion to (both
-    directions: occluded target/control ran 0 traversal iterations; the lone non-occluded instance ran
-    non-zero iterations, exactly as before). Pre-existing Vulkan validation warnings in this test's
-    output (SPIR-V 1.6-vs-1.5 target-env mismatch, a push-constant range note) are unrelated,
-    non-fatal, and unchanged from the shader's existing state — not introduced by this milestone.
+  **Attribution correction (independent Opus validation, 2026-07-06):** originally attributed to Inc1
+  M4b (`f634d549`) since that commit last touched this shader on this branch's own history; the
+  validator traced the TRUE origin to merge commit `ae12ba78` (main ← `feat/sparse-mip-esvo-inc1`),
+  which combined a signature WITH `stack` from main's parallel `47eccd64` with a call site WITHOUT
+  `stack` from the Inc1 branch — a merge-conflict-resolution gap, not something either branch alone
+  introduced. The substance of the original claim is unchanged: pre-existing, not self-introduced by
+  this milestone, not introduced by Inc2 M1/M2. This blocked `test_body_instance_occlusion_reject` and
+  the whole `VIXEN`/`VixenApp` targets from building at all, which would have made this milestone's own
+  regression-check gate impossible to satisfy honestly. Fixed with the minimal one-line correction
+  (added the missing `stack` argument at the call site, matching the sibling `handleLeafHitInstanced`
+  call two lines below it, which already passes `stack` correctly) — not touched or extended beyond
+  that.
+
+### BLOCKING fix (post-Opus-validation, 2026-07-06): self-occlusion thrash
+
+Independent Opus validation of the first M3 pass found a real bug in the live wiring, caught before
+any of this milestone's other findings shipped as final: `residentOccluders` in
+`VulkanGraphApplication::UpdateBodySceneResidency` was built from ALL current instances (whenever
+`lastResidencyGranted_` was true), then EACH candidate was tested against that SAME full set —
+including the candidate's own bounding sphere. There was no identity exclusion. The ray from the
+camera toward a candidate's own centre always "hits" that candidate's own sphere at
+`candidateDistance - radius`, comfortably closer than `candidateDistance` itself (not float noise —
+the validator's own reproduction: with `kResidencyBoundingRadius = 24`, the self-hit lands 24 units
+short of the true distance, and the original `kSelfHitEpsilon = 1e-3` was ~24 units too small to mask
+it). Every candidate therefore self-occluded every time residency was already granted, producing:
+frame N grants residency → frame N+1 every candidate self-occludes → `RequestBrickResidency(false)` →
+bricks evicted → `lastResidencyGranted_=false` → frame N+2 occluder set empty → grants again →
+repeat. This would have defeated the milestone's entire point (worse than no occlusion gate at all —
+constant re-upload thrash instead of a stable decision). Confirmed NOT caught by the original
+`test_occlusion_gate.cpp`: every occluder set in every original test was a genuinely separate body
+from the candidate, never reproducing the live wiring's candidate-included-in-its-own-occluder-set
+construction.
+
+**Fix — identity exclusion, not a bigger epsilon.** `OcclusionGate.h`'s `ResidentOccluder` gained an
+`id` field (`kNoOccluderId = -1` default) and `IsOccludedByResidentTrees` gained a `candidateId`
+parameter: an occluder whose `id` matches `candidateId` is skipped unconditionally, regardless of
+geometry — "a tree/pool cannot occlude its own pending residency decision" is a correctness statement,
+not a numerical tie-break an epsilon could paper over. `UpdateBodySceneResidency` now builds
+`residentOccluders` with each occluder's `id` set to its own index in `GetInstances()`, and passes the
+candidate's own index as `candidateId` when testing — both loops switched from range-based to
+indexed iteration for this. The prior epsilon (`kSelfHitEpsilon = 1e-3`) is retained only as a genuine
+floating-point-noise guard (renamed `kNumericNoiseEpsilon`), not as the self-occlusion fix itself.
+
+**New tests** (`test_occlusion_gate.cpp`, +3 tests, 14 total): `RaySphereNearestHit_ConfirmsTheSelfHitMechanismIsReal`
+isolates the geometric root cause directly; `CandidateDoesNotSelfOccludeWhenPresentInItsOwnOccluderSet`
+directly reproduces the validator's 3-body probe (a full occluder set built from every instance, each
+tested against itself via matching id) and proves no self-occlusion after the fix — bodies placed with
+wide lateral spread (verified numerically via an independent Python check first, matching this file's
+own established practice) so none of the three genuinely occludes another, isolating the assertion to
+self-occlusion only; `CandidateStillCorrectlyOccludedByADifferentResidentTreeWhenIdsDiffer` guards
+against an over-broad fix, confirming id-exclusion skips only the matching id and still lets a
+genuinely different resident tree occlude correctly. All 14/14 pass.
+
+**Live-run gate (previously missing — the plan's own "Live-run gate is authoritative... (M1, M3)"
+note, not satisfied by the first M3 pass, which only ran the 3 isolated unit-test suites):** ran the
+real `VIXEN.exe` on real Mesa-Dozen GPU (WSL2, `vixen-wsl` preset) with
+`VIXEN_STORED_SDF_DEMO=1 VIXEN_RESIDENCY_GATE_DEMO=1 VIXEN_EXIT_AFTER_FRAMES=650` — the identical
+scripted camera sweep Inc1 M4c's own live gate used (far→near→yaw-sweep→near→far over the same
+3-body Stored-SDF scene, X=14/64/114). Result: clean exit at 650 frames ("frame limit reached"), 0
+crashes/exceptions/VUIDs/SYNC-HAZARD lines. Exactly **9** `RequestBrickResidency` transitions logged
+across the whole run (`false→true→false→true→false→true→false→true→false`), each corresponding to one
+of the 3 separately-placed bodies individually crossing its own resolvability threshold during the
+distance sweep — matching Inc1 M4c's own documented pattern almost exactly, and critically NOT a
+thrash storm: residency settles and holds stable for long stretches (0 further toggles from frame
+~430 through the run's end at frame 650, despite the camera continuing to move through the yaw-sweep
+and near→far-again phases) rather than flipping every frame, which is exactly what the pre-fix bug
+would have produced once any residency was ever granted. This is the check that would have caught the
+original bug — it now passes cleanly.
+
 - **Not done in this milestone** (out of scope per the plan): M4 (GPU-LRU evaluation) remains open.
   No changes to `ResidencyTrigger.h`, `FrustumCull.h`, or `InstanceSort.h` — the occlusion gate is a
   new, independent gate layered on top via `UpdateBodySceneResidency`, not a rewrite of the existing
