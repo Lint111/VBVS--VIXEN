@@ -41,6 +41,7 @@
 // ---------------------------------------------------------------------------
 
 #include <array>
+#include <bit>
 #include <cstdint>
 #include <cstring>
 #include <unordered_map>
@@ -225,6 +226,58 @@ inline MipPool BakeMipPool(const Octree& oct, const SerializedOctree& serialized
             if (anyChild) {
                 pool.samples[static_cast<size_t>(nodeIdx) * pool.channelCount + ch] =
                     FilterMipSample(kind, children);
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Leaf-zero-sample fix (M3 Task 7 callout, option (a)): the loop above
+    // only ever writes pool.samples[nodeIdx] when nodeIdx is visited as a
+    // PARENT (a node with children). A brick-level LEAF's own descriptor
+    // slot (the nodeIdx the shader's leafDescriptorIndex addresses at
+    // BodyInstanceRayMarch.comp's handleLeafHitInstanced/Sdf) is never a
+    // parent — it has no children of its own — so without this pass its
+    // mip sample stays at the zero-initialized default. That default reads
+    // as "everything zero" (SDF value=0.0, i.e. ON the surface) whenever
+    // the shader falls back to mip[level][ordinal] for a non-resident leaf,
+    // which is a false surface crossing, not a graceful coarse shade.
+    //
+    // Fix: for every leaf child recorded in leafToBrickView, resolve its OWN
+    // final nodeIdx (not just its brick index) and fill pool.samples[leafIdx]
+    // with the same brick-reduction this leaf already contributes to its
+    // parent's sample (detail::ReduceBrickToMipSample) — so a leaf queried
+    // directly reads its own brick's filtered value, identical in kind to
+    // what an ancestor would show one level up.
+    for (uint32_t nodeIdx = 0; nodeIdx < pool.nodeCount; ++nodeIdx) {
+        const ChildDescriptor& desc = nodes[nodeIdx];
+        // Leaf children are appended contiguously after all non-leaf children
+        // in the same run starting at desc.childPointer (SVORebuild.cpp PHASE 3:
+        // "allChildren = nonLeafChildren then leafChildren"). Resolve each leaf
+        // child's own final index the same way the shader's
+        // handleLeafHitInstanced does (childPointer + totalInternalChildren +
+        // leafChildrenBeforeMe), rather than assuming octant order.
+        const uint32_t totalNonLeafChildren =
+            static_cast<uint32_t>(std::popcount(static_cast<uint8_t>(desc.validMask & ~desc.leafMask)));
+
+        uint32_t leafPosition = 0;
+        for (int octant = 0; octant < 8; ++octant) {
+            if (!desc.hasChild(octant) || !desc.isLeaf(octant)) continue;
+
+            const uint64_t key = (static_cast<uint64_t>(nodeIdx) << 3) | static_cast<uint64_t>(octant);
+            auto it = leafToBrickView.find(key);
+            if (it == leafToBrickView.end()) { ++leafPosition; continue; }
+            const uint32_t brickIndex = it->second;
+
+            const uint32_t leafNodeIdx = desc.childPointer + totalNonLeafChildren + leafPosition;
+            ++leafPosition;
+            if (leafNodeIdx >= pool.nodeCount) continue;
+
+            for (uint32_t ch = 0; ch < serialized.channelCount; ++ch) {
+                const SemanticId sem = static_cast<SemanticId>(serialized.channels[ch].semanticId);
+                const FieldKind kind = static_cast<FieldKind>(serialized.channels[ch].fieldKind);
+                const MipSample leafSample = detail::ReduceBrickToMipSample(
+                    serialized, brickIndex, sem, kind, /*comp=*/0);
+                pool.samples[static_cast<size_t>(leafNodeIdx) * pool.channelCount + ch] = leafSample;
             }
         }
     }

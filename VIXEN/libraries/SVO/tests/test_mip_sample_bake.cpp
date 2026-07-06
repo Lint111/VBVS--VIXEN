@@ -244,3 +244,61 @@ TEST(MipSampleBake, EveryNodeHasSamplesForEveryChannel) {
         EXPECT_GT(s.coverage, 0.0f) << "root channel " << ch << " must have coverage";
     }
 }
+
+// ---------------------------------------------------------------------------
+// M3 Task 7 leaf-zero-sample gap (option (a) fix): a brick-level LEAF's own
+// descriptor slot — the nodeIdx the shader's leafDescriptorIndex addresses
+// directly at a non-resident leaf — must carry the SAME brick reduction it
+// contributes to its parent's sample, not the zero-initialized default. This
+// fixture's root has every child as a brick-leaf, so every leaf's own nodeIdx
+// is resolvable via childPointer + nonLeafCount + leafPosition (root has zero
+// non-leaf children here, so leafPosition alone determines the offset).
+// ---------------------------------------------------------------------------
+TEST(MipSampleBake, LeafOwnNodeIndexCarriesItsOwnBrickReduction) {
+    SdfFixture f;
+    SerializedOctree out = SerializeSdf(f.body);
+    const Octree* oct = f.body.octree->getOctree();
+    ASSERT_NE(oct, nullptr);
+    ASSERT_NE(oct->root, nullptr);
+
+    MipPool pool = BakeMipPool(*oct, out);
+
+    const uint32_t rootIdx = 0;
+    const ChildDescriptor& rootDesc = oct->root->childDescriptors[rootIdx];
+
+    ASSERT_EQ(out.channels[0].semanticId, static_cast<uint32_t>(SEM_SDF));
+
+    uint32_t leafPosition = 0;
+    bool checkedAtLeastOne = false;
+    for (int octant = 0; octant < 8; ++octant) {
+        if (!rootDesc.hasChild(octant)) continue;
+        ASSERT_TRUE(rootDesc.isLeaf(octant));  // fixture assumption (see test above)
+
+        const uint64_t key = (static_cast<uint64_t>(rootIdx) << 3) | static_cast<uint64_t>(octant);
+        auto it = oct->root->leafToBrickView.find(key);
+        ASSERT_NE(it, oct->root->leafToBrickView.end());
+        const uint32_t brickIndex = it->second;
+
+        // Root has no non-leaf children in this fixture, so the leaf's own
+        // final nodeIdx is childPointer + leafPosition (no nonLeafCount offset).
+        const uint32_t leafNodeIdx = rootDesc.childPointer + leafPosition;
+        ++leafPosition;
+        ASSERT_LT(leafNodeIdx, pool.nodeCount);
+
+        MipSample expected = IndependentReduceBrickSdf(out, brickIndex);
+        MipSample actual   = pool.Get(leafNodeIdx, /*channelIdx=*/0);
+
+        EXPECT_NEAR(actual.value, expected.value, 1e-5f)
+            << "leaf nodeIdx " << leafNodeIdx << " (octant " << octant
+            << ") must carry its own brick's SDF reduction, not the zero default";
+        EXPECT_NEAR(actual.coverage, expected.coverage, 1e-5f);
+        if (expected.coverage > 0.0f) {
+            EXPECT_GT(actual.coverage, 0.0f)
+                << "leaf nodeIdx " << leafNodeIdx << " must not read back as the "
+                << "zero-initialized default when its brick has real occupied voxels";
+            checkedAtLeastOne = true;
+        }
+    }
+    EXPECT_TRUE(checkedAtLeastOne)
+        << "fixture must exercise at least one occupied leaf brick";
+}
