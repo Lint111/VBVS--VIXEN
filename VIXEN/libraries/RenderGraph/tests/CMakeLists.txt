@@ -743,6 +743,25 @@ else()
 endif()
 
 # ===========================================================================
+# Bandwidth A/B Measurement (Sparse-Mip ESVO LOD Inc1 M5, Task 12)
+# ===========================================================================
+# The increment's gate measurement: N real BodyOctreeSceneNode trees, all-resident
+# (baseline) vs all mip-only (Inc1), real BatchedUploaderStats bytes + wall time.
+if(TARGET GTest::gtest_main)
+    add_executable(test_bandwidth_ab_measurement Nodes/test_bandwidth_ab_measurement.cpp)
+    if(TARGET RenderGraph)
+        target_link_libraries(test_bandwidth_ab_measurement PRIVATE GTest::gtest_main RenderGraph)
+    else()
+        target_link_libraries(test_bandwidth_ab_measurement PRIVATE GTest::gtest_main)
+    endif()
+    set_target_properties(test_bandwidth_ab_measurement PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    gtest_discover_tests(test_bandwidth_ab_measurement)
+    message(STATUS "✓ test_bandwidth_ab_measurement configured (Sparse-Mip ESVO LOD Inc1 M5)")
+else()
+    message(STATUS "⊗ test_bandwidth_ab_measurement skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
 # CompileTimeResourceSystem Tests
 # ===========================================================================
 # Test suite for compile-time type system validation, caching, and traits.

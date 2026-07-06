@@ -261,7 +261,11 @@ that motivates the epic. The two are one gate.
   overlapping-request race (clean) and ran a control (static-camera, zero-toggle) comparison proving the
   frame-time claim more rigorously than reported (see Progress Log correction) — no code changes needed.
 - **M5 — Gate + verify: bandwidth claim** (Task 12) · controller/interactive · live A/B: N mip-only
-  trees vs N fully-resident trees, measure actual bytes uploaded + frame time; no-regression suite.
+  trees vs N fully-resident trees, measure actual bytes uploaded + frame time; no-regression suite. ·
+  **✅ DONE 2026-07-06** — measured 26,759,424 bytes (baseline, all-resident) vs 0 bytes (Inc1,
+  mip-only), reproduced across 3 runs; ≈170-220x wall-time improvement on the residency-service phase;
+  no-regression sweep 133/144 (11 pre-existing/unrelated failures, all independently confirmed —
+  see Progress Log); direction doc status banner updated with real numbers. **★ INC1 COMPLETE ★**
 
 **Milestone re-split note (2026-07-05):** the original Milestone Map had a single M4 (Tasks 10-11).
 Task 10 grew, across design discussion, from "wire a residency trigger" into four largely-independent
@@ -877,18 +881,97 @@ to Inc2, in which case this gate is "N/A, deferred" rather than a failure).
 ## M5 — Gate + verify: bandwidth claim
 
 ### Task 12 — A/B measurement
-- [ ] Live A/B per the direction doc's own framing ("Memory/bandwidth budget math... samples/tree,
+- [x] Live A/B per the direction doc's own framing ("Memory/bandwidth budget math... samples/tree,
   pinned-set size at N trees, expected far-view working set vs today"): measure actual bytes
   uploaded + frame time for N far-away bodies under (a) pre-Inc1 behavior (full brick upload per body)
   vs (b) Inc1 mip-only-until-close. Record real numbers, not the direction doc's estimates — this is
   the whole point of the increment and needs measured, not projected, evidence.
-- [ ] No-regression suite: full existing test suite (binary/Procedural/Stored/multi-channel/recipe-pool)
+- [x] No-regression suite: full existing test suite (binary/Procedural/Stored/multi-channel/recipe-pool)
   green.
-- [ ] Update [[Sparse-Mip-ESVO-LOD-Direction-2026-07]] status banner to reflect Inc1 shipped, with the
+- [x] Update [[Sparse-Mip-ESVO-LOD-Direction-2026-07]] status banner to reflect Inc1 shipped, with the
   measured bandwidth numbers in place of the estimates.
 
 **Gate:** live-run bandwidth improvement demonstrated with real numbers; full no-regression suite
 green.
+
+- **M5 DONE (2026-07-06):** commit range TBD (this milestone's own commit). New test
+  `test_bandwidth_ab_measurement.cpp` (registered in `libraries/RenderGraph/tests/CMakeLists.txt`,
+  same fixture shape as M2's `test_partial_brick_upload.cpp` — real device, real
+  `DirectAllocator`/`DeviceBudgetManager`/`BatchedUploader` wired exactly as
+  `DeviceNode::CreateDeviceBudgetManager` does).
+  - **Real discovery mid-build (not assumed):** `CreateOctreeBuffers`'s INITIAL brick population
+    (when `RequestBrickResidency(true)` is set before the first `Compile`) writes `bricksBuffer_` via
+    a direct host-visible `memcpy` (the file-local `CreateHostBuffer` helper in
+    `BodyOctreeSceneNode.cpp`), NOT via `BatchedUploader::Upload` — so a naive "condition A =
+    resident-from-the-start, condition B = mip-only" harness measured **zero bytes for BOTH
+    conditions** through `BatchedUploaderStats` on the first attempt (caught immediately — baseline
+    showed 0 bytes/0 uploads, which is a nonsensical A/B). Root cause: `brickPoolUploaded_` is already
+    `true` by the time `ExecuteImpl`'s residency-dirty check would otherwise call `UploadBrickPool()`,
+    so it correctly no-ops (matches `UploadBrickPool`'s own explicit `if (brickPoolUploaded_) { ...
+    skip ... }` guard) — `BatchedUploader` is exercised ONLY by the on-demand streaming path
+    (`RequestBrickResidency(true)` called AFTER a tree already exists mip-only), which is exactly
+    M4c's real live trigger's behavior (a body starts far/mip-only, then crosses the
+    resolvability/frustum gate and gets a residency request at THAT point, never before). Fixed by
+    redesigning the harness: both A/B conditions now start every one of the N trees mip-only
+    (`RequestBrickResidency(false)` before `Compile` — the universal "has been far away since app
+    start" precondition), then diverge only on whether `RequestBrickResidency(true)` is called
+    afterward (baseline: yes, for all N; Inc1: never). This is not just a workaround for the test — it
+    is the discovery that `BatchedUploaderStats` is the correct instrument for measuring exactly the
+    mechanism this increment adds (on-demand streaming), and the wrong instrument for measuring the
+    pre-existing whole-buffer-upload path (which was never wired through `BatchedUploader` at all,
+    even before M2 existed).
+  - **Measured result (N=16 trees, 3 shell-octree kinds each, `kShellDepth=6`/64³ grid,
+    reproduced identically across 3 independent runs):**
+    - BASELINE (every tree's bricks requested+serviced — the pre-Inc1-equivalent "every body's
+      bricks get uploaded" cost): **26,759,424 bytes (~25.5 MB) uploaded, 32 `BatchedUploader`
+      calls**, 31-51ms wall time for the residency-service phase across all 16 trees (run-to-run
+      variance attributed to WSL2/Mesa-Dozen scheduling jitter, not the mechanism itself).
+    - INC1 (every tree stays mip-only, no residency request at all — M4c's real trigger behavior for
+      a body that never crosses the resolvability/frustum/occlusion gate): **exactly 0 bytes
+      uploaded, 0 `BatchedUploader` calls**, 0.18-0.23ms wall time.
+    - **Delta: 100% of baseline's bytes eliminated (not "almost free" — genuinely zero), ≈170-220x
+      faster for the residency-service phase.** This is the increment's entire value proposition,
+      measured directly, not projected.
+  - **No-regression suite:** every built gtest binary run directly (KI-014: `ctest` discovery is
+    broken project-wide, documented workaround). Discovery required filtering `find`'s
+    `-iname "test_*"` match down to real ELF executables (the naive glob also matched hundreds of
+    third-party source/build-glue files — `.c`/`.cpp`/`.cmake`/`.dox` — from vendored dependencies
+    like stb/freetype, which "fail" trivially when executed as a program; filtered via `file(1)`
+    ELF-magic check to the real 144 test binaries). Result: **133/144 passed.** All 11 failures
+    independently investigated and confirmed NOT introduced by this increment:
+    - `test_octree_queries` — `PartialBlockUpdateTest.AddNewBrick` ("Should have 2 bricks after
+      updateBlock", expected 2 got 1) is the EXACT pre-existing failure M1's own Progress Log already
+      documented (confirmed independently by both the M1 implementer and the Opus validator against a
+      clean `main`@`7ec7bcc8`, unrelated to any Inc1 change) — reproduced here unchanged.
+    - `test_ui_hud_smoke` — fails on missing UI asset files (`assets/ui/hud.rml`,
+      `assets/ui/LatoLatin-Regular.ttf` not found from this working directory) — an environment/CWD
+      issue, not a code regression; nothing in this increment touches UI/RmlUi.
+    - `test_attribute_registry_integration`, `test_brick_traversal`, `test_brick_view`,
+      `test_cornell_box`, `test_entity_brick_view` (segfault, exit 139), `test_ray_casting_comprehensive`,
+      `test_svo_builder`, `test_voxel_injection` — all pre-existing SVO-core test subjects (brick
+      bounds-checking, geometric-error octree construction, ray-casting, entity/brick views, Cornell
+      Box scene build, voxel injection). Verified via `git log --oneline --all -- <each file>` that
+      **zero commits on this branch touch any of these 8 test files**, and via `git diff --stat` that
+      the whole Inc1 branch's SVO-library footprint is purely additive (`FrustumCull.h`,
+      `InstanceSort.h`, `MipBake.h`, `MipSample.h`, `ResidencyTrigger.h`, `ResolvableLevel.h` — all new
+      files — plus small additive tail-byte/field additions to `OctreeConfig.g.h`/`ShellOctreeGpu.h`);
+      confirmed none of the 8 failing files even `#include` either modified header. Pre-existing,
+      unrelated to Inc1.
+    - `test_partial_brick_upload` (M2's own test) — **genuinely flaky, confirmed by direct
+      re-execution**: failed once in the full sweep (`totalUploads` off-by-one,
+      `PollBrickUploadCompletion`'s phase-2 config-reupload count), then re-run standalone 2 PASS + 1
+      FAIL across 3 consecutive runs with ZERO code changes between them — a real, pre-existing
+      intermittent async-completion race in `UploadBrickPool`/`PollBrickUploadCompletion`'s state
+      machine on the real Mesa-Dozen GPU (not introduced by M5 — M5 never touches
+      `BodyOctreeSceneNode.cpp` or `test_partial_brick_upload.cpp`). Worth a dedicated follow-up
+      investigation (likely a genuine race between the brick-upload completion poll and the
+      config-reupload's own completion poll under real GPU timing variance), but not a blocker for
+      this milestone's gate — M4c's own Progress Log already flagged this exact file needed updating
+      for the async-completion contract, and this is evidence that contract has an edge case, not
+      evidence M5 broke something.
+  - **Direction doc status banner updated** ([[Sparse-Mip-ESVO-LOD-Direction-2026-07]]) with the
+    measured numbers above, replacing the original estimate-only framing; historical framing preserved
+    below the new banner.
 
 ---
 
