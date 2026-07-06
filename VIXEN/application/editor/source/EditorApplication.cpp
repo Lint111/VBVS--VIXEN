@@ -296,15 +296,13 @@ bool EditorApplication::SaveDocument() {
     return true;
 }
 
-void EditorApplication::Update() {
-    VulkanGraphApplication::Update();
-
-    // Inc-2b M3 (carried over from the M2 validator): the base VulkanGraphApplication::Update's
-    // try/catch (VulkanGraphApplication.cpp) is scoped to that method's OWN body -- it returns
-    // before control reaches here, so nothing below is actually covered by it. A prior version of
-    // this comment claimed otherwise; wrap this override's own body in its own guard (mirroring
-    // the base method's catch shape) so the no-throw-across-the-tick contract (design §5) really
-    // holds for the toggle/undo/capture/script code added in Inc-2b, not just by assertion.
+void EditorApplication::PreTick() {
+    // graph.Run() consolidation: the scripted-action injector runs in PreTick() (before Update())
+    // instead of at the top of Update(). Behavior-identical: PreTick() is called by
+    // VulkanApplicationBase::Tick() immediately before Update(), and updateTick_ only advances at
+    // the END of Update() -- so the injector sees the same updateTick_ it saw when it lived inside
+    // Update(), and the dirty_ it sets is re-flattened by Update()'s existing dirty tail the same
+    // tick. Own try/catch (mirrors Update()'s) so a malformed script never throws across the tick.
     try {
     // Inc-2b Task 4: parse VIXEN_EDITOR_SCRIPT / VIXEN_EDITOR_CAPTURE_FRAMES /
     // VIXEN_EDITOR_CAPTURE_DIR exactly once (mirrors VulkanGraphApplication.cpp's
@@ -325,9 +323,8 @@ void EditorApplication::Update() {
     }
 
     // Inject any scripted action due this tick through the SAME methods the interactive input
-    // path calls (ToggleLayer / rt_.Undo / rt_.Redo) -- so the harness exercises the real
-    // click-equivalent -> ActionStack -> re-flatten -> undo dispatch, not a shortcut. Placed
-    // BEFORE the dirty_ re-flatten tail below so the re-flatten happens the same tick.
+    // path calls (ToggleLayer / rt_.Undo / rt_.Redo) -- exercising the real
+    // click-equivalent -> ActionStack -> re-flatten -> undo dispatch, not a shortcut.
     for (const auto& action : scriptedActions_) {
         if (action.frame != updateTick_) continue;
         switch (action.kind) {
@@ -336,7 +333,25 @@ void EditorApplication::Update() {
             case ScriptedAction::Kind::Redo:   rt_.Redo(); break;
         }
     }
+    } catch (const std::exception& e) {
+        lastEditorError_ = std::string("PreTick: ") + e.what();
+        logger_->Error("[EditorApplication] PreTick exception: " + lastEditorError_);
+    } catch (...) {
+        lastEditorError_ = "PreTick: unknown exception";
+        logger_->Error("[EditorApplication] PreTick unknown exception");
+    }
+}
 
+void EditorApplication::Update() {
+    VulkanGraphApplication::Update();
+
+    // Inc-2b M3 (carried over from the M2 validator): the base VulkanGraphApplication::Update's
+    // try/catch (VulkanGraphApplication.cpp) is scoped to that method's OWN body -- it returns
+    // before control reaches here, so nothing below is actually covered by it. A prior version of
+    // this comment claimed otherwise; wrap this override's own body in its own guard (mirroring
+    // the base method's catch shape) so the no-throw-across-the-tick contract (design §5) really
+    // holds for the toggle/undo/capture/script code added in Inc-2b, not just by assertion.
+    try {
     // Drain UI clicks (S4 pattern) and toggle the matching layer's enabled override.
     if (auto* selection = GetUiSelectionProviderNode()) {
         const std::string clickedId = selection->DrainClickedElementId();
@@ -402,10 +417,11 @@ void EditorApplication::Update() {
     // scripted "@0"/capture-frame-0 entry permanently un-hittable -- found live via the M3
     // windowed gate: editor_capture_0.png never appeared even though captureFrames_ contained 0).
     // Note frame 0 is still not a useful CAPTURE frame regardless of this fix -- Update() ticks
-    // BEFORE the render loop's first Render() call (main.cpp: `Update(); Render();` per
-    // iteration), so a tick-0 capture still reads compute_render_target before anything has ever
-    // been drawn into it (an all-black PNG). Scripted ACTIONS (toggle/undo/redo) at frame 0 are
-    // unaffected by that -- they mutate the mask/ActionStack regardless of what's on screen yet.
+    // BEFORE the render loop's first Render() call (VulkanApplicationBase::Tick(): PreTick() ->
+    // Update() -> Render() -> PostTick(), per iteration), so a tick-0 capture still reads
+    // compute_render_target before anything has ever been drawn into it (an all-black PNG).
+    // Scripted ACTIONS (toggle/undo/redo) at frame 0 are unaffected by that -- they mutate the
+    // mask/ActionStack regardless of what's on screen yet.
     ++updateTick_;
     } catch (const std::exception& e) {
         lastEditorError_ = std::string("Update failed: ") + e.what();

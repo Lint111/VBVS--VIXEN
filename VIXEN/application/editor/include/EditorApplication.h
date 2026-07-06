@@ -33,6 +33,7 @@ public:
     };
 
     void BuildRenderGraph() override;
+    void PreTick() override;   // graph.Run(): scripted-action injector runs here, before Update()
     void Update() override;
 
     // Loads (or reloads) the document. Must be called before Prepare()/BuildRenderGraph()
