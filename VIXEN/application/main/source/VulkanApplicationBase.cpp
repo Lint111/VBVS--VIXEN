@@ -1,7 +1,58 @@
 #include "VulkanApplicationBase.h"
 #include "VulkanGlobalNames.h"
 
-VulkanApplicationBase::VulkanApplicationBase() 
+#include <array>
+#include <algorithm>
+#include <chrono>
+#include <cstdio>
+
+namespace {
+// Encapsulates the standalone app's rolling CPU frame-time instrumentation (relocated from
+// application/main/source/main.cpp so it isn't copy-pasted per entry point). Behavior-identical:
+// avg/p99/FPS summary every 120 frames + a per-frame OUTLIER line when a frame costs >3x the prior
+// window's median AND >5ms. Enabled only when RunOptions.enableFrameTimer is set.
+class FrameTimer {
+public:
+    // Call once per rendered frame. frameCounter is the post-increment count (1-based).
+    void Record(uint64_t frameCounter, Logger* logger) {
+        const auto now = std::chrono::steady_clock::now();
+        const double thisFrameMs = std::chrono::duration<double, std::milli>(now - lastFrameStart_).count();
+        frameTimesMs_[(frameCounter - 1) % kFrameWindow] = thisFrameMs;
+        lastFrameStart_ = now;
+
+        if (lastWindowMedian_ > 0.0 && thisFrameMs > 3.0 * lastWindowMedian_ && thisFrameMs > 5.0 && logger) {
+            char obuf[128];
+            std::snprintf(obuf, sizeof(obuf), "[FrameTimer] OUTLIER frame %llu: %.3f ms",
+                          static_cast<unsigned long long>(frameCounter), thisFrameMs);
+            logger->Info(obuf);
+        }
+        if (frameCounter % kFrameWindow == 0 && logger) {
+            std::array<double, kFrameWindow> sorted = frameTimesMs_;
+            std::sort(sorted.begin(), sorted.end());
+            double sum = 0.0;
+            for (double v : sorted) sum += v;
+            const double avg = sum / static_cast<double>(kFrameWindow);
+            const double p99 = sorted[(kFrameWindow * 99) / 100];
+            const double median = sorted[kFrameWindow / 2];
+            char buf[160];
+            std::snprintf(buf, sizeof(buf),
+                          "[FrameTimer] frames %llu-%llu: avg %.3f ms (%.1f FPS) | p99 %.3f ms",
+                          static_cast<unsigned long long>(frameCounter - kFrameWindow),
+                          static_cast<unsigned long long>(frameCounter),
+                          avg, avg > 0.0 ? 1000.0 / avg : 0.0, p99);
+            logger->Info(buf);
+            lastWindowMedian_ = median;
+        }
+    }
+private:
+    static constexpr size_t kFrameWindow = 120;
+    std::array<double, kFrameWindow> frameTimesMs_{};
+    std::chrono::steady_clock::time_point lastFrameStart_ = std::chrono::steady_clock::now();
+    double lastWindowMedian_ = 0.0;
+};
+}  // namespace
+
+VulkanApplicationBase::VulkanApplicationBase()
     : debugFlag(true), isPrepared(false) {
     instanceObj.layerExtension.GetInstanceLayerProperties();
 
@@ -116,10 +167,10 @@ int VulkanApplicationBase::Run(const RunOptions& opts) {
         }
         if (mainLogger) mainLogger->Info("[Run] Entering render loop...");
 
-        // FrameTimer is added in Task 3; until then enableFrameTimer is honored by a no-op.
+        FrameTimer frameTimer;
         TickStatus st = TickStatus::Running;
         while ((st = Tick()) == TickStatus::Running) {
-            // (Task 3 inserts frame-timer recording here, gated by opts.enableFrameTimer.)
+            if (opts.enableFrameTimer) frameTimer.Record(frameCounter_, mainLogger.get());
         }
 
         if (mainLogger) {
