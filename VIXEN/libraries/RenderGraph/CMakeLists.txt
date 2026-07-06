@@ -285,6 +285,7 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/TraceRaysNode.cpp
     src/Nodes/WindowNode.cpp
     src/Nodes/BodyOctreeSceneNode.cpp
+    src/Nodes/ShellRevalidateNode.cpp
 )
 
 # ============================================================================

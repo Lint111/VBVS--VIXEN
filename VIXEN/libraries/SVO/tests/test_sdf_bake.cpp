@@ -16,18 +16,19 @@ using namespace Vixen::SVO;
 // ============================================================================
 // Task 1 — BakeRecipeToSdfWorld / NarrowBandMatchesRecipe
 //
-// Inc2 M6 contract: narrow-band SDF is sparse at the BRICK level — a brick the
-// iso-surface passes through (plus a 1-brick dilation margin) is allocated and
-// FULLY populated with the true signed distance; bricks far from the surface are
-// unallocated. (Storing only band cells left the rest as 0 → false iso-surfaces
-// that the GPU trilinear march hit as brick facets — see SdfBake.h.)
+// Occupancy contract (supersedes the old Inc2 M6 thin-band rule): SDF is sparse at
+// the BRICK level — a brick that is INSIDE the solid OR within the surface band
+// (evalSdf <= bandVoxels), plus a 1-brick dilation margin, is allocated and FULLY
+// populated with the true signed distance; exterior bricks beyond the band are
+// unallocated. (The old |evalSdf| <= band predicate dropped deep-interior bricks the
+// thin shell never reached → SDF interior holes — see SdfBake.h.)
 //
 // Bake a small sphere (radius 6, centre (32,32,32)) into a 64^3 grid with band=2,
-// so the surface shell leaves clearly-unallocated bricks at the corners. Assert:
+// so the exterior corners stay clearly-unallocated. Assert:
 //   (a) a surface voxel IS stored and its Density ≈ evalSdf
-//   (b) a NON-band voxel INSIDE an active brick IS stored with its true sd
-//       (full-brick population — the M6 fix)
-//   (c) a far-corner voxel, in a brick the surface never reaches, is NOT stored
+//   (b) an outward NON-band voxel INSIDE an occupied brick IS stored with its true sd
+//       (full-brick population)
+//   (c) a far-corner exterior voxel, beyond the band, is NOT stored
 //       (brick-level sparsity preserved)
 // ============================================================================
 TEST(SdfBake, NarrowBandMatchesRecipe) {
@@ -45,20 +46,57 @@ TEST(SdfBake, NarrowBandMatchesRecipe) {
     EXPECT_NEAR(*sdSurf, evalSdf(RECIPE_SPHERE, surf, center, rp), 0.6f)
         << "Stored Density must approximate evalSdf";
 
-    // (b) Non-band voxel still inside an active brick: (41,32,32), sd = 3 (> band=2),
-    //     but its brick [40,48) contains band voxel (40,32,32) (sd=2) → active → fully
-    //     populated, so this cell now carries its true sd (NOT left empty/0).
+    // (b) Outward non-band voxel inside an occupied brick: (41,32,32), sd = 3 (> band=2),
+    //     but its brick [40,48) contains the in-band voxel (40,32,32) (sd=2 <= band) → the
+    //     brick is occupied → fully populated, so this cell carries its true sd (NOT 0).
     glm::vec3 inBrick(41.0f, 32.0f, 32.0f);
     auto sdInBrick = baked.sampleStored(inBrick);
     ASSERT_TRUE(sdInBrick.has_value())
-        << "Non-band voxel inside an ACTIVE brick must be fully populated (M6 full-brick fix)";
+        << "Non-band voxel inside an OCCUPIED brick must be fully populated (full-brick fill)";
     EXPECT_NEAR(*sdInBrick, evalSdf(RECIPE_SPHERE, inBrick, center, rp), 0.6f)
         << "Full-brick population must store the TRUE signed distance, not 0";
 
-    // (c) Far-corner voxel (0,0,0): its brick [0,8) is several bricks from the surface
-    //     shell (even after the 1-brick dilation) → unallocated.
+    // (c) Far-corner voxel (0,0,0): sd = |(-32,-32,-32)| - 6 ≈ +49 (far beyond band=2)
+    //     and its brick [0,8) is nowhere near the solid (even after 1-brick dilation) →
+    //     unallocated. Confirms occupancy sparsity does NOT flood the whole grid.
     EXPECT_FALSE(baked.sampleStored(glm::vec3(0.0f, 0.0f, 0.0f)).has_value())
-        << "Far-corner voxel must NOT be stored (brick-level sparsity preserved)";
+        << "Far-corner exterior voxel must NOT be stored (brick-level sparsity preserved)";
+}
+
+// ============================================================================
+// Occupancy regression guard — the DEEP INTERIOR must now be stored.
+//
+// This is the direct regression test for the interior-hole bug: a point WELL
+// inside a large sphere (sd ≪ -bandVoxels), in a brick that never touches the
+// surface shell, must carry real SDF data. Under the OLD |evalSdf| <= band
+// predicate that brick was never marked active (no in-band cell) → the point
+// was unallocated → an interior hole. Under the occupancy predicate (sd <= band)
+// every interior cell marks its brick occupied, so the point is stored.
+//
+// Sphere radius 48 at (64,64,64) in 128^3, band=2. The centre brick [64,72) is
+// entirely interior with its NEAREST in-band cell ~3 bricks away, so the 1-brick
+// dilation of the old thin-shell predicate CANNOT reach it — the point is
+// unallocated on old code (interior hole) and allocated on new (occupancy).
+// (A smaller sphere would let dilation flood the tiny interior, hiding the bug.)
+// ============================================================================
+TEST(SdfBake, DeepInteriorIsStored) {
+    const int n = 128;
+    const glm::vec3 center(64.0f, 64.0f, 64.0f);
+    RecipeParams rp{48.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};  // large sphere r=48
+    const float bandVoxels = 2.0f;
+
+    SdfBakeResult baked = BakeRecipeToSdfWorld(RECIPE_SPHERE, center, rp, n, bandVoxels);
+
+    // Deep-interior point = sphere centre, sd = -48, ~3 bricks from the shell.
+    glm::vec3 deep(64.0f, 64.0f, 64.0f);
+    ASSERT_LT(evalSdf(RECIPE_SPHERE, deep, center, rp), -bandVoxels)
+        << "test precondition: point must be deeper than the band (sd ≪ -band)";
+    auto sdDeep = baked.sampleStored(deep);
+    ASSERT_TRUE(sdDeep.has_value())
+        << "Deep-interior voxel (sd ≪ -band) must be stored under occupancy "
+           "(fails on old thin-band predicate — the interior-hole bug)";
+    EXPECT_NEAR(*sdDeep, evalSdf(RECIPE_SPHERE, deep, center, rp), 0.6f)
+        << "Interior must carry the TRUE (negative) signed distance, not a 0 sentinel";
 }
 
 // ============================================================================

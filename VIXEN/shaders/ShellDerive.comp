@@ -1,0 +1,128 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+
+// ============================================================================
+// ShellDerive.comp — Surface-Shell ESVO cache derivation (increment 1, GPU pass).
+//
+// GPU mirror of the CPU source of truth Vixen::SVO::DeriveShell (ShellDerive.h).
+// The CPU path is authoritative; this shader must stay bit-for-bit consistent
+// with it (same crossing test, same 26-neighbour dilation).
+//
+// Two dispatches over the octree-0 brick set (host loops `shellDilation` times
+// for pass 2):
+//   Pass 1 (mode 0): SURFACE classification. For each source brick, scan its 512
+//     stored SDF distances; mark shellFlags[brick] |= SURFACE_BIT iff
+//     (min < +halfBrickDiag && max > -halfBrickDiag) — the sign-and-magnitude
+//     crossing test (NOT a |sd|<band proximity band).
+//   Pass 2 (mode 1): one dilation layer. For each brick already in the shell,
+//     mark every allocated 26-neighbour (via brickGridLookup) as shell too.
+//     Host dispatches this `shellDilation` times (double-buffered frontier in
+//     shellFlags bits) to grow N brick-layers.
+//
+// Compaction (shellSlot -> sourceBrickId + restrided pool) is intentionally
+// NOT done here — §H defers GPU-side compaction / append-only lookup to a
+// follow-up; increment 1 compacts on the CPU (DeriveShell) and the GPU pass
+// only produces the SHELL membership mask that a compaction pass consumes.
+// ============================================================================
+
+#include "VoxelChannelFormat.glsl"       // SEM_SDF, kVoxelsPerBrick if defined
+#include "Generated/OctreeConfig.glsl"   // ChannelDesc / OctreeConfig (single source)
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+// Source full-interior channel pool (same binding contract as the march shader's
+// binding 11) — read-only here.
+layout(std430, binding = 0) readonly buffer SourcePoolBuffer { float srcPool[]; };
+
+// Dense grid->brick lookup for octree 0 (uint32[bpa^3]; 0xFFFFFFFF == empty).
+layout(std430, binding = 1) readonly buffer BrickLookupBuffer { uint brickLookup[]; };
+
+// Per-brick shell membership flags (bit0 = SURFACE, bit1 = SHELL, bit2 = frontier).
+layout(std430, binding = 2) buffer ShellFlagsBuffer { uint shellFlags[]; };
+
+// Octree-0 config (single element for increment 1).
+layout(std430, binding = 3) readonly buffer ConfigBuffer { OctreeConfig cfg; };
+
+// Derivation parameters.
+layout(push_constant) uniform Push {
+    uint brickCount;    // number of source bricks in octree 0
+    uint bpa;           // bricksPerAxis
+    uint mode;          // 0 = surface classify, 1 = one dilation layer
+    uint sdfBase;       // channelBaseFloats for SEM_SDF (0 in canonical layout)
+} pc;
+
+const uint SURFACE_BIT  = 1u;
+const uint SHELL_BIT    = 2u;
+const uint FRONTIER_BIT = 4u;
+
+const uint VOXELS_PER_BRICK = 512u;
+
+// Unpack a cellIdx grid index into (gx,gy,gz).
+void unflat(uint cellIdx, uint bpa, out int gx, out int gy, out int gz) {
+    gx = int(cellIdx % bpa);
+    gy = int((cellIdx / bpa) % bpa);
+    gz = int(cellIdx / (bpa * bpa));
+}
+
+void main() {
+    uint bi = gl_GlobalInvocationID.x;
+    if (bi >= pc.brickCount) return;
+
+    uint stride   = cfg.brickStrideFloats;
+    uint poolBase = cfg.poolBrickBase;            // float offset (0 for octree 0)
+    float halfDiag = 0.5 * 1.7320508075688772 * float(cfg.brickSize);
+
+    if (pc.mode == 0u) {
+        // ---- Pass 1: SURFACE = sign-and-magnitude crossing over 512 SDF floats.
+        float mn =  3.4e38;
+        float mx = -3.4e38;
+        uint brickStart = poolBase + bi * stride + pc.sdfBase;
+        for (uint v = 0u; v < VOXELS_PER_BRICK; ++v) {
+            float d = srcPool[brickStart + v];
+            mn = min(mn, d);
+            mx = max(mx, d);
+        }
+        uint flags = 0u;
+        if (mn < halfDiag && mx > -halfDiag) {
+            flags = SURFACE_BIT | SHELL_BIT | FRONTIER_BIT;  // seed shell + frontier
+        }
+        shellFlags[bi] = flags;
+        return;
+    }
+
+    // ---- Pass 2: one dilation layer. A brick on the current frontier marks each
+    //      allocated 26-neighbour as shell + next-frontier. We read the frontier
+    //      bit, clear it, and set neighbours' shell/frontier bits. To find this
+    //      brick's grid coordinate we scan the lookup (increment 1: bpa is small,
+    //      typically <= 8, so bpa^3 <= 512; acceptable. A follow-up passes an
+    //      inverse table to avoid the scan).
+    uint self = shellFlags[bi];
+    if ((self & FRONTIER_BIT) == 0u) return;
+
+    // Locate this brick's grid cell by scanning the lookup for value == bi.
+    uint bpa = pc.bpa;
+    uint total = bpa * bpa * bpa;
+    int gx = -1, gy = -1, gz = -1;
+    for (uint cellIdx = 0u; cellIdx < total; ++cellIdx) {
+        if (brickLookup[cellIdx] == bi) { unflat(cellIdx, bpa, gx, gy, gz); break; }
+    }
+    if (gx < 0) return;
+
+    for (int dz = -1; dz <= 1; ++dz)
+      for (int dy = -1; dy <= 1; ++dy)
+        for (int dx = -1; dx <= 1; ++dx) {
+            if (dx == 0 && dy == 0 && dz == 0) continue;
+            int nx = gx + dx, ny = gy + dy, nz = gz + dz;
+            if (nx < 0 || ny < 0 || nz < 0 ||
+                nx >= int(bpa) || ny >= int(bpa) || nz >= int(bpa)) continue;
+            uint nflat = uint(nx) + uint(ny) * bpa + uint(nz) * bpa * bpa;
+            uint nb = brickLookup[nflat];
+            if (nb == 0xFFFFFFFFu || nb >= pc.brickCount) continue;
+            // Set neighbour shell + frontier (races benign: idempotent OR of bits;
+            // the host re-dispatches per layer, so a missed same-pass update is
+            // picked up next layer — the fixed-point converges regardless).
+            atomicOr(shellFlags[nb], SHELL_BIT | FRONTIER_BIT);
+        }
+    // This brick is done propagating for this layer.
+    atomicAnd(shellFlags[bi], ~FRONTIER_BIT);
+}

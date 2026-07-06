@@ -41,13 +41,16 @@ struct SdfBakeResult {
 // ---------------------------------------------------------------------------
 // BakeRecipeToSdfWorld
 //
-// Narrow-band SDF, sparse at the BRICK level (Inc2 M6 correctness fix):
-//   1. A brick (brickDepth → 8^3 cells) is ACTIVE if any of its cells is within
-//      the narrow band (|evalSdf| <= bandVoxels) — i.e. the iso-surface passes
-//      through it.
-//   2. Every cell of an ACTIVE brick gets a voxel entity carrying the TRUE signed
-//      distance (Density), Color{1,1,1}, Material{1}.
-//   3. Inactive bricks (no surface) get no voxels → the octree skips them.
+// Occupancy-based SDF, sparse at the BRICK level (occupancy fix — supersedes the
+// old Inc2 M6 thin-band criterion):
+//   1. A brick (brickDepth → 8^3 cells) is OCCUPIED if any of its cells is inside
+//      the solid OR within the surface band (evalSdf <= bandVoxels) — i.e. it holds
+//      interior AND surface-shell bricks, not just the shell.
+//   2. Every cell of an ACTIVE (occupied + 1-brick dilation) brick gets a voxel
+//      entity carrying the TRUE signed distance (Density), Color, Roughness, Material.
+//   3. Non-occupied exterior bricks (beyond the band) get no voxels → the octree
+//      skips them. The old |evalSdf| <= band predicate dropped a body's deep-interior
+//      bricks (SDF interior holes); the occupancy predicate fills the whole solid.
 //
 // Why fully populate active bricks (not just band cells): the GPU trilinear march
 // (StoredSdf.glsl) samples the SDF across a whole leaf brick. If non-band cells in
@@ -90,40 +93,51 @@ inline SdfBakeResult BakeSdfWorld(EvalFn&& eval, const glm::vec3& center,
         return (bz * bricksPerAxis + by) * bricksPerAxis + bx;
     };
 
-    // Pass 1 — mark bricks the iso-surface passes through (any in-band cell).
+    // Pass 1 — mark OCCUPIED bricks: a brick is occupied if any of its cells is
+    // INSIDE the solid OR within the surface band, i.e. sd <= bandVoxels (negative =
+    // inside, confirmed SdfRecipes.h:46). This view-independent occupancy predicate is
+    // true for all deep-interior cells (sd very negative) AND the outward band up to
+    // +bandVoxels; it is false only for exterior cells beyond the band. Dropping the old
+    // std::abs() is the fix: the previous |sd| <= band predicate only marked bricks the
+    // thin surface shell passed through, leaving a body's deep-interior bricks (sd far
+    // below -band, never touching the shell) UNALLOCATED — the Stored-SDF interior-hole
+    // bug. Now a body's full solid interior gets real SDF data.
     const size_t numBricks = static_cast<size_t>(bricksPerAxis) * bricksPerAxis * bricksPerAxis;
-    std::vector<uint8_t> bandBrick(numBricks, 0u);
+    std::vector<uint8_t> occupiedBrick(numBricks, 0u);
     for (int z = 0; z < n; ++z)
       for (int y = 0; y < n; ++y)
         for (int x = 0; x < n; ++x) {
             const float sd = eval(
                 glm::vec3(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z)));
-            if (std::abs(sd) <= bandVoxels)
-                bandBrick[brickIndex(x / brickSide, y / brickSide, z / brickSide)] = 1u;
+            if (sd <= bandVoxels)
+                occupiedBrick[brickIndex(x / brickSide, y / brickSide, z / brickSide)] = 1u;
         }
 
-    // Dilate the active set by ONE brick. The GPU trilinear stencil + gradient at a surface
-    // brick's faces reach one voxel into the neighbouring brick; if that neighbour were
-    // unallocated, _sampleSdfVoxel returns its 1e9 sentinel and corrupts the sample/normal at
-    // the face. Populating a 1-brick margin guarantees every stencil around a real surface
-    // brick reads honest data, so the march sphere-traces cleanly with consistent normals (no
-    // brick-face shading seams). Sparsity is preserved (shell + 1 margin, not a solid ball).
+    // Dilate the occupied set by ONE brick. The GPU trilinear stencil + gradient at an
+    // outer-boundary brick's faces reach one voxel into the neighbouring brick; if that
+    // neighbour were unallocated, _sampleSdfVoxel returns its 1e9 sentinel and corrupts the
+    // sample/normal at the face. Populating a 1-brick margin guarantees every stencil around a
+    // real surface brick reads honest data, so the march sphere-traces cleanly with consistent
+    // normals (no brick-face shading seams). Under the occupancy predicate the interior is
+    // already fully populated, so this dilation now only adds the one-brick OUTWARD skirt beyond
+    // the surface — exactly the exterior trilinear-stencil margin it was meant for. Sparsity is
+    // preserved (solid body + 1 exterior margin, not the whole grid).
     std::vector<uint8_t> activeBrick(numBricks, 0u);
     // NOTE: do NOT name a variable `near`/`far` — MSVC reserves them (legacy segment
     // qualifiers via windows.h), which GCC does not, so it silently breaks the MSVC build.
     for (int bz = 0; bz < bricksPerAxis; ++bz)
       for (int by = 0; by < bricksPerAxis; ++by)
         for (int bx = 0; bx < bricksPerAxis; ++bx) {
-            bool touchesBand = false;
-            for (int dz = -1; dz <= 1 && !touchesBand; ++dz)
-              for (int dy = -1; dy <= 1 && !touchesBand; ++dy)
-                for (int dx = -1; dx <= 1 && !touchesBand; ++dx) {
+            bool touchesOccupied = false;
+            for (int dz = -1; dz <= 1 && !touchesOccupied; ++dz)
+              for (int dy = -1; dy <= 1 && !touchesOccupied; ++dy)
+                for (int dx = -1; dx <= 1 && !touchesOccupied; ++dx) {
                     const int nx = bx + dx, ny = by + dy, nz = bz + dz;
                     if (nx < 0 || ny < 0 || nz < 0 ||
                         nx >= bricksPerAxis || ny >= bricksPerAxis || nz >= bricksPerAxis) continue;
-                    if (bandBrick[brickIndex(nx, ny, nz)]) touchesBand = true;
+                    if (occupiedBrick[brickIndex(nx, ny, nz)]) touchesOccupied = true;
                 }
-            if (touchesBand) activeBrick[brickIndex(bx, by, bz)] = 1u;
+            if (touchesOccupied) activeBrick[brickIndex(bx, by, bz)] = 1u;
         }
 
     // Pass 2 — fully populate every active brick with the TRUE signed distance

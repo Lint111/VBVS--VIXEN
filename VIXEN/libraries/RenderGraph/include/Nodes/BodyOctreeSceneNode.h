@@ -7,6 +7,7 @@
 
 #include "ShellOctree.h"      // Vixen::SVO::ShellOctree, BuildShellOctree
 #include "ShellOctreeGpu.h"   // Vixen::SVO::{Concatenate, ConcatenatedOctrees, BodyInstanceGpu, PackInstances}
+#include "ShellDerive.h"      // Vixen::SVO::{DeriveShell, RevalidateShellBricks, ShellDeriveResult}
 #include "Recipe/SdfInstruction.h"  // Vixen::SVO::Recipe::SdfInstruction
 
 #include <cstdint>
@@ -98,6 +99,28 @@ public:
      */
     void SetRecipePool(Vixen::SVO::ConcatenatedOctrees pool);
 
+    /**
+     * @brief Surface-Shell ESVO cache — brick-layer dilation of the SURFACE set.
+     *
+     * Clamped to [1,3]; default 1 (minimal sound 26-neighbour invariant). Sizes
+     * the derived reachable-shell cache, NOT SdfBake's bandVoxels. Re-derives both
+     * cache slots on the next Compile/Rematerialize.
+     */
+    void SetShellThickness(uint32_t dilation);
+
+    /// Accessors for verification/tests (no GPU needed). ShellCacheSlot returns
+    /// octree 0's per-octree derivation (the primary Stored-SDF body); ShellPoolSlot
+    /// returns the whole multi-octree compact pool. Slot 0/1 = CPU double buffer.
+    [[nodiscard]] const Vixen::SVO::ShellDeriveResult& ShellCacheSlot(uint32_t i) const {
+        static const Vixen::SVO::ShellDeriveResult kEmpty{};
+        const auto& po = shellCache_[i & 1u].perOctree;
+        return po.empty() ? kEmpty : po[0];
+    }
+    [[nodiscard]] const Vixen::SVO::ShellPool& ShellPoolSlot(uint32_t i) const {
+        return shellCache_[i & 1u];
+    }
+    [[nodiscard]] uint32_t ShellDilation() const { return shellDilation_; }
+
 protected:
     void SetupImpl(TypedSetupContext& ctx) override;
     void CompileImpl(TypedCompileContext& ctx) override;
@@ -113,6 +136,16 @@ private:
     void DestroyBuffers();
     void DestroyOctreeBuffers();   // P2.3: destroy ONLY the 6 octree/channel buffers (ring untouched)
     void Rematerialize();          // P2.3: re-bake octree 0 + recreate octree buffers (behind vkDeviceWaitIdle)
+
+    // --- Surface-Shell ESVO cache ---
+    // Derive the reachable shell of octree 0 from concatenated_ into BOTH CPU
+    // double-buffer slots (bootstrap). No-op when octree 0 is not Stored-SDF.
+    void DeriveShellCache();
+    // Create/refresh the two GPU shell buffer pairs (double-buffered by distinct
+    // object identity) from shellCache_[0]/[1]. Called from CreateOctreeBuffers.
+    void CreateShellBuffers(Vixen::Vulkan::Resources::VulkanDevice* device);
+    // Re-upload shellCache_[slot]'s compact pool + grid lookup into GPU slot `slot`.
+    void UploadShellSlot(Vixen::Vulkan::Resources::VulkanDevice* device, uint32_t slot);
 
     // Build constants (one shell per kind; depth/material chosen here).
     static constexpr int      kShellDepth = 6;   // 2^6 = 64 cells/axis
@@ -159,6 +192,31 @@ private:
     VkDeviceMemory sdfMemory_            = VK_NULL_HANDLE;
     VkBuffer       brickLookupBuffer_    = VK_NULL_HANDLE;
     VkDeviceMemory brickLookupMemory_    = VK_NULL_HANDLE;
+
+    // --- Surface-Shell ESVO cache GPU buffers (double-buffered by DISTINCT object
+    //     identity). Render reads slot [N&1] (last committed); the ShellRevalidate
+    //     compute pass writes slot [(N+1)&1]. Because the two GPU buffers are
+    //     SEPARATE VkBuffer objects (distinct Resource* on the graph side), the
+    //     FrameSyncScheduler — which keys hazards by pointer identity — never
+    //     inserts a false barrier between a render reading slot N and a revalidate
+    //     writing slot N+1 (proven: FrameSyncScheduler.cpp per-resource timelines).
+    //     shellData[slot] holds the COMPACT pool (binding 11 replacement),
+    //     shellLookup[slot] holds the grid->shellSlot remap (binding 12 replacement).
+    VkBuffer       shellDataBuffer_[2]   = { VK_NULL_HANDLE, VK_NULL_HANDLE };
+    VkDeviceMemory shellDataMemory_[2]   = { VK_NULL_HANDLE, VK_NULL_HANDLE };
+    VkBuffer       shellLookupBuffer_[2] = { VK_NULL_HANDLE, VK_NULL_HANDLE };
+    VkDeviceMemory shellLookupMemory_[2] = { VK_NULL_HANDLE, VK_NULL_HANDLE };
+    VkDeviceSize   shellDataCapacity_[2]   = { 0, 0 };  // bytes allocated per slot
+    VkDeviceSize   shellLookupCapacity_[2] = { 0, 0 };
+
+    // CPU double-buffer (source of truth; also what the tests inspect). Each slot
+    // holds the multi-octree compact ShellPool (drop-in ConcatenatedOctrees +
+    // per-octree ShellDeriveResults for the dirty-revalidate path).
+    Vixen::SVO::ShellPool         shellCache_[2];
+    uint32_t                      shellDilation_ = 1u;   // [1,3]; sound 26-neighbour default
+    // CPU-owned dirty source-brick list (§C). A value edit pushes the affected
+    // brick range here; ExecuteImpl revalidates only those bricks in the write slot.
+    std::vector<uint32_t>         dirtyBricks_;
 
     // Instance SSBO ring (one buffer per frame-in-flight — never freed on the tick path).
     PerFrameResources perFrame_;

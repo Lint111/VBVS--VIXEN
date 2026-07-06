@@ -16,10 +16,42 @@
       "Bash(taskkill /F /IM ninja.exe:*)",
       "Bash(taskkill /F /IM cmake.exe:*)",
       "Bash(taskkill /F /IM glslc.exe:*)",
+      "Bash(taskkill /F /IM VIXEN.exe:*)",
+      "Bash(taskkill /F /IM vixen_editor.exe:*)",
+      "Bash(taskkill /F /IM sccache.exe:*)",
       "Bash(timeout:*)",
       "Bash(./build/:*)",
       "Bash(./binaries/:*)",
       "Bash(./*.exe:*)",
+      "Bash(pkill -f vixen_editor*)",
+      "Bash(pkill -f vixen_benchmark*)",
+      "Bash(pkill -f VIXEN.exe*)",
+      "Bash(tasklist:*)",
+      "Bash(sccache.exe:*)",
+      "Bash(cmd.exe /c:*)",
+      "Bash(cmd.exe /C:*)",
+      "Bash(codegraph explore:*)",
+      "Bash(codegraph:*)",
+      "Bash(git worktree list:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(grep:*)",
+      "Bash(rg:*)",
+      "Bash(tail:*)",
+      "Bash(head:*)",
+      "Bash(cat:*)",
+      "Bash(ls:*)",
+      "Bash(find:*)",
+      "Bash(wc:*)",
+      "Bash(sed:*)",
+      "Bash(awk:*)",
+      "Bash(sort:*)",
+      "Bash(pgrep:*)",
+      "Bash(ctest:*)",
+      "Bash(python:*)",
+      "Bash(python3:*)",
       "Read(C:/cpp/**)",
       "Edit(C:/cpp/**)",
       "Write(C:/cpp/**)"
@@ -34,6 +66,18 @@
             "type": "command",
             "command": "python \"C:/cpp/VBVS--VIXEN/VIXEN/.claude/hooks/pre-commit-gate.py\"",
             "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"C:/cpp/VBVS--VIXEN/VIXEN/.claude/hooks/permission-request-notify.py\"",
+            "timeout": 5
           }
         ]
       }

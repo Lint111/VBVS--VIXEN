@@ -188,6 +188,10 @@ layout(push_constant) uniform PushConstants {
     float raySizeCoef;    // LOD cone spread (bytes 48-51)
     float raySizeBias;    // LOD cone origin size (bytes 52-55)
     int   instanceCount;  // active body instances  (bytes 56-59)
+    ivec2 debugTargetPixel;  // TEMP DEBUG: pixel to force-capture in the ray-trace buffer
+                             // regardless of DEBUG_GRID_SPACING (-1,-1 disables); lets the
+                             // trace follow the actual click/cursor position instead of a
+                             // fixed viewport-center crosshair (bytes 60-67)
 } pc;
 
 // ============================================================================
@@ -406,6 +410,7 @@ bool handleLeafHitInstanced(TraversalState state, RayCoefficients coef,
 // is the per-voxel roughness. Instance tint is still applied in main().
 bool handleLeafHitInstancedSdf(TraversalState state, RayCoefficients coef,
                                vec3 rayDir, float tBias,
+                               inout StackEntry stack[STACK_SIZE],
                                out vec3 hitColor, out vec3 hitNormal, out float hitT,
                                out float hitRoughness,
                                out uint hitBrickIndex, out uint hitVoxelLinearIdx) {
@@ -418,19 +423,47 @@ bool handleLeafHitInstancedSdf(TraversalState state, RayCoefficients coef,
 
     int bpa = int(octreeConfig.bricksPerAxisSdf);
     if (bpa <= 0) return false;
-    float gridScale = float(bpa * 8);
+    const int BRICK_SIZE_SDF = 8;
 
     // Bridge ESVO [1,2]^3 → true geometric grid-voxel space.
     vec3 rayDirLocal = mat3(octreeConfig.worldToLocal) * rayDir;
     vec3 hitPos12    = coef.normOrigin + rayDirLocal * state.t_min;   // [1,2]^3
-    vec3 gridEntry   = (hitPos12 - vec3(1.0)) * gridScale;            // [0, bpa*8]
     float dirLen     = length(rayDirLocal);
     if (dirLen < 1e-12) return false;
     vec3 gridDirN    = rayDirLocal / dirLen;                          // normalized
 
+    // One ESVO leaf == exactly one 8^3 brick here, so state.pos (the leaf node's own min
+    // corner, authoritatively known to the traversal) IS this brick's origin — unmirror it
+    // the same way computePosInBrick does internally to get the brick's OWN integer grid
+    // coordinate, instead of re-deriving "which brick" from hitPos12 (which sits, up to float
+    // error, exactly ON the entry-face boundary for every leaf hit and is genuinely ambiguous
+    // right at that boundary). Re-deriving from hitPos12 (the old approach, via a directional
+    // nudge + floor) let adjacent pixels resolve to different bricks whenever the transverse
+    // ray-direction components were too small to move the nudge off the boundary — most
+    // visibly when the view direction runs close to a world axis, so a whole line of pixels
+    // grazes the SAME brick-boundary plane at once (axis-parallel seam/dropout artifact).
+    vec3 brickOriginMirrored = state.pos;
+    if ((coef.octant_mask & 1) == 0) brickOriginMirrored.x = 3.0 - state.scale_exp2 - brickOriginMirrored.x;
+    if ((coef.octant_mask & 2) == 0) brickOriginMirrored.y = 3.0 - state.scale_exp2 - brickOriginMirrored.y;
+    if ((coef.octant_mask & 4) == 0) brickOriginMirrored.z = 3.0 - state.scale_exp2 - brickOriginMirrored.z;
+    ivec3 brick = ivec3(round((brickOriginMirrored - vec3(1.0)) * float(bpa)));
+    brick = clamp(brick, ivec3(0), ivec3(bpa - 1));
+
+    // Brick-local hit position (authoritative, clamped — same helper + inputs the binary path
+    // uses), then combine with the KNOWN brick coordinate for an unambiguous global gridEntry.
+    vec3 posInBrick = computePosInBrick(hitPos12, state.pos, state.scale_exp2,
+                                        coef.octant_mask, BRICK_SIZE_SDF);
+    posInBrick = clamp(posInBrick, vec3(0.0), vec3(float(BRICK_SIZE_SDF) - 0.001));
+    vec3 gridEntry = brickLocalToGrid(posInBrick, brick, BRICK_SIZE_SDF);
+
+    // marchBrickSdf now sphere-traces starting at THIS leaf brick and, on a brick exit
+    // without a crossing, continues into real adjacent leaf bricks via the ESVO traversal
+    // machinery (passed a LOCAL COPY of state/coef/stack so the outer loop is untouched).
+    // sHit is the total arc-length from gridEntry across however many bricks were traversed.
     vec3  nrm;
     float sHit;
-    if (!marchBrickSdf(g_octreeIdx, gridEntry, gridDirN, nrm, sHit)) {
+    ivec3 hitBrick;
+    if (!marchBrickSdf(g_octreeIdx, brick, gridEntry, gridDirN, state, coef, stack, nrm, sHit, hitBrick)) {
         return false;
     }
     hitNormal = nrm;
@@ -438,6 +471,7 @@ bool handleLeafHitInstancedSdf(TraversalState state, RayCoefficients coef,
     // hitT in the SAME parametrization as the binary leaf (tBias + local-t): convert
     // the grid-voxel arc-length sHit back to [1,2]^3 t-units. gridPos advances by
     // |rayDirLocal|*gridScale per unit t, so Δt = sHit / (|rayDirLocal|*gridScale).
+    float gridScale = float(bpa * 8);
     float tHitLocal = state.t_min + sHit / (dirLen * gridScale);
     hitT = tBias + tHitLocal;
 
@@ -446,9 +480,10 @@ bool handleLeafHitInstancedSdf(TraversalState state, RayCoefficients coef,
     hitColor     = sampleChannelVec3Trilinear(SEM_COLOR, gridHit, vec3(1.0));
     hitRoughness = sampleChannelScalarTrilinear(SEM_ROUGHNESS, gridHit, 0.5);
 
-    // Best-effort pick/ID: the leaf brick's flat grid index (voxel idx unused for SDF).
-    ivec3 brick   = ivec3(floor((gridEntry + gridDirN * 1e-3) / 8.0));
-    uint  flatIdx = _gridToLookupIdx(brick, bpa);
+    // Best-effort pick/ID: the flat grid index of the brick the crossing was ACTUALLY found in
+    // (hitBrick, which may be an adjacent brick reached via the seam-spanning continuation), not
+    // just the entry brick — so picking/queries report the true surface brick.
+    uint flatIdx = _gridToLookupIdx(hitBrick, bpa);
     hitBrickIndex     = (flatIdx == 0xFFFFFFFFu) ? 0u : flatIdx;
     hitVoxelLinearIdx = 0u;
     return true;
@@ -467,7 +502,19 @@ bool handleLeafHitInstancedSdf(TraversalState state, RayCoefficients coef,
 // current (coarser) node instead of descending further.
 // raySizeCoef == 0.0 disables LOD entirely (full-detail traversal).
 
+// rayOriginLocal/rayDirLocal/gridT are the CALLER's already-computed ray-vs-AABB-cube
+// intersection (octreeConfig.worldToLocal applied to rayOrigin/rayDir, tested against the
+// unit cube) — passed in rather than recomputed here, so there is exactly ONE evaluation of
+// this math per ray/instance. Two textually-identical GLSL expressions evaluated at different
+// call sites are not guaranteed to produce bit-identical floats (the compiler is free to
+// reorder/fuse floating-point ops differently per call site absent a `precise` qualifier), so
+// recomputing this AABB test a second time here could — right at the razor's-edge silhouette
+// of the AABB, where gridT sits within an ULP of 0 — disagree with the caller's already-passed
+// cull check and return a false miss for a ray the caller determined does enter the volume.
+// This was a real, data-affecting bug (not cosmetic): the SAME traversal is used to query
+// voxel data, so a false miss here silently drops real geometry from any caller relying on it.
 bool traverseOctreeInstanced(vec3 rayOrigin, vec3 rayDir,
+                              vec3 rayOriginLocal, vec3 rayDirLocal, vec2 gridT,
                               out vec3 hitColor, out vec3 hitNormal, out float hitT,
                               out float hitRoughness,
                               out uint hitBrickIndex, out uint hitVoxelLinearIdx,
@@ -481,10 +528,6 @@ bool traverseOctreeInstanced(vec3 rayOrigin, vec3 rayDir,
     debugInfo.lastStepMask = 0u;
     debugInfo.iterationCount = 0u;
 
-    vec3 rayOriginLocal = (octreeConfig.worldToLocal * vec4(rayOrigin, 1.0)).xyz;
-    vec3 rayDirLocal    = mat3(octreeConfig.worldToLocal) * rayDir;
-
-    vec2 gridT = rayAABBIntersection(rayOriginLocal, rayDirLocal, vec3(0.0), vec3(1.0));
     if (gridT.y < 0.0) {
         debugInfo.exitCode = DEBUG_EXIT_INVALID_SPAN;
         debugInfo.tMin = gridT.x;
@@ -537,12 +580,15 @@ bool traverseOctreeInstanced(vec3 rayOrigin, vec3 rayDir,
 
             if (isLeaf) {
                 float tBias = tEntryWorld;
+                recordTraceStep(TRACE_STEP_BRICK_ENTER, state.parentPtr, state.scale,
+                                 uint(coef.octant_mask), state.pos, state.t_min, tv_max,
+                                 uvec2(0u, 0u));
                 // Inc3 M3: dispatch the leaf hit-test by content format. Stored-SDF
                 // bricks march the trilinear iso-surface and sample per-voxel color +
                 // roughness; binary bricks DDA voxels (roughness defaults to 0.5).
                 bool leafHit;
                 if (octreeConfig.formatId == FORMAT_STORED_SDF) {
-                    leafHit = handleLeafHitInstancedSdf(state, coef, rayDir, tBias,
+                    leafHit = handleLeafHitInstancedSdf(state, coef, rayDir, tBias, stack,
                                                         hitColor, hitNormal, hitT,
                                                         hitRoughness,
                                                         hitBrickIndex, hitVoxelLinearIdx);
@@ -554,6 +600,9 @@ bool traverseOctreeInstanced(vec3 rayOrigin, vec3 rayDir,
                                                      hitBrickIndex, hitVoxelLinearIdx);
                 }
                 if (leafHit) {
+                    recordTraceStep(TRACE_STEP_HIT, hitBrickIndex, state.scale,
+                                     uint(coef.octant_mask), state.pos, state.t_min, hitT,
+                                     uvec2(0u, 0u));
                     endRayTrace(true);
                     snapshotTraversalState(state, coef, debugInfo);
                     debugInfo.hitFlag      = 1u;
@@ -561,6 +610,9 @@ bool traverseOctreeInstanced(vec3 rayOrigin, vec3 rayDir,
                     debugInfo.iterationCount = uint(iter + 1);
                     return true;
                 }
+                recordTraceStep(TRACE_STEP_BRICK_EXIT, state.parentPtr, state.scale,
+                                 uint(coef.octant_mask), state.pos, state.t_min, tv_max,
+                                 uvec2(0u, 0u));
                 state.t_min = tv_max;
                 snapshotTraversalState(state, coef, debugInfo);
 
@@ -593,6 +645,9 @@ bool traverseOctreeInstanced(vec3 rayOrigin, vec3 rayDir,
 #endif
                 executePushPhase(state, coef, stack, validMask, leafMask, childPointer,
                                  tv_max, tx_center, ty_center, tz_center);
+                recordTraceStep(TRACE_STEP_PUSH, state.parentPtr, state.scale,
+                                 uint(coef.octant_mask), state.pos, state.t_min, state.t_max,
+                                 uvec2(0u, 0u));
                 snapshotTraversalState(state, coef, debugInfo);
                 continue;
             }
@@ -601,6 +656,9 @@ bool traverseOctreeInstanced(vec3 rayOrigin, vec3 rayDir,
         int step_mask;
         int advanceResult = executeAdvancePhase(state, coef, step_mask);
         debugInfo.lastStepMask = uint(step_mask);
+        recordTraceStep(TRACE_STEP_ADVANCE, state.parentPtr, state.scale,
+                         uint(coef.octant_mask), state.pos, state.t_min, state.t_max,
+                         uvec2(uint(step_mask), uint(advanceResult)));
         snapshotTraversalState(state, coef, debugInfo);
 
         if (advanceResult == 0) {
@@ -611,6 +669,9 @@ bool traverseOctreeInstanced(vec3 rayOrigin, vec3 rayDir,
 
         if (advanceResult == 1) {
             int popResult = executePopPhase(state, coef, stack, step_mask);
+            recordTraceStep(TRACE_STEP_POP, state.parentPtr, state.scale,
+                             uint(coef.octant_mask), state.pos, state.t_min, state.t_max,
+                             uvec2(uint(popResult), 0u));
             snapshotTraversalState(state, coef, debugInfo);
             if (popResult == 1) {
                 endRayTrace(false);
@@ -621,6 +682,9 @@ bool traverseOctreeInstanced(vec3 rayOrigin, vec3 rayDir,
         }
     }
 
+    recordTraceStep(TRACE_STEP_MISS, state.parentPtr, state.scale,
+                     uint(coef.octant_mask), state.pos, state.t_min, state.t_max,
+                     uvec2(0u, 0u));
     endRayTrace(false);
     debugInfo.exitCode     = DEBUG_EXIT_NO_HIT;
     debugInfo.iterationCount = uint(iter);
@@ -772,7 +836,14 @@ void main() {
         // equals the TRUE world distance along the original ray
         // (instOrigin + t*instDir maps back to rayOrigin + t*rayDir), so the
         // cross-instance nearest-hit test below compares like-for-like.
+        //
+        // Pass localRayOrigin/localRayDir/gridT (already computed above for the AABB cull)
+        // straight through instead of letting traverseOctreeInstanced recompute the same
+        // ray-vs-AABB math a second time — a single "beam test" pre-pass result shared by
+        // both the cull check and the traversal, so they can never disagree at the AABB
+        // silhouette (see traverseOctreeInstanced's own comment for why that mattered).
         bool hit = traverseOctreeInstanced(instOrigin, instDir,
+                                           localRayOrigin, localRayDir, gridT,
                                            hitColor, hitNormal, hitT,
                                            hitRoughness,
                                            hitBrick, hitVoxel, dbg);

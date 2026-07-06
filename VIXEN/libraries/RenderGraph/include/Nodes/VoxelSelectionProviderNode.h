@@ -31,15 +31,19 @@ public:
  * The voxel selection provider is a first-class node (was the C++
  * VoxelSelectionProvider object the SelectionCoordinatorNode owned), per the
  * everything-is-a-node principle. On a left-click down-edge it performs the GPU
- * ID-buffer readback — a single-texel vkCmdCopyImageToBuffer of the crosshair
- * pixel of PickIdTargetNode's per-pixel pick-ID image (binding 9), fenced and
- * mapped to decode the packed pickID — and emits a SelectionCandidate on its
- * CANDIDATE output. The SelectionCoordinatorNode gathers it (plus any other
- * provider nodes' candidates) via a MultiConnect accumulation slot and resolves.
+ * ID-buffer readback — a single-texel vkCmdCopyImageToBuffer of the pixel under
+ * the actual cursor position (the ClickEvent's own x/y, not a fixed viewport-center
+ * crosshair — changed so mouse-driven inspection/picking has real fine-grained
+ * control over what gets sampled) of PickIdTargetNode's per-pixel pick-ID image
+ * (binding 9), fenced and mapped to decode the packed pickID — and emits a
+ * SelectionCandidate on its CANDIDATE output. The SelectionCoordinatorNode gathers
+ * it (plus any other provider nodes' candidates) via a MultiConnect accumulation
+ * slot and resolves.
  *
  * The readback logic was MOVED here from the old C++ provider, not rewritten
- * (EnsureStagingBuffer / ReadCenterPixel / DestroyStagingBuffer below were that
- * object's methods verbatim). The only structural changes are node-shaped:
+ * (EnsureStagingBuffer / ReadPixelAt / DestroyStagingBuffer below were that
+ * object's methods, since renamed/parameterized for cursor-position picking).
+ * The only structural changes are node-shaped:
  *   - the device is the base NodeInstance::device (SetDevice in CompileImpl from
  *     the VULKAN_DEVICE input; GetDevice() in Execute/Cleanup) — no device member;
  *   - it looks for a left-button press entry in InputState.clicksThisFrame (a
@@ -75,14 +79,17 @@ private:
     bool EnsureStagingBuffer(VkDeviceSize bytesNeeded);
 
     // Record the one-shot readback copy on commandPool_, submit on GetDevice()->queue with
-    // a fresh fence, wait it, then map the staged pixel(s) and extract the center texel into
-    // pickIDOut. Returns true on success. Branches on requiresFullImageTransfers_ (KI-012):
-    // when the graphics queue family's minImageTransferGranularity is (0,0,0), a sub-region
-    // copy (the single center texel at an arbitrary offset) is a spec violation on that queue
-    // — some drivers (Dozen) tolerate it anyway, but this isn't guaranteed elsewhere — so that
-    // case copies the WHOLE id image to a full-size staging buffer and indexes the center
-    // texel on the CPU side instead. (Was VoxelSelectionProvider::ReadCenterPixel.)
-    bool ReadCenterPixel(uint32_t width, uint32_t height, uint32_t& pickIDOut);
+    // a fresh fence, wait it, then map the staged pixel(s) and extract the pixel at
+    // (targetX, targetY) into pickIDOut. Returns true on success. Branches on
+    // requiresFullImageTransfers_ (KI-012): when the graphics queue family's
+    // minImageTransferGranularity is (0,0,0), a sub-region copy (the single target texel at an
+    // arbitrary offset) is a spec violation on that queue — some drivers (Dozen) tolerate it
+    // anyway, but this isn't guaranteed elsewhere — so that case copies the WHOLE id image to a
+    // full-size staging buffer and indexes the target texel on the CPU side instead.
+    // (Was VoxelSelectionProvider::ReadCenterPixel — renamed/parameterized to pick at the
+    // actual cursor position instead of always the viewport center.)
+    bool ReadPixelAt(uint32_t width, uint32_t height, uint32_t targetX, uint32_t targetY,
+                     uint32_t& pickIDOut);
 
     // Free the staging buffer + memory (idempotent). Called from CleanupImpl and on
     // a device change at CompileImpl. (Was VoxelSelectionProvider::DestroyStagingBuffer.)

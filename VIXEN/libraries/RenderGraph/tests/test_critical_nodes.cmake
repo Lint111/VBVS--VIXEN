@@ -610,3 +610,54 @@ message(STATUS "[RenderGraph Tests] Added: test_procedural_recipe_render (P2.2 M
 else()
     message(STATUS "[RenderGraph Tests] SKIPPED test_procedural_recipe_render — ShaderManagement not available")
 endif()
+
+# ===========================================================================
+# Surface-Shell ESVO cache — ShellRevalidateNode GPU dispatch live-gate.
+# ===========================================================================
+# Compiles the SHIPPED shaders/ShellDerive.comp to SPIR-V at build time with the bundled
+# glslc (same gate as body_instance_raymarch_spv above — skipped when the bundled SDK
+# isn't provisioned), then: (a) asserts the GPU dispatch's shellFlags[] classification
+# matches the CPU Vixen::SVO::DeriveShell oracle bit-for-bit, and (b) assembles a real
+# ComputePassStep pair with disjoint Resource* accesses and asserts BuildPassGroupSchedule
+# bakes ZERO entry barriers between them (double-buffer parallelism proof).
+if(EXISTS "${_brm_glslc}")
+set(_shellderive_src "${_brm_shader_dir}/ShellDerive.comp")
+set(_shellderive_spv "${CMAKE_CURRENT_BINARY_DIR}/ShellDerive.spv")
+file(GLOB _shellderive_includes CONFIGURE_DEPENDS "${_brm_shader_dir}/*.glsl" "${_brm_shader_dir}/Generated/*.glsl")
+
+add_custom_command(
+    OUTPUT  ${_shellderive_spv}
+    COMMAND ${_brm_glslc}
+            -fshader-stage=compute
+            -I ${_brm_shader_dir}
+            --target-env=vulkan1.3
+            ${_shellderive_src}
+            -o ${_shellderive_spv}
+    DEPENDS ${_shellderive_src} ${_shellderive_includes}
+    COMMENT "Compiling ShellDerive.comp -> SPIR-V (bundled glslc)"
+    VERBATIM)
+add_custom_target(shell_derive_spv DEPENDS ${_shellderive_spv})
+
+add_executable(test_shell_revalidate_node
+    Nodes/test_shell_revalidate_node.cpp
+)
+add_dependencies(test_shell_revalidate_node shell_derive_spv)
+target_link_libraries(test_shell_revalidate_node PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+if(TARGET SVO)
+    target_link_libraries(test_shell_revalidate_node PRIVATE SVO)
+endif()
+target_compile_definitions(test_shell_revalidate_node PRIVATE
+    SHELLDERIVE_SPV="${_shellderive_spv}")
+if(VIXEN_WSL_DZN_ICD)
+    target_compile_definitions(test_shell_revalidate_node PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
+endif()
+
+set_target_properties(test_shell_revalidate_node PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_shell_revalidate_node
+    DISCOVERY_MODE PRE_TEST
+    DISCOVERY_TIMEOUT 120)
+
+message(STATUS "[RenderGraph Tests] Added: test_shell_revalidate_node (Surface-Shell GPU dispatch live-gate)")
+else()
+    message(STATUS "[RenderGraph Tests] SKIPPED test_shell_revalidate_node — bundled glslc not found")
+endif()

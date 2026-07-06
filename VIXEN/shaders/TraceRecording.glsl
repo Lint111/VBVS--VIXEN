@@ -118,26 +118,45 @@ uint g_traceStepCount = 0;         // Current step count for this ray
 // Returns true if this pixel should capture debug data (grid-based sampling)
 // PERFORMANCE: Set DEBUG_GRID_SPACING to large value for benchmarking
 bool shouldCaptureDebug(ivec2 pixelCoords) {
-    // Capture center pixel (assuming 800x600)
-    if (pixelCoords.x == 400 && pixelCoords.y == 300) return true;
+    // TEMP DEBUG: capture the EXACT pixel under the cursor at click time (pc.debugTargetPixel,
+    // set from VoxelSelectionProviderNode's real click position — not a fixed viewport-center
+    // crosshair), regardless of grid spacing, so clicking anywhere always captures that ray's
+    // full trace. (-1,-1) disables this (no click yet this session / feature not wired).
+    if (pc.debugTargetPixel.x >= 0 && pixelCoords == pc.debugTargetPixel) return true;
 
     // Capture if pixel is on grid intersection
     return (pixelCoords.x % DEBUG_GRID_SPACING == 0) &&
            (pixelCoords.y % DEBUG_GRID_SPACING == 0);
 }
 
+// Reserved slot for the click-target pixel (TEMP DEBUG), bypassing the shared atomic counter.
+// At viewports wider than ~1024px, DEBUG_GRID_SPACING's own grid samples alone can exceed the
+// 256-slot buffer (e.g. a 1920x1080 window's 64px grid is ~558 points) and exhaust
+// traceWriteIndex before the click pixel's thread is scheduled — silently dropping the exact
+// capture this feature exists for. Slot 255 is carved out exclusively for the click target so
+// it can never be crowded out by grid-sample contention.
+const uint DEBUG_CLICK_TARGET_SLOT = 255u;
+
 // Initialize tracing for a pixel (call once at start of ray)
 bool beginRayTrace(ivec2 pixelCoords) {
+    bool isClickTarget = (pc.debugTargetPixel.x >= 0 && pixelCoords == pc.debugTargetPixel);
+
     if (!shouldCaptureDebug(pixelCoords)) {
         g_traceRaySlot = 0xFFFFFFFF;
         return false;
     }
 
-    // Allocate a ray slot (atomic increment with ring buffer wrap)
-    uint slot = atomicAdd(traceWriteIndex, 1u);
-    if (slot >= 256u) {
-        g_traceRaySlot = 0xFFFFFFFF;
-        return false;
+    uint slot;
+    if (isClickTarget) {
+        slot = DEBUG_CLICK_TARGET_SLOT;
+    } else {
+        // Allocate a ray slot (atomic increment with ring buffer wrap); reserve the last slot
+        // for the click target so grid sampling never claims it.
+        slot = atomicAdd(traceWriteIndex, 1u);
+        if (slot >= DEBUG_CLICK_TARGET_SLOT) {
+            g_traceRaySlot = 0xFFFFFFFF;
+            return false;
+        }
     }
 
     g_traceRaySlot = slot;

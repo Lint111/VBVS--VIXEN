@@ -32,6 +32,9 @@ RayTraceBuffer::RayTraceBuffer(RayTraceBuffer&& other) noexcept
     , rayTraces_(std::move(other.rayTraces_))
     , capturedCount_(other.capturedCount_)
     , totalWrites_(other.totalWrites_)
+    , debugName_(std::move(other.debugName_))
+    , bindingIndex_(other.bindingIndex_)
+    , captureEnabled_(other.captureEnabled_)
 {
     other.buffer_ = VK_NULL_HANDLE;
     other.memory_ = VK_NULL_HANDLE;
@@ -51,6 +54,9 @@ RayTraceBuffer& RayTraceBuffer::operator=(RayTraceBuffer&& other) noexcept {
         rayTraces_ = std::move(other.rayTraces_);
         capturedCount_ = other.capturedCount_;
         totalWrites_ = other.totalWrites_;
+        debugName_ = std::move(other.debugName_);
+        bindingIndex_ = other.bindingIndex_;
+        captureEnabled_ = other.captureEnabled_;
 
         other.buffer_ = VK_NULL_HANDLE;
         other.memory_ = VK_NULL_HANDLE;

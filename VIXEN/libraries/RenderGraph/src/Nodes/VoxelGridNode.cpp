@@ -191,6 +191,12 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
     // Only create if not already valid - preserves VkBuffer handles across recompiles
     if (!debugCaptureResource_ || !debugCaptureResource_->IsValid()) {
         debugCaptureResource_ = std::make_unique<Debug::RayTraceBuffer>(RAY_TRACE_CAPACITY);
+        // IDebugCapture identity: DescriptorResourceGathererNode::ProcessSlot detects this
+        // resource as debug-capturable via GetInterface<IDebugCapture>() (now implemented
+        // directly by RayTraceBuffer) and DebugBufferReaderNode uses GetDebugName() for its
+        // export filename/log lines and GetBindingIndex() for its own diagnostics.
+        debugCaptureResource_->SetDebugName(GetInstanceName() + "_rayTrace");
+        debugCaptureResource_->SetBindingIndex(4u);
         if (!debugCaptureResource_->Create(vulkanDevice->device, *vulkanDevice->gpu)) {
             NODE_LOG_ERROR("[VoxelGridNode::CompileImpl] FATAL: Failed to create ray trace buffer (binding 4)");
             throw std::runtime_error("[VoxelGridNode] Failed to create ray trace buffer - shader binding 4 would be null");
@@ -269,10 +275,15 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
                       (voxelWorld ? " (valid - CPU picking queries available)" : " (NULL - no CPU world on cached scene!)"));
     }
 
-    // Output debug capture buffer (wrapper with conversion_type = VkBuffer)
-    // Resource system automatically extracts VkBuffer for descriptor binding
+    // Output debug capture buffer (wrapper with conversion_type = VkBuffer). conversion_type
+    // only makes the resource system auto-extract VkBuffer for descriptor binding — it does NOT
+    // register RayTraceBuffer's IDebugCapture interface (a separate, unrelated mechanism), so a
+    // plain ctx.Out() here left DescriptorResourceGathererNode::ProcessSlot's
+    // GetInterface<IDebugCapture>() check always failing and the whole ray-trace debug-export
+    // pipeline silently dead. OutWithInterface does both in one call (see its doc comment).
     if (debugCaptureResource_ && debugCaptureResource_->IsValid()) {
-        ctx.Out(VoxelGridNodeConfig::DEBUG_CAPTURE_BUFFER, debugCaptureResource_.get());
+        ctx.OutWithInterface(VoxelGridNodeConfig::DEBUG_CAPTURE_BUFFER, debugCaptureResource_.get(),
+                             static_cast<Debug::IDebugCapture*>(debugCaptureResource_.get()));
         NODE_LOG_DEBUG("  DEBUG_CAPTURE_BUFFER (wrapper)=" + std::to_string(reinterpret_cast<uint64_t>(debugCaptureResource_->GetVkBuffer())));
     }
 
@@ -350,11 +361,14 @@ void VoxelGridNode::ExecuteImpl(TypedExecuteContext& ctx) {
         ctx.Out(VoxelGridNodeConfig::VOXEL_WORLD, cachedSceneData_->voxelWorld.get());
     }
 
-    // Re-output debug capture buffer (wrapper with conversion_type = VkBuffer)
+    // Re-output debug capture buffer (wrapper with conversion_type = VkBuffer). See CompileImpl's
+    // comment above: OutWithInterface is required (not plain ctx.Out()) so the resource keeps
+    // being detected as debug-capturable by DescriptorResourceGathererNode every frame.
     if (debugCaptureResource_ && debugCaptureResource_->IsValid()) {
         // Reset buffer before each frame to allow fresh capture
         debugCaptureResource_->Reset(vulkanDevice->device);
-        ctx.Out(VoxelGridNodeConfig::DEBUG_CAPTURE_BUFFER, debugCaptureResource_.get());
+        ctx.OutWithInterface(VoxelGridNodeConfig::DEBUG_CAPTURE_BUFFER, debugCaptureResource_.get(),
+                             static_cast<Debug::IDebugCapture*>(debugCaptureResource_.get()));
     }
 
     // Re-output shader counters buffer (wrapper with conversion_type = VkBuffer)

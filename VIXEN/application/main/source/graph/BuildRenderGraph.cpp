@@ -692,8 +692,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Enable logging for descriptor gatherer to debug bindings
     auto* descGatherer = static_cast<DescriptorResourceGathererNode*>(renderGraph->GetInstance(descriptorGatherer));
     if (auto* gathererLogger = descGatherer->GetLogger()) {
-        gathererLogger->SetEnabled(false);  // Enable to debug descriptor bindings
-        gathererLogger->SetTerminalOutput(false);
+        gathererLogger->SetEnabled(true);  // TEMP DEBUG: tracing the debug-capture attachment bug (KI-009 follow-up)
+        gathererLogger->SetTerminalOutput(true);
     }
 
     // Enable logging for compute dispatch to see execution
@@ -1132,6 +1132,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_COUNT,
                           pushConstantGatherer, 10,  // push constant field 10: int instanceCount
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    // debugTargetPixel (binding 11): TEMP DEBUG — last left-click pixel, so the ray-trace debug
+    // buffer (TraceRecording.glsl) force-captures that exact ray regardless of DEBUG_GRID_SPACING.
+    batch.Connect(inputNode, InputNodeConfig::INPUT_STATE,
+                          pushConstantGatherer, 11,  // push constant field 11: ivec2 debugTargetPixel
+                          ExtractField(&InputState::lastClickPixel, SlotRole::Execute));
 
     // Connect ray marching resources to descriptor gatherer using VoxelRayMarchNames.h bindings
     // Binding 0: outputImage - Transient (Execute-only), others are Persistent (Dependency|Execute)
@@ -1196,20 +1201,28 @@ void VulkanGraphApplication::BuildRenderGraph() {
         mainLogger->Info("[BuildRenderGraph] Connected body instance SSBO at binding 10 (BodyOctreeSceneNode)");
     }
 
-    // Inc2 M3: Binding 11: SoA-SDF brick SSBO (float[] per-voxel SDF values).
-    // Placeholder (1-byte pad) for binary/Procedural bodies; populated by ConcatenateSdf for Stored-SDF.
-    // Shader only reads this when OctreeConfig.formatId == FORMAT_STORED_SDF (1u) — dead code for current bodies.
-    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_SDF_BUFFER,
-                          descriptorGatherer, 11,  // Binding 11: SdfBrickBuffer
+    // Binding 11/12: Surface-Shell ESVO cache (the bandwidth win). The render now
+    // reads the COMPACT shell pool (SHELL_DATA_BUFFER) + grid->shellSlot remap
+    // (SHELL_LOOKUP_BUFFER) instead of the full-interior OCTREE_SDF_BUFFER /
+    // OCTREE_BRICKLOOKUP_BUFFER. This is a DROP-IN swap: DeriveShell builds the
+    // remap so the shader's existing addressing (brickIdx = brickLookup[flat];
+    // channelPool[poolBrickBase + brickIdx*stride + ...]) reads the compact pool
+    // with NO shader-logic change. The full-interior buffers stay live as the
+    // ShellRevalidate compute pass's SOURCE (bindings on that node), never bound
+    // to the render. BodyOctreeSceneNode re-emits SHELL_DATA/SHELL_LOOKUP each
+    // frame as the current double-buffer read slot [frame&1].
+    // (Placeholder 1-byte for binary/Procedural bodies — shader only reads these
+    //  when OctreeConfig.formatId == FORMAT_STORED_SDF.)
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::SHELL_DATA_BUFFER,
+                          descriptorGatherer, 11,  // Binding 11: compact shell pool
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
-    // Inc2 M3: Binding 12: Brick-grid lookup SSBO (uint32[bpa^3] grid-coord→brickIndex table).
-    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_BRICKLOOKUP_BUFFER,
-                          descriptorGatherer, 12,  // Binding 12: BrickLookupBuffer
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::SHELL_LOOKUP_BUFFER,
+                          descriptorGatherer, 12,  // Binding 12: grid->shellSlot remap
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
     if (mainLogger && mainLogger->IsEnabled()) {
-        mainLogger->Info("[BuildRenderGraph] Connected SoA-SDF buffer at binding 11, brick-grid lookup at binding 12 (Inc2 M3)");
+        mainLogger->Info("[BuildRenderGraph] Connected COMPACT shell pool at binding 11, shell grid-lookup at binding 12 (Surface-Shell ESVO cache)");
     }
 
     // Swapchain connections to descriptor set and dispatch
