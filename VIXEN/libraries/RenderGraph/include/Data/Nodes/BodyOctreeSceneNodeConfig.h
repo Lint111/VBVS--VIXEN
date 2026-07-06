@@ -10,7 +10,9 @@ using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 // Compile-time slot counts
 namespace BodyOctreeSceneNodeCounts {
     static constexpr size_t INPUTS  = 3;  // VULKAN_DEVICE_IN, COMMAND_POOL, CURRENT_FRAME_INDEX
-    static constexpr size_t OUTPUTS = 10;  // 4 octree buffers + 2 SDF buffers + instance buffer + instance count + 2 shell buffers
+    // 4 octree buffers + 2 SDF buffers + instance buffer + instance count + mip pool buffer (Inc1 M3)
+    // + 2 shell buffers (Surface-Shell ESVO cache, main) — merge of both parallel features.
+    static constexpr size_t OUTPUTS = 11;
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -28,9 +30,10 @@ namespace BodyOctreeSceneNodeCounts {
  * INSTANCE_BUFFER (VkBuffer) + INSTANCE_COUNT (uint32_t) feed the instanced draw.
  *
  * Inputs: 3 (VULKAN_DEVICE_IN, COMMAND_POOL, CURRENT_FRAME_INDEX)
- * Outputs: 8 (OCTREE_NODES_BUFFER, OCTREE_BRICKS_BUFFER, OCTREE_MATERIALS_BUFFER,
- *             OCTREE_CONFIG_BUFFER, OCTREE_SDF_BUFFER, OCTREE_BRICKLOOKUP_BUFFER,
- *             INSTANCE_BUFFER, INSTANCE_COUNT)
+ * Outputs: 11 (OCTREE_NODES_BUFFER, OCTREE_BRICKS_BUFFER, OCTREE_MATERIALS_BUFFER,
+ *              OCTREE_CONFIG_BUFFER, INSTANCE_BUFFER, INSTANCE_COUNT, OCTREE_SDF_BUFFER,
+ *              OCTREE_BRICKLOOKUP_BUFFER, OCTREE_MIPPOOL_BUFFER, SHELL_DATA_BUFFER,
+ *              SHELL_LOOKUP_BUFFER)
  */
 CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
                       BodyOctreeSceneNodeCounts::INPUTS,
@@ -99,16 +102,26 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
+    // Sparse-Mip ESVO LOD Inc1 M3: per-level filtered mip sample pool (binding 13) —
+    // packed {value,coverage} floats, one per (node, channel). Placeholder (1-byte pad)
+    // when a tree was never mip-baked (ConcatenateSdf's plain sibling, no mips);
+    // populated by ConcatenateSdfWithMips (MipBake.h).
+    OUTPUT_SLOT(OCTREE_MIPPOOL_BUFFER, VkBuffer, 8,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
     // Surface-Shell ESVO cache: the CURRENT read slot's compact pool (binding 11
     // replacement) + grid->shellSlot remap (binding 12 replacement). ExecuteImpl
     // re-emits these each frame with slot [frame&1] so the render binds the last
     // committed shell (mirrors INSTANCE_BUFFER's ring re-emit). Placeholder for
-    // binary/Procedural bodies (no shell derived).
-    OUTPUT_SLOT(SHELL_DATA_BUFFER, VkBuffer, 8,
+    // binary/Procedural bodies (no shell derived). Data domain is disjoint from
+    // OCTREE_MIPPOOL_BUFFER above (near-surface brick compaction vs. interior-node
+    // coarse samples) — both coexist as independent slots, no shared addressing.
+    OUTPUT_SLOT(SHELL_DATA_BUFFER, VkBuffer, 9,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
-    OUTPUT_SLOT(SHELL_LOOKUP_BUFFER, VkBuffer, 9,
+    OUTPUT_SLOT(SHELL_LOOKUP_BUFFER, VkBuffer, 10,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
@@ -164,6 +177,11 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
         brickLookupDesc.usage = ResourceUsage::StorageBuffer | ResourceUsage::TransferDst;
         INIT_OUTPUT_DESC(OCTREE_BRICKLOOKUP_BUFFER, "octree_bricklookup_buffer", ResourceLifetime::Persistent, brickLookupDesc);
 
+        // Sparse-Mip ESVO LOD Inc1 M3: mip pool buffer — persistent.
+        BufferDescriptor mipPoolDesc{};
+        mipPoolDesc.usage = ResourceUsage::StorageBuffer | ResourceUsage::TransferDst;
+        INIT_OUTPUT_DESC(OCTREE_MIPPOOL_BUFFER, "octree_mippool_buffer", ResourceLifetime::Persistent, mipPoolDesc);
+
         // Surface-Shell ESVO cache — compact pool + grid remap (current read slot).
         BufferDescriptor shellDataDesc{};
         shellDataDesc.usage = ResourceUsage::StorageBuffer | ResourceUsage::TransferDst;
@@ -192,8 +210,9 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
     static_assert(INSTANCE_COUNT_Slot::index == 5, "INSTANCE_COUNT must be at index 5");
     static_assert(OCTREE_SDF_BUFFER_Slot::index == 6, "OCTREE_SDF_BUFFER must be at index 6");
     static_assert(OCTREE_BRICKLOOKUP_BUFFER_Slot::index == 7, "OCTREE_BRICKLOOKUP_BUFFER must be at index 7");
-    static_assert(SHELL_DATA_BUFFER_Slot::index == 8, "SHELL_DATA_BUFFER must be at index 8");
-    static_assert(SHELL_LOOKUP_BUFFER_Slot::index == 9, "SHELL_LOOKUP_BUFFER must be at index 9");
+    static_assert(OCTREE_MIPPOOL_BUFFER_Slot::index == 8, "OCTREE_MIPPOOL_BUFFER must be at index 8");
+    static_assert(SHELL_DATA_BUFFER_Slot::index == 9, "SHELL_DATA_BUFFER must be at index 9");
+    static_assert(SHELL_LOOKUP_BUFFER_Slot::index == 10, "SHELL_LOOKUP_BUFFER must be at index 10");
 
     // ----- Type validations -----
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
@@ -206,6 +225,7 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
     static_assert(std::is_same_v<INSTANCE_COUNT_Slot::Type, int32_t>);
     static_assert(std::is_same_v<OCTREE_SDF_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<OCTREE_BRICKLOOKUP_BUFFER_Slot::Type, VkBuffer>);
+    static_assert(std::is_same_v<OCTREE_MIPPOOL_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<SHELL_DATA_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<SHELL_LOOKUP_BUFFER_Slot::Type, VkBuffer>);
 };

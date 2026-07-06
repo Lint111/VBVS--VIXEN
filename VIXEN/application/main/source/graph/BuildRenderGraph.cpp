@@ -182,6 +182,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     // --- Ray Marching Nodes ---
     NodeHandle cameraNode = renderGraph->AddNode<CameraNodeType>("raymarch_camera");
+    cameraNode_ = cameraNode;  // Sparse-Mip ESVO LOD Inc1 M4c: store for Update()'s live residency-trigger lookup
     NodeHandle voxelGridNode = renderGraph->AddNode<VoxelGridNodeType>("voxel_grid");
     voxelGridNode_ = voxelGridNode;                  // store for MarkVoxelSceneDirty() (debug buffers only; not the render source post M-wire)
 
@@ -1226,8 +1227,15 @@ void VulkanGraphApplication::BuildRenderGraph() {
                           descriptorGatherer, 12,  // Binding 12: grid->shellSlot remap
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
+    // Sparse-Mip ESVO LOD Inc1 M3: Binding 13: mip pool SSBO (packed {value,coverage}
+    // floats, one per node/channel). Placeholder for a tree that was never mip-baked;
+    // read by the shader's leaf-existence (Task 7) and LOD-cutoff (Task 8) fallbacks.
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_MIPPOOL_BUFFER,
+                          descriptorGatherer, 13,  // Binding 13: MipPoolBuffer
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
     if (mainLogger && mainLogger->IsEnabled()) {
-        mainLogger->Info("[BuildRenderGraph] Connected COMPACT shell pool at binding 11, shell grid-lookup at binding 12 (Surface-Shell ESVO cache)");
+        mainLogger->Info("[BuildRenderGraph] Connected SoA-SDF buffer at binding 11, brick-grid lookup at binding 12, mip pool at binding 13 (Inc1 M3)");
     }
 
     // Swapchain connections to descriptor set and dispatch

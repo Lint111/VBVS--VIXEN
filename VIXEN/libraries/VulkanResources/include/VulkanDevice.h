@@ -202,6 +202,26 @@ public:
     void WaitAllUploads();
 
     /**
+     * @brief Submit pending uploads without blocking (Sparse-Mip ESVO LOD Inc1 M4c)
+     *
+     * Kicks off GPU execution of whatever is currently queued via Upload() so its
+     * completion can be polled later via IsUploadComplete(), instead of blocking the
+     * caller until the GPU finishes (WaitAllUploads()'s behavior). Non-blocking.
+     */
+    void FlushUploads();
+
+    /**
+     * @brief Check whether a queued upload has finished on the GPU (non-blocking)
+     *
+     * Polls (does not wait); call once per frame from a tick that can tolerate a
+     * multi-frame latency between FlushUploads() and completion becoming visible.
+     *
+     * @param handle Upload handle from Upload()
+     * @return true once the GPU-side copy is visible (or the upload failed)
+     */
+    [[nodiscard]] bool IsUploadComplete(ResourceManagement::UploadHandle handle) const;
+
+    /**
      * @brief Get the budget manager for this device
      * @return Budget manager pointer, or nullptr if not configured
      */

@@ -26,8 +26,14 @@
 #include "Nodes/WindowNode.h"
 #include "Nodes/InputNode.h"
 #include "Nodes/BodyOctreeSceneNode.h"        // M-wire: SetBodyInstances() downcast target (gaia — before UIRenderNode.h)
+#include "Nodes/CameraNode.h"                 // Sparse-Mip ESVO LOD Inc1 M4c: GetCurrentCameraData() downcast target
 #include "Nodes/UIRenderNode.h"               // GetUiRenderNode() downcast target (RmlUi — after BodyOctreeSceneNode.h)
 #include "Nodes/UISelectionProviderNode.h"    // GetUiSelectionProviderNode() downcast target
+
+// Sparse-Mip ESVO LOD Inc1 M4c: the combined residency trigger (M4a resolvability + M4b
+// frustum, factored out as a pure/testable function — see ResidencyTrigger.h).
+#include "ResidencyTrigger.h"
+#include <glm/gtx/norm.hpp>   // glm::distance2 (change-detection epsilon compares)
 
 #include <ShaderBundleBuilder.h>  // Phase G: Shader builder API (includes preprocessor support)
 // NOTE: "VoxelRayMarch_CompressedNames.h" was an orphaned include — that combined
@@ -366,6 +372,41 @@ void VulkanGraphApplication::Update() {
             }
         }
 
+        // Sparse-Mip ESVO LOD Inc1 M4c live gate: env-gated scripted camera move, unattended
+        // (VIXEN_RESIDENCY_GATE_DEMO=1) — mirrors VIXEN_RESIZE_AT_FRAME's "env-var-scripted
+        // behavior for an automated run" shape directly above. Sweeps orbitDistance from far
+        // (kOrbitDistanceMax, mip-only range) to near (kOrbitDistanceMin, brick-resolvable
+        // range) and back over the run, plus a yaw sweep partway through to exercise the
+        // orientation axis — driven via CameraNode::SetOrbitDistanceForTest/SetYawForTest
+        // (direct live member writes CameraNode's own ExecuteImpl already reads every frame,
+        // no recompile needed), NOT a new InputNode injector (that's a bigger, separate
+        // mechanism — see the M4c live-gate investigation this milestone did before choosing
+        // this approach).
+        if (renderGraph && std::getenv("VIXEN_RESIDENCY_GATE_DEMO")) {
+            static long gateTick = 0;
+            ++gateTick;
+            if (auto* camera = static_cast<CameraNode*>(renderGraph->GetInstance(cameraNode_))) {
+                // 0-300: far (120) -> near (5), sweeping distance-driven residency.
+                // 300-450: hold near, sweep yaw 0->2pi, sweeping orientation-driven residency.
+                // 450-600: hold yaw, sweep near (5) -> far (120), back out (eviction symmetry).
+                constexpr long kPhase1End = 300, kPhase2End = 450, kPhase3End = 600;
+                constexpr float kFar = 120.0f, kNear = 5.0f;
+                if (gateTick <= kPhase1End) {
+                    const float t = static_cast<float>(gateTick) / static_cast<float>(kPhase1End);
+                    camera->SetOrbitDistanceForTest(kFar + (kNear - kFar) * t);
+                } else if (gateTick <= kPhase2End) {
+                    const float t = static_cast<float>(gateTick - kPhase1End) / static_cast<float>(kPhase2End - kPhase1End);
+                    camera->SetYawForTest(t * 2.0f * 3.14159265358979323846f);
+                } else if (gateTick <= kPhase3End) {
+                    const float t = static_cast<float>(gateTick - kPhase2End) / static_cast<float>(kPhase3End - kPhase2End);
+                    camera->SetOrbitDistanceForTest(kNear + (kFar - kNear) * t);
+                }
+                if (gateTick % 60 == 0 && mainLogger) {
+                    mainLogger->Info("[ResidencyGateDemo] tick " + std::to_string(gateTick));
+                }
+            }
+        }
+
         // Same "input never rides the render graph's gates" hook, generalized to InputNode
         // (input-rework slice 1): drain its GLFW callback queue unconditionally too, right beside
         // WindowNode's own drain above. Same lookup pattern, same null-guard (a graph without an
@@ -383,6 +424,16 @@ void VulkanGraphApplication::Update() {
         if (renderGraph) {
             renderGraph->ProcessEvents();
             renderGraph->RecompileDirtyNodes();
+        }
+
+        // Sparse-Mip ESVO LOD Inc1 M4c: re-evaluate the brick-residency trigger + re-sort
+        // instances front-to-back against the live camera state. Runs after RecompileDirtyNodes
+        // (graph must be settled) and every tick regardless of render-pause state, same as the
+        // WindowNode/InputNode drains above — camera state can still change (e.g. a queued
+        // resize) while rendering is paused, and this call is cheap/no-op unless the camera
+        // actually moved (change-detection lives inside the method itself).
+        if (renderGraph) {
+            UpdateBodySceneResidency();
         }
     } catch (const std::exception& e) {
         // Record + continue: a fatal condition also surfaces via the next Render() (which returns false).
@@ -634,6 +685,101 @@ void VulkanGraphApplication::SetRecipePool(Vixen::SVO::ConcatenatedOctrees pool)
     } else if (mainLogger) {
         mainLogger->Warning("[VulkanGraphApplication::SetRecipePool] bodyOctreeSceneNode_ not found — pool not applied");
     }
+}
+
+namespace {
+// Sparse-Mip ESVO LOD Inc1 M4c: conservative world-space bounding radius shared by every
+// body placed in BuildRenderGraph.cpp's default scenes (kRadius/kHalf, both 24.0f — the
+// Procedural sphere radius and the Stored shell's world half-extent are deliberately equal
+// so the default camera frames both paths identically; see BuildRenderGraph.cpp's own
+// comments at the instance-seeding block). Used for the frustum containment test's sphere
+// radius; a generic per-instance radius does not exist in BodyInstanceGpu today (Stored
+// uses renderScale, Procedural uses recipeParams[0], different units) and deriving one
+// exactly is out of scope for this milestone's binary per-tree gate.
+constexpr float kResidencyBoundingRadius = 24.0f;
+
+// One pixel's worth of octree level detail must still matter at the default 1080p-ish
+// render target; screenHeightPx is read live from the app's tracked window height each
+// call (see UpdateBodySceneResidency) rather than hardcoded, so a resized window doesn't
+// silently go stale.
+constexpr float kResidencyPxThreshold = 1.0f;
+constexpr float kResidencyLeafSizeM   = 0.01f;  // matches ResolvableLevel.h's 1cm-voxel convention
+}  // namespace
+
+void VulkanGraphApplication::UpdateBodySceneResidency() {
+    // Live lookups — both nodes persist across recompile; never cache (same discipline as
+    // GetWindowHandle()/SetBodyInstances() above).
+    auto* camera = static_cast<Vixen::RenderGraph::CameraNode*>(renderGraph->GetInstance(cameraNode_));
+    auto* bodyScene = static_cast<Vixen::RenderGraph::BodyOctreeSceneNode*>(
+        renderGraph->GetInstance(bodyOctreeSceneNode_));
+    if (!camera || !bodyScene) {
+        return;  // no-op pre-Compile or on a graph without these nodes (e.g. demo graphs)
+    }
+
+    const Vixen::RenderGraph::CameraData& cam = camera->GetCurrentCameraData();
+
+    // Change-detection only (not part of the trigger formula itself) — re-evaluating every
+    // frame is cheap, but SortInstancesFrontToBack is a real (if small) per-frame sort, so
+    // skip it on a genuinely static camera. Orientation matters independently of position
+    // (M4b: it moves bodies in/out of frustum on its own), so cameraDir is compared too —
+    // not just cameraPos/fov.
+    constexpr float kPosEpsilon = 1e-4f;
+    constexpr float kDirEpsilon = 1e-5f;
+    constexpr float kFovEpsilon = 1e-4f;
+    const bool changed = !residencyTriggerEverEvaluated_ ||
+        glm::distance2(cam.cameraPos, lastResidencyCheckCameraPos_) > kPosEpsilon ||
+        glm::distance2(cam.cameraDir, lastResidencyCheckCameraDir_) > kDirEpsilon ||
+        std::abs(cam.fov - lastResidencyCheckFovDegrees_) > kFovEpsilon;
+    if (!changed) {
+        return;
+    }
+    residencyTriggerEverEvaluated_ = true;
+    lastResidencyCheckCameraPos_   = cam.cameraPos;
+    lastResidencyCheckCameraDir_   = cam.cameraDir;
+    lastResidencyCheckFovDegrees_  = cam.fov;
+
+    // near/far bound the same range CameraNode configures (BuildRenderGraph.cpp: 0.1/500.0).
+    const float screenHeightPx = static_cast<float>(height > 0 ? height : 1080);
+    const int brickTierLevel = Vixen::RenderGraph::BodyOctreeSceneNode::GetBrickTierLevel();
+
+    // Per-tree binary residency (§0 scope): resident if ANY current instance, individually,
+    // wants bricks per ResidencyTrigger.h's combined frustum+resolvability test — the whole
+    // shared brick pool must be populated the moment even one instance needs it. occluded(idx)
+    // (M4b's CPU-side occlusion gate) is explicitly DEFERRED TO INC2 (see the plan's M4b
+    // Progress Log) — ResidencyTrigger.h's signature has no occlusion parameter at all, the
+    // documented graceful-degradation path, not a stubbed always-false placeholder.
+    bool anyInstanceWantsBricks = false;
+    for (const auto& inst : bodyScene->GetInstances()) {
+        const glm::vec3 pos(inst.worldPos[0], inst.worldPos[1], inst.worldPos[2]);
+        if (Vixen::SVO::InstanceWantsBrickResidency(
+                pos, kResidencyBoundingRadius,
+                cam.cameraPos, cam.cameraDir, cam.cameraUp, cam.cameraRight,
+                cam.fov, cam.aspect, screenHeightPx, /*nearDist=*/0.1f, /*farDist=*/500.0f,
+                brickTierLevel, kResidencyLeafSizeM, kResidencyPxThreshold)) {
+            anyInstanceWantsBricks = true;
+            break;
+        }
+    }
+    if (mainLogger && std::getenv("VIXEN_RESIDENCY_GATE_DEMO")) {
+        static bool lastLoggedDecision = false;
+        static bool everLogged = false;
+        if (!everLogged || lastLoggedDecision != anyInstanceWantsBricks) {
+            mainLogger->Info(std::string("[ResidencyGateDemo] RequestBrickResidency(") +
+                              (anyInstanceWantsBricks ? "true" : "false") + ") | camDist=" +
+                              std::to_string(glm::distance(cam.cameraPos, glm::vec3(0.0f))) +
+                              " fov=" + std::to_string(cam.fov));
+            lastLoggedDecision = anyInstanceWantsBricks;
+            everLogged = true;
+        }
+    }
+    bodyScene->RequestBrickResidency(anyInstanceWantsBricks);
+
+    // M4b: re-sort front-to-back so the shader's per-ray gridT.x>bestT occlusion reject
+    // (BodyInstanceRayMarch.comp) actually has closer instances visited first in the
+    // instance loop — this is the live call site the M4b Progress Log flagged as missing
+    // (SortInstancesFrontToBack existed and was tested in isolation, but had zero
+    // production call sites until this milestone).
+    bodyScene->SortInstancesFrontToBack(cam.cameraPos);
 }
 
 GLFWwindow* VulkanGraphApplication::GetWindowHandle() const {

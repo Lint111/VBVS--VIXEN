@@ -4,6 +4,7 @@
 #include "Core/NodeLogging.h"
 #include "Data/Nodes/FrameSyncNodeConfig.h"
 #include "VulkanDevice.h"
+#include "Memory/BatchedUploader.h"  // Inc1 M2: ResourceManagement::InvalidUploadHandle
 
 #include <algorithm>
 #include <cstdlib>   // std::getenv
@@ -138,6 +139,13 @@ void BodyOctreeSceneNode::SetInstances(std::vector<Vixen::SVO::BodyInstanceGpu> 
                   std::to_string(instanceCount_) + " instances staged for next Execute");
 }
 
+void BodyOctreeSceneNode::SortInstancesFrontToBack(const glm::vec3& cameraPos) {
+    // In-place; does NOT mark instanceCount_ dirty (count is unchanged by a reorder).
+    // ExecuteImpl uploads whatever order instances_ is currently in — same seam as
+    // SetInstances, just without replacing the list.
+    Vixen::SVO::SortInstancesFrontToBack(instances_, cameraPos);
+}
+
 void BodyOctreeSceneNode::SetBakeRecipe(std::vector<Vixen::SVO::Recipe::SdfInstruction> prog) {
     bakeRecipe_  = std::move(prog);
     recipeDirty_ = true;   // P2.3: if already compiled, ExecuteImpl re-materializes on the next frame;
@@ -153,6 +161,16 @@ void BodyOctreeSceneNode::SetRecipePool(Vixen::SVO::ConcatenatedOctrees pool) {
     recipeDirty_  = true;    // post-Compile: triggers Rematerialize on next Execute
     NODE_LOG_INFO("[BodyOctreeSceneNode] SetRecipePool: " +
                   std::to_string(providedPool_.count) + " octrees staged");
+}
+
+void BodyOctreeSceneNode::RequestBrickResidency(bool resident) {
+    // Stash only — mirrors SetBakeRecipe/SetRecipePool's dirty-flag pattern. ExecuteImpl
+    // performs the actual BatchedUploader call next frame; never upload synchronously here.
+    residencyRequested_  = resident;
+    brickResidencyDirty_ = (resident != brickPoolUploaded_);
+    NODE_LOG_INFO(std::string("[BodyOctreeSceneNode] RequestBrickResidency: ") +
+                  (resident ? "true" : "false") + " (dirty=" +
+                  (brickResidencyDirty_ ? "true" : "false") + ")");
 }
 
 void BodyOctreeSceneNode::SetupImpl(TypedSetupContext& /*ctx*/) {
@@ -215,6 +233,9 @@ void BodyOctreeSceneNode::CompileImpl(TypedCompileContext& ctx) {
     // for binary/Procedural, real data for Stored-SDF bodies.
     ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_SDF_BUFFER,           sdfBuffer_);
     ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_BRICKLOOKUP_BUFFER,   brickLookupBuffer_);
+    // Sparse-Mip ESVO LOD Inc1 M3: mip pool buffer (binding 13). Always emitted —
+    // placeholder for a tree that was never mip-baked, real data otherwise.
+    ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_MIPPOOL_BUFFER,       mipPoolBuffer_);
     // Surface-Shell ESVO cache — publish slot 0 as the compile-time placeholder;
     // ExecuteImpl re-emits slot [frame&1] each frame (the last committed cache).
     ctx.Out(BodyOctreeSceneNodeConfig::SHELL_DATA_BUFFER,           shellDataBuffer_[0]);
@@ -238,6 +259,19 @@ void BodyOctreeSceneNode::ExecuteImpl(TypedExecuteContext& ctx) {
         recipeDirty_      = false;
         octreeRepublished = true;
     }
+
+    // Inc1 M2: a residency request toggled since the last Execute is serviced here — the
+    // same fence-waited safe point recipeDirty_ uses, never synchronously in the setter.
+    if (brickResidencyDirty_) {
+        UploadBrickPool();
+        brickResidencyDirty_ = false;
+    }
+
+    // Inc1 M4c: poll (non-blocking) for in-flight brick/config uploads queued by
+    // UploadBrickPool above, on THIS or an earlier frame — a multi-frame latency between
+    // "residency requested" and "brickResident actually visible on GPU" is expected and
+    // correct (that's the whole point of not blocking); every frame checks, no frame waits.
+    PollBrickUploadCompletion();
 
     // Per-frame ring index from FrameSyncNode (clamp via modulo for safety).
     const uint32_t rawFrame   = ctx.In(BodyOctreeSceneNodeConfig::CURRENT_FRAME_INDEX);
@@ -313,6 +347,7 @@ void BodyOctreeSceneNode::ExecuteImpl(TypedExecuteContext& ctx) {
         ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_CONFIG_BUFFER,      configBuffer_);
         ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_SDF_BUFFER,         sdfBuffer_);
         ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_BRICKLOOKUP_BUFFER, brickLookupBuffer_);
+        ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_MIPPOOL_BUFFER,     mipPoolBuffer_);
         // Rematerialize re-derived + re-created the shell buffers (both slots) inside
         // CreateOctreeBuffers; re-emit slot 0 so the render re-binds the fresh cache.
         ctx.Out(BodyOctreeSceneNodeConfig::SHELL_DATA_BUFFER,         shellDataBuffer_[0]);
@@ -477,15 +512,34 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device) {
         concatenated_.nodes.empty() ? nullptr : concatenated_.nodes.data(),
         nodesBuffer_, nodesMemory_, "octree nodes SSBO");
 
+    // Inc1 M2: allocate the bricks SSBO at FULL capacity, but only populate it now if
+    // residency was already requested before this Compile (e.g. Rematerialize re-running
+    // with residencyRequested_ already true). Default is unpopulated ("mip-only tree") —
+    // ExecuteImpl's UploadBrickPool (via BatchedUploader) fills it lazily on request.
+    // hasBrick() (SVOTypes.h) reads ChildDescriptor.contourPointer, which lives in the
+    // NODE array (nodesBuffer_, populated above unconditionally) — never in bricksBuffer_
+    // itself, so an unwritten-but-allocated bricks buffer is already safely distinguishable
+    // from a populated one at traversal time; no additional GPU-side flag is needed.
     CreateHostBuffer(device, bricksSize,
         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-        concatenated_.bricks.empty() ? nullptr : concatenated_.bricks.data(),
+        (residencyRequested_ && !concatenated_.bricks.empty()) ? concatenated_.bricks.data() : nullptr,
         bricksBuffer_, bricksMemory_, "octree bricks SSBO");
+    brickPoolUploaded_ = residencyRequested_ && !concatenated_.bricks.empty();
 
     CreateHostBuffer(device, materialsSize,
         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
         concatenated_.materials.empty() ? nullptr : concatenated_.materials.data(),
         materialsBuffer_, materialsMemory_, "octree materials SSBO");
+
+    // Inc1 M3 Task 7: stamp brickResident into every octree's config so the shader's
+    // leaf-hit existence check can distinguish "allocated but not populated" from
+    // "fully uploaded" — hasBrick()/contourPointer alone cannot (M2's descriptor
+    // pointer stays valid regardless of residency). Config bytes are re-uploaded
+    // below this same Compile/Rematerialize call, so this always reflects the
+    // brickPoolUploaded_ value just computed above.
+    for (auto& cfg : concatenated_.configs) {
+        Vixen::SVO::setBrickResident(cfg, brickPoolUploaded_);
+    }
 
     // Config SSBO (binding 5, std430): one 432-byte OctreeConfig per octree.
     // ponytail: min 1 entry so the buffer is never zero-byte.
@@ -515,13 +569,25 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device) {
         concatenated_.brickGridLookup.empty() ? nullptr : concatenated_.brickGridLookup.data(),
         brickLookupBuffer_, brickLookupMemory_, "brick-grid lookup SSBO");
 
+    // Sparse-Mip ESVO LOD Inc1 M3: mip pool buffer (binding 13). Pad to 1 byte when empty
+    // — a tree that was never mip-baked (ConcatenateSdf's plain, non-mip sibling) leaves
+    // mipPool empty; the shader's readMipSample bounds-checks against mipPool.length()
+    // and never reads past it.
+    const VkDeviceSize mipPoolSize =
+        std::max<VkDeviceSize>(concatenated_.mipPool.size(), 1);
+    CreateHostBuffer(device, mipPoolSize,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        concatenated_.mipPool.empty() ? nullptr : concatenated_.mipPool.data(),
+        mipPoolBuffer_, mipPoolMemory_, "mip pool SSBO");
+
     NODE_LOG_INFO("[BodyOctreeSceneNode] Created octree buffers (nodes=" +
                   std::to_string(static_cast<uint64_t>(nodesSize)) + "B, bricks=" +
                   std::to_string(static_cast<uint64_t>(bricksSize)) + "B, materials=" +
                   std::to_string(static_cast<uint64_t>(materialsSize)) + "B, config=" +
                   std::to_string(static_cast<uint64_t>(configSize)) + "B, channelPool=" +
                   std::to_string(static_cast<uint64_t>(sdfSize)) + "B, brickLookup=" +
-                  std::to_string(static_cast<uint64_t>(brickLookupSize)) + "B)");
+                  std::to_string(static_cast<uint64_t>(brickLookupSize)) + "B, mipPool=" +
+                  std::to_string(static_cast<uint64_t>(mipPoolSize)) + "B)");
 
     // Surface-Shell ESVO cache: derive the reachable shell of octree 0 from the
     // just-created full pool into BOTH CPU slots, then bootstrap both GPU slots.
@@ -702,6 +768,95 @@ void BodyOctreeSceneNode::CreateShellBuffers(VulkanDevice* device) {
                   std::to_string(static_cast<uint64_t>(shellLookupCapacity_[1])) + "B)");
 }
 
+void BodyOctreeSceneNode::UploadBrickPool() {
+    VulkanDevice* device = GetDevice();
+    if (!device) {
+        NODE_LOG_ERROR("[BodyOctreeSceneNode] UploadBrickPool called with no device");
+        return;
+    }
+
+    // De-residency (false): Inc1 §0 scope is per-tree binary "not requested"/"fully
+    // uploaded" with no GPU-memory-reclaim requirement this increment (M4c's optional
+    // concern, decided by M5's bandwidth measurement) — "stop requesting" is sufficient;
+    // there is no brick data to un-write. Only handle the populate (true) direction here.
+    if (!residencyRequested_ || concatenated_.bricks.empty()) {
+        NODE_LOG_INFO("[BodyOctreeSceneNode] UploadBrickPool: no-op (residencyRequested_=" +
+                      std::string(residencyRequested_ ? "true" : "false") + ", bricks=" +
+                      std::to_string(concatenated_.bricks.size()) + "B)");
+        return;
+    }
+    if (brickPoolUploaded_) {
+        NODE_LOG_INFO("[BodyOctreeSceneNode] UploadBrickPool: already uploaded, skipping");
+        return;
+    }
+
+    const VkDeviceSize size = static_cast<VkDeviceSize>(concatenated_.bricks.size());
+    const auto handle = device->Upload(concatenated_.bricks.data(), size, bricksBuffer_, 0);
+    if (handle == ResourceManagement::InvalidUploadHandle) {
+        NODE_LOG_ERROR("[BodyOctreeSceneNode] UploadBrickPool: BatchedUploader::Upload failed ("
+                      + std::to_string(static_cast<uint64_t>(size)) + "B)");
+        return;
+    }
+
+    // Inc1 M4c: kick off GPU execution without blocking (was device->WaitAllUploads(), a
+    // synchronous vkDeviceWaitIdle-equivalent stall) — M2's assumption that residency
+    // toggles are rare no longer holds once M4c re-checks the trigger every frame the
+    // camera moves/zooms/rotates. brickPoolUploaded_/brickResident are NOT flipped here;
+    // PollBrickUploadCompletion() (called every ExecuteImpl) advances the rest of this
+    // state machine once the GPU-side copy is actually visible, non-blocking.
+    device->FlushUploads();
+    pendingBrickUploadHandle_ = handle;
+
+    NODE_LOG_INFO("[BodyOctreeSceneNode] UploadBrickPool: queued " +
+                  std::to_string(static_cast<uint64_t>(size)) + "B via BatchedUploader (async)");
+}
+
+void BodyOctreeSceneNode::PollBrickUploadCompletion() {
+    VulkanDevice* device = GetDevice();
+    if (!device) {
+        return;
+    }
+
+    // Phase 1: brick data in flight. Once visible, stamp brickResident=1 into the CPU-side
+    // config mirror and queue ITS upload — must not happen before the bricks land, or the
+    // shader could observe brickResident=1 while still reading stale/zeroed brick bytes.
+    if (pendingBrickUploadHandle_ != ResourceManagement::InvalidUploadHandle) {
+        if (!device->IsUploadComplete(pendingBrickUploadHandle_)) {
+            return;  // still in flight — check again next frame
+        }
+        pendingBrickUploadHandle_ = ResourceManagement::InvalidUploadHandle;
+        brickPoolUploaded_ = true;
+
+        for (auto& cfg : concatenated_.configs) {
+            Vixen::SVO::setBrickResident(cfg, true);
+        }
+        const VkDeviceSize configSize =
+            static_cast<VkDeviceSize>(concatenated_.configs.size()) *
+            static_cast<VkDeviceSize>(sizeof(Vixen::SVO::OctreeConfig));
+        if (configSize > 0) {
+            const auto cfgHandle = device->Upload(concatenated_.configs.data(), configSize, configBuffer_, 0);
+            if (cfgHandle == ResourceManagement::InvalidUploadHandle) {
+                NODE_LOG_ERROR("[BodyOctreeSceneNode] PollBrickUploadCompletion: config re-upload failed ("
+                              + std::to_string(static_cast<uint64_t>(configSize)) + "B)");
+            } else {
+                device->FlushUploads();
+                pendingConfigUploadHandle_ = cfgHandle;
+            }
+        }
+        NODE_LOG_INFO("[BodyOctreeSceneNode] PollBrickUploadCompletion: brick pool visible on GPU");
+        return;  // one phase transition per call, matches the queue-then-poll-next-frame pattern
+    }
+
+    // Phase 2: config re-upload in flight (brickResident=1 becoming visible).
+    if (pendingConfigUploadHandle_ != ResourceManagement::InvalidUploadHandle) {
+        if (!device->IsUploadComplete(pendingConfigUploadHandle_)) {
+            return;
+        }
+        pendingConfigUploadHandle_ = ResourceManagement::InvalidUploadHandle;
+        NODE_LOG_INFO("[BodyOctreeSceneNode] PollBrickUploadCompletion: brickResident config visible on GPU");
+    }
+}
+
 void BodyOctreeSceneNode::DestroyOctreeBuffers() {
     if (!GetDevice()) return;
     VkDevice vkDevice = GetDevice()->device;
@@ -724,6 +879,7 @@ void BodyOctreeSceneNode::DestroyOctreeBuffers() {
         shellDataCapacity_[i]   = 0;
         shellLookupCapacity_[i] = 0;
     }
+    destroy(mipPoolBuffer_,       mipPoolMemory_);      // Inc1 M3
 }
 
 void BodyOctreeSceneNode::DestroyBuffers() {

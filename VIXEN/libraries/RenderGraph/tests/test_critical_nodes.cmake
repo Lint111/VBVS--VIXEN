@@ -431,6 +431,62 @@ gtest_discover_tests(test_recipe_pool_render
 message(STATUS "[RenderGraph Tests] Added: test_recipe_pool_render (I4.1 pool render gate)")
 
 # ===========================================================================
+# Sparse-Mip ESVO LOD Inc1 M3 — shader-side mip fallback read (Tasks 7-9):
+# a mip-only tree (residency never requested) renders a recognizable round
+# silhouette from mip samples alone; a fully-resident tree renders comparably.
+# ===========================================================================
+add_executable(test_mip_fallback_render
+    Nodes/test_mip_fallback_render.cpp
+)
+add_dependencies(test_mip_fallback_render body_instance_raymarch_spv)
+target_link_libraries(test_mip_fallback_render PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+if(TARGET SVO)
+    target_link_libraries(test_mip_fallback_render PRIVATE SVO)
+endif()
+if(TARGET stb)
+    target_link_libraries(test_mip_fallback_render PRIVATE stb)
+else()
+    target_include_directories(test_mip_fallback_render PRIVATE
+        "${CMAKE_BINARY_DIR}/_deps/stb-src")
+endif()
+target_compile_definitions(test_mip_fallback_render PRIVATE
+    GLSL_RAYMARCH_SPV="${_brm_spv}")
+if(VIXEN_WSL_DZN_ICD)
+    target_compile_definitions(test_mip_fallback_render PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
+endif()
+set_target_properties(test_mip_fallback_render PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_mip_fallback_render
+    DISCOVERY_MODE PRE_TEST
+    DISCOVERY_TIMEOUT 120)
+message(STATUS "[RenderGraph Tests] Added: test_mip_fallback_render (Sparse-Mip ESVO LOD Inc1 M3)")
+
+# ===========================================================================
+# Sparse-Mip ESVO LOD Inc1 M4b — GPU per-ray occlusion reject: a synthetic
+# camera -> occluder -> occluded-target line-up (front-to-back sorted CPU-side)
+# asserts the occluded instance's ESVO traversal ran ZERO iterations once the
+# occluder's hit landed in bestT (binding 14, InstanceIterDebugBuffer), not just
+# "no visible pixel difference." No PNG output (no stb dependency needed).
+# ===========================================================================
+add_executable(test_body_instance_occlusion_reject
+    Nodes/test_body_instance_occlusion_reject.cpp
+)
+add_dependencies(test_body_instance_occlusion_reject body_instance_raymarch_spv)
+target_link_libraries(test_body_instance_occlusion_reject PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+if(TARGET SVO)
+    target_link_libraries(test_body_instance_occlusion_reject PRIVATE SVO)
+endif()
+target_compile_definitions(test_body_instance_occlusion_reject PRIVATE
+    GLSL_RAYMARCH_SPV="${_brm_spv}")
+if(VIXEN_WSL_DZN_ICD)
+    target_compile_definitions(test_body_instance_occlusion_reject PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
+endif()
+set_target_properties(test_body_instance_occlusion_reject PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_body_instance_occlusion_reject
+    DISCOVERY_MODE PRE_TEST
+    DISCOVERY_TIMEOUT 120)
+message(STATUS "[RenderGraph Tests] Added: test_body_instance_occlusion_reject (Sparse-Mip ESVO LOD Inc1 M4b)")
+
+# ===========================================================================
 # Voxel Authoring Inc1 M4 — vixen_editor's load/flatten/bake/render/toggle path:
 # golden document renders, then a cut-layer ablation asserts a real
 # pixel-level top-face difference (the cylinder punches through the box).

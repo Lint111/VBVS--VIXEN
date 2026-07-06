@@ -122,6 +122,26 @@ endif()
 gtest_discover_tests(test_soa_sdf_serialize)
 
 # ===========================================================================
+# SoA-Mip Serialize Tests  (Sparse-Mip ESVO LOD Inc1 M1 Task 3 — MipPool
+# round-trip through SerializedOctree::mipPool + ConcatenatedOctrees::mipPool)
+# ===========================================================================
+add_executable(test_soa_mip_serialize test_soa_mip_serialize.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_soa_mip_serialize PRIVATE
+        GTest::gtest_main SVO GaiaVoxelWorld VoxelComponents VoxelData)
+else()
+    target_link_libraries(test_soa_mip_serialize PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_soa_mip_serialize PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_soa_mip_serialize POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_soa_mip_serialize>
+        COMMENT "Copying TBB DLL for test_soa_mip_serialize")
+endif()
+gtest_discover_tests(test_soa_mip_serialize)
+
+# ===========================================================================
 # Stored-SDF March Mirror Tests  (gpu-shader-debug — CPU mirror of StoredSdf.glsl
 # marchBrickSdf + BodyInstanceRayMarch.comp handleLeafHitInstancedSdf, reproducing
 # the GPU's brick-aligned holes on the CPU for root-cause debugging)
@@ -160,6 +180,129 @@ if(TARGET TBB::tbb)
         COMMENT "Copying TBB DLL for test_channel_format")
 endif()
 gtest_discover_tests(test_channel_format)
+
+# ===========================================================================
+# Mip Sample Filter Tests  (Sparse-Mip ESVO LOD Inc1 M1 Task 1 — pure math,
+# no octree needed: weighted-mean color/roughness + min-magnitude SDF filter)
+# ===========================================================================
+add_executable(test_mip_sample_filter test_mip_sample_filter.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_mip_sample_filter PRIVATE
+        GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_mip_sample_filter PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_mip_sample_filter PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_mip_sample_filter POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_mip_sample_filter>
+        COMMENT "Copying TBB DLL for test_mip_sample_filter")
+endif()
+gtest_discover_tests(test_mip_sample_filter)
+
+# ===========================================================================
+# Mip Sample Bake Tests  (Sparse-Mip ESVO LOD Inc1 M1 Task 2 — bottom-up
+# bake-time fill of MipPool from an already-built Octree + SerializeSdf output)
+# ===========================================================================
+add_executable(test_mip_sample_bake test_mip_sample_bake.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_mip_sample_bake PRIVATE
+        GTest::gtest_main SVO GaiaVoxelWorld VoxelComponents VoxelData)
+else()
+    target_link_libraries(test_mip_sample_bake PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_mip_sample_bake PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_mip_sample_bake POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_mip_sample_bake>
+        COMMENT "Copying TBB DLL for test_mip_sample_bake")
+endif()
+gtest_discover_tests(test_mip_sample_bake)
+
+# ===========================================================================
+# Resolvable-Level Formula Tests  (Sparse-Mip ESVO LOD Inc1 M4a Task 10 part 1
+# — pure math, no octree/GPU needed: minResolvableLevel(distance, fovRadians,
+# screenHeightPx, leafSize_m, pxThreshold), both distance- and FOV-driven axes)
+# ===========================================================================
+add_executable(test_resolvable_level test_resolvable_level.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_resolvable_level PRIVATE
+        GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_resolvable_level PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_resolvable_level PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_resolvable_level POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_resolvable_level>
+        COMMENT "Copying TBB DLL for test_resolvable_level")
+endif()
+gtest_discover_tests(test_resolvable_level)
+
+# ===========================================================================
+# Frustum Cull Tests  (Sparse-Mip ESVO LOD Inc1 M4b Task 10 part 2, frustum piece
+# — pure math, no octree/GPU needed: BuildFrustum/SphereIntersectsFrustum, plus
+# the residency hysteresis-pad constant)
+# ===========================================================================
+add_executable(test_frustum_cull test_frustum_cull.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_frustum_cull PRIVATE
+        GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_frustum_cull PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_frustum_cull PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_frustum_cull POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_frustum_cull>
+        COMMENT "Copying TBB DLL for test_frustum_cull")
+endif()
+gtest_discover_tests(test_frustum_cull)
+
+# ===========================================================================
+# Instance Sort Tests  (Sparse-Mip ESVO LOD Inc1 M4b Task 10 part 2, occlusion piece
+# — pure math, no octree/GPU needed: SortInstancesFrontToBack)
+# ===========================================================================
+add_executable(test_instance_sort test_instance_sort.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_instance_sort PRIVATE
+        GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_instance_sort PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_instance_sort PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_instance_sort POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_instance_sort>
+        COMMENT "Copying TBB DLL for test_instance_sort")
+endif()
+gtest_discover_tests(test_instance_sort)
+
+# ===========================================================================
+# Residency Trigger Tests  (Sparse-Mip ESVO LOD Inc1 M4c Task 10 part 3 —
+# pure math, no octree/GPU needed: InstanceWantsBrickResidency, the combined
+# M4a+M4b trigger, three scenarios — distance/zoom/orientation-driven)
+# ===========================================================================
+add_executable(test_residency_trigger test_residency_trigger.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_residency_trigger PRIVATE
+        GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_residency_trigger PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_residency_trigger PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_residency_trigger POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_residency_trigger>
+        COMMENT "Copying TBB DLL for test_residency_trigger")
+endif()
+gtest_discover_tests(test_residency_trigger)
 
 # ===========================================================================
 # SDF Bake Tests  (Inc2 M1 — recipe → narrow-band SDF voxels + body octree)
