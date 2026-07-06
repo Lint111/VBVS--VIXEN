@@ -1,14 +1,9 @@
 #include "Headers.h"
-#include "VulkanApplicationBase.h"
 #include "VulkanGraphApplication.h"
 #include "VulkanGlobalNames.h"
 #include <Logger.h>
-#include <cstdlib>  // std::getenv for VIXEN_LOG_LEVEL
+#include <cstdlib>  // std::getenv for VIXEN_LOG_LEVEL, std::strtoull for VIXEN_EXIT_AFTER_FRAMES
 #include <string>
-#include <array>      // frame-time rolling window (perf instrumentation)
-#include <algorithm>  // std::sort for p99
-#include <chrono>     // steady_clock frame timing
-#include <cstdio>     // std::snprintf
 
 // Validation layers/extensions are gated by the cross-platform VIXEN_VULKAN_VALIDATION
 // symbol (set by cmake/ProvisionVulkan.cmake from the build type), NOT the MSVC-only
@@ -69,101 +64,19 @@ int main(int argc, char** argv) {
     mainLogger->SetTerminalOutput(true);
     mainLogger->Info("Starting VulkanGraphApplication...");
 
-    try {
-        // Instantiate the application directly (AR#7: the singleton is gone). unique_ptr so
-        // teardown (~VulkanGraphApplication -> DeInitialize) runs deterministically on scope exit.
-        auto app = std::make_unique<VulkanGraphApplication>();
-        VulkanApplicationBase* appObj = app.get();
+    // Instantiate the application directly (AR#7: the singleton is gone). unique_ptr so
+    // teardown (~VulkanGraphApplication -> DeInitialize) runs deterministically on scope exit.
+    auto app = std::make_unique<VulkanGraphApplication>();
 
-        mainLogger->Info("Calling Initialize...");
-        appObj -> Initialize();
-
-        mainLogger->Info("Calling Prepare...");
-        appObj -> Prepare();
-        if (!appObj->IsPrepared()) {
-            // Phase 2b: Prepare() now reports failure via IsPrepared()/GetLastError() instead of
-            // throwing (so a C# host gets a status, not a C++ exception). Abort the run gracefully.
-            mainLogger->Error("Prepare failed: " + appObj->GetLastError() + " - aborting before render loop");
-            appObj -> DeInitialize();
-            return -1;
-        }
-
-        mainLogger->Info("Entering render loop...");
-        // Perf measurement instrumentation (perf sweep 2026-07):
-        //   - rolling CPU frame-time summary (avg/p99/FPS) every 120 frames
-        //   - VIXEN_EXIT_AFTER_FRAMES=<n>: close cleanly after n frames (unattended A/B runs;
-        //     exits through the same path as a window close so logs flush via ExtractLogs)
-        long exitAfterFrames = 0;
-        if (const char* env = std::getenv("VIXEN_EXIT_AFTER_FRAMES")) {
-            exitAfterFrames = std::strtol(env, nullptr, 10);
-        }
-        constexpr size_t kFrameWindow = 120;
-        std::array<double, kFrameWindow> frameTimesMs{};
-        uint64_t frameCounter = 0;
-        auto lastFrameStart = std::chrono::steady_clock::now();
-        bool isWindowOpen = true;
-        // M5.1: outlier-frame logging. lastWindowMedian_ persists the PREVIOUS completed window's
-        // median frame time; any frame costing >3x that AND >5ms absolute gets its own log line the
-        // instant it happens, instead of waiting to be buried in the next window's avg/p99 summary.
-        // The absolute floor keeps sub-millisecond noise (e.g. a ~0.45ms median) from producing a
-        // flood of "outliers" that are really just measurement jitter. 0 (no prior window yet)
-        // disables the check for the first kFrameWindow frames.
-        double lastWindowMedian = 0.0;
-        while(isWindowOpen) {
-            appObj -> Update();
-            isWindowOpen = appObj->Render();
-
-            const auto now = std::chrono::steady_clock::now();
-            const double thisFrameMs = std::chrono::duration<double, std::milli>(now - lastFrameStart).count();
-            frameTimesMs[frameCounter % kFrameWindow] = thisFrameMs;
-            lastFrameStart = now;
-            ++frameCounter;
-
-            if (lastWindowMedian > 0.0 && thisFrameMs > 3.0 * lastWindowMedian && thisFrameMs > 5.0) {
-                char obuf[128];
-                std::snprintf(obuf, sizeof(obuf), "[FrameTimer] OUTLIER frame %llu: %.3f ms",
-                              static_cast<unsigned long long>(frameCounter), thisFrameMs);
-                mainLogger->Info(obuf);
-            }
-
-            if (frameCounter % kFrameWindow == 0) {
-                std::array<double, kFrameWindow> sorted = frameTimesMs;
-                std::sort(sorted.begin(), sorted.end());
-                double sum = 0.0;
-                for (double v : sorted) sum += v;
-                const double avg = sum / static_cast<double>(kFrameWindow);
-                const double p99 = sorted[(kFrameWindow * 99) / 100];
-                const double median = sorted[kFrameWindow / 2];
-                char buf[160];
-                std::snprintf(buf, sizeof(buf),
-                              "[FrameTimer] frames %llu-%llu: avg %.3f ms (%.1f FPS) | p99 %.3f ms",
-                              static_cast<unsigned long long>(frameCounter - kFrameWindow),
-                              static_cast<unsigned long long>(frameCounter),
-                              avg, avg > 0.0 ? 1000.0 / avg : 0.0, p99);
-                mainLogger->Info(buf);
-                lastWindowMedian = median;
-            }
-
-            if (exitAfterFrames > 0 && frameCounter >= static_cast<uint64_t>(exitAfterFrames)) {
-                mainLogger->Info("[FrameTimer] VIXEN_EXIT_AFTER_FRAMES=" + std::to_string(exitAfterFrames)
-                                 + " reached - closing");
-                isWindowOpen = false;
-            }
-        }
-
-        mainLogger->Info("Cleaning up...");
-        appObj -> DeInitialize();
-        mainLogger->Info("DeInitialize complete");
-    }
-    catch(const std::exception& e) {
-        mainLogger->Error(std::string("Exception caught: ") + e.what());
-        return -1;
-    }
-    catch(...) {
-        mainLogger->Error("Unknown exception caught!");
-        return -1;
+    // VIXEN_EXIT_AFTER_FRAMES=<n>: close cleanly after n frames (unattended A/B runs; exits
+    // through the same path as a window close so logs flush via ExtractLogs).
+    uint64_t exitAfterFrames = 0;
+    if (const char* env = std::getenv("VIXEN_EXIT_AFTER_FRAMES")) {
+        exitAfterFrames = static_cast<uint64_t>(std::strtoull(env, nullptr, 10));
     }
 
-    mainLogger->Info("Exiting normally");
-    return 0;
+    // Engine-owned loop: Initialize -> Prepare -> loop -> DeInitialize, with the standalone
+    // app's frame-timer instrumentation (rolling avg/p99/FPS + outlier logging) enabled. All
+    // lifecycle + the try/catch boundary now live in Run().
+    return app->Run({ .exitAfterFrames = exitAfterFrames, .enableFrameTimer = true });
 }

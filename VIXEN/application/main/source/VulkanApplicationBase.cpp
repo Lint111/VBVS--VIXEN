@@ -167,11 +167,16 @@ int VulkanApplicationBase::Run(const RunOptions& opts) {
         }
         if (mainLogger) mainLogger->Info("[Run] Entering render loop...");
 
+        // do/while (not while(Tick()==Running)): the frame-timer must record the tick that HITS
+        // the limit too, matching the old main.cpp where the timer block ran unconditionally
+        // before the exitAfterFrames check. A condition-gated while would skip recording on the
+        // terminal tick, silently dropping the "frames 0-120" summary line on an exact-120 run.
         FrameTimer frameTimer;
-        TickStatus st = TickStatus::Running;
-        while ((st = Tick()) == TickStatus::Running) {
+        TickStatus st;
+        do {
+            st = Tick();
             if (opts.enableFrameTimer) frameTimer.Record(frameCounter_, mainLogger.get());
-        }
+        } while (st == TickStatus::Running);
 
         if (mainLogger) {
             const char* reason =
