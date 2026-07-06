@@ -1,11 +1,15 @@
 /**
- * @file test_view_editorhud_golden.cpp
- * @brief View Contract Inc-1 golden-mirror gate. Proves the generated EditorHud.g.h RmlUi
- * data-model registration block (a) compiles + binds against a real Rml::DataModelConstructor,
- * and (b) matches, as a normalized ordered call sequence, the HAND-WRITTEN block in
- * UIRenderNode.cpp:116-138 (the human truth). Do NOT parse UIRenderNode.cpp at runtime — the
- * expected sequence below is a maintained literal transcribed from those lines; the pinning
- * comment tells a future editor to update both sides together.
+ * @file test_view_hud_golden.cpp
+ * @brief View Contract Inc-2 golden-mirror gate. Proves the generated Hud.g.h RmlUi data-model
+ * registration block (a) compiles + binds against a real Rml::DataModelConstructor, and (b)
+ * matches, as a normalized ordered call sequence, the CANONICAL Hud [View] schema field order
+ * (tick, bodyCount, activeLensName, activeLensCount, factions[HudFaction], events[HudEvent]).
+ * The human truth used to be the hand-written block in UIRenderNode.cpp (Inc-1); that block is
+ * deleted in Inc-2 (the node is now a generic IView host — see Ui/IView.h), so the truth moves
+ * to the schema itself (codegen/view-schemas/Hud.cs) and its native consumer, HudView::Register
+ * (application/main/include/graph/HudView.h). Do NOT parse either at runtime — the expected
+ * sequence below is a maintained literal; the pinning comment tells a future editor to update
+ * both sides together.
  */
 #include <gtest/gtest.h>
 #include <RmlUi/Core.h>
@@ -19,7 +23,7 @@
 #include <vector>
 #include <regex>
 
-#include "Generated/EditorHud.g.h"   // the artifact under test
+#include "Generated/Hud.g.h"   // the artifact under test
 #include "Ui/VixenRmlSystemInterface.h"
 
 namespace {
@@ -39,6 +43,9 @@ public:
     void ReleaseTexture(Rml::TextureHandle) override {}
 };
 
+// Canonical Hud schema field order (codegen/view-schemas/Hud.cs), mirrored by the native
+// consumer's HudView::Register (application/main/include/graph/HudView.h) — NOT the deleted
+// UIRenderNode.cpp hand-written block (Inc-1's anchor; removed in Inc-2).
 const std::vector<std::string> kExpected = {
     "RegisterStruct<HudFaction>",
     "RegisterMember(name,&HudFaction::name)",
@@ -61,7 +68,7 @@ const std::vector<std::string> kExpected = {
 };
 
 std::string ReadGeneratedHeader() {
-    std::ifstream f(VIEW_EDITORHUD_G_H);
+    std::ifstream f(VIEW_HUD_G_H);
     std::stringstream ss; ss << f.rdbuf();
     return ss.str();
 }
@@ -84,16 +91,17 @@ std::vector<std::string> ExtractSequence(const std::string& src) {
 
 }  // namespace
 
-TEST(ViewEditorHudGolden, GeneratedSequenceMatchesHandWrittenUIRenderNodeBlock) {
+TEST(ViewHudGolden, GeneratedSequenceMatchesCanonicalSchema) {
     const std::string src = ReadGeneratedHeader();
-    ASSERT_FALSE(src.empty()) << "could not read " << VIEW_EDITORHUD_G_H;
+    ASSERT_FALSE(src.empty()) << "could not read " << VIEW_HUD_G_H;
     const std::vector<std::string> got = ExtractSequence(src);
     EXPECT_EQ(got, kExpected)
-        << "generated EditorHud.g.h registration sequence diverged from the hand-written "
-           "UIRenderNode.cpp:116-138 truth — regenerate the header or re-transcribe kExpected.";
+        << "generated Hud.g.h registration sequence diverged from the canonical Hud [View] "
+           "schema (codegen/view-schemas/Hud.cs) / HudView::Register truth — regenerate the "
+           "header or re-transcribe kExpected.";
 }
 
-TEST(ViewEditorHudGolden, GeneratedBindFunctionCompilesAndBinds) {
+TEST(ViewHudGolden, GeneratedBindFunctionCompilesAndBinds) {
     Vixen::Ui::VixenRmlSystemInterface sysIface;
     NullRenderInterface renderIface;
     Rml::SetSystemInterface(&sysIface);
@@ -106,11 +114,11 @@ TEST(ViewEditorHudGolden, GeneratedBindFunctionCompilesAndBinds) {
     Rml::String activeLensName = "lens";
     std::vector<Vixen::Views::HudFaction> factions;
     std::vector<Vixen::Views::HudEvent> events;
-    Vixen::Views::EditorHudBind bind{ &tick, &bodyCount, &activeLensName, &activeLensCount, &factions, &events };
+    Vixen::Views::HudBind bind{ &tick, &bodyCount, &activeLensName, &activeLensCount, &factions, &events };
 
-    Rml::DataModelConstructor c = ctx->CreateDataModel("editorhud");
+    Rml::DataModelConstructor c = ctx->CreateDataModel("hud");
     ASSERT_TRUE(static_cast<bool>(c));
-    Vixen::Views::BindEditorHudModel(c, bind);
+    Vixen::Views::BindHudModel(c, bind);
     EXPECT_TRUE(static_cast<bool>(c.GetModelHandle()));
 
     Rml::RemoveContext("view-golden");
