@@ -243,6 +243,47 @@ endif()
 gtest_discover_tests(test_resolvable_level)
 
 # ===========================================================================
+# Frustum Cull Tests  (Sparse-Mip ESVO LOD Inc1 M4b Task 10 part 2, frustum piece
+# — pure math, no octree/GPU needed: BuildFrustum/SphereIntersectsFrustum, plus
+# the residency hysteresis-pad constant)
+# ===========================================================================
+add_executable(test_frustum_cull test_frustum_cull.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_frustum_cull PRIVATE
+        GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_frustum_cull PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_frustum_cull PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_frustum_cull POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_frustum_cull>
+        COMMENT "Copying TBB DLL for test_frustum_cull")
+endif()
+gtest_discover_tests(test_frustum_cull)
+
+# ===========================================================================
+# Instance Sort Tests  (Sparse-Mip ESVO LOD Inc1 M4b Task 10 part 2, occlusion piece
+# — pure math, no octree/GPU needed: SortInstancesFrontToBack)
+# ===========================================================================
+add_executable(test_instance_sort test_instance_sort.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_instance_sort PRIVATE
+        GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_instance_sort PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_instance_sort PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_instance_sort POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_instance_sort>
+        COMMENT "Copying TBB DLL for test_instance_sort")
+endif()
+gtest_discover_tests(test_instance_sort)
+
+# ===========================================================================
 # SDF Bake Tests  (Inc2 M1 — recipe → narrow-band SDF voxels + body octree)
 # ===========================================================================
 add_executable(test_sdf_bake test_sdf_bake.cpp)
