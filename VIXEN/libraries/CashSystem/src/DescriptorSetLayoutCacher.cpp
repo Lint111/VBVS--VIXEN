@@ -87,11 +87,17 @@ std::uint64_t DescriptorSetLayoutCacher::ComputeKey(const DescriptorSetLayoutCre
 void DescriptorSetLayoutCacher::Cleanup() {
     LOG_INFO("Cleanup: Destroying " + std::to_string(m_entries.size()) + " descriptor set layouts");
 
-    for (auto& [key, entry] : m_entries) {
-        if (entry.resource && entry.resource->layout != VK_NULL_HANDLE) {
-            // Note: We don't have direct access to VkDevice here
-            // In production, store device pointer or use deferred cleanup
-            LOG_WARNING("Skipping VkDescriptorSetLayout cleanup - device required");
+    // Locked: iterating m_entries here races GetOrCreate()'s insert on another thread — even
+    // though this loop body doesn't mutate, unordered_map iteration during a concurrent insert
+    // is UB (audit V-M9).
+    {
+        std::shared_lock rlock(m_lock);
+        for (auto& [key, entry] : m_entries) {
+            if (entry.resource && entry.resource->layout != VK_NULL_HANDLE) {
+                // Note: We don't have direct access to VkDevice here
+                // In production, store device pointer or use deferred cleanup
+                LOG_WARNING("Skipping VkDescriptorSetLayout cleanup - device required");
+            }
         }
     }
 

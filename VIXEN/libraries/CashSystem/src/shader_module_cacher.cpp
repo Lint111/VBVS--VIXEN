@@ -308,8 +308,12 @@ void ShaderModuleCacher::CompileShader(const ShaderModuleCreateParams& ci, Shade
 void ShaderModuleCacher::Cleanup() {
     LOG_INFO("Cleaning up " + std::to_string(m_entries.size()) + " cached shader modules");
 
-    // Destroy all cached VkShaderModule handles
+    // Destroy all cached VkShaderModule handles. Locked: m_entries is mutated here while
+    // DeviceRegistry can be running SerializeToFile/DeserializeFromFile for this same cacher on
+    // another thread via std::async (audit V-M9). Released before Clear(), which takes its own
+    // unique_lock.
     if (GetDevice()) {
+        std::unique_lock wlock(m_lock);
         for (auto& [key, entry] : m_entries) {
             if (entry.resource && entry.resource->shaderModule != VK_NULL_HANDLE) {
                 LOG_DEBUG("Destroying VkShaderModule: " + std::to_string(reinterpret_cast<uint64_t>(entry.resource->shaderModule)));
@@ -334,6 +338,10 @@ bool ShaderModuleCacher::SerializeToFile(const std::filesystem::path& path) cons
         }
 
         CacheWriter writer(file);
+
+        // Locked: m_entries can be mutated concurrently by Cleanup()/GetOrCreate() for this
+        // same cacher on another thread via DeviceRegistry's std::async (audit V-M9).
+        std::shared_lock rlock(m_lock);
 
         LOG_INFO("SerializeToFile: Saving " + std::to_string(m_entries.size()) + " shader modules to " + path.string());
 

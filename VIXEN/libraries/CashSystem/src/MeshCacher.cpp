@@ -16,24 +16,30 @@ namespace CashSystem {
 void MeshCacher::Cleanup() {
     LOG_INFO("Cleaning up " + std::to_string(m_entries.size()) + " cached meshes");
 
-    // Free all cached Vulkan resources via allocator infrastructure
-    for (auto& [key, entry] : m_entries) {
-        if (entry.resource) {
-            // Free vertex allocation
-            if (entry.resource->vertexAllocation.buffer != VK_NULL_HANDLE) {
-                LOG_DEBUG("Freeing vertex buffer: " + std::to_string(reinterpret_cast<uint64_t>(entry.resource->vertexAllocation.buffer)));
-                FreeBufferTracked(entry.resource->vertexAllocation);
-            }
+    // Free all cached Vulkan resources via allocator infrastructure. Locked: m_entries is
+    // mutated here while DeviceRegistry can be running Serialize/DeserializeFromFile for this
+    // same cacher on another thread via std::async (audit V-M9). Released before Clear(), which
+    // takes its own unique_lock.
+    {
+        std::unique_lock wlock(m_lock);
+        for (auto& [key, entry] : m_entries) {
+            if (entry.resource) {
+                // Free vertex allocation
+                if (entry.resource->vertexAllocation.buffer != VK_NULL_HANDLE) {
+                    LOG_DEBUG("Freeing vertex buffer: " + std::to_string(reinterpret_cast<uint64_t>(entry.resource->vertexAllocation.buffer)));
+                    FreeBufferTracked(entry.resource->vertexAllocation);
+                }
 
-            // Free index allocation
-            if (entry.resource->indexAllocation.buffer != VK_NULL_HANDLE) {
-                LOG_DEBUG("Freeing index buffer: " + std::to_string(reinterpret_cast<uint64_t>(entry.resource->indexAllocation.buffer)));
-                FreeBufferTracked(entry.resource->indexAllocation);
-            }
+                // Free index allocation
+                if (entry.resource->indexAllocation.buffer != VK_NULL_HANDLE) {
+                    LOG_DEBUG("Freeing index buffer: " + std::to_string(reinterpret_cast<uint64_t>(entry.resource->indexAllocation.buffer)));
+                    FreeBufferTracked(entry.resource->indexAllocation);
+                }
 
-            // Clear cached CPU data
-            entry.resource->vertexData.clear();
-            entry.resource->indexData.clear();
+                // Clear cached CPU data
+                entry.resource->vertexData.clear();
+                entry.resource->indexData.clear();
+            }
         }
     }
 

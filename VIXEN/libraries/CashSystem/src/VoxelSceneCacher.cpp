@@ -160,10 +160,15 @@ std::uint64_t VoxelSceneCacher::ComputeKey(const VoxelSceneCreateInfo& ci) const
 void VoxelSceneCacher::Cleanup() {
     LOG_INFO("[VoxelSceneCacher::Cleanup] Cleaning up cached scene data");
 
-    // Cleanup all cached entries
-    for (auto& [key, entry] : m_entries) {
-        if (entry.resource) {
-            entry.resource->Cleanup(m_device->device);
+    // Cleanup all cached entries. Locked: m_entries is mutated here while DeviceRegistry can be
+    // running SerializeToFile/DeserializeFromFile for this same cacher on another thread via
+    // std::async (audit V-M9). Released before Clear(), which takes its own unique_lock.
+    {
+        std::unique_lock wlock(m_lock);
+        for (auto& [key, entry] : m_entries) {
+            if (entry.resource) {
+                entry.resource->Cleanup(m_device->device);
+            }
         }
     }
 
