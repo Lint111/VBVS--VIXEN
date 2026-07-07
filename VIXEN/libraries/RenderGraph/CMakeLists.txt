@@ -327,6 +327,7 @@ set(RENDERGRAPH_UI_HEADERS
     include/Ui/IView.h
     include/Ui/ViewBlob.h
     include/Ui/ViewStore.h
+    include/Ui/ViewBlobFile.h
     include/Data/Nodes/UIRenderNodeConfig.h
     include/Nodes/UIRenderNode.h
 )
@@ -335,6 +336,7 @@ set(RENDERGRAPH_UI_SOURCES
     src/Ui/VixenRmlRenderInterface.cpp
     src/Ui/UiHitMask.cpp
     src/Ui/ViewStore.cpp
+    src/Ui/ViewBlobFile.cpp
     src/Nodes/UIRenderNode.cpp
 )
 

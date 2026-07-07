@@ -699,6 +699,22 @@ else()
 endif()
 
 # ===========================================================================
+# View Contract Inc-2b: ViewBlobFile — runtime .viewblob parser
+# ===========================================================================
+# Pure CPU test of the line-grammar parser (model/version/field/elem) + hard-fail
+# validation on malformed input. No RmlUi/Vulkan/GPU touchpoints.
+
+if(TARGET GTest::gtest_main)
+    add_executable(test_view_blob_file test_view_blob_file.cpp)
+    target_link_libraries(test_view_blob_file PRIVATE GTest::gtest_main RenderGraph)
+    set_target_properties(test_view_blob_file PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    gtest_discover_tests(test_view_blob_file DISCOVERY_MODE PRE_TEST DISCOVERY_TIMEOUT 60)
+    message(STATUS "✓ test_view_blob_file configured (View Contract Inc-2b: ViewBlobFile parser)")
+else()
+    message(STATUS "⊗ test_view_blob_file skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
 # BarrierTypes Tests (auto-sync P1)
 # ===========================================================================
 # Validates AccessKind -> Vulkan sync-semantics mapping
