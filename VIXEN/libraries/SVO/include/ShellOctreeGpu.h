@@ -80,6 +80,7 @@
 #include <glm/gtc/matrix_transform.hpp>  // glm::scale / glm::translate
 
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstdint>
 #include <cstddef>
@@ -499,6 +500,89 @@ inline SerializedOctree Serialize(const ShellOctree& shell) {
     c.brickArrayBase = 0;
 
     return out;
+}
+
+// ===========================================================================
+// Tier-crossing leaf construction (Tiered-ESVO Inc2 M2 Task 4)
+// ===========================================================================
+//
+// MarkLeafAsTierCrossing is the ONE, explicit opt-in a caller uses to turn an
+// already-serialized leaf into a tier-crossing reference (farBit=1) instead of
+// an ordinary brick leaf. This is deliberately a SEPARATE, additive path next
+// to Serialize()/SerializeSdf() — every existing call path is completely
+// unaffected (it still emits farBit=0 leaves exactly as before,
+// SVORebuild.cpp:439,512); nothing here changes default tree-building
+// behavior for anyone who does not call this function.
+//
+// Shape mirrors this file's own established "opt a tree into a special
+// behavior via one small explicit call" convention (setBodyOctree,
+// setSignedDistanceField, LaineKarrasOctree.h) — applied post-serialization,
+// at leaf granularity, since a tier-crossing edge is a property of one
+// specific leaf, not the whole tree.
+//
+// Usage: call Serialize()/SerializeSdf() as normal to get a SerializedOctree,
+// then call this once per leaf you want to mark, identifying the leaf by the
+// (parent descriptor index, octant) pair — the same addressing scheme
+// existing tests already use to locate a specific leaf
+// (test_mip_sample_bake.cpp's `leafToBrickView` key convention:
+// `(parentDescriptorIndex << 3) | octant`). Registers a new TierRef entry in
+// out.tierRefs and points the leaf's ChildDescriptor at it.
+//
+// childRootScaleHint (0-22, §3.1) is the child tree's own root ESVO scale —
+// an intrinsic property of the CHILD octree's construction (its
+// maxLevels/userToESVOScale mapping, LaineKarrasOctree.h:409), not something
+// derivable from TierRef::childScale (a parent-local linear scale factor,
+// a different quantity entirely — see TierRef.h §3.3). The caller must
+// supply it explicitly, exactly as the plan's own Task 4 text specifies
+// (`setTierCrossing(tierRefIndex, childRootScale)`).
+inline void MarkLeafAsTierCrossing(SerializedOctree& out,
+                                   uint32_t parentDescriptorIndex,
+                                   int octant,
+                                   const TierRef& tierRef,
+                                   uint8_t childRootScaleHint) {
+    if (octant < 0 || octant > 7) {
+        throw std::runtime_error("ShellOctreeGpu::MarkLeafAsTierCrossing: octant must be 0..7");
+    }
+    if (childRootScaleHint > 22) {
+        throw std::runtime_error("ShellOctreeGpu::MarkLeafAsTierCrossing: childRootScaleHint must be 0..22");
+    }
+    const size_t descByteOffset = static_cast<size_t>(parentDescriptorIndex) * sizeof(ChildDescriptor);
+    if (descByteOffset + sizeof(ChildDescriptor) > out.nodes.size()) {
+        throw std::runtime_error("ShellOctreeGpu::MarkLeafAsTierCrossing: parentDescriptorIndex out of range");
+    }
+
+    ChildDescriptor parentDesc;
+    std::memcpy(&parentDesc, out.nodes.data() + descByteOffset, sizeof(ChildDescriptor));
+    if (!parentDesc.hasChild(octant) || !parentDesc.isLeaf(octant)) {
+        throw std::runtime_error(
+            "ShellOctreeGpu::MarkLeafAsTierCrossing: (parentDescriptorIndex, octant) is not an existing leaf child");
+    }
+
+    // Locate the CHILD descriptor this leaf occupies — the same addressing
+    // SVORebuild.cpp's/SVOTraversal.cpp's leaf-hit path uses (leafDescIdx =
+    // childPointer + totalInternalChildren [across the WHOLE valid set] +
+    // leafChildrenBeforeThisOctant).
+    const uint32_t totalInternal = static_cast<uint32_t>(std::popcount(
+        static_cast<uint8_t>(parentDesc.validMask & ~parentDesc.leafMask)));
+    uint32_t leafBefore = 0;
+    for (int i = 0; i < octant; ++i) {
+        if (parentDesc.hasChild(i) && parentDesc.isLeaf(i)) ++leafBefore;
+    }
+    const uint32_t leafDescIdx = parentDesc.childPointer + totalInternal + leafBefore;
+
+    const size_t leafByteOffset = static_cast<size_t>(leafDescIdx) * sizeof(ChildDescriptor);
+    if (leafByteOffset + sizeof(ChildDescriptor) > out.nodes.size()) {
+        throw std::runtime_error("ShellOctreeGpu::MarkLeafAsTierCrossing: resolved leaf descriptor index out of range");
+    }
+
+    ChildDescriptor leafDesc;
+    std::memcpy(&leafDesc, out.nodes.data() + leafByteOffset, sizeof(ChildDescriptor));
+
+    const uint32_t tierRefIndex = static_cast<uint32_t>(out.tierRefs.size());
+    leafDesc.setTierCrossing(tierRefIndex, childRootScaleHint);
+
+    std::memcpy(out.nodes.data() + leafByteOffset, &leafDesc, sizeof(ChildDescriptor));
+    out.tierRefs.push_back(tierRef);
 }
 
 // ===========================================================================

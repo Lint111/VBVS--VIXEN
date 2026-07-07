@@ -132,6 +132,13 @@ now is by explicit user request.
   (one tree with a real tier-crossing leaf, `farBit=1`, pointing at a second, independently-built
   tree) round-trips through serialization correctly; no regression on existing `farBit=0` trees
   (Sparse-Mip/Surface-Shell's existing full test suite still green).
+  **✅ DONE 2026-07-08** — commit (this worktree, `feat/tiered-esvo-inc2`, uncommitted at hand-off
+  to validator). `test_tier_crossing_construction` 5/5 green, pure CPU (no Vulkan/GPU dependency
+  exercised). Full existing SVO regression sweep re-run (98 targets, 454 tests passed + 16
+  pre-existing failures + 1 pre-existing segfault, ALL confirmed byte-identical against the pre-M2
+  `2bb752ec` baseline via a stash/rebuild/compare — zero regressions). See Progress Log for the
+  `MarkLeafAsTierCrossing` API shape, the `ChildDescriptor::setTierCrossing` accessor, the
+  `SVOTraversal.cpp` guard fix, and the pre-existing-failure verification method.
 - **M3 — GPU traversal-restart, single crossing** (Tasks 6-8) · **live-run gate, validation layers
   mandatory** · the highest-risk milestone: a ray genuinely crosses from a parent tree's leaf into a
   child tree's own traversal and renders correct geometry, proven on real hardware, not just compiled
@@ -261,6 +268,134 @@ plans' own convention: one entry per milestone, commit hash + Opus validator ver
     validated together, matching Sparse-Mip Inc1 M3's own precedent for `mipPool`'s binding. Noted as
     a non-blocking suggestion for M3's implementer, not a required M1 addition. No issues found.
 
+- **Milestone M2 (Tasks 4-5): DONE** · uncommitted at hand-off to validator (this worktree,
+  `feat/tiered-esvo-inc2`) · gates: `test_tier_crossing_construction` 5/5 green, pure CPU (no
+  Vulkan/GPU dependency exercised); full existing SVO regression sweep re-run (98 test targets) and
+  confirmed byte-identical (454 passed / 16 failed / 1 segfault, every failure/segfault reproduced
+  on the pre-M2 `2bb752ec` baseline via a stash/rebuild/compare — zero regressions attributable to
+  this milestone) · 2026-07-08.
+  - **Re-read the real M1 API before writing code**: `libraries/SVO/include/TierRef.h`'s `TierRef`
+    (20-byte, plain-`float[3]` layout) and `ShellOctreeGpu.h`'s `SerializedOctree::tierRefs` /
+    `ConcatenatedOctrees::tierRefTable`+`tierRefCounts` / `tierRefTableBaseOf`/`setTierRefTableBase`,
+    confirmed unchanged from M1's own Progress Log description. Confirmed `.codegraph/` genuinely
+    exists in this worktree this time (`codegraph.db`, 46 MB) — the MCP `codegraph_explore` tool
+    itself was not available as a callable tool in this session (not listed among loaded/deferred
+    tools), so fell back to direct `grep`/`Read`, which was sufficient for a milestone this scoped.
+  - **`ChildDescriptor::setTierCrossing` / `isTierCrossing` / `getTierRefIndex` /
+    `getChildRootScaleHint`** (`SVOTypes.h`): a THIRD interpretation of the existing
+    `contourPointer`/`contourMask` field pair, selected by `farBit`, added in the exact same style as
+    the existing `setBrickIndex`/`getBrickIndex`/`hasBrick` group (same file, same struct, same
+    "helpers" comment-block convention). `setTierCrossing(tierRefIndex, childRootScaleHint)` sets
+    `farBit=1` and packs the two fields; it deliberately does NOT touch `validMask`/`leafMask` — the
+    caller is expected to already have the leaf bit set for that child slot (the marking function
+    below enforces this). `childRootScaleHint` is taken as an EXPLICIT caller-supplied `uint8_t`
+    (0-22), not derived from `TierRef::childScale` — the plan's own Task 4 text names it as a
+    separate parameter (`setTierCrossing(tierRefIndex, childRootScale)`), and deriving one from the
+    other would have been wrong: `childRootScaleHint` is the CHILD tree's own root ESVO scale (a
+    property of ITS `maxLevels`/`userToESVOScale` mapping, `LaineKarrasOctree.h:409`), a completely
+    different quantity from `TierRef::childScale` (a parent-local linear scale factor, §3.3) — no
+    formula converts one to the other without knowing the child's own construction, which this
+    milestone's construction-time function does not have visibility into.
+  - **`MarkLeafAsTierCrossing(SerializedOctree&, parentDescriptorIndex, octant, TierRef, childRootScaleHint)`**
+    (`ShellOctreeGpu.h`, inserted between `Serialize()` and `SerializeSdf()`): the ONE explicit
+    opt-in API this milestone builds. Shape decision: operates on an ALREADY-SERIALIZED
+    `SerializedOctree` (post-`Serialize()`/`SerializeSdf()`), not on the raw `Octree`/
+    `GaiaVoxelWorld` construction path directly — because `Concatenate()`/`ConcatenateSdf()` call
+    `Serialize()`/`SerializeSdf()` INTERNALLY from the owning `ShellOctree`/`SdfBodyOctree` (confirmed
+    by reading both functions directly), so mutating the source `Octree` before concatenation would
+    require re-serializing, and mutating a `SerializedOctree` in place is both simpler and matches
+    M1's own `test_tier_ref_table.cpp` precedent of manually replicating the concatenation loop
+    rather than routing pre-populated `tierRefs` through the real entry points (that plumbing does
+    not exist yet, for either milestone — a future milestone/caller that needs `Concatenate`/
+    `ConcatenateSdf` to preserve pre-marked leaves would need to either accept pre-serialized inputs
+    or take a marking callback; out of this milestone's scope). Identifies the leaf via
+    `(parentDescriptorIndex, octant)` — the SAME addressing convention already used by
+    `SVORebuild.cpp`'s `leafToBrickView` key (`(parentIdx << 3) | octant`) and by
+    `test_mip_sample_bake.cpp`'s existing "scan `childDescriptors` directly to find a leaf" pattern —
+    re-derives the physical child-descriptor index via `childPointer + totalInternalChildren +
+    leafChildrenBeforeThisOctant`, the exact formula `SVORebuild.cpp`'s BFS reorder and
+    `SVOTraversal.cpp`'s `castRayGpuMirror` leaf-hit path both already use. Validates: octant 0-7,
+    `childRootScaleHint` 0-22, the (parent, octant) pair is a real existing leaf child, and the
+    resolved leaf descriptor index is in-range — throws `std::runtime_error` otherwise (matching this
+    file's existing `Serialize`/`SerializeSdf`/`Concatenate` error-handling convention, all of which
+    throw on malformed input rather than silently no-op). Mirrors the file's own established
+    "opt a tree/leaf into special behavior via one small explicit call" shape (`setBodyOctree`,
+    `setSignedDistanceField` on `LaineKarrasOctree` — and `getOctreeMutable()`'s own doc comment,
+    "For direct modification (additive insertion)," which is exactly this pattern already named but
+    previously unused by any caller).
+  - **Verified `hasBrick()`/`getBrickIndex()` call-site safety** (the plan's explicit Task 4
+    correctness check) by reading every call site directly (`grep` across `libraries/SVO/src/*.cpp`,
+    `.codegraph`'s MCP tool unavailable this session — see above): `LaineKarrasOctree.cpp`'s
+    `voxelExists`/`getVoxelData`/`getChildMask` never call the brick accessors on a leaf at all (they
+    return immediately on `isLeaf(childIdx)==true`, before ever dereferencing the leaf's own
+    descriptor); `SVOBrickDDA.cpp`'s legacy `handleLeafHit` uses the `leafToBrickView`/
+    `getBrickView()` hashmap lookup, never `getBrickIndex()` directly. ONE real, unguarded call site
+    found: `SVOTraversal.cpp:1029`'s `castRayGpuMirror` (the `LaineKarrasOctree`'s own GPU-parity
+    mirror, used for body-octree non-LOD `castRay`) calls `leafDesc.getBrickIndex()` with no `farBit`
+    check — a `TierRefTable` index (small, often in-range) would otherwise be silently misread as a
+    brick index and render wrong geometry rather than cleanly missing. **Fixed with a minimal
+    defensive guard** (`if (!leafDesc.farBit && localBrickIdx != INVALID_BRICK_INDEX && ...)`) —
+    genuinely a MISS for a tier-crossing leaf today (correct: no traversal-restart exists yet, M3's
+    job), not new tier-crossing traversal logic, so it stays inside this milestone's scope boundary
+    ("do NOT add new traversal logic," per the task brief). **Flagged, NOT touched** (would be scope
+    creep into M3): `GpuTraversalMirror.h`'s `handleLeafHit` (a SEPARATE, TEST/REFERENCE-only 1:1
+    mirror of the actual GPU shader `BodyInstanceRayMarch.comp`, used only by
+    `test_gpu_parity.cpp`/`test_stored_sdf_march_mirror.cpp`) has the identical unguarded pattern —
+    it mirrors the shader's CURRENT (farBit-blind) behavior faithfully, and no existing test feeds it
+    a tier-crossing tree, so there is no live bug; M3 will need to update this mirror in lockstep with
+    its real shader change anyway (per the header's own "SYNC CONTRACT: if the shader changes,
+    re-port the changed function" comment), so pre-emptively guarding it here would be duplicate,
+    soon-stale work. **Flag for validator**: confirm this scope line (fix the one real engine-class
+    call site; leave the shader-mirror test oracle for M3) is the correct read.
+  - **Two-tree fixture + round-trip proof** (`test_tier_crossing_construction.cpp`, new file):
+    reused M1's own `SdfFixture` shape (`BakeRecipeToSdfWorld`/`BuildSdfBodyOctree`, `n=16, r=6.0,
+    brickDepth=3` → `bricksPerAxis=2` → root's 8 children are all deterministic brick-level leaves,
+    per `test_mip_sample_bake.cpp`'s own verified assumption) — two INDEPENDENT `SdfFixture`
+    instances (each constructs its own `GaiaVoxelWorld`/registry/octree from scratch) stand in for
+    "parent" and "child" trees. Marks the parent's first leaf tier-crossing via
+    `MarkLeafAsTierCrossing`, manually concatenates both (mirroring `test_tier_ref_table.cpp`'s own
+    manual-loop convention, for the reason above), then reads the marked leaf back out of the
+    CONCATENATED node buffer via `nodeArrayBase + local index` (the same addressing a real GPU
+    consumer would use) and confirms: `farBit`/`isTierCrossing()` survived the byte-verbatim append;
+    `tierRefTableBaseOf(parent's config) + leaf's tierRefIndex` resolves into `cat.tierRefTable` to
+    the exact `TierRef` that was registered; that `TierRef::childOctreeIndex` is a real,
+    dereferenceable index into `cat.configs`/`cat.nodeCounts` whose `nodeArrayBase` genuinely starts
+    immediately after the parent's node slice, and whose root descriptor (read back from that
+    resolved offset) matches the child's own original serialized root descriptor byte-for-byte. This
+    is the literal "serialize -> concatenate -> resolves to the child's actual octree
+    index/origin/scale" proof the M2 gate asks for. 5/5 tests green: the round-trip test, a baseline
+    isolation test (mark one leaf, confirm the descriptor bytes directly), two input-validation
+    tests (out-of-range octant/scale-hint, non-leaf/non-existent child slot both throw), and an
+    unmarked-tree no-regression test (every leaf of a plain `ConcatenateSdf`'d tree still reads
+    `farBit=0` with `hasBrick()`/`getBrickIndex()` behaving exactly as before).
+  - **Full regression sweep — verification method, since 16 pre-existing failures + 1 pre-existing
+    segfault were discovered while running the "full existing SVO suite" gate**: rather than assume
+    these were caused by this milestone's changes, `git stash`ed all M2 work, rebuilt the 9 affected
+    binaries (`test_attribute_registry_integration`, `test_brick_traversal`, `test_brick_view`,
+    `test_cornell_box`, `test_octree_queries`, `test_ray_casting_comprehensive`, `test_svo_builder`,
+    `test_voxel_injection`, `test_entity_brick_view`) against the clean M1 baseline (`2bb752ec`), and
+    re-ran them. Every single failure (16 individual `[FAILED]` tests) and the `test_entity_brick_view`
+    segfault reproduced IDENTICALLY on the pre-M2 baseline — confirmed pre-existing, unrelated to
+    this milestone's `ChildDescriptor`/`SVOTraversal.cpp`/`ShellOctreeGpu.h` changes. `git stash pop`
+    restored the M2 changes; the full 98-target sweep was then re-run against the restored M2 state
+    and produced the exact same 454-passed/16-failed/1-segfault outcome. Flagging these 16 tests +
+    1 segfault as a known, pre-existing gap for a future increment/cleanup pass — NOT this
+    milestone's responsibility to fix, and explicitly out of scope (unrelated subsystems: attribute
+    registry, brick DDA/traversal, Cornell-box ray casting, octree-queries partial-update, comprehensive
+    ray casting, mesh-based `SVOBuilder`, legacy voxel injection, entity-brick-view). **Flag for
+    validator**: independently re-verify at least a sample of these 16 failures/1 segfault against
+    `2bb752ec` if time allows, since this claim is load-bearing for the "zero regression" gate.
+  - **No scope drift**: confirmed via `git diff --stat` before hand-off — only
+    `libraries/SVO/include/SVOTypes.h` (the 3 new `ChildDescriptor` accessors + `setTierCrossing`),
+    `libraries/SVO/include/ShellOctreeGpu.h` (`MarkLeafAsTierCrossing` + 2 new includes),
+    `libraries/SVO/src/SVOTraversal.cpp` (the one-line `farBit` guard + comment),
+    `libraries/SVO/tests/CMakeLists.txt` (new target registration), and the new
+    `libraries/SVO/tests/test_tier_crossing_construction.cpp`. `SVORebuild.cpp`/`SVOBuilder.cpp`'s
+    existing construction paths, `LaineKarrasOctree`'s traversal entry points other than the one
+    guarded line, `BodyInstanceRayMarch.comp`, and `SkyProjectionNode` were all read-only-verified but
+    not modified — `farBit=0` is still set exactly as before at `SVORebuild.cpp:439,512` (re-confirmed
+    at these exact line numbers, unchanged since M1).
+
 ---
 
 ## M1 — `TierRef` + `TierRefTable` CPU-side plumbing
@@ -339,33 +474,47 @@ concerns, not confounded by "did we even build the data correctly."
 
 ### Task 4 — Mark a leaf as tier-crossing at construction time
 
-- [ ] Add a construction-time path (in `SVORebuild.cpp`/`SVOBuilder.cpp`, alongside the existing
+- [x] Add a construction-time path (in `SVORebuild.cpp`/`SVOBuilder.cpp`, alongside the existing
   brick-leaf path) that can mark a given leaf's `ChildDescriptor` with `farBit=1` and register a
   `TierRef` entry in the tree's `TierRefTable`, instead of the normal brick-index assignment. This is
   additive — every existing construction path keeps setting `farBit=0` exactly as today
   (`SVORebuild.cpp:439,512`, confirmed unchanged as of 2026-07-07); this milestone adds a NEW,
   separate path that a caller opts into explicitly (e.g. a recipe/authoring-time flag marking a
   specific leaf position as "this points at another tree"), it does not change default behavior for
-  any existing tree.
-- [ ] Confirm `hasBrick()`/`getBrickIndex()` and any other `farBit==0`-assuming accessor is genuinely
+  any existing tree. **DONE, with a deliberate placement deviation from this bullet's literal file
+  suggestion** — `MarkLeafAsTierCrossing` lives in `ShellOctreeGpu.h` (operating on an
+  already-serialized `SerializedOctree`), not in `SVORebuild.cpp`/`SVOBuilder.cpp` directly, because
+  `Concatenate()`/`ConcatenateSdf()` call `Serialize()`/`SerializeSdf()` INTERNALLY — marking the raw
+  `Octree` before serialization would still need a second post-serialization step to survive
+  concatenation. See Progress Log for the full reasoning; flagged for validator attention.
+- [x] Confirm `hasBrick()`/`getBrickIndex()` and any other `farBit==0`-assuming accessor is genuinely
   unaffected — read every call site of these accessors (via `codegraph explore`) and confirm none of
   them get called on a `farBit==1` node without first checking `farBit`, or if they might be, add the
-  guard.
+  guard. **DONE** — one real unguarded call site found (`SVOTraversal.cpp:1029`,
+  `castRayGpuMirror`), fixed with a minimal `farBit` guard (miss, not new traversal logic); the
+  test-oracle-only `GpuTraversalMirror.h` has the same pattern but is explicitly flagged for M3
+  rather than touched (see Progress Log).
 
 ### Task 5 — Two-tree test fixture + round-trip proof
 
-- [ ] Build a minimal, hand-authored test fixture: two independently-constructed octree instances
+- [x] Build a minimal, hand-authored test fixture: two independently-constructed octree instances
   (e.g. a small "parent" tree and a small "child" tree), with ONE specific leaf in the parent marked
   tier-crossing (`farBit=1`) and its `TierRef` pointing at the child's `ConcatenatedOctrees` index.
   Serialize both, confirm the parent's tier-crossing leaf's `TierRef` correctly resolves to the
   child's actual octree index/origin/scale after a full serialize → concatenate → (mock) upload
-  round-trip.
-- [ ] Full no-regression sweep: confirm every existing SVO/RenderGraph test (`farBit=0` trees, the
+  round-trip. **DONE** — `test_tier_crossing_construction.cpp`,
+  `TwoTreeFixtureRoundTripsThroughSerializeAndConcatenate`, green.
+- [x] Full no-regression sweep: confirm every existing SVO/RenderGraph test (`farBit=0` trees, the
   full Sparse-Mip/Surface-Shell/Tiered-ESVO-Inc1 suites) is unaffected — this is a good checkpoint to
-  run the broader regression sweep BEFORE moving into M3's much riskier GPU work.
+  run the broader regression sweep BEFORE moving into M3's much riskier GPU work. **DONE** — 98 SVO
+  test targets re-run; 16 pre-existing test failures + 1 pre-existing segfault (`test_entity_brick_view`)
+  confirmed byte-identical against the pre-M2 `2bb752ec` baseline via stash/rebuild/compare — zero
+  regressions attributable to this milestone. RenderGraph tests not separately re-run (this
+  milestone touched no RenderGraph files; the plan's own M1 precedent treated the SVO-local sweep as
+  sufficient for a non-GPU-binding milestone).
 
 **M2 gate:** two-tree fixture's `TierRef` round-trips correctly; zero regression on the existing
-`farBit=0` test suite (pure CPU/serialization proof, no live GPU render needed yet).
+`farBit=0` test suite (pure CPU/serialization proof, no live GPU render needed yet). **MET.**
 
 ---
 

@@ -1026,8 +1026,16 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayGpuMirror(
                     }
                     const uint32_t leafDescIdx = childPointer + totalInternal + leafBefore;
                     const ChildDescriptor leafDesc = fetchNode(leafDescIdx);
+                    // Tiered-ESVO Inc2 M2 Task 4: a farBit==1 leaf's contourPointer is a
+                    // TierRefTable index, NOT a brick index (SVOTypes.h farBit doc,
+                    // Tiered-ESVO-Observer-Addressing-Design-2026-07.md §3.1). This CPU
+                    // GPU-parity mirror does not yet implement traversal-restart (M3), so
+                    // treat a tier-crossing leaf as a miss here rather than misreading an
+                    // unrelated TierRef index as a brick index (it would otherwise often
+                    // be a small, in-range value and silently render the wrong geometry).
                     const uint32_t localBrickIdx = leafDesc.getBrickIndex();  // == contourPointer
-                    if (localBrickIdx != ChildDescriptor::INVALID_BRICK_INDEX &&
+                    if (!leafDesc.farBit &&
+                        localBrickIdx != ChildDescriptor::INVALID_BRICK_INDEX &&
                         localBrickIdx < m_octree->root->brickViews.size()) {
                         const EntityBrickView& brick = m_octree->root->brickViews[localBrickIdx];
 
