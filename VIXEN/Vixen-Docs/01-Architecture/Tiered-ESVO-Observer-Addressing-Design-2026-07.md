@@ -1,12 +1,13 @@
 ---
 title: Tiered ESVO — Nested-Tree Addressing, Tier-Crossing Traversal & Observer-Relative Rendering
-status: Design (promoted from direction 2026-07-05) — NOT built, no increment started
+status: Design (promoted from direction 2026-07-05) — Inc1 PLANNED 2026-07-07, not started
 date: 2026-07-05
-updated: 2026-07-05
+updated: 2026-07-07
 tags: [architecture, svo, esvo, lod, scale, addressing, skybox, tiered-rendering]
 aliases: [Nested ESVO, Tree-of-Trees, Observer Addressing, Recursive ESVO]
 related:
   - "[[Sparse-Mip-ESVO-LOD-Direction-2026-07]]"
+  - "[[Tiered-ESVO-Inc1-Plan-2026-07]]"
   - "[[undertow-vixen-integration-map]]"
   - "libraries/SVO/include/SVOTypes.h"
   - "libraries/SVO/include/LaineKarrasOctree.h"
@@ -15,13 +16,16 @@ related:
 
 # Tiered ESVO — Nested-Tree Addressing, Tier-Crossing Traversal & Observer-Relative Rendering
 
-> **Status (2026-07-05).** This promotes the "Observer-relative addressing" section of
+> **Status (2026-07-07).** This promotes the "Observer-relative addressing" section of
 > [[Sparse-Mip-ESVO-LOD-Direction-2026-07]] (itself appended 2026-07-05, atop that doc's
 > 2026-07-04 nested-tree/tier-math direction) from loose direction into a concrete spec:
-> actual struct fields, actual traversal algorithm, actual seam map. **Nothing here is
-> built.** No increment has been scoped or started. This is the doc a Plan would be
-> written against, once the base mip-sampling epic in the parent direction doc has
-> shipped (§9, sequencing).
+> actual struct fields, actual traversal algorithm, actual seam map. **The base mip-sampling
+> epic this doc depends on (§9) has since shipped** — [[Sparse-Mip-ESVO-LOD-Direction-2026-07]]'s
+> Inc1 (`ae12ba78`) and Inc2 (`2351baff`) are both merged to `main`. **[[Tiered-ESVO-Inc1-Plan-2026-07]]
+> now exists**, scoped to §9's own "nearest actionable slice" — `TierAddress` (§4) + address-level sky
+> projection (§7 step 1) only, deliberately excluding §3/§5's tier-crossing leaf reference and
+> traversal-restart machinery. Not started yet; all code references below were re-verified accurate
+> against current `main` on 2026-07-07 before the plan was written.
 
 ## 1. Context & Problem
 
@@ -260,11 +264,13 @@ This is **downstream of** [[Sparse-Mip-ESVO-LOD-Direction-2026-07]]'s base epic 
 sampling, single-planet T0/T1/T2 nesting) — that epic proves nested-tree traversal restart
 and per-tier mip fallback at one scale hop (planet → region → bedrock) before this doc's
 generalization (arbitrary tier count, cross-tree `TierRef`, address-level sky projection)
-is attempted. No increment plan exists yet for either. The nearest actionable slice, once
-the base epic ships, is **§7 step 1 alone** (address-level sky projection for static
-content) — it needs `TierAddress` and a sky-projection node, but not §5's tier-crossing
-traversal restart, since a point-of-light skybox entry doesn't require ray-marching into
-the referenced tree.
+is attempted. **The base epic has shipped** (Inc1 `ae12ba78` + Inc2 `2351baff`, both merged
+to `main`). The nearest actionable slice, **§7 step 1 alone** (address-level sky projection
+for static content — `TierAddress` + a sky-projection node, not §5's tier-crossing traversal
+restart, since a point-of-light skybox entry doesn't require ray-marching into the referenced
+tree), now has an implementation plan: [[Tiered-ESVO-Inc1-Plan-2026-07]] (written 2026-07-07,
+not started). §3/§5 (the tier-crossing leaf reference and traversal-restart machinery) remain
+unscheduled — that Plan's own §0 explicitly excludes them, matching this section's sequencing.
 
 ## 10. Rejected alternatives
 
