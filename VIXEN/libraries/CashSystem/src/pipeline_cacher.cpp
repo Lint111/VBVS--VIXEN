@@ -4,6 +4,8 @@
 #include "MainCacher.h"
 #include "VulkanDevice.h"
 #include "VixenHash.h"
+#include "CacheCodec.h"
+#include <cstring>
 #include <sstream>
 #include <stdexcept>
 #include <vulkan/vulkan.h>
@@ -12,6 +14,37 @@
 #include <shared_mutex>
 
 namespace CashSystem {
+
+// Vulkan spec: a pipeline-cache blob must be validated against VkPipelineCacheHeaderVersionOne
+// (size, header version, vendor/device ID, pipelineCacheUUID) before being trusted — a blob from
+// another GPU/driver is meaningless (or worse) to this device (audit V-M8). Declared in
+// PipelineCacher.h so it's directly unit-testable without a VkDevice.
+bool PipelineCacheBlobMatchesDevice(const std::vector<uint8_t>& blob, const VkPhysicalDeviceProperties& props) {
+    constexpr size_t kHeaderSize = 4 + 4 + 4 + 4 + VK_UUID_SIZE;  // 32 bytes
+    static_assert(kHeaderSize == 32, "VkPipelineCacheHeaderVersionOne is 32 bytes");
+
+    if (blob.size() < kHeaderSize) {
+        return false;
+    }
+
+    uint32_t headerVersion = 0;
+    uint32_t vendorID = 0;
+    uint32_t deviceID = 0;
+    std::memcpy(&headerVersion, blob.data() + 4, sizeof(headerVersion));
+    std::memcpy(&vendorID, blob.data() + 8, sizeof(vendorID));
+    std::memcpy(&deviceID, blob.data() + 12, sizeof(deviceID));
+
+    if (headerVersion != static_cast<uint32_t>(VK_PIPELINE_CACHE_HEADER_VERSION_ONE)) {
+        return false;
+    }
+    if (vendorID != props.vendorID || deviceID != props.deviceID) {
+        return false;
+    }
+    if (std::memcmp(blob.data() + 16, props.pipelineCacheUUID, VK_UUID_SIZE) != 0) {
+        return false;
+    }
+    return true;
+}
 
 void PipelineCacher::Cleanup() {
     LOG_INFO("Cleaning up " + std::to_string(m_entries.size()) + " cached pipelines");
@@ -422,18 +455,17 @@ bool PipelineCacher::SerializeToFile(const std::filesystem::path& path) const {
         return false;
     }
 
+    CacheWriter writer(file);
+
     // Write version header (for future compatibility)
     uint32_t version = 1;
-    file.write(reinterpret_cast<const char*>(&version), sizeof(version));
+    writer.WritePod(version);
 
-    // Write cache size
-    uint64_t size64 = static_cast<uint64_t>(cacheSize);
-    file.write(reinterpret_cast<const char*>(&size64), sizeof(size64));
+    // Write cache data (u64 length prefix + bytes — same shape as the original hand-written
+    // size64+write() pair).
+    writer.WriteVector(cacheData);
 
-    // Write cache data
-    file.write(reinterpret_cast<const char*>(cacheData.data()), cacheSize);
-
-    if (!file) {
+    if (!writer.Ok()) {
         LOG_ERROR("Failed to write cache data to file");
         return false;
     }
@@ -461,34 +493,36 @@ bool PipelineCacher::DeserializeFromFile(const std::filesystem::path& path, void
         return false;
     }
 
+    CacheReader reader(file);
+
     // Read version header
     uint32_t version = 0;
-    file.read(reinterpret_cast<char*>(&version), sizeof(version));
-    if (!file || version != 1) {
+    if (!reader.ReadPod(version) || version != 1) {
         LOG_ERROR("Unsupported cache version: " + std::to_string(version));
         return false;
     }
 
-    // Read cache size
-    uint64_t cacheSize = 0;
-    file.read(reinterpret_cast<char*>(&cacheSize), sizeof(cacheSize));
-    if (!file || cacheSize == 0) {
-        LOG_ERROR("Invalid cache size in file");
+    // Read cache data (V-M8 size half): length-capped at 1 GiB — no real pipeline cache blob
+    // approaches that, and a corrupt length can no longer drive an unbounded resize().
+    constexpr size_t kMaxPipelineCacheBytes = 1u << 30;
+    std::vector<uint8_t> cacheData;
+    if (!reader.ReadVector(cacheData, kMaxPipelineCacheBytes) || cacheData.empty()) {
+        LOG_ERROR("Invalid or oversized cache data in file");
         return false;
     }
 
-    // Read cache data
-    std::vector<uint8_t> cacheData(cacheSize);
-    file.read(reinterpret_cast<char*>(cacheData.data()), cacheSize);
-    if (!file) {
-        LOG_ERROR("Failed to read cache data from file");
-        return false;
+    // V-M8 (UUID half): the Vulkan spec requires validating VkPipelineCacheHeaderVersionOne
+    // (size, header version, vendor/device ID, UUID) before trusting a blob — a cache built for
+    // another GPU/driver must be discarded, not handed to vkCreatePipelineCache.
+    if (!PipelineCacheBlobMatchesDevice(cacheData, GetDevice()->gpuProperties)) {
+        LOG_INFO("Pipeline cache is for another device — regenerating: " + path.string());
+        return true;
     }
 
     // Create global pipeline cache from loaded data
     VkPipelineCacheCreateInfo cacheInfo{};
     cacheInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
-    cacheInfo.initialDataSize = cacheSize;
+    cacheInfo.initialDataSize = cacheData.size();
     cacheInfo.pInitialData = cacheData.data();
 
     VkResult result = vkCreatePipelineCache(GetDevice()->device, &cacheInfo, nullptr, &m_globalCache);
@@ -498,7 +532,7 @@ bool PipelineCacher::DeserializeFromFile(const std::filesystem::path& path, void
         return false;
     }
 
-    LOG_INFO("Loaded pipeline cache from " + path.string() + " (" + std::to_string(cacheSize) + " bytes)");
+    LOG_INFO("Loaded pipeline cache from " + path.string() + " (" + std::to_string(cacheData.size()) + " bytes)");
     return true;
 }
 

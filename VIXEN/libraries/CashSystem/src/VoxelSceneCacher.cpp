@@ -3,6 +3,7 @@
 #include "VulkanDevice.h"
 #include "error/VulkanError.h"
 #include "Memory/BatchedUploader.h"  // For InvalidUploadHandle
+#include "CacheCodec.h"
 
 // SVO library integration
 #include "LaineKarrasOctree.h"
@@ -187,30 +188,10 @@ void VoxelSceneCacher::Cleanup() {
 static constexpr uint32_t VOXEL_SCENE_CACHE_VERSION = 1;
 static constexpr uint32_t VOXEL_SCENE_CACHE_MAGIC = 0x56534341; // "VSCA"
 
-// Helper to write a vector to file
-template<typename T>
-static void WriteVector(std::ofstream& out, const std::vector<T>& vec) {
-    uint64_t size = vec.size();
-    out.write(reinterpret_cast<const char*>(&size), sizeof(size));
-    if (size > 0) {
-        out.write(reinterpret_cast<const char*>(vec.data()), size * sizeof(T));
-    }
-}
-
-// Helper to read a vector from file
-template<typename T>
-static bool ReadVector(std::ifstream& in, std::vector<T>& vec) {
-    uint64_t size = 0;
-    in.read(reinterpret_cast<char*>(&size), sizeof(size));
-    if (!in) return false;
-
-    vec.resize(size);
-    if (size > 0) {
-        in.read(reinterpret_cast<char*>(vec.data()), size * sizeof(T));
-        if (!in) return false;
-    }
-    return true;
-}
+// Per-vector element cap for deserialization (audit V-M5): generous enough for any real scene
+// (a resolution-1024 grid is still far below this many bytes) but small enough that a corrupt
+// length can never drive a multi-terabyte resize().
+static constexpr size_t VOXEL_SCENE_MAX_VECTOR_ELEMS = 1u << 30;  // 1 Gi elements
 
 bool VoxelSceneCacher::SerializeToFile(const std::filesystem::path& path) const {
     std::lock_guard lock(m_lock);
@@ -226,12 +207,14 @@ bool VoxelSceneCacher::SerializeToFile(const std::filesystem::path& path) const 
         return false;
     }
 
+    CacheWriter writer(out);
+
     // Write header
-    out.write(reinterpret_cast<const char*>(&VOXEL_SCENE_CACHE_MAGIC), sizeof(VOXEL_SCENE_CACHE_MAGIC));
-    out.write(reinterpret_cast<const char*>(&VOXEL_SCENE_CACHE_VERSION), sizeof(VOXEL_SCENE_CACHE_VERSION));
+    writer.WritePod(VOXEL_SCENE_CACHE_MAGIC);
+    writer.WritePod(VOXEL_SCENE_CACHE_VERSION);
 
     uint32_t entryCount = static_cast<uint32_t>(m_entries.size());
-    out.write(reinterpret_cast<const char*>(&entryCount), sizeof(entryCount));
+    writer.WritePod(entryCount);
 
     LOG_INFO("[VoxelSceneCacher::SerializeToFile] Serializing " + std::to_string(entryCount) + " scene entries to " + path.string());
 
@@ -241,38 +224,38 @@ bool VoxelSceneCacher::SerializeToFile(const std::filesystem::path& path) const 
         const auto& data = entry.resource;
 
         // Write key (for validation on load)
-        out.write(reinterpret_cast<const char*>(&key), sizeof(key));
+        writer.WritePod(key);
 
         // Write CreateInfo
-        out.write(reinterpret_cast<const char*>(&ci.sceneType), sizeof(ci.sceneType));
-        out.write(reinterpret_cast<const char*>(&ci.resolution), sizeof(ci.resolution));
-        out.write(reinterpret_cast<const char*>(&ci.density), sizeof(ci.density));
-        out.write(reinterpret_cast<const char*>(&ci.seed), sizeof(ci.seed));
+        writer.WritePod(ci.sceneType);
+        writer.WritePod(ci.resolution);
+        writer.WritePod(ci.density);
+        writer.WritePod(ci.seed);
 
         // Write CPU data vectors
-        WriteVector(out, data->esvoNodesCPU);
-        WriteVector(out, data->brickDataCPU);
-        WriteVector(out, data->materialsCPU);
-        WriteVector(out, data->compressedColorsCPU);
-        WriteVector(out, data->compressedNormalsCPU);
-        WriteVector(out, data->brickGridLookupCPU);
+        writer.WriteVector(data->esvoNodesCPU);
+        writer.WriteVector(data->brickDataCPU);
+        writer.WriteVector(data->materialsCPU);
+        writer.WriteVector(data->compressedColorsCPU);
+        writer.WriteVector(data->compressedNormalsCPU);
+        writer.WriteVector(data->brickGridLookupCPU);
 
         // Write OctreeConfig (fixed-size struct)
-        out.write(reinterpret_cast<const char*>(&data->configCPU), sizeof(OctreeConfig));
+        writer.WritePod(data->configCPU);
 
         // Write metadata
-        out.write(reinterpret_cast<const char*>(&data->nodeCount), sizeof(data->nodeCount));
-        out.write(reinterpret_cast<const char*>(&data->brickCount), sizeof(data->brickCount));
-        out.write(reinterpret_cast<const char*>(&data->solidVoxelCount), sizeof(data->solidVoxelCount));
-        out.write(reinterpret_cast<const char*>(&data->resolution), sizeof(data->resolution));
-        out.write(reinterpret_cast<const char*>(&data->sceneType), sizeof(data->sceneType));
+        writer.WritePod(data->nodeCount);
+        writer.WritePod(data->brickCount);
+        writer.WritePod(data->solidVoxelCount);
+        writer.WritePod(data->resolution);
+        writer.WritePod(data->sceneType);
     }
 
     LOG_INFO("[VoxelSceneCacher::SerializeToFile] Serialization complete");
-    return out.good();
+    return writer.Ok();
 }
 
-bool VoxelSceneCacher::DeserializeFromFile(const std::filesystem::path& path, void* devicePtr) {
+bool VoxelSceneCacher::DeserializeFromFile(const std::filesystem::path& path, void* devicePtr) try {
     if (!std::filesystem::exists(path)) {
         LOG_INFO("[VoxelSceneCacher::DeserializeFromFile] Cache file not found: " + path.string());
         return true; // Not an error - just no cached data
@@ -290,10 +273,15 @@ bool VoxelSceneCacher::DeserializeFromFile(const std::filesystem::path& path, vo
         return false;
     }
 
-    // Read and validate header
+    CacheReader reader(in);
+
+    // Read and validate header (V-N7: every field bounds-checked against remaining file size
+    // before the entry-count-driven loop below ever starts).
     uint32_t magic = 0, version = 0;
-    in.read(reinterpret_cast<char*>(&magic), sizeof(magic));
-    in.read(reinterpret_cast<char*>(&version), sizeof(version));
+    if (!reader.ReadPod(magic) || !reader.ReadPod(version)) {
+        LOG_ERROR("[VoxelSceneCacher::DeserializeFromFile] Truncated header");
+        return false;
+    }
 
     if (magic != VOXEL_SCENE_CACHE_MAGIC) {
         LOG_ERROR("[VoxelSceneCacher::DeserializeFromFile] Invalid magic number");
@@ -306,7 +294,10 @@ bool VoxelSceneCacher::DeserializeFromFile(const std::filesystem::path& path, vo
     }
 
     uint32_t entryCount = 0;
-    in.read(reinterpret_cast<char*>(&entryCount), sizeof(entryCount));
+    if (!reader.ReadPod(entryCount)) {
+        LOG_ERROR("[VoxelSceneCacher::DeserializeFromFile] Truncated entry count");
+        return false;
+    }
 
     LOG_INFO("[VoxelSceneCacher::DeserializeFromFile] Loading " + std::to_string(entryCount) + " scene entries from " + path.string());
 
@@ -314,14 +305,18 @@ bool VoxelSceneCacher::DeserializeFromFile(const std::filesystem::path& path, vo
 
     for (uint32_t i = 0; i < entryCount; ++i) {
         uint64_t key = 0;
-        in.read(reinterpret_cast<char*>(&key), sizeof(key));
+        if (!reader.ReadPod(key)) {
+            LOG_ERROR("[VoxelSceneCacher::DeserializeFromFile] Truncated key at entry " + std::to_string(i));
+            return false;
+        }
 
         // Read CreateInfo
         VoxelSceneCreateInfo ci;
-        in.read(reinterpret_cast<char*>(&ci.sceneType), sizeof(ci.sceneType));
-        in.read(reinterpret_cast<char*>(&ci.resolution), sizeof(ci.resolution));
-        in.read(reinterpret_cast<char*>(&ci.density), sizeof(ci.density));
-        in.read(reinterpret_cast<char*>(&ci.seed), sizeof(ci.seed));
+        if (!reader.ReadPod(ci.sceneType) || !reader.ReadPod(ci.resolution) ||
+            !reader.ReadPod(ci.density) || !reader.ReadPod(ci.seed)) {
+            LOG_ERROR("[VoxelSceneCacher::DeserializeFromFile] Truncated CreateInfo at entry " + std::to_string(i));
+            return false;
+        }
 
         // Validate key matches computed hash
         if (ci.ComputeHash() != key) {
@@ -329,28 +324,60 @@ bool VoxelSceneCacher::DeserializeFromFile(const std::filesystem::path& path, vo
             return false;
         }
 
-        // Create scene data and read CPU vectors
+        // Create scene data and read CPU vectors (V-M5: length-capped and bounds-checked
+        // against remaining file size before any resize()).
         auto data = std::make_shared<VoxelSceneData>();
 
-        if (!ReadVector(in, data->esvoNodesCPU)) return false;
-        if (!ReadVector(in, data->brickDataCPU)) return false;
-        if (!ReadVector(in, data->materialsCPU)) return false;
-        if (!ReadVector(in, data->compressedColorsCPU)) return false;
-        if (!ReadVector(in, data->compressedNormalsCPU)) return false;
-        if (!ReadVector(in, data->brickGridLookupCPU)) return false;
+        if (!reader.ReadVector(data->esvoNodesCPU, VOXEL_SCENE_MAX_VECTOR_ELEMS)) return false;
+        if (!reader.ReadVector(data->brickDataCPU, VOXEL_SCENE_MAX_VECTOR_ELEMS)) return false;
+        if (!reader.ReadVector(data->materialsCPU, VOXEL_SCENE_MAX_VECTOR_ELEMS)) return false;
+        if (!reader.ReadVector(data->compressedColorsCPU, VOXEL_SCENE_MAX_VECTOR_ELEMS)) return false;
+        if (!reader.ReadVector(data->compressedNormalsCPU, VOXEL_SCENE_MAX_VECTOR_ELEMS)) return false;
+        if (!reader.ReadVector(data->brickGridLookupCPU, VOXEL_SCENE_MAX_VECTOR_ELEMS)) return false;
 
         // Read OctreeConfig
-        in.read(reinterpret_cast<char*>(&data->configCPU), sizeof(OctreeConfig));
+        if (!reader.ReadPod(data->configCPU)) {
+            LOG_ERROR("[VoxelSceneCacher::DeserializeFromFile] Truncated OctreeConfig at entry " + std::to_string(i));
+            return false;
+        }
 
         // Read metadata
-        in.read(reinterpret_cast<char*>(&data->nodeCount), sizeof(data->nodeCount));
-        in.read(reinterpret_cast<char*>(&data->brickCount), sizeof(data->brickCount));
-        in.read(reinterpret_cast<char*>(&data->solidVoxelCount), sizeof(data->solidVoxelCount));
-        in.read(reinterpret_cast<char*>(&data->resolution), sizeof(data->resolution));
-        in.read(reinterpret_cast<char*>(&data->sceneType), sizeof(data->sceneType));
+        if (!reader.ReadPod(data->nodeCount) || !reader.ReadPod(data->brickCount) ||
+            !reader.ReadPod(data->solidVoxelCount) || !reader.ReadPod(data->resolution) ||
+            !reader.ReadPod(data->sceneType)) {
+            LOG_ERROR("[VoxelSceneCacher::DeserializeFromFile] Truncated metadata at entry " + std::to_string(i));
+            return false;
+        }
 
-        if (!in) {
-            LOG_ERROR("[VoxelSceneCacher::DeserializeFromFile] Read error at entry " + std::to_string(i));
+        // V-N6: semantic cross-checks. Lengths coming off disk are internally consistent
+        // (bounds-checked already) but can still describe a scene that doesn't add up — e.g. a
+        // truncated/edited file with a node count that doesn't match the byte buffer it
+        // supposedly describes. Reject rather than hand the mismatch to the GPU upload path.
+        const uint64_t expectedEsvoBytes = static_cast<uint64_t>(data->nodeCount) * sizeof(Vixen::SVO::ChildDescriptor);
+        if (expectedEsvoBytes != data->esvoNodesCPU.size()) {
+            LOG_ERROR("[VoxelSceneCacher::DeserializeFromFile] esvoNodesCPU size mismatch at entry " + std::to_string(i) +
+                       " (nodeCount implies " + std::to_string(expectedEsvoBytes) + " bytes, got " + std::to_string(data->esvoNodesCPU.size()) + ")");
+            return false;
+        }
+        if (data->resolution == 0 || data->resolution > (1u << 16)) {
+            LOG_ERROR("[VoxelSceneCacher::DeserializeFromFile] Implausible resolution at entry " + std::to_string(i) + ": " + std::to_string(data->resolution));
+            return false;
+        }
+        if (data->resolution != ci.resolution) {
+            LOG_ERROR("[VoxelSceneCacher::DeserializeFromFile] resolution/CreateInfo mismatch at entry " + std::to_string(i));
+            return false;
+        }
+        const int32_t bricksPerAxis = data->configCPU.bricksPerAxis;
+        if (bricksPerAxis < 0) {
+            LOG_ERROR("[VoxelSceneCacher::DeserializeFromFile] Negative bricksPerAxis at entry " + std::to_string(i));
+            return false;
+        }
+        const uint64_t expectedGridSlots = static_cast<uint64_t>(bricksPerAxis) *
+                                            static_cast<uint64_t>(bricksPerAxis) *
+                                            static_cast<uint64_t>(bricksPerAxis);
+        if (expectedGridSlots != data->brickGridLookupCPU.size()) {
+            LOG_ERROR("[VoxelSceneCacher::DeserializeFromFile] brickGridLookupCPU size mismatch at entry " + std::to_string(i) +
+                       " (bricksPerAxis^3 = " + std::to_string(expectedGridSlots) + ", got " + std::to_string(data->brickGridLookupCPU.size()) + ")");
             return false;
         }
 
@@ -368,6 +395,11 @@ bool VoxelSceneCacher::DeserializeFromFile(const std::filesystem::path& path, vo
 
     LOG_INFO("[VoxelSceneCacher::DeserializeFromFile] Loaded " + std::to_string(entryCount) + " entries");
     return true;
+} catch (const std::exception& e) {
+    // Nothing may escape this boundary: LoadAll drives DeserializeFromFile via std::async, and an
+    // uncaught exception there terminates the load of every other cache alongside this one.
+    LOG_ERROR("[VoxelSceneCacher::DeserializeFromFile] Exception: " + std::string(e.what()));
+    return false;
 }
 
 // ============================================================================

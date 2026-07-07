@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "ShaderModuleCacher.h"
 #include "CacheKeyHasher.h"
+#include "CacheCodec.h"
 #include "VulkanDevice.h"
 #include <fstream>
 #include <sstream>
@@ -270,13 +271,28 @@ void ShaderModuleCacher::CompileShader(const ShaderModuleCreateParams& ci, Shade
 
             LOG_DEBUG("File opened, size: " + std::to_string(fileSize) + " bytes");
 
-            // Read as bytes and convert to uint32_t
-            std::vector<char> buffer(fileSize);
-            file.read(buffer.data(), fileSize);
+            // SPIR-V is a stream of uint32_t words; a size that isn't a multiple of 4 (or is
+            // empty) cannot be valid SPIR-V and would previously overflow the destination
+            // buffer by up to 3 bytes (V-M7: resize() rounded down, memcpy() copied fileSize).
+            if (fileSize == 0 || fileSize % sizeof(uint32_t) != 0) {
+                throw std::runtime_error("SPIR-V file size " + std::to_string(fileSize) +
+                                          " is not a non-zero multiple of 4: " + spirvPath);
+            }
 
-            // SPIR-V must be aligned to uint32_t
+            std::vector<char> buffer(fileSize);
+            if (!file.read(buffer.data(), static_cast<std::streamsize>(fileSize))) {
+                throw std::runtime_error("Failed to read SPIR-V file contents: " + spirvPath);
+            }
+
             wrapper.spirvCode.resize(fileSize / sizeof(uint32_t));
-            std::memcpy(wrapper.spirvCode.data(), buffer.data(), fileSize);
+            std::memcpy(wrapper.spirvCode.data(), buffer.data(), wrapper.spirvCode.size() * sizeof(uint32_t));
+
+            // Reject anything that doesn't start with the SPIR-V magic number before it ever
+            // reaches vkCreateShaderModule.
+            constexpr uint32_t kSpirvMagic = 0x07230203u;
+            if (wrapper.spirvCode.empty() || wrapper.spirvCode[0] != kSpirvMagic) {
+                throw std::runtime_error("SPIR-V magic number mismatch: " + spirvPath);
+            }
 
             LOG_DEBUG("SPIR-V loaded successfully");
         } else {
@@ -317,13 +333,15 @@ bool ShaderModuleCacher::SerializeToFile(const std::filesystem::path& path) cons
             return false;
         }
 
+        CacheWriter writer(file);
+
         LOG_INFO("SerializeToFile: Saving " + std::to_string(m_entries.size()) + " shader modules to " + path.string());
 
         // Write header: version + entry count
         uint32_t version = 1;
         uint32_t entryCount = static_cast<uint32_t>(m_entries.size());
-        file.write(reinterpret_cast<const char*>(&version), sizeof(version));
-        file.write(reinterpret_cast<const char*>(&entryCount), sizeof(entryCount));
+        writer.WritePod(version);
+        writer.WritePod(entryCount);
 
         // Write each cache entry
         for (const auto& [key, entry] : m_entries) {
@@ -332,53 +350,31 @@ bool ShaderModuleCacher::SerializeToFile(const std::filesystem::path& path) cons
             }
 
             // Write cache key
-            file.write(reinterpret_cast<const char*>(&key), sizeof(key));
+            writer.WritePod(key);
 
             // Write creation params
             const auto& ci = entry.ci;
 
-            // sourcePath
-            uint32_t sourcePathLen = static_cast<uint32_t>(ci.sourcePath.size());
-            file.write(reinterpret_cast<const char*>(&sourcePathLen), sizeof(sourcePathLen));
-            file.write(ci.sourcePath.data(), sourcePathLen);
-
-            // entryPoint
-            uint32_t entryPointLen = static_cast<uint32_t>(ci.entryPoint.size());
-            file.write(reinterpret_cast<const char*>(&entryPointLen), sizeof(entryPointLen));
-            file.write(ci.entryPoint.data(), entryPointLen);
-
-            // shader stage
-            file.write(reinterpret_cast<const char*>(&ci.stage), sizeof(ci.stage));
-
-            // shaderName
-            uint32_t shaderNameLen = static_cast<uint32_t>(ci.shaderName.size());
-            file.write(reinterpret_cast<const char*>(&shaderNameLen), sizeof(shaderNameLen));
-            file.write(ci.shaderName.data(), shaderNameLen);
-
-            // sourceChecksum
-            uint32_t checksumLen = static_cast<uint32_t>(ci.sourceChecksum.size());
-            file.write(reinterpret_cast<const char*>(&checksumLen), sizeof(checksumLen));
-            file.write(ci.sourceChecksum.data(), checksumLen);
+            writer.WriteString32(ci.sourcePath);
+            writer.WriteString32(ci.entryPoint);
+            writer.WritePod(ci.stage);
+            writer.WriteString32(ci.shaderName);
+            writer.WriteString32(ci.sourceChecksum);
 
             // macroDefinitions count
             uint32_t macroCount = static_cast<uint32_t>(ci.macroDefinitions.size());
-            file.write(reinterpret_cast<const char*>(&macroCount), sizeof(macroCount));
+            writer.WritePod(macroCount);
             for (const auto& macro : ci.macroDefinitions) {
-                uint32_t macroLen = static_cast<uint32_t>(macro.size());
-                file.write(reinterpret_cast<const char*>(&macroLen), sizeof(macroLen));
-                file.write(macro.data(), macroLen);
+                writer.WriteString32(macro);
             }
 
             // Write SPIR-V bytecode
-            uint32_t spirvSize = static_cast<uint32_t>(entry.resource->spirvCode.size());
-            file.write(reinterpret_cast<const char*>(&spirvSize), sizeof(spirvSize));
-            file.write(reinterpret_cast<const char*>(entry.resource->spirvCode.data()),
-                       spirvSize * sizeof(uint32_t));
+            writer.WriteVector32(entry.resource->spirvCode);
         }
 
         file.close();
         LOG_INFO("SerializeToFile: Successfully saved cache");
-        return true;
+        return writer.Ok();
 
     } catch (const std::exception& e) {
         LOG_ERROR("SerializeToFile: Exception: " + std::string(e.what()));
@@ -401,11 +397,22 @@ bool ShaderModuleCacher::DeserializeFromFile(const std::filesystem::path& path, 
 
         LOG_INFO("DeserializeFromFile: Loading cache from " + path.string());
 
+        CacheReader reader(file);
+
+        // Caps: generous for any real shader (paths/names are never remotely this long; a
+        // shader is never anywhere near 256Mi SPIR-V words) but small enough that a corrupt
+        // length can't drive a runaway allocation.
+        constexpr size_t kMaxStringLen = 1u << 20;       // 1 MiB
+        constexpr size_t kMaxMacroCount = 1u << 16;      // 65536 macros
+        constexpr size_t kMaxSpirvWords = 1u << 28;      // 256 Mi uint32_t words (1 GiB)
+
         // Read header
         uint32_t version = 0;
         uint32_t entryCount = 0;
-        file.read(reinterpret_cast<char*>(&version), sizeof(version));
-        file.read(reinterpret_cast<char*>(&entryCount), sizeof(entryCount));
+        if (!reader.ReadPod(version) || !reader.ReadPod(entryCount)) {
+            LOG_ERROR("DeserializeFromFile: Truncated header");
+            return false;
+        }
 
         if (version != 1) {
             LOG_ERROR("DeserializeFromFile: Unsupported cache version: " + std::to_string(version));
@@ -418,54 +425,43 @@ bool ShaderModuleCacher::DeserializeFromFile(const std::filesystem::path& path, 
         for (uint32_t i = 0; i < entryCount; ++i) {
             // Read cache key
             std::uint64_t key = 0;
-            file.read(reinterpret_cast<char*>(&key), sizeof(key));
+            if (!reader.ReadPod(key)) {
+                LOG_ERROR("DeserializeFromFile: Truncated key at entry " + std::to_string(i));
+                return false;
+            }
 
             // Read creation params
             ShaderModuleCreateParams ci;
 
-            // sourcePath
-            uint32_t sourcePathLen = 0;
-            file.read(reinterpret_cast<char*>(&sourcePathLen), sizeof(sourcePathLen));
-            ci.sourcePath.resize(sourcePathLen);
-            file.read(ci.sourcePath.data(), sourcePathLen);
-
-            // entryPoint
-            uint32_t entryPointLen = 0;
-            file.read(reinterpret_cast<char*>(&entryPointLen), sizeof(entryPointLen));
-            ci.entryPoint.resize(entryPointLen);
-            file.read(ci.entryPoint.data(), entryPointLen);
-
-            // shader stage
-            file.read(reinterpret_cast<char*>(&ci.stage), sizeof(ci.stage));
-
-            // shaderName
-            uint32_t shaderNameLen = 0;
-            file.read(reinterpret_cast<char*>(&shaderNameLen), sizeof(shaderNameLen));
-            ci.shaderName.resize(shaderNameLen);
-            file.read(ci.shaderName.data(), shaderNameLen);
-
-            // sourceChecksum
-            uint32_t checksumLen = 0;
-            file.read(reinterpret_cast<char*>(&checksumLen), sizeof(checksumLen));
-            ci.sourceChecksum.resize(checksumLen);
-            file.read(ci.sourceChecksum.data(), checksumLen);
+            if (!reader.ReadString32(ci.sourcePath, kMaxStringLen) ||
+                !reader.ReadString32(ci.entryPoint, kMaxStringLen) ||
+                !reader.ReadPod(ci.stage) ||
+                !reader.ReadString32(ci.shaderName, kMaxStringLen) ||
+                !reader.ReadString32(ci.sourceChecksum, kMaxStringLen)) {
+                LOG_ERROR("DeserializeFromFile: Truncated/oversized CreateInfo at entry " + std::to_string(i));
+                return false;
+            }
 
             // macroDefinitions
             uint32_t macroCount = 0;
-            file.read(reinterpret_cast<char*>(&macroCount), sizeof(macroCount));
+            if (!reader.ReadPod(macroCount) || macroCount > kMaxMacroCount) {
+                LOG_ERROR("DeserializeFromFile: Truncated/oversized macro count at entry " + std::to_string(i));
+                return false;
+            }
             ci.macroDefinitions.resize(macroCount);
             for (uint32_t m = 0; m < macroCount; ++m) {
-                uint32_t macroLen = 0;
-                file.read(reinterpret_cast<char*>(&macroLen), sizeof(macroLen));
-                ci.macroDefinitions[m].resize(macroLen);
-                file.read(ci.macroDefinitions[m].data(), macroLen);
+                if (!reader.ReadString32(ci.macroDefinitions[m], kMaxStringLen)) {
+                    LOG_ERROR("DeserializeFromFile: Truncated/oversized macro at entry " + std::to_string(i));
+                    return false;
+                }
             }
 
             // Read SPIR-V bytecode
-            uint32_t spirvSize = 0;
-            file.read(reinterpret_cast<char*>(&spirvSize), sizeof(spirvSize));
-            std::vector<uint32_t> spirvCode(spirvSize);
-            file.read(reinterpret_cast<char*>(spirvCode.data()), spirvSize * sizeof(uint32_t));
+            std::vector<uint32_t> spirvCode;
+            if (!reader.ReadVector32(spirvCode, kMaxSpirvWords)) {
+                LOG_ERROR("DeserializeFromFile: Truncated/oversized SPIR-V at entry " + std::to_string(i));
+                return false;
+            }
 
             // Create wrapper and recreate VkShaderModule
             auto wrapper = std::make_shared<ShaderModuleWrapper>();
