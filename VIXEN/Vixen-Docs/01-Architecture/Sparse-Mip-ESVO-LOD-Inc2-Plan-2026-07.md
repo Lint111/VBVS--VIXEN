@@ -414,8 +414,10 @@ current code rather than taking it on faith, since Inc1 was written 2026-07-05 a
   `89b71001` "refactor(svo): octree pool is dynamic-N — drop kMaxOctrees=3 cap (I3.1)" (2026-06-29,
   i.e. *before* Inc1's plan doc was even written) and the shader-side `configs[3]` clamp dropped the
   same day in `efe225b3`. A stale test still asserting the old cap was caught later as KI-002
-  (`75cca4b2`, 2026-07-02). `BodyOctreeSceneNode.cpp:666` today (901 lines) is a shell-dilation clamp
-  (`dilation > 3u ? 3u : dilation`) — unrelated to instance count entirely. Inc1's citation was already
+  (`75cca4b2`, 2026-07-02). `BodyOctreeSceneNode.cpp:655` today (901 lines, inside `SetShellThickness`)
+  is a shell-dilation clamp (`dilation > 3u ? 3u : dilation`) — unrelated to instance count entirely
+  (line 666 is inside the unrelated `DeriveShellCache`; corrected per Opus validator nit below).
+  Inc1's citation was already
   stale at the moment it was written; this milestone corrects it rather than propagating it further.
 - **Actual current behavior: no instance-count cap exists, hard or soft.** The instance ring
   (`BodyOctreeSceneNode::EnsureRingAllocated`, `BodyOctreeSceneNode.cpp:599-629`) is dynamic
@@ -531,10 +533,17 @@ re-open M4-style build work, without needing to redo this whole investigation:
 None of the three has occurred as of this milestone (2026-07-06). Re-check this section, not just the
 Inc1 note, on the next pass — it supersedes Inc1's `3*64` citation with the corrected reasoning above.
 
-**Opus validator:** not yet run for this milestone — pending the pipeline's own review pass. This
-Progress Log entry states plainly what was checked and how, so a validator can re-verify each factual
-claim (branch list, `git log --grep`, file greps, line numbers) independently rather than re-deriving
-the investigation from scratch.
+**Opus validator: APPROVED (2026-07-07)** — independently re-verified all claims above against the
+actual codebase/git history/vault rather than trusting the report: confirmed the stale-citation
+correction is itself accurate (`kMaxOctrees=3` traced to `81c916cc`→removed `89b71001`, six days
+before Inc1's `3abcac0c` citation was written); confirmed no instance cap exists by reading
+`EnsureRingAllocated` directly; confirmed the 3/32/16 tree-count figures and the "60-300" ceiling by
+direct file reads and a broad vault search; confirmed the nested-tree epic is genuinely design-only
+(no plan doc, branch, or worktree references it; `git log --all --grep` fully accounted for); and
+confirmed the "no-build" decision follows from Inc1's own stated AND-criterion rather than being
+predetermined. Judged the document itself well-organized and reusable (specific hashes/lines/searchable
+terms). One non-blocking nit (a `:666`→`:655` line-reference typo in this doc, unrelated to any
+conclusion) found and corrected above.
 
 ---
 
