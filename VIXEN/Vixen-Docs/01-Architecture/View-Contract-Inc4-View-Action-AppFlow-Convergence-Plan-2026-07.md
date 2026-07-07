@@ -58,7 +58,7 @@
 
 ## Milestone Map
 
-- **M1 — AppFlow emitter, retire the hand-mirror (Tasks 1–3):** `AppFlowEmitter` generates the EXISTING `AppFlow.g.h` byte-equivalent from `AppFlowReference.cs`; `--appflow` CLI; NUnit byte-equivalence test; the committed header becomes generated; `test_appflow_golden` stays green. NO new features. Drift-guard pair. Testable: `--appflow --check` passes against the committed (now-generated) header; AppFlow offline suite green.
+- **M1 — AppFlow emitter, retire the hand-mirror (Tasks 1–3): ✅ DONE** `AppFlowEmitter` generates the EXISTING `AppFlow.g.h` byte-equivalent from `AppFlowReference.cs`; `--appflow` CLI; NUnit byte-equivalence test; the committed header becomes generated; `test_appflow_golden` stays green. NO new features. Drift-guard pair. Testable: `--appflow --check` passes against the committed (now-generated) header; AppFlow offline suite green.
 - **M2 — Schema extension + emitter tables (Tasks 4–6):** new `[Flow*]` attributes; `KeyId`/`KeyMod`/`KeyChord`/`FlowScope` + new `FlowAction`s; `kElementTriggers`/`kKeyDefaults`/`kReturnEdges` + effect-ref column emitted; regenerate + commit the extended `AppFlow.g.h`. Testable: `AppFlowEmitterTests` asserts the new tables; drift-guard passes.
 - **M3 — Runtime (Tasks 7–10):** `InputProfile` (hierarchical), `BindingStore` pattern matching, `FlowStateMachine` entry-history + `RequestReturn`, `AppFlowRuntime::DispatchByKey` + `Load()` seeding. Testable: `test_input_profile`/`test_binding_pattern`/`test_flow_return`/`test_keychord` green; AppFlow suite green.
 - **M4 — Editor retire + live gate + close-out (Tasks 11–13):** glfw→`KeyId` map; delete `ParseLayerToggleId`; rewrite the editor input block; extend the windowed real-GPU gate; no-regression. Testable: windowed gate passes on real GPU (element-click→toggle, scoped key→undo byte-exact, return-edge pop); no `ParseLayerToggleId`/`glfwGetKey`-action literals remain.
@@ -1097,6 +1097,7 @@ git commit -m "test(editor): windowed gate proves typed element-click/key dispat
 ## Progress Log
 
 - (append per milestone: `Milestone N (Tasks A–B): DONE · commits <short>..<short> · Opus validator OK · <date>`)
+- Milestone 1 (Tasks 1–3): DONE · Yeroket commits c0e374bb..6b997a6a (AppFlowEmitter + LoadAppFlow, --appflow CLI + NUnit AppFlowEmitterTests) · VIXEN commit 60b30b62 (regenerated AppFlow.g.h — byte-identical to prior committed except the removed HAND-AUTHORED/TODO(appflow-codegen) banner block; appflow_check/appflow_regen CMake drift-guard pair) · Opus validator APPROVED all 7 criteria (diff empty; drift-guard verified BOTH directions exit 0/exit 1; NUnit non-vacuous; AppFlow offline suite 27/27 green with test_appflow_golden.cpp.obj force-recompiled against the regenerated header; pre-existing all-build failures [test_body_instance_raymarch_render setenv/MSVC, SdfRecipes/SdfCoreKernels macro collision] independently confirmed unrelated — those files don't reference AppFlow, untouched by 60b30b62; tree integrity clean, no DLL/bin/obj committed) · 2026-07-07
 
 ---
 
