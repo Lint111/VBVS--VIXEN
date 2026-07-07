@@ -98,7 +98,10 @@ before any GPU-side tier-crossing machinery (§3/§5) is built against it.
 
 - **M1 — `TierAddress` type + tier math** (Tasks 1-2) · gate: pure-CPU gtest green, no GPU dependency
   (pattern per `tests/Data/` + a plain `.cmake` registration, not `test_critical_nodes.cmake` — see
-  Notes for implementers).
+  Notes for implementers). ·
+  **✅ DONE 2026-07-07** — commit `709bb639` (worktree `feat/tiered-esvo-inc1`, branched from `main`).
+  `test_tier_address` 16/16, `test_tier_math` 9/9, both green. See Progress Log for representation
+  choice + the tier-math re-derivation.
 - **M2 — Direction/magnitude derivation** (Tasks 3-4) · gate: pure-CPU gtest green — shared-prefix
   composition, apparent-magnitude falloff, optional light-delay staleness term.
 - **M3 — `SkyProjectionNode` + live composite gate** (Tasks 5-7) · gate: shader compiles + a live
@@ -107,8 +110,49 @@ before any GPU-side tier-crossing machinery (§3/§5) is built against it.
 
 ### Progress Log
 
-(populated as milestones complete, following the Sparse-Mip-ESVO-LOD Inc1/Inc2 plans' own convention:
-one entry per milestone, commit hash + Opus validator verdict)
+- **Milestone M1 (Tasks 1-2): DONE** · commit `709bb639` (worktree `feat/tiered-esvo-inc1`, branched
+  from `main`) · gates: `test_tier_address` 16/16, `test_tier_math` 9/9, both green, pure CPU (no
+  Vulkan/GPU dependency exercised by either binary) · 2026-07-07.
+  - **`TierAddress` representation**: fixed-capacity inline array (`std::array<uint32_t,
+    kMaxTierAddressDepth=8>` + a running `depth_`), not `std::vector<uint32_t>` as the design doc's §4
+    sketch literally wrote. Chosen because the type is compared (shared-prefix) and copied (per-object,
+    per-frame, potentially many fleet objects) frequently, and the concrete depth this increment's own
+    tier math produces is bounded and small (5 tiers today — see below), so `std::vector`'s heap
+    indirection buys nothing; `kMaxTierAddressDepth=8` leaves headroom for a couple of future tiers
+    without forcing another representation change. `PushHop` past capacity clamps rather than UB's or
+    throws (documented as a defensive clamp, not a silent-failure API surface).
+  - **Shared-prefix helper**: `TierAddress::SharedPrefixLength(a, b)` — walks both hop arrays up to
+    `min(depth)`, returns the count of leading equal hops. Verified: self-comparison and identical
+    addresses both return full depth; fully-divergent-at-root pairs return 0; partial-overlap pairs
+    return exactly the common-ancestor depth; sibling addresses (same prefix, differ only at the final
+    hop) return `depth - 1`; one-address-is-a-prefix-of-the-other is symmetric. 8 dedicated test cases.
+  - **Serialization form**: a simple depth-prefixed dot-separated string (`ToString()`, e.g. `"4:7.2.5.0"`)
+    — explicitly documented in the header as NOT the eventual undertow wire format (§4/§11 defer that),
+    just a deterministic, easy-to-replace stand-in for this increment's own tests/logging.
+  - **Tier-math re-derivation** (`TierMath.h`, `BuildTierScaleTable()`): rebuilt the 5-tier table
+    bottom-up from the Sparse-Mip-ESVO-LOD-Direction doc's cited 1cm bedrock voxel, rather than copying
+    the doc's own (slightly rounded) span figures — T2 bedrock (10 levels) → T1 region (10 levels,
+    leaf = T2's span) → T0 planet (10 levels, leaf = T1's span) matches the source doc's "~10 effective
+    levels each" table within the same order of magnitude (T0 span comes out ~10,737 km vs. the doc's
+    cited "12,700 km" Earth-diameter figure — the doc's own number is itself an approximation of Earth's
+    actual diameter using clean powers of two, not a bug in this derivation). Generalized upward per the
+    Tiered-ESVO design doc's §1: the remaining level budget up to the cited 9.46×10²² cm galaxy diameter
+    (`log2(galaxy_cm / T0_span_cm) ≈ 46.08` levels) is split evenly across exactly 2 tiers (System,
+    Galaxy) — landing at ~23.04 levels/tier, which reconciles the design doc's own two framings
+    ("~10 effective levels/tier" for T0-T2, vs. "23 levels per ESVO instance" cited for the ~4-5-tier
+    total): the lower 3 tiers keep conservative headroom in the 23-level ESVO stack (for brick-local
+    subdivision), while System/Galaxy — pure scale/index hops, no brick subdivision — use close to the
+    full per-instance budget. Total re-derived level count across all 5 tiers: 76.08, matching the cited
+    `log2(9.46e22/1) ≈ 76.3` within rounding. Bottom (T2) leaf and top (Galaxy) span both bracket the
+    design doc's cited figures exactly (galaxy span is reconstructed to match 9.46×10²² cm by
+    construction of the derivation, not an independent coincidence — see `TierMath.h`'s header comment
+    for the full worked derivation).
+  - **No scope drift**: confirmed via `git diff --stat` before commit — only
+    `libraries/SVO/include/{TierAddress,TierMath}.h`, `libraries/SVO/tests/test_tier_{address,math}.cpp`,
+    and the `CMakeLists.txt` registration touched. No `ChildDescriptor`/`farBit`/`SVORebuild.cpp`/
+    `LaineKarrasOctree`/`ConcatenatedOctrees` file touched, per §0.
+  - Opus validator: not yet run (this entry written by the M1 implementer; awaiting controller-dispatched
+    validation pass per the pipeline).
 
 ---
 
@@ -122,33 +166,42 @@ This mirrors Sparse-Mip-ESVO-LOD Inc1's own M1 (a foundational CPU-only type bef
 
 ### Task 1 — `TierAddress` type + shared-prefix comparison
 
-- [ ] New header, e.g. `libraries/SVO/include/TierAddress.h` (pure CPU, no GPU/node dependency,
+- [x] New header, e.g. `libraries/SVO/include/TierAddress.h` (pure CPU, no GPU/node dependency,
   matching the design doc §4's own framing: "Not GPU-resident — a small CPU-side identity, cheap to
   store/compare/serialize"). Fields: `std::vector<uint32_t> hops` per §4's sketch — confirm at
   implementation time whether a small fixed-capacity array (4-6 entries, per the design doc's own
   "4-5 entries typical" estimate) is a better fit than a `std::vector` for a type that gets compared
   and copied frequently; either is acceptable, document the choice.
-- [ ] Shared-prefix helper: given two `TierAddress` values, return the length of their common prefix
+  → Built as a fixed-capacity `std::array<uint32_t, 8>` + depth counter — see Progress Log for the
+  reasoning.
+- [x] Shared-prefix helper: given two `TierAddress` values, return the length of their common prefix
   (0 if they diverge at the root) — this is the "shared-prefix = shared ancestor" primitive §4
   describes, and every direction/distance computation in M2 depends on it.
-- [ ] Comparison/equality and a stable serialization form (even if only used by tests this increment —
+  → `TierAddress::SharedPrefixLength(a, b)`.
+- [x] Comparison/equality and a stable serialization form (even if only used by tests this increment —
   §4 notes this is "the one shared contract with undertow," so keep the type easy to re-derive a wire
   format from later, but do not attempt to design that wire format now — §0 explicitly defers it).
-- [ ] Unit tests: construct addresses at varying depths, confirm shared-prefix length is correct for
+  → `operator==`/`operator!=` + `ToString()` (depth-prefixed dot-separated string, explicitly NOT the
+  final wire format).
+- [x] Unit tests: construct addresses at varying depths, confirm shared-prefix length is correct for
   identical/partially-overlapping/fully-divergent pairs, confirm a self-comparison returns full depth.
+  → `test_tier_address.cpp`, 16/16 green.
 
 ### Task 2 — Tier math generalized upward (system, galaxy)
 
-- [ ] Re-derive (do not re-invent) the tier count/sizing math already established in
+- [x] Re-derive (do not re-invent) the tier count/sizing math already established in
   [[Sparse-Mip-ESVO-LOD-Direction-2026-07]] (T0 planet / T1 region / T2 bedrock, ~10 effective levels
   each) and this design doc's §1 restatement (~76 levels voxel-cm to galaxy-diameter, 23 levels per
   ESVO instance → ~4-5 tiers). Produce a small, testable CPU function/table mapping tier index → linear
   scale range (or the per-tier scale factor needed to convert a hop count into a real-world distance
   estimate for M2's magnitude falloff) — this is bookkeeping/derivation, not new design; verify the
   numbers against the source doc's own math rather than re-deriving from scratch.
-- [ ] Unit test: confirm the tier-to-scale mapping produces sane, monotonically-increasing ranges
+  → `libraries/SVO/include/TierMath.h`, `BuildTierScaleTable()` — see Progress Log for the full
+  re-derivation and how the "~10 levels/tier" vs "23 levels/instance" framings reconcile.
+- [x] Unit test: confirm the tier-to-scale mapping produces sane, monotonically-increasing ranges
   across all tiers, and that the top tier (galaxy) and bottom tier (T2 bedrock) bracket the design
   doc's own cited figures (~9.46×10²² cm galaxy diameter, ~1cm voxel).
+  → `test_tier_math.cpp`, 9/9 green.
 
 **M1 gate:** all new unit tests green, pure CPU, no GPU/render dependency.
 
