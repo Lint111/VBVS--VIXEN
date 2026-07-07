@@ -667,6 +667,22 @@ else()
 endif()
 
 # ===========================================================================
+# View Contract Inc-2b: ViewBlob/ViewKind/ViewValue reflection-blob contract
+# ===========================================================================
+# Pure CPU test of the constexpr descriptor shape + scalar kind/value agreement.
+# No RmlUi/Vulkan/GPU required.
+
+if(TARGET GTest::gtest_main)
+    add_executable(test_view_blob test_view_blob.cpp)
+    target_link_libraries(test_view_blob PRIVATE GTest::gtest_main RenderGraph)
+    set_target_properties(test_view_blob PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    gtest_discover_tests(test_view_blob DISCOVERY_MODE PRE_TEST DISCOVERY_TIMEOUT 60)
+    message(STATUS "✓ test_view_blob configured (View Contract Inc-2b: ViewBlob contract)")
+else()
+    message(STATUS "⊗ test_view_blob skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
 # BarrierTypes Tests (auto-sync P1)
 # ===========================================================================
 # Validates AccessKind -> Vulkan sync-semantics mapping
