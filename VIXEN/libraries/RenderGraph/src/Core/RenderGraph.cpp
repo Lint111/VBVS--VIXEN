@@ -571,42 +571,6 @@ void RenderGraph::Compile() {
     isCompiled = true;
 }
 
-void RenderGraph::Execute(VkCommandBuffer commandBuffer) {
-    if (!isCompiled) {
-        throw std::runtime_error("Graph must be compiled before execution");
-    }
-
-    // Phase 0.4: Update loop states
-    double frameTime = frameTimer.GetDeltaTime();
-    loopManager.SetCurrentFrame(globalFrameIndex);
-    loopManager.UpdateLoops(frameTime);
-    globalFrameIndex++;
-
-    // Phase 0.4: Propagate loop references through AUTO_LOOP_IN/OUT connections
-    for (const auto& edge : topology.GetEdges()) {
-        if (edge.sourceOutputIndex == NodeInstance::AUTO_LOOP_OUT_SLOT &&
-            edge.targetInputIndex == NodeInstance::AUTO_LOOP_IN_SLOT) {
-
-            const LoopReference* loopRef = edge.source->GetLoopOutput();
-            edge.target->SetLoopInput(loopRef);
-        }
-    }
-
-    // Execute nodes in order (now with loop gating via ShouldExecuteThisFrame)
-    for (NodeInstance* node : executionOrder) {
-        if (node->GetState() == NodeState::Ready ||
-            node->GetState() == NodeState::Compiled ||
-            node->GetState() == NodeState::Complete) {  // Execute completed nodes again each frame
-
-            // Phase 0.4: Check if node should execute this frame (loop gating)
-            if (node->ShouldExecuteThisFrame()) {
-                node->SetState(NodeState::Executing);
-                node->Execute();  // Hooks fired inside NodeInstance::Execute()
-                node->SetState(NodeState::Complete);
-            }
-        }
-    }
-}
 
 void RenderGraph::NotifyDeviceLost(const std::string& site) {
     // KI-004: a lost device invalidates every remaining node execution in this frame — abort the frame
@@ -1041,33 +1005,6 @@ bool RenderGraph::Validate(std::string& errorMessage) const {
                              ") missing required input '" + inputSchema[i].name +
                              "' at slot index " + std::to_string(i);
                 return false;
-            }
-        }
-    }
-
-    // Phase C.3: Validate render pass compatibility between pipelines and framebuffers
-    // Check GeometryRenderNode instances for compatible render passes
-    for (const auto& instance : instances) {
-        NodeType* type = instance->GetNodeType();
-        if (type->GetTypeName() == "GeometryRender") {
-            // GeometryRenderNode uses RENDER_PASS (from PipelineNode) and FRAMEBUFFERS (from FramebufferNode)
-            // Pipeline's render pass must be compatible with framebuffer's render pass
-
-            // Try to get render pass from input (may be null if not connected)
-            Resource* renderPassRes = instance->GetInput(0, 0);  // RENDER_PASS is input 0
-            Resource* framebufferRes = instance->GetInput(2, 0);  // FRAMEBUFFERS is input 2
-
-            if (renderPassRes && framebufferRes) {
-                // Both resources exist - validate compatibility
-                // Note: Vulkan render pass compatibility is complex (attachment counts, formats, etc.)
-                // For now, we just ensure both exist. Full validation would require:
-                // 1. Extracting VkRenderPass from pipeline
-                // 2. Extracting VkRenderPass from framebuffer
-                // 3. Checking compatibility via format/attachment/subpass rules
-                // This is a placeholder for future comprehensive validation
-
-                // Placeholder: Just ensure resources are not null
-                // Full implementation would call vkGetRenderPassCreateInfo equivalents
             }
         }
     }
