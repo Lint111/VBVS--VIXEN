@@ -51,6 +51,7 @@
 #include "Memory/BatchedUploader.h"
 #include "Memory/DeviceBudgetManager.h"
 #include "Memory/DirectAllocator.h"
+#include "ResidencyTrigger.h"  // Vixen::SVO::InstanceWantsBrickResidency (Inc2 M1)
 
 #include "VulkanGlobalNames.h"  // VixenSelectWslGpuIcd
 
@@ -423,4 +424,215 @@ TEST_F(BandwidthAbMeasurementTest, MipOnlyFarBodiesUploadDrasticallyFewerBytesTh
            "otherwise this A/B isn't measuring anything.";
     EXPECT_GT(baseline.totalUploads, inc1.totalUploads)
         << "Baseline must issue strictly more BatchedUploader calls than the mip-only condition.";
+}
+
+// ---------------------------------------------------------------------------
+// Sparse-Mip ESVO LOD Inc2 M1 — realistic MIXED-scene measurement.
+//
+// Inc1's M5 Opus validator ("Caveat A", Inc1 Plan §M5 Progress Log) flagged that the
+// 170-220x number above is the mechanism's all-or-nothing EXTREME ENDPOINT (all 16 trees
+// request residency vs. none do), not the realistic mixed near/far operating point the
+// direction doc's original framing described. Recommendation: "measure one mixed scene
+// through the actual live trigger before quoting 170-220x as the realistic-scene number."
+//
+// This test builds one scene of kNumTrees (same N as above, for direct comparability),
+// places each tree at a believable world position (a handful genuinely close/in-frustum/
+// resolvable, most genuinely far/out-of-frustum/below-resolvability), and — unlike the A/B
+// test above, which manually toggles RequestBrickResidency — drives the actual per-instance
+// decision through Vixen::SVO::InstanceWantsBrickResidency (ResidencyTrigger.h, Inc1 M4c),
+// the exact same pure function VulkanGraphApplication::UpdateBodySceneResidency calls once
+// per camera-changed frame in the live app. Only trees whose lone instance passes the
+// combined frustum+resolvability gate get RequestBrickResidency(true) called on them —
+// mirroring the real per-frame live-trigger flow, not an idealized "some trees are magically
+// resident" assumption.
+//
+// Same INITIAL-vs-on-demand caveat as above applies: every tree starts mip-only via
+// BuildTrees() (RequestBrickResidency(false) before Compile), so 100% of the bricks-uploaded
+// bytes measured below flow through BatchedUploader on the on-demand path — nothing here
+// depends on the direct-memcpy initial-population path BatchedUploaderStats can't see.
+namespace {
+
+// Mirrors test_residency_trigger.cpp's own Camera convention (looking down +Z from the
+// origin, standard basis) so this scene's numbers are derived the same way, not guessed.
+struct SceneCamera {
+    glm::vec3 pos{0.0f, 0.0f, 0.0f};
+    glm::vec3 dir{0.0f, 0.0f, 1.0f};
+    glm::vec3 up{0.0f, 1.0f, 0.0f};
+    glm::vec3 right{1.0f, 0.0f, 0.0f};
+    float fovDeg = 60.0f;
+    float aspect = 16.0f / 9.0f;
+};
+
+constexpr float kScreenHeightPx = 1080.0f;
+constexpr float kLeafSizeM      = 0.01f;   // ResolvableLevel.h's 1cm-voxel convention
+constexpr float kPxThreshold    = 1.0f;
+constexpr float kNearPlane      = 0.1f;
+constexpr float kFarPlane       = 500.0f;  // matches BuildRenderGraph.cpp's real camera far plane
+constexpr float kBodyRadius     = 24.0f;   // matches BuildRenderGraph.cpp's shared body bounding radius
+
+// A believable mixed scene, not chosen to prove a point: kNumTrees (16) total, split into
+// a small cluster of NEAR bodies genuinely in front of the camera close enough to resolve
+// the brick tier (2^6 = 64 cells/axis, kShellDepth) under a normal 60deg FOV, and the
+// remaining majority placed FAR down the same forward axis, well past the distance where
+// minResolvableLevel would ever cross the brick-tier threshold at this FOV -- i.e. a scene
+// that looks like "a few bodies the player is next to, many more scattered across the rest
+// of a large explorable region," not an artificial 50/50 split.
+constexpr uint32_t kNumNear = 5;   // near/in-frustum/resolvable  -> expect residency requested
+constexpr uint32_t kNumFar  = kNumTrees - kNumNear;  // 11: far/below-resolvability -> stay mip-only
+
+// Near bodies: 8-40m straight ahead (resolvable per ScenarioA_DistanceDriven's own 10m
+// precedent in test_residency_trigger.cpp, spread out so they are not literally coincident).
+// Far bodies: 1500-2500m straight ahead (same 2000m precedent ScenarioA/B use as their
+// "not yet resolvable at 60deg" reference point), spread so they are not all identical.
+glm::vec3 NearBodyPos(uint32_t i) {
+    return glm::vec3(0.0f, 0.0f, 8.0f + static_cast<float>(i) * 8.0f);  // 8, 16, 24, 32, 40m
+}
+glm::vec3 FarBodyPos(uint32_t i) {
+    return glm::vec3(0.0f, 0.0f, 1500.0f + static_cast<float>(i) * 100.0f);  // 1500..2500m
+}
+
+}  // namespace
+
+TEST_F(BandwidthAbMeasurementTest,
+       MixedSceneThroughLiveResidencyTriggerMeasuresRealisticBandwidthReduction) {
+    static_assert(kNumNear < kNumTrees, "Need at least one far body for this to be a mix");
+    static_assert(kNumFar > 0, "Need at least one far body for this to be a mix");
+
+    const SceneCamera cam;  // fixed 60deg FOV, looking down +Z from the origin
+
+    // --- Build one scene of kNumTrees trees, all starting mip-only (BuildTrees's own
+    // precondition), then assign each a world position and evaluate the SAME per-instance
+    // decision function the live app calls (InstanceWantsBrickResidency), not a manual
+    // near/far label chosen by this test.
+    TreeSet mixedSet = BuildTrees();
+
+    uint32_t requestedCount = 0;
+    std::vector<bool> wantsResidency(kNumTrees, false);
+    for (uint32_t i = 0; i < kNumTrees; ++i) {
+        const glm::vec3 pos = (i < kNumNear) ? NearBodyPos(i) : FarBodyPos(i - kNumNear);
+
+        // Stash a single instance on this tree so GetInstances()-based production code
+        // (and this test's own record-keeping) has a real position to point at; the
+        // trigger call itself takes the position directly, matching
+        // UpdateBodySceneResidency's own per-instance loop.
+        Vixen::SVO::BodyInstanceGpu inst{};
+        inst.worldPos[0] = pos.x;
+        inst.worldPos[1] = pos.y;
+        inst.worldPos[2] = pos.z;
+        mixedSet.nodes[i]->SetInstances({inst});
+
+        const bool wants = Vixen::SVO::InstanceWantsBrickResidency(
+            pos, kBodyRadius,
+            cam.pos, cam.dir, cam.up, cam.right,
+            cam.fovDeg, cam.aspect, kScreenHeightPx, kNearPlane, kFarPlane,
+            Vixen::RenderGraph::BodyOctreeSceneNode::GetBrickTierLevel(),
+            kLeafSizeM, kPxThreshold);
+        wantsResidency[i] = wants;
+        if (wants) {
+            ++requestedCount;
+        }
+    }
+
+    // Sanity on the scene itself (not the mechanism) -- if this fails, the constants above
+    // stopped describing a genuine mix and the percentage below would be meaningless.
+    ASSERT_GT(requestedCount, 0u) << "Scene must have at least one tree the live trigger "
+                                     "actually grants residency to, or this isn't a mix.";
+    ASSERT_LT(requestedCount, kNumTrees) << "Scene must have at least one tree the live "
+                                            "trigger denies residency to, or this isn't a mix.";
+    for (uint32_t i = 0; i < kNumNear; ++i) {
+        EXPECT_TRUE(wantsResidency[i]) << "Near body " << i << " at " << NearBodyPos(i).z
+                                        << "m was expected to pass the live trigger.";
+    }
+    for (uint32_t i = kNumNear; i < kNumTrees; ++i) {
+        EXPECT_FALSE(wantsResidency[i]) << "Far body " << (i - kNumNear) << " at "
+                                         << FarBodyPos(i - kNumNear).z
+                                         << "m was expected to fail the live trigger.";
+    }
+
+    // --- Service ONLY the trees the live trigger actually granted (mirrors
+    // UpdateBodySceneResidency: RequestBrickResidency(true) called only for
+    // trigger==true trees; trigger==false trees are simply never called, staying
+    // mip-only exactly like the INC1 condition in the A/B test above).
+    const auto statsBefore = uploaderObserver_->GetStats();
+    for (uint32_t i = 0; i < kNumTrees; ++i) {
+        if (wantsResidency[i]) {
+            mixedSet.nodes[i]->RequestBrickResidency(true);
+        }
+    }
+    auto tick = [&]() {
+        for (uint32_t i = 0; i < kNumTrees; ++i) {
+            mixedSet.frameIndices[i] += 1;
+            SetHandleVal<uint32_t>(mixedSet.frRes[i], mixedSet.frameIndices[i]);
+            mixedSet.nodes[i]->Execute();
+        }
+    };
+    tick();
+    deviceShell_->WaitAllUploads();
+    tick();  // PollBrickUploadCompletion settles brickResident + queues config re-upload
+    deviceShell_->WaitAllUploads();
+    const auto statsAfter = uploaderObserver_->GetStats();
+
+    const uint64_t mixedBytes = statsAfter.totalBytesUploaded - statsBefore.totalBytesUploaded;
+    const uint64_t mixedUploads = statsAfter.totalUploads - statsBefore.totalUploads;
+    TeardownTrees(mixedSet);
+
+    // --- All-resident baseline for the SAME kNumTrees, for the percentage-reduction
+    // comparison (this is the A/B test's own baseline condition, re-run here rather than
+    // shared, so this test is self-contained and independently re-runnable).
+    TreeSet baselineSet = BuildTrees();
+    AbResult baseline = RunCondition(baselineSet, /*requestResidency=*/true,
+                                      uploaderObserver_, deviceShell_.get());
+    TeardownTrees(baselineSet);
+
+    const double pctOfBaseline = baseline.totalBytesUploaded > 0
+        ? (100.0 * static_cast<double>(mixedBytes) / static_cast<double>(baseline.totalBytesUploaded))
+        : 0.0;
+    const double pctReduction = 100.0 - pctOfBaseline;
+    const double speedup = mixedBytes > 0
+        ? static_cast<double>(baseline.totalBytesUploaded) / static_cast<double>(mixedBytes)
+        : 0.0;
+
+    std::printf(
+        "\n"
+        "=== Sparse-Mip ESVO LOD Inc2 M1 -- realistic MIXED-scene bandwidth measurement ===\n"
+        "  Scene: %u trees total (%u near/in-frustum/resolvable, %u far/below-threshold)\n"
+        "  Live ResidencyTrigger granted residency to: %u of %u trees\n"
+        "  MIXED scene (through the live trigger):\n"
+        "    totalBytesUploaded = %llu bytes\n"
+        "    totalUploads       = %llu\n"
+        "  ALL-RESIDENT BASELINE (all %u trees, pre-Inc1-equivalent):\n"
+        "    totalBytesUploaded = %llu bytes\n"
+        "    totalUploads       = %llu\n"
+        "  RESULT: mixed scene uploads %.1f%% of the all-resident baseline's bytes "
+        "(%.1f%% reduction, %.1fx less data moved)\n"
+        "  NOTE: this is the REALISTIC-MIX number for THIS scene's near/far ratio (%u/%u = "
+        "%.0f%% resident) -- it is arithmetically bounded by, and expected to differ from,\n"
+        "  the all-or-nothing 170-220x extreme-endpoint number measured by the test above; "
+        "see the direction doc's status banner for how the two relate.\n"
+        "===================================================================================\n",
+        kNumTrees, kNumNear, kNumFar,
+        requestedCount, kNumTrees,
+        static_cast<unsigned long long>(mixedBytes),
+        static_cast<unsigned long long>(mixedUploads),
+        kNumTrees,
+        static_cast<unsigned long long>(baseline.totalBytesUploaded),
+        static_cast<unsigned long long>(baseline.totalUploads),
+        pctOfBaseline, pctReduction, speedup,
+        requestedCount, kNumTrees,
+        100.0 * static_cast<double>(requestedCount) / static_cast<double>(kNumTrees));
+
+    // --- The actual gate: the mixed scene must upload a NONZERO but STRICTLY SMALLER
+    // amount than the all-resident baseline -- proving the live trigger is genuinely
+    // gating a subset (not accidentally degenerating to all-or-nothing), and that the
+    // subset it grants actually costs real, measurable bytes (proving the near trees'
+    // bricks really did upload, not just get silently skipped).
+    EXPECT_GT(mixedBytes, 0u)
+        << "The near/in-frustum/resolvable trees must upload a real, non-zero amount -- "
+           "otherwise the live trigger granted nothing and this isn't testing a mix.";
+    EXPECT_LT(mixedBytes, baseline.totalBytesUploaded)
+        << "The mixed scene must upload strictly fewer bytes than the all-resident "
+           "baseline -- otherwise the far trees' mip-only gate isn't saving anything.";
+    EXPECT_EQ(requestedCount, kNumNear)
+        << "Exactly the " << kNumNear << " near trees (and no far trees) should have "
+           "passed the live trigger in this scene.";
 }
