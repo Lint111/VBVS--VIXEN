@@ -239,7 +239,7 @@ this engine-repo sync, skipped here.
 
 **Build:** green, 303/303 targets (WSL/GCC preset `vixen-wsl`), after the 3 fixes above.
 **Tests:** 2042 registered (0 before the `enable_testing()` fix) — 2041 ran (97% passed), **57 failed**, baseline (not investigated further, none in files this gate touched):
-- `ShaderCacheManagerTest` ×7 (StoreAndRetrieveShader, OverwriteExistingCache, DifferentKeysStoreSeparately, InvalidateRemovesCache, ClearRemovesAllCaches, StoreMultipleShadersQuickly, CacheFilesCreatedOnDisk)
+- `ShaderCacheManagerTest` ×7 (StoreAndRetrieveShader, OverwriteExistingCache, DifferentKeysStoreSeparately, InvalidateRemovesCache, ClearRemovesAllCaches, StoreMultipleShadersQuickly, CacheFilesCreatedOnDisk) — the count (7 of this suite's ~15) is stable across runs but the *named* membership is not: these tests share a disk cache directory and contend under parallel `ctest -j`, so which specific subtests lose the race varies run to run. Future milestones should diff against the count/cluster, not the exact names.
 - `SwapChainNodeTest.ConfigHasSevenInputs`
 - `EditorToggleUndoCapture.ToggleUndoRedoRoundTripThroughWindowedRun`
 - `HudRenderCapture` ×3 (BaselineIsNonEmpty, PayloadSwapProducesRealPixelDifference, SameFrameDeterministic)
