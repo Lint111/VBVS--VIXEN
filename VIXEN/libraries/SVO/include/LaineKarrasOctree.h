@@ -64,6 +64,7 @@ public:
     // Public: this is the single canonical value for the GPU-visible ESVO scale contract
     // (OctreeConfig::esvoMaxScale and friends reference it directly, not a re-hardcoded 22).
     static constexpr int ESVO_MAX_SCALE = 22;  // Root scale in ESVO normalized space
+    static_assert(ESVO_MAX_SCALE == SVOLOD_ESVO_MAX_SCALE, "keep ESVO root scale in sync");
 
     // Entity-based constructor (pure spatial index)
     // SVO stores entity IDs via EntityBrickView (8 bytes/entity)
