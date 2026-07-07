@@ -47,11 +47,31 @@ bool BindingStore::AddBinding(const BindingSpec& spec, std::string& warn) {
 
 bool BindingStore::TryGetForSelector(const std::string& selector, BoundAction& out) const {
     auto it = bindings_.find(selector);
-    if (it == bindings_.end()) {
-        return false;
+    if (it != bindings_.end()) {
+        out = it->second;   // exact wins
+        return true;
     }
-    out = it->second;
-    return true;
+    for (const auto& p : patterns_) {
+        if (selector.size() <= p.prefix.size() + p.suffix.size()) continue;
+        if (selector.compare(0, p.prefix.size(), p.prefix) != 0) continue;
+        if (selector.compare(selector.size() - p.suffix.size(), p.suffix.size(), p.suffix) != 0) continue;
+        std::string mid = selector.substr(p.prefix.size(), selector.size() - p.prefix.size() - p.suffix.size());
+        if (mid.empty()) continue;
+        out = BoundAction{p.action, p.on, {{p.paramName, mid}}};
+        return true;
+    }
+    return false;
+}
+
+void BindingStore::AddElementTrigger(const Generated::AppFlowElementTrigger& trig) {
+    // Split "layer-{index}-toggle" into prefix="layer-", suffix="-toggle".
+    const std::string pat = trig.elementPattern;
+    const auto lb = pat.find('{');
+    const auto rb = pat.find('}');
+    if (lb == std::string::npos || rb == std::string::npos || rb < lb) {
+        return;   // malformed pattern -> inert (never a wrong dispatch)
+    }
+    patterns_.push_back({pat.substr(0, lb), pat.substr(rb + 1), trig.paramName, trig.action, trig.on});
 }
 
 } // namespace Vixen::AppFlow
