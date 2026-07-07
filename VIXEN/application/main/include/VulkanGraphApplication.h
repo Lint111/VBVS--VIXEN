@@ -202,4 +202,10 @@ public:
     // frame and forward the clicked element id into the feedback slice. LIVE lookup (like GetUiRenderNode);
     // returns nullptr if unset (e.g. a graph without the selection provider).
     Vixen::RenderGraph::UISelectionProviderNode* GetUiSelectionProviderNode() const;
+
+    // M4b: read back the swapchain image just presented and write it as a PNG. Call AFTER a
+    // Render() call (so a real presented frame exists). One-shot, synchronous (waits on the
+    // copy internally) — fine for a capture-then-exit tool, not for per-frame use. Returns false
+    // (and logs) if the swapchain/device node isn't found or the write fails.
+    bool CaptureFrameToPng(const std::string& path);
 };

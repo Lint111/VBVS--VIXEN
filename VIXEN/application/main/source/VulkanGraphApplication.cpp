@@ -3,6 +3,7 @@
 #include "MeshData.h"
 #include "Logger.h"
 #include <cmath>       // std::tan for the LOD ray-cone (raySizeCoef) computation
+#include <filesystem>  // CaptureFrameToPng: exact-path rename (M4b)
 
 #define GLFW_INCLUDE_NONE   // don't pull in <GL/gl.h> (absent on headless/WSL); Vulkan-only below
 #define GLFW_INCLUDE_VULKAN
@@ -27,6 +28,8 @@
 #include "Nodes/BodyOctreeSceneNode.h"        // M-wire: SetBodyInstances() downcast target (gaia — before UIRenderNode.h)
 #include "Nodes/UIRenderNode.h"               // GetUiRenderNode() downcast target (RmlUi — after BodyOctreeSceneNode.h)
 #include "Nodes/UISelectionProviderNode.h"    // GetUiSelectionProviderNode() downcast target
+#include "Nodes/SwapChainNode.h"              // CaptureFrameToPng() downcast target (M4b)
+#include "Profiler/FrameCapture.h"            // CaptureFrameToPng(): reuse the existing readback->PNG path
 
 #include <ShaderBundleBuilder.h>  // Phase G: Shader builder API (includes preprocessor support)
 // NOTE: "VoxelRayMarch_CompressedNames.h" was an orphaned include — that combined
@@ -619,4 +622,61 @@ Vixen::RenderGraph::UISelectionProviderNode* VulkanGraphApplication::GetUiSelect
     if (!renderGraph) return nullptr;
     return static_cast<Vixen::RenderGraph::UISelectionProviderNode*>(
         renderGraph->GetInstance(uiSelectionProviderNode_));
+}
+
+bool VulkanGraphApplication::CaptureFrameToPng(const std::string& path) {
+    // M4b: headless GPU-frame snapshot. Reuses Vixen::Profiler::FrameCapture (already ships the
+    // barrier -> vkCmdCopyImageToBuffer -> map -> BGRA->RGBA swizzle -> stbi_write_png sequence,
+    // proven in the BenchmarkRunner path) instead of re-deriving that readback here.
+    if (!renderGraph) {
+        if (mainLogger) mainLogger->Error("[CaptureFrameToPng] RenderGraph not initialized");
+        return false;
+    }
+    // "main_swapchain" is registered by BuildRenderGraph.cpp. SwapChainNode::CompileImpl already
+    // calls SetDevice() on itself from its VULKAN_DEVICE_IN connection, so the node IS the device
+    // handle we need too — no separate "main_device" lookup.
+    auto* swapChainNode = static_cast<Vixen::RenderGraph::SwapChainNode*>(
+        renderGraph->GetNodeByName("main_swapchain"));
+    if (!swapChainNode) {
+        if (mainLogger) mainLogger->Error("[CaptureFrameToPng] 'main_swapchain' node not found");
+        return false;
+    }
+    auto* device = swapChainNode->GetDevice();
+    SwapChainPublicVariables* swapVars = swapChainNode->GetSwapchainPublic();
+    if (!device || !swapVars) {
+        if (mainLogger) mainLogger->Error("[CaptureFrameToPng] swapchain has no device/public vars yet");
+        return false;
+    }
+
+    Vixen::Profiler::FrameCapture capture;
+    if (!capture.Initialize(device->device, *device->gpu, device->queue, device->graphicsQueueIndex,
+                             swapVars->Extent.width, swapVars->Extent.height)) {
+        if (mainLogger) mainLogger->Error("[CaptureFrameToPng] FrameCapture::Initialize failed");
+        return false;
+    }
+
+    // FrameCapture writes to <outputPath>/debug_images/<testName>_frame<N>.png (its test-harness
+    // convention) rather than an exact path — capture into the caller's directory under that
+    // convention, then rename to the exact path requested.
+    std::filesystem::path want(path);
+    Vixen::Profiler::CaptureConfig cfg;
+    cfg.outputPath = want.parent_path().empty() ? std::filesystem::path(".") : want.parent_path();
+    cfg.testName = want.stem().string();
+    cfg.frameNumber = 0;
+    Vixen::Profiler::CaptureResult result =
+        capture.Capture(swapVars, swapChainNode->GetCurrentImageIndex(), cfg);
+    if (!result.success) {
+        if (mainLogger) mainLogger->Error("[CaptureFrameToPng] capture failed: " + result.errorMessage);
+        return false;
+    }
+    std::error_code ec;
+    std::filesystem::rename(result.savedPath, want, ec);
+    if (ec) {
+        if (mainLogger) mainLogger->Error("[CaptureFrameToPng] rename to '" + path + "' failed: " + ec.message());
+        return false;
+    }
+    if (mainLogger) mainLogger->Info("[CaptureFrameToPng] wrote " + path + " (" +
+                                      std::to_string(result.capturedWidth) + "x" +
+                                      std::to_string(result.capturedHeight) + ")");
+    return true;
 }
