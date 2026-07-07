@@ -27,7 +27,7 @@ void AppFlowRuntime::Publish(AppFlowChangedEvent::Kind kind, FlowStateId state,
 // or add an explicit "none" sentinel (there is no reserved sentinel enumerator yet).
 
 LoadResult AppFlowRuntime::Load() {
-    return AppFlowLoader::Load(AppFlowContainerView{}, fsm_, stack_, bindings_);
+    return AppFlowLoader::Load(AppFlowContainerView{}, fsm_, stack_, bindings_, inputProfile_);
 }
 
 DispatchResult AppFlowRuntime::RequestState(FlowStateId to) {
@@ -53,6 +53,22 @@ DispatchResult AppFlowRuntime::DispatchBySelector(const std::string& selector,
         return DispatchResult::RejectedByState;
     }
     return DispatchAction(bound.action, std::move(apply));
+}
+
+DispatchResult AppFlowRuntime::DispatchByKey(Generated::KeyChord chord, ActionStack::ApplyFn apply) {
+    FlowActionId action{};
+    if (!inputProfile_.Resolve(chord, fsm_.Current(), action)) {
+        return DispatchResult::RejectedByState;
+    }
+    return DispatchAction(action, std::move(apply));
+}
+
+DispatchResult AppFlowRuntime::RequestReturn() {
+    const DispatchResult result = fsm_.RequestReturn();
+    if (result == DispatchResult::Ok) {
+        Publish(AppFlowChangedEvent::Kind::StateChanged, fsm_.Current(), FlowActionId{}, 0);
+    }
+    return result;
 }
 
 DispatchResult AppFlowRuntime::Undo() {

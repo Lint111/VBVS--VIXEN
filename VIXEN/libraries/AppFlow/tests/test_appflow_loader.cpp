@@ -7,8 +7,8 @@ using namespace Vixen::AppFlow;
 using namespace Vixen::AppFlow::Generated;
 
 TEST(AppFlowLoader, LoadsGeneratedViewOk) {
-    FlowStateMachine fsm; ActionStack st; BindingStore bindings;
-    EXPECT_EQ(AppFlowLoader::Load(AppFlowContainerView{}, fsm, st, bindings), LoadResult::Ok);
+    FlowStateMachine fsm; ActionStack st; BindingStore bindings; InputProfile input;
+    EXPECT_EQ(AppFlowLoader::Load(AppFlowContainerView{}, fsm, st, bindings, input), LoadResult::Ok);
 }
 
 TEST(AppFlowRuntime, StateChangePublishesEvent) {
@@ -40,4 +40,45 @@ TEST(AppFlowRuntime, DispatchBySelectorRunsBoundActionUndoably) {
     EXPECT_EQ(rt.Undo(), DispatchResult::Ok);
     EXPECT_EQ(value, 0);
     EXPECT_EQ(rt.DispatchBySelector("#no-binding", flip), DispatchResult::RejectedByState);
+}
+
+// Load() seeds kKeyDefaults into the InputProfile — a chord resolves without any manual Bind.
+TEST(AppFlowLoader, SeedsKeyDefaultsResolvableByChord) {
+    AppFlowRuntime rt(nullptr, /*sender*/1);
+    ASSERT_EQ(rt.Load(), LoadResult::Ok);
+    FlowActionId out{};
+    // Ctrl+Z seeded Global -> Undo (from kKeyDefaults).
+    ASSERT_TRUE(rt.Input().Resolve({KeyId::Z, KeyMod::Ctrl}, FlowStateId::Editing, out));
+    EXPECT_EQ(out, FlowActionId::Undo);
+    // The same chord, in Settings, resolves to the tighter State-scoped override.
+    ASSERT_TRUE(rt.Input().Resolve({KeyId::Z, KeyMod::Ctrl}, FlowStateId::Settings, out));
+    EXPECT_EQ(out, FlowActionId::UndoSettingChange);
+}
+
+// DispatchByKey resolves the chord through the InputProfile then dispatches undoably,
+// mirroring DispatchBySelector's shape but for the typed key path.
+TEST(AppFlowRuntime, DispatchByKeyRunsBoundActionUndoably) {
+    AppFlowRuntime rt(nullptr, /*sender*/1);
+    ASSERT_EQ(rt.Load(), LoadResult::Ok);
+    int value = 0;
+    auto flip = [&](bool fwd){ value += fwd ? 1 : -1; };
+    EXPECT_EQ(rt.DispatchByKey({KeyId::Z, KeyMod::Ctrl}, flip), DispatchResult::Ok);
+    EXPECT_EQ(value, 1);
+    EXPECT_EQ(rt.Undo(), DispatchResult::Ok);
+    EXPECT_EQ(value, 0);
+    // An unbound chord is a no-op rejection, never a crash.
+    EXPECT_EQ(rt.DispatchByKey({KeyId::A, KeyMod::None}, flip), DispatchResult::RejectedByState);
+}
+
+// RequestReturn is an encapsulated pass-through to the FSM's entry-history pop — no raw
+// FlowStateMachine& is exposed (design §D6 / Inc-1 encapsulation discipline).
+TEST(AppFlowRuntime, RequestReturnPopsToPriorState) {
+    AppFlowRuntime rt(nullptr, /*sender*/1);
+    ASSERT_EQ(rt.Load(), LoadResult::Ok);
+    rt.SetGuardResult(FlowGuardId::DocumentValid, true);
+    rt.SetCurrent(FlowStateId::Editing);
+    ASSERT_EQ(rt.RequestState(FlowStateId::Settings), DispatchResult::Ok);
+    EXPECT_EQ(rt.Current(), FlowStateId::Settings);
+    EXPECT_EQ(rt.RequestReturn(), DispatchResult::Ok);
+    EXPECT_EQ(rt.Current(), FlowStateId::Editing);
 }

@@ -18,7 +18,7 @@ bool IsValidState(FlowStateId s) {
 } // namespace
 
 LoadResult AppFlowLoader::Load(const AppFlowContainerView& view, FlowStateMachine& fsm,
-                                ActionStack& stack, BindingStore& bindings) {
+                                ActionStack& stack, BindingStore& bindings, InputProfile& input) {
     const auto actions = view.actions();
     const auto transitions = view.transitions();
 
@@ -34,6 +34,15 @@ LoadResult AppFlowLoader::Load(const AppFlowContainerView& view, FlowStateMachin
     fsm.LoadTransitions(transitions.data(), transitions.size());
     stack.LoadActions(actions.data(), actions.size());
     bindings.RegisterActions(actions);
+
+    // Seed element triggers into the BindingStore (Inc-4 §4.2).
+    for (const auto& t : view.elementTriggers()) {
+        bindings.AddElementTrigger(t);
+    }
+    // Seed key defaults into the InputProfile, by scope (Inc-4 §4.1/§4.5).
+    for (const auto& k : view.keyDefaults()) {
+        input.Bind(k.scope, k.state, k.chord, k.action);
+    }
 
     return LoadResult::Ok;
 }

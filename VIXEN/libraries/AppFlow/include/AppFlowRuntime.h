@@ -6,6 +6,7 @@
 #include "ActionStack.h"
 #include "BindingStore.h"
 #include "FlowStateMachine.h"
+#include "InputProfile.h"
 #include "LayerController.h"
 #include "MessageBus.h"
 
@@ -39,10 +40,25 @@ public:
     // then dispatch it through the stack. A selector with no binding is RejectedByState.
     DispatchResult DispatchBySelector(const std::string& selector, ActionStack::ApplyFn apply);
 
+    // The typed key path (Inc-4 §4.4): resolve the chord via the InputProfile under the
+    // current flow-state, then dispatch through the same stack as DispatchBySelector. An
+    // unbound chord is RejectedByState — never a crash.
+    DispatchResult DispatchByKey(Generated::KeyChord chord, ActionStack::ApplyFn apply);
+
     // Pass-through so tests/consumers author bindings without reaching into the store.
     bool AddBinding(const BindingStore::BindingSpec& spec, std::string& warn) {
         return bindings_.AddBinding(spec, warn);
     }
+
+    // The runtime's InputProfile, seeded from kKeyDefaults at Load() (mutable — the deferred
+    // rebind/Steam seam).
+    InputProfile& Input() { return inputProfile_; }
+
+    // Encapsulated pass-through to the fsm's entry-history pop (design §D6 — navigation
+    // "Return", distinct from ActionStack::Undo's data revert). Mirrors RequestState: publish
+    // StateChanged on Ok. Does NOT expose a raw FlowStateMachine& — the FSM stays private, as
+    // in Inc-1.
+    DispatchResult RequestReturn();
 
     // Publish ActionUndone/ActionRedone on success.
     DispatchResult Undo();
@@ -67,6 +83,7 @@ private:
     ActionStack stack_;
     BindingStore bindings_;
     LayerController layers_;
+    InputProfile inputProfile_;
 };
 
 } // namespace Vixen::AppFlow
