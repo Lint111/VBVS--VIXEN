@@ -30,7 +30,7 @@ TBBVirtualTaskExecutor::TBBVirtualTaskExecutor(TBBVirtualTaskExecutor&& other) n
     , tasks_(std::move(other.tasks_))
     , parallelLevels_(std::move(other.parallelLevels_))
     , errors_(std::move(other.errors_))
-    , stats_(other.stats_)
+    , stats_(other.stats_)  // failedTasks (atomic) copied field-by-field via the struct's own copy ctor
 {
     other.isBuilt_ = false;
 }
@@ -45,7 +45,7 @@ TBBVirtualTaskExecutor& TBBVirtualTaskExecutor::operator=(TBBVirtualTaskExecutor
         tasks_ = std::move(other.tasks_);
         parallelLevels_ = std::move(other.parallelLevels_);
         errors_ = std::move(other.errors_);
-        stats_ = other.stats_;
+        stats_ = other.stats_;  // VirtualTaskExecutorStats has an explicit copy assignment (below)
         other.isBuilt_ = false;
     }
     return *this;
@@ -243,13 +243,13 @@ bool TBBVirtualTaskExecutor::ExecuteTask(VirtualTask& task, VirtualTaskPhase pha
     } catch (const std::exception& e) {
         task.MarkFailed(e.what());
         RecordError(task.id, e.what(), phase);
-        ++stats_.failedTasks;
+        stats_.failedTasks.fetch_add(1, std::memory_order_relaxed);
         return false;
 
     } catch (...) {
         task.MarkFailed("Unknown exception");
         RecordError(task.id, "Unknown exception", phase);
-        ++stats_.failedTasks;
+        stats_.failedTasks.fetch_add(1, std::memory_order_relaxed);
         return false;
     }
 }

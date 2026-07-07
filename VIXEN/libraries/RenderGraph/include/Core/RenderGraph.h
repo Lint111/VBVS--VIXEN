@@ -28,6 +28,7 @@
 #include "Core/VirtualResourceAccessTracker.h"  // Sprint 6.5: Per-task tracking
 #include "Core/TBBVirtualTaskExecutor.h"        // Sprint 6.5: Virtual task execution
 #include "Core/FailScenario.h"                  // Inc 1: self-neutralizing when VIXEN_FAIL_SCENARIOS is off
+#include <atomic>
 #include <memory>
 #include <string>
 #include <vector>
@@ -984,6 +985,12 @@ private:
     ResourceDependencyTracker dependencyTracker;
     std::unordered_map<NodeInstance*, size_t> dependentCounts;  // Reference counting for partial cleanup
     DeferredDestructionQueue deferredDestruction;  // Zero-stutter hot-reload
+
+    // Handle-index generator for RegisterExternalCleanup(). Per-graph (was a function-local
+    // `static uint32_t`, which was shared process-wide across every RenderGraph instance and
+    // unguarded against concurrent callers — audit V-N10). Starts at max/2 to avoid colliding
+    // with real graph-node handle indices.
+    std::atomic<uint32_t> externalCleanupCounter_{0x80000000};
 
     // Time management
     Vixen::Core::EngineTime time;

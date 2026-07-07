@@ -442,11 +442,10 @@ void RenderGraph::RegisterExternalCleanup(
 
     NodeHandle depHandle = CreateHandle(depIndex);
 
-    // Generate unique handle for external cleanup node
-    // Use high index range to avoid collision with graph nodes
-    static uint32_t externalCleanupCounter = 0x80000000; // Start at max/2 to avoid graph node handles
+    // Generate unique handle for external cleanup node (audit V-N10: per-graph atomic counter,
+    // not a process-global function-local static — see externalCleanupCounter_'s declaration).
     NodeHandle externalHandle;
-    externalHandle.index = externalCleanupCounter++;
+    externalHandle.index = externalCleanupCounter_.fetch_add(1, std::memory_order_relaxed);
 
     // Register in cleanup stack with dependency
     cleanupStack.Register(

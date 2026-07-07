@@ -63,13 +63,44 @@ struct VirtualTaskExecutorStats {
     size_t sequentialTasks = 0;      ///< Tasks that ran sequentially
     size_t optedInNodes = 0;         ///< Nodes with parallelism enabled
     size_t totalNodes = 0;           ///< Total nodes processed
-    size_t failedTasks = 0;          ///< Tasks that threw exceptions
+
+    // Incremented from ExecuteTask(), which tbb::parallel_for_each can call concurrently across
+    // worker threads (audit V-M12) — must be atomic, unlike the fields above which are only
+    // ever written from the single orchestrating thread. std::atomic has no implicit copy/move,
+    // so this struct declares them explicitly below (snapshot the value, not the atomic itself).
+    std::atomic<size_t> failedTasks{0};  ///< Tasks that threw exceptions
 
     double buildTimeMs = 0.0;        ///< Time to build flow graph
     double executionTimeMs = 0.0;    ///< Total execution time
 
     size_t maxParallelLevel = 0;     ///< Maximum parallel tasks at any level
     size_t criticalPathLength = 0;   ///< Length of critical path
+
+    VirtualTaskExecutorStats() = default;
+
+    VirtualTaskExecutorStats(const VirtualTaskExecutorStats& other)
+        : totalTasks(other.totalTasks), parallelTasks(other.parallelTasks),
+          sequentialTasks(other.sequentialTasks), optedInNodes(other.optedInNodes),
+          totalNodes(other.totalNodes),
+          failedTasks(other.failedTasks.load(std::memory_order_relaxed)),
+          buildTimeMs(other.buildTimeMs), executionTimeMs(other.executionTimeMs),
+          maxParallelLevel(other.maxParallelLevel), criticalPathLength(other.criticalPathLength) {}
+
+    VirtualTaskExecutorStats& operator=(const VirtualTaskExecutorStats& other) {
+        if (this != &other) {
+            totalTasks = other.totalTasks;
+            parallelTasks = other.parallelTasks;
+            sequentialTasks = other.sequentialTasks;
+            optedInNodes = other.optedInNodes;
+            totalNodes = other.totalNodes;
+            failedTasks.store(other.failedTasks.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            buildTimeMs = other.buildTimeMs;
+            executionTimeMs = other.executionTimeMs;
+            maxParallelLevel = other.maxParallelLevel;
+            criticalPathLength = other.criticalPathLength;
+        }
+        return *this;
+    }
 
     /**
      * @brief Get parallelism efficiency (parallel / total)
