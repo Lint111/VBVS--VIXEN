@@ -110,6 +110,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/libraries/RenderGraph/assets/ui/Hud.view.rml" _out_hud_rml_run)
         _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/application/main/include/Generated/Hud.blob.g.h" _out_hud_blob_header_run)
         _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/libraries/RenderGraph/assets/ui/hud.viewblob" _out_hud_blob_data_run)
+        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/application/main/include/Generated/Hud.view.g.cs" _out_hud_writer_cs_run)
         set(_CODEGEN_RUNNER ${WSL_EXE} -e "${_wsl_dotnet}")
     else()
         set(_yk_tool_run "${_yk_tool}")
@@ -121,6 +122,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_out_hud_rml_run "${CMAKE_SOURCE_DIR}/libraries/RenderGraph/assets/ui/Hud.view.rml")
         set(_out_hud_blob_header_run "${CMAKE_SOURCE_DIR}/application/main/include/Generated/Hud.blob.g.h")
         set(_out_hud_blob_data_run "${CMAKE_SOURCE_DIR}/libraries/RenderGraph/assets/ui/hud.viewblob")
+        set(_out_hud_writer_cs_run "${CMAKE_SOURCE_DIR}/application/main/include/Generated/Hud.view.g.cs")
         set(_CODEGEN_RUNNER ${VIXEN_DOTNET})
     endif()
 
@@ -187,6 +189,24 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     add_custom_target(view_hud_blob_regen
         COMMAND ${_CODEGEN_RUNNER} ${_view_blob_args}
         COMMENT "[codegen] regenerate Hud.blob.g.h + hud.viewblob"
+        VERBATIM)
+
+    # --- Hud C# data-upload writer (View Contract Inc-3): --view-writer emits the typed
+    # HudViewWriter (Hud.view.g.cs) — the C# upload face. Committed + drift-guarded like every
+    # other generated artifact. NOT compiled in VIXEN (no C# build here); exercised by the
+    # Yeroket NUnit tests. The C++ round-trip proof (test_view_wire_roundtrip) consumes the same
+    # UTVA wire this writer emits.
+    set(_view_writer_args
+        run --project "${_yk_tool_run}" -c Release --
+        --schema "${_schema_view_run}" --view-writer Hud
+        --out-cs "${_out_hud_writer_cs_run}")
+    add_custom_target(view_hud_writer_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_view_writer_args} --check
+        COMMENT "[codegen] golden check: Hud.view.g.cs matches canonical [View] schema (Yeroket tool)"
+        VERBATIM)
+    add_custom_target(view_hud_writer_regen
+        COMMAND ${_CODEGEN_RUNNER} ${_view_writer_args}
+        COMMENT "[codegen] regenerate Hud.view.g.cs (Yeroket tool)"
         VERBATIM)
 else()
     message(WARNING "[codegen] KI-015: Yeroket kernel-codegen tool not found at ${_yk_tool} — "

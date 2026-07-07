@@ -21,7 +21,7 @@ namespace Vixen.ViewSchemas
         public int    bodyCount;
         public string activeLensName;
         public int    activeLensCount;
-        public HudFaction[] factions;
-        public HudEvent[]   events;
+        [ViewSection(Layout = ViewLayout.Aos)] public HudFaction[] factions;
+        [ViewSection(Layout = ViewLayout.Aos)] public HudEvent[]   events;
     }
 }
