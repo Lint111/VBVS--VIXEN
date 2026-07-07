@@ -1,12 +1,5 @@
 #pragma once
 // <provenance: generated from AppFlowReference — do not edit by hand>
-//
-// HAND-AUTHORED for Inc 1 (Task 1 decision, see AppFlowReference.cs): the Yeroket
-// CodegenTool~ used elsewhere in VIXEN/codegen only emits [GpuStruct] struct bodies,
-// not enums/tables/readers, so this mirror is maintained by hand to exactly match
-// VIXEN/codegen/appflow-schemas/AppFlowReference.cs until a follow-up increment
-// extends the tool (TODO(appflow-codegen)). Enum values are pinned + explicit +
-// append-only — never renumber; new members get the next free value.
 #include <cstdint>
 #include <span>
 

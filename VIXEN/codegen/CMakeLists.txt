@@ -111,6 +111,8 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/application/main/include/Generated/Hud.blob.g.h" _out_hud_blob_header_run)
         _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/libraries/RenderGraph/assets/ui/hud.viewblob" _out_hud_blob_data_run)
         _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/application/main/include/Generated/Hud.view.g.cs" _out_hud_writer_cs_run)
+        _codegen_to_wsl_path("${_cg}/appflow-schemas" _schema_appflow_run)
+        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/libraries/AppFlow/include/generated/AppFlow.g.h" _out_appflow_hdr_run)
         set(_CODEGEN_RUNNER ${WSL_EXE} -e "${_wsl_dotnet}")
     else()
         set(_yk_tool_run "${_yk_tool}")
@@ -123,6 +125,8 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_out_hud_blob_header_run "${CMAKE_SOURCE_DIR}/application/main/include/Generated/Hud.blob.g.h")
         set(_out_hud_blob_data_run "${CMAKE_SOURCE_DIR}/libraries/RenderGraph/assets/ui/hud.viewblob")
         set(_out_hud_writer_cs_run "${CMAKE_SOURCE_DIR}/application/main/include/Generated/Hud.view.g.cs")
+        set(_schema_appflow_run "${_cg}/appflow-schemas")
+        set(_out_appflow_hdr_run "${CMAKE_SOURCE_DIR}/libraries/AppFlow/include/generated/AppFlow.g.h")
         set(_CODEGEN_RUNNER ${VIXEN_DOTNET})
     endif()
 
@@ -207,6 +211,22 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     add_custom_target(view_hud_writer_regen
         COMMAND ${_CODEGEN_RUNNER} ${_view_writer_args}
         COMMENT "[codegen] regenerate Hud.view.g.cs (Yeroket tool)"
+        VERBATIM)
+
+    # --- AppFlow schema (View Contract Inc-4, M1): --appflow generates AppFlow.g.h from
+    # AppFlowReference.cs's [Flow*]-attributed enums/classes — retires the Inc-1 hand-authored
+    # mirror (TODO(appflow-codegen)). Committed + drift-guarded like every other generated artifact.
+    set(_appflow_args
+        run --project "${_yk_tool_run}" -c Release --
+        --schema "${_schema_appflow_run}" --appflow
+        --out-header "${_out_appflow_hdr_run}")
+    add_custom_target(appflow_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_appflow_args} --check
+        COMMENT "[codegen] golden check: AppFlow.g.h matches canonical AppFlowReference schema"
+        VERBATIM)
+    add_custom_target(appflow_regen
+        COMMAND ${_CODEGEN_RUNNER} ${_appflow_args}
+        COMMENT "[codegen] regenerate AppFlow.g.h"
         VERBATIM)
 else()
     message(WARNING "[codegen] KI-015: Yeroket kernel-codegen tool not found at ${_yk_tool} — "
