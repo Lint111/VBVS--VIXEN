@@ -1,0 +1,408 @@
+# Tiered ESVO — Increment 2 Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: use the post-brainstorm-context-manager pipeline to
+> implement this plan milestone-by-milestone (fresh Sonnet-medium implementer + Opus-high validator
+> per milestone, worktree-isolated, progress persisted in this doc). **Live-run gate is authoritative
+> for every GPU-touching milestone in this increment (M2-M5)** — this is a bigger, riskier lift than
+> Inc1: it modifies the actual hot-path traversal shader (`LaineKarrasOctree`'s GPU-side
+> `executeAdvancePhase`/`executePopPhase` equivalent in `BodyInstanceRayMarch.comp`) and the octree
+> construction path (`SVORebuild.cpp`), not just additive CPU types. Static review has repeatedly
+> passed runtime bugs on this project (Sparse-Mip-ESVO-LOD Inc1/Inc2, Tiered-ESVO Inc1 M3 — two
+> self-caught sync bugs — precedent); every milestone that touches the shader or traversal ends in an
+> actual `VIXEN.exe` run with validation layers explicitly enabled (see Tiered-ESVO Inc1 M3's own
+> discovery: the Release binary compile-gates the app-side validation layer off — you must
+> env-inject `VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation` or you are not actually testing what you
+> think you are).
+
+**Goal:** Ship [[Tiered-ESVO-Observer-Addressing-Design-2026-07]]'s §3 (the tier-crossing leaf
+reference) and §5 (the traversal-restart algorithm) — the mechanism that lets a ray cross from one
+octree's leaf into a **different, independently-resident** octree treated as that leaf's child
+content. This is what turns "one ~84km-scale tree with continuous surface-to-orbit LOD" (already
+shipped, Sparse-Mip-ESVO-LOD Inc1/Inc2) into "a true Earth-diameter planet, T2 bedrock → T1 region →
+T0 planet, one coherent zoom from standing on the surface to seeing the whole globe from space" — the
+concrete, user-requested target of this increment.
+
+**Why this needs new machinery, not just bigger trees:** one ESVO instance has a fixed 23-level scale
+budget (`ESVOTraversalState::scale` 0-22, confirmed unchanged in `LaineKarrasOctree.h:252,369`) — at a
+1cm leaf, that's `2^23 ≈ 8.4×10^6`× linear range, ≈84km end-to-end. A real planet
+(`Tiered-ESVO-Inc1`'s own re-derived tier table: T2 bedrock 1024cm span → T1 region 10.49km span → T0
+planet 10,737km span, ~10 levels each) needs ~30 effective levels — roughly 3× what one tree can hold.
+Tiered ESVO Inc1 deliberately built none of the mechanism that crosses this boundary (its own §0 scope
+cut excluded §3/§5 explicitly); this increment builds exactly that.
+
+**Architecture:** Extend `ChildDescriptor`'s existing brick-mode field reuse (no new bytes, no
+traversal-stride change) so `farBit==1` on a leaf means "this is a tier-crossing reference, not a
+brick" — `contourPointer` becomes an index into a new per-instance `TierRefTable` (parallel array on
+`ConcatenatedOctrees`, same shape as the existing `configs[]`/`nodeCounts[]`/`mipPool` pattern), and
+`contourMask` carries the child tree's root-scale hint. When GPU traversal hits such a leaf, it
+transforms the ray into the child tree's local `[1,2)` frame (a single scale+offset per `TierRef`,
+never a flattened world matrix — the same float32-safety discipline Inc1's `TierDirection.h` already
+proved numerically stable across ~10^19 scale ratios) and does a **traversal restart**: re-enters the
+same iterative ESVO traversal loop against a *different* `OctreeConfig` (mechanically identical to
+today's per-instance `configs[octreeIndex]` selection — no new resource type), with a **fresh**
+`CastStack`, not a merged/grown one (only one tier's stack is ever live; the parent's is parked, not
+recursed into). Before crossing, a screen-space LOD check (reusing `RaySizeCoefNode`'s existing
+cone-spread constant) decides whether to cross at all — sub-pixel footprint means "shade from the
+parent's mip sample instead," which is the mechanism that keeps most rays never paying the
+cross-tier cost. A non-resident child tree is just another mip-fallback case (Sparse-Mip's existing
+sentinel-miss pattern, one tier higher) — no new residency state machine.
+
+**Tech Stack:** C++23, GLSL compute (the existing `BodyInstanceRayMarch.comp` traversal path), glm,
+GoogleTest, CMake ninja/wsl presets, Vulkan 1.3.
+
+**Reuses:** `ChildDescriptor`'s `farBit` sentinel (checked, unused since inception —
+`LaineKarrasOctree.cpp:161`); `ConcatenatedOctrees`'s parallel-array pattern (already exercised for
+`mipPool`/`channelPool`/`brickGridLookup`); `userToESVOScale`/`esvoToUserScale`
+(`LaineKarrasOctree.h:409,413`, the existing sub-range-of-0-22 remap primitive); `RaySizeCoefNode`'s
+LOD cone-spread constant; Sparse-Mip-ESVO-LOD's existing mip-fallback sentinel-miss shading path;
+Tiered-ESVO Inc1's `TierAddress`/`TierMath`/`TierDirection`/`TierMagnitude` (CPU-side address/tier-math
+types — this increment's `TierAddress` usage generalizes from "sky-projection fixture" to "real
+tier-crossing edge bookkeeping," same types, no changes needed to Inc1's files); the `OctreeConfig`
+canonical-schema codegen mechanism (`codegen/config-schemas/OctreeConfig.cs` → generated C++/GLSL) for
+any new config field this increment needs — **72 bytes of tail padding remain** (`_tailPad[18]` at
+offset 360, confirmed 2026-07-07) after Inc1/Inc2 of Sparse-Mip consumed `mipPoolBase`@352/
+`brickResident`@356.
+
+**Design of record:** [[Tiered-ESVO-Observer-Addressing-Design-2026-07]] §3, §5 (full spec).
+**Depends on (shipped):** [[Sparse-Mip-ESVO-LOD-Direction-2026-07]] (Inc1 `ae12ba78` + Inc2
+`2351baff`, merged) and [[Tiered-ESVO-Inc1-Plan-2026-07]] (M1-M3, merged `608c4550`) — this increment
+builds directly on both; re-verify their APIs at implementation time rather than trusting this doc's
+citations if significant time has passed.
+
+---
+
+## §0. Scope
+
+**In scope for this increment:**
+- The `farBit==1` tier-crossing leaf interpretation on `ChildDescriptor` (§3.1) — a new construction
+  path in `SVORebuild.cpp`/`SVOBuilder.cpp` that can mark a leaf as tier-crossing and populate a
+  `TierRefTable` entry, alongside the existing (unchanged) brick-leaf path.
+- `TierRef` (§3.2): the parallel-array indirect payload on `ConcatenatedOctrees`.
+- GPU traversal-restart (§5.1): the shader-side ray-remap + re-entry into a different
+  `OctreeConfig`'s traversal with a fresh stack, on hitting a tier-crossing leaf.
+- The LOD early-out (§5.2): the screen-space check that avoids crossing for sub-pixel-footprint
+  children, reusing `RaySizeCoefNode`.
+- Residency reuse (§5.3): confirming/wiring the existing mip-fallback sentinel-miss path handles a
+  non-resident tier-crossing child correctly — no new residency state machine.
+- A concrete, testable end-to-end scene: at minimum a two-tier setup (e.g. T1 region tree with a
+  tier-crossing leaf pointing at a T2 bedrock tree) proving a ray genuinely crosses, renders correct
+  geometry on both sides of the boundary, and a screen-space zoom transitions continuously through
+  the crossing without a visible pop/seam — this is the actual "surface to orbit" proof the user asked
+  for, even if the full 3-tier (T2→T1→T0) planet composition is a stretch goal for this increment's
+  final milestone rather than a hard requirement (see Milestone Map for where the line is drawn).
+
+**Out of scope for this increment:**
+- The address-level sky-projection zoom handoff (design doc §7 steps 2-3: transitioning FROM a
+  sky-projected point INTO real tier-crossing traversal) — Inc1's `SkyProjectionNode` remains a
+  separate, synthetic-fixture-only consumer; wiring it to real tier-crossing data is a later
+  increment's integration work, not this one's.
+- Any undertow-side reification, delta-log, or real fleet/planet data feed (§6) — this increment's
+  test scenes are still VIXEN-internal synthetic/hand-authored trees, not undertow-fed.
+- `TierAddress`'s wire-format reconciliation with undertow's `Undertow.View` schema (§4, §11) —
+  unchanged from Inc1's own deferral.
+- A full N-tier (System/Galaxy) traversal chain — this increment proves the mechanism at one crossing
+  (and, as a stretch goal, chains it through the T2→T1→T0 planet-scale case the user actually asked
+  about); System/Galaxy-tier crossings reuse the identical mechanism and are validation/content work
+  for a future increment, not new engineering.
+- Growing `MAX_STACK_DEPTH` or merging parent/child stacks — explicitly rejected by the design doc
+  (§10) and unchanged here: one stack live at a time, parent parked not recursed into.
+
+**Why this is the right next increment:** this is the literal mechanism gap between "one body's
+continuous surface-to-orbit LOD" (shipped) and "a true planet's continuous surface-to-orbit view"
+(what was asked for) — nothing else in either shipped epic gets you there; Inc1's own design doc
+(§9) names this as the natural next increment once nested-tree work is actually prioritized, which it
+now is by explicit user request.
+
+---
+
+## Milestone Map
+
+- **M1 — `TierRef` + `TierRefTable` CPU-side plumbing** (Tasks 1-3) · gate: pure-CPU/config-plumbing
+  gtest green — the data structures and the `OctreeConfig`/`ConcatenatedOctrees` wiring, no traversal
+  logic yet, no shader changes.
+- **M2 — `farBit==1` construction path** (Tasks 4-5) · gate: a hand-authored two-tree test fixture
+  (one tree with a real tier-crossing leaf, `farBit=1`, pointing at a second, independently-built
+  tree) round-trips through serialization correctly; no regression on existing `farBit=0` trees
+  (Sparse-Mip/Surface-Shell's existing full test suite still green).
+- **M3 — GPU traversal-restart, single crossing** (Tasks 6-8) · **live-run gate, validation layers
+  mandatory** · the highest-risk milestone: a ray genuinely crosses from a parent tree's leaf into a
+  child tree's own traversal and renders correct geometry, proven on real hardware, not just compiled
+  shader code.
+- **M4 — LOD early-out + residency reuse** (Tasks 9-10) · live-run gate · the screen-space gate that
+  avoids crossing for distant/sub-pixel children, and confirming the mip-fallback sentinel-miss path
+  correctly serves a non-resident tier-crossing child.
+- **M5 — Continuous zoom proof (the actual "surface to orbit" demonstration)** (Task 11) · live-run
+  gate · a camera path that starts at T2-bedrock-scale detail and pulls back through at least one real
+  tier crossing with no visible pop/seam at the boundary. **Stretch target within M5, not a hard
+  gate**: chain two crossings (T2→T1→T0) to get the actual Earth-diameter planet surface-to-orbit
+  view the user asked about — if time/complexity runs long, a single clean crossing (M3+M4's own
+  gate) that visibly and correctly works is still a legitimate, demonstrable increment; do not let the
+  3-tier stretch goal block shipping the 1-crossing proof.
+
+### Progress Log
+
+(populated as milestones complete, following the Tiered-ESVO Inc1 / Sparse-Mip-ESVO-LOD Inc1/Inc2
+plans' own convention: one entry per milestone, commit hash + Opus validator verdict)
+
+---
+
+## M1 — `TierRef` + `TierRefTable` CPU-side plumbing
+
+### Why this is first
+
+Every later milestone needs a real `TierRef` type and a place to store them before any construction
+or traversal code can reference one. This mirrors both prior Tiered-ESVO/Sparse-Mip increments' own
+pattern: foundational types first, GPU wiring after.
+
+### Task 1 — `TierRef` struct
+
+- [ ] Define `TierRef` per §3.2's exact shape: `childOctreeIndex` (index into
+  `ConcatenatedOctrees::configs[]`), `childOriginLocal[3]` (child's `[1,2)`-frame origin, expressed
+  in the PARENT tree's local frame — never world space), `childScale` (linear scale of the child's
+  unit cube in parent-local units). Confirm at implementation time the exact byte layout needed for
+  GPU-side SSBO consumption (std430 packing — check Sparse-Mip Inc1's own std430-vec3-padding gotcha,
+  documented in that increment's Progress Log, before assuming naive struct packing works).
+- [ ] Unit test: construct a `TierRef`, confirm its fields round-trip correctly through whatever
+  serialization form is chosen.
+
+### Task 2 — `TierRefTable` as a new parallel array on `ConcatenatedOctrees`
+
+- [ ] Add a `TierRefTable` (a flat array of `TierRef`, one entry per registered cross-tier edge) as a
+  new parallel member on `ConcatenatedOctrees` (`ShellOctreeGpu.h`), following the exact pattern
+  `mipPool`/`channelPool`/`brickGridLookup` already establish (per-octree base offset + count,
+  concatenated across all resident trees). Confirm the current real shape of `ConcatenatedOctrees`
+  first (re-read `ShellOctreeGpu.h` directly — it has grown since this design doc was written) rather
+  than assuming the doc's original sketch is still accurate.
+- [ ] Wire the corresponding GPU-side buffer/binding the same way `mipPool`'s binding was added in
+  Sparse-Mip Inc1 M3 (a new descriptor binding, `BuildRenderGraph.cpp` connection, `SVOTypes.glsl`
+  buffer declaration) — check that increment's own Progress Log for the exact sequence of files
+  touched, since it's the closest precedent for "add a new per-octree GPU buffer."
+- [ ] Unit test: a `ConcatenatedOctrees` with 2+ trees, one holding a non-empty `TierRefTable`, confirm
+  concatenation/offset bookkeeping is correct (mirrors existing `mipPool`/`channelPool` concatenation
+  tests as the pattern to copy).
+
+### Task 3 — `OctreeConfig` field for tier-ref-table base offset (if needed)
+
+- [ ] Determine whether `OctreeConfig` needs a new field (e.g. `tierRefTableBase`, analogous to
+  `mipPoolBase`) to let the shader locate a given tree's slice of the concatenated `TierRefTable`.
+  If so, add it via the canonical Yeroket kernel-codegen schema (`codegen/config-schemas/
+  OctreeConfig.cs` → regenerated C++/GLSL), NOT a hand-edit — this is the established, mandatory
+  mechanism (Sparse-Mip Inc1 M1's own `mipPoolBase`/`brickResident` additions both went through this
+  path, per that increment's Progress Log). 72 bytes of tail padding are confirmed free as of
+  2026-07-07 (`_tailPad[18]` at offset 360) — recheck this figure at implementation time since other
+  concurrent increments may have consumed some of it since.
+- [ ] Unit test: confirm the drift-guard parity test (`test_octree_config_sdi_parity`, or whatever the
+  current equivalent is called — check Sparse-Mip's own precedent) still passes with the new field,
+  proving C++/GLSL layouts stay byte-identical.
+
+**M1 gate:** all new unit tests green, config-schema regen clean, no shader/traversal-logic changes
+yet (this milestone is pure plumbing).
+
+---
+
+## M2 — `farBit==1` construction path
+
+### Why this is separate from M1 and before M3
+
+Building the ability to CONSTRUCT a tier-crossing leaf is a distinct, testable piece of work from
+making GPU traversal actually CROSS one — proving construction is correct in isolation (a
+CPU-side round-trip test) means M3's live-gate debugging is isolated to genuinely GPU/traversal
+concerns, not confounded by "did we even build the data correctly."
+
+### Task 4 — Mark a leaf as tier-crossing at construction time
+
+- [ ] Add a construction-time path (in `SVORebuild.cpp`/`SVOBuilder.cpp`, alongside the existing
+  brick-leaf path) that can mark a given leaf's `ChildDescriptor` with `farBit=1` and register a
+  `TierRef` entry in the tree's `TierRefTable`, instead of the normal brick-index assignment. This is
+  additive — every existing construction path keeps setting `farBit=0` exactly as today
+  (`SVORebuild.cpp:439,512`, confirmed unchanged as of 2026-07-07); this milestone adds a NEW,
+  separate path that a caller opts into explicitly (e.g. a recipe/authoring-time flag marking a
+  specific leaf position as "this points at another tree"), it does not change default behavior for
+  any existing tree.
+- [ ] Confirm `hasBrick()`/`getBrickIndex()` and any other `farBit==0`-assuming accessor is genuinely
+  unaffected — read every call site of these accessors (via `codegraph explore`) and confirm none of
+  them get called on a `farBit==1` node without first checking `farBit`, or if they might be, add the
+  guard.
+
+### Task 5 — Two-tree test fixture + round-trip proof
+
+- [ ] Build a minimal, hand-authored test fixture: two independently-constructed octree instances
+  (e.g. a small "parent" tree and a small "child" tree), with ONE specific leaf in the parent marked
+  tier-crossing (`farBit=1`) and its `TierRef` pointing at the child's `ConcatenatedOctrees` index.
+  Serialize both, confirm the parent's tier-crossing leaf's `TierRef` correctly resolves to the
+  child's actual octree index/origin/scale after a full serialize → concatenate → (mock) upload
+  round-trip.
+- [ ] Full no-regression sweep: confirm every existing SVO/RenderGraph test (`farBit=0` trees, the
+  full Sparse-Mip/Surface-Shell/Tiered-ESVO-Inc1 suites) is unaffected — this is a good checkpoint to
+  run the broader regression sweep BEFORE moving into M3's much riskier GPU work.
+
+**M2 gate:** two-tree fixture's `TierRef` round-trips correctly; zero regression on the existing
+`farBit=0` test suite (pure CPU/serialization proof, no live GPU render needed yet).
+
+---
+
+## M3 — GPU traversal-restart, single crossing
+
+> **This is the highest-risk milestone in the increment.** It modifies
+> `BodyInstanceRayMarch.comp`'s actual traversal loop — the real rendering hot path every other body
+> in the engine already depends on. Any mistake here is a regression risk for EVERYTHING, not just
+> tier-crossing trees. Budget real debugging time; do not treat "shader compiles" as success — per
+> this project's own repeated precedent (Sparse-Mip Inc1/Inc2, Tiered-ESVO Inc1 M3's two self-caught
+> sync bugs), only an actual validated live run counts.
+
+### Why this is separate from M4/M5
+
+Proving a ray can cross AT ALL, correctly, on real hardware, is the actual mechanism risk this whole
+increment exists to retire. The LOD gate (M4) and the full zoom demonstration (M5) are refinements on
+top of a working crossing — do not attempt them before this milestone's live gate is green, or a bug
+in the crossing itself will masquerade as a bug in the gating/zoom logic.
+
+### Task 6 — Ray remap into the child tree's local frame
+
+- [ ] On the GPU, when traversal (`BodyInstanceRayMarch.comp`) hits a `farBit==1` leaf: read the
+  `TierRef` (via `contourPointer` as an index into the current tree's slice of `TierRefTable`),
+  transform the ray's origin+direction from the current tree's local `[1,2)` frame into the child's,
+  using `TierRef::childOriginLocal`/`childScale` — a single scale+offset (§3.3's float32-safety
+  discipline: no accumulated world matrix, ever). Confirm this transform is the mathematical inverse
+  of how the CPU-side `TierDirection.h`'s composition works (Inc1's own per-hop `(localPos - 1.5) *
+  scaleCm` convention) so CPU-authored `TierRef` data and GPU-side consumption agree on the same
+  frame convention — cross-check this explicitly, do not assume it matches without verifying.
+
+### Task 7 — Traversal restart (re-entry with a fresh stack)
+
+- [ ] Re-enter the standard ESVO iterative traversal against `configs[childOctreeIndex]` — a
+  DIFFERENT `OctreeConfig` than the one the ray started in — at the child's own scale 0, with a
+  fresh stack (not merged with the parent's; the parent's traversal state is parked, not recursed
+  into, per the design doc's explicit rejection of growing `MAX_STACK_DEPTH`, §10). On the child tree
+  boundary exit (ray leaves its `[1,2)` bounds), pop back to the parent's parked state and resume
+  exactly as if the `farBit` leaf had been an ordinary voxel miss.
+- [ ] This is genuinely the hardest part of the whole increment — the existing traversal loop was
+  written assuming ONE tree/`OctreeConfig` for the whole ray's lifetime; confirm exactly what
+  per-ray state currently assumes single-tree-for-the-whole-ray (binding indices, config-derived
+  constants cached once at ray start, etc.) via `codegraph explore` on `BodyInstanceRayMarch.comp`
+  before writing the restart logic, so nothing is silently left stale from before the crossing.
+
+### Task 8 — Live gate: prove a single crossing renders correctly
+
+- [ ] Build the two-tree fixture from M2's Task 5 into an actual live scene. Run `VIXEN.exe` with
+  Khronos validation EXPLICITLY enabled via env-injection (`VK_INSTANCE_LAYERS=
+  VK_LAYER_KHRONOS_validation` — mandatory, per Tiered-ESVO Inc1 M3's own discovery that the Release
+  binary silently compile-gates the app-side layer off) and confirm: (a) rays that should cross the
+  tier-crossing leaf genuinely render the CHILD tree's geometry, not garbage/black/the parent's own
+  geometry; (b) zero new VUID errors attributable to the traversal-restart change; (c) existing
+  non-tier-crossing bodies in the same scene render completely unaffected (no regression in the
+  common `farBit=0` path).
+- [ ] Live gate: also confirm the ray-remap math is correct by placing a KNOWN, simple geometric
+  feature in the child tree (e.g. a distinctly-colored/shaped voxel at a known local position) and
+  confirming it renders at the visually-correct screen position given the `TierRef`'s known
+  origin/scale — the same "hand-compute expected, compare to live output" discipline Tiered-ESVO
+  Inc1 M3 used for its sky-projection direction math.
+
+**M3 gate:** a single tier-crossing renders correct child-tree geometry on real hardware with
+validation layers active and zero new VUIDs; existing non-crossing rendering unaffected. This is the
+actual mechanism-proof gate for the whole increment.
+
+---
+
+## M4 — LOD early-out + residency reuse
+
+### Why this comes after M3, not before
+
+The screen-space gate and residency-reuse logic are refinements on a mechanism that must already work
+unconditionally (M3). Building the "when to skip crossing" logic before the crossing itself works
+correctly would make it impossible to tell whether a rendering discrepancy is a gating bug or a
+crossing bug.
+
+### Task 9 — Screen-space LOD gate before crossing
+
+- [ ] Before performing Task 6-7's ray-remap/restart, check the child tree's angular screen-space
+  footprint against `RaySizeCoefNode`'s existing LOD cone-spread constant (the same check an ordinary
+  leaf-vs-subdivide decision already makes). If sub-pixel, shade from the PARENT tier's mip sample at
+  this node instead (Sparse-Mip's existing per-level filtered sample, already proven/shipped) and
+  never cross into the child tree at all.
+- [ ] Live gate: confirm a distant tier-crossing leaf (small angular footprint) correctly falls back
+  to mip-shading without ever triggering the (expensive) traversal restart — verify via the existing
+  debug/trace-buffer instrumentation (`DebugRaySample`/`dbg.iterationCount`, used by Sparse-Mip's own
+  occlusion-reject tests) that the restart path is genuinely skipped, not just that the visual output
+  happens to look plausible.
+
+### Task 10 — Residency reuse: non-resident child tree
+
+- [ ] Confirm (and if needed, wire) that a `farBit==1` leaf whose child tree is NOT currently
+  brick-resident (or not resident at all — mip-only, per Sparse-Mip's residency model) correctly
+  falls back to the parent's mip sample, identical in shape to a non-resident brick today — no new
+  residency state machine, this should already fall out of the existing sentinel-miss pattern once
+  Task 9's LOD gate and the existing `ResidencyTrigger`/mip-fallback machinery are both in play.
+- [ ] Live gate: construct a scene where the child tree genuinely starts non-resident, confirm the
+  crossing gracefully mip-shades rather than crashing/rendering garbage, and confirm requesting
+  residency (moving the camera closer, per the existing `ResidencyTrigger` distance/FOV gate) causes
+  the crossing to eventually render real child-tree geometry once residency is granted — proving the
+  full existing Sparse-Mip residency lifecycle composes correctly with a tier-crossing leaf, not just
+  an ordinary brick leaf.
+
+**M4 gate:** distant/non-resident tier-crossing leaves correctly fall back to mip-shading without
+triggering an unnecessary restart or rendering garbage; live-verified.
+
+---
+
+## M5 — Continuous zoom proof (the actual "surface to orbit" demonstration)
+
+### Why this is last
+
+This is the actual deliverable the user asked for — a real, observable, continuous surface-to-orbit
+zoom through at least one genuine tier crossing. Everything before this milestone is the mechanism;
+this milestone is the demonstration that the mechanism composes into the actual desired experience.
+
+### Task 11 — Camera path proving continuous, seamless zoom across a tier boundary
+
+- [ ] Construct a camera path that starts close enough to render T2-bedrock-scale detail (fine
+  voxel/brick geometry) and smoothly pulls back through the LOD gate (Task 9) at the point where the
+  child tree's footprint crosses sub-pixel, confirming NO visible pop/seam/flicker at the transition
+  — the screen-space content should read as one continuous zoom-out, not a visible "swap" moment.
+  Live-gate this on real hardware, recording (screenshot sequence, or a frame-by-frame debug-log
+  comparison of the rendered content's resolvable-level/residency-state around the crossing frame)
+  concrete evidence the transition is actually seamless, not just "it didn't crash."
+- [ ] **Stretch goal, not a hard gate**: chain a second crossing (T1 region → T0 planet, using the
+  same mechanism proven in M3/M4 for the T2→T1 boundary) to demonstrate the full 3-tier
+  surface-to-orbit sequence for an Earth-diameter-scale body — the literal scenario the user asked
+  about. If this is straightforward given M3/M4's already-proven mechanism (it should be — the design
+  doc's whole point is that N-tier crossing is the SAME mechanism repeated, not new engineering per
+  tier), build it. If it surfaces unexpected complexity (e.g. per-ray state that doesn't compose
+  cleanly across two live crossings), it is acceptable to ship this increment with the single-crossing
+  proof (M3+M4's own gate) as the increment's deliverable and document the 2-crossing chain as a
+  known, scoped-out follow-up rather than let it block the whole increment.
+- [ ] Update [[Tiered-ESVO-Observer-Addressing-Design-2026-07]]'s status banner and §9 sequencing note
+  to reflect this increment's actual shipped scope (single-crossing mechanism proven, N-tier chaining
+  either proven or flagged as a following increment, per what actually happened) — following the same
+  status-banner-update convention Sparse-Mip-ESVO-LOD's own Inc1/Inc2 used.
+
+**M5 gate:** a live, validated, visually-confirmed continuous zoom across at least one real tier
+crossing with no visible seam; 3-tier chaining is a stretch outcome, not a blocking requirement.
+
+---
+
+## Notes for implementers
+
+- **M1/M2 are Sonnet-medium implementable** against existing patterns (parallel-array additions,
+  config-schema regen, CPU-side construction/serialization) — no new architecture, filling in what the
+  design doc already fully specifies.
+- **M3 is the milestone most likely to need escalation or a fix-loop.** It is genuinely harder than
+  anything either Tiered-ESVO Inc1 or Sparse-Mip-ESVO-LOD's own increments attempted — modifying the
+  live traversal loop's core assumptions (single-tree-per-ray) rather than adding an independent,
+  additive mechanism alongside it. Budget accordingly; do not be surprised if this milestone needs
+  more than one validator fix-loop iteration, and escalate to a more capable model or split the
+  milestone further if the standard cap (3 iterations) is hit without a clean live gate.
+- **Live-run gate with validation layers EXPLICITLY enabled is non-negotiable for M3-M5** — per
+  Tiered-ESVO Inc1 M3's own hard-won lesson, do not trust a run where you only set
+  `VK_ICD_FILENAMES`; the Release binary silently compiles out the app-side validation layer, and a
+  "clean" run without the layer genuinely active proves nothing.
+- **Re-verify every code citation in this plan and the design doc at implementation time.** Both
+  Sparse-Mip-ESVO-LOD and Tiered-ESVO Inc1 caught real citation drift (a nonexistent "instance cap,"
+  a stale line number) between when their design docs were written and when implementation started —
+  do not assume this plan's own file:line references are still exactly accurate by the time M1 starts,
+  especially if other concurrent work has touched `ShellOctreeGpu.h`/`OctreeConfig`/
+  `BodyInstanceRayMarch.comp` in the meantime.
+- **Prefer Windows-side build for M3-M5's live-gate work** per this project's standing convention for
+  GPU/render work, falling back to the `vixen-wsl`/Mesa-Dozen real-GPU path (proven adequate evidence
+  by every prior increment's validators) if a Windows dev shell isn't available in a given worktree
+  session.

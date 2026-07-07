@@ -1,6 +1,6 @@
 ---
 title: Tiered ESVO — Nested-Tree Addressing, Tier-Crossing Traversal & Observer-Relative Rendering
-status: Design (promoted from direction 2026-07-05) — Inc1 ✅ SHIPPED 2026-07-07 (TierAddress + sky projection)
+status: Design (promoted from direction 2026-07-05) — Inc1 ✅ SHIPPED 2026-07-07; Inc2 PLANNED 2026-07-07, not started
 date: 2026-07-05
 updated: 2026-07-07
 tags: [architecture, svo, esvo, lod, scale, addressing, skybox, tiered-rendering]
@@ -8,6 +8,7 @@ aliases: [Nested ESVO, Tree-of-Trees, Observer Addressing, Recursive ESVO]
 related:
   - "[[Sparse-Mip-ESVO-LOD-Direction-2026-07]]"
   - "[[Tiered-ESVO-Inc1-Plan-2026-07]]"
+  - "[[Tiered-ESVO-Inc2-Plan-2026-07]]"
   - "[[undertow-vixen-integration-map]]"
   - "libraries/SVO/include/SVOTypes.h"
   - "libraries/SVO/include/LaineKarrasOctree.h"
@@ -277,7 +278,12 @@ tree), now has a **✅ COMPLETE implementation**: [[Tiered-ESVO-Inc1-Plan-2026-0
 shipped 2026-07-07, branch `feat/tiered-esvo-inc1`). §3/§5 (the tier-crossing leaf reference and
 traversal-restart machinery) remain unscheduled — that Plan's own §0 explicitly excluded them,
 matching this section's sequencing; they are the natural next increment once nested-tree work is
-actually prioritized.
+actually prioritized. **Nested-tree work is now prioritized (user request 2026-07-07)** —
+[[Tiered-ESVO-Inc2-Plan-2026-07]] scopes §3+§5 directly: `TierRef`/`TierRefTable`, the `farBit==1`
+construction path, GPU traversal-restart across two independently-resident octrees, and a live,
+continuous surface-to-orbit zoom demonstration through at least one real tier crossing (a genuine
+Earth-diameter-scale 3-tier T2→T1→T0 chain is a stretch goal within that plan, not a hard
+requirement). Not started yet.
 
 ## 10. Rejected alternatives
 
