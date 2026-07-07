@@ -113,6 +113,12 @@ before any GPU-side tier-crossing machinery (§3/§5) is built against it.
 - **M3 — `SkyProjectionNode` + live composite gate** (Tasks 5-7) · gate: shader compiles + a live
   `VIXEN.exe` run showing synthetic fleet points correctly composited over the existing skybox/voxel
   render, at the correct screen-space direction for a known observer/object address pair.
+  **✅ DONE 2026-07-07** — commit (this worktree, `feat/tiered-esvo-inc1`, built on M2's `9745f987`).
+  Live `VIXEN.exe` run (lavapipe/Mesa-Dozen, `vixen-wsl` preset) confirmed 3 synthetic sky points'
+  computed direction/distance match hand-derived expected values to 6 decimal places, and a
+  Khronos-validation-layer run confirmed zero VUID errors from the new composite pass (two real
+  sync bugs found + fixed live — see Progress Log). **This completes the WHOLE Tiered ESVO Inc1
+  increment (M1+M2+M3 all done).**
 
 ### Progress Log
 
@@ -252,6 +258,148 @@ before any GPU-side tier-crossing machinery (§3/§5) is built against it.
     symbols present in any code file — `TierRef` appears only in header comments as a design-shape
     reference, never as implemented code). No issues found.
 
+- **Milestone M3 (Tasks 5-7): DONE** · worktree `feat/tiered-esvo-inc1`, built on M2's `9745f987` ·
+  gate: shader compiles + live `VIXEN.exe` run (Mesa-Dozen real-GPU Vulkan, `vixen-wsl` preset) shows
+  synthetic sky points at the correct screen-space direction for a known observer/object pair, existing
+  voxel/UI render unaffected · 2026-07-07. **This is the ONLY GPU-touching milestone in the whole
+  increment, and completes the whole Tiered ESVO Inc1 increment (M1+M2+M3 all done).**
+
+  - **`SkyProjectionNode` shape — two roles in one node**: a DATA role (Task 5: builds the synthetic
+    fixture via M1/M2's math, uploads a small host-visible SSBO once at Compile, no per-frame
+    re-upload — the fixture never changes after Compile, so a ring buffer would only guard a race that
+    cannot happen here) and a DRAW role (Tasks 6-7: owns its own graphics pipeline built with raw
+    Vulkan calls — not the `ShaderLibraryNode`/`DescriptorResourceGathererNode`/`DescriptorSetNode`
+    reflection chain, unnecessary for a single-SSBO-binding pipeline — mirroring
+    `VixenRmlRenderInterface`'s own hand-rolled pipeline construction). `libraries/RenderGraph/include/
+    Data/Nodes/SkyProjectionNodeConfig.h`, `libraries/RenderGraph/include/Nodes/SkyProjectionNode.h`,
+    `libraries/RenderGraph/src/Nodes/SkyProjectionNode.cpp`.
+  - **Config slot shape — grew from a naive 2-in/2-out draft to 13-in/3-out** after correctly
+    identifying that this node sits BETWEEN the voxel compute dispatch and the UI/HUD composite pass
+    (compute → sky-projection → UI), so its slot shape must mirror `ComputeDispatchNodeConfig`'s
+    "middle pass" shape (reads `IN_FLIGHT_FENCE`/semaphore-array inputs but never uses them as its own
+    submit fence — the fence stays owned by whichever pass is LAST, which stays `UIRenderNode`), NOT
+    `UIRenderNodeConfig`'s "last pass, owns the frame fence + present semaphore" shape. Final inputs:
+    `VULKAN_DEVICE_IN`, `COMMAND_POOL`, `SWAPCHAIN_INFO` (sync-tagged `ColorAttachmentWriteGeneral`,
+    same `AccessKind` `UIRenderNode` declares, so the scheduler bakes a no-layout-transition timeline
+    edge), `CAMERA_DATA` (one `const CameraData&` slot rather than per-field
+    `PushConstantGathererNode` wiring — simpler for 5 scalar/vector fields feeding one small graphics
+    pass), `RENDER_PASS`, `FRAMEBUFFERS`, `IMAGE_INDEX`, `CURRENT_FRAME_INDEX`, `IN_FLIGHT_FENCE`,
+    `IMAGE_AVAILABLE_SEMAPHORES_ARRAY` (optional, standalone-only), `TIMELINE_SEMAPHORE_IN`/
+    `TIMELINE_FRAME_BASE_IN` (optional), `COMPOSITE_WAIT_SEMAPHORE` (optional, topology-only — see
+    below). Outputs: `SKY_POINTS_BUFFER`, `SKY_POINT_COUNT` (`uint32_t`, not `int32_t` —
+    consumed directly by this node's own `vkCmdDraw`, never crosses a `PushConstantGathererNode`
+    reflection boundary the way `BodyOctreeSceneNodeConfig::INSTANCE_COUNT` must), and
+    `RENDER_COMPLETE_SEMAPHORE` (topology-only passthrough — see below).
+  - **std430 SSBO layout gotcha (caught before running, by hand-deriving the layout, not assumed)**:
+    a `vec3` STRUCT MEMBER in GLSL std430 has base alignment 16 but occupies only 12 bytes — the next
+    scalar member packs tightly at offset 12, not 16 (padding to 16 only happens once, at the very end
+    of the struct). My first draft of the C++ `SkyPointGpu` mirror put an explicit pad float at offset
+    12 (assuming vec3-then-scalar always pads to 16, the std140 rule, not std430's) — caught this by
+    manually re-deriving the GLSL struct's byte offsets before writing the C++ side, not after. Final
+    matching layout (both C++ `SkyPointGpu` and GLSL `SkyPoint`, `static_assert(offsetof(...))`
+    enforced on the C++ side): `direction[0..11]`, `magnitude[12..15]`, `appliedDelaySeconds[16..19]`,
+    12 bytes trailing pad → 32 B total (a clean std430 array stride multiple of 16).
+  - **Direction → screen position**: confirmed VIXEN has no skybox/background-render mechanism and no
+    populated projection matrix anywhere in the ray-march camera path (`CameraData::invProjection`/
+    `invView` are declared but never written — dead fields). Matched `shaders/RayGeneration.glsl`'s own
+    `getRayDir(uv)` convention exactly instead of inventing a new one: that function builds
+    `rayDir = normalize(cameraDir + cameraRight*ndc.x*tanHalfFov*aspect + cameraUp*ndc.y*tanHalfFov)`.
+    `shaders/SkyProjection.vert` inverts this for an infinitely-distant point (skybox never
+    parallaxes with camera translation — projects through camera ROTATION only, via dot products,
+    never `cameraPos`): `x=dot(d,cameraRight)`, `y=dot(d,cameraUp)`, `z=dot(d,cameraDir)`; `z<=0`
+    degenerates the primitive (behind camera); else `ndc.x=(x/z)/(tanHalfFov*aspect)`,
+    `ndc.y=(y/z)/tanHalfFov`, fed directly into `gl_Position` (no projection matrix at all, consistent
+    with the engine's own convention). `gl_PointSize` scales with magnitude (clamped linear map,
+    2-18px); `SkyProjection.frag` shapes a soft circular falloff via `gl_PointCoord` distance +
+    `smoothstep` rather than a hard square. Point-list topology, no vertex buffer (`gl_VertexIndex`
+    indexes the SSBO), straight (non-premultiplied) alpha blend so the falloff composites correctly.
+  - **Render-graph wiring**: new `sky_projection_render_pass` (`RenderPassNode`,
+    `PARAM_COLOR_LOAD_OP=Load`, `PARAM_INITIAL_LAYOUT=General` — compute leaves GENERAL,
+    `PARAM_FINAL_LAYOUT=General` — hands off to the UI composite pass's own `PARAM_INITIAL_LAYOUT=
+    General`, unchanged) + `sky_projection_framebuffer` (`FramebufferNode`) + `sky_projection`
+    (`SkyProjectionNode`), inserted between the existing compute dispatch and `ui_composite_render_pass`/
+    `ui_composite_framebuffer`/`ui_composite_render` triple in `BuildRenderGraph.cpp`. Order: voxel
+    compute → sky-projection → UI/HUD composite (HUD draws last, over everything including sky points).
+    Wired `VULKAN_DEVICE_IN`/`COMMAND_POOL` the same way `BodyOctreeSceneNode` is (mirrored connection
+    block), `CAMERA_DATA` from `cameraNode`'s existing `CAMERA_DATA` output (no new
+    `PushConstantGathererNode` instance needed).
+  - **Live-gate-caught sync bugs (the actual point of a live gate over static review) — TWO found and
+    fixed via an actual `VIXEN.exe` run with the Khronos validation layer explicitly enabled**
+    (`VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation`, `VK_LAYER_PATH=.../explicit_layer.d` — the FIRST
+    run used only `VK_ICD_FILENAMES` and validation was silently NOT active, giving false confidence;
+    re-running with the layer explicitly wired surfaced both bugs immediately):
+    1. **Missing timeline SIGNAL** (`VUID-vkQueuePresentKHR-pWaitSemaphores-03268` +
+       `VUID-VkPresentInfoKHR-pImageIndices-01430`, image stuck in `GENERAL` at present time): the
+       first draft's `ExecuteImpl` only read `grp->waitEdges` (mirroring `UIRenderNode`, which is
+       LAST in the chain and has no timeline consumer) but never signalled `grp->signalEdges` — since
+       `SkyProjectionNode` is a genuine middle producer AND consumer, the downstream UI composite
+       pass's baked `waitEdge` on this node's completion value never resolved (nothing ever signalled
+       it), hanging/erroring at present. Fixed by mirroring `ComputeDispatchNode`'s exact
+       `signalEdges` loop (dedup via `std::set<uint64_t>`, since a producer's signal edges share one
+       `timelineOffset` == its own `groupId`).
+    2. **Double-signalled binary semaphore** (`VUID-vkQueueSubmit2-semaphore-03868`): the first fix
+       pass still had this node owning + signalling its own per-image `compositeSemaphores_` array
+       (mirroring `UIRenderNode`'s "own present-wait semaphore" pattern) — but per-image binary
+       semaphores are one-signal/one-wait, and NOTHING ever waits this one (the downstream UI
+       composite pass's `COMPOSITE_WAIT_SEMAPHORE` input slot is documented — and confirmed via a
+       dedicated investigation of `UIRenderNode.cpp` — as a vestigial slot never actually read in
+       `ExecuteImpl` post-P5b-M3, its only purpose being the topology edge). Signalling an
+       unwaited binary semaphore every frame double-signals it on frame 2. Fixed by removing
+       `compositeSemaphores_` entirely: the node's `RENDER_COMPLETE_SEMAPHORE` output is now a plain
+       `VK_NULL_HANDLE` passthrough (honest about being topology-only, not a placeholder standing in
+       for a real semaphore) and `ExecuteImpl`'s `vkQueueSubmit2` carries zero binary signals — only
+       the timeline signals/waits order this node relative to its neighbours.
+    Both fixes confirmed via a THIRD validation-enabled run: zero `VUID-vkQueueSubmit2`/
+    `VUID-vkQueuePresentKHR`/`VUID-VkPresentInfoKHR` errors across 14,760+ rendered frames (~2 minutes
+    continuous run). The only remaining validation message (`VUID-vkCmdDispatch-None-08114`, on
+    `InstanceIterDebugBuffer` binding 14) is PRE-EXISTING and unrelated — that binding is declared in
+    `BodyInstanceRayMarch.comp` (Inc1 M4b) but was never wired to a descriptor resource in
+    `BuildRenderGraph.cpp` in any prior increment; confirmed by grep that no `descriptorGatherer, 14`
+    connection exists anywhere in the file, so this predates and is untouched by this milestone.
+  - **Live gate — what was run and what was observed**: built via `cmake --preset vixen-wsl` +
+    `cmake --build build/wsl --target VIXEN --parallel 12` (WSL, not Windows-side — no Windows dev
+    shell was available in this worktree session; `vixen-wsl` uses Mesa-Dozen real-GPU Vulkan-over-
+    D3D12, not lavapipe, per this project's own preset description). Hand-computed the fixture's
+    expected direction/distance/NDC values in Python BEFORE running (observer `TierAddress{2,5,0}` at
+    a T0-planet-tier leaf; 3 candidates sharing the observer's prefix except the last hop, each with a
+    single divergent `TierHopFrame` at `t0Leaf` scale): "centered" → direction `(0,0,-1)`, distanceCm
+    `1,048,576`, NDC `(0,0)` (dead center, since the default camera preset looks down `-Z`);
+    "off-to-one-side" → direction `(0.5145,0,-0.8575)`, distanceCm `1,222,839`, NDC `(0.815,0)`
+    (visibly off-center, still in-frame); "borderline-out-of-fov" → direction `(0.7926,0,-0.6097)`,
+    distanceCm `1,719,793`, NDC `(1.765,0)` (outside `[-1,1]`, off-screen). Ran `VIXEN.exe` (enabled
+    this node's logger via `SetEnabled(true)`/`SetTerminalOutput(true)`, matching the codebase's own
+    "opt in the live-gate signal" convention for `raySizeCoefNode`/`voxelSelectionProviderNode`) and
+    the live `NODE_LOG_INFO` output matched the hand computation to 6 decimal places on all three
+    points (e.g. centered: `direction=(0.000000,0.000000,-1.000000) distanceCm=1048576.000000`;
+    off-to-one-side: `direction=(0.514496,0.000000,-0.857493) distanceCm=1222839.191368`;
+    borderline: `direction=(0.792624,0.000000,-0.609711) distanceCm=1719792.470737`). No screenshot
+    mechanism exists anywhere in the app (confirmed via grep — only `VixenBenchmark`'s CLI has one),
+    so per the plan's own explicit allowance this log-vs-hand-computation comparison is the accepted
+    live-gate evidence for this milestone, not a pixel-diff.
+  - **No-regression check**: three separate runs (pre-sync-fix, post-sync-fix, post-sync-fix +
+    validation layer) all showed the standard 3-sphere voxel scene + HUD rendering continuously at
+    ~100-145 FPS with clean startup/shutdown; the standalone default-body-scene fallback (unchanged)
+    still seeds 3 Procedural SDF bodies exactly as before this milestone's changes.
+  - **No scope drift**: confirmed via `git status --short` before commit — only 3 new files
+    (`SkyProjectionNodeConfig.h`, `SkyProjectionNode.h`, `SkyProjectionNode.cpp`), 2 new shader files
+    (`SkyProjection.vert`/`.frag`), and 3 modified files (`VulkanGraphApplication.h` — one new
+    `NodeHandle` member; `BuildRenderGraph.cpp` — the new node creation/parameter/connection blocks;
+    `libraries/RenderGraph/CMakeLists.txt` — one new source-file registration line). No
+    `ChildDescriptor`/`farBit`/`SVORebuild.cpp`/`LaineKarrasOctree`/`ConcatenatedOctrees`/
+    `TierRef`/`TierRefTable` file or symbol touched, per §0.
+  - **Concerns / things a future reviewer should double-check**: (1) this run used WSL/Mesa-Dozen, not
+    a genuine Windows-side build — the plan's own "Notes for implementers" section flags Windows-side
+    as the standing convention for GPU/render work; a Windows-side re-run would be a reasonable
+    follow-up if a validator wants an independent confirmation on a different driver stack.
+    (2) the pre-existing `VUID-vkCmdDispatch-None-08114` (binding 14, unrelated to this milestone) was
+    NOT fixed — it predates this work and fixing it is out of this milestone's scope, but it remains a
+    live gap a future increment touching `BodyInstanceRayMarch.comp`'s debug-buffer wiring should close.
+    (3) `SkyProjectionNode`'s DRAW-role pipeline is intentionally NOT built via the
+    `ShaderLibraryNode`/`DescriptorResourceGathererNode`/`DescriptorSetNode`/`GraphicsPipelineNode`
+    reflection chain (a raw hand-built pipeline instead, mirroring `VixenRmlRenderInterface`) — this is
+    a deliberate simplicity trade-off for a single-SSBO-binding pipeline, documented in the node's own
+    header, not an oversight.
+
 ---
 
 ## M1 — `TierAddress` type + tier math
@@ -368,39 +516,54 @@ render-graph mistake can't be confused with a math mistake from M1/M2 during val
 
 ### Task 5 — `SkyProjectionNode` config + CPU-side data prep
 
-- [ ] New `RenderGraph` node type (config struct via the project's standard
+- [x] New `RenderGraph` node type (config struct via the project's standard
   `CONSTEXPR_NODE_CONFIG(...)`/`INPUT_SLOT`/`OUTPUT_SLOT` macro pattern — see
   `RaySizeCoefNodeConfig.h`/`BodyOctreeSceneNodeConfig.h` for the two existing shapes to follow).
   Takes a small CPU-side list of (direction, magnitude, optional-staleness) tuples — produced by M2's
   functions from a set of `TierAddress` pairs — and uploads them into a small SSBO, following the
   same "small CPU-side per-instance dataset → SSBO" idiom `InstanceBufferNode`/
   `BodyOctreeSceneNode`'s `INSTANCE_BUFFER` output slot already establish.
-- [ ] `VIXEN_REGISTER_NODE(...)` self-registration, matching every other node type in this codebase
+  → `libraries/RenderGraph/include/Data/Nodes/SkyProjectionNodeConfig.h` — see Progress Log for the
+  final 13-input/3-output shape (grew from an initial 2-in/2-out DATA-only draft once the DRAW role's
+  render-graph sync requirements were correctly identified).
+- [x] `VIXEN_REGISTER_NODE(...)` self-registration, matching every other node type in this codebase
   (see `RaySizeCoefNode.cpp`'s trailing registration line for the minimal example).
-- [ ] For this increment, the "candidate objects" feeding the node are a small synthetic/hardcoded
+  → `libraries/RenderGraph/src/Nodes/SkyProjectionNode.cpp`, trailing line.
+- [x] For this increment, the "candidate objects" feeding the node are a small synthetic/hardcoded
   test fixture (a handful of `TierAddress` pairs placed at plausible tier depths/angular offsets) —
   **not** a real undertow-fed data source (§0, out of scope). Document this explicitly in the node's
   own header comment so a future increment wiring real data doesn't mistake the synthetic fixture for
   the intended production data path.
+  → `SkyProjectionNode::BuildSyntheticFixture()`, explicitly documented as synthetic-only in
+  `SkyProjectionNode.h`'s file header.
 
 ### Task 6 — Point/disk-sprite composite shader
 
-- [ ] New vertex+fragment shader pair (GLSL, matching `libraries/RenderGraph/src/Ui/shaders/ui.vert`/
+- [x] New vertex+fragment shader pair (GLSL, matching `libraries/RenderGraph/src/Ui/shaders/ui.vert`/
   `ui.frag`'s convention — a plain vertex+fragment pair, NOT a `.comp` compute dispatch like
   `BodyInstanceRayMarch.comp`; this consumer has no ray-march/traversal at all). Reads the SSBO from
   Task 5, draws a small point or disk sprite per object at its screen-projected direction, with
   brightness/size driven by the magnitude value.
-- [ ] Confirm at implementation time how "direction → screen position" should actually work for a
+  → `shaders/SkyProjection.vert` + `shaders/SkyProjection.frag` (top-level `shaders/` dir, matching
+  where `BodyInstanceRayMarch.comp` actually lives — confirmed via `find`, NOT under
+  `libraries/RenderGraph/src/Ui/shaders/`). Point-list topology (`VK_PRIMITIVE_TOPOLOGY_POINT_LIST`,
+  `gl_PointSize` driven by magnitude), no vertex buffer (`gl_VertexIndex` indexes the SSBO directly).
+  Fragment shader shapes a soft circular falloff via `gl_PointCoord` distance + `smoothstep`.
+- [x] Confirm at implementation time how "direction → screen position" should actually work for a
   skybox-style far-object projection (e.g. treat the direction as a point on the observer's view
   sphere, project through the existing camera/view matrices the same way the voxel render's own
   camera does) — this is a real design decision the design doc leaves to implementation ("a small,
   bolt-on node consuming `TierAddress` data... not a new traversal mode"), not something to guess
   blindly; check how the existing skybox/background rendering (if any) currently projects its content,
   and match that convention rather than inventing a new one.
+  → Confirmed VIXEN has no skybox/projection-matrix mechanism at all — matched
+  `shaders/RayGeneration.glsl`'s own `getRayDir()` convention exactly (manual camera-basis dot
+  products + `tan(fov/2)`/aspect fold, no projection matrix — `CameraData::invProjection`/`invView`
+  are dead/unpopulated fields). See Progress Log for the exact inversion + the hand-computed proof.
 
 ### Task 7 — Composite wiring + live gate
 
-- [ ] Wire `SkyProjectionNode` into `BuildRenderGraph.cpp` following the exact
+- [x] Wire `SkyProjectionNode` into `BuildRenderGraph.cpp` following the exact
   `ui_composite_render_pass`/`ui_composite_framebuffer`/`ui_composite_render` structural pattern (a
   new `RenderPassNode` with `PARAM_COLOR_LOAD_OP = AttachmentLoadOp::Load` — NOT `Clear` — stacked
   over the existing voxel-render output, feeding a `FramebufferNode` + this new node instead of
@@ -408,19 +571,29 @@ render-graph mistake can't be confused with a math mistake from M1/M2 during val
   layer belong before or after HUD compositing? — almost certainly before, since HUD should draw over
   everything including sky points, but confirm by checking what's actually visually sensible rather
   than assuming).
-- [ ] Live gate (Windows-side build + `VIXEN.exe` run, per this project's standing live-run-gate
+  → `sky_projection_render_pass`/`sky_projection_framebuffer`/`sky_projection` triple, wired
+  compute → sky-projection → UI (HUD draws last, over sky points). See Progress Log for the
+  render-pass layout chain (General→General→General→PresentSrc) and the FrameSyncScheduler
+  timeline-edge splice (two live-gate-caught sync bugs fixed here).
+- [x] Live gate (Windows-side build + `VIXEN.exe` run, per this project's standing live-run-gate
   convention): place a known observer address and a small number of synthetic candidate addresses at
   known tier/angular offsets, run the app, and confirm the sky points render at the visually-correct
   screen positions/brightness relative to the observer — a static screenshot comparison or an
   in-engine debug-overlay readout of computed direction vs. expected direction is sufficient; a full
   automated pixel-diff test is not required for this increment (document what manual/semi-manual
   verification was actually performed).
-- [ ] No-regression check: confirm the existing voxel render + UI/HUD composite are visually unaffected
+  → Done on WSL (`vixen-wsl` preset, Mesa-Dozen real-GPU Vulkan) since no Windows-side dev shell was
+  available in this worktree session. Log-vs-hand-computation comparison (no screenshot mechanism
+  exists in the app) — exact match to 6 decimal places. See Progress Log for full detail.
+- [x] No-regression check: confirm the existing voxel render + UI/HUD composite are visually unaffected
   by the new Load-op pass being stacked in (no accidental double-clear, no z-fighting/ordering issue
   with the HUD layer).
+  → Confirmed: app renders the standard 3-sphere voxel scene + HUD at ~110-145 FPS across three
+  separate runs (pre-fix, post-fix, post-fix-with-validation), zero crashes, zero VUID errors from
+  the new pass after the two sync fixes.
 
 **M3 gate:** shader compiles; live `VIXEN.exe` run shows synthetic sky points at correct positions;
-existing voxel/UI render unaffected.
+existing voxel/UI render unaffected. **MET.**
 
 ---
 
