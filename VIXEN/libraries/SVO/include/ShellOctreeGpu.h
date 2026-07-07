@@ -74,6 +74,7 @@
 #include "GaiaVoxelWorld.h"
 #include "VoxelComponents.h"  // Material, Density
 #include "VoxelChannelFormat.h"  // ChannelDesc, kMaxChannels, SemanticId, FieldKind (Inc3 M1)
+#include "TierRef.h"          // TierRef (Tiered-ESVO Inc2 M1 Task 1)
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>  // glm::scale / glm::translate
@@ -205,6 +206,22 @@ inline bool brickResidentOf(const OctreeConfig& c) {
 inline void setBrickResident(OctreeConfig& c, bool resident) {
     c.brickResident = resident ? 1u : 0u;
 }
+/// Read the tierRefTableBase (Tiered-ESVO Inc2 M1 Task 3) from OctreeConfig.
+/// Element offset (in TierRef units) of this octree's own slice of the
+/// concatenated ConcatenatedOctrees::tierRefTable — mirrors mipPoolBase's
+/// convention exactly (0 == "no tier-ref entries before this offset", not
+/// necessarily "this tree has no tier-ref entries" — the per-octree COUNT,
+/// see ConcatenatedOctrees::tierRefCounts, is what a future traversal-restart
+/// milestone would need to bound the slice, analogous to how mipPoolBase
+/// alone does not bound a slice either — both rely on the shader knowing
+/// where the NEXT tree's base starts, or a stored per-tree count).
+inline uint32_t tierRefTableBaseOf(const OctreeConfig& c) {
+    return c.tierRefTableBase;
+}
+/// Write tierRefTableBase into the OctreeConfig tail.
+inline void setTierRefTableBase(OctreeConfig& c, uint32_t base) {
+    c.tierRefTableBase = base;
+}
 
 // ===========================================================================
 // Serialized output
@@ -244,6 +261,16 @@ struct SerializedOctree {
     // M1's bake/serialize is opt-in per Task's own scope (existing SerializeSdf
     // callers are unaffected until they choose to call it).
     std::vector<uint8_t> mipPool;
+
+    // Tiered-ESVO Inc2 M1 Task 2 — this octree's own tier-crossing edges
+    // (one TierRef per registered cross-tier leaf; §3.2). Unlike mipPool/
+    // channelPool, this is NOT baked from the tree's existing geometry — it
+    // is explicitly registered by a caller (M2's construction path adds
+    // entries alongside marking a leaf's ChildDescriptor::farBit=1; this
+    // milestone only provides the storage + concatenation bookkeeping).
+    // Empty for every tree that has no tier-crossing leaves (today: all of
+    // them — M2 has not shipped yet).
+    std::vector<TierRef> tierRefs;
 
     uint32_t nodeCount = 0;   // == nodes.size() / sizeof(ChildDescriptor)
     uint32_t brickCount = 0;  // == bricks.size() / kBrickStrideBytes
@@ -296,9 +323,19 @@ struct ConcatenatedOctrees {
     // concatenation — see ConcatenateSdf).
     std::vector<uint8_t> mipPool;
 
+    // Tiered-ESVO Inc2 M1 Task 2 — concatenated per-octree tier-crossing
+    // edges: octree0's tierRefs ++ octree1's tierRefs ++ ... , in the exact
+    // order Concatenate/ConcatenateSdf iterate octrees, matching every other
+    // pool's append convention. A tier-crossing leaf's ChildDescriptor::
+    // contourPointer (§3.1, not touched by this milestone) indexes into this
+    // tree's OWN slice, offset by OctreeConfig::tierRefTableBase (Task 3) —
+    // exactly the poolBrickBase/mipPoolBase pattern.
+    std::vector<TierRef> tierRefTable;
+
     std::vector<OctreeConfig> configs;    // per-octree config (size == count)
     std::vector<uint32_t>     nodeCounts; // per-octree node count
     std::vector<uint32_t>     brickCounts;// per-octree brick count
+    std::vector<uint32_t>     tierRefCounts; // per-octree tier-ref-table entry count
     uint32_t count = 0;  // number of octrees packed (== configs.size())
 };
 
@@ -709,9 +746,11 @@ inline ConcatenatedOctrees Concatenate(const std::vector<const ShellOctree*>& oc
     cat.configs.resize(octrees.size());
     cat.nodeCounts.resize(octrees.size());
     cat.brickCounts.resize(octrees.size());
+    cat.tierRefCounts.resize(octrees.size());
 
     uint32_t nodeBase = 0;   // running element offset into the node buffer
     uint32_t brickBase = 0;  // running brick offset into the brick buffer
+    uint32_t tierRefBase = 0; // running element offset into the tier-ref table (Inc2 M1 Task 2)
 
     for (size_t k = 0; k < octrees.size(); ++k) {
         if (octrees[k] == nullptr) {
@@ -722,13 +761,20 @@ inline ConcatenatedOctrees Concatenate(const std::vector<const ShellOctree*>& oc
         // Record bases BEFORE appending, then stamp them into this octree's config.
         s.config.nodeArrayBase = static_cast<int32_t>(nodeBase);
         s.config.brickArrayBase = static_cast<int32_t>(brickBase);
+        // tierRefTableBase (Task 3): s.tierRefs is always empty via this plain
+        // Serialize() path (no tier-crossing construction path exists yet, M2),
+        // so this simply stamps the correct (currently-unused) base for every
+        // tree, matching mipPoolBase's "0 == no pool" convention.
+        setTierRefTableBase(s.config, tierRefBase);
 
         cat.configs[k] = s.config;
         cat.nodeCounts[k] = s.nodeCount;
         cat.brickCounts[k] = s.brickCount;
+        cat.tierRefCounts[k] = static_cast<uint32_t>(s.tierRefs.size());
 
         cat.nodes.insert(cat.nodes.end(), s.nodes.begin(), s.nodes.end());
         cat.bricks.insert(cat.bricks.end(), s.bricks.begin(), s.bricks.end());
+        cat.tierRefTable.insert(cat.tierRefTable.end(), s.tierRefs.begin(), s.tierRefs.end());
 
         // The palette is identical across shells; keep one shared copy.
         if (cat.materials.empty()) {
@@ -737,6 +783,7 @@ inline ConcatenatedOctrees Concatenate(const std::vector<const ShellOctree*>& oc
 
         nodeBase += s.nodeCount;
         brickBase += s.brickCount;
+        tierRefBase += static_cast<uint32_t>(s.tierRefs.size());
     }
 
     return cat;
@@ -763,10 +810,12 @@ inline ConcatenatedOctrees ConcatenateSdf(const std::vector<const SdfBodyOctree*
     cat.configs.resize(octrees.size());
     cat.nodeCounts.resize(octrees.size());
     cat.brickCounts.resize(octrees.size());
+    cat.tierRefCounts.resize(octrees.size());
 
     uint32_t nodeBase    = 0;   // running node element offset
     uint32_t brickBase   = 0;   // running brick offset
     uint32_t poolBase    = 0;   // running pool element offset (in floats)
+    uint32_t tierRefBase = 0;   // running tier-ref-table element offset (Inc2 M1 Task 2)
 
     for (size_t k = 0; k < octrees.size(); ++k) {
         if (octrees[k] == nullptr) {
@@ -786,10 +835,18 @@ inline ConcatenatedOctrees ConcatenateSdf(const std::vector<const SdfBodyOctree*
         // appends cat.mipPool. Leaving it untouched here (rather than
         // advancing it against empty data) keeps mipPoolBase==0 meaningfully
         // "no mip pool" for every octree, matching cat.mipPool staying empty.
+        // tierRefTableBase (Task 3): s.tierRefs is populated only by a caller
+        // that explicitly registered cross-tier edges before calling
+        // ConcatenateSdf (M2's construction path, not built yet) — stamping
+        // the base here regardless keeps the field meaningful (0 == "no
+        // tier-ref entries before this offset") the same way poolBrickBase/
+        // mipPoolBase are always stamped even when their pools are empty.
+        setTierRefTableBase(s.config, tierRefBase);
 
         cat.configs[k]     = s.config;
         cat.nodeCounts[k]  = s.nodeCount;
         cat.brickCounts[k] = s.brickCount;
+        cat.tierRefCounts[k] = static_cast<uint32_t>(s.tierRefs.size());
 
         cat.nodes.insert(cat.nodes.end(),   s.nodes.begin(),   s.nodes.end());
         cat.bricks.insert(cat.bricks.end(), s.bricks.begin(),  s.bricks.end());
@@ -797,6 +854,7 @@ inline ConcatenatedOctrees ConcatenateSdf(const std::vector<const SdfBodyOctree*
                                s.channelPool.begin(), s.channelPool.end());
         cat.brickGridLookup.insert(cat.brickGridLookup.end(),
                                    s.brickGridLookup.begin(), s.brickGridLookup.end());
+        cat.tierRefTable.insert(cat.tierRefTable.end(), s.tierRefs.begin(), s.tierRefs.end());
 
         if (cat.materials.empty()) {
             cat.materials = std::move(s.materials);
@@ -806,6 +864,7 @@ inline ConcatenatedOctrees ConcatenateSdf(const std::vector<const SdfBodyOctree*
         brickBase += s.brickCount;
         // poolBase advances by brickCount * brickStrideFloats (total floats per brick)
         poolBase  += s.brickCount * s.brickStrideFloats;
+        tierRefBase += static_cast<uint32_t>(s.tierRefs.size());
     }
 
     return cat;

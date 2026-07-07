@@ -3,7 +3,8 @@ using Yeroket.Util.KernelFramework;
 // Canonical OctreeConfig — one source for C++ (Vixen::Gpu) + GLSL. 432 B std430.
 // Offsets (must match ShellOctreeGpu.h): gridMin@32, gridMax@48, localToWorld@64,
 // worldToLocal@128, nodeArrayBase@192, formatId@200, brickStrideFloats@216, channels@224,
-// mipPoolBase@352 (Sparse-Mip ESVO LOD Inc1 M1 Task 3), brickResident@356 (Inc1 M3 Task 7).
+// mipPoolBase@352 (Sparse-Mip ESVO LOD Inc1 M1 Task 3), brickResident@356 (Inc1 M3 Task 7),
+// tierRefTableBase@360 (Tiered-ESVO Inc2 M1 Task 3).
 [GpuStruct]
 public struct OctreeConfig
 {
@@ -50,5 +51,12 @@ public struct OctreeConfig
     // "allocated but not yet uploaded."
     public uint brickResident; // @356
 
-    [GpuArray(18)] public uint _tailPad; // @360 (18 × 4 = 72 → ends 432)
+    // Tiered-ESVO Inc2 M1 Task 3: element offset (in TierRef units) of this
+    // octree's own slice of the shared/concatenated TierRefTable — mirrors
+    // mipPoolBase's/poolBrickBase's convention exactly. 0 == "no tier-ref
+    // entries before this offset" for every tree until M2's construction
+    // path (farBit==1 leaves) starts registering real entries.
+    public uint tierRefTableBase; // @360
+
+    [GpuArray(17)] public uint _tailPad; // @364 (17 × 4 = 68 → ends 432)
 }
