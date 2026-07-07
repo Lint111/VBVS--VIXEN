@@ -1,6 +1,10 @@
 # Sparse-Mip ESVO LOD — Inc2 Plan (2026-07)
 
-**Status:** PLANNED, not started. Sequenced directly after [[Sparse-Mip-ESVO-LOD-Inc1-Plan-2026-07]]
+**Status:** ✅ COMPLETE (2026-07-07) — all 4 milestones (M1-M4) done, each independently Opus-validated
+(M3 required one fix-loop iteration for a real self-occlusion bug, then re-validated APPROVED), plus a
+final whole-branch Opus review confirming cross-milestone consistency, a clean full-regression sweep,
+and a conflict-free merge path against `main`. See the Milestone Map and each milestone's own Progress
+Log below for full detail. Sequenced directly after [[Sparse-Mip-ESVO-LOD-Inc1-Plan-2026-07]]
 (★ INC1 COMPLETE ★, merged to `main` 2026-07-06). This doc collects and scopes the Inc2 backlog that
 Inc1's own validators flagged rather than blocked on — nothing here is new invention; every milestone
 below traces to a specific caveat, deferred decision, or candidate note already recorded in the Inc1
