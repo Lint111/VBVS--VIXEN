@@ -442,6 +442,58 @@ TEST_F(DeferredDestructionTest, ProcessFrameFrameTracking) {
 }
 
 // ============================================================================
+// DeferredDestructionQueue Concurrency Tests (audit V-M10)
+//
+// SharedResourcePtr refcounts are atomic, so the LAST Release() can run on any
+// worker thread, which then calls AddGeneric()->PushInternal() on the queue.
+// That races the frame loop's ProcessFrame()/Flush() consuming the same ring
+// buffer. AddGeneric() is exactly the call each worker's Release() makes, so
+// calling it directly from producer threads (rather than routing through a
+// full SharedResourcePtr + IMemoryAllocator) exercises the same ring-buffer
+// race with no unrelated mocking.
+// ============================================================================
+
+TEST(DeferredDestructionConcurrencyTest, ConcurrentAddGenericAndProcessFrameNoCorruption) {
+    DeferredDestructionQueue queue;
+
+    constexpr int kProducers = 8;
+    constexpr int kItemsPerProducer = 500;
+    std::atomic<int> executed{0};
+    std::atomic<bool> stop{false};
+    std::atomic<uint64_t> frame{0};
+
+    std::thread consumer([&] {
+        while (!stop.load(std::memory_order_acquire)) {
+            uint64_t f = frame.fetch_add(1, std::memory_order_relaxed);
+            queue.ProcessFrame(f, /*maxFramesInFlight=*/0);
+            std::this_thread::yield();
+        }
+    });
+
+    std::vector<std::thread> producers;
+    producers.reserve(kProducers);
+    for (int p = 0; p < kProducers; ++p) {
+        producers.emplace_back([&] {
+            for (int i = 0; i < kItemsPerProducer; ++i) {
+                queue.AddGeneric([&executed]() { executed.fetch_add(1, std::memory_order_relaxed); },
+                                  /*currentFrame=*/0);
+            }
+        });
+    }
+    for (auto& t : producers) t.join();
+
+    stop.store(true, std::memory_order_release);
+    consumer.join();
+
+    queue.Flush();
+
+    // Every queued item must be destroyed exactly once (no double-run, no drop) - the
+    // ring buffer must have stayed internally consistent under the race.
+    EXPECT_EQ(executed.load(), kProducers * kItemsPerProducer);
+    EXPECT_EQ(queue.GetPendingCount(), 0u);
+}
+
+// ============================================================================
 // DeferredDestructionQueue Pre-Allocation Tests (Sprint 5.5 Task #300)
 // ============================================================================
 
