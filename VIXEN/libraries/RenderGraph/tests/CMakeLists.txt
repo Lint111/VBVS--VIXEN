@@ -731,6 +731,30 @@ else()
 endif()
 
 # ===========================================================================
+# View Contract Inc-3: ViewWireReader — UTVA wire round-trip proof
+# ===========================================================================
+# Cross-language seam proof: the CanonicalWire buffer built in-test is the byte-for-byte
+# twin of the C# HudViewWriter.ToBuffer() golden (Yeroket ViewWriterEmitterTests). Proves
+# ViewWireReader::Apply reads back every field via ViewStore, hard-fails on a version
+# mismatch (store untouched), and rejects malformed input (bad magic/truncated/field-count
+# mismatch/trailing garbage). Pure CPU, no RmlUi rendering/Vulkan/GPU touchpoints.
+
+if(TARGET GTest::gtest_main)
+    add_executable(test_view_wire_roundtrip test_view_wire_roundtrip.cpp)
+    target_link_libraries(test_view_wire_roundtrip PRIVATE GTest::gtest_main RenderGraph)
+
+    # Hud.blob.g.h is a CONSUMER artifact (application/main) -- needs the app's include dir to
+    # resolve "Generated/Hud.blob.g.h" (mirrors test_view_hud_golden's identical include dir).
+    target_include_directories(test_view_wire_roundtrip PRIVATE ${CMAKE_SOURCE_DIR}/application/main/include)
+
+    set_target_properties(test_view_wire_roundtrip PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    gtest_discover_tests(test_view_wire_roundtrip DISCOVERY_MODE PRE_TEST DISCOVERY_TIMEOUT 60)
+    message(STATUS "✓ test_view_wire_roundtrip configured (View Contract Inc-3: UTVA wire round-trip)")
+else()
+    message(STATUS "⊗ test_view_wire_roundtrip skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
 # BarrierTypes Tests (auto-sync P1)
 # ===========================================================================
 # Validates AccessKind -> Vulkan sync-semantics mapping
