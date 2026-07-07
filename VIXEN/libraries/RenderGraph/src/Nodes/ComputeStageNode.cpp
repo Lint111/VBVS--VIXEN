@@ -277,7 +277,7 @@ void ComputeStageNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmd,
     // Consumer: acquire-side transition of the swapchain image into GENERAL for the
     // storage write (WSI lifecycle — node-managed in Tier-1).
     if (isConsumer && swapchainInfo) {
-        TransitionImageToGeneralBarrier2(cmd, swapchainInfo->GetImage(imageIndex));
+        SwapchainBarriers::TransitionImageToGeneralBarrier2(GetDevice(), cmd, swapchainInfo->GetImage(imageIndex));
     }
 
     BindComputePipeline(cmd, pipeline, layout, descriptorSets[imageIndex]);
@@ -286,7 +286,7 @@ void ComputeStageNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmd,
 
     // Consumer is the last writer of the swapchain image → hand it to Present.
     if (isConsumer && swapchainInfo) {
-        TransitionImageToPresentBarrier2(cmd, swapchainInfo->GetImage(imageIndex));
+        SwapchainBarriers::TransitionImageToPresentBarrier2(GetDevice(), cmd, swapchainInfo->GetImage(imageIndex));
     }
 
     if (vkEndCommandBuffer(cmd) != VK_SUCCESS) {
@@ -334,43 +334,6 @@ void ComputeStageNode::SetPushConstants(Context& ctx, VkCommandBuffer cmd, VkPip
     }
 }
 
-void ComputeStageNode::TransitionImageToGeneralBarrier2(VkCommandBuffer cmd, VkImage image) {
-    VkImageMemoryBarrier2 ib{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
-    ib.srcStageMask        = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
-    ib.srcAccessMask       = VK_ACCESS_2_NONE;
-    ib.oldLayout           = VK_IMAGE_LAYOUT_UNDEFINED;
-    ib.dstStageMask        = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
-    ib.dstAccessMask       = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT;
-    ib.newLayout           = VK_IMAGE_LAYOUT_GENERAL;
-    ib.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    ib.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    ib.image               = image;
-    ib.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-
-    VkDependencyInfo dep{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
-    dep.imageMemoryBarrierCount = 1;
-    dep.pImageMemoryBarriers    = &ib;
-    GetDevice()->fpCmdPipelineBarrier2(cmd, &dep);
-}
-
-void ComputeStageNode::TransitionImageToPresentBarrier2(VkCommandBuffer cmd, VkImage image) {
-    VkImageMemoryBarrier2 ib{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
-    ib.srcStageMask        = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
-    ib.srcAccessMask       = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT;
-    ib.oldLayout           = VK_IMAGE_LAYOUT_GENERAL;
-    ib.dstStageMask        = VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT;
-    ib.dstAccessMask       = VK_ACCESS_2_NONE;
-    ib.newLayout           = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-    ib.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    ib.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    ib.image               = image;
-    ib.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-
-    VkDependencyInfo dep{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
-    dep.imageMemoryBarrierCount = 1;
-    dep.pImageMemoryBarriers    = &ib;
-    GetDevice()->fpCmdPipelineBarrier2(cmd, &dep);
-}
 
 // ============================================================================
 // CLEANUP

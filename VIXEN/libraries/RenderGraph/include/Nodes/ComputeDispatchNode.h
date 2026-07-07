@@ -7,6 +7,7 @@
 #include "Core/GPUPerformanceLogger.h"
 #include "Data/Nodes/ComputeDispatchNodeConfig.h"
 #include "Core/FrameSyncSchedule.h"
+#include "Nodes/Common/SwapchainBarriers.h"
 #include <unordered_map>
 
 namespace Vixen::RenderGraph {
@@ -90,13 +91,6 @@ private:
     void ReplayEntryBarriers(VkCommandBuffer cmd, const SubmitGroup& group,
                              uint32_t imageIndex,
                              Vixen::Vulkan::Resources::IRenderTarget* swapchainInfo);
-    // oldLayout defaults to UNDEFINED (WSI acquire / first-use contract, pre-M4 behavior). M4 passes
-    // the render target's actual prior layout (TRANSFER_SRC_OPTIMAL after a blit) on every frame
-    // after the first, so the barrier's declared oldLayout matches what synchronization validation
-    // actually tracked instead of relying on UNDEFINED's "discard, don't care" escape hatch.
-    void TransitionImageToGeneralBarrier2(VkCommandBuffer cmdBuffer, VkImage image,
-                                          VkImageLayout oldLayout = VK_IMAGE_LAYOUT_UNDEFINED);
-    void TransitionImageToPresentBarrier2(VkCommandBuffer cmdBuffer, VkImage image);
     void BindComputePipeline(VkCommandBuffer cmdBuffer, VkPipeline pipeline, VkPipelineLayout layout, VkDescriptorSet descriptorSet);
     void SetPushConstants(Context& ctx, VkCommandBuffer cmdBuffer, VkPipelineLayout layout, const void* pushConstantData);
 
