@@ -11,6 +11,22 @@ Living log of confirmed-but-unfixed issues. Each entry: symptom, root cause, imp
 
 ---
 
+## KI-016 — editor undo (`rt_.Undo()`) has no visible render effect: post-toggle state persists
+
+**Discovered:** 2026-07-06, during View Contract Inc-2 M3 close-out (the first fresh re-run of the editor windowed gate since AppFlow Inc-2b shipped it).
+
+**Symptom:** `test_editor_toggle_undo_capture` FAILS on a fresh unattended `vixen_editor` run (`VIXEN/temp/run_editor_script.bat`, script `toggle:2@30,undo@60,redo@90`, captures @5/45/75/105). The toggle half works — `boreDiffPixels(png5,png45)=1024` (the cut layer visibly toggles off). But **`png75 != png5`**: undo@60 does NOT restore the baseline. md5 shows `editor_capture_45`/`_75`/`_105` are byte-IDENTICAL to each other and differ from `_5` — i.e. `rt_.Undo()` had no visible effect at all; the render stays in the post-toggle state for the rest of the run (which also makes the redo@90 assertion pass for the wrong reason).
+
+**Root cause:** unknown / not yet investigated. Confirmed it is NOT introduced by View Contract Inc-2: `git status`/`git diff` scoped to `application/editor/`, the node sources, and the undo/`ActionStack` path show ZERO changes across M1–M3 of Inc-2 (the increment deliberately walled off the editor/ActionStack surface — Global Constraint). This is a genuine, previously-LATENT regression: AppFlow Inc-2b's own gate (`test_editor_toggle_undo_capture`, added `79786a66`) passed when it shipped, and the M2 validator of this increment explicitly did NOT re-run it fresh (assumed-safe because M2's `RenderTargetReadback.h` change was purely additive). So the regression landed somewhere between Inc-2b's ship and now, from some other change to main — the View Contract increment merely SURFACED it by being the first to re-run the gate fresh. (This is exactly the "live-run gate is authoritative for GPU work" lesson: assuming a GPU gate safe without re-running it hid a real regression for multiple increments.)
+
+**Impact:** editor layer-toggle **undo** is broken in the live windowed editor (redo likely too — untested independently since it trivially "passes" against the un-undone state). Toggle itself works. The headless AppFlow undo logic (`test_appflow_editor_toggle_render`, Inc-2's byte-exact headless gate) should be re-run to localize whether the break is in the undo LOGIC (ActionStack/AppFlowRuntime) or in the windowed re-flatten→render path specifically — that bisects it.
+
+**Fix options:** (a) re-run `test_appflow_editor_toggle_render` (headless) — if it PASSES, the break is in the windowed EditorApplication re-flatten/render path (input→ActionStack→`rt_.Undo()`→onChanged→re-flatten→capture), not the undo logic; if it FAILS, the undo LOGIC regressed. (b) `git bisect` the editor windowed gate between the Inc-2b merge (`79786a66`) and current main to find the introducing commit. (c) inspect whether `rt_.Undo()`'s `onChanged` callback still fires the re-flatten (`dirty_=true` → `enabledMask` re-applied) — a likely suspect given the toggle works but the undo doesn't.
+
+**Severity:** medium (a shipped editor feature — undo — is silently broken in the live path; headless logic may be fine) · **Status:** OPEN · not a View Contract Inc-2 defect (surfaced by, not caused by, that work).
+
+---
+
 ## KI-015 — codegen `--check` gates (`octreeconfig_check`, `view_editorhud_check`) silently no-op on a Windows-side CMake configure
 
 **Discovered:** 2026-07-06, during View Contract Codegen Inc-1 (M3 gate wiring).
