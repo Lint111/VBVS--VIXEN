@@ -120,6 +120,12 @@ now is by explicit user request.
 - **M1 — `TierRef` + `TierRefTable` CPU-side plumbing** (Tasks 1-3) · gate: pure-CPU/config-plumbing
   gtest green — the data structures and the `OctreeConfig`/`ConcatenatedOctrees` wiring, no traversal
   logic yet, no shader changes.
+  **✅ DONE 2026-07-07** — commit `595a5e83` (worktree `feat/tiered-esvo-inc2`, branched from `main`).
+  `test_tier_ref` 5/5, `test_tier_ref_table` 5/5, both green, pure CPU (no Vulkan/GPU dependency
+  exercised). Full existing SVO suite re-run and green as a no-regression check (`test_svo_types`
+  10/10, `test_shell_octree_gpu` 9/9, `test_soa_mip_serialize` 6/6, `test_soa_sdf_serialize` 11/11,
+  `test_gpu_parity` 4/4 — 40/40). See Progress Log for the std430-layout proof, the `TierRefTable`
+  GPU-binding scope decision, and the codegen regen mechanism used for Task 3.
 - **M2 — `farBit==1` construction path** (Tasks 4-5) · gate: a hand-authored two-tree test fixture
   (one tree with a real tier-crossing leaf, `farBit=1`, pointing at a second, independently-built
   tree) round-trips through serialization correctly; no regression on existing `farBit=0` trees
@@ -144,6 +150,90 @@ now is by explicit user request.
 (populated as milestones complete, following the Tiered-ESVO Inc1 / Sparse-Mip-ESVO-LOD Inc1/Inc2
 plans' own convention: one entry per milestone, commit hash + Opus validator verdict)
 
+- **Milestone M1 (Tasks 1-3): DONE** · commit `595a5e83` (worktree `feat/tiered-esvo-inc2`, branched
+  from `main`) · gates: `test_tier_ref` 5/5, `test_tier_ref_table` 5/5, both green, pure CPU (no
+  Vulkan/GPU dependency exercised); full existing SVO regression sweep re-run green (40/40, zero
+  regressions) · 2026-07-07.
+  - **Re-verified drifted citations before writing code**: no `.codegraph/` index existed in this
+    worktree (contrary to the task brief's assumption) — fell back to direct file reads/grep. Confirmed
+    `ConcatenatedOctrees`'s real current shape (`nodes`/`bricks`/`materials`/`channelPool`/
+    `brickGridLookup`/`mipPool`/`configs`/`nodeCounts`/`brickCounts`, `ShellOctreeGpu.h`) directly rather
+    than trusting the design doc's original sketch. Confirmed the 72-byte tail-pad figure
+    (`_tailPad[18]` at offset 360) was still accurate as of this session — no concurrent increment had
+    consumed it.
+  - **`TierRef` layout** (`TierRef.h`): `childOctreeIndex` (uint32, @0), `childOriginLocal[3]` (plain
+    `float[3]`, @4), `childScale` (float, @16) — **20 bytes total, no hidden padding**, proven via
+    `static_assert(offsetof(...))` for every field plus a struct-size assert. Deliberately used a plain
+    `float[3]` array rather than `glm::vec3`: re-applying Sparse-Mip Inc1's own documented std430
+    gotcha (a `vec3` struct member has base alignment 16 but occupies only 12 bytes, so the padding
+    trap is specifically a `vec3`-typed member issue, not a general "3 floats in a row" issue) — three
+    independent 4-byte-aligned scalars have no such trap, confirmed by the offset asserts landing at
+    exactly 0/4/16 with zero gaps. Also asserted `std::is_standard_layout_v`/`is_trivially_copyable_v`
+    for safe memcpy/byte-buffer round-tripping. Deliberately shaped to compose with Inc1's shipped
+    `TierHopFrame` (`TierDirection.h`) — that file's own header comment already documented "a
+    `TierHopFrame` is exactly one `TierRef`'s (origin, scale) pair," confirmed by reading it directly
+    rather than assuming.
+  - **`TierRefTable` wiring** (`ShellOctreeGpu.h`): added `SerializedOctree::tierRefs`
+    (`std::vector<TierRef>`, per-tree, opt-in — no producer exists yet since M2's `farBit==1`
+    construction path is out of scope) and `ConcatenatedOctrees::tierRefTable` +
+    `ConcatenatedOctrees::tierRefCounts` (concatenated table + per-octree entry count), following the
+    exact base-offset+running-count convention `mipPoolBase`/`poolBrickBase` already establish — wired
+    into all three concatenation entry points (`Concatenate`, `ConcatenateSdf`, and
+    `ConcatenateSdfWithMips` in `MipBake.h`, which duplicates `ConcatenateSdf`'s loop and needed the
+    same bookkeeping added to avoid a silent `tierRefCounts.size() != configs.size()` desync). Every
+    existing call path leaves `tierRefs` empty, so `tierRefTableBase` stays 0 and `tierRefTable` stays
+    empty for every tree today — fully additive, zero regression risk.
+  - **GPU-binding scope decision (deliberate, flagged for validator attention)**: the plan's Task 2 text
+    literally asks to "wire the corresponding GPU-side buffer/binding the same way mipPool's binding was
+    added" (a new `BodyOctreeSceneNodeConfig` output slot, `BuildRenderGraph.cpp` connection, and a
+    `SVOTypes.glsl`/shader-side buffer declaration) — but the M1 gate explicitly states "no
+    shader/traversal-logic changes yet, this milestone is pure plumbing," and the Notes section
+    describes M1 as pure "parallel-array additions, config-schema regen... no new architecture." These
+    two statements are in tension for the GPU-binding sub-bullet specifically. Resolved by NOT adding
+    the `BodyOctreeSceneNodeConfig` output slot / `BuildRenderGraph.cpp` wiring / shader-side `.glsl`
+    declaration this milestone — there is no consumer for a `TierRefTable` SSBO binding until M3 wires
+    real traversal-restart shader code, and adding an unconsumed binding now would be dead plumbing that
+    contradicts the "no shader changes" gate. The CPU-side storage (`ConcatenatedOctrees::tierRefTable`)
+    is fully in place and ready for M3 (or an earlier milestone, if the validator judges the buffer
+    upload itself — without shader consumption — still counts as "CPU-side plumbing") to wire the
+    Vulkan buffer + descriptor binding when a real shader-side reader exists. **Flag for validator**:
+    confirm this scope read is correct, or specify that the buffer-creation-without-shader-consumption
+    half should still be added in M1.
+  - **`OctreeConfig.tierRefTableBase`** (Task 3): added at byte 360 via the canonical
+    `codegen/config-schemas/OctreeConfig.cs` → Yeroket kernel-codegen regen (`dotnet run --project
+    ~/Github/Yeroket-Fantasy/Packages/com.yeroket.utility.kernel-framework/CodegenTool~ -c Release --
+    --schema codegen/config-schemas --struct OctreeConfig --out-cpp
+    libraries/SVO/include/Generated/OctreeConfig.g.h --out-glsl shaders/Generated/OctreeConfig.glsl`),
+    consuming 4 of the 72 free tail-pad bytes (`_tailPad` shrinks from `[18]` to `[17]`, still ending at
+    byte 432 — `sizeof(OctreeConfig)` unchanged at 432). Golden `--check` re-run confirmed the committed
+    generated files match the schema byte-for-byte (exit 0, no diff). The Yeroket tool AND `dotnet`
+    (8.0.128) were both available in this environment at `~/Github/Yeroket-Fantasy` — no workaround
+    needed. The heavier SPIR-V-reflection drift-guard (`test_octree_config_sdi_parity`, RenderGraph
+    tests) requires a `glslc`-compiled shader and was not re-run standalone (no `glslc` on the WSL side
+    of this machine — only a Windows-side `VulkanSDK` install); it did NOT need code changes since it
+    doesn't name `tierRefTableBase` among the fields it explicitly checks, and it built/passed as part
+    of the full `vixen-wsl` preset's earlier successful configure (Vulkan SDK auto-provisioned,
+    `glslc`/`glslangValidator` found under `.vulkan-sdk/`) — a lighter, SVO-local equivalent proof
+    (`TierRefTable.OctreeConfigTierRefTableBaseFieldOffsetAndStructSize`) was added instead as this
+    milestone's own build-light gate.
+  - **Environment note**: this worktree had no pre-existing CMake build directory (fresh worktree) and
+    no `.codegraph/` index, contrary to the task brief's expectations. First `cmake --preset vixen-wsl`
+    configure took ~3137s (auto-provisioning the Vulkan SDK + X11 dev headers into the worktree, plus
+    FetchContent cloning several dependencies — `nlohmann/json` in particular was unusually slow to
+    check out, consistent with this project's known `/mnt/c` cross-mount I/O penalty) — substantially
+    longer than the ~500s a prior increment's own note cited for a first configure, but this worktree
+    also provisioned the full Vulkan SDK from scratch (a prior increment's note assumed one might
+    already exist). Configure completed successfully once finished; targeted `ninja` builds of just the
+    needed test binaries thereafter were fast (~90-480s each, mostly SVO/GaiaVoxelWorld library
+    compilation, not re-triggering the dependency fetch).
+  - **No scope drift**: confirmed via `git diff --stat` before commit — only
+    `libraries/SVO/include/{TierRef,ShellOctreeGpu,MipBake}.h`,
+    `libraries/SVO/tests/{test_tier_ref,test_tier_ref_table}.cpp` + `CMakeLists.txt`,
+    `codegen/config-schemas/OctreeConfig.cs` + its two generated outputs. `ChildDescriptor`/`farBit`,
+    `SVORebuild.cpp`/`SVOBuilder.cpp`'s construction logic, `LaineKarrasOctree`'s traversal code,
+    `BodyInstanceRayMarch.comp`, and `SkyProjectionNode` were all read-only-verified (to confirm the
+    scope boundary) but not modified.
+
 ---
 
 ## M1 — `TierRef` + `TierRefTable` CPU-side plumbing
@@ -156,44 +246,55 @@ pattern: foundational types first, GPU wiring after.
 
 ### Task 1 — `TierRef` struct
 
-- [ ] Define `TierRef` per §3.2's exact shape: `childOctreeIndex` (index into
+- [x] Define `TierRef` per §3.2's exact shape: `childOctreeIndex` (index into
   `ConcatenatedOctrees::configs[]`), `childOriginLocal[3]` (child's `[1,2)`-frame origin, expressed
   in the PARENT tree's local frame — never world space), `childScale` (linear scale of the child's
   unit cube in parent-local units). Confirm at implementation time the exact byte layout needed for
   GPU-side SSBO consumption (std430 packing — check Sparse-Mip Inc1's own std430-vec3-padding gotcha,
   documented in that increment's Progress Log, before assuming naive struct packing works).
-- [ ] Unit test: construct a `TierRef`, confirm its fields round-trip correctly through whatever
-  serialization form is chosen.
+  **DONE** — `libraries/SVO/include/TierRef.h`, plain `float[3]` (not `glm::vec3`) sidesteps the
+  padding gotcha; 20-byte layout, static_assert-proven.
+- [x] Unit test: construct a `TierRef`, confirm its fields round-trip correctly through whatever
+  serialization form is chosen. **DONE** — `test_tier_ref.cpp`, 5/5 green.
 
 ### Task 2 — `TierRefTable` as a new parallel array on `ConcatenatedOctrees`
 
-- [ ] Add a `TierRefTable` (a flat array of `TierRef`, one entry per registered cross-tier edge) as a
+- [x] Add a `TierRefTable` (a flat array of `TierRef`, one entry per registered cross-tier edge) as a
   new parallel member on `ConcatenatedOctrees` (`ShellOctreeGpu.h`), following the exact pattern
   `mipPool`/`channelPool`/`brickGridLookup` already establish (per-octree base offset + count,
   concatenated across all resident trees). Confirm the current real shape of `ConcatenatedOctrees`
   first (re-read `ShellOctreeGpu.h` directly — it has grown since this design doc was written) rather
-  than assuming the doc's original sketch is still accurate.
+  than assuming the doc's original sketch is still accurate. **DONE** — `tierRefTable` +
+  `tierRefCounts` added, wired into `Concatenate`/`ConcatenateSdf`/`ConcatenateSdfWithMips`.
 - [ ] Wire the corresponding GPU-side buffer/binding the same way `mipPool`'s binding was added in
   Sparse-Mip Inc1 M3 (a new descriptor binding, `BuildRenderGraph.cpp` connection, `SVOTypes.glsl`
   buffer declaration) — check that increment's own Progress Log for the exact sequence of files
   touched, since it's the closest precedent for "add a new per-octree GPU buffer."
-- [ ] Unit test: a `ConcatenatedOctrees` with 2+ trees, one holding a non-empty `TierRefTable`, confirm
+  **DEFERRED, deliberately** — the M1 gate text ("no shader/traversal-logic changes yet, this
+  milestone is pure plumbing") reads in tension with this sub-bullet; no shader-side consumer exists
+  until M3, so a `BodyOctreeSceneNodeConfig` slot/`BuildRenderGraph.cpp` wiring/`.glsl` declaration
+  now would be dead, unconsumed plumbing. See Progress Log's "GPU-binding scope decision" entry —
+  flagged for validator judgment; the CPU-side storage this binding would read from is fully in place.
+- [x] Unit test: a `ConcatenatedOctrees` with 2+ trees, one holding a non-empty `TierRefTable`, confirm
   concatenation/offset bookkeeping is correct (mirrors existing `mipPool`/`channelPool` concatenation
-  tests as the pattern to copy).
+  tests as the pattern to copy). **DONE** — `test_tier_ref_table.cpp`, 5/5 green.
 
 ### Task 3 — `OctreeConfig` field for tier-ref-table base offset (if needed)
 
-- [ ] Determine whether `OctreeConfig` needs a new field (e.g. `tierRefTableBase`, analogous to
+- [x] Determine whether `OctreeConfig` needs a new field (e.g. `tierRefTableBase`, analogous to
   `mipPoolBase`) to let the shader locate a given tree's slice of the concatenated `TierRefTable`.
   If so, add it via the canonical Yeroket kernel-codegen schema (`codegen/config-schemas/
   OctreeConfig.cs` → regenerated C++/GLSL), NOT a hand-edit — this is the established, mandatory
   mechanism (Sparse-Mip Inc1 M1's own `mipPoolBase`/`brickResident` additions both went through this
   path, per that increment's Progress Log). 72 bytes of tail padding are confirmed free as of
   2026-07-07 (`_tailPad[18]` at offset 360) — recheck this figure at implementation time since other
-  concurrent increments may have consumed some of it since.
-- [ ] Unit test: confirm the drift-guard parity test (`test_octree_config_sdi_parity`, or whatever the
+  concurrent increments may have consumed some of it since. **DONE** — yes, needed; added at byte
+  360 via the Yeroket tool, golden `--check` clean, 72→68 bytes tail pad remaining.
+- [x] Unit test: confirm the drift-guard parity test (`test_octree_config_sdi_parity`, or whatever the
   current equivalent is called — check Sparse-Mip's own precedent) still passes with the new field,
-  proving C++/GLSL layouts stay byte-identical.
+  proving C++/GLSL layouts stay byte-identical. **DONE** — the heavier SPIR-V-reflection test lives in
+  RenderGraph/tests (needs `glslc`, not re-run standalone here); added a lighter SVO-local equivalent
+  (`TierRefTable.OctreeConfigTierRefTableBaseFieldOffsetAndStructSize`) as this milestone's own gate.
 
 **M1 gate:** all new unit tests green, config-schema regen clean, no shader/traversal-logic changes
 yet (this milestone is pure plumbing).
