@@ -49,9 +49,9 @@ layout(std430, binding = 0) readonly buffer SkyPointBuffer {
 // Camera basis only — no cameraPos: the direction->screen projection below uses the camera's
 // ROTATION only (an infinitely-distant point never parallaxes with camera translation), so
 // position is deliberately omitted from this push-constant block (kept minimal, not carried
-// as dead bytes). Mirrors SkyProjectionNode::CameraBasis's field order (cameraDir/fov/
-// cameraUp/aspect/cameraRight, each vec3 padded to vec4 for std430-compatible packing since
-// vec3 push-constant members otherwise leave the offset ambiguous across compilers).
+// as dead bytes). Mirrors SkyProjectionNode.cpp's PushConstantLayout struct's field order
+// (cameraDir/fov/cameraUp/aspect/cameraRight, each vec3 padded to vec4 for std430-compatible
+// packing since vec3 push-constant members otherwise leave the offset ambiguous across compilers).
 layout(push_constant) uniform PushConstants {
     vec3  cameraDir;
     float fov;       // vertical FOV, degrees — matches BodyInstanceRayMarch.comp's pc.fov

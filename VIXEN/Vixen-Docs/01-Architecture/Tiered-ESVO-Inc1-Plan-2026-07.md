@@ -113,12 +113,13 @@ before any GPU-side tier-crossing machinery (§3/§5) is built against it.
 - **M3 — `SkyProjectionNode` + live composite gate** (Tasks 5-7) · gate: shader compiles + a live
   `VIXEN.exe` run showing synthetic fleet points correctly composited over the existing skybox/voxel
   render, at the correct screen-space direction for a known observer/object address pair.
-  **✅ DONE 2026-07-07** — commit (this worktree, `feat/tiered-esvo-inc1`, built on M2's `9745f987`).
-  Live `VIXEN.exe` run (lavapipe/Mesa-Dozen, `vixen-wsl` preset) confirmed 3 synthetic sky points'
-  computed direction/distance match hand-derived expected values to 6 decimal places, and a
-  Khronos-validation-layer run confirmed zero VUID errors from the new composite pass (two real
-  sync bugs found + fixed live — see Progress Log). **This completes the WHOLE Tiered ESVO Inc1
-  increment (M1+M2+M3 all done).**
+  **✅ DONE 2026-07-07** — commit `4ae045a4` (this worktree, `feat/tiered-esvo-inc1`, built on M2's
+  `9745f987`). Live `VIXEN.exe` run (Mesa-Dozen real-GPU, `vixen-wsl` preset) confirmed 3 synthetic
+  sky points' computed direction/distance match hand-derived expected values to 6 decimal places, and
+  a Khronos-validation-layer run confirmed zero VUID errors from the new composite pass (two real
+  sync bugs found + fixed live — see Progress Log). Opus-validated APPROVED (independently rebuilt,
+  re-ran with validation explicitly enabled, both sync fixes verified against reference nodes).
+  **This completes the WHOLE Tiered ESVO Inc1 increment (M1+M2+M3 all done).**
 
 ### Progress Log
 
@@ -399,6 +400,33 @@ before any GPU-side tier-crossing machinery (§3/§5) is built against it.
     reflection chain (a raw hand-built pipeline instead, mirroring `VixenRmlRenderInterface`) — this is
     a deliberate simplicity trade-off for a single-SSBO-binding pipeline, documented in the node's own
     header, not an oversight.
+  - **Opus validator: APPROVED (2026-07-07)** — independently rebuilt (`cmake --preset vixen-wsl`,
+    confirmed the binary was re-linked with `SkyProjectionNode.o` by mtime) and re-ran the live gate
+    with Khronos validation EXPLICITLY enabled via env-injection (`VK_INSTANCE_LAYERS=
+    VK_LAYER_KHRONOS_validation` — necessary since the Release binary compile-gates the app-side layer
+    off, matching the exact mistake the implementer's own first attempt made and caught): 3000 frames
+    on Mesa-Dozen real-GPU, clean startup/shutdown at 56-70 FPS, and the ONLY VUID observed across the
+    entire run was the pre-existing binding-14 `vkCmdDispatch-None-08114` — ZERO
+    `vkQueueSubmit2`/`vkQueuePresentKHR`/`VkPresentInfoKHR`/`vkCmdDraw` VUIDs, confirming both
+    self-caught sync fixes genuinely hold at runtime, not just in the report. Verified both fixes
+    directly against their reference nodes: bug 1's `signalEdges` loop is a byte-for-byte match of
+    `ComputeDispatchNode`'s own implementation (same `std::set<uint64_t>` dedup, same
+    `timelineOffset+frameBase` pattern); bug 2's premise was independently confirmed by reading
+    `UIRenderNode.cpp` directly — `COMPOSITE_WAIT_SEMAPHORE` genuinely has zero references in its
+    `ExecuteImpl`, confirming it truly is vestigial, and the `VK_NULL_HANDLE` passthrough fix breaks
+    nothing (the framework already tolerates null-handle outputs elsewhere, e.g.
+    `AccelerationStructureNode::TLAS_HANDLE`). Independently re-derived the fixture's direction/
+    distance/magnitude math from scratch in Python and confirmed an exact 6-decimal-place match to the
+    live log on all three fixture points. Confirmed the render-graph wiring, Load-op/General→General
+    render-pass parameters, the hand-rolled-pipeline precedent (`VixenRmlRenderInterface` genuinely
+    does the same thing), and scope discipline (forbidden symbols appear only in negating comments,
+    never as code) all by reading the actual code/diff, not the report. Judged the WSL/Mesa-Dozen
+    real-GPU evidence (Dozen, not lavapipe — the project's own preset docs flag Dozen as the
+    canonical, not a fallback, path) sufficient for this milestone's live-run-gate requirement; a
+    Windows-side re-run is optional follow-up, not a blocker. Two trivial cosmetic doc nits found and
+    fixed: the Milestone Map's blank commit-hash placeholder (now `4ae045a4`), and a shader comment
+    referencing a nonexistent `SkyProjectionNode::CameraBasis` symbol (corrected to the actual
+    `PushConstantLayout` struct name in `SkyProjectionNode.cpp`).
 
 ---
 
