@@ -109,10 +109,27 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         COMMAND ${VIXEN_DOTNET} ${_view_markup_args}
         COMMENT "[codegen] regenerate Hud.view.rml (Yeroket tool)"
         VERBATIM)
+
+    # --- Hud reflection blob (View Contract Inc-2b): --view-blob emits a constexpr C++ header
+    # (the generic BlobView's compile-time delivery) AND a runtime .viewblob data file. Both are
+    # committed + drift-guarded against the canonical [View] schema, like every other generated artifact.
+    set(_view_blob_args
+        run --project "${_yk_tool}" -c Release --
+        --schema "${_cg}/view-schemas" --view-blob Hud
+        --out-header  "${CMAKE_SOURCE_DIR}/application/main/include/Generated/Hud.blob.g.h"
+        --out-datafile "${CMAKE_SOURCE_DIR}/libraries/RenderGraph/assets/ui/hud.viewblob")
+    add_custom_target(view_hud_blob_check ALL
+        COMMAND ${VIXEN_DOTNET} ${_view_blob_args} --check
+        COMMENT "[codegen] golden check: Hud.blob.g.h + hud.viewblob match canonical [View] schema"
+        VERBATIM)
+    add_custom_target(view_hud_blob_regen
+        COMMAND ${VIXEN_DOTNET} ${_view_blob_args}
+        COMMENT "[codegen] regenerate Hud.blob.g.h + hud.viewblob"
+        VERBATIM)
 else()
     message(WARNING "[codegen] KI-015: Yeroket kernel-codegen tool not found at ${_yk_tool} — "
         "OctreeConfig/Hud golden DRIFT GUARDS DISABLED; the committed generated artifacts "
-        "(OctreeConfig.g.h/.glsl, Hud.g.h, Hud.view.rml) are used as-is and will NOT be checked against "
+        "(OctreeConfig.g.h/.glsl, Hud.g.h, Hud.view.rml, Hud.blob.g.h, hud.viewblob) are used as-is and will NOT be checked against "
         "their canonical schemas this configure. The Yeroket repo is WSL-only on this machine, so a "
         "Windows-side configure cannot reach it — run the WSL-side configure, mount \\\\wsl$, or pass "
         "-DYEROKET_ROOT=<path> to enable the guard.")

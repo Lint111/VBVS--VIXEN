@@ -1,0 +1,19 @@
+# viewblob v1
+model hud
+version 0x55D27B8C
+elem HudFaction
+  name string
+  grievance float
+  focused bool
+  known bool
+  inLens bool
+  recentChanged bool
+elem HudEvent
+  kind string
+  tick int
+field tick int
+field bodyCount int
+field activeLensName string
+field activeLensCount int
+field factions array HudFaction
+field events array HudEvent
