@@ -21,6 +21,7 @@
 #include "ShaderDataBundle.h"
 #include "IRenderTarget.h"
 #include "Core/NodeLogging.h"
+#include <mutex>
 #include <set>
 #include <stdexcept>
 
@@ -219,7 +220,13 @@ void ComputeStageNode::ExecuteImpl(TypedExecuteContext& ctx) {
     si.signalSemaphoreInfoCount = static_cast<uint32_t>(signals.size());
     si.pSignalSemaphoreInfos    = signals.data();
 
-    VkResult result = GetDevice()->fpQueueSubmit2(GetDevice()->queue, 1, &si, submitFence);
+    VkResult result;
+    {
+        // Externally synchronized per Vulkan spec (audit V-M11): the TBB parallel executor can
+        // schedule this alongside another node's submit on the same queue.
+        std::lock_guard<std::mutex> submitLock(GetDevice()->SubmitMutex(GetDevice()->queue));
+        result = GetDevice()->fpQueueSubmit2(GetDevice()->queue, 1, &si, submitFence);
+    }
     if (result != VK_SUCCESS) {
         throw std::runtime_error("[ComputeStageNode::ExecuteImpl] vkQueueSubmit2 failed: " +
                                  std::to_string(result));

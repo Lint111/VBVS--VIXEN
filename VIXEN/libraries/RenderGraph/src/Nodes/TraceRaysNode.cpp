@@ -5,6 +5,7 @@
 #include "Core/NodeLogging.h"
 #include "Core/TaskProfiles/SimpleTaskProfile.h"  // Sprint 6.5: Profile integration
 #include <array>
+#include <mutex>
 
 namespace Vixen::RenderGraph {
 
@@ -353,7 +354,13 @@ void TraceRaysNode::ExecuteImpl(TypedExecuteContext& ctx) {
     submitInfo.signalSemaphoreCount = 1;
     submitInfo.pSignalSemaphores = signalSemaphores;
 
-    VkResult result = vkQueueSubmit(vulkanDevice_->queue, 1, &submitInfo, inFlightFence);
+    VkResult result;
+    {
+        // Externally synchronized per Vulkan spec (audit V-M11): the TBB parallel executor can
+        // schedule this alongside another node's submit on the same queue.
+        std::lock_guard<std::mutex> submitLock(vulkanDevice_->SubmitMutex(vulkanDevice_->queue));
+        result = vkQueueSubmit(vulkanDevice_->queue, 1, &submitInfo, inFlightFence);
+    }
     if (result != VK_SUCCESS) {
         NODE_LOG_ERROR("vkQueueSubmit failed: " + std::to_string(result));
     }

@@ -15,10 +15,12 @@ BatchedUploader::BatchedUploader(
     VkQueue queue,
     uint32_t queueFamilyIndex,
     DeviceBudgetManager* budgetManager,
-    const Config& config)
+    const Config& config,
+    std::mutex* submitMutex)
     : config_(config)
     , device_(device)
     , queue_(queue)
+    , submitMutex_(submitMutex)
     , budgetManager_(budgetManager)
 {
     assert(device_ != VK_NULL_HANDLE && "BatchedUploader requires valid VkDevice");
@@ -414,8 +416,12 @@ void BatchedUploader::SubmitBatch(std::vector<PendingUpload>&& uploads) {
         ProcessCompletions();
         cmdBuffer = AcquireCommandBuffer();
         if (cmdBuffer == VK_NULL_HANDLE) {
-            // Still none - wait for GPU
-            vkQueueWaitIdle(queue_);
+            // Still none - wait for GPU. Externally synchronized per Vulkan spec (audit V-M11).
+            {
+                std::unique_lock<std::mutex> lock;
+                if (submitMutex_) lock = std::unique_lock<std::mutex>(*submitMutex_);
+                vkQueueWaitIdle(queue_);
+            }
             ProcessCompletions();
             cmdBuffer = AcquireCommandBuffer();
         }
@@ -453,6 +459,10 @@ void BatchedUploader::SubmitBatch(std::vector<PendingUpload>&& uploads) {
     batch.uploads = std::move(uploads);
     batch.submitTime = std::chrono::steady_clock::now();
 
+    // Externally synchronized per Vulkan spec (audit V-M11).
+    std::unique_lock<std::mutex> submitLock;
+    if (submitMutex_) submitLock = std::unique_lock<std::mutex>(*submitMutex_);
+
     if (useTimelineSemaphores_ && timelineSemaphore_ != VK_NULL_HANDLE) {
         // Use timeline semaphore
         batch.timelineValue = nextTimelineValue_.fetch_add(1, std::memory_order_relaxed);
@@ -475,6 +485,7 @@ void BatchedUploader::SubmitBatch(std::vector<PendingUpload>&& uploads) {
 
         vkQueueSubmit(queue_, 1, &submitInfo, batch.fence);
     }
+    submitLock.unlock();
 
     {
         std::lock_guard<std::mutex> lock(submittedMutex_);

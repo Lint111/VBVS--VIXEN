@@ -95,9 +95,16 @@ void CommandBufferMgr::AddCommandBuffer(VkCommandBuffer cmdBuf)
     assert(result == VK_SUCCESS);
 }
 
-void CommandBufferMgr::SubmitCommandBuffer(const VkQueue &queue, const VkCommandBuffer *pCmdBufList, const VkSubmitInfo *pInSubmitInfo, const VkFence &fence)
+void CommandBufferMgr::SubmitCommandBuffer(const VkQueue &queue, const VkCommandBuffer *pCmdBufList, const VkSubmitInfo *pInSubmitInfo, const VkFence &fence, std::mutex* submitMutex)
 {
     VkResult result;
+
+    // Externally synchronized per Vulkan spec (audit V-M11); no-op lock if the caller passed
+    // nullptr (queue known to be single-owner).
+    std::unique_lock<std::mutex> lock;
+    if (submitMutex) {
+        lock = std::unique_lock<std::mutex>(*submitMutex);
+    }
 
     // if the user has supplied a submit info structure
     if(pInSubmitInfo) {

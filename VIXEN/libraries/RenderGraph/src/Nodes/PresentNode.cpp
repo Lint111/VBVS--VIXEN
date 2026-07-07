@@ -4,6 +4,7 @@
 #include "Core/NodeLogging.h"
 #include "Core/RenderGraph.h"
 #include "Core/FailScenario.h"
+#include <mutex>
 
 namespace Vixen::RenderGraph {
 
@@ -127,8 +128,12 @@ VkResult PresentNode::Present(Context& ctx) {
     presentInfo.pResults = nullptr;
 
 
-    // Queue present
-    lastResult = VIXEN_FAULT_FILTER(GetOwningGraph(), Present, fpQueuePresent(device->queue, &presentInfo));
+    // Queue present. Externally synchronized per Vulkan spec (audit V-M11): the TBB parallel
+    // executor can schedule another node's submit on the same queue.
+    {
+        std::lock_guard<std::mutex> submitLock(device->SubmitMutex(device->queue));
+        lastResult = VIXEN_FAULT_FILTER(GetOwningGraph(), Present, fpQueuePresent(device->queue, &presentInfo));
+    }
 
     // Wait for device idle if requested (for compatibility with current behavior). VK_SUBOPTIMAL_KHR
     // means the present itself succeeded (the image was submitted; the driver is only hinting the

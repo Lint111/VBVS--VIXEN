@@ -100,7 +100,8 @@ void UIRenderNode::CompileImpl(TypedCompileContext& ctx) {
         // render passes of the same colour format are compatible, so the pipeline survives a resize),
         // RmlUi global init, the context, and the document.
         renderInterface_.Init(device->device, *device->gpu, device->queue, device->graphicsQueueIndex,
-                              device->gpuMemoryProperties, commandPool_, renderPass_);
+                              device->gpuMemoryProperties, commandPool_, renderPass_,
+                              &device->SubmitMutex(device->queue));
         Rml::SetSystemInterface(&systemInterface_);
         Rml::SetRenderInterface(&renderInterface_);
         Rml::Initialise();

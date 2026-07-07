@@ -4,6 +4,7 @@
 #include "Data/Nodes/ComputeDispatchNodeConfig.h"
 #include "VulkanDevice.h"
 #include "Core/ComputePerformanceLogger.h"
+#include <mutex>
 #include "Core/GPUPerformanceLogger.h"
 #include "Core/TaskProfiles/SimpleTaskProfile.h"  // Sprint 6.5: Profile integration
 #include "VulkanSwapChain.h"  // For SwapChainPublicVariables
@@ -309,8 +310,14 @@ void ComputeDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
     si.signalSemaphoreInfoCount = static_cast<uint32_t>(signals.size());
     si.pSignalSemaphoreInfos    = signals.data();
 
-    // Submit to graphics queue via synchronization2
-    VkResult result = vulkanDevice->fpQueueSubmit2(vulkanDevice->queue, 1, &si, submitFence);
+    // Submit to graphics queue via synchronization2. Externally synchronized per Vulkan spec
+    // (audit V-M11): the TBB parallel executor can schedule this alongside another node's
+    // submit on the same queue.
+    VkResult result;
+    {
+        std::lock_guard<std::mutex> submitLock(vulkanDevice->SubmitMutex(vulkanDevice->queue));
+        result = vulkanDevice->fpQueueSubmit2(vulkanDevice->queue, 1, &si, submitFence);
+    }
     if (result != VK_SUCCESS) {
         throw std::runtime_error("[ComputeDispatchNode::ExecuteImpl] Failed to submit command buffer (vkQueueSubmit2): " + std::to_string(result));
     }

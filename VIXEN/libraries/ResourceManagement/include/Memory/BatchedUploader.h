@@ -104,13 +104,18 @@ public:
      * @param queueFamilyIndex Queue family index for command pool
      * @param budgetManager Budget manager (provides StagingBufferPool)
      * @param config Uploader configuration
+     * @param submitMutex Must guard every vkQueueSubmit/vkQueuePresentKHR/vkQueueWaitIdle on
+     *   `queue` elsewhere in the engine (VulkanDevice::SubmitMutex(queue)) — this uploader's
+     *   SubmitBatch()/vkQueueWaitIdle are externally synchronized against those too (audit
+     *   V-M11). nullptr is only safe for a queue known to be single-owner (e.g. tests).
      */
     BatchedUploader(
         VkDevice device,
         VkQueue queue,
         uint32_t queueFamilyIndex,
         DeviceBudgetManager* budgetManager,
-        const Config& config);
+        const Config& config,
+        std::mutex* submitMutex = nullptr);
 
     /**
      * @brief Create a batched uploader with default configuration
@@ -119,8 +124,9 @@ public:
         VkDevice device,
         VkQueue queue,
         uint32_t queueFamilyIndex,
-        DeviceBudgetManager* budgetManager)
-        : BatchedUploader(device, queue, queueFamilyIndex, budgetManager, Config{}) {}
+        DeviceBudgetManager* budgetManager,
+        std::mutex* submitMutex = nullptr)
+        : BatchedUploader(device, queue, queueFamilyIndex, budgetManager, Config{}, submitMutex) {}
 
     /**
      * @brief Destructor - waits for pending uploads and cleans up
@@ -308,6 +314,7 @@ private:
     Config config_;
     VkDevice device_;
     VkQueue queue_;
+    std::mutex* submitMutex_ = nullptr;  // guards queue_ submits engine-wide (audit V-M11)
     DeviceBudgetManager* budgetManager_;
 
     // Staging buffer pool

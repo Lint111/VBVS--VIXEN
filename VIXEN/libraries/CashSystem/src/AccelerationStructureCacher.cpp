@@ -7,6 +7,7 @@
 #include <cstring>
 #include <stdexcept>
 #include <sstream>
+#include <mutex>
 
 namespace CashSystem {
 
@@ -467,8 +468,12 @@ void AccelerationStructureCacher::BuildBLAS(const AccelStructCreateInfo& ci, con
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &cmdBuffer;
 
-    VK_CHECK_LOG(vkQueueSubmit(m_device->queue, 1, &submitInfo, VK_NULL_HANDLE), "Queue submit (BLAS)");
-    vkQueueWaitIdle(m_device->queue);
+    {
+        // Externally synchronized per Vulkan spec (audit V-M11).
+        std::lock_guard<std::mutex> submitLock(m_device->SubmitMutex(m_device->queue));
+        VK_CHECK_LOG(vkQueueSubmit(m_device->queue, 1, &submitInfo, VK_NULL_HANDLE), "Queue submit (BLAS)");
+        vkQueueWaitIdle(m_device->queue);
+    }
 
     vkFreeCommandBuffers(m_device->device, m_buildCommandPool, 1, &cmdBuffer);
 
@@ -653,8 +658,12 @@ void AccelerationStructureCacher::BuildTLAS(const AccelStructCreateInfo& ci, Acc
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &cmdBuffer;
 
-    VK_CHECK_LOG(vkQueueSubmit(m_device->queue, 1, &submitInfo, VK_NULL_HANDLE), "Queue submit (TLAS)");
-    vkQueueWaitIdle(m_device->queue);
+    {
+        // Externally synchronized per Vulkan spec (audit V-M11).
+        std::lock_guard<std::mutex> submitLock(m_device->SubmitMutex(m_device->queue));
+        VK_CHECK_LOG(vkQueueSubmit(m_device->queue, 1, &submitInfo, VK_NULL_HANDLE), "Queue submit (TLAS)");
+        vkQueueWaitIdle(m_device->queue);
+    }
 
     vkFreeCommandBuffers(m_device->device, m_buildCommandPool, 1, &cmdBuffer);
 
