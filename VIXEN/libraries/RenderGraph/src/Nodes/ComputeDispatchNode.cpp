@@ -190,7 +190,13 @@ void ComputeDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // Phase 0.4: Reset fence before submitting (fence was already waited on by FrameSyncNode). In
     // composite mode the downstream UI submit resets + owns the fence, so leave it alone here.
     if (!leaveImageInGeneral) {
-        vkResetFences(vulkanDevice->device, 1, &inFlightFence);
+        VkResult resetResult = vkResetFences(vulkanDevice->device, 1, &inFlightFence);
+        if (resetResult != VK_SUCCESS) {
+            if (resetResult == VK_ERROR_DEVICE_LOST) {
+                GetOwningGraph()->NotifyDeviceLost("ComputeDispatchNode::ExecuteImpl vkResetFences");
+            }
+            throw std::runtime_error("[ComputeDispatchNode::ExecuteImpl] Failed to reset fence: " + std::to_string(resetResult));
+        }
     }
 
     // Collect GPU performance results for this frame-in-flight (after fence wait)
@@ -319,6 +325,9 @@ void ComputeDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
         result = vulkanDevice->fpQueueSubmit2(vulkanDevice->queue, 1, &si, submitFence);
     }
     if (result != VK_SUCCESS) {
+        if (result == VK_ERROR_DEVICE_LOST) {
+            GetOwningGraph()->NotifyDeviceLost("ComputeDispatchNode::ExecuteImpl vkQueueSubmit2");
+        }
         throw std::runtime_error("[ComputeDispatchNode::ExecuteImpl] Failed to submit command buffer (vkQueueSubmit2): " + std::to_string(result));
     }
 
