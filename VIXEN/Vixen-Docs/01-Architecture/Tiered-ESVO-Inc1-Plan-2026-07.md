@@ -105,9 +105,11 @@ before any GPU-side tier-crossing machinery (§3/§5) is built against it.
   tier-math re-derivation.
 - **M2 — Direction/magnitude derivation** (Tasks 3-4) · gate: pure-CPU gtest green — shared-prefix
   composition, apparent-magnitude falloff, optional light-delay staleness term.
-  **✅ DONE 2026-07-07** — worktree `feat/tiered-esvo-inc1`, built on M1's `709bb639`.
-  `test_tier_direction` 5/5, `test_tier_magnitude` 10/10, both green, pure CPU. See Progress Log for
-  the direction-composition input shape and the light-delay no-op decision.
+  **✅ DONE 2026-07-07** — commit `e501e634` (worktree `feat/tiered-esvo-inc1`, built on M1's
+  `709bb639`). `test_tier_direction` 5/5, `test_tier_magnitude` 10/10, both green, pure CPU.
+  Opus-validated APPROVED (independent hand-traced math re-derivation + confirmed the light-delay stub
+  is genuinely inert, not just claimed). See Progress Log for the direction-composition input shape and
+  the light-delay no-op decision.
 - **M3 — `SkyProjectionNode` + live composite gate** (Tasks 5-7) · gate: shader compiles + a live
   `VIXEN.exe` run showing synthetic fleet points correctly composited over the existing skybox/voxel
   render, at the correct screen-space direction for a known observer/object address pair.
@@ -233,7 +235,22 @@ before any GPU-side tier-crossing machinery (§3/§5) is built against it.
     clamping, zero-intrinsic-brightness staying zero, and three staleness cases (disabled-is-identical,
     nonzero-delay-still-inert-on-magnitude-but-echoed, and monotonic falloff still holding when wrapped
     in the staleness call).
-  - **Awaiting Opus validation** (per the post-brainstorm-context-manager pipeline this plan mandates).
+  - **Opus validator: APPROVED (2026-07-07)** — hand-traced the composition math from scratch (Python):
+    sibling case reproduces an exact `0.5·leaf` distance and `+X` direction; the galaxy-tier-divergence
+    case reproduces `0.6·galaxyScaleCm` at 0.0 relative error with a clean unit direction despite a
+    ~9.24×10¹⁹ scale ratio between the two tails' dominant terms (galaxy span 9.46e22 cm vs. T2 span
+    1024 cm, both cross-checked against M1's own validated tier table) — confirming this is genuinely a
+    double-precision sum of bounded local offsets, never an accumulated world transform. Verified the
+    magnitude formula's four boundary behaviors directly. **Independently confirmed the light-delay
+    stub is genuinely inert** (the single most important check for this milestone) via the validator's
+    own grep AND `codegraph_explore` — zero hits for any simulation-time/light-speed/propagation-delay
+    system in VIXEN, confirming the implementer's claim rather than trusting it; read
+    `ApparentMagnitudeWithStaleness` directly and confirmed `staleness` is never passed into the
+    magnitude computation for any delay value — only the echoed `appliedDelaySeconds` field changes.
+    Forced a fresh rebuild (all 4 sources touched) and re-ran both binaries directly: `test_tier_direction`
+    5/5, `test_tier_magnitude` 10/10. Confirmed scope discipline directly (6 files, zero forbidden
+    symbols present in any code file — `TierRef` appears only in header comments as a design-shape
+    reference, never as implemented code). No issues found.
 
 ---
 
