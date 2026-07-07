@@ -91,10 +91,28 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         COMMAND ${VIXEN_DOTNET} ${_view_args}
         COMMENT "[codegen] regenerate Hud.g.h (Yeroket tool)"
         VERBATIM)
+
+    # --- Hud RML data-binding partial (View Contract Inc-2, Task 8: RmlMarkupEmitter's --view-markup
+    # sibling of --view above). Hud.view.rml is a committed, generated FRAGMENT (not a full document)
+    # composed by hand into hud.rml's marked GEN:hud-bindings region — this target only guards the
+    # fragment itself against schema drift; the composed hud.rml is proven live by
+    # test_hud_render_capture (the real-GPU byte-exact gate), not a second textual diff here.
+    set(_view_markup_args
+        run --project "${_yk_tool}" -c Release --
+        --schema "${_cg}/view-schemas" --view-markup Hud
+        --out-rml "${CMAKE_SOURCE_DIR}/libraries/RenderGraph/assets/ui/Hud.view.rml")
+    add_custom_target(view_hud_markup_check ALL
+        COMMAND ${VIXEN_DOTNET} ${_view_markup_args} --check
+        COMMENT "[codegen] golden check: Hud.view.rml matches canonical [View] schema (Yeroket tool)"
+        VERBATIM)
+    add_custom_target(view_hud_markup_regen
+        COMMAND ${VIXEN_DOTNET} ${_view_markup_args}
+        COMMENT "[codegen] regenerate Hud.view.rml (Yeroket tool)"
+        VERBATIM)
 else()
     message(WARNING "[codegen] KI-015: Yeroket kernel-codegen tool not found at ${_yk_tool} — "
-        "OctreeConfig/Hud golden DRIFT GUARDS DISABLED; the committed generated headers "
-        "(OctreeConfig.g.h/.glsl, Hud.g.h) are used as-is and will NOT be checked against "
+        "OctreeConfig/Hud golden DRIFT GUARDS DISABLED; the committed generated artifacts "
+        "(OctreeConfig.g.h/.glsl, Hud.g.h, Hud.view.rml) are used as-is and will NOT be checked against "
         "their canonical schemas this configure. The Yeroket repo is WSL-only on this machine, so a "
         "Windows-side configure cannot reach it — run the WSL-side configure, mount \\\\wsl$, or pass "
         "-DYEROKET_ROOT=<path> to enable the guard.")

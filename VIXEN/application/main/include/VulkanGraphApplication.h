@@ -36,9 +36,9 @@ namespace Vixen::SVO { struct ConcatenatedOctrees; }  // I4.1: pre-baked recipe 
 // code (RegisterStruct/RegisterDefinition) against the WRONG struct layout, an ODR/ABI mismatch
 // against the object RmlUi's own .cpp constructed (confirmed: 64 vs 56 bytes for the identical
 // robin_hood::unordered_flat_map<FamilyId,...> instantiation) -- manifesting as a null-pointer
-// access violation the instant that mismatched code touches the type registry. Held by unique_ptr
-// (constructed via MakeHudView(), an opaque factory in HudViewBridge.h) so this header needs only
-// the forward declaration.
+// access violation the instant that mismatched code touches the type registry. Held by a raw
+// pointer (constructed via MakeHudView(), an opaque factory in HudViewBridge.h) so this header
+// needs only the forward declaration -- see hudView_ below for why it isn't std::unique_ptr.
 namespace Vixen::App { class HudView; }
 
 using namespace Vixen::Vulkan::Resources;
