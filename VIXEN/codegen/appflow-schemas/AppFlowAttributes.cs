@@ -1,12 +1,9 @@
 using System;
 
 // Marker attributes for the AppFlow Tier-2 declaration surface (design §4.1).
-// NOTE (Task 1 decision, recorded in AppFlowReference.cs): the existing Yeroket
-// `CodegenTool~` only understands `[GpuStruct]` (struct layout → C++/GLSL struct
-// body); it has no enum/table/reader emitter. These attributes are declared here
-// so the reference vocabulary is well-formed, buildable C# and so a future
-// enum+table emitter (the Task-1-deferred follow-up) has a fixed surface to
-// target — they are not consumed by any tool yet.
+// Reflected by Yeroket's AppFlowEmitter ($KF/SourceGenerator~/Transpiler/AppFlowEmitter.cs)
+// to generate AppFlow.g.h from AppFlowReference.cs (Inc-4 M1). Declared VIXEN-side (not in
+// Yeroket's GpuStructAttributes.cs) because the reference vocabulary itself lives here.
 namespace Vixen.AppFlow.Reference
 {
     [AttributeUsage(AttributeTargets.Enum)]
@@ -33,4 +30,48 @@ namespace Vixen.AppFlow.Reference
 
     [AttributeUsage(AttributeTargets.Class)]
     public sealed class FlowTransitionAttribute : Attribute { }
+
+    // Inc-4 M2: typed key vocabulary + element/key/return-edge declaration surface (design §3.1/§5.2).
+    public enum FlowScope { Global = 0, State = 1, Context = 2 }
+
+    [AttributeUsage(AttributeTargets.Enum)]
+    public sealed class FlowKeyEnumAttribute : Attribute { }
+
+    [AttributeUsage(AttributeTargets.Enum)]
+    public sealed class FlowModEnumAttribute : Attribute { }
+
+    [AttributeUsage(AttributeTargets.Class)]
+    public sealed class FlowElementTriggerAttribute : Attribute
+    {
+        public string ActionName { get; }
+        public FlowElementTriggerAttribute(string action) { ActionName = action; }
+    }
+
+    [AttributeUsage(AttributeTargets.Class)]
+    public sealed class FlowKeyDefaultAttribute : Attribute
+    {
+        public string ActionName { get; }
+        public FlowScope Scope { get; }
+        public string State { get; }
+        public FlowKeyDefaultAttribute(string action, FlowScope scope, string state = null)
+        {
+            ActionName = action;
+            Scope = scope;
+            State = state;
+        }
+    }
+
+    [AttributeUsage(AttributeTargets.Class)]
+    public sealed class FlowReturnEdgeAttribute : Attribute
+    {
+        public string FromState { get; }
+        public FlowReturnEdgeAttribute(string from) { FromState = from; }
+    }
+
+    [AttributeUsage(AttributeTargets.Class)]
+    public sealed class FlowEdgeEffectAttribute : Attribute
+    {
+        public int TransitionIndex { get; }
+        public FlowEdgeEffectAttribute(int transition) { TransitionIndex = transition; }
+    }
 }
