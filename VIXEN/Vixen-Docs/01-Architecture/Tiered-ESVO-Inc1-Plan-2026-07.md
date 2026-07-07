@@ -100,8 +100,9 @@ before any GPU-side tier-crossing machinery (§3/§5) is built against it.
   (pattern per `tests/Data/` + a plain `.cmake` registration, not `test_critical_nodes.cmake` — see
   Notes for implementers). ·
   **✅ DONE 2026-07-07** — commit `709bb639` (worktree `feat/tiered-esvo-inc1`, branched from `main`).
-  `test_tier_address` 16/16, `test_tier_math` 9/9, both green. See Progress Log for representation
-  choice + the tier-math re-derivation.
+  `test_tier_address` 16/16, `test_tier_math` 9/9, both green. Opus-validated APPROVED (independent
+  from-scratch math re-derivation confirmed). See Progress Log for representation choice + the
+  tier-math re-derivation.
 - **M2 — Direction/magnitude derivation** (Tasks 3-4) · gate: pure-CPU gtest green — shared-prefix
   composition, apparent-magnitude falloff, optional light-delay staleness term.
 - **M3 — `SkyProjectionNode` + live composite gate** (Tasks 5-7) · gate: shader compiles + a live
@@ -142,16 +143,32 @@ before any GPU-side tier-crossing machinery (§3/§5) is built against it.
     ("~10 effective levels/tier" for T0-T2, vs. "23 levels per ESVO instance" cited for the ~4-5-tier
     total): the lower 3 tiers keep conservative headroom in the 23-level ESVO stack (for brick-local
     subdivision), while System/Galaxy — pure scale/index hops, no brick subdivision — use close to the
-    full per-instance budget. Total re-derived level count across all 5 tiers: 76.08, matching the cited
-    `log2(9.46e22/1) ≈ 76.3` within rounding. Bottom (T2) leaf and top (Galaxy) span both bracket the
-    design doc's cited figures exactly (galaxy span is reconstructed to match 9.46×10²² cm by
-    construction of the derivation, not an independent coincidence — see `TierMath.h`'s header comment
-    for the full worked derivation).
+    full per-instance budget. Total re-derived level count across all 5 tiers: **76.324** (exactly
+    `log2(9.46e22/1)` to machine precision — confirmed by the Opus validator's own from-scratch
+    re-derivation; the code's own arithmetic hits this exactly, correcting an earlier hand-rounded
+    "76.08" figure that appeared in this section before validation). Bottom (T2) leaf and top (Galaxy)
+    span both bracket the design doc's cited figures exactly (galaxy span is reconstructed to match
+    9.46×10²² cm by construction of the derivation, not an independent coincidence — see `TierMath.h`'s
+    header comment for the full worked derivation).
   - **No scope drift**: confirmed via `git diff --stat` before commit — only
     `libraries/SVO/include/{TierAddress,TierMath}.h`, `libraries/SVO/tests/test_tier_{address,math}.cpp`,
     and the `CMakeLists.txt` registration touched. No `ChildDescriptor`/`farBit`/`SVORebuild.cpp`/
     `LaineKarrasOctree`/`ConcatenatedOctrees` file touched, per §0.
-  - Opus validator: not yet run (this entry written by the M1 implementer; awaiting controller-dispatched
+  - **Opus validator: APPROVED (2026-07-07)** — independently re-derived the tier math from scratch
+    (Python, starting from the 1cm leaf): confirmed T0 span lands at exactly 2³⁰ cm = 10,737 km, galaxy
+    span hits 9.46×10²² cm to machine precision, and the total is 76.324 = `log2(9.46e22/1)` exactly.
+    Judged both self-flagged concerns reasonable and internally consistent: (1) the T0/T1/T2 "12,700 km"
+    vs. re-derived "10,737 km" discrepancy is genuinely because the source doc cites Earth's REAL
+    diameter (which itself rounds `log2(12700km/1cm)≈30.24` to "~30-31 levels" in its own text), not an
+    error in the re-derivation; (2) the 5-tier 10/10/10/~23/~23-level split is "a reasonable,
+    internally-consistent reading" of the design doc's genuinely two-framed prose — there is no single
+    unambiguous reading, and this one makes both framings cohere without straining. Rebuilt and re-ran
+    both binaries fresh (forced recompile of all 4 sources): `test_tier_address` 16/16, `test_tier_math`
+    9/9, pure CPU — confirmed the test bodies are genuine proofs (divergent-at-root, sibling,
+    partial-overlap, prefix-symmetric, capacity-clamp cases), not trivial assertions. Confirmed scope
+    discipline directly (6 files total, out-of-scope symbols appear only in comments). One non-blocking
+    nit found and fixed above (the stale hand-rounded "76.08" total, corrected to the code's actual
+    76.324).
     validation pass per the pipeline).
 
 ---
