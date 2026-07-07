@@ -328,6 +328,7 @@ set(RENDERGRAPH_UI_HEADERS
     include/Ui/ViewBlob.h
     include/Ui/ViewStore.h
     include/Ui/ViewBlobFile.h
+    include/Ui/BlobView.h
     include/Data/Nodes/UIRenderNodeConfig.h
     include/Nodes/UIRenderNode.h
 )
@@ -337,6 +338,7 @@ set(RENDERGRAPH_UI_SOURCES
     src/Ui/UiHitMask.cpp
     src/Ui/ViewStore.cpp
     src/Ui/ViewBlobFile.cpp
+    src/Ui/BlobView.cpp
     src/Nodes/UIRenderNode.cpp
 )
 

@@ -715,6 +715,22 @@ else()
 endif()
 
 # ===========================================================================
+# View Contract Inc-2b: BlobView — generic IView host, dynamic RmlUi model
+# ===========================================================================
+# Proves a ViewBlob alone (no per-schema C++) builds a live RmlUi data model
+# (scalars + array-of-struct) and that a version mismatch hard-skips registration.
+
+if(TARGET GTest::gtest_main)
+    add_executable(test_blob_view test_blob_view.cpp)
+    target_link_libraries(test_blob_view PRIVATE GTest::gtest_main RenderGraph)
+    set_target_properties(test_blob_view PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    gtest_discover_tests(test_blob_view DISCOVERY_MODE PRE_TEST DISCOVERY_TIMEOUT 60)
+    message(STATUS "✓ test_blob_view configured (View Contract Inc-2b: BlobView dynamic registration)")
+else()
+    message(STATUS "⊗ test_blob_view skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
 # BarrierTypes Tests (auto-sync P1)
 # ===========================================================================
 # Validates AccessKind -> Vulkan sync-semantics mapping
