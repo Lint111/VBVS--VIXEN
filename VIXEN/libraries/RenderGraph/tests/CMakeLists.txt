@@ -683,6 +683,22 @@ else()
 endif()
 
 # ===========================================================================
+# View Contract Inc-2b: ViewStore typed storage + by-field setters
+# ===========================================================================
+# Pure CPU test of scalar/array storage + blob-validated setter rejection.
+# Links RmlUi (via RenderGraph) for Rml::String/DataModelHandle, no GPU/device.
+
+if(TARGET GTest::gtest_main)
+    add_executable(test_view_store test_view_store.cpp)
+    target_link_libraries(test_view_store PRIVATE GTest::gtest_main RenderGraph)
+    set_target_properties(test_view_store PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    gtest_discover_tests(test_view_store DISCOVERY_MODE PRE_TEST DISCOVERY_TIMEOUT 60)
+    message(STATUS "✓ test_view_store configured (View Contract Inc-2b: ViewStore storage)")
+else()
+    message(STATUS "⊗ test_view_store skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
 # BarrierTypes Tests (auto-sync P1)
 # ===========================================================================
 # Validates AccessKind -> Vulkan sync-semantics mapping
