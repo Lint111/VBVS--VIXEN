@@ -29,6 +29,9 @@
 #include "Nodes/CameraNode.h"                 // Sparse-Mip ESVO LOD Inc1 M4c: GetCurrentCameraData() downcast target
 #include "Nodes/UIRenderNode.h"               // GetUiRenderNode() downcast target (RmlUi — after BodyOctreeSceneNode.h)
 #include "Nodes/UISelectionProviderNode.h"    // GetUiSelectionProviderNode() downcast target
+#include "Nodes/DeviceNode.h"                 // View Contract Inc-2 Task 5: VulkanDevice* for CaptureHudFrameToPng
+#include "Debug/RenderTargetReadback.h"       // View Contract Inc-2 Task 5: IRenderTarget -> PNG readback
+#include <sstream>                            // View Contract Inc-2 Task 5: VIXEN_HUD_SCRIPT/_CAPTURE_FRAMES parsing
 
 // Sparse-Mip ESVO LOD Inc1 M4c: the combined residency trigger (M4a resolvability + M4b
 // frustum, factored out as a pure/testable function — see ResidencyTrigger.h).
@@ -67,7 +70,8 @@ VulkanGraphApplication::VulkanGraphApplication()
       currentFrame(0),
       graphCompiled(false),
       width(500),
-      height(500) {
+      height(500),
+      hudView_(Vixen::App::MakeHudView()) {
 
     // Perf measurement (perf sweep 2026-07): fixed A/B window sizes without a rebuild.
     // VIXEN_WINDOW_WIDTH / VIXEN_WINDOW_HEIGHT override the 500x500 default when set.
@@ -89,6 +93,10 @@ VulkanGraphApplication::VulkanGraphApplication()
 }
 
 VulkanGraphApplication::~VulkanGraphApplication() {
+    // Destroy through the bridge (HudView is complete in HudViewBridge.cpp) -- this TU only
+    // forward-declares HudView (see VulkanGraphApplication.h's rationale), so `delete hudView_`
+    // here directly would be an incomplete-type-delete compile error.
+    Vixen::App::DestroyHudView(hudView_);
     DeInitialize();
 }
 
@@ -320,6 +328,103 @@ bool VulkanGraphApplication::Render() {
     }
 }
 
+namespace {
+// View Contract Inc-2 Task 5: parses "A@30,B@60" into (frame, payload-id) pairs, where payload-id
+// selects one of two hard-coded known HudFactionIn/HudEventIn sets (see PreTick below) — the live
+// gate's A/B-on-known-data proof needs a SPECIFIC known payload per capture, not free-form data,
+// so the script vocabulary is deliberately just 'A'/'B' rather than the editor's richer toggle/
+// undo/redo actions. Malformed tokens are skipped with a warning (mirrors ParseEditorScript's
+// never-abort contract), never NULL-widening a whole run over one bad token.
+std::vector<std::pair<long, char>> ParseHudScript(const std::string& spec, Vixen::Log::Logger* logger) {
+    std::vector<std::pair<long, char>> actions;
+    std::stringstream ss(spec);
+    std::string token;
+    while (std::getline(ss, token, ',')) {
+        if (token.empty()) continue;
+        const size_t at = token.find('@');
+        if (at == std::string::npos) {
+            if (logger) logger->Warning("[VulkanGraphApplication] VIXEN_HUD_SCRIPT: skipping token missing '@frame': " + token);
+            continue;
+        }
+        const std::string idPart = token.substr(0, at);
+        const std::string framePart = token.substr(at + 1);
+        if (idPart.size() != 1 || (idPart[0] != 'A' && idPart[0] != 'B')) {
+            if (logger) logger->Warning("[VulkanGraphApplication] VIXEN_HUD_SCRIPT: payload id must be 'A' or 'B': " + token);
+            continue;
+        }
+        if (framePart.empty() || framePart.find_first_not_of("0123456789") != std::string::npos) {
+            if (logger) logger->Warning("[VulkanGraphApplication] VIXEN_HUD_SCRIPT: skipping token with non-numeric frame: " + token);
+            continue;
+        }
+        actions.emplace_back(std::strtol(framePart.c_str(), nullptr, 10), idPart[0]);
+    }
+    return actions;
+}
+
+// Parses "5,45,75" into frame numbers (identical shape to EditorApplication's ParseCaptureFrames).
+std::vector<long> ParseHudCaptureFrames(const std::string& spec, Vixen::Log::Logger* logger) {
+    std::vector<long> frames;
+    std::stringstream ss(spec);
+    std::string token;
+    while (std::getline(ss, token, ',')) {
+        if (token.empty()) continue;
+        if (token.find_first_not_of("0123456789") != std::string::npos) {
+            if (logger) logger->Warning("[VulkanGraphApplication] VIXEN_HUD_CAPTURE_FRAMES: skipping non-numeric entry: " + token);
+            continue;
+        }
+        frames.push_back(std::strtol(token.c_str(), nullptr, 10));
+    }
+    return frames;
+}
+}  // namespace
+
+void VulkanGraphApplication::PreTick() {
+    // Own try/catch (mirrors Update()'s) so a malformed script/env value never throws across the tick.
+    try {
+        if (!hudScriptParsed_) {
+            hudScriptParsed_ = true;
+            if (const char* scriptEnv = std::getenv("VIXEN_HUD_SCRIPT")) {
+                hudScript_ = ParseHudScript(scriptEnv, mainLogger.get());
+            }
+            if (const char* framesEnv = std::getenv("VIXEN_HUD_CAPTURE_FRAMES")) {
+                hudCaptureFrames_ = ParseHudCaptureFrames(framesEnv, mainLogger.get());
+            }
+            if (const char* dirEnv = std::getenv("VIXEN_HUD_CAPTURE_DIR")) {
+                hudCaptureDir_ = dirEnv;
+            }
+        }
+
+        // Two hard-coded known payloads (A, B) so the live gate can prove the generated binding
+        // drives real pixels: A vs B must differ, and the same payload must render byte-identically
+        // across two captures (determinism). A is a single known/focused faction with a recent
+        // event (juice pulse ON); B is a different faction, different grievance, no recent event
+        // (juice pulse OFF) plus one event row — deliberately far apart, not a near-miss tweak.
+        for (const auto& [frame, id] : hudScript_) {
+            if (frame != hudUpdateTick_) continue;
+            if (id == 'A') {
+                Vixen::App::HudFactionIn factions[] = {
+                    {"acme", 3.5f, true, true, true, 0}  // recentEventAge=0 -> recentChanged (juice ON)
+                };
+                Vixen::App::HudEventIn events[] = { {"raid", 1} };
+                Vixen::App::PushHudView(*hudView_, /*tick=*/hudUpdateTick_, /*bodyCount=*/3, /*activeLens=*/2, /*activeLensCount=*/4,
+                                        factions, events);
+            } else {  // 'B'
+                Vixen::App::HudFactionIn factions[] = {
+                    {"umbra", 0.2f, false, false, false, 255}  // recentEventAge=255 -> no recent event (juice OFF)
+                };
+                Vixen::App::PushHudView(*hudView_, /*tick=*/hudUpdateTick_, /*bodyCount=*/3, /*activeLens=*/1, /*activeLensCount=*/1,
+                                        factions, {});
+            }
+        }
+    } catch (const std::exception& e) {
+        lastError_ = std::string("PreTick failed: ") + e.what();
+        if (mainLogger) mainLogger->Error("[VulkanGraphApplication::PreTick] " + lastError_);
+    } catch (...) {
+        lastError_ = "PreTick failed: unknown (non-std) exception";
+        if (mainLogger) mainLogger->Error("[VulkanGraphApplication::PreTick] " + lastError_);
+    }
+}
+
 void VulkanGraphApplication::Update() {
     if (!isPrepared) {
         return;
@@ -438,6 +543,23 @@ void VulkanGraphApplication::Update() {
         if (renderGraph) {
             UpdateBodySceneResidency();
         }
+
+        // View Contract Inc-2 Task 5: dump a capture PNG if this tick is scripted for one. Placed
+        // at the tail of Update() — Update() ticks BEFORE the render loop's first Render() call
+        // (VulkanApplicationBase::Tick(): PreTick -> Update -> Render -> PostTick), so a capture
+        // here reads main_swapchain's PREVIOUS frame result (the compute-blit + UI-composite HUD
+        // draw already landed on it), same timing as EditorApplication's CaptureFrameToPng call
+        // site; a capture at tick 0 would read the target before anything has ever been drawn into
+        // it (an all-black PNG) — never schedule frame 0.
+        for (const long captureFrame : hudCaptureFrames_) {
+            if (captureFrame != hudUpdateTick_) continue;
+            const std::string path = hudCaptureDir_ + "/hud_capture_" + std::to_string(hudUpdateTick_) + ".png";
+            std::string captureErr;
+            if (!CaptureHudFrameToPng(path, captureErr)) {
+                if (mainLogger) mainLogger->Error("[VulkanGraphApplication] CaptureHudFrameToPng failed for " + path + ": " + captureErr);
+            }
+        }
+        ++hudUpdateTick_;
     } catch (const std::exception& e) {
         // Record + continue: a fatal condition also surfaces via the next Render() (which returns false).
         lastError_ = std::string("Update failed: ") + e.what();
@@ -840,4 +962,47 @@ Vixen::RenderGraph::UISelectionProviderNode* VulkanGraphApplication::GetUiSelect
     if (!renderGraph) return nullptr;
     return static_cast<Vixen::RenderGraph::UISelectionProviderNode*>(
         renderGraph->GetInstance(uiSelectionProviderNode_));
+}
+
+bool VulkanGraphApplication::CaptureHudFrameToPng(const std::string& path, std::string& err) {
+    // Live lookups every call (mirrors EditorApplication::CaptureFrameToPng / GetWindowHandle's
+    // rule) -- the target and device node persist across recompile, but re-resolving by name is
+    // this codebase's established pattern for host-facing capture lookups.
+    //
+    // Reads "main_swapchain", NOT "compute_render_target": the compute dispatch blits its
+    // offscreen compute_render_target INTO the swapchain, and UIRenderNode's composite pass then
+    // LOADs and draws the HUD directly onto that SAME swapchain image (see BuildRenderGraph.cpp's
+    // UI-composite-pass comment) -- compute_render_target is a physically separate VkImage that
+    // never receives the HUD draw. CaptureSwapchainToPng (unlike the offscreen-target helper)
+    // handles the PRESENT_SRC_KHR<->TRANSFER_SRC_OPTIMAL round-trip this capture needs.
+    if (!renderGraph) {
+        err = "CaptureHudFrameToPng: no render graph";
+        return false;
+    }
+    static constexpr const char* kCaptureTargetName = "main_swapchain";
+    auto* targetInst = renderGraph->GetInstanceByName(kCaptureTargetName);
+    if (!targetInst) {
+        err = std::string("CaptureHudFrameToPng: instance '") + kCaptureTargetName + "' not found";
+        return false;
+    }
+    Resource* targetOutput = targetInst->GetOutput(1, 0);  // SWAPCHAIN_PUBLIC (slot 1)
+    if (!targetOutput) {
+        err = "CaptureHudFrameToPng: capture target has no SWAPCHAIN_PUBLIC output yet (graph not compiled?)";
+        return false;
+    }
+    auto* renderTarget = targetOutput->GetHandle<Vixen::Vulkan::Resources::IRenderTarget*>();
+    if (!renderTarget) {
+        err = "CaptureHudFrameToPng: SWAPCHAIN_PUBLIC output handle is null";
+        return false;
+    }
+
+    auto* deviceInst = static_cast<DeviceNode*>(renderGraph->GetInstanceByName("main_device"));
+    if (!deviceInst || !deviceInst->GetVulkanDevice()) {
+        err = "CaptureHudFrameToPng: 'main_device' not found or has no VulkanDevice";
+        return false;
+    }
+    auto* device = deviceInst->GetVulkanDevice();
+
+    return Vixen::RenderGraph::Debug::CaptureSwapchainToPng(
+        device, renderTarget, device->queue, device->graphicsQueueIndex, path, err);
 }

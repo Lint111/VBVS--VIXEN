@@ -16,7 +16,7 @@ namespace Vixen.ViewSchemas
     }
 
     [View]
-    public struct EditorHud {
+    public struct Hud {
         public int    tick;
         public int    bodyCount;
         public string activeLensName;

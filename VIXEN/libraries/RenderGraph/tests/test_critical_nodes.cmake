@@ -632,6 +632,27 @@ gtest_discover_tests(test_editor_toggle_undo_capture)
 message(STATUS "[RenderGraph Tests] Added: test_editor_toggle_undo_capture (AppFlow Inc-2b M3 windowed gate assertion)")
 
 # ===========================================================================
+# View Contract Inc-2 Task 5 — windowed main-app HUD capture assertion.
+# Reads the 3 PNGs application/main/main_hud_capture.bat's unattended VIXEN.exe run dumps and
+# asserts the generic IView-host + native HudView path renders the HUD (see
+# test_hud_render_capture.cpp's file header). Pure file I/O (stb_image) -- no Vulkan/GPU, so
+# registered OUTSIDE the glslc-gated block above, mirroring test_editor_toggle_undo_capture.
+# ===========================================================================
+add_executable(test_hud_render_capture
+    Nodes/test_hud_render_capture.cpp
+)
+target_link_libraries(test_hud_render_capture PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+if(TARGET stb)
+    target_link_libraries(test_hud_render_capture PRIVATE stb)
+else()
+    target_include_directories(test_hud_render_capture PRIVATE
+        "${CMAKE_BINARY_DIR}/_deps/stb-src")
+endif()
+set_target_properties(test_hud_render_capture PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_hud_render_capture)
+message(STATUS "[RenderGraph Tests] Added: test_hud_render_capture (View Contract Inc-2 Task 5 windowed gate assertion)")
+
+# ===========================================================================
 # P2.2 M2 — Procedural recipe live compute render (compile realization)
 # ===========================================================================
 # Emits an all-HLSL compute shader from SdfInstruction[], compiles it via

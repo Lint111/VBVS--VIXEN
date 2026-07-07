@@ -179,6 +179,14 @@ body {
     color: #d0b8f0;  /* lens-lit name tint */
 }
 
+/* .changed: a world event touched this faction within HudView's recent-event juice window
+   (recentEventAge < kJuiceK) → an amber value tint, distinct from .focused/.in-lens's border accents
+   (View Contract Inc-2 Task 8: completes the schema's recentChanged field, generated as
+   {{faction.recentChanged}} by RmlMarkupEmitter, as a data-class rather than raw text). */
+.row.changed .col-value {
+    color: #f0c060;
+}
+
 /* ---- Faction columns ---- */
 .col-known {
     display: inline-block;

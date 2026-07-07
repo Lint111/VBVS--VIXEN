@@ -17,7 +17,6 @@
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
-#include <span>
 
 namespace Vixen::RenderGraph {
 
@@ -106,36 +105,19 @@ void UIRenderNode::CompileImpl(TypedCompileContext& ctx) {
         Rml::SetRenderInterface(&renderInterface_);
         Rml::Initialise();
         const std::string fontPath = ResolveUiAsset(GetParameterValue<std::string>(UIRenderNodeConfig::FONT_PATH, "assets/ui/LatoLatin-Regular.ttf"));
-        const std::string docPath = ResolveUiAsset(GetParameterValue<std::string>(UIRenderNodeConfig::RML_DOCUMENT_PATH, "assets/ui/demo.rml"));
+        const std::string docPath = ResolveUiAsset(
+            view_ ? std::string(view_->DocumentPath())
+                  : GetParameterValue<std::string>(UIRenderNodeConfig::RML_DOCUMENT_PATH, "assets/ui/demo.rml"));
         Rml::LoadFontFace(fontPath);
         context_ = Rml::CreateContext("vixen_ui", Rml::Vector2i(static_cast<int>(extent_.width), static_cast<int>(extent_.height)));
         if (context_) {
-            // S1b: construct the "hud" data model with scalars + struct/array list bindings.
-            // RegisterStruct<T> / RegisterArray<Container> must be called before Bind() or
-            // LoadDocument() — type info must exist before the document references the vars.
-            if (Rml::DataModelConstructor c = context_->CreateDataModel("hud")) {
-                if (auto fh = c.RegisterStruct<HudFaction>()) {
-                    fh.RegisterMember("name",          &HudFaction::name);
-                    fh.RegisterMember("grievance",     &HudFaction::grievance);
-                    fh.RegisterMember("focused",       &HudFaction::focused);
-                    fh.RegisterMember("known",         &HudFaction::known);
-                    fh.RegisterMember("inLens",        &HudFaction::inLens);
-                    // T3 Juice: recentChanged drives data-class-changed on the faction row → .changed CSS pulse.
-                    fh.RegisterMember("recentChanged", &HudFaction::recentChanged);
+            // Renderer-agnostic view seam (Inc-2): the consumer's IView registers its own structs/
+            // arrays and binds them to its own storage — the node knows no field name.
+            if (view_) {
+                if (Rml::DataModelConstructor c = context_->CreateDataModel(view_->ModelName())) {
+                    view_->Register(c);
+                    viewModel_ = c.GetModelHandle();
                 }
-                if (auto eh = c.RegisterStruct<HudEvent>()) {
-                    eh.RegisterMember("kind", &HudEvent::kind);
-                    eh.RegisterMember("tick", &HudEvent::tick);
-                }
-                c.RegisterArray<std::vector<HudFaction>>();
-                c.RegisterArray<std::vector<HudEvent>>();
-                c.Bind("tick",            &tick_);
-                c.Bind("bodyCount",       &bodyCount_);
-                c.Bind("activeLensName",  &activeLensName_);
-                c.Bind("activeLensCount", &activeLensCount_);
-                c.Bind("factions",        &factions_);
-                c.Bind("events",          &events_);
-                hudModel_ = c.GetModelHandle();
             }
             document_ = context_->LoadDocument(docPath);
             if (document_) document_->Show();
@@ -170,9 +152,9 @@ void UIRenderNode::CompileImpl(TypedCompileContext& ctx) {
         // Live hot-reload (dev only). CPU-SIDE DOCUMENT SWAP ONLY — never touch the persistent GPU sync
         // objects (the destroy-while-in-flight race that kernel-panics WSL). Old document geometry routes
         // through the render interface's frames-in-flight deferred-delete; UnloadDocument defers the C++
-        // destroy to the next Context::Update(). The "hud" data model is Context-level so it survives the
-        // reload — the new document re-binds via data-model="hud", and SetHudView keeps feeding it.
-        // ClearStyleSheetCache() must precede LoadDocument so edited RCSS actually takes effect.
+        // destroy to the next Context::Update(). The data model is Context-level so it survives the
+        // reload — the new document re-binds via data-model=view_->ModelName(), and the consumer keeps
+        // feeding it. ClearStyleSheetCache() must precede LoadDocument so edited RCSS actually takes effect.
         if (std::getenv("VIXEN_UI_LIVE") && !resolvedDocPath_.empty()) {
             std::filesystem::file_time_type mtime = LatestUiMtime(resolvedDocPath_);
             if (mtime > lastUiWriteTime_) {
@@ -354,44 +336,9 @@ void UIRenderNode::ExecuteImpl(TypedExecuteContext& ctx) {
     ctx.Out(UIRenderNodeConfig::RENDER_COMPLETE_SEMAPHORE, signalSem);
 }
 
-void UIRenderNode::SetHudView(int tick, int bodyCount, int activeLens, int activeLensCount,
-                              std::span<const HudFactionIn> factions,
-                              std::span<const HudEventIn> events) {
-    tick_      = tick;
-    bodyCount_ = bodyCount;
-    // Map the raw LensKind (0-3) to its display name for the HUD label (matches the C# LensKind enum).
-    static const char* const kLensNames[] = { "None", "Intel", "Logistics", "Threat" };
-    activeLensName_  = (activeLens >= 0 && activeLens < 4) ? kLensNames[activeLens] : "None";
-    activeLensCount_ = activeLensCount;
+void UIRenderNode::SetView(std::shared_ptr<IView> view) { view_ = std::move(view); }
 
-    // T3 Juice: a faction is "recently changed" when its recentEventAge is within the K-tick window
-    // (matching the C# RecentEventK constant in UndertowSim.ProjectFrame; 255 = no recent event).
-    static constexpr uint8_t kJuiceK = 20;
-    factions_.clear();
-    factions_.reserve(factions.size());
-    for (const HudFactionIn& f : factions)
-        factions_.push_back({f.name ? Rml::String(f.name) : Rml::String{},
-                             f.grievance, f.focused, f.known, f.inLens,
-                             f.recentEventAge < kJuiceK});
-
-    events_.clear();
-    events_.reserve(events.size());
-    for (const HudEventIn& e : events)
-        events_.push_back({e.kind ? Rml::String(e.kind) : Rml::String{}, e.tick});
-
-    if (hudModel_) {
-        hudModel_.DirtyVariable("tick");
-        hudModel_.DirtyVariable("bodyCount");
-        hudModel_.DirtyVariable("activeLensName");
-        hudModel_.DirtyVariable("activeLensCount");
-        hudModel_.DirtyVariable("factions");
-        hudModel_.DirtyVariable("events");
-    }
-}
-
-void UIRenderNode::SetHudData(int tick, int bodyCount) {
-    SetHudView(tick, bodyCount, 0, 0, {}, {});
-}
+void UIRenderNode::MarkViewDirty(const char* field) { if (viewModel_ && field) viewModel_.DirtyVariable(field); }
 
 void UIRenderNode::CleanupImpl(TypedCleanupContext& ctx) {
     if (device_ == VK_NULL_HANDLE) return;

@@ -583,16 +583,24 @@ include(test_voxel_systems.cmake)
 #   - GetInnerRML() contains the substituted values 42 and 7
 #   - Rml::Shutdown() cleans up cleanly
 # Assets (font + hud.rml/hud.rcss) are staged next to the binary by POST_BUILD.
-
+#
+# View Contract Inc-2 (Task 6): the HUD data-model + faction/event projection now
+# lives in the main app's Vixen::App::HudView consumer, not UIRenderNode. This test
+# compiles HudView.cpp directly (not the VixenApp library, to avoid pulling in the
+# app's gaia-touching TUs) and adds application/main/include so "graph/HudView.h" /
+# "Generated/Hud.g.h" resolve — mirrors test_view_hud_golden's identical include dir.
 if(TARGET GTest::gtest_main)
     add_executable(test_ui_hud_smoke
         test_ui_hud_smoke.cpp
+        ${CMAKE_SOURCE_DIR}/application/main/source/graph/HudView.cpp
     )
 
     target_link_libraries(test_ui_hud_smoke PRIVATE
         GTest::gtest_main
         RenderGraph
     )
+
+    target_include_directories(test_ui_hud_smoke PRIVATE ${CMAKE_SOURCE_DIR}/application/main/include)
 
     # Stage the UI assets (font + rml + rcss) next to the test binary so
     # hud.rml / font paths resolve at test runtime.
@@ -626,32 +634,36 @@ else()
 endif()
 
 # ===========================================================================
-# View Contract Inc-1: EditorHud golden-mirror gate (headless — no Vulkan required)
+# View Contract Inc-2: Hud golden-mirror gate (headless — no Vulkan required)
 # ===========================================================================
-# Proves the generated Generated/EditorHud.g.h RmlUi data-model registration block
+# Proves the generated Generated/Hud.g.h RmlUi data-model registration block
 # (a) compiles + binds against a real Rml::DataModelConstructor, and (b) matches,
-# as a normalized ordered call sequence, the hand-written block in UIRenderNode.cpp.
+# as a normalized ordered call sequence, the canonical Hud [View] schema field order.
 
 if(TARGET GTest::gtest_main)
-    add_executable(test_view_editorhud_golden
-        test_view_editorhud_golden.cpp
+    add_executable(test_view_hud_golden
+        test_view_hud_golden.cpp
     )
 
-    target_link_libraries(test_view_editorhud_golden PRIVATE
+    target_link_libraries(test_view_hud_golden PRIVATE
         GTest::gtest_main
         RenderGraph
     )
 
-    target_compile_definitions(test_view_editorhud_golden PRIVATE
-        VIEW_EDITORHUD_G_H="${CMAKE_SOURCE_DIR}/libraries/RenderGraph/include/Generated/EditorHud.g.h")
+    # Hud.g.h is now a CONSUMER artifact (application/main) — the golden still verifies it, but
+    # needs the app's include dir to resolve "Generated/Hud.g.h" (View Contract Inc-2, Task 4).
+    target_include_directories(test_view_hud_golden PRIVATE ${CMAKE_SOURCE_DIR}/application/main/include)
 
-    set_target_properties(test_view_editorhud_golden PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    target_compile_definitions(test_view_hud_golden PRIVATE
+        VIEW_HUD_G_H="${CMAKE_SOURCE_DIR}/application/main/include/Generated/Hud.g.h")
 
-    gtest_discover_tests(test_view_editorhud_golden)
+    set_target_properties(test_view_hud_golden PROPERTIES FOLDER "Tests/RenderGraph Tests")
 
-    message(STATUS "✓ test_view_editorhud_golden configured (View Contract Inc-1: golden-mirror gate)")
+    gtest_discover_tests(test_view_hud_golden)
+
+    message(STATUS "✓ test_view_hud_golden configured (View Contract Inc-2: golden-mirror gate)")
 else()
-    message(STATUS "⊗ test_view_editorhud_golden skipped (GoogleTest not available)")
+    message(STATUS "⊗ test_view_hud_golden skipped (GoogleTest not available)")
 endif()
 
 # ===========================================================================

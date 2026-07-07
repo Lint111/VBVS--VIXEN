@@ -9,6 +9,14 @@
 //   6. (S1b) RegisterStruct<HudFaction/HudEvent> + RegisterArray<vector<...>>
 //      + Bind("factions"/"events") + data-for list binding resolves correctly
 //
+// View Contract Inc-2 (Task 6): the engine's UIRenderNode is now a generic IView
+// host (SetHudView/SetHudData/HudFaction/HudEvent no longer exist on it). The
+// data-model + faction/event projection this smoke exercises now lives in the
+// main app's Vixen::App::HudView consumer (application/main/include/graph/HudView.h).
+// This test is in the RenderGraph tests target, which does NOT link gaia, so
+// including HudView.h here is ODR-safe (the robin_hood ABI collision documented
+// in HudViewBridge.h only bites gaia-touching TUs like VulkanGraphApplication.cpp).
+//
 // The font must be loaded for the document to parse without assertion. Assets
 // are staged next to the test binary by the POST_BUILD rule added in CMakeLists.
 
@@ -23,7 +31,7 @@
 #include <RmlUi/Core/SystemInterface.h>
 #include <RmlUi/Core/Types.h>
 
-#include "Nodes/UIRenderNode.h"
+#include "graph/HudView.h"
 #include "Ui/VixenRmlSystemInterface.h"
 
 #include <chrono>
@@ -208,40 +216,17 @@ TEST_F(HudSmokeTest, S1b_ListDataModelConstructs) {
 }
 
 // Verify that a data-for list in an inline RML doc resolves to the bound values
-// after SetHudView-equivalent mutation + Update(). Uses LoadDocumentFromMemory
-// so the test is independent of hud.rml (which gets data-for in Task 4).
+// after driving the relocated Vixen::App::HudView (SetHudView + MarkDirty-equivalent
+// via HudView's own model_.DirtyVariable calls) + Update(). Uses LoadDocumentFromMemory
+// so the test is independent of hud.rml (which gets data-for composed in Task 8).
 TEST_F(HudSmokeTest, S1b_SetHudViewListsResolveInRml) {
-    std::vector<SmokeHudFaction> factions;
-    std::vector<SmokeHudEvent>   events;
-    int tick = 0, bodyCount = 0;
-    Rml::DataModelHandle model;
+    Vixen::App::HudView view;
 
-    {
-        Rml::DataModelConstructor c = ctx_->CreateDataModel("hud");
-        ASSERT_TRUE(static_cast<bool>(c)) << "CreateDataModel failed";
-
-        auto fh = c.RegisterStruct<SmokeHudFaction>();
-        ASSERT_TRUE(static_cast<bool>(fh)) << "RegisterStruct<SmokeHudFaction> failed (type already registered?)";
-        EXPECT_TRUE(fh.RegisterMember("name",      &SmokeHudFaction::name));
-        EXPECT_TRUE(fh.RegisterMember("grievance", &SmokeHudFaction::grievance));
-
-        auto eh = c.RegisterStruct<SmokeHudEvent>();
-        ASSERT_TRUE(static_cast<bool>(eh)) << "RegisterStruct<SmokeHudEvent> failed";
-        EXPECT_TRUE(eh.RegisterMember("kind", &SmokeHudEvent::kind));
-        EXPECT_TRUE(eh.RegisterMember("tick", &SmokeHudEvent::tick));
-
-        EXPECT_TRUE(c.RegisterArray<std::vector<SmokeHudFaction>>())
-            << "RegisterArray<vector<SmokeHudFaction>> failed";
-        EXPECT_TRUE(c.RegisterArray<std::vector<SmokeHudEvent>>())
-            << "RegisterArray<vector<SmokeHudEvent>> failed";
-
-        EXPECT_TRUE(c.Bind("tick",      &tick))      << "Bind tick failed";
-        EXPECT_TRUE(c.Bind("bodyCount", &bodyCount)) << "Bind bodyCount failed";
-        EXPECT_TRUE(c.Bind("factions",  &factions))  << "Bind factions failed";
-        EXPECT_TRUE(c.Bind("events",    &events))    << "Bind events failed";
-        model = c.GetModelHandle();
-        ASSERT_TRUE(static_cast<bool>(model)) << "GetModelHandle failed";
-    }
+    Rml::DataModelConstructor c = ctx_->CreateDataModel(view.ModelName());
+    ASSERT_TRUE(static_cast<bool>(c)) << "CreateDataModel failed";
+    view.Register(c);
+    Rml::DataModelHandle model = c.GetModelHandle();
+    ASSERT_TRUE(static_cast<bool>(model)) << "GetModelHandle failed";
 
     // Inline RML with data-for.
     // IMPORTANT: data-model must be on an INNER element (a div inside body), NOT on <body> itself.
@@ -265,22 +250,16 @@ TEST_F(HudSmokeTest, S1b_SetHudViewListsResolveInRml) {
 </body>
 </rml>)";
 
-    // Pre-populate the vectors before loading the document so the data-for view
-    // can query the container size during its first Update() pass.
-    tick = 7;
-    bodyCount = 3;
-    factions.push_back({"Empire", 1.0f});
-    events.push_back({"war", 81});
-
     Rml::ElementDocument* doc = ctx_->LoadDocumentFromMemory(rml);
     ASSERT_NE(doc, nullptr) << "Inline HUD doc with data-for failed to load";
     doc->Show();
 
-    ASSERT_TRUE(static_cast<bool>(model));
-    model.DirtyVariable("tick");
-    model.DirtyVariable("bodyCount");
-    model.DirtyVariable("factions");
-    model.DirtyVariable("events");
+    // Drive the model through HudView::SetHudView (the relocated SetHudData/SetHudView
+    // projection) rather than mutating storage directly — this is the actual API path
+    // production code (VulkanGraphApplication) uses via HudViewBridge::PushHudView.
+    Vixen::App::HudFactionIn f{ "Empire", 1.0f, /*focused=*/false, /*known=*/false, /*inLens=*/false, /*recentEventAge=*/0 };
+    Vixen::App::HudEventIn   e{ "war", 81 };
+    view.SetHudView(/*tick=*/7, /*bodyCount=*/3, /*activeLens=*/0, /*activeLensCount=*/0, {&f, 1}, {&e, 1});
 
     // Two Update() calls: first instantiates data-for clones, second resolves
     // data-text bindings inside the newly created clone elements.
@@ -337,14 +316,13 @@ TEST_F(HudSmokeTest, S1b_SetHudViewListsResolveInRml) {
     }
 }
 
-// Verify HudFactionIn / HudEventIn + SetHudView API compile correctly (type check).
-// This test exercises the public UIRenderNode API at compile time (linking into the
-// RenderGraph library) without GPU — just calls the function; the node is not
-// initialised so hudModel_ is null (DirtyVariable is safely guarded).
+// Verify HudFactionIn / HudEventIn + HudView::SetHudView API compile correctly (type
+// check). This test exercises the relocated Vixen::App::HudView API (View Contract
+// Inc-2 Task 4) at compile time without GPU — HudView is default-constructed so its
+// model_ is null (DirtyVariable is safely guarded inside SetHudView).
 TEST_F(HudSmokeTest, S1b_SetHudViewApiCompiles) {
-    // UIRenderNode requires a NodeType; skip construction but validate the types.
-    using Faction = Vixen::RenderGraph::HudFactionIn;
-    using Event   = Vixen::RenderGraph::HudEventIn;
+    using Faction = Vixen::App::HudFactionIn;
+    using Event   = Vixen::App::HudEventIn;
 
     std::vector<Faction> fv = {{"Empire", 1.0f}, {"Resistance", 0.3f}};
     std::vector<Event>   ev = {{"war", 81}, {"trade", 42}};

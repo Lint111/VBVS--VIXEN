@@ -76,23 +76,43 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         COMMENT "[codegen] regenerate OctreeConfig.g.h/.glsl (Yeroket tool)"
         VERBATIM)
 
-    # --- EditorHud [View] schema via the same Yeroket tool (View Contract Inc-1) ---
+    # --- Hud [View] schema via the same Yeroket tool (View Contract Inc-2: renamed from EditorHud).
+    # The generated header lives under application/main — it is a CONSUMER artifact (the native
+    # HudView), not an engine one; the engine only sees the generic Ui/IView.h seam.
     set(_view_args
         run --project "${_yk_tool}" -c Release --
-        --schema "${_cg}/view-schemas" --view EditorHud
-        --out-header "${CMAKE_SOURCE_DIR}/libraries/RenderGraph/include/Generated/EditorHud.g.h")
-    add_custom_target(view_editorhud_check ALL
+        --schema "${_cg}/view-schemas" --view Hud
+        --out-header "${CMAKE_SOURCE_DIR}/application/main/include/Generated/Hud.g.h")
+    add_custom_target(view_hud_check ALL
         COMMAND ${VIXEN_DOTNET} ${_view_args} --check
-        COMMENT "[codegen] golden check: EditorHud.g.h matches canonical [View] schema (Yeroket tool)"
+        COMMENT "[codegen] golden check: Hud.g.h matches canonical [View] schema (Yeroket tool)"
         VERBATIM)
-    add_custom_target(view_editorhud_regen
+    add_custom_target(view_hud_regen
         COMMAND ${VIXEN_DOTNET} ${_view_args}
-        COMMENT "[codegen] regenerate EditorHud.g.h (Yeroket tool)"
+        COMMENT "[codegen] regenerate Hud.g.h (Yeroket tool)"
+        VERBATIM)
+
+    # --- Hud RML data-binding partial (View Contract Inc-2, Task 8: RmlMarkupEmitter's --view-markup
+    # sibling of --view above). Hud.view.rml is a committed, generated FRAGMENT (not a full document)
+    # composed by hand into hud.rml's marked GEN:hud-bindings region — this target only guards the
+    # fragment itself against schema drift; the composed hud.rml is proven live by
+    # test_hud_render_capture (the real-GPU byte-exact gate), not a second textual diff here.
+    set(_view_markup_args
+        run --project "${_yk_tool}" -c Release --
+        --schema "${_cg}/view-schemas" --view-markup Hud
+        --out-rml "${CMAKE_SOURCE_DIR}/libraries/RenderGraph/assets/ui/Hud.view.rml")
+    add_custom_target(view_hud_markup_check ALL
+        COMMAND ${VIXEN_DOTNET} ${_view_markup_args} --check
+        COMMENT "[codegen] golden check: Hud.view.rml matches canonical [View] schema (Yeroket tool)"
+        VERBATIM)
+    add_custom_target(view_hud_markup_regen
+        COMMAND ${VIXEN_DOTNET} ${_view_markup_args}
+        COMMENT "[codegen] regenerate Hud.view.rml (Yeroket tool)"
         VERBATIM)
 else()
     message(WARNING "[codegen] KI-015: Yeroket kernel-codegen tool not found at ${_yk_tool} — "
-        "OctreeConfig/EditorHud golden DRIFT GUARDS DISABLED; the committed generated headers "
-        "(OctreeConfig.g.h/.glsl, EditorHud.g.h) are used as-is and will NOT be checked against "
+        "OctreeConfig/Hud golden DRIFT GUARDS DISABLED; the committed generated artifacts "
+        "(OctreeConfig.g.h/.glsl, Hud.g.h, Hud.view.rml) are used as-is and will NOT be checked against "
         "their canonical schemas this configure. The Yeroket repo is WSL-only on this machine, so a "
         "Windows-side configure cannot reach it — run the WSL-side configure, mount \\\\wsl$, or pass "
         "-DYEROKET_ROOT=<path> to enable the guard.")

@@ -8,7 +8,7 @@ namespace Vixen::Views {
 
 struct HudFaction { Rml::String name; float grievance; bool focused; bool known; bool inLens; bool recentChanged; };
 struct HudEvent { Rml::String kind; int tick; };
-struct EditorHudBind {
+struct HudBind {
     int* tick;
     int* bodyCount;
     Rml::String* activeLensName;
@@ -17,7 +17,7 @@ struct EditorHudBind {
     std::vector<HudEvent>* events;
 };
 
-inline void BindEditorHudModel(Rml::DataModelConstructor& c, const EditorHudBind& b) {
+inline void BindHudModel(Rml::DataModelConstructor& c, const HudBind& b) {
     if (auto sh = c.RegisterStruct<HudFaction>()) {
         sh.RegisterMember("name", &HudFaction::name);
         sh.RegisterMember("grievance", &HudFaction::grievance);
