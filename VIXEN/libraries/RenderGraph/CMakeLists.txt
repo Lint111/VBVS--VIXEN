@@ -80,6 +80,7 @@ set(RENDERGRAPH_DATA_NODE_CONFIGS
     include/Data/Nodes/TraceRaysNodeConfig.h
     include/Data/Nodes/WindowNodeConfig.h
     include/Data/Nodes/BodyOctreeSceneNodeConfig.h
+    include/Data/Nodes/SkyProjectionNodeConfig.h
 )
 
 # ============================================================================
@@ -286,6 +287,7 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/WindowNode.cpp
     src/Nodes/BodyOctreeSceneNode.cpp
     src/Nodes/ShellRevalidateNode.cpp
+    src/Nodes/SkyProjectionNode.cpp  # Tiered ESVO Inc1 M3: address-derived sky-point composite pass
 )
 
 # ============================================================================

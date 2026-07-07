@@ -98,17 +98,335 @@ before any GPU-side tier-crossing machinery (§3/§5) is built against it.
 
 - **M1 — `TierAddress` type + tier math** (Tasks 1-2) · gate: pure-CPU gtest green, no GPU dependency
   (pattern per `tests/Data/` + a plain `.cmake` registration, not `test_critical_nodes.cmake` — see
-  Notes for implementers).
+  Notes for implementers). ·
+  **✅ DONE 2026-07-07** — commit `709bb639` (worktree `feat/tiered-esvo-inc1`, branched from `main`).
+  `test_tier_address` 16/16, `test_tier_math` 9/9, both green. Opus-validated APPROVED (independent
+  from-scratch math re-derivation confirmed). See Progress Log for representation choice + the
+  tier-math re-derivation.
 - **M2 — Direction/magnitude derivation** (Tasks 3-4) · gate: pure-CPU gtest green — shared-prefix
   composition, apparent-magnitude falloff, optional light-delay staleness term.
+  **✅ DONE 2026-07-07** — commit `e501e634` (worktree `feat/tiered-esvo-inc1`, built on M1's
+  `709bb639`). `test_tier_direction` 5/5, `test_tier_magnitude` 10/10, both green, pure CPU.
+  Opus-validated APPROVED (independent hand-traced math re-derivation + confirmed the light-delay stub
+  is genuinely inert, not just claimed). See Progress Log for the direction-composition input shape and
+  the light-delay no-op decision.
 - **M3 — `SkyProjectionNode` + live composite gate** (Tasks 5-7) · gate: shader compiles + a live
   `VIXEN.exe` run showing synthetic fleet points correctly composited over the existing skybox/voxel
   render, at the correct screen-space direction for a known observer/object address pair.
+  **✅ DONE 2026-07-07** — commit `4ae045a4` (this worktree, `feat/tiered-esvo-inc1`, built on M2's
+  `9745f987`). Live `VIXEN.exe` run (Mesa-Dozen real-GPU, `vixen-wsl` preset) confirmed 3 synthetic
+  sky points' computed direction/distance match hand-derived expected values to 6 decimal places, and
+  a Khronos-validation-layer run confirmed zero VUID errors from the new composite pass (two real
+  sync bugs found + fixed live — see Progress Log). Opus-validated APPROVED (independently rebuilt,
+  re-ran with validation explicitly enabled, both sync fixes verified against reference nodes).
+  **This completes the WHOLE Tiered ESVO Inc1 increment (M1+M2+M3 all done).**
 
 ### Progress Log
 
-(populated as milestones complete, following the Sparse-Mip-ESVO-LOD Inc1/Inc2 plans' own convention:
-one entry per milestone, commit hash + Opus validator verdict)
+- **Milestone M1 (Tasks 1-2): DONE** · commit `709bb639` (worktree `feat/tiered-esvo-inc1`, branched
+  from `main`) · gates: `test_tier_address` 16/16, `test_tier_math` 9/9, both green, pure CPU (no
+  Vulkan/GPU dependency exercised by either binary) · 2026-07-07.
+  - **`TierAddress` representation**: fixed-capacity inline array (`std::array<uint32_t,
+    kMaxTierAddressDepth=8>` + a running `depth_`), not `std::vector<uint32_t>` as the design doc's §4
+    sketch literally wrote. Chosen because the type is compared (shared-prefix) and copied (per-object,
+    per-frame, potentially many fleet objects) frequently, and the concrete depth this increment's own
+    tier math produces is bounded and small (5 tiers today — see below), so `std::vector`'s heap
+    indirection buys nothing; `kMaxTierAddressDepth=8` leaves headroom for a couple of future tiers
+    without forcing another representation change. `PushHop` past capacity clamps rather than UB's or
+    throws (documented as a defensive clamp, not a silent-failure API surface).
+  - **Shared-prefix helper**: `TierAddress::SharedPrefixLength(a, b)` — walks both hop arrays up to
+    `min(depth)`, returns the count of leading equal hops. Verified: self-comparison and identical
+    addresses both return full depth; fully-divergent-at-root pairs return 0; partial-overlap pairs
+    return exactly the common-ancestor depth; sibling addresses (same prefix, differ only at the final
+    hop) return `depth - 1`; one-address-is-a-prefix-of-the-other is symmetric. 8 dedicated test cases.
+  - **Serialization form**: a simple depth-prefixed dot-separated string (`ToString()`, e.g. `"4:7.2.5.0"`)
+    — explicitly documented in the header as NOT the eventual undertow wire format (§4/§11 defer that),
+    just a deterministic, easy-to-replace stand-in for this increment's own tests/logging.
+  - **Tier-math re-derivation** (`TierMath.h`, `BuildTierScaleTable()`): rebuilt the 5-tier table
+    bottom-up from the Sparse-Mip-ESVO-LOD-Direction doc's cited 1cm bedrock voxel, rather than copying
+    the doc's own (slightly rounded) span figures — T2 bedrock (10 levels) → T1 region (10 levels,
+    leaf = T2's span) → T0 planet (10 levels, leaf = T1's span) matches the source doc's "~10 effective
+    levels each" table within the same order of magnitude (T0 span comes out ~10,737 km vs. the doc's
+    cited "12,700 km" Earth-diameter figure — the doc's own number is itself an approximation of Earth's
+    actual diameter using clean powers of two, not a bug in this derivation). Generalized upward per the
+    Tiered-ESVO design doc's §1: the remaining level budget up to the cited 9.46×10²² cm galaxy diameter
+    (`log2(galaxy_cm / T0_span_cm) ≈ 46.08` levels) is split evenly across exactly 2 tiers (System,
+    Galaxy) — landing at ~23.04 levels/tier, which reconciles the design doc's own two framings
+    ("~10 effective levels/tier" for T0-T2, vs. "23 levels per ESVO instance" cited for the ~4-5-tier
+    total): the lower 3 tiers keep conservative headroom in the 23-level ESVO stack (for brick-local
+    subdivision), while System/Galaxy — pure scale/index hops, no brick subdivision — use close to the
+    full per-instance budget. Total re-derived level count across all 5 tiers: **76.324** (exactly
+    `log2(9.46e22/1)` to machine precision — confirmed by the Opus validator's own from-scratch
+    re-derivation; the code's own arithmetic hits this exactly, correcting an earlier hand-rounded
+    "76.08" figure that appeared in this section before validation). Bottom (T2) leaf and top (Galaxy)
+    span both bracket the design doc's cited figures exactly (galaxy span is reconstructed to match
+    9.46×10²² cm by construction of the derivation, not an independent coincidence — see `TierMath.h`'s
+    header comment for the full worked derivation).
+  - **No scope drift**: confirmed via `git diff --stat` before commit — only
+    `libraries/SVO/include/{TierAddress,TierMath}.h`, `libraries/SVO/tests/test_tier_{address,math}.cpp`,
+    and the `CMakeLists.txt` registration touched. No `ChildDescriptor`/`farBit`/`SVORebuild.cpp`/
+    `LaineKarrasOctree`/`ConcatenatedOctrees` file touched, per §0.
+  - **Opus validator: APPROVED (2026-07-07)** — independently re-derived the tier math from scratch
+    (Python, starting from the 1cm leaf): confirmed T0 span lands at exactly 2³⁰ cm = 10,737 km, galaxy
+    span hits 9.46×10²² cm to machine precision, and the total is 76.324 = `log2(9.46e22/1)` exactly.
+    Judged both self-flagged concerns reasonable and internally consistent: (1) the T0/T1/T2 "12,700 km"
+    vs. re-derived "10,737 km" discrepancy is genuinely because the source doc cites Earth's REAL
+    diameter (which itself rounds `log2(12700km/1cm)≈30.24` to "~30-31 levels" in its own text), not an
+    error in the re-derivation; (2) the 5-tier 10/10/10/~23/~23-level split is "a reasonable,
+    internally-consistent reading" of the design doc's genuinely two-framed prose — there is no single
+    unambiguous reading, and this one makes both framings cohere without straining. Rebuilt and re-ran
+    both binaries fresh (forced recompile of all 4 sources): `test_tier_address` 16/16, `test_tier_math`
+    9/9, pure CPU — confirmed the test bodies are genuine proofs (divergent-at-root, sibling,
+    partial-overlap, prefix-symmetric, capacity-clamp cases), not trivial assertions. Confirmed scope
+    discipline directly (6 files total, out-of-scope symbols appear only in comments). One non-blocking
+    nit found and fixed above (the stale hand-rounded "76.08" total, corrected to the code's actual
+    76.324).
+    validation pass per the pipeline).
+
+- **Milestone M2 (Tasks 3-4): DONE** · worktree `feat/tiered-esvo-inc1`, built directly on M1's
+  `709bb639` · gates: `test_tier_direction` 5/5, `test_tier_magnitude` 10/10, both green, pure CPU
+  (no Vulkan/GPU dependency exercised by either binary) · 2026-07-07.
+  - **Direction-composition input shape (`TierDirection.h`, `ComposeLocalDirection`)**: `TierAddress`
+    only stores WHICH hop was taken at each tier, not a per-hop local-frame position — so the design
+    doc's §3.2 `TierRef` shape (`childOriginLocal[3]` + `childScale`, "a single scale+offset [per hop],
+    never a flattened world matrix") became this milestone's per-hop *input* type, `TierHopFrame`
+    (`localPos` in the hop's own `[1,2)` frame + `scaleCm`, the real-world size of one unit of that
+    frame). `ComposeLocalDirection(observer, observerTail, object, objectTail)` reuses
+    `TierAddress::SharedPrefixLength` directly (not reimplemented), then sums each address's divergent
+    tail (length `depth - sharedPrefixLen`) into the shared-ancestor's local units — each hop
+    contributes a `(localPos - 1.5) * scaleCm` signed offset, summed (not multiplied through), so no
+    hop's rounding is amplified by a later hop's scale. Output is a `ComposedDirection{direction,
+    distanceCm, valid}` — distance is returned alongside the normalized direction (not recomputed
+    later) since `normalize()` would otherwise discard the length Task 4 needs. Deliberately NOT wired
+    to a real `TierRefTable` (doesn't exist yet, out of scope) — callers construct `TierHopFrame` arrays
+    as synthetic fixtures this milestone; the shape is compatible with a real `TierRefTable`-backed
+    caller later without a signature change.
+  - **Magnitude formula (`TierMagnitude.h`, `ApparentMagnitude`)**:
+    `intrinsicBrightness / (1 + (distanceCm / referenceDistanceCm)^2)` — a standard inverse-square-style
+    falloff, deliberately NOT real astrophysical (Pogson/log-scale) magnitude units, per the plan's own
+    "simplicity/plausibility, not real-world radiometric accuracy, is the bar." The `+1` avoids a
+    divide-by-zero singularity at `distanceCm == 0` (returns the finite `intrinsicBrightness` there,
+    not `+inf`) while still behaving like a clean inverse-square law past a few multiples of
+    `referenceDistanceCm` (a single tunable constant, `kDefaultReferenceDistanceCm = 1e9 cm`, chosen at
+    T0-planet-span order of magnitude as a plausible "starts looking dim" reference for the driving use
+    case — not physically derived).
+  - **Light-delay/staleness term — confirmed no existing VIXEN time-simulation/light-speed system**:
+    searched via codegraph ("simulation time", "light speed", "time delay", "staleness", "clock",
+    "TimeManager") before building anything — the only "time" concepts in VIXEN are frame-cadence
+    clocks (`EngineTime`, `RenderGraph::Timer`, `GPUTimestampQuery`, `DeviceBudgetManager`'s per-frame
+    deltas), none of them a simulation-time or light-propagation-delay axis. Per the plan's explicit
+    warning against inventing one this increment, built `LightDelayStaleness`/
+    `ApparentMagnitudeWithStaleness` as a **documented no-op**: a real, always-present parameter
+    (`delaySeconds`, defaults to `0.0`/disabled) that is accepted, exposed via `IsEnabled()`, and echoed
+    back verbatim on the result (`appliedDelaySeconds`) — but never alters the computed `magnitude`,
+    whether zero or nonzero, because there is no "current sim time" in the engine yet to subtract a
+    computed light-travel delay from. Kept in the function signature (not a bare double, not omitted
+    entirely) so a future increment that does add a time-simulation axis can wire real behavior into the
+    body without an ABI/call-site change at every existing caller.
+  - **No scope drift**: confirmed via `git diff --stat`/`git status` before commit — only
+    `libraries/SVO/include/{TierDirection,TierMagnitude}.h`,
+    `libraries/SVO/tests/test_tier_{direction,magnitude}.cpp`, and the `CMakeLists.txt` registration
+    touched (42 insertion lines, no deletions). No `ChildDescriptor`/`farBit`/`TierRef`/
+    `TierRefTable`/`SVORebuild.cpp`/`LaineKarrasOctree`/`ConcatenatedOctrees`/render-graph file touched,
+    per §0. No new time-simulation system built, per Task 4's explicit guard.
+  - **Test coverage highlights**: `test_tier_direction` proves the sibling case (one divergent hop
+    each), the identical-address zero-distance/invalid case, root-level divergence (3-4 hop tails,
+    mixed System/T0/T1 scales), a dedicated **galaxy-tier-divergence-vs-T2-bedrock-tier** case (a
+    ~10^19x scale ratio between the two tails' dominant terms, using `TierMath.h`'s own re-derived
+    tier-scale table rather than hand-picked numbers) confirming the composed direction stays a clean
+    finite unit vector and the composed distance lands within `1e-6` relative tolerance of the
+    galaxy-tier-dominant term — the concrete proof of "no accumulated world-space error" the plan asked
+    for — and an oversized-tail clamp case. `test_tier_magnitude` proves zero-distance ==
+    intrinsic-brightness, strict monotonic falloff across 5 widely-spaced distances, the
+    half-brightness-at-reference-distance identity, near-zero at extreme distance, negative-distance
+    clamping, zero-intrinsic-brightness staying zero, and three staleness cases (disabled-is-identical,
+    nonzero-delay-still-inert-on-magnitude-but-echoed, and monotonic falloff still holding when wrapped
+    in the staleness call).
+  - **Opus validator: APPROVED (2026-07-07)** — hand-traced the composition math from scratch (Python):
+    sibling case reproduces an exact `0.5·leaf` distance and `+X` direction; the galaxy-tier-divergence
+    case reproduces `0.6·galaxyScaleCm` at 0.0 relative error with a clean unit direction despite a
+    ~9.24×10¹⁹ scale ratio between the two tails' dominant terms (galaxy span 9.46e22 cm vs. T2 span
+    1024 cm, both cross-checked against M1's own validated tier table) — confirming this is genuinely a
+    double-precision sum of bounded local offsets, never an accumulated world transform. Verified the
+    magnitude formula's four boundary behaviors directly. **Independently confirmed the light-delay
+    stub is genuinely inert** (the single most important check for this milestone) via the validator's
+    own grep AND `codegraph_explore` — zero hits for any simulation-time/light-speed/propagation-delay
+    system in VIXEN, confirming the implementer's claim rather than trusting it; read
+    `ApparentMagnitudeWithStaleness` directly and confirmed `staleness` is never passed into the
+    magnitude computation for any delay value — only the echoed `appliedDelaySeconds` field changes.
+    Forced a fresh rebuild (all 4 sources touched) and re-ran both binaries directly: `test_tier_direction`
+    5/5, `test_tier_magnitude` 10/10. Confirmed scope discipline directly (6 files, zero forbidden
+    symbols present in any code file — `TierRef` appears only in header comments as a design-shape
+    reference, never as implemented code). No issues found.
+
+- **Milestone M3 (Tasks 5-7): DONE** · worktree `feat/tiered-esvo-inc1`, built on M2's `9745f987` ·
+  gate: shader compiles + live `VIXEN.exe` run (Mesa-Dozen real-GPU Vulkan, `vixen-wsl` preset) shows
+  synthetic sky points at the correct screen-space direction for a known observer/object pair, existing
+  voxel/UI render unaffected · 2026-07-07. **This is the ONLY GPU-touching milestone in the whole
+  increment, and completes the whole Tiered ESVO Inc1 increment (M1+M2+M3 all done).**
+
+  - **`SkyProjectionNode` shape — two roles in one node**: a DATA role (Task 5: builds the synthetic
+    fixture via M1/M2's math, uploads a small host-visible SSBO once at Compile, no per-frame
+    re-upload — the fixture never changes after Compile, so a ring buffer would only guard a race that
+    cannot happen here) and a DRAW role (Tasks 6-7: owns its own graphics pipeline built with raw
+    Vulkan calls — not the `ShaderLibraryNode`/`DescriptorResourceGathererNode`/`DescriptorSetNode`
+    reflection chain, unnecessary for a single-SSBO-binding pipeline — mirroring
+    `VixenRmlRenderInterface`'s own hand-rolled pipeline construction). `libraries/RenderGraph/include/
+    Data/Nodes/SkyProjectionNodeConfig.h`, `libraries/RenderGraph/include/Nodes/SkyProjectionNode.h`,
+    `libraries/RenderGraph/src/Nodes/SkyProjectionNode.cpp`.
+  - **Config slot shape — grew from a naive 2-in/2-out draft to 13-in/3-out** after correctly
+    identifying that this node sits BETWEEN the voxel compute dispatch and the UI/HUD composite pass
+    (compute → sky-projection → UI), so its slot shape must mirror `ComputeDispatchNodeConfig`'s
+    "middle pass" shape (reads `IN_FLIGHT_FENCE`/semaphore-array inputs but never uses them as its own
+    submit fence — the fence stays owned by whichever pass is LAST, which stays `UIRenderNode`), NOT
+    `UIRenderNodeConfig`'s "last pass, owns the frame fence + present semaphore" shape. Final inputs:
+    `VULKAN_DEVICE_IN`, `COMMAND_POOL`, `SWAPCHAIN_INFO` (sync-tagged `ColorAttachmentWriteGeneral`,
+    same `AccessKind` `UIRenderNode` declares, so the scheduler bakes a no-layout-transition timeline
+    edge), `CAMERA_DATA` (one `const CameraData&` slot rather than per-field
+    `PushConstantGathererNode` wiring — simpler for 5 scalar/vector fields feeding one small graphics
+    pass), `RENDER_PASS`, `FRAMEBUFFERS`, `IMAGE_INDEX`, `CURRENT_FRAME_INDEX`, `IN_FLIGHT_FENCE`,
+    `IMAGE_AVAILABLE_SEMAPHORES_ARRAY` (optional, standalone-only), `TIMELINE_SEMAPHORE_IN`/
+    `TIMELINE_FRAME_BASE_IN` (optional), `COMPOSITE_WAIT_SEMAPHORE` (optional, topology-only — see
+    below). Outputs: `SKY_POINTS_BUFFER`, `SKY_POINT_COUNT` (`uint32_t`, not `int32_t` —
+    consumed directly by this node's own `vkCmdDraw`, never crosses a `PushConstantGathererNode`
+    reflection boundary the way `BodyOctreeSceneNodeConfig::INSTANCE_COUNT` must), and
+    `RENDER_COMPLETE_SEMAPHORE` (topology-only passthrough — see below).
+  - **std430 SSBO layout gotcha (caught before running, by hand-deriving the layout, not assumed)**:
+    a `vec3` STRUCT MEMBER in GLSL std430 has base alignment 16 but occupies only 12 bytes — the next
+    scalar member packs tightly at offset 12, not 16 (padding to 16 only happens once, at the very end
+    of the struct). My first draft of the C++ `SkyPointGpu` mirror put an explicit pad float at offset
+    12 (assuming vec3-then-scalar always pads to 16, the std140 rule, not std430's) — caught this by
+    manually re-deriving the GLSL struct's byte offsets before writing the C++ side, not after. Final
+    matching layout (both C++ `SkyPointGpu` and GLSL `SkyPoint`, `static_assert(offsetof(...))`
+    enforced on the C++ side): `direction[0..11]`, `magnitude[12..15]`, `appliedDelaySeconds[16..19]`,
+    12 bytes trailing pad → 32 B total (a clean std430 array stride multiple of 16).
+  - **Direction → screen position**: confirmed VIXEN has no skybox/background-render mechanism and no
+    populated projection matrix anywhere in the ray-march camera path (`CameraData::invProjection`/
+    `invView` are declared but never written — dead fields). Matched `shaders/RayGeneration.glsl`'s own
+    `getRayDir(uv)` convention exactly instead of inventing a new one: that function builds
+    `rayDir = normalize(cameraDir + cameraRight*ndc.x*tanHalfFov*aspect + cameraUp*ndc.y*tanHalfFov)`.
+    `shaders/SkyProjection.vert` inverts this for an infinitely-distant point (skybox never
+    parallaxes with camera translation — projects through camera ROTATION only, via dot products,
+    never `cameraPos`): `x=dot(d,cameraRight)`, `y=dot(d,cameraUp)`, `z=dot(d,cameraDir)`; `z<=0`
+    degenerates the primitive (behind camera); else `ndc.x=(x/z)/(tanHalfFov*aspect)`,
+    `ndc.y=(y/z)/tanHalfFov`, fed directly into `gl_Position` (no projection matrix at all, consistent
+    with the engine's own convention). `gl_PointSize` scales with magnitude (clamped linear map,
+    2-18px); `SkyProjection.frag` shapes a soft circular falloff via `gl_PointCoord` distance +
+    `smoothstep` rather than a hard square. Point-list topology, no vertex buffer (`gl_VertexIndex`
+    indexes the SSBO), straight (non-premultiplied) alpha blend so the falloff composites correctly.
+  - **Render-graph wiring**: new `sky_projection_render_pass` (`RenderPassNode`,
+    `PARAM_COLOR_LOAD_OP=Load`, `PARAM_INITIAL_LAYOUT=General` — compute leaves GENERAL,
+    `PARAM_FINAL_LAYOUT=General` — hands off to the UI composite pass's own `PARAM_INITIAL_LAYOUT=
+    General`, unchanged) + `sky_projection_framebuffer` (`FramebufferNode`) + `sky_projection`
+    (`SkyProjectionNode`), inserted between the existing compute dispatch and `ui_composite_render_pass`/
+    `ui_composite_framebuffer`/`ui_composite_render` triple in `BuildRenderGraph.cpp`. Order: voxel
+    compute → sky-projection → UI/HUD composite (HUD draws last, over everything including sky points).
+    Wired `VULKAN_DEVICE_IN`/`COMMAND_POOL` the same way `BodyOctreeSceneNode` is (mirrored connection
+    block), `CAMERA_DATA` from `cameraNode`'s existing `CAMERA_DATA` output (no new
+    `PushConstantGathererNode` instance needed).
+  - **Live-gate-caught sync bugs (the actual point of a live gate over static review) — TWO found and
+    fixed via an actual `VIXEN.exe` run with the Khronos validation layer explicitly enabled**
+    (`VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation`, `VK_LAYER_PATH=.../explicit_layer.d` — the FIRST
+    run used only `VK_ICD_FILENAMES` and validation was silently NOT active, giving false confidence;
+    re-running with the layer explicitly wired surfaced both bugs immediately):
+    1. **Missing timeline SIGNAL** (`VUID-vkQueuePresentKHR-pWaitSemaphores-03268` +
+       `VUID-VkPresentInfoKHR-pImageIndices-01430`, image stuck in `GENERAL` at present time): the
+       first draft's `ExecuteImpl` only read `grp->waitEdges` (mirroring `UIRenderNode`, which is
+       LAST in the chain and has no timeline consumer) but never signalled `grp->signalEdges` — since
+       `SkyProjectionNode` is a genuine middle producer AND consumer, the downstream UI composite
+       pass's baked `waitEdge` on this node's completion value never resolved (nothing ever signalled
+       it), hanging/erroring at present. Fixed by mirroring `ComputeDispatchNode`'s exact
+       `signalEdges` loop (dedup via `std::set<uint64_t>`, since a producer's signal edges share one
+       `timelineOffset` == its own `groupId`).
+    2. **Double-signalled binary semaphore** (`VUID-vkQueueSubmit2-semaphore-03868`): the first fix
+       pass still had this node owning + signalling its own per-image `compositeSemaphores_` array
+       (mirroring `UIRenderNode`'s "own present-wait semaphore" pattern) — but per-image binary
+       semaphores are one-signal/one-wait, and NOTHING ever waits this one (the downstream UI
+       composite pass's `COMPOSITE_WAIT_SEMAPHORE` input slot is documented — and confirmed via a
+       dedicated investigation of `UIRenderNode.cpp` — as a vestigial slot never actually read in
+       `ExecuteImpl` post-P5b-M3, its only purpose being the topology edge). Signalling an
+       unwaited binary semaphore every frame double-signals it on frame 2. Fixed by removing
+       `compositeSemaphores_` entirely: the node's `RENDER_COMPLETE_SEMAPHORE` output is now a plain
+       `VK_NULL_HANDLE` passthrough (honest about being topology-only, not a placeholder standing in
+       for a real semaphore) and `ExecuteImpl`'s `vkQueueSubmit2` carries zero binary signals — only
+       the timeline signals/waits order this node relative to its neighbours.
+    Both fixes confirmed via a THIRD validation-enabled run: zero `VUID-vkQueueSubmit2`/
+    `VUID-vkQueuePresentKHR`/`VUID-VkPresentInfoKHR` errors across 14,760+ rendered frames (~2 minutes
+    continuous run). The only remaining validation message (`VUID-vkCmdDispatch-None-08114`, on
+    `InstanceIterDebugBuffer` binding 14) is PRE-EXISTING and unrelated — that binding is declared in
+    `BodyInstanceRayMarch.comp` (Inc1 M4b) but was never wired to a descriptor resource in
+    `BuildRenderGraph.cpp` in any prior increment; confirmed by grep that no `descriptorGatherer, 14`
+    connection exists anywhere in the file, so this predates and is untouched by this milestone.
+  - **Live gate — what was run and what was observed**: built via `cmake --preset vixen-wsl` +
+    `cmake --build build/wsl --target VIXEN --parallel 12` (WSL, not Windows-side — no Windows dev
+    shell was available in this worktree session; `vixen-wsl` uses Mesa-Dozen real-GPU Vulkan-over-
+    D3D12, not lavapipe, per this project's own preset description). Hand-computed the fixture's
+    expected direction/distance/NDC values in Python BEFORE running (observer `TierAddress{2,5,0}` at
+    a T0-planet-tier leaf; 3 candidates sharing the observer's prefix except the last hop, each with a
+    single divergent `TierHopFrame` at `t0Leaf` scale): "centered" → direction `(0,0,-1)`, distanceCm
+    `1,048,576`, NDC `(0,0)` (dead center, since the default camera preset looks down `-Z`);
+    "off-to-one-side" → direction `(0.5145,0,-0.8575)`, distanceCm `1,222,839`, NDC `(0.815,0)`
+    (visibly off-center, still in-frame); "borderline-out-of-fov" → direction `(0.7926,0,-0.6097)`,
+    distanceCm `1,719,793`, NDC `(1.765,0)` (outside `[-1,1]`, off-screen). Ran `VIXEN.exe` (enabled
+    this node's logger via `SetEnabled(true)`/`SetTerminalOutput(true)`, matching the codebase's own
+    "opt in the live-gate signal" convention for `raySizeCoefNode`/`voxelSelectionProviderNode`) and
+    the live `NODE_LOG_INFO` output matched the hand computation to 6 decimal places on all three
+    points (e.g. centered: `direction=(0.000000,0.000000,-1.000000) distanceCm=1048576.000000`;
+    off-to-one-side: `direction=(0.514496,0.000000,-0.857493) distanceCm=1222839.191368`;
+    borderline: `direction=(0.792624,0.000000,-0.609711) distanceCm=1719792.470737`). No screenshot
+    mechanism exists anywhere in the app (confirmed via grep — only `VixenBenchmark`'s CLI has one),
+    so per the plan's own explicit allowance this log-vs-hand-computation comparison is the accepted
+    live-gate evidence for this milestone, not a pixel-diff.
+  - **No-regression check**: three separate runs (pre-sync-fix, post-sync-fix, post-sync-fix +
+    validation layer) all showed the standard 3-sphere voxel scene + HUD rendering continuously at
+    ~100-145 FPS with clean startup/shutdown; the standalone default-body-scene fallback (unchanged)
+    still seeds 3 Procedural SDF bodies exactly as before this milestone's changes.
+  - **No scope drift**: confirmed via `git status --short` before commit — only 3 new files
+    (`SkyProjectionNodeConfig.h`, `SkyProjectionNode.h`, `SkyProjectionNode.cpp`), 2 new shader files
+    (`SkyProjection.vert`/`.frag`), and 3 modified files (`VulkanGraphApplication.h` — one new
+    `NodeHandle` member; `BuildRenderGraph.cpp` — the new node creation/parameter/connection blocks;
+    `libraries/RenderGraph/CMakeLists.txt` — one new source-file registration line). No
+    `ChildDescriptor`/`farBit`/`SVORebuild.cpp`/`LaineKarrasOctree`/`ConcatenatedOctrees`/
+    `TierRef`/`TierRefTable` file or symbol touched, per §0.
+  - **Concerns / things a future reviewer should double-check**: (1) this run used WSL/Mesa-Dozen, not
+    a genuine Windows-side build — the plan's own "Notes for implementers" section flags Windows-side
+    as the standing convention for GPU/render work; a Windows-side re-run would be a reasonable
+    follow-up if a validator wants an independent confirmation on a different driver stack.
+    (2) the pre-existing `VUID-vkCmdDispatch-None-08114` (binding 14, unrelated to this milestone) was
+    NOT fixed — it predates this work and fixing it is out of this milestone's scope, but it remains a
+    live gap a future increment touching `BodyInstanceRayMarch.comp`'s debug-buffer wiring should close.
+    (3) `SkyProjectionNode`'s DRAW-role pipeline is intentionally NOT built via the
+    `ShaderLibraryNode`/`DescriptorResourceGathererNode`/`DescriptorSetNode`/`GraphicsPipelineNode`
+    reflection chain (a raw hand-built pipeline instead, mirroring `VixenRmlRenderInterface`) — this is
+    a deliberate simplicity trade-off for a single-SSBO-binding pipeline, documented in the node's own
+    header, not an oversight.
+  - **Opus validator: APPROVED (2026-07-07)** — independently rebuilt (`cmake --preset vixen-wsl`,
+    confirmed the binary was re-linked with `SkyProjectionNode.o` by mtime) and re-ran the live gate
+    with Khronos validation EXPLICITLY enabled via env-injection (`VK_INSTANCE_LAYERS=
+    VK_LAYER_KHRONOS_validation` — necessary since the Release binary compile-gates the app-side layer
+    off, matching the exact mistake the implementer's own first attempt made and caught): 3000 frames
+    on Mesa-Dozen real-GPU, clean startup/shutdown at 56-70 FPS, and the ONLY VUID observed across the
+    entire run was the pre-existing binding-14 `vkCmdDispatch-None-08114` — ZERO
+    `vkQueueSubmit2`/`vkQueuePresentKHR`/`VkPresentInfoKHR`/`vkCmdDraw` VUIDs, confirming both
+    self-caught sync fixes genuinely hold at runtime, not just in the report. Verified both fixes
+    directly against their reference nodes: bug 1's `signalEdges` loop is a byte-for-byte match of
+    `ComputeDispatchNode`'s own implementation (same `std::set<uint64_t>` dedup, same
+    `timelineOffset+frameBase` pattern); bug 2's premise was independently confirmed by reading
+    `UIRenderNode.cpp` directly — `COMPOSITE_WAIT_SEMAPHORE` genuinely has zero references in its
+    `ExecuteImpl`, confirming it truly is vestigial, and the `VK_NULL_HANDLE` passthrough fix breaks
+    nothing (the framework already tolerates null-handle outputs elsewhere, e.g.
+    `AccelerationStructureNode::TLAS_HANDLE`). Independently re-derived the fixture's direction/
+    distance/magnitude math from scratch in Python and confirmed an exact 6-decimal-place match to the
+    live log on all three fixture points. Confirmed the render-graph wiring, Load-op/General→General
+    render-pass parameters, the hand-rolled-pipeline precedent (`VixenRmlRenderInterface` genuinely
+    does the same thing), and scope discipline (forbidden symbols appear only in negating comments,
+    never as code) all by reading the actual code/diff, not the report. Judged the WSL/Mesa-Dozen
+    real-GPU evidence (Dozen, not lavapipe — the project's own preset docs flag Dozen as the
+    canonical, not a fallback, path) sufficient for this milestone's live-run-gate requirement; a
+    Windows-side re-run is optional follow-up, not a blocker. Two trivial cosmetic doc nits found and
+    fixed: the Milestone Map's blank commit-hash placeholder (now `4ae045a4`), and a shader comment
+    referencing a nonexistent `SkyProjectionNode::CameraBasis` symbol (corrected to the actual
+    `PushConstantLayout` struct name in `SkyProjectionNode.cpp`).
 
 ---
 
@@ -122,33 +440,42 @@ This mirrors Sparse-Mip-ESVO-LOD Inc1's own M1 (a foundational CPU-only type bef
 
 ### Task 1 — `TierAddress` type + shared-prefix comparison
 
-- [ ] New header, e.g. `libraries/SVO/include/TierAddress.h` (pure CPU, no GPU/node dependency,
+- [x] New header, e.g. `libraries/SVO/include/TierAddress.h` (pure CPU, no GPU/node dependency,
   matching the design doc §4's own framing: "Not GPU-resident — a small CPU-side identity, cheap to
   store/compare/serialize"). Fields: `std::vector<uint32_t> hops` per §4's sketch — confirm at
   implementation time whether a small fixed-capacity array (4-6 entries, per the design doc's own
   "4-5 entries typical" estimate) is a better fit than a `std::vector` for a type that gets compared
   and copied frequently; either is acceptable, document the choice.
-- [ ] Shared-prefix helper: given two `TierAddress` values, return the length of their common prefix
+  → Built as a fixed-capacity `std::array<uint32_t, 8>` + depth counter — see Progress Log for the
+  reasoning.
+- [x] Shared-prefix helper: given two `TierAddress` values, return the length of their common prefix
   (0 if they diverge at the root) — this is the "shared-prefix = shared ancestor" primitive §4
   describes, and every direction/distance computation in M2 depends on it.
-- [ ] Comparison/equality and a stable serialization form (even if only used by tests this increment —
+  → `TierAddress::SharedPrefixLength(a, b)`.
+- [x] Comparison/equality and a stable serialization form (even if only used by tests this increment —
   §4 notes this is "the one shared contract with undertow," so keep the type easy to re-derive a wire
   format from later, but do not attempt to design that wire format now — §0 explicitly defers it).
-- [ ] Unit tests: construct addresses at varying depths, confirm shared-prefix length is correct for
+  → `operator==`/`operator!=` + `ToString()` (depth-prefixed dot-separated string, explicitly NOT the
+  final wire format).
+- [x] Unit tests: construct addresses at varying depths, confirm shared-prefix length is correct for
   identical/partially-overlapping/fully-divergent pairs, confirm a self-comparison returns full depth.
+  → `test_tier_address.cpp`, 16/16 green.
 
 ### Task 2 — Tier math generalized upward (system, galaxy)
 
-- [ ] Re-derive (do not re-invent) the tier count/sizing math already established in
+- [x] Re-derive (do not re-invent) the tier count/sizing math already established in
   [[Sparse-Mip-ESVO-LOD-Direction-2026-07]] (T0 planet / T1 region / T2 bedrock, ~10 effective levels
   each) and this design doc's §1 restatement (~76 levels voxel-cm to galaxy-diameter, 23 levels per
   ESVO instance → ~4-5 tiers). Produce a small, testable CPU function/table mapping tier index → linear
   scale range (or the per-tier scale factor needed to convert a hop count into a real-world distance
   estimate for M2's magnitude falloff) — this is bookkeeping/derivation, not new design; verify the
   numbers against the source doc's own math rather than re-deriving from scratch.
-- [ ] Unit test: confirm the tier-to-scale mapping produces sane, monotonically-increasing ranges
+  → `libraries/SVO/include/TierMath.h`, `BuildTierScaleTable()` — see Progress Log for the full
+  re-derivation and how the "~10 levels/tier" vs "23 levels/instance" framings reconcile.
+- [x] Unit test: confirm the tier-to-scale mapping produces sane, monotonically-increasing ranges
   across all tiers, and that the top tier (galaxy) and bottom tier (T2 bedrock) bracket the design
   doc's own cited figures (~9.46×10²² cm galaxy diameter, ~1cm voxel).
+  → `test_tier_math.cpp`, 9/9 green.
 
 **M1 gate:** all new unit tests green, pure CPU, no GPU/render dependency.
 
@@ -166,34 +493,44 @@ concern.
 
 ### Task 3 — Direction from shared-prefix composition
 
-- [ ] Given an observer `TierAddress` and a candidate object's `TierAddress`, compute a normalized
+- [x] Given an observer `TierAddress` and a candidate object's `TierAddress`, compute a normalized
   direction vector composed ONLY through their shared-prefix ancestor (§4, §7 step 1: "compute
   direction `normalize(objectLocal − observerLocal)` composed only through the shared-prefix ancestor
   — never a flattened world coordinate"). Reuse M1's shared-prefix helper; the composition itself is
   per-hop local-frame math (§3.3's discipline — each hop is a bounded [1,2)-frame scale+offset, so
   composing K divergent hops is K well-conditioned steps, not an accumulated world transform).
-- [ ] Unit test: two addresses sharing a full prefix except the last hop (siblings) should compose in
+  → `libraries/SVO/include/TierDirection.h`, `ComposeLocalDirection` + `TierHopFrame` input type — see
+  Progress Log for the input-shape rationale (compatible with `TierRef`'s eventual shape).
+- [x] Unit test: two addresses sharing a full prefix except the last hop (siblings) should compose in
   exactly one hop each; addresses diverging near the root should compose through more hops but remain
   numerically well-behaved (no precision blowup) — construct a test with genuinely large tier-scale
   differences (e.g. a galaxy-tier divergence) to prove the "no accumulated world-space error" claim,
   not just a same-tier sanity check.
+  → `test_tier_direction.cpp`, 5/5 green (includes a dedicated galaxy-tier-vs-T2-bedrock divergence
+  case).
 
 ### Task 4 — Apparent magnitude + optional light-delay staleness
 
-- [ ] Brightness/magnitude falloff as a function of the composed distance from Task 3 (a standard
+- [x] Brightness/magnitude falloff as a function of the composed distance from Task 3 (a standard
   inverse-square-style falloff is sufficient for v1 — the design doc explicitly does not mandate
   precise astrophysical magnitude units, just "direction + apparent magnitude"). Document the exact
   formula chosen and why (simplicity/plausibility, not real-world radiometric accuracy, is the bar).
-- [ ] Optional light-delay/staleness term (§7 step 1: "a physically-motivated detection floor, not
+  → `libraries/SVO/include/TierMagnitude.h`, `ApparentMagnitude` — `intrinsic / (1 + (d/ref)^2)`, see
+  Progress Log.
+- [x] Optional light-delay/staleness term (§7 step 1: "a physically-motivated detection floor, not
   required for v1") — implement as a genuinely optional parameter (e.g. defaults to off/zero delay);
   do not let this become a blocker if the underlying light-speed/time-model plumbing doesn't exist yet
   in VIXEN — confirm at implementation time whether such a time model exists at all, and if not,
   stub this term as a documented no-op rather than inventing a new time-simulation system this
   increment.
-- [ ] Unit tests: magnitude falls off monotonically with composed distance; confirm the light-delay
+  → Confirmed via codegraph search: no time-simulation/light-speed system exists in VIXEN today (only
+  frame-cadence clocks). Built `LightDelayStaleness`/`ApparentMagnitudeWithStaleness` as a documented
+  no-op — see Progress Log.
+- [x] Unit tests: magnitude falls off monotonically with composed distance; confirm the light-delay
   term (if built) is inert when disabled and produces a sane output when a nonzero delay is supplied.
+  → `test_tier_magnitude.cpp`, 10/10 green.
 
-**M2 gate:** all new unit tests green, pure CPU, no GPU/render dependency.
+**M2 gate:** all new unit tests green, pure CPU, no GPU/render dependency. **MET.**
 
 ---
 
@@ -207,39 +544,54 @@ render-graph mistake can't be confused with a math mistake from M1/M2 during val
 
 ### Task 5 — `SkyProjectionNode` config + CPU-side data prep
 
-- [ ] New `RenderGraph` node type (config struct via the project's standard
+- [x] New `RenderGraph` node type (config struct via the project's standard
   `CONSTEXPR_NODE_CONFIG(...)`/`INPUT_SLOT`/`OUTPUT_SLOT` macro pattern — see
   `RaySizeCoefNodeConfig.h`/`BodyOctreeSceneNodeConfig.h` for the two existing shapes to follow).
   Takes a small CPU-side list of (direction, magnitude, optional-staleness) tuples — produced by M2's
   functions from a set of `TierAddress` pairs — and uploads them into a small SSBO, following the
   same "small CPU-side per-instance dataset → SSBO" idiom `InstanceBufferNode`/
   `BodyOctreeSceneNode`'s `INSTANCE_BUFFER` output slot already establish.
-- [ ] `VIXEN_REGISTER_NODE(...)` self-registration, matching every other node type in this codebase
+  → `libraries/RenderGraph/include/Data/Nodes/SkyProjectionNodeConfig.h` — see Progress Log for the
+  final 13-input/3-output shape (grew from an initial 2-in/2-out DATA-only draft once the DRAW role's
+  render-graph sync requirements were correctly identified).
+- [x] `VIXEN_REGISTER_NODE(...)` self-registration, matching every other node type in this codebase
   (see `RaySizeCoefNode.cpp`'s trailing registration line for the minimal example).
-- [ ] For this increment, the "candidate objects" feeding the node are a small synthetic/hardcoded
+  → `libraries/RenderGraph/src/Nodes/SkyProjectionNode.cpp`, trailing line.
+- [x] For this increment, the "candidate objects" feeding the node are a small synthetic/hardcoded
   test fixture (a handful of `TierAddress` pairs placed at plausible tier depths/angular offsets) —
   **not** a real undertow-fed data source (§0, out of scope). Document this explicitly in the node's
   own header comment so a future increment wiring real data doesn't mistake the synthetic fixture for
   the intended production data path.
+  → `SkyProjectionNode::BuildSyntheticFixture()`, explicitly documented as synthetic-only in
+  `SkyProjectionNode.h`'s file header.
 
 ### Task 6 — Point/disk-sprite composite shader
 
-- [ ] New vertex+fragment shader pair (GLSL, matching `libraries/RenderGraph/src/Ui/shaders/ui.vert`/
+- [x] New vertex+fragment shader pair (GLSL, matching `libraries/RenderGraph/src/Ui/shaders/ui.vert`/
   `ui.frag`'s convention — a plain vertex+fragment pair, NOT a `.comp` compute dispatch like
   `BodyInstanceRayMarch.comp`; this consumer has no ray-march/traversal at all). Reads the SSBO from
   Task 5, draws a small point or disk sprite per object at its screen-projected direction, with
   brightness/size driven by the magnitude value.
-- [ ] Confirm at implementation time how "direction → screen position" should actually work for a
+  → `shaders/SkyProjection.vert` + `shaders/SkyProjection.frag` (top-level `shaders/` dir, matching
+  where `BodyInstanceRayMarch.comp` actually lives — confirmed via `find`, NOT under
+  `libraries/RenderGraph/src/Ui/shaders/`). Point-list topology (`VK_PRIMITIVE_TOPOLOGY_POINT_LIST`,
+  `gl_PointSize` driven by magnitude), no vertex buffer (`gl_VertexIndex` indexes the SSBO directly).
+  Fragment shader shapes a soft circular falloff via `gl_PointCoord` distance + `smoothstep`.
+- [x] Confirm at implementation time how "direction → screen position" should actually work for a
   skybox-style far-object projection (e.g. treat the direction as a point on the observer's view
   sphere, project through the existing camera/view matrices the same way the voxel render's own
   camera does) — this is a real design decision the design doc leaves to implementation ("a small,
   bolt-on node consuming `TierAddress` data... not a new traversal mode"), not something to guess
   blindly; check how the existing skybox/background rendering (if any) currently projects its content,
   and match that convention rather than inventing a new one.
+  → Confirmed VIXEN has no skybox/projection-matrix mechanism at all — matched
+  `shaders/RayGeneration.glsl`'s own `getRayDir()` convention exactly (manual camera-basis dot
+  products + `tan(fov/2)`/aspect fold, no projection matrix — `CameraData::invProjection`/`invView`
+  are dead/unpopulated fields). See Progress Log for the exact inversion + the hand-computed proof.
 
 ### Task 7 — Composite wiring + live gate
 
-- [ ] Wire `SkyProjectionNode` into `BuildRenderGraph.cpp` following the exact
+- [x] Wire `SkyProjectionNode` into `BuildRenderGraph.cpp` following the exact
   `ui_composite_render_pass`/`ui_composite_framebuffer`/`ui_composite_render` structural pattern (a
   new `RenderPassNode` with `PARAM_COLOR_LOAD_OP = AttachmentLoadOp::Load` — NOT `Clear` — stacked
   over the existing voxel-render output, feeding a `FramebufferNode` + this new node instead of
@@ -247,19 +599,29 @@ render-graph mistake can't be confused with a math mistake from M1/M2 during val
   layer belong before or after HUD compositing? — almost certainly before, since HUD should draw over
   everything including sky points, but confirm by checking what's actually visually sensible rather
   than assuming).
-- [ ] Live gate (Windows-side build + `VIXEN.exe` run, per this project's standing live-run-gate
+  → `sky_projection_render_pass`/`sky_projection_framebuffer`/`sky_projection` triple, wired
+  compute → sky-projection → UI (HUD draws last, over sky points). See Progress Log for the
+  render-pass layout chain (General→General→General→PresentSrc) and the FrameSyncScheduler
+  timeline-edge splice (two live-gate-caught sync bugs fixed here).
+- [x] Live gate (Windows-side build + `VIXEN.exe` run, per this project's standing live-run-gate
   convention): place a known observer address and a small number of synthetic candidate addresses at
   known tier/angular offsets, run the app, and confirm the sky points render at the visually-correct
   screen positions/brightness relative to the observer — a static screenshot comparison or an
   in-engine debug-overlay readout of computed direction vs. expected direction is sufficient; a full
   automated pixel-diff test is not required for this increment (document what manual/semi-manual
   verification was actually performed).
-- [ ] No-regression check: confirm the existing voxel render + UI/HUD composite are visually unaffected
+  → Done on WSL (`vixen-wsl` preset, Mesa-Dozen real-GPU Vulkan) since no Windows-side dev shell was
+  available in this worktree session. Log-vs-hand-computation comparison (no screenshot mechanism
+  exists in the app) — exact match to 6 decimal places. See Progress Log for full detail.
+- [x] No-regression check: confirm the existing voxel render + UI/HUD composite are visually unaffected
   by the new Load-op pass being stacked in (no accidental double-clear, no z-fighting/ordering issue
   with the HUD layer).
+  → Confirmed: app renders the standard 3-sphere voxel scene + HUD at ~110-145 FPS across three
+  separate runs (pre-fix, post-fix, post-fix-with-validation), zero crashes, zero VUID errors from
+  the new pass after the two sync fixes.
 
 **M3 gate:** shader compiles; live `VIXEN.exe` run shows synthetic sky points at correct positions;
-existing voxel/UI render unaffected.
+existing voxel/UI render unaffected. **MET.**
 
 ---
 

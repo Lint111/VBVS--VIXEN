@@ -212,6 +212,7 @@ private:
     NodeHandle voxelGridNode_{};                     // dense debug-buffer node (still in graph; no longer the render source)
     NodeHandle bodyOctreeSceneNode_{};               // M-wire: sparse shell octree node (bindings 1/2/3/5/10)
     NodeHandle cameraNode_{};                        // Sparse-Mip ESVO LOD Inc1 M4c: live camera-state lookup for the residency trigger
+    NodeHandle skyProjectionNode_{};                 // Tiered ESVO Inc1 M3: address-derived sky-point composite pass (stored for potential live lookup)
 
     // Sparse-Mip ESVO LOD Inc1 M4c: last camera state the residency trigger was evaluated
     // against — change-detection only (avoids re-sorting/re-requesting every single frame

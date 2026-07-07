@@ -264,6 +264,88 @@ endif()
 gtest_discover_tests(test_frustum_cull)
 
 # ===========================================================================
+# TierAddress Tests  (Tiered ESVO Inc1 M1 Task 1 — pure type/math, no
+# octree/GPU needed: hop-chain construction + shared-prefix comparison)
+# ===========================================================================
+add_executable(test_tier_address test_tier_address.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_tier_address PRIVATE
+        GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_tier_address PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_tier_address PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_tier_address POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_tier_address>
+        COMMENT "Copying TBB DLL for test_tier_address")
+endif()
+gtest_discover_tests(test_tier_address)
+
+# ===========================================================================
+# Tier Math Tests  (Tiered ESVO Inc1 M1 Task 2 — pure math, no octree/GPU
+# needed: tier-index -> linear scale-range table, T0/T1/T2/System/Galaxy)
+# ===========================================================================
+add_executable(test_tier_math test_tier_math.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_tier_math PRIVATE
+        GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_tier_math PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_tier_math PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_tier_math POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_tier_math>
+        COMMENT "Copying TBB DLL for test_tier_math")
+endif()
+gtest_discover_tests(test_tier_math)
+
+# ===========================================================================
+# Tier Direction Tests  (Tiered ESVO Inc1 M2 Task 3 — pure math, no
+# octree/GPU needed: shared-prefix-composed direction/distance between two
+# TierAddress values, via synthetic per-hop TierHopFrame fixtures)
+# ===========================================================================
+add_executable(test_tier_direction test_tier_direction.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_tier_direction PRIVATE
+        GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_tier_direction PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_tier_direction PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_tier_direction POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_tier_direction>
+        COMMENT "Copying TBB DLL for test_tier_direction")
+endif()
+gtest_discover_tests(test_tier_direction)
+
+# ===========================================================================
+# Tier Magnitude Tests  (Tiered ESVO Inc1 M2 Task 4 — pure math, no
+# octree/GPU needed: apparent-magnitude falloff + optional light-delay
+# staleness no-op stub)
+# ===========================================================================
+add_executable(test_tier_magnitude test_tier_magnitude.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_tier_magnitude PRIVATE
+        GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_tier_magnitude PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_tier_magnitude PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_tier_magnitude POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_tier_magnitude>
+        COMMENT "Copying TBB DLL for test_tier_magnitude")
+endif()
+gtest_discover_tests(test_tier_magnitude)
+
+# ===========================================================================
 # Instance Sort Tests  (Sparse-Mip ESVO LOD Inc1 M4b Task 10 part 2, occlusion piece
 # — pure math, no octree/GPU needed: SortInstancesFrontToBack)
 # ===========================================================================
