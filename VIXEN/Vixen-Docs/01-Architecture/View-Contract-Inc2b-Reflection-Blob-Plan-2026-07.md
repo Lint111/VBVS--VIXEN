@@ -1384,4 +1384,5 @@ git commit -m "test(view-contract): test_view_blob_equiv — native==header==dat
 
 ## Progress Log
 
-_(appended by the pipeline as milestones complete)_
+- Milestone 1 (Tasks 1-3, Yeroket codegen): DONE · Yeroket branch `feat/view-contract-inc2b-blob` commits 569be3af..1ba4f2ca · Opus validator APPROVED · 24/24 C# tests green · CLI end-to-end version `0x55D27B8C` identical in header+datafile (single-source guarantee) · SDFNodeGenerator.dll excluded · 2026-07-07
+  - Deviation (sound): tests written in NUnit (csproj is NUnit-only, no xUnit ref), faithful 1:1 translation of the plan's xUnit literals.
