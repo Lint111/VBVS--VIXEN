@@ -17,6 +17,13 @@ namespace Vixen::Vulkan::Resources {
 }
 
 /**
+ * @brief Validate a pipeline-cache blob's header (size, version, vendor/device ID, UUID)
+ * against the given physical device, per the Vulkan spec's VkPipelineCacheHeaderVersionOne
+ * contract. Pure function — no VkDevice needed, only VkPhysicalDeviceProperties (audit V-M8).
+ */
+bool PipelineCacheBlobMatchesDevice(const std::vector<uint8_t>& blob, const VkPhysicalDeviceProperties& props);
+
+/**
  * @brief Pipeline resource wrapper
  *
  * Stores Vulkan pipeline objects and associated metadata.
