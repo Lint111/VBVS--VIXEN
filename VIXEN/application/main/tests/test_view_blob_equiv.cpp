@@ -192,7 +192,7 @@ TEST(ViewBlobEquiv, NativeHeaderAndDatafileHashesAgree) {
         kFixture.factionName, kFixture.factionGrievance, kFixture.factionFocused,
         kFixture.factionKnown, kFixture.factionInLens, /*recentEventAge=*/0 };
     Vixen::App::HudEventIn nativeEvent{ kFixture.eventKind, kFixture.eventTick };
-    // activeLens=2 maps to "Grievance" per HudView's lens-name projection (mirrors test_hud_view.cpp).
+    // activeLens=2 maps to "Logistics" per HudView's lens-name projection (kLensNames[2]; mirrors test_hud_view.cpp).
     nativeView.SetHudView(kFixture.tick, kFixture.bodyCount, /*activeLens=*/2, kFixture.activeLensCount,
                           {&nativeFaction, 1}, {&nativeEvent, 1});
     ASSERT_STREQ(nativeView.DebugLensName(), kFixture.activeLensName);
