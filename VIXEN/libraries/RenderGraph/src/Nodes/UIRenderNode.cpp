@@ -91,6 +91,7 @@ void UIRenderNode::CompileImpl(TypedCompileContext& ctx) {
     device_ = device->device;
     queue_ = device->queue;
     fpQueueSubmit2_ = device->fpQueueSubmit2;  // per-device PFN, refreshed each compile (valid after device-loss recovery)
+    submitMutex_ = &device->SubmitMutex(device->queue);
     extent_ = sc->GetExtent();
 
     composite_ = GetParameterValue<bool>(UIRenderNodeConfig::PARAM_COMPOSITE, false);
@@ -331,7 +332,13 @@ void UIRenderNode::ExecuteImpl(TypedExecuteContext& ctx) {
     si.pCommandBufferInfos      = &cmdInfo;
     si.signalSemaphoreInfoCount = static_cast<uint32_t>(signals.size());
     si.pSignalSemaphoreInfos    = signals.data();
-    fpQueueSubmit2_(queue_, 1, &si, inFlightFence);
+    {
+        // Externally synchronized per Vulkan spec (audit V-M11): the TBB parallel executor can
+        // schedule this alongside another node's submit on the same queue.
+        std::unique_lock<std::mutex> lock;
+        if (submitMutex_) lock = std::unique_lock<std::mutex>(*submitMutex_);
+        fpQueueSubmit2_(queue_, 1, &si, inFlightFence);
+    }
 
     ctx.Out(UIRenderNodeConfig::COMMAND_BUFFERS, cmd);
     ctx.Out(UIRenderNodeConfig::RENDER_COMPLETE_SEMAPHORE, signalSem);
