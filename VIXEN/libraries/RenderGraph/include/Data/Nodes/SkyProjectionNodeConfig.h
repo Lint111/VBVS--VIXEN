@@ -187,10 +187,13 @@ CONSTEXPR_NODE_CONFIG(SkyProjectionNodeConfig,
 
     // The ordering handoff to the downstream UI composite pass (connected to
     // UIRenderNodeConfig::COMPOSITE_WAIT_SEMAPHORE, replacing the compute->UI direct edge —
-    // compute->sky-projection->UI). This is a binary semaphore signal alongside the timeline
-    // signal, kept for the same reason UIRenderNode's own COMPOSITE_WAIT_SEMAPHORE input slot
-    // is kept even though the timeline edge is what actually orders execution: preserving the
-    // topology edge so the scheduler's topological sort places this node before UI.
+    // compute->sky-projection->UI). This is a VK_NULL_HANDLE topology-only passthrough, NOT a
+    // real binary semaphore signal — a live-gate-caught bug found this node's first draft
+    // double-signalled an unwaited binary semaphore every frame (VUID-vkQueueSubmit2-semaphore-
+    // 03868), because UIRenderNode's own COMPOSITE_WAIT_SEMAPHORE input is never actually read in
+    // its ExecuteImpl (confirmed vestigial). The timeline signal/wait edges are what actually
+    // order execution; this slot only preserves the topology edge so the scheduler's topological
+    // sort places this node before UI.
     OUTPUT_SLOT(RENDER_COMPLETE_SEMAPHORE, VkSemaphore, 2,
         SlotNullability::Required,
         SlotMutability::WriteOnly);

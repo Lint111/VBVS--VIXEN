@@ -46,8 +46,9 @@
 //   tiers also carry brick-local subdivision), while the System and
 //   Galaxy tiers above use closer to the full 23-level ESVO budget per
 //   instance (no brick subdivision needed at that scale -- pure
-//   scale/index hops). Total re-derived level count: 10+10+10+23.04+23.04
-//   = 76.08, within rounding of the doc's cited 76.3 (log2(9.46e22/1)).
+//   scale/index hops). Total re-derived level count: 10+10+10+23.162+23.162
+//   = 76.324, exactly matching the doc's cited 76.3 (log2(9.46e22/1)) to
+//   machine precision (confirmed independently by the Opus validator).
 //
 // Scope note: this is bookkeeping/derivation, not new design (Tiered-ESVO-
 // Inc1-Plan-2026-07.md Task 2) -- no GPU/render dependency, no change to

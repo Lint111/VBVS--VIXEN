@@ -1,6 +1,6 @@
 ---
 title: Tiered ESVO — Nested-Tree Addressing, Tier-Crossing Traversal & Observer-Relative Rendering
-status: Design (promoted from direction 2026-07-05) — Inc1 PLANNED 2026-07-07, not started
+status: Design (promoted from direction 2026-07-05) — Inc1 ✅ SHIPPED 2026-07-07 (TierAddress + sky projection)
 date: 2026-07-05
 updated: 2026-07-07
 tags: [architecture, svo, esvo, lod, scale, addressing, skybox, tiered-rendering]
@@ -24,8 +24,13 @@ related:
 > Inc1 (`ae12ba78`) and Inc2 (`2351baff`) are both merged to `main`. **[[Tiered-ESVO-Inc1-Plan-2026-07]]
 > now exists**, scoped to §9's own "nearest actionable slice" — `TierAddress` (§4) + address-level sky
 > projection (§7 step 1) only, deliberately excluding §3/§5's tier-crossing leaf reference and
-> traversal-restart machinery. Not started yet; all code references below were re-verified accurate
-> against current `main` on 2026-07-07 before the plan was written.
+> traversal-restart machinery. **Is now COMPLETE** — all 3 milestones (M1-M3) done, each independently
+> Opus-validated, plus a final whole-branch review confirming genuine cross-milestone integration and a
+> conflict-free merge path against `main` (branch `feat/tiered-esvo-inc1`, 2026-07-07). A
+> `SkyProjectionNode` composites synthetic-fixture sky points (direction+magnitude, derived via M1's
+> `TierAddress`/`TierMath` and M2's shared-prefix composition/magnitude math) over the existing voxel
+> render, live-gate-verified on real GPU with validation layers. All code references below were
+> re-verified accurate against current `main` on 2026-07-07 before the plan was written.
 
 ## 1. Context & Problem
 
@@ -268,9 +273,11 @@ is attempted. **The base epic has shipped** (Inc1 `ae12ba78` + Inc2 `2351baff`, 
 to `main`). The nearest actionable slice, **§7 step 1 alone** (address-level sky projection
 for static content — `TierAddress` + a sky-projection node, not §5's tier-crossing traversal
 restart, since a point-of-light skybox entry doesn't require ray-marching into the referenced
-tree), now has an implementation plan: [[Tiered-ESVO-Inc1-Plan-2026-07]] (written 2026-07-07,
-not started). §3/§5 (the tier-crossing leaf reference and traversal-restart machinery) remain
-unscheduled — that Plan's own §0 explicitly excludes them, matching this section's sequencing.
+tree), now has a **✅ COMPLETE implementation**: [[Tiered-ESVO-Inc1-Plan-2026-07]] (written and
+shipped 2026-07-07, branch `feat/tiered-esvo-inc1`). §3/§5 (the tier-crossing leaf reference and
+traversal-restart machinery) remain unscheduled — that Plan's own §0 explicitly excluded them,
+matching this section's sequencing; they are the natural next increment once nested-tree work is
+actually prioritized.
 
 ## 10. Rejected alternatives
 
