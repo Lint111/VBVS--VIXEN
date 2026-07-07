@@ -32,6 +32,15 @@ public:
     const char* DebugLensName() const { return activeLensName_.c_str(); }
     bool DebugFactionRecentChanged(size_t i) const { return factions_.at(i).recentChanged; }
 
+    // Additional read-only debug accessors (View Contract Inc-2b Task 9: proof-gate hash
+    // equivalence vs the reflection-blob path) — mirror the accessors above, no behavior change.
+    int DebugBodyCount() const { return bodyCount_; }
+    int DebugActiveLensCount() const { return activeLensCount_; }
+    size_t DebugFactionCount() const { return factions_.size(); }
+    const Vixen::Views::HudFaction& DebugFaction(size_t i) const { return factions_.at(i); }
+    size_t DebugEventCount() const { return events_.size(); }
+    const Vixen::Views::HudEvent& DebugEvent(size_t i) const { return events_.at(i); }
+
 private:
     int tick_ = 0;
     int bodyCount_ = 0;
