@@ -332,24 +332,45 @@ message(STATUS "[RenderGraph Tests] Added: test_body_octree_lifetime (real-GPU l
 # target transitively via RenderGraph in RENDERGRAPH_TEST_COMMON_LIBS, exactly like
 # test_body_octree_lifetime above (whose own `if(TARGET SVO)` link is likewise a no-op).
 
-# --- Compile BodyInstanceRayMarch.comp -> SPIR-V with the bundled glslc ---
-# VIXEN_SHADER_SOURCE_DIR is <VIXEN>/shaders; the bundled SDK sits beside it.
-# This is a WSL-only test: it needs the auto-provisioned Linux LunarG SDK's glslc.
-# On environments where Vulkan came from the system (so the SDK cache was never
-# provisioned — e.g. the Windows/MSVC build), the bundled glslc is absent; gate the
-# whole rule on its existence so the rest of the suite still builds. Without the gate,
-# the missing glslc fails the entire ninja build ("system cannot find the path specified").
+# --- Compile BodyInstanceRayMarch.comp -> SPIR-V with an environment-appropriate glslc ---
+# VIXEN_SHADER_SOURCE_DIR is <VIXEN>/shaders; the auto-provisioned SDK sits beside it.
+# These are GPU-render tests that need a glslc RUNNABLE ON THE CURRENT PLATFORM. The
+# auto-provisioned LunarG SDK is a LINUX build — its bin/glslc is an ELF binary with NO
+# extension. On a Windows/MSVC configure the WSL-provisioned tree is still visible (shared
+# /mnt/c checkout), and cmd.exe cannot execute a Linux ELF ("... is not recognized ...").
+#
+# Two traps this resolution avoids:
+#   1. A bare `if(EXISTS bin/glslc)` gate: the Linux ELF file EXISTS on Windows, so the gate
+#      wrongly passes and the whole ninja build fails at the exec step.
+#   2. `find_program(NAMES glslc)` on Windows still MATCHES the extensionless Linux ELF (Windows
+#      find_program tries the exact name too, not only .exe), so it picks the wrong-OS binary.
+# Fix: make the search OS-aware. On Windows require glslc.exe and look in a real system SDK
+# (VULKAN_SDK / PATH) FIRST — the WSL Linux tree can never supply a .exe. On Linux use the
+# extensionless glslc from the provisioned tree. Then gate on whether a platform-runnable glslc
+# was actually found, so the tests build+run wherever one exists and cleanly skip where none does.
 set(_brm_shader_dir "${VIXEN_SHADER_SOURCE_DIR}")
-# Locate glslc from the auto-provisioned Vulkan SDK (ProvisionVulkan.cmake) rather than a
-# hardcoded version path, so a clean WSL configure (which downloads the SDK) finds it and a
-# version bump (VIXEN_VULKAN_SDK_VERSION) doesn't silently skip this test. Falls back to the
-# legacy relative path if the provisioning vars are unset (e.g. a system-SDK build).
-if(DEFINED VIXEN_VULKAN_CACHE_DIR AND DEFINED VIXEN_VULKAN_SDK_VERSION)
-    set(_brm_glslc "${VIXEN_VULKAN_CACHE_DIR}/${VIXEN_VULKAN_SDK_VERSION}/x86_64/bin/glslc")
+if(WIN32)
+    # Windows: only a .exe is runnable. Prefer a system SDK; never the WSL-provisioned ELF.
+    set(_glslc_names glslc.exe)
+    set(_glslc_hints "")
+    if(DEFINED ENV{VULKAN_SDK})
+        list(APPEND _glslc_hints "$ENV{VULKAN_SDK}/Bin" "$ENV{VULKAN_SDK}/bin")
+    endif()
 else()
-    set(_brm_glslc "${_brm_shader_dir}/../.vulkan-sdk/1.4.350.1/x86_64/bin/glslc")
+    # Linux/WSL: the auto-provisioned SDK's extensionless glslc (versioned via ProvisionVulkan.cmake,
+    # with a legacy relative fallback when the provisioning vars are unset), then a system SDK.
+    set(_glslc_names glslc)
+    set(_glslc_hints "")
+    if(DEFINED VIXEN_VULKAN_CACHE_DIR AND DEFINED VIXEN_VULKAN_SDK_VERSION)
+        list(APPEND _glslc_hints "${VIXEN_VULKAN_CACHE_DIR}/${VIXEN_VULKAN_SDK_VERSION}/x86_64/bin")
+    endif()
+    list(APPEND _glslc_hints "${_brm_shader_dir}/../.vulkan-sdk/1.4.350.1/x86_64/bin")
+    if(DEFINED ENV{VULKAN_SDK})
+        list(APPEND _glslc_hints "$ENV{VULKAN_SDK}/bin")
+    endif()
 endif()
-if(EXISTS "${_brm_glslc}")
+find_program(VIXEN_GLSLC NAMES ${_glslc_names} HINTS ${_glslc_hints})
+if(VIXEN_GLSLC)
 set(_brm_src "${_brm_shader_dir}/BodyInstanceRayMarch.comp")
 set(_brm_spv "${CMAKE_CURRENT_BINARY_DIR}/BodyInstanceRayMarch.spv")
 
@@ -359,7 +380,7 @@ file(GLOB _brm_includes CONFIGURE_DEPENDS "${_brm_shader_dir}/*.glsl")
 
 add_custom_command(
     OUTPUT  ${_brm_spv}
-    COMMAND ${_brm_glslc}
+    COMMAND ${VIXEN_GLSLC}
             -fshader-stage=compute
             -I ${_brm_shader_dir}
             --target-env=vulkan1.3
@@ -606,7 +627,7 @@ gtest_discover_tests(test_octree_config_sdi_parity
 message(STATUS "[RenderGraph Tests] Added: test_octree_config_sdi_parity (SDI layout drift-guard)")
 
 else()
-    message(STATUS "[RenderGraph Tests] SKIPPED test_body_instance_raymarch_render — bundled glslc not provisioned at ${_brm_glslc} (WSL-only test)")
+    message(STATUS "[RenderGraph Tests] SKIPPED test_body_instance_raymarch_render — no glslc runnable on this platform found (searched ${_glslc_hints} + PATH)")
 endif()
 
 # ===========================================================================
@@ -614,7 +635,7 @@ endif()
 # Reads the 4 PNGs VIXEN/temp/run_editor_script.bat's unattended vixen_editor.exe run dumps and
 # asserts the toggle/undo/redo relations (see test_editor_toggle_undo_capture.cpp's file header).
 # Pure file I/O (stb_image) -- no Vulkan/GPU, so deliberately registered OUTSIDE the glslc-gated
-# `if(EXISTS "${_brm_glslc}")` block above so it builds+runs on the Windows/MSVC side too, matching
+# `if(VIXEN_GLSLC)` block above so it builds+runs on the Windows/MSVC side too, matching
 # where the windowed editor itself builds and runs (this whole increment is Windows-side-first).
 # ===========================================================================
 add_executable(test_editor_toggle_undo_capture
@@ -713,20 +734,20 @@ endif()
 # ===========================================================================
 # Surface-Shell ESVO cache — ShellRevalidateNode GPU dispatch live-gate.
 # ===========================================================================
-# Compiles the SHIPPED shaders/ShellDerive.comp to SPIR-V at build time with the bundled
-# glslc (same gate as body_instance_raymarch_spv above — skipped when the bundled SDK
-# isn't provisioned), then: (a) asserts the GPU dispatch's shellFlags[] classification
-# matches the CPU Vixen::SVO::DeriveShell oracle bit-for-bit, and (b) assembles a real
-# ComputePassStep pair with disjoint Resource* accesses and asserts BuildPassGroupSchedule
+# Compiles the SHIPPED shaders/ShellDerive.comp to SPIR-V at build time with the
+# environment-appropriate glslc (same gate as body_instance_raymarch_spv above — skipped
+# when no platform-runnable glslc is found), then: (a) asserts the GPU dispatch's shellFlags[]
+# classification matches the CPU Vixen::SVO::DeriveShell oracle bit-for-bit, and (b) assembles a
+# real ComputePassStep pair with disjoint Resource* accesses and asserts BuildPassGroupSchedule
 # bakes ZERO entry barriers between them (double-buffer parallelism proof).
-if(EXISTS "${_brm_glslc}")
+if(VIXEN_GLSLC)
 set(_shellderive_src "${_brm_shader_dir}/ShellDerive.comp")
 set(_shellderive_spv "${CMAKE_CURRENT_BINARY_DIR}/ShellDerive.spv")
 file(GLOB _shellderive_includes CONFIGURE_DEPENDS "${_brm_shader_dir}/*.glsl" "${_brm_shader_dir}/Generated/*.glsl")
 
 add_custom_command(
     OUTPUT  ${_shellderive_spv}
-    COMMAND ${_brm_glslc}
+    COMMAND ${VIXEN_GLSLC}
             -fshader-stage=compute
             -I ${_brm_shader_dir}
             --target-env=vulkan1.3
@@ -758,5 +779,5 @@ gtest_discover_tests(test_shell_revalidate_node
 
 message(STATUS "[RenderGraph Tests] Added: test_shell_revalidate_node (Surface-Shell GPU dispatch live-gate)")
 else()
-    message(STATUS "[RenderGraph Tests] SKIPPED test_shell_revalidate_node — bundled glslc not found")
+    message(STATUS "[RenderGraph Tests] SKIPPED test_shell_revalidate_node — no glslc runnable on this platform found")
 endif()
