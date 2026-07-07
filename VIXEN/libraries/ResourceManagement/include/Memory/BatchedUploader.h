@@ -39,6 +39,33 @@ enum class UploadStatus : uint8_t {
 };
 
 /**
+ * @brief Outcome of attempting to submit a batch's fence + vkQueueSubmit (audit V-M16).
+ *
+ * Pure decision over the two VkResults so it is testable without a live VkDevice/VkQueue.
+ */
+enum class SubmitOutcome : uint8_t {
+    Ok,               // Fence created and submit succeeded — batch is trackable, enqueue it.
+    FenceCreateFailed,  // vkCreateFence failed — no fence exists; do not submit, do not enqueue.
+    SubmitFailed        // vkQueueSubmit failed — fence exists but was never signalled; destroy it, do not enqueue.
+};
+
+/**
+ * @brief Decide the outcome of a fence-based batch submit from the two raw VkResults.
+ *
+ * A failed fence create or a failed submit both leave the batch unsignalable — enqueuing it
+ * would make ProcessCompletions() (FIFO) block on that fence forever (audit V-M16).
+ */
+[[nodiscard]] constexpr SubmitOutcome DecideSubmitOutcome(VkResult fenceCreateResult, VkResult submitResult) {
+    if (fenceCreateResult != VK_SUCCESS) {
+        return SubmitOutcome::FenceCreateFailed;
+    }
+    if (submitResult != VK_SUCCESS) {
+        return SubmitOutcome::SubmitFailed;
+    }
+    return SubmitOutcome::Ok;
+}
+
+/**
  * @brief Statistics for BatchedUploader
  */
 struct BatchedUploaderStats {
@@ -361,6 +388,10 @@ private:
     void SubmitBatch(std::vector<PendingUpload>&& uploads);
     void CheckAutoFlush();
     void SetStatus(UploadHandle handle, UploadStatus status);
+    void PruneStatus(UploadHandle handle);
+    // Marks every upload in a batch that never made it to the GPU as Failed, releases its
+    // staging buffers, and prunes status (audit V-M16/V-M17: unsignalable-fence / null-cmdBuffer paths).
+    void FailBatch(const std::vector<PendingUpload>& uploads);
 };
 
 } // namespace ResourceManagement

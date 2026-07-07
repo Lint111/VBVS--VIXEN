@@ -22,6 +22,7 @@
 #include "Memory/HostBudgetManager.h"
 #include "Memory/DeviceBudgetManager.h"
 #include "Memory/BudgetBridge.h"
+#include "Memory/BatchedUploader.h"
 #include "Lifetime/SharedResource.h"
 #include "Lifetime/LifetimeScope.h"
 
@@ -2762,6 +2763,34 @@ TEST(RenderGraphIntegration, IntegratedResourceLifecycle) {
 
     // Verify cleanup
     EXPECT_EQ(queue.GetPendingCount(), 0);
+}
+
+// ============================================================================
+// BatchedUploader::DecideSubmitOutcome Tests (audit V-M16)
+//
+// SubmitBatch's Vulkan-calling shell isn't mockable here (no device fixture in this test
+// target — see the other suites above, none stand up a VkDevice). The decision it makes from
+// the two VkResults is pure, so it's pulled out and tested directly.
+// ============================================================================
+
+class DecideSubmitOutcomeTest : public ::testing::Test {};
+
+TEST_F(DecideSubmitOutcomeTest, BothSucceedIsOk) {
+    EXPECT_EQ(DecideSubmitOutcome(VK_SUCCESS, VK_SUCCESS), SubmitOutcome::Ok);
+}
+
+TEST_F(DecideSubmitOutcomeTest, FenceCreateFailureIsReported) {
+    EXPECT_EQ(DecideSubmitOutcome(VK_ERROR_OUT_OF_HOST_MEMORY, VK_SUCCESS), SubmitOutcome::FenceCreateFailed);
+}
+
+TEST_F(DecideSubmitOutcomeTest, SubmitFailureAfterGoodFenceIsReported) {
+    EXPECT_EQ(DecideSubmitOutcome(VK_SUCCESS, VK_ERROR_DEVICE_LOST), SubmitOutcome::SubmitFailed);
+}
+
+TEST_F(DecideSubmitOutcomeTest, FenceCreateFailureTakesPriorityOverSubmitResult) {
+    // If the fence never got created, submitResult is meaningless (never actually submitted with
+    // it) -- fence failure must win regardless of what's passed for submitResult.
+    EXPECT_EQ(DecideSubmitOutcome(VK_ERROR_OUT_OF_DEVICE_MEMORY, VK_SUCCESS), SubmitOutcome::FenceCreateFailed);
 }
 
 // ============================================================================

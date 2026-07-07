@@ -88,18 +88,15 @@ UploadHandle BatchedUploader::Upload(
         return InvalidUploadHandle;  // Staging quota exhausted
     }
 
-    // Copy data to staging buffer
-    if (staging->mappedData) {
-        std::memcpy(staging->mappedData, srcData, size);
-    } else {
-        // If not persistently mapped, need to map
-        auto* allocator = budgetManager_->GetAllocator();
-        if (allocator) {
-            // This shouldn't happen with persistentMapping=true
-            stagingPool_->ReleaseBuffer(staging->handle);
-            return InvalidUploadHandle;
-        }
+    // Copy data to staging buffer. The pool is configured with persistentMapping=true, so
+    // mappedData should always be set; if StagingBufferPool's own MapBuffer failed at
+    // acquisition time it comes back null and there is no retry path here — release and bail
+    // rather than queue an unwritten staging buffer that gets transferred as garbage (audit V-N16).
+    if (!staging->mappedData) {
+        stagingPool_->ReleaseBuffer(staging->handle);
+        return InvalidUploadHandle;
     }
+    std::memcpy(staging->mappedData, srcData, size);
 
     // Generate handle
     UploadHandle handle = nextHandle_.fetch_add(1, std::memory_order_relaxed);
@@ -261,6 +258,11 @@ uint32_t BatchedUploader::ProcessCompletions() {
                 stagingPool_->ReleaseBuffer(upload.stagingHandle);
             }
             SetStatus(upload.handle, UploadStatus::Completed);
+            // GetStatus() already treats an unknown handle as Failed, so pruning a terminal
+            // (Completed/Failed) entry right away is observationally the same as leaving it —
+            // callers only ever check IsComplete()/GetStatus() after this point, both of which
+            // read "gone" as "done". Keeps the map from growing without bound (audit V-N15).
+            PruneStatus(upload.handle);
             ++completed;
             totalBytesUploaded_.fetch_add(upload.size, std::memory_order_relaxed);
         }
@@ -427,7 +429,13 @@ void BatchedUploader::SubmitBatch(std::vector<PendingUpload>&& uploads) {
         }
     }
 
-    assert(cmdBuffer != VK_NULL_HANDLE);
+    if (cmdBuffer == VK_NULL_HANDLE) {
+        // Pool exhausted even after waiting for the GPU to catch up: give up on this batch rather
+        // than call vkBeginCommandBuffer(VK_NULL_HANDLE, ...) (UB, and only an assert away from
+        // running in release builds) (audit V-M17).
+        FailBatch(uploads);
+        return;
+    }
 
     // Begin command buffer
     VkCommandBufferBeginInfo beginInfo{};
@@ -476,16 +484,39 @@ void BatchedUploader::SubmitBatch(std::vector<PendingUpload>&& uploads) {
         submitInfo.signalSemaphoreCount = 1;
         submitInfo.pSignalSemaphores = &timelineSemaphore_;
 
-        vkQueueSubmit(queue_, 1, &submitInfo, VK_NULL_HANDLE);
+        VkResult submitResult = vkQueueSubmit(queue_, 1, &submitInfo, VK_NULL_HANDLE);
+        submitLock.unlock();
+        if (submitResult != VK_SUCCESS) {
+            // Submit failed - the timeline value we reserved will never be signalled. ReleaseCommandBuffer
+            // returns cmdBuffer to the pool immediately since nothing GPU-side will ever touch it now.
+            ReleaseCommandBuffer(cmdBuffer);
+            FailBatch(batch.uploads);
+            return;
+        }
     } else {
         // Use fence
         VkFenceCreateInfo fenceInfo{};
         fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-        vkCreateFence(device_, &fenceInfo, nullptr, &batch.fence);
+        VkResult fenceResult = vkCreateFence(device_, &fenceInfo, nullptr, &batch.fence);
+        VkResult submitResult = VK_SUCCESS;
+        if (fenceResult == VK_SUCCESS) {
+            submitResult = vkQueueSubmit(queue_, 1, &submitInfo, batch.fence);
+        }
+        submitLock.unlock();
 
-        vkQueueSubmit(queue_, 1, &submitInfo, batch.fence);
+        SubmitOutcome outcome = DecideSubmitOutcome(fenceResult, submitResult);
+        if (outcome != SubmitOutcome::Ok) {
+            // Neither branch leaves a fence that will ever signal: FenceCreateFailed never made one;
+            // SubmitFailed made one but the GPU will never touch it. Either way ProcessCompletions'
+            // FIFO wait-for-fence would block forever if we enqueued this batch (audit V-M16).
+            if (outcome == SubmitOutcome::SubmitFailed && batch.fence != VK_NULL_HANDLE) {
+                vkDestroyFence(device_, batch.fence, nullptr);
+            }
+            ReleaseCommandBuffer(cmdBuffer);
+            FailBatch(batch.uploads);
+            return;
+        }
     }
-    submitLock.unlock();
 
     {
         std::lock_guard<std::mutex> lock(submittedMutex_);
@@ -493,6 +524,16 @@ void BatchedUploader::SubmitBatch(std::vector<PendingUpload>&& uploads) {
     }
 
     ++totalBatches_;
+}
+
+void BatchedUploader::FailBatch(const std::vector<PendingUpload>& uploads) {
+    for (const auto& upload : uploads) {
+        if (upload.stagingHandle != InvalidStagingHandle) {
+            stagingPool_->ReleaseBuffer(upload.stagingHandle);
+        }
+        SetStatus(upload.handle, UploadStatus::Failed);
+        PruneStatus(upload.handle);
+    }
 }
 
 void BatchedUploader::CheckAutoFlush() {
@@ -525,6 +566,11 @@ void BatchedUploader::CheckAutoFlush() {
 void BatchedUploader::SetStatus(UploadHandle handle, UploadStatus status) {
     std::lock_guard<std::mutex> lock(statusMutex_);
     uploadStatus_[handle] = status;
+}
+
+void BatchedUploader::PruneStatus(UploadHandle handle) {
+    std::lock_guard<std::mutex> lock(statusMutex_);
+    uploadStatus_.erase(handle);
 }
 
 // ============================================================================
