@@ -6,12 +6,13 @@ using Generated::FlowStateId;
 
 namespace {
 
-// Inc-1 has no reflection over enum member count, so validate a FlowStateId against the
-// pinned, explicit range declared in AppFlow.g.h (Editing=0 .. Paused=2). A future increment
-// with a real codegen emitter can emit a kFlowStateCount constant instead of this literal.
+// No reflection over enum member count at this call site, so validate a FlowStateId against
+// the pinned, explicit range declared in AppFlow.g.h (Editing=0 .. Settings=3, Inc-4 M2). A
+// future increment with a real codegen emitter can emit a kFlowStateCount constant instead
+// of this literal.
 bool IsValidState(FlowStateId s) {
     const auto v = static_cast<uint16_t>(s);
-    return v <= static_cast<uint16_t>(FlowStateId::Paused);
+    return v <= static_cast<uint16_t>(FlowStateId::Settings);
 }
 
 } // namespace

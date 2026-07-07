@@ -42,3 +42,19 @@ TEST(AppFlowGolden, ParamSignatureEmitted) {
     EXPECT_NE(h.find("kToggleLayerParams"), std::string::npos);
     EXPECT_NE(h.find("\"layerIndex\""), std::string::npos);
 }
+
+// Inc-4 M2: typed key vocabulary + element-trigger/key-default/return-edge tables.
+TEST(AppFlowGolden, KeyVocabAndTriggersPresent) {
+    const std::string h = readFile(APPFLOW_GENERATED_HEADER_PATH);
+    EXPECT_NE(h.find("enum class KeyId"), std::string::npos);
+    EXPECT_NE(h.find("enum class KeyMod"), std::string::npos);
+    EXPECT_NE(h.find("struct KeyChord"), std::string::npos);
+    EXPECT_NE(h.find("enum class FlowScope"), std::string::npos);
+    EXPECT_NE(h.find("Undo=1"), std::string::npos);
+    EXPECT_NE(h.find("Settings=3"), std::string::npos);
+    EXPECT_NE(h.find("kElementTriggers"), std::string::npos);
+    EXPECT_NE(h.find("\"layer-{index}-toggle\""), std::string::npos);
+    EXPECT_NE(h.find("kKeyDefaults"), std::string::npos);
+    EXPECT_NE(h.find("kReturnEdges"), std::string::npos);
+    EXPECT_NE(h.find("FlowScope::State"), std::string::npos);   // the Settings override
+}
