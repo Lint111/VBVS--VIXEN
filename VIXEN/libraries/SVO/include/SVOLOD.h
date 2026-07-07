@@ -189,6 +189,9 @@ struct LODParameters {
 [[nodiscard]] inline float esvoScaleToWorldSize(int esvoScale, float worldSize) {
     // ESVO: scale_exp2 = 2^(scale - 23) in [1,2] normalized space
     // World size = scale_exp2 * worldSize (since [1,2] maps to world bounds)
+    // Local copy, not Vixen::SVO::LaineKarrasOctree::ESVO_MAX_SCALE: LaineKarrasOctree.h already
+    // includes this (leaf) header, so including it back here would cycle. Keep in sync by hand —
+    // both are "Root scale in ESVO normalized space" (see LaineKarrasOctree.h's canonical definition).
     constexpr int ESVO_MAX_SCALE = 22;
     float normalizedSize = std::ldexp(1.0f, esvoScale - ESVO_MAX_SCALE - 1);
     return normalizedSize * worldSize;

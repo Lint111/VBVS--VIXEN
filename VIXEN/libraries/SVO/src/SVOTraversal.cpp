@@ -972,8 +972,12 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayGpuMirror(
     for (int s = 0; s < kGpuStack; ++s) { stack[s].parentPtr = 0u; stack[s].t_max = state.t_max; }
     state.idx = 0;
     {
-        const float be = 1e-4f;
-        const bool usePos = (state.t_min < be);
+        // Unified with selectInitialOctant's CPU-path boundary_epsilon (was 1e-4f here, silent
+        // divergence with no comment on intent). Verified via RecipeEvalParity/StoredSdfMarchMirror/
+        // GpuParity/OctreeQueryTest: both 0.01f and 1e-4f pass the full suite; 0.01f kept as the
+        // wider, more conservative near-boundary catch net.
+        const float boundary_epsilon = 0.01f;
+        const bool usePos = (state.t_min < boundary_epsilon);
         glm::vec3 mo;
         mo.x = ((coef.octant_mask & 1) != 0) ? coef.normOrigin.x : (3.0f - coef.normOrigin.x);
         mo.y = ((coef.octant_mask & 2) != 0) ? coef.normOrigin.y : (3.0f - coef.normOrigin.y);

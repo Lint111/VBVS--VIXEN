@@ -639,7 +639,7 @@ void VoxelSceneCacher::BuildOctree(VoxelSceneData& data) {
     // are zero (Release builds don't zero-initialize, causing GPU hangs from garbage UBO data)
     std::memset(&data.configCPU, 0, sizeof(OctreeConfig));
 
-    data.configCPU.esvoMaxScale = 22;
+    data.configCPU.esvoMaxScale = Vixen::SVO::LaineKarrasOctree::ESVO_MAX_SCALE;
     data.configCPU.userMaxLevels = maxLevels;
     data.configCPU.brickDepthLevels = brickDepth;
     data.configCPU.brickSize = 1 << brickDepth;
