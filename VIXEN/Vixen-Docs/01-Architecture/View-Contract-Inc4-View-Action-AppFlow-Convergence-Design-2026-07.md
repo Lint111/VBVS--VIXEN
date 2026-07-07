@@ -32,7 +32,7 @@ shelved AppFlow Inc-3 work (retire `ParseLayerToggleId`, tie into `BindingStore`
 |---|----------|--------|
 | D1 | **Scope** | **Full input→action retire.** Element clicks (`layer-{index}-toggle`) AND keys (`S`, `Ctrl+Z`, `Ctrl+Y`) route through the typed contract. The **editor** is the live in-tree consumer; the existing windowed real-GPU gate proves it. No undertow (Inc-5+). |
 | D2 | **Authoring surface = a declared state/transition GRAPH** | The consumer declares states + typed transitions (start→end state, action, typed params, guards, optional effect-ref) + a first-class **`[FlowReturnEdge]`** kind, as autocompletable non-stringy symbols. Built by **extending AppFlow's existing `FlowStateMachine`/`AppFlowReference.cs`** — ONE authoritative graph. A binding is a **trigger on a graph edge**, not a string→action lookup. |
-| D3 | **Two trigger kinds; keys are TYPED chords; scope is hierarchical** | (a) **element-click** — compile-time bound to an edge, the `{placeholder}` param **typed on the edge** (dissolves parametric-selector parsing). (b) **key** — a **typed `KeyChord{ KeyId key; KeyMod mods }`** (NEVER a string) resolved via a **runtime `InputProfile` registry** that is **hierarchical/scoped** (`global → flow-state → context`, **tightest-declaration-wins**), mutable/rebindable, seeded from schema defaults. `KeyId`/`KeyMod` are generated from the schema. |
+| D3 | **Two trigger kinds; keys are TYPED chords; scope is hierarchical** | (a) **element-click** — compile-time bound to an edge, the `{placeholder}` param **typed on the edge** (dissolves parametric-selector *parsing*). The element *identity* is a **string on the CURRENT dynamic path** (RmlUi keys elements by string id; the trigger reads it dynamically) — this is a deliberate present-state, NOT a permanent limitation: elements gain their own **bake/typed path** as a designed future evolution (§7), symmetric to how keys are baked/typed now. (b) **key** — a **typed `KeyChord{ KeyId key; KeyMod mods }`** (NEVER a string) resolved via a **runtime `InputProfile` registry** that is **hierarchical/scoped** (`global → flow-state → context`, **tightest-declaration-wins**), mutable/rebindable, seeded from schema defaults. `KeyId`/`KeyMod` are generated from the schema. |
 | D4 | **Intents stay compile-time; dispatch reuses the shipped spine** | `FlowActionId` (exists). Dispatch flows through the shipped `DispatchBySelector` (elements) + a new `DispatchByKey(KeyChord)` (keys), both landing on the existing `ActionStack` (undoable) — Inc-4 adds **typed resolution in front of** an unchanged dispatch spine. |
 | D5 | **Build the real AppFlow emitter** | A Yeroket sibling emitter (`AppFlowEmitter`, like `RecipeContainerEmitter`/`ViewBlobEmitter`) generates `AppFlow.g.h` from `AppFlowReference.cs` — enums + existing decl/transition tables + the NEW element-trigger/key-default/return-edge/`KeyId`/`KeyMod` tables + reader. **Retires the hand-authored mirror + the standing `TODO(appflow-codegen)`.** `--appflow` CLI + wsl-bridged drift-guard. |
 | D6 | **Undo vs Return are distinct verbs** | **Undo** = revert a *data change* (the shipped `ActionStack` inverse). **Return** = pop *navigation state* via a `[FlowReturnEdge]` + a **bounded entry-history stack** in `FlowStateMachine`. A settings-menu `Ctrl+Z` undoes the *setting change*; `Esc`/back *returns* to the prior state. The graph knows the difference. |
@@ -258,6 +258,15 @@ guarded by a **completeness check** (every editor-used glfw key maps to a non-`N
 silent). No key string exists anywhere. (A future gamepad/Steam adapter produces `KeyChord`s/`InputId`s the same
 way — the deferred portability seam.)
 
+**Element identity — current dynamic-string path, future bake path (deferred).** Unlike keys, the *element*
+identity (`"layer-2-toggle"`) is a **string on the current dynamic path** — the trigger reads the RmlUi element id
+dynamically at click time, and RmlUi keys elements by string. This is a deliberate present-state, not an inherent
+limitation: elements are slated to get their own **bake/typed path** (symmetric to how the SDF recipe format and the
+View Contract's own blob have a baked form) as a future evolution — at which point the element→edge binding becomes a
+baked typed reference like the key chord. Inc-4 keeps the dynamic-string element path and does NOT build the element
+bake path (§7); the `{placeholder}`→param *extraction* is already typed (§4.2), so the only remaining string is the
+element identity itself, on its documented dynamic path.
+
 ### 5.3 Error handling (mirrors the program's "surface, don't swallow")
 
 - **Unknown element / no binding** → `DispatchBySelector` → `RejectedByState` (shipped), logged; click is a no-op.
@@ -333,7 +342,8 @@ drift-guard (new, wsl-bridged) joins the existing pairs. `test_editor_toggle_und
 - **Inc-4 does NOT build:** the **effect/animation runtime** on edges (the effect-ref column emits but nothing
   consumes it); the **rebinding settings UI**; the **Steam Input action-set adapter**; **gamepad** input; additional
   **qualifier kinds** beyond `KeyMod` (timing/double-click/long-press/sequence — D8: non-foreclosed, not built); the
-  **undertow migration** (Inc-5+).
+  **element bake/typed path** (element identity stays a dynamic-read string this increment — §5.2; the baked/typed
+  element reference is a designed future evolution, symmetric to keys); the **undertow migration** (Inc-5+).
 - **Committed architecture (enables the deferred payoff):** intents = compile-time `FlowActionId`; element→action =
   compile-time table; key→action = runtime hierarchical `InputProfile` of typed `KeyChord`s keyed by flow-state;
   triggers = primary input + a composable typed-qualifier set; return = navigation history distinct from data-undo;
