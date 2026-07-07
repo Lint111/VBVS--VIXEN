@@ -62,17 +62,79 @@ if(NOT DEFINED YEROKET_ROOT)
 endif()
 set(_yk_tool "${YEROKET_ROOT}/Packages/com.yeroket.utility.kernel-framework/CodegenTool~")
 if(EXISTS "${_yk_tool}/CodegenTool.csproj")
+    # KI-015 (execution half): the tool + dotnet resolved above can be a WSL-only clone
+    # reached via a \\wsl$ mount — that lets CMake *see* the path on a Windows configure,
+    # but ninja's cmd.exe cannot *execute* a Linux ELF at a UNC path. Bridge through
+    # wsl.exe in that case: it can invoke the WSL-side dotnet from a Windows process.
+    # Native configures (WSL-side, or a future native-Windows tool) are untouched.
+    set(_codegen_need_wsl_bridge FALSE)
+    if(WIN32 AND (VIXEN_DOTNET MATCHES "wsl" OR YEROKET_ROOT MATCHES "wsl"))
+        set(_codegen_need_wsl_bridge TRUE)
+    endif()
+
+    if(_codegen_need_wsl_bridge)
+        find_program(WSL_EXE NAMES wsl wsl.exe)
+        if(NOT WSL_EXE)
+            message(WARNING "[codegen] KI-015: tool/dotnet resolved to a WSL-only path (${_yk_tool}) "
+                "but wsl.exe was not found — codegen regen/golden DRIFT GUARD DISABLED on this "
+                "Windows configure; committed generated artifacts are used as-is. Install the "
+                "'Windows Subsystem for Linux' feature (wsl.exe on PATH) or run the WSL-side configure.")
+            return()
+        endif()
+        # Resolve the WSL-side dotnet by asking WSL itself, rather than trying to reverse-parse
+        # VIXEN_DOTNET's UNC form — deterministic and survives whatever hint matched above.
+        execute_process(
+            COMMAND ${WSL_EXE} -e bash -lc "command -v dotnet || echo \$HOME/.dotnet/dotnet"
+            OUTPUT_VARIABLE _wsl_dotnet
+            OUTPUT_STRIP_TRAILING_WHITESPACE)
+        if(NOT _wsl_dotnet)
+            message(WARNING "[codegen] KI-015: wsl.exe found but could not resolve a WSL-side dotnet — "
+                "codegen regen/golden DRIFT GUARD DISABLED. Run the WSL-side configure to enable it.")
+            return()
+        endif()
+        # ${CMAKE_SOURCE_DIR}/... args are Windows paths (C:/...) on this configure; the WSL tool
+        # needs them as /mnt/c/... — translate once via wslpath and reuse for every target below.
+        function(_codegen_to_wsl_path win_path out_var)
+            execute_process(
+                COMMAND ${WSL_EXE} -e wslpath -u "${win_path}"
+                OUTPUT_VARIABLE _translated
+                OUTPUT_STRIP_TRAILING_WHITESPACE)
+            set(${out_var} "${_translated}" PARENT_SCOPE)
+        endfunction()
+        _codegen_to_wsl_path("${_yk_tool}" _yk_tool_run)
+        _codegen_to_wsl_path("${_cg}/config-schemas" _schema_config_run)
+        _codegen_to_wsl_path("${_cg}/view-schemas" _schema_view_run)
+        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/libraries/SVO/include/Generated/OctreeConfig.g.h" _out_octreeconfig_cpp_run)
+        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/shaders/Generated/OctreeConfig.glsl" _out_octreeconfig_glsl_run)
+        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/application/main/include/Generated/Hud.g.h" _out_hud_header_run)
+        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/libraries/RenderGraph/assets/ui/Hud.view.rml" _out_hud_rml_run)
+        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/application/main/include/Generated/Hud.blob.g.h" _out_hud_blob_header_run)
+        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/libraries/RenderGraph/assets/ui/hud.viewblob" _out_hud_blob_data_run)
+        set(_CODEGEN_RUNNER ${WSL_EXE} -e "${_wsl_dotnet}")
+    else()
+        set(_yk_tool_run "${_yk_tool}")
+        set(_schema_config_run "${_cg}/config-schemas")
+        set(_schema_view_run "${_cg}/view-schemas")
+        set(_out_octreeconfig_cpp_run "${CMAKE_SOURCE_DIR}/libraries/SVO/include/Generated/OctreeConfig.g.h")
+        set(_out_octreeconfig_glsl_run "${CMAKE_SOURCE_DIR}/shaders/Generated/OctreeConfig.glsl")
+        set(_out_hud_header_run "${CMAKE_SOURCE_DIR}/application/main/include/Generated/Hud.g.h")
+        set(_out_hud_rml_run "${CMAKE_SOURCE_DIR}/libraries/RenderGraph/assets/ui/Hud.view.rml")
+        set(_out_hud_blob_header_run "${CMAKE_SOURCE_DIR}/application/main/include/Generated/Hud.blob.g.h")
+        set(_out_hud_blob_data_run "${CMAKE_SOURCE_DIR}/libraries/RenderGraph/assets/ui/hud.viewblob")
+        set(_CODEGEN_RUNNER ${VIXEN_DOTNET})
+    endif()
+
     set(_oc_args
-        run --project "${_yk_tool}" -c Release --
-        --schema "${_cg}/config-schemas" --struct OctreeConfig
-        --out-cpp  "${CMAKE_SOURCE_DIR}/libraries/SVO/include/Generated/OctreeConfig.g.h"
-        --out-glsl "${CMAKE_SOURCE_DIR}/shaders/Generated/OctreeConfig.glsl")
+        run --project "${_yk_tool_run}" -c Release --
+        --schema "${_schema_config_run}" --struct OctreeConfig
+        --out-cpp  "${_out_octreeconfig_cpp_run}"
+        --out-glsl "${_out_octreeconfig_glsl_run}")
     add_custom_target(octreeconfig_check ALL
-        COMMAND ${VIXEN_DOTNET} ${_oc_args} --check
+        COMMAND ${_CODEGEN_RUNNER} ${_oc_args} --check
         COMMENT "[codegen] golden check: OctreeConfig.g.h/.glsl match canonical (Yeroket tool)"
         VERBATIM)
     add_custom_target(octreeconfig_regen
-        COMMAND ${VIXEN_DOTNET} ${_oc_args}
+        COMMAND ${_CODEGEN_RUNNER} ${_oc_args}
         COMMENT "[codegen] regenerate OctreeConfig.g.h/.glsl (Yeroket tool)"
         VERBATIM)
 
@@ -80,15 +142,15 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     # The generated header lives under application/main — it is a CONSUMER artifact (the native
     # HudView), not an engine one; the engine only sees the generic Ui/IView.h seam.
     set(_view_args
-        run --project "${_yk_tool}" -c Release --
-        --schema "${_cg}/view-schemas" --view Hud
-        --out-header "${CMAKE_SOURCE_DIR}/application/main/include/Generated/Hud.g.h")
+        run --project "${_yk_tool_run}" -c Release --
+        --schema "${_schema_view_run}" --view Hud
+        --out-header "${_out_hud_header_run}")
     add_custom_target(view_hud_check ALL
-        COMMAND ${VIXEN_DOTNET} ${_view_args} --check
+        COMMAND ${_CODEGEN_RUNNER} ${_view_args} --check
         COMMENT "[codegen] golden check: Hud.g.h matches canonical [View] schema (Yeroket tool)"
         VERBATIM)
     add_custom_target(view_hud_regen
-        COMMAND ${VIXEN_DOTNET} ${_view_args}
+        COMMAND ${_CODEGEN_RUNNER} ${_view_args}
         COMMENT "[codegen] regenerate Hud.g.h (Yeroket tool)"
         VERBATIM)
 
@@ -98,15 +160,15 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     # fragment itself against schema drift; the composed hud.rml is proven live by
     # test_hud_render_capture (the real-GPU byte-exact gate), not a second textual diff here.
     set(_view_markup_args
-        run --project "${_yk_tool}" -c Release --
-        --schema "${_cg}/view-schemas" --view-markup Hud
-        --out-rml "${CMAKE_SOURCE_DIR}/libraries/RenderGraph/assets/ui/Hud.view.rml")
+        run --project "${_yk_tool_run}" -c Release --
+        --schema "${_schema_view_run}" --view-markup Hud
+        --out-rml "${_out_hud_rml_run}")
     add_custom_target(view_hud_markup_check ALL
-        COMMAND ${VIXEN_DOTNET} ${_view_markup_args} --check
+        COMMAND ${_CODEGEN_RUNNER} ${_view_markup_args} --check
         COMMENT "[codegen] golden check: Hud.view.rml matches canonical [View] schema (Yeroket tool)"
         VERBATIM)
     add_custom_target(view_hud_markup_regen
-        COMMAND ${VIXEN_DOTNET} ${_view_markup_args}
+        COMMAND ${_CODEGEN_RUNNER} ${_view_markup_args}
         COMMENT "[codegen] regenerate Hud.view.rml (Yeroket tool)"
         VERBATIM)
 
@@ -114,16 +176,16 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     # (the generic BlobView's compile-time delivery) AND a runtime .viewblob data file. Both are
     # committed + drift-guarded against the canonical [View] schema, like every other generated artifact.
     set(_view_blob_args
-        run --project "${_yk_tool}" -c Release --
-        --schema "${_cg}/view-schemas" --view-blob Hud
-        --out-header  "${CMAKE_SOURCE_DIR}/application/main/include/Generated/Hud.blob.g.h"
-        --out-datafile "${CMAKE_SOURCE_DIR}/libraries/RenderGraph/assets/ui/hud.viewblob")
+        run --project "${_yk_tool_run}" -c Release --
+        --schema "${_schema_view_run}" --view-blob Hud
+        --out-header  "${_out_hud_blob_header_run}"
+        --out-datafile "${_out_hud_blob_data_run}")
     add_custom_target(view_hud_blob_check ALL
-        COMMAND ${VIXEN_DOTNET} ${_view_blob_args} --check
+        COMMAND ${_CODEGEN_RUNNER} ${_view_blob_args} --check
         COMMENT "[codegen] golden check: Hud.blob.g.h + hud.viewblob match canonical [View] schema"
         VERBATIM)
     add_custom_target(view_hud_blob_regen
-        COMMAND ${VIXEN_DOTNET} ${_view_blob_args}
+        COMMAND ${_CODEGEN_RUNNER} ${_view_blob_args}
         COMMENT "[codegen] regenerate Hud.blob.g.h + hud.viewblob"
         VERBATIM)
 else()
