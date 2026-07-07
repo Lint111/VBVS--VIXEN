@@ -105,6 +105,9 @@ before any GPU-side tier-crossing machinery (§3/§5) is built against it.
   tier-math re-derivation.
 - **M2 — Direction/magnitude derivation** (Tasks 3-4) · gate: pure-CPU gtest green — shared-prefix
   composition, apparent-magnitude falloff, optional light-delay staleness term.
+  **✅ DONE 2026-07-07** — worktree `feat/tiered-esvo-inc1`, built on M1's `709bb639`.
+  `test_tier_direction` 5/5, `test_tier_magnitude` 10/10, both green, pure CPU. See Progress Log for
+  the direction-composition input shape and the light-delay no-op decision.
 - **M3 — `SkyProjectionNode` + live composite gate** (Tasks 5-7) · gate: shader compiles + a live
   `VIXEN.exe` run showing synthetic fleet points correctly composited over the existing skybox/voxel
   render, at the correct screen-space direction for a known observer/object address pair.
@@ -171,6 +174,67 @@ before any GPU-side tier-crossing machinery (§3/§5) is built against it.
     76.324).
     validation pass per the pipeline).
 
+- **Milestone M2 (Tasks 3-4): DONE** · worktree `feat/tiered-esvo-inc1`, built directly on M1's
+  `709bb639` · gates: `test_tier_direction` 5/5, `test_tier_magnitude` 10/10, both green, pure CPU
+  (no Vulkan/GPU dependency exercised by either binary) · 2026-07-07.
+  - **Direction-composition input shape (`TierDirection.h`, `ComposeLocalDirection`)**: `TierAddress`
+    only stores WHICH hop was taken at each tier, not a per-hop local-frame position — so the design
+    doc's §3.2 `TierRef` shape (`childOriginLocal[3]` + `childScale`, "a single scale+offset [per hop],
+    never a flattened world matrix") became this milestone's per-hop *input* type, `TierHopFrame`
+    (`localPos` in the hop's own `[1,2)` frame + `scaleCm`, the real-world size of one unit of that
+    frame). `ComposeLocalDirection(observer, observerTail, object, objectTail)` reuses
+    `TierAddress::SharedPrefixLength` directly (not reimplemented), then sums each address's divergent
+    tail (length `depth - sharedPrefixLen`) into the shared-ancestor's local units — each hop
+    contributes a `(localPos - 1.5) * scaleCm` signed offset, summed (not multiplied through), so no
+    hop's rounding is amplified by a later hop's scale. Output is a `ComposedDirection{direction,
+    distanceCm, valid}` — distance is returned alongside the normalized direction (not recomputed
+    later) since `normalize()` would otherwise discard the length Task 4 needs. Deliberately NOT wired
+    to a real `TierRefTable` (doesn't exist yet, out of scope) — callers construct `TierHopFrame` arrays
+    as synthetic fixtures this milestone; the shape is compatible with a real `TierRefTable`-backed
+    caller later without a signature change.
+  - **Magnitude formula (`TierMagnitude.h`, `ApparentMagnitude`)**:
+    `intrinsicBrightness / (1 + (distanceCm / referenceDistanceCm)^2)` — a standard inverse-square-style
+    falloff, deliberately NOT real astrophysical (Pogson/log-scale) magnitude units, per the plan's own
+    "simplicity/plausibility, not real-world radiometric accuracy, is the bar." The `+1` avoids a
+    divide-by-zero singularity at `distanceCm == 0` (returns the finite `intrinsicBrightness` there,
+    not `+inf`) while still behaving like a clean inverse-square law past a few multiples of
+    `referenceDistanceCm` (a single tunable constant, `kDefaultReferenceDistanceCm = 1e9 cm`, chosen at
+    T0-planet-span order of magnitude as a plausible "starts looking dim" reference for the driving use
+    case — not physically derived).
+  - **Light-delay/staleness term — confirmed no existing VIXEN time-simulation/light-speed system**:
+    searched via codegraph ("simulation time", "light speed", "time delay", "staleness", "clock",
+    "TimeManager") before building anything — the only "time" concepts in VIXEN are frame-cadence
+    clocks (`EngineTime`, `RenderGraph::Timer`, `GPUTimestampQuery`, `DeviceBudgetManager`'s per-frame
+    deltas), none of them a simulation-time or light-propagation-delay axis. Per the plan's explicit
+    warning against inventing one this increment, built `LightDelayStaleness`/
+    `ApparentMagnitudeWithStaleness` as a **documented no-op**: a real, always-present parameter
+    (`delaySeconds`, defaults to `0.0`/disabled) that is accepted, exposed via `IsEnabled()`, and echoed
+    back verbatim on the result (`appliedDelaySeconds`) — but never alters the computed `magnitude`,
+    whether zero or nonzero, because there is no "current sim time" in the engine yet to subtract a
+    computed light-travel delay from. Kept in the function signature (not a bare double, not omitted
+    entirely) so a future increment that does add a time-simulation axis can wire real behavior into the
+    body without an ABI/call-site change at every existing caller.
+  - **No scope drift**: confirmed via `git diff --stat`/`git status` before commit — only
+    `libraries/SVO/include/{TierDirection,TierMagnitude}.h`,
+    `libraries/SVO/tests/test_tier_{direction,magnitude}.cpp`, and the `CMakeLists.txt` registration
+    touched (42 insertion lines, no deletions). No `ChildDescriptor`/`farBit`/`TierRef`/
+    `TierRefTable`/`SVORebuild.cpp`/`LaineKarrasOctree`/`ConcatenatedOctrees`/render-graph file touched,
+    per §0. No new time-simulation system built, per Task 4's explicit guard.
+  - **Test coverage highlights**: `test_tier_direction` proves the sibling case (one divergent hop
+    each), the identical-address zero-distance/invalid case, root-level divergence (3-4 hop tails,
+    mixed System/T0/T1 scales), a dedicated **galaxy-tier-divergence-vs-T2-bedrock-tier** case (a
+    ~10^19x scale ratio between the two tails' dominant terms, using `TierMath.h`'s own re-derived
+    tier-scale table rather than hand-picked numbers) confirming the composed direction stays a clean
+    finite unit vector and the composed distance lands within `1e-6` relative tolerance of the
+    galaxy-tier-dominant term — the concrete proof of "no accumulated world-space error" the plan asked
+    for — and an oversized-tail clamp case. `test_tier_magnitude` proves zero-distance ==
+    intrinsic-brightness, strict monotonic falloff across 5 widely-spaced distances, the
+    half-brightness-at-reference-distance identity, near-zero at extreme distance, negative-distance
+    clamping, zero-intrinsic-brightness staying zero, and three staleness cases (disabled-is-identical,
+    nonzero-delay-still-inert-on-magnitude-but-echoed, and monotonic falloff still holding when wrapped
+    in the staleness call).
+  - **Awaiting Opus validation** (per the post-brainstorm-context-manager pipeline this plan mandates).
+
 ---
 
 ## M1 — `TierAddress` type + tier math
@@ -236,34 +300,44 @@ concern.
 
 ### Task 3 — Direction from shared-prefix composition
 
-- [ ] Given an observer `TierAddress` and a candidate object's `TierAddress`, compute a normalized
+- [x] Given an observer `TierAddress` and a candidate object's `TierAddress`, compute a normalized
   direction vector composed ONLY through their shared-prefix ancestor (§4, §7 step 1: "compute
   direction `normalize(objectLocal − observerLocal)` composed only through the shared-prefix ancestor
   — never a flattened world coordinate"). Reuse M1's shared-prefix helper; the composition itself is
   per-hop local-frame math (§3.3's discipline — each hop is a bounded [1,2)-frame scale+offset, so
   composing K divergent hops is K well-conditioned steps, not an accumulated world transform).
-- [ ] Unit test: two addresses sharing a full prefix except the last hop (siblings) should compose in
+  → `libraries/SVO/include/TierDirection.h`, `ComposeLocalDirection` + `TierHopFrame` input type — see
+  Progress Log for the input-shape rationale (compatible with `TierRef`'s eventual shape).
+- [x] Unit test: two addresses sharing a full prefix except the last hop (siblings) should compose in
   exactly one hop each; addresses diverging near the root should compose through more hops but remain
   numerically well-behaved (no precision blowup) — construct a test with genuinely large tier-scale
   differences (e.g. a galaxy-tier divergence) to prove the "no accumulated world-space error" claim,
   not just a same-tier sanity check.
+  → `test_tier_direction.cpp`, 5/5 green (includes a dedicated galaxy-tier-vs-T2-bedrock divergence
+  case).
 
 ### Task 4 — Apparent magnitude + optional light-delay staleness
 
-- [ ] Brightness/magnitude falloff as a function of the composed distance from Task 3 (a standard
+- [x] Brightness/magnitude falloff as a function of the composed distance from Task 3 (a standard
   inverse-square-style falloff is sufficient for v1 — the design doc explicitly does not mandate
   precise astrophysical magnitude units, just "direction + apparent magnitude"). Document the exact
   formula chosen and why (simplicity/plausibility, not real-world radiometric accuracy, is the bar).
-- [ ] Optional light-delay/staleness term (§7 step 1: "a physically-motivated detection floor, not
+  → `libraries/SVO/include/TierMagnitude.h`, `ApparentMagnitude` — `intrinsic / (1 + (d/ref)^2)`, see
+  Progress Log.
+- [x] Optional light-delay/staleness term (§7 step 1: "a physically-motivated detection floor, not
   required for v1") — implement as a genuinely optional parameter (e.g. defaults to off/zero delay);
   do not let this become a blocker if the underlying light-speed/time-model plumbing doesn't exist yet
   in VIXEN — confirm at implementation time whether such a time model exists at all, and if not,
   stub this term as a documented no-op rather than inventing a new time-simulation system this
   increment.
-- [ ] Unit tests: magnitude falls off monotonically with composed distance; confirm the light-delay
+  → Confirmed via codegraph search: no time-simulation/light-speed system exists in VIXEN today (only
+  frame-cadence clocks). Built `LightDelayStaleness`/`ApparentMagnitudeWithStaleness` as a documented
+  no-op — see Progress Log.
+- [x] Unit tests: magnitude falls off monotonically with composed distance; confirm the light-delay
   term (if built) is inert when disabled and produces a sane output when a nonzero delay is supplied.
+  → `test_tier_magnitude.cpp`, 10/10 green.
 
-**M2 gate:** all new unit tests green, pure CPU, no GPU/render dependency.
+**M2 gate:** all new unit tests green, pure CPU, no GPU/render dependency. **MET.**
 
 ---
 
