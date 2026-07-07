@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Sparse-Mip ESVO LOD** (Inc1 + Inc2) — per-level filtered mip samples on the ESVO so a
+  distant/non-resident subtree still shades correctly, plus partial/streamed brick-pool uploads
+  gated by screen-space resolvability, frustum containment, and a CPU-side occlusion test against
+  already-resident trees. Measured ~170-220x bandwidth reduction at the mechanism's all-or-nothing
+  extreme endpoint, and a realistic 3.2x/68.8% reduction on a mixed near/far scene through the live
+  residency trigger. See `Vixen-Docs/01-Architecture/Sparse-Mip-ESVO-LOD-{Direction,Inc1-Plan,
+  Inc2-Plan}-2026-07.md`.
+- **Tiered ESVO — observer-relative addressing, Inc1** — `TierAddress` (a short hop-chain identity
+  spanning voxel-cm to galaxy scale across 5 tiers) and a `SkyProjectionNode` that composites
+  direction+magnitude sky points over the existing voxel render, evaluated at the address level with
+  no ray-marching. First slice of the nested-tree/observer-addressing epic supporting an
+  observation-post fleet-detection mechanic; the tier-crossing traversal-restart machinery remains a
+  future increment. See `Vixen-Docs/01-Architecture/Tiered-ESVO-{Observer-Addressing-Design,
+  Inc1-Plan}-2026-07.md`.
+
 ### Documentation
 - Rewrote the repository `README.md` and `VIXEN/README.md` to reflect the pivot from voxel
   ray-tracing research platform to reusable, moddable game render engine (for *Undertow*) with the
