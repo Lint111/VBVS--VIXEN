@@ -124,8 +124,10 @@ now is by explicit user request.
   `test_tier_ref` 5/5, `test_tier_ref_table` 5/5, both green, pure CPU (no Vulkan/GPU dependency
   exercised). Full existing SVO suite re-run and green as a no-regression check (`test_svo_types`
   10/10, `test_shell_octree_gpu` 9/9, `test_soa_mip_serialize` 6/6, `test_soa_sdf_serialize` 11/11,
-  `test_gpu_parity` 4/4 — 40/40). See Progress Log for the std430-layout proof, the `TierRefTable`
-  GPU-binding scope decision, and the codegen regen mechanism used for Task 3.
+  `test_gpu_parity` 4/4 — 40/40). Opus-validated APPROVED 2026-07-08 (51/51 including the
+  SPIR-V-reflection drift-guard the implementer believed it couldn't run; GPU-binding scope
+  deferral to M3 independently judged correct). See Progress Log for the std430-layout proof, the
+  `TierRefTable` GPU-binding scope decision, and the codegen regen mechanism used for Task 3.
 - **M2 — `farBit==1` construction path** (Tasks 4-5) · gate: a hand-authored two-tree test fixture
   (one tree with a real tier-crossing leaf, `farBit=1`, pointing at a second, independently-built
   tree) round-trips through serialization correctly; no regression on existing `farBit=0` trees
@@ -233,6 +235,31 @@ plans' own convention: one entry per milestone, commit hash + Opus validator ver
     `SVORebuild.cpp`/`SVOBuilder.cpp`'s construction logic, `LaineKarrasOctree`'s traversal code,
     `BodyInstanceRayMarch.comp`, and `SkyProjectionNode` were all read-only-verified (to confirm the
     scope boundary) but not modified.
+
+  - **Opus validator: APPROVED (2026-07-08)** — independently re-ran everything rather than trusting
+    the report, including the one gap the implementer self-flagged as unverified. Confirmed **51/51**
+    total (the claimed 50/50 above PLUS `test_octree_config_sdi_parity` 1/1, the SPIR-V-reflection
+    drift-guard — the implementer believed `glslc` was unavailable on WSL in this worktree; the
+    validator confirmed this was WRONG (`glslc` IS present in this build cache) and ran it directly:
+    it reflects the compiled shader as `size=432 members=25 ... tierRefTableBase offset=360` and
+    confirms member-by-member parity with the C++ struct — the new field is genuinely
+    cross-checked, not just asserted in isolation). Also confirmed the implementer's ".codegraph/
+    index did not exist" claim was wrong (`codegraph.db`, 46MB, predates the milestone's own commit
+    by ~1.5 hours — likely a wrong-path check, not a real gap); neither false environment claim
+    affected the actual correctness of the work. Independently re-derived the std430 reasoning for
+    `TierRef`'s plain-`float[3]` layout (confirmed std430, unlike std140, does not pad scalar-array
+    elements to 16 — the vec3 gotcha is specific to a `vec3`-typed member, not "three floats in a
+    row") and confirmed it against the design doc's §3.2/§3.3. Confirmed the `ConcatenateSdfWithMips`
+    duplication is genuinely necessary (a separate standalone loop, not a caller into
+    `ConcatenateSdf`) and traced that every existing tree's `tierRefTableBase`/`tierRefTable`
+    genuinely stays 0/empty. Re-ran the actual Yeroket `--check` regen independently (exit 0, tree
+    unchanged) — confirmed genuine codegen output, not a hand-edit. **On the GPU-binding scope
+    deviation: reasoned this out independently and reached the same conclusion — a correct call, not
+    a blocker.** An SSBO binding with no shader-side consumer would be dead plumbing generating
+    unused-binding/VUID noise for nothing; the CPU-side storage M3 actually needs is fully in place;
+    and M3 (the live-gated GPU milestone) is where the buffer and its shader reader can be built and
+    validated together, matching Sparse-Mip Inc1 M3's own precedent for `mipPool`'s binding. Noted as
+    a non-blocking suggestion for M3's implementer, not a required M1 addition. No issues found.
 
 ---
 
