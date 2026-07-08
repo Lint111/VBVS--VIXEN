@@ -144,26 +144,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
     NodeHandle swapChainNode = renderGraph->AddNode<SwapChainNodeType>("main_swapchain");
     NodeHandle commandPoolNode = renderGraph->AddNode<CommandPoolNodeType>("main_cmd_pool");
 
-    // --- Resource Nodes ---
-    // DISABLED FOR COMPUTE TEST: Graphics pipeline nodes
-    /*
-    NodeHandle depthBufferNode = renderGraph->AddNode("DepthBuffer", "depth_buffer");
-    NodeHandle vertexBufferNode = renderGraph->AddNode("VertexBuffer", "triangle_vb");
-    NodeHandle textureNode = renderGraph->AddNode("TextureLoader", "main_texture");
-
-    // --- Rendering Configuration Nodes ---
-    NodeHandle renderPassNode = renderGraph->AddNode("RenderPass", "main_pass");
-    NodeHandle framebufferNode = renderGraph->AddNode("Framebuffer", "main_fb");
-    NodeHandle shaderLibNode = renderGraph->AddNode("ShaderLibrary", "shader_lib");
-    NodeHandle descriptorSetNode = renderGraph->AddNode("DescriptorSet", "main_descriptors");
-    NodeHandle pipelineNode = renderGraph->AddNode("GraphicsPipeline", "triangle_pipeline");
-
-    // Phase 1: ShaderLibraryNode replaces manual shader loading
-    // Removed ConstantNode - ShaderLibraryNode outputs VulkanShader directly
-
-    // --- Execution Nodes ---
-    NodeHandle geometryRenderNode = renderGraph->AddNode("GeometryRender", "triangle_render");
-    */
     NodeHandle presentNode = renderGraph->AddNode<PresentNodeType>("present");
 
     // --- Phase G: Compute Pipeline Nodes ---
@@ -303,110 +283,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
         mainLogger->Info("[BuildRenderGraph] Render-scale=" + std::to_string(renderScale) +
                          " (VIXEN_RENDER_SCALE env; 1.0 = full resolution)");
     }
-
-    // DISABLED FOR COMPUTE TEST: Graphics pipeline parameters
-    /*
-    // Vertex buffer parameters (simple triangle)
-    auto* vertexBuffer = static_cast<VertexBufferNode*>(renderGraph->GetInstance(vertexBufferNode));
-    vertexBuffer->SetParameter(VertexBufferNodeConfig::PARAM_VERTEX_COUNT, 36u);
-    vertexBuffer->SetParameter(VertexBufferNodeConfig::PARAM_VERTEX_STRIDE, sizeof(VertexWithUV)); // pos(vec4) + UV(vec2)
-    vertexBuffer->SetParameter(VertexBufferNodeConfig::PARAM_USE_TEXTURE, true); // Shader uses vec2 UV at location 1
-    vertexBuffer->SetParameter(VertexBufferNodeConfig::PARAM_INDEX_COUNT, 0u); // No index buffer
-
-    // Texture loader parameters
-    auto* textureLoader = static_cast<TextureLoaderNode*>(renderGraph->GetInstance(textureNode));
-    textureLoader->SetParameter(TextureLoaderNodeConfig::FILE_PATH, std::string("C:\\Users\\liory\\Downloads\\earthmap.jpg"));
-    textureLoader->SetParameter(TextureLoaderNodeConfig::SAMPLER_FILTER, std::string("Linear"));
-    textureLoader->SetParameter(TextureLoaderNodeConfig::SAMPLER_ADDRESS_MODE, std::string("Repeat"));
-
-    // Render pass parameters
-    auto* renderPass = static_cast<RenderPassNode*>(renderGraph->GetInstance(renderPassNode));
-    renderPass->SetParameter(RenderPassNodeConfig::PARAM_COLOR_LOAD_OP, AttachmentLoadOp::Clear);
-    renderPass->SetParameter(RenderPassNodeConfig::PARAM_COLOR_STORE_OP, AttachmentStoreOp::Store);
-    renderPass->SetParameter(RenderPassNodeConfig::PARAM_DEPTH_LOAD_OP, AttachmentLoadOp::Clear);
-    renderPass->SetParameter(RenderPassNodeConfig::PARAM_DEPTH_STORE_OP, AttachmentStoreOp::DontCare);
-    renderPass->SetParameter(RenderPassNodeConfig::PARAM_INITIAL_LAYOUT, ImageLayout::Undefined);
-    renderPass->SetParameter(RenderPassNodeConfig::PARAM_FINAL_LAYOUT, ImageLayout::PresentSrc);
-    renderPass->SetParameter(RenderPassNodeConfig::PARAM_SAMPLES, 1u);
-
-    // Framebuffer parameters
-    auto* framebuffer = static_cast<FramebufferNode*>(renderGraph->GetInstance(framebufferNode));
-    framebuffer->SetParameter(FramebufferNodeConfig::PARAM_LAYERS, 1u);
-
-    // Depth buffer parameters
-    auto* depthBuffer = static_cast<DepthBufferNode*>(renderGraph->GetInstance(depthBufferNode));
-    depthBuffer->SetParameter(DepthBufferNodeConfig::PARAM_FORMAT, static_cast<uint32_t>(VK_FORMAT_D32_SFLOAT));
-
-    // Graphics pipeline parameters
-    auto* pipeline = static_cast<GraphicsPipelineNode*>(renderGraph->GetInstance(pipelineNode));
-    pipeline->SetParameter(GraphicsPipelineNodeConfig::ENABLE_DEPTH_TEST, true);
-    pipeline->SetParameter(GraphicsPipelineNodeConfig::ENABLE_DEPTH_WRITE, true);
-    pipeline->SetParameter(GraphicsPipelineNodeConfig::ENABLE_VERTEX_INPUT, true);
-    pipeline->SetParameter(GraphicsPipelineNodeConfig::CULL_MODE, std::string("Back"));
-
-    // MVP: Shader loading deferred to CompileRenderGraph (after device is created)
-    mainLogger->Info("Shader loading will occur during compilation phase");
-    
-    pipeline->SetParameter(GraphicsPipelineNodeConfig::POLYGON_MODE, std::string("Fill"));
-    pipeline->SetParameter(GraphicsPipelineNodeConfig::TOPOLOGY, std::string("TriangleList"));
-    pipeline->SetParameter(GraphicsPipelineNodeConfig::FRONT_FACE, std::string("CounterClockwise"));
-
-    // Geometry render parameters
-    auto* geometryRender = static_cast<GeometryRenderNode*>(renderGraph->GetInstance(geometryRenderNode));
-    geometryRender->SetParameter(GeometryRenderNodeConfig::VERTEX_COUNT, 36u);
-    geometryRender->SetParameter(GeometryRenderNodeConfig::INSTANCE_COUNT, 1u);
-    geometryRender->SetParameter(GeometryRenderNodeConfig::FIRST_VERTEX, 0u);
-    geometryRender->SetParameter(GeometryRenderNodeConfig::FIRST_INSTANCE, 0u);
-    geometryRender->SetParameter(GeometryRenderNodeConfig::USE_INDEX_BUFFER, false);
-    geometryRender->SetParameter(GeometryRenderNodeConfig::CLEAR_COLOR_R, 0.0f);
-    geometryRender->SetParameter(GeometryRenderNodeConfig::CLEAR_COLOR_G, 0.0f);
-    geometryRender->SetParameter(GeometryRenderNodeConfig::CLEAR_COLOR_B, 0.2f);
-    geometryRender->SetParameter(GeometryRenderNodeConfig::CLEAR_COLOR_A, 1.0f);
-    geometryRender->SetParameter(GeometryRenderNodeConfig::CLEAR_DEPTH, 1.0f);
-    geometryRender->SetParameter(GeometryRenderNodeConfig::CLEAR_STENCIL, 0u);
-
-    // Phase G: Configure shader libraries with builder functions
-
-    // Graphics shader library (Draw.vert + Draw.frag)
-    auto* graphicsShaderLib = static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(shaderLibNode));
-    graphicsShaderLib->RegisterShaderBuilder([](int vulkanVer, int spirvVer) {
-        ShaderManagement::ShaderBundleBuilder builder;
-
-        // Find shader paths - try compile-time shader directory first
-        std::vector<std::filesystem::path> possiblePaths = {
-#ifdef VIXEN_SHADER_SOURCE_DIR
-            VIXEN_SHADER_SOURCE_DIR "/Draw.vert",
-#endif
-            "shaders/Draw.vert",
-            "Draw.vert",
-            "../shaders/Draw.vert"
-        };
-        std::filesystem::path vertPath, fragPath;
-        for (const auto& path : possiblePaths) {
-            if (std::filesystem::exists(path)) {
-                vertPath = path;
-                fragPath = path.parent_path() / "Draw.frag";
-                break;
-            }
-        }
-
-        // Configure SDI generation
-        ShaderManagement::SdiGeneratorConfig sdiConfig;
-        sdiConfig.outputDirectory = std::filesystem::current_path() / "generated" / "sdi";
-        sdiConfig.namespacePrefix = "ShaderInterface";
-        sdiConfig.generateComments = true;
-
-        builder.SetProgramName("Draw_Shader")
-               .SetSdiConfig(sdiConfig)
-               .EnableSdiGeneration(true)
-               .SetTargetVulkanVersion(vulkanVer)
-               .SetTargetSpirvVersion(spirvVer)
-               .AddStageFromFile(ShaderManagement::ShaderStage::Vertex, vertPath, "main")
-               .AddStageFromFile(ShaderManagement::ShaderStage::Fragment, fragPath, "main");
-
-        return builder;
-    });
-    */
 
     // Present parameters (needed for both graphics and compute)
     auto* present = static_cast<PresentNode*>(renderGraph->GetInstance(presentNode));
@@ -551,27 +427,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
     camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Z, 300.0f);  // Outside grid (ignored in orbit mode)
     camera->SetParameter(CameraNodeConfig::PARAM_YAW, 0.0f);         // Camera at +Z, looking toward -Z
     camera->SetParameter(CameraNodeConfig::PARAM_PITCH, 0.0f);
-
-    // PRESET 2: Offset to see both left (red) and right (green) walls
-    //camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_X, 1.5f);
-    //camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Y, 0.5f);
-    //camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Z, -0.5f);
-    //camera->SetParameter(CameraNodeConfig::PARAM_YAW, 0.0f);
-    //camera->SetParameter(CameraNodeConfig::PARAM_PITCH, 0.0f);
-
-    // PRESET 3: Far view of entire box
-    //camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_X, 0.0f);
-    //camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Y, 0.0f);
-    //camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Z, 5.0f);
-    //camera->SetParameter(CameraNodeConfig::PARAM_YAW, 0.0f);
-    //camera->SetParameter(CameraNodeConfig::PARAM_PITCH, 0.0f);
-
-    // PRESET 4: Side view
-    //camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_X, 5.0f);
-    //camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Y, 0.0f);
-    //camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Z, -8.0f);
-    //camera->SetParameter(CameraNodeConfig::PARAM_YAW, -90.0f);  // Look left toward -X
-    //camera->SetParameter(CameraNodeConfig::PARAM_PITCH, 0.0f);
     camera->SetParameter(CameraNodeConfig::PARAM_GRID_RESOLUTION, 128u);
 
     // Ray marching: Voxel grid parameters
@@ -809,120 +664,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // --- Device → CommandPool connection ---
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   commandPoolNode, CommandPoolNodeConfig::VULKAN_DEVICE_IN);
-
-    // DISABLED FOR COMPUTE TEST: Graphics pipeline connections
-    /*
-    // --- Device → DepthBuffer device connection (for Vulkan operations) ---
-    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                  depthBufferNode, DepthBufferNodeConfig::VULKAN_DEVICE_IN);
-
-    // --- SwapChain → DepthBuffer connection (for dimensions) ---
-    batch.Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
-                  depthBufferNode, DepthBufferNodeConfig::SWAPCHAIN_PUBLIC_VARS);
-
-    // --- CommandPool → DepthBuffer connection ---
-    batch.Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
-                  depthBufferNode, DepthBufferNodeConfig::COMMAND_POOL);
-
-    // --- Device → RenderPass device connection ---
-    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                  renderPassNode, RenderPassNodeConfig::VULKAN_DEVICE_IN);
-
-    // --- SwapChain → RenderPass connection (swapchain info bundle) ---
-    batch.Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
-                  renderPassNode, RenderPassNodeConfig::SWAPCHAIN_INFO);
-
-    // --- DepthBuffer → RenderPass connection (depth format) ---
-    batch.Connect(depthBufferNode, DepthBufferNodeConfig::DEPTH_FORMAT,
-                  renderPassNode, RenderPassNodeConfig::DEPTH_FORMAT);
-
-    // --- Device → Framebuffer device connection ---
-    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                  framebufferNode, FramebufferNodeConfig::VULKAN_DEVICE_IN);
-
-    // --- RenderPass + SwapChain + DepthBuffer → Framebuffer connections ---
-    batch.Connect(renderPassNode, RenderPassNodeConfig::RENDER_PASS,
-        framebufferNode, FramebufferNodeConfig::RENDER_PASS)
-        .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
-            framebufferNode, FramebufferNodeConfig::SWAPCHAIN_INFO)
-        .Connect(depthBufferNode, DepthBufferNodeConfig::DEPTH_IMAGE_VIEW,
-            framebufferNode, FramebufferNodeConfig::DEPTH_ATTACHMENT);
-
-
-    // --- Device → ShaderLibrary device chain ---
-    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                  shaderLibNode, ShaderLibraryNodeConfig::VULKAN_DEVICE_IN);
-
-    // --- Device → GraphicsPipeline device connection ---
-    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                  pipelineNode, GraphicsPipelineNodeConfig::VULKAN_DEVICE_IN);
-
-    // --- RenderPass + DescriptorSet + SwapChain → Pipeline connections ---
-    // Phase 2: Connect ShaderDataBundle to both DescriptorSetNode and GraphicsPipelineNode
-    batch.Connect(shaderLibNode, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
-                  descriptorSetNode, DescriptorSetNodeConfig::SHADER_DATA_BUNDLE)
-         .Connect(shaderLibNode, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
-                  pipelineNode, GraphicsPipelineNodeConfig::SHADER_DATA_BUNDLE)
-         .Connect(renderPassNode, RenderPassNodeConfig::RENDER_PASS,
-                  pipelineNode, GraphicsPipelineNodeConfig::RENDER_PASS)
-         .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                  descriptorSetNode, DescriptorSetNodeConfig::VULKAN_DEVICE_IN)
-         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
-                  descriptorSetNode, DescriptorSetNodeConfig::SWAPCHAIN_PUBLIC)
-         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
-                  descriptorSetNode, DescriptorSetNodeConfig::IMAGE_INDEX)
-         .Connect(descriptorSetNode, DescriptorSetNodeConfig::DESCRIPTOR_SET_LAYOUT,
-                  pipelineNode, GraphicsPipelineNodeConfig::DESCRIPTOR_SET_LAYOUT);
-         // Note: SWAPCHAIN_INFO removed from GraphicsPipelineNode (pipelines are swapchain-independent)
-
-    // --- Device → TextureLoader device chain ---
-    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                  textureNode, TextureLoaderNodeConfig::VULKAN_DEVICE_IN);
-
-    // --- TextureLoader → DescriptorSet texture connections ---
-    batch.Connect(textureNode, TextureLoaderNodeConfig::TEXTURE_IMAGE,
-                  descriptorSetNode, DescriptorSetNodeConfig::TEXTURE_IMAGE)
-         .Connect(textureNode, TextureLoaderNodeConfig::TEXTURE_VIEW,
-                  descriptorSetNode, DescriptorSetNodeConfig::TEXTURE_VIEW)
-         .Connect(textureNode, TextureLoaderNodeConfig::TEXTURE_SAMPLER,
-                  descriptorSetNode, DescriptorSetNodeConfig::TEXTURE_SAMPLER);
-
-    // --- Device → VertexBuffer device chain ---
-    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                  vertexBufferNode, VertexBufferNodeConfig::VULKAN_DEVICE_IN);
-
-    // --- All resources → GeometryRender connections ---
-    batch.Connect(renderPassNode, RenderPassNodeConfig::RENDER_PASS,
-                  geometryRenderNode, GeometryRenderNodeConfig::RENDER_PASS)
-         .Connect(framebufferNode, FramebufferNodeConfig::FRAMEBUFFERS,
-                  geometryRenderNode, GeometryRenderNodeConfig::FRAMEBUFFERS)
-         .Connect(pipelineNode, GraphicsPipelineNodeConfig::PIPELINE,
-                  geometryRenderNode, GeometryRenderNodeConfig::PIPELINE)
-         .Connect(pipelineNode, GraphicsPipelineNodeConfig::PIPELINE_LAYOUT,
-                  geometryRenderNode, GeometryRenderNodeConfig::PIPELINE_LAYOUT)
-         .Connect(descriptorSetNode, DescriptorSetNodeConfig::DESCRIPTOR_SETS,
-                  geometryRenderNode, GeometryRenderNodeConfig::DESCRIPTOR_SETS)
-         .Connect(vertexBufferNode, VertexBufferNodeConfig::VERTEX_BUFFER,
-                  geometryRenderNode, GeometryRenderNodeConfig::VERTEX_BUFFER)
-         .Connect(vertexBufferNode, VertexBufferNodeConfig::INDEX_BUFFER,
-                  geometryRenderNode, GeometryRenderNodeConfig::INDEX_BUFFER)
-         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
-                  geometryRenderNode, GeometryRenderNodeConfig::SWAPCHAIN_INFO)
-         .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
-                  geometryRenderNode, GeometryRenderNodeConfig::COMMAND_POOL)
-         .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                  geometryRenderNode, GeometryRenderNodeConfig::VULKAN_DEVICE)
-         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
-                  geometryRenderNode, GeometryRenderNodeConfig::IMAGE_INDEX)
-         .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
-                  geometryRenderNode, GeometryRenderNodeConfig::CURRENT_FRAME_INDEX)  // Phase 0.5: Frame-in-flight index for semaphore indexing
-         .Connect(frameSyncNode, FrameSyncNodeConfig::IN_FLIGHT_FENCE,
-                  geometryRenderNode, GeometryRenderNodeConfig::IN_FLIGHT_FENCE)  // Phase 0.5: Per-flight fence (CPU-GPU sync)
-         .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
-                  geometryRenderNode, GeometryRenderNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)  // Phase 0.5: Array of per-flight semaphores (indexed by frameIndex)
-         .Connect(frameSyncNode, FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
-                  geometryRenderNode, GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);  // Phase 0.5: Array of per-image semaphores (indexed by imageIndex)
-    */
 
     // --- Device → Present device connection ---
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
@@ -1358,15 +1099,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.RegisterAll();
 
     mainLogger->Info("Successfully wired " + std::to_string(connectionCount) + " connections");
-
-    // --- Phase 0.4: Loop Propagation Connections ---
-    // TODO: Re-enable loop propagation connections after implementing proper API
-    // Note: AUTO_LOOP slots exist on all nodes, but direct Connect() is not exposed on RenderGraph
-    // batch.Connect(
-    //     physicsLoopBridge, NodeInstance::AUTO_LOOP_OUT_SLOT,
-    //     geometryRenderNode, NodeInstance::AUTO_LOOP_IN_SLOT
-    // );
-    // mainLogger->Info("Connected physics loop propagation to GeometryRenderNode");
 
     mainLogger->Info("Complete render pipeline built with " + std::to_string(renderGraph->GetNodeCount()) + " nodes");
 }

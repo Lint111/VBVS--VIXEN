@@ -6,6 +6,8 @@
 #include "CapabilityGraph.h"
 #include <memory>
 #include <functional>
+#include <mutex>
+#include <unordered_map>
 
 // Forward declarations for upload/update/allocation infrastructure (Sprint 5)
 namespace ResourceManagement {
@@ -85,6 +87,24 @@ public:
     // Present queue support
     bool HasPresentSupport() const;
     PFN_vkQueuePresentKHR GetPresentFunction() const;
+
+    /**
+     * @brief Get the mutex that must be held around any vkQueueSubmit/vkQueueSubmit2/
+     * vkQueuePresentKHR/vkQueueWaitIdle call on the given VkQueue (audit V-M11).
+     *
+     * The Vulkan spec requires external synchronization on VkQueue for these calls. The
+     * RenderGraph TBB parallel executor can schedule two independent submit-recording nodes in
+     * the same wave (the access tracker only models data-flow resources, not the queue itself),
+     * so concurrent vkQueueSubmit on one VkQueue is reachable and is UB per spec. One mutex per
+     * queue handle, created on first use and stable for the device's lifetime (never erased, so
+     * the returned reference stays valid).
+     *
+     * Do NOT hold this mutex across a fence wait (vkWaitForFences) — only across the
+     * submit/present call itself, or independent submit chains serialize on the fence wait too.
+     *
+     * @param queue The VkQueue that will be submitted to or presented on.
+     */
+    std::mutex& SubmitMutex(VkQueue queue);
 
     // KI-012: some queue families (e.g. Mesa Dozen's transfer-capable graphics queue) report
     // minImageTransferGranularity = (0,0,0), which per spec means vkCmdCopyImageToBuffer/
@@ -397,6 +417,12 @@ private:
     // so the query pools are destroyed while the device is still valid (the manager is shared
     // with render-graph nodes, whose destruction order relative to the device is not guaranteed).
     std::function<void()> queryManagerRelease_;
+
+    // Per-queue submit mutexes (audit V-M11). unique_ptr so a rehash never invalidates a mutex
+    // reference already handed out by SubmitMutex(); guarded by submitMutexMapLock_ (only
+    // during first-use creation of an entry, not around the submit itself).
+    std::mutex submitMutexMapLock_;
+    std::unordered_map<VkQueue, std::unique_ptr<std::mutex>> submitMutexes_;
 
 };
 

@@ -242,6 +242,70 @@ TEST_F(LoggerTest, LongMessageLogging) {
     EXPECT_NE(logs.find(longMessage), std::string::npos);
 }
 
+// ============================================================================
+// V-M26: Error/Critical terminal visibility (audit fix)
+// ============================================================================
+
+class LoggerGlobalStateTest : public ::testing::Test {
+protected:
+    void TearDown() override {
+        // These tests mutate process-wide state; restore defaults so other tests aren't affected.
+        Logger::SetGlobalMinLevel(LogLevel::LOG_DEBUG);
+        Logger::SetGlobalTerminalOutput(false);
+    }
+};
+
+TEST_F(LoggerGlobalStateTest, ErrorReachesTerminalOnDefaultConstructedLogger) {
+    Logger logger("x"); // default ctor args: enabled=false, terminalOutput=false
+    testing::internal::CaptureStdout();
+    logger.Error("boom");
+    std::string output = testing::internal::GetCapturedStdout();
+    EXPECT_NE(output.find("boom"), std::string::npos);
+}
+
+TEST_F(LoggerGlobalStateTest, CriticalReachesTerminalOnDefaultConstructedLogger) {
+    Logger logger("x");
+    testing::internal::CaptureStdout();
+    logger.Critical("meltdown");
+    std::string output = testing::internal::GetCapturedStdout();
+    EXPECT_NE(output.find("meltdown"), std::string::npos);
+}
+
+TEST_F(LoggerGlobalStateTest, WarningStaysGatedOnDefaultConstructedLogger) {
+    Logger logger("x");
+    testing::internal::CaptureStdout();
+    logger.Warning("quiet warning");
+    std::string output = testing::internal::GetCapturedStdout();
+    EXPECT_EQ(output.find("quiet warning"), std::string::npos);
+}
+
+TEST_F(LoggerGlobalStateTest, GlobalMinLevelAboveErrorStillSilencesIt) {
+    Logger logger("x");
+    Logger::SetGlobalMinLevel(LogLevel::LOG_CRITICAL); // deliberate silence, sanctioned path
+    testing::internal::CaptureStdout();
+    logger.Error("should be silenced");
+    std::string output = testing::internal::GetCapturedStdout();
+    EXPECT_EQ(output.find("should be silenced"), std::string::npos);
+}
+
+TEST_F(LoggerGlobalStateTest, GlobalTerminalOutputMakesDisabledLoggerPrintInfo) {
+    Logger logger("x"); // enabled=false, terminalOutput=false
+    Logger::SetGlobalTerminalOutput(true);
+    testing::internal::CaptureStdout();
+    logger.Info("visible via global opt-in");
+    std::string output = testing::internal::GetCapturedStdout();
+    EXPECT_NE(output.find("visible via global opt-in"), std::string::npos);
+}
+
+TEST_F(LoggerGlobalStateTest, GlobalTerminalOutputFalseRestoresGating) {
+    Logger logger("x");
+    Logger::SetGlobalTerminalOutput(false);
+    testing::internal::CaptureStdout();
+    logger.Info("should stay hidden");
+    std::string output = testing::internal::GetCapturedStdout();
+    EXPECT_EQ(output.find("should stay hidden"), std::string::npos);
+}
+
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

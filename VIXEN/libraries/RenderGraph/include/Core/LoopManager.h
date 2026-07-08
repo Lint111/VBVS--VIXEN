@@ -62,7 +62,7 @@ struct LoopConfig {
  * Example:
  *   LoopManager manager;
  *   uint32_t physicsID = manager.RegisterLoop({1.0/60.0, "Physics"});
- *   manager.UpdateLoops(frameTime);  // Called by RenderGraph::Execute
+ *   manager.UpdateLoops(frameTime);  // Called by RenderGraph::RenderFrame
  *   const LoopReference* ref = manager.GetLoopReference(physicsID);
  *   if (ref->shouldExecuteThisFrame) { ... }
  */
@@ -92,7 +92,7 @@ public:
     /**
      * @brief Update all loop states based on frame time
      *
-     * Called once per frame by RenderGraph::Execute().
+     * Called once per frame by RenderGraph::RenderFrame().
      * Updates accumulators and sets shouldExecuteThisFrame flags.
      *
      * @param frameTime Time since last frame in seconds

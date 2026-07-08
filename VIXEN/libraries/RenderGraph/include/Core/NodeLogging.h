@@ -45,18 +45,21 @@
 /**
  * @brief Log error message (failures)
  * Usage: NODE_LOG_ERROR("Failed to create device");
+ * Not gated on IsEnabled(): Logger::Log() itself makes Error terminal-visible regardless of the
+ * per-instance enabled flag (audit V-M26) — gating here would defeat that bypass before it runs.
  */
 #define NODE_LOG_ERROR(msg) \
-    do { if (nodeLogger && nodeLogger->IsEnabled() && \
+    do { if (nodeLogger && \
              Vixen::Log::Logger::GetGlobalMinLevel() <= Vixen::Log::LogLevel::LOG_ERROR) \
              nodeLogger->Error(msg); } while(0)
 
 /**
  * @brief Log critical message (fatal errors)
  * Usage: NODE_LOG_CRITICAL("No Vulkan-capable GPUs found");
+ * Not gated on IsEnabled(): see NODE_LOG_ERROR above.
  */
 #define NODE_LOG_CRITICAL(msg) \
-    do { if (nodeLogger && nodeLogger->IsEnabled() && \
+    do { if (nodeLogger && \
              Vixen::Log::Logger::GetGlobalMinLevel() <= Vixen::Log::LogLevel::LOG_CRITICAL) \
              nodeLogger->Critical(msg); } while(0)
 
@@ -73,12 +76,13 @@
     do { if ((obj) && (obj)->nodeLogger && (obj)->nodeLogger->IsEnabled() && \
              Vixen::Log::Logger::GetGlobalMinLevel() <= Vixen::Log::LogLevel::LOG_WARNING) \
              (obj)->nodeLogger->Warning(msg); } while(0)
+// Not gated on IsEnabled(): see NODE_LOG_ERROR above.
 #define NODE_LOG_ERROR_OBJ(obj, msg) \
-    do { if ((obj) && (obj)->nodeLogger && (obj)->nodeLogger->IsEnabled() && \
+    do { if ((obj) && (obj)->nodeLogger && \
              Vixen::Log::Logger::GetGlobalMinLevel() <= Vixen::Log::LogLevel::LOG_ERROR) \
              (obj)->nodeLogger->Error(msg); } while(0)
 #define NODE_LOG_CRITICAL_OBJ(obj, msg) \
-    do { if ((obj) && (obj)->nodeLogger && (obj)->nodeLogger->IsEnabled() && \
+    do { if ((obj) && (obj)->nodeLogger && \
              Vixen::Log::Logger::GetGlobalMinLevel() <= Vixen::Log::LogLevel::LOG_CRITICAL) \
              (obj)->nodeLogger->Critical(msg); } while(0)
 

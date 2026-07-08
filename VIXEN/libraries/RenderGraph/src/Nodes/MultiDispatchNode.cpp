@@ -80,10 +80,17 @@ bool MultiDispatchNode::TryQueueDispatch(DispatchPass&& pass, uint64_t estimated
         return false;
     }
 
-    // Check queue limit
+    // Check queue limit. Unlike an invalid pass (a misconfiguration bug), a full queue can be
+    // legitimate under sustained heavy load and this path is called per-dispatch, so an
+    // always-on ERROR could flood the terminal every frame; throttle it (ponytail: local
+    // counter matching the existing idiom in this file/TraceRaysNode, upgrade to a shared
+    // once-per-N helper if more sites need it).
     if (taskQueue_.GetQueuedCount() >= MultiDispatchNodeConfig::MAX_DISPATCHES_PER_FRAME) {
-        NODE_LOG_ERROR("[MultiDispatchNode::TryQueueDispatch] Queue full (" +
-            std::to_string(MultiDispatchNodeConfig::MAX_DISPATCHES_PER_FRAME) + " max)");
+        static int queueFullLogCounter = 0;
+        if (queueFullLogCounter++ < 5) {
+            NODE_LOG_ERROR("[MultiDispatchNode::TryQueueDispatch] Queue full (" +
+                std::to_string(MultiDispatchNodeConfig::MAX_DISPATCHES_PER_FRAME) + " max)");
+        }
         return false;
     }
 

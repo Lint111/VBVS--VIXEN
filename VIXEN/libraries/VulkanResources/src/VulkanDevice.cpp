@@ -355,6 +355,15 @@ PFN_vkQueuePresentKHR VulkanDevice::GetPresentFunction() const {
     return vkQueuePresentKHR;
 }
 
+std::mutex& VulkanDevice::SubmitMutex(VkQueue queue) {
+    std::lock_guard<std::mutex> lock(submitMutexMapLock_);
+    auto it = submitMutexes_.find(queue);
+    if (it == submitMutexes_.end()) {
+        it = submitMutexes_.emplace(queue, std::make_unique<std::mutex>()).first;
+    }
+    return *it->second;
+}
+
 // Helper to append a feature struct to the pNext chain
 inline void* VulkanDevice::AppendToPNext(void** chainEnd, void* featureStruct) {
     *chainEnd = featureStruct;

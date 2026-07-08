@@ -20,17 +20,14 @@ using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 using VulkanShaderPtr = VulkanShader*;
 
 /**
- * @brief Shader program descriptor with Vulkan objects (MVP STUB)
+ * @brief Minimal shader program identifier (id + name only)
  *
-/**
- * @brief Shader program descriptor with Vulkan objects (MVP STUB)
- *
- * Simplified version for MVP - will integrate ShaderManagement properly later.
+ * Registered as a compile-time resource type; not the live shader-compilation path
+ * (see ShaderLibraryNode.cpp, which drives ShaderManagement directly via ShaderDataBundle).
  */
 struct ShaderProgramDescriptor {
     uint32_t programId = 0;
     std::string name;
-    // MVP: Minimal implementation - expand when ShaderManagement integrated
 };
 
 /**

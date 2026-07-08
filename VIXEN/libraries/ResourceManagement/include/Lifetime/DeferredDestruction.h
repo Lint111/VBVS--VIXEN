@@ -6,6 +6,7 @@
 #include <vector>
 #include <functional>
 #include <cstdint>
+#include <mutex>
 
 namespace ResourceManagement {
 
@@ -96,28 +97,15 @@ public:
      * @param capacity Number of pending destructions to pre-allocate for
      */
     void PreReserve(size_t capacity) {
-        if (capacity <= buffer_.size()) {
-            return;  // Already have enough capacity
-        }
-
-        // Create new buffer with requested capacity
-        std::vector<PendingDestruction> newBuffer(capacity);
-
-        // Move existing elements to new buffer (maintain FIFO order)
-        for (size_t i = 0; i < size_; ++i) {
-            size_t oldIdx = (head_ + i) % buffer_.size();
-            newBuffer[i] = std::move(buffer_[oldIdx]);
-        }
-
-        buffer_ = std::move(newBuffer);
-        head_ = 0;
-        tail_ = size_;
+        std::lock_guard<std::mutex> lock(mutex_);
+        PreReserveLocked(capacity);
     }
 
     /**
      * @brief Get current pre-allocated capacity
      */
     size_t GetCapacity() const noexcept {
+        std::lock_guard<std::mutex> lock(mutex_);
         return buffer_.size();
     }
 
@@ -148,6 +136,7 @@ public:
             return;  // Nothing to destroy
         }
 
+        std::lock_guard<std::mutex> lock(mutex_);
         PushInternal(PendingDestruction(
             [device, handle, destroyer]() {
                 destroyer(device, handle, nullptr);
@@ -177,6 +166,7 @@ public:
             return;
         }
 
+        std::lock_guard<std::mutex> lock(mutex_);
         PushInternal(PendingDestruction(std::move(destructorFunc), currentFrame));
     }
 
@@ -201,25 +191,33 @@ public:
      * ```
      */
     void ProcessFrame(uint64_t currentFrame, uint32_t maxFramesInFlight = 3) {
-        size_t destroyedThisFrame = 0;
+        // Pop the due entries into a local batch under the lock, then run destructors outside
+        // it (audit V-M10): a destructor that itself releases a SharedResourcePtr can re-enter
+        // AddGeneric()/PushInternal() on this same queue, which would deadlock on a
+        // non-recursive mutex if still held here.
+        std::vector<PendingDestruction> due;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            while (size_ > 0) {
+                const auto& pending = buffer_[head_];
 
-        while (size_ > 0) {
-            const auto& pending = buffer_[head_];
-
-            // Safe to destroy after N frames have passed
-            // Guard against unsigned underflow: only destroy if current >= submitted
-            // and the difference is >= maxFramesInFlight
-            if (currentFrame >= pending.submittedFrame &&
-                (currentFrame - pending.submittedFrame) >= maxFramesInFlight) {
-                pending.destructorFunc();
-                PopInternal();
-                destroyedThisFrame++;
-            } else {
-                break;  // Queue is FIFO ordered by submission time
+                // Safe to destroy after N frames have passed
+                // Guard against unsigned underflow: only destroy if current >= submitted
+                // and the difference is >= maxFramesInFlight
+                if (currentFrame >= pending.submittedFrame &&
+                    (currentFrame - pending.submittedFrame) >= maxFramesInFlight) {
+                    due.push_back(std::move(buffer_[head_]));
+                    PopInternal();
+                } else {
+                    break;  // Queue is FIFO ordered by submission time
+                }
             }
+            totalDestroyed_ += due.size();
         }
 
-        totalDestroyed_ += destroyedThisFrame;
+        for (auto& pending : due) {
+            pending.destructorFunc();
+        }
     }
 
     /**
@@ -236,21 +234,30 @@ public:
      * ```
      */
     void Flush() {
-        size_t flushedCount = 0;
-
-        while (size_ > 0) {
-            buffer_[head_].destructorFunc();
-            PopInternal();
-            flushedCount++;
+        // Same pop-under-lock / destroy-outside-lock shape as ProcessFrame (audit V-M10): a
+        // destructor may re-enter AddGeneric() on this queue (e.g. freeing a resource whose
+        // own teardown queues another deferred destruction).
+        std::vector<PendingDestruction> all;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            all.reserve(size_);
+            while (size_ > 0) {
+                all.push_back(std::move(buffer_[head_]));
+                PopInternal();
+            }
+            totalFlushed_ += all.size();
         }
 
-        totalFlushed_ += flushedCount;
+        for (auto& pending : all) {
+            pending.destructorFunc();
+        }
     }
 
     /**
      * @brief Get number of pending destructions
      */
     size_t GetPendingCount() const noexcept {
+        std::lock_guard<std::mutex> lock(mutex_);
         return size_;
     }
 
@@ -262,6 +269,7 @@ public:
      * - maxSizeReached << capacity → decrease PreReserve capacity
      */
     PreAllocationStats GetPreAllocationStats() const noexcept {
+        std::lock_guard<std::mutex> lock(mutex_);
         PreAllocationStats stats;
         stats.capacity = buffer_.size();
         stats.currentSize = size_;
@@ -279,6 +287,7 @@ public:
      * Resets growth count and high-water mark for fresh measurement period.
      */
     void ResetStats() noexcept {
+        std::lock_guard<std::mutex> lock(mutex_);
         maxSizeReached_ = size_;
         growthCount_ = 0;
         totalQueued_ = 0;
@@ -333,14 +342,37 @@ public:
 
 private:
     /**
-     * @brief Push element to ring buffer with automatic growth fallback
+     * @brief Grow/reserve the ring buffer. Caller must hold mutex_.
+     */
+    void PreReserveLocked(size_t capacity) {
+        if (capacity <= buffer_.size()) {
+            return;  // Already have enough capacity
+        }
+
+        // Create new buffer with requested capacity
+        std::vector<PendingDestruction> newBuffer(capacity);
+
+        // Move existing elements to new buffer (maintain FIFO order)
+        for (size_t i = 0; i < size_; ++i) {
+            size_t oldIdx = (head_ + i) % buffer_.size();
+            newBuffer[i] = std::move(buffer_[oldIdx]);
+        }
+
+        buffer_ = std::move(newBuffer);
+        head_ = 0;
+        tail_ = size_;
+    }
+
+    /**
+     * @brief Push element to ring buffer with automatic growth fallback. Caller must hold
+     * mutex_ (audit V-M10).
      */
     void PushInternal(PendingDestruction pending) {
         // Check if we need to grow
         if (size_ >= buffer_.size()) {
             // Growth fallback - double capacity (indicates PreReserve was too small)
             size_t newCapacity = buffer_.empty() ? 16 : buffer_.size() * 2;
-            PreReserve(newCapacity);
+            PreReserveLocked(newCapacity);
             growthCount_++;
             // Note: In production, log warning here for capacity tuning
         }
@@ -357,7 +389,7 @@ private:
     }
 
     /**
-     * @brief Pop element from ring buffer front
+     * @brief Pop element from ring buffer front. Caller must hold mutex_ (audit V-M10).
      */
     void PopInternal() noexcept {
         if (size_ == 0) {
@@ -367,6 +399,13 @@ private:
         head_ = (head_ + 1) % buffer_.size();
         size_--;
     }
+
+    // Guards buffer_/head_/tail_/size_ and the stats counters below. SharedResourcePtr::Release()
+    // can call Add()/AddGeneric() from any thread (refcounts are atomic — see V-M10), racing the
+    // frame loop's ProcessFrame()/Flush(). ProcessFrame()/Flush() pop under this lock into a
+    // local batch and run destructors after releasing it, so a destructor that re-enters
+    // AddGeneric() doesn't deadlock.
+    mutable std::mutex mutex_;
 
     // Ring buffer storage
     std::vector<PendingDestruction> buffer_;

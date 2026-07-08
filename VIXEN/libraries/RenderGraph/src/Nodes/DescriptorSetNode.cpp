@@ -30,7 +30,7 @@ std::unique_ptr<NodeInstance> DescriptorSetNodeType::CreateInstance(
     );
 }
 
-// ===== NODE INSTANCE (MVP STUB) =====
+// ===== NODE INSTANCE =====
 
 DescriptorSetNode::DescriptorSetNode(
     const std::string& instanceName,
@@ -38,7 +38,6 @@ DescriptorSetNode::DescriptorSetNode(
 )
     : TypedNode<DescriptorSetNodeConfig>(instanceName, nodeType)
 {
-    // MVP STUB: No descriptor set initialization
 }
 
 void DescriptorSetNode::SetupImpl(TypedSetupContext& ctx) {
@@ -998,34 +997,6 @@ void DescriptorSetNode::CleanupImpl(TypedCleanupContext& ctx) {
         descriptorSetLayout = VK_NULL_HANDLE;
         NODE_LOG_DEBUG("Cleanup: Descriptor set layout destroyed");
     }
-}
-
-// ===== API METHODS (MVP STUBS) =====
-
-void DescriptorSetNode::UpdateDescriptorSet(
-    uint32_t setIndex,
-    const std::vector<DescriptorUpdate>& updates
-) {
-    // MVP STUB: Descriptor sets not implemented yet
-    NODE_LOG_WARNING("UpdateDescriptorSet: MVP stub - not implemented");
-}
-
-void DescriptorSetNode::UpdateBinding(
-    uint32_t setIndex,
-    uint32_t binding,
-    const VkDescriptorBufferInfo& bufferInfo
-) {
-    // MVP STUB: Descriptor sets not implemented yet
-    NODE_LOG_WARNING("UpdateBinding (buffer): MVP stub - not implemented");
-}
-
-void DescriptorSetNode::UpdateBinding(
-    uint32_t setIndex,
-    uint32_t binding,
-    const VkDescriptorImageInfo& imageInfo
-) {
-    // MVP STUB: Descriptor sets not implemented yet
-    NODE_LOG_WARNING("UpdateBinding (image): MVP stub - not implemented");
 }
 
 } // namespace Vixen::RenderGraph

@@ -53,6 +53,19 @@ namespace Vixen::SVO {
 class LaineKarrasOctree : public ISVOStructure {
 public:
 
+    // ========================================================================
+    // ADOPTED FROM: NVIDIA ESVO Reference (cuda/Raycast.inl)
+    // Copyright (c) 2009-2011, NVIDIA Corporation (BSD 3-Clause)
+    // ========================================================================
+
+    // ESVO internal scale range - normalized to [1,2] space with 23-bit mantissa precision.
+    // This constant enables ESVO's float bit manipulation tricks to work for ANY user depth.
+    // User scales are mapped: userScale -> ESVO_MAX_SCALE - (m_maxLevels - 1 - userScale).
+    // Public: this is the single canonical value for the GPU-visible ESVO scale contract
+    // (OctreeConfig::esvoMaxScale and friends reference it directly, not a re-hardcoded 22).
+    static constexpr int ESVO_MAX_SCALE = 22;  // Root scale in ESVO normalized space
+    static_assert(ESVO_MAX_SCALE == SVOLOD_ESVO_MAX_SCALE, "keep ESVO root scale in sync");
+
     // Entity-based constructor (pure spatial index)
     // SVO stores entity IDs via EntityBrickView (8 bytes/entity)
     // Use rebuild() to populate octree from GaiaVoxelWorld entities
@@ -362,11 +375,6 @@ private:
     // ADOPTED FROM: NVIDIA ESVO Reference (cuda/Raycast.inl)
     // Copyright (c) 2009-2011, NVIDIA Corporation (BSD 3-Clause)
     // ========================================================================
-
-    // ESVO internal scale range - normalized to [1,2] space with 23-bit mantissa precision
-    // This constant enables ESVO's float bit manipulation tricks to work for ANY user depth
-    // User scales are mapped: userScale -> ESVO_MAX_SCALE - (m_maxLevels - 1 - userScale)
-    static constexpr int ESVO_MAX_SCALE = 22;  // Root scale in ESVO normalized space
 
     // Traversal stack depth - maximum supported
     static constexpr int MAX_STACK_DEPTH = 32;

@@ -13,6 +13,7 @@
 #include <stb_image_write.h>
 
 #include <cstring>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -170,9 +171,14 @@ inline bool CaptureRenderTargetToPng(Vixen::Vulkan::Resources::VulkanDevice* dev
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &cmd;
-    const bool submitOk = vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE) == VK_SUCCESS;
-    if (submitOk) {
-        vkQueueWaitIdle(queue);
+    bool submitOk;
+    {
+        // Externally synchronized per Vulkan spec (audit V-M11).
+        std::lock_guard<std::mutex> submitLock(device->SubmitMutex(queue));
+        submitOk = vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE) == VK_SUCCESS;
+        if (submitOk) {
+            vkQueueWaitIdle(queue);
+        }
     }
 
     bool ok = submitOk;
@@ -355,9 +361,14 @@ inline bool CaptureSwapchainToPng(Vixen::Vulkan::Resources::VulkanDevice* device
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &cmd;
-    const bool submitOk = vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE) == VK_SUCCESS;
-    if (submitOk) {
-        vkQueueWaitIdle(queue);
+    bool submitOk;
+    {
+        // Externally synchronized per Vulkan spec (audit V-M11).
+        std::lock_guard<std::mutex> submitLock(device->SubmitMutex(queue));
+        submitOk = vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE) == VK_SUCCESS;
+        if (submitOk) {
+            vkQueueWaitIdle(queue);
+        }
     }
 
     bool ok = submitOk;

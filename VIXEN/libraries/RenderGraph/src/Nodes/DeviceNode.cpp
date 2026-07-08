@@ -507,7 +507,8 @@ void DeviceNode::CreateDeviceBudgetManager(CashSystem::DeviceRegistry& deviceReg
         vulkanDevice->queue,
         vulkanDevice->graphicsQueueIndex,
         budgetManager.get(),
-        uploaderConfig
+        uploaderConfig,
+        &vulkanDevice->SubmitMutex(vulkanDevice->queue)
     );
 
     // Sprint 5 Phase 4.1: Pre-warm staging buffer pool to avoid first-frame allocations

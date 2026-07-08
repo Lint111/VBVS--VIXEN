@@ -18,8 +18,15 @@ cmake --build build --config Debug --parallel 16     # or Release
 ```
 
 - **Platforms:** Windows 10/11 (MSVC) and Linux/WSL (GCC/Clang).
-- **Vulkan SDK:** auto-provisioned via `cmake/ProvisionVulkan.cmake` (Linux/WSL variant:
-  `ProvisionWslVulkan.cmake`). Manual `C:/VulkanSDK/1.4.321.1` is also detected.
+- **Vulkan SDK:** auto-provisioned via `cmake/ProvisionVulkan.cmake` — pins to
+  `VIXEN_VULKAN_SDK_VERSION` (see that file for the live value; don't hardcode it here, it moves). A
+  manually-installed `C:/VulkanSDK/<version>` is also detected. On WSL2 this only provisions the
+  *headers/loader*; see the GPU-rendering note below.
+- **WSL2 GPU rendering:** the default WSL2 Vulkan ICD is **software** (lavapipe/llvmpipe) — 10-25x
+  slower than a real GPU and not representative of driver behavior. `cmake/ProvisionWslVulkan.cmake`
+  auto-builds Mesa **Dozen** (Vulkan-over-D3D12) for real-GPU rendering on `/dev/dxg`; see FR-20 in
+  `Vixen-Docs/05-Progress/features/consumer-feedback-undertow.md`. For perf-sensitive render work,
+  prefer native Windows.
 - **Trimmed build:** `-DVULKAN_TRIMMED_BUILD=ON` fetches headers only (no runtime libs).
 - **Tests:** `ctest` from the build dir, or run the per-library `test_*` binaries directly.
 

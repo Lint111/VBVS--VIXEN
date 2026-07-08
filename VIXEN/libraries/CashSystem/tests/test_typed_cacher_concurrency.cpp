@@ -141,3 +141,63 @@ TEST(TypedCacherConcurrency, ConcurrentSameKeyCreatesExactlyOnce) {
         EXPECT_EQ(r, results.front()) << "All callers must receive the same instance.";
     }
 }
+
+namespace {
+
+// Mirrors the derived-cacher bug class fixed under audit V-M9: a hand-written override
+// (PipelineCacher::Cleanup, ShaderModuleCacher::SerializeToFile, etc.) iterates m_entries
+// directly instead of going through a locked base-class accessor. TypedCacher's own Cleanup()
+// is the locked default (just calls Clear()), so this subclass overrides it the way the real
+// cachers do — walking m_entries under the shared TypedCacher lock — to prove the discipline
+// holds when exercised concurrently with GetOrCreate() insertions.
+class SelfCleaningCacher : public CashSystem::TypedCacher<TestResource, TestCI> {
+public:
+    void Cleanup() override {
+        std::shared_lock rlock(m_lock);
+        // Read-only walk — same shape as SerializeToFile's entry collection loop.
+        for (const auto& [key, entry] : m_entries) {
+            (void)key;
+            (void)entry;
+        }
+    }
+
+protected:
+    PtrT Create(const TestCI& ci) override {
+        auto r = std::make_shared<TestResource>();
+        r->value = ci.id * 10;
+        return r;
+    }
+
+    std::uint64_t ComputeKey(const TestCI& ci) const override { return ci.id; }
+};
+
+}  // namespace
+
+// Concurrent Cleanup() (a locked read-walk of m_entries) racing GetOrCreate() insertions of
+// distinct keys (audit V-M9): under TSAN/ASAN this catches an unlocked walk racing a live
+// unordered_map insert; under a plain build it at least proves no deadlock/crash.
+TEST(TypedCacherConcurrency, CleanupDuringConcurrentInsertsIsSafe) {
+    SelfCleaningCacher cacher;
+
+    const bool ok = RunWithDeadlockGuard(
+        [&] {
+            std::thread cleaner([&] {
+                for (int i = 0; i < 200; ++i) {
+                    cacher.Cleanup();
+                }
+            });
+            std::vector<std::thread> writers;
+            for (int i = 0; i < 8; ++i) {
+                writers.emplace_back([&, i] {
+                    for (int k = 0; k < 50; ++k) {
+                        cacher.GetOrCreate(TestCI{static_cast<uint64_t>(i * 1000 + k)});
+                    }
+                });
+            }
+            cleaner.join();
+            for (auto& t : writers) t.join();
+        },
+        std::chrono::seconds(10));
+
+    EXPECT_TRUE(ok) << "Cleanup() racing concurrent GetOrCreate() inserts deadlocked or hung.";
+}

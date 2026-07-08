@@ -3,6 +3,7 @@
 #include "Core/RenderGraph.h"
 #include "Core/NodeLogging.h"
 #include "VulkanDevice.h"
+#include <mutex>
 #include <stdexcept>
 
 // Frames-in-flight for the ID-image ring. Matches FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT (= 4),
@@ -267,11 +268,15 @@ void PickIdTargetNode::TransitionAllToGeneral(VkCommandPool commandPool) {
     submitInfo.pCommandBuffers    = &cmd;
 
     // Submit on the device queue and wait — this runs once at Compile, before any dispatch.
-    if (vkQueueSubmit(GetDevice()->queue, 1, &submitInfo, VK_NULL_HANDLE) != VK_SUCCESS) {
-        vkFreeCommandBuffers(vkDevice, commandPool, 1, &cmd);
-        throw std::runtime_error("[PickIdTargetNode] vkQueueSubmit (transition) failed");
+    // Externally synchronized per Vulkan spec (audit V-M11) regardless.
+    {
+        std::lock_guard<std::mutex> submitLock(GetDevice()->SubmitMutex(GetDevice()->queue));
+        if (vkQueueSubmit(GetDevice()->queue, 1, &submitInfo, VK_NULL_HANDLE) != VK_SUCCESS) {
+            vkFreeCommandBuffers(vkDevice, commandPool, 1, &cmd);
+            throw std::runtime_error("[PickIdTargetNode] vkQueueSubmit (transition) failed");
+        }
+        vkQueueWaitIdle(GetDevice()->queue);
     }
-    vkQueueWaitIdle(GetDevice()->queue);
 
     vkFreeCommandBuffers(vkDevice, commandPool, 1, &cmd);
 }

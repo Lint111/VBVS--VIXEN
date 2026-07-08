@@ -58,23 +58,30 @@ std::uint64_t ComputePipelineCacher::ComputeKey(const ComputePipelineCreateParam
 void ComputePipelineCacher::Cleanup() {
     LOG_INFO("[ComputePipelineCacher::Cleanup] Cleaning up compute pipelines");
 
-    // Destroy all cached pipelines
-    for (auto& [key, entry] : m_entries) {
-        if (entry.resource && entry.resource->pipeline != VK_NULL_HANDLE) {
-            LOG_DEBUG("[ComputePipelineCacher::Cleanup] Destroying pipeline: " + entry.resource->shaderKey);
-            vkDestroyPipeline(m_device->device, entry.resource->pipeline, nullptr);
-            entry.resource->pipeline = VK_NULL_HANDLE;
+    // Destroy all cached pipelines. Locked: m_entries/m_globalCache are mutated here while
+    // DeviceRegistry can be running Serialize/DeserializeFromFile for this same cacher on
+    // another thread via std::async, and m_globalCache is read unlocked by
+    // CreateComputePipeline() on the pipeline-creation hot path (audit V-M9). Released before
+    // Clear(), which takes its own unique_lock.
+    {
+        std::unique_lock wlock(m_lock);
+        for (auto& [key, entry] : m_entries) {
+            if (entry.resource && entry.resource->pipeline != VK_NULL_HANDLE) {
+                LOG_DEBUG("[ComputePipelineCacher::Cleanup] Destroying pipeline: " + entry.resource->shaderKey);
+                vkDestroyPipeline(m_device->device, entry.resource->pipeline, nullptr);
+                entry.resource->pipeline = VK_NULL_HANDLE;
+            }
+
+            // Don't destroy pipelineLayout (owned by PipelineLayoutCacher)
+            // Don't destroy cache (shared, owned by PipelineCacher or DeviceNode)
         }
 
-        // Don't destroy pipelineLayout (owned by PipelineLayoutCacher)
-        // Don't destroy cache (shared, owned by PipelineCacher or DeviceNode)
-    }
-
-    // Destroy global cache if we own it (shouldn't happen - should be shared)
-    if (m_globalCache != VK_NULL_HANDLE) {
-        LOG_WARNING("[ComputePipelineCacher::Cleanup] WARNING: Destroying owned pipeline cache (should be shared)");
-        vkDestroyPipelineCache(m_device->device, m_globalCache, nullptr);
-        m_globalCache = VK_NULL_HANDLE;
+        // Destroy global cache if we own it (shouldn't happen - should be shared)
+        if (m_globalCache != VK_NULL_HANDLE) {
+            LOG_WARNING("[ComputePipelineCacher::Cleanup] WARNING: Destroying owned pipeline cache (should be shared)");
+            vkDestroyPipelineCache(m_device->device, m_globalCache, nullptr);
+            m_globalCache = VK_NULL_HANDLE;
+        }
     }
 
     // Clear entries
@@ -160,8 +167,13 @@ void ComputePipelineCacher::CreateComputePipeline(
     pipelineInfo.stage = shaderStageInfo;
     pipelineInfo.layout = wrapper.pipelineLayoutWrapper->layout;
 
-    // Use global cache if available (shared with graphics)
-    VkPipelineCache cacheToUse = m_globalCache;
+    // Use global cache if available (shared with graphics). Locked read: m_globalCache can be
+    // destroyed concurrently by Cleanup() (audit V-M9).
+    VkPipelineCache cacheToUse;
+    {
+        std::shared_lock rlock(m_lock);
+        cacheToUse = m_globalCache;
+    }
 
     VkResult result = vkCreateComputePipelines(
         m_device->device,
