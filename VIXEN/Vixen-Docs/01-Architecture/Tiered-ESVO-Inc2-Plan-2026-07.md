@@ -132,13 +132,15 @@ now is by explicit user request.
   (one tree with a real tier-crossing leaf, `farBit=1`, pointing at a second, independently-built
   tree) round-trips through serialization correctly; no regression on existing `farBit=0` trees
   (Sparse-Mip/Surface-Shell's existing full test suite still green).
-  **✅ DONE 2026-07-08** — commit (this worktree, `feat/tiered-esvo-inc2`, uncommitted at hand-off
-  to validator). `test_tier_crossing_construction` 5/5 green, pure CPU (no Vulkan/GPU dependency
-  exercised). Full existing SVO regression sweep re-run (98 targets, 454 tests passed + 16
-  pre-existing failures + 1 pre-existing segfault, ALL confirmed byte-identical against the pre-M2
-  `2bb752ec` baseline via a stash/rebuild/compare — zero regressions). See Progress Log for the
-  `MarkLeafAsTierCrossing` API shape, the `ChildDescriptor::setTierCrossing` accessor, the
-  `SVOTraversal.cpp` guard fix, and the pre-existing-failure verification method.
+  **✅ DONE 2026-07-08** — commit `8110b95b` (worktree `feat/tiered-esvo-inc2`). `test_tier_crossing_
+  construction` 5/5 green, pure CPU (no Vulkan/GPU dependency exercised). Full existing SVO regression
+  sweep re-run (98 targets, 454 tests passed + 16 pre-existing failures + 1 pre-existing segfault, ALL
+  confirmed byte-identical against the pre-M2 `2bb752ec` baseline via a stash/rebuild/compare — zero
+  regressions). Opus-validated APPROVED (validator independently re-derived the baseline comparison
+  from scratch via its own rebuild, and independently grepped every brick-accessor call site rather
+  than trusting the implementer's list). See Progress Log for the `MarkLeafAsTierCrossing` API shape,
+  the `ChildDescriptor::setTierCrossing` accessor, the `SVOTraversal.cpp` guard fix, and the
+  pre-existing-failure verification method.
 - **M3 — GPU traversal-restart, single crossing** (Tasks 6-8) · **live-run gate, validation layers
   mandatory** · the highest-risk milestone: a ray genuinely crosses from a parent tree's leaf into a
   child tree's own traversal and renders correct geometry, proven on real hardware, not just compiled
@@ -268,8 +270,8 @@ plans' own convention: one entry per milestone, commit hash + Opus validator ver
     validated together, matching Sparse-Mip Inc1 M3's own precedent for `mipPool`'s binding. Noted as
     a non-blocking suggestion for M3's implementer, not a required M1 addition. No issues found.
 
-- **Milestone M2 (Tasks 4-5): DONE** · uncommitted at hand-off to validator (this worktree,
-  `feat/tiered-esvo-inc2`) · gates: `test_tier_crossing_construction` 5/5 green, pure CPU (no
+- **Milestone M2 (Tasks 4-5): DONE** · commit `8110b95b` (this worktree, `feat/tiered-esvo-inc2`) ·
+  gates: `test_tier_crossing_construction` 5/5 green, pure CPU (no
   Vulkan/GPU dependency exercised); full existing SVO regression sweep re-run (98 test targets) and
   confirmed byte-identical (454 passed / 16 failed / 1 segfault, every failure/segfault reproduced
   on the pre-M2 `2bb752ec` baseline via a stash/rebuild/compare — zero regressions attributable to
@@ -395,6 +397,26 @@ plans' own convention: one entry per milestone, commit hash + Opus validator ver
     guarded line, `BodyInstanceRayMarch.comp`, and `SkyProjectionNode` were all read-only-verified but
     not modified — `farBit=0` is still set exactly as before at `SVORebuild.cpp:439,512` (re-confirmed
     at these exact line numbers, unchanged since M1).
+  - **Opus validator: APPROVED (2026-07-08)** — independently verified every claim rather than
+    restating the report. Confirmed the placement deviation is sound by reading `Concatenate`/
+    `ConcatenateSdf` directly (both internally re-call `Serialize`/`SerializeSdf`, so a pre-serialization
+    mark would be discarded regardless — post-serialization is the only workable shape). Confirmed the
+    `ChildDescriptor` accessors match §3.1's bit layout exactly and that `childRootScaleHint` is
+    genuinely a distinct parameter from `TierRef::childScale`. **Did an independent, from-scratch
+    codebase-wide grep of every `getBrickIndex()`/`hasBrick()`/`getBrickFlags()` call site** (not the
+    implementer's list) — confirmed exactly one real unguarded call (`SVOTraversal.cpp:1029`), confirmed
+    the fix is minimal and correct, and confirmed the `GpuTraversalMirror.h` deferral is genuinely safe
+    by grepping every `farBit=1` writer in the repo (only `setTierCrossing`/`MarkLeafAsTierCrossing`/the
+    new test ever set it; neither mirror-consuming test constructs a tier-crossing tree). Fresh-built
+    and ran `test_tier_crossing_construction` (5/5) and read the two-tree round-trip test in full —
+    confirmed it is a genuine proof, not trivially-passing. **For the regression claim, did the
+    definitive check independently** rather than accepting the implementer's stash-diff description:
+    reverted the 3 changed files to the `2bb752ec` baseline, rebuilt libSVO + the 9 affected binaries,
+    re-ran, and got the byte-identical 8-fail/1-segfault set (per-binary view of the same 16-test/1-seg
+    failure set), then restored to HEAD. Zero regressions attributable to M2, corroborated by an
+    independent rebuild, not just a re-read of the implementer's own methodology description. Tree
+    clean at `8110b95b`, no conflict markers; the two pre-existing stash entries (2026-06-12,
+    unrelated branch) are not M2 leftovers. No issues found.
 
 ---
 
