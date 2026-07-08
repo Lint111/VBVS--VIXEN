@@ -90,6 +90,29 @@ layout(std430, binding = 13) readonly buffer MipPoolBuffer { float mipPool[]; };
 // traversal it instruments.
 layout(std430, binding = 14) writeonly buffer InstanceIterDebugBuffer { uint instanceIterCount[]; };
 
+// ============================================================================
+// TIER-CROSSING REFERENCE TABLE (Tiered-ESVO Inc2 M3 — binding 15)
+// ============================================================================
+// One TierRef per registered tier-crossing leaf, concatenated across all
+// resident octrees in the SAME order ConcatenatedOctrees::tierRefTable is
+// built CPU-side (ShellOctreeGpu.h) — mirrors mipPool's per-octree-base +
+// concatenated-buffer convention exactly. A farBit==1 leaf's contourPointer
+// (getTierRefIndex above) is an index into the CURRENT octree's own slice,
+// offset by configs[g_octreeIdx].tierRefTableBase — NOT a global index.
+// Layout must be byte-for-byte identical to Vixen::SVO::TierRef (TierRef.h):
+// childOctreeIndex(uint,@0), childOriginLocal(float[3],@4), childScale(float,@16),
+// 20 bytes/element, no hidden padding (std430 does not pad a scalar array).
+// Bound as a 1-byte placeholder when no tree in the scene has any
+// tier-crossing leaves (concatenated_.tierRefTable empty) — the shader only
+// reads it after confirming farBit==1 on an actual leaf hit, and bounds-checks
+// against tierRefTable.length() below, exactly like MipPoolBuffer above.
+struct TierRef {
+    uint  childOctreeIndex;
+    float childOriginLocal[3];
+    float childScale;
+};
+layout(std430, binding = 15) readonly buffer TierRefTableBuffer { TierRef tierRefTable[]; };
+
 #define FORMAT_BINARY     0u
 #define FORMAT_STORED_SDF 1u
 
@@ -535,15 +558,64 @@ bool handleLeafHitInstancedSdf(TraversalState state, RayCoefficients coef,
 // cull check and return a false miss for a ray the caller determined does enter the volume.
 // This was a real, data-affecting bug (not cosmetic): the SAME traversal is used to query
 // voxel data, so a false miss here silently drops real geometry from any caller relying on it.
-bool traverseOctreeInstanced(vec3 rayOrigin, vec3 rayDir,
+// ============================================================================
+// TIER-CROSSING RAY REMAP (Tiered-ESVO Inc2 M3 Task 6)
+// ============================================================================
+// Transform a ray from the CURRENT tree's local [1,2) frame into the child
+// tree's own [1,2) frame, using ONE TierRef's scale+offset (§3.3 float32-safety
+// discipline — a single scale+offset, never an accumulated world matrix).
+//
+// Mathematical inverse of TierDirection.h's composition (Inc1, ComposeLocalDirection
+// / SumTail): that CPU-side code composes a CHILD-frame point into the PARENT's
+// frame as  parentPoint = childOriginLocal + (childLocalPoint - 1.5) * childScale
+// (SumTail's "centered = localPos - 1.5, accum += centered * scaleCm", read as
+// the contribution one hop's local position makes to the ancestor frame). Ray
+// traversal needs the OPPOSITE direction (parent point -> child-local point);
+// solving the above for childLocalPoint gives:
+//   childLocalPoint = (parentPoint - childOriginLocal) / childScale + 1.5
+// Direction has no origin/center term (a direction is a derivative of position,
+// so the constant "+1.5" drops out exactly as it does in the forward composition):
+//   childLocalDir = parentLocalDir / childScale
+// (left un-normalized: initRayCoefficients/the traversal are scale-tolerant —
+// see the instOrigin/instDir invScale comment in main() for the same argument.)
+void remapRayIntoChildFrame(vec3 parentLocalOrigin, vec3 parentLocalDir,
+                            TierRef ref,
+                            out vec3 childLocalOrigin, out vec3 childLocalDir) {
+    vec3 childOrigin = vec3(ref.childOriginLocal[0], ref.childOriginLocal[1], ref.childOriginLocal[2]);
+    float invScale = 1.0 / ref.childScale;
+    childLocalOrigin = (parentLocalOrigin - childOrigin) * invScale + vec3(1.5);
+    childLocalDir    = parentLocalDir * invScale;
+}
+
+// ============================================================================
+// SINGLE-TREE TRAVERSAL BODY (Tiered-ESVO Inc2 M3 Task 7 — factored out so the
+// restart wrapper below can call it twice: once for the ray's home octree, once
+// more for a tier-crossing leaf's child octree, WITHOUT recursion — GLSL has
+// none). Identical to the pre-M3 traverseOctreeInstanced in every way EXCEPT
+// the tier-crossing leaf branch: hitting a farBit==1 leaf exits this function
+// as a miss (hit=false) but reports the crossing via tierCrossHit/tierCrossRef
+// so the wrapper can remap the ray and re-enter against the child tree — the
+// wrapper's job, not this function's (this function only ever talks to ONE
+// octree/OctreeConfig, selected by the caller via g_octreeIdx/g_esvoNodeBase/
+// g_brickArrayBase exactly as before M3).
+// ============================================================================
+bool traverseOctreeInstancedOnce(vec3 rayOrigin, vec3 rayDir,
                               vec3 rayOriginLocal, vec3 rayDirLocal, vec2 gridT,
                               out vec3 hitColor, out vec3 hitNormal, out float hitT,
                               out float hitRoughness,
                               out uint hitBrickIndex, out uint hitVoxelLinearIdx,
+                              out bool tierCrossHit, out uint tierCrossRefIndex,
+                              out vec3 tierCrossParentLocalOrigin, out vec3 tierCrossParentLocalDir,
+                              out float tierCrossWorldT,
                               inout DebugRaySample debugInfo) {
     hitBrickIndex     = 0u;
     hitVoxelLinearIdx = 0u;
     hitRoughness      = 0.5;
+    tierCrossHit       = false;
+    tierCrossRefIndex  = 0u;
+    tierCrossParentLocalOrigin = vec3(0.0);
+    tierCrossParentLocalDir    = vec3(0.0);
+    tierCrossWorldT            = 0.0;
 
     debugInfo.hitFlag      = 0u;
     debugInfo.exitCode     = DEBUG_EXIT_NONE;
@@ -605,6 +677,62 @@ bool traverseOctreeInstanced(vec3 rayOrigin, vec3 rayDir,
                 recordTraceStep(TRACE_STEP_BRICK_ENTER, state.parentPtr, state.scale,
                                  uint(coef.octant_mask), state.pos, state.t_min, tv_max,
                                  uvec2(0u, 0u));
+
+                // Tiered-ESVO Inc2 M3 Task 6/7: a farBit==1 leaf is a tier-crossing
+                // reference, NOT a brick — checked BEFORE the brickResident/formatId
+                // dispatch below (same insertion point Sparse-Mip's own streaming-grace
+                // check uses) so a tier-crossing leaf's contourPointer is never
+                // misread as a brick index or a mip-fallback node ordinal. This
+                // function does not itself remap the ray or re-enter the child tree —
+                // that is the wrapper's (traverseOctreeInstanced) job, since a fresh
+                // traversal call needs its OWN local state/stack, not this one's
+                // (§10: no growing MAX_STACK_DEPTH, no merged stacks). We resolve
+                // WHICH leaf child slot was hit here (the same resolveLeafDescriptorIndex
+                // the mip-fallback path above already uses) and fetch that leaf's
+                // descriptor to check farBit before doing anything brick-related with it.
+                {
+                    int localChildIdxTc = mirroredToLocalOctant(state.idx, coef.octant_mask);
+                    if (localChildIdxTc >= 0 && localChildIdxTc <= 7) {
+                        uint leafDescriptorIndexTc = resolveLeafDescriptorIndex(
+                            parent_descriptor, validMask, leafMask, localChildIdxTc);
+                        uvec2 leafDescriptorTc = fetchESVONode(leafDescriptorIndexTc);
+                        if (getFarBit(leafDescriptorTc)) {
+                            uint tierRefIdxInSlice = getTierRefIndex(leafDescriptorTc);
+                            uint absoluteTierRefIdx = octreeConfig.tierRefTableBase + tierRefIdxInSlice;
+                            // Bounds-check against the bound buffer's real length — a scene
+                            // with NO tier-crossing leaves anywhere binds this as a 1-byte
+                            // placeholder (tierRefTable.length()==0), exactly like MipPoolBuffer.
+                            if (absoluteTierRefIdx < tierRefTable.length()) {
+                                tierCrossHit      = true;
+                                tierCrossRefIndex = absoluteTierRefIdx;
+                                // Ray-remap input (Task 6): the CURRENT tree's local [1,2)-frame
+                                // ray position/direction at the point of the crossing. rayDirLocal
+                                // is already this tree's worldToLocal-rotated direction (computed
+                                // once by the caller, passed in); the parent-local ORIGIN at the
+                                // hit point is coef.normOrigin + rayDirLocal * t_min (the same
+                                // "hitPos12" expression handleLeafHitInstanced/handleLeafHitInstancedSdf
+                                // both use to enter brick-local space) — i.e. exactly the point on
+                                // the ray where it enters this tier-crossing leaf's [1,2) cell.
+                                tierCrossParentLocalOrigin = coef.normOrigin + rayDirLocal * state.t_min;
+                                tierCrossParentLocalDir    = rayDirLocal;
+                                // The crossing point's own real-world-consistent t (SAME units
+                                // handleLeafHitInstanced's hitT=tBias+tHit uses) — the wrapper adds
+                                // the child call's own hitT (which comes back as a distance FROM
+                                // this crossing point, by construction of the child ray's
+                                // parametrization — see traverseOctreeInstanced's derivation
+                                // comment) to THIS to get a world-consistent final hitT.
+                                tierCrossWorldT = tBias + state.t_min;
+                                recordTraceStep(TRACE_STEP_BRICK_EXIT, state.parentPtr, state.scale,
+                                                 uint(coef.octant_mask), state.pos, state.t_min, tv_max,
+                                                 uvec2(0u, 0u));
+                                endRayTrace(false);
+                                debugInfo.exitCode     = DEBUG_EXIT_NO_HIT;
+                                debugInfo.iterationCount = uint(iter + 1);
+                                return false;
+                            }
+                        }
+                    }
+                }
 
                 // Sparse-Mip ESVO LOD Inc1 M3 Task 7: "streaming grace" trigger.
                 // A non-resident brick (allocated but not yet uploaded — M2) must
@@ -741,6 +869,171 @@ bool traverseOctreeInstanced(vec3 rayOrigin, vec3 rayDir,
     endRayTrace(false);
     debugInfo.exitCode     = DEBUG_EXIT_NO_HIT;
     debugInfo.iterationCount = uint(iter);
+    return false;
+}
+
+// ============================================================================
+// TRAVERSAL-RESTART WRAPPER (Tiered-ESVO Inc2 M3 Task 7)
+// ============================================================================
+// Public entry point (same name/signature as before M3 — main()'s call site is
+// UNCHANGED). Runs traverseOctreeInstancedOnce against the ray's home tree
+// (g_octreeIdx/g_esvoNodeBase/g_brickArrayBase as set by main() before this
+// call, exactly as pre-M3). If that call reports a tier-crossing leaf, this
+// wrapper:
+//   1. Saves the parent's three globals (the ONLY per-tree state that
+//      persists outside a traversal call's own locals — state/stack/coef are
+//      already 100% local to traverseOctreeInstancedOnce and vanish on return,
+//      so there is nothing else to "park").
+//   2. Remaps the ray into the child tree's local frame (Task 6).
+//   3. Swaps the globals to the child octree and re-enters
+//      traverseOctreeInstancedOnce a SECOND time (NOT a recursive call — GLSL
+//      has no recursion; this is a second, sequential top-level call, which is
+//      exactly "a fresh stack, not merged with the parent's" — each call
+//      declares its own local StackEntry stack[STACK_SIZE]/TraversalState).
+//   4. Restores the parent's globals unconditionally before returning, so a
+//      caller (main()'s instance loop) never observes the child's binding
+//      state leaking into any later per-pixel/per-instance work.
+// M3 scope: exactly ONE crossing — if the CHILD call itself reports a further
+// tier-crossing leaf, that is treated as a miss (N-tier chaining is M5's job,
+// not this milestone's); the child's own farBit==1 leaves therefore behave
+// like an ordinary "no coverage" leaf for this milestone (ChildDescriptor
+// helpers for a farBit==1 leaf are only ever consulted by the traversal, never
+// misread as brick data, so this is a clean, safe no-op miss, not a bug).
+bool traverseOctreeInstanced(vec3 rayOrigin, vec3 rayDir,
+                              vec3 rayOriginLocal, vec3 rayDirLocal, vec2 gridT,
+                              out vec3 hitColor, out vec3 hitNormal, out float hitT,
+                              out float hitRoughness,
+                              out uint hitBrickIndex, out uint hitVoxelLinearIdx,
+                              inout DebugRaySample debugInfo) {
+    bool tierCrossHit;
+    uint tierCrossRefIndex;
+    vec3 tierCrossParentLocalOrigin, tierCrossParentLocalDir;
+    float tierCrossWorldT;
+
+    bool hit = traverseOctreeInstancedOnce(rayOrigin, rayDir, rayOriginLocal, rayDirLocal, gridT,
+                                           hitColor, hitNormal, hitT, hitRoughness,
+                                           hitBrickIndex, hitVoxelLinearIdx,
+                                           tierCrossHit, tierCrossRefIndex,
+                                           tierCrossParentLocalOrigin, tierCrossParentLocalDir,
+                                           tierCrossWorldT,
+                                           debugInfo);
+    if (hit || !tierCrossHit) {
+        return hit;  // ordinary hit or ordinary miss — ZERO behavior change from pre-M3.
+    }
+
+    // --- Tier-crossing restart (Task 6 + 7) ---------------------------------
+    TierRef ref = tierRefTable[tierCrossRefIndex];
+
+    vec3 childLocalOrigin, childLocalDir;
+    remapRayIntoChildFrame(tierCrossParentLocalOrigin, tierCrossParentLocalDir, ref,
+                           childLocalOrigin, childLocalDir);
+
+    // Save the parent's per-tree globals — the only state a restart needs to
+    // park (see function header comment).
+    int parentOctreeIdx      = g_octreeIdx;
+    int parentEsvoNodeBase   = g_esvoNodeBase;
+    int parentBrickArrayBase = g_brickArrayBase;
+
+    // Swap to the child octree exactly the way main()'s instance loop selects
+    // ANY octree — mechanically identical to today's per-instance
+    // configs[octreeIndex] selection, no new resource type (per the design doc).
+    g_octreeIdx      = int(ref.childOctreeIndex);
+    g_esvoNodeBase   = configs[g_octreeIdx].nodeArrayBase;
+    g_brickArrayBase = configs[g_octreeIdx].brickArrayBase;
+
+    // ------------------------------------------------------------------
+    // CRITICAL: traverseOctreeInstancedOnce does NOT accept a pre-computed
+    // local ray as its ONLY coordinate input — initRayCoefficients (called
+    // internally) re-derives normOrigin/direction from a WORLD-space
+    // rayOrigin/rayDir via octreeConfig.worldToLocal (now the CHILD's config,
+    // after the swap above). rayOriginLocal/rayDirLocal (the params) are only
+    // used for ONE thing: computing rayStartWorld for the "starts outside"
+    // case, via octreeConfig.localToWorld — which, again, is now the CHILD's
+    // matrix. So the only correct way to feed a purely LOCAL child-frame ray
+    // through this function's existing (single-tree-per-call) contract is to
+    // synthesize a WORLD-space origin/direction that round-trips through the
+    // CHILD's own localToWorld/worldToLocal back to exactly childLocalOrigin/
+    // childLocalDir — i.e. treat the child's own local->world matrix as the
+    // (arbitrary, tree-specific) embedding space for this second call, then
+    // let traverseOctreeInstancedOnce's OWN worldToLocal application recover
+    // precisely the local coordinates we already computed (Task 6's remap),
+    // by construction (matrix inverse), rather than bypassing that matrix.
+    // This mirrors how EVERY existing instance already works: main() also
+    // only ever gives traverseOctreeInstanced a "local" ray by first driving
+    // it through a real world-space round trip (instOrigin/instDir), never a
+    // bare local vector.
+    mat4 childLocalToWorld = configs[g_octreeIdx].localToWorld;
+    vec3 childRayOriginWorld = (childLocalToWorld * vec4(childLocalOrigin - vec3(1.0), 1.0)).xyz;
+    vec3 childRayDirWorld    = mat3(childLocalToWorld) * childLocalDir;
+
+    vec3 childGridOrigin = childLocalOrigin - vec3(1.0);
+    vec2 childGridT = rayAABBIntersection(childGridOrigin, childLocalDir, vec3(0.0), vec3(1.0));
+
+    bool childTierCrossHit;
+    uint childTierCrossRefIndex;
+    vec3 childTierCrossParentLocalOrigin, childTierCrossParentLocalDir;
+    float childTierCrossWorldT;
+    DebugRaySample childDebugInfo = debugInfo;
+
+    bool childHit = traverseOctreeInstancedOnce(childRayOriginWorld, childRayDirWorld,
+                                                childGridOrigin, childLocalDir, childGridT,
+                                                hitColor, hitNormal, hitT, hitRoughness,
+                                                hitBrickIndex, hitVoxelLinearIdx,
+                                                childTierCrossHit, childTierCrossRefIndex,
+                                                childTierCrossParentLocalOrigin, childTierCrossParentLocalDir,
+                                                childTierCrossWorldT,
+                                                childDebugInfo);
+
+    // hitT from the child call is a distance measured FROM THE CROSSING POINT
+    // (childRayOriginWorld IS the crossing point, by construction above — the
+    // child call's own tEntryWorld/rayStartWorld bookkeeping starts fresh at
+    // 0 there), expressed in units consistent with childRayDirWorld's own
+    // parametrization. Because childRayOriginWorld/childRayDirWorld were
+    // constructed so that (childRayOriginWorld + s*childRayDirWorld), mapped
+    // through the CHILD's own worldToLocal, equals (childLocalOrigin +
+    // s*childLocalDir) for s expressed in REAL-WORLD-DISTANCE units (see the
+    // remapRayIntoChildFrame/Task 6 derivation — childLocalDir is the parent's
+    // rayDirLocal scaled by invScale, the SAME per-real-distance derivative
+    // relationship rayDirLocal itself already has to real-world t in the
+    // parent call), the child call's OWN internal t/hitT IS already s in
+    // real-world-distance units — exactly the same "s-consistent parametrization"
+    // property main()'s instOrigin/instDir already exploits for renderScale
+    // (see that block's own comment: "the returned hitT equals the TRUE world
+    // distance... regardless of renderScale" — this is the identical argument,
+    // just with the child's OWN localToWorld playing renderScale's role). So
+    // the final, caller-consistent hitT is simply the crossing point's own
+    // world-t (tierCrossWorldT, captured at the parent leaf) plus the child
+    // call's hitT (a distance offset from that same point) — no additional
+    // scaling by |childRayDirWorld| (that would double-count the scale already
+    // folded into childLocalDir/childRayDirWorld's construction).
+    // Restore the parent's globals UNCONDITIONALLY — every subsequent read of
+    // octreeConfig/g_esvoNodeBase/g_brickArrayBase in main() (the next
+    // instance-loop iteration, or this same instance's AABB-cull bookkeeping
+    // already computed before this call) must see the PARENT's binding state,
+    // never the child's.
+    g_octreeIdx      = parentOctreeIdx;
+    g_esvoNodeBase   = parentEsvoNodeBase;
+    g_brickArrayBase = parentBrickArrayBase;
+
+    if (childHit) {
+        hitT = tierCrossWorldT + hitT;
+        debugInfo = childDebugInfo;
+        return true;
+    }
+
+    // Child tree missed (or exited its own [1,2) bounds, or hit a further
+    // tier-crossing leaf — M5's job, not this milestone's): resume EXACTLY as
+    // if the parent's farBit leaf had been an ordinary voxel miss. The parent
+    // call above already recorded DEBUG_EXIT_NO_HIT / advanced past the leaf
+    // conceptually by returning a miss — from the caller's (main()'s)
+    // perspective this whole instance's traversal is simply "no hit," matching
+    // the design doc's "resume exactly as if the farBit leaf had been an
+    // ordinary voxel miss" (§5.1) for the SINGLE-crossing-per-ray scope of M3
+    // (this body has no further tree to continue descending in with the
+    // outer's own parked stack, since only one octree/OctreeConfig is live at
+    // a time per §10 — the parent's OWN remaining siblings were already fully
+    // explored by the time this leaf was reached, so "miss" is the correct,
+    // complete answer for this instance).
     return false;
 }
 

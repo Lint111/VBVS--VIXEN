@@ -236,6 +236,9 @@ void BodyOctreeSceneNode::CompileImpl(TypedCompileContext& ctx) {
     // Sparse-Mip ESVO LOD Inc1 M3: mip pool buffer (binding 13). Always emitted —
     // placeholder for a tree that was never mip-baked, real data otherwise.
     ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_MIPPOOL_BUFFER,       mipPoolBuffer_);
+    // Tiered-ESVO Inc2 M3: tier-ref table buffer (binding 15). Always emitted —
+    // placeholder for a scene with no tier-crossing leaves, real data otherwise.
+    ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_TIERREFTABLE_BUFFER,  tierRefTableBuffer_);
     // Surface-Shell ESVO cache — publish slot 0 as the compile-time placeholder;
     // ExecuteImpl re-emits slot [frame&1] each frame (the last committed cache).
     ctx.Out(BodyOctreeSceneNodeConfig::SHELL_DATA_BUFFER,           shellDataBuffer_[0]);
@@ -348,6 +351,7 @@ void BodyOctreeSceneNode::ExecuteImpl(TypedExecuteContext& ctx) {
         ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_SDF_BUFFER,         sdfBuffer_);
         ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_BRICKLOOKUP_BUFFER, brickLookupBuffer_);
         ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_MIPPOOL_BUFFER,     mipPoolBuffer_);
+        ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_TIERREFTABLE_BUFFER, tierRefTableBuffer_);
         // Rematerialize re-derived + re-created the shell buffers (both slots) inside
         // CreateOctreeBuffers; re-emit slot 0 so the render re-binds the fresh cache.
         ctx.Out(BodyOctreeSceneNodeConfig::SHELL_DATA_BUFFER,         shellDataBuffer_[0]);
@@ -580,6 +584,18 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device) {
         concatenated_.mipPool.empty() ? nullptr : concatenated_.mipPool.data(),
         mipPoolBuffer_, mipPoolMemory_, "mip pool SSBO");
 
+    // Tiered-ESVO Inc2 M3: tier-crossing reference table buffer (binding 15). Pad to
+    // 1 byte when empty — a scene with no tier-crossing leaves anywhere (the
+    // overwhelming common case; M2's farBit==1 construction path is explicit opt-in)
+    // leaves tierRefTable empty; the shader's traversal-restart bounds-checks against
+    // tierRefTable.length() and never reads past it, exactly like mipPool above.
+    const VkDeviceSize tierRefTableSize =
+        std::max<VkDeviceSize>(concatenated_.tierRefTable.size() * sizeof(Vixen::SVO::TierRef), 1);
+    CreateHostBuffer(device, tierRefTableSize,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        concatenated_.tierRefTable.empty() ? nullptr : concatenated_.tierRefTable.data(),
+        tierRefTableBuffer_, tierRefTableMemory_, "tier-ref table SSBO");
+
     NODE_LOG_INFO("[BodyOctreeSceneNode] Created octree buffers (nodes=" +
                   std::to_string(static_cast<uint64_t>(nodesSize)) + "B, bricks=" +
                   std::to_string(static_cast<uint64_t>(bricksSize)) + "B, materials=" +
@@ -587,7 +603,8 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device) {
                   std::to_string(static_cast<uint64_t>(configSize)) + "B, channelPool=" +
                   std::to_string(static_cast<uint64_t>(sdfSize)) + "B, brickLookup=" +
                   std::to_string(static_cast<uint64_t>(brickLookupSize)) + "B, mipPool=" +
-                  std::to_string(static_cast<uint64_t>(mipPoolSize)) + "B)");
+                  std::to_string(static_cast<uint64_t>(mipPoolSize)) + "B, tierRefTable=" +
+                  std::to_string(static_cast<uint64_t>(tierRefTableSize)) + "B)");
 
     // Surface-Shell ESVO cache: derive the reachable shell of octree 0 from the
     // just-created full pool into BOTH CPU slots, then bootstrap both GPU slots.
@@ -880,6 +897,7 @@ void BodyOctreeSceneNode::DestroyOctreeBuffers() {
         shellLookupCapacity_[i] = 0;
     }
     destroy(mipPoolBuffer_,       mipPoolMemory_);      // Inc1 M3
+    destroy(tierRefTableBuffer_,  tierRefTableMemory_); // Tiered-ESVO Inc2 M3
 }
 
 void BodyOctreeSceneNode::DestroyBuffers() {
