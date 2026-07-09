@@ -185,6 +185,29 @@ endif()
 gtest_discover_tests(test_tier_crossing_construction)
 
 # ===========================================================================
+# Tier-Crossing Mirror Parity Tests  (Tiered ESVO Inc2 M4 Task 10 sync — a
+# cheap win flagged by the M3 Opus validator addendum: no automated parity
+# test previously exercised GpuTraversalMirror's crossing-restart path at
+# all. Proves the mirror's own castRay()/RegisterTierCrossingChild composes
+# correctly with a resident vs. non-resident child config.)
+# ===========================================================================
+add_executable(test_tier_crossing_mirror_parity test_tier_crossing_mirror_parity.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_tier_crossing_mirror_parity PRIVATE
+        GTest::gtest_main SVO GaiaVoxelWorld VoxelComponents VoxelData)
+else()
+    target_link_libraries(test_tier_crossing_mirror_parity PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_tier_crossing_mirror_parity PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_tier_crossing_mirror_parity POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_tier_crossing_mirror_parity>
+        COMMENT "Copying TBB DLL for test_tier_crossing_mirror_parity")
+endif()
+gtest_discover_tests(test_tier_crossing_mirror_parity)
+
+# ===========================================================================
 # Stored-SDF March Mirror Tests  (gpu-shader-debug — CPU mirror of StoredSdf.glsl
 # marchBrickSdf + BodyInstanceRayMarch.comp handleLeafHitInstancedSdf, reproducing
 # the GPU's brick-aligned holes on the CPU for root-cause debugging)
