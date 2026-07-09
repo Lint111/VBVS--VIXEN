@@ -55,6 +55,7 @@
 #include "Data/Nodes/VoxelSelectionProviderNodeConfig.h"
 #include "Data/Nodes/WindowNodeConfig.h"
 // M-wire: BodyOctreeSceneNode.h MUST precede UIRenderNode.h (gaia std::hash before robin_hood) — see file header above.
+#include "MipBake.h"  // Tiered-ESVO Inc2 M4: BakeAndAttachMipPool for the tier-crossing demo scene
 #include "Nodes/BodyOctreeSceneNode.h"  // M-wire: sparse shell octree + instance SSBO
 #include "Nodes/CameraNode.h"
 #include "Nodes/CommandPoolNode.h"
@@ -245,7 +246,19 @@ void VulkanGraphApplication::BuildRenderGraph() {
         if (auto* rl = rscInst->GetLogger()) { rl->SetEnabled(true); rl->SetTerminalOutput(true); }
     }
     NodeHandle raySizeBiasConstant = renderGraph->AddNode<ConstantNodeType>("ray_size_bias");
-    
+
+    // Tiered-ESVO Inc2 M4 Task 9 live-gate knob: a demo-only ConstantNode that, when
+    // VIXEN_TIER_CROSSING_LOD_COEF_OVERRIDE is set, is wired to push-constant field 8 INSTEAD of
+    // raySizeCoefNode (never used otherwise -- default path is byte-identical to pre-M4). Bumping
+    // RaySizeCoefNode's own FOV parameter was tried and rejected: raySizeCoef = 2*tan((fovRad/
+    // height)/2) grows only linearly with fovDegrees in the small-angle regime this project's real
+    // FOV values live in, so even an extreme (170deg) override only yields ~3.8x raySizeCoef --
+    // nowhere near enough to force a single octant's leaf-level footprint sub-pixel while the whole
+    // sphere silhouette stays resolved. A DIRECT literal override (e.g. 10.0, as this increment's own
+    // GPU test harness — test_tier_crossing_lod_residency.cpp — already uses to force every leaf-level
+    // footprint sub-pixel) is the correct, robust lever.
+    NodeHandle tierCrossingLodCoefOverrideConstant = renderGraph->AddNode<ConstantNodeType>("tier_crossing_lod_coef_override");
+
     NodeHandle debugCaptureNode = renderGraph->AddNode<DebugBufferReaderNodeType>("debug_capture");
 
     // --- Sky-projection composite pass (Tiered ESVO Inc1 M3: address-derived sky points) ---
@@ -462,6 +475,23 @@ void VulkanGraphApplication::BuildRenderGraph() {
     raySizeCoef->SetParameter(RaySizeCoefNodeConfig::PARAM_FOV_DEGREES, kRaymarchCameraFovDegrees);
     auto* raySizeBiasConst = static_cast<ConstantNode*>(renderGraph->GetInstance(raySizeBiasConstant));
     raySizeBiasConst->SetValue<float>(0.0f);   // 0.0 = pinhole camera bias
+
+    // Tiered-ESVO Inc2 M4 Task 9 live-gate knob (see tierCrossingLodCoefOverrideConstant's own
+    // declaration comment above for why a direct literal, not an FOV bump, is the correct lever).
+    bool tierCrossingLodCoefOverrideActive = false;
+    {
+        auto* lodOverrideConst = static_cast<ConstantNode*>(renderGraph->GetInstance(tierCrossingLodCoefOverrideConstant));
+        if (const char* lodOverrideEnv = std::getenv("VIXEN_TIER_CROSSING_LOD_COEF_OVERRIDE")) {
+            const float overrideValue = std::strtof(lodOverrideEnv, nullptr);
+            lodOverrideConst->SetValue<float>(overrideValue);
+            tierCrossingLodCoefOverrideActive = true;
+            mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_CROSSING_LOD_COEF_OVERRIDE: raySizeCoef "
+                              "forced to " + std::to_string(overrideValue) +
+                              " (bypasses RaySizeCoefNode entirely for this run)");
+        } else {
+            lodOverrideConst->SetValue<float>(0.0f);  // unused when the override isn't active
+        }
+    }
 
     auto* frameSync = static_cast<FrameSyncNode*>(renderGraph->GetInstance(frameSyncNode));
 
@@ -699,6 +729,22 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 }
             }
 
+            // Tiered-ESVO Inc2 M4 Task 9/10: bake + attach a real mip pool to BOTH trees
+            // (ConcatenateSdfWithMips's own per-tree convention, MipBake.h) so
+            // shadeFromMipSample has genuine coverage/color to read when either the LOD
+            // gate or the residency check declines a crossing -- without this, the
+            // fallback would silently degrade to the neutral-grey placeholder shade
+            // (still correct/non-crashing, but a weaker "did it actually mip-shade real
+            // geometry" proof). MUST run AFTER the magenta override above (BakeMipPool
+            // reads serialized.channelPool directly, so an out-of-order bake would mip a
+            // pre-override cosine-gradient color instead of the overridden magenta).
+            if (const Vixen::SVO::Octree* parentOctForMip = parentBody.octree->getOctree()) {
+                Vixen::SVO::BakeAndAttachMipPool(*parentOctForMip, parentSer);
+            }
+            if (const Vixen::SVO::Octree* childOctForMip = childBody.octree->getOctree()) {
+                Vixen::SVO::BakeAndAttachMipPool(*childOctForMip, childSer);
+            }
+
             // Locate a CAMERA-FACING leaf child in the parent's raw (pre-concatenation)
             // Octree (the same "scan childDescriptors directly" convention
             // test_tier_crossing_construction.cpp's FindAllLeaves uses), rather than
@@ -774,13 +820,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 cat.tierRefCounts.resize(2);
 
                 Vixen::SVO::SerializedOctree* octs[2] = {&parentSer, &childSer};
-                uint32_t nodeBase = 0, brickBase = 0, poolBase = 0, tierRefBase = 0;
+                uint32_t nodeBase = 0, brickBase = 0, poolBase = 0, tierRefBase = 0, mipPoolBase = 0;
                 for (int k = 0; k < 2; ++k) {
                     Vixen::SVO::SerializedOctree& s = *octs[k];
                     s.config.nodeArrayBase  = static_cast<int32_t>(nodeBase);
                     s.config.brickArrayBase = static_cast<int32_t>(brickBase);
                     Vixen::SVO::setSdfBrickArrayBase(s.config, poolBase);
                     Vixen::SVO::setTierRefTableBase(s.config, tierRefBase);
+                    Vixen::SVO::setMipPoolBase(s.config, mipPoolBase);
 
                     cat.configs[k]       = s.config;
                     cat.nodeCounts[k]    = s.nodeCount;
@@ -792,6 +839,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                     cat.channelPool.insert(cat.channelPool.end(), s.channelPool.begin(), s.channelPool.end());
                     cat.brickGridLookup.insert(cat.brickGridLookup.end(), s.brickGridLookup.begin(), s.brickGridLookup.end());
                     cat.tierRefTable.insert(cat.tierRefTable.end(), s.tierRefs.begin(), s.tierRefs.end());
+                    cat.mipPool.insert(cat.mipPool.end(), s.mipPool.begin(), s.mipPool.end());
 
                     if (cat.materials.empty()) {
                         cat.materials = s.materials;
@@ -801,10 +849,35 @@ void VulkanGraphApplication::BuildRenderGraph() {
                     brickBase   += s.brickCount;
                     poolBase    += s.brickCount * s.brickStrideFloats;
                     tierRefBase += static_cast<uint32_t>(s.tierRefs.size());
+                    mipPoolBase += s.nodeCount * s.channelCount;
                 }
+
+                // Tiered-ESVO Inc2 M4 Task 10 live-gate knob: VIXEN_TIER_CROSSING_NONRESIDENT calls
+                // RequestBrickResidency(false) below (NOT a direct setBrickResident() poke on
+                // cat.configs[1] -- CreateOctreeBuffers's own `for (auto& cfg : concatenated_.
+                // configs) setBrickResident(cfg, brickPoolUploaded_)` loop unconditionally
+                // re-stamps EVERY config's brickResident from residencyRequested_/brickPoolUploaded_
+                // on the very first Compile, so a pre-SetRecipePool poke on the concatenated struct
+                // would be silently clobbered the instant the node actually builds its buffers).
+                // RequestBrickResidency is a WHOLE-NODE flag applied uniformly to every octree in
+                // this one ConcatenatedOctrees pool -- there is no existing mechanism to make the
+                // child non-resident while the parent stays resident within a single
+                // BodyOctreeSceneNode, so this demo's "non-resident" case makes BOTH trees
+                // non-resident (both fall back to mip-shading, per Sparse-Mip's existing sentinel-
+                // miss pattern) -- still a genuine, honest proof of the crossing correctly declining
+                // and mip-shading rather than crashing/rendering garbage, just not isolated to the
+                // child alone (that isolation would need a genuinely new per-octree residency
+                // mechanism, out of this increment's scope per the design doc's own "no new
+                // residency state machine" line).
+                const bool forceNonResident = std::getenv("VIXEN_TIER_CROSSING_NONRESIDENT") != nullptr;
 
                 if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))) {
                     bodyScene->SetRecipePool(std::move(cat));
+                    if (forceNonResident) {
+                        bodyScene->RequestBrickResidency(false);
+                        mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_CROSSING_NONRESIDENT: "
+                                          "RequestBrickResidency(false) -- both octrees mip-only");
+                    }
 
                     // ONE instance, pointing at octree 0 (the parent). Placed at the
                     // default camera's frame center so the WHOLE parent sphere (and
@@ -1395,9 +1468,18 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // M4: value now comes from RaySizeCoefNode, recomputed live at Compile from the render target's
     // height (Dependency|Execute — Compile-derived but still read into the per-frame push constants,
     // mirroring instanceCount below).
-    batch.Connect(raySizeCoefNode, RaySizeCoefNodeConfig::RAY_SIZE_COEF,
-                          pushConstantGatherer, 8,  // push constant field 8: float raySizeCoef
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    // Tiered-ESVO Inc2 M4 Task 9: when VIXEN_TIER_CROSSING_LOD_COEF_OVERRIDE is set, feed the
+    // demo-only override ConstantNode instead of the live RaySizeCoefNode -- default path (env
+    // unset) is the unchanged pre-M4 connection.
+    if (tierCrossingLodCoefOverrideActive) {
+        batch.Connect(tierCrossingLodCoefOverrideConstant, ConstantNodeConfig::OUTPUT,
+                              pushConstantGatherer, 8,  // push constant field 8: float raySizeCoef
+                              SlotRoleModifier(SlotRole::Execute));
+    } else {
+        batch.Connect(raySizeCoefNode, RaySizeCoefNodeConfig::RAY_SIZE_COEF,
+                              pushConstantGatherer, 8,  // push constant field 8: float raySizeCoef
+                              SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    }
     // raySizeBias (binding 9): LOD origin cone size; 0.0 for pinhole camera.
     batch.Connect(raySizeBiasConstant, ConstantNodeConfig::OUTPUT,
                           pushConstantGatherer, 9,  // push constant field 9: float raySizeBias

@@ -508,6 +508,36 @@ gtest_discover_tests(test_body_instance_occlusion_reject
 message(STATUS "[RenderGraph Tests] Added: test_body_instance_occlusion_reject (Sparse-Mip ESVO LOD Inc1 M4b)")
 
 # ===========================================================================
+# Tiered-ESVO Inc2 M4 (Tasks 9-10) — live-GPU proof of the screen-space LOD
+# early-out and residency-reuse fallback for a farBit==1 tier-crossing leaf.
+# Extends test_body_instance_occlusion_reject.cpp's real-device/real-shader
+# dispatch pattern with binding 15 (TierRefTableBuffer) wired in, driving a
+# genuine two-tree tier-crossing scene (same construction as
+# BuildRenderGraph.cpp's VIXEN_TIER_CROSSING_DEMO).
+# ===========================================================================
+add_executable(test_tier_crossing_lod_residency
+    Nodes/test_tier_crossing_lod_residency.cpp
+)
+add_dependencies(test_tier_crossing_lod_residency body_instance_raymarch_spv)
+target_link_libraries(test_tier_crossing_lod_residency PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+if(TARGET SVO)
+    target_link_libraries(test_tier_crossing_lod_residency PRIVATE SVO)
+endif()
+if(TARGET GaiaVoxelWorld)
+    target_link_libraries(test_tier_crossing_lod_residency PRIVATE GaiaVoxelWorld)
+endif()
+target_compile_definitions(test_tier_crossing_lod_residency PRIVATE
+    GLSL_RAYMARCH_SPV="${_brm_spv}")
+if(VIXEN_WSL_DZN_ICD)
+    target_compile_definitions(test_tier_crossing_lod_residency PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
+endif()
+set_target_properties(test_tier_crossing_lod_residency PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_tier_crossing_lod_residency
+    DISCOVERY_MODE PRE_TEST
+    DISCOVERY_TIMEOUT 120)
+message(STATUS "[RenderGraph Tests] Added: test_tier_crossing_lod_residency (Tiered-ESVO Inc2 M4 Tasks 9-10)")
+
+# ===========================================================================
 # Voxel Authoring Inc1 M4 — vixen_editor's load/flatten/bake/render/toggle path:
 # golden document renders, then a cut-layer ablation asserts a real
 # pixel-level top-face difference (the cylinder punches through the box).
