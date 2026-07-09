@@ -604,6 +604,26 @@ void VulkanGraphApplication::BuildRenderGraph() {
     camera->SetParameter(CameraNodeConfig::PARAM_YAW, 0.0f);         // Camera at +Z, looking toward -Z
     camera->SetParameter(CameraNodeConfig::PARAM_PITCH, 0.0f);
 
+    // Tiered-ESVO Inc2 M5 Task 11: VIXEN_TIER_ZOOM_DEMO drives the camera via
+    // SetOrbitDistanceForTest, which orbits around CameraNode's own orbitCenter -- left at its
+    // stale Cornell-box default (5,5,5) unless a consumer configures PARAM_ORBIT_CENTER_*
+    // (CameraNode.cpp's own SetupImpl comment: "orbitCenter itself is the pivot and can't be
+    // derived from position alone"). The tier-crossing demo body sits at world (64,64,64) (see
+    // the VIXEN_TIER_CROSSING_DEMO scene-construction block below), nowhere near (5,5,5) -- an
+    // unconfigured orbit here would swing the camera away from the body on the very first
+    // SetOrbitDistanceForTest call (caught live: every captured frame was byte-identical sky
+    // until this was added). Configuring PARAM_ORBIT_CENTER_* here declares orbit-mode intent
+    // from SetupImpl (CameraNode.cpp's own orbitActive_ latch), so EngageOrbit()'s idempotent
+    // guard makes the zoom demo's first SetOrbitDistanceForTest call a no-op re-seed.
+    if (std::getenv("VIXEN_TIER_ZOOM_DEMO")) {
+        camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_X, 64.0f);
+        camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_Y, 64.0f);
+        camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_Z, 64.0f);
+        camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_DISTANCE, 236.0f);  // matches the at-rest Z=300 distance
+        mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_ZOOM_DEMO: orbitCenter set to demo body's "
+                          "world center (64,64,64) so the scripted zoom actually orbits the body");
+    }
+
     // PRESET 2: Offset to see both left (red) and right (green) walls
     //camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_X, 1.5f);
     //camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Y, 0.5f);
@@ -869,14 +889,20 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 // child alone (that isolation would need a genuinely new per-octree residency
                 // mechanism, out of this increment's scope per the design doc's own "no new
                 // residency state machine" line).
-                const bool forceNonResident = std::getenv("VIXEN_TIER_CROSSING_NONRESIDENT") != nullptr;
+                // Tiered-ESVO Inc2 M5 Task 11: VIXEN_TIER_ZOOM_DEMO reuses the SAME
+                // RequestBrickResidency(false) start-state as VIXEN_TIER_CROSSING_NONRESIDENT
+                // above, so the scripted zoom (VulkanGraphApplication::Update) has a real 0->1
+                // transition to exercise mid-flight via its own scripted RequestBrickResidency(true)
+                // at tick 24 -- proving the composed lifecycle live, not just as two separate runs.
+                const bool forceNonResident = std::getenv("VIXEN_TIER_CROSSING_NONRESIDENT") != nullptr
+                                            || std::getenv("VIXEN_TIER_ZOOM_DEMO") != nullptr;
 
                 if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))) {
                     bodyScene->SetRecipePool(std::move(cat));
                     if (forceNonResident) {
                         bodyScene->RequestBrickResidency(false);
-                        mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_CROSSING_NONRESIDENT: "
-                                          "RequestBrickResidency(false) -- both octrees mip-only");
+                        mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_CROSSING_NONRESIDENT/VIXEN_TIER_ZOOM_DEMO: "
+                                          "RequestBrickResidency(false) -- both octrees mip-only at start");
                     }
 
                     // ONE instance, pointing at octree 0 (the parent). Placed at the
