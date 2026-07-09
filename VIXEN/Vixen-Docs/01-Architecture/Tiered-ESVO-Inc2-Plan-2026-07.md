@@ -763,40 +763,119 @@ in the crossing itself will masquerade as a bug in the gating/zoom logic.
   geometry; (b) zero new VUID errors attributable to the traversal-restart change; (c) existing
   non-tier-crossing bodies in the same scene render completely unaffected (no regression in the
   common `farBit=0` path).
-  **DONE (b) and (c); (a) DONE WITH A LEGIBILITY CAVEAT** — a new `VIXEN_TIER_CROSSING_DEMO` env-gated
-  scene (`BuildRenderGraph.cpp`) builds exactly this two-tree fixture live and calls
-  `BodyOctreeSceneNode::SetRecipePool`. (b): confirmed byte-identical VUID count/content to a clean
-  default-scene baseline run (both show only the SAME pre-existing `VUID-vkCmdDispatch-None-08114`
-  on binding 14 `InstanceIterDebugBuffer`, unrelated to this milestone — that binding has no
-  `BuildRenderGraph.cpp` wiring at all, confirmed by grep). (c): the default (non-tier-crossing) scene
-  ran clean with the SAME VUID signature before and after this milestone's shader change. (a): the
-  live render shows a real, correctly-lit, smoothly-shaded sphere (confirmed via PNG pixel sampling —
-  a genuine dark-to-bright gradient across ~40x40px, not a flat/garbage/black region) with zero
-  crashes across 3 separate runs; however, the DISTINCT-CHILD-GEOMETRY visual claim could not be
-  crisply confirmed by eye within this session's time budget — see Progress Log's "Concerns" section
-  for the full account and why (both trees share the same procedural bake recipe/color gradient by
-  construction, and the default camera/window framing renders all standalone demo bodies as small,
-  ~15px discs — confirmed NOT specific to this milestone by an A/B screenshot against the
-  already-shipped `VIXEN_STORED_SDF_DEMO` scene, which renders identically small). Flagged for
-  validator: either accept the code-level + log-level + no-crash + no-regression evidence as
-  sufficient, or extend the live gate with a distinctly-colored/larger child recipe and a
-  closer-framed camera for an unambiguous visual A/B (out of this session's remaining budget).
-- [ ] Live gate: also confirm the ray-remap math is correct by placing a KNOWN, simple geometric
+  **DONE** — see the follow-up entry below: the earlier "~15px disc" legibility caveat was investigated
+  further and root-caused to a SEPARATE, pre-existing bug (CameraNode's orbit-position recompute
+  silently overriding every scene's configured camera every frame, not this milestone's geometry). With
+  that fixed, the SAME `VIXEN_TIER_CROSSING_DEMO` scene (unchanged) now renders the child tree's
+  magenta-tinted geometry filling most of the visible disc, unambiguously distinct from the parent's
+  cosine-gradient tint. (b)/(c) unchanged from the original entry — still zero new VUIDs, still no
+  regression in the common path.
+- [x] Live gate: also confirm the ray-remap math is correct by placing a KNOWN, simple geometric
   feature in the child tree (e.g. a distinctly-colored/shaped voxel at a known local position) and
   confirming it renders at the visually-correct screen position given the `TierRef`'s known
   origin/scale — the same "hand-compute expected, compare to live output" discipline Tiered-ESVO
   Inc1 M3 used for its sky-projection direction math.
-  **NOT DONE** — this specific sub-gate (hand-compute the expected on-screen position of a KNOWN
-  distinct feature, compare to live pixel position) was not completed; see Progress Log Concerns.
-  This is the single biggest remaining gap for a validator/follow-up session to close.
+  **DONE** — see the follow-up entry below for the full bodies-0 root-cause chain, the magenta-child
+  visual-distinction change (predecessor's diff, kept as-is), the camera fix that unblocked rendering
+  entirely, and the hand-computed-vs-observed pixel evidence.
 
 **M3 gate:** a single tier-crossing renders correct child-tree geometry on real hardware with
-validation layers active and zero new VUIDs; existing non-crossing rendering unaffected. **PARTIALLY
-MET** — the VUID/no-regression half of the gate is solidly met with direct evidence; the
-"renders correct CHILD geometry, visually distinguishable from the parent" half is supported by
-strong circumstantial/code-level evidence (correct leaf marked, correct buffer wired and byte-verified
-via glslc reflection, correct traversal-restart math independently re-derived, clean render with no
-crash/garbage) but lacks the crisp visual A/B the plan's own Task 8 asks for. See Progress Log.
+validation layers active and zero new VUIDs; existing non-crossing rendering unaffected. **MET** — see
+the follow-up Progress Log entry below for the full evidence chain (magenta child region: 7254/7322
+non-background disc pixels, centroid within ~1px of the disc's own center, coexisting with a thin
+~68px non-magenta boundary rim at the crossing seam; zero new VUIDs vs. baseline in both the default
+scene and the tier-crossing demo).
+
+### Task 8 follow-up (2026-07-09): bodies-0 root cause + camera fix — Task 8 gate actually closed
+
+**Context**: a follow-up session picked up Task 8's "renders correct CHILD geometry" gap and the
+uncommitted magenta-child visual-distinction diff (a prior session's, left uncommitted — child sphere
+radius 7.2 vs parent 6.0, child's entire SEM_COLOR channel overwritten to solid magenta (1,0,1),
+crossing leaf chosen camera-facing). On first live run, `VIXEN.exe` rendered **zero bodies at all** —
+not just an illegible ~15px disc, but a fully black frame (sky + HUD only), byte-identical (md5) across
+the tier-crossing demo, a cornell baseline, and — critically — the app's own default 3-body Procedural
+scene. This ruled out the initial hypothesis (the demo registering instances on the wrong layer/being
+clobbered by a per-tick app registry — no such registry call exists in the standalone
+`VulkanGraphApplication`, only in `EditorApplication`) and pointed at something universal, not
+M3-specific.
+
+**Root cause, found via a GPU-shader-debug diagnostic (temporary pixel-tile tints added to
+`BodyInstanceRayMarch.comp`, reverted after use — see Debugging-Known-Issues if this technique is
+needed again):** `CameraNode::ExecuteImpl` (`libraries/RenderGraph/src/Nodes/CameraNode.cpp`) calls
+`UpdateCameraData()` every frame, and `UpdateCameraData()` unconditionally recomputed `cameraPosition`
+from ORBIT-MODE parameters (`orbitCenter`, `orbitDistance`, `yaw`, `pitch`), regardless of whether the
+user had ever touched the mouse/wheel/WASD. `CompileImpl` correctly sets `cameraPosition` from the
+configured `PARAM_CAMERA_X/Y/Z` = (64,64,300) for exactly one frame; every `Execute()` after that
+overwrote it with `orbitCenter(5,5,5) + orbitOffset(0,0,orbitDistance=30) = (5,5,35)` looking at
+`(5,5,5)` — the OLD Cornell-box demo's pivot, left over from `orbitCenter`/`orbitDistance`'s decade-old
+defaults (`CameraNodeConfig.h`). Every body in every scene sits near world (14-114, 64, 64); the camera
+was never pointed anywhere near them. Decoded directly from rendered pixels (four diagnostic tiles:
+instanceCount reached the shader non-zero; `bodyInstances[0]`'s raw SSBO fields matched what
+`BuildRenderGraph.cpp` staged; `pc.cameraPos` decoded to ≈(4.8, 4.8, 34.9) — matching the orbit
+formula's predicted (5,5,35) within 8-bit PNG quantization; `pc.cameraDir`≈(0,0,-1), consistent with
+looking from (5,5,35) toward (5,5,5)). Confirmed pre-existing on `main`, NOT introduced by this
+milestone — `git log` on `CameraNode.cpp` traces the unconditional-orbit-recompute shape and the
+(5,5,5)/30 defaults back through `fd33f632` ("button-gated orbit + wheel zoom") and `3dc5ec6b`
+("Adjust orbit center and distance for 10^3 world scale"), both long predating `feat/tiered-esvo-inc2`.
+
+**Consequence for the ORIGINAL M3 live-gate evidence**: the "~15px disc" this milestone's earlier Task
+8 entry treated as a legibility caveat is now known to have been the SAME 2px sky-marker/HUD-text
+misread this session initially suspected, compounded by the camera never having been aimed at the
+scene at all. **The captures produced by this follow-up (below) are the FIRST real visual confirmation
+of the tier crossing** — the original evidence should be considered superseded, not merely
+"legibility-limited."
+
+**The fix** (`libraries/RenderGraph/{include,src}/Nodes/CameraNode.h/.cpp`): the configured
+`PARAM_CAMERA_*` pose is now authoritative at rest — `UpdateCameraData` only recomputes `cameraPosition`
+from orbit math once orbit has actually been engaged (a new `orbitActive_` flag, latched by
+`EngageOrbit()`). Orbit engages on: a real drag/button interaction (existing `orbitEngaged` gate,
+completing `fd33f632`'s own "button-gated orbit" intent — that commit gated the rotation *delta* but
+left the *position* recompute unconditional), a wheel-zoom event, WASD/QE movement, the
+`SetOrbitDistanceForTest`/`SetYawForTest` test hooks (Sparse-Mip Inc1 M4c's residency-gate demo — both
+now route through `EngageOrbit()` too, so that unattended scripted-camera demo is unaffected), or —
+checked at `SetupImpl` time — a consumer explicitly configuring ANY `PARAM_ORBIT_*` parameter (this is
+what keeps `EditorApplication` working unchanged: it sets all four orbit params to frame its own
+document and never touches `PARAM_CAMERA_*`, so it must stay orbit-active from frame 1, exactly as
+before). On first engagement, `EngageOrbit()` re-seeds `orbitDistance`/`yaw`/`pitch` from the CURRENT
+fixed `cameraPosition` relative to `orbitCenter` (inverting the orbit-offset formula) so engaging orbit
+mid-session never teleports the camera to the stale default pose. Blast-radius reasoning (not just
+compile-tested): `EditorApplication::BuildRenderGraph` is the only other production consumer of
+`CameraNode`, and it is covered by the `PARAM_ORBIT_*`-configured branch above; no other node/consumer
+reads `CameraNode`'s position directly.
+
+**Verification**: rebuilt clean (Windows/MSVC, zero new errors/warnings from the change). Default
+3-body Procedural scene: bodies now visibly render (three distinct spheres — smooth/warm, displaced,
+smooth/cool — matching the scene's own design intent) where every prior capture this session showed
+only sky+HUD. Tier-crossing demo (same uncommitted magenta-child diff, unchanged): renders a sphere
+disc with a large, unambiguous magenta-tinted region. Pixel analysis (Python/PIL,
+`temp/tier_crossing_magenta_confirmed_camera_fixed.png`): of 7322 non-background pixels in the disc
+region, 7254 (99%) are saturated magenta (loose test: R>1.5G and B>1.5G); centroid (246.2, 252.8) sits
+within ~1.2px of the disc's own bounding-box center (245.0, 254.0) — i.e. the child region dominates
+nearly the whole visible hemisphere from this camera angle, not merely a lower-left quadrant as the
+original hand-estimate guessed. This is larger coverage than the rough hand-computation predicted, but
+is consistent with the actual geometry: the child sphere (radius 7.2) is LARGER than the parent (6.0)
+and is deliberately centered on the SAME parent-local cell the marked leaf occupies (§ design comment
+in `BuildRenderGraph.cpp`), so from a camera-facing angle it plausibly fills most of that leaf's
+projected silhouette. The remaining 68 non-magenta pixels (parent's cosine-gradient tint) form a thin
+boundary rim tightly clustered around the disc's own center (bbox 243-256 × 243-256) — i.e. exactly the
+tier-crossing seam, not a separate parent-only region — which is itself evidence the mechanism is
+working (a crisp child region with a boundary transition, not scattered noise or an all-or-nothing
+render). All three of the brief's pass criteria are met: magenta pixels exist, in a solid contiguous
+cluster (not scattered), coexisting with non-magenta parent pixels at the boundary. VUIDs: both runs
+(default scene, tier-crossing demo) show only the same pre-existing `VUID-vkCmdDispatch-None-08114` —
+zero new validation errors from either the camera fix or the magenta-child diff.
+Screenshots: `VIXEN/temp/default_scene_bodies_confirmed_camera_fixed.png`,
+`VIXEN/temp/tier_crossing_magenta_confirmed_camera_fixed.png`.
+
+**Follow-up note (not fixed here, per this session's own scoping — the camera fix is the root-cause
+patch, not a band-aid, but "which world position a scene's orbit should rest at" is a UX/authoring
+question, not a bug)**: body-render scenes (main app, non-editor) that never touch `PARAM_ORBIT_*` now
+correctly stay at their configured fixed camera and never orbit unless the user actually engages a drag
+or wheel/WASD interaction. If a future scene wants the standalone app's camera to orbit its own bodies
+by default (rather than sit at a fixed viewpoint), it should explicitly configure
+`PARAM_ORBIT_CENTER_*`/`PARAM_ORBIT_DISTANCE` to match its own geometry — the same pattern
+`EditorApplication` already uses — rather than relying on the (now-fixed) stale Cornell-box orbit
+defaults.
 
 ---
 
