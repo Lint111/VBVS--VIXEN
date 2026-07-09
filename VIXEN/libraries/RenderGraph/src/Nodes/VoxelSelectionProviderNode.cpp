@@ -7,6 +7,7 @@
 
 #include <glm/glm.hpp>
 #include <cstring>
+#include <mutex>
 #include <string>
 
 namespace Vixen::RenderGraph {
@@ -322,10 +323,15 @@ bool VoxelSelectionProviderNode::ReadPixelAt(uint32_t width, uint32_t height,
     submit.commandBufferCount = 1;
     submit.pCommandBuffers    = &cmd;
 
-    if (vkQueueSubmit(device->queue, 1, &submit, fence) != VK_SUCCESS) {
-        vkDestroyFence(vkDevice, fence, nullptr);
-        vkFreeCommandBuffers(vkDevice, commandPool_, 1, &cmd);
-        return false;
+    {
+        // Externally synchronized per Vulkan spec (audit V-M11); NOT held across the
+        // vkWaitForFences below, per the comment above about not stalling the whole queue.
+        std::lock_guard<std::mutex> submitLock(device->SubmitMutex(device->queue));
+        if (vkQueueSubmit(device->queue, 1, &submit, fence) != VK_SUCCESS) {
+            vkDestroyFence(vkDevice, fence, nullptr);
+            vkFreeCommandBuffers(vkDevice, commandPool_, 1, &cmd);
+            return false;
+        }
     }
 
     vkWaitForFences(vkDevice, 1, &fence, VK_TRUE, UINT64_MAX);

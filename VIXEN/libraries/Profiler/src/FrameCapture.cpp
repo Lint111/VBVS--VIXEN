@@ -6,10 +6,16 @@
 #include <iostream>
 #include <stdexcept>
 
-// STB implementations - only define here to avoid multiple definition errors
+// STB implementations — STATIC keeps them private to this TU: Profiler is the only stbi_write
+// user inside this library, and the app executables provide their OWN extern stb impl
+// (application/*/source/StbImageWriteImpl.cpp) for RenderGraph's readback paths. Without STATIC,
+// any target linking both Profiler and an app lib (VixenApp since M4b's CaptureFrameToPng) hits
+// multiple-definition link errors.
+#define STB_IMAGE_WRITE_STATIC
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
+#define STB_IMAGE_RESIZE_STATIC
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
 #include "stb_image_resize2.h"
 

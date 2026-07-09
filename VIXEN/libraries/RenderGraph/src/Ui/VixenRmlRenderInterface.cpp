@@ -4,6 +4,7 @@
 #include <RmlUi/Core/Vertex.h>
 
 #include <cstring>
+#include <mutex>
 #include <stdexcept>
 
 namespace Vixen::Ui {
@@ -51,10 +52,12 @@ void VixenRmlRenderInterface::CreateBuffer(VkDeviceSize size, VkBufferUsageFlags
 
 void VixenRmlRenderInterface::Init(VkDevice device, VkPhysicalDevice physicalDevice, VkQueue queue,
                                    uint32_t queueFamilyIndex, const VkPhysicalDeviceMemoryProperties& memProps,
-                                   VkCommandPool commandPool, VkRenderPass renderPass) {
+                                   VkCommandPool commandPool, VkRenderPass renderPass,
+                                   std::mutex* submitMutex) {
     device_ = device;
     physicalDevice_ = physicalDevice;
     queue_ = queue;
+    submitMutex_ = submitMutex;
     queueFamilyIndex_ = queueFamilyIndex;
     memProps_ = memProps;
     commandPool_ = commandPool;
@@ -255,8 +258,13 @@ VixenRmlRenderInterface::Texture* VixenRmlRenderInterface::CreateTextureRGBA(con
     VkSubmitInfo si{VK_STRUCTURE_TYPE_SUBMIT_INFO};
     si.commandBufferCount = 1;
     si.pCommandBuffers = &cmd;
-    Check(vkQueueSubmit(queue_, 1, &si, VK_NULL_HANDLE), "submit one-shot");
-    vkQueueWaitIdle(queue_);
+    {
+        // Externally synchronized per Vulkan spec (audit V-M11).
+        std::unique_lock<std::mutex> lock;
+        if (submitMutex_) lock = std::unique_lock<std::mutex>(*submitMutex_);
+        Check(vkQueueSubmit(queue_, 1, &si, VK_NULL_HANDLE), "submit one-shot");
+        vkQueueWaitIdle(queue_);
+    }
     vkFreeCommandBuffers(device_, commandPool_, 1, &cmd);
     vkDestroyBuffer(device_, staging, nullptr);
     vkFreeMemory(device_, stagingMem, nullptr);

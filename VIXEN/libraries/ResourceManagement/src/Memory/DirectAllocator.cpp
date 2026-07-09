@@ -161,15 +161,23 @@ void DirectAllocator::FreeBuffer(BufferAllocation& allocation) {
         return;
     }
 
+    // record (the AllocationRecord* used as the map key) is only valid to deref/delete if we
+    // actually find+erase its map entry below — a handle not in allocations_ (already freed by a
+    // racing FreeBuffer(), or simply invalid) must not fall through to vkDestroyBuffer/vkFreeMemory/
+    // delete on a pointer whose lifetime we don't own (audit V-N14: invalid-free early-return).
     AllocationRecord* record = static_cast<AllocationRecord*>(allocation.allocation);
     VkDeviceSize freedSize = 0;
+    VkDeviceMemory freedMemory = VK_NULL_HANDLE;
+    bool found = false;
 
     {
         std::lock_guard lock(mutex_);
 
         auto it = allocations_.find(allocation.allocation);
         if (it != allocations_.end()) {
+            found = true;
             freedSize = it->second.size;
+            freedMemory = it->second.memory;
 
             // Unmap if mapped
             if (it->second.isMapped && device_ != VK_NULL_HANDLE) {
@@ -185,11 +193,15 @@ void DirectAllocator::FreeBuffer(BufferAllocation& allocation) {
         }
     }
 
+    if (!found) {
+        return;  // Invalid or already-freed handle — no deref/delete/vkFree.
+    }
+
     // Free Vulkan resources
     if (device_ != VK_NULL_HANDLE) {
         vkDestroyBuffer(device_, allocation.buffer, nullptr);
-        if (record->memory != VK_NULL_HANDLE) {
-            vkFreeMemory(device_, record->memory, nullptr);
+        if (freedMemory != VK_NULL_HANDLE) {
+            vkFreeMemory(device_, freedMemory, nullptr);
         }
     }
 
@@ -304,15 +316,22 @@ void DirectAllocator::FreeImage(ImageAllocation& allocation) {
         return;
     }
 
+    // Same discipline as FreeBuffer (audit V-N14): only deref/delete record if we actually
+    // find+erase its map entry — a handle not in allocations_ is an invalid or already-freed
+    // handle, not a pointer we own.
     AllocationRecord* record = static_cast<AllocationRecord*>(allocation.allocation);
     VkDeviceSize freedSize = 0;
+    VkDeviceMemory freedMemory = VK_NULL_HANDLE;
+    bool found = false;
 
     {
         std::lock_guard lock(mutex_);
 
         auto it = allocations_.find(allocation.allocation);
         if (it != allocations_.end()) {
+            found = true;
             freedSize = it->second.size;
+            freedMemory = it->second.memory;
             allocations_.erase(it);
 
             stats_.totalAllocatedBytes -= freedSize;
@@ -322,10 +341,14 @@ void DirectAllocator::FreeImage(ImageAllocation& allocation) {
         }
     }
 
+    if (!found) {
+        return;  // Invalid or already-freed handle — no deref/delete/vkFree.
+    }
+
     if (device_ != VK_NULL_HANDLE) {
         vkDestroyImage(device_, allocation.image, nullptr);
-        if (record->memory != VK_NULL_HANDLE) {
-            vkFreeMemory(device_, record->memory, nullptr);
+        if (freedMemory != VK_NULL_HANDLE) {
+            vkFreeMemory(device_, freedMemory, nullptr);
         }
     }
 
@@ -508,11 +531,13 @@ DirectAllocator::CreateAliasedBuffer(const AliasedBufferRequest& request) {
         return std::unexpected(AllocationError::InvalidParameters);
     }
 
-    // Verify source allocation supports aliasing
-    AllocationRecord* sourceRecord = nullptr;
+    // Verify source allocation supports aliasing. Copy the fields we need (audit V-M13): GetRecord
+    // returns a pointer into allocations_'s stored value, invalidated by a concurrent FreeBuffer()
+    // erasing that entry — so nothing derived from the pointer may survive past this lock scope.
+    VkDeviceMemory sourceMemory = VK_NULL_HANDLE;
     {
         std::lock_guard lock(mutex_);
-        sourceRecord = GetRecord(request.sourceAllocation);
+        AllocationRecord* sourceRecord = GetRecord(request.sourceAllocation);
         if (!sourceRecord || !sourceRecord->canAlias) {
             return std::unexpected(AllocationError::InvalidParameters);
         }
@@ -521,6 +546,8 @@ DirectAllocator::CreateAliasedBuffer(const AliasedBufferRequest& request) {
         if (request.offsetInAllocation + request.size > sourceRecord->size) {
             return std::unexpected(AllocationError::InvalidParameters);
         }
+
+        sourceMemory = sourceRecord->memory;
     }
 
     // Create buffer
@@ -537,7 +564,7 @@ DirectAllocator::CreateAliasedBuffer(const AliasedBufferRequest& request) {
     }
 
     // Bind to existing allocation's memory
-    result = vkBindBufferMemory(device_, buffer, sourceRecord->memory, request.offsetInAllocation);
+    result = vkBindBufferMemory(device_, buffer, sourceMemory, request.offsetInAllocation);
     if (result != VK_SUCCESS) {
         vkDestroyBuffer(device_, buffer, nullptr);
         return std::unexpected(AllocationError::Unknown);
@@ -576,14 +603,20 @@ DirectAllocator::CreateAliasedImage(const AliasedImageRequest& request) {
         return std::unexpected(AllocationError::InvalidParameters);
     }
 
-    // Verify source allocation supports aliasing
-    AllocationRecord* sourceRecord = nullptr;
+    // Verify source allocation supports aliasing. Copy the fields we need (audit V-M13): GetRecord
+    // returns a pointer into allocations_'s stored value, invalidated by a concurrent FreeImage()/
+    // FreeBuffer() erasing that entry — so nothing derived from the pointer may survive past this
+    // lock scope.
+    VkDeviceMemory sourceMemory = VK_NULL_HANDLE;
+    VkDeviceSize sourceSize = 0;
     {
         std::lock_guard lock(mutex_);
-        sourceRecord = GetRecord(request.sourceAllocation);
+        AllocationRecord* sourceRecord = GetRecord(request.sourceAllocation);
         if (!sourceRecord || !sourceRecord->canAlias) {
             return std::unexpected(AllocationError::InvalidParameters);
         }
+        sourceMemory = sourceRecord->memory;
+        sourceSize = sourceRecord->size;
     }
 
     // Create image
@@ -598,13 +631,13 @@ DirectAllocator::CreateAliasedImage(const AliasedImageRequest& request) {
     vkGetImageMemoryRequirements(device_, image, &memReq);
 
     // Verify size fits
-    if (request.offsetInAllocation + memReq.size > sourceRecord->size) {
+    if (request.offsetInAllocation + memReq.size > sourceSize) {
         vkDestroyImage(device_, image, nullptr);
         return std::unexpected(AllocationError::InvalidParameters);
     }
 
     // Bind to existing allocation's memory
-    result = vkBindImageMemory(device_, image, sourceRecord->memory, request.offsetInAllocation);
+    result = vkBindImageMemory(device_, image, sourceMemory, request.offsetInAllocation);
     if (result != VK_SUCCESS) {
         vkDestroyImage(device_, image, nullptr);
         return std::unexpected(AllocationError::Unknown);

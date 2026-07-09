@@ -56,14 +56,15 @@ struct DescriptorUpdate {
 
 /**
  * @brief Typed node instance for data-driven descriptor set management
- * 
+ *
  * Accepts DescriptorLayoutSpec defining all bindings (from shader reflection or manual).
- * Creates layout/pool/sets, then user updates with actual resources via UpdateDescriptorSet().
- * 
+ * Creates layout/pool/sets; CompileImpl/ExecuteImpl populate them with actual resources
+ * via vkUpdateDescriptorSets, driven by the connected ShaderDataBundle.
+ *
  * Outputs:
  * - DESCRIPTOR_SET_LAYOUT - For pipeline creation
  * - DESCRIPTOR_POOL - For management
- * - DESCRIPTOR_SETS - Allocated sets (updated via UpdateDescriptorSet())
+ * - DESCRIPTOR_SETS - Allocated sets
  */
 class DescriptorSetNode : public TypedNode<DescriptorSetNodeConfig> {
 public:
@@ -73,23 +74,6 @@ public:
         NodeType* nodeType
     );
     ~DescriptorSetNode() override = default;
-
-    /**
-     * @brief Update descriptor set with actual resources
-     * @param setIndex Which set to update (0 to maxSets-1)
-     * @param updates Bindings to update
-     */
-    void UpdateDescriptorSet(uint32_t setIndex, const std::vector<DescriptorUpdate>& updates);
-
-    /**
-     * @brief Update single buffer binding
-     */
-    void UpdateBinding(uint32_t setIndex, uint32_t binding, const VkDescriptorBufferInfo& bufferInfo);
-
-    /**
-     * @brief Update single image binding
-     */
-    void UpdateBinding(uint32_t setIndex, uint32_t binding, const VkDescriptorImageInfo& imageInfo);
 
     // Accessors
     VkDescriptorSetLayout GetDescriptorSetLayout() const { return descriptorSetLayout; }

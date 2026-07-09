@@ -26,7 +26,7 @@ namespace Vixen::RenderGraph { class UISelectionProviderNode; }  // UI hit-test 
 namespace Vixen::RenderGraph { class BodyOctreeSceneNode; }  // M-wire: sparse shell octree upload node; real include in .cpp
 namespace Vixen::RenderGraph { class CameraNode; }  // Sparse-Mip ESVO LOD Inc1 M4c: live camera-state readback for the residency trigger
 namespace Vixen::SVO { struct BodyInstanceGpu; }  // M-wire: per-body GPU instance record (64 bytes)
-namespace Vixen::SVO { struct ConcatenatedOctrees; }  // I4.1: pre-baked recipe pool (SetRecipePool passthrough)
+namespace Vixen::SVO { struct ConcatenatedOctrees; }  // Spec B I3: boot-baked recipe pool (SetRecipePool)
 // View Contract Inc-2: HudView.h's real include lives ONLY in HudViewBridge.cpp (gaia-free) and
 // HudView.cpp itself -- NEVER in this header or in VulkanGraphApplication.cpp/BuildRenderGraph.cpp,
 // both of which transitively include BodyOctreeSceneNode.h's gaia.h. Root cause (not a style
@@ -273,10 +273,21 @@ public:
     // M-wire: push the current per-body instance list into BodyOctreeSceneNode so it re-uploads the
     // SSBO on the next compile tick. Replaces the StarSystemGenerator + MarkVoxelSceneDirty flow.
     void SetBodyInstances(std::vector<Vixen::SVO::BodyInstanceGpu> instances);
-    // Push a pre-baked recipe pool into BodyOctreeSceneNode (I4.1 SetRecipePool passthrough, mirrors
-    // SetBodyInstances above). A host that owns document/recipe authoring (e.g. vixen_editor) uses this
-    // to swap the render source without hand-rolling a NodeTypeRegistry lookup.
+    // Spec B I3/Task 6 (= main's I4.1 passthrough — both lines converged on this API): push a
+    // boot-baked recipe pool (RecipeBootIngest -> BakeRegistryToPool) into BodyOctreeSceneNode,
+    // which then serves octree slots 0..N-1 for the render_recipe blob ids the bridge resolves in
+    // ToBodyInstanceGpu. Mirrors SetBodyInstances above — same live GetInstance lookup, same
+    // null-guard; a host that owns document/recipe authoring (e.g. vixen_editor) uses this to
+    // swap the render source without hand-rolling a NodeTypeRegistry lookup.
     void SetRecipePool(Vixen::SVO::ConcatenatedOctrees pool);
+    // Host-facing HUD push: forwards into the app-owned HudView (hudView_, wired onto the composite
+    // UI node in BuildRenderGraph via WireHudView). Replaces the pre-Inc-2 host call
+    // UIRenderNode::SetHudView — the projection now lives on HudView, which this app owns, so hosts
+    // push through the app instead of the node. No-op before Prepare() (hudView_ wired but the UI
+    // node absent on no-composite-UI graphs is fine — the view just holds the latest push).
+    void PushHudView(int tick, int bodyCount, int activeLens, int activeLensCount,
+                     std::span<const Vixen::App::HudFactionIn> factions,
+                     std::span<const Vixen::App::HudEventIn> events);
     // Expose the GLFW window handle so the host can poll input (e.g. Space/period for pause/step).
     // Queries the WindowNode LIVE each call (the node owns the window post-de-own refactor + persists
     // across recompiles) — no cached handle, so no dangling-pointer window-capture bug.
@@ -289,4 +300,10 @@ public:
     // frame and forward the clicked element id into the feedback slice. LIVE lookup (like GetUiRenderNode);
     // returns nullptr if unset (e.g. a graph without the selection provider).
     Vixen::RenderGraph::UISelectionProviderNode* GetUiSelectionProviderNode() const;
+
+    // M4b: read back the swapchain image just presented and write it as a PNG. Call AFTER a
+    // Render() call (so a real presented frame exists). One-shot, synchronous (waits on the
+    // copy internally) — fine for a capture-then-exit tool, not for per-frame use. Returns false
+    // (and logs) if the swapchain/device node isn't found or the write fails.
+    bool CaptureFrameToPng(const std::string& path);
 };

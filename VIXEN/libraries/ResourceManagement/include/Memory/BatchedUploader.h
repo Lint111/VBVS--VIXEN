@@ -39,6 +39,33 @@ enum class UploadStatus : uint8_t {
 };
 
 /**
+ * @brief Outcome of attempting to submit a batch's fence + vkQueueSubmit (audit V-M16).
+ *
+ * Pure decision over the two VkResults so it is testable without a live VkDevice/VkQueue.
+ */
+enum class SubmitOutcome : uint8_t {
+    Ok,               // Fence created and submit succeeded — batch is trackable, enqueue it.
+    FenceCreateFailed,  // vkCreateFence failed — no fence exists; do not submit, do not enqueue.
+    SubmitFailed        // vkQueueSubmit failed — fence exists but was never signalled; destroy it, do not enqueue.
+};
+
+/**
+ * @brief Decide the outcome of a fence-based batch submit from the two raw VkResults.
+ *
+ * A failed fence create or a failed submit both leave the batch unsignalable — enqueuing it
+ * would make ProcessCompletions() (FIFO) block on that fence forever (audit V-M16).
+ */
+[[nodiscard]] constexpr SubmitOutcome DecideSubmitOutcome(VkResult fenceCreateResult, VkResult submitResult) {
+    if (fenceCreateResult != VK_SUCCESS) {
+        return SubmitOutcome::FenceCreateFailed;
+    }
+    if (submitResult != VK_SUCCESS) {
+        return SubmitOutcome::SubmitFailed;
+    }
+    return SubmitOutcome::Ok;
+}
+
+/**
  * @brief Statistics for BatchedUploader
  */
 struct BatchedUploaderStats {
@@ -104,13 +131,18 @@ public:
      * @param queueFamilyIndex Queue family index for command pool
      * @param budgetManager Budget manager (provides StagingBufferPool)
      * @param config Uploader configuration
+     * @param submitMutex Must guard every vkQueueSubmit/vkQueuePresentKHR/vkQueueWaitIdle on
+     *   `queue` elsewhere in the engine (VulkanDevice::SubmitMutex(queue)) — this uploader's
+     *   SubmitBatch()/vkQueueWaitIdle are externally synchronized against those too (audit
+     *   V-M11). nullptr is only safe for a queue known to be single-owner (e.g. tests).
      */
     BatchedUploader(
         VkDevice device,
         VkQueue queue,
         uint32_t queueFamilyIndex,
         DeviceBudgetManager* budgetManager,
-        const Config& config);
+        const Config& config,
+        std::mutex* submitMutex = nullptr);
 
     /**
      * @brief Create a batched uploader with default configuration
@@ -119,8 +151,9 @@ public:
         VkDevice device,
         VkQueue queue,
         uint32_t queueFamilyIndex,
-        DeviceBudgetManager* budgetManager)
-        : BatchedUploader(device, queue, queueFamilyIndex, budgetManager, Config{}) {}
+        DeviceBudgetManager* budgetManager,
+        std::mutex* submitMutex = nullptr)
+        : BatchedUploader(device, queue, queueFamilyIndex, budgetManager, Config{}, submitMutex) {}
 
     /**
      * @brief Destructor - waits for pending uploads and cleans up
@@ -308,6 +341,7 @@ private:
     Config config_;
     VkDevice device_;
     VkQueue queue_;
+    std::mutex* submitMutex_ = nullptr;  // guards queue_ submits engine-wide (audit V-M11)
     DeviceBudgetManager* budgetManager_;
 
     // Staging buffer pool
@@ -354,6 +388,10 @@ private:
     void SubmitBatch(std::vector<PendingUpload>&& uploads);
     void CheckAutoFlush();
     void SetStatus(UploadHandle handle, UploadStatus status);
+    void PruneStatus(UploadHandle handle);
+    // Marks every upload in a batch that never made it to the GPU as Failed, releases its
+    // staging buffers, and prunes status (audit V-M16/V-M17: unsignalable-fence / null-cmdBuffer paths).
+    void FailBatch(const std::vector<PendingUpload>& uploads);
 };
 
 } // namespace ResourceManagement

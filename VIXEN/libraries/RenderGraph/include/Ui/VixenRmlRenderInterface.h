@@ -9,6 +9,7 @@
 #include <RmlUi/Core/RenderInterface.h>
 
 #include <cstdint>
+#include <mutex>
 #include <utility>
 #include <vector>
 
@@ -20,8 +21,13 @@ public:
     ~VixenRmlRenderInterface() override = default;
 
     // One-time setup once the device, command pool, and (UI-owned, color-only) render pass exist.
+    // submitMutex must guard every vkQueueSubmit/vkQueuePresentKHR/vkQueueWaitIdle on `queue`
+    // elsewhere in the engine (VulkanDevice::SubmitMutex(queue)) — this interface's one-shot
+    // texture-upload submit (audit V-M11) is externally synchronized against those, not just
+    // against itself.
     void Init(VkDevice device, VkPhysicalDevice physicalDevice, VkQueue queue, uint32_t queueFamilyIndex,
-              const VkPhysicalDeviceMemoryProperties& memProps, VkCommandPool commandPool, VkRenderPass renderPass);
+              const VkPhysicalDeviceMemoryProperties& memProps, VkCommandPool commandPool, VkRenderPass renderPass,
+              std::mutex* submitMutex);
     // Destroy all owned Vulkan objects. Caller must vkDeviceWaitIdle first.
     void Shutdown();
 
@@ -78,6 +84,7 @@ private:
     VkDevice device_ = VK_NULL_HANDLE;
     VkPhysicalDevice physicalDevice_ = VK_NULL_HANDLE;
     VkQueue queue_ = VK_NULL_HANDLE;
+    std::mutex* submitMutex_ = nullptr;  // guards queue_ submits engine-wide (audit V-M11)
     uint32_t queueFamilyIndex_ = 0;
     VkPhysicalDeviceMemoryProperties memProps_{};
     VkCommandPool commandPool_ = VK_NULL_HANDLE;

@@ -100,6 +100,45 @@ endif()
 set_target_properties(test_voxel_scene_key PROPERTIES FOLDER "Tests/CashSystem Tests")
 gtest_discover_tests(test_voxel_scene_key)
 
+# Shared bounds-checked cache codec tests (audit V-M5..M8, N6, N7)
+add_executable(test_cache_codec
+    test_cache_codec.cpp
+)
+target_compile_features(test_cache_codec PRIVATE cxx_std_23)
+if(TARGET CashSystem)
+    target_link_libraries(test_cache_codec PRIVATE GTest::gtest_main CashSystem Logger)
+else()
+    target_link_libraries(test_cache_codec PRIVATE GTest::gtest_main Logger)
+endif()
+set_target_properties(test_cache_codec PROPERTIES FOLDER "Tests/CashSystem Tests")
+gtest_discover_tests(test_cache_codec)
+
+# SPIR-V loader hardening tests (audit V-M7)
+add_executable(test_spirv_loader
+    test_spirv_loader.cpp
+)
+target_compile_features(test_spirv_loader PRIVATE cxx_std_23)
+if(TARGET CashSystem)
+    target_link_libraries(test_spirv_loader PRIVATE GTest::gtest_main CashSystem Logger VulkanResources)
+else()
+    target_link_libraries(test_spirv_loader PRIVATE GTest::gtest_main Logger)
+endif()
+set_target_properties(test_spirv_loader PROPERTIES FOLDER "Tests/CashSystem Tests")
+gtest_discover_tests(test_spirv_loader)
+
+# Pipeline-cache blob header/UUID validation tests (audit V-M8)
+add_executable(test_pipeline_cache_header
+    test_pipeline_cache_header.cpp
+)
+target_compile_features(test_pipeline_cache_header PRIVATE cxx_std_23)
+if(TARGET CashSystem)
+    target_link_libraries(test_pipeline_cache_header PRIVATE GTest::gtest_main CashSystem Logger VulkanResources)
+else()
+    target_link_libraries(test_pipeline_cache_header PRIVATE GTest::gtest_main Logger)
+endif()
+set_target_properties(test_pipeline_cache_header PROPERTIES FOLDER "Tests/CashSystem Tests")
+gtest_discover_tests(test_pipeline_cache_header)
+
 # Basic CashSystem functionality tests
 # TODO: Update these tests to use new registration-by-type API
 # add_executable(test_cashsystem_basic

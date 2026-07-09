@@ -337,6 +337,14 @@ endif()
 # All FetchContent and external library setup moved to dependencies/
 add_subdirectory(dependencies)
 
+# enable_testing() must precede any add_subdirectory() that calls add_test(),
+# or CMake silently drops those tests from CTest — libraries/ and application/
+# below both register tests, so this has to run before them, not in the
+# TESTING INFRASTRUCTURE section near the bottom of this file.
+if(BUILD_TESTS)
+    enable_testing()
+endif()
+
 # Suppress warnings from external dependencies
 set(CMAKE_WARN_DEPRECATED OFF CACHE BOOL "Suppress deprecation warnings" FORCE)
 set(CMAKE_SUPPRESS_DEVELOPER_WARNINGS ON CACHE BOOL "Suppress developer warnings" FORCE)
@@ -438,12 +446,11 @@ add_subdirectory(application)
 # TESTING INFRASTRUCTURE
 # ============================================================================
 # Note: GoogleTest is fetched early (near top of file) so all subdirectories can use it.
-# This section only enables CTest and adds root-level tests directory.
+# enable_testing() itself now runs right after add_subdirectory(dependencies)
+# above (it must precede libraries/application so their add_test() calls
+# register). This section just adds the root-level tests directory.
 
 if(BUILD_TESTS)
-    # Enable testing with CTest
-    enable_testing()
-
     # Add root-level tests subdirectory (if it exists)
     # Note: Subdirectories (RenderGraph, ShaderManagement, etc.) add their own tests
     if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests)

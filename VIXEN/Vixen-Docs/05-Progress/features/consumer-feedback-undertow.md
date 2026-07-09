@@ -351,6 +351,20 @@ Debug and reused cached artifacts). All fixed on `claude/wsl-build-portability`.
 - **Status:** FIXED (`ShaderLibraryNode.h`, `ShaderCompiler.h`, `shader_compilation_cacher.cpp`,
   branch `claude/wsl-build-portability`).
 
+### FR-24 — Inc-2 removed `UIRenderNode::SetHudView` with no host-facing replacement
+
+- **Context:** the undertow render host pushed live sim HUD data each frame via
+  `GetUiRenderNode()->SetHudView(...)`. View Contract Inc-2 relocated the HUD projection into the
+  app-owned `HudView` (behind `HudViewBridge`, for the gaia/RmlUi robin_hood ODR wall) and dropped
+  the node-level setter — but `VulkanGraphApplication::hudView_` stayed private, so an external
+  host had no way to push at all (first surfaced by the render-calibration × wsl-build cross-merge:
+  the host's full compile broke).
+- **Consumer impact:** any embedding host that feeds the composite HUD (undertow_host).
+- **Suggested fix (applied):** public `VulkanGraphApplication::PushHudView(tick, bodyCount,
+  activeLens, activeLensCount, span<HudFactionIn>, span<HudEventIn>)` forwarding through the
+  bridge seam — mirrors the existing `SetBodyInstances`/`SetRecipePool` host seams.
+- **Status:** FIXED (`VulkanGraphApplication.{h,cpp}`, branch `claude/render-calibration`).
+
 ---
 
 ## Adding entries

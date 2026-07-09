@@ -3,6 +3,7 @@
 #include "MeshData.h"
 #include "Logger.h"
 #include <cmath>       // std::tan for the LOD ray-cone (raySizeCoef) computation
+#include <filesystem>  // CaptureFrameToPng: exact-path rename (M4b)
 #include <cstdlib>     // std::getenv/atoi for VIXEN_WINDOW_WIDTH/HEIGHT overrides
 
 #define GLFW_INCLUDE_NONE   // don't pull in <GL/gl.h> (absent on headless/WSL); Vulkan-only below
@@ -29,6 +30,8 @@
 #include "Nodes/CameraNode.h"                 // Sparse-Mip ESVO LOD Inc1 M4c: GetCurrentCameraData() downcast target
 #include "Nodes/UIRenderNode.h"               // GetUiRenderNode() downcast target (RmlUi — after BodyOctreeSceneNode.h)
 #include "Nodes/UISelectionProviderNode.h"    // GetUiSelectionProviderNode() downcast target
+#include "Nodes/SwapChainNode.h"              // CaptureFrameToPng() downcast target (M4b)
+#include "Profiler/FrameCapture.h"            // CaptureFrameToPng(): reuse the existing readback->PNG path
 #include "Nodes/DeviceNode.h"                 // View Contract Inc-2 Task 5: VulkanDevice* for CaptureHudFrameToPng
 #include "Debug/RenderTargetReadback.h"       // View Contract Inc-2 Task 5: IRenderTarget -> PNG readback
 #include <sstream>                            // View Contract Inc-2 Task 5: VIXEN_HUD_SCRIPT/_CAPTURE_FRAMES parsing
@@ -801,15 +804,27 @@ void VulkanGraphApplication::SetBodyInstances(std::vector<Vixen::SVO::BodyInstan
 }
 
 void VulkanGraphApplication::SetRecipePool(Vixen::SVO::ConcatenatedOctrees pool) {
-    // I4.1 passthrough: forward a pre-baked recipe pool to BodyOctreeSceneNode. Mirrors
-    // SetBodyInstances above — same live GetInstance lookup, same null-guard.
+    // Spec B I3/Task 6 (= main's I4.1 passthrough): forward the boot-baked recipe pool
+    // (RecipeBootIngest -> BakeRegistryToPool) to BodyOctreeSceneNode, which then serves octree
+    // slots 0..N-1 for every render_recipe blob id instead of the hardcoded 3-kind shell/SDF
+    // archetypes. Mirrors SetBodyInstances above — same live GetInstance lookup, same null-guard.
     auto* node = static_cast<Vixen::RenderGraph::BodyOctreeSceneNode*>(
         renderGraph->GetInstance(bodyOctreeSceneNode_));
     if (node) {
         node->SetRecipePool(std::move(pool));
     } else if (mainLogger) {
-        mainLogger->Warning("[VulkanGraphApplication::SetRecipePool] bodyOctreeSceneNode_ not found — pool not applied");
+        mainLogger->Warning("[VulkanGraphApplication::SetRecipePool] bodyOctreeSceneNode_ not found — recipe pool not applied");
     }
+}
+
+void VulkanGraphApplication::PushHudView(int tick, int bodyCount, int activeLens, int activeLensCount,
+                                         std::span<const Vixen::App::HudFactionIn> factions,
+                                         std::span<const Vixen::App::HudEventIn> events) {
+    // Forwards through the HudViewBridge seam (never HudView.h directly — this TU sees gaia.h; see
+    // the header's robin_hood/ODR rationale). hudView_ exists for the app's whole lifetime (ctor),
+    // so this is safe to call any time after construction.
+    if (!hudView_) return;
+    Vixen::App::PushHudView(*hudView_, tick, bodyCount, activeLens, activeLensCount, factions, events);
 }
 
 namespace {
@@ -962,6 +977,63 @@ Vixen::RenderGraph::UISelectionProviderNode* VulkanGraphApplication::GetUiSelect
     if (!renderGraph) return nullptr;
     return static_cast<Vixen::RenderGraph::UISelectionProviderNode*>(
         renderGraph->GetInstance(uiSelectionProviderNode_));
+}
+
+bool VulkanGraphApplication::CaptureFrameToPng(const std::string& path) {
+    // M4b: headless GPU-frame snapshot. Reuses Vixen::Profiler::FrameCapture (already ships the
+    // barrier -> vkCmdCopyImageToBuffer -> map -> BGRA->RGBA swizzle -> stbi_write_png sequence,
+    // proven in the BenchmarkRunner path) instead of re-deriving that readback here.
+    if (!renderGraph) {
+        if (mainLogger) mainLogger->Error("[CaptureFrameToPng] RenderGraph not initialized");
+        return false;
+    }
+    // "main_swapchain" is registered by BuildRenderGraph.cpp. SwapChainNode::CompileImpl already
+    // calls SetDevice() on itself from its VULKAN_DEVICE_IN connection, so the node IS the device
+    // handle we need too — no separate "main_device" lookup.
+    auto* swapChainNode = static_cast<Vixen::RenderGraph::SwapChainNode*>(
+        renderGraph->GetNodeByName("main_swapchain"));
+    if (!swapChainNode) {
+        if (mainLogger) mainLogger->Error("[CaptureFrameToPng] 'main_swapchain' node not found");
+        return false;
+    }
+    auto* device = swapChainNode->GetDevice();
+    SwapChainPublicVariables* swapVars = swapChainNode->GetSwapchainPublic();
+    if (!device || !swapVars) {
+        if (mainLogger) mainLogger->Error("[CaptureFrameToPng] swapchain has no device/public vars yet");
+        return false;
+    }
+
+    Vixen::Profiler::FrameCapture capture;
+    if (!capture.Initialize(device->device, *device->gpu, device->queue, device->graphicsQueueIndex,
+                             swapVars->Extent.width, swapVars->Extent.height)) {
+        if (mainLogger) mainLogger->Error("[CaptureFrameToPng] FrameCapture::Initialize failed");
+        return false;
+    }
+
+    // FrameCapture writes to <outputPath>/debug_images/<testName>_frame<N>.png (its test-harness
+    // convention) rather than an exact path — capture into the caller's directory under that
+    // convention, then rename to the exact path requested.
+    std::filesystem::path want(path);
+    Vixen::Profiler::CaptureConfig cfg;
+    cfg.outputPath = want.parent_path().empty() ? std::filesystem::path(".") : want.parent_path();
+    cfg.testName = want.stem().string();
+    cfg.frameNumber = 0;
+    Vixen::Profiler::CaptureResult result =
+        capture.Capture(swapVars, swapChainNode->GetCurrentImageIndex(), cfg);
+    if (!result.success) {
+        if (mainLogger) mainLogger->Error("[CaptureFrameToPng] capture failed: " + result.errorMessage);
+        return false;
+    }
+    std::error_code ec;
+    std::filesystem::rename(result.savedPath, want, ec);
+    if (ec) {
+        if (mainLogger) mainLogger->Error("[CaptureFrameToPng] rename to '" + path + "' failed: " + ec.message());
+        return false;
+    }
+    if (mainLogger) mainLogger->Info("[CaptureFrameToPng] wrote " + path + " (" +
+                                      std::to_string(result.capturedWidth) + "x" +
+                                      std::to_string(result.capturedHeight) + ")");
+    return true;
 }
 
 bool VulkanGraphApplication::CaptureHudFrameToPng(const std::string& path, std::string& err) {

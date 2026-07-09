@@ -5,7 +5,10 @@ namespace Vixen::Log {
 
 // Process-wide minimum log level (see Logger::SetGlobalMinLevel). Default LOG_DEBUG = no filtering,
 // preserving the historical "every level prints" behaviour until a consumer raises it.
-LogLevel Logger::globalMinLevel = LogLevel::LOG_DEBUG;
+std::atomic<LogLevel> Logger::globalMinLevel{LogLevel::LOG_DEBUG};
+
+// Process-wide terminal-output opt-in (see Logger::SetGlobalTerminalOutput). Off by default.
+std::atomic<bool> Logger::globalTerminalOutput{false};
 
 Logger::Logger(const std::string& name, bool enabled)
     : name(name), enabled(enabled)
@@ -41,7 +44,14 @@ void Logger::RemoveChild(Logger *child)
 
 void Logger::Log(LogLevel level, const std::string& message)
 {
-    if (!enabled) {
+    // Error/Critical bypass the per-instance enabled/terminalOutput gates so an engine-detected
+    // misconfiguration can't vanish silently just because this instance wasn't wired up for
+    // output (audit V-M26). SetGlobalTerminalOutput is the same bypass for every level, opt-in.
+    // SetGlobalMinLevel is still the sanctioned way to silence everything deliberately.
+    const bool isErrorOrAbove = level >= LogLevel::LOG_ERROR;
+    const bool bypassEnabledGate = isErrorOrAbove || globalTerminalOutput;
+
+    if (!enabled && !bypassEnabledGate) {
         return;
     }
     if (level < globalMinLevel) {  // process-wide verbosity threshold
@@ -57,8 +67,9 @@ void Logger::Log(LogLevel level, const std::string& message)
     std::string logEntry = oss.str();
     logEntries.push_back(logEntry);
 
-    // Print to terminal if enabled
-    if (terminalOutput) {
+    // Print to terminal if this instance opted in, the process-wide opt-in is set, or this
+    // message is Error/Critical (which always reaches the terminal, see above).
+    if (terminalOutput || globalTerminalOutput || isErrorOrAbove) {
         std::cout << logEntry << std::endl;
     }
 }

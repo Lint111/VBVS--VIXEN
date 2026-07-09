@@ -7,6 +7,7 @@
 #include <chrono>
 #include <sstream>
 #include <iomanip>
+#include <atomic>
 
 namespace Vixen::Log {
 
@@ -51,6 +52,11 @@ public:
     static void SetGlobalMinLevel(LogLevel level) { globalMinLevel = level; }
     static LogLevel GetGlobalMinLevel() { return globalMinLevel; }
 
+    // Process-wide opt-in: when true, every instance prints to the terminal regardless of its
+    // own SetTerminalOutput/SetEnabled state (still subject to SetGlobalMinLevel). Off by default.
+    static void SetGlobalTerminalOutput(bool enable) { globalTerminalOutput = enable; }
+    static bool GetGlobalTerminalOutput() { return globalTerminalOutput; }
+
     // Extract logs recursively
     std::string ExtractLogs(int indentLevel = 0) const;
 
@@ -63,7 +69,8 @@ public:
     const std::string& GetName() const { return name; }
 
 protected:
-    static LogLevel globalMinLevel;  // process-wide threshold; see SetGlobalMinLevel
+    static std::atomic<LogLevel> globalMinLevel;  // process-wide threshold; see SetGlobalMinLevel
+    static std::atomic<bool> globalTerminalOutput;  // process-wide opt-in; see SetGlobalTerminalOutput
     std::string name;
     bool enabled;
     bool terminalOutput = false;
