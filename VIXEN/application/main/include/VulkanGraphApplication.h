@@ -279,6 +279,14 @@ public:
     // null-guard; a host that owns document/recipe authoring (e.g. vixen_editor) uses this to
     // swap the render source without hand-rolling a NodeTypeRegistry lookup.
     void SetRecipePool(Vixen::SVO::ConcatenatedOctrees pool);
+    // Host-facing HUD push: forwards into the app-owned HudView (hudView_, wired onto the composite
+    // UI node in BuildRenderGraph via WireHudView). Replaces the pre-Inc-2 host call
+    // UIRenderNode::SetHudView — the projection now lives on HudView, which this app owns, so hosts
+    // push through the app instead of the node. No-op before Prepare() (hudView_ wired but the UI
+    // node absent on no-composite-UI graphs is fine — the view just holds the latest push).
+    void PushHudView(int tick, int bodyCount, int activeLens, int activeLensCount,
+                     std::span<const Vixen::App::HudFactionIn> factions,
+                     std::span<const Vixen::App::HudEventIn> events);
     // Expose the GLFW window handle so the host can poll input (e.g. Space/period for pause/step).
     // Queries the WindowNode LIVE each call (the node owns the window post-de-own refactor + persists
     // across recompiles) — no cached handle, so no dangling-pointer window-capture bug.

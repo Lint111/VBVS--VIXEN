@@ -817,6 +817,16 @@ void VulkanGraphApplication::SetRecipePool(Vixen::SVO::ConcatenatedOctrees pool)
     }
 }
 
+void VulkanGraphApplication::PushHudView(int tick, int bodyCount, int activeLens, int activeLensCount,
+                                         std::span<const Vixen::App::HudFactionIn> factions,
+                                         std::span<const Vixen::App::HudEventIn> events) {
+    // Forwards through the HudViewBridge seam (never HudView.h directly — this TU sees gaia.h; see
+    // the header's robin_hood/ODR rationale). hudView_ exists for the app's whole lifetime (ctor),
+    // so this is safe to call any time after construction.
+    if (!hudView_) return;
+    Vixen::App::PushHudView(*hudView_, tick, bodyCount, activeLens, activeLensCount, factions, events);
+}
+
 namespace {
 // Sparse-Mip ESVO LOD Inc1 M4c: conservative world-space bounding radius shared by every
 // body placed in BuildRenderGraph.cpp's default scenes (kRadius/kHalf, both 24.0f — the
