@@ -722,6 +722,15 @@ bool traverseOctreeInstancedOnce(vec3 rayOrigin, vec3 rayDir,
                                 // the child tree is never remapped into or restarted at all.
                                 // Gated on raySizeCoef>0.0 exactly like the non-leaf branch
                                 // (LOD disabled -> always cross, never skip).
+                                //
+                                // M3/M4 validator note (restated per M5's obligation): this gates
+                                // on the PARENT LEAF's own footprint, not the CHILD tree's — exactly
+                                // equal at childScale==1.0 (this increment's entire scope; M5's live
+                                // zoom proof also stayed at childScale==1.0), and conservative (crosses
+                                // slightly more often than strictly necessary, never incorrectly skips)
+                                // for childScale<1.0. A future childScale>1.0 (scale-magnified) tier
+                                // needs this generalized to `>= childScale*scale_exp2` — same
+                                // prerequisite family as the hitT-normalization fix flagged in M3.
                                 bool subPixelFootprint = (pc.raySizeCoef > 0.0 &&
                                     tv_max * pc.raySizeCoef + pc.raySizeBias >= state.scale_exp2);
 
