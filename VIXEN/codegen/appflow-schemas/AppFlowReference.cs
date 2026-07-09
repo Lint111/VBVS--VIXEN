@@ -3,7 +3,7 @@
 // module (design §9 option a); states/guards/actions/param-signature/transition match
 // design §4.1. Inc-4 M2 extends it with the typed key vocabulary + element/key/return-edge
 // declarations (design §3.1/§5.2).
-using Vixen.AppFlow.Reference;
+using Yeroket.Util.KernelFramework;
 
 namespace Vixen.AppFlow.Reference
 {
