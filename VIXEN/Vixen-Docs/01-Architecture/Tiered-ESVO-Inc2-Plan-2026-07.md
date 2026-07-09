@@ -1199,6 +1199,137 @@ Findings:
   comment at the gate site (comp:~725) when M5 lands.
 - **Tree integrity:** clean — exactly 4 commits, per-commit scope coherent, run artifacts untracked.
 
+- **Milestone M5 (Task 11): DONE** · this worktree, `feat/tiered-esvo-inc2` · gates: a live,
+  validated, visually-confirmed continuous zoom across the single tier crossing proven in M3/M4,
+  no visible pop/seam; mid-flight residency transition exercised live (M4 validator's carried
+  obligation); zero new VUIDs after a real bug this run surfaced was fixed at the root; 3-tier
+  chaining deliberately scoped out, not attempted (permitted by the plan's own stretch-goal
+  language) · 2026-07-10.
+  - **Hand-computed prediction, derived before running, not fit after the fact**: the demo's
+    marked leaf is exactly half the parent root's normalized `[1,2)` extent (`scale_exp2=0.5`,
+    the `n=16`/`brickDepth=3` fixture's root children are all brick-level leaves, unchanged since
+    M2/M3). The octree's own world span is `kWorldGridSize=10` pre-instance-scale
+    (`ShellOctreeGpu.h`), and the demo instance's `renderScale=4.8` — so 1.0 of normalized octree
+    scale = 48 real-world units. Re-derived (not assumed) that the shader's local traversal `t`
+    parameter is in REAL-WORLD-DISTANCE units despite `rayDirLocal` being scaled by
+    `worldToLocal`'s `1/kWorldGridSize` rotation (the same "uniform scale divides both origin and
+    direction, t stays world-consistent" argument `main()`'s own `instOrigin`/`instDir` comment
+    already documents for `renderScale`, re-applied one level up for `kWorldGridSize`) — confirmed
+    against the M4 validator's own empirical finding (`raySizeCoef=10.0` forced the gate at the
+    demo's at-rest 236-unit camera distance; solving my derived formula for that data point gives
+    a consistent required distance of ≤2.4 units, correctly predicting "always declines" at 236).
+    Solving `tv_max*raySizeCoef >= scale_exp2` for a target crossing distance of ~40 world units
+    (chosen to sit comfortably inside `CameraNode`'s `[0.1,120]` orbit-distance clamp, avoiding the
+    M4-validator-flagged clamp risk entirely) gives **`VIXEN_TIER_CROSSING_LOD_COEF_OVERRIDE=0.6`**,
+    predicting the LOD gate flips at EXACTLY 40.0 world units — reusing the existing M4 override
+    knob unchanged, just with `0.6` instead of `10.0`.
+  - **Scripted zoom + mid-flight residency grant** (`VulkanGraphApplication.cpp`, new
+    `VIXEN_TIER_ZOOM_DEMO` block, modeled on the existing `VIXEN_RESIDENCY_GATE_DEMO` pattern):
+    orbit distance ramps linearly 15→100 world units over ticks 1-200 (held at 100 for 201-240,
+    predicted LOD-gate crossing at tick ≈58.8), with an explicit `RequestBrickResidency(true)`
+    scripted at tick 24 (distance ≈24-28, well inside the "would cross" zone, so the mid-flight
+    residency transition is observed cleanly BEFORE the later LOD-driven decline, not confounded
+    with it) — exercising the M4-validator-flagged obligation directly rather than relying on the
+    separate frustum/resolvability auto-trigger (`UpdateBodySceneResidency`, which also runs every
+    tick and would otherwise immediately re-decide residency on the same tick using an unrelated
+    formula; disabled for the duration of this demo via an early-return, so the scripted schedule
+    is the sole, attributable residency driver — the auto-trigger's own correctness is
+    Sparse-Mip's concern, not re-tested here). `RequestBrickResidency(false)` is set at scene
+    construction (same knob `VIXEN_TIER_CROSSING_NONRESIDENT` already used, now also triggered by
+    `VIXEN_TIER_ZOOM_DEMO`) so the child genuinely starts non-resident.
+  - **Bug #1 found and fixed: camera-orbit pivot never configured for this demo scene.**
+    `CameraNode::SetOrbitDistanceForTest` orbits around `orbitCenter`, which defaults to the
+    stale Cornell-box pivot `(5,5,5)` unless a consumer configures `PARAM_ORBIT_CENTER_*`
+    (`CameraNode.cpp`'s own `SetupImpl` comment already flags this). The tier-crossing demo body
+    sits at world `(64,64,64)`; the first live attempt produced 51 byte-identical captured frames
+    across all 240 ticks (confirmed via file hash, not just eyeballing) — the very first scripted
+    `SetOrbitDistanceForTest` call swung the camera away from the body entirely (re-seeded
+    `orbitDistance` clamped to 120 relative to the wrong pivot) and it never recovered. Fixed by
+    configuring `PARAM_ORBIT_CENTER_X/Y/Z=(64,64,64)` and `PARAM_ORBIT_DISTANCE=236` (matching the
+    at-rest camera-to-body distance) in `BuildRenderGraph.cpp`, gated on `VIXEN_TIER_ZOOM_DEMO` —
+    this declares orbit-mode intent from `SetupImpl`, so `EngageOrbit()`'s idempotent latch makes
+    the demo's first `SetOrbitDistanceForTest` call a no-op re-seed instead of a pivot mismatch.
+    After the fix, all 240 frames genuinely differ frame-to-frame as the camera moves.
+  - **Bug #2 found and fixed: a real, previously-latent `VUID-vkCmdCopyBuffer-dstBuffer-00120`
+    on the mid-flight residency-grant path.** The scripted tick-24 `RequestBrickResidency(true)`
+    call is the FIRST time in this project's history a residency grant has landed genuinely AFTER
+    the first `Compile()`/upload cycle while validation layers were active and actually observed
+    (M4's own tests only ever toggled residency BEFORE the first upload — see M4's own Task 10
+    deviation note) — and it surfaced a real bug: `BodyOctreeSceneNode::CreateOctreeBuffers`
+    created `bricksBuffer_`/`configBuffer_` with only `VK_BUFFER_USAGE_STORAGE_BUFFER_BIT`, but
+    `UploadBrickPool`/`PollBrickUploadCompletion`'s post-Compile residency-grant path uploads via
+    `device->Upload()` → `BatchedUploader`'s unconditional `vkCmdCopyBuffer` (confirmed by reading
+    `BatchedUploader.cpp:439` directly, not assumed) — which requires the destination buffer to
+    carry `VK_BUFFER_USAGE_TRANSFER_DST_BIT`. Fixed at the root: both buffers now declare
+    `VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT`
+    (`libraries/RenderGraph/src/Nodes/BodyOctreeSceneNode.cpp`). **Independently re-confirmed, not
+    just re-run**: built and ran the project's own PRE-EXISTING, purpose-built regression oracle
+    for exactly this lifecycle (`test_partial_brick_upload`, `test_body_octree_lifetime`) on real
+    hardware (WSL/Dozen passthrough, the same real-GPU environment M4 could not get these test
+    families to execute on) — both green (1/1, 3/3) with the fix; this is the first session in
+    which this specific test family has actually been RUN (not just compiled) against real
+    hardware. Post-fix VUID signature returned to the pre-existing baseline (20× the known
+    `VUID-vkCmdDispatch-None-08114`, zero new types) across three separate live runs.
+  - **Observed evidence vs. prediction.** Per-frame pixel analysis of the captured sequence
+    (48 frames spanning ticks 5-220, dense coverage of ticks 15-35 and 50-70): (1) zero
+    child-colour pixels at every tick through 24 (non-resident child, correctly mip-shading even
+    at close range — the residency composition proof); (2) a hard, one-tick jump in child-colour
+    pixel count starting at tick 25 (one frame after the scripted grant — the expected async
+    upload+poll latency, `PollBrickUploadCompletion` needing one frame to observe the upload
+    fence) that then continues rising through ticks 25-57 as the camera keeps approaching; (3) a
+    peak in child-colour coverage around ticks 55-57, then a SMOOTH, MONOTONIC, GRADUALLY
+    ACCELERATING decline from tick 58 onward (child pixel-count deltas: -232, -619, -992, -1075,
+    -1266 across consecutive sampled ticks) with no single-frame cliff/spike — the predicted
+    LOD-gate crossing (tick ≈58.8, i.e. tick 59) sits exactly at the observed inflection from
+    "flat/rising" to "declining," matching the hand computation. Frame-to-frame pixel-delta
+    magnitudes across this decline window rise smoothly (2198→2816→3422→4293→5184→5620→6151
+    changed pixels per step) — a continuous shrink, not a discrete swap. A visual strip
+    (`temp/m5_zoom_sequence_strip.png`, `temp/m5_residency_transition_closeup.png`,
+    `temp/m5_lod_transition_closeup.png`) confirms this directly: flat grey through tick 24, a
+    real dark-purple child region appearing at tick 25 and persisting/shrinking gradually through
+    tick 220, no garbage/black/crash frame anywhere in the sequence.
+  - **One-line LOD-gate comment nit (M4 validator, non-blocking)**: added at
+    `shaders/BodyInstanceRayMarch.comp:725`, restating the `childScale==1.0` equivalence and
+    naming the `>= childScale*scale_exp2` generalization needed for a future scale-magnified tier
+    — comment-only, no logic change; rebuilt clean to confirm.
+  - **3-tier T2→T1→T0 stretch goal: deliberately NOT attempted.** The single-crossing live gate
+    (including diagnosing and fixing the two bugs above) consumed this milestone's session budget;
+    per the plan's own explicit permission, this is documented as a follow-up rather than chased
+    at the risk of leaving the single-crossing deliverable's evidence undone or shallow. See the
+    design doc's updated §9 for the two concrete prerequisites (`hitT` per-child-scale
+    normalization; LOD-gate generalization) a future scale-magnified chain needs — both already
+    named by the M3/M4 validator addenda, not new findings.
+  - **No scope drift**: `git diff --stat` confirms only `application/main/source/
+    VulkanGraphApplication.cpp` (scripted zoom block + `UpdateBodySceneResidency` early-return),
+    `application/main/source/graph/BuildRenderGraph.cpp` (orbit-center config +
+    `VIXEN_TIER_ZOOM_DEMO` non-resident start), `libraries/RenderGraph/src/Nodes/
+    BodyOctreeSceneNode.cpp` (the two buffer-usage-flag fixes), and
+    `shaders/BodyInstanceRayMarch.comp` (the one-line comment nit — no logic change). No
+    traversal/construction-path files touched; the buffer-flag fix is the only change with
+    correctness weight beyond this milestone's own demo scaffolding, and it is independently
+    verified via the project's existing gtest oracle, not just this session's own zoom demo.
+  - **CPU regression sweep**: full 70/70 SVO suite re-run green on WSL (`test_svo_types` 10/10,
+    `test_shell_octree_gpu` 9/9, `test_soa_mip_serialize` 6/6, `test_soa_sdf_serialize` 11/11,
+    `test_tier_ref` 5/5, `test_tier_ref_table` 5/5, `test_tier_crossing_construction` 5/5,
+    `test_gpu_parity` 4/4, `test_stored_sdf_march_mirror` 12/12,
+    `test_tier_crossing_mirror_parity` 3/3 — no change needed, this milestone touched no SVO/
+    shader-traversal logic). RenderGraph tests touching the changed buffers:
+    `test_partial_brick_upload` 1/1, `test_body_octree_lifetime` 3/3,
+    `test_bandwidth_ab_measurement` 2/2, `test_shell_revalidate_node` 2/2,
+    `test_tier_crossing_lod_residency` 1/1 (its second sub-test remains the known
+    software-only-gate refusal on this real-GPU machine, unchanged from M4) all green. Seven
+    other RenderGraph tests (`test_appflow_editor_toggle_render`,
+    `test_body_instance_occlusion_reject`, `test_body_instance_raymarch_render`,
+    `test_editor_document_render`, `test_mip_fallback_render`, `test_recipe_authoring_gate`,
+    `test_recipe_pool_render`) segfault identically on this session's WSL/Dozen environment —
+    **independently reproduced on the completely unmodified pre-M5 baseline** (`git stash` back
+    to `b3eceb07`, rebuilt, re-ran `test_body_instance_occlusion_reject` as a representative case:
+    byte-identical crash signature, same SPIR-V-1.6-vs-1.5-mismatch + push-constant-range +
+    `TierRefTableBuffer` binding errors, same segfault) — confirmed pre-existing and unrelated to
+    this milestone, matching M4's own already-documented Dozen instability finding for this exact
+    test family.
+  - **Permission prompts outside the pre-blessed tier**: none encountered.
+
 ---
 
 ## M5 — Continuous zoom proof (the actual "surface to orbit" demonstration)
@@ -1211,14 +1342,18 @@ this milestone is the demonstration that the mechanism composes into the actual 
 
 ### Task 11 — Camera path proving continuous, seamless zoom across a tier boundary
 
-- [ ] Construct a camera path that starts close enough to render T2-bedrock-scale detail (fine
+- [x] Construct a camera path that starts close enough to render T2-bedrock-scale detail (fine
   voxel/brick geometry) and smoothly pulls back through the LOD gate (Task 9) at the point where the
   child tree's footprint crosses sub-pixel, confirming NO visible pop/seam/flicker at the transition
   — the screen-space content should read as one continuous zoom-out, not a visible "swap" moment.
   Live-gate this on real hardware, recording (screenshot sequence, or a frame-by-frame debug-log
   comparison of the rendered content's resolvable-level/residency-state around the crossing frame)
   concrete evidence the transition is actually seamless, not just "it didn't crash."
-- [ ] **Stretch goal, not a hard gate**: chain a second crossing (T1 region → T0 planet, using the
+  **DONE** — see Progress Log for the hand-computed prediction, the observed evidence, and the two
+  bugs this live run surfaced and fixed (camera-orbit-pivot misconfiguration; a real
+  `VUID-vkCmdCopyBuffer-dstBuffer-00120` from the buffer-usage-flag gap on the mid-flight residency
+  path).
+- [x] **Stretch goal, not a hard gate**: chain a second crossing (T1 region → T0 planet, using the
   same mechanism proven in M3/M4 for the T2→T1 boundary) to demonstrate the full 3-tier
   surface-to-orbit sequence for an Earth-diameter-scale body — the literal scenario the user asked
   about. If this is straightforward given M3/M4's already-proven mechanism (it should be — the design
@@ -1227,13 +1362,21 @@ this milestone is the demonstration that the mechanism composes into the actual 
   cleanly across two live crossings), it is acceptable to ship this increment with the single-crossing
   proof (M3+M4's own gate) as the increment's deliverable and document the 2-crossing chain as a
   known, scoped-out follow-up rather than let it block the whole increment.
-- [ ] Update [[Tiered-ESVO-Observer-Addressing-Design-2026-07]]'s status banner and §9 sequencing note
+  **SCOPED OUT, deliberately** — not attempted this session. The single-crossing live gate (including
+  the two real bugs it surfaced and fixed) consumed this milestone's full budget; per this task's own
+  explicit permission, documented as a follow-up increment rather than chased at the cost of the
+  single-crossing deliverable's evidence quality. See the design doc's updated §9 for the concrete
+  prerequisites (per-child-scale `hitT` normalization + LOD-gate generalization) a future
+  scale-magnified 3-tier increment needs, carried forward from the M3/M4 validator addenda.
+- [x] Update [[Tiered-ESVO-Observer-Addressing-Design-2026-07]]'s status banner and §9 sequencing note
   to reflect this increment's actual shipped scope (single-crossing mechanism proven, N-tier chaining
   either proven or flagged as a following increment, per what actually happened) — following the same
   status-banner-update convention Sparse-Mip-ESVO-LOD's own Inc1/Inc2 used.
+  **DONE** — status banner + §9 updated 2026-07-10.
 
 **M5 gate:** a live, validated, visually-confirmed continuous zoom across at least one real tier
 crossing with no visible seam; 3-tier chaining is a stretch outcome, not a blocking requirement.
+**MET.**
 
 ---
 
