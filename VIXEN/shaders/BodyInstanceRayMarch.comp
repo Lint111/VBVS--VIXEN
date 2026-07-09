@@ -678,18 +678,23 @@ bool traverseOctreeInstancedOnce(vec3 rayOrigin, vec3 rayDir,
                                  uint(coef.octant_mask), state.pos, state.t_min, tv_max,
                                  uvec2(0u, 0u));
 
-                // Tiered-ESVO Inc2 M3 Task 6/7: a farBit==1 leaf is a tier-crossing
-                // reference, NOT a brick — checked BEFORE the brickResident/formatId
-                // dispatch below (same insertion point Sparse-Mip's own streaming-grace
-                // check uses) so a tier-crossing leaf's contourPointer is never
-                // misread as a brick index or a mip-fallback node ordinal. This
-                // function does not itself remap the ray or re-enter the child tree —
-                // that is the wrapper's (traverseOctreeInstanced) job, since a fresh
-                // traversal call needs its OWN local state/stack, not this one's
-                // (§10: no growing MAX_STACK_DEPTH, no merged stacks). We resolve
-                // WHICH leaf child slot was hit here (the same resolveLeafDescriptorIndex
-                // the mip-fallback path above already uses) and fetch that leaf's
-                // descriptor to check farBit before doing anything brick-related with it.
+                // Tiered-ESVO Inc2 M3 Task 6/7 (+ M4 Task 9/10): a farBit==1 leaf is a
+                // tier-crossing reference, NOT a brick — checked BEFORE the
+                // brickResident/formatId dispatch below (same insertion point
+                // Sparse-Mip's own streaming-grace check uses) so a tier-crossing
+                // leaf's contourPointer is never misread as a brick index or a
+                // mip-fallback node ordinal. This function does not itself remap the
+                // ray or re-enter the child tree — that is the wrapper's
+                // (traverseOctreeInstanced) job, since a fresh traversal call needs
+                // its OWN local state/stack, not this one's (§10: no growing
+                // MAX_STACK_DEPTH, no merged stacks). We resolve WHICH leaf child slot
+                // was hit here (the same resolveLeafDescriptorIndex the mip-fallback
+                // path above already uses) and fetch that leaf's descriptor to check
+                // farBit before doing anything brick-related with it. M4 adds two
+                // early-outs BEFORE ever reporting a crossing: a screen-space LOD gate
+                // (Task 9) and a child-residency check (Task 10) — both fall back to
+                // shading this leaf from the PARENT's own mip sample, never touching
+                // the child tree at all.
                 {
                     int localChildIdxTc = mirroredToLocalOctant(state.idx, coef.octant_mask);
                     if (localChildIdxTc >= 0 && localChildIdxTc <= 7) {
@@ -703,6 +708,58 @@ bool traverseOctreeInstancedOnce(vec3 rayOrigin, vec3 rayDir,
                             // with NO tier-crossing leaves anywhere binds this as a 1-byte
                             // placeholder (tierRefTable.length()==0), exactly like MipPoolBuffer.
                             if (absoluteTierRefIdx < tierRefTable.length()) {
+                                // Tiered-ESVO Inc2 M4 Task 9: screen-space LOD early-out.
+                                // Reuses the IDENTICAL cone-spread formula/inputs as the
+                                // non-leaf LOD-cutoff branch below (tv_max*raySizeCoef+
+                                // raySizeBias >= scale_exp2 — Laine&Karras 2010 §4.4) — this
+                                // leaf's own footprint (tv_max = this node's exit-t,
+                                // state.scale_exp2 = this node's normalized size) is checked
+                                // BEFORE ever reporting a crossing. Sub-pixel footprint means
+                                // "shade from the PARENT tier's own mip sample at this leaf
+                                // node" (the same shadeFromMipSample/nodeIdx-addressing the
+                                // streaming-grace/LOD-cutoff paths already use, just applied
+                                // to THIS leaf's ordinal instead of a non-leaf parentPtr) —
+                                // the child tree is never remapped into or restarted at all.
+                                // Gated on raySizeCoef>0.0 exactly like the non-leaf branch
+                                // (LOD disabled -> always cross, never skip).
+                                bool subPixelFootprint = (pc.raySizeCoef > 0.0 &&
+                                    tv_max * pc.raySizeCoef + pc.raySizeBias >= state.scale_exp2);
+
+                                // Tiered-ESVO Inc2 M4 Task 10: residency reuse. A TierRef
+                                // whose child octree is not (yet) brick-resident is, per the
+                                // design doc §5.3, "just another miss, serve the parent's mip
+                                // sample" case — identical in shape to Task 9's LOD gate,
+                                // reusing the SAME mip-fallback exit below rather than a new
+                                // state machine. childOctreeIndex is always a valid index into
+                                // configs[] (the child tree is uploaded/resident as a sibling
+                                // tree exactly like any other octree, per §3.2 — only its BRICK
+                                // tier's residency is in question here, mirroring the existing
+                                // per-tree brickResident flag every ordinary leaf already checks
+                                // below via octreeConfig.brickResident before this swap ever
+                                // happens). Peek the child's config directly (configs[] is a
+                                // global SSBO array, no g_octreeIdx swap needed to read it).
+                                uint childOctreeIdxTc = tierRefTable[absoluteTierRefIdx].childOctreeIndex;
+                                bool childNotResident = (configs[childOctreeIdxTc].brickResident == 0u);
+
+                                if (subPixelFootprint || childNotResident) {
+                                    hitT = tEntryWorld + state.t_min;
+                                    if (!shadeFromMipSample(leafDescriptorIndexTc, hitColor, hitNormal)) {
+                                        hitColor  = vec3(0.5);
+                                        hitNormal = vec3(0.0, 1.0, 0.0);
+                                    }
+                                    hitBrickIndex     = 0u;
+                                    hitVoxelLinearIdx = 0u;
+                                    recordTraceStep(TRACE_STEP_HIT, state.parentPtr, state.scale,
+                                                     uint(coef.octant_mask), state.pos, state.t_min, hitT,
+                                                     uvec2(0u, 0u));
+                                    endRayTrace(true);
+                                    snapshotTraversalState(state, coef, debugInfo);
+                                    debugInfo.hitFlag      = 1u;
+                                    debugInfo.exitCode     = DEBUG_EXIT_HIT;
+                                    debugInfo.iterationCount = uint(iter + 1);
+                                    return true;
+                                }
+
                                 tierCrossHit      = true;
                                 tierCrossRefIndex = absoluteTierRefIdx;
                                 // Ray-remap input (Task 6): the CURRENT tree's local [1,2)-frame
