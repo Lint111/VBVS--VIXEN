@@ -652,28 +652,93 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 Vixen::SVO::BakeRecipeToSdfWorld(Vixen::SVO::RECIPE_SPHERE, kCenter, rp, kN, 2.0f);
             Vixen::SVO::SdfBodyOctree parentBody = Vixen::SVO::BuildSdfBodyOctree(parentBaked, kBrickDepth);
 
+            // Child recipe deliberately DIFFERENT from the parent's, per the coordinator's
+            // request for an unambiguous visual A/B (not just a different position):
+            // a LARGER radius (fills more of the crossing leaf's local cell) AND — below,
+            // after SerializeSdf — a solid saturated-magenta color override replacing the
+            // shared BakeSdfWorld cosine-gradient (SdfBake.h's own per-voxel color formula
+            // is identical for parent/child otherwise, since it is hardcoded inside the
+            // shared bake function, not exposed as a parameter — overriding channelPool's
+            // SEM_COLOR channel post-bake is the surgical fix that does not touch that
+            // shared, widely-used function).
+            constexpr float kChildR = 7.2f;  // vs parent's 6.0f — visibly larger/rounder
+            Vixen::SVO::RecipeParams childRp{};
+            childRp.radius = kChildR;
             Vixen::SVO::SdfBakeResult childBaked =
-                Vixen::SVO::BakeRecipeToSdfWorld(Vixen::SVO::RECIPE_SPHERE, kCenter, rp, kN, 2.0f);
+                Vixen::SVO::BakeRecipeToSdfWorld(Vixen::SVO::RECIPE_SPHERE, kCenter, childRp, kN, 2.0f);
             Vixen::SVO::SdfBodyOctree childBody = Vixen::SVO::BuildSdfBodyOctree(childBaked, kBrickDepth);
 
             Vixen::SVO::SerializedOctree parentSer = Vixen::SVO::SerializeSdf(parentBody);
             Vixen::SVO::SerializedOctree childSer  = Vixen::SVO::SerializeSdf(childBody);
 
-            // Locate the FIRST real leaf child in the parent's raw (pre-concatenation)
-            // Octree, the same "scan childDescriptors directly" convention
-            // test_tier_crossing_construction.cpp's FindAllLeaves uses.
+            // Overwrite the CHILD's entire SEM_COLOR channel with a solid, saturated
+            // magenta (1,0,1) — unmistakably distinct from the parent's warm-white/rainbow
+            // cosine gradient (SdfBake.h's col = 0.5+0.5*cos(p*0.12+phase), which stays in
+            // muted mid-tones and never reaches a pure saturated primary). Iterates every
+            // brick/voxel slot in the child's channelPool directly (the same addressing
+            // ShellOctreeGpu.h's own readPoolVoxel documents:
+            // channelPool[brick*brickStrideFloats + channelBaseFloats(SEM_COLOR) + comp*512 + voxel]).
+            {
+                const uint32_t colorBase = childSer.channelBaseFloats(Vixen::SVO::SEM_COLOR);
+                if (colorBase != 0xFFFFFFFFu) {
+                    float* pool = reinterpret_cast<float*>(childSer.channelPool.data());
+                    const size_t poolFloats = childSer.channelPool.size() / sizeof(float);
+                    for (uint32_t brick = 0; brick < childSer.brickCount; ++brick) {
+                        for (uint32_t comp = 0; comp < 3; ++comp) {
+                            const float magentaComp = (comp == 1) ? 0.0f : 1.0f;  // (1,0,1)
+                            for (uint32_t voxel = 0; voxel < Vixen::SVO::SerializedOctree::kVoxelsPerBrick; ++voxel) {
+                                const size_t idx = static_cast<size_t>(brick) * childSer.brickStrideFloats
+                                                 + colorBase + comp * Vixen::SVO::SerializedOctree::kVoxelsPerBrick + voxel;
+                                if (idx < poolFloats) pool[idx] = magentaComp;
+                            }
+                        }
+                    }
+                    mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_CROSSING_DEMO: child channelPool SEM_COLOR overwritten to solid magenta (1,0,1)");
+                } else {
+                    mainLogger->Error("[BuildRenderGraph] VIXEN_TIER_CROSSING_DEMO: child has no SEM_COLOR channel — color override skipped");
+                }
+            }
+
+            // Locate a CAMERA-FACING leaf child in the parent's raw (pre-concatenation)
+            // Octree (the same "scan childDescriptors directly" convention
+            // test_tier_crossing_construction.cpp's FindAllLeaves uses), rather than
+            // blindly taking the first leaf found. localToWorld is a PURE uniform scale
+            // (ShellOctreeGpu.h: translate(0)*scale(10), no axis flip), so local [1,2)
+            // maps monotonically to world space with no mirroring; the demo camera looks
+            // down -Z from world Z=300 (yaw=0,pitch=0 -> forward=(0,0,-1)), so it sees the
+            // sphere's +Z-facing (near-camera) hemisphere, i.e. LARGER local-z, i.e. an
+            // octant with bit 2 (z) SET. Octant bit convention (SVOTypes.h mirroredToLocalOctant
+            // and friends: bit0=x,bit1=y,bit2=z) confirmed directly by reading those functions.
+            // The root's 8 children for this n=16/brickDepth=3 fixture are ALL brick-level
+            // leaves (bricksPerAxis=2), so preferring octant>=4 (z bit set) is guaranteed to
+            // find one deterministically.
             const Vixen::SVO::Octree* parentOct = parentBody.octree->getOctree();
             uint32_t markParentDescIdx = 0;
             int markOctant = -1;
             if (parentOct != nullptr) {
                 const auto& descs = parentOct->root->childDescriptors;
+                // First pass: prefer a camera-facing octant (bit2/z set -> octants 4-7).
                 for (uint32_t i = 0; i < descs.size() && markOctant < 0; ++i) {
                     const Vixen::SVO::ChildDescriptor& d = descs[i];
-                    for (int oct = 0; oct < 8; ++oct) {
+                    for (int oct = 4; oct < 8; ++oct) {
                         if (d.hasChild(oct) && d.isLeaf(oct)) {
                             markParentDescIdx = i;
                             markOctant = oct;
                             break;
+                        }
+                    }
+                }
+                // Fallback: any leaf, if no camera-facing octant exists (shouldn't happen
+                // for this fixture, but don't silently build an unmarked scene).
+                if (markOctant < 0) {
+                    for (uint32_t i = 0; i < descs.size() && markOctant < 0; ++i) {
+                        const Vixen::SVO::ChildDescriptor& d = descs[i];
+                        for (int oct = 0; oct < 8; ++oct) {
+                            if (d.hasChild(oct) && d.isLeaf(oct)) {
+                                markParentDescIdx = i;
+                                markOctant = oct;
+                                break;
+                            }
                         }
                     }
                 }
