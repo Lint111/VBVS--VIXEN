@@ -166,6 +166,13 @@ now is by explicit user request.
   flagged deviations (residency is whole-node not per-octree; the new real-GPU gtest harness compiled
   and linked but could not be RUN in this session's environment — pre-existing WSL/Dozen instability,
   confirmed unrelated to this milestone's changes via a stash-and-rerun on the unmodified M3 shader).
+  **Opus-validated APPROVED 2026-07-10** — validator independently re-ran the 70/70 CPU sweep, did its
+  own pixel accounting on all three captures, reproduced the Dozen segfault on an UNMODIFIED
+  pre-existing test (root cause: Dozen SPIR-V 1.5-vs-1.6 mismatch, whole test family, not M4), proved
+  the restart-skip STRUCTURALLY (control-flow: the early-out returns before `tierCrossHit` can be set,
+  making the restart block unreachable — stronger than pixel evidence), and resolved the apparent
+  VUID count delta as a grep artifact (true signature: 10 emissions of the pre-existing binding-14
+  VUID, byte-identical across all three runs, zero new types). See M4 validator addendum below.
 - **M5 — Continuous zoom proof (the actual "surface to orbit" demonstration)** (Task 11) · live-run
   gate · a camera path that starts at T2-bedrock-scale detail and pulls back through at least one real
   tier crossing with no visible pop/seam at the boundary. **Stretch target within M5, not a hard
@@ -1138,8 +1145,59 @@ crossing bug.
 **M4 gate:** distant/non-resident tier-crossing leaves correctly fall back to mip-shading without
 triggering an unnecessary restart or rendering garbage; live-verified. **MET** — both gates proven
 independent (LOD-forced-resident-child still declines; non-resident-full-FOV still declines), zero new
-VUIDs across all three live runs (21 occurrences of the pre-existing `VUID-vkCmdDispatch-None-08114`,
-identical across baseline/LOD-forced/non-resident).
+VUIDs across all three live runs. (This entry originally counted "21 occurrences" of the pre-existing
+`VUID-vkCmdDispatch-None-08114`; the validator resolved that as a `grep -c` artifact — the true
+signature is 10 emissions, byte-identical across baseline/LOD-forced/non-resident, zero new types.)
+
+### M4 Opus validator addendum (2026-07-10): APPROVED
+
+Independent adversarial validation of `bc26de68..82a01aad`. Re-ran the full 10-target CPU sweep
+(70/70), did independent pixel accounting on all three committed captures (own script/thresholds:
+baseline 2349 child-magenta px all inside M3's proven octant bbox; LOD-forced 0 child px + 4572
+grey-mip; non-resident 0 child px + 18284 grey-mip — 4× the LOD run, consistent with whole-node
+fallback), rebuilt the new GPU test on WSL/GCC (clean), and reproduced the Dozen segfault on the
+UNMODIFIED pre-existing `test_body_instance_occlusion_reject` (root cause: Dozen SPIR-V-1.5-vs-1.6
+mismatch + WSL D3D12 passthrough — hits the entire raymarch test family; pre-existing, not M4).
+Findings:
+
+- **Skip-proof (Task 9's hard requirement) — resolved by CONTROL FLOW, stronger than pixels:**
+  `tierCrossHit` is set true ONLY after the M4 early-out's `return true`; when the gate fires,
+  execution structurally cannot reach the wrapper's restart block (`if (hit || !tierCrossHit) return`
+  precedes it). The pixel evidence (0 deliberately-injected solid-magenta px + grey mip where the
+  child was) then confirms the gate fires on real hardware. Restart genuinely skipped, not just
+  visually absent.
+- **LOD gate design conformance:** formula byte-identical to the existing non-leaf LOD-cutoff branch.
+  §5.2 asks for the CHILD's footprint; the implementation gates on the parent leaf's own footprint —
+  exactly equal at `childScale==1.0` (this increment's scope), and correct-or-CONSERVATIVE as
+  childScale shrinks (would cross unnecessarily, never garbage). **Scope note:** a future
+  scale-magnified tier needs `>= childScale*scale_exp2` here — same prerequisite family as the M3
+  validator's hitT-normalization flag.
+- **Residency peek — safe:** `brickResident` is a real per-config field (@356); the peek is guarded
+  by the `tierRefTable.length()` bounds check (1-byte-placeholder safe); reading `configs[childIdx]`
+  without the global swap is correct (`configs[]` is a global SSBO; `octreeConfig` is only a macro).
+  No new unsafe access vs. what M3's restart already dereferences.
+- **Mip-fallback exit:** identical in shape to the existing non-resident-brick streaming-grace path —
+  §5.3's "identical in shape to a non-resident brick today" is literally met.
+- **Mirror sync judgment:** residency check correctly lives in `castRay()` (only scope with
+  `m_childCfg`); the LOD-gate omission is explicitly documented in-comment with sound rationale
+  (mirror consumers run `raySizeCoef==0`; no signature param). Divergence is loud, not silent —
+  contract spirit met.
+- **Parity test non-vacuous:** the resident-child case can only pass by executing the crossing
+  restart into real child geometry; the non-resident case asserts bit-identical equivalence to
+  "no child registered"; harness self-check present.
+- **Demo knob hygiene:** both env knobs strictly demo-gated; the LOD override is a mutually-exclusive
+  if/else against the byte-identical pre-M4 `RaySizeCoefNode` connection — production paths untouched
+  when unset.
+- **Task 10 deviation — ACCEPTED as a documented M5 boundary:** `RequestBrickResidency` confirmed
+  whole-node (grant path stamps every config identically), so per-octree residency is genuinely new
+  state-machine work, correctly scoped out. Both END STATES are proven to compose with a
+  tier-crossing leaf; the one thing not exercised is the mid-flight `PollBrickUploadCompletion` 0→1
+  flip on a live crossing — that flip stamps the same `configs[]` field the M4 peek reads (no
+  separate path for crossing leaves), and **M5's continuous-zoom proof must exercise this dynamic
+  transition on real hardware — carried as an explicit M5 obligation, not swept.**
+- **Non-blocking nit for M5:** restate the `childScale==1.0` LOD-gate equivalence as a one-line
+  comment at the gate site (comp:~725) when M5 lands.
+- **Tree integrity:** clean — exactly 4 commits, per-commit scope coherent, run artifacts untracked.
 
 ---
 
