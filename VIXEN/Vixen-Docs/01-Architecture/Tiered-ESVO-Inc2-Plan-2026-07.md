@@ -145,8 +145,13 @@ now is by explicit user request.
   mandatory** · the highest-risk milestone: a ray genuinely crosses from a parent tree's leaf into a
   child tree's own traversal and renders correct geometry, proven on real hardware, not just compiled
   shader code.
-  **✅ DONE_WITH_CONCERNS 2026-07-08** — see Progress Log below for the full account, including the
-  visual-legibility caveat flagged for validator attention.
+  **✅ DONE 2026-07-09, Opus-validated APPROVED 2026-07-10** — commits `5b4b53b0` (traversal-restart
+  core) + `27358885` (CameraNode camera-authority fix, pre-existing bug unblocked ALL standalone body
+  rendering) + `a68608b3` (magenta-child visual proof scene) + `6c168100` (Task 8 closure). The
+  original 2026-07-08 DONE_WITH_CONCERNS evidence ("~15px disc") was later invalidated (empty frame
+  misread; camera never aimed at the scene) and superseded by the Task 8 follow-up + the validator's
+  own in-shader diagnostic: child-terminated rays = 32.2% of the disc, exactly the one marked
+  octant's projected footprint. See the Task 8 follow-up entry and the M3 validator addendum below.
 - **M4 — LOD early-out + residency reuse** (Tasks 9-10) · live-run gate · the screen-space gate that
   avoids crossing for distant/sub-pixel children, and confirming the mip-fallback sentinel-miss path
   correctly serves a non-resident tier-crossing child.
@@ -767,9 +772,10 @@ in the crossing itself will masquerade as a bug in the gating/zoom logic.
   further and root-caused to a SEPARATE, pre-existing bug (CameraNode's orbit-position recompute
   silently overriding every scene's configured camera every frame, not this milestone's geometry). With
   that fixed, the SAME `VIXEN_TIER_CROSSING_DEMO` scene (unchanged) now renders the child tree's
-  magenta-tinted geometry filling most of the visible disc, unambiguously distinct from the parent's
-  cosine-gradient tint. (b)/(c) unchanged from the original entry — still zero new VUIDs, still no
-  regression in the common path.
+  geometry through the crossing — authoritatively measured by the Opus validator's in-shader
+  diagnostic (addendum below): child-terminated rays cover 32.2% of the disc, confined to exactly
+  the one marked camera-facing octant's projected footprint. (b)/(c) unchanged from the original
+  entry — still zero new VUIDs, still no regression in the common path.
 - [x] Live gate: also confirm the ray-remap math is correct by placing a KNOWN, simple geometric
   feature in the child tree (e.g. a distinctly-colored/shaped voxel at a known local position) and
   confirming it renders at the visually-correct screen position given the `TierRef`'s known
@@ -780,11 +786,12 @@ in the crossing itself will masquerade as a bug in the gating/zoom logic.
   entirely, and the hand-computed-vs-observed pixel evidence.
 
 **M3 gate:** a single tier-crossing renders correct child-tree geometry on real hardware with
-validation layers active and zero new VUIDs; existing non-crossing rendering unaffected. **MET** — see
-the follow-up Progress Log entry below for the full evidence chain (magenta child region: 7254/7322
-non-background disc pixels, centroid within ~1px of the disc's own center, coexisting with a thin
-~68px non-magenta boundary rim at the crossing seam; zero new VUIDs vs. baseline in both the default
-scene and the tier-crossing demo).
+validation layers active and zero new VUIDs; existing non-crossing rendering unaffected. **MET** —
+authoritative evidence is the Opus validator's in-shader child-termination diagnostic (addendum
+below): child-terminated rays cover 32.2% of the disc, confined to the single marked octant's
+projected lower-left footprint; the remaining 67.8% is parent-terminated; zero new VUIDs vs. baseline
+in both the default scene and the tier-crossing demo. (The follow-up entry's original "7254/7322 ≈
+99% magenta" figure was a measurement artifact — see the CORRECTION inside that entry.)
 
 ### Task 8 follow-up (2026-07-09): bodies-0 root cause + camera fix — Task 8 gate actually closed
 
@@ -848,20 +855,24 @@ reads `CameraNode`'s position directly.
 smooth/cool — matching the scene's own design intent) where every prior capture this session showed
 only sky+HUD. Tier-crossing demo (same uncommitted magenta-child diff, unchanged): renders a sphere
 disc with a large, unambiguous magenta-tinted region. Pixel analysis (Python/PIL,
-`temp/tier_crossing_magenta_confirmed_camera_fixed.png`): of 7322 non-background pixels in the disc
-region, 7254 (99%) are saturated magenta (loose test: R>1.5G and B>1.5G); centroid (246.2, 252.8) sits
-within ~1.2px of the disc's own bounding-box center (245.0, 254.0) — i.e. the child region dominates
-nearly the whole visible hemisphere from this camera angle, not merely a lower-left quadrant as the
-original hand-estimate guessed. This is larger coverage than the rough hand-computation predicted, but
-is consistent with the actual geometry: the child sphere (radius 7.2) is LARGER than the parent (6.0)
-and is deliberately centered on the SAME parent-local cell the marked leaf occupies (§ design comment
-in `BuildRenderGraph.cpp`), so from a camera-facing angle it plausibly fills most of that leaf's
-projected silhouette. The remaining 68 non-magenta pixels (parent's cosine-gradient tint) form a thin
-boundary rim tightly clustered around the disc's own center (bbox 243-256 × 243-256) — i.e. exactly the
-tier-crossing seam, not a separate parent-only region — which is itself evidence the mechanism is
-working (a crisp child region with a boundary transition, not scattered noise or an all-or-nothing
-render). All three of the brief's pass criteria are met: magenta pixels exist, in a solid contiguous
-cluster (not scattered), coexisting with non-magenta parent pixels at the boundary. VUIDs: both runs
+`temp/tier_crossing_magenta_confirmed_camera_fixed.png`): 7254 saturated-magenta pixels (loose test:
+R>1.5G and B>1.5G) in a compact ~101×101 blob centered (246.2, 252.8), with a thin ~68px non-magenta
+rim.
+**CORRECTION (Opus validator, 2026-07-10)**: this entry originally read those numbers as "7254/7322 =
+99% of the disc is child geometry" and concluded the child dominates the visible hemisphere. Both the
+percentage and the conclusion were a measurement artifact, for two reasons the validator pinned down:
+(1) the 7322-pixel denominator was only the magenta blob plus its rim, NOT the whole body disc; and
+(2) the parent's own SdfBake cosine-gradient bakes to a magenta-adjacent hue (sampled parent surface
+colors ≈(67,0,72) — R≈B, G=0), so the R/B-vs-G color test cannot separate parent from child at all —
+the magenta count includes parent pixels. The authoritative measurement is the validator's temporary
+in-shader diagnostic (child-terminated ray → pure green, independent of channel colors; fully
+reverted afterward, shader byte-identical to `6c168100`): **child-terminated rays = 32.2% of the
+disc, confined to a single lower-left quadrant (bbox x195-249, y250-304) — exactly the projected
+footprint of the ONE marked camera-facing octant (parent leaf (0,4), confirmed in the applog); the
+remaining 67.8% is parent-terminated.** That is precisely what a correct single-octant crossing
+produces — and it matches the original hand-computation ("lower-left-ish quadrant") after all. Pass
+criteria met on the corrected evidence: child geometry renders through the crossing, in a solid
+contiguous single-octant region, coexisting with dominant parent coverage. VUIDs: both runs
 (default scene, tier-crossing demo) show only the same pre-existing `VUID-vkCmdDispatch-None-08114` —
 zero new validation errors from either the camera fix or the magenta-child diff.
 Screenshots: `VIXEN/temp/default_scene_bodies_confirmed_camera_fixed.png`,
@@ -876,6 +887,52 @@ by default (rather than sit at a fixed viewpoint), it should explicitly configur
 `PARAM_ORBIT_CENTER_*`/`PARAM_ORBIT_DISTANCE` to match its own geometry — the same pattern
 `EditorApplication` already uses — rather than relying on the (now-fixed) stale Cornell-box orbit
 defaults.
+
+### M3 Opus validator addendum (2026-07-10): APPROVED
+
+Independent adversarial validation of the full M3 range `4db93715..6c168100` (traversal-restart core
+`5b4b53b0`, CameraNode fix `27358885`, magenta-child proof scene `a68608b3`, doc closure `6c168100`).
+The validator re-derived rather than re-read every safety-critical claim, and ran its own live GPU
+diagnostic where the committed evidence was ambiguous. Standalone verdict file:
+`VIXEN/temp/M3_Opus_validator_verdict.md` (untracked run artifact). Highlights:
+
+- **Crossing routing (the controller's top concern) — CORRECT.** The "99% magenta" claim was a
+  measurement artifact (see CORRECTION above). The validator's in-shader child-termination diagnostic
+  measured 32.2% child / 67.8% parent, the child region exactly the marked octant's projected
+  footprint. The "wrapper misroutes ALL rays into the child" failure mode is definitively refuted.
+- **hitT units — correct for M3's scope; SCOPE BOUNDARY for future tiers:** `hitT = tierCrossWorldT +
+  childHitT` is exactly right while `childScale == 1.0` (this increment's explicit scope; both demo
+  trees share `kWorldGridSize=10`; numeric single-ray trace ratio 1.000). For `childScale != 1` the
+  child's internal t is in a different world-distance unit (factor `1/childScale`) — **a
+  per-child-scale hitT normalization is a PREREQUISITE for any future scale-magnified tier milestone**
+  (the actual planet-scale case). Not an M3 defect; do not ship a `childScale != 1` tier without it.
+- **Global save/swap/restore — safe, whole-shader audited.** `g_octreeIdx`/`g_esvoNodeBase`/
+  `g_brickArrayBase` are the only mutable file-scope globals; `octreeConfig` is a macro re-indexing
+  `configs[g_octreeIdx]` on every use (not a cached copy), so the swap redirects every config read
+  including the SDF channel-pool addressing; the wrapper restores all three unconditionally on every
+  return path, and the pre-swap early-return fires before any global is touched.
+- **CameraNode fix — verified line-by-line, no regression found.** At-rest forward formula matches
+  CompileImpl exactly (arrow-key look works at rest); `EngageOrbit()`'s re-seed numerically reproduces
+  the current camera position (no teleport); `EditorApplication` (sets all four `PARAM_ORBIT_*`, never
+  `PARAM_CAMERA_*`) is covered by the `SetupImpl` latch; `SetOrbitDistanceForTest`/`SetYawForTest`
+  behavior unchanged (Sparse-Mip M4c residency demo unaffected). Minor UX note, not a regression:
+  `EngageOrbit` clamps `orbitDistance` to [0.1,120], so a fixed camera farther than 120 from
+  `orbitCenter` would move closer on FIRST manual orbit-engage — interaction-only, never at rest.
+- **Binding wiring — correct; zero new VUIDs.** TierRefTable binding 15 follows the mipPool/binding-13
+  precedent (persistent, 1-byte placeholder when empty, in-shader bounds-check). Binding 14
+  (`InstanceIterDebugBuffer`) confirmed unwired in production; the 20× `VUID-vkCmdDispatch-None-08114`
+  on binding 14 is pre-existing and byte-identical across demo and both baselines.
+- **GpuTraversalMirror — mirrors the shader faithfully** (function-by-function: `RegisterTierCrossing
+  Child`, the `castRayOnce` split, `remapRayIntoChildFrame`, the additive hitT). Noted gap, does not
+  gate M3: no automated parity test exercises the mirror's crossing-restart path — the crossing's
+  correctness evidence is the live gate, not a parity test. Candidate cheap win for M4/M5: a
+  mirror-level crossing parity test.
+- **Regression + tree integrity — clean.** Full SVO suite green from a fresh WSL rebuild
+  (test_gpu_parity 4/4, tier_crossing_construction 5/5, tier_ref_table 5/5, tier_math 9/9,
+  tier_direction 5/5, tier_address 16/16, tier_ref 5/5, tier_magnitude 10/10, residency_trigger 8/8,
+  lod 16/16, mip_sample_bake 5/5, occlusion_gate 14/14, shell_octree_gpu 9/9,
+  stored_sdf_march_mirror 12/12). Exactly 4 commits in range, no merges/stray commits, no binary
+  churn, `git status` clean at `6c168100`.
 
 ---
 
