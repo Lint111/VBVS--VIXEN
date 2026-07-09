@@ -86,3 +86,7 @@ NUL
 
 # CodeGraph local index (local tooling, regenerated; indexing is the user's choice)
 /.codegraph/
+
+# Codex CLI local config (contains plaintext API keys — never commit)
+/.codex/
+.codex/config.toml

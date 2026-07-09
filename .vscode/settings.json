@@ -74,7 +74,40 @@
     "**/build": true,
     "**/Build": true,
     "**/.cache": true,
-    "**/compile_commands.json": true
+    "**/compile_commands.json": true,
+    "**/.vs": true,
+    "**/.git": true,
+    "**/.codegraph": true,
+    "**/VIXEN/archive": true,
+    "**/VIXEN/BuiltAssets": true,
+    "**/VIXEN/generated": true,
+    "**/VIXEN/Vixen-Docs": true,
+    "**/cache": true,
+    "**/calibration": true
+  },
+
+  // Stop the core file watcher from tracking huge/irrelevant trees
+  // (build has ~49k files; .codegraph is 50MB+; these were unexcluded before,
+  // so every change in them triggered watcher + extension-host churn)
+  "files.watcherExclude": {
+    "**/build/**": true,
+    "**/Build/**": true,
+    "**/.git/**": true,
+    "**/.vs/**": true,
+    "**/.cache/**": true,
+    "**/.codegraph/**": true,
+    "**/VIXEN/archive/**": true,
+    "**/VIXEN/BuiltAssets/**": true,
+    "**/VIXEN/generated/**": true,
+    "**/VIXEN/Vixen-Docs/**": true,
+    "**/cache/**": true,
+    "**/calibration/**": true
+  },
+
+  // Also hide these from the Explorer/file tree entirely
+  "files.exclude": {
+    "**/.vs": true,
+    "**/.cache": true
   },
 
   // ============================================================================

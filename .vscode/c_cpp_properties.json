@@ -7,7 +7,8 @@
     {
       "name": "Linux",
       "includePath": [
-        "${workspaceFolder}/VIXEN/**",
+        "${workspaceFolder}/VIXEN/application/**",
+        "${workspaceFolder}/VIXEN/libraries/**",
         "${workspaceFolder}/VIXEN/include",
         "${workspaceFolder}/VIXEN/RenderGraph/include",
         "${workspaceFolder}/VIXEN/ShaderManagement/include",
@@ -30,7 +31,13 @@
       "configurationProvider": "ms-vscode.cmake-tools",
       "browse": {
         "path": [
-          "${workspaceFolder}/VIXEN"
+          "${workspaceFolder}/VIXEN/application",
+          "${workspaceFolder}/VIXEN/libraries",
+          "${workspaceFolder}/VIXEN/include",
+          "${workspaceFolder}/VIXEN/tests",
+          "${workspaceFolder}/VIXEN/build/_deps/googletest-src/googletest/include",
+          "${workspaceFolder}/VIXEN/build/_deps/googletest-src/googlemock/include",
+          "${workspaceFolder}/VIXEN/build/_deps/vulkanheaders-src/include"
         ],
         "limitSymbolsToIncludedHeaders": true
       }
