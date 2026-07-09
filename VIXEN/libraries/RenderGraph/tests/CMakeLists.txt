@@ -58,6 +58,20 @@ set_target_properties(test_typednode_helpers PROPERTIES FOLDER "Tests/RenderGrap
 
 gtest_discover_tests(test_typednode_helpers)
 
+add_executable(test_node_parameter_manager Core/test_node_parameter_manager.cpp)
+
+# Link against the RenderGraph library target - includes propagate automatically
+if(TARGET RenderGraph)
+    target_link_libraries(test_node_parameter_manager PRIVATE GTest::gtest_main RenderGraph)
+else()
+    target_link_libraries(test_node_parameter_manager PRIVATE GTest::gtest_main)
+endif()
+
+# Visual Studio solution folder organization
+set_target_properties(test_node_parameter_manager PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+gtest_discover_tests(test_node_parameter_manager)
+
 # Typed runtime accumulation-gather (InAll<T> fan-in) — CPU-only, no device
 add_executable(test_accumulation_gather test_accumulation_gather.cpp)
 
@@ -569,16 +583,24 @@ include(test_voxel_systems.cmake)
 #   - GetInnerRML() contains the substituted values 42 and 7
 #   - Rml::Shutdown() cleans up cleanly
 # Assets (font + hud.rml/hud.rcss) are staged next to the binary by POST_BUILD.
-
+#
+# View Contract Inc-2 (Task 6): the HUD data-model + faction/event projection now
+# lives in the main app's Vixen::App::HudView consumer, not UIRenderNode. This test
+# compiles HudView.cpp directly (not the VixenApp library, to avoid pulling in the
+# app's gaia-touching TUs) and adds application/main/include so "graph/HudView.h" /
+# "Generated/Hud.g.h" resolve — mirrors test_view_hud_golden's identical include dir.
 if(TARGET GTest::gtest_main)
     add_executable(test_ui_hud_smoke
         test_ui_hud_smoke.cpp
+        ${CMAKE_SOURCE_DIR}/application/main/source/graph/HudView.cpp
     )
 
     target_link_libraries(test_ui_hud_smoke PRIVATE
         GTest::gtest_main
         RenderGraph
     )
+
+    target_include_directories(test_ui_hud_smoke PRIVATE ${CMAKE_SOURCE_DIR}/application/main/include)
 
     # Stage the UI assets (font + rml + rcss) next to the test binary so
     # hud.rml / font paths resolve at test runtime.
@@ -609,6 +631,103 @@ if(TARGET GTest::gtest_main)
     message(STATUS "✓ test_ui_hud_smoke configured (S1: HUD data model headless smoke)")
 else()
     message(STATUS "⊗ test_ui_hud_smoke skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
+# View Contract Inc-2: Hud golden-mirror gate (headless — no Vulkan required)
+# ===========================================================================
+# Proves the generated Generated/Hud.g.h RmlUi data-model registration block
+# (a) compiles + binds against a real Rml::DataModelConstructor, and (b) matches,
+# as a normalized ordered call sequence, the canonical Hud [View] schema field order.
+
+if(TARGET GTest::gtest_main)
+    add_executable(test_view_hud_golden
+        test_view_hud_golden.cpp
+    )
+
+    target_link_libraries(test_view_hud_golden PRIVATE
+        GTest::gtest_main
+        RenderGraph
+    )
+
+    # Hud.g.h is now a CONSUMER artifact (application/main) — the golden still verifies it, but
+    # needs the app's include dir to resolve "Generated/Hud.g.h" (View Contract Inc-2, Task 4).
+    target_include_directories(test_view_hud_golden PRIVATE ${CMAKE_SOURCE_DIR}/application/main/include)
+
+    target_compile_definitions(test_view_hud_golden PRIVATE
+        VIEW_HUD_G_H="${CMAKE_SOURCE_DIR}/application/main/include/Generated/Hud.g.h")
+
+    set_target_properties(test_view_hud_golden PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+    gtest_discover_tests(test_view_hud_golden)
+
+    message(STATUS "✓ test_view_hud_golden configured (View Contract Inc-2: golden-mirror gate)")
+else()
+    message(STATUS "⊗ test_view_hud_golden skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
+# View Contract Inc-2b: ViewBlob/ViewKind/ViewValue reflection-blob contract
+# ===========================================================================
+# Pure CPU test of the constexpr descriptor shape + scalar kind/value agreement.
+# No RmlUi/Vulkan/GPU required.
+
+if(TARGET GTest::gtest_main)
+    add_executable(test_view_blob test_view_blob.cpp)
+    target_link_libraries(test_view_blob PRIVATE GTest::gtest_main RenderGraph)
+    set_target_properties(test_view_blob PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    gtest_discover_tests(test_view_blob DISCOVERY_MODE PRE_TEST DISCOVERY_TIMEOUT 60)
+    message(STATUS "✓ test_view_blob configured (View Contract Inc-2b: ViewBlob contract)")
+else()
+    message(STATUS "⊗ test_view_blob skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
+# View Contract Inc-2b: ViewStore typed storage + by-field setters
+# ===========================================================================
+# Pure CPU test of scalar/array storage + blob-validated setter rejection.
+# Links RmlUi (via RenderGraph) for Rml::String/DataModelHandle, no GPU/device.
+
+if(TARGET GTest::gtest_main)
+    add_executable(test_view_store test_view_store.cpp)
+    target_link_libraries(test_view_store PRIVATE GTest::gtest_main RenderGraph)
+    set_target_properties(test_view_store PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    gtest_discover_tests(test_view_store DISCOVERY_MODE PRE_TEST DISCOVERY_TIMEOUT 60)
+    message(STATUS "✓ test_view_store configured (View Contract Inc-2b: ViewStore storage)")
+else()
+    message(STATUS "⊗ test_view_store skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
+# View Contract Inc-2b: ViewBlobFile — runtime .viewblob parser
+# ===========================================================================
+# Pure CPU test of the line-grammar parser (model/version/field/elem) + hard-fail
+# validation on malformed input. No RmlUi/Vulkan/GPU touchpoints.
+
+if(TARGET GTest::gtest_main)
+    add_executable(test_view_blob_file test_view_blob_file.cpp)
+    target_link_libraries(test_view_blob_file PRIVATE GTest::gtest_main RenderGraph)
+    set_target_properties(test_view_blob_file PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    gtest_discover_tests(test_view_blob_file DISCOVERY_MODE PRE_TEST DISCOVERY_TIMEOUT 60)
+    message(STATUS "✓ test_view_blob_file configured (View Contract Inc-2b: ViewBlobFile parser)")
+else()
+    message(STATUS "⊗ test_view_blob_file skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
+# View Contract Inc-2b: BlobView — generic IView host, dynamic RmlUi model
+# ===========================================================================
+# Proves a ViewBlob alone (no per-schema C++) builds a live RmlUi data model
+# (scalars + array-of-struct) and that a version mismatch hard-skips registration.
+
+if(TARGET GTest::gtest_main)
+    add_executable(test_blob_view test_blob_view.cpp)
+    target_link_libraries(test_blob_view PRIVATE GTest::gtest_main RenderGraph)
+    set_target_properties(test_blob_view PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    gtest_discover_tests(test_blob_view DISCOVERY_MODE PRE_TEST DISCOVERY_TIMEOUT 60)
+    message(STATUS "✓ test_blob_view configured (View Contract Inc-2b: BlobView dynamic registration)")
+else()
+    message(STATUS "⊗ test_blob_view skipped (GoogleTest not available)")
 endif()
 
 # ===========================================================================
@@ -705,6 +824,46 @@ if(TARGET GTest::gtest_main)
     message(STATUS "✓ test_pass_group_node_smoke configured (auto-sync P4 M3)")
 else()
     message(STATUS "⊗ test_pass_group_node_smoke skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
+# Partial Brick Upload Test (Sparse-Mip ESVO LOD Inc1 M2)
+# ===========================================================================
+# Real Vulkan device required (software rasterizer or Mesa-Dozen on WSL2 — see
+# IsAcceptableDevice in the test file). Drives BodyOctreeSceneNode's real
+# Setup/Compile/Execute lifecycle against a real BatchedUploader (wired exactly as
+# DeviceNode::CreateDeviceBudgetManager does) to verify brick-pool residency gating.
+if(TARGET GTest::gtest_main)
+    add_executable(test_partial_brick_upload Nodes/test_partial_brick_upload.cpp)
+    if(TARGET RenderGraph)
+        target_link_libraries(test_partial_brick_upload PRIVATE GTest::gtest_main RenderGraph)
+    else()
+        target_link_libraries(test_partial_brick_upload PRIVATE GTest::gtest_main)
+    endif()
+    set_target_properties(test_partial_brick_upload PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    gtest_discover_tests(test_partial_brick_upload)
+    message(STATUS "✓ test_partial_brick_upload configured (Sparse-Mip ESVO LOD Inc1 M2)")
+else()
+    message(STATUS "⊗ test_partial_brick_upload skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
+# Bandwidth A/B Measurement (Sparse-Mip ESVO LOD Inc1 M5, Task 12)
+# ===========================================================================
+# The increment's gate measurement: N real BodyOctreeSceneNode trees, all-resident
+# (baseline) vs all mip-only (Inc1), real BatchedUploaderStats bytes + wall time.
+if(TARGET GTest::gtest_main)
+    add_executable(test_bandwidth_ab_measurement Nodes/test_bandwidth_ab_measurement.cpp)
+    if(TARGET RenderGraph)
+        target_link_libraries(test_bandwidth_ab_measurement PRIVATE GTest::gtest_main RenderGraph)
+    else()
+        target_link_libraries(test_bandwidth_ab_measurement PRIVATE GTest::gtest_main)
+    endif()
+    set_target_properties(test_bandwidth_ab_measurement PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    gtest_discover_tests(test_bandwidth_ab_measurement)
+    message(STATUS "✓ test_bandwidth_ab_measurement configured (Sparse-Mip ESVO LOD Inc1 M5)")
+else()
+    message(STATUS "⊗ test_bandwidth_ab_measurement skipped (GoogleTest not available)")
 endif()
 
 # ===========================================================================

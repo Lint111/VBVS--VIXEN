@@ -39,8 +39,9 @@ namespace VoxelSelectionProviderNodeCounts {
  *   - VULKAN_DEVICE       (VulkanDevice*, Dependency)  device for the one-shot copy + staging buffer
  *   - COMMAND_POOL        (VkCommandPool, Dependency)  pool for the one-shot readback command buffer
  *   - CURRENT_FRAME_INDEX (uint32_t, Execute)          frame-in-flight index (diagnostics / future ring use)
- *   - VIEWPORT_WIDTH      (uint32_t, Execute)          swapchain width  (WindowNode WIDTH_OUT) — center offset
- *   - VIEWPORT_HEIGHT     (uint32_t, Execute)          swapchain height (WindowNode HEIGHT_OUT) — center offset
+ *   - VIEWPORT_WIDTH      (uint32_t, Execute)          pick-ID image width  (M4: RenderTargetNode WIDTH_OUT — the
+ *                                                       RENDER extent, matching PickIdTargetNode's sizing) — center offset
+ *   - VIEWPORT_HEIGHT     (uint32_t, Execute)          pick-ID image height (M4: RenderTargetNode HEIGHT_OUT) — center offset
  *
  * Outputs (1):
  *   - CANDIDATE (SelectionCandidate)   this provider's per-click result (hit/miss + id/priority).

@@ -104,6 +104,33 @@ gtest_discover_tests(test_resource_dependency_tracker)
 message(STATUS "[RenderGraph Tests] Added: test_resource_dependency_tracker")
 
 # ---------------------------------------------------------------------------
+# RenderGraph::RecompileDirtyNodes wave-cascade dedup
+# ---------------------------------------------------------------------------
+# Full NodeInstance/RenderGraph integration (the case test_resource_dependency_tracker's
+# comment above defers to an "integration test suite"): builds a real diamond-shaped graph
+# and asserts each node recompiles exactly once per dirty wave, not once per incoming
+# dependency path (Widescreen-Perf-Sweep-Findings-2026-07.md rank 8).
+
+add_executable(test_recompile_dedup
+    Core/test_recompile_dedup.cpp
+)
+
+target_include_directories(test_recompile_dedup PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include
+)
+
+target_link_libraries(test_recompile_dedup PRIVATE
+    GTest::gtest_main
+    RenderGraph
+)
+
+set_target_properties(test_recompile_dedup PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+gtest_discover_tests(test_recompile_dedup)
+
+message(STATUS "[RenderGraph Tests] Added: test_recompile_dedup")
+
+# ---------------------------------------------------------------------------
 # PerFrameResources Tests
 # ---------------------------------------------------------------------------
 # Validates PerFrameResources class (Core infrastructure):
@@ -241,3 +268,30 @@ set_target_properties(test_timeline_capacity_tracker PROPERTIES FOLDER "Tests/Re
 gtest_discover_tests(test_timeline_capacity_tracker)
 
 message(STATUS "[RenderGraph Tests] Added: test_timeline_capacity_tracker (Sprint 6.3)")
+
+# ---------------------------------------------------------------------------
+# NodeLogging Macro Tests (audit V-M26 gap)
+# ---------------------------------------------------------------------------
+# Validates NODE_LOG_ERROR/CRITICAL (+ _OBJ variants) reach the terminal through a disabled
+# node logger, mirroring Logger::Log()'s own Error/Critical bypass — the macros previously
+# short-circuited on nodeLogger->IsEnabled() before that bypass ever ran.
+
+add_executable(test_node_logging
+    Core/test_node_logging.cpp
+)
+
+target_include_directories(test_node_logging PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include  # RenderGraph's own headers
+)
+
+target_link_libraries(test_node_logging PRIVATE
+    GTest::gtest_main
+    RenderGraph
+)
+
+# Visual Studio solution folder organization
+set_target_properties(test_node_logging PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+gtest_discover_tests(test_node_logging)
+
+message(STATUS "[RenderGraph Tests] Added: test_node_logging (audit V-M26 gap)")

@@ -10,6 +10,7 @@
 #include "NodeHelpers/VulkanStructHelpers.h"
 #include "NodeHelpers/ValidationHelpers.h"
 #include "VulkanSwapChain.h"
+#include <mutex>
 #include <sstream>
 
 using namespace RenderGraph::NodeHelpers;
@@ -239,8 +240,12 @@ void DepthBufferNode::TransitionDepthImageLayout(VkCommandPool cmdPool) {
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &cmdBuffer;
 
-    vkQueueSubmit(vulkanDevice->queue, 1, &submitInfo, VK_NULL_HANDLE);
-    vkQueueWaitIdle(vulkanDevice->queue);
+    {
+        // Externally synchronized per Vulkan spec (audit V-M11).
+        std::lock_guard<std::mutex> submitLock(vulkanDevice->SubmitMutex(vulkanDevice->queue));
+        vkQueueSubmit(vulkanDevice->queue, 1, &submitInfo, VK_NULL_HANDLE);
+        vkQueueWaitIdle(vulkanDevice->queue);
+    }
 
     vkFreeCommandBuffers(device, cmdPool, 1, &cmdBuffer);
 }

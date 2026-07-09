@@ -41,7 +41,7 @@ using namespace Vixen::Vulkan::Resources;
  * // Each frame:
  * uint32_t frameIdx = currentFrameIndex % framesInFlight;
  *
- * queryMgr->BeginFrame(cmdBuffer, frameIdx);
+ * queryMgr->BeginFrame(cmdBuffer, frameIdx, profilerSlot);
  * queryMgr->WriteTimestamp(cmdBuffer, frameIdx, profilerSlot, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT);
  * // ... GPU work ...
  * queryMgr->WriteTimestamp(cmdBuffer, frameIdx, profilerSlot, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
@@ -138,14 +138,18 @@ public:
     // ========================================================================
 
     /**
-     * @brief Begin frame - reset queries for all slots
+     * @brief Begin frame for one consumer slot - reset queries for that slot only
      *
-     * Call at start of frame before any WriteTimestamp calls.
+     * Call once per consumer, before that consumer's WriteTimestamp calls. Resets only
+     * this slot's 2 physical queries (and clears only this slot's written-flags), so
+     * multiple consumers recording into the same command buffer in the same frame don't
+     * clobber each other's already-written timestamps.
      *
      * @param cmdBuffer Command buffer to record reset into
      * @param frameIndex Frame-in-flight index (0 to framesInFlight-1)
+     * @param slot Query slot handle for the consumer beginning its recording
      */
-    void BeginFrame(VkCommandBuffer cmdBuffer, uint32_t frameIndex);
+    void BeginFrame(VkCommandBuffer cmdBuffer, uint32_t frameIndex, QuerySlotHandle slot);
 
     /**
      * @brief Write timestamp for a specific consumer slot
@@ -229,6 +233,14 @@ private:
     struct PerFrameSlotData {
         bool startWritten = false;  // Track if start timestamp was written
         bool endWritten = false;    // Track if end timestamp was written
+        // True once this (frame-slot, consumer-slot) pair has had BeginFrame called at least once,
+        // i.e. its 2 physical queries have been reset in a command buffer that was subsequently
+        // submitted. Reads (vkGetQueryPoolResults) BEFORE this is true would hit queries that were
+        // never reset on the GPU → VUID-vkGetQueryPoolResults-None-09401 ("query not reset"), the
+        // startup burst before each per-flight slot completes its first reset→write→submit cycle.
+        // Set in BeginFrame (which happens AFTER the frame's CollectResults read), so it gates the
+        // first read to the slot's SECOND encounter — by which point the first reset has executed.
+        bool resetRecorded = false;
     };
 
     struct PerFrameData {
@@ -247,6 +259,9 @@ private:
 
     [[nodiscard]] bool IsSlotValid(QuerySlotHandle slot) const;
     [[nodiscard]] bool IsSlotAllocated(QuerySlotHandle slot) const;
+    // True once every allocated slot for this frame-in-flight has been reset in a submitted command
+    // buffer at least once (gates the whole-pool vkGetQueryPoolResults read — see the .cpp).
+    [[nodiscard]] bool AllAllocatedSlotsReset(uint32_t frameIndex) const;
 };
 
 } // namespace Vixen::RenderGraph

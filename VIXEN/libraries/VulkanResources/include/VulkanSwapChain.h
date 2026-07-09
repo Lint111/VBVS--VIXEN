@@ -120,6 +120,12 @@ class VulkanSwapChain : public ILoggable {
     void Destroy(VkDevice device, VkInstance instance);  // Proper cleanup with all resources
     void CreateSwapChain(const VkCommandBuffer& cmd);
     void DestroySwapChain(VkDevice device);
+    // Destroys only the per-image VkImageViews (colorBuffers), NOT the VkSwapchainKHR handle itself.
+    // Used ahead of an oldSwapchain-based recreation: the old views are tied to the old swapchain's
+    // images and must go, but the old swapchain handle itself needs to survive to be passed as
+    // scInfo.oldSwapchain (see CreateSwapChainColorImages) so the driver can recycle/hand over
+    // presentation state instead of a full cold recreation.
+    void DestroyImageViewsOnly(VkDevice device);
     void SetSwapChainExtent(uint32_t width, uint32_t height);
 
     // Swapchain creation methods (exposed for SwapChainNode)
@@ -131,8 +137,17 @@ class VulkanSwapChain : public ILoggable {
     // Returns an error (instead of the old exit(-1)) when the surface reports zero extent -- e.g.
     // the window is minimized / not yet sized -- so the caller can defer + retry rather than die.
     VulkanStatus GetSurfaceCapabilitiesAndPresentMode(VkPhysicalDevice gpu, uint32_t width, uint32_t height);
+    // Side-effect-free surface extent probe (no state mutation, unlike GetSurfaceCapabilitiesAndPresentMode).
+    // Used by SwapChainNode's VK_SUBOPTIMAL_KHR handler to decide whether a recreation is actually
+    // needed (extent changed) versus a same-extent recreation that can never clear SUBOPTIMAL.
+    VkExtent2D QueryCurrentSurfaceExtent(VkPhysicalDevice gpu) const;
     void ManagePresentMode();
-    void CreateSwapChainColorImages(VkDevice device);
+    // oldSwapchain (default VK_NULL_HANDLE): passed as VkSwapchainCreateInfoKHR::oldSwapchain so the
+    // driver can reuse/hand over presentation state instead of a cold recreation. On success, the OLD
+    // swapchain handle is destroyed here (after the new one exists, per the Vulkan spec's retirement
+    // model) and scPublicVars.swapChain is overwritten with the new handle. Callers must have already
+    // destroyed the old per-image views (DestroyImageViewsOnly) before calling this.
+    void CreateSwapChainColorImages(VkDevice device, VkSwapchainKHR oldSwapchain = VK_NULL_HANDLE);
     void CreateColorImageView(VkDevice device, const VkCommandBuffer& cmd);
 
     // Image usage configuration

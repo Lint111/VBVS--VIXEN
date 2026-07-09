@@ -327,18 +327,26 @@ public:
         /**
          * @brief Set output value and attach an interface to the resource
          *
-         * @deprecated Use ctx.Out() with wrapper types that have conversion_type instead.
-         * Wrapper types (e.g., ShaderCountersBuffer, RayTraceBuffer) now declare their
-         * conversion target via `using conversion_type = VkBuffer;` and the type system
-         * handles descriptor extraction automatically. No separate interface attachment needed.
+         * NOT superseded by plain ctx.Out(), despite this method's earlier deprecation notice
+         * (removed — the notice was incorrect). `conversion_type` (e.g. RayTraceBuffer/
+         * ShaderCountersBuffer declaring `using conversion_type = VkBuffer;`) only makes plain
+         * ctx.Out() automatically extract a DESCRIPTOR handle (VkBuffer) for binding — it does
+         * NOT register any other interface (like Debug::IDebugCapture) on the Resource. Resource
+         * has no automatic dynamic_cast/type-detection against the wrapper it stores; interfaces
+         * are only found later via Resource::GetInterface<T>() if something called
+         * Resource::SetInterface<T>() first. Plain ctx.Out() never does that, so a
+         * debug-capturable resource routed through it is silently invisible to consumers like
+         * DescriptorResourceGathererNode::ProcessSlot's GetInterface<IDebugCapture>() check —
+         * this was discovered as a real, previously-silent bug (VoxelGridNode's ray-trace debug
+         * buffer was never actually reaching DebugBufferReaderNode's export pipeline). Use this
+         * method whenever the output value's type implements an interface a downstream node
+         * needs to detect via GetInterface<T>().
          *
-         * Example (old):
-         *   ctx.OutWithInterface(Config::DEBUG_BUFFER, buffer.GetVkBuffer(), &debugCapture);
-         * Example (new):
-         *   ctx.Out(Config::DEBUG_BUFFER, bufferPtr);  // Wrapper type handles extraction
+         * Example:
+         *   ctx.OutWithInterface(Config::DEBUG_BUFFER, buffer.get(),
+         *                         static_cast<Debug::IDebugCapture*>(buffer.get()));
          */
         template<typename SlotType, typename U, typename InterfaceType>
-        [[deprecated("Use ctx.Out() with wrapper types that have conversion_type instead")]]
         void OutWithInterface(SlotType slot, U&& value, InterfaceType* iface) {
             static_assert(SlotType::index < ConfigType::OUTPUT_COUNT, "Output index out of bounds");
             typedNode->EnsureOutputSlot(SlotType::index, this->taskIndex);

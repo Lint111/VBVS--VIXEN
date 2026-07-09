@@ -30,8 +30,9 @@ namespace PickIdTargetNodeCounts {
  * Inputs: 5
  *   - VULKAN_DEVICE_IN     (VulkanDevice*)  Device for allocation + the one-shot transition queue
  *   - COMMAND_POOL         (VkCommandPool)  Pool for the one-shot transition command buffer
- *   - WIDTH                (uint32_t)       Image width  (swapchain width,  WindowNode WIDTH_OUT)
- *   - HEIGHT               (uint32_t)       Image height (swapchain height, WindowNode HEIGHT_OUT)
+ *   - WIDTH                (uint32_t)       Image width  (M4: RENDER extent — RenderTargetNode WIDTH_OUT,
+ *                                            matches the compute shader's idOutputImage bounds, not the window)
+ *   - HEIGHT               (uint32_t)       Image height (M4: RenderTargetNode HEIGHT_OUT)
  *   - CURRENT_FRAME_INDEX  (uint32_t, Execute) Advances the ring; selects the exposed view
  * Outputs: 2
  *   - ID_IMAGE_VIEW (VkImageView)  Current in-flight frame's view (re-emitted each Execute, like a ring)

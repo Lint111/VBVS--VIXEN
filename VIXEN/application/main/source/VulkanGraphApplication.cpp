@@ -4,6 +4,7 @@
 #include "Logger.h"
 #include <cmath>       // std::tan for the LOD ray-cone (raySizeCoef) computation
 #include <filesystem>  // CaptureFrameToPng: exact-path rename (M4b)
+#include <cstdlib>     // std::getenv/atoi for VIXEN_WINDOW_WIDTH/HEIGHT overrides
 
 #define GLFW_INCLUDE_NONE   // don't pull in <GL/gl.h> (absent on headless/WSL); Vulkan-only below
 #define GLFW_INCLUDE_VULKAN
@@ -26,10 +27,22 @@
 #include "Nodes/WindowNode.h"
 #include "Nodes/InputNode.h"
 #include "Nodes/BodyOctreeSceneNode.h"        // M-wire: SetBodyInstances() downcast target (gaia — before UIRenderNode.h)
+#include "Nodes/CameraNode.h"                 // Sparse-Mip ESVO LOD Inc1 M4c: GetCurrentCameraData() downcast target
 #include "Nodes/UIRenderNode.h"               // GetUiRenderNode() downcast target (RmlUi — after BodyOctreeSceneNode.h)
 #include "Nodes/UISelectionProviderNode.h"    // GetUiSelectionProviderNode() downcast target
 #include "Nodes/SwapChainNode.h"              // CaptureFrameToPng() downcast target (M4b)
 #include "Profiler/FrameCapture.h"            // CaptureFrameToPng(): reuse the existing readback->PNG path
+#include "Nodes/DeviceNode.h"                 // View Contract Inc-2 Task 5: VulkanDevice* for CaptureHudFrameToPng
+#include "Debug/RenderTargetReadback.h"       // View Contract Inc-2 Task 5: IRenderTarget -> PNG readback
+#include <sstream>                            // View Contract Inc-2 Task 5: VIXEN_HUD_SCRIPT/_CAPTURE_FRAMES parsing
+
+// Sparse-Mip ESVO LOD Inc1 M4c: the combined residency trigger (M4a resolvability + M4b
+// frustum, factored out as a pure/testable function — see ResidencyTrigger.h).
+#include "ResidencyTrigger.h"
+// Sparse-Mip ESVO LOD Inc2 M3: CPU-side residency occlusion gate (Inc1 M4b's deferred
+// spec) — coarse ray-vs-sphere test of a candidate against already brick-resident trees.
+#include "OcclusionGate.h"
+#include <glm/gtx/norm.hpp>   // glm::distance2 (change-detection epsilon compares)
 
 #include <ShaderBundleBuilder.h>  // Phase G: Shader builder API (includes preprocessor support)
 // NOTE: "VoxelRayMarch_CompressedNames.h" was an orphaned include — that combined
@@ -60,7 +73,19 @@ VulkanGraphApplication::VulkanGraphApplication()
       currentFrame(0),
       graphCompiled(false),
       width(500),
-      height(500) {
+      height(500),
+      hudView_(Vixen::App::MakeHudView()) {
+
+    // Perf measurement (perf sweep 2026-07): fixed A/B window sizes without a rebuild.
+    // VIXEN_WINDOW_WIDTH / VIXEN_WINDOW_HEIGHT override the 500x500 default when set.
+    if (const char* env = std::getenv("VIXEN_WINDOW_WIDTH")) {
+        const int v = std::atoi(env);
+        if (v > 0) width = v;
+    }
+    if (const char* env = std::getenv("VIXEN_WINDOW_HEIGHT")) {
+        const int v = std::atoi(env);
+        if (v > 0) height = v;
+    }
 
     // Enable main logger for application-level logging
     if (mainLogger) {
@@ -71,6 +96,10 @@ VulkanGraphApplication::VulkanGraphApplication()
 }
 
 VulkanGraphApplication::~VulkanGraphApplication() {
+    // Destroy through the bridge (HudView is complete in HudViewBridge.cpp) -- this TU only
+    // forward-declares HudView (see VulkanGraphApplication.h's rationale), so `delete hudView_`
+    // here directly would be an incomplete-type-delete compile error.
+    Vixen::App::DestroyHudView(hudView_);
     DeInitialize();
 }
 
@@ -302,6 +331,103 @@ bool VulkanGraphApplication::Render() {
     }
 }
 
+namespace {
+// View Contract Inc-2 Task 5: parses "A@30,B@60" into (frame, payload-id) pairs, where payload-id
+// selects one of two hard-coded known HudFactionIn/HudEventIn sets (see PreTick below) — the live
+// gate's A/B-on-known-data proof needs a SPECIFIC known payload per capture, not free-form data,
+// so the script vocabulary is deliberately just 'A'/'B' rather than the editor's richer toggle/
+// undo/redo actions. Malformed tokens are skipped with a warning (mirrors ParseEditorScript's
+// never-abort contract), never NULL-widening a whole run over one bad token.
+std::vector<std::pair<long, char>> ParseHudScript(const std::string& spec, Vixen::Log::Logger* logger) {
+    std::vector<std::pair<long, char>> actions;
+    std::stringstream ss(spec);
+    std::string token;
+    while (std::getline(ss, token, ',')) {
+        if (token.empty()) continue;
+        const size_t at = token.find('@');
+        if (at == std::string::npos) {
+            if (logger) logger->Warning("[VulkanGraphApplication] VIXEN_HUD_SCRIPT: skipping token missing '@frame': " + token);
+            continue;
+        }
+        const std::string idPart = token.substr(0, at);
+        const std::string framePart = token.substr(at + 1);
+        if (idPart.size() != 1 || (idPart[0] != 'A' && idPart[0] != 'B')) {
+            if (logger) logger->Warning("[VulkanGraphApplication] VIXEN_HUD_SCRIPT: payload id must be 'A' or 'B': " + token);
+            continue;
+        }
+        if (framePart.empty() || framePart.find_first_not_of("0123456789") != std::string::npos) {
+            if (logger) logger->Warning("[VulkanGraphApplication] VIXEN_HUD_SCRIPT: skipping token with non-numeric frame: " + token);
+            continue;
+        }
+        actions.emplace_back(std::strtol(framePart.c_str(), nullptr, 10), idPart[0]);
+    }
+    return actions;
+}
+
+// Parses "5,45,75" into frame numbers (identical shape to EditorApplication's ParseCaptureFrames).
+std::vector<long> ParseHudCaptureFrames(const std::string& spec, Vixen::Log::Logger* logger) {
+    std::vector<long> frames;
+    std::stringstream ss(spec);
+    std::string token;
+    while (std::getline(ss, token, ',')) {
+        if (token.empty()) continue;
+        if (token.find_first_not_of("0123456789") != std::string::npos) {
+            if (logger) logger->Warning("[VulkanGraphApplication] VIXEN_HUD_CAPTURE_FRAMES: skipping non-numeric entry: " + token);
+            continue;
+        }
+        frames.push_back(std::strtol(token.c_str(), nullptr, 10));
+    }
+    return frames;
+}
+}  // namespace
+
+void VulkanGraphApplication::PreTick() {
+    // Own try/catch (mirrors Update()'s) so a malformed script/env value never throws across the tick.
+    try {
+        if (!hudScriptParsed_) {
+            hudScriptParsed_ = true;
+            if (const char* scriptEnv = std::getenv("VIXEN_HUD_SCRIPT")) {
+                hudScript_ = ParseHudScript(scriptEnv, mainLogger.get());
+            }
+            if (const char* framesEnv = std::getenv("VIXEN_HUD_CAPTURE_FRAMES")) {
+                hudCaptureFrames_ = ParseHudCaptureFrames(framesEnv, mainLogger.get());
+            }
+            if (const char* dirEnv = std::getenv("VIXEN_HUD_CAPTURE_DIR")) {
+                hudCaptureDir_ = dirEnv;
+            }
+        }
+
+        // Two hard-coded known payloads (A, B) so the live gate can prove the generated binding
+        // drives real pixels: A vs B must differ, and the same payload must render byte-identically
+        // across two captures (determinism). A is a single known/focused faction with a recent
+        // event (juice pulse ON); B is a different faction, different grievance, no recent event
+        // (juice pulse OFF) plus one event row — deliberately far apart, not a near-miss tweak.
+        for (const auto& [frame, id] : hudScript_) {
+            if (frame != hudUpdateTick_) continue;
+            if (id == 'A') {
+                Vixen::App::HudFactionIn factions[] = {
+                    {"acme", 3.5f, true, true, true, 0}  // recentEventAge=0 -> recentChanged (juice ON)
+                };
+                Vixen::App::HudEventIn events[] = { {"raid", 1} };
+                Vixen::App::PushHudView(*hudView_, /*tick=*/hudUpdateTick_, /*bodyCount=*/3, /*activeLens=*/2, /*activeLensCount=*/4,
+                                        factions, events);
+            } else {  // 'B'
+                Vixen::App::HudFactionIn factions[] = {
+                    {"umbra", 0.2f, false, false, false, 255}  // recentEventAge=255 -> no recent event (juice OFF)
+                };
+                Vixen::App::PushHudView(*hudView_, /*tick=*/hudUpdateTick_, /*bodyCount=*/3, /*activeLens=*/1, /*activeLensCount=*/1,
+                                        factions, {});
+            }
+        }
+    } catch (const std::exception& e) {
+        lastError_ = std::string("PreTick failed: ") + e.what();
+        if (mainLogger) mainLogger->Error("[VulkanGraphApplication::PreTick] " + lastError_);
+    } catch (...) {
+        lastError_ = "PreTick failed: unknown (non-std) exception";
+        if (mainLogger) mainLogger->Error("[VulkanGraphApplication::PreTick] " + lastError_);
+    }
+}
+
 void VulkanGraphApplication::Update() {
     if (!isPrepared) {
         return;
@@ -329,6 +455,69 @@ void VulkanGraphApplication::Update() {
             }
         }
 
+        // Perf measurement (perf sweep 2026-07): env-gated one-shot programmatic resize that
+        // reproduces the "enter wide screen mode" gesture unattended. At update tick
+        // VIXEN_RESIZE_AT_FRAME, resize the live window to VIXEN_RESIZE_WIDTH x VIXEN_RESIZE_HEIGHT
+        // (defaults 2560x1440) through the exact same GLFW callback -> WindowResizedMessage path a
+        // user-driven maximize takes.
+        if (renderGraph) {
+            static const long resizeAtFrame = [] {
+                const char* env = std::getenv("VIXEN_RESIZE_AT_FRAME");
+                return env ? std::strtol(env, nullptr, 10) : 0L;
+            }();
+            static long updateTick = 0;
+            ++updateTick;
+            if (resizeAtFrame > 0 && updateTick == resizeAtFrame) {
+                if (auto* window = static_cast<WindowNode*>(renderGraph->GetInstance(windowNode_))) {
+                    if (GLFWwindow* glfwWin = window->GetWindow()) {
+                        int w = 2560, h = 1440;
+                        if (const char* e = std::getenv("VIXEN_RESIZE_WIDTH"))  { const int v = std::atoi(e); if (v > 0) w = v; }
+                        if (const char* e = std::getenv("VIXEN_RESIZE_HEIGHT")) { const int v = std::atoi(e); if (v > 0) h = v; }
+                        if (mainLogger) {
+                            mainLogger->Info("[PerfProbe] programmatic resize to " + std::to_string(w) + "x" + std::to_string(h)
+                                             + " at update tick " + std::to_string(updateTick));
+                        }
+                        glfwSetWindowSize(glfwWin, w, h);
+                    }
+                }
+            }
+        }
+
+        // Sparse-Mip ESVO LOD Inc1 M4c live gate: env-gated scripted camera move, unattended
+        // (VIXEN_RESIDENCY_GATE_DEMO=1) — mirrors VIXEN_RESIZE_AT_FRAME's "env-var-scripted
+        // behavior for an automated run" shape directly above. Sweeps orbitDistance from far
+        // (kOrbitDistanceMax, mip-only range) to near (kOrbitDistanceMin, brick-resolvable
+        // range) and back over the run, plus a yaw sweep partway through to exercise the
+        // orientation axis — driven via CameraNode::SetOrbitDistanceForTest/SetYawForTest
+        // (direct live member writes CameraNode's own ExecuteImpl already reads every frame,
+        // no recompile needed), NOT a new InputNode injector (that's a bigger, separate
+        // mechanism — see the M4c live-gate investigation this milestone did before choosing
+        // this approach).
+        if (renderGraph && std::getenv("VIXEN_RESIDENCY_GATE_DEMO")) {
+            static long gateTick = 0;
+            ++gateTick;
+            if (auto* camera = static_cast<CameraNode*>(renderGraph->GetInstance(cameraNode_))) {
+                // 0-300: far (120) -> near (5), sweeping distance-driven residency.
+                // 300-450: hold near, sweep yaw 0->2pi, sweeping orientation-driven residency.
+                // 450-600: hold yaw, sweep near (5) -> far (120), back out (eviction symmetry).
+                constexpr long kPhase1End = 300, kPhase2End = 450, kPhase3End = 600;
+                constexpr float kFar = 120.0f, kNear = 5.0f;
+                if (gateTick <= kPhase1End) {
+                    const float t = static_cast<float>(gateTick) / static_cast<float>(kPhase1End);
+                    camera->SetOrbitDistanceForTest(kFar + (kNear - kFar) * t);
+                } else if (gateTick <= kPhase2End) {
+                    const float t = static_cast<float>(gateTick - kPhase1End) / static_cast<float>(kPhase2End - kPhase1End);
+                    camera->SetYawForTest(t * 2.0f * 3.14159265358979323846f);
+                } else if (gateTick <= kPhase3End) {
+                    const float t = static_cast<float>(gateTick - kPhase2End) / static_cast<float>(kPhase3End - kPhase2End);
+                    camera->SetOrbitDistanceForTest(kNear + (kFar - kNear) * t);
+                }
+                if (gateTick % 60 == 0 && mainLogger) {
+                    mainLogger->Info("[ResidencyGateDemo] tick " + std::to_string(gateTick));
+                }
+            }
+        }
+
         // Same "input never rides the render graph's gates" hook, generalized to InputNode
         // (input-rework slice 1): drain its GLFW callback queue unconditionally too, right beside
         // WindowNode's own drain above. Same lookup pattern, same null-guard (a graph without an
@@ -347,6 +536,33 @@ void VulkanGraphApplication::Update() {
             renderGraph->ProcessEvents();
             renderGraph->RecompileDirtyNodes();
         }
+
+        // Sparse-Mip ESVO LOD Inc1 M4c: re-evaluate the brick-residency trigger + re-sort
+        // instances front-to-back against the live camera state. Runs after RecompileDirtyNodes
+        // (graph must be settled) and every tick regardless of render-pause state, same as the
+        // WindowNode/InputNode drains above — camera state can still change (e.g. a queued
+        // resize) while rendering is paused, and this call is cheap/no-op unless the camera
+        // actually moved (change-detection lives inside the method itself).
+        if (renderGraph) {
+            UpdateBodySceneResidency();
+        }
+
+        // View Contract Inc-2 Task 5: dump a capture PNG if this tick is scripted for one. Placed
+        // at the tail of Update() — Update() ticks BEFORE the render loop's first Render() call
+        // (VulkanApplicationBase::Tick(): PreTick -> Update -> Render -> PostTick), so a capture
+        // here reads main_swapchain's PREVIOUS frame result (the compute-blit + UI-composite HUD
+        // draw already landed on it), same timing as EditorApplication's CaptureFrameToPng call
+        // site; a capture at tick 0 would read the target before anything has ever been drawn into
+        // it (an all-black PNG) — never schedule frame 0.
+        for (const long captureFrame : hudCaptureFrames_) {
+            if (captureFrame != hudUpdateTick_) continue;
+            const std::string path = hudCaptureDir_ + "/hud_capture_" + std::to_string(hudUpdateTick_) + ".png";
+            std::string captureErr;
+            if (!CaptureHudFrameToPng(path, captureErr)) {
+                if (mainLogger) mainLogger->Error("[VulkanGraphApplication] CaptureHudFrameToPng failed for " + path + ": " + captureErr);
+            }
+        }
+        ++hudUpdateTick_;
     } catch (const std::exception& e) {
         // Record + continue: a fatal condition also surfaces via the next Render() (which returns false).
         lastError_ = std::string("Update failed: ") + e.what();
@@ -588,9 +804,10 @@ void VulkanGraphApplication::SetBodyInstances(std::vector<Vixen::SVO::BodyInstan
 }
 
 void VulkanGraphApplication::SetRecipePool(Vixen::SVO::ConcatenatedOctrees pool) {
-    // Spec B I3/Task 6: forward the boot-baked recipe pool (RecipeBootIngest -> BakeRegistryToPool)
-    // to BodyOctreeSceneNode, which then serves octree slots 0..N-1 for every render_recipe blob id
-    // instead of the hardcoded 3-kind shell/SDF archetypes.
+    // Spec B I3/Task 6 (= main's I4.1 passthrough): forward the boot-baked recipe pool
+    // (RecipeBootIngest -> BakeRegistryToPool) to BodyOctreeSceneNode, which then serves octree
+    // slots 0..N-1 for every render_recipe blob id instead of the hardcoded 3-kind shell/SDF
+    // archetypes. Mirrors SetBodyInstances above — same live GetInstance lookup, same null-guard.
     auto* node = static_cast<Vixen::RenderGraph::BodyOctreeSceneNode*>(
         renderGraph->GetInstance(bodyOctreeSceneNode_));
     if (node) {
@@ -598,6 +815,134 @@ void VulkanGraphApplication::SetRecipePool(Vixen::SVO::ConcatenatedOctrees pool)
     } else if (mainLogger) {
         mainLogger->Warning("[VulkanGraphApplication::SetRecipePool] bodyOctreeSceneNode_ not found — recipe pool not applied");
     }
+}
+
+namespace {
+// Sparse-Mip ESVO LOD Inc1 M4c: conservative world-space bounding radius shared by every
+// body placed in BuildRenderGraph.cpp's default scenes (kRadius/kHalf, both 24.0f — the
+// Procedural sphere radius and the Stored shell's world half-extent are deliberately equal
+// so the default camera frames both paths identically; see BuildRenderGraph.cpp's own
+// comments at the instance-seeding block). Used for the frustum containment test's sphere
+// radius; a generic per-instance radius does not exist in BodyInstanceGpu today (Stored
+// uses renderScale, Procedural uses recipeParams[0], different units) and deriving one
+// exactly is out of scope for this milestone's binary per-tree gate.
+constexpr float kResidencyBoundingRadius = 24.0f;
+
+// One pixel's worth of octree level detail must still matter at the default 1080p-ish
+// render target; screenHeightPx is read live from the app's tracked window height each
+// call (see UpdateBodySceneResidency) rather than hardcoded, so a resized window doesn't
+// silently go stale.
+constexpr float kResidencyPxThreshold = 1.0f;
+constexpr float kResidencyLeafSizeM   = 0.01f;  // matches ResolvableLevel.h's 1cm-voxel convention
+}  // namespace
+
+void VulkanGraphApplication::UpdateBodySceneResidency() {
+    // Live lookups — both nodes persist across recompile; never cache (same discipline as
+    // GetWindowHandle()/SetBodyInstances() above).
+    auto* camera = static_cast<Vixen::RenderGraph::CameraNode*>(renderGraph->GetInstance(cameraNode_));
+    auto* bodyScene = static_cast<Vixen::RenderGraph::BodyOctreeSceneNode*>(
+        renderGraph->GetInstance(bodyOctreeSceneNode_));
+    if (!camera || !bodyScene) {
+        return;  // no-op pre-Compile or on a graph without these nodes (e.g. demo graphs)
+    }
+
+    const Vixen::RenderGraph::CameraData& cam = camera->GetCurrentCameraData();
+
+    // Change-detection only (not part of the trigger formula itself) — re-evaluating every
+    // frame is cheap, but SortInstancesFrontToBack is a real (if small) per-frame sort, so
+    // skip it on a genuinely static camera. Orientation matters independently of position
+    // (M4b: it moves bodies in/out of frustum on its own), so cameraDir is compared too —
+    // not just cameraPos/fov.
+    constexpr float kPosEpsilon = 1e-4f;
+    constexpr float kDirEpsilon = 1e-5f;
+    constexpr float kFovEpsilon = 1e-4f;
+    const bool changed = !residencyTriggerEverEvaluated_ ||
+        glm::distance2(cam.cameraPos, lastResidencyCheckCameraPos_) > kPosEpsilon ||
+        glm::distance2(cam.cameraDir, lastResidencyCheckCameraDir_) > kDirEpsilon ||
+        std::abs(cam.fov - lastResidencyCheckFovDegrees_) > kFovEpsilon;
+    if (!changed) {
+        return;
+    }
+    residencyTriggerEverEvaluated_ = true;
+    lastResidencyCheckCameraPos_   = cam.cameraPos;
+    lastResidencyCheckCameraDir_   = cam.cameraDir;
+    lastResidencyCheckFovDegrees_  = cam.fov;
+
+    // near/far bound the same range CameraNode configures (BuildRenderGraph.cpp: 0.1/500.0).
+    const float screenHeightPx = static_cast<float>(height > 0 ? height : 1080);
+    const int brickTierLevel = Vixen::RenderGraph::BodyOctreeSceneNode::GetBrickTierLevel();
+
+    // Sparse-Mip ESVO LOD Inc2 M3: the CPU-side residency occlusion gate Inc1 M4b deferred.
+    // "Already brick-resident" here means resident as of the LAST re-check (lastResidencyGranted_),
+    // not whatever this frame is about to decide — occlusion is tested against what's actually
+    // uploaded right now, matching Inc1 M4b's "coarse depth estimate built from already
+    // brick-resident trees only" spec. When the shared pool isn't resident yet, occluders is
+    // empty and IsOccludedByResidentTrees degrades to always-false (frustum+resolvability-only),
+    // the same graceful-degradation path ResidencyTrigger.h itself documents.
+    //
+    // Each occluder's id is its OWN index in GetInstances() — required so a candidate is never
+    // tested against itself below (a tree/pool cannot occlude its own pending residency decision;
+    // see OcclusionGate.h's own comment on why this is a correctness fix, not an edge case: a
+    // naive full-instance-list occluder set trivially includes the candidate being evaluated
+    // whenever residency is a whole-pool decision, and the ray toward a candidate's own centre
+    // always "hits" its own bounding sphere well before reaching that centre).
+    const auto& instances = bodyScene->GetInstances();
+    std::vector<Vixen::SVO::ResidentOccluder> residentOccluders;
+    if (lastResidencyGranted_) {
+        residentOccluders.reserve(instances.size());
+        for (size_t i = 0; i < instances.size(); ++i) {
+            const auto& inst = instances[i];
+            residentOccluders.push_back(Vixen::SVO::ResidentOccluder{
+                glm::vec3(inst.worldPos[0], inst.worldPos[1], inst.worldPos[2]),
+                kResidencyBoundingRadius,
+                static_cast<int>(i)});
+        }
+    }
+
+    // Per-tree binary residency (§0 scope): resident if ANY current instance, individually,
+    // passes frustum+resolvability (ResidencyTrigger.h) AND is NOT occluded by an
+    // already brick-resident tree (OcclusionGate.h, Inc2 M3) — the whole shared brick
+    // pool must be populated the moment even one instance needs it and can see it.
+    bool anyInstanceWantsBricks = false;
+    for (size_t i = 0; i < instances.size(); ++i) {
+        const auto& inst = instances[i];
+        const glm::vec3 pos(inst.worldPos[0], inst.worldPos[1], inst.worldPos[2]);
+        if (!Vixen::SVO::InstanceWantsBrickResidency(
+                pos, kResidencyBoundingRadius,
+                cam.cameraPos, cam.cameraDir, cam.cameraUp, cam.cameraRight,
+                cam.fov, cam.aspect, screenHeightPx, /*nearDist=*/0.1f, /*farDist=*/500.0f,
+                brickTierLevel, kResidencyLeafSizeM, kResidencyPxThreshold)) {
+            continue;  // fails frustum+resolvability regardless of occlusion
+        }
+        const float distance = glm::distance(pos, cam.cameraPos);
+        if (Vixen::SVO::IsOccludedByResidentTrees(
+                cam.cameraPos, pos, distance, residentOccluders, static_cast<int>(i))) {
+            continue;  // passes frustum+resolvability but a DIFFERENT already-resident tree blocks it
+        }
+        anyInstanceWantsBricks = true;
+        break;
+    }
+    if (mainLogger && std::getenv("VIXEN_RESIDENCY_GATE_DEMO")) {
+        static bool lastLoggedDecision = false;
+        static bool everLogged = false;
+        if (!everLogged || lastLoggedDecision != anyInstanceWantsBricks) {
+            mainLogger->Info(std::string("[ResidencyGateDemo] RequestBrickResidency(") +
+                              (anyInstanceWantsBricks ? "true" : "false") + ") | camDist=" +
+                              std::to_string(glm::distance(cam.cameraPos, glm::vec3(0.0f))) +
+                              " fov=" + std::to_string(cam.fov));
+            lastLoggedDecision = anyInstanceWantsBricks;
+            everLogged = true;
+        }
+    }
+    bodyScene->RequestBrickResidency(anyInstanceWantsBricks);
+    lastResidencyGranted_ = anyInstanceWantsBricks;  // Inc2 M3: next re-check's occlusion-gate input
+
+    // M4b: re-sort front-to-back so the shader's per-ray gridT.x>bestT occlusion reject
+    // (BodyInstanceRayMarch.comp) actually has closer instances visited first in the
+    // instance loop — this is the live call site the M4b Progress Log flagged as missing
+    // (SortInstancesFrontToBack existed and was tested in isolation, but had zero
+    // production call sites until this milestone).
+    bodyScene->SortInstancesFrontToBack(cam.cameraPos);
 }
 
 GLFWwindow* VulkanGraphApplication::GetWindowHandle() const {
@@ -679,4 +1024,47 @@ bool VulkanGraphApplication::CaptureFrameToPng(const std::string& path) {
                                       std::to_string(result.capturedWidth) + "x" +
                                       std::to_string(result.capturedHeight) + ")");
     return true;
+}
+
+bool VulkanGraphApplication::CaptureHudFrameToPng(const std::string& path, std::string& err) {
+    // Live lookups every call (mirrors EditorApplication::CaptureFrameToPng / GetWindowHandle's
+    // rule) -- the target and device node persist across recompile, but re-resolving by name is
+    // this codebase's established pattern for host-facing capture lookups.
+    //
+    // Reads "main_swapchain", NOT "compute_render_target": the compute dispatch blits its
+    // offscreen compute_render_target INTO the swapchain, and UIRenderNode's composite pass then
+    // LOADs and draws the HUD directly onto that SAME swapchain image (see BuildRenderGraph.cpp's
+    // UI-composite-pass comment) -- compute_render_target is a physically separate VkImage that
+    // never receives the HUD draw. CaptureSwapchainToPng (unlike the offscreen-target helper)
+    // handles the PRESENT_SRC_KHR<->TRANSFER_SRC_OPTIMAL round-trip this capture needs.
+    if (!renderGraph) {
+        err = "CaptureHudFrameToPng: no render graph";
+        return false;
+    }
+    static constexpr const char* kCaptureTargetName = "main_swapchain";
+    auto* targetInst = renderGraph->GetInstanceByName(kCaptureTargetName);
+    if (!targetInst) {
+        err = std::string("CaptureHudFrameToPng: instance '") + kCaptureTargetName + "' not found";
+        return false;
+    }
+    Resource* targetOutput = targetInst->GetOutput(1, 0);  // SWAPCHAIN_PUBLIC (slot 1)
+    if (!targetOutput) {
+        err = "CaptureHudFrameToPng: capture target has no SWAPCHAIN_PUBLIC output yet (graph not compiled?)";
+        return false;
+    }
+    auto* renderTarget = targetOutput->GetHandle<Vixen::Vulkan::Resources::IRenderTarget*>();
+    if (!renderTarget) {
+        err = "CaptureHudFrameToPng: SWAPCHAIN_PUBLIC output handle is null";
+        return false;
+    }
+
+    auto* deviceInst = static_cast<DeviceNode*>(renderGraph->GetInstanceByName("main_device"));
+    if (!deviceInst || !deviceInst->GetVulkanDevice()) {
+        err = "CaptureHudFrameToPng: 'main_device' not found or has no VulkanDevice";
+        return false;
+    }
+    auto* device = deviceInst->GetVulkanDevice();
+
+    return Vixen::RenderGraph::Debug::CaptureSwapchainToPng(
+        device, renderTarget, device->queue, device->graphicsQueueIndex, path, err);
 }

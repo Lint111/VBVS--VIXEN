@@ -28,8 +28,8 @@ using namespace Vixen::RenderGraph;
 class RenderTargetNodeConfigTest : public ::testing::Test {};
 
 TEST_F(RenderTargetNodeConfigTest, InputCount) {
-    EXPECT_EQ(RenderTargetNodeConfig::INPUT_COUNT, 1u)
-        << "RenderTargetNode must have exactly 1 input (VULKAN_DEVICE_IN)";
+    EXPECT_EQ(RenderTargetNodeConfig::INPUT_COUNT, 2u)
+        << "RenderTargetNode must have exactly 2 inputs (VULKAN_DEVICE_IN, EXTENT_SOURCE)";
 }
 
 TEST_F(RenderTargetNodeConfigTest, OutputCount) {
@@ -60,6 +60,25 @@ TEST_F(RenderTargetNodeConfigTest, VulkanDeviceInTypeIsVulkanDevicePtr) {
         RenderTargetNodeConfig::VULKAN_DEVICE_IN_Slot::Type,
         Vixen::Vulkan::Resources::VulkanDevice*>;
     EXPECT_TRUE(correct);
+}
+
+TEST_F(RenderTargetNodeConfigTest, ExtentSourceAtIndex1) {
+    EXPECT_EQ(RenderTargetNodeConfig::EXTENT_SOURCE_Slot::index, 1u);
+}
+
+TEST_F(RenderTargetNodeConfigTest, ExtentSourceIsOptional) {
+    EXPECT_TRUE(RenderTargetNodeConfig::EXTENT_SOURCE_Slot::nullable);
+}
+
+TEST_F(RenderTargetNodeConfigTest, ExtentSourceTypeIsIRenderTargetPtr) {
+    constexpr bool correct = std::is_same_v<
+        RenderTargetNodeConfig::EXTENT_SOURCE_Slot::Type,
+        Vixen::Vulkan::Resources::IRenderTarget*>;
+    EXPECT_TRUE(correct);
+}
+
+TEST_F(RenderTargetNodeConfigTest, ParamNameScale) {
+    EXPECT_STREQ(RenderTargetNodeConfig::PARAM_SCALE, "scale");
 }
 
 // ----- Output slot metadata -----
@@ -137,7 +156,7 @@ TEST_F(RenderTargetNodeConfigTest, ParamNameUsage) {
 
 TEST_F(RenderTargetNodeConfigTest, ConfigIsDefaultConstructible) {
     RenderTargetNodeConfig cfg;
-    EXPECT_EQ(cfg.INPUT_COUNT,  1u);
+    EXPECT_EQ(cfg.INPUT_COUNT,  2u);
     EXPECT_EQ(cfg.OUTPUT_COUNT, 4u);
 }
 
@@ -153,6 +172,53 @@ TEST_F(RenderTargetNodeConfigTest, ConfigIsCopyable) {
 TEST_F(RenderTargetNodeConfigTest, TypeNameIsRenderTarget) {
     RenderTargetNodeType nodeType;
     EXPECT_STREQ(nodeType.GetTypeName().c_str(), "RenderTarget");
+}
+
+// ============================================================================
+// Follow-swapchain sizing math (M4.1) — pure function, no device required
+// ============================================================================
+
+TEST(RenderTargetNodeFollowExtent, HalfScaleFrom1000x500) {
+    VkExtent2D result = RenderTargetNode::ComputeFollowExtent({1000, 500}, 0.5f);
+    EXPECT_EQ(result.width,  500u);
+    EXPECT_EQ(result.height, 250u);
+}
+
+TEST(RenderTargetNodeFollowExtent, ExtentChangeTracksSource) {
+    VkExtent2D result = RenderTargetNode::ComputeFollowExtent({800, 600}, 0.5f);
+    EXPECT_EQ(result.width,  400u);
+    EXPECT_EQ(result.height, 300u);
+}
+
+TEST(RenderTargetNodeFollowExtent, ScaleOneIsIdentical) {
+    VkExtent2D result = RenderTargetNode::ComputeFollowExtent({1280, 720}, 1.0f);
+    EXPECT_EQ(result.width,  1280u);
+    EXPECT_EQ(result.height, 720u);
+}
+
+TEST(RenderTargetNodeFollowExtent, RoundsUpFractionalPixels) {
+    // 1001 * 0.5 = 500.5 -> ceil -> 501
+    VkExtent2D result = RenderTargetNode::ComputeFollowExtent({1001, 3}, 0.5f);
+    EXPECT_EQ(result.width, 501u);
+    EXPECT_EQ(result.height, 2u);  // 3 * 0.5 = 1.5 -> ceil -> 2
+}
+
+TEST(RenderTargetNodeFollowExtent, ScaleClampedAboveOne) {
+    VkExtent2D result = RenderTargetNode::ComputeFollowExtent({100, 100}, 2.0f);
+    EXPECT_EQ(result.width,  100u);
+    EXPECT_EQ(result.height, 100u);
+}
+
+TEST(RenderTargetNodeFollowExtent, ScaleClampedAtOrBelowZeroStaysPositive) {
+    VkExtent2D result = RenderTargetNode::ComputeFollowExtent({100, 100}, 0.0f);
+    EXPECT_GE(result.width,  1u);
+    EXPECT_GE(result.height, 1u);
+}
+
+TEST(RenderTargetNodeFollowExtent, MinimumExtentIsOneByOne) {
+    VkExtent2D result = RenderTargetNode::ComputeFollowExtent({1, 1}, 0.01f);
+    EXPECT_EQ(result.width,  1u);
+    EXPECT_EQ(result.height, 1u);
 }
 
 // ============================================================================

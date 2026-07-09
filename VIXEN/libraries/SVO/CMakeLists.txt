@@ -45,6 +45,7 @@ add_library(SVO STATIC
     src/SceneGenerator.cpp  # Procedural voxel scene generation (relocated from RenderGraph — AR#3/#4 cycle break)
     # src/SVOFactory.cpp  # TODO: Implement
     src/RecipePackLoader.cpp  # I2.5: manifest+blobs→registry, fail-loud
+    src/Recipe/VoxelDocumentFlattener.cpp  # Voxel-Authoring Inc1 M3: VoxelDocument -> VRC1 recipe blob
 )
 
 # ------------------------------------------------------------------------------

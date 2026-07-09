@@ -77,6 +77,9 @@ CONSTEXPR_NODE_CONFIG(CameraNodeConfig,
     // Orbit-model pose requests: the render camera IS an orbit camera (position derived from
     // orbitCenter + yaw/pitch/orbitDistance every Execute — camera_x/y/z only seed the pre-orbit
     // state). These let a host/console re-anchor the orbit (e.g. click-to-fly to a body).
+    // Defaults match the main app's Cornell-box demo scene (orbitCenter=(5,5,5), 10^3 world); a
+    // consumer whose rendered geometry sits elsewhere (e.g. vixen_editor's object-centered
+    // documents) must set these explicitly or the orbit camera frames empty space.
     static constexpr const char* PARAM_ORBIT_CENTER_X = "orbit_center_x";
     static constexpr const char* PARAM_ORBIT_CENTER_Y = "orbit_center_y";
     static constexpr const char* PARAM_ORBIT_CENTER_Z = "orbit_center_z";

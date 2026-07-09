@@ -11,7 +11,187 @@ Living log of confirmed-but-unfixed issues. Each entry: symptom, root cause, imp
 
 ---
 
-*(No open issues at present — see Resolved below.)*
+## KI-016 — editor undo (`rt_.Undo()`) has no visible render effect: post-toggle state persists
+
+**Discovered:** 2026-07-06, during View Contract Inc-2 M3 close-out (the first fresh re-run of the editor windowed gate since AppFlow Inc-2b shipped it).
+
+**Symptom:** `test_editor_toggle_undo_capture` FAILS on a fresh unattended `vixen_editor` run (`VIXEN/temp/run_editor_script.bat`, script `toggle:2@30,undo@60,redo@90`, captures @5/45/75/105). The toggle half works — `boreDiffPixels(png5,png45)=1024` (the cut layer visibly toggles off). But **`png75 != png5`**: undo@60 does NOT restore the baseline. md5 shows `editor_capture_45`/`_75`/`_105` are byte-IDENTICAL to each other and differ from `_5` — i.e. `rt_.Undo()` had no visible effect at all; the render stays in the post-toggle state for the rest of the run (which also makes the redo@90 assertion pass for the wrong reason).
+
+**Root cause:** unknown / not yet investigated. Confirmed it is NOT introduced by View Contract Inc-2: `git status`/`git diff` scoped to `application/editor/`, the node sources, and the undo/`ActionStack` path show ZERO changes across M1–M3 of Inc-2 (the increment deliberately walled off the editor/ActionStack surface — Global Constraint). This is a genuine, previously-LATENT regression: AppFlow Inc-2b's own gate (`test_editor_toggle_undo_capture`, added `79786a66`) passed when it shipped, and the M2 validator of this increment explicitly did NOT re-run it fresh (assumed-safe because M2's `RenderTargetReadback.h` change was purely additive). So the regression landed somewhere between Inc-2b's ship and now, from some other change to main — the View Contract increment merely SURFACED it by being the first to re-run the gate fresh. (This is exactly the "live-run gate is authoritative for GPU work" lesson: assuming a GPU gate safe without re-running it hid a real regression for multiple increments.)
+
+**Impact:** editor layer-toggle **undo** is broken in the live windowed editor (redo likely too — untested independently since it trivially "passes" against the un-undone state). Toggle itself works. The headless AppFlow undo logic (`test_appflow_editor_toggle_render`, Inc-2's byte-exact headless gate) should be re-run to localize whether the break is in the undo LOGIC (ActionStack/AppFlowRuntime) or in the windowed re-flatten→render path specifically — that bisects it.
+
+**Fix options:** (a) re-run `test_appflow_editor_toggle_render` (headless) — if it PASSES, the break is in the windowed EditorApplication re-flatten/render path (input→ActionStack→`rt_.Undo()`→onChanged→re-flatten→capture), not the undo logic; if it FAILS, the undo LOGIC regressed. (b) `git bisect` the editor windowed gate between the Inc-2b merge (`79786a66`) and current main to find the introducing commit. (c) inspect whether `rt_.Undo()`'s `onChanged` callback still fires the re-flatten (`dirty_=true` → `enabledMask` re-applied) — a likely suspect given the toggle works but the undo doesn't.
+
+**Severity:** medium (a shipped editor feature — undo — is silently broken in the live path; headless logic may be fine) · **Status:** OPEN · not a View Contract Inc-2 defect (surfaced by, not caused by, that work).
+
+---
+
+## KI-015 — codegen `--check` gates (`octreeconfig_check`, `view_editorhud_check`) silently no-op on a Windows-side CMake configure
+
+**Discovered:** 2026-07-06, during View Contract Codegen Inc-1 (M3 gate wiring).
+
+**Symptom:** `codegen/CMakeLists.txt` sets `YEROKET_ROOT` to `$ENV{HOME}/Github/Yeroket-Fantasy` and guards the codegen targets on `if(EXISTS "${_yk_tool}/CodegenTool.csproj")`. Under a Windows-side configure (`cmake.exe` inside `vcvars64`), `$ENV{HOME}` resolves against the *Windows* `HOME`, not WSL's — yielding a path like `/Github/Yeroket-Fantasy` that doesn't exist — so BOTH `octreeconfig_check` and the new `view_editorhud_check` are silently skipped ("Yeroket tool not found"). The Yeroket kernel-framework repo is a WSL-only clone here (no `\\wsl$` mount used), so no Windows path reaches it.
+
+**Root cause:** the schema→header drift guards depend on the Yeroket tool being reachable, but the `YEROKET_ROOT` default assumes a WSL `$ENV{HOME}`. This predates the view work and affects `octreeconfig_check` identically.
+
+**Impact:** on a Windows-side build the drift guards do not run — a hand-edit or stale generated header (`OctreeConfig` GLSL/C++, `EditorHud.g.h`) would NOT be caught at configure/build time. The gate logic itself is correct: verified via direct WSL-side `dotnet run … --check` (exit 0) for both `octreeconfig` and `view_editorhud`.
+
+**Fix options:** (a) resolve `YEROKET_ROOT` robustly across Windows/WSL configures (e.g. accept a `-DYEROKET_ROOT=` override + probe both a WSL `$ENV{HOME}` and a Windows-visible path); (b) run the codegen `--check` gates in CI on the WSL side explicitly; (c) emit a loud `message(WARNING …)` when the tool is not found instead of a silent skip, so a Windows configure surfaces "drift guard disabled" rather than passing quietly.
+
+**FIXED 2026-07-06** (commit `63d74075`, `codegen/CMakeLists.txt`) — implemented (a) + (c): `_home_candidates` now probes `$ENV{HOME}` → `$ENV{USERPROFILE}` → mounted-WSL-home (`//wsl$/Ubuntu/home/$USERNAME`), the dotnet `find_program` gains system-path fallbacks (`/usr/bin`, `/usr/local/bin`, `/usr/share/dotnet`, `C:/Program Files/dotnet`), and `YEROKET_ROOT` is resolved by probing those candidates for an actual `CodegenTool.csproj` (with the `-DYEROKET_ROOT=` cache override still winning). Critically, BOTH not-found paths (no dotnet; no Yeroket tool) now emit a loud `message(WARNING … DRIFT GUARD DISABLED …)` instead of a silent `STATUS`, so a Windows-side configure surfaces that the generated headers are un-checked rather than passing quietly. Resolution logic validated in isolation: WSL-side → tool found, no warning; simulated Windows (empty `HOME`) → loud WARNING + guard disabled, as intended. The residual reality is unchanged and now *documented + surfaced*: the Yeroket repo is a WSL-only clone here, so a Windows-side configure legitimately cannot reach it — run the WSL-side configure (or mount `\\wsl$`, or pass `-DYEROKET_ROOT=`) to actually run the guard. The *silent-no-op bug* is fixed.
+
+**Severity:** low (guard-coverage gap on one configure path; the generators + `--check` are proven correct WSL-side) · **Status:** RESOLVED (silent skip → loud warn + robust probe; WSL-only reachability now a documented limitation, not a hidden trap) — **superseded by the 2026-07-07 fix below, which closes the reachability gap itself.**
+
+**FIXED (execution) 2026-07-07** (`codegen/CMakeLists.txt`) — the 2026-07-06 fix above only made the unreachable case *loud*; the Yeroket tool + dotnet were still resolved via a `\\wsl$` UNC mount on a Windows configure, and even when `find_program`/`EXISTS` found them there, ninja's `cmd.exe` cannot **execute** a Linux ELF at a UNC path — so `octreeconfig_check`/`view_hud_check`/`view_hud_markup_check`/`view_hud_blob_check` (and their `_regen` siblings) built but failed at execution time on Windows. Fixed by bridging through `wsl.exe`, which Windows processes can invoke a WSL-side binary through: when `WIN32` and the resolved `VIXEN_DOTNET`/`YEROKET_ROOT` matched a `wsl` hint, all five target pairs now run `wsl.exe -e <wsl-dotnet> run --project <wsl-tool> ...` instead of invoking the UNC path directly, with every `${CMAKE_SOURCE_DIR}/...` argument translated from its Windows form to `/mnt/c/...` via `wsl.exe -e wslpath -u` at configure time. One shared `_CODEGEN_RUNNER` variable (native `${VIXEN_DOTNET}` or the `wsl.exe` bridge) and one `_codegen_to_wsl_path()` helper are reused by all five targets — not five hand-diverged blocks. `wsl.exe`-absent or dotnet-unresolvable-inside-WSL both fall back to the existing loud `message(WARNING ... DRIFT GUARD DISABLED ...)`. Native configures (WSL-side, or a future native-Windows tool) are unaffected — the `if(WIN32 AND ... MATCHES "wsl")` gate leaves `_CODEGEN_RUNNER` as plain `${VIXEN_DOTNET}` there. Verified live: Windows-side reconfigure (`cmake --preset vixen-ninja`) then `cmake --build build/ninja --target view_hud_blob_check` and `--target view_hud_check` both now **exit 0** (previously failed) — output shows the bridge invoking the WSL dotnet build of the Yeroket tool and the golden `--check` passing.
+
+**Status:** RESOLVED (both the silent-skip bug and the UNC-execution bug are fixed; a Windows-side configure now actually runs the drift guards against the WSL-only Yeroket tool).
+
+*(Related scope note, not a KI: the View Contract emitter's non-array nested-struct field path (`ViewFieldKind.Struct` → `Name*` bind pointer) is implemented but untested — every Inc-1 schema uses only scalars + `StructArray`. Add coverage when a single-struct view field is first used; tracked for a future View Contract increment, not a bug.)*
+
+---
+
+## Test-suite note (not a KI): `test_fail_scenario_sweep` is flaky under the Vulkan validation layer
+
+Running any SINGLE `FailScenarioSweep*` test that does a live resize+recompile (e.g. `LiveResizeRecompilesPickIdRing`) under `VK_LAYER_KHRONOS_validation` alone can segfault (`vkCmdBindPipeline` referencing an already-deleted `VkDescriptorSetLayout`, stale command-buffer-in-use errors, then SIGSEGV) — but the SAME test passes cleanly with `[ PASSED ]` when run without the validation layer. This reproduces identically both before and after this session's changes, so it's pre-existing validation-layer/test-timing interaction, not a functional regression. Use the validation layer for spot-checking specific VUIDs on `vixen_editor` directly (as this session did for KI-009/KI-012); trust the plain (no-validation-layer) test run for pass/fail signal on `test_fail_scenario_sweep`.
+
+---
+
+## KI-008 — lavapipe is no longer usable for this project
+
+**Discovered:** 2026-07-04, standing rule for the widescreen-perf-fix program's worktrees.
+
+**Symptom/rule:** lavapipe (Mesa's `lvp_icd.json` software rasterizer) must not be used as a dev-loop ICD in this project going forward — a separate cleanup effort is removing it from the codebase entirely. Any doc, script, or `VK_ICD_FILENAMES` reference that still points at `lvp_icd.json` as a live option is stale guidance, not history.
+
+**Impact:** affects any contributor or agent reaching for lavapipe as a quick headless-GPU stand-in for local iteration; WSL sessions without a provisioned real-GPU path (e.g. Mesa Dozen/Vulkan-over-D3D12) lose that fallback and must rely on CPU-only build+test gates, deferring live-render verification to a session where a real GPU is available.
+
+**Fix:** none needed — this is a policy/environment note, not a bug. Swept the widescreen-perf-fix plan and findings docs (2026-07-04) for any forward-looking instruction still citing lavapipe/`VK_ICD_FILENAMES`/`lvp_icd`; all remaining occurrences were historical gate-result records (describing runs that already happened) and were left as-is per the sweep's own rule.
+
+**Severity:** N/A (policy) · **Status:** OPEN (standing rule, not something to "resolve")
+
+---
+
+## Resolved (see below)
+
+### KI-013 — `FailScenarioSweep_FrameSync.DeviceLostRecovery` segfaults inside Dozen's swapchain-image destroy path (regression against KI-004's documented-fixed state)
+
+**Discovered:** 2026-07-04, while verifying the KI-012 pick-ID fix didn't regress `test_fail_scenario_sweep` — running the FULL suite in one process segfaulted right after `ResizeBurstDoesNotRecompileOncePerEvent`, before `FailScenarioSweep_FrameSync.DeviceLostRecovery` completed. Confirmed via `git stash` that this reproduced byte-identically at the pre-KI-012/pre-flicker-fix baseline (`origin/main` `9ddbb854`) — not caused by that session's other changes.
+
+**File/line:** `libraries/RenderGraph/src/Nodes/SwapChainNode.cpp` (`CleanupImpl`).
+
+**Symptom:** `DeviceLostRecovery` (run alone, isolated — same crash) segfaulted during `RenderGraph::RecoverFromDeviceLoss()`'s rebuild phase, specifically while rebuilding `main_swapchain` (`SwapChainNode::CompileImpl` → `CreateSwapchainAndViews` → `VulkanSwapChain::CreateSwapChainColorImages`). GDB backtrace:
+```
+Thread 1 received signal SIGSEGV
+#0  0x... in ?? ()
+#1  wsi_destroy_image () from .../libvulkan_dzn.so
+#2  x11_swapchain_destroy () from .../libvulkan_dzn.so
+#3  VulkanSwapChain::CreateSwapChainColorImages(VkDevice_T*, VkSwapchainKHR_T*)
+#4  SwapChainNode::CreateSwapchainAndViews()
+#5  SwapChainNode::CompileImpl(...)
+#6  NodeInstance::Compile()
+#7  RenderGraph::RecoverFromDeviceLoss()
+#8  VulkanGraphApplication::Render()
+```
+
+**Root cause:** `SwapChainNode::CleanupImpl` treated `CleanupReason::Recompile` and `CleanupReason::DeviceLost` identically (`if (ctx.reason != CleanupReason::FinalTeardown)`) — both took the "keep the swapchain HANDLE alive across the boundary, destroy only per-image views" branch, so that `CreateSwapchainAndViews()` could pass the still-live handle as `oldSwapchain` for the driver to recycle/hand over presentation state. That's correct for `Recompile` (the SAME `VkDevice` recreates it), but wrong for `DeviceLost`: `RenderGraph::RecoverFromDeviceLoss()` has `DeviceNode::CompileImpl` create an entirely NEW `VulkanDevice` (`RenderGraph.cpp`) before `SwapChainNode` rebuilds — a `VkSwapchainKHR` is device-scoped, so the old handle belongs to the OLD, about-to-be-destroyed device. Passing it as `oldSwapchain` into the NEW device's `fpCreateSwapchainKHR`/`fpDestroySwapchainKHR` (resolved via the new device's dispatch table) is exactly the KI-004 bug class (a resource carrying stale device state across recovery) and segfaults deep in the driver's swapchain-destroy internals. The `VkSurfaceKHR`, by contrast, is instance-scoped and correctly survives a device recreation untouched.
+
+**Fix (2026-07-04):** split the `Recompile`/`DeviceLost` branches. `Recompile` keeps the existing behavior (`DestroyImageViewsOnly`, swapchain handle survives for reuse). `DeviceLost` now calls `swapChainWrapper->DestroySwapChain(device)` — destroys the image views AND the swapchain handle (against the OLD, still-valid-but-lost device, which is safe per the `CleanupReason::DeviceLost` doc comment: calls against a lost device are expected to be harmless/no-ops), leaving `scPublicVars.swapChain = VK_NULL_HANDLE` so the later rebuild's `CreateSwapchainAndViews()` correctly does a cold creation (`oldSwapchain = VK_NULL_HANDLE`) against the new device instead of handing it a foreign-device handle. The surface is untouched in both branches (survives, as before).
+
+**Verification:** `FailScenarioSweep_FrameSync.DeviceLostRecovery` passes in isolation (previously segfaulted) — log shows "RECOVERY COMPLETE: rendering resumes on the new device". Full `test_fail_scenario_sweep` suite: 10/10 tests run to completion (previously crashed after test 3/10) — 8 passed, 2 skipped by their own logic (pre-existing, unrelated). Full project rebuild + all 7 render-gate test suites (28 tests) re-verified passing with zero regressions.
+
+**Severity:** High (crash in a documented-fixed regression gate for a real reliability feature) · **Status:** RESOLVED
+
+### KI-012 — `VoxelSelectionProviderNode`'s pick-ID readback violates queue transfer-granularity on Dozen
+
+**Discovered:** 2026-07-04, live-gate run of `vixen_editor` under `VK_LAYER_KHRONOS_validation` while chasing KI-009/render flicker (unrelated — surfaced only on a mouse click, not idle rendering).
+
+**File/line:** `libraries/RenderGraph/src/Nodes/VoxelSelectionProviderNode.cpp` (`ReadCenterPixel`), `libraries/VulkanResources/{include,src}/VulkanDevice.cpp` (`RequiresFullImageTransfers`).
+
+**Symptom:** on every click, two validation errors:
+```
+VUID-vkCmdCopyImageToBuffer-imageOffset-07747
+pRegions[0].imageOffset (x = 250, y = 250, z = 0) must be (0, 0, 0) when the command buffer's
+queue family minImageTransferGranularity is (0, 0, 0) as this queue doesn't allow for any offset.
+pRegions[0].imageExtent (width = 1, height = 1, depth = 1) must match the image subresource
+extent (width = 500, height = 500, depth = 1) when ... this queue only allows full image copies.
+```
+
+**Root cause:** the code copied a single 1×1 texel at an arbitrary offset (the cursor's pick position) out of the full-size ID image — a partial-image-region copy. Dozen's (Mesa Vulkan-over-D3D12) transfer-capable queue family reports `minImageTransferGranularity = (0,0,0)`, which per spec means that queue **only accepts whole-image copies at offset (0,0,0)** — no sub-region copies at all. lavapipe apparently tolerated this (hence it went unnoticed until the lavapipe-removal work this session put Dozen in the default path).
+
+**Fix (2026-07-04):** checked once at startup, not re-queried per click, following the existing "ask `VulkanDevice` about queue capabilities" convention (alongside `HasPresentSupport()`): added `VulkanDevice::RequiresFullImageTransfers()`, computed from the already-queried `queueFamilyProperties[graphicsQueueIndex].minImageTransferGranularity == (0,0,0)`. `VoxelSelectionProviderNode::CompileImpl` caches this once per Compile (`requiresFullImageTransfers_`); `ReadCenterPixel` branches on it — the common per-click path (single-texel sub-region copy) is unchanged for devices with real transfer granularity, while devices that need whole-image transfers copy the ENTIRE id image into a (grow-only, reused-across-clicks) full-size staging buffer and index the center texel on the CPU side instead.
+
+**Verification:** full build + `test_fail_scenario_sweep` (excluding the pre-existing `DeviceLostRecovery` crash, see KI-013) — 7/7 pass, 2 skipped by the tests' own logic, 0 regressions. `LiveResizeRecompilesPickIdRing` (which injects a real click and exercises the readback) passes cleanly without the validation layer; the same test is separately flaky under the validation layer alone (see the test-suite note above), unrelated to this fix.
+
+**Severity:** Low (worked today even before the fix, spec-invalid, not on the hot/idle render path) · **Status:** RESOLVED
+
+### KI-009 — `vixen_editor` render view flickers black/content on real GPU; VUID-vkCmdDraw-None-09600 layout mismatch
+
+**Discovered:** 2026-07-04, investigating a user report that vixen_editor's render viewport alternates between showing the loaded geometry and solid black/dark-blue, at idle (no interaction needed to reproduce; camera framing was a separate, already-fixed bug that didn't affect this).
+
+**File/line:** `libraries/RenderGraph/src/Nodes/RenderTargetNode.cpp` (`ExecuteImpl`).
+
+**Symptom:** every few frames, `vkQueueSubmit2KHR` reported `VUID-vkCmdDraw-None-09600` (the descriptor-layout-mismatch VUID, applied here to the compute dispatch that binds the render target as a `STORAGE_IMAGE` — validation's message text says "draw" but the same rule governs a bound descriptor read by any command, dispatch included): `VkImage` (the offscreen render-target ring) expected in `VK_IMAGE_LAYOUT_GENERAL`, actually `UNDEFINED` or `TRANSFER_SRC_OPTIMAL`. Visually: UI panel stable, only the 3D render area flickered.
+
+**Root cause:** `RenderTargetNode` maintains a ring of `imageCount_` offscreen images and rotates `currentIndex` every frame in `ExecuteImpl` (`currentIndex = (currentIndex + 1) % imageCount`) — but published its `CURRENT_VIEW` output **only once, in `CompileImpl`**, frozen at whatever ring slot `currentIndex` happened to be at compile time (slot 0). `DescriptorSetNode` binds the compute shader's binding-0 `STORAGE_IMAGE` descriptor from that frozen `CURRENT_VIEW` every frame (correctly re-writing the descriptor set each Execute, but always with the SAME stale image view) — while `ComputeDispatchNode` resolves the image it actually barriers-and-dispatches against via the LIVE `IRenderTarget::GetCurrentImage()` (`RENDER_TARGET_INFO`, following the rotating `currentIndex`). The descriptor's bound image and the barrier/dispatch's actual image are the same physical ring slot on only one phase out of every `imageCount` frames — every other frame they're two different images, so the barrier's careful `GENERAL` transition (already correct per KI-007's fix) applies to the WRONG slot from the descriptor's point of view.
+
+**Fix (2026-07-04):** `RenderTargetNode::ExecuteImpl` now re-publishes `CURRENT_VIEW` (`ctx.Out(RenderTargetNodeConfig::CURRENT_VIEW, target_.GetCurrentView())`) immediately after advancing `currentIndex`, so the descriptor set tracks the live ring slot every frame instead of a compile-time snapshot.
+
+**Two adjacent, independently-real synchronization bugs found and fixed en route** (neither was the flicker's actual cause, but both were genuine spec violations caught by `VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT`):
+- `ComputeDispatchNode::BlitRenderTargetToSwapchain`'s swapchain-image entry barrier used `srcStageMask = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT` — a no-op source that doesn't chain an execution dependency with the WSI acquire semaphore's wait (declared at `VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT` on this command buffer's submit). Harmless only while `oldLayout` was always `UNDEFINED` (nothing to wait for); once real prior-layout tracking was added (see below) this produced `SYNC-HAZARD-WRITE-AFTER-READ` against `vkAcquireNextImageKHR`. Fixed by changing `srcStageMask` to `VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT`.
+- The same function's swapchain entry barrier also hardcoded `oldLayout = VK_IMAGE_LAYOUT_UNDEFINED` unconditionally, when the swapchain image's real layout after the first frame is `VK_IMAGE_LAYOUT_PRESENT_SRC_KHR` (left there by the UI render pass's `finalLayout` + present). Fixed the same way as KI-007 — tracked via the same `renderTargetImageLayouts_` map, keyed by the swapchain image handle too.
+- `RenderPassNode.cpp`'s UI composite render pass subpass-external dependency (built via `libraries/CashSystem/src/RenderPassCacher.cpp`) hardcoded `dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT` only. Since this render pass uses `LOAD_OP_LOAD`, the implicit initial-layout transition also needs `COLOR_ATTACHMENT_READ_BIT` to synchronize against the LOAD read — its absence produced `SYNC-HAZARD-READ-AFTER-WRITE` at `vkCmdBeginRenderPass`. Fixed by adding `VK_ACCESS_COLOR_ATTACHMENT_READ_BIT` to `dstAccessMask` whenever `colorLoadOp == Load`.
+
+**Verification:** live-gate run of `vixen_editor` under `VK_LAYER_KHRONOS_validation` + synchronization validation: `VUID-vkCmdDraw-None-09600` and both `SYNC-HAZARD-*` messages are gone after all three fixes (confirmed zero occurrences across a multi-second run cycling all 4 ring slots repeatedly). Two unrelated, pre-existing validation messages remain (`VUID-vkCmdCopyImageToBuffer-imageOffset-07747` — see KI-012; `VUID-vkGetQueryPoolResults-None-09401` — GPU perf-logger query pool not reset before first read, not yet triaged).
+
+**Severity:** Medium (visual only, no crash, no data loss) · **Status:** RESOLVED
+
+### KI-007 — `ComputeDispatchNode::seenRenderTargetImages_` never prunes stale `VkImage` handles across resizes
+
+**File/line:** `libraries/RenderGraph/include/Nodes/ComputeDispatchNode.h` (was `seenRenderTargetImages_`, now `renderTargetImageLayouts_`), `libraries/RenderGraph/src/Nodes/ComputeDispatchNode.cpp` (`RecordComputeCommands`/`BlitRenderTargetToSwapchain`).
+
+**Symptom (as originally filed):** `seenRenderTargetImages_` was a `std::set<VkImage>` used to pick the correct `oldLayout` (`UNDEFINED` vs `TRANSFER_SRC_OPTIMAL`) for the render-target image's WSI-acquire barrier, keyed on whether a given `VkImage` handle had been seen before. Entries were only ever inserted, never erased, and — worse than originally filed — the seen/not-seen scheme was also simply WRONG once multiple frames are in flight: it assumed every handle strictly alternates GENERAL<->TRANSFER_SRC_OPTIMAL in lockstep, which doesn't hold when a command buffer is re-recorded against a ring slot whose actual last transition doesn't match that two-state guess.
+
+**Fix (2026-07-04):** replaced the set with `std::unordered_map<VkImage, VkImageLayout> renderTargetImageLayouts_`, tracking the ACTUAL last-recorded layout per handle (updated at both the compute-write entry barrier and the post-blit exit barrier), via a small pure/testable free function `DecideRenderTargetPriorLayoutAndUpdate` (`ComputeDispatchNode.h`). Exact instead of guessed; also incidentally fixes the original unbounded-growth complaint (the map is keyed the same way but now semantically correct, and could be pruned the same way if that's ever a real concern).
+
+**Verification:** 4 new unit tests in `test_compute_dispatch_node.cpp` (first-use-is-undefined, second-use-reports-real-tracked-layout, distinct-ring-slots-tracked-independently, map-updates-to-new-layout) — all pass. Does NOT fix the visible flicker/VUID-vkCmdDraw-None-09600 symptom that prompted this investigation — see KI-009 above; this was a real bug found along the way, not the one being chased.
+
+**Severity:** Low (as filed) · **Status:** RESOLVED
+
+---
+
+## KI-006 — `CleanupImpl`-no-Recompile-guard class in `DescriptorSetNode`/`ComputePipelineNode`
+
+**Files/lines:** `libraries/RenderGraph/src/Nodes/DescriptorSetNode.cpp:976-1001` (`DescriptorSetNode::CleanupImpl` — destroys descriptor pool + descriptor set layout unconditionally); `libraries/RenderGraph/src/Nodes/ComputePipelineNode.cpp:124-141` (`ComputePipelineNode::CleanupImpl` — destroys shader module + resets pipeline/layout/cache handles unconditionally).
+
+**Symptom:** neither `CleanupImpl` checks the `CleanupReason` (`Recompile` vs `FinalTeardown`/`DeviceLost`) before tearing down its Vulkan objects — both destroy pool/layout/pipeline/shader-module on every cleanup call, including ordinary resize-triggered recompiles.
+
+**Root cause:** same bug CLASS as the already-fixed KI-004 (device-scoped state torn down/rebuilt without regard to *why* cleanup is happening) — except here the objects are recreated every recompile regardless (no create-once guard reusing a stale handle), so this manifests as extra destroy/recreate churn on every resize rather than a crash. It is the same missing-`reason`-check shape, just without KI-004's crash-causing persistent-handle-reuse half.
+
+**Impact:** wasted Vulkan object churn (descriptor pool/layout, shader module, pipeline) on every resize-driven recompile, and — per KI-005 below — the resulting layout-handle recreation is what feeds the L2 cache-key mismatch's stale-pipeline-bind VUID burst. Not a crash on its own.
+
+**Fix options:** add the same `if (reason == Recompile) return;`-style (or equivalent explicit branch) guard pattern used to fix KI-004's affected nodes, once it's decided which of these objects legitimately need to survive a recompile (likely: none here, since shader/layout content can change across a recompile — needs a design decision, not a blind copy of the KI-004 fix).
+
+**Severity:** Medium (perf/churn + contributing cause of KI-005, not a crash) · **Status:** OPEN (filed, not fixed — out of the widescreen-perf-fix program's bounded scope)
+
+---
+
+## KI-005 — L2 cache-key mismatch: `ComputePipelineCacher` hashes a resize-invariant string while `PipelineLayoutCacher` hands out a live handle
+
+**Files/lines:** `libraries/CashSystem/src/ComputePipelineCacher.cpp:47-56` (`ComputeKey` hashes `ci.layoutKey`, a `std::string`); `libraries/RenderGraph/src/Nodes/ComputePipelineNode.cpp:~201` (`layoutParams.layoutKey = shaderBundle->uuid + "_pipeline_layout"` — constant across resizes, since the shader UUID doesn't change).
+
+**Symptom:** after a resize-triggered recompile, one frame's compute dispatch binds a pipeline object that references the OLD (destroyed) `VkPipelineLayout` handle, producing a burst of stale-pipeline-bind validation errors (VUID) for that single frame before self-correcting.
+
+**Root cause:** `ComputePipelineCacher`'s cache key is computed from `ComputePipelineCreateParams::layoutKey`, a string identifier (`shaderBundle->uuid + "_pipeline_layout"`) that is identical before and after a resize — so the compute-pipeline cache reports a hit and returns the previously-cached `ComputePipelineWrapper` (built against the OLD layout handle) even though `PipelineLayoutCacher` has since recreated the actual `VkPipelineLayout` for the new swapchain extent. The two cachers disagree on identity: one keys by content-string, the other hands out a live, resize-mutable handle.
+
+**Impact:** one frame of VUID validation-layer noise per resize; self-heals on the next recompile pass since the cache eventually converges. Not observed to cause a crash or visible artifact, but is exactly the kind of one-frame hazard window the widescreen-perf-fix program was hunting — filed here because it's shared `CashSystem` infra (used by other cachers too), making a fix out of this program's bounded per-node scope.
+
+**Fix options:** (1) include the live layout handle (not just its string key) in `ComputePipelineCacher::ComputeKey`'s hash, invalidating the cache entry whenever the underlying layout handle changes; (2) have `ComputePipelineNode` explicitly invalidate/evict its cached pipeline entry when it detects `PipelineLayoutCacher` returned a new handle for the same `layoutKey`, rather than relying on the cache's own key comparison.
+
+**Severity:** Low-Medium (validation noise only, self-correcting, one frame) · **Status:** OPEN (filed, not fixed — shared CashSystem infra, out of this program's bounded scope)
+
+---
+
+*(No further open issues at present beyond KI-004 below — see Resolved for everything else.)*
 
 ---
 
@@ -144,3 +324,19 @@ Error (all three, identical): `.vulkan-sdk/1.4.350.1/x86_64/Include/vulkan/vulka
 **Impact was:** High in principle (any real OUT_OF_DATE/SUBOPTIMAL swapchain result crashed the app instead of skipping the frame); this KI's crash was ONE INSTANCE of the user's separately-tracked live fullscreen-button crash class (same "swapchain reports an extent/index change, a downstream node doesn't defend against the transient invalid state" shape) — confirmed identical by the shared fixing commit, not merely plausibly related as originally noted.
 
 **Severity:** High (crash) · **Status:** RESOLVED
+
+---
+
+### KI-014 — Library tests are not `ctest`-discoverable project-wide (`enable_testing()` ordered after `add_subdirectory(libraries)`)
+
+**Discovered:** 2026-07-05, during AppFlow Inc-1 Milestone 3 (the first library added since; the gap is pre-existing and affects every VIXEN library, not AppFlow specifically).
+
+**Symptom:** `ctest --test-dir <build> -N` (or `-R <anything>`) reports `Total Tests: 0` for the ENTIRE project — no library's gtest targets are discovered, despite every library's `tests/CMakeLists.txt` calling `gtest_discover_tests`. No `CTestTestfile.cmake` is generated under `build/libraries/<lib>/tests/`.
+
+**Root cause:** `VIXEN/CMakeLists.txt` calls `add_subdirectory(libraries)` (line ~393) BEFORE `enable_testing()` (line ~445, inside the `if(BUILD_TESTS)` "TESTING INFRASTRUCTURE" block near the bottom). `gtest_discover_tests` only registers CTest entries when testing was enabled at the point the subdirectory was processed; because `enable_testing()` runs afterward, no library subdirectory ever sees an enabled test harness, so nothing is registered with CTest. Verified project-wide: SVO, RenderGraph, CashSystem, EventBus, AppFlow, etc. all lack a generated `CTestTestfile.cmake`.
+
+**Workaround (current, documented):** run the gtest binaries directly — `./build/libraries/<lib>/tests/[Debug/]test_*[.exe] --gtest_brief=1` — which is already `VIXEN/CLAUDE.md`'s documented test command. AppFlow Inc-1's suite (17 tests) was gated this way (build the 5 test targets, run each binary; all exit 0).
+
+**Fix direction (not applied — out of scope for the AppFlow work that found it):** move `enable_testing()` (and the `include(GoogleTest)`/`FetchContent` gtest setup it depends on) ABOVE `add_subdirectory(libraries)` in `VIXEN/CMakeLists.txt`, gated by `if(BUILD_TESTS)`. Then `ctest --test-dir <build>` would discover all library tests. Low-risk, mechanical, but touches the top-level build ordering — worth its own small verified change so the full suite is CI-runnable via one `ctest` invocation.
+
+**Severity:** Low (tests run fine directly; only the aggregate `ctest` runner is affected) · **Status:** OPEN

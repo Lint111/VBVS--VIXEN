@@ -74,6 +74,13 @@ public:
     // Recreate swapchain (for resize handling)
     void Recreate(uint32_t newWidth, uint32_t newHeight);
 
+#if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
+    // Fail-scenario seam: how many times CompileImpl has run (recreations + the initial compile),
+    // so a regression test can assert a burst of resize events collapses into a bounded number of
+    // recompiles instead of one per event.
+    uint32_t CompileCountForTest() const { return compileCount_; }
+#endif
+
 protected:
     // Template method pattern - override *Impl() methods
     void SetupImpl(TypedSetupContext& ctx) override;
@@ -101,6 +108,16 @@ private:
     std::vector<VkSemaphore> renderCompleteSemaphores;  // signaled by render, waited by present
     std::vector<VkFence> presentFences;                 // per-image present fences (VK_EXT_swapchain_maintenance1)
 
+    // Per-image in-flight fence tracking (canonical "imagesInFlight" pattern). Records which
+    // per-FLIGHT fence (from FrameSyncNode) last submitted work for each image. When
+    // MAX_FRAMES_IN_FLIGHT != swapchain image count, the flight ring and the image ring desync, so
+    // FrameSyncNode's per-flight wait does NOT guarantee the previous submission that touched THIS
+    // image's command buffer / descriptor set / query pool has completed. Before reusing an image
+    // we wait on its recorded fence, then stamp it with the current frame's fence. NOT owned (the
+    // fences belong to FrameSyncNode) — this is a non-owning bookkeeping map, so it is never
+    // destroyed here, only resized/cleared. Empty entry = image never used yet.
+    std::vector<VkFence> imagesInFlight;
+
     // Device handle is stored in the parent NodeInstance::device member
 
     // Phase 0.2: Semaphores now managed by FrameSyncNode (per-flight pattern)
@@ -120,6 +137,10 @@ private:
     // subscriptions don't accumulate (each accumulated sub fires an extra MarkNeedsRecompile,
     // turning one resize into a storm of recompiles).
     bool resizeSubscribed_ = false;
+
+#if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
+    uint32_t compileCount_ = 0;
+#endif
 };
 
 } // namespace Vixen::RenderGraph

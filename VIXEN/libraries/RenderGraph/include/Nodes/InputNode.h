@@ -77,6 +77,13 @@ public:
     /// events keep accumulating into the same canonical state either way.
     void ProcessPendingInput();
 
+#if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
+    // Fail-scenario seam (mirrors WindowNode::InjectWindowEvent): enqueue a synthetic mouse-button
+    // event exactly where OnMouseButton does. Needed because the fail-scenario runner creates the
+    // window hidden (GLFW_VISIBLE=false), so no real click ever reaches the GLFW callback.
+    void InjectMouseButton(int button, int action);
+#endif
+
 protected:
     void SetupImpl(TypedSetupContext& ctx) override;
     void CompileImpl(TypedCompileContext& ctx) override;

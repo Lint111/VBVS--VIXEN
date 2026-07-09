@@ -95,7 +95,11 @@ std::uint64_t PipelineLayoutCacher::ComputeKey(const PipelineLayoutCreateParams&
 void PipelineLayoutCacher::Cleanup() {
     LOG_INFO("Cleaning up " + std::to_string(m_entries.size()) + " cached layouts");
 
+    // Locked: m_entries is mutated here while DeviceRegistry can be running
+    // Serialize/DeserializeFromFile for this same cacher on another thread via std::async
+    // (audit V-M9). Released before Clear(), which takes its own unique_lock.
     if (GetDevice()) {
+        std::unique_lock wlock(m_lock);
         for (auto& [key, entry] : m_entries) {
             if (entry.resource && entry.resource->layout != VK_NULL_HANDLE) {
                 LOG_DEBUG("Destroying VkPipelineLayout: " + std::to_string(reinterpret_cast<uint64_t>(entry.resource->layout)));

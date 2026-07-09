@@ -743,6 +743,8 @@ void selectInitialOctant(
     const ESVORayCoefficients& coef)
 {
     constexpr float axis_epsilon = 1e-5f;
+    // CPU-only path (not a shader mirror) — free to pick its own tolerance. Do NOT unify this with
+    // castRayGpuMirror's boundary_epsilon below: that one must match ESVOTraversal.glsl exactly.
     constexpr float boundary_epsilon = 0.01f;
     bool usePositionBasedSelection = (state.t_min < boundary_epsilon);
 
@@ -972,8 +974,14 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayGpuMirror(
     for (int s = 0; s < kGpuStack; ++s) { stack[s].parentPtr = 0u; stack[s].t_max = state.t_max; }
     state.idx = 0;
     {
-        const float be = 1e-4f;
-        const bool usePos = (state.t_min < be);
+        // MUST match ESVOTraversal.glsl:128 and its test oracle GpuTraversalMirror.h:306 exactly —
+        // this function's whole job is bit-fidelity to the real compute shader, not agreement with
+        // selectInitialOctant's CPU path above (which has its own, different obligation and keeps
+        // its own 0.01f). The existing parity suites don't exercise a ray with t_min in (1e-4, 0.01),
+        // so they can't catch this value diverging from the shader; the shader source is the source
+        // of truth here, not the test suite.
+        const float boundary_epsilon = 1e-4f;
+        const bool usePos = (state.t_min < boundary_epsilon);
         glm::vec3 mo;
         mo.x = ((coef.octant_mask & 1) != 0) ? coef.normOrigin.x : (3.0f - coef.normOrigin.x);
         mo.y = ((coef.octant_mask & 2) != 0) ? coef.normOrigin.y : (3.0f - coef.normOrigin.y);

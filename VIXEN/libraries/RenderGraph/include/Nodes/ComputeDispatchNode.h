@@ -7,8 +7,25 @@
 #include "Core/GPUPerformanceLogger.h"
 #include "Data/Nodes/ComputeDispatchNodeConfig.h"
 #include "Core/FrameSyncSchedule.h"
+#include "Nodes/Common/SwapchainBarriers.h"
+#include <unordered_map>
 
 namespace Vixen::RenderGraph {
+
+// KI-007 fix: given the tracked last-known layout for a render-target VkImage handle (absent =
+// never seen -> fresh/recreated image, true prior layout UNDEFINED), returns the layout to declare
+// as the barrier's oldLayout and updates the map to the new layout the caller is about to
+// transition to. Pure/free so it's unit-testable with fake VkImage handles, no device needed.
+inline VkImageLayout DecideRenderTargetPriorLayoutAndUpdate(
+    std::unordered_map<VkImage, VkImageLayout>& tracked,
+    VkImage image,
+    VkImageLayout newLayout)
+{
+    auto it = tracked.find(image);
+    const VkImageLayout priorLayout = (it != tracked.end()) ? it->second : VK_IMAGE_LAYOUT_UNDEFINED;
+    tracked[image] = newLayout;
+    return priorLayout;
+}
 
 /**
  * @brief Node type for generic compute shader dispatch
@@ -74,10 +91,18 @@ private:
     void ReplayEntryBarriers(VkCommandBuffer cmd, const SubmitGroup& group,
                              uint32_t imageIndex,
                              Vixen::Vulkan::Resources::IRenderTarget* swapchainInfo);
-    void TransitionImageToGeneralBarrier2(VkCommandBuffer cmdBuffer, VkImage image);
-    void TransitionImageToPresentBarrier2(VkCommandBuffer cmdBuffer, VkImage image);
     void BindComputePipeline(VkCommandBuffer cmdBuffer, VkPipeline pipeline, VkPipelineLayout layout, VkDescriptorSet descriptorSet);
     void SetPushConstants(Context& ctx, VkCommandBuffer cmdBuffer, VkPipelineLayout layout, const void* pushConstantData);
+
+    // M4: render-scale decoupling. When RENDER_TARGET_INFO is connected, blits the offscreen
+    // render target (already written by the dispatch, still GENERAL) to the swapchain image,
+    // ending in the same layout contract RecordComputeCommands already applies to the swapchain
+    // (leaveImageInGeneral -> GENERAL for the UI pass, else -> PRESENT_SRC).
+    void BlitRenderTargetToSwapchain(VkCommandBuffer cmdBuffer,
+                                     Vixen::Vulkan::Resources::IRenderTarget* renderTarget,
+                                     VkImage swapchainImage,
+                                     VkExtent2D swapchainExtent,
+                                     bool leaveImageInGeneral);
 
     // Device and command pool references
     VulkanDevice* vulkanDevice = nullptr;
@@ -99,6 +124,19 @@ private:
 
     // Task profile for cost estimation (Sprint 6.5: Profile integration)
     ITaskProfile* gpuProfile_ = nullptr;
+
+    // M4 (KI-007 fix): tracks the LAST KNOWN layout of each render-target VkImage handle (the ring
+    // has imageCount_ of them, cycling per in-flight frame). RenderTargetNode keeps its images
+    // persistent across a same-extent recompile (FR-7), so a new Compile does NOT imply new
+    // handles. A plain seen/not-seen set (the pre-fix scheme) assumed every handle alternates
+    // UNDEFINED->GENERAL->[blit]->TRANSFER_SRC_OPTIMAL->GENERAL->... in lockstep, which breaks once
+    // multiple frames are in flight: a command buffer can be RE-RECORDED against a ring slot
+    // whose actual last real transition doesn't match that two-state guess, producing a genuine
+    // oldLayout mismatch (VUID-vkCmdDraw-None-09600) and visibly corrupt/flickering frames on real
+    // hardware, not just validation noise. Tracking the actual last-recorded layout per handle
+    // (updated at both the compute-write barrier and the post-blit transition) is exact instead of
+    // guessed. See DecideRenderTargetPriorLayout (free function, unit-testable without a device).
+    std::unordered_map<VkImage, VkImageLayout> renderTargetImageLayouts_;
 
 public:
     /// Get GPU performance logger for external metrics extraction

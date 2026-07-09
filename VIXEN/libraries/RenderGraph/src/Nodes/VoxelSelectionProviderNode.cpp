@@ -7,6 +7,7 @@
 
 #include <glm/glm.hpp>
 #include <cstring>
+#include <mutex>
 #include <string>
 
 namespace Vixen::RenderGraph {
@@ -76,6 +77,9 @@ void VoxelSelectionProviderNode::CompileImpl(TypedCompileContext& ctx) {
     commandPool_ = ctx.In(VoxelSelectionProviderNodeConfig::COMMAND_POOL);
     idImage_     = ctx.In(VoxelSelectionProviderNodeConfig::ID_IMAGE);
 
+    // KI-012: cache once per Compile, not re-queried per click.
+    requiresFullImageTransfers_ = GetDevice() && GetDevice()->RequiresFullImageTransfers();
+
     const bool ready = GetDevice() && commandPool_ != VK_NULL_HANDLE && idImage_ != VK_NULL_HANDLE;
     NODE_LOG_INFO(std::string("[VoxelSelectionProvider] compile: priority=") +
                   std::to_string(priority_) + "; " +
@@ -101,12 +105,16 @@ void VoxelSelectionProviderNode::ExecuteImpl(TypedExecuteContext& ctx) {
 
     // Find the left-button press entry (input-rework slice 1 M3: the shared click list replaces
     // the old private lastLeftDown_ edge detector). Several presses in one frame: the LAST one
-    // wins — matches the old single-poll semantics (the readback is a single crosshair sample, not
-    // per-press, so only whether a press happened this frame matters here).
+    // wins — matches the old single-poll semantics (only whether/where a press happened this
+    // frame matters here). x/y are the cursor position AT that press (ClickEvent's own
+    // fold-order field), so the pick follows the actual click position, not a fixed crosshair.
     bool pressedThisFrame = false;
+    float clickX = 0.0f, clickY = 0.0f;
     for (const ClickEvent& click : input->clicksThisFrame) {
         if (click.button == static_cast<int>(EventBus::MouseButton::Left) && click.pressed) {
             pressedThisFrame = true;
+            clickX = click.x;
+            clickY = click.y;
         }
     }
 
@@ -126,7 +134,7 @@ void VoxelSelectionProviderNode::ExecuteImpl(TypedExecuteContext& ctx) {
         return;
     }
 
-    // Read back the center texel of the current frame's pick-ID image.
+    // Read back the pixel under the actual cursor position of the current frame's pick-ID image.
     //
     // Which frame's image: PickIdTargetNode re-emits images_[frameIndex % count] as ID_IMAGE each
     // Execute and binds that same slot at binding 9, so the configured idImage_ is exactly the image
@@ -138,10 +146,17 @@ void VoxelSelectionProviderNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // ordering (this frame's dispatch not yet submitted) we read a complete, recent pickID — never a
     // torn write. If stale reads are ever observed under fast motion, the principled fallback is the
     // previous-completed-frame slot — not needed so far.
+    //
+    // Clamp the click position into the image: a click can legitimately land at the exact edge
+    // (e.g. width-1 rounding) or, transiently, just outside during a resize race.
+    const uint32_t targetX = static_cast<uint32_t>(glm::clamp(clickX, 0.0f, float(width) - 1.0f));
+    const uint32_t targetY = static_cast<uint32_t>(glm::clamp(clickY, 0.0f, float(height) - 1.0f));
+
     uint32_t pickID = kMissSentinel;
-    if (!ReadCenterPixel(width, height, pickID) || pickID == kMissSentinel) {
-        // Readback failed (see prior error log) or empty space under the crosshair — report a miss.
-        NODE_LOG_INFO("[VoxelSelectionProvider] click — miss (empty space under crosshair)");
+    if (!ReadPixelAt(width, height, targetX, targetY, pickID) || pickID == kMissSentinel) {
+        // Readback failed (see prior error log) or empty space under the cursor — report a miss.
+        NODE_LOG_INFO("[VoxelSelectionProvider] click — miss (empty space under cursor) pixel=(" +
+                      std::to_string(targetX) + "," + std::to_string(targetY) + ")");
         ctx.Out(VoxelSelectionProviderNodeConfig::CANDIDATE, candidate);
         return;
     }
@@ -159,7 +174,8 @@ void VoxelSelectionProviderNode::ExecuteImpl(TypedExecuteContext& ctx) {
     NODE_LOG_INFO("[VoxelSelectionProvider] click — HIT pickID=" + std::to_string(pickID) +
                   " brick=" + std::to_string(brickIndex) +
                   " voxel=" + std::to_string(voxelLinearIdx) +
-                  " priority=" + std::to_string(priority_));
+                  " priority=" + std::to_string(priority_) +
+                  " pixel=(" + std::to_string(targetX) + "," + std::to_string(targetY) + ")");
 
     ctx.Out(VoxelSelectionProviderNodeConfig::CANDIDATE, candidate);
 }
@@ -169,9 +185,9 @@ void VoxelSelectionProviderNode::ExecuteImpl(TypedExecuteContext& ctx) {
 // device_ → GetDevice() per the base-NodeInstance device convention).
 // ----------------------------------------------------------------------------
 
-bool VoxelSelectionProviderNode::EnsureStagingBuffer() {
-    if (stagingBuffer_ != VK_NULL_HANDLE) {
-        return true;  // already created — reused across clicks
+bool VoxelSelectionProviderNode::EnsureStagingBuffer(VkDeviceSize bytesNeeded) {
+    if (stagingBuffer_ != VK_NULL_HANDLE && stagingCapacity_ >= bytesNeeded) {
+        return true;  // already created and large enough — reused across clicks
     }
     VulkanDevice* device = GetDevice();
     if (!device) {
@@ -179,9 +195,12 @@ bool VoxelSelectionProviderNode::EnsureStagingBuffer() {
     }
     VkDevice vkDevice = device->device;
 
+    // Grown (or first-ever) allocation: drop the old one first (idempotent if none exists).
+    DestroyStagingBuffer();
+
     VkBufferCreateInfo bufInfo{};
     bufInfo.sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    bufInfo.size        = kStagingSize;
+    bufInfo.size        = bytesNeeded;
     bufInfo.usage       = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     bufInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
@@ -216,11 +235,21 @@ bool VoxelSelectionProviderNode::EnsureStagingBuffer() {
     }
 
     vkBindBufferMemory(vkDevice, stagingBuffer_, stagingMemory_, 0);
+    stagingCapacity_ = bytesNeeded;
     return true;
 }
 
-bool VoxelSelectionProviderNode::ReadCenterPixel(uint32_t width, uint32_t height, uint32_t& pickIDOut) {
-    if (!EnsureStagingBuffer()) {
+bool VoxelSelectionProviderNode::ReadPixelAt(uint32_t width, uint32_t height,
+                                             uint32_t targetX, uint32_t targetY,
+                                             uint32_t& pickIDOut) {
+    // KI-012: a queue family with minImageTransferGranularity=(0,0,0) only accepts whole-image
+    // copies at offset (0,0,0) -- the single-texel sub-region copy below is a spec violation
+    // there. Fall back to copying the whole id image and indexing the center texel on the CPU.
+    const VkDeviceSize bytesNeeded = requiresFullImageTransfers_
+        ? static_cast<VkDeviceSize>(width) * height * sizeof(uint32_t)
+        : kSingleTexelSize;
+
+    if (!EnsureStagingBuffer(bytesNeeded)) {
         return false;
     }
     VulkanDevice* device = GetDevice();
@@ -246,19 +275,30 @@ bool VoxelSelectionProviderNode::ReadCenterPixel(uint32_t width, uint32_t height
         return false;
     }
 
-    // Copy exactly the center texel. The ID image is already in VK_IMAGE_LAYOUT_GENERAL (storage
-    // image, transitioned once by PickIdTargetNode and kept there), which is valid for TRANSFER_SRC.
+    // The ID image is already in VK_IMAGE_LAYOUT_GENERAL (storage image, transitioned once by
+    // PickIdTargetNode and kept there), which is valid for TRANSFER_SRC.
+    //
+    // KI-012: a sub-region copy (offset != (0,0,0) and/or extent != the full image) is a spec
+    // violation on a queue family whose minImageTransferGranularity is (0,0,0) — that queue only
+    // accepts whole-image copies at offset (0,0,0). requiresFullImageTransfers_ (cached in
+    // CompileImpl from VulkanDevice::RequiresFullImageTransfers()) picks the correct region here;
+    // the center-texel extraction below runs on the CPU in that case instead of via imageOffset.
     VkBufferImageCopy region{};
     region.bufferOffset                    = 0;
-    region.bufferRowLength                  = 0;  // tightly packed (single texel)
+    region.bufferRowLength                  = 0;  // tightly packed
     region.bufferImageHeight                = 0;
     region.imageSubresource.aspectMask      = VK_IMAGE_ASPECT_COLOR_BIT;
     region.imageSubresource.mipLevel        = 0;
     region.imageSubresource.baseArrayLayer  = 0;
     region.imageSubresource.layerCount      = 1;
-    region.imageOffset                      = { static_cast<int32_t>(width / 2),
-                                                static_cast<int32_t>(height / 2), 0 };
-    region.imageExtent                      = { 1, 1, 1 };
+    if (requiresFullImageTransfers_) {
+        region.imageOffset = { 0, 0, 0 };
+        region.imageExtent = { width, height, 1 };
+    } else {
+        region.imageOffset = { static_cast<int32_t>(targetX),
+                               static_cast<int32_t>(targetY), 0 };
+        region.imageExtent = { 1, 1, 1 };
+    }
 
     vkCmdCopyImageToBuffer(cmd, idImage_, VK_IMAGE_LAYOUT_GENERAL, stagingBuffer_, 1, &region);
 
@@ -283,22 +323,34 @@ bool VoxelSelectionProviderNode::ReadCenterPixel(uint32_t width, uint32_t height
     submit.commandBufferCount = 1;
     submit.pCommandBuffers    = &cmd;
 
-    if (vkQueueSubmit(device->queue, 1, &submit, fence) != VK_SUCCESS) {
-        vkDestroyFence(vkDevice, fence, nullptr);
-        vkFreeCommandBuffers(vkDevice, commandPool_, 1, &cmd);
-        return false;
+    {
+        // Externally synchronized per Vulkan spec (audit V-M11); NOT held across the
+        // vkWaitForFences below, per the comment above about not stalling the whole queue.
+        std::lock_guard<std::mutex> submitLock(device->SubmitMutex(device->queue));
+        if (vkQueueSubmit(device->queue, 1, &submit, fence) != VK_SUCCESS) {
+            vkDestroyFence(vkDevice, fence, nullptr);
+            vkFreeCommandBuffers(vkDevice, commandPool_, 1, &cmd);
+            return false;
+        }
     }
 
     vkWaitForFences(vkDevice, 1, &fence, VK_TRUE, UINT64_MAX);
 
-    // --- Map the staging memory and read the single uint32 pickID ---
+    // --- Map the staging memory and read the pickID. On the full-image path (KI-012), the
+    // staging buffer holds the WHOLE image and the center texel must be indexed on the CPU. ---
     void* mapped = nullptr;
-    if (vkMapMemory(vkDevice, stagingMemory_, 0, kStagingSize, 0, &mapped) != VK_SUCCESS) {
+    if (vkMapMemory(vkDevice, stagingMemory_, 0, bytesNeeded, 0, &mapped) != VK_SUCCESS) {
         vkDestroyFence(vkDevice, fence, nullptr);
         vkFreeCommandBuffers(vkDevice, commandPool_, 1, &cmd);
         return false;
     }
-    std::memcpy(&pickIDOut, mapped, sizeof(uint32_t));
+    if (requiresFullImageTransfers_) {
+        const uint32_t* pixels = static_cast<const uint32_t*>(mapped);
+        const size_t targetIdx = static_cast<size_t>(targetY) * width + targetX;
+        pickIDOut = pixels[targetIdx];
+    } else {
+        std::memcpy(&pickIDOut, mapped, sizeof(uint32_t));
+    }
     vkUnmapMemory(vkDevice, stagingMemory_);
 
     // Free the one-shot cmd buffer + fence (staging buffer is kept for reuse).
@@ -321,6 +373,7 @@ void VoxelSelectionProviderNode::DestroyStagingBuffer() {
         vkFreeMemory(vkDevice, stagingMemory_, nullptr);
         stagingMemory_ = VK_NULL_HANDLE;
     }
+    stagingCapacity_ = 0;
 }
 
 void VoxelSelectionProviderNode::CleanupImpl(TypedCleanupContext& ctx) {

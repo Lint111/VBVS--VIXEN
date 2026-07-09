@@ -134,6 +134,17 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
         vulkan12Features.bufferDeviceAddress = VK_TRUE;
         needVulkan12Features = true;
     }
+    // hostQueryReset (Vulkan 1.2 core): lets the CPU reset a query pool via vkResetQueryPool without
+    // a command buffer. GPUTimestampQuery resets its per-frame timestamp pools on the host at
+    // creation so the very first vkGetQueryPoolResults (the startup/first-frames window, before each
+    // per-flight pool has completed its first cmd-buffer reset→write→submit cycle) reads an
+    // initialized pool instead of an unreset one — the VUID-vkGetQueryPoolResults-None-09401 startup
+    // burst. When the GPU lacks the feature, GPUTimestampQuery falls back to GPU-side resets only
+    // (HasCapability check there), so this is a strict improvement, never a hard dependency.
+    if (capabilityGraph_.IsCapabilityAvailable("DeviceFeature:hostQueryReset")) {
+        vulkan12Features.hostQueryReset = VK_TRUE;
+        needVulkan12Features = true;
+    }
     if (needVulkan12Features) {
         pNextChainEnd = reinterpret_cast<void**>(AppendToPNext(pNextChainEnd, &vulkan12Features));
     }
@@ -330,10 +341,27 @@ bool VulkanDevice::HasPresentSupport() const {
     return (graphicsQueueWithPresentIndex == graphicsQueueIndex);
 }
 
+bool VulkanDevice::RequiresFullImageTransfers() const {
+    if (graphicsQueueIndex >= queueFamilyProperties.size()) {
+        return false;
+    }
+    const VkExtent3D& granularity = queueFamilyProperties[graphicsQueueIndex].minImageTransferGranularity;
+    return granularity.width == 0 && granularity.height == 0 && granularity.depth == 0;
+}
+
 PFN_vkQueuePresentKHR VulkanDevice::GetPresentFunction() const {
     // vkQueuePresentKHR is always available when VK_KHR_swapchain extension is enabled
     // Return the standard function pointer
     return vkQueuePresentKHR;
+}
+
+std::mutex& VulkanDevice::SubmitMutex(VkQueue queue) {
+    std::lock_guard<std::mutex> lock(submitMutexMapLock_);
+    auto it = submitMutexes_.find(queue);
+    if (it == submitMutexes_.end()) {
+        it = submitMutexes_.emplace(queue, std::make_unique<std::mutex>()).first;
+    }
+    return *it->second;
 }
 
 // Helper to append a feature struct to the pNext chain
@@ -481,6 +509,9 @@ std::vector<std::string> VulkanDevice::QueryAvailableDeviceFeatures() const {
     if (vulkan12.timelineSemaphore) {
         supported.emplace_back("timelineSemaphore");
     }
+    if (vulkan12.hostQueryReset) {
+        supported.emplace_back("hostQueryReset");
+    }
     if (vulkan13.synchronization2) {
         supported.emplace_back("synchronization2");
     }
@@ -516,6 +547,23 @@ void VulkanDevice::WaitAllUploads() {
     if (uploader_) {
         uploader_->WaitIdle();
     }
+}
+
+void VulkanDevice::FlushUploads() {
+    if (uploader_) {
+        uploader_->Flush();
+    }
+}
+
+bool VulkanDevice::IsUploadComplete(ResourceManagement::UploadHandle handle) const {
+    if (!uploader_) {
+        return true;  // no uploader configured — nothing to wait on
+    }
+    // ProcessCompletions() advances GPU-side fence/timeline polling; IsComplete() alone
+    // would never transition Pending/Submitted -> Completed without something driving
+    // that check, and nothing else in the app currently polls the uploader per frame.
+    uploader_->ProcessCompletions();
+    return uploader_->IsComplete(handle);
 }
 
 ResourceManagement::DeviceBudgetManager* VulkanDevice::GetBudgetManager() const {

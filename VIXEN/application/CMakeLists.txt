@@ -11,4 +11,7 @@ add_subdirectory(main)
 # Benchmark tool (headless compute profiler)
 add_subdirectory(benchmark)
 
+# Voxel authoring editor (Inc1: load/render/toggle/save a VoxelDocument)
+add_subdirectory(editor)
+
 message(STATUS "Application configured - all executables defined")

@@ -3,25 +3,25 @@
  * @brief P2.2 M2 — Live procedural compute render via the compile realization.
  *
  * Emits an all-HLSL compute shader from a sphere∪sphere SdfInstruction program,
- * compiles it via ShaderCompiler (HLSL→SPIR-V), dispatches it on lavapipe with
- * a minimal 1-binding descriptor layout (storage image) + push constants (camera).
+ * compiles it via ShaderCompiler (HLSL→SPIR-V), dispatches it with a minimal
+ * 1-binding descriptor layout (storage image) + push constants (camera).
  * Asserts bodyPixels > 20000 and writes /tmp/glsl_recipe_procedural.png.
  *
  * Binding contract (must match kTraceMain in SdfRecipeCodegen.h):
  *   binding 0 = RWTexture2D (storage image, R8G8B8A8_UNORM)
  *   push constant range 0..76 = cbuffer PC (76 bytes)
  *
- * SAFETY — LAVAPIPE ONLY (identical contract to test_body_instance_raymarch_render.cpp)
- * lavapipe (llvmpipe) is a pure-CPU rasterizer that never touches WSL2/Mesa-Dozen.
- * The fixture hard-asserts softwareConfirmed_ before any vkQueueSubmit.
+ * DEVICE SELECTION (identical contract to test_body_instance_raymarch_render.cpp):
+ * uses VixenSelectWslGpuIcd() to prefer Mesa-Dozen (the real GPU) on WSL2, falling
+ * back to lavapipe otherwise. The fixture hard-asserts softwareConfirmed_ names one
+ * of the two verified devices before any vkQueueSubmit.
  *
- * Critical lavapipe gotcha: storage-image writes silently no-op unless the device is
- * created with Vulkan 1.3 instance API + shaderStorageImageWriteWithoutFormat enabled.
+ * Storage-image gotcha (applies to both devices): writes silently no-op unless the
+ * device is created with Vulkan 1.3 instance API + shaderStorageImageWriteWithoutFormat
+ * enabled.
  *
- * Run:
- *   VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json \
- *   VK_LAYER_PATH=<sdk>/x86_64/share/vulkan/explicit_layer.d \
- *   ./test_procedural_recipe_render
+ * Run: ./test_procedural_recipe_render
+ *   (set VK_ICD_FILENAMES explicitly to force a specific ICD, e.g. for comparison.)
  *
  * Output: /tmp/glsl_recipe_procedural.png (512x512 RGBA8, procedural peanut sphere-trace).
  */
@@ -32,6 +32,7 @@
 #include "Recipe/SdfInstruction.h"
 #include "ShaderCompiler.h"
 #include "TestVkValidation.h"
+#include "VulkanGlobalNames.h"  // VixenSelectWslGpuIcd
 
 #include <vulkan/vulkan.h>
 
@@ -157,12 +158,17 @@ protected:
     static bool LooksLikeSoftware(const VkPhysicalDeviceProperties& props) {
         std::string name(props.deviceName);
         for (char& c : name) c = static_cast<char>(::tolower(c));
-        return (name.find("llvmpipe") != std::string::npos ||
-                name.find("lavapipe") != std::string::npos) &&
-               props.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU;
+        const bool isSoftware =
+            (name.find("llvmpipe") != std::string::npos ||
+             name.find("lavapipe") != std::string::npos) &&
+            props.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU;
+        const bool isDozen = name.find("direct3d12") != std::string::npos;
+        return isSoftware || isDozen;
     }
 
     void SetUp() override {
+        VixenSelectWslGpuIcd();
+
         VkApplicationInfo appInfo{};
         appInfo.sType            = VK_STRUCTURE_TYPE_APPLICATION_INFO;
         appInfo.pApplicationName = "test_procedural_recipe_render";
@@ -182,12 +188,13 @@ protected:
         instInfo.ppEnabledExtensionNames = extensions;
 
         ASSERT_EQ(vkCreateInstance(&instInfo, nullptr, &instance_), VK_SUCCESS)
-            << "vkCreateInstance failed — is lavapipe on VK_ICD_FILENAMES?";
+            << "vkCreateInstance failed — is a Vulkan device available?";
 
         ASSERT_NO_FATAL_FAILURE(PickSoftwarePhysicalDevice());
         ASSERT_TRUE(softwareConfirmed_)
             << "Refusing to run: device '" << selectedDeviceName_
-            << "' is NOT lavapipe. Aborting before vkQueueSubmit.";
+            << "' is not a verified device (software rasterizer or Dozen). "
+               "Aborting before vkQueueSubmit.";
 
         ASSERT_NO_FATAL_FAILURE(CreateLogicalDevice());
         ASSERT_NO_FATAL_FAILURE(CreateCommandPool());
@@ -211,8 +218,7 @@ protected:
     void PickSoftwarePhysicalDevice() {
         uint32_t count = 0;
         ASSERT_EQ(vkEnumeratePhysicalDevices(instance_, &count, nullptr), VK_SUCCESS);
-        ASSERT_GT(count, 0u)
-            << "No Vulkan physical devices — is VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json set?";
+        ASSERT_GT(count, 0u) << "No Vulkan physical devices visible.";
         std::vector<VkPhysicalDevice> devices(count);
         ASSERT_EQ(vkEnumeratePhysicalDevices(instance_, &count, devices.data()), VK_SUCCESS);
         for (VkPhysicalDevice dev : devices) {

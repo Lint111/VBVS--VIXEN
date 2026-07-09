@@ -1,9 +1,8 @@
 #include "Headers.h"
-#include "VulkanApplicationBase.h"
 #include "VulkanGraphApplication.h"
 #include "VulkanGlobalNames.h"
 #include <Logger.h>
-#include <cstdlib>  // std::getenv for VIXEN_LOG_LEVEL
+#include <cstdlib>  // std::getenv for VIXEN_LOG_LEVEL, std::strtoull for VIXEN_EXIT_AFTER_FRAMES
 #include <string>
 
 // Validation layers/extensions are gated by the cross-platform VIXEN_VULKAN_VALIDATION
@@ -65,45 +64,19 @@ int main(int argc, char** argv) {
     mainLogger->SetTerminalOutput(true);
     mainLogger->Info("Starting VulkanGraphApplication...");
 
-    try {
-        // Instantiate the application directly (AR#7: the singleton is gone). unique_ptr so
-        // teardown (~VulkanGraphApplication -> DeInitialize) runs deterministically on scope exit.
-        auto app = std::make_unique<VulkanGraphApplication>();
-        VulkanApplicationBase* appObj = app.get();
+    // Instantiate the application directly (AR#7: the singleton is gone). unique_ptr so
+    // teardown (~VulkanGraphApplication -> DeInitialize) runs deterministically on scope exit.
+    auto app = std::make_unique<VulkanGraphApplication>();
 
-        mainLogger->Info("Calling Initialize...");
-        appObj -> Initialize();
-
-        mainLogger->Info("Calling Prepare...");
-        appObj -> Prepare();
-        if (!appObj->IsPrepared()) {
-            // Phase 2b: Prepare() now reports failure via IsPrepared()/GetLastError() instead of
-            // throwing (so a C# host gets a status, not a C++ exception). Abort the run gracefully.
-            mainLogger->Error("Prepare failed: " + appObj->GetLastError() + " - aborting before render loop");
-            appObj -> DeInitialize();
-            return -1;
-        }
-
-        mainLogger->Info("Entering render loop...");
-        bool isWindowOpen = true;
-        while(isWindowOpen) {
-            appObj -> Update();
-            isWindowOpen = appObj->Render();
-        }
-
-        mainLogger->Info("Cleaning up...");
-        appObj -> DeInitialize();
-        mainLogger->Info("DeInitialize complete");
-    }
-    catch(const std::exception& e) {
-        mainLogger->Error(std::string("Exception caught: ") + e.what());
-        return -1;
-    }
-    catch(...) {
-        mainLogger->Error("Unknown exception caught!");
-        return -1;
+    // VIXEN_EXIT_AFTER_FRAMES=<n>: close cleanly after n frames (unattended A/B runs; exits
+    // through the same path as a window close so logs flush via ExtractLogs).
+    uint64_t exitAfterFrames = 0;
+    if (const char* env = std::getenv("VIXEN_EXIT_AFTER_FRAMES")) {
+        exitAfterFrames = static_cast<uint64_t>(std::strtoull(env, nullptr, 10));
     }
 
-    mainLogger->Info("Exiting normally");
-    return 0;
+    // Engine-owned loop: Initialize -> Prepare -> loop -> DeInitialize, with the standalone
+    // app's frame-timer instrumentation (rolling avg/p99/FPS + outlier logging) enabled. All
+    // lifecycle + the try/catch boundary now live in Run().
+    return app->Run({ .exitAfterFrames = exitAfterFrames, .enableFrameTimer = true });
 }

@@ -3,12 +3,14 @@
 #define NOMINMAX
 
 #include "IDebugBuffer.h"
+#include "IDebugCapture.h"
 #include "DebugRaySample.h"
 #include <vulkan/vulkan.h>
 #include <vector>
 #include <span>
 #include <any>
 #include <cstdint>
+#include <string>
 
 namespace Vixen::RenderGraph::Debug {
 
@@ -34,7 +36,16 @@ namespace Vixen::RenderGraph::Debug {
  * auto traces = buffer.GetRayTraces();
  * @endcode
  */
-class RayTraceBuffer : public IDebugBuffer {
+// RayTraceBuffer implements BOTH IDebugBuffer (the polymorphic buffer-data interface) and
+// IDebugCapture (the "this resource is debug-capturable, here's its identity" marker
+// DescriptorResourceGathererNode::ProcessSlot looks for via GetInterface<IDebugCapture>()).
+// Finishes the migration DebugCaptureResource's deprecation comment called for ("use
+// RayTraceBuffer... directly instead") — that migration moved VoxelGridNode off the wrapper
+// class but never updated RayTraceBuffer itself to implement IDebugCapture, so the gatherer's
+// debug-flagged-slot detection has been silently finding nothing (WARNING: Debug-flagged slot N
+// does not implement IDebugCapture) ever since; the whole ray-trace debug-export pipeline
+// (DebugBufferReaderNode's autoExport) was dead as a result.
+class RayTraceBuffer : public IDebugBuffer, public IDebugCapture {
 public:
     /**
      * @brief Conversion type declaration for compile-time type system
@@ -106,6 +117,25 @@ protected:
 
 public:
     // =========================================================================
+    // IDebugCapture interface
+    // =========================================================================
+
+    IDebugBuffer* GetBuffer() override { return this; }
+    const IDebugBuffer* GetBuffer() const override { return this; }
+
+    std::string GetDebugName() const override { return debugName_; }
+    uint32_t GetBindingIndex() const override { return bindingIndex_; }
+
+    bool IsCaptureEnabled() const override { return captureEnabled_; }
+    void SetCaptureEnabled(bool enabled) override { captureEnabled_ = enabled; }
+
+    // Set once by the owning node (VoxelGridNode etc.) after construction — not part of the
+    // constructor since callers build the buffer with just its capacity, then separately
+    // know their own instance name/binding index.
+    void SetDebugName(std::string name) { debugName_ = std::move(name); }
+    void SetBindingIndex(uint32_t binding) { bindingIndex_ = binding; }
+
+    // =========================================================================
     // RayTrace-specific accessors
     // =========================================================================
 
@@ -158,6 +188,11 @@ private:
     std::vector<RayTrace> rayTraces_;
     uint32_t capturedCount_ = 0;
     uint32_t totalWrites_ = 0;
+
+    // IDebugCapture identity/state (see SetDebugName/SetBindingIndex above)
+    std::string debugName_ = "RayTraceBuffer";
+    uint32_t bindingIndex_ = 0;
+    bool captureEnabled_ = true;
 
     // Helper to find suitable memory type
     static uint32_t FindMemoryType(

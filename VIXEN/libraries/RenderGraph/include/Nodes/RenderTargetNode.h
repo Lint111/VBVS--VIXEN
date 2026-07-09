@@ -26,8 +26,10 @@ public:
  *
  * FR-7 lifecycle: images persist across graph recompile; only released on FinalTeardown.
  *
- * Note: followSwapchainExtent / resize is deliberately out of scope for this first iteration.
- * Use explicit width / height parameters (PARAM_WIDTH, PARAM_HEIGHT). See AR#28 follow-ups.
+ * Sizing: explicit width/height (PARAM_WIDTH/PARAM_HEIGHT) by default. When EXTENT_SOURCE is
+ * connected, follow-swapchain mode takes over: extent = ceil(sourceExtent * PARAM_SCALE),
+ * recomputed every Compile and the image recreated only when the computed extent changes. See
+ * AR#28 follow-ups / Widescreen-Perf-Fix-Plan-2026-07.md M4.1.
  */
 class RenderTargetNode : public TypedNode<RenderTargetNodeConfig> {
 public:
@@ -35,6 +37,10 @@ public:
 
     RenderTargetNode(const std::string& instanceName, NodeType* nodeType);
     ~RenderTargetNode() override = default;
+
+    // Computes ceil(source.extent * scale), clamped to >= 1x1 and scale clamped to (0,1].
+    // Pure function; public so the sizing math is unit-testable without a device round-trip.
+    static VkExtent2D ComputeFollowExtent(VkExtent2D source, float scale);
 
 protected:
     void SetupImpl(TypedSetupContext&    ctx) override;
@@ -53,6 +59,7 @@ private:
     uint32_t           imageCount_ = 0;
     VkFormat           format_     = VK_FORMAT_R8G8B8A8_UNORM;
     VkImageUsageFlags  usage_      = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    float              scale_      = 1.0f;
 };
 
 } // namespace Vixen::RenderGraph

@@ -1,8 +1,11 @@
 #pragma once
 
 #include "ParameterDataTypes.h"
+#include <cstdio>
+#include <limits>
 #include <map>
 #include <string>
+#include <type_traits>
 #include <variant>
 
 namespace Vixen::RenderGraph {
@@ -62,6 +65,24 @@ public:
             return *value;
         }
 
+        // int32<->uint32 is the canonical silent failure: call sites store int literals,
+        // nodes read uint32_t (see Widescreen-Perf-Sweep-Findings-2026-07 D1 — this
+        // defaulted every fresh window to 800x600). Convert when the value is in range.
+        if constexpr (std::is_same_v<T, uint32_t>) {
+            if (auto* v = std::get_if<int32_t>(&it->second)) {
+                if (*v >= 0) return static_cast<uint32_t>(*v);
+            }
+        } else if constexpr (std::is_same_v<T, int32_t>) {
+            if (auto* v = std::get_if<uint32_t>(&it->second)) {
+                if (*v <= static_cast<uint32_t>(std::numeric_limits<int32_t>::max()))
+                    return static_cast<int32_t>(*v);
+            }
+        }
+
+        // A silent default here cost weeks of "why is the window 800x600" — be loud.
+        std::fprintf(stderr,
+            "[NodeParameterManager] WARNING: parameter '%s' stored with a different type "
+            "than requested — returning default\n", name.c_str());
         return defaultValue;
     }
 

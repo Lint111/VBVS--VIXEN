@@ -1,21 +1,21 @@
 /**
  * @file test_recipe_pool_render.cpp
- * @brief I4.1 — BodyOctreeSceneNode::SetRecipePool live render gate (lavapipe).
+ * @brief I4.1 — BodyOctreeSceneNode::SetRecipePool live render gate.
  *
  * Bakes 4 SDF sphere recipes of distinct radii into a pool, calls SetRecipePool,
- * renders 4 instances (one per octreeIndex) on lavapipe, and asserts that all 4
+ * renders 4 instances (one per octreeIndex), and asserts that all 4
  * bodies produce visible hit pixels.
  *
  * This is the first test that exercises the M2 SSBO change (binding 5 = STORAGE)
  * at runtime via the BodyOctreeSceneNode path. If the SSBO wiring is wrong the
  * shader reads garbage configs and all bodies render blank.
  *
- * SAFETY — LAVAPIPE ONLY: identical contract to test_body_instance_raymarch_render.cpp.
- * lavapipe device is hard-asserted before any vkQueueSubmit.
+ * DEVICE SELECTION: identical contract to test_body_instance_raymarch_render.cpp —
+ * prefers Mesa-Dozen (the real GPU) via VixenSelectWslGpuIcd(), falls back to
+ * lavapipe. An unrecognized device is hard-asserted against before any vkQueueSubmit.
  *
- * Run:
- *   VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json \
- *   ./test_recipe_pool_render
+ * Run: ./test_recipe_pool_render
+ *   (set VK_ICD_FILENAMES explicitly to force a specific ICD, e.g. for comparison.)
  *
  * Output: /tmp/recipe_pool_render.png (512x512 RGBA8, 4-body scene).
  */
@@ -33,6 +33,7 @@
 #include "Recipe/RecipeRegistry.h"
 #include "Recipe/RecipeBaker.h"
 #include "TestVkValidation.h"
+#include "VulkanGlobalNames.h"  // VixenSelectWslGpuIcd
 
 #include <vulkan/vulkan.h>
 
@@ -132,12 +133,16 @@ protected:
 
     static bool LooksLikeSoftware(const VkPhysicalDeviceProperties& p) {
         std::string n(p.deviceName); for (char& c : n) c = char(::tolower(c));
-        return (n.find("llvmpipe") != std::string::npos ||
-                n.find("lavapipe") != std::string::npos) &&
-               p.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU;
+        const bool isSoftware =
+            (n.find("llvmpipe") != std::string::npos ||
+             n.find("lavapipe") != std::string::npos) &&
+            p.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU;
+        const bool isDozen = n.find("direct3d12") != std::string::npos;
+        return isSoftware || isDozen;
     }
 
     void SetUp() override {
+        VixenSelectWslGpuIcd();
         VkApplicationInfo ai{}; ai.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
         ai.pApplicationName = "test_recipe_pool_render"; ai.apiVersion = VK_API_VERSION_1_3;
         const auto layers = EnabledValidationLayers();
@@ -164,7 +169,7 @@ protected:
 
     void PickSoftwareDevice() {
         uint32_t cnt = 0; ASSERT_EQ(vkEnumeratePhysicalDevices(instance_, &cnt, nullptr), VK_SUCCESS);
-        ASSERT_GT(cnt, 0u) << "No Vulkan devices. Is VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json set?";
+        ASSERT_GT(cnt, 0u) << "No Vulkan devices visible.";
         std::vector<VkPhysicalDevice> devs(cnt);
         ASSERT_EQ(vkEnumeratePhysicalDevices(instance_, &cnt, devs.data()), VK_SUCCESS);
         for (auto dev : devs) {
@@ -259,10 +264,12 @@ protected:
         VkDeviceMemory traceMem=VK_NULL_HANDLE, ctrMem=VK_NULL_HANDLE;
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, traceBuf, traceMem, true);
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, ctrBuf, ctrMem, true);
-        VkBuffer dummySdf=VK_NULL_HANDLE, dummyLookup=VK_NULL_HANDLE;
-        VkDeviceMemory dSdfMem=VK_NULL_HANDLE, dLookupMem=VK_NULL_HANDLE;
+        VkBuffer dummySdf=VK_NULL_HANDLE, dummyLookup=VK_NULL_HANDLE, dummyMip=VK_NULL_HANDLE, dummyIter=VK_NULL_HANDLE;
+        VkDeviceMemory dSdfMem=VK_NULL_HANDLE, dLookupMem=VK_NULL_HANDLE, dMipMem=VK_NULL_HANDLE, dIterMem=VK_NULL_HANDLE;
+        CreateHostBuffer(256,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummyIter,dIterMem,true);  // Inc1 M4b binding 14
         if (sdf    == VK_NULL_HANDLE) { CreateHostBuffer(256,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummySdf,dSdfMem,true); sdf = dummySdf; }
         if (lookup == VK_NULL_HANDLE) { CreateHostBuffer(256,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummyLookup,dLookupMem,true); lookup = dummyLookup; }
+        CreateHostBuffer(256,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummyMip,dMipMem,true);
 
         VkImage colorImg=VK_NULL_HANDLE, idImg=VK_NULL_HANDLE;
         VkDeviceMemory colorMem=VK_NULL_HANDLE, idMem=VK_NULL_HANDLE;
@@ -282,7 +289,7 @@ protected:
             VkDescriptorSetLayoutBinding lb{}; lb.binding=b; lb.descriptorType=t;
             lb.descriptorCount=1; lb.stageFlags=VK_SHADER_STAGE_COMPUTE_BIT; return lb;
         };
-        const std::array<VkDescriptorSetLayoutBinding,11> bindings = {
+        const std::array<VkDescriptorSetLayoutBinding,13> bindings = {
             bindL(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             bindL(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bindL(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
@@ -294,6 +301,8 @@ protected:
             bindL(10,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bindL(11,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bindL(12,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bindL(13,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bindL(14,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Inc1 M4b: per-instance iteration debug
         };
         VkDescriptorSetLayoutCreateInfo dslci{}; dslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         dslci.bindingCount = uint32_t(bindings.size()); dslci.pBindings = bindings.data();
@@ -315,7 +324,7 @@ protected:
 
         const std::array<VkDescriptorPoolSize,2> poolSizes = {{
             {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  2},
-            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 9},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 11},
         }};
         VkDescriptorPoolCreateInfo dpci{}; dpci.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         dpci.maxSets=1; dpci.poolSizeCount=uint32_t(poolSizes.size()); dpci.pPoolSizes=poolSizes.data();
@@ -331,7 +340,7 @@ protected:
         VkDescriptorBufferInfo nodesI{nodes,0,VK_WHOLE_SIZE}, bricksI{bricks,0,VK_WHOLE_SIZE},
             matsI{mats,0,VK_WHOLE_SIZE}, traceI{traceBuf,0,VK_WHOLE_SIZE}, cfgI{cfg,0,VK_WHOLE_SIZE},
             ctrI{ctrBuf,0,VK_WHOLE_SIZE}, instI{inst,0,VK_WHOLE_SIZE},
-            sdfI{sdf,0,VK_WHOLE_SIZE}, lookupI{lookup,0,VK_WHOLE_SIZE};
+            sdfI{sdf,0,VK_WHOLE_SIZE}, lookupI{lookup,0,VK_WHOLE_SIZE}, iterI{dummyIter,0,VK_WHOLE_SIZE}, mipI{dummyMip,0,VK_WHOLE_SIZE};
 
         auto wI = [&](uint32_t b, VkDescriptorImageInfo* info) {
             VkWriteDescriptorSet w{}; w.sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -343,9 +352,10 @@ protected:
             w.dstSet=ds; w.dstBinding=b; w.descriptorCount=1;
             w.descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; w.pBufferInfo=info; return w;
         };
-        const std::array<VkWriteDescriptorSet,11> writes = {
+        const std::array<VkWriteDescriptorSet,13> writes = {
             wI(0,&colImg), wB(1,&nodesI), wB(2,&bricksI), wB(3,&matsI), wB(4,&traceI),
-            wB(5,&cfgI), wB(8,&ctrI), wI(9,&idImgI), wB(10,&instI), wB(11,&sdfI), wB(12,&lookupI)
+            wB(5,&cfgI), wB(8,&ctrI), wI(9,&idImgI), wB(10,&instI), wB(11,&sdfI), wB(12,&lookupI), wB(13,&mipI),
+            wB(14,&iterI)  // Inc1 M4b: per-instance iteration debug
         };
         vkUpdateDescriptorSets(logicalDevice_, uint32_t(writes.size()), writes.data(), 0, nullptr);
 
@@ -413,6 +423,8 @@ protected:
         vkDestroyBuffer(logicalDevice_,ctrBuf,nullptr);   vkFreeMemory(logicalDevice_,ctrMem,nullptr);
         if (dummySdf    != VK_NULL_HANDLE) { vkDestroyBuffer(logicalDevice_,dummySdf,nullptr);    vkFreeMemory(logicalDevice_,dSdfMem,nullptr); }
         if (dummyLookup != VK_NULL_HANDLE) { vkDestroyBuffer(logicalDevice_,dummyLookup,nullptr); vkFreeMemory(logicalDevice_,dLookupMem,nullptr); }
+        vkDestroyBuffer(logicalDevice_,dummyMip,nullptr); vkFreeMemory(logicalDevice_,dMipMem,nullptr);
+        vkDestroyBuffer(logicalDevice_,dummyIter,nullptr); vkFreeMemory(logicalDevice_,dIterMem,nullptr);
     }
 };
 
@@ -438,7 +450,7 @@ TEST_F(RecipePoolRenderTest, FourRecipesAllRender) {
     };
     for (auto& r : recipes) {
         Vixen::SVO::RecipeRegistry::RecipeEntry e{};
-        e.bytecode = { makeSphere(32.0f,32.0f,32.0f, r.radius) };
+        e.bytecode = { makeSphere(0.0f,0.0f,0.0f, r.radius) };  // object-centered
         ASSERT_EQ(reg.Register(r.id, e), Vixen::SVO::RecipeRegistry::RegisterResult::Ok);
     }
 

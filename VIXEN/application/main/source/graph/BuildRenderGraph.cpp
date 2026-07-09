@@ -10,7 +10,8 @@
 // LaineKarrasOctree -> ISVOStructure), whose std::hash<> specialisations must be visible before
 // RmlUi's bundled robin_hood.h wraps them.
 #include "VulkanGraphApplication.h"
-#include <cmath>  // std::tan for the LOD ray-cone (raySizeCoef) computation
+#include <cmath>    // std::tan for the LOD ray-cone (raySizeCoef) computation
+#include <cstdlib>  // std::strtof for the VIXEN_RENDER_SCALE env parse (M4)
 #include "Connection/ConnectionModifier.h"
 #include "Connection/Modifiers/FieldExtractionModifier.h"
 #include "Connection/Modifiers/AccumulationSortConfig.h"  // SEL-P3: accumulation-connect sort key (provider fan-in)
@@ -39,7 +40,9 @@
 #include "Data/Nodes/PickIdTargetNodeConfig.h"
 #include "Data/Nodes/PresentNodeConfig.h"
 #include "Data/Nodes/PushConstantGathererNodeConfig.h"
+#include "Data/Nodes/RaySizeCoefNodeConfig.h"  // M4: live LOD ray-cone recompute
 #include "Data/Nodes/RenderPassNodeConfig.h"
+#include "Data/Nodes/RenderTargetNodeConfig.h"  // M4: render-scale decoupling offscreen target
 #include "Data/Nodes/SelectionCoordinatorNodeConfig.h"
 #include "Data/Nodes/ShaderLibraryNodeConfig.h"
 #include "Data/Nodes/SwapChainNodeConfig.h"
@@ -72,7 +75,9 @@
 #include "Nodes/PickIdTargetNode.h"
 #include "Nodes/PresentNode.h"
 #include "Nodes/PushConstantGathererNode.h"
+#include "Nodes/RaySizeCoefNode.h"  // M4: live LOD ray-cone recompute
 #include "Nodes/RenderPassNode.h"
+#include "Nodes/RenderTargetNode.h"  // M4: render-scale decoupling offscreen target
 #include "Nodes/SelectionCoordinatorNode.h"
 #include "Nodes/ShaderLibraryNode.h"
 #include "Nodes/SwapChainNode.h"
@@ -139,26 +144,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
     NodeHandle swapChainNode = renderGraph->AddNode<SwapChainNodeType>("main_swapchain");
     NodeHandle commandPoolNode = renderGraph->AddNode<CommandPoolNodeType>("main_cmd_pool");
 
-    // --- Resource Nodes ---
-    // DISABLED FOR COMPUTE TEST: Graphics pipeline nodes
-    /*
-    NodeHandle depthBufferNode = renderGraph->AddNode("DepthBuffer", "depth_buffer");
-    NodeHandle vertexBufferNode = renderGraph->AddNode("VertexBuffer", "triangle_vb");
-    NodeHandle textureNode = renderGraph->AddNode("TextureLoader", "main_texture");
-
-    // --- Rendering Configuration Nodes ---
-    NodeHandle renderPassNode = renderGraph->AddNode("RenderPass", "main_pass");
-    NodeHandle framebufferNode = renderGraph->AddNode("Framebuffer", "main_fb");
-    NodeHandle shaderLibNode = renderGraph->AddNode("ShaderLibrary", "shader_lib");
-    NodeHandle descriptorSetNode = renderGraph->AddNode("DescriptorSet", "main_descriptors");
-    NodeHandle pipelineNode = renderGraph->AddNode("GraphicsPipeline", "triangle_pipeline");
-
-    // Phase 1: ShaderLibraryNode replaces manual shader loading
-    // Removed ConstantNode - ShaderLibraryNode outputs VulkanShader directly
-
-    // --- Execution Nodes ---
-    NodeHandle geometryRenderNode = renderGraph->AddNode("GeometryRender", "triangle_render");
-    */
     NodeHandle presentNode = renderGraph->AddNode<PresentNodeType>("present");
 
     // --- Phase G: Compute Pipeline Nodes ---
@@ -170,8 +155,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
     NodeHandle computeDispatch = renderGraph->AddNode<ComputeDispatchNodeType>("test_dispatch");
     NodeHandle frameSyncNode = renderGraph->AddNode<FrameSyncNodeType>("frame_sync");
 
+    // M4: offscreen render target the compute dispatch writes into (render-scale decoupling).
+    // Sized by EXTENT_SOURCE (the swapchain) x PARAM_SCALE; ComputeDispatchNode blits it to the
+    // swapchain after dispatch. See Widescreen-Perf-Fix-Plan-2026-07.md M4.
+    NodeHandle renderTargetNode = renderGraph->AddNode<RenderTargetNodeType>("compute_render_target");
+
     // --- Ray Marching Nodes ---
     NodeHandle cameraNode = renderGraph->AddNode<CameraNodeType>("raymarch_camera");
+    cameraNode_ = cameraNode;  // Sparse-Mip ESVO LOD Inc1 M4c: store for Update()'s live residency-trigger lookup
     NodeHandle voxelGridNode = renderGraph->AddNode<VoxelGridNodeType>("voxel_grid");
     voxelGridNode_ = voxelGridNode;                  // store for MarkVoxelSceneDirty() (debug buffers only; not the render source post M-wire)
 
@@ -222,9 +213,15 @@ void VulkanGraphApplication::BuildRenderGraph() {
     NodeHandle physicsLoopIDConstant = renderGraph->AddNode<ConstantNodeType>("physics_loop_id");
 
     // M-wire Task 8: push constants for BodyInstanceRayMarch.comp (fields 8 and 9).
-    // raySizeCoef = 0.0 disables LOD (full-detail traversal); set non-zero for screen-space LOD.
+    // raySizeCoef: LOD cone-spread constant, recomputed LIVE from the render target's height every
+    // Compile (M4 — was a ConstantNode frozen at graph-build time, see RaySizeCoefNodeConfig).
     // raySizeBias = 0.0 (pinhole camera; no bias at origin).
-    NodeHandle raySizeCoefConstant = renderGraph->AddNode<ConstantNodeType>("ray_size_coef");
+    NodeHandle raySizeCoefNode = renderGraph->AddNode<RaySizeCoefNodeType>("ray_size_coef");
+    // Node loggers default DISABLED; the "[LOD] raySizeCoef recomputed" line is a live-gate signal
+    // for the resize->recompile cascade (M4.3), so enable it (mirrors voxelSelectionProviderNode below).
+    if (auto* rscInst = renderGraph->GetInstance(raySizeCoefNode)) {
+        if (auto* rl = rscInst->GetLogger()) { rl->SetEnabled(true); rl->SetTerminalOutput(true); }
+    }
     NodeHandle raySizeBiasConstant = renderGraph->AddNode<ConstantNodeType>("ray_size_bias");
     
     NodeHandle debugCaptureNode = renderGraph->AddNode<DebugBufferReaderNodeType>("debug_capture");
@@ -256,116 +253,36 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     // Window parameters
     auto* window = static_cast<WindowNode*>(renderGraph->GetInstance(windowNode));
-    window->SetParameter(WindowNodeConfig::PARAM_WIDTH, width);
-    window->SetParameter(WindowNodeConfig::PARAM_HEIGHT, height);
+    window->SetParameter(WindowNodeConfig::PARAM_WIDTH, static_cast<uint32_t>(width));
+    window->SetParameter(WindowNodeConfig::PARAM_HEIGHT, static_cast<uint32_t>(height));
 
     // Device parameters (default GPU = 0)
     auto* device = static_cast<DeviceNode*>(renderGraph->GetInstance(deviceNode));
     device->SetParameter(DeviceNodeConfig::PARAM_GPU_INDEX, 0u);
 
-    // DISABLED FOR COMPUTE TEST: Graphics pipeline parameters
-    /*
-    // Vertex buffer parameters (simple triangle)
-    auto* vertexBuffer = static_cast<VertexBufferNode*>(renderGraph->GetInstance(vertexBufferNode));
-    vertexBuffer->SetParameter(VertexBufferNodeConfig::PARAM_VERTEX_COUNT, 36u);
-    vertexBuffer->SetParameter(VertexBufferNodeConfig::PARAM_VERTEX_STRIDE, sizeof(VertexWithUV)); // pos(vec4) + UV(vec2)
-    vertexBuffer->SetParameter(VertexBufferNodeConfig::PARAM_USE_TEXTURE, true); // Shader uses vec2 UV at location 1
-    vertexBuffer->SetParameter(VertexBufferNodeConfig::PARAM_INDEX_COUNT, 0u); // No index buffer
-
-    // Texture loader parameters
-    auto* textureLoader = static_cast<TextureLoaderNode*>(renderGraph->GetInstance(textureNode));
-    textureLoader->SetParameter(TextureLoaderNodeConfig::FILE_PATH, std::string("C:\\Users\\liory\\Downloads\\earthmap.jpg"));
-    textureLoader->SetParameter(TextureLoaderNodeConfig::SAMPLER_FILTER, std::string("Linear"));
-    textureLoader->SetParameter(TextureLoaderNodeConfig::SAMPLER_ADDRESS_MODE, std::string("Repeat"));
-
-    // Render pass parameters
-    auto* renderPass = static_cast<RenderPassNode*>(renderGraph->GetInstance(renderPassNode));
-    renderPass->SetParameter(RenderPassNodeConfig::PARAM_COLOR_LOAD_OP, AttachmentLoadOp::Clear);
-    renderPass->SetParameter(RenderPassNodeConfig::PARAM_COLOR_STORE_OP, AttachmentStoreOp::Store);
-    renderPass->SetParameter(RenderPassNodeConfig::PARAM_DEPTH_LOAD_OP, AttachmentLoadOp::Clear);
-    renderPass->SetParameter(RenderPassNodeConfig::PARAM_DEPTH_STORE_OP, AttachmentStoreOp::DontCare);
-    renderPass->SetParameter(RenderPassNodeConfig::PARAM_INITIAL_LAYOUT, ImageLayout::Undefined);
-    renderPass->SetParameter(RenderPassNodeConfig::PARAM_FINAL_LAYOUT, ImageLayout::PresentSrc);
-    renderPass->SetParameter(RenderPassNodeConfig::PARAM_SAMPLES, 1u);
-
-    // Framebuffer parameters
-    auto* framebuffer = static_cast<FramebufferNode*>(renderGraph->GetInstance(framebufferNode));
-    framebuffer->SetParameter(FramebufferNodeConfig::PARAM_LAYERS, 1u);
-
-    // Depth buffer parameters
-    auto* depthBuffer = static_cast<DepthBufferNode*>(renderGraph->GetInstance(depthBufferNode));
-    depthBuffer->SetParameter(DepthBufferNodeConfig::PARAM_FORMAT, static_cast<uint32_t>(VK_FORMAT_D32_SFLOAT));
-
-    // Graphics pipeline parameters
-    auto* pipeline = static_cast<GraphicsPipelineNode*>(renderGraph->GetInstance(pipelineNode));
-    pipeline->SetParameter(GraphicsPipelineNodeConfig::ENABLE_DEPTH_TEST, true);
-    pipeline->SetParameter(GraphicsPipelineNodeConfig::ENABLE_DEPTH_WRITE, true);
-    pipeline->SetParameter(GraphicsPipelineNodeConfig::ENABLE_VERTEX_INPUT, true);
-    pipeline->SetParameter(GraphicsPipelineNodeConfig::CULL_MODE, std::string("Back"));
-
-    // MVP: Shader loading deferred to CompileRenderGraph (after device is created)
-    mainLogger->Info("Shader loading will occur during compilation phase");
-    
-    pipeline->SetParameter(GraphicsPipelineNodeConfig::POLYGON_MODE, std::string("Fill"));
-    pipeline->SetParameter(GraphicsPipelineNodeConfig::TOPOLOGY, std::string("TriangleList"));
-    pipeline->SetParameter(GraphicsPipelineNodeConfig::FRONT_FACE, std::string("CounterClockwise"));
-
-    // Geometry render parameters
-    auto* geometryRender = static_cast<GeometryRenderNode*>(renderGraph->GetInstance(geometryRenderNode));
-    geometryRender->SetParameter(GeometryRenderNodeConfig::VERTEX_COUNT, 36u);
-    geometryRender->SetParameter(GeometryRenderNodeConfig::INSTANCE_COUNT, 1u);
-    geometryRender->SetParameter(GeometryRenderNodeConfig::FIRST_VERTEX, 0u);
-    geometryRender->SetParameter(GeometryRenderNodeConfig::FIRST_INSTANCE, 0u);
-    geometryRender->SetParameter(GeometryRenderNodeConfig::USE_INDEX_BUFFER, false);
-    geometryRender->SetParameter(GeometryRenderNodeConfig::CLEAR_COLOR_R, 0.0f);
-    geometryRender->SetParameter(GeometryRenderNodeConfig::CLEAR_COLOR_G, 0.0f);
-    geometryRender->SetParameter(GeometryRenderNodeConfig::CLEAR_COLOR_B, 0.2f);
-    geometryRender->SetParameter(GeometryRenderNodeConfig::CLEAR_COLOR_A, 1.0f);
-    geometryRender->SetParameter(GeometryRenderNodeConfig::CLEAR_DEPTH, 1.0f);
-    geometryRender->SetParameter(GeometryRenderNodeConfig::CLEAR_STENCIL, 0u);
-
-    // Phase G: Configure shader libraries with builder functions
-
-    // Graphics shader library (Draw.vert + Draw.frag)
-    auto* graphicsShaderLib = static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(shaderLibNode));
-    graphicsShaderLib->RegisterShaderBuilder([](int vulkanVer, int spirvVer) {
-        ShaderManagement::ShaderBundleBuilder builder;
-
-        // Find shader paths - try compile-time shader directory first
-        std::vector<std::filesystem::path> possiblePaths = {
-#ifdef VIXEN_SHADER_SOURCE_DIR
-            VIXEN_SHADER_SOURCE_DIR "/Draw.vert",
-#endif
-            "shaders/Draw.vert",
-            "Draw.vert",
-            "../shaders/Draw.vert"
-        };
-        std::filesystem::path vertPath, fragPath;
-        for (const auto& path : possiblePaths) {
-            if (std::filesystem::exists(path)) {
-                vertPath = path;
-                fragPath = path.parent_path() / "Draw.frag";
-                break;
+    // M4: render-scale decoupling. VIXEN_RENDER_SCALE in (0,1] shrinks the offscreen target the
+    // compute dispatch writes into relative to the swapchain; ComputeDispatchNode blits it back up.
+    // Default 1.0 = same resolution as the swapchain (render-scale disabled, byte-identical to pre-M4).
+    float renderScale = 1.0f;
+    if (const char* renderScaleEnv = std::getenv("VIXEN_RENDER_SCALE")) {
+        renderScale = std::strtof(renderScaleEnv, nullptr);
+        if (!(renderScale > 0.0f) || renderScale > 1.0f) {
+            if (mainLogger && mainLogger->IsEnabled()) {
+                mainLogger->Warning("[BuildRenderGraph] VIXEN_RENDER_SCALE=" + std::string(renderScaleEnv) +
+                                    " out of (0,1] — clamping to 1.0");
             }
+            renderScale = 1.0f;
         }
-
-        // Configure SDI generation
-        ShaderManagement::SdiGeneratorConfig sdiConfig;
-        sdiConfig.outputDirectory = std::filesystem::current_path() / "generated" / "sdi";
-        sdiConfig.namespacePrefix = "ShaderInterface";
-        sdiConfig.generateComments = true;
-
-        builder.SetProgramName("Draw_Shader")
-               .SetSdiConfig(sdiConfig)
-               .EnableSdiGeneration(true)
-               .SetTargetVulkanVersion(vulkanVer)
-               .SetTargetSpirvVersion(spirvVer)
-               .AddStageFromFile(ShaderManagement::ShaderStage::Vertex, vertPath, "main")
-               .AddStageFromFile(ShaderManagement::ShaderStage::Fragment, fragPath, "main");
-
-        return builder;
-    });
-    */
+    }
+    auto* renderTarget = static_cast<RenderTargetNode*>(renderGraph->GetInstance(renderTargetNode));
+    renderTarget->SetParameter(RenderTargetNodeConfig::PARAM_SCALE, renderScale);
+    // STORAGE for the compute imageStore; TRANSFER_SRC for the blit-to-swapchain source.
+    renderTarget->SetParameter(RenderTargetNodeConfig::PARAM_USAGE,
+        static_cast<uint32_t>(VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT));
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info("[BuildRenderGraph] Render-scale=" + std::to_string(renderScale) +
+                         " (VIXEN_RENDER_SCALE env; 1.0 = full resolution)");
+    }
 
     // Present parameters (needed for both graphics and compute)
     auto* present = static_cast<PresentNode*>(renderGraph->GetInstance(presentNode));
@@ -387,25 +304,18 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // configure CameraNode (PARAM_FOV, below) and to derive the LOD ray-cone spread (raySizeCoef).
     constexpr float kRaymarchCameraFovDegrees = 45.0f;
 
-    // M-wire Task 8: set LOD push constant values (fields 8 and 9 of BodyInstanceRayMarch.comp).
+    // M-wire Task 8 / M4: set LOD push constant values (fields 8 and 9 of BodyInstanceRayMarch.comp).
     // raySizeCoef is the ray cone spread per unit distance — drives the screen-space-error LOD
-    // stop in BodyInstanceRayMarch.comp (gated on raySizeCoef > 0.0). Match the reference
-    // SVOLOD.h::LODParameters::fromCamera: 2*tan((fovY / screenHeight) / 2), with fovY in radians
-    // and screenHeight the swapchain pixel height (the same `height` used for dispatch dims below).
-    // kRaymarchCameraFovDegrees is the vertical FOV; it is fed to CameraNode (PARAM_FOV) below so
-    // the two stay in lock-step. raySizeBias = 0.0 (pinhole camera; zero cone diameter at origin).
-    const float fovYRadians   = kRaymarchCameraFovDegrees * (3.14159265358979323846f / 180.0f);
-    const float screenHeightF = static_cast<float>(height);
-    const float raySizeCoef   = 2.0f * std::tan((fovYRadians / screenHeightF) * 0.5f);
-    auto* raySizeCoefConst = static_cast<ConstantNode*>(renderGraph->GetInstance(raySizeCoefConstant));
-    raySizeCoefConst->SetValue<float>(raySizeCoef);   // 2*tan(fovY/h/2): LOD enabled (Task 7)
+    // stop in BodyInstanceRayMarch.comp (gated on raySizeCoef > 0.0). RaySizeCoefNode recomputes it
+    // LIVE every Compile from the render target's live height (wired below, once renderTargetNode
+    // is in scope) — was a one-shot ConstantNode frozen at the INITIAL window height (rank 6: a
+    // resize left it stale, silently under-detailing large windows). kRaymarchCameraFovDegrees is
+    // the vertical FOV; fed to both CameraNode (PARAM_FOV) and RaySizeCoefNode so they stay in
+    // lock-step. raySizeBias = 0.0 (pinhole camera; zero cone diameter at origin).
+    auto* raySizeCoef = static_cast<RaySizeCoefNode*>(renderGraph->GetInstance(raySizeCoefNode));
+    raySizeCoef->SetParameter(RaySizeCoefNodeConfig::PARAM_FOV_DEGREES, kRaymarchCameraFovDegrees);
     auto* raySizeBiasConst = static_cast<ConstantNode*>(renderGraph->GetInstance(raySizeBiasConstant));
     raySizeBiasConst->SetValue<float>(0.0f);   // 0.0 = pinhole camera bias
-    if (mainLogger && mainLogger->IsEnabled()) {
-        mainLogger->Info("[BuildRenderGraph] LOD raySizeCoef=" + std::to_string(raySizeCoef) +
-                         " (fov=" + std::to_string(kRaymarchCameraFovDegrees) + " deg, screenHeight=" +
-                         std::to_string(height) + ")");
-    }
 
     auto* frameSync = static_cast<FrameSyncNode*>(renderGraph->GetInstance(frameSyncNode));
 
@@ -462,6 +372,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
 #endif
                .AddStageFromFile(ShaderManagement::ShaderStage::Compute, compPath, "main");
 
+        // Shader counters (perf sweep rank 2) are compiled OUT unconditionally: the live
+        // app has no consumer for them, and every pixel was paying 3-4 unread atomic RMWs
+        // into a HOST_COHERENT SSBO. No env opt-in — ShaderBundleBuilder::SetStageDefines
+        // does line-level token substitution, not textual #define injection, so it cannot
+        // drive ShaderCounters.glsl's #ifdef ENABLE_SHADER_COUNTERS guard (verified: passing
+        // an empty-value define here turns "#ifdef ENABLE_SHADER_COUNTERS" into "#ifdef ",
+        // a glslang compile error). Re-enable by hand-editing this .comp's #define if needed.
+
         if (mainLogger && mainLogger->IsEnabled()) {
             mainLogger->Info("[BuildRenderGraph] Using BodyInstanceRayMarch shader: " + compPath.string());
             mainLogger->Info("[BuildRenderGraph] Octree buffers at bindings 1/2/3/5 (BodyOctreeSceneNode); instances at binding 10");
@@ -509,27 +427,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
     camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Z, 300.0f);  // Outside grid (ignored in orbit mode)
     camera->SetParameter(CameraNodeConfig::PARAM_YAW, 0.0f);         // Camera at +Z, looking toward -Z
     camera->SetParameter(CameraNodeConfig::PARAM_PITCH, 0.0f);
-
-    // PRESET 2: Offset to see both left (red) and right (green) walls
-    //camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_X, 1.5f);
-    //camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Y, 0.5f);
-    //camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Z, -0.5f);
-    //camera->SetParameter(CameraNodeConfig::PARAM_YAW, 0.0f);
-    //camera->SetParameter(CameraNodeConfig::PARAM_PITCH, 0.0f);
-
-    // PRESET 3: Far view of entire box
-    //camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_X, 0.0f);
-    //camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Y, 0.0f);
-    //camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Z, 5.0f);
-    //camera->SetParameter(CameraNodeConfig::PARAM_YAW, 0.0f);
-    //camera->SetParameter(CameraNodeConfig::PARAM_PITCH, 0.0f);
-
-    // PRESET 4: Side view
-    //camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_X, 5.0f);
-    //camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Y, 0.0f);
-    //camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Z, -8.0f);
-    //camera->SetParameter(CameraNodeConfig::PARAM_YAW, -90.0f);  // Look left toward -X
-    //camera->SetParameter(CameraNodeConfig::PARAM_PITCH, 0.0f);
     camera->SetParameter(CameraNodeConfig::PARAM_GRID_RESOLUTION, 128u);
 
     // Ray marching: Voxel grid parameters
@@ -651,8 +548,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Enable logging for descriptor gatherer to debug bindings
     auto* descGatherer = static_cast<DescriptorResourceGathererNode*>(renderGraph->GetInstance(descriptorGatherer));
     if (auto* gathererLogger = descGatherer->GetLogger()) {
-        gathererLogger->SetEnabled(false);  // Enable to debug descriptor bindings
-        gathererLogger->SetTerminalOutput(false);
+        gathererLogger->SetEnabled(true);  // TEMP DEBUG: tracing the debug-capture attachment bug (KI-009 follow-up)
+        gathererLogger->SetTerminalOutput(true);
     }
 
     // Enable logging for compute dispatch to see execution
@@ -699,6 +596,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
     auto* uiComposite = static_cast<UIRenderNode*>(renderGraph->GetInstance(uiCompositeNode));
     uiComposite->SetParameter(UIRenderNodeConfig::PARAM_COMPOSITE, true);
     uiComposite->SetParameter(UIRenderNodeConfig::RML_DOCUMENT_PATH, std::string("assets/ui/hud.rml"));
+
+    // View Contract Inc-2 Task 5: wire the app's native HudView onto the now-generic UI node.
+    // Routed through WireHudView (HudViewBridge) rather than a direct SetView call here -- this TU
+    // transitively includes BodyOctreeSceneNode.h's gaia.h (via the M-wire body-octree includes
+    // above), and gaia vendors a DIFFERENT VERSION of RmlUi's bundled robin_hood.h under the SAME
+    // include guard; the bridge is the one place HudView.h's RmlUi-touching inline code actually
+    // instantiates, in a TU that never sees gaia.h (see HudViewBridge.h's file header).
+    Vixen::App::WireHudView(*uiComposite, *hudView_);
 
     mainLogger->Info("Configured all node parameters (including camera, voxel grid, and UI composite pass)");
 
@@ -747,6 +652,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Phase 0.4: Per-flight semaphores and current frame index
     batch.Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
                   swapChainNode, SwapChainNodeConfig::CURRENT_FRAME_INDEX);
+    // Per-image in-flight fence tracking: SwapChainNode records this per-flight fence against the
+    // acquired image and waits on it before the image's command buffer/descriptor/query resources
+    // are reused (fixes the flights!=images desync — see SwapChainNode::ExecuteImpl).
+    batch.Connect(frameSyncNode, FrameSyncNodeConfig::IN_FLIGHT_FENCE,
+                  swapChainNode, SwapChainNodeConfig::IN_FLIGHT_FENCE);
     batch.Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
                   swapChainNode, SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
     // FR-3: renderComplete + presentFences are now PRODUCED by swapChainNode (sized to the actual image count).
@@ -754,120 +664,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // --- Device → CommandPool connection ---
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   commandPoolNode, CommandPoolNodeConfig::VULKAN_DEVICE_IN);
-
-    // DISABLED FOR COMPUTE TEST: Graphics pipeline connections
-    /*
-    // --- Device → DepthBuffer device connection (for Vulkan operations) ---
-    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                  depthBufferNode, DepthBufferNodeConfig::VULKAN_DEVICE_IN);
-
-    // --- SwapChain → DepthBuffer connection (for dimensions) ---
-    batch.Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
-                  depthBufferNode, DepthBufferNodeConfig::SWAPCHAIN_PUBLIC_VARS);
-
-    // --- CommandPool → DepthBuffer connection ---
-    batch.Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
-                  depthBufferNode, DepthBufferNodeConfig::COMMAND_POOL);
-
-    // --- Device → RenderPass device connection ---
-    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                  renderPassNode, RenderPassNodeConfig::VULKAN_DEVICE_IN);
-
-    // --- SwapChain → RenderPass connection (swapchain info bundle) ---
-    batch.Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
-                  renderPassNode, RenderPassNodeConfig::SWAPCHAIN_INFO);
-
-    // --- DepthBuffer → RenderPass connection (depth format) ---
-    batch.Connect(depthBufferNode, DepthBufferNodeConfig::DEPTH_FORMAT,
-                  renderPassNode, RenderPassNodeConfig::DEPTH_FORMAT);
-
-    // --- Device → Framebuffer device connection ---
-    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                  framebufferNode, FramebufferNodeConfig::VULKAN_DEVICE_IN);
-
-    // --- RenderPass + SwapChain + DepthBuffer → Framebuffer connections ---
-    batch.Connect(renderPassNode, RenderPassNodeConfig::RENDER_PASS,
-        framebufferNode, FramebufferNodeConfig::RENDER_PASS)
-        .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
-            framebufferNode, FramebufferNodeConfig::SWAPCHAIN_INFO)
-        .Connect(depthBufferNode, DepthBufferNodeConfig::DEPTH_IMAGE_VIEW,
-            framebufferNode, FramebufferNodeConfig::DEPTH_ATTACHMENT);
-
-
-    // --- Device → ShaderLibrary device chain ---
-    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                  shaderLibNode, ShaderLibraryNodeConfig::VULKAN_DEVICE_IN);
-
-    // --- Device → GraphicsPipeline device connection ---
-    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                  pipelineNode, GraphicsPipelineNodeConfig::VULKAN_DEVICE_IN);
-
-    // --- RenderPass + DescriptorSet + SwapChain → Pipeline connections ---
-    // Phase 2: Connect ShaderDataBundle to both DescriptorSetNode and GraphicsPipelineNode
-    batch.Connect(shaderLibNode, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
-                  descriptorSetNode, DescriptorSetNodeConfig::SHADER_DATA_BUNDLE)
-         .Connect(shaderLibNode, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
-                  pipelineNode, GraphicsPipelineNodeConfig::SHADER_DATA_BUNDLE)
-         .Connect(renderPassNode, RenderPassNodeConfig::RENDER_PASS,
-                  pipelineNode, GraphicsPipelineNodeConfig::RENDER_PASS)
-         .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                  descriptorSetNode, DescriptorSetNodeConfig::VULKAN_DEVICE_IN)
-         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
-                  descriptorSetNode, DescriptorSetNodeConfig::SWAPCHAIN_PUBLIC)
-         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
-                  descriptorSetNode, DescriptorSetNodeConfig::IMAGE_INDEX)
-         .Connect(descriptorSetNode, DescriptorSetNodeConfig::DESCRIPTOR_SET_LAYOUT,
-                  pipelineNode, GraphicsPipelineNodeConfig::DESCRIPTOR_SET_LAYOUT);
-         // Note: SWAPCHAIN_INFO removed from GraphicsPipelineNode (pipelines are swapchain-independent)
-
-    // --- Device → TextureLoader device chain ---
-    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                  textureNode, TextureLoaderNodeConfig::VULKAN_DEVICE_IN);
-
-    // --- TextureLoader → DescriptorSet texture connections ---
-    batch.Connect(textureNode, TextureLoaderNodeConfig::TEXTURE_IMAGE,
-                  descriptorSetNode, DescriptorSetNodeConfig::TEXTURE_IMAGE)
-         .Connect(textureNode, TextureLoaderNodeConfig::TEXTURE_VIEW,
-                  descriptorSetNode, DescriptorSetNodeConfig::TEXTURE_VIEW)
-         .Connect(textureNode, TextureLoaderNodeConfig::TEXTURE_SAMPLER,
-                  descriptorSetNode, DescriptorSetNodeConfig::TEXTURE_SAMPLER);
-
-    // --- Device → VertexBuffer device chain ---
-    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                  vertexBufferNode, VertexBufferNodeConfig::VULKAN_DEVICE_IN);
-
-    // --- All resources → GeometryRender connections ---
-    batch.Connect(renderPassNode, RenderPassNodeConfig::RENDER_PASS,
-                  geometryRenderNode, GeometryRenderNodeConfig::RENDER_PASS)
-         .Connect(framebufferNode, FramebufferNodeConfig::FRAMEBUFFERS,
-                  geometryRenderNode, GeometryRenderNodeConfig::FRAMEBUFFERS)
-         .Connect(pipelineNode, GraphicsPipelineNodeConfig::PIPELINE,
-                  geometryRenderNode, GeometryRenderNodeConfig::PIPELINE)
-         .Connect(pipelineNode, GraphicsPipelineNodeConfig::PIPELINE_LAYOUT,
-                  geometryRenderNode, GeometryRenderNodeConfig::PIPELINE_LAYOUT)
-         .Connect(descriptorSetNode, DescriptorSetNodeConfig::DESCRIPTOR_SETS,
-                  geometryRenderNode, GeometryRenderNodeConfig::DESCRIPTOR_SETS)
-         .Connect(vertexBufferNode, VertexBufferNodeConfig::VERTEX_BUFFER,
-                  geometryRenderNode, GeometryRenderNodeConfig::VERTEX_BUFFER)
-         .Connect(vertexBufferNode, VertexBufferNodeConfig::INDEX_BUFFER,
-                  geometryRenderNode, GeometryRenderNodeConfig::INDEX_BUFFER)
-         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
-                  geometryRenderNode, GeometryRenderNodeConfig::SWAPCHAIN_INFO)
-         .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
-                  geometryRenderNode, GeometryRenderNodeConfig::COMMAND_POOL)
-         .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                  geometryRenderNode, GeometryRenderNodeConfig::VULKAN_DEVICE)
-         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
-                  geometryRenderNode, GeometryRenderNodeConfig::IMAGE_INDEX)
-         .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
-                  geometryRenderNode, GeometryRenderNodeConfig::CURRENT_FRAME_INDEX)  // Phase 0.5: Frame-in-flight index for semaphore indexing
-         .Connect(frameSyncNode, FrameSyncNodeConfig::IN_FLIGHT_FENCE,
-                  geometryRenderNode, GeometryRenderNodeConfig::IN_FLIGHT_FENCE)  // Phase 0.5: Per-flight fence (CPU-GPU sync)
-         .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
-                  geometryRenderNode, GeometryRenderNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)  // Phase 0.5: Array of per-flight semaphores (indexed by frameIndex)
-         .Connect(frameSyncNode, FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
-                  geometryRenderNode, GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);  // Phase 0.5: Array of per-image semaphores (indexed by imageIndex)
-    */
 
     // --- Device → Present device connection ---
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
@@ -965,8 +761,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Selection (SEL-P2) — providers are NODES. The voxel provider node copies the crosshair texel of
     // PickIdTargetNode's ID image (binding-9 target) via a one-shot fenced copy on a left-click edge,
     // decodes brick/voxel, and emits a SelectionCandidate. Its inputs: per-frame InputState; the ID
-    // VkImage; device + command pool for the one-shot copy; the frame-in-flight index; the swapchain
-    // viewport size (for the center offset).
+    // VkImage; device + command pool for the one-shot copy; the frame-in-flight index; the RENDER
+    // viewport size (M4 — matches the pick-ID image's own extent, for the center offset).
     batch.Connect(inputNode, InputNodeConfig::INPUT_STATE,
                   voxelSelectionProviderNode, VoxelSelectionProviderNodeConfig::INPUT_STATE)
          .Connect(pickIdTargetNode, PickIdTargetNodeConfig::ID_IMAGE,
@@ -977,9 +773,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   voxelSelectionProviderNode, VoxelSelectionProviderNodeConfig::COMMAND_POOL)
          .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
                   voxelSelectionProviderNode, VoxelSelectionProviderNodeConfig::CURRENT_FRAME_INDEX)
-         .Connect(windowNode, WindowNodeConfig::WIDTH_OUT,
+         // M4.4: the crosshair readback samples PickIdTargetNode's ring, which now follows the
+         // RENDER extent (not the window) — VIEWPORT_WIDTH/HEIGHT must be the same extent so
+         // width/2,height/2 lands on the actual image center. Was windowNode::WIDTH_OUT/HEIGHT_OUT.
+         .Connect(renderTargetNode, RenderTargetNodeConfig::WIDTH_OUT,
                   voxelSelectionProviderNode, VoxelSelectionProviderNodeConfig::VIEWPORT_WIDTH)
-         .Connect(windowNode, WindowNodeConfig::HEIGHT_OUT,
+         .Connect(renderTargetNode, RenderTargetNodeConfig::HEIGHT_OUT,
                   voxelSelectionProviderNode, VoxelSelectionProviderNodeConfig::VIEWPORT_HEIGHT);
 
     // SEL-P3 UI provider: only needs per-frame InputState (cursor position + left button). It reads
@@ -1004,17 +803,20 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   ConnectionMeta{}.With<AccumulationSortConfig>(1));
 
     // Pick ID target (AR#35 GPU picking P1): allocate the R32_UINT storage-image ring sized to the
-    // window, transition it to GENERAL once, and expose the current frame's view for binding 9.
-    // Device + command pool drive allocation + the one-shot UNDEFINED->GENERAL transition; the frame
-    // index advances the ring each Execute. The ID_IMAGE_VIEW -> descriptorGatherer binding-9 wiring
-    // is below, beside the other compute descriptor connections.
+    // RENDER extent (M4.4 — was the window; the compute shader now writes the offscreen render
+    // target, not the swapchain, so the pick-ID image must match ITS resolution or the shader's
+    // per-pixel idOutputImage writes go out of bounds / land at the wrong texel under scale<1),
+    // transition it to GENERAL once, and expose the current frame's view for binding 9. Device +
+    // command pool drive allocation + the one-shot UNDEFINED->GENERAL transition; the frame index
+    // advances the ring each Execute. The ID_IMAGE_VIEW -> descriptorGatherer binding-9 wiring is
+    // below, beside the other compute descriptor connections.
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   pickIdTargetNode, PickIdTargetNodeConfig::VULKAN_DEVICE_IN)
          .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
                   pickIdTargetNode, PickIdTargetNodeConfig::COMMAND_POOL)
-         .Connect(windowNode, WindowNodeConfig::WIDTH_OUT,
+         .Connect(renderTargetNode, RenderTargetNodeConfig::WIDTH_OUT,
                   pickIdTargetNode, PickIdTargetNodeConfig::WIDTH)
-         .Connect(windowNode, WindowNodeConfig::HEIGHT_OUT,
+         .Connect(renderTargetNode, RenderTargetNodeConfig::HEIGHT_OUT,
                   pickIdTargetNode, PickIdTargetNodeConfig::HEIGHT)
          .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
                   pickIdTargetNode, PickIdTargetNodeConfig::CURRENT_FRAME_INDEX);
@@ -1071,9 +873,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Field indices match shader reflection order: cameraPos(0),time(1),cameraDir(2),fov(3),
     // cameraUp(4),aspect(5),cameraRight(6),debugMode(7), raySizeCoef(8),raySizeBias(9),instanceCount(10).
     // raySizeCoef (binding 8): LOD cone-spread constant; 0.0 disables LOD (full-detail traversal).
-    batch.Connect(raySizeCoefConstant, ConstantNodeConfig::OUTPUT,
+    // M4: value now comes from RaySizeCoefNode, recomputed live at Compile from the render target's
+    // height (Dependency|Execute — Compile-derived but still read into the per-frame push constants,
+    // mirroring instanceCount below).
+    batch.Connect(raySizeCoefNode, RaySizeCoefNodeConfig::RAY_SIZE_COEF,
                           pushConstantGatherer, 8,  // push constant field 8: float raySizeCoef
-                          SlotRoleModifier(SlotRole::Execute));
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
     // raySizeBias (binding 9): LOD origin cone size; 0.0 for pinhole camera.
     batch.Connect(raySizeBiasConstant, ConstantNodeConfig::OUTPUT,
                           pushConstantGatherer, 9,  // push constant field 9: float raySizeBias
@@ -1082,14 +887,17 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_COUNT,
                           pushConstantGatherer, 10,  // push constant field 10: int instanceCount
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    // debugTargetPixel (binding 11): TEMP DEBUG — last left-click pixel, so the ray-trace debug
+    // buffer (TraceRecording.glsl) force-captures that exact ray regardless of DEBUG_GRID_SPACING.
+    batch.Connect(inputNode, InputNodeConfig::INPUT_STATE,
+                          pushConstantGatherer, 11,  // push constant field 11: ivec2 debugTargetPixel
+                          ExtractField(&InputState::lastClickPixel, SlotRole::Execute));
 
     // Connect ray marching resources to descriptor gatherer using VoxelRayMarchNames.h bindings
     // Binding 0: outputImage - Transient (Execute-only), others are Persistent (Dependency|Execute)
-    // Binding 0: outputImage (swapchain image view) - changes per frame
+    // Binding 0: outputImage — M4: now the offscreen render target's view, wired further down
+    // (beside the rest of the M4 render-target connections) once renderTargetNode exists in scope.
     // Note: outputImage is not in SDI (writeonly image) so we use literal binding index 0
-    batch.Connect(swapChainNode, SwapChainNodeConfig::CURRENT_FRAME_IMAGE_VIEW,
-                          descriptorGatherer, 0,  // outputImage at binding 0
-                          SlotRoleModifier(SlotRole::Execute));
 
     // M-wire Task 8: bindings 1/2/3/5 now come from BodyOctreeSceneNode (sparse shell octrees).
     // Slot names are identical to VoxelGridNode's octree outputs (by design in BodyOctreeSceneNodeConfig).
@@ -1130,15 +938,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
                           descriptorGatherer, 9,  // Binding 9: idOutputImage
                           SlotRoleModifier(SlotRole::Execute));
 
-    // Binding 8: ShaderCounters — BodyInstanceRayMarch.comp uses ENABLE_SHADER_COUNTERS at binding 8
-    // exactly like the compressed variant did. Still sourced from voxelGridNode (the only node with
-    // this buffer; BodyOctreeSceneNode has no shader counters). Must be bound to avoid UB.
-    batch.Connect(voxelGridNode, VoxelGridNodeConfig::SHADER_COUNTERS_BUFFER,
-                          descriptorGatherer, 8,  // Binding 8: ShaderCountersBuffer
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-
+    // Binding 8: ShaderCounters is compiled out of BodyInstanceRayMarch.comp unconditionally
+    // (see shader builder above), so binding 8 no longer exists in the reflected SPIR-V —
+    // wiring a descriptor for a binding the shader doesn't declare is itself a validation
+    // error, so this Connect() is deliberately removed, not just disabled.
     if (mainLogger && mainLogger->IsEnabled()) {
-        mainLogger->Info("[BuildRenderGraph] Connected debug/counters: binding 4 (voxelGridNode debug capture), binding 8 (voxelGridNode shader counters)");
+        mainLogger->Info("[BuildRenderGraph] Connected debug: binding 4 (voxelGridNode debug capture); shader counters (binding 8) compiled out");
     }
 
     // Binding 10: BodyInstanceBuffer (SSBO) — per-body BodyInstanceGpu records (64 B each).
@@ -1151,20 +956,35 @@ void VulkanGraphApplication::BuildRenderGraph() {
         mainLogger->Info("[BuildRenderGraph] Connected body instance SSBO at binding 10 (BodyOctreeSceneNode)");
     }
 
-    // Inc2 M3: Binding 11: SoA-SDF brick SSBO (float[] per-voxel SDF values).
-    // Placeholder (1-byte pad) for binary/Procedural bodies; populated by ConcatenateSdf for Stored-SDF.
-    // Shader only reads this when OctreeConfig.formatId == FORMAT_STORED_SDF (1u) — dead code for current bodies.
-    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_SDF_BUFFER,
-                          descriptorGatherer, 11,  // Binding 11: SdfBrickBuffer
+    // Binding 11/12: Surface-Shell ESVO cache (the bandwidth win). The render now
+    // reads the COMPACT shell pool (SHELL_DATA_BUFFER) + grid->shellSlot remap
+    // (SHELL_LOOKUP_BUFFER) instead of the full-interior OCTREE_SDF_BUFFER /
+    // OCTREE_BRICKLOOKUP_BUFFER. This is a DROP-IN swap: DeriveShell builds the
+    // remap so the shader's existing addressing (brickIdx = brickLookup[flat];
+    // channelPool[poolBrickBase + brickIdx*stride + ...]) reads the compact pool
+    // with NO shader-logic change. The full-interior buffers stay live as the
+    // ShellRevalidate compute pass's SOURCE (bindings on that node), never bound
+    // to the render. BodyOctreeSceneNode re-emits SHELL_DATA/SHELL_LOOKUP each
+    // frame as the current double-buffer read slot [frame&1].
+    // (Placeholder 1-byte for binary/Procedural bodies — shader only reads these
+    //  when OctreeConfig.formatId == FORMAT_STORED_SDF.)
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::SHELL_DATA_BUFFER,
+                          descriptorGatherer, 11,  // Binding 11: compact shell pool
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
-    // Inc2 M3: Binding 12: Brick-grid lookup SSBO (uint32[bpa^3] grid-coord→brickIndex table).
-    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_BRICKLOOKUP_BUFFER,
-                          descriptorGatherer, 12,  // Binding 12: BrickLookupBuffer
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::SHELL_LOOKUP_BUFFER,
+                          descriptorGatherer, 12,  // Binding 12: grid->shellSlot remap
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
+    // Sparse-Mip ESVO LOD Inc1 M3: Binding 13: mip pool SSBO (packed {value,coverage}
+    // floats, one per node/channel). Placeholder for a tree that was never mip-baked;
+    // read by the shader's leaf-existence (Task 7) and LOD-cutoff (Task 8) fallbacks.
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_MIPPOOL_BUFFER,
+                          descriptorGatherer, 13,  // Binding 13: MipPoolBuffer
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
     if (mainLogger && mainLogger->IsEnabled()) {
-        mainLogger->Info("[BuildRenderGraph] Connected SoA-SDF buffer at binding 11, brick-grid lookup at binding 12 (Inc2 M3)");
+        mainLogger->Info("[BuildRenderGraph] Connected SoA-SDF buffer at binding 11, brick-grid lookup at binding 12, mip pool at binding 13 (Inc1 M3)");
     }
 
     // Swapchain connections to descriptor set and dispatch
@@ -1179,6 +999,31 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   computeDispatch, ComputeDispatchNodeConfig::SWAPCHAIN_INFO)
          .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
                   computeDispatch, ComputeDispatchNodeConfig::IMAGE_INDEX);
+
+    // M4: render-scale decoupling. The offscreen render target follows the swapchain's extent
+    // (EXTENT_SOURCE), scaled by PARAM_SCALE (set above from VIXEN_RENDER_SCALE); it rides the
+    // standard resize->recompile cascade — no per-frame extent checks anywhere in this wiring.
+    // ComputeDispatchNode's RENDER_TARGET_INFO input makes it dispatch into and blit from this
+    // target instead of writing the swapchain image directly.
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  renderTargetNode, RenderTargetNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+                  renderTargetNode, RenderTargetNodeConfig::EXTENT_SOURCE)
+         .Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
+                  computeDispatch, ComputeDispatchNodeConfig::RENDER_TARGET_INFO,
+                  SlotRoleModifier(SlotRole::Execute));
+
+    // M4: the compute shader's output image (binding 0) is now the offscreen render target's
+    // current view, not the swapchain's — the swapchain is written only by the blit inside
+    // ComputeDispatchNode. Was: swapChainNode::CURRENT_FRAME_IMAGE_VIEW -> descriptorGatherer 0.
+    batch.Connect(renderTargetNode, RenderTargetNodeConfig::CURRENT_VIEW,
+                          descriptorGatherer, 0,  // outputImage at binding 0
+                          SlotRoleModifier(SlotRole::Execute));
+
+    // M4.3: raySizeCoef derives from the render target's live height (rank 6) — rides the same
+    // resize->recompile cascade as the render target itself.
+    batch.Connect(renderTargetNode, RenderTargetNodeConfig::HEIGHT_OUT,
+                  raySizeCoefNode, RaySizeCoefNodeConfig::HEIGHT);
 
     // Sync connections
     batch.Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
@@ -1254,15 +1099,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.RegisterAll();
 
     mainLogger->Info("Successfully wired " + std::to_string(connectionCount) + " connections");
-
-    // --- Phase 0.4: Loop Propagation Connections ---
-    // TODO: Re-enable loop propagation connections after implementing proper API
-    // Note: AUTO_LOOP slots exist on all nodes, but direct Connect() is not exposed on RenderGraph
-    // batch.Connect(
-    //     physicsLoopBridge, NodeInstance::AUTO_LOOP_OUT_SLOT,
-    //     geometryRenderNode, NodeInstance::AUTO_LOOP_IN_SLOT
-    // );
-    // mainLogger->Info("Connected physics loop propagation to GeometryRenderNode");
 
     mainLogger->Info("Complete render pipeline built with " + std::to_string(renderGraph->GetNodeCount()) + " nodes");
 }

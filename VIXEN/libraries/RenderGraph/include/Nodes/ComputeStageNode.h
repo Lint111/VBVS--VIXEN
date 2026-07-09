@@ -8,6 +8,7 @@
 #include "State/StatefulContainer.h"
 #include "Data/Nodes/ComputeStageNodeConfig.h"
 #include "Core/FrameSyncSchedule.h"
+#include "Nodes/Common/SwapchainBarriers.h"
 
 namespace Vixen::RenderGraph {
 
@@ -51,8 +52,6 @@ private:
     void BindComputePipeline(VkCommandBuffer cmdBuffer, VkPipeline pipeline,
                              VkPipelineLayout layout, VkDescriptorSet descriptorSet);
     void SetPushConstants(Context& ctx, VkCommandBuffer cmdBuffer, VkPipelineLayout layout);
-    void TransitionImageToGeneralBarrier2(VkCommandBuffer cmdBuffer, VkImage image);
-    void TransitionImageToPresentBarrier2(VkCommandBuffer cmdBuffer, VkImage image);
 
     VkCommandPool commandPool_ = VK_NULL_HANDLE;
 

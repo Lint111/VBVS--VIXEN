@@ -93,15 +93,7 @@ void VulkanSwapChain::DestroySwapChain(VkDevice device)
         return;
     }
 
-    // Destroy image views
-    for (uint32_t i = 0; i < scPublicVars.colorBuffers.size(); i++) {
-        if(scPublicVars.colorBuffers[i].view != VK_NULL_HANDLE) {
-            vkDestroyImageView(device, scPublicVars.colorBuffers[i].view, nullptr);
-            scPublicVars.colorBuffers[i].view = VK_NULL_HANDLE;
-        }
-    }
-    scPublicVars.colorBuffers.clear();
-    scPrivateVars.swapChainImages.clear();
+    DestroyImageViewsOnly(device);
 
     // Destroy swap chain (but not the surface - it stays alive)
     if(scPublicVars.swapChain != VK_NULL_HANDLE) {
@@ -112,6 +104,22 @@ void VulkanSwapChain::DestroySwapChain(VkDevice device)
             scPublicVars.currentColorBuffer = 0;
         }
     }
+}
+
+void VulkanSwapChain::DestroyImageViewsOnly(VkDevice device)
+{
+    if (device == VK_NULL_HANDLE) {
+        return;
+    }
+
+    for (uint32_t i = 0; i < scPublicVars.colorBuffers.size(); i++) {
+        if(scPublicVars.colorBuffers[i].view != VK_NULL_HANDLE) {
+            vkDestroyImageView(device, scPublicVars.colorBuffers[i].view, nullptr);
+            scPublicVars.colorBuffers[i].view = VK_NULL_HANDLE;
+        }
+    }
+    scPublicVars.colorBuffers.clear();
+    scPrivateVars.swapChainImages.clear();
 }
 
 void VulkanSwapChain::DestroySurface(VkInstance instance)
@@ -347,6 +355,28 @@ VulkanStatus VulkanSwapChain::GetSurfaceCapabilitiesAndPresentMode(VkPhysicalDev
     return {};  // success
 }
 
+VkExtent2D VulkanSwapChain::QueryCurrentSurfaceExtent(VkPhysicalDevice gpu) const
+{
+    VkSurfaceCapabilitiesKHR caps{};
+    VkResult result = fpGetPhysicalDeviceSurfaceCapabilitiesKHR(gpu, scPublicVars.surface, &caps);
+    if (result != VK_SUCCESS) {
+        // Query failed (transient / surface lost) — report the live swapchain extent so the
+        // SUBOPTIMAL-handling caller's "extent unchanged" comparison degrades to a safe no-op
+        // recreation-skip instead of comparing against zeroed capabilities.
+        return scPublicVars.Extent;
+    }
+    // 0xFFFFFFFF (UINT32_MAX) is the spec's "surface size is undefined, follows the requested
+    // image extent" sentinel (mirrors the same guard in GetSurfaceCapabilitiesAndPresentMode:339)
+    // -- a Wayland-class surface can report this. Raw-comparing it against the live pixel extent
+    // in SwapChainNode's SUBOPTIMAL handler would (almost) never match, forcing an unnecessary
+    // recreation on every SUBOPTIMAL acquire -- a per-frame recreation storm risk (rank 3). Report
+    // the live extent instead so that comparison is a stable no-op until a real size change lands.
+    if (caps.currentExtent.width == 0xFFFFFFFFu || caps.currentExtent.height == 0xFFFFFFFFu) {
+        return scPublicVars.Extent;
+    }
+    return caps.currentExtent;
+}
+
 void VulkanSwapChain::ManagePresentMode()
 {
     // Prioritize IMMEDIATE for maximum uncapped FPS
@@ -393,7 +423,7 @@ void VulkanSwapChain::ManagePresentMode()
     }
 }
 
-void VulkanSwapChain::CreateSwapChainColorImages(VkDevice device)
+void VulkanSwapChain::CreateSwapChainColorImages(VkDevice device, VkSwapchainKHR oldSwapchain)
 {
     VkResult result;
 
@@ -419,7 +449,7 @@ void VulkanSwapChain::CreateSwapChainColorImages(VkDevice device)
     scInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
     scInfo.imageArrayLayers = 1;
     scInfo.presentMode = scPrivateVars.swapChainPresentMode;
-    scInfo.oldSwapchain = VK_NULL_HANDLE;
+    scInfo.oldSwapchain = oldSwapchain;
     scInfo.clipped = VK_TRUE;
     scInfo.imageColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
     scInfo.imageUsage = imageUsageFlags;
@@ -427,11 +457,20 @@ void VulkanSwapChain::CreateSwapChainColorImages(VkDevice device)
     scInfo.queueFamilyIndexCount = 0;
     scInfo.pQueueFamilyIndices = nullptr;
 
-    // Create the swapchain object
-    result = fpCreateSwapchainKHR(device, &scInfo, nullptr, &scPublicVars.swapChain);
+    // Create the new swapchain. Per the Vulkan retirement model, oldSwapchain (if not VK_NULL_HANDLE)
+    // becomes retired but remains a valid handle until explicitly destroyed -- destroy it only AFTER
+    // this succeeds, so a failed recreation doesn't leave us without any swapchain at all.
+    VkSwapchainKHR newSwapchain = VK_NULL_HANDLE;
+    result = fpCreateSwapchainKHR(device, &scInfo, nullptr, &newSwapchain);
     if (result != VK_SUCCESS) {
         throw std::runtime_error(std::string("VulkanSwapChain::CreateSwapChainColorImages - fpCreateSwapchainKHR failed: ") + std::to_string(static_cast<int>(result)));
     }
+
+    if (oldSwapchain != VK_NULL_HANDLE && fpDestroySwapchainKHR) {
+        fpDestroySwapchainKHR(device, oldSwapchain, nullptr);
+    }
+    scPublicVars.swapChain = newSwapchain;
+
     // Mirror the ACTUAL negotiated usage flags (post STORAGE-bit-drop, see GetSupportedFormats)
     // onto the public struct so graph consumers (e.g. DescriptorSetNode::HandleStorageImage) can
     // check what the swapchain images were really created with, not what was requested.

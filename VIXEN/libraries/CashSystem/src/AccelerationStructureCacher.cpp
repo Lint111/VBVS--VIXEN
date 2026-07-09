@@ -7,6 +7,7 @@
 #include <cstring>
 #include <stdexcept>
 #include <sstream>
+#include <mutex>
 
 namespace CashSystem {
 
@@ -179,40 +180,45 @@ void AccelerationStructureCacher::Cleanup() {
         vkGetDeviceProcAddr(m_device->device, "vkDestroyAccelerationStructureKHR")
     );
 
-    // Cleanup all cached entries
-    for (auto& [key, entry] : m_entries) {
-        if (entry.resource) {
-            auto& asData = entry.resource->accelStruct;
+    // Cleanup all cached entries. Locked: m_entries is mutated here while DeviceRegistry can be
+    // running Serialize/DeserializeFromFile for this same cacher on another thread via
+    // std::async (audit V-M9). Released before Clear(), which takes its own unique_lock.
+    {
+        std::unique_lock wlock(m_lock);
+        for (auto& [key, entry] : m_entries) {
+            if (entry.resource) {
+                auto& asData = entry.resource->accelStruct;
 
-            // Cleanup Dynamic TLAS resources first (if present)
-            if (entry.resource->dynamicTLAS) {
-                entry.resource->dynamicTLAS->Cleanup(nullptr);
-                entry.resource->dynamicTLAS.reset();
-            }
-            entry.resource->instanceManager.reset();
-
-            // Destroy acceleration structure handles
-            if (destroyAS) {
-                if (asData.blas != VK_NULL_HANDLE) {
-                    destroyAS(m_device->device, asData.blas, nullptr);
-                    asData.blas = VK_NULL_HANDLE;
+                // Cleanup Dynamic TLAS resources first (if present)
+                if (entry.resource->dynamicTLAS) {
+                    entry.resource->dynamicTLAS->Cleanup(nullptr);
+                    entry.resource->dynamicTLAS.reset();
                 }
-                if (asData.tlas != VK_NULL_HANDLE) {
-                    destroyAS(m_device->device, asData.tlas, nullptr);
-                    asData.tlas = VK_NULL_HANDLE;
+                entry.resource->instanceManager.reset();
+
+                // Destroy acceleration structure handles
+                if (destroyAS) {
+                    if (asData.blas != VK_NULL_HANDLE) {
+                        destroyAS(m_device->device, asData.blas, nullptr);
+                        asData.blas = VK_NULL_HANDLE;
+                    }
+                    if (asData.tlas != VK_NULL_HANDLE) {
+                        destroyAS(m_device->device, asData.tlas, nullptr);
+                        asData.tlas = VK_NULL_HANDLE;
+                    }
                 }
+
+                // Free buffer allocations via FreeBufferTracked
+                FreeBufferTracked(asData.blasAllocation);
+                FreeBufferTracked(asData.tlasAllocation);
+                FreeBufferTracked(asData.instanceAllocation);
+                FreeBufferTracked(asData.scratchAllocation);
+
+                asData.blasDeviceAddress = 0;
+                asData.tlasDeviceAddress = 0;
+                asData.primitiveCount = 0;
+                entry.resource->sourceAABBCount = 0;
             }
-
-            // Free buffer allocations via FreeBufferTracked
-            FreeBufferTracked(asData.blasAllocation);
-            FreeBufferTracked(asData.tlasAllocation);
-            FreeBufferTracked(asData.instanceAllocation);
-            FreeBufferTracked(asData.scratchAllocation);
-
-            asData.blasDeviceAddress = 0;
-            asData.tlasDeviceAddress = 0;
-            asData.primitiveCount = 0;
-            entry.resource->sourceAABBCount = 0;
         }
     }
 
@@ -462,8 +468,12 @@ void AccelerationStructureCacher::BuildBLAS(const AccelStructCreateInfo& ci, con
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &cmdBuffer;
 
-    VK_CHECK_LOG(vkQueueSubmit(m_device->queue, 1, &submitInfo, VK_NULL_HANDLE), "Queue submit (BLAS)");
-    vkQueueWaitIdle(m_device->queue);
+    {
+        // Externally synchronized per Vulkan spec (audit V-M11).
+        std::lock_guard<std::mutex> submitLock(m_device->SubmitMutex(m_device->queue));
+        VK_CHECK_LOG(vkQueueSubmit(m_device->queue, 1, &submitInfo, VK_NULL_HANDLE), "Queue submit (BLAS)");
+        vkQueueWaitIdle(m_device->queue);
+    }
 
     vkFreeCommandBuffers(m_device->device, m_buildCommandPool, 1, &cmdBuffer);
 
@@ -648,8 +658,12 @@ void AccelerationStructureCacher::BuildTLAS(const AccelStructCreateInfo& ci, Acc
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &cmdBuffer;
 
-    VK_CHECK_LOG(vkQueueSubmit(m_device->queue, 1, &submitInfo, VK_NULL_HANDLE), "Queue submit (TLAS)");
-    vkQueueWaitIdle(m_device->queue);
+    {
+        // Externally synchronized per Vulkan spec (audit V-M11).
+        std::lock_guard<std::mutex> submitLock(m_device->SubmitMutex(m_device->queue));
+        VK_CHECK_LOG(vkQueueSubmit(m_device->queue, 1, &submitInfo, VK_NULL_HANDLE), "Queue submit (TLAS)");
+        vkQueueWaitIdle(m_device->queue);
+    }
 
     vkFreeCommandBuffers(m_device->device, m_buildCommandPool, 1, &cmdBuffer);
 

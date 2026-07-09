@@ -47,10 +47,29 @@ public:
     );
     ~CameraNode() override = default;
 
-    /// Live camera as rendered this frame (orbit-derived position + basis). The pose PARAMS are
-    /// only setup-time requests; anything that needs the actual view (e.g. the host's CPU body
-    /// pick) must read this, not the params — they diverge as soon as the user orbits/zooms.
+    /// Live camera as rendered this frame (orbit-derived position + basis), resolved by the
+    /// most recent ExecuteImpl. The pose PARAMS are only setup-time requests; anything that needs
+    /// the actual view (e.g. the host's CPU body pick, VulkanGraphApplication::Update's residency
+    /// trigger) must read this, not the params — they diverge as soon as the user orbits/zooms.
+    /// Mirrors the live-GetInstance-lookup pattern of GetWindowHandle()/SetBodyInstances() (host
+    /// reads node state each tick, no new graph wiring). Empty/default before the first
+    /// ExecuteImpl runs (mirrors every other node's pre-Compile state).
     const CameraData& GetCurrentCameraData() const { return currentCameraData; }
+
+    /**
+     * @brief Directly set the live orbit distance/yaw (Sparse-Mip ESVO LOD Inc1 M4c live gate).
+     *
+     * `orbitDistance`/`yaw` are read every ExecuteImpl (no Setup-time-only re-fetch, unlike
+     * `fov`/`orbitCenter`) — mirrors the existing wheel-zoom/mouse-drag live-mutation path
+     * (CameraNode.cpp's ExecuteImpl) but driven directly by a host script instead of
+     * InputState, for an unattended VIXEN_RESIDENCY_GATE_DEMO run that needs to move the
+     * camera toward/away from a body over many frames with no real window/mouse. Clamped to
+     * the same [kOrbitDistanceMin, kOrbitDistanceMax] bounds every other zoom path respects.
+     */
+    void SetOrbitDistanceForTest(float distance) {
+        orbitDistance = glm::clamp(distance, kOrbitDistanceMin, kOrbitDistanceMax);
+    }
+    void SetYawForTest(float yawRadians) { yaw = yawRadians; }
 
 protected:
     void SetupImpl(TypedSetupContext& ctx) override;
@@ -85,7 +104,11 @@ private:
 
     // Orbit distance bounds (keeps camera inside the 128^3 world). Shared by W/S zoom
     // (ApplyMovement) and wheel zoom (ExecuteImpl, M4) so both paths agree on one ceiling.
-    static constexpr float kOrbitDistanceMin = 5.0f;
+    // Min is a near-zero floor (not 0) only to avoid a degenerate/undefined view direction
+    // exactly at the orbit center — small enough to zoom arbitrarily close to fine surface
+    // detail (e.g. inspecting a sub-voxel artifact), which the old 5.0 floor (tuned for the
+    // main app's 10-unit Cornell-box demo scene) prevented for the editor's smaller objects.
+    static constexpr float kOrbitDistanceMin = 0.1f;
     static constexpr float kOrbitDistanceMax = 120.0f;
 
     // Accumulated input deltas (cleared after applying)

@@ -333,6 +333,12 @@ void InputNode::QueueEvent(const InputEvent& event) {
     pendingInput_.push_back(event);
 }
 
+#if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
+void InputNode::InjectMouseButton(int button, int action) {
+    QueueEvent({InputEvent::Type::MouseButton, button, action, 0.0, 0.0});
+}
+#endif
+
 void InputNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // Calculate delta time
     UpdateDeltaTime();
@@ -497,6 +503,14 @@ void InputNode::PopulateInputState() {
     inputState_.mouseButtons[2] = buttonDown_[2];
     inputState_.wheelDelta = pendingScroll_;
     inputState_.clicksThisFrame = pendingClicks_;
+
+    // TEMP DEBUG: latch the last left-press pixel (persists across frames, unlike
+    // clicksThisFrame) for the ray-trace debug buffer to force-capture that exact ray.
+    for (const ClickEvent& click : pendingClicks_) {
+        if (click.button == 0 && click.pressed) {
+            inputState_.lastClickPixel = glm::ivec2(static_cast<int>(click.x), static_cast<int>(click.y));
+        }
+    }
 
     // Mirror the config fields CameraNode needs (M4) — see InputState.h's doc comment for why
     // this rides the existing slot instead of a new connection.

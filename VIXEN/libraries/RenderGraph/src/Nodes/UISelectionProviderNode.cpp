@@ -88,13 +88,21 @@ void UISelectionProviderNode::ExecuteImpl(TypedExecuteContext& ctx) {
     }
 
     // Hit-test the cursor position AT THE PRESS EVENT (not the end-of-frame cursor position) against
-    // the live HUD. GetElementAtPoint returns the topmost element under the point, or nullptr on a
-    // miss (cursor over empty/transparent UI area).
+    // the live HUD. GetElementAtPoint does NOT reliably return nullptr over empty/transparent UI
+    // space: every Context has a hidden "#root" pseudo-element (Context::SetDimensions sizes it to
+    // the full viewport) that RCSS can never select — its pointer-events stays at the library
+    // default (Auto) regardless of the body { pointer-events: none } rule below it, since
+    // inheritance only flows parent->child and #root is body's PARENT. So any click that "misses"
+    // every real, styled element still hits #root and comes back non-null. #root's own `id` is set
+    // to the Context's name (Context::Context, "root->SetId(name)") — here "vixen_ui" (the name
+    // passed to Rml::CreateContext in UIRenderNode.cpp) — which is why every click was logging
+    // "HIT element id='vixen_ui'" even over visually-empty area, silently swallowing clicks that
+    // should have passed through to the 3D voxel pick.
     const glm::vec2 cursor(pressEntry->x, pressEntry->y);
     Rml::Element* hitElement = context->GetElementAtPoint(
         Rml::Vector2f(cursor.x, cursor.y));
 
-    if (!hitElement) {
+    if (!hitElement || hitElement == context->GetRootElement()) {
         NODE_LOG_INFO("[UISelectionProvider] click — miss (no UI element under cursor)");
         ctx.Out(UISelectionProviderNodeConfig::CANDIDATE, candidate);
         return;

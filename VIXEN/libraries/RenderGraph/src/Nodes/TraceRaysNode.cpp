@@ -1,10 +1,13 @@
 #include "Nodes/TraceRaysNode.h"
 #include "Core/NodeRegistration.h"
+#include "Core/RenderGraph.h"
 #include "VulkanDevice.h"
 #include "VulkanSwapChain.h"
 #include "Core/NodeLogging.h"
 #include "Core/TaskProfiles/SimpleTaskProfile.h"  // Sprint 6.5: Profile integration
 #include <array>
+#include <mutex>
+#include <stdexcept>
 
 namespace Vixen::RenderGraph {
 
@@ -180,7 +183,13 @@ void TraceRaysNode::ExecuteImpl(TypedExecuteContext& ctx) {
 
     // Reset fence before submitting (fence was already waited on by FrameSyncNode)
     // This matches ComputeDispatchNode pattern exactly
-    vkResetFences(device, 1, &inFlightFence);
+    VkResult resetResult = vkResetFences(device, 1, &inFlightFence);
+    if (resetResult != VK_SUCCESS) {
+        if (resetResult == VK_ERROR_DEVICE_LOST) {
+            GetOwningGraph()->NotifyDeviceLost("TraceRaysNode::ExecuteImpl vkResetFences");
+        }
+        throw std::runtime_error("[TraceRaysNode::ExecuteImpl] Failed to reset fence: " + std::to_string(resetResult));
+    }
 
     // Collect GPU performance results for this frame-in-flight (after fence wait)
     if (gpuPerfLogger_) {
@@ -213,7 +222,10 @@ void TraceRaysNode::ExecuteImpl(TypedExecuteContext& ctx) {
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     beginInfo.flags = 0;  // Match ComputeDispatchNode - no ONE_TIME_SUBMIT
 
-    vkBeginCommandBuffer(cmdBuffer, &beginInfo);
+    VkResult beginResult = vkBeginCommandBuffer(cmdBuffer, &beginInfo);
+    if (beginResult != VK_SUCCESS) {
+        throw std::runtime_error("[TraceRaysNode::ExecuteImpl] Failed to begin command buffer: " + std::to_string(beginResult));
+    }
 
     // Get output image for layout transitions
     VkImage outputImage = swapchainInfo->GetImage(imageIndex);
@@ -336,7 +348,10 @@ void TraceRaysNode::ExecuteImpl(TypedExecuteContext& ctx) {
         1, &barrier
     );
 
-    vkEndCommandBuffer(cmdBuffer);
+    VkResult endResult = vkEndCommandBuffer(cmdBuffer);
+    if (endResult != VK_SUCCESS) {
+        throw std::runtime_error("[TraceRaysNode::ExecuteImpl] Failed to end command buffer: " + std::to_string(endResult));
+    }
 
     // Submit command buffer
     VkSemaphore waitSemaphores[] = { imageAvailableSemaphores[currentFrame] };
@@ -353,9 +368,21 @@ void TraceRaysNode::ExecuteImpl(TypedExecuteContext& ctx) {
     submitInfo.signalSemaphoreCount = 1;
     submitInfo.pSignalSemaphores = signalSemaphores;
 
-    VkResult result = vkQueueSubmit(vulkanDevice_->queue, 1, &submitInfo, inFlightFence);
+    VkResult result;
+    {
+        // Externally synchronized per Vulkan spec (audit V-M11): the TBB parallel executor can
+        // schedule this alongside another node's submit on the same queue.
+        std::lock_guard<std::mutex> submitLock(vulkanDevice_->SubmitMutex(vulkanDevice_->queue));
+        result = vkQueueSubmit(vulkanDevice_->queue, 1, &submitInfo, inFlightFence);
+    }
     if (result != VK_SUCCESS) {
-        NODE_LOG_ERROR("vkQueueSubmit failed: " + std::to_string(result));
+        // Matches ComputeDispatchNode: a swallowed submit failure here previously fell through to
+        // ctx.Out() below, handing Present a semaphore that will never be signalled, and a
+        // VK_ERROR_DEVICE_LOST on the RTX path never reached recovery (audit V-N8).
+        if (result == VK_ERROR_DEVICE_LOST) {
+            GetOwningGraph()->NotifyDeviceLost("TraceRaysNode::ExecuteImpl vkQueueSubmit");
+        }
+        throw std::runtime_error("[TraceRaysNode::ExecuteImpl] Failed to submit command buffer (vkQueueSubmit): " + std::to_string(result));
     }
 
     // Output command buffer and semaphore

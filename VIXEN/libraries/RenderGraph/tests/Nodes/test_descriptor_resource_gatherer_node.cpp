@@ -18,7 +18,7 @@
 #include <vector>
 
 // Test utilities
-#include "Libraries/RenderGraph/tests/TestMocks.h"  // Centralized test mocks (use project-root include path)
+#include "libraries/RenderGraph/tests/TestMocks.h"  // Centralized test mocks (use project-root include path)
 #include <TestFixtures.h>  // ShaderManagement test fixtures (from include path)
 
 // Render graph components

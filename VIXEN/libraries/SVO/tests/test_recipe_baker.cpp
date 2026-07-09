@@ -30,9 +30,9 @@ TEST(RecipeBaker, BakesTwoRecipesToDistinctSlotsAndSamples) {
     RecipeRegistry reg;
 
     RecipeRegistry::RecipeEntry a{};
-    a.bytecode = { sphereInstr(glm::vec3(32, 32, 32), 20.0f) };
+    a.bytecode = { sphereInstr(glm::vec3(0, 0, 0), 20.0f) };  // object-centered
     RecipeRegistry::RecipeEntry b{};
-    b.bytecode = { sphereInstr(glm::vec3(32, 32, 32), 26.0f) };
+    b.bytecode = { sphereInstr(glm::vec3(0, 0, 0), 26.0f) };  // object-centered
 
     ASSERT_EQ(reg.Register(10u, a), RecipeRegistry::RegisterResult::Ok);
     ASSERT_EQ(reg.Register(11u, b), RecipeRegistry::RegisterResult::Ok);
@@ -56,7 +56,7 @@ TEST(RecipeBaker, FailsLoudOverBudget) {
     RecipeRegistry reg;
 
     RecipeRegistry::RecipeEntry a{};
-    a.bytecode = { sphereInstr(glm::vec3(32, 32, 32), 26.0f) };
+    a.bytecode = { sphereInstr(glm::vec3(0, 0, 0), 26.0f) };  // object-centered
     ASSERT_EQ(reg.Register(1u, a), RecipeRegistry::RegisterResult::Ok);
 
     RecipeBakeConfig cfg{};
@@ -71,7 +71,7 @@ TEST(RecipeBaker, UnboundedBudgetAlwaysPasses) {
     RecipeRegistry reg;
 
     RecipeRegistry::RecipeEntry a{};
-    a.bytecode = { sphereInstr(glm::vec3(32, 32, 32), 26.0f) };
+    a.bytecode = { sphereInstr(glm::vec3(0, 0, 0), 26.0f) };  // object-centered
     ASSERT_EQ(reg.Register(5u, a), RecipeRegistry::RegisterResult::Ok);
 
     RecipeBakeConfig cfg{};

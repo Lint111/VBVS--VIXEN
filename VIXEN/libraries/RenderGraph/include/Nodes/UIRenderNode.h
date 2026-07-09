@@ -1,16 +1,17 @@
 #pragma once
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
+#include "Core/GPUPerformanceLogger.h"
 #include "Data/Nodes/UIRenderNodeConfig.h"
+#include "Ui/IView.h"
 #include "Ui/VixenRmlRenderInterface.h"
 #include "Ui/VixenRmlSystemInterface.h"
 
 #include <RmlUi/Core/DataModelHandle.h>
-#include <RmlUi/Core/Types.h>  // Rml::String
 
 #include <filesystem>
 #include <memory>
-#include <span>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -18,13 +19,6 @@ struct SwapChainPublicVariables;  // global (VulkanSwapChain.h); full include in
 namespace Rml { class Context; class ElementDocument; }
 
 namespace Vixen::RenderGraph {
-
-/// Host-facing input types for SetHudView. The host passes plain C data; the node copies to
-/// Rml::String internally so the caller does not need to care about RmlUi types.
-/// T3 Juice: recentEventAge = ticks since most recent world event involving this faction as
-/// perp or victim (255 = no recent event within K ticks); drives the .changed CSS pulse.
-struct HudFactionIn { const char* name; float grievance; bool focused; bool known; bool inLens; uint8_t recentEventAge; };
-struct HudEventIn   { const char* kind; int tick; };
 
 /**
  * @brief Node type for rendering an RmlUi document (data-driven UI) into the swapchain.
@@ -51,15 +45,13 @@ public:
     UIRenderNode(const std::string& instanceName, NodeType* nodeType);
     ~UIRenderNode() override = default;
 
-    /// Host-facing seam (S1b): push tick, bodyCount, the active map lens (raw LensKind 0-3 + its member
-    /// count), the faction list and the event list. The node copies name/kind strings to Rml::String, maps
-    /// the lens enum to its display name, and dirties all bound vars.
-    void SetHudView(int tick, int bodyCount, int activeLens, int activeLensCount,
-                    std::span<const HudFactionIn> factions,
-                    std::span<const HudEventIn> events);
+    /// Renderer-agnostic view seam: the consumer hands in its view; the node hosts its data model
+    /// (CreateDataModel(view->ModelName()) -> view->Register(c) -> LoadDocument(view->DocumentPath()))
+    /// without knowing any field. Call before the first compile.
+    void SetView(std::shared_ptr<IView> view);
 
-    /// S1a compatibility shim — delegates to SetHudView with empty lists.
-    void SetHudData(int tick, int bodyCount);
+    /// Dirty a bound variable after the consumer mutated its storage (forwards to DataModelHandle).
+    void MarkViewDirty(const char* field);
 
     /// Selection seam (additive): expose the owned Rml::Context so a selection provider
     /// (UISelectionProviderNode) can hit-test the HUD on a click. The context is created in
@@ -68,6 +60,10 @@ public:
     /// calls Context::GetElementAtPoint; it never mutates the context, the GPU sync objects, the
     /// composite pass, or the live-reload state. Returns nullptr if the context failed to create.
     [[nodiscard]] Rml::Context* GetUiContext() const { return context_; }
+
+    /// Get GPU performance logger for external metrics extraction (M5.1; mirrors ComputeDispatchNode).
+    /// @return Pointer to GPUPerformanceLogger, or nullptr if not initialized.
+    [[nodiscard]] GPUPerformanceLogger* GetGPUPerformanceLogger() const { return gpuPerfLogger_.get(); }
 
 protected:
     void SetupImpl(TypedSetupContext& ctx) override;
@@ -78,12 +74,13 @@ protected:
 private:
     void FreeCommandBuffers();  // free the per-image command buffers (no device wait)
     void DestroyCompositeSemaphores();  // destroy the owned per-image "ui complete" semaphores
-    void RecordFrame(VkCommandBuffer cmd, VkFramebuffer framebuffer);
+    void RecordFrame(VkCommandBuffer cmd, VkFramebuffer framebuffer, uint32_t frameIndex);
 
     bool initialized_ = false;
     VkDevice device_ = VK_NULL_HANDLE;
     VkQueue queue_ = VK_NULL_HANDLE;
     PFN_vkQueueSubmit2KHR fpQueueSubmit2_ = nullptr;  // cached from VulkanDevice each compile
+    std::mutex* submitMutex_ = nullptr;  // VulkanDevice::SubmitMutex(queue_) — guards the per-frame submit (audit V-M11)
     VkCommandPool commandPool_ = VK_NULL_HANDLE;
     VkRenderPass renderPass_ = VK_NULL_HANDLE;   // consumed from RenderPassNode (not owned)
     VkExtent2D extent_{};
@@ -107,21 +104,16 @@ private:
     std::string resolvedDocPath_;
     std::filesystem::file_time_type lastUiWriteTime_{};
 
-    // S1b: Rml data model members. Structs are registered with RegisterStruct<> / RegisterArray<>
-    // in CompileImpl before LoadDocument. tick_ / bodyCount_ / activeLensName_ / activeLensCount_ are
-    // bound as scalars; factions_ / events_ are bound as arrays (data-for in the HUD document).
-    // T3 Juice: recentChanged = true when recentEventAge < kJuiceK (i.e. the faction recently appeared
-    // in a world event as perp or victim); drives the .changed CSS class on the faction row.
-    struct HudFaction { Rml::String name; float grievance = 0.f; bool focused = false; bool known = false; bool inLens = false; bool recentChanged = false; };
-    struct HudEvent   { Rml::String kind; int tick = 0; };
+    // Renderer-agnostic view seam (Inc-2): the node hosts whatever IView the consumer sets, knowing
+    // no field name. view_ is created into viewModel_ in CompileImpl (CreateDataModel(view_->ModelName())
+    // -> view_->Register(c)); MarkViewDirty forwards to viewModel_.DirtyVariable.
+    std::shared_ptr<IView>  view_;
+    Rml::DataModelHandle    viewModel_;
 
-    int tick_ = 0;
-    int bodyCount_ = 0;
-    Rml::String activeLensName_ = "None";  // the active map lens's display name (LensKind 0-3 → None/Intel/Logistics/Threat)
-    int activeLensCount_ = 0;              // number of entities the active lens spans (0 when None)
-    std::vector<HudFaction> factions_;
-    std::vector<HudEvent>   events_;
-    Rml::DataModelHandle    hudModel_;
+    // GPU timing (M5.1, mirrors ComputeDispatchNode's gpuPerfLogger_): times the render-pass
+    // recording (BeginRenderPass..EndRenderPass) so a p99 hitch can be attributed to the UI pass
+    // vs. the compute dispatch vs. neither (CPU/present).
+    std::shared_ptr<GPUPerformanceLogger> gpuPerfLogger_;
 };
 
 } // namespace Vixen::RenderGraph

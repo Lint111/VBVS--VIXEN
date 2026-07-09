@@ -185,6 +185,26 @@ inline void setSdfBrickArrayBase(OctreeConfig& c, uint32_t base) {
 inline void setDescriptorBricksPerAxis(OctreeConfig& c, uint32_t bpa) {
     c.bricksPerAxisSdf = bpa;
 }
+/// Read the mipPoolBase (Sparse-Mip ESVO LOD Inc1 M1 Task 3) from OctreeConfig (byte 352).
+inline uint32_t mipPoolBaseOf(const OctreeConfig& c) {
+    return c.mipPoolBase;
+}
+/// Write mipPoolBase into the OctreeConfig tail.
+inline void setMipPoolBase(OctreeConfig& c, uint32_t base) {
+    c.mipPoolBase = base;
+}
+/// Read brickResident (Sparse-Mip ESVO LOD Inc1 M3 Task 7) from OctreeConfig (byte 356).
+inline bool brickResidentOf(const OctreeConfig& c) {
+    return c.brickResident != 0u;
+}
+/// Write brickResident into the OctreeConfig tail — per-tree binary residency
+/// (§0 scope): 0 = bricksBuffer_ region allocated but not populated (mip-only),
+/// 1 = fully uploaded. The shader's leaf-hit existence check reads this field
+/// directly rather than hasBrick()/contourPointer, which stays valid regardless
+/// of residency (M2 Task 4) and so cannot itself signal "not yet uploaded."
+inline void setBrickResident(OctreeConfig& c, bool resident) {
+    c.brickResident = resident ? 1u : 0u;
+}
 
 // ===========================================================================
 // Serialized output
@@ -214,6 +234,16 @@ struct SerializedOctree {
 
     std::vector<uint8_t> brickGridLookup; // uint32[bricksPerAxis^3]: grid-coord→brickIndex,
                                           // 0xFFFFFFFF = unallocated brick.
+
+    // Sparse-Mip ESVO LOD Inc1 M1 Task 3 — per-node, per-channel filtered mip
+    // pool (bottom-up bake fill, MipBake.h::BakeMipPool). SoA layout mirrors
+    // channelPool's read-by-semantic convention but at NODE granularity:
+    //   mipPool[nodeIdx * channelCount + channelIdx] -> one packed MipSample
+    //   (2 floats: value, coverage), stride sizeof(MipSample) bytes.
+    // Empty (zero-size) unless the caller populates it via SetMipPool below —
+    // M1's bake/serialize is opt-in per Task's own scope (existing SerializeSdf
+    // callers are unaffected until they choose to call it).
+    std::vector<uint8_t> mipPool;
 
     uint32_t nodeCount = 0;   // == nodes.size() / sizeof(ChildDescriptor)
     uint32_t brickCount = 0;  // == bricks.size() / kBrickStrideBytes
@@ -260,6 +290,11 @@ struct ConcatenatedOctrees {
     std::vector<uint8_t> brickGridLookup; // octrees concatenated; each sub-table is
                                           // uint32[bpa^3] where bpa = bricksPerAxis.
                                           // Per-octree size varies; M3 uploads them separately.
+
+    // Sparse-Mip ESVO LOD Inc1 M1 Task 3 — concatenated per-octree mip pools
+    // (empty unless the caller populated each SerializedOctree::mipPool before
+    // concatenation — see ConcatenateSdf).
+    std::vector<uint8_t> mipPool;
 
     std::vector<OctreeConfig> configs;    // per-octree config (size == count)
     std::vector<uint32_t>     nodeCounts; // per-octree node count
@@ -394,7 +429,7 @@ inline SerializedOctree Serialize(const ShellOctree& shell) {
         ? static_cast<int>(std::lround(std::log2(static_cast<double>(brickSide))))
         : 3;
 
-    c.esvoMaxScale = 22;
+    c.esvoMaxScale = LaineKarrasOctree::ESVO_MAX_SCALE;
     c.userMaxLevels = maxLevels;
     c.brickDepthLevels = brickDepth;
     c.brickSize = 1 << brickDepth;
@@ -625,7 +660,7 @@ inline SerializedOctree SerializeSdf(const SdfBodyOctree& body) {
     const int brickDepth = brickSide > 0
         ? static_cast<int>(std::lround(std::log2(static_cast<double>(brickSide))))
         : 3;
-    c.esvoMaxScale    = 22;
+    c.esvoMaxScale    = LaineKarrasOctree::ESVO_MAX_SCALE;
     c.userMaxLevels   = maxLevels;
     c.brickDepthLevels= brickDepth;
     c.brickSize       = 1 << brickDepth;
@@ -744,6 +779,13 @@ inline ConcatenatedOctrees ConcatenateSdf(const std::vector<const SdfBodyOctree*
         s.config.nodeArrayBase  = static_cast<int32_t>(nodeBase);
         s.config.brickArrayBase = static_cast<int32_t>(brickBase);
         setSdfBrickArrayBase(s.config, poolBase);  // poolBrickBase = poolBase
+        // mipPoolBase is intentionally left at its default (0): SerializeSdf
+        // never populates mip pools (opt-in, see MipBake.h), and this plain
+        // ConcatenateSdf does not bake them either — ConcatenateSdfWithMips
+        // (MipBake.h) is the mip-aware sibling that stamps mipPoolBase and
+        // appends cat.mipPool. Leaving it untouched here (rather than
+        // advancing it against empty data) keeps mipPoolBase==0 meaningfully
+        // "no mip pool" for every octree, matching cat.mipPool staying empty.
 
         cat.configs[k]     = s.config;
         cat.nodeCounts[k]  = s.nodeCount;

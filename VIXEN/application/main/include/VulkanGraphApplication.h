@@ -9,7 +9,10 @@
 #include "error/VulkanError.h"
 #include "Time/EngineTime.h"
 #include "MessageBus.h"
+#include "graph/HudViewBridge.h"  // HudFactionIn/HudEventIn (gaia-free) + Make/Wire/PushHudView seam
 #include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -21,8 +24,22 @@ struct GLFWwindow;  // cross-platform window handle (GLFW); real include only in
 namespace Vixen::RenderGraph { class UIRenderNode; }  // composite HUD node; real include only in the .cpp
 namespace Vixen::RenderGraph { class UISelectionProviderNode; }  // UI hit-test provider; real include only in the .cpp
 namespace Vixen::RenderGraph { class BodyOctreeSceneNode; }  // M-wire: sparse shell octree upload node; real include in .cpp
+namespace Vixen::RenderGraph { class CameraNode; }  // Sparse-Mip ESVO LOD Inc1 M4c: live camera-state readback for the residency trigger
 namespace Vixen::SVO { struct BodyInstanceGpu; }  // M-wire: per-body GPU instance record (64 bytes)
 namespace Vixen::SVO { struct ConcatenatedOctrees; }  // Spec B I3: boot-baked recipe pool (SetRecipePool)
+// View Contract Inc-2: HudView.h's real include lives ONLY in HudViewBridge.cpp (gaia-free) and
+// HudView.cpp itself -- NEVER in this header or in VulkanGraphApplication.cpp/BuildRenderGraph.cpp,
+// both of which transitively include BodyOctreeSceneNode.h's gaia.h. Root cause (not a style
+// preference): gaia vendors its OWN, DIFFERENT-VERSION copy of RmlUi's bundled robin_hood.h under
+// the SAME include guard (ROBIN_HOOD_H_INCLUDED) -- whichever copy a TU sees first silently wins
+// for that whole TU, so a TU seeing gaia's copy first compiles RmlUi's inline data-model template
+// code (RegisterStruct/RegisterDefinition) against the WRONG struct layout, an ODR/ABI mismatch
+// against the object RmlUi's own .cpp constructed (confirmed: 64 vs 56 bytes for the identical
+// robin_hood::unordered_flat_map<FamilyId,...> instantiation) -- manifesting as a null-pointer
+// access violation the instant that mismatched code touches the type registry. Held by a raw
+// pointer (constructed via MakeHudView(), an opaque factory in HudViewBridge.h) so this header
+// needs only the forward declaration -- see hudView_ below for why it isn't std::unique_ptr.
+namespace Vixen::App { class HudView; }
 
 using namespace Vixen::Vulkan::Resources;
 using namespace Vixen::RenderGraph;
@@ -52,6 +69,12 @@ public:
     void Prepare() override;
     void Update() override;
     bool Render() override;
+    // View Contract Inc-2 Task 5: parses VIXEN_HUD_SCRIPT/VIXEN_HUD_CAPTURE_FRAMES/
+    // VIXEN_HUD_CAPTURE_DIR once and injects the scripted HUD payload due this tick (mirrors
+    // EditorApplication::PreTick's scripted-action injector — this app has no subclass, so the
+    // harness attaches here directly). Capture itself happens at the end of Update() (below the
+    // dirty_-equivalent point where the frame's render target is guaranteed populated).
+    void PreTick() override;
 
     // ====== Graph Management ======
 
@@ -142,6 +165,26 @@ protected:
      */
     void CompleteShutdown();
 
+    // graph.Run() consolidation: expose the two facts the base Tick() classifies on.
+    bool IsShutdownRequested() const override { return shutdownRequested; }
+    bool IsDeviceLostState()   const override { return renderGraph && renderGraph->IsDeviceLost(); }
+
+    /**
+     * @brief Sparse-Mip ESVO LOD Inc1 M4c: re-evaluate the brick-residency trigger against
+     *        the live camera state and re-sort instances front-to-back for the GPU per-ray
+     *        occlusion reject.
+     *
+     * Called every Update() tick (cheap: a live GetInstance lookup + a few dot products,
+     * no GPU work unless the gate actually flips) — mirrors SetBodyInstances'/
+     * SetRecipePool's live-uncached-pointer discipline. Combines M4a's minResolvableLevel
+     * + M4b's frustum containment (with hysteresis) into RequestBrickResidency's single
+     * trigger, re-checked whenever camera distance, FOV, OR orientation changes materially
+     * since the last check (a fixed per-frame re-evaluation would also work — the
+     * change-detection here only exists to avoid needless SortInstancesFrontToBack calls
+     * on a static camera, not because re-checking is expensive).
+     */
+    void UpdateBodySceneResidency();
+
 private:
     // ====== Engine (AR#7) ======
     // EngineContext OWNS the core graph subsystems (registry, bus, graph, and the autonomous
@@ -168,10 +211,53 @@ private:
     uint32_t simLoopID = 0;                          // Logic loop for the embedded sim (fixed cadence)
     NodeHandle voxelGridNode_{};                     // dense debug-buffer node (still in graph; no longer the render source)
     NodeHandle bodyOctreeSceneNode_{};               // M-wire: sparse shell octree node (bindings 1/2/3/5/10)
+    NodeHandle cameraNode_{};                        // Sparse-Mip ESVO LOD Inc1 M4c: live camera-state lookup for the residency trigger
+
+    // Sparse-Mip ESVO LOD Inc1 M4c: last camera state the residency trigger was evaluated
+    // against — change-detection only (avoids re-sorting/re-requesting every single frame
+    // on a static camera); NOT part of the trigger formula itself (that's stateless, per
+    // M4a/M4b). Default-constructed (all zero) so the FIRST Update() tick always evaluates
+    // (a zero cameraPos/cameraDir "changed" trivially from any real camera state).
+    glm::vec3 lastResidencyCheckCameraPos_{0.0f};
+    glm::vec3 lastResidencyCheckCameraDir_{0.0f};
+    float     lastResidencyCheckFovDegrees_ = 0.0f;
+    bool      residencyTriggerEverEvaluated_ = false;
+
+    // Sparse-Mip ESVO LOD Inc2 M3: whether the LAST residency re-check granted brick
+    // residency to this BodyOctreeSceneNode's shared pool — the CPU-side occlusion
+    // gate's "already brick-resident" input (Inc1 M4b's deferred spec: occlusion is
+    // tested against trees resident BEFORE this frame's own re-decision, not against
+    // whatever this frame is about to decide). Starts false (nothing resident pre-first-check).
+    bool      lastResidencyGranted_ = false;
     NodeHandle windowNode_{};                        // stored so GetWindowHandle() can query the WindowNode live
     NodeHandle inputNode_{};                         // stored so Update() can drain InputNode's event queue live (input-rework slice 1)
     NodeHandle uiRenderNode_{};                      // stored so GetUiRenderNode() can query the composite UI node live
     NodeHandle uiSelectionProviderNode_{};           // stored so GetUiSelectionProviderNode() can drain HUD clicks live
+
+    // View Contract Inc-2: the app's native IView, set on the UI node via SetView (BuildRenderGraph).
+    // Owned here (not by the node) — the node only holds a non-owning aliased shared_ptr, since
+    // hudView_ (a VulkanGraphApplication member) already outlives the graph it is wired into.
+    // Raw pointer, NOT std::unique_ptr<HudView> -- this header only forward-declares HudView (see
+    // above), and std::unique_ptr's implicit destructor needs the complete type at the point it is
+    // itself instantiated (this class's own destructor, defined in the gaia-touching
+    // VulkanGraphApplication.cpp) -- an incomplete-type-delete compile error. Constructed via
+    // MakeHudView() (ctor) and destroyed via DestroyHudView() (dtor), both HudViewBridge.h seams
+    // whose bodies live in HudViewBridge.cpp, the one gaia-free TU where HudView is complete.
+    Vixen::App::HudView* hudView_ = nullptr;
+
+    // Task 5: scripted HUD-inject + byte-exact capture harness (mirrors EditorApplication's
+    // VIXEN_EDITOR_SCRIPT/_CAPTURE_FRAMES/_CAPTURE_DIR harness — this app has no subclass, so it
+    // attaches directly here). All zero-cost/inert when VIXEN_HUD_* env vars are unset.
+    long hudUpdateTick_ = 0;               // local tick counter, independent of other counters in Update()
+    bool hudScriptParsed_ = false;         // guards the one-time env parse in PreTick()
+    std::vector<std::pair<long, char>> hudScript_;  // (frame, 'A'|'B') parsed from VIXEN_HUD_SCRIPT
+    std::vector<long> hudCaptureFrames_;   // parsed from VIXEN_HUD_CAPTURE_FRAMES
+    std::string hudCaptureDir_ = "temp";   // overridable via VIXEN_HUD_CAPTURE_DIR
+
+    // Reads main_swapchain's CURRENT image back to host RGBA8 and writes it as a PNG at `path`
+    // (mirrors EditorApplication::CaptureFrameToPng's device lookup, but reads the swapchain, not
+    // compute_render_target — see the .cpp definition's comment for why).
+    bool CaptureHudFrameToPng(const std::string& path, std::string& err);
 
     // NOTE: Command buffers, semaphores, and all Vulkan resources
     // are managed by the render graph nodes, not the application
@@ -186,9 +272,12 @@ public:
     // M-wire: push the current per-body instance list into BodyOctreeSceneNode so it re-uploads the
     // SSBO on the next compile tick. Replaces the StarSystemGenerator + MarkVoxelSceneDirty flow.
     void SetBodyInstances(std::vector<Vixen::SVO::BodyInstanceGpu> instances);
-    // Spec B I3/Task 6: push the boot-baked recipe pool (RecipeBootIngest -> BakeRegistryToPool) into
-    // BodyOctreeSceneNode. Forwards to BodyOctreeSceneNode::SetRecipePool, which then supplies octree
-    // slots 0..N-1 for the render_recipe blob ids the bridge resolves in ToBodyInstanceGpu.
+    // Spec B I3/Task 6 (= main's I4.1 passthrough — both lines converged on this API): push a
+    // boot-baked recipe pool (RecipeBootIngest -> BakeRegistryToPool) into BodyOctreeSceneNode,
+    // which then serves octree slots 0..N-1 for the render_recipe blob ids the bridge resolves in
+    // ToBodyInstanceGpu. Mirrors SetBodyInstances above — same live GetInstance lookup, same
+    // null-guard; a host that owns document/recipe authoring (e.g. vixen_editor) uses this to
+    // swap the render source without hand-rolling a NodeTypeRegistry lookup.
     void SetRecipePool(Vixen::SVO::ConcatenatedOctrees pool);
     // Expose the GLFW window handle so the host can poll input (e.g. Space/period for pause/step).
     // Queries the WindowNode LIVE each call (the node owns the window post-de-own refactor + persists

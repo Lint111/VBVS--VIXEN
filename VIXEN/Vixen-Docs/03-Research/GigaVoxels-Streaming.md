@@ -130,3 +130,42 @@ vec4 SampleWithFallback(OctreeNode node, vec3 pos) {
 - [[../02-Implementation/SVO-System]] - Base octree design
 - [[Optimization-Bibliography]] - Supporting research
 - [[../05-Progress/Roadmap]] - Phase planning
+- [[../01-Architecture/Sparse-Mip-ESVO-LOD-Inc1-Plan-2026-07]] (2026-07-05) — implements the same core
+  mechanism (brick-pointer sentinel → coarser-LOD fallback, async on-demand brick population), arrived
+  at independently; see that Plan's "Prior art" note for what it reuses vs. deliberately diverges from
+  (proactive per-tree distance/FOV gating instead of GigaVoxels' reactive per-ray request buffer; no
+  disk/out-of-core tier — VIXEN's data already fits in host-visible memory)
+
+## Deeper sources (2026-07-05): thesis + 2024 follow-on, not just the 2009 paper
+
+This note above (and the summary sections below) reflect **only the 2009 I3D conference paper** — the
+compressed early announcement. Two much richer sources exist and should be preferred for any future
+implementation work:
+
+1. **Crassin's PhD thesis** (2011, "GigaVoxels: A Voxel-Based Rendering Pipeline For Efficient
+   Exploration Of Large And Detailed Scenes," 207pp). Chapter 7 "Out-of-core data management" (pp.
+   117-155) is the load-bearing chapter — it describes a materially **simpler and more precise** request
+   mechanism than the 2009 paper's HistoPyramid stream-compaction scheme: a flat request buffer sized
+   1:1 with the page table, where every ray needing a page writes the *current frame's timestamp* into
+   its slot — self-deduplicating by construction (identical concurrent writes need no atomic op), no
+   per-ray output list at all. LRU eviction is maintained the same way via a parallel usage buffer,
+   entirely on the GPU (§7.3.3-7.3.4) — no CPU-mirrored clone structure, unlike prior art of the time
+   (Gobbetti et al.). **Quantified**: GPU kernel-fetch streaming vs. CPU-triggered copies reaches ~half
+   theoretical PCIe bandwidth at scale, vs. 1/40th (small bricks) to 1/5th (large bricks) for CPU-driven
+   transfer (§7.5.3); GPU-side LRU management is 1.7×-27.5× faster than CPU-side, advantage growing with
+   pool size (§7.5.4).
+2. **Richermoz & Neyret (2024), "GigaVoxels DP: Starvation-Less Render and Production for Large and
+   Detailed Volumetric Worlds Walkthrough"** (HPG 2024, hal-04654692) — a direct successor that diagnoses
+   remaining GPU-core starvation even in the GPU-native cache design (discrete render/production pass
+   alternation still stalls in a "tail regime" that "can sometimes represent more than half of the total
+   time"), fixed via CUDA Dynamic Parallelism (a ray hitting a miss launches its own production kernel
+   directly, no CPU round-trip, no pass boundary). Measured **1.1×-4.4× speedup, average 2.1×**, biggest
+   gains on the highest-churn/highest-disocclusion scenes. Relies on CUDA-specific dynamic parallelism
+   with no direct Vulkan equivalent — the authors themselves flag Vulkan portability as unsolved future
+   work.
+
+Both PDFs were user-supplied 2026-07-05 (not previously in this repo) and read in full to ground
+[[../01-Architecture/Sparse-Mip-ESVO-LOD-Inc1-Plan-2026-07]]'s "Prior art"/"Inc2 candidate" notes — see
+that Plan for the concrete comparison against VIXEN's current design and what's actually worth adopting
+(the flat request-buffer/GPU-LRU trick) vs. deferred (CUDA dynamic-parallelism scheduling, a genuine
+Vulkan-portability problem).

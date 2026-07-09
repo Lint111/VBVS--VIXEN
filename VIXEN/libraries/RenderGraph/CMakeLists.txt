@@ -251,6 +251,7 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/DebugBufferReaderNode.cpp
     src/Nodes/DepthBufferNode.cpp
     src/Nodes/RenderTargetNode.cpp
+    src/Nodes/RaySizeCoefNode.cpp       # M4: live LOD ray-cone recompute from render-target height
     src/Nodes/PickIdTargetNode.cpp
     src/Nodes/InstanceBufferNode.cpp
     src/Nodes/StorageBufferNode.cpp     # auto-sync P4 M4: generic arbitrary-sized SSBO node
@@ -284,6 +285,7 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/TraceRaysNode.cpp
     src/Nodes/WindowNode.cpp
     src/Nodes/BodyOctreeSceneNode.cpp
+    src/Nodes/ShellRevalidateNode.cpp
 )
 
 # ============================================================================
@@ -322,6 +324,11 @@ set(RENDERGRAPH_UI_HEADERS
     include/Ui/VixenRmlSystemInterface.h
     include/Ui/UiShaderSpirv.h
     include/Ui/UiHitMask.h
+    include/Ui/IView.h
+    include/Ui/ViewBlob.h
+    include/Ui/ViewStore.h
+    include/Ui/ViewBlobFile.h
+    include/Ui/BlobView.h
     include/Data/Nodes/UIRenderNodeConfig.h
     include/Nodes/UIRenderNode.h
 )
@@ -329,6 +336,9 @@ set(RENDERGRAPH_UI_HEADERS
 set(RENDERGRAPH_UI_SOURCES
     src/Ui/VixenRmlRenderInterface.cpp
     src/Ui/UiHitMask.cpp
+    src/Ui/ViewStore.cpp
+    src/Ui/ViewBlobFile.cpp
+    src/Ui/BlobView.cpp
     src/Nodes/UIRenderNode.cpp
 )
 

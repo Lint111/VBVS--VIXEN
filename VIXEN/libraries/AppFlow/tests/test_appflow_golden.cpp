@@ -1,0 +1,44 @@
+// NOTE: this test is written in Milestone 1 (Task 2) but its CMake target does not
+// exist yet — it is built + run once Milestone 3 / Task 7 wires
+// VIXEN/libraries/AppFlow/tests/CMakeLists.txt (APPFLOW_GENERATED_HEADER_PATH compile
+// def). Do not expect it to build or run until then.
+#include <gtest/gtest.h>
+#include <fstream>
+#include <sstream>
+#include <string>
+
+// Reads the committed generated header and asserts key invariants: the provenance
+// banner, pinned enum values, and the constexpr tables. A declaration change that
+// regenerates the header MUST update this test (that is the guard).
+static std::string readFile(const std::string& p) {
+    std::ifstream f(p);
+    std::stringstream ss; ss << f.rdbuf();
+    return ss.str();
+}
+
+TEST(AppFlowGolden, HeaderHasProvenanceBanner) {
+    const std::string h = readFile(APPFLOW_GENERATED_HEADER_PATH);
+    EXPECT_NE(h.find("do not edit by hand"), std::string::npos);
+}
+
+TEST(AppFlowGolden, EnumValuesArePinned) {
+    const std::string h = readFile(APPFLOW_GENERATED_HEADER_PATH);
+    EXPECT_NE(h.find("Editing=0"), std::string::npos);
+    EXPECT_NE(h.find("Simulating=1"), std::string::npos);
+    EXPECT_NE(h.find("Paused=2"), std::string::npos);
+    EXPECT_NE(h.find("ToggleLayer=0"), std::string::npos);
+}
+
+TEST(AppFlowGolden, ActionDeclTablePresent) {
+    const std::string h = readFile(APPFLOW_GENERATED_HEADER_PATH);
+    EXPECT_NE(h.find("kActionDecls"), std::string::npos);
+    EXPECT_NE(h.find("kTransitions"), std::string::npos);
+}
+
+TEST(AppFlowGolden, ParamSignatureEmitted) {
+    // The typed param signature (generalized from undertow UiParamSchema) is core, not deferred.
+    const std::string h = readFile(APPFLOW_GENERATED_HEADER_PATH);
+    EXPECT_NE(h.find("FlowParamType"), std::string::npos);
+    EXPECT_NE(h.find("kToggleLayerParams"), std::string::npos);
+    EXPECT_NE(h.find("\"layerIndex\""), std::string::npos);
+}

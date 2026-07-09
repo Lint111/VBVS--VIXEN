@@ -1,7 +1,7 @@
 /**
  * @file test_body_instance_raymarch_render.cpp
- * @brief Render the REAL GPU ray-march shader (BodyInstanceRayMarch.comp) to a PNG
- *        on lavapipe (software Vulkan, CPU). The decisive crack test.
+ * @brief Render the REAL GPU ray-march shader (BodyInstanceRayMarch.comp) to a PNG.
+ *        The decisive crack test.
  *
  * The CPU reference renderer (cpu_body_render_main.cpp) draws the SP2 body scene by
  * the SVO library's CPU castRay path and shows dark "+" brick-boundary cracks at the
@@ -10,20 +10,17 @@
  * directly comparable: does the shipped renderer crack the same way, or render clean?
  *
  * ===========================================================================
- *  SAFETY — LAVAPIPE ONLY (identical contract to test_body_octree_lifetime.cpp)
+ *  DEVICE SELECTION (identical contract to test_body_octree_lifetime.cpp)
  * ===========================================================================
- * lavapipe (llvmpipe) is a pure-CPU LLVM rasterizer that NEVER touches the
- * WSL2/Mesa-Dozen (Vulkan-over-D3D12) path. The harness forces lavapipe two ways:
- *   1. The runner sets VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json.
- *   2. PickSoftwarePhysicalDevice() selects ONLY a device whose deviceName contains
- *      "llvmpipe"/"lavapipe" AND deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU, and the
- *      fixture HARD-ASSERTS softwareConfirmed_ before ANY vkQueueSubmit. If the chosen
- *      device is not the software rasterizer the test FAILS and never submits.
+ * Uses VixenSelectWslGpuIcd() so this runs on Mesa-Dozen (the real GPU) when
+ * provisioned on WSL2, falling back to lavapipe otherwise — see
+ * test_body_octree_lifetime.cpp's file header for the 2026-07-04 re-verification
+ * that both paths are safe. IsAcceptableDevice() still hard-asserts the selected
+ * device is one of the two verified ones before ANY vkQueueSubmit; an unrecognized
+ * device fails the test loud rather than risk it.
  *
- * Run:
- *   VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json \
- *   VK_LAYER_PATH=<...>/.vulkan-sdk/1.4.350.1/x86_64/share/vulkan/explicit_layer.d \
- *   ./test_body_instance_raymarch_render
+ * Run: ./test_body_instance_raymarch_render
+ *   (set VK_ICD_FILENAMES explicitly to force a specific ICD, e.g. for comparison.)
  *
  * Output: /tmp/glsl_shader_near.png  (512x512 RGBA8, the shipped shader's NEAR view).
  *
@@ -42,6 +39,7 @@
 
 #include "ShellOctreeGpu.h"   // Vixen::SVO::BodyInstanceGpu
 #include "TestVkValidation.h"
+#include "VulkanGlobalNames.h"  // VixenSelectWslGpuIcd
 
 #include <vulkan/vulkan.h>
 
@@ -127,17 +125,25 @@ protected:
 
     std::unique_ptr<VulkanDevice> deviceShell_;
 
+    // Accepts the two devices this test has been verified against: the software
+    // rasterizer (llvmpipe/lavapipe, CPU) or Mesa-Dozen (Vulkan-over-D3D12). Rejects
+    // anything else — an untriaged device still fails loud rather than risk it.
     static bool LooksLikeSoftware(const VkPhysicalDeviceProperties& props) {
         std::string name(props.deviceName);
         for (char& c : name) c = static_cast<char>(::tolower(c));
-        const bool nameSays =
-            name.find("llvmpipe") != std::string::npos ||
-            name.find("lavapipe") != std::string::npos;
-        const bool typeSays = props.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU;
-        return nameSays && typeSays;
+        const bool isSoftware =
+            (name.find("llvmpipe") != std::string::npos ||
+             name.find("lavapipe") != std::string::npos) &&
+            props.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU;
+        const bool isDozen = name.find("direct3d12") != std::string::npos;
+        return isSoftware || isDozen;
     }
 
     void SetUp() override {
+        // Same call every VIXEN executable makes before any Vulkan instance: auto-selects
+        // Dozen on WSL2 when provisioned and no ICD was already chosen.
+        VixenSelectWslGpuIcd();
+
         VkApplicationInfo appInfo{};
         appInfo.sType            = VK_STRUCTURE_TYPE_APPLICATION_INFO;
         appInfo.pApplicationName = "test_body_instance_raymarch_render";
@@ -159,12 +165,13 @@ protected:
         instInfo.ppEnabledExtensionNames = extensions;
 
         ASSERT_EQ(vkCreateInstance(&instInfo, nullptr, &instance_), VK_SUCCESS)
-            << "vkCreateInstance failed — is lavapipe on VK_ICD_FILENAMES?";
+            << "vkCreateInstance failed — is a Vulkan device available?";
 
         ASSERT_NO_FATAL_FAILURE(PickSoftwarePhysicalDevice());
         ASSERT_TRUE(softwareConfirmed_)
             << "Refusing to run: selected device '" << selectedDeviceName_
-            << "' is NOT the software rasterizer. Aborting before any vkQueueSubmit.";
+            << "' is not a verified device (software rasterizer or Dozen). "
+               "Aborting before any vkQueueSubmit.";
 
         ASSERT_NO_FATAL_FAILURE(CreateLogicalDevice());
         ASSERT_NO_FATAL_FAILURE(CreateCommandPool());
@@ -192,8 +199,7 @@ protected:
     void PickSoftwarePhysicalDevice() {
         uint32_t count = 0;
         ASSERT_EQ(vkEnumeratePhysicalDevices(instance_, &count, nullptr), VK_SUCCESS);
-        ASSERT_GT(count, 0u) << "No Vulkan physical devices visible. Is lavapipe forced via "
-                                "VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json?";
+        ASSERT_GT(count, 0u) << "No Vulkan physical devices visible.";
         std::vector<VkPhysicalDevice> devices(count);
         ASSERT_EQ(vkEnumeratePhysicalDevices(instance_, &count, devices.data()), VK_SUCCESS);
         for (VkPhysicalDevice dev : devices) {
@@ -372,6 +378,22 @@ protected:
             brickLookupBuf = dummyLookup;
         }
 
+        // Mip pool (13, Sparse-Mip ESVO LOD Inc1 M3): none of this test's callers baked a mip
+        // pool (all bodies here go through CreateOctreeBuffers/BodyOctreeSceneNode with
+        // residencyRequested_ defaulting true, so bricks are always fully resident and the
+        // shader's readMipSample bounds-checks against mipPool.length() and never touches
+        // this buffer at runtime) — a 256-byte dummy satisfies the pipeline layout.
+        VkBuffer dummyMip = VK_NULL_HANDLE;
+        VkDeviceMemory dummyMipMem = VK_NULL_HANDLE;
+        CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummyMip, dummyMipMem, true);
+
+        // Per-instance iteration debug buffer (14, Sparse-Mip ESVO LOD Inc1 M4b): this test
+        // never reads it back, but the shader unconditionally declares the binding, so it must
+        // be bound to satisfy the pipeline layout — a 256-byte dummy suffices.
+        VkBuffer dummyIter = VK_NULL_HANDLE;
+        VkDeviceMemory dummyIterMem = VK_NULL_HANDLE;
+        CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummyIter, dummyIterMem, true);
+
         // Offscreen output images: rgba8 colour (0) + r32ui id (9).
         const VkFormat kColorFmt = VK_FORMAT_R8G8B8A8_UNORM;
         const VkFormat kIdFmt    = VK_FORMAT_R32_UINT;
@@ -401,7 +423,7 @@ protected:
             lb.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
             return lb;
         };
-        const std::array<VkDescriptorSetLayoutBinding, 11> bindings = {
+        const std::array<VkDescriptorSetLayoutBinding, 13> bindings = {
             bind(0,  VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             bind(1,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(2,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
@@ -413,6 +435,8 @@ protected:
             bind(10, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(11, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Inc2: SoA-SDF brick data
             bind(12, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Inc2: brick-grid lookup
+            bind(13, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Inc1 M3: sparse-mip pool
+            bind(14, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Inc1 M4b: per-instance iteration debug
         };
         VkDescriptorSetLayoutCreateInfo dslci{};
         dslci.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -443,7 +467,7 @@ protected:
 
         const std::array<VkDescriptorPoolSize, 2> poolSizes = {{
             {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  2},
-            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 9},   // 1(nodes)+1(bricks)+1(mats)+1(trace)+1(config)+1(counter)+1(inst)+1(sdf)+1(lookup)
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 11},  // 1(nodes)+1(bricks)+1(mats)+1(trace)+1(config)+1(counter)+1(inst)+1(sdf)+1(lookup)+1(mipPool)+1(iterDebug)
         }};
         VkDescriptorPoolCreateInfo dpci{};
         dpci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -470,6 +494,8 @@ protected:
         VkDescriptorBufferInfo instInfo{instanceBuf, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo sdfInfo{sdfBuf, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo lookupInfo{brickLookupBuf, 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo mipInfo{dummyMip, 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo iterInfo{dummyIter, 0, VK_WHOLE_SIZE};
 
         auto wImg = [&](uint32_t b, VkDescriptorImageInfo* info) {
             VkWriteDescriptorSet w2{};
@@ -485,7 +511,7 @@ protected:
             w2.descriptorType = t; w2.pBufferInfo = info;
             return w2;
         };
-        const std::array<VkWriteDescriptorSet, 11> writes = {
+        const std::array<VkWriteDescriptorSet, 13> writes = {
             wImg(0, &colorInfo),
             wBuf(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &nodesInfo),
             wBuf(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &bricksInfo),
@@ -497,6 +523,8 @@ protected:
             wBuf(10, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &instInfo),
             wBuf(11, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &sdfInfo),
             wBuf(12, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &lookupInfo),
+            wBuf(13, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &mipInfo),
+            wBuf(14, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &iterInfo),  // Inc1 M4b
         };
         vkUpdateDescriptorSets(logicalDevice_, static_cast<uint32_t>(writes.size()),
                                writes.data(), 0, nullptr);
@@ -586,6 +614,8 @@ protected:
         vkDestroyBuffer(logicalDevice_, counterBuf, nullptr); vkFreeMemory(logicalDevice_, counterMem, nullptr);
         if (dummySdf != VK_NULL_HANDLE)    { vkDestroyBuffer(logicalDevice_, dummySdf, nullptr);    vkFreeMemory(logicalDevice_, dummySdfMem, nullptr); }
         if (dummyLookup != VK_NULL_HANDLE) { vkDestroyBuffer(logicalDevice_, dummyLookup, nullptr); vkFreeMemory(logicalDevice_, dummyLookupMem, nullptr); }
+        vkDestroyBuffer(logicalDevice_, dummyMip, nullptr); vkFreeMemory(logicalDevice_, dummyMipMem, nullptr);
+        vkDestroyBuffer(logicalDevice_, dummyIter, nullptr); vkFreeMemory(logicalDevice_, dummyIterMem, nullptr);
     }
 };
 
@@ -1170,9 +1200,17 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderRecipeBakedBody) {
     const Vixen::SVO::BodyInstanceGpu frameInst = MakeInstance(0.0f, 0.0f, 0.0f, kRS, 0, 1.0f, 1.0f, 1.0f);
     node->SetInstances({ frameInst });
 
-    // Build a sphere∪sphere peanut recipe in grid space (64^3).
-    // Two overlapping spheres at x=26 and x=38, radius=16 each → forms a peanut
-    // shape the hardcoded recipes cannot produce.
+    // Build a sphere∪sphere peanut recipe, OBJECT-CENTERED (Inc2a re-derivation): the node's
+    // VIXEN_STORED_SDF_DEMO path bakes bakeRecipe_ via BakeRecipeInstructionsToSdfWorld with
+    // center=(32,32,32) (BodyOctreeSceneNode.cpp's kSdfCenter), which now applies `p - center`
+    // before evalRecipe -- and Sphere's data[0..2] is its OWN local center offset, added on top
+    // of that already-centered point. So a sphere must be authored RELATIVE to local origin, not
+    // at the old raw-grid-absolute (26/38, 32, 32) (which pre-fix coincided with grid-absolute
+    // since center was ignored; post-fix that same value would double-offset by center, landing
+    // near grid (-6,0,0)/(6,0,0) as an absolute coordinate rather than the intended local one).
+    // Two overlapping spheres at local x=-6 and x=+6, radius=16 each → forms a peanut shape the
+    // hardcoded recipes cannot produce; center=(32,32,32) places the pair back at grid (26,32,32)
+    // / (38,32,32) -- the same effective grid position as before the fix.
     auto makeSph = [](glm::vec3 c, float r) {
         Vixen::SVO::Recipe::SdfInstruction in{};
         in.opCode  = static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::Sphere);
@@ -1183,9 +1221,9 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderRecipeBakedBody) {
     uni.opCode = static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::Union);
 
     node->SetBakeRecipe({
-        makeSph({26.0f, 32.0f, 32.0f}, 16.0f),  // left lobe
-        makeSph({38.0f, 32.0f, 32.0f}, 16.0f),  // right lobe
-        uni                                       // union → peanut
+        makeSph({-6.0f, 0.0f, 0.0f}, 16.0f),  // left lobe (local; grid-absolute 26,32,32)
+        makeSph({ 6.0f, 0.0f, 0.0f}, 16.0f),  // right lobe (local; grid-absolute 38,32,32)
+        uni                                     // union → peanut
     });
 
     node->Setup();
@@ -1299,8 +1337,11 @@ TEST_F(BodyInstanceRayMarchRenderTest, RematerializeEditLoop) {
     Vixen::SVO::Recipe::SdfInstruction uni{};
     uni.opCode = static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::Union);
 
-    // Recipe A: a single centred sphere (one round lobe).
-    node->SetBakeRecipe({ makeSph({32.0f, 32.0f, 32.0f}, 18.0f) });
+    // Recipe A: a single centred sphere (one round lobe). Inc2a: object-centered (local
+    // origin) -- center=(32,32,32) (kSdfCenter) places it at grid (32,32,32), same effective
+    // position as the old grid-absolute (32,32,32) (this one was already at grid-center, so
+    // migrating to local (0,0,0) is a no-op in effective grid position).
+    node->SetBakeRecipe({ makeSph({0.0f, 0.0f, 0.0f}, 18.0f) });
 
     node->Setup();
     // Keep STORED_SDF_DEMO set across BOTH executes — the edit Execute's Rematerialize()
@@ -1357,9 +1398,11 @@ TEST_F(BodyInstanceRayMarchRenderTest, RematerializeEditLoop) {
     renderAndMeasure("/tmp/glsl_sdf_remat_A.png", widthA, pxA);
 
     // --- EDIT at runtime: sphere∪sphere peanut (two offset lobes, wider than A) ---
+    // Inc2a: object-centered (local); center=(32,32,32) places the pair back at the same
+    // effective grid position as the old grid-absolute (24,32,32)/(40,32,32).
     node->SetBakeRecipe({
-        makeSph({24.0f, 32.0f, 32.0f}, 16.0f),
-        makeSph({40.0f, 32.0f, 32.0f}, 16.0f),
+        makeSph({-8.0f, 0.0f, 0.0f}, 16.0f),
+        makeSph({ 8.0f, 0.0f, 0.0f}, 16.0f),
         uni
     });
     frameIndex = 0; SetHandleVal<uint32_t>(frameRes, frameIndex);

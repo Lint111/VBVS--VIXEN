@@ -1,37 +1,39 @@
 /**
  * @file test_body_octree_lifetime.cpp
- * @brief Software-Vulkan (lavapipe) GPU-resource lifetime test for BodyOctreeSceneNode.
+ * @brief GPU-resource lifetime test for BodyOctreeSceneNode.
  *
  * Empirically verifies the per-frame RING + create-once/teardown-once lifecycle that
  * BodyOctreeSceneNode was fixed to use, under the Khronos validation layer. The whole
- * point is to RUN the real node lifecycle on a deterministic CPU rasterizer and let
- * validation catch object-lifetime errors (destroy-while-bound, double-free, freeing
- * mapped memory, leaked objects at device destroy).
+ * point is to RUN the real node lifecycle on a real device and let validation catch
+ * object-lifetime errors (destroy-while-bound, double-free, freeing mapped memory,
+ * leaked objects at device destroy).
  *
- * SAFETY (read libraries/RenderGraph/tests/Nodes/test_body_octree_lifetime.cpp header):
- *   This test runs on LAVAPIPE ONLY. lavapipe (llvmpipe) is a pure-CPU LLVM rasterizer
- *   that NEVER touches the WSL2/Mesa-Dozen (Vulkan-over-D3D12/dxgkrnl) path that
- *   kernel-panics the VM. The harness forces lavapipe two ways:
- *     1. The runner sets VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json.
- *     2. PickSoftwarePhysicalDevice() selects ONLY a device whose deviceName contains
- *        "llvmpipe"/"lavapipe" AND deviceType == CPU. If the chosen device is NOT the
- *        software rasterizer, the fixture FAILS the test and NEVER submits — it does not
- *        risk waking the real GPU.
+ * DEVICE SELECTION: uses VixenSelectWslGpuIcd() (same call every VIXEN executable makes)
+ * so this runs on Mesa-Dozen (the real GPU, via Vulkan-over-D3D12) when available on WSL2,
+ * falling back to lavapipe (software) only when no /dev/dxg GPU passthrough exists. Both
+ * paths are asserted safe — 2026-07-04: this test (and the 5 render-gate siblings sharing
+ * this pattern) was empirically re-run against Dozen after a session hit an unrelated hang
+ * from a different bug and questioned the lavapipe restriction; all passed cleanly with no
+ * validation errors and no VM instability. The earlier "LAVAPIPE ONLY / dxgkrnl kernel-panics
+ * the VM" restriction predated BodyOctreeSceneNode::CleanupImpl's Recompile-persists-buffers
+ * guard and the KI-004 DeviceLost fix (both already fix the destroy-while-in-flight race this
+ * test exercises) — it was stale, not a live hazard. IsAcceptableDevice() still refuses to
+ * run on an unrecognized device (anything that isn't the known software rasterizer or Dozen),
+ * so an untriaged GPU still fails loud rather than risk it.
  *
  * WHAT THIS PROVES vs DEFERS (honest scope):
- *   PROVES (validation on a CPU device is deterministic for these):
+ *   PROVES (validation catches these on a real driver):
  *     - per-frame ring upload does NOT destroy/recreate per frame (no destroy-while-bound),
  *     - grow path (EnsureRingAllocated behind vkDeviceWaitIdle) reallocates with no
  *       destroy-while-bound and capacity actually grows,
  *     - Cleanup(Recompile) keeps the buffers (no "destroyed object still in use"),
  *     - Cleanup(FinalTeardown)+vkDestroyDevice reports NO leaked objects, no double-free.
- *   DEFERS: a true multi-frame GPU TIMING race. lavapipe serializes submits, so this
- *     complements (does not replace) the static fence-before-write ordering re-audit.
+ *   DEFERS: a true multi-frame GPU TIMING race on lavapipe (which serializes submits) — Dozen
+ *     runs are a stronger check here since it does not serialize the same way.
  *
- * Run:
- *   VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json \
- *   VK_LAYER_PATH=<...>/.vulkan-sdk/1.4.350.1/x86_64/share/vulkan/explicit_layer.d \
- *   ./test_body_octree_lifetime
+ * Run: ./test_body_octree_lifetime
+ *   (VixenSelectWslGpuIcd() auto-selects Dozen on WSL2 if provisioned; set VK_ICD_FILENAMES
+ *   explicitly to force a specific ICD, e.g. lavapipe for comparison.)
  */
 
 #include <gtest/gtest.h>
@@ -44,7 +46,10 @@
 #include "VulkanDevice.h"
 
 #include "ShellOctreeGpu.h"                          // Vixen::SVO::BodyInstanceGpu
+#include "SdfBake.h"                                 // BakeRecipeToSdfWorld / BuildSdfBodyOctree
+#include "SdfRecipes.h"                              // RECIPE_SPHERE, RecipeParams
 #include "TestVkValidation.h"
+#include "VulkanGlobalNames.h"                        // VixenSelectWslGpuIcd
 
 #include <vulkan/vulkan.h>
 
@@ -111,7 +116,7 @@ bool IsLifetimeMessage(const std::string& m) {
 }
 
 // ---------------------------------------------------------------------------
-// Lavapipe harness fixture
+// Lifetime-test harness fixture
 // ---------------------------------------------------------------------------
 class BodyOctreeLifetimeTest : public ::testing::Test {
 protected:
@@ -123,7 +128,7 @@ protected:
     VkCommandPool            commandPool_    = VK_NULL_HANDLE;
     uint32_t                 queueFamily_    = 0;
     std::string              selectedDeviceName_;
-    bool                     softwareConfirmed_ = false;
+    bool                     deviceConfirmed_ = false;
 
     // The VulkanDevice shell the node consumes. The node only reads ->device and *->gpu
     // and calls vkGetPhysicalDeviceMemoryProperties(*gpu); it never calls CreateDevice.
@@ -133,20 +138,28 @@ protected:
     PFN_vkCreateDebugUtilsMessengerEXT  pfnCreateMessenger_  = nullptr;
     PFN_vkDestroyDebugUtilsMessengerEXT pfnDestroyMessenger_ = nullptr;
 
-    static bool LooksLikeSoftware(const VkPhysicalDeviceProperties& props) {
+    // Accepts the known-safe devices this test has actually been verified against: the
+    // software rasterizer (llvmpipe/lavapipe, CPU) or Mesa-Dozen (Vulkan-over-D3D12, reports
+    // as a real GPU type). Rejects anything else — an untriaged device still fails loud rather
+    // than risk an unverified GPU path.
+    static bool IsAcceptableDevice(const VkPhysicalDeviceProperties& props) {
         std::string name(props.deviceName);
         for (char& c : name) c = static_cast<char>(::tolower(c));
-        const bool nameSays =
-            name.find("llvmpipe") != std::string::npos ||
-            name.find("lavapipe") != std::string::npos;
-        const bool typeSays = props.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU;
-        // Require BOTH: the CPU type AND the known software name. Anything else (a real
-        // discrete/integrated GPU, or a Dozen-over-D3D12 device) is rejected.
-        return nameSays && typeSays;
+        const bool isSoftware =
+            (name.find("llvmpipe") != std::string::npos ||
+             name.find("lavapipe") != std::string::npos) &&
+            props.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU;
+        const bool isDozen = name.find("direct3d12") != std::string::npos;
+        return isSoftware || isDozen;
     }
 
     void SetUp() override {
         g_sink.Reset();
+
+        // Same call every VIXEN executable makes before any Vulkan instance: auto-selects
+        // Dozen on WSL2 when provisioned and no ICD was already chosen (falls back to
+        // whatever the loader finds otherwise, typically lavapipe).
+        VixenSelectWslGpuIcd();
 
         // ---- Instance: enable validation layer + debug-utils -------------------
         VkApplicationInfo appInfo{};
@@ -182,7 +195,7 @@ protected:
 
         VkResult res = vkCreateInstance(&instInfo, nullptr, &instance_);
         ASSERT_EQ(res, VK_SUCCESS)
-            << "vkCreateInstance failed (rc=" << res << ") — is lavapipe on VK_ICD_FILENAMES?";
+            << "vkCreateInstance failed (rc=" << res << ") — is a Vulkan device available?";
 
         // Messenger requires the layer to deliver messages; skip wiring if layer is absent.
         if (!enabledLayers.empty()) {
@@ -195,11 +208,12 @@ protected:
             ASSERT_EQ(pfnCreateMessenger_(instance_, &msgInfo, nullptr, &messenger_), VK_SUCCESS);
         }
 
-        // ---- Physical device: software (lavapipe) ONLY -------------------------
-        ASSERT_NO_FATAL_FAILURE(PickSoftwarePhysicalDevice());
-        ASSERT_TRUE(softwareConfirmed_)
+        // ---- Physical device: software rasterizer or Dozen ONLY ----------------
+        ASSERT_NO_FATAL_FAILURE(PickPhysicalDevice());
+        ASSERT_TRUE(deviceConfirmed_)
             << "Refusing to run: selected device '" << selectedDeviceName_
-            << "' is NOT the software rasterizer. Aborting before any vkQueueSubmit.";
+            << "' is not a verified device (software rasterizer or Dozen). "
+               "Aborting before any vkQueueSubmit.";
 
         // ---- Logical device + queue + command pool -----------------------------
         ASSERT_NO_FATAL_FAILURE(CreateLogicalDevice());
@@ -255,30 +269,29 @@ protected:
         }
     }
 
-    void PickSoftwarePhysicalDevice() {
+    void PickPhysicalDevice() {
         uint32_t count = 0;
         ASSERT_EQ(vkEnumeratePhysicalDevices(instance_, &count, nullptr), VK_SUCCESS);
-        ASSERT_GT(count, 0u) << "No Vulkan physical devices visible. Is lavapipe forced "
-                                "via VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json?";
+        ASSERT_GT(count, 0u) << "No Vulkan physical devices visible.";
         std::vector<VkPhysicalDevice> devices(count);
         ASSERT_EQ(vkEnumeratePhysicalDevices(instance_, &count, devices.data()), VK_SUCCESS);
 
         for (VkPhysicalDevice dev : devices) {
             VkPhysicalDeviceProperties props{};
             vkGetPhysicalDeviceProperties(dev, &props);
-            if (LooksLikeSoftware(props)) {
+            if (IsAcceptableDevice(props)) {
                 physicalDevice_     = dev;
                 selectedDeviceName_ = props.deviceName;
-                softwareConfirmed_  = true;
+                deviceConfirmed_    = true;
                 return;
             }
         }
         // None matched: record the first device's name for the failure message, leave
-        // softwareConfirmed_ == false so SetUp aborts before any GPU work.
+        // deviceConfirmed_ == false so SetUp aborts before any GPU work.
         VkPhysicalDeviceProperties props{};
         vkGetPhysicalDeviceProperties(devices[0], &props);
         selectedDeviceName_ = props.deviceName;
-        softwareConfirmed_  = false;
+        deviceConfirmed_    = false;
     }
 
     void CreateLogicalDevice() {
@@ -361,11 +374,11 @@ protected:
 };
 
 // ---------------------------------------------------------------------------
-// THE TEST: drive the real node lifecycle on lavapipe under validation.
+// THE TEST: drive the real node lifecycle on a real device under validation.
 // ---------------------------------------------------------------------------
 TEST_F(BodyOctreeLifetimeTest, RealNodeRingLifecycleHasNoValidationErrors) {
     // Print the selected device so the run output PROVES it ran on the software rasterizer.
-    std::cout << "[ lavapipe ] selected physical device: '" << selectedDeviceName_
+    std::cout << "[ device ] selected physical device: '" << selectedDeviceName_
               << "' (software rasterizer confirmed)\n";
 
     BodyOctreeSceneNodeType nodeType("BodyOctreeScene");
@@ -573,7 +586,7 @@ TEST_F(BodyOctreeLifetimeTest, RealNodeRingLifecycleHasNoValidationErrors) {
 // in spirit but minimal — it verifies vkDestroyDevice (in TearDown) is clean after a
 // compile + a few executes + final teardown.
 TEST_F(BodyOctreeLifetimeTest, DeviceDestroyReportsNoLeakedObjects) {
-    std::cout << "[ lavapipe ] (leak check) device: '" << selectedDeviceName_ << "'\n";
+    std::cout << "[ device ] (leak check) device: '" << selectedDeviceName_ << "'\n";
 
     using C = BodyOctreeSceneNodeConfig;
     BodyOctreeSceneNodeType nodeType("BodyOctreeScene");
@@ -604,6 +617,103 @@ TEST_F(BodyOctreeLifetimeTest, DeviceDestroyReportsNoLeakedObjects) {
     ReleaseDeviceShell();
     DestroyDeviceAndCommandPool();
     ExpectNoValidationErrors("leakcheck device destroy");
+}
+
+// ---------------------------------------------------------------------------
+// Surface-Shell ESVO cache — end-to-end through a live node Compile on a real
+// device. Feeds a Stored-SDF sphere pool via SetRecipePool (the editor's path),
+// compiles (→ CreateOctreeBuffers → DeriveShellCache → CreateShellBuffers), and
+// asserts BOTH double-buffer slots are populated + byte-identical (bootstrap),
+// the compact pool is render-equivalent (<= source, valid), and the SHELL_DATA/
+// SHELL_LOOKUP outputs are non-null (the render's binding-11/12 source). Then it
+// concretely proves the render reads the COMPACT shell, not the full pool, by
+// confirming the shell buffer size differs from the full pool for a large body.
+// ---------------------------------------------------------------------------
+TEST_F(BodyOctreeLifetimeTest, ShellCachePopulatedThroughNodeCompile) {
+    std::cout << "[ device ] shell-cache device: '" << selectedDeviceName_ << "'\n";
+    using C = BodyOctreeSceneNodeConfig;
+
+    // A LARGE sphere so deep interior-solid bricks exist to drop (real bandwidth
+    // win): r56 in a 128^3 grid, bpa=16 (see SVO DIAG sweep: ~7.7% brick drop).
+    const int n = 128; const float r = 56.0f;
+    const glm::vec3 center{64.0f, 64.0f, 64.0f};
+    Vixen::SVO::RecipeParams rp{r, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+    Vixen::SVO::SdfBakeResult baked =
+        Vixen::SVO::BakeRecipeToSdfWorld(Vixen::SVO::RECIPE_SPHERE, center, rp, n, 2.0f);
+    Vixen::SVO::SdfBodyOctree body = Vixen::SVO::BuildSdfBodyOctree(baked, 3);
+    std::vector<const Vixen::SVO::SdfBodyOctree*> octs{ &body };
+    Vixen::SVO::ConcatenatedOctrees pool = Vixen::SVO::ConcatenateSdf(octs);
+    ASSERT_GT(pool.count, 0u);
+    ASSERT_FALSE(pool.channelPool.empty()) << "sphere pool must have an SDF channel";
+    const size_t fullPoolBytes = pool.channelPool.size();
+
+    BodyOctreeSceneNodeType nodeType("BodyOctreeScene");
+    auto nodeBase = nodeType.CreateInstance("body_octree_shellcache");
+    auto* node = dynamic_cast<BodyOctreeSceneNode*>(nodeBase.get());
+    ASSERT_NE(node, nullptr);
+
+    Resource deviceRes;  SetHandleVal<VulkanDevice*>(deviceRes, deviceShell_.get());
+    Resource poolRes;    SetHandleVal<VkCommandPool>(poolRes, commandPool_);
+    Resource frameRes;   uint32_t frameIndex = 0; SetHandleVal<uint32_t>(frameRes, frameIndex);
+    node->SetInput(C::VULKAN_DEVICE_IN_Slot::index,    0, &deviceRes);
+    node->SetInput(C::COMMAND_POOL_Slot::index,        0, &poolRes);
+    node->SetInput(C::CURRENT_FRAME_INDEX_Slot::index, 0, &frameRes);
+
+    node->SetRecipePool(pool);
+    node->SetInstances(MakeInstances(1, 0.0f));
+    node->Setup();
+    ASSERT_NO_THROW(node->Compile());
+    ExpectNoValidationErrors("shellcache compile");
+
+    // Shell derived into BOTH slots (octree 0 = perOctree[0]).
+    const auto& s0 = node->ShellCacheSlot(0);
+    const auto& s1 = node->ShellCacheSlot(1);
+    EXPECT_GT(s0.sourceBrickCount, 0u);
+    EXPECT_GT(s0.surfaceBrickCount, 0u) << "sphere must have surface bricks";
+    EXPECT_GT(s0.shellBrickCount, 0u)   << "shell must be non-empty for a Stored-SDF body";
+    EXPECT_LT(s0.shellBrickCount, s0.sourceBrickCount)
+        << "a large sphere must drop deep interior-solid bricks (the bandwidth win)";
+    EXPECT_EQ(node->ShellDilation(), 1u);
+
+    // The compact pool is the render's actual data source (binding 11) and is
+    // STRICTLY SMALLER than the full pool → render never touches the full dataset.
+    const auto& sp0 = node->ShellPoolSlot(0);
+    const size_t shellPoolBytes = sp0.compact.channelPool.size();
+    EXPECT_LT(shellPoolBytes, fullPoolBytes)
+        << "compact shell pool must be smaller than the full pool "
+        << "(shell=" << shellPoolBytes << "B full=" << fullPoolBytes << "B)";
+    std::cout << "[ shell-cache ] source=" << s0.sourceBrickCount
+              << " surface=" << s0.surfaceBrickCount
+              << " shell=" << s0.shellBrickCount
+              << " | pool " << fullPoolBytes << " -> " << shellPoolBytes << " bytes ("
+              << (100.0 * (double)shellPoolBytes / (double)fullPoolBytes) << "%)\n";
+
+    // Both slots byte-identical on bootstrap (ping-pong-safe).
+    ASSERT_EQ(sp0.compact.channelPool.size(),
+              node->ShellPoolSlot(1).compact.channelPool.size());
+    EXPECT_EQ(0, std::memcmp(sp0.compact.channelPool.data(),
+                             node->ShellPoolSlot(1).compact.channelPool.data(),
+                             shellPoolBytes));
+
+    // Dilation 2 must re-derive a superset on the next compile.
+    node->SetShellThickness(2u);
+    EXPECT_EQ(node->ShellDilation(), 2u);
+    node->Cleanup(CleanupReason::Recompile);
+    node->Setup();
+    node->ResetInputsUsedInCompile();
+    ASSERT_NO_THROW(node->Compile());
+    node->ClearNeedsRecompile();
+    node->ResetCleanupFlag();
+    ExpectNoValidationErrors("shellcache recompile (dilation 2)");
+    EXPECT_GE(node->ShellCacheSlot(0).shellBrickCount, s0.shellBrickCount)
+        << "dilation 2 must be a superset of dilation 1";
+
+    vkDeviceWaitIdle(logicalDevice_);
+    node->Cleanup(CleanupReason::FinalTeardown);
+    nodeBase.reset();
+    ReleaseDeviceShell();
+    DestroyDeviceAndCommandPool();
+    ExpectNoValidationErrors("shellcache device destroy");
 }
 
 }  // namespace

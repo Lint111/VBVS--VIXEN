@@ -80,6 +80,14 @@ void CameraNode::SetupImpl(TypedSetupContext& ctx) {
         orbitDistance = glm::clamp(v, kOrbitDistanceMin, kOrbitDistanceMax);
     });
 
+    // Orbit target: defaults match the main app's Cornell-box demo scene. A consumer whose
+    // geometry sits elsewhere (e.g. vixen_editor's object-centered documents) sets these params
+    // so the orbit camera actually frames its content instead of empty space.
+    orbitCenter.x = GetParameterValue<float>(CameraNodeConfig::PARAM_ORBIT_CENTER_X, 5.0f);
+    orbitCenter.y = GetParameterValue<float>(CameraNodeConfig::PARAM_ORBIT_CENTER_Y, 5.0f);
+    orbitCenter.z = GetParameterValue<float>(CameraNodeConfig::PARAM_ORBIT_CENTER_Z, 5.0f);
+    orbitDistance = GetParameterValue<float>(CameraNodeConfig::PARAM_ORBIT_DISTANCE, 30.0f);
+
     NODE_LOG_INFO("Camera position: (" + std::to_string(cameraPosition.x) + ", " +
                   std::to_string(cameraPosition.y) + ", " + std::to_string(cameraPosition.z) +
                   "), yaw=" + std::to_string(yaw) + ", pitch=" + std::to_string(pitch));

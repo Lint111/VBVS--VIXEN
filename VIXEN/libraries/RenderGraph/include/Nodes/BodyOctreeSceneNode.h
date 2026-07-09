@@ -7,8 +7,12 @@
 
 #include "ShellOctree.h"      // Vixen::SVO::ShellOctree, BuildShellOctree
 #include "ShellOctreeGpu.h"   // Vixen::SVO::{Concatenate, ConcatenatedOctrees, BodyInstanceGpu, PackInstances}
+#include "ShellDerive.h"      // Vixen::SVO::{DeriveShell, RevalidateShellBricks, ShellDeriveResult}
 #include "Recipe/SdfInstruction.h"  // Vixen::SVO::Recipe::SdfInstruction
+#include "InstanceSort.h"     // Vixen::SVO::SortInstancesFrontToBack (Inc1 M4b)
+#include "Memory/BatchedUploader.h"  // ResourceManagement::UploadHandle/InvalidUploadHandle (Inc1 M4c)
 
+#include <glm/glm.hpp>
 #include <cstdint>
 #include <memory>
 #include <vector>
@@ -79,6 +83,29 @@ public:
     void SetInstances(std::vector<Vixen::SVO::BodyInstanceGpu> instances);
 
     /**
+     * @brief Reorder the current instance list front-to-back by distance from
+     *        `cameraPos` (Sparse-Mip ESVO LOD Inc1 M4b).
+     *
+     * The shader's per-ray occlusion reject (BodyInstanceRayMarch.comp's
+     * `gridT.x > bestT` check against the running nearest-hit) only saves
+     * traversal work if closer instances are visited before farther ones in the
+     * instance loop — i.e. the array itself must already be near-to-far ordered,
+     * not sorted per-ray (that would defeat the point of a cheap, once-per-frame
+     * CPU sort). Call after SetInstances (or whenever the camera moves enough to
+     * change ordering) and before the next Execute uploads the ring slot.
+     */
+    void SortInstancesFrontToBack(const glm::vec3& cameraPos);
+
+    /**
+     * @brief Read back the current per-body instance list (Sparse-Mip ESVO LOD Inc1 M4c).
+     *
+     * Lets a host-side residency trigger (VulkanGraphApplication::UpdateBodySceneResidency)
+     * evaluate distance/frustum/resolvability per instance without the host needing to
+     * separately track whatever it last passed to SetInstances.
+     */
+    const std::vector<Vixen::SVO::BodyInstanceGpu>& GetInstances() const { return instances_; }
+
+    /**
      * @brief Inject an SdfInstruction recipe for octree 0's bake.
      *
      * When non-empty and VIXEN_STORED_SDF_DEMO is set, octree 0 is baked via
@@ -98,6 +125,48 @@ public:
      */
     void SetRecipePool(Vixen::SVO::ConcatenatedOctrees pool);
 
+    /**
+     * @brief Surface-Shell ESVO cache — brick-layer dilation of the SURFACE set.
+     *
+     * Clamped to [1,3]; default 1 (minimal sound 26-neighbour invariant). Sizes
+     * the derived reachable-shell cache, NOT SdfBake's bandVoxels. Re-derives both
+     * cache slots on the next Compile/Rematerialize.
+     */
+    void SetShellThickness(uint32_t dilation);
+
+    /// Accessors for verification/tests (no GPU needed). ShellCacheSlot returns
+    /// octree 0's per-octree derivation (the primary Stored-SDF body); ShellPoolSlot
+    /// returns the whole multi-octree compact pool. Slot 0/1 = CPU double buffer.
+    [[nodiscard]] const Vixen::SVO::ShellDeriveResult& ShellCacheSlot(uint32_t i) const {
+        static const Vixen::SVO::ShellDeriveResult kEmpty{};
+        const auto& po = shellCache_[i & 1u].perOctree;
+        return po.empty() ? kEmpty : po[0];
+    }
+    [[nodiscard]] const Vixen::SVO::ShellPool& ShellPoolSlot(uint32_t i) const {
+        return shellCache_[i & 1u];
+    }
+    [[nodiscard]] uint32_t ShellDilation() const { return shellDilation_; }
+
+    /**
+     * @brief Request (or release) brick-pool residency (Sparse-Mip ESVO LOD Inc1 M2).
+     *
+     * Per §0 scope this is per-tree binary: bricksBuffer_ is always allocated at full
+     * capacity (CreateOctreeBuffers), but its contents are only populated once residency
+     * is requested. Stashes the request and marks dirty — mirrors SetBakeRecipe/
+     * SetRecipePool: ExecuteImpl performs the actual BatchedUploader call next frame,
+     * never synchronously inside this setter.
+     */
+    void RequestBrickResidency(bool resident);
+
+    /**
+     * @brief Octree level at which this node's brick tier sits (Sparse-Mip ESVO LOD Inc1 M4c).
+     *
+     * Lets a host-side residency trigger compare minResolvableLevel(...) against the
+     * actual brick depth without duplicating kShellDepth's value as a magic number at
+     * the call site.
+     */
+    static constexpr int GetBrickTierLevel() { return kShellDepth; }
+
 protected:
     void SetupImpl(TypedSetupContext& ctx) override;
     void CompileImpl(TypedCompileContext& ctx) override;
@@ -113,6 +182,18 @@ private:
     void DestroyBuffers();
     void DestroyOctreeBuffers();   // P2.3: destroy ONLY the 6 octree/channel buffers (ring untouched)
     void Rematerialize();          // P2.3: re-bake octree 0 + recreate octree buffers (behind vkDeviceWaitIdle)
+    void UploadBrickPool();        // Inc1 M2: BatchedUploader-driven brick population (ExecuteImpl-only)
+    void PollBrickUploadCompletion();  // Inc1 M4c: non-blocking completion check (replaces WaitAllUploads)
+
+    // --- Surface-Shell ESVO cache ---
+    // Derive the reachable shell of octree 0 from concatenated_ into BOTH CPU
+    // double-buffer slots (bootstrap). No-op when octree 0 is not Stored-SDF.
+    void DeriveShellCache();
+    // Create/refresh the two GPU shell buffer pairs (double-buffered by distinct
+    // object identity) from shellCache_[0]/[1]. Called from CreateOctreeBuffers.
+    void CreateShellBuffers(Vixen::Vulkan::Resources::VulkanDevice* device);
+    // Re-upload shellCache_[slot]'s compact pool + grid lookup into GPU slot `slot`.
+    void UploadShellSlot(Vixen::Vulkan::Resources::VulkanDevice* device, uint32_t slot);
 
     // Build constants (one shell per kind; depth/material chosen here).
     static constexpr int      kShellDepth = 6;   // 2^6 = 64 cells/axis
@@ -127,6 +208,33 @@ private:
     Vixen::SVO::ConcatenatedOctrees        concatenated_;
     bool                                   octreesBuilt_ = false;
     bool                                   recipeDirty_  = false;  // P2.3: set by SetBakeRecipe post-Compile; re-materialize on next Execute
+
+    // Sparse-Mip ESVO LOD Inc1 M2: per-tree binary brick residency (§0 scope — not
+    // per-brick). bricksBuffer_ is always allocated at full capacity in CreateOctreeBuffers;
+    // residencyRequested_ gates whether its contents have actually been populated.
+    // brickResidencyDirty_ mirrors recipeDirty_'s pattern: RequestBrickResidency only stashes
+    // the request; ExecuteImpl performs the BatchedUploader call next frame.
+    //
+    // Default TRUE (Inc1 M3 fix — was FALSE at M2 landing, which silently regressed every
+    // caller that never calls RequestBrickResidency: no production call site does, so
+    // brick population was skipped entirely for the app's default scene and any binary/
+    // Procedural/Stored body until M3's shader change made the gap observable
+    // (RenderMultiKindBodiesProvesStrideFix failing pre-M3-fix proved this against the real
+    // shader). Mip-only ("streaming") behavior is now opt-in via RequestBrickResidency(false),
+    // not the silent default — matches pre-Inc1 behavior for every existing caller.
+    bool                                    residencyRequested_  = true;
+    bool                                    brickPoolUploaded_   = false;
+    bool                                    brickResidencyDirty_ = false;
+
+    // Inc1 M4c: async completion-tracking for the brick-pool upload. M2's UploadBrickPool
+    // originally blocked on device->WaitAllUploads() every toggle — fine for a "rare,
+    // explicit" residency change, but M4c's per-frame camera-driven re-check turns toggles
+    // frequent enough that a synchronous wait-idle would hitch. Upload() now queues +
+    // FlushUploads()es without blocking; ExecuteImpl polls IsUploadComplete() each frame
+    // (cheap: a fence/timeline check, not a wait) and only flips brickPoolUploaded_ /
+    // stamps brickResident=1 into configs once the GPU-side copy is actually visible.
+    ResourceManagement::UploadHandle       pendingBrickUploadHandle_  = ResourceManagement::InvalidUploadHandle;
+    ResourceManagement::UploadHandle       pendingConfigUploadHandle_ = ResourceManagement::InvalidUploadHandle;
 
     // Optional recipe for octree 0 (P2.1 materialization). Empty = analytic path.
     std::vector<Vixen::SVO::Recipe::SdfInstruction> bakeRecipe_;
@@ -159,6 +267,36 @@ private:
     VkDeviceMemory sdfMemory_            = VK_NULL_HANDLE;
     VkBuffer       brickLookupBuffer_    = VK_NULL_HANDLE;
     VkDeviceMemory brickLookupMemory_    = VK_NULL_HANDLE;
+    // Sparse-Mip ESVO LOD Inc1 M3: mip sample pool buffer (shader binding 13).
+    // Created with a 1-byte placeholder when concatenated_.mipPool is empty
+    // (a tree that was never mip-baked — ConcatenateSdf's plain, non-mip sibling).
+    VkBuffer       mipPoolBuffer_        = VK_NULL_HANDLE;
+    VkDeviceMemory mipPoolMemory_        = VK_NULL_HANDLE;
+
+    // --- Surface-Shell ESVO cache GPU buffers (double-buffered by DISTINCT object
+    //     identity). Render reads slot [N&1] (last committed); the ShellRevalidate
+    //     compute pass writes slot [(N+1)&1]. Because the two GPU buffers are
+    //     SEPARATE VkBuffer objects (distinct Resource* on the graph side), the
+    //     FrameSyncScheduler — which keys hazards by pointer identity — never
+    //     inserts a false barrier between a render reading slot N and a revalidate
+    //     writing slot N+1 (proven: FrameSyncScheduler.cpp per-resource timelines).
+    //     shellData[slot] holds the COMPACT pool (binding 11 replacement),
+    //     shellLookup[slot] holds the grid->shellSlot remap (binding 12 replacement).
+    VkBuffer       shellDataBuffer_[2]   = { VK_NULL_HANDLE, VK_NULL_HANDLE };
+    VkDeviceMemory shellDataMemory_[2]   = { VK_NULL_HANDLE, VK_NULL_HANDLE };
+    VkBuffer       shellLookupBuffer_[2] = { VK_NULL_HANDLE, VK_NULL_HANDLE };
+    VkDeviceMemory shellLookupMemory_[2] = { VK_NULL_HANDLE, VK_NULL_HANDLE };
+    VkDeviceSize   shellDataCapacity_[2]   = { 0, 0 };  // bytes allocated per slot
+    VkDeviceSize   shellLookupCapacity_[2] = { 0, 0 };
+
+    // CPU double-buffer (source of truth; also what the tests inspect). Each slot
+    // holds the multi-octree compact ShellPool (drop-in ConcatenatedOctrees +
+    // per-octree ShellDeriveResults for the dirty-revalidate path).
+    Vixen::SVO::ShellPool         shellCache_[2];
+    uint32_t                      shellDilation_ = 1u;   // [1,3]; sound 26-neighbour default
+    // CPU-owned dirty source-brick list (§C). A value edit pushes the affected
+    // brick range here; ExecuteImpl revalidates only those bricks in the write slot.
+    std::vector<uint32_t>         dirtyBricks_;
 
     // Instance SSBO ring (one buffer per frame-in-flight — never freed on the tick path).
     PerFrameResources perFrame_;

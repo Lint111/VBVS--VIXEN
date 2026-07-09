@@ -67,6 +67,29 @@ layout(std430, binding = 3) readonly buffer MaterialBuffer {
 layout(std430, binding = 11) readonly buffer ChannelPoolBuffer { float channelPool[]; };
 layout(std430, binding = 12) readonly buffer BrickLookupBuffer { uint  brickLookup[]; };
 
+// ============================================================================
+// SPARSE-MIP ESVO LOD BUFFERS (Inc1 M3 — binding 13)
+// ============================================================================
+// Per-level filtered value sample, one per octree node, one lane per live
+// channel — mipPool[mipPoolBase + nodeIdx*channelCount + channelIdx] packs
+// a MipSample (2 floats: value, coverage). Bound as a 1-byte placeholder
+// when a tree was never mip-baked (concatenated_.mipPool empty); the shader
+// only reads it when a leaf's brick is not resident (Task 7) or the LOD
+// cutoff says stop (Task 8) — dead code otherwise.
+layout(std430, binding = 13) readonly buffer MipPoolBuffer { float mipPool[]; };
+
+// ============================================================================
+// PER-INSTANCE ITERATION DEBUG BUFFER (Inc1 M4b — binding 14)
+// ============================================================================
+// One uint per instance slot: the traversal iteration count that instance's
+// traverseOctreeInstanced call performed for the CURRENT pixel's ray, written
+// unconditionally each instance-loop iteration (last writer wins across the
+// dispatch — only meaningful for a single-pixel dispatch, which is exactly
+// what the occlusion-reject unit test uses). Bound as a 1-byte placeholder in
+// production; the write is a single non-atomic store, negligible next to the
+// traversal it instruments.
+layout(std430, binding = 14) writeonly buffer InstanceIterDebugBuffer { uint instanceIterCount[]; };
+
 #define FORMAT_BINARY     0u
 #define FORMAT_STORED_SDF 1u
 
@@ -144,7 +167,12 @@ layout(std430, binding = 10) readonly buffer BodyInstanceBuffer {
 // ============================================================================
 // SHADER COUNTERS (Performance Metrics)
 // ============================================================================
-#define ENABLE_SHADER_COUNTERS
+// The live app compiles this shader WITHOUT ENABLE_SHADER_COUNTERS, so the
+// calls below resolve to the no-op stubs in ShaderCounters.glsl and binding 8
+// does not exist in the reflected interface. There is NO runtime opt-in:
+// ShaderBundleBuilder::SetStageDefines does token substitution, not #define
+// injection (see BuildRenderGraph.cpp), so re-enabling counters means
+// hand-adding `#define ENABLE_SHADER_COUNTERS` here (and re-wiring binding 8).
 #define SHADER_COUNTERS_BINDING 8
 #include "ShaderCounters.glsl"
 
@@ -183,6 +211,10 @@ layout(push_constant) uniform PushConstants {
     float raySizeCoef;    // LOD cone spread (bytes 48-51)
     float raySizeBias;    // LOD cone origin size (bytes 52-55)
     int   instanceCount;  // active body instances  (bytes 56-59)
+    ivec2 debugTargetPixel;  // TEMP DEBUG: pixel to force-capture in the ray-trace buffer
+                             // regardless of DEBUG_GRID_SPACING (-1,-1 disables); lets the
+                             // trace follow the actual click/cursor position instead of a
+                             // fixed viewport-center crosshair (bytes 60-67)
 } pc;
 
 // ============================================================================
@@ -218,6 +250,7 @@ int g_brickArrayBase = 0;   // configs[g_octreeIdx].brickArrayBase
 #include "Lighting.glsl"
 #include "SdfRecipes.glsl"
 #include "StoredSdf.glsl"    // Inc2 M4: trilinear SDF fetch + sphere-trace handler
+#include "MipFallback.glsl"  // Inc1 M3: sparse-mip ESVO LOD shader-side fallback read
 
 // Provider kinds (mirror ShellOctreeGpu.h ProviderKind + SdfRecipes.h).
 #define PROVIDER_STORED     0u
@@ -351,10 +384,8 @@ bool handleLeafHitInstanced(TraversalState state, RayCoefficients coef,
     int localChildIdx = mirroredToLocalOctant(state.idx, coef.octant_mask);
     if (localChildIdx < 0 || localChildIdx > 7) return false;
 
-    uint childPointer          = getChildPointer(parentDescriptor);
-    uint totalInternalChildren = bitCount(validMask & ~leafMask);
-    uint leafChildrenBeforeMe  = countLeavesBefore(validMask, leafMask, localChildIdx);
-    uint leafDescriptorIndex   = childPointer + totalInternalChildren + leafChildrenBeforeMe;
+    uint leafDescriptorIndex = resolveLeafDescriptorIndex(parentDescriptor, validMask, leafMask,
+                                                          localChildIdx);
 
     uvec2 leafDescriptor = fetchESVONode(leafDescriptorIndex);  // uses our macro → base-offset
     uint  localBrickIdx  = getContourPointer(leafDescriptor);
@@ -401,6 +432,7 @@ bool handleLeafHitInstanced(TraversalState state, RayCoefficients coef,
 // is the per-voxel roughness. Instance tint is still applied in main().
 bool handleLeafHitInstancedSdf(TraversalState state, RayCoefficients coef,
                                vec3 rayDir, float tBias,
+                               inout StackEntry stack[STACK_SIZE],
                                out vec3 hitColor, out vec3 hitNormal, out float hitT,
                                out float hitRoughness,
                                out uint hitBrickIndex, out uint hitVoxelLinearIdx) {
@@ -413,19 +445,47 @@ bool handleLeafHitInstancedSdf(TraversalState state, RayCoefficients coef,
 
     int bpa = int(octreeConfig.bricksPerAxisSdf);
     if (bpa <= 0) return false;
-    float gridScale = float(bpa * 8);
+    const int BRICK_SIZE_SDF = 8;
 
     // Bridge ESVO [1,2]^3 → true geometric grid-voxel space.
     vec3 rayDirLocal = mat3(octreeConfig.worldToLocal) * rayDir;
     vec3 hitPos12    = coef.normOrigin + rayDirLocal * state.t_min;   // [1,2]^3
-    vec3 gridEntry   = (hitPos12 - vec3(1.0)) * gridScale;            // [0, bpa*8]
     float dirLen     = length(rayDirLocal);
     if (dirLen < 1e-12) return false;
     vec3 gridDirN    = rayDirLocal / dirLen;                          // normalized
 
+    // One ESVO leaf == exactly one 8^3 brick here, so state.pos (the leaf node's own min
+    // corner, authoritatively known to the traversal) IS this brick's origin — unmirror it
+    // the same way computePosInBrick does internally to get the brick's OWN integer grid
+    // coordinate, instead of re-deriving "which brick" from hitPos12 (which sits, up to float
+    // error, exactly ON the entry-face boundary for every leaf hit and is genuinely ambiguous
+    // right at that boundary). Re-deriving from hitPos12 (the old approach, via a directional
+    // nudge + floor) let adjacent pixels resolve to different bricks whenever the transverse
+    // ray-direction components were too small to move the nudge off the boundary — most
+    // visibly when the view direction runs close to a world axis, so a whole line of pixels
+    // grazes the SAME brick-boundary plane at once (axis-parallel seam/dropout artifact).
+    vec3 brickOriginMirrored = state.pos;
+    if ((coef.octant_mask & 1) == 0) brickOriginMirrored.x = 3.0 - state.scale_exp2 - brickOriginMirrored.x;
+    if ((coef.octant_mask & 2) == 0) brickOriginMirrored.y = 3.0 - state.scale_exp2 - brickOriginMirrored.y;
+    if ((coef.octant_mask & 4) == 0) brickOriginMirrored.z = 3.0 - state.scale_exp2 - brickOriginMirrored.z;
+    ivec3 brick = ivec3(round((brickOriginMirrored - vec3(1.0)) * float(bpa)));
+    brick = clamp(brick, ivec3(0), ivec3(bpa - 1));
+
+    // Brick-local hit position (authoritative, clamped — same helper + inputs the binary path
+    // uses), then combine with the KNOWN brick coordinate for an unambiguous global gridEntry.
+    vec3 posInBrick = computePosInBrick(hitPos12, state.pos, state.scale_exp2,
+                                        coef.octant_mask, BRICK_SIZE_SDF);
+    posInBrick = clamp(posInBrick, vec3(0.0), vec3(float(BRICK_SIZE_SDF) - 0.001));
+    vec3 gridEntry = brickLocalToGrid(posInBrick, brick, BRICK_SIZE_SDF);
+
+    // marchBrickSdf now sphere-traces starting at THIS leaf brick and, on a brick exit
+    // without a crossing, continues into real adjacent leaf bricks via the ESVO traversal
+    // machinery (passed a LOCAL COPY of state/coef/stack so the outer loop is untouched).
+    // sHit is the total arc-length from gridEntry across however many bricks were traversed.
     vec3  nrm;
     float sHit;
-    if (!marchBrickSdf(g_octreeIdx, gridEntry, gridDirN, nrm, sHit)) {
+    ivec3 hitBrick;
+    if (!marchBrickSdf(g_octreeIdx, brick, gridEntry, gridDirN, state, coef, stack, nrm, sHit, hitBrick)) {
         return false;
     }
     hitNormal = nrm;
@@ -433,6 +493,7 @@ bool handleLeafHitInstancedSdf(TraversalState state, RayCoefficients coef,
     // hitT in the SAME parametrization as the binary leaf (tBias + local-t): convert
     // the grid-voxel arc-length sHit back to [1,2]^3 t-units. gridPos advances by
     // |rayDirLocal|*gridScale per unit t, so Δt = sHit / (|rayDirLocal|*gridScale).
+    float gridScale = float(bpa * 8);
     float tHitLocal = state.t_min + sHit / (dirLen * gridScale);
     hitT = tBias + tHitLocal;
 
@@ -441,9 +502,10 @@ bool handleLeafHitInstancedSdf(TraversalState state, RayCoefficients coef,
     hitColor     = sampleChannelVec3Trilinear(SEM_COLOR, gridHit, vec3(1.0));
     hitRoughness = sampleChannelScalarTrilinear(SEM_ROUGHNESS, gridHit, 0.5);
 
-    // Best-effort pick/ID: the leaf brick's flat grid index (voxel idx unused for SDF).
-    ivec3 brick   = ivec3(floor((gridEntry + gridDirN * 1e-3) / 8.0));
-    uint  flatIdx = _gridToLookupIdx(brick, bpa);
+    // Best-effort pick/ID: the flat grid index of the brick the crossing was ACTUALLY found in
+    // (hitBrick, which may be an adjacent brick reached via the seam-spanning continuation), not
+    // just the entry brick — so picking/queries report the true surface brick.
+    uint flatIdx = _gridToLookupIdx(hitBrick, bpa);
     hitBrickIndex     = (flatIdx == 0xFFFFFFFFu) ? 0u : flatIdx;
     hitVoxelLinearIdx = 0u;
     return true;
@@ -462,7 +524,19 @@ bool handleLeafHitInstancedSdf(TraversalState state, RayCoefficients coef,
 // current (coarser) node instead of descending further.
 // raySizeCoef == 0.0 disables LOD entirely (full-detail traversal).
 
+// rayOriginLocal/rayDirLocal/gridT are the CALLER's already-computed ray-vs-AABB-cube
+// intersection (octreeConfig.worldToLocal applied to rayOrigin/rayDir, tested against the
+// unit cube) — passed in rather than recomputed here, so there is exactly ONE evaluation of
+// this math per ray/instance. Two textually-identical GLSL expressions evaluated at different
+// call sites are not guaranteed to produce bit-identical floats (the compiler is free to
+// reorder/fuse floating-point ops differently per call site absent a `precise` qualifier), so
+// recomputing this AABB test a second time here could — right at the razor's-edge silhouette
+// of the AABB, where gridT sits within an ULP of 0 — disagree with the caller's already-passed
+// cull check and return a false miss for a ray the caller determined does enter the volume.
+// This was a real, data-affecting bug (not cosmetic): the SAME traversal is used to query
+// voxel data, so a false miss here silently drops real geometry from any caller relying on it.
 bool traverseOctreeInstanced(vec3 rayOrigin, vec3 rayDir,
+                              vec3 rayOriginLocal, vec3 rayDirLocal, vec2 gridT,
                               out vec3 hitColor, out vec3 hitNormal, out float hitT,
                               out float hitRoughness,
                               out uint hitBrickIndex, out uint hitVoxelLinearIdx,
@@ -476,10 +550,6 @@ bool traverseOctreeInstanced(vec3 rayOrigin, vec3 rayDir,
     debugInfo.lastStepMask = 0u;
     debugInfo.iterationCount = 0u;
 
-    vec3 rayOriginLocal = (octreeConfig.worldToLocal * vec4(rayOrigin, 1.0)).xyz;
-    vec3 rayDirLocal    = mat3(octreeConfig.worldToLocal) * rayDir;
-
-    vec2 gridT = rayAABBIntersection(rayOriginLocal, rayDirLocal, vec3(0.0), vec3(1.0));
     if (gridT.y < 0.0) {
         debugInfo.exitCode = DEBUG_EXIT_INVALID_SPAN;
         debugInfo.tMin = gridT.x;
@@ -532,23 +602,52 @@ bool traverseOctreeInstanced(vec3 rayOrigin, vec3 rayDir,
 
             if (isLeaf) {
                 float tBias = tEntryWorld;
-                // Inc3 M3: dispatch the leaf hit-test by content format. Stored-SDF
-                // bricks march the trilinear iso-surface and sample per-voxel color +
-                // roughness; binary bricks DDA voxels (roughness defaults to 0.5).
-                bool leafHit;
-                if (octreeConfig.formatId == FORMAT_STORED_SDF) {
-                    leafHit = handleLeafHitInstancedSdf(state, coef, rayDir, tBias,
-                                                        hitColor, hitNormal, hitT,
-                                                        hitRoughness,
-                                                        hitBrickIndex, hitVoxelLinearIdx);
+                recordTraceStep(TRACE_STEP_BRICK_ENTER, state.parentPtr, state.scale,
+                                 uint(coef.octant_mask), state.pos, state.t_min, tv_max,
+                                 uvec2(0u, 0u));
+
+                // Sparse-Mip ESVO LOD Inc1 M3 Task 7: "streaming grace" trigger.
+                // A non-resident brick (allocated but not yet uploaded — M2) must
+                // NOT march (marchBrickInstanced/marchBrickSdf would read
+                // zero-filled/garbage buffer contents); fall back to this leaf's
+                // own mip sample instead. Checked BEFORE the formatId dispatch so
+                // both content formats share the identical mip[nodeIdx] read path.
+                bool leafHit = false;
+                if (octreeConfig.brickResident == 0u) {
+                    int localChildIdx = mirroredToLocalOctant(state.idx, coef.octant_mask);
+                    if (localChildIdx >= 0 && localChildIdx <= 7) {
+                        uint leafDescriptorIndex = resolveLeafDescriptorIndex(
+                            parent_descriptor, validMask, leafMask, localChildIdx);
+                        leafHit = shadeFromMipSample(leafDescriptorIndex, hitColor, hitNormal);
+                        if (leafHit) {
+                            hitT              = tEntryWorld + state.t_min;
+                            hitRoughness      = 0.5;
+                            hitBrickIndex     = 0u;
+                            hitVoxelLinearIdx = 0u;
+                        }
+                    }
                 } else {
-                    hitRoughness = 0.5;  // binary path: default roughness
-                    leafHit = handleLeafHitInstanced(state, coef, rayStartWorld, rayDir, tBias,
-                                                     parent_descriptor, validMask, leafMask,
-                                                     stack, hitColor, hitNormal, hitT,
-                                                     hitBrickIndex, hitVoxelLinearIdx);
+                    // Inc3 M3: dispatch the leaf hit-test by content format. Stored-SDF
+                    // bricks march the trilinear iso-surface and sample per-voxel color +
+                    // roughness; binary bricks DDA voxels (roughness defaults to 0.5).
+                    if (octreeConfig.formatId == FORMAT_STORED_SDF) {
+                        leafHit = handleLeafHitInstancedSdf(state, coef, rayDir, tBias,
+                                                            stack,
+                                                            hitColor, hitNormal, hitT,
+                                                            hitRoughness,
+                                                            hitBrickIndex, hitVoxelLinearIdx);
+                    } else {
+                        hitRoughness = 0.5;  // binary path: default roughness
+                        leafHit = handleLeafHitInstanced(state, coef, rayStartWorld, rayDir, tBias,
+                                                         parent_descriptor, validMask, leafMask,
+                                                         stack, hitColor, hitNormal, hitT,
+                                                         hitBrickIndex, hitVoxelLinearIdx);
+                    }
                 }
                 if (leafHit) {
+                    recordTraceStep(TRACE_STEP_HIT, hitBrickIndex, state.scale,
+                                     uint(coef.octant_mask), state.pos, state.t_min, hitT,
+                                     uvec2(0u, 0u));
                     endRayTrace(true);
                     snapshotTraversalState(state, coef, debugInfo);
                     debugInfo.hitFlag      = 1u;
@@ -556,6 +655,9 @@ bool traverseOctreeInstanced(vec3 rayOrigin, vec3 rayDir,
                     debugInfo.iterationCount = uint(iter + 1);
                     return true;
                 }
+                recordTraceStep(TRACE_STEP_BRICK_EXIT, state.parentPtr, state.scale,
+                                 uint(coef.octant_mask), state.pos, state.t_min, tv_max,
+                                 uvec2(0u, 0u));
                 state.t_min = tv_max;
                 snapshotTraversalState(state, coef, debugInfo);
 
@@ -565,17 +667,25 @@ bool traverseOctreeInstanced(vec3 rayOrigin, vec3 rayDir,
                 // tc_max is the exit-t of the current voxel; scale_exp2 is its
                 // normalized size.  When the projected footprint (tv_max*coef +
                 // bias) covers ≥ 1 pixel we stop descending and shade here.
+                //
+                // Sparse-Mip ESVO LOD Inc1 M3 Task 8: the "deliberate LOD" trigger —
+                // distinct from Task 7's "streaming grace" trigger (brickResident==0u
+                // above), but landing on the IDENTICAL mip[nodeIdx] read path
+                // (shadeFromMipSample) so the two triggers cannot drift apart. This
+                // check does NOT look at brick residency at all: even a fully-resident
+                // tree stops here once its footprint is sub-pixel — state.parentPtr is
+                // this non-leaf node's own index (just fetched at the top of this
+                // iteration), the same ordinal MipBake.h bakes a sample for.
                 if (pc.raySizeCoef > 0.0 &&
                     tv_max * pc.raySizeCoef + pc.raySizeBias >= state.scale_exp2) {
-                    // Shade the coarse node with a flat normal (no brick DDA).
-                    // We derive a plausible world-space position from t_min and
-                    // compose a simple surface normal from the last step direction.
-                    hitT      = tEntryWorld + state.t_min;
-                    hitColor  = vec3(0.5);   // LOD-shaded nodes get neutral grey;
-                                             // the instance's color tint is applied
-                                             // in main() after this returns.
-                    hitNormal = vec3(0.0, 1.0, 0.0);  // placeholder; orbit view is
-                                                       // too far to matter
+                    hitT = tEntryWorld + state.t_min;
+                    if (!shadeFromMipSample(state.parentPtr, hitColor, hitNormal)) {
+                        // No mip coverage (binary/Procedural bodies, or an SDF octree
+                        // with no baked mip pool): fall back to the pre-M3 neutral-grey
+                        // placeholder shade — no visual regression for those bodies.
+                        hitColor  = vec3(0.5);
+                        hitNormal = vec3(0.0, 1.0, 0.0);
+                    }
                     hitBrickIndex     = 0u;
                     hitVoxelLinearIdx = 0u;
                     endRayTrace(true);
@@ -588,6 +698,9 @@ bool traverseOctreeInstanced(vec3 rayOrigin, vec3 rayDir,
 #endif
                 executePushPhase(state, coef, stack, validMask, leafMask, childPointer,
                                  tv_max, tx_center, ty_center, tz_center);
+                recordTraceStep(TRACE_STEP_PUSH, state.parentPtr, state.scale,
+                                 uint(coef.octant_mask), state.pos, state.t_min, state.t_max,
+                                 uvec2(0u, 0u));
                 snapshotTraversalState(state, coef, debugInfo);
                 continue;
             }
@@ -596,6 +709,9 @@ bool traverseOctreeInstanced(vec3 rayOrigin, vec3 rayDir,
         int step_mask;
         int advanceResult = executeAdvancePhase(state, coef, step_mask);
         debugInfo.lastStepMask = uint(step_mask);
+        recordTraceStep(TRACE_STEP_ADVANCE, state.parentPtr, state.scale,
+                         uint(coef.octant_mask), state.pos, state.t_min, state.t_max,
+                         uvec2(uint(step_mask), uint(advanceResult)));
         snapshotTraversalState(state, coef, debugInfo);
 
         if (advanceResult == 0) {
@@ -606,6 +722,9 @@ bool traverseOctreeInstanced(vec3 rayOrigin, vec3 rayDir,
 
         if (advanceResult == 1) {
             int popResult = executePopPhase(state, coef, stack, step_mask);
+            recordTraceStep(TRACE_STEP_POP, state.parentPtr, state.scale,
+                             uint(coef.octant_mask), state.pos, state.t_min, state.t_max,
+                             uvec2(uint(popResult), 0u));
             snapshotTraversalState(state, coef, debugInfo);
             if (popResult == 1) {
                 endRayTrace(false);
@@ -616,6 +735,9 @@ bool traverseOctreeInstanced(vec3 rayOrigin, vec3 rayDir,
         }
     }
 
+    recordTraceStep(TRACE_STEP_MISS, state.parentPtr, state.scale,
+                     uint(coef.octant_mask), state.pos, state.t_min, state.t_max,
+                     uvec2(0u, 0u));
     endRayTrace(false);
     debugInfo.exitCode     = DEBUG_EXIT_NO_HIT;
     debugInfo.iterationCount = uint(iter);
@@ -734,7 +856,46 @@ void main() {
         vec3 localRayOrigin = (configs[oi].worldToLocal * vec4(instOrigin, 1.0)).xyz;
         vec3 localRayDir    = mat3(configs[oi].worldToLocal) * instDir;
         vec2 gridT = rayAABBIntersection(localRayOrigin, localRayDir, vec3(0.0), vec3(1.0));
-        if (gridT.y < 0.0) continue;  // ray misses this instance's AABB
+        if (gridT.y < 0.0) {
+            instanceIterCount[instIdx] = 0u;  // proves zero traversal iterations (Inc1 M4b test)
+            continue;  // ray misses this instance's AABB
+        }
+
+        // Inc1 M4b: instances are sorted front-to-back CPU-side (see
+        // BodyOctreeSceneNode::SortInstancesFrontToBack), so bestT here already
+        // reflects every CLOSER instance's hit. gridT.x is a LOCAL grid-space t
+        // (after worldToLocal), not directly comparable to bestT (a world-space
+        // distance) — convert the AABB entry point back to world space the SAME
+        // way traverseOctreeInstanced does internally (its rayStartWorld/
+        // tEntryWorld computation) before comparing, or this reject silently
+        // compares mismatched units. Skipped when the ray already starts inside
+        // this instance's AABB (gridT.x < 0.0): there is no meaningful "entry
+        // point" to compare in that case, and the instance may still be the
+        // nearest hit.
+        if (gridT.x >= 0.0) {
+            // Mirror traverseOctreeInstanced's OWN internal rayStartWorld/tEntryWorld
+            // computation exactly (lines ~524-526 above): entryPointWorldInstSpace is
+            // already in the de-instanced (instOrigin-relative) frame at REAL world
+            // scale (configs[oi].localToWorld bakes in kWorldGridSize) — measuring its
+            // distance from instOrigin (NOT re-applying renderScale/worldPos a second
+            // time) gives the same world-consistent t the traversal itself uses for
+            // hitT, by the identical scale-ratio-preserving argument documented above
+            // (instDir = rayDir/renderScale is not unit-length, but t computed this way
+            // is still in true world-distance units — see the invScale comment block).
+            vec3 entryPointLocal = localRayOrigin + localRayDir * (gridT.x + EPSILON);
+            vec3 entryPointWorldInstSpace =
+                (configs[oi].localToWorld * vec4(entryPointLocal, 1.0)).xyz;
+            float entryTWorld = length(entryPointWorldInstSpace - instOrigin);
+            if (entryTWorld > bestT) {
+                // This instance's nearest possible entry is already farther than
+                // something already hit this ray — its full ESVO traversal
+                // (below) cannot possibly produce the nearest hit. Skip it
+                // entirely: zero traversal iterations, not just a discarded
+                // result.
+                instanceIterCount[instIdx] = 0u;  // proves zero traversal iterations (Inc1 M4b test)
+                continue;
+            }
+        }
 
         // ------------------------------------------------------------------
         // Run ESVO traversal against this instance's octree
@@ -767,10 +928,18 @@ void main() {
         // equals the TRUE world distance along the original ray
         // (instOrigin + t*instDir maps back to rayOrigin + t*rayDir), so the
         // cross-instance nearest-hit test below compares like-for-like.
+        //
+        // Pass localRayOrigin/localRayDir/gridT (already computed above for the AABB cull)
+        // straight through instead of letting traverseOctreeInstanced recompute the same
+        // ray-vs-AABB math a second time — a single "beam test" pre-pass result shared by
+        // both the cull check and the traversal, so they can never disagree at the AABB
+        // silhouette (see traverseOctreeInstanced's own comment for why that mattered).
         bool hit = traverseOctreeInstanced(instOrigin, instDir,
+                                           localRayOrigin, localRayDir, gridT,
                                            hitColor, hitNormal, hitT,
                                            hitRoughness,
                                            hitBrick, hitVoxel, dbg);
+        instanceIterCount[instIdx] = dbg.iterationCount;  // Inc1 M4b occlusion-reject test hook
 
         if (hit && hitT < bestT) {
             bestT           = hitT;
@@ -817,6 +986,5 @@ void main() {
 
     // Metrics
     bool earlyTerm = false; // no single iteration count with multiple instances
-    recordVoxelSteps(0u);   // per-instance metrics omitted in multi-instance path
     recordRayEnd(anyHit, earlyTerm);
 }

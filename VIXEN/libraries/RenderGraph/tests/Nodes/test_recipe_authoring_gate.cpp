@@ -1,27 +1,39 @@
 /**
  * @file test_recipe_authoring_gate.cpp
- * @brief I4.2 — Live lavapipe CSG recipe render gate.
+ * @brief I4.2 — Live CSG recipe render gate.
  *
  * Two tests:
  *   1. CsgSubtractRendersNonTrivial — bakes a Subtract(Box, Sphere) recipe where the
- *      sphere centre sits at the z-midpoint of the box (voxel z=18, r=22), spanning
- *      the full [0,36] box depth → through-tunnel → ablation delta (boxOnly-csg>500).
+ *      sphere (local centre=(0,0,0), r=28) sits at the box's local z-midpoint, spanning
+ *      the full [-26,26] box depth → through-tunnel → ablation delta (boxOnly-csg>500).
  *   2. DefaultSceneRegression — renders the standard 3-shell-octree scene (no recipe
  *      pool) to confirm the M2 SSBO binding-5 change didn't break the base path;
  *      saves /tmp/recipe_default_scene.png.
  *
  * Box SDF notes (SdfRecipeEval.cpp / SdfCore_Box):
- *   sdBox(abs(p), halfExtents) — interior where all |pos.i| < halfExtent.
- *   Box(36,36,36) occupies [0,36]^3 in the positive domain.
- *   Sphere(32,32,18, r=22): centre at z-midpoint of the box; spans z ∈ [-4,40]
- *     → THROUGH-TUNNEL (not a depression), hole radius at z=36 face ≈ 12.6 voxels.
- *     Rays through the tunnel find no subtract surface within [0,64]³ → black pixels.
+ *   sdBox(abs(pos), halfExtents) — interior where all |pos.i| < halfExtent. Box has no
+ *   position field, so it is always centered at the eval point passed to it.
  *
- * SAFETY — LAVAPIPE ONLY: identical contract to test_body_instance_raymarch_render.cpp.
+ * Inc2a re-derivation (BakeRecipeInstructionsToSdfWorld now applies `center`, p - center,
+ * before evalRecipe -- matching evalSdf's convention): both primitives are authored
+ * OBJECT-CENTERED (local origin) instead of the old raw-grid-absolute convention, and
+ * RecipeBakeConfig's default center=(32,32,32) places them in the grid at bake time.
+ *   Box(26,26,26): local-centered box spans local [-26,26] -> grid [6,58] once centered,
+ *     safely inside the visible [0,64) grid (6-voxel margin to each wall). The old
+ *     halfExtents=36 relied on the box sitting UNCENTERED at raw grid [0,36] pre-fix --
+ *     post-fix that same value would center the box at grid-32 and push its surface to
+ *     grid [-4,68], entirely OUTSIDE [0,64), baking zero voxels.
+ *   Sphere(local centre=(0,0,0), r=28): centred at the box's local z-midpoint (0, since the
+ *     box is symmetric about local origin); spans local z ∈ [-28,28], which COVERS the full
+ *     [-26,26] box z-depth → THROUGH-TUNNEL (not a depression), hole radius at the box's
+ *     z=26 face ≈ 10.4 voxels (sqrt(28²-26²)). Rays through the tunnel find no subtract
+ *     surface within the baked domain → black pixels.
  *
- * Run:
- *   VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json \
- *   ./test_recipe_authoring_gate
+ * DEVICE SELECTION: identical contract to test_body_instance_raymarch_render.cpp —
+ * prefers Mesa-Dozen (the real GPU) via VixenSelectWslGpuIcd(), falls back to lavapipe.
+ *
+ * Run: ./test_recipe_authoring_gate
+ *   (set VK_ICD_FILENAMES explicitly to force a specific ICD, e.g. for comparison.)
  */
 
 #include <gtest/gtest.h>
@@ -37,6 +49,7 @@
 #include "Recipe/RecipeRegistry.h"
 #include "Recipe/RecipeBaker.h"
 #include "TestVkValidation.h"
+#include "VulkanGlobalNames.h"  // VixenSelectWslGpuIcd
 
 #include <vulkan/vulkan.h>
 
@@ -119,7 +132,7 @@ PushConstants MakeCamera(const glm::vec3& eye, const glm::vec3& target,
 }  // namespace
 
 // ---------------------------------------------------------------------------
-// Lavapipe render fixture (mirrors test_body_instance_raymarch_render.cpp).
+// Render fixture (mirrors test_body_instance_raymarch_render.cpp).
 // ---------------------------------------------------------------------------
 class RecipeAuthoringGateTest : public ::testing::Test {
 protected:
@@ -135,12 +148,16 @@ protected:
 
     static bool IsSoftware(const VkPhysicalDeviceProperties& p) {
         std::string n(p.deviceName); for (char& c : n) c = char(::tolower(c));
-        return (n.find("llvmpipe") != std::string::npos ||
-                n.find("lavapipe") != std::string::npos) &&
-               p.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU;
+        const bool isSoftware =
+            (n.find("llvmpipe") != std::string::npos ||
+             n.find("lavapipe") != std::string::npos) &&
+            p.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU;
+        const bool isDozen = n.find("direct3d12") != std::string::npos;
+        return isSoftware || isDozen;
     }
 
     void SetUp() override {
+        VixenSelectWslGpuIcd();
         VkApplicationInfo ai{}; ai.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
         ai.pApplicationName = "test_recipe_authoring_gate"; ai.apiVersion = VK_API_VERSION_1_3;
         const auto layers = EnabledValidationLayers();
@@ -153,7 +170,8 @@ protected:
         ASSERT_EQ(vkCreateInstance(&ci, nullptr, &instance_), VK_SUCCESS);
         ASSERT_NO_FATAL_FAILURE(PickSoftwareDevice());
         ASSERT_TRUE(softwareConfirmed_)
-            << "Refusing: '" << selectedDeviceName_ << "' is not the software rasterizer.";
+            << "Refusing: '" << selectedDeviceName_ << "' is not a verified device "
+               "(software rasterizer or Dozen).";
         ASSERT_NO_FATAL_FAILURE(CreateLogicalDevice());
         ASSERT_NO_FATAL_FAILURE(CreateCmdPool());
         deviceShell_ = std::make_unique<VulkanDevice>(&physicalDevice_);
@@ -169,7 +187,7 @@ protected:
 
     void PickSoftwareDevice() {
         uint32_t cnt = 0; ASSERT_EQ(vkEnumeratePhysicalDevices(instance_, &cnt, nullptr), VK_SUCCESS);
-        ASSERT_GT(cnt, 0u) << "No Vulkan devices. Set VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json";
+        ASSERT_GT(cnt, 0u) << "No Vulkan devices visible.";
         std::vector<VkPhysicalDevice> devs(cnt);
         ASSERT_EQ(vkEnumeratePhysicalDevices(instance_, &cnt, devs.data()), VK_SUCCESS);
         for (auto dev : devs) {
@@ -262,10 +280,12 @@ protected:
         VkDeviceMemory traceMem=VK_NULL_HANDLE, ctrMem=VK_NULL_HANDLE;
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, traceBuf, traceMem, true);
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, ctrBuf,   ctrMem,   true);
-        VkBuffer dummySdf=VK_NULL_HANDLE, dummyLookup=VK_NULL_HANDLE;
-        VkDeviceMemory dSdfMem=VK_NULL_HANDLE, dLookupMem=VK_NULL_HANDLE;
+        VkBuffer dummySdf=VK_NULL_HANDLE, dummyLookup=VK_NULL_HANDLE, dummyMip=VK_NULL_HANDLE, dummyIter=VK_NULL_HANDLE;
+        VkDeviceMemory dSdfMem=VK_NULL_HANDLE, dLookupMem=VK_NULL_HANDLE, dMipMem=VK_NULL_HANDLE, dIterMem=VK_NULL_HANDLE;
+        CreateHostBuffer(256,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummyIter,dIterMem,true);  // Inc1 M4b binding 14
         if (sdf    == VK_NULL_HANDLE) { CreateHostBuffer(256,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummySdf,dSdfMem,true); sdf=dummySdf; }
         if (lookup == VK_NULL_HANDLE) { CreateHostBuffer(256,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummyLookup,dLookupMem,true); lookup=dummyLookup; }
+        CreateHostBuffer(256,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummyMip,dMipMem,true);
 
         VkImage cImg=VK_NULL_HANDLE, iImg=VK_NULL_HANDLE;
         VkDeviceMemory cMem=VK_NULL_HANDLE, iMem=VK_NULL_HANDLE;
@@ -285,7 +305,7 @@ protected:
             VkDescriptorSetLayoutBinding lb{}; lb.binding=b; lb.descriptorType=t;
             lb.descriptorCount=1; lb.stageFlags=VK_SHADER_STAGE_COMPUTE_BIT; return lb;
         };
-        const std::array<VkDescriptorSetLayoutBinding,11> bindings = {
+        const std::array<VkDescriptorSetLayoutBinding,13> bindings = {
             bindL(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             bindL(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bindL(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
@@ -297,6 +317,8 @@ protected:
             bindL(10,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bindL(11,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bindL(12,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bindL(13,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bindL(14,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Inc1 M4b: per-instance iteration debug
         };
         VkDescriptorSetLayoutCreateInfo dslci{}; dslci.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         dslci.bindingCount=uint32_t(bindings.size()); dslci.pBindings=bindings.data();
@@ -318,7 +340,7 @@ protected:
 
         const std::array<VkDescriptorPoolSize,2> poolSizes = {{
             {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  2},
-            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 9},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 11},
         }};
         VkDescriptorPoolCreateInfo dpci{}; dpci.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         dpci.maxSets=1; dpci.poolSizeCount=uint32_t(poolSizes.size()); dpci.pPoolSizes=poolSizes.data();
@@ -334,7 +356,8 @@ protected:
         VkDescriptorBufferInfo nI{nodes,0,VK_WHOLE_SIZE}, brI{bricks,0,VK_WHOLE_SIZE},
             mI{mats,0,VK_WHOLE_SIZE}, trI{traceBuf,0,VK_WHOLE_SIZE}, cI{cfg,0,VK_WHOLE_SIZE},
             ctI{ctrBuf,0,VK_WHOLE_SIZE}, inI{inst,0,VK_WHOLE_SIZE},
-            sdI{sdf,0,VK_WHOLE_SIZE}, lkI{lookup,0,VK_WHOLE_SIZE};
+            sdI{sdf,0,VK_WHOLE_SIZE}, lkI{lookup,0,VK_WHOLE_SIZE}, mpI{dummyMip,0,VK_WHOLE_SIZE},
+            itI{dummyIter,0,VK_WHOLE_SIZE};
 
         auto wI2 = [&](uint32_t b, VkDescriptorImageInfo* info) {
             VkWriteDescriptorSet w{}; w.sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -346,9 +369,10 @@ protected:
             w.dstSet=ds; w.dstBinding=b; w.descriptorCount=1;
             w.descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; w.pBufferInfo=info; return w;
         };
-        const std::array<VkWriteDescriptorSet,11> writes = {
+        const std::array<VkWriteDescriptorSet,13> writes = {
             wI2(0,&colI), wB2(1,&nI), wB2(2,&brI), wB2(3,&mI), wB2(4,&trI),
-            wB2(5,&cI), wB2(8,&ctI), wI2(9,&idI), wB2(10,&inI), wB2(11,&sdI), wB2(12,&lkI)
+            wB2(5,&cI), wB2(8,&ctI), wI2(9,&idI), wB2(10,&inI), wB2(11,&sdI), wB2(12,&lkI), wB2(13,&mpI),
+            wB2(14,&itI)  // Inc1 M4b: per-instance iteration debug
         };
         vkUpdateDescriptorSets(logicalDevice_, uint32_t(writes.size()), writes.data(), 0, nullptr);
 
@@ -416,6 +440,8 @@ protected:
         vkDestroyBuffer(logicalDevice_,ctrBuf,nullptr);   vkFreeMemory(logicalDevice_,ctrMem,nullptr);
         if (dummySdf    != VK_NULL_HANDLE) { vkDestroyBuffer(logicalDevice_,dummySdf,nullptr);    vkFreeMemory(logicalDevice_,dSdfMem,nullptr); }
         if (dummyLookup != VK_NULL_HANDLE) { vkDestroyBuffer(logicalDevice_,dummyLookup,nullptr); vkFreeMemory(logicalDevice_,dLookupMem,nullptr); }
+        vkDestroyBuffer(logicalDevice_,dummyMip,nullptr); vkFreeMemory(logicalDevice_,dMipMem,nullptr);
+        vkDestroyBuffer(logicalDevice_,dummyIter,nullptr); vkFreeMemory(logicalDevice_,dIterMem,nullptr);
     }
 
     // Run a node lifecycle (Setup → Compile → Execute → read outputs → call fn → Cleanup).
@@ -463,25 +489,37 @@ protected:
 // ≈12.6 voxels at the z=36 face) that removes a large visible chunk.
 // ---------------------------------------------------------------------------
 TEST_F(RecipeAuthoringGateTest, CsgSubtractRendersNonTrivial) {
-    std::printf("[ lavapipe ] %s\n", selectedDeviceName_.c_str());
+    std::printf("[ device ] %s\n", selectedDeviceName_.c_str());
     ASSERT_TRUE(softwareConfirmed_);
 
     using SdfI  = Vixen::SVO::Recipe::SdfInstruction;
     using SdfOp = Vixen::SVO::Recipe::SdfOpCode;
 
-    // Box(halfExtents=36,36,36): occupies [0,36]^3 in the 64^3 grid.
-    // SdfCore_Box uses abs(p), so the interior is where all |pos.i| < 36.
+    // Inc2a re-derivation: BakeRecipeInstructionsToSdfWorld now applies `center`
+    // (p - center) before evalRecipe, so both Box and Sphere are authored OBJECT-CENTERED
+    // (relative to local origin) instead of the old raw-grid-absolute convention. Box has no
+    // position field (SdfCore_Box uses abs(pos)) so it is always centered at local origin;
+    // halfExtents=26 keeps its surface ([-26,26] -> grid [6,58] once RecipeBakeConfig's default
+    // center=(32,32,32) is applied) safely inside the visible [0,64) grid with a 6-voxel margin
+    // (mirrors the kSdfRadius=26 margin convention used elsewhere, e.g. BodyOctreeSceneNode.cpp).
+    // (Old halfExtents=36 pre-fix relied on the box sitting UNCENTERED in the positive octant
+    // [0,36] -- post-fix that same 36 would center the box at grid-32 and push its surface to
+    // grid [-4,68], entirely OUTSIDE [0,64), baking zero voxels -- exactly the fresh boxOnlyPx=0
+    // failure this migration fixes.)
     SdfI boxInst{}; boxInst.opCode = uint8_t(SdfOp::Box);
-    boxInst.data[0] = 36.0f; boxInst.data[1] = 36.0f; boxInst.data[2] = 36.0f;
+    boxInst.data[0] = 26.0f; boxInst.data[1] = 26.0f; boxInst.data[2] = 26.0f;
 
-    // Sphere(centre=(32,32,18), r=22): placed at the z-midpoint of the box.
-    //   Sphere spans z ∈ [18-22, 18+22] = [-4, 40], which COVERS the full [0,36] box
-    //   z-depth → creates a THROUGH-TUNNEL (not just a depression).
-    //   Hole radius at z=36 face: sqrt(22²-18²) = sqrt(160) ≈ 12.6 voxels.
+    // Sphere(local centre=(0,0,0), r=28): Sphere's data[0..2] is its OWN local center offset,
+    // applied on top of the already-centered eval point -- so it must also be authored
+    // object-centered (local, relative to the box's local origin), not at the old raw-grid
+    // absolute (32,32,18). The box's local z-midpoint is 0 (box spans [-26,26], symmetric about
+    // local origin), so a sphere centered at local (0,0,0) already sits at the z-midpoint.
+    //   Sphere spans z ∈ [-28,28], which COVERS the full [-26,26] box z-depth → THROUGH-TUNNEL.
+    //   Hole radius at the box's z=26 face: sqrt(28²-26²) = sqrt(108) ≈ 10.4 voxels.
     //   Rays through the hole see no surface within the baking domain → black pixels.
     SdfI sphInst{}; sphInst.opCode = uint8_t(SdfOp::Sphere);
-    sphInst.data[0] = 32.0f; sphInst.data[1] = 32.0f; sphInst.data[2] = 18.0f;
-    sphInst.data[3] = 22.0f;
+    sphInst.data[0] = 0.0f; sphInst.data[1] = 0.0f; sphInst.data[2] = 0.0f;
+    sphInst.data[3] = 28.0f;
 
     SdfI subInst{}; subInst.opCode = uint8_t(SdfOp::Subtract);
 
@@ -590,7 +628,7 @@ TEST_F(RecipeAuthoringGateTest, CsgSubtractRendersNonTrivial) {
 // Saves /tmp/recipe_default_scene.png.
 // ---------------------------------------------------------------------------
 TEST_F(RecipeAuthoringGateTest, DefaultSceneRegression) {
-    std::printf("[ lavapipe ] %s\n", selectedDeviceName_.c_str());
+    std::printf("[ device ] %s\n", selectedDeviceName_.c_str());
     ASSERT_TRUE(softwareConfirmed_);
 
     BodyOctreeSceneNodeType nodeType("BodyOctreeScene");

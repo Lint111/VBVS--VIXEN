@@ -153,25 +153,33 @@ std::string GPUQueryManager::GetSlotConsumerName(QuerySlotHandle slot) const {
 // COMMAND BUFFER RECORDING
 // ========================================================================
 
-void GPUQueryManager::BeginFrame(VkCommandBuffer cmdBuffer, uint32_t frameIndex) {
+void GPUQueryManager::BeginFrame(VkCommandBuffer cmdBuffer, uint32_t frameIndex, QuerySlotHandle slot) {
     if (frameIndex >= framesInFlight_) {
         throw std::out_of_range("GPUQueryManager::BeginFrame: frameIndex out of range");
     }
+
+    if (!IsSlotAllocated(slot)) {
+        throw std::invalid_argument("GPUQueryManager::BeginFrame: invalid or unallocated slot");
+    }
+
+    // Clear this slot's tracking so a fresh TryReadTimestamps triggers a re-read
+    auto& frame = frameData_[frameIndex];
+    frame.resultsRead = false;
+    frame.slots[slot].startWritten = false;
+    frame.slots[slot].endWritten = false;
 
     if (!query_) {
         return;  // Queries not supported or released
     }
 
-    // Reset all queries for this frame
-    query_->ResetQueries(cmdBuffer, frameIndex);
+    // Reset only this slot's 2 physical queries — other consumers' already-written
+    // timestamps earlier in this frame's command buffer must survive.
+    query_->ResetQueryRange(cmdBuffer, frameIndex, slots_[slot].startQueryIndex, 2);
 
-    // Clear per-frame tracking
-    auto& frame = frameData_[frameIndex];
-    frame.resultsRead = false;
-    for (auto& slot : frame.slots) {
-        slot.startWritten = false;
-        slot.endWritten = false;
-    }
+    // Mark that this slot's queries have now been reset in a (to-be-submitted) command buffer.
+    // TryReadTimestamps gates on this so the pool is never read before its first GPU reset — the
+    // fix for the VUID-vkGetQueryPoolResults-None-09401 startup burst.
+    frame.slots[slot].resetRecorded = true;
 }
 
 void GPUQueryManager::WriteTimestamp(VkCommandBuffer cmdBuffer, uint32_t frameIndex,
@@ -184,14 +192,12 @@ void GPUQueryManager::WriteTimestamp(VkCommandBuffer cmdBuffer, uint32_t frameIn
         throw std::invalid_argument("GPUQueryManager::WriteTimestamp: invalid or unallocated slot");
     }
 
-    if (!query_) {
-        return;  // Queries not supported or released
-    }
-
     auto& frame = frameData_[frameIndex];
     auto& slotData = frame.slots[slot];
 
-    // Determine which timestamp to write (start or end)
+    // Determine which timestamp to write (start or end). Bookkeeping (written-flags) is
+    // tracked even without a live query_ (timestamps unsupported/released/mock device) so
+    // slot state stays consistent and testable independent of GPU availability.
     uint32_t queryIndex;
     if (!slotData.startWritten) {
         // Write start timestamp
@@ -204,6 +210,10 @@ void GPUQueryManager::WriteTimestamp(VkCommandBuffer cmdBuffer, uint32_t frameIn
     } else {
         // Both timestamps already written - this is likely a bug in consumer code
         throw std::logic_error("GPUQueryManager::WriteTimestamp: slot already has both timestamps written");
+    }
+
+    if (!query_) {
+        return;  // Queries not supported or released
     }
 
     query_->WriteTimestamp(cmdBuffer, frameIndex, pipelineStage, queryIndex);
@@ -225,6 +235,15 @@ bool GPUQueryManager::ReadAllResults(uint32_t frameIndex) {
     auto& frame = frameData_[frameIndex];
     if (frame.resultsRead) {
         return true;  // Already read this frame
+    }
+
+    // Do not issue vkGetQueryPoolResults until every allocated slot's queries have been reset on the
+    // GPU at least once. ReadResults reads the whole pool, so a single not-yet-reset allocated slot
+    // would trip VUID-vkGetQueryPoolResults-None-09401. This is the startup window (each per-flight
+    // slot's first encounter, before it has completed a reset→submit cycle); once past it, all slots
+    // stay reset every frame and this is always true.
+    if (!AllAllocatedSlotsReset(frameIndex)) {
+        return false;
     }
 
     frame.resultsRead = query_->ReadResults(frameIndex);
@@ -254,6 +273,22 @@ bool GPUQueryManager::TryReadTimestamps(uint32_t frameIndex, QuerySlotHandle slo
     // Check if both timestamps were written
     const auto& slotData = frameData_[frameIndex].slots[slot];
     return slotData.startWritten && slotData.endWritten;
+}
+
+// True once EVERY allocated consumer slot for this frame-in-flight has had its queries reset in a
+// submitted command buffer at least once. ReadResults reads the WHOLE pool [0, totalQueries), so it
+// is only legal to call after all allocated slots have been reset — otherwise it reads a query that
+// was never reset on the GPU (VUID-vkGetQueryPoolResults-None-09401). Unallocated slots' queries are
+// never written and their availability is simply ignored downstream, so they don't need this gate;
+// but an allocated-yet-never-reset slot (the startup window) does.
+bool GPUQueryManager::AllAllocatedSlotsReset(uint32_t frameIndex) const {
+    const auto& frame = frameData_[frameIndex];
+    for (uint32_t s = 0; s < slots_.size(); ++s) {
+        if (slots_[s].allocated && !frame.slots[s].resetRecorded) {
+            return false;
+        }
+    }
+    return true;
 }
 
 uint64_t GPUQueryManager::GetElapsedNs(uint32_t frameIndex, QuerySlotHandle slot) const {

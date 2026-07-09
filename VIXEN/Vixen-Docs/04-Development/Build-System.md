@@ -14,6 +14,33 @@ CMake-based build system for C++23 Vulkan development on Windows.
 
 ---
 
+## 0. Quick Start (Windows launcher)
+
+`build.bat` at the repo root is the tracked, path-agnostic entry point. It
+discovers the toolchain instead of hardcoding paths, so it works on any
+machine, VS edition, or clone location:
+
+- **vcvars64.bat** — located via `vswhere` (ships with every VS 2017+); no
+  VS-year/edition assumptions.
+- **cmake** — taken from `PATH`, with a well-known install-dir fallback.
+- **repo root** — derived from the script's own location (`%~dp0`).
+- **sccache** — `SCCACHE_DIR` / `SCCACHE_CACHE_SIZE` default here (a shared
+  compiler cache), but any value you set in your environment wins.
+
+```bat
+build.bat            :: configure + build the vixen-ninja preset (default)
+build.bat configure  :: configure only
+build.bat build      :: build only
+build.bat all vixen-ninja   :: explicit action + preset
+```
+
+The `vixen-ninja` preset sets `/Z7` embedded debug info so MSVC debug builds
+are sccache-cacheable; a plain `-G Ninja` build uses separate-PDB `/Zi`, which
+sccache treats as non-cacheable. The gitignored `_ninja_*.bat` scripts are
+personal overrides — `build.bat` is the shared, committed launcher.
+
+---
+
 ## 1. CMake Configuration
 
 ### 1.1 Initial Configuration

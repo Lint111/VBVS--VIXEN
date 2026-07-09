@@ -184,9 +184,7 @@ void VariadicConnectionRule::RegisterPostCompileHook(
 
     ctx.graph->GetLifecycleHooks().RegisterNodeHook(
         NodeLifecyclePhase::PostCompile,
-        [=](NodeInstance* compiledNode) {
-            if (compiledNode != sourceNodeInst) return;
-
+        [=](NodeInstance* /*compiledNode*/) {
             Resource* sourceRes = sourceNodeInst->GetOutput(
                 static_cast<uint8_t>(sourceSlotIndex), 0);
 
@@ -204,7 +202,8 @@ void VariadicConnectionRule::RegisterPostCompileHook(
                 variadicNode->UpdateVariadicSlot(bindingIndex, updatedSlot, bundleIndex);
             }
         },
-        "VariadicConnectionRule PostCompile resource population"
+        "VariadicConnectionRule PostCompile resource population",
+        sourceNodeInst
     );
 }
 
@@ -219,13 +218,13 @@ void VariadicConnectionRule::RegisterPreExecuteHook(
     NodeInstance* sourceNodeInst = ctx.sourceNode;
     uint32_t sourceSlotIndex = ctx.sourceSlot.index;
     auto* variadicAsNodeInstance = dynamic_cast<NodeInstance*>(variadicNode);
+    if (!variadicAsNodeInstance) {
+        return;  // Variadic node isn't a NodeInstance; nothing to target the hook at
+    }
 
     ctx.graph->GetLifecycleHooks().RegisterNodeHook(
         NodeLifecyclePhase::PreExecute,
-        [=](NodeInstance* executingNode) {
-            // Only run for the variadic node itself
-            if (executingNode != variadicAsNodeInstance) return;
-
+        [=](NodeInstance* /*executingNode*/) {
             Resource* sourceRes = sourceNodeInst->GetOutput(
                 static_cast<uint8_t>(sourceSlotIndex), 0);
 
@@ -243,7 +242,8 @@ void VariadicConnectionRule::RegisterPreExecuteHook(
                 variadicNode->UpdateVariadicSlot(bindingIndex, updatedSlot, bundleIndex);
             }
         },
-        "VariadicConnectionRule PreExecute resource refresh"
+        "VariadicConnectionRule PreExecute resource refresh",
+        variadicAsNodeInstance
     );
 }
 

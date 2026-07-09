@@ -4,6 +4,7 @@
 #include "Data/Nodes/ComputeDispatchNodeConfig.h"
 #include "VulkanDevice.h"
 #include "Core/ComputePerformanceLogger.h"
+#include <mutex>
 #include "Core/GPUPerformanceLogger.h"
 #include "Core/TaskProfiles/SimpleTaskProfile.h"  // Sprint 6.5: Profile integration
 #include "VulkanSwapChain.h"  // For SwapChainPublicVariables
@@ -189,7 +190,13 @@ void ComputeDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // Phase 0.4: Reset fence before submitting (fence was already waited on by FrameSyncNode). In
     // composite mode the downstream UI submit resets + owns the fence, so leave it alone here.
     if (!leaveImageInGeneral) {
-        vkResetFences(vulkanDevice->device, 1, &inFlightFence);
+        VkResult resetResult = vkResetFences(vulkanDevice->device, 1, &inFlightFence);
+        if (resetResult != VK_SUCCESS) {
+            if (resetResult == VK_ERROR_DEVICE_LOST) {
+                GetOwningGraph()->NotifyDeviceLost("ComputeDispatchNode::ExecuteImpl vkResetFences");
+            }
+            throw std::runtime_error("[ComputeDispatchNode::ExecuteImpl] Failed to reset fence: " + std::to_string(resetResult));
+        }
     }
 
     // Collect GPU performance results for this frame-in-flight (after fence wait)
@@ -309,9 +316,18 @@ void ComputeDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
     si.signalSemaphoreInfoCount = static_cast<uint32_t>(signals.size());
     si.pSignalSemaphoreInfos    = signals.data();
 
-    // Submit to graphics queue via synchronization2
-    VkResult result = vulkanDevice->fpQueueSubmit2(vulkanDevice->queue, 1, &si, submitFence);
+    // Submit to graphics queue via synchronization2. Externally synchronized per Vulkan spec
+    // (audit V-M11): the TBB parallel executor can schedule this alongside another node's
+    // submit on the same queue.
+    VkResult result;
+    {
+        std::lock_guard<std::mutex> submitLock(vulkanDevice->SubmitMutex(vulkanDevice->queue));
+        result = vulkanDevice->fpQueueSubmit2(vulkanDevice->queue, 1, &si, submitFence);
+    }
     if (result != VK_SUCCESS) {
+        if (result == VK_ERROR_DEVICE_LOST) {
+            GetOwningGraph()->NotifyDeviceLost("ComputeDispatchNode::ExecuteImpl vkQueueSubmit2");
+        }
         throw std::runtime_error("[ComputeDispatchNode::ExecuteImpl] Failed to submit command buffer (vkQueueSubmit2): " + std::to_string(result));
     }
 
@@ -350,25 +366,38 @@ void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cm
     VkPipelineLayout pipelineLayout = ctx.In(ComputeDispatchNodeConfig::PIPELINE_LAYOUT);
     std::vector<VkDescriptorSet> descriptorSets = ctx.In(ComputeDispatchNodeConfig::DESCRIPTOR_SETS);
     Vixen::Vulkan::Resources::IRenderTarget* swapchainInfo = ctx.In(ComputeDispatchNodeConfig::SWAPCHAIN_INFO);
+    // M4: optional offscreen render target. When connected, the shader writes THIS image (at its
+    // own, possibly-scaled-down extent) instead of the swapchain image directly; the blit at the
+    // end of this function upscales into the swapchain. See RENDER_TARGET_INFO slot doc.
+    Vixen::Vulkan::Resources::IRenderTarget* renderTargetInfo = ctx.In(ComputeDispatchNodeConfig::RENDER_TARGET_INFO);
 
     // Validate descriptor sets
     if (descriptorSets.empty() || imageIndex >= descriptorSets.size()) {
         throw std::runtime_error("[ComputeDispatchNode::RecordComputeCommands] Invalid descriptor sets for image " + std::to_string(imageIndex));
     }
 
-    // Get dispatch dimensions from swapchain extent (8x8 workgroup size)
-    uint32_t dispatchX = (swapchainInfo->GetExtent().width + 7) / 8;
-    uint32_t dispatchY = (swapchainInfo->GetExtent().height + 7) / 8;
+    // Dispatch dims, shader output image, and GPU-perf extent come from the render target when
+    // connected (M4); otherwise from the swapchain, byte-identical to pre-M4 behavior.
+    Vixen::Vulkan::Resources::IRenderTarget* dispatchTarget = renderTargetInfo ? renderTargetInfo : swapchainInfo;
+    VkExtent2D dispatchExtent = dispatchTarget->GetExtent();
+
+    // Get dispatch dimensions (8x8 workgroup size)
+    uint32_t dispatchX = (dispatchExtent.width + 7) / 8;
+    uint32_t dispatchY = (dispatchExtent.height + 7) / 8;
     uint32_t dispatchZ = 1;
 
     static int logCount = 0;
     if (logCount++ < 3) {
         NODE_LOG_DEBUG("[ComputeDispatchNode] Dispatch: " + std::to_string(dispatchX) + "x" + std::to_string(dispatchY) + "x" + std::to_string(dispatchZ) +
-                      " for swapchain " + std::to_string(swapchainInfo->GetExtent().width) + "x" + std::to_string(swapchainInfo->GetExtent().height));
+                      " for " + std::string(renderTargetInfo ? "render target" : "swapchain") + " " +
+                      std::to_string(dispatchExtent.width) + "x" + std::to_string(dispatchExtent.height));
     }
 
     // Execute recording steps
     VkImage swapchainImage = swapchainInfo->GetImage(imageIndex);
+    // The image the compute shader actually writes: the render target's current image when
+    // connected, else the swapchain image (pre-M4 behavior).
+    VkImage writeImage = renderTargetInfo ? renderTargetInfo->GetCurrentImage() : swapchainImage;
     VkDescriptorSet descriptorSet = descriptorSets[imageIndex];
 
     // Begin GPU timing frame (reset queries for this frame)
@@ -376,10 +405,22 @@ void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cm
         gpuPerfLogger_->BeginFrame(cmdBuffer, frameIndex);
     }
 
-    // WSI lifecycle (acquire): always transition the swapchain image into GENERAL for the
-    // compute storage write. Swapchain-lifecycle transition, not an inter-pass hazard, so
-    // it stays node-managed in Tier-1.
-    TransitionImageToGeneralBarrier2(cmdBuffer, swapchainImage);
+    // WSI lifecycle (acquire): transition the image the shader writes into GENERAL for the compute
+    // storage write. Swapchain-lifecycle transition, not an inter-pass hazard, so it stays
+    // node-managed in Tier-1. The render target's FIRST write to a given image handle is
+    // UNDEFINED->GENERAL (fresh/recreated image); every subsequent write to that SAME handle
+    // follows a blit that left it TRANSFER_SRC_OPTIMAL, so the barrier's declared oldLayout must
+    // match the image's ACTUAL last-recorded layout (renderTargetImageLayouts_ tracks it exactly,
+    // not a seen/not-seen guess — see KI-007 and DecideRenderTargetPriorLayoutAndUpdate's comment;
+    // RenderTargetNode's persistent-across-same-extent-recompile lifecycle means "new Compile"
+    // does NOT imply "new image").
+    if (renderTargetInfo) {
+        VkImageLayout priorLayout = DecideRenderTargetPriorLayoutAndUpdate(
+            renderTargetImageLayouts_, writeImage, VK_IMAGE_LAYOUT_GENERAL);
+        SwapchainBarriers::TransitionImageToGeneralBarrier2(GetDevice(), cmdBuffer, writeImage, priorLayout);
+    } else {
+        SwapchainBarriers::TransitionImageToGeneralBarrier2(GetDevice(), cmdBuffer, writeImage);
+    }
     // Additionally replay any scheduler-baked INTER-PASS entry barriers for this group
     // (no-op on the single-pass voxel path; active for future multi-pass chains).
     const FrameSyncSchedule& sched = GetOwningGraph()->GetFrameSyncSchedule();
@@ -400,15 +441,21 @@ void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cm
 
     // End GPU timing
     if (gpuPerfLogger_) {
-        gpuPerfLogger_->RecordDispatchEnd(cmdBuffer, frameIndex, swapchainInfo->GetExtent().width, swapchainInfo->GetExtent().height);
+        gpuPerfLogger_->RecordDispatchEnd(cmdBuffer, frameIndex, dispatchExtent.width, dispatchExtent.height);
     }
 
-    // Voxel-only: compute is the last writer, so hand the image to present. Composite: leave it in
-    // GENERAL — the downstream UI render pass loads from GENERAL and owns the →PRESENT_SRC transition.
-    // Note: the GENERAL→PRESENT_SRC transition is NOT yet baked into the schedule (P5 concern),
-    // so we emit it explicitly here using barrier2.
-    if (!leaveImageInGeneral) {
-        TransitionImageToPresentBarrier2(cmdBuffer, swapchainImage);
+    if (renderTargetInfo) {
+        // M4: blit the (possibly smaller) offscreen target up to the swapchain extent. Handles the
+        // GENERAL->TRANSFER_SRC / swapchain UNDEFINED->TRANSFER_DST / blit / ->GENERAL-or-PRESENT_SRC
+        // transitions, ending in the same layout contract the non-render-target path applies below.
+        BlitRenderTargetToSwapchain(cmdBuffer, renderTargetInfo, swapchainImage,
+                                    swapchainInfo->GetExtent(), leaveImageInGeneral);
+    } else if (!leaveImageInGeneral) {
+        // Voxel-only, no render target: compute is the last writer, so hand the image to present.
+        // Composite: leave it in GENERAL — the downstream UI render pass loads from GENERAL and owns
+        // the →PRESENT_SRC transition. Note: the GENERAL→PRESENT_SRC transition is NOT yet baked into
+        // the schedule (P5 concern), so we emit it explicitly here using barrier2.
+        SwapchainBarriers::TransitionImageToPresentBarrier2(GetDevice(), cmdBuffer, swapchainImage);
     }
 
     // End command buffer
@@ -470,28 +517,6 @@ void ComputeDispatchNode::ReplayEntryBarriers(
     dep.memoryBarrierCount      = static_cast<uint32_t>(memBarriers.size());
     dep.pMemoryBarriers         = memBarriers.data();
     GetDevice()->fpCmdPipelineBarrier2(cmd, &dep);
-}
-
-// Fallback barrier2: UNDEFINED → GENERAL (TOP_OF_PIPE/0 → COMPUTE_SHADER/SHADER_STORAGE_WRITE).
-void ComputeDispatchNode::TransitionImageToGeneralBarrier2(VkCommandBuffer cmdBuffer, VkImage image) {
-    VkImageMemoryBarrier2 ib{};
-    ib.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
-    ib.srcStageMask        = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
-    ib.srcAccessMask       = VK_ACCESS_2_NONE;
-    ib.oldLayout           = VK_IMAGE_LAYOUT_UNDEFINED;
-    ib.dstStageMask        = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
-    ib.dstAccessMask       = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT;
-    ib.newLayout           = VK_IMAGE_LAYOUT_GENERAL;
-    ib.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    ib.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    ib.image               = image;
-    ib.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-
-    VkDependencyInfo dep{};
-    dep.sType                   = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-    dep.imageMemoryBarrierCount = 1;
-    dep.pImageMemoryBarriers    = &ib;
-    GetDevice()->fpCmdPipelineBarrier2(cmdBuffer, &dep);
 }
 
 void ComputeDispatchNode::BindComputePipeline(VkCommandBuffer cmdBuffer, VkPipeline pipeline, VkPipelineLayout layout, VkDescriptorSet descriptorSet) {
@@ -567,27 +592,134 @@ void ComputeDispatchNode::SetPushConstants(Context& ctx, VkCommandBuffer cmdBuff
     }
 }
 
-// Explicit GENERAL → PRESENT_SRC_KHR transition for the voxel-only (!leaveImageInGeneral) path.
-// This is NOT yet baked in the schedule (the present-side group's PresentSrc access is a P5 concern).
-void ComputeDispatchNode::TransitionImageToPresentBarrier2(VkCommandBuffer cmdBuffer, VkImage image) {
-    VkImageMemoryBarrier2 ib{};
-    ib.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
-    ib.srcStageMask        = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
-    ib.srcAccessMask       = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT;
-    ib.oldLayout           = VK_IMAGE_LAYOUT_GENERAL;
-    ib.dstStageMask        = VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT;
-    ib.dstAccessMask       = VK_ACCESS_2_NONE;
-    ib.newLayout           = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-    ib.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    ib.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    ib.image               = image;
-    ib.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+// M4: blit the offscreen render target's current image up to the swapchain image (LINEAR filter —
+// upscales when the render target is smaller than the swapchain). Barrier sequence:
+//   render target:  GENERAL (compute write)      -> TRANSFER_SRC_OPTIMAL
+//   swapchain:       UNDEFINED (WSI acquire)       -> TRANSFER_DST_OPTIMAL
+//   vkCmdBlitImage
+//   swapchain:       TRANSFER_DST_OPTIMAL -> GENERAL (composite/UI) or PRESENT_SRC_KHR (voxel-only)
+// The render target itself is left in TRANSFER_SRC_OPTIMAL; its next Execute's compute write
+// transitions it back to GENERAL via SwapchainBarriers::TransitionImageToGeneralBarrier2 (harmless either way,
+// since that barrier's oldLayout is UNDEFINED only as a hint — the dstAccess/stage still applies).
+void ComputeDispatchNode::BlitRenderTargetToSwapchain(
+    VkCommandBuffer cmdBuffer,
+    Vixen::Vulkan::Resources::IRenderTarget* renderTarget,
+    VkImage swapchainImage,
+    VkExtent2D swapchainExtent,
+    bool leaveImageInGeneral)
+{
+    VkImage renderTargetImage = renderTarget->GetCurrentImage();
+    VkExtent2D srcExtent = renderTarget->GetExtent();
 
-    VkDependencyInfo dep{};
-    dep.sType                   = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-    dep.imageMemoryBarrierCount = 1;
-    dep.pImageMemoryBarriers    = &ib;
-    GetDevice()->fpCmdPipelineBarrier2(cmdBuffer, &dep);
+    // Swapchain-side counterpart to the KI-007 fix: the entry barrier below used to hardcode
+    // oldLayout=UNDEFINED for the swapchain image on EVERY frame, but that's only true for a
+    // swapchain image's true first use. On the leaveImageInGeneral path, the downstream UI render
+    // pass (PARAM_INITIAL_LAYOUT=General, PARAM_FINAL_LAYOUT=PresentSrc) moves this SAME image
+    // handle GENERAL->PRESENT_SRC_KHR and then vkQueuePresentKHR leaves it there — so the NEXT time
+    // this ring slot's image index comes back around, its real layout is PRESENT_SRC_KHR, not
+    // UNDEFINED. Declaring UNDEFINED anyway produced VUID-vkCmdDraw-None-09600 at the UI render
+    // pass's first draw (the render pass's initialLayout=General assertion was already false by
+    // the time the pass began), the root cause of the render-view flicker (KI-009).
+    const VkImageLayout swapchainPriorLayout = DecideRenderTargetPriorLayoutAndUpdate(
+        renderTargetImageLayouts_, swapchainImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+    // --- Entry barriers: render target GENERAL->TRANSFER_SRC, swapchain ?->TRANSFER_DST ---
+    VkImageMemoryBarrier2 entryBarriers[2]{};
+
+    entryBarriers[0].sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+    entryBarriers[0].srcStageMask        = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+    entryBarriers[0].srcAccessMask       = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT;
+    entryBarriers[0].oldLayout           = VK_IMAGE_LAYOUT_GENERAL;
+    entryBarriers[0].dstStageMask        = VK_PIPELINE_STAGE_2_BLIT_BIT;
+    entryBarriers[0].dstAccessMask       = VK_ACCESS_2_TRANSFER_READ_BIT;
+    entryBarriers[0].newLayout           = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    entryBarriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    entryBarriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    entryBarriers[0].image               = renderTargetImage;
+    entryBarriers[0].subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+
+    entryBarriers[1].sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+    // srcStageMask must match (or come after) the acquire semaphore's wait stage
+    // (VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, set on this command buffer's submit — see
+    // acquireWait.stageMask above) so this barrier actually chains an execution dependency off
+    // that wait. TOP_OF_PIPE_BIT here (the old value) is a no-op source that doesn't synchronize
+    // with anything, which is only harmless when oldLayout is a true first-use UNDEFINED (nothing
+    // to wait for) — once the swapchain-tracking fix above declares a real prior layout
+    // (PRESENT_SRC_KHR from a previous frame's present), this must correctly wait on the acquire,
+    // else validation reports SYNC-HAZARD-WRITE-AFTER-READ against vkAcquireNextImageKHR.
+    entryBarriers[1].srcStageMask        = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+    entryBarriers[1].srcAccessMask       = VK_ACCESS_2_NONE;
+    entryBarriers[1].oldLayout           = swapchainPriorLayout;
+    entryBarriers[1].dstStageMask        = VK_PIPELINE_STAGE_2_BLIT_BIT;
+    entryBarriers[1].dstAccessMask       = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+    entryBarriers[1].newLayout           = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    entryBarriers[1].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    entryBarriers[1].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    entryBarriers[1].image               = swapchainImage;
+    entryBarriers[1].subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+
+    VkDependencyInfo entryDep{};
+    entryDep.sType                   = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+    entryDep.imageMemoryBarrierCount = 2;
+    entryDep.pImageMemoryBarriers    = entryBarriers;
+    GetDevice()->fpCmdPipelineBarrier2(cmdBuffer, &entryDep);
+
+    // KI-007: this command buffer's compute write already transitioned renderTargetImage to
+    // GENERAL earlier in the SAME recording (guaranteeing entryBarriers[0]'s hardcoded
+    // oldLayout=GENERAL above is correct), and this barrier just moved it to
+    // TRANSFER_SRC_OPTIMAL — record that so the NEXT command buffer that reuses this ring slot
+    // (a future frame) declares the correct oldLayout instead of guessing.
+    renderTargetImageLayouts_[renderTargetImage] = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+
+    // --- Blit (LINEAR filter — upscales/downscales src extent to dst extent) ---
+    VkImageBlit blit{};
+    blit.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    blit.srcOffsets[0]  = {0, 0, 0};
+    blit.srcOffsets[1]  = {static_cast<int32_t>(srcExtent.width), static_cast<int32_t>(srcExtent.height), 1};
+    blit.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    blit.dstOffsets[0]  = {0, 0, 0};
+    blit.dstOffsets[1]  = {static_cast<int32_t>(swapchainExtent.width), static_cast<int32_t>(swapchainExtent.height), 1};
+
+    vkCmdBlitImage(cmdBuffer,
+                   renderTargetImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                   swapchainImage,    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                   1, &blit, VK_FILTER_LINEAR);
+
+    // --- Exit barrier: swapchain TRANSFER_DST -> today's contract (GENERAL for UI, else PRESENT) ---
+    VkImageMemoryBarrier2 exitBarrier{};
+    exitBarrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+    exitBarrier.srcStageMask        = VK_PIPELINE_STAGE_2_BLIT_BIT;
+    exitBarrier.srcAccessMask       = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+    exitBarrier.oldLayout           = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    exitBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    exitBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    exitBarrier.image               = swapchainImage;
+    exitBarrier.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+
+    if (leaveImageInGeneral) {
+        // Downstream UI render pass LOADs from GENERAL and owns the ->PRESENT_SRC transition.
+        exitBarrier.dstStageMask  = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+        exitBarrier.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT;
+        exitBarrier.newLayout     = VK_IMAGE_LAYOUT_GENERAL;
+    } else {
+        exitBarrier.dstStageMask  = VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT;
+        exitBarrier.dstAccessMask = VK_ACCESS_2_NONE;
+        exitBarrier.newLayout     = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    }
+
+    // Either way, this ring slot's image ends the frame at PRESENT_SRC_KHR by the time it's reused:
+    // on the leaveImageInGeneral path this function hands it to the UI render pass in GENERAL, but
+    // that pass's own finalLayout=PresentSrc (BuildRenderGraph.cpp) plus the present call moves it
+    // there before this same image index comes back around. Track that real end state (not the
+    // intermediate GENERAL this function leaves it in) so next frame's entry barrier above declares
+    // the correct oldLayout instead of hardcoding UNDEFINED.
+    renderTargetImageLayouts_[swapchainImage] = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+    VkDependencyInfo exitDep{};
+    exitDep.sType                   = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+    exitDep.imageMemoryBarrierCount = 1;
+    exitDep.pImageMemoryBarriers    = &exitBarrier;
+    GetDevice()->fpCmdPipelineBarrier2(cmdBuffer, &exitDep);
 }
 
 // ============================================================================

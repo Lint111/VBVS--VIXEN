@@ -57,6 +57,45 @@ else()
 endif()
 
 # ---------------------------------------------------------------------------
+# Graph Lifecycle Hooks Tests
+# ---------------------------------------------------------------------------
+# Validates GraphLifecycleHooks node-hook targeting:
+# - A hook registered against a specific target node only runs for that node
+# - Untargeted (global) hooks still run for every node (legacy behavior)
+# - ClearNodeHooks clears both targeted and global storage
+
+message(STATUS "Configuring test_graph_lifecycle_hooks (trimmed build compatible)")
+
+if(TARGET GTest::gtest_main)
+    add_executable(test_graph_lifecycle_hooks
+        test_graph_lifecycle_hooks.cpp
+    )
+
+    target_include_directories(test_graph_lifecycle_hooks PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../include
+    )
+
+    target_link_libraries(test_graph_lifecycle_hooks PRIVATE
+        GTest::gtest_main
+        RenderGraph
+    )
+
+    set_target_properties(test_graph_lifecycle_hooks PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+    if(NOT VULKAN_TRIMMED_BUILD_ACTIVE)
+        if(TARGET Vulkan::Vulkan)
+            target_link_libraries(test_graph_lifecycle_hooks PRIVATE Vulkan::Vulkan)
+        endif()
+    endif()
+
+    gtest_discover_tests(test_graph_lifecycle_hooks)
+
+    message(STATUS "✓ test_graph_lifecycle_hooks configured (trimmed build: ${VULKAN_TRIMMED_BUILD_ACTIVE})")
+else()
+    message(STATUS "⊗ test_graph_lifecycle_hooks skipped (GoogleTest not available)")
+endif()
+
+# ---------------------------------------------------------------------------
 # Resource Management Tests
 # ---------------------------------------------------------------------------
 # MOVED to libraries/ResourceManagement/tests/test_resource_management.cpp

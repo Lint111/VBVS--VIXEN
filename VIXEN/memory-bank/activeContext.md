@@ -1,3 +1,22 @@
+> **⚠️ 2026-07-03 — Voxel authoring editor Inc1 (VoxelDocument format + `vixen_editor` app) COMPLETE, all 5**
+> **milestones (M1–M5) Opus-approved. NOT yet merged/pushed** (isolated worktrees, awaiting a separate
+> integration step). VIXEN worktree `.claude/worktrees/voxel-authoring-inc1`, branch
+> `feat/voxel-authoring-inc1`, HEAD `743c60aa`+docs; Yeroket worktree
+> `Yeroket-Fantasy/.worktrees/voxeldoc-inc1`, branch `feat/voxel-document-inc1`, HEAD `16a007a2`.
+> Built: VDC1 layered-document format (canonical C# `Yeroket.GraphFramework.VM.VoxelDocument`, generated
+> `VoxelDocument.g.h` + `voxel_document.py`/`sdf_op_codes.py`, cross-language golden byte-identical) +
+> `Vixen::SVO::FlattenVoxelDocument` (document → VRC1 blob, consumed unchanged by the existing
+> RecipeRegistry→pool→render path) + new `application/editor` target `vixen_editor` (load/render/toggle/save
+> a `.vxd`, RmlUi layer-list panel, dirty-flag re-flatten on toggle, live gate + windowed smoke both passed).
+> Design/plan: `Vixen-Docs/01-Architecture/Voxel-Authoring-App-Inc1-Design-2026-07.md` (+ `-Plan-…`, has a
+> "Next steps" section with Inc2 candidates). How-to: `Vixen-Docs/02-Implementation/Voxel-Document-Authoring.md`.
+> **Next:** Inc2 — per the umbrella design's own sequencing, Slice 3 (drawn layers/brushes, both editor-sculpt
+> and runtime dig/build) is next, then Slice 4 (query-aware config) and Slice 5 (Blender addon). Also worth
+> resolving before Inc2 builds further on the current bake convention: `BakeSdfWorld` has no center-offset
+> (object-centered documents only land correctly in the grid's positive-octant corner; every render-gate test
+> hand-works around it today).
+> The 2026-06-24 banner below is prior context.
+
 > **⚠️ 2026-06-24 — SDF body rendering Inc1+Inc2+Inc3 + the Inc3 hole-fix DONE, merged + PUSHED to `origin/main` (`9c8d549e`).**
 > Bodies render as smooth per-voxel **multi-channel Stored SDF** (sdf+color+roughness) via a generic SoA channel
 > pool the shader reads by semantic; providers = Procedural + Stored + (next) Materialization. Plan/Progress:

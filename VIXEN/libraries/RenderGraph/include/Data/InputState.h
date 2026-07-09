@@ -59,6 +59,13 @@ struct InputState {
     // Updated by pressing number keys 0-9
     int32_t debugMode = 0;
 
+    // TEMP DEBUG: pixel of the most recent left-click press, for the ray-trace debug buffer
+    // (TraceRecording.glsl's shouldCaptureDebug) to force-capture that exact ray's traversal —
+    // NOT cleared per-frame like clicksThisFrame (persists until the next click) since the trace
+    // export happens on a later frame's DebugBufferReaderNode::ExecuteImpl, after the click frame.
+    // (-1,-1) = no click yet this session.
+    glm::ivec2 lastClickPixel{-1, -1};
+
     // Frame timing (for framerate-independent input)
     float deltaTime = 0.0f;  // Seconds since last frame
 

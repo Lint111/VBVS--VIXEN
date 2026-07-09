@@ -20,6 +20,9 @@ add_subdirectory(logger)
 # EventBus library (message passing, worker thread integration)
 add_subdirectory(EventBus)
 
+# AppFlow library (declared app-state + reversible UI actions — depends on EventBus)
+add_subdirectory(AppFlow)
+
 # ResourceManagement library (RM<T> wrapper with state tracking)
 add_subdirectory(ResourceManagement)
 
