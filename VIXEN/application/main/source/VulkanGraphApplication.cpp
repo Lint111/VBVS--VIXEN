@@ -577,6 +577,96 @@ void VulkanGraphApplication::Update() {
             }
         }
 
+        // Lazy-Procedural-Delta-Baseline Inc0 M2 Task 5 live gate: env-gated scripted
+        // boot-away/fly-in schedule for the VIXEN_STORED_SDF_DEMO scene (mirrors
+        // VIXEN_RESIDENCY_GATE_DEMO/VIXEN_TIER_ZOOM_DEMO's shape directly above — same
+        // SetOrbitDistanceForTest/SetYawForTest live-write pattern, no InputNode injector).
+        //
+        // Feasibility (see the milestone's own math, kept here so a future reader doesn't
+        // have to re-derive it): CameraNode::kOrbitDistanceMax=120 is a hard clamp well
+        // under the residency trigger's farDist=500, so a distance-only sweep (like
+        // VIXEN_RESIDENCY_GATE_DEMO's) can NEVER push this scene's bodies (~236 units out
+        // at the default pose) far enough to deny — the trigger's resolvability term alone
+        // never denies inside a >=614px-tall window either (0.815*screenHeightPx exceeds
+        // farDist first). Denial here can ONLY come from the frustum CONTAINMENT term, so
+        // this schedule boots the camera facing AWAY (yaw=pi, bodies behind the camera —
+        // SphereIntersectsFrustum fails) instead of far away, then sweeps yaw back to 0 to
+        // bring the body cluster into frustum and let UpdateBodySceneResidency's per-tick
+        // trigger (below, unconditionally) grant residency itself — this demo scripts ONLY
+        // the camera; it deliberately does NOT call RequestBrickResidency directly (unlike
+        // VIXEN_TIER_ZOOM_DEMO), so the live grant is genuinely trigger-driven, the same
+        // path a real flythrough exercises.
+        if (renderGraph && std::getenv("VIXEN_STORED_SDF_DEMO") && std::getenv("VIXEN_BOOT_LAZY_GATE_DEMO")) {
+            static long bootLazyTick = 0;
+            ++bootLazyTick;
+            constexpr long  kAwayHoldEnd     = 60;    // 1) hold facing away — proves boot-lazy (mip-shaded, no brick upload)
+            constexpr long  kApproachEnd     = 180;   // 2) sweep yaw pi -> 0 — brings bodies into frustum, triggers the grant
+            constexpr long  kGrantSettleEnd  = 240;   // 3) hold facing the bodies — lets the async upload land
+            constexpr long  kEditTick        = 260;   // 4) edit-after-approach: Rematerialize while close + resident
+            constexpr float kPi              = 3.14159265358979323846f;
+
+            if (auto* camera = static_cast<CameraNode*>(renderGraph->GetInstance(cameraNode_))) {
+                if (bootLazyTick == 1) {
+                    // orbitCenter must match the Stored-SDF demo's body cluster centre
+                    // (64,64,64) BEFORE the first SetYawForTest engages orbit — mirrors
+                    // VIXEN_TIER_ZOOM_DEMO's own fix for the exact same stale-(5,5,5)-
+                    // orbitCenter trap (see that block's comment above).
+                    camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_X, 64.0f);
+                    camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_Y, 64.0f);
+                    camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_Z, 64.0f);
+                    // Engage orbit at yaw=pi (facing +Z, away from the bodies at -Z from the
+                    // boot pose (64,64,300)) — EngageOrbit's own re-seed keeps orbitDistance
+                    // at the current ~236 (matching the boot fixed pose), only yaw changes.
+                    camera->SetYawForTest(kPi);
+                    if (mainLogger) {
+                        mainLogger->Info("[BootLazyGateDemo] tick 1: camera engaged orbit, "
+                                          "yaw=pi (facing away) — expect mip-shaded boot, no brick upload");
+                    }
+                } else if (bootLazyTick <= kAwayHoldEnd) {
+                    // Hold — no-op tick, gives the boot-frame evidence capture a stable window.
+                } else if (bootLazyTick <= kApproachEnd) {
+                    const float t = static_cast<float>(bootLazyTick - kAwayHoldEnd) /
+                                    static_cast<float>(kApproachEnd - kAwayHoldEnd);
+                    camera->SetYawForTest(kPi * (1.0f - t));  // pi -> 0
+                } else if (bootLazyTick == kApproachEnd + 1) {
+                    camera->SetYawForTest(0.0f);  // land exactly on-axis, facing the bodies
+                    if (mainLogger) {
+                        mainLogger->Info("[BootLazyGateDemo] tick " + std::to_string(bootLazyTick) +
+                                          ": yaw=0 (facing bodies) — expect the frustum trigger to grant residency");
+                    }
+                }
+                // kGrantSettleEnd..kEditTick: hold yaw=0, no further camera writes — lets
+                // UpdateBodySceneResidency's per-tick trigger (unconditional, runs every
+                // tick regardless of this block) observe the now-in-frustum bodies and
+                // grant residency on its own, and lets the async brick upload settle.
+            }
+
+            if (bootLazyTick == kEditTick) {
+                // Task 4's Rematerialize hazard, exercised LIVE: while close + brick-resident
+                // (settled since kGrantSettleEnd, kEditTick-kGrantSettleEnd=20 ticks earlier),
+                // trigger a genuine Rematerialize via SetBakeRecipe — an EMPTY program is a
+                // no-op edit for the analytic bake path (EnsureOctreesBuilt only takes the
+                // recipe branch when bakeRecipe_ is non-empty), so the geometry is byte-
+                // identical before/after; only the rebuild-triggered code path runs. Per M2's
+                // fix, residencyRequested_ must NOT be reset to lazy by this — bricks must
+                // stay resident with NO further camera motion (assert this on the
+                // real-GPU checklist: no re-fade to mip-shaded, no brick re-upload log line).
+                if (auto* bodyScene = static_cast<Vixen::RenderGraph::BodyOctreeSceneNode*>(
+                        renderGraph->GetInstance(bodyOctreeSceneNode_))) {
+                    bodyScene->SetBakeRecipe({});
+                    if (mainLogger) {
+                        mainLogger->Info("[BootLazyGateDemo] tick " + std::to_string(bootLazyTick) +
+                                          ": SetBakeRecipe({}) -- no-op edit triggering Rematerialize "
+                                          "while close + resident (Task 4 Rematerialize-hazard live exercise)");
+                    }
+                }
+            }
+
+            if (bootLazyTick % 30 == 0 && mainLogger) {
+                mainLogger->Info("[BootLazyGateDemo] tick " + std::to_string(bootLazyTick));
+            }
+        }
+
         // Same "input never rides the render graph's gates" hook, generalized to InputNode
         // (input-rework slice 1): drain its GLFW callback queue unconditionally too, right beside
         // WindowNode's own drain above. Same lookup pattern, same null-guard (a graph without an
