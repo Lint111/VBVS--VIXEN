@@ -113,6 +113,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/application/main/include/Generated/Hud.view.g.cs" _out_hud_writer_cs_run)
         _codegen_to_wsl_path("${_cg}/appflow-schemas" _schema_appflow_run)
         _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/libraries/AppFlow/include/generated/AppFlow.g.h" _out_appflow_hdr_run)
+        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/libraries/AppFlow/include/generated/AppFlowCallables.g.hpp" _out_callables_hdr_run)
         set(_CODEGEN_RUNNER ${WSL_EXE} -e "${_wsl_dotnet}")
     else()
         set(_yk_tool_run "${_yk_tool}")
@@ -127,6 +128,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_out_hud_writer_cs_run "${CMAKE_SOURCE_DIR}/application/main/include/Generated/Hud.view.g.cs")
         set(_schema_appflow_run "${_cg}/appflow-schemas")
         set(_out_appflow_hdr_run "${CMAKE_SOURCE_DIR}/libraries/AppFlow/include/generated/AppFlow.g.h")
+        set(_out_callables_hdr_run "${CMAKE_SOURCE_DIR}/libraries/AppFlow/include/generated/AppFlowCallables.g.hpp")
         set(_CODEGEN_RUNNER ${VIXEN_DOTNET})
     endif()
 
@@ -230,6 +232,24 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     add_custom_target(appflow_regen
         COMMAND ${_CODEGEN_RUNNER} ${_appflow_args}
         COMMENT "[codegen] regenerate AppFlow.g.h"
+        VERBATIM)
+
+    # --- AppFlow callables (Inc-4 reframe R4, design D12/D13): --callable-cpp transplants every
+    # [KernelCallable] method body in the AppFlow schema dir to neutral C++ via CppAstVisitor —
+    # domain-blind, no [SdfCoreKernel] filter. Proves the kernel transplants LOGIC, not just DATA.
+    # Same schema dir as appflow_check; the AppFlow model builder ignores AppFlowCallables.cs
+    # (no [Flow*] attrs on it) so AppFlow.g.h stays byte-identical.
+    set(_callables_args
+        run --project "${_yk_tool_run}" -c Release --
+        --schema "${_schema_appflow_run}" --callable-cpp
+        --out-header "${_out_callables_hdr_run}")
+    add_custom_target(callables_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_callables_args} --check
+        COMMENT "[codegen] golden check: AppFlowCallables.g.hpp matches canonical [KernelCallable] schema"
+        VERBATIM)
+    add_custom_target(callables_regen
+        COMMAND ${_CODEGEN_RUNNER} ${_callables_args}
+        COMMENT "[codegen] regenerate AppFlowCallables.g.hpp"
         VERBATIM)
 else()
     message(WARNING "[codegen] KI-015: Yeroket kernel-codegen tool not found at ${_yk_tool} — "
