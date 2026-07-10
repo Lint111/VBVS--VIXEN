@@ -245,14 +245,7 @@ void LaineKarrasOctree::rebuild(GaiaVoxelWorld& world, const glm::vec3& worldMin
     m_worldMin = worldMin;
     m_worldMax = worldMax;
 
-    // 3b. Setup local-to-world transformation matrices
-    // Transform from Grid Local [0, resolution]³ to World [worldMin, worldMax]
-    // Used by brick DDA for coordinate transformations (NOT ESVO traversal)
     glm::vec3 worldSize = worldMax - worldMin;
-    glm::vec3 gridSize = worldMax - worldMin;  // Grid is [0, resolution], e.g., [0, 128]
-    glm::vec3 scale = worldSize / gridSize;     // Usually identity if world == grid
-    m_localToWorld = glm::translate(glm::mat4(1.0f), worldMin) * glm::scale(glm::mat4(1.0f), scale);
-    m_worldToLocal = glm::inverse(m_localToWorld);
 
     // 4. Calculate brick grid dimensions in normalized [0,1]^3 space
     int brickDepth = m_brickDepthLevels;
@@ -264,6 +257,28 @@ void LaineKarrasOctree::rebuild(GaiaVoxelWorld& world, const glm::vec3& worldMin
 
     m_octree->bricksPerAxis = bricksPerAxis;
     m_octree->brickSideLength = brickSideLength;
+
+    // 3b. Setup local-to-world transformation matrices
+    // Transform from Grid Local [0, gridResolution]³ to World [worldMin, worldMax].
+    // The brick DDA (traverseBrickView) works in local VOXEL-GRID units where each
+    // voxel is size 1 and the grid runs [0, bricksPerAxis*brickSideLength] — NOT the
+    // world extent. gridSize was previously (worldMax-worldMin), collapsing scale to
+    // identity, so a local voxel coordinate leaked through as a world coordinate
+    // (a min-face hit at local-y=1 reported world-y=1 instead of worldSize/res*1).
+    // Used by brick DDA only (NOT ESVO traversal).
+    const float gridResolution = static_cast<float>(bricksPerAxis * brickSideLength);
+    // scale = world-units per local voxel. For an integer-grid frame (worldMax == the
+    // voxel resolution, the body/shell convention) this is exactly 1; snap to identity
+    // in that case so m_localToWorld stays bit-exact — computing 256.0f/256.0f through
+    // the matrix pipeline reintroduces a 1-ULP shift that lands a brick-face hit at
+    // 2.99999976 and trips a >= boundary assert. Arbitrary frames (Cornell: world 10,
+    // grid 16) get the real 0.625 scale so a local voxel coord maps to the right world
+    // point instead of leaking through unscaled.
+    glm::vec3 scale = (worldSize == glm::vec3(gridResolution))
+                          ? glm::vec3(1.0f)
+                          : worldSize / gridResolution;
+    m_localToWorld = glm::translate(glm::mat4(1.0f), worldMin) * glm::scale(glm::mat4(1.0f), scale);
+    m_worldToLocal = glm::inverse(m_localToWorld);
 
     float voxelSize = brickWorldSize / static_cast<float>(brickSideLength);
     float normalizedBrickSize = 1.0f / static_cast<float>(bricksPerAxis);
