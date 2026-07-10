@@ -11,6 +11,24 @@ Living log of confirmed-but-unfixed issues. Each entry: symptom, root cause, imp
 
 ---
 
+## KI-017 — `SdfRecipes.h`/`SdfBake.h`'s transitive include chain fails to compile on Windows/MSVC (Windows-macro `min`/`max` pollution, no `#undef` guard)
+
+**Discovered:** 2026-07-08, during Tiered-ESVO Inc2 M3 (GPU traversal-restart), when building `test_gpu_parity`/`test_tier_crossing_construction`/related SVO test targets via the `vixen-ninja` (Windows/MSVC) preset for the first time in the `tiered-esvo-inc2` worktree.
+
+**Symptom:** any test TU that includes `SdfRecipes.h` or `SdfBake.h` (directly or transitively, e.g. via `ShellOctreeGpu.h` → `SdfBake.h` → `SdfRecipes.h`) fails to compile with a cascade of `error C2589: '(': illegal token on right side of '::'` / `error C2059: syntax error` / `error C2672: 'glm::length': no matching overloaded function found` starting in `SdfRecipes.h:85` (`std::max(-b - sq, 0.0f)`) and continuing into `Recipe/generated/SdfCoreKernels.g.hpp` (`glm::min`/`glm::max`/`glm::abs` calls) — the classic signature of `<windows.h>`'s `min`/`max` (and here, apparently `abs`) function-like macros clobbering `std::max(`/`glm::min(` call syntax.
+
+**Root cause:** `SdfRecipes.h` and `SdfBake.h` have NO `#undef min`/`#undef max`/`#undef abs` guard at all (unlike `GpuTraversalMirror.h`, `test_tier_crossing_construction.cpp`, and several other files in this codebase, which DO carry this guard specifically because `<windows.h>` gets pulled in transitively on the Windows build via Vulkan/GTest). Some other header included earlier in a given TU's include order drags in `<windows.h>` before `SdfRecipes.h`/the generated kernel file are parsed, and nothing undoes the macros in between.
+
+**Impact:** `VIXEN.exe` itself builds fine on Windows/MSVC (confirmed clean, `vixen-ninja` preset) — the failure is isolated to specific SVO test translation units (`test_gpu_parity.cpp`, `test_tier_crossing_construction.cpp`, and likely others that pull in `ShellOctreeGpu.h`/`SdfBake.h`/`SdfRecipes.h` without their own `#undef` guard already in scope before those headers). Reproduced independently on a clean, unmodified `4db93715` (pre-Tiered-ESVO-Inc2-M3) checkout via `git stash` — confirmed pre-existing and unrelated to any single increment's own changes; likely never previously exercised on this worktree's Windows/MSVC toolchain until M3 needed the WSL-vs-Windows comparison this session.
+
+**Fix options:** (a) add `#undef min` / `#undef max` / `#undef abs` to `SdfRecipes.h` and `SdfBake.h` (the minimal, surgical fix, matching the pattern several other headers in this codebase already use); (b) audit every header under `libraries/SVO/include/` that calls `std::min`/`std::max`/`glm::min`/`glm::max`/`glm::abs` for the same missing guard, since this is likely not the only affected file; (c) define `NOMINMAX` globally in the Windows build's CMake config so `<windows.h>` never defines these macros in the first place (the most robust fix, but a wider-blast-radius change to verify).
+
+**Workaround used:** build/run the affected SVO test targets via the WSL/GCC path (`build/wsl` preset) instead, where GCC has no such macro-pollution issue — confirmed this compiles and passes cleanly (`test_gpu_parity` 4/4, `test_tier_crossing_construction` 5/5, etc.) on the same source.
+
+**Severity:** low-medium (does not block the live app or any Windows-side production build; blocks a subset of SVO test targets from being buildable/runnable on Windows/MSVC specifically, forcing a WSL fallback for those tests) · **Status:** OPEN · not a Tiered-ESVO Inc2 defect (pre-existing, surfaced by this milestone's Windows-build attempt).
+
+---
+
 ## KI-016 — editor undo (`rt_.Undo()`) has no visible render effect: post-toggle state persists
 
 **Discovered:** 2026-07-06, during View Contract Inc-2 M3 close-out (the first fresh re-run of the editor windowed gate since AppFlow Inc-2b shipped it).

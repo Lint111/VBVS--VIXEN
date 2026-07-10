@@ -1,8 +1,8 @@
 ---
 title: Tiered ESVO — Nested-Tree Addressing, Tier-Crossing Traversal & Observer-Relative Rendering
-status: Design (promoted from direction 2026-07-05) — Inc1 ✅ SHIPPED 2026-07-07; Inc2 PLANNED 2026-07-07, not started
+status: Design (promoted from direction 2026-07-05) — Inc1 ✅ SHIPPED 2026-07-07; Inc2 ✅ SHIPPED 2026-07-10 (§3+§5 tier-crossing mechanism + a live, validated single-crossing continuous zoom; 3-tier T2→T1→T0 chaining deferred as a follow-up, see §9)
 date: 2026-07-05
-updated: 2026-07-07
+updated: 2026-07-10
 tags: [architecture, svo, esvo, lod, scale, addressing, skybox, tiered-rendering]
 aliases: [Nested ESVO, Tree-of-Trees, Observer Addressing, Recursive ESVO]
 related:
@@ -32,6 +32,32 @@ related:
 > `TierAddress`/`TierMath` and M2's shared-prefix composition/magnitude math) over the existing voxel
 > render, live-gate-verified on real GPU with validation layers. All code references below were
 > re-verified accurate against current `main` on 2026-07-07 before the plan was written.
+>
+> **Update (2026-07-10): §3+§5's tier-crossing mechanism (Inc2) is now COMPLETE and live-gate
+> proven.** [[Tiered-ESVO-Inc2-Plan-2026-07]] shipped all 5 milestones (`feat/tiered-esvo-inc2`,
+> each Opus-validated): `TierRef`/`TierRefTable` CPU plumbing (M1), the `farBit==1` construction
+> path (M2), GPU traversal-restart across two independently-resident octrees with a genuine
+> real-hardware crossing proof (M3), the screen-space LOD early-out + non-resident-child mip
+> fallback (M4), and — the increment's actual deliverable — a live, validated, continuous
+> surface-to-orbit zoom through one real tier crossing with no visible pop/seam (M5). M5's
+> scripted camera zoom exercised the full composed lifecycle live on real hardware for the first
+> time: the child tree starting non-resident, a mid-flight `RequestBrickResidency(true)` grant
+> landing while a ray is actively crossing (mip-shade → real child geometry, one-frame flip, no
+> garbage), and the screen-space LOD gate declining the crossing again as the camera continued
+> pulling back (a gradual, multi-frame shrink-then-decline with no single-frame content pop —
+> hand-predicted crossing distance of 40.0 world units matched the observed transition). This
+> same live run surfaced and fixed a real, previously-latent bug: `BodyOctreeSceneNode`'s
+> `bricksBuffer_`/`configBuffer_` were created without `VK_BUFFER_USAGE_TRANSFER_DST_BIT`, so a
+> residency grant landing AFTER the first `Compile()` (exactly M5's mid-flight case — M4's own
+> tests only ever toggled residency BEFORE the first upload cycle) hit
+> `VUID-vkCmdCopyBuffer-dstBuffer-00120` on real hardware; fixed at the root (both buffers now
+> declare the flag) and independently re-confirmed via the project's own existing
+> `test_partial_brick_upload`/`test_body_octree_lifetime` gtests, run for the first time this
+> session against a real GPU (WSL/Dozen) and green. **The full 3-tier T2→T1→T0 Earth-diameter
+> planet chain (the stretch goal) was NOT attempted this increment** — M3/M4's mechanism proof
+> covers exactly one crossing; per the plan's own explicit scope line, chaining a second crossing
+> is deferred as a follow-up increment rather than blocking M5's single-crossing deliverable (see
+> §9's updated sequencing note). §3/§5 are no longer "unscheduled" — see §9.
 
 ## 1. Context & Problem
 
@@ -279,11 +305,32 @@ shipped 2026-07-07, branch `feat/tiered-esvo-inc1`). §3/§5 (the tier-crossing 
 traversal-restart machinery) remain unscheduled — that Plan's own §0 explicitly excluded them,
 matching this section's sequencing; they are the natural next increment once nested-tree work is
 actually prioritized. **Nested-tree work is now prioritized (user request 2026-07-07)** —
-[[Tiered-ESVO-Inc2-Plan-2026-07]] scopes §3+§5 directly: `TierRef`/`TierRefTable`, the `farBit==1`
+[[Tiered-ESVO-Inc2-Plan-2026-07]] scoped §3+§5 directly: `TierRef`/`TierRefTable`, the `farBit==1`
 construction path, GPU traversal-restart across two independently-resident octrees, and a live,
 continuous surface-to-orbit zoom demonstration through at least one real tier crossing (a genuine
-Earth-diameter-scale 3-tier T2→T1→T0 chain is a stretch goal within that plan, not a hard
-requirement). Not started yet.
+Earth-diameter-scale 3-tier T2→T1→T0 chain was a stretch goal within that plan, not a hard
+requirement). **✅ SHIPPED 2026-07-10** — all 5 milestones complete, each Opus-validated
+(`feat/tiered-esvo-inc2`). §3+§5's tier-crossing mechanism (traversal-restart, LOD early-out,
+residency reuse) is proven live on real hardware for a SINGLE crossing, including the dynamic
+mid-flight residency transition (child tree starts non-resident, a grant lands while a ray is
+actively crossing, the crossing transitions mip-shade → real geometry with no garbage) and a
+continuous camera zoom through the LOD-gate boundary with no visible pop/seam. **The 3-tier
+T2→T1→T0 chain was NOT attempted** — Inc2's own scope explicitly allowed shipping the
+single-crossing proof alone if chaining surfaced unexpected complexity, and the increment's
+time budget went to the single-crossing live-gate discipline (M3's camera-authority bug fix,
+M5's mid-flight-residency buffer-usage-flag bug fix) rather than the stretch goal. **Chaining a
+second crossing (T1 region → T0 planet, reusing the identical M3/M4 mechanism) is the natural
+next increment** — per the design doc's own repeated point, N-tier crossing is the SAME
+mechanism repeated, not new per-tier engineering, so this is expected to be straightforward
+composition work, not a new mechanism design. One concrete prerequisite carried forward from
+Inc2's own validator addenda: both this increment's crossings kept `childScale==1.0` throughout
+(explicit scope boundary); a scale-magnified tier (the real planet-scale case, where child and
+parent trees are NOT the same physical scale) needs (a) a per-child-scale `hitT` normalization
+fix at the crossing-composition site (the additive `hitT = tierCrossWorldT + childHitT` is only
+exact at `childScale==1.0`) and (b) the LOD gate's inequality generalized to
+`>= childScale*scale_exp2` (currently gates on the parent leaf's own footprint, exactly correct
+only at `childScale==1.0`) — both flagged explicitly in Inc2's M3/M4 validator addenda as
+named, scoped prerequisites for whichever increment first builds a non-unity-scale tier.
 
 ## 10. Rejected alternatives
 

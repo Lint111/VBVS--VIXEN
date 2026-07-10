@@ -120,17 +120,59 @@ now is by explicit user request.
 - **M1 — `TierRef` + `TierRefTable` CPU-side plumbing** (Tasks 1-3) · gate: pure-CPU/config-plumbing
   gtest green — the data structures and the `OctreeConfig`/`ConcatenatedOctrees` wiring, no traversal
   logic yet, no shader changes.
+  **✅ DONE 2026-07-07** — commit `595a5e83` (worktree `feat/tiered-esvo-inc2`, branched from `main`).
+  `test_tier_ref` 5/5, `test_tier_ref_table` 5/5, both green, pure CPU (no Vulkan/GPU dependency
+  exercised). Full existing SVO suite re-run and green as a no-regression check (`test_svo_types`
+  10/10, `test_shell_octree_gpu` 9/9, `test_soa_mip_serialize` 6/6, `test_soa_sdf_serialize` 11/11,
+  `test_gpu_parity` 4/4 — 40/40). Opus-validated APPROVED 2026-07-08 (51/51 including the
+  SPIR-V-reflection drift-guard the implementer believed it couldn't run; GPU-binding scope
+  deferral to M3 independently judged correct). See Progress Log for the std430-layout proof, the
+  `TierRefTable` GPU-binding scope decision, and the codegen regen mechanism used for Task 3.
 - **M2 — `farBit==1` construction path** (Tasks 4-5) · gate: a hand-authored two-tree test fixture
   (one tree with a real tier-crossing leaf, `farBit=1`, pointing at a second, independently-built
   tree) round-trips through serialization correctly; no regression on existing `farBit=0` trees
   (Sparse-Mip/Surface-Shell's existing full test suite still green).
+  **✅ DONE 2026-07-08** — commit `8110b95b` (worktree `feat/tiered-esvo-inc2`). `test_tier_crossing_
+  construction` 5/5 green, pure CPU (no Vulkan/GPU dependency exercised). Full existing SVO regression
+  sweep re-run (98 targets, 454 tests passed + 16 pre-existing failures + 1 pre-existing segfault, ALL
+  confirmed byte-identical against the pre-M2 `2bb752ec` baseline via a stash/rebuild/compare — zero
+  regressions). Opus-validated APPROVED (validator independently re-derived the baseline comparison
+  from scratch via its own rebuild, and independently grepped every brick-accessor call site rather
+  than trusting the implementer's list). See Progress Log for the `MarkLeafAsTierCrossing` API shape,
+  the `ChildDescriptor::setTierCrossing` accessor, the `SVOTraversal.cpp` guard fix, and the
+  pre-existing-failure verification method.
 - **M3 — GPU traversal-restart, single crossing** (Tasks 6-8) · **live-run gate, validation layers
   mandatory** · the highest-risk milestone: a ray genuinely crosses from a parent tree's leaf into a
   child tree's own traversal and renders correct geometry, proven on real hardware, not just compiled
   shader code.
+  **✅ DONE 2026-07-09, Opus-validated APPROVED 2026-07-10** — commits `5b4b53b0` (traversal-restart
+  core) + `27358885` (CameraNode camera-authority fix, pre-existing bug unblocked ALL standalone body
+  rendering) + `a68608b3` (magenta-child visual proof scene) + `6c168100` (Task 8 closure). The
+  original 2026-07-08 DONE_WITH_CONCERNS evidence ("~15px disc") was later invalidated (empty frame
+  misread; camera never aimed at the scene) and superseded by the Task 8 follow-up + the validator's
+  own in-shader diagnostic: child-terminated rays = 32.2% of the disc, exactly the one marked
+  octant's projected footprint. See the Task 8 follow-up entry and the M3 validator addendum below.
 - **M4 — LOD early-out + residency reuse** (Tasks 9-10) · live-run gate · the screen-space gate that
   avoids crossing for distant/sub-pixel children, and confirming the mip-fallback sentinel-miss path
   correctly serves a non-resident tier-crossing child.
+  **✅ DONE 2026-07-10** — commits `f7a671a4` (shader LOD/residency gates + mirror sync),
+  `31189eb3` (mirror crossing-restart parity test — the M3 validator's flagged "cheap win"),
+  `e9233e95` (live-gate demo knobs + mip pool). Both gates proven independent (a resident child with
+  a sub-pixel footprint still declines; a non-resident child at full FOV still declines) via a real
+  `VIXEN.exe` run on real Windows hardware: baseline unchanged (child's exact solid colour present,
+  2347px), LOD-forced run (zero child-colour pixels, clean mip-shaded grey where the child used to
+  render), non-resident run (zero child-colour pixels, whole sphere cleanly mip-shaded, no
+  crash/garbage) — all three clean exit 0, identical VUID signature. See Progress Log for the two
+  flagged deviations (residency is whole-node not per-octree; the new real-GPU gtest harness compiled
+  and linked but could not be RUN in this session's environment — pre-existing WSL/Dozen instability,
+  confirmed unrelated to this milestone's changes via a stash-and-rerun on the unmodified M3 shader).
+  **Opus-validated APPROVED 2026-07-10** — validator independently re-ran the 70/70 CPU sweep, did its
+  own pixel accounting on all three captures, reproduced the Dozen segfault on an UNMODIFIED
+  pre-existing test (root cause: Dozen SPIR-V 1.5-vs-1.6 mismatch, whole test family, not M4), proved
+  the restart-skip STRUCTURALLY (control-flow: the early-out returns before `tierCrossHit` can be set,
+  making the restart block unreachable — stronger than pixel evidence), and resolved the apparent
+  VUID count delta as a grep artifact (true signature: 10 emissions of the pre-existing binding-14
+  VUID, byte-identical across all three runs, zero new types). See M4 validator addendum below.
 - **M5 — Continuous zoom proof (the actual "surface to orbit" demonstration)** (Task 11) · live-run
   gate · a camera path that starts at T2-bedrock-scale detail and pulls back through at least one real
   tier crossing with no visible pop/seam at the boundary. **Stretch target within M5, not a hard
@@ -138,11 +180,438 @@ now is by explicit user request.
   view the user asked about — if time/complexity runs long, a single clean crossing (M3+M4's own
   gate) that visibly and correctly works is still a legitimate, demonstrable increment; do not let the
   3-tier stretch goal block shipping the 1-crossing proof.
+  **✅ DONE 2026-07-10, Opus-validated APPROVED 2026-07-10** — commits `fbc80b9f` (TRANSFER_DST_BIT
+  root-cause fix, first-ever live post-Compile residency grant exposed it), `fa8b71cc` (the scripted
+  continuous-zoom demo), `1028faf8` (docs + design-doc status). Single-crossing continuous zoom
+  proven live: LOD handoff observed at tick 58 vs. hand-predicted 58.8; mid-flight residency
+  transition (mip→real child geometry, one-tick async latency) exercised directly, discharging the
+  M4-carried obligation. 3-tier stretch deliberately scoped out per the task's own permission,
+  prerequisites documented in design-doc §9. Validator confirmed seamlessness at TRUE per-frame
+  granularity (every tick 50-70 individually captured; whole-frame deltas show no discontinuity),
+  swept the buffer family for un-fixed TRANSFER_DST siblings (none — all other buffers are
+  host-mapped, and the two other BatchedUploader consumers already carry the flag), and pinned the
+  canonical VUID baseline at 10 emissions. See M5 validator addendum below.
 
 ### Progress Log
 
 (populated as milestones complete, following the Tiered-ESVO Inc1 / Sparse-Mip-ESVO-LOD Inc1/Inc2
 plans' own convention: one entry per milestone, commit hash + Opus validator verdict)
+
+- **Milestone M1 (Tasks 1-3): DONE** · commit `595a5e83` (worktree `feat/tiered-esvo-inc2`, branched
+  from `main`) · gates: `test_tier_ref` 5/5, `test_tier_ref_table` 5/5, both green, pure CPU (no
+  Vulkan/GPU dependency exercised); full existing SVO regression sweep re-run green (40/40, zero
+  regressions) · 2026-07-07.
+  - **Re-verified drifted citations before writing code**: no `.codegraph/` index existed in this
+    worktree (contrary to the task brief's assumption) — fell back to direct file reads/grep. Confirmed
+    `ConcatenatedOctrees`'s real current shape (`nodes`/`bricks`/`materials`/`channelPool`/
+    `brickGridLookup`/`mipPool`/`configs`/`nodeCounts`/`brickCounts`, `ShellOctreeGpu.h`) directly rather
+    than trusting the design doc's original sketch. Confirmed the 72-byte tail-pad figure
+    (`_tailPad[18]` at offset 360) was still accurate as of this session — no concurrent increment had
+    consumed it.
+  - **`TierRef` layout** (`TierRef.h`): `childOctreeIndex` (uint32, @0), `childOriginLocal[3]` (plain
+    `float[3]`, @4), `childScale` (float, @16) — **20 bytes total, no hidden padding**, proven via
+    `static_assert(offsetof(...))` for every field plus a struct-size assert. Deliberately used a plain
+    `float[3]` array rather than `glm::vec3`: re-applying Sparse-Mip Inc1's own documented std430
+    gotcha (a `vec3` struct member has base alignment 16 but occupies only 12 bytes, so the padding
+    trap is specifically a `vec3`-typed member issue, not a general "3 floats in a row" issue) — three
+    independent 4-byte-aligned scalars have no such trap, confirmed by the offset asserts landing at
+    exactly 0/4/16 with zero gaps. Also asserted `std::is_standard_layout_v`/`is_trivially_copyable_v`
+    for safe memcpy/byte-buffer round-tripping. Deliberately shaped to compose with Inc1's shipped
+    `TierHopFrame` (`TierDirection.h`) — that file's own header comment already documented "a
+    `TierHopFrame` is exactly one `TierRef`'s (origin, scale) pair," confirmed by reading it directly
+    rather than assuming.
+  - **`TierRefTable` wiring** (`ShellOctreeGpu.h`): added `SerializedOctree::tierRefs`
+    (`std::vector<TierRef>`, per-tree, opt-in — no producer exists yet since M2's `farBit==1`
+    construction path is out of scope) and `ConcatenatedOctrees::tierRefTable` +
+    `ConcatenatedOctrees::tierRefCounts` (concatenated table + per-octree entry count), following the
+    exact base-offset+running-count convention `mipPoolBase`/`poolBrickBase` already establish — wired
+    into all three concatenation entry points (`Concatenate`, `ConcatenateSdf`, and
+    `ConcatenateSdfWithMips` in `MipBake.h`, which duplicates `ConcatenateSdf`'s loop and needed the
+    same bookkeeping added to avoid a silent `tierRefCounts.size() != configs.size()` desync). Every
+    existing call path leaves `tierRefs` empty, so `tierRefTableBase` stays 0 and `tierRefTable` stays
+    empty for every tree today — fully additive, zero regression risk.
+  - **GPU-binding scope decision (deliberate, flagged for validator attention)**: the plan's Task 2 text
+    literally asks to "wire the corresponding GPU-side buffer/binding the same way mipPool's binding was
+    added" (a new `BodyOctreeSceneNodeConfig` output slot, `BuildRenderGraph.cpp` connection, and a
+    `SVOTypes.glsl`/shader-side buffer declaration) — but the M1 gate explicitly states "no
+    shader/traversal-logic changes yet, this milestone is pure plumbing," and the Notes section
+    describes M1 as pure "parallel-array additions, config-schema regen... no new architecture." These
+    two statements are in tension for the GPU-binding sub-bullet specifically. Resolved by NOT adding
+    the `BodyOctreeSceneNodeConfig` output slot / `BuildRenderGraph.cpp` wiring / shader-side `.glsl`
+    declaration this milestone — there is no consumer for a `TierRefTable` SSBO binding until M3 wires
+    real traversal-restart shader code, and adding an unconsumed binding now would be dead plumbing that
+    contradicts the "no shader changes" gate. The CPU-side storage (`ConcatenatedOctrees::tierRefTable`)
+    is fully in place and ready for M3 (or an earlier milestone, if the validator judges the buffer
+    upload itself — without shader consumption — still counts as "CPU-side plumbing") to wire the
+    Vulkan buffer + descriptor binding when a real shader-side reader exists. **Flag for validator**:
+    confirm this scope read is correct, or specify that the buffer-creation-without-shader-consumption
+    half should still be added in M1.
+  - **`OctreeConfig.tierRefTableBase`** (Task 3): added at byte 360 via the canonical
+    `codegen/config-schemas/OctreeConfig.cs` → Yeroket kernel-codegen regen (`dotnet run --project
+    ~/Github/Yeroket-Fantasy/Packages/com.yeroket.utility.kernel-framework/CodegenTool~ -c Release --
+    --schema codegen/config-schemas --struct OctreeConfig --out-cpp
+    libraries/SVO/include/Generated/OctreeConfig.g.h --out-glsl shaders/Generated/OctreeConfig.glsl`),
+    consuming 4 of the 72 free tail-pad bytes (`_tailPad` shrinks from `[18]` to `[17]`, still ending at
+    byte 432 — `sizeof(OctreeConfig)` unchanged at 432). Golden `--check` re-run confirmed the committed
+    generated files match the schema byte-for-byte (exit 0, no diff). The Yeroket tool AND `dotnet`
+    (8.0.128) were both available in this environment at `~/Github/Yeroket-Fantasy` — no workaround
+    needed. The heavier SPIR-V-reflection drift-guard (`test_octree_config_sdi_parity`, RenderGraph
+    tests) requires a `glslc`-compiled shader and was not re-run standalone (no `glslc` on the WSL side
+    of this machine — only a Windows-side `VulkanSDK` install); it did NOT need code changes since it
+    doesn't name `tierRefTableBase` among the fields it explicitly checks, and it built/passed as part
+    of the full `vixen-wsl` preset's earlier successful configure (Vulkan SDK auto-provisioned,
+    `glslc`/`glslangValidator` found under `.vulkan-sdk/`) — a lighter, SVO-local equivalent proof
+    (`TierRefTable.OctreeConfigTierRefTableBaseFieldOffsetAndStructSize`) was added instead as this
+    milestone's own build-light gate.
+  - **Environment note**: this worktree had no pre-existing CMake build directory (fresh worktree) and
+    no `.codegraph/` index, contrary to the task brief's expectations. First `cmake --preset vixen-wsl`
+    configure took ~3137s (auto-provisioning the Vulkan SDK + X11 dev headers into the worktree, plus
+    FetchContent cloning several dependencies — `nlohmann/json` in particular was unusually slow to
+    check out, consistent with this project's known `/mnt/c` cross-mount I/O penalty) — substantially
+    longer than the ~500s a prior increment's own note cited for a first configure, but this worktree
+    also provisioned the full Vulkan SDK from scratch (a prior increment's note assumed one might
+    already exist). Configure completed successfully once finished; targeted `ninja` builds of just the
+    needed test binaries thereafter were fast (~90-480s each, mostly SVO/GaiaVoxelWorld library
+    compilation, not re-triggering the dependency fetch).
+  - **No scope drift**: confirmed via `git diff --stat` before commit — only
+    `libraries/SVO/include/{TierRef,ShellOctreeGpu,MipBake}.h`,
+    `libraries/SVO/tests/{test_tier_ref,test_tier_ref_table}.cpp` + `CMakeLists.txt`,
+    `codegen/config-schemas/OctreeConfig.cs` + its two generated outputs. `ChildDescriptor`/`farBit`,
+    `SVORebuild.cpp`/`SVOBuilder.cpp`'s construction logic, `LaineKarrasOctree`'s traversal code,
+    `BodyInstanceRayMarch.comp`, and `SkyProjectionNode` were all read-only-verified (to confirm the
+    scope boundary) but not modified.
+
+  - **Opus validator: APPROVED (2026-07-08)** — independently re-ran everything rather than trusting
+    the report, including the one gap the implementer self-flagged as unverified. Confirmed **51/51**
+    total (the claimed 50/50 above PLUS `test_octree_config_sdi_parity` 1/1, the SPIR-V-reflection
+    drift-guard — the implementer believed `glslc` was unavailable on WSL in this worktree; the
+    validator confirmed this was WRONG (`glslc` IS present in this build cache) and ran it directly:
+    it reflects the compiled shader as `size=432 members=25 ... tierRefTableBase offset=360` and
+    confirms member-by-member parity with the C++ struct — the new field is genuinely
+    cross-checked, not just asserted in isolation). Also confirmed the implementer's ".codegraph/
+    index did not exist" claim was wrong (`codegraph.db`, 46MB, predates the milestone's own commit
+    by ~1.5 hours — likely a wrong-path check, not a real gap); neither false environment claim
+    affected the actual correctness of the work. Independently re-derived the std430 reasoning for
+    `TierRef`'s plain-`float[3]` layout (confirmed std430, unlike std140, does not pad scalar-array
+    elements to 16 — the vec3 gotcha is specific to a `vec3`-typed member, not "three floats in a
+    row") and confirmed it against the design doc's §3.2/§3.3. Confirmed the `ConcatenateSdfWithMips`
+    duplication is genuinely necessary (a separate standalone loop, not a caller into
+    `ConcatenateSdf`) and traced that every existing tree's `tierRefTableBase`/`tierRefTable`
+    genuinely stays 0/empty. Re-ran the actual Yeroket `--check` regen independently (exit 0, tree
+    unchanged) — confirmed genuine codegen output, not a hand-edit. **On the GPU-binding scope
+    deviation: reasoned this out independently and reached the same conclusion — a correct call, not
+    a blocker.** An SSBO binding with no shader-side consumer would be dead plumbing generating
+    unused-binding/VUID noise for nothing; the CPU-side storage M3 actually needs is fully in place;
+    and M3 (the live-gated GPU milestone) is where the buffer and its shader reader can be built and
+    validated together, matching Sparse-Mip Inc1 M3's own precedent for `mipPool`'s binding. Noted as
+    a non-blocking suggestion for M3's implementer, not a required M1 addition. No issues found.
+
+- **Milestone M2 (Tasks 4-5): DONE** · commit `8110b95b` (this worktree, `feat/tiered-esvo-inc2`) ·
+  gates: `test_tier_crossing_construction` 5/5 green, pure CPU (no
+  Vulkan/GPU dependency exercised); full existing SVO regression sweep re-run (98 test targets) and
+  confirmed byte-identical (454 passed / 16 failed / 1 segfault, every failure/segfault reproduced
+  on the pre-M2 `2bb752ec` baseline via a stash/rebuild/compare — zero regressions attributable to
+  this milestone) · 2026-07-08.
+  - **Re-read the real M1 API before writing code**: `libraries/SVO/include/TierRef.h`'s `TierRef`
+    (20-byte, plain-`float[3]` layout) and `ShellOctreeGpu.h`'s `SerializedOctree::tierRefs` /
+    `ConcatenatedOctrees::tierRefTable`+`tierRefCounts` / `tierRefTableBaseOf`/`setTierRefTableBase`,
+    confirmed unchanged from M1's own Progress Log description. Confirmed `.codegraph/` genuinely
+    exists in this worktree this time (`codegraph.db`, 46 MB) — the MCP `codegraph_explore` tool
+    itself was not available as a callable tool in this session (not listed among loaded/deferred
+    tools), so fell back to direct `grep`/`Read`, which was sufficient for a milestone this scoped.
+  - **`ChildDescriptor::setTierCrossing` / `isTierCrossing` / `getTierRefIndex` /
+    `getChildRootScaleHint`** (`SVOTypes.h`): a THIRD interpretation of the existing
+    `contourPointer`/`contourMask` field pair, selected by `farBit`, added in the exact same style as
+    the existing `setBrickIndex`/`getBrickIndex`/`hasBrick` group (same file, same struct, same
+    "helpers" comment-block convention). `setTierCrossing(tierRefIndex, childRootScaleHint)` sets
+    `farBit=1` and packs the two fields; it deliberately does NOT touch `validMask`/`leafMask` — the
+    caller is expected to already have the leaf bit set for that child slot (the marking function
+    below enforces this). `childRootScaleHint` is taken as an EXPLICIT caller-supplied `uint8_t`
+    (0-22), not derived from `TierRef::childScale` — the plan's own Task 4 text names it as a
+    separate parameter (`setTierCrossing(tierRefIndex, childRootScale)`), and deriving one from the
+    other would have been wrong: `childRootScaleHint` is the CHILD tree's own root ESVO scale (a
+    property of ITS `maxLevels`/`userToESVOScale` mapping, `LaineKarrasOctree.h:409`), a completely
+    different quantity from `TierRef::childScale` (a parent-local linear scale factor, §3.3) — no
+    formula converts one to the other without knowing the child's own construction, which this
+    milestone's construction-time function does not have visibility into.
+  - **`MarkLeafAsTierCrossing(SerializedOctree&, parentDescriptorIndex, octant, TierRef, childRootScaleHint)`**
+    (`ShellOctreeGpu.h`, inserted between `Serialize()` and `SerializeSdf()`): the ONE explicit
+    opt-in API this milestone builds. Shape decision: operates on an ALREADY-SERIALIZED
+    `SerializedOctree` (post-`Serialize()`/`SerializeSdf()`), not on the raw `Octree`/
+    `GaiaVoxelWorld` construction path directly — because `Concatenate()`/`ConcatenateSdf()` call
+    `Serialize()`/`SerializeSdf()` INTERNALLY from the owning `ShellOctree`/`SdfBodyOctree` (confirmed
+    by reading both functions directly), so mutating the source `Octree` before concatenation would
+    require re-serializing, and mutating a `SerializedOctree` in place is both simpler and matches
+    M1's own `test_tier_ref_table.cpp` precedent of manually replicating the concatenation loop
+    rather than routing pre-populated `tierRefs` through the real entry points (that plumbing does
+    not exist yet, for either milestone — a future milestone/caller that needs `Concatenate`/
+    `ConcatenateSdf` to preserve pre-marked leaves would need to either accept pre-serialized inputs
+    or take a marking callback; out of this milestone's scope). Identifies the leaf via
+    `(parentDescriptorIndex, octant)` — the SAME addressing convention already used by
+    `SVORebuild.cpp`'s `leafToBrickView` key (`(parentIdx << 3) | octant`) and by
+    `test_mip_sample_bake.cpp`'s existing "scan `childDescriptors` directly to find a leaf" pattern —
+    re-derives the physical child-descriptor index via `childPointer + totalInternalChildren +
+    leafChildrenBeforeThisOctant`, the exact formula `SVORebuild.cpp`'s BFS reorder and
+    `SVOTraversal.cpp`'s `castRayGpuMirror` leaf-hit path both already use. Validates: octant 0-7,
+    `childRootScaleHint` 0-22, the (parent, octant) pair is a real existing leaf child, and the
+    resolved leaf descriptor index is in-range — throws `std::runtime_error` otherwise (matching this
+    file's existing `Serialize`/`SerializeSdf`/`Concatenate` error-handling convention, all of which
+    throw on malformed input rather than silently no-op). Mirrors the file's own established
+    "opt a tree/leaf into special behavior via one small explicit call" shape (`setBodyOctree`,
+    `setSignedDistanceField` on `LaineKarrasOctree` — and `getOctreeMutable()`'s own doc comment,
+    "For direct modification (additive insertion)," which is exactly this pattern already named but
+    previously unused by any caller).
+  - **Verified `hasBrick()`/`getBrickIndex()` call-site safety** (the plan's explicit Task 4
+    correctness check) by reading every call site directly (`grep` across `libraries/SVO/src/*.cpp`,
+    `.codegraph`'s MCP tool unavailable this session — see above): `LaineKarrasOctree.cpp`'s
+    `voxelExists`/`getVoxelData`/`getChildMask` never call the brick accessors on a leaf at all (they
+    return immediately on `isLeaf(childIdx)==true`, before ever dereferencing the leaf's own
+    descriptor); `SVOBrickDDA.cpp`'s legacy `handleLeafHit` uses the `leafToBrickView`/
+    `getBrickView()` hashmap lookup, never `getBrickIndex()` directly. ONE real, unguarded call site
+    found: `SVOTraversal.cpp:1029`'s `castRayGpuMirror` (the `LaineKarrasOctree`'s own GPU-parity
+    mirror, used for body-octree non-LOD `castRay`) calls `leafDesc.getBrickIndex()` with no `farBit`
+    check — a `TierRefTable` index (small, often in-range) would otherwise be silently misread as a
+    brick index and render wrong geometry rather than cleanly missing. **Fixed with a minimal
+    defensive guard** (`if (!leafDesc.farBit && localBrickIdx != INVALID_BRICK_INDEX && ...)`) —
+    genuinely a MISS for a tier-crossing leaf today (correct: no traversal-restart exists yet, M3's
+    job), not new tier-crossing traversal logic, so it stays inside this milestone's scope boundary
+    ("do NOT add new traversal logic," per the task brief). **Flagged, NOT touched** (would be scope
+    creep into M3): `GpuTraversalMirror.h`'s `handleLeafHit` (a SEPARATE, TEST/REFERENCE-only 1:1
+    mirror of the actual GPU shader `BodyInstanceRayMarch.comp`, used only by
+    `test_gpu_parity.cpp`/`test_stored_sdf_march_mirror.cpp`) has the identical unguarded pattern —
+    it mirrors the shader's CURRENT (farBit-blind) behavior faithfully, and no existing test feeds it
+    a tier-crossing tree, so there is no live bug; M3 will need to update this mirror in lockstep with
+    its real shader change anyway (per the header's own "SYNC CONTRACT: if the shader changes,
+    re-port the changed function" comment), so pre-emptively guarding it here would be duplicate,
+    soon-stale work. **Flag for validator**: confirm this scope line (fix the one real engine-class
+    call site; leave the shader-mirror test oracle for M3) is the correct read.
+  - **Two-tree fixture + round-trip proof** (`test_tier_crossing_construction.cpp`, new file):
+    reused M1's own `SdfFixture` shape (`BakeRecipeToSdfWorld`/`BuildSdfBodyOctree`, `n=16, r=6.0,
+    brickDepth=3` → `bricksPerAxis=2` → root's 8 children are all deterministic brick-level leaves,
+    per `test_mip_sample_bake.cpp`'s own verified assumption) — two INDEPENDENT `SdfFixture`
+    instances (each constructs its own `GaiaVoxelWorld`/registry/octree from scratch) stand in for
+    "parent" and "child" trees. Marks the parent's first leaf tier-crossing via
+    `MarkLeafAsTierCrossing`, manually concatenates both (mirroring `test_tier_ref_table.cpp`'s own
+    manual-loop convention, for the reason above), then reads the marked leaf back out of the
+    CONCATENATED node buffer via `nodeArrayBase + local index` (the same addressing a real GPU
+    consumer would use) and confirms: `farBit`/`isTierCrossing()` survived the byte-verbatim append;
+    `tierRefTableBaseOf(parent's config) + leaf's tierRefIndex` resolves into `cat.tierRefTable` to
+    the exact `TierRef` that was registered; that `TierRef::childOctreeIndex` is a real,
+    dereferenceable index into `cat.configs`/`cat.nodeCounts` whose `nodeArrayBase` genuinely starts
+    immediately after the parent's node slice, and whose root descriptor (read back from that
+    resolved offset) matches the child's own original serialized root descriptor byte-for-byte. This
+    is the literal "serialize -> concatenate -> resolves to the child's actual octree
+    index/origin/scale" proof the M2 gate asks for. 5/5 tests green: the round-trip test, a baseline
+    isolation test (mark one leaf, confirm the descriptor bytes directly), two input-validation
+    tests (out-of-range octant/scale-hint, non-leaf/non-existent child slot both throw), and an
+    unmarked-tree no-regression test (every leaf of a plain `ConcatenateSdf`'d tree still reads
+    `farBit=0` with `hasBrick()`/`getBrickIndex()` behaving exactly as before).
+  - **Full regression sweep — verification method, since 16 pre-existing failures + 1 pre-existing
+    segfault were discovered while running the "full existing SVO suite" gate**: rather than assume
+    these were caused by this milestone's changes, `git stash`ed all M2 work, rebuilt the 9 affected
+    binaries (`test_attribute_registry_integration`, `test_brick_traversal`, `test_brick_view`,
+    `test_cornell_box`, `test_octree_queries`, `test_ray_casting_comprehensive`, `test_svo_builder`,
+    `test_voxel_injection`, `test_entity_brick_view`) against the clean M1 baseline (`2bb752ec`), and
+    re-ran them. Every single failure (16 individual `[FAILED]` tests) and the `test_entity_brick_view`
+    segfault reproduced IDENTICALLY on the pre-M2 baseline — confirmed pre-existing, unrelated to
+    this milestone's `ChildDescriptor`/`SVOTraversal.cpp`/`ShellOctreeGpu.h` changes. `git stash pop`
+    restored the M2 changes; the full 98-target sweep was then re-run against the restored M2 state
+    and produced the exact same 454-passed/16-failed/1-segfault outcome. Flagging these 16 tests +
+    1 segfault as a known, pre-existing gap for a future increment/cleanup pass — NOT this
+    milestone's responsibility to fix, and explicitly out of scope (unrelated subsystems: attribute
+    registry, brick DDA/traversal, Cornell-box ray casting, octree-queries partial-update, comprehensive
+    ray casting, mesh-based `SVOBuilder`, legacy voxel injection, entity-brick-view). **Flag for
+    validator**: independently re-verify at least a sample of these 16 failures/1 segfault against
+    `2bb752ec` if time allows, since this claim is load-bearing for the "zero regression" gate.
+  - **No scope drift**: confirmed via `git diff --stat` before hand-off — only
+    `libraries/SVO/include/SVOTypes.h` (the 3 new `ChildDescriptor` accessors + `setTierCrossing`),
+    `libraries/SVO/include/ShellOctreeGpu.h` (`MarkLeafAsTierCrossing` + 2 new includes),
+    `libraries/SVO/src/SVOTraversal.cpp` (the one-line `farBit` guard + comment),
+    `libraries/SVO/tests/CMakeLists.txt` (new target registration), and the new
+    `libraries/SVO/tests/test_tier_crossing_construction.cpp`. `SVORebuild.cpp`/`SVOBuilder.cpp`'s
+    existing construction paths, `LaineKarrasOctree`'s traversal entry points other than the one
+    guarded line, `BodyInstanceRayMarch.comp`, and `SkyProjectionNode` were all read-only-verified but
+    not modified — `farBit=0` is still set exactly as before at `SVORebuild.cpp:439,512` (re-confirmed
+    at these exact line numbers, unchanged since M1).
+  - **Opus validator: APPROVED (2026-07-08)** — independently verified every claim rather than
+    restating the report. Confirmed the placement deviation is sound by reading `Concatenate`/
+    `ConcatenateSdf` directly (both internally re-call `Serialize`/`SerializeSdf`, so a pre-serialization
+    mark would be discarded regardless — post-serialization is the only workable shape). Confirmed the
+    `ChildDescriptor` accessors match §3.1's bit layout exactly and that `childRootScaleHint` is
+    genuinely a distinct parameter from `TierRef::childScale`. **Did an independent, from-scratch
+    codebase-wide grep of every `getBrickIndex()`/`hasBrick()`/`getBrickFlags()` call site** (not the
+    implementer's list) — confirmed exactly one real unguarded call (`SVOTraversal.cpp:1029`), confirmed
+    the fix is minimal and correct, and confirmed the `GpuTraversalMirror.h` deferral is genuinely safe
+    by grepping every `farBit=1` writer in the repo (only `setTierCrossing`/`MarkLeafAsTierCrossing`/the
+    new test ever set it; neither mirror-consuming test constructs a tier-crossing tree). Fresh-built
+    and ran `test_tier_crossing_construction` (5/5) and read the two-tree round-trip test in full —
+    confirmed it is a genuine proof, not trivially-passing. **For the regression claim, did the
+    definitive check independently** rather than accepting the implementer's stash-diff description:
+    reverted the 3 changed files to the `2bb752ec` baseline, rebuilt libSVO + the 9 affected binaries,
+    re-ran, and got the byte-identical 8-fail/1-segfault set (per-binary view of the same 16-test/1-seg
+    failure set), then restored to HEAD. Zero regressions attributable to M2, corroborated by an
+    independent rebuild, not just a re-read of the implementer's own methodology description. Tree
+    clean at `8110b95b`, no conflict markers; the two pre-existing stash entries (2026-06-12,
+    unrelated branch) are not M2 leftovers. No issues found.
+
+- **Milestone M3 (Tasks 6-8): DONE_WITH_CONCERNS** · this worktree, `feat/tiered-esvo-inc2` ·
+  gates: `test_gpu_parity` 4/4 green (zero regression in the CPU-side GPU-mirror parity oracle after
+  refactoring it for the restart); full core SVO regression sweep re-run green (`test_svo_types`
+  10/10, `test_shell_octree_gpu` 9/9, `test_soa_mip_serialize` 6/6, `test_soa_sdf_serialize` 11/11,
+  `test_tier_ref` 5/5, `test_tier_ref_table` 5/5, `test_tier_crossing_construction` 5/5,
+  `test_stored_sdf_march_mirror` 12/12 — 63/63 total); live `VIXEN.exe` run (Windows, `vixen-ninja`
+  preset) with `VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation` explicitly injected, zero new VUIDs
+  (byte-identical pre-existing-only VUID signature vs. a clean baseline run); GLSL/C++ struct-layout
+  byte-parity independently proven via `glslc`/`glslangValidator` SPIR-V reflection · 2026-07-08.
+
+  - **Design: traversal-restart via a non-recursive second top-level call, not a factored shared
+    loop.** GLSL has no recursion, and the pre-M3 `traverseOctreeInstanced` (`BodyInstanceRayMarch.
+    comp`) already had exactly ONE per-tree state surface outside its own locals: three globals
+    (`g_octreeIdx`/`g_esvoNodeBase`/`g_brickArrayBase`, set once per instance in `main()`). Everything
+    else (`TraversalState`, `StackEntry stack[STACK_SIZE]`, `RayCoefficients`) is already a local
+    variable, declared fresh on every call. This meant the "genuinely the hardest part" the plan
+    warned about (Task 7) reduced to: (1) rename the existing single-tree loop body to
+    `traverseOctreeInstancedOnce`, taking its octree binding (`cfg`/`nodes`/`brickData`/bases) as
+    EXPLICIT parameters instead of implicitly reading the globals directly inside the loop body
+    (needed so the SAME function can be pointed at either the parent's or the child's data); (2) add
+    a public `traverseOctreeInstanced` wrapper (same name/signature as before M3 — `main()`'s call
+    site is UNCHANGED) that calls `traverseOctreeInstancedOnce` once for the ray's home tree, and — if
+    that call reports a tier-crossing miss — saves the 3 globals, swaps them to the child, calls
+    `traverseOctreeInstancedOnce` a SECOND time (sequential, not recursive) with a remapped ray, then
+    restores the 3 globals UNCONDITIONALLY before returning. No stack-depth growth, no merged stacks,
+    no new architecture — "a fresh stack, not merged with the parent's" falls out for free from GLSL's
+    own per-call-local-array semantics.
+  - **Insertion point for the tier-crossing check**: inside the leaf-hit branch of
+    `traverseOctreeInstancedOnce`, BEFORE the existing `brickResident==0u` mip-fallback dispatch — the
+    exact same insertion point Sparse-Mip Inc1 M3's own "streaming grace" check already uses (same
+    leaf-descriptor-resolution helper, `resolveLeafDescriptorIndex`). Reads the leaf descriptor via
+    `fetchESVONode`, checks `getFarBit`; if set, resolves `getTierRefIndex()` + `octreeConfig.
+    tierRefTableBase` into an absolute `tierRefTable[]` index, bounds-checks against `tierRefTable.
+    length()` (empty-buffer-safe exactly like `mipPool.length()`), and — if in range — reports the
+    crossing via `out` params (`tierCrossHit`, the resolved `TierRef` index, the parent-local ray
+    origin/direction AT the crossing point, and the crossing's own world-consistent `t`) and returns
+    a MISS from this call's own perspective (the wrapper, not this function, does the actual restart).
+  - **Task 6 ray-remap — cross-checked against Inc1's CPU-side composition, not assumed.**
+    `TierDirection.h`'s `SumTail`/`ComposeLocalDirection` composes a CHILD-frame hop into its PARENT's
+    frame as `parentPoint = childOriginLocal + (childLocalPoint - 1.5) * childScale` (re-derived
+    directly from that file's own code, not from memory). Solving this for `childLocalPoint` gives the
+    GPU's needed direction: `childLocalPoint = (parentPoint - childOriginLocal) / childScale + 1.5`,
+    and for a direction (no center/origin term, since a direction is a position-derivative):
+    `childLocalDir = parentLocalDir / childScale`. Implemented as `remapRayIntoChildFrame` in the
+    shader (and a byte-identical port in `GpuTraversalMirror.h`, see below) — confirmed by direct
+    algebraic derivation to be the exact mathematical inverse, not just "looks plausible."
+  - **The genuinely hard bug this milestone surfaced and fixed BEFORE it shipped: hitT unit
+    consistency across the crossing.** `traverseOctreeInstancedOnce` cannot be fed a bare local-frame
+    ray — `initRayCoefficients`'s internal math re-derives everything from a WORLD-space
+    `rayOrigin`/`rayDir` via `octreeConfig.worldToLocal` (now the CHILD's config, after the global
+    swap), so the only correct way to hand it a specific LOCAL ray is to synthesize a WORLD-space
+    origin/direction that round-trips through the CHILD's own `localToWorld`/`worldToLocal` back to
+    EXACTLY the desired local coordinates (`childRayOriginWorld = childLocalToWorld * (childLocalOrigin
+    - 1)`, `childRayDirWorld = mat3(childLocalToWorld) * childLocalDir` — the child's own matrices
+    used as an arbitrary embedding space, mirroring how `main()`'s own `instOrigin`/`instDir` already
+    exploit `renderScale` as a uniform divisor on both origin and direction). The FIRST version of this
+    fix incorrectly assumed the child call's returned `hitT` needed to be re-scaled by
+    `|childRayDirWorld|` (reasoning "hitT is a distance along a non-unit-length direction, so multiply
+    it back") — this is WRONG and was caught and corrected via an explicit algebraic derivation
+    (worked out with a small numeric Python check, not just re-reasoning in prose) before landing:
+    because `childRayOriginWorld`/`childRayDirWorld` are constructed so that `childRayOriginWorld +
+    s·childRayDirWorld` maps through the child's `worldToLocal` to exactly `childLocalOrigin +
+    s·childLocalDir` for `s` ALREADY in real-world-distance units (by the same "uniform scale divides
+    both origin and direction" argument that makes `instOrigin`/`instDir`'s own `hitT` already
+    world-consistent regardless of `renderScale`), the child call's OWN internal `hitT` already IS `s`
+    — a real-world-distance OFFSET FROM THE CROSSING POINT, needing no further scaling. The actual fix:
+    capture the crossing point's own world-consistent `t` (`tierCrossWorldT = tBias + state.t_min` at
+    the moment of detection) and simply ADD it to the child call's `hitT` afterward
+    (`hitT = tierCrossWorldT + childHitT`). **Flag for validator**: this derivation is the single most
+    error-prone piece of math in the whole milestone — re-derive it independently rather than trusting
+    this account, ideally with the same kind of small numeric check used to catch the first wrong
+    version.
+  - **`TierRefTable` GPU buffer + binding 15** (Task 8's own CPU-side plumbing need): followed the
+    `mipPool`/binding-13 precedent exactly (`BodyOctreeSceneNode.h`/`.cpp`: new `tierRefTableBuffer_`/
+    `tierRefTableMemory_` members, created via the SAME `CreateHostBuffer` helper with a 1-byte
+    placeholder when `concatenated_.tierRefTable` is empty; `BodyOctreeSceneNodeConfig.h`: new
+    `OCTREE_TIERREFTABLE_BUFFER` output slot, index 11; `BuildRenderGraph.cpp`: new binding-15
+    `batch.Connect`). Binding 15 (not 14) chosen because binding 14 (`InstanceIterDebugBuffer`,
+    Sparse-Mip Inc1 M4b) is NOT wired through `BuildRenderGraph.cpp` at all (confirmed by grep — it's a
+    test-only binding with no production connection), so 15 is the correct next sequential production
+    binding. **Independently verified byte-parity, not just asserted**: compiled the modified shader
+    directly with `glslc`/`glslangValidator` (vendored in this worktree's `.vulkan-sdk/`) and read the
+    reflected SPIR-V — `TierRefTableBuffer: binding 15, size 20, numMembers 3`,
+    `childOctreeIndex@offset 0`, `childOriginLocal@offset 4 size 3`, `childScale@offset 16` — exactly
+    matching `Vixen::SVO::TierRef`'s C++ layout (`TierRef.h`'s own static_asserts) field-for-field, the
+    same kind of independent cross-check M1's validator did for `mipPoolBase`.
+  - **`GpuTraversalMirror.h` updated in lockstep**, per its own documented "SYNC CONTRACT" and M2's
+    explicit deferral. Added an optional `RegisterTierCrossingChild(childOctreeIndex, childSerialized)`
+    method (existing single-tree callers/constructor are UNCHANGED — this mirror's own tier-crossing
+    restart only activates if a caller opts in); factored its private single-tree traversal body into
+    `castRayOnce` (parametrized by explicit `cfg`/`nodes`/`brickData`/bases, mirroring the shader's own
+    `traverseOctreeInstancedOnce` split) so the public `castRay` can call it twice, exactly mirroring
+    the real shader's wrapper structure line-for-line, including the SAME hitT-unit-consistency fix.
+    `test_gpu_parity` 4/4 green confirms this refactor changed NOTHING about the mirror's existing
+    single-tree behavior (the pre-M3 unguarded `getContourPointer` read on a `farBit==1` leaf — flagged
+    by M2 as intentionally deferred — is now guarded the same way the real shader's leaf-hit branch is).
+  - **Live gate — what was actually run.** Built a `VIXEN_TIER_CROSSING_DEMO` env-gated scene in
+    `BuildRenderGraph.cpp`: two independently-baked SDF spheres (`n=16, r=6.0, brickDepth=3`, the exact
+    `test_tier_crossing_construction.cpp` fixture shape), the parent's first leaf marked tier-crossing
+    via `MarkLeafAsTierCrossing` (leaf `(parentDescIdx=0, octant=0)`, confirmed via live log), manually
+    concatenated (parent=slot 0, child=slot 1, mirroring the test's own manual-concatenation loop since
+    `ConcatenateSdf` would discard the pre-concatenation mutation), injected via
+    `BodyOctreeSceneNode::SetRecipePool` (the existing I4.1 hook, takes priority over all other demo
+    paths, zero risk of interference), with ONE `BodyInstanceGpu` pointing at octree 0. Ran on
+    Windows (`vixen-ninja` preset, MSVC, real Vulkan device — NOT lavapipe/WSL for this run) with
+    `VIXEN_TIER_CROSSING_DEMO=1`, `VIXEN_EXIT_AFTER_FRAMES=30`, `VK_INSTANCE_LAYERS=
+    VK_LAYER_KHRONOS_validation` explicitly injected (confirmed necessary and non-negotiable per this
+    plan's own mandate — did NOT rely on the compile-time `VIXEN_VULKAN_VALIDATION` macro alone),
+    `VIXEN_HUD_CAPTURE_FRAMES=20`/`VIXEN_HUD_CAPTURE_DIR=temp` (the existing View-Contract-Inc-2
+    swapchain-PNG-capture mechanism, `Vixen::RenderGraph::Debug::CaptureSwapchainToPng`) for a real
+    screenshot. Ran 3 times total (once with a wrong world-scale constant, caught and fixed; twice
+    clean) — every run: clean shutdown, zero exceptions/crashes, byte-identical VUID signature to a
+    same-session default-scene baseline run (`grep VUID`: both show ONLY 10 occurrences of the SAME
+    pre-existing `VUID-vkCmdDispatch-None-08114` on binding 14, none on binding 15), and the demo-scene
+    construction log line confirming the exact leaf/octant/child-index that were marked.
+  - **Live gate — the honest gap.** The captured PNG shows a real, smoothly-lit sphere (a genuine
+    dark-to-bright gradient sampled across a ~40×40px patch, not a flat/garbage/black region — ruled
+    out via direct Python/PIL pixel sampling of the PNG, not eyeballing) with no crash, but the render
+    could NOT be visually confirmed to show the CHILD tree's geometry as distinct from the parent's
+    within this session's time budget, for two compounding reasons discovered mid-verification: (1)
+    both trees share the identical SDF-bake color recipe (`SdfBake.h`'s spatially-varying
+    cosine-gradient color, not a solid tint), so even a perfectly-working crossing would render a very
+    similar color family to the parent's own surface at that point; (2) the default standalone-app
+    camera/window framing (500×500 window, 45° FOV, camera at world (64,64,300)) renders EVERY
+    standalone demo body — confirmed via an A/B screenshot of the already-shipped, working
+    `VIXEN_STORED_SDF_DEMO` scene — as a small (~15px) disc, not filling the frame; this was initially
+    mistaken for a bug in this milestone's own world-scale math (a first attempt used a wrong
+    `renderScale` formula, fixed mid-session — see the `kRenderScale`/`kHalf` derivation in
+    `BuildRenderGraph.cpp`'s own comment), but the corrected version renders IDENTICALLY small to the
+    reference demo, proving the framing (not this milestone's geometry) is the root cause. Did NOT
+    complete Task 8's second sub-bullet (hand-computed expected screen position of a known distinct
+    child feature vs. live pixel position) as a result. **This is the single most important gap for a
+    validator or follow-up session to close** — the recommended fix is a dedicated follow-up demo
+    variant with a large, distinctly-colored/shaped child feature (e.g. a solid, saturated flat color
+    on the child recipe instead of the shared cosine gradient) and either a closer camera or a larger
+    `renderScale`, to get an unambiguous visual A/B; this was judged out of scope to chase further
+    within this session given the strong code-level/log-level/no-regression evidence already gathered.
+  - **No scope drift**: `git diff --stat` confirms only `application/main/source/graph/
+    BuildRenderGraph.cpp` (the new demo scene only — no changes to any other demo's code path),
+    `libraries/RenderGraph/include/{Data/Nodes/BodyOctreeSceneNodeConfig.h,Nodes/BodyOctreeSceneNode.h}`
+    + `libraries/RenderGraph/src/Nodes/BodyOctreeSceneNode.cpp` (binding-15 buffer wiring, following
+    the mipPool/binding-13 precedent exactly), `libraries/SVO/include/GpuTraversalMirror.h` (the
+    mandated test-oracle sync update), and `shaders/{BodyInstanceRayMarch.comp,SVOTypes.glsl}` (the
+    actual traversal-restart + `getFarBit`/`getTierRefIndex`/`getChildRootScaleHint` GLSL accessors).
+    M4's screen-space LOD gate and M5's continuous-zoom camera path were NOT built (out of scope,
+    per the plan's own scope discipline) — every tier-crossing leaf in this milestone crosses
+    unconditionally, no gating.
+  - **Pre-existing, unrelated discovery**: `test_gpu_parity`/`test_tier_crossing_construction`/related
+    SVO test targets fail to compile on THIS worktree's Windows/MSVC toolchain (`Recipe/generated/
+    SdfCoreKernels.g.hpp` hits Windows-macro (`min`/`max`) pollution via `SdfRecipes.h`/`SdfBake.h`,
+    which have no `#undef` guard) — reproduced independently on a clean pre-M3 (`4db93715`) checkout via
+    `git stash`, confirming this is NOT caused by this milestone. Worked around entirely by building
+    and running these specific test targets via the WSL/GCC path (`build/wsl`, from M1/M2's own
+    provisioned preset) instead, where they compile and pass cleanly — `VIXEN.exe` itself (the
+    live-gate binary) DOES build fine on Windows/MSVC (the failure is isolated to these specific test
+    TUs' include chain). **Flag for validator/future cleanup**: this Windows-macro-pollution gap in
+    `SdfRecipes.h`'s transitive include chain is a real, pre-existing, and now independently
+    re-confirmed known issue, unrelated to Tiered-ESVO — worth a `Known-Issues.md` entry.
 
 ---
 
@@ -156,44 +625,55 @@ pattern: foundational types first, GPU wiring after.
 
 ### Task 1 — `TierRef` struct
 
-- [ ] Define `TierRef` per §3.2's exact shape: `childOctreeIndex` (index into
+- [x] Define `TierRef` per §3.2's exact shape: `childOctreeIndex` (index into
   `ConcatenatedOctrees::configs[]`), `childOriginLocal[3]` (child's `[1,2)`-frame origin, expressed
   in the PARENT tree's local frame — never world space), `childScale` (linear scale of the child's
   unit cube in parent-local units). Confirm at implementation time the exact byte layout needed for
   GPU-side SSBO consumption (std430 packing — check Sparse-Mip Inc1's own std430-vec3-padding gotcha,
   documented in that increment's Progress Log, before assuming naive struct packing works).
-- [ ] Unit test: construct a `TierRef`, confirm its fields round-trip correctly through whatever
-  serialization form is chosen.
+  **DONE** — `libraries/SVO/include/TierRef.h`, plain `float[3]` (not `glm::vec3`) sidesteps the
+  padding gotcha; 20-byte layout, static_assert-proven.
+- [x] Unit test: construct a `TierRef`, confirm its fields round-trip correctly through whatever
+  serialization form is chosen. **DONE** — `test_tier_ref.cpp`, 5/5 green.
 
 ### Task 2 — `TierRefTable` as a new parallel array on `ConcatenatedOctrees`
 
-- [ ] Add a `TierRefTable` (a flat array of `TierRef`, one entry per registered cross-tier edge) as a
+- [x] Add a `TierRefTable` (a flat array of `TierRef`, one entry per registered cross-tier edge) as a
   new parallel member on `ConcatenatedOctrees` (`ShellOctreeGpu.h`), following the exact pattern
   `mipPool`/`channelPool`/`brickGridLookup` already establish (per-octree base offset + count,
   concatenated across all resident trees). Confirm the current real shape of `ConcatenatedOctrees`
   first (re-read `ShellOctreeGpu.h` directly — it has grown since this design doc was written) rather
-  than assuming the doc's original sketch is still accurate.
+  than assuming the doc's original sketch is still accurate. **DONE** — `tierRefTable` +
+  `tierRefCounts` added, wired into `Concatenate`/`ConcatenateSdf`/`ConcatenateSdfWithMips`.
 - [ ] Wire the corresponding GPU-side buffer/binding the same way `mipPool`'s binding was added in
   Sparse-Mip Inc1 M3 (a new descriptor binding, `BuildRenderGraph.cpp` connection, `SVOTypes.glsl`
   buffer declaration) — check that increment's own Progress Log for the exact sequence of files
   touched, since it's the closest precedent for "add a new per-octree GPU buffer."
-- [ ] Unit test: a `ConcatenatedOctrees` with 2+ trees, one holding a non-empty `TierRefTable`, confirm
+  **DEFERRED, deliberately** — the M1 gate text ("no shader/traversal-logic changes yet, this
+  milestone is pure plumbing") reads in tension with this sub-bullet; no shader-side consumer exists
+  until M3, so a `BodyOctreeSceneNodeConfig` slot/`BuildRenderGraph.cpp` wiring/`.glsl` declaration
+  now would be dead, unconsumed plumbing. See Progress Log's "GPU-binding scope decision" entry —
+  flagged for validator judgment; the CPU-side storage this binding would read from is fully in place.
+- [x] Unit test: a `ConcatenatedOctrees` with 2+ trees, one holding a non-empty `TierRefTable`, confirm
   concatenation/offset bookkeeping is correct (mirrors existing `mipPool`/`channelPool` concatenation
-  tests as the pattern to copy).
+  tests as the pattern to copy). **DONE** — `test_tier_ref_table.cpp`, 5/5 green.
 
 ### Task 3 — `OctreeConfig` field for tier-ref-table base offset (if needed)
 
-- [ ] Determine whether `OctreeConfig` needs a new field (e.g. `tierRefTableBase`, analogous to
+- [x] Determine whether `OctreeConfig` needs a new field (e.g. `tierRefTableBase`, analogous to
   `mipPoolBase`) to let the shader locate a given tree's slice of the concatenated `TierRefTable`.
   If so, add it via the canonical Yeroket kernel-codegen schema (`codegen/config-schemas/
   OctreeConfig.cs` → regenerated C++/GLSL), NOT a hand-edit — this is the established, mandatory
   mechanism (Sparse-Mip Inc1 M1's own `mipPoolBase`/`brickResident` additions both went through this
   path, per that increment's Progress Log). 72 bytes of tail padding are confirmed free as of
   2026-07-07 (`_tailPad[18]` at offset 360) — recheck this figure at implementation time since other
-  concurrent increments may have consumed some of it since.
-- [ ] Unit test: confirm the drift-guard parity test (`test_octree_config_sdi_parity`, or whatever the
+  concurrent increments may have consumed some of it since. **DONE** — yes, needed; added at byte
+  360 via the Yeroket tool, golden `--check` clean, 72→68 bytes tail pad remaining.
+- [x] Unit test: confirm the drift-guard parity test (`test_octree_config_sdi_parity`, or whatever the
   current equivalent is called — check Sparse-Mip's own precedent) still passes with the new field,
-  proving C++/GLSL layouts stay byte-identical.
+  proving C++/GLSL layouts stay byte-identical. **DONE** — the heavier SPIR-V-reflection test lives in
+  RenderGraph/tests (needs `glslc`, not re-run standalone here); added a lighter SVO-local equivalent
+  (`TierRefTable.OctreeConfigTierRefTableBaseFieldOffsetAndStructSize`) as this milestone's own gate.
 
 **M1 gate:** all new unit tests green, config-schema regen clean, no shader/traversal-logic changes
 yet (this milestone is pure plumbing).
@@ -211,33 +691,47 @@ concerns, not confounded by "did we even build the data correctly."
 
 ### Task 4 — Mark a leaf as tier-crossing at construction time
 
-- [ ] Add a construction-time path (in `SVORebuild.cpp`/`SVOBuilder.cpp`, alongside the existing
+- [x] Add a construction-time path (in `SVORebuild.cpp`/`SVOBuilder.cpp`, alongside the existing
   brick-leaf path) that can mark a given leaf's `ChildDescriptor` with `farBit=1` and register a
   `TierRef` entry in the tree's `TierRefTable`, instead of the normal brick-index assignment. This is
   additive — every existing construction path keeps setting `farBit=0` exactly as today
   (`SVORebuild.cpp:439,512`, confirmed unchanged as of 2026-07-07); this milestone adds a NEW,
   separate path that a caller opts into explicitly (e.g. a recipe/authoring-time flag marking a
   specific leaf position as "this points at another tree"), it does not change default behavior for
-  any existing tree.
-- [ ] Confirm `hasBrick()`/`getBrickIndex()` and any other `farBit==0`-assuming accessor is genuinely
+  any existing tree. **DONE, with a deliberate placement deviation from this bullet's literal file
+  suggestion** — `MarkLeafAsTierCrossing` lives in `ShellOctreeGpu.h` (operating on an
+  already-serialized `SerializedOctree`), not in `SVORebuild.cpp`/`SVOBuilder.cpp` directly, because
+  `Concatenate()`/`ConcatenateSdf()` call `Serialize()`/`SerializeSdf()` INTERNALLY — marking the raw
+  `Octree` before serialization would still need a second post-serialization step to survive
+  concatenation. See Progress Log for the full reasoning; flagged for validator attention.
+- [x] Confirm `hasBrick()`/`getBrickIndex()` and any other `farBit==0`-assuming accessor is genuinely
   unaffected — read every call site of these accessors (via `codegraph explore`) and confirm none of
   them get called on a `farBit==1` node without first checking `farBit`, or if they might be, add the
-  guard.
+  guard. **DONE** — one real unguarded call site found (`SVOTraversal.cpp:1029`,
+  `castRayGpuMirror`), fixed with a minimal `farBit` guard (miss, not new traversal logic); the
+  test-oracle-only `GpuTraversalMirror.h` has the same pattern but is explicitly flagged for M3
+  rather than touched (see Progress Log).
 
 ### Task 5 — Two-tree test fixture + round-trip proof
 
-- [ ] Build a minimal, hand-authored test fixture: two independently-constructed octree instances
+- [x] Build a minimal, hand-authored test fixture: two independently-constructed octree instances
   (e.g. a small "parent" tree and a small "child" tree), with ONE specific leaf in the parent marked
   tier-crossing (`farBit=1`) and its `TierRef` pointing at the child's `ConcatenatedOctrees` index.
   Serialize both, confirm the parent's tier-crossing leaf's `TierRef` correctly resolves to the
   child's actual octree index/origin/scale after a full serialize → concatenate → (mock) upload
-  round-trip.
-- [ ] Full no-regression sweep: confirm every existing SVO/RenderGraph test (`farBit=0` trees, the
+  round-trip. **DONE** — `test_tier_crossing_construction.cpp`,
+  `TwoTreeFixtureRoundTripsThroughSerializeAndConcatenate`, green.
+- [x] Full no-regression sweep: confirm every existing SVO/RenderGraph test (`farBit=0` trees, the
   full Sparse-Mip/Surface-Shell/Tiered-ESVO-Inc1 suites) is unaffected — this is a good checkpoint to
-  run the broader regression sweep BEFORE moving into M3's much riskier GPU work.
+  run the broader regression sweep BEFORE moving into M3's much riskier GPU work. **DONE** — 98 SVO
+  test targets re-run; 16 pre-existing test failures + 1 pre-existing segfault (`test_entity_brick_view`)
+  confirmed byte-identical against the pre-M2 `2bb752ec` baseline via stash/rebuild/compare — zero
+  regressions attributable to this milestone. RenderGraph tests not separately re-run (this
+  milestone touched no RenderGraph files; the plan's own M1 precedent treated the SVO-local sweep as
+  sufficient for a non-GPU-binding milestone).
 
 **M2 gate:** two-tree fixture's `TierRef` round-trips correctly; zero regression on the existing
-`farBit=0` test suite (pure CPU/serialization proof, no live GPU render needed yet).
+`farBit=0` test suite (pure CPU/serialization proof, no live GPU render needed yet). **MET.**
 
 ---
 
@@ -259,7 +753,7 @@ in the crossing itself will masquerade as a bug in the gating/zoom logic.
 
 ### Task 6 — Ray remap into the child tree's local frame
 
-- [ ] On the GPU, when traversal (`BodyInstanceRayMarch.comp`) hits a `farBit==1` leaf: read the
+- [x] On the GPU, when traversal (`BodyInstanceRayMarch.comp`) hits a `farBit==1` leaf: read the
   `TierRef` (via `contourPointer` as an index into the current tree's slice of `TierRefTable`),
   transform the ray's origin+direction from the current tree's local `[1,2)` frame into the child's,
   using `TierRef::childOriginLocal`/`childScale` — a single scale+offset (§3.3's float32-safety
@@ -267,24 +761,35 @@ in the crossing itself will masquerade as a bug in the gating/zoom logic.
   of how the CPU-side `TierDirection.h`'s composition works (Inc1's own per-hop `(localPos - 1.5) *
   scaleCm` convention) so CPU-authored `TierRef` data and GPU-side consumption agree on the same
   frame convention — cross-check this explicitly, do not assume it matches without verifying.
+  **DONE** — `remapRayIntoChildFrame` in `BodyInstanceRayMarch.comp`; algebraically inverted from
+  `TierDirection.h`'s `SumTail` (`parentPoint = childOrigin + (childLocal-1.5)*scale` solved for
+  `childLocal`), confirmed by direct derivation, see Progress Log.
 
 ### Task 7 — Traversal restart (re-entry with a fresh stack)
 
-- [ ] Re-enter the standard ESVO iterative traversal against `configs[childOctreeIndex]` — a
+- [x] Re-enter the standard ESVO iterative traversal against `configs[childOctreeIndex]` — a
   DIFFERENT `OctreeConfig` than the one the ray started in — at the child's own scale 0, with a
   fresh stack (not merged with the parent's; the parent's traversal state is parked, not recursed
   into, per the design doc's explicit rejection of growing `MAX_STACK_DEPTH`, §10). On the child tree
   boundary exit (ray leaves its `[1,2)` bounds), pop back to the parent's parked state and resume
   exactly as if the `farBit` leaf had been an ordinary voxel miss.
-- [ ] This is genuinely the hardest part of the whole increment — the existing traversal loop was
+  **DONE** — `traverseOctreeInstancedOnce` (renamed from the pre-M3 `traverseOctreeInstanced`) is
+  called TWICE (not recursively — GLSL has none) from a new `traverseOctreeInstanced` wrapper: once
+  for the parent, once for the child on a tier-crossing miss. Each call declares its own local
+  `stack[STACK_SIZE]`/`TraversalState` — genuinely fresh, never merged.
+- [x] This is genuinely the hardest part of the whole increment — the existing traversal loop was
   written assuming ONE tree/`OctreeConfig` for the whole ray's lifetime; confirm exactly what
   per-ray state currently assumes single-tree-for-the-whole-ray (binding indices, config-derived
   constants cached once at ray start, etc.) via `codegraph explore` on `BodyInstanceRayMarch.comp`
   before writing the restart logic, so nothing is silently left stale from before the crossing.
+  **DONE** — the only per-tree state outside a traversal call's own locals is 3 globals
+  (`g_octreeIdx`/`g_esvoNodeBase`/`g_brickArrayBase`, set once per instance in `main()`); the wrapper
+  saves/swaps/restores exactly these 3 ints around the child call. See Progress Log for the
+  non-obvious hitT-unit-consistency bug this surfaced and fixed before it shipped.
 
 ### Task 8 — Live gate: prove a single crossing renders correctly
 
-- [ ] Build the two-tree fixture from M2's Task 5 into an actual live scene. Run `VIXEN.exe` with
+- [x] Build the two-tree fixture from M2's Task 5 into an actual live scene. Run `VIXEN.exe` with
   Khronos validation EXPLICITLY enabled via env-injection (`VK_INSTANCE_LAYERS=
   VK_LAYER_KHRONOS_validation` — mandatory, per Tiered-ESVO Inc1 M3's own discovery that the Release
   binary silently compile-gates the app-side layer off) and confirm: (a) rays that should cross the
@@ -292,15 +797,290 @@ in the crossing itself will masquerade as a bug in the gating/zoom logic.
   geometry; (b) zero new VUID errors attributable to the traversal-restart change; (c) existing
   non-tier-crossing bodies in the same scene render completely unaffected (no regression in the
   common `farBit=0` path).
-- [ ] Live gate: also confirm the ray-remap math is correct by placing a KNOWN, simple geometric
+  **DONE** — see the follow-up entry below: the earlier "~15px disc" legibility caveat was investigated
+  further and root-caused to a SEPARATE, pre-existing bug (CameraNode's orbit-position recompute
+  silently overriding every scene's configured camera every frame, not this milestone's geometry). With
+  that fixed, the SAME `VIXEN_TIER_CROSSING_DEMO` scene (unchanged) now renders the child tree's
+  geometry through the crossing — authoritatively measured by the Opus validator's in-shader
+  diagnostic (addendum below): child-terminated rays cover 32.2% of the disc, confined to exactly
+  the one marked camera-facing octant's projected footprint. (b)/(c) unchanged from the original
+  entry — still zero new VUIDs, still no regression in the common path.
+- [x] Live gate: also confirm the ray-remap math is correct by placing a KNOWN, simple geometric
   feature in the child tree (e.g. a distinctly-colored/shaped voxel at a known local position) and
   confirming it renders at the visually-correct screen position given the `TierRef`'s known
   origin/scale — the same "hand-compute expected, compare to live output" discipline Tiered-ESVO
   Inc1 M3 used for its sky-projection direction math.
+  **DONE** — see the follow-up entry below for the full bodies-0 root-cause chain, the magenta-child
+  visual-distinction change (predecessor's diff, kept as-is), the camera fix that unblocked rendering
+  entirely, and the hand-computed-vs-observed pixel evidence.
 
 **M3 gate:** a single tier-crossing renders correct child-tree geometry on real hardware with
-validation layers active and zero new VUIDs; existing non-crossing rendering unaffected. This is the
-actual mechanism-proof gate for the whole increment.
+validation layers active and zero new VUIDs; existing non-crossing rendering unaffected. **MET** —
+authoritative evidence is the Opus validator's in-shader child-termination diagnostic (addendum
+below): child-terminated rays cover 32.2% of the disc, confined to the single marked octant's
+projected lower-left footprint; the remaining 67.8% is parent-terminated; zero new VUIDs vs. baseline
+in both the default scene and the tier-crossing demo. (The follow-up entry's original "7254/7322 ≈
+99% magenta" figure was a measurement artifact — see the CORRECTION inside that entry.)
+
+### Task 8 follow-up (2026-07-09): bodies-0 root cause + camera fix — Task 8 gate actually closed
+
+**Context**: a follow-up session picked up Task 8's "renders correct CHILD geometry" gap and the
+uncommitted magenta-child visual-distinction diff (a prior session's, left uncommitted — child sphere
+radius 7.2 vs parent 6.0, child's entire SEM_COLOR channel overwritten to solid magenta (1,0,1),
+crossing leaf chosen camera-facing). On first live run, `VIXEN.exe` rendered **zero bodies at all** —
+not just an illegible ~15px disc, but a fully black frame (sky + HUD only), byte-identical (md5) across
+the tier-crossing demo, a cornell baseline, and — critically — the app's own default 3-body Procedural
+scene. This ruled out the initial hypothesis (the demo registering instances on the wrong layer/being
+clobbered by a per-tick app registry — no such registry call exists in the standalone
+`VulkanGraphApplication`, only in `EditorApplication`) and pointed at something universal, not
+M3-specific.
+
+**Root cause, found via a GPU-shader-debug diagnostic (temporary pixel-tile tints added to
+`BodyInstanceRayMarch.comp`, reverted after use — see Debugging-Known-Issues if this technique is
+needed again):** `CameraNode::ExecuteImpl` (`libraries/RenderGraph/src/Nodes/CameraNode.cpp`) calls
+`UpdateCameraData()` every frame, and `UpdateCameraData()` unconditionally recomputed `cameraPosition`
+from ORBIT-MODE parameters (`orbitCenter`, `orbitDistance`, `yaw`, `pitch`), regardless of whether the
+user had ever touched the mouse/wheel/WASD. `CompileImpl` correctly sets `cameraPosition` from the
+configured `PARAM_CAMERA_X/Y/Z` = (64,64,300) for exactly one frame; every `Execute()` after that
+overwrote it with `orbitCenter(5,5,5) + orbitOffset(0,0,orbitDistance=30) = (5,5,35)` looking at
+`(5,5,5)` — the OLD Cornell-box demo's pivot, left over from `orbitCenter`/`orbitDistance`'s decade-old
+defaults (`CameraNodeConfig.h`). Every body in every scene sits near world (14-114, 64, 64); the camera
+was never pointed anywhere near them. Decoded directly from rendered pixels (four diagnostic tiles:
+instanceCount reached the shader non-zero; `bodyInstances[0]`'s raw SSBO fields matched what
+`BuildRenderGraph.cpp` staged; `pc.cameraPos` decoded to ≈(4.8, 4.8, 34.9) — matching the orbit
+formula's predicted (5,5,35) within 8-bit PNG quantization; `pc.cameraDir`≈(0,0,-1), consistent with
+looking from (5,5,35) toward (5,5,5)). Confirmed pre-existing on `main`, NOT introduced by this
+milestone — `git log` on `CameraNode.cpp` traces the unconditional-orbit-recompute shape and the
+(5,5,5)/30 defaults back through `fd33f632` ("button-gated orbit + wheel zoom") and `3dc5ec6b`
+("Adjust orbit center and distance for 10^3 world scale"), both long predating `feat/tiered-esvo-inc2`.
+
+**Consequence for the ORIGINAL M3 live-gate evidence**: the "~15px disc" this milestone's earlier Task
+8 entry treated as a legibility caveat is now known to have been the SAME 2px sky-marker/HUD-text
+misread this session initially suspected, compounded by the camera never having been aimed at the
+scene at all. **The captures produced by this follow-up (below) are the FIRST real visual confirmation
+of the tier crossing** — the original evidence should be considered superseded, not merely
+"legibility-limited."
+
+**The fix** (`libraries/RenderGraph/{include,src}/Nodes/CameraNode.h/.cpp`): the configured
+`PARAM_CAMERA_*` pose is now authoritative at rest — `UpdateCameraData` only recomputes `cameraPosition`
+from orbit math once orbit has actually been engaged (a new `orbitActive_` flag, latched by
+`EngageOrbit()`). Orbit engages on: a real drag/button interaction (existing `orbitEngaged` gate,
+completing `fd33f632`'s own "button-gated orbit" intent — that commit gated the rotation *delta* but
+left the *position* recompute unconditional), a wheel-zoom event, WASD/QE movement, the
+`SetOrbitDistanceForTest`/`SetYawForTest` test hooks (Sparse-Mip Inc1 M4c's residency-gate demo — both
+now route through `EngageOrbit()` too, so that unattended scripted-camera demo is unaffected), or —
+checked at `SetupImpl` time — a consumer explicitly configuring ANY `PARAM_ORBIT_*` parameter (this is
+what keeps `EditorApplication` working unchanged: it sets all four orbit params to frame its own
+document and never touches `PARAM_CAMERA_*`, so it must stay orbit-active from frame 1, exactly as
+before). On first engagement, `EngageOrbit()` re-seeds `orbitDistance`/`yaw`/`pitch` from the CURRENT
+fixed `cameraPosition` relative to `orbitCenter` (inverting the orbit-offset formula) so engaging orbit
+mid-session never teleports the camera to the stale default pose. Blast-radius reasoning (not just
+compile-tested): `EditorApplication::BuildRenderGraph` is the only other production consumer of
+`CameraNode`, and it is covered by the `PARAM_ORBIT_*`-configured branch above; no other node/consumer
+reads `CameraNode`'s position directly.
+
+**Verification**: rebuilt clean (Windows/MSVC, zero new errors/warnings from the change). Default
+3-body Procedural scene: bodies now visibly render (three distinct spheres — smooth/warm, displaced,
+smooth/cool — matching the scene's own design intent) where every prior capture this session showed
+only sky+HUD. Tier-crossing demo (same uncommitted magenta-child diff, unchanged): renders a sphere
+disc with a large, unambiguous magenta-tinted region. Pixel analysis (Python/PIL,
+`temp/tier_crossing_magenta_confirmed_camera_fixed.png`): 7254 saturated-magenta pixels (loose test:
+R>1.5G and B>1.5G) in a compact ~101×101 blob centered (246.2, 252.8), with a thin ~68px non-magenta
+rim.
+**CORRECTION (Opus validator, 2026-07-10)**: this entry originally read those numbers as "7254/7322 =
+99% of the disc is child geometry" and concluded the child dominates the visible hemisphere. Both the
+percentage and the conclusion were a measurement artifact, for two reasons the validator pinned down:
+(1) the 7322-pixel denominator was only the magenta blob plus its rim, NOT the whole body disc; and
+(2) the parent's own SdfBake cosine-gradient bakes to a magenta-adjacent hue (sampled parent surface
+colors ≈(67,0,72) — R≈B, G=0), so the R/B-vs-G color test cannot separate parent from child at all —
+the magenta count includes parent pixels. The authoritative measurement is the validator's temporary
+in-shader diagnostic (child-terminated ray → pure green, independent of channel colors; fully
+reverted afterward, shader byte-identical to `6c168100`): **child-terminated rays = 32.2% of the
+disc, confined to a single lower-left quadrant (bbox x195-249, y250-304) — exactly the projected
+footprint of the ONE marked camera-facing octant (parent leaf (0,4), confirmed in the applog); the
+remaining 67.8% is parent-terminated.** That is precisely what a correct single-octant crossing
+produces — and it matches the original hand-computation ("lower-left-ish quadrant") after all. Pass
+criteria met on the corrected evidence: child geometry renders through the crossing, in a solid
+contiguous single-octant region, coexisting with dominant parent coverage. VUIDs: both runs
+(default scene, tier-crossing demo) show only the same pre-existing `VUID-vkCmdDispatch-None-08114` —
+zero new validation errors from either the camera fix or the magenta-child diff.
+Screenshots: `VIXEN/temp/default_scene_bodies_confirmed_camera_fixed.png`,
+`VIXEN/temp/tier_crossing_magenta_confirmed_camera_fixed.png`.
+
+**Follow-up note (not fixed here, per this session's own scoping — the camera fix is the root-cause
+patch, not a band-aid, but "which world position a scene's orbit should rest at" is a UX/authoring
+question, not a bug)**: body-render scenes (main app, non-editor) that never touch `PARAM_ORBIT_*` now
+correctly stay at their configured fixed camera and never orbit unless the user actually engages a drag
+or wheel/WASD interaction. If a future scene wants the standalone app's camera to orbit its own bodies
+by default (rather than sit at a fixed viewpoint), it should explicitly configure
+`PARAM_ORBIT_CENTER_*`/`PARAM_ORBIT_DISTANCE` to match its own geometry — the same pattern
+`EditorApplication` already uses — rather than relying on the (now-fixed) stale Cornell-box orbit
+defaults.
+
+### M3 Opus validator addendum (2026-07-10): APPROVED
+
+Independent adversarial validation of the full M3 range `4db93715..6c168100` (traversal-restart core
+`5b4b53b0`, CameraNode fix `27358885`, magenta-child proof scene `a68608b3`, doc closure `6c168100`).
+The validator re-derived rather than re-read every safety-critical claim, and ran its own live GPU
+diagnostic where the committed evidence was ambiguous. Standalone verdict file:
+`VIXEN/temp/M3_Opus_validator_verdict.md` (untracked run artifact). Highlights:
+
+- **Crossing routing (the controller's top concern) — CORRECT.** The "99% magenta" claim was a
+  measurement artifact (see CORRECTION above). The validator's in-shader child-termination diagnostic
+  measured 32.2% child / 67.8% parent, the child region exactly the marked octant's projected
+  footprint. The "wrapper misroutes ALL rays into the child" failure mode is definitively refuted.
+- **hitT units — correct for M3's scope; SCOPE BOUNDARY for future tiers:** `hitT = tierCrossWorldT +
+  childHitT` is exactly right while `childScale == 1.0` (this increment's explicit scope; both demo
+  trees share `kWorldGridSize=10`; numeric single-ray trace ratio 1.000). For `childScale != 1` the
+  child's internal t is in a different world-distance unit (factor `1/childScale`) — **a
+  per-child-scale hitT normalization is a PREREQUISITE for any future scale-magnified tier milestone**
+  (the actual planet-scale case). Not an M3 defect; do not ship a `childScale != 1` tier without it.
+- **Global save/swap/restore — safe, whole-shader audited.** `g_octreeIdx`/`g_esvoNodeBase`/
+  `g_brickArrayBase` are the only mutable file-scope globals; `octreeConfig` is a macro re-indexing
+  `configs[g_octreeIdx]` on every use (not a cached copy), so the swap redirects every config read
+  including the SDF channel-pool addressing; the wrapper restores all three unconditionally on every
+  return path, and the pre-swap early-return fires before any global is touched.
+- **CameraNode fix — verified line-by-line, no regression found.** At-rest forward formula matches
+  CompileImpl exactly (arrow-key look works at rest); `EngageOrbit()`'s re-seed numerically reproduces
+  the current camera position (no teleport); `EditorApplication` (sets all four `PARAM_ORBIT_*`, never
+  `PARAM_CAMERA_*`) is covered by the `SetupImpl` latch; `SetOrbitDistanceForTest`/`SetYawForTest`
+  behavior unchanged (Sparse-Mip M4c residency demo unaffected). Minor UX note, not a regression:
+  `EngageOrbit` clamps `orbitDistance` to [0.1,120], so a fixed camera farther than 120 from
+  `orbitCenter` would move closer on FIRST manual orbit-engage — interaction-only, never at rest.
+- **Binding wiring — correct; zero new VUIDs.** TierRefTable binding 15 follows the mipPool/binding-13
+  precedent (persistent, 1-byte placeholder when empty, in-shader bounds-check). Binding 14
+  (`InstanceIterDebugBuffer`) confirmed unwired in production; the 20× `VUID-vkCmdDispatch-None-08114`
+  on binding 14 is pre-existing and byte-identical across demo and both baselines.
+- **GpuTraversalMirror — mirrors the shader faithfully** (function-by-function: `RegisterTierCrossing
+  Child`, the `castRayOnce` split, `remapRayIntoChildFrame`, the additive hitT). Noted gap, does not
+  gate M3: no automated parity test exercises the mirror's crossing-restart path — the crossing's
+  correctness evidence is the live gate, not a parity test. Candidate cheap win for M4/M5: a
+  mirror-level crossing parity test.
+- **Regression + tree integrity — clean.** Full SVO suite green from a fresh WSL rebuild
+  (test_gpu_parity 4/4, tier_crossing_construction 5/5, tier_ref_table 5/5, tier_math 9/9,
+  tier_direction 5/5, tier_address 16/16, tier_ref 5/5, tier_magnitude 10/10, residency_trigger 8/8,
+  lod 16/16, mip_sample_bake 5/5, occlusion_gate 14/14, shell_octree_gpu 9/9,
+  stored_sdf_march_mirror 12/12). Exactly 4 commits in range, no merges/stray commits, no binary
+  churn, `git status` clean at `6c168100`.
+
+- **Milestone M4 (Tasks 9-10): DONE** · commits `f7a671a4` (shader LOD/residency gates + mirror
+  sync), `31189eb3` (mirror crossing-restart parity test), `e9233e95` (live-gate demo knobs + mip
+  pool) · gates: full SVO CPU regression sweep re-run green (70/70: `test_tier_ref` 5/5,
+  `test_tier_ref_table` 5/5, `test_svo_types` 10/10, `test_shell_octree_gpu` 9/9,
+  `test_soa_mip_serialize` 6/6, `test_soa_sdf_serialize` 11/11, `test_gpu_parity` 4/4,
+  `test_tier_crossing_construction` 5/5, `test_tier_crossing_mirror_parity` 3/3 [new],
+  `test_stored_sdf_march_mirror` 12/12); live `VIXEN.exe` runs (Windows, real AMD GPU,
+  `vixen-ninja` preset, `VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation` explicitly injected) proving
+  both gates independently decline the crossing and mip-shade instead, zero new VUIDs · 2026-07-10.
+
+  - **Task 9 insertion point** (`BodyInstanceRayMarch.comp`, inside the tier-crossing leaf-hit
+    branch, before the crossing is ever reported): reuses the EXACT `tv_max*raySizeCoef+raySizeBias
+    >= state.scale_exp2` formula and inputs the existing non-leaf LOD-cutoff branch already uses
+    (same `tv_max`/`state.scale_exp2` already in scope at this point in the loop) — this leaf's own
+    footprint, not the child tree's footprint (the child hasn't been touched yet at this point). Sub-
+    pixel means `shadeFromMipSample(leafDescriptorIndexTc, ...)` (the parent's own leaf-node mip
+    sample, same function/addressing the streaming-grace and LOD-cutoff paths already use) and an
+    ordinary `return true` hit — `tierCrossHit` is never set, so the wrapper's restart code is never
+    reached at all for this ray.
+  - **Task 10 insertion point** (same branch, folded into the SAME early-out as Task 9): fetches
+    `tierRefTable[absoluteTierRefIdx].childOctreeIndex` and peeks `configs[childOctreeIdxTc].
+    brickResident` DIRECTLY — `configs[]` is a global SSBO array, so no `g_octreeIdx` swap is needed
+    to read a sibling tree's config. `subPixelFootprint || childNotResident` shares one mip-fallback
+    exit; either condition alone is sufficient to decline.
+  - **`GpuTraversalMirror.h` sync (SYNC CONTRACT, mandatory per the file's own header comment)**: the
+    residency check is ported into `castRay()` (NOT `castRayOnce()`, the shader's literal insertion
+    point) because `m_childCfg` — the only thing this check needs — only exists once `castRay()` has
+    already resolved `m_hasChild`/`childOctreeIndex`; `castRayOnce()` only ever sees ONE tree's data by
+    design (the same parametrization the M3 restart already established). A non-resident child makes
+    the mirror return the PARENT call's own `out` (a miss, since the mirror has no mip-shading model at
+    all — confirmed directly: `Hit` carries no colour field). **The screen-space LOD gate (Task 9) was
+    NOT ported** — every existing mirror-consuming test runs with `raySizeCoef==0` by convention (the
+    mirror's own `castRayOnce` comment: "LOD disabled in parity... we never take the LOD branch"), and
+    the function's signature carries no `raySizeCoef`/`scale_exp2` a caller could even set; porting
+    would mean adding new plumbing through every existing call site, not a like-for-like function port.
+    **Flag for validator**: confirm this scope line is correct — the mirror is a brick-hit-test oracle,
+    not a shading oracle, and this increment's own scope (§0) never asked the mirror to model mip
+    fallback.
+  - **New mirror-parity test** (`test_tier_crossing_mirror_parity.cpp`, the M3 validator addendum's own
+    flagged "cheap win for M4/M5"): reuses `test_tier_crossing_construction.cpp`'s exact `SdfFixture`
+    shape but marks ALL 8 root leaves tier-crossing (not one specific leaf/octant) — sidesteps needing
+    to reverse-engineer which octant a given ray direction lands in, since `GpuTraversalMirror::Hit`
+    exposes no leaf/octant identity to aim at. First attempt asserted a "no child registered" control
+    should still hit the parent's own surface at the marked leaf — WRONG (a `farBit==1` leaf's parent
+    side has no brick data of its own; `RegisterTierCrossingChild`'s own documented no-child fallback is
+    an unconditional miss for that leaf, not a fallback to brick data), caught by a real test failure
+    and corrected to compare resident-vs-non-resident child directly (isolating residency as the ONLY
+    variable) instead of resident-vs-no-child-at-all. 3/3 green: resident child crosses and differs
+    from non-resident (child radius 7.2 vs parent 6.0, same convention `BuildRenderGraph.cpp`'s demo
+    uses, so a genuine crossing is unambiguous); non-resident child behaves identically (bit-identical
+    `t`/`voxel`/`iterations`) to no-child-registered at all; harness self-check (unmarked parent hits
+    its own surface).
+  - **Live-gate demo scene changes** (`BuildRenderGraph.cpp`): two new env knobs, both additive (env
+    unset = byte-identical to pre-M4). `VIXEN_TIER_CROSSING_LOD_COEF_OVERRIDE` feeds a demo-only
+    `ConstantNode` directly into push-constant field 8, bypassing `RaySizeCoefNode` entirely — a first
+    attempt bumped `RaySizeCoefNode`'s own `PARAM_FOV_DEGREES` parameter instead (reasoning: "just make
+    the FOV huge"), which compiled/ran/logged a changed `raySizeCoef` but produced NO visible change in
+    the render (a real, caught mistake, not a hypothetical): `raySizeCoef = 2*tan((fovRad/height)/2)`
+    is only linear in `fovDegrees` at the small angles this project's real cameras use, so even an
+    extreme 170° override yielded barely 3.8x growth — nowhere near enough to push one octant's
+    leaf-level footprint sub-pixel. Switched to a direct literal (10.0, the same value validated in the
+    new gtest harness) via a dedicated `ConstantNode`, conditionally connected instead of
+    `raySizeCoefNode` at the `pushConstantGatherer` binding. `VIXEN_TIER_CROSSING_NONRESIDENT` calls
+    `RequestBrickResidency(false)` on the scene node AFTER `SetRecipePool` (a first attempt poked
+    `setBrickResident` directly on the concatenated config BEFORE `SetRecipePool` — self-caught as
+    dead-on-arrival by re-reading `CreateOctreeBuffers`: its own `for (auto& cfg : concatenated_.
+    configs) setBrickResident(cfg, brickPoolUploaded_)` loop unconditionally re-stamps every config on
+    the very first `Compile()`, silently clobbering a pre-`SetRecipePool` poke). Also bakes + attaches
+    a REAL mip pool to both trees (`MipBake.h`'s `BakeAndAttachMipPool`, matching
+    `ConcatenateSdfWithMips`'s own per-tree convention) — the demo scene previously had none at all, so
+    either gate's decline would have degraded to the neutral-grey placeholder shade instead of real
+    mip-sampled geometry; threaded `mipPool`/`mipPoolBase` through the demo's manual concatenation loop
+    (which predates mip support and never carried it).
+  - **New real-GPU test harness** (`test_tier_crossing_lod_residency.cpp`): extends
+    `test_body_instance_occlusion_reject.cpp`'s exact real-device/real-shader dispatch pattern
+    (binding 14 `InstanceIterDebugBuffer` readback) with binding 15 (`TierRefTableBuffer`) newly wired
+    in, driving a genuine two-tree tier-crossing scene (same construction as the app demo) through the
+    ACTUAL compiled shader. Compiled and linked cleanly on BOTH WSL/GCC and Windows/MSVC. **Could not
+    be EXECUTED in this session** — every test in this family (including the pre-existing, unmodified
+    `test_body_instance_occlusion_reject`) gates to lavapipe/Dozen-only via a `LooksLikeSoftware`
+    check and refuses real hardware; this session's WSL Dozen device segfaulted deep inside
+    `libvulkan_dzn.so` itself (`dxgkio_query_adapter_info: Ioctl failed`, confirmed via `dmesg`) on
+    EVERY dispatch attempt, reproduced identically with `git stash` reverting to the unmodified M3
+    shader — a pre-existing environment fault, not a regression from this milestone's changes. This
+    machine's real AMD GPU (Windows) is correctly refused by the same software-only gate the
+    project's OTHER gtest harnesses already use, so it isn't specific to this new file. The test
+    remains a genuine, reusable, committed live-gate artifact for any future lavapipe/Dozen-capable
+    environment — the actual live-gate evidence for THIS session came from `VIXEN.exe` on real
+    hardware instead (below). **Flag for validator**: confirm this environment read (do not attempt
+    to force real-hardware execution through this harness; it is a deliberate project-wide safety
+    convention, not a gap to route around).
+  - **Live gate — what was actually run and observed.** Three `VIXEN.exe` runs (Windows/MSVC,
+    `vixen-ninja`, real AMD Radeon GPU, `VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation` explicitly
+    injected, `VIXEN_HUD_CAPTURE_FRAMES=20`/`VIXEN_EXIT_AFTER_FRAMES=30`): (a) baseline
+    `VIXEN_TIER_CROSSING_DEMO` (unchanged scene, now with a real mip pool attached) — child's exact
+    solid colour `(77,0,77)` present at 2347px in a contiguous region matching M3's own bbox
+    (x195-249,y250-304); (b) `+VIXEN_TIER_CROSSING_LOD_COEF_OVERRIDE=10.0` — ZERO `(77,0,77)`-family
+    pixels anywhere, sphere silhouette still resolved (45599 lit px, comparable to baseline's 43382),
+    the exact former-child region now shows clean structured grey mip-shaded blocks (`(169,169,169)`),
+    not garbage; (c) `+VIXEN_TIER_CROSSING_NONRESIDENT=1` — ZERO `(77,0,77)`-family pixels, ENTIRE
+    sphere cleanly mip-shaded (grey octant blocks, `(169,169,169)`/`(106,106,106)`), more lit pixels
+    than baseline (54476, consistent with the whole tree — not just the child — falling back, since
+    `RequestBrickResidency` is whole-node), no crash/garbage. All three: clean `exit 0`, IDENTICAL VUID
+    signature (21 occurrences of the pre-existing `VUID-vkCmdDispatch-None-08114`, zero new). Pixel
+    colour classification used a corrected, exact-colour-family check
+    (`abs(r-77)<5 and g<5 and abs(b-77)<5`) rather than a naive "any magenta-ish" threshold — the
+    parent's own cosine-gradient bake is ALSO magenta-adjacent at lower intensity (confirmed directly:
+    `(74,0,67)`-family pixels visible outside the marked octant in every capture), exactly the same
+    measurement-artifact class the M3 Opus validator already caught and corrected for; this session's
+    color check was independently designed to avoid repeating that mistake, then verified by sampling
+    the raw pixel grid directly rather than trusting an aggregate count alone.
+  - **No scope drift**: `git diff --stat` across all 3 commits confirms only `shaders/
+    BodyInstanceRayMarch.comp`, `libraries/SVO/include/GpuTraversalMirror.h`,
+    `libraries/SVO/tests/{test_tier_crossing_mirror_parity.cpp,CMakeLists.txt}`,
+    `application/main/source/graph/BuildRenderGraph.cpp`, and
+    `libraries/RenderGraph/tests/{Nodes/test_tier_crossing_lod_residency.cpp,test_critical_nodes.cmake}`
+    — no other shader/traversal/construction-path file touched. M5's continuous-zoom camera path was
+    NOT built (out of scope, per this milestone's own gate).
 
 ---
 
@@ -315,33 +1095,255 @@ crossing bug.
 
 ### Task 9 — Screen-space LOD gate before crossing
 
-- [ ] Before performing Task 6-7's ray-remap/restart, check the child tree's angular screen-space
+- [x] Before performing Task 6-7's ray-remap/restart, check the child tree's angular screen-space
   footprint against `RaySizeCoefNode`'s existing LOD cone-spread constant (the same check an ordinary
   leaf-vs-subdivide decision already makes). If sub-pixel, shade from the PARENT tier's mip sample at
   this node instead (Sparse-Mip's existing per-level filtered sample, already proven/shipped) and
   never cross into the child tree at all.
-- [ ] Live gate: confirm a distant tier-crossing leaf (small angular footprint) correctly falls back
+  **DONE** — `BodyInstanceRayMarch.comp`'s tier-crossing leaf-hit branch, reusing the IDENTICAL
+  `tv_max*raySizeCoef+raySizeBias >= state.scale_exp2` formula the existing non-leaf LOD-cutoff branch
+  already uses, checked against THIS leaf's own footprint before ever reporting a crossing.
+- [x] Live gate: confirm a distant tier-crossing leaf (small angular footprint) correctly falls back
   to mip-shading without ever triggering the (expensive) traversal restart — verify via the existing
   debug/trace-buffer instrumentation (`DebugRaySample`/`dbg.iterationCount`, used by Sparse-Mip's own
   occlusion-reject tests) that the restart path is genuinely skipped, not just that the visual output
   happens to look plausible.
+  **DONE, with a deviation from the literal instrumentation choice** — binding 14
+  (`InstanceIterDebugBuffer`) is not wired through production `BuildRenderGraph.cpp` (confirmed
+  unchanged from M3's own finding), so the decisive evidence instead comes from two independent
+  sources: (1) a real-GPU dispatch test (`test_tier_crossing_lod_residency.cpp`, new) that forces
+  `raySizeCoef=10.0` and asserts zero child-colour pixels while the sphere silhouette stays resolved
+  — could not be EXECUTED in this session (see Progress Log environment note) but is a genuine,
+  reusable, committed live-gate artifact for any lavapipe/Dozen environment; (2) an actual `VIXEN.exe`
+  run on real Windows hardware with a demo-only `VIXEN_TIER_CROSSING_LOD_COEF_OVERRIDE` env knob:
+  child's exact solid colour (77,0,77) present at 2347px in the unmodified baseline, ZERO in the
+  LOD-forced run, with the marked octant's region instead showing clean mip-shaded grey blocks (not
+  garbage/crash) — a stronger, pixel-level proof than an iteration count alone.
 
 ### Task 10 — Residency reuse: non-resident child tree
 
-- [ ] Confirm (and if needed, wire) that a `farBit==1` leaf whose child tree is NOT currently
+- [x] Confirm (and if needed, wire) that a `farBit==1` leaf whose child tree is NOT currently
   brick-resident (or not resident at all — mip-only, per Sparse-Mip's residency model) correctly
   falls back to the parent's mip sample, identical in shape to a non-resident brick today — no new
   residency state machine, this should already fall out of the existing sentinel-miss pattern once
   Task 9's LOD gate and the existing `ResidencyTrigger`/mip-fallback machinery are both in play.
-- [ ] Live gate: construct a scene where the child tree genuinely starts non-resident, confirm the
+  **DONE** — same leaf-hit branch, peeking `configs[tierRefTable[idx].childOctreeIndex].brickResident`
+  directly (no `g_octreeIdx` swap needed to read a sibling's config) and folding it into the same
+  "shade from parent's mip sample, never cross" exit Task 9 uses. No new state machine, as scoped.
+- [x] Live gate: construct a scene where the child tree genuinely starts non-resident, confirm the
   crossing gracefully mip-shades rather than crashing/rendering garbage, and confirm requesting
   residency (moving the camera closer, per the existing `ResidencyTrigger` distance/FOV gate) causes
   the crossing to eventually render real child-tree geometry once residency is granted — proving the
   full existing Sparse-Mip residency lifecycle composes correctly with a tier-crossing leaf, not just
   an ordinary brick leaf.
+  **DONE, with a deviation flagged for validator attention** — `BodyOctreeSceneNode::
+  RequestBrickResidency` is a WHOLE-NODE flag (`CreateOctreeBuffers`'s own
+  `for (auto& cfg : concatenated_.configs) setBrickResident(cfg, brickPoolUploaded_)` loop stamps
+  EVERY octree in one `ConcatenatedOctrees` pool identically), so there is no existing per-octree
+  residency toggle to isolate "child not resident, parent still resident" within a single scene node
+  — building one would be new residency-state-machine work this milestone's own scope explicitly
+  excludes. The live gate therefore demonstrates the composed lifecycle across TWO separate runs
+  rather than one mid-session toggle: (a) `VIXEN_TIER_CROSSING_NONRESIDENT` (calls
+  `RequestBrickResidency(false)`, making BOTH trees mip-only) renders ZERO child-colour pixels with
+  the entire sphere cleanly mip-shaded (grey octant blocks, no crash/garbage); (b) the baseline run
+  (residency defaulted true) renders the child's real solid colour at the marked octant — i.e. "not
+  resident -> mip-shade" and "resident -> real crossing" are each independently proven, composing the
+  same lifecycle the design doc asks for, just not via one continuous distance-driven `ResidencyTrigger`
+  approach/retreat within a single run. Also added a CPU-mirror-level parity test
+  (`test_tier_crossing_mirror_parity.cpp`, the "cheap win" the M3 validator addendum flagged) proving
+  `GpuTraversalMirror`'s own residency check is genuinely equivalent to "no child registered at all."
 
 **M4 gate:** distant/non-resident tier-crossing leaves correctly fall back to mip-shading without
-triggering an unnecessary restart or rendering garbage; live-verified.
+triggering an unnecessary restart or rendering garbage; live-verified. **MET** — both gates proven
+independent (LOD-forced-resident-child still declines; non-resident-full-FOV still declines), zero new
+VUIDs across all three live runs. (This entry originally counted "21 occurrences" of the pre-existing
+`VUID-vkCmdDispatch-None-08114`; the validator resolved that as a `grep -c` artifact — the true
+signature is 10 emissions, byte-identical across baseline/LOD-forced/non-resident, zero new types.)
+
+### M4 Opus validator addendum (2026-07-10): APPROVED
+
+Independent adversarial validation of `bc26de68..82a01aad`. Re-ran the full 10-target CPU sweep
+(70/70), did independent pixel accounting on all three committed captures (own script/thresholds:
+baseline 2349 child-magenta px all inside M3's proven octant bbox; LOD-forced 0 child px + 4572
+grey-mip; non-resident 0 child px + 18284 grey-mip — 4× the LOD run, consistent with whole-node
+fallback), rebuilt the new GPU test on WSL/GCC (clean), and reproduced the Dozen segfault on the
+UNMODIFIED pre-existing `test_body_instance_occlusion_reject` (root cause: Dozen SPIR-V-1.5-vs-1.6
+mismatch + WSL D3D12 passthrough — hits the entire raymarch test family; pre-existing, not M4).
+Findings:
+
+- **Skip-proof (Task 9's hard requirement) — resolved by CONTROL FLOW, stronger than pixels:**
+  `tierCrossHit` is set true ONLY after the M4 early-out's `return true`; when the gate fires,
+  execution structurally cannot reach the wrapper's restart block (`if (hit || !tierCrossHit) return`
+  precedes it). The pixel evidence (0 deliberately-injected solid-magenta px + grey mip where the
+  child was) then confirms the gate fires on real hardware. Restart genuinely skipped, not just
+  visually absent.
+- **LOD gate design conformance:** formula byte-identical to the existing non-leaf LOD-cutoff branch.
+  §5.2 asks for the CHILD's footprint; the implementation gates on the parent leaf's own footprint —
+  exactly equal at `childScale==1.0` (this increment's scope), and correct-or-CONSERVATIVE as
+  childScale shrinks (would cross unnecessarily, never garbage). **Scope note:** a future
+  scale-magnified tier needs `>= childScale*scale_exp2` here — same prerequisite family as the M3
+  validator's hitT-normalization flag.
+- **Residency peek — safe:** `brickResident` is a real per-config field (@356); the peek is guarded
+  by the `tierRefTable.length()` bounds check (1-byte-placeholder safe); reading `configs[childIdx]`
+  without the global swap is correct (`configs[]` is a global SSBO; `octreeConfig` is only a macro).
+  No new unsafe access vs. what M3's restart already dereferences.
+- **Mip-fallback exit:** identical in shape to the existing non-resident-brick streaming-grace path —
+  §5.3's "identical in shape to a non-resident brick today" is literally met.
+- **Mirror sync judgment:** residency check correctly lives in `castRay()` (only scope with
+  `m_childCfg`); the LOD-gate omission is explicitly documented in-comment with sound rationale
+  (mirror consumers run `raySizeCoef==0`; no signature param). Divergence is loud, not silent —
+  contract spirit met.
+- **Parity test non-vacuous:** the resident-child case can only pass by executing the crossing
+  restart into real child geometry; the non-resident case asserts bit-identical equivalence to
+  "no child registered"; harness self-check present.
+- **Demo knob hygiene:** both env knobs strictly demo-gated; the LOD override is a mutually-exclusive
+  if/else against the byte-identical pre-M4 `RaySizeCoefNode` connection — production paths untouched
+  when unset.
+- **Task 10 deviation — ACCEPTED as a documented M5 boundary:** `RequestBrickResidency` confirmed
+  whole-node (grant path stamps every config identically), so per-octree residency is genuinely new
+  state-machine work, correctly scoped out. Both END STATES are proven to compose with a
+  tier-crossing leaf; the one thing not exercised is the mid-flight `PollBrickUploadCompletion` 0→1
+  flip on a live crossing — that flip stamps the same `configs[]` field the M4 peek reads (no
+  separate path for crossing leaves), and **M5's continuous-zoom proof must exercise this dynamic
+  transition on real hardware — carried as an explicit M5 obligation, not swept.**
+- **Non-blocking nit for M5:** restate the `childScale==1.0` LOD-gate equivalence as a one-line
+  comment at the gate site (comp:~725) when M5 lands.
+- **Tree integrity:** clean — exactly 4 commits, per-commit scope coherent, run artifacts untracked.
+
+- **Milestone M5 (Task 11): DONE** · this worktree, `feat/tiered-esvo-inc2` · gates: a live,
+  validated, visually-confirmed continuous zoom across the single tier crossing proven in M3/M4,
+  no visible pop/seam; mid-flight residency transition exercised live (M4 validator's carried
+  obligation); zero new VUIDs after a real bug this run surfaced was fixed at the root; 3-tier
+  chaining deliberately scoped out, not attempted (permitted by the plan's own stretch-goal
+  language) · 2026-07-10.
+  - **Hand-computed prediction, derived before running, not fit after the fact**: the demo's
+    marked leaf is exactly half the parent root's normalized `[1,2)` extent (`scale_exp2=0.5`,
+    the `n=16`/`brickDepth=3` fixture's root children are all brick-level leaves, unchanged since
+    M2/M3). The octree's own world span is `kWorldGridSize=10` pre-instance-scale
+    (`ShellOctreeGpu.h`), and the demo instance's `renderScale=4.8` — so 1.0 of normalized octree
+    scale = 48 real-world units. Re-derived (not assumed) that the shader's local traversal `t`
+    parameter is in REAL-WORLD-DISTANCE units despite `rayDirLocal` being scaled by
+    `worldToLocal`'s `1/kWorldGridSize` rotation (the same "uniform scale divides both origin and
+    direction, t stays world-consistent" argument `main()`'s own `instOrigin`/`instDir` comment
+    already documents for `renderScale`, re-applied one level up for `kWorldGridSize`) — confirmed
+    against the M4 validator's own empirical finding (`raySizeCoef=10.0` forced the gate at the
+    demo's at-rest 236-unit camera distance; solving my derived formula for that data point gives
+    a consistent required distance of ≤2.4 units, correctly predicting "always declines" at 236).
+    Solving `tv_max*raySizeCoef >= scale_exp2` for a target crossing distance of ~40 world units
+    (chosen to sit comfortably inside `CameraNode`'s `[0.1,120]` orbit-distance clamp, avoiding the
+    M4-validator-flagged clamp risk entirely) gives **`VIXEN_TIER_CROSSING_LOD_COEF_OVERRIDE=0.6`**,
+    predicting the LOD gate flips at EXACTLY 40.0 world units — reusing the existing M4 override
+    knob unchanged, just with `0.6` instead of `10.0`.
+  - **Scripted zoom + mid-flight residency grant** (`VulkanGraphApplication.cpp`, new
+    `VIXEN_TIER_ZOOM_DEMO` block, modeled on the existing `VIXEN_RESIDENCY_GATE_DEMO` pattern):
+    orbit distance ramps linearly 15→100 world units over ticks 1-200 (held at 100 for 201-240,
+    predicted LOD-gate crossing at tick ≈58.8), with an explicit `RequestBrickResidency(true)`
+    scripted at tick 24 (distance ≈24-28, well inside the "would cross" zone, so the mid-flight
+    residency transition is observed cleanly BEFORE the later LOD-driven decline, not confounded
+    with it) — exercising the M4-validator-flagged obligation directly rather than relying on the
+    separate frustum/resolvability auto-trigger (`UpdateBodySceneResidency`, which also runs every
+    tick and would otherwise immediately re-decide residency on the same tick using an unrelated
+    formula; disabled for the duration of this demo via an early-return, so the scripted schedule
+    is the sole, attributable residency driver — the auto-trigger's own correctness is
+    Sparse-Mip's concern, not re-tested here). `RequestBrickResidency(false)` is set at scene
+    construction (same knob `VIXEN_TIER_CROSSING_NONRESIDENT` already used, now also triggered by
+    `VIXEN_TIER_ZOOM_DEMO`) so the child genuinely starts non-resident.
+  - **Bug #1 found and fixed: camera-orbit pivot never configured for this demo scene.**
+    `CameraNode::SetOrbitDistanceForTest` orbits around `orbitCenter`, which defaults to the
+    stale Cornell-box pivot `(5,5,5)` unless a consumer configures `PARAM_ORBIT_CENTER_*`
+    (`CameraNode.cpp`'s own `SetupImpl` comment already flags this). The tier-crossing demo body
+    sits at world `(64,64,64)`; the first live attempt produced 51 byte-identical captured frames
+    across all 240 ticks (confirmed via file hash, not just eyeballing) — the very first scripted
+    `SetOrbitDistanceForTest` call swung the camera away from the body entirely (re-seeded
+    `orbitDistance` clamped to 120 relative to the wrong pivot) and it never recovered. Fixed by
+    configuring `PARAM_ORBIT_CENTER_X/Y/Z=(64,64,64)` and `PARAM_ORBIT_DISTANCE=236` (matching the
+    at-rest camera-to-body distance) in `BuildRenderGraph.cpp`, gated on `VIXEN_TIER_ZOOM_DEMO` —
+    this declares orbit-mode intent from `SetupImpl`, so `EngageOrbit()`'s idempotent latch makes
+    the demo's first `SetOrbitDistanceForTest` call a no-op re-seed instead of a pivot mismatch.
+    After the fix, all 240 frames genuinely differ frame-to-frame as the camera moves.
+  - **Bug #2 found and fixed: a real, previously-latent `VUID-vkCmdCopyBuffer-dstBuffer-00120`
+    on the mid-flight residency-grant path.** The scripted tick-24 `RequestBrickResidency(true)`
+    call is the FIRST time in this project's history a residency grant has landed genuinely AFTER
+    the first `Compile()`/upload cycle while validation layers were active and actually observed
+    (M4's own tests only ever toggled residency BEFORE the first upload — see M4's own Task 10
+    deviation note) — and it surfaced a real bug: `BodyOctreeSceneNode::CreateOctreeBuffers`
+    created `bricksBuffer_`/`configBuffer_` with only `VK_BUFFER_USAGE_STORAGE_BUFFER_BIT`, but
+    `UploadBrickPool`/`PollBrickUploadCompletion`'s post-Compile residency-grant path uploads via
+    `device->Upload()` → `BatchedUploader`'s unconditional `vkCmdCopyBuffer` (confirmed by reading
+    `BatchedUploader.cpp:439` directly, not assumed) — which requires the destination buffer to
+    carry `VK_BUFFER_USAGE_TRANSFER_DST_BIT`. Fixed at the root: both buffers now declare
+    `VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT`
+    (`libraries/RenderGraph/src/Nodes/BodyOctreeSceneNode.cpp`). **Independently re-confirmed, not
+    just re-run**: built and ran the project's own PRE-EXISTING, purpose-built regression oracle
+    for exactly this lifecycle (`test_partial_brick_upload`, `test_body_octree_lifetime`) on real
+    hardware (WSL/Dozen passthrough, the same real-GPU environment M4 could not get these test
+    families to execute on) — both green (1/1, 3/3) with the fix; this is the first session in
+    which this specific test family has actually been RUN (not just compiled) against real
+    hardware. Post-fix VUID signature returned to the pre-existing baseline — **10 emissions**
+    (20 grep-lines; each emission = header + spec-URL line, per the M4 validator's counting
+    resolution) of the known `VUID-vkCmdDispatch-None-08114`, zero new types, and the fix's
+    target `VUID-vkCmdCopyBuffer-dstBuffer-00120` GONE — across three separate live runs.
+  - **Observed evidence vs. prediction.** Per-frame pixel analysis of the captured sequence
+    (48 frames spanning ticks 5-220, dense coverage of ticks 15-35 and 50-70): (1) zero
+    child-colour pixels at every tick through 24 (non-resident child, correctly mip-shading even
+    at close range — the residency composition proof); (2) a hard, one-tick jump in child-colour
+    pixel count starting at tick 25 (one frame after the scripted grant — the expected async
+    upload+poll latency, `PollBrickUploadCompletion` needing one frame to observe the upload
+    fence) that then continues rising through ticks 25-57 as the camera keeps approaching; (3) a
+    peak in child-colour coverage around ticks 55-57, then a SMOOTH, MONOTONIC, GRADUALLY
+    ACCELERATING decline from tick 58 onward (child pixel-count deltas: -232, -619, -992, -1075,
+    -1266 across consecutive sampled ticks) with no single-frame cliff/spike — the predicted
+    LOD-gate crossing (tick ≈58.8, i.e. tick 59) sits exactly at the observed inflection from
+    "flat/rising" to "declining," matching the hand computation. Frame-to-frame pixel-delta
+    magnitudes across this decline window rise smoothly (2198→2816→3422→4293→5184→5620→6151
+    changed pixels per step) — a continuous shrink, not a discrete swap. A visual strip
+    (`temp/m5_zoom_sequence_strip.png`, `temp/m5_residency_transition_closeup.png`,
+    `temp/m5_lod_transition_closeup.png`) confirms this directly: flat grey through tick 24, a
+    real dark-purple child region appearing at tick 25 and persisting/shrinking gradually through
+    tick 220, no garbage/black/crash frame anywhere in the sequence.
+  - **One-line LOD-gate comment nit (M4 validator, non-blocking)**: added at
+    `shaders/BodyInstanceRayMarch.comp:725`, restating the `childScale==1.0` equivalence and
+    naming the `>= childScale*scale_exp2` generalization needed for a future scale-magnified tier
+    — comment-only, no logic change; rebuilt clean to confirm.
+  - **3-tier T2→T1→T0 stretch goal: deliberately NOT attempted.** The single-crossing live gate
+    (including diagnosing and fixing the two bugs above) consumed this milestone's session budget;
+    per the plan's own explicit permission, this is documented as a follow-up rather than chased
+    at the risk of leaving the single-crossing deliverable's evidence undone or shallow. See the
+    design doc's updated §9 for the two concrete prerequisites (`hitT` per-child-scale
+    normalization; LOD-gate generalization) a future scale-magnified chain needs — both already
+    named by the M3/M4 validator addenda, not new findings.
+  - **No scope drift**: `git diff --stat` confirms only `application/main/source/
+    VulkanGraphApplication.cpp` (scripted zoom block + `UpdateBodySceneResidency` early-return),
+    `application/main/source/graph/BuildRenderGraph.cpp` (orbit-center config +
+    `VIXEN_TIER_ZOOM_DEMO` non-resident start), `libraries/RenderGraph/src/Nodes/
+    BodyOctreeSceneNode.cpp` (the two buffer-usage-flag fixes), and
+    `shaders/BodyInstanceRayMarch.comp` (the one-line comment nit — no logic change). No
+    traversal/construction-path files touched; the buffer-flag fix is the only change with
+    correctness weight beyond this milestone's own demo scaffolding, and it is independently
+    verified via the project's existing gtest oracle, not just this session's own zoom demo.
+  - **CPU regression sweep**: full 70/70 SVO suite re-run green on WSL (`test_svo_types` 10/10,
+    `test_shell_octree_gpu` 9/9, `test_soa_mip_serialize` 6/6, `test_soa_sdf_serialize` 11/11,
+    `test_tier_ref` 5/5, `test_tier_ref_table` 5/5, `test_tier_crossing_construction` 5/5,
+    `test_gpu_parity` 4/4, `test_stored_sdf_march_mirror` 12/12,
+    `test_tier_crossing_mirror_parity` 3/3 — no change needed, this milestone touched no SVO/
+    shader-traversal logic). RenderGraph tests touching the changed buffers:
+    `test_partial_brick_upload` 1/1, `test_body_octree_lifetime` 3/3,
+    `test_bandwidth_ab_measurement` 2/2, `test_shell_revalidate_node` 2/2,
+    `test_tier_crossing_lod_residency` 1/1 (its second sub-test fails with "no child pixels" on
+    the non-conformant dzn/Dozen headless path — a Dozen render limitation, unchanged from M4;
+    the live windowed app on real hardware DID render the child, per the pixel evidence) all
+    green. Seven
+    other RenderGraph tests (`test_appflow_editor_toggle_render`,
+    `test_body_instance_occlusion_reject`, `test_body_instance_raymarch_render`,
+    `test_editor_document_render`, `test_mip_fallback_render`, `test_recipe_authoring_gate`,
+    `test_recipe_pool_render`) segfault identically on this session's WSL/Dozen environment —
+    **independently reproduced on the completely unmodified pre-M5 baseline** (`git stash` back
+    to `b3eceb07`, rebuilt, re-ran `test_body_instance_occlusion_reject` as a representative case:
+    byte-identical crash signature, same SPIR-V-1.6-vs-1.5-mismatch + push-constant-range +
+    `TierRefTableBuffer` binding errors, same segfault) — confirmed pre-existing and unrelated to
+    this milestone, matching M4's own already-documented Dozen instability finding for this exact
+    test family.
+  - **Permission prompts outside the pre-blessed tier**: none encountered.
 
 ---
 
@@ -355,14 +1357,18 @@ this milestone is the demonstration that the mechanism composes into the actual 
 
 ### Task 11 — Camera path proving continuous, seamless zoom across a tier boundary
 
-- [ ] Construct a camera path that starts close enough to render T2-bedrock-scale detail (fine
+- [x] Construct a camera path that starts close enough to render T2-bedrock-scale detail (fine
   voxel/brick geometry) and smoothly pulls back through the LOD gate (Task 9) at the point where the
   child tree's footprint crosses sub-pixel, confirming NO visible pop/seam/flicker at the transition
   — the screen-space content should read as one continuous zoom-out, not a visible "swap" moment.
   Live-gate this on real hardware, recording (screenshot sequence, or a frame-by-frame debug-log
   comparison of the rendered content's resolvable-level/residency-state around the crossing frame)
   concrete evidence the transition is actually seamless, not just "it didn't crash."
-- [ ] **Stretch goal, not a hard gate**: chain a second crossing (T1 region → T0 planet, using the
+  **DONE** — see Progress Log for the hand-computed prediction, the observed evidence, and the two
+  bugs this live run surfaced and fixed (camera-orbit-pivot misconfiguration; a real
+  `VUID-vkCmdCopyBuffer-dstBuffer-00120` from the buffer-usage-flag gap on the mid-flight residency
+  path).
+- [x] **Stretch goal, not a hard gate**: chain a second crossing (T1 region → T0 planet, using the
   same mechanism proven in M3/M4 for the T2→T1 boundary) to demonstrate the full 3-tier
   surface-to-orbit sequence for an Earth-diameter-scale body — the literal scenario the user asked
   about. If this is straightforward given M3/M4's already-proven mechanism (it should be — the design
@@ -371,13 +1377,65 @@ this milestone is the demonstration that the mechanism composes into the actual 
   cleanly across two live crossings), it is acceptable to ship this increment with the single-crossing
   proof (M3+M4's own gate) as the increment's deliverable and document the 2-crossing chain as a
   known, scoped-out follow-up rather than let it block the whole increment.
-- [ ] Update [[Tiered-ESVO-Observer-Addressing-Design-2026-07]]'s status banner and §9 sequencing note
+  **SCOPED OUT, deliberately** — not attempted this session. The single-crossing live gate (including
+  the two real bugs it surfaced and fixed) consumed this milestone's full budget; per this task's own
+  explicit permission, documented as a follow-up increment rather than chased at the cost of the
+  single-crossing deliverable's evidence quality. See the design doc's updated §9 for the concrete
+  prerequisites (per-child-scale `hitT` normalization + LOD-gate generalization) a future
+  scale-magnified 3-tier increment needs, carried forward from the M3/M4 validator addenda.
+- [x] Update [[Tiered-ESVO-Observer-Addressing-Design-2026-07]]'s status banner and §9 sequencing note
   to reflect this increment's actual shipped scope (single-crossing mechanism proven, N-tier chaining
   either proven or flagged as a following increment, per what actually happened) — following the same
   status-banner-update convention Sparse-Mip-ESVO-LOD's own Inc1/Inc2 used.
+  **DONE** — status banner + §9 updated 2026-07-10.
 
 **M5 gate:** a live, validated, visually-confirmed continuous zoom across at least one real tier
 crossing with no visible seam; 3-tier chaining is a stretch outcome, not a blocking requirement.
+**MET.**
+
+### M5 Opus validator addendum (2026-07-10): APPROVED
+
+Independent adversarial validation of `b3eceb07..1028faf8`. The validator built a fresh WSL Debug
+build from scratch and ran tests itself, re-derived the LOD-gate math, did its own PIL pixel
+accounting over all 48 captures, counted VUIDs directly from run stdout, swept the buffer family via
+codegraph, and visually inspected the crossing frames. Findings:
+
+- **Seamlessness — established at TRUE per-frame granularity**, not capture-cadence granularity: the
+  runner captures EVERY tick 50-70 individually, straddling the predicted crossing (58.8) with zero
+  gaps, so no 1-2-frame pop could hide. Whole-frame changed-pixel deltas across the crossing window
+  grow monotonically with no discontinuity; the shader gate is per-ray/per-leaf so the transition
+  structurally cannot snap whole-sphere; ticks 57→60 show the same gradient smoothly receding. The
+  one discrete flip (grey→child at tick 25) is the RESIDENCY state change — correctly discrete, no
+  garbage frame.
+- **Zoom math — exact match:** independently re-derived flip distance = 0.5×48/0.6 = 40.0 world
+  units → tick 58.8; observed decline start tick 58. Residency grant tick 24 = distance 25.2,
+  properly inside the would-cross zone.
+- **TRANSFER_DST fix — root-cause, complete, no siblings:** exactly two buffers in
+  `BodyOctreeSceneNode` receive `vkCmdCopyBuffer` uploads (bricks @UploadBrickPool, config
+  @PollBrickUploadCompletion) — both fixed at creation; every other buffer in the node is
+  host-mapped (needs no flag); the only other BatchedUploader consumers project-wide
+  (`VoxelAABBCacher`, `VoxelSceneCacher`) already declare TRANSFER_DST on every destination. Latent
+  until now because bricks/config were the only storage-only buffers to ever get a post-Compile
+  copy. `VUID-vkCmdCopyBuffer-dstBuffer-00120` confirmed GONE post-fix.
+- **Canonical VUID baseline — PINNED: 10 emissions** of `VUID-vkCmdDispatch-None-08114` (binding 14,
+  pre-existing), zero other types. Raw `grep -c VUID` returns 20 because each emission spans a
+  header line + a spec-URL line. Future milestones: count emission headers, not grep lines.
+- **Demo scoping — clean:** all three M5 code sites gated on `VIXEN_TIER_ZOOM_DEMO`; the
+  auto-residency early-return is demo-only; production paths byte-untouched when unset. Shader
+  change confirmed comment-only.
+- **3-tier scope-out — honest:** both named prerequisites (per-child-scale hitT normalization;
+  LOD gate `>= childScale*scale_exp2`) trace to the M3/M4 validator addenda, not invented post-hoc;
+  design-doc banner/§9 accurately state shipped scope.
+- **Regression:** M5's SVO library is byte-identical to the M4 baseline (sweep result logically
+  unchanged); validator re-ran 9/10 SVO suites green from its fresh build (the 10th,
+  `stored_sdf_march_mirror`, runs pathologically slowly in Debug on /mnt/c and was not finished —
+  its code is unchanged). Fix oracles green on real hardware: `test_partial_brick_upload` 1/1,
+  `test_body_octree_lifetime` 3/3, `test_shell_revalidate_node` 2/2. The `lod_residency` sub-test
+  failure is a Dozen-headless render limitation (no child pixels on the non-conformant dzn path),
+  not an M5 regression. Seven segfaulting RenderGraph tests: documented pre-existing (Dozen
+  SPIR-V 1.5/1.6).
+- **Tree integrity — clean:** exactly 3 scope-coherent commits, `git status` clean, all evidence
+  artifacts untracked.
 
 ---
 

@@ -70,9 +70,10 @@ public:
      * the same [kOrbitDistanceMin, kOrbitDistanceMax] bounds every other zoom path respects.
      */
     void SetOrbitDistanceForTest(float distance) {
+        EngageOrbit();
         orbitDistance = glm::clamp(distance, kOrbitDistanceMin, kOrbitDistanceMax);
     }
-    void SetYawForTest(float yawRadians) { yaw = yawRadians; }
+    void SetYawForTest(float yawRadians) { EngageOrbit(); yaw = yawRadians; }
 
 protected:
     void SetupImpl(TypedSetupContext& ctx) override;
@@ -88,6 +89,20 @@ private:
     void ApplyRotation();
     void ApplyMovement(float deltaTime);
 
+    // Bodies-0 root-cause fix: the configured PARAM_CAMERA_* pose is authoritative at rest
+    // (fd33f632's "button-gated orbit" intent, completed here — that commit gated the
+    // rotation *delta* but left UpdateCameraData's *position* recompute unconditional, so
+    // every scene's camera silently snapped to orbitCenter+orbitDistance from frame 1). Call
+    // once on the frame orbit first actually engages (drag-threshold crossed, wheel-zoom
+    // event, WASD/QE movement, or a direct SetOrbitDistanceForTest/SetYawForTest write) to
+    // latch orbitActive_ and re-seed orbitDistance/yaw/pitch from the CURRENT fixed
+    // cameraPosition relative to orbitCenter, so engaging orbit does not teleport the camera
+    // to the stale default orbit pose. Idempotent after the first call (orbitActive_ guard).
+    // NOTE: SetupImpl also latches orbitActive_ directly (no seeding needed there) when a
+    // consumer explicitly configures any PARAM_ORBIT_* parameter — see its own comment.
+    void EngageOrbit();
+
+    bool orbitActive_ = false;
 
     // Current camera data struct
     CameraData currentCameraData;
