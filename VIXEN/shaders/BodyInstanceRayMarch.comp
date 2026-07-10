@@ -159,6 +159,28 @@ layout(std430, binding = 18) readonly buffer ShadowConfigSSBO {
     ShadowConfig shadowConfig;
 };
 
+// ============================================================================
+// TEMPORAL ACCUMULATION (Sampled Lighting Inc2 M1 — bindings 19/20)
+// ============================================================================
+// Single AccumulationConfig record (kernel-codegen-generated struct, std430 — see
+// Generated/AccumulationConfig.glsl / AccumulationConfig.g.h) plus the persistent
+// history storage image (AccumulationHistoryNode — NOT the RenderTargetNode ring,
+// which rotates every frame per KI-009; this image survives across frames by
+// design). M1 scope: PLUMBING ONLY — both bindings are declared here but the
+// accumulate seam (main(), before imageStore(outputImage,...) below) does not yet
+// read/write historyImage or branch on accumulationConfig.enabled. That logic is
+// M2's. With accumulationConfig.enabled=0 (M1's default), the render is byte-
+// identical to Inc1 — declaring an unread binding cannot change emitted behavior.
+#include "Generated/AccumulationConfig.glsl"
+
+layout(std430, binding = 19) readonly buffer AccumulationConfigSSBO {
+    AccumulationConfig accumulationConfig;
+};
+
+// Format matches outputImage (R8G8B8A8_UNORM — AccumulationHistoryNode's own default,
+// confirmed from RenderTargetNode's format). Not yet read/written this milestone (M2).
+layout(rgba8, binding = 20) uniform image2D historyImage;
+
 #define FORMAT_BINARY     0u
 #define FORMAT_STORED_SDF 1u
 

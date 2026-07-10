@@ -45,6 +45,8 @@
 #include "Data/Nodes/RenderTargetNodeConfig.h"  // M4: render-scale decoupling offscreen target
 #include "Data/Nodes/SelectionCoordinatorNodeConfig.h"
 #include "Data/Nodes/ShadowConfigNodeConfig.h"  // Sampled Lighting Inc1 M4: ShadowConfig upload ring
+#include "Data/Nodes/AccumulationConfigNodeConfig.h"   // Sampled Lighting Inc2 M1: AccumulationConfig upload ring
+#include "Data/Nodes/AccumulationHistoryNodeConfig.h"  // Sampled Lighting Inc2 M1: persistent history image
 #include "Data/Nodes/ShaderLibraryNodeConfig.h"
 #include "Data/Nodes/SkyProjectionNodeConfig.h"  // Tiered ESVO Inc1 M3: address-derived sky-point composite pass
 #include "Data/Nodes/SwapChainNodeConfig.h"
@@ -76,6 +78,8 @@
 #include "Nodes/InstanceNode.h"
 #include "Nodes/LightingConfigNode.h"  // Sampled Lighting Inc0 M3: LightingConfig upload ring
 #include "Nodes/ShadowConfigNode.h"    // Sampled Lighting Inc1 M4: ShadowConfig upload ring
+#include "Nodes/AccumulationConfigNode.h"   // Sampled Lighting Inc2 M1: AccumulationConfig upload ring
+#include "Nodes/AccumulationHistoryNode.h"  // Sampled Lighting Inc2 M1: persistent history image
 #include "Nodes/LoopBridgeNode.h"
 #include "Nodes/PickIdTargetNode.h"
 #include "Nodes/PresentNode.h"
@@ -201,6 +205,18 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // imgSize (imageSize(outputImage) in the shader) even under render-scale (<1.0) — the same
     // extent-follow cascade RenderTargetNode itself rides.
     NodeHandle hitRecordBufferNode = renderGraph->AddNode<StorageBufferNodeType>("hit_record_buffer");
+
+    // Sampled Lighting Inc2 M1: AccumulationConfig data (binding 19). Same per-frame ring
+    // upload pattern as shadowConfigNode above — separate node (see AccumulationConfigNode.h's
+    // file header for the separate-vs-extend decision). Default content: enabled=0, so this
+    // milestone's render is a byte-identical passthrough vs Inc1.
+    NodeHandle accumulationConfigNode = renderGraph->AddNode<AccumulationConfigNodeType>("accumulation_config");
+
+    // Sampled Lighting Inc2 M1: persistent temporal-accumulation history image (binding 20) — a
+    // SINGLE persistent storage image (NOT a per-frame ring; see AccumulationHistoryNode.h's file
+    // header for why). Allocated + transitioned + wired this milestone; not yet read/written by
+    // the shader (M2 consumes it).
+    NodeHandle accumulationHistoryNode = renderGraph->AddNode<AccumulationHistoryNodeType>("accumulation_history");
 
     // --- Input Node ---
     NodeHandle inputNode = renderGraph->AddNode<InputNodeType>("input_handler");
@@ -1308,6 +1324,27 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
                   shadowConfigNode, ShadowConfigNodeConfig::CURRENT_FRAME_INDEX);
 
+    // Sampled Lighting Inc2 M1: accumulation config node connections (same ring pattern as
+    // shadowConfigNode above).
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  accumulationConfigNode, AccumulationConfigNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                  accumulationConfigNode, AccumulationConfigNodeConfig::CURRENT_FRAME_INDEX);
+
+    // Sampled Lighting Inc2 M1: accumulation history image connections — device + command pool
+    // drive allocation + the one-shot UNDEFINED->GENERAL transition; extent follows the RENDER
+    // target (renderTargetNode's WIDTH_OUT/HEIGHT_OUT, not the window), mirroring
+    // pickIdTargetNode's own extent-follow wiring above so the history image always matches
+    // outputImage's real per-dispatch extent (including under render-scale <1.0).
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  accumulationHistoryNode, AccumulationHistoryNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
+                  accumulationHistoryNode, AccumulationHistoryNodeConfig::COMMAND_POOL)
+         .Connect(renderTargetNode, RenderTargetNodeConfig::WIDTH_OUT,
+                  accumulationHistoryNode, AccumulationHistoryNodeConfig::WIDTH)
+         .Connect(renderTargetNode, RenderTargetNodeConfig::HEIGHT_OUT,
+                  accumulationHistoryNode, AccumulationHistoryNodeConfig::HEIGHT);
+
     // Connect push constant fields to push constant gatherer using member extraction
     // CameraNode now outputs a CameraData struct, so we can extract individual fields
     batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
@@ -1517,6 +1554,30 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     if (mainLogger && mainLogger->IsEnabled()) {
         mainLogger->Info("[BuildRenderGraph] Connected shadow config at binding 18 (Sampled Lighting Inc1 M4)");
+    }
+
+    // Sampled Lighting Inc2 M1: Binding 19: AccumulationConfig SSBO (single record, re-uploaded
+    // per-frame from AccumulationConfigNode's ring). Default content = enabled=0 (pure
+    // passthrough — this milestone's byte-identity gate vs Inc1).
+    batch.Connect(accumulationConfigNode, AccumulationConfigNodeConfig::ACCUMULATION_CONFIG_BUFFER,
+                          descriptorGatherer, 19,  // Binding 19: AccumulationConfigSSBO
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info("[BuildRenderGraph] Connected accumulation config at binding 19 (Sampled Lighting Inc2 M1)");
+    }
+
+    // Sampled Lighting Inc2 M1: Binding 20: historyImage (persistent R8G8B8A8_UNORM storage
+    // image, AccumulationHistoryNode). Declared in the shader but not yet read/written this
+    // milestone (M2 consumes it) — a pure plumbing wire. Execute-only, mirroring
+    // pickIdTargetNode's own binding-9 storage-image wiring above (re-emitted each frame; no
+    // compile-time dependency edge needed beyond the initial Compile-time publish).
+    batch.Connect(accumulationHistoryNode, AccumulationHistoryNodeConfig::HISTORY_IMAGE_VIEW,
+                          descriptorGatherer, 20,  // Binding 20: historyImage
+                          SlotRoleModifier(SlotRole::Execute));
+
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info("[BuildRenderGraph] Connected accumulation history image at binding 20 (Sampled Lighting Inc2 M1)");
     }
 
     // Swapchain connections to descriptor set and dispatch

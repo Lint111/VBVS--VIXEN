@@ -259,6 +259,8 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/DynamicInstanceBufferNode.cpp
     src/Nodes/LightingConfigNode.cpp    # Sampled Lighting Inc0 M3: LightingConfig upload ring
     src/Nodes/ShadowConfigNode.cpp      # Sampled Lighting Inc1 M4: ShadowConfig upload ring
+    src/Nodes/AccumulationConfigNode.cpp  # Sampled Lighting Inc2 M1: AccumulationConfig upload ring
+    src/Nodes/AccumulationHistoryNode.cpp # Sampled Lighting Inc2 M1: persistent temporal-accumulation history image
     src/Nodes/MvpUniformNode.cpp
     src/Nodes/DescriptorResourceGathererNode.cpp
     src/Nodes/DescriptorSetNode.cpp
