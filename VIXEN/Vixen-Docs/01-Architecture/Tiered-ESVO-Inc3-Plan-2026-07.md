@@ -1,6 +1,6 @@
 ---
 title: Tiered ESVO — Inc3 Implementation Plan (scale-magnified tiers + 3-tier chain — Earth-scale surface-to-orbit)
-status: M1-M3 SHIPPED 2026-07-10; M4 mechanism-complete, BLOCKED on a live-render finding (see Progress Log)
+status: M1-M3 SHIPPED, M5 SHIPPED (magnification geometry fix) 2026-07-10; M4 mechanism-complete, epic gate not yet re-run (see Progress Log)
 depends: Tiered-ESVO-Observer-Addressing-Design-2026-07.md (§3, §5, §9), Tiered-ESVO-Inc2-Plan-2026-07.md (shipped 2026-07-10, merged `2d67840e`, origin/main `12145d60`)
 ---
 
@@ -84,6 +84,11 @@ And one structural gap:
   3.93× record, fix at the true locus, and prove a CONCENTRIC magnification at the predicted ratio
   across multiple childScale values (un-fakeable by a single occlusion-cropped measurement). Then
   the M4 Earth-scale zoom gate can finally run.
+  **STATUS: DONE 2026-07-10 — root cause was a construction-site placement bug
+  (`childOriginLocal` hard-coded to the root cube's shared corner instead of the marked leaf's
+  own cell center), NOT the remap math itself. Fixed in `BuildRenderGraph.cpp`/`ShellOctreeGpu.h`
+  (demo-construction-only change, zero shader/mirror/traversal-math change). Concentric
+  magnification proven live at childScale ∈ {1.0,0.5,0.25,0.125}; see M5 Progress Log.**
 
 ## M1 — Scale-correct crossing math
 
@@ -250,7 +255,7 @@ response). M2's "3.93× two independent ways" verdict does NOT reproduce on a cl
 epic's whole deliverable (a genuine scale-magnified surface-to-orbit zoom) depends on fixing this.
 
 ### Task 8 — Diagnose the magnification defect (root-cause BEFORE fixing)
-- [ ] Root-cause, from the ACTUAL shipped math, why the crossing produces a ~1.24× one-sided-wedge
+- [x] Root-cause, from the ACTUAL shipped math, why the crossing produces a ~1.24× one-sided-wedge
   shrink instead of a concentric 4× shrink at childScale=0.25. Prime suspects (validator-named, NOT
   confirmed — verify, don't transplant): `remapRayIntoChildFrame`, the `childOriginLocal` placement,
   and the crossing/LOD gate. Determine whether the child geometry is being placed/scaled wrong, the
@@ -258,18 +263,18 @@ epic's whole deliverable (a genuine scale-magnified surface-to-orbit zoom) depen
   be correctly small but PARTIALLY OCCLUDED by the parent leaf, so only a wedge shows — if so the
   "defect" may be a demo/attribution problem, not a math bug: DISTINGUISH these two explicitly, they
   have opposite fixes). Produce a written root-cause with evidence before touching code.
-- [ ] Reconcile the M2 3.93× record as part of the diagnosis: did M2 measure a real concentric
+- [x] Reconcile the M2 3.93× record as part of the diagnosis: did M2 measure a real concentric
   magnification that later regressed, measure a DIFFERENT quantity (e.g. the wedge extent, which can
   shrink ~4× in one dimension while area shrinks ~1.24×), or was the M2 fixture different? State
   definitively which, with evidence — two Opus validators disagreed and this must be settled, not
   left ambiguous.
 
 ### Task 9 — Fix + un-fakeable prediction-first live proof
-- [ ] Fix at the true locus found in Task 8 (shader + `GpuTraversalMirror.h` lockstep if the fix
+- [x] Fix at the true locus found in Task 8 (shader + `GpuTraversalMirror.h` lockstep if the fix
   touches traversal math; CPU parity extended if so). If Task 8 finds it's an occlusion/attribution
   issue not a math bug, the "fix" is to the demo (unoccluded viewing angle / per-tier tint) — either
   way the SUCCESS CRITERION is the same and un-fakeable:
-- [ ] Prediction-first live gate: hand-compute the expected CONCENTRIC child footprint (area AND
+- [x] Prediction-first live gate: hand-compute the expected CONCENTRIC child footprint (area AND
   both-axis extent, centered) at childScale ∈ {1.0, 0.5, 0.25, 0.125}, then pixel-verify the
   measured footprint shrinks CONCENTRICALLY at the predicted ratio at EACH scale — not a single
   measurement (which an occlusion wedge can fake), but a monotonic concentric-shrink series matching
@@ -435,3 +440,83 @@ genuinely run.
   implementer's SDF-mirror recommendation): root-cause the magnification geometry in
   `remapRayIntoChildFrame`/`childOriginLocal`/gate; reconcile the M2 3.93× record; then re-run the
   Earth-scale zoom gate (build current, 1e-6 clamp + orbitCenter=(64,64,64) in place).
+
+- **M5 (Tasks 8-9): DONE · commits (this session, worktree `tiered-esvo-inc2`) · 2026-07-10.**
+  **Task 8 root cause: explanation (A), a real construction-site placement bug — NOT occlusion/
+  attribution (B).** `remapRayIntoChildFrame` itself (shader + mirror) is algebraically
+  self-consistent — verified by hand: it is the exact inverse of `TierDirection.h`'s SumTail
+  composition, and a point-based trace confirms it maps the segment
+  `[childOrigin-0.5*childScale, childOrigin+0.5*childScale]` in parent-local space onto the
+  child's own `[1,2)` at every childScale. The bug is that every demo construction site
+  (`VIXEN_TIER_CROSSING_DEMO`/`VIXEN_TIER_CROSSING_SCALE_DEMO`'s two-tree fixture, and
+  `VIXEN_TIER_CHAIN_DEMO`'s two `MarkLeafAsTierCrossing` calls) hard-coded
+  `childOriginLocal=(1.5,1.5,1.5)` — the ROOT CUBE'S shared corner, common to all 8 root
+  octants — instead of the MARKED LEAF'S OWN cell center (at `1.25`/`1.75` per axis, per the
+  octant's bit pattern; confirmed against `ESVOTraversalState::pos`'s own additive
+  `scale_exp2`-per-level convention in `SVOTraversal.cpp`/`GpuTraversalMirror.h`). Since the
+  marked leaf's own corner nearest `(1.5,1.5,1.5)` sits exactly AT `childOrigin`, that corner is
+  a SCALE-INVARIANT FIXED POINT of the remap (maps to child-local `1.5` regardless of
+  childScale) while the leaf's opposite corner is displaced by `1/childScale` and gets clipped
+  by the child tree's own `[1,2)` domain boundary — producing a corner-anchored, non-concentric
+  "wedge" collapse whose visible span saturates almost immediately below unity, exactly matching
+  the M4 validator's report. Numeric trace (hand-computed, `/tmp/.../trace.py`-`trace4.py`
+  equivalents): at the broken placement, leaf_max stays pinned at 1.5 for every childScale while
+  leaf_min races toward -infinity; at the corrected placement (leaf's own center), the mapped
+  span is exactly `0.5/childScale`, symmetric about a FIXED center point (1.5,1.5,1.5) in
+  child-local space, at every scale.
+  **M2 record reconciliation: DEFINITIVELY the M2 measurement used the SAME broken
+  `childOriginLocal=(1.5,1.5,1.5)` this fix corrects** (verified by reading M2's own commit
+  `b3d990a6`'s construction code, unchanged until this session) — M2's "3.93× two independent
+  ways" verdict is not reproducible because it was never a real concentric 4× magnification
+  measurement to begin with; per this session's own root-cause trace, the broken formula's
+  visible span is corner-anchored, and a 1D y-band or 2D filled-area measurement taken without
+  checking concentricity can read a partial, non-representative slice of the wedge as if it were
+  the whole child silhouette — consistent with, though not separately re-derived pixel-for-pixel
+  against, the M4 validator's own reconciliation attempt. Both validators were consistently
+  measuring the SAME (broken) construction; the disagreement was in interpretation/measurement
+  technique, not in the underlying render.
+  **Task 9 fix:** added `RootLeafOctantCenterLocal(int octant)` to `ShellOctreeGpu.h` (computes
+  the marked leaf's own cell center for a root-level leaf: `1.75` on an axis if that octant bit
+  is set, else `1.25`) and switched all THREE `MarkLeafAsTierCrossing` call sites in
+  `BuildRenderGraph.cpp` (`VIXEN_TIER_CROSSING_DEMO`'s single crossing, and
+  `VIXEN_TIER_CHAIN_DEMO`'s two chained crossings) from the hard-coded `(1.5,1.5,1.5)` to this
+  helper. `remapRayIntoChildFrame` itself (shader + mirror) is UNCHANGED — confirming Task 8's
+  finding that the composition math was never the defect. The Earth-scale demo
+  (`VIXEN_TIER_EARTH_DEMO`, M4) is DELIBERATELY left as-is: it already uses a different,
+  self-consistent-for-its-own-purpose placement technique (`childOriginLocal = entryPointLocal
+  - offset*childScale`, anchored near the actual SDF-surface-hit ray entry point to survive
+  `1/childScale~=1024` amplification without a `tEntryWorld` blowup) that predates and is
+  orthogonal to this defect; M4's own gate is still blocked pending a separate re-run, out of
+  M5's scope.
+  **Un-fakeable live proof (real hardware, forced validation, fresh build — exe mtime 21:53:38
+  postdates both edited sources at 21:48-21:49):** childScale swept over {1.0, 0.5, 0.25, 0.125}
+  in the `VIXEN_TIER_CROSSING_SCALE_DEMO` fixture, magenta-child pixel-decoded by exact solid-
+  fill color match (`(77,0,77)`, distinct from AA-blended edge pixels) per capture:
+  | childScale | measured bbox w=h (px) | center (px) | w/h ratio vs. next-coarser scale |
+  |---|---|---|---|
+  | 1.0   | 68 | (215.5, 283.5) | — |
+  | 0.5   | 53 | (214.0, 285.0) | 1.28× (partially clipped by the leaf's own cell boundary at/near unity, expected) |
+  | 0.25  | 26 | (215.5, 283.5) | 2.04× |
+  | 0.125 | 13 | (216.0, 283.0) | 2.00× |
+  The center holds fixed within ~2px (AA noise) across all four scales — CONCENTRIC, not a
+  one-sided wedge — and the 0.5→0.25 and 0.25→0.125 steps land almost exactly on the predicted
+  2× ratio per halving of childScale (the `0.5*childScale` law), the two steps least affected by
+  unity-adjacent clipping. Solid-magenta pixel COUNT (~area) also shrinks monotonically and
+  close to quadratically (4035→2045→508→127, ratios 1.97/4.03/4.0), consistent with a linearly-
+  shrinking 3D object's projected area. VUID: exactly 10× `08114` in all four sweep captures,
+  zero new. Regression: unity re-run (`VIXEN_TIER_CROSSING_SCALE_DEMO` unset) is
+  PIXEL-BYTE-IDENTICAL (ImageChops maxdiff 0) to the sweep's own childScale=1.0 capture; the
+  chain demo (`VIXEN_TIER_CHAIN_DEMO`) still shows both green (T1) and cyan (T2) geometry
+  (3407/1156 px respectively) — both crossings still fire; the default no-crossing scene renders
+  with the same 10×`08114` baseline. CPU: parity 6/6, construction 5/5, tier_ref 5/5,
+  tier_ref_table 5/5, all green, unaffected (confirms the fix is construction-site-only, no
+  traversal-math change).
+  **M5 gate: MET.** The crossing now magnifies the child concentrically at the predicted ratio
+  across multiple childScale values on real hardware; the M2 record is reconciled (same
+  underlying construction bug, not a genuine prior measurement that regressed); the fix
+  regresses nothing. M4's Earth-scale zoom gate can now genuinely be re-run (separate,
+  not-yet-executed step — M4's own live-render finding was about THIS defect's symptom
+  manifesting at 2^-10 childScale in the k-invariant-placement construction, which used a
+  DIFFERENT origin technique than the one fixed here; whether M4's own construction needs a
+  parallel correction, or whether its entry-point-anchored technique is already immune, is
+  M4's own re-run to determine, not asserted here).

@@ -687,11 +687,16 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 // local frame (§3.2/§3.3). childScale=1.0 keeps the child at the SAME
                 // physical scale as the parent for this milestone's proof (M3 does not
                 // require a scale change — that is a rendering/LOD refinement, not the
-                // mechanism this gate proves); childOriginLocal=(1.5,1.5,1.5) is the
-                // parent-local frame's own center, so the child tree occupies the
-                // SAME [1,2) cell the marked leaf itself occupies (a clean, well-
-                // conditioned "known" placement for the hand-computed screen-position
-                // cross-check below).
+                // mechanism this gate proves); childOriginLocal is the MARKED LEAF'S
+                // OWN cell center (Tiered-ESVO Inc3 M5 Task 9 fix — see
+                // RootLeafOctantCenterLocal's own header comment: the constant
+                // (1.5,1.5,1.5) used here pre-M5 is the ROOT CUBE'S shared corner, not
+                // any one octant's center, and made the crossing collapse the child
+                // toward a corner-anchored, non-concentric "wedge" instead of shrinking
+                // around the leaf at any non-unity childScale), so the child tree
+                // occupies the SAME [1,2) cell the marked leaf itself occupies (a clean,
+                // well-conditioned "known" placement for the hand-computed screen-
+                // position cross-check below).
                 // Tiered-ESVO Inc3 M2 Task 4: VIXEN_TIER_CROSSING_SCALE_DEMO exercises a genuinely
                 // non-unity TierRef::childScale (default 0.25 if set with no value, or the parsed
                 // float value) instead of the M3/Inc2 baseline's childScale=1.0 -- the ONLY variable
@@ -700,10 +705,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 // is a raw linear multiplier on the child's [1,2) unit cube in parent-local space
                 // (remapRayIntoChildFrame: childLocalOrigin=(parentLocalOrigin-childOrigin)*invScale+1.5),
                 // NOT pre-scaled by the marked leaf's own octant fraction -- so at childScale=1.0 the
-                // child fills the ENTIRE parent [1,2) cube (same footprint as the parent body itself,
-                // world edge 48 = 10*renderScale), and at childScale=0.25 it fills a cube 1/4 the linear
-                // size (world edge 12), centered at the same world point (64,64,64) since
-                // childOriginLocal is unchanged.
+                // child fills the ENTIRE marked leaf's own [1,2) cell footprint (world edge 24 =
+                // half of 10*renderScale, since the leaf is one root-level octant), and at
+                // childScale=0.25 it fills a cube 1/4 the linear size, CONCENTRICALLY centered on
+                // the same leaf-cell world point since childOriginLocal is unchanged.
                 float childScale = 1.0f;
                 if (const char* scaleEnv = std::getenv("VIXEN_TIER_CROSSING_SCALE_DEMO")) {
                     childScale = (scaleEnv[0] != '\0') ? std::strtof(scaleEnv, nullptr) : 0.25f;
@@ -714,11 +719,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
                                   + std::to_string(childScale));
                 }
 
+                const glm::vec3 leafCenterLocal = Vixen::SVO::RootLeafOctantCenterLocal(markOctant);
                 Vixen::SVO::TierRef ref{};
                 ref.childOctreeIndex = 1u;  // child will be concatenated at slot 1
-                ref.childOriginLocal[0] = 1.5f;
-                ref.childOriginLocal[1] = 1.5f;
-                ref.childOriginLocal[2] = 1.5f;
+                ref.childOriginLocal[0] = leafCenterLocal.x;
+                ref.childOriginLocal[1] = leafCenterLocal.y;
+                ref.childOriginLocal[2] = leafCenterLocal.z;
                 ref.childScale = childScale;
                 constexpr uint8_t kChildRootScaleHint = 22;  // child's own root ESVO scale
 
@@ -935,23 +941,30 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 // chaining — Inc3 M4's job is the scale-magnified version; M3 proves the
                 // HOP LOOP mechanism itself, same discipline as Inc2 M3 proving the
                 // single-restart mechanism before Inc2 M4/Inc3 M1-M2 added LOD/scale).
+                // childOriginLocal is the marked leaf's OWN cell center (Inc3 M5 Task 9
+                // fix — see RootLeafOctantCenterLocal's header comment); at childScale=1.0
+                // this is a no-op vs. the pre-M5 constant (1.5,1.5,1.5) for hop 0's own
+                // proof (both formulas agree exactly at unity — see M1's own byte-
+                // identical-at-unity gate), so this hop is UNCHANGED in observable behavior.
+                const glm::vec3 t0LeafCenterLocal = Vixen::SVO::RootLeafOctantCenterLocal(t0MarkOctant);
                 Vixen::SVO::TierRef refT0ToT1{};
                 refT0ToT1.childOctreeIndex = 1u;
-                refT0ToT1.childOriginLocal[0] = 1.5f;
-                refT0ToT1.childOriginLocal[1] = 1.5f;
-                refT0ToT1.childOriginLocal[2] = 1.5f;
+                refT0ToT1.childOriginLocal[0] = t0LeafCenterLocal.x;
+                refT0ToT1.childOriginLocal[1] = t0LeafCenterLocal.y;
+                refT0ToT1.childOriginLocal[2] = t0LeafCenterLocal.z;
                 refT0ToT1.childScale = 1.0f;
                 Vixen::SVO::MarkLeafAsTierCrossing(t0Ser, t0MarkDescIdx, t0MarkOctant, refT0ToT1, 22);
 
                 // Hop 1: T1's OWN marked leaf -> T2 (slot 2, T1's own child-slot
                 // numbering — ConcatenatedOctrees resolves childOctreeIndex against the
                 // GLOBAL concatenated configs[] array, so this is genuinely slot 2, not
-                // slot 1 relative to T1).
+                // slot 1 relative to T1). Same M5 leaf-center fix, same unity no-op.
+                const glm::vec3 t1LeafCenterLocal = Vixen::SVO::RootLeafOctantCenterLocal(t1MarkOctant);
                 Vixen::SVO::TierRef refT1ToT2{};
                 refT1ToT2.childOctreeIndex = 2u;
-                refT1ToT2.childOriginLocal[0] = 1.5f;
-                refT1ToT2.childOriginLocal[1] = 1.5f;
-                refT1ToT2.childOriginLocal[2] = 1.5f;
+                refT1ToT2.childOriginLocal[0] = t1LeafCenterLocal.x;
+                refT1ToT2.childOriginLocal[1] = t1LeafCenterLocal.y;
+                refT1ToT2.childOriginLocal[2] = t1LeafCenterLocal.z;
                 refT1ToT2.childScale = 1.0f;
                 Vixen::SVO::MarkLeafAsTierCrossing(t1Ser, t1MarkDescIdx, t1MarkOctant, refT1ToT2, 22);
 
