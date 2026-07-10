@@ -257,6 +257,7 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/InstanceBufferNode.cpp
     src/Nodes/StorageBufferNode.cpp     # auto-sync P4 M4: generic arbitrary-sized SSBO node
     src/Nodes/DynamicInstanceBufferNode.cpp
+    src/Nodes/LightingConfigNode.cpp    # Sampled Lighting Inc0 M3: LightingConfig upload ring
     src/Nodes/MvpUniformNode.cpp
     src/Nodes/DescriptorResourceGathererNode.cpp
     src/Nodes/DescriptorSetNode.cpp
