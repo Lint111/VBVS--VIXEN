@@ -74,6 +74,22 @@ set_target_properties(test_lightingconfig_parity PROPERTIES FOLDER "Tests/Render
 
 gtest_discover_tests(test_lightingconfig_parity)
 
+# ===========================================================================
+# Brdf CPU Mirror Test (Sampled Lighting Inc0 M2 — gpu-shader-debug mirror of
+# shaders/Brdf.glsl's evalBRDF, verified against an independent scalar reference)
+# ===========================================================================
+add_executable(test_brdf_mirror test_brdf_mirror.cpp)
+
+if(TARGET RenderGraph)
+    target_link_libraries(test_brdf_mirror PRIVATE GTest::gtest_main RenderGraph)
+else()
+    target_link_libraries(test_brdf_mirror PRIVATE GTest::gtest_main)
+endif()
+
+set_target_properties(test_brdf_mirror PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+gtest_discover_tests(test_brdf_mirror)
+
 add_executable(test_node_parameter_manager Core/test_node_parameter_manager.cpp)
 
 # Link against the RenderGraph library target - includes propagate automatically

@@ -1,42 +1,39 @@
 // ============================================================================
-// Lighting.glsl - Simple Shading Functions
+// Lighting.glsl - Shading Functions
 // ============================================================================
-// Basic lighting calculations for voxel rendering.
-// Can be extended with PBR or other shading models in the future.
+// Lighting calculations for voxel rendering: Lambert + GGX microfacet BRDF
+// (see Brdf.glsl) with a single hardcoded directional light. Light-data
+// wiring (LightingConfig / light array) lands in a later Sampled Lighting
+// Inc0 milestone; the light here stays hardcoded by design for this one.
 // ============================================================================
 
 #ifndef LIGHTING_GLSL
 #define LIGHTING_GLSL
 
+#include "Brdf.glsl"
+
 // ============================================================================
-// SIMPLE LAMBERTIAN + BLINN-PHONG SPECULAR LIGHTING
+// LAMBERT + GGX PHYSICALLY-BASED LIGHTING
 // ============================================================================
 
-// Compute lighting with ambient, diffuse, and roughness-modulated specular.
-// color    : Base surface color
+// Compute lighting with ambient term + one hardcoded directional light shaded
+// via evalBRDF (Lambert diffuse + GGX specular, dielectric F0 = 0.04).
+// color    : Base surface color (albedo)
 // normal   : Surface normal (normalized)
 // rayDir   : View ray direction (normalized, points AWAY from surface toward camera)
 // roughness: PBR-style roughness in [0,1]; 0 = mirror-like, 1 = fully diffuse.
-//            Blinn-Phong exponent: mix(64.0, 4.0, roughness)
-//            Specular scale:       1.0 - roughness
 vec3 computeLighting(vec3 color, vec3 normal, vec3 rayDir, float roughness) {
     // Fixed directional light from upper-right-front
     vec3 lightDir = normalize(vec3(1.0, 1.0, -1.0));
 
     // View direction: rayDir points from camera toward surface; negate for lighting math.
-    vec3 viewDir  = normalize(-rayDir);
-    vec3 halfVec  = normalize(lightDir + viewDir);
+    vec3 viewDir = normalize(-rayDir);
 
-    // Ambient and diffuse
     float ambient = 0.3;
-    float diffuse = max(dot(normal, lightDir), 0.0) * 0.7;
+    vec3 lightRadiance = vec3(1.0);
 
-    // Blinn-Phong specular: exponent and scale both decrease with roughness.
-    float shininess    = mix(64.0, 4.0, roughness);
-    float specScale    = (1.0 - roughness) * 0.4;
-    float specular     = pow(max(dot(normal, halfVec), 0.0), shininess) * specScale;
-
-    return color * (ambient + diffuse) + vec3(specular);
+    vec3 Lo = ambient * color + evalBRDF(color, roughness, normal, viewDir, lightDir) * lightRadiance;
+    return Lo;
 }
 
 // Backward-compat overload for binary/procedural paths that have no roughness.
