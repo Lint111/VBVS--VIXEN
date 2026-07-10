@@ -570,6 +570,18 @@ set_target_properties(test_sdf_core_glsl PROPERTIES FOLDER "Tests/SVO Tests")
 gtest_discover_tests(test_sdf_core_glsl)
 
 # ===========================================================================
+# GLSL field-function emitter smoke tests (Inc1 M4 Task 8)
+# ===========================================================================
+add_executable(test_recipe_codegen_glsl test_recipe_codegen_glsl.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_recipe_codegen_glsl PRIVATE GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_recipe_codegen_glsl PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_recipe_codegen_glsl PROPERTIES FOLDER "Tests/SVO Tests")
+gtest_discover_tests(test_recipe_codegen_glsl)
+
+# ===========================================================================
 # Recipe Bake Parity Tests (P2.1 M1 — recipe-sphere bake == analytic-sphere bake)
 # ===========================================================================
 add_executable(test_recipe_bake test_recipe_bake.cpp)
