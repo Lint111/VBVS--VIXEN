@@ -25,6 +25,7 @@ struct OctreeConfig {
     uvec4 channels[8];
     uint mipPoolBase;
     uint brickResident;
-    uint _tailPad[18];
+    uint tierRefTableBase;
+    uint _tailPad[17];
 };
 #endif // OCTREECONFIG_GLSL

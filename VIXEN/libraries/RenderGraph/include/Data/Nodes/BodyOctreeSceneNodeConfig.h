@@ -11,8 +11,9 @@ using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 namespace BodyOctreeSceneNodeCounts {
     static constexpr size_t INPUTS  = 3;  // VULKAN_DEVICE_IN, COMMAND_POOL, CURRENT_FRAME_INDEX
     // 4 octree buffers + 2 SDF buffers + instance buffer + instance count + mip pool buffer (Inc1 M3)
-    // + 2 shell buffers (Surface-Shell ESVO cache, main) — merge of both parallel features.
-    static constexpr size_t OUTPUTS = 11;
+    // + 2 shell buffers (Surface-Shell ESVO cache, main) + tier-ref table buffer (Tiered-ESVO Inc2 M3)
+    // — merge of parallel features.
+    static constexpr size_t OUTPUTS = 12;
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -125,6 +126,15 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
+    // Tiered-ESVO Inc2 M3: tier-crossing reference table SSBO (binding 15) —
+    // one Vixen::SVO::TierRef per registered tier-crossing leaf, concatenated
+    // across all resident octrees. Placeholder (1-byte pad) when no tree in
+    // the scene has any tier-crossing leaves; populated by MarkLeafAsTierCrossing
+    // + Concatenate/ConcatenateSdf (M2's construction path).
+    OUTPUT_SLOT(OCTREE_TIERREFTABLE_BUFFER, VkBuffer, 11,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
     // Constructor: runtime descriptor initialization
     BodyOctreeSceneNodeConfig() {
         // ----- Inputs -----
@@ -190,6 +200,11 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
         BufferDescriptor shellLookupDesc{};
         shellLookupDesc.usage = ResourceUsage::StorageBuffer | ResourceUsage::TransferDst;
         INIT_OUTPUT_DESC(SHELL_LOOKUP_BUFFER, "shell_lookup_buffer", ResourceLifetime::Persistent, shellLookupDesc);
+
+        // Tiered-ESVO Inc2 M3: tier-ref table buffer — persistent.
+        BufferDescriptor tierRefTableDesc{};
+        tierRefTableDesc.usage = ResourceUsage::StorageBuffer | ResourceUsage::TransferDst;
+        INIT_OUTPUT_DESC(OCTREE_TIERREFTABLE_BUFFER, "octree_tierreftable_buffer", ResourceLifetime::Persistent, tierRefTableDesc);
     }
 
     // Automated config validation
@@ -213,6 +228,7 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
     static_assert(OCTREE_MIPPOOL_BUFFER_Slot::index == 8, "OCTREE_MIPPOOL_BUFFER must be at index 8");
     static_assert(SHELL_DATA_BUFFER_Slot::index == 9, "SHELL_DATA_BUFFER must be at index 9");
     static_assert(SHELL_LOOKUP_BUFFER_Slot::index == 10, "SHELL_LOOKUP_BUFFER must be at index 10");
+    static_assert(OCTREE_TIERREFTABLE_BUFFER_Slot::index == 11, "OCTREE_TIERREFTABLE_BUFFER must be at index 11");
 
     // ----- Type validations -----
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
@@ -228,6 +244,7 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
     static_assert(std::is_same_v<OCTREE_MIPPOOL_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<SHELL_DATA_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<SHELL_LOOKUP_BUFFER_Slot::Type, VkBuffer>);
+    static_assert(std::is_same_v<OCTREE_TIERREFTABLE_BUFFER_Slot::Type, VkBuffer>);
 };
 
 } // namespace Vixen::RenderGraph

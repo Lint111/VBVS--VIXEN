@@ -2,6 +2,7 @@
 #include "VulkanSwapChain.h"
 #include "MeshData.h"
 #include "Logger.h"
+#include <algorithm>   // std::min for the Tiered-ESVO Inc2 M5 scripted zoom clamp
 #include <cmath>       // std::tan for the LOD ray-cone (raySizeCoef) computation
 #include <filesystem>  // CaptureFrameToPng: exact-path rename (M4b)
 #include <cstdlib>     // std::getenv/atoi for VIXEN_WINDOW_WIDTH/HEIGHT overrides
@@ -518,6 +519,64 @@ void VulkanGraphApplication::Update() {
             }
         }
 
+        // Tiered-ESVO Inc2 M5 Task 11 live gate: env-gated scripted continuous zoom-out through
+        // the single tier crossing proven in M3/M4 (VIXEN_TIER_ZOOM_DEMO=1, run alongside
+        // VIXEN_TIER_CROSSING_DEMO=1 + VIXEN_TIER_CROSSING_LOD_COEF_OVERRIDE=0.6). Mirrors
+        // VIXEN_RESIDENCY_GATE_DEMO's shape directly above (SetOrbitDistanceForTest, no new
+        // InputNode injector) but adds a SECOND scripted event this milestone's obligation
+        // requires and the residency-gate demo does not: an explicit RequestBrickResidency(true)
+        // partway through the SAME continuous run, so the child tree's 0->1 upload transition is
+        // exercised WHILE a ray is actively crossing into it, not just proven as two separate
+        // before/after runs (M4's own residency evidence was two separate processes; that is the
+        // gap this milestone's validator addendum flagged as the one thing M4 did not exercise).
+        //
+        // Hand-computed schedule (see Progress Log for the full derivation): the demo's tier-
+        // crossing leaf is exactly half the parent root's normalized [1,2) extent (scale_exp2=0.5,
+        // n=16/brickDepth=3 fixture, root's 8 children all brick-level leaves), the octree's own
+        // world span is kWorldGridSize=10 pre-instance-scale, and the instance's renderScale=4.8
+        // -> 48 world units per 1.0 of normalized octree scale. The traversal's local ray direction
+        // is world-unit-length rotated by worldToLocal (scale 1/kWorldGridSize=1/10, NOT further
+        // divided by renderScale -- renderScale only rescales rayOrigin/rayDir going INTO the
+        // instance's own local frame in main(), a uniform origin+direction scale that leaves t in
+        // real-world-distance units per the same argument this file's instOrigin/instDir comment
+        // documents), so 1 unit of the shader's local t-parameter = kWorldGridSize*renderScale=48
+        // real-world units. The LOD gate fires when tv_max*raySizeCoef >= scale_exp2=0.5; with
+        // VIXEN_TIER_CROSSING_LOD_COEF_OVERRIDE=0.6 and tv_max ~= worldDistance/48, this predicts
+        // the gate flips at world distance 40.0 EXACTLY (0.6 * (40/48) = 0.5) -- independent of
+        // the (much finer) default RaySizeCoefNode value, which would only cross at a wholly
+        // unreachable ~15279 units for this 48-unit-diameter demo body. Camera orbits linearly
+        // 15 (deep in the "crosses" zone) -> 100 (deep in the "declines" zone) over ticks 1-200
+        // (held at 100 for 201-240), so distance=40 lands at tick ~58.8 (tick 59). The residency
+        // flip is scripted at tick 24 (distance ~24, still well inside the "crosses" zone) so the
+        // mip->real transition is observed BEFORE the later real->mip LOD transition, not
+        // confounded with it.
+        if (renderGraph && std::getenv("VIXEN_TIER_ZOOM_DEMO")) {
+            static long zoomTick = 0;
+            ++zoomTick;
+            constexpr long  kResidencyFlipTick = 24;
+            constexpr long  kPhase1End         = 200;
+            constexpr float kNearDist          = 15.0f;
+            constexpr float kFarDist           = 100.0f;
+
+            if (auto* camera = static_cast<CameraNode*>(renderGraph->GetInstance(cameraNode_))) {
+                const float t = std::min(1.0f, static_cast<float>(zoomTick) / static_cast<float>(kPhase1End));
+                camera->SetOrbitDistanceForTest(kNearDist + (kFarDist - kNearDist) * t);
+            }
+            if (zoomTick == kResidencyFlipTick) {
+                if (auto* bodyScene = static_cast<Vixen::RenderGraph::BodyOctreeSceneNode*>(
+                        renderGraph->GetInstance(bodyOctreeSceneNode_))) {
+                    bodyScene->RequestBrickResidency(true);
+                    if (mainLogger) {
+                        mainLogger->Info("[TierZoomDemo] tick " + std::to_string(zoomTick) +
+                                          ": RequestBrickResidency(true) -- mid-flight residency grant");
+                    }
+                }
+            }
+            if (zoomTick % 20 == 0 && mainLogger) {
+                mainLogger->Info("[TierZoomDemo] tick " + std::to_string(zoomTick));
+            }
+        }
+
         // Same "input never rides the render graph's gates" hook, generalized to InputNode
         // (input-rework slice 1): drain its GLFW callback queue unconditionally too, right beside
         // WindowNode's own drain above. Same lookup pattern, same null-guard (a graph without an
@@ -847,6 +906,18 @@ constexpr float kResidencyLeafSizeM   = 0.01f;  // matches ResolvableLevel.h's 1
 }  // namespace
 
 void VulkanGraphApplication::UpdateBodySceneResidency() {
+    // Tiered-ESVO Inc2 M5 Task 11: VIXEN_TIER_ZOOM_DEMO's scripted RequestBrickResidency(true) at
+    // tick 24 (see the Update() block above) must be the ONLY residency driver for that run's
+    // evidence to be attributable to the milestone's own scripted schedule rather than confounded
+    // with this function's independent per-tick frustum/resolvability trigger (which runs every
+    // tick regardless and would otherwise immediately re-decide -- and potentially override --
+    // residency on the very same tick, since both run inside the same Update() call before
+    // ExecuteImpl). This mirrors VIXEN_TIER_CROSSING_NONRESIDENT/VIXEN_RESIDENCY_GATE_DEMO's own
+    // precedent of a demo env knob taking deliberate, exclusive control of one subsystem.
+    if (std::getenv("VIXEN_TIER_ZOOM_DEMO")) {
+        return;
+    }
+
     // Live lookups — both nodes persist across recompile; never cache (same discipline as
     // GetWindowHandle()/SetBodyInstances() above).
     auto* camera = static_cast<Vixen::RenderGraph::CameraNode*>(renderGraph->GetInstance(cameraNode_));

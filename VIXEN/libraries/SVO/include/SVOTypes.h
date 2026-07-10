@@ -112,6 +112,43 @@ struct ChildDescriptor {
         contourPointer = INVALID_BRICK_INDEX;
         contourMask = 0;
     }
+
+    // ========================================================================
+    // Tier-crossing mode helpers (Tiered-ESVO Inc2 M2 Task 4)
+    // ========================================================================
+    // A THIRD interpretation of the same contourPointer/contourMask field pair,
+    // selected by farBit (Tiered-ESVO-Observer-Addressing-Design-2026-07.md
+    // §3.1). farBit==0 (the only value any builder has ever set) means "leaf
+    // is brick-mode, see above" — unchanged. farBit==1 on a leaf means
+    // "tier-crossing leaf": contourPointer (24 bits) is an index into the
+    // owning tree's TierRefTable (NOT a brick index), and contourMask
+    // (8 bits) carries the child tree's root scale hint (0-22) a future
+    // traversal-restart (M3) uses to size its stack push without a second
+    // indirection. Callers MUST check farBit before interpreting
+    // contourPointer/contourMask via either this group or the brick-mode
+    // group above — the two are mutually exclusive readings of the same bits.
+    bool isTierCrossing() const {
+        return farBit != 0;
+    }
+
+    uint32_t getTierRefIndex() const {
+        return contourPointer;  // valid only when farBit == 1
+    }
+
+    uint8_t getChildRootScaleHint() const {
+        return static_cast<uint8_t>(contourMask);  // valid only when farBit == 1
+    }
+
+    // Mark this descriptor as a tier-crossing leaf: sets farBit=1 and packs
+    // tierRefIndex/childRootScaleHint into contourPointer/contourMask. Does
+    // NOT touch validMask/leafMask — the caller must already have the leaf
+    // bit set for this child slot exactly as for an ordinary brick leaf; this
+    // only changes how contourPointer/contourMask are interpreted downstream.
+    void setTierCrossing(uint32_t tierRefIndex, uint8_t childRootScaleHint) {
+        farBit = 1;
+        contourPointer = tierRefIndex & 0xFFFFFFu;
+        contourMask = childRootScaleHint;
+    }
 };
 
 static_assert(sizeof(ChildDescriptor) == 8, "ChildDescriptor must be 64 bits");

@@ -325,11 +325,13 @@ inline ConcatenatedOctrees ConcatenateSdfWithMips(const std::vector<const SdfBod
     cat.configs.resize(octrees.size());
     cat.nodeCounts.resize(octrees.size());
     cat.brickCounts.resize(octrees.size());
+    cat.tierRefCounts.resize(octrees.size());
 
     uint32_t nodeBase    = 0;
     uint32_t brickBase   = 0;
     uint32_t poolBase    = 0;
     uint32_t mipPoolBase = 0;
+    uint32_t tierRefBase = 0;  // Inc2 M1 Task 2 — mirrors mipPoolBase's bookkeeping
 
     for (size_t k = 0; k < octrees.size(); ++k) {
         if (octrees[k] == nullptr) {
@@ -345,10 +347,12 @@ inline ConcatenatedOctrees ConcatenateSdfWithMips(const std::vector<const SdfBod
         s.config.brickArrayBase = static_cast<int32_t>(brickBase);
         setSdfBrickArrayBase(s.config, poolBase);
         setMipPoolBase(s.config, mipPoolBase);
+        setTierRefTableBase(s.config, tierRefBase);
 
         cat.configs[k]     = s.config;
         cat.nodeCounts[k]  = s.nodeCount;
         cat.brickCounts[k] = s.brickCount;
+        cat.tierRefCounts[k] = static_cast<uint32_t>(s.tierRefs.size());
 
         cat.nodes.insert(cat.nodes.end(),   s.nodes.begin(),   s.nodes.end());
         cat.bricks.insert(cat.bricks.end(), s.bricks.begin(),  s.bricks.end());
@@ -357,6 +361,7 @@ inline ConcatenatedOctrees ConcatenateSdfWithMips(const std::vector<const SdfBod
         cat.brickGridLookup.insert(cat.brickGridLookup.end(),
                                    s.brickGridLookup.begin(), s.brickGridLookup.end());
         cat.mipPool.insert(cat.mipPool.end(), s.mipPool.begin(), s.mipPool.end());
+        cat.tierRefTable.insert(cat.tierRefTable.end(), s.tierRefs.begin(), s.tierRefs.end());
 
         if (cat.materials.empty()) {
             cat.materials = std::move(s.materials);
@@ -366,6 +371,7 @@ inline ConcatenatedOctrees ConcatenateSdfWithMips(const std::vector<const SdfBod
         brickBase += s.brickCount;
         poolBase  += s.brickCount * s.brickStrideFloats;
         mipPoolBase += s.nodeCount * s.channelCount;
+        tierRefBase += static_cast<uint32_t>(s.tierRefs.size());
     }
 
     return cat;

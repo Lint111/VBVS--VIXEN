@@ -88,6 +88,20 @@ void CameraNode::SetupImpl(TypedSetupContext& ctx) {
     orbitCenter.z = GetParameterValue<float>(CameraNodeConfig::PARAM_ORBIT_CENTER_Z, 5.0f);
     orbitDistance = GetParameterValue<float>(CameraNodeConfig::PARAM_ORBIT_DISTANCE, 30.0f);
 
+    // Bodies-0 root-cause fix: a consumer that explicitly configures ANY orbit param (e.g.
+    // EditorApplication::BuildRenderGraph, which sets all four to frame its own document) is
+    // declaring orbit-mode intent up front -- treat that the same as a live orbit interaction
+    // so its camera orbits from frame 1 as it always has. A consumer that only sets the fixed
+    // PARAM_CAMERA_* pose (e.g. the main app's body-render scenes) leaves these untouched and
+    // gets the fixed pose at rest instead of silently inheriting the stale Cornell-box orbit
+    // defaults above (root cause of the bodies-0 bug -- see EngageOrbit/UpdateCameraData).
+    if (GetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_X) ||
+        GetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_Y) ||
+        GetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_Z) ||
+        GetParameter(CameraNodeConfig::PARAM_ORBIT_DISTANCE)) {
+        orbitActive_ = true;
+    }
+
     NODE_LOG_INFO("Camera position: (" + std::to_string(cameraPosition.x) + ", " +
                   std::to_string(cameraPosition.y) + ", " + std::to_string(cameraPosition.z) +
                   "), yaw=" + std::to_string(yaw) + ", pitch=" + std::to_string(pitch));
@@ -198,13 +212,17 @@ void CameraNode::ExecuteImpl(TypedExecuteContext& ctx) {
         }
 
         if (orbitEngaged) {
+            EngageOrbit();
             rotationDelta.x += inputState->mouseDelta.x;
             rotationDelta.y += inputState->mouseDelta.y;
         }
 
         // Wheel zoom: fold scroll into orbit distance, reusing ApplyMovement's W/S clamp
-        // (kOrbitDistanceMin/Max) so both paths agree on the world-bounds ceiling.
+        // (kOrbitDistanceMin/Max) so both paths agree on the world-bounds ceiling. A wheel
+        // event is itself an orbit interaction (zooming only means something once the camera
+        // is orbiting), so it engages orbit too, independent of the drag gate above.
         if (inputState->wheelZoom && inputState->wheelDelta.y != 0.0f) {
+            EngageOrbit();
             orbitDistance -= inputState->wheelDelta.y * inputState->wheelZoomSpeed;
             orbitDistance = glm::clamp(orbitDistance, kOrbitDistanceMin, kOrbitDistanceMax);
         }
@@ -258,23 +276,41 @@ void CameraNode::UpdateCameraData(float aspectRatio) {
     // This flips the projection to match OpenGL conventions used in our shaders
     projection[1][1] *= -1.0f;
 
-    // ORBIT MODE: Camera orbits around orbitCenter
-    // yaw/pitch control the orbit angle, camera looks at orbitCenter
-    // Camera position is computed from orbit parameters
-    glm::vec3 orbitOffset;
-    orbitOffset.x = orbitDistance * cos(pitch) * sin(yaw);
-    orbitOffset.y = orbitDistance * sin(pitch);
-    orbitOffset.z = orbitDistance * cos(pitch) * cos(yaw);
+    // Bodies-0 root-cause fix: the configured PARAM_CAMERA_* pose (cameraPosition, set in
+    // Setup/CompileImpl) is authoritative at rest. Only recompute position from orbit
+    // parameters once orbit has actually been engaged this session (EngageOrbit latches
+    // orbitActive_ — see its call sites in ExecuteImpl/ApplyMovement/the two ForTest
+    // setters). Before that, keep the fixed cameraPosition and derive forward the same
+    // way CompileImpl does (from yaw/pitch), so arrow-key look-rotation still works
+    // without silently teleporting the camera to orbitCenter+orbitDistance.
+    glm::vec3 forward;
+    glm::vec3 lookTarget;
+    if (orbitActive_) {
+        // ORBIT MODE: Camera orbits around orbitCenter
+        // yaw/pitch control the orbit angle, camera looks at orbitCenter
+        // Camera position is computed from orbit parameters
+        glm::vec3 orbitOffset;
+        orbitOffset.x = orbitDistance * cos(pitch) * sin(yaw);
+        orbitOffset.y = orbitDistance * sin(pitch);
+        orbitOffset.z = orbitDistance * cos(pitch) * cos(yaw);
 
-    cameraPosition = orbitCenter + orbitOffset;
-
-    // Forward direction points toward orbit center
-    glm::vec3 forward = glm::normalize(orbitCenter - cameraPosition);
+        cameraPosition = orbitCenter + orbitOffset;
+        forward = glm::normalize(orbitCenter - cameraPosition);
+        lookTarget = orbitCenter;
+    } else {
+        // FIXED MODE: cameraPosition stays at its configured value; forward is derived
+        // from yaw/pitch directly (mirrors CompileImpl's initial-frame formula).
+        forward.x = cos(pitch) * sin(yaw);
+        forward.y = sin(pitch);
+        forward.z = -cos(pitch) * cos(yaw);
+        forward = glm::normalize(forward);
+        lookTarget = cameraPosition + forward;
+    }
 
     glm::vec3 right = glm::normalize(glm::cross(forward, glm::vec3(0.0f, 1.0f, 0.0f)));
     glm::vec3 up = glm::normalize(glm::cross(right, forward));
 
-    glm::mat4 view = glm::lookAt(cameraPosition, orbitCenter, glm::vec3(0.0f, 1.0f, 0.0f));
+    glm::mat4 view = glm::lookAt(cameraPosition, lookTarget, glm::vec3(0.0f, 1.0f, 0.0f));
 
     // Update camera data struct
     // MUST match shader PushConstants layout in VoxelRayMarch.comp!
@@ -306,6 +342,29 @@ void CameraNode::CleanupImpl(TypedCleanupContext& ctx) {
 
     // No resources to cleanup since we're outputting a struct now
     // Camera state is maintained internally for next setup
+}
+
+void CameraNode::EngageOrbit() {
+    if (orbitActive_) {
+        return;  // already engaged this session — idempotent, no re-seed on every frame
+    }
+    orbitActive_ = true;
+
+    // Re-seed orbitDistance/yaw/pitch from the CURRENT fixed cameraPosition relative to
+    // orbitCenter, inverting UpdateCameraData's orbitOffset formula, so the very first
+    // orbit-active frame reproduces the same cameraPosition the fixed pose just had — no
+    // teleport to the stale default orbit pose (orbitCenter=(5,5,5), orbitDistance=30,
+    // left over from the Cornell-box demo). orbitCenter itself is the pivot and can't be
+    // derived from position alone; it keeps whatever was configured/moved via WASD/QE.
+    const glm::vec3 offset = cameraPosition - orbitCenter;
+    const float distance = glm::length(offset);
+    if (distance > 1e-4f) {
+        orbitDistance = glm::clamp(distance, kOrbitDistanceMin, kOrbitDistanceMax);
+        pitch = asin(glm::clamp(offset.y / distance, -1.0f, 1.0f));
+        yaw   = atan2(offset.x, offset.z);
+    }
+    // else: camera already sits at orbitCenter — keep whatever yaw/pitch/orbitDistance the
+    // node already had (a zero-length offset has no meaningful direction to invert).
 }
 
 // ============================================================================
@@ -344,6 +403,10 @@ void CameraNode::ApplyMovement(float deltaTime) {
         movementDelta = glm::vec3(0.0f);
         return;
     }
+
+    // This whole method is orbit-specific (zoom via orbitDistance, pan via orbitCenter) —
+    // a WASD/QE press is itself an orbit interaction, same as wheel zoom above.
+    EngageOrbit();
 
     // ORBIT MODE:
     // W/S: Zoom in/out (change orbit distance)

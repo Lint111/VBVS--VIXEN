@@ -272,6 +272,11 @@ private:
     // (a tree that was never mip-baked — ConcatenateSdf's plain, non-mip sibling).
     VkBuffer       mipPoolBuffer_        = VK_NULL_HANDLE;
     VkDeviceMemory mipPoolMemory_        = VK_NULL_HANDLE;
+    // Tiered-ESVO Inc2 M3: tier-crossing reference table buffer (shader binding 15).
+    // Created with a 1-byte placeholder when concatenated_.tierRefTable is empty
+    // (the common case — no tree in the scene has any tier-crossing leaves).
+    VkBuffer       tierRefTableBuffer_   = VK_NULL_HANDLE;
+    VkDeviceMemory tierRefTableMemory_   = VK_NULL_HANDLE;
 
     // --- Surface-Shell ESVO cache GPU buffers (double-buffered by DISTINCT object
     //     identity). Render reads slot [N&1] (last committed); the ShellRevalidate

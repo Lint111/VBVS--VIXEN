@@ -142,6 +142,72 @@ endif()
 gtest_discover_tests(test_soa_mip_serialize)
 
 # ===========================================================================
+# TierRefTable Tests  (Tiered ESVO Inc2 M1 Tasks 2-3 — TierRefTable
+# concatenation bookkeeping on ConcatenatedOctrees + OctreeConfig's new
+# tierRefTableBase field, mirroring test_soa_mip_serialize's mipPool pattern)
+# ===========================================================================
+add_executable(test_tier_ref_table test_tier_ref_table.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_tier_ref_table PRIVATE
+        GTest::gtest_main SVO GaiaVoxelWorld VoxelComponents VoxelData)
+else()
+    target_link_libraries(test_tier_ref_table PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_tier_ref_table PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_tier_ref_table POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_tier_ref_table>
+        COMMENT "Copying TBB DLL for test_tier_ref_table")
+endif()
+gtest_discover_tests(test_tier_ref_table)
+
+# ===========================================================================
+# Tier-Crossing Construction Tests  (Tiered ESVO Inc2 M2 Tasks 4-5 —
+# MarkLeafAsTierCrossing's farBit=1 construction path + the two-tree
+# hand-authored round-trip fixture proving a marked leaf's TierRef resolves
+# to the child tree's real ConcatenatedOctrees slot)
+# ===========================================================================
+add_executable(test_tier_crossing_construction test_tier_crossing_construction.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_tier_crossing_construction PRIVATE
+        GTest::gtest_main SVO GaiaVoxelWorld VoxelComponents VoxelData)
+else()
+    target_link_libraries(test_tier_crossing_construction PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_tier_crossing_construction PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_tier_crossing_construction POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_tier_crossing_construction>
+        COMMENT "Copying TBB DLL for test_tier_crossing_construction")
+endif()
+gtest_discover_tests(test_tier_crossing_construction)
+
+# ===========================================================================
+# Tier-Crossing Mirror Parity Tests  (Tiered ESVO Inc2 M4 Task 10 sync — a
+# cheap win flagged by the M3 Opus validator addendum: no automated parity
+# test previously exercised GpuTraversalMirror's crossing-restart path at
+# all. Proves the mirror's own castRay()/RegisterTierCrossingChild composes
+# correctly with a resident vs. non-resident child config.)
+# ===========================================================================
+add_executable(test_tier_crossing_mirror_parity test_tier_crossing_mirror_parity.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_tier_crossing_mirror_parity PRIVATE
+        GTest::gtest_main SVO GaiaVoxelWorld VoxelComponents VoxelData)
+else()
+    target_link_libraries(test_tier_crossing_mirror_parity PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_tier_crossing_mirror_parity PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_tier_crossing_mirror_parity POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_tier_crossing_mirror_parity>
+        COMMENT "Copying TBB DLL for test_tier_crossing_mirror_parity")
+endif()
+gtest_discover_tests(test_tier_crossing_mirror_parity)
+
+# ===========================================================================
 # Stored-SDF March Mirror Tests  (gpu-shader-debug — CPU mirror of StoredSdf.glsl
 # marchBrickSdf + BodyInstanceRayMarch.comp handleLeafHitInstancedSdf, reproducing
 # the GPU's brick-aligned holes on the CPU for root-cause debugging)
@@ -302,6 +368,27 @@ if(TARGET TBB::tbb)
         COMMENT "Copying TBB DLL for test_tier_math")
 endif()
 gtest_discover_tests(test_tier_math)
+
+# ===========================================================================
+# TierRef Tests  (Tiered ESVO Inc2 M1 Task 1 — pure data/layout, no
+# octree/GPU needed: field round-trip + std430-safe byte layout proof for the
+# tier-crossing-leaf indirect payload)
+# ===========================================================================
+add_executable(test_tier_ref test_tier_ref.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_tier_ref PRIVATE
+        GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_tier_ref PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_tier_ref PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_tier_ref POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_tier_ref>
+        COMMENT "Copying TBB DLL for test_tier_ref")
+endif()
+gtest_discover_tests(test_tier_ref)
 
 # ===========================================================================
 # Tier Direction Tests  (Tiered ESVO Inc1 M2 Task 3 — pure math, no

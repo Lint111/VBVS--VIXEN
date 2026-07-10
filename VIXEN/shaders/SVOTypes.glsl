@@ -78,6 +78,26 @@ uint getBrickFlags(uvec2 descriptor) {
 }
 
 // ============================================================================
+// TIER-CROSSING LEAF INTERPRETATION (Tiered-ESVO Inc2 M2/M3)
+// ============================================================================
+// A THIRD interpretation of the same descriptor.y field pair, selected by
+// farBit (SVOTypes.h ChildDescriptor::isTierCrossing/getTierRefIndex/
+// getChildRootScaleHint — mirror those exactly). farBit==0 means "brick mode"
+// (unchanged, see above); farBit==1 on a LEAF means "tier-crossing": bits 0-23
+// of descriptor.y are an index into this tree's own slice of the concatenated
+// TierRefTable (offset by OctreeConfig.tierRefTableBase), and bits 24-31 carry
+// the child tree's own root ESVO scale hint (0-22). Callers MUST check
+// getFarBit(descriptor) before choosing this interpretation vs. the brick-mode
+// one above — same bits, mutually exclusive readings.
+uint getTierRefIndex(uvec2 descriptor) {
+    return descriptor.y & 0xFFFFFFu;  // bits 0-23 (same field as contourPointer/brickIndex)
+}
+
+uint getChildRootScaleHint(uvec2 descriptor) {
+    return (descriptor.y >> 24) & 0xFFu;  // bits 24-31 (same field as contourMask/brickFlags)
+}
+
+// ============================================================================
 // CHILD VALIDITY HELPERS
 // ============================================================================
 
