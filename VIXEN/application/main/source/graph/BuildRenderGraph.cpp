@@ -675,12 +675,34 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 // SAME [1,2) cell the marked leaf itself occupies (a clean, well-
                 // conditioned "known" placement for the hand-computed screen-position
                 // cross-check below).
+                // Tiered-ESVO Inc3 M2 Task 4: VIXEN_TIER_CROSSING_SCALE_DEMO exercises a genuinely
+                // non-unity TierRef::childScale (default 0.25 if set with no value, or the parsed
+                // float value) instead of the M3/Inc2 baseline's childScale=1.0 -- the ONLY variable
+                // changed vs. the childScale==1.0 fixture above (same childOriginLocal, same leaf,
+                // same magenta child, same camera), per the plan's "vary ONLY X" discipline. childScale
+                // is a raw linear multiplier on the child's [1,2) unit cube in parent-local space
+                // (remapRayIntoChildFrame: childLocalOrigin=(parentLocalOrigin-childOrigin)*invScale+1.5),
+                // NOT pre-scaled by the marked leaf's own octant fraction -- so at childScale=1.0 the
+                // child fills the ENTIRE parent [1,2) cube (same footprint as the parent body itself,
+                // world edge 48 = 10*renderScale), and at childScale=0.25 it fills a cube 1/4 the linear
+                // size (world edge 12), centered at the same world point (64,64,64) since
+                // childOriginLocal is unchanged.
+                float childScale = 1.0f;
+                if (const char* scaleEnv = std::getenv("VIXEN_TIER_CROSSING_SCALE_DEMO")) {
+                    childScale = (scaleEnv[0] != '\0') ? std::strtof(scaleEnv, nullptr) : 0.25f;
+                    if (!(childScale > 0.0f)) {
+                        childScale = 0.25f;  // guard against a garbage/zero env value
+                    }
+                    mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_CROSSING_SCALE_DEMO: childScale="
+                                  + std::to_string(childScale));
+                }
+
                 Vixen::SVO::TierRef ref{};
                 ref.childOctreeIndex = 1u;  // child will be concatenated at slot 1
                 ref.childOriginLocal[0] = 1.5f;
                 ref.childOriginLocal[1] = 1.5f;
                 ref.childOriginLocal[2] = 1.5f;
-                ref.childScale = 1.0f;
+                ref.childScale = childScale;
                 constexpr uint8_t kChildRootScaleHint = 22;  // child's own root ESVO scale
 
                 Vixen::SVO::MarkLeafAsTierCrossing(parentSer, markParentDescIdx, markOctant, ref, kChildRootScaleHint);
