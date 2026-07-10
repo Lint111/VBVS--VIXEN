@@ -123,7 +123,19 @@ private:
     // exactly at the orbit center — small enough to zoom arbitrarily close to fine surface
     // detail (e.g. inspecting a sub-voxel artifact), which the old 5.0 floor (tuned for the
     // main app's 10-unit Cornell-box demo scene) prevented for the editor's smaller objects.
-    static constexpr float kOrbitDistanceMin = 0.1f;
+    // Tiered-ESVO Inc3 M4: kOrbitDistanceMin widened from 0.1 to 1e-6 for the
+    // Earth-scale surface-to-orbit demo (VIXEN_TIER_EARTH_DEMO/VIXEN_TIER_EARTH_ZOOM_DEMO).
+    // That demo's T2 (bedrock) tier has a world-unit diameter of ~4.6e-5 (48 world units *
+    // (2^-10)^2 across both magnified hops -- see BuildRenderGraph.cpp's own derivation
+    // comment) -- the OLD 0.1 floor was ~2200x TOO COARSE to frame T2-scale detail in orbit
+    // at all (every reachable orbitDistance would already be many T2-diameters away). This
+    // is the opposite widening from what the plan anticipated (it expected the MAX bound to
+    // need raising for a literal Earth-diameter-in-world-units mapping); this construction
+    // instead keeps T0's own world-unit diameter unchanged (48, matching every existing
+    // demo body) and lets the CHAINED MAGNIFICATION do the scale work, so it is the NEAR
+    // bound that turns out to be the actual constraint. kOrbitDistanceMax is UNCHANGED
+    // (120 already comfortably frames a full 48-unit-diameter T0 orbit view).
+    static constexpr float kOrbitDistanceMin = 1e-6f;
     static constexpr float kOrbitDistanceMax = 120.0f;
 
     // Accumulated input deltas (cleared after applying)
