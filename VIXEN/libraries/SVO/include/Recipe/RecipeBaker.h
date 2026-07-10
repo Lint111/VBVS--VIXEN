@@ -28,7 +28,7 @@ struct RecipeBakeConfig {
     float     defaultBand       = 2.5f;
     uint32_t  defaultBrickDepth = 3;
     // 0 = unbounded.  >0 = hard budget in bytes:
-    //   sum of (nodes + bricks + channelPool) bytes across all baked octrees.
+    //   sum of (nodes + bricks + channelPool + mipPool) bytes across all baked octrees.
     uint64_t  byteBudget        = 0;
 };
 
