@@ -32,6 +32,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   scale-magnified tiers deferred with documented prerequisites (per-child-scale hitT normalization,
   LOD-gate generalization). See `Vixen-Docs/01-Architecture/Tiered-ESVO-{Observer-Addressing-Design,
   Inc2-Plan}-2026-07.md`.
+- **Sampled Lighting, Inc1 (shadow rays)** — the ESVO march is now factored into a shared
+  `TraceWorld`/`TraceWorldShadow` shader seam (`shaders/TraceWorld.glsl`), the primary pass writes a
+  per-pixel `HitRecord` (albedo/normal/roughness/hitT/worldPos, SSBO@binding-17), and shading casts a
+  real shadow ray per light through `TraceWorldShadow`, gated by a drift-guarded `ShadowConfig`
+  `[GpuStruct]` (`enabled`/`raysPerLight`/`maxShadowDistance`/`biasEpsilon`, SSBO@binding-18) — the
+  world now occludes its own light for the first time. `ShadowConfig.enabled=0` reproduces the
+  pre-shadow render byte-identically, an A/B lever for future regression checks. Measured shadow-ray
+  cost through the ESVO traversal: ~240 ns/ray (1080p, real GPU; method and caveats in
+  `gate-artifacts/inc1-m5-shadowray-cost.txt`) — the first empirical number future ray-budget
+  decisions (ReSTIR ray count, DDGI probe budget, the frame-time split) will be sized from. The
+  direct-lighting shading currently runs inline in the march pass rather than as the separate
+  `DirectLighting.comp` pass the design describes (`ComputeStageNode`'s 3-hazard-slot cap; tracked as
+  a prerequisite for Inc3 ReSTIR, see Known Issues KI-018). See
+  `Vixen-Docs/01-Architecture/Sampled-Lighting-{Design,Inc1-Plan}-2026-07.md`.
 
 ### Fixed
 - **CameraNode silently overriding every scene's configured camera** — `ExecuteImpl` recomputed the
