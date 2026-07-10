@@ -15,8 +15,11 @@
  * march), and an existing binary-shell-octree scene (no mip pool, no residency call —
  * BodyOctreeSceneNode's post-M3 default) must render identically to pre-Inc1.
  *
- * DEVICE SELECTION: mirrors test_recipe_pool_render.cpp — VixenSelectWslGpuIcd() picks
- * Dozen on WSL2 when provisioned, else lavapipe; only those two devices are accepted.
+ * DEVICE SELECTION: prefers a real discrete/integrated GPU; falls back to software
+ * (lavapipe/llvmpipe) or Dozen only when no real GPU is present. Per the Windows-side
+ * real-GPU test policy, a real GPU is ACCEPTED, not rejected — the earlier
+ * software/Dozen-only gate was a lavapipe-era artifact that made this test unable to
+ * run at all on real hardware.
  *
  * Run: ./test_mip_fallback_render
  *   Output: /tmp/mip_fallback_render.png (mip-only), /tmp/mip_fallback_resident.png (resident).
@@ -127,11 +130,19 @@ protected:
     VkQueue          queue_          = VK_NULL_HANDLE;
     VkCommandPool    commandPool_    = VK_NULL_HANDLE;
     uint32_t         queueFamily_    = 0;
-    bool             softwareConfirmed_ = false;
+    bool             deviceConfirmed_ = false;
     std::string      selectedDeviceName_;
     std::unique_ptr<VulkanDevice> deviceShell_;
 
-    static bool LooksLikeSoftware(const VkPhysicalDeviceProperties& p) {
+    // Real discrete/integrated GPUs are preferred; software (lavapipe/llvmpipe) and
+    // Dozen (WSL2's Vulkan-over-D3D12 shim) are accepted as a fallback when no real
+    // GPU is visible, but never preferred over one.
+    static bool IsRealGpu(const VkPhysicalDeviceProperties& p) {
+        return p.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU ||
+               p.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU;
+    }
+
+    static bool LooksLikeSoftwareOrDozen(const VkPhysicalDeviceProperties& p) {
         std::string n(p.deviceName); for (char& c : n) c = char(::tolower(c));
         const bool isSoftware =
             (n.find("llvmpipe") != std::string::npos ||
@@ -152,8 +163,8 @@ protected:
         ci.enabledLayerCount = uint32_t(layers.size()); ci.ppEnabledLayerNames = layers.empty() ? nullptr : layers.data();
         ci.enabledExtensionCount = 1; ci.ppEnabledExtensionNames = exts;
         ASSERT_EQ(vkCreateInstance(&ci, nullptr, &instance_), VK_SUCCESS);
-        ASSERT_NO_FATAL_FAILURE(PickSoftwareDevice());
-        ASSERT_TRUE(softwareConfirmed_);
+        ASSERT_NO_FATAL_FAILURE(PickUsableDevice());
+        ASSERT_TRUE(deviceConfirmed_);
         ASSERT_NO_FATAL_FAILURE(CreateLogicalDevice());
         ASSERT_NO_FATAL_FAILURE(CreateCmdPool());
         deviceShell_ = std::make_unique<VulkanDevice>(&physicalDevice_);
@@ -167,14 +178,22 @@ protected:
         if (instance_     != VK_NULL_HANDLE) vkDestroyInstance(instance_, nullptr);
     }
 
-    void PickSoftwareDevice() {
+    // Prefers a real discrete/integrated GPU; falls back to software/Dozen only if no
+    // real GPU is visible. Either way some usable device is required — an unrecognized
+    // device type still leaves deviceConfirmed_ false, matching the prior hard gate's
+    // "must actually pick something" contract.
+    void PickUsableDevice() {
         uint32_t cnt = 0; ASSERT_EQ(vkEnumeratePhysicalDevices(instance_, &cnt, nullptr), VK_SUCCESS);
         ASSERT_GT(cnt, 0u) << "No Vulkan devices visible.";
         std::vector<VkPhysicalDevice> devs(cnt);
         ASSERT_EQ(vkEnumeratePhysicalDevices(instance_, &cnt, devs.data()), VK_SUCCESS);
         for (auto dev : devs) {
             VkPhysicalDeviceProperties p{}; vkGetPhysicalDeviceProperties(dev, &p);
-            if (LooksLikeSoftware(p)) { physicalDevice_ = dev; selectedDeviceName_ = p.deviceName; softwareConfirmed_ = true; return; }
+            if (IsRealGpu(p)) { physicalDevice_ = dev; selectedDeviceName_ = p.deviceName; deviceConfirmed_ = true; return; }
+        }
+        for (auto dev : devs) {
+            VkPhysicalDeviceProperties p{}; vkGetPhysicalDeviceProperties(dev, &p);
+            if (LooksLikeSoftwareOrDozen(p)) { physicalDevice_ = dev; selectedDeviceName_ = p.deviceName; deviceConfirmed_ = true; return; }
         }
         VkPhysicalDeviceProperties p{}; vkGetPhysicalDeviceProperties(devs[0], &p);
         selectedDeviceName_ = p.deviceName;
@@ -259,7 +278,7 @@ protected:
                       VkBuffer inst, VkBuffer sdf, VkBuffer lookup, VkBuffer mip,
                       const PushConstants& pc, uint32_t w, uint32_t h,
                       std::vector<uint8_t>& rgba, double& ms) {
-        ASSERT_TRUE(softwareConfirmed_);
+        ASSERT_TRUE(deviceConfirmed_);
         VkBuffer traceBuf=VK_NULL_HANDLE, ctrBuf=VK_NULL_HANDLE;
         VkDeviceMemory traceMem=VK_NULL_HANDLE, ctrMem=VK_NULL_HANDLE;
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, traceBuf, traceMem, true);
@@ -398,7 +417,7 @@ protected:
         ASSERT_EQ(vkEndCommandBuffer(cmd), VK_SUCCESS);
 
         VkSubmitInfo si{}; si.sType=VK_STRUCTURE_TYPE_SUBMIT_INFO; si.commandBufferCount=1; si.pCommandBuffers=&cmd;
-        ASSERT_TRUE(softwareConfirmed_);
+        ASSERT_TRUE(deviceConfirmed_);
         const auto t0 = std::chrono::steady_clock::now();
         ASSERT_EQ(vkQueueSubmit(queue_,1,&si,VK_NULL_HANDLE), VK_SUCCESS);
         ASSERT_EQ(vkQueueWaitIdle(queue_), VK_SUCCESS);
@@ -706,8 +725,8 @@ protected:
 // "some pixels are lit" (the Inc2 M6 precedent this Plan's Task 9 cites).
 // ---------------------------------------------------------------------------
 TEST_F(MipFallbackRenderTest, MipOnlyTreeRendersRoundSilhouette) {
-    std::printf("[ lavapipe ] %s\n", selectedDeviceName_.c_str());
-    ASSERT_TRUE(softwareConfirmed_);
+    std::printf("[ device ] %s\n", selectedDeviceName_.c_str());
+    ASSERT_TRUE(deviceConfirmed_);
 
     RenderStats stats;
     ASSERT_NO_FATAL_FAILURE(
@@ -734,7 +753,7 @@ TEST_F(MipFallbackRenderTest, MipOnlyTreeRendersRoundSilhouette) {
 // suppress the real march path when bricks ARE resident.
 // ---------------------------------------------------------------------------
 TEST_F(MipFallbackRenderTest, ResidentTreeRendersComparableSilhouette) {
-    ASSERT_TRUE(softwareConfirmed_);
+    ASSERT_TRUE(deviceConfirmed_);
 
     RenderStats mipOnly, resident;
     ASSERT_NO_FATAL_FAILURE(
@@ -771,7 +790,7 @@ TEST_F(MipFallbackRenderTest, ResidentTreeRendersComparableSilhouette) {
 // not just ConcatenateSdfWithMips in isolation.
 // ---------------------------------------------------------------------------
 TEST_F(MipFallbackRenderTest, RegistryBakedPoolRendersMipFallback) {
-    ASSERT_TRUE(softwareConfirmed_);
+    ASSERT_TRUE(deviceConfirmed_);
 
     Vixen::SVO::RecipeRegistry reg;
     Vixen::SVO::RecipeRegistry::RecipeEntry sphere{};
@@ -812,7 +831,7 @@ TEST_F(MipFallbackRenderTest, RegistryBakedPoolRendersMipFallback) {
 // that would have broken.
 // ---------------------------------------------------------------------------
 TEST_F(MipFallbackRenderTest, MultiOctreeSecondBodyRendersCorrectlyAfterResidencyGrant) {
-    ASSERT_TRUE(softwareConfirmed_);
+    ASSERT_TRUE(deviceConfirmed_);
 
     RenderStats before, after;
     ASSERT_NO_FATAL_FAILURE(RenderMultiOctreePostGrantAndMeasure(
