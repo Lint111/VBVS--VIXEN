@@ -20,6 +20,10 @@ DispatchResult FlowStateMachine::Request(FlowStateId to) {
     for (const auto& t : transitions_) {
         if (t.from == current_ && t.to == to) {
             if (GuardPasses(t.guard)) {
+                history_.push_back(current_);
+                if (history_.size() > kHistoryCap) {
+                    history_.erase(history_.begin());   // bounded: drop oldest
+                }
                 current_ = to;
                 return DispatchResult::Ok;
             }
@@ -27,6 +31,15 @@ DispatchResult FlowStateMachine::Request(FlowStateId to) {
         }
     }
     return DispatchResult::RejectedByState;
+}
+
+DispatchResult FlowStateMachine::RequestReturn() {
+    if (history_.empty()) {
+        return DispatchResult::RejectedByState;   // logged no-op, never underflow
+    }
+    current_ = history_.back();
+    history_.pop_back();
+    return DispatchResult::Ok;
 }
 
 } // namespace Vixen::AppFlow

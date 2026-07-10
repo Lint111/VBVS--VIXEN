@@ -26,15 +26,25 @@ public:
 
     // Finds a (current_, to) transition via linear scan of the loaded table.
     // No match → RejectedByState. Match with a failing guard → GuardFailed.
-    // Match with a passing (or unset) guard → mutates current_ and returns Ok.
+    // Match with a passing (or unset) guard → mutates current_ and returns Ok, pushing the
+    // state being left onto the entry-history stack (see RequestReturn).
     DispatchResult Request(FlowStateId to);
+
+    // Pops the entry-history stack and transitions back to the popped state (design §D6 —
+    // navigation "Return", distinct from ActionStack::Undo's data revert). Empty history is a
+    // logged no-op (RejectedByState), never an underflow. Does NOT push onto history itself —
+    // a return is not a forward nav.
+    DispatchResult RequestReturn();
 
 private:
     bool GuardPasses(FlowGuardId g) const;
 
+    static constexpr size_t kHistoryCap = 16;
+
     std::vector<AppFlowTransition> transitions_;
     FlowStateId current_{};
     std::unordered_map<uint16_t, bool> guardResults_;
+    std::vector<FlowStateId> history_;   // bounded, drop-oldest
 };
 
 } // namespace Vixen::AppFlow
