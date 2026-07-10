@@ -169,6 +169,15 @@ protected:
     bool IsShutdownRequested() const override { return shutdownRequested; }
     bool IsDeviceLostState()   const override { return renderGraph && renderGraph->IsDeviceLost(); }
 
+    // Editor Brick-Residency Fix (2026-07): lets a subclass opt its body OUT of the
+    // per-frame frustum/resolvability heuristic below (VIXEN_TIER_ZOOM_DEMO's own env-knob
+    // early-return is the established precedent for "one subsystem takes deliberate, exclusive
+    // control of residency"; this generalizes that to a host, not a demo flag). EditorApplication
+    // overrides this to true: its single document body is unconditionally resident (see
+    // ApplyDocumentToScene), and a static editor camera would otherwise never satisfy the
+    // orbit-tuned heuristic, silently stomping the grant back to false every tick.
+    virtual bool SkipResidencyHeuristic() const { return false; }
+
     /**
      * @brief Sparse-Mip ESVO LOD Inc1 M4c: re-evaluate the brick-residency trigger against
      *        the live camera state and re-sort instances front-to-back for the GPU per-ray
@@ -280,6 +289,13 @@ public:
     // null-guard; a host that owns document/recipe authoring (e.g. vixen_editor) uses this to
     // swap the render source without hand-rolling a NodeTypeRegistry lookup.
     void SetRecipePool(Vixen::SVO::ConcatenatedOctrees pool);
+    // Editor Brick-Residency Fix: forwards to BodyOctreeSceneNode::RequestBrickResidency (stash-only,
+    // dirty-flag pattern -- safe to call any time, including right after SetRecipePool/SetBodyInstances;
+    // ExecuteImpl performs the actual upload next frame). Mirrors SetRecipePool's passthrough above --
+    // same live GetInstance lookup, same null-guard. A host that needs its body unconditionally
+    // resident (e.g. vixen_editor's single always-in-view document body) calls this instead of
+    // relying on UpdateBodySceneResidency's camera-driven heuristic.
+    void RequestBodyBrickResidency(bool resident);
     // Host-facing HUD push: forwards into the app-owned HudView (hudView_, wired onto the composite
     // UI node in BuildRenderGraph via WireHudView). Replaces the pre-Inc-2 host call
     // UIRenderNode::SetHudView — the projection now lives on HudView, which this app owns, so hosts

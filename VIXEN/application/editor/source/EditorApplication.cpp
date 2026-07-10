@@ -279,6 +279,16 @@ bool EditorApplication::ApplyDocumentToScene() {
     inst.octreeIndex = 0u;
     SetBodyInstances({inst});
 
+    // Editor Brick-Residency Fix: the document body is the ONE object being directly edited and
+    // is always in view — grant brick residency unconditionally rather than relying on the main
+    // app's camera-motion/frustum heuristic (SkipResidencyHeuristic() above opts this body out of
+    // that heuristic entirely, so this is the sole residency driver). RequestBrickResidency only
+    // stashes a dirty-flag (BodyOctreeSceneNode::RequestBrickResidency) — safe to call here even
+    // though SetRecipePool just above already marked the node's recipe dirty for re-materialize;
+    // ExecuteImpl re-lands both on the next Execute. Called every ApplyDocumentToScene, i.e. after
+    // every edit (see Update()'s dirty_ tail), so residency re-lands after each Rematerialize too.
+    RequestBodyBrickResidency(true);
+
     return true;
 }
 

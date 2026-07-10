@@ -876,6 +876,19 @@ void VulkanGraphApplication::SetRecipePool(Vixen::SVO::ConcatenatedOctrees pool)
     }
 }
 
+void VulkanGraphApplication::RequestBodyBrickResidency(bool resident) {
+    // Editor Brick-Residency Fix: forward to BodyOctreeSceneNode::RequestBrickResidency (stash-only
+    // dirty-flag write; ExecuteImpl performs the actual upload next frame). Mirrors SetRecipePool
+    // above — same live GetInstance lookup, same null-guard.
+    auto* node = static_cast<Vixen::RenderGraph::BodyOctreeSceneNode*>(
+        renderGraph->GetInstance(bodyOctreeSceneNode_));
+    if (node) {
+        node->RequestBrickResidency(resident);
+    } else if (mainLogger) {
+        mainLogger->Warning("[VulkanGraphApplication::RequestBodyBrickResidency] bodyOctreeSceneNode_ not found — residency not requested");
+    }
+}
+
 void VulkanGraphApplication::PushHudView(int tick, int bodyCount, int activeLens, int activeLensCount,
                                          std::span<const Vixen::App::HudFactionIn> factions,
                                          std::span<const Vixen::App::HudEventIn> events) {
@@ -915,6 +928,15 @@ void VulkanGraphApplication::UpdateBodySceneResidency() {
     // ExecuteImpl). This mirrors VIXEN_TIER_CROSSING_NONRESIDENT/VIXEN_RESIDENCY_GATE_DEMO's own
     // precedent of a demo env knob taking deliberate, exclusive control of one subsystem.
     if (std::getenv("VIXEN_TIER_ZOOM_DEMO")) {
+        return;
+    }
+
+    // Editor Brick-Residency Fix: a host whose body residency is under its own exclusive control
+    // (vixen_editor — the one document body is unconditionally resident, see ApplyDocumentToScene)
+    // opts out here, same shape as the VIXEN_TIER_ZOOM_DEMO early-return just above. Without this,
+    // a static editor camera never satisfies the orbit-tuned frustum/resolvability heuristic below
+    // and this call would silently stomp the grant back to false every tick.
+    if (SkipResidencyHeuristic()) {
         return;
     }
 
