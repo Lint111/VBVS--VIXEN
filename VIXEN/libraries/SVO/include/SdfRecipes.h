@@ -82,7 +82,11 @@ inline TraceHit traceProcedural(uint32_t recipeId, const glm::vec3& ro, const gl
     TraceHit miss;
     if (disc < 0.0f) return miss;
     const float sq    = std::sqrt(disc);
-    const float tNear = std::max(-b - sq, 0.0f);
+    // glm::max, not std::max: avoids the windows.h max() macro collision when this header
+    // is compiled in a translation unit that transitively pulls in windows.h (e.g. via
+    // vulkan.h/GLFW in a test that also links BodyOctreeSceneNode.h) — the rest of this
+    // file already uses glm:: for its vector math, so this is consistent, not a workaround.
+    const float tNear = glm::max(-b - sq, 0.0f);
     const float tFar  = -b + sq;
     if (tFar < 0.0f) return miss;
 
