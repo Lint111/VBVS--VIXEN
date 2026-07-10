@@ -691,6 +691,19 @@ set_target_properties(test_recipe_registry PROPERTIES FOLDER "Tests/SVO Tests")
 gtest_discover_tests(test_recipe_registry)
 
 # ===========================================================================
+# Recipe Bounds Tests (Lazy-Procedural-Delta-Baseline Inc0 M5 Task 10 —
+# whitelist-restricted bound derivation + RecipeEntry bounds-metadata validation)
+# ===========================================================================
+add_executable(test_recipe_bounds test_recipe_bounds.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_recipe_bounds PRIVATE GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_recipe_bounds PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_recipe_bounds PROPERTIES FOLDER "Tests/SVO Tests")
+gtest_discover_tests(test_recipe_bounds)
+
+# ===========================================================================
 # Recipe Manifest Tests (I2.3 — RecipeManifest model + validation)
 # ===========================================================================
 add_executable(test_recipe_manifest test_recipe_manifest.cpp)
