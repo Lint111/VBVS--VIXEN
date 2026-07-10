@@ -140,28 +140,22 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
         throw std::runtime_error("[VoxelGridNode] COMMAND_POOL is null");
     }
 
-    // Create GPU performance logger using centralized GPUQueryManager from VulkanDevice
-    // Sprint 6.3 Phase 0: All nodes share the same query manager to prevent slot conflicts
-    auto* queryMgrPtr = static_cast<GPUQueryManager*>(vulkanDevice->GetQueryManager());
-    if (queryMgrPtr) {
-        // Wrap raw pointer in shared_ptr with no-op deleter (VulkanDevice owns the manager)
-        auto queryManager = std::shared_ptr<GPUQueryManager>(queryMgrPtr, [](GPUQueryManager*){});
+    // memoryLogger_ here is used ONLY for GPUPerformanceLogger's memory-tracking API
+    // (RegisterBufferAllocation/GetMemorySummary — see PrintGPUMemorySummary below), never for
+    // GPU timestamp recording: this node never calls BeginFrame/RecordDispatchStart/
+    // RecordDispatchEnd on it. Passing a real GPUQueryManager here therefore allocated a query
+    // slot that was reset/written by nobody — GPUQueryManager::AllAllocatedSlotsReset requires
+    // EVERY allocated slot to have been reset before it will read back ANY slot's results, so
+    // this dead slot permanently starved every other consumer sharing the manager (e.g.
+    // ComputeDispatchNode's raymarch timing), pinning PerfCsvWriter's esvo_traverse_shade_ms
+    // column at 0 forever. Pass nullptr instead — the constructor handles that gracefully
+    // (no slot allocated, all timing methods no-op) and the memory-tracking API is unaffected.
+    memoryLogger_ = std::make_shared<GPUPerformanceLogger>("VoxelGrid_Memory", nullptr);
+    memoryLogger_->SetEnabled(true);
+    memoryLogger_->SetTerminalOutput(false);
 
-        memoryLogger_ = std::make_shared<GPUPerformanceLogger>("VoxelGrid_Memory", queryManager);
-        memoryLogger_->SetEnabled(true);
-        memoryLogger_->SetTerminalOutput(false);
-
-        if (nodeLogger) {
-            nodeLogger->AddChild(memoryLogger_);
-        }
-
-        if (memoryLogger_->IsTimingSupported()) {
-            NODE_LOG_INFO("[VoxelGrid_Memory] GPU performance timing enabled");
-        } else {
-            NODE_LOG_WARNING("[VoxelGrid_Memory] GPU timing not supported on this device");
-        }
-    } else {
-        NODE_LOG_WARNING("[VoxelGrid_Memory] GPUQueryManager not available from VulkanDevice");
+    if (nodeLogger) {
+        nodeLogger->AddChild(memoryLogger_);
     }
 
     // Register VoxelSceneCacher with CashSystem (idempotent)
