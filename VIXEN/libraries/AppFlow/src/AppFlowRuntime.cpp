@@ -30,7 +30,7 @@ LoadResult AppFlowRuntime::Load() {
     return AppFlowLoader::Load(AppFlowContainerView{}, fsm_, stack_, bindings_, inputProfile_);
 }
 
-DispatchResult AppFlowRuntime::RequestState(FlowStateId to) {
+DispatchResult AppFlowRuntime::NavTo(FlowStateId to) {
     const DispatchResult result = fsm_.Request(to);
     if (result == DispatchResult::Ok) {
         Publish(AppFlowChangedEvent::Kind::StateChanged, fsm_.Current(), FlowActionId{}, 0);
@@ -38,32 +38,7 @@ DispatchResult AppFlowRuntime::RequestState(FlowStateId to) {
     return result;
 }
 
-DispatchResult AppFlowRuntime::DispatchAction(FlowActionId id, ActionStack::ApplyFn apply) {
-    const DispatchResult result = stack_.Dispatch(id, std::move(apply));
-    if (result == DispatchResult::Ok) {
-        Publish(AppFlowChangedEvent::Kind::ActionApplied, fsm_.Current(), id, 0);
-    }
-    return result;
-}
-
-DispatchResult AppFlowRuntime::DispatchBySelector(const std::string& selector,
-                                                   ActionStack::ApplyFn apply) {
-    BoundAction bound;
-    if (!bindings_.TryGetForSelector(selector, bound)) {
-        return DispatchResult::RejectedByState;
-    }
-    return DispatchAction(bound.action, std::move(apply));
-}
-
-DispatchResult AppFlowRuntime::DispatchByKey(Generated::KeyChord chord, ActionStack::ApplyFn apply) {
-    FlowActionId action{};
-    if (!inputProfile_.Resolve(chord, fsm_.Current(), action)) {
-        return DispatchResult::RejectedByState;
-    }
-    return DispatchAction(action, std::move(apply));
-}
-
-DispatchResult AppFlowRuntime::RequestReturn() {
+DispatchResult AppFlowRuntime::NavPop() {
     const DispatchResult result = fsm_.RequestReturn();
     if (result == DispatchResult::Ok) {
         Publish(AppFlowChangedEvent::Kind::StateChanged, fsm_.Current(), FlowActionId{}, 0);
@@ -71,33 +46,37 @@ DispatchResult AppFlowRuntime::RequestReturn() {
     return result;
 }
 
-DispatchResult AppFlowRuntime::Undo() {
-    const DispatchResult result = stack_.Undo();
-    if (result == DispatchResult::Ok) {
-        Publish(AppFlowChangedEvent::Kind::ActionUndone, fsm_.Current(), FlowActionId{}, 0);
-    }
-    return result;
+void AppFlowRuntime::RegisterHandler(FlowActionId id, Handler fn) {
+    handlers_[uint16_t(id)] = std::move(fn);
 }
 
-DispatchResult AppFlowRuntime::Redo() {
-    const DispatchResult result = stack_.Redo();
-    if (result == DispatchResult::Ok) {
-        Publish(AppFlowChangedEvent::Kind::ActionRedone, fsm_.Current(), FlowActionId{}, 0);
+DispatchResult AppFlowRuntime::Dispatch(FlowActionId id, const Params& params) {
+    auto it = handlers_.find(uint16_t(id));
+    if (it == handlers_.end()) {
+        return DispatchResult::RejectedByState;  // declared-but-unwired = caught, not a silent no-op
     }
-    return result;
+    it->second(params);
+    return DispatchResult::Ok;
 }
 
-DispatchResult AppFlowRuntime::ToggleLayer(uint32_t index, std::function<void()> onChanged) {
-    // Self-inverse: the same apply toggles both forward and inverse; onChanged fires on both.
-    auto apply = [this, index, onChanged](bool /*forward*/) {
-        layers_.Toggle(index);
-        if (onChanged) onChanged();
-    };
-    const DispatchResult r = stack_.Dispatch(FlowActionId::ToggleLayer, apply);
-    if (r == DispatchResult::Ok) {
-        Publish(AppFlowChangedEvent::Kind::ActionApplied, fsm_.Current(), FlowActionId::ToggleLayer, 0);
+DispatchResult AppFlowRuntime::DispatchById(FlowActionId id, const Params& params) {
+    return Dispatch(id, params);
+}
+
+DispatchResult AppFlowRuntime::DispatchBySelector(const std::string& selector) {
+    BoundAction bound;
+    if (!bindings_.TryGetForSelector(selector, bound)) {
+        return DispatchResult::RejectedByState;
     }
-    return r;
+    return Dispatch(bound.action, bound.params);
+}
+
+DispatchResult AppFlowRuntime::DispatchByKey(Generated::KeyChord chord) {
+    FlowActionId action{};
+    if (!inputProfile_.Resolve(chord, fsm_.Current(), action)) {
+        return DispatchResult::RejectedByState;
+    }
+    return Dispatch(action, {});
 }
 
 } // namespace Vixen::AppFlow

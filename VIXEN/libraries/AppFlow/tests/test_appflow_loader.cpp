@@ -20,12 +20,13 @@ TEST(AppFlowRuntime, StateChangePublishesEvent) {
     ASSERT_EQ(rt.Load(), LoadResult::Ok);
     rt.SetGuardResult(FlowGuardId::DocumentValid, true);
     rt.SetCurrent(FlowStateId::Editing);
-    EXPECT_EQ(rt.RequestState(FlowStateId::Simulating), DispatchResult::Ok);
+    EXPECT_EQ(rt.NavTo(FlowStateId::Simulating), DispatchResult::Ok);
     EXPECT_EQ(seen, 1);          // PublishImmediate — no drain needed (see Step 1 note)
 }
 
 // THE walking-skeleton spine, end to end: a UI selector resolves (via the generalized
-// binding store) to a bound action, which dispatches undoably through the stack.
+// binding store) to a bound action, which dispatches undoably through the stack via a
+// registered handler.
 TEST(AppFlowRuntime, DispatchBySelectorRunsBoundActionUndoably) {
     AppFlowRuntime rt(nullptr, /*sender*/1);
     ASSERT_EQ(rt.Load(), LoadResult::Ok);
@@ -35,11 +36,14 @@ TEST(AppFlowRuntime, DispatchBySelectorRunsBoundActionUndoably) {
          {{"layerIndex", "dom:attr:data-layer"}}}, warn));
     int value = 0;
     auto flip = [&](bool fwd){ value += fwd ? 1 : -1; };
-    EXPECT_EQ(rt.DispatchBySelector("#layer-0-toggle", flip), DispatchResult::Ok);
+    rt.RegisterHandler(FlowActionId::ToggleLayer, [&](const AppFlowRuntime::Params&){
+        rt.Stack().Dispatch(FlowActionId::ToggleLayer, flip);
+    });
+    EXPECT_EQ(rt.DispatchBySelector("#layer-0-toggle"), DispatchResult::Ok);
     EXPECT_EQ(value, 1);
-    EXPECT_EQ(rt.Undo(), DispatchResult::Ok);
+    EXPECT_EQ(rt.Stack().Undo(), DispatchResult::Ok);
     EXPECT_EQ(value, 0);
-    EXPECT_EQ(rt.DispatchBySelector("#no-binding", flip), DispatchResult::RejectedByState);
+    EXPECT_EQ(rt.DispatchBySelector("#no-binding"), DispatchResult::RejectedByState);
 }
 
 // Load() seeds kKeyDefaults into the InputProfile — a chord resolves without any manual Bind.
@@ -62,23 +66,26 @@ TEST(AppFlowRuntime, DispatchByKeyRunsBoundActionUndoably) {
     ASSERT_EQ(rt.Load(), LoadResult::Ok);
     int value = 0;
     auto flip = [&](bool fwd){ value += fwd ? 1 : -1; };
-    EXPECT_EQ(rt.DispatchByKey({KeyId::Z, KeyMod::Ctrl}, flip), DispatchResult::Ok);
+    rt.RegisterHandler(FlowActionId::Undo, [&](const AppFlowRuntime::Params&){
+        rt.Stack().Dispatch(FlowActionId::Undo, flip);
+    });
+    EXPECT_EQ(rt.DispatchByKey({KeyId::Z, KeyMod::Ctrl}), DispatchResult::Ok);
     EXPECT_EQ(value, 1);
-    EXPECT_EQ(rt.Undo(), DispatchResult::Ok);
+    EXPECT_EQ(rt.Stack().Undo(), DispatchResult::Ok);
     EXPECT_EQ(value, 0);
     // An unbound chord is a no-op rejection, never a crash.
-    EXPECT_EQ(rt.DispatchByKey({KeyId::A, KeyMod::None}, flip), DispatchResult::RejectedByState);
+    EXPECT_EQ(rt.DispatchByKey({KeyId::A, KeyMod::None}), DispatchResult::RejectedByState);
 }
 
-// RequestReturn is an encapsulated pass-through to the FSM's entry-history pop — no raw
+// NavPop is an encapsulated pass-through to the FSM's entry-history pop — no raw
 // FlowStateMachine& is exposed (design §D6 / Inc-1 encapsulation discipline).
-TEST(AppFlowRuntime, RequestReturnPopsToPriorState) {
+TEST(AppFlowRuntime, NavPopPopsToPriorState) {
     AppFlowRuntime rt(nullptr, /*sender*/1);
     ASSERT_EQ(rt.Load(), LoadResult::Ok);
     rt.SetGuardResult(FlowGuardId::DocumentValid, true);
     rt.SetCurrent(FlowStateId::Editing);
-    ASSERT_EQ(rt.RequestState(FlowStateId::Settings), DispatchResult::Ok);
+    ASSERT_EQ(rt.NavTo(FlowStateId::Settings), DispatchResult::Ok);
     EXPECT_EQ(rt.Current(), FlowStateId::Settings);
-    EXPECT_EQ(rt.RequestReturn(), DispatchResult::Ok);
+    EXPECT_EQ(rt.NavPop(), DispatchResult::Ok);
     EXPECT_EQ(rt.Current(), FlowStateId::Editing);
 }
