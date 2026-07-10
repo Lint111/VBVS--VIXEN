@@ -91,6 +91,23 @@ set_target_properties(test_brdf_mirror PROPERTIES FOLDER "Tests/RenderGraph Test
 gtest_discover_tests(test_brdf_mirror)
 
 # ===========================================================================
+# TraceWorld CPU Mirror Test (Sampled Lighting Inc1 M2 — gpu-shader-debug mirror of
+# shaders/TraceWorld.glsl's TraceWorldShadow any-hit occlusion test, verified against
+# an independent AABB-list reference using Data/VoxelTraversal.h's Ray/AABB/IntersectRayAABB)
+# ===========================================================================
+add_executable(test_traceworld_mirror test_traceworld_mirror.cpp)
+
+if(TARGET RenderGraph)
+    target_link_libraries(test_traceworld_mirror PRIVATE GTest::gtest_main RenderGraph)
+else()
+    target_link_libraries(test_traceworld_mirror PRIVATE GTest::gtest_main)
+endif()
+
+set_target_properties(test_traceworld_mirror PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+gtest_discover_tests(test_traceworld_mirror)
+
+# ===========================================================================
 # VNDF CPU Mirror Test (Sampled Lighting Inc0 M4 — gpu-shader-debug mirror of
 # shaders/Sampling.glsl's sampleGGXVNDF/vndfPdf, verified against two
 # independent references: a from-scratch analytic VNDF density and the

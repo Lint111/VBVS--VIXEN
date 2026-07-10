@@ -247,4 +247,134 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
     return anyHit;
 }
 
+// ============================================================================
+// TraceWorldShadow - any-hit occlusion test across all body instances
+// ============================================================================
+// Sampled Lighting Inc1 M2: a cheap "is anything between A and B" trace for
+// shadow rays. Reuses TraceWorld's instance loop / AABB-cull / world<->local
+// transform skeleton VERBATIM, but stops the moment ANY instance reports an
+// occluder within [tmin, tmax] -- no nearest-hit bookkeeping, no normal/color/
+// roughness/brick-id extraction, no cross-instance comparison. This is
+// strictly cheaper per invocation than TraceWorld: the early-out means an
+// occluded shadow ray can terminate after the FIRST instance/traversal that
+// proves occlusion, rather than visiting every instance to find the nearest.
+//
+// "Occluder" uses the exact same notion of solid/hit as TraceWorld: a
+// procedural body's traceProceduralBody() sphere-trace hit, or an ESVO
+// traverseOctreeInstanced() leaf hit (binary voxel OR stored-SDF leaf,
+// whichever traverseOctreeInstanced's internal dispatch selects) -- i.e.
+// "occluder" here is exactly "whatever TraceWorld would have accepted as a
+// candidate hit," just without keeping the nearest one.
+//
+// SELF-INTERSECTION BIAS (shadow acne): a shadow ray traced from a surface
+// point toward a light will, without care, immediately re-intersect the
+// surface it just left (the entry face of the very voxel/triangle it's
+// leaving), producing false self-shadowing ("shadow acne"). This function
+// does NOT apply any bias itself -- tmin is taken as given and t=0 is a
+// valid occluder distance like any other. The CALLER is responsible for
+// one of:
+//   (a) starting the ray off the surface: origin + normal * eps, with
+//       tmin left at (or near) 0, or
+//   (b) leaving origin exactly on the surface and instead choosing tmin
+//       to skip the first epsilon of the ray (tmin = eps rather than 0).
+// Either is sufficient; do not do both (double-biasing wastes tmin budget
+// and can clip real nearby occluders). The DirectLighting consumer (M4)
+// picks one of these two conventions when it becomes the actual caller.
+//
+// Returns true the moment a confirmed occluder is found within [tmin, tmax];
+// false if every instance was checked and none occluded (ray is lit).
+bool TraceWorldShadow(vec3 origin, vec3 dir, float tmin, float tmax) {
+    vec3 rayOrigin = origin;
+    vec3 rayDir    = dir;
+
+    int numInstances = clamp(pc.instanceCount, 0, 3 * 64); // safety cap, matches TraceWorld
+    for (int instIdx = 0; instIdx < numInstances; ++instIdx) {
+
+        BodyInstance inst = bodyInstances[instIdx];
+
+        // --- Procedural provider: analytic SDF sphere-trace (no octree) ---
+        if (inst.providerKind == PROVIDER_PROCEDURAL) {
+            vec3 pCenter = inst.worldPos;
+            vec3 pParams = vec3(inst.recipeParams[0], inst.recipeParams[1], inst.recipeParams[2]);
+            vec3 pNormal;
+            float pT;
+            if (traceProceduralBody(inst.recipeId, pCenter, pParams, rayOrigin, rayDir,
+                                    pNormal, pT)) {
+                if (pT >= tmin && pT <= tmax) {
+                    return true;  // any-hit: no need to keep looking
+                }
+            }
+            continue;  // procedural body fully handled; skip the ESVO path
+        }
+
+        uint oi = inst.octreeIndex;  // index into runtime-sized configs[] SSBO (I3.2)
+
+        // Set globals used by fetchESVONode (via g_esvoNodeBase in ESVOTraversal.glsl)
+        // and by marchBrickInstanced (via g_brickArrayBase below). Same contract as
+        // TraceWorld -- see that function's identical block for the full rationale.
+        g_octreeIdx      = int(oi);
+        g_esvoNodeBase   = configs[oi].nodeArrayBase;
+        g_brickArrayBase = configs[oi].brickArrayBase;
+
+        // World -> instance-local ray transform (identical to TraceWorld; see
+        // that function's block comment for the full derivation of why the
+        // SAME invScale must divide both origin and direction).
+        float invScale = 1.0 / inst.renderScale;
+        vec3  instOrigin = (rayOrigin - inst.worldPos) * invScale;
+        vec3  instDir    = rayDir * invScale;
+
+        // Quick AABB cull in the base octree's [0,1]^3 grid, before paying for
+        // full ESVO descent.
+        vec3 localRayOrigin = (configs[oi].worldToLocal * vec4(instOrigin, 1.0)).xyz;
+        vec3 localRayDir    = mat3(configs[oi].worldToLocal) * instDir;
+        vec2 gridT = rayAABBIntersection(localRayOrigin, localRayDir, vec3(0.0), vec3(1.0));
+        if (gridT.y < 0.0) {
+            continue;  // ray misses this instance's AABB entirely
+        }
+
+        // NOTE: unlike TraceWorld, there is no "farther than bestT already
+        // found" reject here -- any-hit semantics mean the FIRST occluder
+        // found (in instance-loop order, not necessarily nearest) is enough
+        // to prove occlusion. Skipping the reject also means we don't need
+        // TraceWorld's world-space entry-distance reprojection math for
+        // instances that are behind an already-found occluder; we simply
+        // never get there because we've already returned true.
+
+        DebugRaySample dbg;
+        dbg.pixel         = uvec2(ivec2(gl_GlobalInvocationID.xy));
+        dbg.rayDir        = rayDir;
+        dbg.octantMask    = 0u;
+        dbg.hitFlag       = 0u;
+        dbg.exitCode      = DEBUG_EXIT_NONE;
+        dbg.lastStepMask  = 0u;
+        dbg.iterationCount = 0u;
+        dbg.scale         = configs[oi].esvoMaxScale;
+        dbg.stateIdx      = 0u;
+        dbg.tMin          = 0.0;
+        dbg.tMax          = 0.0;
+        dbg.scaleExp2     = 0.0;
+        dbg.posMirrored   = vec3(0.0);
+        dbg.localNorm     = vec3(0.0);
+
+        vec3  hitColor;
+        vec3  hitNormal;
+        float hitT;
+        float hitRoughness;
+        uint  hitBrick;
+        uint  hitVoxel;
+
+        bool instHit = traverseOctreeInstanced(instOrigin, instDir,
+                                           localRayOrigin, localRayDir, gridT,
+                                           hitColor, hitNormal, hitT,
+                                           hitRoughness,
+                                           hitBrick, hitVoxel, dbg);
+
+        if (instHit && hitT >= tmin && hitT <= tmax) {
+            return true;  // any-hit: confirmed occluder, stop immediately
+        }
+    }
+
+    return false;  // no occluder found in [tmin, tmax] across any instance -- lit
+}
+
 #endif // TRACEWORLD_GLSL
