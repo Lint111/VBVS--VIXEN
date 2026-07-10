@@ -112,6 +112,8 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/shaders/Generated/ShadowConfig.glsl" _out_shadowconfig_glsl_run)
         _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/libraries/RenderGraph/include/Generated/AccumulationConfig.g.h" _out_accumulationconfig_cpp_run)
         _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/shaders/Generated/AccumulationConfig.glsl" _out_accumulationconfig_glsl_run)
+        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/libraries/RenderGraph/include/Generated/PrevCameraConfig.g.h" _out_prevcameraconfig_cpp_run)
+        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/shaders/Generated/PrevCameraConfig.glsl" _out_prevcameraconfig_glsl_run)
         _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/application/main/include/Generated/Hud.g.h" _out_hud_header_run)
         _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/libraries/RenderGraph/assets/ui/Hud.view.rml" _out_hud_rml_run)
         _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/application/main/include/Generated/Hud.blob.g.h" _out_hud_blob_header_run)
@@ -133,6 +135,8 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_out_shadowconfig_glsl_run "${CMAKE_SOURCE_DIR}/shaders/Generated/ShadowConfig.glsl")
         set(_out_accumulationconfig_cpp_run "${CMAKE_SOURCE_DIR}/libraries/RenderGraph/include/Generated/AccumulationConfig.g.h")
         set(_out_accumulationconfig_glsl_run "${CMAKE_SOURCE_DIR}/shaders/Generated/AccumulationConfig.glsl")
+        set(_out_prevcameraconfig_cpp_run "${CMAKE_SOURCE_DIR}/libraries/RenderGraph/include/Generated/PrevCameraConfig.g.h")
+        set(_out_prevcameraconfig_glsl_run "${CMAKE_SOURCE_DIR}/shaders/Generated/PrevCameraConfig.glsl")
         set(_out_hud_header_run "${CMAKE_SOURCE_DIR}/application/main/include/Generated/Hud.g.h")
         set(_out_hud_rml_run "${CMAKE_SOURCE_DIR}/libraries/RenderGraph/assets/ui/Hud.view.rml")
         set(_out_hud_blob_header_run "${CMAKE_SOURCE_DIR}/application/main/include/Generated/Hud.blob.g.h")
@@ -209,6 +213,23 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     add_custom_target(accumulationconfig_regen
         COMMAND ${_CODEGEN_RUNNER} ${_ac_args}
         COMMENT "[codegen] regenerate AccumulationConfig.g.h/.glsl (Yeroket tool)"
+        VERBATIM)
+
+    # --- PrevCameraConfig via the same Yeroket tool (Sampled Lighting Inc2 M3: prev-frame
+    # camera matrix plumbing for M4's reprojection). Generated header lives beside RenderGraph,
+    # mirroring AccumulationConfig's own "config lives with its consuming library" convention.
+    set(_pcc_args
+        run --project "${_yk_tool_run}" -c Release --
+        --schema "${_schema_config_run}" --struct PrevCameraConfig
+        --out-cpp  "${_out_prevcameraconfig_cpp_run}"
+        --out-glsl "${_out_prevcameraconfig_glsl_run}")
+    add_custom_target(prevcameraconfig_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_pcc_args} --check
+        COMMENT "[codegen] golden check: PrevCameraConfig.g.h/.glsl match canonical (Yeroket tool)"
+        VERBATIM)
+    add_custom_target(prevcameraconfig_regen
+        COMMAND ${_CODEGEN_RUNNER} ${_pcc_args}
+        COMMENT "[codegen] regenerate PrevCameraConfig.g.h/.glsl (Yeroket tool)"
         VERBATIM)
 
     # --- Hud [View] schema via the same Yeroket tool (View Contract Inc-2: renamed from EditorHud).
@@ -318,8 +339,8 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         VERBATIM)
 else()
     message(WARNING "[codegen] KI-015: Yeroket kernel-codegen tool not found at ${_yk_tool} — "
-        "OctreeConfig/LightingConfig/ShadowConfig/AccumulationConfig/Hud golden DRIFT GUARDS DISABLED; the committed generated artifacts "
-        "(OctreeConfig.g.h/.glsl, LightingConfig.g.h/.glsl, ShadowConfig.g.h/.glsl, AccumulationConfig.g.h/.glsl, Hud.g.h, Hud.view.rml, Hud.blob.g.h, hud.viewblob) are used as-is and will NOT be checked against "
+        "OctreeConfig/LightingConfig/ShadowConfig/AccumulationConfig/PrevCameraConfig/Hud golden DRIFT GUARDS DISABLED; the committed generated artifacts "
+        "(OctreeConfig.g.h/.glsl, LightingConfig.g.h/.glsl, ShadowConfig.g.h/.glsl, AccumulationConfig.g.h/.glsl, PrevCameraConfig.g.h/.glsl, Hud.g.h, Hud.view.rml, Hud.blob.g.h, hud.viewblob) are used as-is and will NOT be checked against "
         "their canonical schemas this configure. The Yeroket repo is WSL-only on this machine, so a "
         "Windows-side configure cannot reach it — run the WSL-side configure, mount \\\\wsl$, or pass "
         "-DYEROKET_ROOT=<path> to enable the guard.")

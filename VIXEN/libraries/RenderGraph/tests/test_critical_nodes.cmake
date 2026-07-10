@@ -771,6 +771,27 @@ gtest_discover_tests(test_accumulationconfig_sdi_parity
 message(STATUS "[RenderGraph Tests] Added: test_accumulationconfig_sdi_parity (SDI layout drift-guard)")
 
 # ===========================================================================
+# PrevCameraConfig SDI Parity Test (Sampled Lighting Inc2 M3)
+# ===========================================================================
+# Reflects the built BodyInstanceRayMarch SPIR-V and asserts the generated
+# C++ Vixen::Gpu::PrevCameraConfig layout matches it (per-field offsets, 64 B
+# total — a single mat4). Sibling of test_accumulationconfig_sdi_parity above.
+# Pure CPU (reflection only) — no lavapipe / no GPU. Reuses the same compiled .spv.
+# ===========================================================================
+add_executable(test_prevcameraconfig_sdi_parity
+    Nodes/test_prevcameraconfig_sdi_parity.cpp
+)
+add_dependencies(test_prevcameraconfig_sdi_parity body_instance_raymarch_spv)
+target_link_libraries(test_prevcameraconfig_sdi_parity PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+target_compile_definitions(test_prevcameraconfig_sdi_parity PRIVATE
+    GLSL_RAYMARCH_SPV="${_brm_spv}")
+set_target_properties(test_prevcameraconfig_sdi_parity PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_prevcameraconfig_sdi_parity
+    DISCOVERY_MODE PRE_TEST
+    DISCOVERY_TIMEOUT 120)
+message(STATUS "[RenderGraph Tests] Added: test_prevcameraconfig_sdi_parity (SDI layout drift-guard)")
+
+# ===========================================================================
 # Sampled Lighting Inc1 M4 — shadow-ray correctness live gate: dispatches the
 # REAL shader against a known scene + known directional light, asserting a
 # pixel's occlusion classification (shadowed/lit, via shaded colour luminance)

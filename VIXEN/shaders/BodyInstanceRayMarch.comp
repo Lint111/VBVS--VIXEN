@@ -181,6 +181,26 @@ layout(std430, binding = 19) readonly buffer AccumulationConfigSSBO {
 // confirmed from RenderTargetNode's format). Not yet read/written this milestone (M2).
 layout(rgba8, binding = 20) uniform image2D historyImage;
 
+// ============================================================================
+// PREV-FRAME CAMERA MATRIX (Sampled Lighting Inc2 M3 — binding 21)
+// ============================================================================
+// Single PrevCameraConfig record (kernel-codegen-generated struct, std430 —
+// see Generated/PrevCameraConfig.glsl / PrevCameraConfig.g.h): LAST frame's
+// view*projection matrix (world -> prev-frame clip space), retained by
+// CameraNode (compute-current-then-store-previous each frame) and uploaded
+// per-frame from a ring buffer (PrevCameraConfigNode). A dedicated SSBO
+// rather than a push-constant field: a mat4 is 64 B and the push-constant
+// block below is already 72 B (of the 128 B Vulkan-guaranteed minimum) — see
+// PrevCameraConfig.cs's file header. PLUMBING ONLY this milestone: declared
+// here but NOT read anywhere in the outColor path — M4 consumes it to
+// reproject HitRecord.worldPos into prev-frame screen space for historyImage
+// sampling.
+#include "Generated/PrevCameraConfig.glsl"
+
+layout(std430, binding = 21) readonly buffer PrevCameraConfigSSBO {
+    PrevCameraConfig prevCameraConfig;
+};
+
 #define FORMAT_BINARY     0u
 #define FORMAT_STORED_SDF 1u
 

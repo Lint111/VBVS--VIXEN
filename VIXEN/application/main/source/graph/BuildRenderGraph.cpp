@@ -47,6 +47,7 @@
 #include "Data/Nodes/ShadowConfigNodeConfig.h"  // Sampled Lighting Inc1 M4: ShadowConfig upload ring
 #include "Data/Nodes/AccumulationConfigNodeConfig.h"   // Sampled Lighting Inc2 M1: AccumulationConfig upload ring
 #include "Data/Nodes/AccumulationHistoryNodeConfig.h"  // Sampled Lighting Inc2 M1: persistent history image
+#include "Data/Nodes/PrevCameraConfigNodeConfig.h"     // Sampled Lighting Inc2 M3: prev-frame camera matrix upload ring
 #include "Data/Nodes/ShaderLibraryNodeConfig.h"
 #include "Data/Nodes/SkyProjectionNodeConfig.h"  // Tiered ESVO Inc1 M3: address-derived sky-point composite pass
 #include "Data/Nodes/SwapChainNodeConfig.h"
@@ -80,6 +81,7 @@
 #include "Nodes/ShadowConfigNode.h"    // Sampled Lighting Inc1 M4: ShadowConfig upload ring
 #include "Nodes/AccumulationConfigNode.h"   // Sampled Lighting Inc2 M1: AccumulationConfig upload ring
 #include "Nodes/AccumulationHistoryNode.h"  // Sampled Lighting Inc2 M1: persistent history image
+#include "Nodes/PrevCameraConfigNode.h"     // Sampled Lighting Inc2 M3: prev-frame camera matrix upload ring
 #include "Nodes/LoopBridgeNode.h"
 #include "Nodes/PickIdTargetNode.h"
 #include "Nodes/PresentNode.h"
@@ -217,6 +219,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // header for why). Allocated + transitioned + wired this milestone; not yet read/written by
     // the shader (M2 consumes it).
     NodeHandle accumulationHistoryNode = renderGraph->AddNode<AccumulationHistoryNodeType>("accumulation_history");
+
+    // Sampled Lighting Inc2 M3: prev-frame camera matrix data (binding 21). Same per-frame
+    // ring upload pattern as accumulationConfigNode above — separate node (see
+    // PrevCameraConfigNode.h for the separate-vs-extend decision). Uploaded every frame but
+    // not yet read by the shader this milestone (M4 consumes it for reprojection); this
+    // milestone's render must stay byte-identical to M2.
+    NodeHandle prevCameraConfigNode = renderGraph->AddNode<PrevCameraConfigNodeType>("prev_camera_config");
 
     // --- Input Node ---
     NodeHandle inputNode = renderGraph->AddNode<InputNodeType>("input_handler");
@@ -1349,6 +1358,16 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(renderTargetNode, RenderTargetNodeConfig::HEIGHT_OUT,
                   accumulationHistoryNode, AccumulationHistoryNodeConfig::HEIGHT);
 
+    // Sampled Lighting Inc2 M3: prev-frame camera config node connections (same ring pattern
+    // as accumulationConfigNode above). PREV_VIEW_PROJ comes from CameraNode's own retained-
+    // last-frame matrix (see CameraNode::ExecuteImpl/UpdateCameraData).
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  prevCameraConfigNode, PrevCameraConfigNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                  prevCameraConfigNode, PrevCameraConfigNodeConfig::CURRENT_FRAME_INDEX)
+         .Connect(cameraNode, CameraNodeConfig::PREV_VIEW_PROJ,
+                  prevCameraConfigNode, PrevCameraConfigNodeConfig::PREV_VIEW_PROJ);
+
     // Connect push constant fields to push constant gatherer using member extraction
     // CameraNode now outputs a CameraData struct, so we can extract individual fields
     batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
@@ -1588,6 +1607,18 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     if (mainLogger && mainLogger->IsEnabled()) {
         mainLogger->Info("[BuildRenderGraph] Connected accumulation history image at binding 20 (Sampled Lighting Inc2 M1)");
+    }
+
+    // Sampled Lighting Inc2 M3: Binding 21: PrevCameraConfig SSBO (single record, re-uploaded
+    // per-frame from PrevCameraConfigNode's ring). Declared in the shader but not yet read
+    // this milestone (M4 consumes it for reprojection) — a pure plumbing wire, mirroring
+    // binding 19/20's own M1 plumbing-only precedent.
+    batch.Connect(prevCameraConfigNode, PrevCameraConfigNodeConfig::PREV_CAMERA_CONFIG_BUFFER,
+                          descriptorGatherer, 21,  // Binding 21: PrevCameraConfigSSBO
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info("[BuildRenderGraph] Connected prev-camera config at binding 21 (Sampled Lighting Inc2 M3)");
     }
 
     // Swapchain connections to descriptor set and dispatch
