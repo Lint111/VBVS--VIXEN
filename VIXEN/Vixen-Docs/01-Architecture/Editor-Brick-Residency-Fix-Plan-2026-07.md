@@ -88,5 +88,23 @@ have residency UNCONDITIONALLY granted, not gated behind the multi-body orbit he
 - rtk is unreliable for evidence — use /usr/bin/git, /usr/bin/diff, sha256sum, cmp.
 
 ## Milestone Map
-- **Milestone 1 (Tasks 1-3):** editor body residency grant + live verification + restore R6 visual
+- [x] **Milestone 1 (Tasks 1-3):** editor body residency grant + live verification + restore R6 visual
   round-trip. One implementer (Sonnet), one Opus validator.
+
+## Progress Log
+- Milestone 1 (Tasks 1-3): DONE · commits 18e7e366 (fix) + ba18c374 (R6 gate restore) · Opus validator APPROVED · 2026-07-10
+  - Fix: `VulkanGraphApplication` gains `virtual bool SkipResidencyHeuristic() const {return false;}`
+    (early-returns `UpdateBodySceneResidency` BEFORE any `RequestBrickResidency(false)`) + a
+    `RequestBodyBrickResidency(bool)` forwarder (mirrors `SetRecipePool`). `EditorApplication` overrides
+    →true + calls `RequestBodyBrickResidency(true)` after `SetBodyInstances` in `ApplyDocumentToScene`
+    (runs every edit → re-lands residency after each Rematerialize). Main-app/demo path provably unchanged.
+  - Live gate (WSL/Dozen real GPU, 2 independent runs, byte-identical): capture_75≡capture_5 and
+    capture_105≡capture_45 (byte-exact undo/redo round-trip); capture_5≠capture_45 = 62px mask delta
+    confined to the body's 25×7px on-screen bbox; real BRICK_ENTER/EXIT traversal (was mip-only).
+  - R6 gate now 4/4: `FirstEditReachesRenderPipeline` asserts the mask delta (kMinMaskDiffPixels=20,
+    3× below measured 62); NEW `UndoRedoRestoresRenderByteExact` (the real visual round-trip, restored);
+    state-trail + back-button tests kept. Finding doc marked RESOLVED.
+  - No-regression: test_residency_trigger 8/8, test_occlusion_gate 14/14 green from fresh binaries.
+    (4 dzn render tests segfault pre-existing — none link the changed TUs; verified structurally + at HEAD~1.)
+  - Validator note (non-blocking): mask signal is small in absolute terms (62px); the gate's real
+    strength is the deterministic byte-exact undo/redo pair, not the >20 threshold.
