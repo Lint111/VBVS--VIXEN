@@ -577,6 +577,71 @@ void VulkanGraphApplication::Update() {
             }
         }
 
+        // Tiered-ESVO Inc3 M4 Task 6 (the epic gate): the Earth-scale continuous
+        // surface-to-orbit zoom, crossing BOTH real (childScale=2^-10) tier boundaries
+        // mid-flight. Run alongside VIXEN_TIER_EARTH_DEMO=1 (+ optionally
+        // VIXEN_TIER_EARTH_ZOOM_DEMO=1 to also exercise the mid-flight residency grant).
+        //
+        // LOG-SPACED (not linear) sweep: the dynamic range spans kNearDist=1e-5 (T2/
+        // bedrock-scale detail, per BuildRenderGraph.cpp's own world-unit derivation) to
+        // kFarDist=100 (full T0-body orbit view) -- 7 orders of magnitude. A LINEAR sweep
+        // would spend ~99.9999% of ticks far from either transition and fly past the
+        // hop-1 transition (predicted at world distance ~0.031, see below) in well under
+        // one tick. Zooming OUT (near -> far) over kPhase1End ticks, t in [0,1] maps
+        // distance = 10^(log10(kNearDist) + t*(log10(kFarDist)-log10(kNearDist))).
+        //
+        // Prediction-first LOD-handoff derivation (hand-computed BEFORE this schedule was
+        // written; full trace in the milestone's Progress Log /
+        // Tiered-ESVO-Inc3-M4-earth-scale-derivation.py): the crossing LOD gate fires
+        // (declines further descent, falls back to mip-shading) when
+        // tv_max*raySizeCoef + raySizeBias >= childScale*scale_exp2 (Inc3 M1's
+        // generalized gate). With NO override (VIXEN_TIER_CROSSING_LOD_COEF_OVERRIDE
+        // unset, the real RaySizeCoefNode value at 1920x1080/45deg FOV,
+        // raySizeCoef ~= 7.272e-4), scale_exp2=0.5 (root's own 8 children), raySizeBias=0,
+        // and the existing "1 local-t unit = kWorldGridSize*renderScale = 48 world units"
+        // conversion (M5's own established derivation):
+        //   worldDistance >= 48 * childScale * scale_exp2 / raySizeCoef
+        // Hop 0 (T0->T1, childScale=2^-10): worldDistance >= ~32.23 -- this is the point,
+        // sweeping OUT, where the ray STOPS crossing into T1 and instead mip-shades T0's
+        // own leaf (predicted transition TICK ~372 of 400 at this log-spaced schedule).
+        // Hop 1 (T1->T2, childScale=2^-10): the SAME gate re-applied inside T1's own local
+        // traversal (Inc3 M3: "gates against that hop's own already-local scale_exp2"),
+        // but T1's local units are compressed 1024x (cumulativeDirLen) relative to T0's
+        // world units, so in TOP-LEVEL world-distance terms hop 1's decline threshold is
+        // 1024x SMALLER: ~32.23/1024 ~= 0.0315 (predicted transition TICK ~200 of 400).
+        // Both are well inside [0,400] and well-separated from each other and from the
+        // schedule's own endpoints.
+        if (renderGraph && std::getenv("VIXEN_TIER_EARTH_DEMO") &&
+            (std::getenv("VIXEN_TIER_EARTH_ZOOM_DEMO") || std::getenv("VIXEN_TIER_EARTH_ZOOM_SCRIPT"))) {
+            static long earthZoomTick = 0;
+            ++earthZoomTick;
+            constexpr long  kEarthResidencyFlipTick = 50;   // well before BOTH predicted transitions
+            constexpr long  kEarthPhase1End         = 400;
+            constexpr double kEarthNearDist         = 1e-5;  // T2/bedrock-scale detail
+            constexpr double kEarthFarDist          = 100.0; // full T0-body orbit view
+
+            if (auto* camera = static_cast<CameraNode*>(renderGraph->GetInstance(cameraNode_))) {
+                const double t = std::min(1.0, static_cast<double>(earthZoomTick) / static_cast<double>(kEarthPhase1End));
+                const double logNear = std::log10(kEarthNearDist);
+                const double logFar  = std::log10(kEarthFarDist);
+                const double dist    = std::pow(10.0, logNear + t * (logFar - logNear));
+                camera->SetOrbitDistanceForTest(static_cast<float>(dist));
+            }
+            if (earthZoomTick == kEarthResidencyFlipTick && std::getenv("VIXEN_TIER_EARTH_ZOOM_DEMO")) {
+                if (auto* bodyScene = static_cast<Vixen::RenderGraph::BodyOctreeSceneNode*>(
+                        renderGraph->GetInstance(bodyOctreeSceneNode_))) {
+                    bodyScene->RequestBrickResidency(true);
+                    if (mainLogger) {
+                        mainLogger->Info("[TierEarthZoomDemo] tick " + std::to_string(earthZoomTick) +
+                                          ": RequestBrickResidency(true) -- mid-flight residency grant");
+                    }
+                }
+            }
+            if (earthZoomTick % 20 == 0 && mainLogger) {
+                mainLogger->Info("[TierEarthZoomDemo] tick " + std::to_string(earthZoomTick));
+            }
+        }
+
         // Same "input never rides the render graph's gates" hook, generalized to InputNode
         // (input-rework slice 1): drain its GLFW callback queue unconditionally too, right beside
         // WindowNode's own drain above. Same lookup pattern, same null-guard (a graph without an
@@ -914,7 +979,7 @@ void VulkanGraphApplication::UpdateBodySceneResidency() {
     // residency on the very same tick, since both run inside the same Update() call before
     // ExecuteImpl). This mirrors VIXEN_TIER_CROSSING_NONRESIDENT/VIXEN_RESIDENCY_GATE_DEMO's own
     // precedent of a demo env knob taking deliberate, exclusive control of one subsystem.
-    if (std::getenv("VIXEN_TIER_ZOOM_DEMO")) {
+    if (std::getenv("VIXEN_TIER_ZOOM_DEMO") || std::getenv("VIXEN_TIER_EARTH_ZOOM_DEMO")) {
         return;
     }
 
