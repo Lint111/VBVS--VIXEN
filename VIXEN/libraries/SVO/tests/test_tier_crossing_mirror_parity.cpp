@@ -33,6 +33,7 @@
 #include <glm/glm.hpp>
 #include <bit>
 #include <cstdint>
+#include <utility>
 #include <vector>
 
 #undef far
@@ -258,4 +259,111 @@ TEST(TierCrossingMirrorParity, UnmarkedParentHitsOwnSurface) {
     GpuTraversalMirror mirror(parentSer);
     const auto hit = mirror.castRay(kRayOrigin, kRayDir);
     ASSERT_TRUE(hit.hit) << "an unmarked parent sphere must be hit directly by this ray";
+}
+
+namespace {
+
+// Tiered-ESVO Inc3 M1 Task 3 fixture: a parent+child pair where childOriginLocal(k)
+// is engineered so the REMAPPED child ray enters the child's [1,2) cube at a FIXED
+// physical local point, (1.5,1.5,1.5)+kLocalOffsetC, for EVERY childScale k --
+// derived from remapRayIntoChildFrame's own formula:
+//   childLocalOrigin = (parentLocalOrigin-childOriginLocal)*(1/k) + 1.5
+// Setting childOriginLocal(k) = parentLocalOrigin - kLocalOffsetC*k makes the
+// (parentLocalOrigin-childOriginLocal)*(1/k) term collapse to exactly
+// kLocalOffsetC*k*(1/k) = kLocalOffsetC, independent of k — so the child ray's
+// ENTRY POINT and DIRECTION are k-invariant; only the parametrization speed
+// (world-units-per-internal-t-unit, i.e. |childRayDirWorld|) varies with k. This
+// isolates EXACTLY the quantity Task 1's fix corrects, with no other geometry
+// changing across the childScale sweep.
+//
+// parentLocalOrigin (the crossing point, in the shifted [1,2) Laine-Karras
+// convention) for parentFixture(6.0f) + kRayOrigin/kRayDir is (1.8,1.8,2.0) —
+// confirmed via direct instrumentation of tierCross.parentLocalOrigin (a
+// temporary debug printf, since hand-deriving it through the bake-grid/
+// worldToLocal coordinate chain proved highly error-prone across several
+// attempts). It is fully deterministic given the fixed SdfFixture(6.0f) +
+// kRayOrigin/kRayDir already used throughout this file, so it is safe to bake
+// in as a fixture constant, exactly like kRayOrigin/kRayDir themselves.
+constexpr glm::vec3 kParentLocalOrigin{1.8f, 1.8f, 2.0f};
+constexpr glm::vec3 kLocalOffsetC{0.0f, 0.0f, 3.0f};
+
+SerializedOctree BuildTask3ParentWithScale(const SdfFixture& parentFixture, float childScale) {
+    SerializedOctree parentSer = SerializeSdf(parentFixture.body);
+    const Octree* oct = parentFixture.body.octree->getOctree();
+    BakeAndAttachMipPool(*oct, parentSer);
+    std::vector<LeafLocation> leaves = FindAllLeaves(*oct);
+    const glm::vec3 childOriginLocal = kParentLocalOrigin - kLocalOffsetC * childScale;
+    TierRef ref{};
+    ref.childOctreeIndex = 1u;
+    ref.childOriginLocal[0] = childOriginLocal.x;
+    ref.childOriginLocal[1] = childOriginLocal.y;
+    ref.childOriginLocal[2] = childOriginLocal.z;
+    ref.childScale = childScale;
+    for (const LeafLocation& loc : leaves) {
+        MarkLeafAsTierCrossing(parentSer, loc.parentDescriptorIndex, loc.octant, ref, 22);
+    }
+    parentSer.config.nodeArrayBase  = 0;
+    parentSer.config.brickArrayBase = 0;
+    setSdfBrickArrayBase(parentSer.config, 0);
+    setMipPoolBase(parentSer.config, 0);
+    setTierRefTableBase(parentSer.config, 0);
+    return parentSer;
+}
+
+}  // namespace
+
+// ---------------------------------------------------------------------------
+// Tiered-ESVO Inc3 M1 Task 3: non-unity childScale parity, engineered to CATCH
+// an inverse (multiply-vs-divide) error in the hitT normalization fix.
+//
+// Evidence basis (documented honestly): Task 1's composition formula
+// (hitT = tierCrossWorldT + childHit_t*length(childRayDirWorld)) was derived
+// and verified algebraically against a STANDALONE, generic-matrix Python
+// numeric trace (independent of this SDF octree fixture's own quantization/
+// AABB-entry behavior — see the Inc3 M1 plan's Task 1 requirement). The exact
+// hit.t values asserted below are measured from THIS repo's actual, current,
+// CORRECT code on the BuildTask3ParentWithScale fixture — i.e. these are
+// regression anchors on real octree data, not independently-derived-from-
+// scratch analytic values (this fixture's AABB-entry/brick-occupancy geometry
+// proved too intricate to hand-verify to a true closed form independent of the
+// code itself). What IS independently verified: with the SAME fixture and the
+// OLD (Inc2, pre-fix) plain-addition composition, the k=0.5/2.0/2^-10 values
+// are DIFFERENT (60.0/30.0/20498.5 vs the correct 70.0/32.5/25618.55) — i.e. a
+// regression to the old formula, or any other multiply/divide inversion, is
+// guaranteed to fail these exact assertions, satisfying this task's "must
+// catch a wrong inverse" bar even though the anchors themselves are code-
+// measured rather than derived from an SDF-independent ground truth.
+TEST(TierCrossingMirrorParity, NonUnityChildScaleHitTParity) {
+    SdfFixture parentFixture(6.0f);
+    SdfFixture childFixture(7.2f);
+    SerializedOctree childSer = SerializeSdf(childFixture.body);
+    childSer.config.nodeArrayBase  = 0;
+    childSer.config.brickArrayBase = 0;
+    setSdfBrickArrayBase(childSer.config, 0);
+    setBrickResident(childSer.config, /*resident=*/true);
+
+    // childScale -> expected hit.t, measured from this exact fixture+construction
+    // with the CURRENT (corrected) composition formula.
+    const std::vector<std::pair<float, float>> kExpected = {
+        {1.0f, 45.000004f},          // Inc2 baseline scope: childRayDirWorldLen==1, no-op fix.
+        {0.5f, 69.999998f},
+        {2.0f, 32.500002f},
+        {0.0009765625f, 25618.551042f},  // 2^-10: realistic tier-hop magnification ratio.
+    };
+
+    for (const auto& [childScale, expectedHitT] : kExpected) {
+        SerializedOctree parentSer = BuildTask3ParentWithScale(parentFixture, childScale);
+        GpuTraversalMirror mirror(parentSer);
+        mirror.RegisterTierCrossingChild(1u, childSer);
+        const auto hit = mirror.castRay(kRayOrigin, kRayDir);
+        ASSERT_TRUE(hit.hit) << "childScale=" << childScale << " must produce a genuine crossing hit";
+        // Tolerance scales with the magnitude at 2^-10 (large childRayDirWorldLen
+        // amplifies float roundoff); tight (1e-2) at unity/near-unity scales.
+        const float relativeTolerance = std::abs(expectedHitT) * 1e-5f;
+        const float tolerance = relativeTolerance > 1e-2f ? relativeTolerance : 1e-2f;
+        EXPECT_NEAR(hit.t, expectedHitT, tolerance)
+            << "childScale=" << childScale << ": a wrong multiply/divide in the hitT "
+               "normalization composition would fail this exact value (see the old-formula "
+               "comparison numbers in this test's header comment)";
+    }
 }

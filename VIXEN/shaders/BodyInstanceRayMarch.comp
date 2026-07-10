@@ -723,16 +723,23 @@ bool traverseOctreeInstancedOnce(vec3 rayOrigin, vec3 rayDir,
                                 // Gated on raySizeCoef>0.0 exactly like the non-leaf branch
                                 // (LOD disabled -> always cross, never skip).
                                 //
-                                // M3/M4 validator note (restated per M5's obligation): this gates
-                                // on the PARENT LEAF's own footprint, not the CHILD tree's — exactly
-                                // equal at childScale==1.0 (this increment's entire scope; M5's live
-                                // zoom proof also stayed at childScale==1.0), and conservative (crosses
-                                // slightly more often than strictly necessary, never incorrectly skips)
-                                // for childScale<1.0. A future childScale>1.0 (scale-magnified) tier
-                                // needs this generalized to `>= childScale*scale_exp2` — same
-                                // prerequisite family as the hitT-normalization fix flagged in M3.
+                                // Inc3 M1 Task 2: gates on the CHILD tree's own finest resolvable
+                                // detail (childScale*scale_exp2), not just the parent leaf's own
+                                // footprint (scale_exp2 alone, Inc2's childScale==1.0-only gate).
+                                // TierRef.childScale is, by definition, "the child cube's size IN
+                                // PARENT-LOCAL UNITS" — i.e. exactly the same normalized-size unit
+                                // scale_exp2 already uses for the parent leaf. Multiplying (not
+                                // dividing) scale_exp2 by childScale is required so the RHS SHRINKS
+                                // for a smaller/finer (more magnified) child: a finer child must
+                                // resolve to a smaller screen footprint before falling back to the
+                                // parent's coarse mip, matching "the child's own finest resolvable
+                                // detail" framing. At childScale==1.0 this is byte-for-byte the old
+                                // `>= scale_exp2` comparison — verified no regression on the Inc2
+                                // demo. (Derivation + sanity check: see the Task 1 hitT-derivation
+                                // doc — same multiply-not-divide direction, independently confirmed.)
                                 bool subPixelFootprint = (pc.raySizeCoef > 0.0 &&
-                                    tv_max * pc.raySizeCoef + pc.raySizeBias >= state.scale_exp2);
+                                    tv_max * pc.raySizeCoef + pc.raySizeBias >=
+                                        tierRefTable[absoluteTierRefIdx].childScale * state.scale_exp2);
 
                                 // Tiered-ESVO Inc2 M4 Task 10: residency reuse. A TierRef
                                 // whose child octree is not (yet) brick-resident is, per the
@@ -1050,28 +1057,34 @@ bool traverseOctreeInstanced(vec3 rayOrigin, vec3 rayDir,
                                                 childTierCrossWorldT,
                                                 childDebugInfo);
 
-    // hitT from the child call is a distance measured FROM THE CROSSING POINT
-    // (childRayOriginWorld IS the crossing point, by construction above — the
-    // child call's own tEntryWorld/rayStartWorld bookkeeping starts fresh at
-    // 0 there), expressed in units consistent with childRayDirWorld's own
-    // parametrization. Because childRayOriginWorld/childRayDirWorld were
-    // constructed so that (childRayOriginWorld + s*childRayDirWorld), mapped
-    // through the CHILD's own worldToLocal, equals (childLocalOrigin +
-    // s*childLocalDir) for s expressed in REAL-WORLD-DISTANCE units (see the
-    // remapRayIntoChildFrame/Task 6 derivation — childLocalDir is the parent's
-    // rayDirLocal scaled by invScale, the SAME per-real-distance derivative
-    // relationship rayDirLocal itself already has to real-world t in the
-    // parent call), the child call's OWN internal t/hitT IS already s in
-    // real-world-distance units — exactly the same "s-consistent parametrization"
-    // property main()'s instOrigin/instDir already exploits for renderScale
-    // (see that block's own comment: "the returned hitT equals the TRUE world
-    // distance... regardless of renderScale" — this is the identical argument,
-    // just with the child's OWN localToWorld playing renderScale's role). So
-    // the final, caller-consistent hitT is simply the crossing point's own
-    // world-t (tierCrossWorldT, captured at the parent leaf) plus the child
-    // call's hitT (a distance offset from that same point) — no additional
-    // scaling by |childRayDirWorld| (that would double-count the scale already
-    // folded into childLocalDir/childRayDirWorld's construction).
+    // hitT NORMALIZATION (Inc3 M1 Task 1 — supersedes the Inc2 M3 comment that
+    // used to sit here, which was WRONG for childScale != 1 and only happened
+    // to pass because Inc2's shipped demo has S_child == S_parent).
+    //
+    // The child call's own internal "hitT" (call it s) is a parametric distance
+    // along childRayDirWorld — i.e. it satisfies
+    //     childRayOriginWorld + s*childRayDirWorld == <true world hit point>
+    // in every existing traversal call (this is exactly how an ordinary
+    // top-level instance's hitT is defined too, via instOrigin/instDir). That
+    // makes s a TRUE WORLD DISTANCE only when |childRayDirWorld| == 1.
+    // childRayDirWorld = mat3(childLocalToWorld) * childLocalDir, and
+    // childLocalDir = parentLocalDir * (1/childScale) (remapRayIntoChildFrame) —
+    // parentLocalDir is itself NOT unit length in general (it's world_dir
+    // divided by the parent octree's own local->world scale), so
+    // |childRayDirWorld| is generally != 1, and depends on the CHILD octree's
+    // OWN localToWorld scale as well as childScale — a factor NOT recoverable
+    // from childScale alone. (Verified numerically: see
+    // Vixen-Docs/.../Tiered-ESVO-Inc3-M1-hitT-derivation.md — a childScale=0.5,
+    // independently-scaled child config reproduces true_world_dist =
+    // s * |childRayDirWorld| exactly; s*childScale and s/childScale both miss.)
+    //
+    // The general, correct, no-extra-state fix: scale the child's reported s by
+    // the length of the very same childRayDirWorld vector already built above.
+    // This reduces to the old (correct-by-coincidence) plain addition exactly
+    // when |childRayDirWorld| == 1 (Inc2's demo: same world footprint, so this
+    // is a true no-op for the childScale==1 regression baseline).
+    float childRayDirWorldLen = length(childRayDirWorld);
+
     // Restore the parent's globals UNCONDITIONALLY — every subsequent read of
     // octreeConfig/g_esvoNodeBase/g_brickArrayBase in main() (the next
     // instance-loop iteration, or this same instance's AABB-cull bookkeeping
@@ -1082,7 +1095,7 @@ bool traverseOctreeInstanced(vec3 rayOrigin, vec3 rayDir,
     g_brickArrayBase = parentBrickArrayBase;
 
     if (childHit) {
-        hitT = tierCrossWorldT + hitT;
+        hitT = tierCrossWorldT + hitT * childRayDirWorldLen;
         debugInfo = childDebugInfo;
         return true;
     }

@@ -132,14 +132,15 @@ public:
         // perspective (no child geometry surfaces either way), even though
         // this mirror does not model mip-sample shading/color at all (see the
         // class header: this is a brick-hit-test oracle, not a shading
-        // oracle). Task 9's screen-space LOD gate is NOT ported here — the
-        // whole mirror is used exclusively with raySizeCoef==0 (LOD
+        // oracle). Task 9's screen-space LOD gate (Inc3 M1 Task 2 generalized its
+        // RHS from scale_exp2 to childScale*scale_exp2 shader-side) is NOT ported
+        // here — the whole mirror is used exclusively with raySizeCoef==0 (LOD
         // structurally disabled, see castRayOnce's own "(LOD disabled in
         // parity...)" comment) and none of castRayOnce's signature carries a
         // raySizeCoef/scale_exp2 pair a caller could even set — porting Task
-        // 9 would need new plumbing through every call site, not a like-for-
-        // like function port. Flagged for validator: the LOD-gate skip is a
-        // deliberate scope line, not an oversight.
+        // 9 (or its Inc3 generalization) would need new plumbing through every
+        // call site, not a like-for-like function port. Flagged for validator:
+        // the LOD-gate skip is a deliberate scope line, not an oversight.
         if (m_childCfg.brickResident == 0u) {
             return out;  // non-resident child: parent's own (mip-shaded, in the
                           // real shader) result stands; never cross.
@@ -156,17 +157,18 @@ public:
 
         // castRayOnce does NOT renormalize its rayDir parameter (see its own header
         // comment) — childRayDirWorld is deliberately NOT unit-length (constructed so
-        // that castRayOnce's internal t IS the real-world distance from the crossing
-        // point; see remapRayIntoChildFrame's derivation), and renormalizing it here
-        // would break that s-consistent parametrization exactly as it would in the
-        // real shader.
+        // that castRayOnce's internal t IS a parametric distance in units of
+        // |childRayDirWorld|, not necessarily world distance; see the hitT
+        // normalization below), and renormalizing it here would break that
+        // parametrization exactly as it would in the real shader.
         TierCrossOut childTierCross;
         Hit childOut = castRayOnce(childRayOriginWorld, childRayDirWorld, m_childCfg,
                                    m_childNodes, m_childNodeCount, m_childBrickData, m_childBrickCount,
                                    m_childCfg.nodeArrayBase, m_childCfg.brickArrayBase,
                                    /*tierRefTable=*/{}, childTierCross);
         if (childOut.hit) {
-            childOut.t = tierCross.worldT + childOut.t;
+            const float childRayDirWorldLen = glm::length(childRayDirWorld);
+            childOut.t = tierCross.worldT + childOut.t * childRayDirWorldLen;
             childOut.hitPoint = rayOrigin + rayDir * childOut.t;
         }
         return childOut;
