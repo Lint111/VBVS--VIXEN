@@ -660,6 +660,10 @@ TEST_F(BodyOctreeLifetimeTest, ShellCachePopulatedThroughNodeCompile) {
     node->SetInput(C::CURRENT_FRAME_INDEX_Slot::index, 0, &frameRes);
 
     node->SetRecipePool(pool);
+    // Lazy-Procedural-Delta-Baseline Inc0 M1: pin eager residency so this test's
+    // pixel gates keep exercising the full brick march once mip-capable pools
+    // default to lazy (a later milestone) — currently a no-op (default is eager).
+    node->RequestBrickResidency(true);
     node->SetInstances(MakeInstances(1, 0.0f));
     node->Setup();
     ASSERT_NO_THROW(node->Compile());

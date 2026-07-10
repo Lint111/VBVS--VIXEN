@@ -475,6 +475,10 @@ TEST_F(RecipePoolRenderTest, FourRecipesAllRender) {
     node->SetInput(C::CURRENT_FRAME_INDEX_Slot::index, 0, &frRes);
 
     node->SetRecipePool(std::move(result.pool));
+    // Lazy-Procedural-Delta-Baseline Inc0 M1: pin eager residency so this test's
+    // pixel gates keep exercising the full brick march once mip-capable pools
+    // default to lazy (a later milestone) — currently a no-op (default is eager).
+    node->RequestBrickResidency(true);
 
     // 4) Place 4 bodies side by side; each references its pool slot.
     constexpr float kRS  = 0.10f;

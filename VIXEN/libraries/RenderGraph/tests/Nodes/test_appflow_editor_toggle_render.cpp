@@ -479,6 +479,10 @@ protected:
         node->SetInput(C::CURRENT_FRAME_INDEX_Slot::index, 0, &frRes);
 
         node->SetRecipePool(std::move(pool));
+        // Lazy-Procedural-Delta-Baseline Inc0 M1: pin eager residency so this test's
+        // pixel gates keep exercising the full brick march once mip-capable pools
+        // default to lazy (a later milestone) — currently a no-op (default is eager).
+        node->RequestBrickResidency(true);
 
         // renderScale=5.0 — see test_editor_document_render.cpp's RenderPool comment: the golden
         // document's object-centered geometry is baked at grid-center (32,32,32) (Inc2a fix);

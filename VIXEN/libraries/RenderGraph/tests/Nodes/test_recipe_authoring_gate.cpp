@@ -552,6 +552,11 @@ TEST_F(RecipeAuthoringGateTest, CsgSubtractRendersNonTrivial) {
         auto* nd = dynamic_cast<BodyOctreeSceneNode*>(nb.get());
         ASSERT_NE(nd, nullptr);
         nd->SetRecipePool(std::move(boxResult.pool));
+        // Lazy-Procedural-Delta-Baseline Inc0 M1: pin eager residency so this test's
+        // pixel gates (ablation-delta) keep exercising the full brick march once
+        // mip-capable pools default to lazy (a later milestone) — currently a
+        // no-op (default is eager).
+        nd->RequestBrickResidency(true);
 
         ASSERT_NO_FATAL_FAILURE(RunNode(nd, nb, instances,
             [&](VkBuffer ns, VkBuffer br, VkBuffer mt, VkBuffer cfg,
@@ -581,6 +586,11 @@ TEST_F(RecipeAuthoringGateTest, CsgSubtractRendersNonTrivial) {
         auto* nd = dynamic_cast<BodyOctreeSceneNode*>(nb.get());
         ASSERT_NE(nd, nullptr);
         nd->SetRecipePool(std::move(csgResult.pool));
+        // Lazy-Procedural-Delta-Baseline Inc0 M1: pin eager residency so this test's
+        // pixel gates (CSG cut-through) keep exercising the full brick march once
+        // mip-capable pools default to lazy (a later milestone) — currently a
+        // no-op (default is eager).
+        nd->RequestBrickResidency(true);
 
         ASSERT_NO_FATAL_FAILURE(RunNode(nd, nb, instances,
             [&](VkBuffer ns, VkBuffer br, VkBuffer mt, VkBuffer cfg,
