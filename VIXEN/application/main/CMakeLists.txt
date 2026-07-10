@@ -31,6 +31,7 @@ add_library(VixenApp STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/HudView.cpp                # View Contract Inc-2: native IView consumer
     ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/HudViewBridge.cpp          # View Contract Inc-2: gaia-free seam for HudView.h (robin_hood ABI isolation)
     ${CMAKE_CURRENT_SOURCE_DIR}/source/StbImageWriteImpl.cpp            # View Contract Inc-2 Task 5: PNG-capture harness's stb_image_write TU
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/PerfCsvWriter.cpp                # Lazy-Procedural-Delta-Baseline Inc1 M4 Task 6b: perf-CSV writer
     ${HPP_FILES}
 )
 

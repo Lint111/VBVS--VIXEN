@@ -152,6 +152,13 @@ public:
     /// or whatever RequestBrickResidency last explicitly set.
     [[nodiscard]] bool IsResidencyRequested() const { return residencyRequested_; }
 
+    /// Lazy-Procedural-Delta-Baseline Inc1 M4 Task 6b: cumulative bytes pushed into GPU
+    /// buffers via UploadBrickPool/PollBrickUploadCompletion, split boot (first residency
+    /// grant) vs steady-state (any later re-upload, e.g. a residency toggle). Feeds the
+    /// perf-CSV writer's byte-uploaded columns; CPU-observable, no GPU readback needed.
+    [[nodiscard]] uint64_t BootBytesUploaded() const { return bootBytesUploaded_; }
+    [[nodiscard]] uint64_t SteadyStateBytesUploaded() const { return steadyStateBytesUploaded_; }
+
     /**
      * @brief Request (or release) brick-pool residency (Sparse-Mip ESVO LOD Inc1 M2).
      *
@@ -255,6 +262,13 @@ private:
     // stamps brickResident=1 into configs once the GPU-side copy is actually visible.
     ResourceManagement::UploadHandle       pendingBrickUploadHandle_  = ResourceManagement::InvalidUploadHandle;
     ResourceManagement::UploadHandle       pendingConfigUploadHandle_ = ResourceManagement::InvalidUploadHandle;
+
+    // Inc1 M4 Task 6b: cumulative brick-pool bytes uploaded, split by whether the FIRST
+    // (boot) upload has completed yet. bootBytesUploaded_ latches the size of that first
+    // UploadBrickPool call; every subsequent one (a later residency toggle) accumulates
+    // into steadyStateBytesUploaded_ instead.
+    uint64_t                                bootBytesUploaded_        = 0;
+    uint64_t                                steadyStateBytesUploaded_ = 0;
 
     // Optional recipe for octree 0 (P2.1 materialization). Empty = analytic path.
     std::vector<Vixen::SVO::Recipe::SdfInstruction> bakeRecipe_;

@@ -10,6 +10,8 @@
 #include "Time/EngineTime.h"
 #include "MessageBus.h"
 #include "graph/HudViewBridge.h"  // HudFactionIn/HudEventIn (gaia-free) + Make/Wire/PushHudView seam
+#include "PerfCsvWriter.h"  // Inc1 M4 Task 6b: always-available perf-CSV recorder (no-op unless VIXEN_PERF_CSV set)
+#include <chrono>
 #include <memory>
 #include <string>
 #include <utility>
@@ -75,6 +77,11 @@ public:
     // harness attaches here directly). Capture itself happens at the end of Update() (below the
     // dirty_-equivalent point where the frame's render target is guaranteed populated).
     void PreTick() override;
+    // Inc1 M4 Task 6b: records this tick's perf-CSV row (CPU frame time, per-pass GPU
+    // dispatch ms, cumulative bytes-uploaded). Runs AFTER Render() (VulkanApplicationBase::
+    // Tick(): PreTick -> Update -> Render -> PostTick), so GetLastDispatchMs() reflects the
+    // frame that just completed. No-op unless VIXEN_PERF_CSV is set.
+    void PostTick() override;
 
     // ====== Graph Management ======
 
@@ -245,6 +252,13 @@ private:
     // MakeHudView() (ctor) and destroyed via DestroyHudView() (dtor), both HudViewBridge.h seams
     // whose bodies live in HudViewBridge.cpp, the one gaia-free TU where HudView is complete.
     Vixen::App::HudView* hudView_ = nullptr;
+
+    // Inc1 M4 Task 6b: perf-CSV recorder + the steady_clock timestamp of the previous
+    // PostTick call (for measuring this tick's CPU frame time). No-op object when
+    // VIXEN_PERF_CSV is unset (IsEnabled()==false), so construction/RecordFrame/Flush are
+    // all cheap no-ops on every run that doesn't opt in.
+    PerfCsvWriter perfCsvWriter_;
+    std::chrono::steady_clock::time_point lastPostTickTime_ = std::chrono::steady_clock::now();
 
     // Task 5: scripted HUD-inject + byte-exact capture harness (mirrors EditorApplication's
     // VIXEN_EDITOR_SCRIPT/_CAPTURE_FRAMES/_CAPTURE_DIR harness — this app has no subclass, so it

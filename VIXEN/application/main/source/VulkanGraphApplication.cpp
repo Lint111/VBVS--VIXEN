@@ -28,6 +28,7 @@
 #include "Nodes/WindowNode.h"
 #include "Nodes/InputNode.h"
 #include "Nodes/BodyOctreeSceneNode.h"        // M-wire: SetBodyInstances() downcast target (gaia — before UIRenderNode.h)
+#include "Nodes/ComputeDispatchNode.h"         // Inc1 M4 Task 6b: GetGPUPerformanceLogger() for the perf-CSV writer
 #include "Nodes/CameraNode.h"                 // Sparse-Mip ESVO LOD Inc1 M4c: GetCurrentCameraData() downcast target
 #include "Nodes/UIRenderNode.h"               // GetUiRenderNode() downcast target (RmlUi — after BodyOctreeSceneNode.h)
 #include "Nodes/UISelectionProviderNode.h"    // GetUiSelectionProviderNode() downcast target
@@ -429,6 +430,32 @@ void VulkanGraphApplication::PreTick() {
     }
 }
 
+void VulkanGraphApplication::PostTick() {
+    if (!perfCsvWriter_.IsEnabled() || !renderGraph) {
+        return;
+    }
+
+    const auto now = std::chrono::steady_clock::now();
+    const double cpuFrameTimeMs = std::chrono::duration<double, std::milli>(now - lastPostTickTime_).count();
+    lastPostTickTime_ = now;
+
+    // Today's only GPU-timed pass is the single ESVO-traverse+shade compute dispatch
+    // ("test_dispatch" — see BuildRenderGraph.cpp). A future split traverse/shade or
+    // recipe-eval pass adds another {name, node} pair here.
+    std::vector<PerfCsvWriter::PassSource> passes;
+    if (auto* dispatch = static_cast<ComputeDispatchNode*>(renderGraph->GetNodeByName("test_dispatch"))) {
+        passes.push_back({"esvo_traverse_shade", dispatch->GetGPUPerformanceLogger()});
+    }
+
+    uint64_t bootBytes = 0, steadyBytes = 0;
+    if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode_))) {
+        bootBytes = bodyScene->BootBytesUploaded();
+        steadyBytes = bodyScene->SteadyStateBytesUploaded();
+    }
+
+    perfCsvWriter_.RecordFrame(cpuFrameTimeMs, passes, bootBytes, steadyBytes);
+}
+
 void VulkanGraphApplication::Update() {
     if (!isPrepared) {
         return;
@@ -731,6 +758,11 @@ void VulkanGraphApplication::DeInitialize() {
         return;
     }
     deinitialized = true;
+
+    // Inc1 M4 Task 6b: flush the perf CSV before any teardown — RecordFrame already copied
+    // every value it needs out of the nodes each tick, so this has no ordering dependency on
+    // renderGraph/engine_ below; no-op unless VIXEN_PERF_CSV was set.
+    perfCsvWriter_.Flush();
 
     // Sprint 6.3: Publish shutdown event BEFORE any cleanup
     // CalibrationStore subscribes and saves automatically

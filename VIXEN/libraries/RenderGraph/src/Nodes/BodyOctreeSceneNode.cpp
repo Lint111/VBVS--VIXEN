@@ -929,6 +929,16 @@ void BodyOctreeSceneNode::UploadBrickPool() {
     device->FlushUploads();
     pendingBrickUploadHandle_ = handle;
 
+    // Inc1 M4 Task 6b: first-ever queue is "boot", every later one (a residency toggle) is
+    // "steady-state". brickPoolUploaded_ hasn't flipped true yet at this point (that happens
+    // in PollBrickUploadCompletion once the GPU-side copy lands), so bootBytesUploaded_==0
+    // is exactly "boot upload never queued".
+    if (bootBytesUploaded_ == 0) {
+        bootBytesUploaded_ = static_cast<uint64_t>(size);
+    } else {
+        steadyStateBytesUploaded_ += static_cast<uint64_t>(size);
+    }
+
     NODE_LOG_INFO("[BodyOctreeSceneNode] UploadBrickPool: queued " +
                   std::to_string(static_cast<uint64_t>(size)) + "B via BatchedUploader (async)");
 }
