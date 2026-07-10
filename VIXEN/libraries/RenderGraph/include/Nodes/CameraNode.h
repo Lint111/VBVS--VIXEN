@@ -71,6 +71,18 @@ public:
         orbitDistance = glm::clamp(distance, kOrbitDistanceMin, kOrbitDistanceMax);
     }
     void SetYawForTest(float yawRadians) { EngageOrbit(); yaw = yawRadians; }
+    /**
+     * @brief Directly set the live orbit pitch. Mirrors SetYawForTest exactly -- together they
+     * choose where on the orbit sphere the camera sits at the current orbitDistance.
+     *
+     * NOTE (Tiered-ESVO Inc3 M6): yaw/pitch only relocate the camera along the orbit sphere --
+     * `forward` is unconditionally `normalize(orbitCenter - cameraPosition)` (see
+     * UpdateCameraData), so the camera ALWAYS looks at orbitCenter regardless of yaw/pitch. This
+     * cannot be used to aim the view at an off-center point of interest; that requires either
+     * moving orbitCenter itself or a genuinely separate look-target parameter (neither exists
+     * yet). See the Tiered-ESVO Inc3 M6 Progress Log for the investigation that found this out.
+     */
+    void SetPitchForTest(float pitchRadians) { EngageOrbit(); pitch = pitchRadians; }
 
 protected:
     void SetupImpl(TypedSetupContext& ctx) override;

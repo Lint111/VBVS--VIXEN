@@ -626,6 +626,23 @@ void VulkanGraphApplication::Update() {
                 const double logFar  = std::log10(kEarthFarDist);
                 const double dist    = std::pow(10.0, logNear + t * (logFar - logNear));
                 camera->SetOrbitDistanceForTest(static_cast<float>(dist));
+
+                // M6 finding (see Progress Log for the full derivation): yaw/pitch CANNOT fix
+                // the crossing octant's framing here. CameraNode's orbit `forward` is hard-wired
+                // to `normalize(orbitCenter - cameraPosition)` (CameraNode.cpp UpdateCameraData) --
+                // it always re-targets orbitCenter regardless of yaw/pitch, which only choose
+                // WHERE on the orbit sphere the camera sits, not what it looks at. The crossing
+                // octant (root child 4) sits at world offset (-12,-12,+12) from
+                // orbitCenter=(64,64,64); its angular offset from the camera's forward axis is
+                // ~4 deg at the far end (D=100) but explodes past 60-125 deg at the near end
+                // (D<20) as camera-to-orbitCenter distance shrinks toward the octant's own fixed
+                // 12-17 unit offset. Both LOD-crossing thresholds (~14.92 and ~0.0146 world units,
+                // see the derivation comment above) fall well inside that near-field blind zone --
+                // the octant only re-enters the ~22.5 deg half-FOV cone around D~=20-25, by which
+                // point hop 0's crossing has already declined and hop 1's is 1024x further out of
+                // reach. This is a structural mismatch between the body's absolute scale (48 world
+                // units) and childScale=2^-10 compounded over 2 hops, not a fixable camera aim;
+                // see the M6 Progress Log for the full analysis and options going forward.
             }
             if (earthZoomTick == kEarthResidencyFlipTick && std::getenv("VIXEN_TIER_EARTH_ZOOM_DEMO")) {
                 if (auto* bodyScene = static_cast<Vixen::RenderGraph::BodyOctreeSceneNode*>(
