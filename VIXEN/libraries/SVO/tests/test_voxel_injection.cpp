@@ -43,14 +43,7 @@ protected:
         const std::vector<glm::vec3>& positions,
         int maxDepth = 6)
     {
-        // Compute bounds
-        glm::vec3 testMin(1e30f), testMax(-1e30f);
-        for (const auto& pos : positions) {
-            testMin = glm::min(testMin, pos);
-            testMax = glm::max(testMax, pos);
-        }
-        testMin -= glm::vec3(1.0f);
-        testMax += glm::vec3(1.0f);
+        glm::vec3 testMin, testMax;  // set below — canonical frame, not shrink-wrapped
 
         // Create voxel entities
         for (const auto& pos : positions) {
@@ -65,6 +58,13 @@ protected:
         // Create octree and rebuild
         auto octree = std::make_unique<LaineKarrasOctree>(
             *voxelWorld, registry.get(), maxDepth, 3);
+        // rebuild()'s world frame follows the production convention (VoxelSceneCacher::
+        // BuildOctree): origin-anchored power-of-2 cube — worldMin=0, worldMax=resolution,
+        // maxLevels=log2(resolution). Shrink-wrapped/anisotropic bounds put the integer-grid
+        // MortonKey quantization and the octree cell mapping out of agreement and rays miss
+        // real voxels (this suite's long-standing failure).
+        testMin = glm::vec3(0.0f);
+        testMax = glm::vec3(static_cast<float>(1 << maxDepth));
         octree->rebuild(*voxelWorld, testMin, testMax);
 
         return octree;
@@ -87,8 +87,10 @@ TEST_F(VoxelInjectionNewAPITest, SparseVoxels) {
     auto octree = createOctreeWithVoxels(positions);
     ASSERT_NE(octree, nullptr);
 
-    // Cast ray to verify voxels exist
-    auto hit = octree->castRay(glm::vec3(-5, 5, 5), glm::vec3(1, 0, 0), 0.0f, 100.0f);
+    // Aim through cell CENTERS: a voxel created at integer pos occupies [pos, pos+1)^3.
+    // Integer-coordinate rays graze cell boundaries, where hit/miss is DDA tie-breaking —
+    // not what this test is about (voxel occupancy).
+    auto hit = octree->castRay(glm::vec3(-5, 5.5f, 5.5f), glm::vec3(1, 0, 0), 0.0f, 100.0f);
     EXPECT_TRUE(hit.hit) << "Should hit first voxel in line";
 }
 
@@ -143,7 +145,8 @@ TEST_F(VoxelInjectionNewAPITest, MultipleVoxelsSpread) {
     // Verify all 8 corners can be hit
     int hits = 0;
     for (const auto& pos : positions) {
-        glm::vec3 rayOrigin = pos - glm::vec3(5.0f, 0.0f, 0.0f);
+        // Through the voxel's center (integer-coordinate rays graze cell boundaries).
+        glm::vec3 rayOrigin = pos + glm::vec3(-5.0f, 0.5f, 0.5f);
         auto hit = octree->castRay(rayOrigin, glm::vec3(1, 0, 0), 0.0f, 20.0f);
         if (hit.hit) hits++;
     }

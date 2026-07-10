@@ -134,6 +134,13 @@ struct Octree {
 
     // Metadata
     int maxLevels;
+    // Depth of the ACTUAL root node. The rebuild builder stops at the level where all
+    // content converges to a single (0,0,0) parent — for content spanning the frame
+    // (bodies/shells/dense scenes) that IS maxLevels, but clustered sparse content
+    // converges earlier and the tree is rooted at a shallower depth covering only
+    // [0, 2^rootDepth)^3 of the frame. Traversal must size its domain from this, not
+    // maxLevels. -1 = unset (treat as maxLevels).
+    int rootDepth = -1;
     glm::vec3 worldMin;
     glm::vec3 worldMax;
     int bricksPerAxis = 1;    // Number of bricks along each axis

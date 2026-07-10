@@ -26,8 +26,9 @@ protected:
         voxelWorld = std::make_shared<GaiaVoxelWorld>();
 
         // Default world bounds (overridden by createOctreeWithVoxels based on actual voxel positions)
+        // rebuild()'s frame contract: origin-anchored power-of-2 cube (see VoxelSceneCacher).
         worldMin = glm::vec3(0, 0, 0);
-        worldMax = glm::vec3(10, 10, 10);
+        worldMax = glm::vec3(16, 16, 16);
         worldCenter = (worldMin + worldMax) * 0.5f;
     }
 
@@ -39,20 +40,11 @@ protected:
         // Note: SetUp() creates fresh voxelWorld for each test, so no clear needed here
 
         // Compute bounds from actual voxel positions for this test
-        constexpr float floatMax = 1e30f;
-        glm::vec3 testMin(floatMax, floatMax, floatMax);
-        glm::vec3 testMax(-floatMax, -floatMax, -floatMax);
-        for (const auto& pos : voxelPositions) {
-            testMin.x = pos.x < testMin.x ? pos.x : testMin.x;
-            testMin.y = pos.y < testMin.y ? pos.y : testMin.y;
-            testMin.z = pos.z < testMin.z ? pos.z : testMin.z;
-            testMax.x = pos.x > testMax.x ? pos.x : testMax.x;
-            testMax.y = pos.y > testMax.y ? pos.y : testMax.y;
-            testMax.z = pos.z > testMax.z ? pos.z : testMax.z;
-        }
-        // Add padding to ensure voxels fit within bounds
-        testMin -= glm::vec3(1.0f);
-        testMax += glm::vec3(1.0f);
+        // rebuild()'s frame contract (VoxelSceneCacher::BuildOctree): origin-anchored
+        // power-of-2 cube, maxLevels=log2(resolution). Shrink-wrapped bounds put the
+        // integer-grid MortonKeys and the octree cell mapping out of agreement.
+        glm::vec3 testMin(0.0f);
+        glm::vec3 testMax(static_cast<float>(1 << maxDepth));
 
         // Create voxel entities in the world
         for (const auto& pos : voxelPositions) {
