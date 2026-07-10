@@ -5,10 +5,10 @@
  *        when run on a REAL (non-lavapipe) GPU, produces the same sdf values as the
  *        CPU reference VM (evalRecipe), for every program in ParityCorpus::GetAll().
  *
- * SPLIT (this file runs two very different kinds of checks; only one needs a GPU):
+ * SPLIT (this file runs three checks; only one needs a GPU):
  *
- *  (1) Runs on EVERY machine, CI or dev, GPU or not:
- *        - CPU-eval the whole corpus via evalRecipe() (the ground truth).
+ *  (1) RecipeGlslCompiles (standalone TEST, no fixture) — runs on EVERY machine,
+ *      CI or dev, GPU or not:
  *        - Emit GLSL via EmitProceduralFieldFunctionGlsl() for every corpus program.
  *        - Compile the composed GLSL (SdfCoreKernels.glsl + emitted function + a
  *          small compute wrapper) through the REAL glslang-backed ShaderCompiler.
@@ -16,18 +16,21 @@
  *          so it runs unconditionally and asserts success for all 88 programs. This
  *          is "gate B": proof the emitted GLSL actually round-trips through the real
  *          compiler, provable on this machine without any Vulkan device at all.
- *        - The opcode-coverage TEST (separate, non-fixture) is also pure CPU: it
- *          proves every RecipeRegistry::IsValidSdfOpCode() opcode appears somewhere
- *          in the corpus, so the coverage claim can't silently rot as opcodes are
- *          added.
  *
- *  (2) Only runs when a REAL (discrete/integrated, non-software, non-Dozen) Vulkan
- *      GPU is present: uploads the fixed sample-point grid, dispatches the compiled
+ *  (2) RecipeGlslOpcodeCoverage (standalone TEST, no fixture) — also pure CPU: it
+ *      proves every RecipeRegistry::IsValidSdfOpCode() opcode appears somewhere in
+ *      the corpus, so the coverage claim can't silently rot as opcodes are added.
+ *
+ *  (3) RecipeGlslNumericalParityTest::GlslMatchesCpuEvalAcrossCorpus (TEST_F) — only
+ *      runs when a REAL (discrete/integrated, non-software, non-Dozen) Vulkan GPU is
+ *      present: CPU-evals the corpus via evalRecipe() (ground truth), emits + compiles
+ *      GLSL per program, uploads the fixed sample-point grid, dispatches the compiled
  *      SPIR-V compute shader, reads back GPU-evaluated sdf values, and compares them
  *      to the CPU evalRecipe() values within NearlyEqual's tolerance. On a machine
  *      with no such device (this one — WSL2, no Vulkan ICD, not even lavapipe is
  *      permitted here per project policy) the fixture's SetUp() calls GTEST_SKIP()
- *      and every TEST_F(...) in this file reports SKIPPED rather than FAILED/CRASHED.
+ *      and this TEST_F reports SKIPPED rather than FAILED/CRASHED — but (1) and (2)
+ *      above still run and still assert, since they aren't part of this fixture.
  *
  * HANDOFF — run part (2) on Windows-native (never through lavapipe; this harness's
  * IsRealGpu() gate explicitly excludes both llvmpipe/lavapipe AND Dozen (WARP/d3d12
@@ -489,7 +492,13 @@ protected:
 // TEST_F so a single SetUp/TearDown device lifetime is reused for all 88 programs).
 // ---------------------------------------------------------------------------
 TEST_F(RecipeGlslNumericalParityTest, GlslMatchesCpuEvalAcrossCorpus) {
-    // Step 1: read the vendored SdfCoreKernels GLSL (host-side, always runs).
+    const std::vector<glm::vec3> samplePoints = BuildSamplePoints();
+    const auto corpus = Vixen::SVO::Recipe::ParityCorpus::GetAll();
+    ASSERT_FALSE(corpus.empty());
+
+    ShaderManagement::ShaderCompiler compiler;
+
+    // Step 1: read the vendored SdfCoreKernels GLSL (host-side).
     std::ifstream kernelFile(SDF_CORE_KERNELS_GLSL_PATH);
     ASSERT_TRUE(kernelFile.good())
         << "Cannot open vendored GLSL: " << SDF_CORE_KERNELS_GLSL_PATH;
@@ -497,16 +506,13 @@ TEST_F(RecipeGlslNumericalParityTest, GlslMatchesCpuEvalAcrossCorpus) {
     kss << kernelFile.rdbuf();
     const std::string sdfCoreGlsl = kss.str();
 
-    const std::vector<glm::vec3> samplePoints = BuildSamplePoints();
-    const auto corpus = Vixen::SVO::Recipe::ParityCorpus::GetAll();
-    ASSERT_FALSE(corpus.empty());
-
-    ShaderManagement::ShaderCompiler compiler;
-
     for (const auto& entry : corpus) {
         SCOPED_TRACE("corpus program: " + entry.name);
 
-        // (1) CPU reference values — always computed, pure CPU.
+        // (1) CPU reference values — needed as the comparison baseline for this
+        // fixture's GPU dispatch below. (Gate B — CPU-eval + emit + glslang-compile
+        // for every corpus program, no GPU required — lives in the standalone
+        // RecipeGlslCompiles test in this file, which runs on every machine.)
         std::vector<float> cpuRef(samplePoints.size());
         for (size_t i = 0; i < samplePoints.size(); ++i) {
             cpuRef[i] = Vixen::SVO::Recipe::evalRecipe(
@@ -515,15 +521,11 @@ TEST_F(RecipeGlslNumericalParityTest, GlslMatchesCpuEvalAcrossCorpus) {
                 samplePoints[i]);
         }
 
-        // (2) Emit GLSL field function.
+        // (2) Emit GLSL field function + compile it for this dispatch.
         const std::string fieldFn = Vixen::SVO::Recipe::EmitProceduralFieldFunctionGlsl(
             entry.program.data(),
             static_cast<uint32_t>(entry.program.size()),
             /*recipeId=*/0);
-
-        // (3) Compose + compile via the real glslang-backed ShaderCompiler — pure
-        // host-side, runs unconditionally regardless of GPU availability. This is
-        // "gate B": the emitted GLSL round-trips through the real compiler.
         const std::string shaderSrc = ComposeComputeShader(sdfCoreGlsl, fieldFn);
 
         ShaderManagement::CompilationOptions opts;
@@ -537,7 +539,7 @@ TEST_F(RecipeGlslNumericalParityTest, GlslMatchesCpuEvalAcrossCorpus) {
             << shaderSrc.substr(0, 3000);
         ASSERT_FALSE(compOut.spirv.empty());
 
-        // (4) GPU dispatch + compare — only if a real GPU fixture is active (SetUp
+        // (3) GPU dispatch + compare — only if a real GPU fixture is active (SetUp
         // didn't GTEST_SKIP; if it did, this whole TEST_F body never runs at all —
         // gtest reports the test as SKIPPED before reaching here).
         std::vector<float> gpuValues;
@@ -551,6 +553,54 @@ TEST_F(RecipeGlslNumericalParityTest, GlslMatchesCpuEvalAcrossCorpus) {
                 << "): gpu=" << gpuValues[i] << " cpu=" << cpuRef[i]
                 << " |diff|=" << std::fabs(gpuValues[i] - cpuRef[i]);
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Gate B — glslang-compile gate, pure CPU/host-side. Standalone (non-fixture)
+// TEST so it runs unconditionally on every machine, GPU or not (mirrors
+// RecipeGlslOpcodeCoverage below, which is immune to the TEST_F's GTEST_SKIP()
+// for the same reason). ShaderManagement::ShaderCompiler's ctor only calls
+// glslang::InitializeProcess() — it never touches a Vulkan device — so this
+// proves the emitter's output actually round-trips through the real compiler
+// with no GPU required. Catches emitter syntax / undeclared-identifier /
+// float-literal-class defects, which is exactly what the emitter is most
+// likely to ship. Does NOT create a Vulkan device or dispatch anything, and
+// does NOT compare GPU values to CPU evalRecipe() — that numerical comparison
+// stays in the GPU-gated TEST_F above.
+// ---------------------------------------------------------------------------
+TEST(RecipeGlslCompiles, EmittedGlslCompilesForEveryCorpusProgram) {
+    std::ifstream kernelFile(SDF_CORE_KERNELS_GLSL_PATH);
+    ASSERT_TRUE(kernelFile.good())
+        << "Cannot open vendored GLSL: " << SDF_CORE_KERNELS_GLSL_PATH;
+    std::ostringstream kss;
+    kss << kernelFile.rdbuf();
+    const std::string sdfCoreGlsl = kss.str();
+
+    const auto corpus = Vixen::SVO::Recipe::ParityCorpus::GetAll();
+    ASSERT_FALSE(corpus.empty());
+
+    ShaderManagement::ShaderCompiler compiler;
+
+    for (const auto& entry : corpus) {
+        SCOPED_TRACE("corpus program: " + entry.name);
+
+        const std::string fieldFn = Vixen::SVO::Recipe::EmitProceduralFieldFunctionGlsl(
+            entry.program.data(),
+            static_cast<uint32_t>(entry.program.size()),
+            /*recipeId=*/0);
+        const std::string shaderSrc = ComposeComputeShader(sdfCoreGlsl, fieldFn);
+
+        ShaderManagement::CompilationOptions opts;
+        opts.sourceLanguage = ShaderManagement::CompilationOptions::SourceLanguage::GLSL;
+        auto compOut = compiler.Compile(ShaderManagement::ShaderStage::Compute, shaderSrc, "main", opts);
+        EXPECT_TRUE(compOut.success)
+            << "GLSL compile failed for corpus program '" << entry.name << "':\n"
+            << compOut.GetFullLog()
+            << "\n--- emitted field function ---\n" << fieldFn
+            << "\n--- full composed source (first 3000 chars) ---\n"
+            << shaderSrc.substr(0, 3000);
+        EXPECT_FALSE(compOut.spirv.empty());
     }
 }
 
