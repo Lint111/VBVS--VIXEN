@@ -21,7 +21,7 @@ SdfInstruction combine(SdfOpCode op, float k = 0.f) {
     return in;
 }
 
-SdfInstruction round(float r) {
+SdfInstruction roundOp(float r) {   // not 'round' — collides with std::round on MSVC (ambiguous overload)
     SdfInstruction in{};
     in.opCode = (uint8_t)SdfOpCode::Round;
     in.data[0] = r;
@@ -79,7 +79,7 @@ TEST(RecipeBounds, SmoothSubtractBoundIsConservativeUnion) {
 TEST(RecipeBounds, RoundInflatesTopOfStackRadius) {
     std::vector<SdfInstruction> prog = {
         sphere({0.f, 0.f, 0.f}, 3.f),
-        round(0.5f),
+        roundOp(0.5f),
     };
     auto r = DeriveConservativeBounds(prog.data(), (uint32_t)prog.size());
     ASSERT_TRUE(r.ok);
@@ -94,7 +94,7 @@ TEST(RecipeBounds, MultiOpCsgAndModifierChainStaysConservative) {
     box.data[0] = 2.f; box.data[1] = 2.f; box.data[2] = 2.f;
     std::vector<SdfInstruction> prog = {
         box,
-        round(0.3f),
+        roundOp(0.3f),
         sphere({5.f, 0.f, 0.f}, 1.f),
         combine(SdfOpCode::SmoothUnion, 0.1f),
     };
