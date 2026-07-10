@@ -286,6 +286,49 @@ childScale values on real hardware (un-fakeable by an occlusion-cropped single r
 is definitively reconciled, and the fix regresses nothing. Only then can M4's Earth-scale zoom gate
 genuinely run.
 
+## M6 — Earth-scale surface-to-orbit zoom gate (user-approved 2026-07-10, the epic headline)
+
+Context: M1-M5 all Opus-validated. The tier crossing now magnifies concentrically (M5). The epic's
+headline deliverable — a continuous, seamless surface-to-orbit camera zoom on an Earth-diameter body
+across TWO real magnified crossings — was NEVER genuinely run live (M4's attempt was blocked by the
+M5 magnification defect + a stale-exe red herring). M4's Earth-scale demo (`VIXEN_TIER_EARTH_DEMO`)
+uses a DIFFERENT, entry-point-anchored childOriginLocal placement (`entryPointLocal - offset*childScale`,
+for float precision at 2^-10) than the octant-center placement M5 fixed — so its concentricity is an
+OPEN QUESTION this gate must answer first.
+
+### Task 10 — Confirm (or correct) the Earth-scale demo's magnification
+- [ ] FIRST (before any zoom), verify M4's `VIXEN_TIER_EARTH_DEMO` entry-anchored placement produces
+  a CONCENTRIC child magnification at its 2^-10 ratios — same un-fakeable criterion as M5 (center
+  stable, both axes shrink together at the predicted law), on a FRESHLY-BUILT exe (check mtime — the
+  stale-exe footgun caused M4's false blocker). If it's already concentric, document why the entry-
+  anchored technique is immune to the M5 corner-fixed-point bug. If it shows the M5 wedge (or any
+  non-concentric artifact), apply the analogous fix (octant-center-aware placement adapted to the
+  2^-10 entry-anchored construction) — shader/mirror math stays untouched (M5 proved remap is correct);
+  this is a construction-site correction. Extend a CPU check if the fix is non-trivial.
+
+### Task 11 — The live continuous surface-to-orbit zoom (the epic gate)
+- [ ] Scripted continuous camera zoom from T2-bedrock-scale detail out to full-body orbit, crossing
+  BOTH tier boundaries mid-flight, on the now-concentric Earth-scale body. Camera must stay OUTSIDE
+  T0's ~25-30 world-unit solid surface radius (M4 found a zoom schedule that dived inside it → noise);
+  the 1e-6 orbit clamp + orbitCenter=(64,64,64) fixes are already in place (M4 commits).
+- [ ] Prediction-first (Inc2/M5 discipline): hand-compute the camera distances where each LOD handoff
+  should flip; verify observed transition ticks match. Per-frame capture density around BOTH predicted
+  crossings (Inc2 M5's every-tick-around-the-transition pattern).
+- [ ] Seamlessness evidenced by per-frame pixel DELTAS across each handoff (no popping/tearing —
+  bounded frame-to-frame change through the transition), NOT assertion. Non-zero body pixels every
+  frame (pixel-decode, not the stale HUD counter). Exercise residency at ≥1 hop mid-flight (scripted).
+- [ ] float32 honesty: if any 2^-10 hop shows precision artifacts, SURFACE it, don't smooth over.
+
+### Task 12 — Docs + epic closure
+- [ ] Design doc `Tiered-ESVO-Observer-Addressing-Design-2026-07.md` status banner + §9: chaining +
+  magnification proven at Earth scale (or honestly what happened). Plan-doc M6 Progress Log closure.
+  CHANGELOG rides at merge time (not in-branch).
+
+**M6 gate (THE EPIC GATE):** a live, validated, visually-confirmed continuous zoom from surface detail
+to orbit across two real scale-magnified tier crossings with no visible seam, on real hardware — the
+epic's original ask. Prediction-first handoff ticks match; per-frame deltas show seamlessness; VUID
+10× `08114` zero-new; unity/chain/default unregressed.
+
 ## Progress Log
 
 (one entry per milestone: commits, gates, validator verdict — Inc1/Inc2 convention)
