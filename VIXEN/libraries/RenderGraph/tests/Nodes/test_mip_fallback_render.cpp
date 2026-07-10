@@ -35,6 +35,9 @@
 #include "MipBake.h"
 #include "SdfBake.h"
 #include "SdfRecipes.h"
+#include "Recipe/RecipeRegistry.h"
+#include "Recipe/RecipeBaker.h"
+#include "Recipe/SdfInstruction.h"
 #include "TestVkValidation.h"
 #include "VulkanGlobalNames.h"  // VixenSelectWslGpuIcd
 
@@ -434,8 +437,6 @@ protected:
     };
 
     void BakeRenderAndMeasure(bool residencyRequested, const char* outPath, RenderStats& stats) {
-        using C = BodyOctreeSceneNodeConfig;
-
         // Bake a single sphere with a real mip pool (ConcatenateSdfWithMips bakes +
         // attaches mips per-octree; ConcatenateSdf's plain sibling never does).
         constexpr float kRadius = 22.0f;
@@ -449,6 +450,18 @@ protected:
         std::vector<const Vixen::SVO::SdfBodyOctree*> ptrs{&body};
         Vixen::SVO::ConcatenatedOctrees pool = Vixen::SVO::ConcatenateSdfWithMips(ptrs);
         ASSERT_GT(pool.mipPool.size(), 0u) << "ConcatenateSdfWithMips must bake a non-empty mip pool";
+
+        RenderPoolAndMeasure(std::move(pool), residencyRequested, outPath, stats);
+    }
+
+    // Lazy-Procedural-Delta-Baseline Inc0 M1 Task 3b — the same render+measure
+    // machinery, but driven from a pre-built pool (e.g. BakeRegistryToPool's
+    // output) rather than baking a sphere inline. Proves a SetRecipePool-fed
+    // node renders the mip fallback with REAL samples when the pool came from
+    // the production baker path, not just the direct ConcatenateSdfWithMips call.
+    void RenderPoolAndMeasure(Vixen::SVO::ConcatenatedOctrees pool, bool residencyRequested,
+                              const char* outPath, RenderStats& stats) {
+        using C = BodyOctreeSceneNodeConfig;
 
         BodyOctreeSceneNodeType nodeType("BodyOctreeScene");
         auto nodeBase = nodeType.CreateInstance("mip_fallback_test");
@@ -607,4 +620,44 @@ TEST_F(MipFallbackRenderTest, ResidentTreeRendersComparableSilhouette) {
     EXPECT_GT(ratio, 0.5) << "Mip-only silhouette is suspiciously smaller than the resident render";
     EXPECT_LT(ratio, 6.0) << "Mip-only silhouette is implausibly larger than the resident render "
                              "(expect some growth from the coarse hard-switch test, not an explosion)";
+}
+
+// ---------------------------------------------------------------------------
+// Lazy-Procedural-Delta-Baseline Inc0 M1 Task 3b — this is the M2 gate's
+// offscreen twin: a pool baked through the PRODUCTION path (RecipeRegistry ->
+// BakeRegistryToPool, exactly what a real SetRecipePool caller would use, not
+// the direct ConcatenateSdfWithMips call the tests above exercise) must ALSO
+// render the mip fallback with real samples when bricks are never made
+// resident — proving BakeRegistryToPool's Task 1 mip wiring is load-bearing,
+// not just ConcatenateSdfWithMips in isolation.
+// ---------------------------------------------------------------------------
+TEST_F(MipFallbackRenderTest, RegistryBakedPoolRendersMipFallback) {
+    ASSERT_TRUE(softwareConfirmed_);
+
+    Vixen::SVO::RecipeRegistry reg;
+    Vixen::SVO::RecipeRegistry::RecipeEntry sphere{};
+    Vixen::SVO::Recipe::SdfInstruction in{};
+    in.opCode  = static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::Sphere);
+    in.data[0] = 0.0f; in.data[1] = 0.0f; in.data[2] = 0.0f; in.data[3] = 22.0f;  // object-centered
+    sphere.bytecode = { in };
+    ASSERT_EQ(reg.Register(1u, sphere), Vixen::SVO::RecipeRegistry::RegisterResult::Ok);
+
+    Vixen::SVO::RecipeBakeConfig cfg{};  // defaults: center=(32,32,32), n=64, band=2.5, depth=3
+    Vixen::SVO::RecipeBakeResult baked = Vixen::SVO::BakeRegistryToPool(reg, cfg);
+    ASSERT_TRUE(baked.ok) << baked.err;
+    ASSERT_GT(baked.pool.mipPool.size(), 0u)
+        << "BakeRegistryToPool must bake+attach mips for its callers (Task 1)";
+
+    RenderStats stats;
+    ASSERT_NO_FATAL_FAILURE(RenderPoolAndMeasure(
+        std::move(baked.pool), /*residencyRequested=*/false,
+        "/tmp/mip_fallback_registry_baked.png", stats));
+
+    EXPECT_GT(stats.hitPixels, 5000)
+        << "Registry-baked, non-resident tree should render a non-trivial silhouette from mip samples alone";
+    const int centerBandRows = int(512 * 0.10f);
+    EXPECT_GT(stats.centerColBandHits, int(512 * 0.5f))
+        << "Center column band should be substantially covered by a centered sphere";
+    EXPECT_LT(stats.edgeColBandHits, centerBandRows / 4)
+        << "Edge column band should be mostly empty (sky) for a round, centered silhouette";
 }
