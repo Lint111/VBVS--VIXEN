@@ -2,9 +2,16 @@
 // Lighting.glsl - Shading Functions
 // ============================================================================
 // Lighting calculations for voxel rendering: Lambert + GGX microfacet BRDF
-// (see Brdf.glsl) with a single hardcoded directional light. Light-data
-// wiring (LightingConfig / light array) lands in a later Sampled Lighting
-// Inc0 milestone; the light here stays hardcoded by design for this one.
+// (see Brdf.glsl). Two families of computeLighting overloads:
+//   - (color, normal, rayDir[, roughness]): hardcoded single directional
+//     light, kept for VoxelRayMarch.comp / VoxelRayMarch_Compressed.comp
+//     (legacy consumers that never wired LightingConfig).
+//   - (color, normal, rayDir, roughness, LightingConfig): data-driven, reads
+//     the light list from a LightingConfig record (Generated/LightingConfig.glsl).
+//     BodyInstanceRayMarch.comp uses this overload as of Sampled Lighting
+//     Inc0 M3. Default LightingConfig content (see LightingConfigNode)
+//     reproduces the hardcoded overload's exact light byte-for-byte, so the
+//     data path is a zero-visual-delta plumbing change.
 // ============================================================================
 
 #ifndef LIGHTING_GLSL
@@ -40,6 +47,25 @@ vec3 computeLighting(vec3 color, vec3 normal, vec3 rayDir, float roughness) {
 // Passes the default roughness (0.5) to the full function so look is unchanged.
 vec3 computeLighting(vec3 color, vec3 normal, vec3 rayDir) {
     return computeLighting(color, normal, rayDir, 0.5);
+}
+
+// Data-driven overload: shades against every light in a LightingConfig record
+// (kind 0 = directional: direction_or_position is a normalized direction away
+// from the surface toward the light, matching the hardcoded overload's
+// convention; kind 1 = point, unused by any content this increment). No
+// shadowing (Inc1). ambientIntensity replaces the hardcoded overload's fixed
+// 0.3; each light's radiance is summed, matching a single directional light's
+// output exactly when lightCount == 1.
+vec3 computeLighting(vec3 color, vec3 normal, vec3 rayDir, float roughness, LightingConfig lighting) {
+    vec3 viewDir = normalize(-rayDir);
+
+    vec3 Lo = lighting.ambientIntensity * color;
+    for (uint i = 0u; i < lighting.lightCount; ++i) {
+        Light light = lighting.lights[i];
+        vec3 lightDir = normalize(light.direction_or_position);
+        Lo += evalBRDF(color, roughness, normal, viewDir, lightDir) * light.radiance;
+    }
+    return Lo;
 }
 
 // Alternative shading with configurable light direction
