@@ -622,6 +622,19 @@ TEST(TierCrossingMirrorParity, ChainedTwoHopCrossingComposesHitT) {
 // EVERY hop, so tEntryWorld measures ~0 (entry inside the child grid) even at
 // 2^-10. This test proves that placement discipline generalizes to the real
 // ratio, not just M1/M3's proof-of-mechanism 0.5/2.0.
+//
+// IMPORTANT correction discovered while building M4's LIVE demo scene (not this
+// test, which predates and survives the finding unchanged): the offset's SIGN
+// per axis is NOT universally (+0.1,+0.1,+0.1) -- it must point INTO whichever
+// octant's own box the marked leaf actually occupies, relative to that octant's
+// OWN geometric center (1.5,1.5,1.5) or corner, as appropriate. This test's own
+// fixture (BuildTask3ParentWithScale/kParentLocalOrigin=(1.8,1.8,2.0), an
+// arbitrary ray-hit point NOT the demo's own camera-facing-octant convention)
+// happens to work with a uniform (0.1,0.1,0.1) because of that fixture's own
+// specific geometry -- it is NOT a universally-safe constant. A caller building
+// a NEW chained fixture must re-derive the correct per-axis sign from ITS OWN
+// octant's box bounds (see BuildRenderGraph.cpp's VIXEN_TIER_EARTH_DEMO
+// construction for a worked example against octant 4's actual asymmetric box).
 TEST(TierCrossingMirrorParity, EarthScaleChainedCrossingKInvariantPlacement) {
     constexpr float kChildScale = 0.0009765625f;  // 2^-10, the real per-hop tier ratio
     constexpr glm::vec3 kOffset{0.1f, 0.1f, 0.1f};  // SAME small, well-inside-[1,2) constant
