@@ -520,3 +520,22 @@ genuinely run.
   DIFFERENT origin technique than the one fixed here; whether M4's own construction needs a
   parallel correction, or whether its entry-point-anchored technique is already immune, is
   M4's own re-run to determine, not asserted here).
+  **Opus validator: APPROVED (commit `32e8d82c`, 2026-07-10).** Independently re-derived the
+  octant-center math against the ESVO convention (`mirroredToLocalOctant` SVOTypes.h:417 +
+  `executePushPhase` pos/scale_exp2 descend): marked leaf confirmed a DIRECT CHILD OF ROOT
+  (construction iterates root->childDescriptors octants 0-7), so 1.25/1.75-per-axis applies and
+  `RootLeafOctantCenterLocal`'s bit→1.75/1.25 mapping matches exactly; (1.5,1.5,1.5) analytically
+  reproduced as the scale-invariant fixed point → the wedge. Confirmed the commit touches NO
+  shader/mirror/traversal file (`git show --name-only`; remap diff empty). Re-ran the concentric
+  sweep from its OWN clean build (exe 22:06:30 postdates edits): width==height at every step,
+  center stable within 2px, ratios 1.28/2.04/2.00 — concentric, not a wedge; the sub-2× 1.0→0.5
+  step explained as leaf-cell clipping (child halfwidth 0.5·cs overflows the 0.25 leaf halfwidth
+  above cs=0.5). **M2 reconciliation SOLID:** read `b3d990a6`'s construction directly — same
+  broken (1.5,1.5,1.5); M2's own commit msg measured "the scale-dependent portion from the
+  scale-invariant shared notch edge" — that notch IS the fixed corner, so its 1D extent shrank
+  ~4× while concentric area shrank ~1.24×; both validators saw the SAME broken render, disagreement
+  was measurement technique not regression. Settled. **M4-Earth-scale scoping SOUND** (entry-
+  anchored placement is a different constraint — float precision at 2^-10 — not this centering
+  bug; leaving it to M4's own gate is correct; carries the caveat that M4's concentricity is its
+  own gate's question). Regressions all green (unity byte-identical, chain both tiers fire
+  3416/1156px, VUID 10× zero-new, CPU 6/6+5/5+5/5+5/5+6/6). Tree clean, no main contamination.
