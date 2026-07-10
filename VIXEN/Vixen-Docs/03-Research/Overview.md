@@ -7,6 +7,7 @@ related:
   - "[[ESVO-Algorithm]]"
   - "[[Voxel-Papers]]"
   - "[[Pipeline-Comparison]]"
+  - "[[Voxel-Field-Physics-Research-2026-07]]"
 ---
 
 # Research Overview
@@ -91,6 +92,12 @@ Bibliography of 24+ research papers covering:
 - Hardware ray tracing (VK_KHR_ray_tracing_pipeline)
 - Hybrid approaches
 
+### [[Voxel-Field-Physics-Research-2026-07|Voxel Field Physics Research]]
+Research direction for a custom VIXEN physics module whose authority stays in recipes, SDFs,
+voxel assets, sparse fields, and deltas rather than triangle meshes. Covers external engine
+lessons, voxel rigid bodies, integrity/breaking, sparse field jobs, fluids/gases/weather, and
+optional solver adapters.
+
 ---
 
 ## 4. Metrics Collected
@@ -132,5 +139,6 @@ Bibliography of 24+ research papers covering:
 - [[ESVO-Algorithm]] - Core traversal algorithm
 - [[Voxel-Papers]] - Research bibliography
 - [[Pipeline-Comparison]] - 4-way comparison design
+- [[Voxel-Field-Physics-Research-2026-07]] - Field-native voxel physics direction
 - [[../02-Implementation/SVO-System|SVO System]] - Implementation details
 - [[../05-Progress/Roadmap|Roadmap]] - Development timeline
