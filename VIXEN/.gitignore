@@ -7,6 +7,9 @@
 # Auto-provisioned gdb cache (ProvisionGdb.cmake, VIXEN_AUTO_PROVISION_GDB=ON)
 .gdb-deps/
 
+# CMake GoogleTest discovery cache (regenerated per-configure, not authored)
+cmake_test_discovery_*.json
+
 # Visual Studio files
 .vs/
 *.suo
