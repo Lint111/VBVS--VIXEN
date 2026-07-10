@@ -106,6 +106,8 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         _codegen_to_wsl_path("${_cg}/view-schemas" _schema_view_run)
         _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/libraries/SVO/include/Generated/OctreeConfig.g.h" _out_octreeconfig_cpp_run)
         _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/shaders/Generated/OctreeConfig.glsl" _out_octreeconfig_glsl_run)
+        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/libraries/RenderGraph/include/Generated/LightingConfig.g.h" _out_lightingconfig_cpp_run)
+        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/shaders/Generated/LightingConfig.glsl" _out_lightingconfig_glsl_run)
         _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/application/main/include/Generated/Hud.g.h" _out_hud_header_run)
         _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/libraries/RenderGraph/assets/ui/Hud.view.rml" _out_hud_rml_run)
         _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/application/main/include/Generated/Hud.blob.g.h" _out_hud_blob_header_run)
@@ -118,6 +120,8 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_schema_view_run "${_cg}/view-schemas")
         set(_out_octreeconfig_cpp_run "${CMAKE_SOURCE_DIR}/libraries/SVO/include/Generated/OctreeConfig.g.h")
         set(_out_octreeconfig_glsl_run "${CMAKE_SOURCE_DIR}/shaders/Generated/OctreeConfig.glsl")
+        set(_out_lightingconfig_cpp_run "${CMAKE_SOURCE_DIR}/libraries/RenderGraph/include/Generated/LightingConfig.g.h")
+        set(_out_lightingconfig_glsl_run "${CMAKE_SOURCE_DIR}/shaders/Generated/LightingConfig.glsl")
         set(_out_hud_header_run "${CMAKE_SOURCE_DIR}/application/main/include/Generated/Hud.g.h")
         set(_out_hud_rml_run "${CMAKE_SOURCE_DIR}/libraries/RenderGraph/assets/ui/Hud.view.rml")
         set(_out_hud_blob_header_run "${CMAKE_SOURCE_DIR}/application/main/include/Generated/Hud.blob.g.h")
@@ -138,6 +142,25 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     add_custom_target(octreeconfig_regen
         COMMAND ${_CODEGEN_RUNNER} ${_oc_args}
         COMMENT "[codegen] regenerate OctreeConfig.g.h/.glsl (Yeroket tool)"
+        VERBATIM)
+
+    # --- LightingConfig via the same Yeroket tool (Sampled Lighting Inc0 M1: lights
+    # become generated, drift-guarded data types). Generated header lives beside
+    # RenderGraph — the future Lighting.glsl/BodyInstanceRayMarch.comp consumer's
+    # library — mirroring OctreeConfig's "config lives with its consuming library"
+    # convention (SVO owns OctreeConfig because the octree is SVO's core data type).
+    set(_lc_args
+        run --project "${_yk_tool_run}" -c Release --
+        --schema "${_schema_config_run}" --struct LightingConfig
+        --out-cpp  "${_out_lightingconfig_cpp_run}"
+        --out-glsl "${_out_lightingconfig_glsl_run}")
+    add_custom_target(lightingconfig_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_lc_args} --check
+        COMMENT "[codegen] golden check: LightingConfig.g.h/.glsl match canonical (Yeroket tool)"
+        VERBATIM)
+    add_custom_target(lightingconfig_regen
+        COMMAND ${_CODEGEN_RUNNER} ${_lc_args}
+        COMMENT "[codegen] regenerate LightingConfig.g.h/.glsl (Yeroket tool)"
         VERBATIM)
 
     # --- Hud [View] schema via the same Yeroket tool (View Contract Inc-2: renamed from EditorHud).
@@ -210,8 +233,8 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         VERBATIM)
 else()
     message(WARNING "[codegen] KI-015: Yeroket kernel-codegen tool not found at ${_yk_tool} — "
-        "OctreeConfig/Hud golden DRIFT GUARDS DISABLED; the committed generated artifacts "
-        "(OctreeConfig.g.h/.glsl, Hud.g.h, Hud.view.rml, Hud.blob.g.h, hud.viewblob) are used as-is and will NOT be checked against "
+        "OctreeConfig/LightingConfig/Hud golden DRIFT GUARDS DISABLED; the committed generated artifacts "
+        "(OctreeConfig.g.h/.glsl, LightingConfig.g.h/.glsl, Hud.g.h, Hud.view.rml, Hud.blob.g.h, hud.viewblob) are used as-is and will NOT be checked against "
         "their canonical schemas this configure. The Yeroket repo is WSL-only on this machine, so a "
         "Windows-side configure cannot reach it — run the WSL-side configure, mount \\\\wsl$, or pass "
         "-DYEROKET_ROOT=<path> to enable the guard.")
