@@ -12,6 +12,9 @@
 #include "VulkanGraphApplication.h"
 #include <cmath>    // std::tan for the LOD ray-cone (raySizeCoef) computation
 #include <cstdlib>  // std::strtof for the VIXEN_RENDER_SCALE env parse (M4)
+#include <fstream>  // Inc0 M5: read BodyInstanceRayMarch.comp's raw source for the recipe splice
+#include <sstream>  // Inc0 M5: rdbuf() into a string for the splice
+#include "Recipe/UberShaderSplice.h"  // Inc0 M5: SpliceProceduralRecipesIntoSource
 #include "Connection/ConnectionModifier.h"
 #include "Connection/Modifiers/FieldExtractionModifier.h"
 #include "Connection/Modifiers/AccumulationSortConfig.h"  // SEL-P3: accumulation-connect sort key (provider fan-in)
@@ -151,6 +154,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     // --- Phase G: Compute Pipeline Nodes ---
     NodeHandle computeShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("compute_shader_lib");
+    computeShaderLibNode_ = computeShaderLib;  // stored so RecompileProceduralShader can MarkNodeNeedsRecompile (Inc0 M5)
     NodeHandle descriptorGatherer = renderGraph->AddNode<DescriptorResourceGathererNodeType>("compute_desc_gatherer");  // Phase H
     NodeHandle pushConstantGatherer = renderGraph->AddNode<PushConstantGathererNodeType>("push_constant_gatherer");  // Phase H
     NodeHandle computeDescriptorSet = renderGraph->AddNode<DescriptorSetNodeType>("compute_descriptors");
@@ -413,6 +417,30 @@ void VulkanGraphApplication::BuildRenderGraph() {
             throw std::runtime_error(std::string(shaderName) + " not found - check shader search paths");
         }
 
+        // Lazy-Procedural-Delta-Baseline Inc0 M5 Task 11: read the raw source and splice in
+        // every registered procedural recipe's emitted field function + the evalRecipeField/
+        // getRecipeBoundSphere switches, BEFORE handing the source to the builder. Uses
+        // AddStage (source text), NOT AddStageFromFile — the file is still the origin of the
+        // #include-relative-path text, but the text itself is no longer the file's own bytes
+        // verbatim. #include resolution is unaffected: it goes through the explicit
+        // AddIncludePath calls below (preprocessor-driven), not sourcePath (AddStageFromFile's
+        // OWN #include convenience, which this path deliberately bypasses).
+        std::ifstream compFile(compPath);
+        std::ostringstream compBuf;
+        compBuf << compFile.rdbuf();
+        const std::string rawSource = compBuf.str();
+
+        std::string splicedSource;
+        try {
+            splicedSource = Vixen::SVO::Recipe::SpliceProceduralRecipesIntoSource(
+                rawSource, proceduralRecipes_);
+        } catch (const std::exception& e) {
+            if (mainLogger && mainLogger->IsEnabled()) {
+                mainLogger->Error(std::string("[BuildRenderGraph] procedural recipe splice failed: ") + e.what());
+            }
+            throw;
+        }
+
         builder.SetProgramName(programName)
                .SetPipelineType(ShaderManagement::PipelineTypeConstraint::Compute)
                .SetTargetVulkanVersion(vulkanVer)
@@ -422,7 +450,15 @@ void VulkanGraphApplication::BuildRenderGraph() {
 #ifdef VIXEN_SHADER_SOURCE_DIR
                .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
 #endif
-               .AddStageFromFile(ShaderManagement::ShaderStage::Compute, compPath, "main");
+               // Inc0 M5: BodyInstanceRayMarch.comp now #includes "recipe/SdfCoreKernels.glsl"
+               // (the SdfCore_* kernel set the spliced recipe field functions call), which
+               // lives under libraries/SVO/shaders — a different tree than the paths above.
+               .AddIncludePath("libraries/SVO/shaders")
+               .AddIncludePath("../libraries/SVO/shaders")
+#ifdef VIXEN_SVO_SHADER_SOURCE_DIR
+               .AddIncludePath(VIXEN_SVO_SHADER_SOURCE_DIR)
+#endif
+               .AddStage(ShaderManagement::ShaderStage::Compute, splicedSource, "main");
 
         // Shader counters (perf sweep rank 2) are compiled OUT unconditionally: the live
         // app has no consumer for them, and every pixel was paying 3-4 unread atomic RMWs
@@ -433,7 +469,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
         // a glslang compile error). Re-enable by hand-editing this .comp's #define if needed.
 
         if (mainLogger && mainLogger->IsEnabled()) {
-            mainLogger->Info("[BuildRenderGraph] Using BodyInstanceRayMarch shader: " + compPath.string());
+            mainLogger->Info("[BuildRenderGraph] Using BodyInstanceRayMarch shader: " + compPath.string() +
+                             " (" + std::to_string(proceduralRecipes_.Ids().size()) + " procedural recipes spliced)");
             mainLogger->Info("[BuildRenderGraph] Octree buffers at bindings 1/2/3/5 (BodyOctreeSceneNode); instances at binding 10");
         }
 

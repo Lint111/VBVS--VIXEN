@@ -271,6 +271,34 @@ int g_brickArrayBase = 0;   // configs[g_octreeIdx].brickArrayBase
 #include "TraceRecording.glsl"
 #include "ESVOTraversal.glsl"
 #include "Lighting.glsl"
+
+// ============================================================================
+// UBER-SHADER RECIPE SPLICE POINT (Lazy-Procedural-Delta-Baseline Inc0 M5 Task 11)
+// ============================================================================
+// UberShaderSplice.h::SpliceProceduralRecipesIntoSource injects the registered recipes'
+// emitted sdfRecipe_<id>(vec3) field functions + an evalRecipeField(uint recipeId, vec3 p)
+// switch dispatcher HERE (textually, right after this marker line) at shader-build time —
+// registration forces a recompile of this whole .comp anyway (v1: no metadata SSBO), so the
+// splice happens once per Compile(), not per frame. When NO recipes are registered (the
+// zero-registration case, e.g. a build that never calls RegisterProceduralRecipe) the marker
+// is left in place with nothing appended after it — evalRecipeField then doesn't exist, but
+// neither does anything below that would call it (PROVIDER_PROCEDURAL falls through to the
+// legacy traceProceduralBody path unconditionally at v1's two hardcoded ids — see the main
+// loop below), so an unspliced source with zero registrations still compiles clean.
+//
+// MUST precede the "#include SdfRecipes.glsl" line immediately below: SdfRecipes.glsl's
+// traceUberRecipeBody calls evalRecipeField, so evalRecipeField must already be declared
+// (GLSL has no forward declaration/hoisting) by the time that include is processed —
+// splicing AFTER the include compiles the call before the callee exists.
+//
+// recipe/SdfCoreKernels.glsl (the SdfCore_* kernel set EmitProceduralFieldFunctionGlsl's
+// output calls — Sphere/Box/Union/Round/... ) is included here too, for the SAME
+// before-first-use reason: it previously had NO consumer in this .comp (only the
+// hand-written SdfRecipes.h/.glsl formula was ever live-rendered), so this is genuinely
+// new wiring, not a pre-existing include this milestone merely relocated.
+#include "recipe/SdfCoreKernels.glsl"
+// VIXEN_UBER_RECIPE_SPLICE_MARKER
+
 #include "SdfRecipes.glsl"
 #include "StoredSdf.glsl"    // Inc2 M4: trilinear SDF fetch + sphere-trace handler
 #include "MipFallback.glsl"  // Inc1 M3: sparse-mip ESVO LOD shader-side fallback read
@@ -1146,20 +1174,60 @@ void main() {
 
         // --- Procedural provider: analytic SDF sphere-trace (no octree) ---
         if (inst.providerKind == PROVIDER_PROCEDURAL) {
-            vec3 pCenter = inst.worldPos;
-            vec3 pParams = vec3(inst.recipeParams[0], inst.recipeParams[1], inst.recipeParams[2]);
             vec3 pNormal;
             float pT;
-            if (traceProceduralBody(inst.recipeId, pCenter, pParams, rayOrigin, rayDir,
-                                    pNormal, pT)) {
-                if (pT < bestT) {
-                    bestT          = pT;
-                    bestColor      = inst.color;   // procedural base colour = instance tint
-                    bestNormal     = pNormal;      // smooth SDF-gradient normal
-                    bestBrickIndex = 0u;
-                    bestVoxelIdx   = 0u;
-                    anyHit         = true;
+            bool pHit = false;
+
+            // recipeId 0/1 stay on the hand-written legacy analytic path (RECIPE_SPHERE /
+            // RECIPE_DISPLACED_SPHERE) — byte-identical formula, unchanged by the M5 splice.
+            // recipeId >= 2 is registry-driven: only reachable when at least one recipe was
+            // registered (the ONLY way a BodyInstance can carry such an id), which is also
+            // the only condition under which evalRecipeField/getRecipeBoundSphere exist in
+            // this translation unit (see the splice-marker comment above) — so this branch
+            // never references an undeclared identifier in an unspliced build.
+            if (inst.recipeId < 2u) {
+                vec3 pCenter = inst.worldPos;
+                vec3 pParams = vec3(inst.recipeParams[0], inst.recipeParams[1], inst.recipeParams[2]);
+                pHit = traceProceduralBody(inst.recipeId, pCenter, pParams, rayOrigin, rayDir,
+                                           pNormal, pT);
+            }
+#ifdef VIXEN_UBER_RECIPE_SPLICED
+            else {
+                vec3  boundCenter; float boundRadius; float relaxation;
+                getRecipeBoundSphere(inst.recipeId, boundCenter, boundRadius, relaxation);
+
+                // Front-to-back early-reject (Task 12): mirrors the ESVO branch's own
+                // entryTWorld > bestT discipline below — skip the march entirely when this
+                // instance's bound-sphere entry point is already farther than a hit some
+                // OTHER instance already recorded this pixel. instanceIterCount stays 0u for
+                // a rejected instance (same "zero traversal iterations, not just a discarded
+                // result" proof the ESVO branch relies on for its own gate test).
+                vec3  oc   = rayOrigin - boundCenter;
+                float b    = dot(oc, rayDir);
+                float c    = dot(oc, oc) - boundRadius * boundRadius;
+                float disc = b * b - c;
+                if (disc < 0.0) {
+                    instanceIterCount[instIdx] = 0u;
+                    continue;  // ray misses this instance's bound sphere entirely
                 }
+                float entryT = max(-b - sqrt(disc), 0.0);
+                if (entryT > bestT) {
+                    instanceIterCount[instIdx] = 0u;
+                    continue;  // nearest possible hit is already farther than bestT
+                }
+
+                pHit = traceUberRecipeBody(inst.recipeId, boundCenter, boundRadius, relaxation,
+                                           rayOrigin, rayDir, pNormal, pT);
+            }
+#endif
+
+            if (pHit && pT < bestT) {
+                bestT          = pT;
+                bestColor      = inst.color;   // procedural base colour = instance tint
+                bestNormal     = pNormal;      // smooth SDF-gradient normal
+                bestBrickIndex = 0u;
+                bestVoxelIdx   = 0u;
+                anyHit         = true;
             }
             continue;  // procedural body fully handled; skip the ESVO path
         }

@@ -37,6 +37,7 @@
 #include "Nodes/DeviceNode.h"                 // View Contract Inc-2 Task 5: VulkanDevice* for CaptureHudFrameToPng
 #include "Debug/RenderTargetReadback.h"       // View Contract Inc-2 Task 5: IRenderTarget -> PNG readback
 #include <sstream>                            // View Contract Inc-2 Task 5: VIXEN_HUD_SCRIPT/_CAPTURE_FRAMES parsing
+#include "Recipe/RecipeBounds.h"              // Lazy-Procedural-Delta-Baseline Inc0 M5: ApplyRecipeBoundsDefaults
 
 // Sparse-Mip ESVO LOD Inc1 M4c: the combined residency trigger (M4a resolvability + M4b
 // frustum, factored out as a pure/testable function — see ResidencyTrigger.h).
@@ -995,6 +996,52 @@ void VulkanGraphApplication::SetRecipePool(Vixen::SVO::ConcatenatedOctrees pool)
         node->SetRecipePool(std::move(pool));
     } else if (mainLogger) {
         mainLogger->Warning("[VulkanGraphApplication::SetRecipePool] bodyOctreeSceneNode_ not found — recipe pool not applied");
+    }
+}
+
+Vixen::SVO::RecipeRegistry::RegisterResult VulkanGraphApplication::RegisterProceduralRecipe(
+    uint32_t recipeId, Vixen::SVO::RecipeRegistry::RecipeEntry entry) {
+    // kDefaultProceduralBoundRadius mirrors this file's own kResidencyBoundingRadius (defined
+    // further down, in the anonymous namespace above UpdateBodySceneResidency -- forward
+    // reference isn't possible here, so the value is duplicated with this comment as the
+    // cross-check) so an authored-bound-free procedural recipe gets the SAME "reasonable
+    // default sphere" the Stored path already uses, not a second independent magic number.
+    // If that constant ever changes, update this one to match.
+    constexpr float kDefaultProceduralBoundRadius = 24.0f;
+    auto boundsResult = Vixen::SVO::Recipe::ApplyRecipeBoundsDefaults(
+        entry, kDefaultProceduralBoundRadius, /*defaultStepRelaxation=*/0.9f);
+
+    if (mainLogger && mainLogger->IsEnabled()) {
+        auto sourceName = [](Vixen::SVO::Recipe::RecipeBoundsSource s) {
+            switch (s) {
+                case Vixen::SVO::Recipe::RecipeBoundsSource::Authored:      return "authored";
+                case Vixen::SVO::Recipe::RecipeBoundsSource::Derived:       return "derived";
+                case Vixen::SVO::Recipe::RecipeBoundsSource::EngineDefault: return "engine-default";
+            }
+            return "?";
+        };
+        mainLogger->Info("[VulkanGraphApplication::RegisterProceduralRecipe] recipeId=" +
+                         std::to_string(recipeId) + " boundRadius=" + std::to_string(entry.boundRadius) +
+                         " (" + sourceName(boundsResult.boundSource) + ") stepRelaxation=" +
+                         std::to_string(entry.stepRelaxation) + " (" + sourceName(boundsResult.relaxationSource) + ")");
+    }
+
+    return proceduralRecipes_.Register(recipeId, std::move(entry));
+}
+
+void VulkanGraphApplication::RecompileProceduralShader() {
+    if (!graphCompiled) {
+        // Nothing to mark dirty yet -- the first Compile() will read proceduralRecipes_'s
+        // current contents when the shader builder lambda runs (BuildRenderGraph.cpp).
+        return;
+    }
+    if (computeShaderLibNode_.IsValid()) {
+        renderGraph->MarkNodeNeedsRecompile(computeShaderLibNode_);
+        if (mainLogger && mainLogger->IsEnabled()) {
+            mainLogger->Info("[VulkanGraphApplication::RecompileProceduralShader] marked compute_shader_lib dirty");
+        }
+    } else if (mainLogger) {
+        mainLogger->Warning("[VulkanGraphApplication::RecompileProceduralShader] computeShaderLibNode_ not found — cannot re-apply");
     }
 }
 

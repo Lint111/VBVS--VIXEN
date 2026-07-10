@@ -612,6 +612,32 @@ endif()
 gtest_discover_tests(test_recipe_glsl_numerical_parity)
 
 # ===========================================================================
+# Uber-Shader Splice Tests (Lazy-Procedural-Delta-Baseline Inc0 M5 Task 11 —
+# SpliceProceduralRecipesIntoSource compiles the REAL BodyInstanceRayMarch.comp
+# through the production ShaderBundleBuilder path, CPU-only / no GPU needed)
+# ===========================================================================
+add_executable(test_uber_shader_splice test_uber_shader_splice.cpp)
+if(TARGET SVO AND TARGET ShaderManagement)
+    target_link_libraries(test_uber_shader_splice PRIVATE
+        GTest::gtest_main SVO ShaderManagement)
+else()
+    target_link_libraries(test_uber_shader_splice PRIVATE GTest::gtest_main)
+endif()
+target_compile_definitions(test_uber_shader_splice PRIVATE
+    BODY_INSTANCE_RAYMARCH_COMP_PATH="${CMAKE_SOURCE_DIR}/shaders/BodyInstanceRayMarch.comp"
+    VIXEN_SHADERS_DIR="${CMAKE_SOURCE_DIR}/shaders"
+    VIXEN_SVO_SHADERS_DIR="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders"
+)
+set_target_properties(test_uber_shader_splice PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_uber_shader_splice POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_uber_shader_splice>
+        COMMENT "Copying TBB DLL for test_uber_shader_splice")
+endif()
+gtest_discover_tests(test_uber_shader_splice)
+
+# ===========================================================================
 # Recipe Bake Parity Tests (P2.1 M1 — recipe-sphere bake == analytic-sphere bake)
 # ===========================================================================
 add_executable(test_recipe_bake test_recipe_bake.cpp)
