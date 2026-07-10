@@ -180,6 +180,17 @@ now is by explicit user request.
   view the user asked about — if time/complexity runs long, a single clean crossing (M3+M4's own
   gate) that visibly and correctly works is still a legitimate, demonstrable increment; do not let the
   3-tier stretch goal block shipping the 1-crossing proof.
+  **✅ DONE 2026-07-10, Opus-validated APPROVED 2026-07-10** — commits `fbc80b9f` (TRANSFER_DST_BIT
+  root-cause fix, first-ever live post-Compile residency grant exposed it), `fa8b71cc` (the scripted
+  continuous-zoom demo), `1028faf8` (docs + design-doc status). Single-crossing continuous zoom
+  proven live: LOD handoff observed at tick 58 vs. hand-predicted 58.8; mid-flight residency
+  transition (mip→real child geometry, one-tick async latency) exercised directly, discharging the
+  M4-carried obligation. 3-tier stretch deliberately scoped out per the task's own permission,
+  prerequisites documented in design-doc §9. Validator confirmed seamlessness at TRUE per-frame
+  granularity (every tick 50-70 individually captured; whole-frame deltas show no discontinuity),
+  swept the buffer family for un-fixed TRANSFER_DST siblings (none — all other buffers are
+  host-mapped, and the two other BatchedUploader consumers already carry the flag), and pinned the
+  canonical VUID baseline at 10 emissions. See M5 validator addendum below.
 
 ### Progress Log
 
@@ -1268,8 +1279,10 @@ Findings:
     hardware (WSL/Dozen passthrough, the same real-GPU environment M4 could not get these test
     families to execute on) — both green (1/1, 3/3) with the fix; this is the first session in
     which this specific test family has actually been RUN (not just compiled) against real
-    hardware. Post-fix VUID signature returned to the pre-existing baseline (20× the known
-    `VUID-vkCmdDispatch-None-08114`, zero new types) across three separate live runs.
+    hardware. Post-fix VUID signature returned to the pre-existing baseline — **10 emissions**
+    (20 grep-lines; each emission = header + spec-URL line, per the M4 validator's counting
+    resolution) of the known `VUID-vkCmdDispatch-None-08114`, zero new types, and the fix's
+    target `VUID-vkCmdCopyBuffer-dstBuffer-00120` GONE — across three separate live runs.
   - **Observed evidence vs. prediction.** Per-frame pixel analysis of the captured sequence
     (48 frames spanning ticks 5-220, dense coverage of ticks 15-35 and 50-70): (1) zero
     child-colour pixels at every tick through 24 (non-resident child, correctly mip-shading even
@@ -1316,8 +1329,10 @@ Findings:
     shader-traversal logic). RenderGraph tests touching the changed buffers:
     `test_partial_brick_upload` 1/1, `test_body_octree_lifetime` 3/3,
     `test_bandwidth_ab_measurement` 2/2, `test_shell_revalidate_node` 2/2,
-    `test_tier_crossing_lod_residency` 1/1 (its second sub-test remains the known
-    software-only-gate refusal on this real-GPU machine, unchanged from M4) all green. Seven
+    `test_tier_crossing_lod_residency` 1/1 (its second sub-test fails with "no child pixels" on
+    the non-conformant dzn/Dozen headless path — a Dozen render limitation, unchanged from M4;
+    the live windowed app on real hardware DID render the child, per the pixel evidence) all
+    green. Seven
     other RenderGraph tests (`test_appflow_editor_toggle_render`,
     `test_body_instance_occlusion_reject`, `test_body_instance_raymarch_render`,
     `test_editor_document_render`, `test_mip_fallback_render`, `test_recipe_authoring_gate`,
@@ -1377,6 +1392,50 @@ this milestone is the demonstration that the mechanism composes into the actual 
 **M5 gate:** a live, validated, visually-confirmed continuous zoom across at least one real tier
 crossing with no visible seam; 3-tier chaining is a stretch outcome, not a blocking requirement.
 **MET.**
+
+### M5 Opus validator addendum (2026-07-10): APPROVED
+
+Independent adversarial validation of `b3eceb07..1028faf8`. The validator built a fresh WSL Debug
+build from scratch and ran tests itself, re-derived the LOD-gate math, did its own PIL pixel
+accounting over all 48 captures, counted VUIDs directly from run stdout, swept the buffer family via
+codegraph, and visually inspected the crossing frames. Findings:
+
+- **Seamlessness — established at TRUE per-frame granularity**, not capture-cadence granularity: the
+  runner captures EVERY tick 50-70 individually, straddling the predicted crossing (58.8) with zero
+  gaps, so no 1-2-frame pop could hide. Whole-frame changed-pixel deltas across the crossing window
+  grow monotonically with no discontinuity; the shader gate is per-ray/per-leaf so the transition
+  structurally cannot snap whole-sphere; ticks 57→60 show the same gradient smoothly receding. The
+  one discrete flip (grey→child at tick 25) is the RESIDENCY state change — correctly discrete, no
+  garbage frame.
+- **Zoom math — exact match:** independently re-derived flip distance = 0.5×48/0.6 = 40.0 world
+  units → tick 58.8; observed decline start tick 58. Residency grant tick 24 = distance 25.2,
+  properly inside the would-cross zone.
+- **TRANSFER_DST fix — root-cause, complete, no siblings:** exactly two buffers in
+  `BodyOctreeSceneNode` receive `vkCmdCopyBuffer` uploads (bricks @UploadBrickPool, config
+  @PollBrickUploadCompletion) — both fixed at creation; every other buffer in the node is
+  host-mapped (needs no flag); the only other BatchedUploader consumers project-wide
+  (`VoxelAABBCacher`, `VoxelSceneCacher`) already declare TRANSFER_DST on every destination. Latent
+  until now because bricks/config were the only storage-only buffers to ever get a post-Compile
+  copy. `VUID-vkCmdCopyBuffer-dstBuffer-00120` confirmed GONE post-fix.
+- **Canonical VUID baseline — PINNED: 10 emissions** of `VUID-vkCmdDispatch-None-08114` (binding 14,
+  pre-existing), zero other types. Raw `grep -c VUID` returns 20 because each emission spans a
+  header line + a spec-URL line. Future milestones: count emission headers, not grep lines.
+- **Demo scoping — clean:** all three M5 code sites gated on `VIXEN_TIER_ZOOM_DEMO`; the
+  auto-residency early-return is demo-only; production paths byte-untouched when unset. Shader
+  change confirmed comment-only.
+- **3-tier scope-out — honest:** both named prerequisites (per-child-scale hitT normalization;
+  LOD gate `>= childScale*scale_exp2`) trace to the M3/M4 validator addenda, not invented post-hoc;
+  design-doc banner/§9 accurately state shipped scope.
+- **Regression:** M5's SVO library is byte-identical to the M4 baseline (sweep result logically
+  unchanged); validator re-ran 9/10 SVO suites green from its fresh build (the 10th,
+  `stored_sdf_march_mirror`, runs pathologically slowly in Debug on /mnt/c and was not finished —
+  its code is unchanged). Fix oracles green on real hardware: `test_partial_brick_upload` 1/1,
+  `test_body_octree_lifetime` 3/3, `test_shell_revalidate_node` 2/2. The `lod_residency` sub-test
+  failure is a Dozen-headless render limitation (no child pixels on the non-conformant dzn path),
+  not an M5 regression. Seven segfaulting RenderGraph tests: documented pre-existing (Dozen
+  SPIR-V 1.5/1.6).
+- **Tree integrity — clean:** exactly 3 scope-coherent commits, `git status` clean, all evidence
+  artifacts untracked.
 
 ---
 
