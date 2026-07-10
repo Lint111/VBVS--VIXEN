@@ -1,0 +1,17 @@
+Sampled Lighting Inc1 M2 -- byte-identity re-capture gate
+===========================================================
+TraceWorldShadow was added to shaders/TraceWorld.glsl alongside TraceWorld;
+it is not yet called by any shader this milestone, so the primary render
+path (BodyInstanceRayMarch.comp -> TraceWorld -> computeLighting) must be
+byte-identical to M1's capture.
+
+Capture: vixen_editor.exe, VIXEN_EDITOR_CAPTURE_FRAMES=5, frame 5 output.
+File: editor_capture_5.png (temp/), copied here as inc1-m2-capture.png.
+
+M1 gate hash (fb74cd8f):
+  fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1
+
+M2 re-capture hash (after adding TraceWorldShadow):
+  fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1
+
+MATCH -- confirmed byte-identical. No regression to the primary path.

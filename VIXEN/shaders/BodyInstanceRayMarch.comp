@@ -113,6 +113,52 @@ struct TierRef {
 };
 layout(std430, binding = 15) readonly buffer TierRefTableBuffer { TierRef tierRefTable[]; };
 
+// ============================================================================
+// LIGHTING CONFIG (Sampled Lighting Inc0 M3 — binding 16)
+// ============================================================================
+// Single LightingConfig record (kernel-codegen-generated struct, std430 —
+// see Generated/LightingConfig.glsl / LightingConfig.g.h). Bound as an SSBO
+// (not a UBO) because the framework emits std430 only; a std140 UBO would
+// restride Light's nested array and desync from the generated C++ layout
+// (see test_lightingconfig_sdi_parity.cpp). Uploaded per-frame from a ring
+// buffer (LightingConfigNode) — default content = the single directional
+// light Lighting.glsl previously hardcoded, so this milestone is a
+// zero-visual-delta plumbing change.
+#include "Generated/LightingConfig.glsl"
+
+layout(std430, binding = 16) readonly buffer LightingConfigSSBO {
+    LightingConfig lightingConfig;
+};
+
+// ============================================================================
+// HIT RECORD BUFFER (Sampled Lighting Inc1 M3 — binding 17)
+// ============================================================================
+// Per-pixel G-buffer-equivalent, one HitRecord per dispatched pixel, indexed
+// by the same flat row-major (y*width+x) addressing every full-screen compute
+// pass in this codebase uses. This milestone writes AND reads it back in the
+// SAME shader/dispatch (main() below) to prove the pack/unpack round-trips
+// losslessly through the real SSBO before Task 4 moves the read to a separate
+// DirectLighting.comp pass. Sized by the dispatch's own imageSize(outputImage)
+// at record time — C++ allocates it to match (see BuildRenderGraph.cpp M3).
+#include "HitRecord.glsl"
+
+layout(std430, binding = 17) buffer HitRecordBuffer {
+    HitRecord hitRecords[];
+};
+
+// ============================================================================
+// SHADOW CONFIG (Sampled Lighting Inc1 M4 — binding 18)
+// ============================================================================
+// Single ShadowConfig record (kernel-codegen-generated struct, std430 — see
+// Generated/ShadowConfig.glsl / ShadowConfig.g.h). Bound as an SSBO, mirroring
+// LightingConfigSSBO's own std430-not-std140 rationale (the framework emits
+// std430 only). Uploaded per-frame from a ring buffer (ShadowConfigNode).
+#include "Generated/ShadowConfig.glsl"
+
+layout(std430, binding = 18) readonly buffer ShadowConfigSSBO {
+    ShadowConfig shadowConfig;
+};
+
 #define FORMAT_BINARY     0u
 #define FORMAT_STORED_SDF 1u
 
@@ -1143,6 +1189,57 @@ bool traverseOctreeInstanced(vec3 rayOrigin, vec3 rayDir,
     return false;
 }
 
+#include "TraceWorld.glsl"   // Sampled Lighting Inc1 M1: single traversal seam (pure extraction)
+
+// ============================================================================
+// DIRECT LIGHTING WITH SHADOW RAYS (Sampled Lighting Inc1 M4)
+// ============================================================================
+// Extends Lighting.glsl's data-driven computeLighting(color,normal,rayDir,
+// roughness,LightingConfig) overload with a shadow-ray occlusion test per
+// light, gated by shadowConfig.enabled. Lives HERE (not Lighting.glsl) because
+// it needs TraceWorldShadow (TraceWorld.glsl, included just above) in scope —
+// Lighting.glsl is included much earlier (before the traversal machinery
+// exists) and stays a pure shading-math file with no traversal dependency.
+//
+// Math is IDENTICAL to Lighting.glsl's data-driven overload (ambient term +
+// per-light evalBRDF*radiance*NdotL, matching computeLighting exactly) with
+// ONE addition: when shadowConfig.enabled, each light's contribution is
+// multiplied by 0.0 (fully occluded) or 1.0 (unoccluded) based on a
+// TraceWorldShadow cast toward that light. When shadowConfig.enabled==0 this
+// function reduces to EXACTLY Lighting.glsl's unshadowed sum — the M4 byte-
+// identity gate (ShadowConfig.enabled=0 reproduces the M3 baseline) depends
+// on this being bit-for-bit the same accumulation order/terms.
+//
+// Self-intersection bias: per TraceWorldShadow's documented convention (a),
+// the shadow ray's ORIGIN is offset off the surface (worldPos + normal*eps)
+// and tmin is passed as 0.0 — NOT both conventions at once (double-biasing).
+vec3 computeLightingWithShadows(vec3 color, vec3 normal, vec3 worldPos, vec3 rayDir,
+                                float roughness, LightingConfig lighting) {
+    vec3 viewDir = normalize(-rayDir);
+
+    vec3 Lo = lighting.ambientIntensity * color;
+    for (uint i = 0u; i < lighting.lightCount; ++i) {
+        Light light = lighting.lights[i];
+        vec3 lightDir = normalize(light.direction_or_position);
+
+        float shadowFactor = 1.0;
+        if (shadowConfig.enabled != 0u) {
+            // kind 0 = directional (see Lighting.glsl's data-driven overload):
+            // direction_or_position is the direction AWAY from the surface
+            // toward the light, so the shadow ray tests all the way to
+            // maxShadowDistance (no finite light position to stop short at).
+            vec3 shadowOrigin = worldPos + normal * shadowConfig.biasEpsilon;
+            bool occluded = TraceWorldShadow(shadowOrigin, lightDir,
+                                             0.0,
+                                             shadowConfig.maxShadowDistance);
+            shadowFactor = occluded ? 0.0 : 1.0;
+        }
+
+        Lo += evalBRDF(color, roughness, normal, viewDir, lightDir) * light.radiance * shadowFactor;
+    }
+    return Lo;
+}
+
 // ============================================================================
 // MAIN
 // ============================================================================
@@ -1161,203 +1258,59 @@ void main() {
     vec3 skyColor = vec3(0.02, 0.02, 0.06) * (1.0 - uv.y * 0.4);
 
     // -----------------------------------------------------------------------
-    // Per-pixel nearest-hit accumulator (across all instances)
-    // -----------------------------------------------------------------------
-    bool  anyHit          = false;
-    float bestT           = 1e30;
-    vec3  bestColor       = skyColor;
-    vec3  bestNormal      = vec3(0.0, 1.0, 0.0);
-    float bestRoughness   = 0.5;   // Inc3 M3: default for binary/procedural paths
-    uint  bestBrickIndex  = 0u;
-    uint  bestVoxelIdx    = 0u;
-
-    // -----------------------------------------------------------------------
     // Record metrics once for the dominant hit
     // -----------------------------------------------------------------------
     recordRayStart();
 
     // -----------------------------------------------------------------------
-    // INSTANCE LOOP
+    // Single traversal seam (Sampled Lighting Inc1 M1): procedural + ESVO
+    // instance loop, nearest-hit across all body instances.
     // -----------------------------------------------------------------------
-    int numInstances = clamp(pc.instanceCount, 0, 3 * 64); // safety cap
-    for (int instIdx = 0; instIdx < numInstances; ++instIdx) {
-
-        BodyInstance inst = bodyInstances[instIdx];
-
-        // --- Procedural provider: analytic SDF sphere-trace (no octree) ---
-        if (inst.providerKind == PROVIDER_PROCEDURAL) {
-            vec3 pCenter = inst.worldPos;
-            vec3 pParams = vec3(inst.recipeParams[0], inst.recipeParams[1], inst.recipeParams[2]);
-            vec3 pNormal;
-            float pT;
-            if (traceProceduralBody(inst.recipeId, pCenter, pParams, rayOrigin, rayDir,
-                                    pNormal, pT)) {
-                if (pT < bestT) {
-                    bestT          = pT;
-                    bestColor      = inst.color;   // procedural base colour = instance tint
-                    bestNormal     = pNormal;      // smooth SDF-gradient normal
-                    bestBrickIndex = 0u;
-                    bestVoxelIdx   = 0u;
-                    anyHit         = true;
-                }
-            }
-            continue;  // procedural body fully handled; skip the ESVO path
-        }
-
-        uint oi = inst.octreeIndex;  // index into runtime-sized configs[] SSBO (I3.2)
-
-        // Inc2 M6: Stored-SDF bodies are NO LONGER special-cased here. They flow
-        // through the SAME ESVO path as binary bodies below; the leaf hit-test inside
-        // traverseOctreeInstanced dispatches to the trilinear SDF march by formatId.
-        // (The old standalone marchStoredSdf flat sphere-trace has been retired.)
-
-        // Set globals used by fetchESVONode (via g_esvoNodeBase in ESVOTraversal.glsl)
-        // and by marchBrickInstanced (via g_brickArrayBase below).
-        g_octreeIdx      = int(oi);
-        g_esvoNodeBase   = configs[oi].nodeArrayBase;   // declared in ESVOTraversal.glsl
-        g_brickArrayBase = configs[oi].brickArrayBase;
-
-        // ------------------------------------------------------------------
-        // World → instance-local ray transform (single consistent frame)
-        //
-        // The instance places the body at inst.worldPos, scaled by
-        // inst.renderScale.  Serialize emits the BASE (un-instanced) octree
-        // mapping in configs[oi]: worldToLocal maps the base octree's world
-        // frame → its [0,1]^3 grid (it already folds in the gridMin/gridMax
-        // centre — we must NOT re-apply a centre offset here).
-        //
-        // To render an INSTANCE we first de-instance the world ray into the
-        // base octree's world frame by undoing the placement, then let
-        // traverseOctreeInstanced apply configs[oi].worldToLocal exactly once:
-        //
-        //   p_base = (p_world      - worldPos) / renderScale     (point)
-        //   d_base =  d_world                  / renderScale     (direction)
-        //
-        // CRITICAL: the SAME /renderScale must scale BOTH origin and
-        // direction, or the t-parametrisation is warped and hitT (used for the
-        // cross-instance nearest-hit test and the LOD coarse-shade distance)
-        // ends up in inconsistent units when renderScale != 1.  The translation
-        // term drops out of the direction because a direction is a difference
-        // of points; the scale does not.
-        //
-        // We deliberately do NOT renormalise d_base: traverseOctreeInstanced
-        // and initRayCoefficients are scale-tolerant (they derive t-spans from
-        // ratios), and keeping d_base = rayDir/renderScale means hitT is in the
-        // SAME world-distance units across every instance, so the nearest-hit
-        // comparison is correct.  (rayDir itself is already unit-length.)
-        // ------------------------------------------------------------------
-        float invScale = 1.0 / inst.renderScale;
-        vec3  instOrigin = (rayOrigin - inst.worldPos) * invScale;
-        vec3  instDir    = rayDir * invScale;
-
-        // Quick AABB cull in the base octree's [0,1]^3 grid (same transform the
-        // traversal uses internally), before paying for full ESVO descent.
-        vec3 localRayOrigin = (configs[oi].worldToLocal * vec4(instOrigin, 1.0)).xyz;
-        vec3 localRayDir    = mat3(configs[oi].worldToLocal) * instDir;
-        vec2 gridT = rayAABBIntersection(localRayOrigin, localRayDir, vec3(0.0), vec3(1.0));
-        if (gridT.y < 0.0) {
-            instanceIterCount[instIdx] = 0u;  // proves zero traversal iterations (Inc1 M4b test)
-            continue;  // ray misses this instance's AABB
-        }
-
-        // Inc1 M4b: instances are sorted front-to-back CPU-side (see
-        // BodyOctreeSceneNode::SortInstancesFrontToBack), so bestT here already
-        // reflects every CLOSER instance's hit. gridT.x is a LOCAL grid-space t
-        // (after worldToLocal), not directly comparable to bestT (a world-space
-        // distance) — convert the AABB entry point back to world space the SAME
-        // way traverseOctreeInstanced does internally (its rayStartWorld/
-        // tEntryWorld computation) before comparing, or this reject silently
-        // compares mismatched units. Skipped when the ray already starts inside
-        // this instance's AABB (gridT.x < 0.0): there is no meaningful "entry
-        // point" to compare in that case, and the instance may still be the
-        // nearest hit.
-        if (gridT.x >= 0.0) {
-            // Mirror traverseOctreeInstanced's OWN internal rayStartWorld/tEntryWorld
-            // computation exactly (lines ~524-526 above): entryPointWorldInstSpace is
-            // already in the de-instanced (instOrigin-relative) frame at REAL world
-            // scale (configs[oi].localToWorld bakes in kWorldGridSize) — measuring its
-            // distance from instOrigin (NOT re-applying renderScale/worldPos a second
-            // time) gives the same world-consistent t the traversal itself uses for
-            // hitT, by the identical scale-ratio-preserving argument documented above
-            // (instDir = rayDir/renderScale is not unit-length, but t computed this way
-            // is still in true world-distance units — see the invScale comment block).
-            vec3 entryPointLocal = localRayOrigin + localRayDir * (gridT.x + EPSILON);
-            vec3 entryPointWorldInstSpace =
-                (configs[oi].localToWorld * vec4(entryPointLocal, 1.0)).xyz;
-            float entryTWorld = length(entryPointWorldInstSpace - instOrigin);
-            if (entryTWorld > bestT) {
-                // This instance's nearest possible entry is already farther than
-                // something already hit this ray — its full ESVO traversal
-                // (below) cannot possibly produce the nearest hit. Skip it
-                // entirely: zero traversal iterations, not just a discarded
-                // result.
-                instanceIterCount[instIdx] = 0u;  // proves zero traversal iterations (Inc1 M4b test)
-                continue;
-            }
-        }
-
-        // ------------------------------------------------------------------
-        // Run ESVO traversal against this instance's octree
-        // ------------------------------------------------------------------
-        DebugRaySample dbg;
-        dbg.pixel         = uvec2(pixelCoords);
-        dbg.rayDir        = rayDir;
-        dbg.octantMask    = 0u;
-        dbg.hitFlag       = 0u;
-        dbg.exitCode      = DEBUG_EXIT_NONE;
-        dbg.lastStepMask  = 0u;
-        dbg.iterationCount = 0u;
-        dbg.scale         = configs[oi].esvoMaxScale;
-        dbg.stateIdx      = 0u;
-        dbg.tMin          = 0.0;
-        dbg.tMax          = 0.0;
-        dbg.scaleExp2     = 0.0;
-        dbg.posMirrored   = vec3(0.0);
-        dbg.localNorm     = vec3(0.0);
-
-        vec3  hitColor;
-        vec3  hitNormal;
-        float hitT;
-        float hitRoughness;
-        uint  hitBrick;
-        uint  hitVoxel;
-
-        // Pass the de-instanced ray (origin AND direction both scaled by
-        // 1/renderScale).  Because rayDir is unit-length, the returned hitT
-        // equals the TRUE world distance along the original ray
-        // (instOrigin + t*instDir maps back to rayOrigin + t*rayDir), so the
-        // cross-instance nearest-hit test below compares like-for-like.
-        //
-        // Pass localRayOrigin/localRayDir/gridT (already computed above for the AABB cull)
-        // straight through instead of letting traverseOctreeInstanced recompute the same
-        // ray-vs-AABB math a second time — a single "beam test" pre-pass result shared by
-        // both the cull check and the traversal, so they can never disagree at the AABB
-        // silhouette (see traverseOctreeInstanced's own comment for why that mattered).
-        bool hit = traverseOctreeInstanced(instOrigin, instDir,
-                                           localRayOrigin, localRayDir, gridT,
-                                           hitColor, hitNormal, hitT,
-                                           hitRoughness,
-                                           hitBrick, hitVoxel, dbg);
-        instanceIterCount[instIdx] = dbg.iterationCount;  // Inc1 M4b occlusion-reject test hook
-
-        if (hit && hitT < bestT) {
-            bestT           = hitT;
-            // Tint by instance colour (multiply LOD-grey or material colour)
-            bestColor       = hitColor * inst.color;
-            bestNormal      = hitNormal;
-            bestRoughness   = hitRoughness;   // Inc3 M3: per-voxel roughness
-            bestBrickIndex  = hitBrick;
-            bestVoxelIdx    = hitVoxel;
-            anyHit          = true;
-        }
-    }
+    WorldHit worldHit;
+    bool anyHit = TraceWorld(rayOrigin, rayDir, 0.0, 1e30, worldHit);
 
     // -----------------------------------------------------------------------
-    // Shade & write output
+    // HitRecord round-trip (Sampled Lighting Inc1 M3): pack WorldHit into the
+    // per-pixel HitRecord layout, write it to the real SSBO, then read it back
+    // and unpack — the shade path below consumes ONLY the unpacked copy, so a
+    // lossy pack/unpack or a broken SSBO write would show up as a visible
+    // regression against the M1/M2 byte-identity baseline, not just a passing
+    // in-register value. worldPos is reconstructed the same way the shade path
+    // would need it in Task 4: rayOrigin + rayDir*t (TraceWorld returns t, not
+    // a world position — see WorldHit's field list).
+    // -----------------------------------------------------------------------
+    HitRecord rec;
+    rec.albedo      = worldHit.color;
+    rec.roughness   = worldHit.roughness;
+    rec.worldNormal = worldHit.normal;
+    rec.hitT        = worldHit.t;
+    rec.worldPos    = rayOrigin + rayDir * worldHit.t;
+    rec.flags       = anyHit ? HITRECORD_FLAG_HIT : 0u;
+    rec._pad0       = uint[3](0u, 0u, 0u);
+
+    uint hitRecordIdx = uint(pixelCoords.y) * uint(imgSize.x) + uint(pixelCoords.x);
+    hitRecords[hitRecordIdx] = rec;
+
+    HitRecord recReadback = hitRecords[hitRecordIdx];
+
+    bool  anyHitRT       = (recReadback.flags & HITRECORD_FLAG_HIT) != 0u;
+    vec3  bestColor       = recReadback.albedo;
+    vec3  bestNormal      = recReadback.worldNormal;
+    float bestRoughness   = recReadback.roughness;
+    vec3  bestWorldPos    = recReadback.worldPos;
+    uint  bestBrickIndex  = worldHit.brickIndex;  // not carried by HitRecord (brick/voxel ID stays out-of-band via idOutputImage)
+    uint  bestVoxelIdx    = worldHit.voxelIdx;
+
+    // -----------------------------------------------------------------------
+    // Shade & write output — driven by anyHitRT (the SSBO-round-tripped flag),
+    // not the original anyHit, so a lossy pack/unpack would visibly break the
+    // byte-identity gate rather than being silently masked by shading off the
+    // pre-round-trip locals.
     // -----------------------------------------------------------------------
     vec3 outColor;
-    if (anyHit) {
-        outColor = computeLighting(bestColor, bestNormal, rayDir, bestRoughness);
+    if (anyHitRT) {
+        outColor = computeLightingWithShadows(bestColor, bestNormal, bestWorldPos, rayDir,
+                                               bestRoughness, lightingConfig);
     } else {
         outColor = skyColor;
     }
@@ -1365,7 +1318,7 @@ void main() {
     // Debug visualisation modes (reuse the last instance's debug sample —
     // full per-instance debug would need an extra accumulator; this is a
     // best-effort approximation for the iteration/depth modes).
-    if (pc.debugMode > 0 && anyHit) {
+    if (pc.debugMode > 0 && anyHitRT) {
         switch (pc.debugMode) {
             case DEBUG_MODE_NORMALS:
                 outColor = normalShading(bestNormal);
@@ -1378,12 +1331,12 @@ void main() {
     imageStore(outputImage, pixelCoords, vec4(outColor, 1.0));
 
     // ID buffer: encode absolute brick + voxel (same packing as VoxelRayMarch)
-    uint pickID = anyHit
+    uint pickID = anyHitRT
         ? ((bestBrickIndex << 10u) | (bestVoxelIdx & 0x3FFu))
         : 0xFFFFFFFFu;
     imageStore(idOutputImage, pixelCoords, uvec4(pickID, 0u, 0u, 0u));
 
     // Metrics
     bool earlyTerm = false; // no single iteration count with multiple instances
-    recordRayEnd(anyHit, earlyTerm);
+    recordRayEnd(anyHitRT, earlyTerm);
 }

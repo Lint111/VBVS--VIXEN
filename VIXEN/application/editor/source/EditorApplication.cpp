@@ -15,6 +15,8 @@
 #include "Data/Nodes/CameraNodeConfig.h"
 #include "Core/RenderGraph.h"
 #include "Debug/RenderTargetReadback.h"       // Task 3: shared IRenderTarget -> PNG readback
+#include "KeyMap.h"                           // Inc-4 R5a: GLFW keycode -> typed KeyId
+#include "generated/AppFlowCallables.g.hpp"   // Inc-4 R5c: transplanted applyToggle(mask,index)
 #include <Logger.h>
 
 #include <cstdlib>
@@ -24,21 +26,6 @@
 #include <GLFW/glfw3.h>
 
 namespace {
-// Parses "layer-<N>-toggle" -> N. Returns -1 on any other id (including non-editor UI hits).
-int ParseLayerToggleId(const std::string& id) {
-    static constexpr char kPrefix[] = "layer-";
-    static constexpr char kSuffix[] = "-toggle";
-    const size_t prefixLen = sizeof(kPrefix) - 1;
-    const size_t suffixLen = sizeof(kSuffix) - 1;
-    if (id.size() <= prefixLen + suffixLen) return -1;
-    if (id.compare(0, prefixLen, kPrefix) != 0) return -1;
-    if (id.compare(id.size() - suffixLen, suffixLen, kSuffix) != 0) return -1;
-    const std::string digits = id.substr(prefixLen, id.size() - prefixLen - suffixLen);
-    if (digits.empty()) return -1;
-    for (char c : digits) if (c < '0' || c > '9') return -1;
-    return std::stoi(digits);
-}
-
 // Inc-2b Task 4: parses "toggle:2@30,undo@60,redo@90" into ScriptedAction entries. A malformed
 // token (bad action name, missing '@frame', non-numeric frame/arg) is logged and SKIPPED --
 // never aborts the app (Global Constraint: VIXEN_EDITOR_SCRIPT malformed -> warn + continue).
@@ -85,6 +72,10 @@ std::vector<EditorApplication::ScriptedAction> ParseEditorScript(const std::stri
             action.kind = EditorApplication::ScriptedAction::Kind::Undo;
         } else if (actionName == "redo") {
             action.kind = EditorApplication::ScriptedAction::Kind::Redo;
+        } else if (actionName == "settings") {
+            action.kind = EditorApplication::ScriptedAction::Kind::Settings;
+        } else if (actionName == "back") {
+            action.kind = EditorApplication::ScriptedAction::Kind::Back;
         } else {
             if (logger) logger->Warning("[EditorApplication] VIXEN_EDITOR_SCRIPT: unknown action, skipping: " + token);
             continue;
@@ -112,8 +103,30 @@ std::vector<long> ParseCaptureFrames(const std::string& spec, Vixen::Log::Logger
 }
 }  // namespace
 
+namespace {
+// Reads a named param out of a resolved BoundAction's {name,value} vector (BindingStore.h:21).
+// Returns 0 if absent or non-numeric -- ToggleLayer's only param is "layerIndex", extracted
+// as a string by BindingStore's pattern match (see AppFlowElementTrigger's paramName), so the
+// handler is the one place that parses it back to a uint32_t.
+uint32_t ParseParam(const Vixen::AppFlow::AppFlowRuntime::Params& params, const char* name) {
+    for (const auto& [n, v] : params) {
+        if (n == name && !v.empty() && v.find_first_not_of("0123456789") == std::string::npos) {
+            return static_cast<uint32_t>(std::strtoul(v.c_str(), nullptr, 10));
+        }
+    }
+    return 0;
+}
+}  // namespace
+
 EditorApplication::EditorApplication(std::string documentPath)
-    : documentPath_(std::move(documentPath)) {}
+    : documentPath_(std::move(documentPath)) {
+    // R6a fix-loop finding: logger_ was constructed enabled=true but terminalOutput_ defaults
+    // false (Logger.h) and nothing ever called SetTerminalOutput on it (only main.cpp's
+    // SEPARATE mainLogger got that call) -- every [EditorApplication] Info/Error line, including
+    // the pre-existing "Saved document to ..." one, was silently buffered into logEntries and
+    // never reached stdout/the redirected run_editor_script.log. Mirrors main.cpp:56.
+    logger_->SetTerminalOutput(true);
+}
 
 bool EditorApplication::LoadDocument(const std::string& path) {
     if (!doc_.Load(path, lastEditorError_)) {
@@ -122,6 +135,40 @@ bool EditorApplication::LoadDocument(const std::string& path) {
     documentPath_ = path;
     rt_.Load();  // load the AppFlow reference vocab (state/action tables)
     rt_.Layers().SetLayerCount(doc_.LayerCount());  // (re)sync the mask to the freshly loaded doc
+
+    // Inc-4 reframe (design §4.3, R5b): register the 5 self-contained handlers exactly once.
+    // Each handler decides for itself which primitive it needs (Stack() for undoable actions,
+    // NavPop() for navigation, a bare side effect for Save) -- the framework/registry knows
+    // none of this. Guarded so a document reload doesn't double-register.
+    if (!handlersRegistered_) {
+        handlersRegistered_ = true;
+        using Vixen::AppFlow::Generated::FlowActionId;
+        rt_.RegisterHandler(FlowActionId::ToggleLayer, [this](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
+            const uint32_t idx = ParseParam(p, "layerIndex");
+            rt_.Stack().Dispatch(FlowActionId::ToggleLayer, [this, idx](bool /*forward*/) {
+                // THE TRANSPLANTED BODY, LIVE (R5c): applyToggle is kernel-generated C++ from
+                // the same C# body the design's D12 walking skeleton proves transplants
+                // identically. Self-inverse (mask ^ (1<<idx)) -- byte-identical to the old
+                // LayerController::Toggle(idx) for any idx within the valid layer range.
+                rt_.Layers().SetMask(Vixen::AppFlow::Generated::applyToggle(rt_.Layers().Mask(), idx));
+                dirty_ = true;
+            });
+        });
+        rt_.RegisterHandler(FlowActionId::Undo, [this](const Vixen::AppFlow::AppFlowRuntime::Params&) {
+            rt_.Stack().Undo();
+        });
+        rt_.RegisterHandler(FlowActionId::Redo, [this](const Vixen::AppFlow::AppFlowRuntime::Params&) {
+            rt_.Stack().Redo();
+        });
+        rt_.RegisterHandler(FlowActionId::Save, [this](const Vixen::AppFlow::AppFlowRuntime::Params&) {
+            if (!SaveDocument()) {
+                logger_->Error("[EditorApplication] SaveDocument failed: " + lastEditorError_);
+            }
+        });
+        rt_.RegisterHandler(FlowActionId::Return, [this](const Vixen::AppFlow::AppFlowRuntime::Params&) {
+            rt_.NavPop();
+        });
+    }
     return true;
 }
 
@@ -232,6 +279,16 @@ bool EditorApplication::ApplyDocumentToScene() {
     inst.octreeIndex = 0u;
     SetBodyInstances({inst});
 
+    // Editor Brick-Residency Fix: the document body is the ONE object being directly edited and
+    // is always in view — grant brick residency unconditionally rather than relying on the main
+    // app's camera-motion/frustum heuristic (SkipResidencyHeuristic() above opts this body out of
+    // that heuristic entirely, so this is the sole residency driver). RequestBrickResidency only
+    // stashes a dirty-flag (BodyOctreeSceneNode::RequestBrickResidency) — safe to call here even
+    // though SetRecipePool just above already marked the node's recipe dirty for re-materialize;
+    // ExecuteImpl re-lands both on the next Execute. Called every ApplyDocumentToScene, i.e. after
+    // every edit (see Update()'s dirty_ tail), so residency re-lands after each Rematerialize too.
+    RequestBodyBrickResidency(true);
+
     return true;
 }
 
@@ -277,12 +334,6 @@ bool EditorApplication::CaptureFrameToPng(const std::string& path, std::string& 
         device, renderTarget, device->queue, device->graphicsQueueIndex, path, err);
 }
 
-void EditorApplication::ToggleLayer(uint32_t layerIndex) {
-    // Route through the ActionStack so the toggle is undoable; onChanged fires on BOTH the
-    // forward apply AND on rt_.Undo()'s inverse, so a later Ctrl+Z re-flattens too.
-    rt_.ToggleLayer(layerIndex, [this]{ dirty_ = true; });
-}
-
 bool EditorApplication::SaveDocument() {
     const size_t dot = documentPath_.find_last_of('.');
     const std::string base = (dot == std::string::npos) ? documentPath_ : documentPath_.substr(0, dot);
@@ -322,15 +373,67 @@ void EditorApplication::PreTick() {
         }
     }
 
-    // Inject any scripted action due this tick through the SAME methods the interactive input
-    // path calls (ToggleLayer / rt_.Undo / rt_.Redo) -- exercising the real
-    // click-equivalent -> ActionStack -> re-flatten -> undo dispatch, not a shortcut.
+    // Inject any scripted action due this tick through the SAME dispatch path the interactive
+    // input drives (design §4.3: the editor is a pure consumer, it names zero actions in code
+    // beyond a selector/key) -- exercising the real click-equivalent/key-equivalent ->
+    // registry -> handler -> ActionStack -> re-flatten dispatch, not a shortcut.
     for (const auto& action : scriptedActions_) {
         if (action.frame != updateTick_) continue;
         switch (action.kind) {
-            case ScriptedAction::Kind::Toggle: ToggleLayer(action.layerIndex); break;
-            case ScriptedAction::Kind::Undo:   rt_.Undo(); break;
-            case ScriptedAction::Kind::Redo:   rt_.Redo(); break;
+            // The three edit kinds emit one canonical, parseable "[EDITOR/state] <op> ..." line
+            // each (mask + undo/redo depths + dispatch result). This state-dump is the R6 gate's
+            // real proof that undo/redo work: it asserts the mask trail (7->3->7->3) and depth
+            // movement come out of the RUNNING editor through the registry-dispatch path. It is NOT
+            // debug noise -- it is the observable contract the windowed gate parses (a windowed
+            // PIXEL round-trip is unreachable here: the editor body renders the mask-INVARIANT
+            // mip-fallback path at an orbit camera, so the layer mask has ~0 visible effect --
+            // proven via GPU-memory checksums + a shader-output tap; see the R6 finding note in
+            // Vixen-Docs/01-Architecture and test_editor_toggle_undo_capture.cpp's header). Keep the
+            // key=value shape stable: ReadEditStates() in that gate parses it positionally by key.
+            case ScriptedAction::Kind::Toggle: {
+                const auto r = rt_.DispatchBySelector("layer-" + std::to_string(action.layerIndex) + "-toggle");
+                logger_->Info("[EDITOR/state] toggle mask=" + std::to_string(rt_.Layers().Mask()) +
+                               " undoDepth=" + std::to_string(rt_.Stack().UndoDepth()) +
+                               " redoDepth=" + std::to_string(rt_.Stack().RedoDepth()) +
+                               " result=" + std::to_string(static_cast<int>(r)));
+                break;
+            }
+            case ScriptedAction::Kind::Undo: {
+                const auto r = rt_.DispatchByKey({Vixen::AppFlow::Generated::KeyId::Z, Vixen::AppFlow::Generated::KeyMod::Ctrl});
+                logger_->Info("[EDITOR/state] undo mask=" + std::to_string(rt_.Layers().Mask()) +
+                               " undoDepth=" + std::to_string(rt_.Stack().UndoDepth()) +
+                               " redoDepth=" + std::to_string(rt_.Stack().RedoDepth()) +
+                               " result=" + std::to_string(static_cast<int>(r)));
+                break;
+            }
+            case ScriptedAction::Kind::Redo: {
+                const auto r = rt_.DispatchByKey({Vixen::AppFlow::Generated::KeyId::Y, Vixen::AppFlow::Generated::KeyMod::Ctrl});
+                logger_->Info("[EDITOR/state] redo mask=" + std::to_string(rt_.Layers().Mask()) +
+                               " undoDepth=" + std::to_string(rt_.Stack().UndoDepth()) +
+                               " redoDepth=" + std::to_string(rt_.Stack().RedoDepth()) +
+                               " result=" + std::to_string(static_cast<int>(r)));
+                break;
+            }
+            case ScriptedAction::Kind::Settings:
+                // NavTo is a plain service call (AppFlowRuntime.h:46), not a dispatchable verb --
+                // there's no selector/key for "open settings" yet (design D15's registry only
+                // covers actions, not raw navigation), so this is the one script action that
+                // calls a runtime service directly rather than Dispatch*. Sets up the state the
+                // very next Back action needs (Settings is the only state back-button/Esc resolve
+                // Return from -- kReturnEdges, AppFlow.g.h:82).
+                rt_.NavTo(Vixen::AppFlow::Generated::FlowStateId::Settings);
+                break;
+            case ScriptedAction::Kind::Back: {
+                // The real dispatch path a back-button UI click takes: DispatchBySelector, exactly
+                // like Update()'s click-drain call site -- not a shortcut to NavPop(). Emits a
+                // parseable state-dump line so run_editor_script.bat's log can be asserted against
+                // by the windowed gtest (a windowed capture can't cheaply show a state pop; this is
+                // the state-dump-hook option the plan calls out, R6 Step 3).
+                rt_.DispatchBySelector("back-button");
+                logger_->Info("[EDITOR/state] afterBack=" +
+                               std::to_string(static_cast<int>(rt_.Current())));
+                break;
+            }
         }
     }
     } catch (const std::exception& e) {
@@ -352,38 +455,52 @@ void EditorApplication::Update() {
     // the base method's catch shape) so the no-throw-across-the-tick contract (design §5) really
     // holds for the toggle/undo/capture/script code added in Inc-2b, not just by assertion.
     try {
-    // Drain UI clicks (S4 pattern) and toggle the matching layer's enabled override.
+    // Drain UI clicks (S4 pattern) and dispatch by selector -- carries no behavior itself; the
+    // registered ToggleLayer/Return handlers decide what the click means (design §4.3). A
+    // selector with no binding (a non-editor UI hit) resolves to RejectedByState and is ignored.
     if (auto* selection = GetUiSelectionProviderNode()) {
         const std::string clickedId = selection->DrainClickedElementId();
         if (!clickedId.empty()) {
-            const int layerIndex = ParseLayerToggleId(clickedId);
-            if (layerIndex >= 0) {
-                ToggleLayer(static_cast<uint32_t>(layerIndex));
-            }
+            rt_.DispatchBySelector(clickedId);
         }
     }
 
-    // Save keybinding: 'S', edge-detected (press-only, not held-repeat).
+    // Keybindings: dispatch by chord, edge-detected (press-only, not held-repeat) via KeyMap.h's
+    // GLFW-keycode -> KeyId map. Carries no behavior itself -- DispatchByKey resolves the chord
+    // through the InputProfile to whichever action is bound (Save/Undo/Redo/Return), then routes
+    // it through the same registered-handler path a UI click uses. An unbound chord (or Esc
+    // outside Settings) resolves to RejectedByState and is ignored, never a crash.
     if (GLFWwindow* window = GetWindowHandle()) {
-        const bool sKeyDown = glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS;
-        if (sKeyDown && !sKeyWasDown_) {
-            if (!SaveDocument()) {
-                logger_->Error("[EditorApplication] SaveDocument failed: " + lastEditorError_);
-            }
-        }
-        sKeyWasDown_ = sKeyDown;
+        using Vixen::Editor::GlfwToKeyId;
+        using Vixen::Editor::ReadMods;
+        using Vixen::AppFlow::Generated::KeyId;
+        using Vixen::AppFlow::Generated::KeyMod;
 
-        // Undo/redo keybindings: Ctrl+Z / Ctrl+Y, edge-detected (press-only). rt_.Undo()/Redo()
-        // re-run the stored apply lambda (set inside ToggleLayer), which sets dirty_ — the
-        // dirty_ re-flatten tail below reuses the same path a toggle uses; no new re-flatten call.
         const bool ctrl = glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS
                        || glfwGetKey(window, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS;
+        const KeyMod ctrlMods = ReadMods(ctrl, /*shift*/false, /*alt*/false, /*super*/false);
+
+        // Save is bound plain (kKeyDefaults: {S, KeyMod::None}) -- dispatch with a fixed
+        // KeyMod::None chord (not the live ctrl state) so Ctrl+S still resolves (matches the
+        // pre-Inc-4 behavior, which fired Save on 'S' regardless of ctrl).
+        const bool sKeyDown = glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS;
+        if (sKeyDown && !sKeyWasDown_) rt_.DispatchByKey({GlfwToKeyId(GLFW_KEY_S), KeyMod::None});
+        sKeyWasDown_ = sKeyDown;
+
         const bool zDown = ctrl && glfwGetKey(window, GLFW_KEY_Z) == GLFW_PRESS;
-        const bool yDown = ctrl && glfwGetKey(window, GLFW_KEY_Y) == GLFW_PRESS;
-        if (zDown && !ctrlZWasDown_) rt_.Undo();
-        if (yDown && !ctrlYWasDown_) rt_.Redo();
+        if (zDown && !ctrlZWasDown_) rt_.DispatchByKey({GlfwToKeyId(GLFW_KEY_Z), ctrlMods});
         ctrlZWasDown_ = zDown;
+
+        const bool yDown = ctrl && glfwGetKey(window, GLFW_KEY_Y) == GLFW_PRESS;
+        if (yDown && !ctrlYWasDown_) rt_.DispatchByKey({GlfwToKeyId(GLFW_KEY_Y), ctrlMods});
         ctrlYWasDown_ = yDown;
+
+        // Escape: NEW this increment (design §4.3 -- a back-button selector reaches Return
+        // identically to Esc). Resolves to Return via R2's seeded return-edge in Settings;
+        // outside Settings it resolves to nothing (RejectedByState, ignored).
+        const bool escDown = glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS;
+        if (escDown && !escWasDown_) rt_.DispatchByKey({KeyId::Escape, KeyMod::None});
+        escWasDown_ = escDown;
     }
 
     // Re-flatten + re-upload on the next tick after a toggle (dirty-flag pattern — no
@@ -392,6 +509,8 @@ void EditorApplication::Update() {
     // Inc-2: dirty_ is now owned here (the model no longer tracks edit state).
     if (dirty_) {
         dirty_ = false;
+        logger_->Debug("[EDITOR/diag] re-flatten tick=" + std::to_string(updateTick_) +
+                       " mask=" + std::to_string(rt_.Layers().Mask()));
         if (!ApplyDocumentToScene()) {
             logger_->Error("[EditorApplication] toggle re-apply failed: " + lastEditorError_);
         }
@@ -406,6 +525,10 @@ void EditorApplication::Update() {
     for (const long captureFrame : captureFrames_) {
         if (captureFrame != updateTick_) continue;
         const std::string path = captureDir_ + "/editor_capture_" + std::to_string(updateTick_) + ".png";
+        // Canonical parseable line: correlates each capture PNG to the mask it was taken at, so the
+        // R6 gate's residency smoke-check knows which frame is pre- vs post-first-edit.
+        logger_->Info("[EDITOR/state] capture tick=" + std::to_string(updateTick_) +
+                       " mask=" + std::to_string(rt_.Layers().Mask()));
         std::string captureErr;
         if (!CaptureFrameToPng(path, captureErr)) {
             logger_->Error("[EditorApplication] CaptureFrameToPng failed for " + path + ": " + captureErr);

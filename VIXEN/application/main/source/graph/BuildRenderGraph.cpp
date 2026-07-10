@@ -44,6 +44,7 @@
 #include "Data/Nodes/RenderPassNodeConfig.h"
 #include "Data/Nodes/RenderTargetNodeConfig.h"  // M4: render-scale decoupling offscreen target
 #include "Data/Nodes/SelectionCoordinatorNodeConfig.h"
+#include "Data/Nodes/ShadowConfigNodeConfig.h"  // Sampled Lighting Inc1 M4: ShadowConfig upload ring
 #include "Data/Nodes/ShaderLibraryNodeConfig.h"
 #include "Data/Nodes/SkyProjectionNodeConfig.h"  // Tiered ESVO Inc1 M3: address-derived sky-point composite pass
 #include "Data/Nodes/SwapChainNodeConfig.h"
@@ -73,6 +74,8 @@
 #include "Nodes/GraphicsPipelineNode.h"
 #include "Nodes/InputNode.h"
 #include "Nodes/InstanceNode.h"
+#include "Nodes/LightingConfigNode.h"  // Sampled Lighting Inc0 M3: LightingConfig upload ring
+#include "Nodes/ShadowConfigNode.h"    // Sampled Lighting Inc1 M4: ShadowConfig upload ring
 #include "Nodes/LoopBridgeNode.h"
 #include "Nodes/PickIdTargetNode.h"
 #include "Nodes/PresentNode.h"
@@ -83,6 +86,7 @@
 #include "Nodes/SelectionCoordinatorNode.h"
 #include "Nodes/ShaderLibraryNode.h"
 #include "Nodes/SkyProjectionNode.h"  // Tiered ESVO Inc1 M3: address-derived sky-point composite pass
+#include "Nodes/StorageBufferNode.h"  // Sampled Lighting Inc1 M3: HitRecord SSBO (binding 17), extent-driven
 #include "Nodes/SwapChainNode.h"
 #include "Nodes/TextureLoaderNode.h"
 #include "Nodes/UIRenderNode.h"  // S0: composite-HUD render node (RmlUi) — AFTER BodyOctreeSceneNode.h
@@ -175,6 +179,28 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // INSTANCE_BUFFER (binding 10) and INSTANCE_COUNT.
     NodeHandle bodyOctreeSceneNode = renderGraph->AddNode<BodyOctreeSceneNodeType>("body_octree_scene");
     bodyOctreeSceneNode_ = bodyOctreeSceneNode;      // store so SetBodyInstances() can forward to it
+
+    // Sampled Lighting Inc0 M3: LightingConfig data (binding 16). Static default content
+    // this increment (a single directional light matching Lighting.glsl's old hardcoded
+    // default) uploaded per-frame through a PerFrameResources ring, mirroring
+    // DynamicInstanceBufferNode's pattern.
+    NodeHandle lightingConfigNode = renderGraph->AddNode<LightingConfigNodeType>("lighting_config");
+
+    // Sampled Lighting Inc1 M4: ShadowConfig data (binding 18). Same per-frame ring upload
+    // pattern as lightingConfigNode above — separate node (see ShadowConfigNode.h's file
+    // header for the separate-vs-extend decision).
+    NodeHandle shadowConfigNode = renderGraph->AddNode<ShadowConfigNodeType>("shadow_config");
+
+    // Sampled Lighting Inc1 M3: HitRecord SSBO (binding 17) — one HitRecord (64 B, see
+    // shaders/HitRecord.glsl) per pixel of the offscreen render target. Reuses the generic
+    // StorageBufferNode (auto-sync P4 M4) rather than a bespoke node: this milestone's whole
+    // scope is proving the pack/write/read/unpack round-trips losslessly THROUGH a real SSBO
+    // inside BodyInstanceRayMarch.comp's own dispatch (no separate pass yet — that is Task 4's
+    // DirectLightingNode). SWAPCHAIN_INFO is wired below to renderTargetNode's RENDER_TARGET
+    // (not the raw swapchain) so this buffer's extent always matches outputImage's actual
+    // imgSize (imageSize(outputImage) in the shader) even under render-scale (<1.0) — the same
+    // extent-follow cascade RenderTargetNode itself rides.
+    NodeHandle hitRecordBufferNode = renderGraph->AddNode<StorageBufferNodeType>("hit_record_buffer");
 
     // --- Input Node ---
     NodeHandle inputNode = renderGraph->AddNode<InputNodeType>("input_handler");
@@ -318,6 +344,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
         mainLogger->Info("[BuildRenderGraph] Render-scale=" + std::to_string(renderScale) +
                          " (VIXEN_RENDER_SCALE env; 1.0 = full resolution)");
     }
+
+    // Sampled Lighting Inc1 M3: HitRecord SSBO sized to sizeof(HitRecord) (64 B, see
+    // shaders/HitRecord.glsl) bytes per pixel of the offscreen render target it is wired to
+    // below (SWAPCHAIN_INFO <- renderTargetNode's RENDER_TARGET), so it always matches
+    // outputImage's own extent (including under render-scale).
+    auto* hitRecordBuffer = static_cast<StorageBufferNode*>(renderGraph->GetInstance(hitRecordBufferNode));
+    hitRecordBuffer->SetParameter(StorageBufferNodeConfig::PARAM_BYTES_PER_PIXEL, 64u);
 
     // Present parameters (needed for both graphics and compute)
     auto* present = static_cast<PresentNode*>(renderGraph->GetInstance(presentNode));
@@ -1312,6 +1345,70 @@ void VulkanGraphApplication::BuildRenderGraph() {
             } else {
                 mainLogger->Error("[BuildRenderGraph] VIXEN_TIER_EARTH_DEMO: no camera-facing leaf found in T0 or T1 — demo scene not built");
             }
+        } else if (std::getenv("VIXEN_SHADOW_DEMO")) {
+            // VIXEN_SHADOW_DEMO — Sampled Lighting Inc1 M4 live gate: two Procedural
+            // spheres positioned so the smaller "occluder" sits directly between the
+            // larger "target" sphere's CAMERA-FACING surface and the default directional
+            // light (normalize(1,1,-1) — see LightingConfigNode's default), casting a
+            // visible shadow onto the target's visible hemisphere. A third sphere far to
+            // the side stays fully lit (no occluder in its light path) as an in-frame
+            // A/B control.
+            //
+            // Geometry: the default camera sits at (64,64,300) looking toward -Z at the
+            // scene centre (64,64,64) (see PARAM_CAMERA_*/PARAM_ORBIT_* above) — the
+            // camera-visible hemisphere of any body at (64,64,64) is its +Z-facing side.
+            // light direction (1,1,-1) points from a surface point TOWARD the light (the
+            // Light.direction_or_position convention — see Lighting.glsl's data-driven
+            // overload) — its -Z component means the light itself sits toward -Z, i.e.
+            // BEHIND the camera, so a +Z-facing point's dot(normal,lightDir) is positive
+            // and it DOES get lit (normal ~=(0,0,1), lightDir has -Z component but also
+            // +X/+Y, dot = -(-1)/sqrt3 + 0 + 0 ... to guarantee a clean positive NdotL on
+            // the exact camera-facing point (0,0,1) normal, use dot((0,0,1),(1,1,-1)) =
+            // -1/sqrt3 < 0 — NEGATIVE, meaning the dead-center camera-facing point is
+            // actually NOT lit by this light. Placing the occluder to block a grazing
+            // lit point instead: the point offset toward (+1,+1,0) from centre (normal
+            // (1,1,0)/sqrt2) has dot with lightDir = (1+1+0)/(sqrt2*sqrt3) > 0 — lit and
+            // camera-visible (still has positive Z-ish visibility at this camera
+            // distance/FOV). Occluder sits between THAT point and the light.
+            constexpr float kTargetRadius   = 24.0f;
+            constexpr float kOccluderRadius = 8.0f;
+            constexpr float kOccluderGap    = 3.0f;  // standoff so the occluder doesn't contain surfacePoint
+            auto placeProceduralSphere = [&](float cx, float cy, float cz, float radius,
+                                             float r, float g, float b) {
+                Vixen::SVO::BodyInstanceGpu inst{};
+                inst.worldPos[0] = cx; inst.worldPos[1] = cy; inst.worldPos[2] = cz;
+                inst.renderScale = 1.0f;
+                inst.color[0] = r; inst.color[1] = g; inst.color[2] = b;
+                inst.octreeIndex = 0u;
+                inst.providerKind = 1u;  // PROVIDER_PROCEDURAL
+                inst.recipeId = 0u;      // sphere
+                inst.recipeParams[0] = radius;
+                inst.recipeParams[1] = 0.0f;
+                inst.recipeParams[2] = 0.0f;
+                return inst;
+            };
+            const glm::vec3 targetCenter(64.0f, 64.0f, 64.0f);
+            const glm::vec3 lightDir = glm::normalize(glm::vec3(1.0f, 1.0f, -1.0f));
+            // The grazing lit-and-visible point: centre + radius * normalize(1,1,0.3) —
+            // mostly toward +X/+Y (lit by lightDir, NdotL~0.68) with a touch of +Z
+            // (camera-visible at this FOV/distance, dot(normal,viewDir)~0.11 > 0).
+            const glm::vec3 litPointDir = glm::normalize(glm::vec3(1.0f, 1.0f, 0.3f));
+            const glm::vec3 surfacePoint = targetCenter + litPointDir * kTargetRadius;
+            // Occluder sits along lightDir from surfacePoint, offset by radius+gap so its
+            // near edge (not its centre) is the one that meets the surface — verified via
+            // the analytic ray-sphere test (t0~2.97>0 along [surfacePoint,lightDir]).
+            const glm::vec3 occluderCenter = surfacePoint + lightDir * (kOccluderRadius + kOccluderGap);
+            std::vector<Vixen::SVO::BodyInstanceGpu> shadowBodies = {
+                placeProceduralSphere(targetCenter.x, targetCenter.y, targetCenter.z,
+                                      kTargetRadius, 0.9f, 0.9f, 0.9f),                 // target
+                placeProceduralSphere(occluderCenter.x, occluderCenter.y, occluderCenter.z,
+                                      kOccluderRadius, 0.2f, 0.2f, 0.2f),               // occluder
+                placeProceduralSphere(150.0f, 64.0f, 64.0f, kTargetRadius, 0.9f, 0.9f, 0.9f), // lit control
+            };
+            if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))) {
+                bodyScene->SetInstances(std::move(shadowBodies));
+                mainLogger->Info("[BuildRenderGraph] VIXEN_SHADOW_DEMO: seeded target+occluder+litControl body instances");
+            }
         } else if (std::getenv("VIXEN_STORED_SDF_DEMO")) {
             // VIXEN_STORED_SDF_DEMO — Stored-SDF bodies (Increment 2, M5 Task 10).
             // EnsureOctreesBuilt has baked 3 SdfBodyOctrees (kinds 0/1/2) via ConcatenateSdf,
@@ -1710,6 +1807,21 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
                   bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::CURRENT_FRAME_INDEX);
 
+    // Sampled Lighting Inc0 M3: lighting config node connections (same ring pattern as
+    // bodyOctreeSceneNode above — device + per-frame index so ExecuteImpl picks which
+    // ring slot to upload LightingConfig into).
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  lightingConfigNode, LightingConfigNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                  lightingConfigNode, LightingConfigNodeConfig::CURRENT_FRAME_INDEX);
+
+    // Sampled Lighting Inc1 M4: shadow config node connections (same ring pattern as
+    // lightingConfigNode above).
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  shadowConfigNode, ShadowConfigNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                  shadowConfigNode, ShadowConfigNodeConfig::CURRENT_FRAME_INDEX);
+
     // Connect push constant fields to push constant gatherer using member extraction
     // CameraNode now outputs a CameraData struct, so we can extract individual fields
     batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
@@ -1879,6 +1991,46 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     if (mainLogger && mainLogger->IsEnabled()) {
         mainLogger->Info("[BuildRenderGraph] Connected tier-ref table at binding 15 (Tiered-ESVO Inc2 M3)");
+    }
+
+    // Sampled Lighting Inc0 M3: Binding 16: LightingConfig SSBO (single record, re-uploaded
+    // per-frame from LightingConfigNode's ring). Default content = one directional light
+    // matching Lighting.glsl's previous hardcoded default (zero-visual-delta gate).
+    batch.Connect(lightingConfigNode, LightingConfigNodeConfig::LIGHTING_CONFIG_BUFFER,
+                          descriptorGatherer, 16,  // Binding 16: LightingConfigSSBO
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info("[BuildRenderGraph] Connected lighting config at binding 16 (Sampled Lighting Inc0 M3)");
+    }
+
+    // Sampled Lighting Inc1 M3: Binding 17: HitRecord SSBO. Device input + extent-driven sizing
+    // from renderTargetNode's own RENDER_TARGET output (NOT the raw swapchain) — so this buffer
+    // always matches outputImage's real per-dispatch extent (including under render-scale <1.0),
+    // same as descriptorGatherer binding 0 below. This makes hitRecordBufferNode a transitive
+    // dependent of renderTargetNode and rides the identical resize->recompile cascade.
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  hitRecordBufferNode, StorageBufferNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
+                  hitRecordBufferNode, StorageBufferNodeConfig::SWAPCHAIN_INFO);
+
+    batch.Connect(hitRecordBufferNode, StorageBufferNodeConfig::STORAGE_BUFFER,
+                          descriptorGatherer, 17,  // Binding 17: HitRecordBuffer
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info("[BuildRenderGraph] Connected HitRecord SSBO at binding 17 (Sampled Lighting Inc1 M3)");
+    }
+
+    // Sampled Lighting Inc1 M4: Binding 18: ShadowConfig SSBO (single record, re-uploaded
+    // per-frame from ShadowConfigNode's ring). Default content = enabled hard shadows,
+    // whole-scene reach, tuned bias (see ShadowConfigNode.cpp's MakeDefaultShadowConfig).
+    batch.Connect(shadowConfigNode, ShadowConfigNodeConfig::SHADOW_CONFIG_BUFFER,
+                          descriptorGatherer, 18,  // Binding 18: ShadowConfigSSBO
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info("[BuildRenderGraph] Connected shadow config at binding 18 (Sampled Lighting Inc1 M4)");
     }
 
     // Swapchain connections to descriptor set and dispatch

@@ -245,14 +245,7 @@ void LaineKarrasOctree::rebuild(GaiaVoxelWorld& world, const glm::vec3& worldMin
     m_worldMin = worldMin;
     m_worldMax = worldMax;
 
-    // 3b. Setup local-to-world transformation matrices
-    // Transform from Grid Local [0, resolution]³ to World [worldMin, worldMax]
-    // Used by brick DDA for coordinate transformations (NOT ESVO traversal)
     glm::vec3 worldSize = worldMax - worldMin;
-    glm::vec3 gridSize = worldMax - worldMin;  // Grid is [0, resolution], e.g., [0, 128]
-    glm::vec3 scale = worldSize / gridSize;     // Usually identity if world == grid
-    m_localToWorld = glm::translate(glm::mat4(1.0f), worldMin) * glm::scale(glm::mat4(1.0f), scale);
-    m_worldToLocal = glm::inverse(m_localToWorld);
 
     // 4. Calculate brick grid dimensions in normalized [0,1]^3 space
     int brickDepth = m_brickDepthLevels;
@@ -264,6 +257,28 @@ void LaineKarrasOctree::rebuild(GaiaVoxelWorld& world, const glm::vec3& worldMin
 
     m_octree->bricksPerAxis = bricksPerAxis;
     m_octree->brickSideLength = brickSideLength;
+
+    // 3b. Setup local-to-world transformation matrices
+    // Transform from Grid Local [0, gridResolution]³ to World [worldMin, worldMax].
+    // The brick DDA (traverseBrickView) works in local VOXEL-GRID units where each
+    // voxel is size 1 and the grid runs [0, bricksPerAxis*brickSideLength] — NOT the
+    // world extent. gridSize was previously (worldMax-worldMin), collapsing scale to
+    // identity, so a local voxel coordinate leaked through as a world coordinate
+    // (a min-face hit at local-y=1 reported world-y=1 instead of worldSize/res*1).
+    // Used by brick DDA only (NOT ESVO traversal).
+    const float gridResolution = static_cast<float>(bricksPerAxis * brickSideLength);
+    // scale = world-units per local voxel. For an integer-grid frame (worldMax == the
+    // voxel resolution, the body/shell convention) this is exactly 1; snap to identity
+    // in that case so m_localToWorld stays bit-exact — computing 256.0f/256.0f through
+    // the matrix pipeline reintroduces a 1-ULP shift that lands a brick-face hit at
+    // 2.99999976 and trips a >= boundary assert. Arbitrary frames (Cornell: world 10,
+    // grid 16) get the real 0.625 scale so a local voxel coord maps to the right world
+    // point instead of leaking through unscaled.
+    glm::vec3 scale = (worldSize == glm::vec3(gridResolution))
+                          ? glm::vec3(1.0f)
+                          : worldSize / gridResolution;
+    m_localToWorld = glm::translate(glm::mat4(1.0f), worldMin) * glm::scale(glm::mat4(1.0f), scale);
+    m_worldToLocal = glm::inverse(m_localToWorld);
 
     float voxelSize = brickWorldSize / static_cast<float>(brickSideLength);
     float normalizedBrickSize = 1.0f / static_cast<float>(bricksPerAxis);
@@ -474,6 +489,10 @@ void LaineKarrasOctree::rebuild(GaiaVoxelWorld& world, const glm::vec3& worldMin
             break;
         }
 
+        // Early convergence: a level with a single (0,0,0) parent roots the tree there —
+        // the GPU serializer + renderer are built around this convention (bodies/shells
+        // span the frame, so for them this IS maxLevels). The CPU traversal handles a
+        // shallower root via Octree::rootDepth (recorded below in Phase 3).
         bool isRootLevel = (parentToChildren.size() == 1 && parentToChildren.count(glm::ivec3(0, 0, 0)) == 1);
 
         for (const auto& [parentCoord, children] : parentToChildren) {
@@ -540,6 +559,10 @@ void LaineKarrasOctree::rebuild(GaiaVoxelWorld& world, const glm::vec3& worldMin
     if (rootOldIndex == UINT32_MAX) {
         return;
     }
+    // Record where the tree is ACTUALLY rooted (see Octree::rootDepth) — the traversal
+    // sizes its domain and scale range from this, fixing sparse clustered content whose
+    // root converges below maxLevels (rays used to miss real voxels).
+    m_octree->rootDepth = rootDepth;
 
     // BFS traversal starting from root
     struct NodeInfo {
@@ -751,13 +774,20 @@ void LaineKarrasOctree::updateBlock(const glm::vec3& blockWorldMin, uint8_t bloc
     int bricksPerAxis = m_octree->bricksPerAxis;
 
     glm::vec3 localPos = blockWorldMin - m_worldMin;
+    // INTEGER brick arithmetic — block positions are integer-grid by the rebuild frame
+    // contract, so float division buys nothing. It also cost correctness: at -O3 GCC
+    // autovectorized the float-divide + clamp sequence and the clamped x-lane came back
+    // wrong (updateBlock((8,0,0)) landed on brick 0 with bound 1; O0 behaved). Integer
+    // division is exact and sidesteps that codegen path entirely.
     glm::ivec3 brickCoord(
-        static_cast<int>(localPos.x / static_cast<float>(brickSideLength)),
-        static_cast<int>(localPos.y / static_cast<float>(brickSideLength)),
-        static_cast<int>(localPos.z / static_cast<float>(brickSideLength))
-    );
+        static_cast<int>(localPos.x) / brickSideLength,
+        static_cast<int>(localPos.y) / brickSideLength,
+        static_cast<int>(localPos.z) / brickSideLength);
 
-    brickCoord = glm::clamp(brickCoord, glm::ivec3(0), glm::ivec3(bricksPerAxis - 1));
+    // NOT glm::clamp: the ivec3 overload misbehaves here (observed: clamp((1,0,0), 0, 1)
+    // returned (0,0,0), silently retargeting every out-of-first-brick updateBlock to brick
+    // (0,0,0)). Explicit min(max()) is unambiguous.
+    brickCoord = glm::min(glm::max(brickCoord, glm::ivec3(0)), glm::ivec3(bricksPerAxis - 1));
 
     glm::vec3 brickWorldMinCalc = m_worldMin + glm::vec3(brickCoord) * static_cast<float>(brickSideLength);
     glm::vec3 brickWorldMax = brickWorldMinCalc + glm::vec3(static_cast<float>(brickSideLength));
@@ -782,11 +812,14 @@ void LaineKarrasOctree::updateBlock(const glm::vec3& blockWorldMin, uint8_t bloc
         glm::ivec3 localGridOrigin = brickCoord * brickSideLength;
 
         if (it != brickGridMap.end()) {
-            uint32_t brickIdx = it->second;
-            if (brickIdx < brickViews.size()) {
-                brickViews[brickIdx].~EntityBrickView();
-                new (&brickViews[brickIdx]) EntityBrickView(*m_voxelWorld, localGridOrigin, blockDepth, m_worldMin, EntityBrickView::LocalSpace);
-            }
+            // Reseat WITHOUT destroy + placement-new: EntityBrickView carries reference
+            // members, so in-place reconstruction is not "transparently replaceable"
+            // ([basic.life]) and later access through the vector is UB — observably
+            // miscompiled this TU at -O3 (integer min/max/clamp of unrelated locals
+            // returned garbage). Orphan the old slot and repoint the grid map instead.
+            uint32_t freshIdx = static_cast<uint32_t>(brickViews.size());
+            brickViews.emplace_back(*m_voxelWorld, localGridOrigin, blockDepth, m_worldMin, EntityBrickView::LocalSpace);
+            it->second = freshIdx;
         } else {
             uint32_t newIdx = static_cast<uint32_t>(brickViews.size());
             brickViews.emplace_back(*m_voxelWorld, localGridOrigin, blockDepth, m_worldMin, EntityBrickView::LocalSpace);
@@ -806,13 +839,20 @@ void LaineKarrasOctree::removeBlock(const glm::vec3& blockWorldMin, uint8_t bloc
     int bricksPerAxis = m_octree->bricksPerAxis;
 
     glm::vec3 localPos = blockWorldMin - m_worldMin;
+    // INTEGER brick arithmetic — block positions are integer-grid by the rebuild frame
+    // contract, so float division buys nothing. It also cost correctness: at -O3 GCC
+    // autovectorized the float-divide + clamp sequence and the clamped x-lane came back
+    // wrong (updateBlock((8,0,0)) landed on brick 0 with bound 1; O0 behaved). Integer
+    // division is exact and sidesteps that codegen path entirely.
     glm::ivec3 brickCoord(
-        static_cast<int>(localPos.x / static_cast<float>(brickSideLength)),
-        static_cast<int>(localPos.y / static_cast<float>(brickSideLength)),
-        static_cast<int>(localPos.z / static_cast<float>(brickSideLength))
-    );
+        static_cast<int>(localPos.x) / brickSideLength,
+        static_cast<int>(localPos.y) / brickSideLength,
+        static_cast<int>(localPos.z) / brickSideLength);
 
-    brickCoord = glm::clamp(brickCoord, glm::ivec3(0), glm::ivec3(bricksPerAxis - 1));
+    // NOT glm::clamp: the ivec3 overload misbehaves here (observed: clamp((1,0,0), 0, 1)
+    // returned (0,0,0), silently retargeting every out-of-first-brick updateBlock to brick
+    // (0,0,0)). Explicit min(max()) is unambiguous.
+    brickCoord = glm::min(glm::max(brickCoord, glm::ivec3(0)), glm::ivec3(bricksPerAxis - 1));
 
     uint32_t gridKey = static_cast<uint32_t>(brickCoord.x) |
                        (static_cast<uint32_t>(brickCoord.y) << 10) |

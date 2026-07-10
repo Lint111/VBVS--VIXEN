@@ -11,6 +11,78 @@ Living log of confirmed-but-unfixed issues. Each entry: symptom, root cause, imp
 
 ---
 
+## KI-020 — Two pre-existing MSVC-portability compile failures break the all-targets Windows build (`build.bat build`)
+
+**Discovered:** 2026-07-10, by the `validate-gaia-sync` Opus validator during the Gaia v0.9.2 sync (both files are byte-identical to base `ab40cb97`; unrelated to that sync — pre-existing app-rot). Surfaced because the validator ran a full `build.bat build`, which halts with `ninja: build stopped` on these two.
+
+**Symptom:** a full Windows all-targets build (`build.bat build`) does NOT go fully green — `ninja: build stopped` on two independent compile errors in non-Gaia test code. The Gaia libraries + all three Gaia test exes, and the individual targets people usually build, compile fine; only the aggregate all-targets Windows build is affected.
+
+**The two failures:**
+1. `libraries/RenderGraph/tests/.../test_body_instance_raymarch_render.cpp` — uses POSIX `setenv`/`unsetenv`, which do not exist on MSVC → `C3861: 'setenv': identifier not found` (and `unsetenv`). MSVC provides `_putenv_s` (and `_putenv("VAR=")` to clear) instead.
+2. `libraries/RenderGraph/tests/.../test_octree_config_sdi_parity.cpp` — includes SVO's `SdfRecipes.h` → generated `SdfCoreKernels.g.hpp`, which uses bare `min`/`max` that collide with the Windows `<windows.h>` `min`/`max` macros → `C2589: '(' : illegal token on right side of '::'` (the classic macro-expansion collision).
+
+**Root cause:** both are Windows/MSVC-portability gaps in test/generated code that presumably compiled or were only exercised under WSL/GCC. Neither is a logic bug; both are include/identifier portability.
+
+**Fix direction (NOT applied — logged per user decision 2026-07-10 to stay focused on the view-contract track):**
+1. Replace `setenv(k,v,1)`/`unsetenv(k)` with a portable helper: `#ifdef _WIN32 _putenv_s(k,v)` / `_putenv((std::string(k)+"=").c_str())` `#else setenv/unsetenv #endif` — or a small `SetEnv`/`UnsetEnv` shim in test utilities.
+2. For the min/max collision: `#define NOMINMAX` before `<windows.h>` reaches that TU, or wrap the generated-header call sites as `(std::min)(...)`/`(std::max)(...)`, or have the generator emit `(min)`/`(max)` guarded. Because the offending symbols are in a **generated** header (`SdfCoreKernels.g.hpp`), the durable fix is at the generator (emit MSVC-safe min/max) rather than editing the `.g.` output by hand.
+
+**Impact:** the individual Gaia/editor/most targets build and test fine; CI or anyone relying on a single fully-green `build.bat build` on Windows hits these two. Does not affect the Gaia sync, the editor residency fix, or the view-contract work.
+
+**Severity:** Medium (blocks the aggregate Windows build; per-target builds unaffected) · **Status:** OPEN
+
+---
+
+## KI-021 — Existing build dirs keep the STALE pre-v0.9.2 Gaia after the pin bump (FetchContent does not re-fetch on reconfigure)
+
+**Discovered:** 2026-07-10, immediately after the Gaia v0.9.2 pin bump (merge `7dde7ee7`).
+
+**Symptom:** `VIXEN/dependencies/CMakeLists.txt` now pins Gaia to the v0.9.2 SHA (`2293594`→`f2ea77a`), but every EXISTING main-checkout build dir (`build/wsl`, `build/ninja`, `build/ninja-release`, `build/wsl-debug`) still has `_deps/gaia-src` checked out at the OLD `6f0a947`. FetchContent caches `_deps` and does NOT re-fetch when only `GIT_TAG` changes — a plain reconfigure keeps building against the stale Gaia. (This is the very caching behavior that caused the original ~18-commit drift.)
+
+**Why it bites:** the wrapper adaptations in the same merge (`VoxelVolumeArchetype.cpp` `auto&` write-fix + `.all<T&>()` query-constness fix) assume v0.9.2 semantics. Built against stale `6f0a947` Gaia they are at best a loud compile error (binding `auto&` to the old `set<T>` proxy) and at worst semantic mismatch — either way NOT the validated green state. Any downstream Gaia consumer (`CashSystem`, `SVO` tests) in a stale build dir is likewise on old Gaia.
+
+**Fix (per build dir, mechanical):** remove the cached Gaia deps so the next configure re-fetches at the new pin — `rm -rf <builddir>/_deps/gaia-*` (gaia-src, gaia-build, gaia-subbuild), then reconfigure. Verify with `git -C <builddir>/_deps/gaia-src rev-parse HEAD` == `f2ea77a…`. (A full fresh build dir also picks up v0.9.2 directly.) The gaia-sync validation confirmed a cleared/fresh dir fetches v0.9.2 correctly.
+
+**Impact:** anyone reusing an existing build dir builds the wrong Gaia until they clear `_deps/gaia-*`. Fresh build dirs are fine. Not a code bug — a build-cache-hygiene footgun inherent to FetchContent pin bumps.
+
+**Planned fix:** `Dep-Cache-AutoHeal-Design-2026-07.md` — a CMake reconcile-against-pin step that auto-clears a stale `_deps` cache at configure (+ an opt-in adopt-newer-local path + a `-DVIXEN_CLEAR_DEP_CACHE` knob). Will close this KI when implemented.
+
+**Severity:** Low (one-time per-build-dir clear; fresh dirs unaffected) · **Status:** OPEN (self-clears as build dirs are recreated; auto-heal fix designed)
+
+---
+
+## KI-019 — `GPUQueryManager::ReadAllResults` never unblocks in some graph configurations (all GPU dispatch timing silently no-ops)
+
+**Discovered:** 2026-07-10, during Sampled Lighting Inc1 M5 (shadow-ray cost measurement), while trying to use the existing `GPUPerformanceLogger`/`GPUQueryManager` timestamp machinery to time the `BodyInstanceRayMarch` compute dispatch in isolation.
+
+**Symptom:** zero `"Dispatch: ... ms avg"` summary lines are ever logged by ANY `GPUPerformanceLogger` instance in the graph (not just the march node — `test_dispatch`, `ui_composite_render`, `VoxelGrid_Memory` all affected), across 1500-frame runs at multiple resolutions and `ShadowConfig` states. GPU timestamp queries ARE reported as supported at startup ("GPU timestamp queries enabled (period: 10.000000 ns/tick, ...)"), so the machinery isn't simply disabled — it silently never produces a reading.
+
+**Root cause:** `GPUQueryManager::ReadAllResults()` gates every read behind `AllAllocatedSlotsReset(frameIndex)` — true only once EVERY allocated consumer query slot across the WHOLE app has had its per-frame-in-flight queries reset in a submitted command buffer at least once (comment at `GPUQueryManager.cpp:240`: avoids `VUID-vkGetQueryPoolResults-None-09401` by never reading before every slot's first reset). In the default editor/main-app graph configuration, at least one allocated slot apparently never completes that first reset→submit cycle for a given frame-in-flight index, so `AllAllocatedSlotsReset` never returns true for that index and `ReadAllResults` — and therefore every consumer's `CollectResults`/`TryReadTimestamps` — returns false forever. Not yet localized to which specific slot/node.
+
+**Impact:** the isolated-GPU-dispatch-ms measurement path (the intended tool for any future per-pass perf budget, e.g. Inc3 ReSTIR / Inc4 DDGI probe-ray costing) is currently non-functional end-to-end, silently — no error or warning is logged when this happens, it just never produces output. M5 substituted `VulkanApplicationBase`'s CPU-side `FrameTimer` (full-frame wall-clock, coarser: includes CPU submit + present) to get the Inc1 shadow-ray cost number; see `gate-artifacts/inc1-m5-shadowray-cost.txt` for the substitute method and its caveats.
+
+**Fix options:** (a) instrument `AllAllocatedSlotsReset` (or add a one-shot warning) to name which allocated slot(s) are stuck un-reset, so the actual dormant node/slot can be identified; (b) audit every `AllocateQuerySlot` call site for a node whose `Execute`/`BeginFrame` might not run every frame-in-flight index (conditional/gated dispatch, or a node compiled but not wired into the active frame path); (c) consider relaxing the whole-pool gate to a per-slot reset-tracking scheme so one dormant consumer doesn't block every other consumer's readings (larger change, touches the VUID-avoidance invariant directly).
+
+**Severity:** medium (doesn't crash or corrupt anything — it's a silent measurement-tooling gap, not a render bug — but it blocks the intended precise-timing tool for every future perf-budget gate) · **Status:** OPEN · not a Sampled Lighting Inc1 defect (pre-existing infrastructure gap, surfaced by M5 being the first milestone to actually need per-dispatch GPU timing numbers).
+
+---
+
+## KI-018 — Sampled Lighting direct-lighting pass runs INLINE, not as a separate `DirectLighting.comp` pass (RenderGraph `ComputeStageNode` 3-slot cap)
+
+**Discovered:** 2026-07-10, during Sampled Lighting Inc1 M4 (`ShadowConfig` + direct-lighting pass with shadow rays).
+
+**Symptom:** the design (`Sampled-Lighting-Design-2026-07.md` §3, §5) and Inc1 plan (Task 4) call for shading to move OUT of `BodyInstanceRayMarch.comp` into a separate `DirectLighting.comp` pass/`DirectLightingNode`, consuming the `HitRecord` buffer (M3) + `LightingConfig` + `ShadowConfig`. M4 shipped shadow rays INLINE instead — `computeLightingWithShadows()` still lives in `BodyInstanceRayMarch.comp`, called from `main()` right after the `HitRecord` round-trip, rather than in a separate dispatch.
+
+**Root cause:** `ComputeStageNode` caps at 3 hazard-tracked buffer slots, but a separate shadow/direct-lighting pass would need to share roughly 9 scene SSBOs with the march pass (octree/brick buffers, `HitRecord`, `LightingConfig`, `ShadowConfig`, instance buffers, ...) to run `TraceWorldShadow` against the same scene data. The wired `ComputeDispatchNode` (the node type actually used for the march) additionally has no producer/consumer chaining mechanism to hand a buffer from one dispatch node to the next the way the PassGroupNode auto-sync machinery (Auto-Sync FrameGraph epic, P4/P5) expects. Diagnosed by code-read before attempting the split (not a debugged runtime failure).
+
+**Impact:** the `TraceWorld`/`HitRecord`/`TraceWorldShadow`/`ShadowConfig` foundation itself is unaffected and fully functional — only the pass SPLIT is deferred. This blocks Inc3 (ReSTIR DI), which structurally REQUIRES the separate pass (reservoir/reuse machinery doesn't fit inline the way a single shadow-ray term does) — tracked in the design doc §4 Inc3 entry as a prerequisite.
+
+**Fix options:** (a) extend `ComputeStageNode`'s hazard-slot capacity beyond 3 to cover the ~9 scene SSBOs a shared-scene lighting pass needs; (b) migrate the march pass (and its future siblings) from `ComputeDispatchNode` onto `ComputeStageNode`/`PassGroupNode`'s producer/consumer wiring so passes can be chained with auto-baked barriers instead of hand-run in one dispatch. Either is a RenderGraph library change, not a Sampled Lighting shader/node change — scoped to Inc3 planning.
+
+**Severity:** low for Inc1/Inc2 (no functional loss — shadows work correctly inline); becomes a hard blocker at Inc3 · **Status:** OPEN, tracked prerequisite for Inc3 · not a defect in the shipped Inc1 work, a scoped-out architecture item.
+
+---
+
 ## KI-017 — `SdfRecipes.h`/`SdfBake.h`'s transitive include chain fails to compile on Windows/MSVC (Windows-macro `min`/`max` pollution, no `#undef` guard)
 
 **Discovered:** 2026-07-08, during Tiered-ESVO Inc2 M3 (GPU traversal-restart), when building `test_gpu_parity`/`test_tier_crossing_construction`/related SVO test targets via the `vixen-ninja` (Windows/MSVC) preset for the first time in the `tiered-esvo-inc2` worktree.

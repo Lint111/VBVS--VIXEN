@@ -5,8 +5,16 @@
 // whole graph (window, body-octree scene, UI composite HUD) unmodified; BuildRenderGraph
 // calls the base implementation and then re-points the UI node at editor.rml, and the one
 // default body instance is replaced by a single instance selecting the document's baked
-// recipe-pool slot. Update() drains the UI selection provider's clicked-element-id each
-// frame (S4 pattern, DrainClickedElementId) and re-flattens/re-uploads on the next tick
+// recipe-pool slot.
+//
+// Inc-4 reframe (design D10/D15, R5): the editor is a PURE CONSUMER of the AppFlow registry
+// -- it names zero triggers/actions in code. It registers one self-contained handler per
+// action (each handler decides for itself whether to go through Stack() (undoable), a
+// service, or a bare side effect -- the framework knows none of this) and dispatches
+// exclusively via rt_.DispatchBySelector()/DispatchByKey(): UI clicks resolve through
+// DispatchBySelector(clickedId); keys resolve through DispatchByKey via KeyMap.h's
+// GLFW-keycode -> KeyId map. Update() drains the UI selection provider's clicked-element-id
+// each frame (S4 pattern, DrainClickedElementId) and re-flattens/re-uploads on the next tick
 // after a toggle (mirrors BodyOctreeSceneNode::SetRecipePool's post-Compile dirty-flag/
 // in-Execute re-materialize — no MarkNeedsRecompile).
 #include "VulkanGraphApplication.h"
@@ -28,7 +36,13 @@ public:
     // anonymous namespace can build a std::vector<ScriptedAction> without befriending it.
     struct ScriptedAction {
         long frame = 0;
-        enum class Kind { Toggle, Undo, Redo } kind = Kind::Undo;
+        // R6a: Settings/Back added to exercise the back-button->Return edge in the RUNNING
+        // editor (not just the FSM unit test) -- Settings drives NavTo(Settings) directly
+        // (a real editor has no "open settings" UI yet, so there is no selector to route this
+        // through; NavTo is a public service call, same primitive Return's own handler uses),
+        // Back drives DispatchBySelector("back-button") -- the real dispatch path a back-button
+        // click would take.
+        enum class Kind { Toggle, Undo, Redo, Settings, Back } kind = Kind::Undo;
         uint32_t layerIndex = 0;  // only meaningful for Kind::Toggle
     };
 
@@ -39,10 +53,6 @@ public:
     // Loads (or reloads) the document. Must be called before Prepare()/BuildRenderGraph()
     // for the initial load; safe to no-op-check via LastError() on failure.
     bool LoadDocument(const std::string& path);
-
-    // Toggles a layer's enabled override (UI checkbox click handler). Takes effect on the
-    // next Update() tick via the dirty-flag re-flatten/re-upload path.
-    void ToggleLayer(uint32_t layerIndex);
 
     // Reconstructs the document with the current enabled overrides and writes it to
     // "<input-path-without-extension>.edited.vxd". Returns false (see LastEditorError())
@@ -59,6 +69,14 @@ public:
     // (lastEditorError_ set) on flatten/bake failure. Public so the headless live-gate test
     // can drive the exact same path the app uses without booting a window.
     bool ApplyDocumentToScene();
+
+    // Editor Brick-Residency Fix (2026-07): the editor's one document body is the object being
+    // directly edited and is always in view — it must render the fine SDF march (where the layer
+    // mask lives), not the mask-invariant coarse mip-fallback the main app's camera-driven
+    // heuristic would otherwise leave it on for a static session. Opts the body out of
+    // VulkanGraphApplication::UpdateBodySceneResidency entirely (see ApplyDocumentToScene, which
+    // grants residency unconditionally instead).
+    bool SkipResidencyHeuristic() const override { return true; }
 
     // Inc-2b Task 3: reads the capture render target's CURRENT image back to host RGBA8 and
     // writes it as a PNG at `path`. Gated end-to-end on VIXEN_EDITOR_CAPTURE_FRAMES being set
@@ -83,6 +101,8 @@ private:
     bool sKeyWasDown_ = false;  // edge-detect for the Save keybinding
     bool ctrlZWasDown_ = false;  // edge-detect for the Undo keybinding
     bool ctrlYWasDown_ = false;  // edge-detect for the Redo keybinding
+    bool escWasDown_ = false;  // edge-detect for the Return (Esc) keybinding
+    bool handlersRegistered_ = false;  // guards the one-time RegisterHandler calls in LoadDocument
 
     // Inc-2b Task 3/4: capture + script harness state, all zero-cost/inert when the two
     // VIXEN_EDITOR_* env knobs are unset (see BuildRenderGraph + Update).

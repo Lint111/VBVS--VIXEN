@@ -1,0 +1,62 @@
+Sampled Lighting Inc1 M3 -- HitRecord buffer: split hit from shade -- live gate (byte-identity)
+
+Gate: offscreen capture must be byte-identical to M1/M2's baseline. main() now writes a
+packed HitRecord to a real SSBO (binding 17), reads it BACK from that same buffer, and
+shades from the readback (not the original TraceWorld locals) -- so a lossy pack/unpack
+or a broken SSBO write/read would show up as a visible regression, not a silent no-op.
+
+Scene: vixen_editor.exe default (no document loaded), offscreen readback via
+VIXEN_EDITOR_CAPTURE_FRAMES=5 (temp/run_m3_capture.bat, same pattern as M1/M2).
+
+sha256(temp/editor_capture_5.png) = fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1
+
+Result: MATCH (byte-identical). Equals the M1/M2 baseline hash exactly -- the HitRecord
+SSBO round-trip (pack -> write -> read back -> unpack -> shade) adds zero visual delta.
+
+Validation/error noise matches the known pre-existing baseline (same class as Inc0 M3 /
+Inc1 M1/M2's own gates): 10x VUID-vkCmdDispatch-None-08114, plus push_constant_gatherer
+"Type mismatch for field" ERROR log lines (time, cameraPos, cameraDir, cameraUp,
+cameraRight, aspect, fov, debugMode, raySizeCoef, raySizeBias, instanceCount,
+debugTargetPixel) -- pre-existing, not introduced by this milestone. No new VUIDs; no
+mention of binding 17 / HitRecord in any error line (only the expected INFO wiring log:
+"[BuildRenderGraph] Connected HitRecord SSBO at binding 17 (Sampled Lighting Inc1 M3)").
+
+Both apps booted and closed cleanly:
+  - vixen_editor.exe: exit 0 (temp/run_m3_capture.log)
+  - VIXEN.exe:        exit 0 (temp/run_m3_main_app.log) -- full clean teardown log
+    (RenderGraph::Clear, ExecuteCleanup, EngineContext destroyed, VulkanGraphApplication
+    deinitialized -- no crash, no leaked-handle warnings).
+
+Platform: Windows-native build (vixen-ninja preset, MSVC), real GPU (AMD Radeon(TM)
+Graphics -- this dev machine's actual GPU, not lavapipe/Dozen). Fresh configure + build
+(no prior build tree existed in this worktree before this milestone).
+
+---
+
+HitRecord SDI parity (structural drift-guard, pure CPU/reflection):
+  test_hitrecord_sdi_parity.exe: PASSED (1/1)
+  Reflected HitRecord (via BodyInstanceRayMarch.spv, SPIRV-Reflect): declared size=60 B,
+  per-field offsets albedo@0 roughness@12 worldNormal@16 hitT@28 worldPos@32 flags@44
+  _pad0@48 -- all match the hand-written HitRecordCpu mirror struct's offsetof values
+  exactly. (Note: SPIRV-Reflect does not surface arrayStride for a runtime-length array
+  member the way it does for LightingConfig's fixed-size lights[4] -- the REAL 64 B
+  per-element buffer stride, std430's array-alignment rounding beyond the 60 B declared
+  size, is instead proven empirically by the live capture above, which dispatches the
+  real shader indexing hitRecords[] at its true generated offsets end-to-end.)
+
+HitRecord readback (real-GPU dispatch + per-pixel cross-check against the shader's own
+colour/ID output): test_hitrecord_readback.exe -- BUILT successfully, but COULD NOT RUN
+on this machine: the test's device gate (matching every sibling hand-built-descriptor-
+layout test in this file family -- test_body_instance_raymarch_render.cpp,
+test_body_instance_occlusion_reject.cpp, test_tier_crossing_lod_residency.cpp) only
+accepts a software rasterizer (llvmpipe/lavapipe) or WSL2's Dozen (Vulkan-over-D3D12);
+this dev machine's real AMD Radeon GPU is refused by that gate BEFORE any vkQueueSubmit
+(the same refusal test_body_instance_raymarch_render.cpp itself would hit here -- a
+pre-existing environment characteristic of this test-file family, not introduced by
+this milestone). No lavapipe ICD is installed on this native-Windows machine, and this
+worktree has no WSL-native build tree with glslc on PATH, so this class of gtest simply
+cannot execute here. The equivalent proof -- HitRecord round-trips losslessly through
+the real SSBO end-to-end -- is instead established by the live-app byte-identity capture
+above (which necessarily exercises the exact same write-then-readback-then-shade path
+inside main(), on the SAME real GPU, and only produces a byte-identical image if that
+round-trip is lossless) plus the SDI parity test's structural proof of the layout.

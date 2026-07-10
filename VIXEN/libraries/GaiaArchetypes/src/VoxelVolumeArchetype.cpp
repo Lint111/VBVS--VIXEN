@@ -194,10 +194,11 @@ void VoxelVolumeArchetype::updateVolumeStats(gaia::ecs::Entity volume, int voxel
         return;
     }
 
-    // set<T>() returns a write-proxy by value that commits on destruction; hold it
-    // in a local (binding it to a reference is non-conformant — GCC rejects the
-    // rvalue->non-const-ref bind — and would commit at end of statement on MSVC).
-    auto stats = m_world.set<VolumeStats>(volume);
+    // set<T>() returns a direct mutable reference into the chunk's component
+    // storage (Gaia v0.9.2 Chunk::set<T>() -> view_mut<T>()[row]), not a
+    // write-proxy — binding by value (the old workaround for a prior Gaia
+    // version's deferred-commit proxy) silently drops every write to a copy.
+    auto& stats = m_world.set<VolumeStats>(volume);
     stats.voxelCount = static_cast<uint32_t>(
         std::max(0, static_cast<int>(stats.voxelCount) + voxelDelta));
     stats.isDirty = true;
@@ -213,8 +214,8 @@ void VoxelVolumeArchetype::updateVolumeBounds(
         return;
     }
 
-    // Hold the write-proxy by value (see updateVolumeStats); it commits on scope exit.
-    auto bounds = m_world.set<VolumeBounds>(volume);
+    // See updateVolumeStats: set<T>() is a direct reference, not a write-proxy.
+    auto& bounds = m_world.set<VolumeBounds>(volume);
     bounds.expand(voxelPos);
 }
 
@@ -227,8 +228,12 @@ VoxelVolumeSystem::VoxelVolumeSystem(gaia::ecs::World& world)
 }
 
 void VoxelVolumeSystem::processDirtyVolumes() {
-    // Query all volumes that are dirty
-    auto query = m_world.query().all<VolumeStats>().all<VolumeOrigin>();
+    // Query all volumes that are dirty.
+    // VolumeStats is accessed mutably in the each() lambda below (VolumeStats&,
+    // to clear isDirty), so it must be requested as a mutable query term
+    // (VolumeStats&) — Gaia v0.9.2 asserts each()'s functor constness against
+    // what the query declared (see gaia.h each_inter()'s doc comment).
+    auto query = m_world.query().all<VolumeStats&>().all<VolumeOrigin>();
 
     query.each([this](gaia::ecs::Entity volume, VolumeStats& stats, const VolumeOrigin&) {
         if (stats.isDirty) {

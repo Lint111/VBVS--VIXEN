@@ -35,7 +35,7 @@ shelved AppFlow Inc-3 work (retire `ParseLayerToggleId`, tie into `BindingStore`
 | D3 | **Two trigger kinds; keys are TYPED chords; scope is hierarchical** | (a) **element-click** — compile-time bound to an edge, the `{placeholder}` param **typed on the edge** (dissolves parametric-selector *parsing*). The element *identity* is a **string on the CURRENT dynamic path** (RmlUi keys elements by string id; the trigger reads it dynamically) — this is a deliberate present-state, NOT a permanent limitation: elements gain their own **bake/typed path** as a designed future evolution (§7), symmetric to how keys are baked/typed now. (b) **key** — a **typed `KeyChord{ KeyId key; KeyMod mods }`** (NEVER a string) resolved via a **runtime `InputProfile` registry** that is **hierarchical/scoped** (`global → flow-state → context`, **tightest-declaration-wins**), mutable/rebindable, seeded from schema defaults. `KeyId`/`KeyMod` are generated from the schema. |
 | D4 | **Intents stay compile-time; dispatch reuses the shipped spine** | `FlowActionId` (exists). Dispatch flows through the shipped `DispatchBySelector` (elements) + a new `DispatchByKey(KeyChord)` (keys), both landing on the existing `ActionStack` (undoable) — Inc-4 adds **typed resolution in front of** an unchanged dispatch spine. |
 | D5 | **Build the real AppFlow emitter** | A Yeroket sibling emitter (`AppFlowEmitter`, like `RecipeContainerEmitter`/`ViewBlobEmitter`) generates `AppFlow.g.h` from `AppFlowReference.cs` — enums + existing decl/transition tables + the NEW element-trigger/key-default/return-edge/`KeyId`/`KeyMod` tables + reader. **Retires the hand-authored mirror + the standing `TODO(appflow-codegen)`.** `--appflow` CLI + wsl-bridged drift-guard. |
-| D6 | **Undo vs Return are distinct verbs** | **Undo** = revert a *data change* (the shipped `ActionStack` inverse). **Return** = pop *navigation state* via a `[FlowReturnEdge]` + a **bounded entry-history stack** in `FlowStateMachine`. A settings-menu `Ctrl+Z` undoes the *setting change*; `Esc`/back *returns* to the prior state. The graph knows the difference. |
+| D6 | **Undo vs Return are distinct verbs — and Return is a FIRST-CLASS action, not a key-only concept** | **Undo** = revert a *data change* (the shipped `ActionStack` inverse). **Return** = pop *navigation state* via a **bounded entry-history stack** in `FlowStateMachine` (`RequestReturn`). A settings-menu `Ctrl+Z` undoes the *setting change*; `Esc`/back-button *returns* to the prior state. The graph knows the difference. **Refinement (2026-07-07, user):** `Return` is a first-class `FlowAction` (`FlowAction.Return`), so ANY input surface — a `KeyChord` (`Esc`), an element trigger (a back **button**), a future gamepad/Steam action — dispatches the SAME `Return` action through the SAME dispatch spine (`DispatchByKey`/`DispatchBySelector`). The mechanism (`RequestReturn`) lives ENGINE-side in `Vixen::AppFlow` (not consumer source-gen); the trigger is a binding, not a hardcoded key path. `Return` is dispatched but ROUTES TO `RequestReturn()` (nav-pop), BYPASSING the `ActionStack` — because a nav-pop is not a reversible data mutation (that IS the D6 distinction). `kReturnEdges` becomes "the `Return` action's default per-state key binding"; `Esc` is one default binding to `Return`, not the only way to reach it. |
 | D7 | **Effects, rebind-UI, Steam/gamepad DESIGNED not built** | An edge may carry an **effect-ref** (emitted as a table column) but no animation runtime consumes it. `InputProfile` is mutable (rebind *capability*) but there is no settings-UI, no Steam Input adapter, no gamepad this increment. |
 | D8 | **Triggers are compositional (forward-principle)** | A trigger is `{ primary input } + { a composable SET of typed qualifiers }`. Inc-4 ships exactly ONE qualifier kind — `KeyMod` — but the resolver treats qualifiers as a composable set, not a fixed field, so **timing (double-click min/max, long-press), sequence, and repeat qualifiers can be added later as new modifier kinds with no resolver rewrite** (mirrors Yeroket's `ConnectionModifier` composition). Non-foreclosed, not built. |
 | D9 | **Proof** | Reuse the live windowed real-GPU gate (`test_editor_toggle_undo_capture`): element-click→pattern→toggle, scoped key-chord→undo (byte-exact), and a return-edge pop — plus offline C# emitter tests + C++ runtime unit tests. |
@@ -215,20 +215,28 @@ DispatchResult RequestReturn();
 ```
 
 **Return** is a distinct verb from **Undo**: `RequestReturn` pops *navigation* history; `ActionStack::Undo` reverts
-*data*. A `[FlowReturnEdge]` trigger routes to `RequestReturn`, not the `ActionStack`.
+*data*. `Return` is a first-class `FlowAction` (D6): a `Return` binding (a `KeyChord` like `Esc`, OR a back **button**
+element trigger) resolves to `FlowActionId::Return`, and the runtime ROUTES `Return` to `RequestReturn()` —
+NOT to the `ActionStack`. This keeps the nav/data separation while unifying the trigger surface: every input
+face names the same action.
 
 ### 4.4 `AppFlowRuntime` dispatch (extend shipped runtime)
 
 - **Element click** → `DispatchBySelector(clickedId)` (shipped) — now resolves pattern triggers + typed params.
-- **Key press** → `DispatchByKey(KeyChord)` (new) → `InputProfile::Resolve(chord, fsm_.Current(), action)` →
-  dispatch the action (or, if the chord is a return-edge trigger, `RequestReturn`).
+- **Key press** → `DispatchByKey(KeyChord)` (new) → `InputProfile::Resolve(chord, fsm_.Current(), action)`.
+- **Action routing (shared by both surfaces):** the resolved `FlowActionId` routes by KIND — `Return` → `RequestReturn()`
+  (nav-pop, no `ActionStack` entry); every other action → `DispatchAction` → `ActionStack` (undoable). A single
+  private `RouteAction(FlowActionId, apply)` helper does this so a key and a button reaching `Return` behave identically.
 
-Both flow through the existing `ActionStack` (undoable) — Inc-4 changes nothing downstream of resolution.
+Data actions flow through the existing `ActionStack` (undoable); `Return` bypasses it (nav-pop) — Inc-4 changes nothing
+else downstream of resolution.
 
 ### 4.5 Seeding at `Load()`
 
 `AppFlowRuntime::Load()` (already populates the action table) additionally: registers `kElementTriggers` into
-`BindingStore`, seeds `kKeyDefaults` into the default `InputProfile` (by scope), loads `kReturnEdges` into the FSM.
+`BindingStore`, seeds `kKeyDefaults` into the default `InputProfile` (by scope), and seeds `kReturnEdges` into the
+`InputProfile` as `Return`-action key bindings (`{FlowActionId::Return, edge.trigger, FlowScope::State, edge.from}`) —
+so `Esc` in a return-edge state resolves to `Return` through the same `InputProfile::Resolve` path as any other key.
 Load-order invariant preserved (table populated before any dispatch).
 
 ---
