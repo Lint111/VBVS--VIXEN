@@ -70,6 +70,14 @@ public:
     // can drive the exact same path the app uses without booting a window.
     bool ApplyDocumentToScene();
 
+    // Editor Brick-Residency Fix (2026-07): the editor's one document body is the object being
+    // directly edited and is always in view — it must render the fine SDF march (where the layer
+    // mask lives), not the mask-invariant coarse mip-fallback the main app's camera-driven
+    // heuristic would otherwise leave it on for a static session. Opts the body out of
+    // VulkanGraphApplication::UpdateBodySceneResidency entirely (see ApplyDocumentToScene, which
+    // grants residency unconditionally instead).
+    bool SkipResidencyHeuristic() const override { return true; }
+
     // Inc-2b Task 3: reads the capture render target's CURRENT image back to host RGBA8 and
     // writes it as a PNG at `path`. Gated end-to-end on VIXEN_EDITOR_CAPTURE_FRAMES being set
     // (see BuildRenderGraph -- the capture target itself is not created otherwise). Looks the
