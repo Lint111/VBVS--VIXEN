@@ -1216,8 +1216,14 @@ void main() {
                     continue;  // nearest possible hit is already farther than bestT
                 }
 
+                uint pSteps;
                 pHit = traceUberRecipeBody(inst.recipeId, boundCenter, boundRadius, relaxation,
-                                           rayOrigin, rayDir, pNormal, pT);
+                                           rayOrigin, rayDir, pNormal, pT, pSteps);
+                // Task 12 evidence (c): a non-rejected instance always writes its real march
+                // step count (>=1, even on a miss that exhausted MAX_STEPS or exited tFar) —
+                // only the two continue-above paths leave this 0u, so "0 here" means "the
+                // early-reject fired," matching the ESVO branch's own convention exactly.
+                instanceIterCount[instIdx] = pSteps;
             }
 #endif
 

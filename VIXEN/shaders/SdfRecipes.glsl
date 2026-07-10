@@ -99,11 +99,17 @@ bool traceProceduralBody(uint recipeId, vec3 center, vec3 params, vec3 ro, vec3 
 // behind — it references evalRecipeField unconditionally in its body, so without this guard an
 // unspliced build (zero registrations) would fail to compile on the undeclared identifier even
 // though nothing ever calls this function in that case.
+// stepsUsed (Task 12 evidence (c)): count of march iterations actually taken, written by the
+// caller into instanceIterCount[instIdx] — the SAME per-instance debug buffer (binding 14)
+// the ESVO path already populates (0u on an early-reject, a real iteration count on an actual
+// traversal), so "instanceIterCount==0" means "rejected" uniformly across BOTH provider paths
+// with no new instrumentation surface.
 #ifdef VIXEN_UBER_RECIPE_SPLICED
 bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, float relaxation,
-                         vec3 ro, vec3 rd, out vec3 hitNormal, out float hitT) {
+                         vec3 ro, vec3 rd, out vec3 hitNormal, out float hitT, out uint stepsUsed) {
     hitNormal = vec3(0.0, 1.0, 0.0);
     hitT      = 0.0;
+    stepsUsed = 0u;
 
     vec3  oc   = ro - boundCenter;
     float b    = dot(oc, rd);
@@ -119,6 +125,7 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
     const int   MAX_STEPS = 128;
     const float EPS       = 1e-3;
     for (int i = 0; i < MAX_STEPS; ++i) {
+        stepsUsed = uint(i + 1);
         vec3  p = ro + rd * t;
         float d = evalRecipeField(recipeId, p);
         if (d < EPS) {

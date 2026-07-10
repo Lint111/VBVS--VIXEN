@@ -847,6 +847,124 @@ void VulkanGraphApplication::BuildRenderGraph() {
             } else {
                 mainLogger->Error("[BuildRenderGraph] VIXEN_TIER_CROSSING_DEMO: no leaf found in parent octree — demo scene not built");
             }
+        } else if (const char* uberDemoEnv = std::getenv("VIXEN_PROCEDURAL_UBER_DEMO")) {
+            // VIXEN_PROCEDURAL_UBER_DEMO — Lazy-Procedural-Delta-Baseline Inc0 M5 Task 12
+            // zero-bake live gate. Registers N registry-driven recipes (recipeId >= 2, mixing
+            // CSG combines + Round/Onion modifiers — beyond the 2 legacy analytic recipes) and
+            // positions them OVERLAPPING along the default camera's Z sight line (bodies at
+            // increasing world-Z, same X/Y so each ray that hits the nearer body's bound sphere
+            // would ALSO have hit a farther one's, giving the entryT>bestT early-reject in
+            // main() something real to reject). Value selects the recipe count: unset or "3"
+            // (or any non-numeric value) -> N=3; "10" -> N=10 — the scope-refinement's two
+            // measurement points (compile stats + per-frame GPU eval time from the Task-6b perf
+            // CSV) are captured by running this env twice, once per value, on the Windows
+            // real-GPU handoff. NO octree bake occurs for these bodies (RegisterProceduralRecipe
+            // never touches BakeSdfWorld/BuildSdfBodyOctree) — the (a) proof for the live gate.
+            const int requestedN = std::atoi(uberDemoEnv);
+            const int n = (requestedN == 10) ? 10 : 3;
+            mainLogger->Info("[BuildRenderGraph] VIXEN_PROCEDURAL_UBER_DEMO: registering " +
+                             std::to_string(n) + " zero-bake procedural recipes");
+
+            // Recipe programs: id 2 = plain sphere (baseline, matches legacy visually), id 3 =
+            // box+sphere SmoothUnion, id 4 = sphere+Round-inflated-box SmoothSubtract, then
+            // ids 5..(n+1) cycle the same 3 shapes with varied params so N=10 isn't ten
+            // identical copies (a degenerate corpus would defeat the "does dispatch scale"
+            // measurement this demo exists for).
+            using Vixen::SVO::Recipe::SdfOpCode;
+            using Vixen::SVO::Recipe::SdfInstruction;
+            auto sphereInstr = [](glm::vec3 c, float r) {
+                SdfInstruction in{}; in.opCode = (uint8_t)SdfOpCode::Sphere;
+                in.data[0] = c.x; in.data[1] = c.y; in.data[2] = c.z; in.data[3] = r;
+                return in;
+            };
+            auto boxInstr = [](glm::vec3 he) {
+                SdfInstruction in{}; in.opCode = (uint8_t)SdfOpCode::Box;
+                in.data[0] = he.x; in.data[1] = he.y; in.data[2] = he.z;
+                return in;
+            };
+            auto roundInstr = [](float r) {
+                SdfInstruction in{}; in.opCode = (uint8_t)SdfOpCode::Round; in.data[0] = r;
+                return in;
+            };
+            auto combineInstr = [](SdfOpCode op, float k) {
+                SdfInstruction in{}; in.opCode = (uint8_t)op; in.data[2] = k;
+                return in;
+            };
+
+            std::vector<Vixen::SVO::BodyInstanceGpu> uberBodies;
+            uberBodies.reserve(static_cast<size_t>(n));
+            constexpr float kSpacingZ = 40.0f;  // overlapping bound spheres along +Z sight line
+            constexpr float kBaseZ    = 30.0f;
+            const glm::vec3 kColors[3] = {
+                glm::vec3(1.00f, 0.55f, 0.55f),
+                glm::vec3(0.55f, 1.00f, 0.55f),
+                glm::vec3(0.55f, 0.70f, 1.00f),
+            };
+            for (int i = 0; i < n; ++i) {
+                const uint32_t recipeId = static_cast<uint32_t>(2 + i);
+                const float instZ = kBaseZ + kSpacingZ * static_cast<float>(i);
+                const glm::vec3 center(64.0f, 64.0f, instZ);
+
+                std::vector<SdfInstruction> prog;
+                const int shape = i % 3;
+                if (shape == 0) {
+                    prog = { sphereInstr(center, 8.0f) };
+                } else if (shape == 1) {
+                    prog = { boxInstr(glm::vec3(6.0f, 6.0f, 6.0f)),
+                             sphereInstr(center + glm::vec3(4.0f, 0.0f, 0.0f), 5.0f),
+                             combineInstr(SdfOpCode::SmoothUnion, 1.5f) };
+                    // Box's local origin IS the sample origin (no position offset in its own
+                    // opcode) — this program samples in body-local space, so its own bound
+                    // derivation is centered near local origin; recentring onto `center` is
+                    // handled by the whitelist-derived boundCenter below, not by this program.
+                } else {
+                    prog = { sphereInstr(glm::vec3(0.0f), 9.0f),
+                             boxInstr(glm::vec3(5.0f, 5.0f, 5.0f)),
+                             roundInstr(1.0f),
+                             combineInstr(SdfOpCode::SmoothSubtract, 1.0f) };
+                }
+
+                Vixen::SVO::RecipeRegistry::RecipeEntry entry{};
+                entry.bytecode = std::move(prog);
+                // shape==1's program samples box-local (no position offset) but the sphere
+                // operand and the intended screen position both use `center` — for this v1
+                // demo, authoring boundCenter/boundRadius explicitly for shapes 1/2 sidesteps
+                // relying on DeriveConservativeBounds's local-origin-relative result (correct
+                // for shape==0, whose Sphere opcode DOES carry an absolute-position center)
+                // matching a body actually placed via BodyInstanceGpu.worldPos-independent
+                // shader-local coordinates — recipeParams/worldPos are NOT read for
+                // recipeId>=2 (only providerKind/recipeId select the uber path; the field
+                // function samples WORLD p directly, unlike the legacy analytic path).
+                if (shape != 0) {
+                    entry.boundCenter = center;
+                    entry.boundRadius = 12.0f;
+                }
+
+                auto regResult = RegisterProceduralRecipe(recipeId, entry);
+                if (regResult != Vixen::SVO::RecipeRegistry::RegisterResult::Ok) {
+                    mainLogger->Error("[BuildRenderGraph] VIXEN_PROCEDURAL_UBER_DEMO: "
+                                     "RegisterProceduralRecipe(" + std::to_string(recipeId) +
+                                     ") failed, code " + std::to_string(static_cast<int>(regResult)));
+                    continue;
+                }
+
+                Vixen::SVO::BodyInstanceGpu inst{};
+                inst.worldPos[0] = 0.0f; inst.worldPos[1] = 0.0f; inst.worldPos[2] = 0.0f;  // unused: field samples world p directly
+                inst.renderScale = 1.0f;   // unused by Procedural
+                const glm::vec3& tint = kColors[shape];
+                inst.color[0] = tint.x; inst.color[1] = tint.y; inst.color[2] = tint.z;
+                inst.octreeIndex = 0u;    // unused by Procedural
+                inst.providerKind = 1u;   // PROVIDER_PROCEDURAL
+                inst.recipeId = recipeId; // >=2 -> routes through the spliced uber path
+                uberBodies.push_back(inst);
+            }
+
+            if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))) {
+                bodyScene->SetInstances(std::move(uberBodies));
+                mainLogger->Info("[BuildRenderGraph] VIXEN_PROCEDURAL_UBER_DEMO: seeded " +
+                                 std::to_string(n) + " zero-bake procedural body instances "
+                                 "(0 BakeSdfWorld/BuildSdfBodyOctree calls for these bodies)");
+            }
         } else if (std::getenv("VIXEN_STORED_SDF_DEMO")) {
             // VIXEN_STORED_SDF_DEMO — Stored-SDF bodies (Increment 2, M5 Task 10).
             // EnsureOctreesBuilt has baked 3 SdfBodyOctrees (kinds 0/1/2) via ConcatenateSdf,
