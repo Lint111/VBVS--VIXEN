@@ -57,6 +57,13 @@ public:
  * resetOnMotion — an accumulation-owned policy — without adding an
  * accumulation-specific field to CameraData's shader-layout-frozen struct.
  *
+ * Sampled Lighting Inc2 M4: when accumulationConfig.reprojectionEnabled != 0
+ * (VIXEN_ACCUMULATION_REPROJECT=1), this node's resetOnMotion hard-reset is
+ * suppressed on motion (the counter keeps incrementing) — the shader's own
+ * per-pixel reprojection+validation against PrevCameraConfig.prevViewProj
+ * (Inc2 M3) takes over disocclusion handling instead. The very first Execute
+ * still always resets to 1 in every mode (no valid previous frame yet).
+ *
  * Lifecycle: the ring buffers persist across graph recompile; released on
  * FinalTeardown (see CleanupImpl) — identical KI-004-safe pattern to
  * ShadowConfigNode.

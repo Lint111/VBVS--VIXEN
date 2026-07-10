@@ -6,5 +6,6 @@ struct AccumulationConfig {
     float alpha;
     uint maxFrames;
     uint resetOnMotion;
+    uint reprojectionEnabled;
 };
 #endif // ACCUMULATIONCONFIG_GLSL

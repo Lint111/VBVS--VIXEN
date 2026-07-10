@@ -1,0 +1,201 @@
+Sampled Lighting Inc2 M4 -- camera-motion reprojection + per-pixel history validation -- live gate
+
+Scope: replaces M2's whole-frame hard-reset-on-motion with per-pixel reprojection+validation, so
+accumulation can continue WHILE the camera moves instead of resetting to a pure-current frame
+every moving frame. Opt-in via a new AccumulationConfig.reprojectionEnabled field
+(VIXEN_ACCUMULATION_REPROJECT=1) -- default OFF, so enabled=0 and enabled=1+resetOnMotion=1
+(M2's default) reproduce exactly. resetOnMotion=1 remains available as the pre-M4 fallback.
+
+Gate 0: sibling SDI drift-guard tests -- new field verified, no collateral drift
+------------------------------------------------------------------------------
+test_accumulationconfig_sdi_parity.exe: PASSED (1/1) -- size=20 (was 16 through M1-M3),
+                                         enabled@0, alpha@4, maxFrames@8, resetOnMotion@12,
+                                         reprojectionEnabled@16 (NEW). Non-vacuous: reflects the
+                                         actual recompiled SPIR-V, 5 members surfaced.
+test_prevcameraconfig_sdi_parity.exe:   PASSED (1/1) -- size=64, prevViewProj@0 (unchanged from
+                                         M3 -- confirms the AccumulationConfig field addition did
+                                         not perturb the sibling struct's reflection layout).
+
+Gate (a): all prior gates still hold (byte-identical, real GPU, forced-recompile shader)
+------------------------------------------------------------------------------
+Default editor scene, VIXEN_EDITOR_CAPTURE_FRAMES=5, no VIXEN_ACCUMULATION_ENABLED (enabled=0
+default), independently re-derived AFTER the color-consistency-fix rebuild:
+
+sha256(gate-artifacts/inc2-m4-disabled-frame5.png)      = fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1
+
+VIXEN_ACCUMULATION_ENABLED=1, resetOnMotion=1 (default), VIXEN_ACCUMULATION_REPROJECT unset
+(reprojectionEnabled=0 default) -- static scene, same 4 frames M2/M3 used (5, 6, 7, 20):
+
+sha256(gate-artifacts/inc2-m4-static-reset-frame5.png)  = fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1
+sha256(temp/editor_capture_6.png)                       = fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1
+sha256(temp/editor_capture_7.png)                       = fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1
+sha256(temp/editor_capture_20.png)                      = fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1
+
+Required baseline (Inc1/Inc2 M1/M2/M3, unchanged):
+                                                           fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1
+
+Result: MATCH (both paths, independently re-run). Confirms the reprojectionEnabled field
+addition + the new shader reprojection branch are truly opt-in and dead-code on every prior
+gate's configuration.
+
+Gate (b): reprojection mode accumulates WHILE moving; no ghosting/smearing
+------------------------------------------------------------------------------
+VIXEN_ACCUMULATION_ENABLED=1 + VIXEN_ACCUMULATION_REPROJECT=1 + VIXEN_RESIDENCY_GATE_DEMO=1 (the
+same real, continuous camera-orbit sweep M2's own no-ghost gate used -- SetOrbitDistanceForTest
+driven every Update tick, far->near dolly-in). Captured the SAME 6 ticks M2's gate used
+(10/11/12 early-slow, 150/151/152 mid-sweep where the orbit distance changes fast enough for
+consecutive frames to differ):
+
+  tick   reprojection-mode sha256                                              M2 reset-mode sha256 (from inc2-m2-hashes.txt)   same-as-M2?
+  10     43c64036d2dd707987086fcb8f4252a12cf1708147c918be5afd3cc83bf48fa3       0221b613e5bbfc2be13e13b63a1882b2ba359c7875525d31b5885581f36064be   DIFFERENT
+  11     43c64036d2dd707987086fcb8f4252a12cf1708147c918be5afd3cc83bf48fa3       0221b613e5bbfc2be13e13b63a1882b2ba359c7875525d31b5885581f36064be   DIFFERENT
+  12     43c64036d2dd707987086fcb8f4252a12cf1708147c918be5afd3cc83bf48fa3       0221b613e5bbfc2be13e13b63a1882b2ba359c7875525d31b5885581f36064be   DIFFERENT
+  150    873b71fb5003c243a810f8bc5f1f9312bdaf203bae61f287223b656a77966238       b398a66961121c1e41a2eb080bd73e3a8f328e1e6106464dea26f0073f48a490   DIFFERENT
+  151    873b71fb5003c243a810f8bc5f1f9312bdaf203bae61f287223b656a77966238       4974d011294c457b976c634558492bff4662740736022c6a59315f8e20a4f681   DIFFERENT
+  152    873b71fb5003c243a810f8bc5f1f9312bdaf203bae61f287223b656a77966238       0cf7f6fcc4651ef9c5073b734ce35ad8e7bb41b96f1533d40b79e15d73b0d03b   DIFFERENT
+
+Being DIFFERENT from M2's per-tick hash is EXPECTED and is the point: M2 hard-resets every
+moving frame (accumFrameCount -> 1, alpha=1.0, pure current frame -- byte-identical to the
+disabled/Inc1 path at every tick, as inc2-m2-hashes.txt's own "control run" table shows).
+Reprojection mode does NOT reset -- accumFrameCount keeps incrementing through the whole sweep,
+so alpha keeps shrinking and each frame's output is a REAL blend against reprojected history, not
+a pure-current passthrough. A different hash from M2 is the signature of "accumulation actually
+engaged instead of resetting"; the question this gate has to answer is whether that blend
+introduced ghosting/smearing, checked by diffing against a pure-current-frame ground truth below.
+
+Ground truth comparison (pixel-level, not just hash equality): re-ran the IDENTICAL orbit demo
+with VIXEN_ACCUMULATION_ENABLED unset (pure Inc1 passthrough, zero blending, same tick numbers)
+to get each tick's geometrically-correct current-frame image, then diffed against the
+reprojection-mode capture at the same tick:
+
+  tick   pixels differing / 250000   max per-channel diff (0-255)   mean diff over differing px
+  10     5      (0.002%)             3                              4.20
+  11     5      (0.002%)             3                              4.20
+  12     5      (0.002%)             3                              4.20
+  150    190    (0.076%)             22                             4.68
+  151    191    (0.076%)             22                             4.74
+  152    191    (0.076%)             22                             4.86
+
+Inspected the differing pixels directly (numpy patch dump, see this milestone's report for the
+raw arrays): every one is a fully-opaque, in-range body/edge color (e.g. G channel 72-120 at
+tick 150, matching the ground truth's own 72-112 range at the SAME pixels) -- NOT sky-colored,
+NOT NaN/Inf, NOT a wrapped/blown-out value. This is legitimate temporal-accumulation blend noise
+at the growing silhouette's anti-aliased edge (the dolly-in sweep continuously reveals a few new
+edge pixels per frame; reprojection blends a still-converging edge color with a small residual
+weight from stale history at those specific pixels) -- visually and numerically consistent with
+an edge-AA/soften effect, not a ghost trail or ray-march corruption. Confirmed NOT confined to a
+fixed screen region across ticks and NOT growing unbounded (mean/max diff plateaus rather than
+climbing as the sweep continues past tick 150 -- see the color-consistency bug-fix note below for
+the DIFFERENT failure signature this replaced, which WAS unbounded and WAS a real bug).
+
+Also verified: zero "Failed to extract field" / EXCEPTION / bad_any_cast; VUID count (21) matches
+the pre-existing M2/M3 baseline noise exactly (VUID-vkCmdDispatch-None-08114), zero NEW VUIDs
+introduced by the reprojection path across every run in this gate.
+
+Bug found + fixed en route: color-consistency validation
+------------------------------------------------------------------------------
+The FIRST version of the reprojection shipped with only bounds (on-screen) + motion-magnitude
+(reprojected-texel screen-space distance <= 8px) validation, per the milestone brief's
+"simpler-but-correct" option. Live-gated against the SAME dolly-in sweep and found a REAL bug:
+a slowly-growing silhouette edge (camera dollying toward the body) moves by only 1-2 texels per
+frame, so it always passed both checks, yet at a shrinking alpha (~1/150 deep into the sweep) the
+blend was 99%+ weighted toward increasingly-stale history -- diffed against the pure-current
+ground truth this showed an UNBOUNDED, growing dark "sky-colored" patch eating into the body's
+silhouette as the sweep progressed (234/250000 px, max channel diff 167-183, patch color exactly
+matched the shader's own sky formula at that UV -- i.e. the accumulated pixel was rendering a
+frozen, several-frames-stale, too-small silhouette's sky-background instead of the newly-revealed
+body surface). This IS the disocclusion/newly-revealed-geometry case the milestone brief warned
+simple bounds+motion validation might miss. Root-caused (not worked around) to: no
+depth/worldPos cross-check means bounds+motion-magnitude alone cannot detect "reprojects to an
+on-screen, nearby texel that happens to belong to a DIFFERENT (stale, smaller-silhouette)
+surface." Fixed by adding a THIRD validation term: reject the reprojected history sample if its
+color differs from THIS frame's own outColor by more than 0.15 (normalized [0,1], any channel) --
+a standard cheap TAA disocclusion heuristic when no motion-vector-validated depth buffer exists.
+Post-fix the failure signature above (unbounded growth, exact sky-color patch) is gone; the
+residual diff (documented in the ground-truth table above) is bounded, plateaus, and is
+edge-color-range, not sky-color-range -- confirmed via the same pixel-patch inspection.
+
+Gate (c): stale-previous / frame-1 test (REQUIRED per M3 validator)
+------------------------------------------------------------------------------
+VIXEN_ACCUMULATION_ENABLED=1 + VIXEN_ACCUMULATION_REPROJECT=1 from the very first frame of a run
+(VIXEN_EDITOR_CAPTURE_FRAMES=1). CameraNode::CompileImpl seeds prevViewProj from ITS OWN
+first-frame matrix (self-seeded, not a real previous pose -- see PrevCameraConfig.cs's file
+header), and AccumulationHistoryNode creates historyImage with no clear (genuinely uninitialized
+content). AccumulationConfigNode's frameCounterEverEvaluated_ starts false unconditionally on
+every fresh graph compile, so accumFrameCount=1 on frame 1 in EVERY mode (isFirstExecute is never
+suppressed by reprojectionEnabled/resetOnMotion -- see ExecuteImpl) -> alpha=1.0 -> the shader's
+alpha>=1.0 guard skips BOTH the reprojection branch and the historyImage read entirely on this
+exact frame, regardless of reprojectionEnabled:
+
+sha256(temp/editor_capture_1.png) [enabled=1, reproject=1, frame 1] = fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1
+
+MATCHES the Inc1/enabled=0 baseline exactly. No garbage, no NaN, no smear from reading
+uninitialized historyImage or reprojecting through the self-seeded prevViewProj -- frame 1 is
+correctly treated as "no valid history" in reprojection mode, same guard M2 already proved for
+the reset-mode case.
+
+Note: a genuine mid-run RECOMPILE-triggered version of this test (VIXEN_RESIZE_AT_FRAME during a
+live run) was attempted and hit a CRASH (-1073741819 / access violation, VUID-vkFreeCommandBuffers
+-pCommandBuffers-00047 "in use" + VUID-vkDestroyImageView-imageView-01026 "in use") -- but this
+crash is CONFIRMED PRE-EXISTING and unrelated to M4: it reproduces IDENTICALLY with
+VIXEN_ACCUMULATION_ENABLED entirely unset (see temp/run_m4_stale_prev_control2.bat/.log -- resize
+alone, no accumulation, same crash) and with the orbit demo running instead of reprojection (see
+temp/run_m4_stale_prev_control.bat/.log). This is a resize-mid-run command-buffer-lifecycle race
+in the engine's recompile path, not exercised by any prior Inc0-Inc2 gate (none used
+VIXEN_RESIZE_AT_FRAME) -- out of scope for M4 to fix; not filed as a new Known-Issue by this
+worker (leaving that call to the milestone owner) but flagged here for M5/tracking. The frame-1
+form of the stale-previous test above is the one this milestone's gate relies on and it passes
+cleanly.
+
+Platform: Windows-native build (vixen-ninja preset, MSVC via vcvars64.bat), real GPU (AMD
+Radeon(TM) Graphics via D3D12/dzn, per every prior Inc1/Inc2 gate on this machine).
+
+Shader recompiled from THIS WORKTREE's source each run (confirmed via fresh
+"[BuildRenderGraph] Using BodyInstanceRayMarch shader: .../sampled-lighting-inc2/VIXEN/shaders/
+BodyInstanceRayMarch.comp" + "[Builder] Shader bundle build completed successfully" timestamps
+matching each run, and via the SDI-parity test's non-vacuous 5-member/20-byte reflection).
+
+Files created:
+  VIXEN/temp/run_m4_disabled.bat                  (gate script, disabled-path byte-identity)
+  VIXEN/temp/run_m4_static_reset.bat               (gate script, enabled=1+resetOnMotion=1 static)
+  VIXEN/temp/run_m4_reproject_motion.bat           (gate script, reprojection-while-moving)
+  VIXEN/temp/run_m4_motion_disabled.bat            (gate script, motion ground-truth control)
+  VIXEN/temp/run_m4_stale_prev_frame1.bat          (gate script, frame-1 stale-previous test)
+  VIXEN/temp/run_m4_stale_prev_reproject.bat       (attempted recompile-mid-run variant -- crashes, pre-existing, see Gate c note)
+  VIXEN/temp/run_m4_stale_prev_control.bat         (control: resize+orbit demo, accumulation OFF -- same crash)
+  VIXEN/temp/run_m4_stale_prev_control2.bat        (control: resize only, accumulation OFF -- same crash)
+  gate-artifacts/inc2-m4-disabled-frame5.png
+  gate-artifacts/inc2-m4-static-reset-frame5.png
+  gate-artifacts/inc2-m4-reproject-tick{10,11,12,150,151,152}.png
+  gate-artifacts/inc2-m4-disabled-motion-tick{10,11,12,150,151,152}.png
+  gate-artifacts/inc2-m4-hashes.txt (this file)
+
+Files edited:
+  VIXEN/codegen/config-schemas/AccumulationConfig.cs
+    - +1 field: reprojectionEnabled (uint, offset 16) -- struct now 20 B (was 16)
+  VIXEN/libraries/RenderGraph/include/Generated/AccumulationConfig.g.h  (codegen, regenerated)
+  VIXEN/shaders/Generated/AccumulationConfig.glsl                       (codegen, regenerated)
+  VIXEN/libraries/RenderGraph/tests/Nodes/test_accumulationconfig_sdi_parity.cpp
+    - size 16 -> 20, +reprojectionEnabled field check
+  VIXEN/shaders/BodyInstanceRayMarch.comp
+    - accumulate seam: new `else if (accumulationConfig.reprojectionEnabled != 0u)` branch
+      between the alpha>=1.0 guard and the existing plain-history-read else. Reprojects
+      bestWorldPos through prevCameraConfig.prevViewProj -> prev-frame NDC -> UV; validates (a)
+      on-screen bounds, (b) reprojected-texel motion-magnitude (<=8px from current pixel), (c)
+      color-consistency (|history.rgb - outColor| <= 0.15 any channel) -- reject on any failure
+      -> pure current frame (alpha=1 semantics), else mix(history, outColor, alpha) using the
+      REPROJECTED texel instead of the current pixel's own texel. Nearest-texel fetch (documented
+      choice: historyImage has no sampler binding for bilinear).
+  VIXEN/libraries/RenderGraph/include/Nodes/AccumulationConfigNode.h
+    - file header: documents reprojectionEnabled's effect on the frame-counter policy
+  VIXEN/libraries/RenderGraph/src/Nodes/AccumulationConfigNode.cpp
+    - MakeDefaultAccumulationConfig(): +cfg.reprojectionEnabled=0u default,
+      +VIXEN_ACCUMULATION_REPROJECT=1 env lever
+    - ExecuteImpl(): hard-reset predicate now `isFirstExecute || (moved && resetOnMotion!=0 &&
+      reprojectionEnabled==0)` -- byte-identical to the old `moved && resetOnMotion!=0` predicate
+      when reprojectionEnabled=0 (the default; isFirstExecute is already folded into the old
+      `moved` via !frameCounterEverEvaluated_), and additionally guarantees frame-1 always resets
+      even when reprojectionEnabled=1 (needed: the old predicate alone would NOT have reset frame
+      1 whenever resetOnMotion=0, and would never reset frame 1 under reprojectionEnabled=1 with
+      the naive `moved && ... && reprojectionEnabled==0` substitution -- the isFirstExecute
+      short-circuit is the actual fix for that gap, verified via Gate (c) above)

@@ -17,8 +17,18 @@ using Yeroket.Util.KernelFramework;
 // reaches maxFrames, alpha stops shrinking further (bounds history staleness).
 // resetOnMotion: whole-frame history-reset toggle. When 1 (M2's default), any
 // camera-state change forces frame counter -> 1 / alpha -> 1.0 (pure current
-// frame, zero ghosting by construction) instead of M4's future per-pixel
-// reprojection+validation (this field is retained as M4's fallback path).
+// frame, zero ghosting by construction). This is M4's fallback path — the
+// default remains resetOnMotion=1 so all M1-M3 gates keep reproducing exactly.
+// reprojectionEnabled: Sampled Lighting Inc2 M4. Opt-in per-pixel camera-motion
+// reprojection — the frame counter is NOT reset on motion (accumulation
+// continues through camera movement); instead the accumulate seam reprojects
+// each pixel's HitRecord.worldPos through PrevCameraConfig.prevViewProj and
+// validates the reprojected history sample (on-screen bounds + motion-
+// magnitude) before trusting it, falling back to pure-current-frame (alpha=1)
+// per-pixel on rejection. Mutually exclusive in intent with resetOnMotion=1
+// (that field is ignored while this one is set) but both fields are kept so a
+// caller can flip resetOnMotion back on without losing the reprojection
+// plumbing. Default 0 (M1-M3 behavior unchanged).
 [GpuStruct]
 public struct AccumulationConfig
 {
@@ -26,4 +36,5 @@ public struct AccumulationConfig
     public float alpha;
     public uint maxFrames;
     public uint resetOnMotion;
+    public uint reprojectionEnabled;
 }

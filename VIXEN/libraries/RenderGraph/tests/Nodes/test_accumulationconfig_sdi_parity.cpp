@@ -89,12 +89,14 @@ TEST(AccumulationConfigSdiParity, ReflectedLayoutMatchesCppStruct) {
         std::cout << "    ." << m.name << " offset=" << m.offset << "\n";
     }
 
-    // (a) Struct SIZE == C++ struct size (16 B, per the codegen's own static_asserts).
+    // (a) Struct SIZE == C++ struct size (20 B as of Inc2 M4's reprojectionEnabled field;
+    // 16 B was the Inc2 M1 contract before it).
     EXPECT_EQ(static_cast<std::size_t>(accumulationConfig->type.sizeInBytes), sizeof(AccumulationConfig))
         << "AccumulationConfig size (" << accumulationConfig->type.sizeInBytes
         << ") != sizeof(AccumulationConfig) (" << sizeof(AccumulationConfig) << ") — std430 drift";
-    EXPECT_EQ(accumulationConfig->type.sizeInBytes, 16u)
-        << "AccumulationConfig size must be 16 (Inc2 M1 contract)";
+    EXPECT_EQ(accumulationConfig->type.sizeInBytes, 20u)
+        << "AccumulationConfig size must be 20 (Inc2 M4 contract: enabled/alpha/maxFrames/"
+        << "resetOnMotion/reprojectionEnabled)";
 
     // (b) Per-field offsets.
     ASSERT_FALSE(accumulationConfig->members.empty())
@@ -102,10 +104,11 @@ TEST(AccumulationConfigSdiParity, ReflectedLayoutMatchesCppStruct) {
 
     struct Field { const char* name; std::size_t cppOffset; };
     const Field fields[] = {
-        {"enabled",       offsetof(AccumulationConfig, enabled)},
-        {"alpha",         offsetof(AccumulationConfig, alpha)},
-        {"maxFrames",     offsetof(AccumulationConfig, maxFrames)},
-        {"resetOnMotion", offsetof(AccumulationConfig, resetOnMotion)},
+        {"enabled",             offsetof(AccumulationConfig, enabled)},
+        {"alpha",               offsetof(AccumulationConfig, alpha)},
+        {"maxFrames",           offsetof(AccumulationConfig, maxFrames)},
+        {"resetOnMotion",       offsetof(AccumulationConfig, resetOnMotion)},
+        {"reprojectionEnabled", offsetof(AccumulationConfig, reprojectionEnabled)},
     };
     for (const auto& f : fields) {
         const SpirvStructMember* sm = FindSubMember(*accumulationConfig, f.name);

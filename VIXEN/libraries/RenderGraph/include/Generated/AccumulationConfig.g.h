@@ -8,10 +8,12 @@ struct AccumulationConfig {
     float alpha;
     uint32_t maxFrames;
     uint32_t resetOnMotion;
+    uint32_t reprojectionEnabled;
 };
-static_assert(sizeof(AccumulationConfig) == 16, "AccumulationConfig std430 size");
+static_assert(sizeof(AccumulationConfig) == 20, "AccumulationConfig std430 size");
 static_assert(offsetof(AccumulationConfig, enabled) == 0, "enabled@0");
 static_assert(offsetof(AccumulationConfig, alpha) == 4, "alpha@4");
 static_assert(offsetof(AccumulationConfig, maxFrames) == 8, "maxFrames@8");
 static_assert(offsetof(AccumulationConfig, resetOnMotion) == 12, "resetOnMotion@12");
+static_assert(offsetof(AccumulationConfig, reprojectionEnabled) == 16, "reprojectionEnabled@16");
 } // namespace Vixen::Gpu

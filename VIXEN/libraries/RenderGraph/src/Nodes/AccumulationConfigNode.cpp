@@ -3,6 +3,11 @@
 // data, wired DISABLED (enabled=0) — pure plumbing, zero visual delta.
 // Sampled Lighting Inc2 M2: static EWMA (converging 1/N default) + hard
 // reset-on-motion frame counter -- the first visually-active milestone.
+// Sampled Lighting Inc2 M4: reprojectionEnabled opt-in mode -- when set, this
+// node stops hard-resetting the frame counter on camera motion (resetOnMotion
+// is ignored while reprojectionEnabled != 0) so accumulation continues through
+// camera movement; the shader's own per-pixel reprojection+validation (against
+// prevCameraConfig.prevViewProj, Inc2 M3) is what prevents ghosting instead.
 
 #include "Nodes/AccumulationConfigNode.h"
 #include "Core/NodeRegistration.h"
@@ -30,12 +35,16 @@ namespace {
 // 1/N mode -- BodyInstanceRayMarch.comp's accumulate seam), maxFrames caps that
 // convergence, resetOnMotion=1 (hard-reset the frame counter to 1 on any camera motion,
 // giving zero ghosting by construction -- see AccumulationConfigNode::ExecuteImpl).
+// Sampled Lighting Inc2 M4: VIXEN_ACCUMULATION_REPROJECT=1 flips reprojectionEnabled on
+// (opt-in, off by default so M1-M3 gates reproduce unchanged) -- the shader then reprojects
+// +validates per-pixel instead of this node hard-resetting the whole frame on motion.
 Vixen::Gpu::AccumulationConfig MakeDefaultAccumulationConfig() {
     Vixen::Gpu::AccumulationConfig cfg{};
-    cfg.enabled       = 0u;      // disabled by default -- pure passthrough gate
-    cfg.alpha         = 0.0f;    // sentinel: converging 1/N mode (the M2 default)
-    cfg.maxFrames     = 256u;    // convergence cap
-    cfg.resetOnMotion = 1u;      // M2 default: hard reset on camera motion (no ghosting)
+    cfg.enabled             = 0u;      // disabled by default -- pure passthrough gate
+    cfg.alpha               = 0.0f;    // sentinel: converging 1/N mode (the M2 default)
+    cfg.maxFrames           = 256u;    // convergence cap
+    cfg.resetOnMotion       = 1u;      // M2 default: hard reset on camera motion (no ghosting)
+    cfg.reprojectionEnabled = 0u;      // M4 default OFF: M1-M3 behavior unchanged
 
     // Gate lever: VIXEN_ACCUMULATION_ENABLED=1 forces the enable path so a live gate can
     // capture both the disabled (byte-identical-to-Inc1) and enabled renders from the SAME
@@ -43,6 +52,13 @@ Vixen::Gpu::AccumulationConfig MakeDefaultAccumulationConfig() {
     // convention.
     if (const char* enabledEnv = std::getenv("VIXEN_ACCUMULATION_ENABLED")) {
         cfg.enabled = (enabledEnv[0] == '1') ? 1u : 0u;
+    }
+
+    // Gate lever: VIXEN_ACCUMULATION_REPROJECT=1 turns on M4's per-pixel reprojection mode
+    // (implies continuing to accumulate through camera motion instead of M2's hard reset --
+    // see ExecuteImpl's use of cfg.reprojectionEnabled below).
+    if (const char* reprojectEnv = std::getenv("VIXEN_ACCUMULATION_REPROJECT")) {
+        cfg.reprojectionEnabled = (reprojectEnv[0] == '1') ? 1u : 0u;
     }
     return cfg;
 }
@@ -133,24 +149,46 @@ void AccumulationConfigNode::ExecuteImpl(TypedExecuteContext& ctx) {
     ctx.Out(AccumulationConfigNodeConfig::ACCUMULATION_CONFIG_BUFFER, perFrame_.GetUniformBuffer(frameIndex));
 
     // -------------------------------------------------------------------------------
-    // Sampled Lighting Inc2 M2: consecutive-static-camera frame counter.
+    // Sampled Lighting Inc2 M2/M4: consecutive-frame counter.
     // -------------------------------------------------------------------------------
     // Epsilon-compare this frame's camera pose against the last-seen pose (same idiom as
-    // VulkanGraphApplication::UpdateBodySceneResidency). On the very first Execute, or on
-    // any motion while cfg.resetOnMotion != 0, the counter resets to 1 -- which, fed back
-    // through the shader's alpha = 1/accumFrameCount, forces alpha = 1.0 (pure current
-    // frame) the instant the camera moves, i.e. zero ghosting by construction. Otherwise
-    // the counter increments, clamped to cfg.maxFrames when set (0 = unbounded).
+    // VulkanGraphApplication::UpdateBodySceneResidency). On the very first Execute, the
+    // counter always resets to 1 (no valid prevViewProj/history yet either way). On motion:
+    //   - reprojectionEnabled != 0 (M4): resetOnMotion is IGNORED -- the counter keeps
+    //     incrementing through motion, because the shader now reprojects+validates
+    //     per-pixel against prevCameraConfig.prevViewProj instead of relying on this
+    //     node to blank the whole frame. Hard-resetting here would defeat the entire
+    //     point of M4 (accumulating WHILE the camera moves).
+    //   - reprojectionEnabled == 0 (M1-M3 behavior, M2's own default): unchanged --
+    //     cfg.resetOnMotion != 0 resets the counter to 1 on any motion, which, fed back
+    //     through the shader's alpha = 1/accumFrameCount, forces alpha = 1.0 (pure
+    //     current frame) the instant the camera moves, i.e. zero ghosting by construction.
+    // Otherwise the counter increments, clamped to cfg.maxFrames when set (0 = unbounded).
     const CameraData& cam = ctx.In(AccumulationConfigNodeConfig::CAMERA_DATA);
 
-    const bool moved = !frameCounterEverEvaluated_ ||
+    const bool isFirstExecute = !frameCounterEverEvaluated_;
+    const bool moved = isFirstExecute ||
         glm::distance2(cam.cameraPos, lastCameraPos_) > kAccumPosEpsilon ||
         glm::distance2(cam.cameraDir, lastCameraDir_) > kAccumDirEpsilon;
     frameCounterEverEvaluated_ = true;
     lastCameraPos_ = cam.cameraPos;
     lastCameraDir_ = cam.cameraDir;
 
-    if (moved && cfg.resetOnMotion != 0u) {
+    // Unchanged M1-M3 predicate (byte-identical when reprojectionEnabled == 0, the
+    // default -- "moved" already folds in "first-ever Execute", exactly as before this
+    // milestone). M4 adds ONE extra guard: while reprojectionEnabled != 0, resetOnMotion
+    // is ignored so a moving camera no longer hard-resets the whole frame -- the shader's
+    // own per-pixel reprojection+validation (against prevCameraConfig.prevViewProj) takes
+    // over that job instead. Hard-resetting here in reprojection mode would defeat the
+    // entire point of M4 (accumulating WHILE the camera moves). isFirstExecute is NEVER
+    // suppressed, in any mode -- prevViewProj is CameraNode's own self-seeded value on
+    // frame 1 (see its CompileImpl) and historyImage is uninitialized, so accumFrameCount
+    // must be 1 (not 2 -- accumFrameCounter_'s member-init value IS 1, so without this the
+    // very first Execute would fall through to the ++ below and report 2) regardless of
+    // resetOnMotion/reprojectionEnabled.
+    const bool hardReset = isFirstExecute ||
+        (moved && cfg.resetOnMotion != 0u && cfg.reprojectionEnabled == 0u);
+    if (hardReset) {
         accumFrameCounter_ = 1u;
     } else {
         ++accumFrameCounter_;
