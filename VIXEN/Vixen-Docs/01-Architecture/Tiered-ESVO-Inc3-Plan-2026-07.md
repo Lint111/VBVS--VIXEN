@@ -1,6 +1,6 @@
 ---
 title: Tiered ESVO — Inc3 Implementation Plan (scale-magnified tiers + 3-tier chain — Earth-scale surface-to-orbit)
-status: M1-M3 SHIPPED, M5 SHIPPED (magnification geometry fix) 2026-07-10; M4 mechanism-complete, epic gate not yet re-run (see Progress Log)
+status: M1-M3 SHIPPED, M5 SHIPPED (magnification geometry fix) 2026-07-10; M6 (Earth-scale epic gate) BLOCKED on a camera-framing/scale structural mismatch, not a math defect (see Progress Log)
 depends: Tiered-ESVO-Observer-Addressing-Design-2026-07.md (§3, §5, §9), Tiered-ESVO-Inc2-Plan-2026-07.md (shipped 2026-07-10, merged `2d67840e`, origin/main `12145d60`)
 ---
 
@@ -582,3 +582,71 @@ epic's original ask. Prediction-first handoff ticks match; per-frame deltas show
   bug; leaving it to M4's own gate is correct; carries the caveat that M4's concentricity is its
   own gate's question). Regressions all green (unity byte-identical, chain both tiers fire
   3416/1156px, VUID 10× zero-new, CPU 6/6+5/5+5/5+5/5+6/6). Tree clean, no main contamination.
+
+- **M6 (Tasks 10-12): BLOCKED — genuine structural finding, NOT a math/traversal defect ·
+  worktree `tiered-esvo-inc2` · 2026-07-10.**
+  **Task 10 (confirm/correct Earth demo's concentricity): could not be answered on its own
+  terms — a prerequisite check (getting the crossing to render at all, in-frame) failed first,
+  see Task 11 below.** The Earth demo's entry-anchored `childOriginLocal` placement
+  (`entryPointLocal - offset*childScale`) was never actually exercised at a distance where the
+  crossing octant is even in the camera's field of view (see Task 11), so its concentricity
+  remains unverified by this milestone — carried forward, not resolved either way.
+  **Task 11 (the live continuous zoom, the epic gate): BLOCKED.** A first attempt aimed the
+  camera's yaw/pitch at the crossing octant's direction from body center, reasoning (wrongly)
+  that this would keep the octant in frame. Live testing (a 71-frame capture sweep, VUID
+  10×`08114` zero-new both before and after) showed near-total flat-gray (`vec3(0.5)`,
+  `MipFallback.glsl`'s documented mip/LOD-decline placeholder shade) across nearly the entire
+  schedule — investigated and root-caused: `CameraNode`'s orbit `forward` is unconditionally
+  `normalize(orbitCenter - cameraPosition)` (verified by reading `UpdateCameraData` directly,
+  not assumed); yaw/pitch only choose WHERE on the orbit sphere the camera sits, they cannot
+  redirect `forward` away from `orbitCenter`. The aim attempt was reverted (kept only the new,
+  independently-useful `CameraNode::SetPitchForTest` mirroring the existing `SetYawForTest`, with
+  its limitation now documented in its own header comment).
+  With that dead end ruled out, the REAL geometric finding: the marked crossing octant (root
+  child 4) sits at a fixed world offset `(-12,-12,+12)` from body center `(64,64,64)` — every
+  root-level octant has this same ~12-17 unit displacement magnitude, baked into octree
+  subdivision itself; there is no root-level octant ON the view axis. Hand-computed (then
+  cross-checked against a 240-sample distance sweep) the angle between the camera's forward axis
+  and the octant, AS SEEN FROM THE CAMERA'S OWN POSITION (not from the body center, an earlier
+  mistake caught and corrected mid-investigation): the octant only enters the 22.5°-half-angle
+  FOV cone (45° FOV, 500×500) around orbit distance ≈20-25 world units, and is 62-125° off-axis
+  at both hop-crossing thresholds. Those thresholds — freshly re-derived at 500×500 (NOT the
+  design doc's 1920×1080 figures, which do not transfer: `raySizeCoef` scales as 1/height) via
+  `worldDistance >= 48*childScale*scale_exp2/raySizeCoef` — are **hop 0 (T0→T1) ≈14.92 world
+  units, hop 1 (T1→T2) ≈0.0146 world units**, both well inside the blind zone. Because
+  `childScale=2^-10` applies identically at both hops, the two thresholds are locked exactly
+  1024× apart by construction: retuning the LOD coefficient to bring one into the visible
+  ≈20-25-unit band necessarily pushes the other 1024× away, past either the reachable orbit
+  ceiling (120, `kOrbitDistanceMax`) or into the body's own noisy solid-interior render zone
+  (empirically ~25-30 world units, M4's own separate finding, reconfirmed unchanged this
+  session). This is a structural mismatch between the demo body's absolute scale (48 world
+  units) and a single fixed camera framing trying to keep one 12-17-unit-offset octant in view
+  across a 1024×-per-hop compounded zoom — not fixable by camera aim, LOD-coefficient tuning, or
+  schedule reshaping alone, given the current construction. Two concrete non-mutually-exclusive
+  paths forward for a follow-up increment: (a) move `orbitCenter` itself to track the marked
+  octant's own world center (or add a genuinely separate look-target parameter to `CameraNode`,
+  since orbit `forward` cannot be decoupled from `orbitCenter` as currently implemented), so the
+  crossing stays framed at the octant's own center throughout, independent of body-center
+  angular drift; or (b) construct the demo body so the marked octant sits ON the camera's
+  default view axis from the start (matching how the WORKING Chain/M2/M5 fixtures happen to keep
+  their crossing patch close enough to frame center — verified this session: even they exhibit
+  the identical ~31-55° geometric offset at their own crossing distances, but their absolute body
+  scale is small enough, and their crossing distances close enough, that the marked octant's own
+  angular WIDTH still straddles into frame at the edge, partially clipped — consistent with M5's
+  own "partially clipped by the leaf's own cell boundary" note; the Earth demo's near-field
+  crossing distances are simply too small for even that partial-edge visibility to occur).
+  **Task 12 (docs closure): DONE** — design doc §9 and this Progress Log updated with the above;
+  CHANGELOG deferred to merge time per convention.
+  **Regressions (fresh build, exe postdates all edited sources, forced validation): VUID exactly
+  10×`08114` in all four scenarios (default scene, unity single-crossing, chain demo, Earth demo
+  static/un-aimed) — zero new. Chain demo unregressed (3449/1156 green/cyan px, matching the
+  documented ~3407/1156 baseline within AA noise). CPU: parity 6/6, construction 5/5, both
+  unaffected (this milestone touched no shader/mirror/traversal code — only `CameraNode.h`'s new
+  `SetPitchForTest` accessor and `VulkanGraphApplication.cpp`'s Earth-zoom-demo camera-aim block,
+  which was added then reverted to a comment-only finding, no live camera-control change from the
+  original M4-built schedule).**
+  **Verdict: NOT DONE. Epic gate NOT met.** The crossing MATH remains proven correct (M1-M3, M5
+  all independently live-gated); what remains unproven is that a scale-magnified, chained,
+  Earth-scale crossing can be OBSERVED continuously through a camera in this specific demo's
+  current construction. This is a scoping/construction problem for the next increment to solve
+  (per the two paths above), not a defect in the shipped tier-crossing mechanism itself.
