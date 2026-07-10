@@ -317,9 +317,14 @@ all closed in-doc:
 - **Inc-A rescope (sev 7)** → §10 Inc-A: proves write path + DirtyVariable, NOT the reconcile shape.
 - Hook-slot ownership + `.all<T>()` const-assert → §4b.
 
-**The ONE decision left for the user (it reframes the pitch, not just mechanics):** §5a's value-prop
-framing. The critic's sharpest point is that if projections dominate (likely, for real UI), the framework
-is a *wiring/dispatch/reconcile generator with hand-authored leaf projections*, NOT a "writes your
-bindings" generator. That's still highly valuable (the combinatorial part is 100% generated) but it is a
-different sell. Confirm this is the intended shape before cutting Inc-A — it decides how much the schema
-should try to express declaratively vs. hand off to a projection function.
+**RESOLVED (user, 2026-07-10) — value prop = WIRING-GENERATOR + HAND-AUTHORED PURE PROJECTIONS.** The
+framework generates 100% of the wiring (dispatch, instance/selection resolution, the reconcile, undo,
+RmlUi data-model registration, same-frame echo, DirtyVariable forwarding); the consumer hand-authors
+only the pure leaf **projection** function for each non-identity binding (component-value ↔ view-value
+transform), one per binding, reused across all instances, expressed as a `[KernelCallable]`-style
+function so it can itself be transplanted. NOT a richer declarative projection mini-language (bit/enum/
+clamp/format kinds stay hand-written functions, not schema-declared codegen) — chosen for the simplest
+schema; a declarative projection layer is a possible far-future increment IF hand-authored projections
+prove repetitive, but it is NOT in this program's scope. §5a stands as the honest framing. This settles
+how much the schema expresses (structure/wiring/binding-identity) vs. hands off (the transform body).
+Design is now fully decided; increments can be cut.
