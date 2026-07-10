@@ -6,6 +6,7 @@
 #include "Data/Nodes/CameraNodeConfig.h"
 #include "Data/CameraData.h"
 #include <glm/glm.hpp>
+#include <cmath>
 #include <memory>
 
 // Forward declarations
@@ -46,17 +47,13 @@ public:
     );
     ~CameraNode() override = default;
 
-    /**
-     * @brief Read back the camera state resolved by the most recent ExecuteImpl
-     *        (Sparse-Mip ESVO LOD Inc1 M4c).
-     *
-     * Lets a host-side per-frame tick (VulkanGraphApplication::Update) read the live
-     * camera position/direction/up/right/FOV without adding a new graph input pin on
-     * whatever node needs it — mirrors the live-GetInstance-lookup pattern already used
-     * by GetWindowHandle()/SetBodyInstances() (host reads/writes node state each tick,
-     * no new wiring). Returns whatever was last computed; empty/default before the
-     * first ExecuteImpl runs (mirrors every other node's pre-Compile state).
-     */
+    /// Live camera as rendered this frame (orbit-derived position + basis), resolved by the
+    /// most recent ExecuteImpl. The pose PARAMS are only setup-time requests; anything that needs
+    /// the actual view (e.g. the host's CPU body pick, VulkanGraphApplication::Update's residency
+    /// trigger) must read this, not the params — they diverge as soon as the user orbits/zooms.
+    /// Mirrors the live-GetInstance-lookup pattern of GetWindowHandle()/SetBodyInstances() (host
+    /// reads node state each tick, no new graph wiring). Empty/default before the first
+    /// ExecuteImpl runs (mirrors every other node's pre-Compile state).
     const CameraData& GetCurrentCameraData() const { return currentCameraData; }
 
     /**
@@ -147,8 +144,19 @@ private:
     float mouseSmoothingFactor = 0.6f;  // 0=no smoothing, 1=instant (0.6 = responsive)
     float maxRotationDeltaPerFrame = 100.0f;  // Max pixels per frame to prevent jumps
 
-    // Setup state tracking (prevent camera reset on recompilation)
-    bool initialSetupComplete = false;
+    // Last-applied pose-param values (NaN = never applied). SetupImpl re-runs on EVERY graph
+    // recompile (resize, any node's param edit) — applying a pose param only when its stored
+    // value actually changed keeps recompiles from snapping the live orbit camera back to t0,
+    // while setcam/lookcam-style param writes still land exactly once.
+    float lastParamCamX_ = NAN, lastParamCamY_ = NAN, lastParamCamZ_ = NAN;
+    float lastParamYaw_ = NAN, lastParamPitch_ = NAN;
+    float lastParamOrbitCX_ = NAN, lastParamOrbitCY_ = NAN, lastParamOrbitCZ_ = NAN;
+    float lastParamOrbitDist_ = NAN;
+
+    // Last-seen pose_seq value (NaN = never seen). A change here (including the first sight)
+    // forces every PRESENT pose param to reapply this SetupImpl regardless of lastApplied — see
+    // CameraNodeConfig::PARAM_POSE_SEQ.
+    float lastPoseSeq_ = NAN;
 };
 
 } // namespace Vixen::RenderGraph

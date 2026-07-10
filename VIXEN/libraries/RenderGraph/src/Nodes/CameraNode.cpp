@@ -43,14 +43,42 @@ void CameraNode::SetupImpl(TypedSetupContext& ctx) {
     farPlane = GetParameterValue<float>(CameraNodeConfig::PARAM_FAR_PLANE, 1000.0f);
     gridResolution = GetParameterValue<uint32_t>(CameraNodeConfig::PARAM_GRID_RESOLUTION, 128u);
 
-    // ALWAYS read camera parameters on setup (for debugging)
-    // TODO: Restore initialSetupComplete check after fixing camera position
-    cameraPosition.x = GetParameterValue<float>(CameraNodeConfig::PARAM_CAMERA_X, 0.0f);
-    cameraPosition.y = GetParameterValue<float>(CameraNodeConfig::PARAM_CAMERA_Y, 0.0f);
-    cameraPosition.z = GetParameterValue<float>(CameraNodeConfig::PARAM_CAMERA_Z, 3.0f);
+    // pose_seq: the host bumps this on every console pose write (setcam/lookcam/pick-flight).
+    // A change (including first sight) forces every PRESENT pose param below to reapply even if
+    // its value is unchanged from lastApplied — otherwise a reset to an already-current value
+    // (e.g. `lookcam 0 0` when yaw/pitch are already 0) was a silent no-op.
+    bool forceApply = false;
+    if (GetParameter(CameraNodeConfig::PARAM_POSE_SEQ) != nullptr) {
+        const float seq = GetParameterValue<float>(CameraNodeConfig::PARAM_POSE_SEQ, 0.0f);
+        if (std::isnan(lastPoseSeq_) || seq != lastPoseSeq_) {
+            forceApply = true;
+            lastPoseSeq_ = seq;
+        }
+    }
 
-    yaw = GetParameterValue<float>(CameraNodeConfig::PARAM_YAW, 0.0f);
-    pitch = GetParameterValue<float>(CameraNodeConfig::PARAM_PITCH, 0.0f);
+    // Pose params are REQUESTS, applied only when their stored value changed since the last
+    // apply (NaN sentinel = first sight always applies). Setup re-runs on every recompile —
+    // resize, any node's SetParameter — and the old unconditional re-read snapped the live
+    // input-driven orbit camera back to its t0 pose each time.
+    auto applyIfChanged = [&](const char* name, float& lastApplied, auto&& apply) {
+        if (GetParameter(name) == nullptr) return;          // never set on this node
+        const float v = GetParameterValue<float>(name, 0.0f);
+        if (!forceApply && !std::isnan(lastApplied) && v == lastApplied) return;
+        apply(v);
+        lastApplied = v;
+    };
+    applyIfChanged(CameraNodeConfig::PARAM_CAMERA_X, lastParamCamX_, [&](float v) { cameraPosition.x = v; });
+    applyIfChanged(CameraNodeConfig::PARAM_CAMERA_Y, lastParamCamY_, [&](float v) { cameraPosition.y = v; });
+    applyIfChanged(CameraNodeConfig::PARAM_CAMERA_Z, lastParamCamZ_, [&](float v) { cameraPosition.z = v; });
+    applyIfChanged(CameraNodeConfig::PARAM_YAW,   lastParamYaw_,   [&](float v) { yaw = v; });
+    applyIfChanged(CameraNodeConfig::PARAM_PITCH, lastParamPitch_, [&](float v) { pitch = v; });
+    // Orbit-model pose requests (host click-to-fly / console): re-anchor the orbit camera.
+    applyIfChanged(CameraNodeConfig::PARAM_ORBIT_CENTER_X, lastParamOrbitCX_, [&](float v) { orbitCenter.x = v; });
+    applyIfChanged(CameraNodeConfig::PARAM_ORBIT_CENTER_Y, lastParamOrbitCY_, [&](float v) { orbitCenter.y = v; });
+    applyIfChanged(CameraNodeConfig::PARAM_ORBIT_CENTER_Z, lastParamOrbitCZ_, [&](float v) { orbitCenter.z = v; });
+    applyIfChanged(CameraNodeConfig::PARAM_ORBIT_DISTANCE, lastParamOrbitDist_, [&](float v) {
+        orbitDistance = glm::clamp(v, kOrbitDistanceMin, kOrbitDistanceMax);
+    });
 
     // Orbit target: defaults match the main app's Cornell-box demo scene. A consumer whose
     // geometry sits elsewhere (e.g. vixen_editor's object-centered documents) sets these params
@@ -199,12 +227,19 @@ void CameraNode::ExecuteImpl(TypedExecuteContext& ctx) {
             orbitDistance = glm::clamp(orbitDistance, kOrbitDistanceMin, kOrbitDistanceMax);
         }
 
+        // A recompile/WSLg stall must not teleport the camera (field bug 2026-07-03: latched
+        // arrows at 500·dt flew the camera hundreds of units during multi-second stalls). Clamp
+        // the dt used for ALL input application, including the arrow-look term below.
+        const float clampedDt = glm::min(inputState->deltaTime, 0.1f);
+
         // Arrow keys for smooth look rotation (scaled for comfortable speed)
         float lookHorizontal = inputState->GetAxisLookHorizontal();
         float lookVertical = inputState->GetAxisLookVertical();
-        const float arrowKeyLookSpeed = 500.0f;  // Increased for faster orbit rotation
-        rotationDelta.x += lookHorizontal * arrowKeyLookSpeed * inputState->deltaTime;
-        rotationDelta.y -= lookVertical * arrowKeyLookSpeed * inputState->deltaTime;  // Inverted Y
+        // 120 (was 500): at the 0.1s dt clamp that's 12 rad/s peak instead of 50 rad/s — 500·dt at
+        // a 57ms stall frame (28 rad/s) was uncontrollable even before the clamp existed.
+        const float arrowKeyLookSpeed = 120.0f;
+        rotationDelta.x += lookHorizontal * arrowKeyLookSpeed * clampedDt;
+        rotationDelta.y -= lookVertical * arrowKeyLookSpeed * clampedDt;  // Inverted Y
 
         // Get keyboard movement axes
         float horizontal = inputState->GetAxisHorizontal();
@@ -216,8 +251,9 @@ void CameraNode::ExecuteImpl(TypedExecuteContext& ctx) {
         movementDelta.y += upDown;
     }
 
-    // Apply accumulated input deltas to camera state
-    float deltaTime = inputState ? inputState->deltaTime : (1.0f / 60.0f);
+    // Apply accumulated input deltas to camera state. Same stall-proofing clamp as above (0.1s
+    // max) — ApplyMovement's zoom/pan speeds are also dt-scaled and would otherwise teleport too.
+    float deltaTime = glm::min(inputState ? inputState->deltaTime : (1.0f / 60.0f), 0.1f);
     ApplyInputDeltas(deltaTime);
 
     // Update camera data with current state

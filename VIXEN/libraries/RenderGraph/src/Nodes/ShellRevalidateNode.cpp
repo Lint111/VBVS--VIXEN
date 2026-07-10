@@ -9,6 +9,7 @@
 #include <array>
 #include <cstring>
 #include <fstream>
+#include <mutex>
 #include <stdexcept>
 #include <vector>
 
@@ -373,10 +374,14 @@ void ShellRevalidateNode::ExecuteImpl(TypedExecuteContext& ctx) {
     submitInfo.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers    = &commandBuffer_;
-    if (vkQueueSubmit(vulkanDevice_->queue, 1, &submitInfo, VK_NULL_HANDLE) != VK_SUCCESS) {
-        throw std::runtime_error("[ShellRevalidateNode::ExecuteImpl] vkQueueSubmit failed");
+    {
+        // Externally synchronized per Vulkan spec (audit V-M11).
+        std::lock_guard<std::mutex> submitLock(vulkanDevice_->SubmitMutex(vulkanDevice_->queue));
+        if (vkQueueSubmit(vulkanDevice_->queue, 1, &submitInfo, VK_NULL_HANDLE) != VK_SUCCESS) {
+            throw std::runtime_error("[ShellRevalidateNode::ExecuteImpl] vkQueueSubmit failed");
+        }
+        vkQueueWaitIdle(vulkanDevice_->queue);
     }
-    vkQueueWaitIdle(vulkanDevice_->queue);
 
     ctx.Out(ShellRevalidateNodeConfig::SHELL_FLAGS_BUFFER, shellFlagsBuffer_);
 }

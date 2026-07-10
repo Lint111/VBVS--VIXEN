@@ -467,7 +467,7 @@ inline SerializedOctree Serialize(const ShellOctree& shell) {
         ? static_cast<int>(std::lround(std::log2(static_cast<double>(brickSide))))
         : 3;
 
-    c.esvoMaxScale = 22;
+    c.esvoMaxScale = LaineKarrasOctree::ESVO_MAX_SCALE;
     c.userMaxLevels = maxLevels;
     c.brickDepthLevels = brickDepth;
     c.brickSize = 1 << brickDepth;
@@ -781,7 +781,7 @@ inline SerializedOctree SerializeSdf(const SdfBodyOctree& body) {
     const int brickDepth = brickSide > 0
         ? static_cast<int>(std::lround(std::log2(static_cast<double>(brickSide))))
         : 3;
-    c.esvoMaxScale    = 22;
+    c.esvoMaxScale    = LaineKarrasOctree::ESVO_MAX_SCALE;
     c.userMaxLevels   = maxLevels;
     c.brickDepthLevels= brickDepth;
     c.brickSize       = 1 << brickDepth;

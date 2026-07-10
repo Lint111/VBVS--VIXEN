@@ -32,7 +32,7 @@
  */
 
 #include <gtest/gtest.h>
-#include "Libraries/RenderGraph/tests/TestMocks.h"  // Centralized test mocks (use project-root include path)
+#include "libraries/RenderGraph/tests/TestMocks.h"  // Centralized test mocks (use project-root include path)
 #include "Nodes/PushConstantGathererNode.h"
 #include "Data/Nodes/PushConstantGathererNodeConfig.h"
 #include "Core/NodeTypeRegistry.h"

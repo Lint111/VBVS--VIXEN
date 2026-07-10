@@ -661,6 +661,24 @@ set_target_properties(test_recipe_ingest PROPERTIES FOLDER "Tests/SVO Tests")
 gtest_discover_tests(test_recipe_ingest)
 
 # ===========================================================================
+# Recipe Boot Ingest Tests (Spec B I3/Task 6 — host packed buffer -> registry+bake, fail-loud)
+# ===========================================================================
+add_executable(test_recipe_boot_ingest test_recipe_boot_ingest.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_recipe_boot_ingest PRIVATE GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_recipe_boot_ingest PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_recipe_boot_ingest PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_recipe_boot_ingest POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_recipe_boot_ingest>
+        COMMENT "Copying TBB DLL for test_recipe_boot_ingest")
+endif()
+gtest_discover_tests(test_recipe_boot_ingest)
+
+# ===========================================================================
 # Recipe Pack Loader Tests (I2.5 — manifest+blobs->registry, fail-loud)
 # ===========================================================================
 add_executable(test_recipe_pack_loader test_recipe_pack_loader.cpp)

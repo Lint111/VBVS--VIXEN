@@ -33,7 +33,6 @@ ShaderLibraryNode::ShaderLibraryNode(
 )
     : TypedNode<ShaderLibraryNodeConfig>(instanceName, nodeType)
 {
-    // MVP STUB: No shader library initialized
 }
 
 void ShaderLibraryNode::SetupImpl(TypedSetupContext& ctx) {
@@ -113,7 +112,7 @@ void ShaderLibraryNode::CompileImpl(TypedCompileContext& ctx) {
 }
 
 void ShaderLibraryNode::ExecuteImpl(TypedExecuteContext& ctx) {
-    // MVP STUB: No-op - shaders loaded directly in application
+    // Intentional no-op: shader compilation happens in CompileImpl; nothing to do per-frame.
 }
 
 void ShaderLibraryNode::CleanupImpl(TypedCleanupContext& ctx) {

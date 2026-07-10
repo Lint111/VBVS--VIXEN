@@ -67,12 +67,18 @@ std::uint64_t VoxelAABBCacher::ComputeKey(const VoxelAABBCreateInfo& ci) const {
 void VoxelAABBCacher::Cleanup() {
     LOG_INFO("[VoxelAABBCacher::Cleanup] Cleaning up cached AABB data");
 
-    // Free all cached buffer allocations via FreeBufferTracked
-    for (auto& [key, entry] : m_entries) {
-        if (entry.resource) {
-            FreeBufferTracked(entry.resource->aabbAllocation);
-            FreeBufferTracked(entry.resource->materialIdAllocation);
-            FreeBufferTracked(entry.resource->brickMappingAllocation);
+    // Free all cached buffer allocations via FreeBufferTracked. Locked: m_entries is mutated
+    // here while DeviceRegistry can be running Serialize/DeserializeFromFile for this same
+    // cacher on another thread via std::async (audit V-M9). Released before Clear(), which
+    // takes its own unique_lock.
+    {
+        std::unique_lock wlock(m_lock);
+        for (auto& [key, entry] : m_entries) {
+            if (entry.resource) {
+                FreeBufferTracked(entry.resource->aabbAllocation);
+                FreeBufferTracked(entry.resource->materialIdAllocation);
+                FreeBufferTracked(entry.resource->brickMappingAllocation);
+            }
         }
     }
 

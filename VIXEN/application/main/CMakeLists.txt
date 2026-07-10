@@ -50,6 +50,7 @@ target_link_libraries(VixenApp PUBLIC
     CashSystem
     VulkanResources
     Logger
+    Profiler   # CaptureFrameToPng (M4b): reuses Profiler::FrameCapture's swapchain->PNG readback
     ${VULKAN_LIB_LIST}
     glm::glm
 )

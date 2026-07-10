@@ -6,10 +6,10 @@
  * to happen during the CMake build step rather than at runtime.
  *
  * Usage:
- *   shader_tool compile <input.vert> <input.frag> --output <bundle.spv>
- *   shader_tool generate-sdi <bundle.spv> --output-dir <sdi_dir>
- *   shader_tool build-registry <shader1.spv> <shader2.spv> ... --output <registry.h>
- *   shader_tool batch <config.json> --output-dir <output>
+ *   sdi_tool compile <input.vert> <input.frag> --output <bundle.spv>
+ *   sdi_tool generate-sdi <bundle.spv> --output-dir <sdi_dir>
+ *   sdi_tool build-registry <shader1.spv> <shader2.spv> ... --output <registry.h>
+ *   sdi_tool batch <config.json> --output-dir <output>
  *
  * CMake Integration:
  *   add_shader_bundle(MyShader

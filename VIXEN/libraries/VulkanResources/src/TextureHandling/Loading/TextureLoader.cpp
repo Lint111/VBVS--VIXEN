@@ -165,7 +165,12 @@ VulkanStatus TextureLoader::UploadLinear(
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &texture->cmdTexture;
 
-    result = vkQueueSubmit(deviceObj->queue, 1, &submitInfo, fence);
+    {
+        // Externally synchronized per Vulkan spec (audit V-M11); not held across the fence
+        // wait below.
+        std::lock_guard<std::mutex> submitLock(deviceObj->SubmitMutex(deviceObj->queue));
+        result = vkQueueSubmit(deviceObj->queue, 1, &submitInfo, fence);
+    }
     if (result != VK_SUCCESS) {
         LOG_ERROR("Failed to submit queue! VkResult: " + std::to_string(result));
         vkDestroyFence(deviceObj->device, fence, nullptr);
@@ -349,7 +354,8 @@ VulkanStatus TextureLoader::UploadOptimal(
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &texture->cmdTexture;
 
-    CommandBufferMgr::SubmitCommandBuffer(deviceObj->queue, &texture->cmdTexture, &submitInfo, fence);
+    CommandBufferMgr::SubmitCommandBuffer(deviceObj->queue, &texture->cmdTexture, &submitInfo, fence,
+                                           &deviceObj->SubmitMutex(deviceObj->queue));
 
     result = vkWaitForFences(deviceObj->device, 1, &fence, VK_TRUE, 10000000000);
     if (result != VK_SUCCESS) {

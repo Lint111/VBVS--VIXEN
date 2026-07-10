@@ -89,10 +89,15 @@ protected:
     // Resource cleanup
     void Cleanup() override;
 
+    // protected (not private): the SPIR-V-file-loading half of this is pure I/O + validation
+    // with no device dependency, and is unit-tested directly via a probe subclass (audit V-M7 —
+    // see test_spirv_loader.cpp) the same way PipelineCacher::ComputeKey is probed in
+    // test_pipeline_blend_key.cpp.
+    void CompileShader(const ShaderModuleCreateParams& ci, ShaderModuleWrapper& wrapper);
+
 private:
     // Helper methods
     std::string ComputeSourceChecksum(const std::string& sourcePath) const;
-    void CompileShader(const ShaderModuleCreateParams& ci, ShaderModuleWrapper& wrapper);
 };
 
 } // namespace CashSystem

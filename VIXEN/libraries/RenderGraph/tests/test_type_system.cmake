@@ -40,9 +40,10 @@ if(VULKAN_TRIMMED_BUILD_ACTIVE OR NOT VULKAN_TRIMMED_BUILD)
             target_link_libraries(test_array_type_validation PRIVATE Vulkan::Headers)
         endif()
     else()
-        # Use SDK headers
+        # Use SDK headers (Vulkan_INCLUDE_DIRS, not VULKAN_PATH/Include — the
+        # latter is a Windows-SDK-cased path that 404s on case-sensitive FS)
         target_include_directories(test_array_type_validation PRIVATE
-            ${VULKAN_PATH}/Include
+            ${Vulkan_INCLUDE_DIRS}
         )
     endif()
 
@@ -106,9 +107,10 @@ if(VULKAN_TRIMMED_BUILD_ACTIVE OR NOT VULKAN_TRIMMED_BUILD)
         )
         message(STATUS "  Using Vulkan headers from: ${VULKAN_HEADERS_INCLUDE_DIR}")
     else()
-        # Use SDK headers
+        # Use SDK headers (Vulkan_INCLUDE_DIRS, not VULKAN_PATH/Include — the
+        # latter is a Windows-SDK-cased path that 404s on case-sensitive FS)
         target_include_directories(test_field_extraction PRIVATE
-            ${VULKAN_PATH}/Include
+            ${Vulkan_INCLUDE_DIRS}
         )
     endif()
 
@@ -157,9 +159,10 @@ if(VULKAN_TRIMMED_BUILD_ACTIVE OR NOT VULKAN_TRIMMED_BUILD)
         )
         message(STATUS "  Using Vulkan headers from: ${VULKAN_HEADERS_INCLUDE_DIR}")
     else()
-        # Use SDK headers
+        # Use SDK headers (Vulkan_INCLUDE_DIRS, not VULKAN_PATH/Include — the
+        # latter is a Windows-SDK-cased path that 404s on case-sensitive FS)
         target_include_directories(test_resource_gatherer PRIVATE
-            ${VULKAN_PATH}/Include
+            ${Vulkan_INCLUDE_DIRS}
         )
     endif()
 

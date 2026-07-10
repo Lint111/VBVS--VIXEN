@@ -132,9 +132,20 @@ BodyOctreeSceneNode::BodyOctreeSceneNode(const std::string& instanceName, NodeTy
 
 void BodyOctreeSceneNode::SetInstances(std::vector<Vixen::SVO::BodyInstanceGpu> instances) {
     // Stash the new list. ExecuteImpl uploads it each frame into the current ring slot.
-    // Do NOT call MarkNeedsRecompile — the per-tick recompile cascade was the race root cause.
+    // Do NOT call MarkNeedsRecompile for a steady same-size update — the per-tick recompile
+    // cascade was the race root cause. Growth is the ONE case that NEEDS it: the ring is sized
+    // by CompileImpl's EnsureRingAllocated, so a list that no longer fits the current ring must
+    // force a recompile or the per-frame upload silently truncates (see ExecuteImpl's clamp).
     instances_     = std::move(instances);
     instanceCount_ = static_cast<int32_t>(instances_.size());
+    const VkDeviceSize neededBytes = static_cast<VkDeviceSize>(
+        instances_.size() * sizeof(Vixen::SVO::BodyInstanceGpu));
+    if (neededBytes > instanceRingCapacity_) {
+        NODE_LOG_INFO("[BodyOctreeSceneNode] SetInstances: needed " + std::to_string(neededBytes) +
+                      "B exceeds ring capacity " + std::to_string(instanceRingCapacity_) +
+                      "B — requesting recompile to grow the ring");
+        MarkNeedsRecompile();
+    }
     NODE_LOG_INFO("[BodyOctreeSceneNode] SetInstances: " +
                   std::to_string(instanceCount_) + " instances staged for next Execute");
 }
@@ -338,8 +349,27 @@ void BodyOctreeSceneNode::ExecuteImpl(TypedExecuteContext& ctx) {
 
     // Emit THIS frame's buffer so the descriptor binds the just-written data.
     ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_BUFFER, perFrame_.GetUniformBuffer(frameIndex));
+
+    // Honest count clamp: packed.size() can exceed instanceRingCapacity_ between a SetInstances
+    // growth and the recompile that actually grows the ring (SetInstances now requests that
+    // recompile, but it hasn't necessarily run by this Execute). The upload above already clamps
+    // copyBytes to the ring's real capacity — clamp the emitted count the same way so the shader
+    // never reads instance records past what was actually written (no robustBufferAccess on this
+    // SSBO; an unclamped count was a latent OOB read).
+    const int32_t ringCapacityCount =
+        static_cast<int32_t>(instanceRingCapacity_ / sizeof(Vixen::SVO::BodyInstanceGpu));
+    const int32_t emittedCount = std::min(instanceCount_, ringCapacityCount);
+    if (emittedCount < instanceCount_) {
+        static bool warnedOnce = false;
+        if (!warnedOnce) {
+            warnedOnce = true;
+            NODE_LOG_WARNING("[BodyOctreeSceneNode] instanceCount_ (" + std::to_string(instanceCount_) +
+                              ") exceeds ring capacity (" + std::to_string(ringCapacityCount) +
+                              ") — clamping emitted INSTANCE_COUNT until the pending recompile grows the ring");
+        }
+    }
     // Re-emit the count (it may change each frame if SetInstances was called).
-    ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_COUNT, instanceCount_);
+    ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_COUNT, emittedCount);
 
     // Re-emit the octree slots with the freshly-created handles after a re-materialize,
     // so GetOutput()->GetHandle() (and any per-frame descriptor re-bind) sees the new buffers.
