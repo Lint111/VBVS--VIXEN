@@ -4,7 +4,7 @@
 
 namespace Vixen::AppFlow::Generated {
 
-inline uint applyToggle(uint mask, uint index) {
+inline uint32_t applyToggle(uint32_t mask, uint32_t index) {
     return mask ^ (1u << (int32_t)index);
 }
 
