@@ -582,6 +582,36 @@ set_target_properties(test_recipe_codegen_glsl PROPERTIES FOLDER "Tests/SVO Test
 gtest_discover_tests(test_recipe_codegen_glsl)
 
 # ===========================================================================
+# Recipe GLSL Numerical Parity Tests (Lazy-Procedural-Delta-Baseline Inc1 M4
+# Task 9 — GLSL field-function emitter vs CPU evalRecipe, across the full
+# ParityCorpus. CPU-eval + glslang-compile run on every machine; the actual
+# GPU dispatch+compare only runs on a REAL (non-lavapipe, non-Dozen) GPU —
+# the fixture SetUp() GTEST_SKIPs otherwise. See file header for the
+# Windows-native hand-off command.)
+# ===========================================================================
+add_executable(test_recipe_glsl_numerical_parity test_recipe_glsl_numerical_parity.cpp)
+if(TARGET SVO AND TARGET ShaderManagement AND TARGET VulkanResources)
+    target_link_libraries(test_recipe_glsl_numerical_parity PRIVATE
+        GTest::gtest_main SVO ShaderManagement VulkanResources)
+elseif(TARGET SVO AND TARGET ShaderManagement)
+    target_link_libraries(test_recipe_glsl_numerical_parity PRIVATE
+        GTest::gtest_main SVO ShaderManagement)
+else()
+    target_link_libraries(test_recipe_glsl_numerical_parity PRIVATE GTest::gtest_main)
+endif()
+target_compile_definitions(test_recipe_glsl_numerical_parity PRIVATE
+    SDF_CORE_KERNELS_GLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/SdfCoreKernels.glsl"
+)
+set_target_properties(test_recipe_glsl_numerical_parity PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_recipe_glsl_numerical_parity POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_recipe_glsl_numerical_parity>
+        COMMENT "Copying TBB DLL for test_recipe_glsl_numerical_parity")
+endif()
+gtest_discover_tests(test_recipe_glsl_numerical_parity)
+
+# ===========================================================================
 # Recipe Bake Parity Tests (P2.1 M1 — recipe-sphere bake == analytic-sphere bake)
 # ===========================================================================
 add_executable(test_recipe_bake test_recipe_bake.cpp)
