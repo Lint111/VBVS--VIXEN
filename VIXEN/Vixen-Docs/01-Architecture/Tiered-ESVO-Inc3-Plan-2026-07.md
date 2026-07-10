@@ -650,3 +650,29 @@ epic's original ask. Prediction-first handoff ticks match; per-frame deltas show
   Earth-scale crossing can be OBSERVED continuously through a camera in this specific demo's
   current construction. This is a scoping/construction problem for the next increment to solve
   (per the two paths above), not a defect in the shipped tier-crossing mechanism itself.
+  **M6 Opus validator: BLOCKER CONFIRMED REAL, not an artifact (2026-07-10).** Independently
+  re-derived + ADVERSARIALLY tried the cheapest live fixes and captured that they fail:
+  (1) Threshold math confirmed to the digit — raySizeCoef @500×500 = 0.0015708, hop0 = 14.921 wu,
+  hop1 = 0.0146 wu; the 1024×-apart lock is coef-INDEPENDENT (retuning the LOD coef scales BOTH
+  thresholds by 1/rsc together, cannot change their childScale=2⁻¹⁰ ratio) — load-bearing and it
+  holds. (2) Octant geometry confirmed: octant-4 world center (52,52,76), offset (−12,−12,+12),
+  only enters the 22.5° half-cone at d≈100 (blind at the 15/0.015 crossing distances). (3) Camera
+  `forward = normalize(orbitCenter − cameraPosition)` verbatim (`CameraNode.cpp:288-299`) — yaw/pitch
+  can't redirect the look; orbitCenter IS settable (path a). (4) **ADVERSARIAL LIVE TEST (the decisive
+  part): built path (a) [orbitCenter = octant center] AND a modest-ratio (2⁻³) variant, swept + pixel-
+  decoded — ZERO green/cyan crossings at every tick in both** (near/mid ticks = mip-fallback gray =
+  camera inside T0's solid; far tick = T0 disc only). And an ALGEBRAIC impossibility proof: hop0≤120
+  (orbit ceiling) ⟹ childScale≤0.00785, but hop1 outside the ~30-unit solid surface ⟹ childScale≥0.25
+  — CONTRADICTION; no single childScale frames both thresholds in the reachable-and-outside-solid band.
+  Larger ratio → past ceiling; Earth ratio → inside solid. (5) Mechanism sanity: unity CHAIN demo on
+  the fresh exe DID render two live crossings (cyan T2=1156, green T1=15, T2 overdraws T1) — classifier
+  valid, so the Earth/modest failures are the genuine scale-vs-framing-vs-solid mismatch, not a bug.
+  M6 shipped work clean+honest (612f7d77 = harmless SetPitchForTest accessor + reverted aim-block;
+  db958fee = accurate docs); VUID 10× zero-new all scenarios; chain unregressed; tree clean at
+  db958fee, no main contamination. **Validator's cheapest-viable-scope finding: a modest ratio alone
+  is NOT a free knob — EVEN at a modest ratio the current body construction can't frame both crossings
+  outside the solid; it needs the body-reconstruction (path b) too. Path b (build the body so the
+  marked octant is on the default view axis AND not buried in T0's solid at crossing distances — e.g.
+  an isolated/thin crossing patch approached head-on) is the cheapest path that CAN actually work, and
+  it's a construction increment, not an engine change. Path c (CameraNode look-target decoupling) is
+  larger and still doesn't solve hop1's solid-occlusion at 2⁻¹⁰.**
