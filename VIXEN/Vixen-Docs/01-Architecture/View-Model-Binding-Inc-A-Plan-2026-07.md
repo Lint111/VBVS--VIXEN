@@ -44,3 +44,21 @@ Use codegraph_explore / read to map EXACTLY what exists today, so the change is 
 
 ## Note on Inc-A's honest scope (from the design critic)
 Inc-A proves the **view→model generated-handler-over-seam path + the projection mechanism + the DirtyVariable/same-frame echo** — it does NOT prove the Gaia `.changed<T>()` reconcile (LayerController is a direct field with no chunks/versions/query; the real reconcile is authored fresh in Inc-B). Do not claim Inc-A validates the reconcile shape. The concrete Inc-A win = the ONE genuine view→model binding runs through the framework's seam+projection+echo path, and the hand-written RMW is retired.
+
+## Progress Log
+- Milestone 1 (Tasks 1-4): DONE · commit ffb999a0 · Opus validator APPROVED · 2026-07-10
+  - `IViewDataProvider` seam created as real code (was design-only) + `LayerControllerViewDataProvider`
+    direct-field provider (LayerMask→Mask()/SetMask()). ToggleLayer rerouted through
+    provider-read→applyToggle projection→provider-write (reuses the transplanted
+    `Vixen::AppFlow::Generated::applyToggle`, undo still wrapped OUTSIDE via Stack().Dispatch).
+    Undo/Redo/Save/Return untouched (not view→model bindings).
+  - **Same-frame echo DEFERRED (correct in-scope call, validator-confirmed):** editor.rml is static RML
+    with NO data-model (3 hardcoded `checkbox checked` divs, nothing mutates them post-load). Echoing a
+    toggle into the UI needs NEW machinery (data-model binding) = Inc-B/Inc-Ovr scope. Deferral
+    documented inline at the write site. → There is currently NO model→view path anywhere in the editor
+    layer view; making it data-model-bound is a prerequisite for Inc-Ovr/Inc-B.
+  - Live gate PRESERVED: test_editor_toggle_undo_capture 4/4, capture_75≡capture_5, capture_105≡capture_45,
+    wholeImageDiffPixels(5,45)=62 (exact residency baseline, no drift). AppFlow 42/42. Byte-guards hold
+    (AppFlow.g.h b63b2b35…, AppFlowCallables.g.hpp 989b65e4…), no codegen touched.
+  - CARRY TO INC-B: the handler ignores ReadU32's bool return (harmless with always-true direct-field
+    provider; MUST handle the false case when the fallible Gaia provider is wired). Validator non-blocking note.
