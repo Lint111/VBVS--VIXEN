@@ -20,6 +20,7 @@
 #include "VulkanGraphApplication.h"
 #include "EditorDocumentModel.h"
 #include "AppFlowRuntime.h"
+#include "LayerControllerViewDataProvider.h"
 #include <Logger.h>
 
 #include <memory>
@@ -95,6 +96,11 @@ private:
     // instead of mutating LayerController directly. Layers() exposes the same mask source
     // of truth Inc-2's raw layers_ member used.
     Vixen::AppFlow::AppFlowRuntime rt_{nullptr, /*sender*/0};
+    // Inc-A: the view->model seam's direct-field provider over rt_.Layers() (design
+    // View-Data-Provider-Seam-Design-2026-07.md). ToggleLayer reads/writes LayerMask through this
+    // instead of calling rt_.Layers().Mask()/SetMask() directly -- swapping to a Gaia-backed
+    // provider later (Inc-B) touches this one construction, not the handler body.
+    Vixen::AppFlow::LayerControllerViewDataProvider layerProvider_{rt_.Layers()};
     bool dirty_ = false;  // set on toggle; drives the next-tick re-flatten (was doc_.ConsumeDirty())
     std::string lastEditorError_;
     std::string lastSavedPath_;

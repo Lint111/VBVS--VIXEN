@@ -12,6 +12,8 @@ set(APPFLOW_HEADERS
     include/LayerController.h
     include/AppFlowRuntime.h
     include/InputProfile.h
+    include/IViewDataProvider.h
+    include/LayerControllerViewDataProvider.h
 )
 set(APPFLOW_SOURCES
     src/AppFlowLoader.cpp

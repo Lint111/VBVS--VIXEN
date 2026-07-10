@@ -17,6 +17,7 @@
 #include "Debug/RenderTargetReadback.h"       // Task 3: shared IRenderTarget -> PNG readback
 #include "KeyMap.h"                           // Inc-4 R5a: GLFW keycode -> typed KeyId
 #include "generated/AppFlowCallables.g.hpp"   // Inc-4 R5c: transplanted applyToggle(mask,index)
+#include "LayerControllerViewDataProvider.h"  // Inc-A: view->model seam, direct-field provider
 #include <Logger.h>
 
 #include <cstdlib>
@@ -146,12 +147,30 @@ bool EditorApplication::LoadDocument(const std::string& path) {
         rt_.RegisterHandler(FlowActionId::ToggleLayer, [this](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
             const uint32_t idx = ParseParam(p, "layerIndex");
             rt_.Stack().Dispatch(FlowActionId::ToggleLayer, [this, idx](bool /*forward*/) {
-                // THE TRANSPLANTED BODY, LIVE (R5c): applyToggle is kernel-generated C++ from
-                // the same C# body the design's D12 walking skeleton proves transplants
-                // identically. Self-inverse (mask ^ (1<<idx)) -- byte-identical to the old
-                // LayerController::Toggle(idx) for any idx within the valid layer range.
-                rt_.Layers().SetMask(Vixen::AppFlow::Generated::applyToggle(rt_.Layers().Mask(), idx));
+                // Inc-A reroute (View-Model-Binding-Framework-Design-2026-07.md §5): the ONE
+                // genuine view->model binding now goes read -> provider -> projection ->
+                // provider -> write, instead of calling LayerController directly. Undo stays
+                // OUTSIDE the provider (this whole lambda is still the Stack().Dispatch body,
+                // exactly as before) -- only the RMW's storage access is indirected.
+                using Vixen::AppFlow::ViewNounKey;
+                using Vixen::AppFlow::ViewNounId;
+                const ViewNounKey key{ViewNounId::LayerMask};
+                uint32_t mask = 0;
+                layerProvider_.ReadU32(key, mask);
+                // THE TRANSPLANTED PROJECTION, LIVE (R5c, design §5a exemplar projection):
+                // applyToggle is kernel-generated C++ from the same C# body the design's D12
+                // walking skeleton proves transplants identically. Self-inverse
+                // (mask ^ (1<<idx)) -- byte-identical to the old LayerController::Toggle(idx)
+                // for any idx within the valid layer range. A pure leaf function, no wiring.
+                layerProvider_.WriteU32(key, Vixen::AppFlow::Generated::applyToggle(mask, idx));
                 dirty_ = true;
+                // Same-frame echo (design §4a) is DEFERRED here, not silently dropped: the
+                // editor's layer view (assets/ui/editor.rml) is static RML today -- no RmlUi
+                // data model, no bound variable to DirtyVariable() (Task 1 finding; see the
+                // report). There is nothing to echo INTO yet. Introducing a data-model binding
+                // for 3 static checkbox divs is out of Inc-A's "smallest end-to-end proof" scope
+                // (Inc-A IS NOT the projection mini-syntax or new view schemas). The echo lands
+                // when the layer view becomes data-model-bound (tracked for a later increment).
             });
         });
         rt_.RegisterHandler(FlowActionId::Undo, [this](const Vixen::AppFlow::AppFlowRuntime::Params&) {
