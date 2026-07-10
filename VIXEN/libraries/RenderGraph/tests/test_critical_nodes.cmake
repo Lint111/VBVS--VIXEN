@@ -423,6 +423,32 @@ gtest_discover_tests(test_body_instance_raymarch_render
 message(STATUS "[RenderGraph Tests] Added: test_body_instance_raymarch_render (real-shader render)")
 
 # ===========================================================================
+# Sampled Lighting Inc1 M3 — HitRecord SSBO (binding 17) round-trip live gate:
+# dispatches the real shader, reads back the HitRecordBuffer it wrote per-pixel,
+# and cross-checks it against the shader's OWN colour/ID outputs (both driven
+# off the SAME in-shader HitRecord readback — see BodyInstanceRayMarch.comp
+# main()'s round-trip comment). No PNG output (no stb dependency needed).
+# ===========================================================================
+add_executable(test_hitrecord_readback
+    Nodes/test_hitrecord_readback.cpp
+)
+add_dependencies(test_hitrecord_readback body_instance_raymarch_spv)
+target_link_libraries(test_hitrecord_readback PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+if(TARGET SVO)
+    target_link_libraries(test_hitrecord_readback PRIVATE SVO)
+endif()
+target_compile_definitions(test_hitrecord_readback PRIVATE
+    GLSL_RAYMARCH_SPV="${_brm_spv}")
+if(VIXEN_WSL_DZN_ICD)
+    target_compile_definitions(test_hitrecord_readback PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
+endif()
+set_target_properties(test_hitrecord_readback PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_hitrecord_readback
+    DISCOVERY_MODE PRE_TEST
+    DISCOVERY_TIMEOUT 120)
+message(STATUS "[RenderGraph Tests] Added: test_hitrecord_readback (Sampled Lighting Inc1 M3)")
+
+# ===========================================================================
 # I4.1 — SetRecipePool pool render gate: 4 baked SDF recipes,
 # one instance per octreeIndex, asserts all 4 bodies produce visible pixels.
 # ===========================================================================
@@ -678,6 +704,29 @@ gtest_discover_tests(test_lightingconfig_sdi_parity
     DISCOVERY_MODE PRE_TEST
     DISCOVERY_TIMEOUT 120)
 message(STATUS "[RenderGraph Tests] Added: test_lightingconfig_sdi_parity (SDI layout drift-guard)")
+
+# ===========================================================================
+# HitRecord SDI Parity Test (Sampled Lighting Inc1 M3)
+# ===========================================================================
+# Reflects the built BodyInstanceRayMarch SPIR-V and asserts a hand-written
+# local C++ mirror struct's layout matches it (per-field offsets + hitRecords[]
+# array stride == sizeof(HitRecordCpu)). Sibling of test_lightingconfig_sdi_parity
+# above, minus the generated header — HitRecord has no [GpuStruct] codegen this
+# milestone (see shaders/HitRecord.glsl's file header for why). Pure CPU
+# (reflection only) — no lavapipe / no GPU. Reuses the same compiled .spv.
+# ===========================================================================
+add_executable(test_hitrecord_sdi_parity
+    Nodes/test_hitrecord_sdi_parity.cpp
+)
+add_dependencies(test_hitrecord_sdi_parity body_instance_raymarch_spv)
+target_link_libraries(test_hitrecord_sdi_parity PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+target_compile_definitions(test_hitrecord_sdi_parity PRIVATE
+    GLSL_RAYMARCH_SPV="${_brm_spv}")
+set_target_properties(test_hitrecord_sdi_parity PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_hitrecord_sdi_parity
+    DISCOVERY_MODE PRE_TEST
+    DISCOVERY_TIMEOUT 120)
+message(STATUS "[RenderGraph Tests] Added: test_hitrecord_sdi_parity (SDI layout drift-guard)")
 
 else()
     message(STATUS "[RenderGraph Tests] SKIPPED test_body_instance_raymarch_render — no glslc runnable on this platform found (searched ${_glslc_hints} + PATH)")

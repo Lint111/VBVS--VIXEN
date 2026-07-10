@@ -84,6 +84,7 @@
 #include "Nodes/SelectionCoordinatorNode.h"
 #include "Nodes/ShaderLibraryNode.h"
 #include "Nodes/SkyProjectionNode.h"  // Tiered ESVO Inc1 M3: address-derived sky-point composite pass
+#include "Nodes/StorageBufferNode.h"  // Sampled Lighting Inc1 M3: HitRecord SSBO (binding 17), extent-driven
 #include "Nodes/SwapChainNode.h"
 #include "Nodes/TextureLoaderNode.h"
 #include "Nodes/UIRenderNode.h"  // S0: composite-HUD render node (RmlUi) — AFTER BodyOctreeSceneNode.h
@@ -182,6 +183,17 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // default) uploaded per-frame through a PerFrameResources ring, mirroring
     // DynamicInstanceBufferNode's pattern.
     NodeHandle lightingConfigNode = renderGraph->AddNode<LightingConfigNodeType>("lighting_config");
+
+    // Sampled Lighting Inc1 M3: HitRecord SSBO (binding 17) — one HitRecord (64 B, see
+    // shaders/HitRecord.glsl) per pixel of the offscreen render target. Reuses the generic
+    // StorageBufferNode (auto-sync P4 M4) rather than a bespoke node: this milestone's whole
+    // scope is proving the pack/write/read/unpack round-trips losslessly THROUGH a real SSBO
+    // inside BodyInstanceRayMarch.comp's own dispatch (no separate pass yet — that is Task 4's
+    // DirectLightingNode). SWAPCHAIN_INFO is wired below to renderTargetNode's RENDER_TARGET
+    // (not the raw swapchain) so this buffer's extent always matches outputImage's actual
+    // imgSize (imageSize(outputImage) in the shader) even under render-scale (<1.0) — the same
+    // extent-follow cascade RenderTargetNode itself rides.
+    NodeHandle hitRecordBufferNode = renderGraph->AddNode<StorageBufferNodeType>("hit_record_buffer");
 
     // --- Input Node ---
     NodeHandle inputNode = renderGraph->AddNode<InputNodeType>("input_handler");
@@ -325,6 +337,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
         mainLogger->Info("[BuildRenderGraph] Render-scale=" + std::to_string(renderScale) +
                          " (VIXEN_RENDER_SCALE env; 1.0 = full resolution)");
     }
+
+    // Sampled Lighting Inc1 M3: HitRecord SSBO sized to sizeof(HitRecord) (64 B, see
+    // shaders/HitRecord.glsl) bytes per pixel of the offscreen render target it is wired to
+    // below (SWAPCHAIN_INFO <- renderTargetNode's RENDER_TARGET), so it always matches
+    // outputImage's own extent (including under render-scale).
+    auto* hitRecordBuffer = static_cast<StorageBufferNode*>(renderGraph->GetInstance(hitRecordBufferNode));
+    hitRecordBuffer->SetParameter(StorageBufferNodeConfig::PARAM_BYTES_PER_PIXEL, 64u);
 
     // Present parameters (needed for both graphics and compute)
     auto* present = static_cast<PresentNode*>(renderGraph->GetInstance(presentNode));
@@ -1391,6 +1410,24 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     if (mainLogger && mainLogger->IsEnabled()) {
         mainLogger->Info("[BuildRenderGraph] Connected lighting config at binding 16 (Sampled Lighting Inc0 M3)");
+    }
+
+    // Sampled Lighting Inc1 M3: Binding 17: HitRecord SSBO. Device input + extent-driven sizing
+    // from renderTargetNode's own RENDER_TARGET output (NOT the raw swapchain) — so this buffer
+    // always matches outputImage's real per-dispatch extent (including under render-scale <1.0),
+    // same as descriptorGatherer binding 0 below. This makes hitRecordBufferNode a transitive
+    // dependent of renderTargetNode and rides the identical resize->recompile cascade.
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  hitRecordBufferNode, StorageBufferNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
+                  hitRecordBufferNode, StorageBufferNodeConfig::SWAPCHAIN_INFO);
+
+    batch.Connect(hitRecordBufferNode, StorageBufferNodeConfig::STORAGE_BUFFER,
+                          descriptorGatherer, 17,  // Binding 17: HitRecordBuffer
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info("[BuildRenderGraph] Connected HitRecord SSBO at binding 17 (Sampled Lighting Inc1 M3)");
     }
 
     // Swapchain connections to descriptor set and dispatch

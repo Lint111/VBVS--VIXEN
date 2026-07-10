@@ -130,6 +130,22 @@ layout(std430, binding = 16) readonly buffer LightingConfigSSBO {
     LightingConfig lightingConfig;
 };
 
+// ============================================================================
+// HIT RECORD BUFFER (Sampled Lighting Inc1 M3 — binding 17)
+// ============================================================================
+// Per-pixel G-buffer-equivalent, one HitRecord per dispatched pixel, indexed
+// by the same flat row-major (y*width+x) addressing every full-screen compute
+// pass in this codebase uses. This milestone writes AND reads it back in the
+// SAME shader/dispatch (main() below) to prove the pack/unpack round-trips
+// losslessly through the real SSBO before Task 4 moves the read to a separate
+// DirectLighting.comp pass. Sized by the dispatch's own imageSize(outputImage)
+// at record time — C++ allocates it to match (see BuildRenderGraph.cpp M3).
+#include "HitRecord.glsl"
+
+layout(std430, binding = 17) buffer HitRecordBuffer {
+    HitRecord hitRecords[];
+};
+
 #define FORMAT_BINARY     0u
 #define FORMAT_STORED_SDF 1u
 
@@ -1151,17 +1167,45 @@ void main() {
     WorldHit worldHit;
     bool anyHit = TraceWorld(rayOrigin, rayDir, 0.0, 1e30, worldHit);
 
-    vec3  bestColor       = worldHit.color;
-    vec3  bestNormal      = worldHit.normal;
-    float bestRoughness   = worldHit.roughness;
-    uint  bestBrickIndex  = worldHit.brickIndex;
+    // -----------------------------------------------------------------------
+    // HitRecord round-trip (Sampled Lighting Inc1 M3): pack WorldHit into the
+    // per-pixel HitRecord layout, write it to the real SSBO, then read it back
+    // and unpack — the shade path below consumes ONLY the unpacked copy, so a
+    // lossy pack/unpack or a broken SSBO write would show up as a visible
+    // regression against the M1/M2 byte-identity baseline, not just a passing
+    // in-register value. worldPos is reconstructed the same way the shade path
+    // would need it in Task 4: rayOrigin + rayDir*t (TraceWorld returns t, not
+    // a world position — see WorldHit's field list).
+    // -----------------------------------------------------------------------
+    HitRecord rec;
+    rec.albedo      = worldHit.color;
+    rec.roughness   = worldHit.roughness;
+    rec.worldNormal = worldHit.normal;
+    rec.hitT        = worldHit.t;
+    rec.worldPos    = rayOrigin + rayDir * worldHit.t;
+    rec.flags       = anyHit ? HITRECORD_FLAG_HIT : 0u;
+    rec._pad0       = uint[3](0u, 0u, 0u);
+
+    uint hitRecordIdx = uint(pixelCoords.y) * uint(imgSize.x) + uint(pixelCoords.x);
+    hitRecords[hitRecordIdx] = rec;
+
+    HitRecord recReadback = hitRecords[hitRecordIdx];
+
+    bool  anyHitRT       = (recReadback.flags & HITRECORD_FLAG_HIT) != 0u;
+    vec3  bestColor       = recReadback.albedo;
+    vec3  bestNormal      = recReadback.worldNormal;
+    float bestRoughness   = recReadback.roughness;
+    uint  bestBrickIndex  = worldHit.brickIndex;  // not carried by HitRecord (brick/voxel ID stays out-of-band via idOutputImage)
     uint  bestVoxelIdx    = worldHit.voxelIdx;
 
     // -----------------------------------------------------------------------
-    // Shade & write output
+    // Shade & write output — driven by anyHitRT (the SSBO-round-tripped flag),
+    // not the original anyHit, so a lossy pack/unpack would visibly break the
+    // byte-identity gate rather than being silently masked by shading off the
+    // pre-round-trip locals.
     // -----------------------------------------------------------------------
     vec3 outColor;
-    if (anyHit) {
+    if (anyHitRT) {
         outColor = computeLighting(bestColor, bestNormal, rayDir, bestRoughness, lightingConfig);
     } else {
         outColor = skyColor;
@@ -1170,7 +1214,7 @@ void main() {
     // Debug visualisation modes (reuse the last instance's debug sample —
     // full per-instance debug would need an extra accumulator; this is a
     // best-effort approximation for the iteration/depth modes).
-    if (pc.debugMode > 0 && anyHit) {
+    if (pc.debugMode > 0 && anyHitRT) {
         switch (pc.debugMode) {
             case DEBUG_MODE_NORMALS:
                 outColor = normalShading(bestNormal);
@@ -1183,12 +1227,12 @@ void main() {
     imageStore(outputImage, pixelCoords, vec4(outColor, 1.0));
 
     // ID buffer: encode absolute brick + voxel (same packing as VoxelRayMarch)
-    uint pickID = anyHit
+    uint pickID = anyHitRT
         ? ((bestBrickIndex << 10u) | (bestVoxelIdx & 0x3FFu))
         : 0xFFFFFFFFu;
     imageStore(idOutputImage, pixelCoords, uvec4(pickID, 0u, 0u, 0u));
 
     // Metrics
     bool earlyTerm = false; // no single iteration count with multiple instances
-    recordRayEnd(anyHit, earlyTerm);
+    recordRayEnd(anyHitRT, earlyTerm);
 }
