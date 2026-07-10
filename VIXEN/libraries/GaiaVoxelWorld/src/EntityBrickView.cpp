@@ -174,7 +174,13 @@ gaia::ecs::Entity EntityBrickView::getEntityFast(int x, int y, int z) const {
 }
 
 void EntityBrickView::setEntity(size_t voxelIdx, gaia::ecs::Entity entity) {
-    if (voxelIdx < m_voxelsPerBrick) {
+    // Bound by the ACTUAL backing span, not m_voxelsPerBrick: only the EntitySpan (legacy
+    // storage) ctor has writable backing — the query-mode ctors (IntegerGrid/LocalGrid/
+    // WorldSpace) leave m_entities empty and derive voxel→entity from MortonKey queries, so
+    // the old m_voxelsPerBrick bound let a write scribble past the empty span (the
+    // EntityBrickViewTest SEGFAULT cluster). In query modes this is a no-op by design:
+    // associate entities at creation (createVoxel position → MortonKey) instead.
+    if (voxelIdx < m_entities.size()) {
         m_entities[voxelIdx] = entity;
     }
 }
