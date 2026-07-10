@@ -52,10 +52,12 @@ public:
 
     size_t BindingCount() const { return bindings_.size(); }
 
-    // Registers a generated element-trigger ("layer-{index}-toggle") for parametric pattern
-    // matching. The pattern splits into a literal prefix/suffix around the single
-    // {placeholder}; a selector matches if it starts with prefix, ends with suffix, and the
-    // middle is non-empty — the middle becomes the extracted, typed param value.
+    // Registers a generated element-trigger. A pattern with a {placeholder} ("layer-{index}-toggle")
+    // splits into a literal prefix/suffix; a selector matches if it starts with prefix, ends
+    // with suffix, and the middle is non-empty — the middle becomes the extracted, typed param
+    // value. A pattern with no placeholder ("back-button") is a literal — it goes into the
+    // exact-match table with no params (design §4.3: a button reaches its action identically
+    // to a key binding).
     void AddElementTrigger(const Generated::AppFlowElementTrigger& trig);
 
 private:

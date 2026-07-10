@@ -43,6 +43,11 @@ LoadResult AppFlowLoader::Load(const AppFlowContainerView& view, FlowStateMachin
     for (const auto& k : view.keyDefaults()) {
         input.Bind(k.scope, k.state, k.chord, k.action);
     }
+    // Seed return edges as Return-action key bindings (Esc in <from> -> Return). The FROM state
+    // scopes the binding so Esc only pops where a return edge is declared.
+    for (const auto& r : view.returnEdges()) {
+        input.Bind(Generated::FlowScope::State, r.from, r.trigger, Generated::FlowActionId::Return);
+    }
 
     return LoadResult::Ok;
 }

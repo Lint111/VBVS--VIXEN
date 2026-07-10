@@ -59,3 +59,11 @@ TEST(AppFlowGolden, KeyVocabAndTriggersPresent) {
     EXPECT_NE(h.find("kReturnEdges"), std::string::npos);
     EXPECT_NE(h.find("FlowScope::State"), std::string::npos);   // the Settings override
 }
+
+// Inc-4 reframe R2: Return joins the uniform registry as an ordinary action id — a
+// back-button reaches it exactly like Esc (design §4.3/D14).
+TEST(AppFlowGolden, ReturnActionAndBackButtonTriggerPresent) {
+    const std::string h = readFile(APPFLOW_GENERATED_HEADER_PATH);
+    EXPECT_NE(h.find("Return=5"), std::string::npos);
+    EXPECT_NE(h.find("\"back-button\""), std::string::npos);
+}

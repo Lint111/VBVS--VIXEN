@@ -64,13 +64,21 @@ bool BindingStore::TryGetForSelector(const std::string& selector, BoundAction& o
 }
 
 void BindingStore::AddElementTrigger(const Generated::AppFlowElementTrigger& trig) {
-    // Split "layer-{index}-toggle" into prefix="layer-", suffix="-toggle".
     const std::string pat = trig.elementPattern;
     const auto lb = pat.find('{');
     const auto rb = pat.find('}');
-    if (lb == std::string::npos || rb == std::string::npos || rb < lb) {
+    if (lb == std::string::npos || rb == std::string::npos) {
+        // No {placeholder} -> the pattern is a literal selector ("back-button"): exact-match,
+        // no extracted param. First-win, same as AddBinding (never overwrite).
+        if (!pat.empty() && !bindings_.contains(pat)) {
+            bindings_.emplace(pat, BoundAction{trig.action, trig.on, {}});
+        }
+        return;
+    }
+    if (rb < lb) {
         return;   // malformed pattern -> inert (never a wrong dispatch)
     }
+    // Split "layer-{index}-toggle" into prefix="layer-", suffix="-toggle".
     patterns_.push_back({pat.substr(0, lb), pat.substr(rb + 1), trig.paramName, trig.action, trig.on});
 }
 

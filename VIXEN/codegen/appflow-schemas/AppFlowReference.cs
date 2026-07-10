@@ -17,7 +17,7 @@ namespace Vixen.AppFlow.Reference
 
     // Actions — members become FlowActionId (pinned, append-only).
     [FlowActionEnum]
-    public enum FlowAction { ToggleLayer = 0, Undo = 1, Redo = 2, Save = 3, UndoSettingChange = 4 }
+    public enum FlowAction { ToggleLayer = 0, Undo = 1, Redo = 2, Save = 3, UndoSettingChange = 4, Return = 5 }
 
     // Typed key vocabulary (design §3.1/§5.2) — KeyChord{KeyId,KeyMod} is the ONLY boundary;
     // the host-side glfw-keycode→KeyId map (M4) is the sole raw-string/int crossing.
@@ -103,4 +103,14 @@ namespace Vixen.AppFlow.Reference
     // Escape pops out of Settings back to the prior state (FSM entry-history, not ActionStack undo).
     [FlowReturnEdge(nameof(FlowState.Settings))]
     public static class SettingsReturn { public const KeyId Key = KeyId.Escape; public const KeyMod Mods = KeyMod.None; }
+
+    // A UI back-button reaches the same Return action as Escape (design §4.3 — "a BUTTON
+    // reaches Return identically to Esc"); no element-index param.
+    [FlowElementTrigger(nameof(FlowAction.Return))]
+    public static class BackButtonTrigger
+    {
+        public const string Element = "back-button";
+        public const string ParamName = "";
+        public const string On = "click";
+    }
 }

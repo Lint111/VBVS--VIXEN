@@ -9,7 +9,7 @@ enum class FlowStateId : uint16_t { Editing=0, Simulating=1, Paused=2, Settings=
 
 enum class FlowGuardId : uint16_t { DocumentValid=0 };
 
-enum class FlowActionId : uint16_t { ToggleLayer=0, Undo=1, Redo=2, Save=3, UndoSettingChange=4 };
+enum class FlowActionId : uint16_t { ToggleLayer=0, Undo=1, Redo=2, Save=3, UndoSettingChange=4, Return=5 };
 
 // Mirrors undertow's UiParamType (String/Int/Float/EntityRef) — design §7c.
 enum class FlowParamType : uint8_t { String=0, Int=1, Float=2, EntityRef=3 };
@@ -53,7 +53,8 @@ inline constexpr AppFlowActionDecl kActionDecls[] = {
     { FlowActionId::Undo, sizeof(LayerState), true, nullptr, 0 },
     { FlowActionId::Redo, sizeof(LayerState), true, nullptr, 0 },
     { FlowActionId::Save, sizeof(LayerState), true, nullptr, 0 },
-    { FlowActionId::UndoSettingChange, sizeof(LayerState), true, nullptr, 0 }
+    { FlowActionId::UndoSettingChange, sizeof(LayerState), true, nullptr, 0 },
+    { FlowActionId::Return, sizeof(LayerState), true, nullptr, 0 }
 };
 
 inline constexpr AppFlowTransition kTransitions[] = {
@@ -62,7 +63,8 @@ inline constexpr AppFlowTransition kTransitions[] = {
 };
 
 inline constexpr AppFlowElementTrigger kElementTriggers[] = {
-    { "layer-{index}-toggle", FlowActionId::ToggleLayer, "layerIndex", "click" }
+    { "layer-{index}-toggle", FlowActionId::ToggleLayer, "layerIndex", "click" },
+    { "back-button", FlowActionId::Return, "", "click" }
 };
 
 inline constexpr AppFlowKeyDefault kKeyDefaults[] = {
