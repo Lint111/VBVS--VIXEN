@@ -1150,6 +1150,9 @@ gtest_discover_tests(test_shell_octree_gpu)
 # mirror of the GPU body shader (GpuTraversalMirror.h), run against the EXACT byte
 # buffers the shader consumes (ShellOctreeGpu::Serialize). Headless / gtest-only.
 add_executable(test_gpu_parity test_gpu_parity.cpp)
+target_compile_definitions(test_gpu_parity PRIVATE
+    ESVO_TRAVERSAL_GLSL_PATH="${CMAKE_SOURCE_DIR}/shaders/ESVOTraversal.glsl"
+    GPU_TRAVERSAL_MIRROR_H_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/include/GpuTraversalMirror.h")
 if(TARGET SVO)
     target_link_libraries(test_gpu_parity PRIVATE
         GTest::gtest_main SVO GaiaVoxelWorld VoxelComponents VoxelData)

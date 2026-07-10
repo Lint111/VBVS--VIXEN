@@ -17,11 +17,27 @@ TEST(EntityBrickViewTest, CreateBrickView) {
     GaiaVoxelWorld world;
 
     {
+        // Query-mode (IntegerGrid) construction — no backing storage by design.
         EntityBrickView brick(world, glm::ivec3(0, 0, 0), 3);
     }
 
     // Should construct without errors
     SUCCEED();
+}
+
+TEST(EntityBrickViewTest, SetEntityOnQueryModeViewIsSafeNoOp) {
+    // Query-mode views (IntegerGrid/LocalGrid/WorldSpace ctors) have an EMPTY entity span —
+    // voxel→entity association comes from MortonKey at creation, not from setEntity. A write
+    // used to scribble past the empty span (the 2026-07 suite-wide SEGFAULT); it must be a
+    // bounds-checked no-op instead.
+    GaiaVoxelWorld world;
+    EntityBrickView brick(world, glm::ivec3(0, 0, 0), 3);
+
+    auto entity = world.createVoxel(glm::vec3(1.0f, 2.0f, 3.0f));
+    brick.setEntity(42, entity);   // must not crash, must not write anywhere
+    brick.clearEntity(42);         // same path
+
+    EXPECT_TRUE(brick.entities().empty()) << "query-mode view must expose no writable span";
 }
 
 // ===========================================================================
@@ -30,7 +46,8 @@ TEST(EntityBrickViewTest, CreateBrickView) {
 
 TEST(EntityBrickViewTest, GetSetEntity_LinearIndex) {
     GaiaVoxelWorld world;
-    EntityBrickView brick(world, glm::ivec3(0, 0, 0), 3);
+    std::array<gaia::ecs::Entity, 512> brickStorage{};
+    EntityBrickView brick(world, brickStorage, 3);
 
     auto entity = world.createVoxel(glm::vec3(10.0f, 5.0f, 3.0f));
 
@@ -42,7 +59,8 @@ TEST(EntityBrickViewTest, GetSetEntity_LinearIndex) {
 
 TEST(EntityBrickViewTest, GetSetEntity_AllVoxels) {
     GaiaVoxelWorld world;
-    EntityBrickView brick(world, glm::ivec3(0, 0, 0), 3);
+    std::array<gaia::ecs::Entity, 512> brickStorage{};
+    EntityBrickView brick(world, brickStorage, 3);
 
     // Fill all 512 voxels
     std::vector<gaia::ecs::Entity> entities;
@@ -60,7 +78,8 @@ TEST(EntityBrickViewTest, GetSetEntity_AllVoxels) {
 
 TEST(EntityBrickViewTest, ClearEntity_LinearIndex) {
     GaiaVoxelWorld world;
-    EntityBrickView brick(world, glm::ivec3(0, 0, 0), 3);
+    std::array<gaia::ecs::Entity, 512> brickStorage{};
+    EntityBrickView brick(world, brickStorage, 3);
 
     auto entity = world.createVoxel(glm::vec3(0.0f));
     brick.setEntity(10, entity);
@@ -78,7 +97,8 @@ TEST(EntityBrickViewTest, ClearEntity_LinearIndex) {
 
 TEST(EntityBrickViewTest, GetSetEntity_3DCoords) {
     GaiaVoxelWorld world;
-    EntityBrickView brick(world, glm::ivec3(0, 0, 0), 3);
+    std::array<gaia::ecs::Entity, 512> brickStorage{};
+    EntityBrickView brick(world, brickStorage, 3);
 
     auto entity = world.createVoxel(glm::vec3(10.0f, 5.0f, 3.0f));
 
@@ -90,7 +110,8 @@ TEST(EntityBrickViewTest, GetSetEntity_3DCoords) {
 
 TEST(EntityBrickViewTest, GetSetEntity_AllCubicPositions) {
     GaiaVoxelWorld world;
-    EntityBrickView brick(world, glm::ivec3(0, 0, 0), 3);
+    std::array<gaia::ecs::Entity, 512> brickStorage{};
+    EntityBrickView brick(world, brickStorage, 3);
 
     // Fill all 8x8x8 positions
     std::array<std::array<std::array<gaia::ecs::Entity, 8>, 8>, 8> entityGrid;
@@ -120,7 +141,8 @@ TEST(EntityBrickViewTest, GetSetEntity_AllCubicPositions) {
 
 TEST(EntityBrickViewTest, ClearEntity_3DCoords) {
     GaiaVoxelWorld world;
-    EntityBrickView brick(world, glm::ivec3(0, 0, 0), 3);
+    std::array<gaia::ecs::Entity, 512> brickStorage{};
+    EntityBrickView brick(world, brickStorage, 3);
 
     auto entity = world.createVoxel(glm::vec3(0.0f));
     brick.setEntity(4, 2, 1, entity);
@@ -138,7 +160,8 @@ TEST(EntityBrickViewTest, ClearEntity_3DCoords) {
 
 TEST(EntityBrickViewTest, GetDensity_LinearIndex) {
     GaiaVoxelWorld world;
-    EntityBrickView brick(world, glm::ivec3(0, 0, 0), 3);
+    std::array<gaia::ecs::Entity, 512> brickStorage{};
+    EntityBrickView brick(world, brickStorage, 3);
 
     auto entity = world.createVoxel(glm::vec3(0.0f), 0.75f);
     brick.setEntity(10, entity);
@@ -150,7 +173,8 @@ TEST(EntityBrickViewTest, GetDensity_LinearIndex) {
 
 TEST(EntityBrickViewTest, GetDensity_3DCoords) {
     GaiaVoxelWorld world;
-    EntityBrickView brick(world, glm::ivec3(0, 0, 0), 3);
+    std::array<gaia::ecs::Entity, 512> brickStorage{};
+    EntityBrickView brick(world, brickStorage, 3);
 
     auto entity = world.createVoxel(glm::vec3(0.0f), 0.5f);
     brick.setEntity(3, 2, 1, entity);
@@ -162,7 +186,8 @@ TEST(EntityBrickViewTest, GetDensity_3DCoords) {
 
 TEST(EntityBrickViewTest, GetColor_LinearIndex) {
     GaiaVoxelWorld world;
-    EntityBrickView brick(world, glm::ivec3(0, 0, 0), 3);
+    std::array<gaia::ecs::Entity, 512> brickStorage{};
+    EntityBrickView brick(world, brickStorage, 3);
 
     glm::vec3 expectedColor(1.0f, 0.0f, 0.0f);
     auto entity = world.createVoxel(glm::vec3(0.0f), 1.0f, expectedColor);
@@ -175,7 +200,8 @@ TEST(EntityBrickViewTest, GetColor_LinearIndex) {
 
 TEST(EntityBrickViewTest, GetColor_3DCoords) {
     GaiaVoxelWorld world;
-    EntityBrickView brick(world, glm::ivec3(0, 0, 0), 3);
+    std::array<gaia::ecs::Entity, 512> brickStorage{};
+    EntityBrickView brick(world, brickStorage, 3);
 
     glm::vec3 expectedColor(0.2f, 0.8f, 0.4f);
     auto entity = world.createVoxel(glm::vec3(0.0f), 1.0f, expectedColor);
@@ -188,7 +214,8 @@ TEST(EntityBrickViewTest, GetColor_3DCoords) {
 
 TEST(EntityBrickViewTest, GetNormal_LinearIndex) {
     GaiaVoxelWorld world;
-    EntityBrickView brick(world, glm::ivec3(0, 0, 0), 3);
+    std::array<gaia::ecs::Entity, 512> brickStorage{};
+    EntityBrickView brick(world, brickStorage, 3);
 
     glm::vec3 expectedNormal(0.0f, 0.0f, 1.0f);
     auto entity = world.createVoxel(glm::vec3(0.0f), 1.0f, glm::vec3(1.0f), expectedNormal);
@@ -201,7 +228,8 @@ TEST(EntityBrickViewTest, GetNormal_LinearIndex) {
 
 TEST(EntityBrickViewTest, GetNormal_3DCoords) {
     GaiaVoxelWorld world;
-    EntityBrickView brick(world, glm::ivec3(0, 0, 0), 3);
+    std::array<gaia::ecs::Entity, 512> brickStorage{};
+    EntityBrickView brick(world, brickStorage, 3);
 
     glm::vec3 expectedNormal(1.0f, 0.0f, 0.0f);
     auto entity = world.createVoxel(glm::vec3(0.0f), 1.0f, glm::vec3(1.0f), expectedNormal);
@@ -214,7 +242,8 @@ TEST(EntityBrickViewTest, GetNormal_3DCoords) {
 
 TEST(EntityBrickViewTest, GetMaterialID) {
     GaiaVoxelWorld world;
-    EntityBrickView brick(world, glm::ivec3(0, 0, 0), 3);
+    std::array<gaia::ecs::Entity, 512> brickStorage{};
+    EntityBrickView brick(world, brickStorage, 3);
 
     auto entity = world.createVoxel(glm::vec3(0.0f));
     // Note: Material ID requires Material component - test depends on GaiaVoxelWorld API
@@ -227,7 +256,8 @@ TEST(EntityBrickViewTest, GetMaterialID) {
 
 TEST(EntityBrickViewTest, GetComponent_EmptyVoxel) {
     GaiaVoxelWorld world;
-    EntityBrickView brick(world, glm::ivec3(0, 0, 0), 3);
+    std::array<gaia::ecs::Entity, 512> brickStorage{};
+    EntityBrickView brick(world, brickStorage, 3);
 
     // No entity set - should return std::nullopt
     auto density = brick.getComponentValue<Density>(0);
@@ -246,7 +276,8 @@ TEST(EntityBrickViewTest, GetComponent_EmptyVoxel) {
 
 TEST(EntityBrickViewTest, GetEntitiesSpan) {
     GaiaVoxelWorld world;
-    EntityBrickView brick(world, glm::ivec3(0, 0, 0), 3);
+    std::array<gaia::ecs::Entity, 512> brickStorage{};
+    EntityBrickView brick(world, brickStorage, 3);
 
     // Fill some entities
     for (size_t i = 0; i < 10; ++i) {
@@ -265,7 +296,8 @@ TEST(EntityBrickViewTest, GetEntitiesSpan) {
 
 TEST(EntityBrickViewTest, GetEntitiesSpan_Const) {
     GaiaVoxelWorld world;
-    const EntityBrickView brick(world, glm::ivec3(0, 0, 0), 3);
+    std::array<gaia::ecs::Entity, 512> brickStorage{};
+    const EntityBrickView brick(world, brickStorage, 3);
 
 	for (size_t x = 0; x < 8; ++x) {
 		for (size_t y = 0; y < 8; ++y) {
@@ -284,7 +316,8 @@ TEST(EntityBrickViewTest, GetEntitiesSpan_Const) {
 
 TEST(EntityBrickViewTest, SpanIterateAllEntities) {
     GaiaVoxelWorld world;
-    EntityBrickView brick(world, glm::ivec3(0, 0, 0), 3);
+    std::array<gaia::ecs::Entity, 512> brickStorage{};
+    EntityBrickView brick(world, brickStorage, 3);
 
     // Fill half the brick
     for (size_t i = 0; i < 256; ++i) {
@@ -309,7 +342,8 @@ TEST(EntityBrickViewTest, SpanIterateAllEntities) {
 
 TEST(EntityBrickViewTest, CountSolidVoxels_Empty) {
     GaiaVoxelWorld world;
-    EntityBrickView brick(world, glm::ivec3(0, 0, 0), 3);
+    std::array<gaia::ecs::Entity, 512> brickStorage{};
+    EntityBrickView brick(world, brickStorage, 3);
 
     size_t solidCount = brick.countSolidVoxels();
     EXPECT_EQ(solidCount, 0);
@@ -317,7 +351,8 @@ TEST(EntityBrickViewTest, CountSolidVoxels_Empty) {
 
 TEST(EntityBrickViewTest, CountSolidVoxels_PartiallyFilled) {
     GaiaVoxelWorld world;
-    EntityBrickView brick(world, glm::ivec3(0, 0, 0), 3);
+    std::array<gaia::ecs::Entity, 512> brickStorage{};
+    EntityBrickView brick(world, brickStorage, 3);
 
     // Add 50 solid voxels and 50 air voxels
     for (size_t i = 0; i < 50; ++i) {
@@ -336,7 +371,8 @@ TEST(EntityBrickViewTest, CountSolidVoxels_PartiallyFilled) {
 
 TEST(EntityBrickViewTest, CountSolidVoxels_FullBrick) {
     GaiaVoxelWorld world;
-    EntityBrickView brick(world, glm::ivec3(0, 0, 0), 3);
+    std::array<gaia::ecs::Entity, 512> brickStorage{};
+    EntityBrickView brick(world, brickStorage, 3);
 
     // Fill all 512 voxels with solid entities
     for (size_t i = 0; i < 512; ++i) {
@@ -350,14 +386,16 @@ TEST(EntityBrickViewTest, CountSolidVoxels_FullBrick) {
 
 TEST(EntityBrickViewTest, IsEmpty_True) {
     GaiaVoxelWorld world;
-    EntityBrickView brick(world, glm::ivec3(0, 0, 0), 3);
+    std::array<gaia::ecs::Entity, 512> brickStorage{};
+    EntityBrickView brick(world, brickStorage, 3);
 
     EXPECT_TRUE(brick.isEmpty());
 }
 
 TEST(EntityBrickViewTest, IsEmpty_False) {
     GaiaVoxelWorld world;
-    EntityBrickView brick(world, glm::ivec3(0, 0, 0), 3);
+    std::array<gaia::ecs::Entity, 512> brickStorage{};
+    EntityBrickView brick(world, brickStorage, 3);
 
     auto entity = world.createVoxel(glm::vec3(0.0f), 1.0f);
     brick.setEntity(0, entity);
@@ -367,7 +405,8 @@ TEST(EntityBrickViewTest, IsEmpty_False) {
 
 TEST(EntityBrickViewTest, IsFull_True) {
     GaiaVoxelWorld world;
-    EntityBrickView brick(world, glm::ivec3(0, 0, 0), 3);
+    std::array<gaia::ecs::Entity, 512> brickStorage{};
+    EntityBrickView brick(world, brickStorage, 3);
 
     // Fill all 512 voxels
     for (size_t i = 0; i < 512; ++i) {
@@ -380,7 +419,8 @@ TEST(EntityBrickViewTest, IsFull_True) {
 
 TEST(EntityBrickViewTest, IsFull_False) {
     GaiaVoxelWorld world;
-    EntityBrickView brick(world, glm::ivec3(0, 0, 0), 3);
+    std::array<gaia::ecs::Entity, 512> brickStorage{};
+    EntityBrickView brick(world, brickStorage, 3);
 
     // Fill 511 voxels (one missing)
     for (size_t i = 0; i < 511; ++i) {
@@ -405,7 +445,8 @@ TEST(EntityBrickViewTest, BrickMemorySize) {
 
 TEST(EntityBrickViewTest, ZeroCopySpanAccess) {
     GaiaVoxelWorld world;
-    EntityBrickView brick(world, glm::ivec3(0, 0, 0), 3);
+    std::array<gaia::ecs::Entity, 512> brickStorage{};
+    EntityBrickView brick(world, brickStorage, 3);
 
 	// Fill brick entities
 	for (size_t x = 0; x < 8; ++x) {
@@ -433,7 +474,8 @@ TEST(EntityBrickViewTest, ZeroCopySpanAccess) {
 
 TEST(EntityBrickViewTest, SetEntity_BoundaryVoxels) {
     GaiaVoxelWorld world;
-    EntityBrickView brick(world, glm::ivec3(0, 0, 0), 3);
+    std::array<gaia::ecs::Entity, 512> brickStorage{};
+    EntityBrickView brick(world, brickStorage, 3);
 
     // Test all 8 corners
     std::vector<std::tuple<int, int, int>> corners = {
@@ -454,7 +496,8 @@ TEST(EntityBrickViewTest, SetEntity_BoundaryVoxels) {
 
 TEST(EntityBrickViewTest, ClearEntireBrick) {
     GaiaVoxelWorld world;
-    EntityBrickView brick(world, glm::ivec3(0, 0, 0), 3);
+    std::array<gaia::ecs::Entity, 512> brickStorage{};
+    EntityBrickView brick(world, brickStorage, 3);
 
     // Fill brick
     for (size_t i = 0; i < 512; ++i) {
@@ -474,7 +517,8 @@ TEST(EntityBrickViewTest, ClearEntireBrick) {
 
 TEST(EntityBrickViewTest, SparseOccupancy) {
     GaiaVoxelWorld world;
-    EntityBrickView brick(world, glm::ivec3(0, 0, 0), 3);
+    std::array<gaia::ecs::Entity, 512> brickStorage{};
+    EntityBrickView brick(world, brickStorage, 3);
 
     // Fill only 10% of brick (sparse)
     for (size_t i = 0; i < 51; ++i) {
@@ -494,7 +538,8 @@ TEST(EntityBrickViewTest, SparseOccupancy) {
 
 TEST(EntityBrickViewTest, ModifyEntityAttributes_ThroughBrickView) {
     GaiaVoxelWorld world;
-    EntityBrickView brick(world, glm::ivec3(0, 0, 0), 3);
+    std::array<gaia::ecs::Entity, 512> brickStorage{};
+    EntityBrickView brick(world, brickStorage, 3);
 
 	VoxelCreationRequest request;
 
@@ -505,7 +550,7 @@ TEST(EntityBrickViewTest, ModifyEntityAttributes_ThroughBrickView) {
 	};
 
     auto entity = world.createVoxel({ glm::vec3(0.0f), attrs });
-
+    brick.setEntity(5, entity);  // place it in the view so index 5 resolves to this entity
 
     // Modify entity via GaiaVoxelWorld
     world.setComponent<Color>(entity, glm::vec3(0.0f, 1.0f, 0.0f)); // Change to green
@@ -518,7 +563,8 @@ TEST(EntityBrickViewTest, ModifyEntityAttributes_ThroughBrickView) {
 
 TEST(EntityBrickViewTest, DestroyEntity_BrickViewHandlesGracefully) {
     GaiaVoxelWorld world;
-    EntityBrickView brick(world, glm::ivec3(0, 0, 0), 3);
+    std::array<gaia::ecs::Entity, 512> brickStorage{};
+    EntityBrickView brick(world, brickStorage, 3);
 
     auto entity = world.createVoxel(glm::vec3(0.0f), 1.0f);
     brick.setEntity(10, entity);

@@ -215,3 +215,4 @@ SPRINT-*-QUICK-REFERENCE.md
 .hacknplan-sprint-*.md
 .hacknplan-sprint-*.json
 
+cmake_test_discovery_*.json

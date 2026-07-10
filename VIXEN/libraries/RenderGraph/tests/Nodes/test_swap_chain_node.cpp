@@ -22,9 +22,12 @@ using namespace Vixen::RenderGraph;
 class SwapChainNodeTest : public ::testing::Test {};
 
 // Configuration Tests
-TEST_F(SwapChainNodeTest, ConfigHasSevenInputs) {
-    // FR-3 (266bfa3b) moved renderComplete + presentFences from inputs to outputs (9 -> 7).
-    EXPECT_EQ(SwapChainNodeConfig::INPUT_COUNT, 7) << "DEVICE, WINDOW, WIDTH, HEIGHT, etc.";
+TEST_F(SwapChainNodeTest, ConfigHasEightInputs) {
+    // FR-3 (266bfa3b) moved renderComplete + presentFences from inputs to outputs (9 -> 7);
+    // IN_FLIGHT_FENCE (slot 7) later joined as the eighth input.
+    EXPECT_EQ(SwapChainNodeConfig::INPUT_COUNT, 8)
+        << "WINDOW, WIDTH, HEIGHT, INSTANCE, VULKAN_DEVICE_IN, IMAGE_AVAILABLE_SEMAPHORES_ARRAY, "
+           "CURRENT_FRAME_INDEX, IN_FLIGHT_FENCE";
 }
 
 TEST_F(SwapChainNodeTest, ConfigHasMultipleOutputs) {
