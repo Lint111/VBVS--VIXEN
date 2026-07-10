@@ -225,6 +225,10 @@ namespace {
     }
 }
 
+size_t BrickView::getLinearIndex(int x, int y, int z) const {
+    return coordsToStorageIndex(x, y, z);
+}
+
 template<>
 void BrickView::setAt3D<float>(const std::string& attrName, int x, int y, int z, float value) {
     size_t index = coordsToStorageIndex(x, y, z);

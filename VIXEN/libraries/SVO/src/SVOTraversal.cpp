@@ -464,7 +464,7 @@ PopResult LaineKarrasOctree::executePopPhase(
     int highest_bit = 31 - std::countl_zero(differing_bits);
     state.scale = highest_bit;
 
-    int minESVOScale = ESVO_MAX_SCALE - m_maxLevels + 1;
+    int minESVOScale = ESVO_MAX_SCALE - effectiveLevels() + 1;
     if (state.scale < minESVOScale || state.scale > ESVO_MAX_SCALE) {
         return PopResult::EXIT_OCTREE;
     }
@@ -516,6 +516,41 @@ PopResult LaineKarrasOctree::executePopPhase(
 // Main Ray Casting Implementation
 // ============================================================================
 
+namespace {
+// Levels needed to cover the brick grid: ceil(log2(bricksPerAxis)).
+int gridLevelsFor(int bricksPerAxis) {
+    int levels = 0;
+    while ((1 << levels) < bricksPerAxis) ++levels;
+    return levels;
+}
+}  // namespace
+
+// How many node-tree levels the build fell short of spanning the full frame.
+// frameDepth = brickDepth + log2(bricksPerAxis) is the node depth a frame-spanning
+// tree converges at; a clustered sparse tree converges shallower (smaller rootDepth),
+// leaving a shortfall. Bodies/shells/dense/hollow-but-spanning scenes have zero
+// shortfall (rootDepth == frameDepth) and keep the full m_maxLevels resolution.
+int LaineKarrasOctree::rootShortfall() const {
+    if (!m_octree || m_octree->rootDepth <= 0) return 0;
+    const int frameDepth = m_brickDepthLevels + gridLevelsFor(std::max(1, m_octree->bricksPerAxis));
+    return std::max(0, frameDepth - m_octree->rootDepth);
+}
+
+int LaineKarrasOctree::effectiveLevels() const {
+    // Full resolution (m_maxLevels — bricks add dense sub-voxels beyond the node tree),
+    // reduced only by the levels a shallow-rooted clustered tree failed to span.
+    return std::max(1, m_maxLevels - rootShortfall());
+}
+
+glm::vec3 LaineKarrasOctree::effectiveWorldMax() const {
+    if (!m_octree) return m_worldMax;
+    const int shortfall = rootShortfall();
+    if (shortfall == 0) return m_worldMax;
+    // The root covers a 2^-shortfall fraction of the frame per axis.
+    const float frac = 1.0f / static_cast<float>(1u << shortfall);
+    return m_worldMin + (m_worldMax - m_worldMin) * frac;
+}
+
 ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
     const glm::vec3& origin,
     const glm::vec3& direction,
@@ -540,10 +575,15 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
         return miss;
     }
 
-    bool rayStartsInside = isPointInsideAABB(origin, m_worldMin, m_worldMax);
+    // Traverse within the ACTUAL root's domain (== full frame for full-depth trees;
+    // smaller for sparse clustered content whose root converged early — see
+    // Octree::rootDepth). Using the full frame on a shallow-rooted tree shifts every
+    // scale interpretation and rays miss real voxels.
+    const glm::vec3 domainMax = effectiveWorldMax();
+    bool rayStartsInside = isPointInsideAABB(origin, m_worldMin, domainMax);
 
     float tEntry, tExit;
-    if (!intersectAABB(origin, rayDir, m_worldMin, m_worldMax, tEntry, tExit)) {
+    if (!intersectAABB(origin, rayDir, m_worldMin, domainMax, tEntry, tExit)) {
         return miss;
     }
 
@@ -555,7 +595,7 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
 
     float tRayStart = rayStartsInside ? 0.0f : std::max(0.0f, tEntry);
     glm::vec3 rayEntryPoint = origin + rayDir * tRayStart;
-    glm::vec3 worldSize = m_worldMax - m_worldMin;
+    glm::vec3 worldSize = domainMax - m_worldMin;
     glm::vec3 normOrigin = (rayEntryPoint - m_worldMin) / worldSize + glm::vec3(1.0f);
 
     // Precompute world-space ray length for LOD distance conversion
@@ -597,7 +637,7 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
     initializeTraversalState(state, coef, stack);
 
     const int maxIter = 500;
-    int minESVOScale = ESVO_MAX_SCALE - m_maxLevels + 1;
+    int minESVOScale = ESVO_MAX_SCALE - effectiveLevels() + 1;
 
     DEBUG_PRINT("\n=== Main Traversal Loop ===\n");
     DEBUG_PRINT("  minESVOScale=%d, maxLevels=%d, brickDepthLevels=%d\n", minESVOScale, m_maxLevels, m_brickDepthLevels);

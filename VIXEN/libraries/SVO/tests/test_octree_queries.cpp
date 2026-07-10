@@ -894,7 +894,8 @@ TEST(PartialBlockUpdateTest, AddNewBrick) {
     // Build octree with single brick
     glm::vec3 worldMin(0.0f);
     glm::vec3 worldMax(16.0f);  // 2x2 bricks
-    LaineKarrasOctree octree(world, nullptr, 8, 3);
+    // maxLevels = log2(16) = 4 per rebuild()'s frame contract (VoxelSceneCacher).
+    LaineKarrasOctree octree(world, nullptr, 4, 3);
     octree.rebuild(world, worldMin, worldMax);
 
     const auto* root = octree.getOctree()->root.get();
@@ -987,7 +988,8 @@ TEST(PartialBlockUpdateTest, RemoveBrick) {
     // Build octree
     glm::vec3 worldMin(0.0f);
     glm::vec3 worldMax(16.0f);  // 2x2 bricks
-    LaineKarrasOctree octree(world, nullptr, 8, 3);
+    // maxLevels = log2(16) = 4 per rebuild()'s frame contract (VoxelSceneCacher).
+    LaineKarrasOctree octree(world, nullptr, 4, 3);
     octree.rebuild(world, worldMin, worldMax);
 
     const auto* root = octree.getOctree()->root.get();
