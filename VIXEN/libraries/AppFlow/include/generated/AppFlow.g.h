@@ -9,7 +9,7 @@ enum class FlowStateId : uint16_t { Editing=0, Simulating=1, Paused=2, Settings=
 
 enum class FlowGuardId : uint16_t { DocumentValid=0 };
 
-enum class FlowActionId : uint16_t { ToggleLayer=0, Undo=1, Redo=2, Save=3, UndoSettingChange=4, Return=5 };
+enum class FlowActionId : uint16_t { ToggleLayer=0, Undo=1, Redo=2, Save=3, UndoSettingChange=4, Return=5, Data=6 };
 
 // Mirrors undertow's UiParamType (String/Int/Float/EntityRef) — design §7c.
 enum class FlowParamType : uint8_t { String=0, Int=1, Float=2, EntityRef=3 };
@@ -46,6 +46,10 @@ struct AppFlowKeyDefault { FlowActionId action; KeyChord chord; FlowScope scope;
 
 struct AppFlowReturnEdge { FlowStateId from; KeyChord trigger; };
 
+// A Data action names the [View] noun it mutates (design D16); the View is the
+// single source for data flowing engine<->consumer, compile-checked via --view-schema.
+struct AppFlowDataTarget { FlowActionId action; const char* viewNoun; };
+
 inline constexpr FlowParamSchema kToggleLayerParams[] = { {"layerIndex", FlowParamType::Int} };
 
 inline constexpr AppFlowActionDecl kActionDecls[] = {
@@ -54,7 +58,8 @@ inline constexpr AppFlowActionDecl kActionDecls[] = {
     { FlowActionId::Redo, sizeof(LayerState), true, nullptr, 0 },
     { FlowActionId::Save, sizeof(LayerState), true, nullptr, 0 },
     { FlowActionId::UndoSettingChange, sizeof(LayerState), true, nullptr, 0 },
-    { FlowActionId::Return, sizeof(LayerState), true, nullptr, 0 }
+    { FlowActionId::Return, sizeof(LayerState), true, nullptr, 0 },
+    { FlowActionId::Data, sizeof(LayerState), true, nullptr, 0 }
 };
 
 inline constexpr AppFlowTransition kTransitions[] = {
@@ -78,6 +83,10 @@ inline constexpr AppFlowReturnEdge kReturnEdges[] = {
     { FlowStateId::Settings, { KeyId::Escape, KeyMod::None } }
 };
 
+inline constexpr AppFlowDataTarget kDataTargets[] = {
+    { FlowActionId::Data, "bodyCount" }
+};
+
 // Mirrors RecipeContainerView's role: the reader later tasks parse the artifact through.
 struct AppFlowContainerView {
     static constexpr std::span<const AppFlowActionDecl> actions() { return kActionDecls; }
@@ -85,6 +94,7 @@ struct AppFlowContainerView {
     static constexpr std::span<const AppFlowElementTrigger> elementTriggers() { return kElementTriggers; }
     static constexpr std::span<const AppFlowKeyDefault> keyDefaults() { return kKeyDefaults; }
     static constexpr std::span<const AppFlowReturnEdge> returnEdges() { return kReturnEdges; }
+    static constexpr std::span<const AppFlowDataTarget> dataTargets() { return kDataTargets; }
 };
 
 } // namespace Vixen::AppFlow::Generated

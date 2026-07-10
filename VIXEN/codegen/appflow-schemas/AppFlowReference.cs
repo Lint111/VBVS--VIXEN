@@ -17,7 +17,7 @@ namespace Vixen.AppFlow.Reference
 
     // Actions — members become FlowActionId (pinned, append-only).
     [FlowActionEnum]
-    public enum FlowAction { ToggleLayer = 0, Undo = 1, Redo = 2, Save = 3, UndoSettingChange = 4, Return = 5 }
+    public enum FlowAction { ToggleLayer = 0, Undo = 1, Redo = 2, Save = 3, UndoSettingChange = 4, Return = 5, Data = 6 }
 
     // Typed key vocabulary (design §3.1/§5.2) — KeyChord{KeyId,KeyMod} is the ONLY boundary;
     // the host-side glfw-keycode→KeyId map (M4) is the sole raw-string/int crossing.
@@ -113,4 +113,10 @@ namespace Vixen.AppFlow.Reference
         public const string ParamName = "";
         public const string On = "click";
     }
+
+    // Data names the [View] noun it mutates (design D16) — the View (Inc-1->3) is the single
+    // source for data flowing engine<->consumer; a Data verb operates on a declared View noun,
+    // not an opaque blob. Compile-checked against the Hud [View] schema via --view-schema.
+    [FlowDataTarget(nameof(FlowAction.Data), "bodyCount")]
+    public static class DataToBodyCount { }
 }

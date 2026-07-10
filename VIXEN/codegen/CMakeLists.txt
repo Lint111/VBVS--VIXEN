@@ -216,9 +216,12 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     # --- AppFlow schema (View Contract Inc-4, M1): --appflow generates AppFlow.g.h from
     # AppFlowReference.cs's [Flow*]-attributed enums/classes — retires the Inc-1 hand-authored
     # mirror (TODO(appflow-codegen)). Committed + drift-guarded like every other generated artifact.
+    # --view-schema (Inc-4 reframe R3, design D16) cross-checks each [FlowDataTarget]'s view-noun
+    # string against the real Hud [View] schema at generation time.
     set(_appflow_args
         run --project "${_yk_tool_run}" -c Release --
         --schema "${_schema_appflow_run}" --appflow
+        --view-schema "${_schema_view_run}"
         --out-header "${_out_appflow_hdr_run}")
     add_custom_target(appflow_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_appflow_args} --check

@@ -67,3 +67,12 @@ TEST(AppFlowGolden, ReturnActionAndBackButtonTriggerPresent) {
     EXPECT_NE(h.find("Return=5"), std::string::npos);
     EXPECT_NE(h.find("\"back-button\""), std::string::npos);
 }
+
+// Inc-4 reframe R3 (design D16): a Data action names the [View] noun it mutates,
+// compile-checked against the Hud [View] schema via --view-schema.
+TEST(AppFlowGolden, DataTargetsTablePresent) {
+    const std::string h = readFile(APPFLOW_GENERATED_HEADER_PATH);
+    EXPECT_NE(h.find("Data=6"), std::string::npos);
+    EXPECT_NE(h.find("kDataTargets"), std::string::npos);
+    EXPECT_NE(h.find("\"bodyCount\""), std::string::npos);
+}
