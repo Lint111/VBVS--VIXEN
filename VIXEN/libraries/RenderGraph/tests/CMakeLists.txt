@@ -90,6 +90,47 @@ set_target_properties(test_brdf_mirror PROPERTIES FOLDER "Tests/RenderGraph Test
 
 gtest_discover_tests(test_brdf_mirror)
 
+# ===========================================================================
+# VNDF CPU Mirror Test (Sampled Lighting Inc0 M4 — gpu-shader-debug mirror of
+# shaders/Sampling.glsl's sampleGGXVNDF/vndfPdf, verified against two
+# independent references: a from-scratch analytic VNDF density and the
+# original Heitz 2018 sampler construction)
+# ===========================================================================
+add_executable(test_vndf_mirror test_vndf_mirror.cpp)
+
+if(TARGET RenderGraph)
+    target_link_libraries(test_vndf_mirror PRIVATE GTest::gtest_main RenderGraph)
+else()
+    target_link_libraries(test_vndf_mirror PRIVATE GTest::gtest_main)
+endif()
+
+set_target_properties(test_vndf_mirror PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+gtest_discover_tests(test_vndf_mirror)
+
+# ===========================================================================
+# Sampling.glsl SPIR-V Compile Gate (Sampled Lighting Inc0 M4 — proves
+# shaders/Sampling.glsl #includes and compiles cleanly through the real
+# runtime shader pipeline; ShaderManagement's ShaderBundleBuilder resolves
+# #include via AddIncludePath(VIXEN_SHADER_SOURCE_DIR), same wiring
+# BuildRenderGraph.cpp uses for the live app's .comp shaders)
+# ===========================================================================
+add_executable(test_sampling_compile_gate test_sampling_compile_gate.cpp)
+
+if(TARGET RenderGraph)
+    target_link_libraries(test_sampling_compile_gate PRIVATE GTest::gtest_main RenderGraph)
+else()
+    target_link_libraries(test_sampling_compile_gate PRIVATE GTest::gtest_main ShaderManagement)
+endif()
+
+target_compile_definitions(test_sampling_compile_gate PRIVATE
+    VIXEN_SHADER_SOURCE_DIR="${VIXEN_SHADER_SOURCE_DIR}"
+)
+
+set_target_properties(test_sampling_compile_gate PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+gtest_discover_tests(test_sampling_compile_gate)
+
 add_executable(test_node_parameter_manager Core/test_node_parameter_manager.cpp)
 
 # Link against the RenderGraph library target - includes propagate automatically
