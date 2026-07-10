@@ -186,6 +186,19 @@ void BodyOctreeSceneNode::SetRecipePool(Vixen::SVO::ConcatenatedOctrees pool) {
                   std::to_string(providedPool_.count) + " octrees staged");
 }
 
+void BodyOctreeSceneNode::SetOccupancyGrid(std::vector<float> concatenatedGrid) {
+    // Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13: stash the blob; CreateOctreeBuffers
+    // uploads it on the next (re)Compile. Does NOT set recipeDirty_ itself — the shader
+    // splice that produces this blob already forces a shader recompile through the normal
+    // registration-changed path (BuildRenderGraph.cpp's RegisterShaderBuilder re-runs), and
+    // a bare buffer swap with no shader change would leave the OLD spliced getRecipeOccupancyGrid
+    // switch's baked gridOffset literals pointing at the wrong blob layout — this setter is
+    // only ever called from that same shader-build callback, never independently.
+    occupancyGrid_ = std::move(concatenatedGrid);
+    NODE_LOG_INFO("[BodyOctreeSceneNode] SetOccupancyGrid: " +
+                  std::to_string(occupancyGrid_.size()) + " floats staged");
+}
+
 void BodyOctreeSceneNode::RequestBrickResidency(bool resident) {
     // Stash only — mirrors SetBakeRecipe/SetRecipePool's dirty-flag pattern. ExecuteImpl
     // performs the actual BatchedUploader call next frame; never upload synchronously here.
@@ -305,6 +318,9 @@ void BodyOctreeSceneNode::CompileImpl(TypedCompileContext& ctx) {
     // Tiered-ESVO Inc2 M3: tier-ref table buffer (binding 15). Always emitted —
     // placeholder for a scene with no tier-crossing leaves, real data otherwise.
     ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_TIERREFTABLE_BUFFER,  tierRefTableBuffer_);
+    // Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13: occupancy grid buffer (binding 16).
+    // Always emitted — placeholder for a scene with no derivable procedural recipe grids.
+    ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_OCCUPANCYGRID_BUFFER, occupancyGridBuffer_);
     // Surface-Shell ESVO cache — publish slot 0 as the compile-time placeholder;
     // ExecuteImpl re-emits slot [frame&1] each frame (the last committed cache).
     ctx.Out(BodyOctreeSceneNodeConfig::SHELL_DATA_BUFFER,           shellDataBuffer_[0]);
@@ -437,6 +453,7 @@ void BodyOctreeSceneNode::ExecuteImpl(TypedExecuteContext& ctx) {
         ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_BRICKLOOKUP_BUFFER, brickLookupBuffer_);
         ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_MIPPOOL_BUFFER,     mipPoolBuffer_);
         ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_TIERREFTABLE_BUFFER, tierRefTableBuffer_);
+        ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_OCCUPANCYGRID_BUFFER, occupancyGridBuffer_);
         // Rematerialize re-derived + re-created the shell buffers (both slots) inside
         // CreateOctreeBuffers; re-emit slot 0 so the render re-binds the fresh cache.
         ctx.Out(BodyOctreeSceneNodeConfig::SHELL_DATA_BUFFER,         shellDataBuffer_[0]);
@@ -701,6 +718,19 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device) {
         concatenated_.tierRefTable.empty() ? nullptr : concatenated_.tierRefTable.data(),
         tierRefTableBuffer_, tierRefTableMemory_, "tier-ref table SSBO");
 
+    // Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13: occupancy grid buffer (binding 16).
+    // Pad to 1 byte when empty — a scene with no derivable procedural recipe occupancy
+    // grids (no procedural recipes, or all non-whitelisted-opcode) leaves occupancyGrid_
+    // empty; the shader's getRecipeOccupancyGrid switch only ever emits gridDim>0 cases
+    // for recipes that HAD a grid, and treats gridDim==0 as "skip the fast-path," so it
+    // never indexes into this buffer when it's the 1-byte placeholder.
+    const VkDeviceSize occupancyGridSize =
+        std::max<VkDeviceSize>(occupancyGrid_.size() * sizeof(float), 1);
+    CreateHostBuffer(device, occupancyGridSize,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        occupancyGrid_.empty() ? nullptr : occupancyGrid_.data(),
+        occupancyGridBuffer_, occupancyGridMemory_, "occupancy grid SSBO");
+
     NODE_LOG_INFO("[BodyOctreeSceneNode] Created octree buffers (nodes=" +
                   std::to_string(static_cast<uint64_t>(nodesSize)) + "B, bricks=" +
                   std::to_string(static_cast<uint64_t>(bricksSize)) + "B, materials=" +
@@ -709,7 +739,8 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device) {
                   std::to_string(static_cast<uint64_t>(sdfSize)) + "B, brickLookup=" +
                   std::to_string(static_cast<uint64_t>(brickLookupSize)) + "B, mipPool=" +
                   std::to_string(static_cast<uint64_t>(mipPoolSize)) + "B, tierRefTable=" +
-                  std::to_string(static_cast<uint64_t>(tierRefTableSize)) + "B)");
+                  std::to_string(static_cast<uint64_t>(tierRefTableSize)) + "B, occupancyGrid=" +
+                  std::to_string(static_cast<uint64_t>(occupancyGridSize)) + "B)");
 
     // Surface-Shell ESVO cache: derive the reachable shell of octree 0 from the
     // just-created full pool into BOTH CPU slots, then bootstrap both GPU slots.
@@ -1023,6 +1054,7 @@ void BodyOctreeSceneNode::DestroyOctreeBuffers() {
     }
     destroy(mipPoolBuffer_,       mipPoolMemory_);      // Inc1 M3
     destroy(tierRefTableBuffer_,  tierRefTableMemory_); // Tiered-ESVO Inc2 M3
+    destroy(occupancyGridBuffer_, occupancyGridMemory_); // Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13
 }
 
 void BodyOctreeSceneNode::DestroyBuffers() {

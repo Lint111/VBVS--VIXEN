@@ -126,6 +126,18 @@ public:
     void SetRecipePool(Vixen::SVO::ConcatenatedOctrees pool);
 
     /**
+     * @brief Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13 — upload the concatenated
+     * per-recipe coarse occupancy grid blob (binding 16) built by
+     * UberShaderSplice.h::SpliceProceduralRecipesIntoSource's out-param. Mirrors
+     * SetRecipePool's pre/post-Compile duality: called pre-Compile → included in the
+     * first CreateOctreeBuffers pass; called post-Compile → the buffer is recreated on
+     * the next Rematerialize (recipeDirty_ already forces one whenever the shader itself
+     * was re-spliced, which is the ONLY time this blob can change — no independent dirty
+     * flag needed).
+     */
+    void SetOccupancyGrid(std::vector<float> concatenatedGrid);
+
+    /**
      * @brief Surface-Shell ESVO cache — brick-layer dilation of the SURFACE set.
      *
      * Clamped to [1,3]; default 1 (minimal sound 26-neighbour invariant). Sizes
@@ -278,6 +290,11 @@ private:
     Vixen::SVO::ConcatenatedOctrees providedPool_;
     bool                             poolProvided_ = false;
 
+    // Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13: concatenated per-recipe occupancy
+    // grid, set by SetOccupancyGrid. CPU source of truth for CreateOctreeBuffers' upload —
+    // mirrors providedPool_'s "stashed here, consumed at (re)Compile" shape.
+    std::vector<float> occupancyGrid_;
+
     // Current instance list (set by SetInstances; uploaded in ExecuteImpl).
     std::vector<Vixen::SVO::BodyInstanceGpu> instances_;
     // int32_t (not uint32_t) to match the shader's reflected `int instanceCount` push-constant field
@@ -311,6 +328,12 @@ private:
     // (the common case — no tree in the scene has any tier-crossing leaves).
     VkBuffer       tierRefTableBuffer_   = VK_NULL_HANDLE;
     VkDeviceMemory tierRefTableMemory_   = VK_NULL_HANDLE;
+    // Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13: occupancy grid buffer (shader binding
+    // 16). Created with a 1-byte placeholder when occupancyGrid_ is empty (no procedural
+    // recipe with a derivable grid registered — the common case for a scene with no
+    // recipes, or one with only non-whitelisted-opcode recipes).
+    VkBuffer       occupancyGridBuffer_  = VK_NULL_HANDLE;
+    VkDeviceMemory occupancyGridMemory_  = VK_NULL_HANDLE;
 
     // --- Surface-Shell ESVO cache GPU buffers (double-buffered by DISTINCT object
     //     identity). Render reads slot [N&1] (last committed); the ShellRevalidate

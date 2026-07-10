@@ -432,14 +432,23 @@ void VulkanGraphApplication::BuildRenderGraph() {
         const std::string rawSource = compBuf.str();
 
         std::string splicedSource;
+        // M6 Task 13: collect the concatenated per-recipe occupancy-grid blob alongside the
+        // splice, then push it to BodyOctreeSceneNode's new SSBO (binding 16) — same "derived
+        // once at shader-build time, forces a recompile like everything else the splice
+        // touches" discipline as the bound-sphere/relaxation literals already baked in.
+        std::vector<float> occupancyGridBlob;
         try {
             splicedSource = Vixen::SVO::Recipe::SpliceProceduralRecipesIntoSource(
-                rawSource, proceduralRecipes_);
+                rawSource, proceduralRecipes_, &occupancyGridBlob);
         } catch (const std::exception& e) {
             if (mainLogger && mainLogger->IsEnabled()) {
                 mainLogger->Error(std::string("[BuildRenderGraph] procedural recipe splice failed: ") + e.what());
             }
             throw;
+        }
+        if (auto* bodyScene = static_cast<Vixen::RenderGraph::BodyOctreeSceneNode*>(
+                renderGraph->GetInstance(bodyOctreeSceneNode_))) {
+            bodyScene->SetOccupancyGrid(std::move(occupancyGridBlob));
         }
 
         builder.SetProgramName(programName)

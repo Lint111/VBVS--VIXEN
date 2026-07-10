@@ -105,6 +105,36 @@ bool traceProceduralBody(uint recipeId, vec3 center, vec3 params, vec3 ro, vec3 
 // traversal), so "instanceIterCount==0" means "rejected" uniformly across BOTH provider paths
 // with no new instrumentation surface.
 #ifdef VIXEN_UBER_RECIPE_SPLICED
+// sampleRecipeOccupancy — Task 13: reads the conservative min-|sd| for the coarse cell
+// containing world point p, given this recipe's grid metadata (already fetched by the
+// caller via getRecipeOccupancyGrid). Returns +infinity (never skip) when gridDim==0
+// (no grid derived for this recipe) or p falls outside the grid's own AABB (the march
+// point can legitimately step past the AABB near tFar; the bound-sphere is generally
+// larger than or equal to the AABB inscribed cube in the corners, so this is expected,
+// not an error) — both cases fall back to the ordinary per-step field evaluation.
+// kNoGridSentinel — a large-but-FINITE "never skip" value, deliberately NOT 1.0/0.0. GLSL's
+// float-divide-by-zero behavior is driver/compiler dependent (unlike C++'s IEEE754-guaranteed
+// double division): glslang/SPIR-V leaves it as an implementation-defined result, which risks
+// NaN rather than +inf on some targets. A propagated NaN through the step formula's max/min
+// below silently stalls the march (t never advances past a NaN comparison), producing the
+// exact "0 iterations to a real hit" symptom this sentinel exists to avoid. 1e30 is far
+// larger than any real bound-sphere diameter this engine ever uses, so min(1e30, x) always
+// picks the real per-step distance x, functionally identical to +infinity for this formula.
+const float kNoGridSentinel = 1.0e30;
+
+float sampleRecipeOccupancy(uint gridOffset, uint gridDim, vec3 gridAabbMin, float gridCellSize,
+                            vec3 p) {
+    if (gridDim == 0u || gridCellSize <= 0.0) return kNoGridSentinel;
+    vec3 local = (p - gridAabbMin) / gridCellSize;
+    if (any(lessThan(local, vec3(0.0))) || any(greaterThanEqual(local, vec3(float(gridDim)))))
+        return kNoGridSentinel;
+    ivec3 cell = clamp(ivec3(floor(local)), ivec3(0), ivec3(int(gridDim) - 1));
+    uint idx = gridOffset +
+        (uint(cell.z) * gridDim + uint(cell.y)) * gridDim + uint(cell.x);
+    if (idx >= occupancyGrid.length()) return kNoGridSentinel;  // bounds-check, mirrors mipPool/tierRefTable
+    return occupancyGrid[idx];
+}
+
 bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, float relaxation,
                          vec3 ro, vec3 rd, out vec3 hitNormal, out float hitT, out uint stepsUsed) {
     hitNormal = vec3(0.0, 1.0, 0.0);
@@ -120,6 +150,12 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
     float tNear = max(-b - sq, 0.0);
     float tFar  = -b + sq;
     if (tFar < 0.0) return false;
+
+    // Task 13: fetch this recipe's occupancy grid metadata once (constant per call, not
+    // per march step) — a gridDim==0 recipe pays only this one switch dispatch and then
+    // sampleRecipeOccupancy always returns +infinity (dead-cheap no-op fast path).
+    uint  gridOffset; uint gridDim; vec3 gridAabbMin; float gridCellSize;
+    getRecipeOccupancyGrid(recipeId, gridOffset, gridDim, gridAabbMin, gridCellSize);
 
     float t = tNear;
     const int   MAX_STEPS = 128;
@@ -139,7 +175,19 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
             hitT      = t;
             return true;
         }
-        t += d * relaxation;
+        // Task 13 empty-space skip: the coarse grid's stored value at p is a conservative
+        // LOWER bound on the true field magnitude anywhere in that cell (RecipeOccupancy.h's
+        // proof) — taking the step-length as max(evalRecipeField's own d, the grid bound)
+        // never advances further than the field itself already guarantees is safe (the grid
+        // bound can only make the step LARGER when it exceeds |d|, and only when |d| itself
+        // underestimated the true nearest-surface distance — the grid never claims a SMALLER
+        // safe distance than the true field, by construction). deltaScale of a coarse cell
+        // occasionally taking one extra fine step near its own boundary is an efficiency
+        // trade, not a correctness one; the EPS hit-test above still fires on |d|, not on
+        // the grid bound, so a real surface crossing can never be skipped over.
+        float gridBound = sampleRecipeOccupancy(gridOffset, gridDim, gridAabbMin, gridCellSize, p);
+        float step = max(d * relaxation, min(gridBound, d * relaxation * 8.0));
+        t += step;
         if (t > tFar) return false;
     }
     return false;

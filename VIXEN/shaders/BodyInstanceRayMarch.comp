@@ -113,6 +113,20 @@ struct TierRef {
 };
 layout(std430, binding = 15) readonly buffer TierRefTableBuffer { TierRef tierRefTable[]; };
 
+// ============================================================================
+// PROCEDURAL RECIPE OCCUPANCY GRID (Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13 — binding 16)
+// ============================================================================
+// One concatenated blob of dim^3 conservative min-|sd| floats per registered procedural
+// recipe that had a derivable grid (RecipeOccupancy.h::DeriveOccupancyGrid), laid out
+// x-fastest within each recipe's own [gridOffset, gridOffset+dim^3) slice — offsets/dims/
+// AABB per recipe come from the SPLICED getRecipeOccupancyGrid(...) switch (see the splice
+// marker below), not from any per-element metadata here. Bound as a 1-byte placeholder when
+// no recipe in the scene has a grid (occupancyGrid_ empty CPU-side); traceUberRecipeBody
+// only samples this when getRecipeOccupancyGrid reports gridDim>0 for the current recipeId,
+// and bounds-checks the computed flat index against occupancyGrid.length() before reading —
+// exactly like TierRefTableBuffer/MipPoolBuffer above.
+layout(std430, binding = 16) readonly buffer OccupancyGridBuffer { float occupancyGrid[]; };
+
 #define FORMAT_BINARY     0u
 #define FORMAT_STORED_SDF 1u
 
@@ -1216,14 +1230,36 @@ void main() {
                     continue;  // nearest possible hit is already farther than bestT
                 }
 
-                uint pSteps;
-                pHit = traceUberRecipeBody(inst.recipeId, boundCenter, boundRadius, relaxation,
-                                           rayOrigin, rayDir, pNormal, pT, pSteps);
-                // Task 12 evidence (c): a non-rejected instance always writes its real march
-                // step count (>=1, even on a miss that exhausted MAX_STEPS or exited tFar) —
-                // only the two continue-above paths leave this 0u, so "0 here" means "the
-                // early-reject fired," matching the ESVO branch's own convention exactly.
-                instanceIterCount[instIdx] = pSteps;
+                // Task 13 far early-out: once the WHOLE bound sphere's projected footprint
+                // at entryT has sub-resolved to under one screen pixel (same cone-spread
+                // formula the ESVO branch's screen-space LOD cutoff uses — raySizeCoef is
+                // 2*tan(halfFovPerPixel)), further marching can't resolve any more surface
+                // detail than a flat shade already gives. Deliberately coarse: color/normal
+                // fidelity at this distance is out of scope for Task 13 (plan's own note),
+                // this only saves the march's per-step cost once it can no longer matter.
+                // Gated on raySizeCoef>0.0 so LOD-disabled builds/tests (raySizeCoef==0,
+                // e.g. the M4/M5 offscreen harnesses) never take this path.
+                bool farSubPixel = false;
+                if (pc.raySizeCoef > 0.0) {
+                    float footprint = entryT * pc.raySizeCoef + pc.raySizeBias;
+                    farSubPixel = footprint >= 2.0 * boundRadius;
+                }
+
+                if (farSubPixel) {
+                    instanceIterCount[instIdx] = 1u;  // flat-shaded, not a full march — nonzero proves it wasn't rejected
+                    pHit    = true;
+                    pT      = entryT;
+                    pNormal = normalize(-rayDir);  // face the camera — cheapest plausible normal for a sub-pixel blob
+                } else {
+                    uint pSteps;
+                    pHit = traceUberRecipeBody(inst.recipeId, boundCenter, boundRadius, relaxation,
+                                               rayOrigin, rayDir, pNormal, pT, pSteps);
+                    // Task 12 evidence (c): a non-rejected instance always writes its real march
+                    // step count (>=1, even on a miss that exhausted MAX_STEPS or exited tFar) —
+                    // only the two continue-above paths leave this 0u, so "0 here" means "the
+                    // early-reject fired," matching the ESVO branch's own convention exactly.
+                    instanceIterCount[instIdx] = pSteps;
+                }
             }
 #endif
 

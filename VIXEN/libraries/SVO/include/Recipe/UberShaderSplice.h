@@ -20,6 +20,17 @@ namespace Vixen::SVO::Recipe {
 //      literals directly in the switch body (compile-time constants per case, per Task 11's
 //      "no new binding" scope line — registration already forces a recompile, so an SSBO here
 //      buys nothing in v1; that one-new-binding budget stays reserved for M6's occupancy grid)
+//   5. (M6 Task 13, only when outConcatenatedOccupancyGrid != nullptr) a generated
+//      getRecipeOccupancyGrid(uint recipeId, out uint gridOffset, out uint gridDim,
+//      out vec3 gridAabbMin, out float gridCellSize) switch — offset/dim/aabbMin/cellSize
+//      are baked as GLSL literals per case (same "no metadata SSBO" convention as bound
+//      sphere above); the actual dim^3 float values for EVERY registered recipe's grid are
+//      concatenated (Ids() ascending order, gridOffset = running float-element offset) into
+//      *outConcatenatedOccupancyGrid — the caller uploads that ONE blob to the new SSBO
+//      binding this milestone reserves. A recipe with occupancyGridDim==0 (ungridded —
+//      DeriveOccupancyGrid declined the program) gets gridDim=0u in its switch case and
+//      contributes nothing to the blob; the shader treats gridDim==0 as "no grid available,
+//      skip the occupancy fast-path for this instance" (never a hard error).
 //
 // The switch's default case returns a zero-radius bound-sphere miss and a zero field value —
 // unreachable in practice (a BodyInstance's recipeId is only ever set to an id the CPU side
@@ -31,8 +42,10 @@ namespace Vixen::SVO::Recipe {
 // function should fail loudly on rather than silently produce an un-recipe-aware shader.
 inline std::string SpliceProceduralRecipesIntoSource(
     const std::string& rawSource,
-    const RecipeRegistry& registry)
+    const RecipeRegistry& registry,
+    std::vector<float>* outConcatenatedOccupancyGrid = nullptr)
 {
+    if (outConcatenatedOccupancyGrid) outConcatenatedOccupancyGrid->clear();
     static const std::string kMarker = "// VIXEN_UBER_RECIPE_SPLICE_MARKER";
     const size_t markerPos = rawSource.find(kMarker);
     if (markerPos == std::string::npos) {
@@ -96,6 +109,37 @@ inline std::string SpliceProceduralRecipesIntoSource(
             << f(entry->stepRelaxation) << "; return;\n";
     }
     out << "    default: center = vec3(0.0); radius = 0.0; relaxation = 1.0; return;\n"
+           "  }\n"
+           "}\n";
+
+    // M6 Task 13: occupancy-grid lookup switch + concatenated blob (see header comment's
+    // point 5). Emitted unconditionally (even when outConcatenatedOccupancyGrid is null and
+    // no caller will ever upload the blob) so the shader's getRecipeOccupancyGrid symbol
+    // always exists once ANY recipe is registered — matching getRecipeBoundSphere's own
+    // "declared whenever the splice fires at all" discipline; a caller that doesn't pass the
+    // out-param simply never gets non-zero gridDim cases (every case falls through to the
+    // default gridDim=0u), which the shader already treats as "no grid, skip nothing extra."
+    out << "void getRecipeOccupancyGrid(uint recipeId, out uint gridOffset, out uint gridDim, "
+           "out vec3 gridAabbMin, out float gridCellSize) {\n"
+           "  switch (recipeId) {\n";
+    uint32_t runningOffset = 0;
+    for (uint32_t id : ids) {
+        const RecipeRegistry::RecipeEntry* entry = registry.Get(id);
+        if (!entry) continue;
+        if (entry->occupancyGridDim == 0 || entry->occupancyGridValues.empty()) continue;
+        out << "    case " << id << "u: gridOffset = " << runningOffset << "u; gridDim = "
+            << entry->occupancyGridDim << "u; gridAabbMin = vec3("
+            << f(entry->occupancyGridAabbMin.x) << ", " << f(entry->occupancyGridAabbMin.y) << ", "
+            << f(entry->occupancyGridAabbMin.z) << "); gridCellSize = "
+            << f(entry->occupancyGridCellSize) << "; return;\n";
+        if (outConcatenatedOccupancyGrid) {
+            outConcatenatedOccupancyGrid->insert(outConcatenatedOccupancyGrid->end(),
+                entry->occupancyGridValues.begin(), entry->occupancyGridValues.end());
+        }
+        runningOffset += static_cast<uint32_t>(entry->occupancyGridValues.size());
+    }
+    out << "    default: gridOffset = 0u; gridDim = 0u; gridAabbMin = vec3(0.0); "
+           "gridCellSize = 0.0; return;\n"
            "  }\n"
            "}\n";
 

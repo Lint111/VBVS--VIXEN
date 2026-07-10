@@ -38,6 +38,7 @@
 #include "Debug/RenderTargetReadback.h"       // View Contract Inc-2 Task 5: IRenderTarget -> PNG readback
 #include <sstream>                            // View Contract Inc-2 Task 5: VIXEN_HUD_SCRIPT/_CAPTURE_FRAMES parsing
 #include "Recipe/RecipeBounds.h"              // Lazy-Procedural-Delta-Baseline Inc0 M5: ApplyRecipeBoundsDefaults
+#include "Recipe/RecipeOccupancy.h"           // Lazy-Procedural-Delta-Baseline Inc0 M6: DeriveOccupancyGrid
 
 // Sparse-Mip ESVO LOD Inc1 M4c: the combined residency trigger (M4a resolvability + M4b
 // frustum, factored out as a pure/testable function — see ResidencyTrigger.h).
@@ -1024,6 +1025,27 @@ Vixen::SVO::RecipeRegistry::RegisterResult VulkanGraphApplication::RegisterProce
                          std::to_string(recipeId) + " boundRadius=" + std::to_string(entry.boundRadius) +
                          " (" + sourceName(boundsResult.boundSource) + ") stepRelaxation=" +
                          std::to_string(entry.stepRelaxation) + " (" + sourceName(boundsResult.relaxationSource) + ")");
+    }
+
+    // M6 Task 13 — derive the coarse occupancy grid from the SAME (now-finalized)
+    // boundCenter/boundRadius ApplyRecipeBoundsDefaults just established, whether that came
+    // from derivation or the engine-default fallback. A non-Lipschitz-whitelisted program
+    // (IsLipschitzSafeForOccupancyGrid declines) leaves occupancyGridDim==0 — the splice's
+    // getRecipeOccupancyGrid switch then emits a gridDim=0u case for this recipe and the
+    // shader skips the occupancy fast-path for it, exactly as if this call never ran.
+    auto occGrid = Vixen::SVO::Recipe::DeriveOccupancyGrid(
+        entry.bytecode.data(), static_cast<uint32_t>(entry.bytecode.size()),
+        entry.boundCenter, entry.boundRadius);
+    if (occGrid.ok) {
+        entry.occupancyGridValues    = std::move(occGrid.values);
+        entry.occupancyGridDim       = occGrid.dim;
+        entry.occupancyGridAabbMin   = occGrid.aabbMin;
+        entry.occupancyGridCellSize  = occGrid.cellSize;
+    }
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info("[VulkanGraphApplication::RegisterProceduralRecipe] recipeId=" +
+                         std::to_string(recipeId) + " occupancyGrid=" +
+                         (occGrid.ok ? (std::to_string(occGrid.dim) + "^3") : std::string("none (non-whitelisted opcode)")));
     }
 
     return proceduralRecipes_.Register(recipeId, std::move(entry));

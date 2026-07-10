@@ -73,6 +73,19 @@ public:
         glm::vec3 boundCenter    = glm::vec3(0.0f);  // world-space bound-sphere center
         float     boundRadius    = 0.f;              // 0 = engine default (kResidencyBoundingRadius-style)
         float     stepRelaxation = 0.f;               // 0 = engine default; else must be in (0,1]
+
+        // Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13 — coarse occupancy grid metadata.
+        // Filled in by Recipe::DeriveOccupancyGrid (RecipeOccupancy.h) at the SAME
+        // registration call site as boundCenter/boundRadius above (RegisterProceduralRecipe).
+        // occupancyGridValues stays empty when the program uses a non-Lipschitz-whitelisted
+        // opcode (DeriveOccupancyGrid's ok=false) — the shader's splice-generated lookup
+        // switch treats a zero-dim entry as "no grid, no empty-space skip for this recipe,"
+        // never a hard error (an ungridded recipe still renders correctly, just without the
+        // Task 13 skip optimization).
+        std::vector<float> occupancyGridValues;                 // dim^3 conservative min-|sd|, x-fastest
+        uint32_t            occupancyGridDim       = 0;         // 0 = no grid derived
+        glm::vec3           occupancyGridAabbMin   = glm::vec3(0.0f);
+        float               occupancyGridCellSize  = 0.f;
     };
 
     enum class RegisterResult {

@@ -730,6 +730,21 @@ set_target_properties(test_recipe_bounds PROPERTIES FOLDER "Tests/SVO Tests")
 gtest_discover_tests(test_recipe_bounds)
 
 # ===========================================================================
+# Recipe Occupancy Grid Tests (Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13 —
+# dense-eval + conservative-downsample coarse occupancy grid, random-probe
+# conservativeness gate: stored value never exceeds the true |sd| anywhere in
+# its cell)
+# ===========================================================================
+add_executable(test_recipe_occupancy test_recipe_occupancy.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_recipe_occupancy PRIVATE GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_recipe_occupancy PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_recipe_occupancy PROPERTIES FOLDER "Tests/SVO Tests")
+gtest_discover_tests(test_recipe_occupancy)
+
+# ===========================================================================
 # Recipe Manifest Tests (I2.3 — RecipeManifest model + validation)
 # ===========================================================================
 add_executable(test_recipe_manifest test_recipe_manifest.cpp)
