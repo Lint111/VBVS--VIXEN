@@ -10,6 +10,7 @@
 // LaineKarrasOctree -> ISVOStructure), whose std::hash<> specialisations must be visible before
 // RmlUi's bundled robin_hood.h wraps them.
 #include "VulkanGraphApplication.h"
+#include <algorithm>  // std::clamp for the VIXEN_PROCEDURAL_UBER_DEMO N clamp
 #include <cmath>    // std::tan for the LOD ray-cone (raySizeCoef) computation
 #include <cstdlib>  // std::strtof for the VIXEN_RENDER_SCALE env parse (M4)
 #include <fstream>  // Inc0 M5: read BodyInstanceRayMarch.comp's raw source for the recipe splice
@@ -848,28 +849,32 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 mainLogger->Error("[BuildRenderGraph] VIXEN_TIER_CROSSING_DEMO: no leaf found in parent octree — demo scene not built");
             }
         } else if (const char* uberDemoEnv = std::getenv("VIXEN_PROCEDURAL_UBER_DEMO")) {
-            // VIXEN_PROCEDURAL_UBER_DEMO — Lazy-Procedural-Delta-Baseline Inc0 M5 Task 12
-            // zero-bake live gate. Registers N registry-driven recipes (recipeId >= 2, mixing
-            // CSG combines + Round/Onion modifiers — beyond the 2 legacy analytic recipes) and
-            // positions them OVERLAPPING along the default camera's Z sight line (bodies at
-            // increasing world-Z, same X/Y so each ray that hits the nearer body's bound sphere
-            // would ALSO have hit a farther one's, giving the entryT>bestT early-reject in
-            // main() something real to reject). Value selects the recipe count: unset or "3"
-            // (or any non-numeric value) -> N=3; "10" -> N=10 — the scope-refinement's two
-            // measurement points (compile stats + per-frame GPU eval time from the Task-6b perf
-            // CSV) are captured by running this env twice, once per value, on the Windows
-            // real-GPU handoff. NO octree bake occurs for these bodies (RegisterProceduralRecipe
-            // never touches BakeSdfWorld/BuildSdfBodyOctree) — the (a) proof for the live gate.
+            // VIXEN_PROCEDURAL_UBER_DEMO — Lazy-Procedural-Delta-Baseline Inc0 M5 Task 12 zero-bake
+            // live gate, generalized (perf-scaling measurement handoff) to an ARBITRARY recipe
+            // count N. Registers N registry-driven recipes (recipeId >= 2) and positions them
+            // OVERLAPPING along the default camera's Z sight line (bodies at increasing world-Z,
+            // same X/Y so each ray that hits the nearer body's bound sphere would ALSO have hit a
+            // farther one's, giving the entryT>bestT early-reject in main() something real to
+            // reject). Value selects the recipe count via std::atoi, clamped to [1, kMaxUberN] —
+            // the clamp exists only to keep a garbage/huge env value from producing an unbounded
+            // allocation/splice, not because the switch itself is known to have a ceiling at that
+            // size (finding out where the switch DOES break is the point of this measurement).
+            // NO octree bake occurs for these bodies (RegisterProceduralRecipe never touches
+            // BakeSdfWorld/BuildSdfBodyOctree) — the (a) proof for the live gate.
+            constexpr int kMaxUberN = 2000;
             const int requestedN = std::atoi(uberDemoEnv);
-            const int n = (requestedN == 10) ? 10 : 3;
+            const int n = std::clamp(requestedN <= 0 ? 3 : requestedN, 1, kMaxUberN);
             mainLogger->Info("[BuildRenderGraph] VIXEN_PROCEDURAL_UBER_DEMO: registering " +
                              std::to_string(n) + " zero-bake procedural recipes");
 
-            // Recipe programs: id 2 = plain sphere (baseline, matches legacy visually), id 3 =
-            // box+sphere SmoothUnion, id 4 = sphere+Round-inflated-box SmoothSubtract, then
-            // ids 5..(n+1) cycle the same 3 shapes with varied params so N=10 isn't ten
-            // identical copies (a degenerate corpus would defeat the "does dispatch scale"
-            // measurement this demo exists for).
+            // Recipe programs must grow STRUCTURALLY distinct with N (not N clones of the same
+            // opcodes with different numbers) so the switch's real cost -- shader size, register
+            // pressure, warp divergence, compile time -- grows honestly. Programs 0/1/2 (index
+            // i%3==0/1/2) reproduce the ORIGINAL 3 legacy programs byte-for-byte (plain sphere;
+            // box+sphere SmoothUnion; sphere+Round-box SmoothSubtract) so N=3 and N=10 stay
+            // comparable to pre-generalization measurements. Beyond that, the generator cycles a
+            // {leaf prim} x {CSG op} x {modifier} product so each subsequent id gets a genuinely
+            // different opcode program.
             using Vixen::SVO::Recipe::SdfOpCode;
             using Vixen::SVO::Recipe::SdfInstruction;
             auto sphereInstr = [](glm::vec3 c, float r) {
@@ -882,13 +887,27 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 in.data[0] = he.x; in.data[1] = he.y; in.data[2] = he.z;
                 return in;
             };
+            auto torusInstr = [](float majorR, float minorR) {
+                SdfInstruction in{}; in.opCode = (uint8_t)SdfOpCode::Torus;
+                in.data[0] = majorR; in.data[1] = minorR;
+                return in;
+            };
             auto roundInstr = [](float r) {
                 SdfInstruction in{}; in.opCode = (uint8_t)SdfOpCode::Round; in.data[0] = r;
+                return in;
+            };
+            auto onionInstr = [](float thickness) {
+                SdfInstruction in{}; in.opCode = (uint8_t)SdfOpCode::Onion; in.data[0] = thickness;
                 return in;
             };
             auto combineInstr = [](SdfOpCode op, float k) {
                 SdfInstruction in{}; in.opCode = (uint8_t)op; in.data[2] = k;
                 return in;
+            };
+            // CSG ops beyond the legacy 2 (SmoothUnion/SmoothSubtract), cycled for i>=3.
+            const SdfOpCode kExtraCsgOps[] = {
+                SdfOpCode::Union, SdfOpCode::Subtract, SdfOpCode::Intersect,
+                SdfOpCode::SmoothIntersect, SdfOpCode::Xor, SdfOpCode::SmoothMax,
             };
 
             std::vector<Vixen::SVO::BodyInstanceGpu> uberBodies;
@@ -907,35 +926,61 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
                 std::vector<SdfInstruction> prog;
                 const int shape = i % 3;
-                if (shape == 0) {
-                    prog = { sphereInstr(center, 8.0f) };
-                } else if (shape == 1) {
-                    prog = { boxInstr(glm::vec3(6.0f, 6.0f, 6.0f)),
-                             sphereInstr(center + glm::vec3(4.0f, 0.0f, 0.0f), 5.0f),
-                             combineInstr(SdfOpCode::SmoothUnion, 1.5f) };
-                    // Box's local origin IS the sample origin (no position offset in its own
-                    // opcode) — this program samples in body-local space, so its own bound
-                    // derivation is centered near local origin; recentring onto `center` is
-                    // handled by the whitelist-derived boundCenter below, not by this program.
+                if (i < 3) {
+                    // The original 3 legacy programs, byte-for-byte, so N=3/N=10 measurement
+                    // points stay comparable to pre-generalization runs.
+                    if (shape == 0) {
+                        prog = { sphereInstr(center, 8.0f) };
+                    } else if (shape == 1) {
+                        prog = { boxInstr(glm::vec3(6.0f, 6.0f, 6.0f)),
+                                 sphereInstr(center + glm::vec3(4.0f, 0.0f, 0.0f), 5.0f),
+                                 combineInstr(SdfOpCode::SmoothUnion, 1.5f) };
+                    } else {
+                        prog = { sphereInstr(glm::vec3(0.0f), 9.0f),
+                                 boxInstr(glm::vec3(5.0f, 5.0f, 5.0f)),
+                                 roundInstr(1.0f),
+                                 combineInstr(SdfOpCode::SmoothSubtract, 1.0f) };
+                    }
                 } else {
-                    prog = { sphereInstr(glm::vec3(0.0f), 9.0f),
-                             boxInstr(glm::vec3(5.0f, 5.0f, 5.0f)),
-                             roundInstr(1.0f),
-                             combineInstr(SdfOpCode::SmoothSubtract, 1.0f) };
+                    // Structurally-varied extension: cycles {sphere/box/torus} x {6 extra CSG
+                    // ops} x {none/Round/Onion modifier}, with varied radii/thicknesses so no
+                    // two programs beyond the legacy 3 are opcode-for-opcode identical.
+                    const int leaf = (i / 3) % 3;             // 0=sphere-pair,1=box-pair,2=torus-pair
+                    const SdfOpCode csgOp = kExtraCsgOps[i % 6];
+                    const int modSel = (i / 6) % 3;           // 0=none,1=Round,2=Onion
+                    const float k = 0.5f + 0.1f * static_cast<float>(i % 7);
+                    const float r1 = 6.0f + 0.05f * static_cast<float>(i % 40);
+                    const float r2 = 3.0f + 0.03f * static_cast<float>(i % 30);
+
+                    if (leaf == 0) {
+                        prog = { sphereInstr(glm::vec3(0.0f), r1),
+                                 sphereInstr(glm::vec3(r2 * 0.4f, 0.0f, 0.0f), r2),
+                                 combineInstr(csgOp, k) };
+                    } else if (leaf == 1) {
+                        prog = { boxInstr(glm::vec3(r1, r1 * 0.8f, r1 * 0.6f)),
+                                 sphereInstr(glm::vec3(r2 * 0.3f, 0.0f, 0.0f), r2),
+                                 combineInstr(csgOp, k) };
+                    } else {
+                        prog = { torusInstr(r1, r2 * 0.4f),
+                                 boxInstr(glm::vec3(r2, r2, r2)),
+                                 combineInstr(csgOp, k) };
+                    }
+                    if (modSel == 1) {
+                        prog.push_back(roundInstr(0.3f + 0.02f * static_cast<float>(i % 10)));
+                    } else if (modSel == 2) {
+                        prog.push_back(onionInstr(0.2f + 0.02f * static_cast<float>(i % 10)));
+                    }
                 }
 
                 Vixen::SVO::RecipeRegistry::RecipeEntry entry{};
                 entry.bytecode = std::move(prog);
-                // shape==1's program samples box-local (no position offset) but the sphere
-                // operand and the intended screen position both use `center` — for this v1
-                // demo, authoring boundCenter/boundRadius explicitly for shapes 1/2 sidesteps
-                // relying on DeriveConservativeBounds's local-origin-relative result (correct
-                // for shape==0, whose Sphere opcode DOES carry an absolute-position center)
-                // matching a body actually placed via BodyInstanceGpu.worldPos-independent
-                // shader-local coordinates — recipeParams/worldPos are NOT read for
-                // recipeId>=2 (only providerKind/recipeId select the uber path; the field
-                // function samples WORLD p directly, unlike the legacy analytic path).
-                if (shape != 0) {
+                // Every program beyond shape==0 (i<3) samples in body-local / non-absolute space
+                // (Box/Torus carry no position offset of their own) -- for this demo, authoring
+                // boundCenter/boundRadius explicitly sidesteps relying on
+                // DeriveConservativeBounds's local-origin-relative result matching a body's
+                // actual world placement (recipeParams/worldPos are NOT read for recipeId>=2;
+                // the field function samples WORLD p directly, unlike the legacy analytic path).
+                if (!(i < 3 && shape == 0)) {
                     entry.boundCenter = center;
                     entry.boundRadius = 12.0f;
                 }
