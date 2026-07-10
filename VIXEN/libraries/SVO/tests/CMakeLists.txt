@@ -756,6 +756,25 @@ if(TARGET TBB::tbb)
 endif()
 gtest_discover_tests(test_recipe_baker)
 
+# ===========================================================================
+# Generation-Cost Benchmark (Lazy-Procedural-Delta-Baseline Inc0 M3, Task 6)
+# ===========================================================================
+add_executable(test_generation_cost_benchmark test_generation_cost_benchmark.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_generation_cost_benchmark PRIVATE
+        GTest::gtest_main SVO GaiaVoxelWorld VoxelComponents VoxelData)
+else()
+    target_link_libraries(test_generation_cost_benchmark PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_generation_cost_benchmark PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_generation_cost_benchmark POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_generation_cost_benchmark>
+        COMMENT "Copying TBB DLL for test_generation_cost_benchmark")
+endif()
+gtest_discover_tests(test_generation_cost_benchmark)
+
 add_executable(test_residency_default test_residency_default.cpp)
 if(TARGET SVO)
     target_link_libraries(test_residency_default PRIVATE
