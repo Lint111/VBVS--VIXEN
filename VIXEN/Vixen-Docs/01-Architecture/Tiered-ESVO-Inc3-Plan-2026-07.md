@@ -75,6 +75,15 @@ And one structural gap:
   (rewrites the traversal wrapper again) · a T2→T1→T0 3-tree chain renders correctly live.
 - **M4 — Earth-scale surface-to-orbit zoom (the epic gate)** (Tasks 6-7) · live-run gate ·
   continuous seamless zoom across two real magnified crossings + docs closure.
+  **STATUS: mechanism/CPU-complete, but epic gate NOT met — M4 validator found the crossing does
+  not magnify correctly (~1.24× not 4× at childScale=0.25) and M2's 3.93× record is not
+  reproducible on a clean build. See M4 Progress Log + validator correction. → M5.**
+- **M5 — Magnification geometry fix (added 2026-07-10, user-approved)** (Tasks 8-9) · diagnose →
+  fix → prediction-first live proof · root-cause why the crossing shrinks the child ~1.24× not the
+  required 4× at childScale=0.25 (concentric-shrink defect, one-sided wedge), reconcile the M2
+  3.93× record, fix at the true locus, and prove a CONCENTRIC magnification at the predicted ratio
+  across multiple childScale values (un-fakeable by a single occlusion-cropped measurement). Then
+  the M4 Earth-scale zoom gate can finally run.
 
 ## M1 — Scale-correct crossing math
 
@@ -228,6 +237,49 @@ across two real scale-magnified tier crossings with no visible seam — the epic
   the ForTest hooks; `EngageOrbit` clamps orbitDistance to [0.1,120] — an Earth-scale zoom path
   WILL exceed this; widen the clamp deliberately (own commit, justified) rather than working
   around it.
+
+## M5 — Magnification geometry fix (user-approved 2026-07-10)
+
+Context: M1-M3 shipped the scale-correct math + chained hop loop (Opus-validated). M4's Earth-scale
+scaffold is CPU-complete + validated, but the M4 Opus validator proved on clean rebuilds that the
+crossing does NOT magnify the child correctly: at childScale=0.25 the child shrinks only ~1.24×
+(needs 4×), the silhouette saturates below childScale≈0.8, and the shrink is a one-sided "pac-man
+wedge" cutting in from the lower-left rather than a CONCENTRIC shrink toward the cell center that
+the `1.5 ± 0.5*childScale` remap intends. childScale IS plumbed to the shader (monotonic area
+response). M2's "3.93× two independent ways" verdict does NOT reproduce on a clean build. The
+epic's whole deliverable (a genuine scale-magnified surface-to-orbit zoom) depends on fixing this.
+
+### Task 8 — Diagnose the magnification defect (root-cause BEFORE fixing)
+- [ ] Root-cause, from the ACTUAL shipped math, why the crossing produces a ~1.24× one-sided-wedge
+  shrink instead of a concentric 4× shrink at childScale=0.25. Prime suspects (validator-named, NOT
+  confirmed — verify, don't transplant): `remapRayIntoChildFrame`, the `childOriginLocal` placement,
+  and the crossing/LOD gate. Determine whether the child geometry is being placed/scaled wrong, the
+  ray remap is wrong, or the visible region is occlusion-cropped (the wedge suggests the child may
+  be correctly small but PARTIALLY OCCLUDED by the parent leaf, so only a wedge shows — if so the
+  "defect" may be a demo/attribution problem, not a math bug: DISTINGUISH these two explicitly, they
+  have opposite fixes). Produce a written root-cause with evidence before touching code.
+- [ ] Reconcile the M2 3.93× record as part of the diagnosis: did M2 measure a real concentric
+  magnification that later regressed, measure a DIFFERENT quantity (e.g. the wedge extent, which can
+  shrink ~4× in one dimension while area shrinks ~1.24×), or was the M2 fixture different? State
+  definitively which, with evidence — two Opus validators disagreed and this must be settled, not
+  left ambiguous.
+
+### Task 9 — Fix + un-fakeable prediction-first live proof
+- [ ] Fix at the true locus found in Task 8 (shader + `GpuTraversalMirror.h` lockstep if the fix
+  touches traversal math; CPU parity extended if so). If Task 8 finds it's an occlusion/attribution
+  issue not a math bug, the "fix" is to the demo (unoccluded viewing angle / per-tier tint) — either
+  way the SUCCESS CRITERION is the same and un-fakeable:
+- [ ] Prediction-first live gate: hand-compute the expected CONCENTRIC child footprint (area AND
+  both-axis extent, centered) at childScale ∈ {1.0, 0.5, 0.25, 0.125}, then pixel-verify the
+  measured footprint shrinks CONCENTRICALLY at the predicted ratio at EACH scale — not a single
+  measurement (which an occlusion wedge can fake), but a monotonic concentric-shrink series matching
+  the `0.5*childScale` law on BOTH axes about the cell center. Zero new VUIDs; unregressed unity +
+  chain + default scenes.
+
+**M5 gate:** the crossing magnifies the child CONCENTRICALLY at the predicted ratio across multiple
+childScale values on real hardware (un-fakeable by an occlusion-cropped single read), the M2 record
+is definitively reconciled, and the fix regresses nothing. Only then can M4's Earth-scale zoom gate
+genuinely run.
 
 ## Progress Log
 
