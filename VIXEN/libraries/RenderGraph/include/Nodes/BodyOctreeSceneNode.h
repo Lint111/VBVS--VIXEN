@@ -147,6 +147,11 @@ public:
     }
     [[nodiscard]] uint32_t ShellDilation() const { return shellDilation_; }
 
+    /// Lazy-Procedural-Delta-Baseline Inc0 M2 Task 4: current residency state (CPU-observable,
+    /// no GPU needed) — reflects the capability-derived default once EnsureOctreesBuilt has run,
+    /// or whatever RequestBrickResidency last explicitly set.
+    [[nodiscard]] bool IsResidencyRequested() const { return residencyRequested_; }
+
     /**
      * @brief Request (or release) brick-pool residency (Sparse-Mip ESVO LOD Inc1 M2).
      *
@@ -184,6 +189,7 @@ private:
     void Rematerialize();          // P2.3: re-bake octree 0 + recreate octree buffers (behind vkDeviceWaitIdle)
     void UploadBrickPool();        // Inc1 M2: BatchedUploader-driven brick population (ExecuteImpl-only)
     void PollBrickUploadCompletion();  // Inc1 M4c: non-blocking completion check (replaces WaitAllUploads)
+    void DeriveResidencyDefaultIfUnset();  // Lazy-Procedural-Delta-Baseline Inc0 M2 Task 4
 
     // --- Surface-Shell ESVO cache ---
     // Derive the reachable shell of octree 0 from concatenated_ into BOTH CPU
@@ -225,6 +231,20 @@ private:
     bool                                    residencyRequested_  = true;
     bool                                    brickPoolUploaded_   = false;
     bool                                    brickResidencyDirty_ = false;
+
+    // Lazy-Procedural-Delta-Baseline Inc0 M2 Task 4: latch marking that residencyRequested_
+    // was set EXPLICITLY (a real RequestBrickResidency call), as opposed to still holding its
+    // constructor default. Set by RequestBrickResidency; cleared by SetRecipePool/SetBakeRecipe
+    // (a genuinely new pool is staged — any previous explicit grant no longer applies to it).
+    // DeriveResidencyDefaultIfUnset (called once, on the node's first-ever CompileImpl) skips
+    // the capability derivation entirely whenever this is set, so a pre-Compile
+    // RequestBrickResidency(false)/(true) call (VIXEN_TIER_CROSSING_NONRESIDENT,
+    // VIXEN_TIER_ZOOM_DEMO, VIXEN_TIER_CROSSING_DEMO's eager pin) always wins. Deliberately
+    // NOT re-evaluated on Rematerialize (SetBakeRecipe/SetRecipePool post-Compile) — Rematerialize
+    // never touches residencyRequested_ itself, so a live grant from the app's per-frame
+    // residency trigger (UpdateBodySceneResidency) survives an editor-toggle rebuild with the
+    // camera unmoved, instead of being silently reset to lazy.
+    bool                                    residencyExplicitlyRequested_ = false;
 
     // Inc1 M4c: async completion-tracking for the brick-pool upload. M2's UploadBrickPool
     // originally blocked on device->WaitAllUploads() every toggle — fine for a "rare,

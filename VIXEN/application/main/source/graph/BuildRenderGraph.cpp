@@ -758,6 +758,18 @@ void VulkanGraphApplication::BuildRenderGraph() {
                         bodyScene->RequestBrickResidency(false);
                         mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_CROSSING_NONRESIDENT/VIXEN_TIER_ZOOM_DEMO: "
                                           "RequestBrickResidency(false) -- both octrees mip-only at start");
+                    } else {
+                        // Lazy-Procedural-Delta-Baseline Inc0 M2 Task 4 demo-knob audit: both
+                        // trees here are mip-baked (BakeAndAttachMipPool above), so this pool
+                        // is mip-capable and M2's capability-derived default would flip it
+                        // LAZY at boot -- a real behavior change for this demo, which existed
+                        // to prove the tier-crossing MECHANISM (not residency laziness) and has
+                        // always booted with real bricks resident. Pin eager explicitly so
+                        // plain VIXEN_TIER_CROSSING_DEMO (no _NONRESIDENT/_ZOOM_DEMO) keeps its
+                        // pre-M2 boot behavior byte-for-byte.
+                        bodyScene->RequestBrickResidency(true);
+                        mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_CROSSING_DEMO: "
+                                          "RequestBrickResidency(true) -- pinned eager (M2 demo-knob audit)");
                     }
 
                     // ONE instance, pointing at octree 0 (the parent). Placed at the

@@ -756,6 +756,22 @@ if(TARGET TBB::tbb)
 endif()
 gtest_discover_tests(test_recipe_baker)
 
+add_executable(test_residency_default test_residency_default.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_residency_default PRIVATE
+        GTest::gtest_main SVO GaiaVoxelWorld VoxelComponents VoxelData)
+else()
+    target_link_libraries(test_residency_default PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_residency_default PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_residency_default POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_residency_default>
+        COMMENT "Copying TBB DLL for test_residency_default")
+endif()
+gtest_discover_tests(test_residency_default)
+
 # ===========================================================================
 # Sampler Tests
 # ===========================================================================
