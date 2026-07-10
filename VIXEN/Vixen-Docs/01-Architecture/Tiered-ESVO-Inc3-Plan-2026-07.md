@@ -343,3 +343,43 @@ across two real scale-magnified tier crossings with no visible seam — the epic
   5/5, all green (unaffected by the live finding). VUID 10× `08114` zero-new across every
   tested scene this session (default 3-body scene, unity single-crossing, unity chain, all
   non-unity scale variants, Earth-scale demo). Default farBit==0 hot path unregressed.
+
+- **M4 Opus validator CORRECTION (2026-07-10) — the "SDF-march miss" blocker above is WRONG; it
+  was a STALE-EXE artifact. The real open item is MAGNIFICATION GEOMETRY, not visibility.**
+  The validator rebuilt `b3d990a6` clean (fresh detached worktree, own build dir) AND rebuilt
+  HEAD, captured childScale ∈ {1.0, 0.25, 0.1} on each, and pixel-decoded: the child sphere
+  RENDERS at every scale on both commits (isolated central-sphere ~4110 px at 0.25, specular
+  highlight present) — NOT background/miss. HEAD and clean-`b3d990a6` PNGs are BYTE-IDENTICAL at
+  every scale (ImageChops maxdiff=0). So M1-M4 introduced ZERO visual regression (extends M1's
+  "max abs diff 0 at unity" to 0.25/0.1). The M4 implementer's failing capture
+  (`temp/m2_capture/hud_capture_10.png`, mtime 17:08) PREDATES the current exe (20:57) — it was
+  produced by an earlier build; the stale-exe footgun the implementer flagged for others bit
+  the implementer itself. There is NO SDF-march visibility bug; extending the mirror to the SDF
+  march is NOT the blocker.
+  **THE REAL FINDING (previously masked): the crossing does NOT magnify the child correctly.**
+  At childScale=0.25 the child shrinks only ~1.24× linearly (NOT the predicted/required 4×);
+  the silhouette SATURATES at 91px below childScale≈0.8; and the shrink appears as a one-sided
+  "pac-man wedge" of dark cutting into the lower-left, NOT a concentric shrink toward the cell
+  center as the `1.5 ± 0.5*childScale` remap intends. childScale IS reaching the shader
+  (monotonic area response confirms it's plumbed) — but the magnification geometry is wrong.
+  Suspected locus: `remapRayIntoChildFrame` / the `childOriginLocal` placement / the gate — NOT
+  `handleLeafHitInstancedSdf`.
+  **CONSEQUENCE for M2's record: M2's "measured 3.93× two independent ways" is NOT reproducible**
+  under identical construction on a clean build (the validator swept {1.0,0.8,0.7,0.5,0.3,0.25,0.1}
+  and saw only the mild monotonic shrink above, never a 4× sphere shrink). Two Opus validators now
+  disagree on the same commit at the same childScale — the M2 verdict appears to have measured a
+  different quantity (or a capture-specific/occlusion-cropped band) rather than a true concentric
+  4× magnification. This is a SCOPE/TRUST decision surfaced to the user, not silently resolved.
+  **M4 verified-good work (validator-confirmed, independent re-run):** CPU suites parity 6/6
+  (incl. `EarthScaleChainedCrossingKInvariantPlacement`), construction 5/5, tier_ref 5/5,
+  tier_ref_table 5/5; Earth-scale numerics internally consistent (1 wu=265,458 m, T1=12.44 km,
+  T2=12.15 m, voxel 0.76 m, ratio 2^-20); octant-sign reasoning sound; k-invariant tEntryWorld
+  placement correct (hop-1 entry inside [1,2] at 2^-10); VUID 10× `08114` zero-new; farBit==0 +
+  demos unregressed; clamp `4267dbbc` its own justified commit; tree clean at `1cf399a6`, no
+  main-checkout contamination. The mechanism, math, hop-loop, placement, and visibility are all
+  sound — only the magnification geometry (a pre-existing defect the epic never actually proved)
+  stands between here and the epic gate.
+  **Verdict: APPROVED_WITH_FOLLOWUP.** Epic gate NOT closed. Corrected next step (supersedes the
+  implementer's SDF-mirror recommendation): root-cause the magnification geometry in
+  `remapRayIntoChildFrame`/`childOriginLocal`/gate; reconcile the M2 3.93× record; then re-run the
+  Earth-scale zoom gate (build current, 1e-6 clamp + orbitCenter=(64,64,64) in place).
