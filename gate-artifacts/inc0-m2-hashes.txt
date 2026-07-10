@@ -1,0 +1,21 @@
+Sampled Lighting Inc0 M2 — GGX BRDF swap live gate (offscreen editor capture, vixen_editor.exe)
+
+Scene: vixen_editor.exe default (no document loaded) — a single lit cube on a dark background,
+compute_render_target readback via VIXEN_EDITOR_CAPTURE_FRAMES=5 (temp/run_m2_capture.bat).
+
+BEFORE = shaders/Lighting.glsl at commit 0711e991 (Inc0 M1 tip, Blinn-Phong specular).
+AFTER  = shaders/Lighting.glsl at commit 0c66d315 (Inc0 M2, Lambert + GGX via Brdf.glsl).
+Only shaders/Lighting.glsl differed between the two captures (runtime shader compile — no
+binary rebuild needed); both captures used the identical vixen_editor.exe binary.
+
+sha256(inc0-m2-before.png) = cbef1378f7dbb3a2c641fb858bcf0c85c1f63b60725ce78cb76bcff68f1e939
+sha256(inc0-m2-after.png)  = fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1
+
+Diff summary (500x500 RGB, independent numpy check): 61 pixels changed, all within the cube's
+screen-space bounding box (x:241-265, y:234-240) — the specular highlight region. Max per-channel
+diff 59/255; before-luminance max 139.33 -> after-luminance max 87.09 at the highlight peak (GGX's
+tighter, physically-normalized lobe vs Blinn-Phong's wider falloff at this surface's roughness).
+Both images non-black, sane luminance range (min ~3.4, no NaN/degenerate values).
+
+M3's byte-identity gate should compare its own capture's SHA256 against inc0-m2-after.png's hash
+above (the light-data wiring milestone must not change the render when defaults match Inc0 M2).
