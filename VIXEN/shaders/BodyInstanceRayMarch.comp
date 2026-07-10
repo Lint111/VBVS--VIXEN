@@ -146,6 +146,19 @@ layout(std430, binding = 17) buffer HitRecordBuffer {
     HitRecord hitRecords[];
 };
 
+// ============================================================================
+// SHADOW CONFIG (Sampled Lighting Inc1 M4 — binding 18)
+// ============================================================================
+// Single ShadowConfig record (kernel-codegen-generated struct, std430 — see
+// Generated/ShadowConfig.glsl / ShadowConfig.g.h). Bound as an SSBO, mirroring
+// LightingConfigSSBO's own std430-not-std140 rationale (the framework emits
+// std430 only). Uploaded per-frame from a ring buffer (ShadowConfigNode).
+#include "Generated/ShadowConfig.glsl"
+
+layout(std430, binding = 18) readonly buffer ShadowConfigSSBO {
+    ShadowConfig shadowConfig;
+};
+
 #define FORMAT_BINARY     0u
 #define FORMAT_STORED_SDF 1u
 
@@ -1139,6 +1152,55 @@ bool traverseOctreeInstanced(vec3 rayOrigin, vec3 rayDir,
 #include "TraceWorld.glsl"   // Sampled Lighting Inc1 M1: single traversal seam (pure extraction)
 
 // ============================================================================
+// DIRECT LIGHTING WITH SHADOW RAYS (Sampled Lighting Inc1 M4)
+// ============================================================================
+// Extends Lighting.glsl's data-driven computeLighting(color,normal,rayDir,
+// roughness,LightingConfig) overload with a shadow-ray occlusion test per
+// light, gated by shadowConfig.enabled. Lives HERE (not Lighting.glsl) because
+// it needs TraceWorldShadow (TraceWorld.glsl, included just above) in scope —
+// Lighting.glsl is included much earlier (before the traversal machinery
+// exists) and stays a pure shading-math file with no traversal dependency.
+//
+// Math is IDENTICAL to Lighting.glsl's data-driven overload (ambient term +
+// per-light evalBRDF*radiance*NdotL, matching computeLighting exactly) with
+// ONE addition: when shadowConfig.enabled, each light's contribution is
+// multiplied by 0.0 (fully occluded) or 1.0 (unoccluded) based on a
+// TraceWorldShadow cast toward that light. When shadowConfig.enabled==0 this
+// function reduces to EXACTLY Lighting.glsl's unshadowed sum — the M4 byte-
+// identity gate (ShadowConfig.enabled=0 reproduces the M3 baseline) depends
+// on this being bit-for-bit the same accumulation order/terms.
+//
+// Self-intersection bias: per TraceWorldShadow's documented convention (a),
+// the shadow ray's ORIGIN is offset off the surface (worldPos + normal*eps)
+// and tmin is left near 0 — NOT both conventions at once (double-biasing).
+vec3 computeLightingWithShadows(vec3 color, vec3 normal, vec3 worldPos, vec3 rayDir,
+                                float roughness, LightingConfig lighting) {
+    vec3 viewDir = normalize(-rayDir);
+
+    vec3 Lo = lighting.ambientIntensity * color;
+    for (uint i = 0u; i < lighting.lightCount; ++i) {
+        Light light = lighting.lights[i];
+        vec3 lightDir = normalize(light.direction_or_position);
+
+        float shadowFactor = 1.0;
+        if (shadowConfig.enabled != 0u) {
+            // kind 0 = directional (see Lighting.glsl's data-driven overload):
+            // direction_or_position is the direction AWAY from the surface
+            // toward the light, so the shadow ray tests all the way to
+            // maxShadowDistance (no finite light position to stop short at).
+            vec3 shadowOrigin = worldPos + normal * shadowConfig.biasEpsilon;
+            bool occluded = TraceWorldShadow(shadowOrigin, lightDir,
+                                             shadowConfig.biasEpsilon,
+                                             shadowConfig.maxShadowDistance);
+            shadowFactor = occluded ? 0.0 : 1.0;
+        }
+
+        Lo += evalBRDF(color, roughness, normal, viewDir, lightDir) * light.radiance * shadowFactor;
+    }
+    return Lo;
+}
+
+// ============================================================================
 // MAIN
 // ============================================================================
 
@@ -1195,6 +1257,7 @@ void main() {
     vec3  bestColor       = recReadback.albedo;
     vec3  bestNormal      = recReadback.worldNormal;
     float bestRoughness   = recReadback.roughness;
+    vec3  bestWorldPos    = recReadback.worldPos;
     uint  bestBrickIndex  = worldHit.brickIndex;  // not carried by HitRecord (brick/voxel ID stays out-of-band via idOutputImage)
     uint  bestVoxelIdx    = worldHit.voxelIdx;
 
@@ -1206,7 +1269,8 @@ void main() {
     // -----------------------------------------------------------------------
     vec3 outColor;
     if (anyHitRT) {
-        outColor = computeLighting(bestColor, bestNormal, rayDir, bestRoughness, lightingConfig);
+        outColor = computeLightingWithShadows(bestColor, bestNormal, bestWorldPos, rayDir,
+                                               bestRoughness, lightingConfig);
     } else {
         outColor = skyColor;
     }

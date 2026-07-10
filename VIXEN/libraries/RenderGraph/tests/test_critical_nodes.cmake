@@ -728,6 +728,53 @@ gtest_discover_tests(test_hitrecord_sdi_parity
     DISCOVERY_TIMEOUT 120)
 message(STATUS "[RenderGraph Tests] Added: test_hitrecord_sdi_parity (SDI layout drift-guard)")
 
+# ===========================================================================
+# ShadowConfig SDI Parity Test (Sampled Lighting Inc1 M4)
+# ===========================================================================
+# Reflects the built BodyInstanceRayMarch SPIR-V and asserts the generated
+# C++ Vixen::Gpu::ShadowConfig layout matches it (per-field offsets, 16 B
+# total). Sibling of test_lightingconfig_sdi_parity above. Pure CPU
+# (reflection only) — no lavapipe / no GPU. Reuses the same compiled .spv.
+# ===========================================================================
+add_executable(test_shadowconfig_sdi_parity
+    Nodes/test_shadowconfig_sdi_parity.cpp
+)
+add_dependencies(test_shadowconfig_sdi_parity body_instance_raymarch_spv)
+target_link_libraries(test_shadowconfig_sdi_parity PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+target_compile_definitions(test_shadowconfig_sdi_parity PRIVATE
+    GLSL_RAYMARCH_SPV="${_brm_spv}")
+set_target_properties(test_shadowconfig_sdi_parity PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_shadowconfig_sdi_parity
+    DISCOVERY_MODE PRE_TEST
+    DISCOVERY_TIMEOUT 120)
+message(STATUS "[RenderGraph Tests] Added: test_shadowconfig_sdi_parity (SDI layout drift-guard)")
+
+# ===========================================================================
+# Sampled Lighting Inc1 M4 — shadow-ray correctness live gate: dispatches the
+# REAL shader against a known scene + known directional light, asserting a
+# pixel's occlusion classification (shadowed/lit, via shaded colour luminance)
+# matches an independent CPU-traced reference shadow ray. Closes M2's deferred
+# "GLSL traversal agrees with reference" gap.
+# ===========================================================================
+add_executable(test_shadow_correctness
+    Nodes/test_shadow_correctness.cpp
+)
+add_dependencies(test_shadow_correctness body_instance_raymarch_spv)
+target_link_libraries(test_shadow_correctness PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+if(TARGET SVO)
+    target_link_libraries(test_shadow_correctness PRIVATE SVO)
+endif()
+target_compile_definitions(test_shadow_correctness PRIVATE
+    GLSL_RAYMARCH_SPV="${_brm_spv}")
+if(VIXEN_WSL_DZN_ICD)
+    target_compile_definitions(test_shadow_correctness PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
+endif()
+set_target_properties(test_shadow_correctness PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_shadow_correctness
+    DISCOVERY_MODE PRE_TEST
+    DISCOVERY_TIMEOUT 120)
+message(STATUS "[RenderGraph Tests] Added: test_shadow_correctness (Sampled Lighting Inc1 M4 shadow-ray gate)")
+
 else()
     message(STATUS "[RenderGraph Tests] SKIPPED test_body_instance_raymarch_render — no glslc runnable on this platform found (searched ${_glslc_hints} + PATH)")
 endif()
