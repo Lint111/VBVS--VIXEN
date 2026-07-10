@@ -9,8 +9,10 @@
  */
 #include "Recipe/RecipeRegistry.h"
 #include "SdfBake.h"         // BakeRecipeInstructionsToSdfWorld, BuildSdfBodyOctree
-#include "ShellOctreeGpu.h"  // ConcatenateSdf, ConcatenatedOctrees
+#include "ShellOctreeGpu.h"  // ConcatenatedOctrees
+#include "MipBake.h"         // ConcatenateSdfWithMips
 
+#include <cassert>
 #include <glm/glm.hpp>
 #include <string>
 #include <vector>
@@ -76,6 +78,15 @@ inline RecipeBakeResult BakeRegistryToPool(RecipeRegistry& reg,
             cfg.center, n, band, depth);
 
         res.owned.push_back(BuildSdfBodyOctree(baked, depth));
+
+        // ConcatenateSdfWithMips (below) attaches a mip pool per-octree via
+        // SdfBodyOctree::octree->getOctree(); BuildSdfBodyOctree always builds
+        // this member (see SdfBake.h), so a null here means something upstream
+        // silently produced a mip-less octree. Assert rather than silently ship
+        // a mip-less pool that M2's lazy residency would then boot invisible.
+        assert(res.owned.back().octree->getOctree() != nullptr &&
+               "BakeRegistryToPool: baked octree has no LaineKarrasOctree — mip bake would be skipped");
+
         entry->octreeSlot = k;
     }
 
@@ -85,7 +96,7 @@ inline RecipeBakeResult BakeRegistryToPool(RecipeRegistry& reg,
     for (const auto& o : res.owned) ptrs.push_back(&o);
 
     if (!ptrs.empty()) {
-        res.pool = ConcatenateSdf(ptrs);
+        res.pool = ConcatenateSdfWithMips(ptrs);
     }
 
     // Budget check (0 = unbounded).
@@ -93,13 +104,14 @@ inline RecipeBakeResult BakeRegistryToPool(RecipeRegistry& reg,
         const uint64_t poolBytes =
             static_cast<uint64_t>(res.pool.nodes.size()) +
             static_cast<uint64_t>(res.pool.bricks.size()) +
-            static_cast<uint64_t>(res.pool.channelPool.size());
+            static_cast<uint64_t>(res.pool.channelPool.size()) +
+            static_cast<uint64_t>(res.pool.mipPool.size());
         if (poolBytes > cfg.byteBudget) {
             res.ok  = false;
             res.err = "recipe pool over budget by " +
                       std::to_string(poolBytes - cfg.byteBudget) + " bytes (" +
                       std::to_string(poolBytes) + " / " +
-                      std::to_string(cfg.byteBudget) + " budget)";
+                      std::to_string(cfg.byteBudget) + " budget, incl. mipPool)";
         }
     }
 
