@@ -58,6 +58,22 @@ set_target_properties(test_typednode_helpers PROPERTIES FOLDER "Tests/RenderGrap
 
 gtest_discover_tests(test_typednode_helpers)
 
+# ===========================================================================
+# LightingConfig Parity Test (Sampled Lighting Inc0 M1 — generated Light /
+# LightingConfig [GpuStruct] drift-guard; see codegen/config-schemas/LightingConfig.cs)
+# ===========================================================================
+add_executable(test_lightingconfig_parity test_lightingconfig_parity.cpp)
+
+if(TARGET RenderGraph)
+    target_link_libraries(test_lightingconfig_parity PRIVATE GTest::gtest_main RenderGraph)
+else()
+    target_link_libraries(test_lightingconfig_parity PRIVATE GTest::gtest_main)
+endif()
+
+set_target_properties(test_lightingconfig_parity PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+gtest_discover_tests(test_lightingconfig_parity)
+
 add_executable(test_node_parameter_manager Core/test_node_parameter_manager.cpp)
 
 # Link against the RenderGraph library target - includes propagate automatically
