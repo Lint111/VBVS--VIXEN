@@ -558,6 +558,18 @@ endif()
 gtest_discover_tests(test_recipe_codegen)
 
 # ===========================================================================
+# SdfCore GLSL name-set drift-guard (Lazy-Procedural-Delta-Baseline Inc1 M4 Task 7)
+# ===========================================================================
+add_executable(test_sdf_core_glsl test_sdf_core_glsl.cpp)
+target_link_libraries(test_sdf_core_glsl PRIVATE GTest::gtest_main)
+target_compile_definitions(test_sdf_core_glsl PRIVATE
+    SDF_CORE_KERNELS_HLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.hlsl"
+    SDF_CORE_KERNELS_GLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/SdfCoreKernels.glsl"
+)
+set_target_properties(test_sdf_core_glsl PROPERTIES FOLDER "Tests/SVO Tests")
+gtest_discover_tests(test_sdf_core_glsl)
+
+# ===========================================================================
 # Recipe Bake Parity Tests (P2.1 M1 — recipe-sphere bake == analytic-sphere bake)
 # ===========================================================================
 add_executable(test_recipe_bake test_recipe_bake.cpp)
