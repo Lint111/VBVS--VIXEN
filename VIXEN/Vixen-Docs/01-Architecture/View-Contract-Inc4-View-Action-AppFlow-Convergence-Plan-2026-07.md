@@ -1123,3 +1123,400 @@ git commit -m "test(editor): windowed gate proves typed element-click/key dispat
 **Placeholder scan:** No TBD/TODO. Two tasks (1's `Emit*` helpers, 12's apply-seam) intentionally say "implement to match the committed header / the runtime's DispatchByKey shape" with the exact REQUIREMENT stated + the arbiter named (the byte-diff / the typed-param rule) — these adapt to real code the worker reads, not placeholders. Every code step shows code.
 
 **Type consistency:** `KeyChord{KeyId,KeyMod}`, `InputProfile::Bind/Resolve`, `AppFlowElementTrigger`, `AppFlowKeyDefault`, `DispatchByKey`, `RequestReturn`, `GlfwToKeyId`/`ReadMods` used identically across the tasks that define and consume them. `FlowActionId::{Undo,Redo,Save,UndoSettingChange}` + `FlowStateId::Settings` defined in Task 4, consumed in 5/7/9/10/12. `appflow_check`/`--appflow`/`--out-header` consistent (Tasks 2,3). ✓
+
+---
+
+## Reframe Slice Plan (2026-07-10 — supersedes M3.5/M4)
+
+> **For agentic workers:** this section supersedes **M3.5 (Task 10.5)** and **M4 (Tasks 11–13)** above. M1–M3 (Tasks 1–10) stand as-built. Execute the R-milestones below via superpowers:subagent-driven-development. Same house style: Files / Interfaces / checkbox Steps / exact commands + expected counts. Every "match the existing shape" instruction names its arbiter.
+
+### What changed since the original M4
+
+Two things changed the ground under M3.5/M4:
+
+1. **The reframe** (`AppFlow-Kernel-Glue-Transplant-Reframe-Design-2026-07.md`, D10–D16). The action model becomes a **uniform categoryless registry** (D14): `Dispatch(id, params) → handlers_[id](params)`, `RegisterHandler(id, fn)`, and the public **named verbs are DELETED** (D15). The editor becomes a **pure consumer** — it registers handlers and dispatches by selector/key/id only, naming zero triggers/actions in code. `Return` is no longer a first-class M3.5 concern; it is **just a registered handler** that calls the nav-pop primitive (this DISSOLVES the old Task 10.5 / M3.5). A `Data` action names the **View noun** it mutates (D16), compile-checked against the `[View]` schema. And a **walking-skeleton logic-transplant** (D12) proves the kernel transplants flow *logic*, not only data, on the smallest real body.
+
+2. **The kernel-unification program merged to Yeroket main 2026-07-10** (see the `kernel-framework` skill §11). This plan builds on the POST-unification world, not the pre-unification one M1–M3 were written against:
+   - `[Flow*]` attribute **definitions are kernel-owned**: `$KF/Runtime/AppFlowAttributes.cs`, namespace `Yeroket.Util.KernelFramework`. NEW attributes (D16's data-target marker) go THERE, not in VIXEN's schema dir. (VIXEN's `codegen/appflow-schemas/AppFlowReference.cs` holds only the schema INSTANCE and already does `using Yeroket.Util.KernelFramework;`.)
+   - `AppFlowEmitter` is **model-indirected**: `AppFlowModelBuilder.Build(Compilation)` → plain-data `AppFlowModel` → pure `AppFlowEmitter.Emit(AppFlowModel)`. A new table/column = extend the **MODEL** (`AppFlowModel.cs`) + the **BUILDER** (`AppFlowModelBuilder.Build`) + the **EMITTER** (`AppFlowEmitter.Emit`) — never inline symbol discovery in the emitter (arbiter: `AppFlowModel.cs` + `AppFlowEmitter.cs` in `$KF/SourceGenerator~/Transpiler/`).
+   - Shared helpers are canonical: banner via `GeneratedBanner.Line(...)`, C#→C++ type map via `CppTypeMapping.MapToCppType`, nested collect via `NestedCollect.DepthFirst<T>`. Never hand-roll a second switch.
+   - Codegen-internal namespace is `Yeroket.KernelFramework.Codegen`. Yeroket suites baseline: `SDFNodeGenerator.Tests 230/230`, `CodegenTool.Tests 38/38`. Yeroket main = `ca198ba6`.
+
+**Worktrees for execution** (unchanged from the brief):
+- **VIXEN** work continues on branch **`worktree-view-contract-inc4`** in the existing worktree `$W = /mnt/c/cpp/VBVS--VIXEN/.claude/worktrees/view-contract-inc4`; sources under `$W/VIXEN/`. Windows build dir `$W/build/ninja` (preset `vixen-ninja`, `binaryDir=${sourceDir}/../build/ninja`). Helper bats: `$W/build.bat` (configure+build), `$W/build/appflow_val_build.bat` (builds the 7 core AppFlow test exes via vcvars64), `$W/build/appflow_val_run.bat` (runs them). The live-gate driver is `$W/VIXEN/temp/run_editor_script.bat`.
+- **Yeroket** work on NEW branch **`feat/appflow-reframe-slice`**, worktree `$KFW = /home/liory/Github/Yeroket-Fantasy/.worktrees/appflow-reframe`; kernel package at `$KFW/Packages/com.yeroket.utility.kernel-framework` (this is `$KF` for THIS stream). dotnet: `/home/liory/.dotnet/dotnet`.
+
+**Byte-verification rule (carried into every task):** use `/usr/bin/diff`, `cmp`, or `sha256sum` for artifact evidence — the rtk proxy has reported false "identical". Poll long Windows builds on a foreground ~15–30s interval, never blind-wait; never overlap same-target builds. No pushes (gated).
+
+### The two load-bearing decisions (grounded in the real code)
+
+**D12 route — WHICH body, WHICH kernel mechanism, WHAT kernel-side change.**
+The reframe recommends `applyToggle`'s self-inverse. Grounding it: the hand-written toggle logic today is inside `AppFlowRuntime::ToggleLayer` (`$W/VIXEN/libraries/AppFlow/src/AppFlowRuntime.cpp:90-101`) — its self-inverse core is `layers_.Toggle(index)`, and `LayerController::Toggle` flips one bit of `mask_`. The smallest **pure, branch-having-optional, side-effect-free** kernel of that is:
+```csharp
+// applyToggle: self-inverse — XOR-flips bit `index` of `mask`. mask ^ applyToggle(mask,i) restores.
+[KernelCallable] public static uint applyToggle(uint mask, uint index) => mask ^ (1u << (int)index);
+```
+This is fully in-grammar for `CppAstVisitor.ToCpp` (binary `^`, shift, cast, invocation — all handled at `CppAstVisitor.cs:152/155/161/97`).
+
+The mechanism: the KernelCallable→C++ route (`CppEmitter.BuildCppHeader` → `CppAstVisitor.EmitFunction`) is **source-gen-only today** (skill §5; no CLI branch — verified: no `--cpp`/`--callable` flag in `Program.cs`) AND `CppEmitter`'s preamble hard-codes `namespace Yeroket::Sdf::Generated` + `#include <glm/glm.hpp>` (`CppEmitter.cs:15-19`), which is SDF-flavoured and wrong for AppFlow. The domain-blind core is `CppAstVisitor.EmitFunction` (`CppAstVisitor.cs:18`) — it emits ONE `inline` function with NO namespace/preamble.
+
+**Kernel-side change (exactly this, no more):** add a minimal CLI branch `--callable-cpp` to `$KF/CodegenTool~/Program.cs` that (a) sweeps a `--schema <dir>` for `[KernelCallable]` methods, (b) wraps `CppAstVisitor.EmitFunction`'s output in a neutral header (`#pragma once`, `GeneratedBanner.Line("--callable-cpp", …)`, `#include <cstdint>`, `namespace Vixen::AppFlow::Generated { … }`), and (c) supports `--check`. This REUSES the existing tested visitor (`CppEmitterTests.cs` already asserts `EmitFunction` output for `SdfCore_Sphere`/`SmoothUnion`) and adds no parallel transpiler. It needs a `CompilationLoader.LoadKernelCallables(files)` (a 3-line sibling of `LoadAppFlow`, returning the `Compilation`; the branch scans it for `[KernelCallable]` methods exactly as `EmitCppEmitter` does at `SDFNodeSourceGenerator.cs:2064` minus the `[SdfCoreKernel]` filter). Vendor the emitted `AppFlowCallables.g.hpp` into `$W/VIXEN/libraries/AppFlow/include/generated/` beside `AppFlow.g.h` (same convention as `SdfCoreKernels.g.hpp` under `libraries/SVO/include/Recipe/generated/`), drift-guarded. Then swap `AppFlowRuntime`'s hand-written toggle to call `Vixen::AppFlow::Generated::applyToggle(mask, index)` via the `LayerController` (see Task R5). This is a genuinely SMALL walking skeleton: one CLI branch + one loader helper + one vendored header + one call-site swap. Rejected alternative: rerouting `CppEmitter.BuildCppHeader` (drags in glm + `Yeroket::Sdf` namespace) or the full source-gen path (needs a live consuming-assembly compilation a schema-file CLI can't provide — skill §5/§6).
+
+**D16 mechanism — HOW the emitter compile-checks the View-noun reference.**
+Grounded: the View schema (`Hud`) lives in a SEPARATE dir `$W/VIXEN/codegen/view-schemas/Hud.cs` (NOT `appflow-schemas/`), with `[View] struct Hud` fields `tick/bodyCount/activeLensName/activeLensCount/factions/events` — these are the target nouns. The `--appflow` CLI branch (`Program.cs:123-136`) today loads only `--schema <appflow-dir>`. The CMake already exposes both dirs as vars: `_schema_appflow_run` and `_schema_view_run` (`codegen/CMakeLists.txt:114/106`).
+
+**Smallest honest mechanism:** the `--appflow` branch gains an OPTIONAL second input `--view-schema <dir>`. When present, load the `[View]`-attributed struct's public field NAMES via the existing `CompilationLoader.LoadViews` (`CompilationLoader.cs:31`) into a `HashSet<string>`, and pass that set into `AppFlowModelBuilder.Build(comp, viewNouns)`. A new `[FlowDataTarget(nameof(Hud.tick))]`-style declaration (kernel-owned attribute) resolves to a bare noun name string; the builder VALIDATES it is in the set and THROWS `AppFlowTargetException("[FlowDataTarget] target 'Hud.foo' — no View noun 'foo'; known: tick, bodyCount, …")` on miss. `Program.cs` catches it, prints the message to stderr, returns 2. `--check` inherits the failure (a bad target fails generation, so the golden goes stale/errors). When `--view-schema` is ABSENT (e.g. a keyless/View-less schema), target validation is skipped and the emit is byte-identical to today — so this is append-only for the existing header. This adds one attribute (kernel `Runtime/AppFlowAttributes.cs`), one optional CLI flag + load, and one model column + validation; no new schema-load infrastructure.
+
+### Reframe Milestone Map
+
+Sequenced so the two BYTE-changing steps for `AppFlow.g.h` are isolated (quarantined with their regen + golden updates, the way original Task 6 was), and the C++-only registry refactor (which changes NO generated artifact) lands first as the behavioural spine.
+
+- **R1 — Uniform registry + method retirement (C++ only; Tasks R1a–R1c).** Add `RegisterHandler`/`Dispatch(id,params)`/`DispatchById` to `AppFlowRuntime`; delete the public named verbs (`RequestState`/`DispatchAction`/`RequestReturn`/`Undo`/`Redo`/`ToggleLayer`); make FSM/ActionStack/Layers services handlers reach; update ALL AppFlow gtests + the RenderGraph headless gate that called the deleted verbs. NO generated-artifact change. Testable: full AppFlow offline suite green through the new registry; no named-verb call sites remain outside the handler bodies.
+- **R2 — `Return` action + back-button + return-edge seeding (BYTE-CHANGING for `AppFlow.g.h`; Tasks R2a–R2c).** Schema gains `FlowAction.Return=5` (append-only pinned) + a `[FlowElementTrigger]` `back-button` + wire `kReturnEdges` seeding into the `InputProfile` at Load. Regenerate + commit the extended header + extend `test_appflow_golden`. Editor-agnostic proof: a gtest shows BOTH `DispatchByKey({Escape,None})` in Settings AND `DispatchBySelector("back-button")` reach the Return handler → FSM pops; no `ActionStack` entry from Return. Quarantined regen step.
+- **R3 — D16 Data→View-noun target (BYTE-CHANGING for `AppFlow.g.h`; Tasks R3a–R3c).** Kernel `[FlowDataTarget]` attr + `AppFlowModel` target column + builder compile-check against the `[View]` schema + `--view-schema` CLI input + CMake wiring (second schema dir). Declare one `Data` action targeting a real `Hud` noun; regenerate + commit the header carrying the target; a mismatch fails generation (NUnit proves both the pass and the fail-with-clear-error). Quarantined regen step.
+- **R4 — D12 logic-transplant walking skeleton (BYTE-NEW artifact; Tasks R4a–R4c).** Kernel `--callable-cpp` CLI branch + `LoadKernelCallables` loader (reusing `CppAstVisitor.EmitFunction`); author `applyToggle` `[KernelCallable]` in a VIXEN schema; vendor `AppFlowCallables.g.hpp`; drift-guard it. NUnit asserts the emitted C++ content. New artifact only — no existing header changes.
+- **R5 — Editor pure consumer + swap the transplanted body (C++ only; Tasks R5a–R5c).** `KeyMap.h` (old Task 11, verified against current editor key usage); rewrite the editor input block + the PreTick script injector onto `RegisterHandler` + `DispatchBySelector`/`DispatchByKey`/`DispatchById` (registers handlers at init incl. Return); delete `ParseLayerToggleId`; swap `AppFlowRuntime`'s hand-written toggle to call the transplanted `Generated::applyToggle`; grep gate.
+- **R6 — Live gate + close-out (Tasks R6a–R6c).** Extend the windowed real-GPU gate (`test_editor_toggle_undo_capture`) so the injector drives the real click/dispatch path (not deleted verbs) + a back-button→Return path; calibrate the toggle delta LIVE; full no-regression sweep (AppFlow suite, Yeroket `SDFNodeGenerator.Tests`/`CodegenTool.Tests`, all drift-guards incl. `appflow_check` + the new `callables_check`); progress-log the pipeline.
+
+---
+
+## Task R1: Uniform registry + retire the named verbs (VIXEN — `worktree-view-contract-inc4`)
+
+**Commits to:** VIXEN worktree, branch `worktree-view-contract-inc4`. No Yeroket change, no generated-artifact change.
+
+**Files:**
+- Modify: `$W/VIXEN/libraries/AppFlow/include/AppFlowRuntime.h` + `src/AppFlowRuntime.cpp`.
+- Modify (test callers of the deleted verbs — the FULL inventory, grep-verified): `$W/VIXEN/libraries/AppFlow/tests/test_appflow_loader.cpp` (`RequestState`×2 @23/80, `Undo`×2 @40/67, `RequestReturn` @82), `$W/VIXEN/libraries/AppFlow/tests/test_snapshot_undo.cpp` (`rt.ToggleLayer` @103, `rt.Undo` @106), `$W/VIXEN/libraries/RenderGraph/tests/Nodes/test_appflow_editor_toggle_render.cpp` (`rt.ToggleLayer` @562, `rt.Undo` @568). (`test_action_stack.cpp`/`test_flow_state_machine.cpp` call `st.`/`fsm.` directly — NOT `rt` — untouched.)
+
+**Interfaces (arbiter for shape = the existing `AppFlowRuntime.h:20-87`):**
+- Produces on `AppFlowRuntime`:
+  - `using Params = std::vector<std::pair<std::string,std::string>>;` (mirror `BoundAction::params`, `BindingStore.h:21`).
+  - `using Handler = std::function<void(const Params&)>;`
+  - `void RegisterHandler(Generated::FlowActionId id, Handler fn);`
+  - `DispatchResult Dispatch(Generated::FlowActionId id, const Params& params);` — the entire router (design §4.2): `auto it=handlers_.find(id); if(it==end) return RejectedByState; it->second(params); return Ok;`.
+  - `DispatchResult DispatchById(Generated::FlowActionId id, const Params& params={});` — trigger-less programmatic path (tests). Thin: `return Dispatch(id, params);`.
+  - `DispatchBySelector(sel)` / `DispatchByKey(chord)` REWIRED to resolve → `Dispatch(id, extractedParams)` (drop the `ActionStack::ApplyFn apply` parameter — behaviour now lives in the registered handler, not the call site; design §4.2/§4.3).
+  - **Services handlers reach** (kept, but no longer public dispatch VERBS): `ActionStack& Stack() { return stack_; }`, `FlowStateMachine`-nav via a kept-but-renamed private-facing accessor, `LayerController& Layers()` (already public). Since a handler is a lambda registered by the consumer with `[this]` capture of the runtime, expose `ActionStack& Stack()`, and keep `RequestReturn`'s BODY as a private/service method the Return handler calls — but NOT as a public verb the editor calls directly. Simplest honest shape: keep `Stack()`, `Layers()`, `Input()`, `Current()`, `SetCurrent()`, `SetGuardResult()`, `Load()`, `AddBinding()`; add a **service** `DispatchResult NavPop();` (the old `RequestReturn` body, renamed so it reads as a service not a user verb) that the Return handler calls; DELETE public `RequestState`, `DispatchAction`, `RequestReturn`, `Undo`, `Redo`, `ToggleLayer`.
+  - Keep `RequestState`'s BEHAVIOUR reachable as a service too — rename to `DispatchResult NavTo(Generated::FlowStateId to);` (same body, publishes StateChanged). The editor never calls it this increment, but the tests need forward-nav to set up Return; naming it `NavTo` (service) not `RequestState` (verb) satisfies D15's "no named ACTION methods" while keeping FSM driving possible. (Arbiter for the publish body: the current `RequestState`/`RequestReturn` at `AppFlowRuntime.cpp:33-39/66-72` — reuse verbatim, just rename.)
+
+- [ ] **Step 1 (R1a): Add the registry to `AppFlowRuntime`**
+  In `AppFlowRuntime.h` add `#include <vector>` (for `Params`), the `Params`/`Handler` aliases, `handlers_` member (`std::unordered_map<uint16_t, Handler>` keyed by `uint16_t(id)` — mirror `BindingStore`'s `registry_` key type, `BindingStore.h:71`), and the `RegisterHandler`/`Dispatch`/`DispatchById` declarations. In `.cpp` implement the three (Dispatch is the §4.2 body verbatim).
+
+- [ ] **Step 2 (R1b): Rewire selector/key dispatch + rename verbs to services + delete the rest**
+  - `DispatchBySelector`/`DispatchByKey`: resolve as today (`bindings_.TryGetForSelector` / `inputProfile_.Resolve`) but call `Dispatch(action, params)` where `params` = the resolved `BoundAction::params` for selectors, `{}` for keys. Remove the `ActionStack::ApplyFn apply` parameter from both signatures (arbiter: `AppFlowRuntime.h:41/46`).
+  - Rename `RequestState`→`NavTo`, `RequestReturn`→`NavPop` (bodies unchanged, `AppFlowRuntime.cpp:33-39/66-72`).
+  - DELETE public `DispatchAction`, `Undo`, `Redo`, `ToggleLayer` from the header AND their `.cpp` bodies. (Their behaviour moves into editor-registered handlers in R5 that call `Stack().Dispatch`/`Stack().Undo`/`Stack().Redo`/`Layers().Toggle` + `applyToggle`.)
+  - Add `ActionStack& Stack() { return stack_; }` (handlers reach undo/redo/dispatch through it).
+
+- [ ] **Step 3 (R1c): Update every deleted-verb test call site (the grep inventory above)**
+  Convert each to the registry model. Pattern for the loader/snapshot tests: register a handler THEN dispatch by id, e.g. replace `rt.ToggleLayer(2, cb)` with:
+  ```cpp
+  rt.RegisterHandler(FlowActionId::ToggleLayer, [&](const AppFlowRuntime::Params&){
+      rt.Stack().Dispatch(FlowActionId::ToggleLayer, [&](bool){ /* the test's toggle body */ }); });
+  EXPECT_EQ(rt.DispatchById(FlowActionId::ToggleLayer), DispatchResult::Ok);
+  ```
+  `rt.Undo()` → register an Undo handler (`[&](const Params&){ rt.Stack().Undo(); }`) + `rt.DispatchById(FlowActionId::Undo)`, OR (simpler for undo-round-trip tests) call `rt.Stack().Undo()` directly — `Stack()` is the service. `rt.RequestState(x)` → `rt.NavTo(x)`. `rt.RequestReturn()` → `rt.NavPop()`. Keep each test's ASSERTED behaviour identical (same value deltas, same DispatchResult).
+  > The RenderGraph headless gate `test_appflow_editor_toggle_render.cpp` @562/568 is the byte-exact render gate — its `rt.ToggleLayer`/`rt.Undo` must become the registry equivalents that produce the IDENTICAL mask mutation (register a ToggleLayer handler that does `rt.Stack().Dispatch(ToggleLayer, [&]{ rt.Layers().Toggle(kCutLayerIndex); ++changed; })`, dispatch by id; undo via `rt.Stack().Undo()`). Do NOT change the render assertions.
+
+- [ ] **Step 4: Build + run the AppFlow offline suite (Windows-side, poll)**
+  ```
+  cmd.exe /c "C:\cpp\VBVS--VIXEN\.claude\worktrees\view-contract-inc4\build\appflow_val_build.bat"
+  ```
+  then `appflow_val_run.bat`. Expected: the 7 core exes + the 4 M3 exes (`test_input_profile test_keychord test_binding_pattern test_flow_return`) build; all green. (The `appflow_val_*` bats list the 7 core; also build+run the 4 M3 tests via `cmake --build ... --target test_input_profile test_keychord test_binding_pattern test_flow_return` in the same ninja dir.) Poll the build on a 15–30s foreground interval.
+
+- [ ] **Step 5: Grep gate + commit**
+  `grep -rnE "rt(_)?\.(Undo|Redo|RequestState|RequestReturn|ToggleLayer|DispatchAction)\(" $W/VIXEN/libraries $W/VIXEN/application` → EMPTY (all converted; the editor is R5). Then:
+  ```bash
+  cd $W && git add -- VIXEN/libraries/AppFlow/include/AppFlowRuntime.h VIXEN/libraries/AppFlow/src/AppFlowRuntime.cpp VIXEN/libraries/AppFlow/tests/test_appflow_loader.cpp VIXEN/libraries/AppFlow/tests/test_snapshot_undo.cpp VIXEN/libraries/RenderGraph/tests/Nodes/test_appflow_editor_toggle_render.cpp
+  git commit -m "refactor(appflow): uniform categoryless registry — Dispatch(id,params)+RegisterHandler, retire named verbs (Inc-4 reframe R1)"
+  ```
+
+---
+
+## Task R2: `Return` action + back-button + return-edge seeding (Yeroket + VIXEN)
+
+**Commits to:** VIXEN worktree `worktree-view-contract-inc4` (schema + regen + tests). NO Yeroket change (the attributes/emitter already handle `FlowAction` members, `[FlowElementTrigger]`, `kReturnEdges`). **BYTE-CHANGING** for `AppFlow.g.h` — quarantine the regen.
+
+**Files:**
+- Modify: `$W/VIXEN/codegen/appflow-schemas/AppFlowReference.cs` (add `Return=5`; a `back-button` element trigger).
+- Modify: `$W/VIXEN/libraries/AppFlow/include/generated/AppFlow.g.h` (regenerated).
+- Modify: `$W/VIXEN/libraries/AppFlow/src/AppFlowLoader.cpp` (seed `kReturnEdges` into the `InputProfile` as `Return` bindings — currently it seeds only `elementTriggers` + `keyDefaults`, `AppFlowLoader.cpp:38-45`).
+- Modify: `$W/VIXEN/libraries/AppFlow/tests/test_appflow_golden.cpp` (assert `Return=5`).
+- Create: `$W/VIXEN/libraries/AppFlow/tests/test_return_dispatch.cpp` (both paths reach the Return handler).
+
+**Interfaces:** `FlowActionId::Return=5`; `kElementTriggers` gains `{"back-button", FlowActionId::Return, "", "click"}`; the loader binds each `kReturnEdges` entry as a `Return` action in the `InputProfile` (so `Esc` in Settings resolves to `Return`).
+
+- [ ] **Step 1 (R2a): Extend the schema (append-only)**
+  In `AppFlowReference.cs`: `[FlowActionEnum] public enum FlowAction { ToggleLayer=0, Undo=1, Redo=2, Save=3, UndoSettingChange=4, Return=5 }`. Add a back-button element trigger (the design's "a BUTTON reaches Return identically to Esc", §4.3):
+  ```csharp
+  [FlowElementTrigger(nameof(FlowAction.Return))]
+  public static class BackButtonTrigger { public const string Element = "back-button"; public const string ParamName = ""; public const string On = "click"; }
+  ```
+  (Arbiter for trigger shape: `ToggleLayerTrigger`, `AppFlowReference.cs:70-76`. Note the existing `SettingsReturn` `[FlowReturnEdge]` already declares `Escape`; leave it.)
+
+- [ ] **Step 2 (R2b): Seed return-edges into the InputProfile at Load**
+  In `AppFlowLoader::Load` (`AppFlowLoader.cpp`), after the `keyDefaults` loop, add:
+  ```cpp
+  // Seed return edges as Return-action key bindings (Esc in <from> -> Return). The FROM state
+  // scopes the binding so Esc only pops where a return edge is declared (design §4.3 / D-Return).
+  for (const auto& r : view.returnEdges())
+      input.Bind(Generated::FlowScope::State, r.from, r.trigger, Generated::FlowActionId::Return);
+  ```
+  (Arbiter: the adjacent `keyDefaults` seed loop, `AppFlowLoader.cpp:43-45`; `InputProfile::Bind` signature at `InputProfile.h`.)
+
+- [ ] **Step 3: Regenerate the header (WSL-side) + verify only the intended diff**
+  ```bash
+  /home/liory/.dotnet/dotnet run --project $KF/CodegenTool~ -c Release -- \
+    --schema $W/VIXEN/codegen/appflow-schemas --appflow \
+    --out-header /tmp/appflow_r2.g.h
+  /usr/bin/diff /tmp/appflow_r2.g.h $W/VIXEN/libraries/AppFlow/include/generated/AppFlow.g.h
+  ```
+  Expected diff: `Return=5` added to `FlowActionId`; a `Return` entry in `kActionDecls`; a `back-button` entry in `kElementTriggers`. If anything else moved, fix the schema. Then regenerate IN PLACE (same command, `--out-header` at the committed path) and confirm `--check` exit 0 with `sha256sum` on both.
+
+- [ ] **Step 4: Golden + the dual-path gtest**
+  Extend `test_appflow_golden.cpp`: `EXPECT_NE(h.find("Return=5"), std::string::npos);`. Create `test_return_dispatch.cpp` proving BOTH paths reach a Return handler:
+  ```cpp
+  TEST(ReturnDispatch, EscAndBackButtonBothPop) {
+      AppFlowRuntime rt(nullptr, 0);
+      ASSERT_EQ(rt.Load(), LoadResult::Ok);
+      rt.SetGuardResult(FlowGuardId::DocumentValid, true);
+      int returns = 0;
+      rt.RegisterHandler(FlowActionId::Return, [&](const AppFlowRuntime::Params&){ rt.NavPop(); ++returns; });
+      // enter Settings so there is history + the Esc return-edge is in scope
+      rt.SetCurrent(FlowStateId::Editing);
+      ASSERT_EQ(rt.NavTo(FlowStateId::Settings), DispatchResult::Ok);
+      EXPECT_EQ(rt.DispatchByKey({KeyId::Escape, KeyMod::None}), DispatchResult::Ok);   // Esc -> Return
+      EXPECT_EQ(rt.Current(), FlowStateId::Editing);
+      EXPECT_EQ(returns, 1);
+      // back-button selector reaches the SAME handler
+      ASSERT_EQ(rt.NavTo(FlowStateId::Settings), DispatchResult::Ok);
+      EXPECT_EQ(rt.DispatchBySelector("back-button"), DispatchResult::Ok);
+      EXPECT_EQ(rt.Current(), FlowStateId::Editing);
+      EXPECT_EQ(returns, 2);
+      // Return created NO ActionStack entry (nav, not data).
+      EXPECT_EQ(rt.Stack().UndoDepth(), 0u);
+  }
+  ```
+  Register `test_return_dispatch` in `$W/VIXEN/libraries/AppFlow/tests/CMakeLists.txt` (add to BOTH `foreach` lists, arbiter `tests/CMakeLists.txt:6/17`). Build + run (poll). Green.
+
+- [ ] **Step 5: `--appflow --check` exit 0 + commit**
+  ```bash
+  cd $W && git add -- VIXEN/codegen/appflow-schemas/AppFlowReference.cs VIXEN/libraries/AppFlow/include/generated/AppFlow.g.h VIXEN/libraries/AppFlow/src/AppFlowLoader.cpp VIXEN/libraries/AppFlow/tests/test_appflow_golden.cpp VIXEN/libraries/AppFlow/tests/test_return_dispatch.cpp VIXEN/libraries/AppFlow/tests/CMakeLists.txt
+  git commit -m "feat(appflow): Return action + back-button trigger + seed return-edges; Esc & back-button both pop (Inc-4 reframe R2)"
+  ```
+
+---
+
+## Task R3: D16 — `Data` action names a `[View]` noun, compile-checked (Yeroket + VIXEN)
+
+**Commits to:** Yeroket worktree `feat/appflow-reframe-slice` (attribute + model + builder + CLI), then VIXEN `worktree-view-contract-inc4` (schema + regen + CMake). **BYTE-CHANGING** for `AppFlow.g.h` — quarantine the regen.
+
+**Files (Yeroket, `$KF`):**
+- Modify: `$KF/Runtime/AppFlowAttributes.cs` — add `[FlowDataTarget]`.
+- Modify: `$KF/SourceGenerator~/Transpiler/AppFlowModel.cs` — add a `DataTargets` table (action→noun) to `AppFlowModel`.
+- Modify: `$KF/SourceGenerator~/Transpiler/AppFlowModel.cs`'s `AppFlowModelBuilder.Build` — accept `IReadOnlySet<string> viewNouns`, discover `[FlowDataTarget]` classes, VALIDATE, throw on miss.
+- Modify: `$KF/SourceGenerator~/Transpiler/AppFlowEmitter.cs` — emit the target column/table.
+- Modify: `$KF/CodegenTool~/CompilationLoader.cs` — no new loader needed (`LoadViews` exists); OR a `ViewNounNames(files)` helper returning the field-name set.
+- Modify: `$KF/CodegenTool~/Program.cs` — `--appflow` branch reads optional `--view-schema <dir>`; builds the noun set via `LoadViews`; passes it to `Build`; catches the validation exception → stderr + return 2.
+- Create/Modify: `$KF/CodegenTool~/Tests/AppFlowEmitterTests.cs` (or the existing AppFlow emitter test file) — NUnit for the PASS and the FAIL-with-clear-error.
+
+**Files (VIXEN, `$W`):**
+- Modify: `$W/VIXEN/codegen/appflow-schemas/AppFlowReference.cs` — one `Data` action + `[FlowDataTarget(nameof(...))]` naming a real `Hud` noun.
+- Modify: `$W/VIXEN/libraries/AppFlow/include/generated/AppFlow.g.h` (regenerated with the target).
+- Modify: `$W/VIXEN/codegen/CMakeLists.txt` — `appflow_check`/`appflow_regen` gain `--view-schema "${_schema_view_run}"`.
+
+**Interfaces (arbiter = the existing model/builder/emitter triple, kernel-framework skill §3-A):**
+- `[FlowDataTarget]` on a `[FlowActionParams]`-style class OR on a dedicated marker class: `public sealed class FlowDataTargetAttribute : Attribute { public string ActionName; public string ViewNoun; public FlowDataTargetAttribute(string action, string viewNoun){…} }` — `viewNoun` authored as `nameof(Hud.tick)` which the C# compiler lowers to `"tick"`. (Grounded: `nameof(Hud.tick)` yields the bare member name `"tick"` — the same lowering `nameof(FlowAction.ToggleLayer)`→`"ToggleLayer"` already relied on across the schema.)
+- `AppFlowModel` gains `IReadOnlyList<FlowDataTargetEntry> DataTargets` (entry = `{ ActionName, ViewNoun }`).
+- `AppFlowModelBuilder.Build(Compilation comp, IReadOnlySet<string> viewNouns = null)` — a NULL/empty `viewNouns` skips validation (keeps the View-less path byte-identical). For each `[FlowDataTarget]`, if `viewNouns != null && !viewNouns.Contains(entry.ViewNoun)` → `throw new AppFlowTargetException($"[FlowDataTarget] action '{a}' target 'View.{n}' — no View noun '{n}'; known: {string.Join(\", \", viewNouns)}")`.
+- Emitter: emit an `AppFlowDataTarget { FlowActionId action; const char* viewNoun; }` struct + `kDataTargets[]` (only when non-empty — same `hasKeyVocab`-style guard so the existing header stays byte-identical when no Data action is declared). Add `dataTargets()` to `AppFlowContainerView`.
+
+- [ ] **Step 1 (R3a, Yeroket): the attribute + model column + validating builder**
+  Add `[FlowDataTargetAttribute]` to `$KF/Runtime/AppFlowAttributes.cs` (arbiter: `FlowElementTriggerAttribute`, same file). Add `FlowDataTargetEntry` + `DataTargets` to `AppFlowModel` (arbiter: `FlowElementTriggerEntry` + `ElementTriggers`, `AppFlowModel.cs:83-91/124`). In `AppFlowModelBuilder.Build`, add the `viewNouns` param + a `BuildDataTargets(FindClasses(comp,"FlowDataTargetAttribute"), viewNouns)` that discovers + validates + throws. Add `AppFlowTargetException : Exception`.
+  > Attribute definitions are KERNEL-owned (skill §7). Do NOT put `[FlowDataTarget]` in VIXEN's schema dir.
+
+- [ ] **Step 2 (R3a, Yeroket): the emitter + the CLI branch**
+  In `AppFlowEmitter.Emit`, emit `AppFlowDataTarget` + `kDataTargets[]` + the accessor, guarded on `m.DataTargets.Count > 0` (arbiter: the `hasKeyVocab` guards, `AppFlowEmitter.cs:71-81/104-109`). In `Program.cs`'s `--appflow` branch (`:123`): read `string? viewSchema = Flag(args, "--view-schema")`; if present, `var viewNouns = CompilationLoader.ViewNounNames(Directory.GetFiles(viewSchema, "*.cs", AllDirectories));` (a helper that runs `LoadViews` and collects the `[View]` struct's public field names); wrap `AppFlowModelBuilder.Build(comp, viewNouns)` in try/catch(`AppFlowTargetException` e){ `Console.Error.WriteLine(e.Message); return 2;` }.
+
+- [ ] **Step 3 (Yeroket): NUnit — pass + fail-with-clear-error, then build + test**
+  Add two tests (arbiter shape: `CliTests.cs` round-trip, skill §9): (a) a schema with a valid `[FlowDataTarget("Data","tick")]` + a stub `[View] Hud { int tick; }` view-noun set → `Build` succeeds, emitted header contains `kDataTargets` + `"tick"`; (b) target `"nope"` → `Build` throws `AppFlowTargetException` whose message contains `no View noun 'nope'`. Run from the Tests dir (NOT the project dir — false-green trap, skill §9):
+  ```bash
+  cd $KF/SourceGenerator~ && /home/liory/.dotnet/dotnet build -c Release 2>&1 | tail -3
+  /home/liory/.dotnet/dotnet test $KF/CodegenTool~/Tests/CodegenTool.Tests.csproj 2>&1 | tail -6   # verify NON-ZERO count, expect 40/40 (38 baseline + 2)
+  /home/liory/.dotnet/dotnet test $KF/SourceGenerator~/Tests/SDFNodeGenerator.Tests.csproj 2>&1 | tail -6  # 230/230 unchanged
+  ```
+  > If `SDFNodeGenerator.dll` shows dirty after the build with no source change beyond your files, `git checkout --` it (skill §10). Commit Yeroket:
+  ```bash
+  cd $KF && git add -- Runtime/AppFlowAttributes.cs SourceGenerator~/Transpiler/AppFlowModel.cs SourceGenerator~/Transpiler/AppFlowEmitter.cs CodegenTool~/CompilationLoader.cs CodegenTool~/Program.cs CodegenTool~/Tests/AppFlowEmitterTests.cs
+  git commit -m "feat(appflow-codegen): [FlowDataTarget] — Data action names a [View] noun, compile-checked via --view-schema (Inc-4 reframe R3)"
+  ```
+
+- [ ] **Step 4 (R3b, VIXEN): declare the Data action + wire CMake + regen**
+  In `AppFlowReference.cs`: `FlowAction` gains `Data=6` (append-only); add `[FlowDataTarget(nameof(FlowAction.Data), nameof(Vixen.Views.Hud.tick))]` (or whichever real `Hud` noun — `tick`/`bodyCount`/`activeLensName`/…; use `bodyCount` to avoid confusion with the `tick` counter). Wire the CLI second input in `codegen/CMakeLists.txt` `_appflow_args` (`:219-222`): append `--view-schema "${_schema_view_run}"` (the var already exists at `:106/120`). Regenerate WSL-side WITH `--view-schema`, `/usr/bin/diff` against committed → expect `Data=6` + `kDataTargets` added; regenerate in place; `sha256sum` match; `--check` exit 0.
+  > If `AppFlowReference.cs` can't `nameof(Hud.…)` because the appflow-schemas dir doesn't compile against `view-schemas/Hud.cs`, author the target as a bare string constant the attribute takes, OR add a `using`/type-forward — the CLEANEST is the attribute taking the bare noun name string and the SCHEMA using `nameof` only if the View type is visible; since the two dirs are compiled SEPARATELY by the tool, pass the noun as a plain string literal `"bodyCount"` in the VIXEN schema and let the KERNEL compile-check it against the loaded `--view-schema` noun set (this is exactly what R3a builds — the check is at GENERATION time across the two loaded dirs, not at C# compile time within one dir). State this in the task: **the target is a plain string in the VIXEN schema; the cross-schema compile-check happens in the emitter via `--view-schema`.**
+
+- [ ] **Step 5: golden + suite + commit (VIXEN)**
+  Extend `test_appflow_golden.cpp` (`EXPECT_NE(h.find("kDataTargets"), npos)`). Build AppFlow + golden (poll), green. `appflow_check` on a fresh configure exit 0 (the `--view-schema` now flows through). Commit:
+  ```bash
+  cd $W && git add -- VIXEN/codegen/appflow-schemas/AppFlowReference.cs VIXEN/libraries/AppFlow/include/generated/AppFlow.g.h VIXEN/codegen/CMakeLists.txt VIXEN/libraries/AppFlow/tests/test_appflow_golden.cpp
+  git commit -m "feat(appflow): Data action targets a [View] noun (bodyCount), drift-guarded via --view-schema (Inc-4 reframe R3)"
+  ```
+
+---
+
+## Task R4: D12 logic-transplant walking skeleton — `applyToggle` via the kernel (Yeroket + VIXEN)
+
+**Commits to:** Yeroket `feat/appflow-reframe-slice` (CLI branch + loader), then VIXEN `worktree-view-contract-inc4` (schema + vendored header + drift-guard). NEW artifact only — no existing header changes.
+
+**Files (Yeroket, `$KF`):**
+- Modify: `$KF/CodegenTool~/CompilationLoader.cs` — add `LoadKernelCallables(files)` (sibling of `LoadAppFlow`, returns the `Compilation`).
+- Modify: `$KF/CodegenTool~/Program.cs` — add the `--callable-cpp` branch.
+- Create/Modify: `$KF/CodegenTool~/Tests/` — NUnit asserting the emitted `applyToggle` C++.
+
+**Files (VIXEN, `$W`):**
+- Create: `$W/VIXEN/codegen/appflow-schemas/AppFlowCallables.cs` — the `[KernelCallable] applyToggle` body (in a NEW file in the appflow-schemas dir, so `--appflow` still sweeps only the reference; `--callable-cpp` sweeps this one).
+- Create: `$W/VIXEN/libraries/AppFlow/include/generated/AppFlowCallables.g.hpp` — vendored generated header.
+- Modify: `$W/VIXEN/codegen/CMakeLists.txt` — `callables_check`/`callables_regen` pair (wsl-bridged).
+
+**Interfaces:**
+- `--callable-cpp --schema <dir> --out-header <path> [--check]`: sweep `[KernelCallable]` methods; for each, `CppAstVisitor.EmitFunction(retType, name, params, syntax)` (arbiter: `CppEmitter.BuildCppHeader`, `CppEmitter.cs:34-62`, minus the SDF preamble); wrap in `#pragma once` + `GeneratedBanner.Line("--callable-cpp", "Regenerate from the [KernelCallable] schema.")` + `#include <cstdint>` + `namespace Vixen::AppFlow::Generated { … }` + terminal `.Replace("\r\n","\n")`.
+- `applyToggle` emits to `inline uint32_t applyToggle(uint32_t mask, uint32_t index) { return mask ^ (1u << (int)index); }` (the exact cast/shift/xor mapping is what `CppAstVisitor.ToCpp` produces; the worker asserts the actual emitted string in the NUnit test and vendors whatever it produces VERBATIM — skill §10 "vendored .g.* stay verbatim").
+
+- [ ] **Step 1 (R4a, Yeroket): loader + CLI branch**
+  Add `LoadKernelCallables` (3 lines: parse files → `CSharpCompilation.Create("callableschema", trees, BuildRefs())`, return the `Compilation` — identical to `LoadAppFlow`, `CompilationLoader.cs:54`). Add the `--callable-cpp` branch to `Program.cs` (mirror the `--appflow` branch structure `:123-136`): validate `--schema` + `--out-header`; sweep the compilation for methods carrying a `KernelCallable`/`KernelCallableAttribute` attribute (scan syntax like `EmitCppEmitter` does at `SDFNodeSourceGenerator.cs:2064`, but WITHOUT the `[SdfCoreKernel]` filter — this is the domain-blind subset); build the neutral header; `--check` = byte-compare via `Same()`.
+  > `CppAstVisitor.EmitFunction` and the `Same()`/`Write()` helpers are already present; do NOT re-roll them.
+
+- [ ] **Step 2 (R4a, Yeroket): NUnit + build + test**
+  Add a test: an inline schema with `[KernelCallable] static uint applyToggle(uint mask, uint index) => mask ^ (1u<<(int)index);` (+ an inline `KernelCallableAttribute` stub, as `CppEmitterTests.cs`'s `FrameworkStubs` does — skill §9) → `Program.Main(--callable-cpp …)` writes a header CONTAINING `inline` + `applyToggle` + `namespace Vixen::AppFlow::Generated` + `mask ^`. Run from the Tests dir (verify non-zero count): `CodegenTool.Tests` now 41/41 (39 after R3 + 2). Commit Yeroket:
+  ```bash
+  cd $KF && git add -- CodegenTool~/CompilationLoader.cs CodegenTool~/Program.cs CodegenTool~/Tests/<file>.cs
+  git commit -m "feat(codegen): --callable-cpp — transplant a [KernelCallable] body to neutral C++ via CppAstVisitor (Inc-4 reframe R4)"
+  ```
+
+- [ ] **Step 3 (R4b, VIXEN): author the callable + generate + vendor**
+  Create `$W/VIXEN/codegen/appflow-schemas/AppFlowCallables.cs`:
+  ```csharp
+  using Yeroket.Util.KernelFramework;   // [KernelCallable] is kernel-owned
+  namespace Vixen.AppFlow.Reference {
+      public static class AppFlowCallables {
+          // Self-inverse: mask ^ applyToggle(mask,i) restores mask. Transplanted C# -> C++ (D12).
+          [KernelCallable] public static uint applyToggle(uint mask, uint index) => mask ^ (1u << (int)index);
+      }
+  }
+  ```
+  Generate WSL-side into the committed path:
+  ```bash
+  /home/liory/.dotnet/dotnet run --project $KF/CodegenTool~ -c Release -- \
+    --schema $W/VIXEN/codegen/appflow-schemas --callable-cpp \
+    --out-header $W/VIXEN/libraries/AppFlow/include/generated/AppFlowCallables.g.hpp
+  ```
+  Inspect the vendored header. Do NOT hand-edit it (skill §10).
+  > `[KernelCallable]` is defined in `$KF/Runtime/` (kernel-owned) — confirm it's swept by the netstandard Attributes shim / resolvable by `BuildRefs()`. If the CLI can't bind `[KernelCallable]` (it's a kernel-side attribute not in the Attributes shim DLL), add it to the shim the same way GpuStruct is (skill §0) — flag this as the ONE possible extra kernel-side step and scope it exactly (add `KernelCallableAttribute` to the `Attributes~` recompile set). Verify with a build before assuming.
+
+- [ ] **Step 4 (R4b, VIXEN): the `callables_check` drift-guard**
+  In `codegen/CMakeLists.txt`, mirror the `appflow_check`/`appflow_regen` pair (`:219-230`) for `AppFlowCallables.g.hpp` (`--callable-cpp`, schema `_schema_appflow_run`, out `.../generated/AppFlowCallables.g.hpp`). Add the wsl path translation + native path in both bridge branches (mirror `_out_appflow_hdr_run`, `:115/129`). `--check` exit 0.
+
+- [ ] **Step 5: commit (VIXEN)** (the runtime SWAP is R5 — this task only lands the vendored artifact + guard)
+  ```bash
+  cd $W && git add -- VIXEN/codegen/appflow-schemas/AppFlowCallables.cs VIXEN/libraries/AppFlow/include/generated/AppFlowCallables.g.hpp VIXEN/codegen/CMakeLists.txt
+  git commit -m "feat(appflow): transplant applyToggle C# body -> vendored AppFlowCallables.g.hpp + drift-guard (Inc-4 reframe R4)"
+  ```
+
+---
+
+## Task R5: Editor pure consumer + swap the transplanted body (VIXEN)
+
+**Commits to:** VIXEN worktree `worktree-view-contract-inc4`. C++ only.
+
+**Files:**
+- Create: `$W/VIXEN/application/editor/include/KeyMap.h` (old Task 11 — verify against current editor key usage: `EditorApplication.cpp` uses `GLFW_KEY_S`/`Z`/`Y`/`LEFT_CONTROL`/`RIGHT_CONTROL` @368-384; ADD `GLFW_KEY_ESCAPE` for Return).
+- Modify: `$W/VIXEN/application/editor/source/EditorApplication.cpp` — delete `ParseLayerToggleId` (`:26-40`); rewrite the Update input block (`:355-387`) + the PreTick script injector (`:328-335`) onto the registry; register handlers at init.
+- Modify: `$W/VIXEN/application/editor/include/EditorApplication.h` — add `escWasDown_`; a one-time `handlersRegistered_` guard (or register in `LoadDocument` after `rt_.Load()`).
+- Modify: `$W/VIXEN/libraries/AppFlow/src/AppFlowRuntime.cpp` — swap the (now-private/service) toggle path to call `Generated::applyToggle`.
+
+**Interfaces (arbiter for the editor apply-lambda shape = old Task 12 §Step 2/3, corrected to the registry model since the named verbs are gone):**
+- Editor registers, once (e.g. end of `LoadDocument` after `rt_.Load()`):
+  ```cpp
+  rt_.RegisterHandler(FlowActionId::ToggleLayer, [this](const auto& p){
+      uint32_t idx = ParseParam(p, "layerIndex");           // typed param from the BoundAction
+      rt_.Stack().Dispatch(FlowActionId::ToggleLayer, [this,idx](bool){ rt_.Layers().Toggle(idx); dirty_=true; }); });
+  rt_.RegisterHandler(FlowActionId::Undo,   [this](const auto&){ rt_.Stack().Undo(); });
+  rt_.RegisterHandler(FlowActionId::Redo,   [this](const auto&){ rt_.Stack().Redo(); });
+  rt_.RegisterHandler(FlowActionId::Save,   [this](const auto&){ if(!SaveDocument()) logger_->Error("[EditorApplication] SaveDocument failed: "+lastEditorError_); });
+  rt_.RegisterHandler(FlowActionId::Return, [this](const auto&){ rt_.NavPop(); });
+  ```
+  (`ParseParam` = a tiny local reading the `{name,value}` vector; the value is the extracted `{index}` string from `BindingStore`'s pattern match — arbiter: `BoundAction::params`, `BindingStore.h:21`.)
+- Dispatch sites carry NO behaviour: clicks → `rt_.DispatchBySelector(clickedId)`; keys → `rt_.DispatchByKey({GlfwToKeyId(k), mods})`.
+
+- [ ] **Step 1 (R5a): `KeyMap.h`** — old Task 11 verbatim (plain-int GLFW codes → `KeyId`, completeness-guarded), INCLUDING `case 256: return KeyId::Escape;`. (Arbiter: old Task 11 Step 3.)
+
+- [ ] **Step 2 (R5b): register handlers + rewrite the input block**
+  Register the 5 handlers once. Replace the Update click-drain (`:356-364`) with `if(!clickedId.empty()) rt_.DispatchBySelector(clickedId);` (the ToggleLayer handler carries the toggle; back-button reaches Return). Replace the glfw key block (`:367-387`) with edge-detected `rt_.DispatchByKey(...)` for S/Ctrl+Z/Ctrl+Y AND `Esc`→`rt_.DispatchByKey({KeyId::Escape,KeyMod::None})` (resolves to Return in Settings via R2's return-edge seeding). Delete `ParseLayerToggleId`. Add `escWasDown_` to the header.
+
+- [ ] **Step 3 (R5b): rewrite the PreTick script injector**
+  The injector at `:328-335` currently calls `ToggleLayer(idx)`/`rt_.Undo()`/`rt_.Redo()` DIRECTLY — the deleted verbs. Rewrite it to drive the SAME dispatch path a real click/key takes (this is the reframe's "the injector must exercise the real click/dispatch path"):
+  ```cpp
+  case ScriptedAction::Kind::Toggle: rt_.DispatchBySelector("layer-" + std::to_string(action.layerIndex) + "-toggle"); break;
+  case ScriptedAction::Kind::Undo:   rt_.DispatchByKey({Generated::KeyId::Z, Generated::KeyMod::Ctrl}); break;
+  case ScriptedAction::Kind::Redo:   rt_.DispatchByKey({Generated::KeyId::Y, Generated::KeyMod::Ctrl}); break;
+  ```
+  (This routes toggle through the element-trigger pattern match → ToggleLayer handler, and undo/redo through the InputProfile → Undo/Redo handlers — the real spine, no shortcut.)
+
+- [ ] **Step 4 (R5c): swap the transplanted body into the runtime**
+  In `AppFlowRuntime.cpp`, `#include "generated/AppFlowCallables.g.hpp"`. Replace `LayerController::Toggle`'s use inside the toggle path so the mask flip goes through the transplanted function — the cleanest honest swap that keeps behaviour identical: in the editor's ToggleLayer handler (Step 2) change `rt_.Layers().Toggle(idx)` to `rt_.Layers().SetMask(Vixen::AppFlow::Generated::applyToggle(rt_.Layers().Mask(), idx))`. (`Mask()`/`SetMask` exist, `LayerController.h:22-23`; `applyToggle(mask,i)=mask^(1<<i)` is byte-identical to `Toggle`'s single-bit flip.) This makes the transplanted C++ the LIVE toggle logic. Confirm `test_snapshot_undo`/`test_appflow_editor_toggle_render` still pass (byte-identical mask math).
+
+- [ ] **Step 5: build editor + grep gate + commit**
+  Build `vixen_editor` Windows-side (poll) → links clean. `grep -n "ParseLayerToggleId\|rt_\.\(Undo\|Redo\|ToggleLayer\)(" EditorApplication.cpp` → EMPTY. `grep -n "applyToggle" AppFlowRuntime.cpp EditorApplication.cpp` → present. Commit:
+  ```bash
+  cd $W && git add -- VIXEN/application/editor/include/KeyMap.h VIXEN/application/editor/source/EditorApplication.cpp VIXEN/application/editor/include/EditorApplication.h VIXEN/libraries/AppFlow/src/AppFlowRuntime.cpp
+  git commit -m "refactor(editor): pure consumer — register handlers + dispatch by selector/key; live transplanted applyToggle (Inc-4 reframe R5)"
+  ```
+
+---
+
+## Task R6: Live gate + close-out (VIXEN)
+
+**Commits to:** VIXEN worktree `worktree-view-contract-inc4`.
+
+**Files:**
+- Modify: `$W/VIXEN/libraries/RenderGraph/tests/Nodes/test_editor_toggle_undo_capture.cpp` (delta LIVE-calibrated + a back-button→Return assertion).
+- Possibly modify: `$W/VIXEN/temp/run_editor_script.bat` (only if the return-edge exercise needs a new scripted verb — keep minimal; the FSM `test_return_dispatch` already proves the logic, this proves the WIRED windowed path).
+
+- [ ] **Step 1 (R6a): baseline the retire is behaviour-neutral**
+  Run `run_editor_script.bat` (Windows-side, poll: `until ! kill -0 $PID; do echo "[watch +${t}s] $(tail -1 $LOG)"; sleep 15; t=$((t+15)); done`). The injector now drives `DispatchBySelector("layer-2-toggle")`/`DispatchByKey(Ctrl+Z/Y)` (R5 Step 3) — the toggle/undo/redo captures @5/45/75/105 must still round-trip (frame 75==frame 5 byte-exact, frame 105==frame 45 byte-exact). If they fail, R5 broke the wired path — fix before extending. This is the real proof the injector exercises the click/dispatch path.
+
+- [ ] **Step 2 (R6a): calibrate the toggle delta LIVE**
+  From the passing run read the actual `boreDiffPixels(png5,png45)` (the test prints it). Set `kMinBoreDiffPixels` below the observed delta but > 0. Do NOT assume the prior 4/6px — measure THIS run (design §5 / global constraint).
+
+- [ ] **Step 3 (R6a): back-button→Return wired assertion**
+  Add a scripted `return`/`back` verb OR a state-dump hook so the windowed run drives `DispatchBySelector("back-button")` from Settings and the harness asserts `rt_.Current()` popped. Keep minimal — if a windowed capture can't cheaply show the pop, assert via a `rt_.Current()` state-dump the script emits (arbiter: the existing scripted-action + capture mechanism, `EditorApplication.cpp` PreTick/Update). The point: prove Esc AND back-button reach Return in the RUNNING editor, not just the unit test.
+
+- [ ] **Step 4 (R6b): full no-regression sweep**
+  - AppFlow offline suite (all ~13 exes incl. `test_return_dispatch`) → green.
+  - Yeroket `SDFNodeGenerator.Tests` 230/230, `CodegenTool.Tests` 41/41 (38 + R3's 2 + R4's ... state the exact final count from the run).
+  - Drift-guards on a FRESH configure: `appflow_check` (now with `--view-schema`), `callables_check`, + the existing five (`octreeconfig_check`, `view_hud_*`) → all pass (or the documented KI-015 WARNING if the tool is unreachable — verify the guard actually RAN, not silently no-op'd; skill §10).
+  - `test_editor_toggle_undo_capture` → PASS on real GPU with the calibrated delta + the Return assertion.
+  - `grep -rn "ParseLayerToggleId" $W/VIXEN` → EMPTY.
+
+- [ ] **Step 5 (R6c): progress-log + commit**
+  Append per-milestone lines to the Progress Log (below) as each R-milestone lands (`Reframe Rn (Tasks Ra–Rc): DONE · VIXEN <sha>.. · Yeroket <sha> · Opus validator OK · <date>`). Commit:
+  ```bash
+  cd $W && git add -- VIXEN/libraries/RenderGraph/tests/Nodes/test_editor_toggle_undo_capture.cpp VIXEN/temp/run_editor_script.bat VIXEN/Vixen-Docs/01-Architecture/View-Contract-Inc4-View-Action-AppFlow-Convergence-Plan-2026-07.md
+  git commit -m "test(editor): windowed gate proves registry dispatch + back-button/Esc Return; reframe close-out (Inc-4 reframe R6)"
+  ```
+
+---
+
+### Reframe self-review (spec coverage)
+
+- **D10/D11 (engine owns nothing of app-flow; glue consumed in parallel)** → no new engine→AppFlow dep introduced; verified by R6 no-regression sweep. ✓
+- **D14 (uniform categoryless registry)** → R1 `Dispatch(id,params)`/`RegisterHandler`, no categories. ✓
+- **D15 (no public named verbs)** → R1 deletes `RequestState/DispatchAction/RequestReturn/Undo/Redo/ToggleLayer`; only `DispatchBySelector/DispatchByKey/DispatchById` public; FSM/ActionStack/Layers are services (`NavTo`/`NavPop`/`Stack()`/`Layers()`). R1 grep gate. ✓
+- **Return-as-handler** → R2 `FlowAction.Return`, back-button trigger, return-edge seeding; R5 editor Return handler; R2 gtest (Esc + back-button both pop, no ActionStack entry). ✓
+- **D16 (Data → View-noun, compile-checked)** → R3 `[FlowDataTarget]` + `--view-schema` cross-schema check + fail-with-clear-error NUnit. ✓
+- **D12 (logic-transplant walking skeleton)** → R4 `applyToggle` `[KernelCallable]` → `--callable-cpp` → vendored `AppFlowCallables.g.hpp`; R5 swaps it live; R4 NUnit content check + byte-verbatim vendor. Smallest honest kernel change = one CLI branch + one loader (+ possibly the Attributes-shim add for `[KernelCallable]`, flagged in R4 Step 3). ✓
+- **Editor pure consumer** → R5 registers handlers + dispatches by selector/key/id; `ParseLayerToggleId` deleted; injector drives the real path. ✓
+- **Live gate** → R6 delta LIVE-calibrated + injector exercises the real click/dispatch path + back-button→Return in the running editor. ✓
+- **Close-out** → R6 full AppFlow + Yeroket suites + all drift-guards + no-regression + progress-log. ✓
+
+**Sequencing rationale:** R1 (C++-only registry) lands the behavioural spine with zero artifact churn. R2 and R3 are the two BYTE-CHANGING `AppFlow.g.h` steps, each isolated with its own regen + golden update (Task-6 quarantine pattern). R4 adds a NEW artifact only. R5/R6 are C++-only consumer + gate. Each R-milestone is independently buildable + testable.
