@@ -1172,7 +1172,7 @@ bool traverseOctreeInstanced(vec3 rayOrigin, vec3 rayDir,
 //
 // Self-intersection bias: per TraceWorldShadow's documented convention (a),
 // the shadow ray's ORIGIN is offset off the surface (worldPos + normal*eps)
-// and tmin is left near 0 — NOT both conventions at once (double-biasing).
+// and tmin is passed as 0.0 — NOT both conventions at once (double-biasing).
 vec3 computeLightingWithShadows(vec3 color, vec3 normal, vec3 worldPos, vec3 rayDir,
                                 float roughness, LightingConfig lighting) {
     vec3 viewDir = normalize(-rayDir);
@@ -1190,7 +1190,7 @@ vec3 computeLightingWithShadows(vec3 color, vec3 normal, vec3 worldPos, vec3 ray
             // maxShadowDistance (no finite light position to stop short at).
             vec3 shadowOrigin = worldPos + normal * shadowConfig.biasEpsilon;
             bool occluded = TraceWorldShadow(shadowOrigin, lightDir,
-                                             shadowConfig.biasEpsilon,
+                                             0.0,
                                              shadowConfig.maxShadowDistance);
             shadowFactor = occluded ? 0.0 : 1.0;
         }
