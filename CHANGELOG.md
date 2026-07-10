@@ -22,6 +22,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   observation-post fleet-detection mechanic; the tier-crossing traversal-restart machinery remains a
   future increment. See `Vixen-Docs/01-Architecture/Tiered-ESVO-{Observer-Addressing-Design,
   Inc1-Plan}-2026-07.md`.
+- **Tiered ESVO — tier-crossing traversal, Inc2 (surface-to-orbit)** — `farBit==1` ESVO leaves now
+  reference a child tree (`TierRef`/`TierRefTable`, GPU binding 15) and the ray-march shader restarts
+  traversal inside the child tree's own frame with a fresh stack (same-physical-scale
+  `childScale==1.0` scope), with screen-space LOD and child-residency early-outs that decline the
+  crossing to the parent's mip sample. Live-proven on real hardware: a continuous, seamless
+  surface-to-orbit zoom through a real tier crossing (LOD handoff observed within 1 tick of the
+  hand-computed prediction) including a mid-flight residency transition. N-tier chaining and
+  scale-magnified tiers deferred with documented prerequisites (per-child-scale hitT normalization,
+  LOD-gate generalization). See `Vixen-Docs/01-Architecture/Tiered-ESVO-{Observer-Addressing-Design,
+  Inc2-Plan}-2026-07.md`.
+
+### Fixed
+- **CameraNode silently overriding every scene's configured camera** — `ExecuteImpl` recomputed the
+  camera position from stale orbit-mode defaults every frame, so every standalone body scene rendered
+  with the camera aimed at the old Cornell-box pivot (body-less frames). The configured
+  `PARAM_CAMERA_*` pose is now authoritative at rest; orbit engages only on real interaction
+  (drag/wheel/WASD), snap-free, with an explicit latch for orbit-configured consumers (editor).
+- **Missing `TRANSFER_DST_BIT` on the brick/config GPU buffers** — the first live post-compile
+  residency grant surfaced a real `VUID-vkCmdCopyBuffer-dstBuffer-00120`; both buffers now declare
+  the usage flag at creation (root-cause fix; sibling sweep confirmed no other affected buffers).
 
 ### Documentation
 - Rewrote the repository `README.md` and `VIXEN/README.md` to reflect the pivot from voxel
