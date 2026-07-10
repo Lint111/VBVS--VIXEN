@@ -820,6 +820,192 @@ void VulkanGraphApplication::BuildRenderGraph() {
             } else {
                 mainLogger->Error("[BuildRenderGraph] VIXEN_TIER_CROSSING_DEMO: no leaf found in parent octree — demo scene not built");
             }
+        } else if (std::getenv("VIXEN_TIER_CHAIN_DEMO")) {
+            // Tiered-ESVO Inc3 M3 Task 5 live gate: a THREE-tree chain, T0 -> T1 -> T2,
+            // reusing the EXACT construction pattern the two-tree VIXEN_TIER_CROSSING_DEMO
+            // above already live-gates (SDF sphere per tree, magenta/color-override for
+            // per-tier visual attribution, MarkLeafAsTierCrossing on every root-facing leaf,
+            // manual ConcatenatedOctrees bookkeeping) — extended to a SECOND crossing:
+            // T0's marked leaf points at T1 (slot 1), and T1's OWN marked leaf points at
+            // T2 (slot 2). Distinct per-tier colors (parent: default cosine-gradient;
+            // T1: solid green; T2: solid cyan) make each hop's contribution visually
+            // attributable in a capture, matching Inc2 M3's own "distinct color per tier"
+            // discipline (this milestone's own plan §M3 gate requirement).
+            mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_CHAIN_DEMO: building hand-authored three-tree chained tier-crossing scene");
+
+            constexpr int   kN          = 16;
+            constexpr int   kBrickDepth = 3;
+            const glm::vec3 kCenter(8.0f, 8.0f, 8.0f);
+
+            auto bakeSphereTree = [&](float radius) {
+                Vixen::SVO::RecipeParams rp{};
+                rp.radius = radius;
+                Vixen::SVO::SdfBakeResult baked =
+                    Vixen::SVO::BakeRecipeToSdfWorld(Vixen::SVO::RECIPE_SPHERE, kCenter, rp, kN, 2.0f);
+                return Vixen::SVO::BuildSdfBodyOctree(baked, kBrickDepth);
+            };
+
+            Vixen::SVO::SdfBodyOctree t0Body = bakeSphereTree(6.0f);
+            Vixen::SVO::SdfBodyOctree t1Body = bakeSphereTree(6.5f);
+            Vixen::SVO::SdfBodyOctree t2Body = bakeSphereTree(7.2f);
+
+            Vixen::SVO::SerializedOctree t0Ser = Vixen::SVO::SerializeSdf(t0Body);
+            Vixen::SVO::SerializedOctree t1Ser = Vixen::SVO::SerializeSdf(t1Body);
+            Vixen::SVO::SerializedOctree t2Ser = Vixen::SVO::SerializeSdf(t2Body);
+
+            // Per-tier solid color override (parent T0 keeps the shared cosine-gradient;
+            // T1 solid green, T2 solid cyan — distinct from each other AND from T0's
+            // muted-rainbow default, per the plan's "distinct color per tier so each hop
+            // is visually attributable" gate requirement).
+            auto overrideColor = [&](Vixen::SVO::SerializedOctree& ser, glm::vec3 rgb, const char* label) {
+                const uint32_t colorBase = ser.channelBaseFloats(Vixen::SVO::SEM_COLOR);
+                if (colorBase == 0xFFFFFFFFu) {
+                    mainLogger->Error(std::string("[BuildRenderGraph] VIXEN_TIER_CHAIN_DEMO: ") + label
+                                      + " has no SEM_COLOR channel — color override skipped");
+                    return;
+                }
+                float* pool = reinterpret_cast<float*>(ser.channelPool.data());
+                const size_t poolFloats = ser.channelPool.size() / sizeof(float);
+                for (uint32_t brick = 0; brick < ser.brickCount; ++brick) {
+                    for (uint32_t comp = 0; comp < 3; ++comp) {
+                        const float c = rgb[static_cast<int>(comp)];
+                        for (uint32_t voxel = 0; voxel < Vixen::SVO::SerializedOctree::kVoxelsPerBrick; ++voxel) {
+                            const size_t idx = static_cast<size_t>(brick) * ser.brickStrideFloats
+                                             + colorBase + comp * Vixen::SVO::SerializedOctree::kVoxelsPerBrick + voxel;
+                            if (idx < poolFloats) pool[idx] = c;
+                        }
+                    }
+                }
+            };
+            overrideColor(t1Ser, glm::vec3(0.0f, 1.0f, 0.0f), "T1");  // solid green
+            overrideColor(t2Ser, glm::vec3(0.0f, 1.0f, 1.0f), "T2");  // solid cyan
+
+            // Mip pools (M4 gate reuse: shadeFromMipSample needs real coverage for the
+            // LOD/residency fallback paths, exactly like VIXEN_TIER_CROSSING_DEMO above).
+            if (const Vixen::SVO::Octree* oct0 = t0Body.octree->getOctree()) Vixen::SVO::BakeAndAttachMipPool(*oct0, t0Ser);
+            if (const Vixen::SVO::Octree* oct1 = t1Body.octree->getOctree()) Vixen::SVO::BakeAndAttachMipPool(*oct1, t1Ser);
+            if (const Vixen::SVO::Octree* oct2 = t2Body.octree->getOctree()) Vixen::SVO::BakeAndAttachMipPool(*oct2, t2Ser);
+
+            // Locate a camera-facing leaf in T0's root (same octant-selection convention
+            // as VIXEN_TIER_CROSSING_DEMO above) and mark it -> T1 (slot 1).
+            auto findCameraFacingLeaf = [](const Vixen::SVO::Octree* oct, uint32_t& outDescIdx, int& outOctant) {
+                outOctant = -1;
+                if (oct == nullptr) return;
+                const auto& descs = oct->root->childDescriptors;
+                for (uint32_t i = 0; i < descs.size() && outOctant < 0; ++i) {
+                    const Vixen::SVO::ChildDescriptor& d = descs[i];
+                    for (int o = 4; o < 8; ++o) {
+                        if (d.hasChild(o) && d.isLeaf(o)) { outDescIdx = i; outOctant = o; break; }
+                    }
+                }
+                if (outOctant < 0) {
+                    for (uint32_t i = 0; i < descs.size() && outOctant < 0; ++i) {
+                        const Vixen::SVO::ChildDescriptor& d = descs[i];
+                        for (int o = 0; o < 8; ++o) {
+                            if (d.hasChild(o) && d.isLeaf(o)) { outDescIdx = i; outOctant = o; break; }
+                        }
+                    }
+                }
+            };
+
+            uint32_t t0MarkDescIdx = 0; int t0MarkOctant = -1;
+            findCameraFacingLeaf(t0Body.octree->getOctree(), t0MarkDescIdx, t0MarkOctant);
+            uint32_t t1MarkDescIdx = 0; int t1MarkOctant = -1;
+            findCameraFacingLeaf(t1Body.octree->getOctree(), t1MarkDescIdx, t1MarkOctant);
+
+            if (t0MarkOctant >= 0 && t1MarkOctant >= 0) {
+                // Hop 0: T0's marked leaf -> T1 (slot 1). childScale=1.0 (same-scale
+                // chaining — Inc3 M4's job is the scale-magnified version; M3 proves the
+                // HOP LOOP mechanism itself, same discipline as Inc2 M3 proving the
+                // single-restart mechanism before Inc2 M4/Inc3 M1-M2 added LOD/scale).
+                Vixen::SVO::TierRef refT0ToT1{};
+                refT0ToT1.childOctreeIndex = 1u;
+                refT0ToT1.childOriginLocal[0] = 1.5f;
+                refT0ToT1.childOriginLocal[1] = 1.5f;
+                refT0ToT1.childOriginLocal[2] = 1.5f;
+                refT0ToT1.childScale = 1.0f;
+                Vixen::SVO::MarkLeafAsTierCrossing(t0Ser, t0MarkDescIdx, t0MarkOctant, refT0ToT1, 22);
+
+                // Hop 1: T1's OWN marked leaf -> T2 (slot 2, T1's own child-slot
+                // numbering — ConcatenatedOctrees resolves childOctreeIndex against the
+                // GLOBAL concatenated configs[] array, so this is genuinely slot 2, not
+                // slot 1 relative to T1).
+                Vixen::SVO::TierRef refT1ToT2{};
+                refT1ToT2.childOctreeIndex = 2u;
+                refT1ToT2.childOriginLocal[0] = 1.5f;
+                refT1ToT2.childOriginLocal[1] = 1.5f;
+                refT1ToT2.childOriginLocal[2] = 1.5f;
+                refT1ToT2.childScale = 1.0f;
+                Vixen::SVO::MarkLeafAsTierCrossing(t1Ser, t1MarkDescIdx, t1MarkOctant, refT1ToT2, 22);
+
+                // Manual 3-tree concatenation (parent=slot0, T1=slot1, T2=slot2) — same
+                // per-octree bookkeeping loop as the two-tree demo above, generalized to 3.
+                Vixen::SVO::ConcatenatedOctrees cat;
+                cat.count = 3;
+                cat.configs.resize(3);
+                cat.nodeCounts.resize(3);
+                cat.brickCounts.resize(3);
+                cat.tierRefCounts.resize(3);
+
+                Vixen::SVO::SerializedOctree* octs[3] = {&t0Ser, &t1Ser, &t2Ser};
+                uint32_t nodeBase = 0, brickBase = 0, poolBase = 0, tierRefBase = 0, mipPoolBase = 0;
+                for (int k = 0; k < 3; ++k) {
+                    Vixen::SVO::SerializedOctree& s = *octs[k];
+                    s.config.nodeArrayBase  = static_cast<int32_t>(nodeBase);
+                    s.config.brickArrayBase = static_cast<int32_t>(brickBase);
+                    Vixen::SVO::setSdfBrickArrayBase(s.config, poolBase);
+                    Vixen::SVO::setTierRefTableBase(s.config, tierRefBase);
+                    Vixen::SVO::setMipPoolBase(s.config, mipPoolBase);
+
+                    cat.configs[k]       = s.config;
+                    cat.nodeCounts[k]    = s.nodeCount;
+                    cat.brickCounts[k]   = s.brickCount;
+                    cat.tierRefCounts[k] = static_cast<uint32_t>(s.tierRefs.size());
+
+                    cat.nodes.insert(cat.nodes.end(), s.nodes.begin(), s.nodes.end());
+                    cat.bricks.insert(cat.bricks.end(), s.bricks.begin(), s.bricks.end());
+                    cat.channelPool.insert(cat.channelPool.end(), s.channelPool.begin(), s.channelPool.end());
+                    cat.brickGridLookup.insert(cat.brickGridLookup.end(), s.brickGridLookup.begin(), s.brickGridLookup.end());
+                    cat.tierRefTable.insert(cat.tierRefTable.end(), s.tierRefs.begin(), s.tierRefs.end());
+                    cat.mipPool.insert(cat.mipPool.end(), s.mipPool.begin(), s.mipPool.end());
+
+                    if (cat.materials.empty()) {
+                        cat.materials = s.materials;
+                    }
+
+                    nodeBase    += s.nodeCount;
+                    brickBase   += s.brickCount;
+                    poolBase    += s.brickCount * s.brickStrideFloats;
+                    tierRefBase += static_cast<uint32_t>(s.tierRefs.size());
+                    mipPoolBase += s.nodeCount * s.channelCount;
+                }
+
+                if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))) {
+                    bodyScene->SetRecipePool(std::move(cat));
+
+                    constexpr float kRenderScale = 4.8f;
+                    constexpr float kHalf = 5.0f * kRenderScale;
+                    Vixen::SVO::BodyInstanceGpu inst{};
+                    inst.worldPos[0]  = 64.0f - kHalf;
+                    inst.worldPos[1]  = 64.0f - kHalf;
+                    inst.worldPos[2]  = 64.0f - kHalf;
+                    inst.renderScale  = kRenderScale;
+                    inst.color[0]     = 1.0f;
+                    inst.color[1]     = 1.0f;
+                    inst.color[2]     = 1.0f;
+                    inst.octreeIndex  = 0u;    // parent (T0) tree
+                    inst.providerKind = 0u;    // PROVIDER_STORED
+                    inst.recipeId     = 0u;
+
+                    bodyScene->SetInstances({inst});
+                    mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_CHAIN_DEMO: T0 leaf ("
+                                  + std::to_string(t0MarkDescIdx) + "," + std::to_string(t0MarkOctant)
+                                  + ") -> T1 octree1; T1 leaf (" + std::to_string(t1MarkDescIdx) + ","
+                                  + std::to_string(t1MarkOctant) + ") -> T2 octree2");
+                }
+            } else {
+                mainLogger->Error("[BuildRenderGraph] VIXEN_TIER_CHAIN_DEMO: no camera-facing leaf found in T0 or T1 — demo scene not built");
+            }
         } else if (std::getenv("VIXEN_STORED_SDF_DEMO")) {
             // VIXEN_STORED_SDF_DEMO — Stored-SDF bodies (Increment 2, M5 Task 10).
             // EnsureOctreesBuilt has baked 3 SdfBodyOctrees (kinds 0/1/2) via ConcatenateSdf,

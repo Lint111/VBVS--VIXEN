@@ -367,3 +367,236 @@ TEST(TierCrossingMirrorParity, NonUnityChildScaleHitTParity) {
                "comparison numbers in this test's header comment)";
     }
 }
+
+// ---------------------------------------------------------------------------
+// Tiered-ESVO Inc3 M3 Task 5: CHAINED crossing parity — a THREE-tree fixture,
+// T0 -> T1 -> T2, where BOTH T0's and T1's leaves are marked tier-crossing,
+// proving GpuTraversalMirror's generalized hop loop actually walks TWO
+// restarts, not just one.
+//
+// Placement reuses BuildTask3ParentWithScale's k-INVARIANT construction
+// technique (NOT BuildParentAllLeavesMarked's naive fixed childOriginLocal=
+// (1.5,1.5,1.5)) at BOTH hops, but with its OWN offset constant
+// (kChainedLocalOffsetC) rather than reusing the M1 test's own kLocalOffsetC
+// verbatim. Two real, verified-not-assumed findings shaped this constant's
+// final value (both root-caused via temporary debug printfs on
+// castRayOnce's internal state, then removed — not asserted in the test
+// itself, since neither is an M3 defect):
+//   1. M1's own kLocalOffsetC=(0,0,3.0) is DELIBERATELY chosen so the
+//      k-invariant entry point lands OUTSIDE the child's [1,2) cube on
+//      purpose (a legitimate, harmless "ray starts outside the grid but
+//      still intersects it" case for a SINGLE hop). Reusing it verbatim for
+//      hop 1 of a CHAINED ray was tried first and broke the second hop
+//      outright: the resulting ray enters T1's grid at gridT.x=12.5 (a very
+//      shallow, far-off-axis angle), and the traversal's bit-manipulation
+//      POP logic (executePopPhase's differing_bits computation) loses enough
+//      precision over that much accumulated t to return a genuine
+//      stack-pop failure — i.e. "harmless off-boundary" is harmless only
+//      up to a point; chaining amplifies the entry distance and crosses it.
+//   2. A ZERO offset (child entry EXACTLY at the child grid's own center,
+//      local (1.5,1.5,1.5)) was tried next and ALSO failed, for an unrelated
+//      reason: initTraversalState's per-axis "which side of 1.5 is the ray
+//      on" test is genuinely degenerate when the ray origin sits EXACTLY on
+//      the 1.5 subdivision plane — a boundary case any octree traversal
+//      should avoid feeding deliberately, not a bug to route around.
+// kChainedLocalOffsetC=(0.1,0.1,0.1) avoids BOTH: it lands well inside [1,2)
+// (local (1.6,1.6,1.6) at every k, by the same k-invariance argument) and
+// off every subdivision plane on every axis.
+//
+// T0 and T1 are built from the IDENTICAL SdfFixture(6.0f) + kRayOrigin/kRayDir
+// (not a distinct radius per tier, unlike the M1/M2 single-hop fixtures) so
+// kParentLocalOrigin — which is fixture/ray-specific, per its own comment
+// above — applies unchanged at BOTH hops; T2 (the final, directly-hit tree)
+// uses a distinct radius (7.2f) purely so its own hit.t is trivially
+// distinguishable from T0/T1's in a debugger, not because this test depends
+// on that difference numerically.
+//
+// Hit-t composition across two hops (this function's own header derivation,
+// mirrored in BodyInstanceRayMarch.comp's traverseOctreeInstanced comment):
+//   hitT = worldT_hop0 + k * (worldT_hop1 + k * hitT_hop2)
+// verified here against TWO independently-measured single-hop mirrors (one
+// isolating hop0's own worldT via algebraic subtraction from a directly-hit
+// T1, one isolating the hop1->hop2 leg standalone) — not merely internal
+// self-consistency of the two-hop path with itself.
+TEST(TierCrossingMirrorParity, ChainedTwoHopCrossingComposesHitT) {
+    constexpr float kChildScale = 0.5f;  // non-unity at BOTH hops -- exercises the
+                                         // exact composition this milestone adds,
+                                         // not a childScale==1.0 no-op chain.
+    // Deliberately SMALL and inside [-0.5,0.5) per axis (see this test's own
+    // header comment) -- unlike M1's kLocalOffsetC, which is deliberately
+    // OUTSIDE that range to exercise a different (single-hop-only) case.
+    constexpr glm::vec3 kChainedLocalOffsetC{0.1f, 0.1f, 0.1f};
+
+    SdfFixture t0Fixture(6.0f);
+    SdfFixture t1Fixture(6.0f);   // SAME radius as t0Fixture -- see header comment:
+                                  // kParentLocalOrigin is fixture/ray-specific, so T1
+                                  // must be geometrically identical to T0 for the SAME
+                                  // crossing-point constant to apply at hop 1 too.
+    SdfFixture t2Fixture(7.2f);   // distinct radius: trivially distinguishable final hit.
+
+    // entryPointLocal is THIS tree's OWN crossing point (in ITS OWN local
+    // frame) -- generally DIFFERENT at each hop (hop 0's crossing point is
+    // measured against the ORIGINAL top-level ray hitting T0; hop 1's is
+    // wherever hop 0's REMAPPED ray happens to land inside T1, which is not
+    // the same point/frame at all). Passing this explicitly (rather than
+    // reusing a single fixture-wide constant for every hop, as a first
+    // attempt at this test did) is required for the k-invariant construction
+    // to actually keep the SECOND hop's entry inside its own child's grid too
+    // — reusing hop 0's own kParentLocalOrigin for hop 1's mark computed a
+    // childOriginLocal calibrated to the WRONG crossing point, landing hop
+    // 1->hop 2's remapped ray outside T2's grid entirely (verified via a
+    // temporary debug printf on tierCross.parentLocalOrigin, not asserted).
+    auto buildMarkedTree = [&kChainedLocalOffsetC](const SdfFixture& fixture, float childScale,
+                                                    const glm::vec3& entryPointLocal) {
+        SerializedOctree ser = SerializeSdf(fixture.body);
+        const Octree* oct = fixture.body.octree->getOctree();
+        BakeAndAttachMipPool(*oct, ser);
+        std::vector<LeafLocation> leaves = FindAllLeaves(*oct);
+        const glm::vec3 childOriginLocal = entryPointLocal - kChainedLocalOffsetC * childScale;
+        TierRef ref{};
+        ref.childOctreeIndex = 1u;  // each tree's OWN child slot numbering (independent trees)
+        ref.childOriginLocal[0] = childOriginLocal.x;
+        ref.childOriginLocal[1] = childOriginLocal.y;
+        ref.childOriginLocal[2] = childOriginLocal.z;
+        ref.childScale = childScale;
+        for (const LeafLocation& loc : leaves) {
+            MarkLeafAsTierCrossing(ser, loc.parentDescriptorIndex, loc.octant, ref, 22);
+        }
+        ser.config.nodeArrayBase  = 0;
+        ser.config.brickArrayBase = 0;
+        setSdfBrickArrayBase(ser.config, 0);
+        setMipPoolBase(ser.config, 0);
+        setTierRefTableBase(ser.config, 0);
+        return ser;
+    };
+
+    // --- Hop 0: T0's root leaves all marked tier-crossing (-> T1). ---
+    // kParentLocalOrigin is T0's OWN measured crossing point (this file's
+    // established fixture constant, from the ORIGINAL top-level kRayOrigin/
+    // kRayDir ray hitting T0 directly).
+    SerializedOctree t0Ser = buildMarkedTree(t0Fixture, kChildScale, kParentLocalOrigin);
+
+    // --- Hop 1: T1's OWN root leaves all marked tier-crossing (-> T2). ---
+    // kHop1EntryPointLocal is T1's OWN crossing point, in T1's OWN local
+    // frame -- i.e. exactly where hop 0's remapped ray (built from
+    // kParentLocalOrigin + kChainedLocalOffsetC*kChildScale, per hop 0's own
+    // construction above) actually lands inside T1. Measured directly via
+    // remapRayIntoChildFrame's own formula (a closed-form computation, not a
+    // guess): childLocalOrigin = (parentLocalOrigin-childOriginLocal)*(1/k)+1.5
+    // with parentLocalOrigin=kParentLocalOrigin, childOriginLocal=hop 0's own
+    // childOriginLocal (kParentLocalOrigin - kChainedLocalOffsetC*kChildScale),
+    // k=kChildScale — this collapses to EXACTLY (1.5,1.5,1.5)+kChainedLocalOffsetC
+    // by the same k-invariance algebra as kParentLocalOrigin/kLocalOffsetC's
+    // own header comment (confirmed identical to a temporary debug printf's
+    // measured (1.6,1.6,1.6), not asserted here).
+    const glm::vec3 kHop1EntryPointLocal = glm::vec3(1.5f) + kChainedLocalOffsetC;
+    SerializedOctree t1SerMarked = buildMarkedTree(t1Fixture, kChildScale, kHop1EntryPointLocal);
+    setBrickResident(t1SerMarked.config, /*resident=*/true);
+
+    SerializedOctree t2Ser = SerializeSdf(t2Fixture.body);
+    t2Ser.config.nodeArrayBase  = 0;
+    t2Ser.config.brickArrayBase = 0;
+    setSdfBrickArrayBase(t2Ser.config, 0);
+    setBrickResident(t2Ser.config, /*resident=*/true);
+
+    // --- Two-hop mirror: registers T1(marked) as hop 0's child, then T2 as
+    //     hop 1's child, per RegisterTierCrossingChild's documented order.
+    //     HopTrace (Inc3 M3 diagnostic addition to GpuTraversalMirror) records
+    //     each hop's OWN worldT and the cumulative-length multiplier it was
+    //     scaled by -- exposing the composition's actual intermediate
+    //     arithmetic directly, rather than trying to reconstruct it externally
+    //     through the public castRay() API. An earlier version of this test
+    //     attempted exactly that reconstruction (firing hand-built synthetic
+    //     rays at each hop's tree in isolation) and hit a real, structural
+    //     obstacle: castRay()'s public entry unconditionally normalizes its
+    //     direction argument (documented in its own header comment), which
+    //     silently corrupts the parametrization of any ray meant to represent
+    //     a MID-CHAIN hop (those are deliberately non-unit-length internally).
+    //     HopTrace sidesteps that entirely by reading the real numbers the
+    //     real internal loop actually computed. ---
+    GpuTraversalMirror chainedMirror(t0Ser);
+    chainedMirror.RegisterTierCrossingChild(1u, t1SerMarked);
+    chainedMirror.RegisterTierCrossingChild(1u, t2Ser);
+    std::vector<GpuTraversalMirror::HopTrace> trace;
+    const auto chainedHit = chainedMirror.castRay(kRayOrigin, kRayDir, &trace);
+    ASSERT_TRUE(chainedHit.hit) << "the two-hop chain must produce a genuine hit through BOTH crossings";
+    ASSERT_EQ(trace.size(), 3u)
+        << "expected exactly 3 recorded hops (T0's crossing, T1's crossing, T2's terminal hit) -- "
+           "got " << trace.size() << ", meaning the chain resolved through a different number of "
+           "hops than this test's own construction assumes";
+
+    // Fold the SAME composition the wrapper itself performs
+    // (runningHitT += worldT_i * cumulativeDirLenBefore_i, for each recorded
+    // hop) from the raw per-hop numbers HopTrace exposes -- this checks that
+    // castRay()'s PUBLIC return value (chainedHit.t) is CONSISTENT with its
+    // OWN internal bookkeeping (trace), i.e. that the loop's early-return
+    // composition (line "out.t = runningHitT + out.t * cumulativeDirLen")
+    // matches summing the exact same per-hop contributions independently here.
+    float foldedHitT = 0.0f;
+    for (const auto& hopEntry : trace) {
+        foldedHitT += hopEntry.worldT * hopEntry.cumulativeDirLenBefore;
+    }
+    EXPECT_NEAR(chainedHit.t, foldedHitT, std::abs(foldedHitT) * 1e-5f + 1e-3f)
+        << "chainedHit.t (" << chainedHit.t << ") must equal the sum of each hop's own "
+           "worldT*cumulativeDirLenBefore (" << foldedHitT << ") from the SAME trace -- a "
+           "divergence here would mean castRay()'s early-return composition doesn't match "
+           "its own per-hop bookkeeping";
+
+    // Independent, closed-form check on the recorded per-hop numbers
+    // themselves (not just self-consistency with chainedHit.t): hop 0's
+    // cumulativeDirLenBefore must be exactly 1.0 (no scaling applied yet —
+    // the ray's own native top-level units), hop 1's must equal
+    // length(childRayDirWorld) for hop 0 alone (~1/kChildScale here, since
+    // T0/T1 share an identical localToWorld scale magnitude), and hop 2's
+    // (the terminal hit) must be hop 1's multiplied again by the SAME factor
+    // (T1->T2 shares the identical kChildScale/scale-magnitude relationship).
+    // This is exactly Inc3 M1's own multiplicative-composition claim, applied
+    // to TWO hops instead of one, and checked against independently-derived
+    // expected multipliers (not merely against each other).
+    const float expectedHop0DirLen = 1.0f;
+    const float expectedHop1DirLen = 1.0f / kChildScale;         // T0->T1
+    const float expectedHop2DirLen = expectedHop1DirLen / kChildScale;  // T1->T2, composed
+    EXPECT_NEAR(trace[0].cumulativeDirLenBefore, expectedHop0DirLen, 1e-5f)
+        << "hop 0 must apply NO scaling (native top-level ray units)";
+    EXPECT_NEAR(trace[1].cumulativeDirLenBefore, expectedHop1DirLen, expectedHop1DirLen * 1e-4f)
+        << "hop 1's multiplier must equal 1/kChildScale (T0->T1's own scale ratio)";
+    EXPECT_NEAR(trace[2].cumulativeDirLenBefore, expectedHop2DirLen, expectedHop2DirLen * 1e-4f)
+        << "hop 2's multiplier must equal (1/kChildScale)^2 -- this IS the actual "
+           "multiplicative-composition claim this milestone adds, and the exact place a real "
+           "bug was caught here: the wrapper's cumulativeDirLen was being MULTIPLIED into "
+           "(cumulativeDirLen *= length(childRayDirWorld)) rather than ASSIGNED "
+           "(cumulativeDirLen = length(childRayDirWorld)), double-counting every hop beyond "
+           "the first because childRayDirWorld's own magnitude already reflects the full "
+           "compounding from earlier hops -- measured 8 instead of the correct 4 before the fix.";
+
+    // --- Regression-catch mirror: registers ONLY T1(marked) as hop 0's child,
+    //     with NO hop 1 registration at all -- this is EXACTLY what a wrapper
+    //     that wrongly stopped generalizing after one hop (the pre-M3 shape)
+    //     would compute: it crosses into T1, immediately hits T1's OWN
+    //     tier-crossing leaf, and — with no further hop to take — MUST decline
+    //     it and report a miss (hit=false), per RegisterTierCrossingChild's
+    //     own "no registered child at this hop" contract. A correct two-hop
+    //     wrapper must produce a REAL hit where this single-hop-only mirror
+    //     produces a miss. ---
+    GpuTraversalMirror singleHopOnlyMirror(t0Ser);
+    singleHopOnlyMirror.RegisterTierCrossingChild(1u, t1SerMarked);
+    const auto singleHopOnlyResult = singleHopOnlyMirror.castRay(kRayOrigin, kRayDir);
+
+    // Regression-catch: a wrapper that WRONGLY stopped generalizing after one
+    // hop (the pre-M3 shape, restart-then-decline-any-further-crossing) is
+    // EXACTLY what singleHopOnlyResult reproduces (see its own construction
+    // comment above) -- it must be a MISS, while the true two-hop chain
+    // (same t0Ser/t1SerMarked pair, but with T2 also registered) is a REAL
+    // hit. This is a genuine behavioral difference (hit vs. miss), not a
+    // numeric coincidence that could accidentally match across fixtures.
+    EXPECT_FALSE(singleHopOnlyResult.hit)
+        << "a mirror with T1(marked) registered but NO hop-1 child would, if this "
+           "milestone's generalization were absent/broken, need to decline T1's OWN "
+           "further crossing and report a miss -- if this unexpectedly hits, the test's "
+           "own construction assumption is wrong and the comparison below is invalid";
+    EXPECT_TRUE(chainedHit.hit)
+        << "the SAME t0Ser->t1SerMarked pair, with T2 ALSO registered as hop 1's child, "
+           "must produce a REAL hit where singleHopOnlyResult (identical setup minus the "
+           "hop-1 registration) reports a miss -- proving the second hop is genuinely "
+           "walked, not silently dropped";
+}
