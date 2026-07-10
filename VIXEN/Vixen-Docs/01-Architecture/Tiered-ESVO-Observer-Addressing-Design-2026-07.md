@@ -1,6 +1,6 @@
 ---
 title: Tiered ESVO — Nested-Tree Addressing, Tier-Crossing Traversal & Observer-Relative Rendering
-status: Design (promoted from direction 2026-07-05) — Inc1 ✅ SHIPPED 2026-07-07; Inc2 ✅ SHIPPED 2026-07-10 (§3+§5 tier-crossing mechanism + a live, validated single-crossing continuous zoom; 3-tier T2→T1→T0 chaining deferred as a follow-up, see §9)
+status: Design (promoted from direction 2026-07-05) — Inc1 ✅ SHIPPED 2026-07-07; Inc2 ✅ SHIPPED 2026-07-10 (§3+§5 tier-crossing mechanism + a live, validated single-crossing continuous zoom; 3-tier T2→T1→T0 chaining deferred as a follow-up, see §9); Inc3 M1-M3 ✅ SHIPPED 2026-07-10 (scale-correct hitT/LOD gate, live magnified single crossing, chained hop-loop); Inc3 M4 (Earth-scale demo) mechanism-complete but BLOCKED on a live-render finding — see §9
 date: 2026-07-05
 updated: 2026-07-10
 tags: [architecture, svo, esvo, lod, scale, addressing, skybox, tiered-rendering]
@@ -331,6 +331,33 @@ exact at `childScale==1.0`) and (b) the LOD gate's inequality generalized to
 `>= childScale*scale_exp2` (currently gates on the parent leaf's own footprint, exactly correct
 only at `childScale==1.0`) — both flagged explicitly in Inc2's M3/M4 validator addenda as
 named, scoped prerequisites for whichever increment first builds a non-unity-scale tier.
+
+**Update (2026-07-10): [[Tiered-ESVO-Inc3-Plan-2026-07]] M1-M3 ✅ SHIPPED, M4 mechanism-complete
+but BLOCKED on a live-render finding.** M1 (scale-correct hitT normalization — a MULTIPLY by
+`length(childRayDirWorld)`, not a bare childScale term — + LOD gate generalized to
+`childScale*scale_exp2`) and M2 (a live, magnified single crossing at `childScale=0.25`,
+predicted-and-measured 3.93× apparent-size ratio) landed the two prerequisites this section
+named. M3 generalized the traversal-restart wrapper to a bounded hop loop (`MAX_TIER_HOPS=5`)
+and live-gated a genuine T2→T1→T0 chain at `childScale=1.0` (unity/near-unity scale). **M4
+(the epic gate: Earth-scale, `childScale=2^-10` per hop, ~2^-20 total ratio) implemented the
+full mechanism** — a k-invariant `childOriginLocal` placement technique (verified in CPU parity
+tests down to the real 2^-10 ratio) correctly keeps every hop's `tEntryWorld` term ~0 even
+under ~1024×/~1,048,576× cumulative-length amplification, and a scripted zoom + widened camera
+orbit-distance floor were built for the live demonstration. **However, live captures could not
+produce the expected distinctly-colored child geometry at the crossing for ANY tested non-unity,
+non-near-unity `childScale` value (0.25, 0.5, 2^-10) in this environment** — including at Inc3
+M2's own original, previously-Opus-validated commit checked out standalone, ruling out a
+regression introduced by M3/M4's own work. Only `childScale==1.0` (Inc2's original case) and
+`childScale` in roughly `{0.7-0.9}` (visibly shrinking, but real, colored slivers) render
+correctly in this session's testing; scales below roughly 0.5 render as background/miss at the
+crossing instead of the child's own surface. Since `GpuTraversalMirror.h` only models the
+binary-DDA leaf-hit path (not the live SDF march `handleLeafHitInstancedSdf`/`marchBrickSdf`),
+CPU parity tests cannot exercise or catch this — the mechanism (hop composition, hitT
+normalization, LOD gate) is independently proven correct on the CPU side at 2^-10, but the
+**live SDF-march behavior at non-unity/small childScale is an open, unresolved finding**,
+carried forward as the concrete blocker for the next increment (or a resumed M4) before the
+Earth-scale zoom can be called genuinely seamless end-to-end. See
+[[Tiered-ESVO-Inc3-Plan-2026-07]]'s M4 Progress Log entry for the full investigation trail.
 
 ## 10. Rejected alternatives
 

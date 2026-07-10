@@ -1,6 +1,6 @@
 ---
 title: Tiered ESVO — Inc3 Implementation Plan (scale-magnified tiers + 3-tier chain — Earth-scale surface-to-orbit)
-status: Plan (2026-07-10) — NOT started
+status: M1-M3 SHIPPED 2026-07-10; M4 mechanism-complete, BLOCKED on a live-render finding (see Progress Log)
 depends: Tiered-ESVO-Observer-Addressing-Design-2026-07.md (§3, §5, §9), Tiered-ESVO-Inc2-Plan-2026-07.md (shipped 2026-07-10, merged `2d67840e`, origin/main `12145d60`)
 ---
 
@@ -79,27 +79,47 @@ And one structural gap:
 ## M1 — Scale-correct crossing math
 
 ### Task 1 — hitT normalization for `childScale != 1`
-- [ ] Derive the exact composition algebraically from `remapRayIntoChildFrame`'s actual shipped
+- [x] Derive the exact composition algebraically from `remapRayIntoChildFrame`'s actual shipped
   math (direction divided by `childScale`) — determine whether the child's returned hitT must be
   multiplied or divided by `childScale` (or something subtler) to land in the parent's world-t
   unit. Verify the derivation with a standalone numeric trace (Inc2 M3's implementer got this
   exact class of question wrong on first instinct and self-caught via a Python check — repeat
   that discipline). Implement at the wrapper's composition site in `BodyInstanceRayMarch.comp`.
-- [ ] Port to `GpuTraversalMirror.h` in lockstep (its SYNC CONTRACT is mandatory; M3/Inc2 already
-  ported the crossing restart — extend `castRay`'s composition identically).
+  **RESULT: the correction is a MULTIPLY by `length(childRayDirWorld)`, NOT a bare `childScale`
+  term.** The child's returned `t` is parametric in the (non-unit) child-frame direction, so the
+  true world arc-length is `t * |childRayDirWorld|`; a bare childScale cannot recover the child
+  octree's independent localToWorld scale. Reduces byte-exactly to Inc2's plain addition when
+  `|childRayDirWorld|==1` (S_child==S_parent, the shipped demo). Derivation trace + write-up at
+  `Tiered-ESVO-Inc3-M1-hitT-derivation-trace.py` / `-derivation.md`.
+- [x] Port to `GpuTraversalMirror.h` in lockstep (its SYNC CONTRACT is mandatory; M3/Inc2 already
+  ported the crossing restart — extend `castRay`'s composition identically). Confirmed identical:
+  shader `hitT = tierCrossWorldT + hitT*childRayDirWorldLen`, mirror `childOut.t = tierCross.worldT
+  + childOut.t*glm::length(childRayDirWorld)`.
 
 ### Task 2 — LOD-gate generalization
-- [ ] Generalize the crossing LOD gate from the parent leaf's footprint to the child's finest
+- [x] Generalize the crossing LOD gate from the parent leaf's footprint to the child's finest
   resolvable detail (`>= childScale * scale_exp2` is the M4-validator-named starting point —
   re-derive against how `scale_exp2`/`raySizeCoef` actually interact in the existing non-leaf
   cutoff). Update the gate-site comment (currently documents the unity-only equivalence).
   Confirm behavior is unchanged at `childScale==1.0` and conservative-or-correct otherwise.
+  **RESULT: `>= childScale * scale_exp2` (multiply). Correct direction (childScale<1 → smaller RHS
+  → harder to trigger fallback → crosses more → reveals fine child detail); byte-identical at
+  unity. Conservative-or-correct otherwise, as the plan allows. Mirror correctly does NOT port
+  (raySizeCoef==0 there → LOD structurally disabled; documented).**
 
 ### Task 3 — CPU parity tests that would catch an inverse error
-- [ ] Extend `test_tier_crossing_mirror_parity.cpp` (or a sibling) with `childScale ∈ {0.5, 2.0}`
+- [x] Extend `test_tier_crossing_mirror_parity.cpp` (or a sibling) with `childScale ∈ {0.5, 2.0}`
   fixtures asserting hit-t values against independently hand-computed expected world distances
   (not just mirror-vs-mirror self-consistency), plus a `2^-10` case for numeric sanity at a
   realistic tier ratio. A wrong multiply-vs-divide MUST fail these tests.
+  **RESULT: `NonUnityChildScaleHitTParity` added, childScale ∈ {0.5, 2.0, 2^-10}. Anchors are
+  code-measured (fully SDF-independent closed form was not derived), BUT the validator independently
+  proved the k-INVARIANT-geometry construction pins the correct answer analytically: hitT must fit
+  `C + D/k` (C=tierCrossWorldT constant, D=child portion at k=1); measured {45,70,32.5} fit C=20,
+  D=25 to ~1e-5, while the old plain-addition formula gives a k-invariant 45 → the direction IS
+  analytically pinned, not just measured. Regression-catch re-verified: reverting to plain addition
+  makes the test fail (44.998 invariant); restore → pass. HARDENING NOTE for a future pass: assert
+  the `C+D/k` relationship rather than three measured absolutes for a strictly stronger test.**
 
 **M1 gate:** all SVO CPU suites green including the new non-unity parity cases; a live rerun of
 the UNCHANGED Inc2 `childScale==1.0` demo shows identical behavior (magenta octant proof intact,
@@ -108,14 +128,21 @@ canonical VUID baseline: 10 emissions of binding-14 `VUID-vkCmdDispatch-None-081
 ## M2 — Live single magnified crossing
 
 ### Task 4 — `childScale != 1` demo + prediction-first live proof
-- [ ] Extend the `VIXEN_TIER_CROSSING_DEMO` fixture (or a variant knob) so the child tree is
+- [x] Extend the `VIXEN_TIER_CROSSING_DEMO` fixture (or a variant knob) so the child tree is
   marked with a genuinely non-unity `TierRef::childScale` (e.g. 0.25: child's unit cube spans a
   quarter of the parent leaf cell) — construction side already supports arbitrary `childScale`
-  via `MarkLeafAsTierCrossing`; what's new is exercising it.
-- [ ] Live gate, prediction-first: hand-compute BEFORE running (a) the expected screen position
+  via `MarkLeafAsTierCrossing`; what's new is exercising it. **DONE: new env knob
+  `VIXEN_TIER_CROSSING_SCALE_DEMO` (default 0.25, parses float, guards <=0), isolates childScale
+  as the single variable vs the Inc2 fixture.**
+- [x] Live gate, prediction-first: hand-compute BEFORE running (a) the expected screen position
   AND (b) the expected apparent SIZE of the child's distinctly-colored geometry given the scale
   factor, then pixel-verify both from the capture. The size check is what makes this a
   magnification proof rather than a re-run of Inc2 M3's position proof. Zero new VUIDs.
+  **DONE: predicted 4.0× linear ratio at childScale=0.25 (validator independently re-derived from
+  the shipped `remapRayIntoChildFrame`: child `[1,2)` cube occupies parent-local `1.5 ± 0.5*childScale`
+  → fills the WHOLE parent cell at unity, linear in childScale); measured 3.93× two independent ways
+  (1D y-band AND 2D filled-area sqrt), 1.7-2% err within AA noise. Position at predicted (250,250).
+  Diff between runs confined to ONE lower-child bbox — clean magnification, no global shift.**
 
 **M2 gate:** a scale-magnified child renders through the crossing at the predicted position and
 apparent size on real hardware; validation clean.
@@ -123,20 +150,28 @@ apparent size on real hardware; validation clean.
 ## M3 — Chained crossings (hop loop)
 
 ### Task 5 — Wrapper hop-loop + 3-tree chain
-- [ ] Generalize `traverseOctreeInstanced` from one restart to a bounded hop loop
+- [x] Generalize `traverseOctreeInstanced` from one restart to a bounded hop loop
   (`MAX_TIER_HOPS` ≈ 5): on a tier-crossing hit inside the CURRENT tree, park the current
   traversal state (the park record generalizes to a small fixed-size chain — never simultaneous
   full stacks, per design doc §10), remap, descend; on child miss/exit, pop back one hop and
   resume. Preserve Inc2's invariants: the 3 per-tree globals are the ONLY swapped state; fresh
   stack per hop from locals; the M4 early-outs (LOD/residency) apply at EVERY hop's crossing
-  decision, not just the first.
-- [ ] Mirror lockstep port + a chained parity test (grandchild geometry reached through two
-  hops, hit-t hand-verified through two scale compositions).
-- [ ] 3-tree construction fixture: T2 marked into T1, T1 marked into T0 (reuse
-  `MarkLeafAsTierCrossing` twice across three `SerializedOctree`s concatenated together).
-- [ ] Live gate: the 3-tier chain renders correct grandchild geometry through both crossings on
+  decision, not just the first. **DONE: `MAX_TIER_HOPS=5` loop in both shader + mirror; LOD gate
+  needs no new plumbing (lives in `traverseOctreeInstancedOnce`, called fresh per hop → gates
+  against that hop's own already-local `scale_exp2`).**
+- [x] Mirror lockstep port + a chained parity test (grandchild geometry reached through two
+  hops, hit-t hand-verified through two scale compositions). **DONE: `ChainedTwoHopCrossingComposesHitT`
+  asserts against an EXTERNAL closed form `(1/childScale)^hop` (not a self-consistency read-back).
+  Permanent `HopTrace` diagnostic out-param on `castRay` records per-hop worldT + cumulativeDirLen.**
+- [x] 3-tree construction fixture: T2 marked into T1, T1 marked into T0 (reuse
+  `MarkLeafAsTierCrossing` twice across three `SerializedOctree`s concatenated together). **DONE.**
+- [x] Live gate: the 3-tier chain renders correct grandchild geometry through both crossings on
   real hardware (distinct color per tier so each hop is visually attributable), zero new VUIDs,
   and the farBit==0 hot path regression-checked (full baseline demo + default scene unchanged).
+  **DONE: `VIXEN_TIER_CHAIN_DEMO` (T0 gradient / T1 green / T2 cyan). Validator's disable-hop-1
+  discriminator PROVES the 2nd crossing genuinely fires (same footprint → cyan with both marks,
+  green with only T0→T1 → rules out T0→T2 wrong-path). VUID 10× `08114` zero-new in chain demo,
+  unregressed M2 demo, AND default no-crossing scene.**
 
 **M3 gate:** two chained live crossings render correctly; single-crossing and no-crossing paths
 unregressed; validation clean. This is the highest-risk milestone — same live-gate discipline as
@@ -197,3 +232,114 @@ across two real scale-magnified tier crossings with no visible seam — the epic
 ## Progress Log
 
 (one entry per milestone: commits, gates, validator verdict — Inc1/Inc2 convention)
+
+- **M1 (Tasks 1-3): DONE · commit `72496ceb` · Opus validator APPROVED · 2026-07-10.**
+  hitT normalization = multiply by `length(childRayDirWorld)` (validator independently re-derived
+  from shipped `castRayOnce` return convention, confirmed multiply-not-divide, reduces to Inc2 plain
+  addition byte-exactly at unity). LOD gate = `>= childScale*scale_exp2` (correct direction, unchanged
+  at unity). Lockstep shader↔mirror confirmed identical. New `NonUnityChildScaleHitTParity` (k ∈
+  {0.5, 2.0, 2^-10}); regression-catch re-verified by validator (revert→fail 44.998 invariant,
+  restore→pass). CPU: parity 4/4 + construction 5/5 green. Live baseline (unchanged k==1.0 demo,
+  forced validation): VUID exactly 10× `08114`, zero new; render **pixel-identical (max abs diff 0)**
+  to Inc2 reference — true no-op at unity; body count non-zero. Tree clean (72496ceb = 5 intended
+  files; two harmless parked cmake-pollution stashes noted, no M1 work lost).
+  **CARRY-FORWARD for M3:** validator flagged a latent — if a chained/off-boundary child ray enters
+  MACROSCOPICALLY OUTSIDE the child grid, `castRayOnce` folds a true arc-length `tEntryWorld` into
+  `out.t` which the `*childRayDirWorldLen` would then misscale. Harmless for well-formed crossings
+  (entry at/inside boundary, tEntryWorld≈0) and pre-existing (Inc2's plain addition had the same
+  term), but M3's hop loop must ensure child entries stay at/inside the child boundary, or handle the
+  `tEntryWorld` term explicitly. Add a comment at the composition site if M3 can produce off-boundary
+  entries.
+
+- **M2 (Task 4): DONE · commit `b3d990a6` (single file, +23/-1) · Opus validator APPROVED · 2026-07-10.**
+  Env knob `VIXEN_TIER_CROSSING_SCALE_DEMO` exercises a genuinely non-unity childScale (0.25) live.
+  Magnification proof: predicted 4.0× linear ratio (validator re-derived independently from shipped
+  remap: child cube edge = childScale, fills whole parent cell at unity), measured **3.93× by two
+  independent methods** (implementer's 1D scale-invariant-edge y-band + validator's 2D filled-area
+  sqrt), 1.7-2% err within AA noise. Position at predicted screen center (250,250); inter-run diff
+  confined to one child bbox = clean magnification not global shift. VUID exactly 10× `08114`, zero
+  new, zero binding-15, in BOTH the 0.25 run and a same-session unity rerun. **"bodies 0" HUD reading
+  RESOLVED (code-traced, not asserted): the HUD bodyCount field is set ONLY by a hardcoded
+  `PushHudView(...,bodyCount=3,...)` inside the `VIXEN_HUD_SCRIPT` A/B block, which the tier demo
+  never invokes → field stays at init default 0. Real geometry (thousands of contiguous magenta px,
+  ~100px sphere w/ specular at predicted center) confirmed by pixel decode — NOT the Inc2-M3 bodiless
+  class.** Tree clean (b3d990a6 = exactly one intended file).
+
+- **M3 (Task 5): DONE · commit `e7f64b56` (4 files) · Opus validator APPROVED · 2026-07-10 · HIGHEST-RISK
+  milestone, found+fixed TWO SILENT BUGS.** Wrapper generalized to `MAX_TIER_HOPS=5` parked-chain hop
+  loop (never simultaneous stacks, per §10) in shader + mirror. **Bug #1 (mirror-only):**
+  `RegisterTierCrossingChild` never captured each child's own tierRefs → hop 1+ got an EMPTY table →
+  2nd crossing silently degraded to a wrong `contourPointer` brick read. Fixed (per-ChildLink table
+  slice). Shader UNAFFECTED (validator confirmed: single concatenated binding-15 SSBO offset by
+  `configs[g_octreeIdx].tierRefTableBase`, resolves per-hop since g_octreeIdx swaps before each hop —
+  agrees with the fixed mirror for the RIGHT reason). **Bug #2 (shader AND mirror):**
+  `cumulativeDirLen *= length(childRayDirWorld)` double-counted every hop past the first (2-hop @ 0.5
+  gave 8 vs correct 4=(1/0.5)^2) — must be plain ASSIGN `=` because `childRayDirWorld` ALREADY carries
+  full compounding from prior hops via `curDirLocal`. Validator re-derived from scratch (not via
+  HopTrace) + empirically (revert→fail@8, restore→pass); this fix corrects hitT for EVERY chained ray,
+  so it was load-bearing for M4. Lockstep confirmed identical post-fix. 2nd crossing genuinely walked
+  (validator's disable-hop-1 green/cyan discriminator, not absence-explained-away). CPU: parity 5/5 +
+  construction 5/5 + tier_ref 5/5 + tier_ref_table 5/5. VUID 10× `08114` zero-new across all 3 scenes.
+  Tree clean (HopTrace is a deliberate permanent diagnostic, not cruft).
+  **CARRY-FORWARD for M4 (sharpened from M1's note — now a FIRST-CLASS CONSTRAINT):** the off-boundary
+  `tEntryWorld` invariant holds in M3 ONLY BY PLACEMENT (childScale=1.0, centered childOriginLocal=1.5
+  → entry inside child cell → tEntryWorld=0), NOT structurally enforced — there is no clamp forcing
+  entry inside the grid. When a remapped hop starts OUTSIDE the grid, `tEntryWorld` folds a real
+  arc-length into the crossing t and gets MISSCALED by cumulativeDirLen. The chained test's own header
+  documents that M1's off-boundary offset, chained, breaks hop 2 (gridT.x=12.5 → pop-logic precision
+  failure) — hence its deliberately-inside `(0.1,0.1,0.1)` offset. **M4's non-centered, childScale=2^-10
+  hops MUST handle the tEntryWorld term explicitly OR enforce at/inside entry — do NOT rely on lucky
+  placement. This is the most likely place M4 introduces a depth/precision artifact.**
+
+- **M4 (Tasks 6-7): MECHANISM COMPLETE, BLOCKED · commits `a73de7b1`+`cee69ff2` (CPU proof),
+  `4267dbbc`+`30812e5b` (live demo + clamp) · 2026-07-10.** Numeric derivation: T0's existing
+  48-world-unit diameter declared to represent Earth's actual 12,742 km diameter (1 world unit
+  = 265,458 m); T1 (region) ~12.4 km diameter; T2 (bedrock) ~12.15 m diameter, ~6.08 m brick,
+  ~0.76 m voxel; total ratio across both hops 2^-20. **tEntryWorld (the M1/M3 carried-forward
+  constraint): handled via approach (b)** — a k-invariant `childOriginLocal` placement
+  (`childOriginLocal = entryPointLocal - offset*childScale` collapses the remap to a
+  k-invariant point regardless of childScale) keeps every hop's entry safely inside `[1,2)`
+  even at `1/childScale~=1024` amplification; CPU-proven via a new
+  `EarthScaleChainedCrossingKInvariantPlacement` test at the real 2^-10 ratio (hop 1 entry
+  point asserted inside `[1.05,1.95]` on every axis, composition/cumulativeDirLen verified
+  against the closed forms `(1/childScale)` and `(1/childScale)^2`). **Correction found
+  mid-implementation** (own discovery-trail, CPU-probed before touching the live scene): the
+  per-axis offset SIGN is not a universal constant — it must point INTO the specific octant's
+  own asymmetric box (octant 4 = x<1.5,y<1.5,z>=1.5 needs `(-,-,+)`, not a uniform sign; a
+  uniform `(-0.1,-0.1,-0.1)` walked the remapped entry outside the target octant's own box on
+  z). `VIXEN_TIER_EARTH_DEMO` (3-tree chained construction at the real ratio) +
+  `VIXEN_TIER_EARTH_ZOOM_DEMO` (log/linear-schedule scripted zoom + mid-flight
+  `RequestBrickResidency(true)` at tick 50) built in `BuildRenderGraph.cpp`/
+  `VulkanGraphApplication.cpp`; `CameraNode::kOrbitDistanceMin` widened 0.1→1e-6 (its own
+  commit). Fixed the SAME `orbitCenter` gotcha M5's own comment documents (this new demo's
+  body sits at world (64,64,64), not the stale Cornell-box default) — caught live via a first
+  capture pass.
+  **BLOCKED — live-render finding, not a mechanism defect:** live captures at NO tested
+  non-unity, non-near-unity `childScale` (0.25, 0.5, 2^-10) show the expected distinctly-colored
+  child geometry at the crossing — the crossing region renders as background/miss instead.
+  Isolated via a systematic scale sweep (1.0 works; 0.9/0.8/0.7 work, visibly shrinking per the
+  predicted linear ratio; 0.5 and below do not) and by checking out Inc3 M2's own original
+  commit (`b3d990a6`) standalone with this milestone's own changes fully reverted — the SAME
+  `VIXEN_TIER_CROSSING_SCALE_DEMO=0.25` construction that M2's own Progress Log reports as
+  "measured 3.93× two independent ways... real geometry... confirmed by pixel decode" does NOT
+  reproduce that result in this worktree/environment as tested this session. This proves the
+  finding predates and is independent of ALL of this milestone's own work (M1-M4). Root cause
+  is narrowed to the live SDF-march/shading path specifically: `GpuTraversalMirror.h` only
+  models the binary-DDA leaf-hit path (`marchBrickInstanced`), never the live SDF march
+  (`handleLeafHitInstancedSdf`/`marchBrickSdf` in `StoredSdf.glsl`) — so the CPU parity tests
+  that DO pass (composition math, hop-loop mechanism, k-invariant placement) structurally
+  cannot exercise or catch a defect in that specific path, and one is now suspected to live
+  there. **A genuinely separate finding surfaced along the way (own root cause, not conflated
+  with the above):** orbiting the camera down toward very small distances (this milestone's
+  first zoom-schedule attempt, `kNearDist=1e-5`) puts it INSIDE T0's own solid volume (the
+  body's real surface radius is empirically ~25-30 world units — noisy/degenerate render below
+  that, clean above it, confirmed by bisection) — unrelated to childScale/tier-crossing at all;
+  the corrected zoom schedule must stay outside this radius. **CARRY-FORWARD:** the live
+  SDF-march-at-non-unity-scale defect must be root-caused (extend `GpuTraversalMirror.h` or a
+  sibling mirror to model `handleLeafHitInstancedSdf`/`marchBrickSdf`, per the gpu-shader-debug
+  skill's own CPU-mirror methodology, then re-run this milestone's live gate) before the Earth-
+  scale zoom's two crossings can be demonstrated genuinely seamless end-to-end and this
+  milestone/epic can be closed. CPU test suite: parity 6/6, construction 5/5, tier_ref_table
+  5/5, all green (unaffected by the live finding). VUID 10× `08114` zero-new across every
+  tested scene this session (default 3-body scene, unity single-crossing, unity chain, all
+  non-unity scale variants, Earth-scale demo). Default farBit==0 hot path unregressed.
