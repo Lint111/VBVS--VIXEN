@@ -9,7 +9,9 @@
         <!-- Inc1: layer rows are static (the golden document has exactly 3 layers: base/bulge/cut).
              Each row's checkbox div carries id="layer-<index>-toggle" and hit-mask="none" (plain
              rectangular hit test) so UISelectionProviderNode's click hit-test resolves it and
-             EditorApplication::Update drains the id via DrainClickedElementId + ParseLayerToggleId. -->
+             EditorApplication::Update drains the id via DrainClickedElementId and dispatches it
+             through AppFlowRuntime::DispatchBySelector (Inc-4 reframe R5 — the editor names no
+             action verbs; the "layer-<index>-toggle" binding resolves to the ToggleLayer handler). -->
         <div class="row">
             <div id="layer-0-toggle" class="checkbox checked" hit-mask="none"></div>
             <span class="col-name">base</span>

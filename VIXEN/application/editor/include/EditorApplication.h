@@ -36,7 +36,13 @@ public:
     // anonymous namespace can build a std::vector<ScriptedAction> without befriending it.
     struct ScriptedAction {
         long frame = 0;
-        enum class Kind { Toggle, Undo, Redo } kind = Kind::Undo;
+        // R6a: Settings/Back added to exercise the back-button->Return edge in the RUNNING
+        // editor (not just the FSM unit test) -- Settings drives NavTo(Settings) directly
+        // (a real editor has no "open settings" UI yet, so there is no selector to route this
+        // through; NavTo is a public service call, same primitive Return's own handler uses),
+        // Back drives DispatchBySelector("back-button") -- the real dispatch path a back-button
+        // click would take.
+        enum class Kind { Toggle, Undo, Redo, Settings, Back } kind = Kind::Undo;
         uint32_t layerIndex = 0;  // only meaningful for Kind::Toggle
     };
 

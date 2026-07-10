@@ -1,8 +1,17 @@
 @echo off
-REM Inc-2b Task 5 -- the authoritative windowed gate: an unattended, frame-scripted run of the
-REM real windowed vixen_editor.exe that exercises toggle -> undo -> redo through the ActionStack
-REM (the exact path a user's click / Ctrl+Z / Ctrl+Y takes) and dumps 4 PNGs for the post-run
-REM assertion gtest (test_editor_toggle_undo_capture) to diff.
+REM Inc-2b Task 5 / Inc-4 R6 -- the authoritative windowed gate: an unattended, frame-scripted run
+REM of the real windowed vixen_editor.exe that exercises toggle -> undo -> redo through the
+REM ActionStack (the exact path a user's click / Ctrl+Z / Ctrl+Y takes) and emits the log +
+REM captures the post-run gtest (test_editor_toggle_undo_capture) asserts.
+REM
+REM R6: the gate asserts (a) the editor's own "[EDITOR/state] <op> mask=.. undoDepth=.. redoDepth=.."
+REM trail from run_editor_script.log (mask 7->3->7->3 = undo/redo work, windowed), (b) a one-shot
+REM residency smoke check that the FIRST edit reached the render pipeline (capture_5 != capture_45),
+REM and (c) back-button->Return (afterBack). NOTE: a byte-exact VISUAL undo/redo round-trip is NOT
+REM asserted -- the editor body renders the mask-INVARIANT mip-fallback path at an orbit camera, so
+REM the layer mask has ~0 visible effect (proven via GPU-memory checksums + a shader-output tap;
+REM the mask is correct at CPU + GPU-buffer + shader-input layers). See
+REM Vixen-Docs/01-Architecture/R6-Editor-Render-Mask-Invisible-Finding-2026-07.md.
 REM
 REM Env-in-batch (WSL-env-vars-dont-reach-windows-exe rule): every VIXEN_EDITOR_* knob is set
 REM HERE, not in the calling shell. Unset (a normal interactive launch) => zero behaviour change
@@ -19,7 +28,18 @@ REM 0 reads a freshly-allocated, never-rendered (all-zero) image, not the actual
 REM (found live via this gate: editor_capture_0.png was solid black while every later capture had
 REM real content). Frame 5 gives a few completed Render() calls' worth of margin before the
 REM baseline capture.
-set VIXEN_EDITOR_SCRIPT=toggle:2@30,undo@60,redo@90
+REM
+REM Inc-4 R6a: settings@100,back@110 exercise the back-button->Return edge in the RUNNING editor
+REM (design D15/R6 -- prove Esc AND back-button both reach Return live, not just the FSM unit
+REM test). settings@100 calls NavTo(Settings) directly (no "open settings" UI/selector exists
+REM yet); back@110 dispatches the real "back-button" selector and logs the post-dispatch FSM
+REM state as "[EDITOR/state] afterBack=<FlowStateId>" for the gtest to parse out of this run's
+REM log (a windowed capture can't cheaply show a state pop). Both land well after the toggle/
+REM undo/redo window (30/60/90) and well before exit (120), so they don't interact with it.
+REM Captures: 5 (pre-first-edit baseline) and 45 (post-first-edit, resident) feed the R6 residency
+REM smoke check. 75/105 are kept for diagnostics (post-undo / post-redo) but are byte-identical to
+REM 45 by design (mask invisible) so the gate no longer diffs them.
+set VIXEN_EDITOR_SCRIPT=toggle:2@30,undo@60,redo@90,settings@100,back@110
 set VIXEN_EDITOR_CAPTURE_FRAMES=5,45,75,105
 set VIXEN_EDITOR_CAPTURE_DIR=temp
 set VIXEN_EXIT_AFTER_FRAMES=120

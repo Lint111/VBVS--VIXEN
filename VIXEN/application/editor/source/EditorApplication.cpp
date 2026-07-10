@@ -72,6 +72,10 @@ std::vector<EditorApplication::ScriptedAction> ParseEditorScript(const std::stri
             action.kind = EditorApplication::ScriptedAction::Kind::Undo;
         } else if (actionName == "redo") {
             action.kind = EditorApplication::ScriptedAction::Kind::Redo;
+        } else if (actionName == "settings") {
+            action.kind = EditorApplication::ScriptedAction::Kind::Settings;
+        } else if (actionName == "back") {
+            action.kind = EditorApplication::ScriptedAction::Kind::Back;
         } else {
             if (logger) logger->Warning("[EditorApplication] VIXEN_EDITOR_SCRIPT: unknown action, skipping: " + token);
             continue;
@@ -115,7 +119,14 @@ uint32_t ParseParam(const Vixen::AppFlow::AppFlowRuntime::Params& params, const 
 }  // namespace
 
 EditorApplication::EditorApplication(std::string documentPath)
-    : documentPath_(std::move(documentPath)) {}
+    : documentPath_(std::move(documentPath)) {
+    // R6a fix-loop finding: logger_ was constructed enabled=true but terminalOutput_ defaults
+    // false (Logger.h) and nothing ever called SetTerminalOutput on it (only main.cpp's
+    // SEPARATE mainLogger got that call) -- every [EditorApplication] Info/Error line, including
+    // the pre-existing "Saved document to ..." one, was silently buffered into logEntries and
+    // never reached stdout/the redirected run_editor_script.log. Mirrors main.cpp:56.
+    logger_->SetTerminalOutput(true);
+}
 
 bool EditorApplication::LoadDocument(const std::string& path) {
     if (!doc_.Load(path, lastEditorError_)) {
@@ -359,15 +370,60 @@ void EditorApplication::PreTick() {
     for (const auto& action : scriptedActions_) {
         if (action.frame != updateTick_) continue;
         switch (action.kind) {
-            case ScriptedAction::Kind::Toggle:
-                rt_.DispatchBySelector("layer-" + std::to_string(action.layerIndex) + "-toggle");
+            // The three edit kinds emit one canonical, parseable "[EDITOR/state] <op> ..." line
+            // each (mask + undo/redo depths + dispatch result). This state-dump is the R6 gate's
+            // real proof that undo/redo work: it asserts the mask trail (7->3->7->3) and depth
+            // movement come out of the RUNNING editor through the registry-dispatch path. It is NOT
+            // debug noise -- it is the observable contract the windowed gate parses (a windowed
+            // PIXEL round-trip is unreachable here: the editor body renders the mask-INVARIANT
+            // mip-fallback path at an orbit camera, so the layer mask has ~0 visible effect --
+            // proven via GPU-memory checksums + a shader-output tap; see the R6 finding note in
+            // Vixen-Docs/01-Architecture and test_editor_toggle_undo_capture.cpp's header). Keep the
+            // key=value shape stable: ReadEditStates() in that gate parses it positionally by key.
+            case ScriptedAction::Kind::Toggle: {
+                const auto r = rt_.DispatchBySelector("layer-" + std::to_string(action.layerIndex) + "-toggle");
+                logger_->Info("[EDITOR/state] toggle mask=" + std::to_string(rt_.Layers().Mask()) +
+                               " undoDepth=" + std::to_string(rt_.Stack().UndoDepth()) +
+                               " redoDepth=" + std::to_string(rt_.Stack().RedoDepth()) +
+                               " result=" + std::to_string(static_cast<int>(r)));
                 break;
-            case ScriptedAction::Kind::Undo:
-                rt_.DispatchByKey({Vixen::AppFlow::Generated::KeyId::Z, Vixen::AppFlow::Generated::KeyMod::Ctrl});
+            }
+            case ScriptedAction::Kind::Undo: {
+                const auto r = rt_.DispatchByKey({Vixen::AppFlow::Generated::KeyId::Z, Vixen::AppFlow::Generated::KeyMod::Ctrl});
+                logger_->Info("[EDITOR/state] undo mask=" + std::to_string(rt_.Layers().Mask()) +
+                               " undoDepth=" + std::to_string(rt_.Stack().UndoDepth()) +
+                               " redoDepth=" + std::to_string(rt_.Stack().RedoDepth()) +
+                               " result=" + std::to_string(static_cast<int>(r)));
                 break;
-            case ScriptedAction::Kind::Redo:
-                rt_.DispatchByKey({Vixen::AppFlow::Generated::KeyId::Y, Vixen::AppFlow::Generated::KeyMod::Ctrl});
+            }
+            case ScriptedAction::Kind::Redo: {
+                const auto r = rt_.DispatchByKey({Vixen::AppFlow::Generated::KeyId::Y, Vixen::AppFlow::Generated::KeyMod::Ctrl});
+                logger_->Info("[EDITOR/state] redo mask=" + std::to_string(rt_.Layers().Mask()) +
+                               " undoDepth=" + std::to_string(rt_.Stack().UndoDepth()) +
+                               " redoDepth=" + std::to_string(rt_.Stack().RedoDepth()) +
+                               " result=" + std::to_string(static_cast<int>(r)));
                 break;
+            }
+            case ScriptedAction::Kind::Settings:
+                // NavTo is a plain service call (AppFlowRuntime.h:46), not a dispatchable verb --
+                // there's no selector/key for "open settings" yet (design D15's registry only
+                // covers actions, not raw navigation), so this is the one script action that
+                // calls a runtime service directly rather than Dispatch*. Sets up the state the
+                // very next Back action needs (Settings is the only state back-button/Esc resolve
+                // Return from -- kReturnEdges, AppFlow.g.h:82).
+                rt_.NavTo(Vixen::AppFlow::Generated::FlowStateId::Settings);
+                break;
+            case ScriptedAction::Kind::Back: {
+                // The real dispatch path a back-button UI click takes: DispatchBySelector, exactly
+                // like Update()'s click-drain call site -- not a shortcut to NavPop(). Emits a
+                // parseable state-dump line so run_editor_script.bat's log can be asserted against
+                // by the windowed gtest (a windowed capture can't cheaply show a state pop; this is
+                // the state-dump-hook option the plan calls out, R6 Step 3).
+                rt_.DispatchBySelector("back-button");
+                logger_->Info("[EDITOR/state] afterBack=" +
+                               std::to_string(static_cast<int>(rt_.Current())));
+                break;
+            }
         }
     }
     } catch (const std::exception& e) {
@@ -443,6 +499,8 @@ void EditorApplication::Update() {
     // Inc-2: dirty_ is now owned here (the model no longer tracks edit state).
     if (dirty_) {
         dirty_ = false;
+        logger_->Debug("[EDITOR/diag] re-flatten tick=" + std::to_string(updateTick_) +
+                       " mask=" + std::to_string(rt_.Layers().Mask()));
         if (!ApplyDocumentToScene()) {
             logger_->Error("[EditorApplication] toggle re-apply failed: " + lastEditorError_);
         }
@@ -457,6 +515,10 @@ void EditorApplication::Update() {
     for (const long captureFrame : captureFrames_) {
         if (captureFrame != updateTick_) continue;
         const std::string path = captureDir_ + "/editor_capture_" + std::to_string(updateTick_) + ".png";
+        // Canonical parseable line: correlates each capture PNG to the mask it was taken at, so the
+        // R6 gate's residency smoke-check knows which frame is pre- vs post-first-edit.
+        logger_->Info("[EDITOR/state] capture tick=" + std::to_string(updateTick_) +
+                       " mask=" + std::to_string(rt_.Layers().Mask()));
         std::string captureErr;
         if (!CaptureFrameToPng(path, captureErr)) {
             logger_->Error("[EditorApplication] CaptureFrameToPng failed for " + path + ": " + captureErr);
