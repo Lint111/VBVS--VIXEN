@@ -483,6 +483,46 @@ gtest_discover_tests(test_mip_fallback_render
 message(STATUS "[RenderGraph Tests] Added: test_mip_fallback_render (Sparse-Mip ESVO LOD Inc1 M3)")
 
 # ===========================================================================
+# Lazy-Procedural-Delta-Baseline Inc0 M6 Task 14 — baked-vs-virtual geometry
+# parity gate. RUNTIME-compiles the recipe-spliced uber-shader via
+# ShaderBundleBuilder (the virtual path has no build-time .spv — the splice
+# text depends on what's registered), reusing this directory's device/pool/
+# dispatch/readback machinery. No dependency on body_instance_raymarch_spv:
+# BOTH shader variants (baked-path plain shader + virtual-path spliced
+# shader) are compiled at TEST RUNTIME through the same production
+# ShaderBundleBuilder path test_uber_shader_splice.cpp already proves clean.
+# ===========================================================================
+add_executable(test_baked_vs_virtual_parity
+    Nodes/test_baked_vs_virtual_parity.cpp
+)
+target_link_libraries(test_baked_vs_virtual_parity PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+if(TARGET SVO)
+    target_link_libraries(test_baked_vs_virtual_parity PRIVATE SVO)
+endif()
+if(TARGET ShaderManagement)
+    target_link_libraries(test_baked_vs_virtual_parity PRIVATE ShaderManagement)
+endif()
+if(TARGET stb)
+    target_link_libraries(test_baked_vs_virtual_parity PRIVATE stb)
+else()
+    target_include_directories(test_baked_vs_virtual_parity PRIVATE
+        "${CMAKE_BINARY_DIR}/_deps/stb-src")
+endif()
+target_compile_definitions(test_baked_vs_virtual_parity PRIVATE
+    BODY_INSTANCE_RAYMARCH_COMP_PATH="${CMAKE_SOURCE_DIR}/shaders/BodyInstanceRayMarch.comp"
+    VIXEN_SHADERS_DIR="${CMAKE_SOURCE_DIR}/shaders"
+    VIXEN_SVO_SHADERS_DIR="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders"
+)
+if(VIXEN_WSL_DZN_ICD)
+    target_compile_definitions(test_baked_vs_virtual_parity PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
+endif()
+set_target_properties(test_baked_vs_virtual_parity PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_baked_vs_virtual_parity
+    DISCOVERY_MODE PRE_TEST
+    DISCOVERY_TIMEOUT 120)
+message(STATUS "[RenderGraph Tests] Added: test_baked_vs_virtual_parity (Lazy-Procedural-Delta-Baseline Inc0 M6 Task 14)")
+
+# ===========================================================================
 # Sparse-Mip ESVO LOD Inc1 M4b — GPU per-ray occlusion reject: a synthetic
 # camera -> occluder -> occluded-target line-up (front-to-back sorted CPU-side)
 # asserts the occluded instance's ESVO traversal ran ZERO iterations once the
