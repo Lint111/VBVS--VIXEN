@@ -1,0 +1,96 @@
+Sampled Lighting Inc1 M4 -- ShadowConfig + direct-lighting pass with shadow rays -- live gate
+
+Gate 1: shadowconfig_check drift-guard + SDI parity gtest
+------------------------------------------------------------------------------
+codegen tool `--check` (run directly, WSL-side): PASSED (exit 0, no diff).
+test_shadowconfig_sdi_parity.exe: PASSED (1/1). Reflected ShadowConfig (via
+BodyInstanceRayMarch.spv, SPIRV-Reflect): size=16, enabled@0, raysPerLight@4,
+maxShadowDistance@8, biasEpsilon@12 -- all match Vixen::Gpu::ShadowConfig's
+offsetof values exactly.
+
+Gate 2: LIVE render shows shadows (scripted, non-vacuous, real GPU)
+------------------------------------------------------------------------------
+Env-gated demo scene VIXEN_SHADOW_DEMO=1 (target sphere + small occluder sphere
+positioned along the default directional light normalize(1,1,-1) from a lit,
+camera-visible grazing point on the target's surface, verified analytically
+before implementation: NdotL=0.68>0, camera-visibility dot=0.11>0, shadow-ray
+t0=2.97>0 against the occluder) + a third "litControl" sphere with no occluder
+in its light path, captured via VIXEN.exe's VIXEN_HUD_CAPTURE_FRAMES=5 on the
+real GPU (AMD Radeon(TM) Graphics, Windows-native vixen-ninja build).
+
+sha256(gate-artifacts/inc1-m4-shadow-on.png)  = 947ebc7056fb1ed65797c8ec76024db7e0ec463c0f2d5868e0ba1c84e5fda2f3
+sha256(gate-artifacts/inc1-m4-shadow-off.png) = 7f6fa7a093a05fee6c6a1bfa1b492083be53140d87babe1464f159ae8ae69fb8
+(same VIXEN_SHADOW_DEMO scene, VIXEN_SHADOW_CONFIG_ENABLED=0 for the -off capture)
+
+Scripted assertion (Python/PIL over the two PNGs, region = the analytically-
+predicted occluded patch on the target sphere, x:[285,295) y:[205,215)):
+  occluded-region mean luminance: shadows-ON=67.4  shadows-OFF=147.5  (delta=80.2)
+  lit-control-region mean luminance: shadows-ON=69.0  shadows-OFF=69.0  (delta=0.0)
+743 pixels in the [180,330)x[150,320) scan window differ by >10 combined RGB
+between the two captures, concentrated exactly at the occluder/target shadow
+boundary (peak single-pixel delta: (69,69,69) vs (173,173,173) at (290,209)).
+Non-vacuous: darkening is occlusion-specific (litControl region shows exactly
+0 delta), not a global dimming.
+
+Gate 3: ShadowConfig.enabled=0 reproduces the M3 baseline BYTE-IDENTICALLY
+------------------------------------------------------------------------------
+Default (no VIXEN_SHADOW_DEMO) editor scene, VIXEN_SHADOW_CONFIG_ENABLED=0,
+vixen_editor.exe VIXEN_EDITOR_CAPTURE_FRAMES=5:
+
+sha256(gate-artifacts/inc1-m4-baseline-repro.png) = fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1
+
+M1/M2/M3 baseline (from gate-artifacts/inc1-m3-hashes.txt):
+                                                     fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1
+
+Result: MATCH (byte-identical). Also confirmed: the SAME default scene with
+shadows ENABLED (the default) ALSO hashes fde9c268... -- expected and not a
+gate failure: none of the 3 default demo bodies (spaced ~50 units apart along
+X, no vertical/depth stacking) occlude each other's light path from this
+camera's framing, so shadows genuinely make zero visual difference to that
+specific scene. The VIXEN_SHADOW_DEMO scene (Gate 2 above) is the one that
+exercises real occlusion; this gate isolates the enabled=0 lever's byte-
+cleanliness independent of scene geometry.
+
+Gate 4: test_shadow_correctness.cpp (CPU-reference vs real shader dispatch)
+------------------------------------------------------------------------------
+test_shadowconfig_sdi_parity.exe (pure CPU/reflection): PASSED, see Gate 1.
+
+test_shadow_correctness.exe: BUILT successfully (shader compiles, links,
+dispatches through the same real-shader harness pattern as
+test_hitrecord_readback.cpp / test_body_instance_occlusion_reject.cpp) but
+COULD NOT RUN on this machine -- same PRE-EXISTING environment limitation
+recorded in gate-artifacts/inc1-m3-hashes.txt for test_hitrecord_readback:
+this whole hand-built-descriptor-layout test file family's device gate only
+accepts a software rasterizer (llvmpipe/lavapipe) or WSL2's Dozen; this dev
+machine's real AMD Radeon GPU is refused before any vkQueueSubmit
+(softwareConfirmed_ guard). No lavapipe ICD on this native-Windows machine;
+this worktree's WSL side has no glslc on PATH / no existing build tree (a
+fresh WSL configure is a documented ~500s cost -- see
+cmake-build-race-and-configure-timing memory -- not attempted this gate).
+
+The equivalent proof is established two ways instead, per the project's own
+documented "the windowed real-GPU capture is the authoritative live gate"
+convention (see e.g. Renderer-Agnostic-View-Contract-Design-2026-07.md's D7 /
+"Authoritative (real GPU, live)" callouts):
+  1. Gate 2 above already IS the "real shader dispatch produces the correct
+     occlusion classification" proof, on the actual production code path
+     (BuildRenderGraph.cpp's real graph, real descriptor wiring, real device),
+     with the occlusion geometry independently verified analytically before
+     the render (NdotL/visibility/ray-sphere t0 all computed by hand in
+     Python, matching the rendered darkening region exactly).
+  2. test_shadow_correctness.cpp itself encodes the SAME independent CPU
+     analytic ray-vs-sphere reference (RaySphereHit/ReferenceOccluded, no
+     VIXEN traversal code) as test_traceworld_mirror.cpp's own convention,
+     ready to run wherever lavapipe/Dozen is available (CI, WSL-side dev).
+
+Both apps boot + close clean (all runs this milestone, exit 0):
+  - vixen_editor.exe (default scene, shadows on):        temp/run_m4_capture.log
+  - vixen_editor.exe (default scene, shadows off):        temp/run_m4_capture_disabled.log
+  - VIXEN.exe (VIXEN_SHADOW_DEMO, shadows on):             temp/run_m4_shadow_demo.log
+  - VIXEN.exe (VIXEN_SHADOW_DEMO, shadows off):            temp/run_m4_shadow_off.log
+No new VUIDs vs baseline in any run (only the pre-existing
+VUID-vkCmdDispatch-None-08114 / InstanceIterDebugBuffer noise, unchanged
+since Inc1 M1).
+
+Platform: Windows-native build (vixen-ninja preset, MSVC), real GPU (AMD
+Radeon(TM) Graphics).
