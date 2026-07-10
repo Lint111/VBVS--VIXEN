@@ -129,6 +129,14 @@ public:
                                            // final hop, the terminal Hit::t) — RAW, before
                                            // the cumulative-length multiply.
         float cumulativeDirLenBefore = 1.0f;  // the multiplier THIS worldT is scaled by.
+        // Inc3 M4: this hop's own measured crossing point, in the CURRENT tree's local
+        // [1,2) frame (tierCross.parentLocalOrigin — the same quantity a demo-scene
+        // builder needs to compute a k-invariant childOriginLocal placement, per
+        // test_tier_crossing_mirror_parity.cpp's BuildTask3ParentWithScale/
+        // ChainedTwoHopCrossingComposesHitT discovery trail: "measured via direct
+        // instrumentation... not hand-derived"). Zero for the terminal (non-crossing)
+        // hop's entry, since a final hit/miss has no further crossing point to report.
+        glm::vec3 parentLocalOrigin{0.0f};
     };
 
     // Port of traverseOctreeInstanced(): cast a WORLD-space ray, return the hit.
@@ -223,7 +231,7 @@ public:
             // world-t units, so it must be scaled by cumulativeDirLen (still at
             // its pre-this-hop value here) before being added to the running
             // total.
-            if (trace) trace->push_back(HopTrace{tierCross.worldT, cumulativeDirLen});
+            if (trace) trace->push_back(HopTrace{tierCross.worldT, cumulativeDirLen, tierCross.parentLocalOrigin});
             runningHitT += tierCross.worldT * cumulativeDirLen;
             // ASSIGN, not multiply-in: childRayDirWorld's own magnitude ALREADY
             // reflects the full compounding from every earlier hop, because

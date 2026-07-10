@@ -600,3 +600,142 @@ TEST(TierCrossingMirrorParity, ChainedTwoHopCrossingComposesHitT) {
            "hop-1 registration) reports a miss -- proving the second hop is genuinely "
            "walked, not silently dropped";
 }
+
+// ---------------------------------------------------------------------------
+// Tiered-ESVO Inc3 M4 Task 6/gate: EARTH-SCALE chained parity — same T0->T1->T2
+// hop-loop mechanism as ChainedTwoHopCrossingComposesHitT above, but at the
+// REALISTIC tier ratio the epic actually needs: childScale=2^-10 at BOTH hops
+// (2^-20 total), not M3's proof-of-mechanism 0.5. This is the CPU-side half of
+// M4's "handle the tEntryWorld term explicitly OR enforce at/inside entry" gate
+// requirement (plan's own carry-forward note, sharpened from M1): at this
+// magnification, `1/childScale` is ~1024 per hop, so ANY macroscopic
+// off-boundary tEntryWorld folded into a hop's worldT would be amplified by
+// up to ~1024x (hop 1) or ~1,048,576x (hop 2) by the cumulative-length
+// multiply — turning even a tiny placement error into a massive, visible
+// artifact. The fix is NOT a new formula: it is enforcing the SAME
+// k-invariant childOriginLocal placement M1's BuildTask3ParentWithScale /
+// M3's ChainedTwoHopCrossingComposesHitT already established (childOriginLocal
+// = entryPointLocal - offset*childScale, which collapses the remapped child
+// entry to a K-INVARIANT physical point 1.5+offset regardless of childScale —
+// verified algebraically in this milestone's own derivation trace before
+// writing this test, see Tiered-ESVO-Inc3-M4-tEntryWorld-derivation.py) at
+// EVERY hop, so tEntryWorld measures ~0 (entry inside the child grid) even at
+// 2^-10. This test proves that placement discipline generalizes to the real
+// ratio, not just M1/M3's proof-of-mechanism 0.5/2.0.
+TEST(TierCrossingMirrorParity, EarthScaleChainedCrossingKInvariantPlacement) {
+    constexpr float kChildScale = 0.0009765625f;  // 2^-10, the real per-hop tier ratio
+    constexpr glm::vec3 kOffset{0.1f, 0.1f, 0.1f};  // SAME small, well-inside-[1,2) constant
+                                                     // M1/M3 validated (see their own header
+                                                     // comments for why 0.1 and not 0 or 3.0)
+
+    SdfFixture t0Fixture(6.0f);
+    SdfFixture t1Fixture(6.0f);
+    SdfFixture t2Fixture(7.2f);
+
+    auto buildMarkedTree = [&kOffset](const SdfFixture& fixture, float childScale,
+                                       const glm::vec3& entryPointLocal) {
+        SerializedOctree ser = SerializeSdf(fixture.body);
+        const Octree* oct = fixture.body.octree->getOctree();
+        BakeAndAttachMipPool(*oct, ser);
+        std::vector<LeafLocation> leaves = FindAllLeaves(*oct);
+        const glm::vec3 childOriginLocal = entryPointLocal - kOffset * childScale;
+        TierRef ref{};
+        ref.childOctreeIndex = 1u;
+        ref.childOriginLocal[0] = childOriginLocal.x;
+        ref.childOriginLocal[1] = childOriginLocal.y;
+        ref.childOriginLocal[2] = childOriginLocal.z;
+        ref.childScale = childScale;
+        for (const LeafLocation& loc : leaves) {
+            MarkLeafAsTierCrossing(ser, loc.parentDescriptorIndex, loc.octant, ref, 22);
+        }
+        ser.config.nodeArrayBase  = 0;
+        ser.config.brickArrayBase = 0;
+        setSdfBrickArrayBase(ser.config, 0);
+        setMipPoolBase(ser.config, 0);
+        setTierRefTableBase(ser.config, 0);
+        return ser;
+    };
+
+    // Hop 0: T0's crossing point is this file's established kParentLocalOrigin
+    // constant (measured for kRayOrigin/kRayDir hitting SdfFixture(6.0f) directly).
+    SerializedOctree t0Ser = buildMarkedTree(t0Fixture, kChildScale, kParentLocalOrigin);
+
+    // Hop 1: T1's OWN crossing point. By the k-invariant algebra (verified in
+    // ChainedTwoHopCrossingComposesHitT's own header comment, re-confirmed here
+    // for kChildScale=2^-10 rather than 0.5), the remapped child entry collapses
+    // to EXACTLY 1.5+kOffset regardless of childScale -- so the SAME closed-form
+    // hop-1 entry point applies unchanged at this far more extreme ratio.
+    const glm::vec3 kHop1EntryPointLocal = glm::vec3(1.5f) + kOffset;
+    SerializedOctree t1SerMarked = buildMarkedTree(t1Fixture, kChildScale, kHop1EntryPointLocal);
+    setBrickResident(t1SerMarked.config, /*resident=*/true);
+
+    SerializedOctree t2Ser = SerializeSdf(t2Fixture.body);
+    t2Ser.config.nodeArrayBase  = 0;
+    t2Ser.config.brickArrayBase = 0;
+    setSdfBrickArrayBase(t2Ser.config, 0);
+    setBrickResident(t2Ser.config, /*resident=*/true);
+
+    GpuTraversalMirror chainedMirror(t0Ser);
+    chainedMirror.RegisterTierCrossingChild(1u, t1SerMarked);
+    chainedMirror.RegisterTierCrossingChild(1u, t2Ser);
+    std::vector<GpuTraversalMirror::HopTrace> trace;
+    const auto chainedHit = chainedMirror.castRay(kRayOrigin, kRayDir, &trace);
+    ASSERT_TRUE(chainedHit.hit) << "the Earth-scale (2^-10 per hop) two-hop chain must produce "
+                                   "a genuine hit through BOTH crossings, exactly like M3's 0.5 "
+                                   "proof-of-mechanism case";
+    ASSERT_EQ(trace.size(), 3u) << "expected T0's crossing, T1's crossing, T2's terminal hit";
+
+    // The CORE finding this test proves: hop 1's recorded crossing point
+    // (HopTrace::parentLocalOrigin, Inc3 M4's diagnostic addition) must land
+    // WELL INSIDE [1,2) on every axis -- NOT merely non-degenerate, but with
+    // enough margin that the NEXT remap's tEntryWorld is genuinely ~0, not
+    // just "happens to round to a small number." A macroscopically-outside
+    // entry here is exactly the M1/M3-carried-forward failure mode (M1's own
+    // off-boundary offset, chained, broke hop 2's pop-logic at gridT.x=12.5).
+    // Only hop 1 (T1's OWN crossing point, produced by THIS test's
+    // k-invariant childOriginLocal placement at hop 0) is checked here: hop
+    // 0's crossing point (trace[0]) is T0's fixed, geometry-determined
+    // kParentLocalOrigin constant (1.8,1.8,2.0 -- see this file's own
+    // established fixture comment), which sits deliberately AT the far
+    // boundary as an accident of that unmarked-fixture geometry, not
+    // something this test's placement technique controls -- checking it here
+    // would fail for a reason unrelated to the k-invariant-placement claim
+    // this test exists to prove (it is hop 0's OWN worldT that already
+    // accounts for that entry correctly, same as every pre-M4 single-hop demo).
+    {
+        const glm::vec3& p = trace[1].parentLocalOrigin;
+        EXPECT_GE(p.x, 1.05f) << "hop 1 crossing point x=" << p.x << " too close to/outside [1,2) lower bound";
+        EXPECT_LE(p.x, 1.95f) << "hop 1 crossing point x=" << p.x << " too close to/outside [1,2) upper bound";
+        EXPECT_GE(p.y, 1.05f) << "hop 1 crossing point y=" << p.y;
+        EXPECT_LE(p.y, 1.95f) << "hop 1 crossing point y=" << p.y;
+        EXPECT_GE(p.z, 1.05f) << "hop 1 crossing point z=" << p.z;
+        EXPECT_LE(p.z, 1.95f) << "hop 1 crossing point z=" << p.z;
+    }
+
+    // Composition correctness at the real ratio: hop 0 applies no scaling
+    // (native top-level units), hop 1's multiplier is 1/childScale (~1024),
+    // hop 2's is (1/childScale)^2 (~1,048,576) -- the SAME multiplicative-
+    // composition claim M3 proved at 0.5, re-verified at the actual epic ratio.
+    const float expectedHop0DirLen = 1.0f;
+    const float expectedHop1DirLen = 1.0f / kChildScale;
+    const float expectedHop2DirLen = expectedHop1DirLen / kChildScale;
+    EXPECT_NEAR(trace[0].cumulativeDirLenBefore, expectedHop0DirLen, 1e-5f);
+    EXPECT_NEAR(trace[1].cumulativeDirLenBefore, expectedHop1DirLen, expectedHop1DirLen * 1e-4f);
+    EXPECT_NEAR(trace[2].cumulativeDirLenBefore, expectedHop2DirLen, expectedHop2DirLen * 1e-3f)
+        << "hop 2's multiplier must be (1/childScale)^2 even at this extreme ratio -- a "
+           "double-counting regression (M3's Bug #2) would be far more visible here (~8x "
+           "smaller than expected, i.e. off by one whole extra factor of 1/childScale) than "
+           "at M3's original 0.5 fixture";
+
+    // Regression-catch: fold the trace independently and confirm it matches the
+    // public castRay() return, exactly as ChainedTwoHopCrossingComposesHitT does.
+    float foldedHitT = 0.0f;
+    for (const auto& hopEntry : trace) {
+        foldedHitT += hopEntry.worldT * hopEntry.cumulativeDirLenBefore;
+    }
+    EXPECT_NEAR(chainedHit.t, foldedHitT, std::abs(foldedHitT) * 1e-4f + 1.0f)
+        << "chainedHit.t (" << chainedHit.t << ") must equal the folded per-hop trace ("
+        << foldedHitT << ") even at the extreme 2^-10 ratio (looser absolute tolerance than "
+           "M3's 0.5 case: float32 roundoff at ~10^6 magnitude is expected and is itself part "
+           "of this milestone's float32-discipline finding, not a bug)";
+}
