@@ -38,6 +38,13 @@ VIXEN/gatherer_test.txt
 # binaryDir (build/wsl, build/ninja, build/wsl-debug, ...) so a NEW preset never needs a new
 # gitignore entry. Legacy VIXEN/build/ kept for any pre-consolidation local build dirs.
 /build/
+
+# Live-gate capture PNGs (Sampled Lighting increments): the SHA256 hash of each capture is
+# committed in gate-artifacts/*-hashes.txt as the durable proof; the PNGs themselves stay
+# untracked (large, regenerable, one per milestone's before/after render). Gate artifacts
+# are captured under VIXEN/gate-artifacts/ in practice, so both locations are covered.
+/gate-artifacts/*.png
+/VIXEN/gate-artifacts/*.png
 /VIXEN/build/
 
 # Local dev helper scripts (machine-specific absolute paths)

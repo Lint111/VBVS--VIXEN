@@ -73,6 +73,7 @@
 #include "Nodes/GraphicsPipelineNode.h"
 #include "Nodes/InputNode.h"
 #include "Nodes/InstanceNode.h"
+#include "Nodes/LightingConfigNode.h"  // Sampled Lighting Inc0 M3: LightingConfig upload ring
 #include "Nodes/LoopBridgeNode.h"
 #include "Nodes/PickIdTargetNode.h"
 #include "Nodes/PresentNode.h"
@@ -175,6 +176,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // INSTANCE_BUFFER (binding 10) and INSTANCE_COUNT.
     NodeHandle bodyOctreeSceneNode = renderGraph->AddNode<BodyOctreeSceneNodeType>("body_octree_scene");
     bodyOctreeSceneNode_ = bodyOctreeSceneNode;      // store so SetBodyInstances() can forward to it
+
+    // Sampled Lighting Inc0 M3: LightingConfig data (binding 16). Static default content
+    // this increment (a single directional light matching Lighting.glsl's old hardcoded
+    // default) uploaded per-frame through a PerFrameResources ring, mirroring
+    // DynamicInstanceBufferNode's pattern.
+    NodeHandle lightingConfigNode = renderGraph->AddNode<LightingConfigNodeType>("lighting_config");
 
     // --- Input Node ---
     NodeHandle inputNode = renderGraph->AddNode<InputNodeType>("input_handler");
@@ -1196,6 +1203,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
                   bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::CURRENT_FRAME_INDEX);
 
+    // Sampled Lighting Inc0 M3: lighting config node connections (same ring pattern as
+    // bodyOctreeSceneNode above — device + per-frame index so ExecuteImpl picks which
+    // ring slot to upload LightingConfig into).
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  lightingConfigNode, LightingConfigNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                  lightingConfigNode, LightingConfigNodeConfig::CURRENT_FRAME_INDEX);
+
     // Connect push constant fields to push constant gatherer using member extraction
     // CameraNode now outputs a CameraData struct, so we can extract individual fields
     batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
@@ -1365,6 +1380,17 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     if (mainLogger && mainLogger->IsEnabled()) {
         mainLogger->Info("[BuildRenderGraph] Connected tier-ref table at binding 15 (Tiered-ESVO Inc2 M3)");
+    }
+
+    // Sampled Lighting Inc0 M3: Binding 16: LightingConfig SSBO (single record, re-uploaded
+    // per-frame from LightingConfigNode's ring). Default content = one directional light
+    // matching Lighting.glsl's previous hardcoded default (zero-visual-delta gate).
+    batch.Connect(lightingConfigNode, LightingConfigNodeConfig::LIGHTING_CONFIG_BUFFER,
+                          descriptorGatherer, 16,  // Binding 16: LightingConfigSSBO
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info("[BuildRenderGraph] Connected lighting config at binding 16 (Sampled Lighting Inc0 M3)");
     }
 
     // Swapchain connections to descriptor set and dispatch

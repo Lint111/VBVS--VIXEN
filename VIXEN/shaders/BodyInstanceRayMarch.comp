@@ -113,6 +113,23 @@ struct TierRef {
 };
 layout(std430, binding = 15) readonly buffer TierRefTableBuffer { TierRef tierRefTable[]; };
 
+// ============================================================================
+// LIGHTING CONFIG (Sampled Lighting Inc0 M3 — binding 16)
+// ============================================================================
+// Single LightingConfig record (kernel-codegen-generated struct, std430 —
+// see Generated/LightingConfig.glsl / LightingConfig.g.h). Bound as an SSBO
+// (not a UBO) because the framework emits std430 only; a std140 UBO would
+// restride Light's nested array and desync from the generated C++ layout
+// (see test_lightingconfig_sdi_parity.cpp). Uploaded per-frame from a ring
+// buffer (LightingConfigNode) — default content = the single directional
+// light Lighting.glsl previously hardcoded, so this milestone is a
+// zero-visual-delta plumbing change.
+#include "Generated/LightingConfig.glsl"
+
+layout(std430, binding = 16) readonly buffer LightingConfigSSBO {
+    LightingConfig lightingConfig;
+};
+
 #define FORMAT_BINARY     0u
 #define FORMAT_STORED_SDF 1u
 
@@ -1317,7 +1334,7 @@ void main() {
     // -----------------------------------------------------------------------
     vec3 outColor;
     if (anyHit) {
-        outColor = computeLighting(bestColor, bestNormal, rayDir, bestRoughness);
+        outColor = computeLighting(bestColor, bestNormal, rayDir, bestRoughness, lightingConfig);
     } else {
         outColor = skyColor;
     }
