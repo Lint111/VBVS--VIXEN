@@ -558,6 +558,145 @@ protected:
         vkDeviceWaitIdle(logicalDevice_);
         node->Cleanup(CleanupReason::FinalTeardown);
     }
+
+    // Lazy-Procedural-Delta-Baseline Inc0 M2 Task 4b — multi-octree post-grant
+    // correctness. Builds a pool of `octreeCount` mip-baked spheres (concatenated via
+    // ConcatenateSdfWithMips, so a shell cache derives at Compile — DeriveShellCache/
+    // CreateShellBuffers only run when concatenated_.channelPool is non-empty, which
+    // requires a REAL Stored-SDF pool, not the earlier single-octree tests' minimum),
+    // places the ONE instance at `targetOctreeIndex` (>=1 for the bug this milestone
+    // fixes: PollBrickUploadCompletion's phase-2 config re-upload was clobbering
+    // CreateShellBuffers' shell-compact poolBrickBase rewrite for index >=1), renders
+    // BEFORE residency is granted (mip fallback, camera-facing) and AFTER an
+    // ExecuteImpl-driven grant (RequestBrickResidency(true) called POST-Compile, so
+    // it goes through the real async UploadBrickPool/PollBrickUploadCompletion state
+    // machine Task 4b patches — not the pre-Compile CreateOctreeBuffers path the
+    // other tests above exercise). A wrong config buffer post-grant would corrupt
+    // channelPool addressing for this instance and either blank the render or hit a
+    // wildly wrong sample -- both are non-round/degenerate silhouettes the same
+    // round-shape check below already catches.
+    void RenderMultiOctreePostGrantAndMeasure(uint32_t octreeCount, uint32_t targetOctreeIndex,
+                                              RenderStats& beforeStats, RenderStats& afterStats) {
+        using C = BodyOctreeSceneNodeConfig;
+        ASSERT_LT(targetOctreeIndex, octreeCount);
+
+        constexpr float kRadius = 22.0f;
+        const glm::vec3 center(32.0f, 32.0f, 32.0f);
+        std::vector<Vixen::SVO::SdfBodyOctree> bodies;
+        bodies.reserve(octreeCount);
+        for (uint32_t i = 0; i < octreeCount; ++i) {
+            Vixen::SVO::RecipeParams rp{}; rp.radius = kRadius;
+            Vixen::SVO::SdfBakeResult baked =
+                Vixen::SVO::BakeRecipeToSdfWorld(Vixen::SVO::RECIPE_SPHERE, center, rp,
+                                                  /*n=*/64, /*bandVoxels=*/2.5f, /*brickDepth=*/3);
+            bodies.push_back(Vixen::SVO::BuildSdfBodyOctree(baked, 3));
+        }
+        std::vector<const Vixen::SVO::SdfBodyOctree*> ptrs;
+        ptrs.reserve(octreeCount);
+        for (const auto& b : bodies) ptrs.push_back(&b);
+        Vixen::SVO::ConcatenatedOctrees pool = Vixen::SVO::ConcatenateSdfWithMips(ptrs);
+        ASSERT_EQ(pool.count, octreeCount);
+        ASSERT_GT(pool.mipPool.size(), 0u);
+        // Distinct poolBrickBase per octree proves this fixture actually exercises
+        // Task 4b's addressing bug (a single-octree pool has poolBrickBase==0
+        // everywhere and can't distinguish source-vs-compact re-uploads).
+        if (octreeCount > 1u) {
+            ASSERT_NE(pool.configs[0].poolBrickBase, pool.configs[1].poolBrickBase);
+        }
+
+        BodyOctreeSceneNodeType nodeType("BodyOctreeScene");
+        auto nodeBase = nodeType.CreateInstance("multi_octree_grant_test");
+        auto* node = dynamic_cast<BodyOctreeSceneNode*>(nodeBase.get());
+        ASSERT_NE(node, nullptr);
+
+        Resource devRes;  SetHandleVal<VulkanDevice*>(devRes, deviceShell_.get());
+        Resource poolRes; SetHandleVal<VkCommandPool>(poolRes, commandPool_);
+        Resource frRes;   uint32_t frameIndex = 0; SetHandleVal<uint32_t>(frRes, frameIndex);
+        node->SetInput(C::VULKAN_DEVICE_IN_Slot::index,    0, &devRes);
+        node->SetInput(C::COMMAND_POOL_Slot::index,        0, &poolRes);
+        node->SetInput(C::CURRENT_FRAME_INDEX_Slot::index, 0, &frRes);
+
+        node->SetRecipePool(std::move(pool));
+        // No RequestBrickResidency call here — M2's capability-derived default
+        // takes over (every tree is mip-baked -> boots lazy), matching this test's
+        // "before grant" render below with no explicit pin needed.
+
+        constexpr float kRenderScale = 1.0f;
+        const std::vector<Vixen::SVO::BodyInstanceGpu> instances = {
+            MakeInst(0.0f, 0.0f, 0.0f, kRenderScale, targetOctreeIndex),
+        };
+        const glm::vec3 bodyCentre(0.5f * kWorldGridSize * kRenderScale);
+        node->SetInstances(instances);
+        node->Setup();
+        ASSERT_NO_THROW(node->Compile());
+        EXPECT_FALSE(node->IsResidencyRequested())
+            << "every octree in this pool is mip-capable -> M2 default must derive LAZY";
+
+        frameIndex = 0; SetHandleVal<uint32_t>(frRes, frameIndex);
+        ASSERT_NO_THROW(node->Execute());  // boot tick: mip-only, no brick upload queued
+
+        auto buf = [&](int slot) -> VkBuffer {
+            return node->GetOutput(slot, 0)->GetHandle<VkBuffer>();
+        };
+        constexpr uint32_t kW = 512, kH = 512;
+        const float dist = 2.2f * kWorldGridSize * kRenderScale;
+        const glm::vec3 eye = bodyCentre + glm::vec3(0.0f, 0.0f, dist);
+        const PushConstants pc = MakeCamera(eye, bodyCentre, kW, kH, 1);
+
+        auto measure = [&](const char* outPath, RenderStats& stats) {
+            std::vector<uint8_t> rgba; double ms = 0.0;
+            ASSERT_NO_FATAL_FAILURE(RenderToRgba(
+                buf(C::OCTREE_NODES_BUFFER_Slot::index), buf(C::OCTREE_BRICKS_BUFFER_Slot::index),
+                buf(C::OCTREE_MATERIALS_BUFFER_Slot::index), buf(C::OCTREE_CONFIG_BUFFER_Slot::index),
+                buf(C::INSTANCE_BUFFER_Slot::index), buf(C::OCTREE_SDF_BUFFER_Slot::index),
+                buf(C::OCTREE_BRICKLOOKUP_BUFFER_Slot::index), buf(C::OCTREE_MIPPOOL_BUFFER_Slot::index),
+                pc, kW, kH, rgba, ms));
+            {
+                std::vector<uint8_t> rgb(size_t(kW)*kH*3);
+                for (uint32_t i = 0; i < kW*kH; ++i) {
+                    rgb[i*3+0]=rgba[i*4+0]; rgb[i*3+1]=rgba[i*4+1]; rgb[i*3+2]=rgba[i*4+2];
+                }
+                stbi_write_png(outPath, int(kW), int(kH), 3, rgb.data(), int(kW)*3);
+            }
+            stats = RenderStats{};
+            const uint32_t centerXLo = uint32_t(kW*0.45f), centerXHi = uint32_t(kW*0.55f);
+            const uint32_t edgeXHi   = uint32_t(kW*0.05f);
+            for (uint32_t y = 0; y < kH; ++y) {
+                for (uint32_t x = 0; x < kW; ++x) {
+                    const uint32_t i = y*kW + x;
+                    const bool hit = rgba[i*4+0]>24 || rgba[i*4+1]>24 || rgba[i*4+2]>40;
+                    if (!hit) continue;
+                    ++stats.hitPixels;
+                    if (x >= centerXLo && x < centerXHi) ++stats.centerColBandHits;
+                    if (x < edgeXHi) ++stats.edgeColBandHits;
+                }
+            }
+            std::printf("[MULTI-OCTREE-GRANT] octreeIndex=%u total=%d centerBand=%d edgeBand=%d -> %s\n",
+                        targetOctreeIndex, stats.hitPixels, stats.centerColBandHits,
+                        stats.edgeColBandHits, outPath);
+        };
+
+        measure("/tmp/multi_octree_grant_before.png", beforeStats);
+
+        // Grant residency POST-Compile — exercises the real UploadBrickPool/
+        // PollBrickUploadCompletion async state machine (Task 4b's actual target),
+        // not CreateOctreeBuffers' pre-Compile path.
+        node->RequestBrickResidency(true);
+        // ExecuteImpl ticks: 1) services brickResidencyDirty_ -> UploadBrickPool queues
+        // the async copy; 2) PollBrickUploadCompletion phase 1 (bricks visible, queues
+        // config re-upload); 3) phase 2 (config re-upload visible). Lockstep host-visible/
+        // host-coherent uploads on this fixture's device complete same-tick, but poll a
+        // few extra ticks defensively rather than assume exactly 3.
+        for (int tick = 0; tick < 6; ++tick) {
+            ++frameIndex; SetHandleVal<uint32_t>(frRes, frameIndex);
+            ASSERT_NO_THROW(node->Execute());
+        }
+
+        measure("/tmp/multi_octree_grant_after.png", afterStats);
+
+        vkDeviceWaitIdle(logicalDevice_);
+        node->Cleanup(CleanupReason::FinalTeardown);
+    }
 };
 
 // ---------------------------------------------------------------------------
@@ -660,4 +799,44 @@ TEST_F(MipFallbackRenderTest, RegistryBakedPoolRendersMipFallback) {
         << "Center column band should be substantially covered by a centered sphere";
     EXPECT_LT(stats.edgeColBandHits, centerBandRows / 4)
         << "Edge column band should be mostly empty (sky) for a round, centered silhouette";
+}
+
+// ---------------------------------------------------------------------------
+// Lazy-Procedural-Delta-Baseline Inc0 M2 Task 4b gate: a body on octree index
+// >=1 in a multi-octree, all-mip-capable pool must render CORRECTLY both
+// before AND after a post-Compile residency grant. Before M2 Task 4b's fix,
+// PollBrickUploadCompletion's phase-2 config re-upload clobbered
+// CreateShellBuffers' shell-compact poolBrickBase rewrite with the SOURCE
+// pool's poolBrickBase for octree 1, corrupting SDF channelPool addressing
+// the instant residency was granted -- this test's "after" render is the one
+// that would have broken.
+// ---------------------------------------------------------------------------
+TEST_F(MipFallbackRenderTest, MultiOctreeSecondBodyRendersCorrectlyAfterResidencyGrant) {
+    ASSERT_TRUE(softwareConfirmed_);
+
+    RenderStats before, after;
+    ASSERT_NO_FATAL_FAILURE(RenderMultiOctreePostGrantAndMeasure(
+        /*octreeCount=*/2u, /*targetOctreeIndex=*/1u, before, after));
+
+    const int centerBandRows = int(512 * 0.10f);
+
+    EXPECT_GT(before.hitPixels, 5000)
+        << "Boot (mip-only, octree index 1) should render a non-trivial silhouette";
+    EXPECT_GT(before.centerColBandHits, int(512 * 0.5f));
+    EXPECT_LT(before.edgeColBandHits, centerBandRows / 4);
+
+    EXPECT_GT(after.hitPixels, 5000)
+        << "Post-grant (real brick march, octree index 1) must ALSO render a non-trivial "
+           "silhouette -- a wrong config buffer would corrupt addressing and blank/garble this";
+    EXPECT_GT(after.centerColBandHits, int(512 * 0.5f))
+        << "Post-grant silhouette must still be round/centered, not corrupted by a "
+           "source-vs-compact poolBrickBase mismatch";
+    EXPECT_LT(after.edgeColBandHits, centerBandRows / 4);
+
+    // Same coarseness-vs-exact-march tolerance as ResidentTreeRendersComparableSilhouette
+    // above (mip fallback is a hard-switch coverage test, not a true iso-surface march).
+    const double ratio = double(before.hitPixels) / double(after.hitPixels);
+    EXPECT_GT(ratio, 0.5) << "Post-grant silhouette is suspiciously smaller than boot";
+    EXPECT_LT(ratio, 6.0) << "Post-grant silhouette is implausibly larger than boot "
+                             "(possible addressing corruption)";
 }
