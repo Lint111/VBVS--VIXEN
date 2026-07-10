@@ -21,8 +21,10 @@
 #include <gtest/gtest.h>
 #include <glm/glm.hpp>
 
+#include <bit>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <set>
 #include <vector>
 
@@ -124,6 +126,32 @@ bool classifyFpNoise(const ICell& a, const ICell& b, float /*ta*/, float /*tb*/,
     return shellSet.count(a) > 0 && shellSet.count(b) > 0;
 }
 
+SerializedOctree makeSyntheticTierParent(const OctreeConfig& cfg,
+                                         uint8_t validLeafMask,
+                                         const TierRef& ref) {
+    SerializedOctree parent;
+    parent.config = cfg;
+    parent.config.nodeArrayBase = 0;
+    parent.config.brickArrayBase = 0;
+    setTierRefTableBase(parent.config, 0u);
+    parent.tierRefs.push_back(ref);
+
+    const uint32_t leafCount = static_cast<uint32_t>(std::popcount(validLeafMask));
+    std::vector<ChildDescriptor> descs(static_cast<size_t>(1u + leafCount));
+    descs[0].childPointer = 1u;
+    descs[0].validMask = validLeafMask;
+    descs[0].leafMask = validLeafMask;
+
+    for (uint32_t i = 0; i < leafCount; ++i) {
+        descs[static_cast<size_t>(1u + i)].setTierCrossing(0u, 22u);
+    }
+
+    parent.nodeCount = static_cast<uint32_t>(descs.size());
+    parent.nodes.resize(descs.size() * sizeof(ChildDescriptor));
+    std::memcpy(parent.nodes.data(), descs.data(), parent.nodes.size());
+    return parent;
+}
+
 }  // namespace
 
 // ---------------------------------------------------------------------------
@@ -156,6 +184,49 @@ TEST(GpuParity, OracleAloneHitsShell) {
 // fired at along ±X/±Y/±Z. (This is the CheckC battery, but now judged against the
 // oracle rather than a hand-rolled ground truth.)
 // ---------------------------------------------------------------------------
+TEST(GpuParity, TierCrossingRestartHitsChildFromHighZParentLeaf) {
+    constexpr int kN = 16;
+    constexpr int kBrickDepth = 3;
+    const glm::vec3 center(8.0f, 8.0f, 8.0f);
+
+    RecipeParams childRp{};
+    childRp.radius = 7.2f;
+    SdfBakeResult childBaked = BakeRecipeToSdfWorld(RECIPE_SPHERE, center, childRp, kN, 2.0f);
+    SdfBodyOctree childBody = BuildSdfBodyOctree(childBaked, kBrickDepth);
+    SerializedOctree childSer = SerializeSdf(childBody);
+    // M4 residency-gate sync (post-dates this fixture's original authoring): the mirror's
+    // castRay() only crosses into a child whose config reports resident bricks — stamp it
+    // so this test still exercises the entry-face capture point it targets, not the
+    // separate residency gate.
+    setBrickResident(childSer.config, true);
+
+    TierRef ref{};
+    ref.childOctreeIndex = 1u;
+    ref.childOriginLocal[0] = 1.5f;
+    ref.childOriginLocal[1] = 1.5f;
+    ref.childOriginLocal[2] = 1.5f;
+    ref.childScale = 1.0f;
+
+    // Synthetic parent: no bricks, only high-Z root leaves, all tier crossings.
+    // A +Z ray skips the empty low-Z half, enters a high-Z tier leaf, restarts
+    // into the child, and must hit the child geometry. If the crossing point is
+    // captured at that leaf's exit face instead of its entry face, the child ray
+    // starts at child-local z=2 moving outward and falsely misses.
+    SerializedOctree parentSer = makeSyntheticTierParent(childSer.config, 0xF0u, ref);
+    GpuTraversalMirror oracle(parentSer);
+    oracle.RegisterTierCrossingChild(1u, childSer);
+
+    const GpuTraversalMirror::Hit h = oracle.castRay(
+        glm::vec3(5.0f, 5.0f, -2.0f),
+        glm::vec3(0.0f, 0.0f, 1.0f));
+
+    EXPECT_TRUE(h.hit) << "tier-crossing restart should enter the child from the parent leaf entry boundary";
+    if (h.hit) {
+        EXPECT_GT(h.t, 2.0f);
+        EXPECT_GE(h.voxel.z, 0);
+    }
+}
+
 TEST(GpuParity, AxisAlignedRaysMatchOracle) {
     ParityHarness h(6);
     const int n = h.n;
