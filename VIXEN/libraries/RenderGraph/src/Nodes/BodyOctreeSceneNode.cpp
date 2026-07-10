@@ -5,6 +5,7 @@
 #include "Data/Nodes/FrameSyncNodeConfig.h"
 #include "VulkanDevice.h"
 #include "Memory/BatchedUploader.h"  // Inc1 M2: ResourceManagement::InvalidUploadHandle
+#include "MipBake.h"  // Lazy-Procedural-Delta-Baseline Inc0 M1: ConcatenateSdfWithMips
 
 #include <algorithm>
 #include <cstdlib>   // std::getenv
@@ -494,7 +495,12 @@ void BodyOctreeSceneNode::EnsureOctreesBuilt() {
             sdfPtrs.push_back(&s);
         }
 
-        concatenated_ = Vixen::SVO::ConcatenateSdf(sdfPtrs);
+        // Lazy-Procedural-Delta-Baseline Inc0 M1 Task 2: bake mips alongside the
+        // Stored-SDF concat so mip-fallback rendering is available for this demo
+        // path too (the default binary-shell branch below stays on plain
+        // Concatenate — binary trees have channelCount==0, mips are structurally
+        // impossible for them per MipFallback.glsl).
+        concatenated_ = Vixen::SVO::ConcatenateSdfWithMips(sdfPtrs);
         octreesBuilt_ = true;
 
         NODE_LOG_INFO("[BodyOctreeSceneNode] Stored-SDF: built " +
