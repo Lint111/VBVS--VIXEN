@@ -160,17 +160,17 @@ layout(std430, binding = 18) readonly buffer ShadowConfigSSBO {
 };
 
 // ============================================================================
-// TEMPORAL ACCUMULATION (Sampled Lighting Inc2 M1 — bindings 19/20)
+// TEMPORAL ACCUMULATION (Sampled Lighting Inc2 M1/M2 — bindings 19/20)
 // ============================================================================
 // Single AccumulationConfig record (kernel-codegen-generated struct, std430 — see
 // Generated/AccumulationConfig.glsl / AccumulationConfig.g.h) plus the persistent
 // history storage image (AccumulationHistoryNode — NOT the RenderTargetNode ring,
 // which rotates every frame per KI-009; this image survives across frames by
-// design). M1 scope: PLUMBING ONLY — both bindings are declared here but the
-// accumulate seam (main(), before imageStore(outputImage,...) below) does not yet
-// read/write historyImage or branch on accumulationConfig.enabled. That logic is
-// M2's. With accumulationConfig.enabled=0 (M1's default), the render is byte-
-// identical to Inc1 — declaring an unread binding cannot change emitted behavior.
+// design). M1 scope was PLUMBING ONLY (both bindings declared, unread). M2 wires
+// the accumulate seam (main(), immediately before imageStore(outputImage,...)):
+// when accumulationConfig.enabled != 0, blend outColor with historyImage and
+// write the blend to both images; with enabled == 0 the seam is still a pure
+// passthrough — the render stays byte-identical to Inc1.
 #include "Generated/AccumulationConfig.glsl"
 
 layout(std430, binding = 19) readonly buffer AccumulationConfigSSBO {
@@ -306,6 +306,10 @@ layout(push_constant) uniform PushConstants {
                              // regardless of DEBUG_GRID_SPACING (-1,-1 disables); lets the
                              // trace follow the actual click/cursor position instead of a
                              // fixed viewport-center crosshair (bytes 60-67)
+    uint  accumFrameCount;  // Sampled Lighting Inc2 M2: consecutive STATIC-camera frame count,
+                             // 1-based, reset to 1 by AccumulationConfigNode the instant the
+                             // camera moves; drives the accumulate seam's converging-1/N alpha
+                             // below (bytes 68-71)
 } pc;
 
 // ============================================================================
@@ -1310,7 +1314,60 @@ void main() {
         }
     }
 
-    imageStore(outputImage, pixelCoords, vec4(outColor, 1.0));
+    // -----------------------------------------------------------------------
+    // Temporal accumulation seam (Sampled Lighting Inc2 M2). accumulationConfig.
+    // enabled == 0 (Inc1 default / M1 default) takes the unchanged passthrough
+    // branch below -- byte-identical to Inc1's own imageStore. When enabled,
+    // blend outColor against historyImage and write the blend to BOTH images so
+    // next frame's history read sees this frame's result.
+    //
+    // alpha selection:
+    //   accumulationConfig.alpha == 0.0 (sentinel) -> DEFAULT converging 1/N mode:
+    //     alpha = 1/accumFrameCount, accumFrameCount being the consecutive-
+    //     static-camera frame counter (CPU-side, AccumulationConfigNode) clamped
+    //     to accumulationConfig.maxFrames when maxFrames > 0. A true running
+    //     average -- variance converges fastest once there is per-frame variance
+    //     to converge (Inc3's stochastic sampling); on today's deterministic
+    //     march every frame is identical, so the blend is a provable no-op
+    //     (mix(x,x,alpha) == x) rather than an actual denoise -- see the M2 gate
+    //     notes for what's proven vs deferred.
+    //   accumulationConfig.alpha > 0.0 -> fixed exponential-decay alpha (coded,
+    //     not the M2 default).
+    // mix(history, outColor, alpha): alpha==1 -> pure current frame (the
+    // reset-on-motion case, zero ghosting by construction); alpha->0 -> mostly
+    // history.
+    // -----------------------------------------------------------------------
+    if (accumulationConfig.enabled != 0u) {
+        float alpha;
+        if (accumulationConfig.alpha == 0.0) {
+            uint frameCount = pc.accumFrameCount;
+            if (accumulationConfig.maxFrames > 0u) {
+                frameCount = min(frameCount, accumulationConfig.maxFrames);
+            }
+            alpha = 1.0 / float(max(frameCount, 1u));
+        } else {
+            alpha = accumulationConfig.alpha;
+        }
+
+        // alpha >= 1.0 means "pure current frame" (frame 1 of a run, or right after a
+        // motion reset) -- skip the historyImage read entirely rather than trust
+        // mix(history, outColor, 1.0) to discard it exactly. historyImage's very first
+        // content is genuinely uninitialized (AccumulationHistoryNode creates it with no
+        // clear -- see its file header), and a NaN/Inf-poisoned mix operand survives an
+        // alpha==1.0 blend (x*0.0 with x=NaN is still NaN), so this guard is a real
+        // correctness fix, not just an optimization.
+        vec4 blended;
+        if (alpha >= 1.0) {
+            blended = vec4(outColor, 1.0);
+        } else {
+            vec4 history = imageLoad(historyImage, pixelCoords);
+            blended = mix(history, vec4(outColor, 1.0), alpha);
+        }
+        imageStore(outputImage, pixelCoords, blended);
+        imageStore(historyImage, pixelCoords, blended);
+    } else {
+        imageStore(outputImage, pixelCoords, vec4(outColor, 1.0));
+    }
 
     // ID buffer: encode absolute brick + voxel (same packing as VoxelRayMarch)
     uint pickID = anyHitRT

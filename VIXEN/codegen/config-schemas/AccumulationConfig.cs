@@ -15,10 +15,10 @@ using Yeroket.Util.KernelFramework;
 // starting M2, not read this milestone.
 // maxFrames: cap for the converging 1/N mode — once the running frame count
 // reaches maxFrames, alpha stops shrinking further (bounds history staleness).
-// resetOnMotion: whole-frame history-reset toggle. When 1 (M2's behavior,
-// retained as an M4 fallback), any camera-state change forces frame counter
-// -> 1 / alpha -> 1.0 (pure current frame, zero ghosting by construction)
-// instead of M4's per-pixel reprojection+validation.
+// resetOnMotion: whole-frame history-reset toggle. When 1 (M2's default), any
+// camera-state change forces frame counter -> 1 / alpha -> 1.0 (pure current
+// frame, zero ghosting by construction) instead of M4's future per-pixel
+// reprojection+validation (this field is retained as M4's fallback path).
 [GpuStruct]
 public struct AccumulationConfig
 {

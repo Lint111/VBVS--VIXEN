@@ -1,0 +1,160 @@
+Sampled Lighting Inc2 M2 -- static EWMA (converging 1/N default) + hard reset-on-motion -- live gate
+
+Gate 0: pre-existing reflection bug found + fixed en route
+------------------------------------------------------------------------------
+Wiring the first bare scalar `uint` push-constant field (pc.accumFrameCount, field 12) through
+PushConstantGathererNode's generic ExtractTypedResource path (the CameraData/InputState field-
+extraction shortcut most existing fields use never exercises this path) exposed a pre-existing
+gap in SpirvReflector.cpp::ConvertType: the SPV_REFLECT_TYPE_FLAG_INT case always mapped to
+SpirvTypeInfo::BaseType::Int regardless of SPIRV-Reflect's own signedness trait, so a scalar
+`uint` field reflected identically to a scalar `int` field. ExtractTypedResource's type-dispatch
+table keys on (baseType, vecSize, arraySize), so the mismatched (Int,1,0,0) key routed a real
+uint32_t-typed Resource through ExtractResourceAs<int32_t>, and Resource::GetHandle<int32_t>()
+threw std::bad_any_cast (std::any_cast<int32_t> on an any holding uint32_t) -- crashed
+vixen_editor.exe's very first Execute (exit code -1). Root-cause fixed by checking
+typeDesc->traits.numeric.scalar.signedness (0=unsigned) in ConvertType and emitting
+BaseType::UInt when unsigned. Confirmed no regression: all 4 SDI-parity gtests (which read
+struct offsets directly, not this packer path) still pass with identical output; instanceCount
+(int32_t, field 10) and raySizeCoef/raySizeBias (float, fields 8/9) -- the pre-existing scalar
+non-field-extraction connections -- still pack correctly (verified via the full live gate below,
+Packed 96 bytes / 13/13 fields connected, zero extraction failures across every frame of every
+run). File: VIXEN/libraries/ShaderManagement/src/SpirvReflector.cpp.
+
+Gate 1: sibling SDI drift-guard tests -- zero regression to the shared reflection contract
+------------------------------------------------------------------------------
+test_accumulationconfig_sdi_parity.exe: PASSED (1/1) -- size=16, enabled@0, alpha@4, maxFrames@8,
+                                         resetOnMotion@12 (unchanged from M1).
+test_shadowconfig_sdi_parity.exe:       PASSED (1/1) -- size=16, enabled@0, raysPerLight@4,
+                                         maxShadowDistance@8, biasEpsilon@12 (unchanged).
+test_lightingconfig_sdi_parity.exe:     PASSED (1/1) -- size=144, lightCount@0,
+                                         ambientIntensity@4, lights@16 (unchanged).
+test_hitrecord_sdi_parity.exe:          PASSED (1/1) -- size=60, albedo@0, roughness@12,
+                                         worldNormal@16, hitT@28, worldPos@32, flags@44,
+                                         _pad0@48 (unchanged).
+
+Gate 2: enabled=0 still byte-identical to Inc1 baseline (untouched passthrough path)
+------------------------------------------------------------------------------
+Default editor scene, vixen_editor.exe VIXEN_EDITOR_CAPTURE_FRAMES=5, no VIXEN_ACCUMULATION_ENABLED
+(enabled=0 default):
+
+sha256(gate-artifacts/... one of the disabled-path captures) = fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1
+
+Required baseline (Inc1/Inc2 M1, unchanged):
+                                                     fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1
+
+Result: MATCH. Reproduced across three separate runs (initial gate, post-reflection-fix rebuild,
+final clean rebuild with debug logging reverted) -- same hash every time.
+
+Gate 3: static-scene convergence / non-corruption (enabled=1, static camera)
+------------------------------------------------------------------------------
+VIXEN_ACCUMULATION_ENABLED=1, default editor scene (static camera, no motion demo), captured
+FOUR frames spanning the whole run: 5 (first accumulated frame), 6, 7, and 20 (well past any
+convergence horizon):
+
+sha256(gate-artifacts/inc2-m2-static-repro.png)     = fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1  (frame 5)
+sha256(temp/editor_capture_6.png)                   = fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1
+sha256(temp/editor_capture_7.png)                   = fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1
+sha256(temp/editor_capture_20.png)                  = fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1
+
+All four frames are byte-identical to EACH OTHER and to the enabled=0 / Inc1 baseline hash.
+This proves the accumulate seam does not darken/brighten/drift/corrupt a static-camera render:
+frame 1 (accumFrameCount=1, alpha=1/1=1.0, the alpha>=1.0 skip-history-read guard) writes pure
+outColor, exactly matching the disabled path by construction; every later frame blends
+mix(history, outColor, alpha) with history==outColor==the SAME value every frame (today's march
+is deterministic per camera pose, zero per-frame variance) -- mix(x,x,alpha)==x for any alpha,
+so the output stays pinned to the correct image indefinitely.
+
+HONESTY NOTE (per the milestone brief): this is a proof of CORRECTNESS/NON-CORRUPTION, not a
+proof of DENOISING. There is no per-frame variance yet for the running average to average away
+-- BodyInstanceRayMarch's march is fully deterministic given a fixed camera pose (no stochastic
+sampling until Inc3). The infrastructure (frame counter, converging-1/N alpha, history
+read/write, reset-on-motion) is proven correct and ready; the actual variance-reduction benefit
+is deferred until Inc3 introduces per-frame sampling noise for it to average over.
+
+Gate 4: no ghost trail on camera motion (enabled=1, resetOnMotion=1, real camera sweep)
+------------------------------------------------------------------------------
+VIXEN_ACCUMULATION_ENABLED=1 + VIXEN_RESIDENCY_GATE_DEMO=1 (Sparse-Mip ESVO LOD Inc1 M4c's
+existing unattended camera-orbit sweep -- SetOrbitDistanceForTest driven every Update tick, a
+real continuous camera move, not a synthetic stand-in). Captured 6 frames across the sweep
+(ticks 10/11/12 early, 150/151/152 mid-sweep where the orbit distance is changing fast enough
+for consecutive frames to differ):
+
+sha256(gate-artifacts/inc2-m2-motion-tick150.png) = b398a66961121c1e41a2eb080bd73e3a8f328e1e6106464dea26f0073f48a490
+
+CONTROL RUN (strongest form of this gate): re-ran the IDENTICAL camera-motion demo/timing with
+VIXEN_ACCUMULATION_ENABLED unset (disabled/Inc1-passthrough path) and compared per-tick hashes:
+
+  tick   enabled=1 sha256                                                   disabled sha256                                                     match
+  10     0221b613e5bbfc2be13e13b63a1882b2ba359c7875525d31b5885581f36064be   0221b613e5bbfc2be13e13b63a1882b2ba359c7875525d31b5885581f36064be   MATCH
+  11     0221b613e5bbfc2be13e13b63a1882b2ba359c7875525d31b5885581f36064be   0221b613e5bbfc2be13e13b63a1882b2ba359c7875525d31b5885581f36064be   MATCH
+  12     0221b613e5bbfc2be13e13b63a1882b2ba359c7875525d31b5885581f36064be   0221b613e5bbfc2be13e13b63a1882b2ba359c7875525d31b5885581f36064be   MATCH
+  150    b398a66961121c1e41a2eb080bd73e3a8f328e1e6106464dea26f0073f48a490   b398a66961121c1e41a2eb080bd73e3a8f328e1e6106464dea26f0073f48a490   MATCH
+  151    4974d011294c457b976c634558492bff4662740736022c6a59315f8e20a4f681   4974d011294c457b976c634558492bff4662740736022c6a59315f8e20a4f681   MATCH
+  152    0cf7f6fcc4651ef9c5073b734ce35ad8e7bb41b96f1533d40b79e15d73b0d03b   0cf7f6fcc4651ef9c5073b734ce35ad8e7bb41b96f1533d40b79e15d73b0d03b   MATCH
+
+Every moving-camera frame with accumulation ENABLED is byte-identical to the SAME tick with
+accumulation DISABLED. This is conclusive: resetOnMotion=1 makes every moving frame a pure,
+un-blended current-frame render (accumFrameCount resets to 1 -> alpha=1.0 -> the alpha>=1.0
+skip-history-read guard) -- zero ghost trail from any prior frame's content, by construction.
+(Ticks 10/11/12 are identical to each other in BOTH runs because the orbit sweep moves slowly
+enough early on that consecutive frames render the same pose at this resolution -- not a gate
+artifact, reproduced identically in the disabled control.)
+
+Also verified: zero "Failed to extract field" warnings and zero EXCEPTION/bad_any_cast across
+every frame of every run (static, disabled, motion-enabled, motion-disabled) -- the push
+constant gatherer's own INFO trace confirms "Packed 96 bytes with 13/13 fields connected" every
+single frame.
+
+Platform: Windows-native build (vixen-ninja preset, MSVC via vcvars64.bat), real GPU (AMD
+Radeon(TM) Graphics via D3D12/dzn, per prior Inc1/Inc2-M1 gates on this machine).
+
+Shader recompiled from THIS WORKTREE's source each run (confirmed via
+"[Builder] Shader bundle build completed successfully: BodyInstanceRayMarch" log lines with
+fresh timestamps matching each run).
+
+No new VUIDs vs baseline: only the pre-existing VUID-vkCmdDispatch-None-08114 /
+InstanceIterDebugBuffer noise (unchanged since Inc1 M1).
+
+Files created:
+  VIXEN/temp/run_m2_static.bat            (gate script, static-scene convergence)
+  VIXEN/temp/run_m2_disabled.bat          (gate script, disabled-path byte-identity)
+  VIXEN/temp/run_m2_motion.bat            (gate script, motion/no-ghost, enabled)
+  VIXEN/temp/run_m2_motion_disabled.bat   (gate script, motion control, disabled)
+  gate-artifacts/inc2-m2-static-repro.png
+  gate-artifacts/inc2-m2-motion-tick150.png
+  gate-artifacts/inc2-m2-hashes.txt (this file)
+
+Files edited:
+  VIXEN/shaders/BodyInstanceRayMarch.comp
+    - pc.accumFrameCount push constant field (uint, field 12, bytes 68-71)
+    - accumulate seam before imageStore(outputImage,...): enabled==0 unchanged passthrough;
+      enabled!=0 computes alpha (converging 1/N default via accumulationConfig.alpha==0.0
+      sentinel, or fixed accumulationConfig.alpha), skips the historyImage read entirely when
+      alpha>=1.0 (first frame / post-motion-reset -- avoids blending against historyImage's
+      genuinely-uninitialized first content), else mix(history, outColor, alpha); writes the
+      blend to both outputImage and historyImage.
+  VIXEN/libraries/RenderGraph/include/Data/Nodes/AccumulationConfigNodeConfig.h
+    - +1 input (CAMERA_DATA), +1 output (FRAME_COUNTER)
+  VIXEN/libraries/RenderGraph/include/Nodes/AccumulationConfigNode.h
+    - frame-counter state members (frameCounterEverEvaluated_/lastCameraPos_/lastCameraDir_/
+      accumFrameCounter_)
+  VIXEN/libraries/RenderGraph/src/Nodes/AccumulationConfigNode.cpp
+    - MakeDefaultAccumulationConfig(): M2 defaults when enabled (alpha=0 sentinel,
+      maxFrames=256, resetOnMotion=1)
+    - CompileImpl(): resets frameCounterEverEvaluated_ every recompile (covers a resize
+      recreating historyImage with fresh garbage, which the motion-epsilon check alone
+      would miss since a resize changes CameraData::aspect, not cameraPos/cameraDir)
+    - ExecuteImpl(): epsilon-compares CAMERA_DATA pos/dir frame-to-frame (glm::distance2,
+      same idiom as VulkanGraphApplication::UpdateBodySceneResidency), resets/increments
+      accumFrameCounter_, emits FRAME_COUNTER
+  VIXEN/libraries/RenderGraph/include/Nodes/AccumulationHistoryNode.h
+    - comments updated (M1 "not yet read" claims corrected for M2; documented why
+      uninitialized/stale image content is provably never read)
+  VIXEN/application/main/source/graph/BuildRenderGraph.cpp
+    - accumulationConfigNode: +CAMERA_DATA connection from cameraNode
+    - pushConstantGatherer: +field 12 connection from accumulationConfigNode's FRAME_COUNTER
+  VIXEN/codegen/config-schemas/AccumulationConfig.cs
+    - resetOnMotion doc comment updated (M2 default=1, not "M4 fallback, unused")
+  VIXEN/libraries/ShaderManagement/src/SpirvReflector.cpp
+    - ConvertType(): SPV_REFLECT_TYPE_FLAG_INT now checks traits.numeric.scalar.signedness
+      and emits BaseType::UInt for unsigned scalars (pre-existing reflection bug, see Gate 0)

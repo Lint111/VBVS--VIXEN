@@ -1324,12 +1324,16 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
                   shadowConfigNode, ShadowConfigNodeConfig::CURRENT_FRAME_INDEX);
 
-    // Sampled Lighting Inc2 M1: accumulation config node connections (same ring pattern as
-    // shadowConfigNode above).
+    // Sampled Lighting Inc2 M1/M2: accumulation config node connections (same ring pattern as
+    // shadowConfigNode above). CAMERA_DATA (M2) feeds the node's own reset-on-motion frame
+    // counter — see AccumulationConfigNode.h's file header for why the counter lives here
+    // rather than on CameraData itself.
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   accumulationConfigNode, AccumulationConfigNodeConfig::VULKAN_DEVICE_IN)
          .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
-                  accumulationConfigNode, AccumulationConfigNodeConfig::CURRENT_FRAME_INDEX);
+                  accumulationConfigNode, AccumulationConfigNodeConfig::CURRENT_FRAME_INDEX)
+         .Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
+                  accumulationConfigNode, AccumulationConfigNodeConfig::CAMERA_DATA);
 
     // Sampled Lighting Inc2 M1: accumulation history image connections — device + command pool
     // drive allocation + the one-shot UNDEFINED->GENERAL transition; extent follows the RENDER
@@ -1409,6 +1413,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(inputNode, InputNodeConfig::INPUT_STATE,
                           pushConstantGatherer, 11,  // push constant field 11: ivec2 debugTargetPixel
                           ExtractField(&InputState::lastClickPixel, SlotRole::Execute));
+    // accumFrameCount (binding 12, Sampled Lighting Inc2 M2): consecutive-static-camera frame
+    // counter from AccumulationConfigNode's own reset-on-motion tracking; drives the shader's
+    // converging-1/N accumulate-seam alpha.
+    batch.Connect(accumulationConfigNode, AccumulationConfigNodeConfig::FRAME_COUNTER,
+                          pushConstantGatherer, 12,  // push constant field 12: uint accumFrameCount
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
     // Connect ray marching resources to descriptor gatherer using VoxelRayMarchNames.h bindings
     // Binding 0: outputImage - Transient (Execute-only), others are Persistent (Dependency|Execute)

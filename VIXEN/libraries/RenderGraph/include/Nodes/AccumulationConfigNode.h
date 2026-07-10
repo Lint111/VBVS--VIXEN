@@ -4,6 +4,7 @@
 #include "Core/NodeType.h"
 #include "Core/PerFrameResources.h"
 #include "Data/Nodes/AccumulationConfigNodeConfig.h"
+#include <glm/glm.hpp>
 #include <memory>
 
 namespace Vixen::RenderGraph {
@@ -34,15 +35,27 @@ public:
  * a logically distinct concern (temporal-accumulation COMPUTE BUDGET, not
  * light or shadow DATA).
  *
- * Content this milestone: enabled=0 (M1's zero-visual-delta gate — the
- * accumulate seam in BodyInstanceRayMarch.comp is a pure passthrough),
- * alpha=0 (sentinel for the DEFAULT converging 1/N mode once M2 wires
- * consumption), maxFrames tuned for the converging mode, resetOnMotion=0
- * (M2 default fallback path, unused until wired). A
- * VIXEN_ACCUMULATION_ENABLED env A/B lever mirrors ShadowConfigNode's own
- * VIXEN_SHADOW_CONFIG_ENABLED convention — see MakeDefaultAccumulationConfig
- * in the .cpp. Re-uploaded every Execute (16 B, negligible) so a future
- * milestone can mutate it via SetAccumulationConfig() with no graph rewiring.
+ * Content: enabled=0 by default (M1's zero-visual-delta gate — the accumulate
+ * seam in BodyInstanceRayMarch.comp stays a pure passthrough); the
+ * VIXEN_ACCUMULATION_ENABLED=1 env lever (mirrors ShadowConfigNode's own
+ * VIXEN_SHADOW_CONFIG_ENABLED convention) flips on M2's default behavior:
+ * alpha=0 (sentinel for the converging 1/N mode), maxFrames capping that
+ * convergence, resetOnMotion=1 (hard-reset the frame counter to 1 the
+ * instant the camera moves — zero ghosting by construction). See
+ * MakeDefaultAccumulationConfig in the .cpp. Re-uploaded every Execute
+ * (16 B, negligible) so a future milestone can mutate it via
+ * SetAccumulationConfig() with no graph rewiring.
+ *
+ * Sampled Lighting Inc2 M2: this node also owns the consecutive-static-
+ * camera frame counter (FRAME_COUNTER output) that drives the shader's
+ * converging-1/N alpha. It reads CAMERA_DATA every Execute and epsilon-
+ * compares cameraPos/cameraDir against the previous frame (same
+ * change-detection idiom as VulkanGraphApplication::UpdateBodySceneResidency);
+ * on any motion (and resetOnMotion != 0) the counter drops back to 1,
+ * otherwise it increments (clamped to accumulationConfig.maxFrames when
+ * set). The counter lives here, not on CameraNode, so it can react to
+ * resetOnMotion — an accumulation-owned policy — without adding an
+ * accumulation-specific field to CameraData's shader-layout-frozen struct.
  *
  * Lifecycle: the ring buffers persist across graph recompile; released on
  * FinalTeardown (see CleanupImpl) — identical KI-004-safe pattern to
@@ -65,6 +78,14 @@ private:
     static const uint32_t kRingSize;  // = FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT
 
     PerFrameResources perFrame_;
+
+    // Reset-on-motion frame counter state (Inc2 M2). frameCounterEverEvaluated_ == false
+    // means "first Execute" -- always treated as a reset (counter starts at 1), mirroring
+    // UpdateBodySceneResidency's own residencyTriggerEverEvaluated_ first-frame convention.
+    bool      frameCounterEverEvaluated_ = false;
+    glm::vec3 lastCameraPos_{0.0f};
+    glm::vec3 lastCameraDir_{0.0f};
+    uint32_t  accumFrameCounter_ = 1;
 };
 
 } // namespace Vixen::RenderGraph

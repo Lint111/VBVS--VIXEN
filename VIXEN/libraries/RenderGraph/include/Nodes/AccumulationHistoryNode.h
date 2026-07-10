@@ -35,8 +35,8 @@ public:
  * genuine resize), the same "one persistent resource" shape StorageBufferNode's own HitRecord SSBO
  * uses (also read-and-written by the SAME dispatch, also extent-tracking, also not a ring).
  *
- * Usage = STORAGE only (no TRANSFER_SRC/DST needed this milestone -- M1 never reads/writes the
- * image from the shader; a future milestone that needs a clear-on-resize copy can add it then).
+ * Usage = STORAGE only (no TRANSFER_SRC/DST needed -- no clear-on-resize copy; see below for why
+ * uninitialized content on (re)creation is safe).
  *
  * Layout: the compute shader will use the image as a STORAGE image, requiring
  * VK_IMAGE_LAYOUT_GENERAL. The image is created UNDEFINED and transitioned UNDEFINED->GENERAL
@@ -44,13 +44,20 @@ public:
  * identical mechanics to PickIdTargetNode::TransitionAllToGeneral, just for one image instead of a
  * ring. Storage images remain in GENERAL across dispatches, so no per-frame barrier is required.
  *
- * M1 scope: allocated + transitioned + wired to a shader binding (20) that declares but does NOT
- * yet read/write it (see BodyInstanceRayMarch.comp's `historyImage` declaration) -- a pure
- * plumbing addition, zero visual delta. M2 is the first milestone that actually samples/writes it.
+ * M1 scope was allocate + transition + wire to a shader binding (20) that declared but did NOT
+ * yet read/write it -- pure plumbing, zero visual delta. M2 (BodyInstanceRayMarch.comp's
+ * accumulate seam) is the first milestone that actually samples/writes it: on frame 1 of a run
+ * (or the frame right after a reset-on-motion reset, alpha>=1.0) the shader skips the
+ * historyImage read entirely and writes pure outColor, so this image's genuinely-uninitialized
+ * first content (or stale content after a resize recreate) is never actually read -- see the
+ * accumulate seam's alpha>=1.0 guard in the shader.
  *
  * Lifecycle: persists across graph recompile (same extent); released only on FinalTeardown. A
- * genuine resize recreates the image at the new extent (uninitialized content on recreate is fine
- * while accumulation stays disabled).
+ * genuine resize recreates the image at the new extent with fresh uninitialized content;
+ * AccumulationConfigNode::CompileImpl (which runs on every recompile, including a resize) forces
+ * its frame counter to restart on the next Execute specifically to cover this case -- a resize
+ * changes CameraData::aspect, not cameraPos/cameraDir, so the counter's own motion-epsilon check
+ * alone would not have caught it.
  */
 class AccumulationHistoryNode : public TypedNode<AccumulationHistoryNodeConfig> {
 public:
