@@ -1,0 +1,40 @@
+Sampled Lighting Inc0 M3 — light-data UBO/SSBO wiring — live gate
+
+Gate: offscreen capture must be byte-identical to M2's AFTER capture (the
+LightingConfig data path introduces zero visual delta — default light data
+reproduces the previously-hardcoded light exactly).
+
+M2 AFTER hash (reference, from Inc0 M2's live gate):
+  fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1
+
+M3 capture hash (gate-artifacts/inc0-m3-after.png, vixen_editor.exe,
+VIXEN_EDITOR_CAPTURE_FRAMES=5):
+  fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1
+
+Result: MATCH (byte-identical).
+
+Cross-check: rebuilt the identical M2-tip commit (e1d4cba9) in isolation via
+git stash and re-ran the same capture — reproduced the same hash
+(fde9c268...) AND the same pre-existing push-constant "Type mismatch for
+field" (12 occurrences) + VUID-vkCmdDispatch-None-08114 (20 occurrences)
+validation noise seen in the M3 run. Confirms both are byte-for-byte
+identical renders and that the validation messages are a pre-existing
+baseline condition, not introduced by this milestone.
+
+Both apps booted and closed cleanly with binding 16 wired (log line
+"[BuildRenderGraph] Connected lighting config at binding 16"):
+  - vixen_editor.exe: exit 0 (temp/run_m3_capture.log)
+  - VIXEN.exe:        exit 0 (temp/run_m3_main_app.log)
+
+SDI reflection parity (test_lightingconfig_sdi_parity, reflects the real
+compiled BodyInstanceRayMarch.spv via SpirvReflector): PASSED — struct size
+144B, lightCount@0, ambientIntensity@4, lights@16, Light array stride 32B,
+Light.{direction_or_position@0,kind@12,radiance@16,range@28} all match the
+generated Vixen::Gpu::LightingConfig/Light C++ layout exactly.
+
+UBO-vs-SSBO resolution: bound as an SSBO (LightingConfigSSBO, std430,
+binding 16) — the kernel-codegen framework emits std430 only (see M1's
+generated Generated/LightingConfig.g.h/.glsl), so a std140 UBO would
+restride the nested Light array and desync the shader from the generated
+C++ struct. This mirrors OctreeConfig's own SSBO choice for the same reason
+(see BodyInstanceRayMarch.comp's OCTREE CONFIG SSBO comment, I3.2).
