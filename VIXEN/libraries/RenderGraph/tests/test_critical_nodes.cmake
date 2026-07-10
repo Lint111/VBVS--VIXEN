@@ -383,6 +383,7 @@ add_custom_command(
     COMMAND ${VIXEN_GLSLC}
             -fshader-stage=compute
             -I ${_brm_shader_dir}
+            -I ${CMAKE_SOURCE_DIR}/libraries/SVO/shaders
             --target-env=vulkan1.3
             ${_brm_src}
             -o ${_brm_spv}
