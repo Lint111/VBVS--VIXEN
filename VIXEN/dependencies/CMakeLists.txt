@@ -128,7 +128,12 @@ set_target_properties(ProjectHash PROPERTIES FOLDER "Dependencies")
 FetchContent_Declare(
     gaia
     GIT_REPOSITORY https://github.com/richardbiely/gaia-ecs.git
-    GIT_TAG        main
+    # Pinned to the v0.9.2 release commit (2293594) rather than a moving ref.
+    # GIT_TAG main previously froze at whatever commit each build dir first fetched
+    # (FetchContent caches _deps and does not re-fetch on reconfigure), so the tree
+    # silently drifted ~18 commits behind upstream. A pinned SHA is reproducible
+    # across every build dir/worktree and cannot silently drift; bump it deliberately.
+    GIT_TAG        2293594cc5e676a44a50130ee1de64a9fd0a9666  # v0.9.2
     GIT_SHALLOW    TRUE
     GIT_PROGRESS   TRUE
 )
@@ -147,6 +152,13 @@ FetchContent_MakeAvailable(gaia)
 # Organize Gaia in Dependencies folder
 if(TARGET gaia)
     set_target_properties(gaia PROPERTIES FOLDER "Dependencies")
+    # Upstream's own INTERFACE include dir is the repo root (gaia_SOURCE_DIR), which
+    # matches its pre-v0.9 layout where the amalgamated header lived at the top level.
+    # As of v0.9.2 the committed single header moved to single_include/gaia.h (and a
+    # multi-header include/gaia.h also exists) — neither is at the root anymore, so
+    # VIXEN's `#include <gaia.h>` consumers (VoxelComponents, GaiaVoxelWorld,
+    # GaiaArchetypes) need single_include/ added explicitly.
+    target_include_directories(gaia INTERFACE $<BUILD_INTERFACE:${gaia_SOURCE_DIR}/single_include>)
 endif()
 
 message(STATUS "Gaia ECS fetched - available to all libraries")
@@ -337,10 +349,19 @@ FetchContent_Declare(rmlui
     GIT_SHALLOW    TRUE)
 set(RMLUI_SAMPLES        OFF CACHE BOOL "" FORCE)
 set(RMLUI_LUA_BINDINGS   OFF CACHE BOOL "" FORCE)
+# Suppress RmlUi's own test suite without permanently clobbering the global
+# BUILD_TESTING cache var: the root CMakeLists.txt forces it ON (for VIXEN's
+# own libraries, e.g. GaiaVoxelWorld/GaiaArchetypes, which gate on the
+# CTest-standard BUILD_TESTING rather than the project's BUILD_TESTS option)
+# before this file runs, and CACHE FORCE writes here are global, not scoped
+# to the RmlUi fetch.
+set(_vixen_build_testing_saved ${BUILD_TESTING})
 set(BUILD_TESTING        OFF CACHE BOOL "" FORCE)
 # Hand RmlUi the FetchContent FreeType target rather than a system find_package.
 set(RMLUI_FONT_ENGINE    freetype CACHE STRING "" FORCE)
 FetchContent_MakeAvailable(rmlui)
+set(BUILD_TESTING ${_vixen_build_testing_saved} CACHE BOOL "" FORCE)
+unset(_vixen_build_testing_saved)
 foreach(_rml RmlCore RmlUi RmlDebugger rmlui_core)
     if(TARGET ${_rml})
         set_target_properties(${_rml} PROPERTIES FOLDER "Dependencies")
