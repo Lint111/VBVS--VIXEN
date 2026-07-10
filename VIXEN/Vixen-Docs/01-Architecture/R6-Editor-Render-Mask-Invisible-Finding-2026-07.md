@@ -3,8 +3,18 @@
 **Date:** 2026-07-10
 **Context:** Inc-4 R6 (AppFlow kernel-glue-transplant reframe close-out). See
 `AppFlow-Kernel-Glue-Transplant-Reframe-Design-2026-07.md`.
-**Status:** RESOLVED — not a render/sync bug. Gate reworked to assert the real, observable contract.
-Editor mip-fallback/residency behaviour recorded here as a separate content/LOD matter.
+**Status:** RESOLVED — not a render/sync bug (unchanged). The follow-up content/LOD matter this
+finding flagged (editor mip-fallback → mask invisible) is ALSO now RESOLVED — see
+`Editor-Brick-Residency-Fix-Plan-2026-07.md`: `EditorApplication::ApplyDocumentToScene` now grants
+brick residency unconditionally, so the fine SDF march (where the mask lives) runs, and the mask IS
+visible. Live WSL/Dozen verification: `capture_5` vs `capture_45` differ by 62 pixels (all inside
+the object's own on-screen bounding box, since the editor's document body is small on screen — see
+that plan doc for the measurement), and the undo/redo round-trip is byte-exact
+(`capture_75==capture_5`, `capture_105==capture_45`). `test_editor_toggle_undo_capture.cpp`'s R6
+gate now asserts the real visual round-trip again (`UndoRedoRestoresRenderByteExact`) plus the mask
+delta itself (`FirstEditReachesRenderPipeline`, calibrated to the measured 62px, not a residency-
+transition smoke check). The sections below are the original investigation record, kept for
+context on why the assertions were removed before they were restored.
 
 ## TL;DR
 
@@ -55,23 +65,29 @@ the headless gate uses a bespoke bore-aligned camera AND builds a fresh `BodyOct
 mask; the live editor uses a general orbit camera where the cut delta is ~6px at best, AND renders
 the mip fallback. So the mask is effectively invisible in the editor render.
 
-## What the reworked R6 gate asserts (`test_editor_toggle_undo_capture.cpp`)
+## What the R6 gate asserted BEFORE the residency fix (`test_editor_toggle_undo_capture.cpp`, historical)
 
 1. **`ToggleUndoRedoStateTrailThroughWindowedRun`** — parses the running editor's own
    `[EDITOR/state] <op> mask=.. undoDepth=.. redoDepth=..` lines and asserts the mask trail
    `7 → 3 → 7 → 3` with correct ActionStack depth movement. This is the real proof undo/redo work,
-   through the windowed registry-dispatch path.
+   through the windowed registry-dispatch path. (Unchanged by the residency fix — kept as-is.)
 2. **`FirstEditReachesRenderPipeline`** — a one-shot smoke check that SOME visible change happened
-   when the first edit hit the render pipeline (`capture_5 != capture_45`). Explicitly asserts the
-   **residency transition**, NOT the mask. Cannot assert undo≠redo (residency latches).
+   when the first edit hit the render pipeline (`capture_5 != capture_45`). Explicitly asserted the
+   **residency transition**, NOT the mask. Could not assert undo≠redo (residency latched).
 3. **`BackButtonReachesReturnInRunningEditor`** — back-button → Return (`afterBack == Editing`).
    Unchanged; proven + real.
 
-## Follow-up (separate content/LOD matter — NOT an AppFlow defect)
+## Follow-up — RESOLVED 2026-07-10 (Editor-Brick-Residency-Fix-Plan-2026-07)
 
-If the editor should render the fine SDF surface (so mask edits are visible), that is a
-brick-residency / mip-fallback matter in the render/LOD subsystem:
-`RequestBrickResidency` is only driven by camera movement (`VulkanGraphApplication`), so a static
-editor body stays in the mip fallback (`brickResident == 0`). Making the editor body request
-residency (or forcing it for editor scenes) would let the SDF march run and surface the mask delta.
-Out of scope for the AppFlow reframe; recorded here for whoever picks up editor render fidelity.
+The follow-up this finding originally flagged ("making the editor body request residency would let
+the SDF march run and surface the mask delta") is now DONE:
+`EditorApplication::ApplyDocumentToScene` calls the new `VulkanGraphApplication::
+RequestBodyBrickResidency(true)` forwarder unconditionally after every edit, and
+`EditorApplication::SkipResidencyHeuristic()` overrides the base class hook so the main app's
+camera-driven `UpdateBodySceneResidency` (which a static editor session never satisfies) cannot
+stomp the grant back to `false`. Live WSL/Dozen verification confirmed brick-level traversal
+(`BRICK_ENTER`/`BRICK_EXIT`) now occurs where only mip-fallback ran before, and the R6 gate's
+`FirstEditReachesRenderPipeline` now asserts the mask delta itself (62px measured, calibrated
+threshold) plus a NEW `UndoRedoRestoresRenderByteExact` test restoring the byte-exact visual
+round-trip this finding originally removed. See `Editor-Brick-Residency-Fix-Plan-2026-07.md` for
+the fix + full live-verify evidence.

@@ -11,52 +11,57 @@
  * matching where the windowed editor itself runs.
  *
  * ============================================================================================
- * R6 finding -- WHY the visual mask round-trip assertion was REMOVED (durable record)
+ * R6 finding history -- byte-exact visual round-trip removed, then RESTORED (durable record)
  * ============================================================================================
- * An earlier version of this gate asserted a byte-exact VISUAL round-trip:
- *   capture_75.rgb == capture_5.rgb   (undo restores the render)
- *   capture_105.rgb == capture_45.rgb (redo re-applies it)
- * plus "toggle visibly changed the render at frame 45 vs 5".
+ * An earlier version of this gate asserted a byte-exact VISUAL round-trip
+ * (capture_75==capture_5, capture_105==capture_45) plus "toggle visibly changed the render at
+ * frame 45 vs 5". A max-effort GPU-boundary investigation (Inc-4 R6) proved those assertions
+ * tested an INVISIBLE-BY-DESIGN quantity: the editor's document body never requested brick
+ * residency, so it rendered the mask-INVARIANT mip-fallback path (OctreeConfig.brickResident==0)
+ * -- the fine SDF march where the layer mask lives never ran. The gate was reworked to assert
+ * only the state trail + a residency-transition smoke check (FirstEditReachesRenderPipeline).
+ * See Vixen-Docs/01-Architecture/R6-Editor-Render-Mask-Invisible-Finding-2026-07.md.
  *
- * A max-effort GPU-boundary investigation (Inc-4 R6) proved those assertions tested an
- * INVISIBLE-BY-DESIGN quantity and were therefore removed:
- *   - The layer mask (toggling layer 2, a CSG cut) only changes the SDF field values in the
- *     shell channelPool (binding 11). Instrumentation proved that pool reaches the shader
- *     CORRECT and FRESH on every edit -- mapped+checksummed GPU memory shows the mask-A / mask-B /
- *     mask-A byte trail across toggle/undo/redo, and a shader-output tap reads it back A/B/A.
- *     So mask correctness is proven at the CPU, GPU-buffer, and shader-input layers.
- *   - BUT the editor's body renders via the mask-INVARIANT mip-fallback path (the drawn octree
- *     has OctreeConfig.brickResident == 0 at the editor's orbit camera -- confirmed by a shader
- *     tap), so the fine SDF surface (where the mask lives) is never marched. At that orbit camera
- *     the cut-layer silhouette delta is ~0px. Proof: two consecutive toggles (mask7->mask3->mask7,
- *     both post-residency) render BYTE-IDENTICAL. The only visible change in the whole run is the
- *     one-time non-resident -> resident transition the FIRST edit triggers (mip fallback ->
- *     resident), which is NOT the mask.
- *   => A byte-exact visual undo/redo round-trip is unreachable in the editor's current
- *      camera + LOD path. It never proved the mask round-trip; it accidentally tracked the
- *      residency transition. (The editor mip-fallback/residency behaviour is a separate
- *      content/LOD matter, not an AppFlow defect. See Vixen-Docs/01-Architecture for the note.)
+ * Editor-Brick-Residency-Fix-Plan-2026-07 (RESOLVED): EditorApplication::ApplyDocumentToScene
+ * now grants RequestBrickResidency(true) unconditionally for the document body, and overrides
+ * VulkanGraphApplication::SkipResidencyHeuristic() so the main app's camera-driven heuristic
+ * (which a static editor session never satisfies) cannot stomp the grant back to false. Live
+ * WSL/Dozen verification confirmed brick-level traversal (BRICK_ENTER/BRICK_EXIT) now occurs
+ * where only mip-fallback ran before, and the mask IS now visible -- but the editor's document
+ * body occupies a small on-screen footprint (a ~32x32px silhouette in the 500x500 capture at the
+ * framed orbit camera; see EditorApplication::ApplyDocumentToScene's comment on the object's
+ * ~2-unit local extent), so the cut-layer delta is dozens of pixels with small (<10) per-channel
+ * magnitude, NOT the thousands-of-pixels/>16-per-channel delta a larger or bore-aligned camera
+ * would show (that larger delta IS what test_appflow_editor_toggle_render.cpp's headless,
+ * bore-aligned-camera gate asserts against a fresh BodyOctreeSceneNode -- a different, bigger
+ * signal by design). The R6-finding doc's own investigation predicted exactly this ("the cut
+ * delta is ~6px at best" at the editor's general orbit camera) -- this measurement (a real,
+ * deterministic, mask-confined delta strictly inside the object's bounding box) confirms it.
+ * The round-trip below IS byte-exact (proven on a real WSL/Dozen run), so the visual assertions
+ * are restored with a threshold calibrated to the ACTUAL measured delta, not a guessed one.
  *
- * What this gate asserts INSTEAD -- only things PROVEN and editor-observable:
+ * What this gate asserts:
  *   1. ToggleUndoRedoStateTrailThroughWindowedRun -- parses the running editor's own
- *      "[EDITOR/state] <op> mask=.. undoDepth=.. redoDepth=.." lines (emitted by
+ *      "[EDITOR/state] <op> mask=.. undoDepth=.. redoDepth=.." trail (emitted by
  *      EditorApplication::PreTick on each scripted edit) and asserts the mask trail is exactly
  *      7 -> 3(toggle) -> 7(undo) -> 3(redo) with correct undo/redo depth movement. THIS is the real
  *      proof undo/redo work: from the running windowed editor, through the registry-dispatch path.
- *   2. FirstEditReachesRenderPipeline -- a smoke check that SOME visible change happened when the
- *      first edit hit the render pipeline (capture_5 != capture_45). This asserts the
- *      non-resident -> RESIDENT transition (i.e. "the edit reached the GPU and re-materialized"),
- *      explicitly NOT the mask. It cannot assert undo!=redo (residency latches after the first
- *      edit -- every later capture is byte-identical), so it is a one-shot smoke check only.
- *   3. BackButtonReachesReturnInRunningEditor -- back-button -> Return in the running editor
+ *   2. FirstEditReachesRenderPipeline -- asserts capture_5 != capture_45: the first edit produced
+ *      a real, mask-confined visual delta (residency is now requested unconditionally, so this is
+ *      no longer a one-shot residency-transition smoke check -- it is the mask itself; see
+ *      kMinMaskDiffPixels below for the calibrated lower bound).
+ *   3. UndoRedoRestoresRenderByteExact -- capture_75.rgb == capture_5.rgb (undo restores the
+ *      render) and capture_105.rgb == capture_45.rgb (redo re-applies it), byte-for-byte. This is
+ *      the real visual round-trip the residency fix makes reachable again.
+ *   4. BackButtonReachesReturnInRunningEditor -- back-button -> Return in the running editor
  *      (afterBack == FlowStateId::Editing). Proven + real; unchanged.
  *
  * Frame timeline (matches VIXEN_EDITOR_SCRIPT/VIXEN_EDITOR_CAPTURE_FRAMES in run_editor_script.bat):
- *   frame 5   -- baseline capture, all layers enabled, PRE first edit (mip-fallback render).
- *   frame 30  -- toggle:2 fires (also triggers the one-time residency transition).
- *   frame 45  -- capture (post-toggle, RESIDENT render -- differs from frame 5 by the residency
- *                transition, not the mask).
- *   frame 60  -- undo fires.   frame 75 -- capture (mask back to 7, render byte-identical to 45).
+ *   frame 5   -- baseline capture, all layers enabled, PRE first edit.
+ *   frame 30  -- toggle:2 fires (mask cut becomes visible -- residency is now unconditional, so
+ *                this is not confounded with a mip->resident transition).
+ *   frame 45  -- capture (post-toggle; differs from frame 5 by the mask cut).
+ *   frame 60  -- undo fires.   frame 75 -- capture (mask back to 7, render byte-identical to 5).
  *   frame 90  -- redo fires.   frame 105 -- capture (mask 3 again, byte-identical to 45).
  *   frame 100 -- settings (NavTo). frame 110 -- back-button (DispatchBySelector("back-button")).
  */
@@ -105,19 +110,23 @@ Image LoadPng(const std::string& path) {
     return img;
 }
 
-// Count pixels that differ by > 16 on any channel across the WHOLE image. Used only for the
-// one-shot residency smoke check (FirstEditReachesRenderPipeline): the render is fully
-// deterministic and noise-free (a genuinely unchanged frame diffs EXACTLY 0), so any positive
-// count is real signal that the first edit reached and re-materialized the render pipeline.
+// Count pixels that differ AT ALL (any channel != 0) across the WHOLE image. The render is fully
+// deterministic and noise-free (a genuinely unchanged frame diffs EXACTLY 0 -- proven live: two
+// consecutive mask=3 renders round-trip byte-identical), so any positive count is real signal.
+// Editor-Brick-Residency-Fix-Plan-2026-07: NOT a >16-per-channel threshold (that was calibrated
+// for test_appflow_editor_toggle_render.cpp's bore-aligned camera against a much bigger on-screen
+// silhouette) -- the editor's document body is small on screen (see the file header), so its cut-
+// layer delta is real but sub-16-per-channel. A live WSL/Dozen run measured 62 differing pixels
+// (max per-channel delta 9), all strictly inside the object's own bounding box -- see
+// kMinMaskDiffPixels below for the calibrated lower bound this feeds.
 int WholeImageDiffPixels(const Image& a, const Image& b) {
     if (a.rgb.empty() || b.rgb.empty()) return -1;
     if (a.width != b.width || a.height != b.height) return -1;
     int diff = 0;
     for (size_t i = 0; i + 2 < a.rgb.size(); i += 3) {
-        const int dr = int(a.rgb[i + 0]) - int(b.rgb[i + 0]);
-        const int dg = int(a.rgb[i + 1]) - int(b.rgb[i + 1]);
-        const int db = int(a.rgb[i + 2]) - int(b.rgb[i + 2]);
-        if (std::abs(dr) > 16 || std::abs(dg) > 16 || std::abs(db) > 16) ++diff;
+        if (a.rgb[i + 0] != b.rgb[i + 0] || a.rgb[i + 1] != b.rgb[i + 1] || a.rgb[i + 2] != b.rgb[i + 2]) {
+            ++diff;
+        }
     }
     return diff;
 }
@@ -190,6 +199,15 @@ std::optional<int> ReadAfterBackState(const std::string& logPath) {
     return found;
 }
 
+// Editor-Brick-Residency-Fix-Plan-2026-07 Task 3: calibrated lower bound for the mask-cut delta
+// between capture_5 (mask=7) and capture_45 (mask=3), measured directly off a real WSL/Dozen run
+// (62 differing pixels, all inside the object's ~32x32px bounding box). Set well below that
+// measurement (not at it) so the gate has headroom for minor cross-run/driver variance while still
+// failing hard if residency regresses back to mip-only (which renders capture_45 byte-IDENTICAL to
+// capture_5, i.e. 0 diff pixels -- see the R6-finding doc's own "two consecutive toggles render
+// byte-identical" proof of the pre-fix behaviour).
+constexpr int kMinMaskDiffPixels = 20;
+
 }  // namespace
 
 TEST(EditorToggleUndoCapture, ToggleUndoRedoStateTrailThroughWindowedRun) {
@@ -225,13 +243,11 @@ TEST(EditorToggleUndoCapture, ToggleUndoRedoStateTrailThroughWindowedRun) {
 }
 
 TEST(EditorToggleUndoCapture, FirstEditReachesRenderPipeline) {
-    // R6 smoke check: the FIRST edit reaches the render pipeline and re-materializes it -- proven
-    // by SOME visible change between the pre-first-edit baseline (frame 5) and the post-first-edit
-    // capture (frame 45). This asserts the non-resident -> RESIDENT transition the first edit
-    // triggers, NOT the mask (the mask is invisible in the editor's mip-fallback/orbit-camera path
-    // -- see the file header). It is one-shot: residency latches, so later captures (75, 105) are
-    // byte-identical to 45 and cannot be used to assert undo!=redo (that's what the state-trail
-    // test above proves instead).
+    // Editor-Brick-Residency-Fix-Plan-2026-07: residency is now requested unconditionally (see the
+    // file header), so this asserts the MASK delta itself, not a one-shot residency-transition
+    // smoke check -- capture_5 (mask=7) must differ from capture_45 (mask=3) by at least
+    // kMinMaskDiffPixels, calibrated to a real WSL/Dozen measurement (62 pixels, all inside the
+    // object's bounding box).
     const std::string dir = CaptureDir();
     const Image png5  = LoadPng(dir + "/editor_capture_5.png");
     const Image png45 = LoadPng(dir + "/editor_capture_45.png");
@@ -243,14 +259,42 @@ TEST(EditorToggleUndoCapture, FirstEditReachesRenderPipeline) {
     ASSERT_EQ(png5.height, png45.height);
 
     const int diff = WholeImageDiffPixels(png5, png45);
-    std::printf("[EDITOR/residency] wholeImageDiffPixels(png5,png45)=%d (%dx%d)\n",
+    std::printf("[EDITOR/mask] wholeImageDiffPixels(png5,png45)=%d (%dx%d)\n",
                 diff, png5.width, png5.height);
-    // The residency transition repaints a large area (mip fallback -> resident SDF march), so this
-    // is thousands of pixels, not the ~6px an on-axis mask cut would be. Any substantial positive
-    // count proves the first edit reached the render pipeline; 0 would mean it never did.
-    EXPECT_GT(diff, 0)
-        << "the first edit produced NO visible render change (frame 45 == frame 5) -- the edit "
-           "never reached the render pipeline (expected the non-resident->resident transition)";
+    EXPECT_GT(diff, kMinMaskDiffPixels)
+        << "the first edit produced too small a render change (frame 45 vs frame 5, diff=" << diff
+        << ") -- either the mask cut isn't reaching the render, or brick residency regressed back "
+           "to mip-only fallback (see EditorApplication::SkipResidencyHeuristic)";
+}
+
+TEST(EditorToggleUndoCapture, UndoRedoRestoresRenderByteExact) {
+    // Editor-Brick-Residency-Fix-Plan-2026-07 Task 3: the REAL visual round-trip, restored now that
+    // brick residency (and therefore the mask) is reachable in the editor's render path. Byte-exact,
+    // not "close" -- a live WSL/Dozen run proved capture_75==capture_5 and capture_105==capture_45
+    // to the byte.
+    const std::string dir = CaptureDir();
+    const Image png5   = LoadPng(dir + "/editor_capture_5.png");
+    const Image png45  = LoadPng(dir + "/editor_capture_45.png");
+    const Image png75  = LoadPng(dir + "/editor_capture_75.png");
+    const Image png105 = LoadPng(dir + "/editor_capture_105.png");
+
+    ASSERT_FALSE(png5.rgb.empty())   << "missing " << dir << "/editor_capture_5.png -- run "
+                                         "VIXEN/temp/run_editor_script.bat first";
+    ASSERT_FALSE(png45.rgb.empty())  << "missing " << dir << "/editor_capture_45.png";
+    ASSERT_FALSE(png75.rgb.empty())  << "missing " << dir << "/editor_capture_75.png";
+    ASSERT_FALSE(png105.rgb.empty()) << "missing " << dir << "/editor_capture_105.png";
+
+    // Undo (frame 60) restores mask=7 -- frame 75's render must byte-match frame 5's baseline.
+    ASSERT_EQ(png75.width, png5.width);
+    ASSERT_EQ(png75.height, png5.height);
+    EXPECT_EQ(png75.rgb, png5.rgb)
+        << "undo did not restore the render byte-for-byte (frame 75 vs frame 5)";
+
+    // Redo (frame 90) re-applies mask=3 -- frame 105's render must byte-match frame 45's.
+    ASSERT_EQ(png105.width, png45.width);
+    ASSERT_EQ(png105.height, png45.height);
+    EXPECT_EQ(png105.rgb, png45.rgb)
+        << "redo did not restore the render byte-for-byte (frame 105 vs frame 45)";
 }
 
 TEST(EditorToggleUndoCapture, BackButtonReachesReturnInRunningEditor) {
