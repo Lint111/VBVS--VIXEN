@@ -9,6 +9,7 @@ namespace Vixen.AppFlow.Reference
     public static class AppFlowCallables
     {
         // Self-inverse: applyToggle(applyToggle(mask,i),i) == mask. Transplanted C# -> C++ (D12).
+        // CAVEAT: index must be < 32 — C# masks the shift count, C++ shift >= 32 is UB (transplant divergence, R4 review).
         [KernelCallable] public static uint applyToggle(uint mask, uint index) => mask ^ (1u << (int)index);
     }
 }
