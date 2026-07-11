@@ -52,13 +52,13 @@ here, not just eyeballing).
 ## Task breakdown
 
 ### M1 — Baseline measurement
-- [ ] Full clean build of `vixen-ninja` preset (through `build.bat all`), record wall-clock and
+- [x] Full clean build of `vixen-ninja` preset (through `build.bat all`), record wall-clock and
       confirm exit green.
-- [ ] Record `VixenApp.exe` and its `.pdb` size (bytes) — 3 consecutive from-scratch relinks
+- [x] Record `VixenApp.exe` and its `.pdb` size (bytes) — 3 consecutive from-scratch relinks
       (touch a trivial app source file, rebuild, no clean) to get a noise floor on link time.
-- [ ] Record current `RegisterAllNodes()`-derived count via `test_node_self_registration`
+- [x] Record current `RegisterAllNodes()`-derived count via `test_node_self_registration`
       (expect ≥53, confirms nothing already regressed).
-- [ ] Write all of the above into this doc's Progress Log before touching CMakeLists.txt.
+- [x] Write all of the above into this doc's Progress Log before touching CMakeLists.txt.
 
 ### M2 — Per-node OBJECT libraries (no scoping yet — mechanical repackaging only)
 - [ ] In `libraries/RenderGraph/CMakeLists.txt`, replace the single `RENDERGRAPH_NODE_SOURCES`
@@ -168,4 +168,48 @@ repeatedly missed real linkage/runtime bugs in past epics; this one is no except
 
 ### Progress Log
 
-*(empty — Inc-1 not yet started)*
+- **Milestone 1 (Baseline measurement): DONE** · full clean build: 13m15s (795s), exit 0 (all
+  non-test targets green; see note below on 19 pre-existing test-only failures) · `VIXEN.exe`
+  (the app target's actual CMake/binary name — `application/main/CMakeLists.txt` declares
+  `add_executable(VIXEN ...)`, not `VixenApp`; both names refer to the same binary):
+  37,140,480 bytes · `VIXEN.pdb`: 170,192,896 bytes · 3x incremental relink (touch a blank line
+  in `application/main/source/main.cpp`, `build.bat build vixen-ninja VIXEN`, revert): 29s / 12s
+  / 13s · `test_node_self_registration`: 2/2 tests PASS; node-type count confirmed as **53** via
+  direct source grep of `VIXEN_REGISTER_NODE(...)` call sites across
+  `libraries/RenderGraph/src/Nodes/*.cpp` (the test itself only asserts `>= 32`/`>= 32u`, it
+  doesn't print the live count, so the registry size was cross-checked at the source level
+  instead of by modifying the test) · 2026-07-11
+
+  **Build-tooling note:** this worktree was created before commits `6fe8a050`/`6c487298`/
+  `e79c079f` landed on `main` (queue-ticket auto-release, ccache-preferred-over-sccache for MSVC
+  PCH caching, per-build BuildId). Mid-M1, the branch was rebased cleanly onto `origin/main`
+  (`e79c079f` confirmed as an ancestor of HEAD, no conflicts — those commits are build-tooling/
+  docs only, M1 hadn't touched any CMakeLists.txt) and the full clean build was **re-run from
+  scratch** on the updated tooling so the recorded baseline reflects what M2-M4 will actually be
+  compared against, rather than pre-rebase numbers. The numbers above are from that post-rebase
+  build. A first (pre-rebase) clean build was also run and discarded for baseline purposes; its
+  numbers were consistent with the ones kept (same `VIXEN.exe` byte size, same 19 pre-existing
+  failures), so the rebase did not introduce any regression — it just aligned this worktree with
+  current tooling before locking in the baseline.
+
+  **19 pre-existing test-target failures (not a regression, not caused by Inc-1 — zero code/
+  CMake changes were made in M1):**
+  - 18 of the 19 are exactly **KI-017** (`Vixen-Docs/04-Development/Known-Issues.md`) — the
+    already-documented, already-OPEN Windows/MSVC `<windows.h>` `min`/`max`/`abs` macro-pollution
+    cascade into `Recipe/generated/SdfCoreKernels.g.hpp` (`glm::length`/`glm::abs` calls),
+    producing `C2589`/`C2059`/`C1003` in any SVO test TU that transitively includes
+    `SdfRecipes.h`/`SdfBake.h`. KI-017 documents this as reproduced independently on a clean
+    pre-Tiered-ESVO-Inc2-M3 checkout and explicitly notes `VIXEN.exe` itself builds fine — only
+    isolated SVO test TUs are affected. Confirmed identically reproducible in this worktree
+    (same 18 target names, same error signature) across three independent builds this session:
+    this worktree's first build, this worktree's post-rebase build, and a concurrent sibling
+    agent's build on a completely different worktree (`tiered-esvo-inc2`) — machine-wide,
+    not worktree-specific.
+  - The 19th (`test_body_instance_raymarch_render.cpp`) is a separate, also pre-existing
+    MSVC-portability bug: the test calls POSIX `setenv`/`unsetenv` (lines 924/926/1048/1050/...),
+    which don't exist on MSVC (the portable equivalent is `_putenv_s`). Unrelated to node
+    linkage or KI-017; not investigated further as it's out of M1's pure-measurement scope.
+  - Net effect on M1's numbers: `VIXEN.exe`/`VIXEN.pdb` (the only artifacts M2-M4 will size-diff
+    against) built successfully in every run; `test_node_self_registration` (M1's required test
+    gate) built and ran successfully. The 19 failures are isolated to other SVO/RenderGraph test
+    binaries not in M1's gate list.
