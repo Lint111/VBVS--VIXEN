@@ -33,7 +33,17 @@ SpirvTypeInfo ConvertType(const ::SpvReflectTypeDescription* typeDesc) {
             info.width = 32;  // Booleans are typically 32-bit
             break;
         case SPV_REFLECT_TYPE_FLAG_INT:
-            info.baseType = SpirvTypeInfo::BaseType::Int;
+            // signedness: 0 = unsigned (GLSL uint), 1 = signed (GLSL int) -- SPIRV-Reflect's own
+            // convention (spirv_reflect.h). Pre-existing gap fixed here (Sampled Lighting Inc2
+            // M2): this always collapsed to BaseType::Int regardless of signedness, so any bare
+            // scalar `uint` field reflected as Int -- invisible until something actually routed a
+            // uint32_t resource through PushConstantGathererNode's generic ExtractTypedResource
+            // path (not the CameraData/InputState field-extraction shortcut most existing push
+            // constant fields use), where the resulting (Int,1,0,0) dispatch-table key mismatched
+            // the real uint32_t-typed Resource and threw bad_any_cast in Resource::GetHandle.
+            info.baseType = (typeDesc->traits.numeric.scalar.signedness == 0)
+                ? SpirvTypeInfo::BaseType::UInt
+                : SpirvTypeInfo::BaseType::Int;
             info.width = typeDesc->traits.numeric.scalar.width;
             break;
         case SPV_REFLECT_TYPE_FLAG_FLOAT:

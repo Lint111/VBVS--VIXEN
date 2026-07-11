@@ -46,6 +46,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `DirectLighting.comp` pass the design describes (`ComputeStageNode`'s 3-hazard-slot cap; tracked as
   a prerequisite for Inc3 ReSTIR, see Known Issues KI-018). See
   `Vixen-Docs/01-Architecture/Sampled-Lighting-{Design,Inc1-Plan}-2026-07.md`.
+- **Sampled Lighting, Inc2 (temporal accumulation)** — a persistent (not ring-buffered) history
+  storage image (`AccumulationHistoryNode`, binding-20) plus a drift-guarded `AccumulationConfig`
+  `[GpuStruct]` (binding-19) blend each frame's shaded result into a converging 1/N EWMA average at
+  the accumulate seam in `BodyInstanceRayMarch.comp`, driving variance to zero on a static camera —
+  the prerequisite every later stochastic layer (ReSTIR, DDGI, specular) leans on for a presentable
+  image. Camera motion no longer forces a whole-frame reset: per-pixel reprojection through the
+  previous frame's view-projection matrix (`PrevCameraConfig`, binding-21) plus a three-part
+  validation (bounds, motion-magnitude, color-consistency) lets accumulation continue while orbiting,
+  falling back to the current frame only where reprojected history fails validation (disocclusions,
+  edges). `AccumulationConfig.enabled=0` reproduces the Inc1 baseline byte-identically, held through
+  every milestone. Measured cost: ~1.2 ms/frame full-frame delta at 1080p for the static EWMA path
+  (~0.6 ns/pixel over the full frame — method, caveats, and signal-quality discussion in
+  `gate-artifacts/inc2-m5-accumulation-cost.txt`). Body-motion (rigid instance-transform)
+  reprojection is explicitly deferred to a later increment; procedural deformation is out of scope
+  entirely. Two known issues filed: KI-020 (the color-consistency reject is sound here but will
+  fight Inc3's stochastic sampling — a geometric worldPos/depth reject is now a required Inc3
+  prerequisite) and KI-021 (a pre-existing, unrelated `VIXEN_RESIZE_AT_FRAME` mid-run-resize access
+  violation, newly surfaced by this program's first resize-exercising gate). See
+  `Vixen-Docs/01-Architecture/Sampled-Lighting-{Design,Inc2-Plan}-2026-07.md`.
 
 ### Fixed
 - **CameraNode silently overriding every scene's configured camera** — `ExecuteImpl` recomputed the
