@@ -559,3 +559,22 @@ worktree's builds self-identify with zero setup — `.claude\worktrees\graph-nod
 name derivation logic in isolation (worktree path → worktree folder name; main checkout →
 `VBVS--VIXEN`) and the BuildId sanitize/auto-generate logic (empty → random hex, clean names
 pass through, unsafe characters replaced) via standalone PowerShell snippets.
+
+**Follow-on fix (2026-07-11): queue de-dup to stop repeated redundant registrations.**
+`build_queue.ps1 -Register` had no protection against the same agent registering multiple
+tickets for the same build request (retry, duplicate dispatch, a confused re-invocation),
+which piles up redundant tickets and pushes back everyone else's queue position for no reason.
+Fixed: `-Register` now takes `-Source <worktree-or-repo-path>` and `-BuildTarget <cmake-target>`
+alongside the existing `-AgentId`, and de-dups on the exact combination of all three — an
+existing non-stale ticket matching `(AgentId, Source, BuildTarget)` is returned as-is instead of
+creating a duplicate. Deliberately NOT keyed on `AgentId` alone: the same agent building a
+different target, or from a different worktree, is a distinct, legitimate request and correctly
+gets its own new ticket, appended at the back of the queue behind everyone already
+waiting — verified live against the real, active queue (3 genuine in-flight tickets from other
+agents at the time): registering `(agent, worktree-A, VixenApp)` twice returned the identical
+ticket both times at the same position; registering `(agent, worktree-A, test_node_self_registration)`
+— same agent, different target — correctly created a new ticket at position 5 (behind all
+existing entries, including the agent's own first ticket), not ahead of anyone. `-ListQueue`
+output now also shows each ticket's `source=`/`target=` for visibility. Older tickets
+(registered before this fix, with no `Source`/`BuildTarget` fields) coexist fine — they display
+as `source=-  target=(full build)` and dedup correctly against a caller who also omits both.

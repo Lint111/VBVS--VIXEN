@@ -83,7 +83,15 @@ fair ordering + visibility instead of a blind synchronous wait.
 
 ```powershell
 # 1. Register — cheap, instant, non-blocking. Prints your TicketId and queue position.
-powershell -ExecutionPolicy Bypass -File VIXEN\scripts\build\build_queue.ps1 -Register -AgentId "<your-agent-id>" -Note "<why you're building>"
+# De-duplicated by the COMBINATION of (AgentId, Source, BuildTarget) — not AgentId alone. A
+# retry/duplicate dispatch of the SAME agent registering the SAME source+target again gets
+# back the SAME existing ticket, not a second one. But the same agent building a DIFFERENT
+# target, or from a DIFFERENT worktree/source, is a distinct, valid request and gets its own
+# new ticket — appended at the BACK of the queue behind everyone already waiting, never ahead.
+# Pass -Source as something stable per requester (e.g. your worktree name) and -BuildTarget as
+# whatever you'll pass to build.bat's target arg (omit for a full/default build) so de-dup can
+# actually distinguish your requests correctly.
+powershell -ExecutionPolicy Bypass -File VIXEN\scripts\build\build_queue.ps1 -Register -AgentId "<your-agent-id>" -Source "<your-worktree-name>" -BuildTarget "<target-or-omit-for-full-build>" -Note "<why you're building>"
 
 # 2. Poll -Status actively every ~20s (see below) until YOUR_TURN. Do NOT hand the wait off to
 #    ScheduleWakeup or a background Monitor task and go idle — those have repeatedly failed to
