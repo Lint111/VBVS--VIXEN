@@ -458,8 +458,7 @@ foreach(rg_target RenderGraphCore RenderGraphNodes)
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
             $<BUILD_INTERFACE:${VIXEN_ROOT}/generated/sdi>
             $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/application/main/generated/sdi>
-            $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/application/benchmark/generated/sdi>
-            $<BUILD_INTERFACE:${VIXEN_ROOT}/binaries/generated/sdi>
+            $<BUILD_INTERFACE:${VIXEN_BINARIES_DIR}/generated/sdi>
         PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/src
     )

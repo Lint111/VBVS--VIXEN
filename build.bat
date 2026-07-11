@@ -24,6 +24,14 @@ REM   preset-name defaults to vixen-ninja.
 REM
 REM The gitignored _ninja_*.bat launchers are personal overrides; this is the
 REM shared, committed entry point.
+REM
+REM Env vars honored by the build step (see run_build_with_summary.ps1):
+REM   VIXEN_BUILD_LOCK_TIMEOUT  seconds to wait for the machine-wide build lock
+REM                             before giving up (default 1800 = 30 min)
+REM   VIXEN_SKIP_BUILD_LOCK=1   bypass the lock entirely
+REM   VIXEN_MAX_BUILD_JOBS      cap on concurrent ninja jobs (default ~75% of
+REM                             logical cores) so a build leaves the machine
+REM                             usable instead of pegging every core
 REM ===========================================================================
 
 set "ACTION=%~1"
@@ -99,11 +107,31 @@ exit /b 1
 exit /b %errorlevel%
 
 :do_build
-"%CMAKE_EXE%" --build --preset "%PRESET%"
+call :run_build_locked
 exit /b %errorlevel%
 
 :do_all
 "%CMAKE_EXE%" --preset "%PRESET%"
 if errorlevel 1 (echo [build] configure FAILED. & exit /b 1)
-"%CMAKE_EXE%" --build --preset "%PRESET%"
+call :run_build_locked
+exit /b %errorlevel%
+
+REM ---------------------------------------------------------------------------
+REM run_build_locked: run the build (Fix 7/8), holding the machine-wide build
+REM lock for its duration (Fix 9 — only one build runs at a time across all
+REM worktrees/agents on this machine; concurrent builds contend for the same
+REM CPU/IO and make ALL of them slower, not faster). The lock acquire/release
+REM lives INSIDE run_build_with_summary.ps1 (same process, plain try/finally on
+REM a Mutex) rather than a separate wrapper script shelling out to this one —
+REM an earlier design with a separate acquire_build_lock.ps1 passing the build
+REM command through as a string hung indefinitely on nested argument quoting
+REM across 3 process layers. VIXEN_BUILD_LOCK_TIMEOUT overrides the default
+REM 30-minute wait; set VIXEN_SKIP_BUILD_LOCK=1 to bypass entirely (e.g. a
+REM machine known to be otherwise idle, or CI with its own scheduling).
+REM ---------------------------------------------------------------------------
+:run_build_locked
+if not defined VIXEN_BUILD_LOCK_TIMEOUT set "VIXEN_BUILD_LOCK_TIMEOUT=1800"
+set "SKIP_LOCK_ARG="
+if "%VIXEN_SKIP_BUILD_LOCK%"=="1" set "SKIP_LOCK_ARG=-SkipLock"
+powershell -ExecutionPolicy Bypass -File "%SRC_DIR%\scripts\build\run_build_with_summary.ps1" -CMakeExe "%CMAKE_EXE%" -Preset "%PRESET%" -LockTimeoutSeconds %VIXEN_BUILD_LOCK_TIMEOUT% %SKIP_LOCK_ARG%
 exit /b %errorlevel%
