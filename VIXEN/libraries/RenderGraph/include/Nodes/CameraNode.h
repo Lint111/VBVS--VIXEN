@@ -76,13 +76,26 @@ public:
      * choose where on the orbit sphere the camera sits at the current orbitDistance.
      *
      * NOTE (Tiered-ESVO Inc3 M6): yaw/pitch only relocate the camera along the orbit sphere --
-     * `forward` is unconditionally `normalize(orbitCenter - cameraPosition)` (see
-     * UpdateCameraData), so the camera ALWAYS looks at orbitCenter regardless of yaw/pitch. This
-     * cannot be used to aim the view at an off-center point of interest; that requires either
-     * moving orbitCenter itself or a genuinely separate look-target parameter (neither exists
-     * yet). See the Tiered-ESVO Inc3 M6 Progress Log for the investigation that found this out.
+     * by default `forward` is `normalize(orbitCenter - cameraPosition)` (see UpdateCameraData),
+     * so the camera looks at orbitCenter regardless of yaw/pitch unless a look-target has been
+     * set (see SetLookTargetForTest / PARAM_LOOK_TARGET_*, added Inc3 M8). See the Tiered-ESVO
+     * Inc3 M6 Progress Log for the investigation that found the original constraint.
      */
     void SetPitchForTest(float pitchRadians) { EngageOrbit(); pitch = pitchRadians; }
+
+    /**
+     * @brief Directly set a live look-target, independent of orbitCenter (Tiered-ESVO Inc3 M8).
+     *
+     * When set, UpdateCameraData aims `forward` at `normalize(lookTarget - cameraPosition)`
+     * instead of `normalize(orbitCenter - cameraPosition)` -- this is what actually breaks the
+     * "camera always looks at orbitCenter" constraint (yaw/pitch alone cannot, per
+     * SetPitchForTest's note above). Mirrors the EngageOrbit-on-write convention of the other
+     * ForTest setters. Call ClearLookTargetForTest() to fall back to orbitCenter again.
+     */
+    void SetLookTargetForTest(glm::vec3 target) { EngageOrbit(); hasLookTarget_ = true; lookTarget_ = target; }
+
+    /// Reverts to the default behavior (forward aimed at orbitCenter). See SetLookTargetForTest.
+    void ClearLookTargetForTest() { hasLookTarget_ = false; }
 
 protected:
     void SetupImpl(TypedSetupContext& ctx) override;
@@ -144,6 +157,13 @@ private:
     glm::vec3 orbitCenter{5.0f, 5.0f, 5.0f};  // Center of grid (10/2 for 10^3 world size)
     float orbitDistance = 30.0f;  // Distance from orbit center (scaled for 10^3 world)
 
+    // Tiered-ESVO Inc3 M8: genuine look-target, decoupled from orbitCenter (see
+    // SetLookTargetForTest / PARAM_LOOK_TARGET_* / UpdateCameraData). hasLookTarget_ == false
+    // (the default, and every pre-M8 scene) means UpdateCameraData aims forward at orbitCenter
+    // exactly as before -- lookTarget_ itself is unused in that case.
+    bool hasLookTarget_ = false;
+    glm::vec3 lookTarget_{0.0f};
+
     // Orbit distance bounds (keeps camera inside the 128^3 world). Shared by W/S zoom
     // (ApplyMovement) and wheel zoom (ExecuteImpl, M4) so both paths agree on one ceiling.
     // Min is a near-zero floor (not 0) only to avoid a degenerate/undefined view direction
@@ -191,6 +211,7 @@ private:
     float lastParamYaw_ = NAN, lastParamPitch_ = NAN;
     float lastParamOrbitCX_ = NAN, lastParamOrbitCY_ = NAN, lastParamOrbitCZ_ = NAN;
     float lastParamOrbitDist_ = NAN;
+    float lastParamLookX_ = NAN, lastParamLookY_ = NAN, lastParamLookZ_ = NAN;
 
     // Last-seen pose_seq value (NaN = never seen). A change here (including the first sight)
     // forces every PRESENT pose param to reapply this SetupImpl regardless of lastApplied — see
