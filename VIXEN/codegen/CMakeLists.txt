@@ -118,6 +118,8 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/shaders/Generated/ReservoirConfig.glsl" _out_reservoirconfig_glsl_run)
         _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/libraries/RenderGraph/include/Generated/LightTreeBuffer.g.h" _out_lighttreebuffer_cpp_run)
         _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/shaders/Generated/LightTreeBuffer.glsl" _out_lighttreebuffer_glsl_run)
+        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/libraries/RenderGraph/include/Generated/ReservoirRecord.g.h" _out_reservoirrecord_cpp_run)
+        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/shaders/Generated/ReservoirRecord.glsl" _out_reservoirrecord_glsl_run)
         _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/application/main/include/Generated/Hud.g.h" _out_hud_header_run)
         _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/libraries/RenderGraph/assets/ui/Hud.view.rml" _out_hud_rml_run)
         # Inc-A2: EditorLayers [View] schema — the editor layer view's generated data-model header.
@@ -149,6 +151,8 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_out_reservoirconfig_glsl_run "${CMAKE_SOURCE_DIR}/shaders/Generated/ReservoirConfig.glsl")
         set(_out_lighttreebuffer_cpp_run "${CMAKE_SOURCE_DIR}/libraries/RenderGraph/include/Generated/LightTreeBuffer.g.h")
         set(_out_lighttreebuffer_glsl_run "${CMAKE_SOURCE_DIR}/shaders/Generated/LightTreeBuffer.glsl")
+        set(_out_reservoirrecord_cpp_run "${CMAKE_SOURCE_DIR}/libraries/RenderGraph/include/Generated/ReservoirRecord.g.h")
+        set(_out_reservoirrecord_glsl_run "${CMAKE_SOURCE_DIR}/shaders/Generated/ReservoirRecord.glsl")
         set(_out_hud_header_run "${CMAKE_SOURCE_DIR}/application/main/include/Generated/Hud.g.h")
         set(_out_hud_rml_run "${CMAKE_SOURCE_DIR}/libraries/RenderGraph/assets/ui/Hud.view.rml")
         set(_out_editor_layers_header_run "${CMAKE_SOURCE_DIR}/application/editor/include/Generated/EditorLayers.g.h")
@@ -284,6 +288,24 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         COMMENT "[codegen] regenerate LightTreeBuffer.g.h/.glsl (Yeroket tool)"
         VERBATIM)
 
+    # --- ReservoirRecord via the same Yeroket tool (Sampled Lighting Inc3 M4: per-pixel
+    # RIS/ReSTIR reservoir record — ping-ponged CURRENT/PREVIOUS SSBOs, one record per
+    # pixel). Generated header lives beside RenderGraph, mirroring LightTreeBuffer's own
+    # "config lives with its consuming library" convention.
+    set(_rr_args
+        run --project "${_yk_tool_run}" -c Release --
+        --schema "${_schema_config_run}" --struct ReservoirRecord
+        --out-cpp  "${_out_reservoirrecord_cpp_run}"
+        --out-glsl "${_out_reservoirrecord_glsl_run}")
+    add_custom_target(reservoirrecord_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_rr_args} --check
+        COMMENT "[codegen] golden check: ReservoirRecord.g.h/.glsl match canonical (Yeroket tool)"
+        VERBATIM)
+    add_custom_target(reservoirrecord_regen
+        COMMAND ${_CODEGEN_RUNNER} ${_rr_args}
+        COMMENT "[codegen] regenerate ReservoirRecord.g.h/.glsl (Yeroket tool)"
+        VERBATIM)
+
     # --- Hud [View] schema via the same Yeroket tool (View Contract Inc-2: renamed from EditorHud).
     # The generated header lives under application/main — it is a CONSUMER artifact (the native
     # HudView), not an engine one; the engine only sees the generic Ui/IView.h seam.
@@ -408,8 +430,8 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         VERBATIM)
 else()
     message(WARNING "[codegen] KI-015: Yeroket kernel-codegen tool not found at ${_yk_tool} — "
-        "OctreeConfig/LightingConfig/ShadowConfig/AccumulationConfig/PrevCameraConfig/ReservoirConfig/LightTreeBuffer/Hud/EditorLayers golden DRIFT GUARDS DISABLED; the committed generated artifacts "
-        "(OctreeConfig.g.h/.glsl, LightingConfig.g.h/.glsl, ShadowConfig.g.h/.glsl, AccumulationConfig.g.h/.glsl, PrevCameraConfig.g.h/.glsl, ReservoirConfig.g.h/.glsl, LightTreeBuffer.g.h/.glsl, Hud.g.h, Hud.view.rml, Hud.blob.g.h, hud.viewblob, EditorLayers.g.h) are used as-is and will NOT be checked against "
+        "OctreeConfig/LightingConfig/ShadowConfig/AccumulationConfig/PrevCameraConfig/ReservoirConfig/LightTreeBuffer/ReservoirRecord/Hud/EditorLayers golden DRIFT GUARDS DISABLED; the committed generated artifacts "
+        "(OctreeConfig.g.h/.glsl, LightingConfig.g.h/.glsl, ShadowConfig.g.h/.glsl, AccumulationConfig.g.h/.glsl, PrevCameraConfig.g.h/.glsl, ReservoirConfig.g.h/.glsl, LightTreeBuffer.g.h/.glsl, ReservoirRecord.g.h/.glsl, Hud.g.h, Hud.view.rml, Hud.blob.g.h, hud.viewblob, EditorLayers.g.h) are used as-is and will NOT be checked against "
         "their canonical schemas this configure. The Yeroket repo is WSL-only on this machine, so a "
         "Windows-side configure cannot reach it — run the WSL-side configure, mount \\\\wsl$, or pass "
         "-DYEROKET_ROOT=<path> to enable the guard.")
