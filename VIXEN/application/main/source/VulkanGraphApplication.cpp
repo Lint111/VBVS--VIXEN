@@ -5,6 +5,7 @@
 #include <algorithm>   // std::min for the Tiered-ESVO Inc2 M5 scripted zoom clamp
 #include <cmath>       // std::tan for the LOD ray-cone (raySizeCoef) computation
 #include <filesystem>  // CaptureFrameToPng: exact-path rename (M4b)
+#include <cstdio>      // std::sscanf for VIXEN_TIER_M8_FLIGHT_AIM_OFFSET (M8 Task 23)
 #include <cstdlib>     // std::getenv/atoi for VIXEN_WINDOW_WIDTH/HEIGHT overrides
 
 #define GLFW_INCLUDE_NONE   // don't pull in <GL/gl.h> (absent on headless/WSL); Vulkan-only below
@@ -894,10 +895,20 @@ void VulkanGraphApplication::Update() {
         if (renderGraph && std::getenv("VIXEN_TIER_M8_EARTH_DEMO") && std::getenv("VIXEN_TIER_M8_FLIGHT_DEMO")) {
             static long m8FlightTick = 0;
             ++m8FlightTick;
-            constexpr long   kM8FlightResidencyFlipTick = 10;    // well before hop1 (~24)
+            constexpr long   kM8FlightResidencyFlipTick = 10;    // well before both Task 23 handoffs
             constexpr long   kM8FlightPhaseEnd          = 400;
             constexpr double kM8SphereRadiusWorld       = 28.8;  // 6.0 (baked recipe radius) * renderScale 4.8
-            constexpr double kM8FlightNearDist          = 0.05;  // just outside the sphere shell
+            // M8 Task 23: near end deepened 0.05 -> 2e-4, and the flight anchor is now the
+            // recorded CHILD ANCHOR world position (BuildRenderGraph records the scene's own
+            // entry-anchored childOriginLocal mapped to world, superseding the M7-era
+            // octant-center assumption that pointed ~20wu away from the actual child
+            // content). With the corrected camera-anchored crossing gate at the REAL
+            // raySizeCoef (no override), hop1 (T1->T2) fires only below ~7.3e-3wu
+            // camera-to-child, and T2's own content (childScale^2 of the body) needs a
+            // ~2e-4wu approach to subtend more than a few pixels. The zoom-OUT schedule
+            // shape is unchanged. (Near-clip narrowed to 1e-4 by BuildRenderGraph's
+            // flight-demo block to match.)
+            constexpr double kM8FlightNearDist          = 2e-4;
             constexpr double kM8FlightFarDist           = 91.2;  // far orbit-equivalent view (120wu radial - 28.8wu shell)
 
             if (auto* camera = static_cast<CameraNode*>(renderGraph->GetInstance(cameraNode_))) {
@@ -923,17 +934,32 @@ void VulkanGraphApplication::Update() {
                 // relative to the octant's own position, not a separately-derived sphere radius.
                 const bool debugZDir = std::getenv("VIXEN_TIER_M8_FLIGHT_DEBUG_ZDIR") != nullptr;
                 const bool debugZPosOctantAim = std::getenv("VIXEN_TIER_M8_FLIGHT_DEBUG_ZPOS_OCTANT_AIM") != nullptr;
+                // M8 Task 23: optional rebuild-free aim calibration -- the child's VISIBLE
+                // surface window sits a small, construction-specific offset inside the
+                // marked leaf relative to the recorded child anchor (the anchor itself
+                // straddles the leaf's corner boundary planes; only the in-leaf side is
+                // reachable through the crossing). VIXEN_TIER_M8_FLIGHT_AIM_OFFSET="dx,dy,dz"
+                // (world units) shifts the flight axis/aim point so the live session can
+                // center the window without a rebuild per attempt.
+                glm::vec3 aimOffset(0.0f);
+                if (const char* aimOffsetEnv = std::getenv("VIXEN_TIER_M8_FLIGHT_AIM_OFFSET")) {
+                    float dx = 0.0f, dy = 0.0f, dz = 0.0f;
+                    if (std::sscanf(aimOffsetEnv, "%f,%f,%f", &dx, &dy, &dz) == 3) {
+                        aimOffset = glm::vec3(dx, dy, dz);
+                    }
+                }
+                const glm::vec3 flightAnchor = m8EarthHop0OctantWorld_ + aimOffset;
                 glm::vec3 dir;
                 if (debugZDir || debugZPosOctantAim) {
                     dir = glm::vec3(0.0f, 0.0f, 1.0f);  // known-good POSITION direction, Task 17's static demo
                 } else {
-                    const glm::vec3 toOctant = m8EarthHop0OctantWorld_ - bodyCenterWorld;
+                    const glm::vec3 toOctant = flightAnchor - bodyCenterWorld;
                     const float toOctantLen = glm::length(toOctant);
                     dir = (toOctantLen > 1e-4f) ? (toOctant / toOctantLen) : glm::vec3(0.0f, 0.0f, 1.0f);
                 }
                 const glm::vec3 surfacePoint = debugZDir
                     ? (bodyCenterWorld + dir * static_cast<float>(kM8SphereRadiusWorld))
-                    : m8EarthHop0OctantWorld_;  // debugZPosOctantAim ALSO aims here (position +Z, aim at octant)
+                    : flightAnchor;  // debugZPosOctantAim ALSO aims here (position +Z, aim at anchor)
 
                 // The radial distance the flight anchors against: the sphere's nominal radius
                 // for the +Z control path, but the octant's OWN recorded radial distance from
@@ -943,7 +969,7 @@ void VulkanGraphApplication::Update() {
                 // resolvable geometry, is the fix).
                 const double anchorRadialDist = (debugZDir || debugZPosOctantAim)
                     ? kM8SphereRadiusWorld
-                    : static_cast<double>(glm::length(m8EarthHop0OctantWorld_ - bodyCenterWorld));
+                    : static_cast<double>(glm::length(flightAnchor - bodyCenterWorld));
 
                 const double t = std::min(1.0, static_cast<double>(m8FlightTick) / static_cast<double>(kM8FlightPhaseEnd));
                 const double logNear = std::log10(kM8FlightNearDist);

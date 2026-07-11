@@ -538,10 +538,15 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // "widen the bound, own justified commit" precedent CameraNode.h's kOrbitDistanceMin
     // widening already established for an analogous too-coarse-default problem.
     if (std::getenv("VIXEN_TIER_M8_FLIGHT_DEMO")) {
-        camera->SetParameter(CameraNodeConfig::PARAM_NEAR_PLANE, 0.01f);
+        // M8 Task 23: with the corrected (camera-anchored) crossing gate at the REAL
+        // unoverridden raySizeCoef, hop1 (T1->T2) fires only below ~7.3e-3wu camera-to-child
+        // and T2's own content needs an approach to ~2e-4wu to subtend more than a few
+        // pixels (childScale^2 = 2^-20 of the body) -- narrow near-clip accordingly
+        // (was 0.01wu for the Task-19-era override-based schedule).
+        camera->SetParameter(CameraNodeConfig::PARAM_NEAR_PLANE, 0.0001f);
         mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_M8_FLIGHT_DEMO: near-clip plane "
-                          "narrowed to 0.01wu (default 0.1wu is larger than hop1's own "
-                          "~0.079wu handoff threshold and would clip the crossing target away)");
+                          "narrowed to 1e-4wu (M8 Task 23: true-2^-10 hop1 fires below "
+                          "~7.3e-3wu and T2 needs a ~2e-4wu approach to be attributable)");
     }
     // Camera presets for Cornell box (grid spans [0,128], center at 64,64,64)
     // Uncomment one preset below:
@@ -1711,11 +1716,16 @@ void VulkanGraphApplication::BuildRenderGraph() {
             //                        ~= 2.8935e-4
             // giving hop0 = 3*27.0 = 81.0 world units (comfortably < the 120wu orbit ceiling)
             // and hop1 = hop0*childScale = 81.0 * 2^-10 ~= 0.0791016 world units.
+            // M8 Task 23 supersedes the override plan above: the corrected (camera-anchored,
+            // world-unit-correct) crossing gate makes the crossing a genuine distance-driven
+            // handoff at the REAL unoverridden raySizeCoef — no coefficient override is
+            // needed or wanted for this demo any more (the historical derivation above is
+            // kept for the record; VIXEN_TIER_CROSSING_LOD_COEF_OVERRIDE remains a generic
+            // debugging/ablation knob only).
             mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_M8_EARTH_DEMO: building TRUE "
                               "Earth-scale (childScale=2^-10/hop) three-tree chained "
-                              "tier-crossing scene -- predicted hop0~=81.0wu, hop1~=0.0791wu "
-                              "(requires VIXEN_TIER_M8_EARTH_LOD_COEF_OVERRIDE~=2.8935e-4 to "
-                              "clear the ~27wu solid radius)");
+                              "tier-crossing scene -- M8 Task 23 gate: crossing fires by "
+                              "camera-to-child distance at the REAL raySizeCoef (no override)");
 
             constexpr int   kN          = 16;
             constexpr int   kBrickDepth = 3;
@@ -1911,9 +1921,19 @@ void VulkanGraphApplication::BuildRenderGraph() {
                     // tree's instance placement, unaffected by what childScale the crossing
                     // leads into).
                     const glm::vec3 bodyCenterWorld(64.0f, 64.0f, 64.0f);
-                    const glm::vec3 octantOffsetWorld(-2.5f * kRenderScale, -2.5f * kRenderScale, 2.5f * kRenderScale);
-                    m8EarthHop0OctantWorld_ = bodyCenterWorld + octantOffsetWorld;
-                    m8EarthHop1OctantWorld_ = bodyCenterWorld + octantOffsetWorld;
+                    // M8 Task 23 correction: the previous recording used the M7-era
+                    // root-octant-center assumption ((-2.5R,-2.5R,+2.5R) from body center),
+                    // but the flight must approach/aim at the CHILD CONTENT's own anchor —
+                    // this scene's entry-anchored childOriginLocal — which sits near the
+                    // cube's +Z face corner, ~20wu away from the old octant-center point.
+                    // World mapping: the [1,2) local cube spans 10*renderScale world units
+                    // anchored at inst.worldPos (kHalf = 5R puts local 1.5 at body center 64,
+                    // verified: worldPos + 0.5*10R = 40 + 24 = 64).
+                    const float kCubeWorldEdge = 10.0f * kRenderScale;  // 48wu
+                    const glm::vec3 instWorldPos(64.0f - kHalf, 64.0f - kHalf, 64.0f - kHalf);
+                    m8EarthHop0OctantWorld_ = instWorldPos
+                        + (m8T0ChildOriginLocal - glm::vec3(1.0f)) * kCubeWorldEdge;
+                    m8EarthHop1OctantWorld_ = m8EarthHop0OctantWorld_;
 
                     mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_M8_EARTH_DEMO: T0 leaf ("
                                   + std::to_string(m8T0MarkDescIdx) + "," + std::to_string(m8T0MarkOctant)
