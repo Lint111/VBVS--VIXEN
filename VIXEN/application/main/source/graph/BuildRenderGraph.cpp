@@ -1873,6 +1873,15 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
                 if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))) {
                     bodyScene->SetRecipePool(std::move(m8Cat));
+                    // M8 Task 21: grant brick residency FROM CONSTRUCTION (not mid-flight).
+                    // Task 20's validator found this scene otherwise stays mip-only
+                    // (streaming-only), and a mip-only body can ONLY render via the LOD
+                    // gate's decline-to-mip path -- there is no resident-brick fallback for
+                    // it to fall through to below the coefficient hop0's crossing needs.
+                    // Explicit call (rather than relying on residencyRequested_'s default)
+                    // so this scene's residency state is unambiguous regardless of the
+                    // node's default.
+                    bodyScene->RequestBrickResidency(true);
 
                     constexpr float kRenderScale = 4.8f;
                     constexpr float kHalf = 5.0f * kRenderScale;
