@@ -1471,3 +1471,65 @@ set out to prove.
   in-validation edit. Housekeeping confirmed: commit `ad0efd79` is genuinely docs-only (2 files, zero
   tracked source — Task 19's regression sweep remains valid, re-sweep not needed); exe/strings
   freshness re-verified; tree clean.
+
+- **M8 Task 21 (residency-from-construction fix): commit `4e6e812b` — kept, orthogonal.** The M8
+  demo body now calls `RequestBrickResidency(true)` at build time (was mip-only by default per Task
+  20's validator finding). This is correct regardless of the coefficient redesign below — a mip-only
+  body's LOD-gate-or-nothing rendering is a real gap independent of what value the gate compares
+  against. **The rest of Task 21 (re-running the flight at the hand-picked `4.51e-6` coefficient
+  override) was STOPPED MID-WORK by the user, who correctly identified the approach itself as wrong
+  — see Task 22 below.**
+
+## M8 Task 22 — Eliminate the coefficient override; use the REAL raySizeCoef (user-redirected 2026-07-11)
+
+**User's objection (correct, verified): `VIXEN_TIER_CROSSING_LOD_COEF_OVERRIDE` is the wrong
+mechanism, not just a hard-to-tune one.** It globally replaces the ONE shared push-constant
+`pc.raySizeCoef` field that BOTH the ordinary non-crossing LOD gate (`BodyInstanceRayMarch.comp:
+983-984`) and the tier-crossing gate (`:843-845`) read — there is no separate coefficient per gate.
+That is exactly why lowering it to satisfy the crossing's tiny footprint simultaneously starves the
+body's own ordinary visibility (Task 20/21's "body vanishes" symptom): one demo-only override is
+doing two jobs with two different correct values, for a scene-scale reason, not an engine
+limitation. The REAL `raySizeCoef` (`RaySizeCoefNode.cpp:31`, `2*tan((fovRad/height)/2)`) is
+already principled and dynamically correct — it already varies properly with resolution and FOV; it
+was never broken and never needed replacing.
+
+**Verified via direct computation (not asserted) that the fix is a CONSTRUCTION change, not a
+coefficient hack:** at the real `raySizeCoef` (0.00157080 @ 45°FOV/500px), the gate
+`tv_max*raySizeCoef >= childScale*scale_exp2` requires `tv_max <= ~0.155-0.31wu` (childScale=2^-10,
+scale_exp2 ∈ {0.25,0.5}) to clear — but the current demo's ROOT-level marked leaf has `tv_max~=27wu`
+(its own chord, per Task 20's chord-floor finding), ~175× too large. Since chord halves every octree
+level down, marking the crossing leaf **~7-8 levels below root** (instead of AT root) brings its own
+chord into the range where the REAL, unoverridden coefficient naturally clears the gate — dynamically
+correct at ANY resolution/FOV, no override, no per-scenario retuning, and the ordinary-body gate is
+no longer starved because nothing global changed.
+
+### Task 22 — Construct the crossing at the correct depth, remove the override entirely
+- [ ] **Do NOT use `VIXEN_TIER_CROSSING_LOD_COEF_OVERRIDE` for this demo.** Either delete the demo's
+  reliance on it or leave the mechanism itself alone (it may still be useful for other debugging) but
+  stop setting it for `VIXEN_TIER_M8_EARTH_DEMO`/`VIXEN_TIER_M8_FLIGHT_DEMO` — use the REAL
+  `raySizeCoef` from `RaySizeCoefNode` (the default, byte-identical-to-every-other-scene path).
+- [ ] **Re-derive precisely** (don't just trust the ~7-8 level estimate above — recompute exactly)
+  what octree depth the marked crossing leaf must sit at so its own chord clears the REAL gate at a
+  genuinely reachable camera distance (i.e. `tv_max <= scale_exp2_at_that_depth's_own /
+  raySizeCoef_real` — re-derive `scale_exp2` at that depth too, it shrinks alongside chord, don't
+  assume it's still 0.25/0.5). Construct the `VIXEN_TIER_M8_EARTH_DEMO` scene (or a variant) so the
+  T0→T1 crossing is marked at THIS depth instead of at root. Re-derive hop1 (T1→T2) the same way —
+  it may already clear easily (Task 20 found hop1 was never the bottleneck at root-level T0), but
+  confirm this still holds at the new construction.
+  Reuse M5's `RootLeafOctantCenterLocal`/concentric-placement pattern, M4's k-invariant entry-anchored
+  TierRef placement, and Task 19's `SetPositionForTest`/`SetLookTargetNoOrbitForTest` flight
+  capability — all unchanged, all already proven.
+- [ ] Prediction-first (from the REAL coefficient, no override): hand-compute the camera-to-crossing
+  distance where each hop's gate clears, BEFORE running. Verify observed matches.
+- [ ] Live gate: full flight, genuinely colored (pixel-decoded, not gray/sky) at both hops, on the
+  brick-resident body (Task 21's fix, kept). Per-frame-delta seamlessness. float32 honesty at 2^-10.
+- [ ] Full regression sweep (unity/chain/observable/default/earth_static). VUID 10×`08114` zero-new.
+- [ ] Docs closure: design doc §9 + plan-doc Progress Log — this should finally be the entry that
+  closes the epic's real ask with NO hand-tuned per-scenario constant, dynamically correct at any
+  resolution/FOV.
+
+**M8 Task 22 gate (the epic's real, final, non-hacky headline):** a live, validated, visually-
+confirmed, genuinely colored continuous flight through TWO true 2^-10 crossings, using the REAL
+unoverridden `raySizeCoef`, with brick residency granted from construction, on real hardware — the
+actual "proper surface-to-orbit view of planets of proper scale," correct by construction rather than
+by a hand-tuned constant.
