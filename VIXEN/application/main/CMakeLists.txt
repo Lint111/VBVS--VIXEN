@@ -35,6 +35,22 @@ add_library(VixenApp STATIC
     ${HPP_FILES}
 )
 
+# ----------------------------------------------------------------------------
+# M3: generate the node-usage manifest by scanning the same 5 graph-builder TUs compiled into
+# VixenApp above for AddNode<T>(...) call sites (Graph-Derived-Node-Linkage-Spec-2026-07 §2.2).
+# Written now (not deferred to M4) so the manifest always reflects the current Build*.cpp set;
+# M4 will `include()` the generated file to drive scoped node linkage.
+# ----------------------------------------------------------------------------
+vixen_generate_node_manifest(
+    ${CMAKE_BINARY_DIR}/generated/node_manifest.cmake
+    SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildRenderGraph.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildUIGraph.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildInstancingDemoGraph.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildAutoSyncDemoGraph.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildFanInDemoGraph.cpp
+)
+
 # Application include dir is PUBLIC so consumers get VulkanGraphApplication.h, Headers.h, etc.
 target_include_directories(VixenApp PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 # SDI / generated-header search paths used while compiling the driver (first found wins).

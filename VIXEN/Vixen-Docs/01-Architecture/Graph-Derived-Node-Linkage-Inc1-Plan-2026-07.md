@@ -87,18 +87,18 @@ here, not just eyeballing).
       behavior, different packaging").
 
 ### M3 — Manifest extraction
-- [ ] Decide extraction mechanism per spec §2.4: try the simplest thing first — a CMake
+- [x] Decide extraction mechanism per spec §2.4: try the simplest thing first — a CMake
       `file(STRINGS ... REGEX "AddNode<([A-Za-z]+)>")` (or equivalent) over the fixed list
       `application/main/source/graph/Build*.cpp`, run at configure time, writing
       `${CMAKE_BINARY_DIR}/generated/node_manifest.cmake` with a `set(VIXEN_APP_USED_NODE_TYPES ...)`
       list. Escalate to a small standalone script (Python or reusing kernel-codegen tooling)
       ONLY if the regex proves fragile against real call-site formatting (multi-line template
       args, etc.) — check the actual files first, don't pre-guess.
-- [ ] The extracted node-TYPE names (`CameraNodeType`) need mapping to their OBJECT-library
+- [x] The extracted node-TYPE names (`CameraNodeType`) need mapping to their OBJECT-library
       target names (`RenderGraphNode_CameraNode`) — decide the naming convention now (type name
       minus `Type` suffix matches file basename in this codebase's convention; verify this holds
       for all 53 before relying on it as a blanket rule).
-- [ ] Manual verification: diff the extracted list against the 45-node union already computed
+- [x] Manual verification: diff the extracted list against the 45-node union already computed
       in spec §1 (recomputed via the file-header-include grep) — must match exactly. If it
       doesn't, the discrepancy is data (which mechanism is more accurate — `#include` vs
       `AddNode<T>` call sites), not necessarily a bug; investigate and record which is right in
@@ -291,3 +291,83 @@ repeatedly missed real linkage/runtime bugs in past epics; this one is no except
   OBJECT-library repackaging didn't break anything structurally (a broken repackaging would
   surface as unresolved-symbol link failures, not compile errors). `test_node_self_registration`:
   2/2 PASS. Tree clean, linear history. No issues found.
+
+- **Milestone 3 (Manifest extraction): DONE.** Step 1 (call-site format check): grepped all 116
+  `AddNode<` occurrences across the 5 `Build*.cpp` files — every single one is a plain, single-line
+  `renderGraph->AddNode<XNodeType>(` token sequence; zero multi-line template args, zero macro/
+  helper indirection, zero use of the legacy runtime-string `AddNode("X", ...)` overload. This
+  confirmed the simple `file(STRINGS ... REGEX ...)` approach (spec §2.4's first choice) was
+  sufficient — no escalation to a standalone script/AST tool was needed.
+
+  **Implementation:** new `cmake/VixenNodeManifest.cmake` (matching the existing
+  `ProvisionX.cmake`/`VixenAssets.cmake` header-comment/`function()`-wrapped style) defines
+  `vixen_generate_node_manifest(<out-file> SOURCES <files...>)`, which `file(STRINGS ... REGEX
+  "AddNode<[A-Za-z_][A-Za-z0-9_]*>")`-scans each source, `string(REGEX MATCHALL ...)` extracts
+  every call site per matched line (handles >1 `AddNode<T>` call per line, which does occur),
+  strips the `AddNode<...>` wrapper down to the bare type name, dedupes + sorts, and writes
+  `set(VIXEN_APP_USED_NODE_TYPES ...)` to the given path. `include(cmake/VixenNodeManifest.cmake)`
+  added to root `CMakeLists.txt` right after `VixenAssets.cmake` (function-definition only, no
+  side effects at include time — matches that file's pattern). The actual generation call lives in
+  `application/main/CMakeLists.txt`, immediately after the `VixenApp` target's source list (which
+  is where the 5 `Build*.cpp` files are named as the app's own sources) — writes to
+  `${CMAKE_BINARY_DIR}/generated/node_manifest.cmake`. Placed here rather than at the root because
+  the app target (and its exact `Build*.cpp` file list) lives here; a future second consumer
+  (`vixen_editor`, once it gains its own graph builder) would call the same function from its own
+  `CMakeLists.txt` with its own source list and output path, per spec §5's scope note.
+
+  **Step 3 (target-name mapping verification):** confirmed for all 45 extracted type names that
+  `<Basename>NodeType` maps mechanically to source file `src/Nodes/<Basename>Node.cpp` → M2
+  OBJECT-lib target `RenderGraphNode_<Basename>Node` (`get_filename_component(... NAME_WE)` on
+  the M2 loop, `libraries/RenderGraph/CMakeLists.txt:406-409`) — checked by cross-referencing
+  every entry in the generated manifest against `RENDERGRAPH_NODE_SOURCES`'s file list. **One
+  legitimate exception, not a mapping failure:** `ConstantNodeType` and `ShaderConstantNodeType`
+  are both declared header-only in `include/Nodes/ConstantNodeType.h` (a *separate* header from
+  `include/Nodes/ConstantNode.h`) and both `VIXEN_REGISTER_NODE`'d from the single TU
+  `src/Nodes/ConstantNode.cpp` (see that file's own header comment, lines 3-4: "ConstantNodeType.h
+  defines two header-only NodeTypes ... and there is no other..."). This is a many-types-per-TU
+  case, not a naming-scheme break: the *type* name still strips `Type` to `ConstantNode`, which
+  still matches the *source* basename `ConstantNode.cpp` → target `RenderGraphNode_ConstantNode`
+  — the mapping rule (`<Basename>NodeType` → `RenderGraphNode_<Basename>Node`) holds for the
+  literal type name in every one of the 45 manifest entries. The only wrinkle for M4 to be aware
+  of: linking `RenderGraphNode_ConstantNode` pulls in `ShaderConstantNodeType` too, even though
+  no current `Build*.cpp` calls `AddNode<ShaderConstantNodeType>` — harmless (same TU, same OBJECT
+  lib, would be compiled in regardless), just worth noting so a future "is X's registration
+  linked" check isn't surprised. No other node source declares more than one `NodeType` — checked
+  via `grep -c VIXEN_REGISTER_NODE` per `src/Nodes/*.cpp`.
+
+  **Step 4 (discrepancy analysis, extracted `AddNode<T>` list vs. spec §1's `#include`-based
+  45-node union):** re-ran the spec's own grep (`#include "Nodes/X.h"` across the 5 `Build*.cpp`
+  files) — 45 unique header basenames. The `AddNode<T>`-based extraction also yields exactly
+  **45** unique type names, and byte-for-byte the underlying basenames match, **with one instance
+  of the two mechanisms disagreeing on *why* a name matches:** the include-grep lists
+  `ConstantNodeType` as an included header (`#include "Nodes/ConstantNodeType.h"` at
+  `BuildRenderGraph.cpp:68`) — a literal-header-name match, not `ConstantNode.h`+"Type" suffix
+  like every other entry — so naively assuming "strip `.h`, add `Type`" as the include-based
+  proxy's derivation rule (which is what the M1/spec measurement implicitly did for the other 44)
+  would have been wrong for this one row specifically. The `AddNode<T>` call-site scan has no such
+  ambiguity: it reads the literal type token used at the call site (`AddNode<ConstantNodeType>`
+  appears 3x in `BuildRenderGraph.cpp`, lines 267/279/291), independent of which header
+  the type happens to live in. **Conclusion (matches spec §2.2's prediction):** the two mechanisms
+  produce the same *set* today (45/45, confirmed by manual diff — no entries in either list absent
+  from the other), but `AddNode<T>` call-site scanning is the mechanically more trustworthy source
+  for a linkage decision, exactly because it reads actual usage rather than an include that could
+  in principle be unused or (as seen here) not map to the type name via a fixed textual rule. No
+  actual bug found — both mechanisms agree at Inc-1 time — but this is documented per M3's task 4
+  as the reasoning for trusting `AddNode<T>` scanning going forward, not just eyeballing set
+  equality.
+
+  **Configure verification:** `build.bat configure vixen-ninja` (lock confirmed FREE via
+  `check_build_lock.ps1` before dispatch; watched via an active ~15s foreground poll loop, not a
+  blind wait) completed clean — `Configuring done (14.0s)`, `Generating done (5.5s)`, `Build files
+  have been written to: .../build/ninja`, zero CMake errors/warnings. Log line confirms:
+  `vixen_generate_node_manifest: wrote 45 node type(s) to
+  C:/.../build/ninja/generated/node_manifest.cmake`. Read back the generated file directly —
+  content matches the hand-computed 45-entry list exactly (alphabetically sorted, one
+  `VIXEN_APP_USED_NODE_TYPES` list, header comment naming the 5 source files scanned). No build
+  (`--build`) was run per M3's lighter gate (this milestone adds a new generated-file-producing
+  CMake step but wires it into no target's link line yet — that's M4).
+
+  **Files touched:** new `cmake/VixenNodeManifest.cmake`; `CMakeLists.txt` (+3 lines, `include()`);
+  `application/main/CMakeLists.txt` (+16 lines, the `vixen_generate_node_manifest(...)` call). No
+  node source, `NodeRegistration.*`, or `RegisterAllNodes()` touched. Commit: (recorded below).
+  2026-07-11
