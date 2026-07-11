@@ -92,3 +92,28 @@ REPORT the template mapping before building.
 Inc-A2 is the FIRST model→view (even if only initial-population + optional echo) — it does NOT build the
 Gaia `.changed<T>()` reconcile (Inc-B). Its win: the editor layer view is now a real data-model with a
 `DirtyVariable` target, unblocking every model→view increment. Keep it to that.
+
+## Progress Log
+- Milestone 1 (Tasks 1-4): DONE · commit 61dc4eb0 · Opus validator APPROVED · 2026-07-11
+  - Editor layer view is now a REAL RmlUi data-model: `EditorLayers` [View] schema → generated
+    `EditorLayers.g.h` (BindEditorLayersModel) → `EditorLayersView : IView` (ModelName "editor_layers",
+    DocumentPath "assets/ui/editor.rml") → data-bound `editor.rml` (data-model/data-for/data-attr-id/
+    data-class-checked) → registered via `WireEditorLayersView`→`SetView` so `UIRenderNode::CompileImpl`
+    runs `CreateDataModel`+`Register`. Mirrors the shipped HUD-view path (no new codegen face, only `--view`).
+  - **Binding is PROVABLY LIVE** (validator, independent code-path evidence + clean RmlUi log, NOT the
+    gate's byte-identity). The gate stays byte-identical because the capture reads `compute_render_target`
+    (offscreen 3D body) while the RmlUi panel composites onto the SWAPCHAIN image — the panel is never in
+    the captured PNG (Case A, definitive). Not a false green.
+  - **Same-frame echo ADDED (not deferred):** one `RefreshLayersView()` at the end of the `Stack().Dispatch`
+    ApplyFn echoes toggle+undo+redo uniformly, because Undo/Redo re-run the ApplyFn (apply(false)/apply(true))
+    and `applyToggle` is self-inverse. So model→view (initial population + echo) is DONE for the editor's
+    own input — Inc-B's remaining reconcile job narrows to EXTERNAL/sim-driven changes.
+  - **robin_hood ODR landmine caught + fixed:** `EditorLayersView.h` in a gaia-touching TU triggered the
+    gaia-v3.11.5 vs RmlUi-v3.9.0 collision; fixed with `EditorLayersViewBridge.h/.cpp` mirroring
+    HudViewBridge (forward-decl + raw-ptr-owning + explicit `~EditorApplication()`). No TU includes both
+    gaia + RmlUi data-model headers. DURABLE: any new IView consumer in a gaia-touching app needs this bridge.
+  - Live gate 4/4 (62px baseline), new golden `test_view_editor_layers_golden` 2/2, AppFlow 42/42,
+    drift-guards (view_editor_layers/view_hud/appflow/callables) green, EditorLayers.g.h regen byte-identical
+    (not hand-edited), AppFlow byte-guards hold, HUD unaffected (hud_golden 3/3, hud_smoke 6/6).
+  - CARRY to Inc-B (still open): ToggleLayer handler ignores ReadU32's bool return — handle the false case
+    when the fallible Gaia provider is wired.
