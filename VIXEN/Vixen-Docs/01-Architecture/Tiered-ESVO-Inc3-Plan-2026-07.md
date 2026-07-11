@@ -1288,3 +1288,57 @@ epic's own discipline (M6/M7 precedent: an honest documented limit is a valid ou
   wanted, build that surface-exposed construction as a follow-up. The translating-flight CAPABILITY
   itself (Task 19's actual deliverable) is correct, additive, and worth keeping regardless of which
   path is chosen.
+
+## M8 Task 20 — Surface-exposed true-2^-10 crossing: the real, valid scale demo (user-directed 2026-07-11)
+
+Context: every prior attempt at a true-Earth-ratio (childScale=2^-10) OBSERVABLE crossing used a body
+whose marked leaf sits INTERIOR to the sphere (the octant nearest the shared corner (1.5,1.5,1.5),
+~20.8wu from a ~27-28.8wu-radius center — always inside the solid). The M8 Task 19 validator proved
+(via ablation) this is exactly why the crossing always mip-declines to gray when approached: the ray
+must aim through/near the solid interior to reach it, and at 2^-10 the footprint is sub-pixel at any
+distance reachable from OUTSIDE the solid. **This is a construction choice, not a law of the
+mechanism** — M1-M8 have never actually tried marking a leaf that sits ON the sphere's own surface,
+reachable head-on from open space. That is Task 20.
+
+User's framing (2026-07-11): pursue the genuinely valid demo showcasing scale-handling — not a forced
+or misleading capture, a real one, built correctly this time.
+
+### Task 20 — Build + prove a genuinely observable true-2^-10 crossing
+- [ ] Construct a demo body where the marked crossing leaf is a SURFACE octant/leaf — i.e. select (or
+  place) the tier-crossing leaf so its own cell sits at/near the sphere's outer surface, on an axis the
+  camera can approach head-on from open space (never needing to enter the solid interior to bring the
+  leaf's footprint below the LOD gate). Reuse: M5's `RootLeafOctantCenterLocal` (concentric
+  magnification, proven), Task 19's `SetPositionForTest`/`SetLookTargetNoOrbitForTest` (translating
+  flight, proven additive/byte-unregressed), the existing per-tier coloring convention (T0/T1/T2
+  distinct colors for attribution), and M4's k-invariant entry-anchored TierRef placement (required at
+  2^-10's ~1024×-per-hop amplification, already proven in Task 17).
+- [ ] **Prediction-first, from the ACTUAL shader gate** (`tv_max*raySizeCoef+raySizeBias >=
+  childScale*scale_exp2`, `BodyInstanceRayMarch.comp:843-868`): hand-derive, BEFORE building, the
+  camera distance at which the surface-exposed crossing's footprint clears the gate — this is the
+  distance the flight path must reach WITHOUT needing to be inside the solid. Confirm on paper that
+  such a distance exists and is reachable in open space for THIS geometry, before writing scene code
+  (this is exactly the check that was skipped for the interior-octant scenes in Task 17/19).
+  Do this for BOTH hops (T0→T1 and T1→T2) — chain both, per the epic's Inc3 M1-M3 mechanism.
+- [ ] Build the scene, then a scripted flight (translating position, per Task 19's mechanism) that
+  approaches the crossing directly from open space, through BOTH real 2^-10 handoffs, out to a
+  full-body orbit view. Per-tier color confirms attribution at each hop.
+- [ ] Live gate, prediction-first: verify observed transition points match the hand-derived distances.
+  Per-frame pixel-delta seamlessness through both handoffs (bounded, no pop). Non-zero, genuinely
+  colored (not gray mip-fallback) body pixels at and after each handoff — pixel-decode, don't assert.
+- [ ] Ablation sanity check (reuse Task 19's validator technique): if a capture ever shows gray again,
+  immediately check with `VIXEN_TIER_CROSSING_LOD_COEF_OVERRIDE=0.0` whether it's the gate declining
+  (expected/tunable) vs. a genuine miss — don't repeat Task 19's mischaracterization.
+- [ ] float32 honesty at 2^-10 (still the first real stress test of this — M7's gentler ratio never
+  exercised it; Task 17/19's interior-octant scenes never got far enough to hit it either).
+- [ ] Full regression sweep (unity/chain/observable/default/M8-earth-static). VUID 10×`08114`
+  zero-new. `vixen-build-policy` compliance (check lock, queue if held, never bypass `build.bat`).
+- [ ] Docs closure: design doc §9 + plan-doc Progress Log — this is the entry that finally either
+  closes the epic's literal original ask with a real, validated capture, or (if a genuinely new
+  obstacle appears even with a correct surface-exposed construction) documents that honestly, per this
+  epic's own discipline.
+
+**M8 Task 20 gate (the epic's real, final headline):** a live, validated, visually-confirmed,
+GENUINELY colored (not mip-fallback) continuous flight through TWO true 2^-10 (2^-20 total)
+scale-magnified crossings, on real hardware, built correctly from a prediction that was checked
+BEFORE construction — the actual "proper surface-to-orbit view of planets of proper scale" this epic
+set out to prove.
