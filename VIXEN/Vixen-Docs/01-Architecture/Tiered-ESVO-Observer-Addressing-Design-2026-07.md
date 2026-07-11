@@ -1,8 +1,8 @@
 ---
 title: Tiered ESVO — Nested-Tree Addressing, Tier-Crossing Traversal & Observer-Relative Rendering
-status: Design (promoted from direction 2026-07-05) — Inc1 ✅ SHIPPED 2026-07-07; Inc2 ✅ SHIPPED 2026-07-10 (§3+§5 tier-crossing mechanism + a live, validated single-crossing continuous zoom; 3-tier T2→T1→T0 chaining deferred as a follow-up, see §9); Inc3 M1-M3 ✅ SHIPPED 2026-07-10 (scale-correct hitT/LOD gate, live magnified single crossing, chained hop-loop); Inc3 M5 ✅ SHIPPED 2026-07-10 (root-caused + fixed a construction-site magnification defect: concentric-shrink now proven at multiple childScale values); Inc3 M6 (Earth-scale epic gate) BLOCKED on a genuine geometric/scale mismatch in the demo's own construction, NOT a traversal-math defect; Inc3 M7 ✅ SHIPPED 2026-07-11 — **the epic's continuous two-crossing surface-to-orbit zoom is LIVE-PROVEN** on a reconstructed observable body at ratio childScale=0.25 (not true Earth-scale 2^-20 — that ratio is R-independent-unreachable by construction alone, confirmed both by M6/M7's own validators; needs a scoped CameraNode look-target-decoupling follow-up), see §9
+status: Design (promoted from direction 2026-07-05) — Inc1 ✅ SHIPPED 2026-07-07; Inc2 ✅ SHIPPED 2026-07-10 (§3+§5 tier-crossing mechanism + a live, validated single-crossing continuous zoom; 3-tier T2→T1→T0 chaining deferred as a follow-up, see §9); Inc3 M1-M3 ✅ SHIPPED 2026-07-10 (scale-correct hitT/LOD gate, live magnified single crossing, chained hop-loop); Inc3 M5 ✅ SHIPPED 2026-07-10 (root-caused + fixed a construction-site magnification defect: concentric-shrink now proven at multiple childScale values); Inc3 M6 (Earth-scale epic gate) BLOCKED on a genuine geometric/scale mismatch in the demo's own construction, NOT a traversal-math defect; Inc3 M7 ✅ SHIPPED 2026-07-11 — **the epic's continuous two-crossing surface-to-orbit zoom is LIVE-PROVEN** on a reconstructed observable body at ratio childScale=0.25 (not true Earth-scale 2^-20 — that ratio is R-independent-unreachable by construction alone, confirmed both by M6/M7's own validators); Inc3 M8 Task 16 ✅ SHIPPED 2026-07-11 (CameraNode look-target decoupling, byte-unregressed); Inc3 M8 Task 17 DONE_WITH_CONCERNS (true Earth-scale demo + orbit-around-center schedule; T1/T2 never rendered, un-root-caused at the time); Inc3 M8 Task 19 DONE_WITH_CONCERNS 2026-07-11 — **added a genuine translating-flight-path capability to CameraNode (`SetPositionForTest`+`SetLookTargetNoOrbitForTest`), proved correct via a clean control test, and root-caused Task 17's T1/T2 invisibility (orbit-around-center's own geometry, confirmed not a bug) — but hit a NEW, distinct, well-evidenced (not hand-waved) rendering defect specific to flying along the crossing octant's own off-axis direction, un-root-caused. True Earth-scale (2^-20) observable flight-path remains an open follow-up**, see §9
 date: 2026-07-05
-updated: 2026-07-10
+updated: 2026-07-11
 tags: [architecture, svo, esvo, lod, scale, addressing, skybox, tiered-rendering]
 aliases: [Nested ESVO, Tree-of-Trees, Observer Addressing, Recursive ESVO]
 related:
@@ -441,6 +441,21 @@ target must be separable) — tracked as a scoped follow-up, not silently droppe
 [[Tiered-ESVO-Inc3-Plan-2026-07]]'s M7 Progress Log (Tasks 13-15) for the full derivation, the
 concentric-magnification sweep tables, and the zoom schedule's predicted-vs-observed handoff
 ticks.
+
+**M8 update (2026-07-11): the CameraNode look-target decoupling path (c) is now built** (Task 16,
+`SetLookTargetForTest`/`PARAM_LOOK_TARGET_*`, byte-unregressed when unset) **and extended with a
+genuine translating-position capability** (Task 19, `SetPositionForTest`+
+`SetLookTargetNoOrbitForTest`) — proven correct via a control test (flying along a known-good axis
+while aiming at the crossing octant renders real geometry at every tested distance, including
+extreme close-up). Task 17's orbit-around-center attempt's T1/T2 invisibility is now root-caused
+(camera-to-body-center distance never approaches hop1's tiny threshold at any radius outside the
+solid — a geometric fact of that schedule SHAPE, not a bug). But Task 19 found a NEW, distinct,
+well-evidenced defect: flying the camera's POSITION along the crossing octant's own off-axis radial
+direction from body center renders only a flat mip-fallback-gray silhouette at every tested distance
+— never real per-voxel color, never T1/T2. The true 2^-20 Earth-scale observable flight-path
+therefore remains open, now blocked on THIS finding rather than the FOV-floor/solid-radius
+constraints M6/M7 already solved. See [[Tiered-ESVO-Inc3-Plan-2026-07]]'s M8 Task 19 Progress Log
+for the full control-test evidence and untried next diagnostic step.
 
 ## 10. Rejected alternatives
 

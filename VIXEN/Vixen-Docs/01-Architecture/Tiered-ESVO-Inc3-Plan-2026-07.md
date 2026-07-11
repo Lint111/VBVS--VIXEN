@@ -1156,35 +1156,36 @@ is also a plausible fix for Task 17's apparent hop1-unreachability: that finding
 "orbit at a fixed radius around body center," not to "fly a real trajectory toward the crossing."
 
 ### Task 19 — Translating flight-path demo (primary) + look-target telescope-zoom (secondary, retained)
-- [ ] Design a camera flight path that TRANSLATES from near the marked crossing octant's own surface
-  patch (approaching it directly, not orbiting body-center) out to a full-body orbit view — i.e. the
-  camera's POSITION changes along a path aimed at/through the crossing region, not just its orbit
-  distance from a fixed center. This likely needs either: a non-orbit camera mode/path (check what
-  CameraNode already supports beyond orbit — PARAM_CAMERA_* fixed-mode plus a scripted position
-  sequence may already suffice, mirroring how `SetOrbitDistanceForTest` scripts orbit distance) or a
-  scripted sequence of `SetLookTargetForTest`-style position writes if orbit-mode can't express a
-  translating path. Reuse Task 17's `VIXEN_TIER_M8_EARTH_DEMO` body construction (true 2^-10, already
-  built) — the fix is in the CAMERA SCHEDULE, not the scene.
-- [ ] Prediction-first: hand-compute where along the flight path each handoff should fire (in terms
-  of distance-to-crossing-point, using the same gate arithmetic), verify observed transitions match.
-- [ ] **Root-cause Task 17's T1/T2-invisibility FIRST, independent of the schedule-shape change** —
-  if it's a real construction/residency bug it will persist under the new flight path too. Use the
-  gpu-shader-debug CPU-mirror technique or a HopTrace-style dump if a quick live-gate re-check doesn't
-  immediately show colored tiers.
-- [ ] Per-frame pixel-delta seamlessness through both handoffs on the real flight path.
-- [ ] **Secondary demo (retained, not replaced):** a look-target telescope-style POV zoom — camera
-  stationary or orbiting normally, aim (`SetLookTargetForTest`) sweeps across the crossing as scale
-  changes — is ALSO a valid, wanted demonstration per the user (a "telescope" observation-post proof,
-  distinct from the flight-path proof). Keep Task 17's `VIXEN_TIER_M8_EARTH_ZOOM_DEMO` as this
-  secondary demo once/if the T1/T2 bug is fixed, rather than deleting it — don't conflate "wrong
-  primary shape" with "worthless."
-- [ ] Investigate Task 17's unexplained tick-150 seam if the look-target demo is kept live (it's at a
-  `ClearLookTargetForTest` release, not a tier-crossing handoff, so it's a camera-transition issue
-  orthogonal to the tier mechanism — but a real seam is a real seam).
-- [ ] Full regression sweep (unity/chain/observable/default) that Task 17 skipped.
-- [ ] Docs closure (Task 18, still pending): design doc §9 + plan-doc Progress Log, honestly framing
-  whichever of (both demos work) / (flight-path works, telescope-zoom has a residual issue) / (neither
-  fully closes at true 2^-20, documented as the epic's honest final outcome) actually obtains.
+- [x] Design a camera flight path that TRANSLATES from near the marked crossing octant's own surface
+  patch out to a full-body orbit view. **DONE:** added `CameraNode::SetPositionForTest` (new,
+  additive ForTest accessor mirroring `SetOrbitDistanceForTest`) — scripts `cameraPosition` directly
+  in FIXED mode, no orbit engagement. Combined with a new `SetLookTargetNoOrbitForTest` (sets
+  `hasLookTarget_`/`lookTarget_` WITHOUT calling `EngageOrbit()`, unlike the existing
+  `SetLookTargetForTest`) this gives full position+aim control while staying in FIXED mode
+  throughout — the genuine translating flight path the task asked for. `BuildRenderGraph.cpp` gates
+  `VIXEN_TIER_M8_EARTH_DEMO`'s own orbit-param wiring off when `VIXEN_TIER_M8_FLIGHT_DEMO` is set
+  (own live-gate finding: that wiring latches `orbitActive_`, which silently overrides scripted
+  position writes every frame — see Progress Log). Also narrows the near-clip plane to 0.01wu for
+  this demo only (own live-gate finding: hop1's ~0.079wu threshold is SMALLER than the default
+  0.1wu near-clip, near-plane-clipping the target away at the flight's near end).
+- [x] Prediction-first arithmetic: see Progress Log + derivation script
+  `Tiered-ESVO-Inc3-M8-Task19-flight-path-derivation.py`.
+- [x] **Root-cause Task 17's T1/T2-invisibility: FOUND, not a construction/residency bug.** Task 17's
+  schedule orbited body CENTER at 70-120wu while only retargeting AIM via look-target; hop1's
+  threshold (~0.079wu) is a camera-TO-BODY-CENTER distance in that schedule shape, and the marked
+  octant sits only ~20.8wu from center (well inside the ~27wu solid radius) — no orbit radius
+  outside the solid can also be at hop1's ~0.079wu distance FROM CENTER. This is a genuine
+  geometric fact of "orbit at fixed radius + retarget aim," independent of any residency/construction
+  bug, and it persists under ANY orbit-around-center schedule regardless of aim.
+- [~] Per-frame pixel-delta seamlessness: NOT reached — see the NEW finding below, which blocks the
+  flight path from resolving real per-tier color at all along the octant's own direction.
+- [x] **Secondary demo (retained, not replaced):** Task 17's `VIXEN_TIER_M8_EARTH_ZOOM_DEMO` block
+  is UNTOUCHED by this task (own file diff confirms — only new code added, no edits to that block).
+- [ ] Tick-150 seam: NOT investigated this task (budget went to the flight-path mechanism + its own
+  new finding below).
+- [x] Full regression sweep (unity/chain/observable/default/earth_static): all 5 exit 0, VUID exactly
+  10×`08114` zero-new each, pixel-decode confirms unregressed geometry in all 5 — see Progress Log.
+- [x] Docs closure (this entry + design doc §9).
 
 **M8 Task 19 gate:** a live, validated, visually-confirmed motion-driven surface-to-orbit (or
 orbit-to-surface) flight across the true Earth-scale (childScale=2^-10) crossings, with the camera's
@@ -1193,3 +1194,67 @@ view." T1/T2 visually attributable (not just T0). Per-frame-delta seamless. VUID
 genuine attempt at BOTH the flight-path and telescope-zoom shapes, some part remains honestly
 unreachable at true 2^-20, that finding — clearly evidenced — is an acceptable epic close, per this
 epic's own discipline (M6/M7 precedent: an honest documented limit is a valid outcome, not a failure).
+
+- **M8 Task 19: MECHANISM PROVEN, GATE NOT MET — a new, distinct blocking finding (not the one
+  Task 17 hit) · worktree `tiered-esvo-inc2` · 2026-07-11.**
+  **New `CameraNode` capability (additive, byte-unregressed):** `SetPositionForTest(glm::vec3)`
+  writes `cameraPosition` directly without engaging orbit (FIXED mode stays authoritative — the
+  same "configured pose is authoritative at rest" convention the bodies-0 fix established), and
+  `SetLookTargetNoOrbitForTest(glm::vec3)` sets a look-target without the existing
+  `SetLookTargetForTest`'s `EngageOrbit()` call (which would otherwise silently re-engage orbit mode
+  and let `UpdateCameraData`'s ORBIT branch overwrite the scripted position every frame — found live,
+  the exact failure mode the first capture attempt hit: a completely static frame across all 400
+  scripted ticks despite `SetPositionForTest` being called every tick). Combined, these give a
+  genuinely translating, independently-aimed camera — the capability the task asked for.
+  **Root cause of Task 17's T1/T2 invisibility: FOUND, confirmed NOT a construction/residency bug.**
+  Task 17 orbited body CENTER over [70,120]wu while only retargeting AIM. hop1's ~0.079wu threshold
+  is a camera-to-body-CENTER distance in that schedule shape; the marked octant sits only ~20.8wu
+  from center (inside the ~27wu solid radius), so no orbit radius that is simultaneously outside the
+  solid and at hop1's tiny distance from CENTER exists — this holds for ANY aim, confirming the
+  root cause is the schedule's ORBIT-AROUND-CENTER geometry itself, exactly as the user's redirect
+  predicted, not a bug to fix independently of the schedule shape.
+  **NEW finding (this task's own, distinct from Task 17's): flying/positioning the camera along the
+  crossing octant's own radial direction from body center (`(-1,-1,1)/sqrt(3)`, aimed at
+  `m8EarthHop0OctantWorld_`) renders ONLY a flat mip-fallback-gray polygon (the octree's own coarse
+  bounding-shape silhouette) at every tested distance from 0.05wu to 91.2wu past/at the octant — never
+  the real per-voxel SDF color, and never T1/T2's green/cyan. A CONTROL test isolates this cleanly:
+  the identical mechanism (`SetPositionForTest`+`SetLookTargetNoOrbitForTest`, same near-clip fix),
+  but with the camera's POSITION flown along +Z (Task 17's own proven-good axis) instead, while
+  aiming at the SAME `surfacePoint`, renders the real purple T0 gradient correctly at every tested
+  distance including extreme close-up (tick 24, distToSurface~=0.073wu, shows genuine close-up
+  surface detail with a specular highlight — not gray, not empty). This proves: (a) the
+  position+lookAt+near-clip mechanism itself is correct; (b) the defect is specific to the camera's
+  POSITION lying along the octant's own off-axis diagonal, not to aiming there. Two anchor-point
+  variants were tried (extrapolating the octant's direction out to the sphere's nominal radius, and
+  anchoring directly at the octant's own recorded world position) — BOTH show the identical flat-gray
+  hexagon at the far end and empty background at the near end. Root cause NOT further isolated this
+  task (candidates, none confirmed: a ray-AABB entry/traversal-restart artifact specific to extreme
+  off-axis body-diagonal angles into this coarse `n=16`-grid voxelized sphere; a hole/gap in the
+  coarse SDF bake exactly at that diagonal corner; something in how the crossing leaf's own footprint
+  is computed off-axis). A `VIXEN_TIER_M8_FLIGHT_DEBUG_ZPOS_OCTANT_AIM` toggle was added (position
+  along +Z, aim at the octant) as the next diagnostic step to isolate position-direction from
+  aim-target further, but was NOT run this task (build-queue contention; judged lower value than
+  reporting the clean, already-evidenced finding promptly).
+  **Regressions (fresh build, exe mtime postdates all edited sources, forced validation): full sweep
+  of unity/chain/observable/default/earth_static all exit 0, VUID exactly 10×`08114` zero-new in
+  every scene, chain demo's T1/T2 nesting visually confirmed unregressed by direct image inspection.**
+  Stale-exe footgun avoided throughout (mtime + `strings -a` symbol checks before every capture,
+  per this epic's own recurring lesson). Build-policy compliance: all builds went through
+  `run_build_with_summary.ps1` (never direct `cmake --build`); registered in the build queue and
+  waited via `ScheduleWakeup`-style polling (not blind sleep) whenever the lock was held by another
+  agent; released every ticket. 19 pre-existing SVO-test build failures (`SdfCoreKernels.g.hpp`
+  codegen syntax errors, untracked/gitignored generated file, unrelated to this task's two edited
+  files) were present on EVERY build this session including the very first, before any of this
+  task's edits — confirmed pre-existing, not caused by this work; VIXEN.exe itself built clean every
+  time. Tick-150 seam: not investigated (budget prioritized the flight-path mechanism + its own new
+  finding). Telescope-zoom secondary demo: untouched, not re-verified this task (no code change to
+  that block).
+  **Verdict: DONE_WITH_CONCERNS.** The translating flight-path CAPABILITY (position+lookAt+near-clip,
+  all additive and byte-unregressed) is built and proven correct via a clean control test. Task 17's
+  T1/T2 root cause is genuinely found (orbit-around-center's geometry, not a bug). But the Task 19
+  gate itself — a live, seamless, T1/T2-attributable flight across the true 2^-10 crossings — is
+  NOT met: a new, well-evidenced (not hand-waved) rendering defect blocks the flight path specifically
+  along the crossing octant's own direction, isolated by a clean control (same mechanism, different
+  direction, works) but not yet root-caused to a specific line of code. Per this epic's own discipline
+  (M6/M7 precedent), this is reported as an honest, evidenced limit rather than a forced or misleading
+  capture.
