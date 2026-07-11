@@ -1903,3 +1903,37 @@ ground-to-orbit flight through BOTH true `2^-10` tier crossings, each genuinely
 color-attributable, using a knob-free, camera-anchored gate with no hand-tuned per-hop constant
 — is now fully realized. No Opus validator dispatched this session (narrowly-scoped, single
 fresh task per the dispatch-escalation-pattern; not a continuation of Task 23's dead ends).
+
+**Opus validator: APPROVED (2026-07-12) — genuinely the epic's real, complete, final closure.
+No follow-up required.** Independently reproduced BOTH hops live on a fresh build (own capture
+dir, own tick list — not reusing the implementer's artifacts): exe mtime postdated source,
+`strings -a` confirmed the new anchor string compiled in.
+**hop1 (T1→T2):** genuine `(0,77,77)` (exact override color) — absent ticks 138-141, appears
+tick 142 at 35299px (EXACT pixel-count match to the implementer's count), monotonic shrink
+35299→96→24→12→4→4→4px, vanishes between 158 (4px) and 160 (gone, gray `(38,38,38)`).
+**hop0 (T0→T1):** genuine `(0,77,0)` — present 320-324 (8px thin rim), gone at 325 — resolves
+Task 23's own 320↔324 bracket to the exact adjacent pair. Both on ONE continuous schedule, no
+retarget, matching the implementer's reported ticks exactly.
+**T1 anchor re-derived independently from scratch, matches to float32 precision:** inverse of
+`childLocal=(parentLocal−childOrigin)·invScale+1.5` is
+`parentLocal=childOrigin+(childLocal−1.5)·childScale` — algebraically confirmed sound;
+computed hop0=(52,52,76), hop1=(51.988281,51.988281,76.011719), distance 0.0203wu, identical
+radial direction — matches the live log byte-for-byte.
+**"D1 unchanged" claim VERIFIED:** the gate's firing distance depends only on ratio/coefficient
+structure (all unchanged by Task 24); only WHERE the camera aims changed, not WHEN the gate
+fires — confirmed correct, not just asserted.
+**"No schedule change needed" is STRUCTURAL, not a lucky coincidence — precisely
+characterized:** hop1 lies on the hop0 flight axis at perpendicular distance 0.000000wu,
+angular deviation 0.000000° (both tiers mark octant 4 → identical camera-facing search over
+identical sphere geometry → identical radial direction). Honest scope limit recorded (not
+overclaimed): a scene marking DIFFERENT octants per tier would need a multi-leg schedule; fine
+for this construction, not a general guarantee.
+**Regressions — validator's own captures, byte-identical + md5-confirmed:**
+default/unity/chain/observable/m8static all match Task 23's committed baselines; VUID exactly
+10× `08114` zero-new in every scene including the flight run. Fix touches ONLY
+`BuildRenderGraph.cpp` — zero shader/traversal/mirror files. Tree/docs clean.
+**Whole-epic assessment: the original ask is genuinely, fully realized — a live, continuous
+ground-to-orbit flight through BOTH true 2^-10 tier crossings, each genuinely
+color-attributable, via Task 23's foundational knob-free camera-anchored gate plus Task 24's
+narrow anchor-construction completion. No caveat blocks calling this the epic's final,
+complete closure.**
