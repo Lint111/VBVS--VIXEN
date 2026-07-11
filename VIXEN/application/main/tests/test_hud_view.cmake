@@ -7,7 +7,9 @@ endif()
 
 if(TARGET VixenApp AND TARGET GTest::gtest_main)
     add_executable(test_hud_view ${CMAKE_CURRENT_LIST_DIR}/test_hud_view.cpp)
-    target_link_libraries(test_hud_view PRIVATE VixenApp GTest::gtest_main)
+    # Inc-1 M4: must whole-archive VixenApp, not link it plainly -- see cmake/VixenNodeLinkage.cmake.
+    vixen_whole_archive_link_vixen_app(test_hud_view PRIVATE)
+    target_link_libraries(test_hud_view PRIVATE GTest::gtest_main)
     set_target_properties(test_hud_view PROPERTIES FOLDER "Tests/Application")
     gtest_discover_tests(test_hud_view)
     message(STATUS "[Application Tests] Added: test_hud_view (HudView Register + SetHudView projection, offline)")

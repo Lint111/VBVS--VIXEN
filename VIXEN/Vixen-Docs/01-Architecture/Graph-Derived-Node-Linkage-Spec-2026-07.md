@@ -3,7 +3,7 @@ title: Graph-Derived Node Linkage — Spec
 aliases: [Selective Node Linking Spec]
 tags: [architecture, rendergraph, nodes, build, spec]
 created: 2026-07-11
-status: 📐 SPEC (approved approach, not yet planned into increments)
+status: ✅ INC1 SHIPPED (2026-07-12, branch `feat/graph-derived-node-linkage-inc1`) — the mechanism (per-node OBJECT libraries + `AddNode<T>`-derived manifest + scoped linkage) proven end-to-end on `VixenApp`, the one real consumer today; see [[Graph-Derived-Node-Linkage-Inc1-Plan-2026-07]] for the full M1-M5 record and [[RenderGraph-System]] §9.7 for the current-state mechanism summary. `VIXEN.exe`: 37,140,480 → 35,980,288 bytes (−3.12%). Epic continues per §5's scope note — not yet planned: `vixen_editor` gaining its own graph builder + manifest, per-family vs. per-node granularity refinement.
 related:
   - "[[Graph-Derived-Node-Linkage-Direction-2026-07]]"
   - "[[RenderGraph-System]]"
