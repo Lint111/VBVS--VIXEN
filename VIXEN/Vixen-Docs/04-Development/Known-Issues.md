@@ -11,7 +11,7 @@ Living log of confirmed-but-unfixed issues. Each entry: symptom, root cause, imp
 
 ---
 
-## KI-021 — `VIXEN_RESIZE_AT_FRAME` mid-run window resize crashes with an access violation (pre-existing, unrelated to Sampled Lighting)
+## KI-022 — `VIXEN_RESIZE_AT_FRAME` mid-run window resize crashes with an access violation (pre-existing, unrelated to Sampled Lighting)
 
 **Discovered:** 2026-07-10, during Sampled Lighting Inc2 M4 (camera-motion reprojection + per-pixel history validation), as a side effect of live-gating the accumulation work — no prior Inc0-2 gate in this program had exercised a mid-run resize before.
 
@@ -27,7 +27,7 @@ Living log of confirmed-but-unfixed issues. Each entry: symptom, root cause, imp
 
 ---
 
-## KI-020 — Inc2 M4's color-consistency reprojection reject will fight Inc3 ReSTIR's stochastic sampling
+## KI-023 — Inc2 M4's color-consistency reprojection reject will fight Inc3 ReSTIR's stochastic sampling
 
 **Discovered:** 2026-07-10, during Sampled Lighting Inc2 M4 (camera-motion reprojection + per-pixel history validation); confirmed as a real forward-looking defect by the M4 Opus validator, filed here as the tracked Known Issue + Inc3 prerequisite the plan's "TWO FLAGS" section called for.
 
