@@ -277,4 +277,17 @@ repeatedly missed real linkage/runtime bugs in past epics; this one is no except
   render-correctness check per M2's explicit scope) confirmed it stays running 8+ seconds with no
   immediate crash/exception, then was cleanly killed. No node source files, `NodeRegistration.*`,
   or `RegisterAllNodes()` were touched — pure build-system change, matching Inc-1's stated
-  architecture. Commit: (this doc + CMakeLists.txt change, see git log). 2026-07-11
+  architecture. Commit: `8b131078`. 2026-07-11
+
+  **Opus validator: APPROVED** (2026-07-11, independently re-ran the build rather than trusting
+  the report). Confirmed against the live diff: ~54 OBJECT-lib targets emitted (matches M1's node
+  count, incl. the already-noted pre-existing discrepancy), each with the full original dep set;
+  `NodeRegistration.*`/`RegisterAllNodes()` untouched. Confirmed against the live CMakeLists.txt
+  (not just the claim) that the whole-archive-kept reasoning holds: `RenderGraphNodes` is still
+  `STATIC`, still directly compiles `RENDERGRAPH_UI_SOURCES`, and the whole-archive flag is still
+  applied to it across all three linker dialects. Independently re-ran `build.bat all vixen-ninja`
+  (own queue ticket, active polling) — exactly 19 failures, byte-identical to M1's baseline, and
+  critically **all 19 are compile errors with zero link errors** — the decisive signal that the
+  OBJECT-library repackaging didn't break anything structurally (a broken repackaging would
+  surface as unresolved-symbol link failures, not compile errors). `test_node_self_registration`:
+  2/2 PASS. Tree clean, linear history. No issues found.
