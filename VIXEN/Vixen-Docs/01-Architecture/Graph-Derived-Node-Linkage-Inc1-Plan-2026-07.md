@@ -519,3 +519,33 @@ repeatedly missed real linkage/runtime bugs in past epics; this one is no except
   `feat/graph-derived-node-linkage-inc1`. No node source, `NodeRegistration.*`, or
   `RegisterAllNodes()` semantics touched — pure build-system change, per Inc-1's architecture.
   2026-07-11.
+
+  **Opus validator: APPROVED** (2026-07-12). Every claim independently re-verified against the
+  validator's own fresh from-scratch build and live-render run, not taken on faith. Diff matches
+  the report exactly (9 files, `git show 42fd7e6c`). Independent build: exactly 19 failures, all
+  compile-only (0 LNK errors, 0 unresolved externals — the decisive signal scoping+whole-archiving
+  didn't break linkage), all 5 real binaries (`VIXEN.exe`, `vixen_editor.exe`,
+  `test_view_blob_equiv.exe`, `test_hud_view.exe`, `test_app_run_tick.exe`) linked green.
+  **Spec §2.3 proven in BOTH directions via `strings`, not eyeballed**: RT-core symbols
+  (`AccelerationStructureNodeType`/`RayTracingPipelineNodeType`/`TraceRaysNodeType`) confirmed
+  PRESENT in `test_node_self_registration.exe` (full unscoped facade intact) and confirmed ABSENT
+  (count 0) from the scoped `VIXEN.exe` — direct proof scoping is real, not cosmetic.
+  `test_node_self_registration`: 2/2 PASS. Live-render gate independently re-run: "Registered 46
+  built-in node types", "Seeded 3 Procedural SDF body instances", 75 `[FrameTimer]` lines to
+  frames 2280-2400+ at ~418 FPS, zero exceptions/`Prepare failed`/"not registered" — the spec §3
+  loud-failure scenario did not occur. Size independently confirmed byte-identical:
+  `VIXEN.exe` = 35,980,288 bytes, −1,160,192 (~3.12%) vs. M1. `SkyProjectionNode` pre-existing-bug
+  claim confirmed (`VIXEN_SHADER_SOURCE_DIR` is PRIVATE to `VixenApp`, grep count 0 reaching
+  `RenderGraphNode_SkyProjectionNode`, true before AND after M4). **Bug 3's CMake semantics
+  explicitly calibrated, not rubber-stamped**: confirmed empirically sound (symptom reproduced,
+  fix works, root-caused via the real generated `link.exe` command line) but the validator
+  explicitly did not independently derive the exact propagation rule from CMake documentation
+  alone — flagged honestly as "plausible and empirically demonstrated," not asserted with false
+  certainty; correctly not treated as a blocker given the strength of the empirical evidence.
+  **Two minor non-blocking notes for M5 cleanup**: (1) `vixen_editor`'s now-uncompiled
+  `StbImageWriteImpl.cpp` was removed from the source list (ODR-fix correct) but the file itself
+  is still on disk/git-tracked, not actually deleted — a `git rm` would be tidier; (2)
+  `test_fail_scenario_sweep`'s whole-archive change is present and correct in source but wasn't
+  exercised by this build run (gated behind a pre-existing `if(TARGET VixenApp AND TARGET
+  GTest::gtest)` conditional not satisfied in this preset) — not an M4 regression. Tree clean,
+  linear history. No issues found warranting a re-dispatch.
