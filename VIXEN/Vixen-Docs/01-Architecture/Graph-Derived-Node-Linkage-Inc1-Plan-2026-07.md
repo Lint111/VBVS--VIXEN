@@ -213,3 +213,16 @@ repeatedly missed real linkage/runtime bugs in past epics; this one is no except
     against) built successfully in every run; `test_node_self_registration` (M1's required test
     gate) built and ran successfully. The 19 failures are isolated to other SVO/RenderGraph test
     binaries not in M1's gate list.
+
+  **Opus validator: APPROVED** (2026-07-11). Confirmed independently: (1) scope discipline —
+  commit `459be207` touches exactly one file (this plan doc, +49/-5), zero CMakeLists.txt/source/
+  registration changes; (2) tree integrity — `e79c079f` confirmed an ancestor of HEAD, `git
+  status` clean, linear history with no duplicate/merge/conflict artifacts; (3) numbers
+  plausibility — build time, binary sizes, and relink times all in expected ranges; (4) test
+  honesty — KI-017 independently confirmed documented at `Known-Issues.md:115`, not a fabricated
+  excuse. **One non-blocking discrepancy noted**: independently re-grepping
+  `VIXEN_REGISTER_NODE(...)` found 54-55 raw macro invocations/unique type names (vs. the "53"
+  recorded above) — traced to `ConstantNode.cpp` registering 2 types (an alias-like
+  `ShaderConstantNodeType` alongside `ConstantNodeType`). Documentation-level only; doesn't
+  affect baseline validity since M2-M4 don't depend on the literal "53" — flagged for a one-line
+  reconciliation when M2's manifest-vs-registry counts are actually compared.
