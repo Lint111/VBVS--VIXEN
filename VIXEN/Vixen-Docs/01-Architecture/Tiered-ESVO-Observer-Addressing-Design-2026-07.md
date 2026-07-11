@@ -1,8 +1,8 @@
 ---
 title: Tiered ESVO — Nested-Tree Addressing, Tier-Crossing Traversal & Observer-Relative Rendering
-status: Design (promoted from direction 2026-07-05) — Inc1 ✅ SHIPPED 2026-07-07; Inc2 ✅ SHIPPED 2026-07-10 (§3+§5 tier-crossing mechanism + a live, validated single-crossing continuous zoom; 3-tier T2→T1→T0 chaining deferred as a follow-up, see §9); Inc3 M1-M3 ✅ SHIPPED 2026-07-10 (scale-correct hitT/LOD gate, live magnified single crossing, chained hop-loop); Inc3 M5 ✅ SHIPPED 2026-07-10 (root-caused + fixed a construction-site magnification defect: concentric-shrink now proven at multiple childScale values); Inc3 M6 (Earth-scale epic gate) BLOCKED on a genuine geometric/scale mismatch in the demo's own construction, NOT a traversal-math defect; Inc3 M7 ✅ SHIPPED 2026-07-11 — **the epic's continuous two-crossing surface-to-orbit zoom is LIVE-PROVEN** on a reconstructed observable body at ratio childScale=0.25 (not true Earth-scale 2^-20 — that ratio is R-independent-unreachable by construction alone, confirmed both by M6/M7's own validators); Inc3 M8 Task 16 ✅ SHIPPED 2026-07-11 (CameraNode look-target decoupling, byte-unregressed); Inc3 M8 Task 17 DONE_WITH_CONCERNS (true Earth-scale demo + orbit-around-center schedule; T1/T2 never rendered, un-root-caused at the time); Inc3 M8 Task 19 DONE_WITH_CONCERNS 2026-07-11 — **added a genuine translating-flight-path capability to CameraNode (`SetPositionForTest`+`SetLookTargetNoOrbitForTest`), proved correct via a clean control test, and root-caused Task 17's T1/T2 invisibility (orbit-around-center's own geometry, confirmed not a bug) — but hit a NEW, distinct, well-evidenced (not hand-waved) rendering defect specific to flying along the crossing octant's own off-axis direction, un-root-caused. True Earth-scale (2^-20) observable flight-path remains an open follow-up**; Inc3 M8 Task 20 CONFIRMED the octant-4 diagonal placement is genuinely surface-exposed (Task 19's own framing was wrong on this point) and derived the correct gate-clearing coefficient (~4.5e-6, since `tv_max` is chord-floored by the marked leaf's own physical size, not distance-to-target) — but found a SEPARATE, new engine-level issue (T0's own base rendering vanishes below a raySizeCoef threshold between 2e-5 and 5e-5, un-root-caused) that currently blocks proving the fix live, see §9
+status: Design (promoted from direction 2026-07-05) — Inc1 ✅ SHIPPED 2026-07-07; Inc2 ✅ SHIPPED 2026-07-10 (§3+§5 tier-crossing mechanism + a live, validated single-crossing continuous zoom; 3-tier T2→T1→T0 chaining deferred as a follow-up, see §9); Inc3 M1-M3 ✅ SHIPPED 2026-07-10 (scale-correct hitT/LOD gate, live magnified single crossing, chained hop-loop); Inc3 M5 ✅ SHIPPED 2026-07-10 (root-caused + fixed a construction-site magnification defect: concentric-shrink now proven at multiple childScale values); Inc3 M6 (Earth-scale epic gate) BLOCKED on a genuine geometric/scale mismatch in the demo's own construction, NOT a traversal-math defect; Inc3 M7 ✅ SHIPPED 2026-07-11 — **the epic's continuous two-crossing surface-to-orbit zoom is LIVE-PROVEN** on a reconstructed observable body at ratio childScale=0.25 (not true Earth-scale 2^-20 — that ratio is R-independent-unreachable by construction alone, confirmed both by M6/M7's own validators); Inc3 M8 Task 16 ✅ SHIPPED 2026-07-11 (CameraNode look-target decoupling, byte-unregressed); Inc3 M8 Task 17 DONE_WITH_CONCERNS (true Earth-scale demo + orbit-around-center schedule; T1/T2 never rendered, un-root-caused at the time); Inc3 M8 Task 19 DONE_WITH_CONCERNS 2026-07-11 — **added a genuine translating-flight-path capability to CameraNode (`SetPositionForTest`+`SetLookTargetNoOrbitForTest`), proved correct via a clean control test, and root-caused Task 17's T1/T2 invisibility (orbit-around-center's own geometry, confirmed not a bug) — but hit a NEW, distinct, well-evidenced (not hand-waved) rendering defect specific to flying along the crossing octant's own off-axis direction, un-root-caused. True Earth-scale (2^-20) observable flight-path remains an open follow-up**; Inc3 M8 Task 20 CONFIRMED the octant-4 diagonal placement is genuinely surface-exposed (Task 19's own framing was wrong on this point) and derived the correct gate-clearing coefficient (~4.5e-6, since `tv_max` is chord-floored by the marked leaf's own physical size, not distance-to-target) — but found a SEPARATE, new engine-level issue (T0's own base rendering vanishes below a raySizeCoef threshold between 2e-5 and 5e-5, root-caused by Task 20's own validator: the demo body was mip-only, Task 21 fixed it); Inc3 M8 Task 22 PROVED the "mark the crossing deeper" idea algebraically impossible (the `2^-depth` term cancels identically from both sides of the gate at any depth) and surfaced the real structural finding: ONE shared `raySizeCoef` cannot serve both the ordinary body's own visibility AND a genuine 2^-10 crossing's footprint simultaneously; **Inc3 M8 Task 23 (heavy-lifter engine escalation) ✅ SHIPPED 2026-07-12 — the actual engine fix.** Re-derived the crossing LOD gate from first principles: the defect was never the shared coefficient but the gate's DISTANCE argument (`tv_max`, chord-floored per Task 20, deriving a value structurally incapable of reflecting camera-to-child proximity). Replaced it with a camera-anchored, world-unit-correct formula (`tChild` = along-ray projection of the child's own anchor, clamped to the leaf's span; `worldDistToChild` composed hop-by-hop via two new threaded floats `tWorldBase`/`tLocalUnitWorld`; RHS keeps Inc3 M1's validated `childScale*scale_exp2` semantics, expressed in world units) — no second push-constant, no per-demo override, dynamically correct at any FOV/resolution/body scale, ordinary non-leaf gate and shipped hitT composition untouched. Added a companion child-miss mip fallback (§5.3 semantics: a taken crossing whose child then misses shades from the parked leaf's own mip sample instead of a whole-ray sky miss). A follow-on live-gate investigation found the M8 Earth demo's OWN construction (not the new gate) placed its `childOriginLocal` anchor on the crossing leaf's boundary corner (sub-pixel margin) rather than its safe interior center — fixed by switching to `RootLeafOctantCenterLocal` (M5's already-proven technique). **Result: hop0 (T0→T1) LIVE-PROVEN at the TRUE childScale=2^-10 ratio using the REAL, unoverridden `raySizeCoef`** — a genuine green T1 rim appears at the crossing leaf's silhouette edge and shrinks to vanishing at a camera distance bracketing the hand-computed prediction (7.46wu) to within one log-spaced tick, no override, no hand-tuned constant. hop1 (T1→T2) was not visually reached this session (an unrelated demo flight-schedule framing gap — the schedule approaches T0's anchor point, not T1's own surface-relative position, so it never gets close enough in the RIGHT direction to frame T1's own tiny solid) — an honest, evidenced construction gap, not a defect in the fixed gate. See Inc3 plan doc's M8 Task 23 Progress Log for the full derivation, live measurements, and the two remaining paths (extend the flight schedule to target T1 directly, or accept hop0's proof as sufficient) surfaced for the next increment. §9 below records the epic's status accordingly
 date: 2026-07-05
-updated: 2026-07-11
+updated: 2026-07-12
 tags: [architecture, svo, esvo, lod, scale, addressing, skybox, tiered-rendering]
 aliases: [Nested ESVO, Tree-of-Trees, Observer Addressing, Recursive ESVO]
 related:
@@ -543,6 +543,53 @@ simultaneously without a genuinely separate per-gate coefficient (a scoped engin
 than Task 22's own scope, and arguably re-opens the exact "two jobs, one field" problem Task 22
 was created to eliminate — just relocated from a demo override to a first-class engine parameter).
 See [[Tiered-ESVO-Inc3-Plan-2026-07]]'s M8 Task 22 Progress Log for the full derivation.
+
+**M8 Task 23 update (2026-07-12, heavy-lifter engine escalation) — the "one field, two jobs"
+problem is SOLVED, not relocated: no second coefficient was needed.** Task 22 correctly named
+the structural flaw (one shared `pc.raySizeCoef` field cannot serve both gates) but its own
+proposed resolution ("introduce a separate per-gate coefficient") would have just moved the
+problem, not removed it — the needed threshold genuinely varies per-leaf and per-ray (a
+node's own chord vs. camera proximity to specific child content), so no second per-frame
+scalar could ever be correct for every crossing either. The actual defect, re-derived from
+first principles (a full units audit of the shipped `[1,2)`-frame parametrization, screen-
+footprint math, and the hop-composition invariants — see
+`Tiered-ESVO-Inc3-M8-Task23-Crossing-Gate-Derivation.md`): the crossing gate's DISTANCE
+argument (`tv_max`, the leaf's own chord-floored exit-t, per Task 20's finding) was structurally
+incapable of reflecting camera-to-child proximity at any depth (Task 22's cancellation proof).
+**Fix:** evaluate the SAME principled `raySizeCoef` at the actually-correct distance — a
+camera-anchored `worldDistToChild` (built from a projected `tChild` clamped to the leaf's own
+span, plus two floats threaded per hop, `tWorldBase`/`tLocalUnitWorld`, that keep every
+quantity in true world units through an arbitrary-length crossing chain) — with the RHS
+keeping Inc3 M1's already-validated `childScale*scale_exp2` semantics, merely re-expressed in
+world units via `tLocalUnitWorld`. No new push constant, no env override, dynamically correct
+at any FOV/resolution/body/childScale combination; the ordinary non-leaf gate and the shipped
+hitT composition are byte-untouched (confirmed live: default/unity/chain/observable captures
+are `cmp -s` byte-identical across the whole Task 23 commit range). A companion fix serves a
+taken-then-missed crossing from its own parked leaf's mip sample (§5.3 semantics) instead of a
+whole-ray sky miss, eliminating the "notch" a childScale-sized child would otherwise punch in
+its host leaf.
+
+**Live result: hop0 (T0→T1) is LIVE-PROVEN at the TRUE `childScale=2^-10` ratio using the REAL,
+unoverridden `raySizeCoef`** — a first live-gate attempt found a NEW, distinct blocker (the M8
+Earth demo's own `childOriginLocal` construction placed the crossing anchor on the marked
+leaf's own boundary corner, sub-pixel margin, making the child unreachable off-axis — root-
+caused by two independent traces, fixed by switching to the already-proven
+`RootLeafOctantCenterLocal` centering technique, a pure construction-side fix). With that fixed,
+the live flight shows a genuine, unambiguous green (T1) rim tracing the crossing leaf's own
+silhouette edge, shrinking monotonically and vanishing at a camera distance (bracketed between
+6.73wu and 7.67wu) that brackets the hand-computed prediction (7.4605wu) to within one
+log-spaced schedule tick — real per-voxel SDF color, not the gray mip placeholder, not sky, no
+override. **hop1 (T1→T2, predicted 0.0073wu) was not visually reached this session** — every
+tested frame below ~0.13wu camera distance rendered fully empty, a demo flight-schedule framing
+gap (the schedule approaches T0's own anchor point rather than T1's own surface-relative
+position, so at extreme closeness the camera does not necessarily frame T1's own much smaller
+solid) rather than a defect in the now-proven gate mechanism. Regressions clean throughout
+(VUID 10×`08114` zero-new in every run; unity/chain/default/observable unregressed byte-for-
+byte). See [[Tiered-ESVO-Inc3-Plan-2026-07]]'s M8 Task 23 Progress Log for the full derivation,
+live measurements, and the two remaining paths (extend the flight schedule to target T1
+directly for a hop1 proof, or accept hop0's live proof as sufficient demonstration of the fixed
+mechanism) surfaced for the next increment — consistent with this epic's own established
+discipline (M6/M7/Task19/20/22) that an honest, evidenced partial result is a valid outcome.
 
 ## 10. Rejected alternatives
 
