@@ -21,6 +21,7 @@ add_executable(ShaderManagementTests
     test_shader_compiler.cpp
     test_shader_cache_manager.cpp
     test_sdi_lifecycle.cpp
+    test_shader_preprocessor.cpp
     # Temporarily disabled - need API updates
     # test_shader_bundle_builder.cpp
     # test_spirv_reflection.cpp

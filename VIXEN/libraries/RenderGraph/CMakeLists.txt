@@ -511,6 +511,15 @@ target_compile_definitions(RenderGraphNodes PUBLIC RMLUI_STATIC_LIB)
 target_compile_definitions(RenderGraphNodes PRIVATE
     VIXEN_UI_ASSET_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/assets")
 
+# Sampled Lighting Inc3 M1 finding: SkyProjectionNode::ResolveShaderPath() (and any other
+# RenderGraphNodes node compiling its own shaders straight from source) falls back to CWD-relative
+# paths ("shaders", "../shaders") when VIXEN_SHADER_SOURCE_DIR isn't defined -- which it never was
+# for this target (only application/main/CMakeLists.txt defined it, for VixenApp). Pre-existing gap,
+# not introduced by M1; mirrors application/main's own definition exactly so every RenderGraphNodes
+# node gets the same reliable, CWD-independent shader-source resolution VixenApp has always had.
+target_compile_definitions(RenderGraphNodes PRIVATE
+    VIXEN_SHADER_SOURCE_DIR="${VIXEN_SHADER_SOURCE_DIR}")
+
 # ============================================================================
 # Install and Properties (both static libs)
 # ============================================================================
