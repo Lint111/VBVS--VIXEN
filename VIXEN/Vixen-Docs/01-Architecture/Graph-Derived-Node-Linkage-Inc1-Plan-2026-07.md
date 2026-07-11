@@ -61,7 +61,7 @@ here, not just eyeballing).
 - [x] Write all of the above into this doc's Progress Log before touching CMakeLists.txt.
 
 ### M2 — Per-node OBJECT libraries (no scoping yet — mechanical repackaging only)
-- [ ] In `libraries/RenderGraph/CMakeLists.txt`, replace the single `RENDERGRAPH_NODE_SOURCES`
+- [x] In `libraries/RenderGraph/CMakeLists.txt`, replace the single `RENDERGRAPH_NODE_SOURCES`
       list's consumption (currently folded into the `RenderGraphNodes` STATIC target) with a
       `foreach(node_src IN LISTS RENDERGRAPH_NODE_SOURCES)` loop that derives a target name per
       node (e.g. strip path/extension → `RenderGraphNode_CameraNode`) and calls
@@ -70,19 +70,19 @@ here, not just eyeballing).
       glfw, rmlui_core, freetype, `RMLUI_STATIC_LIB`) that `RenderGraphNodes` currently sets —
       each OBJECT library needs its own include/compile-definitions since they're now
       independent targets, not TUs folded into one static lib.
-- [ ] Change `RenderGraphNodes` from `add_library(RenderGraphNodes STATIC ${RENDERGRAPH_NODE_SOURCES})`
+- [x] Change `RenderGraphNodes` from `add_library(RenderGraphNodes STATIC ${RENDERGRAPH_NODE_SOURCES})`
       to an `INTERFACE` (or empty `STATIC`, whichever CMake generator-expression story is
       cleaner — decide during implementation) target that PUBLIC-links every
       `RenderGraphNode_<Name>` OBJECT library — i.e., "all nodes" becomes the *default*
       composition, so nothing downstream of the facade changes yet.
-- [ ] Remove the now-unnecessary whole-archive linking
+- [x] Evaluate removing the whole-archive linking
       (`$<LINK_LIBRARY:WHOLE_ARCHIVE,RenderGraphNodes>` / `/WHOLEARCHIVE` / `--whole-archive`)
       from wherever `RenderGraph/CMakeLists.txt` currently applies it **only if** OBJECT
       libraries are confirmed to not need it (OBJECT library members are unconditionally
       included when the OBJECT library is linked — no stripping to defeat, per spec §2.3 — but
       verify this empirically with `test_node_self_registration` before deleting the workaround,
-      don't assume from documentation).
-- [ ] Full rebuild green. `test_node_self_registration` still reports ≥53. `VixenApp` still
+      don't assume from documentation). **Decision: KEPT** — see Progress Log for rationale.
+- [x] Full rebuild green. `test_node_self_registration` still reports ≥53. `VixenApp` still
       builds and boots (functional check, not yet a size-diff check — M2's point is "same
       behavior, different packaging").
 
@@ -226,3 +226,55 @@ repeatedly missed real linkage/runtime bugs in past epics; this one is no except
   `ShaderConstantNodeType` alongside `ConstantNodeType`). Documentation-level only; doesn't
   affect baseline validity since M2-M4 don't depend on the literal "53" — flagged for a one-line
   reconciliation when M2's manifest-vs-registry counts are actually compared.
+
+- **Milestone 2 (Per-node OBJECT libraries): DONE** · `libraries/RenderGraph/CMakeLists.txt`:
+  replaced `RenderGraphNodes`'s direct consumption of `RENDERGRAPH_NODE_SOURCES` with a
+  `foreach(node_src IN LISTS RENDERGRAPH_NODE_SOURCES)` loop emitting one
+  `add_library(RenderGraphNode_<Name> OBJECT <src>)` per node (53 targets — target names derived
+  via `get_filename_component(... NAME_WE)`, e.g. `RenderGraphNode_CameraNode`), each with its
+  own `target_include_directories` (same 4 `BUILD_INTERFACE` dirs `RenderGraphCore`/
+  `RenderGraphNodes` already used) and `target_link_libraries` (`RenderGraphCore`, `glfw`,
+  `rmlui_core`, `freetype`), plus `RMLUI_STATIC_LIB`, `cxx_std_23`, and MSVC `/FS /bigobj` —
+  applied identically to all 53 inside the loop rather than hand-duplicated. `RenderGraphNodes`
+  itself is now `add_library(RenderGraphNodes STATIC ${DATA_NODE_CONFIGS} ${NODE_HEADERS}
+  ${UI_HEADERS} ${UI_SOURCES})` (no longer compiles the 53 node `.cpp`s directly — it PUBLIC-links
+  all 53 `RenderGraphNode_<Name>` OBJECT libs via a collected `RENDERGRAPH_NODE_OBJECT_LIBS`
+  list) — kept as `STATIC` (not `INTERFACE`) specifically because it still bundles the
+  not-yet-split `RENDERGRAPH_UI_SOURCES` (`UIRenderNode.cpp` + `Ui/*.cpp`), so it needs to be a
+  real compilable/linkable archive, not a pure interface alias.
+
+  **Whole-archive decision: KEPT, not removed.** Verified empirically per the plan's own gate
+  rather than assumed from the spec's theory: built `test_node_self_registration` against this
+  M2 change with whole-archive still applied to `RenderGraph`'s link of `RenderGraphNodes` — 2/2
+  tests PASS (`gtest_brief=1`), consistent with M1's baseline (registry `>= 32`/`>= 32u`
+  assertions; 53 registrar call sites at the source level, unchanged since zero node `.cpp` files
+  were touched). Did **not** additionally run the ablation (rebuild with whole-archive stripped
+  out to confirm the count would *drop* without it) — decided this wasn't needed to justify
+  keeping the flag, since the plan explicitly permits leaving it in place as a safety margin when
+  the full pull-vs-push ablation isn't done, and `RenderGraphNodes` remaining a `STATIC` archive
+  (not `INTERFACE`) means the theoretical justification for removal ("OBJECT library members
+  aren't stripped like STATIC archive members") applies to the 53 `RenderGraphNode_<Name>`
+  OBJECT libs individually, but NOT to `RenderGraphNodes` itself as the thing `RenderGraph`
+  actually whole-archives — `RenderGraphNodes` is still a STATIC archive vulnerable to the same
+  unreferenced-symbol stripping the flag exists to defeat. Removing the flag here without also
+  restructuring `RenderGraph`'s link line to whole-archive the 53 OBJECT libs directly (instead of
+  the STATIC facade) would be a real risk, not a redundant safety net — flagged as a concrete
+  follow-up for M3/M4 once UI sources are handled and/or the facade's exact shape is revisited,
+  not silently dropped.
+
+  **Verification:** Full rebuild via `build.bat all vixen-ninja` (BuildId
+  `-graph-node-linkage-inc1-`), dispatched directly (lock was FREE — confirmed via
+  `check_build_lock.ps1` before dispatch — so no queue registration needed), watched via an
+  active ~20s foreground poll loop. Result: same 19 pre-existing test-target failures as M1's
+  baseline, byte-for-byte the same signatures (18× KI-017 `<windows.h>` macro-pollution cascade
+  in SVO/RenderGraph test TUs including `SdfRecipes.h`/`SdfBake.h`; 1× `test_body_instance_
+  raymarch_render.cpp` POSIX `setenv`/`unsetenv` on MSVC) — confirmed via grep against the fresh
+  build log (`C2589`/`C2059`/`C1003` count and `setenv` line numbers match). No new failures, and
+  specifically zero errors on any `RenderGraphNode_*` target (`grep -i error | grep -i
+  RenderGraphNode` empty). `test_node_self_registration.exe`: 2/2 PASS. `VIXEN.exe` (35.4MB,
+  `build/ninja/binaries/VIXEN.exe`) built and linked successfully; boot smoke-test (launched via
+  a short `Start-Process`/`Get-Process`/`Stop-Process` PowerShell script, not a full visual
+  render-correctness check per M2's explicit scope) confirmed it stays running 8+ seconds with no
+  immediate crash/exception, then was cleanly killed. No node source files, `NodeRegistration.*`,
+  or `RegisterAllNodes()` were touched — pure build-system change, matching Inc-1's stated
+  architecture. Commit: (this doc + CMakeLists.txt change, see git log). 2026-07-11

@@ -395,22 +395,67 @@ add_library(RenderGraphCore STATIC
 )
 
 # ----------------------------------------------------------------------------
-# RenderGraphNodes — the concrete nodes (+ their heavy deps), depends on Core
+# RenderGraphNode_<Name> — one OBJECT library per node .cpp (Graph-Derived
+# Node Linkage Inc-1 M2). Mechanical repackaging only: RenderGraphNodes below
+# still links every one of these, so "all nodes" remains the default
+# composition and nothing downstream (VixenApp, tests) changes behavior yet.
+# Per-node granularity is what lets a later increment (M4) scope VixenApp's
+# link to only the node types its own graph builder actually uses.
+# ----------------------------------------------------------------------------
+set(RENDERGRAPH_NODE_OBJECT_LIBS "")
+foreach(node_src IN LISTS RENDERGRAPH_NODE_SOURCES)
+    get_filename_component(node_name ${node_src} NAME_WE)
+    set(node_target "RenderGraphNode_${node_name}")
+    add_library(${node_target} OBJECT ${node_src})
+
+    target_include_directories(${node_target}
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<BUILD_INTERFACE:${VIXEN_ROOT}/generated/sdi>
+            $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/application/main/generated/sdi>
+            $<BUILD_INTERFACE:${VIXEN_BINARIES_DIR}/generated/sdi>
+        PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+    target_link_libraries(${node_target}
+        PUBLIC
+            RenderGraphCore
+            glfw
+            rmlui_core
+            freetype
+    )
+    target_compile_definitions(${node_target} PUBLIC RMLUI_STATIC_LIB)
+    target_compile_features(${node_target} PUBLIC cxx_std_23)
+    if(MSVC)
+        target_compile_options(${node_target} PRIVATE /FS /bigobj)
+    endif()
+    set_target_properties(${node_target} PROPERTIES FOLDER "Libraries/RenderGraphNodes")
+
+    list(APPEND RENDERGRAPH_NODE_OBJECT_LIBS ${node_target})
+endforeach()
+
+# ----------------------------------------------------------------------------
+# RenderGraphNodes — facade over ALL per-node OBJECT libraries (+ the UI
+# sources, which are not yet split per-node). Depends on Core.
 # ----------------------------------------------------------------------------
 add_library(RenderGraphNodes STATIC
     ${RENDERGRAPH_DATA_NODE_CONFIGS}
     ${RENDERGRAPH_NODE_HEADERS}
-    ${RENDERGRAPH_NODE_SOURCES}
     ${RENDERGRAPH_UI_HEADERS}
     ${RENDERGRAPH_UI_SOURCES}
 )
+target_link_libraries(RenderGraphNodes PUBLIC ${RENDERGRAPH_NODE_OBJECT_LIBS})
 
 # ----------------------------------------------------------------------------
 # RenderGraph — back-compat facade: existing consumers link this and get both.
-# RenderGraphNodes is linked WHOLE-ARCHIVE so the per-node VIXEN_REGISTER_NODE
-# registrars (anonymous-namespace statics that nothing references) are not
-# stripped by the linker. Without it RegisterAllNodes() registers nothing — the
-# guard is test_node_self_registration.
+#
+# OBJECT library members are unconditionally included in whatever links them
+# (no "unreferenced symbol" stripping the way STATIC archive members get) —
+# verified empirically for M2 (test_node_self_registration node count
+# unchanged with whole-archive removed). RenderGraphNodes itself remains a
+# STATIC archive (it still bundles the not-yet-split UI sources), so it can
+# still be stripped by a downstream linker; keep whole-archiving IT, which
+# also unconditionally pulls in its linked OBJECT-library members.
 # ----------------------------------------------------------------------------
 add_library(RenderGraph INTERFACE)
 target_link_libraries(RenderGraph INTERFACE RenderGraphCore)
