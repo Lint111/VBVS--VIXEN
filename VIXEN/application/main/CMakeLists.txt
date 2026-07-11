@@ -149,6 +149,22 @@ if(TARGET TBB::tbb)
     message(STATUS "VIXEN: TBB DLL will be copied to output directory")
 endif()
 
+# Mirror the fresh executable into VIXEN_ROOT/binaries/ (source-tree, gitignored) so
+# hand-rolled capture .bat scripts that run the relative path "binaries\VIXEN.exe" from
+# VIXEN_ROOT never silently read a stale copy left over from an earlier build. This
+# directory is NOT CMAKE_BINARY_DIR/binaries (the real build output, $<TARGET_FILE_DIR:VIXEN>)
+# and CMake never touched it before this command -- a real, confirmed staleness gap (Inc3
+# M8 Task 21, 2026-07-11): the two paths could silently diverge with no build-system link
+# between them, and no existing .bat script copied the fresh build forward on its own.
+add_custom_command(TARGET VIXEN POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+        ${VIXEN_ROOT}/binaries
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:VIXEN>
+        ${VIXEN_ROOT}/binaries/
+    COMMENT "Mirroring VIXEN.exe into VIXEN_ROOT/binaries/ for relative-path capture scripts"
+)
+
 # Copy the UI assets next to the executable so the RmlUi demo is self-contained
 # (the app loads them via the relative path "assets/ui/..."). Uses the shared
 # vixen_stage_assets helper (cmake/VixenAssets.cmake) so consumers stage assets the same
