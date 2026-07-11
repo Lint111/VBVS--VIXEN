@@ -1,0 +1,346 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+
+// ============================================================================
+// DirectLighting.comp - Direct-lighting shade pass (Sampled Lighting Inc3 M1)
+// ============================================================================
+// KI-018: the shading half of BodyInstanceRayMarch.comp, split into its own
+// ComputeStageNode pass. The march writes HitRecord (the G-buffer boundary)
+// and returns; this pass reads HitRecord back, shades (GGX/Lambert + shadow
+// rays via TraceWorldShadow), blends the temporal-accumulation history, and
+// owns the final outputImage/historyImage writes. A PURE pass-split refactor:
+// same math, same accumulation logic, same output — see this shader's own
+// main() for the byte-for-byte-moved shading/accumulation seam.
+//
+// TraceWorldShadow (SceneBindings.glsl, #included below) needs the FULL scene
+// traversal machinery to cast an any-hit occlusion ray against the same body
+// instances/octrees the march traversed — this pass therefore declares its
+// OWN copy of every scene SSBO (bindings 1/2/3/4/5/10/11/12/13/14/15) via a
+// SEPARATE DescriptorResourceGathererNode (see BuildRenderGraph.cpp), mirroring
+// the march's own gatherer wiring. Those scene buffers are read-only in BOTH
+// passes (read-after-read is not a hazard), so no auto-sync hazard slot is
+// declared for them — only HitRecord (read) and the output image (write) are
+// genuine hazards for the scheduler to bake a barrier/timeline edge on.
+// ============================================================================
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+// ============================================================================
+// BUFFER BINDINGS
+// ============================================================================
+// Binding 0 (outputImage): THIS pass now owns the write (moved from the march
+// — see BodyInstanceRayMarch.comp's own MAIN comment). Binding 9 (idOutputImage)
+// is NOT declared here — the march still owns that write exclusively.
+
+layout(binding = 0) uniform writeonly image2D outputImage;
+
+#include "SceneBindings.glsl"   // Sampled Lighting Inc3 M1: scene SSBOs + traversal (KI-018)
+
+// ============================================================================
+// LIGHTING CONFIG (binding 16) — moved here from BodyInstanceRayMarch.comp
+// ============================================================================
+// Single LightingConfig record (kernel-codegen-generated struct, std430 —
+// see Generated/LightingConfig.glsl / LightingConfig.g.h). Bound as an SSBO
+// (not a UBO) because the framework emits std430 only; a std140 UBO would
+// restride Light's nested array and desync from the generated C++ layout
+// (see test_lightingconfig_sdi_parity.cpp). Uploaded per-frame from a ring
+// buffer (LightingConfigNode) — same content/wiring as before the split.
+#include "Generated/LightingConfig.glsl"
+
+layout(std430, binding = 16) readonly buffer LightingConfigSSBO {
+    LightingConfig lightingConfig;
+};
+
+// ============================================================================
+// HIT RECORD BUFFER (binding 17) — this pass READS ONLY
+// ============================================================================
+// The march (BodyInstanceRayMarch.comp) writes this SSBO; this pass re-reads
+// it in its own dispatch to shade. Same layout/addressing as the march's own
+// declaration (flat row-major y*width+x, sized to the render target extent).
+#include "HitRecord.glsl"
+
+layout(std430, binding = 17) readonly buffer HitRecordBuffer {
+    HitRecord hitRecords[];
+};
+
+// ============================================================================
+// SHADOW CONFIG (binding 18) — moved here from BodyInstanceRayMarch.comp
+// ============================================================================
+// Single ShadowConfig record (kernel-codegen-generated struct, std430 — see
+// Generated/ShadowConfig.glsl / ShadowConfig.g.h). Bound as an SSBO, mirroring
+// LightingConfigSSBO's own std430-not-std140 rationale (the framework emits
+// std430 only). Uploaded per-frame from a ring buffer (ShadowConfigNode).
+#include "Generated/ShadowConfig.glsl"
+
+layout(std430, binding = 18) readonly buffer ShadowConfigSSBO {
+    ShadowConfig shadowConfig;
+};
+
+// ============================================================================
+// TEMPORAL ACCUMULATION (bindings 19/20) — moved here from BodyInstanceRayMarch.comp
+// ============================================================================
+// Single AccumulationConfig record (kernel-codegen-generated struct, std430 — see
+// Generated/AccumulationConfig.glsl / AccumulationConfig.g.h) plus the persistent
+// history storage image (AccumulationHistoryNode — NOT the RenderTargetNode ring,
+// which rotates every frame per KI-009; this image survives across frames by
+// design). When accumulationConfig.enabled != 0, blend outColor with historyImage
+// and write the blend to both images; with enabled == 0 the seam is a pure
+// passthrough — same behavior as pre-split.
+#include "Generated/AccumulationConfig.glsl"
+
+layout(std430, binding = 19) readonly buffer AccumulationConfigSSBO {
+    AccumulationConfig accumulationConfig;
+};
+
+// Format matches outputImage (R8G8B8A8_UNORM — AccumulationHistoryNode's own default,
+// confirmed from RenderTargetNode's format).
+layout(rgba8, binding = 20) uniform image2D historyImage;
+
+// ============================================================================
+// PREV-FRAME CAMERA MATRIX (binding 21) — moved here from BodyInstanceRayMarch.comp
+// ============================================================================
+// Single PrevCameraConfig record (kernel-codegen-generated struct, std430 —
+// see Generated/PrevCameraConfig.glsl / PrevCameraConfig.g.h): LAST frame's
+// view*projection matrix (world -> prev-frame clip space), retained by
+// CameraNode (compute-current-then-store-previous each frame) and uploaded
+// per-frame from a ring buffer (PrevCameraConfigNode). Consumed below to
+// reproject HitRecord.worldPos into prev-frame screen space for historyImage
+// sampling (reprojection mode).
+#include "Generated/PrevCameraConfig.glsl"
+
+layout(std430, binding = 21) readonly buffer PrevCameraConfigSSBO {
+    PrevCameraConfig prevCameraConfig;
+};
+
+// ============================================================================
+// PUSH CONSTANTS: the `pc` block (PushConstants, incl. DEBUG_MODE_* defines) is
+// declared once in SceneBindings.glsl (#included above) — this pass reads the
+// SAME push-constant range the march does: cameraPos/Dir/Up/Right/fov/aspect
+// (getRayDir), debugMode (debug visualisation), instanceCount (TraceWorldShadow's
+// instance loop), and accumFrameCount (the accumulate seam's alpha). Wired from
+// the same host-side data as the march's push constants (see BuildRenderGraph.cpp).
+// ============================================================================
+// DIRECT LIGHTING WITH SHADOW RAYS (moved verbatim from BodyInstanceRayMarch.comp,
+// Sampled Lighting Inc1 M4)
+// ============================================================================
+// Extends Lighting.glsl's data-driven computeLighting(color,normal,rayDir,
+// roughness,LightingConfig) overload with a shadow-ray occlusion test per
+// light, gated by shadowConfig.enabled. Lives HERE (not Lighting.glsl) because
+// it needs TraceWorldShadow (SceneBindings.glsl's TraceWorld.glsl include) in
+// scope — Lighting.glsl is included much earlier (before the traversal
+// machinery exists) and stays a pure shading-math file with no traversal
+// dependency.
+//
+// Math is IDENTICAL to Lighting.glsl's data-driven overload (ambient term +
+// per-light evalBRDF*radiance*NdotL, matching computeLighting exactly) with
+// ONE addition: when shadowConfig.enabled, each light's contribution is
+// multiplied by 0.0 (fully occluded) or 1.0 (unoccluded) based on a
+// TraceWorldShadow cast toward that light. When shadowConfig.enabled==0 this
+// function reduces to EXACTLY Lighting.glsl's unshadowed sum.
+//
+// Self-intersection bias: per TraceWorldShadow's documented convention (a),
+// the shadow ray's ORIGIN is offset off the surface (worldPos + normal*eps)
+// and tmin is passed as 0.0 — NOT both conventions at once (double-biasing).
+vec3 computeLightingWithShadows(vec3 color, vec3 normal, vec3 worldPos, vec3 rayDir,
+                                float roughness, LightingConfig lighting) {
+    vec3 viewDir = normalize(-rayDir);
+
+    vec3 Lo = lighting.ambientIntensity * color;
+    for (uint i = 0u; i < lighting.lightCount; ++i) {
+        Light light = lighting.lights[i];
+        vec3 lightDir = normalize(light.direction_or_position);
+
+        float shadowFactor = 1.0;
+        if (shadowConfig.enabled != 0u) {
+            // kind 0 = directional (see Lighting.glsl's data-driven overload):
+            // direction_or_position is the direction AWAY from the surface
+            // toward the light, so the shadow ray tests all the way to
+            // maxShadowDistance (no finite light position to stop short at).
+            vec3 shadowOrigin = worldPos + normal * shadowConfig.biasEpsilon;
+            bool occluded = TraceWorldShadow(shadowOrigin, lightDir,
+                                             0.0,
+                                             shadowConfig.maxShadowDistance);
+            shadowFactor = occluded ? 0.0 : 1.0;
+        }
+
+        Lo += evalBRDF(color, roughness, normal, viewDir, lightDir) * light.radiance * shadowFactor;
+    }
+    return Lo;
+}
+
+// ============================================================================
+// MAIN
+// ============================================================================
+// Re-derives rayDir from pixel coords + this pass's own push constants (the
+// SAME formula the march uses — getRayDir, SceneBindings.glsl's RayGeneration.glsl
+// include), reads HitRecord back (written by the march this same frame), shades,
+// blends temporal accumulation, and writes outputImage/historyImage. Moved
+// verbatim from BodyInstanceRayMarch.comp's main() (Sampled Lighting Inc3 M1,
+// KI-018) — same math, same accumulation logic, same output.
+
+void main() {
+    ivec2 pixelCoords = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 imgSize     = imageSize(outputImage);
+
+    if (pixelCoords.x >= imgSize.x || pixelCoords.y >= imgSize.y) return;
+
+    vec2 uv = (vec2(pixelCoords) + 0.5) / vec2(imgSize);
+    vec3 rayDir = getRayDir(uv);
+
+    // Sky colour (used when no instance is hit) — identical formula to the march.
+    vec3 skyColor = vec3(0.02, 0.02, 0.06) * (1.0 - uv.y * 0.4);
+
+    // -----------------------------------------------------------------------
+    // Read back the HitRecord the march wrote this frame — the G-buffer
+    // boundary between the two passes (KI-018).
+    // -----------------------------------------------------------------------
+    uint hitRecordIdx = uint(pixelCoords.y) * uint(imgSize.x) + uint(pixelCoords.x);
+    HitRecord recReadback = hitRecords[hitRecordIdx];
+
+    bool  anyHitRT      = (recReadback.flags & HITRECORD_FLAG_HIT) != 0u;
+    vec3  bestColor      = recReadback.albedo;
+    vec3  bestNormal     = recReadback.worldNormal;
+    float bestRoughness  = recReadback.roughness;
+    vec3  bestWorldPos   = recReadback.worldPos;
+
+    // -----------------------------------------------------------------------
+    // Shade & write output — driven by anyHitRT (the SSBO-round-tripped flag),
+    // exactly as the pre-split march did.
+    // -----------------------------------------------------------------------
+    vec3 outColor;
+    if (anyHitRT) {
+        outColor = computeLightingWithShadows(bestColor, bestNormal, bestWorldPos, rayDir,
+                                               bestRoughness, lightingConfig);
+    } else {
+        outColor = skyColor;
+    }
+
+    // Debug visualisation modes (reuse the last instance's debug sample —
+    // full per-instance debug would need an extra accumulator; this is a
+    // best-effort approximation for the iteration/depth modes).
+    if (pc.debugMode > 0 && anyHitRT) {
+        switch (pc.debugMode) {
+            case DEBUG_MODE_NORMALS:
+                outColor = normalShading(bestNormal);
+                break;
+            default:
+                break;
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Temporal accumulation seam (Sampled Lighting Inc2 M2/M4). accumulationConfig.
+    // enabled == 0 takes the unchanged passthrough branch below -- byte-identical
+    // to the pre-accumulation baseline. When enabled, blend outColor against
+    // historyImage and write the blend to BOTH images so next frame's history
+    // read sees this frame's result.
+    //
+    // alpha selection:
+    //   accumulationConfig.alpha == 0.0 (sentinel) -> DEFAULT converging 1/N mode:
+    //     alpha = 1/accumFrameCount, accumFrameCount being the consecutive-
+    //     static-camera frame counter (CPU-side, AccumulationConfigNode) clamped
+    //     to accumulationConfig.maxFrames when maxFrames > 0.
+    //   accumulationConfig.alpha > 0.0 -> fixed exponential-decay alpha.
+    // mix(history, outColor, alpha): alpha==1 -> pure current frame (the
+    // reset-on-motion case, zero ghosting by construction); alpha->0 -> mostly
+    // history.
+    //
+    // reprojectionEnabled (M4): when set, AccumulationConfigNode does NOT hard-
+    // reset accumFrameCount on camera motion, so alpha keeps shrinking through a
+    // moving camera instead of snapping back to 1.0 every moving frame. Fix:
+    // reproject bestWorldPos through last frame's view*proj
+    // (prevCameraConfig.prevViewProj) to find WHERE this surface point was on
+    // screen last frame, and validate that sample before trusting it (bounds +
+    // motion-magnitude + color-consistency) -- reject -> per-pixel alpha=1 (pure
+    // current, same fallback semantics as the frame-1/reset guard below).
+    // -----------------------------------------------------------------------
+    if (accumulationConfig.enabled != 0u) {
+        float alpha;
+        if (accumulationConfig.alpha == 0.0) {
+            uint frameCount = pc.accumFrameCount;
+            if (accumulationConfig.maxFrames > 0u) {
+                frameCount = min(frameCount, accumulationConfig.maxFrames);
+            }
+            alpha = 1.0 / float(max(frameCount, 1u));
+        } else {
+            alpha = accumulationConfig.alpha;
+        }
+
+        // alpha >= 1.0 means "pure current frame" (frame 1 of a run, or right after a
+        // motion reset) -- skip the historyImage read entirely rather than trust
+        // mix(history, outColor, 1.0) to discard it exactly. historyImage's very first
+        // content is genuinely uninitialized (AccumulationHistoryNode creates it with no
+        // clear -- see its file header), and a NaN/Inf-poisoned mix operand survives an
+        // alpha==1.0 blend (x*0.0 with x=NaN is still NaN), so this guard is a real
+        // correctness fix, not just an optimization.
+        vec4 blended;
+        if (alpha >= 1.0) {
+            blended = vec4(outColor, 1.0);
+        } else if (accumulationConfig.reprojectionEnabled != 0u) {
+            // ---- M4 reprojection + per-pixel validation ----
+            // World -> prev-frame clip -> prev-frame NDC -> prev-frame UV -> texel.
+            vec4 prevClip = prevCameraConfig.prevViewProj * vec4(bestWorldPos, 1.0);
+
+            bool valid = anyHitRT && prevClip.w > 1e-5;
+            vec2 reprojUV = vec2(0.0);
+            if (valid) {
+                vec2 prevNDC = prevClip.xy / prevClip.w;
+                // prevViewProj's projection[1][1] *= -1.0 (CameraNode) already puts clip-space
+                // Y in the same top-left-origin convention this shader's own imageStore
+                // addressing (pixelCoords / imgSize, gl_GlobalInvocationID-driven, row 0 = top)
+                // uses -- NOT getRayDir's internal ndc.y=-ndc.y flip, a SEPARATE concern.
+                reprojUV = prevNDC * 0.5 + 0.5;
+                // (a) On-screen bounds -- disocclusion at the frame edge / surface just
+                // rotated into view. Off-screen last frame means there is no valid history
+                // sample for it.
+                valid = all(greaterThanEqual(reprojUV, vec2(0.0))) &&
+                        all(lessThanEqual(reprojUV, vec2(1.0)));
+            }
+
+            vec4 blendedResult;
+            if (valid) {
+                ivec2 reprojTexel = ivec2(reprojUV * vec2(imgSize));
+                reprojTexel = clamp(reprojTexel, ivec2(0), imgSize - ivec2(1));
+
+                // (b) Motion-magnitude reject -- a large screen-space jump between "this
+                // pixel" and "where the reprojected sample lands" is the disocclusion/
+                // newly-revealed-surface signal (no companion depth/worldPos history
+                // buffer -- see KI-023 for the Inc3 prerequisite this incurs).
+                vec2 texelDelta = vec2(reprojTexel - pixelCoords);
+                float texelDist2 = dot(texelDelta, texelDelta);
+                const float kMaxReprojTexelDist = 64.0; // 8 px radius, generous for camera-only motion
+                valid = texelDist2 <= (kMaxReprojTexelDist * kMaxReprojTexelDist);
+
+                if (valid) {
+                    // Nearest-texel fetch: historyImage is a plain uniform image2D (imageLoad/
+                    // Store target, integer texel coords), not a combined sampler2D.
+                    vec4 history = imageLoad(historyImage, reprojTexel);
+
+                    // (c) Color-consistency reject -- catches a slow-growing silhouette edge
+                    // the bounds+motion-magnitude checks above miss. See KI-023: this check
+                    // is sound for a deterministic march but will fight Inc3's stochastic
+                    // sampling once ReSTIR lands — tracked as a required follow-up, not
+                    // touched by this pass-split milestone.
+                    vec3 colorDelta = abs(history.rgb - outColor);
+                    const float kMaxReprojColorDelta = 0.15;
+                    valid = max(max(colorDelta.r, colorDelta.g), colorDelta.b) <= kMaxReprojColorDelta;
+
+                    blendedResult = valid ? mix(history, vec4(outColor, 1.0), alpha)
+                                           : vec4(outColor, 1.0);
+                } else {
+                    blendedResult = vec4(outColor, 1.0);
+                }
+            } else {
+                blendedResult = vec4(outColor, 1.0);
+            }
+            blended = blendedResult;
+        } else {
+            vec4 history = imageLoad(historyImage, pixelCoords);
+            blended = mix(history, vec4(outColor, 1.0), alpha);
+        }
+        imageStore(outputImage, pixelCoords, blended);
+        imageStore(historyImage, pixelCoords, blended);
+    } else {
+        imageStore(outputImage, pixelCoords, vec4(outColor, 1.0));
+    }
+}
