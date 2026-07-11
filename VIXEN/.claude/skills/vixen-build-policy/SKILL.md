@@ -96,13 +96,35 @@ powershell -ExecutionPolicy Bypass -File VIXEN\scripts\build\build_queue.ps1 -St
 #                        is still held by an in-flight build — these are reported distinctly).
 #   UNKNOWN_TICKET    -> your ticket expired (see Reap below), was released, or never existed.
 
-# 4. ALWAYS release your ticket after build.bat returns — whether it built, failed, or you
-#    decided not to build after all. A ticket left behind blocks everyone queued behind you.
+# 4. Release is AUTOMATIC once build.bat actually starts the build (see below) — you do not
+#    need to call -Release yourself in that case. Only call it explicitly if you registered a
+#    ticket and then decided NOT to build after all (so nothing else will ever release it):
 powershell -ExecutionPolicy Bypass -File VIXEN\scripts\build\build_queue.ps1 -Release -TicketId <id>
 ```
 
 `-ListQueue` shows the whole queue (position, agent, note, registration time) plus current
 lock state — useful for a human or an orchestrating agent to see who's waiting.
+
+**Ticket release is automatic, not dependent on the dispatching agent staying alive.** Pass
+your ticket through to the actual build via the `VIXEN_QUEUE_TICKET_ID` env var:
+
+```bash
+VIXEN_QUEUE_TICKET_ID=<id> cmd.exe /c "C:\...\build.bat build vixen-ninja"
+```
+
+`run_build_with_summary.ps1` releases that ticket itself, in the same `finally` block that
+releases the build-lock Mutex — so release is tied to the **build process's own lifetime**, not
+to whether the agent that registered it is still around afterward to call `-Release`. This
+closes a real gap: previously a ticket was only ever released by the dispatching agent calling
+`-Release` after `build.bat` returned, so an agent that got killed, crashed, or had its context
+cleared mid-build left its ticket blocking the queue until the 60-minute stale reap. Now the
+build itself — success, failure, or crash — always clears it. `run_build_with_summary.ps1` also
+writes the outcome to `%TEMP%\vixen_build_queue_results\<TicketId>.log` (exit code, failed
+targets, path to the full build log) so a *different* agent, or the same agent resumed later,
+can read what happened without having stayed attached to watch it happen.
+
+You should still call `-Release` explicitly in the one case auto-release doesn't cover:
+registering a ticket and then deciding not to build at all.
 
 **Notification mechanism, concretely — active polling, NOT `ScheduleWakeup`/`Monitor`.**
 `ScheduleWakeup` and background-task notifications have repeatedly failed to reliably wake an
@@ -220,5 +242,8 @@ line matches your worktree, per the gotcha above) — never the shared status fi
   with nothing watching it. An active 20s foreground loop is the correct middle ground.
 - Don't assume the lock/queue coordinates with a WSL-side build (undertow or otherwise) — it
   doesn't, by design (see Platform scope above).
-- Don't leave a queue ticket unreleased "because it'll expire eventually" — release it
-  immediately when you're done, even on failure/abort.
+- Don't manually call `-Release` after a build you dispatched via `VIXEN_QUEUE_TICKET_ID` —
+  `run_build_with_summary.ps1` already released it in its `finally` block; calling `-Release`
+  again is harmless (idempotent — "already released") but unnecessary. DO still call `-Release`
+  yourself if you registered a ticket and decided not to build at all — nothing else will ever
+  release that one.

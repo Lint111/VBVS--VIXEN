@@ -35,6 +35,10 @@ REM   VIXEN_SKIP_BUILD_LOCK=1   bypass the lock entirely
 REM   VIXEN_MAX_BUILD_JOBS      cap on concurrent ninja jobs (default ~75% of
 REM                             logical cores) so a build leaves the machine
 REM                             usable instead of pegging every core
+REM   VIXEN_QUEUE_TICKET_ID     if you registered a build_queue.ps1 ticket before
+REM                             calling this script, set this to its TicketId and
+REM                             it is auto-released when the build finishes/fails/
+REM                             crashes - you do not need to call -Release yourself.
 REM ===========================================================================
 
 set "ACTION=%~1"
@@ -140,5 +144,7 @@ set "SKIP_LOCK_ARG="
 if "%VIXEN_SKIP_BUILD_LOCK%"=="1" set "SKIP_LOCK_ARG=-SkipLock"
 set "TARGET_ARG="
 if not "%TARGET%"=="" set "TARGET_ARG=-Target \"%TARGET%\""
-powershell -ExecutionPolicy Bypass -File "%SRC_DIR%\scripts\build\run_build_with_summary.ps1" -CMakeExe "%CMAKE_EXE%" -Preset "%PRESET%" -LockTimeoutSeconds %VIXEN_BUILD_LOCK_TIMEOUT% %SKIP_LOCK_ARG% %TARGET_ARG%
+set "TICKET_ARG="
+if not "%VIXEN_QUEUE_TICKET_ID%"=="" set "TICKET_ARG=-QueueTicketId \"%VIXEN_QUEUE_TICKET_ID%\""
+powershell -ExecutionPolicy Bypass -File "%SRC_DIR%\scripts\build\run_build_with_summary.ps1" -CMakeExe "%CMAKE_EXE%" -Preset "%PRESET%" -LockTimeoutSeconds %VIXEN_BUILD_LOCK_TIMEOUT% %SKIP_LOCK_ARG% %TARGET_ARG% %TICKET_ARG%
 exit /b %errorlevel%

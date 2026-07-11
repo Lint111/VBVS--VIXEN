@@ -39,7 +39,8 @@ param(
     [int]$LockTimeoutSeconds = 1800,
     [switch]$SkipLock,
     [int]$MaxParallelJobs = 0,
-    [string]$Target = ""
+    [string]$Target = "",
+    [string]$QueueTicketId = ""
 )
 
 # Fix 10: cap ninja's overall concurrent job count below full core count by default, so a
@@ -210,5 +211,45 @@ exit $buildExitCode
         $mutex.ReleaseMutex()
         $mutex.Dispose()
         Write-Host "[build] Build lock released."
+    }
+
+    # Auto-release the caller's queue ticket (if any) HERE, not left to the caller to remember
+    # after this script returns. This is the fix for a real gap: build_queue.ps1's -Release was
+    # previously only ever called by the dispatching agent itself, after build.bat returned -
+    # if that agent's turn ends abnormally (killed, crashed, context-cleared) before it gets to
+    # -Release, the ticket sat there blocking everyone behind it until the 60-minute stale reap.
+    # Releasing in THIS finally block ties ticket lifetime to the build process's own lifetime
+    # (same guarantee the Mutex release above already has), independent of whether the
+    # dispatching agent is still around to call anything afterward.
+    if ($QueueTicketId) {
+        $queueScript = Join-Path $PSScriptRoot "build_queue.ps1"
+        if (Test-Path $queueScript) {
+            try {
+                & powershell -ExecutionPolicy Bypass -File $queueScript -Release -TicketId $QueueTicketId | Out-Null
+                Write-Host "[build] Queue ticket $QueueTicketId auto-released."
+            } catch {
+                Write-Host "[build] WARNING: failed to auto-release queue ticket $QueueTicketId : $_"
+            }
+        }
+
+        # Post the result to a per-ticket log so an agent that isn't still attached (or a
+        # different agent entirely) can read the outcome later without needing to have polled
+        # -Status through to completion. Best-effort - never let a logging failure mask the
+        # real build exit code.
+        try {
+            $resultLogDir = "$env:TEMP\vixen_build_queue_results"
+            if (-not (Test-Path $resultLogDir)) { New-Item -ItemType Directory -Path $resultLogDir -Force | Out-Null }
+            $resultLines = @(
+                "TicketId: $QueueTicketId",
+                "CompletedUtc: $((Get-Date).ToUniversalTime().ToString('o'))",
+                "ExitCode: $buildExitCode",
+                "TargetsFailed: $($failedTargets.Count)",
+                "FailedTargets: $($failedTargets -join ', ')",
+                "BuildLog: $buildLog"
+            )
+            Set-Content -Path "$resultLogDir\$QueueTicketId.log" -Value $resultLines -Encoding utf8
+        } catch {
+            Write-Host "[build] WARNING: failed to write queue result log for ticket $QueueTicketId : $_"
+        }
     }
 }
