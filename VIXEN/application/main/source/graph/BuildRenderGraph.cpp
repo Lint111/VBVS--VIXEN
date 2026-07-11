@@ -22,8 +22,10 @@
 #include "Data/Nodes/BodyOctreeSceneNodeConfig.h"  // M-wire: sparse shell octree + instance SSBO config
 #include "Data/Nodes/CameraNodeConfig.h"
 #include "Data/Nodes/CommandPoolNodeConfig.h"
+#include "Data/Nodes/BlitNodeConfig.h"  // Sampled Lighting Inc3 M1: presentation-only blit (post-DirectLighting)
 #include "Data/Nodes/ComputeDispatchNodeConfig.h"
 #include "Data/Nodes/ComputePipelineNodeConfig.h"
+#include "Data/Nodes/ComputeStageNodeConfig.h"  // Sampled Lighting Inc3 M1: DirectLightingNode
 #include "Data/Nodes/ConstantNodeConfig.h"
 #include "Data/Nodes/DebugBufferReaderNodeConfig.h"
 #include "Data/Nodes/DepthBufferNodeConfig.h"
@@ -60,11 +62,13 @@
 #include "Data/Nodes/WindowNodeConfig.h"
 // M-wire: BodyOctreeSceneNode.h MUST precede UIRenderNode.h (gaia std::hash before robin_hood) — see file header above.
 #include "MipBake.h"  // Tiered-ESVO Inc2 M4: BakeAndAttachMipPool for the tier-crossing demo scene
+#include "Nodes/BlitNode.h"  // Sampled Lighting Inc3 M1: presentation-only blit (post-DirectLighting)
 #include "Nodes/BodyOctreeSceneNode.h"  // M-wire: sparse shell octree + instance SSBO
 #include "Nodes/CameraNode.h"
 #include "Nodes/CommandPoolNode.h"
 #include "Nodes/ComputeDispatchNode.h"
 #include "Nodes/ComputePipelineNode.h"
+#include "Nodes/ComputeStageNode.h"  // Sampled Lighting Inc3 M1: DirectLightingNode
 #include "Nodes/ConstantNodeType.h"
 #include "Nodes/DebugBufferReaderNode.h"
 #include "Nodes/DepthBufferNode.h"
@@ -207,6 +211,30 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // imgSize (imageSize(outputImage) in the shader) even under render-scale (<1.0) — the same
     // extent-follow cascade RenderTargetNode itself rides.
     NodeHandle hitRecordBufferNode = renderGraph->AddNode<StorageBufferNodeType>("hit_record_buffer");
+
+    // Sampled Lighting Inc3 M1 (KI-018): DirectLightingNode — the shading pass split out of
+    // BodyInstanceRayMarch.comp (which is now traversal-only: writes HitRecord + the pick-ID
+    // image, no longer outputImage). Own ComputeStageNode submit (its OWN vkQueueSubmit2 /
+    // SubmitGroup, separate from the march's ComputeDispatchNode submit), reading HitRecord
+    // (binding 17) and writing outputImage (binding 0) via renderTargetNode's RENDER_TARGET
+    // through the generic IMAGE_WRITE sync slot. Needs its own shaderLib/gatherer/pushConstant-
+    // gatherer/descSet/pipeline quintet — DescriptorResourceGathererNode and
+    // PushConstantGathererNode reflect from THEIR wired SHADER_DATA_BUNDLE, so a second compiled
+    // shader (different push-constant field usage after dead-code elimination) needs its own
+    // instances, mirroring BuildFanInDemoGraph's per-stage wirePipeline/wireStageCommon shape.
+    NodeHandle directLightingShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("direct_lighting_shader_lib");
+    NodeHandle directLightingGatherer  = renderGraph->AddNode<DescriptorResourceGathererNodeType>("direct_lighting_desc_gatherer");
+    NodeHandle directLightingPushConstantGatherer = renderGraph->AddNode<PushConstantGathererNodeType>("direct_lighting_push_constant_gatherer");
+    NodeHandle directLightingDescriptorSet = renderGraph->AddNode<DescriptorSetNodeType>("direct_lighting_descriptors");
+    NodeHandle directLightingPipeline = renderGraph->AddNode<ComputePipelineNodeType>("direct_lighting_pipeline");
+    NodeHandle directLightingNode = renderGraph->AddNode<ComputeStageNodeType>("direct_lighting");
+
+    // Sampled Lighting Inc3 M1: presentation-only blit of the offscreen render target to the
+    // swapchain (extracted from ComputeDispatchNode's M4 render-target blit — same
+    // SwapchainBarriers::BlitRenderTargetToSwapchain free function, now shared). Runs after
+    // DirectLightingNode, before the sky-projection/UI composite chain (which still reads the
+    // swapchain image, unchanged).
+    NodeHandle blitNode = renderGraph->AddNode<BlitNodeType>("render_target_blit");
 
     // Sampled Lighting Inc2 M1: AccumulationConfig data (binding 19). Same per-frame ring
     // upload pattern as shadowConfigNode above — separate node (see AccumulationConfigNode.h's
@@ -512,6 +540,59 @@ void VulkanGraphApplication::BuildRenderGraph() {
     dispatch->SetParameter(ComputeDispatchNodeConfig::DISPATCH_X, dispatchX);  // Workgroup size 8x8
     dispatch->SetParameter(ComputeDispatchNodeConfig::DISPATCH_Y, dispatchY);
     dispatch->SetParameter(ComputeDispatchNodeConfig::DISPATCH_Z, 1u);
+
+    // Sampled Lighting Inc3 M1 (KI-018): DirectLighting.comp shader registration. Same shader-source
+    // search-path pattern as BodyInstanceRayMarch.comp above; includes shaders/SceneBindings.glsl
+    // (shared scene/traversal declarations) so both compiled programs stay byte-identical on the
+    // shared portion.
+    auto* directLightingShaderLibNode = static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(directLightingShaderLib));
+    directLightingShaderLibNode->RegisterShaderBuilder([this](int vulkanVer, int spirvVer) {
+        ShaderManagement::ShaderBundleBuilder builder;
+        constexpr const char* shaderName = "DirectLighting.comp";
+        constexpr const char* programName = "DirectLighting";
+        std::vector<std::filesystem::path> possiblePaths = {
+#ifdef VIXEN_SHADER_SOURCE_DIR
+            std::string(VIXEN_SHADER_SOURCE_DIR) + "/" + shaderName,
+#endif
+            std::string("shaders/") + shaderName,
+            std::string("../shaders/") + shaderName,
+            shaderName
+        };
+        std::filesystem::path compPath;
+        for (const auto& path : possiblePaths) {
+            if (std::filesystem::exists(path)) { compPath = path; break; }
+        }
+        if (compPath.empty()) {
+            throw std::runtime_error(std::string(shaderName) + " not found - check shader search paths");
+        }
+        builder.SetProgramName(programName)
+               .SetPipelineType(ShaderManagement::PipelineTypeConstraint::Compute)
+               .SetTargetVulkanVersion(vulkanVer)
+               .SetTargetSpirvVersion(spirvVer)
+               .AddIncludePath("shaders")
+               .AddIncludePath("../shaders")
+#ifdef VIXEN_SHADER_SOURCE_DIR
+               .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
+#endif
+               .AddStageFromFile(ShaderManagement::ShaderStage::Compute, compPath, "main");
+        return builder;
+    });
+
+    // DirectLightingNode: NOT swapchain-adjacent (isConsumer=false — no WSI, no fence, no
+    // PRESENT_SRC). Dispatch dims left at 0/0 so RecordComputeCommands derives them LIVE from
+    // IMAGE_WRITE's (renderTargetNode's) extent every Execute — the same live-derivation M4
+    // relies on for VIXEN_RENDER_SCALE, now mirrored on the shading pass.
+    auto* directLighting = static_cast<ComputeStageNode*>(renderGraph->GetInstance(directLightingNode));
+    directLighting->SetParameter(ComputeStageNodeConfig::PARAM_IS_CONSUMER, false);
+    directLighting->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, 0u);
+    directLighting->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, 0u);
+    directLighting->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
+
+    // BlitNode: mirrors ComputeDispatchNode's own M4 PARAM_LEAVE_IMAGE_IN_GENERAL=true (set
+    // below beside uiComposite's own parameters) — the sky-projection/UI composite chain still
+    // owns the final GENERAL->PRESENT_SRC transition, unchanged by this milestone's pass-split.
+    auto* blit = static_cast<BlitNode*>(renderGraph->GetInstance(blitNode));
+    blit->SetParameter(BlitNodeConfig::PARAM_LEAVE_IMAGE_IN_GENERAL, true);
 
     // Ray marching: Camera parameters
     auto* camera = static_cast<CameraNode*>(renderGraph->GetInstance(cameraNode));
@@ -1059,10 +1140,18 @@ void VulkanGraphApplication::BuildRenderGraph() {
     skyProjectionFramebuffer->SetParameter(FramebufferNodeConfig::PARAM_LAYERS, 1u);
 
     // --- UI composite pass parameters ---
-    // The compute leaves the swapchain image in GENERAL (it no longer transitions to PRESENT_SRC); the
-    // sky-projection pass LOADs+draws+leaves it in GENERAL (above); the UI render pass LOADs that
-    // image, draws the HUD over it, and owns the →PRESENT_SRC transition.
+    // The chain is now march -> DirectLighting -> BlitNode -> sky-projection -> UI. BlitNode leaves
+    // the swapchain image in GENERAL (PARAM_LEAVE_IMAGE_IN_GENERAL=true, set above beside its own
+    // parameters); the sky-projection pass LOADs+draws+leaves it in GENERAL (below); the UI render
+    // pass LOADs that image, draws the HUD over it, and owns the →PRESENT_SRC transition.
+    // Sampled Lighting Inc3 M1 (KI-018): the march itself no longer writes any presentable image —
+    // PARAM_WRITES_NO_IMAGE=true skips its (now-obsolete) SWAPCHAIN_INFO layout transitions
+    // entirely (see that param's doc comment); PARAM_LEAVE_IMAGE_IN_GENERAL stays true because the
+    // march is still the frame's FIRST compute submit and must not own the in-flight fence (BlitNode
+    // does, as the last compute-queue submit before the sky/UI graphics passes) — the two params are
+    // orthogonal (image-ownership vs fence-ownership).
     dispatch->SetParameter(ComputeDispatchNodeConfig::PARAM_LEAVE_IMAGE_IN_GENERAL, true);
+    dispatch->SetParameter(ComputeDispatchNodeConfig::PARAM_WRITES_NO_IMAGE, true);
 
     auto* uiRenderPass = static_cast<RenderPassNode*>(renderGraph->GetInstance(uiRenderPassNode));
     uiRenderPass->SetParameter(RenderPassNodeConfig::PARAM_COLOR_LOAD_OP, AttachmentLoadOp::Load);   // preserve voxels
@@ -1637,21 +1726,23 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // M4: render-scale decoupling. The offscreen render target follows the swapchain's extent
     // (EXTENT_SOURCE), scaled by PARAM_SCALE (set above from VIXEN_RENDER_SCALE); it rides the
     // standard resize->recompile cascade — no per-frame extent checks anywhere in this wiring.
-    // ComputeDispatchNode's RENDER_TARGET_INFO input makes it dispatch into and blit from this
-    // target instead of writing the swapchain image directly.
+    // Sampled Lighting Inc3 M1 (KI-018): computeDispatch (the march) is DELIBERATELY NOT wired to
+    // RENDER_TARGET_INFO anymore — it no longer writes or blits the render target (DirectLighting
+    // does, via its own IMAGE_WRITE sync slot further below); wiring RENDER_TARGET_INFO here would
+    // fire ComputeDispatchNode's blit path PREMATURELY, before DirectLighting has shaded anything.
+    // See PARAM_WRITES_NO_IMAGE (set above) for how the march's now-untouched SWAPCHAIN_INFO image
+    // is kept safe without RENDER_TARGET_INFO.
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   renderTargetNode, RenderTargetNodeConfig::VULKAN_DEVICE_IN)
          .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
-                  renderTargetNode, RenderTargetNodeConfig::EXTENT_SOURCE)
-         .Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
-                  computeDispatch, ComputeDispatchNodeConfig::RENDER_TARGET_INFO,
-                  SlotRoleModifier(SlotRole::Execute));
+                  renderTargetNode, RenderTargetNodeConfig::EXTENT_SOURCE);
 
-    // M4: the compute shader's output image (binding 0) is now the offscreen render target's
-    // current view, not the swapchain's — the swapchain is written only by the blit inside
-    // ComputeDispatchNode. Was: swapChainNode::CURRENT_FRAME_IMAGE_VIEW -> descriptorGatherer 0.
+    // M-wire/M4: the march's binding-0 outputImage is kept wired to the render target's current
+    // view SOLELY so imageSize(outputImage) resolves the dispatch's pixel bounds (never
+    // imageStore'd post-split — see PARAM_WRITES_NO_IMAGE's doc comment). The real write happens
+    // on DirectLighting's OWN gatherer binding 0, wired further below.
     batch.Connect(renderTargetNode, RenderTargetNodeConfig::CURRENT_VIEW,
-                          descriptorGatherer, 0,  // outputImage at binding 0
+                          descriptorGatherer, 0,  // outputImage at binding 0 (extent query only)
                           SlotRoleModifier(SlotRole::Execute));
 
     // M4.3: raySizeCoef derives from the render target's live height (rank 6) — rides the same
@@ -1741,27 +1832,247 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_SEMAPHORE, uiCompositeNode, UIRenderNodeConfig::TIMELINE_SEMAPHORE_IN)
          .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_FRAME_BASE, uiCompositeNode, UIRenderNodeConfig::TIMELINE_FRAME_BASE_IN);
 
-    // P5b M3 (extended for Tiered ESVO Inc1 M3): the compute→sky-projection→UI ordering is carried
-    // by the baked timeline edges for GPU SYNC (memory visibility), but the graph still needs the
-    // TOPOLOGY edges so the execution order (and hence the timeline edges the scheduler bakes from
-    // them) is compute-before-sky-projection-before-UI. The FrameSyncScheduler derives edge
-    // DIRECTION from groupId order (== execution order); without these dependencies the topological
-    // sort could place UI/sky-projection before compute, baking the edges BACKWARDS, tagging the
-    // wrong group as the swapchain present-signal, and leaving the presented image in the wrong
-    // layout at the wrong point — VUID-...-01430-class bugs, VUID-vkCmdDraw-None-09600-class bugs.
-    // So we keep these two connections purely as ORDERING edges (their documented secondary
+    // ===================================================================
+    // Sampled Lighting Inc3 M1 (KI-018): DirectLightingNode + BlitNode wiring. The chain is now
+    // march (HitRecord+pick-ID only) -> DirectLighting (shades, writes the render target) ->
+    // BlitNode (blits render target -> swapchain) -> sky-projection -> UI -> present.
+    // ===================================================================
+
+    // DirectLighting's own descriptor path (shaderLib -> gatherer -> descSet -> pipeline), mirroring
+    // the march's own wiring above and BuildFanInDemoGraph's wirePipeline helper.
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  directLightingShaderLib, ShaderLibraryNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  directLightingDescriptorSet, DescriptorSetNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  directLightingPipeline, ComputePipelineNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(directLightingShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  directLightingGatherer, DescriptorResourceGathererNodeConfig::SHADER_DATA_BUNDLE)
+         .Connect(directLightingGatherer, DescriptorResourceGathererNodeConfig::DESCRIPTOR_RESOURCES,
+                  directLightingDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_RESOURCES)
+         .Connect(directLightingShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  directLightingDescriptorSet, DescriptorSetNodeConfig::SHADER_DATA_BUNDLE)
+         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+                  directLightingDescriptorSet, DescriptorSetNodeConfig::SWAPCHAIN_INFO)
+         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
+                  directLightingDescriptorSet, DescriptorSetNodeConfig::IMAGE_INDEX)
+         .Connect(directLightingShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  directLightingPipeline, ComputePipelineNodeConfig::SHADER_DATA_BUNDLE)
+         .Connect(directLightingDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_SET_LAYOUT,
+                  directLightingPipeline, ComputePipelineNodeConfig::DESCRIPTOR_SET_LAYOUT);
+
+    // DirectLighting's own push-constant gatherer: SAME field sources as the march's own gatherer
+    // above (cameraPos/time/cameraDir/fov/cameraUp/aspect/cameraRight/debugMode/raySizeCoef/
+    // raySizeBias/instanceCount/debugTargetPixel/accumFrameCount) — DirectLighting.comp declares
+    // the identical PushConstants block (shared via SceneBindings.glsl), but glslang reflects
+    // push-constant RANGES per-COMPILED-shader (dead-code-eliminated fields differ), so a second
+    // compiled program needs its own PushConstantGathererNode instance, not the march's.
+    batch.Connect(directLightingShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  directLightingPushConstantGatherer, PushConstantGathererNodeConfig::SHADER_DATA_BUNDLE);
+    batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
+                          directLightingPushConstantGatherer, VoxelRayMarch::cameraPos::BINDING,
+                          ExtractField(&CameraData::cameraPos, SlotRole::Execute));
+    batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
+                          directLightingPushConstantGatherer, VoxelRayMarch::cameraDir::BINDING,
+                          ExtractField(&CameraData::cameraDir, SlotRole::Execute));
+    batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
+                          directLightingPushConstantGatherer, VoxelRayMarch::fov::BINDING,
+                          ExtractField(&CameraData::fov, SlotRole::Execute));
+    batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
+                          directLightingPushConstantGatherer, VoxelRayMarch::cameraUp::BINDING,
+                          ExtractField(&CameraData::cameraUp, SlotRole::Execute));
+    batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
+                          directLightingPushConstantGatherer, VoxelRayMarch::aspect::BINDING,
+                          ExtractField(&CameraData::aspect, SlotRole::Execute));
+    batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
+                          directLightingPushConstantGatherer, VoxelRayMarch::cameraRight::BINDING,
+                          ExtractField(&CameraData::cameraRight, SlotRole::Execute));
+    batch.Connect(inputNode, InputNodeConfig::INPUT_STATE,
+                          directLightingPushConstantGatherer, VoxelRayMarch::debugMode::BINDING,
+                          ExtractField(&InputState::debugMode, SlotRole::Execute));
+    if (tierCrossingLodCoefOverrideActive) {
+        batch.Connect(tierCrossingLodCoefOverrideConstant, ConstantNodeConfig::OUTPUT,
+                              directLightingPushConstantGatherer, 8,
+                              SlotRoleModifier(SlotRole::Execute));
+    } else {
+        batch.Connect(raySizeCoefNode, RaySizeCoefNodeConfig::RAY_SIZE_COEF,
+                              directLightingPushConstantGatherer, 8,
+                              SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    }
+    batch.Connect(raySizeBiasConstant, ConstantNodeConfig::OUTPUT,
+                          directLightingPushConstantGatherer, 9,
+                          SlotRoleModifier(SlotRole::Execute));
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_COUNT,
+                          directLightingPushConstantGatherer, 10,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(inputNode, InputNodeConfig::INPUT_STATE,
+                          directLightingPushConstantGatherer, 11,
+                          ExtractField(&InputState::lastClickPixel, SlotRole::Execute));
+    batch.Connect(accumulationConfigNode, AccumulationConfigNodeConfig::FRAME_COUNTER,
+                          directLightingPushConstantGatherer, 12,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
+    // DirectLighting's descriptor bindings: the scene SSBOs (octree/brick/instance/shell/mip/
+    // tier-ref) are READ-ONLY in both the march and DirectLighting — read-read is not a hazard, so
+    // they're wired the same way as the march's own gatherer (plain DescriptorResourceGathererNode
+    // bindings, no sync slot needed), mirroring bindings 1/2/3/5/10/11/12/13/15/16/18/19/20/21
+    // above. Binding 17 (HitRecord) is the genuine cross-submit hazard — wired below via the sync
+    // slots, not here. Binding 0 (outputImage) is the genuine write hazard — also wired below via
+    // IMAGE_WRITE, not here (it needs the render target's CURRENT view, same as the march's own
+    // binding-0 wiring further up).
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_NODES_BUFFER,
+                          directLightingGatherer, VoxelRayMarch::esvoNodes::BINDING,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_BRICKS_BUFFER,
+                          directLightingGatherer, VoxelRayMarch::brickData::BINDING,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_MATERIALS_BUFFER,
+                          directLightingGatherer, VoxelRayMarch::materials::BINDING,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_CONFIG_BUFFER,
+                          directLightingGatherer, 5,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_BUFFER,
+                          directLightingGatherer, 10,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::SHELL_DATA_BUFFER,
+                          directLightingGatherer, 11,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::SHELL_LOOKUP_BUFFER,
+                          directLightingGatherer, 12,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_MIPPOOL_BUFFER,
+                          directLightingGatherer, 13,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_TIERREFTABLE_BUFFER,
+                          directLightingGatherer, 15,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(lightingConfigNode, LightingConfigNodeConfig::LIGHTING_CONFIG_BUFFER,
+                          directLightingGatherer, 16,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(shadowConfigNode, ShadowConfigNodeConfig::SHADOW_CONFIG_BUFFER,
+                          directLightingGatherer, 18,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(accumulationConfigNode, AccumulationConfigNodeConfig::ACCUMULATION_CONFIG_BUFFER,
+                          directLightingGatherer, 19,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(accumulationHistoryNode, AccumulationHistoryNodeConfig::HISTORY_IMAGE_VIEW,
+                          directLightingGatherer, 20,
+                          SlotRoleModifier(SlotRole::Execute));
+    batch.Connect(prevCameraConfigNode, PrevCameraConfigNodeConfig::PREV_CAMERA_CONFIG_BUFFER,
+                          directLightingGatherer, 21,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
+    // Binding 0 (outputImage): DirectLighting is the genuine writer now (the march never
+    // imageStore's it — see PARAM_WRITES_NO_IMAGE's doc comment). Same renderTargetNode::
+    // CURRENT_VIEW source the march used to bind here pre-split.
+    batch.Connect(renderTargetNode, RenderTargetNodeConfig::CURRENT_VIEW,
+                          directLightingGatherer, 0,
+                          SlotRoleModifier(SlotRole::Execute));
+
+    // Binding 17 (HitRecord): DirectLighting READS what the march WROTE — the genuine cross-submit
+    // hazard this whole milestone exists to correctly bake. Descriptor binding (plain gatherer,
+    // Dependency|Execute) + the BUFFER_WRITE/BUFFER_READ_A sync-slot pair further below (the
+    // auto-sync hazard DECLARATION — see ComputeStageNodeConfig's own doc comment on the split
+    // between descriptor binding and sync-slot declaration).
+    batch.Connect(hitRecordBufferNode, StorageBufferNodeConfig::STORAGE_BUFFER,
+                          directLightingGatherer, 17,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
+    // --- DirectLightingNode (ComputeStageNode) common inputs — mirrors BuildFanInDemoGraph's
+    // wireStageCommon shape. NOT swapchain-adjacent: no SWAPCHAIN_INFO connection (isConsumer=false
+    // was already set above), IMAGE_WRITE carries the render-target write instead (below). ---
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  directLightingNode, ComputeStageNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
+                  directLightingNode, ComputeStageNodeConfig::COMMAND_POOL)
+         .Connect(directLightingPipeline, ComputePipelineNodeConfig::PIPELINE,
+                  directLightingNode, ComputeStageNodeConfig::COMPUTE_PIPELINE)
+         .Connect(directLightingPipeline, ComputePipelineNodeConfig::PIPELINE_LAYOUT,
+                  directLightingNode, ComputeStageNodeConfig::PIPELINE_LAYOUT)
+         .Connect(directLightingDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_SETS,
+                  directLightingNode, ComputeStageNodeConfig::DESCRIPTOR_SETS)
+         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
+                  directLightingNode, ComputeStageNodeConfig::IMAGE_INDEX)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                  directLightingNode, ComputeStageNodeConfig::CURRENT_FRAME_INDEX)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::IN_FLIGHT_FENCE,
+                  directLightingNode, ComputeStageNodeConfig::IN_FLIGHT_FENCE)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
+                  directLightingNode, ComputeStageNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
+         .Connect(swapChainNode, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
+                  directLightingNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY)
+         .Connect(directLightingShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  directLightingNode, ComputeStageNodeConfig::SHADER_DATA_BUNDLE)
+         .Connect(directLightingPushConstantGatherer, PushConstantGathererNodeConfig::PUSH_CONSTANT_DATA,
+                  directLightingNode, ComputeStageNodeConfig::PUSH_CONSTANT_DATA)
+         .Connect(directLightingPushConstantGatherer, PushConstantGathererNodeConfig::PUSH_CONSTANT_RANGES,
+                  directLightingNode, ComputeStageNodeConfig::PUSH_CONSTANT_RANGES)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_SEMAPHORE,
+                  directLightingNode, ComputeStageNodeConfig::TIMELINE_SEMAPHORE_IN)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_FRAME_BASE,
+                  directLightingNode, ComputeStageNodeConfig::TIMELINE_FRAME_BASE_IN);
+
+    // --- Sync slots: the hazard-correlation identity. ---
+    // HitRecord: march's new BUFFER_WRITE slot <-> DirectLighting's BUFFER_READ_A, same
+    // hitRecordBufferNode::STORAGE_BUFFER Resource* on both — bakes the march->DirectLighting edge.
+    batch.Connect(hitRecordBufferNode, StorageBufferNodeConfig::STORAGE_BUFFER,
+                  computeDispatch, ComputeDispatchNodeConfig::BUFFER_WRITE, SlotRoleModifier(SlotRole::Execute));
+    batch.Connect(hitRecordBufferNode, StorageBufferNodeConfig::STORAGE_BUFFER,
+                  directLightingNode, ComputeStageNodeConfig::BUFFER_READ_A, SlotRoleModifier(SlotRole::Execute));
+    // Render target: DirectLighting's IMAGE_WRITE <-> BlitNode's IMAGE_READ (wired below), same
+    // renderTargetNode::RENDER_TARGET Resource* on both — bakes the DirectLighting->BlitNode edge.
+    batch.Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
+                  directLightingNode, ComputeStageNodeConfig::IMAGE_WRITE, SlotRoleModifier(SlotRole::Execute));
+
+    // --- BlitNode: presentation-only blit of the render target to the swapchain. ---
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  blitNode, BlitNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
+                  blitNode, BlitNodeConfig::COMMAND_POOL)
+         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+                  blitNode, BlitNodeConfig::SWAPCHAIN_INFO)
+         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
+                  blitNode, BlitNodeConfig::IMAGE_INDEX)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                  blitNode, BlitNodeConfig::CURRENT_FRAME_INDEX)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::IN_FLIGHT_FENCE,
+                  blitNode, BlitNodeConfig::IN_FLIGHT_FENCE)
+         .Connect(swapChainNode, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
+                  blitNode, BlitNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_SEMAPHORE,
+                  blitNode, BlitNodeConfig::TIMELINE_SEMAPHORE_IN)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_FRAME_BASE,
+                  blitNode, BlitNodeConfig::TIMELINE_FRAME_BASE_IN);
+    batch.Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
+                  blitNode, BlitNodeConfig::IMAGE_READ, SlotRoleModifier(SlotRole::Execute));
+    // Ordering-only edge (BlitNode never waits it — see BlitNodeConfig's ORDERING_WAIT_SEMAPHORE
+    // doc): establishes the DirectLighting-before-Blit TOPOLOGY so the scheduler's groupId-order
+    // edge direction is correct (mirrors the sky-projection/UI ordering-edge convention below).
+    batch.Connect(directLightingNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+                  blitNode, BlitNodeConfig::ORDERING_WAIT_SEMAPHORE);
+
+    // P5b M3 (extended for Tiered ESVO Inc1 M3; Sampled Lighting Inc3 M1: chain now runs through
+    // DirectLighting + BlitNode first): the march->DirectLighting->Blit->sky-projection->UI
+    // ordering is carried by the baked timeline edges for GPU SYNC (memory visibility), but the
+    // graph still needs the TOPOLOGY edges so the execution order (and hence the timeline edges
+    // the scheduler bakes from them) follows that same sequence. The FrameSyncScheduler derives
+    // edge DIRECTION from groupId order (== execution order); without these dependencies the
+    // topological sort could place a later pass before an earlier one, baking the edges BACKWARDS,
+    // tagging the wrong group as the swapchain present-signal, and leaving the presented image in
+    // the wrong layout at the wrong point — VUID-...-01430-class bugs, VUID-vkCmdDraw-None-09600-
+    // class bugs. So we keep these connections purely as ORDERING edges (their documented secondary
     // purpose, mirroring UIRenderNodeConfig's own SWAPCHAIN/COMPOSITE_WAIT convention exactly): the
-    // binary semaphores they carry are INERT — compute no longer SIGNALS renderComplete in
-    // composite (ComputeDispatchNode gates it to !leaveImageInGeneral), SkyProjectionNode never
-    // WAITS its own COMPOSITE_WAIT_SEMAPHORE input, and UIRenderNode no longer WAITS compositeWait
-    // either (the M3 binary handoff was dropped from its submit). With the edges in the right
-    // direction the scheduler bakes compute(GENERAL)→sky-projection(GENERAL)→UI(GENERAL) timeline
-    // edges (each consumer gets a waitEdge on its producer's timeline value; every layout stays
-    // GENERAL end-to-end ⇒ no transitions anywhere in this 3-pass chain), tags the UI group as
-    // present (its render pass owns GENERAL→PRESENT_SRC, unchanged), and the timeline alone — not a
-    // binary handoff — orders all three passes. WSI acquire (compute waits imageAvailable) and
-    // present (UI signals its uiComplete) stay binary, exactly as before this milestone's change.
-    batch.Connect(computeDispatch, ComputeDispatchNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+    // binary semaphores they carry are INERT — the march no longer signals a real renderComplete in
+    // composite (writesNoImage + leaveImageInGeneral), BlitNode's own renderComplete output is
+    // real (it owns the fence) but SkyProjectionNode never WAITS its COMPOSITE_WAIT_SEMAPHORE
+    // input, and UIRenderNode no longer waits compositeWait either (the M3 binary handoff was
+    // dropped from its submit). With the edges in the right direction the scheduler bakes
+    // march(HitRecord)->DirectLighting(GENERAL)->Blit(GENERAL)->sky-projection(GENERAL)->UI(GENERAL)
+    // timeline edges, tags the UI group as present (its render pass owns GENERAL->PRESENT_SRC,
+    // unchanged), and the timeline alone — not a binary handoff — orders every pass. WSI acquire
+    // (march waits imageAvailable) and present (UI signals its uiComplete) stay binary, unchanged.
+    batch.Connect(blitNode, BlitNodeConfig::RENDER_COMPLETE_SEMAPHORE,
                   skyProjectionNode, SkyProjectionNodeConfig::COMPOSITE_WAIT_SEMAPHORE);
     batch.Connect(skyProjectionNode, SkyProjectionNodeConfig::RENDER_COMPLETE_SEMAPHORE,
                   uiCompositeNode, UIRenderNodeConfig::COMPOSITE_WAIT_SEMAPHORE);

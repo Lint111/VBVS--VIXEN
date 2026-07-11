@@ -25,7 +25,7 @@ using IDebugCapture = Debug::IDebugCapture;
 // ============================================================================
 
 namespace ComputeDispatchNodeCounts {
-    static constexpr size_t INPUTS = 18;  // +TIMELINE_SEMAPHORE_IN, +TIMELINE_FRAME_BASE_IN (P5b M1), +RENDER_TARGET_INFO (M4)
+    static constexpr size_t INPUTS = 19;  // +TIMELINE_SEMAPHORE_IN, +TIMELINE_FRAME_BASE_IN (P5b M1), +RENDER_TARGET_INFO (M4), +BUFFER_WRITE (Sampled Lighting Inc3 M1)
     static constexpr size_t OUTPUTS = 4;  // Added DEBUG_CAPTURE_OUT output
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -63,6 +63,19 @@ CONSTEXPR_NODE_CONFIG(ComputeDispatchNodeConfig,
     // pass (e.g. a UI render pass with loadOp=LOAD) that owns the final present transition + the frame
     // fence. Default false ⇒ compute is the last writer and presents directly (voxel-only path).
     static constexpr const char* PARAM_LEAVE_IMAGE_IN_GENERAL = "leaveImageInGeneral";
+
+    // Sampled Lighting Inc3 M1 (KI-018): when true, this dispatch manages NO presentable image at
+    // all — neither RENDER_TARGET_INFO nor SWAPCHAIN_INFO's own image is written by this shader
+    // (e.g. the post-split march: it writes only the HitRecord buffer via BUFFER_WRITE + the
+    // independently-managed pick-ID image; SWAPCHAIN_INFO stays wired only because it's a Required
+    // slot, and outputImage is bound solely for the shader's imageSize() extent query, never
+    // imageStore'd). Skips BOTH of RecordComputeCommands' SWAPCHAIN_INFO layout transitions (the
+    // pre-dispatch GENERAL transition and the post-dispatch PRESENT_SRC-or-GENERAL transition) —
+    // orthogonal to PARAM_LEAVE_IMAGE_IN_GENERAL's fence-ownership
+    // semantics, which still apply independently (a no-image dispatch can still be the frame's
+    // first submit and hand fence ownership downstream). Default false ⇒ byte-identical to pre-M1
+    // behavior for every existing ComputeDispatchNode graph (none of them write no image).
+    static constexpr const char* PARAM_WRITES_NO_IMAGE = "writesNoImage";
 
     // ===== INPUTS (6) =====
 
@@ -251,6 +264,27 @@ CONSTEXPR_NODE_CONFIG(ComputeDispatchNodeConfig,
         SlotScope::NodeLevel,
         ::Vixen::RenderGraph::AccessKind::ComputeStorageWrite);
 
+    /**
+     * @brief Storage buffer this dispatch WRITES (producer role), for cross-submit
+     * hazard tracking against a downstream ComputeStageNode reader (e.g. DirectLightingNode
+     * reading the HitRecord buffer this dispatch wrote). Sampled Lighting Inc3 M1: the
+     * march (BodyInstanceRayMarch, on ComputeDispatchNode) and DirectLighting (on
+     * ComputeStageNode) are separate vkQueueSubmit2 submits; without this slot the
+     * HitRecord write→read had no baked SyncEdge (a genuine cross-submit race) because it
+     * was wired through a plain (AccessKind::None) descriptor-gatherer binding, which the
+     * FrameSyncScheduler excludes from the timeline. Same shape as ComputeStageNodeConfig's
+     * BUFFER_WRITE (see ComputeStageNodeConfig.h) so it pairs with a ComputeStageNode's
+     * BUFFER_READ_A/B on the same buffer Resource* to bake the write→read SyncEdge.
+     * Optional: existing ComputeDispatchNode graphs that never wire this are unaffected
+     * (purely additive; no behavior change when unconnected).
+     */
+    INPUT_SLOT_SYNC(BUFFER_WRITE, VkBuffer, 18,
+        SlotNullability::Optional,
+        SlotRole::Execute,
+        SlotMutability::ReadWrite,
+        SlotScope::NodeLevel,
+        ::Vixen::RenderGraph::AccessKind::ComputeStorageWrite);
+
     // ===== OUTPUTS (4) =====
 
     /**
@@ -338,6 +372,10 @@ CONSTEXPR_NODE_CONFIG(ComputeDispatchNodeConfig,
         // M4: optional offscreen render target (render-scale decoupling)
         HandleDescriptor renderTargetDesc{"IRenderTarget*"};
         INIT_INPUT_DESC(RENDER_TARGET_INFO, "render_target_info", ResourceLifetime::Persistent, renderTargetDesc);
+
+        // Sampled Lighting Inc3 M1: optional cross-submit buffer-write hazard slot
+        HandleDescriptor bufferWriteDesc{"VkBuffer"};
+        INIT_INPUT_DESC(BUFFER_WRITE, "buffer_write", ResourceLifetime::Persistent, bufferWriteDesc);
 
         // Initialize output descriptors
         HandleDescriptor cmdBufferDesc{"VkCommandBuffer"};

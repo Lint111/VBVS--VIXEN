@@ -187,6 +187,11 @@ void ComputeDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
     const bool leaveImageInGeneral =
         GetParameterValue<bool>(ComputeDispatchNodeConfig::PARAM_LEAVE_IMAGE_IN_GENERAL, false);
 
+    // Sampled Lighting Inc3 M1: this dispatch manages no presentable image at all (see
+    // PARAM_WRITES_NO_IMAGE's doc comment) — orthogonal to leaveImageInGeneral's fence ownership.
+    const bool writesNoImage =
+        GetParameterValue<bool>(ComputeDispatchNodeConfig::PARAM_WRITES_NO_IMAGE, false);
+
     // Phase 0.4: Reset fence before submitting (fence was already waited on by FrameSyncNode). In
     // composite mode the downstream UI submit resets + owns the fence, so leave it alone here.
     if (!leaveImageInGeneral) {
@@ -250,7 +255,7 @@ void ComputeDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // Always re-record to update push constants (they change every frame)
     // TODO: Optimize using secondary command buffers or dynamic state
     VkCommandBuffer cmdBuffer = commandBuffers.GetValue(imageIndex);
-    RecordComputeCommands(ctx, cmdBuffer, imageIndex, currentFrameIndex, &pushConstants, leaveImageInGeneral);
+    RecordComputeCommands(ctx, cmdBuffer, imageIndex, currentFrameIndex, &pushConstants, leaveImageInGeneral, writesNoImage);
     commandBuffers.MarkReady(imageIndex);
 
     // P5b M1: read timeline primitives from FrameSyncNode slots (Optional — VK_NULL_HANDLE / 0 if not wired)
@@ -350,7 +355,7 @@ void ComputeDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
 // RECORD COMPUTE COMMANDS
 // ============================================================================
 
-void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmdBuffer, uint32_t imageIndex, uint32_t frameIndex, const void* pushConstantData, bool leaveImageInGeneral) {
+void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmdBuffer, uint32_t imageIndex, uint32_t frameIndex, const void* pushConstantData, bool leaveImageInGeneral, bool writesNoImage) {
     // Begin command buffer recording
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -418,7 +423,11 @@ void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cm
         VkImageLayout priorLayout = DecideRenderTargetPriorLayoutAndUpdate(
             renderTargetImageLayouts_, writeImage, VK_IMAGE_LAYOUT_GENERAL);
         SwapchainBarriers::TransitionImageToGeneralBarrier2(GetDevice(), cmdBuffer, writeImage, priorLayout);
-    } else {
+    } else if (!writesNoImage) {
+        // Sampled Lighting Inc3 M1: skip entirely when this dispatch manages no presentable image
+        // (writesNoImage) — writeImage would otherwise alias the swapchain image, which this
+        // dispatch never actually writes; transitioning it here would race a later pass's own
+        // transition of the SAME handle (see PARAM_WRITES_NO_IMAGE's doc comment).
         SwapchainBarriers::TransitionImageToGeneralBarrier2(GetDevice(), cmdBuffer, writeImage);
     }
     // Additionally replay any scheduler-baked INTER-PASS entry barriers for this group
@@ -453,11 +462,14 @@ void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cm
         SwapchainBarriers::BlitRenderTargetToSwapchain(GetDevice(), renderTargetImageLayouts_, cmdBuffer,
                                                         renderTargetInfo, swapchainImage,
                                                         swapchainInfo->GetExtent(), leaveImageInGeneral);
-    } else if (!leaveImageInGeneral) {
+    } else if (!leaveImageInGeneral && !writesNoImage) {
         // Voxel-only, no render target: compute is the last writer, so hand the image to present.
         // Composite: leave it in GENERAL — the downstream UI render pass loads from GENERAL and owns
         // the →PRESENT_SRC transition. Note: the GENERAL→PRESENT_SRC transition is NOT yet baked into
         // the schedule (P5 concern), so we emit it explicitly here using barrier2.
+        // Sampled Lighting Inc3 M1: skip entirely when writesNoImage — see the pre-dispatch
+        // transition's comment above; a no-image dispatch must not touch the swapchain image's
+        // layout at all, present-bound or not.
         SwapchainBarriers::TransitionImageToPresentBarrier2(GetDevice(), cmdBuffer, swapchainImage);
     }
 

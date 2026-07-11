@@ -75,7 +75,7 @@ protected:
     void CleanupImpl(TypedCleanupContext& ctx) override;
 
 private:
-    void RecordComputeCommands(Context& ctx, VkCommandBuffer cmdBuffer, uint32_t imageIndex, uint32_t frameIndex, const void* pushConstantData, bool leaveImageInGeneral);
+    void RecordComputeCommands(Context& ctx, VkCommandBuffer cmdBuffer, uint32_t imageIndex, uint32_t frameIndex, const void* pushConstantData, bool leaveImageInGeneral, bool writesNoImage);
 
     // Extracted helper methods for RecordComputeCommands
     void ReplayEntryBarriers(VkCommandBuffer cmd, const SubmitGroup& group,
