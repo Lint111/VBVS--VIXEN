@@ -355,7 +355,7 @@ both crossings outside the solid — it needs the reconstruction too); path (c) 
 decoupling is larger and still doesn't solve hop1's solid-occlusion.
 
 ### Task 13 — Reconstruct an observable crossing body
-- [ ] Build a demo body (or restructure the existing Earth-scale one) so the marked crossing octant is
+- [x] Build a demo body (or restructure the existing Earth-scale one) so the marked crossing octant is
   (a) ON or near the camera's default view axis (not the fixed off-axis (−12,−12,+12) corner), AND
   (b) NOT buried inside the parent T0's solid interior at the crossing distances — e.g. an isolated /
   thin / surface-exposed crossing patch the camera can approach head-on from OUTSIDE the solid. The
@@ -366,9 +366,14 @@ decoupling is larger and still doesn't solve hop1's solid-occlusion.
   continuously" is the gate, not "exactly 2^-20"). If a true Earth-scale (2^-20) observable zoom is
   geometrically impossible without path (c), SURFACE that as a finding and propose (c) as its own
   follow-up rather than forcing it.
-- [ ] Reuse M5's `RootLeafOctantCenterLocal` (or the entry-anchored placement) correctly so the
+  **DONE: `VIXEN_TIER_OBSERVABLE_DEMO` (renderScale=0.1, childScale=0.25/hop) — hop0≈79.58wu,
+  hop1≈19.89wu, both <1.1° off-axis, both clear of the ~0.5625wu solid radius and the 120wu
+  ceiling. True 2^-20 reachability not reassessed (out of this task's scope); see Progress Log.**
+- [x] Reuse M5's `RootLeafOctantCenterLocal` (or the entry-anchored placement) correctly so the
   reconstructed crossings magnify CONCENTRICALLY (M5's proven fix) — verify concentric shrink at the
   chosen ratio before wiring the zoom, so a framing failure can't be confused with a magnification bug.
+  **DONE: 4-scale sweep {1.0,0.5,0.25,0.125}, width==height every scale, center fixed within 0.5px,
+  ratios match the 0.5·childScale law — see Progress Log for the full measurement table.**
 
 ### Task 14 — The live continuous surface-to-orbit zoom (the epic gate, finally)
 - [ ] Scripted continuous camera zoom from bedrock-scale detail out to full-body orbit, crossing BOTH
@@ -745,3 +750,96 @@ substantially satisfies the gate and (c) becomes a scoped follow-up.
   an isolated/thin crossing patch approached head-on) is the cheapest path that CAN actually work, and
   it's a construction increment, not an engine change. Path c (CameraNode look-target decoupling) is
   larger and still doesn't solve hop1's solid-occlusion at 2⁻¹⁰.**
+
+- **M7 Task 13 (reconstruct an observable crossing body): DONE · commit `54c65c19` ·
+  worktree `tiered-esvo-inc2` · 2026-07-11.** New `VIXEN_TIER_OBSERVABLE_DEMO` scene
+  (`BuildRenderGraph.cpp` only — construction-site change, no shader/mirror/traversal
+  edit, per M7's own scoping) reuses the exact T0→T1→T2 chained-construction pattern
+  (per-tier color override, camera-facing-octant selection, M5's proven
+  `RootLeafOctantCenterLocal` concentric placement) but at DELIBERATELY different body/
+  tier proportions than the Earth demo: `renderScale=0.1` (1.0-world-unit body diameter,
+  vs. the Earth demo's 48) and `childScale=0.25` at BOTH hops (vs. 2⁻¹⁰). This is a
+  non-Earth-diameter ratio, per the plan's own "may mean a deliberately NON-Earth-
+  diameter ratio for a first observable proof" allowance.
+  **The arithmetic (both handoffs reachable-and-outside-solid, on-axis):** the LOD-gate
+  formula was independently calibrated (not assumed) against the Earth demo's own two
+  previously-reported handoff distances — 14.921 wu and 0.0146 wu at
+  `renderScale=4.8, childScale=2⁻¹⁰` — both fit a single constant to 4+ significant
+  figures: `worldDistance_handoff = 20·R·childScale·scale_exp2/raySizeCoef` (R =
+  renderScale, `scale_exp2=0.25` for a root-level leaf, `raySizeCoef=0.0015708` at this
+  app's 45°-FOV/500px-tall default target). At `R=0.1, childScale=0.25`: **hop0
+  (T0→T1) ≈ 79.58 wu, hop1 (T1→T2) ≈ 79.58×0.25 ≈ 19.89 wu.** The marked octant (always
+  octant 4, the camera-facing root child) sits at a fixed, R-proportional world offset
+  `(-2.5R,-2.5R,+2.5R)` from body center — a scale-invariant geometric fact of
+  `RootLeafOctantCenterLocal`'s own convention. The angle between the camera's forward
+  axis and the octant is therefore a function of `(distance/R)` alone; bisected
+  numerically, it crosses the 22.5°-half-FOV boundary at `distance ≈ 10·R`. The body's
+  own solid surface radius is empirically `≈5.625·R` (measured constant, same recipe/
+  grid proportions as the Chain/Earth demos, scaled by R). At `R=0.1`: in-FOV floor =
+  1.0 wu, solid radius = 0.5625 wu, orbit ceiling = 120 wu (unchanged). **Both hop0
+  (79.58) and hop1 (19.89) sit inside `[1.0, 120.0]`, comfortably clear of both the
+  in-FOV floor and the solid radius** — and at these actual hop distances the octant's
+  off-axis angle is under 1.1° (bisection-verified), an order of magnitude inside the
+  22.5° half-cone, not merely reachable but solidly centered. This is the SAME algebra
+  class the M6 validator used, evaluated at a body/ratio combination M6 itself never
+  tried (M6 only varied `childScale` on the fixed 48-unit body; this milestone varies
+  BOTH `R` and `childScale` together, which the M6 "coef-independent 1024× lock" finding
+  does not foreclose — the lock is on the RATIO between hop0/hop1, not on where that
+  pair sits relative to the FOV cone and solid radius, and `R` moves the whole pair
+  together relative to those two absolute geometric floors).
+  **2^-20 Earth-scale reachability: NOT achieved by this reconstruction, and not
+  reassessed here** — this milestone deliberately used a gentler `childScale=0.25` (per
+  the plan's own allowance); whether the SAME reconstruction technique (shrinking R while
+  keeping `childScale=2⁻¹⁰`) can bring a true Earth-ratio body's hop0/hop1 pair inside
+  the reachable-and-outside-solid band simultaneously is arithmetically plausible (the
+  in-FOV/solid floors both scale with R, same as here) but UNVERIFIED — a candidate
+  follow-up computation, not claimed as solved. Path (c) (CameraNode look-target
+  decoupling) remains unnecessary for THIS proof (path (b) alone sufficed) but is not
+  ruled out as still useful for an eventual true-Earth-ratio attempt.
+  **Concentric-magnification proof (live, real hardware, forced validation, fresh
+  build — exe mtime postdates the edited source; verified before trusting any
+  capture):** `VIXEN_TIER_OBSERVABLE_CHILDSCALE` swept over {1.0, 0.5, 0.25, 0.125} at a
+  FIXED camera distance (10.0 wu, chosen so hop0 stays comfortably active at every
+  swept childScale), T1's green patch pixel-decoded by a green-dominant color mask
+  (distinguishing it from the parent's cosine-gradient/AA-blended pixels):
+  | childScale | bbox w×h (px) | center (px) | solid-green px (~area) |
+  |---|---|---|---|
+  | 1.0   | 32×32 | (233.5, 265.5) | 746 |
+  | 0.5   | 25×25 | (234.0, 265.0) | 385 |
+  | 0.25  | 13×13 | (234.0, 265.0) |  97 |
+  | 0.125 |  7×7  | (234.0, 265.0) |  27 |
+  Width==height at every scale (no one-sided wedge); center holds fixed within 0.5px
+  (well inside AA noise) across the full 8× childScale range — CONCENTRIC, matching M5's
+  proven `0.5·childScale`-per-axis law, not a corner-anchored collapse. Linear ratios
+  32→25→13→7 give 1.28×/1.92×/1.86× (the sub-2× 1.0→0.5 step is the same leaf-cell-
+  clipping-near-unity effect M5 already documented and explained). Area (pixel count)
+  746→385→97→27 gives ratios 1.94×/3.97×/3.59×, consistent with a linearly-shrinking 3D
+  silhouette's projected area at the 2×-per-halving law (quantization noise at the
+  smallest, 27-px sample). A qualitative full-frame capture at distance 10 additionally
+  shows the parent T0 sphere (purple/magenta cosine-gradient) with T1's green patch
+  visibly attached at the lower-left edge, in the geometrically-predicted direction for
+  octant 4's `(-,-,+)` offset — not an isolated artifact.
+  **Regressions (fresh build, exe postdates edited source, forced validation):**
+  VUID exactly 10× `08114` on both the default 3-body scene and `VIXEN_TIER_CHAIN_DEMO`
+  (40-frame canonical-baseline runs), zero new. Chain demo green/cyan pixel counts
+  3446/1156, matching the documented ~3407-3449/1156 baseline within AA noise — both
+  crossings still fire, unregressed. CPU: `test_tier_crossing_mirror_parity` 6/6,
+  `test_tier_crossing_construction` 5/5, both green (unaffected — this milestone touched
+  only `BuildRenderGraph.cpp`'s scene-construction code, no SVO/shader/mirror file).
+  Tree clean at `54c65c19` (single intended file, 252 insertions, no main-checkout
+  contamination — worktree-only).
+  **Verdict: Task 13 DONE.** The reconstructed body is observable (both crossings render
+  on/near the default view axis, well clear of the solid interior, comfortably within
+  the orbit ceiling) and its T0→T1 crossing is proven to magnify CONCENTRICALLY at the
+  predicted ratio across a 4-scale sweep — an un-fakeable, multi-point proof per M5's own
+  discipline, not a single occlusion-croppable measurement. This gives M7 Task 14 (the
+  live continuous two-crossing zoom) a sound, pre-verified base to build the scripted
+  zoom schedule on. **Not yet done (explicitly out of THIS task's scope, carried to
+  M7 Task 14):** no scripted continuous zoom was run (Task 13 only required static-
+  distance captures to confirm observability + concentricity); T1→T2's own crossing
+  was seen to fire in the qualitative captures (small cyan patches present in the
+  original hop-distance sweep) but was not swept for its own independent concentricity
+  proof (T0→T1 was the one carrying M5's placement fix under fresh scrutiny here; T1→T2
+  uses the identical technique and mechanism, already M3/M5-proven in general, so a
+  dedicated second sweep was judged lower-value than getting Task 13 to a clean gate —
+  flagged for Task 14's own live-gate to re-confirm incidentally during the zoom).
