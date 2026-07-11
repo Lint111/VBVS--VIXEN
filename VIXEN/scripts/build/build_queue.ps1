@@ -33,15 +33,34 @@
 #       Print this ticket's queue position (1 = next), whether the BUILD LOCK is currently
 #       free, and derived "YOUR_TURN" (position 1 AND lock free) / "WAITING" / "UNKNOWN_TICKET".
 #       Cheap, non-blocking — safe to poll every few minutes or drive a ScheduleWakeup loop.
+#       Refreshes THIS ticket's LastSeenUtc (proof of an active waiter — see liveness dedup
+#       below) and, if this ticket is blocked behind another one, opportunistically reaps that
+#       BLOCKING ticket if it's gone liveness-stale — so a genuinely active waiter is never kept
+#       stuck behind an abandoned ticket for the full -StaleMinutes window; the check happens at
+#       the exact moment it matters (someone is actually blocked on it), not just periodically.
 #   -Release -TicketId <id>
 #       Remove a ticket (call after your build.bat invocation returns, whether it built or was
 #       skipped — a ticket left behind after the agent moved on blocks everyone behind it).
 #   -ListQueue
 #       Print all current tickets in FIFO order, for a human/agent to see the whole queue.
 #   -Reap
-#       Delete tickets older than -StaleMinutes (default 60) — a crashed/killed agent leaves
+#       Delete tickets whose LastSeenUtc is older than -StaleMinutes (default 15 — see liveness
+#       dedup below for why this is short, not the original 60). A crashed/killed agent leaves
 #       its ticket behind forever otherwise, since (unlike the Mutex) a ticket file has no OS-
 #       level auto-release. Safe to call opportunistically from -Status/-ListQueue callers.
+#
+# Liveness, not just age (the queue-stall fix): every ticket has a LastSeenUtc field, refreshed
+# on every -Register (re-registration/dedup hit) and -Status call for that ticket — i.e. every
+# time its owner actually checks in. Reaping compares LastSeenUtc (last proof of life), NOT
+# CreatedUtc (age since creation) — so a genuinely active waiter polling -Status every ~20s per
+# vixen-build-policy's active-polling rule NEVER goes stale, no matter how long it legitimately
+# waits, while a ticket registered and then abandoned (agent crashed, shut down without
+# releasing, or a one-off ad-hoc registration that never got followed by a build or any -Status
+# poll) goes stale within -StaleMinutes of its LAST actual check-in — which for an abandoned
+# ticket is its registration moment. The queue is shared, contended, single-point-of-failure
+# infrastructure for every agent on this machine; a stuck ticket blocks EVERYONE behind it, so
+# the default window is short (15 min, down from an earlier 60 min default) and -Status
+# opportunistically reaps its own blocker inline rather than waiting for a periodic sweep.
 
 param(
     [switch]$Register,
@@ -54,7 +73,7 @@ param(
     [string]$Note = "",
     [string]$Source = "",
     [string]$BuildTarget = "",
-    [int]$StaleMinutes = 60
+    [int]$StaleMinutes = 15
 )
 
 $queueDir = "$env:TEMP\vixen_build_queue"
@@ -76,21 +95,66 @@ function Get-QueueTickets {
     return $tickets | Sort-Object -Property CreatedUtc
 }
 
+function Get-TicketLastSeenUtc($ticket) {
+    # LastSeenUtc is the liveness field (set on -Register and refreshed on every -Status call
+    # for that ticket). Tickets written before this field existed have no LastSeenUtc — fall
+    # back to CreatedUtc for those so old-format tickets still reap on a sane schedule instead
+    # of erroring or never expiring.
+    if ($ticket.LastSeenUtc) {
+        return [DateTime]::Parse($ticket.LastSeenUtc).ToUniversalTime()
+    }
+    return [DateTime]::Parse($ticket.CreatedUtc).ToUniversalTime()
+}
+
 function Invoke-Reap {
     $cutoff = (Get-Date).ToUniversalTime().AddMinutes(-$StaleMinutes)
     Get-ChildItem -Path $queueDir -Filter "*.json" -ErrorAction SilentlyContinue | ForEach-Object {
         try {
             $t = Get-Content -Path $_.FullName -Raw | ConvertFrom-Json
-            $created = [DateTime]::Parse($t.CreatedUtc).ToUniversalTime()
-            if ($created -lt $cutoff) {
+            $lastSeen = Get-TicketLastSeenUtc $t
+            if ($lastSeen -lt $cutoff) {
                 Remove-Item -Path $_.FullName -Force -ErrorAction SilentlyContinue
-                Write-Host "[build-queue] Reaped stale ticket $($t.TicketId) (agent $($t.AgentId), registered $($t.CreatedUtc))"
+                Write-Host "[build-queue] Reaped stale ticket $($t.TicketId) (agent $($t.AgentId), last seen $($lastSeen.ToString('o')))"
             }
         } catch {
             # Unparseable ticket file — remove it too, it's not usable by anyone.
             Remove-Item -Path $_.FullName -Force -ErrorAction SilentlyContinue
         }
     }
+}
+
+# Reap a SPECIFIC ticket right now if it's liveness-stale, regardless of the periodic sweep.
+# Used by -Status when it discovers it's blocked behind another ticket — checks that ticket's
+# own staleness inline instead of waiting for the next full -Reap. Returns $true if reaped.
+function Test-ReapSingleTicket($ticketId) {
+    $path = "$queueDir\$ticketId.json"
+    if (-not (Test-Path $path)) { return $false }
+    try {
+        $t = Get-Content -Path $path -Raw | ConvertFrom-Json
+        $cutoff = (Get-Date).ToUniversalTime().AddMinutes(-$StaleMinutes)
+        $lastSeen = Get-TicketLastSeenUtc $t
+        if ($lastSeen -lt $cutoff) {
+            Remove-Item -Path $path -Force -ErrorAction SilentlyContinue
+            Write-Host "[build-queue] Reaped stale BLOCKING ticket $ticketId (agent $($t.AgentId), last seen $($lastSeen.ToString('o'))) - it was stalling your queue position."
+            return $true
+        }
+    } catch {
+        Remove-Item -Path $path -Force -ErrorAction SilentlyContinue
+        return $true
+    }
+    return $false
+}
+
+# Refresh a ticket's LastSeenUtc in place (proof of an active waiter). Best-effort — a failure
+# here must never block the caller's actual -Register/-Status result.
+function Update-TicketLastSeen($ticketId) {
+    $path = "$queueDir\$ticketId.json"
+    if (-not (Test-Path $path)) { return }
+    try {
+        $t = Get-Content -Path $path -Raw | ConvertFrom-Json
+        $t | Add-Member -NotePropertyName LastSeenUtc -NotePropertyValue ((Get-Date).ToUniversalTime().ToString('o')) -Force
+        $t | ConvertTo-Json | Set-Content -Path $path -Encoding utf8
+    } catch { }
 }
 
 function Test-BuildLockFree {
@@ -129,6 +193,7 @@ if ($Register) {
     })
     if ($existingTickets.Count -gt 0) {
         $existing = $existingTickets[0]
+        Update-TicketLastSeen $existing.TicketId
         $tickets = @(Get-QueueTickets)
         $position = ($tickets | ForEach-Object { $_.TicketId }).IndexOf($existing.TicketId) + 1
         Write-Host "[build-queue] Already registered - reusing existing ticket for AgentId '$AgentId' (same Source/BuildTarget - de-dup, not creating a new one)."
@@ -139,13 +204,15 @@ if ($Register) {
     }
 
     $ticketId = [System.Guid]::NewGuid().ToString('N').Substring(0, 12)
+    $nowUtc = (Get-Date).ToUniversalTime().ToString('o')
     $ticket = [PSCustomObject]@{
         TicketId    = $ticketId
         AgentId     = $AgentId
         Source      = $Source
         BuildTarget = $BuildTarget
         Note        = $Note
-        CreatedUtc  = (Get-Date).ToUniversalTime().ToString('o')
+        CreatedUtc  = $nowUtc
+        LastSeenUtc = $nowUtc
     }
     $ticketPath = "$queueDir\$ticketId.json"
     $ticket | ConvertTo-Json | Set-Content -Path $ticketPath -Encoding utf8
@@ -170,7 +237,34 @@ if ($Status) {
         Write-Host "[build-queue] UNKNOWN_TICKET (expired/reaped, released, or never registered)"
         exit 3
     }
+
+    # This ticket is alive and checking in — refresh its liveness so it never goes stale while
+    # its owner is genuinely still polling (per vixen-build-policy's active ~20s polling rule).
+    Update-TicketLastSeen $TicketId
+
     $position = $idx + 1
+
+    # Opportunistic inline reap: if something is queued ahead of us, check whether THAT specific
+    # ticket has gone liveness-stale right now, rather than waiting for the next periodic sweep
+    # or the full -StaleMinutes window to elapse. This is the fix for the queue-stall class of
+    # bug — an abandoned ticket (agent crashed/shut down without releasing) would otherwise block
+    # every real waiter behind it for up to -StaleMinutes even though nothing is actually using
+    # the lock. Re-fetch position/tickets afterward since a reap may have changed them.
+    if ($position -gt 1) {
+        $blockingTicket = $tickets[$position - 2]  # 0-indexed; the ticket one ahead of us
+        if (Test-ReapSingleTicket $blockingTicket.TicketId) {
+            $tickets = @(Get-QueueTickets)
+            $ids = $tickets | ForEach-Object { $_.TicketId }
+            $idx = $ids.IndexOf($TicketId)
+            if ($idx -lt 0) {
+                # Should not happen (we didn't touch our own ticket) but guard anyway.
+                Write-Host "[build-queue] UNKNOWN_TICKET (expired/reaped, released, or never registered)"
+                exit 3
+            }
+            $position = $idx + 1
+        }
+    }
+
     $lockFree = Test-BuildLockFree
     if ($position -eq 1 -and $lockFree) {
         Write-Host "[build-queue] YOUR_TURN - position 1, build lock is free. Call build.bat now."

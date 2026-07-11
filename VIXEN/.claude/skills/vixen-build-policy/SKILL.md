@@ -160,11 +160,23 @@ already known to run long (Fix 8: real builds run 1-3+ minutes even mostly-cache
 agent is deliberately doing other useful work in parallel between checks — the default,
 un-supervised wait is always the ~20s active loop.
 
-**Ticket hygiene**: tickets are files under `%TEMP%\vixen_build_queue\`, not tied to a process
-lifetime the way the Mutex is — a crashed/killed agent's ticket does NOT auto-release. Every
-queue command opportunistically reaps tickets older than 60 minutes
-(`-StaleMinutes`), so an abandoned ticket doesn't block the queue forever, but always call
-`-Release` yourself rather than relying on the timeout.
+**Ticket hygiene — liveness-based reaping (fixed 2026-07-11), not just age.** Tickets are files
+under `%TEMP%\vixen_build_queue\`, not tied to a process lifetime the way the Mutex is — a
+crashed/killed agent's ticket does NOT auto-release. Every ticket has a `LastSeenUtc` field,
+refreshed on every `-Register` (dedup-hit) and `-Status` call for that ticket — i.e. every time
+its owner actually checks in. Reaping compares `LastSeenUtc`, NOT registration age: a
+genuinely active waiter polling `-Status` every ~20s (per the active-polling rule above) never
+goes stale no matter how long it legitimately waits, while an abandoned ticket (agent crashed,
+shut down without releasing, or a one-off registration that was never followed by a build or
+any `-Status` poll) goes stale within `-StaleMinutes` (default **15**, down from an earlier 60)
+of its last real check-in. **`-Status` also opportunistically reaps its own blocking ticket
+inline** the moment it discovers it's stuck behind a stale one — not just on the next periodic
+sweep — so a real waiter is never stuck behind an abandoned ticket for the full stale window.
+This closes a real incident (2026-07-11): a validator agent self-registered a ticket for an
+ad-hoc verification build (outside the `build.bat`-auto-release path — see below), then shut
+down without releasing it, stranding a sibling agent's real build behind it until manually
+released. **Still always call `-Release` yourself when you're truly done** rather than relying
+on staleness reaping — reaping is the backstop for abandonment, not the primary release path.
 
 ## Why parallelism is capped, not maximized (Fix 10)
 
@@ -266,3 +278,26 @@ output) remains the authoritative source for full output/failures, same as befor
   again is harmless (idempotent — "already released") but unnecessary. DO still call `-Release`
   yourself if you registered a ticket and decided not to build at all — nothing else will ever
   release that one.
+- **`build.bat build` does NOT reconfigure — it never re-runs `cmake --preset`.** Only
+  `build.bat all`/`configure` does. If you ADD A NEW SOURCE FILE to a `CMakeLists.txt` (a new
+  `.cpp`/`.h` registered in a target's source list) and then call `build.bat build`, ninja's
+  existing `build.ninja` has no idea the new file exists — it silently rebuilds/relinks whatever
+  it already knew about and calls it done, exit 0, no error. The resulting binary does NOT
+  contain your new file, and any gate/capture run against it is a **false pass** — it "succeeds"
+  precisely because none of your new code is in the binary being tested. This bit a real gate
+  (Sampled-Lighting Inc3 M2, 2026-07-11): an Opus validator caught it via build-graph forensics —
+  the new file's `.obj` didn't exist, the target `.lib`/`.exe` timestamps predated the source
+  edit by tens of minutes, and a `grep` for the new symbol found zero occurrences in the built
+  artifacts, even though the gate had reported byte-identical/clean results. **Rule: whenever
+  your milestone adds or removes a source file from any `CMakeLists.txt`, run `build.bat all`
+  (or `configure` then `build`) at least once before trusting any gate capture — `build.bat
+  build` alone is only safe for iterating on EXISTING files.** When validating someone else's
+  gate, spot-check this yourself: compare the new/changed source file's mtime against the
+  target binary's mtime, and grep the binary (or its `.lib`) for a symbol/string unique to the
+  new code — don't just trust that "the build succeeded."
+- **Always invoke the WORKTREE's own `build.bat`, not the repo-root/main-checkout's.** Each git
+  worktree has its own copy of `build.bat` at its own root — if you `cd` or path-reference the
+  wrong one (e.g. accidentally the main checkout's `/mnt/c/cpp/VBVS--VIXEN/build.bat` while
+  meaning to build a worktree's source), you silently build/gate the WRONG tree's code. This
+  also bit the same M2 validation session. Double-check the absolute path you invoke resolves
+  inside the worktree you actually intend to build.
