@@ -92,9 +92,20 @@ And one structural gap:
 - **M6 — Earth-scale zoom gate attempt (Tasks 10-12)** · BLOCKED (Opus-validated real, not artifact):
   the current demo body can't frame both 2^-10 crossings (thresholds locked 1024× apart; octant
   off-axis + inside solid; algebraic impossibility proof). Mechanism sound; a CONSTRUCTION limit. → M7.
-- **M7 — Observable surface-to-orbit zoom via demo-body reconstruction (Tasks 13-15, planned)** ·
+- **M7 — Observable surface-to-orbit zoom via demo-body reconstruction (Tasks 13-15)** ·
   reconstruct → confirm-concentric → live continuous two-crossing zoom · the epic headline, deferred
-  from M6. Construction increment (no engine change expected); path (b) per M6 validator ranking.
+  from M6. Construction increment (no engine change); path (b) per M6 validator ranking.
+  **STATUS: Task 13 DONE + Opus-APPROVED (observable body, both crossings concentric). Task 14/15
+  DONE (live continuous zoom at cs=0.25, seamless per-frame deltas, T1→T2 crisply observed, T0→T1
+  fires-but-tiny) — Opus validation IN FLIGHT. True 2^-20 Earth-scale confirmed NOT reachable by
+  ratio/construction tuning (R-independent, proven) → needs M8 path (c).**
+- **M8 — CameraNode look-target decoupling + proper planet-scale surface-to-orbit demo (path c,
+  user-approved 2026-07-11)** (Tasks 16-18, planned) · make the camera genuinely controllable
+  (look-target independent of orbit-center + an authored zoom/transition path) so a TRUE
+  Earth-diameter (2^-10-per-hop) surface-to-orbit transition can be staged and demonstrated — the
+  epic's literal original ask. This IS an engine change (CameraNode), unlike M5/M7's construction
+  work, so it carries full live-gate + Opus-validation discipline. Dispatch gated on M7 Task-14
+  validation landing first (don't build the transition on an unverified base).
 
 ## M1 — Scale-correct crossing math
 
@@ -403,6 +414,63 @@ Concentric magnification confirmed on the reconstructed body first; prediction-f
 match; per-frame deltas show seamlessness; VUID clean; no regressions. If a true 2^-20 Earth ratio
 proves to need CameraNode look-target decoupling, an observable-zoom proof at a documented ratio R
 substantially satisfies the gate and (c) becomes a scoped follow-up.
+
+## M8 — CameraNode look-target decoupling + proper planet-scale transition demo (path c, user-approved 2026-07-11, the epic's literal headline)
+
+Context: M1-M7 proved the tier-crossing + magnification + chained-zoom mechanism, and M7 delivered a
+live continuous two-crossing zoom — but only at a GENTLE ratio (childScale=0.25). The Task 13/14
+validators proved a TRUE Earth-scale (2^-10-per-hop, 2^-20 total) observable transition is
+**R-independent-unreachable** on the current camera: `forward` is hard-wired to
+`normalize(orbitCenter − cameraPosition)` (`CameraNode.cpp` `UpdateCameraData`), so the camera always
+looks at the orbit center. That creates a `10·R` in-FOV floor: at Earth ratios the inner crossing
+(hop1, 1024× closer than hop0) always falls into the marked octant's off-axis blind zone whenever the
+outer crossing clears the floor. **Breaking that floor requires decoupling the look direction from the
+orbit center — a genuine CameraNode engine change (path c).** CameraNode.h:79-82 already documents this
+as the known missing capability ("moving orbitCenter itself or a genuinely separate look-target
+parameter, neither exists"). User asked (2026-07-11) to make the camera "more adjustable and
+controllable... to do a proper surface-to-orbit planet-scale transition demo."
+
+**This is an ENGINE change (CameraNode), not construction — full live-gate + Opus-validation
+discipline. It touches a core RenderGraph node other scenes use, so the bar is: existing camera
+behavior byte-unregressed, new capability additive + opt-in.**
+
+### Task 16 — Decouple look-target from orbit-center (the engine capability)
+- [ ] Add a genuine look-target to `CameraNode`: a `PARAM_LOOK_TARGET_*` (or `PARAM_CAMERA_LOOK_AT_*`)
+  parameter + live setter, so `forward = normalize(lookTarget − cameraPosition)` where `lookTarget`
+  defaults to `orbitCenter` (preserving today's behavior byte-exactly when unset) but can be aimed
+  independently. Consider also exposing orbitCenter as a live-settable target (both are useful; the
+  look-target is the one that breaks the in-FOV floor). Mirror the existing ForTest-accessor pattern
+  (`SetOrbitDistanceForTest`/`SetYawForTest`/`SetPitchForTest`) with a `SetLookTargetForTest`.
+- [ ] REGRESSION BAR (critical — CameraNode is shared): with no look-target set, every existing scene
+  (default 3-body, unity crossing, chain, observable demo, editor camera paths) renders BYTE-IDENTICAL
+  to pre-M8. The `EngageOrbit`/`PARAM_CAMERA_*`-authoritative-at-rest lifecycle (the bodies-0 fix)
+  stays intact. Widen the orbit-distance clamp further if the true-Earth zoom range needs it (its own
+  justified commit).
+- [ ] Update the CameraNode.h:79-82 comment that currently says "neither exists" — now one does.
+
+### Task 17 — Proper Earth-scale surface-to-orbit transition demo
+- [ ] Build the true-Earth-scale body (childScale=2^-10 per hop, ~12,700 km mapping per M4's numerics)
+  as an observable scene, using the new look-target so BOTH crossings can be framed on-axis across the
+  transition (the 1024× hop gap no longer forces hop1 into the blind zone — the camera can aim at
+  wherever the active crossing is). Reuse M5's concentric placement + M7's observable-body lessons.
+- [ ] Scripted continuous surface-to-orbit transition: from bedrock/surface detail out to full-planet
+  orbit, crossing BOTH real Earth-scale tier boundaries mid-flight, with the look-target tracking the
+  crossing region so each hop is genuinely OBSERVABLE (not a few-pixel speck — the T0→T1-tiny problem
+  M7 Task 14 hit). Prediction-first handoff ticks; per-frame-delta seamlessness (bounded, no pop);
+  both tiers visually attributable at their transitions; residency exercised mid-flight.
+- [ ] float32 honesty at 2^-10: surface any precision artifact (M7's gentle ratio didn't stress this;
+  Earth ratios will — this is the first real test of the bounded-per-hop-transform precision claim).
+
+### Task 18 — Docs + epic closure (the real one)
+- [ ] Design doc §9 + status banner: the epic's TRUE Earth-diameter surface-to-orbit transition across
+  two real magnified crossings is now LIVE-PROVEN (or the honest outcome). Plan-doc closure. CHANGELOG
+  at merge time. This is the increment that closes the original ask ("a proper surface-to-orbit view of
+  planets of proper scale").
+
+**M8 gate (THE EPIC'S LITERAL HEADLINE):** a live, validated, visually-confirmed continuous surface-to-
+orbit transition on a TRUE Earth-diameter body across two real 2^-10 magnified crossings, both
+observable, no visible seam — via a genuinely controllable camera. Existing camera behavior
+byte-unregressed. Prediction-first ticks match; per-frame deltas seamless; VUID clean.
 
 ## Progress Log
 
