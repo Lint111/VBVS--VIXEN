@@ -13,8 +13,22 @@
 # is no separate structure that can drift out of sync with reality.
 #
 # Subcommands:
-#   -Register -AgentId <id> [-Note <text>]
+#   -Register -AgentId <id> [-Source <worktree-or-repo-path>] [-BuildTarget <cmake-target>] [-Note <text>]
 #       Create a ticket, print its TicketId, exit 0. Call this FIRST, then go do other work.
+#       De-duplicated by the COMBINATION of (AgentId, Source, BuildTarget) — not AgentId alone:
+#       if a non-stale ticket already exists with the exact same AgentId + Source + BuildTarget,
+#       returns that EXISTING ticket instead of creating a new one (idempotent — safe to call
+#       again if you're not sure whether you already registered, e.g. after a retry/resume).
+#       This prevents the same source/agent from queueing repeated redundant requests for the
+#       SAME build (bug, retry, duplicate dispatch piling up tickets for itself, pushing back
+#       everyone else's position for no reason) — while still treating the same agent building
+#       a DIFFERENT target, or from a DIFFERENT worktree/source, as a distinct, valid, separate
+#       queue entry (e.g. one agent legitimately queuing both a "VixenApp" build and a
+#       "test_node_self_registration" build back-to-back is two real requests, not a dup).
+#       -Source/-BuildTarget default to "" (matches other ""-valued tickets — omitting both
+#       falls back to AgentId-only dedup, the prior behavior). Pass -Source as something stable
+#       per requester (e.g. your worktree name) and -BuildTarget as whatever you'll pass to
+#       build.bat's target arg (empty string for a full/default build).
 #   -Status -TicketId <id>
 #       Print this ticket's queue position (1 = next), whether the BUILD LOCK is currently
 #       free, and derived "YOUR_TURN" (position 1 AND lock free) / "WAITING" / "UNKNOWN_TICKET".
@@ -38,6 +52,8 @@ param(
     [string]$AgentId = "",
     [string]$TicketId = "",
     [string]$Note = "",
+    [string]$Source = "",
+    [string]$BuildTarget = "",
     [int]$StaleMinutes = 60
 )
 
@@ -96,12 +112,40 @@ if ($Register) {
         exit 1
     }
     Invoke-Reap
+
+    # De-dup key = (AgentId, Source, BuildTarget), NOT AgentId alone — the same agent building a
+    # DIFFERENT target or from a DIFFERENT worktree/source is a distinct, valid request (e.g.
+    # queuing a full build then separately a scoped test-target build), not a duplicate to
+    # collapse. Only an EXACT match on all three means "this is the same request again" (retry,
+    # duplicate dispatch, confused re-invocation) — hand back that same ticket instead of piling
+    # up a second one behind it, which would just push back everyone else's position for no
+    # reason. Older tickets (registered before Source/BuildTarget existed) have $null for both
+    # via ConvertFrom-Json on a JSON object missing those keys — coerce to "" so they compare
+    # correctly against a caller who also didn't pass -Source/-BuildTarget (both default "").
+    $existingTickets = @(Get-QueueTickets | Where-Object {
+        $_.AgentId -eq $AgentId -and
+        [string]$_.Source -eq $Source -and
+        [string]$_.BuildTarget -eq $BuildTarget
+    })
+    if ($existingTickets.Count -gt 0) {
+        $existing = $existingTickets[0]
+        $tickets = @(Get-QueueTickets)
+        $position = ($tickets | ForEach-Object { $_.TicketId }).IndexOf($existing.TicketId) + 1
+        Write-Host "[build-queue] Already registered - reusing existing ticket for AgentId '$AgentId' (same Source/BuildTarget - de-dup, not creating a new one)."
+        Write-Host "[build-queue] TicketId: $($existing.TicketId)"
+        Write-Host "[build-queue] Queue position: $position of $($tickets.Count)"
+        Write-Host "[build-queue] Go do other work. Check back with: -Status -TicketId $($existing.TicketId)"
+        exit 0
+    }
+
     $ticketId = [System.Guid]::NewGuid().ToString('N').Substring(0, 12)
     $ticket = [PSCustomObject]@{
-        TicketId   = $ticketId
-        AgentId    = $AgentId
-        Note       = $Note
-        CreatedUtc = (Get-Date).ToUniversalTime().ToString('o')
+        TicketId    = $ticketId
+        AgentId     = $AgentId
+        Source      = $Source
+        BuildTarget = $BuildTarget
+        Note        = $Note
+        CreatedUtc  = (Get-Date).ToUniversalTime().ToString('o')
     }
     $ticketPath = "$queueDir\$ticketId.json"
     $ticket | ConvertTo-Json | Set-Content -Path $ticketPath -Encoding utf8
@@ -166,7 +210,9 @@ if ($ListQueue) {
     Write-Host "[build-queue] Build lock: $(if ($lockFree) { 'FREE' } else { 'HELD' })"
     $pos = 1
     foreach ($t in $tickets) {
-        Write-Host "[build-queue] $pos. $($t.TicketId)  agent=$($t.AgentId)  registered=$($t.CreatedUtc)  note=$($t.Note)"
+        $src = if ($t.Source) { $t.Source } else { "-" }
+        $tgt = if ($t.BuildTarget) { $t.BuildTarget } else { "(full build)" }
+        Write-Host "[build-queue] $pos. $($t.TicketId)  agent=$($t.AgentId)  source=$src  target=$tgt  registered=$($t.CreatedUtc)  note=$($t.Note)"
         $pos++
     }
     exit 0
