@@ -185,8 +185,22 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
         // occasionally taking one extra fine step near its own boundary is an efficiency
         // trade, not a correctness one; the EPS hit-test above still fires on |d|, not on
         // the grid bound, so a real surface crossing can never be skipped over.
+        //
+        // KI-LPD-001: the "up to 8x the relaxed step" skip-boost above is sound ONLY when
+        // gridBound is a REAL per-cell distance guarantee (gridDim != 0u) — that's the case
+        // the proof above is about. When this recipe has no grid at all (gridDim==0u,
+        // sampleRecipeOccupancy returns kNoGridSentinel = "never skip, no information"), the
+        // unconditional min(gridBound, d*relaxation*8.0) still evaluates to d*relaxation*8.0
+        // (the sentinel is always larger), which SILENTLY multiplies the step by 8x with no
+        // proof backing it — for a non-Lipschitz domain-warped field (Twist/Bend/Mirror*/
+        // Repeat*/Elongate, RecipeBounds.h's whitelist-bail class) that's exactly the
+        // overshoot that made twist_sphere march past its own thin shell for all 128 steps
+        // (virtualHits==0) regardless of how small `relaxation` was tuned — the *8.0 factor
+        // downstream of it dominated. Gate the boost on gridDim != 0u so an ungridded recipe
+        // gets the plain relaxed step (no boost, no regression for gridded recipes' proof above).
         float gridBound = sampleRecipeOccupancy(gridOffset, gridDim, gridAabbMin, gridCellSize, p);
-        float step = max(d * relaxation, min(gridBound, d * relaxation * 8.0));
+        float step = (gridDim != 0u) ? max(d * relaxation, min(gridBound, d * relaxation * 8.0))
+                                      : d * relaxation;
         t += step;
         if (t > tFar) return false;
     }
