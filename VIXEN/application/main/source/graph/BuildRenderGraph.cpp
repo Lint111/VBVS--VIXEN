@@ -1937,16 +1937,32 @@ void VulkanGraphApplication::BuildRenderGraph() {
                     const glm::vec3 instWorldPos(64.0f - kHalf, 64.0f - kHalf, 64.0f - kHalf);
                     m8EarthHop0OctantWorld_ = instWorldPos
                         + (m8T0ChildOriginLocal - glm::vec3(1.0f)) * kCubeWorldEdge;
-                    m8EarthHop1OctantWorld_ = m8EarthHop0OctantWorld_;
+                    // M8 Task 24: T1's own marked crossing leaf (m8T1ChildOriginLocal, T1->T2's
+                    // childOriginLocal) lives in T1's OWN local [1,2) frame, NOT T0's -- it must
+                    // NOT be aliased to hop0's world position (the Task 23 bug: both hops aimed at
+                    // the SAME point, so hop1 never got its own distinct flight target). Map it
+                    // into T0's local frame first via the INVERSE of remapRayIntoChildFrame
+                    // (GpuTraversalMirror.h/BodyInstanceRayMarch.comp's own forward remap is
+                    // childLocal = (parentLocal - childOrigin)*invScale + 1.5, so the inverse is
+                    // parentLocal = childOrigin + (childLocal - 1.5)*childScale), then apply the
+                    // SAME instWorldPos/kCubeWorldEdge mapping hop0 uses to reach world space.
+                    const glm::vec3 m8T1AnchorInT0Local = m8T0ChildOriginLocal
+                        + (m8T1ChildOriginLocal - glm::vec3(1.5f)) * kChildScale;
+                    m8EarthHop1OctantWorld_ = instWorldPos
+                        + (m8T1AnchorInT0Local - glm::vec3(1.0f)) * kCubeWorldEdge;
 
                     mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_M8_EARTH_DEMO: T0 leaf ("
                                   + std::to_string(m8T0MarkDescIdx) + "," + std::to_string(m8T0MarkOctant)
                                   + ") -> T1 octree1 (childScale=2^-10); T1 leaf (" + std::to_string(m8T1MarkDescIdx) + ","
                                   + std::to_string(m8T1MarkOctant) + ") -> T2 octree2 (childScale=2^-10); "
-                                  "crossing octant world pos ("
+                                  "hop0 crossing octant world pos ("
                                   + std::to_string(m8EarthHop0OctantWorld_.x) + ","
                                   + std::to_string(m8EarthHop0OctantWorld_.y) + ","
-                                  + std::to_string(m8EarthHop0OctantWorld_.z) + ")");
+                                  + std::to_string(m8EarthHop0OctantWorld_.z) + "); "
+                                  "hop1 (T1's own) crossing world pos ("
+                                  + std::to_string(m8EarthHop1OctantWorld_.x) + ","
+                                  + std::to_string(m8EarthHop1OctantWorld_.y) + ","
+                                  + std::to_string(m8EarthHop1OctantWorld_.z) + ")");
                 }
             } else {
                 mainLogger->Error("[BuildRenderGraph] VIXEN_TIER_M8_EARTH_DEMO: no camera-facing leaf found in T0 or T1 — demo scene not built");
