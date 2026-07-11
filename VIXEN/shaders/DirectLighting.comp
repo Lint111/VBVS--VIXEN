@@ -128,6 +128,23 @@ layout(std430, binding = 21) readonly buffer PrevCameraConfigSSBO {
 layout(rgba32f, binding = 22) uniform image2D worldPosHistoryImage;
 
 // ============================================================================
+// RESERVOIR CONFIG (binding 23) — Sampled Lighting Inc3 M3
+// ============================================================================
+// Single ReservoirConfig record (kernel-codegen-generated struct, std430 — see
+// Generated/ReservoirConfig.glsl / ReservoirConfig.g.h), uploaded per-frame
+// from a ring buffer (ReservoirConfigNode). M3 SCAFFOLDING ONLY: declared here
+// (matching the shader's descriptor layout so the drift-guard + graph wiring
+// are exercisable) but NOT YET READ by any shading logic below — reservoirEnabled
+// defaults to 0 and no reservoir/RIS/ReSTIR math exists yet (this program's
+// Task 4/5). Mirrors binding 21's own "declared but not consumed this
+// milestone" precedent (PrevCameraConfig at its M3 landing).
+#include "Generated/ReservoirConfig.glsl"
+
+layout(std430, binding = 23) readonly buffer ReservoirConfigSSBO {
+    ReservoirConfig reservoirConfig;
+};
+
+// ============================================================================
 // PUSH CONSTANTS: the `pc` block (PushConstants, incl. DEBUG_MODE_* defines) is
 // declared once in SceneBindings.glsl (#included above) — this pass reads the
 // SAME push-constant range the march does: cameraPos/Dir/Up/Right/fov/aspect

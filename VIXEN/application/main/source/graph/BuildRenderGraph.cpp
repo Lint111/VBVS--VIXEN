@@ -51,6 +51,7 @@
 #include "Data/Nodes/AccumulationHistoryNodeConfig.h"  // Sampled Lighting Inc2 M1: persistent history image
 #include "Data/Nodes/WorldPosHistoryNodeConfig.h"      // Sampled Lighting Inc3 M2: worldPos/depth companion history image (KI-023)
 #include "Data/Nodes/PrevCameraConfigNodeConfig.h"     // Sampled Lighting Inc2 M3: prev-frame camera matrix upload ring
+#include "Data/Nodes/ReservoirConfigNodeConfig.h"      // Sampled Lighting Inc3 M3: ReservoirConfig upload ring (M4/M5 scaffolding)
 #include "Data/Nodes/ShaderLibraryNodeConfig.h"
 #include "Data/Nodes/SkyProjectionNodeConfig.h"  // Tiered ESVO Inc1 M3: address-derived sky-point composite pass
 #include "Data/Nodes/SwapChainNodeConfig.h"
@@ -88,6 +89,7 @@
 #include "Nodes/AccumulationHistoryNode.h"  // Sampled Lighting Inc2 M1: persistent history image
 #include "Nodes/WorldPosHistoryNode.h"      // Sampled Lighting Inc3 M2: worldPos/depth companion history image (KI-023)
 #include "Nodes/PrevCameraConfigNode.h"     // Sampled Lighting Inc2 M3: prev-frame camera matrix upload ring
+#include "Nodes/ReservoirConfigNode.h"      // Sampled Lighting Inc3 M3: ReservoirConfig upload ring (M4/M5 scaffolding)
 #include "Nodes/LoopBridgeNode.h"
 #include "Nodes/PickIdTargetNode.h"
 #include "Nodes/PresentNode.h"
@@ -264,6 +266,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // not yet read by the shader this milestone (M4 consumes it for reprojection); this
     // milestone's render must stay byte-identical to M2.
     NodeHandle prevCameraConfigNode = renderGraph->AddNode<PrevCameraConfigNodeType>("prev_camera_config");
+
+    // Sampled Lighting Inc3 M3: ReservoirConfig data (binding 23). Same per-frame ring
+    // upload pattern as shadowConfigNode/prevCameraConfigNode above — separate node (see
+    // ReservoirConfigNode.h for the separate-vs-extend decision). M3 scaffolding only:
+    // reservoirEnabled=0 by default and nothing reads this buffer yet (M4/M5 wire the
+    // reservoir/RIS shading logic that consumes it); this milestone's render must stay
+    // byte-identical to M1/M2.
+    NodeHandle reservoirConfigNode = renderGraph->AddNode<ReservoirConfigNodeType>("reservoir_config");
 
     // --- Input Node ---
     NodeHandle inputNode = renderGraph->AddNode<InputNodeType>("input_handler");
@@ -2244,6 +2254,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(cameraNode, CameraNodeConfig::PREV_VIEW_PROJ,
                   prevCameraConfigNode, PrevCameraConfigNodeConfig::PREV_VIEW_PROJ);
 
+    // Sampled Lighting Inc3 M3: reservoir config node connections (same ring pattern as
+    // shadowConfigNode above). M3 scaffolding only — no shader consumes this buffer yet.
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  reservoirConfigNode, ReservoirConfigNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                  reservoirConfigNode, ReservoirConfigNodeConfig::CURRENT_FRAME_INDEX);
+
     // Connect push constant fields to push constant gatherer using member extraction
     // CameraNode now outputs a CameraData struct, so we can extract individual fields
     batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
@@ -2759,6 +2776,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(worldPosHistoryNode, WorldPosHistoryNodeConfig::WORLDPOS_IMAGE_VIEW,
                           directLightingGatherer, 22,
                           SlotRoleModifier(SlotRole::Execute));
+
+    // Sampled Lighting Inc3 M3: Binding 23: ReservoirConfig SSBO (single record, re-uploaded
+    // per-frame from ReservoirConfigNode's ring). Declared in the shader but not yet read
+    // this milestone (M4/M5 wire the reservoir/RIS shading logic) — a pure plumbing wire,
+    // mirroring binding 21's own M3-predecessor plumbing-only precedent (PrevCameraConfig).
+    batch.Connect(reservoirConfigNode, ReservoirConfigNodeConfig::RESERVOIR_CONFIG_BUFFER,
+                          directLightingGatherer, 23,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
     // Binding 0 (outputImage): DirectLighting is the genuine writer now (the march never
     // imageStore's it — see PARAM_WRITES_NO_IMAGE's doc comment). Same renderTargetNode::
