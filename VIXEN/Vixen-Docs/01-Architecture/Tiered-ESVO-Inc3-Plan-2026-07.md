@@ -1227,14 +1227,12 @@ epic's own discipline (M6/M7 precedent: an honest documented limit is a valid ou
   POSITION lying along the octant's own off-axis diagonal, not to aiming there. Two anchor-point
   variants were tried (extrapolating the octant's direction out to the sphere's nominal radius, and
   anchoring directly at the octant's own recorded world position) — BOTH show the identical flat-gray
-  hexagon at the far end and empty background at the near end. Root cause NOT further isolated this
-  task (candidates, none confirmed: a ray-AABB entry/traversal-restart artifact specific to extreme
-  off-axis body-diagonal angles into this coarse `n=16`-grid voxelized sphere; a hole/gap in the
-  coarse SDF bake exactly at that diagonal corner; something in how the crossing leaf's own footprint
-  is computed off-axis). A `VIXEN_TIER_M8_FLIGHT_DEBUG_ZPOS_OCTANT_AIM` toggle was added (position
-  along +Z, aim at the octant) as the next diagnostic step to isolate position-direction from
-  aim-target further, but was NOT run this task (build-queue contention; judged lower value than
-  reporting the clean, already-evidenced finding promptly).
+  hexagon at the far end and empty background at the near end. **Conclusion (b) above was WRONG —
+  the implementer's own "control test" was not apples-to-apples (it changed BOTH the aim target AND
+  the position-vs-solid relationship at once), and this was caught + corrected by the Opus validator
+  who ran the un-run `VIXEN_TIER_M8_FLIGHT_DEBUG_ZPOS_OCTANT_AIM` diagnostic (see validator entry
+  below) — see that entry for the real root cause (aim target + the LOD gate working as designed,
+  not an off-axis-position rendering defect).**
   **Regressions (fresh build, exe mtime postdates all edited sources, forced validation): full sweep
   of unity/chain/observable/default/earth_static all exit 0, VUID exactly 10×`08114` zero-new in
   every scene, chain demo's T1/T2 nesting visually confirmed unregressed by direct image inspection.**
@@ -1258,3 +1256,35 @@ epic's own discipline (M6/M7 precedent: an honest documented limit is a valid ou
   direction, works) but not yet root-caused to a specific line of code. Per this epic's own discipline
   (M6/M7 precedent), this is reported as an honest, evidenced limit rather than a forced or misleading
   capture.
+
+  **Opus validator: APPROVED_WITH_FOLLOWUP (2026-07-11) — the isolation above is WRONG; there is NO
+  rendering defect.** Independently rebuilt (fresh exe, `ZPOS_OCTANT_AIM` symbol confirmed present,
+  mtime-verified — the committed exe was STALE and needed a full rebuild) and ran the implementer's
+  own un-run diagnostic (`VIXEN_TIER_M8_FLIGHT_DEBUG_ZPOS_OCTANT_AIM`: same +Z position as the ZDIR
+  control, OUTSIDE the solid, but aiming at the interior crossing octant instead of the sphere
+  surface). Result: **ZPOS_OCTANT_AIM reproduces the flat-gray failure pixel-for-pixel** (near-identical
+  gray levels/pixel counts to the real diagonal flight), while ZDIR (same position, on-axis surface
+  aim) renders real color. **The discriminating variable is the AIM TARGET, not the camera's position
+  axis** — the implementer's control test was not apples-to-apples (it varied BOTH aim AND
+  position-vs-solid at once). **Root cause, confirmed by ablation:** setting
+  `VIXEN_TIER_CROSSING_LOD_COEF_OVERRIDE=0.0` (disabling the LOD gate) makes the gray vanish entirely
+  (4000 real-color px at every tick) — the flat gray is `subPixelFootprint` mip-decline
+  (`BodyInstanceRayMarch.comp:843-868`) firing exactly as designed: aiming at the interior, off-axis
+  marked leaf at childScale=2^-10 makes the gate's RHS microscopic, so it correctly declines to
+  descend and mip-shades the coarse parent instead. Aiming at the sphere surface (+Z control) hits an
+  UNMARKED leaf entirely, so the gate never engages — hence "works." **This is not a bug; it
+  re-confirms M6/M7's R-independent finding at the shader-gate level:** a true 2^-10 crossing's
+  footprint is sub-pixel at every distance reachable without entering the solid, given this scene's
+  INTERIOR (not surface-exposed) octant placement. Task 17's T1/T2 root-cause (orbit-around-center
+  schedule geometry) independently re-confirmed consistent. Capability + regressions confirmed:
+  CameraNode changes purely additive (2 inline ForTest setters, no `UpdateCameraData` logic change,
+  byte-unregressed by construction); chain scene VUID 10×`08114` zero-new, T1/T2 nesting unregressed;
+  default scene clean. Tree/docs clean except the mischaracterization above (now corrected in this
+  entry and in the design doc).
+  **Recommended next step (not "fix a bug" — there isn't one):** (a) document the real limit — a true
+  2^-10 crossing needs either a gentler ratio (M7's proven childScale=0.25 approach) or a scene where
+  the marked leaf is SURFACE-EXPOSED and on-axis (a construction change, not an engine fix) to be
+  observably reached without a LOD-gate decline; or (b) if a live 2^-10 observable crossing is still
+  wanted, build that surface-exposed construction as a follow-up. The translating-flight CAPABILITY
+  itself (Task 19's actual deliverable) is correct, additive, and worth keeping regardless of which
+  path is chosen.

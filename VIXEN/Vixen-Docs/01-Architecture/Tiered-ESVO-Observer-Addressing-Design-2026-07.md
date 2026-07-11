@@ -445,17 +445,27 @@ ticks.
 **M8 update (2026-07-11): the CameraNode look-target decoupling path (c) is now built** (Task 16,
 `SetLookTargetForTest`/`PARAM_LOOK_TARGET_*`, byte-unregressed when unset) **and extended with a
 genuine translating-position capability** (Task 19, `SetPositionForTest`+
-`SetLookTargetNoOrbitForTest`) — proven correct via a control test (flying along a known-good axis
-while aiming at the crossing octant renders real geometry at every tested distance, including
-extreme close-up). Task 17's orbit-around-center attempt's T1/T2 invisibility is now root-caused
-(camera-to-body-center distance never approaches hop1's tiny threshold at any radius outside the
-solid — a geometric fact of that schedule SHAPE, not a bug). But Task 19 found a NEW, distinct,
-well-evidenced defect: flying the camera's POSITION along the crossing octant's own off-axis radial
-direction from body center renders only a flat mip-fallback-gray silhouette at every tested distance
-— never real per-voxel color, never T1/T2. The true 2^-20 Earth-scale observable flight-path
-therefore remains open, now blocked on THIS finding rather than the FOV-floor/solid-radius
-constraints M6/M7 already solved. See [[Tiered-ESVO-Inc3-Plan-2026-07]]'s M8 Task 19 Progress Log
-for the full control-test evidence and untried next diagnostic step.
+`SetLookTargetNoOrbitForTest`) — the capability itself is correct and unregressed (additive-only
+CameraNode change, verified by diff). Task 17's orbit-around-center attempt's T1/T2 invisibility is
+root-caused (camera-to-body-center distance never approaches hop1's tiny threshold at any radius
+outside the solid — a geometric fact of that schedule SHAPE, not a bug). **CORRECTION (Opus
+validator, 2026-07-11): Task 19's own reported "off-axis-POSITION rendering defect" is NOT what its
+evidence shows and is NOT a bug.** The validator ran Task 19's own un-run next diagnostic
+(`ZPOS_OCTANT_AIM`: same known-good +Z position, but aiming at the interior crossing octant instead
+of the sphere surface) and found it reproduces the flat-gray result pixel-for-pixel — meaning the
+discriminating variable is the AIM TARGET (an interior, off-axis, sub-pixel-at-that-childScale
+leaf vs. an unmarked on-axis surface leaf), not the camera's position axis. Task 19's own "control
+test" was not apples-to-apples (different aim AND different position-vs-solid relationship at once).
+Ablating the LOD gate (`VIXEN_TIER_CROSSING_LOD_COEF_OVERRIDE=0.0`) makes the gray vanish entirely —
+confirming the flat-gray is `subPixelFootprint` mip-decline (`BodyInstanceRayMarch.comp:843-868`)
+working exactly as designed at childScale=2^-10, not an engine defect. **This re-confirms, at the
+shader-gate level, M6/M7's R-independent finding:** a true 2^-10 crossing's footprint is sub-pixel
+at every camera distance reachable without entering the body's own solid interior, for the current
+scene's octant placement (interior, not surface-exposed). An observable true-2^-20 crossing therefore
+needs either a gentler ratio (M7's proven approach, childScale=0.25) or a scene where the marked leaf
+is surface-exposed and on-axis (a construction change, not an engine fix) — not a look-target/
+position-capability fix, since none is needed. See [[Tiered-ESVO-Inc3-Plan-2026-07]]'s M8 Task 19
+Progress Log + validator entry for the full three-way isolation evidence.
 
 ## 10. Rejected alternatives
 
