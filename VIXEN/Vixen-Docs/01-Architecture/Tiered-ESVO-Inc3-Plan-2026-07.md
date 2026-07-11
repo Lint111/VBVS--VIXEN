@@ -1,6 +1,6 @@
 ---
 title: Tiered ESVO — Inc3 Implementation Plan (scale-magnified tiers + 3-tier chain — Earth-scale surface-to-orbit)
-status: M1-M3 SHIPPED, M5 SHIPPED (magnification geometry fix) 2026-07-10; M6 (Earth-scale epic gate) BLOCKED on a camera-framing/scale structural mismatch, not a math defect (see Progress Log); M7 SHIPPED 2026-07-11 — the epic gate MET at a documented gentler ratio (childScale=0.25); true Earth-scale needs a scoped CameraNode look-target-decoupling follow-up (see Progress Log)
+status: M1-M3 SHIPPED, M5 SHIPPED (magnification geometry fix) 2026-07-10; M6 (Earth-scale epic gate) BLOCKED on a camera-framing/scale structural mismatch, not a math defect (see Progress Log); M7 SHIPPED 2026-07-11 — the epic gate MET at a documented gentler ratio (childScale=0.25); true Earth-scale needs a scoped CameraNode look-target-decoupling follow-up (see Progress Log); M8 Task 16 SHIPPED (look-target decoupling); Task 17/19 DONE_WITH_CONCERNS; Task 20 NOT MET — surface-exposed placement + gate-clearing coefficient correctly derived, but a NEW distinct engine-level rendering threshold (body vanishes below raySizeCoef ~2e-5-5e-5, un-root-caused) blocks the live proof (see Progress Log)
 depends: Tiered-ESVO-Observer-Addressing-Design-2026-07.md (§3, §5, §9), Tiered-ESVO-Inc2-Plan-2026-07.md (shipped 2026-07-10, merged `2d67840e`, origin/main `12145d60`)
 ---
 
@@ -1342,3 +1342,95 @@ GENUINELY colored (not mip-fallback) continuous flight through TWO true 2^-10 (2
 scale-magnified crossings, on real hardware, built correctly from a prediction that was checked
 BEFORE construction — the actual "proper surface-to-orbit view of planets of proper scale" this epic
 set out to prove.
+
+- **M8 Task 20: PREDICTION DERIVED + CONFIRMED CORRECT, GATE NOT MET — a NEW, distinct engine-level
+  blocker found, un-root-caused · worktree `tiered-esvo-inc2` (`feat/tiered-esvo-inc3`, HEAD
+  `94336037`, no source changes committed this task — see below) · 2026-07-11.**
+  **Premise check (before any code): the octant-4 diagonal placement Task 17/19 already used is
+  genuinely surface-exposed.** Direct box/sphere-intersection geometry (not asserted, computed):
+  every root-level octant's own cell-CENTER sits at an identical 20.78wu from body center (a cube-
+  symmetry fact, ~independent of which of the 8 octants is picked — this alone explains why no prior
+  octant choice mattered), but the octant-4 CELL's own box (world half-width 12wu at R=4.8, i.e.
+  spanning offset [-24,0)x[-24,0)x[0,24) from center) DOES contain real sphere surface along its own
+  outward diagonal corner direction `(-1,-1,1)/sqrt(3)`, at BOTH the nominal (6.0*R=28.8wu) and
+  empirical (5.625*R=27.0wu) solid radii (surface point offset ~(-15.6,-15.6,15.6), verified inside
+  the box's own per-axis bounds). This is the SAME direction Task 19 already flew along — its
+  premise was already correct; the aim-target correction (recorded octant world position, not an
+  extrapolated sphere-radius point) was also already correct per its own validator.
+  **Real root cause (new, derived from `checkChildValidity`'s actual math, not assumed): `tv_max` is
+  the ray-parametric exit-t of the CURRENTLY-TESTED NODE, floored by that node's own physical chord
+  length for a ray that traverses its interior — it does NOT shrink toward zero as the camera
+  approaches an aim point inside that node**, contradicting the M8 Earth demo's own calibrated
+  formula (`hop=20*R*childScale*scale_exp2/coef`), which implicitly assumed proportionality to
+  camera-to-target distance. Verified by a direct ray/box-intersection sweep (Python, not the shader
+  itself — a CPU geometric mirror of the box-exit-t computation) along the exact diagonal-approach
+  geometry: `tv_max` stays in [27.0, 27.1]wu across camera-to-surface distances from 50wu down to
+  0.01wu — i.e. it is FLOORED by the leaf's own ~27wu diagonal chord, not by proximity. Solving the
+  gate (`tv_max*coef >= childScale*scale_exp2`) with this REAL `tv_max` gives the coefficient needed
+  to clear hop0: exact threshold `coef=9.03e-6`, used `coef=4.51e-6` (2x safety margin). Hop1 (T1's
+  OWN marked leaf, physically tiny — world span `childScale*24~=0.023wu` at childScale=2^-10 of T0's
+  24wu leaf cube) has a chord floor ~1300x smaller than T0's and clears the SAME coefficient with
+  enormous margin (LHS ~2500x below RHS) — **hop1 was never the actual bottleneck**, contrary to the
+  emphasis in Task 17/19's own framing; hop0's coarse root-level leaf chord was. Predicted, via a
+  bisection on the SAME box-intersection model, that hop0 fires at camera-to-surface distance
+  ~=27.1wu (tick ~=335 on Task 19's own existing log-spaced 400-tick flight schedule, near=0.05wu,
+  far=91.2wu — this schedule already covers the predicted transition with no changes needed); hop1
+  predicted to fire immediately after, same tick, given its enormous margin.
+  **NO NEW CONSTRUCTION OR FLIGHT CODE WAS NEEDED**: Task 17/19's existing `VIXEN_TIER_M8_EARTH_DEMO`
+  scene (unchanged) + `VIXEN_TIER_M8_FLIGHT_DEMO` schedule (unchanged) already build the correct
+  surface-exposed geometry and flight; the only variable requiring a change is the
+  `VIXEN_TIER_CROSSING_LOD_COEF_OVERRIDE` runtime value (an existing, already-wired env-var literal
+  override, `BuildRenderGraph.cpp:413-428` — no shader/C++ change).
+  **Live-test finding (NEW, distinct, well-evidenced): a coefficient this low does not produce the
+  predicted crossing — it makes the ENTIRE body vanish.** Ran the full 44-frame flight capture at
+  coef=4.512765711645101e-06 (dense sampling ticks 320-345 around the predicted transition, plus
+  spread coverage 1-401): every single frame, at every tick including tick 1 (camera very close, long
+  before any crossing distance is relevant), pixel-decodes as pure sky/background gradient (full
+  500x500 scan, not sampled) — zero body-colored pixels anywhere, not even Task 19's own mip-fallback
+  gray. Isolated via a clean bisection A/B/control (5 coefficient values: 1e-4, 5e-5, 2e-5, 1e-5,
+  4.5e-6, plus a targeted 2e-5-vs-5e-5 pair): the body renders (matching Task 19's own reference gray
+  fallback) at coef=5e-5 and above, and shows nothing at coef=2e-5 and below — a sharp, reproducible
+  threshold between 2e-5 and 5e-5. Confirmed via the SAME sweep on `VIXEN_TIER_M8_EARTH_DEMO` alone
+  (static default camera, no flight/no `VIXEN_TIER_M8_FLIGHT_DEMO`) that this is INDEPENDENT of the
+  flight-path/near-clip mechanism — the static demo also renders nothing at coef=2e-5. Verified
+  analytically (same box-intersection model) that the tier-crossing gate does NOT even clear at
+  EITHER boundary coefficient (5e-5 or 2e-5) — so this vanishing is unrelated to the crossing firing
+  into an unresolved/invisible child; it is T0's OWN ordinary (non-crossing) leaves failing to render
+  via either the LOD-fallback or full-detail path below this threshold. Ruled out as explanations (not
+  exhaustively root-caused, but checked): the coefficient is not underflowing to exact `0.0` (would
+  disable the `pc.raySizeCoef>0.0`-gated branch, and the code's own comment states that should yield
+  FULL-detail traversal, not a miss — logged forced values 0.000020/0.000050 confirm non-zero,
+  correctly-passed literals); the `brickResident`-gated "streaming grace" path is a structurally
+  separate branch not keyed to `raySizeCoef` magnitude at all; `MAX_ITERS=512` is generous relative to
+  this body's shallow (`kBrickDepth=3`) base-tree depth, well short of plausible exhaustion.
+  **Regressions/hygiene:** zero tracked source files changed this task (`git status --porcelain`
+  clean outside `temp/`, which is untracked/gitignored scratch) — all sweeps ran via env-var-only
+  variation against the ALREADY-BUILT exe from Task 19's own session (exe mtime 2026-07-11 21:20:00,
+  postdates both `BuildRenderGraph.cpp` 19:31:54 and `VulkanGraphApplication.cpp` 19:52:02; `strings
+  -a` confirms `VIXEN_TIER_M8_EARTH_DEMO`/`VIXEN_TIER_M8_FLIGHT_DEMO` symbols present) — no rebuild
+  was performed or required. VUID exactly 10x `VUID-vkCmdDispatch-None-08114` (counted from
+  `stdout.log`'s `^Validation Error:` header lines, not the indented `applog.txt` copy — the
+  established double-count gotcha), zero new, in the 44-frame flight capture. The 13
+  `PushConstantGathererNode::Validate: Type mismatch` errors present in this run's log are confirmed
+  pre-existing (identical count in Task 19's own reference `m8t19_flight/stdout.log`), not a
+  regression. Since no source changed, Task 19's own already-Opus-validated regression sweep
+  (unity/chain/observable/default/earth_static) remains valid and was not re-run.
+  Build-policy compliance: checked `check_build_lock.ps1` (FREE) before any run; no build dispatched
+  (no source change); every `binaries\VIXEN.exe` invocation went through hand-rolled `.bat` scripts
+  under `VIXEN\temp\` mirroring Task 19's own established harness pattern (env vars via `cmd.exe /c`,
+  since bash env does not reach the Windows `.exe`).
+  **Verdict: NOT MET, honest evidenced blocker.** The geometric/gate-math derivation this task set out
+  to do is complete and independently confirmed correct (surface-exposed placement was never the
+  problem; the coefficient needed to clear hop0 is precisely derived from the real `tv_max` mechanism,
+  not guessed). But a newly-discovered, distinct engine-level rendering threshold — T0's own base
+  geometry disappearing below a raySizeCoef floor between 2e-5 and 5e-5, independent of the
+  tier-crossing mechanism entirely — sits below the coefficient the derivation requires (~4.5e-6),
+  and blocks producing the corrected live capture this task set out to gate on. Per this epic's own
+  discipline (M6/M7/Task19 precedent: an honest, evidenced limit is a valid, non-forced outcome), this
+  is reported as a genuine new finding rather than a forced or misleading capture. **Recommended next
+  step:** root-cause the coefficient-threshold vanishing (likely candidates to check first: the
+  non-leaf LOD gate at `BodyInstanceRayMarch.comp:983-984` interacting with something depth- or
+  precision-related at very low coefficients, or a mip-pool/shadeFromMipSample edge case triggered
+  only when the LOD gate almost never fires) using the `gpu-shader-debug` skill's CPU-mirror
+  methodology, then re-run this task's already-derived coefficient (~4.5e-6) once that floor is
+  understood or raised.
