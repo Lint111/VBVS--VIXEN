@@ -10,6 +10,7 @@ cmake_minimum_required(VERSION 3.15...4.2 FATAL_ERROR)
 add_executable(vixen_editor
     ${CMAKE_CURRENT_SOURCE_DIR}/source/main.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/source/EditorApplication.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/EditorLayersViewBridge.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/source/StbImageWriteImpl.cpp
 )
 

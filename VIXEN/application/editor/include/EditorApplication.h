@@ -21,16 +21,26 @@
 #include "EditorDocumentModel.h"
 #include "AppFlowRuntime.h"
 #include "LayerControllerViewDataProvider.h"
+#include "EditorLayersViewBridge.h"  // Inc-A2: gaia/robin_hood ODR isolation seam -- see its file header
 #include <Logger.h>
 
 #include <memory>
 #include <string>
 #include <vector>
 
+// Forward-declared only -- see EditorLayersViewBridge.h's file header for why this TU (which
+// transitively sees gaia.h via Recipe/RecipeBaker.h below) never includes EditorLayersView.h itself.
+namespace Vixen::App { class EditorLayersView; }
+
 class EditorApplication : public VulkanGraphApplication {
 public:
     // documentPath: .vxd to load. Empty = caller must call LoadDocument() before Prepare().
     explicit EditorApplication(std::string documentPath);
+    // Explicit (not defaulted): layersView_ is a raw pointer to a forward-declared-only
+    // EditorLayersView (see EditorLayersViewBridge.h) -- the destructor body must call
+    // DestroyEditorLayersView() through a complete-type call site, defined in
+    // EditorApplication.cpp, not implicitly generated here where the type is incomplete.
+    ~EditorApplication() override;
 
     // Inc-2b Task 4: one parsed VIXEN_EDITOR_SCRIPT entry (e.g. "toggle:2@30" or "undo@60").
     // Public (plain data, no invariants) so the free-function parser in EditorApplication.cpp's
@@ -89,6 +99,13 @@ public:
     bool CaptureFrameToPng(const std::string& path, std::string& err);
 
 private:
+    // Inc-A2: re-derives layersView_'s bound "layers" array from doc_'s per-layer name/op plus
+    // rt_.Layers().Mask()'s current bit state. Shared by the initial population (LoadDocument)
+    // and the ToggleLayer handler's same-frame echo (the SAME ApplyFn body Undo()/Redo() re-run,
+    // so one call site here covers toggle, undo, and redo alike).
+    void RefreshLayersView();
+
+
     std::string documentPath_;
     Vixen::Editor::EditorDocumentModel doc_;
     // Inc-2b: the editor owns an AppFlowRuntime (bus=nullptr — Publish no-ops; the editor
@@ -101,6 +118,12 @@ private:
     // instead of calling rt_.Layers().Mask()/SetMask() directly -- swapping to a Gaia-backed
     // provider later (Inc-B) touches this one construction, not the handler body.
     Vixen::AppFlow::LayerControllerViewDataProvider layerProvider_{rt_.Layers()};
+    // Inc-A2: the editor layer view's data-model host (design View-Model-Binding-Inc-A2-Plan-
+    // 2026-07.md). Owned here (mirrors HudView's hudView_ ownership in VulkanGraphApplication --
+    // same raw-pointer-via-bridge-factory pattern, same rationale: forward-declared-only type),
+    // wired onto the UI node via WireEditorLayersView in BuildRenderGraph, and populated from
+    // doc_/rt_.Layers() at LoadDocument time -- the first model->view path anywhere in the editor.
+    Vixen::App::EditorLayersView* layersView_ = Vixen::App::MakeEditorLayersView();
     bool dirty_ = false;  // set on toggle; drives the next-tick re-flatten (was doc_.ConsumeDirty())
     std::string lastEditorError_;
     std::string lastSavedPath_;
