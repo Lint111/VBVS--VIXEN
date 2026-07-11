@@ -11,8 +11,9 @@ struct ReservoirConfig {
     uint32_t temporalCap;
     uint32_t biasedModeEnabled;
     float lightTreeCutThreshold;
+    uint32_t frameParity;
 };
-static_assert(sizeof(ReservoirConfig) == 28, "ReservoirConfig std430 size");
+static_assert(sizeof(ReservoirConfig) == 32, "ReservoirConfig std430 size");
 static_assert(offsetof(ReservoirConfig, reservoirEnabled) == 0, "reservoirEnabled@0");
 static_assert(offsetof(ReservoirConfig, candidateCount) == 4, "candidateCount@4");
 static_assert(offsetof(ReservoirConfig, spatialRadius) == 8, "spatialRadius@8");
@@ -20,4 +21,5 @@ static_assert(offsetof(ReservoirConfig, spatialCount) == 12, "spatialCount@12");
 static_assert(offsetof(ReservoirConfig, temporalCap) == 16, "temporalCap@16");
 static_assert(offsetof(ReservoirConfig, biasedModeEnabled) == 20, "biasedModeEnabled@20");
 static_assert(offsetof(ReservoirConfig, lightTreeCutThreshold) == 24, "lightTreeCutThreshold@24");
+static_assert(offsetof(ReservoirConfig, frameParity) == 28, "frameParity@28");
 } // namespace Vixen::Gpu

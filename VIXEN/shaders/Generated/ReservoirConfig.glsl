@@ -9,5 +9,6 @@ struct ReservoirConfig {
     uint temporalCap;
     uint biasedModeEnabled;
     float lightTreeCutThreshold;
+    uint frameParity;
 };
 #endif // RESERVOIRCONFIG_GLSL

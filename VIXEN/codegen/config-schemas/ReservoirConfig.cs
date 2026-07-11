@@ -39,6 +39,12 @@ using Yeroket.Util.KernelFramework;
 // LightTree.h's LightTreeCutParams::powerThreshold) — GPU-uploaded so a
 // future GPU-side light-tree cut (or CPU-side authoring UI) can drive the
 // same value this milestone's CPU BuildLightTreeCut takes as a parameter.
+// frameParity: Sampled Lighting Inc3 M4 — a monotonic per-frame counter,
+// incremented by ReservoirConfigNode::ExecuteImpl every Execute (NOT reset by
+// camera motion, unlike pc.accumFrameCount — this is what makes it safe as a
+// reservoir ping-pong selector: frameParity&1 strictly alternates every frame,
+// telling DirectLighting.comp which of reservoirBufferA/B is CURRENT (write)
+// vs PREVIOUS (read) this frame, with no CPU-side graph rewiring needed).
 [GpuStruct]
 public struct ReservoirConfig
 {
@@ -49,4 +55,5 @@ public struct ReservoirConfig
     public uint temporalCap;
     public uint biasedModeEnabled;
     public float lightTreeCutThreshold;
+    public uint frameParity;
 }

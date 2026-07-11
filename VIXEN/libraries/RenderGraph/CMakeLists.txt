@@ -267,6 +267,7 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/WorldPosHistoryNode.cpp     # Sampled Lighting Inc3 M2: persistent worldPos/depth companion history image (KI-023)
     src/Nodes/PrevCameraConfigNode.cpp    # Sampled Lighting Inc2 M3: prev-frame camera matrix upload ring
     src/Nodes/ReservoirConfigNode.cpp     # Sampled Lighting Inc3 M3: ReservoirConfig upload ring (M4/M5 scaffolding)
+    src/Nodes/LightTreeBufferNode.cpp     # Sampled Lighting Inc3 M4: mip-cut light-tree upload ring (RIS candidate source)
     src/Nodes/MvpUniformNode.cpp
     src/Nodes/DescriptorResourceGathererNode.cpp
     src/Nodes/DescriptorSetNode.cpp

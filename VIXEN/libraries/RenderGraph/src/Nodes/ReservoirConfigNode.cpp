@@ -38,6 +38,7 @@ Vixen::Gpu::ReservoirConfig MakeDefaultReservoirConfig() {
     cfg.temporalCap           = 32u;     // M4 temporal reservoir sample-count cap
     cfg.biasedModeEnabled     = 0u;      // unbiased-only (biased mode deferred)
     cfg.lightTreeCutThreshold = 0.01f;   // mirrors LightTreeCutParams::powerThreshold default
+    cfg.frameParity           = 0u;      // overwritten every Execute by the caller (see below)
 
     // M3 gate lever: VIXEN_RESERVOIR_CONFIG_ENABLED=1 forces the enable path so a
     // future live gate can capture both states from the SAME binary, no rebuild —
@@ -104,9 +105,18 @@ void ReservoirConfigNode::ExecuteImpl(TypedExecuteContext& ctx) {
     uint32_t frameIndex = ctx.In(ReservoirConfigNodeConfig::CURRENT_FRAME_INDEX) % kRingSize;
 
     // Static default content (no UI/authoring this milestone). Re-uploaded every
-    // frame anyway: 28 B is negligible and this keeps the node ready for a future
+    // frame anyway: 32 B is negligible and this keeps the node ready for a future
     // SetReservoirConfig() with no rewiring.
-    const Vixen::Gpu::ReservoirConfig cfg = MakeDefaultReservoirConfig();
+    Vixen::Gpu::ReservoirConfig cfg = MakeDefaultReservoirConfig();
+
+    // Sampled Lighting Inc3 M4: frameParity is THIS node's own monotonic per-Execute
+    // counter -- deliberately NOT pc.accumFrameCount (which RESETS on camera motion,
+    // see AccumulationConfigNode; a reset would repeat the same reservoir buffer twice
+    // in a row and corrupt the ping-pong invariant "current always differs from
+    // previous"). frameParityCounter_ increments unconditionally every Execute, so
+    // frameParity&1 in DirectLighting.comp strictly alternates every frame regardless
+    // of camera motion or accumulation state.
+    cfg.frameParity = frameParityCounter_++;
 
     // Upload into this frame's ring buffer (host-coherent: no flush needed).
     void* mapped = perFrame_.GetUniformBufferMapped(frameIndex);

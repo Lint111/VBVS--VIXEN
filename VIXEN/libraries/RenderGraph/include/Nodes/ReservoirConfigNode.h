@@ -64,6 +64,11 @@ private:
     static const uint32_t kRingSize;  // = FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT
 
     PerFrameResources perFrame_;
+
+    // Sampled Lighting Inc3 M4: monotonic per-Execute counter driving ReservoirConfig.
+    // frameParity -- see ExecuteImpl's own comment for why this must NOT be
+    // pc.accumFrameCount (which resets on camera motion).
+    uint32_t frameParityCounter_ = 0u;
 };
 
 } // namespace Vixen::RenderGraph
