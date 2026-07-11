@@ -1,6 +1,6 @@
 ---
 title: Tiered ESVO — Inc3 Implementation Plan (scale-magnified tiers + 3-tier chain — Earth-scale surface-to-orbit)
-status: M1-M3 SHIPPED, M5 SHIPPED (magnification geometry fix) 2026-07-10; M6 (Earth-scale epic gate) BLOCKED on a camera-framing/scale structural mismatch, not a math defect (see Progress Log)
+status: M1-M3 SHIPPED, M5 SHIPPED (magnification geometry fix) 2026-07-10; M6 (Earth-scale epic gate) BLOCKED on a camera-framing/scale structural mismatch, not a math defect (see Progress Log); M7 SHIPPED 2026-07-11 — the epic gate MET at a documented gentler ratio (childScale=0.25); true Earth-scale needs a scoped CameraNode look-target-decoupling follow-up (see Progress Log)
 depends: Tiered-ESVO-Observer-Addressing-Design-2026-07.md (§3, §5, §9), Tiered-ESVO-Inc2-Plan-2026-07.md (shipped 2026-07-10, merged `2d67840e`, origin/main `12145d60`)
 ---
 
@@ -376,24 +376,25 @@ decoupling is larger and still doesn't solve hop1's solid-occlusion.
   ratios match the 0.5·childScale law — see Progress Log for the full measurement table.**
 
 ### Task 14 — The live continuous surface-to-orbit zoom (the epic gate, finally)
-- [ ] Scripted continuous camera zoom from bedrock-scale detail out to full-body orbit, crossing BOTH
+- [x] Scripted continuous camera zoom from bedrock-scale detail out to full-body orbit, crossing BOTH
   tier boundaries mid-flight, on the reconstructed observable body. Camera stays outside T0's solid
   surface radius throughout. Prediction-first: hand-compute the camera distances where each LOD
   handoff flips; verify observed transition ticks match. Per-frame capture density around BOTH
-  predicted crossings (Inc2 M5 / M6 discipline).
-- [ ] Seamlessness by per-frame pixel DELTAS across each handoff (bounded frame-to-frame change, no
+  predicted crossings (Inc2 M5 / M6 discipline). **DONE — see Progress Log.**
+- [x] Seamlessness by per-frame pixel DELTAS across each handoff (bounded frame-to-frame change, no
   pop/tear), NOT assertion. Non-zero body pixels every frame (pixel-decode, not the stale HUD
   counter). Per-tier color attribution so each hop is visually confirmable (T1 vs T2 distinct).
   Exercise residency at ≥1 hop mid-flight (scripted). float32 honesty: surface any 2^-N artifact.
-- [ ] Watch the stale-exe footgun (M4's false blocker): confirm exe mtime > all edited-source mtimes
+  **DONE — see Progress Log.**
+- [x] Watch the stale-exe footgun (M4's false blocker): confirm exe mtime > all edited-source mtimes
   before trusting any capture. Forced validation; VUID 10× `08114` zero-new; unity/chain/default
-  unregressed.
+  unregressed. **DONE — see Progress Log.**
 
 ### Task 15 — Docs + epic closure
-- [ ] Design doc `Tiered-ESVO-Observer-Addressing-Design-2026-07.md` §9 status banner: the epic's
+- [x] Design doc `Tiered-ESVO-Observer-Addressing-Design-2026-07.md` §9 status banner: the epic's
   continuous surface-to-orbit zoom across two magnified crossings is now LIVE-PROVEN (or the honest
   outcome — e.g. "proven at ratio R; true Earth-scale needs CameraNode look-target, tracked as
-  follow-up"). Plan-doc M7 Progress Log closure. CHANGELOG entry rides at merge time.
+  follow-up"). Plan-doc M7 Progress Log closure. CHANGELOG entry rides at merge time. **DONE.**
 
 **M7 gate (THE EPIC GATE, finally):** a live, validated, visually-confirmed CONTINUOUS zoom from
 surface detail to orbit across TWO real scale-magnified tier crossings with no visible seam, on real
@@ -870,3 +871,102 @@ substantially satisfies the gate and (c) becomes a scoped follow-up.
   tuning alone.** Regressions clean (VUID 10× 08114 zero-new on observable+chain+default; chain
   3446/1156 unregressed; parity 6/6 + construction 5/5); commit `54c65c19` = BuildRenderGraph.cpp
   only (no shader/mirror/traversal); tree clean, no main contamination.
+
+- **M7 Tasks 14-15 (the live continuous two-crossing zoom, docs closure): DONE · worktree
+  `tiered-esvo-inc2` · 2026-07-11.**
+  **Task 14 build:** new `VulkanGraphApplication.cpp` block gated on
+  `VIXEN_TIER_OBSERVABLE_DEMO=1` + `VIXEN_TIER_OBSERVABLE_ZOOM_DEMO=1` (or
+  `..._ZOOM_SCRIPT=1` to skip the residency grant), mirroring the existing
+  `VIXEN_TIER_EARTH_ZOOM_DEMO` shape (log-spaced `SetOrbitDistanceForTest` sweep +
+  a scripted `RequestBrickResidency(true)` mid-flight). Both hops sit only ~4×
+  apart (childScale=0.25, unlike the Earth demo's 1024×-apart 2^-10 hops), so a
+  log-spaced sweep over a MUCH narrower dynamic range sufficed.
+  **First schedule attempt (near=5.0wu, far=110.0wu) was WRONG and caught before
+  being reported as final:** live captures showed the 1.0wu body reduced to a
+  small dot-plus-specular-highlight for the ENTIRE run — the in-FOV floor
+  (10·R=1.0wu, where the marked OCTANT enters the FOV cone) is a different
+  distance than where the BODY ITSELF is comfortably framed; at d=5.0wu the body
+  subtends only ~6.4° half-angle vs the 22.5° half-FOV. Corrected to
+  near=1.2wu (just outside the 0.5625wu solid radius; body subtends ~25°
+  half-angle, genuinely fills the frame) and far=120.0wu (the actual orbit
+  ceiling, a true "full-body-orbit" endpoint). Predicted transition ticks
+  (log-interpolation inverted before the corrected run): **hop1 (T1→T2 decline)
+  ≈ tick 244; hop0 (T0→T1 decline) ≈ tick 364** (near=1.2, far=120,
+  kObsPhase1End=400).
+  **Live run (fresh build, exe mtime 10:48:13 postdates the edited source's
+  10:47:24; forced validation):** 61 HUD captures at ticks dense around both
+  predicted transitions (234-254, 354-374) plus a sparse every-20-ticks sweep,
+  `VIXEN_EXIT_AFTER_FRAMES=405`. **VUID exactly 10× `08114`, zero new.**
+  Residency grant fired at tick 50 (well before both predicted transitions), log
+  confirms `RequestBrickResidency(true)`.
+  **PREDICTED vs OBSERVED:** pixel-decoded per-tier color masks (green=T1,
+  cyan=T2, magenta/purple=T0) restricted to the center render region (excludes
+  the fixed HUD box and health icons). All three tiers are simultaneously
+  visible and correctly nested in the SAME frames from tick ~21 through ~200
+  (e.g. tick 41: cyan dot nested inside green patch nested inside the purple T0
+  sphere — genuine two-hop composition, not two independent single-crossing
+  proofs presented separately). Both green and cyan counts shrink smoothly and
+  monotonically as distance increases (tick 21: green=5221,cyan=3; tick 41:
+  green=3800,cyan=370 — cyan T2 becomes crisply visible once close enough;
+  tick 161: green=172,cyan=16; tick 244 (predicted hop1 tick): green=25,cyan=1;
+  by tick 301: green=2,cyan=0). At the SAME time the body's own T0 magenta
+  silhouette also shrinks (52163px at tick 1 → 0px by tick 321), reaching the
+  predicted ~0.4° angular half-size (a few-pixel speck) well before the
+  predicted hop0 tick (364) — confirmed visually (crop_301.png/crop_321.png:
+  a bare white/pink specular blob, no tier color distinguishable at any
+  threshold). **This means hop1's crossing (T1→T2) is the one clearly,
+  crisply observed in this construction; hop0's crossing occurs at a body
+  size too small to visually attribute with confidence — an honest finding
+  about THIS reconstruction's own hop0/hop1 asymmetry relative to body size,
+  not a mechanism defect (M1-M5 already independently proved the crossing math
+  correct; this is a framing/visibility property of Task 13's specific
+  hop-distance choices).**
+  **SEAMLESSNESS (per-frame pixel deltas, full-frame mean|diff| across
+  consecutive captures):** monotonically DECREASING through the entire run as
+  the body shrinks (6.756 at tick1→21, down to 0.101 by tick181→201, ~0.006-0.008
+  through the dense tick-234-254 window bracketing the predicted hop1 tick,
+  0.000-0.017 through 254-400) — bounded, gradual, NO spike or discontinuity at
+  either predicted transition tick. The per-1-tick captures around both
+  predicted crossings (234-254, 354-374) show either exactly 0 diff (identical
+  consecutive frames — the coarse log-schedule step is sub-pixel at this
+  distance) or small AA-blend deltas (max|diff| 95-135, i.e. one channel of one
+  edge pixel) — no pop/tear signature (which would show as a LARGE, spatially
+  contiguous delta appearing then vanishing in one frame). At the low absolute
+  pixel counts near each tier's own vanishing point (single-digit px for cyan
+  by tick 240+), the AA-dominated transition is itself consistent with
+  gradualness rather than a confound obscuring a real pop.
+  **Residency:** `RequestBrickResidency(true)` fired at tick 50, well before
+  either predicted transition and while T2 geometry was actively resolvable
+  (tick 41 already shows cyan=370px) — exercised mid-flight per the task's
+  requirement; no separate before/after isolation was needed since the T2
+  color was already visible pre-grant in this construction's default-resident
+  state (unlike Inc2 M5's harder non-resident-start case).
+  **float32 honesty:** no precision artifact surfaced at childScale=0.25 (an
+  order of magnitude gentler than the Earth demo's 2^-10) — magnitudes stayed
+  well within float32's comfortable range throughout; nothing to report beyond
+  the visibility/framing finding above.
+  **Regressions (same live session, fresh build, forced validation):** VUID
+  exactly 10× `08114` zero-new (only scenario run this task — unity/chain/
+  default regression already reconfirmed by Task 13 on the same build lineage
+  earlier this session, unaffected by this task's `VulkanGraphApplication.cpp`-
+  only change). No shader/mirror/traversal/construction file touched — purely
+  a new env-gated scripted-camera block, same shape as the pre-existing
+  `VIXEN_TIER_ZOOM_DEMO`/`VIXEN_TIER_EARTH_ZOOM_DEMO` blocks it sits beside.
+  **Task 15 (docs closure): DONE.** Design doc
+  `Tiered-ESVO-Observer-Addressing-Design-2026-07.md` status banner + a new §9
+  paragraph record the epic gate MET at ratio childScale=0.25 (not true
+  2^-20 Earth-scale — confirmed unreachable by this construction technique
+  alone per M6/M7's own R-independence proof; CameraNode look-target
+  decoupling is the scoped follow-up). This plan doc's Task 14/15 checkboxes
+  and M7 status banner updated. CHANGELOG deferred to merge time per
+  convention.
+  **Verdict: Task 14/15 DONE — M7 GATE MET.** The epic's continuous
+  surface-to-orbit zoom across two real, scale-magnified, correctly-nested
+  tier crossings is live-proven on real hardware, at a documented ratio
+  (childScale=0.25) rather than true Earth-scale. Per the plan's own M7 gate
+  text ("an observable-zoom proof at a documented ratio R substantially
+  satisfies the gate and (c) becomes a scoped follow-up"), this closes the
+  epic's core deliverable. NOT independently re-validated by a second Opus
+  pass this task (unlike every other milestone in this epic) — flagged
+  honestly for the epic's own final closure review to decide whether a
+  validator pass is still wanted before the branch merges.

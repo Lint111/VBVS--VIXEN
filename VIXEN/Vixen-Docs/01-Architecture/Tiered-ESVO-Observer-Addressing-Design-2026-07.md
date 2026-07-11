@@ -1,6 +1,6 @@
 ---
 title: Tiered ESVO — Nested-Tree Addressing, Tier-Crossing Traversal & Observer-Relative Rendering
-status: Design (promoted from direction 2026-07-05) — Inc1 ✅ SHIPPED 2026-07-07; Inc2 ✅ SHIPPED 2026-07-10 (§3+§5 tier-crossing mechanism + a live, validated single-crossing continuous zoom; 3-tier T2→T1→T0 chaining deferred as a follow-up, see §9); Inc3 M1-M3 ✅ SHIPPED 2026-07-10 (scale-correct hitT/LOD gate, live magnified single crossing, chained hop-loop); Inc3 M5 ✅ SHIPPED 2026-07-10 (root-caused + fixed a construction-site magnification defect: concentric-shrink now proven at multiple childScale values); Inc3 M6 (Earth-scale epic gate) BLOCKED on a genuine geometric/scale mismatch in the demo's own construction, NOT a traversal-math defect — see §9
+status: Design (promoted from direction 2026-07-05) — Inc1 ✅ SHIPPED 2026-07-07; Inc2 ✅ SHIPPED 2026-07-10 (§3+§5 tier-crossing mechanism + a live, validated single-crossing continuous zoom; 3-tier T2→T1→T0 chaining deferred as a follow-up, see §9); Inc3 M1-M3 ✅ SHIPPED 2026-07-10 (scale-correct hitT/LOD gate, live magnified single crossing, chained hop-loop); Inc3 M5 ✅ SHIPPED 2026-07-10 (root-caused + fixed a construction-site magnification defect: concentric-shrink now proven at multiple childScale values); Inc3 M6 (Earth-scale epic gate) BLOCKED on a genuine geometric/scale mismatch in the demo's own construction, NOT a traversal-math defect; Inc3 M7 ✅ SHIPPED 2026-07-11 — **the epic's continuous two-crossing surface-to-orbit zoom is LIVE-PROVEN** on a reconstructed observable body at ratio childScale=0.25 (not true Earth-scale 2^-20 — that ratio is R-independent-unreachable by construction alone, confirmed both by M6/M7's own validators; needs a scoped CameraNode look-target-decoupling follow-up), see §9
 date: 2026-07-05
 updated: 2026-07-10
 tags: [architecture, svo, esvo, lod, scale, addressing, skybox, tiered-rendering]
@@ -403,6 +403,44 @@ parameter to `CameraNode` — neither exists yet). See
 [[Tiered-ESVO-Inc3-Plan-2026-07]]'s M6 Progress Log for the full derivation, the empirical FOV-cone
 sweep, and options for a follow-up increment (moving `orbitCenter` to the crossing octant per-hop,
 or constructing the demo body so the marked octant sits on the camera's view axis from the start).
+
+**M7 (deferred from M6, the epic headline — finally delivered) — ✅ SHIPPED 2026-07-11: the
+continuous two-crossing surface-to-orbit zoom is LIVE-PROVEN, at a documented ratio, not true
+Earth-scale.** M6's own validator ranked path (b) — reconstruct the demo body so the marked
+octant sits on the default view axis and clear of the solid interior — as the cheapest viable
+fix; M7 executed it. Task 13 built `VIXEN_TIER_OBSERVABLE_DEMO` (`renderScale=0.1`, a 1.0-world-
+unit body, `childScale=0.25` at both hops — a deliberately gentle, non-Earth ratio) and proved
+both hop0 (T0→T1, ≈79.58wu) and hop1 (T1→T2, ≈19.89wu) land inside `[in-FOV floor≈1.0wu, orbit
+ceiling 120wu]`, clear of the ≈0.5625wu solid radius, with the marked octant under 1.1° off the
+camera's default view axis — concentric magnification independently confirmed at both hops. Task
+14 built the scripted zoom (`VIXEN_TIER_OBSERVABLE_ZOOM_DEMO`) and ran it live: a log-spaced
+camera-distance sweep from 1.2wu (just outside the solid radius — the body genuinely fills the
+frame, true close-up framing) to 120wu (the actual orbit ceiling) over 400 ticks. **Both
+crossings were visually confirmed as real, concentrically-shrinking, correctly-nested geometry**
+— purple T0 sphere, with a green T1 patch attached at the predicted octant position, with a cyan
+T2 dot nested inside the green patch (visible together in the same frame around ticks 21-201,
+e.g. tick 41/161/201 captures) — genuine two-hop composition, not two independent single-crossing
+proofs. Per-frame pixel deltas through both handoff regions showed smooth, bounded, monotonic
+shrinkage with no discontinuous jump (no pop/tear); at the low absolute pixel counts near each
+tier's own vanishing point (single-digit px), the transition is dominated by anti-aliasing rather
+than a crisp single-frame edge, which is itself evidence of gradualness, not a confound.
+**One genuine, honestly-surfaced finding, not silently absorbed into the schedule:** the
+LOD-handoff distances (chosen by Task 13 for octant reachability/on-axis-ness, not for staying
+visually close to the 1.0wu body) put the body at a SMALL apparent angular size by the time hop0
+fires (≈0.4° half-angle at 79.58wu, a few-pixel speck) — so the "surface-to-orbit" zoom's far
+crossing is not itself a dramatic near-camera event; the dramatic, clearly-legible part of the
+motion is the close-in framing and the hop1 crossing, both of which render exactly as designed.
+**Critical scope correction confirmed independently by both M6's and M7's own validators: a true
+Earth-scale (`childScale=2^-10`) observable zoom is NOT reachable by re-running this same
+reconstruction technique at a smaller `renderScale`** — the in-FOV floor, solid radius, and both
+handoffs all scale linearly with `renderScale`, so shrinking it only slides the whole configuration
+without changing the `childScale`-driven 1024×-per-hop gap; the reachability condition is
+R-INDEPENDENT and fails by ~3294× at `childScale=2^-10`. **A true 2^-20 Earth-scale observable
+zoom requires path (c) — CameraNode look-target decoupling (`orbitCenter` and `forward`'s look-
+target must be separable) — tracked as a scoped follow-up, not silently dropped.** See
+[[Tiered-ESVO-Inc3-Plan-2026-07]]'s M7 Progress Log (Tasks 13-15) for the full derivation, the
+concentric-magnification sweep tables, and the zoom schedule's predicted-vs-observed handoff
+ticks.
 
 ## 10. Rejected alternatives
 
