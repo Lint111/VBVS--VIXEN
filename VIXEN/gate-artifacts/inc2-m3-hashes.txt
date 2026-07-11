@@ -1,0 +1,97 @@
+Sampled Lighting Inc2 M3 -- prev-frame matrix plumbing (uploaded, not yet consumed) -- live gate
+
+Scope: BYTE-IDENTICAL to M2/Inc1. This milestone adds prevViewProj (a mat4, 64 B) to the
+march's reach via a new dedicated SSBO (binding 21, PrevCameraConfigNode) but does NOT read
+it in any path affecting outColor/output -- uploaded-but-unconsumed (M4 consumes it for
+reprojection). The gate is that this upload has ZERO visual effect.
+
+Gate 1: sibling SDI drift-guard test -- new struct verified, no collateral drift
+------------------------------------------------------------------------------
+test_prevcameraconfig_sdi_parity.exe:   PASSED (1/1) -- size=64, prevViewProj@0 (matches
+                                         Vixen::Gpu::PrevCameraConfig exactly -- a single
+                                         mat4, no padding).
+test_accumulationconfig_sdi_parity.exe: PASSED (1/1) -- size=16, enabled@0, alpha@4,
+                                         maxFrames@8, resetOnMotion@12 (unchanged from M1/M2 --
+                                         confirms binding 21's addition did not perturb the
+                                         shared SPIR-V reflection layout for a sibling struct).
+
+Gate 2: enabled=0 still byte-identical to Inc1/M1/M2 baseline (untouched passthrough path)
+------------------------------------------------------------------------------
+Default editor scene, vixen_editor.exe VIXEN_EDITOR_CAPTURE_FRAMES=5, no VIXEN_ACCUMULATION_ENABLED
+(enabled=0 default):
+
+sha256(temp/editor_capture_5.png) = fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1
+
+Required baseline (Inc1/Inc2 M1/M2, unchanged):
+                                     fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1
+
+Result: MATCH.
+
+Gate 3: enabled=1 static-scene -- still byte-identical to M2/Inc1 baseline
+------------------------------------------------------------------------------
+VIXEN_ACCUMULATION_ENABLED=1, default editor scene (static camera, no motion demo), captured
+the SAME four frames M2's own gate used (5, 6, 7, 20):
+
+sha256(gate-artifacts/inc2-m3-static-repro.png)     = fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1  (frame 5)
+sha256(temp/editor_capture_6.png)                   = fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1
+sha256(temp/editor_capture_7.png)                   = fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1
+sha256(temp/editor_capture_20.png)                  = fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1
+
+All four frames MATCH the enabled=0 path and the Inc1/M1/M2 baseline hash exactly. Proves the
+new binding-21 PrevCameraConfig upload (CameraNode's retained prevViewProj -> PrevCameraConfigNode's
+ring buffer -> the shader's readonly SSBO) has zero effect on outColor: the plumbing is real
+(Gate 1 proves the shader-side struct layout is correct and non-vacuous) but genuinely
+uploaded-and-unconsumed this milestone, exactly as designed.
+
+Also verified: zero "Failed to extract field" / EXCEPTION / bad_any_cast across both runs; no
+new VUIDs vs the M2 baseline (only the pre-existing VUID-vkCmdDispatch-None-08114 noise, 21
+total emissions across the 4-frame static run -- same order of magnitude as M2's own count).
+
+Platform: Windows-native build (vixen-ninja preset, MSVC via vcvars64.bat), real GPU (AMD
+Radeon(TM) Graphics via D3D12/dzn, per prior Inc1/Inc2 gates on this machine).
+
+Shader recompiled from THIS WORKTREE's source each run (confirmed via
+"[BuildRenderGraph] Using BodyInstanceRayMarch shader: C:/cpp/VBVS--VIXEN/.claude/worktrees/
+sampled-lighting-inc2/VIXEN/shaders/BodyInstanceRayMarch.comp" + "[Builder] Shader bundle
+build completed successfully: BodyInstanceRayMarch" log lines with fresh timestamps matching
+each run, not a cached/stale bundle).
+
+Files created:
+  VIXEN/temp/run_m3_disabled.bat          (gate script, disabled-path byte-identity)
+  VIXEN/temp/run_m3_static.bat            (gate script, enabled=1 static-scene byte-identity)
+  gate-artifacts/inc2-m3-static-repro.png
+  gate-artifacts/inc2-m3-hashes.txt (this file)
+  VIXEN/codegen/config-schemas/PrevCameraConfig.cs
+  VIXEN/libraries/RenderGraph/include/Generated/PrevCameraConfig.g.h  (codegen)
+  VIXEN/shaders/Generated/PrevCameraConfig.glsl                       (codegen)
+  VIXEN/libraries/RenderGraph/include/Data/Nodes/PrevCameraConfigNodeConfig.h
+  VIXEN/libraries/RenderGraph/include/Nodes/PrevCameraConfigNode.h
+  VIXEN/libraries/RenderGraph/src/Nodes/PrevCameraConfigNode.cpp
+  VIXEN/libraries/RenderGraph/tests/Nodes/test_prevcameraconfig_sdi_parity.cpp
+
+Files edited:
+  VIXEN/shaders/BodyInstanceRayMarch.comp
+    - binding 21: PrevCameraConfigSSBO (readonly, single PrevCameraConfig record) -- declared,
+      #include "Generated/PrevCameraConfig.glsl", NOT read anywhere in the outColor path.
+  VIXEN/libraries/RenderGraph/include/Data/Nodes/CameraNodeConfig.h
+    - +1 output slot (PREV_VIEW_PROJ, const glm::mat4&, index 1) -- CameraData struct itself
+      UNCHANGED (layout-safe: see report to team-lead for the full rationale).
+  VIXEN/libraries/RenderGraph/include/Nodes/CameraNode.h
+    - +1 private member (prevViewProj, glm::mat4, identity-seeded)
+  VIXEN/libraries/RenderGraph/src/Nodes/CameraNode.cpp
+    - CompileImpl(): seeds + publishes PREV_VIEW_PROJ from the first frame's own matrices
+    - ExecuteImpl(): publishes the OLD prevViewProj (last frame's) BEFORE UpdateCameraData
+      overwrites it with this frame's own projection*view
+    - UpdateCameraData(): stores prevViewProj <- projection*view at its end, for the NEXT
+      ExecuteImpl to read as ITS "previous"
+  VIXEN/application/main/source/graph/BuildRenderGraph.cpp
+    - +PrevCameraConfigNode creation + connections (device, frame-index, cameraNode's
+      PREV_VIEW_PROJ)
+    - descriptorGatherer: +binding 21 connection from prevCameraConfigNode's
+      PREV_CAMERA_CONFIG_BUFFER
+  VIXEN/libraries/RenderGraph/CMakeLists.txt
+    - +src/Nodes/PrevCameraConfigNode.cpp
+  VIXEN/codegen/CMakeLists.txt
+    - +prevcameraconfig_check/_regen targets (mirrors accumulationconfig_check/_regen)
+  VIXEN/libraries/RenderGraph/tests/test_critical_nodes.cmake
+    - +test_prevcameraconfig_sdi_parity registration (mirrors test_accumulationconfig_sdi_parity)

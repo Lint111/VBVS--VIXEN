@@ -1,0 +1,163 @@
+Sampled Lighting Inc2 M5 -- temporal accumulation cost measurement
+====================================================================
+Date: 2026-07-11. Machine: Windows-native, real GPU (Windows/D3D12-Vulkan
+backend -- no lavapipe/Dozen, per KI-008 / "live-verification-authoritative-
+for-gpu-work"). Binary: VIXEN.exe (application/main), built from a genuine
+from-scratch rebuild of this worktree (98/98 ninja targets, incl. both new
+SDI-parity tests). Scene: VIXEN.exe's own default body-octree scene, static
+camera (no VIXEN_RESIDENCY_GATE_DEMO / VIXEN_TIER_ZOOM_DEMO / any other
+scripted-motion env var set -- confirmed by source read of
+VulkanGraphApplication.cpp: every camera-motion demo is env-gated and none
+fire by default).
+
+METHOD
+------
+Same substitute method as Inc1 M5 (KI-019 still open -- GPUQueryManager's
+isolated-GPU-dispatch timing still never unblocks in this graph configuration,
+confirmed unrelated to this milestone's changes, not re-investigated here per
+the plan's explicit instruction to go straight to the substitute). Used
+VulkanApplicationBase's CPU-side FrameTimer (RunOptions.enableFrameTimer=true,
+always-on for VIXEN.exe -- application/main/source/main.cpp:81), logging
+avg/p99 wall-clock frame time every 120 frames to temp/m5_timing_<tag>.log via
+mainLogger. Full-frame delta (CPU submit + GPU work + present/vsync), NOT an
+isolated GPU dispatch -- same caveat as Inc1: the absolute numbers carry
+CPU/present overhead the intended method would have excluded; the A/B lever
+isolates the accumulation-seam delta since everything else (camera, geometry,
+resolution, window) is held constant between paired runs.
+
+Lever: AccumulationConfigNode's env vars (AccumulationConfigNode.cpp) --
+  VIXEN_ACCUMULATION_ENABLED=1|0   (accumulationConfig.enabled)
+  VIXEN_ACCUMULATION_REPROJECT=1|0 (accumulationConfig.reprojectionEnabled,
+                                     M4's per-pixel reprojection mode)
+Runs: VIXEN_EXIT_AFTER_FRAMES=1500, VIXEN_WINDOW_WIDTH=1920,
+VIXEN_WINDOW_HEIGHT=1080. 1500 frames / 120-frame window = 12 windows/run;
+window 1 (frames 0-120) discarded as pipeline/shader warm-up, leaving 11
+stable windows per run, same as Inc1's convention.
+
+Each of the three configs (disabled / enabled-static / enabled-reprojection)
+was run TWICE (not once, unlike Inc1) -- run-to-run drift turned out to be
+large enough with accumulation active that a single run would have been
+misleading; see SIGNAL QUALITY below. Raw per-window lines are in
+temp/m5_timing_*.log (untracked scratch, reproducible via
+temp/run_m5_timing.bat <tag> <ACCUMULATION_ENABLED> <ACCUMULATION_REPROJECT>).
+
+HIT-PIXEL / FULL-FRAME NOTE (differs from Inc1's shadow-ray derivation)
+-------------------------------------------------------------------------
+Inc1's shadow-ray cost is legitimately per-HIT-pixel-per-light (shadow rays
+only cast where the primary ray hit something). Accumulation is architecturally
+different: the accumulate seam in BodyInstanceRayMarch.comp runs UNCONDITIONALLY
+on every dispatched pixel, sky included (confirmed by source read -- the seam
+sits after the hit/miss outColor selection, before the single imageStore, with
+no hit-only guard). So the correct per-pixel denominator here is the FULL frame
+pixel count, not a hit-pixel subset. Reported hit-pixel fraction (measured via
+VIXEN_HUD_CAPTURE_FRAMES=5 at 1920x1080 on VIXEN.exe itself, same binary/scene/
+resolution as the timing runs, sky-color-formula exclusion per Inc1's method,
++/-4/255 tolerance): 207,762 / 2,073,600 px hit (10.02%) -- reported for scene
+context only, NOT used as the accumulation-cost denominator.
+
+RAW RESULTS (mean of 11 stable 120-frame windows per run, frames 120-1440)
+----------------------------------------------------------------------------
+  disabled   run 1: avg 13.888 ms/frame (range 13.602-14.274, stdev 0.232)
+  disabled   run 2: avg 13.746 ms/frame (range 13.452-14.031, stdev 0.177)
+  disabled pooled (22 windows): mean 13.817 ms, stdev 0.214
+
+  enabled(static) run 1: avg 15.622 ms/frame (range 15.140-16.120, stdev 0.318)
+  enabled(static) run 2: avg 14.452 ms/frame (range 13.935-15.367, stdev 0.435)
+  enabled pooled (22 windows): mean 15.037 ms, stdev 0.705
+
+  reprojection    run 1: avg 13.341 ms/frame (range 12.289-13.858, stdev 0.463)
+  reprojection    run 2: avg 14.913 ms/frame (range 14.477-15.214, stdev 0.268)
+  reprojection pooled (22 windows): mean 14.127 ms, stdev 0.885
+
+SIGNAL QUALITY (honest assessment -- this is the important part)
+--------------------------------------------------------------------
+disabled-vs-disabled repeat-run agreement is TIGHT: run 1 vs run 2 differ by
+only 0.142 ms (13.888 vs 13.746) -- confirms the harness itself is stable
+run-to-run for a FIXED config. That is the baseline noise floor for this
+method on this machine at this resolution.
+
+enabled(static)-vs-disabled delta (pooled 22 vs 22 windows): +1.220 ms.
+  Signal = delta / pooled-within-group-stdev = 2.34. MODERATE signal -- real
+  and directionally consistent (enabled always > disabled in BOTH of its own
+  repeat runs, 15.622 and 14.452 vs disabled's 13.888 and 13.746), but far
+  short of Inc1's "clean" bar (signal 5.64, non-overlapping ranges). The
+  enabled config's OWN run-to-run spread (1.170 ms between its two runs) is
+  itself larger than the delta being measured -- accumulation activity
+  introduces more frame-to-frame variance than the disabled passthrough does
+  (plausible: the extra imageLoad/imageStore pair and the per-frame camera-
+  motion epsilon-compare are real, if small, additional GPU/CPU work per
+  frame, and this scene's ~10% hit-pixel fraction means most of that extra
+  work touches a meaningfully larger pixel count than Inc1's ~0.24%-hit
+  sparse scene did).
+
+reprojection-vs-enabled(static) delta (pooled 22 vs 22 windows): -0.910 ms.
+  Signal = -1.14. NOT a reliable signal -- reprojection's own two runs differ
+  from EACH OTHER by 1.573 ms (13.341 vs 14.913), a larger swing than the
+  delta being measured against enabled(static). This is expected: with a
+  STATIC camera (this scene's default, no motion), reprojectionEnabled=1's
+  branch is architecturally near-identical in cost to the plain converging-1/N
+  path -- accumFrameCount only ever hard-resets on frame 1 either way, so the
+  M4 reprojection branch (worldPos transform + extra imageLoad + 3-check
+  validation) is DEAD CODE for the entire 1500-frame static run; only the
+  camera-orbit / motion path would actually exercise it. Measuring
+  reprojection's incremental cost over plain accumulation therefore requires
+  a MOVING-camera A/B, which this milestone did not additionally run (would
+  need a third dimension of scripted motion on top of an already noisy
+  measurement-in a static comparison the two configs execute the same shader
+  branch, so no real per-mode cost difference is expected here at all --
+  the -0.910 ms "delta" is measurement noise around zero, not reprojection
+  being cheaper than plain accumulation, which would be physically
+  implausible given reprojection strictly does more work per pixel when its
+  branch DOES fire).
+
+HEADLINE NUMBERS (use these, with the stated caveats)
+----------------------------------------------------------------------
+  Temporal accumulation (static/converging-1/N path) full-frame cost:
+    ~1.2 ms/frame @ 1920x1080 (pooled A/B delta, signal 2.34 -- moderate,
+    not clean; treat as an order-of-magnitude anchor, not a precise budget
+    figure). Equivalent to ~0.6 ns/pixel over the full 2,073,600-pixel frame
+    (the correct denominator here, since the accumulate seam runs
+    unconditionally per pixel -- unlike Inc1's per-HIT-pixel shadow-ray
+    figure).
+  Reprojection-mode incremental cost OVER plain accumulation: NOT separately
+    measurable from this static-camera A/B -- the reprojection branch is
+    dead code without camera motion, and the noise floor (>1.5 ms run-to-run
+    swing) swamps any real signal. Re-derive with a moving-camera lever
+    (e.g. VIXEN_RESIDENCY_GATE_DEMO's orbit shape, or a dedicated
+    accumulation-motion demo) in a future increment if this specific number
+    is ever needed for a hard frame-budget decision.
+
+CAVEATS (do not over-claim precision -- same discipline as Inc1 M5)
+----------------------------------------------------------------------
+  (a) CPU-full-frame-delta-derived, not an isolated GPU-dispatch timestamp
+      (KI-019 still open, not re-investigated this milestone per plan
+      instruction).
+  (b) Accumulation's own run-to-run variance (up to 1.17 ms between two runs
+      of the identical config) is comparable to or larger than the delta
+      being measured -- more repeat runs (4-6 instead of 2) would tighten
+      this before treating 1.2 ms as anything more than an order-of-magnitude
+      anchor. Two runs per config were used here (vs Inc1's one) specifically
+      because a single run's number would have been actively misleading (see
+      reprojection run 1 vs run 2 above).
+  (c) This scene's hit-pixel fraction (~10%) differs substantially from
+      Inc1's sparse ~0.24%-hit scene -- the two "headline" numbers (Inc1's
+      ~240 ns/hit-ray vs this increment's ~0.6 ns/pixel) are not directly
+      comparable figures (different denominators, different cost shapes --
+      per-ray-cast vs per-pixel-blend) and should not be summed naively into
+      a single "lighting cost" budget without accounting for that.
+  (d) Both enabled-mode runs (static and reprojection) show notably higher
+      stdev within their own 11-window run than disabled does (0.318-0.463
+      vs disabled's 0.177-0.232) -- accumulation activity appears to add
+      genuine frame-to-frame jitter, not just a fixed offset; worth revisiting
+      if a tighter budget figure is needed later.
+
+RE-CONFIRMED: enabled=0 byte-identity after this milestone's fresh rebuild
+----------------------------------------------------------------------
+  vixen_editor.exe, default scene (VIXEN_EDITOR_CAPTURE_FRAMES=5, no
+  VIXEN_ACCUMULATION_ENABLED set), captured post-clean-rebuild (98/98 ninja
+  targets from scratch, confirms shader genuinely recompiled from worktree
+  source, not cache):
+    SHA256 = fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1
+  MATCHES the M1-M4 baseline hash exactly. temp/m5_disabled_reconfirm/
+  editor_capture_5.png. All 5 SDI-parity tests (accumulationconfig,
+  prevcameraconfig, lightingconfig, shadowconfig, hitrecord) PASS.

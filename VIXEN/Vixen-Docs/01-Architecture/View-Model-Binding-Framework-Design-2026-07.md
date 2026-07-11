@@ -253,14 +253,26 @@ can't explode); tooling built as its own increment when the surface justifies it
 - **RmlUi `DirtyVariable`** — the forward target for model→view; not a VIXEN seam, RmlUi's own API.
 
 ## 10. Increment cut (proposed — to review; Rev 2 folds critic items 6+7)
-1. **Inc-A — view→model generated-handler path + same-frame echo, single-instance, on the editor.**
-   Editor layer view ↔ `LayerController` via `IViewDataProvider`; input→model (generated handler, shipped
-   path) + the **same-frame echo** (handler dirties its own RmlUi variable, §4a) + `DirtyVariable`
-   forwarding. Retire the hand-written 5-handler block. **RESCOPED (critic item 6):** Inc-A proves the
-   write path + the RmlUi `DirtyVariable` forward — it does NOT prove the Gaia `.changed<T>()` reconcile
-   shape (a direct-field singleton has no chunks/versions/query; the reconcile is authored fresh in
-   Inc-B). Because `mask_`→checkboxes is a **projection** (§5a), Inc-A also exercises the FIRST projection
-   binding — so a minimal projection mechanism is in-scope here (not the full override syntax).
+1. **Inc-A — view→model write path through `IViewDataProvider`, single-instance, on the editor. ✅ DONE
+   (merged `224e393f`, Opus-validated).** Editor `ToggleLayer` routes through the seam (provider-read →
+   `applyToggle` projection → provider-write), retiring the hand-written RMW; undo outside the provider;
+   live gate preserved 4/4 (62px baseline), AppFlow 42/42, byte-guards hold. **FINDING that reshaped the
+   cut:** the editor layer view is **static RML with NO data-model** — so the same-frame echo had nothing
+   to `DirtyVariable` and was correctly DEFERRED, AND there is **no model→view path anywhere yet**. Inc-A
+   proved the write path + the projection mechanism ONLY (not the echo, not any reconcile — even less
+   model→view than the original rescope anticipated). CARRY to Inc-B: the `ToggleLayer` handler currently
+   ignores `ReadU32`'s bool return (harmless with the always-true direct-field provider; MUST handle the
+   false case when the fallible Gaia provider is wired).
+1a. **Inc-A2 — make the editor layer view DATA-MODEL-BOUND (NEW — user decision 2026-07-10, inserted
+   after the Inc-A static-RML finding).** Give the editor layer view a real RmlUi data-model: a `[View]`
+   schema for the layer checkboxes + a bound `editor.rml` (replace the static `checkbox checked` divs with
+   data-model-bound markup) + `IView` registration. This creates the **`DirtyVariable` target** that all
+   of model→view (the same-frame echo AND the Inc-B reconcile) needs — currently there is none. The
+   prerequisite was implicit across Inc-Ovr/Inc-B; pulled out as its own small increment. After Inc-A2 the
+   same-frame echo (§4a) can be wired (here or in Inc-Ovr). Uses the SHIPPED `[View]`/`IView`/RmlUi
+   data-model machinery (Inc-1/2/2b) applied to the editor layer view — no new codegen face. Live-gate:
+   editor still renders + gate stays 4/4; the checkboxes now reflect the bound model (model→view for the
+   first time).
 2. **Inc-Ovr / projection mechanism — the schema syntax + emitter for projection bindings (§5a) and the
    override hook (§5b).** MAY fold into Inc-A if the `mask_` projection forces a minimal version anyway;
    but the *general* projection/override syntax + emitter is real design work (critic item 7) and gets

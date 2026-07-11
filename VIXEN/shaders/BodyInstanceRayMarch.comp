@@ -159,6 +159,48 @@ layout(std430, binding = 18) readonly buffer ShadowConfigSSBO {
     ShadowConfig shadowConfig;
 };
 
+// ============================================================================
+// TEMPORAL ACCUMULATION (Sampled Lighting Inc2 M1/M2/M4 — bindings 19/20)
+// ============================================================================
+// Single AccumulationConfig record (kernel-codegen-generated struct, std430 — see
+// Generated/AccumulationConfig.glsl / AccumulationConfig.g.h) plus the persistent
+// history storage image (AccumulationHistoryNode — NOT the RenderTargetNode ring,
+// which rotates every frame per KI-009; this image survives across frames by
+// design). M1 scope was PLUMBING ONLY (both bindings declared, unread). M2 wires
+// the accumulate seam (main(), immediately before imageStore(outputImage,...)):
+// when accumulationConfig.enabled != 0, blend outColor with historyImage and
+// write the blend to both images; with enabled == 0 the seam is still a pure
+// passthrough — the render stays byte-identical to Inc1.
+#include "Generated/AccumulationConfig.glsl"
+
+layout(std430, binding = 19) readonly buffer AccumulationConfigSSBO {
+    AccumulationConfig accumulationConfig;
+};
+
+// Format matches outputImage (R8G8B8A8_UNORM — AccumulationHistoryNode's own default,
+// confirmed from RenderTargetNode's format). Not yet read/written this milestone (M2).
+layout(rgba8, binding = 20) uniform image2D historyImage;
+
+// ============================================================================
+// PREV-FRAME CAMERA MATRIX (Sampled Lighting Inc2 M3 — binding 21)
+// ============================================================================
+// Single PrevCameraConfig record (kernel-codegen-generated struct, std430 —
+// see Generated/PrevCameraConfig.glsl / PrevCameraConfig.g.h): LAST frame's
+// view*projection matrix (world -> prev-frame clip space), retained by
+// CameraNode (compute-current-then-store-previous each frame) and uploaded
+// per-frame from a ring buffer (PrevCameraConfigNode). A dedicated SSBO
+// rather than a push-constant field: a mat4 is 64 B and the push-constant
+// block below is already 72 B (of the 128 B Vulkan-guaranteed minimum) — see
+// PrevCameraConfig.cs's file header. PLUMBING ONLY this milestone: declared
+// here but NOT read anywhere in the outColor path — M4 consumes it to
+// reproject HitRecord.worldPos into prev-frame screen space for historyImage
+// sampling.
+#include "Generated/PrevCameraConfig.glsl"
+
+layout(std430, binding = 21) readonly buffer PrevCameraConfigSSBO {
+    PrevCameraConfig prevCameraConfig;
+};
+
 #define FORMAT_BINARY     0u
 #define FORMAT_STORED_SDF 1u
 
@@ -284,6 +326,10 @@ layout(push_constant) uniform PushConstants {
                              // regardless of DEBUG_GRID_SPACING (-1,-1 disables); lets the
                              // trace follow the actual click/cursor position instead of a
                              // fixed viewport-center crosshair (bytes 60-67)
+    uint  accumFrameCount;  // Sampled Lighting Inc2 M2: consecutive STATIC-camera frame count,
+                             // 1-based, reset to 1 by AccumulationConfigNode the instant the
+                             // camera moves; drives the accumulate seam's converging-1/N alpha
+                             // below (bytes 68-71)
 } pc;
 
 // ============================================================================
@@ -1328,7 +1374,162 @@ void main() {
         }
     }
 
-    imageStore(outputImage, pixelCoords, vec4(outColor, 1.0));
+    // -----------------------------------------------------------------------
+    // Temporal accumulation seam (Sampled Lighting Inc2 M2/M4). accumulationConfig.
+    // enabled == 0 (Inc1 default / M1 default) takes the unchanged passthrough
+    // branch below -- byte-identical to Inc1's own imageStore. When enabled,
+    // blend outColor against historyImage and write the blend to BOTH images so
+    // next frame's history read sees this frame's result.
+    //
+    // alpha selection:
+    //   accumulationConfig.alpha == 0.0 (sentinel) -> DEFAULT converging 1/N mode:
+    //     alpha = 1/accumFrameCount, accumFrameCount being the consecutive-
+    //     static-camera frame counter (CPU-side, AccumulationConfigNode) clamped
+    //     to accumulationConfig.maxFrames when maxFrames > 0. A true running
+    //     average -- variance converges fastest once there is per-frame variance
+    //     to converge (Inc3's stochastic sampling); on today's deterministic
+    //     march every frame is identical, so the blend is a provable no-op
+    //     (mix(x,x,alpha) == x) rather than an actual denoise -- see the M2 gate
+    //     notes for what's proven vs deferred.
+    //   accumulationConfig.alpha > 0.0 -> fixed exponential-decay alpha (coded,
+    //     not the M2 default).
+    // mix(history, outColor, alpha): alpha==1 -> pure current frame (the
+    // reset-on-motion case, zero ghosting by construction); alpha->0 -> mostly
+    // history.
+    //
+    // reprojectionEnabled (M4): when set, AccumulationConfigNode does NOT hard-
+    // reset accumFrameCount on camera motion (resetOnMotion is ignored while this
+    // is on -- see AccumulationConfigNode::ExecuteImpl), so alpha keeps shrinking
+    // through a moving camera instead of snapping back to 1.0 every moving frame.
+    // That means the plain per-pixel historyImage read above (same UV as THIS
+    // frame's pixel) would sample last frame's color for a surface that has moved
+    // under the camera -- classic reprojection smear. Fix: reproject bestWorldPos
+    // through last frame's view*proj (prevCameraConfig.prevViewProj, Inc2 M3) to
+    // find WHERE this surface point was on screen last frame, and validate that
+    // sample before trusting it (bounds + motion-magnitude) -- reject -> per-pixel
+    // alpha=1 (pure current, same fallback semantics as the frame-1/reset guard
+    // below). This is what actually prevents ghosting while moving; resetOnMotion=1
+    // (M2) prevents it a cruder way (never accumulating across motion at all).
+    // -----------------------------------------------------------------------
+    if (accumulationConfig.enabled != 0u) {
+        float alpha;
+        if (accumulationConfig.alpha == 0.0) {
+            uint frameCount = pc.accumFrameCount;
+            if (accumulationConfig.maxFrames > 0u) {
+                frameCount = min(frameCount, accumulationConfig.maxFrames);
+            }
+            alpha = 1.0 / float(max(frameCount, 1u));
+        } else {
+            alpha = accumulationConfig.alpha;
+        }
+
+        // alpha >= 1.0 means "pure current frame" (frame 1 of a run, or right after a
+        // motion reset) -- skip the historyImage read entirely rather than trust
+        // mix(history, outColor, 1.0) to discard it exactly. historyImage's very first
+        // content is genuinely uninitialized (AccumulationHistoryNode creates it with no
+        // clear -- see its file header), and a NaN/Inf-poisoned mix operand survives an
+        // alpha==1.0 blend (x*0.0 with x=NaN is still NaN), so this guard is a real
+        // correctness fix, not just an optimization. It ALSO covers reprojection mode's
+        // own frame-1/recompile case: CompileImpl and the first-ever Execute both force
+        // accumFrameCount -> 1 (see AccumulationConfigNode), so prevViewProj is never
+        // reprojected-from on a frame where it could be stale/seeded-from-self.
+        vec4 blended;
+        if (alpha >= 1.0) {
+            blended = vec4(outColor, 1.0);
+        } else if (accumulationConfig.reprojectionEnabled != 0u) {
+            // ---- M4 reprojection + per-pixel validation ----
+            // World -> prev-frame clip -> prev-frame NDC -> prev-frame UV -> texel.
+            vec4 prevClip = prevCameraConfig.prevViewProj * vec4(bestWorldPos, 1.0);
+
+            bool valid = anyHitRT && prevClip.w > 1e-5;
+            vec2 reprojUV = vec2(0.0);
+            if (valid) {
+                vec2 prevNDC = prevClip.xy / prevClip.w;
+                // prevViewProj's projection[1][1] *= -1.0 (CameraNode) already puts clip-space
+                // Y in the same top-left-origin convention BodyInstanceRayMarch's own imageStore
+                // addressing (pixelCoords / imgSize, gl_GlobalInvocationID-driven, row 0 = top)
+                // uses -- NOT getRayDir's internal ndc.y=-ndc.y flip, which is a SEPARATE
+                // concern (converting FROM that same top-left uv TO the "math up = camera up"
+                // convention getRayDir's basis-vector formula wants). Verified empirically
+                // against a known-hit-position control capture (see this milestone's report):
+                // flipping here made reprojection strictly worse, confirming no flip is correct.
+                reprojUV = prevNDC * 0.5 + 0.5;
+                // (a) On-screen bounds -- disocclusion at the frame edge / surface just
+                // rotated into view. Off-screen last frame means there is no valid history
+                // sample for it.
+                valid = all(greaterThanEqual(reprojUV, vec2(0.0))) &&
+                        all(lessThanEqual(reprojUV, vec2(1.0)));
+            }
+
+            vec4 blendedResult;
+            if (valid) {
+                ivec2 reprojTexel = ivec2(reprojUV * vec2(imgSize));
+                reprojTexel = clamp(reprojTexel, ivec2(0), imgSize - ivec2(1));
+
+                // (b) Motion-magnitude reject -- a large screen-space jump between "this
+                // pixel" and "where the reprojected sample lands" is the disocclusion/
+                // newly-revealed-surface signal in the simpler (no companion depth/worldPos
+                // history buffer) validation this milestone ships -- see this milestone's
+                // report for the scope rationale. historyImage stores color only, so we
+                // cannot re-derive the reprojected sample's own depth/worldPos to cross-check
+                // against bestWorldPos directly; bounding the reprojected texel's screen-space
+                // displacement from the current pixel is the cheap proxy: a correct static-
+                // world reprojection under camera-only motion lands within a small number of
+                // texels of a geometrically consistent point, while a disoccluded/edge pixel
+                // typically reprojects far off or (already caught above) off-screen.
+                vec2 texelDelta = vec2(reprojTexel - pixelCoords);
+                float texelDist2 = dot(texelDelta, texelDelta);
+                const float kMaxReprojTexelDist = 64.0; // 8 px radius, generous for camera-only motion
+                valid = texelDist2 <= (kMaxReprojTexelDist * kMaxReprojTexelDist);
+
+                if (valid) {
+                    // Nearest-texel fetch: historyImage is a plain uniform image2D (imageLoad/
+                    // Store target, integer texel coords), not a combined sampler2D, so there is
+                    // no hardware bilinear filtering available here without adding a sampled-view
+                    // + sampler binding for it -- out of scope for this milestone (documented
+                    // choice, not an oversight; a follow-up can add bilinear if reprojected
+                    // sub-texel error becomes visible once Inc3 gives this stochastic noise to
+                    // average).
+                    vec4 history = imageLoad(historyImage, reprojTexel);
+
+                    // (c) Color-consistency reject -- the bounds+motion-magnitude checks above
+                    // do NOT catch a slow-growing silhouette edge (e.g. the camera dollying in):
+                    // consecutive frames only move the edge by a texel or two, so (a)/(b) both
+                    // pass, yet at a shrinking alpha (deep into a long accumulation run) the
+                    // stale small-silhouette history would end up dominating the blend at every
+                    // newly-covered pixel -- found empirically via this milestone's own gate (a
+                    // dolly-in run showed a growing dark "sky-colored" patch eating into the
+                    // body's silhouette; root-caused to exactly this). Without a companion
+                    // depth/worldPos history buffer there is no way to know what surface (if any)
+                    // the history texel came from, so this is the cheap proxy: if the reprojected
+                    // history color is far from THIS frame's own outColor, treat it as "probably a
+                    // different surface" (a disocclusion/newly-revealed-geometry pixel, most
+                    // visibly a body-vs-sky mismatch) and fall back to pure current frame instead
+                    // of blending. Threshold in normalized [0,1] color space, generous enough to
+                    // not reject legitimate same-surface shading variance (the tick-10 gate
+                    // capture shows genuine cross-frame deltas of ~0.01-0.05 on this scene).
+                    vec3 colorDelta = abs(history.rgb - outColor);
+                    const float kMaxReprojColorDelta = 0.15;
+                    valid = max(max(colorDelta.r, colorDelta.g), colorDelta.b) <= kMaxReprojColorDelta;
+
+                    blendedResult = valid ? mix(history, vec4(outColor, 1.0), alpha)
+                                           : vec4(outColor, 1.0);
+                } else {
+                    blendedResult = vec4(outColor, 1.0);
+                }
+            } else {
+                blendedResult = vec4(outColor, 1.0);
+            }
+            blended = blendedResult;
+        } else {
+            vec4 history = imageLoad(historyImage, pixelCoords);
+            blended = mix(history, vec4(outColor, 1.0), alpha);
+        }
+        imageStore(outputImage, pixelCoords, blended);
+        imageStore(historyImage, pixelCoords, blended);
+    } else {
+        imageStore(outputImage, pixelCoords, vec4(outColor, 1.0));
+    }
 
     // ID buffer: encode absolute brick + voxel (same packing as VoxelRayMarch)
     uint pickID = anyHitRT

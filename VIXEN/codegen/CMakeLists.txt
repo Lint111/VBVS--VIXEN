@@ -110,8 +110,16 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/shaders/Generated/LightingConfig.glsl" _out_lightingconfig_glsl_run)
         _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/libraries/RenderGraph/include/Generated/ShadowConfig.g.h" _out_shadowconfig_cpp_run)
         _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/shaders/Generated/ShadowConfig.glsl" _out_shadowconfig_glsl_run)
+        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/libraries/RenderGraph/include/Generated/AccumulationConfig.g.h" _out_accumulationconfig_cpp_run)
+        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/shaders/Generated/AccumulationConfig.glsl" _out_accumulationconfig_glsl_run)
+        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/libraries/RenderGraph/include/Generated/PrevCameraConfig.g.h" _out_prevcameraconfig_cpp_run)
+        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/shaders/Generated/PrevCameraConfig.glsl" _out_prevcameraconfig_glsl_run)
         _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/application/main/include/Generated/Hud.g.h" _out_hud_header_run)
         _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/libraries/RenderGraph/assets/ui/Hud.view.rml" _out_hud_rml_run)
+        # Inc-A2: EditorLayers [View] schema — the editor layer view's generated data-model header.
+        # Lives under application/editor (a CONSUMER artifact, same "engine sees only Ui/IView.h"
+        # convention Hud.g.h's comment above documents).
+        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/application/editor/include/Generated/EditorLayers.g.h" _out_editor_layers_header_run)
         _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/application/main/include/Generated/Hud.blob.g.h" _out_hud_blob_header_run)
         _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/libraries/RenderGraph/assets/ui/hud.viewblob" _out_hud_blob_data_run)
         _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/application/main/include/Generated/Hud.view.g.cs" _out_hud_writer_cs_run)
@@ -129,8 +137,13 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_out_lightingconfig_glsl_run "${CMAKE_SOURCE_DIR}/shaders/Generated/LightingConfig.glsl")
         set(_out_shadowconfig_cpp_run "${CMAKE_SOURCE_DIR}/libraries/RenderGraph/include/Generated/ShadowConfig.g.h")
         set(_out_shadowconfig_glsl_run "${CMAKE_SOURCE_DIR}/shaders/Generated/ShadowConfig.glsl")
+        set(_out_accumulationconfig_cpp_run "${CMAKE_SOURCE_DIR}/libraries/RenderGraph/include/Generated/AccumulationConfig.g.h")
+        set(_out_accumulationconfig_glsl_run "${CMAKE_SOURCE_DIR}/shaders/Generated/AccumulationConfig.glsl")
+        set(_out_prevcameraconfig_cpp_run "${CMAKE_SOURCE_DIR}/libraries/RenderGraph/include/Generated/PrevCameraConfig.g.h")
+        set(_out_prevcameraconfig_glsl_run "${CMAKE_SOURCE_DIR}/shaders/Generated/PrevCameraConfig.glsl")
         set(_out_hud_header_run "${CMAKE_SOURCE_DIR}/application/main/include/Generated/Hud.g.h")
         set(_out_hud_rml_run "${CMAKE_SOURCE_DIR}/libraries/RenderGraph/assets/ui/Hud.view.rml")
+        set(_out_editor_layers_header_run "${CMAKE_SOURCE_DIR}/application/editor/include/Generated/EditorLayers.g.h")
         set(_out_hud_blob_header_run "${CMAKE_SOURCE_DIR}/application/main/include/Generated/Hud.blob.g.h")
         set(_out_hud_blob_data_run "${CMAKE_SOURCE_DIR}/libraries/RenderGraph/assets/ui/hud.viewblob")
         set(_out_hud_writer_cs_run "${CMAKE_SOURCE_DIR}/application/main/include/Generated/Hud.view.g.cs")
@@ -190,6 +203,40 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         COMMENT "[codegen] regenerate ShadowConfig.g.h/.glsl (Yeroket tool)"
         VERBATIM)
 
+    # --- AccumulationConfig via the same Yeroket tool (Sampled Lighting Inc2 M1: temporal-
+    # accumulation compute budget as drift-guarded data). Generated header lives beside
+    # RenderGraph, mirroring ShadowConfig's own "config lives with its consuming library" convention.
+    set(_ac_args
+        run --project "${_yk_tool_run}" -c Release --
+        --schema "${_schema_config_run}" --struct AccumulationConfig
+        --out-cpp  "${_out_accumulationconfig_cpp_run}"
+        --out-glsl "${_out_accumulationconfig_glsl_run}")
+    add_custom_target(accumulationconfig_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_ac_args} --check
+        COMMENT "[codegen] golden check: AccumulationConfig.g.h/.glsl match canonical (Yeroket tool)"
+        VERBATIM)
+    add_custom_target(accumulationconfig_regen
+        COMMAND ${_CODEGEN_RUNNER} ${_ac_args}
+        COMMENT "[codegen] regenerate AccumulationConfig.g.h/.glsl (Yeroket tool)"
+        VERBATIM)
+
+    # --- PrevCameraConfig via the same Yeroket tool (Sampled Lighting Inc2 M3: prev-frame
+    # camera matrix plumbing for M4's reprojection). Generated header lives beside RenderGraph,
+    # mirroring AccumulationConfig's own "config lives with its consuming library" convention.
+    set(_pcc_args
+        run --project "${_yk_tool_run}" -c Release --
+        --schema "${_schema_config_run}" --struct PrevCameraConfig
+        --out-cpp  "${_out_prevcameraconfig_cpp_run}"
+        --out-glsl "${_out_prevcameraconfig_glsl_run}")
+    add_custom_target(prevcameraconfig_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_pcc_args} --check
+        COMMENT "[codegen] golden check: PrevCameraConfig.g.h/.glsl match canonical (Yeroket tool)"
+        VERBATIM)
+    add_custom_target(prevcameraconfig_regen
+        COMMAND ${_CODEGEN_RUNNER} ${_pcc_args}
+        COMMENT "[codegen] regenerate PrevCameraConfig.g.h/.glsl (Yeroket tool)"
+        VERBATIM)
+
     # --- Hud [View] schema via the same Yeroket tool (View Contract Inc-2: renamed from EditorHud).
     # The generated header lives under application/main — it is a CONSUMER artifact (the native
     # HudView), not an engine one; the engine only sees the generic Ui/IView.h seam.
@@ -204,6 +251,23 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     add_custom_target(view_hud_regen
         COMMAND ${_CODEGEN_RUNNER} ${_view_args}
         COMMENT "[codegen] regenerate Hud.g.h (Yeroket tool)"
+        VERBATIM)
+
+    # --- EditorLayers [View] schema (Inc-A2): the editor layer view's data-model, giving the
+    # editor a real DirtyVariable target for the first time (View-Model-Binding-Inc-A2-Plan-
+    # 2026-07.md). Only --view is needed here (no markup/blob/writer sibling) — editor.rml is
+    # hand-authored data-bound markup, not composed from a generated RML fragment like hud.rml.
+    set(_view_editor_layers_args
+        run --project "${_yk_tool_run}" -c Release --
+        --schema "${_schema_view_run}" --view EditorLayers
+        --out-header "${_out_editor_layers_header_run}")
+    add_custom_target(view_editor_layers_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_view_editor_layers_args} --check
+        COMMENT "[codegen] golden check: EditorLayers.g.h matches canonical [View] schema (Yeroket tool)"
+        VERBATIM)
+    add_custom_target(view_editor_layers_regen
+        COMMAND ${_CODEGEN_RUNNER} ${_view_editor_layers_args}
+        COMMENT "[codegen] regenerate EditorLayers.g.h (Yeroket tool)"
         VERBATIM)
 
     # --- Hud RML data-binding partial (View Contract Inc-2, Task 8: RmlMarkupEmitter's --view-markup
@@ -297,8 +361,8 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         VERBATIM)
 else()
     message(WARNING "[codegen] KI-015: Yeroket kernel-codegen tool not found at ${_yk_tool} — "
-        "OctreeConfig/LightingConfig/ShadowConfig/Hud golden DRIFT GUARDS DISABLED; the committed generated artifacts "
-        "(OctreeConfig.g.h/.glsl, LightingConfig.g.h/.glsl, ShadowConfig.g.h/.glsl, Hud.g.h, Hud.view.rml, Hud.blob.g.h, hud.viewblob) are used as-is and will NOT be checked against "
+        "OctreeConfig/LightingConfig/ShadowConfig/AccumulationConfig/PrevCameraConfig/Hud/EditorLayers golden DRIFT GUARDS DISABLED; the committed generated artifacts "
+        "(OctreeConfig.g.h/.glsl, LightingConfig.g.h/.glsl, ShadowConfig.g.h/.glsl, AccumulationConfig.g.h/.glsl, PrevCameraConfig.g.h/.glsl, Hud.g.h, Hud.view.rml, Hud.blob.g.h, hud.viewblob, EditorLayers.g.h) are used as-is and will NOT be checked against "
         "their canonical schemas this configure. The Yeroket repo is WSL-only on this machine, so a "
         "Windows-side configure cannot reach it — run the WSL-side configure, mount \\\\wsl$, or pass "
         "-DYEROKET_ROOT=<path> to enable the guard.")

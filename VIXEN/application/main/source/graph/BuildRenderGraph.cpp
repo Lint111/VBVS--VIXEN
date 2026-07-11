@@ -45,6 +45,9 @@
 #include "Data/Nodes/RenderTargetNodeConfig.h"  // M4: render-scale decoupling offscreen target
 #include "Data/Nodes/SelectionCoordinatorNodeConfig.h"
 #include "Data/Nodes/ShadowConfigNodeConfig.h"  // Sampled Lighting Inc1 M4: ShadowConfig upload ring
+#include "Data/Nodes/AccumulationConfigNodeConfig.h"   // Sampled Lighting Inc2 M1: AccumulationConfig upload ring
+#include "Data/Nodes/AccumulationHistoryNodeConfig.h"  // Sampled Lighting Inc2 M1: persistent history image
+#include "Data/Nodes/PrevCameraConfigNodeConfig.h"     // Sampled Lighting Inc2 M3: prev-frame camera matrix upload ring
 #include "Data/Nodes/ShaderLibraryNodeConfig.h"
 #include "Data/Nodes/SkyProjectionNodeConfig.h"  // Tiered ESVO Inc1 M3: address-derived sky-point composite pass
 #include "Data/Nodes/SwapChainNodeConfig.h"
@@ -76,6 +79,9 @@
 #include "Nodes/InstanceNode.h"
 #include "Nodes/LightingConfigNode.h"  // Sampled Lighting Inc0 M3: LightingConfig upload ring
 #include "Nodes/ShadowConfigNode.h"    // Sampled Lighting Inc1 M4: ShadowConfig upload ring
+#include "Nodes/AccumulationConfigNode.h"   // Sampled Lighting Inc2 M1: AccumulationConfig upload ring
+#include "Nodes/AccumulationHistoryNode.h"  // Sampled Lighting Inc2 M1: persistent history image
+#include "Nodes/PrevCameraConfigNode.h"     // Sampled Lighting Inc2 M3: prev-frame camera matrix upload ring
 #include "Nodes/LoopBridgeNode.h"
 #include "Nodes/PickIdTargetNode.h"
 #include "Nodes/PresentNode.h"
@@ -201,6 +207,25 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // imgSize (imageSize(outputImage) in the shader) even under render-scale (<1.0) — the same
     // extent-follow cascade RenderTargetNode itself rides.
     NodeHandle hitRecordBufferNode = renderGraph->AddNode<StorageBufferNodeType>("hit_record_buffer");
+
+    // Sampled Lighting Inc2 M1: AccumulationConfig data (binding 19). Same per-frame ring
+    // upload pattern as shadowConfigNode above — separate node (see AccumulationConfigNode.h's
+    // file header for the separate-vs-extend decision). Default content: enabled=0, so this
+    // milestone's render is a byte-identical passthrough vs Inc1.
+    NodeHandle accumulationConfigNode = renderGraph->AddNode<AccumulationConfigNodeType>("accumulation_config");
+
+    // Sampled Lighting Inc2 M1: persistent temporal-accumulation history image (binding 20) — a
+    // SINGLE persistent storage image (NOT a per-frame ring; see AccumulationHistoryNode.h's file
+    // header for why). Allocated + transitioned + wired this milestone; not yet read/written by
+    // the shader (M2 consumes it).
+    NodeHandle accumulationHistoryNode = renderGraph->AddNode<AccumulationHistoryNodeType>("accumulation_history");
+
+    // Sampled Lighting Inc2 M3: prev-frame camera matrix data (binding 21). Same per-frame
+    // ring upload pattern as accumulationConfigNode above — separate node (see
+    // PrevCameraConfigNode.h for the separate-vs-extend decision). Uploaded every frame but
+    // not yet read by the shader this milestone (M4 consumes it for reprojection); this
+    // milestone's render must stay byte-identical to M2.
+    NodeHandle prevCameraConfigNode = renderGraph->AddNode<PrevCameraConfigNodeType>("prev_camera_config");
 
     // --- Input Node ---
     NodeHandle inputNode = renderGraph->AddNode<InputNodeType>("input_handler");
@@ -1822,6 +1847,41 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
                   shadowConfigNode, ShadowConfigNodeConfig::CURRENT_FRAME_INDEX);
 
+    // Sampled Lighting Inc2 M1/M2: accumulation config node connections (same ring pattern as
+    // shadowConfigNode above). CAMERA_DATA (M2) feeds the node's own reset-on-motion frame
+    // counter — see AccumulationConfigNode.h's file header for why the counter lives here
+    // rather than on CameraData itself.
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  accumulationConfigNode, AccumulationConfigNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                  accumulationConfigNode, AccumulationConfigNodeConfig::CURRENT_FRAME_INDEX)
+         .Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
+                  accumulationConfigNode, AccumulationConfigNodeConfig::CAMERA_DATA);
+
+    // Sampled Lighting Inc2 M1: accumulation history image connections — device + command pool
+    // drive allocation + the one-shot UNDEFINED->GENERAL transition; extent follows the RENDER
+    // target (renderTargetNode's WIDTH_OUT/HEIGHT_OUT, not the window), mirroring
+    // pickIdTargetNode's own extent-follow wiring above so the history image always matches
+    // outputImage's real per-dispatch extent (including under render-scale <1.0).
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  accumulationHistoryNode, AccumulationHistoryNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
+                  accumulationHistoryNode, AccumulationHistoryNodeConfig::COMMAND_POOL)
+         .Connect(renderTargetNode, RenderTargetNodeConfig::WIDTH_OUT,
+                  accumulationHistoryNode, AccumulationHistoryNodeConfig::WIDTH)
+         .Connect(renderTargetNode, RenderTargetNodeConfig::HEIGHT_OUT,
+                  accumulationHistoryNode, AccumulationHistoryNodeConfig::HEIGHT);
+
+    // Sampled Lighting Inc2 M3: prev-frame camera config node connections (same ring pattern
+    // as accumulationConfigNode above). PREV_VIEW_PROJ comes from CameraNode's own retained-
+    // last-frame matrix (see CameraNode::ExecuteImpl/UpdateCameraData).
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  prevCameraConfigNode, PrevCameraConfigNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                  prevCameraConfigNode, PrevCameraConfigNodeConfig::CURRENT_FRAME_INDEX)
+         .Connect(cameraNode, CameraNodeConfig::PREV_VIEW_PROJ,
+                  prevCameraConfigNode, PrevCameraConfigNodeConfig::PREV_VIEW_PROJ);
+
     // Connect push constant fields to push constant gatherer using member extraction
     // CameraNode now outputs a CameraData struct, so we can extract individual fields
     batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
@@ -1886,6 +1946,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(inputNode, InputNodeConfig::INPUT_STATE,
                           pushConstantGatherer, 11,  // push constant field 11: ivec2 debugTargetPixel
                           ExtractField(&InputState::lastClickPixel, SlotRole::Execute));
+    // accumFrameCount (binding 12, Sampled Lighting Inc2 M2): consecutive-static-camera frame
+    // counter from AccumulationConfigNode's own reset-on-motion tracking; drives the shader's
+    // converging-1/N accumulate-seam alpha.
+    batch.Connect(accumulationConfigNode, AccumulationConfigNodeConfig::FRAME_COUNTER,
+                          pushConstantGatherer, 12,  // push constant field 12: uint accumFrameCount
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
     // Connect ray marching resources to descriptor gatherer using VoxelRayMarchNames.h bindings
     // Binding 0: outputImage - Transient (Execute-only), others are Persistent (Dependency|Execute)
@@ -2031,6 +2097,42 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     if (mainLogger && mainLogger->IsEnabled()) {
         mainLogger->Info("[BuildRenderGraph] Connected shadow config at binding 18 (Sampled Lighting Inc1 M4)");
+    }
+
+    // Sampled Lighting Inc2 M1: Binding 19: AccumulationConfig SSBO (single record, re-uploaded
+    // per-frame from AccumulationConfigNode's ring). Default content = enabled=0 (pure
+    // passthrough — this milestone's byte-identity gate vs Inc1).
+    batch.Connect(accumulationConfigNode, AccumulationConfigNodeConfig::ACCUMULATION_CONFIG_BUFFER,
+                          descriptorGatherer, 19,  // Binding 19: AccumulationConfigSSBO
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info("[BuildRenderGraph] Connected accumulation config at binding 19 (Sampled Lighting Inc2 M1)");
+    }
+
+    // Sampled Lighting Inc2 M1: Binding 20: historyImage (persistent R8G8B8A8_UNORM storage
+    // image, AccumulationHistoryNode). Declared in the shader but not yet read/written this
+    // milestone (M2 consumes it) — a pure plumbing wire. Execute-only, mirroring
+    // pickIdTargetNode's own binding-9 storage-image wiring above (re-emitted each frame; no
+    // compile-time dependency edge needed beyond the initial Compile-time publish).
+    batch.Connect(accumulationHistoryNode, AccumulationHistoryNodeConfig::HISTORY_IMAGE_VIEW,
+                          descriptorGatherer, 20,  // Binding 20: historyImage
+                          SlotRoleModifier(SlotRole::Execute));
+
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info("[BuildRenderGraph] Connected accumulation history image at binding 20 (Sampled Lighting Inc2 M1)");
+    }
+
+    // Sampled Lighting Inc2 M3: Binding 21: PrevCameraConfig SSBO (single record, re-uploaded
+    // per-frame from PrevCameraConfigNode's ring). Declared in the shader but not yet read
+    // this milestone (M4 consumes it for reprojection) — a pure plumbing wire, mirroring
+    // binding 19/20's own M1 plumbing-only precedent.
+    batch.Connect(prevCameraConfigNode, PrevCameraConfigNodeConfig::PREV_CAMERA_CONFIG_BUFFER,
+                          descriptorGatherer, 21,  // Binding 21: PrevCameraConfigSSBO
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info("[BuildRenderGraph] Connected prev-camera config at binding 21 (Sampled Lighting Inc2 M3)");
     }
 
     // Swapchain connections to descriptor set and dispatch

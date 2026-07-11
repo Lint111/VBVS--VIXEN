@@ -1,0 +1,111 @@
+Sampled Lighting Inc2 M1 -- AccumulationConfig + persistent history image, wired DISABLED -- live gate
+
+Gate 1: accumulationconfig_check drift-guard + SDI parity gtest
+------------------------------------------------------------------------------
+codegen tool `--check` (run directly, WSL-side, dotnet at /usr/bin/dotnet, Yeroket
+tool at /home/liory/Github/Yeroket-Fantasy/Packages/com.yeroket.utility.kernel-framework/CodegenTool~):
+PASSED (exit 0, no diff) for AccumulationConfig.g.h / AccumulationConfig.glsl.
+Also confirmed via the Windows-side WSL-bridge CMake configure: `accumulationconfig_check`
+target registered correctly in build.ninja (KI-015 bridge working).
+
+test_accumulationconfig_sdi_parity.exe: PASSED (1/1). Reflected AccumulationConfig (via
+BodyInstanceRayMarch.spv, SPIRV-Reflect): size=16, enabled@0, alpha@4, maxFrames@8,
+resetOnMotion@12 -- all match Vixen::Gpu::AccumulationConfig's offsetof values exactly.
+
+Gate 2: byte-identity vs Inc1 baseline (the milestone's core gate)
+------------------------------------------------------------------------------
+Default editor scene (no script), vixen_editor.exe VIXEN_EDITOR_CAPTURE_FRAMES=5,
+AccumulationConfig.enabled=0 (default -- no VIXEN_ACCUMULATION_ENABLED set):
+
+sha256(gate-artifacts/inc2-m1-baseline-repro.png) = fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1
+
+Inc0/Inc1 baseline (from gate-artifacts/inc1-m4-hashes.txt / inc1-m3-hashes.txt / inc0-m3-hashes.txt):
+                                                     fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1
+
+Result: MATCH (byte-identical). Reproduced twice (independent runs), same hash both times.
+
+Also confirmed: with VIXEN_ACCUMULATION_ENABLED=1 (forces AccumulationConfig.enabled=1
+CPU-side, uploaded to the GPU ring buffer at binding 19), the render is STILL byte-identical
+(same fde9c268... hash) -- expected and correct: the shader declares the accumulationConfig
+SSBO and historyImage bindings but does not yet branch on `enabled` or read/write
+`historyImage` in main() this milestone (M2 wires the actual accumulate logic). This proves
+the A/B env lever threads correctly end-to-end (log line confirms "[BuildRenderGraph]
+Connected accumulation config at binding 19" / "...history image at binding 20") without any
+visual effect, which is exactly M1's contract.
+
+Shader recompile confirmed from THIS WORKTREE's source (not a stale cache):
+  [Builder] Preprocessing shader source with 3 include paths
+  [BuildRenderGraph] Using BodyInstanceRayMarch shader:
+    C:/cpp/VBVS--VIXEN/.claude/worktrees/sampled-lighting-inc2/VIXEN/shaders/BodyInstanceRayMarch.comp
+  [Builder] Shader bundle build completed successfully: BodyInstanceRayMarch (2851ms)
+
+No new VUIDs vs baseline: only the pre-existing VUID-vkCmdDispatch-None-08114 /
+InstanceIterDebugBuffer noise (unchanged since Inc1 M1, canonical baseline = 10 emissions
+binding-14 per the Tiered-ESVO Inc2 note -- this run shows the same duplicated-message-limit
+cutoff at 10).
+
+vixen_editor.exe exits 0 both runs (disabled and enabled captures), clean shutdown log
+(RenderGraph::Clear persistent caches saved, all node CleanupImpl completed, no crash/hang).
+
+Gate 3: full build, zero regressions
+------------------------------------------------------------------------------
+Windows-native build (vixen-ninja preset, MSVC via vcvars64.bat), fresh configure (260.5s,
+first-configure network-fetch cost) + full build (726/726 targets, zero `error C`/`error LNK`
+across the entire build.log). AccumulationConfigNode.cpp, AccumulationHistoryNode.cpp,
+BuildRenderGraph.cpp, BodyInstanceRayMarch.comp, and test_accumulationconfig_sdi_parity.cpp
+all compiled/linked cleanly (only the pre-existing D9025 /W3->/W0 override warnings and one
+pre-existing unrelated C4244 narrowing note in BuildInstancingDemoGraph.cpp:94, a file this
+milestone never touched). VIXEN.exe and vixen_editor.exe both linked and staged assets
+successfully. No -k 0 skips were needed this build (the two pre-existing baseline failures
+noted in the milestone brief -- setenv/unsetenv in test_body_instance_raymarch_render.cpp;
+a glm parse in SdfCoreKernels.g.hpp -- did not block this target list, since VIXEN /
+vixen_editor / test_accumulationconfig_sdi_parity don't depend on those TUs).
+
+Platform: Windows-native build (vixen-ninja preset, MSVC), real GPU (per prior Inc1 gates on
+this machine: AMD Radeon(TM) Graphics via D3D12/dzn).
+
+Bindings used this milestone: 19 (AccumulationConfigSSBO, std430 SSBO) and 20 (historyImage,
+R8G8B8A8_UNORM persistent storage image, layout(rgba8)). 17=HitRecord, 18=ShadowConfig
+confirmed still taken (unchanged).
+
+Gate 4: sibling SDI drift-guard tests -- zero regression to the shared reflection contract
+------------------------------------------------------------------------------
+Built + ran the three sibling SDI-parity tests that reflect the SAME modified shader
+(BodyInstanceRayMarch.spv), to confirm the binding-19/20 additions didn't perturb any
+other struct's offsets:
+
+test_shadowconfig_sdi_parity.exe:   PASSED (1/1) -- size=16, enabled@0, raysPerLight@4,
+                                     maxShadowDistance@8, biasEpsilon@12 (unchanged).
+test_lightingconfig_sdi_parity.exe: PASSED (1/1) -- size=144, lightCount@0,
+                                     ambientIntensity@4, lights@16 (unchanged).
+test_hitrecord_sdi_parity.exe:      PASSED (1/1) -- size=60, albedo@0, roughness@12,
+                                     worldNormal@16, hitT@28, worldPos@32, flags@44,
+                                     _pad0@48 (unchanged).
+
+test_octree_config_sdi_parity: NOT RUN -- its build target fails on a PRE-EXISTING,
+unrelated compile error (glm parse in libraries/SVO/include/Recipe/generated/
+SdfCoreKernels.g.hpp:144/157/160/165/173, C2589/C2676/C2446/C2672/C2059 -- a malformed
+glm::vec2/vec3 comparison in generated code), explicitly named as a known pre-existing
+baseline failure in this milestone's brief. Confirmed unrelated: this file lives under
+SVO's Recipe/generated tree, has zero relationship to RenderGraph's Nodes/ or the
+AccumulationConfig/AccumulationHistory additions, and the failure signature (a stale/bad
+codegen emission, not a binding/reflection mismatch) is orthogonal to what this gate tests.
+
+Files created:
+  VIXEN/codegen/config-schemas/AccumulationConfig.cs
+  VIXEN/libraries/RenderGraph/include/Generated/AccumulationConfig.g.h  (generated, drift-guarded)
+  VIXEN/shaders/Generated/AccumulationConfig.glsl                       (generated, drift-guarded)
+  VIXEN/libraries/RenderGraph/include/Data/Nodes/AccumulationConfigNodeConfig.h
+  VIXEN/libraries/RenderGraph/include/Nodes/AccumulationConfigNode.h
+  VIXEN/libraries/RenderGraph/src/Nodes/AccumulationConfigNode.cpp
+  VIXEN/libraries/RenderGraph/include/Data/Nodes/AccumulationHistoryNodeConfig.h
+  VIXEN/libraries/RenderGraph/include/Nodes/AccumulationHistoryNode.h
+  VIXEN/libraries/RenderGraph/src/Nodes/AccumulationHistoryNode.cpp
+  VIXEN/libraries/RenderGraph/tests/Nodes/test_accumulationconfig_sdi_parity.cpp
+
+Files edited:
+  VIXEN/codegen/CMakeLists.txt                          (AccumulationConfig codegen target block)
+  VIXEN/libraries/RenderGraph/CMakeLists.txt             (new node .cpp sources)
+  VIXEN/libraries/RenderGraph/tests/test_critical_nodes.cmake  (drift-guard test target)
+  VIXEN/shaders/BodyInstanceRayMarch.comp                (bindings 19/20 declarations, passthrough)
+  VIXEN/application/main/source/graph/BuildRenderGraph.cpp  (node creation + wiring, bindings 19/20)
