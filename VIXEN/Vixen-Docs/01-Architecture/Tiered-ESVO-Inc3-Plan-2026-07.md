@@ -89,6 +89,12 @@ And one structural gap:
   own cell center), NOT the remap math itself. Fixed in `BuildRenderGraph.cpp`/`ShellOctreeGpu.h`
   (demo-construction-only change, zero shader/mirror/traversal-math change). Concentric
   magnification proven live at childScale ∈ {1.0,0.5,0.25,0.125}; see M5 Progress Log.**
+- **M6 — Earth-scale zoom gate attempt (Tasks 10-12)** · BLOCKED (Opus-validated real, not artifact):
+  the current demo body can't frame both 2^-10 crossings (thresholds locked 1024× apart; octant
+  off-axis + inside solid; algebraic impossibility proof). Mechanism sound; a CONSTRUCTION limit. → M7.
+- **M7 — Observable surface-to-orbit zoom via demo-body reconstruction (Tasks 13-15, planned)** ·
+  reconstruct → confirm-concentric → live continuous two-crossing zoom · the epic headline, deferred
+  from M6. Construction increment (no engine change expected); path (b) per M6 validator ranking.
 
 ## M1 — Scale-correct crossing math
 
@@ -328,6 +334,69 @@ OPEN QUESTION this gate must answer first.
 to orbit across two real scale-magnified tier crossings with no visible seam, on real hardware — the
 epic's original ask. Prediction-first handoff ticks match; per-frame deltas show seamlessness; VUID
 10× `08114` zero-new; unity/chain/default unregressed.
+
+## M7 — Observable surface-to-orbit zoom via demo-body reconstruction (planned 2026-07-11, the epic headline, deferred from M6)
+
+Context: M1-M5 shipped the proven, live-gated tier-crossing + concentric-magnification mechanism.
+M6 proved (algebraically + adversarial live captures, Opus-validated) that the epic's continuous
+two-crossing surface-to-orbit zoom CANNOT be staged on the current demo body — three hard facts:
+(1) the two LOD-handoff distances are locked exactly `childScale`× apart (2^-10 → 1024×), coef-
+independent; (2) the marked crossing octant sits at a fixed off-axis offset (−12,−12,+12) from body
+center, entering the 22.5° FOV half-cone only at orbit distance ≈100; (3) camera `forward` is
+hard-wired to `normalize(orbitCenter − cameraPosition)`. The algebraic impossibility: hop0 ≤ orbit
+ceiling (120) ⟹ childScale ≤ 0.00785, but hop1 outside T0's ~30-unit solid surface ⟹ childScale ≥
+0.25 — a contradiction; no single childScale frames both crossings reachable-and-outside-the-solid.
+**M7 is a CONSTRUCTION increment (no engine/traversal/shader change expected — M1-M5 proved the math);
+it reconstructs the demo scene so both crossings are observable, then runs the live zoom.**
+
+The M6 validator ranked the viable paths: path (b) demo-body reconstruction is the cheapest that CAN
+work; a modest ratio alone is NOT a free knob (even at a gentle ratio the current body can't frame
+both crossings outside the solid — it needs the reconstruction too); path (c) CameraNode look-target
+decoupling is larger and still doesn't solve hop1's solid-occlusion.
+
+### Task 13 — Reconstruct an observable crossing body
+- [ ] Build a demo body (or restructure the existing Earth-scale one) so the marked crossing octant is
+  (a) ON or near the camera's default view axis (not the fixed off-axis (−12,−12,+12) corner), AND
+  (b) NOT buried inside the parent T0's solid interior at the crossing distances — e.g. an isolated /
+  thin / surface-exposed crossing patch the camera can approach head-on from OUTSIDE the solid. The
+  M6 validator's algebra is the design constraint: pick a body geometry + tier ratio where BOTH
+  handoff distances land in a reachable band that is simultaneously inside the orbit ceiling and
+  outside the solid surface. This may mean a deliberately NON-Earth-diameter ratio for a first
+  observable proof (document the actual ratio + world sizes; "two live magnified crossings observed
+  continuously" is the gate, not "exactly 2^-20"). If a true Earth-scale (2^-20) observable zoom is
+  geometrically impossible without path (c), SURFACE that as a finding and propose (c) as its own
+  follow-up rather than forcing it.
+- [ ] Reuse M5's `RootLeafOctantCenterLocal` (or the entry-anchored placement) correctly so the
+  reconstructed crossings magnify CONCENTRICALLY (M5's proven fix) — verify concentric shrink at the
+  chosen ratio before wiring the zoom, so a framing failure can't be confused with a magnification bug.
+
+### Task 14 — The live continuous surface-to-orbit zoom (the epic gate, finally)
+- [ ] Scripted continuous camera zoom from bedrock-scale detail out to full-body orbit, crossing BOTH
+  tier boundaries mid-flight, on the reconstructed observable body. Camera stays outside T0's solid
+  surface radius throughout. Prediction-first: hand-compute the camera distances where each LOD
+  handoff flips; verify observed transition ticks match. Per-frame capture density around BOTH
+  predicted crossings (Inc2 M5 / M6 discipline).
+- [ ] Seamlessness by per-frame pixel DELTAS across each handoff (bounded frame-to-frame change, no
+  pop/tear), NOT assertion. Non-zero body pixels every frame (pixel-decode, not the stale HUD
+  counter). Per-tier color attribution so each hop is visually confirmable (T1 vs T2 distinct).
+  Exercise residency at ≥1 hop mid-flight (scripted). float32 honesty: surface any 2^-N artifact.
+- [ ] Watch the stale-exe footgun (M4's false blocker): confirm exe mtime > all edited-source mtimes
+  before trusting any capture. Forced validation; VUID 10× `08114` zero-new; unity/chain/default
+  unregressed.
+
+### Task 15 — Docs + epic closure
+- [ ] Design doc `Tiered-ESVO-Observer-Addressing-Design-2026-07.md` §9 status banner: the epic's
+  continuous surface-to-orbit zoom across two magnified crossings is now LIVE-PROVEN (or the honest
+  outcome — e.g. "proven at ratio R; true Earth-scale needs CameraNode look-target, tracked as
+  follow-up"). Plan-doc M7 Progress Log closure. CHANGELOG entry rides at merge time.
+
+**M7 gate (THE EPIC GATE, finally):** a live, validated, visually-confirmed CONTINUOUS zoom from
+surface detail to orbit across TWO real scale-magnified tier crossings with no visible seam, on real
+hardware — the epic's original ask ("a proper surface-to-orbit view of planets of proper scale").
+Concentric magnification confirmed on the reconstructed body first; prediction-first handoff ticks
+match; per-frame deltas show seamlessness; VUID clean; no regressions. If a true 2^-20 Earth ratio
+proves to need CameraNode look-target decoupling, an observable-zoom proof at a documented ratio R
+substantially satisfies the gate and (c) becomes a scoped follow-up.
 
 ## Progress Log
 
