@@ -23,6 +23,21 @@ WSL-side build (e.g. undertow's `cmake --build vixen/build`, invoked directly wi
 is NOT coordinated by any of this — it's a separate, unlocked build lane by design, not an
 oversight. Don't assume cross-platform safety.
 
+## Building a single target instead of everything
+
+`build.bat` takes an optional third argument: a CMake target name. Omit it to build the full
+default graph (as before); pass it to scope the build to one target (and its dependencies) —
+e.g. iterating on one library or test binary without paying to rebuild+relink the rest of the
+graph:
+
+```bash
+cmd.exe /c "C:\cpp\VBVS--VIXEN\build.bat build vixen-ninja VixenApp"
+```
+
+This threads through as `cmake --build --preset <preset> --target <name> -- -k 0 -j <N>` —
+same lock, same parallelism caps, same `-k 0`/FAILED-summary behavior, just scoped to that
+target's subgraph. Calling `run_build_with_summary.ps1` directly, the flag is `-Target <name>`.
+
 ## The three layers
 
 1. **`run_build_with_summary.ps1`** (called by `build.bat build`/`build.bat all`) — acquires
@@ -123,6 +138,54 @@ machine (including other agents) grinds to a halt.
 | `VIXEN_BUILD_LOCK_TIMEOUT` | 1800 (30 min) | Seconds to wait for the lock before giving up |
 | `VIXEN_MAX_BUILD_JOBS` | ~75% of logical cores | Overall ninja `-j` cap |
 | `VIXEN_MAX_PARALLEL_LINKS` | `(cores+3)/4` | Concurrent link-job cap (separate, lower) |
+
+## Known worktree gotcha: always invoke `build.bat` by absolute Windows path
+
+`build.bat` derives its source directory from its own location (`REPO_ROOT=%~dp0`,
+`SRC_DIR=%REPO_ROOT%\VIXEN`) — this is correct BY DESIGN so the same script works from any
+clone/worktree. The failure mode is upstream of that: if you invoke it from a WSL bash shell via
+`cmd.exe /c "build.bat build vixen-ninja"` (a bare relative name, no explicit path) while your
+bash `cwd` is inside a worktree, `cmd.exe`'s OWN starting directory is not guaranteed to be your
+bash `cwd` — cross-shell invocation can silently resolve `build.bat` against a DIFFERENT
+`build.bat` on `PATH`/a stale default directory (observed: it resolved to the main checkout's
+`C:\cpp\VBVS--VIXEN\build.bat` while running from a worktree at
+`.claude\worktrees\<name>\`). The build then runs, acquires the lock, and reports success/failure
+— all against the WRONG tree, with no error, because `build.bat` has no way to know it was asked
+to build somewhere other than intended. This burned a full build-lock turn (and a second one
+finding the fix "already applied" on the wrong checkout) on 2026-07-11 during Sampled-Lighting
+Inc3 M1.
+
+**Always call `build.bat` with its full Windows absolute path** when driving it from WSL bash,
+even though the script itself is path-agnostic:
+
+```bash
+cmd.exe /c "C:\cpp\VBVS--VIXEN\.claude\worktrees\<your-worktree>\build.bat build vixen-ninja" > log 2>&1
+```
+
+not:
+
+```bash
+cmd.exe /c "build.bat build vixen-ninja" > log 2>&1   # DON'T — cwd/PATH resolution is not guaranteed
+```
+
+Get the absolute Windows path from bash with `wslpath -w "$(pwd)/build.bat"` if unsure. **After
+any build, sanity-check the logged `source:` line** (`run_build_with_summary.ps1` prints
+`[build] source   : <path>` near the top of every run) — if it doesn't match the worktree you
+meant to build, the whole result (including a "target now builds!" fix-verification) is
+meaningless, silently.
+
+## Known gotcha: the shared status file is machine-wide, not per-build
+
+`%TEMP%\vixen_build_status.txt` (`run_build_with_summary.ps1`'s live-status file) is a SINGLE
+file shared by every build on the machine — it is overwritten by whichever build last touched it,
+regardless of which worktree/agent started it. If two agents build around the same time, checking
+this file for "is MY build done" can show a stale or entirely different build's `last_target`
+(e.g. a path under a DIFFERENT worktree). Observed 2026-07-11: after my own build finished, the
+status file's `last_target` pointed at `tiered-esvo-inc2` — a sibling agent's build that happened
+to finish around the same moment. **This file is only reliable for "is the lock currently busy"
+(paired with `check_build_lock.ps1`), never for "did MY specific build finish/succeed."** For your
+own build's outcome, always read the log file YOU redirected stdout to (and confirm its `source:`
+line matches your worktree, per the gotcha above) — never the shared status file.
 
 ## What NOT to do
 

@@ -16,11 +16,14 @@ REM                     vixen-ninja preset, which sets /Z7 so MSVC debug builds
 REM                     are cacheable).
 REM
 REM Usage:
-REM   build.bat [configure^|build^|all] [preset-name]
+REM   build.bat [configure^|build^|all] [preset-name] [target-name]
 REM     configure   run only the CMake configure/generate for the preset
 REM     build       run only the build for the preset (configure first)
 REM     all         configure then build (DEFAULT)
 REM   preset-name defaults to vixen-ninja.
+REM   target-name  optional CMake target to build instead of the full graph
+REM                (e.g. VixenApp, or a single test binary). Omit to build
+REM                everything, as before.
 REM
 REM The gitignored _ninja_*.bat launchers are personal overrides; this is the
 REM shared, committed entry point.
@@ -38,6 +41,7 @@ set "ACTION=%~1"
 if "%ACTION%"=="" set "ACTION=all"
 set "PRESET=%~2"
 if "%PRESET%"=="" set "PRESET=vixen-ninja"
+set "TARGET=%~3"
 
 REM --- repo root = this script's directory (VIXEN/ is the CMake source dir) ---
 set "REPO_ROOT=%~dp0"
@@ -92,6 +96,7 @@ echo [build] cmake    : %CMAKE_EXE%
 echo [build] source   : %SRC_DIR%
 echo [build] preset   : %PRESET%
 echo [build] action   : %ACTION%
+if not "%TARGET%"=="" (echo [build] target   : %TARGET%) else (echo [build] target   : ^(full build^))
 echo [build] sccache  : %SCCACHE_DIR% ^(max %SCCACHE_CACHE_SIZE%^)
 
 cd /d "%SRC_DIR%"
@@ -133,5 +138,7 @@ REM ---------------------------------------------------------------------------
 if not defined VIXEN_BUILD_LOCK_TIMEOUT set "VIXEN_BUILD_LOCK_TIMEOUT=1800"
 set "SKIP_LOCK_ARG="
 if "%VIXEN_SKIP_BUILD_LOCK%"=="1" set "SKIP_LOCK_ARG=-SkipLock"
-powershell -ExecutionPolicy Bypass -File "%SRC_DIR%\scripts\build\run_build_with_summary.ps1" -CMakeExe "%CMAKE_EXE%" -Preset "%PRESET%" -LockTimeoutSeconds %VIXEN_BUILD_LOCK_TIMEOUT% %SKIP_LOCK_ARG%
+set "TARGET_ARG="
+if not "%TARGET%"=="" set "TARGET_ARG=-Target \"%TARGET%\""
+powershell -ExecutionPolicy Bypass -File "%SRC_DIR%\scripts\build\run_build_with_summary.ps1" -CMakeExe "%CMAKE_EXE%" -Preset "%PRESET%" -LockTimeoutSeconds %VIXEN_BUILD_LOCK_TIMEOUT% %SKIP_LOCK_ARG% %TARGET_ARG%
 exit /b %errorlevel%

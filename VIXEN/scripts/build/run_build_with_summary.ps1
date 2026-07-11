@@ -16,7 +16,11 @@
 # builds on one machine contend for the same CPU/IO and make ALL of them slower, not faster —
 # observed directly this session running concurrent verification builds.
 #
-# Usage: powershell -ExecutionPolicy Bypass -File run_build_with_summary.ps1 -CMakeExe <path> -Preset <name> [-StatusFile <path>] [-LockTimeoutSeconds N] [-SkipLock]
+# Usage: powershell -ExecutionPolicy Bypass -File run_build_with_summary.ps1 -CMakeExe <path> -Preset <name> [-StatusFile <path>] [-LockTimeoutSeconds N] [-SkipLock] [-MaxParallelJobs N] [-Target <cmake-target-name>]
+#
+# -Target scopes the build to a single CMake target (`cmake --build ... --target <name>`)
+# instead of the full default graph - e.g. just `VixenApp` or a single test binary, so an
+# agent iterating on one library doesn't pay to rebuild+relink everything else in the graph.
 #
 # Status file format (plain text, overwritten in place — safe to `cat`/`Get-Content` anytime,
 # never partially-written since each update is a single atomic file write):
@@ -34,7 +38,8 @@ param(
     [string]$StatusFile = "$env:TEMP\vixen_build_status.txt",
     [int]$LockTimeoutSeconds = 1800,
     [switch]$SkipLock,
-    [int]$MaxParallelJobs = 0
+    [int]$MaxParallelJobs = 0,
+    [string]$Target = ""
 )
 
 # Fix 10: cap ninja's overall concurrent job count below full core count by default, so a
@@ -112,12 +117,22 @@ Write-StatusFile "RUNNING" 0 "?" 0 0 "" @()
 # `cmake --build --preset` silently resolves CMakePresets.json from the wrong place and fails.
 # Tee-Object writes UTF-16 by default in Windows PowerShell 5.1, which breaks line-based regex
 # parsing against the log — force UTF-8 by piping through Out-File -Encoding utf8 instead.
+if ($Target) {
+    Write-Host "[build] Target    : $Target (scoped build, not the full 'all' graph)"
+} else {
+    Write-Host "[build] Target    : (default - full build graph)"
+}
+
 $workDir = $PWD.Path
 $job = Start-Job -ScriptBlock {
-    param($cmakeExe, $preset, $logPath, $workDir, $maxJobs)
+    param($cmakeExe, $preset, $logPath, $workDir, $maxJobs, $target)
     Set-Location $workDir
-    & $cmakeExe --build --preset $preset -- -k 0 -j $maxJobs *>&1 | Out-File -FilePath $logPath -Encoding utf8
-} -ArgumentList $CMakeExe, $Preset, $buildLog, $workDir, $MaxParallelJobs
+    if ($target) {
+        & $cmakeExe --build --preset $preset --target $target -- -k 0 -j $maxJobs *>&1 | Out-File -FilePath $logPath -Encoding utf8
+    } else {
+        & $cmakeExe --build --preset $preset -- -k 0 -j $maxJobs *>&1 | Out-File -FilePath $logPath -Encoding utf8
+    }
+} -ArgumentList $CMakeExe, $Preset, $buildLog, $workDir, $MaxParallelJobs, $Target
 
 $progressPattern = '^\[(\d+)/(\d+)\]\s+(.+)$'
 $failedPattern = '^FAILED:\s+\[code=\d+\]\s+(\S+)'
