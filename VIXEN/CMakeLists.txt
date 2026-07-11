@@ -28,20 +28,40 @@ if(NOT CMAKE_GENERATOR)
     endif()
 endif()
 
-# Ccache/sccache support for faster rebuilds
+# Ccache/sccache support for faster rebuilds.
+#
+# ccache is preferred over sccache here specifically because MSVC precompiled headers
+# (/Yc, /Yu, /Fp — used by target_precompile_headers() on most of this project's core
+# libraries: Core, EventBus, CashSystem, GaiaArchetypes, GaiaVoxelWorld, Logger,
+# RenderGraphCore) are UNCONDITIONALLY uncacheable under sccache (upstream: sccache
+# routes /Fp and /Yc as TooHardPath in src/compiler/msvc.rs — open issue
+# mozilla/sccache#978, unresolved since 2021, no roadmap commitment). Measured impact:
+# a fresh worktree's clean build hit only 38.9% cache-hit rate under sccache, with
+# /Fp (310 occurrences) as the single largest non-cacheable-reason bucket — i.e. every
+# fresh worktree on this multi-worktree-agent machine was paying full uncached
+# PCH-compile cost for 7 core libraries regardless of the shared FetchContent/sccache
+# cache-dir config already being correct. ccache added real MSVC /Yc PCH support in
+# 2024 (refined through 2025 point releases) and is the documented fix other CMake
+# projects (e.g. Qt) use for this exact gap. If ccache isn't installed, fall back to
+# sccache (better than nothing on the non-PCH majority of the build) rather than
+# failing the configure.
 option(USE_CCACHE "Use ccache/sccache for compilation caching" ON)
 if(USE_CCACHE)
-    find_program(CCACHE_PROGRAM ccache)
+    # Self-provisioning (Windows only — see ProvisionCcache.cmake): auto-downloads ccache into a
+    # project-local cache if not already on PATH, same contract as Vulkan/gdb/windowing-deps
+    # provisioning. Sets VIXEN_PROVISIONED_CCACHE_PROGRAM when a usable ccache is available
+    # (system or provisioned); a no-op on non-Windows or if provisioning is disabled/fails.
+    include("${VIXEN_ROOT}/cmake/ProvisionCcache.cmake" OPTIONAL)
     find_program(SCCACHE_PROGRAM sccache)
 
-    if(SCCACHE_PROGRAM)
-        message(STATUS "Found sccache: ${SCCACHE_PROGRAM}")
+    if(VIXEN_PROVISIONED_CCACHE_PROGRAM)
+        message(STATUS "Using ccache: ${VIXEN_PROVISIONED_CCACHE_PROGRAM} (preferred over sccache - caches MSVC PCH)")
+        set(CMAKE_C_COMPILER_LAUNCHER ${VIXEN_PROVISIONED_CCACHE_PROGRAM})
+        set(CMAKE_CXX_COMPILER_LAUNCHER ${VIXEN_PROVISIONED_CCACHE_PROGRAM})
+    elseif(SCCACHE_PROGRAM)
+        message(STATUS "Found sccache: ${SCCACHE_PROGRAM} (ccache not found/provisioned - note: sccache cannot cache MSVC PCH compiles)")
         set(CMAKE_C_COMPILER_LAUNCHER ${SCCACHE_PROGRAM})
         set(CMAKE_CXX_COMPILER_LAUNCHER ${SCCACHE_PROGRAM})
-    elseif(CCACHE_PROGRAM)
-        message(STATUS "Found ccache: ${CCACHE_PROGRAM}")
-        set(CMAKE_C_COMPILER_LAUNCHER ${CCACHE_PROGRAM})
-        set(CMAKE_CXX_COMPILER_LAUNCHER ${CCACHE_PROGRAM})
     else()
         message(STATUS "ccache/sccache not found - install for faster rebuilds")
     endif()

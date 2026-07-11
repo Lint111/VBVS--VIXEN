@@ -7,6 +7,10 @@
 # Auto-provisioned gdb cache (ProvisionGdb.cmake, VIXEN_AUTO_PROVISION_GDB=ON)
 .gdb-deps/
 
+# Auto-provisioned ccache cache (ProvisionCcache.cmake — Windows, preferred over sccache
+# because sccache cannot cache MSVC precompiled headers)
+.ccache-deps/
+
 # ponytail: ShaderCacheManagerTest writes a literal Windows-style path on WSL/Linux
 # (no drive-letter semantics to reject it) instead of failing as it does on Windows.
 # Regenerates every ctest run until that test is fixed to use a portable invalid path.

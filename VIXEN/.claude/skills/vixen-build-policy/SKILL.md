@@ -23,6 +23,21 @@ WSL-side build (e.g. undertow's `cmake --build vixen/build`, invoked directly wi
 is NOT coordinated by any of this — it's a separate, unlocked build lane by design, not an
 oversight. Don't assume cross-platform safety.
 
+## Building a single target instead of everything
+
+`build.bat` takes an optional third argument: a CMake target name. Omit it to build the full
+default graph (as before); pass it to scope the build to one target (and its dependencies) —
+e.g. iterating on one library or test binary without paying to rebuild+relink the rest of the
+graph:
+
+```bash
+cmd.exe /c "C:\cpp\VBVS--VIXEN\build.bat build vixen-ninja VixenApp"
+```
+
+This threads through as `cmake --build --preset <preset> --target <name> -- -k 0 -j <N>` —
+same lock, same parallelism caps, same `-k 0`/FAILED-summary behavior, just scoped to that
+target's subgraph. Calling `run_build_with_summary.ps1` directly, the flag is `-Target <name>`.
+
 ## The three layers
 
 1. **`run_build_with_summary.ps1`** (called by `build.bat build`/`build.bat all`) — acquires
@@ -54,12 +69,14 @@ powershell -ExecutionPolicy Bypass -File VIXEN\scripts\build\check_build_lock.ps
   visibility into how long that wait will be. Register in the queue instead (below), then go
   do something else.
 
-**While a build is queued or running — go do other work.** Docs, code review, planning the
-next phase, reading a previous test run's output. A blocked build is not a blocked agent. This
-is the same principle as the `multi-worktree-sync` skill's build-traffic-control section — this
-skill is the VIXEN-specific implementation of it.
+**While a build is queued or running, stay ACTIVE — do not go idle.** If you have other useful
+work to interleave (docs, code review, planning the next phase), do it between status checks.
+But the wait itself must be driven by an active foreground poll loop on the ~20s cadence below,
+never a background wakeup/idle wait — see "Queue and notification" for why. This is the same
+principle as the `multi-worktree-sync` skill's build-traffic-control section — this skill is
+the VIXEN-specific implementation of it.
 
-## Queue and notification: register, do other work, get pinged on your turn
+## Queue and notification: register, poll actively, go on your turn
 
 Use this instead of directly calling `build.bat` when the lock is held, or whenever you want
 fair ordering + visibility instead of a blind synchronous wait.
@@ -68,33 +85,72 @@ fair ordering + visibility instead of a blind synchronous wait.
 # 1. Register — cheap, instant, non-blocking. Prints your TicketId and queue position.
 powershell -ExecutionPolicy Bypass -File VIXEN\scripts\build\build_queue.ps1 -Register -AgentId "<your-agent-id>" -Note "<why you're building>"
 
-# 2. Go do other work. Do NOT sit in a tight poll loop — that defeats the purpose.
-#    Use ScheduleWakeup (a few minutes out, or longer for a known-busy machine) to come back
-#    and check, rather than blocking this turn.
+# 2. Poll -Status actively every ~20s (see below) until YOUR_TURN. Do NOT hand the wait off to
+#    ScheduleWakeup or a background Monitor task and go idle — those have repeatedly failed to
+#    reliably wake the agent back up on this machine, silently stalling the whole turn.
 
-# 3. Check status (repeat via ScheduleWakeup until YOUR_TURN):
+# 3. Check status (repeat in the active ~20s loop until YOUR_TURN):
 powershell -ExecutionPolicy Bypass -File VIXEN\scripts\build\build_queue.ps1 -Status -TicketId <id>
 #   YOUR_TURN        -> position 1 AND the lock is free. Call build.bat now.
 #   WAITING          -> not your turn yet (either not position 1, or position 1 but the lock
 #                        is still held by an in-flight build — these are reported distinctly).
 #   UNKNOWN_TICKET    -> your ticket expired (see Reap below), was released, or never existed.
 
-# 4. ALWAYS release your ticket after build.bat returns — whether it built, failed, or you
-#    decided not to build after all. A ticket left behind blocks everyone queued behind you.
+# 4. Release is AUTOMATIC once build.bat actually starts the build (see below) — you do not
+#    need to call -Release yourself in that case. Only call it explicitly if you registered a
+#    ticket and then decided NOT to build after all (so nothing else will ever release it):
 powershell -ExecutionPolicy Bypass -File VIXEN\scripts\build\build_queue.ps1 -Release -TicketId <id>
 ```
 
 `-ListQueue` shows the whole queue (position, agent, note, registration time) plus current
 lock state — useful for a human or an orchestrating agent to see who's waiting.
 
-**Notification mechanism, concretely**: there is no push/interrupt — "notification" here means
-structuring the wait as `ScheduleWakeup` (fire in N minutes, re-check `-Status`, reschedule if
-still `WAITING`) rather than either (a) a blocking synchronous wait that ties up a whole turn,
-or (b) a tight poll loop that wastes cycles. Pick the `ScheduleWakeup` delay based on what
-you're actually waiting on — a build that's been running 2 minutes probably has more to go;
-check back on an interval proportional to how long builds on this project typically take (see
-Fix 8's measurements: real builds run 1-3+ minutes even mostly-cached, longer from scratch),
-not a fixed short interval.
+**Ticket release is automatic, not dependent on the dispatching agent staying alive.** Pass
+your ticket through to the actual build via the `VIXEN_QUEUE_TICKET_ID` env var:
+
+```bash
+VIXEN_QUEUE_TICKET_ID=<id> cmd.exe /c "C:\...\build.bat build vixen-ninja"
+```
+
+`run_build_with_summary.ps1` releases that ticket itself, in the same `finally` block that
+releases the build-lock Mutex — so release is tied to the **build process's own lifetime**, not
+to whether the agent that registered it is still around afterward to call `-Release`. This
+closes a real gap: previously a ticket was only ever released by the dispatching agent calling
+`-Release` after `build.bat` returned, so an agent that got killed, crashed, or had its context
+cleared mid-build left its ticket blocking the queue until the 60-minute stale reap. Now the
+build itself — success, failure, or crash — always clears it. `run_build_with_summary.ps1` also
+writes the outcome to `%TEMP%\vixen_build_queue_results\<TicketId>.log` (exit code, failed
+targets, path to the full build log) so a *different* agent, or the same agent resumed later,
+can read what happened without having stayed attached to watch it happen.
+
+You should still call `-Release` explicitly in the one case auto-release doesn't cover:
+registering a ticket and then deciding not to build at all.
+
+**Notification mechanism, concretely — active polling, NOT `ScheduleWakeup`/`Monitor`.**
+`ScheduleWakeup` and background-task notifications have repeatedly failed to reliably wake an
+agent back up on this machine — an agent that goes idle waiting on one is liable to just stay
+idle, silently stalling the whole turn with no one watching. Do not rely on them for a build
+wait. Instead, poll `-Status` from an **active foreground loop directly in the same turn**, on
+a ~20 second interval, per the standing rule in CLAUDE.md for any long-running
+build/configure/render/deploy: never a silent `sleep`/blind wait, always a loop that prints a
+readable status line each iteration so both the user and the agent's own process stay live and
+attentive. Concretely, something like:
+
+```bash
+while true; do
+  out=$(powershell -ExecutionPolicy Bypass -File VIXEN\scripts\build\build_queue.ps1 -Status -TicketId <id>)
+  echo "[queue] $out"
+  echo "$out" | grep -q YOUR_TURN && break
+  sleep 20
+done
+```
+
+This is a real foreground command (or the harness's Monitor/until-loop equivalent driving the
+same query), not a background task — the agent stays active and re-checks every ~20s rather
+than parking on a wakeup that may never fire. Only reach for a longer interval if a build is
+already known to run long (Fix 8: real builds run 1-3+ minutes even mostly-cached) AND the
+agent is deliberately doing other useful work in parallel between checks — the default,
+un-supervised wait is always the ~20s active loop.
 
 **Ticket hygiene**: tickets are files under `%TEMP%\vixen_build_queue\`, not tied to a process
 lifetime the way the Mutex is — a crashed/killed agent's ticket does NOT auto-release. Every
@@ -124,6 +180,65 @@ machine (including other agents) grinds to a halt.
 | `VIXEN_MAX_BUILD_JOBS` | ~75% of logical cores | Overall ninja `-j` cap |
 | `VIXEN_MAX_PARALLEL_LINKS` | `(cores+3)/4` | Concurrent link-job cap (separate, lower) |
 
+## Known worktree gotcha: always invoke `build.bat` by absolute Windows path
+
+`build.bat` derives its source directory from its own location (`REPO_ROOT=%~dp0`,
+`SRC_DIR=%REPO_ROOT%\VIXEN`) — this is correct BY DESIGN so the same script works from any
+clone/worktree. The failure mode is upstream of that: if you invoke it from a WSL bash shell via
+`cmd.exe /c "build.bat build vixen-ninja"` (a bare relative name, no explicit path) while your
+bash `cwd` is inside a worktree, `cmd.exe`'s OWN starting directory is not guaranteed to be your
+bash `cwd` — cross-shell invocation can silently resolve `build.bat` against a DIFFERENT
+`build.bat` on `PATH`/a stale default directory (observed: it resolved to the main checkout's
+`C:\cpp\VBVS--VIXEN\build.bat` while running from a worktree at
+`.claude\worktrees\<name>\`). The build then runs, acquires the lock, and reports success/failure
+— all against the WRONG tree, with no error, because `build.bat` has no way to know it was asked
+to build somewhere other than intended. This burned a full build-lock turn (and a second one
+finding the fix "already applied" on the wrong checkout) on 2026-07-11 during Sampled-Lighting
+Inc3 M1.
+
+**Always call `build.bat` with its full Windows absolute path** when driving it from WSL bash,
+even though the script itself is path-agnostic:
+
+```bash
+cmd.exe /c "C:\cpp\VBVS--VIXEN\.claude\worktrees\<your-worktree>\build.bat build vixen-ninja" > log 2>&1
+```
+
+not:
+
+```bash
+cmd.exe /c "build.bat build vixen-ninja" > log 2>&1   # DON'T — cwd/PATH resolution is not guaranteed
+```
+
+Get the absolute Windows path from bash with `wslpath -w "$(pwd)/build.bat"` if unsure. **After
+any build, sanity-check the logged `source:` line** (`run_build_with_summary.ps1` prints
+`[build] source   : <path>` near the top of every run) — if it doesn't match the worktree you
+meant to build, the whole result (including a "target now builds!" fix-verification) is
+meaningless, silently.
+
+## Known gotcha: the shared status file is machine-wide, not per-build (mitigated by BuildId)
+
+`%TEMP%\vixen_build_status.txt` (`run_build_with_summary.ps1`'s live-status file) is a SINGLE
+file shared by every build on the machine — it is overwritten by whichever build last touched it,
+regardless of which worktree/agent started it. If two agents build around the same time, checking
+this file for "is MY build done" can show a stale or entirely different build's `last_target`
+(e.g. a path under a DIFFERENT worktree). Observed 2026-07-11: after my own build finished, the
+status file's `last_target` pointed at `tiered-esvo-inc2` — a sibling agent's build that happened
+to finish around the same moment.
+
+**Fixed (2026-07-11): every build now has a `BuildId`**, printed as the FIRST line of console
+output, written into the status file as a `build_id:` field, embedded in the log filename
+itself (`%TEMP%\vixen_build_<BuildId>.log` — no more anonymous random-GUID logs), and repeated
+in the BUILD SUMMARY footer. `build.bat` auto-derives a sensible default from the checkout's own
+directory name (a worktree's builds are self-identifying with zero setup — e.g. `build.bat` run
+from `.claude\worktrees\graph-node-linkage-inc1\` gets `BuildId=graph-node-linkage-inc1`), or set
+`VIXEN_BUILD_ID=<something>` explicitly for a more specific label (e.g. a task/ticket name).
+**Always check the status file's `build_id:` field against the BuildId you noted at dispatch
+time before trusting `last_target`/`targets_done` as "my build's" progress** — if it doesn't
+match, you're looking at a different, possibly-concurrent build's status, not yours. This makes
+the status file usable for "is MY build done" now, not just "is the lock currently busy" — but
+your own build's log (`%TEMP%\vixen_build_<YourBuildId>.log`, printed at both start and end of
+output) remains the authoritative source for full output/failures, same as before.
+
 ## What NOT to do
 
 - Don't call `cmake --build` directly, bypassing `build.bat` — you skip the lock, the
@@ -131,9 +246,15 @@ machine (including other agents) grinds to a halt.
   Fix 7-10 fixed. If you need a scoped/target-specific build, still go through
   `run_build_with_summary.ps1` (it accepts the same preset-based `cmake --build` underneath;
   don't hand-roll a separate invocation).
-- Don't poll `-Status`/`check_build_lock.ps1` in a tight loop — use `ScheduleWakeup` at a
-  sensible interval instead.
+- Don't poll `-Status`/`check_build_lock.ps1` in a sub-second tight loop that wastes cycles —
+  but DO poll actively on a ~20s cadence (see "Queue and notification" above). Don't hand the
+  wait off to `ScheduleWakeup` or a background `Monitor` task and go idle instead — those have
+  repeatedly failed to reliably resume the agent on this machine, which stalls the whole turn
+  with nothing watching it. An active 20s foreground loop is the correct middle ground.
 - Don't assume the lock/queue coordinates with a WSL-side build (undertow or otherwise) — it
   doesn't, by design (see Platform scope above).
-- Don't leave a queue ticket unreleased "because it'll expire eventually" — release it
-  immediately when you're done, even on failure/abort.
+- Don't manually call `-Release` after a build you dispatched via `VIXEN_QUEUE_TICKET_ID` —
+  `run_build_with_summary.ps1` already released it in its `finally` block; calling `-Release`
+  again is harmless (idempotent — "already released") but unnecessary. DO still call `-Release`
+  yourself if you registered a ticket and decided not to build at all — nothing else will ever
+  release that one.

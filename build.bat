@@ -10,17 +10,24 @@ REM                      fixed Installer path); no VS year/edition assumptions.
 REM   - cmake         : taken from PATH (where cmake), with a well-known
 REM                      install-dir fallback.
 REM   - repo root     : derived from this script's own location (%~dp0).
-REM   - sccache       : SCCACHE_DIR / SCCACHE_CACHE_SIZE default here but a
+REM   - ccache/sccache: CCACHE_DIR / CCACHE_MAXSIZE (ccache) and SCCACHE_DIR /
+REM                     SCCACHE_CACHE_SIZE (sccache fallback) default here but a
 REM                     user-set value wins (shared compiler cache; see the
 REM                     vixen-ninja preset, which sets /Z7 so MSVC debug builds
-REM                     are cacheable).
+REM                     are cacheable). ccache is preferred when present/auto-
+REM                     provisioned (ProvisionCcache.cmake) because sccache
+REM                     cannot cache MSVC precompiled headers — see
+REM                     CMakeLists.txt's USE_CCACHE block.
 REM
 REM Usage:
-REM   build.bat [configure^|build^|all] [preset-name]
+REM   build.bat [configure^|build^|all] [preset-name] [target-name]
 REM     configure   run only the CMake configure/generate for the preset
 REM     build       run only the build for the preset (configure first)
 REM     all         configure then build (DEFAULT)
 REM   preset-name defaults to vixen-ninja.
+REM   target-name  optional CMake target to build instead of the full graph
+REM                (e.g. VixenApp, or a single test binary). Omit to build
+REM                everything, as before.
 REM
 REM The gitignored _ninja_*.bat launchers are personal overrides; this is the
 REM shared, committed entry point.
@@ -32,12 +39,25 @@ REM   VIXEN_SKIP_BUILD_LOCK=1   bypass the lock entirely
 REM   VIXEN_MAX_BUILD_JOBS      cap on concurrent ninja jobs (default ~75% of
 REM                             logical cores) so a build leaves the machine
 REM                             usable instead of pegging every core
+REM   VIXEN_QUEUE_TICKET_ID     if you registered a build_queue.ps1 ticket before
+REM                             calling this script, set this to its TicketId and
+REM                             it is auto-released when the build finishes/fails/
+REM                             crashes - you do not need to call -Release yourself.
+REM   VIXEN_BUILD_ID            distinguishes this build's log/status among concurrent
+REM                             builds from other worktrees/agents. Defaults to this
+REM                             checkout's own directory name (so a worktree's builds
+REM                             are self-identifying with zero setup); set explicitly
+REM                             for something more specific (e.g. a task/ticket name).
+REM                             Printed as the first line of build output and in the
+REM                             BUILD SUMMARY footer - note it so you can find your
+REM                             build's log (%%TEMP%%\vixen_build_<id>.log) later.
 REM ===========================================================================
 
 set "ACTION=%~1"
 if "%ACTION%"=="" set "ACTION=all"
 set "PRESET=%~2"
 if "%PRESET%"=="" set "PRESET=vixen-ninja"
+set "TARGET=%~3"
 
 REM --- repo root = this script's directory (VIXEN/ is the CMake source dir) ---
 set "REPO_ROOT=%~dp0"
@@ -84,15 +104,27 @@ if "%CMAKE_EXE%"=="" (
 )
 
 REM --- shared compiler-cache defaults (user-set values win) ---
+if not defined CCACHE_DIR set "CCACHE_DIR=%SystemDrive%\ccache"
+if not defined CCACHE_MAXSIZE set "CCACHE_MAXSIZE=20G"
 if not defined SCCACHE_DIR set "SCCACHE_DIR=%SystemDrive%\sccache"
 if not defined SCCACHE_CACHE_SIZE set "SCCACHE_CACHE_SIZE=20G"
+
+REM --- build ID default: this checkout's own directory name (e.g. a worktree folder like
+REM     "graph-node-linkage-inc1"), so builds are self-identifying with zero setup. A bare
+REM     "VIXEN" (the main checkout) is also a valid, distinguishing default. ---
+if not defined VIXEN_BUILD_ID (
+    for %%D in ("%REPO_ROOT%") do set "VIXEN_BUILD_ID=%%~nxD"
+)
 
 echo [build] VS       : %VSINSTALL%
 echo [build] cmake    : %CMAKE_EXE%
 echo [build] source   : %SRC_DIR%
 echo [build] preset   : %PRESET%
 echo [build] action   : %ACTION%
-echo [build] sccache  : %SCCACHE_DIR% ^(max %SCCACHE_CACHE_SIZE%^)
+if not "%TARGET%"=="" (echo [build] target   : %TARGET%) else (echo [build] target   : ^(full build^))
+echo [build] buildId  : %VIXEN_BUILD_ID% ^(distinguishes this build's log/status among concurrent builds^)
+echo [build] ccache   : %CCACHE_DIR% ^(max %CCACHE_MAXSIZE%^; preferred - caches MSVC PCH^)
+echo [build] sccache  : %SCCACHE_DIR% ^(max %SCCACHE_CACHE_SIZE%^; fallback only^)
 
 cd /d "%SRC_DIR%"
 
@@ -133,5 +165,11 @@ REM ---------------------------------------------------------------------------
 if not defined VIXEN_BUILD_LOCK_TIMEOUT set "VIXEN_BUILD_LOCK_TIMEOUT=1800"
 set "SKIP_LOCK_ARG="
 if "%VIXEN_SKIP_BUILD_LOCK%"=="1" set "SKIP_LOCK_ARG=-SkipLock"
-powershell -ExecutionPolicy Bypass -File "%SRC_DIR%\scripts\build\run_build_with_summary.ps1" -CMakeExe "%CMAKE_EXE%" -Preset "%PRESET%" -LockTimeoutSeconds %VIXEN_BUILD_LOCK_TIMEOUT% %SKIP_LOCK_ARG%
+set "TARGET_ARG="
+if not "%TARGET%"=="" set "TARGET_ARG=-Target \"%TARGET%\""
+set "TICKET_ARG="
+if not "%VIXEN_QUEUE_TICKET_ID%"=="" set "TICKET_ARG=-QueueTicketId \"%VIXEN_QUEUE_TICKET_ID%\""
+set "BUILDID_ARG="
+if not "%VIXEN_BUILD_ID%"=="" set "BUILDID_ARG=-BuildId \"%VIXEN_BUILD_ID%\""
+powershell -ExecutionPolicy Bypass -File "%SRC_DIR%\scripts\build\run_build_with_summary.ps1" -CMakeExe "%CMAKE_EXE%" -Preset "%PRESET%" -LockTimeoutSeconds %VIXEN_BUILD_LOCK_TIMEOUT% %SKIP_LOCK_ARG% %TARGET_ARG% %TICKET_ARG% %BUILDID_ARG%
 exit /b %errorlevel%
