@@ -257,27 +257,56 @@ void ComputeStageNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmd,
                                  std::to_string(imageIndex));
     }
 
-    // Dispatch dims: explicit params, falling back to the swapchain extent (consumer).
+    // Dispatch dims: explicit params, falling back to the swapchain extent (consumer),
+    // then to the IMAGE_WRITE target's extent (Sampled Lighting Inc3 M1: an image-producer
+    // middle pass with no SWAPCHAIN_INFO, e.g. DirectLightingNode) — re-derived live every
+    // Execute (not cached from graph-build time) so a VIXEN_RENDER_SCALE-driven resize of
+    // the render target is picked up the same frame, mirroring ComputeDispatchNode's own
+    // dispatchTarget->GetExtent() pattern for the identical reason.
     uint32_t dispatchX = GetParameterValue<uint32_t>(ComputeStageNodeConfig::PARAM_DISPATCH_X, 0u);
     uint32_t dispatchY = GetParameterValue<uint32_t>(ComputeStageNodeConfig::PARAM_DISPATCH_Y, 0u);
     uint32_t dispatchZ = GetParameterValue<uint32_t>(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
 
     Vixen::Vulkan::Resources::IRenderTarget* swapchainInfo =
         ctx.In(ComputeStageNodeConfig::SWAPCHAIN_INFO);
+    // Non-swapchain intermediate image this stage writes (e.g. a shading pass's own
+    // render target). Fetched once, used both for dispatch-dim fallback (below) and the
+    // entry barrier (further below).
+    Vixen::Vulkan::Resources::IRenderTarget* imageWriteTarget =
+        ctx.In(ComputeStageNodeConfig::IMAGE_WRITE);
     if ((dispatchX == 0 || dispatchY == 0) && swapchainInfo) {
         VkExtent2D extent = swapchainInfo->GetExtent();
+        dispatchX = (extent.width + 7) / 8;
+        dispatchY = (extent.height + 7) / 8;
+    } else if ((dispatchX == 0 || dispatchY == 0) && imageWriteTarget) {
+        VkExtent2D extent = imageWriteTarget->GetExtent();
         dispatchX = (extent.width + 7) / 8;
         dispatchY = (extent.height + 7) / 8;
     }
     if (dispatchX == 0 || dispatchY == 0 || dispatchZ == 0) {
         throw std::runtime_error("[ComputeStageNode::RecordComputeCommands] Dispatch dims unresolved "
-                                 "(set dispatchX/Y/Z or connect SWAPCHAIN_INFO)");
+                                 "(set dispatchX/Y/Z or connect SWAPCHAIN_INFO/IMAGE_WRITE)");
     }
 
     // Consumer: acquire-side transition of the swapchain image into GENERAL for the
     // storage write (WSI lifecycle — node-managed in Tier-1).
     if (isConsumer && swapchainInfo) {
         SwapchainBarriers::TransitionImageToGeneralBarrier2(GetDevice(), cmd, swapchainInfo->GetImage(imageIndex));
+    }
+
+    // Image-write (Sampled Lighting Inc3 M1): transitions imageWriteTarget's CURRENT
+    // image (GetCurrentImage(), NOT GetImage(imageIndex) — an offscreen IRenderTarget
+    // tracks its own currentIndex independent of the swapchain's imageIndex; see
+    // IRenderTarget.h / RenderTargetData, and ComputeDispatchNode's own render-target
+    // blit path uses the identical accessor for the identical reason) to GENERAL for the
+    // storage write. No WSI involvement, no PRESENT_SRC — this role is independent of
+    // isConsumer/PARAM_IS_CONSUMER entirely; a pass can be an IMAGE_WRITE producer
+    // whether or not it is also the SWAPCHAIN_INFO consumer.
+    if (imageWriteTarget) {
+        VkImageLayout priorLayout = DecideRenderTargetPriorLayoutAndUpdate(
+            imageWriteLayouts_, imageWriteTarget->GetCurrentImage(), VK_IMAGE_LAYOUT_GENERAL);
+        SwapchainBarriers::TransitionImageToGeneralBarrier2(GetDevice(), cmd,
+            imageWriteTarget->GetCurrentImage(), priorLayout);
     }
 
     BindComputePipeline(cmd, pipeline, layout, descriptorSets[imageIndex]);
@@ -288,6 +317,13 @@ void ComputeStageNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmd,
     if (isConsumer && swapchainInfo) {
         SwapchainBarriers::TransitionImageToPresentBarrier2(GetDevice(), cmd, swapchainInfo->GetImage(imageIndex));
     }
+
+    // IMAGE_WRITE deliberately does NOT transition on exit — it stays GENERAL (the
+    // compute storage-write's own end state, already recorded in imageWriteLayouts_ by
+    // DecideRenderTargetPriorLayoutAndUpdate's own update above). The next consumer
+    // (another IMAGE_WRITE producer re-entering this same handle, or a
+    // presentation-only blit node reading it via TRANSFER_SRC) owns whatever comes
+    // next — this pass's job ends at GENERAL.
 
     if (vkEndCommandBuffer(cmd) != VK_SUCCESS) {
         throw std::runtime_error("[ComputeStageNode::RecordComputeCommands] vkEndCommandBuffer failed");

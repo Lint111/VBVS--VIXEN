@@ -2,7 +2,34 @@
 #pragma once
 
 #include "VulkanDevice.h"
+#include "IRenderTarget.h"
 #include <vulkan/vulkan.h>
+#include <unordered_map>
+
+namespace Vixen::RenderGraph {
+
+// KI-007 fix (originally ComputeDispatchNode-local; moved here Sampled Lighting Inc3
+// M1 so ComputeStageNode's IMAGE_WRITE role and the new BlitNode can reuse it too,
+// instead of hand-syncing a second/third divergent copy): given the tracked
+// last-known layout for a render-target VkImage handle (absent = never seen ->
+// fresh/recreated image, true prior layout UNDEFINED), returns the layout to declare
+// as the barrier's oldLayout and updates the map to the new layout the caller is
+// about to transition to. Pure/free so it's unit-testable with fake VkImage handles,
+// no device needed. Each CALLER owns its own tracking map (a
+// std::unordered_map<VkImage,VkImageLayout> member) — this function is stateless
+// itself, just the shared decision/update logic.
+inline VkImageLayout DecideRenderTargetPriorLayoutAndUpdate(
+    std::unordered_map<VkImage, VkImageLayout>& tracked,
+    VkImage image,
+    VkImageLayout newLayout)
+{
+    auto it = tracked.find(image);
+    const VkImageLayout priorLayout = (it != tracked.end()) ? it->second : VK_IMAGE_LAYOUT_UNDEFINED;
+    tracked[image] = newLayout;
+    return priorLayout;
+}
+
+} // namespace Vixen::RenderGraph
 
 namespace Vixen::RenderGraph::SwapchainBarriers {
 
@@ -60,6 +87,151 @@ inline void TransitionImageToPresentBarrier2(Vixen::Vulkan::Resources::VulkanDev
     dep.imageMemoryBarrierCount = 1;
     dep.pImageMemoryBarriers    = &ib;
     device->fpCmdPipelineBarrier2(cmdBuffer, &dep);
+}
+
+// M4 (render-scale decoupling): blits an offscreen render target (already written by
+// a compute pass, still GENERAL) up/down to the swapchain extent. Handles the full
+// GENERAL->TRANSFER_SRC / swapchain ?->TRANSFER_DST / blit / ->GENERAL-or-PRESENT_SRC
+// barrier sequence:
+//   render target:  GENERAL (compute write)      -> TRANSFER_SRC_OPTIMAL
+//   swapchain:       ?  (WSI acquire / prior frame's real last layout) -> TRANSFER_DST_OPTIMAL
+//   vkCmdBlitImage
+//   swapchain:       TRANSFER_DST_OPTIMAL -> GENERAL (composite/UI) or PRESENT_SRC_KHR (voxel-only)
+// The render target itself is left in TRANSFER_SRC_OPTIMAL; its NEXT write (by
+// whichever pass produces it) must declare that as oldLayout — callers should feed
+// this function's `layoutTracking` map into whatever barrier prepares that next write
+// (see DecideRenderTargetPriorLayoutAndUpdate above).
+//
+// Originally a ComputeDispatchNode-private method (`BlitRenderTargetToSwapchain`);
+// extracted here Sampled Lighting Inc3 M1 (KI-018) so the new presentation-only
+// BlitNode can call the SAME logic instead of a second, divergent copy.
+// `layoutTracking` is the CALLER's own std::unordered_map<VkImage,VkImageLayout>
+// member (one per node instance, exactly like ComputeDispatchNode's own
+// renderTargetImageLayouts_ before this extraction) — tracks BOTH the render-target
+// and swapchain image handles this function touches, keyed together in one map since
+// each handle is only ever the subject of ONE of the two roles.
+inline void BlitRenderTargetToSwapchain(
+    Vixen::Vulkan::Resources::VulkanDevice* device,
+    std::unordered_map<VkImage, VkImageLayout>& layoutTracking,
+    VkCommandBuffer cmdBuffer,
+    Vixen::Vulkan::Resources::IRenderTarget* renderTarget,
+    VkImage swapchainImage,
+    VkExtent2D swapchainExtent,
+    bool leaveImageInGeneral)
+{
+    VkImage renderTargetImage = renderTarget->GetCurrentImage();
+    VkExtent2D srcExtent = renderTarget->GetExtent();
+
+    // Swapchain-side counterpart to the KI-007 fix: the entry barrier below used to hardcode
+    // oldLayout=UNDEFINED for the swapchain image on EVERY frame, but that's only true for a
+    // swapchain image's true first use. On the leaveImageInGeneral path, the downstream UI render
+    // pass (PARAM_INITIAL_LAYOUT=General, PARAM_FINAL_LAYOUT=PresentSrc) moves this SAME image
+    // handle GENERAL->PRESENT_SRC_KHR and then vkQueuePresentKHR leaves it there — so the NEXT time
+    // this ring slot's image index comes back around, its real layout is PRESENT_SRC_KHR, not
+    // UNDEFINED. Declaring UNDEFINED anyway produced VUID-vkCmdDraw-None-09600 at the UI render
+    // pass's first draw (the render pass's initialLayout=General assertion was already false by
+    // the time the pass began), the root cause of the render-view flicker (KI-009).
+    const VkImageLayout swapchainPriorLayout = Vixen::RenderGraph::DecideRenderTargetPriorLayoutAndUpdate(
+        layoutTracking, swapchainImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+    // --- Entry barriers: render target GENERAL->TRANSFER_SRC, swapchain ?->TRANSFER_DST ---
+    VkImageMemoryBarrier2 entryBarriers[2]{};
+
+    entryBarriers[0].sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+    entryBarriers[0].srcStageMask        = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+    entryBarriers[0].srcAccessMask       = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT;
+    entryBarriers[0].oldLayout           = VK_IMAGE_LAYOUT_GENERAL;
+    entryBarriers[0].dstStageMask        = VK_PIPELINE_STAGE_2_BLIT_BIT;
+    entryBarriers[0].dstAccessMask       = VK_ACCESS_2_TRANSFER_READ_BIT;
+    entryBarriers[0].newLayout           = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    entryBarriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    entryBarriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    entryBarriers[0].image               = renderTargetImage;
+    entryBarriers[0].subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+
+    entryBarriers[1].sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+    // srcStageMask must match (or come after) the acquire semaphore's wait stage
+    // (VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, set on this command buffer's submit — see
+    // acquireWait.stageMask in the caller) so this barrier actually chains an execution
+    // dependency off that wait. TOP_OF_PIPE_BIT here (the old value) is a no-op source that
+    // doesn't synchronize with anything, which is only harmless when oldLayout is a true
+    // first-use UNDEFINED (nothing to wait for) — once the swapchain-tracking fix above
+    // declares a real prior layout (PRESENT_SRC_KHR from a previous frame's present), this
+    // must correctly wait on the acquire, else validation reports SYNC-HAZARD-WRITE-AFTER-READ
+    // against vkAcquireNextImageKHR.
+    entryBarriers[1].srcStageMask        = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+    entryBarriers[1].srcAccessMask       = VK_ACCESS_2_NONE;
+    entryBarriers[1].oldLayout           = swapchainPriorLayout;
+    entryBarriers[1].dstStageMask        = VK_PIPELINE_STAGE_2_BLIT_BIT;
+    entryBarriers[1].dstAccessMask       = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+    entryBarriers[1].newLayout           = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    entryBarriers[1].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    entryBarriers[1].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    entryBarriers[1].image               = swapchainImage;
+    entryBarriers[1].subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+
+    VkDependencyInfo entryDep{};
+    entryDep.sType                   = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+    entryDep.imageMemoryBarrierCount = 2;
+    entryDep.pImageMemoryBarriers    = entryBarriers;
+    device->fpCmdPipelineBarrier2(cmdBuffer, &entryDep);
+
+    // KI-007: the render target's compute write (by whichever pass produced it) already
+    // transitioned renderTargetImage to GENERAL before this function runs (guaranteeing
+    // entryBarriers[0]'s hardcoded oldLayout=GENERAL above is correct), and this barrier just
+    // moved it to TRANSFER_SRC_OPTIMAL — record that so the NEXT write to this same handle
+    // (a future frame) declares the correct oldLayout instead of guessing.
+    layoutTracking[renderTargetImage] = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+
+    // --- Blit (LINEAR filter — upscales/downscales src extent to dst extent) ---
+    VkImageBlit blit{};
+    blit.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    blit.srcOffsets[0]  = {0, 0, 0};
+    blit.srcOffsets[1]  = {static_cast<int32_t>(srcExtent.width), static_cast<int32_t>(srcExtent.height), 1};
+    blit.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    blit.dstOffsets[0]  = {0, 0, 0};
+    blit.dstOffsets[1]  = {static_cast<int32_t>(swapchainExtent.width), static_cast<int32_t>(swapchainExtent.height), 1};
+
+    vkCmdBlitImage(cmdBuffer,
+                   renderTargetImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                   swapchainImage,    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                   1, &blit, VK_FILTER_LINEAR);
+
+    // --- Exit barrier: swapchain TRANSFER_DST -> today's contract (GENERAL for UI, else PRESENT) ---
+    VkImageMemoryBarrier2 exitBarrier{};
+    exitBarrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+    exitBarrier.srcStageMask        = VK_PIPELINE_STAGE_2_BLIT_BIT;
+    exitBarrier.srcAccessMask       = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+    exitBarrier.oldLayout           = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    exitBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    exitBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    exitBarrier.image               = swapchainImage;
+    exitBarrier.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+
+    if (leaveImageInGeneral) {
+        // Downstream UI render pass LOADs from GENERAL and owns the ->PRESENT_SRC transition.
+        exitBarrier.dstStageMask  = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+        exitBarrier.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT;
+        exitBarrier.newLayout     = VK_IMAGE_LAYOUT_GENERAL;
+    } else {
+        exitBarrier.dstStageMask  = VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT;
+        exitBarrier.dstAccessMask = VK_ACCESS_2_NONE;
+        exitBarrier.newLayout     = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    }
+
+    // Either way, this ring slot's image ends the frame at PRESENT_SRC_KHR by the time it's reused:
+    // on the leaveImageInGeneral path this function hands it to the UI render pass in GENERAL, but
+    // that pass's own finalLayout=PresentSrc (BuildRenderGraph.cpp) plus the present call moves it
+    // there before this same image index comes back around. Track that real end state (not the
+    // intermediate GENERAL this function leaves it in) so next frame's entry barrier above declares
+    // the correct oldLayout instead of hardcoding UNDEFINED.
+    layoutTracking[swapchainImage] = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+    VkDependencyInfo exitDep{};
+    exitDep.sType                   = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+    exitDep.imageMemoryBarrierCount = 1;
+    exitDep.pImageMemoryBarriers    = &exitBarrier;
+    device->fpCmdPipelineBarrier2(cmdBuffer, &exitDep);
 }
 
 } // namespace Vixen::RenderGraph::SwapchainBarriers

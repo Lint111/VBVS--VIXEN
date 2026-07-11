@@ -19,7 +19,7 @@ namespace Vixen::RenderGraph {
 // ============================================================================
 
 namespace ComputeStageNodeCounts {
-    static constexpr size_t INPUTS  = 19;
+    static constexpr size_t INPUTS  = 20;
     static constexpr size_t OUTPUTS = 3;
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -60,6 +60,24 @@ namespace ComputeStageNodeCounts {
  *
  * Role is selected by PARAM_IS_CONSUMER (default false ⇒ producer) plus which slots
  * are wired (a producer leaves the buffer-read + swapchain slots unconnected).
+ *
+ * IMAGE_WRITE (Sampled Lighting Inc3 M1): a FOURTH slot shape for an intermediate
+ * IMAGE-producing middle pass — e.g. a shading pass that writes an offscreen render
+ * target another compute pass (or a presentation-only blit node) consumes, with
+ * neither end being the true swapchain. This is the image-typed sibling of
+ * BUFFER_WRITE: transitions the wired IRenderTarget*'s CURRENT image to GENERAL
+ * before dispatch (reusing SwapchainBarriers::TransitionImageToGeneralBarrier2, the
+ * same generic-over-any-VkImage helper SWAPCHAIN_INFO's consumer path already uses)
+ * and hazard-tracks the write (ComputeStorageWrite) exactly like BUFFER_WRITE, so a
+ * downstream reader/blit bakes a real SyncEdge. Deliberately kept SEPARATE from
+ * SWAPCHAIN_INFO, not merged into it or gated by PARAM_IS_CONSUMER: SWAPCHAIN_INFO
+ * OWNS the WSI contract (binary acquire-wait, renderComplete-signal, fence
+ * ownership, PRESENT_SRC transition) — real semantics that only apply to the actual
+ * swapchain image. IMAGE_WRITE NEVER touches WSI and NEVER forces PRESENT_SRC; it
+ * leaves the image in GENERAL and lets whatever reads it next (another IMAGE_WRITE
+ * producer, or a presentation-only blit) decide the next transition. A future
+ * reader must not fold these two slots together — that would silently reintroduce
+ * WSI coupling into every non-swapchain image-producing pass.
  */
 CONSTEXPR_NODE_CONFIG(ComputeStageNodeConfig,
                       ComputeStageNodeCounts::INPUTS,
@@ -255,6 +273,23 @@ CONSTEXPR_NODE_CONFIG(ComputeStageNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
+    /**
+     * @brief Non-swapchain image this stage WRITES (image-producer middle-pass role).
+     * Auto-sync: ComputeStorageWrite — the image-typed sibling of BUFFER_WRITE. Makes
+     * the scheduler record this node as a writer of the wired IRenderTarget*'s
+     * Resource* so a downstream reader (another IMAGE_WRITE consumer, or a
+     * presentation blit node) bakes a SyncEdge. Transitions the image to GENERAL
+     * before dispatch; leaves it in GENERAL after (no WSI, no PRESENT_SRC — see the
+     * IMAGE_WRITE vs SWAPCHAIN_INFO doc note above the class comment). Optional: a
+     * pass with no non-swapchain image output leaves this unconnected.
+     */
+    INPUT_SLOT_SYNC(IMAGE_WRITE, Vixen::Vulkan::Resources::IRenderTarget*, 19,
+        SlotNullability::Optional,
+        SlotRole::Execute,
+        SlotMutability::ReadWrite,
+        SlotScope::NodeLevel,
+        ::Vixen::RenderGraph::AccessKind::ComputeStorageWrite);
+
     // ===== OUTPUTS (3) =====
 
     /** @brief renderComplete semaphore for Present to wait on (consumer role). */
@@ -336,6 +371,12 @@ CONSTEXPR_NODE_CONFIG(ComputeStageNodeConfig,
         HandleDescriptor frameBaseDesc{"uint64_t"};
         INIT_INPUT_DESC(TIMELINE_FRAME_BASE_IN, "timeline_frame_base_in", ResourceLifetime::Transient, frameBaseDesc);
 
+        // Image-write sync slot — same IRenderTarget* handle shape as SWAPCHAIN_INFO
+        // (reuses swapchainDesc), but a DISTINCT slot/Resource* identity so the
+        // scheduler tracks it as its own hazard, independent of any SWAPCHAIN_INFO
+        // wiring on this or any other node.
+        INIT_INPUT_DESC(IMAGE_WRITE, "image_write", ResourceLifetime::Persistent, swapchainDesc);
+
         // Outputs.
         HandleDescriptor semaphoreDesc{"VkSemaphore"};
         INIT_OUTPUT_DESC(RENDER_COMPLETE_SEMAPHORE, "render_complete_semaphore", ResourceLifetime::Transient, semaphoreDesc);
@@ -361,6 +402,9 @@ CONSTEXPR_NODE_CONFIG(ComputeStageNodeConfig,
     static_assert(BUFFER_READ_A_Slot::accessKind == ::Vixen::RenderGraph::AccessKind::ComputeStorageRead);
     static_assert(BUFFER_READ_B_Slot::accessKind == ::Vixen::RenderGraph::AccessKind::ComputeStorageRead);
     static_assert(SWAPCHAIN_INFO_Slot::accessKind == ::Vixen::RenderGraph::AccessKind::ComputeStorageWrite);
+    static_assert(IMAGE_WRITE_Slot::index == 19, "IMAGE_WRITE must be at index 19 (appended, purely additive)");
+    static_assert(std::is_same_v<IMAGE_WRITE_Slot::Type, Vixen::Vulkan::Resources::IRenderTarget*>);
+    static_assert(IMAGE_WRITE_Slot::accessKind == ::Vixen::RenderGraph::AccessKind::ComputeStorageWrite);
 };
 
 } // namespace Vixen::RenderGraph
