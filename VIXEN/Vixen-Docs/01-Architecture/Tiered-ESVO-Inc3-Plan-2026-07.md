@@ -1,6 +1,6 @@
 ---
 title: Tiered ESVO — Inc3 Implementation Plan (scale-magnified tiers + 3-tier chain — Earth-scale surface-to-orbit)
-status: M1-M3 SHIPPED, M5 SHIPPED (magnification geometry fix) 2026-07-10; M6 (Earth-scale epic gate) BLOCKED on a camera-framing/scale structural mismatch, not a math defect (see Progress Log); M7 SHIPPED 2026-07-11 — the epic gate MET at a documented gentler ratio (childScale=0.25); true Earth-scale needs a scoped CameraNode look-target-decoupling follow-up (see Progress Log); M8 Task 16 SHIPPED (look-target decoupling); Task 17/19 DONE_WITH_CONCERNS; Task 20 NOT MET — surface-exposed placement + gate-clearing coefficient correctly derived, but a NEW distinct engine-level rendering threshold (body vanishes below raySizeCoef ~2e-5-5e-5, un-root-caused) blocks the live proof (see Progress Log)
+status: M1-M3 SHIPPED, M5 SHIPPED (magnification geometry fix) 2026-07-10; M6 (Earth-scale epic gate) BLOCKED on a camera-framing/scale structural mismatch, not a math defect (see Progress Log); M7 SHIPPED 2026-07-11 — the epic gate MET at a documented gentler ratio (childScale=0.25); true Earth-scale needs a scoped CameraNode look-target-decoupling follow-up (see Progress Log); M8 Task 16 SHIPPED (look-target decoupling); Task 17/19 DONE_WITH_CONCERNS; Task 20 geometry/gate-math derivation CONFIRMED CORRECT (surface-exposed placement was never the problem; correct coefficient ~4.5e-6 derived from the real tv_max chord-floor mechanism); the coefficient-threshold vanishing IS NOW ROOT-CAUSED (mip-only demo body + all-or-nothing LOD gate across depth — construction gap, not an engine bug) but a secondary flight-residency-timing question remains open; NEXT = grant brick residency + resolve the residency-timing question, then re-run the derived coefficient live (see Progress Log)
 depends: Tiered-ESVO-Observer-Addressing-Design-2026-07.md (§3, §5, §9), Tiered-ESVO-Inc2-Plan-2026-07.md (shipped 2026-07-10, merged `2d67840e`, origin/main `12145d60`)
 ---
 
@@ -1434,3 +1434,40 @@ set out to prove.
   only when the LOD gate almost never fires) using the `gpu-shader-debug` skill's CPU-mirror
   methodology, then re-run this task's already-derived coefficient (~4.5e-6) once that floor is
   understood or raised.
+
+  **Opus validator: APPROVED_WITH_FOLLOWUP (2026-07-11) — root cause FOUND (was open; is no longer).**
+  Independently confirmed the `tv_max` chord-floor derivation is correct (read `checkChildValidity`
+  directly) and reproduced + TIGHTENED the vanishing threshold via fresh full-frame pixel decodes on
+  the static demo: renders at coef=3e-5 (3941 px), vanishes at coef=2e-5 (17 px) — the boundary is
+  between 2e-5 and 3e-5, not 2e-5/5e-5 as the implementer's coarser sweep suggested.
+  **Root cause: the M8 Earth demo body is MIP-ONLY** (`brickResident=0` by default —
+  `BodyOctreeSceneNode.cpp:551/570`; the static `VIXEN_TIER_M8_EARTH_DEMO` path never calls
+  `RequestBrickResidency(true)`). A mip-only body can ONLY render via the LOD gate's decline path
+  (`shadeFromMipSample`) — there is no resident-brick fallback for it to fall through to. Descending
+  one octree level roughly halves BOTH `tv_max` and `scale_exp2`, so the gate's fire/decline decision
+  is ~ALL-OR-NOTHING across the whole depth range for a given ray: above ~2.5e-5 the gate fires at
+  SOME node → mip-shaded gray disc; below that, it never fires at ANY node the ray traverses, so the
+  ray descends the entire mip-only body with nothing to shade FROM → sky. **Decisive confirmation:**
+  the validator ran the DEFAULT (brick-resident) 3-body scene at the SAME coef=4.5e-6 — it rendered
+  fully (9141/110 colored body px, no vanish) — isolating mip-only-ness, not the coefficient value
+  itself, as the actual cause. This is a NEWLY-CHARACTERIZED structural fact, not a bug: **the
+  coefficient hop0's crossing needs (~4.5e-6) is far below the coefficient this specific body's own
+  mip-only visibility needs (~2.5e-5) — the two requirements pull in opposite directions for THIS
+  construction.**
+  **Caution flagged (secondary, not yet resolved):** re-checking the implementer's 44-frame FLIGHT
+  capture (which DID call `RequestBrickResidency(true)` at tick 10) at coef=4.5e-6, the validator found
+  post-grant frames (ticks 20/24/29) STILL show pure sky at the body's actual screen position (the
+  implementer's "saturated pixel" count was the HUD overlay, not the body) — so a resident body ALSO
+  vanished in flight at this coefficient. Two live candidates, not yet distinguished: async brick
+  upload not yet landed by those ticks (`PollBrickUploadCompletion` is deferred), or a genuine geometry
+  miss diving along this specific diagonal. Does NOT undermine the primary root cause (proven clean on
+  the static demo + the brick-resident control test) — it's a second, downstream question.
+  **Fix identified, NOT applied this pass (deliberately — see caution above):** grant brick residency
+  to the M8 demo body from construction (mirror what the zoom/flight schedules already do elsewhere),
+  so descending past the gate-suppressed threshold lands on real SDF voxels instead of a miss. Held
+  back because the residency-granted flight case above STILL vanished — applying the fix blind risks
+  a "looks fixed, still doesn't render in flight" false-done. Warrants its own dedicated implementer
+  dispatch (gpu-shader-debug CPU-mirror to settle upload-timing vs. geometry-miss), not an
+  in-validation edit. Housekeeping confirmed: commit `ad0efd79` is genuinely docs-only (2 files, zero
+  tracked source — Task 19's regression sweep remains valid, re-sweep not needed); exe/strings
+  freshness re-verified; tree clean.
