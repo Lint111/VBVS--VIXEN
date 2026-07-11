@@ -1,4 +1,4 @@
-#include "Profiler/FrameCapture.h"
+#include "FrameCapture.h"
 #include "VulkanSwapChain.h"  // For SwapChainPublicVariables
 
 #include <algorithm>
