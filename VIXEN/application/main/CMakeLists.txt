@@ -35,6 +35,22 @@ add_library(VixenApp STATIC
     ${HPP_FILES}
 )
 
+# ----------------------------------------------------------------------------
+# M3: generate the node-usage manifest by scanning the same 5 graph-builder TUs compiled into
+# VixenApp above for AddNode<T>(...) call sites (Graph-Derived-Node-Linkage-Spec-2026-07 §2.2).
+# Written now (not deferred to M4) so the manifest always reflects the current Build*.cpp set;
+# M4 will `include()` the generated file to drive scoped node linkage.
+# ----------------------------------------------------------------------------
+vixen_generate_node_manifest(
+    ${CMAKE_BINARY_DIR}/generated/node_manifest.cmake
+    SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildRenderGraph.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildUIGraph.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildInstancingDemoGraph.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildAutoSyncDemoGraph.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildFanInDemoGraph.cpp
+)
+
 # Application include dir is PUBLIC so consumers get VulkanGraphApplication.h, Headers.h, etc.
 target_include_directories(VixenApp PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 # SDI / generated-header search paths used while compiling the driver (first found wins).
@@ -46,8 +62,13 @@ target_include_directories(VixenApp PRIVATE
 )
 
 # Engine libraries are PUBLIC so consumers (VIXEN exe, render hosts) link them transitively.
+# NOTE: RenderGraph's node linkage (RenderGraphNodes, whole-archived, all ~54 node types) is
+# intentionally NOT linked here. Inc-1 M4 (Graph-Derived-Node-Linkage-Spec-2026-07 §2.3) scopes
+# VixenApp to only the node OBJECT libraries its own graph builders (the Build*.cpp sources
+# scanned into node_manifest.cmake above) actually use — see vixen_link_used_nodes() call below.
+# RenderGraphCore (the non-node graph engine) is still needed unconditionally.
 target_link_libraries(VixenApp PUBLIC
-    RenderGraph
+    RenderGraphCore
     CashSystem
     VulkanResources
     Logger
@@ -55,6 +76,10 @@ target_link_libraries(VixenApp PUBLIC
     ${VULKAN_LIB_LIST}
     glm::glm
 )
+
+# Inc-1 M4: scoped node linkage — VixenApp links only the RenderGraphNode_<Name> OBJECT
+# libraries named in the manifest generated above, not the full unscoped RenderGraph facade.
+vixen_link_used_nodes(VixenApp MANIFEST_FILE ${CMAKE_BINARY_DIR}/generated/node_manifest.cmake)
 
 # View Contract Inc-2 Task 5: stb_image_write.h (Debug/RenderTargetReadback.h's PNG writer, called
 # from VulkanGraphApplication::CaptureHudFrameToPng) -- not transitively provided by RenderGraph.
@@ -116,7 +141,9 @@ endif()
 # VIXEN: the executable entry point; links the shared driver.
 # ----------------------------------------------------------------------------
 add_executable(VIXEN ${CMAKE_CURRENT_SOURCE_DIR}/source/main.cpp)
-target_link_libraries(VIXEN PRIVATE VixenApp)
+# Inc-1 M4: must whole-archive VixenApp, not link it plainly, or the scoped node OBJECT libs
+# merged into VixenApp.lib get dropped at this link step -- see cmake/VixenNodeLinkage.cmake.
+vixen_whole_archive_link_vixen_app(VIXEN PRIVATE)
 
 set_property(TARGET VIXEN PROPERTY RUNTIME_OUTPUT_DIRECTORY ${VIXEN_BINARIES_DIR})
 set_property(TARGET VIXEN PROPERTY RUNTIME_OUTPUT_DIRECTORY_DEBUG ${VIXEN_BINARIES_DIR})
