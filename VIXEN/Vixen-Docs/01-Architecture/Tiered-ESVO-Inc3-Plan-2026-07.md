@@ -1038,3 +1038,42 @@ byte-unregressed. Prediction-first ticks match; per-frame deltas seamless; VUID 
   pass this task (unlike every other milestone in this epic) — flagged
   honestly for the epic's own final closure review to decide whether a
   validator pass is still wanted before the branch merges.
+  **Opus validator: APPROVED — but on a NARROWED, precise claim (2026-07-11).**
+  The validator re-ran the zoom from a stale-exe-CHECKED fresh build (the exe at
+  task start did NOT contain the zoom code — the footgun would have bitten a third
+  time this epic) and pixel-decoded every frame. Findings:
+  **(1) The "two crisply-observable crossings" claim is OVERSTATED and must be narrowed.**
+  This is a genuine CONTINUOUS zoom that sweeps through BOTH tier-gate distances
+  (hop1=19.89wu, hop0=79.58wu, both in [1.2,120]), but only ONE crossing is
+  VISUALLY observable: **hop1 (T1→T2) is crisply confirmed** (three tiers
+  simultaneously nested purple T0 ⊃ green T1 ⊃ cyan T2, counts reproduced exactly:
+  tick41 green=3800/cyan=370, monotonic shrink, centered) with the childScale-SQUARED
+  shrink proving genuine two-hop composition. **hop0 (T0→T1) provably FIRES in
+  traversal** (the LOD gate is evaluated per-ray every frame, camera necessarily
+  crosses the threshold) **but occurs at a body size below one pixel** (~9px at hop0,
+  fully sub-threshold by tick321, ~40 ticks before hop0's tick364) → not visually
+  attributable; no mip-fallback grey ever appears, confirming hop0's RESULT is unrendered.
+  **(2) hop0's tininess is INHERENT and unfixable by ratio/schedule (validator proved it):**
+  body diameter at hop0 is ~9px REGARDLESS of R (solid radius and hop0 distance both
+  ∝R → ratio R-invariant); larger childScale makes it WORSE (cs=0.5 → 4.5px). The ONLY
+  fix is breaking the fixed solid-radius↔hop0-distance coupling = CameraNode look-target
+  decoupling = **path (c) / M8.** Independently re-confirms the M6/M7 R-independence finding.
+  **(3) Handoff ticks re-derived independently: hop1→tick 243.9, hop0→tick 364.3** (impl's
+  ~244/~364 correct). **(4) Seamlessness INDEPENDENTLY + LOCALLY re-checked** (120×120 body
+  window, not just full-frame mean — the masked-pop concern): hop1 window deltas are
+  single-edge-pixel AA (max 194-218 one channel, local mean <0.4, several 1-tick deltas
+  exactly 0), NO pop signature; hop0 window all-zero (body already gone). Full-frame mean
+  monotonic 10.79→0.0046. No masked pop. **(5) Regressions the implementer SKIPPED, run by
+  validator:** zoom VUID 10× 08114 zero-new (residency fired tick 50); default scene 10×,
+  72806px + specular (not bodiless); chain/EARTH_DEMO 10×, 3-tree cs=2^-10 builds+renders
+  45599px. **(6) Tree/docs:** `ed320233`=VulkanGraphApplication.cpp only (+68), `348e43fb`=docs
+  only, no shader/traversal touched; docs honest. Tree clean.
+  **⟹ THE DEFENSIBLE CLAIM (verbatim for CHANGELOG/docs at merge):** "A live continuous
+  surface-to-orbit zoom that sweeps through BOTH scale-magnified tier-gate distances; ONE
+  crossing (T1→T2, childScale-squared shrink) is crisply visually confirmed with correct
+  three-tier nesting; the second crossing (T0→T1) provably fires in traversal but occurs at
+  a body size below one pixel and is therefore not visually attributable — a geometric
+  property of the fixed solid-radius/hop-distance coupling, resolvable only by path (c)
+  (CameraNode look-target decoupling, M8). Zero seam, VUID-clean, no regressions." The
+  "two crisply-observable crossings" phrasing is NOT defensible; use the above. This makes
+  M8 (look-target decoupling → true observable Earth-scale) the epic's genuine headline close.
