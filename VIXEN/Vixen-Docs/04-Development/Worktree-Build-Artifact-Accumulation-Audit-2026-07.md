@@ -578,3 +578,77 @@ existing entries, including the agent's own first ticket), not ahead of anyone. 
 output now also shows each ticket's `source=`/`target=` for visibility. Older tickets
 (registered before this fix, with no `Source`/`BuildTarget` fields) coexist fine — they display
 as `source=-  target=(full build)` and dedup correctly against a caller who also omits both.
+
+**Follow-on fix (2026-07-11): liveness-based reaping to close a live queue-stall incident.**
+User confirmed the lock/queue stack was holding up well under real 8+-worktree congestion, then
+minutes later a real incident occurred: `inc1-m2-validator` (a validator agent) self-registered
+a queue ticket for its own ad-hoc verification build — outside the `build.bat`-auto-release path
+(that fix only covers tickets passed through `VIXEN_QUEUE_TICKET_ID` to an actual `build.bat`
+dispatch) — then finished its work and shut down without ever calling `-Release`. Its abandoned
+ticket sat ahead of `inc1-m4-linkage`'s real ticket in the queue; the lock was actually FREE, but
+`-Status` still reported `WAITING` because the stale ticket was still "ahead" positionally, and
+the old 60-minute stale-reap window meant it would have blocked for most of an hour before
+auto-clearing. Manually released to unblock in the moment, but flagged as a structural gap: "the
+queue working properly is a path-critical fix — anything that can stall it stalls all agent work
+eventually."
+
+Root fix: reaping is now based on **liveness** (`LastSeenUtc`, refreshed on every `-Register`
+dedup-hit and every `-Status` call for that ticket), not just **age since registration**
+(`CreatedUtc`). A genuinely active waiter polling `-Status` every ~20s (the standing active-
+polling rule) never goes stale, however long it legitimately waits — while an abandoned ticket
+(no check-in since registration) goes stale within the now-much-shorter default window (15
+minutes, down from 60). `-Status` also opportunistically reaps its own blocking ticket **inline**
+the instant it discovers it's stuck behind one, rather than waiting for the next periodic sweep
+or the full stale window — verified live: registered a synthetic abandoned ticket + a synthetic
+waiter behind it, backdated the abandoned ticket's `LastSeenUtc` past the threshold (simulating
+real abandonment without waiting 15 real minutes), confirmed a `-Status` call from the waiter
+correctly reaped the abandoned ticket and the waiter's position updated correctly; confirmed
+`LastSeenUtc` genuinely refreshes on real `-Status` polls (proving an active waiter would never
+have been reaped); ran against the REAL live queue mid-fix and it immediately reaped one
+genuinely stale pre-existing ticket (`67a333d7ad9b`, unseen 20+ minutes) with zero disruption to
+the one real active ticket. Old-format tickets (no `LastSeenUtc` field) fall back to `CreatedUtc`
+so they still reap on a sane schedule rather than erroring or never expiring. `-Release` remains
+the correct primary path — reaping is documented explicitly as the abandonment backstop, not a
+substitute for releasing your own ticket.
+
+**Follow-on fix (2026-07-12): auto-dispatch — the queue clears itself even if the requester
+stalls.** User's observation: agents were seen stalling/going unresponsive for long periods
+AFTER their ticket reached the front of the queue but BEFORE they personally called `build.bat`
+— a perfectly valid, wanted build that then never ran, and (worse) that stalled requester's own
+`-Status` polling is exactly what refreshes its ticket's liveness, so its ticket would eventually
+go stale and get reaped WITHOUT the build ever happening either way. Liveness reaping (above)
+solves "stuck tickets block the queue" but not "wanted builds silently never execute."
+
+Design: `-Register` gained `-BuildScript`/`-BuildAction`/`-BuildPreset` (alongside the existing
+`-BuildTarget`) so a ticket can carry the FULL command needed to actually run its build, not just
+reserve a position. `-Status` and `-ListQueue` — called by ANY agent, not just the ticket's own
+owner — now opportunistically check whether the position-1 ticket declared a real command and
+the lock is free, and if so **run it right there, inline, before returning**, then release the
+ticket. This means a stalled requester's build still fires the moment ANY OTHER agent's routine,
+unrelated queue check touches the queue — no new persistent watcher/daemon process, nothing new
+to babysit or that can itself silently die; it piggybacks on polling traffic the fleet is already
+generating under the standing active-~20s-polling rule. Safe under concurrency by construction:
+the real safety net is still `run_build_with_summary.ps1`'s OS Mutex `WaitOne()` — if two agents'
+calls both observe "position 1, lock free" and both attempt dispatch near-simultaneously, only
+one genuinely acquires the lock; this script's own logic doesn't need to be race-free, only the
+Mutex does, which was already true. Fully opt-in per ticket (only fires if `-BuildScript` was
+passed) — tickets registered the old way are completely unaffected.
+
+**Verified live, end-to-end**, with a harmless stub script standing in for `build.bat` (to avoid
+disrupting real builds while testing): (1) registered a ticket with auto-dispatch, then a
+COMPLETELY SEPARATE, unrelated `-ListQueue` call (simulating "some other agent just checking the
+queue") correctly detected and dispatched it, running the exact stored command and releasing the
+ticket — confirmed via a marker file the stub wrote; (2) the ticket owner's own `-Status` call
+correctly reported `AUTO_DISPATCHED` (exit 0) when its build succeeded; (3) a deliberately-failing
+stub correctly reported `AUTO_DISPATCH_FAILED` (exit 4) while STILL releasing the ticket (a failed
+turn is still a completed turn — must not keep blocking the queue); (4) a ticket registered
+WITHOUT `-BuildScript` was confirmed completely unaffected (still just reports `YOUR_TURN`,
+requires manual dispatch, persists until explicitly released) — full backward compatibility.
+
+**Bug found and fixed during this same pass**: testing surfaced a real null-reference crash
+(`$ids.IndexOf($TicketId)` on a `$null` from PowerShell's single/zero-element-array unwrapping —
+the same class of bug as an earlier `build_queue.ps1` fix this cycle, in 3 fresh call sites this
+change introduced plus 2 pre-existing latent ones). Fixed by wrapping every `$tickets | ForEach-
+Object {...}`-derived id list in `@(...)` (5 occurrences total) — verified with the exact
+previously-crashing scenario (an empty-queue `-Status` call for an unknown ticket) now returning
+a clean `UNKNOWN_TICKET` (exit 3) instead of a PowerShell exception.
