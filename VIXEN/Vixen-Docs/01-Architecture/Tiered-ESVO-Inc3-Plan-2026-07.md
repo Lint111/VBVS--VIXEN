@@ -843,3 +843,30 @@ substantially satisfies the gate and (c) becomes a scoped follow-up.
   uses the identical technique and mechanism, already M3/M5-proven in general, so a
   dedicated second sweep was judged lower-value than getting Task 13 to a clean gate —
   flagged for Task 14's own live-gate to re-confirm incidentally during the zoom).
+  **Opus validator: APPROVED (2026-07-11), + one load-bearing correction.** Independently
+  re-derived the reachability arithmetic from the actual shader gate
+  (`tv_max*raySizeCoef+raySizeBias >= childScale*scale_exp2`, raySizeBias=0 pinhole): re-fit
+  C=20.0003 against the Earth demo's two known handoffs, confirmed `hop0=20·R·cs·scale_exp2/rsc`,
+  `hop1=hop0·cs`; at R=0.1,cs=0.25 → hop0=79.577wu, hop1=19.894wu, octant 0.26°/1.03° off-axis
+  (order of magnitude inside the 22.5° half-cone), both hops inside [in-FOV floor≈1.1, ceiling 120]
+  and outside the 0.5625wu solid — genuinely observable on-axis. Reproduced the T0→T1 concentric
+  sweep byte-for-byte from its OWN clean build (w==h every scale, center fixed 0.5px, no wedge).
+  **T1→T2 GAP CLOSED (the flagged item): validator ran a dedicated cyan(T2) sweep — T2 renders as
+  real attributable nested geometry (purple T0 → green T1 → cyan T2), NOT mip-fallback, w==h
+  concentric, and shrinks with a childScale-SQUARED law (~4× linear / ~16× area per halving vs
+  T1's 2×/4×) — the unfakeable signature of a genuine TWO-hop composition (an occlusion artifact
+  cannot produce a squared-law shrink). Both crossings observable AND both magnify correctly.**
+  **CRITICAL CORRECTION to the 2^-20 record: a true Earth-scale (cs=2^-10) observable zoom is NOT
+  reachable by "just shrinking R" — that was wrong. It is R-INDEPENDENT and fails.** In-FOV floor
+  (∝10R), solid radius (∝5.625R), and both handoffs (∝R) ALL scale linearly with R, so R only
+  slides the whole config without changing any ratio. The reachability condition `hop1 ≥ in-FOV
+  floor` reduces to `20·cs²·scale_exp2/rsc ≥ 10` with R CANCELLING; at cs=2^-10 it's 0.00304 ≥ 10,
+  failing by ~3294×. The fixed `1/cs` hop-gap (1024× at 2^-10) forces hop1 into the octant's
+  off-axis blind zone whenever hop0 clears the floor. cs=0.25 works only because `1/cs`=4×.
+  **⟹ a true 2^-20 Earth-scale observable surface-to-orbit zoom genuinely REQUIRES path (c)
+  (CameraNode look-target decoupling, to break the 10R in-FOV floor) — this re-confirms M6's
+  scale-invariance finding. Task 14 will deliver the observable two-crossing zoom at the documented
+  gentler ratio (cs=0.25); true Earth-scale is a scoped path-(c) follow-up, NOT achievable by ratio
+  tuning alone.** Regressions clean (VUID 10× 08114 zero-new on observable+chain+default; chain
+  3446/1156 unregressed; parity 6/6 + construction 5/5); commit `54c65c19` = BuildRenderGraph.cpp
+  only (no shader/mirror/traversal); tree clean, no main contamination.
