@@ -39,6 +39,19 @@ are sccache-cacheable; a plain `-G Ninja` build uses separate-PDB `/Zi`, which
 sccache treats as non-cacheable. The gitignored `_ninja_*.bat` scripts are
 personal overrides — `build.bat` is the shared, committed launcher.
 
+`build.bat build`/`build.bat all` run through `run_build_with_summary.ps1`, which:
+- passes `-k 0` to ninja so ONE broken target never masks whether everything
+  else built — the end-of-build summary lists every `FAILED:` target instead
+  of stopping at the first one;
+- writes a live-updating status file (`%TEMP%\vixen_build_status.txt` by
+  default) every 5s — `targets_done`/`targets_total`/`targets_failed`/
+  `last_target` — so an agent or human can check build progress without
+  tailing raw ninja scrollback. `cat`/`Get-Content` it anytime mid-build.
+
+See `Worktree-Build-Artifact-Accumulation-Audit-2026-07.md` Fix 7/Fix 8 for
+the design rationale and gotchas (cmd.exe CRLF fragility, PowerShell
+background-job working-directory/encoding pitfalls).
+
 ---
 
 ## 1. CMake Configuration
@@ -256,11 +269,15 @@ target_link_libraries(test_rebuild_hierarchy PRIVATE SVO GTest::gtest_main)
 
 | Type | Path |
 |------|------|
-| Executables | `binaries/` |
+| Executables | `build/<preset>/binaries/` |
 | Libraries | `build/libraries/{lib}/Debug/` |
 | Tests | `build/libraries/{lib}/tests/Debug/` |
 | Generated SDI | `generated/sdi/` |
-| Runtime SDI | `binaries/generated/sdi/` |
+| Runtime SDI | `build/<preset>/binaries/generated/sdi/` |
+
+`binaries/` lives under the build dir (not the source tree) as of 2026-07 — see
+Worktree-Build-Artifact-Accumulation-Audit-2026-07.md Fix 2. `rm -rf build` now reclaims
+everything, including the multi-GB PDB/ILK files MSVC debug builds produce.
 
 ---
 

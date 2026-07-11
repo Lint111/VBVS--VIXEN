@@ -31,6 +31,7 @@ add_library(VixenApp STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/HudView.cpp                # View Contract Inc-2: native IView consumer
     ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/HudViewBridge.cpp          # View Contract Inc-2: gaia-free seam for HudView.h (robin_hood ABI isolation)
     ${CMAKE_CURRENT_SOURCE_DIR}/source/StbImageWriteImpl.cpp            # View Contract Inc-2 Task 5: PNG-capture harness's stb_image_write TU
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/FrameCapture.cpp                 # M4b: headless GPU-frame snapshot (CaptureFrameToPng); moved in-tree from the deleted Profiler library, was its only real (non-benchmark) consumer
     ${HPP_FILES}
 )
 
@@ -50,7 +51,7 @@ target_link_libraries(VixenApp PUBLIC
     CashSystem
     VulkanResources
     Logger
-    Profiler   # CaptureFrameToPng (M4b): reuses Profiler::FrameCapture's swapchain->PNG readback
+    stb   # FrameCapture.cpp: stb_image_write.h / stb_image_resize2.h (headless PNG snapshot)
     ${VULKAN_LIB_LIST}
     glm::glm
 )
@@ -117,11 +118,11 @@ endif()
 add_executable(VIXEN ${CMAKE_CURRENT_SOURCE_DIR}/source/main.cpp)
 target_link_libraries(VIXEN PRIVATE VixenApp)
 
-set_property(TARGET VIXEN PROPERTY RUNTIME_OUTPUT_DIRECTORY ${VIXEN_ROOT}/binaries)
-set_property(TARGET VIXEN PROPERTY RUNTIME_OUTPUT_DIRECTORY_DEBUG ${VIXEN_ROOT}/binaries)
-set_property(TARGET VIXEN PROPERTY RUNTIME_OUTPUT_DIRECTORY_RELEASE ${VIXEN_ROOT}/binaries)
-set_property(TARGET VIXEN PROPERTY RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL ${VIXEN_ROOT}/binaries)
-set_property(TARGET VIXEN PROPERTY RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO ${VIXEN_ROOT}/binaries)
+set_property(TARGET VIXEN PROPERTY RUNTIME_OUTPUT_DIRECTORY ${VIXEN_BINARIES_DIR})
+set_property(TARGET VIXEN PROPERTY RUNTIME_OUTPUT_DIRECTORY_DEBUG ${VIXEN_BINARIES_DIR})
+set_property(TARGET VIXEN PROPERTY RUNTIME_OUTPUT_DIRECTORY_RELEASE ${VIXEN_BINARIES_DIR})
+set_property(TARGET VIXEN PROPERTY RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL ${VIXEN_BINARIES_DIR})
+set_property(TARGET VIXEN PROPERTY RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO ${VIXEN_BINARIES_DIR})
 set_property(TARGET VIXEN PROPERTY CXX_STANDARD 23)
 set_property(TARGET VIXEN PROPERTY CXX_STANDARD_REQUIRED ON)
 set_target_properties(VIXEN PROPERTIES FOLDER "Application")

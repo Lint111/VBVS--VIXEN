@@ -65,9 +65,9 @@ bld/
 [Ll]og/
 [Ll]ogs/
 
-# build folder
-build/
-build/*
+# build folder (root-anchored: don't match scripts/build/ or other non-root dirs named "build")
+/build/
+/build/*
 benchmark_results/
 benchmark_results/*
 VixenBenchmark/
@@ -132,9 +132,10 @@ build/**/CMakeFiles/
 *.local.json
 .claude/settings.local.json
 
-# Ignore .claude except for hooks and settings we want to track
+# Ignore .claude except for hooks, settings, and skills we want to track
 .claude/*
 !.claude/hooks/
+!.claude/skills/
 .claude/settings.json
 .claude/hooks/.pre-commit-approved
 
