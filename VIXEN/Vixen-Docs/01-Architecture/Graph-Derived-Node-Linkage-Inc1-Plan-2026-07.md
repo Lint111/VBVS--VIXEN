@@ -127,16 +127,16 @@ here, not just eyeballing).
       45/53 usage) but non-zero.
 
 ### M5 — Docs + writeup
-- [ ] Update this plan doc's Progress Log with final M1 vs M4 numbers.
-- [ ] Update [[Graph-Derived-Node-Linkage-Spec-2026-07]] status banner
+- [x] Update this plan doc's Progress Log with final M1 vs M4 numbers.
+- [x] Update [[Graph-Derived-Node-Linkage-Spec-2026-07]] status banner
       (📐 SPEC → mark Inc-1 implemented, if the vault's convention for that exists — check
       Known-Issues.md/other epics' pattern for how "spec implemented, epic continues" is
       denoted).
-- [ ] Update [[RenderGraph-System.md]] §9 (Library Structure & Node Registration) with a new
+- [x] Update [[RenderGraph-System.md]] §9 (Library Structure & Node Registration) with a new
       subsection documenting the OBJECT-library + manifest scoping, following §9.5's existing
       "Build-granularity results" table format — add a **link-granularity** results row/table
       alongside the existing compile-granularity one.
-- [ ] Note explicitly in the writeup that RT-core-cluster nodes (`AccelerationStructureNode`,
+- [x] Note explicitly in the writeup that RT-core-cluster nodes (`AccelerationStructureNode`,
       `RayTracingPipelineNode`, `TraceRaysNode`) are now unlinked-by-default from `VixenApp` and
       will re-enter automatically (no manifest edit needed) once
       [[RT-Core-Optional-Acceleration-Spec-2026-07]] wires them into `BuildRenderGraph.cpp`.
@@ -549,3 +549,79 @@ repeatedly missed real linkage/runtime bugs in past epics; this one is no except
   exercised by this build run (gated behind a pre-existing `if(TARGET VixenApp AND TARGET
   GTest::gtest)` conditional not satisfied in this preset) — not an M4 regression. Tree clean,
   linear history. No issues found warranting a re-dispatch.
+
+- **Milestone 5 (Docs + writeup): DONE.** Pure documentation + one small cleanup git-rm, no
+  CMakeLists.txt/source/registration changes beyond that removal.
+
+  **Task 1 (Progress Log final numbers):** already fully captured in M4's own Progress Log entry
+  above (Measurements paragraph) — confirmed complete, no duplication added here. One-line
+  pointer for skimmers: **M1 baseline `VIXEN.exe` 37,140,480 bytes → M4 final 35,980,288 bytes
+  (−1,160,192 bytes, ~3.12% reduction)**; `.pdb` size flat as expected (debug info doesn't track
+  linked node-object count); all 4 implementation milestones (M1-M4) Opus-validated APPROVED on
+  first dispatch, zero re-dispatches needed.
+
+  **Task 2 (spec status banner):** updated. Surveyed the vault's convention across other epics
+  (`Sparse-Mip-ESVO-LOD-Direction-2026-07.md`'s `✅ INC1 SHIPPED + MERGED TO MAIN ... epic
+  continues` framing was the closest match — a completed increment with an explicitly open epic)
+  and applied the same pattern to `Graph-Derived-Node-Linkage-Spec-2026-07.md`'s frontmatter
+  `status:` line: now reads Inc-1 done + implemented-where, with the epic's future increments
+  (`vixen_editor` once it has its own graph builder; per-family vs. per-node granularity
+  questions from the direction doc) explicitly left open, matching spec §5's original "Inc-1
+  only" scope boundary.
+
+  **Task 3 (RenderGraph-System.md §9 update):** added §9.7 "Inc-1: Graph-derived link-scoping
+  (OBJECT libraries + generated manifest)" immediately after the existing §9.6 Resolved
+  follow-up, with a link-granularity results table alongside §9.5's compile-granularity table,
+  prose on the mechanism (per-node OBJECT libs from M2, `AddNode<T>`-derived manifest from M3,
+  scoped linkage + the whole-archive-must-cover-`VixenApp`-as-a-whole subtlety from M4/Bug 3),
+  and pointers to `cmake/VixenNodeManifest.cmake`/`cmake/VixenNodeLinkage.cmake` plus this spec
+  and plan doc for full detail.
+
+  **Task 4 (RT-core-cluster note):** included in the new §9.7 — `AccelerationStructureNode`,
+  `RayTracingPipelineNode`, `TraceRaysNode` are unlinked-by-default from `VixenApp` today (no
+  `AddNode<T>` call site references them in any current `Build*.cpp`), and will re-enter
+  `VIXEN.exe` automatically — no manifest edit needed, M3's extraction is fully automatic — the
+  moment [[RT-Core-Optional-Acceleration-Spec-2026-07]]'s future work adds a real `AddNode<T>`
+  call site for them. Flagged so a future "why did `VIXEN.exe` suddenly get bigger" moment reads
+  as expected-and-correct, not a regression.
+
+  **Task 5a (orphaned `StbImageWriteImpl.cpp` cleanup):** verified the M4-flagged file
+  (`application/editor/source/StbImageWriteImpl.cpp`) is still git-tracked and on disk, and that
+  its only remaining references anywhere in the tree are comments in
+  `application/editor/CMakeLists.txt` and `application/main/source/{FrameCapture.cpp,
+  StbImageWriteImpl.cpp}` (no source list, no `#include`, no build rule) — confirmed orphaned,
+  ran `git rm application/editor/source/StbImageWriteImpl.cpp`. Re-ran `build.bat configure
+  vixen-ninja` afterward: configure completed clean (`Configuring done`, `Generating done`, zero
+  CMake errors/warnings), confirming nothing depended on the file's on-disk presence beyond what
+  M4 already excluded from compilation.
+
+  **Task 5b (`test_fail_scenario_sweep` gating note):** recorded here per M4 validator's request,
+  not fixed (explicitly out of scope, would be scope creep): `test_fail_scenario_sweep`'s
+  whole-archive change (part of M4's Bug-3 fix, applied identically to all 6 `VixenApp`
+  consumers) is present and correct in source, but was not exercised by any of this epic's build
+  runs because its CMake target is gated behind a pre-existing `if(TARGET VixenApp AND TARGET
+  GTest::gtest)` conditional that the `vixen-ninja` preset doesn't satisfy — a condition that
+  predates and is unrelated to Inc-1. A future session touching that preset/target should be
+  aware the change is untested-by-CI-in-this-preset but source-correct by the same mechanical
+  pattern verified live on the other 5 consumers.
+
+  **Commits:** the `git rm` + this Progress Log/checkbox update, on
+  `feat/graph-derived-node-linkage-inc1`.
+
+  **Epic close-out (Inc-1, all 5 milestones):** M1 baseline (37,140,480 bytes, 53 registered node
+  types) → M4 final scoped linkage (35,980,288 bytes, −3.12%, 46 node types linked into
+  `VIXEN.exe` vs. 53 in the unscoped test facade) → M5 docs. Every implementation milestone
+  (M1-M4) received an Opus validator dispatch and came back **APPROVED on the first dispatch** —
+  zero re-dispatches, zero fix-loops needed across the whole increment (M4's 3 real bugs — PUBLIC
+  vs PRIVATE, `UIRenderNodeType`'s missing OBJECT lib, whole-archive not nesting through a STATIC
+  library — were all caught and fixed *by the implementing worker itself* via the plan's own
+  build/configure/live-render gates, before ever reaching the validator; the validator then
+  independently re-verified the fixed state from scratch each time). **Explicitly NOT done, per
+  spec §5's Inc-1-only scope**: `vixen_editor` has no graph builder of its own yet, so it isn't a
+  scoping target this increment (it links `VixenApp` whole-archive as a consumer, but doesn't get
+  its own manifest); no other headless/tools binary exists to prove a second-consumer manifest
+  against; the per-family vs. per-node granularity question from the direction doc is unrevisited.
+  These are open epic continuations, not gaps in Inc-1's own deliverable. The mechanism (per-node
+  OBJECT libraries + `AddNode<T>`-derived manifest + scoped linkage) is proven end-to-end on the
+  one real consumer that exists today, with a measured non-zero size reduction and zero behavior
+  change to what actually renders. 2026-07-12.
