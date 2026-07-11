@@ -43,6 +43,14 @@ REM   VIXEN_QUEUE_TICKET_ID     if you registered a build_queue.ps1 ticket befor
 REM                             calling this script, set this to its TicketId and
 REM                             it is auto-released when the build finishes/fails/
 REM                             crashes - you do not need to call -Release yourself.
+REM   VIXEN_BUILD_ID            distinguishes this build's log/status among concurrent
+REM                             builds from other worktrees/agents. Defaults to this
+REM                             checkout's own directory name (so a worktree's builds
+REM                             are self-identifying with zero setup); set explicitly
+REM                             for something more specific (e.g. a task/ticket name).
+REM                             Printed as the first line of build output and in the
+REM                             BUILD SUMMARY footer - note it so you can find your
+REM                             build's log (%%TEMP%%\vixen_build_<id>.log) later.
 REM ===========================================================================
 
 set "ACTION=%~1"
@@ -101,12 +109,20 @@ if not defined CCACHE_MAXSIZE set "CCACHE_MAXSIZE=20G"
 if not defined SCCACHE_DIR set "SCCACHE_DIR=%SystemDrive%\sccache"
 if not defined SCCACHE_CACHE_SIZE set "SCCACHE_CACHE_SIZE=20G"
 
+REM --- build ID default: this checkout's own directory name (e.g. a worktree folder like
+REM     "graph-node-linkage-inc1"), so builds are self-identifying with zero setup. A bare
+REM     "VIXEN" (the main checkout) is also a valid, distinguishing default. ---
+if not defined VIXEN_BUILD_ID (
+    for %%D in ("%REPO_ROOT%") do set "VIXEN_BUILD_ID=%%~nxD"
+)
+
 echo [build] VS       : %VSINSTALL%
 echo [build] cmake    : %CMAKE_EXE%
 echo [build] source   : %SRC_DIR%
 echo [build] preset   : %PRESET%
 echo [build] action   : %ACTION%
 if not "%TARGET%"=="" (echo [build] target   : %TARGET%) else (echo [build] target   : ^(full build^))
+echo [build] buildId  : %VIXEN_BUILD_ID% ^(distinguishes this build's log/status among concurrent builds^)
 echo [build] ccache   : %CCACHE_DIR% ^(max %CCACHE_MAXSIZE%^; preferred - caches MSVC PCH^)
 echo [build] sccache  : %SCCACHE_DIR% ^(max %SCCACHE_CACHE_SIZE%^; fallback only^)
 
@@ -153,5 +169,7 @@ set "TARGET_ARG="
 if not "%TARGET%"=="" set "TARGET_ARG=-Target \"%TARGET%\""
 set "TICKET_ARG="
 if not "%VIXEN_QUEUE_TICKET_ID%"=="" set "TICKET_ARG=-QueueTicketId \"%VIXEN_QUEUE_TICKET_ID%\""
-powershell -ExecutionPolicy Bypass -File "%SRC_DIR%\scripts\build\run_build_with_summary.ps1" -CMakeExe "%CMAKE_EXE%" -Preset "%PRESET%" -LockTimeoutSeconds %VIXEN_BUILD_LOCK_TIMEOUT% %SKIP_LOCK_ARG% %TARGET_ARG% %TICKET_ARG%
+set "BUILDID_ARG="
+if not "%VIXEN_BUILD_ID%"=="" set "BUILDID_ARG=-BuildId \"%VIXEN_BUILD_ID%\""
+powershell -ExecutionPolicy Bypass -File "%SRC_DIR%\scripts\build\run_build_with_summary.ps1" -CMakeExe "%CMAKE_EXE%" -Preset "%PRESET%" -LockTimeoutSeconds %VIXEN_BUILD_LOCK_TIMEOUT% %SKIP_LOCK_ARG% %TARGET_ARG% %TICKET_ARG% %BUILDID_ARG%
 exit /b %errorlevel%

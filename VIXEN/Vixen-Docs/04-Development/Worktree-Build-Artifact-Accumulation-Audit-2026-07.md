@@ -544,3 +544,18 @@ Two more gaps surfaced live while dispatching a real Inc-1 milestone build in a 
    apparently was. Verified end-to-end via `cmake -P` script-mode: real download, real
    extraction, provisioned `ccache.exe --version` runs standalone (no missing DLLs), and a
    second run correctly reused the cache with no re-download.
+
+**Follow-on fix (2026-07-11): per-build BuildId for multi-worktree disambiguation.** Dispatching
+builds from different worktrees in succession (or concurrently) made it hard to tell which
+log/status/binary belonged to which request — the shared status file's `last_target` had already
+been observed pointing at a sibling agent's build (see the "shared status file is machine-wide"
+gotcha in `vixen-build-policy`). Fixed: `run_build_with_summary.ps1` now takes a `-BuildId`
+(caller-supplied or auto-generated 8-char hex), printed as the FIRST line of console output,
+embedded directly in the log filename (`%TEMP%\vixen_build_<BuildId>.log` — replacing the prior
+anonymous random-GUID naming), written into the status file as a `build_id:` field, and repeated
+in the BUILD SUMMARY footer. `build.bat` defaults it to the checkout's own directory name (a
+worktree's builds self-identify with zero setup — `.claude\worktrees\graph-node-linkage-inc1\`
+→ `BuildId=graph-node-linkage-inc1`), overridable via `VIXEN_BUILD_ID`. Verified the directory-
+name derivation logic in isolation (worktree path → worktree folder name; main checkout →
+`VBVS--VIXEN`) and the BuildId sanitize/auto-generate logic (empty → random hex, clean names
+pass through, unsafe characters replaced) via standalone PowerShell snippets.

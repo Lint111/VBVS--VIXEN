@@ -16,15 +16,28 @@
 # builds on one machine contend for the same CPU/IO and make ALL of them slower, not faster —
 # observed directly this session running concurrent verification builds.
 #
-# Usage: powershell -ExecutionPolicy Bypass -File run_build_with_summary.ps1 -CMakeExe <path> -Preset <name> [-StatusFile <path>] [-LockTimeoutSeconds N] [-SkipLock] [-MaxParallelJobs N] [-Target <cmake-target-name>]
+# Usage: powershell -ExecutionPolicy Bypass -File run_build_with_summary.ps1 -CMakeExe <path> -Preset <name> [-StatusFile <path>] [-LockTimeoutSeconds N] [-SkipLock] [-MaxParallelJobs N] [-Target <cmake-target-name>] [-BuildId <id>]
 #
 # -Target scopes the build to a single CMake target (`cmake --build ... --target <name>`)
 # instead of the full default graph - e.g. just `VixenApp` or a single test binary, so an
 # agent iterating on one library doesn't pay to rebuild+relink everything else in the graph.
 #
+# -BuildId: every build gets an ID, either caller-supplied (pass something greppable, e.g.
+# your worktree name — "graph-node-linkage-inc1") or auto-generated (an 8-char hex suffix,
+# same as the log filename's suffix, so they always match even when auto-generated). This
+# solves a real multi-worktree confusion: dispatching builds from different worktrees in
+# succession/parallel makes it hard to tell which log/status/binary belongs to which request.
+# The ID is printed as the FIRST line of output (before anything else, so it's visible even if
+# you only capture the tail of a long build), embedded in the log filename
+# (vixen_build_<BuildId>.log — no separate random suffix), written into the status file's
+# build_id field, and repeated in the BUILD SUMMARY footer. Always note the BuildId when you
+# dispatch a build so you can find its log later without guessing which vixen_build_*.log is
+# yours among several concurrent ones.
+#
 # Status file format (plain text, overwritten in place — safe to `cat`/`Get-Content` anytime,
 # never partially-written since each update is a single atomic file write):
 #   VIXEN_BUILD_STATUS: <WAITING_FOR_LOCK|RUNNING|DONE>
+#   build_id: <this build's BuildId>
 #   elapsed_seconds: <N>
 #   targets_total: <N or ?>
 #   targets_done: <N>
@@ -40,8 +53,18 @@ param(
     [switch]$SkipLock,
     [int]$MaxParallelJobs = 0,
     [string]$Target = "",
-    [string]$QueueTicketId = ""
+    [string]$QueueTicketId = "",
+    [string]$BuildId = ""
 )
+
+# Auto-generate if the caller didn't supply one. Sanitize a caller-supplied ID to safe
+# filename/log characters so it can't break the log path or the status-file format.
+if (-not $BuildId) {
+    $BuildId = [System.Guid]::NewGuid().ToString('N').Substring(0, 8)
+} else {
+    $BuildId = ($BuildId -replace '[^A-Za-z0-9_.-]', '-')
+}
+Write-Host "[build] BuildId   : $BuildId  (note this - it's how you find this build's log/status among concurrent builds)"
 
 # Fix 10: cap ninja's overall concurrent job count below full core count by default, so a
 # build leaves the machine usable instead of pegging every logical core (observed: multiple
@@ -60,12 +83,13 @@ if ($MaxParallelJobs -le 0) {
 }
 
 $ErrorActionPreference = 'Continue'
-$buildLog = "$env:TEMP\vixen_build_$([System.Guid]::NewGuid().ToString('N').Substring(0,8)).log"
+$buildLog = "$env:TEMP\vixen_build_$BuildId.log"
 $startTime = Get-Date
 
 function Write-StatusFile($state, $elapsed, $total, $done, $failed, $lastTarget, $failedTargets) {
     $lines = @(
         "VIXEN_BUILD_STATUS: $state",
+        "build_id: $BuildId",
         "elapsed_seconds: $elapsed",
         "targets_total: $total",
         "targets_done: $done",
@@ -190,6 +214,7 @@ Write-StatusFile "DONE" $elapsed $lastTotal $lastDone $failedTargets.Count $last
 
 Write-Host ""
 Write-Host "[build] ============================== BUILD SUMMARY =============================="
+Write-Host "[build] BuildId  : $BuildId"
 if ($failedTargets.Count -eq 0) {
     Write-Host "[build] All targets built successfully."
 } else {
@@ -200,7 +225,8 @@ if ($failedTargets.Count -eq 0) {
     Write-Host "[build] including each failure's compiler error just under its FAILED: line."
 }
 Write-Host "[build] =============================================================================="
-Write-Host "[build] Status file (pollable mid-build next time): $StatusFile"
+Write-Host "[build] Log file (this build's own, unambiguous by BuildId): $buildLog"
+Write-Host "[build] Status file (shared across builds - match build_id: $BuildId to find yours): $StatusFile"
 
 exit $buildExitCode
 
@@ -241,6 +267,7 @@ exit $buildExitCode
             if (-not (Test-Path $resultLogDir)) { New-Item -ItemType Directory -Path $resultLogDir -Force | Out-Null }
             $resultLines = @(
                 "TicketId: $QueueTicketId",
+                "BuildId: $BuildId",
                 "CompletedUtc: $((Get-Date).ToUniversalTime().ToString('o'))",
                 "ExitCode: $buildExitCode",
                 "TargetsFailed: $($failedTargets.Count)",

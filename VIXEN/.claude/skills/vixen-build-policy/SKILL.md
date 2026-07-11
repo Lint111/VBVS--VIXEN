@@ -215,7 +215,7 @@ any build, sanity-check the logged `source:` line** (`run_build_with_summary.ps1
 meant to build, the whole result (including a "target now builds!" fix-verification) is
 meaningless, silently.
 
-## Known gotcha: the shared status file is machine-wide, not per-build
+## Known gotcha: the shared status file is machine-wide, not per-build (mitigated by BuildId)
 
 `%TEMP%\vixen_build_status.txt` (`run_build_with_summary.ps1`'s live-status file) is a SINGLE
 file shared by every build on the machine — it is overwritten by whichever build last touched it,
@@ -223,10 +223,21 @@ regardless of which worktree/agent started it. If two agents build around the sa
 this file for "is MY build done" can show a stale or entirely different build's `last_target`
 (e.g. a path under a DIFFERENT worktree). Observed 2026-07-11: after my own build finished, the
 status file's `last_target` pointed at `tiered-esvo-inc2` — a sibling agent's build that happened
-to finish around the same moment. **This file is only reliable for "is the lock currently busy"
-(paired with `check_build_lock.ps1`), never for "did MY specific build finish/succeed."** For your
-own build's outcome, always read the log file YOU redirected stdout to (and confirm its `source:`
-line matches your worktree, per the gotcha above) — never the shared status file.
+to finish around the same moment.
+
+**Fixed (2026-07-11): every build now has a `BuildId`**, printed as the FIRST line of console
+output, written into the status file as a `build_id:` field, embedded in the log filename
+itself (`%TEMP%\vixen_build_<BuildId>.log` — no more anonymous random-GUID logs), and repeated
+in the BUILD SUMMARY footer. `build.bat` auto-derives a sensible default from the checkout's own
+directory name (a worktree's builds are self-identifying with zero setup — e.g. `build.bat` run
+from `.claude\worktrees\graph-node-linkage-inc1\` gets `BuildId=graph-node-linkage-inc1`), or set
+`VIXEN_BUILD_ID=<something>` explicitly for a more specific label (e.g. a task/ticket name).
+**Always check the status file's `build_id:` field against the BuildId you noted at dispatch
+time before trusting `last_target`/`targets_done` as "my build's" progress** — if it doesn't
+match, you're looking at a different, possibly-concurrent build's status, not yours. This makes
+the status file usable for "is MY build done" now, not just "is the lock currently busy" — but
+your own build's log (`%TEMP%\vixen_build_<YourBuildId>.log`, printed at both start and end of
+output) remains the authoritative source for full output/failures, same as before.
 
 ## What NOT to do
 
