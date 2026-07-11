@@ -178,6 +178,49 @@ down without releasing it, stranding a sibling agent's real build behind it unti
 released. **Still always call `-Release` yourself when you're truly done** rather than relying
 on staleness reaping — reaping is the backstop for abandonment, not the primary release path.
 
+## Auto-dispatch — recommended default for the queue path (2026-07-12)
+
+Liveness reaping (above) stops an abandoned ticket from blocking the queue forever, but it
+doesn't make the WANTED build actually happen — if you register, then stall (context
+exhaustion, a stuck subagent, anything short of a clean shutdown) before your ticket reaches
+the front and you personally call `build.bat`, your build never runs; your ticket just
+eventually goes stale and gets reaped, same outcome as if you'd never registered at all.
+
+**Fix: pass `-BuildScript` at `-Register` time and the queue dispatches your build FOR you —
+you don't have to be present or responsive when your turn comes.**
+
+```powershell
+powershell -ExecutionPolicy Bypass -File VIXEN\scripts\build\build_queue.ps1 -Register `
+    -AgentId "<your-agent-id>" -Source "<your-worktree-name>" -BuildTarget "<target-or-omit>" `
+    -BuildScript "C:\cpp\VBVS--VIXEN\.claude\worktrees\<your-worktree>\build.bat" `
+    -BuildAction all -BuildPreset vixen-ninja -Note "<why you're building>"
+```
+
+`-BuildScript` MUST be the full absolute Windows path to YOUR worktree's own `build.bat` (same
+"always use the absolute path" rule as everywhere else in this skill — get it via `wslpath -w
+"$(pwd)/build.bat"`). `-BuildAction`/`-BuildPreset` default to `all`/`vixen-ninja` if omitted.
+
+Once registered this way, **any agent's routine `-Status` or `-ListQueue` call** — not just
+yours — will notice when your ticket reaches position 1 with the lock free, and run your build
+right there before returning, then release your ticket automatically. This piggybacks on
+polling traffic that's already happening across the whole agent fleet (per the active-polling
+rule), so your build fires as soon as ANY other agent's normal, unrelated queue check touches
+the queue, even if you yourself never poll again. No new persistent watcher process — nothing
+new to babysit or that can itself silently die.
+
+Your own `-Status -TicketId <id>` call will report one of two NEW outcomes once dispatch
+happens:
+- `AUTO_DISPATCHED` (exit 0) — your build ran (possibly as part of this very `-Status` call, or
+  earlier via someone else's) and succeeded. Ticket already released, nothing more to do.
+- `AUTO_DISPATCH_FAILED` (exit 4) — your build ran and failed (non-zero exit). Ticket is STILL
+  released (a failed turn is still a completed turn, not a reason to keep blocking everyone
+  behind it) — check your own build log (same log path/BuildId system as always) for what went
+  wrong, same as a manually-dispatched failure always required.
+
+**This is now the recommended default for the queue path** — omit `-BuildScript` only when you
+genuinely want to reserve a position without handing off unattended execution (e.g. a validator
+just checking whether the lock will be free soon, not actually planning to build).
+
 ## Why parallelism is capped, not maximized (Fix 10)
 
 `run_build_with_summary.ps1` passes `-j <N>` to ninja, defaulting to ~75% of logical cores
@@ -278,6 +321,14 @@ output) remains the authoritative source for full output/failures, same as befor
   again is harmless (idempotent — "already released") but unnecessary. DO still call `-Release`
   yourself if you registered a ticket and decided not to build at all — nothing else will ever
   release that one.
+- **Three separate release paths now exist — know which one applies to your ticket.** (1)
+  Auto-dispatch (`-BuildScript` passed at `-Register`): the queue itself runs your build and
+  releases the ticket, no action from you ever needed. (2) `VIXEN_QUEUE_TICKET_ID` passed to a
+  manually-invoked `build.bat`: `run_build_with_summary.ps1` releases it when that build
+  finishes. (3) Neither of the above (a bare reservation ticket): YOU must call `-Release`
+  yourself, or rely on liveness-staleness reaping as the last-resort backstop. Don't assume (1)
+  or (2) apply to a ticket you registered as a bare reservation — check which flags you actually
+  passed at `-Register` time.
 - **`build.bat build` does NOT reconfigure — it never re-runs `cmake --preset`.** Only
   `build.bat all`/`configure` does. If you ADD A NEW SOURCE FILE to a `CMakeLists.txt` (a new
   `.cpp`/`.h` registered in a target's source list) and then call `build.bat build`, ninja's

@@ -13,7 +13,9 @@
 # is no separate structure that can drift out of sync with reality.
 #
 # Subcommands:
-#   -Register -AgentId <id> [-Source <worktree-or-repo-path>] [-BuildTarget <cmake-target>] [-Note <text>]
+#   -Register -AgentId <id> [-Source <worktree-or-repo-path>] [-BuildTarget <cmake-target>]
+#             [-BuildScript <absolute-path-to-build.bat>] [-BuildAction configure|build|all]
+#             [-BuildPreset <preset-name>] [-Note <text>]
 #       Create a ticket, print its TicketId, exit 0. Call this FIRST, then go do other work.
 #       De-duplicated by the COMBINATION of (AgentId, Source, BuildTarget) — not AgentId alone:
 #       if a non-stale ticket already exists with the exact same AgentId + Source + BuildTarget,
@@ -29,20 +31,33 @@
 #       falls back to AgentId-only dedup, the prior behavior). Pass -Source as something stable
 #       per requester (e.g. your worktree name) and -BuildTarget as whatever you'll pass to
 #       build.bat's target arg (empty string for a full/default build).
+#
+#       AUTO-DISPATCH (opt-in via -BuildScript): if you pass -BuildScript, this ticket carries
+#       everything needed to actually RUN your build — the queue itself will dispatch it when
+#       its turn comes, even if YOU (the registering agent) have stalled or gone away by then.
+#       See "Auto-dispatch" below for the full design and why this exists. Omit -BuildScript for
+#       the old behavior: the ticket just reserves your position, and only YOU are expected to
+#       actually call build.bat when -Status reports YOUR_TURN.
 #   -Status -TicketId <id>
 #       Print this ticket's queue position (1 = next), whether the BUILD LOCK is currently
-#       free, and derived "YOUR_TURN" (position 1 AND lock free) / "WAITING" / "UNKNOWN_TICKET".
-#       Cheap, non-blocking — safe to poll every few minutes or drive a ScheduleWakeup loop.
-#       Refreshes THIS ticket's LastSeenUtc (proof of an active waiter — see liveness dedup
-#       below) and, if this ticket is blocked behind another one, opportunistically reaps that
-#       BLOCKING ticket if it's gone liveness-stale — so a genuinely active waiter is never kept
-#       stuck behind an abandoned ticket for the full -StaleMinutes window; the check happens at
-#       the exact moment it matters (someone is actually blocked on it), not just periodically.
+#       free, and derived "YOUR_TURN" (position 1 AND lock free) / "WAITING" / "UNKNOWN_TICKET"
+#       / "AUTO_DISPATCHED" (this call itself just ran your build — see below) /
+#       "AUTO_DISPATCH_FAILED" (your build.bat exited non-zero; ticket is still released, check
+#       your own build log). Cheap, non-blocking — safe to poll every few minutes or drive a
+#       ScheduleWakeup loop. Refreshes THIS ticket's LastSeenUtc (proof of an active waiter — see
+#       liveness dedup below) and, if this ticket is blocked behind another one, opportunistically
+#       reaps that BLOCKING ticket if it's gone liveness-stale — so a genuinely active waiter is
+#       never kept stuck behind an abandoned ticket for the full -StaleMinutes window; the check
+#       happens at the exact moment it matters (someone is actually blocked on it), not just
+#       periodically.
 #   -Release -TicketId <id>
 #       Remove a ticket (call after your build.bat invocation returns, whether it built or was
-#       skipped — a ticket left behind after the agent moved on blocks everyone behind it).
+#       skipped — a ticket left behind after the agent moved on blocks everyone behind it). Not
+#       needed for auto-dispatch tickets (see below) — the auto-dispatch itself releases them.
 #   -ListQueue
-#       Print all current tickets in FIFO order, for a human/agent to see the whole queue.
+#       Print all current tickets in FIFO order, for a human/agent to see the whole queue. Also
+#       opportunistically auto-dispatches position-1 tickets, same as -Status (see below) — so
+#       even a passive "what's in the queue" check can be the thing that unsticks a stalled build.
 #   -Reap
 #       Delete tickets whose LastSeenUtc is older than -StaleMinutes (default 15 — see liveness
 #       dedup below for why this is short, not the original 60). A crashed/killed agent leaves
@@ -61,6 +76,28 @@
 # infrastructure for every agent on this machine; a stuck ticket blocks EVERYONE behind it, so
 # the default window is short (15 min, down from an earlier 60 min default) and -Status
 # opportunistically reaps its own blocker inline rather than waiting for a periodic sweep.
+#
+# Auto-dispatch (2026-07-12): even with liveness reaping, an agent that stalls (context
+# exhaustion, a stuck subagent, anything short of a clean shutdown) AFTER its ticket reaches
+# position 1 but BEFORE it personally calls build.bat means a perfectly valid, wanted build
+# never runs — worse, the stalled agent's own -Status polling is what would normally refresh its
+# ticket's liveness, so a stalled requester's ticket goes stale and gets reaped WITHOUT the build
+# ever happening either way. The fix: let the ticket carry the actual build command (-BuildScript
+# / -BuildAction / -BuildPreset / -BuildTarget), and let ANY agent's routine -Status/-ListQueue
+# call — not just the ticket owner's — be the thing that notices "this ticket is at position 1,
+# the lock is free, and it declared a real command" and just runs it inline right there, before
+# returning. This piggybacks on polling traffic that's already happening across the whole agent
+# fleet (per the active-~20s-polling rule), so a stalled requester's build still fires as soon as
+# ANY other agent's normal, unrelated queue check touches the queue — no new persistent
+# watcher/daemon process needed, nothing new to babysit or that can itself silently die. Safe
+# under concurrency: the actual build lock is a real OS Mutex (run_build_with_summary.ps1's
+# WaitOne()), so if two agents' -Status calls both observe "position 1, lock free" and both try
+# to auto-dispatch at nearly the same instant, only one genuinely acquires the lock and executes
+# — the design does not depend on this script's own logic being race-free, only on the Mutex
+# being the single source of truth for "is a build actually running," which it already was.
+# Auto-dispatch is opt-in per ticket (only fires if -BuildScript was passed at -Register time) —
+# a ticket registered without it behaves exactly as before, so validators/agents that only want
+# to reserve a queue position without handing off unattended build execution are unaffected.
 
 param(
     [switch]$Register,
@@ -73,6 +110,9 @@ param(
     [string]$Note = "",
     [string]$Source = "",
     [string]$BuildTarget = "",
+    [string]$BuildScript = "",
+    [string]$BuildAction = "all",
+    [string]$BuildPreset = "vixen-ninja",
     [int]$StaleMinutes = 15
 )
 
@@ -165,6 +205,57 @@ function Test-BuildLockFree {
     return $acquired
 }
 
+# Auto-dispatch: if the ticket at position 1 declared a real build command (-BuildScript at
+# -Register time) and the lock LOOKS free, actually run it right here, inline, before this
+# -Status/-ListQueue call returns — regardless of whether the CALLER is the ticket's own owner.
+# This is what lets a stalled requester's build still happen: whichever agent's routine queue
+# check touches this ticket first while it's sitting at position 1 is the one that runs it.
+#
+# Concurrency note: the Test-BuildLockFree check here is only an optimistic pre-check to avoid
+# obviously-pointless dispatch attempts (e.g. skip if a build is clearly already running) - the
+# REAL safety is run_build_with_summary.ps1's own Mutex WaitOne(), which every dispatch still
+# goes through. If two agents' calls both see "free" and both reach this function at nearly the
+# same instant, both invoke build.bat, but only one actually acquires the Mutex and builds; the
+# other blocks briefly inside its own WaitOne() and then (per that script's own lock-wait logic)
+# proceeds only if it still has something to do - in practice this races harmlessly because the
+# ticket file itself is removed by whichever dispatch attempt finishes first reaching the Release
+# step below, and Remove-Item on an already-removed ticket is a silent no-op (see -Release).
+#
+# Returns one of: $null (nothing to auto-dispatch, e.g. not position 1 / no BuildScript / lock
+# held), or a hashtable @{ Dispatched = $true; ExitCode = <int> } once a dispatch was attempted.
+function Invoke-AutoDispatchIfReady {
+    $tickets = @(Get-QueueTickets)
+    if ($tickets.Count -eq 0) { return $null }
+    $head = $tickets[0]
+    if (-not $head.BuildScript) { return $null }
+    if (-not (Test-BuildLockFree)) { return $null }
+    if (-not (Test-Path $head.BuildScript)) {
+        Write-Host "[build-queue] AUTO-DISPATCH SKIPPED: ticket $($head.TicketId)'s BuildScript '$($head.BuildScript)' no longer exists (worktree removed?) - releasing the ticket so it doesn't block the queue forever."
+        Remove-Item -Path "$queueDir\$($head.TicketId).json" -Force -ErrorAction SilentlyContinue
+        return $null
+    }
+
+    Write-Host "[build-queue] AUTO-DISPATCH: ticket $($head.TicketId) (agent $($head.AgentId)) is at position 1 with the lock free - running its build now on its behalf."
+    Write-Host "[build-queue] AUTO-DISPATCH command: `"$($head.BuildScript)`" $($head.BuildAction) $($head.BuildPreset) $($head.BuildTarget)"
+
+    $argList = @($head.BuildAction, $head.BuildPreset)
+    if ($head.BuildTarget) { $argList += $head.BuildTarget }
+    $proc = Start-Process -FilePath $head.BuildScript -ArgumentList $argList -NoNewWindow -Wait -PassThru
+    $exitCode = $proc.ExitCode
+
+    # Always release the ticket after dispatch, success or failure - a failed build is still a
+    # COMPLETED turn, not a reason to keep blocking everyone behind it. The caller's own build
+    # log (build.bat/run_build_with_summary.ps1 print their own log path) is the place to
+    # investigate a failure, same as a manually-dispatched build always was.
+    Remove-Item -Path "$queueDir\$($head.TicketId).json" -Force -ErrorAction SilentlyContinue
+    if ($exitCode -eq 0) {
+        Write-Host "[build-queue] AUTO-DISPATCH complete: ticket $($head.TicketId) build SUCCEEDED (exit 0). Ticket released."
+    } else {
+        Write-Host "[build-queue] AUTO-DISPATCH complete: ticket $($head.TicketId) build FAILED (exit $exitCode). Ticket released anyway - a failed turn is still a completed turn. Agent $($head.AgentId) should check its own build log."
+    }
+    return @{ Dispatched = $true; TicketId = $head.TicketId; AgentId = $head.AgentId; ExitCode = $exitCode }
+}
+
 if ($Reap) {
     Invoke-Reap
     exit 0
@@ -195,12 +286,17 @@ if ($Register) {
         $existing = $existingTickets[0]
         Update-TicketLastSeen $existing.TicketId
         $tickets = @(Get-QueueTickets)
-        $position = ($tickets | ForEach-Object { $_.TicketId }).IndexOf($existing.TicketId) + 1
+        $position = (@($tickets | ForEach-Object { $_.TicketId })).IndexOf($existing.TicketId) + 1
         Write-Host "[build-queue] Already registered - reusing existing ticket for AgentId '$AgentId' (same Source/BuildTarget - de-dup, not creating a new one)."
         Write-Host "[build-queue] TicketId: $($existing.TicketId)"
         Write-Host "[build-queue] Queue position: $position of $($tickets.Count)"
         Write-Host "[build-queue] Go do other work. Check back with: -Status -TicketId $($existing.TicketId)"
         exit 0
+    }
+
+    if ($BuildScript -and -not (Test-Path $BuildScript)) {
+        Write-Host "[build-queue] ERROR: -BuildScript '$BuildScript' does not exist. Pass the FULL ABSOLUTE Windows path to your build.bat (get it via wslpath -w if calling from WSL bash)."
+        exit 1
     }
 
     $ticketId = [System.Guid]::NewGuid().ToString('N').Substring(0, 12)
@@ -210,6 +306,9 @@ if ($Register) {
         AgentId     = $AgentId
         Source      = $Source
         BuildTarget = $BuildTarget
+        BuildScript = $BuildScript
+        BuildAction = $BuildAction
+        BuildPreset = $BuildPreset
         Note        = $Note
         CreatedUtc  = $nowUtc
         LastSeenUtc = $nowUtc
@@ -217,9 +316,12 @@ if ($Register) {
     $ticketPath = "$queueDir\$ticketId.json"
     $ticket | ConvertTo-Json | Set-Content -Path $ticketPath -Encoding utf8
     $tickets = @(Get-QueueTickets)
-    $position = ($tickets | ForEach-Object { $_.TicketId }).IndexOf($ticketId) + 1
+    $position = (@($tickets | ForEach-Object { $_.TicketId })).IndexOf($ticketId) + 1
     Write-Host "[build-queue] Registered. TicketId: $ticketId"
     Write-Host "[build-queue] Queue position: $position of $($tickets.Count)"
+    if ($BuildScript) {
+        Write-Host "[build-queue] Auto-dispatch ENABLED: your build.bat ($BuildAction $BuildPreset $(if($BuildTarget){$BuildTarget}else{'<full>'})) will run automatically when it's your turn, even if you stall - no need to personally call build.bat."
+    }
     Write-Host "[build-queue] Go do other work. Check back with: -Status -TicketId $ticketId"
     exit 0
 }
@@ -231,7 +333,7 @@ if ($Status) {
     }
     Invoke-Reap
     $tickets = @(Get-QueueTickets)
-    $ids = $tickets | ForEach-Object { $_.TicketId }
+    $ids = @($tickets | ForEach-Object { $_.TicketId })
     $idx = $ids.IndexOf($TicketId)
     if ($idx -lt 0) {
         Write-Host "[build-queue] UNKNOWN_TICKET (expired/reaped, released, or never registered)"
@@ -254,7 +356,7 @@ if ($Status) {
         $blockingTicket = $tickets[$position - 2]  # 0-indexed; the ticket one ahead of us
         if (Test-ReapSingleTicket $blockingTicket.TicketId) {
             $tickets = @(Get-QueueTickets)
-            $ids = $tickets | ForEach-Object { $_.TicketId }
+            $ids = @($tickets | ForEach-Object { $_.TicketId })
             $idx = $ids.IndexOf($TicketId)
             if ($idx -lt 0) {
                 # Should not happen (we didn't touch our own ticket) but guard anyway.
@@ -263,6 +365,35 @@ if ($Status) {
             }
             $position = $idx + 1
         }
+    }
+
+    # Auto-dispatch: whoever's -Status call finds a position-1, auto-dispatch-enabled ticket
+    # with the lock free runs it right here — regardless of whether it's THIS caller's own
+    # ticket. This is what makes a stalled requester's build still happen: any other agent's
+    # routine poll can be the one that unsticks it. If the ticket that got dispatched was OUR
+    # own ticket, report that explicitly instead of falling through to a stale WAITING/YOUR_TURN
+    # message about a ticket that no longer exists (it was just released by the dispatch).
+    $dispatchResult = Invoke-AutoDispatchIfReady
+    if ($dispatchResult) {
+        if ($dispatchResult.TicketId -eq $TicketId) {
+            if ($dispatchResult.ExitCode -eq 0) {
+                Write-Host "[build-queue] AUTO_DISPATCHED - your build just ran (as part of this -Status call) and SUCCEEDED. Ticket released, nothing more to do."
+                exit 0
+            } else {
+                Write-Host "[build-queue] AUTO_DISPATCH_FAILED - your build just ran (as part of this -Status call) and FAILED (exit $($dispatchResult.ExitCode)). Ticket released. Check your build log."
+                exit 4
+            }
+        }
+        # A DIFFERENT ticket (ahead of ours) was the one auto-dispatched — re-check our own
+        # position now that it's gone, rather than reporting stale numbers.
+        $tickets = @(Get-QueueTickets)
+        $ids = @($tickets | ForEach-Object { $_.TicketId })
+        $idx = $ids.IndexOf($TicketId)
+        if ($idx -lt 0) {
+            Write-Host "[build-queue] UNKNOWN_TICKET (expired/reaped, released, or never registered)"
+            exit 3
+        }
+        $position = $idx + 1
     }
 
     $lockFree = Test-BuildLockFree
@@ -295,6 +426,20 @@ if ($Release) {
 
 if ($ListQueue) {
     Invoke-Reap
+
+    # Same opportunistic auto-dispatch as -Status — a passive "what's in the queue" check can be
+    # the thing that unsticks a stalled requester's build. Loop (bounded) rather than a single
+    # attempt: dispatching one ticket can immediately free the lock for the NEXT position-1
+    # auto-dispatch ticket, and a caller listing the queue benefits from seeing it settle rather
+    # than reporting a stale snapshot from mid-drain. Bounded to avoid this one command chewing
+    # through an unbounded backlog of auto-dispatch tickets on a machine that's been quiet a while.
+    $autoDispatchRounds = 0
+    while ($autoDispatchRounds -lt 5) {
+        $result = Invoke-AutoDispatchIfReady
+        if (-not $result) { break }
+        $autoDispatchRounds++
+    }
+
     $tickets = @(Get-QueueTickets)
     if ($tickets.Count -eq 0) {
         Write-Host "[build-queue] Queue is empty."
@@ -306,7 +451,8 @@ if ($ListQueue) {
     foreach ($t in $tickets) {
         $src = if ($t.Source) { $t.Source } else { "-" }
         $tgt = if ($t.BuildTarget) { $t.BuildTarget } else { "(full build)" }
-        Write-Host "[build-queue] $pos. $($t.TicketId)  agent=$($t.AgentId)  source=$src  target=$tgt  registered=$($t.CreatedUtc)  note=$($t.Note)"
+        $auto = if ($t.BuildScript) { "auto" } else { "manual" }
+        Write-Host "[build-queue] $pos. $($t.TicketId)  agent=$($t.AgentId)  source=$src  target=$tgt  dispatch=$auto  registered=$($t.CreatedUtc)  note=$($t.Note)"
         $pos++
     }
     exit 0

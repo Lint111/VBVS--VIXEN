@@ -610,3 +610,45 @@ the one real active ticket. Old-format tickets (no `LastSeenUtc` field) fall bac
 so they still reap on a sane schedule rather than erroring or never expiring. `-Release` remains
 the correct primary path — reaping is documented explicitly as the abandonment backstop, not a
 substitute for releasing your own ticket.
+
+**Follow-on fix (2026-07-12): auto-dispatch — the queue clears itself even if the requester
+stalls.** User's observation: agents were seen stalling/going unresponsive for long periods
+AFTER their ticket reached the front of the queue but BEFORE they personally called `build.bat`
+— a perfectly valid, wanted build that then never ran, and (worse) that stalled requester's own
+`-Status` polling is exactly what refreshes its ticket's liveness, so its ticket would eventually
+go stale and get reaped WITHOUT the build ever happening either way. Liveness reaping (above)
+solves "stuck tickets block the queue" but not "wanted builds silently never execute."
+
+Design: `-Register` gained `-BuildScript`/`-BuildAction`/`-BuildPreset` (alongside the existing
+`-BuildTarget`) so a ticket can carry the FULL command needed to actually run its build, not just
+reserve a position. `-Status` and `-ListQueue` — called by ANY agent, not just the ticket's own
+owner — now opportunistically check whether the position-1 ticket declared a real command and
+the lock is free, and if so **run it right there, inline, before returning**, then release the
+ticket. This means a stalled requester's build still fires the moment ANY OTHER agent's routine,
+unrelated queue check touches the queue — no new persistent watcher/daemon process, nothing new
+to babysit or that can itself silently die; it piggybacks on polling traffic the fleet is already
+generating under the standing active-~20s-polling rule. Safe under concurrency by construction:
+the real safety net is still `run_build_with_summary.ps1`'s OS Mutex `WaitOne()` — if two agents'
+calls both observe "position 1, lock free" and both attempt dispatch near-simultaneously, only
+one genuinely acquires the lock; this script's own logic doesn't need to be race-free, only the
+Mutex does, which was already true. Fully opt-in per ticket (only fires if `-BuildScript` was
+passed) — tickets registered the old way are completely unaffected.
+
+**Verified live, end-to-end**, with a harmless stub script standing in for `build.bat` (to avoid
+disrupting real builds while testing): (1) registered a ticket with auto-dispatch, then a
+COMPLETELY SEPARATE, unrelated `-ListQueue` call (simulating "some other agent just checking the
+queue") correctly detected and dispatched it, running the exact stored command and releasing the
+ticket — confirmed via a marker file the stub wrote; (2) the ticket owner's own `-Status` call
+correctly reported `AUTO_DISPATCHED` (exit 0) when its build succeeded; (3) a deliberately-failing
+stub correctly reported `AUTO_DISPATCH_FAILED` (exit 4) while STILL releasing the ticket (a failed
+turn is still a completed turn — must not keep blocking the queue); (4) a ticket registered
+WITHOUT `-BuildScript` was confirmed completely unaffected (still just reports `YOUR_TURN`,
+requires manual dispatch, persists until explicitly released) — full backward compatibility.
+
+**Bug found and fixed during this same pass**: testing surfaced a real null-reference crash
+(`$ids.IndexOf($TicketId)` on a `$null` from PowerShell's single/zero-element-array unwrapping —
+the same class of bug as an earlier `build_queue.ps1` fix this cycle, in 3 fresh call sites this
+change introduced plus 2 pre-existing latent ones). Fixed by wrapping every `$tickets | ForEach-
+Object {...}`-derived id list in `@(...)` (5 occurrences total) — verified with the exact
+previously-crashing scenario (an empty-queue `-Status` call for an unknown ticket) now returning
+a clean `UNKNOWN_TICKET` (exit 3) instead of a PowerShell exception.
