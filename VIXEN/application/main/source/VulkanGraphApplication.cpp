@@ -659,6 +659,74 @@ void VulkanGraphApplication::Update() {
             }
         }
 
+        // Tiered-ESVO Inc3 M7 Task 14 (the epic gate, finally): the live continuous
+        // surface-to-orbit zoom on VIXEN_TIER_OBSERVABLE_DEMO's reconstructed body,
+        // crossing BOTH real magnified tier boundaries mid-flight (childScale=0.25/hop,
+        // per Task 13's proven construction). Run alongside VIXEN_TIER_OBSERVABLE_DEMO=1
+        // (+ optionally VIXEN_TIER_OBSERVABLE_ZOOM_SCRIPT=1 for the residency grant).
+        //
+        // Task 13's hand-computed, validator-confirmed handoffs (see Progress Log):
+        //   hop0 (T0->T1) ~= 79.58 world units
+        //   hop1 (T1->T2) ~= 19.89 world units  (= hop0 * childScale)
+        //   in-FOV floor (10*R, where the MARKED OCTANT enters the FOV cone) = 1.00 wu
+        //   solid surface radius     =  0.5625 world units
+        //   orbit ceiling            =  120.0 world units
+        //
+        // FIRST ATTEMPT at this schedule used kObsNearDist=5.0 (inside hop1, clear of
+        // the in-FOV floor) reasoning that would show "close-in detail" -- captures
+        // proved this wrong: the BODY's own visual angular size at distance d is
+        // atan(bodyRadius/d) with bodyRadius~=0.56wu, giving only ~6.4deg half-angle
+        // at d=5.0 (vs the 22.5deg half-FOV) -- a small dot, not bedrock-scale detail.
+        // The in-FOV floor governs when the *crossing octant* enters frame, not when
+        // the *body itself* is comfortably sized; those are different distances. The
+        // corrected near end (kObsNearDist=1.2, just outside the 0.5625wu solid) gives
+        // ~25deg half-angle -- the body genuinely fills the frame, true close-up
+        // framing. The far end is now the actual orbit ceiling (120wu) for a true
+        // "full-body orbit" endpoint, honestly accepting a documented finding: at the
+        // body's own tiny 1.0wu diameter, hop0's distance (79.58wu) leaves the body at
+        // only ~0.4deg angular half-size (a few-pixel speck at 500px height) -- the
+        // hop0 crossing itself is NOT a dramatic zoomed-in event, it happens when the
+        // body has already shrunk far below comfortable viewing size. This is a
+        // genuine property of THIS reconstructed body's proportions (LOD-handoff
+        // distances chosen for octant reachability/on-axis-ness, not for staying
+        // visually close to the body), not a schedule defect -- surfaced honestly in
+        // the Progress Log rather than silently reshaping the demo to hide it.
+        //
+        // Predicted transition ticks (log-interpolation inverted BEFORE running, near=
+        // 1.2wu/far=120.0wu over kObsPhase1End=400 ticks):
+        //   hop1 (T1->T2 decline, zooming out) -> tick ~244
+        //   hop0 (T0->T1 decline, zooming out) -> tick ~364
+        if (renderGraph && std::getenv("VIXEN_TIER_OBSERVABLE_DEMO") &&
+            (std::getenv("VIXEN_TIER_OBSERVABLE_ZOOM_DEMO") || std::getenv("VIXEN_TIER_OBSERVABLE_ZOOM_SCRIPT"))) {
+            static long obsZoomTick = 0;
+            ++obsZoomTick;
+            constexpr long  kObsResidencyFlipTick = 50;   // well before both predicted transitions (~244, ~364)
+            constexpr long  kObsPhase1End         = 400;
+            constexpr double kObsNearDist         = 1.2;    // just outside the 0.5625wu solid -- body fills the frame
+            constexpr double kObsFarDist          = 120.0;  // full orbit ceiling -- true full-body-orbit endpoint
+
+            if (auto* camera = static_cast<CameraNode*>(renderGraph->GetInstance(cameraNode_))) {
+                const double t = std::min(1.0, static_cast<double>(obsZoomTick) / static_cast<double>(kObsPhase1End));
+                const double logNear = std::log10(kObsNearDist);
+                const double logFar  = std::log10(kObsFarDist);
+                const double dist    = std::pow(10.0, logNear + t * (logFar - logNear));
+                camera->SetOrbitDistanceForTest(static_cast<float>(dist));
+            }
+            if (obsZoomTick == kObsResidencyFlipTick && std::getenv("VIXEN_TIER_OBSERVABLE_ZOOM_DEMO")) {
+                if (auto* bodyScene = static_cast<Vixen::RenderGraph::BodyOctreeSceneNode*>(
+                        renderGraph->GetInstance(bodyOctreeSceneNode_))) {
+                    bodyScene->RequestBrickResidency(true);
+                    if (mainLogger) {
+                        mainLogger->Info("[TierObservableZoomDemo] tick " + std::to_string(obsZoomTick) +
+                                          ": RequestBrickResidency(true) -- mid-flight residency grant");
+                    }
+                }
+            }
+            if (obsZoomTick % 20 == 0 && mainLogger) {
+                mainLogger->Info("[TierObservableZoomDemo] tick " + std::to_string(obsZoomTick));
+            }
+        }
+
         // Same "input never rides the render graph's gates" hook, generalized to InputNode
         // (input-rework slice 1): drain its GLFW callback queue unconditionally too, right beside
         // WindowNode's own drain above. Same lookup pattern, same null-guard (a graph without an
