@@ -519,6 +519,28 @@ void VulkanGraphApplication::Update() {
             }
         }
 
+        // Tiered-ESVO Inc3 M8 Task 16 live gate: one-shot proof that a look-target genuinely
+        // decouples `forward` from orbitCenter (CameraNode::SetLookTargetForTest). Deliberately
+        // NOT part of any tier-crossing scene (VIXEN_LOOK_TARGET_DEMO runs standalone, alongside
+        // whatever scene is otherwise active) -- this demo only exists to prove the CAPABILITY,
+        // not to build the Task 17/18 Earth-scale demo. Aims the camera hard to one side of
+        // orbitCenter at tick 1 (one-shot, mirrors the RequestBrickResidency one-shot pattern
+        // above) so a later HUD capture shows a visibly different view than the same tick with
+        // the env var unset.
+        if (renderGraph && std::getenv("VIXEN_LOOK_TARGET_DEMO")) {
+            static long lookTargetTick = 0;
+            ++lookTargetTick;
+            if (lookTargetTick == 1) {
+                if (auto* camera = static_cast<CameraNode*>(renderGraph->GetInstance(cameraNode_))) {
+                    // Orbit default is centered on (5,5,5); aim far off to one side instead.
+                    camera->SetLookTargetForTest(glm::vec3(60.0f, 5.0f, 5.0f));
+                    if (mainLogger) {
+                        mainLogger->Info("[LookTargetDemo] tick 1: SetLookTargetForTest(60,5,5)");
+                    }
+                }
+            }
+        }
+
         // Tiered-ESVO Inc2 M5 Task 11 live gate: env-gated scripted continuous zoom-out through
         // the single tier crossing proven in M3/M4 (VIXEN_TIER_ZOOM_DEMO=1, run alongside
         // VIXEN_TIER_CROSSING_DEMO=1 + VIXEN_TIER_CROSSING_LOD_COEF_OVERRIDE=0.6). Mirrors
