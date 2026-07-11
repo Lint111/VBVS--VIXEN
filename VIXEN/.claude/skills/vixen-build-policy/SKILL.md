@@ -223,6 +223,22 @@ any build, sanity-check the logged `source:` line** (`run_build_with_summary.ps1
 meant to build, the whole result (including a "target now builds!" fix-verification) is
 meaningless, silently.
 
+## Known gotcha: `VIXEN/binaries/VIXEN.exe` was a stale, unlinked copy (FIXED 2026-07-11)
+
+`VIXEN/binaries/` (source-tree, gitignored) and `CMAKE_BINARY_DIR/binaries` (the REAL build
+output, e.g. `build/ninja/binaries/`) are two different directories, and CMake never copied
+between them before 2026-07-11 — a `POST_BUILD` step (`VIXEN/application/main/CMakeLists.txt`)
+now mirrors the fresh `VIXEN.exe` into `VIXEN/binaries/` on every build, alongside the existing
+TBB-DLL copy. **Before this fix**, every hand-rolled capture `.bat` script that ran the relative
+path `binaries\VIXEN.exe` from `VIXEN_ROOT` (the established pattern across this repo's demo/gate
+scripts) was silently reading whichever copy was last placed there by hand — independent of
+whether the actual build was fresh. This produced at least one false "byte-identical" capture
+result (Inc3 M8 Task 21, 2026-07-11) before being caught. If you're on a checkout from before this
+fix landed, or writing a NEW capture script, don't assume `VIXEN\binaries\VIXEN.exe` is current —
+either confirm this `POST_BUILD` step exists in the CMakeLists you're building against, or run
+directly from `$<TARGET_FILE_DIR:VIXEN>` (the real build output dir) instead of the source-tree
+copy.
+
 ## Known gotcha: the shared status file is machine-wide, not per-build (mitigated by BuildId)
 
 `%TEMP%\vixen_build_status.txt` (`run_build_with_summary.ps1`'s live-status file) is a SINGLE
