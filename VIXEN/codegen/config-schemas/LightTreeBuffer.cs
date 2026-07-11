@@ -19,6 +19,14 @@ using Yeroket.Util.KernelFramework;
 //   worldExtent -- cube side length
 //   intensity   -- mean emissive intensity beneath this node (MipSample::value)
 //   coverage    -- fraction of the node's footprint that is actually emissive (0..1]
+//   _reserved0/1 -- explicit trailing pad to a 32B (16B-aligned) struct size. A leading
+//   Float3 field gives this struct a 16B BASE ALIGNMENT (std430 vec3 rule), which means
+//   an array of these structs (LightTreeBuffer.nodes[]) pads EACH ELEMENT up to the next
+//   16B multiple regardless of the trailing scalar fields' own natural size (24B here) --
+//   so the struct's OWN size must already be 32B or the C++/GLSL layouts silently diverge
+//   from the array stride. Kept explicit (not left to codegen's own struct-size rounding)
+//   because the emitter emits only INTER-field padding, not a trailing pad after the last
+//   field -- see the kernel-framework Known-Issues entry this struct's addition surfaced.
 [GpuStruct]
 public struct LightTreeGpuNode
 {
@@ -26,6 +34,8 @@ public struct LightTreeGpuNode
     public float worldExtent;
     public float intensity;
     public float coverage;
+    public float _reserved0;
+    public float _reserved1;
 }
 
 public static class LightTreeBufferLimits

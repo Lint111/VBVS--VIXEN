@@ -6,6 +6,8 @@ struct LightTreeGpuNode {
     float worldExtent;
     float intensity;
     float coverage;
+    float _reserved0;
+    float _reserved1;
 };
 struct LightTreeBuffer {
     uint nodeCount;

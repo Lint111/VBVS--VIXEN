@@ -10,12 +10,16 @@ struct LightTreeGpuNode {
     float worldExtent;
     float intensity;
     float coverage;
+    float _reserved0;
+    float _reserved1;
 };
 static_assert(sizeof(LightTreeGpuNode) == 32, "LightTreeGpuNode std430 size");
 static_assert(offsetof(LightTreeGpuNode, worldPosX) == 0, "worldPosX@0");
 static_assert(offsetof(LightTreeGpuNode, worldExtent) == 12, "worldExtent@12");
 static_assert(offsetof(LightTreeGpuNode, intensity) == 16, "intensity@16");
 static_assert(offsetof(LightTreeGpuNode, coverage) == 20, "coverage@20");
+static_assert(offsetof(LightTreeGpuNode, _reserved0) == 24, "_reserved0@24");
+static_assert(offsetof(LightTreeGpuNode, _reserved1) == 28, "_reserved1@28");
 struct LightTreeBuffer {
     uint32_t nodeCount;
     uint8_t _pad0[12];

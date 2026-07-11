@@ -52,6 +52,8 @@
 #include "Data/Nodes/WorldPosHistoryNodeConfig.h"      // Sampled Lighting Inc3 M2: worldPos/depth companion history image (KI-023)
 #include "Data/Nodes/PrevCameraConfigNodeConfig.h"     // Sampled Lighting Inc2 M3: prev-frame camera matrix upload ring
 #include "Data/Nodes/ReservoirConfigNodeConfig.h"      // Sampled Lighting Inc3 M3: ReservoirConfig upload ring (M4/M5 scaffolding)
+#include "Data/Nodes/LightTreeBufferNodeConfig.h"      // Sampled Lighting Inc3 M4: mip-cut light-tree upload ring
+#include "Data/Nodes/StorageBufferNodeConfig.h"        // Sampled Lighting Inc3 M4: reservoir CURRENT/PREVIOUS ping-pong SSBOs
 #include "Data/Nodes/ShaderLibraryNodeConfig.h"
 #include "Data/Nodes/SkyProjectionNodeConfig.h"  // Tiered ESVO Inc1 M3: address-derived sky-point composite pass
 #include "Data/Nodes/SwapChainNodeConfig.h"
@@ -90,6 +92,7 @@
 #include "Nodes/WorldPosHistoryNode.h"      // Sampled Lighting Inc3 M2: worldPos/depth companion history image (KI-023)
 #include "Nodes/PrevCameraConfigNode.h"     // Sampled Lighting Inc2 M3: prev-frame camera matrix upload ring
 #include "Nodes/ReservoirConfigNode.h"      // Sampled Lighting Inc3 M3: ReservoirConfig upload ring (M4/M5 scaffolding)
+#include "Nodes/LightTreeBufferNode.h"      // Sampled Lighting Inc3 M4: mip-cut light-tree upload ring
 #include "Nodes/LoopBridgeNode.h"
 #include "Nodes/PickIdTargetNode.h"
 #include "Nodes/PresentNode.h"
@@ -275,6 +278,21 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // byte-identical to M1/M2.
     NodeHandle reservoirConfigNode = renderGraph->AddNode<ReservoirConfigNodeType>("reservoir_config");
 
+    // Sampled Lighting Inc3 M4: mip-cut light-tree upload ring (binding 24) -- RIS candidate
+    // generation samples this. Content pushed via LightTreeBufferNode::SetLightTreeCut (host ->
+    // node seam, mirrors BodyOctreeSceneNode::SetInstances); empty by default (byte-identity
+    // escape hatch -- no cut pushed means nodeCount=0, DirectLighting.comp's RIS loop is a no-op).
+    NodeHandle lightTreeBufferNode = renderGraph->AddNode<LightTreeBufferNodeType>("light_tree_buffer");
+
+    // Sampled Lighting Inc3 M4: reservoir CURRENT/PREVIOUS ping-pong SSBOs (bindings 25/26) --
+    // one Vixen::Gpu::ReservoirRecord (16B) per pixel of the offscreen render target, same
+    // extent-driven StorageBufferNode pattern as hitRecordBufferNode above. TWO separate
+    // StorageBufferNode instances (not a single ring) because the ping-pong swap is EXPLICIT
+    // per-frame (current becomes next frame's previous) -- see the CPU-side swap below, mirrored
+    // by which gatherer binding/sync-slot each is wired to.
+    NodeHandle reservoirBufferA = renderGraph->AddNode<StorageBufferNodeType>("reservoir_buffer_a");
+    NodeHandle reservoirBufferB = renderGraph->AddNode<StorageBufferNodeType>("reservoir_buffer_b");
+
     // --- Input Node ---
     NodeHandle inputNode = renderGraph->AddNode<InputNodeType>("input_handler");
     inputNode_ = inputNode;                          // store for Update()'s live ProcessPendingInput() lookup
@@ -424,6 +442,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // outputImage's own extent (including under render-scale).
     auto* hitRecordBuffer = static_cast<StorageBufferNode*>(renderGraph->GetInstance(hitRecordBufferNode));
     hitRecordBuffer->SetParameter(StorageBufferNodeConfig::PARAM_BYTES_PER_PIXEL, 64u);
+
+    // Sampled Lighting Inc3 M4: reservoir ping-pong SSBOs sized to sizeof(Vixen::Gpu::
+    // ReservoirRecord) (16 B, see Generated/ReservoirRecord.g.h) bytes per pixel — same
+    // extent-follow pattern as hitRecordBuffer above.
+    auto* reservoirBufferAInst = static_cast<StorageBufferNode*>(renderGraph->GetInstance(reservoirBufferA));
+    reservoirBufferAInst->SetParameter(StorageBufferNodeConfig::PARAM_BYTES_PER_PIXEL, 16u);
+    auto* reservoirBufferBInst = static_cast<StorageBufferNode*>(renderGraph->GetInstance(reservoirBufferB));
+    reservoirBufferBInst->SetParameter(StorageBufferNodeConfig::PARAM_BYTES_PER_PIXEL, 16u);
 
     // Present parameters (needed for both graphics and compute)
     auto* present = static_cast<PresentNode*>(renderGraph->GetInstance(presentNode));
@@ -2261,6 +2287,29 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
                   reservoirConfigNode, ReservoirConfigNodeConfig::CURRENT_FRAME_INDEX);
 
+    // Sampled Lighting Inc3 M4: light-tree buffer node connections (same ring pattern as
+    // reservoirConfigNode above). Content pushed via LightTreeBufferNode::SetLightTreeCut
+    // (host -> node seam); empty by default (nodeCount=0 -> RIS loop is a no-op, the
+    // byte-identity escape hatch).
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  lightTreeBufferNode, LightTreeBufferNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                  lightTreeBufferNode, LightTreeBufferNodeConfig::CURRENT_FRAME_INDEX);
+
+    // Sampled Lighting Inc3 M4: reservoir CURRENT/PREVIOUS ping-pong SSBOs — device +
+    // extent-driven sizing from renderTargetNode's own RENDER_TARGET output, same
+    // pattern as hitRecordBufferNode (one Vixen::Gpu::ReservoirRecord per pixel of the
+    // offscreen render target, always matching outputImage's real per-dispatch extent
+    // including under render-scale).
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  reservoirBufferA, StorageBufferNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
+                  reservoirBufferA, StorageBufferNodeConfig::SWAPCHAIN_INFO)
+         .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  reservoirBufferB, StorageBufferNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
+                  reservoirBufferB, StorageBufferNodeConfig::SWAPCHAIN_INFO);
+
     // Connect push constant fields to push constant gatherer using member extraction
     // CameraNode now outputs a CameraData struct, so we can extract individual fields
     batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
@@ -2783,6 +2832,35 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // mirroring binding 21's own M3-predecessor plumbing-only precedent (PrevCameraConfig).
     batch.Connect(reservoirConfigNode, ReservoirConfigNodeConfig::RESERVOIR_CONFIG_BUFFER,
                           directLightingGatherer, 23,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
+    // Sampled Lighting Inc3 M4: Binding 24: LightTreeBuffer SSBO (mip-cut light-tree, re-uploaded
+    // per-frame from LightTreeBufferNode's ring). RIS candidate generation samples this — read-only
+    // in DirectLighting.comp, so plain Dependency|Execute wiring (like binding 23) is sufficient.
+    batch.Connect(lightTreeBufferNode, LightTreeBufferNodeConfig::LIGHT_TREE_BUFFER,
+                          directLightingGatherer, 24,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
+    // Sampled Lighting Inc3 M4: Bindings 25/26: reservoir CURRENT/PREVIOUS ping-pong SSBOs
+    // (Vixen::Gpu::ReservoirRecord[], one per pixel). BOTH buffers are ALWAYS bound at BOTH
+    // bindings 25/26 — DirectLighting.comp itself picks which is "current" (write) vs "previous"
+    // (read) each frame via reservoirConfig.frameParity&1 (see ReservoirConfig.cs's own doc
+    // comment), so no CPU-side rewiring/swap is needed frame-to-frame.
+    //
+    // No sync slot (Execute-only, like worldPosHistoryImage@22 and historyImage@20): this is a
+    // SAME-NODE persistent resource read-of-own-previous-write, not a cross-node hazard — frame
+    // N's dispatch fully completes (FrameSyncNode's in-flight-fence CPU-GPU wait) before frame N+1's
+    // dispatch begins, so there is no genuine concurrent-GPU-execution race across frames on the
+    // SAME node's own resource (the M2 Progress Log documents this exact precedent for
+    // historyImage/worldPosHistoryImage: "a genuine but benign intra-dispatch cross-invocation
+    // race — NOT a new hazard class"). Only the intra-frame per-invocation read/write ordering
+    // within a single dispatch is in play, which is benign here since RIS/WRS per-pixel logic is
+    // independent across pixels (each invocation only touches ITS OWN pixel's reservoir record).
+    batch.Connect(reservoirBufferA, StorageBufferNodeConfig::STORAGE_BUFFER,
+                          directLightingGatherer, 25,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(reservoirBufferB, StorageBufferNodeConfig::STORAGE_BUFFER,
+                          directLightingGatherer, 26,
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
     // Binding 0 (outputImage): DirectLighting is the genuine writer now (the march never

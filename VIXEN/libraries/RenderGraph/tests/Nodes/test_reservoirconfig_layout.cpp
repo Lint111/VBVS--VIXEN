@@ -26,10 +26,11 @@
 using Vixen::Gpu::ReservoirConfig;
 
 TEST(ReservoirConfigLayout, StructSizeMatchesStd430) {
-    // 7 fields (4 uint32 + 3 float, std430 scalar packing, no vec/array
-    // members needing 16-byte alignment) = 28 bytes.
-    EXPECT_EQ(sizeof(ReservoirConfig), 28u)
-        << "ReservoirConfig must be 28 bytes (Inc3 M3 contract: 4x uint32 + 3x float, std430)";
+    // 8 fields (5 uint32 + 3 float, std430 scalar packing, no vec/array
+    // members needing 16-byte alignment) = 32 bytes (Sampled Lighting Inc3 M4
+    // added frameParity — the reservoir ping-pong buffer selector).
+    EXPECT_EQ(sizeof(ReservoirConfig), 32u)
+        << "ReservoirConfig must be 32 bytes (Inc3 M4 contract: 5x uint32 + 3x float, std430)";
 }
 
 TEST(ReservoirConfigLayout, FieldOffsetsMatchDeclarationOrder) {
@@ -40,6 +41,7 @@ TEST(ReservoirConfigLayout, FieldOffsetsMatchDeclarationOrder) {
     EXPECT_EQ(offsetof(ReservoirConfig, temporalCap),          16u);
     EXPECT_EQ(offsetof(ReservoirConfig, biasedModeEnabled),    20u);
     EXPECT_EQ(offsetof(ReservoirConfig, lightTreeCutThreshold),24u);
+    EXPECT_EQ(offsetof(ReservoirConfig, frameParity),          28u);
 }
 
 // A default-constructed (value-initialized) ReservoirConfig must be entirely
@@ -56,4 +58,5 @@ TEST(ReservoirConfigLayout, ValueInitializedIsAllZero) {
     EXPECT_EQ(cfg.temporalCap, 0u);
     EXPECT_EQ(cfg.biasedModeEnabled, 0u);
     EXPECT_FLOAT_EQ(cfg.lightTreeCutThreshold, 0.0f);
+    EXPECT_EQ(cfg.frameParity, 0u);
 }

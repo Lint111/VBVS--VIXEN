@@ -145,6 +145,132 @@ layout(std430, binding = 23) readonly buffer ReservoirConfigSSBO {
 };
 
 // ============================================================================
+// LIGHT TREE BUFFER (binding 24) — Sampled Lighting Inc3 M4
+// ============================================================================
+// Mip-cut light-tree (LightTree.h's BuildLightTreeCut output, uploaded per-frame by
+// LightTreeBufferNode) — RIS candidate generation samples these nodes uniformly
+// (importance-by-power is a stretch goal, not required for unbiasedness — see
+// Reservoir.h's file header, the CPU mirror this shader's RIS/combine logic follows).
+#include "Generated/LightTreeBuffer.glsl"
+
+layout(std430, binding = 24) readonly buffer LightTreeBufferSSBO {
+    LightTreeBuffer lightTreeBuffer;
+};
+
+// ============================================================================
+// RESERVOIR CURRENT/PREVIOUS PING-PONG (bindings 25/26) — Sampled Lighting Inc3 M4
+// ============================================================================
+// Both buffers are ALWAYS bound at BOTH bindings; reservoirConfig.frameParity&1 (see
+// ReservoirConfig.cs's own doc comment) picks which is CURRENT (this frame's write
+// target) vs PREVIOUS (last frame's reservoir, read for temporal reuse) — no CPU-side
+// rewiring needed frame-to-frame. One Vixen::Gpu::ReservoirRecord per pixel, flat
+// row-major pixelCoords addressing (same convention as HitRecordBuffer).
+#include "Generated/ReservoirRecord.glsl"
+
+layout(std430, binding = 25) buffer ReservoirBufferA {
+    ReservoirRecord reservoirRecordsA[];
+};
+layout(std430, binding = 26) buffer ReservoirBufferB {
+    ReservoirRecord reservoirRecordsB[];
+};
+
+// ============================================================================
+// RIS / RESERVOIR MATH (Sampled Lighting Inc3 M4) — GPU twin of Reservoir.h
+// ============================================================================
+// SYNC CONTRACT: reservoirUpdate/reservoirUnbiasedWeight/reservoirCombine below are a
+// line-by-line port of libraries/SVO/include/Reservoir.h's Reservoir::Update /
+// Reservoir::UnbiasedWeight / Reservoir::Combine — see that file's header for the full
+// WRS/MIS derivation (unbiasedness identity, temporal-combine-as-resumed-WRS-stream).
+// Any change here must be mirrored there (test_reservoir_mirror.cpp's CPU-mirror tests
+// are the red-green gate for this math, run BEFORE trusting this GPU path).
+
+// Small self-contained PCG-style hash RNG (no existing GLSL PRNG utility in this
+// codebase) — seeded per-pixel-per-frame so RIS draws differ both across pixels and
+// across frames (temporal RIS needs fresh candidates each frame to actually explore,
+// not resample the identical set every time).
+uint pcgHash(uint v) {
+    uint state = v * 747796405u + 2891336453u;
+    uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+    return (word >> 22u) ^ word;
+}
+
+// Returns a fresh uniform float in [0,1) each call, advancing `state` (caller-owned).
+float rngNextFloat(inout uint state) {
+    state = pcgHash(state);
+    return float(state) * (1.0 / 4294967296.0);  // 2^32
+}
+
+// Target-function value p_hat(i) for light-tree cut node i: emitted power (intensity *
+// coverage) / squared distance to the shading point — unshadowed contribution estimate,
+// NO visibility term (visibility is applied only once, at final shade time, on the
+// reservoir's ONE chosen sample — see Reservoir.h's header for why this is what keeps
+// RIS's shadow-ray cost O(1) per pixel instead of O(candidateCount)).
+float lightTreeNodePHat(uint nodeIdx, vec3 shadingPos) {
+    LightTreeGpuNode node = lightTreeBuffer.nodes[nodeIdx];
+    vec3 toLight = node.worldPos - shadingPos;
+    float dist2 = max(dot(toLight, toLight), 1e-4);
+    return (node.intensity * node.coverage) / dist2;
+}
+
+// WRS update (Reservoir::Update mirror): streams ONE candidate into the reservoir.
+void reservoirUpdate(inout ReservoirRecord r, uint candidateIndex, float pHat, float sourcePdf, float u) {
+    if (sourcePdf <= 0.0) return;
+
+    float w = pHat / sourcePdf;
+    r.weightSum += w;
+    r.sampleCount += 1u;
+
+    if (r.weightSum > 0.0 && u < (w / r.weightSum)) {
+        r.y = candidateIndex;
+        r.targetPdf = pHat;
+    }
+}
+
+// W = (1/targetPdf) * (weightSum/sampleCount) (Reservoir::UnbiasedWeight mirror).
+float reservoirUnbiasedWeight(ReservoirRecord r) {
+    if (r.y == 0xFFFFFFFFu || r.sampleCount == 0u || r.targetPdf <= 0.0) return 0.0;
+    return (1.0 / r.targetPdf) * (r.weightSum / float(r.sampleCount));
+}
+
+// Temporal combine (Reservoir::Combine mirror): folds a validated, reprojected previous
+// reservoir into the current one via the "resume the same WRS stream" identity.
+void reservoirCombine(inout ReservoirRecord current, ReservoirRecord prev, float pHatAtPrevY, float u) {
+    if (prev.y == 0xFFFFFFFFu || prev.sampleCount == 0u || prev.weightSum <= 0.0) return;
+
+    current.weightSum += prev.weightSum;
+    current.sampleCount += prev.sampleCount;
+
+    if (current.weightSum > 0.0 && u < (prev.weightSum / current.weightSum)) {
+        current.y = prev.y;
+        current.targetPdf = pHatAtPrevY;
+    }
+}
+
+// Builds a fresh reservoir from reservoirConfig.candidateCount uniform draws over the
+// light-tree cut (Reservoir::BuildFromUniformCandidates mirror). Returns an
+// empty/invalid reservoir (y=0xFFFFFFFF) if the cut has no nodes this frame.
+ReservoirRecord reservoirBuildFromLightTree(vec3 shadingPos, inout uint rngState) {
+    ReservoirRecord r;
+    r.y = 0xFFFFFFFFu;
+    r.weightSum = 0.0;
+    r.sampleCount = 0u;
+    r.targetPdf = 0.0;
+
+    uint cutCount = lightTreeBuffer.nodeCount;
+    if (cutCount == 0u) return r;
+
+    float sourcePdf = 1.0 / float(cutCount);
+    uint M = max(reservoirConfig.candidateCount, 1u);
+    for (uint i = 0u; i < M; ++i) {
+        uint candidateIndex = uint(rngNextFloat(rngState) * float(cutCount));
+        candidateIndex = min(candidateIndex, cutCount - 1u);
+        float pHat = lightTreeNodePHat(candidateIndex, shadingPos);
+        reservoirUpdate(r, candidateIndex, pHat, sourcePdf, rngNextFloat(rngState));
+    }
+    return r;
+}
+
+// ============================================================================
 // PUSH CONSTANTS: the `pc` block (PushConstants, incl. DEBUG_MODE_* defines) is
 // declared once in SceneBindings.glsl (#included above) — this pass reads the
 // SAME push-constant range the march does: cameraPos/Dir/Up/Right/fov/aspect
@@ -245,6 +371,123 @@ void main() {
                                                bestRoughness, lightingConfig);
     } else {
         outColor = skyColor;
+    }
+
+    // -----------------------------------------------------------------------
+    // ReSTIR DI: RIS initial candidates + temporal reservoir reuse (Sampled Lighting
+    // Inc3 M4). reservoirEnabled==0 (the default) skips this block entirely --
+    // outColor stays EXACTLY the pre-ReSTIR M1/M2/M3 result (the byte-identity
+    // escape hatch every milestone in this program has preserved since Inc0).
+    //
+    // Unbiased DI ONLY this milestone (no spatial reuse -- M5; no biased mode --
+    // explicitly deferred per the plan's Self-Review). One shadow ray per pixel
+    // (cast against the reservoir's ONE chosen sample), same O(1)-per-pixel
+    // visibility cost as the analytic path above, regardless of candidateCount.
+    // -----------------------------------------------------------------------
+    if (reservoirConfig.reservoirEnabled != 0u && anyHitRT) {
+        uint reservoirIdx = uint(pixelCoords.y) * uint(imgSize.x) + uint(pixelCoords.x);
+
+        // frameParity picks which ping-pong buffer is CURRENT (this frame's write
+        // target) vs PREVIOUS (last frame's reservoir, read for temporal reuse) --
+        // see ReservoirConfig.cs's own doc comment. Both buffers are always bound;
+        // only the ROLE each plays this frame changes.
+        bool parityEven = (reservoirConfig.frameParity & 1u) == 0u;
+
+        // RNG seed: per-pixel (so neighboring pixels draw independent candidates)
+        // XOR'd with frameParity (so the SAME pixel draws a fresh candidate set
+        // every frame, not the identical one -- temporal RIS needs new exploration
+        // each frame to converge, per Reservoir.h's header).
+        uint rngState = pcgHash(reservoirIdx ^ (reservoirConfig.frameParity * 2654435761u));
+
+        ReservoirRecord current = reservoirBuildFromLightTree(bestWorldPos, rngState);
+
+        // Temporal reuse: fold in the REPROJECTED previous-frame reservoir, validated
+        // GEOMETRICALLY via the SAME worldPosHistoryImage buffer KI-023's reproject
+        // reject uses (M2) -- one buffer, two consumers, per the plan's design note.
+        // Reprojection uses the SAME prevCameraConfig.prevViewProj + bounds/motion-
+        // magnitude checks as the accumulation seam below (this block runs BEFORE
+        // that seam reads worldPosHistoryImage's OWN reproject branch, so it performs
+        // its own independent reproject here rather than depending on accumulation
+        // being enabled).
+        if (accumulationConfig.reprojectionEnabled != 0u) {
+            vec4 prevClip = prevCameraConfig.prevViewProj * vec4(bestWorldPos, 1.0);
+            if (prevClip.w > 1e-5) {
+                vec2 prevNDC = prevClip.xy / prevClip.w;
+                vec2 reprojUV = prevNDC * 0.5 + 0.5;
+                bool onScreen = all(greaterThanEqual(reprojUV, vec2(0.0))) &&
+                                all(lessThanEqual(reprojUV, vec2(1.0)));
+                if (onScreen) {
+                    ivec2 reprojTexel = clamp(ivec2(reprojUV * vec2(imgSize)), ivec2(0), imgSize - ivec2(1));
+                    vec2 texelDelta = vec2(reprojTexel - pixelCoords);
+                    const float kMaxReprojTexelDist = 64.0;  // 8px radius, matches the accumulation seam's own bound
+                    if (dot(texelDelta, texelDelta) <= (kMaxReprojTexelDist * kMaxReprojTexelDist)) {
+                        vec4 histWorldPosT = imageLoad(worldPosHistoryImage, reprojTexel);
+                        const float kMaxReprojWorldPosDelta = 0.1;  // matches the accumulation seam's own epsilon
+                        if (distance(histWorldPosT.xyz, bestWorldPos) <= kMaxReprojWorldPosDelta) {
+                            uint prevReservoirIdx = uint(reprojTexel.y) * uint(imgSize.x) + uint(reprojTexel.x);
+                            ReservoirRecord prevReservoir = parityEven
+                                ? reservoirRecordsB[prevReservoirIdx]
+                                : reservoirRecordsA[prevReservoirIdx];
+
+                            // Cap the carried sample count (ReservoirConfig.temporalCap) -- bounds how
+                            // "stale" a long-lived temporal reservoir can get, mirrors
+                            // AccumulationConfig.maxFrames's role for the EWMA history.
+                            if (prevReservoir.sampleCount > reservoirConfig.temporalCap) {
+                                float scale = float(reservoirConfig.temporalCap) / float(prevReservoir.sampleCount);
+                                prevReservoir.weightSum *= scale;
+                                prevReservoir.sampleCount = reservoirConfig.temporalCap;
+                            }
+
+                            if (prevReservoir.y != 0xFFFFFFFFu && prevReservoir.y < lightTreeBuffer.nodeCount) {
+                                // Re-evaluate p_hat at THIS frame's shading point/geometry (the
+                                // re-evaluation that keeps the combine unbiased under a moving
+                                // target function -- Reservoir.h's header).
+                                float pHatAtPrevY = lightTreeNodePHat(prevReservoir.y, bestWorldPos);
+                                reservoirCombine(current, prevReservoir, pHatAtPrevY, rngNextFloat(rngState));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Shade with the reservoir's ONE chosen sample: one shadow ray (visibility is
+        // applied here, ONCE, not during RIS candidate generation -- see
+        // lightTreeNodePHat's own comment), weighted by the unbiased contribution
+        // weight W. ADDITIVE to the analytic computeLightingWithShadows result above
+        // (ReSTIR DI approximates the SAME many-light integral the light-tree's
+        // emissive voxels contribute; the analytic lighting.lights[] array is a
+        // SEPARATE, disjoint light set -- authored lights, not emissive-voxel lights).
+        if (current.y != 0xFFFFFFFFu && current.y < lightTreeBuffer.nodeCount) {
+            LightTreeGpuNode chosen = lightTreeBuffer.nodes[current.y];
+            vec3 toLight = chosen.worldPos - bestWorldPos;
+            float dist2 = max(dot(toLight, toLight), 1e-4);
+            vec3 lightDir = toLight * inversesqrt(dist2);
+
+            float shadowFactor = 1.0;
+            if (shadowConfig.enabled != 0u) {
+                vec3 shadowOrigin = bestWorldPos + bestNormal * shadowConfig.biasEpsilon;
+                float lightDist = sqrt(dist2);
+                bool occluded = TraceWorldShadow(shadowOrigin, lightDir, 0.0, lightDist);
+                shadowFactor = occluded ? 0.0 : 1.0;
+            }
+
+            float NdotL = max(dot(bestNormal, lightDir), 0.0);
+            float emittedPower = chosen.intensity * chosen.coverage;
+            float W = reservoirUnbiasedWeight(current);
+            // pHat already folds in 1/dist2 (see lightTreeNodePHat) -- the shaded
+            // contribution is bestColor (Lambertian albedo response) * emittedPower/
+            // dist2 * NdotL * shadowFactor * W, i.e. f(y)*W with f(y) = the SAME
+            // target-function integrand pHat estimates (RIS's unbiasedness identity).
+            outColor += bestColor * (emittedPower / dist2) * NdotL * shadowFactor * W;
+        }
+
+        // Publish this frame's reservoir into whichever buffer is CURRENT this frame.
+        if (parityEven) {
+            reservoirRecordsA[reservoirIdx] = current;
+        } else {
+            reservoirRecordsB[reservoirIdx] = current;
+        }
     }
 
     // Debug visualisation modes (reuse the last instance's debug sample —
