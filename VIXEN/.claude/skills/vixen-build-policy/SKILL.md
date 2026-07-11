@@ -69,12 +69,14 @@ powershell -ExecutionPolicy Bypass -File VIXEN\scripts\build\check_build_lock.ps
   visibility into how long that wait will be. Register in the queue instead (below), then go
   do something else.
 
-**While a build is queued or running — go do other work.** Docs, code review, planning the
-next phase, reading a previous test run's output. A blocked build is not a blocked agent. This
-is the same principle as the `multi-worktree-sync` skill's build-traffic-control section — this
-skill is the VIXEN-specific implementation of it.
+**While a build is queued or running, stay ACTIVE — do not go idle.** If you have other useful
+work to interleave (docs, code review, planning the next phase), do it between status checks.
+But the wait itself must be driven by an active foreground poll loop on the ~20s cadence below,
+never a background wakeup/idle wait — see "Queue and notification" for why. This is the same
+principle as the `multi-worktree-sync` skill's build-traffic-control section — this skill is
+the VIXEN-specific implementation of it.
 
-## Queue and notification: register, do other work, get pinged on your turn
+## Queue and notification: register, poll actively, go on your turn
 
 Use this instead of directly calling `build.bat` when the lock is held, or whenever you want
 fair ordering + visibility instead of a blind synchronous wait.
@@ -83,11 +85,11 @@ fair ordering + visibility instead of a blind synchronous wait.
 # 1. Register — cheap, instant, non-blocking. Prints your TicketId and queue position.
 powershell -ExecutionPolicy Bypass -File VIXEN\scripts\build\build_queue.ps1 -Register -AgentId "<your-agent-id>" -Note "<why you're building>"
 
-# 2. Go do other work. Do NOT sit in a tight poll loop — that defeats the purpose.
-#    Use ScheduleWakeup (a few minutes out, or longer for a known-busy machine) to come back
-#    and check, rather than blocking this turn.
+# 2. Poll -Status actively every ~20s (see below) until YOUR_TURN. Do NOT hand the wait off to
+#    ScheduleWakeup or a background Monitor task and go idle — those have repeatedly failed to
+#    reliably wake the agent back up on this machine, silently stalling the whole turn.
 
-# 3. Check status (repeat via ScheduleWakeup until YOUR_TURN):
+# 3. Check status (repeat in the active ~20s loop until YOUR_TURN):
 powershell -ExecutionPolicy Bypass -File VIXEN\scripts\build\build_queue.ps1 -Status -TicketId <id>
 #   YOUR_TURN        -> position 1 AND the lock is free. Call build.bat now.
 #   WAITING          -> not your turn yet (either not position 1, or position 1 but the lock
@@ -102,14 +104,31 @@ powershell -ExecutionPolicy Bypass -File VIXEN\scripts\build\build_queue.ps1 -Re
 `-ListQueue` shows the whole queue (position, agent, note, registration time) plus current
 lock state — useful for a human or an orchestrating agent to see who's waiting.
 
-**Notification mechanism, concretely**: there is no push/interrupt — "notification" here means
-structuring the wait as `ScheduleWakeup` (fire in N minutes, re-check `-Status`, reschedule if
-still `WAITING`) rather than either (a) a blocking synchronous wait that ties up a whole turn,
-or (b) a tight poll loop that wastes cycles. Pick the `ScheduleWakeup` delay based on what
-you're actually waiting on — a build that's been running 2 minutes probably has more to go;
-check back on an interval proportional to how long builds on this project typically take (see
-Fix 8's measurements: real builds run 1-3+ minutes even mostly-cached, longer from scratch),
-not a fixed short interval.
+**Notification mechanism, concretely — active polling, NOT `ScheduleWakeup`/`Monitor`.**
+`ScheduleWakeup` and background-task notifications have repeatedly failed to reliably wake an
+agent back up on this machine — an agent that goes idle waiting on one is liable to just stay
+idle, silently stalling the whole turn with no one watching. Do not rely on them for a build
+wait. Instead, poll `-Status` from an **active foreground loop directly in the same turn**, on
+a ~20 second interval, per the standing rule in CLAUDE.md for any long-running
+build/configure/render/deploy: never a silent `sleep`/blind wait, always a loop that prints a
+readable status line each iteration so both the user and the agent's own process stay live and
+attentive. Concretely, something like:
+
+```bash
+while true; do
+  out=$(powershell -ExecutionPolicy Bypass -File VIXEN\scripts\build\build_queue.ps1 -Status -TicketId <id>)
+  echo "[queue] $out"
+  echo "$out" | grep -q YOUR_TURN && break
+  sleep 20
+done
+```
+
+This is a real foreground command (or the harness's Monitor/until-loop equivalent driving the
+same query), not a background task — the agent stays active and re-checks every ~20s rather
+than parking on a wakeup that may never fire. Only reach for a longer interval if a build is
+already known to run long (Fix 8: real builds run 1-3+ minutes even mostly-cached) AND the
+agent is deliberately doing other useful work in parallel between checks — the default,
+un-supervised wait is always the ~20s active loop.
 
 **Ticket hygiene**: tickets are files under `%TEMP%\vixen_build_queue\`, not tied to a process
 lifetime the way the Mutex is — a crashed/killed agent's ticket does NOT auto-release. Every
@@ -194,8 +213,11 @@ line matches your worktree, per the gotcha above) — never the shared status fi
   Fix 7-10 fixed. If you need a scoped/target-specific build, still go through
   `run_build_with_summary.ps1` (it accepts the same preset-based `cmake --build` underneath;
   don't hand-roll a separate invocation).
-- Don't poll `-Status`/`check_build_lock.ps1` in a tight loop — use `ScheduleWakeup` at a
-  sensible interval instead.
+- Don't poll `-Status`/`check_build_lock.ps1` in a sub-second tight loop that wastes cycles —
+  but DO poll actively on a ~20s cadence (see "Queue and notification" above). Don't hand the
+  wait off to `ScheduleWakeup` or a background `Monitor` task and go idle instead — those have
+  repeatedly failed to reliably resume the agent on this machine, which stalls the whole turn
+  with nothing watching it. An active 20s foreground loop is the correct middle ground.
 - Don't assume the lock/queue coordinates with a WSL-side build (undertow or otherwise) — it
   doesn't, by design (see Platform scope above).
 - Don't leave a queue ticket unreleased "because it'll expire eventually" — release it
