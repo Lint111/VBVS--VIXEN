@@ -1774,3 +1774,50 @@ first-principles footprint math, hop-composition invariants):
   demo-construction follow-up (give T1 its own recorded surface position instead of
   aliasing T0's), not an engine defect. This IS the tier-crossing mechanism's foundational
   closure.**
+
+## M8 Task 24 — hop1's own surface anchor + the real two-hop ground-to-orbit flight (2026-07-12)
+
+Context: Task 23 (Opus-APPROVED) shipped the foundational, knob-free, camera-anchored tier-crossing
+gate and proved it correct through ARBITRARY hop depth by hand-derivation — hop1 is not a math
+problem. hop1 never visually appeared in Task 23's live gate for one specific, narrow reason:
+`m8EarthHop1OctantWorld_ = m8EarthHop0OctantWorld_` (`BuildRenderGraph.cpp:1940`) — T1's own marked
+crossing leaf (inside T1's own octree, itself a child of T0's hop0 crossing) was never given its own
+recorded world position; the flight schedule aims at T0's octant for BOTH hops. This is a small,
+well-understood construction gap, not a structural unknown — Sonnet-medium is the right tier per the
+dispatch-escalation-pattern (only escalate after 2 failed rounds on the SAME blocker; this is a fresh,
+narrowly-scoped task, not a continuation of Task 23's dead ends).
+
+### Task 24 — give T1 its own anchor, then prove the real two-hop flight
+- [ ] Find/compute T1's OWN marked crossing leaf's world position (analogous to how
+  `m8EarthHop0OctantWorld_` was derived for T0's octant — likely the SAME construction logic,
+  applied one level down: T1's own octree has its own `RootLeafOctantCenterLocal`-placed marked leaf,
+  transformed through T0→T1's `childOriginLocal`/`childScale` remap into T0's local frame, then into
+  world space). Record it as its own field (e.g. `m8EarthHop1SurfaceWorld_`), do NOT alias hop0's.
+- [ ] Re-derive (prediction-first, from Task 23's now-proven gate formula) the camera-to-T1-surface
+  distance where hop1 (T1→T2) clears the gate — Task 23's report predicted D1≈7.286e-3wu using the
+  OLD (aliased) target; recompute against the NEW, correct T1-relative anchor, since the geometry
+  relationship changes.
+- [ ] Build the actual flight schedule: approach T0's octant (hop0 fires, already proven), continue
+  the flight toward T1's OWN surface anchor (not T0's point) so hop1 has a chance to clear its gate
+  too. This may need the schedule to retarget (Task 16/19's `SetLookTargetForTest`/
+  `SetPositionForTest`/`SetLookTargetNoOrbitForTest`, all unchanged, already proven) between the two
+  legs, or a continuous single trajectory if the two anchors are close enough — determine which from
+  the actual recorded positions, don't assume.
+- [ ] Live gate, prediction-first: verify hop1 fires at the predicted distance, genuine per-tier
+  color (T2's own color, not T1's, not gray, not sky) confirmed by pixel-decode — same discipline as
+  Task 23's hop0 proof (exact color values, monotonic shrink, bracket the predicted vanish/appear
+  distance).
+- [ ] **This is the actual epic gate: a continuous flight demonstrating BOTH hops live** — T0→T1 AND
+  T1→T2, each genuinely color-attributable at its own predicted distance, at the TRUE childScale=2^-10
+  ratio, using the now-foundational knob-free gate. Per-frame pixel-delta seamlessness through both
+  transitions. float32 honesty at the compounded 2^-20 ratio if reached.
+- [ ] Full regression sweep (unity/chain/observable/default) — Task 23's byte-identical baselines must
+  still hold; the ordinary gate must remain untouched by this purely-construction-side change.
+- [ ] Docs closure: design doc §9 + plan-doc Progress Log — this is likely the entry that finally
+  closes the epic's original ask ("a proper surface-to-orbit view of planets of proper scale") in full,
+  both hops, true ratio, no hand-tuned constant.
+
+**M8 Task 24 gate (the epic's true, complete headline):** a live, validated, visually-confirmed,
+continuous ground-to-orbit flight through BOTH true 2^-10 tier crossings, each genuinely
+color-attributable (not gray, not sky) at its own hand-predicted distance, using Task 23's foundational
+knob-free gate — the epic's original ask, fully realized.
