@@ -79,6 +79,22 @@ void CameraNode::SetupImpl(TypedSetupContext& ctx) {
     applyIfChanged(CameraNodeConfig::PARAM_ORBIT_DISTANCE, lastParamOrbitDist_, [&](float v) {
         orbitDistance = glm::clamp(v, kOrbitDistanceMin, kOrbitDistanceMax);
     });
+    // Tiered-ESVO Inc3 M8: an explicit look-target write is itself a declaration of intent
+    // (mirrors the orbit-center block below) -- latch hasLookTarget_ so UpdateCameraData stops
+    // defaulting forward at orbitCenter from this SetupImpl onward. lookTarget_ starts at
+    // orbitCenter's CURRENT value so a partial write (e.g. only X set) doesn't leave Y/Z at the
+    // stale {0,0,0} default.
+    if (GetParameter(CameraNodeConfig::PARAM_LOOK_TARGET_X) ||
+        GetParameter(CameraNodeConfig::PARAM_LOOK_TARGET_Y) ||
+        GetParameter(CameraNodeConfig::PARAM_LOOK_TARGET_Z)) {
+        if (!hasLookTarget_) {
+            lookTarget_ = orbitCenter;
+        }
+        hasLookTarget_ = true;
+    }
+    applyIfChanged(CameraNodeConfig::PARAM_LOOK_TARGET_X, lastParamLookX_, [&](float v) { lookTarget_.x = v; });
+    applyIfChanged(CameraNodeConfig::PARAM_LOOK_TARGET_Y, lastParamLookY_, [&](float v) { lookTarget_.y = v; });
+    applyIfChanged(CameraNodeConfig::PARAM_LOOK_TARGET_Z, lastParamLookZ_, [&](float v) { lookTarget_.z = v; });
 
     // Orbit target: defaults match the main app's Cornell-box demo scene. A consumer whose
     // geometry sits elsewhere (e.g. vixen_editor's object-centered documents) sets these params
@@ -314,16 +330,26 @@ void CameraNode::UpdateCameraData(float aspectRatio) {
         orbitOffset.z = orbitDistance * cos(pitch) * cos(yaw);
 
         cameraPosition = orbitCenter + orbitOffset;
-        forward = glm::normalize(orbitCenter - cameraPosition);
-        lookTarget = orbitCenter;
+        // Tiered-ESVO Inc3 M8: forward aims at the genuine look-target when one has been set
+        // (SetLookTargetForTest / PARAM_LOOK_TARGET_*), decoupling the view direction from the
+        // orbit pivot. Default (hasLookTarget_ == false, every pre-M8 scene) aims at orbitCenter
+        // exactly as before -- byte-identical to pre-M8.
+        lookTarget = hasLookTarget_ ? lookTarget_ : orbitCenter;
+        forward = glm::normalize(lookTarget - cameraPosition);
     } else {
-        // FIXED MODE: cameraPosition stays at its configured value; forward is derived
-        // from yaw/pitch directly (mirrors CompileImpl's initial-frame formula).
-        forward.x = cos(pitch) * sin(yaw);
-        forward.y = sin(pitch);
-        forward.z = -cos(pitch) * cos(yaw);
-        forward = glm::normalize(forward);
-        lookTarget = cameraPosition + forward;
+        // FIXED MODE: cameraPosition stays at its configured value. With no look-target,
+        // forward is derived from yaw/pitch directly (mirrors CompileImpl's initial-frame
+        // formula) -- unchanged from pre-M8. With a look-target set, aim at it instead.
+        if (hasLookTarget_) {
+            lookTarget = lookTarget_;
+            forward = glm::normalize(lookTarget - cameraPosition);
+        } else {
+            forward.x = cos(pitch) * sin(yaw);
+            forward.y = sin(pitch);
+            forward.z = -cos(pitch) * cos(yaw);
+            forward = glm::normalize(forward);
+            lookTarget = cameraPosition + forward;
+        }
     }
 
     glm::vec3 right = glm::normalize(glm::cross(forward, glm::vec3(0.0f, 1.0f, 0.0f)));

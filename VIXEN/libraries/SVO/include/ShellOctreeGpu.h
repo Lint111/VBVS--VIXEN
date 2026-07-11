@@ -535,6 +535,32 @@ inline SerializedOctree Serialize(const ShellOctree& shell) {
 // a different quantity entirely — see TierRef.h §3.3). The caller must
 // supply it explicitly, exactly as the plan's own Task 4 text specifies
 // (`setTierCrossing(tierRefIndex, childRootScale)`).
+
+// Tiered-ESVO Inc3 M5 Task 9: the marked leaf's OWN cell center, in the
+// PARENT's local [1,2) frame, for a leaf that is a DIRECT CHILD OF THE ROOT
+// (parentDescriptorIndex==0 — every tier-crossing demo fixture to date marks
+// only root-level leaves). TierRef.h's own header requires childOriginLocal
+// to be "the point that maps to the child's [1,2) frame center" (the SumTail
+// composition's inverse, remapRayIntoChildFrame); for a root-level leaf that
+// point is the LEAF'S OWN CENTER, at (1.25 or 1.75) per axis depending on
+// the octant's bit (bit0=x,bit1=y,bit2=z; SVOTypes.h's mirroredToLocalOctant
+// convention) — NEVER the constant (1.5,1.5,1.5), which is the ROOT CUBE'S
+// shared CORNER, common to all 8 octants, not any one octant's center. Using
+// that corner as childOriginLocal was the M5 root-caused defect: it makes
+// the octant corner nearest (1.5,1.5,1.5) a SCALE-INVARIANT FIXED POINT (the
+// remap maps it to 1.5 regardless of childScale) while the leaf's opposite
+// corner races away proportionally to 1/childScale — a corner-anchored,
+// non-concentric "wedge" collapse instead of a shrink centered on the leaf,
+// with the far side immediately clipped by the child tree's own [1,2)
+// domain boundary (hence the observed near-zero magnification and the
+// silhouette saturating almost immediately below childScale==1.0).
+inline glm::vec3 RootLeafOctantCenterLocal(int octant) {
+    return glm::vec3(
+        (octant & 1) ? 1.75f : 1.25f,
+        (octant & 2) ? 1.75f : 1.25f,
+        (octant & 4) ? 1.75f : 1.25f);
+}
+
 inline void MarkLeafAsTierCrossing(SerializedOctree& out,
                                    uint32_t parentDescriptorIndex,
                                    int octant,

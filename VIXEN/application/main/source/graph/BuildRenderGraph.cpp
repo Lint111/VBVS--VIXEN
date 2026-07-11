@@ -648,6 +648,42 @@ void VulkanGraphApplication::BuildRenderGraph() {
         mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_ZOOM_DEMO: orbitCenter set to demo body's "
                           "world center (64,64,64) so the scripted zoom actually orbits the body");
     }
+    // Tiered-ESVO Inc3 M4: the SAME orbitCenter gotcha applies to the Earth-scale zoom demo
+    // (VIXEN_TIER_EARTH_ZOOM_DEMO's own body is built at the IDENTICAL world center
+    // (64,64,64) as VIXEN_TIER_CROSSING_DEMO/VIXEN_TIER_CHAIN_DEMO/VIXEN_TIER_ZOOM_DEMO) --
+    // this demo's own scripted SetOrbitDistanceForTest call would otherwise orbit the stale
+    // Cornell-box default (5,5,5), producing a distant/empty-looking capture regardless of
+    // orbitDistance (caught live: this milestone's first capture pass showed a tiny distant
+    // dot at EVERY tick, near and far alike, until this was added -- the exact class of bug
+    // M5's own comment above already documents and warns about).
+    if (std::getenv("VIXEN_TIER_EARTH_ZOOM_DEMO") || std::getenv("VIXEN_TIER_EARTH_ZOOM_SCRIPT")) {
+        camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_X, 64.0f);
+        camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_Y, 64.0f);
+        camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_Z, 64.0f);
+        camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_DISTANCE, 236.0f);
+        mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_EARTH_ZOOM_DEMO: orbitCenter set to demo "
+                          "body's world center (64,64,64) so the scripted Earth-scale zoom "
+                          "actually orbits the body");
+    }
+    // Tiered-ESVO Inc3 M7 Task 13: SAME orbitCenter gotcha applies to the reconstructed
+    // observable demo (also built at world center (64,64,64)). VIXEN_TIER_OBSERVABLE_DISTANCE
+    // (optional) statically re-seeds orbitDistance for a single-shot pixel-decode capture at a
+    // hand-picked distance (e.g. the predicted hop0/hop1 handoffs), without needing a scripted
+    // zoom -- this milestone's own gate is "confirm concentric magnification on the
+    // reconstructed body", not the live zoom (that is M7 Task 14, a separate milestone).
+    if (std::getenv("VIXEN_TIER_OBSERVABLE_DEMO")) {
+        camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_X, 64.0f);
+        camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_Y, 64.0f);
+        camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_Z, 64.0f);
+        float obsDistance = 40.0f;  // default: between hop1 (~19.89) and hop0 (~79.58)
+        if (const char* obsDistEnv = std::getenv("VIXEN_TIER_OBSERVABLE_DISTANCE")) {
+            obsDistance = std::strtof(obsDistEnv, nullptr);
+            if (!(obsDistance > 0.0f)) obsDistance = 40.0f;
+        }
+        camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_DISTANCE, obsDistance);
+        mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_OBSERVABLE_DEMO: orbitCenter set to "
+                          "demo body's world center (64,64,64), orbitDistance=" + std::to_string(obsDistance));
+    }
     camera->SetParameter(CameraNodeConfig::PARAM_GRID_RESOLUTION, 128u);
 
     // Ray marching: Voxel grid parameters
@@ -819,17 +855,45 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 // local frame (§3.2/§3.3). childScale=1.0 keeps the child at the SAME
                 // physical scale as the parent for this milestone's proof (M3 does not
                 // require a scale change — that is a rendering/LOD refinement, not the
-                // mechanism this gate proves); childOriginLocal=(1.5,1.5,1.5) is the
-                // parent-local frame's own center, so the child tree occupies the
-                // SAME [1,2) cell the marked leaf itself occupies (a clean, well-
-                // conditioned "known" placement for the hand-computed screen-position
-                // cross-check below).
+                // mechanism this gate proves); childOriginLocal is the MARKED LEAF'S
+                // OWN cell center (Tiered-ESVO Inc3 M5 Task 9 fix — see
+                // RootLeafOctantCenterLocal's own header comment: the constant
+                // (1.5,1.5,1.5) used here pre-M5 is the ROOT CUBE'S shared corner, not
+                // any one octant's center, and made the crossing collapse the child
+                // toward a corner-anchored, non-concentric "wedge" instead of shrinking
+                // around the leaf at any non-unity childScale), so the child tree
+                // occupies the SAME [1,2) cell the marked leaf itself occupies (a clean,
+                // well-conditioned "known" placement for the hand-computed screen-
+                // position cross-check below).
+                // Tiered-ESVO Inc3 M2 Task 4: VIXEN_TIER_CROSSING_SCALE_DEMO exercises a genuinely
+                // non-unity TierRef::childScale (default 0.25 if set with no value, or the parsed
+                // float value) instead of the M3/Inc2 baseline's childScale=1.0 -- the ONLY variable
+                // changed vs. the childScale==1.0 fixture above (same childOriginLocal, same leaf,
+                // same magenta child, same camera), per the plan's "vary ONLY X" discipline. childScale
+                // is a raw linear multiplier on the child's [1,2) unit cube in parent-local space
+                // (remapRayIntoChildFrame: childLocalOrigin=(parentLocalOrigin-childOrigin)*invScale+1.5),
+                // NOT pre-scaled by the marked leaf's own octant fraction -- so at childScale=1.0 the
+                // child fills the ENTIRE marked leaf's own [1,2) cell footprint (world edge 24 =
+                // half of 10*renderScale, since the leaf is one root-level octant), and at
+                // childScale=0.25 it fills a cube 1/4 the linear size, CONCENTRICALLY centered on
+                // the same leaf-cell world point since childOriginLocal is unchanged.
+                float childScale = 1.0f;
+                if (const char* scaleEnv = std::getenv("VIXEN_TIER_CROSSING_SCALE_DEMO")) {
+                    childScale = (scaleEnv[0] != '\0') ? std::strtof(scaleEnv, nullptr) : 0.25f;
+                    if (!(childScale > 0.0f)) {
+                        childScale = 0.25f;  // guard against a garbage/zero env value
+                    }
+                    mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_CROSSING_SCALE_DEMO: childScale="
+                                  + std::to_string(childScale));
+                }
+
+                const glm::vec3 leafCenterLocal = Vixen::SVO::RootLeafOctantCenterLocal(markOctant);
                 Vixen::SVO::TierRef ref{};
                 ref.childOctreeIndex = 1u;  // child will be concatenated at slot 1
-                ref.childOriginLocal[0] = 1.5f;
-                ref.childOriginLocal[1] = 1.5f;
-                ref.childOriginLocal[2] = 1.5f;
-                ref.childScale = 1.0f;
+                ref.childOriginLocal[0] = leafCenterLocal.x;
+                ref.childOriginLocal[1] = leafCenterLocal.y;
+                ref.childOriginLocal[2] = leafCenterLocal.z;
+                ref.childScale = childScale;
                 constexpr uint8_t kChildRootScaleHint = 22;  // child's own root ESVO scale
 
                 Vixen::SVO::MarkLeafAsTierCrossing(parentSer, markParentDescIdx, markOctant, ref, kChildRootScaleHint);
@@ -946,6 +1010,708 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 }
             } else {
                 mainLogger->Error("[BuildRenderGraph] VIXEN_TIER_CROSSING_DEMO: no leaf found in parent octree — demo scene not built");
+            }
+        } else if (std::getenv("VIXEN_TIER_CHAIN_DEMO")) {
+            // Tiered-ESVO Inc3 M3 Task 5 live gate: a THREE-tree chain, T0 -> T1 -> T2,
+            // reusing the EXACT construction pattern the two-tree VIXEN_TIER_CROSSING_DEMO
+            // above already live-gates (SDF sphere per tree, magenta/color-override for
+            // per-tier visual attribution, MarkLeafAsTierCrossing on every root-facing leaf,
+            // manual ConcatenatedOctrees bookkeeping) — extended to a SECOND crossing:
+            // T0's marked leaf points at T1 (slot 1), and T1's OWN marked leaf points at
+            // T2 (slot 2). Distinct per-tier colors (parent: default cosine-gradient;
+            // T1: solid green; T2: solid cyan) make each hop's contribution visually
+            // attributable in a capture, matching Inc2 M3's own "distinct color per tier"
+            // discipline (this milestone's own plan §M3 gate requirement).
+            mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_CHAIN_DEMO: building hand-authored three-tree chained tier-crossing scene");
+
+            constexpr int   kN          = 16;
+            constexpr int   kBrickDepth = 3;
+            const glm::vec3 kCenter(8.0f, 8.0f, 8.0f);
+
+            auto bakeSphereTree = [&](float radius) {
+                Vixen::SVO::RecipeParams rp{};
+                rp.radius = radius;
+                Vixen::SVO::SdfBakeResult baked =
+                    Vixen::SVO::BakeRecipeToSdfWorld(Vixen::SVO::RECIPE_SPHERE, kCenter, rp, kN, 2.0f);
+                return Vixen::SVO::BuildSdfBodyOctree(baked, kBrickDepth);
+            };
+
+            Vixen::SVO::SdfBodyOctree t0Body = bakeSphereTree(6.0f);
+            Vixen::SVO::SdfBodyOctree t1Body = bakeSphereTree(6.5f);
+            Vixen::SVO::SdfBodyOctree t2Body = bakeSphereTree(7.2f);
+
+            Vixen::SVO::SerializedOctree t0Ser = Vixen::SVO::SerializeSdf(t0Body);
+            Vixen::SVO::SerializedOctree t1Ser = Vixen::SVO::SerializeSdf(t1Body);
+            Vixen::SVO::SerializedOctree t2Ser = Vixen::SVO::SerializeSdf(t2Body);
+
+            // Per-tier solid color override (parent T0 keeps the shared cosine-gradient;
+            // T1 solid green, T2 solid cyan — distinct from each other AND from T0's
+            // muted-rainbow default, per the plan's "distinct color per tier so each hop
+            // is visually attributable" gate requirement).
+            auto overrideColor = [&](Vixen::SVO::SerializedOctree& ser, glm::vec3 rgb, const char* label) {
+                const uint32_t colorBase = ser.channelBaseFloats(Vixen::SVO::SEM_COLOR);
+                if (colorBase == 0xFFFFFFFFu) {
+                    mainLogger->Error(std::string("[BuildRenderGraph] VIXEN_TIER_CHAIN_DEMO: ") + label
+                                      + " has no SEM_COLOR channel — color override skipped");
+                    return;
+                }
+                float* pool = reinterpret_cast<float*>(ser.channelPool.data());
+                const size_t poolFloats = ser.channelPool.size() / sizeof(float);
+                for (uint32_t brick = 0; brick < ser.brickCount; ++brick) {
+                    for (uint32_t comp = 0; comp < 3; ++comp) {
+                        const float c = rgb[static_cast<int>(comp)];
+                        for (uint32_t voxel = 0; voxel < Vixen::SVO::SerializedOctree::kVoxelsPerBrick; ++voxel) {
+                            const size_t idx = static_cast<size_t>(brick) * ser.brickStrideFloats
+                                             + colorBase + comp * Vixen::SVO::SerializedOctree::kVoxelsPerBrick + voxel;
+                            if (idx < poolFloats) pool[idx] = c;
+                        }
+                    }
+                }
+            };
+            overrideColor(t1Ser, glm::vec3(0.0f, 1.0f, 0.0f), "T1");  // solid green
+            overrideColor(t2Ser, glm::vec3(0.0f, 1.0f, 1.0f), "T2");  // solid cyan
+
+            // Mip pools (M4 gate reuse: shadeFromMipSample needs real coverage for the
+            // LOD/residency fallback paths, exactly like VIXEN_TIER_CROSSING_DEMO above).
+            if (const Vixen::SVO::Octree* oct0 = t0Body.octree->getOctree()) Vixen::SVO::BakeAndAttachMipPool(*oct0, t0Ser);
+            if (const Vixen::SVO::Octree* oct1 = t1Body.octree->getOctree()) Vixen::SVO::BakeAndAttachMipPool(*oct1, t1Ser);
+            if (const Vixen::SVO::Octree* oct2 = t2Body.octree->getOctree()) Vixen::SVO::BakeAndAttachMipPool(*oct2, t2Ser);
+
+            // Locate a camera-facing leaf in T0's root (same octant-selection convention
+            // as VIXEN_TIER_CROSSING_DEMO above) and mark it -> T1 (slot 1).
+            auto findCameraFacingLeaf = [](const Vixen::SVO::Octree* oct, uint32_t& outDescIdx, int& outOctant) {
+                outOctant = -1;
+                if (oct == nullptr) return;
+                const auto& descs = oct->root->childDescriptors;
+                for (uint32_t i = 0; i < descs.size() && outOctant < 0; ++i) {
+                    const Vixen::SVO::ChildDescriptor& d = descs[i];
+                    for (int o = 4; o < 8; ++o) {
+                        if (d.hasChild(o) && d.isLeaf(o)) { outDescIdx = i; outOctant = o; break; }
+                    }
+                }
+                if (outOctant < 0) {
+                    for (uint32_t i = 0; i < descs.size() && outOctant < 0; ++i) {
+                        const Vixen::SVO::ChildDescriptor& d = descs[i];
+                        for (int o = 0; o < 8; ++o) {
+                            if (d.hasChild(o) && d.isLeaf(o)) { outDescIdx = i; outOctant = o; break; }
+                        }
+                    }
+                }
+            };
+
+            uint32_t t0MarkDescIdx = 0; int t0MarkOctant = -1;
+            findCameraFacingLeaf(t0Body.octree->getOctree(), t0MarkDescIdx, t0MarkOctant);
+            uint32_t t1MarkDescIdx = 0; int t1MarkOctant = -1;
+            findCameraFacingLeaf(t1Body.octree->getOctree(), t1MarkDescIdx, t1MarkOctant);
+
+            if (t0MarkOctant >= 0 && t1MarkOctant >= 0) {
+                // Hop 0: T0's marked leaf -> T1 (slot 1). childScale=1.0 (same-scale
+                // chaining — Inc3 M4's job is the scale-magnified version; M3 proves the
+                // HOP LOOP mechanism itself, same discipline as Inc2 M3 proving the
+                // single-restart mechanism before Inc2 M4/Inc3 M1-M2 added LOD/scale).
+                // childOriginLocal is the marked leaf's OWN cell center (Inc3 M5 Task 9
+                // fix — see RootLeafOctantCenterLocal's header comment); at childScale=1.0
+                // this is a no-op vs. the pre-M5 constant (1.5,1.5,1.5) for hop 0's own
+                // proof (both formulas agree exactly at unity — see M1's own byte-
+                // identical-at-unity gate), so this hop is UNCHANGED in observable behavior.
+                const glm::vec3 t0LeafCenterLocal = Vixen::SVO::RootLeafOctantCenterLocal(t0MarkOctant);
+                Vixen::SVO::TierRef refT0ToT1{};
+                refT0ToT1.childOctreeIndex = 1u;
+                refT0ToT1.childOriginLocal[0] = t0LeafCenterLocal.x;
+                refT0ToT1.childOriginLocal[1] = t0LeafCenterLocal.y;
+                refT0ToT1.childOriginLocal[2] = t0LeafCenterLocal.z;
+                refT0ToT1.childScale = 1.0f;
+                Vixen::SVO::MarkLeafAsTierCrossing(t0Ser, t0MarkDescIdx, t0MarkOctant, refT0ToT1, 22);
+
+                // Hop 1: T1's OWN marked leaf -> T2 (slot 2, T1's own child-slot
+                // numbering — ConcatenatedOctrees resolves childOctreeIndex against the
+                // GLOBAL concatenated configs[] array, so this is genuinely slot 2, not
+                // slot 1 relative to T1). Same M5 leaf-center fix, same unity no-op.
+                const glm::vec3 t1LeafCenterLocal = Vixen::SVO::RootLeafOctantCenterLocal(t1MarkOctant);
+                Vixen::SVO::TierRef refT1ToT2{};
+                refT1ToT2.childOctreeIndex = 2u;
+                refT1ToT2.childOriginLocal[0] = t1LeafCenterLocal.x;
+                refT1ToT2.childOriginLocal[1] = t1LeafCenterLocal.y;
+                refT1ToT2.childOriginLocal[2] = t1LeafCenterLocal.z;
+                refT1ToT2.childScale = 1.0f;
+                Vixen::SVO::MarkLeafAsTierCrossing(t1Ser, t1MarkDescIdx, t1MarkOctant, refT1ToT2, 22);
+
+                // Manual 3-tree concatenation (parent=slot0, T1=slot1, T2=slot2) — same
+                // per-octree bookkeeping loop as the two-tree demo above, generalized to 3.
+                Vixen::SVO::ConcatenatedOctrees cat;
+                cat.count = 3;
+                cat.configs.resize(3);
+                cat.nodeCounts.resize(3);
+                cat.brickCounts.resize(3);
+                cat.tierRefCounts.resize(3);
+
+                Vixen::SVO::SerializedOctree* octs[3] = {&t0Ser, &t1Ser, &t2Ser};
+                uint32_t nodeBase = 0, brickBase = 0, poolBase = 0, tierRefBase = 0, mipPoolBase = 0;
+                for (int k = 0; k < 3; ++k) {
+                    Vixen::SVO::SerializedOctree& s = *octs[k];
+                    s.config.nodeArrayBase  = static_cast<int32_t>(nodeBase);
+                    s.config.brickArrayBase = static_cast<int32_t>(brickBase);
+                    Vixen::SVO::setSdfBrickArrayBase(s.config, poolBase);
+                    Vixen::SVO::setTierRefTableBase(s.config, tierRefBase);
+                    Vixen::SVO::setMipPoolBase(s.config, mipPoolBase);
+
+                    cat.configs[k]       = s.config;
+                    cat.nodeCounts[k]    = s.nodeCount;
+                    cat.brickCounts[k]   = s.brickCount;
+                    cat.tierRefCounts[k] = static_cast<uint32_t>(s.tierRefs.size());
+
+                    cat.nodes.insert(cat.nodes.end(), s.nodes.begin(), s.nodes.end());
+                    cat.bricks.insert(cat.bricks.end(), s.bricks.begin(), s.bricks.end());
+                    cat.channelPool.insert(cat.channelPool.end(), s.channelPool.begin(), s.channelPool.end());
+                    cat.brickGridLookup.insert(cat.brickGridLookup.end(), s.brickGridLookup.begin(), s.brickGridLookup.end());
+                    cat.tierRefTable.insert(cat.tierRefTable.end(), s.tierRefs.begin(), s.tierRefs.end());
+                    cat.mipPool.insert(cat.mipPool.end(), s.mipPool.begin(), s.mipPool.end());
+
+                    if (cat.materials.empty()) {
+                        cat.materials = s.materials;
+                    }
+
+                    nodeBase    += s.nodeCount;
+                    brickBase   += s.brickCount;
+                    poolBase    += s.brickCount * s.brickStrideFloats;
+                    tierRefBase += static_cast<uint32_t>(s.tierRefs.size());
+                    mipPoolBase += s.nodeCount * s.channelCount;
+                }
+
+                if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))) {
+                    bodyScene->SetRecipePool(std::move(cat));
+
+                    constexpr float kRenderScale = 4.8f;
+                    constexpr float kHalf = 5.0f * kRenderScale;
+                    Vixen::SVO::BodyInstanceGpu inst{};
+                    inst.worldPos[0]  = 64.0f - kHalf;
+                    inst.worldPos[1]  = 64.0f - kHalf;
+                    inst.worldPos[2]  = 64.0f - kHalf;
+                    inst.renderScale  = kRenderScale;
+                    inst.color[0]     = 1.0f;
+                    inst.color[1]     = 1.0f;
+                    inst.color[2]     = 1.0f;
+                    inst.octreeIndex  = 0u;    // parent (T0) tree
+                    inst.providerKind = 0u;    // PROVIDER_STORED
+                    inst.recipeId     = 0u;
+
+                    bodyScene->SetInstances({inst});
+                    mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_CHAIN_DEMO: T0 leaf ("
+                                  + std::to_string(t0MarkDescIdx) + "," + std::to_string(t0MarkOctant)
+                                  + ") -> T1 octree1; T1 leaf (" + std::to_string(t1MarkDescIdx) + ","
+                                  + std::to_string(t1MarkOctant) + ") -> T2 octree2");
+                }
+            } else {
+                mainLogger->Error("[BuildRenderGraph] VIXEN_TIER_CHAIN_DEMO: no camera-facing leaf found in T0 or T1 — demo scene not built");
+            }
+        } else if (std::getenv("VIXEN_TIER_EARTH_DEMO")) {
+            // Tiered-ESVO Inc3 M4 Task 6 (the epic gate): the SAME T0->T1->T2 chained
+            // construction as VIXEN_TIER_CHAIN_DEMO above, but at the REAL per-hop tier
+            // ratio the epic exists for (childScale=2^-10 at BOTH hops, not M3's
+            // proof-of-mechanism 1.0) — the "Earth-diameter-scale" demonstration.
+            //
+            // Numeric derivation (hand-computed BEFORE this scene was built, per this
+            // increment's prediction-first discipline; full trace in the milestone's
+            // Progress Log / Tiered-ESVO-Inc3-M4-earth-scale-derivation.py):
+            //   - T0's own world diameter (existing convention: kRenderScale=4.8 *
+            //     kWorldGridSize=10) = 48.0 world units. Declaring this span AS Earth's
+            //     actual diameter (12,742 km) fixes 1 world unit = 265,458 m.
+            //   - Hop 0 (T0->T1, childScale=2^-10): T1's own world diameter =
+            //     48.0 * 2^-10 = 0.046875 units = 12,443 m (~12.4 km, a "region" tier).
+            //   - Hop 1 (T1->T2, childScale=2^-10): T2's own world diameter =
+            //     0.046875 * 2^-10 ~= 4.578e-5 units ~= 12.15 m (a "bedrock" tier);
+            //     T2's own single brick spans ~6.08 m, a single voxel ~0.76 m.
+            //   - Total scale ratio across both hops: 2^-20 (~9.5e-7), i.e. 20 extra
+            //     bits of dynamic range chained on top of a single tree's own 23-level
+            //     (2^23) internal range -- this is the actual mechanism the "~30-31
+            //     effective levels" epic framing refers to (a rough order-of-magnitude
+            //     estimate in the design doc, not a load-bearing exact figure; the
+            //     precise, verifiable claim is the 2^-20 total ratio and the concrete
+            //     per-tier meter figures above).
+            mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_EARTH_DEMO: building Earth-scale "
+                              "(childScale=2^-10/hop) three-tree chained tier-crossing scene");
+
+            constexpr int   kN          = 16;
+            constexpr int   kBrickDepth = 3;
+            const glm::vec3 kCenter(8.0f, 8.0f, 8.0f);
+            constexpr float kChildScale = 0.0009765625f;  // 2^-10, the real per-hop tier ratio
+
+            auto bakeSphereTree = [&](float radius) {
+                Vixen::SVO::RecipeParams rp{};
+                rp.radius = radius;
+                Vixen::SVO::SdfBakeResult baked =
+                    Vixen::SVO::BakeRecipeToSdfWorld(Vixen::SVO::RECIPE_SPHERE, kCenter, rp, kN, 2.0f);
+                return Vixen::SVO::BuildSdfBodyOctree(baked, kBrickDepth);
+            };
+
+            Vixen::SVO::SdfBodyOctree t0Body = bakeSphereTree(6.0f);
+            Vixen::SVO::SdfBodyOctree t1Body = bakeSphereTree(6.5f);
+            Vixen::SVO::SdfBodyOctree t2Body = bakeSphereTree(7.2f);
+
+            Vixen::SVO::SerializedOctree t0Ser = Vixen::SVO::SerializeSdf(t0Body);
+            Vixen::SVO::SerializedOctree t1Ser = Vixen::SVO::SerializeSdf(t1Body);
+            Vixen::SVO::SerializedOctree t2Ser = Vixen::SVO::SerializeSdf(t2Body);
+
+            // Per-tier solid color override (parent T0 keeps the shared cosine-gradient;
+            // T1 solid green (region tier); T2 solid cyan (bedrock tier)) -- IDENTICAL
+            // convention to VIXEN_TIER_CHAIN_DEMO above, so a capture's per-tier
+            // attribution reads the same way at both ratios.
+            auto overrideColor = [&](Vixen::SVO::SerializedOctree& ser, glm::vec3 rgb, const char* label) {
+                const uint32_t colorBase = ser.channelBaseFloats(Vixen::SVO::SEM_COLOR);
+                if (colorBase == 0xFFFFFFFFu) {
+                    mainLogger->Error(std::string("[BuildRenderGraph] VIXEN_TIER_EARTH_DEMO: ") + label
+                                      + " has no SEM_COLOR channel — color override skipped");
+                    return;
+                }
+                float* pool = reinterpret_cast<float*>(ser.channelPool.data());
+                const size_t poolFloats = ser.channelPool.size() / sizeof(float);
+                for (uint32_t brick = 0; brick < ser.brickCount; ++brick) {
+                    for (uint32_t comp = 0; comp < 3; ++comp) {
+                        const float c = rgb[static_cast<int>(comp)];
+                        for (uint32_t voxel = 0; voxel < Vixen::SVO::SerializedOctree::kVoxelsPerBrick; ++voxel) {
+                            const size_t idx = static_cast<size_t>(brick) * ser.brickStrideFloats
+                                             + colorBase + comp * Vixen::SVO::SerializedOctree::kVoxelsPerBrick + voxel;
+                            if (idx < poolFloats) pool[idx] = c;
+                        }
+                    }
+                }
+            };
+            overrideColor(t1Ser, glm::vec3(0.0f, 1.0f, 0.0f), "T1");  // solid green (region)
+            overrideColor(t2Ser, glm::vec3(0.0f, 1.0f, 1.0f), "T2");  // solid cyan (bedrock)
+
+            if (const Vixen::SVO::Octree* oct0 = t0Body.octree->getOctree()) Vixen::SVO::BakeAndAttachMipPool(*oct0, t0Ser);
+            if (const Vixen::SVO::Octree* oct1 = t1Body.octree->getOctree()) Vixen::SVO::BakeAndAttachMipPool(*oct1, t1Ser);
+            if (const Vixen::SVO::Octree* oct2 = t2Body.octree->getOctree()) Vixen::SVO::BakeAndAttachMipPool(*oct2, t2Ser);
+
+            // Camera-facing leaf selection -- IDENTICAL convention to VIXEN_TIER_CHAIN_DEMO
+            // (octant bit2/z set preferred, i.e. octants 4-7). For this fixture (n=16,
+            // brickDepth=3, camera along -Z through the sphere's center) the selected leaf
+            // is DETERMINISTICALLY octant 4 (x=0,y=0,z=1 bit pattern) -- verified via a
+            // temporary discovery probe (test_tier_crossing_mirror_parity.cpp, removed
+            // before that increment's commit) before this scene was written, not assumed.
+            auto findCameraFacingLeaf = [](const Vixen::SVO::Octree* oct, uint32_t& outDescIdx, int& outOctant) {
+                outOctant = -1;
+                if (oct == nullptr) return;
+                const auto& descs = oct->root->childDescriptors;
+                for (uint32_t i = 0; i < descs.size() && outOctant < 0; ++i) {
+                    const Vixen::SVO::ChildDescriptor& d = descs[i];
+                    for (int o = 4; o < 8; ++o) {
+                        if (d.hasChild(o) && d.isLeaf(o)) { outDescIdx = i; outOctant = o; break; }
+                    }
+                }
+                if (outOctant < 0) {
+                    for (uint32_t i = 0; i < descs.size() && outOctant < 0; ++i) {
+                        const Vixen::SVO::ChildDescriptor& d = descs[i];
+                        for (int o = 0; o < 8; ++o) {
+                            if (d.hasChild(o) && d.isLeaf(o)) { outDescIdx = i; outOctant = o; break; }
+                        }
+                    }
+                }
+            };
+
+            uint32_t t0MarkDescIdx = 0; int t0MarkOctant = -1;
+            findCameraFacingLeaf(t0Body.octree->getOctree(), t0MarkDescIdx, t0MarkOctant);
+            uint32_t t1MarkDescIdx = 0; int t1MarkOctant = -1;
+            findCameraFacingLeaf(t1Body.octree->getOctree(), t1MarkDescIdx, t1MarkOctant);
+
+            if (t0MarkOctant >= 0 && t1MarkOctant >= 0) {
+                // tEntryWorld / k-invariant placement (Inc3 M4's own carry-forward
+                // constraint, sharpened from M1/M3): at childScale=2^-10, 1/childScale
+                // ~= 1024 per hop, so ANY macroscopically-off-boundary entry point would
+                // be amplified by up to ~1024x (hop 1) or ~1,048,576x (hop 2) via the
+                // cumulative-length multiply. This is handled by APPROACH (b): enforcing
+                // that every hop's remapped entry lands well INSIDE the marked leaf's own
+                // child grid, via the k-invariant childOriginLocal placement technique
+                // (childOriginLocal = entryPointLocal - offset*childScale collapses the
+                // remapped entry to a k-invariant 1.5+offset regardless of childScale;
+                // see test_tier_crossing_mirror_parity.cpp's BuildTask3ParentWithScale /
+                // ChainedTwoHopCrossingComposesHitT / EarthScaleChainedCrossingKInvariant-
+                // Placement for the CPU-side proof of this exact technique at this exact
+                // ratio, verified BEFORE this scene was written).
+                //
+                // CRITICAL, discovery-trail-verified correction (a first attempt at this
+                // scene used a uniform offset and produced a chain that only crossed
+                // ONCE, not twice -- caught via a temporary discovery probe, removed
+                // before commit): the offset's sign per axis is NOT a universal constant
+                // -- it must point INTO the SPECIFIC octant's own box being targeted.
+                // Octant 4 (the camera-facing leaf this fixture always selects, bit
+                // pattern x=0,y=0,z=1) occupies the ASYMMETRIC box x in [1,1.5),
+                // y in [1,1.5), z in [1.5,2) relative to (1.5,1.5,1.5) -- so the offset
+                // must be NEGATIVE on x/y (pull toward the box, which sits BELOW 1.5) and
+                // POSITIVE on z (pull toward the box, which sits ABOVE 1.5). A uniform
+                // (-0.1,-0.1,-0.1) landed the remapped entry at local z=1.4, OUTSIDE
+                // octant 4's own z>=1.5 requirement -- confirmed the entry fell through to
+                // a DIFFERENT part of the tree (or T1's own surface) rather than back into
+                // the marked leaf, breaking the second crossing.
+                //
+                // SECOND, deeper correction (found via a live capture showing the crossing
+                // wedge rendering as pure background/miss, not T1/T2's own color): magnitude
+                // 0.1 lands the remapped entry at grid-space distance ~2.77 from T1/T2's OWN
+                // local center (8,8,8 in their [0,16] grid) -- WELL INSIDE their solid sphere
+                // interior (radius 6.5/7.2), nowhere near either body's own ISO-SURFACE. The
+                // SDF march (handleLeafHitInstancedSdf/marchBrickSdf) searches for a
+                // sign-change (surface) within its OWN local brick, not "any solid voxel" (the
+                // CPU GpuTraversalMirror's own hit=true finding for this construction is a
+                // BINARY-DDA-path artifact -- GpuTraversalMirror does NOT model the SDF march
+                // at all, per its own header comment -- so it could not have caught this).
+                // Magnitude 0.25 (verified via a hand derivation BEFORE this fix: a point along
+                // octant 4's own (-1,-1,+1) diagonal at magnitude 0.25 sits at grid-space
+                // distance ~6.93 from center, within ~0.43/0.27 grid units of T1's (r=6.5) and
+                // T2's (r=7.2) own surfaces respectively -- comfortably inside marchBrickSdf's
+                // own brick-local search range) keeps the SAME k-invariant safety property
+                // (still comfortably inside [1,2) at every hop) while ALSO landing close enough
+                // to each child's own real surface to be found.
+                const glm::vec3 kBoxOffset(-0.25f, -0.25f, 0.25f);
+
+                // Hop 0's crossing point is geometry-determined (wherever the camera ray
+                // through the sphere's center actually enters octant 4's leaf) -- for this
+                // fixture + camera it is (1.5,1.5,2.0), the leaf's own outer (+Z, camera-
+                // facing) corner, confirmed via the same discovery probe referenced above
+                // (a camera ray straight through a sphere's silhouette center necessarily
+                // enters the nearest octant's OWN outer face -- geometric, not an
+                // accident of this specific fixture).
+                const glm::vec3 kHop0EntryPointLocal(1.5f, 1.5f, 2.0f);
+                const glm::vec3 t0ChildOriginLocal = kHop0EntryPointLocal - kBoxOffset * kChildScale;
+
+                Vixen::SVO::TierRef refT0ToT1{};
+                refT0ToT1.childOctreeIndex = 1u;
+                refT0ToT1.childOriginLocal[0] = t0ChildOriginLocal.x;
+                refT0ToT1.childOriginLocal[1] = t0ChildOriginLocal.y;
+                refT0ToT1.childOriginLocal[2] = t0ChildOriginLocal.z;
+                refT0ToT1.childScale = kChildScale;
+                Vixen::SVO::MarkLeafAsTierCrossing(t0Ser, t0MarkDescIdx, t0MarkOctant, refT0ToT1, 22);
+
+                // Hop 1's crossing point: the k-invariant collapse (see kBoxOffset's own
+                // comment) lands T1's OWN remapped entry at EXACTLY (1.5,1.5,1.5)+
+                // kBoxOffset = (1.4,1.4,1.6), safely inside octant 4's own box on every
+                // axis -- T1's marked leaf (also camera-facing octant 4, by the SAME
+                // deterministic selection) is placed relative to THIS point using the
+                // IDENTICAL technique, so hop 2's remapped entry lands inside T2's octant-4
+                // box too.
+                const glm::vec3 kHop1EntryPointLocal = glm::vec3(1.5f, 1.5f, 1.5f) + kBoxOffset;
+                const glm::vec3 t1ChildOriginLocal = kHop1EntryPointLocal - kBoxOffset * kChildScale;
+
+                Vixen::SVO::TierRef refT1ToT2{};
+                refT1ToT2.childOctreeIndex = 2u;
+                refT1ToT2.childOriginLocal[0] = t1ChildOriginLocal.x;
+                refT1ToT2.childOriginLocal[1] = t1ChildOriginLocal.y;
+                refT1ToT2.childOriginLocal[2] = t1ChildOriginLocal.z;
+                refT1ToT2.childScale = kChildScale;
+                Vixen::SVO::MarkLeafAsTierCrossing(t1Ser, t1MarkDescIdx, t1MarkOctant, refT1ToT2, 22);
+
+                Vixen::SVO::ConcatenatedOctrees cat;
+                cat.count = 3;
+                cat.configs.resize(3);
+                cat.nodeCounts.resize(3);
+                cat.brickCounts.resize(3);
+                cat.tierRefCounts.resize(3);
+
+                Vixen::SVO::SerializedOctree* octs[3] = {&t0Ser, &t1Ser, &t2Ser};
+                uint32_t nodeBase = 0, brickBase = 0, poolBase = 0, tierRefBase = 0, mipPoolBase = 0;
+                for (int k = 0; k < 3; ++k) {
+                    Vixen::SVO::SerializedOctree& s = *octs[k];
+                    s.config.nodeArrayBase  = static_cast<int32_t>(nodeBase);
+                    s.config.brickArrayBase = static_cast<int32_t>(brickBase);
+                    Vixen::SVO::setSdfBrickArrayBase(s.config, poolBase);
+                    Vixen::SVO::setTierRefTableBase(s.config, tierRefBase);
+                    Vixen::SVO::setMipPoolBase(s.config, mipPoolBase);
+
+                    cat.configs[k]       = s.config;
+                    cat.nodeCounts[k]    = s.nodeCount;
+                    cat.brickCounts[k]   = s.brickCount;
+                    cat.tierRefCounts[k] = static_cast<uint32_t>(s.tierRefs.size());
+
+                    cat.nodes.insert(cat.nodes.end(), s.nodes.begin(), s.nodes.end());
+                    cat.bricks.insert(cat.bricks.end(), s.bricks.begin(), s.bricks.end());
+                    cat.channelPool.insert(cat.channelPool.end(), s.channelPool.begin(), s.channelPool.end());
+                    cat.brickGridLookup.insert(cat.brickGridLookup.end(), s.brickGridLookup.begin(), s.brickGridLookup.end());
+                    cat.tierRefTable.insert(cat.tierRefTable.end(), s.tierRefs.begin(), s.tierRefs.end());
+                    cat.mipPool.insert(cat.mipPool.end(), s.mipPool.begin(), s.mipPool.end());
+
+                    if (cat.materials.empty()) {
+                        cat.materials = s.materials;
+                    }
+
+                    nodeBase    += s.nodeCount;
+                    brickBase   += s.brickCount;
+                    poolBase    += s.brickCount * s.brickStrideFloats;
+                    tierRefBase += static_cast<uint32_t>(s.tierRefs.size());
+                    mipPoolBase += s.nodeCount * s.channelCount;
+                }
+
+                // Every octree resident from the start (Earth-scale demo's own residency
+                // exercise is a SEPARATE, explicit mid-flight RequestBrickResidency(true)
+                // scripted by VIXEN_TIER_EARTH_ZOOM_DEMO below, at ONE hop, matching Inc2
+                // M5's "start non-resident, grant mid-flight" discipline) -- unlike
+                // VIXEN_TIER_CROSSING_NONRESIDENT/VIXEN_TIER_ZOOM_DEMO's whole-node
+                // start-false convention, this scene starts resident by default so a
+                // bare VIXEN_TIER_EARTH_DEMO=1 run (no zoom script) shows real geometry
+                // immediately; VIXEN_TIER_EARTH_ZOOM_DEMO explicitly forces non-resident
+                // at start via its own RequestBrickResidency(false) call, mirroring the
+                // Inc2 M5 pattern exactly (see the Update()/PreTick scripted-zoom block).
+                if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))) {
+                    bodyScene->SetRecipePool(std::move(cat));
+                    if (std::getenv("VIXEN_TIER_EARTH_ZOOM_DEMO")) {
+                        bodyScene->RequestBrickResidency(false);
+                        mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_EARTH_ZOOM_DEMO: "
+                                          "RequestBrickResidency(false) -- all octrees mip-only at start");
+                    }
+
+                    constexpr float kRenderScale = 4.8f;
+                    constexpr float kHalf = 5.0f * kRenderScale;
+                    Vixen::SVO::BodyInstanceGpu inst{};
+                    inst.worldPos[0]  = 64.0f - kHalf;
+                    inst.worldPos[1]  = 64.0f - kHalf;
+                    inst.worldPos[2]  = 64.0f - kHalf;
+                    inst.renderScale  = kRenderScale;
+                    inst.color[0]     = 1.0f;
+                    inst.color[1]     = 1.0f;
+                    inst.color[2]     = 1.0f;
+                    inst.octreeIndex  = 0u;    // parent (T0) tree
+                    inst.providerKind = 0u;    // PROVIDER_STORED
+                    inst.recipeId     = 0u;
+
+                    bodyScene->SetInstances({inst});
+                    mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_EARTH_DEMO: T0 leaf ("
+                                  + std::to_string(t0MarkDescIdx) + "," + std::to_string(t0MarkOctant)
+                                  + ") -> T1 octree1 (childScale=2^-10); T1 leaf (" + std::to_string(t1MarkDescIdx) + ","
+                                  + std::to_string(t1MarkOctant) + ") -> T2 octree2 (childScale=2^-10)");
+                }
+            } else {
+                mainLogger->Error("[BuildRenderGraph] VIXEN_TIER_EARTH_DEMO: no camera-facing leaf found in T0 or T1 — demo scene not built");
+            }
+        } else if (std::getenv("VIXEN_TIER_OBSERVABLE_DEMO")) {
+            // Tiered-ESVO Inc3 M7 Task 13: the SAME T0->T1->T2 chained construction as
+            // VIXEN_TIER_CHAIN_DEMO/VIXEN_TIER_EARTH_DEMO above (per-tier color override,
+            // camera-facing-octant selection, RootLeafOctantCenterLocal concentric
+            // placement), but with body/tier proportions chosen so BOTH LOD-handoff
+            // distances are reachable, outside the solid interior, AND inside the
+            // camera's default 22.5-deg half-FOV cone -- unlike the Earth demo
+            // (M6 Progress Log), whose 48-world-unit body + 2^-10-per-hop ratio locks
+            // the two handoffs 1024x apart and forces at least one of them either past
+            // the orbit ceiling (120) or deep inside the marked octant's ~62-125-deg
+            // off-axis blind zone.
+            //
+            // Numeric derivation (hand-computed BEFORE this scene was built; verified
+            // against the Earth demo's OWN two independently-reported handoff distances
+            // -- 14.921wu and 0.0146wu at childScale=2^-10, renderScale=4.8 -- which both
+            // match a single calibrated constant to 4+ significant figures, confirming
+            // the formula below rather than assuming it):
+            //   worldDistance_handoff = 20 * R * childScale * scale_exp2 / raySizeCoef
+            // where R = renderScale (world diameter = 10*R), scale_exp2 = 0.25 (a root-
+            // level leaf, this fixture's marked octant is always a direct child of the
+            // root), and raySizeCoef = 2*tan((fovRad/height)*0.5) = 0.0015708 at this
+            // app's 45-deg-FOV/500-px-tall default render target.
+            //
+            // The marked octant (always octant 4 in this fixture's camera-facing
+            // selection, bit pattern x=0,y=0,z=1) sits at a FIXED world offset of
+            // (-2.5R,-2.5R,+2.5R) from the body's own center -- a direct consequence of
+            // RootLeafOctantCenterLocal's own 1.25/1.75-per-axis convention, independent
+            // of R. The angle between the camera's forward axis (looking down -Z at the
+            // body center) and this octant, as seen from a camera at orbit distance d,
+            // is therefore a SCALE-INVARIANT function of (d/R) alone -- it crosses the
+            // 22.5-deg half-FOV boundary at d ~= 10*R (bisected numerically). The body's
+            // own solid surface radius is empirically ~5.625*R (measured on the Earth/
+            // Chain demos' shared recipe proportions: 27wu/4.8 renderScale).
+            //
+            // Chosen: R=0.1 (body world diameter 1.0 unit), childScale=0.25/hop (a
+            // deliberately gentle, non-2^-10 ratio per the M7 plan's own "may mean a
+            // deliberately NON-Earth-diameter ratio for a first observable proof"
+            // allowance):
+            //   hop0 (T0->T1) = 20*0.1*0.25*0.25/0.0015708 ~= 79.58 world units
+            //   hop1 (T1->T2) = hop0*0.25                  ~= 19.89 world units
+            //   in-FOV threshold (10*R)                     =  1.00 world units
+            //   solid surface radius (5.625*R)               =  0.5625 world units
+            //   orbit ceiling (CameraNode::kOrbitDistanceMax) = 120.0 world units
+            // Both hop0 and hop1 sit inside [1.0, 120.0] (comfortably clear of the
+            // in-FOV floor AND the solid radius) -- and at these distances the octant's
+            // own off-axis angle is under 1.1 deg (bisection-verified below), an order
+            // of magnitude inside the 22.5-deg half-cone, not merely "reachable" but
+            // solidly centered.
+            mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_OBSERVABLE_DEMO: building "
+                              "reconstructed three-tree chained tier-crossing scene "
+                              "(R=0.1, childScale=0.25/hop -- both crossings observable "
+                              "on the default view axis)");
+
+            constexpr int   kN          = 16;
+            constexpr int   kBrickDepth = 3;
+            const glm::vec3 kCenter(8.0f, 8.0f, 8.0f);
+            // VIXEN_TIER_OBSERVABLE_CHILDSCALE (optional): sweeps childScale live for the
+            // concentric-magnification proof (M5's own methodology — vary ONLY childScale at a
+            // FIXED camera distance, verify the crossing patch shrinks concentrically about a
+            // stable center at the predicted 0.5*childScale-per-axis law). Default 0.25 matches
+            // this scene's own hand-computed hop0/hop1 derivation above.
+            float kObsChildScale = 0.25f;
+            if (const char* obsScaleEnv = std::getenv("VIXEN_TIER_OBSERVABLE_CHILDSCALE")) {
+                kObsChildScale = std::strtof(obsScaleEnv, nullptr);
+                if (!(kObsChildScale > 0.0f)) kObsChildScale = 0.25f;
+            }
+
+            auto bakeSphereTreeObs = [&](float radius) {
+                Vixen::SVO::RecipeParams rp{};
+                rp.radius = radius;
+                Vixen::SVO::SdfBakeResult baked =
+                    Vixen::SVO::BakeRecipeToSdfWorld(Vixen::SVO::RECIPE_SPHERE, kCenter, rp, kN, 2.0f);
+                return Vixen::SVO::BuildSdfBodyOctree(baked, kBrickDepth);
+            };
+
+            Vixen::SVO::SdfBodyOctree obsT0Body = bakeSphereTreeObs(6.0f);
+            Vixen::SVO::SdfBodyOctree obsT1Body = bakeSphereTreeObs(6.5f);
+            Vixen::SVO::SdfBodyOctree obsT2Body = bakeSphereTreeObs(7.2f);
+
+            Vixen::SVO::SerializedOctree obsT0Ser = Vixen::SVO::SerializeSdf(obsT0Body);
+            Vixen::SVO::SerializedOctree obsT1Ser = Vixen::SVO::SerializeSdf(obsT1Body);
+            Vixen::SVO::SerializedOctree obsT2Ser = Vixen::SVO::SerializeSdf(obsT2Body);
+
+            auto overrideColorObs = [&](Vixen::SVO::SerializedOctree& ser, glm::vec3 rgb, const char* label) {
+                const uint32_t colorBase = ser.channelBaseFloats(Vixen::SVO::SEM_COLOR);
+                if (colorBase == 0xFFFFFFFFu) {
+                    mainLogger->Error(std::string("[BuildRenderGraph] VIXEN_TIER_OBSERVABLE_DEMO: ") + label
+                                      + " has no SEM_COLOR channel — color override skipped");
+                    return;
+                }
+                float* pool = reinterpret_cast<float*>(ser.channelPool.data());
+                const size_t poolFloats = ser.channelPool.size() / sizeof(float);
+                for (uint32_t brick = 0; brick < ser.brickCount; ++brick) {
+                    for (uint32_t comp = 0; comp < 3; ++comp) {
+                        const float c = rgb[static_cast<int>(comp)];
+                        for (uint32_t voxel = 0; voxel < Vixen::SVO::SerializedOctree::kVoxelsPerBrick; ++voxel) {
+                            const size_t idx = static_cast<size_t>(brick) * ser.brickStrideFloats
+                                             + colorBase + comp * Vixen::SVO::SerializedOctree::kVoxelsPerBrick + voxel;
+                            if (idx < poolFloats) pool[idx] = c;
+                        }
+                    }
+                }
+            };
+            overrideColorObs(obsT1Ser, glm::vec3(0.0f, 1.0f, 0.0f), "T1");  // solid green (region)
+            overrideColorObs(obsT2Ser, glm::vec3(0.0f, 1.0f, 1.0f), "T2");  // solid cyan (bedrock)
+
+            if (const Vixen::SVO::Octree* oct0 = obsT0Body.octree->getOctree()) Vixen::SVO::BakeAndAttachMipPool(*oct0, obsT0Ser);
+            if (const Vixen::SVO::Octree* oct1 = obsT1Body.octree->getOctree()) Vixen::SVO::BakeAndAttachMipPool(*oct1, obsT1Ser);
+            if (const Vixen::SVO::Octree* oct2 = obsT2Body.octree->getOctree()) Vixen::SVO::BakeAndAttachMipPool(*oct2, obsT2Ser);
+
+            auto findCameraFacingLeafObs = [](const Vixen::SVO::Octree* oct, uint32_t& outDescIdx, int& outOctant) {
+                outOctant = -1;
+                if (oct == nullptr) return;
+                const auto& descs = oct->root->childDescriptors;
+                for (uint32_t i = 0; i < descs.size() && outOctant < 0; ++i) {
+                    const Vixen::SVO::ChildDescriptor& d = descs[i];
+                    for (int o = 4; o < 8; ++o) {
+                        if (d.hasChild(o) && d.isLeaf(o)) { outDescIdx = i; outOctant = o; break; }
+                    }
+                }
+                if (outOctant < 0) {
+                    for (uint32_t i = 0; i < descs.size() && outOctant < 0; ++i) {
+                        const Vixen::SVO::ChildDescriptor& d = descs[i];
+                        for (int o = 0; o < 8; ++o) {
+                            if (d.hasChild(o) && d.isLeaf(o)) { outDescIdx = i; outOctant = o; break; }
+                        }
+                    }
+                }
+            };
+
+            uint32_t obsT0MarkDescIdx = 0; int obsT0MarkOctant = -1;
+            findCameraFacingLeafObs(obsT0Body.octree->getOctree(), obsT0MarkDescIdx, obsT0MarkOctant);
+            uint32_t obsT1MarkDescIdx = 0; int obsT1MarkOctant = -1;
+            findCameraFacingLeafObs(obsT1Body.octree->getOctree(), obsT1MarkDescIdx, obsT1MarkOctant);
+
+            if (obsT0MarkOctant >= 0 && obsT1MarkOctant >= 0) {
+                // M5's proven concentric fix: childOriginLocal = the marked leaf's OWN
+                // cell center (RootLeafOctantCenterLocal), not the root cube's shared
+                // corner (1.5,1.5,1.5). Applied identically at BOTH hops -- unlike the
+                // Earth demo's entry-anchored k-invariant technique (needed there ONLY
+                // because childScale=2^-10 would blow up a macroscopically-off-boundary
+                // entry by ~1024x per hop), this demo's childScale=0.25 has no such
+                // precision hazard, so the simpler, already-concentric-proven M5
+                // technique applies directly with no adaptation.
+                const glm::vec3 obsT0LeafCenterLocal = Vixen::SVO::RootLeafOctantCenterLocal(obsT0MarkOctant);
+                Vixen::SVO::TierRef obsRefT0ToT1{};
+                obsRefT0ToT1.childOctreeIndex = 1u;
+                obsRefT0ToT1.childOriginLocal[0] = obsT0LeafCenterLocal.x;
+                obsRefT0ToT1.childOriginLocal[1] = obsT0LeafCenterLocal.y;
+                obsRefT0ToT1.childOriginLocal[2] = obsT0LeafCenterLocal.z;
+                obsRefT0ToT1.childScale = kObsChildScale;
+                Vixen::SVO::MarkLeafAsTierCrossing(obsT0Ser, obsT0MarkDescIdx, obsT0MarkOctant, obsRefT0ToT1, 22);
+
+                const glm::vec3 obsT1LeafCenterLocal = Vixen::SVO::RootLeafOctantCenterLocal(obsT1MarkOctant);
+                Vixen::SVO::TierRef obsRefT1ToT2{};
+                obsRefT1ToT2.childOctreeIndex = 2u;
+                obsRefT1ToT2.childOriginLocal[0] = obsT1LeafCenterLocal.x;
+                obsRefT1ToT2.childOriginLocal[1] = obsT1LeafCenterLocal.y;
+                obsRefT1ToT2.childOriginLocal[2] = obsT1LeafCenterLocal.z;
+                obsRefT1ToT2.childScale = kObsChildScale;
+                Vixen::SVO::MarkLeafAsTierCrossing(obsT1Ser, obsT1MarkDescIdx, obsT1MarkOctant, obsRefT1ToT2, 22);
+
+                Vixen::SVO::ConcatenatedOctrees obsCat;
+                obsCat.count = 3;
+                obsCat.configs.resize(3);
+                obsCat.nodeCounts.resize(3);
+                obsCat.brickCounts.resize(3);
+                obsCat.tierRefCounts.resize(3);
+
+                Vixen::SVO::SerializedOctree* obsOcts[3] = {&obsT0Ser, &obsT1Ser, &obsT2Ser};
+                uint32_t obsNodeBase = 0, obsBrickBase = 0, obsPoolBase = 0, obsTierRefBase = 0, obsMipPoolBase = 0;
+                for (int k = 0; k < 3; ++k) {
+                    Vixen::SVO::SerializedOctree& s = *obsOcts[k];
+                    s.config.nodeArrayBase  = static_cast<int32_t>(obsNodeBase);
+                    s.config.brickArrayBase = static_cast<int32_t>(obsBrickBase);
+                    Vixen::SVO::setSdfBrickArrayBase(s.config, obsPoolBase);
+                    Vixen::SVO::setTierRefTableBase(s.config, obsTierRefBase);
+                    Vixen::SVO::setMipPoolBase(s.config, obsMipPoolBase);
+
+                    obsCat.configs[k]       = s.config;
+                    obsCat.nodeCounts[k]    = s.nodeCount;
+                    obsCat.brickCounts[k]   = s.brickCount;
+                    obsCat.tierRefCounts[k] = static_cast<uint32_t>(s.tierRefs.size());
+
+                    obsCat.nodes.insert(obsCat.nodes.end(), s.nodes.begin(), s.nodes.end());
+                    obsCat.bricks.insert(obsCat.bricks.end(), s.bricks.begin(), s.bricks.end());
+                    obsCat.channelPool.insert(obsCat.channelPool.end(), s.channelPool.begin(), s.channelPool.end());
+                    obsCat.brickGridLookup.insert(obsCat.brickGridLookup.end(), s.brickGridLookup.begin(), s.brickGridLookup.end());
+                    obsCat.tierRefTable.insert(obsCat.tierRefTable.end(), s.tierRefs.begin(), s.tierRefs.end());
+                    obsCat.mipPool.insert(obsCat.mipPool.end(), s.mipPool.begin(), s.mipPool.end());
+
+                    if (obsCat.materials.empty()) {
+                        obsCat.materials = s.materials;
+                    }
+
+                    obsNodeBase    += s.nodeCount;
+                    obsBrickBase   += s.brickCount;
+                    obsPoolBase    += s.brickCount * s.brickStrideFloats;
+                    obsTierRefBase += static_cast<uint32_t>(s.tierRefs.size());
+                    obsMipPoolBase += s.nodeCount * s.channelCount;
+                }
+
+                if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))) {
+                    bodyScene->SetRecipePool(std::move(obsCat));
+
+                    // renderScale=0.1 -> world diameter = 10*0.1 = 1.0 unit, centered on
+                    // (64,64,64) (the same world center every tier-crossing demo in this
+                    // file uses, so the existing VIXEN_TIER_ZOOM_DEMO-style orbitCenter
+                    // wiring below still applies unmodified).
+                    constexpr float kObsRenderScale = 0.1f;
+                    constexpr float kObsHalf = 5.0f * kObsRenderScale;  // = 0.5f
+                    Vixen::SVO::BodyInstanceGpu obsInst{};
+                    obsInst.worldPos[0]  = 64.0f - kObsHalf;
+                    obsInst.worldPos[1]  = 64.0f - kObsHalf;
+                    obsInst.worldPos[2]  = 64.0f - kObsHalf;
+                    obsInst.renderScale  = kObsRenderScale;
+                    obsInst.color[0]     = 1.0f;
+                    obsInst.color[1]     = 1.0f;
+                    obsInst.color[2]     = 1.0f;
+                    obsInst.octreeIndex  = 0u;
+                    obsInst.providerKind = 0u;
+                    obsInst.recipeId     = 0u;
+
+                    bodyScene->SetInstances({obsInst});
+                    mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_OBSERVABLE_DEMO: T0 leaf ("
+                                  + std::to_string(obsT0MarkDescIdx) + "," + std::to_string(obsT0MarkOctant)
+                                  + ") -> T1 octree1 (childScale=0.25); T1 leaf (" + std::to_string(obsT1MarkDescIdx) + ","
+                                  + std::to_string(obsT1MarkOctant) + ") -> T2 octree2 (childScale=0.25); "
+                                  "predicted hop0~=79.58wu, hop1~=19.89wu, both <1.1deg off-axis");
+                }
+            } else {
+                mainLogger->Error("[BuildRenderGraph] VIXEN_TIER_OBSERVABLE_DEMO: no camera-facing leaf found in T0 or T1 — demo scene not built");
             }
         } else if (std::getenv("VIXEN_SHADOW_DEMO")) {
             // VIXEN_SHADOW_DEMO — Sampled Lighting Inc1 M4 live gate: two Procedural

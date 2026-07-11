@@ -519,6 +519,28 @@ void VulkanGraphApplication::Update() {
             }
         }
 
+        // Tiered-ESVO Inc3 M8 Task 16 live gate: one-shot proof that a look-target genuinely
+        // decouples `forward` from orbitCenter (CameraNode::SetLookTargetForTest). Deliberately
+        // NOT part of any tier-crossing scene (VIXEN_LOOK_TARGET_DEMO runs standalone, alongside
+        // whatever scene is otherwise active) -- this demo only exists to prove the CAPABILITY,
+        // not to build the Task 17/18 Earth-scale demo. Aims the camera hard to one side of
+        // orbitCenter at tick 1 (one-shot, mirrors the RequestBrickResidency one-shot pattern
+        // above) so a later HUD capture shows a visibly different view than the same tick with
+        // the env var unset.
+        if (renderGraph && std::getenv("VIXEN_LOOK_TARGET_DEMO")) {
+            static long lookTargetTick = 0;
+            ++lookTargetTick;
+            if (lookTargetTick == 1) {
+                if (auto* camera = static_cast<CameraNode*>(renderGraph->GetInstance(cameraNode_))) {
+                    // Orbit default is centered on (5,5,5); aim far off to one side instead.
+                    camera->SetLookTargetForTest(glm::vec3(60.0f, 5.0f, 5.0f));
+                    if (mainLogger) {
+                        mainLogger->Info("[LookTargetDemo] tick 1: SetLookTargetForTest(60,5,5)");
+                    }
+                }
+            }
+        }
+
         // Tiered-ESVO Inc2 M5 Task 11 live gate: env-gated scripted continuous zoom-out through
         // the single tier crossing proven in M3/M4 (VIXEN_TIER_ZOOM_DEMO=1, run alongside
         // VIXEN_TIER_CROSSING_DEMO=1 + VIXEN_TIER_CROSSING_LOD_COEF_OVERRIDE=0.6). Mirrors
@@ -574,6 +596,156 @@ void VulkanGraphApplication::Update() {
             }
             if (zoomTick % 20 == 0 && mainLogger) {
                 mainLogger->Info("[TierZoomDemo] tick " + std::to_string(zoomTick));
+            }
+        }
+
+        // Tiered-ESVO Inc3 M4 Task 6 (the epic gate): the Earth-scale continuous
+        // surface-to-orbit zoom, crossing BOTH real (childScale=2^-10) tier boundaries
+        // mid-flight. Run alongside VIXEN_TIER_EARTH_DEMO=1 (+ optionally
+        // VIXEN_TIER_EARTH_ZOOM_DEMO=1 to also exercise the mid-flight residency grant).
+        //
+        // LOG-SPACED (not linear) sweep: the dynamic range spans kNearDist=1e-5 (T2/
+        // bedrock-scale detail, per BuildRenderGraph.cpp's own world-unit derivation) to
+        // kFarDist=100 (full T0-body orbit view) -- 7 orders of magnitude. A LINEAR sweep
+        // would spend ~99.9999% of ticks far from either transition and fly past the
+        // hop-1 transition (predicted at world distance ~0.031, see below) in well under
+        // one tick. Zooming OUT (near -> far) over kPhase1End ticks, t in [0,1] maps
+        // distance = 10^(log10(kNearDist) + t*(log10(kFarDist)-log10(kNearDist))).
+        //
+        // Prediction-first LOD-handoff derivation (hand-computed BEFORE this schedule was
+        // written; full trace in the milestone's Progress Log /
+        // Tiered-ESVO-Inc3-M4-earth-scale-derivation.py): the crossing LOD gate fires
+        // (declines further descent, falls back to mip-shading) when
+        // tv_max*raySizeCoef + raySizeBias >= childScale*scale_exp2 (Inc3 M1's
+        // generalized gate). With NO override (VIXEN_TIER_CROSSING_LOD_COEF_OVERRIDE
+        // unset, the real RaySizeCoefNode value at 1920x1080/45deg FOV,
+        // raySizeCoef ~= 7.272e-4), scale_exp2=0.5 (root's own 8 children), raySizeBias=0,
+        // and the existing "1 local-t unit = kWorldGridSize*renderScale = 48 world units"
+        // conversion (M5's own established derivation):
+        //   worldDistance >= 48 * childScale * scale_exp2 / raySizeCoef
+        // Hop 0 (T0->T1, childScale=2^-10): worldDistance >= ~32.23 -- this is the point,
+        // sweeping OUT, where the ray STOPS crossing into T1 and instead mip-shades T0's
+        // own leaf (predicted transition TICK ~372 of 400 at this log-spaced schedule).
+        // Hop 1 (T1->T2, childScale=2^-10): the SAME gate re-applied inside T1's own local
+        // traversal (Inc3 M3: "gates against that hop's own already-local scale_exp2"),
+        // but T1's local units are compressed 1024x (cumulativeDirLen) relative to T0's
+        // world units, so in TOP-LEVEL world-distance terms hop 1's decline threshold is
+        // 1024x SMALLER: ~32.23/1024 ~= 0.0315 (predicted transition TICK ~200 of 400).
+        // Both are well inside [0,400] and well-separated from each other and from the
+        // schedule's own endpoints.
+        if (renderGraph && std::getenv("VIXEN_TIER_EARTH_DEMO") &&
+            (std::getenv("VIXEN_TIER_EARTH_ZOOM_DEMO") || std::getenv("VIXEN_TIER_EARTH_ZOOM_SCRIPT"))) {
+            static long earthZoomTick = 0;
+            ++earthZoomTick;
+            constexpr long  kEarthResidencyFlipTick = 50;   // well before BOTH predicted transitions
+            constexpr long  kEarthPhase1End         = 400;
+            constexpr double kEarthNearDist         = 1e-5;  // T2/bedrock-scale detail
+            constexpr double kEarthFarDist          = 100.0; // full T0-body orbit view
+
+            if (auto* camera = static_cast<CameraNode*>(renderGraph->GetInstance(cameraNode_))) {
+                const double t = std::min(1.0, static_cast<double>(earthZoomTick) / static_cast<double>(kEarthPhase1End));
+                const double logNear = std::log10(kEarthNearDist);
+                const double logFar  = std::log10(kEarthFarDist);
+                const double dist    = std::pow(10.0, logNear + t * (logFar - logNear));
+                camera->SetOrbitDistanceForTest(static_cast<float>(dist));
+
+                // M6 finding (see Progress Log for the full derivation): yaw/pitch CANNOT fix
+                // the crossing octant's framing here. CameraNode's orbit `forward` is hard-wired
+                // to `normalize(orbitCenter - cameraPosition)` (CameraNode.cpp UpdateCameraData) --
+                // it always re-targets orbitCenter regardless of yaw/pitch, which only choose
+                // WHERE on the orbit sphere the camera sits, not what it looks at. The crossing
+                // octant (root child 4) sits at world offset (-12,-12,+12) from
+                // orbitCenter=(64,64,64); its angular offset from the camera's forward axis is
+                // ~4 deg at the far end (D=100) but explodes past 60-125 deg at the near end
+                // (D<20) as camera-to-orbitCenter distance shrinks toward the octant's own fixed
+                // 12-17 unit offset. Both LOD-crossing thresholds (~14.92 and ~0.0146 world units,
+                // see the derivation comment above) fall well inside that near-field blind zone --
+                // the octant only re-enters the ~22.5 deg half-FOV cone around D~=20-25, by which
+                // point hop 0's crossing has already declined and hop 1's is 1024x further out of
+                // reach. This is a structural mismatch between the body's absolute scale (48 world
+                // units) and childScale=2^-10 compounded over 2 hops, not a fixable camera aim;
+                // see the M6 Progress Log for the full analysis and options going forward.
+            }
+            if (earthZoomTick == kEarthResidencyFlipTick && std::getenv("VIXEN_TIER_EARTH_ZOOM_DEMO")) {
+                if (auto* bodyScene = static_cast<Vixen::RenderGraph::BodyOctreeSceneNode*>(
+                        renderGraph->GetInstance(bodyOctreeSceneNode_))) {
+                    bodyScene->RequestBrickResidency(true);
+                    if (mainLogger) {
+                        mainLogger->Info("[TierEarthZoomDemo] tick " + std::to_string(earthZoomTick) +
+                                          ": RequestBrickResidency(true) -- mid-flight residency grant");
+                    }
+                }
+            }
+            if (earthZoomTick % 20 == 0 && mainLogger) {
+                mainLogger->Info("[TierEarthZoomDemo] tick " + std::to_string(earthZoomTick));
+            }
+        }
+
+        // Tiered-ESVO Inc3 M7 Task 14 (the epic gate, finally): the live continuous
+        // surface-to-orbit zoom on VIXEN_TIER_OBSERVABLE_DEMO's reconstructed body,
+        // crossing BOTH real magnified tier boundaries mid-flight (childScale=0.25/hop,
+        // per Task 13's proven construction). Run alongside VIXEN_TIER_OBSERVABLE_DEMO=1
+        // (+ optionally VIXEN_TIER_OBSERVABLE_ZOOM_SCRIPT=1 for the residency grant).
+        //
+        // Task 13's hand-computed, validator-confirmed handoffs (see Progress Log):
+        //   hop0 (T0->T1) ~= 79.58 world units
+        //   hop1 (T1->T2) ~= 19.89 world units  (= hop0 * childScale)
+        //   in-FOV floor (10*R, where the MARKED OCTANT enters the FOV cone) = 1.00 wu
+        //   solid surface radius     =  0.5625 world units
+        //   orbit ceiling            =  120.0 world units
+        //
+        // FIRST ATTEMPT at this schedule used kObsNearDist=5.0 (inside hop1, clear of
+        // the in-FOV floor) reasoning that would show "close-in detail" -- captures
+        // proved this wrong: the BODY's own visual angular size at distance d is
+        // atan(bodyRadius/d) with bodyRadius~=0.56wu, giving only ~6.4deg half-angle
+        // at d=5.0 (vs the 22.5deg half-FOV) -- a small dot, not bedrock-scale detail.
+        // The in-FOV floor governs when the *crossing octant* enters frame, not when
+        // the *body itself* is comfortably sized; those are different distances. The
+        // corrected near end (kObsNearDist=1.2, just outside the 0.5625wu solid) gives
+        // ~25deg half-angle -- the body genuinely fills the frame, true close-up
+        // framing. The far end is now the actual orbit ceiling (120wu) for a true
+        // "full-body orbit" endpoint, honestly accepting a documented finding: at the
+        // body's own tiny 1.0wu diameter, hop0's distance (79.58wu) leaves the body at
+        // only ~0.4deg angular half-size (a few-pixel speck at 500px height) -- the
+        // hop0 crossing itself is NOT a dramatic zoomed-in event, it happens when the
+        // body has already shrunk far below comfortable viewing size. This is a
+        // genuine property of THIS reconstructed body's proportions (LOD-handoff
+        // distances chosen for octant reachability/on-axis-ness, not for staying
+        // visually close to the body), not a schedule defect -- surfaced honestly in
+        // the Progress Log rather than silently reshaping the demo to hide it.
+        //
+        // Predicted transition ticks (log-interpolation inverted BEFORE running, near=
+        // 1.2wu/far=120.0wu over kObsPhase1End=400 ticks):
+        //   hop1 (T1->T2 decline, zooming out) -> tick ~244
+        //   hop0 (T0->T1 decline, zooming out) -> tick ~364
+        if (renderGraph && std::getenv("VIXEN_TIER_OBSERVABLE_DEMO") &&
+            (std::getenv("VIXEN_TIER_OBSERVABLE_ZOOM_DEMO") || std::getenv("VIXEN_TIER_OBSERVABLE_ZOOM_SCRIPT"))) {
+            static long obsZoomTick = 0;
+            ++obsZoomTick;
+            constexpr long  kObsResidencyFlipTick = 50;   // well before both predicted transitions (~244, ~364)
+            constexpr long  kObsPhase1End         = 400;
+            constexpr double kObsNearDist         = 1.2;    // just outside the 0.5625wu solid -- body fills the frame
+            constexpr double kObsFarDist          = 120.0;  // full orbit ceiling -- true full-body-orbit endpoint
+
+            if (auto* camera = static_cast<CameraNode*>(renderGraph->GetInstance(cameraNode_))) {
+                const double t = std::min(1.0, static_cast<double>(obsZoomTick) / static_cast<double>(kObsPhase1End));
+                const double logNear = std::log10(kObsNearDist);
+                const double logFar  = std::log10(kObsFarDist);
+                const double dist    = std::pow(10.0, logNear + t * (logFar - logNear));
+                camera->SetOrbitDistanceForTest(static_cast<float>(dist));
+            }
+            if (obsZoomTick == kObsResidencyFlipTick && std::getenv("VIXEN_TIER_OBSERVABLE_ZOOM_DEMO")) {
+                if (auto* bodyScene = static_cast<Vixen::RenderGraph::BodyOctreeSceneNode*>(
+                        renderGraph->GetInstance(bodyOctreeSceneNode_))) {
+                    bodyScene->RequestBrickResidency(true);
+                    if (mainLogger) {
+                        mainLogger->Info("[TierObservableZoomDemo] tick " + std::to_string(obsZoomTick) +
+                                          ": RequestBrickResidency(true) -- mid-flight residency grant");
+                    }
+                }
+            }
+            if (obsZoomTick % 20 == 0 && mainLogger) {
+                mainLogger->Info("[TierObservableZoomDemo] tick " + std::to_string(obsZoomTick));
             }
         }
 
@@ -927,7 +1099,7 @@ void VulkanGraphApplication::UpdateBodySceneResidency() {
     // residency on the very same tick, since both run inside the same Update() call before
     // ExecuteImpl). This mirrors VIXEN_TIER_CROSSING_NONRESIDENT/VIXEN_RESIDENCY_GATE_DEMO's own
     // precedent of a demo env knob taking deliberate, exclusive control of one subsystem.
-    if (std::getenv("VIXEN_TIER_ZOOM_DEMO")) {
+    if (std::getenv("VIXEN_TIER_ZOOM_DEMO") || std::getenv("VIXEN_TIER_EARTH_ZOOM_DEMO")) {
         return;
     }
 

@@ -95,6 +95,16 @@ CONSTEXPR_NODE_CONFIG(CameraNodeConfig,
     static constexpr const char* PARAM_ORBIT_CENTER_Y = "orbit_center_y";
     static constexpr const char* PARAM_ORBIT_CENTER_Z = "orbit_center_z";
     static constexpr const char* PARAM_ORBIT_DISTANCE = "orbit_distance";
+    // Tiered-ESVO Inc3 M8: genuine look-target, independent of orbitCenter. When ANY of these
+    // three is present, UpdateCameraData aims `forward` at (lookTarget - cameraPosition) instead
+    // of (orbitCenter - cameraPosition) — breaking the "camera always looks at orbitCenter"
+    // constraint that CameraNode.h's SetPitchForTest comment (and the Inc3 M6/M7 investigations)
+    // documented as missing. Unset (the common case, every pre-M8 scene) leaves lookTarget_
+    // exactly equal to orbitCenter every frame, so UpdateCameraData's forward computation is
+    // byte-identical to pre-M8.
+    static constexpr const char* PARAM_LOOK_TARGET_X = "look_target_x";
+    static constexpr const char* PARAM_LOOK_TARGET_Y = "look_target_y";
+    static constexpr const char* PARAM_LOOK_TARGET_Z = "look_target_z";
     // Forces reapply of every present pose param this SetupImpl even when its value is unchanged
     // from lastApplied (the applyIfChanged change-tracking normally skips a same-value write).
     // Field bug 2026-07-03: a console reset to a pose already equal to the stored value (e.g.

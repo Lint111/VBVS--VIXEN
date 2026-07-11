@@ -32,6 +32,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   scale-magnified tiers deferred with documented prerequisites (per-child-scale hitT normalization,
   LOD-gate generalization). See `Vixen-Docs/01-Architecture/Tiered-ESVO-{Observer-Addressing-Design,
   Inc2-Plan}-2026-07.md`.
+- **Tiered ESVO — scale-magnified + chained crossings, Inc3** — the tier-crossing mechanism is
+  generalized off the `childScale==1.0` restriction: child hit-t is normalized into the parent's
+  world-t unit by `length(childRayDirWorld)` (reduces byte-exactly to Inc2's plain addition at unity),
+  the crossing LOD gate generalizes to the child's own resolution (`>= childScale*scale_exp2`), and the
+  traversal wrapper becomes a bounded `MAX_TIER_HOPS` hop loop (parked chain, one live stack at a time)
+  so a `farBit==1` leaf reached *inside* a child tree is followed — enabling T0→T1→T2 chains. Concentric
+  scale-magnification is live-proven across `childScale ∈ {1.0, 0.5, 0.25, 0.125}` (center-stable,
+  both-axis shrink at the predicted ratio) and a 3-tree chain renders both crossings on real hardware.
+  The `GpuTraversalMirror.h` CPU oracle is kept in lockstep (new non-unity + chained hit-t parity
+  tests). **The Earth-scale continuous surface-to-orbit zoom across two crossings is NOT yet
+  demonstrated** — the mechanism is proven, but staging it needs a demo body whose crossing octant is
+  observable (on the view axis and outside the parent's solid); at 2^-10 per hop the two LOD-handoff
+  distances are locked 1024× apart and cannot both be framed in the current demo body (proven
+  algebraically). That observable-zoom demo is a documented construction follow-up (Inc3 M6/M7). En
+  route, three real bugs were found+fixed (see Fixed). See
+  `Vixen-Docs/01-Architecture/Tiered-ESVO-Inc3-Plan-2026-07.md`.
 - **Sampled Lighting, Inc1 (shadow rays)** — the ESVO march is now factored into a shared
   `TraceWorld`/`TraceWorldShadow` shader seam (`shaders/TraceWorld.glsl`), the primary pass writes a
   per-pixel `HitRecord` (albedo/normal/roughness/hitT/worldPos, SSBO@binding-17), and shading casts a
@@ -75,6 +91,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Missing `TRANSFER_DST_BIT` on the brick/config GPU buffers** — the first live post-compile
   residency grant surfaced a real `VUID-vkCmdCopyBuffer-dstBuffer-00120`; both buffers now declare
   the usage flag at creation (root-cause fix; sibling sweep confirmed no other affected buffers).
+- **Tier-crossing chained-hop hit-t double-count (Inc3 M3)** — the per-hop cumulative direction-length
+  factor was multiplied (`*=`) when it should be assigned (`=`), because `childRayDirWorld` already
+  compounds all prior hops' scaling; the bug double-counted every hop past the first (a 2-hop chain at
+  childScale=0.5 measured 8× where the correct value is 4×). Fixed in shader and CPU mirror; guarded by
+  a chained hit-t parity test against the `(1/childScale)^hop` closed form.
+- **Tier-crossing child magnification anchored to the wrong point (Inc3 M5)** — every demo placed the
+  child at the root cube's shared corner `(1.5,1.5,1.5)` instead of the marked leaf's own octant center,
+  making that corner a scale-invariant fixed point: the child collapsed into a one-sided "wedge" that
+  barely shrank (~1.24× at childScale=0.25) instead of magnifying concentrically (4×). Fixed with an
+  octant-center-aware placement helper; the traversal/remap math was correct and untouched. This also
+  reconciled an earlier mis-measurement that had reported a working 3.93× magnification on the broken
+  render.
+- **CPU traversal-mirror empty child tier-ref table (Inc3 M3)** — the `GpuTraversalMirror.h` oracle did
+  not carry each child tree's own tier-ref table, so a *second* chained crossing silently degraded to a
+  wrong brick read; fixed by giving each child link its own table slice (the GPU shader was unaffected —
+  it indexes one concatenated table by per-config base offset).
 
 ### Documentation
 - Rewrote the repository `README.md` and `VIXEN/README.md` to reflect the pivot from voxel
