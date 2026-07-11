@@ -749,6 +749,115 @@ void VulkanGraphApplication::Update() {
             }
         }
 
+        // Tiered-ESVO Inc3 M8 Task 17 (the epic's literal headline): the TRUE Earth-scale
+        // (childScale=2^-10/hop) surface-to-orbit transition, using Task 16's CameraNode
+        // look-target decoupling to keep the marked crossing octant framed through its
+        // handoff -- the capability M6/M7 proved is REQUIRED for the off-axis problem (their
+        // own R-invariance findings: a camera that always looks at body center cannot frame
+        // an octant sitting far off-axis at 2^-10's near/mid-field distances). Run alongside
+        // VIXEN_TIER_M8_EARTH_DEMO=1 (+ VIXEN_TIER_CROSSING_LOD_COEF_OVERRIDE=2.8935e-4, see
+        // that demo's own comment) + VIXEN_TIER_M8_EARTH_ZOOM_DEMO=1 (or _ZOOM_SCRIPT=1 to
+        // skip residency).
+        //
+        // TWO INDEPENDENT CONSTRAINTS AT TRUE 2^-10 (both hand-derived BEFORE writing this
+        // schedule, the SECOND one found only after a first live-capture attempt failed --
+        // see the M8 Progress Log for the full derivation and the failed attempt's own
+        // captures):
+        //  (1) OFF-AXIS ANGLE (M6/M7's finding): the marked octant sits at a FIXED world
+        //      offset (-2.5R,-2.5R,+2.5R) from body center, independent of orbit distance --
+        //      a camera that always looks at body center sees it far outside the 22.5deg
+        //      half-FOV cone through most of a near/mid-field orbit. FIXED by look-target
+        //      retargeting (this task's new capability): aim at the octant's own recorded
+        //      world position (m8EarthHop0OctantWorld_) instead of body center.
+        //  (2) SOLID-RADIUS/HOP-DISTANCE COUPLING (a SECOND, independent constraint this
+        //      task discovered live, NOT solved by retargeting): the calibrated LOD-gate
+        //      formula (hop0=20*R*childScale*scale_exp2/raySizeCoef, hop1=hop0*childScale)
+        //      predicts hop0~=81.0wu (with the LOD-coef override) and hop1~=0.0791wu -- but
+        //      hop1, as a camera-to-body-center WORLD distance, is far SMALLER than the
+        //      body's own solid surface radius (~27wu at R=4.8). A body-center-orbit
+        //      schedule literally cannot place the camera at hop1's distance without
+        //      embedding it INSIDE T0's own solid volume (a degenerate ray-origin-inside-
+        //      geometry case, independently confirmed live: a first schedule attempt with
+        //      near=0.02wu produced T0/magenta fill at every near/mid tick and NEVER any
+        //      green/cyan T1/T2 pixels anywhere in a 500-tick run). This holds for ANY
+        //      raySizeCoef override that also keeps hop0 outside the solid (hop1=hop0*cs is
+        //      always 1024x smaller than hop0), so it is NOT a schedule-tuning problem --
+        //      it is the SAME 1024x-hop-gap structural fact M6/M7 found in FOV-angle terms,
+        //      re-appearing as a raw-distance constraint that look-target retargeting does
+        //      NOT solve (retargeting fixes WHERE the camera looks, not the fact that
+        //      reaching hop1's threshold via a body-center orbit requires standing inside
+        //      the body's own solid).
+        //
+        // CORRECTED SCHEDULE: sweeps ONLY from just outside the solid (near=30.0wu,
+        // comfortably clear of the ~27wu solid radius) out through hop0 (T0->T1, ~81.0wu) to
+        // the orbit ceiling (120.0wu) over kM8Phase1End=400 ticks -- this demonstrates the
+        // ONE crossing (hop0) that IS genuinely reachable-and-outside-solid at true 2^-10,
+        // with look-target retargeting fixing hop0's own off-axis angle (43deg at the near
+        // end without retargeting, dropping under the 22.5deg half-FOV on its own by
+        // ~tick 200 anyway -- retargeting keeps the octant framed through the WHOLE
+        // near/mid range instead of only after the angle self-resolves). Predicted:
+        //   hop0 tick ~= 287
+        // hop1 (T1->T2) is NOT demonstrated by this schedule -- see the Progress Log for why
+        // it is structurally unreachable via ANY body-center-orbit schedule at true 2^-10, a
+        // genuine finding surfaced honestly rather than hidden or silently re-scoped.
+        if (renderGraph && std::getenv("VIXEN_TIER_M8_EARTH_DEMO") &&
+            (std::getenv("VIXEN_TIER_M8_EARTH_ZOOM_DEMO") || std::getenv("VIXEN_TIER_M8_EARTH_ZOOM_SCRIPT"))) {
+            static long m8ZoomTick = 0;
+            ++m8ZoomTick;
+            // SECOND correction (found after the near=30wu attempt rendered near-total
+            // mip-fallback grey with no T0/T1 attribution at all): near=30wu is too close
+            // for the look-target retarget to keep the BODY itself in frame. At that
+            // distance the body's own angular half-radius (atan-style, ~64deg) vastly
+            // exceeds the 22.5deg half-FOV, so with `forward` aimed 43deg off the
+            // body-center direction (toward the octant), the ray marcher's actual view cone
+            // misses the body's silhouette entirely -- background/mip-placeholder, not a
+            // crossing miss. A python sweep of (body's own angular half-radius, octant's
+            // angular offset from the body-center direction) vs. orbit distance shows both
+            // only drop under the 22.5deg half-FOV simultaneously around distance ~=70wu
+            // (body half-angle ~=22.7deg, octant offset ~=16.3deg) -- i.e. the usable
+            // "both body AND octant in frame while retargeted" band is much narrower than
+            // assumed, and sits just BELOW hop0's own predicted distance (81wu). CORRECTED
+            // AGAIN: near=70.0wu (just below hop0, where both fit), far=120.0wu (ceiling),
+            // over a shorter kM8Phase1End=200-tick window -- predicts hop0 fires at
+            // tick ~=54.
+            constexpr long  kM8ResidencyFlipTick     = 10;   // well before hop0's own predicted tick (~54)
+            constexpr long  kM8LookTargetReleaseTick = 150;  // well after hop0 (~54), comfortably stable
+            constexpr long  kM8Phase1End             = 200;
+            constexpr double kM8NearDist             = 70.0;   // where body+octant both fit in frame while retargeted
+            constexpr double kM8FarDist              = 120.0;  // full orbit ceiling
+
+            if (auto* camera = static_cast<CameraNode*>(renderGraph->GetInstance(cameraNode_))) {
+                const double t = std::min(1.0, static_cast<double>(m8ZoomTick) / static_cast<double>(kM8Phase1End));
+                const double logNear = std::log10(kM8NearDist);
+                const double logFar  = std::log10(kM8FarDist);
+                const double dist    = std::pow(10.0, logNear + t * (logFar - logNear));
+                camera->SetOrbitDistanceForTest(static_cast<float>(dist));
+
+                if (m8ZoomTick < kM8LookTargetReleaseTick) {
+                    camera->SetLookTargetForTest(m8EarthHop0OctantWorld_);
+                } else if (m8ZoomTick == kM8LookTargetReleaseTick) {
+                    camera->ClearLookTargetForTest();
+                    if (mainLogger) {
+                        mainLogger->Info("[TierM8EarthZoomDemo] tick " + std::to_string(m8ZoomTick) +
+                                          ": ClearLookTargetForTest() -- releasing to default body-center aim");
+                    }
+                }
+            }
+            if (m8ZoomTick == kM8ResidencyFlipTick && std::getenv("VIXEN_TIER_M8_EARTH_ZOOM_DEMO")) {
+                if (auto* bodyScene = static_cast<Vixen::RenderGraph::BodyOctreeSceneNode*>(
+                        renderGraph->GetInstance(bodyOctreeSceneNode_))) {
+                    bodyScene->RequestBrickResidency(true);
+                    if (mainLogger) {
+                        mainLogger->Info("[TierM8EarthZoomDemo] tick " + std::to_string(m8ZoomTick) +
+                                          ": RequestBrickResidency(true) -- mid-flight residency grant");
+                    }
+                }
+            }
+            if (m8ZoomTick % 20 == 0 && mainLogger) {
+                mainLogger->Info("[TierM8EarthZoomDemo] tick " + std::to_string(m8ZoomTick));
+            }
+        }
+
         // Same "input never rides the render graph's gates" hook, generalized to InputNode
         // (input-rework slice 1): drain its GLFW callback queue unconditionally too, right beside
         // WindowNode's own drain above. Same lookup pattern, same null-guard (a graph without an
