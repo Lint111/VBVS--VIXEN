@@ -10,6 +10,22 @@
 //   - A tighter powerThreshold yields a cut that is no coarser (more nodes,
 //     not fewer) than a looser one — the threshold's monotonic-refinement
 //     property, a structural sanity check on the cut logic itself.
+//
+// GATE SCENE (Task 3's "author a gate scene with >=10^3 emissive voxels"):
+// BakeEmissiveGateScene below IS that gate scene — a named, reusable CPU
+// fixture (not a throwaway inline lambda) baking a sphere with a spatially-
+// varying emissive intensity over its WHOLE occupied volume (not just the
+// surface shell), giving the light-tree real multi-level structure to cut
+// through. EmissiveGateSceneHasAtLeastAThousandEmissiveVoxels below asserts
+// its scale directly; every other test in this file reuses the same fixture
+// so the whole file's coverage — brute-force reference, cut-vs-brute-force
+// tolerance, threshold monotonicity, well-formedness — runs against ONE
+// scene, not scattered ad-hoc bakes. This is a CPU fixture, not a live
+// VIXEN.exe demo scene (no VIXEN_xxx_DEMO env var/BuildRenderGraph.cpp
+// wiring): M3 has no shading consumer for ReservoirConfig/the light-tree yet
+// (M4/M5 do), so a CPU-testable gate scene is the correct-scope deliverable
+// this milestone — wiring a live render-path demo now would touch
+// BodyOctreeSceneNode's shared kind-baking loop for zero rendering payoff.
 
 #include <gtest/gtest.h>
 #include <glm/glm.hpp>
@@ -33,12 +49,11 @@
 
 using namespace Vixen::SVO;
 
-namespace {
-
 // Bakes a sphere with a spatially-varying emissive intensity over its whole
 // occupied volume (not just the surface) — gives the light-tree real
-// structure to cut through, unlike a single-point emitter.
-SdfBodyOctree BakeEmissiveSphere(int n, float r, const glm::vec3& center, float bandVoxels = 2.0f) {
+// structure to cut through, unlike a single-point emitter. THE gate scene
+// (Task 3's ">=10^3 emissive voxels" deliverable — see this file's header).
+SdfBodyOctree BakeEmissiveGateScene(int n, float r, const glm::vec3& center, float bandVoxels = 2.0f) {
     RecipeParams rp{r, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
     SdfBakeResult baked = BakeRecipeToSdfWorldWithEmission(
         RECIPE_SPHERE, center, rp, n, bandVoxels,
@@ -46,7 +61,28 @@ SdfBodyOctree BakeEmissiveSphere(int n, float r, const glm::vec3& center, float 
     return BuildSdfBodyOctree(baked, 3);
 }
 
-}  // namespace
+// ---------------------------------------------------------------------------
+// The gate scene itself must satisfy Task 3's ">=10^3 emissive voxels" bar,
+// checked directly and independently of any light-tree/cut logic — a scale
+// assertion on the SCENE, not on the algorithm under test.
+// ---------------------------------------------------------------------------
+TEST(LightTree, EmissiveGateSceneHasAtLeastAThousandEmissiveVoxels) {
+    SdfBodyOctree body = BakeEmissiveGateScene(/*n=*/32, /*r=*/10.0f, glm::vec3(16.0f));
+    SerializedOctree out = SerializeSdf(body);
+
+    uint64_t emissiveVoxelCount = 0;
+    for (uint32_t bi = 0; bi < out.brickCount; ++bi) {
+        const uint32_t* mats = reinterpret_cast<const uint32_t*>(out.bricks.data()) +
+                                static_cast<size_t>(bi) * SerializedOctree::kVoxelsPerBrick;
+        for (uint32_t voxel = 0; voxel < SerializedOctree::kVoxelsPerBrick; ++voxel) {
+            if (mats[voxel] == 0u) continue;
+            if (out.readPoolVoxel(SEM_EMISSION, bi, voxel, 0) > 0.0f) ++emissiveVoxelCount;
+        }
+    }
+    EXPECT_GE(emissiveVoxelCount, 1000u)
+        << "the gate scene (Task 3's '>=10^3 emissive voxels' deliverable) must have "
+        << "at least 1000 emissive voxels; found " << emissiveVoxelCount;
+}
 
 // ---------------------------------------------------------------------------
 // A scene with no emission baked (default NoEmission) must produce an EMPTY
@@ -84,7 +120,7 @@ TEST(LightTree, EmissiveSceneProducesBoundedNonEmptyCut) {
     // n=32/r=10 already gives >1000 emissive voxels (the precondition below),
     // enough to make "bounded cut" meaningful, and matches every OTHER
     // fixture in this file (all proven fast at this scale).
-    SdfBodyOctree body = BakeEmissiveSphere(/*n=*/32, /*r=*/10.0f, glm::vec3(16.0f));
+    SdfBodyOctree body = BakeEmissiveGateScene(/*n=*/32, /*r=*/10.0f, glm::vec3(16.0f));
     SerializedOctree out = SerializeSdf(body);
     const Octree* oct = body.octree->getOctree();
     ASSERT_NE(oct, nullptr);
@@ -125,7 +161,7 @@ TEST(LightTree, EmissiveSceneProducesBoundedNonEmptyCut) {
 // not exact equality (the cut is an approximation by design).
 // ---------------------------------------------------------------------------
 TEST(LightTree, CutAggregatePowerApproximatesBruteForceLeafSum) {
-    SdfBodyOctree body = BakeEmissiveSphere(/*n=*/32, /*r=*/10.0f, glm::vec3(16.0f));
+    SdfBodyOctree body = BakeEmissiveGateScene(/*n=*/32, /*r=*/10.0f, glm::vec3(16.0f));
     SerializedOctree out = SerializeSdf(body);
     const Octree* oct = body.octree->getOctree();
     ASSERT_NE(oct, nullptr);
@@ -157,7 +193,7 @@ TEST(LightTree, CutAggregatePowerApproximatesBruteForceLeafSum) {
 // invariant of the cut algorithm, independent of the tolerance check above.
 // ---------------------------------------------------------------------------
 TEST(LightTree, TighterThresholdNeverProducesFewerCutNodes) {
-    SdfBodyOctree body = BakeEmissiveSphere(/*n=*/32, /*r=*/10.0f, glm::vec3(16.0f));
+    SdfBodyOctree body = BakeEmissiveGateScene(/*n=*/32, /*r=*/10.0f, glm::vec3(16.0f));
     SerializedOctree out = SerializeSdf(body);
     const Octree* oct = body.octree->getOctree();
     ASSERT_NE(oct, nullptr);
@@ -185,7 +221,7 @@ TEST(LightTree, TighterThresholdNeverProducesFewerCutNodes) {
 // pruning is supposed to prevent).
 // ---------------------------------------------------------------------------
 TEST(LightTree, CutNodesAreWellFormed) {
-    SdfBodyOctree body = BakeEmissiveSphere(/*n=*/32, /*r=*/10.0f, glm::vec3(16.0f));
+    SdfBodyOctree body = BakeEmissiveGateScene(/*n=*/32, /*r=*/10.0f, glm::vec3(16.0f));
     SerializedOctree out = SerializeSdf(body);
     const Octree* oct = body.octree->getOctree();
     ASSERT_NE(oct, nullptr);
