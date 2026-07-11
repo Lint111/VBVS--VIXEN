@@ -503,6 +503,47 @@ honest, evidenced blocker — a genuinely new engine-level finding, not a repeat
 octant/off-axis-aim mistakes the earlier tasks made. See [[Tiered-ESVO-Inc3-Plan-2026-07]]'s M8
 Task 20 Progress Log for the full derivation and bisection evidence.
 
+**M8 Task 22 update (2026-07-11): the "mark the crossing deeper" idea is algebraically DEAD —
+depth cancels out of the gate identically, proven before any code was written.** Task 22 was
+dispatched to eliminate `VIXEN_TIER_CROSSING_LOD_COEF_OVERRIDE` (the right call — one shared
+`pc.raySizeCoef` field can't serve two different-scale gates) and instead mark the T0→T1
+crossing leaf several levels below root, on the premise that a deeper node's smaller chord would
+naturally clear the real, unoverridden gate. **Direct derivation from the actual traversal code
+disproves this premise structurally, not just numerically:** `executePushPhase`
+(`ESVOTraversal.glsl:268`) sets each child's `t_max = tv_max` (the parent's own exit-t) every
+PUSH, and `state.scale_exp2` halves every PUSH (`:260-261`) — both quantities are tied to the
+SAME `2^-depth` self-similar octree subdivision. Substituting `chord(d) = chord(0)*2^-d` and
+`scale_exp2(d) = 0.5*2^-d` into the gate `tv_max*raySizeCoef >= childScale*scale_exp2` collapses
+it to `chord(0)*raySizeCoef >= childScale*0.5` — **the `2^-d` term cancels exactly, for any d.**
+Marking the crossing leaf deeper shrinks the gate's LHS and RHS by the identical factor; it can
+never flip an already-failing gate to passing, at any depth. A from-scratch Python
+box-intersection model (using the real `initRayCoefficients`/`computeVoxelCorners` formulas,
+`ESVOCoefficients.glsl:48-88`) independently reproduced Task 20's own empirical numbers to
+confirm the model is sound (predicted ratio 173.7× vs Task 20's own reported "~175× too large" at
+depth 1 — a 1% match) before drawing this conclusion, per the epic's prediction-first discipline.
+**What the numbers show:** at the real coefficient (0.00157080 @ 45°FOV/500px) and childScale=2^-10,
+clearing hop0 needs the T0 ROOT's own full-cube chord ≤ ~0.31wu along the approach diagonal — the
+current demo's root chord is ~83.1wu (renderScale=4.8), failing by ~267×, DEPTH-INDEPENDENTLY.
+The only lever that changes this ratio is `chord(0)` itself, which is a function of `renderScale`
+(body world size) and approach angle, not marked-leaf depth — i.e. would require shrinking the
+body by ~267× (renderScale≈0.018 vs 4.8), which defeats the "Earth-scale, per-tier-attributable"
+framing (a body that small is near/below single-pixel size before any tier crossing is even
+relevant). Hop1 (T1→T2) independently re-derived and reconfirmed NOT the bottleneck (clears with
+~7.7× margin) — consistent with Task 20's finding, unaffected by this conclusion. **This is a
+genuine, evidenced dead end for the "construct-at-depth" mechanism specifically** — it does not
+reopen Task 20's mip-only/residency finding (Task 21's residency-from-construction fix, commit
+`4e6e812b`, stands independently correct) and does not contradict M1-M5's proven crossing
+math (this is purely a property of the ONE shared gate formula vs. this demo's absolute scale).
+**Path forward (not yet attempted, surfaced for the next increment):** the true remaining levers
+within "no override, real coefficient" are (a) shrink `renderScale`/body scale so the ROOT's own
+chord clears the gate for realistic FOV/resolution — likely too small a body to read as
+"Earth-scale" — or (b) accept that a single shared `raySizeCoef` cannot serve both an ordinary
+body's own visibility AND a deeply-scale-magnified tier-crossing's footprint at Earth ratios
+simultaneously without a genuinely separate per-gate coefficient (a scoped engine change, larger
+than Task 22's own scope, and arguably re-opens the exact "two jobs, one field" problem Task 22
+was created to eliminate — just relocated from a demo override to a first-class engine parameter).
+See [[Tiered-ESVO-Inc3-Plan-2026-07]]'s M8 Task 22 Progress Log for the full derivation.
+
 ## 10. Rejected alternatives
 
 - **Widen `ChildDescriptor` to carry a dedicated tier-ref field** — rejected in favor of

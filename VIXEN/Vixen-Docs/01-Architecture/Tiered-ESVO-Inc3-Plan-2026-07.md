@@ -1,6 +1,6 @@
 ---
 title: Tiered ESVO — Inc3 Implementation Plan (scale-magnified tiers + 3-tier chain — Earth-scale surface-to-orbit)
-status: M1-M3 SHIPPED, M5 SHIPPED (magnification geometry fix) 2026-07-10; M6 (Earth-scale epic gate) BLOCKED on a camera-framing/scale structural mismatch, not a math defect (see Progress Log); M7 SHIPPED 2026-07-11 — the epic gate MET at a documented gentler ratio (childScale=0.25); true Earth-scale needs a scoped CameraNode look-target-decoupling follow-up (see Progress Log); M8 Task 16 SHIPPED (look-target decoupling); Task 17/19 DONE_WITH_CONCERNS; Task 20 geometry/gate-math derivation CONFIRMED CORRECT (surface-exposed placement was never the problem; correct coefficient ~4.5e-6 derived from the real tv_max chord-floor mechanism); the coefficient-threshold vanishing IS NOW ROOT-CAUSED (mip-only demo body + all-or-nothing LOD gate across depth — construction gap, not an engine bug) but a secondary flight-residency-timing question remains open; NEXT = grant brick residency + resolve the residency-timing question, then re-run the derived coefficient live (see Progress Log)
+status: M1-M3 SHIPPED, M5 SHIPPED (magnification geometry fix) 2026-07-10; M6 (Earth-scale epic gate) BLOCKED on a camera-framing/scale structural mismatch, not a math defect (see Progress Log); M7 SHIPPED 2026-07-11 — the epic gate MET at a documented gentler ratio (childScale=0.25); true Earth-scale needs a scoped CameraNode look-target-decoupling follow-up (see Progress Log); M8 Task 16 SHIPPED (look-target decoupling); Task 17/19 DONE_WITH_CONCERNS; Task 20 geometry/gate-math derivation CONFIRMED CORRECT (surface-exposed placement was never the problem; correct coefficient ~4.5e-6 derived from the real tv_max chord-floor mechanism); Task 21 residency-from-construction fix SHIPPED (kept, orthogonal); Task 22 (eliminate the coefficient override, mark the crossing deeper instead) PROVEN ALGEBRAICALLY IMPOSSIBLE — depth cancels out of the gate identically (chord and scale_exp2 both halve every octree level, so their ratio, and thus the gate's clear/no-clear verdict, is depth-invariant); a true 2^-10 hop0 crossing at this demo's renderScale=4.8 needs the coefficient override or a ~267x smaller body, neither of which is available under Task 22's own "no override" constraint — see Progress Log for the full derivation and the two remaining paths surfaced for a future increment
 depends: Tiered-ESVO-Observer-Addressing-Design-2026-07.md (§3, §5, §9), Tiered-ESVO-Inc2-Plan-2026-07.md (shipped 2026-07-10, merged `2d67840e`, origin/main `12145d60`)
 ---
 
@@ -1533,3 +1533,73 @@ confirmed, genuinely colored continuous flight through TWO true 2^-10 crossings,
 unoverridden `raySizeCoef`, with brick residency granted from construction, on real hardware — the
 actual "proper surface-to-orbit view of planets of proper scale," correct by construction rather than
 by a hand-tuned constant.
+
+- **M8 Task 22: NOT MET — the "construct at depth" premise is ALGEBRAICALLY IMPOSSIBLE, proven
+  before any code was written · worktree `tiered-esvo-inc2` (`feat/tiered-esvo-inc3`, HEAD
+  `77cd02fe`, zero source changes this task — docs-only) · 2026-07-11.**
+  **Precise re-derivation (as the task demanded — not trusting the "~7-8 levels" estimate):**
+  read the actual traversal code directly rather than assume. Two facts, both load-bearing:
+  (1) `executePushPhase` (`shaders/ESVOTraversal.glsl:268`) sets each child's `t_max = tv_max`
+  (the parent's own exit-t) on every PUSH — i.e. `tv_max`/chord for a node at depth d is bounded
+  by the SAME `2^-d` self-similar halving as the tree's own subdivision, for a ray that continues
+  along a fixed corner-approach path. (2) `state.scale_exp2` halves every PUSH unconditionally
+  (`:260-261`, confirmed identically in `GpuTraversalMirror.h:692-693`) — root=0.5, each level
+  below halves again (root-level LEAF, one PUSH below root = 0.25, matching the M8 Task 20
+  finding exactly). **Substituting `chord(d)=chord(0)*2^-d` and `scale_exp2(d)=0.5*2^-d` into the
+  gate `tv_max*raySizeCoef >= childScale*scale_exp2(d)` collapses it to
+  `chord(0)*raySizeCoef >= childScale*0.5` — the `2^-d` term cancels EXACTLY, for any d.** Marking
+  the crossing leaf deeper shrinks the gate's LHS (chord) and RHS (scale_exp2 term) by the
+  identical factor; it can NEVER change whether an already-failing gate passes, at ANY depth.
+  This directly falsifies the Task 22 plan text's own premise ("marking the crossing leaf several
+  levels deeper brings its own chord into the range where the real coefficient naturally clears
+  the gate") — that estimate did not check for this cancellation.
+  **Model verified against Task 20's own empirical numbers before trusting the conclusion:** built
+  an independent from-scratch Python box-intersection model using the REAL shipped formulas
+  (`initRayCoefficients`/`computeVoxelCorners`, `ESVOCoefficients.glsl:48-88`; `tx_coef =
+  1/-abs(d.x)`, `tx_bias = tx_coef*p.x`, root entry/exit via the `2*coef-bias`/`coef-bias` slab
+  test, `ESVOTraversal.glsl:91-112`), for the same octant-4 diagonal approach `(-1,-1,1)/sqrt(3)`
+  every prior task used. Predicted ratio "root-level leaf chord vs. its own gate threshold" =
+  173.7× — Task 20's own independently-measured value was "~175× too large." A 1% match on a
+  derivation built from first principles, not from Task 20's own numbers, confirms the model (and
+  therefore the cancellation conclusion built on it) is sound.
+  **Precise numbers (exact, not the rough estimate):** at the real `raySizeCoef=0.00157080`
+  (45°FOV/500px) and `childScale=2^-10`: the gate requires the T0 ROOT's own full-cube chord
+  along the approach diagonal `chord(0) <= 0.310849wu` for HOP0 to clear at ANY depth. The current
+  demo's actual `chord(0)` (renderScale=4.8, worldEdge=48wu, diagonal approach) = 83.1384wu —
+  fails by 267.5×, and this factor is depth-independent (confirmed: evaluated the same gate at
+  d=1..15, ratio unchanged at every depth in a first, cruder halving-both-sides check, then
+  proven analytically why). The only construction lever that changes `chord(0)` is `renderScale`
+  itself (body world size) or approach angle — clearing hop0 via `renderScale` alone would need
+  `renderScale <= ~0.018` (vs. the demo's 4.8), a ~267× smaller body, which is no longer
+  identifiable as an "Earth-scale, per-tier-attributable" body (a body that small is at or below
+  single-pixel size before any tier crossing is relevant, defeating the demo's own purpose).
+  **Hop1 (T1→T2) independently re-derived and reconfirmed NOT the bottleneck** (as Task 20 already
+  found): T1's own root world edge is `childScale * T0-leaf-edge = 2^-10 * 24wu ≈ 0.0234wu`, so
+  T1's own depth-1 marked-leaf chord (`≈0.0203wu`) clears its own identical gate threshold
+  (`≈0.1554wu`) with ~7.7× margin — childScale's own ~1024× shrink of T1's absolute world size
+  dominates, independent of anything this task's derivation changed.
+  **Scope/relationship to prior tasks (verified, not assumed):** this finding does NOT reopen
+  Task 20's mip-only/all-or-nothing-LOD-gate root cause (a separate, already-fixed issue) and does
+  NOT contradict M1-M5's proven crossing math (hitT composition, magnification, chained hop-loop
+  are all unaffected — this is purely a property of ONE shared `raySizeCoef` field vs. this
+  demo's absolute `renderScale`, evaluated via the correct, unoverridden gate). Task 21's
+  residency-from-construction fix (`4e6e812b`) stands, kept, orthogonal.
+  **No source changes were made this task** (`git status --porcelain` clean) — building scene
+  construction code on top of an algebraically-disproven premise would have wasted a build/live-
+  gate cycle to reconfirm what the derivation already settles; per the epic's own
+  prediction-first discipline (verify BEFORE building, not after), this is reported now rather
+  than after a doomed live attempt.
+  **Two real paths remain, neither attempted this task (out of scope for a "no override, no
+  engine change" mandate, surfaced for the next increment to choose from):** (a) shrink the demo
+  body/`renderScale` enough that the ROOT's own chord clears the real gate — likely too small to
+  read as "Earth-scale" visually, needs a fresh live check if pursued; or (b) accept that a single
+  shared `raySizeCoef` structurally cannot serve both an ordinary body's own visibility AND a
+  genuinely Earth-ratio (2^-10) tier-crossing's footprint simultaneously, and introduce a
+  SEPARATE, principled per-gate coefficient as a first-class engine parameter (not a demo-only
+  override) — a scoped, larger engine change than Task 22 itself, and worth naming plainly: this
+  would relocate (not eliminate) the "one field, two jobs" problem Task 22 was created to remove,
+  just from a demo env-var into an engine-level design decision.
+  **Verdict: NOT MET, honest evidenced structural dead-end for the specific mechanism
+  ("construct at depth, no override") this task was asked to build.** Per this epic's own
+  discipline (M6/M7/Task19/Task20 precedent: an honest, evidenced limit is a valid, non-forced
+  outcome), reported as a genuine algebraic finding rather than a forced or misleading capture.
