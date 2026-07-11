@@ -1676,12 +1676,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
             // Tiered-ESVO Inc3 M8 Task 17: the TRUE Earth-scale (childScale=2^-10 at BOTH
             // hops) observable surface-to-orbit demo -- the epic's literal original ask,
             // finally attempted with a genuinely controllable camera (Task 16's look-target
-            // decoupling). Reuses the EXACT construction the M4 VIXEN_TIER_EARTH_DEMO block
-            // above already live-gated (same k-invariant entry-anchored childOriginLocal
-            // placement, required because childScale=2^-10's ~1024x-per-hop amplification
-            // would blow up any macroscopically-off-boundary entry -- see that block's own
-            // kBoxOffset derivation, unchanged here) at the SAME renderScale=4.8 (48-world-unit
-            // body diameter), but with ONE deliberate difference from M4/M6's attempt: the
+            // decoupling). Originally reused the M4 VIXEN_TIER_EARTH_DEMO block's k-invariant
+            // entry-anchored childOriginLocal placement; M8 Task 23 replaced that placement
+            // (below, this block only -- VIXEN_TIER_EARTH_DEMO above is UNCHANGED/out of
+            // scope) with RootLeafOctantCenterLocal after a live-gate investigation found the
+            // entry-anchored point sat on the leaf's own boundary plane, making the child
+            // unreachable off-axis -- see this block's own construction comment for the full
+            // derivation. Same renderScale=4.8 (48-world-unit body diameter). ONE deliberate
+            // difference from M4/M6's attempt (historical, superseded by Task 23 below): the
             // LOD ray-cone coefficient is overridden (VIXEN_TIER_M8_EARTH_LOD_COEF_OVERRIDE,
             // wired below alongside VIXEN_TIER_CROSSING_LOD_COEF_OVERRIDE's existing
             // ConstantNode-bypass mechanism) so hop0 (T0->T1) lands OUTSIDE the body's own
@@ -1804,23 +1806,25 @@ void VulkanGraphApplication::BuildRenderGraph() {
             findCameraFacingLeafM8(m8T1Body.octree->getOctree(), m8T1MarkDescIdx, m8T1MarkOctant);
 
             if (m8T0MarkOctant >= 0 && m8T1MarkOctant >= 0) {
-                // Same k-invariant entry-anchored placement as VIXEN_TIER_EARTH_DEMO above
-                // (childOriginLocal = entryPointLocal - offset*childScale), for the SAME
-                // reason (childScale=2^-10's ~1024x-per-hop amplification): see that block's
-                // own comment for the full discovery-trail derivation of kBoxOffset's sign
-                // convention (must point INTO octant 4's own asymmetric box) and magnitude
-                // (0.25, verified to land within the SDF march's brick-local search range of
-                // each child's own iso-surface). Unchanged, byte-identical technique -- this
-                // scene differs from VIXEN_TIER_EARTH_DEMO ONLY in being built under a
-                // separate env var (so it can carry its own orbitCenter/LOD-coef/zoom wiring
-                // without perturbing M4's already-shipped, already-validated demo) and in
-                // recording the two crossing octants' world positions for the M8 look-target
-                // retargeting schedule (VulkanGraphApplication.cpp), which M4's demo never
-                // needed (M4's zoom never attempted to frame the crossing itself).
-                const glm::vec3 kBoxOffset(-0.25f, -0.25f, 0.25f);
-
-                const glm::vec3 kHop0EntryPointLocal(1.5f, 1.5f, 2.0f);
-                const glm::vec3 m8T0ChildOriginLocal = kHop0EntryPointLocal - kBoxOffset * kChildScale;
+                // M8 Task 23 CORRECTION: the previous entry-anchored placement
+                // (childOriginLocal = (1.5,1.5,2.0) - kBoxOffset*childScale) put the anchor
+                // ON octant 4's own x=1.5/y=1.5 boundary plane (margin 0.000244 at cs=2^-10 --
+                // sub-ULP-adjacent), not safely INSIDE its box. A live-gate investigation (two
+                // independent traces, this session) found EVERY ray except a sub-pixel bullseye
+                // around that corner missed the remapped child's [0,1]^3 grid entirely --
+                // explaining the flight capture's flat, unchanging mip-gray quadrant (the
+                // child-miss fallback correctly serving T0's own mip, because T1 was
+                // structurally unreachable, not because of any Task 23 gate/fallback bug).
+                // FIX: use RootLeafOctantCenterLocal (M5's proven-safe fixed point, margin 0.25
+                // on every axis -- the SAME technique VIXEN_TIER_CROSSING_DEMO/CHAIN_DEMO/
+                // OBSERVABLE_DEMO already use successfully) instead of a corner-adjacent entry
+                // point. This does NOT reopen the tEntryWorld/off-boundary constraint (M1/M3
+                // carry-forward): a CENTERED anchor is MORE robust to off-boundary entry than a
+                // corner-anchored one, since the safe margin is 0.25 local units either way,
+                // independent of childScale (the amplification only affects how far a given
+                // WORLD deviation reaches in child-local units, not the parent-local anchor
+                // point itself).
+                const glm::vec3 m8T0ChildOriginLocal = Vixen::SVO::RootLeafOctantCenterLocal(m8T0MarkOctant);
 
                 Vixen::SVO::TierRef m8RefT0ToT1{};
                 m8RefT0ToT1.childOctreeIndex = 1u;
@@ -1830,8 +1834,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 m8RefT0ToT1.childScale = kChildScale;
                 Vixen::SVO::MarkLeafAsTierCrossing(m8T0Ser, m8T0MarkDescIdx, m8T0MarkOctant, m8RefT0ToT1, 22);
 
-                const glm::vec3 kHop1EntryPointLocal = glm::vec3(1.5f, 1.5f, 1.5f) + kBoxOffset;
-                const glm::vec3 m8T1ChildOriginLocal = kHop1EntryPointLocal - kBoxOffset * kChildScale;
+                const glm::vec3 m8T1ChildOriginLocal = Vixen::SVO::RootLeafOctantCenterLocal(m8T1MarkOctant);
 
                 Vixen::SVO::TierRef m8RefT1ToT2{};
                 m8RefT1ToT2.childOctreeIndex = 2u;
@@ -1921,14 +1924,15 @@ void VulkanGraphApplication::BuildRenderGraph() {
                     // tree's instance placement, unaffected by what childScale the crossing
                     // leads into).
                     const glm::vec3 bodyCenterWorld(64.0f, 64.0f, 64.0f);
-                    // M8 Task 23 correction: the previous recording used the M7-era
-                    // root-octant-center assumption ((-2.5R,-2.5R,+2.5R) from body center),
-                    // but the flight must approach/aim at the CHILD CONTENT's own anchor —
-                    // this scene's entry-anchored childOriginLocal — which sits near the
-                    // cube's +Z face corner, ~20wu away from the old octant-center point.
-                    // World mapping: the [1,2) local cube spans 10*renderScale world units
-                    // anchored at inst.worldPos (kHalf = 5R puts local 1.5 at body center 64,
-                    // verified: worldPos + 0.5*10R = 40 + 24 = 64).
+                    // M8 Task 23: record the ACTUAL child anchor's world position (now
+                    // RootLeafOctantCenterLocal(4), the proven-safe centered fixed point — see
+                    // this scene's own construction comment above for why the prior
+                    // corner-adjacent entry point was replaced) so the flight schedule
+                    // approaches/aims at genuinely reachable child content, not a boundary
+                    // point ~1024x too small a target to hit off-axis. World mapping: the
+                    // [1,2) local cube spans 10*renderScale world units anchored at
+                    // inst.worldPos (kHalf = 5R puts local 1.5 at body center 64, verified:
+                    // worldPos + 0.5*10R = 40 + 24 = 64).
                     const float kCubeWorldEdge = 10.0f * kRenderScale;  // 48wu
                     const glm::vec3 instWorldPos(64.0f - kHalf, 64.0f - kHalf, 64.0f - kHalf);
                     m8EarthHop0OctantWorld_ = instWorldPos
