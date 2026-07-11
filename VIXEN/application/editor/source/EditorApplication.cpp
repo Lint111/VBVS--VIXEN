@@ -10,7 +10,6 @@
 #include "Nodes/UIRenderNode.h"               // AFTER the Recipe/gaia includes above
 #include "Nodes/UISelectionProviderNode.h"
 #include "Nodes/DeviceNode.h"                 // Task 3: VulkanDevice* + queue for CaptureFrameToPng
-#include "Data/Nodes/UIRenderNodeConfig.h"
 #include "Nodes/CameraNode.h"
 #include "Data/Nodes/CameraNodeConfig.h"
 #include "Core/RenderGraph.h"
@@ -129,6 +128,23 @@ EditorApplication::EditorApplication(std::string documentPath)
     logger_->SetTerminalOutput(true);
 }
 
+EditorApplication::~EditorApplication() {
+    // Complete-type destroy through the bridge -- see EditorLayersViewBridge.h's file header and
+    // ~EditorApplication()'s declaration comment in EditorApplication.h.
+    Vixen::App::DestroyEditorLayersView(layersView_);
+}
+
+void EditorApplication::RefreshLayersView() {
+    std::vector<std::string> names, ops;
+    names.reserve(doc_.LayerCount());
+    ops.reserve(doc_.LayerCount());
+    for (uint32_t i = 0; i < doc_.LayerCount(); ++i) {
+        names.push_back(doc_.LayerName(i));
+        ops.push_back(Vixen::Editor::EditorDocumentModel::OpName(doc_.View().layers[i].header->op));
+    }
+    Vixen::App::RefreshEditorLayersView(*layersView_, rt_.Layers().Mask(), doc_.LayerCount(), names, ops);
+}
+
 bool EditorApplication::LoadDocument(const std::string& path) {
     if (!doc_.Load(path, lastEditorError_)) {
         return false;
@@ -136,6 +152,12 @@ bool EditorApplication::LoadDocument(const std::string& path) {
     documentPath_ = path;
     rt_.Load();  // load the AppFlow reference vocab (state/action tables)
     rt_.Layers().SetLayerCount(doc_.LayerCount());  // (re)sync the mask to the freshly loaded doc
+
+    // Inc-A2: initial model->view population -- the editor layer view's bound "layers" array now
+    // reflects the ACTUAL mask/names/ops of the freshly loaded document (was static markup with 3
+    // hand-authored rows; see editor.rml). A reload re-populates from scratch, same as the
+    // SetLayerCount resync above.
+    RefreshLayersView();
 
     // Inc-4 reframe (design §4.3, R5b): register the 5 self-contained handlers exactly once.
     // Each handler decides for itself which primitive it needs (Stack() for undoable actions,
@@ -164,13 +186,16 @@ bool EditorApplication::LoadDocument(const std::string& path) {
                 // for any idx within the valid layer range. A pure leaf function, no wiring.
                 layerProvider_.WriteU32(key, Vixen::AppFlow::Generated::applyToggle(mask, idx));
                 dirty_ = true;
-                // Same-frame echo (design §4a) is DEFERRED here, not silently dropped: the
-                // editor's layer view (assets/ui/editor.rml) is static RML today -- no RmlUi
-                // data model, no bound variable to DirtyVariable() (Task 1 finding; see the
-                // report). There is nothing to echo INTO yet. Introducing a data-model binding
-                // for 3 static checkbox divs is out of Inc-A's "smallest end-to-end proof" scope
-                // (Inc-A IS NOT the projection mini-syntax or new view schemas). The echo lands
-                // when the layer view becomes data-model-bound (tracked for a later increment).
+                // Same-frame echo (design §4a), landed now that the editor layer view is
+                // data-model-bound (Inc-A2 -- was deferred by Inc-A's report, which found the view
+                // still static RML with no DirtyVariable target). This ApplyFn body runs
+                // identically for the initial Dispatch AND every Undo()/Redo() (ActionStack.cpp:
+                // Undo calls apply(false), Redo calls apply(true); both re-run this whole lambda
+                // since applyToggle is self-inverse), so one re-population here echoes the mask
+                // into the bound checkboxes for toggle, undo, and redo alike -- no separate wiring
+                // per action. Cheap: RefreshLayersView() re-reads doc_'s per-layer name/op
+                // (already O(layerCount), unconditionally small) rather than caching them.
+                RefreshLayersView();
             });
         });
         rt_.RegisterHandler(FlowActionId::Undo, [this](const Vixen::AppFlow::AppFlowRuntime::Params&) {
@@ -209,13 +234,17 @@ void EditorApplication::BuildRenderGraph() {
     VulkanGraphApplication::BuildRenderGraph();
 
     if (auto* ui = GetUiRenderNode()) {
-        // Matches the "assets/ui/<doc>.rml" convention BuildRenderGraph.cpp uses for hud.rml —
-        // ResolveUiAsset (UIRenderNode.cpp) strips the "assets/" prefix when resolving against
-        // VIXEN_UI_SOURCE_DIR/VIXEN_UI_ASSET_SOURCE_DIR, and checks the literal path relative to
-        // CWD otherwise; a bare "editor.rml" (no prefix) fails both and RmlUi logs "Unable to
-        // open file editor.rml" (found via the windowed smoke test).
-        ui->SetParameter(Vixen::RenderGraph::UIRenderNodeConfig::RML_DOCUMENT_PATH,
-                          std::string("assets/ui/editor.rml"));
+        // Inc-A2: wire the editor's IView instead of the raw RML_DOCUMENT_PATH param -- SetView
+        // gives editor.rml a real data-model (CompileImpl calls CreateDataModel(ModelName()) +
+        // Register() before LoadDocument), and view_->DocumentPath() ("assets/ui/editor.rml") now
+        // supplies the doc path, same convention BuildRenderGraph.cpp uses for hud.rml/HudView.
+        // Through the bridge (WireEditorLayersView), not a direct ui->SetView(layersView_) call --
+        // this TU never sees UIRenderNode's real definition/IView, only the forward declaration
+        // (see EditorLayersViewBridge.h). ResolveUiAsset (UIRenderNode.cpp) strips the "assets/"
+        // prefix when resolving against VIXEN_UI_SOURCE_DIR/VIXEN_UI_ASSET_SOURCE_DIR, and checks
+        // the literal path relative to CWD otherwise; a bare "editor.rml" (no prefix) fails both
+        // and RmlUi logs "Unable to open file editor.rml" (found via the windowed smoke test).
+        Vixen::App::WireEditorLayersView(*ui, *layersView_);
     }
 
     // Frame the loaded document by default: the interactive graph's CameraNode otherwise keeps

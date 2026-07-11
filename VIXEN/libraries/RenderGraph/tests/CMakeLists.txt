@@ -757,6 +757,38 @@ else()
 endif()
 
 # ===========================================================================
+# Inc-A2: EditorLayers golden-mirror gate (headless — no Vulkan required)
+# ===========================================================================
+# Mirrors test_view_hud_golden exactly, for the editor layer view's [View] schema instead of Hud's.
+
+if(TARGET GTest::gtest_main)
+    add_executable(test_view_editor_layers_golden
+        test_view_editor_layers_golden.cpp
+    )
+
+    target_link_libraries(test_view_editor_layers_golden PRIVATE
+        GTest::gtest_main
+        RenderGraph
+    )
+
+    # EditorLayers.g.h is a CONSUMER artifact (application/editor) — needs the editor's include
+    # dir to resolve "Generated/EditorLayers.g.h" (mirrors test_view_hud_golden's application/main
+    # include-dir need).
+    target_include_directories(test_view_editor_layers_golden PRIVATE ${CMAKE_SOURCE_DIR}/application/editor/include)
+
+    target_compile_definitions(test_view_editor_layers_golden PRIVATE
+        VIEW_EDITOR_LAYERS_G_H="${CMAKE_SOURCE_DIR}/application/editor/include/Generated/EditorLayers.g.h")
+
+    set_target_properties(test_view_editor_layers_golden PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+    gtest_discover_tests(test_view_editor_layers_golden)
+
+    message(STATUS "✓ test_view_editor_layers_golden configured (Inc-A2: golden-mirror gate)")
+else()
+    message(STATUS "⊗ test_view_editor_layers_golden skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
 # View Contract Inc-2b: ViewBlob/ViewKind/ViewValue reflection-blob contract
 # ===========================================================================
 # Pure CPU test of the constexpr descriptor shape + scalar kind/value agreement.
