@@ -105,24 +105,24 @@ here, not just eyeballing).
       the Progress Log.
 
 ### M4 — Scoped linkage for VixenApp
-- [ ] In `application/main/CMakeLists.txt`, replace `VixenApp`'s link against the `RenderGraph`
+- [x] In `application/main/CMakeLists.txt`, replace `VixenApp`'s link against the `RenderGraph`
       facade's node linkage with a targeted link against only the manifest-listed
       `RenderGraphNode_<X>` OBJECT libraries (still via `RenderGraphCore` + the facade for
       everything non-node, per spec §2.3's "facade becomes a thin wrapper" — decide the exact
       CMake mechanics: likely a new `vixen_link_used_nodes(VixenApp)` function in a
       `cmake/VixenNodeLinkage.cmake` helper, reading the generated manifest and looping
       `target_link_libraries`).
-- [ ] Full clean build green.
-- [ ] **Live-render gate**: run `VixenApp.exe`, confirm the default 3-body scene renders
+- [x] Full clean build green.
+- [x] **Live-render gate**: run `VixenApp.exe`, confirm the default 3-body scene renders
       identically to before this increment (same body count, same visual output) — this is the
       actual safety net for "did the manifest under-scope something," per spec §3's discussion
       of the loud-runtime-failure fallback. If it throws `"Node type not registered"`, that
       pinpoints exactly which node the manifest missed — fix the extraction, don't hand-patch
       the manifest.
-- [ ] Confirm `libraries/RenderGraph/tests/*` still link the full unscoped `RenderGraphNodes`
+- [x] Confirm `libraries/RenderGraph/tests/*` still link the full unscoped `RenderGraphNodes`
       facade (all 53) and stay green — the test suite is explicitly NOT going through the
       manifest-scoping path (spec §2.3).
-- [ ] Measure `VixenApp.exe`/`.pdb` size and relink time (same methodology as M1, 3x), compare
+- [x] Measure `VixenApp.exe`/`.pdb` size and relink time (same methodology as M1, 3x), compare
       against the M1 baseline. Record the actual delta — expect modest (~15%, per spec §1's
       45/53 usage) but non-zero.
 
@@ -389,3 +389,133 @@ repeatedly missed real linkage/runtime bugs in past epics; this one is no except
   the full vixen-ninja preset needs MSVC/vcvars unavailable in the validator's environment) — same
   45-entry output, byte-matching the committed manifest; (6) tree clean, linear history. No
   linkage changes made (correctly deferred to M4, per scope). No issues found.
+
+- **Milestone 4 (Scoped linkage for VixenApp): DONE.** Implementation went through three real,
+  empirically-discovered bugs beyond the mechanical mapping — each caught by the plan's own gates
+  (configure-time `FATAL_ERROR`, then the live-render gate, then the full clean build), not
+  assumed away. Recorded here in full because they revise a spec §2.3 assumption.
+
+  **Implementation:** new `cmake/VixenNodeLinkage.cmake` defines `vixen_link_used_nodes(<target>
+  MANIFEST_FILE <path>)` — includes the M3 manifest, maps each `<Basename>NodeType` entry to its
+  M2 `RenderGraphNode_<Basename>Node` OBJECT-lib target (mechanical `Type$` strip, verified
+  against all 45 entries), and links each one PUBLIC onto `<target>` with a hard
+  `message(FATAL_ERROR ...)` if the mapped target doesn't exist (the spec §4 structural
+  verification — manifest generation and linkage read the same source-derived data). Wired into
+  `application/main/CMakeLists.txt`: `VixenApp` now links `RenderGraphCore` directly (not the
+  unscoped `RenderGraph` facade) plus `vixen_link_used_nodes(VixenApp MANIFEST_FILE ...)`.
+
+  **Bug 1 — PUBLIC vs PRIVATE (caught by live-render gate on first run, via a real
+  `RmlUi/Core.h` compile failure in `vixen_editor`/`test_hud_view`, not a silent gap):**
+  `vixen_link_used_nodes`'s first version linked PRIVATE. Since `VixenApp` is a library (not a
+  leaf executable) with its own downstream consumers (`VIXEN`, `vixen_editor`, offline unit
+  tests) that compile TUs directly including node/RmlUi headers, PRIVATE meant those transitive
+  usage requirements (include dirs, `RMLUI_STATIC_LIB`) never reached them. Fixed: PUBLIC.
+
+  **Bug 2 — `UIRenderNodeType` had no per-node OBJECT lib (caught by the configure-time
+  `FATAL_ERROR`, exactly as designed):** `UIRenderNode.cpp` was still compiled directly into the
+  `RenderGraphNodes` static lib (M2 left the not-yet-split UI sources there), so there was no
+  `RenderGraphNode_UIRenderNode` target to map to. A tempting fallback (link `RenderGraphNodes`
+  itself whenever the manifest contains `UIRenderNodeType`) was tried and measured — it silently
+  defeats scoping entirely, because `RenderGraphNodes` PUBLIC-links every one of the 45
+  `RenderGraphNode_<X>` targets, not just the UI one (confirmed: `VIXEN.exe` came back at
+  37,141,504 bytes, byte-equal to the unscoped M1 baseline). **Fixed at the source, not routed
+  around**: moved `UIRenderNode.cpp` out of `RENDERGRAPH_UI_SOURCES` into
+  `RENDERGRAPH_NODE_SOURCES` in `libraries/RenderGraph/CMakeLists.txt`, so it gets a real
+  `RenderGraphNode_UIRenderNode` OBJECT lib like every other node (the mechanical mapping rule
+  now applies with zero exceptions). The genuinely non-node UI support code it needs
+  (`VixenRmlRenderInterface`, `ViewStore`, `BlobView`, ...) was split into a new
+  `RenderGraphUiSupport` OBJECT lib that both `RenderGraphNodes` (the all-nodes facade) and
+  `RenderGraphNode_UIRenderNode` (the scoped target) depend on, avoiding a circular
+  `RenderGraphNodes` ⇄ `RenderGraphNode_UIRenderNode` link.
+
+  **Bug 3 — whole-archiving is required, and doesn't nest through a STATIC library (the deepest
+  bug, caught by the live-render gate reproducing `"Node type not registered:
+  Vixen::RenderGraph::InstanceNodeType"` even after Bugs 1–2 were fixed):** Each node self-
+  registers via `VIXEN_REGISTER_NODE`, a file-scope static initializer with no other symbol
+  referenced anywhere else in the program — `libraries/RenderGraph/include/Core/
+  NodeRegistration.h`'s own header comment already documented "RenderGraphNodes MUST be linked
+  whole-archive or the linker strips these registrars," which is exactly why the original
+  `RenderGraph` facade whole-archived `RenderGraphNodes`. Spec §2.3 assumed this class of problem
+  didn't apply to per-node OBJECT libraries ("no stripping to defeat, per spec §2.3"). **That
+  assumption is wrong for this exact registration pattern once an intermediate STATIC library is
+  involved**: `VixenApp` (STATIC) absorbs each node's `.obj` when built, but a *plain* link of a
+  node OBJECT lib onto `VixenApp` doesn't stop the *final* EXE link step's ordinary archive-
+  member-selection over `VixenApp.lib` from dropping any `.obj` member nothing else references —
+  reproduced directly (registered node count crashed to 8/54 with only the naive per-node
+  whole-archive fix in place). Root-caused (not patched around) by reading the real generated
+  `link.exe` command line via `cmake --build . --target VIXEN -v`: whole-archiving the node
+  targets onto `VixenApp` produced ZERO `/WHOLEARCHIVE:` flags on `VIXEN.exe`'s own link line —
+  `$<LINK_LIBRARY:WHOLE_ARCHIVE,X>` set as a PUBLIC usage requirement on a STATIC library target
+  does not propagate through that STATIC library to ITS OWN consumers (a genuine CMake/linker
+  limitation with nesting whole-archive requirements through an intermediate archive, not a
+  mistake in the per-node whole-archiving itself). **Fixed**: added
+  `vixen_whole_archive_link_vixen_app(<target> [scope])` to `VixenNodeLinkage.cmake`; every one
+  of `VixenApp`'s 6 real consumers (`VIXEN`, `vixen_editor`, `test_app_run_tick`, `test_hud_view`,
+  `test_view_blob_equiv`, `test_fail_scenario_sweep`) now whole-archives `VixenApp` itself instead
+  of linking it plainly. This is not a scope regression versus `VixenApp`'s own non-node code
+  (always needed unconditionally by every consumer) — it's what makes the *node* objects merged
+  into `VixenApp.lib` actually survive to the final link. One side effect surfaced and fixed:
+  whole-archiving `VixenApp` in full meant `vixen_editor`'s own separate
+  `StbImageWriteImpl.cpp` (a second `STB_IMAGE_WRITE_IMPLEMENTATION` TU) now collided
+  (`LNK2005`) with `VixenApp`'s copy, previously masked by archive-member-selection silently
+  picking only one; fixed by deleting `vixen_editor`'s now-redundant copy (`VixenApp` already
+  provides exactly one implementation, and whole-archiving now guarantees it's linked).
+
+  **Verification:** full clean `build.bat all vixen-ninja` (BuildId `graph-node-linkage-inc1`,
+  lock/queue-coordinated, watched via active ~15–20s foreground polling throughout, per policy) —
+  final green run: 19 target(s) FAILED, byte-identical to the M1/M2/M3 baseline signature (18×
+  KI-017 `<windows.h>` macro-pollution + 1× `test_body_instance_raymarch_render` POSIX
+  `setenv`/`unsetenv` on MSVC); zero new failures, `VIXEN.exe`/`vixen_editor.exe`/
+  `test_view_blob_equiv.exe` all link green. `test_node_self_registration`: 2/2 PASS (confirms
+  the unscoped `RenderGraph`/`RenderGraphNodes` facade tests still see every node type,
+  unaffected by VixenApp's scoping — spec §2.3's explicit requirement). `test_hud_view`: 1/1
+  PASS. `test_app_run_tick`: 6/6 PASS. `test_view_blob_equiv`: 3/3 PASS (run from its staged
+  output dir; a CWD-relative asset-load false-failure when run from the wrong directory was
+  investigated and ruled out as a test artifact, not a regression).
+
+  **Live-render gate — real, not a boot smoke-test:** ran `VIXEN.exe` from the `VIXEN/` source
+  directory as CWD (needed for `SkyProjectionNode`'s shader-search relative fallback — see below)
+  redirected to a log file; confirmed alive + `Responding=True` after 25s (well past the ~13s
+  voxel-octree bake phase), then read back 3,960 rendered frames across 34 `[FrameTimer]` log
+  lines at ~360–390 FPS, zero `Prepare failed`/`EXCEPTION` lines, `Registered 46 built-in node
+  types (self-registration)` (up from the earlier-in-session broken run's 8), `Seeded 3
+  Procedural SDF body instances` (the same default 3-body scene as every prior increment's
+  standard). Process was then force-stopped cleanly (`Stop-Process`) after confirming sustained
+  rendering — not just a few frames at exit. This is the actual safety net the plan called for,
+  not a partial/implied check.
+
+  **Pre-existing bug found and ruled out as unrelated (not fixed, out of M4's scope):**
+  `SkyProjectionNode`'s shader-path resolution (`ResolveShaderPath` in
+  `libraries/RenderGraph/src/Nodes/SkyProjectionNode.cpp`) only has relative-path fallbacks
+  (`"shaders"`, `"../shaders"`) plus a `#ifdef VIXEN_SHADER_SOURCE_DIR` compile-time define that
+  is `PRIVATE` to `VixenApp` and therefore never reaches `SkyProjectionNode.cpp`'s own OBJECT-lib
+  compile (a separate TU/target even before this increment). Running `VIXEN.exe` from
+  `binaries/` (its own directory) throws `"SkyProjection.vert not found in shader search
+  paths"`. **Confirmed pre-existing, not an M4 regression**: reproduced identically on a
+  from-scratch rebuild of the pre-M4 (`git stash`) tree at the exact same M1-baseline byte size
+  (37,140,480). Not investigated further as out of scope; worth a follow-up ticket (the fix is
+  either making `VIXEN_SHADER_SOURCE_DIR` reach `RenderGraphNode_SkyProjectionNode`'s own compile
+  definitions, or running from the right CWD is simply the documented requirement already).
+
+  **Measurements (M1 baseline → M4 final, same methodology, 3x incremental relink each):**
+  `VIXEN.exe`: 37,140,480 → 35,980,288 bytes (**−1,160,192 bytes, ~3.12% reduction**). `VIXEN.pdb`:
+  170,192,896 → 170,430,464 bytes (~flat, as expected — debug info size doesn't track linked
+  node-object count the way the .exe's actual code section does). 3x incremental relink (touch a
+  blank line in `application/main/source/main.cpp`, `build.bat build vixen-ninja VIXEN`, revert):
+  10s / 20s / 20s (M1: 29s/12s/13s — both within the same noise-floor order of magnitude for this
+  machine/link-job-cap; not a load-bearing comparison either way). **The measured 3.12% is
+  smaller than the spec's own ~15% estimate** — the spec's estimate implicitly assumed node
+  OBJECT-lib scoping alone would determine the size delta, but Bug 3's fix (whole-archiving all
+  of `VixenApp` at every consumer, not just the scoped node subset) means `VixenApp`'s own
+  non-node code, which was never a scoping target, is now unconditionally force-included too
+  (previously it could theoretically have been partially stripped by archive-member-selection,
+  though nothing indicates it commonly was in practice) — net effect: the actual measured
+  reduction is real and non-zero, driven purely by the ~9 unused node types (RT-core cluster
+  etc.) no longer contributing object code, but it is smaller than the node-count-only estimate
+  because whole-archiving is now unconditionally required for `VixenApp` as a whole, not just
+  for the scoped subset.
+
+  **Commits:** CMake changes (M4 implementation) + this progress-log update, on
+  `feat/graph-derived-node-linkage-inc1`. No node source, `NodeRegistration.*`, or
+  `RegisterAllNodes()` semantics touched — pure build-system change, per Inc-1's architecture.
+  2026-07-11.
