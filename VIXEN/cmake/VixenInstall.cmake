@@ -57,7 +57,6 @@ set(VIXEN_EXPORTED_TARGETS
     GaiaVoxelWorld
     SVO
     GaiaArchetypes
-    Profiler
 )
 
 # Source directory names (casing differs from target names for Logger).
@@ -75,7 +74,6 @@ set(VIXEN_LIBRARY_DIRS
     GaiaVoxelWorld
     SVO
     GaiaArchetypes
-    Profiler
 )
 
 # 1. Install the static archives and register them in the unified export set.

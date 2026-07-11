@@ -24,7 +24,6 @@
       "Bash(./binaries/:*)",
       "Bash(./*.exe:*)",
       "Bash(pkill -f vixen_editor*)",
-      "Bash(pkill -f vixen_benchmark*)",
       "Bash(pkill -f VIXEN.exe*)",
       "Bash(tasklist:*)",
       "Bash(sccache.exe:*)",

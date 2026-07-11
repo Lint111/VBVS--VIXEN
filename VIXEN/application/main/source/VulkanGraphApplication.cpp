@@ -32,7 +32,7 @@
 #include "Nodes/UIRenderNode.h"               // GetUiRenderNode() downcast target (RmlUi — after BodyOctreeSceneNode.h)
 #include "Nodes/UISelectionProviderNode.h"    // GetUiSelectionProviderNode() downcast target
 #include "Nodes/SwapChainNode.h"              // CaptureFrameToPng() downcast target (M4b)
-#include "Profiler/FrameCapture.h"            // CaptureFrameToPng(): reuse the existing readback->PNG path
+#include "FrameCapture.h"                      // CaptureFrameToPng(): reuse the existing readback->PNG path
 #include "Nodes/DeviceNode.h"                 // View Contract Inc-2 Task 5: VulkanDevice* for CaptureHudFrameToPng
 #include "Debug/RenderTargetReadback.h"       // View Contract Inc-2 Task 5: IRenderTarget -> PNG readback
 #include <sstream>                            // View Contract Inc-2 Task 5: VIXEN_HUD_SCRIPT/_CAPTURE_FRAMES parsing
