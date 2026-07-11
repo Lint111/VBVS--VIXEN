@@ -212,6 +212,19 @@ public:
             // screen-space LOD gate is NOT ported here — the whole mirror is
             // used exclusively with raySizeCoef==0 (LOD structurally disabled,
             // see castRayOnce's own "(LOD disabled in parity...)" comment).
+            // Inc3 M8 Task 23 sync note: the shader's crossing gate is now
+            // camera-anchored and world-unit-correct (tChild projection of
+            // TierRef.childOriginLocal, hop-threaded tWorldBase/tLocalUnitWorld,
+            // RHS childScale*scale_exp2*tLocalUnitWorld — see the Task 23
+            // derivation doc). Still raySizeCoef-gated, so it remains
+            // structurally disabled in this mirror's raySizeCoef==0 domain —
+            // same non-port category as Task 9's original gate. The shader
+            // wrapper ALSO gained a child-miss/hop-exhaustion mip fallback
+            // (shade the deepest parked crossing leaf's own mip sample instead
+            // of a whole-ray miss, design doc §5.3); like the residency case
+            // right below, this mirror represents that outcome as an ordinary
+            // miss (no mip modeling here). The hitT composition — which this
+            // mirror DOES port — is unchanged by Task 23.
             if (link.cfg.brickResident == 0u) {
                 return out;
             }
@@ -382,6 +395,11 @@ private:
                     // reference, NOT a brick — checked BEFORE handleLeafHit's
                     // getContourPointer read (the shader's own insertion point,
                     // BodyInstanceRayMarch.comp's traverseOctreeInstancedOnce).
+                    // Inc3 M8 Task 23 sync: the shader evaluates its (raySizeCoef-
+                    // gated) camera-anchored crossing LOD gate right here and also
+                    // reports tierCrossLeafNodeIndex for the wrapper's child-miss
+                    // mip fallback; both live outside this mirror's raySizeCoef==0
+                    // / no-mip-shading domain (see castRay's Task 23 sync note).
                     const int localChildIdxTc = mirroredToLocalOctant(state.idx, coef.octant_mask);
                     if (localChildIdxTc >= 0 && localChildIdxTc <= 7) {
                         const uint32_t totalInternalTc = static_cast<uint32_t>(std::popcount(validMask & ~leafMask));
