@@ -302,3 +302,97 @@ TEST(MipSampleBake, LeafOwnNodeIndexCarriesItsOwnBrickReduction) {
     EXPECT_TRUE(checkedAtLeastOne)
         << "fixture must exercise at least one occupied leaf brick";
 }
+
+// ---------------------------------------------------------------------------
+// Sampled Lighting Inc3 M3 — emissive channel rides the SAME mip-averaging
+// machinery as color/roughness (mean-filtered, FK_NONE), with NO new averaging
+// code. Verifies (a) the channel is present at the expected canonical-order
+// index and (b) the root's mean-filtered mip value lands within the range of
+// its children's actual emissive voxel values — the same methodology
+// RootLevelColorIsAMeanWithinChildRange uses for color, applied to emission.
+// ---------------------------------------------------------------------------
+TEST(MipSampleBake, RootLevelEmissionIsAMeanWithinChildRange) {
+    RecipeParams rp{6.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+    const glm::vec3 center(8.0f, 8.0f, 8.0f);
+    Vixen::SVO::SdfBakeResult baked = Vixen::SVO::BakeRecipeToSdfWorldWithEmission(
+        RECIPE_SPHERE, center, rp, 16, 2.0f,
+        // Spatially-varying so the mean is a genuine mean, not a constant.
+        [](const glm::vec3& p) { return p.x + p.y + p.z; });
+    Vixen::SVO::SdfBodyOctree body = Vixen::SVO::BuildSdfBodyOctree(baked, 3);
+    SerializedOctree out = SerializeSdf(body);
+    const Octree* oct = body.octree->getOctree();
+    ASSERT_NE(oct, nullptr);
+
+    MipPool pool = BakeMipPool(*oct, out);
+
+    // channels[] canonical order (SerializeSdf): SDF(0), Color(1), Roughness(2), Emission(3).
+    ASSERT_EQ(out.channelCount, 4u);
+    ASSERT_EQ(out.channels[3].semanticId, static_cast<uint32_t>(SEM_EMISSION));
+    MipSample rootEmission = pool.Get(0, /*channelIdx=*/3);
+    ASSERT_GT(rootEmission.coverage, 0.0f);
+
+    float minV = 1e9f, maxV = -1e9f;
+    bool any = false;
+    for (uint32_t bi = 0; bi < out.brickCount; ++bi) {
+        const uint32_t* mats = reinterpret_cast<const uint32_t*>(out.bricks.data()) +
+                                static_cast<size_t>(bi) * SerializedOctree::kVoxelsPerBrick;
+        for (uint32_t voxel = 0; voxel < SerializedOctree::kVoxelsPerBrick; ++voxel) {
+            if (mats[voxel] == 0u) continue;  // unoccupied
+            const float v = out.readPoolVoxel(SEM_EMISSION, bi, voxel, 0);
+            minV = std::min(minV, v);
+            maxV = std::max(maxV, v);
+            any = true;
+        }
+    }
+    ASSERT_TRUE(any);
+    EXPECT_GE(rootEmission.value, minV - 1e-3f);
+    EXPECT_LE(rootEmission.value, maxV + 1e-3f);
+}
+
+// Durable gotcha regression (sdf-body-rendering-contract memory): mip averaging
+// must bin by OCCUPANCY, not a Density>0 filter — an emissive voxel deep inside
+// an SDF-interior brick (sd << 0, i.e. would be dropped by a naive Density>0
+// filter) must still contribute to its parent's emissive mip average. This
+// reuses DeepInteriorIsStored's fixture shape (test_sdf_bake.cpp): a large
+// sphere whose center brick never touches the surface band.
+TEST(MipSampleBake, DeepInteriorEmissiveVoxelContributesToMip) {
+    const int n = 32;
+    const glm::vec3 center(16.0f, 16.0f, 16.0f);
+    RecipeParams rp{12.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};  // sphere fills most of the grid interior
+    constexpr float kDeepEmit = 42.0f;
+
+    Vixen::SVO::SdfBakeResult baked = Vixen::SVO::BakeRecipeToSdfWorldWithEmission(
+        RECIPE_SPHERE, center, rp, n, 2.0f,
+        [&](const glm::vec3& p) {
+            // Only the deep-interior voxel emits; everything else is 0 so any
+            // contribution to the root's mean is unambiguously attributable to it.
+            return glm::distance(p, center) < 1.0f ? kDeepEmit : 0.0f;
+        });
+
+    // Precondition: the emissive point really is deep interior (sd << -band),
+    // i.e. a naive Density>0 occupancy filter would have dropped its brick.
+    ASSERT_LT(evalSdf(RECIPE_SPHERE, center, center, rp), -2.0f)
+        << "test precondition: emissive point must be deeper than the band";
+
+    Vixen::SVO::SdfBodyOctree body = Vixen::SVO::BuildSdfBodyOctree(baked, 3);
+    SerializedOctree out = SerializeSdf(body);
+    const Octree* oct = body.octree->getOctree();
+    ASSERT_NE(oct, nullptr);
+
+    // The deep-interior voxel must actually be stored (occupancy-based brick
+    // selection, not Density>0) — confirms the bake side of the gotcha guard.
+    // (baked.world was moved-from by BuildSdfBodyOctree; query via body.world.)
+    const auto entity = body.world->getEntityByWorldSpace(center);
+    ASSERT_TRUE(body.world->exists(entity))
+        << "deep-interior voxel must be stored under occupancy-based brick selection";
+
+    MipPool pool = BakeMipPool(*oct, out);
+    ASSERT_EQ(out.channels[3].semanticId, static_cast<uint32_t>(SEM_EMISSION));
+    MipSample rootEmission = pool.Get(0, /*channelIdx=*/3);
+
+    EXPECT_GT(rootEmission.coverage, 0.0f);
+    EXPECT_GT(rootEmission.value, 0.0f)
+        << "root emissive mip must be non-zero: the deep-interior emitter must "
+        << "propagate up the mip pyramid, not be dropped like the old "
+        << "Density>0-filter brick-fleck bug would have done";
+}

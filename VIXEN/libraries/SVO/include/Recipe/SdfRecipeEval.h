@@ -1,5 +1,16 @@
 #pragma once
 #include "Recipe/SdfInstruction.h"
+// MSVC's <windows.h> (pulled in transitively by callers that include
+// GaiaVoxelWorld.h/gaia.h BEFORE this header — see SdfBake.h's include order)
+// defines min/max as function macros, which collide with SdfCoreKernels.g.hpp's
+// glm::min/glm::max calls below. #undef defensively at this header's own point
+// of use rather than relying on every includer to have done it first (a
+// generated header's #include, not the includer's own use of glm, is what
+// breaks — see test_soa_sdf_serialize.cpp's own top-of-file #undef, which does
+// NOT protect this because GaiaVoxelWorld.h's windows.h re-pollutes downstream
+// of it in the SAME translation unit).
+#undef min
+#undef max
 #include "Recipe/generated/SdfCoreKernels.g.hpp"   // Yeroket::Sdf::Generated::SdfCore_*
 #include <glm/glm.hpp>
 #include <cassert>

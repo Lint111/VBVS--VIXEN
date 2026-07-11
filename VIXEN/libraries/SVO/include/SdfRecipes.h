@@ -10,6 +10,14 @@
 #include <cstdint>
 #include <cmath>
 
+// MSVC's <windows.h> defines min/max as function-like macros, colliding with
+// this file's own std::min/std::max calls below. This header cannot rely on
+// an includer having #undef'd first (windows.h may be pulled in by ANY prior
+// include in the same translation unit, e.g. GaiaVoxelWorld.h/gaia.h) — guard
+// defensively at the actual point of use, same fix as SdfRecipeEval.h.
+#undef min
+#undef max
+
 namespace Vixen::SVO {
 
 // Recipe ids (mirror SdfRecipes.glsl #defines).

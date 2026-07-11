@@ -318,14 +318,16 @@ TEST(SoaSdfSerialize, MultiChannelPoolLayout) {
     Vixen::SVO::SdfBodyOctree body = Vixen::SVO::BuildSdfBodyOctree(baked, 3);
     Vixen::SVO::SerializedOctree out = Vixen::SVO::SerializeSdf(body);
 
-    // 3 channels: sdf(1)+color(3)+roughness(1) = 5 float-lanes/voxel
-    EXPECT_EQ(out.channelCount, 3u);
-    EXPECT_EQ(out.brickStrideFloats, (1u + 3u + 1u) * 512u);   // 2560
+    // 4 channels: sdf(1)+color(3)+roughness(1)+emission(1) = 6 float-lanes/voxel
+    // (Sampled Lighting Inc3 M3 added the scalar emissive-intensity channel.)
+    EXPECT_EQ(out.channelCount, 4u);
+    EXPECT_EQ(out.brickStrideFloats, (1u + 3u + 1u + 1u) * 512u);   // 3072
 
-    // channelBaseFloats: sdf 0, color 512, roughness 2048 (declaration order)
+    // channelBaseFloats: sdf 0, color 512, roughness 2048, emission 2560 (declaration order)
     EXPECT_EQ(out.channelBaseFloats(SEM_SDF),       0u);
     EXPECT_EQ(out.channelBaseFloats(SEM_COLOR),     512u);
     EXPECT_EQ(out.channelBaseFloats(SEM_ROUGHNESS), 2048u);
+    EXPECT_EQ(out.channelBaseFloats(SEM_EMISSION),  2560u);
 
     // Pool byte size = brickCount * brickStrideFloats * sizeof(float)
     EXPECT_EQ(out.channelPool.size(),
@@ -347,7 +349,7 @@ TEST(SoaSdfSerialize, MultiChannelBakedColorRoughness) {
     Vixen::SVO::SdfBodyOctree body = Vixen::SVO::BuildSdfBodyOctree(baked, 3);
     Vixen::SVO::SerializedOctree out = Vixen::SVO::SerializeSdf(body);
 
-    ASSERT_EQ(out.channelCount, 3u);
+    ASSERT_EQ(out.channelCount, 4u);
     ASSERT_FALSE(out.channelPool.empty());
 
     // ------------------------------------------------------------------
@@ -396,6 +398,71 @@ TEST(SoaSdfSerialize, MultiChannelBakedColorRoughness) {
         EXPECT_NEAR(storedRg, roughExpected, 0.01f)
             << "Roughness at p=(38,32,32) must match bake formula";
 
+        found = true;
+        break;
+    }
+    EXPECT_TRUE(found) << "No active brick contains surface voxel (38,32,32)";
+}
+
+// ---------------------------------------------------------------------------
+// Sampled Lighting Inc3 M3 — scalar emissive channel
+// ---------------------------------------------------------------------------
+
+// A bake that never supplies an emission function (default NoEmission) must
+// produce an all-zero emissive channel — the byte-identity escape hatch this
+// whole increment relies on (an emissive-absent scene reproduces M1/M2 output).
+TEST(SoaSdfSerialize, EmissionChannelDefaultsToZero) {
+    SdfFixture fx;
+    Vixen::SVO::SerializedOctree out = Vixen::SVO::SerializeSdf(fx.body);
+
+    ASSERT_NE(out.channelBaseFloats(SEM_EMISSION), 0xFFFFFFFFu)
+        << "SEM_EMISSION must be present in the channel table";
+
+    bool anyNonzero = false;
+    for (uint32_t bi = 0; bi < out.brickCount; ++bi) {
+        for (uint32_t voxel = 0; voxel < SerializedOctree::kVoxelsPerBrick; ++voxel) {
+            if (out.readPoolVoxel(SEM_EMISSION, bi, voxel, 0) != 0.0f) {
+                anyNonzero = true;
+            }
+        }
+    }
+    EXPECT_FALSE(anyNonzero) << "Emission channel must default to all-zero (no emit fn supplied)";
+}
+
+// A bake WITH an emission function must round-trip a known intensity through
+// the channel pool at a known surface voxel (mirrors MultiChannelBakedColorRoughness's
+// exact-formula methodology).
+TEST(SoaSdfSerialize, EmissionChannelRoundTrips) {
+    RecipeParams rp{6.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+    const glm::vec3 center(32.0f, 32.0f, 32.0f);
+    constexpr float kEmit = 7.5f;
+    Vixen::SVO::SdfBakeResult baked = Vixen::SVO::BakeRecipeToSdfWorldWithEmission(
+        RECIPE_SPHERE, center, rp, 64, 2.5f,
+        [](const glm::vec3&) { return kEmit; });
+    Vixen::SVO::SdfBodyOctree body = Vixen::SVO::BuildSdfBodyOctree(baked, 3);
+    Vixen::SVO::SerializedOctree out = Vixen::SVO::SerializeSdf(body);
+
+    ASSERT_EQ(out.channelCount, 4u);
+
+    const glm::vec3 targetPos(38.0f, 32.0f, 32.0f);
+    const Vixen::SVO::Octree* oct = body.octree->getOctree();
+    ASSERT_NE(oct, nullptr);
+    ASSERT_NE(oct->root, nullptr);
+    const auto& brickViews = oct->root->brickViews;
+    ASSERT_FALSE(brickViews.empty());
+
+    bool found = false;
+    for (uint32_t bi = 0; bi < static_cast<uint32_t>(brickViews.size()); ++bi) {
+        const glm::ivec3 origin = brickViews[bi].getLocalGridOrigin();
+        const glm::ivec3 local  = glm::ivec3(targetPos) - origin;
+        if (local.x < 0 || local.x >= 8 || local.y < 0 || local.y >= 8 ||
+            local.z < 0 || local.z >= 8) {
+            continue;
+        }
+        const uint32_t slot = static_cast<uint32_t>(local.z * 64 + local.y * 8 + local.x);
+        const float storedEmit = out.readPoolVoxel(SEM_EMISSION, bi, slot, 0);
+        EXPECT_NEAR(storedEmit, kEmit, 1e-5f)
+            << "Emission at p=(38,32,32) must round-trip the emit fn's constant value";
         found = true;
         break;
     }
