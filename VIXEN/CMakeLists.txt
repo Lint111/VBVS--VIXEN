@@ -200,6 +200,10 @@ include(cmake/VixenAssets.cmake)
 # per-app RenderGraph node linkage (Graph-Derived-Node-Linkage-Spec-2026-07).
 include(cmake/VixenNodeManifest.cmake)
 
+# vixen_link_used_nodes() — links a target against only the RenderGraphNode_<Name> OBJECT
+# libraries named in its generated node manifest (Inc-1 M4 scoped linkage).
+include(cmake/VixenNodeLinkage.cmake)
+
 if(AUTO_LOCATE_VULKAN)
 	message(STATUS "Attempting auto locate Vulkan using CMake......")
 	
