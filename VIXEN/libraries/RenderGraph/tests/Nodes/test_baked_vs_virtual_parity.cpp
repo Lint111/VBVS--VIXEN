@@ -46,27 +46,40 @@
  * whitelist excludes domain warps — the class most likely to break step-relaxation, per this
  * milestone's explicit scope note; proves the parity gate still holds with NO grid fast-path).
  *
- * KNOWN ISSUE (recipe 3, unresolved this session): the Twist-modified sphere's VIRTUAL render
- * produces virtualHits==0 (a total march miss) on the real GPU, while recipes 1/2 (both of
- * which use ZERO position-stack opcodes — no Twist/Transform/MirrorX/RestorePos) pass cleanly
- * (IoU 0.84/0.87). Root-cause investigation this session PROVED, layer by layer, that the
- * failure is NOT explained by: (a) bytecode correctness — evalRecipe (the CPU stack-VM) finds
- * a clean zero-crossing at the expected t for the exact same program; (b) GLSL emission —
- * EmitProceduralFieldFunctionGlsl's output was dumped and is byte-for-byte the expected
- * SdfCore_Twist(SdfCore_Sphere(...)) composition; (c) the splice — getRecipeBoundSphere's
- * baked literals were dumped and are numerically correct (boundCenter/boundRadius/
- * stepRelaxation all match what was authored); (d) Register() validation — confirmed Ok via a
- * direct isolated call; (e) the specific transform choice — swapping Twist for MirrorX (a much
- * simpler position-stack opcode, no trigonometry) reproduces the IDENTICAL virtualHits==0
- * failure, isolating the trigger to "any recipe using a position-stack push/RestorePos pair"
- * rather than anything Twist-specific. The failure is REAL and REPRODUCIBLE, not a flaky
- * render — but this session could not root-cause it further within the milestone's time
- * budget. Left as a documented FAILING assertion (not weakened/skipped) so this gate keeps
- * catching it — silently downgrading the assertion would hide a genuine gap in the M5/M6
- * uber-shader's position-stack-opcode support. Next investigator: instrument
- * traceUberRecipeBody's per-step t/d values directly (a single-pixel dispatch + a dedicated
- * readback buffer, not instanceIterCount — that debug buffer is last-writer-wins across the
- * whole dispatch and is NOT diagnostic for a full-frame render, a dead end this session hit).
+ * RESOLVED (KI-LPD-003, twist-frame reconciliation): recipe 3's two programs used to author
+ * SdfCore_Twist at DIFFERENT absolute p.y — SdfCore_Twist twists (x,z) about the CURRENT
+ * position's absolute y (`angle = k * pos.y`, see SdfRecipeEval.h's Twist case, "data[0]=k
+ * (radians/unit Y)"), and pos starts as world p with no preceding transform. The
+ * worldSpaceProgram twisted a sphere centered at worldTarget (y ~= 5), so Twist saw
+ * pos.y ~= 5 (baseline angle ~= 0.25 rad); the localSpaceProgram twisted a sphere centered at
+ * local origin (bake-grid coords are p-bakeCenter, so pos.y ~= 0 there), so Twist saw
+ * pos.y ~= 0 (baseline angle ~= 0). Same k, different absolute y -> genuinely different
+ * twisted geometry -> silhouette IoU capped around 0.585, well under kIoUFloor. This was NOT
+ * a marcher/shader bug: virtual hit count (~9183) tracked baked's (~9351) closely, ruling out
+ * a march failure (which would show as a hit-count collapse, as the earlier virtualHits==0
+ * symptom below did before its own fix).
+ *
+ * Fix: wrap the worldSpaceProgram's Twist in a Transform that translates pos by worldTarget
+ * BEFORE the twist runs (translateOp(worldTarget) — pos' = pos - worldTarget, per
+ * SdfCore_Transform's p-translation convention), and add a matching second RestorePos to pop
+ * it back off (Transform and Twist each push one position-stack frame; RestorePos pops one
+ * frame per call, so two pushes need two pops — see SdfRecipeEval.h's Transform/Twist/
+ * RestorePos cases, all push-then-mutate paired 1:1 with a pop). This puts the sphere at LOCAL
+ * origin under the twist (mirroring localSpaceProgram's own origin-centered sphere exactly),
+ * so SdfCore_Twist now sees pos.y ~= 0 on BOTH paths — same absolute-y baseline, same twisted
+ * shape. (An earlier, now-superseded attempt at this same wrap produced virtualHits==0; that
+ * turned out to be an unrelated authoring bug in that attempt, not a problem with wrapping
+ * itself — Transform+Twist+single-RestorePos is an UNBALANCED position-stack push/pop pair
+ * that leaves a stale frame on the stack for the following op. The fix here uses two
+ * RestorePos calls, one per push, keeping the stack balanced.)
+ *
+ * PRIOR KNOWN ISSUE (superseded by the above): a previous version of this file recorded
+ * virtualHits==0 (a total march miss) for this recipe, with investigation isolating the
+ * trigger to "any recipe using a position-stack push/RestorePos pair" (Twist and MirrorX both
+ * reproduced it). That symptom is gone under the corrected, balanced Transform/Twist/
+ * RestorePos/RestorePos sequence below — virtual hit counts are now non-trivial and close to
+ * baked's, and the residual mismatch was purely the absolute-y twist-frame issue described
+ * above.
  *
  * DEVICE SELECTION / RUN POLICY: same real-GPU-preferred contract as test_mip_fallback_render
  * (IsRealGpu/LooksLikeSoftwareOrDozen). Runs on the real GPU Windows-side per the session's
@@ -249,10 +262,12 @@ SdfInstruction twist(float k) {
     SdfInstruction in{}; in.opCode = (uint8_t)SdfOpCode::Twist; in.data[0] = k;
     return in;
 }
-// Diagnostic helper (see the file-header "KNOWN ISSUE" note): substituting mirrorXOp() for
-// twist() in recipe (3) reproduces the identical virtualHits==0 failure, which is how this
-// session isolated the bug to "any position-stack opcode," not Twist specifically. Kept here
-// (unused by the shipped corpus) for the next investigator to re-run that isolation quickly.
+// Diagnostic helper (see the file-header "RESOLVED (KI-LPD-003...)" note): during the
+// now-superseded virtualHits==0 investigation, substituting mirrorXOp() for twist() in an
+// unbalanced Transform+Twist+single-RestorePos version of recipe (3) reproduced the identical
+// failure, isolating that particular bug to "any position-stack opcode" rather than anything
+// Twist-specific. Kept here (unused by the shipped corpus) in case a future position-stack
+// regression needs the same isolation technique.
 SdfInstruction mirrorXOp() {
     SdfInstruction in{}; in.opCode = (uint8_t)SdfOpCode::MirrorX;
     return in;
@@ -344,21 +359,25 @@ std::vector<ParityRecipe> BuildCorpus() {
         r.name = "twist_sphere";
         r.bakeCenter  = glm::vec3(32.0f, 32.0f, 32.0f);
         r.worldTarget = bodyCentre;
-        // World-space program: Twist rotates about pos.y ABSOLUTELY (SdfRecipeEval.h:
+        // World-space program: Twist rotates (x,z) about pos.y ABSOLUTELY (SdfRecipeEval.h:
         // "k=radians/unit Y" — a rotation whose angle depends on the CURRENT p.y, not an
-        // object-relative offset). A small k keeps this a well-defined, still-continuous
-        // distance-field twist even at worldTarget.y's real magnitude (~5) — no Transform
-        // wrap needed (an earlier version wrapped Twist in a Transform translate-to-origin,
-        // which should have been mathematically equivalent but produced virtualHits==0 on
-        // the real GPU for reasons this session's investigation didn't fully root-cause;
-        // dropping the wrapper removes that whole unexplained-divergence surface rather than
-        // ship an unverified fix). Sphere carries its OWN position field (data[0..2] — see
-        // SdfRecipeEval.h's Sphere case), so it places at worldTarget directly, matching the
-        // baked path's fixed placement.
+        // object-relative offset). The localSpaceProgram below twists a sphere centered at
+        // LOCAL ORIGIN (bake-grid coords are p-bakeCenter, so pos.y there is ~0), so for the
+        // two paths to twist by the SAME baseline angle, the worldSpaceProgram must ALSO
+        // present pos.y ~= 0 to Twist. translateOp(worldTarget) does exactly that: pos' =
+        // pos - worldTarget (SdfCore_Transform's p-translation convention — see its doc
+        // comment above), so Twist runs in the same origin-centered local frame as the baked
+        // path, then a second RestorePos (Transform AND Twist each push one position-stack
+        // frame; RestorePos pops exactly one per call — SdfRecipeEval.h's push-then-mutate
+        // pattern) restores pos back to world space before the program ends. Sphere is
+        // authored at LOCAL origin (matching localSpaceProgram's own placement) since it now
+        // evaluates inside the translated frame, not at worldTarget directly.
         r.worldSpaceProgram = {
+            translateOp(r.worldTarget),
             twist(0.05f),
-            sphereAt(r.worldTarget, 2.6f),
-            restorePos(),
+            sphereAt(glm::vec3(0.0f), 2.6f),
+            restorePos(),  // pops Twist's frame
+            restorePos(),  // pops Transform's frame
         };
         r.localSpaceProgram = { twist(0.05f), sphereAt(glm::vec3(0.0f), 16.0f), restorePos() };
         // Twist is outside DeriveConservativeBounds' whitelist -> must author the bound
