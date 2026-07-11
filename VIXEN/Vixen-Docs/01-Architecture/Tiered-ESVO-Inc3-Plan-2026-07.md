@@ -1723,3 +1723,54 @@ first-principles footprint math, hop-composition invariants):
   hop0's proof as sufficient demonstration of the fixed mechanism and close the epic on that
   basis, matching this epic's own established precedent (M6/M7/Task19/20/22) that an honest,
   evidenced partial result is a valid, non-forced outcome.
+
+  **Opus validator: APPROVED (2026-07-12) — the epic's real, foundational closure for the
+  tier-crossing LOD-gate mechanism.** Independently re-derived, re-built, and re-captured
+  everything from scratch; did not trust the report.
+  **(1) World-unit gate re-derivation CONFIRMED correct, through ARBITRARY hop depth.**
+  Algebraically confirmed `tLocalUnitWorld` cancels cleanly from both sides of the gate,
+  so the RHS reduces to exactly M1 Task 2's validated `childScale*scale_exp2` — no semantic
+  drift. Only the LHS distance argument changed (chord-floored `tv_max` → camera-anchored
+  `(tEntryWorld+tChild)*kPhys`), and it IS genuinely camera-dependent this time
+  (`tEntryWorld` grows as the camera recedes). Chased the hop≥1 composition BY HAND (not
+  trusting the claim): `kPhys==1 exactly at every hop` — the remap's `1/childScale` growth
+  in `|rayDirLocal|` exactly cancels `tLocalUnitWorld*=childScale`, and at hop≥1
+  `tEntryWorld==0` identically (child rays start inside the grid) — no unit mismatch at any
+  depth. Reproduced the pre-registered predictions from first principles: D0=7.4604wu (doc
+  7.4605), D1=7.286e-3wu — match.
+  **(2) Ordinary LOD gate GENUINELY untouched — confirmed by hunk-range analysis, not
+  trust.** The commit's diff hunks do not include the ordinary non-leaf gate (now
+  `:1038-1039`). Empirically proven too: all 4 non-M8 regression scenes byte-identical.
+  **(3) hop0 live proof INDEPENDENTLY REPRODUCED from the validator's own fresh build**
+  (freshness verified: exe/shader mtimes, compiled `.spv` postdates `.comp`, Task-23 symbols
+  present). Own flight capture, own pixel decode: tick 220 (0.259wu) green=305px, pure
+  `(0,77,0)` per-voxel SDF color (not gray mip, not sky); monotonic shrink 305→177→64→8;
+  persists (flickering 4-8px) to tick 324 (7.67wu), gone by 326 — brackets the 7.4605wu
+  prediction, genuine color confirmed at the vanishing tick.
+  **(4) hop1 "framing gap" CONFIRMED, not a gate defect — two independent lines.** (a) the
+  math above proves hop≥1 composes correctly; (b) in code,
+  `m8EarthHop1OctantWorld_ = m8EarthHop0OctantWorld_` (`BuildRenderGraph.cpp:1940`) — T1's
+  own surface position is ALIASED to T0's octant, so there is no distinct T1 flight target
+  to aim at. This is a genuine demo-construction limitation, not a second-hop
+  gate/composition bug.
+  **(5) Placement fix (`d59bc3b3`) verified:** `RootLeafOctantCenterLocal` returns 1.25/1.75
+  per axis — genuinely centered, 0.25-unit margin from every boundary (vs. the old
+  0.000244 boundary-adjacent point). Scoped to the M8 flight/observable block only;
+  `VIXEN_TIER_EARTH_DEMO` (M4) genuinely untouched (retains its own separate `kBoxOffset`
+  block, `:1323`). **(6) Mirror lockstep CONFIRMED:** the mirror commit added ONLY comment
+  lines; `GpuTraversalMirror.h` has no `raySizeCoef` field at all (pure brick-hit oracle,
+  LOD structurally disabled in parity, `:436`) — the gate change genuinely does not need to
+  port; hitT composition (which the mirror DOES port) untouched. **(7) Regression sweep —
+  validator's own numbers:** default/unity/chain/observable ALL byte-identical to Fable's
+  committed baselines (own `cmp -s`); VUID exactly 10× `08114` zero-new in all 4 scenes;
+  chain's two crossings render (cyan=1156 exact match). 19 pre-existing SdfCoreKernels.g.hpp
+  codegen failures confirmed pre-existing. **(8) Tree/docs:** exactly 7 claimed files
+  touched; no debug cruft in shipped shader; docs accurately distinguish proven (hop0) from
+  open (hop1 demo framing); tree clean.
+  **Bottom line: the engine fix is correct and complete, provably so through arbitrary hop
+  chains, ordinary gate untouched, every non-M8 scene byte-identical. hop0 is live-proven
+  end-to-end at the TRUE 2^-10 ratio with the REAL unoverridden coefficient — no hand-tuned
+  constant, dynamically correct by construction. hop1's demo-framing gap is real but is a
+  demo-construction follow-up (give T1 its own recorded surface position instead of
+  aliasing T0's), not an engine defect. This IS the tier-crossing mechanism's foundational
+  closure.**
