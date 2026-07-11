@@ -369,5 +369,23 @@ repeatedly missed real linkage/runtime bugs in past epics; this one is no except
 
   **Files touched:** new `cmake/VixenNodeManifest.cmake`; `CMakeLists.txt` (+3 lines, `include()`);
   `application/main/CMakeLists.txt` (+16 lines, the `vixen_generate_node_manifest(...)` call). No
-  node source, `NodeRegistration.*`, or `RegisterAllNodes()` touched. Commit: (recorded below).
+  node source, `NodeRegistration.*`, or `RegisterAllNodes()` touched. Commit: `f2845c88`.
   2026-07-11
+
+  **Opus validator: APPROVED** (2026-07-11). Independently re-verified rather than trusting the
+  report: (1) regex logic read directly from the current `VixenNodeManifest.cmake` — extraction/
+  dedup/sort all correct, wired correctly from both CMakeLists.txt call sites; (2) the "116
+  call-sites, all single-line, zero misses" claim independently reproduced by grepping all 5 files
+  and sampling 16 call sites across them — confirmed zero `AddNode<` tokens fail to match, no
+  legacy string-overload usage, no multi-line template args (this was the highest-risk check,
+  since a missed call site would silently under-link a real node — none found); (3) the 45-node
+  extraction independently reproduced THREE separate ways (manual grep-simulation, direct
+  execution of the actual CMake function via `cmake -P`, and reading the generated file) — all
+  three sets identical; (4) the `ConstantNode.cpp` two-types claim fact-checked directly against
+  the source (`ConstantNode.cpp:13-14`, `ConstantNodeType.h`) — accurate, and correctly only
+  `ConstantNodeType` (which has real call sites) is in the manifest, `ShaderConstantNodeType`
+  (zero call sites) is correctly excluded, consistent with spec §3's conservative-syntactic
+  design; (5) configure independently re-run (via `cmake -P` invoking the function directly, since
+  the full vixen-ninja preset needs MSVC/vcvars unavailable in the validator's environment) — same
+  45-entry output, byte-matching the committed manifest; (6) tree clean, linear history. No
+  linkage changes made (correctly deferred to M4, per scope). No issues found.
