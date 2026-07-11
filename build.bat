@@ -10,10 +10,14 @@ REM                      fixed Installer path); no VS year/edition assumptions.
 REM   - cmake         : taken from PATH (where cmake), with a well-known
 REM                      install-dir fallback.
 REM   - repo root     : derived from this script's own location (%~dp0).
-REM   - sccache       : SCCACHE_DIR / SCCACHE_CACHE_SIZE default here but a
+REM   - ccache/sccache: CCACHE_DIR / CCACHE_MAXSIZE (ccache) and SCCACHE_DIR /
+REM                     SCCACHE_CACHE_SIZE (sccache fallback) default here but a
 REM                     user-set value wins (shared compiler cache; see the
 REM                     vixen-ninja preset, which sets /Z7 so MSVC debug builds
-REM                     are cacheable).
+REM                     are cacheable). ccache is preferred when present/auto-
+REM                     provisioned (ProvisionCcache.cmake) because sccache
+REM                     cannot cache MSVC precompiled headers — see
+REM                     CMakeLists.txt's USE_CCACHE block.
 REM
 REM Usage:
 REM   build.bat [configure^|build^|all] [preset-name] [target-name]
@@ -92,6 +96,8 @@ if "%CMAKE_EXE%"=="" (
 )
 
 REM --- shared compiler-cache defaults (user-set values win) ---
+if not defined CCACHE_DIR set "CCACHE_DIR=%SystemDrive%\ccache"
+if not defined CCACHE_MAXSIZE set "CCACHE_MAXSIZE=20G"
 if not defined SCCACHE_DIR set "SCCACHE_DIR=%SystemDrive%\sccache"
 if not defined SCCACHE_CACHE_SIZE set "SCCACHE_CACHE_SIZE=20G"
 
@@ -101,7 +107,8 @@ echo [build] source   : %SRC_DIR%
 echo [build] preset   : %PRESET%
 echo [build] action   : %ACTION%
 if not "%TARGET%"=="" (echo [build] target   : %TARGET%) else (echo [build] target   : ^(full build^))
-echo [build] sccache  : %SCCACHE_DIR% ^(max %SCCACHE_CACHE_SIZE%^)
+echo [build] ccache   : %CCACHE_DIR% ^(max %CCACHE_MAXSIZE%^; preferred - caches MSVC PCH^)
+echo [build] sccache  : %SCCACHE_DIR% ^(max %SCCACHE_CACHE_SIZE%^; fallback only^)
 
 cd /d "%SRC_DIR%"
 

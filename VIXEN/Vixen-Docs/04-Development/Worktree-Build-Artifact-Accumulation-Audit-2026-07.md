@@ -511,3 +511,36 @@ is capped not maximized, the full env var table, explicit "what NOT to do" list 
 platform-scope boundary). Cross-references (doesn't duplicate) the `multi-worktree-sync`
 skill's build-traffic-control section, which states the general cross-project principle this
 skill implements concretely for VIXEN.
+
+**Follow-on fix (2026-07-11): queue ticket auto-release + ccache-over-sccache for MSVC PCH.**
+Two more gaps surfaced live while dispatching a real Inc-1 milestone build in a fresh worktree:
+
+1. **Queue tickets were only ever released by the dispatching agent calling `-Release` after
+   `build.bat` returned** — if that agent got killed, crashed, or had its context cleared
+   mid-build, the ticket sat blocking the queue until the 60-minute stale reap. Fixed:
+   `run_build_with_summary.ps1` now takes a `-QueueTicketId` param (wired through `build.bat`'s
+   `VIXEN_QUEUE_TICKET_ID` env var) and releases it itself in the same `finally` block that
+   already releases the build-lock Mutex — ticket lifetime is now tied to the build *process's*
+   lifetime, not the dispatching agent's. Also writes the outcome (exit code, failed targets,
+   log path) to `%TEMP%\vixen_build_queue_results\<TicketId>.log` so a different agent (or the
+   same one resumed later) can read what happened without having stayed attached.
+2. **sccache measured at only 38.9% cache-hit rate on a fresh worktree's clean build**, with
+   `/Fp` (MSVC precompiled-header flag, 310 occurrences) as the single largest non-cacheable
+   bucket. Root cause confirmed via sccache's own source (`src/compiler/msvc.rs`): `/Fp` and
+   `/Yc` are unconditionally routed as `TooHardPath` — sccache cannot cache MSVC PCH
+   compilation at all (open upstream issue `mozilla/sccache#978`, unresolved since 2021, no
+   roadmap commitment). VIXEN's `target_precompile_headers()` is used across 7 core libraries
+   (Core, EventBus, CashSystem, GaiaArchetypes, GaiaVoxelWorld, Logger, RenderGraphCore) — every
+   fresh worktree on this multi-agent machine was paying full uncached PCH-compile cost for all
+   of them, independent of the already-correct shared FetchContent/sccache-dir config (Fix 1).
+   ccache added real MSVC `/Yc` PCH support in 2024 (refined through 2025 point releases) and is
+   the documented fix other CMake projects (e.g. Qt) use for this exact gap. Fixed:
+   `CMakeLists.txt`'s `USE_CCACHE` block now prefers ccache over sccache (falls back to sccache
+   if ccache is genuinely unavailable, rather than failing configure). New
+   `VIXEN/cmake/ProvisionCcache.cmake` self-provisions ccache on Windows (downloads the official
+   prebuilt `ccache-4.13.6-windows-x86_64.zip`, ~4MB, into a gitignored `.ccache-deps/` cache —
+   same precedent as `ProvisionVulkan.cmake`/`ProvisionGdb.cmake`: system tool wins, cache is
+   project-local, no system-wide install) so no one has to hand-install ccache the way sccache
+   apparently was. Verified end-to-end via `cmake -P` script-mode: real download, real
+   extraction, provisioned `ccache.exe --version` runs standalone (no missing DLLs), and a
+   second run correctly reused the cache with no re-download.
