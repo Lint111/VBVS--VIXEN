@@ -1,6 +1,17 @@
 ---
 title: Tiered ESVO — Inc3 Implementation Plan (scale-magnified tiers + 3-tier chain — Earth-scale surface-to-orbit)
-status: M1-M3 SHIPPED, M5 SHIPPED (magnification geometry fix) 2026-07-10; M6 (Earth-scale epic gate) BLOCKED on a camera-framing/scale structural mismatch, not a math defect (see Progress Log); M7 SHIPPED 2026-07-11 — the epic gate MET at a documented gentler ratio (childScale=0.25); true Earth-scale needs a scoped CameraNode look-target-decoupling follow-up (see Progress Log); M8 Task 16 SHIPPED (look-target decoupling); Task 17/19 DONE_WITH_CONCERNS; Task 20 geometry/gate-math derivation CONFIRMED CORRECT; Task 21 residency-from-construction fix SHIPPED (kept, orthogonal); Task 22 (construct-at-depth) PROVEN ALGEBRAICALLY IMPOSSIBLE (depth cancels identically); **Task 23 (heavy-lifter engine escalation) SHIPPED 2026-07-12: the shared-raySizeCoef structural flaw is FIXED by a camera-anchored, world-unit-correct crossing gate (no second coefficient, no per-demo constant) + a child-miss mip fallback — hop0 (T0→T1) LIVE-PROVEN at true childScale=2^-10 with the real unoverridden coefficient (green T1 rim, vanishing point bracketing the hand-computed prediction to within one log-tick); hop1 (T1→T2) not yet visually reached this session (a demo flight-schedule framing gap, not a gate defect) — see Task 23 Progress Log for the full derivation, live results, and the honest remaining gap.**
+status: EPIC COMPLETE 2026-07-12 — M1-M3/M5/M7 SHIPPED (mechanism + gentler-ratio live proof); M6
+BLOCKED-then-superseded (camera-framing mismatch, not a math defect); M8 Task 16 SHIPPED
+(CameraNode look-target decoupling); Task 17/19/20/21/22 the escalation chain that found + fixed
+the real structural flaw (a shared raySizeCoef field could never resolve a true 2^-10 crossing;
+"mark it deeper" proven algebraically impossible); **Task 23 (heavy-lifter engine escalation)
+SHIPPED 2026-07-12 — the foundational fix: a camera-anchored, world-unit-correct crossing gate,
+no shared coefficient, no per-demo constant, proven correct through arbitrary hop depth; hop0
+LIVE-PROVEN at true childScale=2^-10.** **Task 24 SHIPPED 2026-07-12 — THE EPIC'S FINAL CLOSURE:**
+gave T1 its own world anchor (was aliased to T0's), proving BOTH true 2^-10 crossings live on one
+continuous ground-to-orbit flight, each genuinely color-attributable, Opus-validated with
+pixel-exact independent reproduction. Merged to `origin/main` `e6a2ce19` 2026-07-12. The epic's
+original ask — "a proper surface-to-orbit view of planets of proper scale" — is fully realized.
 depends: Tiered-ESVO-Observer-Addressing-Design-2026-07.md (§3, §5, §9), Tiered-ESVO-Inc2-Plan-2026-07.md (shipped 2026-07-10, merged `2d67840e`, origin/main `12145d60`)
 ---
 
