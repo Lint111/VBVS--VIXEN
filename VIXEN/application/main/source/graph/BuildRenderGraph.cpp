@@ -529,6 +529,20 @@ void VulkanGraphApplication::BuildRenderGraph() {
     camera->SetParameter(CameraNodeConfig::PARAM_FOV, kRaymarchCameraFovDegrees);  // shared with raySizeCoef
     camera->SetParameter(CameraNodeConfig::PARAM_NEAR_PLANE, 0.1f);
     camera->SetParameter(CameraNodeConfig::PARAM_FAR_PLANE, 500.0f);
+    // Tiered-ESVO Inc3 M8 Task 19: the translating flight-path demo needs the camera to
+    // approach as close as ~0.05 world units from the crossing-octant's own surface point (to
+    // clear hop1's predicted ~0.079wu handoff threshold) -- own live-gate finding: the default
+    // 0.1wu near-clip plane is LARGER than hop1's own threshold, so the target geometry was
+    // being near-plane-clipped away entirely at every near-field tick (empty/background
+    // frames, not a tier-crossing or aim bug). Widen near-clip for this demo only, the same
+    // "widen the bound, own justified commit" precedent CameraNode.h's kOrbitDistanceMin
+    // widening already established for an analogous too-coarse-default problem.
+    if (std::getenv("VIXEN_TIER_M8_FLIGHT_DEMO")) {
+        camera->SetParameter(CameraNodeConfig::PARAM_NEAR_PLANE, 0.01f);
+        mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_M8_FLIGHT_DEMO: near-clip plane "
+                          "narrowed to 0.01wu (default 0.1wu is larger than hop1's own "
+                          "~0.079wu handoff threshold and would clip the crossing target away)");
+    }
     // Camera presets for Cornell box (grid spans [0,128], center at 64,64,64)
     // Uncomment one preset below:
 
@@ -599,13 +613,30 @@ void VulkanGraphApplication::BuildRenderGraph() {
     }
     // Tiered-ESVO Inc3 M8 Task 17: SAME orbitCenter gotcha applies to the true Earth-scale
     // demo (also built at world center (64,64,64), M4's own established convention).
-    if (std::getenv("VIXEN_TIER_M8_EARTH_DEMO")) {
+    //
+    // M8 Task 19: this wiring is SKIPPED when VIXEN_TIER_M8_FLIGHT_DEMO is also set. Setting
+    // any PARAM_ORBIT_* here latches CameraNode::orbitActive_ = true (SetupImpl's own
+    // "explicit orbit param = orbit-mode intent" convention), which makes UpdateCameraData's
+    // ORBIT MODE branch recompute cameraPosition from orbitCenter/orbitDistance/yaw/pitch EVERY
+    // frame -- silently overriding a scripted CameraNode::SetPositionForTest() write from the
+    // Task 19 flight-path demo (own live-gate finding: the very first capture attempt rendered
+    // a completely static, unchanging frame across all 400 ticks despite SetPositionForTest
+    // being called every tick, because this orbit-param wiring had already engaged orbit mode
+    // at scene-build time). The flight-path demo needs FIXED mode (cameraPosition authoritative
+    // at rest, per the "bodies-0" convention) so its own scripted position writes are what
+    // actually drives the camera.
+    if (std::getenv("VIXEN_TIER_M8_EARTH_DEMO") && !std::getenv("VIXEN_TIER_M8_FLIGHT_DEMO")) {
         camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_X, 64.0f);
         camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_Y, 64.0f);
         camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_Z, 64.0f);
         camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_DISTANCE, 236.0f);
         mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_M8_EARTH_DEMO: orbitCenter set to demo "
                           "body's world center (64,64,64) so the scripted zoom actually orbits the body");
+    } else if (std::getenv("VIXEN_TIER_M8_FLIGHT_DEMO")) {
+        mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_M8_FLIGHT_DEMO: skipping orbit-param "
+                          "wiring -- camera stays in FIXED mode so the Task 19 scripted "
+                          "SetPositionForTest flight path is authoritative, not overridden by "
+                          "an orbit-mode recompute every frame");
     }
     camera->SetParameter(CameraNodeConfig::PARAM_GRID_RESOLUTION, 128u);
 

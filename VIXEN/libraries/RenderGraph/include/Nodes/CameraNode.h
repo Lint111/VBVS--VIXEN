@@ -97,6 +97,40 @@ public:
     /// Reverts to the default behavior (forward aimed at orbitCenter). See SetLookTargetForTest.
     void ClearLookTargetForTest() { hasLookTarget_ = false; }
 
+    /**
+     * @brief Directly set the live camera POSITION in FIXED mode (Tiered-ESVO Inc3 M8 Task 19).
+     *
+     * Unlike SetOrbitDistanceForTest (which scripts distance from orbitCenter along the orbit
+     * sphere), this scripts cameraPosition itself -- the only way to express a genuinely
+     * TRANSLATING flight path (position changes along an arbitrary trajectory, not just radius
+     * from a fixed pivot). Does NOT call EngageOrbit(): a scripted position is a FIXED-mode
+     * pose write, mirroring how PARAM_CAMERA_X/Y/Z behave at rest (UpdateCameraData's FIXED
+     * MODE branch keeps cameraPosition as configured). If orbit was already engaged this
+     * session (e.g. a prior SetOrbitDistanceForTest call), UpdateCameraData's orbit branch
+     * would recompute cameraPosition from orbitCenter/orbitDistance every frame and silently
+     * override this write -- callers driving a flight path must not also drive orbit distance
+     * in the same session. Combine with SetLookTargetForTest to aim the flight independent of
+     * position, exactly as a real approach-and-orbit trajectory does.
+     */
+    void SetPositionForTest(glm::vec3 position) { cameraPosition = position; }
+
+    /**
+     * @brief Set a live look-target WITHOUT engaging orbit mode (Tiered-ESVO Inc3 M8 Task 19).
+     *
+     * SetLookTargetForTest() calls EngageOrbit() (mirrors every other ForTest setter's
+     * convention), which is correct for Task 16/17's orbit-around-center + retarget-aim demo,
+     * but WRONG for a translating flight path driven by SetPositionForTest(): engaging orbit
+     * latches orbitActive_, and UpdateCameraData's ORBIT MODE branch then recomputes
+     * cameraPosition from orbitCenter/orbitDistance every frame, silently overriding the
+     * flight path's own position writes (found live: Task 19's first capture attempt rendered
+     * a static, unchanging frame across all 400 scripted ticks). This variant only mutates
+     * hasLookTarget_/lookTarget_ -- FIXED MODE's own branch already honors a look-target
+     * (UpdateCameraData: `if (hasLookTarget_) { forward = normalize(lookTarget_ -
+     * cameraPosition); }`), so combining this with SetPositionForTest gives full
+     * position+aim control while staying in FIXED mode throughout.
+     */
+    void SetLookTargetNoOrbitForTest(glm::vec3 target) { hasLookTarget_ = true; lookTarget_ = target; }
+
 protected:
     void SetupImpl(TypedSetupContext& ctx) override;
     void CompileImpl(TypedCompileContext& ctx) override;
