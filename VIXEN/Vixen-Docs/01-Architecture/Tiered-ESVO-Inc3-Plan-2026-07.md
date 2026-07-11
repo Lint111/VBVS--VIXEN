@@ -106,6 +106,9 @@ And one structural gap:
   epic's literal original ask. This IS an engine change (CameraNode), unlike M5/M7's construction
   work, so it carries full live-gate + Opus-validation discipline. Dispatch gated on M7 Task-14
   validation landing first (don't build the transition on an unverified base).
+  **STATUS: Task 16 DONE + Opus-APPROVED (look-target decoupling, byte-identical regression
+  strengthened to SHA-256 match, capability proven). A merge-introduced build blocker
+  (FrameCapture.cpp stale include) found+fixed. Ready for Task 17 (true Earth-scale demo).**
 
 ## M1 — Scale-correct crossing math
 
@@ -1077,3 +1080,38 @@ byte-unregressed. Prediction-first ticks match; per-frame deltas seamless; VUID 
   (CameraNode look-target decoupling, M8). Zero seam, VUID-clean, no regressions." The
   "two crisply-observable crossings" phrasing is NOT defensible; use the above. This makes
   M8 (look-target decoupling → true observable Earth-scale) the epic's genuine headline close.
+
+- **M8 Task 16 (CameraNode look-target decoupling): DONE · commits `c829c1a9` (capability) +
+  `11c09200` (VIXEN_LOOK_TARGET_DEMO hook) · Opus validator APPROVED · 2026-07-11.**
+  Added `PARAM_LOOK_TARGET_X/Y/Z` + `hasLookTarget_`/`lookTarget_` on `CameraNode`; in
+  `UpdateCameraData`, both orbit-mode and fixed-mode branches now compute
+  `lookTarget = hasLookTarget_ ? lookTarget_ : orbitCenter; forward = normalize(lookTarget -
+  cameraPosition)`, replacing the old unconditional `orbitCenter` aim. `hasLookTarget_` defaults
+  false → the unset path is bit-for-bit the prior computation (validator confirmed via source
+  read: not "close enough," structurally identical code path). `SetLookTargetForTest`/
+  `ClearLookTargetForTest` mirror the existing ForTest-accessor pattern. Stale "neither exists"
+  comment (CameraNode.h) updated.
+  **Opus validator independently re-verified everything from its own clean builds** (not the
+  implementer's artifacts): byte-identical regression proof STRENGTHENED to PNG SHA-256 match
+  (not just pixel maxdiff=0) on default scene + `VIXEN_TIER_OBSERVABLE_DEMO`, with `strings -a`
+  confirming look-target symbols absent pre-M8 / present post-M8 (rules out a stale-exe false
+  positive). Capability proof reproduced exactly (bbox (58,0)-(500,375), maxdiff 251, 16.0% px
+  changed — camera provably swings off-axis when a look-target is set). EngageOrbit/bodies-0
+  lifecycle confirmed untouched (read the full surrounding block, not just the diff hunk). VUID:
+  only pre-existing 08114 + the known teardown 05137 sentinel, zero new classes. No `test_camera_node`
+  exists in the repo (only `test_pick_ray` tangentially touches CameraNode) — consistent with this
+  epic's live-gate-authoritative discipline for camera/GPU work, so the CPU-suite gap the implementer
+  flagged is N/A rather than unresolved.
+  **BLOCKER FOUND + FIXED (merge-introduced, not from this task):** a clean rebuild of the merged
+  tree could not build `VIXEN.exe` — `FrameCapture.cpp` still included the pre-Profiler-removal path
+  `"Profiler/FrameCapture.h"` (the header moved to `application/main/include/` in the upstream
+  Profiler-consolidation merge `9b43c376`), causing C1083. **This is WHY the implementer's own "clean
+  build passed" claim was wrong: it was an incremental no-op reusing a stale pre-merge object file —
+  a deeper instance of this epic's recurring stale-exe footgun, caught only because the validator did
+  a genuinely fresh rebuild.** Fixed in `b30e08e9` (one-line include-path fix, verified no other
+  stale `Profiler/FrameCapture.h` references anywhere in the tree; `VulkanGraphApplication.cpp`
+  already used the correct bare path).
+  **Verdict: Task 16 APPROVED, ready to serve as Task 17's base** (with the FrameCapture fix now
+  landed). New `vixen-build-policy` skill + `VIXEN/scripts/build/*` merged into the branch this
+  session (from origin/main `9b43c376`) — use it (check-lock-before-build, register-in-queue if
+  held, never bypass `build.bat`) for all subsequent Windows builds in this epic.
