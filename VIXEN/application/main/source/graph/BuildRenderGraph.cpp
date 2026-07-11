@@ -49,6 +49,7 @@
 #include "Data/Nodes/ShadowConfigNodeConfig.h"  // Sampled Lighting Inc1 M4: ShadowConfig upload ring
 #include "Data/Nodes/AccumulationConfigNodeConfig.h"   // Sampled Lighting Inc2 M1: AccumulationConfig upload ring
 #include "Data/Nodes/AccumulationHistoryNodeConfig.h"  // Sampled Lighting Inc2 M1: persistent history image
+#include "Data/Nodes/WorldPosHistoryNodeConfig.h"      // Sampled Lighting Inc3 M2: worldPos/depth companion history image (KI-023)
 #include "Data/Nodes/PrevCameraConfigNodeConfig.h"     // Sampled Lighting Inc2 M3: prev-frame camera matrix upload ring
 #include "Data/Nodes/ShaderLibraryNodeConfig.h"
 #include "Data/Nodes/SkyProjectionNodeConfig.h"  // Tiered ESVO Inc1 M3: address-derived sky-point composite pass
@@ -85,6 +86,7 @@
 #include "Nodes/ShadowConfigNode.h"    // Sampled Lighting Inc1 M4: ShadowConfig upload ring
 #include "Nodes/AccumulationConfigNode.h"   // Sampled Lighting Inc2 M1: AccumulationConfig upload ring
 #include "Nodes/AccumulationHistoryNode.h"  // Sampled Lighting Inc2 M1: persistent history image
+#include "Nodes/WorldPosHistoryNode.h"      // Sampled Lighting Inc3 M2: worldPos/depth companion history image (KI-023)
 #include "Nodes/PrevCameraConfigNode.h"     // Sampled Lighting Inc2 M3: prev-frame camera matrix upload ring
 #include "Nodes/LoopBridgeNode.h"
 #include "Nodes/PickIdTargetNode.h"
@@ -247,6 +249,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // header for why). Allocated + transitioned + wired this milestone; not yet read/written by
     // the shader (M2 consumes it).
     NodeHandle accumulationHistoryNode = renderGraph->AddNode<AccumulationHistoryNodeType>("accumulation_history");
+
+    // Sampled Lighting Inc3 M2 (KI-023): persistent worldPos/depth companion history image
+    // (binding 22) — mirrors accumulationHistoryNode above (single persistent storage image,
+    // NOT a ring; see WorldPosHistoryNode.h's file header). Written by DirectLighting.comp
+    // alongside historyImage; read back at the reprojected texel to validate reprojection
+    // GEOMETRICALLY instead of by color-consistency (the KI-023 fix). Also serves Inc3's own
+    // ReSTIR reservoir-reprojection validity (M4/M5) — one buffer, two future consumers.
+    NodeHandle worldPosHistoryNode = renderGraph->AddNode<WorldPosHistoryNodeType>("worldpos_history");
 
     // Sampled Lighting Inc2 M3: prev-frame camera matrix data (binding 21). Same per-frame
     // ring upload pattern as accumulationConfigNode above — separate node (see
@@ -1447,6 +1457,17 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(renderTargetNode, RenderTargetNodeConfig::HEIGHT_OUT,
                   accumulationHistoryNode, AccumulationHistoryNodeConfig::HEIGHT);
 
+    // Sampled Lighting Inc3 M2 (KI-023): worldPos history image connections — identical
+    // device/command-pool/extent-follow wiring as accumulationHistoryNode above.
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  worldPosHistoryNode, WorldPosHistoryNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
+                  worldPosHistoryNode, WorldPosHistoryNodeConfig::COMMAND_POOL)
+         .Connect(renderTargetNode, RenderTargetNodeConfig::WIDTH_OUT,
+                  worldPosHistoryNode, WorldPosHistoryNodeConfig::WIDTH)
+         .Connect(renderTargetNode, RenderTargetNodeConfig::HEIGHT_OUT,
+                  worldPosHistoryNode, WorldPosHistoryNodeConfig::HEIGHT);
+
     // Sampled Lighting Inc2 M3: prev-frame camera config node connections (same ring pattern
     // as accumulationConfigNode above). PREV_VIEW_PROJ comes from CameraNode's own retained-
     // last-frame matrix (see CameraNode::ExecuteImpl/UpdateCameraData).
@@ -1962,6 +1983,16 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(prevCameraConfigNode, PrevCameraConfigNodeConfig::PREV_CAMERA_CONFIG_BUFFER,
                           directLightingGatherer, 21,
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
+    // Sampled Lighting Inc3 M2 (KI-023): Binding 22: worldPosImage (persistent rgba32f storage
+    // image, WorldPosHistoryNode). Read+written by DirectLighting.comp itself in the SAME
+    // dispatch it also reads/writes historyImage in (both are the accumulate seam's own
+    // read-then-write-back pattern, same shape as PickIdTargetNode's binding-9 self-contained
+    // read/write) — no cross-submit hazard, no sync slot needed, mirrors binding 20's own
+    // Execute-only wiring exactly.
+    batch.Connect(worldPosHistoryNode, WorldPosHistoryNodeConfig::WORLDPOS_IMAGE_VIEW,
+                          directLightingGatherer, 22,
+                          SlotRoleModifier(SlotRole::Execute));
 
     // Binding 0 (outputImage): DirectLighting is the genuine writer now (the march never
     // imageStore's it — see PARAM_WRITES_NO_IMAGE's doc comment). Same renderTargetNode::

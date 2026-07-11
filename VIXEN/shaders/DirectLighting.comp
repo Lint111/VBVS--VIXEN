@@ -113,6 +113,21 @@ layout(std430, binding = 21) readonly buffer PrevCameraConfigSSBO {
 };
 
 // ============================================================================
+// WORLDPOS/DEPTH COMPANION HISTORY (binding 22) — Sampled Lighting Inc3 M2 (KI-023)
+// ============================================================================
+// Single persistent rgba32f storage image (WorldPosHistoryNode — mirrors historyImage's own
+// "persistent, not a ring" pattern above): .xyz = last frame's bestWorldPos, .w = hitT/depth,
+// written each frame at pixelCoords alongside historyImage's own write. The reproject branch
+// below reads it back at the REPROJECTED texel and rejects on GEOMETRIC disagreement
+// (length(histWorldPos - bestWorldPos) > epsilon) instead of color-consistency — a converged
+// history legitimately differs in COLOR from a noisy current sample once Inc3's ReSTIR lands,
+// so a color-based reject would fight the noise; geometric disagreement is noise-invariant and
+// still correctly flags true disocclusion (KI-023's growing sky-colored-patch bug). This same
+// buffer is available for Inc3's OWN reservoir-reprojection validity test (M4/M5) — one buffer,
+// two consumers (see the plan's design note).
+layout(rgba32f, binding = 22) uniform image2D worldPosHistoryImage;
+
+// ============================================================================
 // PUSH CONSTANTS: the `pc` block (PushConstants, incl. DEBUG_MODE_* defines) is
 // declared once in SceneBindings.glsl (#included above) — this pass reads the
 // SAME push-constant range the march does: cameraPos/Dir/Up/Right/fov/aspect
@@ -316,14 +331,21 @@ void main() {
                     // Store target, integer texel coords), not a combined sampler2D.
                     vec4 history = imageLoad(historyImage, reprojTexel);
 
-                    // (c) Color-consistency reject -- catches a slow-growing silhouette edge
-                    // the bounds+motion-magnitude checks above miss. See KI-023: this check
-                    // is sound for a deterministic march but will fight Inc3's stochastic
-                    // sampling once ReSTIR lands — tracked as a required follow-up, not
-                    // touched by this pass-split milestone.
-                    vec3 colorDelta = abs(history.rgb - outColor);
-                    const float kMaxReprojColorDelta = 0.15;
-                    valid = max(max(colorDelta.r, colorDelta.g), colorDelta.b) <= kMaxReprojColorDelta;
+                    // (c) Geometric reject (Sampled Lighting Inc3 M2, KI-023) -- replaces the
+                    // former color-consistency check. Catches the same slow-growing-silhouette
+                    // disocclusion the bounds+motion-magnitude checks above miss, but by
+                    // comparing WORLD-SPACE POSITION instead of shaded color: a converged
+                    // history sample legitimately differs in color from a noisy current sample
+                    // once Inc3's ReSTIR lands, so a color-based reject would fight the noise
+                    // (this check is noise-invariant). histWorldPos is the world position the
+                    // march/DirectLighting pair computed for the reprojected texel LAST frame;
+                    // bestWorldPos is THIS frame's own hit position for the current pixel — a
+                    // large disagreement means the reprojected texel belongs to a different
+                    // surface (true disocclusion), not merely a differently-shaded sample of
+                    // the same surface.
+                    vec4 histWorldPosT = imageLoad(worldPosHistoryImage, reprojTexel);
+                    const float kMaxReprojWorldPosDelta = 0.1; // world-space units; scene-scale-relative epsilon
+                    valid = distance(histWorldPosT.xyz, bestWorldPos) <= kMaxReprojWorldPosDelta;
 
                     blendedResult = valid ? mix(history, vec4(outColor, 1.0), alpha)
                                            : vec4(outColor, 1.0);
@@ -343,4 +365,11 @@ void main() {
     } else {
         imageStore(outputImage, pixelCoords, vec4(outColor, 1.0));
     }
+
+    // Sampled Lighting Inc3 M2 (KI-023): write this frame's worldPos/hitT into the companion
+    // history buffer at the SAME pixelCoords as historyImage's own write above, regardless of
+    // accumulationConfig.enabled -- so the buffer is populated from the first frame accumulation
+    // is ever turned on (matches historyImage's own always-current-pixel write cadence; only the
+    // REPROJECTED reads of it are gated behind accumulationConfig.enabled/reprojectionEnabled).
+    imageStore(worldPosHistoryImage, pixelCoords, vec4(bestWorldPos, recReadback.hitT));
 }
