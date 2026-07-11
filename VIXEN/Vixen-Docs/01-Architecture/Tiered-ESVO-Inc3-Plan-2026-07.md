@@ -1115,3 +1115,81 @@ byte-unregressed. Prediction-first ticks match; per-frame deltas seamless; VUID 
   landed). New `vixen-build-policy` skill + `VIXEN/scripts/build/*` merged into the branch this
   session (from origin/main `9b43c376`) — use it (check-lock-before-build, register-in-queue if
   held, never bypass `build.bat`) for all subsequent Windows builds in this epic.
+
+- **M8 Task 17 (true Earth-scale demo, orbit-around-center + look-target retargeting):
+  DONE_WITH_CONCERNS · commit `5a535187` · 2026-07-11. NOT independently validated —
+  superseded in approach by Task 19 (see below), left as evidence, not re-dispatched for fixing.**
+  Built `VIXEN_TIER_M8_EARTH_DEMO` (true childScale=2^-10 both hops, renderScale=4.8, reuses M4's
+  k-invariant entry-anchored placement) + `VIXEN_TIER_M8_EARTH_ZOOM_DEMO` (orbit-around-center
+  schedule using Task 16's `SetLookTargetForTest` to aim at the crossing octant instead of body
+  center, per M6/M7's off-axis-angle finding). **NEW STRUCTURAL FINDING (not yet independently
+  verified):** hop0's default-coef LOD-decline distance is ALWAYS inside the body's own solid
+  radius regardless of R (ratio ≈0.524, R-invariant) — required an LOD-coef override to push hop0
+  to 81wu (3× solid). Separately, and more consequentially: **hop1's handoff distance (~0.079wu at
+  true 2^-10) is always far SMALLER than the solid radius (~27wu) for ANY R** — reaching hop1 while
+  ORBITING AROUND BODY CENTER requires the camera inside the solid, which look-target retargeting
+  cannot fix (it changes aim, not orbit position/distance). **Live-gate result: T0 renders correctly
+  throughout; T1/T2 NEVER appeared in any of 44 frames of the corrected schedule — un-root-caused**
+  (implementer ran out of budget; candidates not ruled out: residency at the marked index, whether
+  the retargeted ray geometrically reaches the leaf's surface patch, a construction defect specific
+  to this scene). **Unexplained seam** at tick 150→151 (mean|diff|=18.57 vs ≤2.5 elsewhere), exactly
+  at the scripted `ClearLookTargetForTest` release — contradicts the prediction that releasing at a
+  small residual angle would be smooth; not investigated. Regressions NOT independently re-verified
+  this task (budget ran out). Docs (Task 18) NOT done.
+  **User's framing (2026-07-11), which resolves the path forward rather than debugging this attempt
+  further:** the epic's actual ask is a MOTION-DRIVEN transition — surface-to-orbit (or orbit-to-
+  surface) caused by the camera TRAVELING, not by re-aiming a stationary orbit-around-center camera.
+  Orbiting body-center at a fixed distance while retargeting aim was the wrong schedule SHAPE for
+  that ask, independent of whether the T1/T2-invisibility bug is fixable — a translating flight path
+  toward the crossing point is a different geometry that may not hit the same "must be inside the
+  solid" wall (approaching the crossing directly is what a real surface-to-orbit flight does).
+  **→ M8 Task 19 (below) attempts the translating-flight-path approach as the PRIMARY demo; Task 16's
+  look-target capability is retained for a SECONDARY telescope-style POV-zoom demo (camera stationary,
+  aim sweeps) — both are legitimate validations of the setup, per the user, not either/or.**
+
+## M8 Task 19 — Motion-driven surface-to-orbit flight path (primary demo, user-directed 2026-07-11)
+
+Context: Task 17's orbit-around-center + look-target-retarget schedule is the WRONG SHAPE for the
+epic's actual ask. "Surface-to-orbit transition" means the crossing is traversed by the camera
+TRAVELING through it — a translating flight path — not by an orbiting camera re-aiming itself. This
+is also a plausible fix for Task 17's apparent hop1-unreachability: that finding was specific to
+"orbit at a fixed radius around body center," not to "fly a real trajectory toward the crossing."
+
+### Task 19 — Translating flight-path demo (primary) + look-target telescope-zoom (secondary, retained)
+- [ ] Design a camera flight path that TRANSLATES from near the marked crossing octant's own surface
+  patch (approaching it directly, not orbiting body-center) out to a full-body orbit view — i.e. the
+  camera's POSITION changes along a path aimed at/through the crossing region, not just its orbit
+  distance from a fixed center. This likely needs either: a non-orbit camera mode/path (check what
+  CameraNode already supports beyond orbit — PARAM_CAMERA_* fixed-mode plus a scripted position
+  sequence may already suffice, mirroring how `SetOrbitDistanceForTest` scripts orbit distance) or a
+  scripted sequence of `SetLookTargetForTest`-style position writes if orbit-mode can't express a
+  translating path. Reuse Task 17's `VIXEN_TIER_M8_EARTH_DEMO` body construction (true 2^-10, already
+  built) — the fix is in the CAMERA SCHEDULE, not the scene.
+- [ ] Prediction-first: hand-compute where along the flight path each handoff should fire (in terms
+  of distance-to-crossing-point, using the same gate arithmetic), verify observed transitions match.
+- [ ] **Root-cause Task 17's T1/T2-invisibility FIRST, independent of the schedule-shape change** —
+  if it's a real construction/residency bug it will persist under the new flight path too. Use the
+  gpu-shader-debug CPU-mirror technique or a HopTrace-style dump if a quick live-gate re-check doesn't
+  immediately show colored tiers.
+- [ ] Per-frame pixel-delta seamlessness through both handoffs on the real flight path.
+- [ ] **Secondary demo (retained, not replaced):** a look-target telescope-style POV zoom — camera
+  stationary or orbiting normally, aim (`SetLookTargetForTest`) sweeps across the crossing as scale
+  changes — is ALSO a valid, wanted demonstration per the user (a "telescope" observation-post proof,
+  distinct from the flight-path proof). Keep Task 17's `VIXEN_TIER_M8_EARTH_ZOOM_DEMO` as this
+  secondary demo once/if the T1/T2 bug is fixed, rather than deleting it — don't conflate "wrong
+  primary shape" with "worthless."
+- [ ] Investigate Task 17's unexplained tick-150 seam if the look-target demo is kept live (it's at a
+  `ClearLookTargetForTest` release, not a tier-crossing handoff, so it's a camera-transition issue
+  orthogonal to the tier mechanism — but a real seam is a real seam).
+- [ ] Full regression sweep (unity/chain/observable/default) that Task 17 skipped.
+- [ ] Docs closure (Task 18, still pending): design doc §9 + plan-doc Progress Log, honestly framing
+  whichever of (both demos work) / (flight-path works, telescope-zoom has a residual issue) / (neither
+  fully closes at true 2^-20, documented as the epic's honest final outcome) actually obtains.
+
+**M8 Task 19 gate:** a live, validated, visually-confirmed motion-driven surface-to-orbit (or
+orbit-to-surface) flight across the true Earth-scale (childScale=2^-10) crossings, with the camera's
+own translation causing each handoff — the epic's most literal reading of "a proper surface to orbit
+view." T1/T2 visually attributable (not just T0). Per-frame-delta seamless. VUID clean. If, after a
+genuine attempt at BOTH the flight-path and telescope-zoom shapes, some part remains honestly
+unreachable at true 2^-20, that finding — clearly evidenced — is an acceptable epic close, per this
+epic's own discipline (M6/M7 precedent: an honest documented limit is a valid outcome, not a failure).
