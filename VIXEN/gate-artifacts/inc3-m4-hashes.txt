@@ -129,27 +129,72 @@ live dispatch, not just static review.
 Render loop exited cleanly ("Render loop exited: frame limit reached", 0
 EXCEPTION/CRASH lines) in both the reservoirEnabled=0 and =1 runs.
 
-GAP -- equal-error vs brute-force reference on an ACTUAL many-light scene
+Equal-error vs brute-force reference on an ACTUAL many-light scene -- DONE
 ------------------------------------------------------------------------------
-NOT YET DONE. The plan's Task 4 gate text is "equal-error vs M3's
-brute-force reference on a STATIC many-light frame" -- this requires the
-M3 gate scene (BakeEmissiveGateScene, >=10^3 emissive voxels) to be baked
-into the LIVE render graph (BuildRenderGraph.cpp currently only bakes the
-default 3-body demo scene; M3's gate scene has only ever been a CPU test
-fixture, per that milestone's own explicit scope note) plus a numeric
-readback comparison (GPU reservoir-shaded radiance vs
-BruteForceTotalEmissivePower/LightTreeCutTotalPower) -- e.g. a
-test_direct_lighting_reservoir.cpp raw-dispatch harness mirroring
-test_shadow_correctness.cpp's hand-built-descriptor-set pattern (which
-itself required substantial new plumbing: HitRecord input, all scene
-SSBOs, AND the 3 new M4 bindings 24/25/26), or a live demo-scene env-var
-wiring (mirroring VIXEN_RESIDENCY_GATE_DEMO's shape) that bakes the gate
-scene + computes+pushes its light-tree cut via
-LightTreeBufferNode::SetLightTreeCut + captures + numerically compares
-against the CPU brute-force total. Neither exists yet. This is flagged as
-the primary open item in the M4 controller report -- the reservoir MATH is
-proven unbiased (CPU-mirror, 3/3 identities) and the GPU WIRING is proven
-sync-clean + inert-when-empty (live gate above), but the END-TO-END
-equal-error claim on real many-light content is NOT YET independently
-verified on this GPU path. Recommended as the first task of a focused
-follow-up before M5 (spatial reuse) builds further on top of this milestone.
+Closed via VIXEN_RESTIR_GATE_DEMO: a live demo-scene env-var (mirroring
+VIXEN_RESIDENCY_GATE_DEMO's shape) that bakes THE SAME >=10^3-emissive-voxel
+gate scene test_light_tree.cpp's BakeEmissiveGateScene uses (n=32, r=10,
+center(16,16,16), spatially-varying emissive intensity), computes the CPU
+light-tree cut (BuildLightTreeCut, FINE threshold=0.001 -- test_light_
+tree.cpp's own "bounded cut" COARSE threshold=50.0 was tried FIRST and
+found to collapse the whole scene into 1 root node, since the cut decision
+compares against MipSample::value, a per-voxel MEAN intensity ~1-4, not an
+aggregate power; the fine threshold correctly yields the full 64-node cut),
+pushes it to the GPU via LightTreeBufferNode::SetLightTreeCut (world-
+transformed grid->world per TraceWorld.glsl's own p_base=(p_world-worldPos)
+/renderScale convention), and forces reservoirEnabled=1 +
+accumulationConfig.enabled/reprojectionEnabled=1 (the RIS+Combine block in
+DirectLighting.comp is itself gated on reprojectionEnabled, reusing the M2
+worldPos/depth infrastructure -- without this the demo's reservoir never
+accumulates past one frame's M=8 candidates).
+
+METHODOLOGY CORRECTION (found + fixed during this gate, documented for the
+record): the FIRST working version of this gate compared a window-averaged
+GPU estimate against a brute-force reference evaluated at ONE hand-picked
+"canonical" shading point (the sphere's front-pole surface point, assuming
+every center-window pixel shades near there). That gave relativeError=
+0.9888 (~89x undershoot). A DIAG readback recomputing pHat at the assumed
+canonical point for the SAME light-tree node each pixel's reservoir had
+actually chosen, compared directly against the shader's own targetPdf for
+that node, showed ratios varying 28x-71x across different pixels/nodes --
+NOT a constant ratio, which is the signature of a GEOMETRIC mismatch (a
+uniform scale/unit bug gives a constant ratio), not a math or upload bug.
+Root cause: the assumed canonical point does not equal the real per-pixel
+HitRecord.worldPos. FIX: read back hit_record_buffer (ALSO host-visible/
+host-coherent via StorageBufferNode, same pattern as the reservoir
+buffers) and compute the brute-force reference PER-PIXEL at each pixel's
+OWN HitRecord.worldPos (offset 32 in the hand-written std430 layout --
+see HitRecord.glsl's own field-offset comment) over the same world-cut --
+genuinely apples-to-apples, no assumed geometry. This is a real,
+non-hand-waved root-cause-fix, not a tolerance-widening workaround: the
+comparison methodology itself was wrong, not the reservoir math.
+
+RESULT (post-fix, 289-pixel center window, tick 60 = 2x ReservoirConfig.
+temporalCap=32 frames of temporal accumulation on a static camera/scene):
+  validPixels=289
+  gpuEstimateAvg=19.263894           (per-pixel-averaged RIS estimate)
+  bruteForcePerPixelAvg=19.272385    (per-pixel-averaged brute-force Sum_i
+                                       (power_i/dist_i^2) at each pixel's
+                                       OWN real HitRecord.worldPos)
+  relativeError=0.000441             (0.044%)
+
+Tolerance justification: 0.044% is far tighter than the CPU-mirror tests'
+own 1.5-2% tolerance (themselves already generous for 20k-50k-trial Monte-
+Carlo convergence) -- here, 289 independent per-pixel RIS estimates (each
+with up to sampleCount=40 accumulated WRS samples, ReservoirConfig.
+temporalCap=32 + candidateCount=8 fresh draws that frame) average out to a
+very tight match against the SAME quantity computed by a closed-form,
+non-reservoir sum. This is the FIRST actual ReSTIR-rendered numeric result
+in the program, closing the plan's Task 4 gate text verbatim ("equal-error
+vs M3's brute-force reference on a static many-light frame") on real GPU-
+computed reservoirs, not a synthetic/CPU-only proxy.
+
+Scope note: this validates the RIS+temporal-reservoir ESTIMATOR against its
+OWN candidate population (the light-tree cut) at real per-pixel shading
+points -- the plan's Task 4 unbiasedness claim is about the RIS estimator
+relative to its candidate set. It does NOT separately re-validate the
+cut's own fidelity to the raw voxel data (that is M3's own gate, already
+passed via CutAggregatePowerApproximatesBruteForceLeafSum). No visual/PNG
+capture was taken for this specific run (the numeric readback IS the
+gate); a future milestone wanting a rendered-pixel screenshot of ReSTIR
+output can layer VIXEN_EDITOR_CAPTURE_FRAMES on top of this same demo.

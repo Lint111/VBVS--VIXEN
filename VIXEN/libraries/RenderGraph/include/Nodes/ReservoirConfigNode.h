@@ -54,6 +54,12 @@ public:
     ReservoirConfigNode(const std::string& instanceName, NodeType* nodeType);
     ~ReservoirConfigNode() override = default;
 
+    // Sampled Lighting Inc3 M4: the LAST frameParity value uploaded (i.e. THIS frame's, after
+    // ExecuteImpl's post-increment) — lets a readback consumer (e.g. the ReSTIR equal-error
+    // gate) know which of reservoir_buffer_a/b was most recently written as CURRENT, without
+    // re-deriving the frame-parity counter itself.
+    uint32_t GetLastFrameParity() const { return frameParityCounter_ == 0u ? 0u : frameParityCounter_ - 1u; }
+
 protected:
     void SetupImpl(TypedSetupContext&    ctx) override;
     void CompileImpl(TypedCompileContext& ctx) override;

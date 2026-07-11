@@ -66,6 +66,8 @@
 #include "Data/Nodes/WindowNodeConfig.h"
 // M-wire: BodyOctreeSceneNode.h MUST precede UIRenderNode.h (gaia std::hash before robin_hood) — see file header above.
 #include "MipBake.h"  // Tiered-ESVO Inc2 M4: BakeAndAttachMipPool for the tier-crossing demo scene
+#include "SdfBake.h"    // Sampled Lighting Inc3 M4: BakeRecipeToSdfWorldWithEmission for the ReSTIR gate demo scene
+#include "LightTree.h"  // Sampled Lighting Inc3 M4: BuildLightTreeCut/BruteForceTotalEmissivePower for the ReSTIR gate demo
 #include "Nodes/BlitNode.h"  // Sampled Lighting Inc3 M1: presentation-only blit (post-DirectLighting)
 #include "Nodes/BodyOctreeSceneNode.h"  // M-wire: sparse shell octree + instance SSBO
 #include "Nodes/CameraNode.h"
@@ -1748,6 +1750,128 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 }
             } else {
                 mainLogger->Error("[BuildRenderGraph] VIXEN_TIER_OBSERVABLE_DEMO: no camera-facing leaf found in T0 or T1 — demo scene not built");
+            }
+        } else if (std::getenv("VIXEN_RESTIR_GATE_DEMO")) {
+            // Sampled Lighting Inc3 M4 live gate: the equal-error-vs-brute-force check the
+            // plan's Task 4 requires. Bakes THE SAME >=10^3-emissive-voxel gate scene
+            // test_light_tree.cpp's BakeEmissiveGateScene uses (n=32, r=10, center(16,16,16),
+            // spatially-varying emissive intensity over the whole occupied volume), computes
+            // the CPU light-tree cut + brute-force reference from it, pushes the cut to the
+            // GPU via LightTreeBufferNode::SetLightTreeCut (transformed grid->world -- see
+            // LightTreeBufferNode.h's own scope note on this), and bakes the SAME body into
+            // BodyOctreeSceneNode for the live render. VulkanGraphApplication::Update's own
+            // VIXEN_RESTIR_GATE_DEMO tick hook (below) reads back reservoirRecordsA/B after
+            // enough frames for temporal convergence and logs the numeric comparison.
+            mainLogger->Info("[BuildRenderGraph] VIXEN_RESTIR_GATE_DEMO: building the M3 emissive gate scene "
+                              "for the ReSTIR equal-error-vs-brute-force live gate");
+
+            constexpr int   kN      = 32;
+            constexpr float kR      = 10.0f;
+            constexpr float kBand   = 2.0f;
+            const glm::vec3 kCenter(16.0f, 16.0f, 16.0f);
+
+            Vixen::SVO::RecipeParams rp{kR, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+            Vixen::SVO::SdfBakeResult baked = Vixen::SVO::BakeRecipeToSdfWorldWithEmission(
+                Vixen::SVO::RECIPE_SPHERE, kCenter, rp, kN, kBand,
+                [](const glm::vec3& p) { return 1.0f + 0.1f * (p.x + p.y + p.z); });
+            Vixen::SVO::SdfBodyOctree body = Vixen::SVO::BuildSdfBodyOctree(baked, 3);
+
+            Vixen::SVO::SerializedOctree ser = Vixen::SVO::SerializeSdf(body);
+            const Vixen::SVO::Octree* oct = body.octree->getOctree();
+
+            if (oct != nullptr) {
+                Vixen::SVO::BakeAndAttachMipPool(*oct, ser);
+                Vixen::SVO::MipPool mipPool = Vixen::SVO::BakeMipPool(*oct, ser);
+
+                // A FINE cut (test_light_tree.cpp's own CutAggregatePowerApproximatesBruteForceLeafSum
+                // tolerance test uses powerThreshold=0.001 for exactly this reason): the cut decision
+                // compares against MipSample::value (a per-voxel MEAN intensity, ~1-4 for this scene's
+                // emit function), NOT an aggregate/summed power -- a coarse threshold like 50.0 (the
+                // OTHER test_light_tree.cpp test, "bounded non-empty cut", which only asserts the cut
+                // is non-empty/smaller than the raw voxel count, not that it approximates the true
+                // total) prunes at the ROOT immediately (root mean-intensity < 50), collapsing the
+                // whole scene into ONE grossly-under-representative node. This gate needs the cut's
+                // AGGREGATE power to actually approximate BruteForceTotalEmissivePower (per
+                // LightTreeCutTotalPower's own contract), so it must use the FINE threshold.
+                Vixen::SVO::LightTreeCutParams cutParams;
+                cutParams.powerThreshold = 0.001f;
+                std::vector<Vixen::SVO::LightTreeNode> cut =
+                    Vixen::SVO::BuildLightTreeCut(*oct, ser, mipPool, kN, cutParams);
+
+                // Instance transform: SAME single-body placement pattern VIXEN_TIER_CROSSING_DEMO
+                // uses (renderScale=4.8, world diameter 48, world span = renderScale*[0,10] per
+                // SerializeSdf's kWorldGridSize -- NOT n=32; gridMin/gridMax are never read by
+                // this shader). Centered at the default camera's frame center (64,64,64).
+                constexpr float kRenderScale = 4.8f;
+                constexpr float kWorldGridSize = 10.0f;  // SerializeSdf's fixed config-local-world span
+                constexpr float kHalf = 5.0f * kRenderScale;
+                const glm::vec3 instWorldPos(64.0f - kHalf, 64.0f - kHalf, 64.0f - kHalf);
+
+                // LightTreeBufferNode.h's scope note: worldPos in the cut is grid space [0,n) --
+                // transform to world space using the SAME p_world = p_base*renderScale + worldPos
+                // TraceWorld.glsl uses, where p_base = p_grid / n * kWorldGridSize (the shader's
+                // ACTUAL grid->config-local-world map, independent of the bake's own n).
+                std::vector<Vixen::SVO::LightTreeNode> worldCut;
+                worldCut.reserve(cut.size());
+                for (const auto& node : cut) {
+                    Vixen::SVO::LightTreeNode w = node;
+                    const glm::vec3 pBase = (node.worldPos / static_cast<float>(kN)) * kWorldGridSize;
+                    w.worldPos = pBase * kRenderScale + instWorldPos;
+                    w.worldExtent = (node.worldExtent / static_cast<float>(kN)) * kWorldGridSize * kRenderScale;
+                    worldCut.push_back(w);
+                }
+
+                if (auto* lightTreeInst = static_cast<LightTreeBufferNode*>(renderGraph->GetInstance(lightTreeBufferNode))) {
+                    lightTreeInst->SetLightTreeCut(worldCut);
+                }
+
+                // This gate's GPU-side RIS estimator computes Sum_i(power_i/dist_i^2) -- the SAME
+                // rendering-equation-shaped quantity DirectLighting.comp's lightTreeNodePHat
+                // evaluates (power = intensity*coverage*extent^3, matching LightTree.h's
+                // LightTreeCutTotalPower per-node power definition) -- NOT BruteForceTotalEmissive
+                // Power (a raw sum-of-intensity with no distance falloff; a different estimator
+                // target, the M3 cut-approximation check's own quantity). The brute-force reference
+                // is therefore computed PER-PIXEL (see VulkanGraphApplication.cpp's readback tick
+                // hook), evaluated at each pixel's OWN HitRecord.worldPos over this SAME world-
+                // transformed cut -- an EARLIER version of this gate instead evaluated a single
+                // hand-picked "canonical" shading point, which a live-gate DIAG dump proved wrong
+                // (recomputed pHat vs the shader's own targetPdf, for the SAME chosen node, varied
+                // 28x-71x across different pixels/nodes -- the signature of a geometric mismatch,
+                // not a uniform scale bug). Per-pixel evaluation removes that assumption entirely.
+                mainLogger->Info("[BuildRenderGraph] VIXEN_RESTIR_GATE_DEMO: cut=" + std::to_string(cut.size()) + " nodes");
+
+                // Stash the world-transformed cut where VulkanGraphApplication::Update's tick hook
+                // can read it for its own per-pixel brute-force recomputation (a plain static --
+                // this demo scene is process-lifetime-scoped, same as every other VIXEN_*_DEMO
+                // env-gated block in this file).
+                extern std::vector<Vixen::SVO::LightTreeNode>* g_restirGateWorldCut;
+                static std::vector<Vixen::SVO::LightTreeNode> worldCutStash = worldCut;
+                g_restirGateWorldCut = &worldCutStash;
+            } else {
+                mainLogger->Error("[BuildRenderGraph] VIXEN_RESTIR_GATE_DEMO: body octree is null -- gate scene not built");
+            }
+
+            std::vector<const Vixen::SVO::SdfBodyOctree*> octreesForCat = {&body};
+            Vixen::SVO::ConcatenatedOctrees cat = Vixen::SVO::ConcatenateSdfWithMips(octreesForCat);
+
+            if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))) {
+                bodyScene->SetRecipePool(std::move(cat));
+
+                constexpr float kRenderScale = 4.8f;
+                constexpr float kHalf = 5.0f * kRenderScale;
+                Vixen::SVO::BodyInstanceGpu inst{};
+                inst.worldPos[0]  = 64.0f - kHalf;
+                inst.worldPos[1]  = 64.0f - kHalf;
+                inst.worldPos[2]  = 64.0f - kHalf;
+                inst.renderScale  = kRenderScale;
+                inst.color[0]     = 1.0f;
+                inst.color[1]     = 1.0f;
+                inst.color[2]     = 1.0f;
+                inst.octreeIndex  = 0u;
+                inst.providerKind = 0u;  // PROVIDER_STORED
+                inst.recipeId     = 0u;
+                bodyScene->SetInstances({inst});
+                mainLogger->Info("[BuildRenderGraph] VIXEN_RESTIR_GATE_DEMO: seeded 1 Stored-SDF body instance");
             }
         } else if (std::getenv("VIXEN_SHADOW_DEMO")) {
             // VIXEN_SHADOW_DEMO — Sampled Lighting Inc1 M4 live gate: two Procedural

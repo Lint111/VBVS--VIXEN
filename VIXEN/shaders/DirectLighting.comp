@@ -200,16 +200,20 @@ float rngNextFloat(inout uint state) {
     return float(state) * (1.0 / 4294967296.0);  // 2^32
 }
 
-// Target-function value p_hat(i) for light-tree cut node i: emitted power (intensity *
-// coverage) / squared distance to the shading point — unshadowed contribution estimate,
-// NO visibility term (visibility is applied only once, at final shade time, on the
-// reservoir's ONE chosen sample — see Reservoir.h's header for why this is what keeps
-// RIS's shadow-ray cost O(1) per pixel instead of O(candidateCount)).
+// Target-function value p_hat(i) for light-tree cut node i: TOTAL emitted power (mean
+// intensity * coverage * volume-under-node, matching LightTree.h's LightTreeCutTotalPower
+// definition EXACTLY -- a cut node aggregates MANY voxels' worth of emission, not a single
+// point source, so its power must scale by the node's own world-space volume, not just its
+// per-voxel mean intensity) / squared distance to the shading point — unshadowed
+// contribution estimate, NO visibility term (visibility is applied only once, at final
+// shade time, on the reservoir's ONE chosen sample — see Reservoir.h's header for why this
+// is what keeps RIS's shadow-ray cost O(1) per pixel instead of O(candidateCount)).
 float lightTreeNodePHat(uint nodeIdx, vec3 shadingPos) {
     LightTreeGpuNode node = lightTreeBuffer.nodes[nodeIdx];
     vec3 toLight = node.worldPos - shadingPos;
     float dist2 = max(dot(toLight, toLight), 1e-4);
-    return (node.intensity * node.coverage) / dist2;
+    float nodePower = node.intensity * node.coverage * (node.worldExtent * node.worldExtent * node.worldExtent);
+    return nodePower / dist2;
 }
 
 // WRS update (Reservoir::Update mirror): streams ONE candidate into the reservoir.
@@ -473,7 +477,8 @@ void main() {
             }
 
             float NdotL = max(dot(bestNormal, lightDir), 0.0);
-            float emittedPower = chosen.intensity * chosen.coverage;
+            float emittedPower = chosen.intensity * chosen.coverage *
+                (chosen.worldExtent * chosen.worldExtent * chosen.worldExtent);
             float W = reservoirUnbiasedWeight(current);
             // pHat already folds in 1/dist2 (see lightTreeNodePHat) -- the shaded
             // contribution is bestColor (Lambertian albedo response) * emittedPower/

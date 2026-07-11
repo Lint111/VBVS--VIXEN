@@ -48,6 +48,14 @@ Vixen::Gpu::ReservoirConfig MakeDefaultReservoirConfig() {
     if (const char* enabledEnv = std::getenv("VIXEN_RESERVOIR_CONFIG_ENABLED")) {
         cfg.reservoirEnabled = (enabledEnv[0] == '1') ? 1u : 0u;
     }
+    // Sampled Lighting Inc3 M4: the equal-error-vs-brute-force live gate demo scene implies
+    // reservoirEnabled=1 -- no point baking the gate scene without RIS actually running.
+    // VIXEN_RESERVOIR_CONFIG_ENABLED (above) still wins if BOTH are set and disagree (explicit
+    // lever takes precedence over the implicit demo default), matching every other VIXEN_*_DEMO
+    // block's "the demo sets sane defaults, an explicit override still wins" convention.
+    if (std::getenv("VIXEN_RESTIR_GATE_DEMO") && !std::getenv("VIXEN_RESERVOIR_CONFIG_ENABLED")) {
+        cfg.reservoirEnabled = 1u;
+    }
     return cfg;
 }
 
