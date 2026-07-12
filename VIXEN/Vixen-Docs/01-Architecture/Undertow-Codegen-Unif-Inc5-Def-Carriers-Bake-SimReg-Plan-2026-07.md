@@ -148,9 +148,9 @@ consumes A's generated types).
   implementer + one Opus validator.
 - [x] **Milestone 2 (Task 2):** Part A — authored/baked def carriers, build + equivalence proof. One
   Sonnet implementer + one Opus validator.
-- [ ] **Milestone 3 (Task 3):** Part B — parse/bake table + sim registration, build + equivalence proof +
-  retire (all 6 cluster files + Increment 1's deferred `EmitRegistrySlots.cs`). One Sonnet implementer +
-  one Opus validator.
+- [x] **Milestone 3 (Task 3):** Part B — parse/bake table + sim registration, build + equivalence proof +
+  retire (all 6 cluster files + Increment 1's deferred `EmitRegistrySlots.cs`). DONE + Opus-validated
+  APPROVED, 2026-07-13. **INCREMENT 5 COMPLETE.**
 
 ## Progress Log
 
@@ -215,3 +215,42 @@ consumes A's generated types).
     from scratch (own build harness, real Roslyn rebuild, real `--def-carriers-cs` run, own diff) rather
     than trusting the implementer's description; also independently spot-checked the
     `ReadFields`/`EmitRecord.Emit` port against undertow's real source. Cleared to proceed to Milestone 3.
+
+- Milestone 3 (Task 3, Part B — bake table + sim registration + FULL RETIREMENT): DONE · 2026-07-13
+  - **Built** (Yeroket `feat/codegen-unif-inc5-defcarriers`, on top of Milestone 2's `2e61ba3c`, commit
+    `03e813fa`): `AuthoredKindsEmitter.cs` + `RegisterKindsEmitter.cs` (line-for-line ports of
+    `EmitAuthoredKinds.All`/`EmitRegisterKinds.All`, fixed-namespace CLI generation — no
+    `[RegistrySlots]`-attributed class to resolve, unlike Part A). New `--authored-kinds-cs`/
+    `--register-kinds-cs` CLI flags.
+  - **Equivalence proof — non-vacuous, PASSED, fully closed the loop.** Real fresh `dotnet build` at the
+    pre-retirement commit captured the actual Roslyn output for all 6 cluster `.g.cs` files
+    (`AuthoredKinds`, `RegisterKinds`, `RegistrySlots`×2, reusing Milestone 2's already-proven
+    `AuthoredDefs`/`BakedDefs`) — banner-excluded diff IDENTICAL for all: 32 (AuthoredKinds), 28
+    (RegisterKinds), 31+36 (RegistrySlots Authoring+Content). Validator additionally built and ran the
+    NEW Yeroket emitters directly against the real schema and confirmed their output is fully identical
+    (banner included) to the checked-in files — closing the loop: new-emitter == checked-in ==
+    old-generator. Nested object-list Bake-lambda coverage confirmed (`hook`/`personality`/`effect_set`/
+    `rule`/`concept`, `building` doubly-nested). RuntimeCarrier conversion path confirmed
+    (`character`/`faction`/`timeline`, 3 of 28 real kinds using it).
+  - **Retired, all 10 files confirmed gone** (undertow worktree, commit `60106236`): `EmitDefs.cs`,
+    `EmitRecord.cs`, `AuthoredDefGenerator.cs`, `BakedDefGenerator.cs`, `EmitAuthoredKinds.cs`,
+    `AuthoredKindsGenerator.cs`, `EmitRegisterKinds.cs`, `RegisterKindsGenerator.cs`, and — finally —
+    Increment 1's long-deferred **`EmitRegistrySlots.cs`/`RegistrySlotGenerator.cs`**, this increment
+    being exactly the dependent migration Increment 1 was waiting on. 6 generated `.g.cs` files checked
+    in as ordinary compiled source.
+  - **Test surgery (highest-risk claim, independently re-verified method-by-method)**: 3 test files fully
+    deleted (tested only retired APIs, zero surviving coverage need) + 13 files surgically trimmed
+    (removed only the `EmitDefs.All`/retired-generator-calling method, left surviving `EmitCodec`/
+    `CodecGen_*` tests untouched) — exactly 22 `[Fact]`/`[Theory]` methods removed net, recounted
+    independently by the validator via `git show` before/after diffing, not trusted from the report.
+  - **Call-site byte-identity confirmed**: `ContentBaker.cs`, `ContentLoader.cs`, `AuthoringModel.cs`,
+    `UndertowSim.cs` all zero-diff pre/post retirement.
+  - **Full build + test, post-retirement, independently re-run from fresh by the validator**: 0
+    errors/warnings, **2933 pass, 0 failures** (2912 `Undertow.Core.Tests` + 21
+    `Undertow.Vixen.Host.Tests`).
+  - `SDFNodeGenerator.dll` confirmed not committed with unrelated noise.
+  - No blockers. Increment 5 (all 3 milestones, the largest increment in the program) COMPLETE in both
+    repos, not yet merged to either main/master, not pushed (per gate).
+  - **Opus validator (independent re-verification):** APPROVED. This was the riskiest milestone in the
+    program to date (10 files retired, 3 test files deleted, 13 surgically trimmed) — held up on every
+    axis under full independent re-derivation, including closing the full equivalence loop from scratch.
