@@ -346,6 +346,22 @@ re-derive these facts, but DO re-verify file:line if code has moved)
   - **Commits**: VIXEN worktree `feat/view-binding-inc-ovr`; Yeroket `feat/view-ovr-projection`
     (new branch off `main`, per this program's `feat/config-codegen`-style per-increment
     convention). Neither pushed.
+  - **Opus validator (independent re-verification across BOTH repos):** confirmed all 8
+    checkpoints against real code, not the narrative. `ReadProjection`/`ProjectedAttribute`
+    genuinely mirror `ReadLayout`/`ViewSectionAttribute`'s idiom exactly. The top-level-vs-row
+    emitter split is structurally real (`c.Bind` only iterates `v.Fields`; row fields only ever
+    reach `RegisterMember`, confirmed by reading `Emit()`'s control flow directly). `bitAt`'s
+    logic confirmed byte-identical to the original hand-shift, no off-by-one/bit-order error.
+    The hand-written duplicate is genuinely gone (grep-confirmed only the generated function +
+    transplanted `bitAt` compute the bit now); `BindEditorLayersModel`'s `RegisterMember`
+    sequence is UNCHANGED, which the golden test's own byte-pinned assertion independently
+    proves the projection was surgical. Rebuilt fresh from the worktree's own build.bat (0
+    failures), ran `test_view_editor_layers_golden` 2/2 and `test_view_editor_layers_reconcile`
+    2/2 directly. Live-gate mask trail (7→3→7→3) reasoned through concretely with real
+    `applyToggle`/`bitAt` semantics and confirmed consistent, treated as trusted-from-report
+    (windowed GPU capture, explicitly flagged rather than silently accepted). Tree clean in both
+    repos (Yeroket's only dirty file is the known non-deterministic `SDFNodeGenerator.dll`
+    noise). **APPROVED, no defects, no files modified — Milestone 3 (Override) may proceed.**
 
 ## Follow-ups (explicitly out of scope, note for later increments)
 
