@@ -54,6 +54,9 @@
 #include "Data/Nodes/PrevCameraConfigNodeConfig.h"     // Sampled Lighting Inc2 M3: prev-frame camera matrix upload ring
 #include "Data/Nodes/ReservoirConfigNodeConfig.h"      // Sampled Lighting Inc3 M3: ReservoirConfig upload ring (M4/M5 scaffolding)
 #include "Data/Nodes/LightTreeBufferNodeConfig.h"      // Sampled Lighting Inc3 M4: mip-cut light-tree upload ring
+#include "Data/Nodes/ProbeGridConfigNodeConfig.h"      // Sampled Lighting Inc4 M2: ProbeGridConfig upload ring (M3-M6 scaffolding)
+#include "Data/Nodes/ProbeAtlasNodeConfig.h"           // Sampled Lighting Inc4 M2: persistent DDGI probe atlas image
+#include "Data/Nodes/ImageSyncGathererNodeConfig.h"    // Sampled Lighting Inc4 M1: variadic IRenderTarget* sync gatherer
 #include "Data/Nodes/StorageBufferNodeConfig.h"        // Sampled Lighting Inc3 M4: reservoir CURRENT/PREVIOUS ping-pong SSBOs
 #include "Data/Nodes/ShaderLibraryNodeConfig.h"
 #include "Data/Nodes/SkyProjectionNodeConfig.h"  // Tiered ESVO Inc1 M3: address-derived sky-point composite pass
@@ -97,6 +100,9 @@
 #include "Nodes/PrevCameraConfigNode.h"     // Sampled Lighting Inc2 M3: prev-frame camera matrix upload ring
 #include "Nodes/ReservoirConfigNode.h"      // Sampled Lighting Inc3 M3: ReservoirConfig upload ring (M4/M5 scaffolding)
 #include "Nodes/LightTreeBufferNode.h"      // Sampled Lighting Inc3 M4: mip-cut light-tree upload ring
+#include "Nodes/ProbeGridConfigNode.h"      // Sampled Lighting Inc4 M2: ProbeGridConfig upload ring (M3-M6 scaffolding)
+#include "Nodes/ProbeAtlasNode.h"           // Sampled Lighting Inc4 M2: persistent DDGI probe atlas image
+#include "Nodes/ImageSyncGathererNode.h"    // Sampled Lighting Inc4 M1: variadic IRenderTarget* sync gatherer
 #include "Nodes/LoopBridgeNode.h"
 #include "Nodes/PickIdTargetNode.h"
 #include "Nodes/PresentNode.h"
@@ -330,6 +336,49 @@ void VulkanGraphApplication::BuildRenderGraph() {
     NodeHandle reservoirBufferA = renderGraph->AddNode<StorageBufferNodeType>("reservoir_buffer_a");
     NodeHandle reservoirBufferB = renderGraph->AddNode<StorageBufferNodeType>("reservoir_buffer_b");
 
+    // Sampled Lighting Inc4 M2: ProbeGridConfig data (binding 28) -- DDGI probe-grid placement +
+    // compute budget as drift-guarded data. Same per-frame ring upload pattern as
+    // reservoirConfigNode above. M2 scaffolding only: probeGridEnabled=0 by default and nothing
+    // reads this buffer yet (M3+ wires the probe-update pass that consumes it); this milestone's
+    // render must stay byte-identical to Inc3.
+    NodeHandle probeGridConfigNode = renderGraph->AddNode<ProbeGridConfigNodeType>("probe_grid_config");
+
+    // Sampled Lighting Inc4 M2: persistent DDGI probe atlas images -- TWO separate ProbeAtlasNode
+    // instances (irradiance + Chebyshev-visibility), per M1's own resolved finding
+    // (ImageSyncGathererNodeConfig.h's file header) that real DDGI atlas layouts use DIFFERENT
+    // per-probe texel resolutions for the two and cannot channel-pack into one image.
+    //
+    // Atlas layout: the 3D probe grid (countX*countY*countZ, default 8x8x8=512 probes from
+    // ProbeGridConfigNode's own default) packs into a 2D texture using the standard DDGI/RTXGI
+    // atlas convention (Majercik et al. JCGT 2019 sec 3; RTXGI SDK reference layout): columns
+    // sweep the grid's X axis, rows sweep Y, and Z-slices tile across the texture width --
+    // atlasWidth = countX * countY * texelsPerProbe, atlasHeight = countZ * texelsPerProbe. With
+    // the default 8x8x8 grid: irradiance 8x8 texels/probe (incl. 1px border, low-frequency
+    // hemispherical data, RTXGI's own irradiance-probe default) -> 8*8*8=512 x 8*8=64 =
+    // 512x64; visibility 16x16 texels/probe (incl. border -- Chebyshev's inequality needs finer
+    // angular sampling than irradiance because occlusion/leak-prevention accuracy is the whole
+    // mechanism DDGI's reputation risk depends on, per Majercik et al. sec 3.3) -> 8*16*8=1024 x
+    // 8*16=128 = 1024x128. Both are placeholder-but-cited numbers for M2's plumbing-only scope;
+    // M6's real-GPU probe-ray-budget bench is the design's own flagged pass-2 decision point for
+    // finalizing grid density (and therefore these atlas dimensions), not this milestone.
+    constexpr uint32_t kProbeIrradianceTexelsPerProbe = 8;
+    constexpr uint32_t kProbeVisibilityTexelsPerProbe  = 16;
+    constexpr uint32_t kProbeGridDefaultCountX = 8, kProbeGridDefaultCountY = 8, kProbeGridDefaultCountZ = 8;
+    constexpr uint32_t kProbeIrradianceAtlasWidth  = kProbeGridDefaultCountX * kProbeGridDefaultCountY * kProbeIrradianceTexelsPerProbe;
+    constexpr uint32_t kProbeIrradianceAtlasHeight = kProbeGridDefaultCountZ * kProbeIrradianceTexelsPerProbe;
+    constexpr uint32_t kProbeVisibilityAtlasWidth   = kProbeGridDefaultCountX * kProbeGridDefaultCountY * kProbeVisibilityTexelsPerProbe;
+    constexpr uint32_t kProbeVisibilityAtlasHeight  = kProbeGridDefaultCountZ * kProbeVisibilityTexelsPerProbe;
+
+    NodeHandle probeIrradianceAtlasNode = renderGraph->AddNode<ProbeAtlasNodeType>("probe_irradiance_atlas");
+    NodeHandle probeVisibilityAtlasNode = renderGraph->AddNode<ProbeAtlasNodeType>("probe_visibility_atlas");
+
+    // Sampled Lighting Inc4 M2: variadic image-array sync gatherer for the future probe-update
+    // pass's IMAGE_WRITE_ARRAY slot (Inc4 M1) -- gathers BOTH atlas IRenderTarget* handles into
+    // one array-typed input. No consuming ComputeStageNode exists yet this milestone (that's
+    // M3); the gatherer is wired now so M3 only needs to add the compute pass itself, not this
+    // plumbing.
+    NodeHandle probeAtlasGatherer = renderGraph->AddNode<ImageSyncGathererNodeType>("probe_atlas_gatherer");
+
     // Sampled Lighting Inc3 M6: spatial-combine debug readback SSBO (binding 27) -- the
     // spatially-combined `current` reservoir SpatialReuseShade.comp computes exists only in
     // registers (reservoirBufferA/B are readonly that pass); this buffer gives the M6
@@ -480,6 +529,33 @@ void VulkanGraphApplication::BuildRenderGraph() {
     if (mainLogger && mainLogger->IsEnabled()) {
         mainLogger->Info("[BuildRenderGraph] Render-scale=" + std::to_string(renderScale) +
                          " (VIXEN_RENDER_SCALE env; 1.0 = full resolution)");
+    }
+
+    // Sampled Lighting Inc4 M2: DDGI probe atlas dimensions/formats -- see kProbeIrradianceAtlas*/
+    // kProbeVisibilityAtlas* constants above (PHASE 1) for the layout derivation + citations.
+    // Irradiance wants HDR color (RGBA16F is the RTXGI-reference default for low-frequency
+    // hemispherical irradiance); visibility wants two float moments (depth, depth^2) for
+    // Chebyshev's inequality -- RG16F is the RTXGI-reference default and sufficient precision for
+    // this milestone's plumbing-only scope (M4's leak-test gate is the numeric-sensitivity check
+    // that would motivate RG32F if RG16F proves insufficient; not assumed here).
+    auto* probeIrradianceAtlas = static_cast<ProbeAtlasNode*>(renderGraph->GetInstance(probeIrradianceAtlasNode));
+    probeIrradianceAtlas->SetParameter(ProbeAtlasNodeConfig::PARAM_WIDTH,  kProbeIrradianceAtlasWidth);
+    probeIrradianceAtlas->SetParameter(ProbeAtlasNodeConfig::PARAM_HEIGHT, kProbeIrradianceAtlasHeight);
+    probeIrradianceAtlas->SetParameter(ProbeAtlasNodeConfig::PARAM_FORMAT,
+        static_cast<uint32_t>(VK_FORMAT_R16G16B16A16_SFLOAT));
+
+    auto* probeVisibilityAtlas = static_cast<ProbeAtlasNode*>(renderGraph->GetInstance(probeVisibilityAtlasNode));
+    probeVisibilityAtlas->SetParameter(ProbeAtlasNodeConfig::PARAM_WIDTH,  kProbeVisibilityAtlasWidth);
+    probeVisibilityAtlas->SetParameter(ProbeAtlasNodeConfig::PARAM_HEIGHT, kProbeVisibilityAtlasHeight);
+    probeVisibilityAtlas->SetParameter(ProbeAtlasNodeConfig::PARAM_FORMAT,
+        static_cast<uint32_t>(VK_FORMAT_R16G16_SFLOAT));
+
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info("[BuildRenderGraph] DDGI probe atlases: irradiance " +
+                         std::to_string(kProbeIrradianceAtlasWidth) + "x" + std::to_string(kProbeIrradianceAtlasHeight) +
+                         " RGBA16F, visibility " +
+                         std::to_string(kProbeVisibilityAtlasWidth) + "x" + std::to_string(kProbeVisibilityAtlasHeight) +
+                         " RG16F (default 8x8x8 probe grid)");
     }
 
     // Sampled Lighting Inc1 M3: HitRecord SSBO sized to sizeof(HitRecord) (64 B, see
@@ -758,6 +834,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
     static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(directLightingReadGatherer))->PreRegisterBufferSlots(1);
     static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(directLightingReservoirWriteGatherer))->PreRegisterBufferSlots(2);
     static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(spatialReuseReservoirReadGatherer))->PreRegisterBufferSlots(2);
+
+    // Sampled Lighting Inc4 M2: probe atlas image-array gatherer -- 2 entries (irradiance +
+    // visibility atlas, see probeAtlasGatherer's own declaration comment above).
+    static_cast<ImageSyncGathererNode*>(renderGraph->GetInstance(probeAtlasGatherer))->PreRegisterImageSlots(2);
 
     // BlitNode: mirrors ComputeDispatchNode's own M4 PARAM_LEAVE_IMAGE_IN_GENERAL=true (set
     // below beside uiComposite's own parameters) — the sky-projection/UI composite chain still
@@ -2883,6 +2963,40 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   lightTreeBufferNode, LightTreeBufferNodeConfig::VULKAN_DEVICE_IN)
          .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
                   lightTreeBufferNode, LightTreeBufferNodeConfig::CURRENT_FRAME_INDEX);
+
+    // Sampled Lighting Inc4 M2: probe grid config node connections (same ring pattern as
+    // reservoirConfigNode above). M2 scaffolding only -- no shader consumes this buffer yet.
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  probeGridConfigNode, ProbeGridConfigNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                  probeGridConfigNode, ProbeGridConfigNodeConfig::CURRENT_FRAME_INDEX);
+
+    // Sampled Lighting Inc4 M2: probe atlas image connections -- device + command pool drive
+    // allocation + the one-shot UNDEFINED->GENERAL transition, mirroring accumulationHistoryNode's
+    // own wiring above. Extent/format are Setup PARAMETERS (already set in PHASE 2), not graph
+    // inputs -- see ProbeAtlasNodeConfig.h's own scope note on why atlas dims don't follow a
+    // live extent-cascade like the render target does.
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  probeIrradianceAtlasNode, ProbeAtlasNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
+                  probeIrradianceAtlasNode, ProbeAtlasNodeConfig::COMMAND_POOL)
+         .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  probeVisibilityAtlasNode, ProbeAtlasNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
+                  probeVisibilityAtlasNode, ProbeAtlasNodeConfig::COMMAND_POOL);
+
+    // Sampled Lighting Inc4 M2: gather both atlas IRenderTarget* handles into one
+    // IMAGE_WRITE_ARRAY-shaped array (Inc4 M1's ImageSyncGathererNode). No ComputeStageNode
+    // consumes IMAGE_ARRAY yet this milestone (that's M3's probe-update pass) -- these
+    // connections exist purely so the atlas Resource*s are wired through the sync-gathering
+    // mechanism the way M3 will need, proven correct now rather than discovered at M3.
+    // execDep (Dependency|Execute): VariadicConnectionRule only populates a variadic slot's
+    // actual Resource* via a PostCompile hook when the connection carries SlotRole::Dependency
+    // (mirrors directLightingReadGatherer's own identical connections above).
+    batch.Connect(probeIrradianceAtlasNode, ProbeAtlasNodeConfig::PROBE_ATLAS,
+                  probeAtlasGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(probeVisibilityAtlasNode, ProbeAtlasNodeConfig::PROBE_ATLAS,
+                  probeAtlasGatherer, 1, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
     // Sampled Lighting Inc3 M4: reservoir CURRENT/PREVIOUS ping-pong SSBOs — device +
     // extent-driven sizing from renderTargetNode's own RENDER_TARGET output, same
