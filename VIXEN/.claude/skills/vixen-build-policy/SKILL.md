@@ -294,6 +294,42 @@ either confirm this `POST_BUILD` step exists in the CMakeLists you're building a
 directly from `$<TARGET_FILE_DIR:VIXEN>` (the real build output dir) instead of the source-tree
 copy.
 
+## Known gotcha: concurrent CONFIGURE steps raced on the shared FetchContent cache (FIXED 2026-07-12)
+
+The machine-wide build lock (`Global\VixenBuildLock`) only ever wrapped the BUILD step. `build.bat`'s
+`configure`/`all` actions called `cmake --preset <name>` directly, with NO lock at all — but CMake's
+`FetchContent_Populate` (clone/update/"recompaction" — an internal stamp-file rewrite) runs during
+CONFIGURE, and `FETCHCONTENT_BASE_DIR` is deliberately ONE shared directory
+(`C:/vixen-fetchcontent-cache`) across every worktree on this machine (see `VIXEN/CMakeLists.txt`'s
+"share FetchContent's clone+build output across all worktrees" block). Two worktrees configuring at
+the same moment could both write into the SAME shared subbuild (e.g. `glm-build`, `nlohmann_json-src`)
+unserialized — CMake's own stamp-file rewrite isn't safe against two concurrent writers, so whichever
+process lost the race got a raw Windows **"Permission denied"** (the other process still had the file
+open/mid-rename). It appeared to move between different dependencies build-to-build (glm, then
+nlohmann_json, ...) because it was whichever two configures happened to overlap on that PARTICULAR
+sub-project at that moment — not a defect in any one library. Observed live 2026-07-12: 3 concurrent
+agents (`view-binding-inc-c`, `ki-020-017-fix`, `lazy-baseline-inc0`) each hit this on different
+FetchContent subbuilds within the same ~15-minute window, each burning a retry.
+
+**Fixed:** a SEPARATE, narrower machine-wide Mutex, `Global\VixenConfigureLock`
+(`VIXEN/scripts/build/run_configure_locked.ps1`), now wraps the `cmake --preset` call for BOTH
+`build.bat configure` and `build.bat all` — same auto-release-on-process-death guarantee as the build
+lock, same `VIXEN_BUILD_LOCK_TIMEOUT`/`VIXEN_SKIP_BUILD_LOCK` env vars (one pair of knobs governs both
+locks). **Deliberately a separate lock from the build one**, not folded into it: configure (fast, often
+just seconds once FetchContent is already populated) must not queue behind another worktree's
+multi-minute BUILD, and the two phases contend on genuinely different resources (the shared `_deps`
+directory vs. CPU/IO during compile/link) — sharing one lock would only cost concurrency for no safety
+gain. The two locks are never held simultaneously by one process (configure lock is released before the
+build lock is ever acquired), so this cannot deadlock. Verified live: two simultaneous `run_configure_
+locked.ps1` invocations against the SAME checkout — the first acquired immediately, the second logged
+"waiting for the machine-wide configure lock" and acquired only after the first released, no overlap.
+
+**Practical implication:** if you ever see a raw `Permission denied` failure during a CMake CONFIGURE
+step (not a compile/link `FAILED:` target) on a FetchContent subbuild, and it's NOT reproducible on a
+clean re-run alone, suspect a concurrent configure on another worktree — check whether this fix is
+present in the checkout you're building (pre-2026-07-12 checkouts still call `cmake --preset` unlocked
+from `build.bat`).
+
 ## Known gotcha: an invalid `-Target`/`-BuildTarget` used to silently report success (FIXED 2026-07-12)
 
 Before this fix, `run_build_with_summary.ps1` inferred success/failure from the background job's

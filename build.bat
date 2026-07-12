@@ -32,10 +32,12 @@ REM
 REM The gitignored _ninja_*.bat launchers are personal overrides; this is the
 REM shared, committed entry point.
 REM
-REM Env vars honored by the build step (see run_build_with_summary.ps1):
-REM   VIXEN_BUILD_LOCK_TIMEOUT  seconds to wait for the machine-wide build lock
-REM                             before giving up (default 1800 = 30 min)
-REM   VIXEN_SKIP_BUILD_LOCK=1   bypass the lock entirely
+REM Env vars honored by the configure/build steps (see run_configure_locked.ps1 /
+REM run_build_with_summary.ps1):
+REM   VIXEN_BUILD_LOCK_TIMEOUT  seconds to wait for the machine-wide configure OR build lock
+REM                             before giving up (default 1800 = 30 min; one knob for both --
+REM                             they are separate locks, see run_configure_locked.ps1's header)
+REM   VIXEN_SKIP_BUILD_LOCK=1   bypass BOTH locks entirely
 REM   VIXEN_MAX_BUILD_JOBS      cap on concurrent ninja jobs (default ~75% of
 REM                             logical cores) so a build leaves the machine
 REM                             usable instead of pegging every core
@@ -135,7 +137,7 @@ echo [build] ERROR: unknown action "%ACTION%" ^(expected configure^|build^|all^)
 exit /b 1
 
 :do_configure
-"%CMAKE_EXE%" --preset "%PRESET%"
+call :run_configure_locked
 exit /b %errorlevel%
 
 :do_build
@@ -143,9 +145,32 @@ call :run_build_locked
 exit /b %errorlevel%
 
 :do_all
-"%CMAKE_EXE%" --preset "%PRESET%"
+call :run_configure_locked
 if errorlevel 1 (echo [build] configure FAILED. & exit /b 1)
 call :run_build_locked
+exit /b %errorlevel%
+
+REM ---------------------------------------------------------------------------
+REM run_configure_locked: run `cmake --preset` (Fix 11) holding a SEPARATE
+REM machine-wide configure lock (Global\VixenConfigureLock, distinct from the
+REM build lock below) for its duration. Closes a real race: FETCHCONTENT_BASE_DIR
+REM is ONE shared directory across every worktree on this machine (see
+REM CMakeLists.txt), and CMake's FetchContent clone/recompaction runs during
+REM CONFIGURE, not build -- two worktrees configuring at the same moment could
+REM both write into the SAME shared FetchContent subbuild unserialized, since
+REM this action previously called `cmake --preset` directly with no lock at
+REM all. Uses the same VIXEN_BUILD_LOCK_TIMEOUT/VIXEN_SKIP_BUILD_LOCK env vars
+REM as the build lock (one pair of knobs, not two) -- see
+REM run_configure_locked.ps1 for why this is a SEPARATE lock from the build one
+REM (different contended resource; must not serialize configure behind another
+REM worktree's multi-minute build, and cannot deadlock since the two locks are
+REM never held simultaneously).
+REM ---------------------------------------------------------------------------
+:run_configure_locked
+if not defined VIXEN_BUILD_LOCK_TIMEOUT set "VIXEN_BUILD_LOCK_TIMEOUT=1800"
+set "SKIP_LOCK_ARG="
+if "%VIXEN_SKIP_BUILD_LOCK%"=="1" set "SKIP_LOCK_ARG=-SkipLock"
+powershell -ExecutionPolicy Bypass -File "%SRC_DIR%\scripts\build\run_configure_locked.ps1" -CMakeExe "%CMAKE_EXE%" -Preset "%PRESET%" -LockTimeoutSeconds %VIXEN_BUILD_LOCK_TIMEOUT% %SKIP_LOCK_ARG%
 exit /b %errorlevel%
 
 REM ---------------------------------------------------------------------------
