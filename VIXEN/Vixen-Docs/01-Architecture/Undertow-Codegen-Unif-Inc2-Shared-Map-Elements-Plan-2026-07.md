@@ -66,8 +66,8 @@ not properties into an existing class) need something structurally different aga
 ## Milestone Map
 - [x] **Milestone 1 (Task 1):** ground the shape, decide mechanism (report-back gate). One Sonnet
   implementer + one Opus validator.
-- [x] **Milestone 2 (Task 2):** build + equivalence proof + retire. DONE 2026-07-13. One Sonnet
-  implementer (Opus validation pending).
+- [x] **Milestone 2 (Task 2):** build + equivalence proof + retire. DONE + Opus-validated APPROVED,
+  2026-07-13. **INCREMENT 2 COMPLETE.**
 
 ## Progress Log
 
@@ -172,6 +172,21 @@ not properties into an existing class) need something structurally different aga
   - Gotcha avoided: `SDFNodeGenerator.dll` rebuilt non-deterministically during the Yeroket test build
     (known drift per program-level memory) — reverted via `git checkout --` before committing, since
     no source change to that generator was made.
-  - No plan-doc assumption disproven. **Opus validation of Milestone 2 not yet run** — flagging this
-    explicitly since the program's established pattern is Sonnet-implement + Opus-validate per
-    milestone.
+  - No plan-doc assumption disproven.
+  - **Opus validator (independent re-verification, including live re-runs of both test suites):**
+    confirmed `SharedMapElementsAttribute` is genuinely assembly-level (not a marker class) and that
+    assembly-level attributes carrying build-time config is an idiomatic, precedented C# pattern (cf.
+    `[assembly: InternalsVisibleTo]`). Confirmed `SharedMapElementEmitter.cs`'s struct-generation logic
+    is byte-identical to the original `EmitSharedMapElement.cs` (diffed against the pre-deletion commit
+    `2c8f25b4`); confirmed the ported `MapValueScalar`/`Clr` helpers correctly handle all 4 real value
+    shapes (the one omitted `constraint` case doesn't occur in `sharedMapElements`, confirmed a non-issue).
+    Confirmed the `--shared-map-elements` CLI flag genuinely mirrors `--registry-slots`'s parsing style.
+    **Independently RE-RAN both test suites from fresh builds**: `SharedMapElementEmitterTests.cs` 7/7,
+    `MapElementStructTests.cs` 4/4 — both against the newly-checked-in generated code, not just read the
+    reports. Confirmed the retirement commit genuinely deletes (not stubs) the two old files, the
+    generated `MapElements.g.cs` matches the original template for all 12 entries (spot-checked all 4
+    value-type shapes), and zero stale references to the deleted symbols exist anywhere in the codebase
+    (grep clean). Spot-checked `BakedContentPack.cs:246`'s real `ArchetypeLayer` construction confirms
+    consumers genuinely depend on the id→string mapping the new mechanism reproduces. Both repos clean
+    at their respective HEADs. **APPROVED, no defects, nothing changed. INCREMENT 2 COMPLETE** — a full
+    retirement of live undertow code, validated end-to-end.
