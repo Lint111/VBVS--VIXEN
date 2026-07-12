@@ -11,14 +11,30 @@
 #include <filesystem>
 #include <fstream>
 #include <vector>
+#ifdef _WIN32
+#include <process.h>
+#else
+#include <unistd.h>
+#endif
 
 using CashSystem::CacheReader;
 using CashSystem::CacheWriter;
 
 namespace {
 
+// Per-test + per-process filename: the old fixed "cache_codec_test_<name>" path made concurrent
+// runs of this suite (two build trees / parallel agents) collide on the same file, yielding
+// "the process cannot access the file because it is being used by another process". The process
+// id disambiguates concurrent runs; the scenario name disambiguates cases within one run.
 std::filesystem::path TempPath(const char* name) {
-    return std::filesystem::temp_directory_path() / (std::string("cache_codec_test_") + name);
+    const auto pid =
+#ifdef _WIN32
+        static_cast<unsigned long>(::_getpid());
+#else
+        static_cast<unsigned long>(::getpid());
+#endif
+    return std::filesystem::temp_directory_path() /
+           (std::string("cache_codec_test_") + std::to_string(pid) + "_" + name);
 }
 
 }  // namespace

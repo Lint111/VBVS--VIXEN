@@ -467,7 +467,10 @@ void BatchedUploader::SubmitBatch(std::vector<PendingUpload>&& uploads) {
     batch.uploads = std::move(uploads);
     batch.submitTime = std::chrono::steady_clock::now();
 
-    // Externally synchronized per Vulkan spec (audit V-M11).
+    // Externally synchronized per Vulkan spec (audit V-M11). submitMutex_ is optional: when the
+    // uploader owns the only path to this queue (no cross-node contention), it's null and submitLock
+    // owns no mutex — every submitLock.unlock() below must be owns_lock()-guarded, or unlocking a
+    // lock that holds no mutex throws std::system_error(operation_not_permitted).
     std::unique_lock<std::mutex> submitLock;
     if (submitMutex_) submitLock = std::unique_lock<std::mutex>(*submitMutex_);
 
@@ -485,7 +488,7 @@ void BatchedUploader::SubmitBatch(std::vector<PendingUpload>&& uploads) {
         submitInfo.pSignalSemaphores = &timelineSemaphore_;
 
         VkResult submitResult = vkQueueSubmit(queue_, 1, &submitInfo, VK_NULL_HANDLE);
-        submitLock.unlock();
+        if (submitLock.owns_lock()) submitLock.unlock();
         if (submitResult != VK_SUCCESS) {
             // Submit failed - the timeline value we reserved will never be signalled. ReleaseCommandBuffer
             // returns cmdBuffer to the pool immediately since nothing GPU-side will ever touch it now.
@@ -502,7 +505,7 @@ void BatchedUploader::SubmitBatch(std::vector<PendingUpload>&& uploads) {
         if (fenceResult == VK_SUCCESS) {
             submitResult = vkQueueSubmit(queue_, 1, &submitInfo, batch.fence);
         }
-        submitLock.unlock();
+        if (submitLock.owns_lock()) submitLock.unlock();
 
         SubmitOutcome outcome = DecideSubmitOutcome(fenceResult, submitResult);
         if (outcome != SubmitOutcome::Ok) {

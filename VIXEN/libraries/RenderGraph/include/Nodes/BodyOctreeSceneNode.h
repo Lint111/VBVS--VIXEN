@@ -171,6 +171,16 @@ public:
     [[nodiscard]] uint64_t BootBytesUploaded() const { return bootBytesUploaded_; }
     [[nodiscard]] uint64_t SteadyStateBytesUploaded() const { return steadyStateBytesUploaded_; }
 
+    /// True once PollBrickUploadCompletion has observed the GPU-side brick copy actually
+    /// complete (BodyOctreeSceneNode.cpp:991) -- NOT the same moment as BootBytesUploaded()
+    /// going non-zero, which reflects only that the upload was QUEUED (UploadBrickPool,
+    /// same file ~967-968), not that it finished. A caller polling for "is the resident
+    /// brick data actually visible to the shader yet" must check THIS, not BootBytesUploaded
+    /// (root-caused 2026-07-12: a test that polled BootBytesUploaded() alone stopped
+    /// polling the instant the upload was queued, before the GPU copy had landed, then
+    /// rendered against still-stale brick data with no error).
+    [[nodiscard]] bool IsBrickPoolUploaded() const { return brickPoolUploaded_; }
+
     /**
      * @brief Request (or release) brick-pool residency (Sparse-Mip ESVO LOD Inc1 M2).
      *

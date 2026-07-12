@@ -43,6 +43,13 @@
 #include "Recipe/SdfInstruction.h"
 #include "TestVkValidation.h"
 #include "VulkanGlobalNames.h"  // VixenSelectWslGpuIcd
+#include "Memory/BatchedUploader.h"
+#include "Memory/DeviceBudgetManager.h"
+#include "Memory/DirectAllocator.h"
+#include "Generated/LightingConfig.g.h"  // Sampled Lighting Inc0 M3: real default light content
+                                          // (a zeroed LightingConfig has lightCount=0 -> pure
+                                          // black shaded output -> invisible to any luminance
+                                          // threshold this test's own render checks use)
 
 #include <vulkan/vulkan.h>
 
@@ -51,6 +58,7 @@
 
 #include <glm/glm.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cctype>
 #include <chrono>
@@ -78,8 +86,14 @@ struct PushConstants {
     glm::vec3 cameraRight; int32_t debugMode;
     float raySizeCoef; float raySizeBias; int32_t instanceCount;
     int32_t _pad0;         glm::ivec2 debugTargetPixel;  // (-1,-1) disables; offset 80, shader ~line 237
+    uint32_t accumFrameCount;  // Sampled Lighting Inc2 M2 (bytes 88-91) — unused (no
+                               // accumulation config bound; accumulationConfig.enabled==0
+                               // keeps the temporal-accum seam a pure passthrough).
+    uint32_t _pad1;            // std430 push-constant block rounds up to a 16-byte multiple
+                               // (leading vec3 forces 16-byte block alignment) -- SPIR-V
+                               // reflection reports 96 bytes total, not 92.
 };
-static_assert(sizeof(PushConstants) == 88, "PushConstants must be 88 bytes");
+static_assert(sizeof(PushConstants) == 96, "PushConstants must be 96 bytes (std430 push block, 16-byte rounded)");
 
 std::vector<uint32_t> ReadSpirv(const char* path) {
     std::ifstream f(path, std::ios::binary | std::ios::ate);
@@ -135,6 +149,14 @@ protected:
     bool             deviceConfirmed_ = false;
     std::string      selectedDeviceName_;
     std::unique_ptr<VulkanDevice> deviceShell_;
+    // Real device.Upload() (VulkanDevice::Upload -> uploader_) is a no-op returning
+    // InvalidUploadHandle unless a BatchedUploader is attached via SetUploader() --
+    // in production this wiring happens ONLY in DeviceNode::CreateDeviceBudgetManager
+    // (DeviceNode.cpp:436-519), which this hand-built fixture device bypasses entirely.
+    // Any test exercising a POST-Compile async residency grant (UploadBrickPool's
+    // device->Upload call) needs this mirrored here, or the upload silently fails and
+    // the "after grant" render is actually just a re-render of the "before" state.
+    std::shared_ptr<ResourceManagement::DeviceBudgetManager> budgetManager_;
 
     // Real discrete/integrated GPUs are preferred; software (lavapipe/llvmpipe) and
     // Dozen (WSL2's Vulkan-over-D3D12 shim) are accepted as a fallback when no real
@@ -171,10 +193,43 @@ protected:
         ASSERT_NO_FATAL_FAILURE(CreateCmdPool());
         deviceShell_ = std::make_unique<VulkanDevice>(&physicalDevice_);
         deviceShell_->device = logicalDevice_;
+        deviceShell_->queue = queue_;
+        deviceShell_->graphicsQueueIndex = queueFamily_;
+        vkGetPhysicalDeviceProperties(physicalDevice_, &deviceShell_->gpuProperties);
+        vkGetPhysicalDeviceMemoryProperties(physicalDevice_, &deviceShell_->gpuMemoryProperties);
+
+        // Mirror DeviceNode::CreateDeviceBudgetManager (DeviceNode.cpp:436-519) so
+        // deviceShell_->Upload() actually works for tests that grant residency
+        // POST-Compile (see the deviceShell_/budgetManager_ member comments above).
+        auto allocator = std::make_shared<ResourceManagement::DirectAllocator>(
+            physicalDevice_, logicalDevice_);
+        uint64_t deviceLocalMemory = 0;
+        for (uint32_t i = 0; i < deviceShell_->gpuMemoryProperties.memoryHeapCount; ++i) {
+            const auto& heap = deviceShell_->gpuMemoryProperties.memoryHeaps[i];
+            if (heap.flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) deviceLocalMemory += heap.size;
+        }
+        ResourceManagement::DeviceBudgetManager::Config budgetConfig{};
+        budgetConfig.deviceMemoryBudget  = static_cast<uint64_t>(deviceLocalMemory * 0.9);
+        budgetConfig.deviceMemoryWarning = static_cast<uint64_t>(deviceLocalMemory * 0.8);
+        budgetConfig.stagingQuota = std::min<uint64_t>(256ull * 1024 * 1024, deviceLocalMemory / 16);
+        budgetConfig.strictBudget = false;
+        budgetManager_ = std::make_shared<ResourceManagement::DeviceBudgetManager>(
+            allocator, physicalDevice_, budgetConfig);
+        deviceShell_->SetBudgetManager(budgetManager_);
+
+        ResourceManagement::BatchedUploader::Config uploaderConfig;
+        uploaderConfig.maxPendingUploads = 64;
+        uploaderConfig.flushDeadline = std::chrono::milliseconds{16};
+        auto uploader = std::make_unique<ResourceManagement::BatchedUploader>(
+            deviceShell_->device, deviceShell_->queue, deviceShell_->graphicsQueueIndex,
+            budgetManager_.get(), uploaderConfig,
+            &deviceShell_->SubmitMutex(deviceShell_->queue));
+        deviceShell_->SetUploader(std::move(uploader));
     }
 
     void TearDown() override {
         if (deviceShell_) { deviceShell_->device = VK_NULL_HANDLE; deviceShell_.reset(); }
+        budgetManager_.reset();  // must go before vkDestroyDevice below (owns device-tied allocations)
         if (commandPool_ != VK_NULL_HANDLE) vkDestroyCommandPool(logicalDevice_, commandPool_, nullptr);
         if (logicalDevice_ != VK_NULL_HANDLE) vkDestroyDevice(logicalDevice_, nullptr);
         if (instance_     != VK_NULL_HANDLE) vkDestroyInstance(instance_, nullptr);
@@ -213,9 +268,33 @@ protected:
         float prio = 1.0f;
         VkDeviceQueueCreateInfo qi{}; qi.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
         qi.queueFamilyIndex = queueFamily_; qi.queueCount = 1; qi.pQueuePriorities = &prio;
-        VkPhysicalDeviceFeatures feats{}; feats.shaderStorageImageWriteWithoutFormat = VK_TRUE;
+
+        // Query timelineSemaphore support (not hardcoded true, mirrors VulkanDevice::CreateDevice's
+        // QueryAvailableDeviceFeatures discipline -- VulkanDevice.cpp:120-149,210-222) before
+        // enabling it: BatchedUploader::Config defaults useTimelineSemaphores=true and creates
+        // VK_SEMAPHORE_TYPE_TIMELINE semaphores unconditionally, so a device created WITHOUT this
+        // feature enabled fails VUID-VkSemaphoreTypeCreateInfo-timelineSemaphore-03252 on every
+        // uploader flush -- root-caused 2026-07-12 as the reason a post-grant residency upload
+        // degraded to a multi-minute stall instead of a normal ~30s GPU-test run.
+        VkPhysicalDeviceVulkan12Features vulkan12Features{};
+        vulkan12Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+        VkPhysicalDeviceFeatures2 supported2{};
+        supported2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+        supported2.pNext = &vulkan12Features;
+        vkGetPhysicalDeviceFeatures2(physicalDevice_, &supported2);
+        ASSERT_TRUE(vulkan12Features.timelineSemaphore)
+            << "Device does not support timelineSemaphore -- BatchedUploader requires it "
+               "(or Config::useTimelineSemaphores=false, not used by this fixture)";
+        vulkan12Features.pNext = nullptr;  // reset chain link before reuse as the enable struct
+
+        VkPhysicalDeviceFeatures2 features2{};
+        features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+        features2.pNext = &vulkan12Features;
+        features2.features.shaderStorageImageWriteWithoutFormat = VK_TRUE;
+
         VkDeviceCreateInfo di{}; di.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-        di.queueCreateInfoCount = 1; di.pQueueCreateInfos = &qi; di.pEnabledFeatures = &feats;
+        di.pNext = &features2;             // feature chain, not pEnabledFeatures, carries the flags
+        di.queueCreateInfoCount = 1; di.pQueueCreateInfos = &qi; di.pEnabledFeatures = nullptr;
         ASSERT_EQ(vkCreateDevice(physicalDevice_, &di, nullptr, &logicalDevice_), VK_SUCCESS);
         vkGetDeviceQueue(logicalDevice_, queueFamily_, 0, &queue_);
     }
@@ -275,6 +354,34 @@ protected:
         if (zero) { void* m=nullptr; vkMapMemory(logicalDevice_, mem, 0, size, 0, &m); std::memset(m,0,size_t(size)); vkUnmapMemory(logicalDevice_, mem); }
     }
 
+    // Sampled Lighting Inc0 M3: the same directional-light default LightingConfigNode uploads
+    // in the real graph (MakeDefaultLightingConfig — direction normalize(1,1,-1), white
+    // radiance, ambientIntensity 0.3) — this harness bypasses LightingConfigNode entirely, so
+    // it must write this itself or the shaded output is pure black (lightCount=0).
+    static Vixen::Gpu::LightingConfig MakeTestDefaultLightingConfig() {
+        Vixen::Gpu::LightingConfig cfg{};
+        cfg.lightCount       = 1u;
+        cfg.ambientIntensity = 0.3f;
+        const float dx = 1.0f, dy = 1.0f, dz = -1.0f;
+        const float invLen = 1.0f / std::sqrt(dx*dx + dy*dy + dz*dz);
+        cfg.lights[0].direction_or_positionX = dx * invLen;
+        cfg.lights[0].direction_or_positionY = dy * invLen;
+        cfg.lights[0].direction_or_positionZ = dz * invLen;
+        cfg.lights[0].kind      = 0u;
+        cfg.lights[0].radianceX = 1.0f;
+        cfg.lights[0].radianceY = 1.0f;
+        cfg.lights[0].radianceZ = 1.0f;
+        cfg.lights[0].range     = 0.0f;
+        return cfg;
+    }
+
+    void UploadBufferContent(VkDeviceMemory mem, const void* data, size_t size) {
+        void* m = nullptr;
+        ASSERT_EQ(vkMapMemory(logicalDevice_, mem, 0, size, 0, &m), VK_SUCCESS);
+        std::memcpy(m, data, size);
+        vkUnmapMemory(logicalDevice_, mem);
+    }
+
     // Render using the real BodyInstanceRayMarch shader (bindings 0-5,8-13).
     void RenderToRgba(VkBuffer nodes, VkBuffer bricks, VkBuffer mats, VkBuffer cfg,
                       VkBuffer inst, VkBuffer sdf, VkBuffer lookup, VkBuffer mip,
@@ -294,12 +401,38 @@ protected:
         if (lookup == VK_NULL_HANDLE) { CreateHostBuffer(256,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummyLookup,dLookupMem,true); lookup = dummyLookup; }
         if (mip    == VK_NULL_HANDLE) { CreateHostBuffer(256,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummyMip,dMipMem,true); mip = dummyMip; }
 
-        VkImage colorImg=VK_NULL_HANDLE, idImg=VK_NULL_HANDLE;
-        VkDeviceMemory colorMem=VK_NULL_HANDLE, idMem=VK_NULL_HANDLE;
+        // Sampled Lighting Inc0-Inc2 bindings (17-22): this harness only checks the raymarch
+        // geometry/color output, not full shading pipeline correctness — LightingConfig gets a
+        // real default light (see MakeTestDefaultLightingConfig; a zeroed one is pure black and
+        // invisible to luminance checks), ShadowConfig/AccumulationConfig stay zeroed (enabled==0
+        // skips shadow rays / keeps the temporal-accum seam a pure passthrough), HitRecord is
+        // round-tripped internally, PrevCameraConfig/historyImage are unused this scope.
+        VkBuffer dummyLighting=VK_NULL_HANDLE, dummyHitRecord=VK_NULL_HANDLE, dummyShadow=VK_NULL_HANDLE,
+                 dummyAccum=VK_NULL_HANDLE, dummyPrevCam=VK_NULL_HANDLE;
+        VkDeviceMemory dLightingMem=VK_NULL_HANDLE, dHitRecordMem=VK_NULL_HANDLE, dShadowMem=VK_NULL_HANDLE,
+                       dAccumMem=VK_NULL_HANDLE, dPrevCamMem=VK_NULL_HANDLE;
+        CreateHostBuffer(256,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummyLighting,dLightingMem,true);
+        {
+            const Vixen::Gpu::LightingConfig defaultLighting = MakeTestDefaultLightingConfig();
+            ASSERT_NO_FATAL_FAILURE(UploadBufferContent(dLightingMem, &defaultLighting, sizeof(defaultLighting)));
+        }
+        // HitRecord.glsl's HitRecord struct is 64 bytes; the shader indexes it by the FULL
+        // flat pixel count (up to w*h-1) every dispatch, so this buffer MUST be sized for the
+        // actual w*h being rendered here.
+        const VkDeviceSize hitRecordBufSize = VkDeviceSize(w) * VkDeviceSize(h) * 64;
+        CreateHostBuffer(hitRecordBufSize,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummyHitRecord,dHitRecordMem,true);
+        CreateHostBuffer(256,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummyShadow,dShadowMem,true);
+        CreateHostBuffer(256,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummyAccum,dAccumMem,true);
+        CreateHostBuffer(256,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummyPrevCam,dPrevCamMem,true);
+
+        VkImage colorImg=VK_NULL_HANDLE, idImg=VK_NULL_HANDLE, historyImg=VK_NULL_HANDLE;
+        VkDeviceMemory colorMem=VK_NULL_HANDLE, idMem=VK_NULL_HANDLE, historyMem=VK_NULL_HANDLE;
         ASSERT_NO_FATAL_FAILURE(CreateImage(w,h,VK_FORMAT_R8G8B8A8_UNORM, colorImg, colorMem));
         ASSERT_NO_FATAL_FAILURE(CreateImage(w,h,VK_FORMAT_R32_UINT, idImg, idMem));
-        VkImageView colorView = MakeView(colorImg, VK_FORMAT_R8G8B8A8_UNORM);
-        VkImageView idView    = MakeView(idImg,    VK_FORMAT_R32_UINT);
+        ASSERT_NO_FATAL_FAILURE(CreateImage(w,h,VK_FORMAT_R8G8B8A8_UNORM, historyImg, historyMem));
+        VkImageView colorView   = MakeView(colorImg,   VK_FORMAT_R8G8B8A8_UNORM);
+        VkImageView idView      = MakeView(idImg,      VK_FORMAT_R32_UINT);
+        VkImageView historyView = MakeView(historyImg, VK_FORMAT_R8G8B8A8_UNORM);
 
         const auto spirv = ReadSpirv(GLSL_RAYMARCH_SPV);
         ASSERT_FALSE(spirv.empty()) << "SPIR-V missing: " << GLSL_RAYMARCH_SPV;
@@ -312,7 +445,7 @@ protected:
             VkDescriptorSetLayoutBinding lb{}; lb.binding=b; lb.descriptorType=t;
             lb.descriptorCount=1; lb.stageFlags=VK_SHADER_STAGE_COMPUTE_BIT; return lb;
         };
-        const std::array<VkDescriptorSetLayoutBinding,15> bindings = {
+        const std::array<VkDescriptorSetLayoutBinding,21> bindings = {
             bindL(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             bindL(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bindL(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
@@ -328,6 +461,12 @@ protected:
             bindL(14,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Inc1 M4b: per-instance iteration debug
             bindL(15,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Tiered-ESVO: TierRefTableBuffer
             bindL(16,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // M6 Task 13: OccupancyGridBuffer
+            bindL(17,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Sampled Lighting Inc0 M3: LightingConfigSSBO
+            bindL(18,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Sampled Lighting Inc1 M3: HitRecordBuffer
+            bindL(19,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Sampled Lighting Inc1 M4: ShadowConfigSSBO
+            bindL(20,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Sampled Lighting Inc2 M1: AccumulationConfigSSBO
+            bindL(21,VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),   // Sampled Lighting Inc2 M1: historyImage
+            bindL(22,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Sampled Lighting Inc2 M3: PrevCameraConfigSSBO
         };
         VkDescriptorSetLayoutCreateInfo dslci{}; dslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         dslci.bindingCount = uint32_t(bindings.size()); dslci.pBindings = bindings.data();
@@ -348,8 +487,8 @@ protected:
         ASSERT_EQ(vkCreateComputePipelines(logicalDevice_,VK_NULL_HANDLE,1,&cpci,nullptr,&pipeline), VK_SUCCESS);
 
         const std::array<VkDescriptorPoolSize,2> poolSizes = {{
-            {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  2},
-            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 13},
+            {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  3},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 18},
         }};
         VkDescriptorPoolCreateInfo dpci{}; dpci.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         dpci.maxSets=1; dpci.poolSizeCount=uint32_t(poolSizes.size()); dpci.pPoolSizes=poolSizes.data();
@@ -362,11 +501,15 @@ protected:
 
         VkDescriptorImageInfo colImg{VK_NULL_HANDLE,colorView,VK_IMAGE_LAYOUT_GENERAL};
         VkDescriptorImageInfo idImgI{VK_NULL_HANDLE,idView,VK_IMAGE_LAYOUT_GENERAL};
+        VkDescriptorImageInfo historyImgI{VK_NULL_HANDLE,historyView,VK_IMAGE_LAYOUT_GENERAL};
         VkDescriptorBufferInfo nodesI{nodes,0,VK_WHOLE_SIZE}, bricksI{bricks,0,VK_WHOLE_SIZE},
             matsI{mats,0,VK_WHOLE_SIZE}, traceI{traceBuf,0,VK_WHOLE_SIZE}, cfgI{cfg,0,VK_WHOLE_SIZE},
             ctrI{ctrBuf,0,VK_WHOLE_SIZE}, instI{inst,0,VK_WHOLE_SIZE},
             sdfI{sdf,0,VK_WHOLE_SIZE}, lookupI{lookup,0,VK_WHOLE_SIZE}, iterI{dummyIter,0,VK_WHOLE_SIZE}, mipI{mip,0,VK_WHOLE_SIZE},
-            tierRefI{dummyTierRef,0,VK_WHOLE_SIZE}, occGridI{dummyOccGrid,0,VK_WHOLE_SIZE};
+            tierRefI{dummyTierRef,0,VK_WHOLE_SIZE}, occGridI{dummyOccGrid,0,VK_WHOLE_SIZE},
+            lightingI{dummyLighting,0,VK_WHOLE_SIZE}, hitRecordI{dummyHitRecord,0,VK_WHOLE_SIZE},
+            shadowI{dummyShadow,0,VK_WHOLE_SIZE}, accumI{dummyAccum,0,VK_WHOLE_SIZE},
+            prevCamI{dummyPrevCam,0,VK_WHOLE_SIZE};
 
         auto wI = [&](uint32_t b, VkDescriptorImageInfo* info) {
             VkWriteDescriptorSet w{}; w.sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -378,12 +521,14 @@ protected:
             w.dstSet=ds; w.dstBinding=b; w.descriptorCount=1;
             w.descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; w.pBufferInfo=info; return w;
         };
-        const std::array<VkWriteDescriptorSet,15> writes = {
+        const std::array<VkWriteDescriptorSet,21> writes = {
             wI(0,&colImg), wB(1,&nodesI), wB(2,&bricksI), wB(3,&matsI), wB(4,&traceI),
             wB(5,&cfgI), wB(8,&ctrI), wI(9,&idImgI), wB(10,&instI), wB(11,&sdfI), wB(12,&lookupI), wB(13,&mipI),
             wB(14,&iterI),  // Inc1 M4b: per-instance iteration debug
             wB(15,&tierRefI),  // Tiered-ESVO: TierRefTableBuffer
-            wB(16,&occGridI)  // M6 Task 13: OccupancyGridBuffer
+            wB(16,&occGridI),  // M6 Task 13: OccupancyGridBuffer
+            wB(17,&lightingI), wB(18,&hitRecordI), wB(19,&shadowI), wB(20,&accumI),
+            wI(21,&historyImgI), wB(22,&prevCamI),
         };
         vkUpdateDescriptorSets(logicalDevice_, uint32_t(writes.size()), writes.data(), 0, nullptr);
 
@@ -404,7 +549,7 @@ protected:
             vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
                 VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,0,0,nullptr,0,nullptr,1,&b);
         };
-        toGeneral(colorImg); toGeneral(idImg);
+        toGeneral(colorImg); toGeneral(idImg); toGeneral(historyImg);
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pl, 0, 1, &ds, 0, nullptr);
         vkCmdPushConstants(cmd, pl, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(pc), &pc);
@@ -445,8 +590,10 @@ protected:
         vkDestroyDescriptorSetLayout(logicalDevice_,dsl,nullptr);
         vkDestroyShaderModule(logicalDevice_,sm,nullptr);
         vkDestroyImageView(logicalDevice_,colorView,nullptr); vkDestroyImageView(logicalDevice_,idView,nullptr);
+        vkDestroyImageView(logicalDevice_,historyView,nullptr);
         vkDestroyImage(logicalDevice_,colorImg,nullptr); vkFreeMemory(logicalDevice_,colorMem,nullptr);
         vkDestroyImage(logicalDevice_,idImg,nullptr);    vkFreeMemory(logicalDevice_,idMem,nullptr);
+        vkDestroyImage(logicalDevice_,historyImg,nullptr); vkFreeMemory(logicalDevice_,historyMem,nullptr);
         vkDestroyBuffer(logicalDevice_,traceBuf,nullptr); vkFreeMemory(logicalDevice_,traceMem,nullptr);
         vkDestroyBuffer(logicalDevice_,ctrBuf,nullptr);   vkFreeMemory(logicalDevice_,ctrMem,nullptr);
         if (dummySdf    != VK_NULL_HANDLE) { vkDestroyBuffer(logicalDevice_,dummySdf,nullptr);    vkFreeMemory(logicalDevice_,dSdfMem,nullptr); }
@@ -455,6 +602,11 @@ protected:
         vkDestroyBuffer(logicalDevice_,dummyIter,nullptr); vkFreeMemory(logicalDevice_,dIterMem,nullptr);
         vkDestroyBuffer(logicalDevice_,dummyTierRef,nullptr); vkFreeMemory(logicalDevice_,dTierRefMem,nullptr);
         vkDestroyBuffer(logicalDevice_,dummyOccGrid,nullptr); vkFreeMemory(logicalDevice_,dOccGridMem,nullptr);
+        vkDestroyBuffer(logicalDevice_,dummyLighting,nullptr);   vkFreeMemory(logicalDevice_,dLightingMem,nullptr);
+        vkDestroyBuffer(logicalDevice_,dummyHitRecord,nullptr);  vkFreeMemory(logicalDevice_,dHitRecordMem,nullptr);
+        vkDestroyBuffer(logicalDevice_,dummyShadow,nullptr);     vkFreeMemory(logicalDevice_,dShadowMem,nullptr);
+        vkDestroyBuffer(logicalDevice_,dummyAccum,nullptr);      vkFreeMemory(logicalDevice_,dAccumMem,nullptr);
+        vkDestroyBuffer(logicalDevice_,dummyPrevCam,nullptr);    vkFreeMemory(logicalDevice_,dPrevCamMem,nullptr);
     }
 
     // Bakes one sphere via ConcatenateSdfWithMips (real mip pool), renders it at
@@ -466,18 +618,29 @@ protected:
         int edgeColBandHits   = 0;   // hits near the left/right edges (should be near-zero for a sphere)
     };
 
-    void BakeRenderAndMeasure(bool residencyRequested, const char* outPath, RenderStats& stats) {
-        // Bake a single sphere with a real mip pool (ConcatenateSdfWithMips bakes +
-        // attaches mips per-octree; ConcatenateSdf's plain sibling never does).
-        constexpr float kRadius = 22.0f;
-        const glm::vec3 center(32.0f, 32.0f, 32.0f);
-        Vixen::SVO::RecipeParams rp{}; rp.radius = kRadius;
-        Vixen::SVO::SdfBakeResult baked =
-            Vixen::SVO::BakeRecipeToSdfWorld(Vixen::SVO::RECIPE_SPHERE, center, rp,
-                                              /*n=*/64, /*bandVoxels=*/2.5f, /*brickDepth=*/3);
-        Vixen::SVO::SdfBodyOctree body = Vixen::SVO::BuildSdfBodyOctree(baked, 3);
+    // Perf fix (root-caused 2026-07-12): bakes the sphere ONCE and caches it
+    // (function-local static, lazily initialized on first call) instead of re-baking
+    // per call -- BakeRecipeToSdfWorld's per-voxel Gaia ECS createVoxel loop (~10^5
+    // voxels, ~5 archetype migrations + a per-voxel query each) costs tens of
+    // seconds PER bake, and every caller of this helper bakes the IDENTICAL
+    // radius-22/n=64/band=2.5/depth=3 sphere. ConcatenateSdfWithMips itself is cheap
+    // (serialize + mip-bake over an already-built octree, not a re-bake) and must
+    // stay per-call since RenderPoolAndMeasure consumes (std::move) its pool.
+    static const Vixen::SVO::SdfBodyOctree& CachedSphereBody() {
+        static const Vixen::SVO::SdfBodyOctree* const cached = [] {
+            constexpr float kRadius = 22.0f;
+            const glm::vec3 center(32.0f, 32.0f, 32.0f);
+            Vixen::SVO::RecipeParams rp{}; rp.radius = kRadius;
+            Vixen::SVO::SdfBakeResult baked =
+                Vixen::SVO::BakeRecipeToSdfWorld(Vixen::SVO::RECIPE_SPHERE, center, rp,
+                                                  /*n=*/64, /*bandVoxels=*/2.5f, /*brickDepth=*/3);
+            return new Vixen::SVO::SdfBodyOctree(Vixen::SVO::BuildSdfBodyOctree(baked, 3));
+        }();
+        return *cached;
+    }
 
-        std::vector<const Vixen::SVO::SdfBodyOctree*> ptrs{&body};
+    void BakeRenderAndMeasure(bool residencyRequested, const char* outPath, RenderStats& stats) {
+        std::vector<const Vixen::SVO::SdfBodyOctree*> ptrs{&CachedSphereBody()};
         Vixen::SVO::ConcatenatedOctrees pool = Vixen::SVO::ConcatenateSdfWithMips(ptrs);
         ASSERT_GT(pool.mipPool.size(), 0u) << "ConcatenateSdfWithMips must bake a non-empty mip pool";
 
@@ -610,20 +773,15 @@ protected:
         using C = BodyOctreeSceneNodeConfig;
         ASSERT_LT(targetOctreeIndex, octreeCount);
 
-        constexpr float kRadius = 22.0f;
-        const glm::vec3 center(32.0f, 32.0f, 32.0f);
-        std::vector<Vixen::SVO::SdfBodyOctree> bodies;
-        bodies.reserve(octreeCount);
-        for (uint32_t i = 0; i < octreeCount; ++i) {
-            Vixen::SVO::RecipeParams rp{}; rp.radius = kRadius;
-            Vixen::SVO::SdfBakeResult baked =
-                Vixen::SVO::BakeRecipeToSdfWorld(Vixen::SVO::RECIPE_SPHERE, center, rp,
-                                                  /*n=*/64, /*bandVoxels=*/2.5f, /*brickDepth=*/3);
-            bodies.push_back(Vixen::SVO::BuildSdfBodyOctree(baked, 3));
-        }
-        std::vector<const Vixen::SVO::SdfBodyOctree*> ptrs;
-        ptrs.reserve(octreeCount);
-        for (const auto& b : bodies) ptrs.push_back(&b);
+        // Perf fix (root-caused 2026-07-12): reuses the SAME cached bake
+        // CachedSphereBody() (below) provides -- this fixture's sphere is byte-identical
+        // (radius-22/n=64/band=2.5/depth=3/center(32,32,32)) to every other test in this
+        // file, so the whole suite now pays for exactly ONE bake total, not one per test.
+        // ConcatenateSdfWithMips derives each octree's poolBrickBase from its LOOP INDEX
+        // (MipBake.h:336-353), not object identity, so pointing every slot at the same
+        // cached SdfBodyOctree still produces the distinct-per-index poolBrickBase
+        // values line ~786 below asserts on.
+        std::vector<const Vixen::SVO::SdfBodyOctree*> ptrs(octreeCount, &CachedSphereBody());
         Vixen::SVO::ConcatenatedOctrees pool = Vixen::SVO::ConcatenateSdfWithMips(ptrs);
         ASSERT_EQ(pool.count, octreeCount);
         ASSERT_GT(pool.mipPool.size(), 0u);
@@ -638,6 +796,12 @@ protected:
         auto nodeBase = nodeType.CreateInstance("multi_octree_grant_test");
         auto* node = dynamic_cast<BodyOctreeSceneNode*>(nodeBase.get());
         ASSERT_NE(node, nullptr);
+        // DIAGNOSTIC (temporary, root-causing the before==after identical-render bug):
+        // NODE_LOG_INFO is disabled by default per-node; only NODE_LOG_ERROR bypasses that
+        // gate (NodeLogging.h:48-49). Force INFO+terminal output so the residency/upload
+        // state-machine's own log lines (RequestBrickResidency dirty=, UploadBrickPool
+        // no-op/failed, PollBrickUploadCompletion phase transitions) are actually visible.
+        if (auto* lg = node->GetLogger()) { lg->SetEnabled(true); lg->SetTerminalOutput(true); }
 
         Resource devRes;  SetHandleVal<VulkanDevice*>(devRes, deviceShell_.get());
         Resource poolRes; SetHandleVal<VkCommandPool>(poolRes, commandPool_);
@@ -712,15 +876,64 @@ protected:
         // PollBrickUploadCompletion async state machine (Task 4b's actual target),
         // not CreateOctreeBuffers' pre-Compile path.
         node->RequestBrickResidency(true);
-        // ExecuteImpl ticks: 1) services brickResidencyDirty_ -> UploadBrickPool queues
-        // the async copy; 2) PollBrickUploadCompletion phase 1 (bricks visible, queues
-        // config re-upload); 3) phase 2 (config re-upload visible). Lockstep host-visible/
-        // host-coherent uploads on this fixture's device complete same-tick, but poll a
-        // few extra ticks defensively rather than assume exactly 3.
-        for (int tick = 0; tick < 6; ++tick) {
+        // Time-bounded poll, not a fixed tick count (root-caused 2026-07-12: a fixed
+        // 6-tick loop silently PASSES vacuously when the GPU copy hasn't completed yet --
+        // no error, "after" just re-renders "before"'s state, and the gate can't tell the
+        // difference between "genuinely instant" and "never actually landed"). Poll real
+        // elapsed wall-clock time against IsBrickPoolUploaded() -- NOT BootBytesUploaded(),
+        // which is a DIFFERENT signal that flips non-zero the instant the upload is QUEUED
+        // (UploadBrickPool, BodyOctreeSceneNode.cpp:967-968), before the GPU copy has
+        // actually landed (that's IsBrickPoolUploaded(), set only inside
+        // PollBrickUploadCompletion once device->IsUploadComplete() is true,
+        // BodyOctreeSceneNode.cpp:991). A first version of this fix polled BootBytesUploaded
+        // and stopped after 1 tick / 2.23ms every time, well before the real GPU completion
+        // -- proven by "after" still rendering byte-identical to "before" despite the poll
+        // reporting success; this is why BOTH signals matter and must not be conflated.
+        constexpr auto kUploadPollTimeout = std::chrono::seconds(30);
+        const auto pollStart = std::chrono::steady_clock::now();
+        int ticksUntilUploaded = 0;
+        while (!node->IsBrickPoolUploaded() &&
+               std::chrono::steady_clock::now() - pollStart < kUploadPollTimeout) {
             ++frameIndex; SetHandleVal<uint32_t>(frRes, frameIndex);
             ASSERT_NO_THROW(node->Execute());
+            ++ticksUntilUploaded;
         }
+        const auto phase1Elapsed = std::chrono::steady_clock::now() - pollStart;
+        std::printf("[MULTI-OCTREE-GRANT] phase1 (brick upload) poll: %d ticks, %.2f ms wall-clock, "
+                    "IsBrickPoolUploaded=%d\n",
+                    ticksUntilUploaded,
+                    std::chrono::duration<double, std::milli>(phase1Elapsed).count(),
+                    int(node->IsBrickPoolUploaded()));
+        ASSERT_TRUE(node->IsBrickPoolUploaded())
+            << "Brick upload did not complete within " << kUploadPollTimeout.count()
+            << "s of wall-clock polling (" << ticksUntilUploaded << " Execute() ticks) -- "
+               "either PollBrickUploadCompletion never observed GPU completion, or the "
+               "machine is under such extreme scheduling contention that even a real, "
+               "already-submitted small GPU copy cannot complete in 30s. Re-run when the "
+               "machine is less loaded before treating this as a code regression.";
+
+        // Phase 2 (BodyOctreeSceneNode.cpp:1023-1030): the shell-compact config re-upload
+        // that actually stamps brickResident=1 into the buffer the shader samples -- until
+        // THIS lands, the shader still reads the pre-grant config and renders the mip
+        // fallback regardless of phase 1's completion. No public accessor exists for
+        // pendingConfigUploadHandle_'s state, so poll by TIME (a fixed small number of
+        // ticks proved sufficient once phase 1's real timing was known -- both phases
+        // complete within single-digit ms once actually triggered, per the 2026-07-12
+        // measurement: phase 1 lands same-tick when polled correctly) rather than
+        // reintroducing an unobserved fixed-count assumption.
+        constexpr auto kConfigPollTimeout = std::chrono::seconds(5);
+        const auto configPollStart = std::chrono::steady_clock::now();
+        int configTicks = 0;
+        while (std::chrono::steady_clock::now() - configPollStart < kConfigPollTimeout &&
+               configTicks < 8) {
+            ++frameIndex; SetHandleVal<uint32_t>(frRes, frameIndex);
+            ASSERT_NO_THROW(node->Execute());
+            ++configTicks;
+        }
+        std::printf("[MULTI-OCTREE-GRANT] phase2 (config re-upload) drain: %d ticks, %.2f ms wall-clock\n",
+                    configTicks,
+                    std::chrono::duration<double, std::milli>(
+                        std::chrono::steady_clock::now() - configPollStart).count());
 
         measure("/tmp/multi_octree_grant_after.png", afterStats);
 

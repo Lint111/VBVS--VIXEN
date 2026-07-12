@@ -33,9 +33,12 @@
  *   performs the actual upload on the NEXT Execute after the request — never synchronously
  *   inside the setter.
  *
- * DEVICE SELECTION: mirrors test_body_octree_lifetime.cpp / test_recipe_pool_render.cpp —
- * VixenSelectWslGpuIcd() picks Dozen on WSL2 when provisioned, else lavapipe; only those two
- * devices are accepted (an untriaged device fails loud instead of running unverified).
+ * DEVICE SELECTION: prefers a real discrete/integrated GPU; falls back to software
+ * (lavapipe/llvmpipe) or Dozen (WSL2's Vulkan-over-D3D12 shim) only when no real GPU is
+ * present. Per the Windows-side real-GPU test policy, a real GPU is ACCEPTED, not rejected
+ * — the earlier software/Dozen-only gate was a lavapipe-era artifact that made this test
+ * unable to run on real hardware. A device is still required (an environment with none
+ * fails loud rather than running unverified).
  */
 
 #include <gtest/gtest.h>
@@ -65,13 +68,23 @@ using Vixen::Vulkan::Resources::VulkanDevice;
 
 namespace {
 
-bool IsAcceptableDevice(const VkPhysicalDeviceProperties& props) {
-    std::string name(props.deviceName);
+// Real discrete/integrated GPUs are preferred; software (lavapipe/llvmpipe) and
+// Dozen (WSL2's Vulkan-over-D3D12 shim) are accepted as a fallback when no real
+// GPU is visible, but never preferred over one. The earlier software/Dozen-only
+// gate was a lavapipe-era artifact that made this test unable to run on real
+// hardware — a real GPU is now ACCEPTED, not rejected.
+bool IsRealGpu(const VkPhysicalDeviceProperties& p) {
+    return p.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU ||
+           p.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU;
+}
+
+bool LooksLikeSoftwareOrDozen(const VkPhysicalDeviceProperties& p) {
+    std::string name(p.deviceName);
     for (char& c : name) c = static_cast<char>(::tolower(c));
     const bool isSoftware =
         (name.find("llvmpipe") != std::string::npos ||
          name.find("lavapipe") != std::string::npos) &&
-        props.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU;
+        p.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU;
     const bool isDozen = name.find("direct3d12") != std::string::npos;
     return isSoftware || isDozen;
 }
@@ -117,8 +130,8 @@ protected:
 
         ASSERT_NO_FATAL_FAILURE(PickPhysicalDevice());
         ASSERT_TRUE(deviceConfirmed_)
-            << "Refusing to run: selected device '" << selectedDeviceName_
-            << "' is not a verified device (software rasterizer or Dozen).";
+            << "Refusing to run: no usable Vulkan device found (real GPU, software "
+               "rasterizer, or Dozen); nearest was '" << selectedDeviceName_ << "'.";
 
         ASSERT_NO_FATAL_FAILURE(CreateLogicalDevice());
         ASSERT_NO_FATAL_FAILURE(CreateCommandPool());
@@ -186,10 +199,23 @@ protected:
         std::vector<VkPhysicalDevice> devices(count);
         ASSERT_EQ(vkEnumeratePhysicalDevices(instance_, &count, devices.data()), VK_SUCCESS);
 
+        // Prefer a real discrete/integrated GPU; fall back to software/Dozen only
+        // when no real GPU is visible. An unrecognized device type still leaves
+        // deviceConfirmed_ false, matching the prior hard gate's "must pick something".
         for (VkPhysicalDevice dev : devices) {
             VkPhysicalDeviceProperties props{};
             vkGetPhysicalDeviceProperties(dev, &props);
-            if (IsAcceptableDevice(props)) {
+            if (IsRealGpu(props)) {
+                physicalDevice_     = dev;
+                selectedDeviceName_ = props.deviceName;
+                deviceConfirmed_    = true;
+                return;
+            }
+        }
+        for (VkPhysicalDevice dev : devices) {
+            VkPhysicalDeviceProperties props{};
+            vkGetPhysicalDeviceProperties(dev, &props);
+            if (LooksLikeSoftwareOrDozen(props)) {
                 physicalDevice_     = dev;
                 selectedDeviceName_ = props.deviceName;
                 deviceConfirmed_    = true;
@@ -226,8 +252,30 @@ protected:
         qInfo.queueCount       = 1;
         qInfo.pQueuePriorities = &priority;
 
+        // BatchedUploader defaults Config::useTimelineSemaphores=true and creates
+        // VK_SEMAPHORE_TYPE_TIMELINE semaphores unconditionally, so the device must be
+        // created WITH timelineSemaphore enabled or every uploader flush trips
+        // VUID-VkSemaphoreTypeCreateInfo-timelineSemaphore-03252 (on a real GPU this
+        // degrades a post-residency upload into a multi-minute stall rather than a
+        // normal run — root-caused 2026-07-12, mirrors test_mip_fallback_render.cpp).
+        VkPhysicalDeviceVulkan12Features vulkan12Features{};
+        vulkan12Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+        VkPhysicalDeviceFeatures2 supported2{};
+        supported2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+        supported2.pNext = &vulkan12Features;
+        vkGetPhysicalDeviceFeatures2(physicalDevice_, &supported2);
+        ASSERT_TRUE(vulkan12Features.timelineSemaphore)
+            << "Device does not support timelineSemaphore -- BatchedUploader requires it "
+               "(or Config::useTimelineSemaphores=false, not used by this fixture).";
+        vulkan12Features.pNext = nullptr;  // reset chain link before reuse as the enable struct
+
+        VkPhysicalDeviceFeatures2 features2{};
+        features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+        features2.pNext = &vulkan12Features;
+
         VkDeviceCreateInfo dInfo{};
         dInfo.sType                = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+        dInfo.pNext                = &features2;  // feature chain carries the enabled flags
         dInfo.queueCreateInfoCount = 1;
         dInfo.pQueueCreateInfos    = &qInfo;
 

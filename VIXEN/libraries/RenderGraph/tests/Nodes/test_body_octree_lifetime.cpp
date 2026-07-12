@@ -17,9 +17,11 @@
  * validation errors and no VM instability. The earlier "LAVAPIPE ONLY / dxgkrnl kernel-panics
  * the VM" restriction predated BodyOctreeSceneNode::CleanupImpl's Recompile-persists-buffers
  * guard and the KI-004 DeviceLost fix (both already fix the destroy-while-in-flight race this
- * test exercises) — it was stale, not a live hazard. IsAcceptableDevice() still refuses to
- * run on an unrecognized device (anything that isn't the known software rasterizer or Dozen),
- * so an untriaged GPU still fails loud rather than risk it.
+ * test exercises) — it was stale, not a live hazard. A real discrete/integrated GPU is now
+ * PREFERRED, with software (lavapipe/llvmpipe) or Dozen used only as a fallback when no real
+ * GPU is visible — the earlier software/Dozen-only gate was a lavapipe-era artifact that made
+ * this test unable to run on real hardware. The picker still refuses to run when NO usable
+ * device is visible, so an environment with none fails loud rather than risk it.
  *
  * WHAT THIS PROVES vs DEFERS (honest scope):
  *   PROVES (validation catches these on a real driver):
@@ -138,10 +140,15 @@ protected:
     PFN_vkCreateDebugUtilsMessengerEXT  pfnCreateMessenger_  = nullptr;
     PFN_vkDestroyDebugUtilsMessengerEXT pfnDestroyMessenger_ = nullptr;
 
-    // Accepts the known-safe devices this test has actually been verified against: the
-    // software rasterizer (llvmpipe/lavapipe, CPU) or Mesa-Dozen (Vulkan-over-D3D12, reports
-    // as a real GPU type). Rejects anything else — an untriaged device still fails loud rather
-    // than risk an unverified GPU path.
+    // Real discrete/integrated GPUs are now PREFERRED; software/Dozen is only a
+    // fallback when no real GPU is visible.
+    static bool IsRealGpu(const VkPhysicalDeviceProperties& props) {
+        return props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU ||
+               props.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU;
+    }
+
+    // The software rasterizer (llvmpipe/lavapipe, CPU) or Mesa-Dozen (Vulkan-over-D3D12)
+    // — accepted as a fallback when no real GPU is visible.
     static bool IsAcceptableDevice(const VkPhysicalDeviceProperties& props) {
         std::string name(props.deviceName);
         for (char& c : name) c = static_cast<char>(::tolower(c));
@@ -208,11 +215,11 @@ protected:
             ASSERT_EQ(pfnCreateMessenger_(instance_, &msgInfo, nullptr, &messenger_), VK_SUCCESS);
         }
 
-        // ---- Physical device: software rasterizer or Dozen ONLY ----------------
+        // ---- Physical device: prefer a real GPU, fall back to software/Dozen ---
         ASSERT_NO_FATAL_FAILURE(PickPhysicalDevice());
         ASSERT_TRUE(deviceConfirmed_)
-            << "Refusing to run: selected device '" << selectedDeviceName_
-            << "' is not a verified device (software rasterizer or Dozen). "
+            << "Refusing to run: no usable Vulkan device found (real GPU, software "
+               "rasterizer, or Dozen); nearest was '" << selectedDeviceName_ << "'. "
                "Aborting before any vkQueueSubmit.";
 
         // ---- Logical device + queue + command pool -----------------------------
@@ -276,6 +283,18 @@ protected:
         std::vector<VkPhysicalDevice> devices(count);
         ASSERT_EQ(vkEnumeratePhysicalDevices(instance_, &count, devices.data()), VK_SUCCESS);
 
+        // Prefer a real discrete/integrated GPU; fall back to software/Dozen only
+        // when no real GPU is visible.
+        for (VkPhysicalDevice dev : devices) {
+            VkPhysicalDeviceProperties props{};
+            vkGetPhysicalDeviceProperties(dev, &props);
+            if (IsRealGpu(props)) {
+                physicalDevice_     = dev;
+                selectedDeviceName_ = props.deviceName;
+                deviceConfirmed_    = true;
+                return;
+            }
+        }
         for (VkPhysicalDevice dev : devices) {
             VkPhysicalDeviceProperties props{};
             vkGetPhysicalDeviceProperties(dev, &props);

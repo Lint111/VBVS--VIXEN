@@ -502,6 +502,21 @@ target_link_libraries(RenderGraphNodes PUBLIC ${RENDERGRAPH_NODE_OBJECT_LIBS} Re
 # STATIC archive (it still bundles the not-yet-split UI sources), so it can
 # still be stripped by a downstream linker; keep whole-archiving IT, which
 # also unconditionally pulls in its linked OBJECT-library members.
+#
+# CAVEAT (root-caused 2026-07-12, NodeSelfRegistration.* failing with node
+# count 0 under MSVC): "unconditionally included" refers to the .obj files
+# landing on the link line, which does hold. But each node's self-registration
+# depends on a static-initializer side effect (RegisterNodeFactory called from
+# namespace scope) with no other symbol in that .obj ever referenced by the
+# rest of the program -- MSVC's /OPT:REF (on by default) performs COMDAT-level
+# garbage collection independent of archive-member selection, and can still
+# discard an entire unreferenced translation unit's static initializers even
+# when its .obj is unconditionally on the link line. WHOLE_ARCHIVE/WHOLEARCHIVE
+# do not apply to OBJECT library targets at all (CMake docs: LINK_LIBRARY's
+# WHOLE_ARCHIVE feature is a no-op for OBJECT/INTERFACE targets; MSVC's
+# /WHOLEARCHIVE requires a .lib archive path, not a loose .obj) -- see
+# NodeRegistration.h/.cpp for the actual fix (force-referencing each node's
+# registrar, not a linker-flag change here).
 # ----------------------------------------------------------------------------
 add_library(RenderGraph INTERFACE)
 target_link_libraries(RenderGraph INTERFACE RenderGraphCore)

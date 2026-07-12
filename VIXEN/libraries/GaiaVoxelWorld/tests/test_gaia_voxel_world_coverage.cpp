@@ -487,7 +487,20 @@ TEST(GaiaVoxelWorldCoverageTest, CreateVoxel_AutoParent_MultipleChunks) {
     EXPECT_TRUE(std::find(chunk2Voxels.begin(), chunk2Voxels.end(), voxel2Entity) != chunk2Voxels.end());
 }
 
-TEST(GaiaVoxelWorldCoverageTest, CreateVoxelsBatch_AutoParent_ToExistingChunk) {
+TEST(GaiaVoxelWorldCoverageTest, CreateVoxelsBatch_SkipsAutoParent_ToExistingChunk) {
+    // Contract change (root-caused 2026-07-12): this test originally asserted
+    // createVoxelsBatch auto-parents new voxels to an existing chunk, matching
+    // createVoxel's per-voxel behavior at the time it was written (2eb16410,
+    // 2025-11-23). A later perf optimization (25eb5989, 2025-11-27,
+    // GaiaVoxelWorld.cpp's createVoxelsBatch "Skip tryAutoParentToChunk() ...
+    // for speed" comment) deliberately dropped chunk-parenting from the batch
+    // path -- an O(chunks) per-voxel query that dominates bulk-load cost -- but
+    // never updated this test. Real production callers (VoxelInjectionQueue.cpp,
+    // VoxelSceneCacher.cpp) rely on exactly this fast, no-parenting behavior, so
+    // restoring auto-parenting inside createVoxelsBatch would regress them; the
+    // header (GaiaVoxelWorld.h) documents no auto-parenting contract for the
+    // batch API either. This test now asserts the actual, intentional contract:
+    // createVoxelsBatch creates entities but does NOT auto-parent them.
     GaiaVoxelWorld world;
 
     ComponentQueryRequest comps[] = {Density{1.0f}};
@@ -511,13 +524,22 @@ TEST(GaiaVoxelWorldCoverageTest, CreateVoxelsBatch_AutoParent_ToExistingChunk) {
     auto entities = world.createVoxelsBatch(batchVoxels);
     ASSERT_EQ(entities.size(), 3);
 
-    // All batch voxels should be auto-parented to chunk
+    // Batch voxels are NOT auto-parented -- chunk membership stays at the
+    // original 8 (createVoxelsBatch does not run tryAutoParentToChunk).
     auto voxelsInChunk = world.getVoxelsInChunk(chunkEntity);
-    EXPECT_EQ(voxelsInChunk.size(), 11) << "8 original + 3 auto-parented from batch";
+    EXPECT_EQ(voxelsInChunk.size(), 8) << "createVoxelsBatch skips chunk auto-parenting by design";
 
     for (auto entity : entities) {
         bool found = std::find(voxelsInChunk.begin(), voxelsInChunk.end(), entity) != voxelsInChunk.end();
-        EXPECT_TRUE(found) << "Batch voxel should be auto-parented to existing chunk";
+        EXPECT_FALSE(found) << "Batch voxels should NOT be auto-parented (createVoxelsBatch fast path)";
+    }
+
+    // The entities DO exist in the world (created, just not chunk-parented) --
+    // verify via the world's own Morton-keyed spatial lookup, the mechanism
+    // every real downstream consumer (SdfBake.h, LaineKarrasOctree::rebuild)
+    // actually uses instead of chunk membership.
+    for (auto entity : entities) {
+        EXPECT_TRUE(world.exists(entity));
     }
 }
 

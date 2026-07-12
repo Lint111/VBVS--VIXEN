@@ -10,7 +10,7 @@ using namespace Vixen::GaiaVoxel;
 // ===========================================================================
 
 TEST(ComponentSystemTest, MacroComponentRegistry_AllComponentsAccessible) {
-    // Verify all 12 components registered via FOR_EACH_COMPONENT macro
+    // Verify all components registered via FOR_EACH_COMPONENT macro
     size_t componentCount = 0;
     std::vector<std::string> names;
 
@@ -20,19 +20,25 @@ TEST(ComponentSystemTest, MacroComponentRegistry_AllComponentsAccessible) {
         componentCount++;
     });
 
-    // FOR_EACH_COMPONENT: 7 Value types + 5 Ref types = 12 total
-    EXPECT_EQ(componentCount, 12);
+    // FOR_EACH_VALUE_COMPONENT (VoxelComponents.h:497-506): 9 Value types
+    // + FOR_EACH_REF_COMPONENT (VoxelComponents.h:509-514): 5 Ref types = 14 total
+    EXPECT_EQ(componentCount, 14);
 
     // Verify Value-type component names
     EXPECT_TRUE(std::find(names.begin(), names.end(), "density") != names.end());
     EXPECT_TRUE(std::find(names.begin(), names.end(), "material") != names.end());
     EXPECT_TRUE(std::find(names.begin(), names.end(), "emission_intensity") != names.end());
+    EXPECT_TRUE(std::find(names.begin(), names.end(), "roughness") != names.end());
     EXPECT_TRUE(std::find(names.begin(), names.end(), "color") != names.end());
     EXPECT_TRUE(std::find(names.begin(), names.end(), "normal") != names.end());
     EXPECT_TRUE(std::find(names.begin(), names.end(), "emission") != names.end());
     EXPECT_TRUE(std::find(names.begin(), names.end(), "position") != names.end()); // MortonKey
+    EXPECT_TRUE(std::find(names.begin(), names.end(), "layer_mask") != names.end());
 
-    // Verify Ref-type component names
+    // Verify Ref-type component names. VolumeTransform (VoxelComponents.h:175) inherits
+    // Transform without overriding Name, so it also reports "transform" -- both FOR_EACH_
+    // REF_COMPONENT entries collapse to the same name string, hence 5 ref components but
+    // only 4 distinct ref-type names checked here.
     EXPECT_TRUE(std::find(names.begin(), names.end(), "transform") != names.end());
     EXPECT_TRUE(std::find(names.begin(), names.end(), "aabb") != names.end());
     EXPECT_TRUE(std::find(names.begin(), names.end(), "volume") != names.end());
@@ -50,11 +56,13 @@ TEST(ComponentSystemTest, MacroComponentRegistry_ValueComponents) {
         componentCount++;
     });
 
-    // FOR_EACH_VALUE_COMPONENT: 7 Value types
-    EXPECT_EQ(componentCount, 7);
+    // FOR_EACH_VALUE_COMPONENT (VoxelComponents.h:497-506): 9 Value types
+    EXPECT_EQ(componentCount, 9);
 
     EXPECT_TRUE(std::find(names.begin(), names.end(), "density") != names.end());
     EXPECT_TRUE(std::find(names.begin(), names.end(), "position") != names.end()); // MortonKey
+    EXPECT_TRUE(std::find(names.begin(), names.end(), "roughness") != names.end());
+    EXPECT_TRUE(std::find(names.begin(), names.end(), "layer_mask") != names.end());
 }
 
 TEST(ComponentSystemTest, ComponentRegistry_VisitByName) {

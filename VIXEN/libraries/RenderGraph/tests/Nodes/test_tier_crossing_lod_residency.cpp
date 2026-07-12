@@ -114,6 +114,13 @@ protected:
 
     std::unique_ptr<VulkanDevice> deviceShell_;
 
+    // Real discrete/integrated GPUs are now PREFERRED; software/Dozen is only a
+    // fallback when no real GPU is visible.
+    static bool IsRealGpu(const VkPhysicalDeviceProperties& props) {
+        return props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU ||
+               props.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU;
+    }
+
     static bool LooksLikeSoftware(const VkPhysicalDeviceProperties& props) {
         std::string name(props.deviceName);
         for (char& c : name) c = static_cast<char>(::tolower(c));
@@ -149,8 +156,8 @@ protected:
 
         ASSERT_NO_FATAL_FAILURE(PickSoftwarePhysicalDevice());
         ASSERT_TRUE(softwareConfirmed_)
-            << "Refusing to run: selected device '" << selectedDeviceName_
-            << "' is not a verified device (software rasterizer or Dozen).";
+            << "Refusing to run: no usable Vulkan device found (real GPU, software "
+               "rasterizer, or Dozen); nearest was '" << selectedDeviceName_ << "'.";
 
         ASSERT_NO_FATAL_FAILURE(CreateLogicalDevice());
         ASSERT_NO_FATAL_FAILURE(CreateCommandPool());
@@ -175,6 +182,16 @@ protected:
         ASSERT_GT(count, 0u) << "No Vulkan physical devices visible.";
         std::vector<VkPhysicalDevice> devices(count);
         ASSERT_EQ(vkEnumeratePhysicalDevices(instance_, &count, devices.data()), VK_SUCCESS);
+        // Prefer a real discrete/integrated GPU; fall back to software/Dozen only
+        // when no real GPU is visible.
+        for (VkPhysicalDevice dev : devices) {
+            VkPhysicalDeviceProperties props{};
+            vkGetPhysicalDeviceProperties(dev, &props);
+            if (IsRealGpu(props)) {
+                physicalDevice_ = dev; selectedDeviceName_ = props.deviceName;
+                softwareConfirmed_ = true; return;
+            }
+        }
         for (VkPhysicalDevice dev : devices) {
             VkPhysicalDeviceProperties props{};
             vkGetPhysicalDeviceProperties(dev, &props);

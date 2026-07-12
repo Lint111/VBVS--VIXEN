@@ -107,6 +107,10 @@
 #include "ShaderBundleBuilder.h"
 #include "TestVkValidation.h"
 #include "VulkanGlobalNames.h"  // VixenSelectWslGpuIcd
+#include "Generated/LightingConfig.g.h"  // Sampled Lighting Inc0 M3: real default light content
+                                          // (a zeroed LightingConfig has lightCount=0 -> pure
+                                          // black shaded output -> invisible to this test's own
+                                          // luminance-threshold silhouette check)
 
 #include <vulkan/vulkan.h>
 
@@ -165,8 +169,16 @@ struct PushConstants {
     glm::vec3 cameraRight; int32_t debugMode;
     float raySizeCoef; float raySizeBias; int32_t instanceCount;
     int32_t _pad0;         glm::ivec2 debugTargetPixel;
+    uint32_t accumFrameCount;  // Sampled Lighting Inc2 M2 (bytes 88-91) — unused by this
+                               // geometry-only parity harness (no accumulation config bound,
+                               // so the shader's accumulationConfig.enabled==0 passthrough
+                               // stays byte-identical regardless of this field's value).
+    uint32_t _pad1;            // std430 push-constant block rounds up to a 16-byte multiple
+                               // (leading vec3 forces 16-byte block alignment) -- SPIR-V
+                               // reflection reports 96 bytes total, not 92; this trailing pad
+                               // matches that so sizeof(pc) == the real VkPushConstantRange.
 };
-static_assert(sizeof(PushConstants) == 88, "PushConstants must be 88 bytes");
+static_assert(sizeof(PushConstants) == 96, "PushConstants must be 96 bytes (std430 push block, 16-byte rounded)");
 
 std::string ReadFile(const std::string& path) {
     std::ifstream f(path);
@@ -542,6 +554,34 @@ protected:
         if (zero) { void* m=nullptr; vkMapMemory(logicalDevice_, mem, 0, size, 0, &m); std::memset(m,0,size_t(size)); vkUnmapMemory(logicalDevice_, mem); }
     }
 
+    // Sampled Lighting Inc0 M3: the same directional-light default LightingConfigNode uploads
+    // in the real graph (MakeDefaultLightingConfig — direction normalize(1,1,-1), white
+    // radiance, ambientIntensity 0.3) — this harness bypasses LightingConfigNode entirely, so
+    // it must write this itself or the shaded output is pure black (lightCount=0).
+    static Vixen::Gpu::LightingConfig MakeTestDefaultLightingConfig() {
+        Vixen::Gpu::LightingConfig cfg{};
+        cfg.lightCount       = 1u;
+        cfg.ambientIntensity = 0.3f;
+        const float dx = 1.0f, dy = 1.0f, dz = -1.0f;
+        const float invLen = 1.0f / std::sqrt(dx*dx + dy*dy + dz*dz);
+        cfg.lights[0].direction_or_positionX = dx * invLen;
+        cfg.lights[0].direction_or_positionY = dy * invLen;
+        cfg.lights[0].direction_or_positionZ = dz * invLen;
+        cfg.lights[0].kind      = 0u;
+        cfg.lights[0].radianceX = 1.0f;
+        cfg.lights[0].radianceY = 1.0f;
+        cfg.lights[0].radianceZ = 1.0f;
+        cfg.lights[0].range     = 0.0f;
+        return cfg;
+    }
+
+    void UploadBufferContent(VkDeviceMemory mem, const void* data, size_t size) {
+        void* m = nullptr;
+        ASSERT_EQ(vkMapMemory(logicalDevice_, mem, 0, size, 0, &m), VK_SUCCESS);
+        std::memcpy(m, data, size);
+        vkUnmapMemory(logicalDevice_, mem);
+    }
+
     // Render dispatch — takes an explicit compiled SPIR-V module (either the build-time-loaded
     // one for the baked path, or the runtime-compiled spliced one for the virtual path). Binds
     // all 17 bindings (0-5,8-16) so both paths always see a fully-populated descriptor set
@@ -569,12 +609,41 @@ protected:
         if (tierRef == VK_NULL_HANDLE) { CreateHostBuffer(256,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummyTierRef,dTierRefMem,true); tierRef = dummyTierRef; }
         if (occGrid == VK_NULL_HANDLE) { CreateHostBuffer(256,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummyOccGrid,dOccGridMem,true); occGrid = dummyOccGrid; }
 
-        VkImage colorImg=VK_NULL_HANDLE, idImg=VK_NULL_HANDLE;
-        VkDeviceMemory colorMem=VK_NULL_HANDLE, idMem=VK_NULL_HANDLE;
+        // Sampled Lighting Inc0-Inc2 bindings (17-22): this harness only checks GEOMETRIC
+        // equivalence (baked vs virtual octree traversal), not shading, so these are bound as
+        // zeroed placeholders — LightingConfig/ShadowConfig/AccumulationConfig all default to
+        // effectively-inert content (accumulationConfig.enabled==0 keeps the temporal-accum
+        // seam a pure passthrough; shadowConfig with a zeroed enabled flag skips shadow rays)
+        // and HitRecord/PrevCameraConfig are round-tripped but not read for this test's own
+        // pass/fail signal (RenderToRgba only samples the color image below).
+        VkBuffer dummyLighting=VK_NULL_HANDLE, dummyHitRecord=VK_NULL_HANDLE, dummyShadow=VK_NULL_HANDLE,
+                 dummyAccum=VK_NULL_HANDLE, dummyPrevCam=VK_NULL_HANDLE;
+        VkDeviceMemory dLightingMem=VK_NULL_HANDLE, dHitRecordMem=VK_NULL_HANDLE, dShadowMem=VK_NULL_HANDLE,
+                       dAccumMem=VK_NULL_HANDLE, dPrevCamMem=VK_NULL_HANDLE;
+        CreateHostBuffer(256,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummyLighting,dLightingMem,true);
+        {
+            const Vixen::Gpu::LightingConfig defaultLighting = MakeTestDefaultLightingConfig();
+            ASSERT_NO_FATAL_FAILURE(UploadBufferContent(dLightingMem, &defaultLighting, sizeof(defaultLighting)));
+        }
+        // HitRecord.glsl's HitRecord struct is 64 bytes; the shader indexes it by the FULL
+        // flat pixel count (y*imgSize.x+x, up to w*h-1) every dispatch, so this buffer MUST be
+        // sized for the actual w*h being rendered here -- a fixed small guess (the previous
+        // 65536-byte placeholder only covers 1024 pixels) writes out of bounds for any
+        // non-trivial w*h and silently corrupts/discards the round-trip this milestone proves.
+        const VkDeviceSize hitRecordBufSize = VkDeviceSize(w) * VkDeviceSize(h) * 64;
+        CreateHostBuffer(hitRecordBufSize,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummyHitRecord,dHitRecordMem,true);
+        CreateHostBuffer(256,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummyShadow,dShadowMem,true);
+        CreateHostBuffer(256,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummyAccum,dAccumMem,true);
+        CreateHostBuffer(256,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummyPrevCam,dPrevCamMem,true);
+
+        VkImage colorImg=VK_NULL_HANDLE, idImg=VK_NULL_HANDLE, historyImg=VK_NULL_HANDLE;
+        VkDeviceMemory colorMem=VK_NULL_HANDLE, idMem=VK_NULL_HANDLE, historyMem=VK_NULL_HANDLE;
         ASSERT_NO_FATAL_FAILURE(CreateImage(w,h,VK_FORMAT_R8G8B8A8_UNORM, colorImg, colorMem));
         ASSERT_NO_FATAL_FAILURE(CreateImage(w,h,VK_FORMAT_R32_UINT, idImg, idMem));
-        VkImageView colorView = MakeView(colorImg, VK_FORMAT_R8G8B8A8_UNORM);
-        VkImageView idView    = MakeView(idImg,    VK_FORMAT_R32_UINT);
+        ASSERT_NO_FATAL_FAILURE(CreateImage(w,h,VK_FORMAT_R8G8B8A8_UNORM, historyImg, historyMem));
+        VkImageView colorView   = MakeView(colorImg,   VK_FORMAT_R8G8B8A8_UNORM);
+        VkImageView idView      = MakeView(idImg,      VK_FORMAT_R32_UINT);
+        VkImageView historyView = MakeView(historyImg, VK_FORMAT_R8G8B8A8_UNORM);
 
         ASSERT_FALSE(spirv.empty()) << "runtime-compiled SPIR-V is empty";
         VkShaderModuleCreateInfo smc{}; smc.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
@@ -586,7 +655,7 @@ protected:
             VkDescriptorSetLayoutBinding lb{}; lb.binding=b; lb.descriptorType=t;
             lb.descriptorCount=1; lb.stageFlags=VK_SHADER_STAGE_COMPUTE_BIT; return lb;
         };
-        const std::array<VkDescriptorSetLayoutBinding,15> bindings = {
+        const std::array<VkDescriptorSetLayoutBinding,21> bindings = {
             bindL(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             bindL(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bindL(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
@@ -602,6 +671,12 @@ protected:
             bindL(14,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bindL(15,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bindL(16,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // M6 Task 13: OccupancyGridBuffer
+            bindL(17,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Sampled Lighting Inc0 M3: LightingConfigSSBO
+            bindL(18,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Sampled Lighting Inc1 M3: HitRecordBuffer
+            bindL(19,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Sampled Lighting Inc1 M4: ShadowConfigSSBO
+            bindL(20,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Sampled Lighting Inc2 M1: AccumulationConfigSSBO
+            bindL(21,VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),   // Sampled Lighting Inc2 M1: historyImage
+            bindL(22,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Sampled Lighting Inc2 M3: PrevCameraConfigSSBO
         };
         VkDescriptorSetLayoutCreateInfo dslci{}; dslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         dslci.bindingCount = uint32_t(bindings.size()); dslci.pBindings = bindings.data();
@@ -622,8 +697,8 @@ protected:
         ASSERT_EQ(vkCreateComputePipelines(logicalDevice_,VK_NULL_HANDLE,1,&cpci,nullptr,&pipeline), VK_SUCCESS);
 
         const std::array<VkDescriptorPoolSize,2> poolSizes = {{
-            {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  2},
-            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 13},
+            {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  3},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 18},
         }};
         VkDescriptorPoolCreateInfo dpci{}; dpci.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         dpci.maxSets=1; dpci.poolSizeCount=uint32_t(poolSizes.size()); dpci.pPoolSizes=poolSizes.data();
@@ -636,11 +711,15 @@ protected:
 
         VkDescriptorImageInfo colImg{VK_NULL_HANDLE,colorView,VK_IMAGE_LAYOUT_GENERAL};
         VkDescriptorImageInfo idImgI{VK_NULL_HANDLE,idView,VK_IMAGE_LAYOUT_GENERAL};
+        VkDescriptorImageInfo historyImgI{VK_NULL_HANDLE,historyView,VK_IMAGE_LAYOUT_GENERAL};
         VkDescriptorBufferInfo nodesI{nodes,0,VK_WHOLE_SIZE}, bricksI{bricks,0,VK_WHOLE_SIZE},
             matsI{mats,0,VK_WHOLE_SIZE}, traceI{traceBuf,0,VK_WHOLE_SIZE}, cfgI{cfg,0,VK_WHOLE_SIZE},
             ctrI{ctrBuf,0,VK_WHOLE_SIZE}, instI{inst,0,VK_WHOLE_SIZE},
             sdfI{sdf,0,VK_WHOLE_SIZE}, lookupI{lookup,0,VK_WHOLE_SIZE}, iterI{dummyIter,0,VK_WHOLE_SIZE}, mipI{mip,0,VK_WHOLE_SIZE},
-            tierRefI{tierRef,0,VK_WHOLE_SIZE}, occGridI{occGrid,0,VK_WHOLE_SIZE};
+            tierRefI{tierRef,0,VK_WHOLE_SIZE}, occGridI{occGrid,0,VK_WHOLE_SIZE},
+            lightingI{dummyLighting,0,VK_WHOLE_SIZE}, hitRecordI{dummyHitRecord,0,VK_WHOLE_SIZE},
+            shadowI{dummyShadow,0,VK_WHOLE_SIZE}, accumI{dummyAccum,0,VK_WHOLE_SIZE},
+            prevCamI{dummyPrevCam,0,VK_WHOLE_SIZE};
 
         auto wI = [&](uint32_t b, VkDescriptorImageInfo* info) {
             VkWriteDescriptorSet w{}; w.sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -652,10 +731,12 @@ protected:
             w.dstSet=ds; w.dstBinding=b; w.descriptorCount=1;
             w.descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; w.pBufferInfo=info; return w;
         };
-        const std::array<VkWriteDescriptorSet,15> writes = {
+        const std::array<VkWriteDescriptorSet,21> writes = {
             wI(0,&colImg), wB(1,&nodesI), wB(2,&bricksI), wB(3,&matsI), wB(4,&traceI),
             wB(5,&cfgI), wB(8,&ctrI), wI(9,&idImgI), wB(10,&instI), wB(11,&sdfI), wB(12,&lookupI), wB(13,&mipI),
             wB(14,&iterI), wB(15,&tierRefI), wB(16,&occGridI),
+            wB(17,&lightingI), wB(18,&hitRecordI), wB(19,&shadowI), wB(20,&accumI),
+            wI(21,&historyImgI), wB(22,&prevCamI),
         };
         vkUpdateDescriptorSets(logicalDevice_, uint32_t(writes.size()), writes.data(), 0, nullptr);
 
@@ -676,7 +757,7 @@ protected:
             vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
                 VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,0,0,nullptr,0,nullptr,1,&b);
         };
-        toGeneral(colorImg); toGeneral(idImg);
+        toGeneral(colorImg); toGeneral(idImg); toGeneral(historyImg);
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pl, 0, 1, &ds, 0, nullptr);
         vkCmdPushConstants(cmd, pl, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(pc), &pc);
@@ -716,8 +797,10 @@ protected:
         vkDestroyDescriptorSetLayout(logicalDevice_,dsl,nullptr);
         vkDestroyShaderModule(logicalDevice_,sm,nullptr);
         vkDestroyImageView(logicalDevice_,colorView,nullptr); vkDestroyImageView(logicalDevice_,idView,nullptr);
+        vkDestroyImageView(logicalDevice_,historyView,nullptr);
         vkDestroyImage(logicalDevice_,colorImg,nullptr); vkFreeMemory(logicalDevice_,colorMem,nullptr);
         vkDestroyImage(logicalDevice_,idImg,nullptr);    vkFreeMemory(logicalDevice_,idMem,nullptr);
+        vkDestroyImage(logicalDevice_,historyImg,nullptr); vkFreeMemory(logicalDevice_,historyMem,nullptr);
         vkDestroyBuffer(logicalDevice_,traceBuf,nullptr); vkFreeMemory(logicalDevice_,traceMem,nullptr);
         vkDestroyBuffer(logicalDevice_,ctrBuf,nullptr);   vkFreeMemory(logicalDevice_,ctrMem,nullptr);
         if (dummySdf     != VK_NULL_HANDLE) { vkDestroyBuffer(logicalDevice_,dummySdf,nullptr);     vkFreeMemory(logicalDevice_,dSdfMem,nullptr); }
@@ -726,6 +809,11 @@ protected:
         if (dummyTierRef != VK_NULL_HANDLE) { vkDestroyBuffer(logicalDevice_,dummyTierRef,nullptr); vkFreeMemory(logicalDevice_,dTierRefMem,nullptr); }
         if (dummyOccGrid != VK_NULL_HANDLE) { vkDestroyBuffer(logicalDevice_,dummyOccGrid,nullptr); vkFreeMemory(logicalDevice_,dOccGridMem,nullptr); }
         vkDestroyBuffer(logicalDevice_,dummyIter,nullptr); vkFreeMemory(logicalDevice_,dIterMem,nullptr);
+        vkDestroyBuffer(logicalDevice_,dummyLighting,nullptr);   vkFreeMemory(logicalDevice_,dLightingMem,nullptr);
+        vkDestroyBuffer(logicalDevice_,dummyHitRecord,nullptr);  vkFreeMemory(logicalDevice_,dHitRecordMem,nullptr);
+        vkDestroyBuffer(logicalDevice_,dummyShadow,nullptr);     vkFreeMemory(logicalDevice_,dShadowMem,nullptr);
+        vkDestroyBuffer(logicalDevice_,dummyAccum,nullptr);      vkFreeMemory(logicalDevice_,dAccumMem,nullptr);
+        vkDestroyBuffer(logicalDevice_,dummyPrevCam,nullptr);    vkFreeMemory(logicalDevice_,dPrevCamMem,nullptr);
     }
 
     // Coverage mask + count. A pixel counts as "hit" using the SAME luminance threshold both
