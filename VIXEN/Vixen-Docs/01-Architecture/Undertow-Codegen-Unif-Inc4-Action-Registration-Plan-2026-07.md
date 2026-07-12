@@ -52,11 +52,16 @@ attribute BEFORE Increment 7 (`[Effect]`) stresses it further with a dual ctor-s
 
 ## Scope boundary
 - **IS:** Task 1 confirms/refines the ground truth above (especially the exact usage-site count and the
-  `CodeModLoader.cs` mirror's current content). Build a new small Yeroket-side mechanism (class-targeted
-  attribute + `ForAttributeWithMetadataName`-based discovery via the CLI's Roslyn compilation-loading
-  path used already for `--param-cs`, extended to detect `sym.AllInterfaces` for the 4 marker
-  interfaces + a new emitter porting `EmitRegisterActions.Emit`'s logic line-for-line, including the
-  exact validation/diagnostic behavior). Prove equivalence against the real 6 (or actual count) sites,
+  `CodeModLoader.cs` mirror's current content). **CORRECTED mechanism (per Milestone 1's finding):**
+  `Undertow.Sim.ActionAttribute` is ITSELF a live `CodeModLoader.cs` runtime-reflection target
+  (`TypesWith<ActionAttribute>` at lines 126/128/352/354, for code-mod support) — structurally identical
+  to Increment 3's `ParamAttribute` situation, NOT Increment 1/2's "introduce a new Yeroket-owned
+  attribute" situation. Build a new `--action-cs` CLI discovery path (extending `--param-cs`'s
+  `CompilationLoader.LoadParamFields` discover-by-syntax-name pattern, matching `"Action"`/
+  `"ActionAttribute"`, resolving each decorated class's `sym.AllInterfaces` for the 4 marker interfaces)
+  + a new emitter porting `EmitRegisterActions.Emit`'s logic line-for-line, including the exact
+  validation/diagnostic behavior. Reuse `EnumExprHelper` (already ported in Inc-3) for the `Trigger`
+  enum property. Prove equivalence against the real 6 (or actual count) sites,
   including the diagnostic paths (duplicate id, no-behavior-interface, trigger/interface mismatch).
   Retire `ActionRegistrationGenerator.cs`/`EmitRegisterActions.cs` in undertow if safe (full build + full
   test-suite pass, mirroring Increments 2/3). Explicitly re-verify `CodeModLoader.cs`'s mirror logic is
@@ -82,11 +87,13 @@ attribute BEFORE Increment 7 (`[Effect]`) stresses it further with a dual ctor-s
   dependent) and identify every other call site of `RegisterGeneratedActions()`.
 
 ### Task 2 — Build + equivalence proof + retire (if safe)
-- Implement per Task 1's decision: likely a new `[Action]`-equivalent Yeroket attribute
-  (`AttributeTargets.Class`), a `--action-cs`-style CLI discovery path (extend the `--param-cs`
-  compilation-loading pattern to detect the 4 marker interfaces via `sym.AllInterfaces`), and an emitter
-  porting `EmitRegisterActions.Emit` line-for-line (interface-gated delegate wiring, capability-flag
-  gating, `can:<name>` Param declaration, all 4 diagnostic paths).
+- Implement per Task 1's CORRECTED decision: a new `--action-cs` CLI branch +
+  `CompilationLoader.LoadActionClasses` (discover-by-syntax-name, matching `"Action"`/`"ActionAttribute"`
+  the same way `LoadParamFields`/`LoadKernelCallables` do — NOT a new Yeroket-owned attribute type,
+  since `Undertow.Sim.ActionAttribute` is itself a `CodeModLoader.cs` runtime-reflection target), with
+  `sym.AllInterfaces` resolution for the 4 marker interfaces, and an emitter porting
+  `EmitRegisterActions.Emit` line-for-line (interface-gated delegate wiring, capability-flag gating,
+  `can:<name>` Param declaration, all 4 diagnostic paths, `EnumExprHelper` reuse for `Trigger`).
 - Prove equivalence: same generated `RegisterGeneratedActions()` body for the real 6 (or actual count)
   sites, AND exercise all 4 diagnostic paths explicitly with deliberately-malformed test scenarios (not
   just the happy path) — duplicate id, no behavior interface, `Chosen` without `IAction`, `RuleFired`
@@ -113,11 +120,35 @@ attribute BEFORE Increment 7 (`[Effect]`) stresses it further with a dual ctor-s
   `git checkout -- Packages/com.yeroket.utility.kernel-framework/RoslynAnalyzers/SDFNodeGenerator.dll`.
 
 ## Milestone Map
-- [ ] **Milestone 1 (Task 1):** ground the shape, decide mechanism (report-back gate). One Sonnet
+- [x] **Milestone 1 (Task 1):** ground the shape, decide mechanism (report-back gate). One Sonnet
   implementer + one Opus validator.
 - [ ] **Milestone 2 (Task 2):** build + equivalence proof + retire. One Sonnet implementer + one Opus
   validator.
 
 ## Progress Log
 
-(none yet)
+- Milestone 1 (Task 1, research-only): DONE · 2026-07-13 · no files modified in either repo
+  - **Confirmed: 6 real production `[Action(...)]` sites** — `StructuresAction.cs`, `MoveHaulAction.cs`,
+    `ExtractionAction.cs`, `RefineAction.cs` (all `Systems/Economy/`), `ResearchAction`+`EvictAction`
+    (both `Actions/Builtins/Builtins.cs`) — matches this plan's ground truth (survey's "5" undercounted).
+    Plus 2 test-fixture classes in `CodeModFixture/Fixture.cs`.
+  - **Confirmed: `[KernelCallable]` hypothesis REFUTED, no reconciliation** — `KernelCallableAttribute`
+    strictly `AttributeTargets.Method` (line 79); `ActionAttribute` strictly `AttributeTargets.Class`
+    (line 11). Different codegen kinds (body-transpiler vs. delegate-wiring dispatch table).
+  - **CORRECTION to this plan's original Task 2 framing, applied above**: `Undertow.Sim.ActionAttribute`
+    is itself a live `CodeModLoader.cs` runtime-reflection target (`TypesWith<ActionAttribute>` /
+    `GetCustomAttribute<ActionAttribute>()` at lines 126/128/352/354, plus a benign 5th at 414) for
+    code-mod support — structurally identical to Increment 3's `ParamAttribute` finding, NOT Increment
+    1/2's "introduce new attribute" case. Mechanism corrected to: new `--action-cs` CLI branch extending
+    `--param-cs`'s `CompilationLoader.LoadParamFields` discover-by-syntax-name pattern (matching
+    `"Action"`/`"ActionAttribute"`), `sym.AllInterfaces` resolution for the 4 marker interfaces, reusing
+    `EnumExprHelper` for the `Trigger` enum.
+  - **Retirement safety: SAFE.** `CodeModLoader.cs`'s Action-handling block is a fully self-contained
+    hand-written mirror (own comment: "Mirror ActionRegistrationGenerator/EmitRegisterActions EXACTLY"),
+    never calls the generator/emitter being retired. Sole real call site of `RegisterGeneratedActions()`:
+    `UndertowSim.cs:460` (declared `partial void` at line 436).
+  - No blockers.
+  - **Opus validator (independent re-verification):** APPROVED. Confirmed all 4 claims against real
+    source, including independently checking Yeroket's `--param-cs`/`LoadParamFields` analog is real and
+    extendable (not hand-waved). No scope violations — both worktrees clean, no Inc-4 implementation
+    commits yet. Cleared to proceed to Milestone 2.
