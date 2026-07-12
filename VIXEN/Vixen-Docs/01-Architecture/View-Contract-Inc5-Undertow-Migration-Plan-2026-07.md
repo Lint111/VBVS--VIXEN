@@ -258,19 +258,42 @@ but DO re-verify file:line if code has moved)
        `(rowCount+1)`-offsets-array + blob PER COLUMN (not one shared per-row blob as in AoS) — reuse the
        existing offsets+blob subroutine from `EmitViewWriter.cs`'s current AoS emitter, just move its
        invocation from "once per row, interleaved" to "once per column, before any row data."
-  - **Env-1/Env-2 boundary, confirmed via actual `.csproj` files:** two unrelated "Undertow.View"s exist —
-    `core/src/Undertow.View/Undertow.View.csproj` (plain `netstandard2.1`, ENV-1 authoritative, where
-    `ViewSchema.cs`/generated writer output live and where this plan's schema/codegen work lands) vs.
-    `unity/Packages/com.undertow.app/Runtime/View/Undertow.View.asmdef` (the actual ENV-2 stub
-    `docs/master-roadmap.md:20` exempts) — same name, different assembly/Env, do not conflate. This
-    plan's work is naturally compliant as long as it stays in `core/src/Undertow.View/`'s csproj graph and
-    consumes Yeroket only at build/codegen time (mirroring how `Undertow.Authoring.Codegen` is consumed
-    today, `Analyzer`-only, never a runtime `PackageReference`).
+  - **Env-1/Env-2 boundary, confirmed via actual `.csproj` files (corrected by the Opus validator):**
+    two "Undertow.View"s exist — `core/src/Undertow.View/Undertow.View.csproj` (plain `netstandard2.1`)
+    and `unity/Packages/com.undertow.app/Runtime/View/Undertow.View.asmdef`. **Correction:**
+    `docs/master-roadmap.md:20`'s hard-wall exemption ("excluding `Undertow.Bridge` and `Undertow.View`
+    which are ENV-2 stubs") names `Undertow.View` BY NAME without distinguishing the core-csproj from the
+    unity-asmdef — so the CORE `Undertow.View.csproj` is ALSO in the exempted set, not exclusively the
+    unity one as originally framed. This makes the plan's work MORE clearly compliant either way — the
+    real compliance guarantee is "consume Yeroket Analyzer-only at build/codegen time, never a runtime
+    `PackageReference`," which holds regardless of which `Undertow.View` is considered "the" exempted one.
   - **Milestone 3's proof-fixture gap flagged:** the existing `seed7-view.bin` golden does NOT exercise
     non-empty `Str`/`ListVec3f` columns (a neighboring test notes "no factions/events yet") — Milestone 3
     must extend the golden scenario (or add a second golden) so the SoA offsets+blob path for populated
     variable-length columns is actually exercised before trusting a byte-identical match as sufficient.
   - No blockers. Ready for Milestone 2.
+  - **Opus validator (independent re-verification across all three repos):** confirmed the 22/8 column
+    split exactly via an independent pass; refined it with a real nuance for Milestone 4 — `Mass`
+    (←`el.MassKg`), `TopRelSig` (←`el.TopRelSignificance`), `Cause` (←`el.CauseString`) are value-identity
+    (no transform) but their VIEW-FIELD NAMES differ from their C# source-member names, and the
+    kernel-framework `[View]` model has no "backing member name" concept (`ViewModelBuilder.Build` derives
+    fields from the struct's own field names) — these 3 columns need a name-binding mechanism at
+    Milestone 4 despite carrying no value transform; `Mass` additionally hides a `double→float` narrowing.
+    Confirmed `OrbitPath` is genuinely as complex as `OrbitParent` (both nullable-ternary), not a lesser
+    "borderline" case. Confirmed the `ViewSchemaJson.cs` intermediate, the `ViewLayout.cs`→`ViewWireFormat.cs`
+    rename (git-log-verified at the actual renaming commit `51ede47c`), the exact SoA throw site, and
+    `ProjectedAttribute`'s real constructor requirement — all independently re-verified against source.
+    **Corrected the "8 callables" estimate**: `[KernelCallable]`'s fixed typed signature means ONE shared
+    `byte BoolToByte(bool)` callable serves all 4 bool→byte columns, and the 2 enum casts collapse per
+    enum type — the real count is closer to 3-4, not 8; the plan's own "or fewer if transforms combine"
+    hedge was accurate, just conservative. Walked a concrete 2-row SoA example by hand and confirmed the
+    proposed offsets+blob-per-column algorithm is self-consistent and matches `ViewSchema.cs`'s own
+    doc-comment. Confirmed undertow's CURRENT `UTVW` wire is ALREADY columnar/SoA (its emitter's
+    offsets+blob subroutine is already per-column) — strengthening the plan, since undertow's existing
+    output is itself the reference for what Yeroket's new SoA emitter should produce. Confirmed the
+    `seed7-view.bin` golden gap is real and sharpened it (a separate round-trip test for populated Str
+    exists but doesn't pin bytes — insufficient for Milestone 3's byte-identical bar). One correction to
+    the Env-1/Env-2 framing (see above, folded in). **APPROVED, Milestone 2 can proceed.**
 
 ## Follow-ups (explicitly out of scope, note for later increments)
 
