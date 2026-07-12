@@ -2,9 +2,30 @@
 #include "Ui/IView.h"
 #include "Generated/EditorLayers.g.h"   // Vixen::Views::{EditorLayerRow,EditorLayersBind,BindEditorLayersModel}
 #include <RmlUi/Core/DataModelHandle.h>
+#include <bit>
 #include <cstdint>
 #include <string>
 #include <vector>
+
+namespace Vixen::Views {
+
+// Inc-Ovr (design §5b Override proof): the hand-written hook the generated
+// BindEditorLayersModel calls for EditorLayers::activeLayerCount -- codegen emits only the
+// forward declaration (Generated/EditorLayers.g.h: `int BindEditorLayersModel_
+// activeLayerCountOverride(int* activeLayerCount);`, matching the same raw-storage-pointer shape
+// every other Bind field gets), no body; this IS the whole implementation, and omitting it fails
+// the link (proven negatively in Milestone 3's build gate -- LNK2019 unresolved external symbol,
+// not a silent no-op or runtime crash). The bound storage (`activeLayerCountRaw_`, see
+// EditorLayersView below) actually holds the raw mask, reused as an `int` bit pattern -- this
+// hook's job is popcount(mask), a genuine aggregate computation over the whole bitset, not a
+// per-field 1:1 transform of one value. That's precisely why it doesn't fit Projection's shape
+// (design §5a maps ONE source value to ONE bound value via a named transform) and needs Override:
+// the framework generates no wiring at all, only this hook point.
+inline int BindEditorLayersModel_activeLayerCountOverride(int* maskAsInt) {
+    return std::popcount(static_cast<uint32_t>(*maskAsInt));
+}
+
+}  // namespace Vixen::Views
 
 namespace Vixen::App {
 
@@ -25,7 +46,7 @@ public:
     const char* ModelName() const override { return "editor_layers"; }
     const char* DocumentPath() const override { return "assets/ui/editor.rml"; }
     void Register(Rml::DataModelConstructor& c) override {
-        Vixen::Views::BindEditorLayersModel(c, Vixen::Views::EditorLayersBind{ &layers_ });
+        Vixen::Views::BindEditorLayersModel(c, Vixen::Views::EditorLayersBind{ &layers_, &activeLayerCountRaw_ });
         model_ = c.GetModelHandle();
     }
 
@@ -52,15 +73,24 @@ public:
             row.elementId = "layer-" + std::to_string(i) + "-toggle";
             layers_.push_back(std::move(row));
         }
-        if (model_) model_.DirtyVariable("layers");
+        // activeLayerCount (Inc-Ovr Override proof): storage holds the raw mask reinterpreted as
+        // int; BindEditorLayersModel_activeLayerCountOverride (this file, above) popcounts it at
+        // bind time. Only needs a dirty when the mask itself changes, same as "layers".
+        activeLayerCountRaw_ = static_cast<int>(mask);
+        if (model_) { model_.DirtyVariable("layers"); model_.DirtyVariable("activeLayerCount"); }
     }
 
     // Debug accessor for tests.
     size_t DebugLayerCount() const { return layers_.size(); }
     const Vixen::Views::EditorLayerRow& DebugLayer(size_t i) const { return layers_.at(i); }
+    int DebugActiveLayerCount() const {
+        return Vixen::Views::BindEditorLayersModel_activeLayerCountOverride(
+            const_cast<int*>(&activeLayerCountRaw_));
+    }
 
 private:
     std::vector<Vixen::Views::EditorLayerRow> layers_;
+    int activeLayerCountRaw_ = 0;
     Rml::DataModelHandle model_;
 };
 
