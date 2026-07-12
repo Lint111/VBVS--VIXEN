@@ -103,7 +103,7 @@ core reactive half on the real ECS mechanism (v0.9.2, verified in the observable
 - Commit in the worktree (pre-blessed). Do NOT push.
 
 ## Milestone Map
-- [ ] **Milestone 1 (Tasks 1-4):** ground Gaia+reconcile shape (Task 1 REPORT-BACK: does the editor have a
+- [x] **Milestone 1 (Tasks 1-4):** ground Gaia+reconcile shape (Task 1 REPORT-BACK: does the editor have a
   Gaia world? if heavy → headless proof) → Gaia-backed provider + layer component + ReadU32-false fix →
   `.changed<T>()` reconcile + ViewReconcileNode → prove external-change path + preserve input gate 4/4.
   One Sonnet implementer + one Opus validator. (May split into M1a provider / M1b reconcile if Task 1
@@ -114,3 +114,80 @@ Inc-B proves model→view for EXTERNAL changes on the real Gaia `.changed<T>()` 
 core reactive half. The editor's own-input echo is already done (Inc-A2). Keep the hook secondary (§4).
 The single biggest unknown is whether the editor has/needs a Gaia world — Task 1 resolves it and may
 redirect to a headless proof vehicle; that's an acceptable Inc-B outcome (the mechanism is what matters).
+
+## Progress Log
+- Milestone 1 (Tasks 1-4): DONE · commit `9a938b57` (fresh-worktree verification + gate evidence);
+  Tasks 1-3 + the Task 4 test scaffold were implemented by a prior uncommitted pass in this worktree
+  and confirmed correct as written, not reimplemented · 2026-07-12
+  - **Task 1 finding confirmed:** the editor had NO Gaia world before Inc-B (`application/main`/
+    `vixen_editor` only pulled `gaia.h` transitively via SVO's octree headers). Inc-B gave
+    `EditorApplication` its own `Vixen::GaiaVoxel::GaiaVoxelWorld gaiaWorld_` + one bare entity
+    (`gaiaLayerEntity_`) carrying the new `LayerMask` Gaia component (`VoxelComponents.h`) — the
+    lightweight real-world option, not the headless-gtest fallback the plan flagged as acceptable.
+    `vixen_editor`'s CMakeLists now links `GaiaVoxelWorld::GaiaVoxelWorld` directly (previously never
+    linked, only pulled in transitively).
+  - **Task 2/3 confirmed as implemented:** `GaiaLayerViewDataProvider` (ReadU32/WriteU32 over
+    `getComponentValue`/`setComponent<LayerMask>`) swapped in for `LayerControllerViewDataProvider`;
+    the ToggleLayer handler's `ReadU32`-false case now skips+logs instead of silently corrupting the
+    mask via `applyToggle(0,idx)` (the Inc-A carry, now fixed); `ViewReconcileNode` owns a persistent
+    `.all<LayerMask>().changed<LayerMask>()` query (immutable read, per design §4b) and
+    `EditorApplication::ReconcileLayersView()` runs it every `Update()` after input dispatch, value-
+    pushing into `rt_.Layers()` + forwarding to `RefreshLayersView()`'s `DirtyVariable` call on any
+    external change.
+  - **Task 4 — the key new proof — CONFIRMED LIVE:** `test_view_editor_layers_reconcile`
+    (2/2 PASSED) exercises `ExternalWriteLayerMask` — a direct `GaiaVoxelWorld::setComponent<LayerMask>`
+    call that bypasses `WriteU32`/`ToggleLayer`/the same-frame echo entirely — and asserts (a) the view
+    does NOT move before the reconcile runs (non-vacuous proof), (b) `ViewReconcileNode::Reconcile`
+    observes the changed chunk and returns the post-write value, (c) `GaiaLayerViewDataProvider::ReadU32`
+    independently sees the same external write, (d) `EditorLayersView::PopulateFromMask` with the
+    reconciled value flips the bound checkbox model (layer1 unchecked, layers 0/2 stay checked), and
+    (e) a second reconcile with no intervening write reports nothing changed (persistent-query version
+    tracking, not "always matches"). This is model→view for a change the input path did not produce —
+    the half Inc-A2 explicitly left unproven.
+  - **Fresh-worktree build:** `vixen-ninja` (Windows/MSVC) preset, confirmed `_deps/gaia-src` HEAD
+    `f2ea77a` (pinned v0.9.2, per KI-021). Full aggregate `build.bat build` hits the two independent,
+    already-documented pre-existing failures (KI-020/KI-017: MSVC `setenv`/`unsetenv` and Windows
+    `min`/`max` macro pollution in `test_body_instance_raymarch_render`/`test_octree_config_sdi_parity`,
+    unrelated to any file this increment touches) — built the Inc-B-relevant target set explicitly
+    instead (`-- -k 0`), which built 100% clean.
+  - **Gate evidence:**
+    - `test_view_editor_layers_reconcile`: 2/2 PASSED.
+    - `test_editor_toggle_undo_capture`: 4/4 PASSED across two independent fresh `run_editor_script.bat`
+      runs (state trail both times: `mask=7→toggle→3→undo→7→redo→3`, `afterBack=0`). sha256 of the 4
+      captures (byte-identical across both runs, and matching the pre-existing R6 mask-invisible-at-
+      render finding: capture_5==capture_75, capture_45==capture_105):
+      - `editor_capture_5.png` = `fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1`
+      - `editor_capture_45.png` = `e2339aa09f871a0e57f19db22977c0a90aac2303cf4d090100f396553b49b1f8`
+      - `editor_capture_75.png` = `fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1`
+      - `editor_capture_105.png` = `e2339aa09f871a0e57f19db22977c0a90aac2303cf4d090100f396553b49b1f8`
+    - AppFlow suite: 42/42 (`test_appflow_golden` 7, `test_action_stack` 4, `test_flow_state_machine` 3,
+      `test_binding_store` 3, `test_appflow_loader` 6, `test_layer_controller` 4, `test_snapshot_undo` 6,
+      `test_input_profile` 2, `test_keychord` 3, `test_binding_pattern` 1, `test_flow_return` 2,
+      `test_return_dispatch` 1).
+    - `test_view_editor_layers_golden`: 2/2 PASSED.
+    - Gaia wrapper tests: `test_gaia_voxel_world` 25/26 (1 pre-existing failure,
+      `GaiaVoxelWorldTest.GetPosition`) and `test_gaia_voxel_world_coverage` 31/32 (1 pre-existing
+      failure, `GaiaVoxelWorldCoverageTest.CreateVoxelsBatch_AutoParent_ToExistingChunk`) — confirmed
+      via `git stash`/rebuild-on-baseline that BOTH fail identically with zero Inc-B changes present, so
+      neither is a regression from the `LayerMask` component addition or the Gaia usage.
+    - Byte-guards: `AppFlow.g.h` = `b63b2b35a7cc47fbb9ca35d5f7685d2db8907dada2199ad7a1c82c361eb0710b`,
+      `AppFlowCallables.g.hpp` = `989b65e4887e8ffdd1ed44495ac6f38e40039ba7de641cc60dae17435f9836fe` —
+      both unchanged from the plan's stated prefixes.
+    - `test_appflow_editor_toggle_render` (a GPU render gate reusing `VixenSelectWslGpuIcd`, not one of
+      this plan's named gates) fails on this native-Windows machine because no software/lavapipe Vulkan
+      ICD is selected here (`softwareConfirmed_ == false`) — confirmed byte-identical failure on the
+      pre-Inc-B baseline via the same stash comparison, so this is a pre-existing environment gap, not a
+      regression.
+  - **HUD unaffected:** no HUD-touching file in this increment's diff; `test_view_hud_golden` was not
+    perturbed (untouched code path).
+  - **ODR isolation confirmed:** `GaiaLayerViewDataProvider.h`/`ViewReconcileNode.h`/
+    `GaiaLayerReconcileTestBridge.{h,cpp}` never include an RmlUi data-model header; the test TU
+    (`test_view_editor_layers_reconcile.cpp`) never includes `gaia.h` — verified both by source
+    inspection and by the fact the whole thing built and linked clean (the robin_hood ODR collision is
+    a hard compile/link failure when violated, per Inc-A2's own discovery of it).
+  - **One incidental infra note (not a code defect):** mid-session, an overlapping build (a baseline
+    comparison build kicked off concurrently with a rebuild of Inc-B's own tree) corrupted one
+    `.obj`/COFF section (`VoxelAABBConverterNode.cpp.obj`, `LNK1236`) — deleted the stale object and
+    rebuilt clean. Root cause was this session's own parallel build dispatch, not a source issue; no
+    build-lock/queue tooling exists in this worktree's `VIXEN/scripts/build/` (not present on this
+    branch's history) to have prevented it.
