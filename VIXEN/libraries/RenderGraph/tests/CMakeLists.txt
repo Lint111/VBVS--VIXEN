@@ -1052,6 +1052,17 @@ if(TARGET RenderGraph)
 else()
     target_link_libraries(test_node_self_registration PRIVATE GTest::gtest_main)
 endif()
+# Exact expected registration count, derived from the same RENDERGRAPH_NODE_SOURCES list the
+# CMakeLists.txt completeness check (above, in the parent CMakeLists.txt) verifies against disk --
+# one source of truth, so this can never drift out of sync with the real node count the way a
+# second hand-maintained magic number could. One node source (ConstantNode.cpp) registers TWO
+# NodeTypes (ConstantNodeType + ShaderConstantNodeType) from a single TU (see
+# cmake/VixenNodeLinkage.cmake's header comment) -- RENDERGRAPH_NODE_SOURCES counts TUs, not
+# NodeTypes, so the actual registered-type count is (#sources + 1).
+list(LENGTH RENDERGRAPH_NODE_SOURCES RENDERGRAPH_NODE_SOURCE_COUNT)
+math(EXPR RENDERGRAPH_EXPECTED_NODE_TYPE_COUNT "${RENDERGRAPH_NODE_SOURCE_COUNT} + 1")
+target_compile_definitions(test_node_self_registration PRIVATE
+    RENDERGRAPH_EXPECTED_NODE_TYPE_COUNT=${RENDERGRAPH_EXPECTED_NODE_TYPE_COUNT})
 set_target_properties(test_node_self_registration PROPERTIES FOLDER "Tests/RenderGraph Tests")
 gtest_discover_tests(test_node_self_registration)
 

@@ -310,6 +310,68 @@ set(RENDERGRAPH_NODE_SOURCES
                                  # defeats scoping; see that file's UIRenderNodeType handling).
 )
 
+# ----------------------------------------------------------------------------
+# Source/registration completeness check (Graph-Derived-Node-Linkage-Spec-2026-07
+# §3 foot-gun): a .cpp added under src/Nodes/ but never added to
+# RENDERGRAPH_NODE_SOURCES gets no CMake target at all -- nothing to whole-archive,
+# nothing to link, no build error -- and the only symptom is a confusing runtime
+# "Node type not registered" throw far away from the real cause. Every .cpp
+# currently under src/Nodes/ is a VIXEN_REGISTER_NODE registrar TU (verified against
+# the directory contents when this check was written -- see git history for the
+# audit), so the invariant this enforces is exact: the glob of what's on disk must
+# equal RENDERGRAPH_NODE_SOURCES, in both directions. If a genuinely non-registrar
+# .cpp is ever added to src/Nodes/, it must still be added to
+# RENDERGRAPH_NODE_SOURCES (and will get its own harmless OBJECT lib) rather than
+# carving an exception into this check -- an exclude list here would silently
+# re-open the exact gap this check exists to close.
+file(GLOB _rendergraph_node_srcs_on_disk RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" "src/Nodes/*.cpp")
+
+set(_rendergraph_node_srcs_listed "")
+foreach(_node_src IN LISTS RENDERGRAPH_NODE_SOURCES)
+    list(APPEND _rendergraph_node_srcs_listed "${_node_src}")
+endforeach()
+
+set(_rendergraph_missing_from_list "")
+foreach(_disk_src IN LISTS _rendergraph_node_srcs_on_disk)
+    list(FIND _rendergraph_node_srcs_listed "${_disk_src}" _idx)
+    if(_idx EQUAL -1)
+        list(APPEND _rendergraph_missing_from_list "${_disk_src}")
+    endif()
+endforeach()
+
+set(_rendergraph_missing_from_disk "")
+foreach(_listed_src IN LISTS _rendergraph_node_srcs_listed)
+    list(FIND _rendergraph_node_srcs_on_disk "${_listed_src}" _idx)
+    if(_idx EQUAL -1)
+        list(APPEND _rendergraph_missing_from_disk "${_listed_src}")
+    endif()
+endforeach()
+
+if(_rendergraph_missing_from_list OR _rendergraph_missing_from_disk)
+    set(_rendergraph_completeness_msg
+        "RENDERGRAPH_NODE_SOURCES is out of sync with the files actually present under src/Nodes/:")
+    if(_rendergraph_missing_from_list)
+        string(APPEND _rendergraph_completeness_msg
+            "\n  On disk but MISSING from RENDERGRAPH_NODE_SOURCES (libraries/RenderGraph/CMakeLists.txt):")
+        foreach(_f IN LISTS _rendergraph_missing_from_list)
+            string(APPEND _rendergraph_completeness_msg "\n    ${_f}")
+        endforeach()
+        string(APPEND _rendergraph_completeness_msg
+            "\n  These files get NO CMake target, are never compiled, and any VIXEN_REGISTER_NODE "
+            "in them silently never runs -- add each to RENDERGRAPH_NODE_SOURCES.")
+    endif()
+    if(_rendergraph_missing_from_disk)
+        string(APPEND _rendergraph_completeness_msg
+            "\n  Listed in RENDERGRAPH_NODE_SOURCES but MISSING on disk:")
+        foreach(_f IN LISTS _rendergraph_missing_from_disk)
+            string(APPEND _rendergraph_completeness_msg "\n    ${_f}")
+        endforeach()
+        string(APPEND _rendergraph_completeness_msg
+            "\n  Remove each stale entry from RENDERGRAPH_NODE_SOURCES.")
+    endif()
+    message(FATAL_ERROR "${_rendergraph_completeness_msg}")
+endif()
+
 # ============================================================================
 # Debug Infrastructure
 # ============================================================================
