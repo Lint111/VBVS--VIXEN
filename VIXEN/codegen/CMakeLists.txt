@@ -116,6 +116,8 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/shaders/Generated/PrevCameraConfig.glsl" _out_prevcameraconfig_glsl_run)
         _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/libraries/RenderGraph/include/Generated/ReservoirConfig.g.h" _out_reservoirconfig_cpp_run)
         _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/shaders/Generated/ReservoirConfig.glsl" _out_reservoirconfig_glsl_run)
+        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/libraries/RenderGraph/include/Generated/ProbeGridConfig.g.h" _out_probegridconfig_cpp_run)
+        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/shaders/Generated/ProbeGridConfig.glsl" _out_probegridconfig_glsl_run)
         _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/libraries/RenderGraph/include/Generated/LightTreeBuffer.g.h" _out_lighttreebuffer_cpp_run)
         _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/shaders/Generated/LightTreeBuffer.glsl" _out_lighttreebuffer_glsl_run)
         _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/libraries/RenderGraph/include/Generated/ReservoirRecord.g.h" _out_reservoirrecord_cpp_run)
@@ -149,6 +151,8 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_out_prevcameraconfig_glsl_run "${CMAKE_SOURCE_DIR}/shaders/Generated/PrevCameraConfig.glsl")
         set(_out_reservoirconfig_cpp_run "${CMAKE_SOURCE_DIR}/libraries/RenderGraph/include/Generated/ReservoirConfig.g.h")
         set(_out_reservoirconfig_glsl_run "${CMAKE_SOURCE_DIR}/shaders/Generated/ReservoirConfig.glsl")
+        set(_out_probegridconfig_cpp_run "${CMAKE_SOURCE_DIR}/libraries/RenderGraph/include/Generated/ProbeGridConfig.g.h")
+        set(_out_probegridconfig_glsl_run "${CMAKE_SOURCE_DIR}/shaders/Generated/ProbeGridConfig.glsl")
         set(_out_lighttreebuffer_cpp_run "${CMAKE_SOURCE_DIR}/libraries/RenderGraph/include/Generated/LightTreeBuffer.g.h")
         set(_out_lighttreebuffer_glsl_run "${CMAKE_SOURCE_DIR}/shaders/Generated/LightTreeBuffer.glsl")
         set(_out_reservoirrecord_cpp_run "${CMAKE_SOURCE_DIR}/libraries/RenderGraph/include/Generated/ReservoirRecord.g.h")
@@ -267,6 +271,25 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     add_custom_target(reservoirconfig_regen
         COMMAND ${_CODEGEN_RUNNER} ${_rc_args}
         COMMENT "[codegen] regenerate ReservoirConfig.g.h/.glsl (Yeroket tool)"
+        VERBATIM)
+
+    # --- ProbeGridConfig via the same Yeroket tool (Sampled Lighting Inc4 M2: DDGI
+    # probe-grid placement + compute budget as drift-guarded data). Generated header
+    # lives beside RenderGraph, mirroring ReservoirConfig's own "config lives with its
+    # consuming library" convention. Scaffolding for M3-M6 — see ProbeGridConfig.cs's
+    # file header for the M2-scope note (no probe-update shader reads it yet).
+    set(_pgc_args
+        run --project "${_yk_tool_run}" -c Release --
+        --schema "${_schema_config_run}" --struct ProbeGridConfig
+        --out-cpp  "${_out_probegridconfig_cpp_run}"
+        --out-glsl "${_out_probegridconfig_glsl_run}")
+    add_custom_target(probegridconfig_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_pgc_args} --check
+        COMMENT "[codegen] golden check: ProbeGridConfig.g.h/.glsl match canonical (Yeroket tool)"
+        VERBATIM)
+    add_custom_target(probegridconfig_regen
+        COMMAND ${_CODEGEN_RUNNER} ${_pgc_args}
+        COMMENT "[codegen] regenerate ProbeGridConfig.g.h/.glsl (Yeroket tool)"
         VERBATIM)
 
     # --- LightTreeBuffer via the same Yeroket tool (Sampled Lighting Inc3 M4: GPU-side
@@ -430,8 +453,8 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         VERBATIM)
 else()
     message(WARNING "[codegen] KI-015: Yeroket kernel-codegen tool not found at ${_yk_tool} — "
-        "OctreeConfig/LightingConfig/ShadowConfig/AccumulationConfig/PrevCameraConfig/ReservoirConfig/LightTreeBuffer/ReservoirRecord/Hud/EditorLayers golden DRIFT GUARDS DISABLED; the committed generated artifacts "
-        "(OctreeConfig.g.h/.glsl, LightingConfig.g.h/.glsl, ShadowConfig.g.h/.glsl, AccumulationConfig.g.h/.glsl, PrevCameraConfig.g.h/.glsl, ReservoirConfig.g.h/.glsl, LightTreeBuffer.g.h/.glsl, ReservoirRecord.g.h/.glsl, Hud.g.h, Hud.view.rml, Hud.blob.g.h, hud.viewblob, EditorLayers.g.h) are used as-is and will NOT be checked against "
+        "OctreeConfig/LightingConfig/ShadowConfig/AccumulationConfig/PrevCameraConfig/ReservoirConfig/ProbeGridConfig/LightTreeBuffer/ReservoirRecord/Hud/EditorLayers golden DRIFT GUARDS DISABLED; the committed generated artifacts "
+        "(OctreeConfig.g.h/.glsl, LightingConfig.g.h/.glsl, ShadowConfig.g.h/.glsl, AccumulationConfig.g.h/.glsl, PrevCameraConfig.g.h/.glsl, ReservoirConfig.g.h/.glsl, ProbeGridConfig.g.h/.glsl, LightTreeBuffer.g.h/.glsl, ReservoirRecord.g.h/.glsl, Hud.g.h, Hud.view.rml, Hud.blob.g.h, hud.viewblob, EditorLayers.g.h) are used as-is and will NOT be checked against "
         "their canonical schemas this configure. The Yeroket repo is WSL-only on this machine, so a "
         "Windows-side configure cannot reach it — run the WSL-side configure, mount \\\\wsl$, or pass "
         "-DYEROKET_ROOT=<path> to enable the guard.")

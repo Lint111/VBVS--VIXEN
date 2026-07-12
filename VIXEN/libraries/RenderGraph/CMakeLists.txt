@@ -273,6 +273,8 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/PrevCameraConfigNode.cpp    # Sampled Lighting Inc2 M3: prev-frame camera matrix upload ring
     src/Nodes/ReservoirConfigNode.cpp     # Sampled Lighting Inc3 M3: ReservoirConfig upload ring (M4/M5 scaffolding)
     src/Nodes/LightTreeBufferNode.cpp     # Sampled Lighting Inc3 M4: mip-cut light-tree upload ring (RIS candidate source)
+    src/Nodes/ProbeGridConfigNode.cpp     # Sampled Lighting Inc4 M2: ProbeGridConfig upload ring (M3-M6 scaffolding)
+    src/Nodes/ProbeAtlasNode.cpp          # Sampled Lighting Inc4 M2: persistent DDGI probe atlas image (irradiance/visibility)
     src/Nodes/MvpUniformNode.cpp
     src/Nodes/DescriptorResourceGathererNode.cpp
     src/Nodes/DescriptorSetNode.cpp
