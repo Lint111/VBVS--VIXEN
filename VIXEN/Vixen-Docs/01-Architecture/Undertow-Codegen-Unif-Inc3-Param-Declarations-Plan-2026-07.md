@@ -76,8 +76,8 @@ also merge/migrate cleanly, before tackling logic-transplant features (`[Action]
 ## Milestone Map
 - [x] **Milestone 1 (Task 1):** ground the shape, decide mechanism (report-back gate). One Sonnet
   implementer + one Opus validator.
-- [x] **Milestone 2 (Task 2):** build + equivalence proof + retire. Implementer DONE 2026-07-13;
-  pending Opus validator sign-off.
+- [x] **Milestone 2 (Task 2):** build + equivalence proof + retire. DONE + Opus-validated APPROVED,
+  2026-07-13. **INCREMENT 3 COMPLETE.**
 
 ## Progress Log
 
@@ -198,4 +198,20 @@ also merge/migrate cleanly, before tackling logic-transplant features (`[Action]
     doc-comment cross-references in unrelated files — `EmitRegisterSystems.cs`'s summary comment and
     `EmitRegisterSystemsTests.cs`'s doc comment — no code coupling).
   - No plan-doc assumption disproven.
-  - Not yet independently re-verified by an Opus validator as of this write-up — pending dispatch.
+  - **Opus validator (independent re-verification, including a REPRODUCED byte-for-byte diff both
+    directions):** confirmed the zero-coupling claim is genuinely true — `LoadParamFields`'s
+    `BuildRefs()` references only Roslyn + Yeroket's own assemblies, zero `Undertow.Sim.dll` dependency;
+    `Undertow.Sim.ParamAttribute` is genuinely unbound in the schema compilation. Confirmed
+    `ParamRegistrationEmitter`/`EnumExprHelper` are line-for-line identical to the pre-retirement
+    originals (diffed against parent commit `2c8f25b4`). **Actually rebuilt the pre-retirement commit
+    to regenerate the REAL old Roslyn generator's output and diffed it byte-for-byte against the new
+    `--param-cs` mechanism's output for the same real 37-site source tree — body byte-identical (only
+    the banner differs), confirmed in BOTH directions**, the strongest equivalence proof in this program
+    to date. Independently re-ran the dup-id diagnostic test, confirmed the exact non-dedupe contract.
+    Confirmed the retirement diff does NOT touch `CodeModLoader.cs` at all — its live
+    `FieldsWith<ParamAttribute>` reflection consumer and `ParamAttribute.cs` itself remain fully intact,
+    exactly preserving Milestone 1's flagged constraint. Re-ran `ParamRegistrationCliTests` (3/3) and
+    the full `CodegenTool.Tests` suite (52/52). Both repos clean at expected HEADs. **APPROVED, no
+    defects, nothing changed. INCREMENT 3 COMPLETE** — the architectural pivot away from Inc-1/2's
+    "new Yeroket attribute" pattern (correctly recognizing this attribute is undertow-owned and
+    reflection-locked) is validated as the right call, well executed.
