@@ -49,6 +49,23 @@ target_compile_definitions(test_hlsl_ingestion PRIVATE
 include(GoogleTest)
 gtest_discover_tests(test_hlsl_ingestion WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
 
+# Probe-update reusability smoke test (Sampled Lighting Inc4 M1) — separate
+# executable, no Vulkan device dependency, mirrors test_hlsl_ingestion above.
+add_executable(test_probe_update_smoke
+    test_probe_update_smoke.cpp
+)
+target_link_libraries(test_probe_update_smoke
+    PRIVATE
+        ShaderManagement
+        gtest
+        gtest_main
+)
+set_target_properties(test_probe_update_smoke PROPERTIES FOLDER "Tests/ShaderManagement Tests")
+target_compile_definitions(test_probe_update_smoke PRIVATE
+    VIXEN_SHADERS_DIR="${CMAKE_SOURCE_DIR}/shaders")
+include(GoogleTest)
+gtest_discover_tests(test_probe_update_smoke WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+
 # Link against library target - includes propagate automatically
 target_link_libraries(ShaderManagementTests
     PRIVATE
