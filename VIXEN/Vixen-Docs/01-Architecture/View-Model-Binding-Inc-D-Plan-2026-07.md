@@ -164,7 +164,7 @@ set is its own milestone with its own adversarial proof, not a corollary of the 
 
 ## Milestone Map
 
-- [ ] **Milestone 1 (Tasks 1-2):** ground the `ActionStack` snapshot-shape decision (Task 1 REPORT-BACK,
+- [x] **Milestone 1 (Tasks 1-2):** ground the `ActionStack` snapshot-shape decision (Task 1 REPORT-BACK,
   no building until this is confirmed) → implement set-mutation dispatch (Task 2). One Sonnet implementer
   + one Opus validator.
 - [ ] **Milestone 2 (Tasks 3-4):** undo/redo over the captured snapshot with dead-entity skip+log (Task 3)
@@ -175,7 +175,39 @@ set is its own milestone with its own adversarial proof, not a corollary of the 
 
 ## Progress Log
 
-*(none yet — plan authored, not yet dispatched)*
+- Milestone 1 (Tasks 1-2): DONE · commit `12439196` · Opus validator APPROVED · 2026-07-12
+  - **Task 1 decision:** compose N `ActionStack::Dispatch()` calls under one `BeginGroup()`/`EndGroup()`
+    bracket (option 2) — zero changes to `ActionStack`. Verified against the real `Undo()`/`Redo()` group-
+    iteration code (`ActionStack.cpp`): a group already reverts/reapplies its entries atomically (reverse
+    order for undo), so "the whole set undoes as one unit" falls out for free. `DispatchWithSnapshot`
+    (option 1) was rejected: its raw `void*` footprint is `memcpy`'d with no liveness check, unsafe if
+    pointed at Gaia component storage. `GaiaLayerViewDataProvider`'s read/write path never hands out such
+    a pointer anyway (`GaiaVoxelWorld::getComponentValue`/`setComponent` take entities by value and
+    internally guard on `world.valid(id)`). Dead-entity observability: a `SetMutationResult{selectedCount,
+    writtenCount}` return value (smallest addition; no `ActionStack` shape change). Gaia liveness API
+    confirmed as `world.valid(entity)` (`gaia::ecs::World::valid`, already used in
+    `GaiaArchetypes/ArchetypeBuilder.cpp`/`RelationshipObserver.cpp`); deletion API `world.del(entity)`.
+  - **Task 2:** `SetMutationDispatch.h` (`application/editor/include/`) — `DispatchSetMutation()` reads
+    the selection via `IViewSelectionProvider::ids()`, and for each live entity with a `LayerMask`
+    component, dispatches one `ActionStack::Dispatch(FlowActionId::ToggleLayer, apply)` inside a
+    `BeginGroup`/`EndGroup` bracket, reusing `GaiaLayerViewDataProvider` unchanged for the actual write.
+    Each per-entity `apply(bool)` lambda captures `(entity, priorValue, newValue)` BY VALUE (never a
+    pointer) and re-checks `world.valid(entity)` itself.
+  - **Test:** `test_set_mutation_dispatch.cpp` (2/2 PASS) — non-vacuous: distinct per-entity values,
+    an explicitly UNSELECTED sibling entity asserted untouched, and a no-component skip path exercised
+    without crash/assert. Deliberately does NOT touch undo/redo restore logic or the dead-entity-at-undo
+    proof (Milestone 2's scope).
+  - **Opus validator (independent re-verification, not just re-reading the report):** read
+    `ActionStack.cpp`/`.h`, `GaiaVoxelWorld.h`, `SetMutationDispatch.h`, the test, and the selection-
+    provider headers directly; confirmed `Undo()`/`Redo()`'s real iteration order and atomicity,
+    `DispatchWithSnapshot`'s real unchecked-`memcpy` hazard, the by-value/no-dangle capture, and that
+    `Dispatch()` invokes `apply(true)` exactly once. Rebuilt + ran all three test binaries fresh:
+    `test_set_mutation_dispatch` 2/2, `test_view_editor_layers_reconcile` 2/2, `test_view_selection_provider`
+    3/3 — all pass, zero regressions. Tree clean, exactly 3 files changed (+254). **APPROVED, no defects,
+    no files modified.** Non-blocking note carried to Milestone 2: rebuild ALL named regression gates
+    fresh alongside the undo/redo/dead-entity suite (M1's validator reused pre-commit-adjacent artifacts
+    for the two regression binaries, valid here since the commit doesn't touch their code paths, but M2
+    should not rely on that assumption).
 
 ## Follow-ups (explicitly out of scope, note for later increments)
 
