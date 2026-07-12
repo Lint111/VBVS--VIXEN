@@ -152,11 +152,87 @@ different problem in a different architecture (nodes vs. a small C++ interface m
 - Commit in the worktree (pre-blessed). Do NOT push.
 
 ## Milestone Map
-- [ ] **Milestone 1 (Tasks 1-4):** ground the tag-component/seam shape (Task 1 REPORT-BACK) → `Selected`
+- [x] **Milestone 1 (Tasks 1-4):** ground the tag-component/seam shape (Task 1 REPORT-BACK) → `Selected`
   tag + `IViewSelectionProvider` (Gaia-backed + direct-list) → wire Nth-selected-instance resolution
   through Inc-B's existing provider → prove selection-of-N + preserve all Inc-A/A2/B gates. One Sonnet
   implementer + one Opus validator. (May split into M1a component/seam / M1b resolution+proof if Task 1
   finds the multi-entity fixture is large.)
+
+## Progress Log
+- Milestone 1 (Tasks 1-4): DONE · commit `4babecd8` · 2026-07-12
+  - **Task 1 (ground the shape):** confirmed `VoxelComponents.h` has no tag-component macro
+    (`VOXEL_COMPONENT_SCALAR`/`VOXEL_COMPONENT_VEC3` only) but there IS an existing zero-field tag
+    precedent (`struct Solid {}`, `VoxelComponents.h:670`) -- so `Selected` is a plain hand-written
+    struct, not a new macro variant. Placed in a NEW header, `application/editor/include/
+    SelectionComponents.h`, not `VoxelComponents.h` -- `Selected` is a view/binding-layer concept,
+    not voxel data, matching the plan's own suggested naming and keeping the voxel-attribute
+    registry's boundary clean. Confirmed the naming-disambiguation reasoning still holds against
+    current code: `libraries/RenderGraph/include/Selection/SelectionCandidate.h`'s header comment
+    still documents the retired `ISelectionProvider` (pick-ID system), and no class named
+    `ISelectionProvider` exists anywhere in the tree -- `IViewSelectionProvider` has zero collision
+    risk. Proof vehicle: a PURE headless gtest (`test_view_selection_provider.cpp`, RenderGraph/
+    tests) -- simpler than Inc-B's own Task-4 proof, since selection has no RmlUi involvement at
+    all (no ODR-isolation bridge-split needed, unlike `GaiaLayerReconcileTestBridge`). Did NOT touch
+    `EditorApplication` -- no genuine need arose.
+  - **Task 2:** `Selected` (SelectionComponents.h) + `IViewSelectionProvider` (`libraries/AppFlow/
+    include/IViewSelectionProvider.h`, mirrors `IViewDataProvider.h`'s exact style: `ids(vector&)`/
+    `at(index, out)` fallible-bool contract) + `GaiaViewSelectionProvider` (`application/editor/
+    include/GaiaViewSelectionProvider.h`, wraps `query().all<Selected>()`, uses `Query::arr()` --
+    verified against gaia v0.9.2's OWN vendored test suite, `src/test/src/main.cpp` ~line 4470,
+    which relies on `arr()`'s chunk-walk order matching creation order for an append-only
+    archetype; documented the exact scope of that guarantee, incl. the future-removal-churn
+    caveat, in the header) + `DirectListViewSelectionProvider` (`libraries/AppFlow/include/
+    DirectListViewSelectionProvider.h`, trivial `std::vector`-backed, mirrors
+    `LayerControllerViewDataProvider`'s "day-one direct" role).
+  - **Task 3:** `SelectionResolvingViewDataProvider` (`application/editor/include/
+    SelectionResolvingViewDataProvider.h`) -- thin wiring only: resolves `ViewNounKey::instance`
+    as a selection INDEX via `IViewSelectionProvider::at()`, then delegates every ReadU32/WriteU32
+    to a `GaiaLayerViewDataProvider` constructed against the resolved entity. Zero duplicated
+    read/write logic, per the task's own scoping.
+  - **Task 4 (non-vacuous proof):** `test_view_selection_provider.cpp`, 3/3 PASSED. Reused
+    `LayerMask` (Inc-B's component) rather than introducing a second trivial component -- sufficient
+    since Inc-C tests selection RESOLUTION, not a new noun. Two Gaia-backed tests: (1) 3 entities,
+    subset {e0, e2} tagged `Selected` (e1 deliberately excluded) with DISTINCT LayerMask values per
+    entity -- `ids()` yields exactly `{e0, e2}` in stable creation order, `at(0)`/`at(1)` resolve
+    correctly, `at(2)` fails closed; (2) a SEPARATE 3-entity setup with subset {e1, e2} (selection
+    index 0 deliberately does NOT map to entity 0, so "index 0 happens to be entity 0" can't mask a
+    bug) -- `ReadU32`/`WriteU32` through `SelectionResolvingViewDataProvider` hit the CORRECT
+    entity's value (varied per-entity so a wrong-entity bug would show a wrong VALUE), writes do
+    NOT perturb sibling entities, and an out-of-range index fails closed rather than silently
+    falling back to entity 0. A third test confirms the direct-list implementation satisfies the
+    identical seam contract.
+  - **Regression gates, all confirmed exactly per the plan's Task 4 bar:**
+    - `test_view_editor_layers_reconcile`: 2/2 PASSED (unperturbed).
+    - `test_editor_toggle_undo_capture`: 4/4 PASSED. sha256 of the 4 captures (byte-identical to
+      Inc-B's own recorded hashes -- confirmed via this plan doc's Inc-B section, not just
+      internally consistent):
+      - `editor_capture_5.png`   = `fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1`
+      - `editor_capture_45.png`  = `e2339aa09f871a0e57f19db22977c0a90aac2303cf4d090100f396553b49b1f8`
+      - `editor_capture_75.png`  = `fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1`
+      - `editor_capture_105.png` = `e2339aa09f871a0e57f19db22977c0a90aac2303cf4d090100f396553b49b1f8`
+    - AppFlow suite: 42/42 (same per-binary breakdown as Inc-B's own recorded count).
+    - `test_view_editor_layers_golden`: 2/2 PASSED.
+    - Gaia wrapper tests: SAME 2 pre-existing failures as Inc-B's documented baseline, not more/
+      fewer -- `test_gaia_voxel_world` 25/26 (`GaiaVoxelWorldTest.GetPosition` fails) and
+      `test_gaia_voxel_world_coverage` 31/32 (`GaiaVoxelWorldCoverageTest.
+      CreateVoxelsBatch_AutoParent_ToExistingChunk` fails). FYI (not part of this plan's named
+      gate, and not previously baselined by any Inc-A/A2/B doc): 3 OTHER binaries under the same
+      `GaiaVoxelWorld/tests` directory (`test_voxeldata_integration`, `test_voxel_injection_queue`,
+      `test_voxel_injector`) also show failures/crashes on this checkout -- flagged here rather
+      than silently noted, per the plan's own "report explicitly" instruction, but they are outside
+      the Task-4-named scope (Inc-B's own gate never covered them either) and Inc-C makes no
+      changes anywhere near their code paths.
+    - Byte-guards unchanged: `AppFlow.g.h` = `b63b2b35a7cc47fbb9ca35d5f7685d2db8907dada2199ad7a1c82c361eb0710b`,
+      `AppFlowCallables.g.hpp` = `989b65e4887e8ffdd1ed44495ac6f38e40039ba7de641cc60dae17435f9836fe`.
+  - Build: full `build.bat all` (configure+build) on this worktree's own tree, via the build-lock
+    queue with auto-dispatch (registered position 5, dispatched after ~40 min of queue contention
+    from concurrent sibling agents). 1222/1242 targets, 19 pre-existing failures, ALL in code Inc-C
+    never touches (SVO recipe/tier-crossing/GPU-parity tests, `test_body_instance_raymarch_render`,
+    `test_octree_config_sdi_parity`) -- none in AppFlow, RenderGraph's view/editor tests, or the new
+    Inc-C target itself.
+  - Open items noted, not resolved (per plan scope): the "constraints node" vs. raw-Gaia-query
+    decision (§11) remains open; UI-driven click-to-select and set-mutation/undo-over-a-set are
+    Inc-D, untouched here.
 
 ## Follow-ups (explicitly out of scope, note for later increments)
 - Wiring real UI click-to-select into `Selected` (a future increment could consume
