@@ -6,6 +6,7 @@
 #include "Nodes/DeviceNode.h"
 #include "Nodes/VoxelGridNode.h"
 #include "Nodes/PresentNode.h"
+#include "Nodes/BufferSyncGathererNode.h"  // Sampled Lighting Inc3 M5: variadic VkBuffer sync gatherer
 
 using namespace Vixen::RenderGraph;
 
@@ -25,6 +26,7 @@ TEST(NodeSelfRegistration, RegistersAllBuiltInNodes) {
     EXPECT_TRUE(registry.Has<DeviceNodeType>());
     EXPECT_TRUE(registry.Has<VoxelGridNodeType>());
     EXPECT_TRUE(registry.Has<PresentNodeType>());
+    EXPECT_TRUE(registry.Has<BufferSyncGathererNodeType>());
 }
 
 // RegisterAllNodes replays into whatever registry instance it is given — proves

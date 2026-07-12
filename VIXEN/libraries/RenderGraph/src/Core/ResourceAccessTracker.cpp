@@ -85,14 +85,36 @@ void ResourceAccessTracker::AddNode(NodeInstance* node) {
                     const ResourceDescriptor* desc = type->GetOutputDescriptor(static_cast<uint32_t>(slotIndex));
                     if (desc) kind = desc->accessKind;
                 }
-                RecordAccess(
-                    resource,
-                    node,
-                    ResourceAccessType::Write,
-                    static_cast<uint32_t>(slotIndex),
-                    true,  // isOutput
-                    kind
-                );
+                // Sampled Lighting Inc3 M5: array-hazard constituent expansion (see
+                // Resource::hazardConstituents_'s own doc comment). If this output
+                // Resource carries per-entry provenance (e.g. a BufferSyncGathererNode's
+                // gathered array), record EACH constituent's own original Resource*
+                // independently instead of the array wrapper — this is what lets N
+                // array entries bake N independent SyncEdges, matching the pre-M5 fixed-
+                // named-slot behavior (one Resource* per physical buffer) instead of
+                // collapsing them into one indivisible array-wrapper hazard.
+                if (resource->HasHazardConstituents()) {
+                    for (Resource* constituent : resource->GetHazardConstituents()) {
+                        if (!constituent) continue;
+                        RecordAccess(
+                            constituent,
+                            node,
+                            ResourceAccessType::Write,
+                            static_cast<uint32_t>(slotIndex),
+                            true,  // isOutput
+                            kind
+                        );
+                    }
+                } else {
+                    RecordAccess(
+                        resource,
+                        node,
+                        ResourceAccessType::Write,
+                        static_cast<uint32_t>(slotIndex),
+                        true,  // isOutput
+                        kind
+                    );
+                }
             }
         }
 
@@ -114,14 +136,34 @@ void ResourceAccessTracker::AddNode(NodeInstance* node) {
                     kind = desc->accessKind;  // Auto-sync P3
                 }
             }
-            RecordAccess(
-                resource,
-                node,
-                access,
-                static_cast<uint32_t>(slotIndex),
-                false,  // isOutput
-                kind
-            );
+            // Sampled Lighting Inc3 M5: array-hazard constituent expansion (mirrors the
+            // output-side expansion above) — a consumer's BUFFER_READ_ARRAY input holds
+            // an array-wrapper Resource* whose constituents are the SAME original
+            // Resource*s a producer's BUFFER_WRITE_ARRAY output was expanded against
+            // above, so each constituent's own access-history chain correctly picks up
+            // BOTH the producer's write and this consumer's read on the SAME Resource*.
+            if (resource->HasHazardConstituents()) {
+                for (Resource* constituent : resource->GetHazardConstituents()) {
+                    if (!constituent) continue;
+                    RecordAccess(
+                        constituent,
+                        node,
+                        access,
+                        static_cast<uint32_t>(slotIndex),
+                        false,  // isOutput
+                        kind
+                    );
+                }
+            } else {
+                RecordAccess(
+                    resource,
+                    node,
+                    access,
+                    static_cast<uint32_t>(slotIndex),
+                    false,  // isOutput
+                    kind
+                );
+            }
         }
     }
 }

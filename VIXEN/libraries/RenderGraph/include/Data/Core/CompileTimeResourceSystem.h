@@ -778,7 +778,16 @@ public:
         descriptorExtractor_ = nullptr;
         interfaces_.clear();
         isSet_ = false;
+        hazardConstituents_.clear();
     }
+
+    // Sampled Lighting Inc3 M5: array-hazard constituent provenance (see
+    // hazardConstituents_'s own doc comment for the full mechanism).
+    void SetHazardConstituents(std::vector<Resource*> constituents) {
+        hazardConstituents_ = std::move(constituents);
+    }
+    const std::vector<Resource*>& GetHazardConstituents() const { return hazardConstituents_; }
+    bool HasHazardConstituents() const { return !hazardConstituents_.empty(); }
 
     // Type-to-ResourceType mapping for automatic type deduction
     // Handles all descriptor handle types from DescriptorHandleVariant
@@ -1217,6 +1226,19 @@ private:
     // knowing the concrete wrapper type at extraction time
     // Returns DescriptorHandleVariant containing the conversion_type value
     std::function<DescriptorHandleVariant()> descriptorExtractor_;
+
+    // Sampled Lighting Inc3 M5: optional per-entry hazard provenance for array-typed
+    // sync resources (e.g. BufferSyncGathererNode's std::vector<VkBuffer> output).
+    // Empty for every ordinary (non-array-hazard) Resource — purely additive, zero
+    // footprint on the existing single-Resource-per-slot hazard model. When non-empty,
+    // ResourceAccessTracker::AddNode treats THIS Resource's array slot as N independent
+    // hazards (one per constituent), each tracked against ITS OWN Resource* (the
+    // original upstream Resource* the array entry was gathered from — e.g. a
+    // StorageBufferNode::STORAGE_BUFFER output), not against this wrapper Resource*
+    // itself. See BufferSyncGathererNode::CompileImpl/ExecuteImpl (the only writer of
+    // this field) and ResourceAccessTracker::AddNode (the only reader) for the full
+    // mechanism — this field is the identity bridge between them.
+    std::vector<Resource*> hazardConstituents_;
 
 #if VIXEN_DEBUG_DESCRIPTOR_TRACKING
     // Debug tracking

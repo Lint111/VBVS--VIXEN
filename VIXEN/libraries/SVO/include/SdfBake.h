@@ -74,15 +74,24 @@ struct SdfBakeResult {
 // Vec3 attribute), so the same SVORebuild / ShellOctreeGpu pipeline consumes the
 // result unchanged.
 // ---------------------------------------------------------------------------
+// Default emission-eval: every voxel is non-emissive (0.0). Passed as
+// BakeSdfWorld's default EmitFn so every existing call site (BakeRecipeToSdfWorld,
+// BakeRecipeInstructionsToSdfWorld) stays byte-identical — the M3 gate scene is
+// the only caller that supplies a real emission function.
+inline float NoEmission(const glm::vec3&) { return 0.0f; }
+
 // ---------------------------------------------------------------------------
 // BakeSdfWorld — eval-callable core (P2.1 M1).
 //
 // Two-pass narrow-band bake. EvalFn: float(glm::vec3 gridPos).
 // Color/roughness synthesis is unchanged from the original analytic path.
+// EmitFn: float(glm::vec3 gridPos) -> emissive intensity (Sampled Lighting
+// Inc3 M3); defaults to NoEmission so pre-M3 callers are unaffected.
 // ---------------------------------------------------------------------------
-template<class EvalFn>
+template<class EvalFn, class EmitFn = float(*)(const glm::vec3&)>
 inline SdfBakeResult BakeSdfWorld(EvalFn&& eval, const glm::vec3& center,
-                                  int n, float bandVoxels, int brickDepth = 3) {
+                                  int n, float bandVoxels, int brickDepth = 3,
+                                  EmitFn&& emit = NoEmission) {
     SdfBakeResult r;
     r.n      = n;
     r.center = center;
@@ -92,6 +101,11 @@ inline SdfBakeResult BakeSdfWorld(EvalFn&& eval, const glm::vec3& center,
     r.registry->registerKey("density", Vixen::VoxelData::AttributeType::Float, 0.0f);
     r.registry->addAttribute("color", Vixen::VoxelData::AttributeType::Vec3, glm::vec3(1.0f));
     r.registry->addAttribute("roughness", Vixen::VoxelData::AttributeType::Float, 0.5f);
+    // Sampled Lighting Inc3 M3: scalar emissive-intensity channel. Default 0.0
+    // (non-emissive) — a bake that never sets EmissionIntensity produces an
+    // all-zero emissive channel, which is the M3 byte-identity escape hatch
+    // (an emissive-absent scene must reproduce the pre-emissive M1/M2 output).
+    r.registry->addAttribute("emissionIntensity", Vixen::VoxelData::AttributeType::Float, 0.0f);
 
     // World
     r.world = std::make_unique<Vixen::GaiaVoxel::GaiaVoxelWorld>();
@@ -167,11 +181,13 @@ inline SdfBakeResult BakeSdfWorld(EvalFn&& eval, const glm::vec3& center,
             // Roughness: striped along Y, clamped to [0,1]
             const float rough = glm::clamp(
                 0.2f + 0.6f * glm::fract(p.y * 0.0625f), 0.0f, 1.0f);
+            const float emission = emit(p);
             const Vixen::GaiaVoxel::ComponentQueryRequest comps[] = {
                 Vixen::GaiaVoxel::Density{sd},
                 Vixen::GaiaVoxel::Color{col},
                 Vixen::GaiaVoxel::Roughness{rough},
                 Vixen::GaiaVoxel::Material{1u},
+                Vixen::GaiaVoxel::EmissionIntensity{emission},
             };
             r.world->createVoxel(
                 Vixen::GaiaVoxel::VoxelCreationRequest{p, comps});
@@ -187,6 +203,21 @@ inline SdfBakeResult BakeRecipeToSdfWorld(uint32_t recipeId, const glm::vec3& ce
     return BakeSdfWorld(
         [&](const glm::vec3& p) { return evalSdf(recipeId, p, center, rp); },
         center, n, bandVoxels, brickDepth);
+}
+
+// Sampled Lighting Inc3 M3: analytic recipe path + an explicit emissive-intensity
+// eval function, for authoring the >=10^3-emissive-voxel gate scene. EmitFn is
+// evaluated in the SAME grid space as `eval` (world-space grid coords, not
+// object-centered) — callers wanting object-centered emission should subtract
+// `center` themselves, mirroring evalSdf's own convention.
+template<class EmitFn>
+inline SdfBakeResult BakeRecipeToSdfWorldWithEmission(uint32_t recipeId, const glm::vec3& center,
+                                                      const RecipeParams& rp, int n, float bandVoxels,
+                                                      EmitFn&& emit, int brickDepth = 3) {
+    return BakeSdfWorld(
+        [&](const glm::vec3& p) { return evalSdf(recipeId, p, center, rp); },
+        center, n, bandVoxels, brickDepth,
+        std::forward<EmitFn>(emit));
 }
 
 // Recipe-instruction path — evaluates a P0 SdfInstruction[] program via the CPU stack-VM.

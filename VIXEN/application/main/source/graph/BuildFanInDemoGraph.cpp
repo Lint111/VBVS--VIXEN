@@ -40,6 +40,7 @@
 #include "Data/Nodes/CommandPoolNodeConfig.h"
 #include "Data/Nodes/ComputePipelineNodeConfig.h"
 #include "Data/Nodes/ComputeStageNodeConfig.h"
+#include "Data/Nodes/BufferSyncGathererNodeConfig.h"  // Sampled Lighting Inc3 M5: array-hazard buffer gatherer
 #include "Data/Nodes/DescriptorResourceGathererNodeConfig.h"
 #include "Data/Nodes/DescriptorSetNodeConfig.h"
 #include "Data/Nodes/DeviceNodeConfig.h"
@@ -53,6 +54,7 @@
 #include "Nodes/CommandPoolNode.h"
 #include "Nodes/ComputePipelineNode.h"
 #include "Nodes/ComputeStageNode.h"
+#include "Nodes/BufferSyncGathererNode.h"  // Sampled Lighting Inc3 M5: array-hazard buffer gatherer
 #include "Nodes/DescriptorResourceGathererNode.h"
 #include "Nodes/DescriptorSetNode.h"
 #include "Nodes/DeviceNode.h"
@@ -143,6 +145,17 @@ void VulkanGraphApplication::BuildFanInDemoGraph() {
 
     NodeHandle presentNode = renderGraph->AddNode<PresentNodeType>("fi_present");
 
+    // Sampled Lighting Inc3 M5: array-hazard buffer-sync gatherers — the generic
+    // replacement for ComputeStageNodeConfig's old fixed BUFFER_WRITE/BUFFER_READ_A/
+    // BUFFER_READ_B named slots. aStage/bStage each get their OWN 1-entry write-array
+    // gatherer (they are INDEPENDENT producers — each writes only its own buffer);
+    // cStage gets ONE 2-entry read-array gatherer (it reads BOTH bufA and bufB). See
+    // ComputeStageNodeConfig.h's own class doc for why each side needs its OWN gatherer
+    // instance rather than sharing one.
+    NodeHandle aWriteGatherer = renderGraph->AddNode<BufferSyncGathererNodeType>("fi_a_write_gatherer");
+    NodeHandle bWriteGatherer = renderGraph->AddNode<BufferSyncGathererNodeType>("fi_b_write_gatherer");
+    NodeHandle cReadGatherer  = renderGraph->AddNode<BufferSyncGathererNodeType>("fi_c_read_gatherer");
+
     // ===================================================================
     // Parameters
     // ===================================================================
@@ -186,6 +199,14 @@ void VulkanGraphApplication::BuildFanInDemoGraph() {
 
     auto* present = static_cast<PresentNode*>(renderGraph->GetInstance(presentNode));
     present->SetParameter(PresentNodeConfig::WAIT_FOR_IDLE, true);
+
+    // Sampled Lighting Inc3 M5: pre-register the buffer-sync gatherers' variadic slot
+    // counts (fixed at graph-construction time, no shader reflection needed — see
+    // BufferSyncGathererNode's own file header). aStage/bStage each write exactly ONE
+    // buffer; cStage reads exactly TWO.
+    static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(aWriteGatherer))->PreRegisterBufferSlots(1);
+    static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(bWriteGatherer))->PreRegisterBufferSlots(1);
+    static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(cReadGatherer))->PreRegisterBufferSlots(2);
 
     // Shader programs.
     RegisterComputeShader(static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(aShaderLib)),
@@ -276,13 +297,36 @@ void VulkanGraphApplication::BuildFanInDemoGraph() {
     wireStageCommon(bStage, bPipeline, bDescSet, bShaderLib);
     wireStageCommon(cStage, cPipeline, cDescSet, cShaderLib);
 
-    // --- Buffer SYNC slots: the hazard-correlation identity. The SAME StorageBufferNode
-    // Resource* feeds the producer's WRITE slot AND the consumer's READ slot, so the
-    // tracker bakes a SyncEdge per buffer (A→consumer, B→consumer) = the 2-wait fan-in. ---
-    batch.Connect(bufANode, StorageBufferNodeConfig::STORAGE_BUFFER, aStage, ComputeStageNodeConfig::BUFFER_WRITE, execOnly);
-    batch.Connect(bufBNode, StorageBufferNodeConfig::STORAGE_BUFFER, bStage, ComputeStageNodeConfig::BUFFER_WRITE, execOnly);
-    batch.Connect(bufANode, StorageBufferNodeConfig::STORAGE_BUFFER, cStage, ComputeStageNodeConfig::BUFFER_READ_A, execOnly);
-    batch.Connect(bufBNode, StorageBufferNodeConfig::STORAGE_BUFFER, cStage, ComputeStageNodeConfig::BUFFER_READ_B, execOnly);
+    // --- Buffer SYNC slots: the hazard-correlation identity. Sampled Lighting Inc3 M5:
+    // generalized from 3 fixed named slots into 2 array-typed slots, fed by dedicated
+    // BufferSyncGathererNode instances. bufA/bufB's own StorageBufferNode::STORAGE_BUFFER
+    // Resource*s feed BOTH aWriteGatherer/bWriteGatherer's variadic inputs AND
+    // cReadGatherer's variadic inputs — each gatherer preserves that ORIGINAL Resource*
+    // identity per array entry (BufferSyncGathererNode::hazardConstituents_), so
+    // ResourceAccessTracker::AddNode expands aStage's 1-entry write-array and cStage's
+    // 2-entry read-array back into their true per-buffer Resource*s, giving the SAME
+    // "SAME Resource* on both sides of a hazard" identity the pre-M5 named slots relied
+    // on. This bakes 2 INDEPENDENT edges (bufA: aStage->cStage, bufB: bStage->cStage) —
+    // the genuine 2-wait fan-in this whole demo exists to prove, not a spurious
+    // aStage->bStage->cStage chain (see the M5 Progress Log for why a naive "one shared
+    // array Resource*" design would have produced exactly that wrong chain).
+    // execDep (Dependency|Execute), not execOnly: VariadicConnectionRule only populates a
+    // variadic slot's actual Resource* via a PostCompile hook when the connection carries
+    // SlotRole::Dependency (see VariadicConnectionRule::Resolve's HasDependency(resolvedRole)
+    // gate) — an Execute-only variadic connection defers population to a PreExecute hook
+    // instead, which runs too LATE for BufferSyncGathererNode::CompileImpl (which needs the
+    // resource at COMPILE time to populate hazardConstituents_) to see it. Mirrors
+    // aGatherer/bGatherer/cGatherer's own existing execDep usage for their variadic
+    // buffer/image bindings just above (DescriptorResourceGathererNode is the SAME
+    // IVariadicNode-based mechanism).
+    batch.Connect(bufANode, StorageBufferNodeConfig::STORAGE_BUFFER, aWriteGatherer, 0, execDep);
+    batch.Connect(bufBNode, StorageBufferNodeConfig::STORAGE_BUFFER, bWriteGatherer, 0, execDep);
+    batch.Connect(bufANode, StorageBufferNodeConfig::STORAGE_BUFFER, cReadGatherer, 0, execDep);
+    batch.Connect(bufBNode, StorageBufferNodeConfig::STORAGE_BUFFER, cReadGatherer, 1, execDep);
+
+    batch.Connect(aWriteGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY, aStage, ComputeStageNodeConfig::BUFFER_WRITE_ARRAY, execOnly);
+    batch.Connect(bWriteGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY, bStage, ComputeStageNodeConfig::BUFFER_WRITE_ARRAY, execOnly);
+    batch.Connect(cReadGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY, cStage, ComputeStageNodeConfig::BUFFER_READ_ARRAY, execOnly);
 
     // --- Consumer also writes the swapchain image (SWAPCHAIN_INFO sync slot:
     // ComputeStorageWrite — drives the swapchain image transition + extent fallback). ---

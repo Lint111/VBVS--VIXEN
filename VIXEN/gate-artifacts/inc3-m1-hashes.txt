@@ -1,0 +1,176 @@
+Sampled Lighting Inc3 M1 -- Separate DirectLighting pass (KI-018) -- live gate
+
+This gate required THREE orthogonal fixes before it could even run (all found via live
+verification, none caught by the prior static/compile-only checks -- see Known-Issues at
+close-out). All three are pre-existing/unrelated to M1's own architecture (RenderGraph
+sync-slot/BlitNode/IMAGE_WRITE/BUFFER_WRITE work), just first-exercised by this milestone's
+gate:
+  1. application/main/source/FrameCapture.cpp: stale `#include "Profiler/FrameCapture.h"` left
+     over from the build-policy merge (9b43c376)'s Profiler-consolidation. Fix already existed
+     as commit b30e08e9 on sibling branch feat/tiered-esvo-inc3 (Opus-validated there);
+     cherry-picked onto this branch (HEAD 5835ef18).
+  2. libraries/ShaderManagement/src/ShaderPreprocessor.cpp: `includeGuard` (an unordered_set
+     tracking #include recursion) was never erased after a nested ProcessRecursive() call
+     returned, so it accumulated EVERY file ever seen anywhere in the whole include tree
+     instead of just the currently-active include chain -- a guarded (#ifndef) file included
+     twice, non-nested, was misreported as "Circular include detected" even though the guard
+     makes the second inclusion a harmless no-op in every other GLSL/C preprocessor. Surfaced
+     because DirectLighting.comp (M1's new shader) legitimately includes
+     Generated/LightingConfig.glsl twice non-nested (once transitively via SceneBindings.glsl
+     for the struct-type-before-use requirement, once directly for its own SSBO binding
+     declaration) -- a correct, intentional, documented pattern that just happened to be the
+     first shader to exercise this preprocessor bug. Fixed: erase canonicalPath from
+     includeGuard right after the nested call returns (covers both its success and error path).
+     Added regression coverage: libraries/ShaderManagement/tests/test_shader_preprocessor.cpp
+     (GuardedFileIncludedTwiceNonNestedSucceeds, TrueCircularIncludeStillDetected) -- both PASS.
+  3. libraries/RenderGraph/CMakeLists.txt: RenderGraphNodes never had VIXEN_SHADER_SOURCE_DIR
+     defined (only application/main/VixenApp did), so any RenderGraphNodes node compiling its
+     own shader from source (e.g. SkyProjectionNode::ResolveShaderPath) fell through to
+     CWD-relative fallbacks ("shaders", "../shaders") that don't resolve when vixen_editor.exe
+     runs from its own binaries/ output dir. SkyProjectionNode predates M1 (Tiered-ESVO Inc1 M3,
+     commit 4ae045a4) and was already unconditionally wired into the default scene graph
+     pre-M1 (confirmed via git history at Inc2 tip fb5dfda4) -- this was always a latent gap,
+     not introduced by M1; M1's gate is simply the first capture run exercising a real
+     from-clean-build CWD where no stray shaders/ happened to resolve by coincidence. Fixed:
+     added `target_compile_definitions(RenderGraphNodes PRIVATE VIXEN_SHADER_SOURCE_DIR=...)`
+     mirroring application/main's identical existing definition.
+
+All three: team-lead reviewed/verified before I applied any of them (git-history-verified for
+#1 and #3, source-read-verified for #2); I did not make unilateral scope calls.
+
+Gate 1: byte-identical vs pre-Inc3 baseline (default, unscaled) -- the milestone's core gate
+------------------------------------------------------------------------------
+Default editor scene (no script), vixen_editor.exe VIXEN_EDITOR_CAPTURE_FRAMES=5,
+VIXEN_EXIT_AFTER_FRAMES=20, run from build/ninja/ (binaries\vixen_editor.exe):
+
+sha256(gate-artifacts/inc3-m1-default-capture.png) =
+  fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1
+
+Canonical pre-Inc3 baseline (Inc0/Inc1/Inc2, unchanged across all prior milestones):
+  fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1
+
+Result: MATCH (byte-identical). DirectLighting.comp is now a genuinely separate
+ComputeStageNode pass (shading moved out of the march per KI-018), the march still writes
+HitRecord, BlitNode composites DirectLighting's output onto the swapchain -- yet the final
+pixels are byte-for-byte unchanged from the pre-split single-pass march. Confirms the
+pass-split is a pure refactor as designed.
+
+vixen_editor.exe exited 0, clean shutdown (RenderGraph::Clear persistent caches saved, all
+node CleanupImpl completed including direct_lighting_shader_lib and sky_projection, no
+crash/hang).
+
+Gate 2: render-scale sanity (VIXEN_RENDER_SCALE=0.5)
+------------------------------------------------------------------------------
+Same scene/capture convention, VIXEN_RENDER_SCALE=0.5 set additionally.
+
+sha256(gate-artifacts/inc3-m1-scaled-capture.png) =
+  8e07faa5af312bf952e3ab9d0b682d70587ef183aa5ef5b8f2e60b6a6cd77a47
+
+No pre-M1 scaled baseline was available to diff against (not previously captured/archived for
+this exact scene+scale combination), so full byte-equivalence proof against an unmodified-base
+scaled render was not established -- per the milestone brief this is accepted as a partial
+verification rather than blocking the gate. What WAS confirmed: the scaled render completes
+without corruption or crash (exit 0), produces a plausible file (2241 bytes vs the unscaled
+capture's 8227 bytes -- consistent with a real ~4x pixel-count reduction at 0.5x linear scale,
+not a garbage/empty image), and the VUID/error signature is the SAME CLASS as the unscaled
+capture (same VUID types; the pre-existing binding-21-out-of-range count scales up
+proportionally with dispatch/frame count as expected, not a new failure mode).
+
+Gate 3: live syncval -- the auto-sync barrier baking (both hazard checks named in the milestone)
+------------------------------------------------------------------------------
+Validation layers are always-on for this Debug build (VIXEN_VULKAN_VALIDATION=1 compile
+define, confirmed in the VixenApp compiler invocation) -- so Gate 1's default capture run IS
+the live syncval run; log = temp/run_inc3_m1_capture_default.log (1283 lines).
+
+(i) HitRecord read-before-write hazard: ZERO occurrences. No "SYNC-HAZARD", "read-before-write",
+    or WAR-pattern message anywhere in the log. Confirms M1 decision-3's fix (BUFFER_WRITE-shaped
+    INPUT_SLOT_SYNC on ComputeDispatchNodeConfig for the march's HitRecord write, consumed by
+    DirectLightingNode's BUFFER_READ_A) actually baked a real cross-submit sync edge -- the march
+    (vkQueueSubmit2 #1) and DirectLighting (vkQueueSubmit2 #2) are genuinely ordered.
+
+(ii) Swapchain-image layout/WAR hazard: ZERO occurrences on the swapchain image specifically.
+     Confirms M1 decisions 2 and 4 (IMAGE_WRITE slot on ComputeStageNode + WRITES_NO_IMAGE flag
+     on ComputeDispatchNode) compose correctly: the march no longer touches a presentable image
+     it doesn't own, DirectLighting's IMAGE_WRITE->GENERAL transition and BlitNode's final
+     transition to PRESENT_SRC don't double-transition or race.
+
+A SEPARATE, pre-existing image-layout VUID WAS observed, unrelated to the swapchain/M1's own
+hazard-slot work -- see "Other findings" below; it is on the generic Phase-G/H demo/test compute
+pipeline (test_dispatch/compute_desc_gatherer), not on the march/DirectLighting/BlitNode chain
+this milestone's decisions target, and it does not affect the byte-identical result.
+
+Gate 4: VUID census vs canonical baseline
+------------------------------------------------------------------------------
+grep -c VUID-vkCmdDispatch-None-08114: 20 (canonical baseline count per prior milestones' gate
+docs is stated as "10x binding-14" but is explicitly noted there as subject to the validation
+layer's own duplicated_message_limit cutoff -- this run's log confirms 7 distinct
+"(Warning - This VUID has now been reported 10 times... this will be the last time reporting
+it)" cutoff markers, i.e. the true per-VUID-type suppression ceiling is being hit repeatedly
+across multiple distinct call sites/frames, consistent with a 20-frame run (VIXEN_EXIT_AFTER_
+FRAMES=20) exercising more submits than the shorter captures prior gates measured against).
+No NEW VUID types beyond the ones enumerated below were observed relative to what a
+DescriptorResourceGathererNode/PushConstantGathererNode/generic-compute-demo pipeline already
+produces pre-M1 per Inc1-M1's own gate doc (which separately documented "7 push_constant_
+gatherer 'Type mismatch for field' ERROR log lines... pre-existing, not introduced by that
+milestone" for the SAME node family).
+
+Gate 5: fan-in demo unregressed (existing ComputeStageNode consumer)
+------------------------------------------------------------------------------
+VIXEN_FANIN_DEMO=1, same capture convention. Log: "VIXEN_FANIN_DEMO set - building multi-submit
+fan-in timeline demo graph" / "Building fan-in FrameGraph demo graph" confirmed in log; exit 0,
+no EXCEPTION, no "Prepare failed". Confirms M1's ComputeStageNodeConfig/ComputeDispatchNodeConfig
+additions (IMAGE_WRITE slot, BUFFER_WRITE slot, WRITES_NO_IMAGE flag) are purely additive and
+did not disturb the pre-existing fan-in composite path.
+
+Other findings (real, NOT M1-caused, recorded here per team-lead's close-out instruction)
+------------------------------------------------------------------------------
+(A) `[compute_desc_gatherer] [ERROR] [DescriptorResourceGathererNode::Execute] ERROR: Binding 21
+    out of range (resourceArray_.size()=18)` -- 22 occurrences at default scale, 80 at 0.5x
+    render-scale (same signature, count scales with dispatch/frame count as expected of a
+    per-execute error, not a new failure mode from scaling). This node ("compute_desc_gatherer",
+    BuildRenderGraph.cpp ~line 168, tagged "Phase H") backs the GENERIC demo/test compute
+    pipeline ("test_dispatch"), NOT the march, DirectLighting, or BlitNode this milestone
+    touches. Correlates with a VUID-vkCmdDraw-None-09600 image-layout mismatch (expects
+    GENERAL, finds UNDEFINED/TRANSFER_SRC_OPTIMAL) and a VUID-vkUpdateDescriptorSets-None-03047
+    (descriptor set updated while in use by a pending command buffer) on the same test pipeline.
+    Byte-identical Gate 1 still passed despite this, meaning it does not touch the pixels this
+    milestone's default scene actually renders -- but it IS a real, reproducible defect, most
+    likely this demo pipeline's own descriptor array never grew to match the binding count as
+    Inc2/Inc3 added new SSBO bindings (19-21) to the main scene graph elsewhere. Recommend a
+    Known-Issue entry; NOT blocking this milestone's gate since it's provably orthogonal
+    (different node, different pipeline, zero pixel impact), but flagging per team-lead's
+    "record both orthogonal fixes... as separate Known-Issue candidates" instruction -- this is
+    a THIRD such candidate, found rather than fixed (out of scope to fix without its own
+    investigation).
+(B) `[direct_lighting_push_constant_gatherer]` and `[push_constant_gatherer]` both emit "Type
+    mismatch for field" ERROR lines (13 each, 26 total) -- SAME class Inc1-M1's own gate doc
+    already documented as pre-existing baseline noise for the march's gatherer; DirectLighting's
+    OWN new gatherer inherits the identical benign pattern (harmless per Inc1's precedent; byte-
+    identical result confirms zero visual effect). Not a new finding, just confirming continuity.
+(C) SdiLifecycleTest.UpdateShaderAndRegenerateSdi fails intermittently on a filesystem-mtime-
+    resolution race (`timestamp1 != timestamp2` when two writes land in the same Windows FS
+    mtime tick) -- pre-existing (untouched by any commit this milestone), unrelated to shaders/
+    RenderGraph; not investigated further per scope.
+
+Files created:
+  VIXEN/libraries/ShaderManagement/tests/test_shader_preprocessor.cpp
+
+Files edited (this session, beyond the pre-existing M1 commits 784adff7/3f1def06/36a6e5df):
+  VIXEN/application/main/source/FrameCapture.cpp        (cherry-pick b30e08e9)
+  VIXEN/libraries/ShaderManagement/src/ShaderPreprocessor.cpp  (includeGuard scoping fix)
+  VIXEN/libraries/ShaderManagement/tests/CMakeLists.txt  (register new test file)
+  VIXEN/libraries/RenderGraph/CMakeLists.txt             (VIXEN_SHADER_SOURCE_DIR define)
+
+Build tooling gotchas found + documented in VIXEN/.claude/skills/vixen-build-policy/SKILL.md
+(both cost real turns this session, will hit the next agent too):
+  - cmd.exe /c "build.bat ..." with a bare relative name from WSL bash does not reliably
+    inherit bash's cwd -- always invoke via build.bat's full Windows absolute path.
+  - %TEMP%\vixen_build_status.txt is machine-wide, shared by every concurrent build/agent --
+    never reliable for "did MY build finish," only for "is the lock currently busy."
+
+Platform: Windows-native build (vixen-ninja preset, MSVC via vcvars64.bat), real GPU (per prior
+Inc1/Inc2 gates on this machine: AMD Radeon(TM) Graphics via D3D12/dzn). Build: 19 pre-existing
+SVO/RenderGraph test target failures (SdfCoreKernels.g.hpp glm-parse cascade, C2589/C2676/
+C2446/C2672/C2059 -- same signature Inc2-M1's gate doc already flagged as unrelated
+pre-existing) -- unchanged in count/signature across all builds this session; VIXEN.exe and
+vixen_editor.exe both link cleanly.

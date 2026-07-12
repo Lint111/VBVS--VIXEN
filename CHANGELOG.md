@@ -89,6 +89,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   prerequisite) and KI-021 (a pre-existing, unrelated `VIXEN_RESIZE_AT_FRAME` mid-run-resize access
   violation, newly surfaced by this program's first resize-exercising gate). See
   `Vixen-Docs/01-Architecture/Sampled-Lighting-{Design,Inc2-Plan}-2026-07.md`.
+- **Sampled Lighting, Inc3 (ReSTIR direct illumination)** — unbiased ReSTIR DI for many-light
+  scenes, sourced from the scene's own emissive voxels (not an app-authored light list). A new
+  scalar-RGB emissive semantic channel rides the existing sparse-mip averaging, and a bounded
+  top-down CUT through the emissive mip pyramid (`LightTree.h`) turns a million glowing voxels
+  into a handful of coarse light-tree candidates — "a light-tree for free," reusing the LOD
+  machinery. Direct lighting now runs as its own `DirectLightingNode`/`DirectLighting.comp`
+  compute-graph pass (finally separated from the march, closing KI-018 — the split needed a
+  standalone `BlitNode`, a generic WSI-free `IMAGE_WRITE` sync slot, and array-hazard-tracking
+  surgery in the RenderGraph auto-sync core along the way), consuming `HitRecord` + a new
+  drift-guarded `ReservoirConfig` `[GpuStruct]`. RIS draws weighted candidates from the light-tree
+  cut; a per-pixel reservoir (ping-pong buffer, binding 25/26) carries them through temporal reuse
+  (reprojected via a new worldPos/depth companion history buffer — closing KI-023, the geometric
+  reproject reject that replaces Inc2's color-consistency check, which would otherwise fight
+  ReSTIR's own noise) and spatial neighbor reuse (`SpatialReuseShade.comp`, MIS-weighted). CPU-mirror
+  tests prove the reservoir math's unbiasedness identities (weight normalization, MIS-combine,
+  RIS-converges-to-independent-brute-force-MC) before any GPU rendering; live equal-error-vs-
+  brute-force gates hold pre-spatial 0.044% and post-spatial 0.15% relative error. Unbiased weights
+  only in this landing — the 35–65× biased mode is scaffolded (`ReservoirConfig.biasedModeEnabled`)
+  but not implemented, deliberately deferred and flagged on the design doc's bias ledger, not
+  silently dropped. `ReservoirConfig.reservoirEnabled=0` reproduces the pre-ReSTIR render
+  byte-identically, held through every milestone. Measured cost: ~5.4 ms/frame full-frame delta at
+  1080p on a ≥10³-emissive-voxel scene (method, caveats, and signal-quality discussion in
+  `gate-artifacts/inc3-m7-restir-cost.txt`). Also reconciled a sibling program's algorithm change
+  (Tiered-ESVO's world-unit-correct tier-crossing LOD gate) into this program's own shader-split
+  layout, and fixed a real post-merge regression where a RenderGraph library restructuring
+  (per-node OBJECT-lib linkage) silently dropped a shader-source-path compile definition, breaking
+  app boot. Spectral (temperature→blackbody) emission, biased-mode ReSTIR, and the denoiser all
+  remain deliberate, tracked fast-follows. See
+  `Vixen-Docs/01-Architecture/Sampled-Lighting-{Design,Inc3-Plan}-2026-07.md`.
 
 ### Fixed
 - **CameraNode silently overriding every scene's configured camera** — `ExecuteImpl` recomputed the

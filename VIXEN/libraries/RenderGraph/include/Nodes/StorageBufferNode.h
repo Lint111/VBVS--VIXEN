@@ -37,6 +37,20 @@ public:
     StorageBufferNode(const std::string& instanceName, NodeType* nodeType);
     ~StorageBufferNode() override = default;
 
+    /**
+     * @brief Map the buffer's host-visible/host-coherent memory for a CPU-side
+     * readback (Sampled Lighting Inc3 M4's equal-error gate: reading back
+     * reservoirRecordsA/B after a dispatch to numerically compare against the
+     * CPU brute-force reference). Caller must have externally waited for the
+     * GPU work writing this buffer to complete (fence/vkDeviceWaitIdle) before
+     * calling -- this does not synchronize itself, mirroring PerFrameResources'
+     * own "no flush needed, HOST_COHERENT" convention.
+     * @return mapped pointer, or nullptr if the buffer has not been created yet.
+     */
+    void* MapForReadback(Vixen::Vulkan::Resources::VulkanDevice* device) const;
+    void UnmapReadback(Vixen::Vulkan::Resources::VulkanDevice* device) const;
+    VkDeviceSize GetSizeBytes() const { return sizeBytes_; }
+
 protected:
     void SetupImpl(TypedSetupContext&    ctx) override;
     void CompileImpl(TypedCompileContext& ctx) override;

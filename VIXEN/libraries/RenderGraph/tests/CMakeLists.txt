@@ -1115,6 +1115,27 @@ else()
 endif()
 
 # ===========================================================================
+# BufferSyncGathererNode Tests (Sampled Lighting Inc3 M5)
+# ===========================================================================
+# Config-shape + pre-registration + node-type-registration checks — the generic
+# variadic-VkBuffer-gatherer that replaces ComputeStageNodeConfig's old fixed named
+# buffer-sync slots. Real correctness is validated by the live render-graph gate (see
+# gate-artifacts/inc3-m5-hashes.txt), mirroring every other gatherer node in this codebase.
+if(TARGET GTest::gtest_main)
+    add_executable(test_buffer_sync_gatherer_node Nodes/test_buffer_sync_gatherer_node.cpp)
+    if(TARGET RenderGraph)
+        target_link_libraries(test_buffer_sync_gatherer_node PRIVATE GTest::gtest_main RenderGraph)
+    else()
+        target_link_libraries(test_buffer_sync_gatherer_node PRIVATE GTest::gtest_main)
+    endif()
+    set_target_properties(test_buffer_sync_gatherer_node PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    gtest_discover_tests(test_buffer_sync_gatherer_node)
+    message(STATUS "✓ test_buffer_sync_gatherer_node configured (Sampled Lighting Inc3 M5)")
+else()
+    message(STATUS "⊗ test_buffer_sync_gatherer_node skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
 # CompileTimeResourceSystem Tests
 # ===========================================================================
 # Test suite for compile-time type system validation, caching, and traits.

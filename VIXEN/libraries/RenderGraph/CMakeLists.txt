@@ -45,6 +45,8 @@ set(RENDERGRAPH_DATA_CORE_HEADERS
 
 set(RENDERGRAPH_DATA_NODE_CONFIGS
     include/Data/Nodes/BoolOpNodeConfig.h
+    include/Data/Nodes/BlitNodeConfig.h  # Sampled Lighting Inc3 M1: presentation-only render-target->swapchain blit
+    include/Data/Nodes/BufferSyncGathererNodeConfig.h  # Sampled Lighting Inc3 M5: variadic VkBuffer sync gatherer
     include/Data/Nodes/CameraNodeConfig.h
     include/Data/Nodes/CommandPoolNodeConfig.h
     include/Data/Nodes/ComputeDispatchNodeConfig.h
@@ -199,6 +201,8 @@ set(RENDERGRAPH_CORE_SOURCES
 
 set(RENDERGRAPH_NODE_HEADERS
     include/Nodes/BoolOpNode.h
+    include/Nodes/BlitNode.h  # Sampled Lighting Inc3 M1: presentation-only render-target->swapchain blit
+    include/Nodes/BufferSyncGathererNode.h  # Sampled Lighting Inc3 M5: variadic VkBuffer sync gatherer
     include/Nodes/CameraNode.h
     include/Nodes/CommandPoolNode.h
     include/Nodes/ComputeDispatchNode.h
@@ -242,6 +246,8 @@ set(RENDERGRAPH_NODE_HEADERS
 
 set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/BoolOpNode.cpp
+    src/Nodes/BlitNode.cpp  # Sampled Lighting Inc3 M1: presentation-only render-target->swapchain blit
+    src/Nodes/BufferSyncGathererNode.cpp  # Sampled Lighting Inc3 M5: variadic VkBuffer sync gatherer
     src/Nodes/ConstantNode.cpp  # M3: self-registration TU for the header-only Constant node types
     src/Nodes/CameraNode.cpp
     src/Nodes/CommandPoolNode.cpp
@@ -261,7 +267,10 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/ShadowConfigNode.cpp      # Sampled Lighting Inc1 M4: ShadowConfig upload ring
     src/Nodes/AccumulationConfigNode.cpp  # Sampled Lighting Inc2 M1: AccumulationConfig upload ring
     src/Nodes/AccumulationHistoryNode.cpp # Sampled Lighting Inc2 M1: persistent temporal-accumulation history image
+    src/Nodes/WorldPosHistoryNode.cpp     # Sampled Lighting Inc3 M2: persistent worldPos/depth companion history image (KI-023)
     src/Nodes/PrevCameraConfigNode.cpp    # Sampled Lighting Inc2 M3: prev-frame camera matrix upload ring
+    src/Nodes/ReservoirConfigNode.cpp     # Sampled Lighting Inc3 M3: ReservoirConfig upload ring (M4/M5 scaffolding)
+    src/Nodes/LightTreeBufferNode.cpp     # Sampled Lighting Inc3 M4: mip-cut light-tree upload ring (RIS candidate source)
     src/Nodes/MvpUniformNode.cpp
     src/Nodes/DescriptorResourceGathererNode.cpp
     src/Nodes/DescriptorSetNode.cpp
@@ -592,6 +601,24 @@ target_link_libraries(RenderGraphNodes
 # just this one node -- the define moves with it.
 target_compile_definitions(RenderGraphNode_UIRenderNode PRIVATE
     VIXEN_UI_ASSET_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/assets")
+
+# Sampled Lighting Inc3 M1 finding: SkyProjectionNode::ResolveShaderPath() (and any other
+# RenderGraphNodes node compiling its own shaders straight from source) falls back to CWD-relative
+# paths ("shaders", "../shaders") when VIXEN_SHADER_SOURCE_DIR isn't defined -- which it never was
+# for this target (only application/main/CMakeLists.txt defined it, for VixenApp). Pre-existing gap,
+# not introduced by M1; mirrors application/main's own definition exactly so every RenderGraphNodes
+# node gets the same reliable, CWD-independent shader-source resolution VixenApp has always had.
+#
+# Inc3 M7 re-fix: the Graph-Derived Node Linkage epic (merged from origin/main) split
+# RenderGraphNodes from one STATIC library compiling every node's .cpp into a facade over
+# per-node RenderGraphNode_<Name> OBJECT libraries (see the loop above) -- RenderGraphNodes
+# itself no longer compiles SkyProjectionNode.cpp (or any node source), so this define stopped
+# reaching ResolveShaderPath() the moment that split landed, silently regressing SkyProjectionNode
+# back to CWD-relative shader resolution (same class of bug UIRenderNode's own VIXEN_UI_ASSET_
+# SOURCE_DIR define above was correctly re-homed for at the same time -- SkyProjectionNode's
+# just got missed). Apply to the actual compiling target instead of the empty facade.
+target_compile_definitions(RenderGraphNode_SkyProjectionNode PRIVATE
+    VIXEN_SHADER_SOURCE_DIR="${VIXEN_SHADER_SOURCE_DIR}")
 
 # ============================================================================
 # Install and Properties (both static libs)

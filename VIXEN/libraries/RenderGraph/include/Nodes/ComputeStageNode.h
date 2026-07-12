@@ -9,6 +9,7 @@
 #include "Data/Nodes/ComputeStageNodeConfig.h"
 #include "Core/FrameSyncSchedule.h"
 #include "Nodes/Common/SwapchainBarriers.h"
+#include <unordered_map>
 
 namespace Vixen::RenderGraph {
 
@@ -62,6 +63,14 @@ private:
     VkPipeline lastPipeline_ = VK_NULL_HANDLE;
     VkPipelineLayout lastPipelineLayout_ = VK_NULL_HANDLE;
     std::vector<VkDescriptorSet> lastDescriptorSets_;
+
+    // Sampled Lighting Inc3 M1: tracks the LAST KNOWN layout of each IMAGE_WRITE target's
+    // VkImage handle, same KI-007-fix pattern ComputeDispatchNode's own
+    // renderTargetImageLayouts_ uses (a plain seen/not-seen guess breaks once a command
+    // buffer can be re-recorded against a ring slot whose actual last transition doesn't
+    // match a two-state assumption). See DecideRenderTargetPriorLayoutAndUpdate
+    // (Nodes/Common/SwapchainBarriers.h) for the shared decision/update logic.
+    std::unordered_map<VkImage, VkImageLayout> imageWriteLayouts_;
 };
 
 } // namespace Vixen::RenderGraph

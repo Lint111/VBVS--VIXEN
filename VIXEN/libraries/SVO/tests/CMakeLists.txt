@@ -288,6 +288,42 @@ endif()
 gtest_discover_tests(test_mip_sample_bake)
 
 # ===========================================================================
+# Light Tree Tests  (Sampled Lighting Inc3 M3 — mip-cut light-tree: bounded
+# cut through the emissive mip pyramid, plus the brute-force-leaf-sum vs cut
+# tolerance validation)
+# ===========================================================================
+add_executable(test_light_tree test_light_tree.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_light_tree PRIVATE
+        GTest::gtest_main SVO GaiaVoxelWorld VoxelComponents VoxelData)
+else()
+    target_link_libraries(test_light_tree PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_light_tree PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_light_tree POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_light_tree>
+        COMMENT "Copying TBB DLL for test_light_tree")
+endif()
+gtest_discover_tests(test_light_tree)
+
+# ===========================================================================
+# Reservoir Mirror Tests  (Sampled Lighting Inc3 M4 — CPU mirror of the RIS/
+# ReSTIR reservoir math: WRS update + MIS-balance-heuristic temporal combine,
+# red-green BEFORE the GPU shading path is trusted)
+# ===========================================================================
+add_executable(test_reservoir_mirror test_reservoir_mirror.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_reservoir_mirror PRIVATE
+        GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_reservoir_mirror PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_reservoir_mirror PROPERTIES FOLDER "Tests/SVO Tests")
+gtest_discover_tests(test_reservoir_mirror)
+
+# ===========================================================================
 # Resolvable-Level Formula Tests  (Sparse-Mip ESVO LOD Inc1 M4a Task 10 part 1
 # — pure math, no octree/GPU needed: minResolvableLevel(distance, fovRadians,
 # screenHeightPx, leafSize_m, pxThreshold), both distance- and FOV-driven axes)

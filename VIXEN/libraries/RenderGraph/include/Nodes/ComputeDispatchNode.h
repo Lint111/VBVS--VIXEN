@@ -12,20 +12,10 @@
 
 namespace Vixen::RenderGraph {
 
-// KI-007 fix: given the tracked last-known layout for a render-target VkImage handle (absent =
-// never seen -> fresh/recreated image, true prior layout UNDEFINED), returns the layout to declare
-// as the barrier's oldLayout and updates the map to the new layout the caller is about to
-// transition to. Pure/free so it's unit-testable with fake VkImage handles, no device needed.
-inline VkImageLayout DecideRenderTargetPriorLayoutAndUpdate(
-    std::unordered_map<VkImage, VkImageLayout>& tracked,
-    VkImage image,
-    VkImageLayout newLayout)
-{
-    auto it = tracked.find(image);
-    const VkImageLayout priorLayout = (it != tracked.end()) ? it->second : VK_IMAGE_LAYOUT_UNDEFINED;
-    tracked[image] = newLayout;
-    return priorLayout;
-}
+// DecideRenderTargetPriorLayoutAndUpdate (KI-007 fix) moved to
+// Nodes/Common/SwapchainBarriers.h (Sampled Lighting Inc3 M1) so ComputeStageNode's
+// IMAGE_WRITE role and the new BlitNode can reuse it too — this header still pulls it
+// in transitively via the SwapchainBarriers.h include above.
 
 /**
  * @brief Node type for generic compute shader dispatch
@@ -85,7 +75,7 @@ protected:
     void CleanupImpl(TypedCleanupContext& ctx) override;
 
 private:
-    void RecordComputeCommands(Context& ctx, VkCommandBuffer cmdBuffer, uint32_t imageIndex, uint32_t frameIndex, const void* pushConstantData, bool leaveImageInGeneral);
+    void RecordComputeCommands(Context& ctx, VkCommandBuffer cmdBuffer, uint32_t imageIndex, uint32_t frameIndex, const void* pushConstantData, bool leaveImageInGeneral, bool writesNoImage);
 
     // Extracted helper methods for RecordComputeCommands
     void ReplayEntryBarriers(VkCommandBuffer cmd, const SubmitGroup& group,
@@ -95,14 +85,11 @@ private:
     void SetPushConstants(Context& ctx, VkCommandBuffer cmdBuffer, VkPipelineLayout layout, const void* pushConstantData);
 
     // M4: render-scale decoupling. When RENDER_TARGET_INFO is connected, blits the offscreen
-    // render target (already written by the dispatch, still GENERAL) to the swapchain image,
-    // ending in the same layout contract RecordComputeCommands already applies to the swapchain
-    // (leaveImageInGeneral -> GENERAL for the UI pass, else -> PRESENT_SRC).
-    void BlitRenderTargetToSwapchain(VkCommandBuffer cmdBuffer,
-                                     Vixen::Vulkan::Resources::IRenderTarget* renderTarget,
-                                     VkImage swapchainImage,
-                                     VkExtent2D swapchainExtent,
-                                     bool leaveImageInGeneral);
+    // render target (already written by the dispatch, still GENERAL) to the swapchain image.
+    // Sampled Lighting Inc3 M1: now calls the shared free function
+    // SwapchainBarriers::BlitRenderTargetToSwapchain (extracted from this method's old body)
+    // instead of owning a private copy — see that function's doc comment for the barrier
+    // sequence.
 
     // Device and command pool references
     VulkanDevice* vulkanDevice = nullptr;

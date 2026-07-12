@@ -661,8 +661,10 @@ inline SerializedOctree SerializeSdf(const SdfBodyOctree& body) {
         std::memcpy(out.nodes.data(), descriptors.data(), out.nodes.size());
     }
 
-    // --- Channel table: canonical order SDF(1) → Color(3) → Roughness(1).
+    // --- Channel table: canonical order SDF(1) → Color(3) → Roughness(1) → Emission(1).
     //     This order is the SINGLE SOURCE OF TRUTH for the pool layout; the test pins it.
+    //     Emission (Sampled Lighting Inc3 M3) is SCALAR intensity, mean-filtered up the
+    //     mip pyramid like Color/Roughness (FK_NONE) — not the SDF's min-magnitude rule.
     struct ChannelSpec {
         SemanticId  sem;
         uint32_t    elemCount;
@@ -672,6 +674,7 @@ inline SerializedOctree SerializeSdf(const SdfBodyOctree& body) {
         { SEM_SDF,       1u, FK_DISTANCE },
         { SEM_COLOR,     3u, FK_NONE     },
         { SEM_ROUGHNESS, 1u, FK_NONE     },
+        { SEM_EMISSION,  1u, FK_NONE     },
     };
     constexpr uint32_t kNumChannels =
         static_cast<uint32_t>(sizeof(kChannelSpecs) / sizeof(kChannelSpecs[0]));
@@ -750,6 +753,13 @@ inline SerializedOctree SerializeSdf(const SdfBodyOctree& body) {
                             const auto rgh = world.getComponentValue<Vixen::GaiaVoxel::Roughness>(entity);
                             pool[bi * out.brickStrideFloats + base + voxelSlot] =
                                 rgh.has_value() ? rgh.value() : 0.5f;
+                        } else if (sem == SEM_EMISSION) {
+                            // Sampled Lighting Inc3 M3: scalar emissive intensity.
+                            // Missing default 0.0 (non-emissive) — the byte-identity
+                            // escape hatch for scenes that never bake emission.
+                            const auto emi = world.getComponentValue<Vixen::GaiaVoxel::EmissionIntensity>(entity);
+                            pool[bi * out.brickStrideFloats + base + voxelSlot] =
+                                emi.has_value() ? emi.value() : 0.0f;
                         }
                         (void)ec;  // suppress warning for single-elem channels
                     }

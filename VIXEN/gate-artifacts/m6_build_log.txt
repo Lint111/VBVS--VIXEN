@@ -1,0 +1,225 @@
+[build] VS       : C:\Program Files\Microsoft Visual Studio\18\Community
+[build] cmake    : C:\Program Files\CMake\bin\cmake.exe
+[build] source   : C:\cpp\VBVS--VIXEN\.claude\worktrees\sampled-lighting-inc3\VIXEN
+[build] preset   : vixen-ninja
+[build] action   : all
+[build] target   : (full build)
+[build] buildId  : sampled-lighting-inc3 (distinguishes this build's log/status among concurrent builds)
+[build] ccache   : C:\ccache (max 20G; preferred - caches MSVC PCH)
+[build] sccache  : C:\sccache (max 20G; fallback only)
+-- VIXEN: found system ccache: C:/cpp/VBVS--VIXEN/.claude/worktrees/sampled-lighting-inc3/VIXEN/.ccache-deps/ccache-4.13.6-windows-x86_64/ccache.exe — skipping auto-provision.
+-- Using ccache: C:/cpp/VBVS--VIXEN/.claude/worktrees/sampled-lighting-inc3/VIXEN/.ccache-deps/ccache-4.13.6-windows-x86_64/ccache.exe (preferred over sccache - caches MSVC PCH)
+-- VIXEN: found an existing Vulkan (C:/VulkanSDK/1.4.321.1/include) — skipping auto-provision.
+-- VIXEN: Vulkan validation layers: ON (build type: Debug; layer path: )
+-- Attempting auto locate Vulkan using CMake......
+-- Vulkan SDK found: C:/VulkanSDK/1.4.321.1
+-- Capping concurrent link jobs at 4 (override with VIXEN_MAX_PARALLEL_LINKS)
+-- MSVC multi-processor compilation enabled
+-- MSVC linker warnings suppressed (LNK4099: missing PDB files)
+-- MSVC compile warnings suppressed for third-party libs (4100, 4189, 4244, 4267)
+-- FetchContent shared cache: C:/vixen-fetchcontent-cache
+-- GLM: Version 1.0.1
+-- GLM: Build with C++ features auto detection
+-- OpenSSL not found - fetching header-only stbrumme/hash-library as fallback for SHA256
+-- *************************************************************
+-- gaia-ecs v0.9.2 (Debug)
+-- Copyright (c) 2025 Richard Biely <richardbiely@gmail.com>
+-- *************************************************************
+-- Compiler: MSVC
+-- CompPath: C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.50.35717/bin/Hostx64/x64/cl.exe
+-- CompSim: 
+-- CPU: AMD64
+-- *************************************************************
+-- GAIA_BUILD_BENCHMARK = OFF
+-- GAIA_BUILD_EXAMPLES = OFF
+-- GAIA_BUILD_SRC = OFF
+-- GAIA_BUILD_UNITTEST = OFF
+-- GAIA_DEVMODE = OFF
+-- GAIA_DISABLE_ASSERTS = OFF
+-- GAIA_ECS_CHUNK_ALLOCATOR = ON
+-- GAIA_FORCE_DEBUG = OFF
+-- GAIA_GENERATE_CC = ON
+-- GAIA_GENERATE_SINGLE_HEADER = OFF
+-- GAIA_MACOS_BUILD_HACK = OFF
+-- GAIA_MAKE_SINGLE_HEADER = OFF
+-- GAIA_PROFILER_BUILD = OFF
+-- GAIA_PROFILER_CPU = OFF
+-- GAIA_PROFILER_MEM = OFF
+-- GAIA_USE_LIBCPP = OFF
+-- GAIA_USE_SANITIZER = 
+-- GAIA_VERSION = 0.9.2
+-- GAIA_VERSION_REGEX = #define GAIA_VERSION_.*[ 	]+(.+)
+-- Gaia ECS fetched - available to all libraries
+-- GoogleTest fetched - test targets available to subdirectories
+-- Using the multi-header code from C:/vixen-fetchcontent-cache/nlohmann_json-src/include/
+-- nlohmann/json fetched - available to all libraries
+-- miniz fetched - ZIP compression available to all libraries
+-- VulkanMemoryAllocator (VMA) fetched - GPU memory management available
+-- Including Win32 support
+-- GLFW fetched - cross-platform window/surface/input available
+-- Could NOT find PkgConfig (missing: PKG_CONFIG_EXECUTABLE) 
+-- Could NOT find Freetype (missing: FREETYPE_LIBRARY FREETYPE_INCLUDE_DIRS) 
+-- Found Freetype::Freetype - Freetype font engine enabled
+-- RmlUi + FreeType fetched - moddable UI available
+CMake Warning at C:/vixen-fetchcontent-cache/tbb-src/CMakeLists.txt:119 (message):
+  You are building oneTBB as a static library.  This is highly discouraged
+  and such configuration is not supported.  Consider building a dynamic
+  library to avoid unforeseen issues.
+
+
+-- TBBBind build targets are disabled due to unsupported environment
+-- oneTBB fetched - parallel execution available to all libraries
+-- Dependencies configured - all third-party libraries fetched
+-- Shader source directory configured: C:/cpp/VBVS--VIXEN/.claude/worktrees/sampled-lighting-inc3/VIXEN/shaders
+-- ShaderAssets target created with 0 shader files
+-- Logger: Precompiled headers enabled
+-- EventBus: Precompiled headers enabled
+-- ShaderManagement: Using glslang libraries from Vulkan SDK
+-- OpenSSL not found - ShaderManagement will use the project hash fallback or header-only provider if available
+-- ShaderManagement: Precompiled headers enabled (using ShaderManagementHeaders.h)
+-- ShaderManagement: Building shader tools
+-- ShaderManagement tests configured
+-- VulkanResources: Precompiled headers enabled (using Headers.h)
+-- CashSystem: Precompiled headers enabled
+-- RenderGraphCore: Precompiled headers enabled (using RenderGraphHeaders.h)
+-- ✓ test_ui_hit_mask configured (UI hit-mask math)
+-- Configuring test_array_type_validation (trimmed build compatible)
+-- ✓ test_array_type_validation configured (trimmed build: FALSE)
+-- Configuring test_field_extraction (trimmed build compatible)
+-- ✓ test_field_extraction configured (trimmed build: FALSE)
+-- Configuring test_resource_gatherer (trimmed build compatible)
+-- ✓ test_resource_gatherer configured (trimmed build: FALSE)
+-- Configuring test_graph_topology (trimmed build compatible)
+-- ✓ test_graph_topology configured (trimmed build: FALSE)
+-- Configuring test_graph_lifecycle_hooks (trimmed build compatible)
+-- ✓ test_graph_lifecycle_hooks configured (trimmed build: FALSE)
+-- ⊗ test_resource_management moved to ResourceManagement library
+-- Configuring test_slot_task (trimmed build compatible)
+-- ✓ test_slot_task configured (Phase C budget-aware execution)
+-- [RenderGraph Tests] Added: test_timer
+-- [RenderGraph Tests] Added: test_loop_manager
+-- [RenderGraph Tests] Added: test_resource_dependency_tracker
+-- [RenderGraph Tests] Added: test_recompile_dedup
+-- [RenderGraph Tests] Added: test_per_frame_resources
+-- [RenderGraph Tests] Added: test_gpu_query_manager (Sprint 6.3)
+-- [RenderGraph Tests] Added: test_gpu_query_manager_integration (Sprint 6.3 - placeholder)
+-- [RenderGraph Tests] Added: test_timeline_capacity_tracker (Sprint 6.3)
+-- [RenderGraph Tests] Added: test_node_logging (audit V-M26 gap)
+-- [RenderGraph Tests] Added: test_device_node
+-- [RenderGraph Tests] Added: test_window_node
+-- [RenderGraph Tests] Added: test_command_pool_node
+-- [RenderGraph Tests] Added: test_swap_chain_node
+-- [RenderGraph Tests] Added: test_frame_sync_node
+-- [RenderGraph Tests] Added: test_push_constant_gatherer_node
+-- [RenderGraph Tests] Added: test_descriptor_resource_gatherer_node
+-- [RenderGraph Tests] Added: test_acceleration_structure_node (Phase 3.4)
+-- [RenderGraph Tests] Added: test_render_target_node (AR#28)
+-- [RenderGraph Tests] Added: test_compute_dispatch_node (KI-007 render-target layout tracking)
+-- [RenderGraph Tests] Added: test_blend_mode (AR#32)
+-- [RenderGraph Tests] Added: test_selection_set (SEL-P1)
+-- [RenderGraph Tests] Added: test_selection_resolve (SEL-P2)
+-- [RenderGraph Tests] Added: test_pick_ray (AR#35)
+-- [RenderGraph Tests] Added: test_instance_buffer_node (AR#31)
+-- [RenderGraph Tests] Added: test_pick_id_target_node (AR#35)
+-- [RenderGraph Tests] Added: test_dynamic_instance_buffer_node (AR#33)
+-- [RenderGraph Tests] Added: test_mvp_uniform_node (AR#31)
+-- [RenderGraph Tests] Added: test_body_octree_lifetime (real-GPU lifetime)
+-- [RenderGraph Tests] Added: test_body_instance_raymarch_render (real-shader render)
+-- [RenderGraph Tests] Added: test_hitrecord_readback (Sampled Lighting Inc1 M3)
+-- [RenderGraph Tests] Added: test_recipe_pool_render (I4.1 pool render gate)
+-- [RenderGraph Tests] Added: test_mip_fallback_render (Sparse-Mip ESVO LOD Inc1 M3)
+-- [RenderGraph Tests] Added: test_body_instance_occlusion_reject (Sparse-Mip ESVO LOD Inc1 M4b)
+-- [RenderGraph Tests] Added: test_tier_crossing_lod_residency (Tiered-ESVO Inc2 M4 Tasks 9-10)
+-- [RenderGraph Tests] Added: test_editor_document_render (Voxel Authoring Inc1 M4 editor live gate)
+-- [RenderGraph Tests] Added: test_appflow_editor_toggle_render (AppFlow Inc-2 M4 GPU render-gate)
+-- [RenderGraph Tests] Added: test_recipe_authoring_gate (I4.2 CSG + regression)
+-- [RenderGraph Tests] Added: test_octree_config_sdi_parity (SDI layout drift-guard)
+-- [RenderGraph Tests] Added: test_lightingconfig_sdi_parity (SDI layout drift-guard)
+-- [RenderGraph Tests] Added: test_hitrecord_sdi_parity (SDI layout drift-guard)
+-- [RenderGraph Tests] Added: test_shadowconfig_sdi_parity (SDI layout drift-guard)
+-- [RenderGraph Tests] Added: test_accumulationconfig_sdi_parity (SDI layout drift-guard)
+-- [RenderGraph Tests] Added: test_prevcameraconfig_sdi_parity (SDI layout drift-guard)
+-- [RenderGraph Tests] Added: test_reservoirconfig_layout (struct layout drift-guard)
+-- [RenderGraph Tests] Added: test_shadow_correctness (Sampled Lighting Inc1 M4 shadow-ray gate)
+-- [RenderGraph Tests] Added: test_editor_toggle_undo_capture (AppFlow Inc-2b M3 windowed gate assertion)
+-- [RenderGraph Tests] Added: test_hud_render_capture (View Contract Inc-2 Task 5 windowed gate assertion)
+-- [RenderGraph Tests] Added: test_procedural_recipe_render (P2.2 M2 live procedural compute)
+-- [RenderGraph Tests] Added: test_shell_revalidate_node (Surface-Shell GPU dispatch live-gate)
+-- ⊗ fail-scenario tests skipped (VIXEN_FAIL_SCENARIOS=OFF)
+-- ⊗ test_descriptor_gatherer_comprehensive skipped (outdated API - requires refactoring)
+-- ✓ test_passthroughstorage_handles configured
+-- ✓ test_connection_concepts configured (Sprint 6.0.1)
+-- ✓ test_connection_rule configured (Sprint 6.0.1)
+-- ✓ test_group_dispatch configured (Sprint 6.1)
+-- ✓ test_task_queue configured (Sprint 6.2)
+-- ✓ test_multidispatch_integration configured (Sprint 6.2)
+-- ✓ test_prediction_error_tracker configured (Sprint 6.3 Phase 3.1)
+-- ✓ test_task_profile configured (Sprint 6.3 Phase 3.2a)
+-- ✓ test_resource_access_tracker configured (Sprint 6.4 Phase 0)
+-- ✓ test_wave_scheduler configured (Sprint 6.4 Phase 1)
+-- ✓ test_virtual_task configured (Sprint 6.5 Phase 0)
+-- ✓ test_virtual_resource_access_tracker configured (Sprint 6.5 Phase 1)
+-- ✓ test_task_dependency_graph configured (Sprint 6.5 Phase 2)
+-- ✓ test_tbb_virtual_task_executor configured (Sprint 6.5 Phase 4)
+-- ✓ test_virtual_task_integration configured (Sprint 6.5 Phase 6)
+-- [RenderGraph Tests] Added: test_scene_generators
+-- [RenderGraph Tests] Added: test_voxel_traversal
+-- ✓ test_ui_hud_smoke configured (S1: HUD data model headless smoke)
+-- ✓ test_view_hud_golden configured (View Contract Inc-2: golden-mirror gate)
+-- ✓ test_view_editor_layers_golden configured (Inc-A2: golden-mirror gate)
+-- ✓ test_view_blob configured (View Contract Inc-2b: ViewBlob contract)
+-- ✓ test_view_store configured (View Contract Inc-2b: ViewStore storage)
+-- ✓ test_view_blob_file configured (View Contract Inc-2b: ViewBlobFile parser)
+-- ✓ test_blob_view configured (View Contract Inc-2b: BlobView dynamic registration)
+-- ✓ test_view_wire_roundtrip configured (View Contract Inc-3: UTVA wire round-trip)
+-- ✓ test_barrier_types configured (auto-sync P1)
+-- ✓ test_frame_sync_scheduler configured (auto-sync P2)
+-- ✓ test_frame_sync_node_timeline configured (auto-sync P5a M1)
+-- ✓ test_pass_group_schedule configured (auto-sync P4 M1)
+-- ✓ test_pass_group_node_smoke configured (auto-sync P4 M3)
+-- ✓ test_partial_brick_upload configured (Sparse-Mip ESVO LOD Inc1 M2)
+-- ✓ test_bandwidth_ab_measurement configured (Sparse-Mip ESVO LOD Inc1 M5)
+-- ✓ test_buffer_sync_gatherer_node configured (Sampled Lighting Inc3 M5)
+-- [CompileTimeResourceSystem Tests] Added: 8 test executables (1 disabled)
+-- VoxelComponents: Precompiled headers enabled
+-- VoxelData: Precompiled headers enabled
+-- GaiaVoxelWorld: Precompiled headers enabled
+-- SVO: TBB linked for parallel processing
+-- SVO: Precompiled headers enabled
+-- [SVO Tests] SKIPPED cpu_body_render — UNDERTOW consumer headers (render/) absent (standalone VIXEN build)
+-- [SVO Tests] SKIPPED cpu_body_render_diag — UNDERTOW consumer headers (render/) absent (standalone VIXEN build)
+-- GaiaArchetypes: Precompiled headers enabled
+-- Libraries configured - all static libraries defined
+-- VixenApp: Precompiled headers enabled (using Core/Headers.h)
+-- VIXEN: Shaders compile at runtime from C:/cpp/VBVS--VIXEN/.claude/worktrees/sampled-lighting-inc3/VIXEN/shaders
+-- VIXEN: Generated shader files output to C:/cpp/VBVS--VIXEN/.claude/worktrees/sampled-lighting-inc3/build/ninja/application/main/generated/shaders
+-- VIXEN: SDI headers output to C:/cpp/VBVS--VIXEN/.claude/worktrees/sampled-lighting-inc3/build/ninja/application/main/generated/sdi
+-- VIXEN: TBB DLL will be copied to output directory
+-- [Application Tests] Added: test_app_run_tick (Tick/Run classification, offline)
+-- [Application Tests] Added: test_hud_view (HudView Register + SetHudView projection, offline)
+-- [Application Tests] Added: test_view_blob_equiv (View Contract Inc-2b: native==header==datafile proof gate)
+-- Application configured - all executables defined
+-- Tests aggregation ready. Use ctest to run the discovered tests.
+-- Unit tests enabled - use 'ctest' or 'make test' to run
+-- Configuring done (17.7s)
+-- Generating done (5.1s)
+-- Build files have been written to: C:/cpp/VBVS--VIXEN/.claude/worktrees/sampled-lighting-inc3/build/ninja
+[build] BuildId   : -sampled-lighting-inc3-  (note this - it's how you find this build's log/status among concurrent builds)
+[build] Waiting for the machine-wide build lock (another build may be running)...
+[build] Build lock acquired (was free).
+[build] Max parallel jobs: 12 (of 16 logical cores; override with -MaxParallelJobs or VIXEN_MAX_BUILD_JOBS)
+[build] Target    : (default - full build graph)
+
+[build] ============================== BUILD SUMMARY ==============================
+[build] BuildId  : -sampled-lighting-inc3-
+[build] 2 target(s) FAILED:
+[build]   libraries/SVO/tests/CMakeFiles/test_recipe_boot_ingest.dir/test_recipe_boot_ingest.cpp.obj
+[build]   libraries/RenderGraph/tests/CMakeFiles/test_body_instance_raymarch_render.dir/Nodes/test_body_instance_raymarch_render.cpp.obj
+[build] Everything else in this build succeeded (kept going past the
+[build] failures above via ninja -k 0) - see "C:\Users\liory\AppData\Local\Temp\vixen_build_-sampled-lighting-inc3-.log" for full output,
+[build] including each failure's compiler error just under its FAILED: line.
+[build] ==============================================================================
+[build] Log file (this build's own, unambiguous by BuildId): C:\Users\liory\AppData\Local\Temp\vixen_build_-sampled-lighting-inc3-.log
+[build] Status file (shared across builds - match build_id: -sampled-lighting-inc3- to find yours): C:\Users\liory\AppData\Local\Temp\vixen_build_status.txt
+[build] Build lock released.
+BUILD_EXIT=1 
