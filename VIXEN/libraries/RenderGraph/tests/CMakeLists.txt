@@ -824,6 +824,41 @@ else()
 endif()
 
 # ===========================================================================
+# Inc-C: multi-instance selection (IViewSelectionProvider) proof (headless — no Vulkan required)
+# ===========================================================================
+# Task 4's key proof: a committed SUBSET of Gaia entities tagged `Selected` yields exactly that
+# subset (in stable order) via IViewSelectionProvider, and resolving a selection index through
+# SelectionResolvingViewDataProvider to the EXISTING (Inc-B, unmodified) GaiaLayerViewDataProvider
+# reads/writes the CORRECT entity. Pure Gaia/AppFlow TU -- no RmlUi anywhere in this test (Task 1's
+# decision), so no bridge-split TU is needed (contrast with test_view_editor_layers_reconcile.cpp,
+# which DOES need the split because it touches a real RmlUi data-model).
+
+if(TARGET GTest::gtest_main)
+    add_executable(test_view_selection_provider
+        test_view_selection_provider.cpp
+    )
+
+    target_link_libraries(test_view_selection_provider PRIVATE
+        GTest::gtest_main
+        RenderGraph
+        AppFlow
+        GaiaVoxelWorld::GaiaVoxelWorld
+    )
+
+    # GaiaViewSelectionProvider.h / SelectionComponents.h / SelectionResolvingViewDataProvider.h
+    # live under application/editor/include, same as the Inc-B provider headers this test builds on.
+    target_include_directories(test_view_selection_provider PRIVATE ${CMAKE_SOURCE_DIR}/application/editor/include)
+
+    set_target_properties(test_view_selection_provider PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+    gtest_discover_tests(test_view_selection_provider)
+
+    message(STATUS "✓ test_view_selection_provider configured (Inc-C: multi-instance selection proof)")
+else()
+    message(STATUS "⊗ test_view_selection_provider skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
 # View Contract Inc-2b: ViewBlob/ViewKind/ViewValue reflection-blob contract
 # ===========================================================================
 # Pure CPU test of the constexpr descriptor shape + scalar kind/value agreement.
