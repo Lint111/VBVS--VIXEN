@@ -172,13 +172,14 @@ set is its own milestone with its own adversarial proof, not a corollary of the 
   (Split from Milestone 1 because undo-over-a-set is explicitly the increment's real correctness weight
   per the design doc — it gets its own validator pass rather than being folded into the forward-mutation
   milestone's review.)
-- [ ] **Milestone 3 (Task 5, NEW — user-flagged 2026-07-12): lossy vs. non-lossy undo policy.** See
-  "Task 5" below. Scoped AFTER Milestone 2's Opus validation, does not reopen or modify M1/M2's shipped
-  behavior for the true-dead-entity case (which stays correctly lossy — an entity that no longer exists
-  cannot have a component restored into it). Addresses a DIFFERENT, previously-unproven case: an entity
-  that is still LIVE but had its bound component removed between dispatch and undo — today's skip
-  condition doesn't distinguish this from true entity death, so it silently drops a recoverable delta
-  instead of restoring it. One Sonnet implementer + one Opus validator, same as M1/M2.
+- [x] **Milestone 3 (Task 5, NEW — user-flagged 2026-07-12): lossy vs. non-lossy undo policy — CLOSED,
+  no gap found.** See "Task 5" below. Investigated whether an entity that is still LIVE but had its
+  bound component removed between dispatch and undo was being silently dropped, identically to a truly
+  dead entity. Empirical proof found the premise does not hold against the shipped code: this case was
+  ALREADY handled correctly by M1/M2's existing unconditional write, with zero policy flag needed. No
+  code change to the undo/redo mechanism was made; a permanent regression test locks the finding in.
+  One Sonnet implementer, no Opus validator dispatch needed (nothing built to validate; team-lead
+  independently re-confirmed the same code-read before closing).
 
 ## Progress Log
 
@@ -319,50 +320,95 @@ set is its own milestone with its own adversarial proof, not a corollary of the 
     values against Inc-C's own recorded baseline — match. Tree clean. **APPROVED, no defects, no files
     modified.**
 
-### Task 5 — Lossy vs. non-lossy undo policy (Milestone 3, NEW)
+- Milestone 3 (Task 5): CLOSED, no gap found · 2026-07-12
+  - **Investigation, before writing any policy code:** read `SetMutationDispatch.h`'s `apply(bool)`
+    lambda, `GaiaLayerViewDataProvider::WriteU32`, and `GaiaVoxelWorld::setComponent<T>`
+    (`GaiaVoxelWorld.h:609-616`) directly. Found the lambda only gates on `world.valid(entity)` before
+    calling `WriteU32`, never on `hasComponent<T>` — and `setComponent<T>` itself calls Gaia's
+    `add<T>(id, value)`, which is unconditionally add-OR-overwrite. This meant the plan's stated
+    Task 5 gap (entity-alive-but-component-removed silently dropped, identically to a dead entity)
+    could not be true as described in the shipped M1/M2 code.
+  - **Empirically verified before trusting the code-read:** wrote a throwaway diagnostic test —
+    dispatch over 2 selected entities, remove (not destroy) one entity's `LayerMask` component between
+    dispatch and undo (confirmed via `valid()==true` + `getComponentValue()==nullopt`), call `Undo()`,
+    print the restored state. Result: component WAS re-added, value == the exact captured pre-dispatch
+    value (`0x22`), `skipCounters->undoSkips == 0`. Then deleted the diagnostic test (`git status`/
+    `git diff --stat` confirmed zero net diff before proceeding).
+  - **Reported BLOCKED to the controller** rather than building the originally-proposed
+    `enum class UndoLossPolicy` against a disproven premise — the controller independently re-confirmed
+    the same `GaiaVoxelWorld.h:609-616` read and the add-or-overwrite semantics, and directed closing
+    Task 5 as "no gap found" (option (a) of the 3 offered) rather than reframing it around the
+    dispatch-time absent-component case (a real but different, capture-time issue — recorded as a
+    Follow-up instead, not built).
+  - **Deliverable:** one permanent regression test,
+    `ComponentRemovedButEntityAliveIsAlreadyRestoredCorrectlyByUndoNoPolicyNeeded`
+    (`test_set_mutation_dispatch.cpp`), locking in today's already-correct behavior (not diagnostic-only,
+    unlike the throwaway one above) so it cannot silently regress if `setComponent`'s semantics ever
+    change. Zero changes to `SetMutationDispatch.h` itself — no policy enum, no new parameter, no dead
+    branches. `application/editor/include/SetMutationDispatch.h` is UNCHANGED from Milestone 2.
+  - **Test suite: 6/6 PASS** (`test_set_mutation_dispatch.exe`) — Milestone 1/2's original 5 tests
+    unchanged and still passing, plus the 1 new Milestone 3 regression test.
+  - **Regression gates — rebuilt fresh (full `build.bat build`, confirmed worktree's own `source:`
+    path in the build log) and rerun**:
+    - `test_view_editor_layers_reconcile`: 2/2 PASSED.
+    - `test_view_selection_provider`: 3/3 PASSED.
+    - `test_gaia_voxel_world`: 25/26 PASSED — same single pre-existing failure,
+      `GaiaVoxelWorldTest.GetPosition`, name-confirmed identical to M1/M2's documented baseline.
+    - `test_gaia_voxel_world_coverage`: 31/32 PASSED — same single pre-existing failure,
+      `GaiaVoxelWorldCoverageTest.CreateVoxelsBatch_AutoParent_ToExistingChunk`, name-confirmed
+      identical to M1/M2's documented baseline.
+    - Not rerun (per the controller's scope: fully isolated to `SetMutationDispatch.h`'s own test file,
+      and `SetMutationDispatch.h` itself was not modified): the AppFlow suite, `test_view_editor_layers_golden`,
+      `test_editor_toggle_undo_capture` (live GPU capture), byte-guards.
+  - Tree clean after commit (verified via `/usr/bin/git status`/`diff` directly, not the rtk-wrapped
+    git which masks exit codes).
 
-**The gap (user-flagged 2026-07-12, during Milestone 2's post-implementation review):** Milestone 1/2's
-dead-entity skip is keyed ONLY to `world.valid(entity)` — it treats "entity destroyed" and "entity alive
-but its bound component was separately removed" identically: both silently skip the restore, with no
-delta preserved. The first case is correctly, unavoidably lossy (there is no entity to write a component
-value into). The second case is NOT the same thing — the entity still exists; restoring its captured
-prior value is a well-defined, recoverable operation, but today's code takes the same "skip and forget"
-path for it as for a genuinely dead entity, because `GaiaLayerViewDataProvider::WriteU32`'s underlying
-`setComponent` already no-ops silently if the component isn't present (this was itself relied upon,
-correctly, for the ALREADY-shipped "no component at dispatch time" skip case in Milestone 1's
-`DirectListProviderWithoutLayerMaskComponentIsSkippedNotAsserted` test — but that test only proves the
-DISPATCH-time skip is safe, it says nothing about whether an undo/redo-time "component removed but entity
-alive" case should behave the same way).
+### Task 5 — Lossy vs. non-lossy undo policy (Milestone 3, NEW) — CLOSED, no gap found
 
-**Scope:**
-- Add an explicit `enum class UndoLossPolicy { SkipMissingData, RestoreMissingData }` parameter to
-  `DispatchSetMutation()` (default `SkipMissingData`, i.e. Milestone 1/2's existing shipped behavior is
-  UNCHANGED unless a caller opts in) — or propose a better mechanism if Task 1-equivalent research turns
-  up a cleaner shape; report and justify before building, per this plan's own established discipline.
-- `SkipMissingData` (default): current behavior, unchanged — both "entity dead" and "entity alive, no
-  component" skip the restore, observable via the existing `SetMutationSkipCounters`. Do NOT change this
-  path's behavior; M1/M2 are already built, tested, and validated against it.
-- `RestoreMissingData`: distinguish the two cases explicitly —
-  - Entity dead (`!world.valid(entity)`) → ALWAYS skip (this case is unavoidably lossy regardless of
-    policy — there is no entity to write into; do not attempt to "resurrect" it).
-  - Entity alive but the bound component is absent → **re-add the component** via Gaia's structural
-    add-path (not `setComponent`'s silent no-op) with the captured prior value, so the delta is NOT lost.
-    This is a structural change (add), so it must go through whatever safe-add mechanism the codebase uses
-    elsewhere for a live entity (mirror how `Selected`/other tag/value components are added elsewhere in
-    this codebase — do not invent a new pattern).
-- **Proof vehicle:** extend `test_set_mutation_dispatch.cpp` (or a new file — your call) with a test that
-  dispatches over a selection, removes the bound component (not the entity) from one touched entity between
-  dispatch and undo (while leaving the entity itself alive), and asserts: under `SkipMissingData`, the
-  restore is skipped and observable (today's behavior, unchanged); under `RestoreMissingData`, the
-  component is re-added with the EXACT captured prior value and this is distinguishable from the
-  true-dead-entity skip path (e.g. a separate counter, or the same counter with a documented note that the
-  two cases are now handled differently under this policy).
-- **Do NOT touch:** the true-dead-entity path's behavior (must remain lossy under BOTH policies — this is
-  physically unavoidable, not a policy choice); Milestone 1/2's default (`SkipMissingData`) behavior for
-  any existing caller that doesn't opt into the new policy; Inc-Ovr's projection syntax (this is closer to
-  a dispatch-time POLICY flag than a per-binding projection, but if Task 1-equivalent research finds
-  Inc-Ovr's mechanism is actually the right home for this, propose that instead of forcing it into
-  `SetMutationDispatch.h` — flag the question, don't just build it into one file).
+**The gap AS ORIGINALLY STATED (user-flagged 2026-07-12, during Milestone 2's post-implementation
+review):** Milestone 1/2's dead-entity skip was believed to be keyed ONLY to `world.valid(entity)`,
+treating "entity destroyed" and "entity alive but its bound component was separately removed"
+identically — both silently skipping the restore, with no delta preserved.
+
+**Investigation result: this premise does not hold against the shipped code.** Read
+`SetMutationDispatch.h`'s `apply(bool)` lambda, `GaiaLayerViewDataProvider::WriteU32`, and
+`GaiaVoxelWorld::setComponent<T>` (`GaiaVoxelWorld.h:609-616`):
+```cpp
+template<typename TComponent>
+void GaiaVoxelWorld::setComponent(EntityID id, ComponentValueType_t<TComponent> value) {
+    if (!getWorld().valid(id)) return;          // the ONLY gate: entity liveness
+    getWorld().add<TComponent>(id, TComponent{value});  // Gaia add() = add-OR-overwrite, unconditionally
+}
+```
+The `apply(bool)` lambda in `SetMutationDispatch.h` checks `world.valid(entity)` before calling
+`WriteU32` but never checks `hasComponent<T>` — so it was already relying on `add()`'s add-or-overwrite
+semantics. Consequently: an entity that is alive but had its bound component removed (e.g.
+`world.getWorld().del<LayerMask>(entity)`) between dispatch and undo is already correctly re-added
+with the exact captured prior value by `Undo()`'s existing unconditional write — no policy flag
+needed, `undoSkips` stays 0. This was proven empirically (a throwaway diagnostic test, run once, then
+removed) before any policy code was written, per this plan's own "report before building" discipline —
+see the Progress Log entry below for the exact evidence.
+
+The only path that is (and must remain) lossy is the true-dead-entity case
+(`!world.valid(entity)`), which the plan already required stay lossy under any policy — so there was
+never a second case for a `UndoLossPolicy` enum to distinguish in the undo/redo path as scoped. Building
+the originally-proposed `enum class UndoLossPolicy { SkipMissingData, RestoreMissingData }` would have
+added a policy flag whose `RestoreMissingData` branch is behaviorally identical to `SkipMissingData` —
+dead code with no distinguishing test possible, since there is no case left for it to gate.
+
+**What WAS real, but is out of Task 5's scope** — see the Follow-ups section: the DISPATCH-time
+absent-component skip (`DirectListProviderWithoutLayerMaskComponentIsSkippedNotAsserted`, Milestone 1)
+means no snapshot entry is created at all for an entity with no component at dispatch time — there is no
+prior value ever captured for it, so no undo-time policy could restore anything for that entity either.
+That is a capture-time fact, not a policy choice, and is unrelated to the undo/redo-time case this task
+investigated.
+
+**Deliverable:** `ComponentRemovedButEntityAliveIsAlreadyRestoredCorrectlyByUndoNoPolicyNeeded`
+(`test_set_mutation_dispatch.cpp`) — a permanent regression test (not diagnostic-only) that dispatches
+over a selection, removes the bound component (not the entity) from one touched entity between dispatch
+and undo while the entity stays alive, calls `Undo()`, and asserts the component is re-added with the
+EXACT captured prior value and `skipCounters->undoSkips` stays 0. Locks in today's already-correct
+behavior so it cannot silently regress if `setComponent`'s semantics ever change.
 
 ## Follow-ups (explicitly out of scope, note for later increments)
 
@@ -373,6 +419,15 @@ alive" case should behave the same way).
   C++ dispatch, same pattern as every prior increment.
 - The "constraints node" vs. raw Gaia query open decision (§11) — still open, unchanged by Inc-D.
 - Inc-E's authoring/lint tooling, once enough binding surface exists across Inc-A through Inc-D.
+- **DISPATCH-time absent-component case (observed during Milestone 3, not built):** if a selected
+  entity has no bound component (`LayerMask`) at DISPATCH time, `DispatchSetMutation()` never captures a
+  snapshot entry for it at all (`DirectListProviderWithoutLayerMaskComponentIsSkippedNotAsserted`,
+  Milestone 1) — there is no prior value to restore, ever, for that entity, regardless of any future
+  undo-time policy. This is a capture-time fact, not a policy choice. A future increment MAY want a
+  caller-supplied default value so such an entity still gets a component added on dispatch (turning this
+  from "nothing captured" into "some captured value, even if synthesized") — left unbuilt and
+  unspecified here; whoever picks this up should decide the default-value contract fresh rather than
+  reusing Milestone 3's (closed, unrelated) `UndoLossPolicy` naming.
 
 ## Note
 

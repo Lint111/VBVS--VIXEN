@@ -265,3 +265,59 @@ TEST(SetMutationDispatch, UndoNeverReRunsTheLiveSelectionQueryAfterSelectionDrif
     EXPECT_EQ(*e1Value, 0x22u) << "e1 (added to Selected AFTER dispatch) must be untouched by undo -- "
                                   "if undo re-ran ids(), it would have wrongly tried to restore e1 too";
 }
+
+// ---------------------------------------------------------------------------------------------
+// Milestone 3 (Task 5): CLOSED, no gap found -- see View-Model-Binding-Inc-D-Plan-2026-07.md's
+// Task 5 section. The plan's premise (an entity alive-but-component-removed between dispatch and
+// undo is silently dropped, identically to a truly dead entity) does not hold against the shipped
+// code: GaiaVoxelWorld::setComponent<T> (GaiaVoxelWorld.h:609-616) gates ONLY on world.valid(id),
+// then calls Gaia's add<T>(id, value), which is unconditionally add-OR-overwrite (the function's
+// own comment says so). The apply(bool) lambda in SetMutationDispatch.h never checks
+// hasComponent<T> before calling WriteU32 -- so a component removed (but entity kept alive)
+// between dispatch and undo is ALREADY correctly re-added with the exact captured prior value by
+// undo's existing unconditional write, with zero policy flag. This test locks that fact in as a
+// permanent regression gate (not a diagnostic-only finding) so it cannot silently regress if
+// setComponent's semantics ever change.
+// ---------------------------------------------------------------------------------------------
+
+TEST(SetMutationDispatch, ComponentRemovedButEntityAliveIsAlreadyRestoredCorrectlyByUndoNoPolicyNeeded) {
+    Vixen::GaiaVoxel::GaiaVoxelWorld world;
+
+    auto e0 = world.getWorld().add();
+    world.setComponent<Vixen::GaiaVoxel::LayerMask>(e0, 0x11u);
+    auto e1 = world.getWorld().add();
+    world.setComponent<Vixen::GaiaVoxel::LayerMask>(e1, 0x22u);
+
+    world.getWorld().add<Vixen::App::Selected>(e0);
+    world.getWorld().add<Vixen::App::Selected>(e1);
+
+    Vixen::App::GaiaViewSelectionProvider selection(world);
+    ActionStack stack;
+    stack.LoadActions(AppFlowContainerView::actions().data(), AppFlowContainerView::actions().size());
+
+    const auto result = Vixen::App::DispatchSetMutation(stack, world, selection, 0x99u);
+    ASSERT_EQ(result.writtenCount, 2u);
+
+    // Remove ONLY the component from e1 (entity stays alive) between dispatch and undo -- the
+    // exact scenario Task 5 investigated.
+    world.getWorld().del<Vixen::GaiaVoxel::LayerMask>(e1);
+    ASSERT_TRUE(world.getWorld().valid(e1)) << "e1 must still be alive -- only its component is gone";
+    ASSERT_FALSE(world.getComponentValue<Vixen::GaiaVoxel::LayerMask>(e1).has_value());
+
+    EXPECT_EQ(stack.Undo(), DispatchResult::Ok);
+
+    // The component is re-added with the EXACT captured prior value -- not skipped, not lossy --
+    // with zero undoSkips recorded (the only skip counter that increments is for a truly dead
+    // entity, which this is not).
+    auto e1AfterUndo = world.getComponentValue<Vixen::GaiaVoxel::LayerMask>(e1);
+    ASSERT_TRUE(e1AfterUndo.has_value())
+        << "component-removed-but-alive must already be re-added by undo, with no policy flag";
+    EXPECT_EQ(*e1AfterUndo, 0x22u) << "re-added value must be the EXACT captured pre-dispatch value";
+    EXPECT_EQ(result.skipCounters->undoSkips, 0u)
+        << "this is not the dead-entity case -- must not be counted as a skip";
+
+    // The surviving/unaffected entity (e0) is unaffected by e1's component removal.
+    auto e0AfterUndo = world.getComponentValue<Vixen::GaiaVoxel::LayerMask>(e0);
+    ASSERT_TRUE(e0AfterUndo.has_value());
+    EXPECT_EQ(*e0AfterUndo, 0x11u);
+}
