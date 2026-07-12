@@ -201,7 +201,7 @@ re-derive these facts, but DO re-verify file:line if code has moved)
 
 ## Milestone Map
 
-- [ ] **Milestone 1 (Task 1):** ground the attribute-surface + emitter-shape decisions for BOTH
+- [x] **Milestone 1 (Task 1):** ground the attribute-surface + emitter-shape decisions for BOTH
   Projection and Override (report-back gate, no building until confirmed). One Sonnet implementer + one
   Opus validator.
 - [ ] **Milestone 2 (Task 2-3):** build the Projection mechanism, re-derive `mask_`→checkboxes through it,
@@ -251,6 +251,21 @@ re-derive these facts, but DO re-verify file:line if code has moved)
   - No contradictions found against the plan doc's assumptions (the half-transplanted-projection finding
     sharpens rather than disproves the ground truth). Reported inline, no plan-doc commit made by the
     implementer (controller adds this entry instead).
+  - **Opus validator (independent re-verification in BOTH repos):** confirmed all four decisions against
+    real source, not the report. Attribute-surface: `ViewAttribute`/`ViewSectionAttribute`'s exact
+    property surface and `ViewModel.cs`'s `Classify`/`ReadLayout` idiom re-confirmed line-for-line.
+    Projection: traced `--callable-cpp`'s fixed `Vixen::AppFlow::Generated` namespace
+    (`Program.cs:255`) — confirmed the `--view` emitter can reference it by convention with zero new
+    transplant plumbing. Key finding (half-transplanted mask projection) independently re-confirmed via
+    the same grep. **One refinement flagged (not a blocker):** every EXISTING generated header in this
+    codebase emits full `inline` definitions (`AppFlowCallables.g.hpp:7`, `RmlDataModelEmitter.cs:32`,
+    `AppFlow.g.h`'s `inline constexpr`) — a bare forward-declaration for Override is sound and idiomatic
+    C++, but is a genuinely NEW emission shape with no local template to copy; Task 4's implementer
+    should expect to write this branch from scratch, not adapt an existing one. `ViewNounId` deferral
+    re-confirmed orthogonal (neither Projection nor Override reference nouns by name in the C# schema).
+    Tree clean in both repos; Yeroket's only dirty file is the pre-existing, memory-documented
+    non-deterministic `SDFNodeGenerator.dll` rebuild noise (0-insertion/0-deletion byte-shuffle),
+    unrelated to this milestone. **APPROVED, Milestone 2 can proceed.**
 
 ## Follow-ups (explicitly out of scope, note for later increments)
 
