@@ -165,7 +165,11 @@ tracked in that increment's own plan doc once started)
   `[SharedMapElements]` assembly-attribute mechanism, FULL RETIREMENT — first end-to-end retirement of
   live undertow code in this program, 2955/2955 undertow tests pass — see
   `Undertow-Codegen-Unif-Inc2-Shared-Map-Elements-Plan-2026-07.md`)
-- [ ] Increment 3 — #14 `[Param]` declarations
+- [x] Increment 3 — #14 `[Param]` declarations (Opus-validated APPROVED both milestones; new
+  `--param-cs` mechanism DISCOVERS undertow's real existing `ParamAttribute` rather than replacing it
+  — a different architectural pattern than Inc-1/2, correctly chosen due to a live `CodeModLoader.cs`
+  reflection consumer; full retirement, byte-for-byte-diffed equivalence proof in both directions,
+  2953/2953 undertow tests pass — see `Undertow-Codegen-Unif-Inc3-Param-Declarations-Plan-2026-07.md`)
 - [ ] Increment 4 — #12 `[Action]` registration
 - [ ] Increment 5 — #1/#2/#3/#7 Authored+Baked def carriers, parse/bake table, sim registration (cluster)
 - [ ] Increment 6 — #10 Test factories, #11 Authoring builders
@@ -199,6 +203,29 @@ tracked in that increment's own plan doc once started)
   `MapElements.g.cs` as an ordinary compiled source file — full undertow test suite (2955 tests) passes,
   0 failures, independently re-run by both the controller and the Opus validator from fresh builds. Full
   detail: `Undertow-Codegen-Unif-Inc2-Shared-Map-Elements-Plan-2026-07.md`.
+
+- **Increment 3 — #14 `[Param]` declarations (COMPLETE, both milestones Opus-validated APPROVED).**
+  Confirmed 37 real `[Param(...)]` sites across 8 files (`PopulationAttrs.cs`, `KnowledgeAttrs.cs`,
+  `ResearchAttrs.cs`, `EconomyAttrs.cs`, `DiplomacyAttrs.cs`, `TrajectoryAttrs.cs`, `PlayerAttrs.cs`,
+  `LoyaltyAttrs.cs`). A genuinely different architectural pattern than Inc-1/2: rather than inventing a
+  new Yeroket-owned attribute, `--param-cs` DISCOVERS undertow's real, pre-existing
+  `Undertow.Sim.ParamAttribute` via Roslyn compilation analysis of undertow's own source
+  (`CompilationLoader.LoadParamFields`, zero assembly coupling — same syntax/semantic-name-matching
+  pattern `[KernelCallable]`'s `--callable-cpp` already uses), because a live runtime-reflection
+  consumer (`CodeModLoader.cs`, via `FieldsWith<ParamAttribute>()`) pins the attribute's exact shape,
+  making a replacement attribute unsafe. `ParamRegistrationEmitter.cs` + the newly-shared
+  `EnumExprHelper.cs` (ported from undertow's `EnumExpr.cs`, confirmed genuinely reused across
+  `[Effect]`/`[System]`/`[Param]`'s generators — folded in now per the program's own "shared utility,
+  first needing increment" rule) faithfully port `EmitRegisterParams.Emit`'s logic, including its exact
+  dup-id diagnostic behavior. Full retirement in undertow (`EmitRegisterParams.cs`,
+  `ParamRegistrationGenerator.cs`, `EmitRegisterParamsTests.cs` deleted; `DeclareParams.g.cs` checked in)
+  — `Undertow.Sim.ParamAttribute` and `CodeModLoader.cs`'s live reflection consumer both confirmed
+  UNTOUCHED. 2953/2953 undertow tests pass (2955 Inc-2 baseline minus the 2 retired
+  `EmitRegisterParamsTests.cs` tests). Strongest equivalence proof in the program to date: the Opus
+  validator rebuilt the PRE-retirement commit to regenerate the real original Roslyn output and
+  byte-diffed it against the new mechanism's output in BOTH directions — body byte-identical, only the
+  generated-banner comment differs. Full detail:
+  `Undertow-Codegen-Unif-Inc3-Param-Declarations-Plan-2026-07.md`.
 
 ## Follow-ups / open questions (explicitly not resolved in this doc)
 
