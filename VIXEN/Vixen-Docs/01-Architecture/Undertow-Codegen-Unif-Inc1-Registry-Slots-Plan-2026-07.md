@@ -122,8 +122,8 @@ these kinds," vs. reusing schema-JSON directly) is Task 1's decision to make, no
 
 - [x] **Milestone 1 (Task 1):** ground the shape, decide merge-vs-new-mechanism (report-back gate, no
   building until confirmed). One Sonnet implementer + one Opus validator. **APPROVED.**
-- [ ] **Milestone 2 (Task 2-3):** build (scope per Milestone 1's decision) + equivalence proof. One Sonnet
-  implementer + one Opus validator.
+- [x] **Milestone 2 (Task 2-3):** build (scope per Milestone 1's decision) + equivalence proof. One Sonnet
+  implementer + one Opus validator. **DONE, pending Opus validation.**
 
 ## Progress Log
 
@@ -170,6 +170,56 @@ these kinds," vs. reusing schema-JSON directly) is Task 1's decision to make, no
     Baked-only `Patches` side-tables and `simRegister`-filtered `OverridableIds`, not just the plain slots.
     Confirmed the rejected "make all kinds their own `[GpuStruct]` types" alternative genuinely doesn't
     eliminate the aggregation work, just relocates it. **APPROVED — Milestone 2 may proceed.**
+
+- Milestone 2 (Task 2-3, build + equivalence proof): DONE · 2026-07-12 · Yeroket
+  `feat/codegen-unif-inc1-slots` commit `78c4f62d` (branched off Yeroket main `093ee162`);
+  no undertow files modified.
+  - **Built per Milestone 1's sketch**: `[RegistrySlots(schemaPath, typePrefix, gate,
+    EmitMerge=, EmitOverridableIds=)]` class attribute in `Runtime/GpuStructAttributes.cs`
+    (`RegistryGate.Data`/`.Codec` enum) + `RegistrySlotsEmitter.cs`/`RegistrySlotsJson.cs` in
+    `SourceGenerator~/Transpiler/` (ported minimal hand-rolled JSON parser, same rationale as
+    undertow's own — `System.Text.Json` conflicts with the compiler-loaded version) + a new
+    `--registry-slots <ClassName> --out-cs <path>` CLI flag in `CodegenTool~/Program.cs`,
+    mirroring the existing `--view`/`--view-writer` branch pattern. New
+    `CompilationLoader.LoadRegistrySlotsClasses` mirrors `LoadGpuStructs`/`LoadViews`'s
+    filtered-symbol-list shape (find classes carrying the attribute).
+  - **Scope note honored**: emitter reproduces the Baked-only `Patches` side-tables AND the
+    `simRegister`-filtered `OverridableIds()`, not just plain slot properties, per the Milestone 1
+    validator's explicit carry-forward.
+  - **Build-graph gotcha found+fixed**: `SourceGenerator~/SDFNodeGenerator.csproj` (netstandard2.0,
+    no Unity dependency) does NOT link `Runtime/GpuStructAttributes.cs` — none of the existing
+    emitters (`GpuStructModel`, `ViewModel`, etc.) reference `Yeroket.Util.KernelFramework` types
+    directly. `RegistrySlotsEmitter` follows the same discipline: it takes a plain
+    `RegistrySlotsModel` with a LOCAL `RegistrySlotsGate` enum (ordinal-mirrors the real
+    `RegistryGate`), and only `CodegenTool~/Program.cs` (which DOES reference the real Runtime
+    attribute via `CompilationLoader.BuildRefs()`) converts the resolved attribute's gate ordinal
+    into the local enum before building the model.
+  - **Equivalence proof (non-vacuous, real subset)**: declared both `AuthoringRegistries`
+    (`Undertow.Authoring` ns) and `BakedRegistries` (`Undertow.Content` ns) against a REAL 5-kind
+    subset of undertow's actual `schemas.json` — `composition_profile` (data+codec+simRegister),
+    `tag` (data+codec, no simRegister), `relation` (codec-only, data:false), `planet`+`role`
+    (excluded entirely, data:false/codec:false) — spanning all four gate combinations present in
+    the real file. Regenerated via `--registry-slots` and diffed against `EmitRegistrySlots.All`'s
+    current real output for the identical subset (a standalone harness project compiling
+    `EmitRegistrySlots.cs`+`Emit.cs`+`Json.cs`+`SchemaKeys.cs`+`GeneratedHeader.cs` verbatim,
+    unmodified, from the undertow worktree) — property-for-property/method-for-method identical
+    except the banner comment (expected: new mechanism, different provenance text).
+  - **"Equivalent" defined explicitly (per the plan doc's own instruction)**: NOT byte-identical
+    source (this is a new mechanism, not a re-derivation) — instead, the GENERATED C# behaves
+    identically when compiled and run. Proved via a second standalone harness that compiles BOTH
+    mechanisms' generated output side-by-side (renamed classes to avoid collision) against shared
+    def-type stubs, and exercises: `MergeGeneratedFrom` with 2 source instances merging 3
+    `CompositionProfile`s + 2 `Tag`s (multi-item, multi-slot) — old and new produce identical
+    resulting lists; `OverridableIds()` over a Baked registry holding 2 `CompositionProfile`s (sim
+    register-opted) + 1 `Tag` + 1 `Relation` (both NOT opted) — old and new both yield exactly the
+    2 CompositionProfile ids and correctly exclude the other two kinds; both mechanisms' Baked-only
+    `Patches` side-tables (incl. the codec-only `Relations` kind) independently populated and
+    counted. All 8 checks PASS.
+  - **`EmitRegistrySlots.cs` confirmed untouched**: `/usr/bin/git status --short` in the undertow
+    worktree (`.claude/worktrees/codegen-unif-inc1-slots`) shows zero diff — still running as-is,
+    per the plan doc's scope boundary (retirement deferred to a later dependent increment).
+  - Not yet Opus-validated — flagging per this program's dispatch-escalation-pattern precedent
+    for controller awareness before this increment is called fully closed.
 
 ## Follow-ups (explicitly out of scope, note for later increments)
 
