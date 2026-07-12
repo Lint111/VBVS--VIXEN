@@ -16,6 +16,16 @@
 #   -Register -AgentId <id> [-Source <worktree-or-repo-path>] [-BuildTarget <cmake-target>]
 #             [-BuildScript <absolute-path-to-build.bat>] [-BuildAction configure|build|all]
 #             [-BuildPreset <preset-name>] [-Note <text>]
+#       ALWAYS PASS -BuildScript. Omitting it (manual dispatch) is a narrow opt-out for one case
+#       only — reserving a position without ever intending to build (e.g. a validator just
+#       checking whether the lock will free up soon) — not a normal registration style. A manual
+#       ticket that finishes its build but forgets to -Release has NO self-healing path the way
+#       an auto-dispatch ticket does (see AUTO-DISPATCH below); it just blocks every real waiter
+#       behind it for up to -StaleMinutes even after its build visibly finished. This has
+#       happened in practice (2026-07-12) — an agent built successfully, moved on, and never
+#       called -Release. The queue now ALSO opportunistically reaps a manual ticket once its own
+#       build is provably DONE (see Test-ManualTicketAlreadyFinished), but that is a safety net
+#       for the mistake, not a reason to keep making it.
 #       Create a ticket, print its TicketId, exit 0. Call this FIRST, then go do other work.
 #       De-duplicated by the COMBINATION of (AgentId, Source, BuildTarget) — not AgentId alone:
 #       if a non-stale ticket already exists with the exact same AgentId + Source + BuildTarget,
@@ -163,9 +173,54 @@ function Invoke-Reap {
     }
 }
 
-# Reap a SPECIFIC ticket right now if it's liveness-stale, regardless of the periodic sweep.
+# Detect a MANUAL-dispatch ticket (no -BuildScript, so Invoke-AutoDispatchIfReady never touches
+# it) whose owner already ran and finished a build but never called -Release afterward — a real,
+# observed gap (2026-07-12): auto-dispatch tickets self-release the instant ANY agent's routine
+# poll finds them at position 1 (Invoke-AutoDispatchIfReady runs it and releases inline), but a
+# manual ticket sits there until either its owner personally calls -Release or the FULL
+# -StaleMinutes liveness window elapses — even once its build has visibly, provably already
+# finished. An agent that built successfully via build.bat WITHOUT threading -QueueTicketId
+# through (the self-release path in run_build_with_summary.ps1 is opt-in via that param) leaves
+# exactly this kind of orphaned-but-satisfied ticket behind, blocking every real waiter behind it
+# for up to 15 minutes even though the lock has been free the whole time.
+#
+# Heuristic: the shared build-status file (%TEMP%\vixen_build_status.txt) records the build_id of
+# the MOST RECENT build on this machine. If that build_id contains this ticket's own AgentId (the
+# convention every worker in this fleet uses: pass -BuildId <something containing your agent
+# name>) AND that build's status is terminal (DONE — run_build_with_summary.ps1 only ever writes
+# RUNNING/WAITING_FOR_LOCK/DONE, never a separate FAILED state; a failed build still ends in DONE
+# with targets_failed > 0) AND the status file was last written AFTER this ticket was registered
+# (so a stale status file from a build that predates the ticket can't false-positive), the
+# ticket's own build already ran to completion and the ticket is safe to reap. Deliberately
+# requires AgentId length >=4 to avoid short-substring collisions (e.g. "m5" matching
+# "vixen-m4-isolate").
+function Test-ManualTicketAlreadyFinished($ticket) {
+    if ($ticket.BuildScript) { return $false }  # auto-dispatch tickets are handled elsewhere
+    if (-not $ticket.AgentId) { return $false }
+    if ($ticket.AgentId.Length -lt 4) { return $false }
+    $statusPath = "$env:TEMP\vixen_build_status.txt"
+    if (-not (Test-Path $statusPath)) { return $false }
+    try {
+        $content = Get-Content -Path $statusPath -Raw
+        if ($content -notmatch 'VIXEN_BUILD_STATUS:\s*DONE') { return $false }
+        if ($content -notmatch 'build_id:\s*(.+)') { return $false }
+        $buildId = $Matches[1].Trim()
+        if (-not $buildId) { return $false }
+        if ($buildId -notlike "*$($ticket.AgentId)*") { return $false }
+        $statusFileTime = (Get-Item $statusPath).LastWriteTimeUtc
+        $ticketCreated = [DateTime]::Parse($ticket.CreatedUtc).ToUniversalTime()
+        if ($statusFileTime -lt $ticketCreated) { return $false }
+        return $true
+    } catch {
+        return $false
+    }
+}
+
+# Reap a SPECIFIC ticket right now if it's liveness-stale OR (new, 2026-07-12) if it's a manual
+# ticket whose own build already finished without releasing — regardless of the periodic sweep.
 # Used by -Status when it discovers it's blocked behind another ticket — checks that ticket's
-# own staleness inline instead of waiting for the next full -Reap. Returns $true if reaped.
+# own staleness/completion inline instead of waiting for the next full -Reap. Returns $true if
+# reaped.
 function Test-ReapSingleTicket($ticketId) {
     $path = "$queueDir\$ticketId.json"
     if (-not (Test-Path $path)) { return $false }
@@ -176,6 +231,11 @@ function Test-ReapSingleTicket($ticketId) {
         if ($lastSeen -lt $cutoff) {
             Remove-Item -Path $path -Force -ErrorAction SilentlyContinue
             Write-Host "[build-queue] Reaped stale BLOCKING ticket $ticketId (agent $($t.AgentId), last seen $($lastSeen.ToString('o'))) - it was stalling your queue position."
+            return $true
+        }
+        if (Test-ManualTicketAlreadyFinished $t) {
+            Remove-Item -Path $path -Force -ErrorAction SilentlyContinue
+            Write-Host "[build-queue] Reaped BLOCKING ticket $ticketId (agent $($t.AgentId)) - its own build already completed (status file shows DONE matching this AgentId) but it never called -Release. It was stalling your queue position for no reason."
             return $true
         }
     } catch {
@@ -227,7 +287,21 @@ function Invoke-AutoDispatchIfReady {
     $tickets = @(Get-QueueTickets)
     if ($tickets.Count -eq 0) { return $null }
     $head = $tickets[0]
-    if (-not $head.BuildScript) { return $null }
+    if (-not $head.BuildScript) {
+        # Manual-dispatch head ticket — auto-dispatch has nothing to run, but it may still be
+        # sitting here abandoned-after-completion (see Test-ManualTicketAlreadyFinished). Reap it
+        # inline so it doesn't block everyone behind it for the full staleness window just
+        # because its owner forgot to -Release after a successful manual build. This is the SAME
+        # kind of self-healing auto-dispatch tickets already get via the Remove-Item below — a
+        # manual ticket just can't be RUN on someone else's behalf, only cleaned up once its own
+        # build is provably already done.
+        if (Test-ManualTicketAlreadyFinished $head) {
+            Remove-Item -Path "$queueDir\$($head.TicketId).json" -Force -ErrorAction SilentlyContinue
+            Write-Host "[build-queue] Reaped HEAD ticket $($head.TicketId) (agent $($head.AgentId)) - its own build already completed (status file shows DONE matching this AgentId) but it never called -Release. Re-checking queue for the new head."
+            return Invoke-AutoDispatchIfReady  # re-check: the new head may itself be ready
+        }
+        return $null
+    }
     if (-not (Test-BuildLockFree)) { return $null }
     if (-not (Test-Path $head.BuildScript)) {
         Write-Host "[build-queue] AUTO-DISPATCH SKIPPED: ticket $($head.TicketId)'s BuildScript '$($head.BuildScript)' no longer exists (worktree removed?) - releasing the ticket so it doesn't block the queue forever."

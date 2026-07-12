@@ -217,9 +217,23 @@ happens:
   behind it) — check your own build log (same log path/BuildId system as always) for what went
   wrong, same as a manually-dispatched failure always required.
 
-**This is now the recommended default for the queue path** — omit `-BuildScript` only when you
-genuinely want to reserve a position without handing off unattended execution (e.g. a validator
-just checking whether the lock will be free soon, not actually planning to build).
+**Always pass `-BuildScript` when you register — treat manual (no `-BuildScript`) as an explicit,
+narrow opt-out, not a normal choice.** This isn't just a preference: a manual ticket that
+finishes its build but never calls `-Release` (the common case — an agent builds, moves on to
+its next step, and simply forgets) has NO self-healing path the way an auto-dispatch ticket
+does. Auto-dispatch tickets clean themselves up the instant any agent's routine poll finds them
+at position 1 — an abandoned manual ticket just sits there blocking every real waiter behind it
+for the full staleness window (up to 15 min) even once its build has visibly, provably already
+finished. Observed live (2026-07-12, Sampled Lighting Inc3 M5): a manual ticket blocked a
+queued waiter for real wall-clock time after its own build had already completed — root cause
+was simply "forgot to pass `-QueueTicketId` through to `build.bat`, so the self-release path
+never fired." `build_queue.ps1` now ALSO opportunistically reaps a manual ticket once its own
+build is provably `DONE` (matches the shared status file's `build_id` to the ticket's
+`AgentId`, registered after the ticket) — a safety net, not a reason to keep defaulting to
+manual. Only skip `-BuildScript` for the one case it's actually for: reserving a queue position
+without ever intending to build (e.g. a validator just checking whether the lock will be free
+soon) — and even then, call `-Release` yourself the moment you're done, don't rely on staleness
+or the safety-net reap.
 
 ## Why parallelism is capped, not maximized (Fix 10)
 
