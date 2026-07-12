@@ -379,6 +379,21 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // plumbing.
     NodeHandle probeAtlasGatherer = renderGraph->AddNode<ImageSyncGathererNodeType>("probe_atlas_gatherer");
 
+    // Sampled Lighting Inc4 M3: ProbeUpdateNode — the probe-update compute pass itself
+    // (ProbeUpdate.comp). Own shaderLib/gatherer/pushConstantGatherer/descSet/pipeline
+    // quintet, mirroring directLighting*'s own "second compiled shader needs its own
+    // instances" rationale (see that block's comment above) — this is a THIRD compiled
+    // program (march / DirectLighting+SpatialReuse / ProbeUpdate), each with its own
+    // reflected descriptor/push-constant layout. NOT swapchain-adjacent (isConsumer=false,
+    // like DirectLightingNode) — this pass writes only the probe atlases via
+    // IMAGE_WRITE_ARRAY (Inc4 M1), never the swapchain-derived render target.
+    NodeHandle probeUpdateShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("probe_update_shader_lib");
+    NodeHandle probeUpdateGatherer  = renderGraph->AddNode<DescriptorResourceGathererNodeType>("probe_update_desc_gatherer");
+    NodeHandle probeUpdatePushConstantGatherer = renderGraph->AddNode<PushConstantGathererNodeType>("probe_update_push_constant_gatherer");
+    NodeHandle probeUpdateDescriptorSet = renderGraph->AddNode<DescriptorSetNodeType>("probe_update_descriptors");
+    NodeHandle probeUpdatePipeline = renderGraph->AddNode<ComputePipelineNodeType>("probe_update_pipeline");
+    NodeHandle probeUpdateNode = renderGraph->AddNode<ComputeStageNodeType>("probe_update");
+
     // Sampled Lighting Inc3 M6: spatial-combine debug readback SSBO (binding 27) -- the
     // spatially-combined `current` reservoir SpatialReuseShade.comp computes exists only in
     // registers (reservoirBufferA/B are readonly that pass); this buffer gives the M6
@@ -789,6 +804,41 @@ void VulkanGraphApplication::BuildRenderGraph() {
         return builder;
     });
 
+    // Sampled Lighting Inc4 M3: ProbeUpdate.comp shader registration. Same search-path
+    // pattern as DirectLighting.comp/SpatialReuseShade.comp above.
+    auto* probeUpdateShaderLibNode = static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(probeUpdateShaderLib));
+    probeUpdateShaderLibNode->RegisterShaderBuilder([this](int vulkanVer, int spirvVer) {
+        ShaderManagement::ShaderBundleBuilder builder;
+        constexpr const char* shaderName = "ProbeUpdate.comp";
+        constexpr const char* programName = "ProbeUpdate";
+        std::vector<std::filesystem::path> possiblePaths = {
+#ifdef VIXEN_SHADER_SOURCE_DIR
+            std::string(VIXEN_SHADER_SOURCE_DIR) + "/" + shaderName,
+#endif
+            std::string("shaders/") + shaderName,
+            std::string("../shaders/") + shaderName,
+            shaderName
+        };
+        std::filesystem::path compPath;
+        for (const auto& path : possiblePaths) {
+            if (std::filesystem::exists(path)) { compPath = path; break; }
+        }
+        if (compPath.empty()) {
+            throw std::runtime_error(std::string(shaderName) + " not found - check shader search paths");
+        }
+        builder.SetProgramName(programName)
+               .SetPipelineType(ShaderManagement::PipelineTypeConstraint::Compute)
+               .SetTargetVulkanVersion(vulkanVer)
+               .SetTargetSpirvVersion(spirvVer)
+               .AddIncludePath("shaders")
+               .AddIncludePath("../shaders")
+#ifdef VIXEN_SHADER_SOURCE_DIR
+               .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
+#endif
+               .AddStageFromFile(ShaderManagement::ShaderStage::Compute, compPath, "main");
+        return builder;
+    });
+
     // DirectLightingNode: NOT swapchain-adjacent (isConsumer=false — no WSI, no fence, no
     // PRESENT_SRC). Sampled Lighting Inc3 M5: this pass no longer owns IMAGE_WRITE (moved to
     // SpatialReuseNode below — DirectLighting.comp is now a pure buffer producer, see that
@@ -838,6 +888,26 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Sampled Lighting Inc4 M2: probe atlas image-array gatherer -- 2 entries (irradiance +
     // visibility atlas, see probeAtlasGatherer's own declaration comment above).
     static_cast<ImageSyncGathererNode*>(renderGraph->GetInstance(probeAtlasGatherer))->PreRegisterImageSlots(2);
+
+    // Sampled Lighting Inc4 M3: ProbeUpdateNode dispatch — ONE WORKGROUP PER PROBE
+    // (ProbeUpdate.comp's local_size_x=PROBE_UPDATE_MAX_RAYS_PER_PROBE=256 covers every
+    // ray in a probe's raysPerProbe budget within a single workgroup — see that shader's
+    // own file header for the one-workgroup-per-probe reduction rationale). Dispatch X =
+    // probeCount = countX*countY*countZ from ProbeGridConfigNode's own default (M2's
+    // MakeDefaultProbeGridConfig — the only content this milestone; no live authoring
+    // exists yet, so this dispatch dimension is a build-time constant, not a live
+    // per-frame-varying quantity, matching the atlas dimensions' own build-time-derived
+    // precedent above). NOT swapchain-adjacent — no IMAGE_WRITE, only IMAGE_WRITE_ARRAY
+    // (wired below), so no live extent to derive dims from the way DirectLighting/
+    // SpatialReuse do; explicit dispatch dims are the correct shape here (mirrors
+    // ComputeDispatchNode's own static width/height-derived dispatch for the march).
+    constexpr uint32_t kProbeUpdateDefaultProbeCount =
+        kProbeGridDefaultCountX * kProbeGridDefaultCountY * kProbeGridDefaultCountZ;
+    auto* probeUpdate = static_cast<ComputeStageNode*>(renderGraph->GetInstance(probeUpdateNode));
+    probeUpdate->SetParameter(ComputeStageNodeConfig::PARAM_IS_CONSUMER, false);
+    probeUpdate->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, kProbeUpdateDefaultProbeCount);
+    probeUpdate->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, 1u);
+    probeUpdate->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
 
     // BlitNode: mirrors ComputeDispatchNode's own M4 PARAM_LEAVE_IMAGE_IN_GENERAL=true (set
     // below beside uiComposite's own parameters) — the sky-projection/UI composite chain still
@@ -3897,6 +3967,146 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // topological sort to place DirectLightingNode before SpatialReuseNode (mirrors the
     // march->DirectLightingNode pair above, which also has no separate ordering connection
     // beyond its own HitRecord sync slots).
+
+    // ===================================================================
+    // Sampled Lighting Inc4 M3: ProbeUpdateNode wiring — the DDGI probe-update pass
+    // (ProbeUpdate.comp). Genuinely DISJOINT from DirectLighting/SpatialReuse (§5's
+    // fan-out shape): reads the SAME resident scene (scene SSBOs, light-tree cut) but
+    // writes ONLY the probe atlases via IMAGE_WRITE_ARRAY — never HitRecord, never
+    // outputImage/historyImage/reservoirs. No sync-slot edge exists between this pass
+    // and DirectLighting/SpatialReuse; auto-sync therefore bakes NO barrier between
+    // them (verified at the gate below via the scheduler's actual baked SyncEdges, per
+    // the plan's own "don't just trust it looks disjoint" instruction).
+    // ===================================================================
+
+    // ProbeUpdate's own descriptor path (shaderLib -> gatherer -> descSet -> pipeline).
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  probeUpdateShaderLib, ShaderLibraryNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  probeUpdateDescriptorSet, DescriptorSetNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  probeUpdatePipeline, ComputePipelineNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(probeUpdateShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  probeUpdateGatherer, DescriptorResourceGathererNodeConfig::SHADER_DATA_BUNDLE)
+         .Connect(probeUpdateGatherer, DescriptorResourceGathererNodeConfig::DESCRIPTOR_RESOURCES,
+                  probeUpdateDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_RESOURCES)
+         .Connect(probeUpdateShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  probeUpdateDescriptorSet, DescriptorSetNodeConfig::SHADER_DATA_BUNDLE)
+         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+                  probeUpdateDescriptorSet, DescriptorSetNodeConfig::SWAPCHAIN_INFO)
+         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
+                  probeUpdateDescriptorSet, DescriptorSetNodeConfig::IMAGE_INDEX)
+         .Connect(probeUpdateShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  probeUpdatePipeline, ComputePipelineNodeConfig::SHADER_DATA_BUNDLE)
+         .Connect(probeUpdateDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_SET_LAYOUT,
+                  probeUpdatePipeline, ComputePipelineNodeConfig::DESCRIPTOR_SET_LAYOUT);
+
+    // ProbeUpdate.comp declares the SAME PushConstants block (via SceneBindings.glsl) as
+    // every other scene-binding consumer, but reads NONE of its fields (no camera ray,
+    // no per-pixel debug target — this pass is probe-indexed, not screen-indexed).
+    // glslang's dead-code elimination means this compiled program's reflected push-
+    // constant range is empty/near-empty; still wire the gatherer's SHADER_DATA_BUNDLE
+    // input (required by PushConstantGathererNodeConfig) with no field connections, so
+    // an empty-but-valid PUSH_CONSTANT_DATA/RANGES pair is published.
+    batch.Connect(probeUpdateShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  probeUpdatePushConstantGatherer, PushConstantGathererNodeConfig::SHADER_DATA_BUNDLE);
+
+    // ProbeUpdate's descriptor bindings: the scene SSBOs (read-only, same as DirectLighting/
+    // SpatialReuse's own gatherer bindings — read-read is not a hazard) + ProbeGridConfig
+    // (binding 28) + the light-tree cut (binding 24, read-only, same buffer DirectLighting.comp
+    // samples for RIS). NO HitRecord/reservoir/outputImage bindings — this pass never touches
+    // those resources, the structural basis for its disjointness from the direct/ReSTIR pass.
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_NODES_BUFFER,
+                          probeUpdateGatherer, VoxelRayMarch::esvoNodes::BINDING,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_BRICKS_BUFFER,
+                          probeUpdateGatherer, VoxelRayMarch::brickData::BINDING,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_MATERIALS_BUFFER,
+                          probeUpdateGatherer, VoxelRayMarch::materials::BINDING,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_CONFIG_BUFFER,
+                          probeUpdateGatherer, 5,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_BUFFER,
+                          probeUpdateGatherer, 10,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::SHELL_DATA_BUFFER,
+                          probeUpdateGatherer, 11,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::SHELL_LOOKUP_BUFFER,
+                          probeUpdateGatherer, 12,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_MIPPOOL_BUFFER,
+                          probeUpdateGatherer, 13,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_TIERREFTABLE_BUFFER,
+                          probeUpdateGatherer, 15,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(lightTreeBufferNode, LightTreeBufferNodeConfig::LIGHT_TREE_BUFFER,
+                          probeUpdateGatherer, 24,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(probeGridConfigNode, ProbeGridConfigNodeConfig::PROBE_GRID_CONFIG_BUFFER,
+                          probeUpdateGatherer, 28,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
+    // Bindings 29/30 (probe atlases): descriptor binding here (plain gatherer, current-view
+    // handles) + the genuine write hazard declared via IMAGE_WRITE_ARRAY below (Inc4 M1's
+    // mechanism — this pass writes BOTH atlases in the SAME dispatch, mirroring how
+    // DirectLightingNode's reservoir write-array covers 2 buffers in one BUFFER_WRITE_ARRAY).
+    batch.Connect(probeIrradianceAtlasNode, ProbeAtlasNodeConfig::PROBE_ATLAS,
+                          probeUpdateGatherer, 29,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(probeVisibilityAtlasNode, ProbeAtlasNodeConfig::PROBE_ATLAS,
+                          probeUpdateGatherer, 30,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
+    // --- ProbeUpdateNode (ComputeStageNode) common inputs — mirrors DirectLightingNode's own
+    // shape. NOT swapchain-adjacent: no SWAPCHAIN_INFO connection (isConsumer=false set above),
+    // IMAGE_WRITE_ARRAY carries the atlas writes instead (below), not the single-slot
+    // IMAGE_WRITE DirectLighting/SpatialReuse use. ---
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  probeUpdateNode, ComputeStageNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
+                  probeUpdateNode, ComputeStageNodeConfig::COMMAND_POOL)
+         .Connect(probeUpdatePipeline, ComputePipelineNodeConfig::PIPELINE,
+                  probeUpdateNode, ComputeStageNodeConfig::COMPUTE_PIPELINE)
+         .Connect(probeUpdatePipeline, ComputePipelineNodeConfig::PIPELINE_LAYOUT,
+                  probeUpdateNode, ComputeStageNodeConfig::PIPELINE_LAYOUT)
+         .Connect(probeUpdateDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_SETS,
+                  probeUpdateNode, ComputeStageNodeConfig::DESCRIPTOR_SETS)
+         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
+                  probeUpdateNode, ComputeStageNodeConfig::IMAGE_INDEX)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                  probeUpdateNode, ComputeStageNodeConfig::CURRENT_FRAME_INDEX)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::IN_FLIGHT_FENCE,
+                  probeUpdateNode, ComputeStageNodeConfig::IN_FLIGHT_FENCE)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
+                  probeUpdateNode, ComputeStageNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
+         .Connect(swapChainNode, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
+                  probeUpdateNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY)
+         .Connect(probeUpdateShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  probeUpdateNode, ComputeStageNodeConfig::SHADER_DATA_BUNDLE)
+         .Connect(probeUpdatePushConstantGatherer, PushConstantGathererNodeConfig::PUSH_CONSTANT_DATA,
+                  probeUpdateNode, ComputeStageNodeConfig::PUSH_CONSTANT_DATA)
+         .Connect(probeUpdatePushConstantGatherer, PushConstantGathererNodeConfig::PUSH_CONSTANT_RANGES,
+                  probeUpdateNode, ComputeStageNodeConfig::PUSH_CONSTANT_RANGES)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_SEMAPHORE,
+                  probeUpdateNode, ComputeStageNodeConfig::TIMELINE_SEMAPHORE_IN)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_FRAME_BASE,
+                  probeUpdateNode, ComputeStageNodeConfig::TIMELINE_FRAME_BASE_IN);
+
+    // Sync slot: IMAGE_WRITE_ARRAY — the genuine write hazard on the persistent probe
+    // atlases (this frame's ProbeUpdateNode write must be visible before any future
+    // consumer, e.g. M5's shade-pass gather, reads it; also guards against overlapping
+    // this pass's own writes across frames on the SAME persistent image, the identical
+    // "hysteresis needs the prior write visible" shape AccumulationHistoryNode's own
+    // historyImage sync already relies on). Fed via probeAtlasGatherer (Inc4 M2's own
+    // gathering wiring above) rather than re-gathering here — one gatherer instance,
+    // reused for both PreRegisterImageSlots(2)'s hazard-array shape and this pass's
+    // actual consuming connection.
+    batch.Connect(probeAtlasGatherer, ImageSyncGathererNodeConfig::IMAGE_ARRAY,
+                  probeUpdateNode, ComputeStageNodeConfig::IMAGE_WRITE_ARRAY, SlotRoleModifier(SlotRole::Execute));
 
     // --- BlitNode: presentation-only blit of the render target to the swapchain. ---
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,

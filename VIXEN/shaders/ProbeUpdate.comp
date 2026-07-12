@@ -1,0 +1,296 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+
+// ============================================================================
+// ProbeUpdate.comp - DDGI probe-update pass (Sampled Lighting Inc4 M3)
+// ============================================================================
+// ONE WORKGROUP PER PROBE: local_size_x = raysPerProbe's dispatch-time upper
+// bound (see kMaxRaysPerProbe below); invocation i in the group casts ray i of
+// raysPerProbe from the group's probe. Each ray samples direct-lit radiance at
+// its TraceWorld() hit via a single light-tree candidate + shadow ray (the SAME
+// light-tree SSBO + TraceWorldShadow DirectLighting.comp uses for RIS, but
+// WITHOUT RIS/reservoir machinery — this milestone's plan explicitly scopes
+// probe rays to a single deterministic sample per ray, not spatiotemporal
+// reuse). A workgroup-shared-memory tree reduction then averages all
+// raysPerProbe samples for this probe, and ONLY invocation 0 hysteresis-blends
+// the averaged result into the persistent irradiance/visibility atlases — one
+// write per probe per tick, no races, matching standard DDGI's
+// batch-then-blend update shape exactly (not an approximation). Uses M1's
+// SceneBindings.glsl include chain (the 4th-call-site proof from
+// ProbeUpdateSmokeTest.comp) and M1's IMAGE_WRITE_ARRAY mechanism to write
+// BOTH atlases (irradiance + a basic visibility depth-moment write — M4 will
+// replace the latter with the real Chebyshev-correctness pass but writes
+// SOMETHING now to avoid a second full ray-cast pass at M4, per the plan's own
+// "your call, don't force it" M3 Task 3 note).
+//
+// RAY SAMPLE PATTERN: spherical Fibonacci lattice (Keinert et al. 2015's
+// spherical-Fibonacci mapping) — cheap (closed-form, no trig table),
+// deterministic (same raysPerProbe -> same directions every tick, required for
+// hysteresis to converge instead of chasing new noise every frame), and
+// reasonably uniform over the sphere for small-to-moderate N (few hundred,
+// this milestone's realistic raysPerProbe range) without the stratification
+// bookkeeping a full QMC scheme would need. A full importance-sampled scheme
+// is explicitly NOT required this milestone (plan Task 3).
+// ============================================================================
+
+// Upper bound on ProbeGridConfig.raysPerProbe this milestone: local_size_x is a
+// SHADER COMPILE-TIME constant (GLSL has no dynamic workgroup size), so the
+// per-workgroup-per-probe shape needs a fixed ceiling. 256 matches this
+// codebase's other compute passes' largest declared local_size (comfortably
+// inside the 1024-invocation minimum-guaranteed core Vulkan limit) and is well
+// above any raysPerProbe value this milestone's plumbing-only ProbeGridConfig
+// defaults or M6's future real-GPU bench are expected to land on. Rays beyond
+// this ceiling are silently NOT cast (see the invocation-index gate in main) —
+// if M6's bench motivates a genuinely larger per-probe ray budget, raise this
+// constant then (a shader recompile, no data-layout change).
+#define PROBE_UPDATE_MAX_RAYS_PER_PROBE 256u
+
+layout(local_size_x = PROBE_UPDATE_MAX_RAYS_PER_PROBE, local_size_y = 1, local_size_z = 1) in;
+
+#include "SceneBindings.glsl"          // Sampled Lighting Inc4 M1: scene SSBOs + TraceWorld/TraceWorldShadow (KI-018 precedent)
+
+#include "Generated/ProbeGridConfig.glsl"
+
+layout(std430, binding = 28) readonly buffer ProbeGridConfigSSBO {
+    ProbeGridConfig probeGridConfig;
+};
+
+#include "Generated/LightTreeBuffer.glsl"
+
+layout(std430, binding = 24) readonly buffer LightTreeBufferSSBO {
+    LightTreeBuffer lightTreeBuffer;
+};
+
+// Persistent DDGI atlases (Sampled Lighting Inc4 M2, ProbeAtlasNode) — written via
+// IMAGE_WRITE_ARRAY (Inc4 M1), NOT the single-slot IMAGE_WRITE (DirectLighting/
+// SpatialReuseShade's slot, untouched by this pass). Bindings chosen past every
+// scene/config binding already declared through 28 above.
+layout(rgba16f, binding = 29) uniform image2D probeIrradianceAtlas;
+layout(rg16f,   binding = 30) uniform image2D probeVisibilityAtlas;
+
+// Workgroup-shared reduction buffers: one entry per ray invocation in this
+// probe's group, reduced to a single average by invocation 0 below.
+shared vec3  sharedRadiance[PROBE_UPDATE_MAX_RAYS_PER_PROBE];
+shared float sharedDepth[PROBE_UPDATE_MAX_RAYS_PER_PROBE];
+shared float sharedDepth2[PROBE_UPDATE_MAX_RAYS_PER_PROBE];
+
+// Small self-contained PCG-style hash RNG — mirrors ReservoirCombine.glsl's own
+// pcgHash/rngNextFloat exactly (that file is DirectLighting/SpatialReuseShade's
+// RIS-specific include; this pass doesn't need the rest of ReservoirCombine.glsl's
+// reservoir-update/-combine machinery, only the RNG primitive, so it's re-declared
+// here rather than pulling in an unrelated file for two functions).
+uint pcgHash(uint v) {
+    uint state = v * 747796405u + 2891336453u;
+    uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+    return (word >> 22u) ^ word;
+}
+
+float rngNextFloat(inout uint state) {
+    state = pcgHash(state);
+    return float(state) * (1.0 / 4294967296.0);  // 2^32
+}
+
+// p_hat(i) for light-tree cut node i, mirrors DirectLighting.comp's own
+// lightTreeNodePHat exactly (same target-function definition; kept as a
+// separate copy per that file's own precedent comment on ReservoirCombine.glsl
+// -- multiple call sites each declare it locally since it depends on THIS
+// shader's own lightTreeBuffer binding).
+float lightTreeNodePHat(uint nodeIdx, vec3 shadingPos) {
+    LightTreeGpuNode node = lightTreeBuffer.nodes[nodeIdx];
+    vec3 toLight = node.worldPos - shadingPos;
+    float dist2 = max(dot(toLight, toLight), 1e-4);
+    float nodePower = node.intensity * node.coverage * (node.worldExtent * node.worldExtent * node.worldExtent);
+    return nodePower / dist2;
+}
+
+// Spherical Fibonacci lattice direction for sample i of N (Keinert et al. 2015,
+// "Spherical Fibonacci Mapping" -- closed-form, deterministic, near-uniform).
+vec3 sphericalFibonacci(uint i, uint n) {
+    const float PHI = 1.6180339887498948482045868343656;  // golden ratio
+    float ii = float(i) + 0.5;
+    float cosTheta = 1.0 - 2.0 * ii / float(n);
+    float sinTheta = sqrt(clamp(1.0 - cosTheta * cosTheta, 0.0, 1.0));
+    float phi = 2.0 * 3.14159265358979323846 * fract(ii / PHI);
+    return vec3(cos(phi) * sinTheta, sinTheta * sin(phi), cosTheta);
+}
+
+// Single-sample direct-lit radiance at a world-space hit: pick ONE light-tree
+// candidate (uniform over the cut, weighted by p_hat via a single WRS draw --
+// the minimal unbiased single-sample estimator, NOT full RIS/reservoir reuse,
+// per this milestone's explicit non-scope), cast a shadow ray, return its
+// contribution scaled by the WRS unbiased weight (mirrors
+// reservoirUnbiasedWeight's identity for a single-candidate stream).
+vec3 sampleDirectLitRadiance(vec3 hitPos, vec3 hitNormal, vec3 hitColor, inout uint rngState) {
+    uint cutCount = lightTreeBuffer.nodeCount;
+    if (cutCount == 0u) return vec3(0.0);
+
+    // Single-candidate WRS draw over the cut (Reservoir::Update's single-candidate
+    // degenerate case -- M=1 uniform draw weighted by pHat, mirrors
+    // reservoirBuildFromLightTree's inner loop body with M=1, avoiding a second
+    // ReservoirRecord-shaped state machine for a one-shot pick).
+    float sourcePdf = 1.0 / float(cutCount);
+    uint chosen = 0xFFFFFFFFu;
+    float chosenPHat = 0.0;
+    float weightSum = 0.0;
+    for (uint i = 0u; i < cutCount; ++i) {
+        float pHat = lightTreeNodePHat(i, hitPos);
+        float w = pHat / sourcePdf;
+        weightSum += w;
+        if (weightSum > 0.0 && rngNextFloat(rngState) < (w / weightSum)) {
+            chosen = i;
+            chosenPHat = pHat;
+        }
+    }
+    if (chosen == 0xFFFFFFFFu || chosenPHat <= 0.0) return vec3(0.0);
+
+    float unbiasedWeight = (1.0 / chosenPHat) * (weightSum / float(cutCount));
+
+    LightTreeGpuNode node = lightTreeBuffer.nodes[chosen];
+    vec3 toLight = node.worldPos - hitPos;
+    float dist2 = max(dot(toLight, toLight), 1e-4);
+    float dist = sqrt(dist2);
+    vec3 lightDir = toLight / dist;
+
+    float ndotl = max(dot(hitNormal, lightDir), 0.0);
+    if (ndotl <= 0.0) return vec3(0.0);
+
+    // Shadow ray against the same resident scene the primary/direct passes trace
+    // (SceneBindings.glsl's TraceWorldShadow -- shared visibility semantics).
+    bool occluded = TraceWorldShadow(hitPos, lightDir, 0.001, dist - 0.01);
+    if (occluded) return vec3(0.0);
+
+    // Lambert-only direct term (probes store diffuse irradiance -- DDGI's own
+    // scope, no specular lobe in the probe volume; Lighting.glsl's evalBRDF
+    // specular term is a primary/direct-view-ray concept that doesn't apply to
+    // an omnidirectional probe irradiance sample).
+    vec3 radiance = vec3(node.intensity * node.coverage) / dist2;
+    vec3 brdf = hitColor / 3.14159265358979323846;  // Lambert diffuse, energy-normalized
+
+    return brdf * radiance * ndotl * unbiasedWeight;
+}
+
+// ============================================================================
+// MAIN - ONE WORKGROUP PER PROBE. gl_WorkGroupID.x selects the probe;
+// gl_LocalInvocationID.x selects the ray within that probe's raysPerProbe
+// budget. Dispatch sized by CPU as (probeCount, 1, 1) workgroups of
+// local_size_x=PROBE_UPDATE_MAX_RAYS_PER_PROBE (see BuildRenderGraph.cpp's
+// probeUpdateNode dispatch-dim wiring) -- invocations with
+// gl_LocalInvocationID.x >= raysPerProbe idle out (no ray cast) but still
+// participate in the reduction as harmless zero-weight entries.
+// ============================================================================
+void main() {
+    if (probeGridConfig.probeGridEnabled == 0u) return;  // byte-identity escape hatch
+
+    uint probeCount = probeGridConfig.countX * probeGridConfig.countY * probeGridConfig.countZ;
+    uint probeIndex = gl_WorkGroupID.x;
+    if (probeIndex >= probeCount) return;
+
+    uint raysPerProbe = clamp(probeGridConfig.raysPerProbe, 1u, PROBE_UPDATE_MAX_RAYS_PER_PROBE);
+    uint rayIndex = gl_LocalInvocationID.x;
+
+    // Probe grid indexing: X fastest, then Y, then Z (matches
+    // BuildRenderGraph.cpp's atlas layout comment: "columns sweep the grid's X
+    // axis, rows sweep Y, and Z-slices tile across the texture width").
+    uint px = probeIndex % probeGridConfig.countX;
+    uint py = (probeIndex / probeGridConfig.countX) % probeGridConfig.countY;
+    uint pz = probeIndex / (probeGridConfig.countX * probeGridConfig.countY);
+
+    vec3 probeWorldPos = vec3(
+        probeGridConfig.originX + float(px) * probeGridConfig.spacingX,
+        probeGridConfig.originY + float(py) * probeGridConfig.spacingY,
+        probeGridConfig.originZ + float(pz) * probeGridConfig.spacingZ);
+
+    vec3 sampleRadiance = vec3(0.0);
+    float sampleDepth = 0.0;
+    float sampleDepth2 = 0.0;
+    float sampleWeight = 0.0;  // 1.0 if this invocation cast a real ray, else 0.0 (idle lanes)
+
+    if (rayIndex < raysPerProbe) {
+        vec3 rayDir = sphericalFibonacci(rayIndex, raysPerProbe);
+
+        WorldHit hit;
+        bool anyHit = TraceWorld(probeWorldPos, rayDir, 0.001, 1e30, hit);
+
+        if (anyHit) {
+            uint rngState = pcgHash((probeIndex * PROBE_UPDATE_MAX_RAYS_PER_PROBE + rayIndex) ^ 0x9E3779B9u);
+            sampleRadiance = sampleDirectLitRadiance(probeWorldPos + rayDir * hit.t, hit.normal, hit.color, rngState);
+            sampleDepth = hit.t;
+            sampleDepth2 = hit.t * hit.t;
+        }
+        // Misses count as valid samples with zero radiance and a large depth
+        // (standard DDGI treatment -- a probe ray that escapes the scene
+        // contributes "no occluder, no light" rather than being dropped from
+        // the average, which would bias the irradiance estimate toward
+        // whichever rays happened to hit something).
+        if (!anyHit) { sampleDepth = 1e4; sampleDepth2 = 1e8; }
+        sampleWeight = 1.0;
+    }
+
+    sharedRadiance[rayIndex] = sampleRadiance * sampleWeight;
+    sharedDepth[rayIndex]    = sampleDepth * sampleWeight;
+    sharedDepth2[rayIndex]   = sampleDepth2 * sampleWeight;
+    barrier();
+
+    // Tree reduction across the workgroup's PROBE_UPDATE_MAX_RAYS_PER_PROBE
+    // lanes (power-of-two stride halving) -- standard shared-memory sum
+    // reduction, O(log2(PROBE_UPDATE_MAX_RAYS_PER_PROBE)) barrier rounds.
+    for (uint stride = PROBE_UPDATE_MAX_RAYS_PER_PROBE / 2u; stride > 0u; stride >>= 1u) {
+        if (rayIndex < stride) {
+            sharedRadiance[rayIndex] += sharedRadiance[rayIndex + stride];
+            sharedDepth[rayIndex]    += sharedDepth[rayIndex + stride];
+            sharedDepth2[rayIndex]   += sharedDepth2[rayIndex + stride];
+        }
+        barrier();
+    }
+
+    if (rayIndex != 0u) return;  // only invocation 0 performs the atlas write for this probe
+
+    float invRaysPerProbe = 1.0 / float(raysPerProbe);
+    vec3  avgRadiance = sharedRadiance[0] * invRaysPerProbe;
+    float avgDepth     = sharedDepth[0] * invRaysPerProbe;
+    float avgDepth2    = sharedDepth2[0] * invRaysPerProbe;
+
+    float hysteresisRate = clamp(probeGridConfig.hysteresisRate, 0.0, 1.0);
+
+    // Atlas layout (BuildRenderGraph.cpp's own comment on probeIrradianceAtlasNode/
+    // probeVisibilityAtlasNode): columns sweep X then Y, rows tile Z, each probe
+    // occupying a texelsPerProbe x texelsPerProbe block -- atlasWidth =
+    // countX*countY*texelsPerProbe. texelsPerProbe is derived from imageSize()
+    // rather than duplicated as a shader constant, so a future M6 atlas-dimension
+    // rebalance (real-GPU-benched, per the plan) needs no shader change here. M3
+    // does not yet map ray directions to distinct texels within a probe's block
+    // (no octahedral encoding this milestone -- single scalar irradiance/moment
+    // per probe, written uniformly across the whole block); M4/M5 own the
+    // per-texel octahedral gather this atlas sizing anticipates.
+    uint probesPerRow = max(probeGridConfig.countX * probeGridConfig.countY, 1u);
+
+    ivec2 irradianceAtlasSize = imageSize(probeIrradianceAtlas);
+    uint irradianceTexelsPerProbe = uint(irradianceAtlasSize.x) / probesPerRow;
+    ivec2 irradianceBlockOrigin = ivec2(int((px * probeGridConfig.countY + py) * irradianceTexelsPerProbe),
+                                         int(pz * irradianceTexelsPerProbe));
+
+    vec4 oldIrradiance = imageLoad(probeIrradianceAtlas, irradianceBlockOrigin);
+    vec3 newIrradianceRgb = mix(oldIrradiance.rgb, avgRadiance, hysteresisRate);
+    for (uint ty = 0u; ty < irradianceTexelsPerProbe; ++ty) {
+        for (uint tx = 0u; tx < irradianceTexelsPerProbe; ++tx) {
+            imageStore(probeIrradianceAtlas, irradianceBlockOrigin + ivec2(int(tx), int(ty)), vec4(newIrradianceRgb, 1.0));
+        }
+    }
+
+    // Basic/placeholder visibility write (M4 owns the real Chebyshev-moment
+    // correctness pass -- this milestone just avoids a second full ray-cast
+    // pass over the same rays by writing SOMETHING now, per the plan's own
+    // "your call, don't force it" note). depth, depth^2 moments.
+    ivec2 visibilityAtlasSize = imageSize(probeVisibilityAtlas);
+    uint visibilityTexelsPerProbe = uint(visibilityAtlasSize.x) / probesPerRow;
+    ivec2 visibilityBlockOrigin = ivec2(int((px * probeGridConfig.countY + py) * visibilityTexelsPerProbe),
+                                         int(pz * visibilityTexelsPerProbe));
+
+    vec2 oldVisibility = imageLoad(probeVisibilityAtlas, visibilityBlockOrigin).rg;
+    vec2 newVisibility = mix(oldVisibility, vec2(avgDepth, avgDepth2), hysteresisRate);
+    for (uint ty = 0u; ty < visibilityTexelsPerProbe; ++ty) {
+        for (uint tx = 0u; tx < visibilityTexelsPerProbe; ++tx) {
+            imageStore(probeVisibilityAtlas, visibilityBlockOrigin + ivec2(int(tx), int(ty)), vec4(newVisibility, 0.0, 0.0));
+        }
+    }
+}
