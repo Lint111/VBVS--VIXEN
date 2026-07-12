@@ -64,11 +64,39 @@ not properties into an existing class) need something structurally different aga
   the main checkout or any other worktree. Do NOT push. Commit as work completes.
 
 ## Milestone Map
-- [ ] **Milestone 1 (Task 1):** ground the shape, decide mechanism (report-back gate). One Sonnet
+- [x] **Milestone 1 (Task 1):** ground the shape, decide mechanism (report-back gate). One Sonnet
   implementer + one Opus validator.
 - [ ] **Milestone 2 (Task 2):** build + equivalence proof + retire (if safe). One Sonnet implementer + one
   Opus validator.
 
 ## Progress Log
 
-*(none yet — plan authored, not yet dispatched)*
+- Milestone 1 (Task 1, research-only): DONE · 2026-07-12 · no files modified in either repo
+  - **Corrected ground truth**: `sharedMapElements` has **12 entries**, not the 2 examples this plan doc
+    cited — `SignatureEntry`/`TagThreshold`/`CategoryThreshold` (float), `RecipeIo`/`CompositionMix`/
+    `EconomicNeed`/`EconomicProduce`/`KnobValue` (number→double), `ParamEntry`/`AttributeEntry` (attr→
+    `Undertow.Substrate.AttributeValue`), `ArchetypeLayer` (id→string, a deliberate map-value special
+    case per `Emit.MapValueScalar`), `RecipeParam` (float) — controller independently verified all 12
+    names/scalars against the real `schemas.json`. Task 2's equivalence proof must exercise all 4 distinct
+    CLR value shapes (double/float/AttributeValue/string), not just float.
+  - **Finding: a genuinely new, small mechanism is needed — neither `[RegistrySlots]` reuse NOR
+    `[GpuStruct]` fits.** `[RegistrySlots]` injects properties into ONE existing decorated class;
+    `EmitSharedMapElement` emits N freestanding new struct TYPES with no host class at all — different
+    emission shape at the most basic level. `[GpuStruct]` was explicitly re-examined (not dismissed by
+    analogy) and also rejected: it reflects an EXISTING decorated C# struct's own fields and emits C++
+    std430 layout only (`ScalarKind` strictly `{U32,I32,F32}` — controller independently confirmed, no
+    double/string/AttributeValue support at all); `EmitSharedMapElement` has no C# source type to reflect
+    from (pure JSON-driven) and emits a C# struct with a rich hand-authored API (tuple/KVP conversions,
+    equality) — the inverse on every axis. Verdict: a new small `[SharedMapElements(schemaPath)]`-style
+    attribute + `SharedMapElementEmitter` porting `EmitSharedMapElement.All`'s logic line-for-line, mirror-
+    ing Increment 1's own "attribute carries an external JSON pointer" precedent (the one part of Inc1's
+    pattern that DOES generalize) but NOT the properties-into-existing-class emission shape.
+  - **Retirement safety: SAFE to retire within THIS increment** (unlike Increment 1, which deferred).
+    Grepped ~40 real consumer files (`SimScenario.cs`, `BakedContentPack.cs`, parsers, tests, etc.) —
+    every consumer uses the generated structs as plain ordinary types (tuple/ctor construction, named
+    property access, implicit KVP conversions, equality) with zero coupling to the generator's specific
+    file/namespace mechanics beyond the fixed `Undertow.Content` target namespace (which the new mechanism
+    must reproduce, confirmed straightforward). `MapElementStructTests.cs` (the one existing test)
+    exercises exactly this API surface — a natural equivalence-proof template for Milestone 2. Zero
+    dependents within the program, unlike Increment 1's registry slots.
+  - No plan-doc assumption disproven beyond the corrected entry count.
