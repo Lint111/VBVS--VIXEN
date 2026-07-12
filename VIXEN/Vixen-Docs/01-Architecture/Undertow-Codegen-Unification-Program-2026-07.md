@@ -158,7 +158,9 @@ defer vs. new-mechanism, never to force a match or silently drop data.
 ## Milestone Map (program-level — one row per increment; each increment has its OWN internal milestones,
 tracked in that increment's own plan doc once started)
 
-- [ ] Increment 1 — #8 Registry collection slots
+- [x] Increment 1 — #8 Registry collection slots (Opus-validated APPROVED both milestones; new
+  `[RegistrySlots]` mechanism proven equivalent, `EmitRegistrySlots.cs` not yet retired by design — see
+  `Undertow-Codegen-Unif-Inc1-Registry-Slots-Plan-2026-07.md`)
 - [ ] Increment 2 — #9 Shared map-element structs
 - [ ] Increment 3 — #14 `[Param]` declarations
 - [ ] Increment 4 — #12 `[Action]` registration
@@ -171,7 +173,16 @@ tracked in that increment's own plan doc once started)
 
 ## Progress Log
 
-*(none yet — program authored, not yet dispatched)*
+- Increment 1 (#8 Registry collection slots): COMPLETE · 2026-07-12 · both milestones Opus-validated
+  APPROVED. New `[RegistrySlots(schemaPath, typePrefix, gate)]` class attribute + `RegistrySlotsEmitter`
+  built (Yeroket `feat/codegen-unif-inc1-slots`, commit `696b432b`) — confirmed genuinely new mechanism
+  needed (no existing Yeroket attribute reflects an EXTERNAL file's item list into an UNDECORATED host
+  class; every other attribute reflects the decorated type's own fields). Faithful line-by-line port of
+  `EmitRegistrySlots.All`'s logic, verified equivalent against a real 5-kind `schemas.json` subset
+  spanning all 4 gate combinations (8 non-vacuous checks). `EmitRegistrySlots.cs` left running as-is —
+  retirement deferred to a later dependent increment (per this doc's own per-increment process, Task 4)
+  once #1/#2/#3/#7's own migration confirms end-to-end behavior with real def-carrier data. Full detail:
+  `Undertow-Codegen-Unif-Inc1-Registry-Slots-Plan-2026-07.md`.
 
 ## Follow-ups / open questions (explicitly not resolved in this doc)
 
