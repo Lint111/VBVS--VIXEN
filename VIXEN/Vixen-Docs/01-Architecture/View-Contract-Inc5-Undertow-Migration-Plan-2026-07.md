@@ -537,6 +537,22 @@ not a shortcut.
     double→float narrowing (`1.99e30`/`5.97e24` match exactly at float precision) and both `OrbitParent`
     branches. **Milestone 3 (Task 4) is now COMPLETE** for all 5 sections, with `Position`/`RecipeParams`/
     `OrbitPath` an explicit, named, deferred gap (not silently dropped) — Milestone Map updated below.
+  - **Opus validator (independent field-by-field re-verification):** cross-checked every column in all 5
+    schemas against undertow's real `ViewSchema.cs` fresh (Hud/HudFactions/HudEvents/HudInspect match
+    exactly; `Bodies` declares EXACTLY the 7 claimed columns, genuinely omitting the 3 deferred ones);
+    confirmed all 6 callables are byte-for-byte semantically identical to their original `Source`
+    expressions (including that `BoolToByte`'s sharing across all 4 bool→byte columns is semantically
+    valid — all 4 really do `? 1 : 0`); verified all 10 field↔`[Projected]`-attribute pairs in
+    `UndertowFrameAdapter.cs` call the EXACT SAME callable their schema attribute names (zero drift —
+    gap #2's resolution holds); specifically verified the `orbitParent` expression is null-safe
+    (`el.Orbit.Value.ParentBodyIndex` is only evaluated when `el.Orbit.HasValue` is true, never throws);
+    confirmed the generated writer type shapes the adapter assumes match `ViewWriterEmitter.cs`'s real
+    output. Treated the 48/48 proof result as TRUSTED-FROM-REPORT (harness uncommitted, can't re-run)
+    but independently verified the described reference frame's SOUNDNESS — every declared transform,
+    name-mismatch, and edge case (empty-string SoA path, both `OrbitParentOrSentinel` branches, the
+    `Mass` narrowing) is genuinely exercised by the described 2-faction/2-event/1-inspect/2-body
+    scenario. Confirmed zero build-graph references to the 3 new files (correct — proof-vehicle schema
+    declarations, not shipped runtime code). Tree clean. **APPROVED, no defects, no changes made.**
 
 ## Follow-ups (explicitly out of scope, note for later increments)
 
