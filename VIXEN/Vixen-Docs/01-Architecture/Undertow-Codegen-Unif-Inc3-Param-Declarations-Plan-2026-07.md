@@ -74,11 +74,44 @@ also merge/migrate cleanly, before tackling logic-transplant features (`[Action]
   errors/failures required before calling retirement done (same bar Increment 2 met).
 
 ## Milestone Map
-- [ ] **Milestone 1 (Task 1):** ground the shape, decide mechanism (report-back gate). One Sonnet
+- [x] **Milestone 1 (Task 1):** ground the shape, decide mechanism (report-back gate). One Sonnet
   implementer + one Opus validator.
 - [ ] **Milestone 2 (Task 2):** build + equivalence proof + retire (if safe). One Sonnet implementer + one
   Opus validator.
 
 ## Progress Log
 
-*(none yet — plan authored, not yet dispatched)*
+- Milestone 1 (Task 1, research-only): DONE · 2026-07-13 · no files modified in either repo
+  - **Corrected ground truth: 37 real `[Param(...)]` sites, not the survey's estimated 8** — spans 8
+    files (`PopulationAttrs.cs`(2), `KnowledgeAttrs.cs`(4), `ResearchAttrs.cs`(2), `EconomyAttrs.cs`(2),
+    `DiplomacyAttrs.cs`(13), `TrajectoryAttrs.cs`(6), `PlayerAttrs.cs`(3), `LoyaltyAttrs.cs`(5)) —
+    controller independently verified the count via grep. All 37 use `Scope = ParamScope.Faction`;
+    `SeedOnApply=true` appears on exactly 2 (`EconomyAttrs`'s `extract:efficiency`/`refine:efficiency`) —
+    genuine non-vacuous coverage for Milestone 2's proof (a duplicate-id AND a SeedOnApply split both
+    present in real data).
+  - **Finding: a genuinely new, small attribute is needed — `[KernelCallable]`'s existing pipeline does
+    NOT generalize, and neither `[RegistrySlots]` (Inc-1) nor `[SharedMapElements]` (Inc-2) fit either.**
+    `KernelCallableAttribute` is confirmed strictly `[AttributeUsage(AttributeTargets.Method, ...)]`
+    (controller independently verified) — a hard `AttributeUsage` wall against `[Param]`'s field-level
+    target, and its downstream visitor-based body-transpilation pipeline has nothing to reuse for
+    "read 3 typed properties, format 2 as expression strings, emit one registration call." `[RegistrySlots]`/
+    `[SharedMapElements]` are both schema-JSON-DRIVEN (attribute carries an external file pointer);
+    `[Param]`'s attribute INSTANCES themselves are the complete per-item data — even Inc-1/2's narrower
+    "attribute carries a pointer" precedent doesn't transfer, since there's no external file here at all.
+  - **New mechanism sketch**: a new Yeroket-side `[Param]`-equivalent attribute (`Id` ctor arg +
+    `Base`/`Scope`/`SeedOnApply` named properties, mirroring the real `ParamAttribute`), a
+    `ForAttributeWithMetadataName`-based CLI discovery path targeting FIELDS (new — no existing Yeroket
+    discovery targets fields for logic/registration purposes), and a small emitter porting
+    `EmitRegisterParams.Emit`'s logic (id-sort via `OrderBy(Id, StringComparer.Ordinal)`, dup-id
+    diagnostic via `HashSet.Add` BEFORE sorting — note: adds a diagnostic, does NOT dedupe/skip the
+    list itself, Milestone 2 must preserve this exact behavior) line-for-line. **Also ports
+    `EnumExprHelper.EnumExpr`** (the survey's #17 trivial utility) — this is the first increment that
+    needs it, per the parent program doc's own "fold into whichever increment needs it first" note.
+  - **Retirement safety: SAFE, single simple call site.** `UndertowSim.cs:461`:
+    `DeclareGeneratedParams(Params);` — called once, unconditionally, in the sim ctor's setup sequence.
+    Controller independently confirmed via grep: only the generator/emitter, this one call site, and a
+    pre-existing unit test (`EmitRegisterParamsTests.cs`, which tests the OLD mechanism being retired, not
+    a downstream dependent) reference `DeclareGeneratedParams` anywhere in the codebase. One stale-comment
+    correction noted (not a scope signal): the call site's own comment says "KnowledgeAttrs + EconomyAttrs"
+    but the real field set spans 8 files — the comment predates later `[Param]` additions.
+  - No blockers.
