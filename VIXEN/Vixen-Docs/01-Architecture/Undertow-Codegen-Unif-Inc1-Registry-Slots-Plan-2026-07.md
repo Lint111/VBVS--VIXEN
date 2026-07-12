@@ -123,7 +123,7 @@ these kinds," vs. reusing schema-JSON directly) is Task 1's decision to make, no
 - [x] **Milestone 1 (Task 1):** ground the shape, decide merge-vs-new-mechanism (report-back gate, no
   building until confirmed). One Sonnet implementer + one Opus validator. **APPROVED.**
 - [x] **Milestone 2 (Task 2-3):** build (scope per Milestone 1's decision) + equivalence proof. One Sonnet
-  implementer + one Opus validator. **DONE, pending Opus validation.**
+  implementer + one Opus validator. **APPROVED. Increment 1 COMPLETE.**
 
 ## Progress Log
 
@@ -220,6 +220,24 @@ these kinds," vs. reusing schema-JSON directly) is Task 1's decision to make, no
     per the plan doc's scope boundary (retirement deferred to a later dependent increment).
   - Not yet Opus-validated — flagging per this program's dispatch-escalation-pattern precedent
     for controller awareness before this increment is called fully closed.
+  - **Opus validator (independent re-verification, read every changed file):** confirmed the attribute
+    shape, and did a genuine line-by-line comparison of `RegistrySlotsEmitter.cs` against undertow's real
+    `EmitRegistrySlots.cs`/`Emit.cs` — confirmed the body-generation block is character-identical (minus
+    the expected banner-line difference) and all helper functions (`OptsIntoData/Codec/SimRegister`,
+    `Pascal`, `Pluralize`, `IsVowel`, `SchemaKeys.IsReserved`) are byte-identical to the originals.
+    **Found and investigated a real theoretical gap**: the port's `HasFlatFields` simplification (checks
+    only that `fields` is a JSON array) is NOT abstractly equivalent to the original `ReadFields` (which
+    also excludes kinds with unsupported field shapes — block fields, map-of-block, bad objectList
+    elements) — then PROGRAMMATICALLY VERIFIED against all 37 real gated kinds in `schemas.json` that no
+    such divergent kind exists today, making the simplification safe in practice (and noting any future
+    kind hitting this gap would already be a latent bug in undertow's own generator, sharing the same
+    gate). Confirmed the `RegistrySlotsGate` duplication's precedent is real (`GpuStructModel.ScalarKind`/
+    `ViewModel.ViewFieldKind`/etc. are all local model enums with the same Runtime-assembly-isolation
+    reasoning). Confirmed the equivalence proof's 5-kind scenario genuinely spans all 4 real gate
+    combinations (verified `composition_profile`/`tag`/`relation`/`planet`/`role`'s actual `codegen`
+    flags directly). Confirmed `EmitRegistrySlots.cs` untouched and the DLL cleanup landed correctly
+    (HEAD's blob byte-identical to the branch base, no dll churn). **APPROVED — no fixes needed.**
+    **Increment 1 is fully closed: proven-equivalent, not yet retired, by design.**
 
 ## Follow-ups (explicitly out of scope, note for later increments)
 
