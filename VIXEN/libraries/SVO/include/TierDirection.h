@@ -53,6 +53,14 @@
 
 #include "TierAddress.h"
 
+// This header uses std::min. When included after <windows.h> (pulled in transitively on the
+// Windows build via Vulkan/GTest), the `min`/`max` function-like macros mangle unqualified
+// calls into a syntax error. NOMINMAX only helps before windows.h is seen, which a header
+// cannot guarantee, so drop the macros outright — no C++ code wants them. Same convention as
+// GpuTraversalMirror.h.
+#undef min
+#undef max
+
 namespace Vixen::SVO {
 
 // One hop's local-frame contribution to a composed direction/distance,

@@ -15,6 +15,8 @@ Fast-access reference for Claude Code. Read this file first for any documentatio
 
 | Date | Topic | File |
 |------|-------|------|
+| 2026-07-12 | Lazy-Procedural Inc1b plan: resolvability-gated recipe evaluation ("mip for compute") | [[../01-Architecture/Lazy-Procedural-Delta-Baseline-Inc1b-Plan-2026-07]] |
+| 2026-07-10 | Kernel physics dispatch contract (field/mip-aware simulation job ABI) | [[../01-Architecture/Kernel-Physics-Dispatch-Contract-Spec-2026-07]] |
 | 2026-07-03 | Voxel authoring editor Inc1 (VoxelDocument format + vixen_editor app) | [[../01-Architecture/Voxel-Authoring-App-Inc1-Design-2026-07]] |
 | 2026-06-14 | Embedding VIXEN in a host (find_package → EngineContext → own-the-loop) [AR#12] | [[../06-Embedding/Hosting-VIXEN]] |
 | 2026-06-12 | Consumer feedback / feature requests (UNDERTOW integration) | [[../05-Progress/features/consumer-feedback-undertow]] |
@@ -32,6 +34,7 @@ Fast-access reference for Claude Code. Read this file first for any documentatio
 | Vulkan pipeline | [[../01-Architecture/Vulkan-Pipeline]] |
 | Type system | [[../01-Architecture/Type-System]] |
 | Voxel authoring app Inc1 (VoxelDocument format, flatten-to-VRC1, vixen_editor) | [[../01-Architecture/Voxel-Authoring-App-Inc1-Design-2026-07]] |
+| Kernel physics dispatch contract | [[../01-Architecture/Kernel-Physics-Dispatch-Contract-Spec-2026-07]] |
 
 ---
 
@@ -67,6 +70,7 @@ Fast-access reference for Claude Code. Read this file first for any documentatio
 |-------|------|
 | ESVO (Efficient Sparse Voxel Octrees) | [[../03-Research/ESVO]] |
 | Voxel ray tracing | [[../03-Research/Voxel-Ray-Tracing]] |
+| Voxel / field physics | [[../03-Research/Voxel-Field-Physics-Research-2026-07]] |
 | DXT compression | [[../03-Research/DXT-Compression]] |
 
 ---

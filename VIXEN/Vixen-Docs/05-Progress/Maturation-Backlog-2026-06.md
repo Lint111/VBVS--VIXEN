@@ -320,15 +320,22 @@ Correctness bugs + the only-consumer's pain + legal hygiene. Wasted on no possib
   green, all CashSystem suites pass, app smoke clean (0 VK errors). Follow-ups: per-attachment/MRT blend,
   `logicOp`/dual-source/blend-constants — deferred (single attachment today).
 - [ ] **Multi-view / multi-camera** + flexible camera (ortho projection, zoom-to-cursor, camera-
-  relative transform) — current camera is orbit-only, perspective-only, swapchain-bound [AR#29/#30]
-- [ ] **Sync model: allow >1 submitting pass per frame** [AR#21] — every leaf node independently
-  `vkQueueSubmit`s the frame's single binary semaphore → only one submitting pass composes today.
-  Surfaces the moment a second view is wired. Sprint 8 `TimelineNode` is the named fix.
-  **Subsumed by the auto-sync epic** → [[Auto-Sync-FrameGraph-Design-2026-06]] (audit done 2026-06-14:
-  automatic barrier scheduling from the *existing-but-unused* `SlotMutability`/`ResourceAccessTracker`
-  access model + centralized image-layout state; AR#21 multi-submit/timeline is its increment 2). Parked
-  for a focused session. Motivated by the GPU compute→compute→render "no readback" ask (data already
-  stays on GPU; the gap is auto-sync, not data passing).
+  relative transform) — current camera is orbit-only, perspective-only, swapchain-bound [AR#29/#30].
+  Still open: `CameraNode` gained `SetLookTargetForTest`/`SetPositionForTest`/`PARAM_LOOK_TARGET_*`
+  (Tiered-ESVO Inc3 M8, for the surface-to-orbit flight-path demo) but these are test/flight-path
+  hooks layered on the same orbit-only camera, not real multi-view/ortho/zoom-to-cursor mod-facing
+  camera flexibility — no foundation-level change to this item's scope.
+- [x] **Sync model: allow >1 submitting pass per frame** [AR#21] — **DONE, the auto-sync FrameGraph
+  epic shipped fully (P1–P5, merges `6258b93e`→`c782a1fc`→`7d28ae52`→`3a919250`(P5a)→`d6ba7356`(P5b),
+  2026-06-22).** Timeline-semaphore edges (`vkQueueSubmit2`) now carry cross-submit ordering: the
+  scheduler bakes timeline `SyncEdge`s only for declared-hazard accesses (untyped/metadata passthrough
+  produces no edge), `FrameSyncNode` owns a per-loop timeline semaphore, and the live
+  compute→compute→UI composite runs **timeline-only** (binary-semaphore handoff removed, 0 syncval).
+  `VIXEN_FANIN_DEMO` proves genuine multi-submit fan-in: 2 independent compute submits feed one
+  consumer via 2 timeline waits, live-rendered 0 syncval. A WSI timeline-law compile/runtime assert
+  guards the acquire/present boundary (no timeline edge may touch it). AR#21's "only one submitting
+  pass composes" limitation is closed; more than one submitting pass per frame is now the normal case.
+  See [[Auto-Sync-FrameGraph-Design-2026-06]] + `Auto-Sync-FrameGraph-Inc1-Plan-P5b-2026-06.md`.
 - [~] **Picking/selection** [AR#35] — **DONE 2026-06-15: GPU pixel-exact ID-buffer picking** (live,
   user-confirmed: brick/voxel change with aim, misses on sky). The voxel compute ray-march writes a
   per-pixel `pickID = (brickIndex<<10)|voxelLinearIdx` to an `R32_UINT` ID image (new `PickIdTargetNode`,
@@ -345,10 +352,13 @@ Correctness bugs + the only-consumer's pain + legal hygiene. Wasted on no possib
   `SelectionId` in EventBus); `SelectionCoordinatorNode` (native node, owns the SelectionSet, runs
   providers by priority, Shift/Ctrl→Add/Toggle modifiers) with `VoxelSelectionProvider` (reuses the GPU
   readback — provider #1). 116 node/selection tests pass; live picks confirmed. Also: all session nodes
-  now use the base `NodeInstance::device` (no private device members). **Remaining:** UI selection provider
-  synced from the **WSL customer branch (UI injection)**; the **subgraph-as-node** capability
-  ([[Subgraph-As-Node-Design-2026-06]], greenfield epic); drag-rectangle multi-select; world pos / Morton
-  from brick+voxel; visual highlight.
+  now use the base `NodeInstance::device` (no private device members). **UI selection provider DONE**
+  (commit `d3b59562`, 2026-06-15, SEL-P3): `UISelectionProviderNode` hit-tests the HUD's `Rml::Context`
+  on left-click (`GetElementAtPoint`) via a new `UIRenderNode::GetUiContext()` seam, emits a stable
+  (element-id-hashed) `SelectionCandidate` at priority 10 so HUD hits occlude the voxel world; wired
+  into `BuildRenderGraph.cpp` and connected into the selection coordinator alongside the voxel
+  provider. **Remaining:** the **subgraph-as-node** capability ([[Subgraph-As-Node-Design-2026-06]],
+  greenfield epic); drag-rectangle multi-select; world pos / Morton from brick+voxel; visual highlight.
 
 ### P4 — Deep-sim / voxel pillar (review Phase 3)
 
@@ -363,10 +373,22 @@ Correctness bugs + the only-consumer's pain + legal hygiene. Wasted on no possib
   `ChildDescriptors`, so voxels added to a previously-empty region are unreachable by ESVO
   traversal and the GPU never sees mutations until a full O(world) `rebuild()`. Implement
   dirty-subtree descriptor patching + per-brick recompression + double-buffered swap + far-pointer.
-- [ ] **Invert world ownership / sim→render change bridge** [AR#48] — only flow today is a one-shot
-  bake; `GaiaVoxelWorld` emits zero change events. Needs Morton-keyed dirty journal flushed as bus
-  events at FrameStart + a consuming node + the genuinely-missing GPU delta-upload leg. Building
-  blocks (`VoxelInjectionQueue`, dirty-volume observers) exist but are unwired.
+- [~] **Invert world ownership / sim→render change bridge** [AR#48] — the framing has been superseded:
+  the user explicitly evolved this exact idea (recipe-delta caching, CPU-first placement-agnostic
+  producer, tiered recipe-vs-materialized deltas) into a dedicated new program on 2026-07-10 — see
+  [[Lazy-Procedural-Delta-Baseline-Design-2026-07]] +
+  [[Lazy-Procedural-Delta-Baseline-Inc0-Inc1-Plan-2026-07]] (both currently untracked/uncommitted in
+  the working tree). Program status: **Inc0 (M1–M3, activate shipped Sparse-Mip laziness) DONE
+  2026-07-10** (commits `4a25a0c2..7cf9d8d3` / `b61f5dd6..0cecdc4e` / `46837742..024fb297`, Opus-validated,
+  incl. Windows real-GPU validation) and **Inc1 (M4–M6, instruction-direct/recipe-direct rendering
+  with zero bake) code-DONE 2026-07-10/11** (commits `e69affd5..6af6f8f3` / `c5025cf7..6f8d4fff`,
+  Opus-validated). The original AR#48 flow (one-shot bake, `GaiaVoxelWorld` emitting zero change
+  events, GPU delta-upload leg) is still the open remainder but is now tracked under this program
+  rather than as a standalone backlog line — do not re-plan it here. **Inc1b (resolvability-gated
+  recipe evaluation — compute-cost pruning for the virtual render path, the "mip for compute" axis)
+  PLANNED 2026-07-12, not started** — see
+  [[Lazy-Procedural-Delta-Baseline-Inc1b-Plan-2026-07]]; orthogonal to and does not block/depend on
+  Inc2 (the CPU region producer, also not yet started).
 - [ ] **Chunked multi-volume worlds + fix scale ceilings** [AR#43/#44, Decision #5] — the 15-bit
   childPointer corrupts silently past 32,767 descriptors (the **first wall hit, below strategic-map
   scale**); Morton ±2²⁰/axis with no range validation; single root block. Compose bounded volumes
@@ -381,9 +403,17 @@ Correctness bugs + the only-consumer's pain + legal hygiene. Wasted on no possib
   add `VK_EXT_memory_budget` runtime re-detection + defragmentation [AR#63/#64/#65]
 - [ ] **Image upload path + dedicated transfer queue** — `BatchedUploader` is buffer-only; only
   image path is blocking init-time load; device creates exactly one queue [AR#61]
-- [ ] **Shader mod pipeline** — promote runtime reflection to first-class (demote SDI headers to
-  internal optimization), add VFS/includer seam + namespaced shader identity, pre-baked SPIR-V
-  distribution [AR#56/#57/#79]; spec-constant reflection is an empty stub [AR#58]
+- [~] **Shader mod pipeline** — **PARTIAL.** The runtime kernel-pipeline epic
+  ([[Runtime-Kernel-Pipeline-Direction-2026-06]], landed 2026-07-02, VIXEN origin/main `2188d044`)
+  wires codegen → `ShaderBundleBuilder` → reflect (`SpirvReflector`, now recurses nested SSBO structs)
+  → SDI (`SpirvInterfaceGenerator`/`SdiRegistryManager`) → `RecipeRegistry`, i.e. a mod CAN ship a
+  recipe program that round-trips through runtime reflection with no engine recompile — a real step
+  toward "promote runtime reflection to first-class." **Still open/unverified:** SDI headers are not
+  yet demoted to an internal-optimization-only role (they remain the primary typed-binding path); no
+  VFS/includer seam or namespaced shader identity found (`grep` for includer/VFS in ShaderManagement
+  is empty); pre-baked SPIR-V distribution not found; spec-constant reflection is still effectively a
+  stub (`ShaderDirtyFlags::SpecConstants` exists as a dirty-flag bit, but no spec-constant *reflection*
+  path was found) — AR#58 stands.
 - [ ] **EventBus → operable** — runtime event-name registry (stable hashes, not `__COUNTER__`);
   first-class command layer with reply routing; honored subscriber priority / stop-propagation
   (documented but unenforced — UI must claim clicks before world picking); mod-reserved category
@@ -428,7 +458,19 @@ P1 gates Sprint 8 implementation ─────────┘                 
 - **Keep the benchmark suite green throughout** [AR#87] — it is the regression net and the only
   consumer exercising the fragment pipeline + headless bring-up.
 
-## Newly-found gap (2026-06-15)
+## Newly-found gap (2026-06-15) — CLOSED 2026-06-15
+
+- **RESOLVED** — commit `5c628028` (2026-06-15, "feat(rendergraph): typed runtime accumulation-gather
+  (InAll<T> assembles N producers)"): `TypedNodeInstance::InAll<SlotType>()` now performs the typed
+  per-frame gather this gap described — it derives the element type `T` from the accumulation slot at
+  compile time, reads each connected producer's CURRENT output `Resource` at Execute (not a one-time
+  Compile-time snapshot), and assembles `std::vector<T>` in connection order (stable-sorted by sort
+  key). `In(accumSlot)` on an accumulation slot now delegates to `InAll`. Producers are recorded via
+  `NodeInstance::RegisterAccumulationSource`/`GetAccumulationSources`, populated by
+  `AccumulationConnectionRule::Resolve`. Consumed same-day by `SelectionCoordinatorNode` (commit
+  `02390227`, "SelectionCoordinator uses the gather slot") and `MultiConnect voxel+UI selection
+  providers` (commit `668567b1`), closing the exact motivating case this gap named (N-provider
+  selection fan-in). Original gap description retained below for context.
 
 - **RenderGraph has no RUNTIME accumulation-gather for MultiConnect/Accumulation input slots.**
   `AccumulationConnectionRule::Resolve` records the source list + an ordering edge but never assembles

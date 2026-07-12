@@ -57,24 +57,6 @@
 #include <cstdio>
 #include <cstdlib>   // getenv + portable env set/unset (VIXEN_STORED_SDF_DEMO bake gate)
 
-// Portable env set/unset — POSIX setenv/unsetenv don't exist on MSVC (mirrors the
-// #ifdef _WIN32 pattern in FailScenarios/ScenarioHarness.cpp).
-namespace {
-inline void SetEnvVar(const char* name, const char* value) {
-#ifdef _WIN32
-    ::_putenv_s(name, value);
-#else
-    ::setenv(name, value, /*overwrite=*/1);
-#endif
-}
-inline void UnsetEnvVar(const char* name) {
-#ifdef _WIN32
-    ::_putenv_s(name, "");   // empty value removes the variable on Windows
-#else
-    ::unsetenv(name);
-#endif
-}
-}  // namespace
 #include <cstring>
 #include <fstream>
 #include <string>
@@ -86,6 +68,24 @@ using Vixen::Vulkan::Resources::VulkanDevice;
 #ifndef GLSL_RAYMARCH_SPV
 #error "GLSL_RAYMARCH_SPV (path to compiled BodyInstanceRayMarch.spv) must be defined by CMake"
 #endif
+
+// Portable set/unset for the VIXEN_STORED_SDF_DEMO bake-gate env var used below. POSIX
+// setenv/unsetenv don't exist on MSVC (C3861); same shim shape as ScenarioHarness.cpp's
+// AppHarness ctor (_putenv_s to set, _putenv("NAME=") to clear).
+static void SetTestEnv(const char* name, const char* value) {
+#ifdef _WIN32
+    _putenv_s(name, value);
+#else
+    ::setenv(name, value, /*overwrite=*/1);
+#endif
+}
+static void UnsetTestEnv(const char* name) {
+#ifdef _WIN32
+    _putenv((std::string(name) + "=").c_str());
+#else
+    ::unsetenv(name);
+#endif
+}
 
 namespace {
 
@@ -940,9 +940,9 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderStoredSdfBodiesNoHoles) {
     // Seed with one body so Compile's ring allocation is valid; bake as Stored-SDF.
     node->SetInstances({ frameInst });
     node->Setup();
-    SetEnvVar("VIXEN_STORED_SDF_DEMO", "1");   // node bakes SDF in EnsureOctreesBuilt
+    SetTestEnv("VIXEN_STORED_SDF_DEMO", "1");   // node bakes SDF in EnsureOctreesBuilt
     ASSERT_NO_THROW(node->Compile());
-    UnsetEnvVar("VIXEN_STORED_SDF_DEMO");                       // clean for any later (binary) test
+    UnsetTestEnv("VIXEN_STORED_SDF_DEMO");                       // clean for any later (binary) test
 
     NodeBuffers b;
     b.nodes       = node->GetOutput(C::OCTREE_NODES_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
@@ -1064,9 +1064,9 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderStoredSdfMultiChannel) {
 
     node->SetInstances({ frameInst });
     node->Setup();
-    SetEnvVar("VIXEN_STORED_SDF_DEMO", "1");
+    SetTestEnv("VIXEN_STORED_SDF_DEMO", "1");
     ASSERT_NO_THROW(node->Compile());
-    UnsetEnvVar("VIXEN_STORED_SDF_DEMO");
+    UnsetTestEnv("VIXEN_STORED_SDF_DEMO");
 
     NodeBuffers b;
     b.nodes       = node->GetOutput(C::OCTREE_NODES_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
@@ -1246,9 +1246,9 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderRecipeBakedBody) {
     });
 
     node->Setup();
-    SetEnvVar("VIXEN_STORED_SDF_DEMO", "1");
+    SetTestEnv("VIXEN_STORED_SDF_DEMO", "1");
     ASSERT_NO_THROW(node->Compile());
-    UnsetEnvVar("VIXEN_STORED_SDF_DEMO");
+    UnsetTestEnv("VIXEN_STORED_SDF_DEMO");
 
     NodeBuffers b;
     b.nodes       = node->GetOutput(C::OCTREE_NODES_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
@@ -1365,7 +1365,7 @@ TEST_F(BodyInstanceRayMarchRenderTest, RematerializeEditLoop) {
     node->Setup();
     // Keep STORED_SDF_DEMO set across BOTH executes — the edit Execute's Rematerialize()
     // re-runs EnsureOctreesBuilt(), which gates on this env var.
-    SetEnvVar("VIXEN_STORED_SDF_DEMO", "1");
+    SetTestEnv("VIXEN_STORED_SDF_DEMO", "1");
     ASSERT_NO_THROW(node->Compile());      // bakes recipe A; clears recipeDirty_
     ASSERT_NO_THROW(node->Execute());      // uploads instance; no re-materialize (not dirty)
 
@@ -1426,7 +1426,7 @@ TEST_F(BodyInstanceRayMarchRenderTest, RematerializeEditLoop) {
     });
     frameIndex = 0; SetHandleVal<uint32_t>(frameRes, frameIndex);
     ASSERT_NO_THROW(node->Execute());       // recipeDirty_ -> Rematerialize + re-emit octree slots
-    UnsetEnvVar("VIXEN_STORED_SDF_DEMO");
+    UnsetTestEnv("VIXEN_STORED_SDF_DEMO");
 
     // --- render B (re-reads the NEW handles post-rematerialize) ---
     int widthB = 0, pxB = 0;
