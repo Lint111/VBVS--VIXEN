@@ -678,6 +678,28 @@ void VulkanGraphApplication::Update() {
             }
         }
 
+        // Sampled Lighting Inc3 M5 live gate: env-gated continuous yaw orbit
+        // (VIXEN_RESTIR_ORBIT_DEMO=1), scene-agnostic so it composes with whatever
+        // VIXEN_RESTIR_GATE_DEMO built. Mirrors VIXEN_RESIDENCY_GATE_DEMO's own yaw-sweep
+        // phase directly above (SetYawForTest, no new InputNode injector) -- this demo
+        // exists to exercise temporal reservoir reprojection + spatial reuse under
+        // continuous camera motion (the no-ghosting/temporal-stability gate), a full
+        // 0->2pi sweep held over the whole run rather than a phase within a larger
+        // distance sweep.
+        if (renderGraph && std::getenv("VIXEN_RESTIR_ORBIT_DEMO")) {
+            static long orbitTick = 0;
+            ++orbitTick;
+            constexpr long kOrbitPeriodTicks = 300;
+            if (auto* camera = static_cast<CameraNode*>(renderGraph->GetInstance(cameraNode_))) {
+                const float t = static_cast<float>(orbitTick % kOrbitPeriodTicks) /
+                                static_cast<float>(kOrbitPeriodTicks);
+                camera->SetYawForTest(t * 2.0f * 3.14159265358979323846f);
+            }
+            if (orbitTick % 60 == 0 && mainLogger) {
+                mainLogger->Info("[RestirOrbitDemo] tick " + std::to_string(orbitTick));
+            }
+        }
+
         // Tiered-ESVO Inc3 M8 Task 16 live gate: one-shot proof that a look-target genuinely
         // decouples `forward` from orbitCenter (CameraNode::SetLookTargetForTest). Deliberately
         // NOT part of any tier-crossing scene (VIXEN_LOOK_TARGET_DEMO runs standalone, alongside

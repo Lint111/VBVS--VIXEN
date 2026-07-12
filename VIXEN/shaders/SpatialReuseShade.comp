@@ -1,0 +1,403 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+
+// ============================================================================
+// SpatialReuseShade.comp - spatial reservoir reuse + shade pass (Sampled Lighting Inc3 M5)
+// ============================================================================
+// The SECOND half of the M5 pass split: runs strictly AFTER DirectLighting.comp's
+// RIS+temporal dispatch has fully retired (see BuildRenderGraph.cpp's array-hazard
+// BUFFER_WRITE_ARRAY -> BUFFER_READ_ARRAY sync-slot wiring — a genuine cross-dispatch,
+// same-frame hazard: THIS pass's neighbor reads for pixel (x,y) may land on ANY pixel
+// in the search radius, so it needs ALL of DirectLighting.comp's writes visible, not
+// just the same pixel's own).
+//
+// This pass: (1) samples a small bounded kernel of neighbor pixels' POST-TEMPORAL
+// reservoirs (written by DirectLighting.comp this same frame), (2) combines each
+// neighbor's reservoir into this pixel's own via the SAME MIS balance-heuristic
+// primitive temporal reuse used (ReservoirCombine.glsl's reservoirCombine — no
+// second hand-rolled implementation), (3) shades with the spatially-combined
+// reservoir's ONE chosen sample (one shadow ray, same O(1)-per-pixel cost as
+// before), (4) runs the SAME analytic-lighting + debug-mode + temporal-accumulation
+// seam DirectLighting.comp used to own pre-M5 (moved here verbatim), and (5) owns
+// outputImage/historyImage/worldPosHistoryImage — the actual image writes.
+// ============================================================================
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+// ============================================================================
+// BUFFER BINDINGS
+// ============================================================================
+// Binding 0 (outputImage): THIS pass owns the write (moved from DirectLighting.comp,
+// M5 — see that shader's own binding-0 comment for why it keeps a read-only copy).
+
+layout(binding = 0) uniform writeonly image2D outputImage;
+
+#include "SceneBindings.glsl"   // scene SSBOs + traversal (KI-018)
+
+// ============================================================================
+// LIGHTING CONFIG (binding 16)
+// ============================================================================
+#include "Generated/LightingConfig.glsl"
+
+layout(std430, binding = 16) readonly buffer LightingConfigSSBO {
+    LightingConfig lightingConfig;
+};
+
+// ============================================================================
+// HIT RECORD BUFFER (binding 17) — this pass READS ONLY
+// ============================================================================
+#include "HitRecord.glsl"
+
+layout(std430, binding = 17) readonly buffer HitRecordBuffer {
+    HitRecord hitRecords[];
+};
+
+// ============================================================================
+// SHADOW CONFIG (binding 18)
+// ============================================================================
+#include "Generated/ShadowConfig.glsl"
+
+layout(std430, binding = 18) readonly buffer ShadowConfigSSBO {
+    ShadowConfig shadowConfig;
+};
+
+// ============================================================================
+// TEMPORAL ACCUMULATION (bindings 19/20) — Sampled Lighting Inc3 M5: this pass now
+// owns historyImage's read/write (moved from DirectLighting.comp).
+// ============================================================================
+#include "Generated/AccumulationConfig.glsl"
+
+layout(std430, binding = 19) readonly buffer AccumulationConfigSSBO {
+    AccumulationConfig accumulationConfig;
+};
+
+layout(rgba8, binding = 20) uniform image2D historyImage;
+
+// ============================================================================
+// PREV-FRAME CAMERA MATRIX (binding 21)
+// ============================================================================
+#include "Generated/PrevCameraConfig.glsl"
+
+layout(std430, binding = 21) readonly buffer PrevCameraConfigSSBO {
+    PrevCameraConfig prevCameraConfig;
+};
+
+// ============================================================================
+// WORLDPOS/DEPTH COMPANION HISTORY (binding 22) — Sampled Lighting Inc3 M2 (KI-023)
+// ============================================================================
+// This pass owns BOTH the read (accumulate seam's own geometric reproject reject)
+// AND the write (moved from DirectLighting.comp, M5 — this pass is now the sole
+// producer of a pixel's worldPos/hitT each frame, matching its sole ownership of
+// historyImage/outputImage).
+layout(rgba32f, binding = 22) uniform image2D worldPosHistoryImage;
+
+// ============================================================================
+// RESERVOIR CONFIG (binding 23)
+// ============================================================================
+#include "Generated/ReservoirConfig.glsl"
+
+layout(std430, binding = 23) readonly buffer ReservoirConfigSSBO {
+    ReservoirConfig reservoirConfig;
+};
+
+// ============================================================================
+// LIGHT TREE BUFFER (binding 24)
+// ============================================================================
+#include "Generated/LightTreeBuffer.glsl"
+
+layout(std430, binding = 24) readonly buffer LightTreeBufferSSBO {
+    LightTreeBuffer lightTreeBuffer;
+};
+
+// ============================================================================
+// RESERVOIR CURRENT/PREVIOUS PING-PONG (bindings 25/26) — this pass READS ONLY
+// ============================================================================
+// Sampled Lighting Inc3 M5: THIS pass reads DirectLighting.comp's POST-TEMPORAL
+// reservoir writes — both this pixel's own AND its spatial neighbors' (the genuine
+// cross-dispatch hazard this whole pass split exists to correctly bake — see
+// BuildRenderGraph.cpp's array-hazard BUFFER_READ_ARRAY wiring). frameParity&1 picks
+// which buffer is CURRENT (the one DirectLighting.comp just wrote THIS frame) exactly
+// as DirectLighting.comp's own selector does.
+#include "Generated/ReservoirRecord.glsl"
+
+layout(std430, binding = 25) readonly buffer ReservoirBufferA {
+    ReservoirRecord reservoirRecordsA[];
+};
+layout(std430, binding = 26) readonly buffer ReservoirBufferB {
+    ReservoirRecord reservoirRecordsB[];
+};
+
+// ============================================================================
+// RESERVOIR MATH (shared primitive — see ReservoirCombine.glsl's own header)
+// ============================================================================
+#include "ReservoirCombine.glsl"
+
+// Target-function value p_hat(i) for light-tree cut node i (same definition as
+// DirectLighting.comp's own copy — see that shader's comment for the derivation).
+float lightTreeNodePHat(uint nodeIdx, vec3 shadingPos) {
+    LightTreeGpuNode node = lightTreeBuffer.nodes[nodeIdx];
+    vec3 toLight = node.worldPos - shadingPos;
+    float dist2 = max(dot(toLight, toLight), 1e-4);
+    float nodePower = node.intensity * node.coverage * (node.worldExtent * node.worldExtent * node.worldExtent);
+    return nodePower / dist2;
+}
+
+// ============================================================================
+// SPATIAL NEIGHBOR SAMPLING (Sampled Lighting Inc3 M5)
+// ============================================================================
+// Fixed-radius random-angle kernel (no existing neighbor-sampling utility elsewhere
+// in this codebase to reuse — a simple bounded per-invocation-seeded ring sample is
+// the standard ReSTIR spatial-reuse kernel shape, Bitterli et al. section 5.2): for
+// each of reservoirConfig.spatialCount neighbors, draw a uniformly random angle and
+// a radius in [0, reservoirConfig.spatialRadius] pixels, clamp the result on-screen.
+// A per-invocation RNG state (seeded independently of DirectLighting.comp's own,
+// XOR'd with a distinct salt) keeps each pixel's neighbor SET independent, and
+// re-drawing every frame (frameParity-salted) keeps the search exploring rather than
+// resampling the identical ring every frame (same rationale as RIS's own per-frame
+// reseed).
+ivec2 spatialNeighborOffset(inout uint rngState, float radius) {
+    float angle = rngNextFloat(rngState) * 6.28318530718; // 2*pi
+    float r = sqrt(rngNextFloat(rngState)) * radius;      // sqrt(u) -> uniform-AREA disk sample
+    return ivec2(round(cos(angle) * r), round(sin(angle) * r));
+}
+
+// ============================================================================
+// PUSH CONSTANTS: the `pc` block is declared once in SceneBindings.glsl.
+// ============================================================================
+// DIRECT LIGHTING WITH SHADOW RAYS (moved verbatim from BodyInstanceRayMarch.comp,
+// Sampled Lighting Inc1 M4 -> DirectLighting.comp M1 -> here M5)
+// ============================================================================
+vec3 computeLightingWithShadows(vec3 color, vec3 normal, vec3 worldPos, vec3 rayDir,
+                                float roughness, LightingConfig lighting) {
+    vec3 viewDir = normalize(-rayDir);
+
+    vec3 Lo = lighting.ambientIntensity * color;
+    for (uint i = 0u; i < lighting.lightCount; ++i) {
+        Light light = lighting.lights[i];
+        vec3 lightDir = normalize(light.direction_or_position);
+
+        float shadowFactor = 1.0;
+        if (shadowConfig.enabled != 0u) {
+            vec3 shadowOrigin = worldPos + normal * shadowConfig.biasEpsilon;
+            bool occluded = TraceWorldShadow(shadowOrigin, lightDir,
+                                             0.0,
+                                             shadowConfig.maxShadowDistance);
+            shadowFactor = occluded ? 0.0 : 1.0;
+        }
+
+        Lo += evalBRDF(color, roughness, normal, viewDir, lightDir) * light.radiance * shadowFactor;
+    }
+    return Lo;
+}
+
+// ============================================================================
+// MAIN
+// ============================================================================
+void main() {
+    ivec2 pixelCoords = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 imgSize     = imageSize(outputImage);
+
+    if (pixelCoords.x >= imgSize.x || pixelCoords.y >= imgSize.y) return;
+
+    vec2 uv = (vec2(pixelCoords) + 0.5) / vec2(imgSize);
+    vec3 rayDir = getRayDir(uv);
+
+    vec3 skyColor = vec3(0.02, 0.02, 0.06) * (1.0 - uv.y * 0.4);
+
+    uint hitRecordIdx = uint(pixelCoords.y) * uint(imgSize.x) + uint(pixelCoords.x);
+    HitRecord recReadback = hitRecords[hitRecordIdx];
+
+    bool  anyHitRT      = (recReadback.flags & HITRECORD_FLAG_HIT) != 0u;
+    vec3  bestColor      = recReadback.albedo;
+    vec3  bestNormal     = recReadback.worldNormal;
+    float bestRoughness  = recReadback.roughness;
+    vec3  bestWorldPos   = recReadback.worldPos;
+
+    vec3 outColor;
+    if (anyHitRT) {
+        outColor = computeLightingWithShadows(bestColor, bestNormal, bestWorldPos, rayDir,
+                                               bestRoughness, lightingConfig);
+    } else {
+        outColor = skyColor;
+    }
+
+    // -----------------------------------------------------------------------
+    // ReSTIR DI: SPATIAL reservoir reuse (Sampled Lighting Inc3 M5) + shade.
+    // reservoirEnabled==0 (the default) skips this block entirely -- outColor stays
+    // EXACTLY the pre-ReSTIR result (the byte-identity escape hatch every milestone
+    // in this program has preserved since Inc0).
+    // -----------------------------------------------------------------------
+    if (reservoirConfig.reservoirEnabled != 0u && anyHitRT) {
+        uint reservoirIdx = hitRecordIdx;
+
+        // Same CURRENT/PREVIOUS selector as DirectLighting.comp: THIS frame's writes
+        // (the ones this pass reads, for both self and neighbors) landed in whichever
+        // buffer frameParity says is current.
+        bool parityEven = (reservoirConfig.frameParity & 1u) == 0u;
+
+        ReservoirRecord current = parityEven
+            ? reservoirRecordsA[reservoirIdx]
+            : reservoirRecordsB[reservoirIdx];
+
+        // RNG seed distinct from DirectLighting.comp's own (different salt constant)
+        // so the neighbor-offset draws are independent of that pass's RIS/temporal
+        // draws despite sharing the same pixel/frameParity inputs.
+        uint rngState = pcgHash((reservoirIdx ^ 0x9E3779B9u) ^ (reservoirConfig.frameParity * 2246822519u));
+
+        if (current.y != 0xFFFFFFFFu && current.sampleCount > 0u) {
+            uint spatialCount = reservoirConfig.spatialCount;
+            float radius = max(reservoirConfig.spatialRadius, 0.0);
+            for (uint n = 0u; n < spatialCount; ++n) {
+                ivec2 offset = spatialNeighborOffset(rngState, radius);
+                ivec2 neighborCoords = pixelCoords + offset;
+                if (neighborCoords.x < 0 || neighborCoords.y < 0 ||
+                    neighborCoords.x >= imgSize.x || neighborCoords.y >= imgSize.y) {
+                    continue;  // off-screen neighbor: skip, no wraparound
+                }
+                if (neighborCoords == pixelCoords) continue;  // degenerate zero-offset draw
+
+                uint neighborHitIdx = uint(neighborCoords.y) * uint(imgSize.x) + uint(neighborCoords.x);
+                HitRecord neighborHit = hitRecords[neighborHitIdx];
+                bool neighborHasHit = (neighborHit.flags & HITRECORD_FLAG_HIT) != 0u;
+                if (!neighborHasHit) continue;  // no valid surface at the neighbor -> no reservoir to reuse
+
+                // Geometric similarity reject (KI-023's own worldPos buffer earns its keep
+                // here too, per the plan's Task 5 note): a neighbor whose surface point is
+                // far from this pixel's own is a DIFFERENT surface (a silhouette/depth
+                // discontinuity) -- reusing its reservoir would leak light across a surface
+                // boundary. Same epsilon class as the accumulation seam's own reproject
+                // reject, applied here on the CURRENT frame's two HitRecord positions
+                // (not the worldPosHistoryImage -- that buffer is prev-frame-only; this is
+                // an intra-frame same-frame comparison of two live HitRecords).
+                const float kMaxSpatialWorldPosDelta = 0.1; // world-space units, mirrors KI-023's own epsilon
+                if (distance(neighborHit.worldPos, bestWorldPos) > kMaxSpatialWorldPosDelta) continue;
+
+                // Normal similarity reject: reusing a neighbor's reservoir across a sharp
+                // normal discontinuity (e.g. a corner) is the spatial-reuse analogue of
+                // ghosting -- bounded by a generous angle (dot > 0.5 ~= 60 degrees).
+                if (dot(neighborHit.worldNormal, bestNormal) < 0.5) continue;
+
+                uint neighborReservoirIdx = neighborHitIdx;
+                ReservoirRecord neighborReservoir = parityEven
+                    ? reservoirRecordsA[neighborReservoirIdx]
+                    : reservoirRecordsB[neighborReservoirIdx];
+
+                if (neighborReservoir.y == 0xFFFFFFFFu || neighborReservoir.sampleCount == 0u) continue;
+                if (neighborReservoir.y >= lightTreeBuffer.nodeCount) continue;
+
+                // Re-evaluate p_hat at THIS pixel's shading point (the re-evaluation that
+                // keeps the combine unbiased -- see ReservoirCombine.glsl's header), via
+                // the SAME reservoirCombine primitive DirectLighting.comp's temporal reuse
+                // used (no second hand-rolled MIS implementation).
+                float pHatAtNeighborY = lightTreeNodePHat(neighborReservoir.y, bestWorldPos);
+                reservoirCombine(current, neighborReservoir, pHatAtNeighborY, rngNextFloat(rngState));
+            }
+        }
+
+        // Shade with the SPATIALLY-COMBINED reservoir's ONE chosen sample: one shadow
+        // ray (visibility applied here, ONCE), weighted by the unbiased contribution
+        // weight W. ADDITIVE to the analytic computeLightingWithShadows result above.
+        if (current.y != 0xFFFFFFFFu && current.y < lightTreeBuffer.nodeCount) {
+            LightTreeGpuNode chosen = lightTreeBuffer.nodes[current.y];
+            vec3 toLight = chosen.worldPos - bestWorldPos;
+            float dist2 = max(dot(toLight, toLight), 1e-4);
+            vec3 lightDir = toLight * inversesqrt(dist2);
+
+            float shadowFactor = 1.0;
+            if (shadowConfig.enabled != 0u) {
+                vec3 shadowOrigin = bestWorldPos + bestNormal * shadowConfig.biasEpsilon;
+                float lightDist = sqrt(dist2);
+                bool occluded = TraceWorldShadow(shadowOrigin, lightDir, 0.0, lightDist);
+                shadowFactor = occluded ? 0.0 : 1.0;
+            }
+
+            float NdotL = max(dot(bestNormal, lightDir), 0.0);
+            float emittedPower = chosen.intensity * chosen.coverage *
+                (chosen.worldExtent * chosen.worldExtent * chosen.worldExtent);
+            float W = reservoirUnbiasedWeight(current);
+            outColor += bestColor * (emittedPower / dist2) * NdotL * shadowFactor * W;
+        }
+    }
+
+    // Debug visualisation modes.
+    if (pc.debugMode > 0 && anyHitRT) {
+        switch (pc.debugMode) {
+            case DEBUG_MODE_NORMALS:
+                outColor = normalShading(bestNormal);
+                break;
+            default:
+                break;
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Temporal accumulation seam (Sampled Lighting Inc2 M2/M4) — moved here verbatim
+    // from DirectLighting.comp (M5).
+    // -----------------------------------------------------------------------
+    if (accumulationConfig.enabled != 0u) {
+        float alpha;
+        if (accumulationConfig.alpha == 0.0) {
+            uint frameCount = pc.accumFrameCount;
+            if (accumulationConfig.maxFrames > 0u) {
+                frameCount = min(frameCount, accumulationConfig.maxFrames);
+            }
+            alpha = 1.0 / float(max(frameCount, 1u));
+        } else {
+            alpha = accumulationConfig.alpha;
+        }
+
+        vec4 blended;
+        if (alpha >= 1.0) {
+            blended = vec4(outColor, 1.0);
+        } else if (accumulationConfig.reprojectionEnabled != 0u) {
+            vec4 prevClip = prevCameraConfig.prevViewProj * vec4(bestWorldPos, 1.0);
+
+            bool valid = anyHitRT && prevClip.w > 1e-5;
+            vec2 reprojUV = vec2(0.0);
+            if (valid) {
+                vec2 prevNDC = prevClip.xy / prevClip.w;
+                reprojUV = prevNDC * 0.5 + 0.5;
+                valid = all(greaterThanEqual(reprojUV, vec2(0.0))) &&
+                        all(lessThanEqual(reprojUV, vec2(1.0)));
+            }
+
+            vec4 blendedResult;
+            if (valid) {
+                ivec2 reprojTexel = ivec2(reprojUV * vec2(imgSize));
+                reprojTexel = clamp(reprojTexel, ivec2(0), imgSize - ivec2(1));
+
+                vec2 texelDelta = vec2(reprojTexel - pixelCoords);
+                float texelDist2 = dot(texelDelta, texelDelta);
+                const float kMaxReprojTexelDist = 64.0;
+                valid = texelDist2 <= (kMaxReprojTexelDist * kMaxReprojTexelDist);
+
+                if (valid) {
+                    vec4 history = imageLoad(historyImage, reprojTexel);
+
+                    vec4 histWorldPosT = imageLoad(worldPosHistoryImage, reprojTexel);
+                    const float kMaxReprojWorldPosDelta = 0.1;
+                    valid = distance(histWorldPosT.xyz, bestWorldPos) <= kMaxReprojWorldPosDelta;
+
+                    blendedResult = valid ? mix(history, vec4(outColor, 1.0), alpha)
+                                           : vec4(outColor, 1.0);
+                } else {
+                    blendedResult = vec4(outColor, 1.0);
+                }
+            } else {
+                blendedResult = vec4(outColor, 1.0);
+            }
+            blended = blendedResult;
+        } else {
+            vec4 history = imageLoad(historyImage, pixelCoords);
+            blended = mix(history, vec4(outColor, 1.0), alpha);
+        }
+        imageStore(outputImage, pixelCoords, blended);
+        imageStore(historyImage, pixelCoords, blended);
+    } else {
+        imageStore(outputImage, pixelCoords, vec4(outColor, 1.0));
+    }
+
+    // Sampled Lighting Inc3 M2 (KI-023): write this frame's worldPos/hitT into the
+    // companion history buffer — moved here verbatim from DirectLighting.comp (M5).
+    imageStore(worldPosHistoryImage, pixelCoords, vec4(bestWorldPos, recReadback.hitT));
+}

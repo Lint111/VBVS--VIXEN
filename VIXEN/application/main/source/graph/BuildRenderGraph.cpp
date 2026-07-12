@@ -245,6 +245,34 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // ComputeStageNodeConfig.h's own class doc). One entry: HitRecord.
     NodeHandle directLightingReadGatherer = renderGraph->AddNode<BufferSyncGathererNodeType>("direct_lighting_read_gatherer");
 
+    // Sampled Lighting Inc3 M5: SpatialReuseNode — the SECOND half of the M5 pass split.
+    // Runs AFTER DirectLightingNode's own dispatch (RIS + temporal reservoir reuse only,
+    // no image writes — see DirectLighting.comp's own file header for why M5 split it
+    // again), reading back DirectLighting.comp's post-temporal reservoir writes for the
+    // spatial-reuse neighbor search, then shading + owning outputImage/historyImage/
+    // worldPosHistoryImage (moved here from DirectLightingNode). Own shaderLib/gatherer/
+    // pushConstantGatherer/descSet/pipeline quintet — same "second compiled shader needs
+    // its own instances" rationale as directLighting*'s own quintet (see that block's
+    // comment above).
+    NodeHandle spatialReuseShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("spatial_reuse_shader_lib");
+    NodeHandle spatialReuseGatherer  = renderGraph->AddNode<DescriptorResourceGathererNodeType>("spatial_reuse_desc_gatherer");
+    NodeHandle spatialReusePushConstantGatherer = renderGraph->AddNode<PushConstantGathererNodeType>("spatial_reuse_push_constant_gatherer");
+    NodeHandle spatialReuseDescriptorSet = renderGraph->AddNode<DescriptorSetNodeType>("spatial_reuse_descriptors");
+    NodeHandle spatialReusePipeline = renderGraph->AddNode<ComputePipelineNodeType>("spatial_reuse_pipeline");
+    NodeHandle spatialReuseNode = renderGraph->AddNode<ComputeStageNodeType>("spatial_reuse");
+
+    // Sampled Lighting Inc3 M5: array-hazard buffer-sync gatherers for the reservoir
+    // ping-pong's genuine cross-dispatch hazard (see DirectLighting.comp's own file
+    // header). DirectLightingNode writes BOTH reservoirBufferA and reservoirBufferB (which
+    // one is "current" alternates per-frame at runtime via frameParity — the array holds
+    // BOTH physical buffers so the tracker's array-hazard-constituent expansion sees both
+    // regardless of which one this frame actually touches); SpatialReuseNode reads the
+    // SAME two buffers. Two SEPARATE gatherer instances (write-side vs read-side), each
+    // fed from the SAME two StorageBufferNode outputs — mirrors BuildFanInDemoGraph.cpp's
+    // own "each connecting side gets its own gatherer instance" precedent.
+    NodeHandle directLightingReservoirWriteGatherer = renderGraph->AddNode<BufferSyncGathererNodeType>("direct_lighting_reservoir_write_gatherer");
+    NodeHandle spatialReuseReservoirReadGatherer = renderGraph->AddNode<BufferSyncGathererNodeType>("spatial_reuse_reservoir_read_gatherer");
+
     // Sampled Lighting Inc3 M1: presentation-only blit of the offscreen render target to the
     // swapchain (extracted from ComputeDispatchNode's M4 render-target blit — same
     // SwapchainBarriers::BlitRenderTargetToSwapchain free function, now shared). Runs after
@@ -633,19 +661,86 @@ void VulkanGraphApplication::BuildRenderGraph() {
         return builder;
     });
 
+    // Sampled Lighting Inc3 M5: SpatialReuseShade.comp shader registration. Same search-path
+    // pattern as DirectLighting.comp above.
+    auto* spatialReuseShaderLibNode = static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(spatialReuseShaderLib));
+    spatialReuseShaderLibNode->RegisterShaderBuilder([this](int vulkanVer, int spirvVer) {
+        ShaderManagement::ShaderBundleBuilder builder;
+        constexpr const char* shaderName = "SpatialReuseShade.comp";
+        constexpr const char* programName = "SpatialReuseShade";
+        std::vector<std::filesystem::path> possiblePaths = {
+#ifdef VIXEN_SHADER_SOURCE_DIR
+            std::string(VIXEN_SHADER_SOURCE_DIR) + "/" + shaderName,
+#endif
+            std::string("shaders/") + shaderName,
+            std::string("../shaders/") + shaderName,
+            shaderName
+        };
+        std::filesystem::path compPath;
+        for (const auto& path : possiblePaths) {
+            if (std::filesystem::exists(path)) { compPath = path; break; }
+        }
+        if (compPath.empty()) {
+            throw std::runtime_error(std::string(shaderName) + " not found - check shader search paths");
+        }
+        builder.SetProgramName(programName)
+               .SetPipelineType(ShaderManagement::PipelineTypeConstraint::Compute)
+               .SetTargetVulkanVersion(vulkanVer)
+               .SetTargetSpirvVersion(spirvVer)
+               .AddIncludePath("shaders")
+               .AddIncludePath("../shaders")
+#ifdef VIXEN_SHADER_SOURCE_DIR
+               .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
+#endif
+               .AddStageFromFile(ShaderManagement::ShaderStage::Compute, compPath, "main");
+        return builder;
+    });
+
     // DirectLightingNode: NOT swapchain-adjacent (isConsumer=false — no WSI, no fence, no
-    // PRESENT_SRC). Dispatch dims left at 0/0 so RecordComputeCommands derives them LIVE from
-    // IMAGE_WRITE's (renderTargetNode's) extent every Execute — the same live-derivation M4
-    // relies on for VIXEN_RENDER_SCALE, now mirrored on the shading pass.
+    // PRESENT_SRC). Sampled Lighting Inc3 M5: this pass no longer owns IMAGE_WRITE (moved to
+    // SpatialReuseNode below — DirectLighting.comp is now a pure buffer producer, see that
+    // shader's own file header), so its dispatch dims can no longer live-derive from an
+    // IMAGE_WRITE target. Set EXPLICITLY from the render-target's build-time extent instead —
+    // mirrors ComputeDispatchNode's own march dispatch dims (set from `width`/`height`, static
+    // since graph-build), NOT a regression: DirectLightingNode's own pre-M5 "live from
+    // IMAGE_WRITE" derivation existed to track VIXEN_RENDER_SCALE (fixed at process start, read
+    // once during this function), not live window-resize (the march's own dispatch dims have
+    // never lived-resized either).
+    // Ceiling-divide (NOT the March pass's floor-divided dispatchX/dispatchY above) — must
+    // match RecordComputeCommands' own (extent+7)/8 live-derivation exactly, since
+    // SpatialReuseNode (dims left at 0/0, live-derived from IMAGE_WRITE below) reads every
+    // reservoir DirectLighting wrote. A floor/ceil mismatch here left one edge workgroup
+    // column/row's reservoirs unwritten while SpatialReuseShade still shaded those pixels
+    // (found via a byte-identity gate diff — a tight 32x32 mismatched block at the render
+    // target's right/bottom edge, exactly one 8px workgroup row/column wide at 500x500).
+    uint32_t directLightingDispatchX =
+        (static_cast<uint32_t>(width * renderScale) + 7) / 8;
+    uint32_t directLightingDispatchY =
+        (static_cast<uint32_t>(height * renderScale) + 7) / 8;
     auto* directLighting = static_cast<ComputeStageNode*>(renderGraph->GetInstance(directLightingNode));
     directLighting->SetParameter(ComputeStageNodeConfig::PARAM_IS_CONSUMER, false);
-    directLighting->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, 0u);
-    directLighting->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, 0u);
+    directLighting->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, directLightingDispatchX);
+    directLighting->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, directLightingDispatchY);
     directLighting->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
 
-    // Sampled Lighting Inc3 M5: pre-register the HitRecord read-gatherer's single slot
-    // (fixed count, no shader reflection needed).
+    // SpatialReuseNode (Sampled Lighting Inc3 M5): the second half of the pass split — NOW owns
+    // IMAGE_WRITE (moved from DirectLightingNode), so it keeps the ORIGINAL live-derivation
+    // (dims left at 0/0, RecordComputeCommands derives them from IMAGE_WRITE's renderTargetNode
+    // extent every Execute — the same VIXEN_RENDER_SCALE live-derivation DirectLightingNode used
+    // to own pre-M5).
+    auto* spatialReuse = static_cast<ComputeStageNode*>(renderGraph->GetInstance(spatialReuseNode));
+    spatialReuse->SetParameter(ComputeStageNodeConfig::PARAM_IS_CONSUMER, false);
+    spatialReuse->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, 0u);
+    spatialReuse->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, 0u);
+    spatialReuse->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
+
+    // Sampled Lighting Inc3 M5: pre-register each gatherer's fixed slot count (no shader
+    // reflection needed). HitRecord read: 1 entry. Reservoir write/read: 2 entries each
+    // (reservoirBufferA + reservoirBufferB — both physical buffers, see this block's own
+    // declaration comment for why BOTH are declared regardless of which is "current").
     static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(directLightingReadGatherer))->PreRegisterBufferSlots(1);
+    static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(directLightingReservoirWriteGatherer))->PreRegisterBufferSlots(2);
+    static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(spatialReuseReservoirReadGatherer))->PreRegisterBufferSlots(2);
 
     // BlitNode: mirrors ComputeDispatchNode's own M4 PARAM_LEAVE_IMAGE_IN_GENERAL=true (set
     // below beside uiComposite's own parameters) — the sky-projection/UI composite chain still
@@ -2976,21 +3071,22 @@ void VulkanGraphApplication::BuildRenderGraph() {
                           directLightingGatherer, 24,
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
-    // Sampled Lighting Inc3 M4: Bindings 25/26: reservoir CURRENT/PREVIOUS ping-pong SSBOs
+    // Sampled Lighting Inc3 M4/M5: Bindings 25/26: reservoir CURRENT/PREVIOUS ping-pong SSBOs
     // (Vixen::Gpu::ReservoirRecord[], one per pixel). BOTH buffers are ALWAYS bound at BOTH
     // bindings 25/26 — DirectLighting.comp itself picks which is "current" (write) vs "previous"
-    // (read) each frame via reservoirConfig.frameParity&1 (see ReservoirConfig.cs's own doc
-    // comment), so no CPU-side rewiring/swap is needed frame-to-frame.
-    //
-    // No sync slot (Execute-only, like worldPosHistoryImage@22 and historyImage@20): this is a
-    // SAME-NODE persistent resource read-of-own-previous-write, not a cross-node hazard — frame
-    // N's dispatch fully completes (FrameSyncNode's in-flight-fence CPU-GPU wait) before frame N+1's
-    // dispatch begins, so there is no genuine concurrent-GPU-execution race across frames on the
-    // SAME node's own resource (the M2 Progress Log documents this exact precedent for
-    // historyImage/worldPosHistoryImage: "a genuine but benign intra-dispatch cross-invocation
-    // race — NOT a new hazard class"). Only the intra-frame per-invocation read/write ordering
-    // within a single dispatch is in play, which is benign here since RIS/WRS per-pixel logic is
-    // independent across pixels (each invocation only touches ITS OWN pixel's reservoir record).
+    // (read, for TEMPORAL reuse — the previous FRAME's reservoir) each frame via
+    // reservoirConfig.frameParity&1 (see ReservoirConfig.cs's own doc comment), so no CPU-side
+    // rewiring/swap is needed frame-to-frame. This descriptor binding is purely the DATA path
+    // (which buffer this SHADER instance sees at binding 25 vs 26); M4's own SAME-NODE cross-
+    // FRAME write/read (temporal reuse, still true this milestone) needs no sync slot on ITS
+    // OWN — same historyImage/worldPosHistoryImage precedent as before (the M2 Progress Log's
+    // "benign intra-dispatch race" reasoning). M5 ADDS a genuine CROSS-DISPATCH, SAME-FRAME
+    // hazard on TOP of this (SpatialReuseNode reading THIS pass's own just-written reservoirs,
+    // including neighbors' pixels) — that hazard is declared separately via the array-hazard
+    // write-gatherer/read-gatherer pair further below, NOT here (this connection stays plain
+    // Dependency|Execute, matching every other descriptor-only binding in this function —
+    // descriptor binding and sync-slot declaration are deliberately separate connections, per
+    // ComputeStageNodeConfig's own doc comment).
     batch.Connect(reservoirBufferA, StorageBufferNodeConfig::STORAGE_BUFFER,
                           directLightingGatherer, 25,
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
@@ -2998,9 +3094,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
                           directLightingGatherer, 26,
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
-    // Binding 0 (outputImage): DirectLighting is the genuine writer now (the march never
-    // imageStore's it — see PARAM_WRITES_NO_IMAGE's doc comment). Same renderTargetNode::
-    // CURRENT_VIEW source the march used to bind here pre-split.
+    // Binding 0 (outputImage): Sampled Lighting Inc3 M5 — DirectLighting no longer WRITES this
+    // (SpatialReuseNode below is the genuine writer now); DirectLighting.comp keeps a read-only
+    // binding purely for imageSize() (see that shader's own binding-0 comment), so it still needs
+    // the descriptor bound — same renderTargetNode::CURRENT_VIEW source, just no sync-slot hazard
+    // paired with it any more (moved to SpatialReuseNode's own IMAGE_WRITE below).
     batch.Connect(renderTargetNode, RenderTargetNodeConfig::CURRENT_VIEW,
                           directLightingGatherer, 0,
                           SlotRoleModifier(SlotRole::Execute));
@@ -3013,6 +3111,206 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(hitRecordBufferNode, StorageBufferNodeConfig::STORAGE_BUFFER,
                           directLightingGatherer, 17,
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
+    // ===================================================================
+    // Sampled Lighting Inc3 M5: SpatialReuseNode wiring — the second half of the pass
+    // split (spatial reservoir reuse + shade, owns outputImage/historyImage/
+    // worldPosHistoryImage). Mirrors DirectLightingNode's own descriptor-path/push-
+    // constant/gatherer-binding shape exactly (same scene SSBOs, same config buffers);
+    // only the reservoir-buffer ROLE (read here vs write in DirectLighting) and the
+    // image-write ownership differ.
+    // ===================================================================
+
+    // SpatialReuse's own descriptor path (shaderLib -> gatherer -> descSet -> pipeline).
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  spatialReuseShaderLib, ShaderLibraryNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  spatialReuseDescriptorSet, DescriptorSetNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  spatialReusePipeline, ComputePipelineNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(spatialReuseShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  spatialReuseGatherer, DescriptorResourceGathererNodeConfig::SHADER_DATA_BUNDLE)
+         .Connect(spatialReuseGatherer, DescriptorResourceGathererNodeConfig::DESCRIPTOR_RESOURCES,
+                  spatialReuseDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_RESOURCES)
+         .Connect(spatialReuseShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  spatialReuseDescriptorSet, DescriptorSetNodeConfig::SHADER_DATA_BUNDLE)
+         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+                  spatialReuseDescriptorSet, DescriptorSetNodeConfig::SWAPCHAIN_INFO)
+         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
+                  spatialReuseDescriptorSet, DescriptorSetNodeConfig::IMAGE_INDEX)
+         .Connect(spatialReuseShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  spatialReusePipeline, ComputePipelineNodeConfig::SHADER_DATA_BUNDLE)
+         .Connect(spatialReuseDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_SET_LAYOUT,
+                  spatialReusePipeline, ComputePipelineNodeConfig::DESCRIPTOR_SET_LAYOUT);
+
+    // SpatialReuse's own push-constant gatherer: SAME field sources as DirectLighting's own
+    // gatherer (a third compiled program still needs its own reflected push-constant ranges).
+    batch.Connect(spatialReuseShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  spatialReusePushConstantGatherer, PushConstantGathererNodeConfig::SHADER_DATA_BUNDLE);
+    batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
+                          spatialReusePushConstantGatherer, VoxelRayMarch::cameraPos::BINDING,
+                          ExtractField(&CameraData::cameraPos, SlotRole::Execute));
+    batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
+                          spatialReusePushConstantGatherer, VoxelRayMarch::cameraDir::BINDING,
+                          ExtractField(&CameraData::cameraDir, SlotRole::Execute));
+    batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
+                          spatialReusePushConstantGatherer, VoxelRayMarch::fov::BINDING,
+                          ExtractField(&CameraData::fov, SlotRole::Execute));
+    batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
+                          spatialReusePushConstantGatherer, VoxelRayMarch::cameraUp::BINDING,
+                          ExtractField(&CameraData::cameraUp, SlotRole::Execute));
+    batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
+                          spatialReusePushConstantGatherer, VoxelRayMarch::aspect::BINDING,
+                          ExtractField(&CameraData::aspect, SlotRole::Execute));
+    batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
+                          spatialReusePushConstantGatherer, VoxelRayMarch::cameraRight::BINDING,
+                          ExtractField(&CameraData::cameraRight, SlotRole::Execute));
+    batch.Connect(inputNode, InputNodeConfig::INPUT_STATE,
+                          spatialReusePushConstantGatherer, VoxelRayMarch::debugMode::BINDING,
+                          ExtractField(&InputState::debugMode, SlotRole::Execute));
+    if (tierCrossingLodCoefOverrideActive) {
+        batch.Connect(tierCrossingLodCoefOverrideConstant, ConstantNodeConfig::OUTPUT,
+                              spatialReusePushConstantGatherer, 8,
+                              SlotRoleModifier(SlotRole::Execute));
+    } else {
+        batch.Connect(raySizeCoefNode, RaySizeCoefNodeConfig::RAY_SIZE_COEF,
+                              spatialReusePushConstantGatherer, 8,
+                              SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    }
+    batch.Connect(raySizeBiasConstant, ConstantNodeConfig::OUTPUT,
+                          spatialReusePushConstantGatherer, 9,
+                          SlotRoleModifier(SlotRole::Execute));
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_COUNT,
+                          spatialReusePushConstantGatherer, 10,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(inputNode, InputNodeConfig::INPUT_STATE,
+                          spatialReusePushConstantGatherer, 11,
+                          ExtractField(&InputState::lastClickPixel, SlotRole::Execute));
+    batch.Connect(accumulationConfigNode, AccumulationConfigNodeConfig::FRAME_COUNTER,
+                          spatialReusePushConstantGatherer, 12,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
+    // SpatialReuse's descriptor bindings: same scene SSBOs (read-only, no hazard) as
+    // DirectLighting's own gatherer above.
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_NODES_BUFFER,
+                          spatialReuseGatherer, VoxelRayMarch::esvoNodes::BINDING,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_BRICKS_BUFFER,
+                          spatialReuseGatherer, VoxelRayMarch::brickData::BINDING,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_MATERIALS_BUFFER,
+                          spatialReuseGatherer, VoxelRayMarch::materials::BINDING,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_CONFIG_BUFFER,
+                          spatialReuseGatherer, 5,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_BUFFER,
+                          spatialReuseGatherer, 10,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::SHELL_DATA_BUFFER,
+                          spatialReuseGatherer, 11,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::SHELL_LOOKUP_BUFFER,
+                          spatialReuseGatherer, 12,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_MIPPOOL_BUFFER,
+                          spatialReuseGatherer, 13,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_TIERREFTABLE_BUFFER,
+                          spatialReuseGatherer, 15,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(lightingConfigNode, LightingConfigNodeConfig::LIGHTING_CONFIG_BUFFER,
+                          spatialReuseGatherer, 16,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(shadowConfigNode, ShadowConfigNodeConfig::SHADOW_CONFIG_BUFFER,
+                          spatialReuseGatherer, 18,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(accumulationConfigNode, AccumulationConfigNodeConfig::ACCUMULATION_CONFIG_BUFFER,
+                          spatialReuseGatherer, 19,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    // Binding 20 (historyImage): SpatialReuseNode now owns BOTH the read and the write (moved
+    // from DirectLightingNode, M5) — Execute-only, same self-contained read/write-in-one-
+    // dispatch pattern historyImage has always used.
+    batch.Connect(accumulationHistoryNode, AccumulationHistoryNodeConfig::HISTORY_IMAGE_VIEW,
+                          spatialReuseGatherer, 20,
+                          SlotRoleModifier(SlotRole::Execute));
+    batch.Connect(prevCameraConfigNode, PrevCameraConfigNodeConfig::PREV_CAMERA_CONFIG_BUFFER,
+                          spatialReuseGatherer, 21,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    // Binding 22 (worldPosHistoryImage): SpatialReuseNode now owns BOTH the read (accumulate
+    // seam's own reproject-validity check) and the write (moved from DirectLightingNode, M5) —
+    // still Execute-only (same-node self-contained read/write-in-one-dispatch, no cross-submit
+    // hazard — mirrors historyImage@20's own precedent exactly).
+    batch.Connect(worldPosHistoryNode, WorldPosHistoryNodeConfig::WORLDPOS_IMAGE_VIEW,
+                          spatialReuseGatherer, 22,
+                          SlotRoleModifier(SlotRole::Execute));
+    batch.Connect(reservoirConfigNode, ReservoirConfigNodeConfig::RESERVOIR_CONFIG_BUFFER,
+                          spatialReuseGatherer, 23,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(lightTreeBufferNode, LightTreeBufferNodeConfig::LIGHT_TREE_BUFFER,
+                          spatialReuseGatherer, 24,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
+    // Bindings 25/26 (reservoir A/B): SpatialReuseNode READS ONLY (DirectLightingNode is now the
+    // sole writer, M5) — descriptor binding here, the genuine cross-dispatch READ hazard declared
+    // via the array-hazard read-gatherer further below (paired with DirectLightingNode's own
+    // array-hazard write-gatherer on the SAME two StorageBufferNode Resource*s).
+    batch.Connect(reservoirBufferA, StorageBufferNodeConfig::STORAGE_BUFFER,
+                          spatialReuseGatherer, 25,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(reservoirBufferB, StorageBufferNodeConfig::STORAGE_BUFFER,
+                          spatialReuseGatherer, 26,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
+    // Binding 0 (outputImage): SpatialReuseNode is the genuine writer now (M5 — moved from
+    // DirectLightingNode). Same renderTargetNode::CURRENT_VIEW source.
+    batch.Connect(renderTargetNode, RenderTargetNodeConfig::CURRENT_VIEW,
+                          spatialReuseGatherer, 0,
+                          SlotRoleModifier(SlotRole::Execute));
+
+    // Binding 17 (HitRecord): SpatialReuseNode reads it too (own-pixel AND neighbor shading) —
+    // same march-write hazard HitRecord already has against DirectLightingNode; SpatialReuseNode
+    // is a SECOND reader of the SAME already-synced buffer (read-after-read is not a NEW hazard
+    // once the march->DirectLighting write->read edge already forces the write visible before
+    // DirectLighting's group runs — SpatialReuseNode runs strictly after DirectLighting in
+    // execution order, so the write is already visible to it with no additional slot needed).
+    batch.Connect(hitRecordBufferNode, StorageBufferNodeConfig::STORAGE_BUFFER,
+                          spatialReuseGatherer, 17,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
+    // --- SpatialReuseNode (ComputeStageNode) common inputs — mirrors DirectLightingNode's own
+    // shape. NOT swapchain-adjacent: no SWAPCHAIN_INFO connection (isConsumer=false set above),
+    // IMAGE_WRITE carries the render-target write (below). ---
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  spatialReuseNode, ComputeStageNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
+                  spatialReuseNode, ComputeStageNodeConfig::COMMAND_POOL)
+         .Connect(spatialReusePipeline, ComputePipelineNodeConfig::PIPELINE,
+                  spatialReuseNode, ComputeStageNodeConfig::COMPUTE_PIPELINE)
+         .Connect(spatialReusePipeline, ComputePipelineNodeConfig::PIPELINE_LAYOUT,
+                  spatialReuseNode, ComputeStageNodeConfig::PIPELINE_LAYOUT)
+         .Connect(spatialReuseDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_SETS,
+                  spatialReuseNode, ComputeStageNodeConfig::DESCRIPTOR_SETS)
+         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
+                  spatialReuseNode, ComputeStageNodeConfig::IMAGE_INDEX)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                  spatialReuseNode, ComputeStageNodeConfig::CURRENT_FRAME_INDEX)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::IN_FLIGHT_FENCE,
+                  spatialReuseNode, ComputeStageNodeConfig::IN_FLIGHT_FENCE)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
+                  spatialReuseNode, ComputeStageNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
+         .Connect(swapChainNode, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
+                  spatialReuseNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY)
+         .Connect(spatialReuseShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  spatialReuseNode, ComputeStageNodeConfig::SHADER_DATA_BUNDLE)
+         .Connect(spatialReusePushConstantGatherer, PushConstantGathererNodeConfig::PUSH_CONSTANT_DATA,
+                  spatialReuseNode, ComputeStageNodeConfig::PUSH_CONSTANT_DATA)
+         .Connect(spatialReusePushConstantGatherer, PushConstantGathererNodeConfig::PUSH_CONSTANT_RANGES,
+                  spatialReuseNode, ComputeStageNodeConfig::PUSH_CONSTANT_RANGES)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_SEMAPHORE,
+                  spatialReuseNode, ComputeStageNodeConfig::TIMELINE_SEMAPHORE_IN)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_FRAME_BASE,
+                  spatialReuseNode, ComputeStageNodeConfig::TIMELINE_FRAME_BASE_IN);
 
     // --- DirectLightingNode (ComputeStageNode) common inputs — mirrors BuildFanInDemoGraph's
     // wireStageCommon shape. NOT swapchain-adjacent: no SWAPCHAIN_INFO connection (isConsumer=false
@@ -3068,10 +3366,49 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   directLightingReadGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
     batch.Connect(directLightingReadGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
                   directLightingNode, ComputeStageNodeConfig::BUFFER_READ_ARRAY, SlotRoleModifier(SlotRole::Execute));
-    // Render target: DirectLighting's IMAGE_WRITE <-> BlitNode's IMAGE_READ (wired below), same
-    // renderTargetNode::RENDER_TARGET Resource* on both — bakes the DirectLighting->BlitNode edge.
+
+    // Sampled Lighting Inc3 M5: reservoir ping-pong CROSS-DISPATCH hazard — the milestone's own
+    // defining risk (see DirectLighting.comp's file header + the plan's Task 5 note). Unlike M4's
+    // reservoir wiring (Execute-only, justified by the SAME-NODE cross-FRAME persistent-buffer/
+    // fence precedent), THIS is a genuine cross-dispatch, SAME-FRAME hazard: SpatialReuseNode's
+    // neighbor reads may land on ANY pixel DirectLightingNode wrote this frame, not just its own
+    // pixel — so it needs a REAL declared edge, not incidental submit ordering. Both ping-pong
+    // buffers (A and B) are gathered into DirectLightingNode's OWN write-array (via
+    // directLightingReservoirWriteGatherer) and SpatialReuseNode's OWN read-array (via
+    // spatialReuseReservoirReadGatherer) — because the array-hazard mechanism (see
+    // ResourceAccessTracker::AddNode / Resource::hazardConstituents_) expands each gathered array
+    // back into its true per-buffer Resource*s, this bakes the SAME 2 genuinely-independent-per-
+    // buffer edges the fixed-slot design would have (reservoirBufferA: DirectLighting->
+    // SpatialReuse, reservoirBufferB: DirectLighting->SpatialReuse), NOT one indivisible
+    // array-wrapper hazard — see test_frame_sync_scheduler.cpp's FrameSyncArrayHazard tests for
+    // the code-level proof of this expansion.
+    batch.Connect(reservoirBufferA, StorageBufferNodeConfig::STORAGE_BUFFER,
+                  directLightingReservoirWriteGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(reservoirBufferB, StorageBufferNodeConfig::STORAGE_BUFFER,
+                  directLightingReservoirWriteGatherer, 1, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(directLightingReservoirWriteGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
+                  directLightingNode, ComputeStageNodeConfig::BUFFER_WRITE_ARRAY, SlotRoleModifier(SlotRole::Execute));
+
+    batch.Connect(reservoirBufferA, StorageBufferNodeConfig::STORAGE_BUFFER,
+                  spatialReuseReservoirReadGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(reservoirBufferB, StorageBufferNodeConfig::STORAGE_BUFFER,
+                  spatialReuseReservoirReadGatherer, 1, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(spatialReuseReservoirReadGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
+                  spatialReuseNode, ComputeStageNodeConfig::BUFFER_READ_ARRAY, SlotRoleModifier(SlotRole::Execute));
+
+    // Render target: SpatialReuseNode's IMAGE_WRITE <-> BlitNode's IMAGE_READ (wired below), same
+    // renderTargetNode::RENDER_TARGET Resource* on both — bakes the SpatialReuse->BlitNode edge
+    // (moved from DirectLightingNode, M5 — SpatialReuseNode is the genuine outputImage writer now).
     batch.Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
-                  directLightingNode, ComputeStageNodeConfig::IMAGE_WRITE, SlotRoleModifier(SlotRole::Execute));
+                  spatialReuseNode, ComputeStageNodeConfig::IMAGE_WRITE, SlotRoleModifier(SlotRole::Execute));
+
+    // No separate ordering-only connection is needed for DirectLighting-before-SpatialReuse: the
+    // reservoir BUFFER_WRITE_ARRAY (DirectLightingNode) <-> BUFFER_READ_ARRAY (SpatialReuseNode)
+    // sync-slot connections above are themselves graph dependency edges on the SAME two
+    // StorageBufferNode Resource*s (via each side's own gatherer) — sufficient for the
+    // topological sort to place DirectLightingNode before SpatialReuseNode (mirrors the
+    // march->DirectLightingNode pair above, which also has no separate ordering connection
+    // beyond its own HitRecord sync slots).
 
     // --- BlitNode: presentation-only blit of the render target to the swapchain. ---
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
@@ -3095,9 +3432,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
                   blitNode, BlitNodeConfig::IMAGE_READ, SlotRoleModifier(SlotRole::Execute));
     // Ordering-only edge (BlitNode never waits it — see BlitNodeConfig's ORDERING_WAIT_SEMAPHORE
-    // doc): establishes the DirectLighting-before-Blit TOPOLOGY so the scheduler's groupId-order
-    // edge direction is correct (mirrors the sky-projection/UI ordering-edge convention below).
-    batch.Connect(directLightingNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+    // doc): establishes the SpatialReuse-before-Blit TOPOLOGY (Sampled Lighting Inc3 M5 — moved
+    // from DirectLighting, which is no longer the render-target writer) so the scheduler's
+    // groupId-order edge direction is correct (mirrors the sky-projection/UI ordering-edge
+    // convention below).
+    batch.Connect(spatialReuseNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
                   blitNode, BlitNodeConfig::ORDERING_WAIT_SEMAPHORE);
 
     // P5b M3 (extended for Tiered ESVO Inc1 M3; Sampled Lighting Inc3 M1: chain now runs through
