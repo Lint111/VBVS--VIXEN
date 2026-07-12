@@ -859,6 +859,38 @@ else()
 endif()
 
 # ===========================================================================
+# Inc-D Milestone 1: set-mutation dispatch (SetMutationDispatch.h) smoke proof (headless)
+# ===========================================================================
+# Forward-dispatch-only smoke test: one ActionStack group, one identity write per selected entity,
+# through the EXISTING (unchanged) Inc-B/C provider chain. Undo/redo restore + dead-entity-at-undo
+# skip proof is Milestone 2 (Task 3/4) -- a separate test file follows this one's pattern.
+
+if(TARGET GTest::gtest_main)
+    add_executable(test_set_mutation_dispatch
+        test_set_mutation_dispatch.cpp
+    )
+
+    target_link_libraries(test_set_mutation_dispatch PRIVATE
+        GTest::gtest_main
+        RenderGraph
+        AppFlow
+        GaiaVoxelWorld::GaiaVoxelWorld
+    )
+
+    # SetMutationDispatch.h / GaiaViewSelectionProvider.h / SelectionComponents.h live under
+    # application/editor/include, same as the Inc-B/C provider headers this test builds on.
+    target_include_directories(test_set_mutation_dispatch PRIVATE ${CMAKE_SOURCE_DIR}/application/editor/include)
+
+    set_target_properties(test_set_mutation_dispatch PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+    gtest_discover_tests(test_set_mutation_dispatch)
+
+    message(STATUS "✓ test_set_mutation_dispatch configured (Inc-D Milestone 1: set-mutation dispatch proof)")
+else()
+    message(STATUS "⊗ test_set_mutation_dispatch skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
 # View Contract Inc-2b: ViewBlob/ViewKind/ViewValue reflection-blob contract
 # ===========================================================================
 # Pure CPU test of the constexpr descriptor shape + scalar kind/value agreement.
