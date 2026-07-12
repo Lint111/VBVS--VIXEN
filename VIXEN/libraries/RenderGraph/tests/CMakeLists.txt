@@ -769,11 +769,15 @@ if(TARGET GTest::gtest_main)
     target_link_libraries(test_view_editor_layers_golden PRIVATE
         GTest::gtest_main
         RenderGraph
+        AppFlow
     )
 
     # EditorLayers.g.h is a CONSUMER artifact (application/editor) — needs the editor's include
     # dir to resolve "Generated/EditorLayers.g.h" (mirrors test_view_hud_golden's application/main
-    # include-dir need).
+    # include-dir need). Inc-Ovr: EditorLayers.g.h now #includes "generated/AppFlowCallables.g.hpp"
+    # (the isChecked Projection's [KernelCallable] transform, Vixen::AppFlow::Generated::bitAt) --
+    # AppFlow's PUBLIC include dir (libraries/AppFlow/include) resolves that path; linking AppFlow
+    # (already a header-bearing static lib, no new runtime dependency for this headless gate).
     target_include_directories(test_view_editor_layers_golden PRIVATE ${CMAKE_SOURCE_DIR}/application/editor/include)
 
     target_compile_definitions(test_view_editor_layers_golden PRIVATE

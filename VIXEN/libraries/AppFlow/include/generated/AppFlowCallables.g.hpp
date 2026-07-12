@@ -8,4 +8,8 @@ inline uint32_t applyToggle(uint32_t mask, uint32_t index) {
     return mask ^ (1u << (int32_t)index);
 }
 
+inline bool bitAt(uint32_t mask, uint32_t index) {
+    return ((mask >> (int32_t)index) & 1u) != 0u;
+}
+
 } // namespace Vixen::AppFlow::Generated

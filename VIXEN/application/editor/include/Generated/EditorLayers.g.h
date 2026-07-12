@@ -3,13 +3,18 @@
 #include <RmlUi/Core/DataModelHandle.h>
 #include <vector>
 #include <string>
+#include <cstdint>
+#include "generated/AppFlowCallables.g.hpp"
 
 namespace Vixen::Views {
 
 struct EditorLayerRow { Rml::String name; Rml::String op; bool isChecked; Rml::String elementId; };
 struct EditorLayersBind {
     std::vector<EditorLayerRow>* layers;
+    int* activeLayerCount;
 };
+
+int BindEditorLayersModel_activeLayerCountOverride(int* activeLayerCount);
 
 inline void BindEditorLayersModel(Rml::DataModelConstructor& c, const EditorLayersBind& b) {
     if (auto sh = c.RegisterStruct<EditorLayerRow>()) {
@@ -20,6 +25,12 @@ inline void BindEditorLayersModel(Rml::DataModelConstructor& c, const EditorLaye
     }
     c.RegisterArray<std::vector<EditorLayerRow>>();
     c.Bind("layers", b.layers);
+    c.BindFunc("activeLayerCount", [b](Rml::Variant& out) { out = BindEditorLayersModel_activeLayerCountOverride(b.activeLayerCount); });
+}
+
+// Row-field projection: EditorLayerRow::isChecked <- Vixen::AppFlow::Generated::bitAt(source, index).
+inline bool ComputeEditorLayerRow_isChecked(uint32_t source, uint32_t index) {
+    return Vixen::AppFlow::Generated::bitAt(source, index);
 }
 
 }  // namespace Vixen::Views
