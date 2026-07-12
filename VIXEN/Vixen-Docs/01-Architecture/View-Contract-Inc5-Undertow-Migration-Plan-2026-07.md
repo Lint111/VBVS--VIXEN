@@ -469,6 +469,56 @@ not a shortcut.
     and Task 5's text above have been rewritten a second time to reflect this — see both sections' "RESCOPED
     (TWICE)"/"second rescope" markers. No commits made during any of these three holds; Milestone 3 now
     proceeds under the final DECODED-VALUE proof target.
+  - **Gap #4 found before writing `Bodies` (same session, PARTIAL progress — Hud/HudFactions/HudEvents/
+    HudInspect complete, Bodies held for direction):** `ViewModelBuilder.Classify` (`ViewModel.cs:58-71`)
+    only recognizes scalar / `T[]`-of-scalar-struct / plain-nested-struct field shapes, and
+    `ViewWireFormat.EmitField` (`ViewWireFormat.cs:49`) explicitly throws for the plain-nested-struct case.
+    `Bodies.Position`/`Bodies.RecipeParams` are Vec3f SCALARS (not arrays) — unrepresentable.
+    `Bodies.OrbitPath` is `ListVec3f` (a nullable, per-row VARIABLE-LENGTH list of points) — a 2-level
+    nesting (struct-array of lists-of-structs) with no representation at all in the `[View]` model, and
+    even the SoA variable-length machinery only implements the String-column case. This gap is ISOLATED to
+    `Bodies` — `Hud`/`HudFactions`/`HudEvents`/`HudInspect` have no Vec3f/ListVec3f columns and are fully
+    representable. Reported with 3 options; held for direction. Proceeded on the 4 unaffected sections in
+    parallel per the controller's explicit go-ahead rather than idling.
+  - **Task 4 delivered for `Hud`/`HudFactions`/`HudEvents`/`HudInspect` (Bodies deferred, gap #4 unresolved):**
+    - Schemas declared in `codegen/view-schemas/UndertowHud.cs`: `UndertowHud`, `UndertowHudFactions`
+      (`UndertowHudFactionRow[]`, Soa layout), `UndertowHudEvents` (`UndertowHudEventRow[]`, Soa layout),
+      `UndertowHudInspect` — distinct names from the existing live `Hud`/`HudFaction`/`HudEvent` schema
+      (`Hud.cs`) so this proof vehicle does not collide with or risk VIXEN's own committed, drift-guarded
+      HUD artifacts.
+    - Callables in `codegen/view-schemas/UndertowViewCallables.cs`: ONE shared `BoolToByte(bool)` for all 4
+      bool→byte columns (Focused/Known/InLens/Selected — Milestone 1 Opus validator's finding confirmed in
+      practice); `StrengthBandToByte`/`ConfidenceToByte` for the 2 enum casts; `OrbitParentOrSentinel`
+      authored for completeness/documentation even though Bodies itself is deferred; `IdentityFloat`/
+      `IdentityString` no-op callables as the name-binding mechanism for `TopRelSig`/`Cause` (the third
+      name-mismatch column, `Mass`, is Bodies-side and deferred with gap #4). Real count: 6 callables, not
+      8 — matches Milestone 1's "3-4 real transforms, or fewer" estimate once the 2 identity name-binding
+      callables are counted separately from actual value transforms.
+    - Hand adapter in `codegen/view-schemas/UndertowFrameAdapter.cs` (gap #2's resolution): maps a real
+      `SimFrame`'s `HudView`/`HudFactionView`/`HudEventView`/`HudInspectView` into the generated
+      `UndertowHud*ViewWriter` row types, calling the SAME `UndertowViewCallables` methods each
+      `[Projected]` attribute documents, so callable and adapter can never semantically drift.
+    - Regenerated via the real Yeroket CLI (`dotnet run --project CodegenTool~ -c Release -- --schema
+      codegen/view-schemas --view-writer <Name> --out-cs <path>`) for all 4 schemas — clean generation, no
+      errors; column order in generated `ToBuffer()` confirmed to match `ViewSchema.cs`'s declared column
+      order exactly (verified by reading `UndertowHudFactions.view.g.cs`'s output directly).
+    - **Decoded-value proof (non-vacuous, real cross-check):** a standalone console harness (not committed
+      to any build graph — references undertow's real `Undertow.Sim.dll`/`Undertow.View.dll`/
+      `Undertow.Substrate.dll` build outputs directly, read-only) constructs a reference frame extending
+      `ViewContractTests.ViewWriter_RoundTripsHudFactionAndEventStrings`'s fixture (2 factions incl. one
+      with 0 grievance/unfocused/unknown, 2 events incl. one with EMPTY PerpName/VictimName — the
+      populated-Str-column exercise both prior milestones' validators required) with a populated
+      `HudInspect` row (that test doesn't exercise HudInspect at all). Calls undertow's REAL
+      `ViewWriter.WriteView` + decodes via undertow's REAL `ViewBufferReader`; separately calls the 4
+      generated `UndertowHud*ViewWriter.ToBuffer()` (fed by the hand adapter) and decodes via a
+      hand-written UTVA/SoA decoder mirroring `ViewWireFormat.cs`'s exact emit algorithm. **Result: 34/34
+      decoded-value checks pass, 0 mismatches** — every transform column (bool→byte ×3, enum→byte ×2),
+      every identity column, every populated AND empty Str value, and both name-mismatch columns
+      (TopRelSig, Cause) match exactly between undertow's real writer and the schema-driven regeneration.
+  - **Bodies (Position/RecipeParams/Vec3f-scalar, OrbitPath/ListVec3f) remains an open decision — gap #4
+    NOT resolved.** Held per the controller's direction; Milestone 3 is not marked complete in the
+    Milestone Map above until Bodies is either proven (options 1/2/3 from the gap #4 report) or explicitly
+    descoped with the same "Follow-up, not resolved here" treatment as gaps #1-#3's deferred items.
 
 ## Follow-ups (explicitly out of scope, note for later increments)
 
