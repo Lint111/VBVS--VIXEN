@@ -66,8 +66,8 @@ not properties into an existing class) need something structurally different aga
 ## Milestone Map
 - [x] **Milestone 1 (Task 1):** ground the shape, decide mechanism (report-back gate). One Sonnet
   implementer + one Opus validator.
-- [ ] **Milestone 2 (Task 2):** build + equivalence proof + retire (if safe). One Sonnet implementer + one
-  Opus validator.
+- [x] **Milestone 2 (Task 2):** build + equivalence proof + retire. DONE 2026-07-13. One Sonnet
+  implementer (Opus validation pending).
 
 ## Progress Log
 
@@ -117,3 +117,61 @@ not properties into an existing class) need something structurally different aga
     attribute carrier (a marker/placeholder class, or investigate a module-level attribute) and must
     reproduce the exact `namespace Undertow.Content` + `#nullable enable` header shape. **APPROVED —
     Milestone 2 may proceed.**
+
+- Milestone 2 (Task 2, build + equivalence proof + retire): DONE · 2026-07-13
+  - **Attribute-carrier decision: assembly-level `[SharedMapElements(schemaPath)]`, not a marker
+    class.** Justification: unlike `[RegistrySlots]` (Inc-1), which decorates a REAL existing
+    aggregator class (AuthoringRegistries/BakedRegistries), the shared-map-element structs have NO
+    natural host type at all — inventing a placeholder marker class would be pure ceremony with no
+    referent in the domain. An assembly-level attribute (`AllowMultiple = true`) carries the external
+    schema pointer directly, mirroring N assembly attributes over one class with N properties at
+    equivalent expressiveness. `CompilationLoader.LoadSharedMapElementsSchemaPaths` reads
+    `Compilation.Assembly.GetAttributes()` instead of scanning decorated type symbols (the shape every
+    other Loader method in this file uses).
+  - **New mechanism** (Yeroket `feat/codegen-unif-inc2-mapelem`, branched off Inc-1's
+    `feat/codegen-unif-inc1-slots` per the plan's "keep both increments together pre-consolidation"
+    option, commit `1af5865e`): `[SharedMapElements]` attribute (`Runtime/GpuStructAttributes.cs`),
+    `SharedMapElementsModel` + `SharedMapElementEmitter` (`SourceGenerator~/Transpiler/
+    SharedMapElementEmitter.cs`, ports `EmitSharedMapElement.All` line-for-line including its own
+    `MapValueScalar`/`Clr` scalar-mapping helpers — these had no existing home in Yeroket's shared
+    JSON utilities, ported fresh alongside the emitter rather than reusing `RegistrySlotsEmitter`'s
+    copy, since Inc-1's are `internal` to a different static class), `--shared-map-elements` CLI flag
+    in `CodegenTool~/Program.cs` (mirrors `--registry-slots`'s `--schema`/`--out-cs`/`[--check]` shape,
+    plus a `--namespace` override defaulting to `Undertow.Content`).
+  - **Equivalence proof, two independent methods, all 4 CLR value shapes exercised** (float/double/
+    AttributeValue/text-for-id), against all 12 real `sharedMapElements` entries:
+    1. `SharedMapElementEmitterTests.cs` (7 NUnit tests, Yeroket `CodegenTool.Tests`) compiles the
+       generated source to an in-memory assembly (Roslyn, `CompileRun`-style) and exercises REAL
+       runtime behavior via reflection: tuple-ctor construction, both `KeyValuePair` conversion
+       directions, `Equals`/`GetHashCode`/`==`/`!=`, mirroring `MapElementStructTests.cs`'s exact
+       scenarios (`SignatureEntry`/`RecipeIo`/`ParamEntry`/`ArchetypeLayer`/`RecipeParam` cases) —
+       all 7 pass.
+    2. An end-to-end CLI run against undertow's ACTUAL `schemas.json` (real file, not a hand-typed
+       subset), diffed byte-for-byte against a direct standalone invocation of
+       `EmitSharedMapElement.All` on the same file: **struct bodies for all 12 entries are IDENTICAL**
+       (only the provenance banner line differs, by design — new mechanism, new banner text).
+  - **Retirement executed** (undertow `feat/codegen-unif-inc2-mapelem`, commit `0d6461f2`):
+    `EmitSharedMapElement.cs` and `MapElementGenerator.cs` (the `[Generator]`/`IIncrementalGenerator`
+    wiring) deleted; `MapElements.g.cs` (the new mechanism's output against the real schema) checked
+    in as an ordinary compiled source file under `Undertow.Content`. **Wiring-model change discovered
+    and handled**: undertow's ONLY existing codegen integration is Roslyn analyzer-based
+    (`Undertow.Content.csproj` references `Undertow.Authoring.Codegen` as an `OutputItemType=Analyzer`
+    project reference + `AdditionalFiles` for `schemas.json`) — there is no existing build-time
+    invocation of an external CLI tool anywhere in undertow (confirmed via grep), unlike Yeroket's own
+    package build. Since Inc-1 left `[RegistrySlots]` unwired for the same reason (deferred retirement),
+    and this increment's retirement is in-scope now, the pragmatic choice was a checked-in generated
+    file (regenerate via `dotnet run -- --schema <dir> --shared-map-elements schemas.json --out-cs
+    core/src/Undertow.Content/MapElements.g.cs` against the kernel-framework `CodegenTool~`) rather
+    than inventing new MSBuild pre-build-step plumbing undertow has never had — smallest change that
+    satisfies "genuinely switch the build wiring."
+  - **Consumer verification**: full `dotnet build` of `core/Undertow.sln` — 0 errors, 0 warnings. Full
+    `dotnet test` — **2955 tests pass, 0 failures** (2934 `Undertow.Core.Tests` + 21
+    `Undertow.Vixen.Host.Tests`), including `MapElementStructTests.cs` (the 4-test template Milestone 1
+    flagged) exercising the exact API surface real consumers depend on. Spot-checked no source file
+    still references the deleted `MapElementGenerator`/`EmitSharedMapElement` symbols (grep, zero hits).
+  - Gotcha avoided: `SDFNodeGenerator.dll` rebuilt non-deterministically during the Yeroket test build
+    (known drift per program-level memory) — reverted via `git checkout --` before committing, since
+    no source change to that generator was made.
+  - No plan-doc assumption disproven. **Opus validation of Milestone 2 not yet run** — flagging this
+    explicitly since the program's established pattern is Sonnet-implement + Opus-validate per
+    milestone.
