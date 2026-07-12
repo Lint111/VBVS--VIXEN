@@ -450,8 +450,22 @@ re-derive these facts, but DO re-verify file:line if code has moved)
   - **Commits**: Yeroket `feat/view-ovr-projection` `441e32b9` ("[Overridden] attribute +
     forward-declaration hook emitter for View-Model Binding Inc-Ovr Milestone 3" — also documents
     the `Bind`-vs-`BindFunc` fix, since it affects both Projection and Override emission). VIXEN
-    `feat/view-binding-inc-ovr` commit pending (this doc's own commit + the code changes land
-    together). Neither pushed.
+    `feat/view-binding-inc-ovr` commit `d94fd5a1`. Neither pushed.
+  - **Opus validator (final milestone, also a holistic Inc-Ovr check across all 3 milestones):**
+    independently re-verified the Override mechanism's forward-decl + unconditional-call structure,
+    the retroactive `Bind`→`BindFunc` fix against real RmlUi source (`DataModelHandle.h:71`'s `T*`-
+    only signature vs. `DataGetFunc`'s real lambda signature), and confirmed the fix left Milestone
+    2's proven row-field path (`Compute<Row>_<Field>`) completely untouched — the fix only corrected
+    a previously-dead, never-build-tested top-level-scalar branch. Confirmed the negative-test's
+    escape-hatch analysis is airtight (exactly one forward-decl, one real definition, no weak/
+    selectany/default symbol anywhere that could make an omitted override silently no-op instead of
+    failing to link). Confirmed `activeLayerCount`'s popcount aggregate genuinely can't be expressed
+    as a Projection, making Override the correct tool. Rebuilt fresh from the worktree's own
+    build.bat (0 FAILED), re-ran the full 24/24 regression sweep independently with identical
+    results to the report. **Holistic check: Inc-Ovr's Goal is met** — a real Projection mechanism
+    (re-derived `mask_`→checkboxes, hand-written duplicate genuinely deleted) AND a real Override
+    mechanism (genuine link-time escape-hatch contract, proven via an actual failing build) — no
+    dangling contradiction across M1/M2/M3's final states. **APPROVED — Inc-Ovr is DONE.**
 
 ## Follow-ups (explicitly out of scope, note for later increments)
 
