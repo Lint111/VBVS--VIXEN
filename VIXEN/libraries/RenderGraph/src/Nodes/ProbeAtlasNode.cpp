@@ -85,6 +85,11 @@ void ProbeAtlasNode::CompileImpl(TypedCompileContext& ctx) {
     }
 
     ctx.Out(ProbeAtlasNodeConfig::PROBE_ATLAS, static_cast<IRenderTarget*>(&target_));
+    // CURRENT_VIEW: raw VkImageView, mirrors RenderTargetNode::CompileImpl's own CURRENT_VIEW
+    // output. Descriptor-gatherer bindings must connect THIS, not PROBE_ATLAS -- IRenderTarget has
+    // no conversion_type, so a Resource holding an IRenderTarget* can never extract a VkImageView
+    // for vkUpdateDescriptorSets (see ProbeAtlasNodeConfig.h's CURRENT_VIEW doc comment).
+    ctx.Out(ProbeAtlasNodeConfig::CURRENT_VIEW, target_.GetCurrentView());
 
     NODE_LOG_INFO("[ProbeAtlasNode] Outputs published (" + std::to_string(width_) + "x" +
                   std::to_string(height_) + ")");
@@ -95,6 +100,7 @@ void ProbeAtlasNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // AccumulationHistoryNode::ExecuteImpl's own rationale: DDGI's hysteresis blend needs last
     // frame's atlas content still present, so currentIndex never advances).
     ctx.Out(ProbeAtlasNodeConfig::PROBE_ATLAS, static_cast<IRenderTarget*>(&target_));
+    ctx.Out(ProbeAtlasNodeConfig::CURRENT_VIEW, target_.GetCurrentView());
 }
 
 void ProbeAtlasNode::CleanupImpl(TypedCleanupContext& ctx) {

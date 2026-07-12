@@ -15,7 +15,7 @@ using IRenderTarget = Vixen::Vulkan::Resources::IRenderTarget;
 // Compile-time slot counts (declared early for reuse)
 namespace ProbeAtlasNodeCounts {
     static constexpr size_t INPUTS  = 2;  // VULKAN_DEVICE_IN, COMMAND_POOL
-    static constexpr size_t OUTPUTS = 1;  // PROBE_ATLAS
+    static constexpr size_t OUTPUTS = 2;  // PROBE_ATLAS, CURRENT_VIEW
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -47,8 +47,18 @@ namespace ProbeAtlasNodeCounts {
  * Inputs: 2
  *   - VULKAN_DEVICE_IN (VulkanDevice*)  Device for allocation + the one-shot transition queue
  *   - COMMAND_POOL     (VkCommandPool)  Pool for the one-shot transition command buffer
- * Outputs: 1
- *   - PROBE_ATLAS (IRenderTarget*) - The persistent atlas image (RenderTargetData, imageCount=1)
+ * Outputs: 2
+ *   - PROBE_ATLAS  (IRenderTarget*) - The persistent atlas image (RenderTargetData, imageCount=1)
+ *   - CURRENT_VIEW (VkImageView)    - The atlas's raw view handle, mirroring RenderTargetNode's
+ *     own CURRENT_VIEW output. A DescriptorResourceGathererNode binding a resource by IRenderTarget*
+ *     gets a Resource typed PassThroughStorage (IRenderTarget has no `conversion_type`, only an
+ *     `operator VkImageView()` -- Resource::SetHandle's descriptorExtractor_ capture only fires for
+ *     types with `conversion_type`), which GetDescriptorHandle() can never turn into a real
+ *     VkImageView -- the descriptor is left unpopulated (VUID-vkCmdDispatch-None-08114). Every
+ *     existing IMAGE_WRITE-shaped gatherer binding (e.g. DirectLighting/SpatialReuseShade's own
+ *     binding 0) connects RenderTargetNode's CURRENT_VIEW, not RENDER_TARGET, for exactly this
+ *     reason -- this output exists so probeUpdateGatherer's bindings 29/30 can follow the same
+ *     precedent instead of wiring PROBE_ATLAS directly into a descriptor slot.
  * Parameters: width, height, format (VkFormat as uint32_t)
  *
  * Layout: the compute shader will use the image as a STORAGE image (VK_IMAGE_LAYOUT_GENERAL).
@@ -83,6 +93,10 @@ CONSTEXPR_NODE_CONFIG(ProbeAtlasNodeConfig,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
+    OUTPUT_SLOT(CURRENT_VIEW, VkImageView, 1,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
     // ----- Parameter name constants -----
     static constexpr const char* PARAM_WIDTH  = "width";
     static constexpr const char* PARAM_HEIGHT = "height";
@@ -100,6 +114,12 @@ CONSTEXPR_NODE_CONFIG(ProbeAtlasNodeConfig,
         // across frames by design, unlike a ring's per-frame-rotating handle).
         HandleDescriptor atlasDesc{"IRenderTarget*"};
         INIT_OUTPUT_DESC(PROBE_ATLAS, "probe_atlas", ResourceLifetime::Persistent, atlasDesc);
+
+        // Output: the atlas's raw view handle (Persistent — same lifetime as the image), mirroring
+        // RenderTargetNodeConfig::CURRENT_VIEW. Consume THIS in a DescriptorResourceGathererNode
+        // binding (see CURRENT_VIEW's own doc comment above for why PROBE_ATLAS itself cannot be).
+        HandleDescriptor viewDesc{"VkImageView"};
+        INIT_OUTPUT_DESC(CURRENT_VIEW, "current_view", ResourceLifetime::Persistent, viewDesc);
     }
 
     // ----- Compile-time validation -----
@@ -114,6 +134,11 @@ CONSTEXPR_NODE_CONFIG(ProbeAtlasNodeConfig,
     static_assert(!PROBE_ATLAS_Slot::nullable, "PROBE_ATLAS must not be nullable");
     static_assert(std::is_same_v<PROBE_ATLAS_Slot::Type, IRenderTarget*>,
                   "PROBE_ATLAS must be IRenderTarget*");
+
+    static_assert(CURRENT_VIEW_Slot::index == 1, "CURRENT_VIEW must be at index 1");
+    static_assert(!CURRENT_VIEW_Slot::nullable, "CURRENT_VIEW must not be nullable");
+    static_assert(std::is_same_v<CURRENT_VIEW_Slot::Type, VkImageView>,
+                  "CURRENT_VIEW must be VkImageView");
 
     VALIDATE_NODE_CONFIG(ProbeAtlasNodeConfig, ProbeAtlasNodeCounts);
 };

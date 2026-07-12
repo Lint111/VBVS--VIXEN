@@ -4050,16 +4050,26 @@ void VulkanGraphApplication::BuildRenderGraph() {
                           probeUpdateGatherer, 28,
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
-    // Bindings 29/30 (probe atlases): descriptor binding here (plain gatherer, current-view
+    // Bindings 29/30 (probe atlases): descriptor binding here (plain gatherer, CURRENT_VIEW
     // handles) + the genuine write hazard declared via IMAGE_WRITE_ARRAY below (Inc4 M1's
     // mechanism — this pass writes BOTH atlases in the SAME dispatch, mirroring how
     // DirectLightingNode's reservoir write-array covers 2 buffers in one BUFFER_WRITE_ARRAY).
-    batch.Connect(probeIrradianceAtlasNode, ProbeAtlasNodeConfig::PROBE_ATLAS,
+    //
+    // Validator-found fix: MUST connect ProbeAtlasNodeConfig::CURRENT_VIEW (raw VkImageView), NOT
+    // PROBE_ATLAS (IRenderTarget*) — IRenderTarget has no `conversion_type` (only an `operator
+    // VkImageView()`), so a Resource holding an IRenderTarget* is typed PassThroughStorage and
+    // GetDescriptorHandle() can never produce a VkImageView from it; vkUpdateDescriptorSets was
+    // never actually called for these bindings (VUID-vkCmdDispatch-None-08114 on both). Same
+    // precedent + role shape as DirectLighting/SpatialReuseShade's own binding-0 connection just
+    // above (renderTargetNode's CURRENT_VIEW, not RENDER_TARGET, Execute-only — the hazard side is
+    // declared separately via IMAGE_WRITE_ARRAY/probeAtlasGatherer below, same split those passes
+    // use between their descriptor-binding Connect and their IMAGE_WRITE sync-slot Connect).
+    batch.Connect(probeIrradianceAtlasNode, ProbeAtlasNodeConfig::CURRENT_VIEW,
                           probeUpdateGatherer, 29,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    batch.Connect(probeVisibilityAtlasNode, ProbeAtlasNodeConfig::PROBE_ATLAS,
+                          SlotRoleModifier(SlotRole::Execute));
+    batch.Connect(probeVisibilityAtlasNode, ProbeAtlasNodeConfig::CURRENT_VIEW,
                           probeUpdateGatherer, 30,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+                          SlotRoleModifier(SlotRole::Execute));
 
     // --- ProbeUpdateNode (ComputeStageNode) common inputs — mirrors DirectLightingNode's own
     // shape. NOT swapchain-adjacent: no SWAPCHAIN_INFO connection (isConsumer=false set above),
