@@ -65,6 +65,7 @@ set(RENDERGRAPH_DATA_NODE_CONFIGS
     include/Data/Nodes/FramebufferNodeConfig.h
     include/Data/Nodes/GeometryRenderNodeConfig.h
     include/Data/Nodes/GraphicsPipelineNodeConfig.h
+    include/Data/Nodes/ImageSyncGathererNodeConfig.h  # Sampled Lighting Inc4 M1: variadic IRenderTarget* sync gatherer
     include/Data/Nodes/InstanceNodeConfig.h
     include/Data/Nodes/LoopBridgeNodeConfig.h
     include/Data/Nodes/PresentNodeConfig.h
@@ -223,6 +224,7 @@ set(RENDERGRAPH_NODE_HEADERS
     include/Nodes/FramebufferNode.h
     include/Nodes/GeometryRenderNode.h
     include/Nodes/GraphicsPipelineNode.h
+    include/Nodes/ImageSyncGathererNode.h  # Sampled Lighting Inc4 M1: variadic IRenderTarget* sync gatherer
     include/Nodes/InputNode.h
     include/Nodes/InstanceNode.h
     include/Nodes/LoopBridgeNode.h
@@ -279,6 +281,7 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/FramebufferNode.cpp
     src/Nodes/GeometryRenderNode.cpp
     src/Nodes/GraphicsPipelineNode.cpp
+    src/Nodes/ImageSyncGathererNode.cpp  # Sampled Lighting Inc4 M1: variadic IRenderTarget* sync gatherer
     src/Nodes/InputNode.cpp
     src/Nodes/InstanceNode.cpp
     src/Nodes/LoopBridgeNode.cpp

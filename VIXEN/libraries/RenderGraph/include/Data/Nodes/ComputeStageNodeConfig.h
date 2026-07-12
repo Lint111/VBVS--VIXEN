@@ -19,7 +19,7 @@ namespace Vixen::RenderGraph {
 // ============================================================================
 
 namespace ComputeStageNodeCounts {
-    static constexpr size_t INPUTS  = 19;
+    static constexpr size_t INPUTS  = 20;
     static constexpr size_t OUTPUTS = 3;
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -105,6 +105,31 @@ namespace ComputeStageNodeCounts {
  * next transition. A future reader must not fold these two slots together — that
  * would silently reintroduce WSI coupling into every non-swapchain image-producing
  * pass.
+ *
+ * SAMPLED LIGHTING INC4 M1 — THE FLAGGED CONCRETE USE CASE ARRIVED: DDGI's
+ * probe-update pass needs an irradiance atlas AND a separate Chebyshev-visibility
+ * atlas written simultaneously (verified against real DDGI/RTXGI-reference atlas
+ * layout — the two atlases use DIFFERENT per-probe texel resolutions, so they are
+ * not even the same image dimensions and cannot be channel-packed into one image).
+ * IMAGE_WRITE_ARRAY is the image-typed sibling of BUFFER_WRITE_ARRAY/BUFFER_READ_ARRAY,
+ * added the SAME way: fed by an ImageSyncGathererNode's IMAGE_ARRAY output (mirrors
+ * BufferSyncGathererNode exactly). Resource::hazardConstituents_ /
+ * ResourceAccessTracker::AddNode (the mechanism that expands a gathered array into N
+ * independent SyncEdges) is genuinely resource-type-agnostic already — verified by
+ * direct reading, not assumed: zero ResourceType/VkBuffer-specific logic anywhere in
+ * the tracker or FrameSyncScheduler — so no tracker/scheduler changes were needed,
+ * only this new slot + ImageSyncGathererNode + the RecordComputeCommands barrier loop
+ * (ComputeStageNode.cpp; imageWriteLayouts_ is already a std::unordered_map<VkImage,
+ * VkImageLayout>, already multi-entry-capable with zero type changes).
+ *
+ * Deliberately ADDITIVE, NOT a replacement: the original single-image IMAGE_WRITE
+ * slot (index 18) is completely untouched — Inc3's shipped single-IMAGE_WRITE
+ * consumers (DirectLighting.comp, SpatialReuseShade.comp via BlitNode) keep using it
+ * exactly as before, zero regression risk. IMAGE_WRITE_ARRAY (index 19) is opt-in,
+ * wired only where a pass genuinely needs N simultaneous image outputs (M2's
+ * ProbeAtlasNode(s) being the first real consumer). No IMAGE_READ_ARRAY yet — no
+ * concrete consumer needs it as of M1; add it later the same "concrete use case
+ * drives the design" way if one arises, per this class's own established discipline.
  */
 CONSTEXPR_NODE_CONFIG(ComputeStageNodeConfig,
                       ComputeStageNodeCounts::INPUTS,
@@ -134,11 +159,13 @@ CONSTEXPR_NODE_CONFIG(ComputeStageNodeConfig,
     static constexpr const char* PARAM_PC_WIDTH  = "pcWidth";
     static constexpr const char* PARAM_PC_HEIGHT = "pcHeight";
 
-    // ===== INPUTS (19, indices 0-18 — Sampled Lighting Inc3 M5 collapsed the old 3
+    // ===== INPUTS (20, indices 0-19 — Sampled Lighting Inc3 M5 collapsed the old 3
     // fixed buffer slots [14,15,16] into 2 array slots [14,15], renumbering every slot
     // after it down by one to keep the index space contiguous — RenderGraph::Validate
     // walks every index up to INPUTS treating a gap as an undeclared-and-thus-
-    // non-nullable slot, so a hole is not a legal way to "retire" an index) =====
+    // non-nullable slot, so a hole is not a legal way to "retire" an index. Sampled
+    // Lighting Inc4 M1 appended IMAGE_WRITE_ARRAY at index 19 — purely additive, no
+    // renumbering of any existing slot) =====
 
     /** @brief Vulkan device for command-buffer allocation. */
     INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevice*, 0,
@@ -320,6 +347,25 @@ CONSTEXPR_NODE_CONFIG(ComputeStageNodeConfig,
         SlotScope::NodeLevel,
         ::Vixen::RenderGraph::AccessKind::ComputeStorageWrite);
 
+    /**
+     * @brief Set of non-swapchain images this stage WRITES SIMULTANEOUSLY (Sampled
+     * Lighting Inc4 M1) — the image-typed sibling of BUFFER_WRITE_ARRAY, additive
+     * alongside (NOT replacing) the single-image IMAGE_WRITE slot above. Fed by an
+     * ImageSyncGathererNode's IMAGE_ARRAY output (mirrors BufferSyncGathererNode's
+     * own file header exactly). Auto-sync: ComputeStorageWrite — makes the scheduler
+     * record this node as a writer of EACH constituent image's own Resource*
+     * (via Resource::hazardConstituents_, same expansion BUFFER_WRITE_ARRAY already
+     * uses) so a downstream reader bakes a real SyncEdge per image. Optional: a pass
+     * with no multi-image-write need leaves this unconnected and uses the single
+     * IMAGE_WRITE slot instead (or neither, for a pure buffer producer).
+     */
+    INPUT_SLOT_SYNC(IMAGE_WRITE_ARRAY, std::vector<Vixen::Vulkan::Resources::IRenderTarget*>, 19,
+        SlotNullability::Optional,
+        SlotRole::Execute,
+        SlotMutability::ReadWrite,
+        SlotScope::NodeLevel,
+        ::Vixen::RenderGraph::AccessKind::ComputeStorageWrite);
+
     // ===== OUTPUTS (3) =====
 
     /** @brief renderComplete semaphore for Present to wait on (consumer role). */
@@ -415,6 +461,13 @@ CONSTEXPR_NODE_CONFIG(ComputeStageNodeConfig,
         // wiring on this or any other node.
         INIT_INPUT_DESC(IMAGE_WRITE, "image_write", ResourceLifetime::Persistent, swapchainDesc);
 
+        // Image-write ARRAY sync slot (Sampled Lighting Inc4 M1) — array-typed sibling
+        // of IMAGE_WRITE, mirrors BUFFER_WRITE_ARRAY's own Transient rationale exactly
+        // (a value type re-gathered fresh by ImageSyncGathererNode::ExecuteImpl every
+        // frame, so Persistent is both compile-time-disallowed and semantically wrong).
+        HandleDescriptor imageArrayDesc{"std::vector<IRenderTarget*>"};
+        INIT_INPUT_DESC(IMAGE_WRITE_ARRAY, "image_write_array", ResourceLifetime::Transient, imageArrayDesc);
+
         // Outputs.
         HandleDescriptor semaphoreDesc{"VkSemaphore"};
         INIT_OUTPUT_DESC(RENDER_COMPLETE_SEMAPHORE, "render_complete_semaphore", ResourceLifetime::Transient, semaphoreDesc);
@@ -441,6 +494,9 @@ CONSTEXPR_NODE_CONFIG(ComputeStageNodeConfig,
     static_assert(IMAGE_WRITE_Slot::index == 18, "IMAGE_WRITE must be at index 18 (Sampled Lighting Inc3 M5: renumbered down by one after collapsing the 3 fixed buffer slots into 2 array slots)");
     static_assert(std::is_same_v<IMAGE_WRITE_Slot::Type, Vixen::Vulkan::Resources::IRenderTarget*>);
     static_assert(IMAGE_WRITE_Slot::accessKind == ::Vixen::RenderGraph::AccessKind::ComputeStorageWrite);
+    static_assert(IMAGE_WRITE_ARRAY_Slot::index == 19, "IMAGE_WRITE_ARRAY must be at index 19 (Sampled Lighting Inc4 M1: purely additive, appended after IMAGE_WRITE)");
+    static_assert(std::is_same_v<IMAGE_WRITE_ARRAY_Slot::Type, std::vector<Vixen::Vulkan::Resources::IRenderTarget*>>);
+    static_assert(IMAGE_WRITE_ARRAY_Slot::accessKind == ::Vixen::RenderGraph::AccessKind::ComputeStorageWrite);
 };
 
 } // namespace Vixen::RenderGraph

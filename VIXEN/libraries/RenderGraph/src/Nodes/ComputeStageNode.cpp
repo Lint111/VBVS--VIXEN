@@ -280,12 +280,21 @@ void ComputeStageNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmd,
     // entry barrier (further below).
     Vixen::Vulkan::Resources::IRenderTarget* imageWriteTarget =
         ctx.In(ComputeStageNodeConfig::IMAGE_WRITE);
+    // Sampled Lighting Inc4 M1: N simultaneous image-write targets (e.g. DDGI's
+    // irradiance + Chebyshev-visibility atlases), additive alongside imageWriteTarget
+    // above — a pass may use either, both, or neither depending on its own output shape.
+    std::vector<Vixen::Vulkan::Resources::IRenderTarget*> imageWriteArrayTargets =
+        ctx.In(ComputeStageNodeConfig::IMAGE_WRITE_ARRAY);
     if ((dispatchX == 0 || dispatchY == 0) && swapchainInfo) {
         VkExtent2D extent = swapchainInfo->GetExtent();
         dispatchX = (extent.width + 7) / 8;
         dispatchY = (extent.height + 7) / 8;
     } else if ((dispatchX == 0 || dispatchY == 0) && imageWriteTarget) {
         VkExtent2D extent = imageWriteTarget->GetExtent();
+        dispatchX = (extent.width + 7) / 8;
+        dispatchY = (extent.height + 7) / 8;
+    } else if ((dispatchX == 0 || dispatchY == 0) && !imageWriteArrayTargets.empty() && imageWriteArrayTargets[0]) {
+        VkExtent2D extent = imageWriteArrayTargets[0]->GetExtent();
         dispatchX = (extent.width + 7) / 8;
         dispatchY = (extent.height + 7) / 8;
     }
@@ -313,6 +322,19 @@ void ComputeStageNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmd,
             imageWriteLayouts_, imageWriteTarget->GetCurrentImage(), VK_IMAGE_LAYOUT_GENERAL);
         SwapchainBarriers::TransitionImageToGeneralBarrier2(GetDevice(), cmd,
             imageWriteTarget->GetCurrentImage(), priorLayout);
+    }
+
+    // Sampled Lighting Inc4 M1: IMAGE_WRITE_ARRAY — identical per-target barrier logic to
+    // the single-slot case above, looped. imageWriteLayouts_ is keyed by VkImage (not by
+    // slot/index), so mixing IMAGE_WRITE + IMAGE_WRITE_ARRAY targets on the same node (not
+    // expected in practice, but not disallowed) still tracks each image's own layout
+    // independently with no collision.
+    for (Vixen::Vulkan::Resources::IRenderTarget* target : imageWriteArrayTargets) {
+        if (!target) continue;
+        VkImageLayout priorLayout = DecideRenderTargetPriorLayoutAndUpdate(
+            imageWriteLayouts_, target->GetCurrentImage(), VK_IMAGE_LAYOUT_GENERAL);
+        SwapchainBarriers::TransitionImageToGeneralBarrier2(GetDevice(), cmd,
+            target->GetCurrentImage(), priorLayout);
     }
 
     BindComputePipeline(cmd, pipeline, layout, descriptorSets[imageIndex]);

@@ -70,6 +70,10 @@ private:
     // buffer can be re-recorded against a ring slot whose actual last transition doesn't
     // match a two-state assumption). See DecideRenderTargetPriorLayoutAndUpdate
     // (Nodes/Common/SwapchainBarriers.h) for the shared decision/update logic.
+    //
+    // Sampled Lighting Inc4 M1: this SAME map also tracks IMAGE_WRITE_ARRAY's N target
+    // layouts — already keyed by VkImage (not by slot), so N simultaneous images need
+    // zero type changes here, only a loop over them in RecordComputeCommands.
     std::unordered_map<VkImage, VkImageLayout> imageWriteLayouts_;
 };
 
