@@ -608,7 +608,16 @@ target_compile_definitions(RenderGraphNode_UIRenderNode PRIVATE
 # for this target (only application/main/CMakeLists.txt defined it, for VixenApp). Pre-existing gap,
 # not introduced by M1; mirrors application/main's own definition exactly so every RenderGraphNodes
 # node gets the same reliable, CWD-independent shader-source resolution VixenApp has always had.
-target_compile_definitions(RenderGraphNodes PRIVATE
+#
+# Inc3 M7 re-fix: the Graph-Derived Node Linkage epic (merged from origin/main) split
+# RenderGraphNodes from one STATIC library compiling every node's .cpp into a facade over
+# per-node RenderGraphNode_<Name> OBJECT libraries (see the loop above) -- RenderGraphNodes
+# itself no longer compiles SkyProjectionNode.cpp (or any node source), so this define stopped
+# reaching ResolveShaderPath() the moment that split landed, silently regressing SkyProjectionNode
+# back to CWD-relative shader resolution (same class of bug UIRenderNode's own VIXEN_UI_ASSET_
+# SOURCE_DIR define above was correctly re-homed for at the same time -- SkyProjectionNode's
+# just got missed). Apply to the actual compiling target instead of the empty facade.
+target_compile_definitions(RenderGraphNode_SkyProjectionNode PRIVATE
     VIXEN_SHADER_SOURCE_DIR="${VIXEN_SHADER_SOURCE_DIR}")
 
 # ============================================================================
