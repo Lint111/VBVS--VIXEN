@@ -115,3 +115,19 @@ also merge/migrate cleanly, before tackling logic-transplant features (`[Action]
     correction noted (not a scope signal): the call site's own comment says "KnowledgeAttrs + EconomyAttrs"
     but the real field set spans 8 files — the comment predates later `[Param]` additions.
   - No blockers.
+  - **Opus validator (independent re-verification):** confirmed all 37 sites/counts, the `Scope`/
+    `SeedOnApply` distribution, `KernelCallableAttribute`'s genuine method-only `AttributeUsage` (did
+    NOT conflate with the unrelated field-targeted `SdfCoreOpAttribute` sibling in the same file), the
+    `[RegistrySlots]`/`[SharedMapElements]` rejection framing (both carry an external pointer;
+    `[Param]`'s attribute instances ARE the data), `EnumExprHelper.EnumExpr`'s exact behavior AND its
+    genuine reuse across `[Effect]`/`[System]`'s generators (confirming porting it once here is the
+    right, reusable call), the single real `DeclareGeneratedParams` call site, and the dup-id diagnostic
+    behavior EXACTLY (`HashSet.Add` check → diagnostic added, list NOT deduped, `declsIn` sorted whole —
+    an existing test `Emit_RejectsDuplicateId` locks this in; Milestone 2 must preserve it precisely).
+    **New finding, not a blocker but real constraint for Milestone 2**: `CodeModLoader.cs:164`
+    (`sim.Params.Declare(a.Id, a.Base, a.Scope, a.SeedOnApply)`) is a LIVE RUNTIME-REFLECTION consumer
+    that reads `ParamAttribute` DIRECTLY (via `FieldsWith<ParamAttribute>`) for code-mod support — it
+    does NOT go through `DeclareGeneratedParams` at all, so retiring the codegen emitter doesn't touch
+    it, but the new Yeroket-side `[Param]`-equivalent attribute MUST preserve the exact
+    Id/Base/Scope/SeedOnApply property shape the reflection reads, or `CodeModLoader` breaks. **APPROVED
+    — Milestone 2 may proceed, carrying this constraint forward.**
