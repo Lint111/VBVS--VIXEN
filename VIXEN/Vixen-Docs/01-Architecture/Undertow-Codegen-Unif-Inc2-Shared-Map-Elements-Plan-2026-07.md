@@ -100,3 +100,20 @@ not properties into an existing class) need something structurally different aga
     exercises exactly this API surface — a natural equivalence-proof template for Milestone 2. Zero
     dependents within the program, unlike Increment 1's registry slots.
   - No plan-doc assumption disproven beyond the corrected entry count.
+  - **Opus validator (independent re-verification, actively re-examined the GpuStruct rejection):**
+    confirmed all 12 entries/scalars exactly; confirmed `RegistrySlotsEmitter` genuinely only emits
+    properties into one host class (no freestanding-type path); confirmed `GpuStructModel`'s `ScalarKind`
+    is exactly `{U32,I32,F32}` with `TryMapScalar` throwing `NotSupportedException` on anything else, and
+    `StructLayout.Build` genuinely requires reflecting an existing decorated type. **One wording
+    correction**: GpuStruct's emission is "GPU-shader-side (C++/GLSL) only" (a sibling
+    `GpuStructGlslEmitter.cs` also exists), not strictly "C++-only" as originally phrased — cosmetic, does
+    not affect the rejection (neither emitter can produce a C# struct with conversions/equality).
+    Confirmed `Emit.MapValueScalar("id")` genuinely returns `"text"`→`string` (not `NamespacedId`),
+    verified against `Emit.cs:353` and `356-365` and `MapElementStructTests.cs:48`. Spot-checked 4 real consumer
+    files directly (`RecipeParser.cs`, `BakedContentPack.cs`, `BodyArchetypeParser.cs`,
+    `MapElementStructTests.cs`) — all plain ordinary-type usage, retirement safe. **Design note carried
+    to Milestone 2**: unlike Increment 1's `[RegistrySlots]` (decorates a real existing aggregator), the
+    shared-map-element structs are freestanding with no natural host class — Milestone 2 must pick an
+    attribute carrier (a marker/placeholder class, or investigate a module-level attribute) and must
+    reproduce the exact `namespace Undertow.Content` + `#nullable enable` header shape. **APPROVED —
+    Milestone 2 may proceed.**
