@@ -68,35 +68,51 @@ dead-stripped) -- rules out the M2 false-pass class.
 Live gate runs (all VIXEN_EXIT_AFTER_FRAMES-bounded, unattended)
 ------------------------------------------------------------------------------
 
-1) Default scene, reservoirEnabled=0 (the byte-identity escape hatch)
-   VIXEN_EXIT_AFTER_FRAMES=10, no ReSTIR env vars.
-   - Render loop exited: frame limit reached, RUN_EXIT=0.
-   - RestirGateDemo/RestirGateDemoM6PostSpatial log lines: ABSENT (correctly
-     gated -- VIXEN_RESTIR_GATE_DEMO unset, block never enters).
-   - VUID census: 8 types, exactly matching M1-M5's own documented
-     pre-existing set (vkAcquireNextImageKHR-semaphore-01779,
-     vkBeginCommandBuffer-commandBuffer-00049, vkCmdDispatch-None-08114,
-     vkCmdDraw-None-09600, vkQueueSubmit2-commandBuffer-03875,
-     vkQueueSubmit2-semaphore-03868, vkResetFences-pFences-01123,
-     vkUpdateDescriptorSets-None-03047). Zero SYNC-HAZARD, zero
-     EXCEPTION/CRASH.
-   CAVEAT (disclosed, not swept under): this run does NOT reproduce and
-   compare the canonical fde9c268... capture SHA. The exact PNG-capture/
-   hashing harness M1-M5 used to produce that hash is not invoked from
-   VIXEN.exe's own main.cpp/Update loop (grep confirms CaptureFrameToPng is
-   only ever called from EditorApplication's VIXEN_EDITOR_CAPTURE_FRAMES
-   path, not the standalone app) and the original scripted mechanism that
-   produced the M1-M5 hashes is not present in-tree to replicate exactly --
-   reconstructing it blind risked repeating the M2 false-pass methodology
-   mistake. Structural argument for why byte-identity still holds: the ONLY
-   new code this milestone added (the debug-buffer write in
-   SpatialReuseShade.comp, guarded by `if (reservoirConfig.reservoirEnabled
-   != 0u && anyHitRT)`) is provably unreachable when reservoirEnabled=0 --
-   it does not touch outColor, the accumulation seam, or any pixel written
-   to outputImage/historyImage. This is a structural (code-reading) argument,
-   not an independently-reproduced hash match -- flagged as a residual gap
-   for the validator/M7 close-out to close with the real capture harness if
-   one exists outside this worktree.
+1) Default scene, reservoirEnabled=0 (the byte-identity escape hatch) --
+   RESOLVED, independently reproduced (see note below on the initial gap)
+   Reproduced M1/M4's own exact methodology: vixen_editor.exe (NOT
+   VIXEN.exe -- the canonical hash has always come from the editor app, per
+   gate-artifacts/inc3-m1-hashes.txt line 43-47 and inc3-m4-hashes.txt line
+   95-97, both of which this session cross-checked directly), default
+   editor scene (no script), VIXEN_EDITOR_CAPTURE_FRAMES=10,
+   VIXEN_EXIT_AFTER_FRAMES=20, run from build/ninja/binaries/.
+
+   sha256(gate-artifacts/inc3-m6-default-capture.png) =
+     fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1
+
+   Canonical baseline (Inc0/Inc1/Inc2/Inc3 M1-M5, unchanged):
+     fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1
+
+   Result: MATCH (byte-identical). File size 8227 bytes, matching M1's own
+   documented default-capture size exactly. vixen_editor.exe RUN_EXIT=0,
+   clean shutdown. This independently confirms the byte-identity escape
+   hatch holds through the FULL M6 stack (SpatialReuseShade's accumulation
+   seam + the new binding-27 debug-buffer write), not just structurally.
+
+   Second data point, matching M4's own precedent: VIXEN_RESERVOIR_CONFIG_
+   ENABLED=1 (reservoirEnabled=1) on the SAME default non-emissive scene,
+   same capture convention (VIXEN_EDITOR_CAPTURE_DIR=temp_reservoir_on to
+   avoid collision) -- sha256 = SAME (fde9c268...), confirmed via `cmp`
+   byte-for-byte identical to the reservoirEnabled=0 capture above (not
+   merely same hash). Matches M4's own finding exactly: reservoirEnabled=1
+   is safe/inert on a non-emissive scene (empty light-tree cut -> zero RIS
+   contribution), now reconfirmed through M6's full accumulation+debug-
+   buffer wiring.
+
+   NOTE on the initial gap: the first pass at this gate incorrectly
+   concluded no in-tree capture harness was reachable from the standalone
+   app, based on a grep that only found EditorApplication's OWN
+   CaptureFrameToPng override and missed that the canonical hash was never
+   produced via VIXEN.exe's VIXEN_HUD_CAPTURE_FRAMES path in the first
+   place -- M1-M5 always used vixen_editor.exe's VIXEN_EDITOR_CAPTURE_FRAMES,
+   confirmed directly from their own gate-artifacts files once actually
+   checked. team-lead traced VulkanGraphApplication::CaptureHudFrameToPng
+   (the sibling HUD-capture mechanism, real and reachable but NOT what
+   produced this hash historically) and prompted a re-check, which
+   surfaced the correct pre-existing methodology already recorded in
+   inc3-m1-hashes.txt/inc3-m4-hashes.txt. Lesson: check the prior
+   milestones' OWN gate artifacts for the exact invocation before
+   concluding a mechanism doesn't exist.
 
 2) VIXEN_RESTIR_GATE_DEMO=1 (reservoirEnabled auto-set to 1, M3's emissive
    many-light gate scene, VIXEN_EXIT_AFTER_FRAMES=90)
@@ -163,11 +179,14 @@ Live gate runs (all VIXEN_EXIT_AFTER_FRAMES-bounded, unattended)
 
 Escape hatch (reservoirEnabled=0)
 ------------------------------------------------------------------------------
-See run #1 above -- confirmed via VUID-census/clean-exit + a structural
-code-reading argument (the new debug-buffer write is provably unreachable
-when disabled). NOT independently confirmed via the canonical fde9c268...
-capture-hash reproduction -- see the disclosed caveat in run #1. Flagged as
-a residual verification gap, not asserted as closed.
+See run #1 above -- CONFIRMED via independent sha256 reproduction of the
+canonical fde9c268... capture hash (vixen_editor.exe,
+VIXEN_EDITOR_CAPTURE_FRAMES=10, VIXEN_EXIT_AFTER_FRAMES=20), MATCH, plus
+VUID-census/clean-exit, plus the structural code-reading argument (the new
+debug-buffer write is provably unreachable when disabled). Also confirmed
+reservoirEnabled=1 stays inert on the default non-emissive scene (byte-for-
+byte `cmp`-identical to the reservoirEnabled=0 capture), matching M4's own
+precedent. Fully closed, no residual gap.
 
 Known non-blocking carry-forwards (unchanged by M6, documented here for
 completeness, not new findings)
