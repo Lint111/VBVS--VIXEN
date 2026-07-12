@@ -303,6 +303,21 @@ set is its own milestone with its own adversarial proof, not a corollary of the 
     before invoking its `build.bat`, and prefer the untargeted `build.bat build` (full graph) over a
     `--target`-scoped one if a scoped build ever reports an unknown-target error against a target that
     demonstrably exists in `build.ninja`.
+  - **Opus validator (independent structural + behavioral re-verification):** read `ActionStack.cpp`'s
+    real `Undo()`/`Redo()` and `SetMutationDispatch.h`'s real lambda-capture list directly; confirmed
+    `selection.ids(ids)` is called exactly once, no lambda captures `selection`/`ids`, structurally
+    ruling out a live-requery. Verified `SetMutationSkipCounters`'s shared_ptr ownership/lifetime and
+    forward/inverse increment correctness against `ActionStack::Dispatch()`'s real calling convention.
+    Stress-tested the dead-entity test for a Gaia-ID-recycling false-positive (ruled out — no entity is
+    added between `del()` and `Undo()`/`Redo()` in that test). Rebuilt the full worktree fresh (confirmed
+    `source:` path in the build log), ran all named binaries directly: `test_set_mutation_dispatch` 5/5,
+    `test_view_editor_layers_reconcile` 2/2, `test_view_selection_provider` 3/3,
+    `test_view_editor_layers_golden` 2/2, AppFlow suite 42/42 (exact per-binary breakdown match), Gaia
+    wrapper tests same pre-existing failures. Computed byte-guard sha256 independently — byte-identical
+    to Inc-C's recorded baseline. `test_editor_toggle_undo_capture` treated as trusted-from-report (live
+    GPU capture, explicitly flagged as an acceptable exception) but paper-checked the claimed PNG sha256
+    values against Inc-C's own recorded baseline — match. Tree clean. **APPROVED, no defects, no files
+    modified.**
 
 ### Task 5 — Lossy vs. non-lossy undo policy (Milestone 3, NEW)
 
