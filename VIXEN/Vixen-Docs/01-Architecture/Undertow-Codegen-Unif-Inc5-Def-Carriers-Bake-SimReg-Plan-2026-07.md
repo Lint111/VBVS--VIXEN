@@ -144,7 +144,7 @@ consumes A's generated types).
   the proof.
 
 ## Milestone Map
-- [ ] **Milestone 1 (Task 1):** ground the shape, decide mechanism (report-back gate). One Sonnet
+- [x] **Milestone 1 (Task 1):** ground the shape, decide mechanism (report-back gate). One Sonnet
   implementer + one Opus validator.
 - [ ] **Milestone 2 (Task 2):** Part A — authored/baked def carriers, build + equivalence proof. One
   Sonnet implementer + one Opus validator.
@@ -154,4 +154,40 @@ consumes A's generated types).
 
 ## Progress Log
 
-(none yet)
+- Milestone 1 (Task 1, research-only): DONE · 2026-07-13 · no files modified in either repo
+  - **Corrected per-feature kind counts (not a flat ~38)**: 38 total kinds in `schemas.json`, but
+    `data=true`→31 (#1), `codec=true`→36 (#2), `simRegister=true`→28 (#7), AuthoredKinds membership
+    (`data:true OR named-symbol`)→32 (#3). Gate-combination matrix: (T,T,T)=28 kinds (the common case);
+    (T,T,F)=3 kinds (`manifest`, `place`, `tag` — in #1/#2/#3 but excluded from #7); (F,T,F)=5 kinds
+    (`dialogue_pattern`, `fragment`, `relation`, `storyline`, `tag_row` — codec-only); `role` is the sole
+    real (F,F,F) peer — `planet` is excluded upstream by the `ReadFields!=null` flat-scalar co-gate (its
+    `orbit` field is a non-generatable `block` kind), not a genuine (F,F,F) bucket member. Opus validator
+    independently re-derived the entire matrix via a Python script against the real `schemas.json` and
+    confirmed every count exactly, flagging only this planet/role bucket-labeling nuance (not a numeric
+    error) — Milestones 2/3's equivalence proofs must account for the `ReadFields!=null` co-gate
+    explicitly to keep "all real gate combinations" coverage honest.
+  - **`[RegistrySlots]` (Increment 1) confirmed sufficient**: slots, Patches, `MergeGeneratedFrom`,
+    `OverridableIds()` all present and real. Real consumers confirmed: `ContentBaker.cs:37`,
+    `ContentLoader.cs:57,66`, `AuthoringModel.cs:192`, plus a second `OverridableIds()` call site at
+    `UndertowSim.cs:159` (beyond this plan's original ground truth). No gap found.
+  - **`CodeModLoader.cs` confirmed to have zero reflection dependency** on this cluster's generated
+    shapes (`Authored{K}Def`/`Baked{K}Def`/`AuthoredKind`/`RegisterKind`) — pure compile-time
+    codegen-to-codegen consumption, no runtime-reflection safety constraint (unlike Inc-3/Inc-4).
+  - **`EmitRegistrySlots.cs` retirement: SAFE, with one concrete addendum.** Only 2 production call
+    sites (`RegistrySlotGenerator.cs:23,26`). ADDITIONALLY found:
+    `tests/Undertow.Core.Tests/Authoring/RegisterKindsCodegenTests.cs:49` directly unit-tests
+    `EmitRegistrySlots.All` itself (not just its generated output) — this test must be migrated/retired
+    in Milestone 3 alongside the source file, or retirement breaks the build. Folded into Milestone 3's
+    scope.
+  - **Mechanism confirmed**: A-then-B sequencing is a hard ordering dependency (Part B's generated
+    `Bake()`/`Register()` lambdas reference Part A's `Authored{K}Def`/`Baked{K}Def` types by name — not
+    just a risk-isolation choice). Part A extends the existing `[RegistrySlots]` emitter family (same
+    attribute/model, a second emitter pass, no new attribute). Part B needs genuinely new small emitters
+    (`AuthoredKindsEmitter`, `RegisterKindsEmitter`) — confirmed by the Opus validator surveying all 27
+    existing Yeroket emitters, none of which emits an array-of-closures method table.
+  - No blockers.
+  - **Opus validator (independent re-verification):** APPROVED. Independently re-derived the full gate
+    matrix from real `schemas.json` via a Python script (not trusted from the report), verified all
+    cited file:line claims directly, confirmed the Yeroket-side `[RegistrySlots]` mechanism's real shape
+    on the Inc-4 tip, and confirmed Part B's "genuinely new emitter" claim by surveying all 27 existing
+    Yeroket emitters. Cleared to proceed to Milestone 2.
