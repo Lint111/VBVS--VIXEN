@@ -110,8 +110,8 @@ TEST_F(AttributeRegistryIntegrationTest, GaiaVoxelWorldOctreeIntegration) {
 // ============================================================================
 TEST_F(AttributeRegistryIntegrationTest, BrickViewPointerAccess) {
     // Create a brick and verify direct pointer access works
+    // Brick ids are 0-based (m_nextBrickID starts at 0) — id 0 is the valid first brick.
     uint32_t brickID = registry->allocateBrick();
-    ASSERT_NE(brickID, 0) << "Should allocate brick successfully";
 
     BrickView view = registry->getBrick(brickID);
 
@@ -206,8 +206,8 @@ TEST_F(AttributeRegistryIntegrationTest, MultipleVoxelsVaryingDensity) {
 // ============================================================================
 TEST_F(AttributeRegistryIntegrationTest, BackwardCompatibility_StringLookup) {
     // Verify that string-based attribute lookup still works (delegates to index lookup)
+    // Brick ids are 0-based — id 0 is the valid first brick.
     uint32_t brickID = registry->allocateBrick();
-    ASSERT_NE(brickID, 0) << "Should allocate brick";
 
     BrickView view = registry->getBrick(brickID);
 

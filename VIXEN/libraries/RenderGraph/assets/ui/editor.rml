@@ -4,26 +4,20 @@
     <link type="text/rcss" href="editor.rcss"/>
 </head>
 <body>
-    <div id="panel">
+    <div data-model="editor_layers" id="panel">
         <div class="title">Layers</div>
-        <!-- Inc1: layer rows are static (the golden document has exactly 3 layers: base/bulge/cut).
-             Each row's checkbox div carries id="layer-<index>-toggle" and hit-mask="none" (plain
-             rectangular hit test) so UISelectionProviderNode's click hit-test resolves it and
-             EditorApplication::Update drains the id via DrainClickedElementId + ParseLayerToggleId. -->
-        <div class="row">
-            <div id="layer-0-toggle" class="checkbox checked" hit-mask="none"></div>
-            <span class="col-name">base</span>
-            <span class="col-op">box</span>
-        </div>
-        <div class="row">
-            <div id="layer-1-toggle" class="checkbox checked" hit-mask="none"></div>
-            <span class="col-name">bulge</span>
-            <span class="col-op">smooth_union</span>
-        </div>
-        <div class="row">
-            <div id="layer-2-toggle" class="checkbox checked" hit-mask="none"></div>
-            <span class="col-name">cut</span>
-            <span class="col-op">subtract</span>
+        <!-- Inc-A2 (View-Model-Binding-Inc-A2-Plan-2026-07.md): layer rows are now data-model-bound,
+             replacing the Inc1 static markup (3 hand-authored "checkbox checked" divs). Each row's
+             id (row.elementId, "layer-<index>-toggle" -- built once in EditorLayersView::
+             PopulateFromMask, not re-derived here via string concat) still carries hit-mask="none"
+             so UISelectionProviderNode's click hit-test resolves it and EditorApplication::Update
+             drains the id via DrainClickedElementId and dispatches it through AppFlowRuntime::
+             DispatchBySelector (Inc-4 reframe R5 — the editor names no action verbs). row.isChecked
+             drives the "checked" class the same way hud.rml's data-class-focused et al. do. -->
+        <div class="row" data-for="row : layers">
+            <div data-attr-id="row.elementId" class="checkbox" data-class-checked="row.isChecked" hit-mask="none"></div>
+            <span class="col-name">{{row.name}}</span>
+            <span class="col-op">{{row.op}}</span>
         </div>
         <div class="hint">Click a box to toggle a layer. Press S to save.</div>
     </div>

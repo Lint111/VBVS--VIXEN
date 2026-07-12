@@ -1,0 +1,49 @@
+Sampled Lighting Inc1 M1 -- TraceWorld extraction -- live gate (byte-identity)
+
+Gate: offscreen capture must be byte-identical to the Inc0-merged baseline. This
+is a PURE extraction (shaders/TraceWorld.glsl exports TraceWorld()/WorldHit; the
+existing per-pixel instance loop in BodyInstanceRayMarch.comp's main() -- procedural
+SDF sphere-trace + ESVO tier-crossing traversal, nearest-hit accumulation across all
+body instances -- was moved VERBATIM, same math/ordering/early-outs, zero behavior
+change). main() now calls TraceWorld(...) then shades exactly as before with the
+existing computeLighting.
+
+Scene: vixen_editor.exe default (no document loaded), offscreen readback via
+VIXEN_EDITOR_CAPTURE_FRAMES=5 (temp/run_m1_capture.bat, same pattern as Inc0 M2/M3).
+
+BEFORE = shaders/BodyInstanceRayMarch.comp at worktree HEAD 19db1e84 (merged-Inc0 base,
+pre-extraction; single traversal body inline in main()).
+AFTER  = shaders/BodyInstanceRayMarch.comp + shaders/TraceWorld.glsl (this milestone;
+TraceWorld() factored out, main() calls it). Only shader source differed between the
+two captures -- shaders compile at runtime (glslang), so no C++ rebuild was needed
+between BEFORE and AFTER; both ran against the identical vixen_editor.exe binary.
+
+sha256(inc1-m1-before.png) = fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1
+sha256(inc1-m1-after.png)  = fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1
+
+Result: MATCH (byte-identical). This hash also equals Inc0 M2/M3's own AFTER hash
+(fde9c268...) -- confirms the scene/lighting is unchanged since Inc0 and the
+extraction introduced zero visual delta.
+
+Both captures' validation/error noise is identical and matches the known pre-existing
+baseline (same counts seen in Inc0 M3's gate): 10x VUID-vkCmdDispatch-None-08114, plus
+7 push_constant_gatherer "Type mismatch for field" ERROR log lines (time, raySizeCoef,
+raySizeBias, instanceCount, fov, debugTargetPixel, debugMode) -- pre-existing, not
+introduced by this milestone.
+
+Static pre-check: glslangValidator.exe -V --target-env vulkan1.3 -I. BodyInstanceRayMarch.comp
+compiled clean (SPIR-V generated, 167300 bytes) before either live capture was run.
+
+Both apps booted and closed cleanly:
+  - vixen_editor.exe: exit 0 (temp/run_m1_capture.log) -- "Shader bundle build
+    completed successfully: BodyInstanceRayMarch (1704ms)" confirms the edited
+    source recompiled (not a stale cache).
+  - VIXEN.exe:        exit 0 (temp/run_m1_main_app.log)
+
+git status confirms only the two intended files changed: shaders/BodyInstanceRayMarch.comp
+(modified) and shaders/TraceWorld.glsl (new) -- VoxelRayMarch*.comp/.frag/VoxelRT*.rchit
+untouched, per scope.
+
+Platform: Windows-native build (vixen-ninja preset, MSVC), real GPU (not lavapipe) --
+this worktree's binaries were built fresh (no prior build existed) and both targets
+(VIXEN, vixen_editor) linked with zero errors.

@@ -562,14 +562,22 @@ TEST_F(AppFlowEditorToggleRenderTest, ToggleThenUndoRestoresRender) {
     ASSERT_EQ(pixelsInitial.size(), size_t(kW) * kH * 4);
 
     // 2. Toggle the cut layer off through AppFlowRuntime, re-render with the resulting mask.
+    // ToggleLayer is a registered handler (design §4.3), not a framework verb: the framework
+    // knows nothing about layers or self-inverse toggling, only that an id routes to a fn.
     int changed = 0;
-    ASSERT_EQ(rt.ToggleLayer(kCutLayerIndex, [&]{ ++changed; }), Vixen::AppFlow::DispatchResult::Ok);
+    rt.RegisterHandler(Vixen::AppFlow::Generated::FlowActionId::ToggleLayer,
+        [&](const Vixen::AppFlow::AppFlowRuntime::Params&){
+            rt.Stack().Dispatch(Vixen::AppFlow::Generated::FlowActionId::ToggleLayer,
+                [&](bool /*forward*/){ rt.Layers().Toggle(kCutLayerIndex); ++changed; });
+        });
+    ASSERT_EQ(rt.DispatchById(Vixen::AppFlow::Generated::FlowActionId::ToggleLayer),
+              Vixen::AppFlow::DispatchResult::Ok);
     EXPECT_FALSE(rt.Layers().IsEnabled(kCutLayerIndex));
     EXPECT_EQ(changed, 1);
     const std::vector<uint8_t> pixelsToggled = renderMask(rt.Layers().Mask());
 
     // 3. Undo through AppFlowRuntime, re-render again.
-    ASSERT_EQ(rt.Undo(), Vixen::AppFlow::DispatchResult::Ok);
+    ASSERT_EQ(rt.Stack().Undo(), Vixen::AppFlow::DispatchResult::Ok);
     EXPECT_TRUE(rt.Layers().IsEnabled(kCutLayerIndex));
     EXPECT_EQ(changed, 2);
     const std::vector<uint8_t> pixelsUndone = renderMask(rt.Layers().Mask());

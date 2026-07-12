@@ -517,6 +517,13 @@ private:
      * Handle leaf hit: perform brick traversal and return hit result.
      * Returns nullopt if traversal should continue (brick miss).
      */
+    // Effective traversal domain: the actual root (Octree::rootDepth) covers only
+    // [worldMin, worldMin + frameSize * 2^rootDepth / 2^maxLevels]. Equal to m_worldMax
+    // for full-depth trees (bodies/shells/dense) — sparse clustered content roots lower.
+    int rootShortfall() const;
+    int effectiveLevels() const;
+    glm::vec3 effectiveWorldMax() const;
+
     std::optional<ISVOStructure::RayHit> handleLeafHit(
         ESVOTraversalState& state,
         const ESVORayCoefficients& coef,

@@ -93,17 +93,25 @@ TEST(SnapshotUndo, MixedGroupUndoesAsOneUnit) {
     EXPECT_EQ(st.UndoDepth(), 0u);
 }
 
-// Task 4: AppFlowRuntime owns LayerController + a self-inverse ToggleLayer dispatch whose
-// onChanged (re-flatten) hook fires on both forward apply and undo.
+// Task 4: AppFlowRuntime owns LayerController + a self-inverse ToggleLayer handler whose
+// onChanged (re-flatten) hook fires on both forward apply and undo. The handler is
+// registered here (design §4.3 — handlers are self-contained; the framework knows none of
+// this), mirroring how the editor would wire it in R5.
 TEST(SnapshotUndo, RuntimeToggleLayerAndUndoFireOnChanged) {
     AppFlowRuntime rt(nullptr, /*sender*/1);
     ASSERT_EQ(rt.Load(), LoadResult::Ok);
     rt.Layers().SetLayerCount(3);
     int changed = 0;
-    EXPECT_EQ(rt.ToggleLayer(2, [&]{ ++changed; }), DispatchResult::Ok);
+    rt.RegisterHandler(FlowActionId::ToggleLayer, [&](const AppFlowRuntime::Params&){
+        rt.Stack().Dispatch(FlowActionId::ToggleLayer, [&](bool /*forward*/){
+            rt.Layers().Toggle(2);
+            ++changed;
+        });
+    });
+    EXPECT_EQ(rt.DispatchById(FlowActionId::ToggleLayer), DispatchResult::Ok);
     EXPECT_FALSE(rt.Layers().IsEnabled(2));
     EXPECT_EQ(changed, 1);                 // onChanged fired on apply
-    EXPECT_EQ(rt.Undo(), DispatchResult::Ok);
+    EXPECT_EQ(rt.Stack().Undo(), DispatchResult::Ok);
     EXPECT_TRUE(rt.Layers().IsEnabled(2)); // reverted
     EXPECT_EQ(changed, 2);                 // onChanged fired again on undo
 }

@@ -3,6 +3,11 @@
 #include "ShaderCompiler.h"
 #include <filesystem>
 #include <fstream>
+#ifdef _WIN32
+#include <process.h>
+#else
+#include <unistd.h>
+#endif
 
 using namespace ShaderManagement;
 
@@ -10,7 +15,19 @@ using namespace ShaderManagement;
 class ShaderCacheManagerTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        testCacheDir = std::filesystem::temp_directory_path() / "shader_cache_test";
+        // Per-test + per-process dir: the old fixed "shader_cache_test" path made parallel
+        // ctest jobs (each gtest case is its own ctest test/process) remove_all each other's
+        // cache mid-test — the suite's long-standing under--j flake. Test name disambiguates
+        // within one ctest run; the process id disambiguates concurrent runs (two build trees).
+        const auto* info = ::testing::UnitTest::GetInstance()->current_test_info();
+        testCacheDir = std::filesystem::temp_directory_path() /
+            ("shader_cache_test_" + std::to_string(
+#ifdef _WIN32
+                 static_cast<unsigned long>(::_getpid())
+#else
+                 static_cast<unsigned long>(::getpid())
+#endif
+                 ) + "_" + info->name());
 
         // Clean up any existing test cache
         if (std::filesystem::exists(testCacheDir)) {

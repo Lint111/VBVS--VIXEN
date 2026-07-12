@@ -47,11 +47,39 @@ bool BindingStore::AddBinding(const BindingSpec& spec, std::string& warn) {
 
 bool BindingStore::TryGetForSelector(const std::string& selector, BoundAction& out) const {
     auto it = bindings_.find(selector);
-    if (it == bindings_.end()) {
-        return false;
+    if (it != bindings_.end()) {
+        out = it->second;   // exact wins
+        return true;
     }
-    out = it->second;
-    return true;
+    for (const auto& p : patterns_) {
+        if (selector.size() <= p.prefix.size() + p.suffix.size()) continue;
+        if (selector.compare(0, p.prefix.size(), p.prefix) != 0) continue;
+        if (selector.compare(selector.size() - p.suffix.size(), p.suffix.size(), p.suffix) != 0) continue;
+        std::string mid = selector.substr(p.prefix.size(), selector.size() - p.prefix.size() - p.suffix.size());
+        if (mid.empty()) continue;
+        out = BoundAction{p.action, p.on, {{p.paramName, mid}}};
+        return true;
+    }
+    return false;
+}
+
+void BindingStore::AddElementTrigger(const Generated::AppFlowElementTrigger& trig) {
+    const std::string pat = trig.elementPattern;
+    const auto lb = pat.find('{');
+    const auto rb = pat.find('}');
+    if (lb == std::string::npos || rb == std::string::npos) {
+        // No {placeholder} -> the pattern is a literal selector ("back-button"): exact-match,
+        // no extracted param. First-win, same as AddBinding (never overwrite).
+        if (!pat.empty() && !bindings_.contains(pat)) {
+            bindings_.emplace(pat, BoundAction{trig.action, trig.on, {}});
+        }
+        return;
+    }
+    if (rb < lb) {
+        return;   // malformed pattern -> inert (never a wrong dispatch)
+    }
+    // Split "layer-{index}-toggle" into prefix="layer-", suffix="-toggle".
+    patterns_.push_back({pat.substr(0, lb), pat.substr(rb + 1), trig.paramName, trig.action, trig.on});
 }
 
 } // namespace Vixen::AppFlow

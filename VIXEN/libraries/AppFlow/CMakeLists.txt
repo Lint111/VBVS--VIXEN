@@ -11,6 +11,9 @@ set(APPFLOW_HEADERS
     include/BindingStore.h
     include/LayerController.h
     include/AppFlowRuntime.h
+    include/InputProfile.h
+    include/IViewDataProvider.h
+    include/LayerControllerViewDataProvider.h
 )
 set(APPFLOW_SOURCES
     src/AppFlowLoader.cpp
@@ -19,6 +22,7 @@ set(APPFLOW_SOURCES
     src/BindingStore.cpp
     src/LayerController.cpp
     src/AppFlowRuntime.cpp
+    src/InputProfile.cpp
 )
 add_library(AppFlow STATIC ${APPFLOW_HEADERS} ${APPFLOW_SOURCES})
 target_include_directories(AppFlow PUBLIC

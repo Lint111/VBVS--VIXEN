@@ -127,6 +127,94 @@ layout(std430, binding = 15) readonly buffer TierRefTableBuffer { TierRef tierRe
 // exactly like TierRefTableBuffer/MipPoolBuffer above.
 layout(std430, binding = 16) readonly buffer OccupancyGridBuffer { float occupancyGrid[]; };
 
+// ============================================================================
+// LIGHTING CONFIG (Sampled Lighting Inc0 M3 — binding 17)
+// ============================================================================
+// Single LightingConfig record (kernel-codegen-generated struct, std430 —
+// see Generated/LightingConfig.glsl / LightingConfig.g.h). Bound as an SSBO
+// (not a UBO) because the framework emits std430 only; a std140 UBO would
+// restride Light's nested array and desync from the generated C++ layout
+// (see test_lightingconfig_sdi_parity.cpp). Uploaded per-frame from a ring
+// buffer (LightingConfigNode) — default content = the single directional
+// light Lighting.glsl previously hardcoded, so this milestone is a
+// zero-visual-delta plumbing change.
+#include "Generated/LightingConfig.glsl"
+
+layout(std430, binding = 17) readonly buffer LightingConfigSSBO {
+    LightingConfig lightingConfig;
+};
+
+// ============================================================================
+// HIT RECORD BUFFER (Sampled Lighting Inc1 M3 — binding 18)
+// ============================================================================
+// Per-pixel G-buffer-equivalent, one HitRecord per dispatched pixel, indexed
+// by the same flat row-major (y*width+x) addressing every full-screen compute
+// pass in this codebase uses. This milestone writes AND reads it back in the
+// SAME shader/dispatch (main() below) to prove the pack/unpack round-trips
+// losslessly through the real SSBO before Task 4 moves the read to a separate
+// DirectLighting.comp pass. Sized by the dispatch's own imageSize(outputImage)
+// at record time — C++ allocates it to match (see BuildRenderGraph.cpp M3).
+#include "HitRecord.glsl"
+
+layout(std430, binding = 18) buffer HitRecordBuffer {
+    HitRecord hitRecords[];
+};
+
+// ============================================================================
+// SHADOW CONFIG (Sampled Lighting Inc1 M4 — binding 19)
+// ============================================================================
+// Single ShadowConfig record (kernel-codegen-generated struct, std430 — see
+// Generated/ShadowConfig.glsl / ShadowConfig.g.h). Bound as an SSBO, mirroring
+// LightingConfigSSBO's own std430-not-std140 rationale (the framework emits
+// std430 only). Uploaded per-frame from a ring buffer (ShadowConfigNode).
+#include "Generated/ShadowConfig.glsl"
+
+layout(std430, binding = 19) readonly buffer ShadowConfigSSBO {
+    ShadowConfig shadowConfig;
+};
+
+// ============================================================================
+// TEMPORAL ACCUMULATION (Sampled Lighting Inc2 M1/M2/M4 — bindings 20/21)
+// ============================================================================
+// Single AccumulationConfig record (kernel-codegen-generated struct, std430 — see
+// Generated/AccumulationConfig.glsl / AccumulationConfig.g.h) plus the persistent
+// history storage image (AccumulationHistoryNode — NOT the RenderTargetNode ring,
+// which rotates every frame per KI-009; this image survives across frames by
+// design). M1 scope was PLUMBING ONLY (both bindings declared, unread). M2 wires
+// the accumulate seam (main(), immediately before imageStore(outputImage,...)):
+// when accumulationConfig.enabled != 0, blend outColor with historyImage and
+// write the blend to both images; with enabled == 0 the seam is still a pure
+// passthrough — the render stays byte-identical to Inc1.
+#include "Generated/AccumulationConfig.glsl"
+
+layout(std430, binding = 20) readonly buffer AccumulationConfigSSBO {
+    AccumulationConfig accumulationConfig;
+};
+
+// Format matches outputImage (R8G8B8A8_UNORM — AccumulationHistoryNode's own default,
+// confirmed from RenderTargetNode's format). Not yet read/written this milestone (M2).
+layout(rgba8, binding = 21) uniform image2D historyImage;
+
+// ============================================================================
+// PREV-FRAME CAMERA MATRIX (Sampled Lighting Inc2 M3 — binding 22)
+// ============================================================================
+// Single PrevCameraConfig record (kernel-codegen-generated struct, std430 —
+// see Generated/PrevCameraConfig.glsl / PrevCameraConfig.g.h): LAST frame's
+// view*projection matrix (world -> prev-frame clip space), retained by
+// CameraNode (compute-current-then-store-previous each frame) and uploaded
+// per-frame from a ring buffer (PrevCameraConfigNode). A dedicated SSBO
+// rather than a push-constant field: a mat4 is 64 B and the push-constant
+// block below is already 72 B (of the 128 B Vulkan-guaranteed minimum) — see
+// PrevCameraConfig.cs's file header. PLUMBING ONLY this milestone: declared
+// here but NOT read anywhere in the outColor path — M4 consumes it to
+// reproject HitRecord.worldPos into prev-frame screen space for historyImage
+// sampling.
+#include "Generated/PrevCameraConfig.glsl"
+
+layout(std430, binding = 22) readonly buffer PrevCameraConfigSSBO {
+    PrevCameraConfig prevCameraConfig;
+};
+
 #define FORMAT_BINARY     0u
 #define FORMAT_STORED_SDF 1u
 
@@ -252,6 +340,10 @@ layout(push_constant) uniform PushConstants {
                              // regardless of DEBUG_GRID_SPACING (-1,-1 disables); lets the
                              // trace follow the actual click/cursor position instead of a
                              // fixed viewport-center crosshair (bytes 60-67)
+    uint  accumFrameCount;  // Sampled Lighting Inc2 M2: consecutive STATIC-camera frame count,
+                             // 1-based, reset to 1 by AccumulationConfigNode the instant the
+                             // camera moves; drives the accumulate seam's converging-1/N alpha
+                             // below (bytes 68-71)
 } pc;
 
 // ============================================================================
@@ -1145,6 +1237,57 @@ bool traverseOctreeInstanced(vec3 rayOrigin, vec3 rayDir,
     return false;
 }
 
+#include "TraceWorld.glsl"   // Sampled Lighting Inc1 M1: single traversal seam (pure extraction)
+
+// ============================================================================
+// DIRECT LIGHTING WITH SHADOW RAYS (Sampled Lighting Inc1 M4)
+// ============================================================================
+// Extends Lighting.glsl's data-driven computeLighting(color,normal,rayDir,
+// roughness,LightingConfig) overload with a shadow-ray occlusion test per
+// light, gated by shadowConfig.enabled. Lives HERE (not Lighting.glsl) because
+// it needs TraceWorldShadow (TraceWorld.glsl, included just above) in scope —
+// Lighting.glsl is included much earlier (before the traversal machinery
+// exists) and stays a pure shading-math file with no traversal dependency.
+//
+// Math is IDENTICAL to Lighting.glsl's data-driven overload (ambient term +
+// per-light evalBRDF*radiance*NdotL, matching computeLighting exactly) with
+// ONE addition: when shadowConfig.enabled, each light's contribution is
+// multiplied by 0.0 (fully occluded) or 1.0 (unoccluded) based on a
+// TraceWorldShadow cast toward that light. When shadowConfig.enabled==0 this
+// function reduces to EXACTLY Lighting.glsl's unshadowed sum — the M4 byte-
+// identity gate (ShadowConfig.enabled=0 reproduces the M3 baseline) depends
+// on this being bit-for-bit the same accumulation order/terms.
+//
+// Self-intersection bias: per TraceWorldShadow's documented convention (a),
+// the shadow ray's ORIGIN is offset off the surface (worldPos + normal*eps)
+// and tmin is passed as 0.0 — NOT both conventions at once (double-biasing).
+vec3 computeLightingWithShadows(vec3 color, vec3 normal, vec3 worldPos, vec3 rayDir,
+                                float roughness, LightingConfig lighting) {
+    vec3 viewDir = normalize(-rayDir);
+
+    vec3 Lo = lighting.ambientIntensity * color;
+    for (uint i = 0u; i < lighting.lightCount; ++i) {
+        Light light = lighting.lights[i];
+        vec3 lightDir = normalize(light.direction_or_position);
+
+        float shadowFactor = 1.0;
+        if (shadowConfig.enabled != 0u) {
+            // kind 0 = directional (see Lighting.glsl's data-driven overload):
+            // direction_or_position is the direction AWAY from the surface
+            // toward the light, so the shadow ray tests all the way to
+            // maxShadowDistance (no finite light position to stop short at).
+            vec3 shadowOrigin = worldPos + normal * shadowConfig.biasEpsilon;
+            bool occluded = TraceWorldShadow(shadowOrigin, lightDir,
+                                             0.0,
+                                             shadowConfig.maxShadowDistance);
+            shadowFactor = occluded ? 0.0 : 1.0;
+        }
+
+        Lo += evalBRDF(color, roughness, normal, viewDir, lightDir) * light.radiance * shadowFactor;
+    }
+    return Lo;
+}
+
 // ============================================================================
 // MAIN
 // ============================================================================
@@ -1163,271 +1306,59 @@ void main() {
     vec3 skyColor = vec3(0.02, 0.02, 0.06) * (1.0 - uv.y * 0.4);
 
     // -----------------------------------------------------------------------
-    // Per-pixel nearest-hit accumulator (across all instances)
-    // -----------------------------------------------------------------------
-    bool  anyHit          = false;
-    float bestT           = 1e30;
-    vec3  bestColor       = skyColor;
-    vec3  bestNormal      = vec3(0.0, 1.0, 0.0);
-    float bestRoughness   = 0.5;   // Inc3 M3: default for binary/procedural paths
-    uint  bestBrickIndex  = 0u;
-    uint  bestVoxelIdx    = 0u;
-
-    // -----------------------------------------------------------------------
     // Record metrics once for the dominant hit
     // -----------------------------------------------------------------------
     recordRayStart();
 
     // -----------------------------------------------------------------------
-    // INSTANCE LOOP
+    // Single traversal seam (Sampled Lighting Inc1 M1): procedural + ESVO
+    // instance loop, nearest-hit across all body instances.
     // -----------------------------------------------------------------------
-    int numInstances = clamp(pc.instanceCount, 0, 3 * 64); // safety cap
-    for (int instIdx = 0; instIdx < numInstances; ++instIdx) {
-
-        BodyInstance inst = bodyInstances[instIdx];
-
-        // --- Procedural provider: analytic SDF sphere-trace (no octree) ---
-        if (inst.providerKind == PROVIDER_PROCEDURAL) {
-            vec3 pNormal;
-            float pT;
-            bool pHit = false;
-
-            // recipeId 0/1 stay on the hand-written legacy analytic path (RECIPE_SPHERE /
-            // RECIPE_DISPLACED_SPHERE) — byte-identical formula, unchanged by the M5 splice.
-            // recipeId >= 2 is registry-driven: only reachable when at least one recipe was
-            // registered (the ONLY way a BodyInstance can carry such an id), which is also
-            // the only condition under which evalRecipeField/getRecipeBoundSphere exist in
-            // this translation unit (see the splice-marker comment above) — so this branch
-            // never references an undeclared identifier in an unspliced build.
-            if (inst.recipeId < 2u) {
-                vec3 pCenter = inst.worldPos;
-                vec3 pParams = vec3(inst.recipeParams[0], inst.recipeParams[1], inst.recipeParams[2]);
-                pHit = traceProceduralBody(inst.recipeId, pCenter, pParams, rayOrigin, rayDir,
-                                           pNormal, pT);
-            }
-#ifdef VIXEN_UBER_RECIPE_SPLICED
-            else {
-                vec3  boundCenter; float boundRadius; float relaxation;
-                getRecipeBoundSphere(inst.recipeId, boundCenter, boundRadius, relaxation);
-
-                // Front-to-back early-reject (Task 12): mirrors the ESVO branch's own
-                // entryTWorld > bestT discipline below — skip the march entirely when this
-                // instance's bound-sphere entry point is already farther than a hit some
-                // OTHER instance already recorded this pixel. instanceIterCount stays 0u for
-                // a rejected instance (same "zero traversal iterations, not just a discarded
-                // result" proof the ESVO branch relies on for its own gate test).
-                vec3  oc   = rayOrigin - boundCenter;
-                float b    = dot(oc, rayDir);
-                float c    = dot(oc, oc) - boundRadius * boundRadius;
-                float disc = b * b - c;
-                if (disc < 0.0) {
-                    instanceIterCount[instIdx] = 0u;
-                    continue;  // ray misses this instance's bound sphere entirely
-                }
-                float entryT = max(-b - sqrt(disc), 0.0);
-                if (entryT > bestT) {
-                    instanceIterCount[instIdx] = 0u;
-                    continue;  // nearest possible hit is already farther than bestT
-                }
-
-                // Task 13 far early-out: once the WHOLE bound sphere's projected footprint
-                // at entryT has sub-resolved to under one screen pixel (same cone-spread
-                // formula the ESVO branch's screen-space LOD cutoff uses — raySizeCoef is
-                // 2*tan(halfFovPerPixel)), further marching can't resolve any more surface
-                // detail than a flat shade already gives. Deliberately coarse: color/normal
-                // fidelity at this distance is out of scope for Task 13 (plan's own note),
-                // this only saves the march's per-step cost once it can no longer matter.
-                // Gated on raySizeCoef>0.0 so LOD-disabled builds/tests (raySizeCoef==0,
-                // e.g. the M4/M5 offscreen harnesses) never take this path.
-                bool farSubPixel = false;
-                if (pc.raySizeCoef > 0.0) {
-                    float footprint = entryT * pc.raySizeCoef + pc.raySizeBias;
-                    farSubPixel = footprint >= 2.0 * boundRadius;
-                }
-
-                if (farSubPixel) {
-                    instanceIterCount[instIdx] = 1u;  // flat-shaded, not a full march — nonzero proves it wasn't rejected
-                    pHit    = true;
-                    pT      = entryT;
-                    pNormal = normalize(-rayDir);  // face the camera — cheapest plausible normal for a sub-pixel blob
-                } else {
-                    uint pSteps;
-                    pHit = traceUberRecipeBody(inst.recipeId, boundCenter, boundRadius, relaxation,
-                                               rayOrigin, rayDir, pNormal, pT, pSteps);
-                    // Task 12 evidence (c): a non-rejected instance always writes its real march
-                    // step count (>=1, even on a miss that exhausted MAX_STEPS or exited tFar) —
-                    // only the two continue-above paths leave this 0u, so "0 here" means "the
-                    // early-reject fired," matching the ESVO branch's own convention exactly.
-                    instanceIterCount[instIdx] = pSteps;
-                }
-            }
-#endif
-
-            if (pHit && pT < bestT) {
-                bestT          = pT;
-                bestColor      = inst.color;   // procedural base colour = instance tint
-                bestNormal     = pNormal;      // smooth SDF-gradient normal
-                bestBrickIndex = 0u;
-                bestVoxelIdx   = 0u;
-                anyHit         = true;
-            }
-            continue;  // procedural body fully handled; skip the ESVO path
-        }
-
-        uint oi = inst.octreeIndex;  // index into runtime-sized configs[] SSBO (I3.2)
-
-        // Inc2 M6: Stored-SDF bodies are NO LONGER special-cased here. They flow
-        // through the SAME ESVO path as binary bodies below; the leaf hit-test inside
-        // traverseOctreeInstanced dispatches to the trilinear SDF march by formatId.
-        // (The old standalone marchStoredSdf flat sphere-trace has been retired.)
-
-        // Set globals used by fetchESVONode (via g_esvoNodeBase in ESVOTraversal.glsl)
-        // and by marchBrickInstanced (via g_brickArrayBase below).
-        g_octreeIdx      = int(oi);
-        g_esvoNodeBase   = configs[oi].nodeArrayBase;   // declared in ESVOTraversal.glsl
-        g_brickArrayBase = configs[oi].brickArrayBase;
-
-        // ------------------------------------------------------------------
-        // World → instance-local ray transform (single consistent frame)
-        //
-        // The instance places the body at inst.worldPos, scaled by
-        // inst.renderScale.  Serialize emits the BASE (un-instanced) octree
-        // mapping in configs[oi]: worldToLocal maps the base octree's world
-        // frame → its [0,1]^3 grid (it already folds in the gridMin/gridMax
-        // centre — we must NOT re-apply a centre offset here).
-        //
-        // To render an INSTANCE we first de-instance the world ray into the
-        // base octree's world frame by undoing the placement, then let
-        // traverseOctreeInstanced apply configs[oi].worldToLocal exactly once:
-        //
-        //   p_base = (p_world      - worldPos) / renderScale     (point)
-        //   d_base =  d_world                  / renderScale     (direction)
-        //
-        // CRITICAL: the SAME /renderScale must scale BOTH origin and
-        // direction, or the t-parametrisation is warped and hitT (used for the
-        // cross-instance nearest-hit test and the LOD coarse-shade distance)
-        // ends up in inconsistent units when renderScale != 1.  The translation
-        // term drops out of the direction because a direction is a difference
-        // of points; the scale does not.
-        //
-        // We deliberately do NOT renormalise d_base: traverseOctreeInstanced
-        // and initRayCoefficients are scale-tolerant (they derive t-spans from
-        // ratios), and keeping d_base = rayDir/renderScale means hitT is in the
-        // SAME world-distance units across every instance, so the nearest-hit
-        // comparison is correct.  (rayDir itself is already unit-length.)
-        // ------------------------------------------------------------------
-        float invScale = 1.0 / inst.renderScale;
-        vec3  instOrigin = (rayOrigin - inst.worldPos) * invScale;
-        vec3  instDir    = rayDir * invScale;
-
-        // Quick AABB cull in the base octree's [0,1]^3 grid (same transform the
-        // traversal uses internally), before paying for full ESVO descent.
-        vec3 localRayOrigin = (configs[oi].worldToLocal * vec4(instOrigin, 1.0)).xyz;
-        vec3 localRayDir    = mat3(configs[oi].worldToLocal) * instDir;
-        vec2 gridT = rayAABBIntersection(localRayOrigin, localRayDir, vec3(0.0), vec3(1.0));
-        if (gridT.y < 0.0) {
-            instanceIterCount[instIdx] = 0u;  // proves zero traversal iterations (Inc1 M4b test)
-            continue;  // ray misses this instance's AABB
-        }
-
-        // Inc1 M4b: instances are sorted front-to-back CPU-side (see
-        // BodyOctreeSceneNode::SortInstancesFrontToBack), so bestT here already
-        // reflects every CLOSER instance's hit. gridT.x is a LOCAL grid-space t
-        // (after worldToLocal), not directly comparable to bestT (a world-space
-        // distance) — convert the AABB entry point back to world space the SAME
-        // way traverseOctreeInstanced does internally (its rayStartWorld/
-        // tEntryWorld computation) before comparing, or this reject silently
-        // compares mismatched units. Skipped when the ray already starts inside
-        // this instance's AABB (gridT.x < 0.0): there is no meaningful "entry
-        // point" to compare in that case, and the instance may still be the
-        // nearest hit.
-        if (gridT.x >= 0.0) {
-            // Mirror traverseOctreeInstanced's OWN internal rayStartWorld/tEntryWorld
-            // computation exactly (lines ~524-526 above): entryPointWorldInstSpace is
-            // already in the de-instanced (instOrigin-relative) frame at REAL world
-            // scale (configs[oi].localToWorld bakes in kWorldGridSize) — measuring its
-            // distance from instOrigin (NOT re-applying renderScale/worldPos a second
-            // time) gives the same world-consistent t the traversal itself uses for
-            // hitT, by the identical scale-ratio-preserving argument documented above
-            // (instDir = rayDir/renderScale is not unit-length, but t computed this way
-            // is still in true world-distance units — see the invScale comment block).
-            vec3 entryPointLocal = localRayOrigin + localRayDir * (gridT.x + EPSILON);
-            vec3 entryPointWorldInstSpace =
-                (configs[oi].localToWorld * vec4(entryPointLocal, 1.0)).xyz;
-            float entryTWorld = length(entryPointWorldInstSpace - instOrigin);
-            if (entryTWorld > bestT) {
-                // This instance's nearest possible entry is already farther than
-                // something already hit this ray — its full ESVO traversal
-                // (below) cannot possibly produce the nearest hit. Skip it
-                // entirely: zero traversal iterations, not just a discarded
-                // result.
-                instanceIterCount[instIdx] = 0u;  // proves zero traversal iterations (Inc1 M4b test)
-                continue;
-            }
-        }
-
-        // ------------------------------------------------------------------
-        // Run ESVO traversal against this instance's octree
-        // ------------------------------------------------------------------
-        DebugRaySample dbg;
-        dbg.pixel         = uvec2(pixelCoords);
-        dbg.rayDir        = rayDir;
-        dbg.octantMask    = 0u;
-        dbg.hitFlag       = 0u;
-        dbg.exitCode      = DEBUG_EXIT_NONE;
-        dbg.lastStepMask  = 0u;
-        dbg.iterationCount = 0u;
-        dbg.scale         = configs[oi].esvoMaxScale;
-        dbg.stateIdx      = 0u;
-        dbg.tMin          = 0.0;
-        dbg.tMax          = 0.0;
-        dbg.scaleExp2     = 0.0;
-        dbg.posMirrored   = vec3(0.0);
-        dbg.localNorm     = vec3(0.0);
-
-        vec3  hitColor;
-        vec3  hitNormal;
-        float hitT;
-        float hitRoughness;
-        uint  hitBrick;
-        uint  hitVoxel;
-
-        // Pass the de-instanced ray (origin AND direction both scaled by
-        // 1/renderScale).  Because rayDir is unit-length, the returned hitT
-        // equals the TRUE world distance along the original ray
-        // (instOrigin + t*instDir maps back to rayOrigin + t*rayDir), so the
-        // cross-instance nearest-hit test below compares like-for-like.
-        //
-        // Pass localRayOrigin/localRayDir/gridT (already computed above for the AABB cull)
-        // straight through instead of letting traverseOctreeInstanced recompute the same
-        // ray-vs-AABB math a second time — a single "beam test" pre-pass result shared by
-        // both the cull check and the traversal, so they can never disagree at the AABB
-        // silhouette (see traverseOctreeInstanced's own comment for why that mattered).
-        bool hit = traverseOctreeInstanced(instOrigin, instDir,
-                                           localRayOrigin, localRayDir, gridT,
-                                           hitColor, hitNormal, hitT,
-                                           hitRoughness,
-                                           hitBrick, hitVoxel, dbg);
-        instanceIterCount[instIdx] = dbg.iterationCount;  // Inc1 M4b occlusion-reject test hook
-
-        if (hit && hitT < bestT) {
-            bestT           = hitT;
-            // Tint by instance colour (multiply LOD-grey or material colour)
-            bestColor       = hitColor * inst.color;
-            bestNormal      = hitNormal;
-            bestRoughness   = hitRoughness;   // Inc3 M3: per-voxel roughness
-            bestBrickIndex  = hitBrick;
-            bestVoxelIdx    = hitVoxel;
-            anyHit          = true;
-        }
-    }
+    WorldHit worldHit;
+    bool anyHit = TraceWorld(rayOrigin, rayDir, 0.0, 1e30, worldHit);
 
     // -----------------------------------------------------------------------
-    // Shade & write output
+    // HitRecord round-trip (Sampled Lighting Inc1 M3): pack WorldHit into the
+    // per-pixel HitRecord layout, write it to the real SSBO, then read it back
+    // and unpack — the shade path below consumes ONLY the unpacked copy, so a
+    // lossy pack/unpack or a broken SSBO write would show up as a visible
+    // regression against the M1/M2 byte-identity baseline, not just a passing
+    // in-register value. worldPos is reconstructed the same way the shade path
+    // would need it in Task 4: rayOrigin + rayDir*t (TraceWorld returns t, not
+    // a world position — see WorldHit's field list).
+    // -----------------------------------------------------------------------
+    HitRecord rec;
+    rec.albedo      = worldHit.color;
+    rec.roughness   = worldHit.roughness;
+    rec.worldNormal = worldHit.normal;
+    rec.hitT        = worldHit.t;
+    rec.worldPos    = rayOrigin + rayDir * worldHit.t;
+    rec.flags       = anyHit ? HITRECORD_FLAG_HIT : 0u;
+    rec._pad0       = uint[3](0u, 0u, 0u);
+
+    uint hitRecordIdx = uint(pixelCoords.y) * uint(imgSize.x) + uint(pixelCoords.x);
+    hitRecords[hitRecordIdx] = rec;
+
+    HitRecord recReadback = hitRecords[hitRecordIdx];
+
+    bool  anyHitRT       = (recReadback.flags & HITRECORD_FLAG_HIT) != 0u;
+    vec3  bestColor       = recReadback.albedo;
+    vec3  bestNormal      = recReadback.worldNormal;
+    float bestRoughness   = recReadback.roughness;
+    vec3  bestWorldPos    = recReadback.worldPos;
+    uint  bestBrickIndex  = worldHit.brickIndex;  // not carried by HitRecord (brick/voxel ID stays out-of-band via idOutputImage)
+    uint  bestVoxelIdx    = worldHit.voxelIdx;
+
+    // -----------------------------------------------------------------------
+    // Shade & write output — driven by anyHitRT (the SSBO-round-tripped flag),
+    // not the original anyHit, so a lossy pack/unpack would visibly break the
+    // byte-identity gate rather than being silently masked by shading off the
+    // pre-round-trip locals.
     // -----------------------------------------------------------------------
     vec3 outColor;
-    if (anyHit) {
-        outColor = computeLighting(bestColor, bestNormal, rayDir, bestRoughness);
+    if (anyHitRT) {
+        outColor = computeLightingWithShadows(bestColor, bestNormal, bestWorldPos, rayDir,
+                                               bestRoughness, lightingConfig);
     } else {
         outColor = skyColor;
     }
@@ -1435,7 +1366,7 @@ void main() {
     // Debug visualisation modes (reuse the last instance's debug sample —
     // full per-instance debug would need an extra accumulator; this is a
     // best-effort approximation for the iteration/depth modes).
-    if (pc.debugMode > 0 && anyHit) {
+    if (pc.debugMode > 0 && anyHitRT) {
         switch (pc.debugMode) {
             case DEBUG_MODE_NORMALS:
                 outColor = normalShading(bestNormal);
@@ -1445,15 +1376,170 @@ void main() {
         }
     }
 
-    imageStore(outputImage, pixelCoords, vec4(outColor, 1.0));
+    // -----------------------------------------------------------------------
+    // Temporal accumulation seam (Sampled Lighting Inc2 M2/M4). accumulationConfig.
+    // enabled == 0 (Inc1 default / M1 default) takes the unchanged passthrough
+    // branch below -- byte-identical to Inc1's own imageStore. When enabled,
+    // blend outColor against historyImage and write the blend to BOTH images so
+    // next frame's history read sees this frame's result.
+    //
+    // alpha selection:
+    //   accumulationConfig.alpha == 0.0 (sentinel) -> DEFAULT converging 1/N mode:
+    //     alpha = 1/accumFrameCount, accumFrameCount being the consecutive-
+    //     static-camera frame counter (CPU-side, AccumulationConfigNode) clamped
+    //     to accumulationConfig.maxFrames when maxFrames > 0. A true running
+    //     average -- variance converges fastest once there is per-frame variance
+    //     to converge (Inc3's stochastic sampling); on today's deterministic
+    //     march every frame is identical, so the blend is a provable no-op
+    //     (mix(x,x,alpha) == x) rather than an actual denoise -- see the M2 gate
+    //     notes for what's proven vs deferred.
+    //   accumulationConfig.alpha > 0.0 -> fixed exponential-decay alpha (coded,
+    //     not the M2 default).
+    // mix(history, outColor, alpha): alpha==1 -> pure current frame (the
+    // reset-on-motion case, zero ghosting by construction); alpha->0 -> mostly
+    // history.
+    //
+    // reprojectionEnabled (M4): when set, AccumulationConfigNode does NOT hard-
+    // reset accumFrameCount on camera motion (resetOnMotion is ignored while this
+    // is on -- see AccumulationConfigNode::ExecuteImpl), so alpha keeps shrinking
+    // through a moving camera instead of snapping back to 1.0 every moving frame.
+    // That means the plain per-pixel historyImage read above (same UV as THIS
+    // frame's pixel) would sample last frame's color for a surface that has moved
+    // under the camera -- classic reprojection smear. Fix: reproject bestWorldPos
+    // through last frame's view*proj (prevCameraConfig.prevViewProj, Inc2 M3) to
+    // find WHERE this surface point was on screen last frame, and validate that
+    // sample before trusting it (bounds + motion-magnitude) -- reject -> per-pixel
+    // alpha=1 (pure current, same fallback semantics as the frame-1/reset guard
+    // below). This is what actually prevents ghosting while moving; resetOnMotion=1
+    // (M2) prevents it a cruder way (never accumulating across motion at all).
+    // -----------------------------------------------------------------------
+    if (accumulationConfig.enabled != 0u) {
+        float alpha;
+        if (accumulationConfig.alpha == 0.0) {
+            uint frameCount = pc.accumFrameCount;
+            if (accumulationConfig.maxFrames > 0u) {
+                frameCount = min(frameCount, accumulationConfig.maxFrames);
+            }
+            alpha = 1.0 / float(max(frameCount, 1u));
+        } else {
+            alpha = accumulationConfig.alpha;
+        }
+
+        // alpha >= 1.0 means "pure current frame" (frame 1 of a run, or right after a
+        // motion reset) -- skip the historyImage read entirely rather than trust
+        // mix(history, outColor, 1.0) to discard it exactly. historyImage's very first
+        // content is genuinely uninitialized (AccumulationHistoryNode creates it with no
+        // clear -- see its file header), and a NaN/Inf-poisoned mix operand survives an
+        // alpha==1.0 blend (x*0.0 with x=NaN is still NaN), so this guard is a real
+        // correctness fix, not just an optimization. It ALSO covers reprojection mode's
+        // own frame-1/recompile case: CompileImpl and the first-ever Execute both force
+        // accumFrameCount -> 1 (see AccumulationConfigNode), so prevViewProj is never
+        // reprojected-from on a frame where it could be stale/seeded-from-self.
+        vec4 blended;
+        if (alpha >= 1.0) {
+            blended = vec4(outColor, 1.0);
+        } else if (accumulationConfig.reprojectionEnabled != 0u) {
+            // ---- M4 reprojection + per-pixel validation ----
+            // World -> prev-frame clip -> prev-frame NDC -> prev-frame UV -> texel.
+            vec4 prevClip = prevCameraConfig.prevViewProj * vec4(bestWorldPos, 1.0);
+
+            bool valid = anyHitRT && prevClip.w > 1e-5;
+            vec2 reprojUV = vec2(0.0);
+            if (valid) {
+                vec2 prevNDC = prevClip.xy / prevClip.w;
+                // prevViewProj's projection[1][1] *= -1.0 (CameraNode) already puts clip-space
+                // Y in the same top-left-origin convention BodyInstanceRayMarch's own imageStore
+                // addressing (pixelCoords / imgSize, gl_GlobalInvocationID-driven, row 0 = top)
+                // uses -- NOT getRayDir's internal ndc.y=-ndc.y flip, which is a SEPARATE
+                // concern (converting FROM that same top-left uv TO the "math up = camera up"
+                // convention getRayDir's basis-vector formula wants). Verified empirically
+                // against a known-hit-position control capture (see this milestone's report):
+                // flipping here made reprojection strictly worse, confirming no flip is correct.
+                reprojUV = prevNDC * 0.5 + 0.5;
+                // (a) On-screen bounds -- disocclusion at the frame edge / surface just
+                // rotated into view. Off-screen last frame means there is no valid history
+                // sample for it.
+                valid = all(greaterThanEqual(reprojUV, vec2(0.0))) &&
+                        all(lessThanEqual(reprojUV, vec2(1.0)));
+            }
+
+            vec4 blendedResult;
+            if (valid) {
+                ivec2 reprojTexel = ivec2(reprojUV * vec2(imgSize));
+                reprojTexel = clamp(reprojTexel, ivec2(0), imgSize - ivec2(1));
+
+                // (b) Motion-magnitude reject -- a large screen-space jump between "this
+                // pixel" and "where the reprojected sample lands" is the disocclusion/
+                // newly-revealed-surface signal in the simpler (no companion depth/worldPos
+                // history buffer) validation this milestone ships -- see this milestone's
+                // report for the scope rationale. historyImage stores color only, so we
+                // cannot re-derive the reprojected sample's own depth/worldPos to cross-check
+                // against bestWorldPos directly; bounding the reprojected texel's screen-space
+                // displacement from the current pixel is the cheap proxy: a correct static-
+                // world reprojection under camera-only motion lands within a small number of
+                // texels of a geometrically consistent point, while a disoccluded/edge pixel
+                // typically reprojects far off or (already caught above) off-screen.
+                vec2 texelDelta = vec2(reprojTexel - pixelCoords);
+                float texelDist2 = dot(texelDelta, texelDelta);
+                const float kMaxReprojTexelDist = 64.0; // 8 px radius, generous for camera-only motion
+                valid = texelDist2 <= (kMaxReprojTexelDist * kMaxReprojTexelDist);
+
+                if (valid) {
+                    // Nearest-texel fetch: historyImage is a plain uniform image2D (imageLoad/
+                    // Store target, integer texel coords), not a combined sampler2D, so there is
+                    // no hardware bilinear filtering available here without adding a sampled-view
+                    // + sampler binding for it -- out of scope for this milestone (documented
+                    // choice, not an oversight; a follow-up can add bilinear if reprojected
+                    // sub-texel error becomes visible once Inc3 gives this stochastic noise to
+                    // average).
+                    vec4 history = imageLoad(historyImage, reprojTexel);
+
+                    // (c) Color-consistency reject -- the bounds+motion-magnitude checks above
+                    // do NOT catch a slow-growing silhouette edge (e.g. the camera dollying in):
+                    // consecutive frames only move the edge by a texel or two, so (a)/(b) both
+                    // pass, yet at a shrinking alpha (deep into a long accumulation run) the
+                    // stale small-silhouette history would end up dominating the blend at every
+                    // newly-covered pixel -- found empirically via this milestone's own gate (a
+                    // dolly-in run showed a growing dark "sky-colored" patch eating into the
+                    // body's silhouette; root-caused to exactly this). Without a companion
+                    // depth/worldPos history buffer there is no way to know what surface (if any)
+                    // the history texel came from, so this is the cheap proxy: if the reprojected
+                    // history color is far from THIS frame's own outColor, treat it as "probably a
+                    // different surface" (a disocclusion/newly-revealed-geometry pixel, most
+                    // visibly a body-vs-sky mismatch) and fall back to pure current frame instead
+                    // of blending. Threshold in normalized [0,1] color space, generous enough to
+                    // not reject legitimate same-surface shading variance (the tick-10 gate
+                    // capture shows genuine cross-frame deltas of ~0.01-0.05 on this scene).
+                    vec3 colorDelta = abs(history.rgb - outColor);
+                    const float kMaxReprojColorDelta = 0.15;
+                    valid = max(max(colorDelta.r, colorDelta.g), colorDelta.b) <= kMaxReprojColorDelta;
+
+                    blendedResult = valid ? mix(history, vec4(outColor, 1.0), alpha)
+                                           : vec4(outColor, 1.0);
+                } else {
+                    blendedResult = vec4(outColor, 1.0);
+                }
+            } else {
+                blendedResult = vec4(outColor, 1.0);
+            }
+            blended = blendedResult;
+        } else {
+            vec4 history = imageLoad(historyImage, pixelCoords);
+            blended = mix(history, vec4(outColor, 1.0), alpha);
+        }
+        imageStore(outputImage, pixelCoords, blended);
+        imageStore(historyImage, pixelCoords, blended);
+    } else {
+        imageStore(outputImage, pixelCoords, vec4(outColor, 1.0));
+    }
 
     // ID buffer: encode absolute brick + voxel (same packing as VoxelRayMarch)
-    uint pickID = anyHit
+    uint pickID = anyHitRT
         ? ((bestBrickIndex << 10u) | (bestVoxelIdx & 0x3FFu))
         : 0xFFFFFFFFu;
     imageStore(idOutputImage, pixelCoords, uvec4(pickID, 0u, 0u, 0u));
 
     // Metrics
     bool earlyTerm = false; // no single iteration count with multiple instances
-    recordRayEnd(anyHit, earlyTerm);
+    recordRayEnd(anyHitRT, earlyTerm);
 }

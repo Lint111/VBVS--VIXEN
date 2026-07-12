@@ -58,6 +58,96 @@ set_target_properties(test_typednode_helpers PROPERTIES FOLDER "Tests/RenderGrap
 
 gtest_discover_tests(test_typednode_helpers)
 
+# ===========================================================================
+# LightingConfig Parity Test (Sampled Lighting Inc0 M1 — generated Light /
+# LightingConfig [GpuStruct] drift-guard; see codegen/config-schemas/LightingConfig.cs)
+# ===========================================================================
+add_executable(test_lightingconfig_parity test_lightingconfig_parity.cpp)
+
+if(TARGET RenderGraph)
+    target_link_libraries(test_lightingconfig_parity PRIVATE GTest::gtest_main RenderGraph)
+else()
+    target_link_libraries(test_lightingconfig_parity PRIVATE GTest::gtest_main)
+endif()
+
+set_target_properties(test_lightingconfig_parity PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+gtest_discover_tests(test_lightingconfig_parity)
+
+# ===========================================================================
+# Brdf CPU Mirror Test (Sampled Lighting Inc0 M2 — gpu-shader-debug mirror of
+# shaders/Brdf.glsl's evalBRDF, verified against an independent scalar reference)
+# ===========================================================================
+add_executable(test_brdf_mirror test_brdf_mirror.cpp)
+
+if(TARGET RenderGraph)
+    target_link_libraries(test_brdf_mirror PRIVATE GTest::gtest_main RenderGraph)
+else()
+    target_link_libraries(test_brdf_mirror PRIVATE GTest::gtest_main)
+endif()
+
+set_target_properties(test_brdf_mirror PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+gtest_discover_tests(test_brdf_mirror)
+
+# ===========================================================================
+# TraceWorld CPU Mirror Test (Sampled Lighting Inc1 M2 — gpu-shader-debug mirror of
+# shaders/TraceWorld.glsl's TraceWorldShadow any-hit occlusion test, verified against
+# an independent AABB-list reference using Data/VoxelTraversal.h's Ray/AABB/IntersectRayAABB)
+# ===========================================================================
+add_executable(test_traceworld_mirror test_traceworld_mirror.cpp)
+
+if(TARGET RenderGraph)
+    target_link_libraries(test_traceworld_mirror PRIVATE GTest::gtest_main RenderGraph)
+else()
+    target_link_libraries(test_traceworld_mirror PRIVATE GTest::gtest_main)
+endif()
+
+set_target_properties(test_traceworld_mirror PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+gtest_discover_tests(test_traceworld_mirror)
+
+# ===========================================================================
+# VNDF CPU Mirror Test (Sampled Lighting Inc0 M4 — gpu-shader-debug mirror of
+# shaders/Sampling.glsl's sampleGGXVNDF/vndfPdf, verified against two
+# independent references: a from-scratch analytic VNDF density and the
+# original Heitz 2018 sampler construction)
+# ===========================================================================
+add_executable(test_vndf_mirror test_vndf_mirror.cpp)
+
+if(TARGET RenderGraph)
+    target_link_libraries(test_vndf_mirror PRIVATE GTest::gtest_main RenderGraph)
+else()
+    target_link_libraries(test_vndf_mirror PRIVATE GTest::gtest_main)
+endif()
+
+set_target_properties(test_vndf_mirror PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+gtest_discover_tests(test_vndf_mirror)
+
+# ===========================================================================
+# Sampling.glsl SPIR-V Compile Gate (Sampled Lighting Inc0 M4 — proves
+# shaders/Sampling.glsl #includes and compiles cleanly through the real
+# runtime shader pipeline; ShaderManagement's ShaderBundleBuilder resolves
+# #include via AddIncludePath(VIXEN_SHADER_SOURCE_DIR), same wiring
+# BuildRenderGraph.cpp uses for the live app's .comp shaders)
+# ===========================================================================
+add_executable(test_sampling_compile_gate test_sampling_compile_gate.cpp)
+
+if(TARGET RenderGraph)
+    target_link_libraries(test_sampling_compile_gate PRIVATE GTest::gtest_main RenderGraph)
+else()
+    target_link_libraries(test_sampling_compile_gate PRIVATE GTest::gtest_main ShaderManagement)
+endif()
+
+target_compile_definitions(test_sampling_compile_gate PRIVATE
+    VIXEN_SHADER_SOURCE_DIR="${VIXEN_SHADER_SOURCE_DIR}"
+)
+
+set_target_properties(test_sampling_compile_gate PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+gtest_discover_tests(test_sampling_compile_gate)
+
 add_executable(test_node_parameter_manager Core/test_node_parameter_manager.cpp)
 
 # Link against the RenderGraph library target - includes propagate automatically
@@ -664,6 +754,38 @@ if(TARGET GTest::gtest_main)
     message(STATUS "✓ test_view_hud_golden configured (View Contract Inc-2: golden-mirror gate)")
 else()
     message(STATUS "⊗ test_view_hud_golden skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
+# Inc-A2: EditorLayers golden-mirror gate (headless — no Vulkan required)
+# ===========================================================================
+# Mirrors test_view_hud_golden exactly, for the editor layer view's [View] schema instead of Hud's.
+
+if(TARGET GTest::gtest_main)
+    add_executable(test_view_editor_layers_golden
+        test_view_editor_layers_golden.cpp
+    )
+
+    target_link_libraries(test_view_editor_layers_golden PRIVATE
+        GTest::gtest_main
+        RenderGraph
+    )
+
+    # EditorLayers.g.h is a CONSUMER artifact (application/editor) — needs the editor's include
+    # dir to resolve "Generated/EditorLayers.g.h" (mirrors test_view_hud_golden's application/main
+    # include-dir need).
+    target_include_directories(test_view_editor_layers_golden PRIVATE ${CMAKE_SOURCE_DIR}/application/editor/include)
+
+    target_compile_definitions(test_view_editor_layers_golden PRIVATE
+        VIEW_EDITOR_LAYERS_G_H="${CMAKE_SOURCE_DIR}/application/editor/include/Generated/EditorLayers.g.h")
+
+    set_target_properties(test_view_editor_layers_golden PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+    gtest_discover_tests(test_view_editor_layers_golden)
+
+    message(STATUS "✓ test_view_editor_layers_golden configured (Inc-A2: golden-mirror gate)")
+else()
+    message(STATUS "⊗ test_view_editor_layers_golden skipped (GoogleTest not available)")
 endif()
 
 # ===========================================================================

@@ -123,10 +123,11 @@ public:
     size_t getVoxelCount() const { return VOXELS_PER_BRICK; }
 
     // Convert 3D coordinates to linear index (for tests)
-    size_t getLinearIndex(int x, int y, int z) const {
-        // Linear indexing: X varies fastest
-        return x + y * 8 + z * 64;
-    }
+    // STORAGE index for (x,y,z) — the value get/set/getAttributePointer expect. Delegates
+    // to the same mapping the 3D API (setAt3D/getAt3D) uses (currently Morton order), so
+    // 3D writes and index reads always agree. The old inline x-fastest formula silently
+    // disagreed with Morton storage: mixing it with get<T>() read the wrong cell.
+    size_t getLinearIndex(int x, int y, int z) const;
 
     // ============================================================================
     // Fast Attribute Access (Performance-Critical Ray Traversal)

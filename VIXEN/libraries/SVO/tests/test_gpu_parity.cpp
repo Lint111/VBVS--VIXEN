@@ -19,6 +19,8 @@
 #include "VoxelComponents.h"
 
 #include <gtest/gtest.h>
+#include <fstream>
+#include <cstring>
 #include <glm/glm.hpp>
 
 #include <bit>
@@ -267,6 +269,101 @@ TEST(GpuParity, AxisAlignedRaysMatchOracle) {
                 probes, misses, adjacentMismatch, farMismatch);
     EXPECT_EQ(misses, 0) << "castRay vs GPU oracle: " << misses << " MISS divergences (cracks) on axis rays";
     EXPECT_EQ(farMismatch, 0) << "castRay vs GPU oracle: " << farMismatch << " cell mismatches at DIFFERING t (real algorithm divergence)";
+}
+
+
+// ---------------------------------------------------------------------------
+// PIN — mirror boundary_epsilon must equal the real shader's, at the source level.
+//
+// V5 history: a remediation pass "unified" the mirror's boundary_epsilon to 0.01f while
+// ESVOTraversal.glsl stayed 1e-4 — and no traversal battery caught it (dense-geometry
+// traversal self-corrects a wrong initial octant; see the band battery above). The mirror
+// exists to be value-for-value faithful to the shader, so pin the agreement directly:
+// scrape both sources for `boundary_epsilon = <literal>` and require identical values.
+// If this fails, fix the MIRROR to match the shader — never the other way around.
+// ---------------------------------------------------------------------------
+namespace {
+float parseBoundaryEpsilon(const char* path) {
+    std::ifstream f(path);
+    if (!f) { ADD_FAILURE() << "cannot open " << path; return -1.0f; }
+    std::string line;
+    while (std::getline(f, line)) {
+        const auto k = line.find("boundary_epsilon = ");
+        if (k == std::string::npos) continue;
+        std::string v = line.substr(k + std::strlen("boundary_epsilon = "));
+        const auto e = v.find_first_of(";f \t");
+        return std::stof(v.substr(0, e));
+    }
+    ADD_FAILURE() << "no `boundary_epsilon = ` literal found in " << path;
+    return -1.0f;
+}
+}  // namespace
+
+TEST(GpuParity, MirrorBoundaryEpsilonMatchesShaderSource) {
+    const float shader = parseBoundaryEpsilon(ESVO_TRAVERSAL_GLSL_PATH);
+    const float mirror = parseBoundaryEpsilon(GPU_TRAVERSAL_MIRROR_H_PATH);
+    EXPECT_EQ(shader, mirror)
+        << "GpuTraversalMirror.h boundary_epsilon (" << mirror << ") != ESVOTraversal.glsl ("
+        << shader << ") — the mirror must mirror the shader; fix the mirror, not the shader.";
+    EXPECT_FLOAT_EQ(shader, 1e-4f) << "shader boundary_epsilon moved — update this pin deliberately";
+}
+
+// ---------------------------------------------------------------------------
+// PARITY — boundary-epsilon band battery (V5 follow-up, regime coverage).
+//
+// These origins sit just outside the -X face so the normalized entry t_min lands inside
+// (1e-4, 1e-2) — the band no prior battery exercised, where the mirror's boundary_epsilon
+// decides position-based vs t-based initial-octant selection. NOTE: on the solid shell
+// this battery is coverage, not the epsilon pin — a wrong initial octant self-corrects on
+// dense geometry (verified: setting the mirror to 1e-2 still passes here). The actual pin
+// is MirrorBoundaryEpsilonMatchesShaderSource below, which compares the constants at the
+// source level. Keep both: this catches band-regime traversal regressions generally.
+// ---------------------------------------------------------------------------
+TEST(GpuParity, BoundaryEpsilonBandNearFaceEntry) {
+    ParityHarness h(6);
+    const int n = h.n;
+    const std::set<ICell> S = ShellSet(6);
+
+    int probes = 0, misses = 0, adjacentMismatch = 0, farMismatch = 0;
+    int shown = 0;
+    // World distances outside the face spanning the (1e-4*n, 1e-2*n) band = (0.0064, 0.64).
+    const float bandD[] = { 0.02f, 0.08f, 0.25f, 0.55f };
+    for (float D : bandD) {
+        // Skim the y/z midplanes at entry so the initial-octant idx bits are decided right
+        // at the 1.5 boundary — the regime where the two branches actually disagree.
+        for (int ky = -5; ky <= 5; ++ky) {
+            for (int kz : { -3, -1, 1, 3 }) {
+                const glm::vec3 o(-D, n * 0.5f + ky * 0.23f, n * 0.5f + kz * 0.31f);
+                const glm::vec3 dir = glm::normalize(glm::vec3(0.82f, ky >= 0 ? 0.4f : -0.4f, 0.11f * kz));
+                ++probes;
+                bool cpuHit = false, oraHit = false; float cpuT = 0, oraT = 0;
+                ICell cpu = h.cpuCell(o, dir, cpuHit, &cpuT);
+                ICell ora = h.oracleCell(o, dir, oraHit, &oraT);
+                if (cpuHit != oraHit) {
+                    ++misses;
+                    if (shown < 12) {
+                        std::printf("    BAND MISS-DIVERGE o=(%.3f,%.2f,%.2f) d=(%.2f,%.2f,%.2f) | cpuHit=%d | oraHit=%d\n",
+                                    o.x, o.y, o.z, dir.x, dir.y, dir.z, cpuHit, oraHit);
+                        ++shown;
+                    }
+                } else if (cpuHit && !(cpu == ora)) {
+                    if (classifyFpNoise(cpu, ora, cpuT, oraT, S)) ++adjacentMismatch;
+                    else {
+                        ++farMismatch;
+                        if (shown < 12) {
+                            std::printf("    BAND ALGO-MISMATCH o=(%.3f,%.2f,%.2f) cpu=(%d,%d,%d) t=%.5f | ora=(%d,%d,%d) t=%.5f\n",
+                                        o.x, o.y, o.z, cpu.x, cpu.y, cpu.z, cpuT, ora.x, ora.y, ora.z, oraT);
+                            ++shown;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    std::printf("[GpuParity band] probes=%d  misses=%d  fpNoiseMismatch=%d  algoMismatch=%d\n",
+                probes, misses, adjacentMismatch, farMismatch);
+    EXPECT_EQ(misses, 0) << misses << " miss divergences in the (1e-4,1e-2) t_min band — boundary_epsilon drift?";
+    EXPECT_EQ(farMismatch, 0) << farMismatch << " algorithmic cell mismatches in the epsilon band — boundary_epsilon drift?";
 }
 
 // ---------------------------------------------------------------------------

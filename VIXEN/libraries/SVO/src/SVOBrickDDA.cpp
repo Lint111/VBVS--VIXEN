@@ -75,7 +75,9 @@ std::optional<ISVOStructure::RayHit> LaineKarrasOctree::handleLeafHit(
                 state.idx, state.t_min, tv_max, tRayStart, tEntry, tExit);
 
     size_t parentDescriptorIndex = state.parent - &m_octree->root->childDescriptors[0];
-    glm::vec3 worldSize = m_worldMax - m_worldMin;
+    // state.pos lives in the EFFECTIVE domain's [1,2] cube (see castRayImpl/rootDepth);
+    // brick mapping must use the same domain size or shallow-rooted trees mis-map.
+    glm::vec3 worldSize = effectiveWorldMax() - m_worldMin;
     int bricksPerAxis = m_octree->bricksPerAxis;
     int brickSideLength = m_octree->brickSideLength;
 

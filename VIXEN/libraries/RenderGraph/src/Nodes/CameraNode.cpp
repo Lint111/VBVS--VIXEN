@@ -165,6 +165,18 @@ void CameraNode::CompileImpl(TypedCompileContext& ctx) {
     // Output pointer to the camera data struct
     ctx.Out(CameraNodeConfig::CAMERA_DATA, const_cast<const CameraData&>(currentCameraData));
 
+    // Sampled Lighting Inc2 M3: seed prevViewProj from THIS (first) frame's own matrices —
+    // there is no real previous frame yet. M4 (the first consumer) must treat frame 1 as
+    // "no valid history" regardless (mirrors historyImage's own first-frame skip via
+    // AccumulationConfigNode's frame counter), so an exact seed vs. identity vs. anything
+    // else is immaterial for correctness; using the real matrix just avoids publishing an
+    // obviously-wrong identity on the very first Compile. CompileImpl also re-runs on every
+    // recompile (resize) — re-seeding here on each Compile is consistent with
+    // AccumulationConfigNode::CompileImpl's own "force first-frame path on next Execute"
+    // reset for the same reason (a resize invalidates any prior-frame assumption).
+    prevViewProj = projection * view;
+    ctx.Out(CameraNodeConfig::PREV_VIEW_PROJ, const_cast<const glm::mat4&>(prevViewProj));
+
     NODE_LOG_INFO("Camera data initialized successfully");
 }
 
@@ -256,7 +268,14 @@ void CameraNode::ExecuteImpl(TypedExecuteContext& ctx) {
     float deltaTime = glm::min(inputState ? inputState->deltaTime : (1.0f / 60.0f), 0.1f);
     ApplyInputDeltas(deltaTime);
 
-    // Update camera data with current state
+    // Sampled Lighting Inc2 M3: publish LAST frame's view*proj BEFORE UpdateCameraData
+    // overwrites prevViewProj with this frame's own matrices below — this is the
+    // compute-current-then-store-previous ordering the M3 plumbing needs (M4 will
+    // reproject against exactly the frame that was actually rendered last, not this one).
+    ctx.Out(CameraNodeConfig::PREV_VIEW_PROJ, const_cast<const glm::mat4&>(prevViewProj));
+
+    // Update camera data with current state (also updates prevViewProj <- this frame's
+    // projection*view, for the NEXT Execute to read as its own "previous").
     UpdateCameraData(aspectRatio);
 
     // Output pointer to the camera data struct
@@ -324,6 +343,12 @@ void CameraNode::UpdateCameraData(float aspectRatio) {
     // debugMode is set via input (not updated here)
     currentCameraData.invProjection = glm::inverse(projection);
     currentCameraData.invView = glm::inverse(view);
+
+    // Sampled Lighting Inc2 M3: retain THIS frame's view*proj so the NEXT ExecuteImpl
+    // publishes it as ITS "previous" (see the ExecuteImpl call site above — the publish
+    // of the old value happens before this call, so this store never clobbers a value
+    // before it's been read out for the current frame).
+    prevViewProj = projection * view;
 
     // DEBUG: Log camera state once
     static bool loggedCamera = false;

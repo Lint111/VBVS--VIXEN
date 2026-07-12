@@ -1,0 +1,130 @@
+Sampled Lighting Inc1 M5 -- shadow-ray cost measurement
+=========================================================
+Date: 2026-07-10. Machine: Windows-native, real GPU (AMD Radeon; Windows/D3D12-Vulkan,
+no lavapipe/Dozen -- see memory rule "live-verification-authoritative-for-gpu-work").
+Binary: VIXEN.exe (application/main). Document: BuiltAssets/documents/sample_tri_layer.vxd
+(the repo's default scene -- unmodified camera/content, matching M1-M4 precedent).
+
+METHOD
+------
+Planned method (GPUPerformanceLogger isolated-dispatch-ms via GPUQueryManager
+timestamps) could NOT be used: GPUQueryManager::ReadAllResults gates on
+AllAllocatedSlotsReset(frameIndex) -- true only once EVERY allocated query slot
+across the whole app has had its per-frame-in-flight queries reset at least once.
+In this scene/graph configuration that condition never becomes true for the whole
+run (confirmed: zero "Dispatch: ... ms avg" lines from ANY GPUPerfLogger instance --
+not just test_dispatch/BodyInstanceRayMarch -- across 1500-frame runs at both
+resolutions, both ShadowConfig states). This is a pre-existing measurement-
+infrastructure gap (a query slot somewhere in the graph is allocated but not
+executed/reset every frame-in-flight index), out of this milestone's scope to fix
+(would mean editing GPUQueryManager/whichever node owns the stuck slot, unrelated
+to shadow rays). Also confirmed vixen_editor.exe (the binary M1-M4 used for capture
+gates) has NO CPU frame-timer at all -- application/editor/source/main.cpp's own
+comment: "No frame-timer for the editor" -- so it could not substitute either.
+
+SUBSTITUTE METHOD USED: VulkanApplicationBase's existing CPU-side FrameTimer
+(application/main/source/VulkanApplicationBase.cpp, enabled via RunOptions
+.enableFrameTimer=true in application/main/source/main.cpp -- VIXEN.exe only).
+Logs avg/p99 wall-clock frame time (Update+Render+Present, PostTick included) every
+120 frames to binaries/vulkan_app_log.txt via mainLogger. This measures FULL frame
+cost (CPU submit + GPU work + present/vsync), NOT an isolated GPU dispatch -- coarser
+than the intended method. The A/B lever (ShadowConfig.enabled=1 vs 0, same scene,
+same resolution, same frame budget) isolates the shadow-ray delta from everything
+else that's constant between the two runs (camera, geometry, resolution, window
+present mode), so the DELTA is still attributable to shadow-ray cost even though the
+absolute per-run number carries CPU/present overhead the isolated-dispatch method
+would have excluded. CAVEAT (do not over-claim precision): this delta additionally
+picks up any CPU-side cost of the extra TraceWorldShadow work notionally recorded
+inside the same frame (negligible -- the ray march is GPU-side; CPU only issues one
+dispatch either way) and is more exposed to vsync/present jitter than a pure GPU
+timestamp would have been -- see 1440p result below where this jitter dominates.
+
+Runs: VIXEN_EXIT_AFTER_FRAMES=1500, VIXEN_WINDOW_WIDTH/HEIGHT set per resolution,
+VIXEN_SHADOW_CONFIG_ENABLED=1|0. FrameTimer logs a window every 120 frames (12
+windows/run); the first window (frames 0-120) is discarded as pipeline/shader
+warm-up, leaving 11 stable windows per run averaged below. Raw per-window lines are
+in temp/m5_main_applog_<tag>.txt (untracked scratch, not copied into gate-artifacts
+-- reproducible by rerunning the batch scripts in temp/run_m5_timing_main.bat).
+
+HIT-PIXEL COUNT
+---------------
+No existing GPU-side hit-pixel counter was wired (ShaderCounters.glsl exists but
+adding a new counter is a feature change, out of this measurement milestone's
+scope). Counted post-hoc from a single offscreen capture per resolution
+(VIXEN_EDITOR_CAPTURE_FRAMES=5, ShadowConfig.enabled=1) by excluding pixels whose
+RGB matches the shader's own sky-color formula (BodyInstanceRayMarch.comp:
+vec3(0.02,0.02,0.06) * (1.0 - uv.y*0.4), +/-4/255 tolerance for tonemap rounding).
+Captures: gate-artifacts/inc1-m5-capture-1080p.png, inc1-m5-capture-1440p.png.
+CAVEAT: sample_tri_layer.vxd's default camera frames a SMALL central object against
+mostly sky (confirmed visually) -- hit-pixel fraction is ~0.2% of the frame at both
+resolutions. This is a sparse, non-representative scene for a "typical" per-ray
+cost; a denser/closer scene would give a different (almost certainly lower per-ray,
+since fixed per-dispatch overhead amortizes over more hits) number. Reported as-is;
+not adjusted.
+
+  1080p (1920x1080, 2073600 px): hit = 4900 px (0.24%)
+  1440p (2560x1440, 3686400 px): hit = 8836 px (0.24%)
+
+RAW RESULTS (mean of 11 stable 120-frame windows, frames 120-1440)
+--------------------------------------------------------------------
+  1080p ShadowConfig.enabled=1: avg 14.110 ms/frame  (per-window range 13.763-14.646, stdev 0.245)
+  1080p ShadowConfig.enabled=0: avg 12.922 ms/frame  (per-window range 12.567-13.144, stdev 0.169)
+  1080p delta (shadow-ray cost, full-frame): 1.188 ms
+  1080p signal check: delta / pooled within-group stdev = 5.64  -- CLEAN signal,
+    enabled/disabled window ranges do not overlap.
+
+  1440p ShadowConfig.enabled=1: avg 21.121 ms/frame  (per-window range 20.871-21.448, stdev 0.184)
+  1440p ShadowConfig.enabled=0: avg 20.851 ms/frame  (per-window range 19.926-21.434, stdev 0.455)
+  1440p delta (shadow-ray cost, full-frame): 0.271 ms
+  1440p signal check: delta / pooled within-group stdev = 0.78  -- NOT a reliable
+    signal; enabled/disabled window ranges OVERLAP (disabled max 21.434 > enabled
+    min 20.871). At this scene's hit-pixel count and this resolution, present/vsync
+    jitter is larger than the shadow-ray cost itself -- the measurement is
+    inconclusive at 1440p, not "shadows are free at 1440p."
+
+DERIVATION: per-shadow-ray cost = frame_delta_ms / (hit_pixel_count x lightCount)
+--------------------------------------------------------------------------------
+lightCount = 1 (Inc0 default LightingConfig: single directional light; no scene
+change this milestone). One shadow ray per hit pixel per light (ShadowConfig
+.raysPerLight=1, Inc1 scope -- see plan Task 4).
+
+  1080p: 1.188 ms / (4900 px x 1) = 2.424e-4 ms/ray = 242 ns/ray  -- TRUSTWORTHY
+    (clean signal per above).
+  1440p: 0.271 ms / (8836 px x 1) = 3.07e-5 ms/ray = 31 ns/ray  -- NOT TRUSTWORTHY,
+    reported for completeness only; the 8x drop vs 1080p is very likely a noise
+    artifact (see signal check above), not a real per-ray speedup at higher
+    resolution.
+
+HEADLINE NUMBER (use this one): ~240 ns per shadow ray through the ESVO traversal,
+from the one resolution where the A/B delta cleanly exceeds frame-to-frame noise.
+Treat as order-of-magnitude, machine-relative, and scene-dependent (sparse hit
+count): the METHOD (A/B lever, same-scene isolation) is sound; the absolute number
+carries full-frame CPU/present overhead the originally-planned isolated-GPU-
+dispatch method would have excluded, and should be re-derived with the isolated
+method once the GPUQueryManager all-slots-reset gap is fixed (tracked as a Known
+Issue) and/or against a denser test scene.
+
+CARRIED MINOR FIX: TraceWorldShadow double-bias
+-------------------------------------------------
+shaders/BodyInstanceRayMarch.comp's computeLightingWithShadows() previously passed
+BOTH origin=worldPos+normal*biasEpsilon AND tmin=biasEpsilon to TraceWorldShadow --
+M2's documented contract (TraceWorld.glsl "SELF-INTERSECTION BIAS" comment) says
+apply ONE convention, not both. The surrounding code comment already correctly
+described convention (a) (origin-offset, tmin near 0); only the code disagreed with
+its own comment. Fixed: tmin argument changed from shadowConfig.biasEpsilon to 0.0;
+origin-offset kept. No comment change needed (it already stated the now-true
+behavior).
+
+Verification:
+  - enabled=0 byte-identity: re-captured post-fix at the standard 500x500 window,
+    SHA256 = fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1 --
+    MATCHES the M1-M4 baseline hash exactly (expected: the fix only touches the
+    shadowConfig.enabled!=0u branch). gate-artifacts/inc1-m5-disabled-baseline.png.
+  - shadows still acne-free post-fix: gate-artifacts/inc1-m5-shadow-acne-check.png
+    (VIXEN_SHADOW_DEMO=1 capture, the M4 shadow-visibility scene -- multiple lit
+    spheres with a clear terminator line and a clean shadow silhouette on the small
+    orbiting body, no speckle/acne on any lit surface).
+  - The double-bias removal did NOT visibly change shadows (no acne appeared, no
+    peter-panning observed) at biasEpsilon=0.01 -- consistent with M4's note that
+    the double-bias was "benign at shipped 0.01," i.e. tmin=biasEpsilon was
+    redundant with the origin offset at this epsilon, not load-bearing.

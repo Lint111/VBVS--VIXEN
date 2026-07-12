@@ -424,6 +424,32 @@ gtest_discover_tests(test_body_instance_raymarch_render
 message(STATUS "[RenderGraph Tests] Added: test_body_instance_raymarch_render (real-shader render)")
 
 # ===========================================================================
+# Sampled Lighting Inc1 M3 — HitRecord SSBO (binding 17) round-trip live gate:
+# dispatches the real shader, reads back the HitRecordBuffer it wrote per-pixel,
+# and cross-checks it against the shader's OWN colour/ID outputs (both driven
+# off the SAME in-shader HitRecord readback — see BodyInstanceRayMarch.comp
+# main()'s round-trip comment). No PNG output (no stb dependency needed).
+# ===========================================================================
+add_executable(test_hitrecord_readback
+    Nodes/test_hitrecord_readback.cpp
+)
+add_dependencies(test_hitrecord_readback body_instance_raymarch_spv)
+target_link_libraries(test_hitrecord_readback PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+if(TARGET SVO)
+    target_link_libraries(test_hitrecord_readback PRIVATE SVO)
+endif()
+target_compile_definitions(test_hitrecord_readback PRIVATE
+    GLSL_RAYMARCH_SPV="${_brm_spv}")
+if(VIXEN_WSL_DZN_ICD)
+    target_compile_definitions(test_hitrecord_readback PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
+endif()
+set_target_properties(test_hitrecord_readback PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_hitrecord_readback
+    DISCOVERY_MODE PRE_TEST
+    DISCOVERY_TIMEOUT 120)
+message(STATUS "[RenderGraph Tests] Added: test_hitrecord_readback (Sampled Lighting Inc1 M3)")
+
+# ===========================================================================
 # I4.1 — SetRecipePool pool render gate: 4 baked SDF recipes,
 # one instance per octreeIndex, asserts all 4 bodies produce visible pixels.
 # ===========================================================================
@@ -696,6 +722,141 @@ gtest_discover_tests(test_octree_config_sdi_parity
     DISCOVERY_MODE PRE_TEST
     DISCOVERY_TIMEOUT 120)
 message(STATUS "[RenderGraph Tests] Added: test_octree_config_sdi_parity (SDI layout drift-guard)")
+
+# ===========================================================================
+# LightingConfig SDI Parity Test (Sampled Lighting Inc0 M3)
+# ===========================================================================
+# Reflects the built BodyInstanceRayMarch SPIR-V and asserts the generated
+# C++ Vixen::Gpu::LightingConfig / Light layout matches it (per-field offsets
+# + lights[] array stride == sizeof(Light)). Sibling of
+# test_octree_config_sdi_parity above, promised by Inc0 M1's
+# test_lightingconfig_parity.cpp once a shader consumer existed. Pure CPU
+# (reflection only) — no lavapipe / no GPU. Reuses the same compiled .spv.
+# ===========================================================================
+add_executable(test_lightingconfig_sdi_parity
+    Nodes/test_lightingconfig_sdi_parity.cpp
+)
+add_dependencies(test_lightingconfig_sdi_parity body_instance_raymarch_spv)
+target_link_libraries(test_lightingconfig_sdi_parity PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+target_compile_definitions(test_lightingconfig_sdi_parity PRIVATE
+    GLSL_RAYMARCH_SPV="${_brm_spv}")
+set_target_properties(test_lightingconfig_sdi_parity PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_lightingconfig_sdi_parity
+    DISCOVERY_MODE PRE_TEST
+    DISCOVERY_TIMEOUT 120)
+message(STATUS "[RenderGraph Tests] Added: test_lightingconfig_sdi_parity (SDI layout drift-guard)")
+
+# ===========================================================================
+# HitRecord SDI Parity Test (Sampled Lighting Inc1 M3)
+# ===========================================================================
+# Reflects the built BodyInstanceRayMarch SPIR-V and asserts a hand-written
+# local C++ mirror struct's layout matches it (per-field offsets + hitRecords[]
+# array stride == sizeof(HitRecordCpu)). Sibling of test_lightingconfig_sdi_parity
+# above, minus the generated header — HitRecord has no [GpuStruct] codegen this
+# milestone (see shaders/HitRecord.glsl's file header for why). Pure CPU
+# (reflection only) — no lavapipe / no GPU. Reuses the same compiled .spv.
+# ===========================================================================
+add_executable(test_hitrecord_sdi_parity
+    Nodes/test_hitrecord_sdi_parity.cpp
+)
+add_dependencies(test_hitrecord_sdi_parity body_instance_raymarch_spv)
+target_link_libraries(test_hitrecord_sdi_parity PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+target_compile_definitions(test_hitrecord_sdi_parity PRIVATE
+    GLSL_RAYMARCH_SPV="${_brm_spv}")
+set_target_properties(test_hitrecord_sdi_parity PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_hitrecord_sdi_parity
+    DISCOVERY_MODE PRE_TEST
+    DISCOVERY_TIMEOUT 120)
+message(STATUS "[RenderGraph Tests] Added: test_hitrecord_sdi_parity (SDI layout drift-guard)")
+
+# ===========================================================================
+# ShadowConfig SDI Parity Test (Sampled Lighting Inc1 M4)
+# ===========================================================================
+# Reflects the built BodyInstanceRayMarch SPIR-V and asserts the generated
+# C++ Vixen::Gpu::ShadowConfig layout matches it (per-field offsets, 16 B
+# total). Sibling of test_lightingconfig_sdi_parity above. Pure CPU
+# (reflection only) — no lavapipe / no GPU. Reuses the same compiled .spv.
+# ===========================================================================
+add_executable(test_shadowconfig_sdi_parity
+    Nodes/test_shadowconfig_sdi_parity.cpp
+)
+add_dependencies(test_shadowconfig_sdi_parity body_instance_raymarch_spv)
+target_link_libraries(test_shadowconfig_sdi_parity PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+target_compile_definitions(test_shadowconfig_sdi_parity PRIVATE
+    GLSL_RAYMARCH_SPV="${_brm_spv}")
+set_target_properties(test_shadowconfig_sdi_parity PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_shadowconfig_sdi_parity
+    DISCOVERY_MODE PRE_TEST
+    DISCOVERY_TIMEOUT 120)
+message(STATUS "[RenderGraph Tests] Added: test_shadowconfig_sdi_parity (SDI layout drift-guard)")
+
+# ===========================================================================
+# AccumulationConfig SDI Parity Test (Sampled Lighting Inc2 M1)
+# ===========================================================================
+# Reflects the built BodyInstanceRayMarch SPIR-V and asserts the generated
+# C++ Vixen::Gpu::AccumulationConfig layout matches it (per-field offsets, 16 B
+# total). Sibling of test_shadowconfig_sdi_parity above. Pure CPU
+# (reflection only) — no lavapipe / no GPU. Reuses the same compiled .spv.
+# ===========================================================================
+add_executable(test_accumulationconfig_sdi_parity
+    Nodes/test_accumulationconfig_sdi_parity.cpp
+)
+add_dependencies(test_accumulationconfig_sdi_parity body_instance_raymarch_spv)
+target_link_libraries(test_accumulationconfig_sdi_parity PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+target_compile_definitions(test_accumulationconfig_sdi_parity PRIVATE
+    GLSL_RAYMARCH_SPV="${_brm_spv}")
+set_target_properties(test_accumulationconfig_sdi_parity PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_accumulationconfig_sdi_parity
+    DISCOVERY_MODE PRE_TEST
+    DISCOVERY_TIMEOUT 120)
+message(STATUS "[RenderGraph Tests] Added: test_accumulationconfig_sdi_parity (SDI layout drift-guard)")
+
+# ===========================================================================
+# PrevCameraConfig SDI Parity Test (Sampled Lighting Inc2 M3)
+# ===========================================================================
+# Reflects the built BodyInstanceRayMarch SPIR-V and asserts the generated
+# C++ Vixen::Gpu::PrevCameraConfig layout matches it (per-field offsets, 64 B
+# total — a single mat4). Sibling of test_accumulationconfig_sdi_parity above.
+# Pure CPU (reflection only) — no lavapipe / no GPU. Reuses the same compiled .spv.
+# ===========================================================================
+add_executable(test_prevcameraconfig_sdi_parity
+    Nodes/test_prevcameraconfig_sdi_parity.cpp
+)
+add_dependencies(test_prevcameraconfig_sdi_parity body_instance_raymarch_spv)
+target_link_libraries(test_prevcameraconfig_sdi_parity PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+target_compile_definitions(test_prevcameraconfig_sdi_parity PRIVATE
+    GLSL_RAYMARCH_SPV="${_brm_spv}")
+set_target_properties(test_prevcameraconfig_sdi_parity PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_prevcameraconfig_sdi_parity
+    DISCOVERY_MODE PRE_TEST
+    DISCOVERY_TIMEOUT 120)
+message(STATUS "[RenderGraph Tests] Added: test_prevcameraconfig_sdi_parity (SDI layout drift-guard)")
+
+# ===========================================================================
+# Sampled Lighting Inc1 M4 — shadow-ray correctness live gate: dispatches the
+# REAL shader against a known scene + known directional light, asserting a
+# pixel's occlusion classification (shadowed/lit, via shaded colour luminance)
+# matches an independent CPU-traced reference shadow ray. Closes M2's deferred
+# "GLSL traversal agrees with reference" gap.
+# ===========================================================================
+add_executable(test_shadow_correctness
+    Nodes/test_shadow_correctness.cpp
+)
+add_dependencies(test_shadow_correctness body_instance_raymarch_spv)
+target_link_libraries(test_shadow_correctness PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+if(TARGET SVO)
+    target_link_libraries(test_shadow_correctness PRIVATE SVO)
+endif()
+target_compile_definitions(test_shadow_correctness PRIVATE
+    GLSL_RAYMARCH_SPV="${_brm_spv}")
+if(VIXEN_WSL_DZN_ICD)
+    target_compile_definitions(test_shadow_correctness PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
+endif()
+set_target_properties(test_shadow_correctness PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_shadow_correctness
+    DISCOVERY_MODE PRE_TEST
+    DISCOVERY_TIMEOUT 120)
+message(STATUS "[RenderGraph Tests] Added: test_shadow_correctness (Sampled Lighting Inc1 M4 shadow-ray gate)")
 
 else()
     message(STATUS "[RenderGraph Tests] SKIPPED test_body_instance_raymarch_render — no glslc runnable on this platform found (searched ${_glslc_hints} + PATH)")

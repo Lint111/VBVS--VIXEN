@@ -11,6 +11,107 @@ Living log of confirmed-but-unfixed issues. Each entry: symptom, root cause, imp
 
 ---
 
+## KI-020 — Two pre-existing MSVC-portability compile failures break the all-targets Windows build (`build.bat build`)
+
+**Discovered:** 2026-07-10, by the `validate-gaia-sync` Opus validator during the Gaia v0.9.2 sync (both files are byte-identical to base `ab40cb97`; unrelated to that sync — pre-existing app-rot). Surfaced because the validator ran a full `build.bat build`, which halts with `ninja: build stopped` on these two.
+
+**Symptom:** a full Windows all-targets build (`build.bat build`) does NOT go fully green — `ninja: build stopped` on two independent compile errors in non-Gaia test code. The Gaia libraries + all three Gaia test exes, and the individual targets people usually build, compile fine; only the aggregate all-targets Windows build is affected.
+
+**The two failures:**
+1. `libraries/RenderGraph/tests/.../test_body_instance_raymarch_render.cpp` — uses POSIX `setenv`/`unsetenv`, which do not exist on MSVC → `C3861: 'setenv': identifier not found` (and `unsetenv`). MSVC provides `_putenv_s` (and `_putenv("VAR=")` to clear) instead.
+2. `libraries/RenderGraph/tests/.../test_octree_config_sdi_parity.cpp` — includes SVO's `SdfRecipes.h` → generated `SdfCoreKernels.g.hpp`, which uses bare `min`/`max` that collide with the Windows `<windows.h>` `min`/`max` macros → `C2589: '(' : illegal token on right side of '::'` (the classic macro-expansion collision).
+
+**Root cause:** both are Windows/MSVC-portability gaps in test/generated code that presumably compiled or were only exercised under WSL/GCC. Neither is a logic bug; both are include/identifier portability.
+
+**Fix direction (NOT applied — logged per user decision 2026-07-10 to stay focused on the view-contract track):**
+1. Replace `setenv(k,v,1)`/`unsetenv(k)` with a portable helper: `#ifdef _WIN32 _putenv_s(k,v)` / `_putenv((std::string(k)+"=").c_str())` `#else setenv/unsetenv #endif` — or a small `SetEnv`/`UnsetEnv` shim in test utilities.
+2. For the min/max collision: `#define NOMINMAX` before `<windows.h>` reaches that TU, or wrap the generated-header call sites as `(std::min)(...)`/`(std::max)(...)`, or have the generator emit `(min)`/`(max)` guarded. Because the offending symbols are in a **generated** header (`SdfCoreKernels.g.hpp`), the durable fix is at the generator (emit MSVC-safe min/max) rather than editing the `.g.` output by hand.
+
+**Impact:** the individual Gaia/editor/most targets build and test fine; CI or anyone relying on a single fully-green `build.bat build` on Windows hits these two. Does not affect the Gaia sync, the editor residency fix, or the view-contract work.
+
+**Severity:** Medium (blocks the aggregate Windows build; per-target builds unaffected) · **Status:** OPEN
+
+---
+
+## KI-021 — Existing build dirs keep the STALE pre-v0.9.2 Gaia after the pin bump (FetchContent does not re-fetch on reconfigure)
+
+**Discovered:** 2026-07-10, immediately after the Gaia v0.9.2 pin bump (merge `7dde7ee7`).
+
+**Symptom:** `VIXEN/dependencies/CMakeLists.txt` now pins Gaia to the v0.9.2 SHA (`2293594`→`f2ea77a`), but every EXISTING main-checkout build dir (`build/wsl`, `build/ninja`, `build/ninja-release`, `build/wsl-debug`) still has `_deps/gaia-src` checked out at the OLD `6f0a947`. FetchContent caches `_deps` and does NOT re-fetch when only `GIT_TAG` changes — a plain reconfigure keeps building against the stale Gaia. (This is the very caching behavior that caused the original ~18-commit drift.)
+
+**Why it bites:** the wrapper adaptations in the same merge (`VoxelVolumeArchetype.cpp` `auto&` write-fix + `.all<T&>()` query-constness fix) assume v0.9.2 semantics. Built against stale `6f0a947` Gaia they are at best a loud compile error (binding `auto&` to the old `set<T>` proxy) and at worst semantic mismatch — either way NOT the validated green state. Any downstream Gaia consumer (`CashSystem`, `SVO` tests) in a stale build dir is likewise on old Gaia.
+
+**Fix (per build dir, mechanical):** remove the cached Gaia deps so the next configure re-fetches at the new pin — `rm -rf <builddir>/_deps/gaia-*` (gaia-src, gaia-build, gaia-subbuild), then reconfigure. Verify with `git -C <builddir>/_deps/gaia-src rev-parse HEAD` == `f2ea77a…`. (A full fresh build dir also picks up v0.9.2 directly.) The gaia-sync validation confirmed a cleared/fresh dir fetches v0.9.2 correctly.
+
+**Impact:** anyone reusing an existing build dir builds the wrong Gaia until they clear `_deps/gaia-*`. Fresh build dirs are fine. Not a code bug — a build-cache-hygiene footgun inherent to FetchContent pin bumps.
+
+**Planned fix:** `Dep-Cache-AutoHeal-Design-2026-07.md` — a CMake reconcile-against-pin step that auto-clears a stale `_deps` cache at configure (+ an opt-in adopt-newer-local path + a `-DVIXEN_CLEAR_DEP_CACHE` knob). Will close this KI when implemented.
+
+**Severity:** Low (one-time per-build-dir clear; fresh dirs unaffected) · **Status:** OPEN (self-clears as build dirs are recreated; auto-heal fix designed)
+## KI-022 — `VIXEN_RESIZE_AT_FRAME` mid-run window resize crashes with an access violation (pre-existing, unrelated to Sampled Lighting)
+
+**Discovered:** 2026-07-10, during Sampled Lighting Inc2 M4 (camera-motion reprojection + per-pixel history validation), as a side effect of live-gating the accumulation work — no prior Inc0-2 gate in this program had exercised a mid-run resize before.
+
+**Symptom:** triggering a live window resize mid-run via `VIXEN_RESIZE_AT_FRAME` (the existing programmatic-resize test lever in `VulkanGraphApplication.cpp` — `glfwSetWindowSize` → `WindowResizedMessage` → swapchain/imageview recreation, entirely within `VulkanGraphApplication.cpp`/the swapchain-recompile path) crashes with an access violation. The validation-layer signature points at command-buffer/imageview lifetime VUIDs (`VUID-vkFreeCommandBuffers` / `VUID-vkDestroyImageView` "in use") — a resource still referenced by an in-flight command buffer is freed/destroyed during the resize-triggered recompile.
+
+**Root cause:** not yet isolated to a specific node's `CleanupImpl`/`CompileImpl` ordering — the symptom shape (destroy-while-in-use during a recompile) is consistent with the same general class of bug KI-004/KI-006/KI-007/KI-009 already found and partly fixed in swapchain/render-target/pipeline nodes, but this specific crash was not one of those; not yet bisected to a specific node.
+
+**Impact:** PROVEN pre-existing and unrelated to Sampled Lighting — reproduces identically with `VIXEN_ACCUMULATION_ENABLED` (and every other Sampled Lighting accumulation env var) entirely unset, and also reproduces on the pre-existing orbit demo (`VIXEN_RESIDENCY_GATE_DEMO`-shaped scripted camera motion, no accumulation involved). Newly SURFACED by this program only because Inc2 M4 was the first milestone in this program to actually exercise a live resize during a gate run; the `AccumulationConfig`/`AccumulationHistoryNode`/reprojection work itself is unaffected — this is a swapchain/imageview lifetime bug independent of the lighting program.
+
+**Fix options:** (a) bisect which specific node's `CleanupImpl`/`CompileImpl` pair is destroying a still-in-flight resource during a `VIXEN_RESIZE_AT_FRAME`-triggered recompile (the same investigative approach that resolved KI-004/KI-007/KI-009); (b) audit every render-target/command-buffer-adjacent node's recompile-guard for the same "destroy before the GPU is done reading it" shape those fixes addressed, since a resize-triggered `Recompile` and those prior fixes' `CleanupReason` handling are directly relevant; (c) add a `vkDeviceWaitIdle` (or a more targeted fence wait) immediately before the resize-triggered teardown begins, if profiling shows the recompile path doesn't already wait for in-flight frames to drain before destroying resize-invalidated resources.
+
+**Severity:** medium-high (a live-resize access violation is a real crash a user could hit via ordinary window-maximize/resize interaction, not just a synthetic fault) · **Status:** OPEN · not a Sampled Lighting Inc2 defect (pre-existing, newly surfaced by this program's first resize-exercising gate).
+
+---
+
+## KI-023 — Inc2 M4's color-consistency reprojection reject will fight Inc3 ReSTIR's stochastic sampling
+
+**Discovered:** 2026-07-10, during Sampled Lighting Inc2 M4 (camera-motion reprojection + per-pixel history validation); confirmed as a real forward-looking defect by the M4 Opus validator, filed here as the tracked Known Issue + Inc3 prerequisite the plan's "TWO FLAGS" section called for.
+
+**Symptom (projected, not yet reproduced — Inc3 doesn't exist yet):** M4's reprojection validation check (c) rejects a reprojected history sample when `|history.rgb - outColor| > 0.15` (tonemapped color space) — see `BodyInstanceRayMarch.comp`'s reprojection branch. This check is sound for M4's own noise-free, deterministic march: legitimate per-frame deltas from camera motion alone are 0.01-0.05, well under the 0.15 threshold, so it only fires on genuine disocclusion/edge smear. But once Inc3 (ReSTIR DI) makes the CURRENT frame's shading a single NOISY stochastic sample (the entire point of temporal accumulation is to average many noisy samples into a converged image), the converged HISTORY will legitimately differ from any one noisy current sample — that is accumulation working as intended, not a disocclusion. A fixed 0.15 color-reject cannot distinguish "history is stale because the surface changed" from "history is correct and the current sample is just noisy" — it will fire ON the noise it exists to average, at exactly the highest-variance pixels (specular / indirect lighting, ReSTIR's whole target), silently defeating accumulation precisely where it matters most.
+
+**Root cause:** the plan's ORIGINALLY-INTENDED validation was a worldPos/depth GEOMETRIC reject (noise-invariant — rejects on true disocclusion/surface-change, tolerant of arbitrary per-pixel color noise) — see `Sampled-Lighting-Inc2-Plan-2026-07.md` Task 4. M4 shipped the color-consistency check instead because the geometric reject needs a companion worldPos/depth HISTORY buffer, and `historyImage` (M1) stores color only (rgba8) — building that companion buffer was out of M4's scope, deferred rather than silently dropped.
+
+**Impact:** none yet — Inc2's own scope (deterministic march, no stochastic sampling) never exercises the failure mode; all of M4's own gates pass cleanly (color deltas 0.01-0.05 vs the 0.15 threshold, confirmed by the M4 validator's own numpy diff re-run). This is a REQUIRED Inc3 prerequisite, not an Inc2 defect: Inc3 ReSTIR MUST add the geometric (worldPos/depth) reject plus its companion history buffer BEFORE enabling stochastic sampling, or accumulation will be silently defeated at exactly the pixels ReSTIR is meant to help.
+
+**Fix options:** (a) add a worldPos/depth companion history buffer (parallel to `historyImage`, same persistent-image pattern `AccumulationHistoryNode` already established in M1) and switch check (c) from a color-consistency test to a worldPos/depth-consistency test against it — the plan's original design, now unblocked by having a real second consumer to justify the extra image; (b) make the color-reject noise-aware (e.g. widen or adapt the threshold based on a variance estimate) — a smaller change but heuristic and harder to reason about correctness for, not preferred; (c) keep both checks (geometric primary, color as a secondary sanity check with a much wider or adaptive threshold) if Inc3 planning finds a reason color still adds value once geometric rejection is the primary gate.
+
+**Severity:** low today (Inc2 scope never triggers it), high at Inc3 (a silent, hard-to-diagnose accumulation-defeat bug on exactly the layer Inc3 is built to speed up) · **Status:** OPEN · not an Inc2 defect — a validator-confirmed, explicitly-scoped-out prerequisite for Inc3, tracked here so it isn't silently inherited.
+
+---
+
+## KI-019 — `GPUQueryManager::ReadAllResults` never unblocks in some graph configurations (all GPU dispatch timing silently no-ops)
+
+**Discovered:** 2026-07-10, during Sampled Lighting Inc1 M5 (shadow-ray cost measurement), while trying to use the existing `GPUPerformanceLogger`/`GPUQueryManager` timestamp machinery to time the `BodyInstanceRayMarch` compute dispatch in isolation.
+
+**Symptom:** zero `"Dispatch: ... ms avg"` summary lines are ever logged by ANY `GPUPerformanceLogger` instance in the graph (not just the march node — `test_dispatch`, `ui_composite_render`, `VoxelGrid_Memory` all affected), across 1500-frame runs at multiple resolutions and `ShadowConfig` states. GPU timestamp queries ARE reported as supported at startup ("GPU timestamp queries enabled (period: 10.000000 ns/tick, ...)"), so the machinery isn't simply disabled — it silently never produces a reading.
+
+**Root cause:** `GPUQueryManager::ReadAllResults()` gates every read behind `AllAllocatedSlotsReset(frameIndex)` — true only once EVERY allocated consumer query slot across the WHOLE app has had its per-frame-in-flight queries reset in a submitted command buffer at least once (comment at `GPUQueryManager.cpp:240`: avoids `VUID-vkGetQueryPoolResults-None-09401` by never reading before every slot's first reset). In the default editor/main-app graph configuration, at least one allocated slot apparently never completes that first reset→submit cycle for a given frame-in-flight index, so `AllAllocatedSlotsReset` never returns true for that index and `ReadAllResults` — and therefore every consumer's `CollectResults`/`TryReadTimestamps` — returns false forever. Not yet localized to which specific slot/node.
+
+**Impact:** the isolated-GPU-dispatch-ms measurement path (the intended tool for any future per-pass perf budget, e.g. Inc3 ReSTIR / Inc4 DDGI probe-ray costing) is currently non-functional end-to-end, silently — no error or warning is logged when this happens, it just never produces output. M5 substituted `VulkanApplicationBase`'s CPU-side `FrameTimer` (full-frame wall-clock, coarser: includes CPU submit + present) to get the Inc1 shadow-ray cost number; see `gate-artifacts/inc1-m5-shadowray-cost.txt` for the substitute method and its caveats.
+
+**Fix options:** (a) instrument `AllAllocatedSlotsReset` (or add a one-shot warning) to name which allocated slot(s) are stuck un-reset, so the actual dormant node/slot can be identified; (b) audit every `AllocateQuerySlot` call site for a node whose `Execute`/`BeginFrame` might not run every frame-in-flight index (conditional/gated dispatch, or a node compiled but not wired into the active frame path); (c) consider relaxing the whole-pool gate to a per-slot reset-tracking scheme so one dormant consumer doesn't block every other consumer's readings (larger change, touches the VUID-avoidance invariant directly).
+
+**Severity:** medium (doesn't crash or corrupt anything — it's a silent measurement-tooling gap, not a render bug — but it blocks the intended precise-timing tool for every future perf-budget gate) · **Status:** OPEN · not a Sampled Lighting Inc1 defect (pre-existing infrastructure gap, surfaced by M5 being the first milestone to actually need per-dispatch GPU timing numbers).
+
+---
+
+## KI-018 — Sampled Lighting direct-lighting pass runs INLINE, not as a separate `DirectLighting.comp` pass (RenderGraph `ComputeStageNode` 3-slot cap)
+
+**Discovered:** 2026-07-10, during Sampled Lighting Inc1 M4 (`ShadowConfig` + direct-lighting pass with shadow rays).
+
+**Symptom:** the design (`Sampled-Lighting-Design-2026-07.md` §3, §5) and Inc1 plan (Task 4) call for shading to move OUT of `BodyInstanceRayMarch.comp` into a separate `DirectLighting.comp` pass/`DirectLightingNode`, consuming the `HitRecord` buffer (M3) + `LightingConfig` + `ShadowConfig`. M4 shipped shadow rays INLINE instead — `computeLightingWithShadows()` still lives in `BodyInstanceRayMarch.comp`, called from `main()` right after the `HitRecord` round-trip, rather than in a separate dispatch.
+
+**Root cause:** `ComputeStageNode` caps at 3 hazard-tracked buffer slots, but a separate shadow/direct-lighting pass would need to share roughly 9 scene SSBOs with the march pass (octree/brick buffers, `HitRecord`, `LightingConfig`, `ShadowConfig`, instance buffers, ...) to run `TraceWorldShadow` against the same scene data. The wired `ComputeDispatchNode` (the node type actually used for the march) additionally has no producer/consumer chaining mechanism to hand a buffer from one dispatch node to the next the way the PassGroupNode auto-sync machinery (Auto-Sync FrameGraph epic, P4/P5) expects. Diagnosed by code-read before attempting the split (not a debugged runtime failure).
+
+**Impact:** the `TraceWorld`/`HitRecord`/`TraceWorldShadow`/`ShadowConfig` foundation itself is unaffected and fully functional — only the pass SPLIT is deferred. This blocks Inc3 (ReSTIR DI), which structurally REQUIRES the separate pass (reservoir/reuse machinery doesn't fit inline the way a single shadow-ray term does) — tracked in the design doc §4 Inc3 entry as a prerequisite.
+
+**Fix options:** (a) extend `ComputeStageNode`'s hazard-slot capacity beyond 3 to cover the ~9 scene SSBOs a shared-scene lighting pass needs; (b) migrate the march pass (and its future siblings) from `ComputeDispatchNode` onto `ComputeStageNode`/`PassGroupNode`'s producer/consumer wiring so passes can be chained with auto-baked barriers instead of hand-run in one dispatch. Either is a RenderGraph library change, not a Sampled Lighting shader/node change — scoped to Inc3 planning.
+
+**Severity:** low for Inc1/Inc2 (no functional loss — shadows work correctly inline); becomes a hard blocker at Inc3 · **Status:** OPEN, tracked prerequisite for Inc3 · not a defect in the shipped Inc1 work, a scoped-out architecture item.
+
+---
+
 ## KI-017 — `SdfRecipes.h`/`SdfBake.h`'s transitive include chain fails to compile on Windows/MSVC (Windows-macro `min`/`max` pollution, no `#undef` guard)
 
 **Discovered:** 2026-07-08, during Tiered-ESVO Inc2 M3 (GPU traversal-restart), when building `test_gpu_parity`/`test_tier_crossing_construction`/related SVO test targets via the `vixen-ninja` (Windows/MSVC) preset for the first time in the `tiered-esvo-inc2` worktree.

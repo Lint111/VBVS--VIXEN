@@ -12,6 +12,9 @@
 # Regenerates every ctest run until that test is fixed to use a portable invalid path.
 libraries/ShaderManagement/Z:/
 
+# CMake GoogleTest discovery cache (regenerated per-configure, not authored)
+cmake_test_discovery_*.json
+
 # Visual Studio files
 .vs/
 *.suo
@@ -215,3 +218,4 @@ SPRINT-*-QUICK-REFERENCE.md
 .hacknplan-sprint-*.md
 .hacknplan-sprint-*.json
 
+cmake_test_discovery_*.json
