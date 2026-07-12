@@ -121,7 +121,7 @@ these kinds," vs. reusing schema-JSON directly) is Task 1's decision to make, no
 ## Milestone Map
 
 - [x] **Milestone 1 (Task 1):** ground the shape, decide merge-vs-new-mechanism (report-back gate, no
-  building until confirmed). One Sonnet implementer + one Opus validator.
+  building until confirmed). One Sonnet implementer + one Opus validator. **APPROVED.**
 - [ ] **Milestone 2 (Task 2-3):** build (scope per Milestone 1's decision) + equivalence proof. One Sonnet
   implementer + one Opus validator.
 
@@ -156,6 +156,20 @@ these kinds," vs. reusing schema-JSON directly) is Task 1's decision to make, no
   - No plan-doc assumption disproven — the Ground Truth and calibration risks all held up under direct
     inspection. Controller independently verified both call sites and the `GpuStructCppEmitter.Emit`
     signature against real source before accepting this finding.
+  - **Opus validator (independent re-verification, actively hunted for a counter-example):** confirmed
+    both `RegistrySlotGenerator.cs` call sites and `schemas.json`'s heterogeneity verbatim (incl. a
+    `relation` kind = `data:false,codec:true`, a fourth independent gate combination not in the original
+    report). Confirmed `GpuStructCppEmitter.Emit(StructModel m)`'s single-model signature. **Actively
+    searched for and found the one plausible counter-example the implementer's report did NOT cite** —
+    Yeroket's `kernel-emit.config.json`/`EmitConfig`/`EmitTargetResolver` DOES read an external JSON file
+    — and confirmed it still doesn't match: that file drives a global default-target-mask + override list
+    consumed to decide WHICH targets a kernel emits, not "inject one property per gated external item into
+    a named host class." The finding survives the strongest available counter-example. Confirmed the
+    Milestone 2 sketch (a class-level `[RegistrySlots(...)]` attribute) matches how Yeroket's other
+    class-level attributes attach, with one scope note carried forward: M2 must also reproduce the
+    Baked-only `Patches` side-tables and `simRegister`-filtered `OverridableIds`, not just the plain slots.
+    Confirmed the rejected "make all kinds their own `[GpuStruct]` types" alternative genuinely doesn't
+    eliminate the aggregation work, just relocates it. **APPROVED — Milestone 2 may proceed.**
 
 ## Follow-ups (explicitly out of scope, note for later increments)
 
