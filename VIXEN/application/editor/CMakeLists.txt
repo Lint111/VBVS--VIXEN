@@ -25,7 +25,11 @@ target_include_directories(vixen_editor PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/incl
 # above (VixenApp already provides EXACTLY one implementation of stb_image_write.h, and
 # whole-archiving now guarantees it's actually linked in, unconditionally).
 vixen_whole_archive_link_vixen_app(vixen_editor PRIVATE)
-target_link_libraries(vixen_editor PRIVATE AppFlow)
+# Inc-B (View-Model-Binding-Inc-B-Plan-2026-07.md): the editor now owns a live GaiaVoxelWorld
+# (EditorApplication::gaiaWorld_) for the Gaia-backed layer-mask provider + reconcile -- previously
+# vixen_editor only pulled gaia.h TRANSITIVELY via SVO's octree headers (VixenApp), never linked
+# the library that actually instantiates a World.
+target_link_libraries(vixen_editor PRIVATE AppFlow GaiaVoxelWorld::GaiaVoxelWorld)
 
 # Default document path (no argv[1]) resolves relative to the source-tree BuiltAssets dir, not
 # the exe's CWD -- so `vixen_editor` works from any working directory.
