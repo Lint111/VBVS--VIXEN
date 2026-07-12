@@ -983,6 +983,31 @@ else()
 endif()
 
 # ===========================================================================
+# View Contract Inc-5: ViewWireReaderSoa — SoA wire round-trip proof
+# ===========================================================================
+# Sibling proof to test_view_wire_roundtrip: the CanonicalSoaWire buffer built in-test is the
+# byte-for-byte twin of the C# HudViewWriter.ToBuffer() golden for a Soa-declared Hud model
+# (Yeroket ViewWriterEmitterTests.ToBuffer_Produces_Canonical_Soa_Bytes). Proves
+# ViewWireReaderSoa::Apply reads back every field via ViewStore -- per-column contiguous scalars
+# and per-column offsets+blob strings, including a non-empty AND an empty string row in the same
+# column -- hard-fails on a version mismatch (store untouched), and rejects malformed input.
+
+if(TARGET GTest::gtest_main)
+    add_executable(test_view_wire_soa_roundtrip test_view_wire_soa_roundtrip.cpp)
+    target_link_libraries(test_view_wire_soa_roundtrip PRIVATE GTest::gtest_main RenderGraph)
+
+    # Hud.blob.g.h is a CONSUMER artifact (application/main) -- needs the app's include dir to
+    # resolve "Generated/Hud.blob.g.h" (mirrors test_view_wire_roundtrip's identical include dir).
+    target_include_directories(test_view_wire_soa_roundtrip PRIVATE ${CMAKE_SOURCE_DIR}/application/main/include)
+
+    set_target_properties(test_view_wire_soa_roundtrip PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    gtest_discover_tests(test_view_wire_soa_roundtrip DISCOVERY_MODE PRE_TEST DISCOVERY_TIMEOUT 60)
+    message(STATUS "✓ test_view_wire_soa_roundtrip configured (View Contract Inc-5: SoA wire round-trip)")
+else()
+    message(STATUS "⊗ test_view_wire_soa_roundtrip skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
 # BarrierTypes Tests (auto-sync P1)
 # ===========================================================================
 # Validates AccessKind -> Vulkan sync-semantics mapping

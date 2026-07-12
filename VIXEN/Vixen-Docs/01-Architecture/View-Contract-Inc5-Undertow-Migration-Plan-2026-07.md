@@ -212,7 +212,7 @@ but DO re-verify file:line if code has moved)
 - [x] **Milestone 1 (Task 1):** ground the shape — column categorization, SoA serialization decision,
   regeneration/diff proof mechanism, Env-1/Env-2 boundary confirmation (report-back gate, no building
   until confirmed). One Sonnet implementer + one Opus validator.
-- [ ] **Milestone 2 (Task 2-3):** SoA wire emit (Yeroket) + SoA-aware C++ reader (VIXEN) + round-trip
+- [x] **Milestone 2 (Task 2-3):** SoA wire emit (Yeroket) + SoA-aware C++ reader (VIXEN) + round-trip
   proof. One Sonnet implementer + one Opus validator.
 - [ ] **Milestone 3 (Task 4):** declare undertow's real schema, regenerate, prove byte-identical against
   the current hand-rolled generator's output. This is the increment's hardest correctness bar — may need
@@ -294,6 +294,55 @@ but DO re-verify file:line if code has moved)
     `seed7-view.bin` golden gap is real and sharpened it (a separate round-trip test for populated Str
     exists but doesn't pin bytes — insufficient for Milestone 3's byte-identical bar). One correction to
     the Env-1/Env-2 framing (see above, folded in). **APPROVED, Milestone 2 can proceed.**
+
+- Milestone 2 (Task 2-3, SoA wire emit + C++ reader + round-trip): DONE · 2026-07-12
+  - **Yeroket (`feat/view-contract-inc5`, commit `bf094679`):** `ViewWireFormat.EmitField` now
+    dispatches SoA StructArray fields to a new `EmitSoaBody` instead of throwing. Per-column
+    algorithm exactly as Milestone 1 decided: `u32 rowCount` header, then one column at a time in
+    declared field order — fixed-size scalar columns (Int/Float/Bool) emit as `rowCount`
+    contiguous values; each `String` column emits its OWN `(rowCount+1)`-entry `u32` offsets array
+    (offsets[0]=0, monotonically increasing) followed by the concatenated UTF8 bytes of just that
+    column's rows. Magic/header/top-level-scalar encoding is byte-identical to AoS (`UTVA`,
+    unchanged) — only the `ArrayOfStruct` body shape differs per-field, matching the design's
+    "wire layout for StructArray fields; scalars ignore it" framing.
+  - **Regression:** `ViewSectionLayoutTests.Emitter_Rejects_Soa_Layout` was itself pinning the old
+    throwing stub as correct behavior — replaced with `Emitter_Accepts_Soa_Layout` (asserts real
+    emission, not a specific byte shape; the byte-golden proof lives in the new test below). All
+    of Inc-3's other AoS tests (`ViewWriterEmitterTests.ToBuffer_Produces_Canonical_UTVA_Bytes`,
+    `ViewModelTests`, `ViewVersionHashTests`) pass unmodified — the AoS code path itself was not
+    touched, only the SoA branch gained real behavior. Full `CodegenTool.Tests` suite: 43/43 pass
+    (was 42/43 — 1 pre-existing failure from the stale-stub test, now fixed by replacing it).
+  - **New SoA proof test:** `ViewWriterEmitterTests.ToBuffer_Produces_Canonical_Soa_Bytes` — 3
+    faction rows (row 1 has an EMPTY `name`, deliberately exercising the offsets+blob path at a
+    zero-length string mid-column) + 2 event rows, byte-golden against a hand-built expected
+    buffer. This closes the exact gap the Milestone 1 Opus validator flagged (undertow's own
+    `seed7-view.bin` golden never exercises a populated variable-length SoA column).
+  - **VIXEN (`feat/view-contract-inc5` worktree, this commit):** added a SIBLING reader
+    `ViewWireReaderSoa` (`include/Ui/ViewWireReaderSoa.h` + `src/Ui/ViewWireReaderSoa.cpp`)
+    rather than branching Inc-3's `ViewWireReader` — the `ArrayOfStruct` body's byte shape is
+    genuinely different (columns, not rows) and Inc-3's `ViewBlob`/`ViewFieldDesc` carry no
+    per-field layout flag today (that's a Task 4 concern for the real undertow schema), so a
+    reader that always decodes the SoA shape for `ArrayOfStruct` fields is cleaner than
+    conditionally branching an existing reader against a layout bit that doesn't exist yet on the
+    C++ side. Reuses the exact bounds-checking/version-guard discipline of `ViewWireReader`
+    (same failure contract: version/magic/field-count mismatch returns false before any write;
+    a malformed body may leave partial writes — caller must discard on `false`).
+  - **Round-trip proof (non-vacuous):** new test `test_view_wire_soa_roundtrip.cpp`
+    (`ViewWireSoaRoundtrip.ReadsBackEveryFieldIncludingEmptyStringRow` +
+    `VersionMismatchIsHardError` + `MalformedIsRejected`), registered in
+    `libraries/RenderGraph/tests/CMakeLists.txt` alongside Inc-3's `test_view_wire_roundtrip`.
+    Same scenario as the Yeroket byte-golden above (tick=7/bodyCount=12/"Ops"/4,
+    3 factions incl. one with an empty name, 2 events) — decoded via `ViewWireReaderSoa::Apply`
+    into a `ViewStore` built from the real `kHudBlob`, every scalar/column/row value asserted
+    individually so a wrong-column or wrong-row bug would surface as a wrong VALUE. All 3 pass.
+  - **Build + full regression (Windows, worktree's own `build.bat`):** configure clean; full
+    build 1274/1275 targets succeeded (the 1 failure, `codegen/CMakeFiles/shadowconfig_check`,
+    is a pre-existing unrelated WSL-bridge drift-guard for `ShadowConfig` — confirmed unrelated
+    to this change, not introduced by it). `test_view_wire_roundtrip` (Inc-3 AoS, 3/3),
+    `test_view_wire_soa_roundtrip` (Inc-5 SoA, 3/3), `test_view_blob` (2/2), `test_view_store`
+    (3/3), `test_view_blob_file` (3/3), `test_blob_view` (2/2), `test_view_hud_golden` (3/3) —
+    all green, no regressions across the View Contract test family.
+  - No blockers. Ready for Milestone 3.
 
 ## Follow-ups (explicitly out of scope, note for later increments)
 
