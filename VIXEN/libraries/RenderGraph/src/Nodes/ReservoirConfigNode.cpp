@@ -56,6 +56,13 @@ Vixen::Gpu::ReservoirConfig MakeDefaultReservoirConfig() {
     if (std::getenv("VIXEN_RESTIR_GATE_DEMO") && !std::getenv("VIXEN_RESERVOIR_CONFIG_ENABLED")) {
         cfg.reservoirEnabled = 1u;
     }
+    // Sampled Lighting Inc3 M5: neighbor count for spatial reuse. 0 collapses
+    // SpatialReuseShade.comp's neighbor loop to a no-op, reproducing M4's
+    // temporal-only behavior on the SAME binary for the variance-reduction
+    // A/B gate (spatialCount=0 vs default 4), no rebuild required.
+    if (const char* spatialCountEnv = std::getenv("VIXEN_RESERVOIR_SPATIAL_COUNT")) {
+        cfg.spatialCount = static_cast<uint32_t>(std::atoi(spatialCountEnv));
+    }
     return cfg;
 }
 

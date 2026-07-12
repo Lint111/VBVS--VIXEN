@@ -227,6 +227,103 @@ TEST(ReservoirMirror, TemporalCombineStaysUnbiasedOverManyRuns) {
 }
 
 // ===========================================================================
+// Sampled Lighting Inc3 M5: spatial reuse calls the SAME Reservoir::Combine primitive as
+// temporal reuse above (Reservoir::Combine has no notion of "temporal" vs "spatial", only
+// "another reservoir stream to fold in" — see Reservoir.h's own Combine doc comment and
+// shaders/ReservoirCombine.glsl's mirror-file header). These tests model spatial reuse as
+// combining SEVERAL independently-built neighbor reservoirs (all drawn from the SAME
+// synthetic cut, i.e. no scene discontinuity across the simulated neighborhood) into one
+// pixel's reservoir, proving (a) chaining several Combine calls still reduces variance vs
+// a single un-combined reservoir, and (b) the chain stays unbiased over many runs — the
+// plan's "variance reduction vs M4" and "equal-error-vs-brute-force" gates' CPU-mirror
+// precondition, run BEFORE trusting the GPU spatial-reuse path (same red-green discipline
+// as the temporal identity above).
+// ===========================================================================
+
+TEST(ReservoirMirror, SpatialCombineReducesAcrossPixelVariance) {
+    SyntheticCut cut = MakeSyntheticCut(16, /*seed=*/9);
+    const double trueSum = cut.BruteForceMonteCarloEstimate();
+
+    constexpr int kNeighbors = 4;     // mirrors ReservoirConfig::spatialCount default
+    constexpr int kRuns = 4000;
+    std::mt19937 rngBuild(4004), rngCombine(5005);
+    std::uniform_real_distribution<float> unit(0.0f, 1.0f);
+
+    auto estimateFrom = [&](int neighborsToCombine) {
+        double sumSq = 0.0, sum = 0.0;
+        for (int run = 0; run < kRuns; ++run) {
+            ReservoirState current = Reservoir::BuildFromUniformCandidates(
+                cut.Count(), [&](uint32_t i) { return cut.PHat(i); }, rngBuild);
+            EXPECT_TRUE(current.IsValid());
+
+            for (int n = 0; n < neighborsToCombine; ++n) {
+                ReservoirState neighbor = Reservoir::BuildFromUniformCandidates(
+                    cut.Count(), [&](uint32_t i) { return cut.PHat(i); }, rngBuild);
+                EXPECT_TRUE(neighbor.IsValid());
+                const float pHatAtNeighborY = cut.PHat(neighbor.y);
+                Reservoir::Combine(current, neighbor, pHatAtNeighborY, unit(rngCombine));
+            }
+
+            const double sample = static_cast<double>(current.targetPdf) *
+                                   static_cast<double>(Reservoir::UnbiasedWeight(current));
+            sum += sample;
+            sumSq += sample * sample;
+        }
+        const double mean = sum / kRuns;
+        const double variance = (sumSq / kRuns) - (mean * mean);
+        return std::make_pair(mean, variance);
+    };
+
+    const auto [meanNoReuse, varNoReuse] = estimateFrom(/*neighborsToCombine=*/0);
+    const auto [meanSpatial, varSpatial] = estimateFrom(/*neighborsToCombine=*/kNeighbors);
+
+    EXPECT_LT(varSpatial, varNoReuse)
+        << "combining " << kNeighbors << " neighbor reservoirs must reduce per-pixel "
+        << "estimator variance vs a single reservoir (no-reuse variance=" << varNoReuse
+        << ", spatial-reuse variance=" << varSpatial << ")";
+
+    // Both estimators must still be unbiased (variance reduction must not come at the cost
+    // of a shifted mean) -- loose tolerance since this reuses the identity-2 check, not a
+    // tight statistical-power claim.
+    EXPECT_LT(std::fabs(meanNoReuse - trueSum) / trueSum, 0.05);
+    EXPECT_LT(std::fabs(meanSpatial - trueSum) / trueSum, 0.05);
+}
+
+TEST(ReservoirMirror, ChainedSpatialCombineStaysUnbiasedOverManyRuns) {
+    SyntheticCut cut = MakeSyntheticCut(12, /*seed=*/7);  // SAME cut as the temporal identity
+    const double trueSum = cut.BruteForceMonteCarloEstimate();
+
+    constexpr int kNeighbors = 4;
+    constexpr int kRuns = 20000;
+    double accum = 0.0;
+    std::mt19937 rngBuild(6006), rngCombine(7007);
+    std::uniform_real_distribution<float> unit(0.0f, 1.0f);
+
+    for (int run = 0; run < kRuns; ++run) {
+        ReservoirState current = Reservoir::BuildFromUniformCandidates(
+            cut.Count(), [&](uint32_t i) { return cut.PHat(i); }, rngBuild);
+        ASSERT_TRUE(current.IsValid());
+
+        for (int n = 0; n < kNeighbors; ++n) {
+            ReservoirState neighbor = Reservoir::BuildFromUniformCandidates(
+                cut.Count(), [&](uint32_t i) { return cut.PHat(i); }, rngBuild);
+            ASSERT_TRUE(neighbor.IsValid());
+            const float pHatAtNeighborY = cut.PHat(neighbor.y);
+            Reservoir::Combine(current, neighbor, pHatAtNeighborY, unit(rngCombine));
+        }
+
+        const float w = Reservoir::UnbiasedWeight(current);
+        accum += static_cast<double>(current.targetPdf) * static_cast<double>(w);
+    }
+    const double estimate = accum / static_cast<double>(kRuns);
+    const double relError = std::fabs(estimate - trueSum) / trueSum;
+    EXPECT_LT(relError, 0.02)
+        << "chained " << kNeighbors << "-neighbor spatial-combine estimate (" << estimate
+        << ") over " << kRuns << " runs must converge to the true candidate-power sum ("
+        << trueSum << ") within tolerance (relative error " << relError << ")";
+}
+
+// ===========================================================================
 // Identity 3: a many-sample RIS reservoir converges NUMERICALLY to an INDEPENDENT
 // brute-force Monte-Carlo estimate of the same integral (NOT a circular check against
 // RIS/WRS code — SyntheticCut::BruteForceMonteCarloEstimate is a direct, closed-form sum
