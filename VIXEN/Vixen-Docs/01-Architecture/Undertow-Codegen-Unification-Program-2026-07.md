@@ -161,7 +161,10 @@ tracked in that increment's own plan doc once started)
 - [x] Increment 1 — #8 Registry collection slots (Opus-validated APPROVED both milestones; new
   `[RegistrySlots]` mechanism proven equivalent, `EmitRegistrySlots.cs` not yet retired by design — see
   `Undertow-Codegen-Unif-Inc1-Registry-Slots-Plan-2026-07.md`)
-- [ ] Increment 2 — #9 Shared map-element structs
+- [x] Increment 2 — #9 Shared map-element structs (Opus-validated APPROVED both milestones; new
+  `[SharedMapElements]` assembly-attribute mechanism, FULL RETIREMENT — first end-to-end retirement of
+  live undertow code in this program, 2955/2955 undertow tests pass — see
+  `Undertow-Codegen-Unif-Inc2-Shared-Map-Elements-Plan-2026-07.md`)
 - [ ] Increment 3 — #14 `[Param]` declarations
 - [ ] Increment 4 — #12 `[Action]` registration
 - [ ] Increment 5 — #1/#2/#3/#7 Authored+Baked def carriers, parse/bake table, sim registration (cluster)
@@ -183,6 +186,19 @@ tracked in that increment's own plan doc once started)
   retirement deferred to a later dependent increment (per this doc's own per-increment process, Task 4)
   once #1/#2/#3/#7's own migration confirms end-to-end behavior with real def-carrier data. Full detail:
   `Undertow-Codegen-Unif-Inc1-Registry-Slots-Plan-2026-07.md`.
+- Increment 2 (#9 Shared map-element structs): COMPLETE · 2026-07-13 · both milestones Opus-validated
+  APPROVED. **First full end-to-end retirement in this program.** New assembly-level
+  `[SharedMapElements(schemaPath)]` attribute + `SharedMapElementEmitter` built (Yeroket
+  `feat/codegen-unif-inc2-mapelem`, commit `1af5865e`) — confirmed neither Increment 1's `[RegistrySlots]`
+  (properties-into-existing-class) nor `[GpuStruct]` (reflects a decorated type, C++/GLSL-only emission,
+  `ScalarKind` limited to U32/I32/F32) fit; a new mechanism was needed, reusing only Inc-1's "attribute
+  carries an external JSON pointer" precedent. Faithful line-by-line port of `EmitSharedMapElement.All`'s
+  logic for all 12 real `sharedMapElements` entries spanning all 4 CLR value shapes (float/double/
+  `AttributeValue`/string). Retired `EmitSharedMapElement.cs`+`MapElementGenerator.cs` in undertow
+  (`feat/codegen-unif-inc2-mapelem`, commit `0d6461f2`), checking in the Yeroket-generated
+  `MapElements.g.cs` as an ordinary compiled source file — full undertow test suite (2955 tests) passes,
+  0 failures, independently re-run by both the controller and the Opus validator from fresh builds. Full
+  detail: `Undertow-Codegen-Unif-Inc2-Shared-Map-Elements-Plan-2026-07.md`.
 
 ## Follow-ups / open questions (explicitly not resolved in this doc)
 
