@@ -789,6 +789,41 @@ else()
 endif()
 
 # ===========================================================================
+# Inc-B: external-change .changed<LayerMask>() reconcile proof (headless — no Vulkan required)
+# ===========================================================================
+# Task 4's key proof: a deterministic EXTERNAL Gaia write (not via WriteU32/ToggleLayer/the
+# same-frame echo) reconciles into the bound EditorLayersView "layers" model. Two TUs, same
+# robin_hood ODR isolation the editor itself uses (EditorLayersViewBridge.h's file header):
+# GaiaLayerReconcileTestBridge.cpp is the gaia-only side (no RmlUi); the test .cpp is the
+# RmlUi-only side (no gaia.h) -- see both files' own header comments.
+
+if(TARGET GTest::gtest_main)
+    add_executable(test_view_editor_layers_reconcile
+        test_view_editor_layers_reconcile.cpp
+        ${CMAKE_SOURCE_DIR}/application/editor/source/GaiaLayerReconcileTestBridge.cpp
+    )
+
+    target_link_libraries(test_view_editor_layers_reconcile PRIVATE
+        GTest::gtest_main
+        RenderGraph
+        AppFlow
+        GaiaVoxelWorld::GaiaVoxelWorld
+    )
+
+    # Same editor-consumer-artifact include need as test_view_editor_layers_golden (EditorLayersView.h
+    # / EditorLayers.g.h / the Inc-B bridge headers all live under application/editor/include).
+    target_include_directories(test_view_editor_layers_reconcile PRIVATE ${CMAKE_SOURCE_DIR}/application/editor/include)
+
+    set_target_properties(test_view_editor_layers_reconcile PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+    gtest_discover_tests(test_view_editor_layers_reconcile)
+
+    message(STATUS "✓ test_view_editor_layers_reconcile configured (Inc-B: external-change reconcile proof)")
+else()
+    message(STATUS "⊗ test_view_editor_layers_reconcile skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
 # View Contract Inc-2b: ViewBlob/ViewKind/ViewValue reflection-blob contract
 # ===========================================================================
 # Pure CPU test of the constexpr descriptor shape + scalar kind/value agreement.

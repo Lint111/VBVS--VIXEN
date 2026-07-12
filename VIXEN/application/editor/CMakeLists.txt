@@ -16,7 +16,11 @@ add_executable(vixen_editor
 
 target_include_directories(vixen_editor PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
-target_link_libraries(vixen_editor PRIVATE VixenApp AppFlow)
+# Inc-B (View-Model-Binding-Inc-B-Plan-2026-07.md): the editor now owns a live GaiaVoxelWorld
+# (EditorApplication::gaiaWorld_) for the Gaia-backed layer-mask provider + reconcile -- previously
+# vixen_editor only pulled gaia.h TRANSITIVELY via SVO's octree headers (VixenApp), never linked
+# the library that actually instantiates a World.
+target_link_libraries(vixen_editor PRIVATE VixenApp AppFlow GaiaVoxelWorld::GaiaVoxelWorld)
 
 # Inc-2b Task 3: stb_image_write.h (Debug/RenderTargetReadback.h's PNG writer, called from
 # EditorApplication::CaptureFrameToPng) -- not transitively provided by VixenApp/RenderGraph.
