@@ -294,6 +294,30 @@ either confirm this `POST_BUILD` step exists in the CMakeLists you're building a
 directly from `$<TARGET_FILE_DIR:VIXEN>` (the real build output dir) instead of the source-tree
 copy.
 
+## Known gotcha: an invalid `-Target`/`-BuildTarget` used to silently report success (FIXED 2026-07-12)
+
+Before this fix, `run_build_with_summary.ps1` inferred success/failure from the background job's
+`JobStateInfo.State` (`'Failed'` vs `'Completed'`) — but that only reflects a terminating
+PowerShell-level error inside the job, not the actual exit code of the `cmake`/`ninja` process it
+ran. An invalid target name (`ninja: error: unknown target 'foo'`) makes `cmake --build` exit
+non-zero immediately, with **zero** per-target `FAILED:` lines in the log (nothing was ever
+attempted) — so both success checks (`State`, and `$failedTargets.Count -gt 0`) came back clean,
+and the script printed **"All targets built successfully."** with exit 0, even though nothing
+built. This bit a real case: a `-BuildTarget` value meant only as a descriptive queue-registration
+label (not an actual CMake target) was passed straight through to `--target`, and the auto-dispatch
+path reported `AUTO_DISPATCHED`/success on a build that never compiled anything.
+
+**Fixed:** the job scriptblock now returns `$LASTEXITCODE` (the real `cmake`/`ninja` exit code) as
+its result; the script reads that via `Receive-Job` instead of trusting `JobStateInfo.State` alone.
+A non-zero exit with no per-target `FAILED:` lines is now reported distinctly — **"BUILD INVOCATION
+FAILED (exit N) BEFORE any target's compile/link was attempted"** — instead of being folded into
+the "all clean" case. Verified against three cases: a bogus target (now correctly reports
+invocation-failure + exit 1), a real scoped-target success (still exit 0), and a real per-target
+compile failure (still reports the `FAILED:` list + exit 1, unaffected by this fix).
+
+**Practical implication:** `-BuildTarget`/`-Target` must be a real CMake target name, never a
+free-text label — if you want to describe *why* you're building, use `-Note`, not `-BuildTarget`.
+
 ## Known gotcha: the shared status file is machine-wide, not per-build (mitigated by BuildId)
 
 `%TEMP%\vixen_build_status.txt` (`run_build_with_summary.ps1`'s live-status file) is a SINGLE

@@ -157,6 +157,14 @@ $job = Start-Job -ScriptBlock {
     } else {
         & $cmakeExe --build --preset $preset -- -k 0 -j $maxJobs *>&1 | Out-File -FilePath $logPath -Encoding utf8
     }
+    # Capture the REAL exit code of the cmake/ninja invocation and return it as the job's
+    # result. $job.ChildJobs[0].JobStateInfo.State only reports 'Failed' for a terminating
+    # PowerShell/script error inside the job -- an external process (cmake/ninja) exiting
+    # non-zero for its OWN reasons (e.g. "ninja: error: unknown target") still leaves the job
+    # State as 'Completed', so relying on State alone silently treats that as success. This bit
+    # a real case: an invalid -Target name made ninja exit 1 immediately with zero targets
+    # attempted, but the old logic reported "All targets built successfully" (exit 0).
+    $LASTEXITCODE
 } -ArgumentList $CMakeExe, $Preset, $buildLog, $workDir, $MaxParallelJobs, $Target
 
 $progressPattern = '^\[(\d+)/(\d+)\]\s+(.+)$'
@@ -188,9 +196,13 @@ while ($job.State -eq 'Running') {
     Write-StatusFile "RUNNING" $elapsed $lastTotal $lastDone $failedTargets.Count $lastTarget $failedTargets
 }
 
-# Drain any output the job produced after our last poll, then get its exit code.
-Receive-Job -Job $job | Out-Null
-$buildExitCode = if ($job.ChildJobs[0].JobStateInfo.State -eq 'Failed') { 1 } else { 0 }
+# Drain the job's output. Its LAST result object is the real cmake/ninja exit code we
+# explicitly returned as the job scriptblock's final expression (see Start-Job above) -- NOT
+# $job.ChildJobs[0].JobStateInfo.State, which only reflects PowerShell-level job failure and
+# stays 'Completed' even when the external process it ran exited non-zero on its own terms.
+$jobOutput = Receive-Job -Job $job
+$jobExitCode = $jobOutput | Select-Object -Last 1
+$buildExitCode = if ($null -ne $jobExitCode -and $jobExitCode -is [int] -and $jobExitCode -ne 0) { 1 } else { 0 }
 Remove-Job -Job $job -Force
 
 # Final pass over the complete log for an authoritative count (the polling loop can miss the
@@ -209,13 +221,23 @@ foreach ($line in $content) {
 }
 if ($failedTargets.Count -gt 0) { $buildExitCode = 1 }
 
+# A non-zero exit with NO per-target FAILED: lines means cmake/ninja rejected the invocation
+# itself before attempting any target (e.g. "ninja: error: unknown target 'foo'", a bad
+# preset, a CMake configure error surfaced mid-build) -- surface this distinctly instead of
+# silently reporting "All targets built successfully" just because $failedTargets is empty.
+$topLevelFailure = ($buildExitCode -ne 0 -and $failedTargets.Count -eq 0)
+
 $elapsed = [int]((Get-Date) - $startTime).TotalSeconds
 Write-StatusFile "DONE" $elapsed $lastTotal $lastDone $failedTargets.Count $lastTarget $failedTargets
 
 Write-Host ""
 Write-Host "[build] ============================== BUILD SUMMARY =============================="
 Write-Host "[build] BuildId  : $BuildId"
-if ($failedTargets.Count -eq 0) {
+if ($topLevelFailure) {
+    Write-Host "[build] BUILD INVOCATION FAILED (exit $jobExitCode) BEFORE any target's compile/link was attempted."
+    Write-Host "[build] This is NOT a compile/link failure -- likely a bad -Target name, bad preset, or a"
+    Write-Host "[build] CMake configure error. See `"$buildLog`" for cmake/ninja's own error message."
+} elseif ($failedTargets.Count -eq 0) {
     Write-Host "[build] All targets built successfully."
 } else {
     Write-Host "[build] $($failedTargets.Count) target(s) FAILED:"
