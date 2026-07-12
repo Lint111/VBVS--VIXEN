@@ -362,6 +362,26 @@ set is its own milestone with its own adversarial proof, not a corollary of the 
       `test_editor_toggle_undo_capture` (live GPU capture), byte-guards.
   - Tree clean after commit (verified via `/usr/bin/git status`/`diff` directly, not the rtk-wrapped
     git which masks exit codes).
+  - **Opus validator (independent re-verification of the "no gap found" conclusion itself, not just
+    the report):** confirmed `setComponent<T>` gates ONLY on `valid(id)` (no component-existence
+    check) and the `apply(bool)` lambda has no `hasComponent<T>` pre-check — the structural fact that
+    makes the conclusion true. Cross-checked against the vendored Gaia source
+    (`gaia-src/include/gaia/ecs/world.h`): the relevant `add()` overload for the component-ABSENT case
+    (this test's exact scenario) is well-defined; separately noted, as a side observation (not a
+    defect in this milestone), that Gaia's own doc comment calls add-when-component-ALREADY-PRESENT
+    "UB" — but that's the M1/M2 normal-dispatch/redo path (already validated + live-gated), not the
+    M3 scenario, and is flagged here for the record rather than acted on. Stress-tested the new test
+    for a spurious-pass (default-construction masking a real gap, stale-cache reads) — ruled out.
+    Additionally reasoned through a "stomp" variant (component removed AND re-added with a DIFFERENT
+    value between dispatch and undo) and confirmed undo's unconditional overwrite correctly restores
+    the captured snapshot regardless — correct behavior, not a missed case. Rebuilt the full worktree
+    fresh, ran all named tests directly: `test_set_mutation_dispatch` 6/6, `test_view_editor_layers_reconcile`
+    2/2, `test_view_selection_provider` 3/3, Gaia wrapper tests same pre-existing failures. Tree clean.
+    **APPROVED, no defects, nothing changed.** **Holistic Inc-D check (all 3 milestones):** confirmed
+    coherent against the plan's own Goal statement — set mutation (M1) + undo/redo over a
+    live-query-independent captured snapshot with observable dead-entity skips (M2) + the last open
+    scoping question closed by disproof rather than dead code (M3) — no dangling contradiction between
+    the three. **Inc-D reads as DONE.**
 
 ### Task 5 — Lossy vs. non-lossy undo policy (Milestone 3, NEW) — CLOSED, no gap found
 
