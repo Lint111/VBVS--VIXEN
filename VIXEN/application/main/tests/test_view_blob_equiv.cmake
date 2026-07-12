@@ -7,7 +7,9 @@ endif()
 
 if(TARGET VixenApp AND TARGET GTest::gtest_main)
     add_executable(test_view_blob_equiv ${CMAKE_CURRENT_LIST_DIR}/test_view_blob_equiv.cpp)
-    target_link_libraries(test_view_blob_equiv PRIVATE VixenApp GTest::gtest_main)
+    # Inc-1 M4: must whole-archive VixenApp, not link it plainly -- see cmake/VixenNodeLinkage.cmake.
+    vixen_whole_archive_link_vixen_app(test_view_blob_equiv PRIVATE)
+    target_link_libraries(test_view_blob_equiv PRIVATE GTest::gtest_main)
     target_include_directories(test_view_blob_equiv PRIVATE ${VIXEN_ROOT}/libraries/Core/include)
 
     # The test resolves "assets/ui/hud.viewblob" (ViewBlobFile::Load) relative to its CWD, matching

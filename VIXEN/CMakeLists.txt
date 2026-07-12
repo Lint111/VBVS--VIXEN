@@ -28,20 +28,40 @@ if(NOT CMAKE_GENERATOR)
     endif()
 endif()
 
-# Ccache/sccache support for faster rebuilds
+# Ccache/sccache support for faster rebuilds.
+#
+# ccache is preferred over sccache here specifically because MSVC precompiled headers
+# (/Yc, /Yu, /Fp — used by target_precompile_headers() on most of this project's core
+# libraries: Core, EventBus, CashSystem, GaiaArchetypes, GaiaVoxelWorld, Logger,
+# RenderGraphCore) are UNCONDITIONALLY uncacheable under sccache (upstream: sccache
+# routes /Fp and /Yc as TooHardPath in src/compiler/msvc.rs — open issue
+# mozilla/sccache#978, unresolved since 2021, no roadmap commitment). Measured impact:
+# a fresh worktree's clean build hit only 38.9% cache-hit rate under sccache, with
+# /Fp (310 occurrences) as the single largest non-cacheable-reason bucket — i.e. every
+# fresh worktree on this multi-worktree-agent machine was paying full uncached
+# PCH-compile cost for 7 core libraries regardless of the shared FetchContent/sccache
+# cache-dir config already being correct. ccache added real MSVC /Yc PCH support in
+# 2024 (refined through 2025 point releases) and is the documented fix other CMake
+# projects (e.g. Qt) use for this exact gap. If ccache isn't installed, fall back to
+# sccache (better than nothing on the non-PCH majority of the build) rather than
+# failing the configure.
 option(USE_CCACHE "Use ccache/sccache for compilation caching" ON)
 if(USE_CCACHE)
-    find_program(CCACHE_PROGRAM ccache)
+    # Self-provisioning (Windows only — see ProvisionCcache.cmake): auto-downloads ccache into a
+    # project-local cache if not already on PATH, same contract as Vulkan/gdb/windowing-deps
+    # provisioning. Sets VIXEN_PROVISIONED_CCACHE_PROGRAM when a usable ccache is available
+    # (system or provisioned); a no-op on non-Windows or if provisioning is disabled/fails.
+    include("${VIXEN_ROOT}/cmake/ProvisionCcache.cmake" OPTIONAL)
     find_program(SCCACHE_PROGRAM sccache)
 
-    if(SCCACHE_PROGRAM)
-        message(STATUS "Found sccache: ${SCCACHE_PROGRAM}")
+    if(VIXEN_PROVISIONED_CCACHE_PROGRAM)
+        message(STATUS "Using ccache: ${VIXEN_PROVISIONED_CCACHE_PROGRAM} (preferred over sccache - caches MSVC PCH)")
+        set(CMAKE_C_COMPILER_LAUNCHER ${VIXEN_PROVISIONED_CCACHE_PROGRAM})
+        set(CMAKE_CXX_COMPILER_LAUNCHER ${VIXEN_PROVISIONED_CCACHE_PROGRAM})
+    elseif(SCCACHE_PROGRAM)
+        message(STATUS "Found sccache: ${SCCACHE_PROGRAM} (ccache not found/provisioned - note: sccache cannot cache MSVC PCH compiles)")
         set(CMAKE_C_COMPILER_LAUNCHER ${SCCACHE_PROGRAM})
         set(CMAKE_CXX_COMPILER_LAUNCHER ${SCCACHE_PROGRAM})
-    elseif(CCACHE_PROGRAM)
-        message(STATUS "Found ccache: ${CCACHE_PROGRAM}")
-        set(CMAKE_C_COMPILER_LAUNCHER ${CCACHE_PROGRAM})
-        set(CMAKE_CXX_COMPILER_LAUNCHER ${CCACHE_PROGRAM})
     else()
         message(STATUS "ccache/sccache not found - install for faster rebuilds")
     endif()
@@ -55,34 +75,17 @@ if(USE_UNITY_BUILD)
     set(CMAKE_UNITY_BUILD_BATCH_SIZE 16)
 endif()
 
-# Parallel compilation (MSVC)
-if(MSVC)
-    add_compile_options(/MP)  # Multi-processor compilation
-
-    # Suppress warnings from third-party libraries
-    # Use CMAKE_*_LINKER_FLAGS for compatibility with CMake < 3.13
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /ignore:4099 /NOLOGO")
-    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /ignore:4099 /NOLOGO")
-    set(CMAKE_STATIC_LINKER_FLAGS "${CMAKE_STATIC_LINKER_FLAGS} /ignore:4099 /NOLOGO")
-
-    # Suppress warnings from external headers (angle-bracket includes)
-    add_compile_options(
-        /external:W0           # Suppress all warnings from external headers
-        /external:anglebrackets # Treat <> includes as external
-    )
-
-    # Suppress common third-party compile warnings
-    add_compile_options(
-        /wd4100  # Unreferenced formal parameter
-        /wd4189  # Local variable initialized but not referenced
-        /wd4244  # Conversion warnings
-        /wd4267  # Size_t conversion warnings
-    )
-
-    message(STATUS "MSVC multi-processor compilation enabled")
-    message(STATUS "MSVC linker warnings suppressed (LNK4099: missing PDB files)")
-    message(STATUS "MSVC compile warnings suppressed for third-party libs (4100, 4189, 4244, 4267)")
-endif()
+# NOTE: the MSVC-specific block that used to live here (parallel compilation, linker warning
+# suppression, job-pool cap) was DEAD CODE — `if(MSVC)` is never true before project() runs,
+# since CMake hasn't done compiler detection yet at this point in the file. Confirmed live: a
+# `message(STATUS "DEBUG_MARKER...")` placed at the very top of that block never printed in
+# any configure, fresh or cached, direct `cmake --preset` or through build.bat. Moved into the
+# existing post-project() `if(MSVC)` block below (same one Fix 4's /INCREMENTAL:NO fix already
+# had to live in, for the identical reason) — see Worktree-Build-Artifact-Accumulation-Audit-
+# 2026-07.md Fix 10 for the full story, including why this one had gone unnoticed even though
+# it looked like it was working (CMake's own MSVC+Ninja default flags already include an
+# equivalent of /MP, which is why compiles were still parallel despite this block never
+# running — the /MP here was pure no-op duplication, not a broken feature).
 
 # Generate compile_commands.json for better IDE integration
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -108,10 +111,14 @@ endif()
 # ============================================================================
 
 # Configure build output directories to use temp for intermediate files
-# Keep final binaries in project directory
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
-# Note: RUNTIME_OUTPUT_DIRECTORY is overridden per-target below to use binaries/
+# Final exes (and their runtime-adjacent files: PDB/ILK, logs, generated/sdi — all written
+# CWD-relative to wherever the exe runs from, so they follow this directory automatically)
+# live under the build dir, NOT the source tree, so `rm -rf build` reclaims everything in one
+# shot instead of leaving multi-GB PDB/ILK files behind (see Worktree-Build-Artifact-
+# Accumulation-Audit-2026-07.md Fix 2). RUNTIME_OUTPUT_DIRECTORY is set per-target below.
+set(VIXEN_BINARIES_DIR ${CMAKE_BINARY_DIR}/binaries)
 
 # AUTO_LOCATE_VULKAN - accepted value ON or OFF
 # ON  - Use CMake to auto locate the Vulkan SDK.
@@ -188,6 +195,14 @@ include(cmake/ProvisionGdb.cmake)
 
 # Reusable runtime-asset staging helper (vixen_stage_assets) for apps + consumers.
 include(cmake/VixenAssets.cmake)
+
+# Configure-time AddNode<T>-call-site scan (vixen_generate_node_manifest) — drives scoped
+# per-app RenderGraph node linkage (Graph-Derived-Node-Linkage-Spec-2026-07).
+include(cmake/VixenNodeManifest.cmake)
+
+# vixen_link_used_nodes() — links a target against only the RenderGraphNode_<Name> OBJECT
+# libraries named in its generated node manifest (Inc-1 M4 scoped linkage).
+include(cmake/VixenNodeLinkage.cmake)
 
 if(AUTO_LOCATE_VULKAN)
 	message(STATUS "Attempting auto locate Vulkan using CMake......")
@@ -329,11 +344,94 @@ project(${Recipe_Name} VERSION 0.1.0)
 if(MSVC)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /FS")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /FS")
+
+    # Disable incremental linking (must ALSO be right after project() — CMake only sets its
+    # own /INCREMENTAL default into CMAKE_*_LINKER_FLAGS_DEBUG inside project() itself, so an
+    # earlier set() here gets silently clobbered; confirmed live, .ilk kept generating until
+    # this moved below project()). This is a Ninja + sccache workflow, not MSBuild/Visual-
+    # Studio-IDE incremental rebuild, so /INCREMENTAL's only benefit (fast re-link after
+    # touching one .cpp in an active IDE session) doesn't apply; the actual iteration-speed
+    # lever here is sccache's object cache (see USE_CCACHE above). Cost was real: ~350MB .ilk
+    # per exe, x3 exes, x every worktree/preset that got built (Worktree-Build-Artifact-
+    # Accumulation-Audit-2026-07.md Fix 4). /INCREMENTAL:NO also implies no .ilk is written at
+    # all, so this is a pure win, not a size/speed tradeoff.
+    foreach(_vixen_linker_flags_var
+            CMAKE_EXE_LINKER_FLAGS_DEBUG
+            CMAKE_SHARED_LINKER_FLAGS_DEBUG
+            CMAKE_MODULE_LINKER_FLAGS_DEBUG)
+        string(REGEX REPLACE "/INCREMENTAL[^ ]*" "" ${_vixen_linker_flags_var} "${${_vixen_linker_flags_var}}")
+        set(${_vixen_linker_flags_var} "${${_vixen_linker_flags_var}} /INCREMENTAL:NO")
+    endforeach()
+
+    add_compile_options(/MP)  # Multi-processor compilation
+
+    # Cap concurrent LINK jobs separately from compile jobs (Ninja job pool). Link is the
+    # RSS-heavy step for this project's debug builds — measured 400-500MB per link.exe with
+    # /Z7 embedded debug info (Fix 4) — so running as many links in parallel as cores (ninja's
+    # default, matching -j/--parallel) is what actually made the whole machine stutter under
+    # load, not the compile step. VIXEN_MAX_PARALLEL_LINKS overrides; default is a conservative
+    # fraction of logical cores (see Worktree-Build-Artifact-Accumulation-Audit-2026-07.md
+    # Fix 10 for the reasoning and measurements this is based on).
+    if(DEFINED ENV{VIXEN_MAX_PARALLEL_LINKS})
+        set(_vixen_max_parallel_links $ENV{VIXEN_MAX_PARALLEL_LINKS})
+    else()
+        cmake_host_system_information(RESULT _vixen_logical_cores QUERY NUMBER_OF_LOGICAL_CORES)
+        math(EXPR _vixen_max_parallel_links "(${_vixen_logical_cores} + 3) / 4")
+        if(_vixen_max_parallel_links LESS 1)
+            set(_vixen_max_parallel_links 1)
+        endif()
+    endif()
+    set_property(GLOBAL PROPERTY JOB_POOLS "link_pool=${_vixen_max_parallel_links}")
+    set(CMAKE_JOB_POOL_LINK "link_pool")
+    message(STATUS "Capping concurrent link jobs at ${_vixen_max_parallel_links} (override with VIXEN_MAX_PARALLEL_LINKS)")
+
+    # Suppress warnings from third-party libraries
+    # Use CMAKE_*_LINKER_FLAGS for compatibility with CMake < 3.13
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /ignore:4099 /NOLOGO")
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /ignore:4099 /NOLOGO")
+    set(CMAKE_STATIC_LINKER_FLAGS "${CMAKE_STATIC_LINKER_FLAGS} /ignore:4099 /NOLOGO")
+
+    # Suppress warnings from external headers (angle-bracket includes)
+    add_compile_options(
+        /external:W0           # Suppress all warnings from external headers
+        /external:anglebrackets # Treat <> includes as external
+    )
+
+    # Suppress common third-party compile warnings
+    add_compile_options(
+        /wd4100  # Unreferenced formal parameter
+        /wd4189  # Local variable initialized but not referenced
+        /wd4244  # Conversion warnings
+        /wd4267  # Size_t conversion warnings
+    )
+
+    message(STATUS "MSVC multi-processor compilation enabled")
+    message(STATUS "MSVC linker warnings suppressed (LNK4099: missing PDB files)")
+    message(STATUS "MSVC compile warnings suppressed for third-party libs (4100, 4189, 4244, 4267)")
 endif()
 
 # ============================================================================
 # Third-Party Dependencies
 # ============================================================================
+# Share FetchContent's clone+build output across all worktrees/presets of this repo instead of
+# each one re-cloning/rebuilding the same ~12 third-party libs (several built from source: TBB,
+# RmlUi, freetype, glfw, googletest) into its own build/<preset>/_deps. This is the single
+# largest driver of disk growth in a multi-worktree workflow — see Worktree-Build-Artifact-
+# Accumulation-Audit-2026-07.md Fix 1. Only set it when VIXEN is the top-level project: a parent
+# super-build (e.g. UNDERTOW's vixen/ add_subdirectory) already controls this cache-wide setting
+# and must not be overridden by an inner add_subdirectory. Override with VIXEN_FETCHCONTENT_CACHE
+# env var for machines where C:/vixen-fetchcontent-cache isn't appropriate (e.g. non-Windows).
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    if(DEFINED ENV{VIXEN_FETCHCONTENT_CACHE})
+        set(FETCHCONTENT_BASE_DIR "$ENV{VIXEN_FETCHCONTENT_CACHE}" CACHE PATH "Shared FetchContent cache" FORCE)
+    elseif(WIN32)
+        set(FETCHCONTENT_BASE_DIR "C:/vixen-fetchcontent-cache" CACHE PATH "Shared FetchContent cache" FORCE)
+    else()
+        set(FETCHCONTENT_BASE_DIR "$ENV{HOME}/.cache/vixen-fetchcontent-cache" CACHE PATH "Shared FetchContent cache" FORCE)
+    endif()
+    message(STATUS "FetchContent shared cache: ${FETCHCONTENT_BASE_DIR}")
+endif()
+
 # All FetchContent and external library setup moved to dependencies/
 add_subdirectory(dependencies)
 
@@ -489,12 +587,6 @@ endif()
 
 # CompileTimeResourceSystem tests moved to RenderGraph/tests/
 # (See RenderGraph/tests/CMakeLists.txt for test configuration)
-
-# ============================================================================
-# Benchmark Packaging
-# ============================================================================
-# Creates portable benchmark distribution folder
-include(cmake/BenchmarkPackage.cmake)
 
 # ============================================================================
 # Visual Studio Solution Organization

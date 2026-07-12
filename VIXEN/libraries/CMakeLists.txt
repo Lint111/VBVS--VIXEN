@@ -53,7 +53,4 @@ add_subdirectory(SVO)
 # GaiaArchetypes library (Archetype builder with relationship hooks - depends on Gaia ECS)
 add_subdirectory(GaiaArchetypes)
 
-# Profiler library (Performance profiling and benchmarking - depends on Logger, VulkanResources, nlohmann_json)
-add_subdirectory(Profiler)
-
 message(STATUS "Libraries configured - all static libraries defined")

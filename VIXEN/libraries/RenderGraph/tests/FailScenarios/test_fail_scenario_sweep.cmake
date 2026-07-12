@@ -20,7 +20,9 @@ if(TARGET VixenApp AND TARGET GTest::gtest)
         ${_vixen_rg_tests_dir}/../include
         ${_vixen_rg_tests_dir}/Nodes          # TestVkValidation.h
         ${_vixen_rg_tests_dir}/FailScenarios)
-    target_link_libraries(test_fail_scenario_sweep PRIVATE GTest::gtest VixenApp glfw)
+    # Inc-1 M4: must whole-archive VixenApp, not link it plainly -- see cmake/VixenNodeLinkage.cmake.
+    vixen_whole_archive_link_vixen_app(test_fail_scenario_sweep PRIVATE)
+    target_link_libraries(test_fail_scenario_sweep PRIVATE GTest::gtest glfw)
     set_target_properties(test_fail_scenario_sweep PROPERTIES FOLDER "Tests/RenderGraph Tests")
     gtest_discover_tests(test_fail_scenario_sweep PROPERTIES TIMEOUT 300)
     message(STATUS "✓ test_fail_scenario_sweep configured")

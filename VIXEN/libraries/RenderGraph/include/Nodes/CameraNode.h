@@ -71,6 +71,65 @@ public:
         orbitDistance = glm::clamp(distance, kOrbitDistanceMin, kOrbitDistanceMax);
     }
     void SetYawForTest(float yawRadians) { EngageOrbit(); yaw = yawRadians; }
+    /**
+     * @brief Directly set the live orbit pitch. Mirrors SetYawForTest exactly -- together they
+     * choose where on the orbit sphere the camera sits at the current orbitDistance.
+     *
+     * NOTE (Tiered-ESVO Inc3 M6): yaw/pitch only relocate the camera along the orbit sphere --
+     * by default `forward` is `normalize(orbitCenter - cameraPosition)` (see UpdateCameraData),
+     * so the camera looks at orbitCenter regardless of yaw/pitch unless a look-target has been
+     * set (see SetLookTargetForTest / PARAM_LOOK_TARGET_*, added Inc3 M8). See the Tiered-ESVO
+     * Inc3 M6 Progress Log for the investigation that found the original constraint.
+     */
+    void SetPitchForTest(float pitchRadians) { EngageOrbit(); pitch = pitchRadians; }
+
+    /**
+     * @brief Directly set a live look-target, independent of orbitCenter (Tiered-ESVO Inc3 M8).
+     *
+     * When set, UpdateCameraData aims `forward` at `normalize(lookTarget - cameraPosition)`
+     * instead of `normalize(orbitCenter - cameraPosition)` -- this is what actually breaks the
+     * "camera always looks at orbitCenter" constraint (yaw/pitch alone cannot, per
+     * SetPitchForTest's note above). Mirrors the EngageOrbit-on-write convention of the other
+     * ForTest setters. Call ClearLookTargetForTest() to fall back to orbitCenter again.
+     */
+    void SetLookTargetForTest(glm::vec3 target) { EngageOrbit(); hasLookTarget_ = true; lookTarget_ = target; }
+
+    /// Reverts to the default behavior (forward aimed at orbitCenter). See SetLookTargetForTest.
+    void ClearLookTargetForTest() { hasLookTarget_ = false; }
+
+    /**
+     * @brief Directly set the live camera POSITION in FIXED mode (Tiered-ESVO Inc3 M8 Task 19).
+     *
+     * Unlike SetOrbitDistanceForTest (which scripts distance from orbitCenter along the orbit
+     * sphere), this scripts cameraPosition itself -- the only way to express a genuinely
+     * TRANSLATING flight path (position changes along an arbitrary trajectory, not just radius
+     * from a fixed pivot). Does NOT call EngageOrbit(): a scripted position is a FIXED-mode
+     * pose write, mirroring how PARAM_CAMERA_X/Y/Z behave at rest (UpdateCameraData's FIXED
+     * MODE branch keeps cameraPosition as configured). If orbit was already engaged this
+     * session (e.g. a prior SetOrbitDistanceForTest call), UpdateCameraData's orbit branch
+     * would recompute cameraPosition from orbitCenter/orbitDistance every frame and silently
+     * override this write -- callers driving a flight path must not also drive orbit distance
+     * in the same session. Combine with SetLookTargetForTest to aim the flight independent of
+     * position, exactly as a real approach-and-orbit trajectory does.
+     */
+    void SetPositionForTest(glm::vec3 position) { cameraPosition = position; }
+
+    /**
+     * @brief Set a live look-target WITHOUT engaging orbit mode (Tiered-ESVO Inc3 M8 Task 19).
+     *
+     * SetLookTargetForTest() calls EngageOrbit() (mirrors every other ForTest setter's
+     * convention), which is correct for Task 16/17's orbit-around-center + retarget-aim demo,
+     * but WRONG for a translating flight path driven by SetPositionForTest(): engaging orbit
+     * latches orbitActive_, and UpdateCameraData's ORBIT MODE branch then recomputes
+     * cameraPosition from orbitCenter/orbitDistance every frame, silently overriding the
+     * flight path's own position writes (found live: Task 19's first capture attempt rendered
+     * a static, unchanging frame across all 400 scripted ticks). This variant only mutates
+     * hasLookTarget_/lookTarget_ -- FIXED MODE's own branch already honors a look-target
+     * (UpdateCameraData: `if (hasLookTarget_) { forward = normalize(lookTarget_ -
+     * cameraPosition); }`), so combining this with SetPositionForTest gives full
+     * position+aim control while staying in FIXED mode throughout.
+     */
+    void SetLookTargetNoOrbitForTest(glm::vec3 target) { hasLookTarget_ = true; lookTarget_ = target; }
 
 protected:
     void SetupImpl(TypedSetupContext& ctx) override;
@@ -132,13 +191,32 @@ private:
     glm::vec3 orbitCenter{5.0f, 5.0f, 5.0f};  // Center of grid (10/2 for 10^3 world size)
     float orbitDistance = 30.0f;  // Distance from orbit center (scaled for 10^3 world)
 
+    // Tiered-ESVO Inc3 M8: genuine look-target, decoupled from orbitCenter (see
+    // SetLookTargetForTest / PARAM_LOOK_TARGET_* / UpdateCameraData). hasLookTarget_ == false
+    // (the default, and every pre-M8 scene) means UpdateCameraData aims forward at orbitCenter
+    // exactly as before -- lookTarget_ itself is unused in that case.
+    bool hasLookTarget_ = false;
+    glm::vec3 lookTarget_{0.0f};
+
     // Orbit distance bounds (keeps camera inside the 128^3 world). Shared by W/S zoom
     // (ApplyMovement) and wheel zoom (ExecuteImpl, M4) so both paths agree on one ceiling.
     // Min is a near-zero floor (not 0) only to avoid a degenerate/undefined view direction
     // exactly at the orbit center — small enough to zoom arbitrarily close to fine surface
     // detail (e.g. inspecting a sub-voxel artifact), which the old 5.0 floor (tuned for the
     // main app's 10-unit Cornell-box demo scene) prevented for the editor's smaller objects.
-    static constexpr float kOrbitDistanceMin = 0.1f;
+    // Tiered-ESVO Inc3 M4: kOrbitDistanceMin widened from 0.1 to 1e-6 for the
+    // Earth-scale surface-to-orbit demo (VIXEN_TIER_EARTH_DEMO/VIXEN_TIER_EARTH_ZOOM_DEMO).
+    // That demo's T2 (bedrock) tier has a world-unit diameter of ~4.6e-5 (48 world units *
+    // (2^-10)^2 across both magnified hops -- see BuildRenderGraph.cpp's own derivation
+    // comment) -- the OLD 0.1 floor was ~2200x TOO COARSE to frame T2-scale detail in orbit
+    // at all (every reachable orbitDistance would already be many T2-diameters away). This
+    // is the opposite widening from what the plan anticipated (it expected the MAX bound to
+    // need raising for a literal Earth-diameter-in-world-units mapping); this construction
+    // instead keeps T0's own world-unit diameter unchanged (48, matching every existing
+    // demo body) and lets the CHAINED MAGNIFICATION do the scale work, so it is the NEAR
+    // bound that turns out to be the actual constraint. kOrbitDistanceMax is UNCHANGED
+    // (120 already comfortably frames a full 48-unit-diameter T0 orbit view).
+    static constexpr float kOrbitDistanceMin = 1e-6f;
     static constexpr float kOrbitDistanceMax = 120.0f;
 
     // Accumulated input deltas (cleared after applying)
@@ -167,6 +245,7 @@ private:
     float lastParamYaw_ = NAN, lastParamPitch_ = NAN;
     float lastParamOrbitCX_ = NAN, lastParamOrbitCY_ = NAN, lastParamOrbitCZ_ = NAN;
     float lastParamOrbitDist_ = NAN;
+    float lastParamLookX_ = NAN, lastParamLookY_ = NAN, lastParamLookZ_ = NAN;
 
     // Last-seen pose_seq value (NaN = never seen). A change here (including the first sight)
     // forces every PRESENT pose param to reapply this SetupImpl regardless of lastApplied — see

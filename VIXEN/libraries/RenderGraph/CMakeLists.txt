@@ -293,6 +293,12 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/BodyOctreeSceneNode.cpp
     src/Nodes/ShellRevalidateNode.cpp
     src/Nodes/SkyProjectionNode.cpp  # Tiered ESVO Inc1 M3: address-derived sky-point composite pass
+    src/Nodes/UIRenderNode.cpp  # Inc-1 M4: moved out of RENDERGRAPH_UI_SOURCES so it gets its own
+                                 # RenderGraphNode_UIRenderNode OBJECT lib like every other node --
+                                 # needed for scoped linkage (cmake/VixenNodeLinkage.cmake) to whole-
+                                 # archive just this one node instead of falling back to whole-
+                                 # archiving all of RenderGraphNodes (which pulls in every node and
+                                 # defeats scoping; see that file's UIRenderNodeType handling).
 )
 
 # ============================================================================
@@ -348,7 +354,8 @@ set(RENDERGRAPH_UI_SOURCES
     src/Ui/ViewBlobFile.cpp
     src/Ui/ViewWireReader.cpp
     src/Ui/BlobView.cpp
-    src/Nodes/UIRenderNode.cpp
+    # UIRenderNode.cpp moved to RENDERGRAPH_NODE_SOURCES (Inc-1 M4) -- it's a node, and needs its
+    # own RenderGraphNode_UIRenderNode OBJECT lib for scoped linkage to work correctly.
 )
 
 # ============================================================================
@@ -395,22 +402,106 @@ add_library(RenderGraphCore STATIC
 )
 
 # ----------------------------------------------------------------------------
-# RenderGraphNodes — the concrete nodes (+ their heavy deps), depends on Core
+# RenderGraphUiSupport — OBJECT library for the non-node RmlUi backend code
+# (VixenRmlRenderInterface, ViewStore, BlobView, ...) that UIRenderNode needs.
+# Split out (Inc-1 M4) so both RenderGraphNodes (the all-nodes facade) and
+# RenderGraphNode_UIRenderNode (the scoped per-node target) can depend on it
+# without a circular RenderGraphNodes <-> RenderGraphNode_UIRenderNode link:
+# RenderGraphNodes no longer compiles this code directly, it depends on this
+# OBJECT lib the same way every node target does.
+# ----------------------------------------------------------------------------
+add_library(RenderGraphUiSupport OBJECT ${RENDERGRAPH_UI_SOURCES})
+target_include_directories(RenderGraphUiSupport
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<BUILD_INTERFACE:${VIXEN_ROOT}/generated/sdi>
+        $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/application/main/generated/sdi>
+        $<BUILD_INTERFACE:${VIXEN_BINARIES_DIR}/generated/sdi>
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+target_link_libraries(RenderGraphUiSupport
+    PUBLIC
+        RenderGraphCore
+        glfw
+        rmlui_core
+        freetype
+    PRIVATE
+        stb                    # header-only; only UiHitMask.cpp uses it (stbi_load for image hit-masks)
+)
+target_compile_definitions(RenderGraphUiSupport PUBLIC RMLUI_STATIC_LIB)
+target_compile_features(RenderGraphUiSupport PUBLIC cxx_std_23)
+if(MSVC)
+    target_compile_options(RenderGraphUiSupport PRIVATE /FS /bigobj)
+endif()
+set_target_properties(RenderGraphUiSupport PROPERTIES FOLDER "Libraries/RenderGraphNodes")
+
+# ----------------------------------------------------------------------------
+# RenderGraphNode_<Name> — one OBJECT library per node .cpp (Graph-Derived
+# Node Linkage Inc-1 M2). Mechanical repackaging only: RenderGraphNodes below
+# still links every one of these, so "all nodes" remains the default
+# composition and nothing downstream (VixenApp, tests) changes behavior yet.
+# Per-node granularity is what lets a later increment (M4) scope VixenApp's
+# link to only the node types its own graph builder actually uses.
+# ----------------------------------------------------------------------------
+set(RENDERGRAPH_NODE_OBJECT_LIBS "")
+foreach(node_src IN LISTS RENDERGRAPH_NODE_SOURCES)
+    get_filename_component(node_name ${node_src} NAME_WE)
+    set(node_target "RenderGraphNode_${node_name}")
+    add_library(${node_target} OBJECT ${node_src})
+
+    target_include_directories(${node_target}
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<BUILD_INTERFACE:${VIXEN_ROOT}/generated/sdi>
+            $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/application/main/generated/sdi>
+            $<BUILD_INTERFACE:${VIXEN_BINARIES_DIR}/generated/sdi>
+        PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+    target_link_libraries(${node_target}
+        PUBLIC
+            RenderGraphCore
+            glfw
+            rmlui_core
+            freetype
+    )
+    target_compile_definitions(${node_target} PUBLIC RMLUI_STATIC_LIB)
+    target_compile_features(${node_target} PUBLIC cxx_std_23)
+    if(MSVC)
+        target_compile_options(${node_target} PRIVATE /FS /bigobj)
+    endif()
+    set_target_properties(${node_target} PROPERTIES FOLDER "Libraries/RenderGraphNodes")
+
+    # UIRenderNode.cpp needs the non-node UI support code (VixenRmlRenderInterface, ViewStore,
+    # BlobView, ...) split into RenderGraphUiSupport above -- every other node doesn't need this.
+    if(node_target STREQUAL "RenderGraphNode_UIRenderNode")
+        target_link_libraries(${node_target} PUBLIC RenderGraphUiSupport)
+    endif()
+
+    list(APPEND RENDERGRAPH_NODE_OBJECT_LIBS ${node_target})
+endforeach()
+
+# ----------------------------------------------------------------------------
+# RenderGraphNodes — facade over ALL per-node OBJECT libraries. Depends on Core.
 # ----------------------------------------------------------------------------
 add_library(RenderGraphNodes STATIC
     ${RENDERGRAPH_DATA_NODE_CONFIGS}
     ${RENDERGRAPH_NODE_HEADERS}
-    ${RENDERGRAPH_NODE_SOURCES}
     ${RENDERGRAPH_UI_HEADERS}
-    ${RENDERGRAPH_UI_SOURCES}
 )
+target_link_libraries(RenderGraphNodes PUBLIC ${RENDERGRAPH_NODE_OBJECT_LIBS} RenderGraphUiSupport)
 
 # ----------------------------------------------------------------------------
 # RenderGraph — back-compat facade: existing consumers link this and get both.
-# RenderGraphNodes is linked WHOLE-ARCHIVE so the per-node VIXEN_REGISTER_NODE
-# registrars (anonymous-namespace statics that nothing references) are not
-# stripped by the linker. Without it RegisterAllNodes() registers nothing — the
-# guard is test_node_self_registration.
+#
+# OBJECT library members are unconditionally included in whatever links them
+# (no "unreferenced symbol" stripping the way STATIC archive members get) —
+# verified empirically for M2 (test_node_self_registration node count
+# unchanged with whole-archive removed). RenderGraphNodes itself remains a
+# STATIC archive (it still bundles the not-yet-split UI sources), so it can
+# still be stripped by a downstream linker; keep whole-archiving IT, which
+# also unconditionally pulls in its linked OBJECT-library members.
 # ----------------------------------------------------------------------------
 add_library(RenderGraph INTERFACE)
 target_link_libraries(RenderGraph INTERFACE RenderGraphCore)
@@ -455,8 +546,7 @@ foreach(rg_target RenderGraphCore RenderGraphNodes)
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
             $<BUILD_INTERFACE:${VIXEN_ROOT}/generated/sdi>
             $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/application/main/generated/sdi>
-            $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/application/benchmark/generated/sdi>
-            $<BUILD_INTERFACE:${VIXEN_ROOT}/binaries/generated/sdi>
+            $<BUILD_INTERFACE:${VIXEN_BINARIES_DIR}/generated/sdi>
         PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/src
     )
@@ -484,29 +574,23 @@ target_link_libraries(RenderGraphCore
         TBB::tbb               # Sprint 6.4: Parallel execution
 )
 
-# Nodes: depends on Core + the windowing/UI deps the concrete nodes pull in.
+# Nodes: depends on Core + the windowing deps the concrete nodes pull in. RmlUi/freetype/stb
+# (Inc-1 M4: moved to RenderGraphUiSupport, which RenderGraphNodes already links PUBLIC above)
+# are no longer needed directly here.
 target_link_libraries(RenderGraphNodes
     PUBLIC
         RenderGraphCore
         glfw                   # Cross-platform window/surface/input (WindowNode/InputNode/InstanceNode)
-        rmlui_core             # Data-driven UI (RML/RCSS); freetype is its transitive font engine
-        freetype
-    PRIVATE
-        stb                    # header-only; only UiHitMask.cpp uses it (stbi_load for image hit-masks)
 )
-
-# RmlUi is built static (FetchContent); code including its headers needs this
-# define. Only the Nodes lib (UIRenderNode + UI headers) includes RmlUi.
-target_compile_definitions(RenderGraphNodes PUBLIC RMLUI_STATIC_LIB)
 
 # UIRenderNode loads RmlUi assets (fonts/docs) via paths relative to the exe (vixen_stage_assets
 # stages them next to demo binaries). Consumers that run from a different CWD (e.g. the UNDERTOW host)
 # wouldn't find them; this source-dir fallback lets the node resolve assets/ui/* from the engine tree
 # regardless of CWD. Private — only UIRenderNode.cpp uses it.
-# NOTE (merge integration): post the M2 library split, `RenderGraph` is an INTERFACE alias and cannot
-# carry PRIVATE definitions; UIRenderNode.cpp lives in RenderGraphNodes, so target that lib (mirrors the
-# RMLUI_STATIC_LIB define above).
-target_compile_definitions(RenderGraphNodes PRIVATE
+# Inc-1 M4: UIRenderNode.cpp moved from RenderGraphNodes into its own OBJECT lib
+# (RenderGraphNode_UIRenderNode, in the per-node loop above) so scoped linkage can whole-archive
+# just this one node -- the define moves with it.
+target_compile_definitions(RenderGraphNode_UIRenderNode PRIVATE
     VIXEN_UI_ASSET_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/assets")
 
 # ============================================================================

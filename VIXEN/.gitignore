@@ -7,6 +7,10 @@
 # Auto-provisioned gdb cache (ProvisionGdb.cmake, VIXEN_AUTO_PROVISION_GDB=ON)
 .gdb-deps/
 
+# Auto-provisioned ccache cache (ProvisionCcache.cmake — Windows, preferred over sccache
+# because sccache cannot cache MSVC precompiled headers)
+.ccache-deps/
+
 # ponytail: ShaderCacheManagerTest writes a literal Windows-style path on WSL/Linux
 # (no drive-letter semantics to reject it) instead of failing as it does on Windows.
 # Regenerates every ctest run until that test is fixed to use a portable invalid path.
@@ -65,9 +69,9 @@ bld/
 [Ll]og/
 [Ll]ogs/
 
-# build folder
-build/
-build/*
+# build folder (root-anchored: don't match scripts/build/ or other non-root dirs named "build")
+/build/
+/build/*
 benchmark_results/
 benchmark_results/*
 VixenBenchmark/
@@ -132,9 +136,10 @@ build/**/CMakeFiles/
 *.local.json
 .claude/settings.local.json
 
-# Ignore .claude except for hooks and settings we want to track
+# Ignore .claude except for hooks, settings, and skills we want to track
 .claude/*
 !.claude/hooks/
+!.claude/skills/
 .claude/settings.json
 .claude/hooks/.pre-commit-approved
 

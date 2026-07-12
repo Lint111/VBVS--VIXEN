@@ -32,6 +32,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   scale-magnified tiers deferred with documented prerequisites (per-child-scale hitT normalization,
   LOD-gate generalization). See `Vixen-Docs/01-Architecture/Tiered-ESVO-{Observer-Addressing-Design,
   Inc2-Plan}-2026-07.md`.
+- **Tiered ESVO — scale-magnified + chained crossings + a live true-scale surface-to-orbit flight,
+  Inc3** — the tier-crossing mechanism is generalized off the `childScale==1.0` restriction: child
+  hit-t is normalized into the parent's world-t unit by `length(childRayDirWorld)` (reduces
+  byte-exactly to Inc2's plain addition at unity), and the traversal wrapper becomes a bounded
+  `MAX_TIER_HOPS` hop loop (parked chain, one live stack at a time) so a `farBit==1` leaf reached
+  *inside* a child tree is followed — enabling T0→T1→T2 chains. Concentric scale-magnification is
+  live-proven across `childScale ∈ {1.0, 0.5, 0.25, 0.125}` and a 3-tree chain renders both crossings
+  on real hardware. The tier-crossing LOD gate was subsequently rebuilt from first principles
+  (superseding the original `>= childScale*scale_exp2` screen-space formula, which shared its one
+  coefficient with the ordinary non-crossing gate and could never resolve a true 2^-10 crossing without
+  starving the body's own visibility): the gate now compares a genuinely camera-anchored,
+  world-unit-correct distance — proven by hand-derivation to compose correctly through *arbitrary* hop
+  depth, with the ordinary gate provably untouched (every non-crossing scene renders byte-identical).
+  `CameraNode` gained an additive look-target (`PARAM_LOOK_TARGET_*`/`SetLookTargetForTest`, defaults to
+  the existing orbit-center so every scene is unaffected when unset) and a translating-position
+  capability (`SetPositionForTest`), enabling a camera that can fly a real trajectory through a crossing
+  rather than only orbit a fixed center. **The epic's original ask is now live-proven in full**: a
+  continuous ground-to-orbit flight through TWO true `childScale=2^-10` tier crossings on one
+  trajectory, each genuinely color-attributable (real per-voxel SDF color at its own hand-predicted
+  distance, not an LOD-decline placeholder), with zero hand-tuned per-scene constant — dynamically
+  correct at any resolution/FOV/scale by construction. `GpuTraversalMirror.h` stays in lockstep (the
+  LOD-gate rewrite doesn't need porting — the CPU oracle runs exclusively with LOD disabled, an
+  established precedent). See
+  `Vixen-Docs/01-Architecture/{Tiered-ESVO-Inc3-Plan,Tiered-ESVO-Observer-Addressing-Design}-2026-07.md`.
 - **Sampled Lighting, Inc1 (shadow rays)** — the ESVO march is now factored into a shared
   `TraceWorld`/`TraceWorldShadow` shader seam (`shaders/TraceWorld.glsl`), the primary pass writes a
   per-pixel `HitRecord` (albedo/normal/roughness/hitT/worldPos, SSBO@binding-17), and shading casts a
@@ -75,6 +99,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Missing `TRANSFER_DST_BIT` on the brick/config GPU buffers** — the first live post-compile
   residency grant surfaced a real `VUID-vkCmdCopyBuffer-dstBuffer-00120`; both buffers now declare
   the usage flag at creation (root-cause fix; sibling sweep confirmed no other affected buffers).
+- **Tier-crossing chained-hop hit-t double-count (Inc3 M3)** — the per-hop cumulative direction-length
+  factor was multiplied (`*=`) when it should be assigned (`=`), because `childRayDirWorld` already
+  compounds all prior hops' scaling; the bug double-counted every hop past the first (a 2-hop chain at
+  childScale=0.5 measured 8× where the correct value is 4×). Fixed in shader and CPU mirror; guarded by
+  a chained hit-t parity test against the `(1/childScale)^hop` closed form.
+- **Tier-crossing child magnification anchored to the wrong point (Inc3 M5)** — every demo placed the
+  child at the root cube's shared corner `(1.5,1.5,1.5)` instead of the marked leaf's own octant center,
+  making that corner a scale-invariant fixed point: the child collapsed into a one-sided "wedge" that
+  barely shrank (~1.24× at childScale=0.25) instead of magnifying concentrically (4×). Fixed with an
+  octant-center-aware placement helper; the traversal/remap math was correct and untouched. This also
+  reconciled an earlier mis-measurement that had reported a working 3.93× magnification on the broken
+  render.
+- **CPU traversal-mirror empty child tier-ref table (Inc3 M3)** — the `GpuTraversalMirror.h` oracle did
+  not carry each child tree's own tier-ref table, so a *second* chained crossing silently degraded to a
+  wrong brick read; fixed by giving each child link its own table slice (the GPU shader was unaffected —
+  it indexes one concatenated table by per-config base offset).
+- **Tier-crossing LOD gate structurally could not resolve a true-scale crossing (Inc3 M8)** — the gate
+  compared a node's own chord-floored `tv_max` (which does not shrink as the camera approaches, only as
+  the tree is descended) against a threshold reachable only by shrinking the single `raySizeCoef` field
+  shared with the ordinary non-crossing gate — which simultaneously starved the body's own base
+  visibility. Root-caused (an octree-depth "fix" was proven algebraically impossible: chord and
+  `scale_exp2` both halve per level and cancel identically from the gate) and replaced with a genuinely
+  camera-anchored, world-unit-correct distance requiring no shared coefficient and no per-scene
+  override; proven correct through arbitrary hop depth and live-verified at the true `childScale=2^-10`
+  ratio on real hardware.
+- **`VIXEN/binaries/VIXEN.exe` was a stale, build-system-disconnected copy** — the source-tree,
+  gitignored `binaries/` directory (which every hand-rolled capture `.bat` script runs by relative path)
+  was never refreshed by CMake; only the real build output (`CMAKE_BINARY_DIR/binaries`) was guaranteed
+  fresh. A `POST_BUILD` step now mirrors the executable into `VIXEN/binaries/` on every build.
+- **`FrameCapture.cpp` stale include after the Profiler-library consolidation** — a leftover
+  `#include "Profiler/FrameCapture.h"` broke a clean build once the header moved to
+  `application/main/include/`; corrected to the bare path (the only straggler, verified repo-wide).
 
 ### Documentation
 - Rewrote the repository `README.md` and `VIXEN/README.md` to reflect the pivot from voxel
