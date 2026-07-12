@@ -46,6 +46,7 @@ set(RENDERGRAPH_DATA_CORE_HEADERS
 set(RENDERGRAPH_DATA_NODE_CONFIGS
     include/Data/Nodes/BoolOpNodeConfig.h
     include/Data/Nodes/BlitNodeConfig.h  # Sampled Lighting Inc3 M1: presentation-only render-target->swapchain blit
+    include/Data/Nodes/BufferSyncGathererNodeConfig.h  # Sampled Lighting Inc3 M5: variadic VkBuffer sync gatherer
     include/Data/Nodes/CameraNodeConfig.h
     include/Data/Nodes/CommandPoolNodeConfig.h
     include/Data/Nodes/ComputeDispatchNodeConfig.h
@@ -201,6 +202,7 @@ set(RENDERGRAPH_CORE_SOURCES
 set(RENDERGRAPH_NODE_HEADERS
     include/Nodes/BoolOpNode.h
     include/Nodes/BlitNode.h  # Sampled Lighting Inc3 M1: presentation-only render-target->swapchain blit
+    include/Nodes/BufferSyncGathererNode.h  # Sampled Lighting Inc3 M5: variadic VkBuffer sync gatherer
     include/Nodes/CameraNode.h
     include/Nodes/CommandPoolNode.h
     include/Nodes/ComputeDispatchNode.h
@@ -245,6 +247,7 @@ set(RENDERGRAPH_NODE_HEADERS
 set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/BoolOpNode.cpp
     src/Nodes/BlitNode.cpp  # Sampled Lighting Inc3 M1: presentation-only render-target->swapchain blit
+    src/Nodes/BufferSyncGathererNode.cpp  # Sampled Lighting Inc3 M5: variadic VkBuffer sync gatherer
     src/Nodes/ConstantNode.cpp  # M3: self-registration TU for the header-only Constant node types
     src/Nodes/CameraNode.cpp
     src/Nodes/CommandPoolNode.cpp
