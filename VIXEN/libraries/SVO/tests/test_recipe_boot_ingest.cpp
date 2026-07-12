@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <algorithm>  // std::is_sorted (MSVC doesn't transitively pull this in via <vector>/<cstring>)
 #include <cstring>
 #include <vector>
 #include "Recipe/RecipeBootIngest.h"

@@ -43,28 +43,6 @@ Living log of confirmed-but-unfixed issues. Each entry: symptom, root cause, imp
 
 ---
 
-## KI-020 — Two pre-existing MSVC-portability compile failures break the all-targets Windows build (`build.bat build`)
-
-**Discovered:** 2026-07-10, by the `validate-gaia-sync` Opus validator during the Gaia v0.9.2 sync (both files are byte-identical to base `ab40cb97`; unrelated to that sync — pre-existing app-rot). Surfaced because the validator ran a full `build.bat build`, which halts with `ninja: build stopped` on these two.
-
-**Symptom:** a full Windows all-targets build (`build.bat build`) does NOT go fully green — `ninja: build stopped` on two independent compile errors in non-Gaia test code. The Gaia libraries + all three Gaia test exes, and the individual targets people usually build, compile fine; only the aggregate all-targets Windows build is affected.
-
-**The two failures:**
-1. `libraries/RenderGraph/tests/.../test_body_instance_raymarch_render.cpp` — uses POSIX `setenv`/`unsetenv`, which do not exist on MSVC → `C3861: 'setenv': identifier not found` (and `unsetenv`). MSVC provides `_putenv_s` (and `_putenv("VAR=")` to clear) instead.
-2. `libraries/RenderGraph/tests/.../test_octree_config_sdi_parity.cpp` — includes SVO's `SdfRecipes.h` → generated `SdfCoreKernels.g.hpp`, which uses bare `min`/`max` that collide with the Windows `<windows.h>` `min`/`max` macros → `C2589: '(' : illegal token on right side of '::'` (the classic macro-expansion collision).
-
-**Root cause:** both are Windows/MSVC-portability gaps in test/generated code that presumably compiled or were only exercised under WSL/GCC. Neither is a logic bug; both are include/identifier portability.
-
-**Fix direction (NOT applied — logged per user decision 2026-07-10 to stay focused on the view-contract track):**
-1. Replace `setenv(k,v,1)`/`unsetenv(k)` with a portable helper: `#ifdef _WIN32 _putenv_s(k,v)` / `_putenv((std::string(k)+"=").c_str())` `#else setenv/unsetenv #endif` — or a small `SetEnv`/`UnsetEnv` shim in test utilities.
-2. For the min/max collision: `#define NOMINMAX` before `<windows.h>` reaches that TU, or wrap the generated-header call sites as `(std::min)(...)`/`(std::max)(...)`, or have the generator emit `(min)`/`(max)` guarded. Because the offending symbols are in a **generated** header (`SdfCoreKernels.g.hpp`), the durable fix is at the generator (emit MSVC-safe min/max) rather than editing the `.g.` output by hand.
-
-**Impact:** the individual Gaia/editor/most targets build and test fine; CI or anyone relying on a single fully-green `build.bat build` on Windows hits these two. Does not affect the Gaia sync, the editor residency fix, or the view-contract work.
-
-**Severity:** Medium (blocks the aggregate Windows build; per-target builds unaffected) · **Status:** OPEN
-
----
-
 ## KI-021 — Existing build dirs keep the STALE pre-v0.9.2 Gaia after the pin bump (FetchContent does not re-fetch on reconfigure)
 
 **Discovered:** 2026-07-10, immediately after the Gaia v0.9.2 pin bump (merge `7dde7ee7`).
@@ -144,26 +122,6 @@ Living log of confirmed-but-unfixed issues. Each entry: symptom, root cause, imp
 
 ---
 
-## KI-017 — `SdfRecipes.h`/`SdfBake.h`'s transitive include chain fails to compile on Windows/MSVC (Windows-macro `min`/`max` pollution, no `#undef` guard)
-
-**Discovered:** 2026-07-08, during Tiered-ESVO Inc2 M3 (GPU traversal-restart), when building `test_gpu_parity`/`test_tier_crossing_construction`/related SVO test targets via the `vixen-ninja` (Windows/MSVC) preset for the first time in the `tiered-esvo-inc2` worktree.
-
-**Symptom:** any test TU that includes `SdfRecipes.h` or `SdfBake.h` (directly or transitively, e.g. via `ShellOctreeGpu.h` → `SdfBake.h` → `SdfRecipes.h`) fails to compile with a cascade of `error C2589: '(': illegal token on right side of '::'` / `error C2059: syntax error` / `error C2672: 'glm::length': no matching overloaded function found` starting in `SdfRecipes.h:85` (`std::max(-b - sq, 0.0f)`) and continuing into `Recipe/generated/SdfCoreKernels.g.hpp` (`glm::min`/`glm::max`/`glm::abs` calls) — the classic signature of `<windows.h>`'s `min`/`max` (and here, apparently `abs`) function-like macros clobbering `std::max(`/`glm::min(` call syntax.
-
-**Root cause:** `SdfRecipes.h` and `SdfBake.h` have NO `#undef min`/`#undef max`/`#undef abs` guard at all (unlike `GpuTraversalMirror.h`, `test_tier_crossing_construction.cpp`, and several other files in this codebase, which DO carry this guard specifically because `<windows.h>` gets pulled in transitively on the Windows build via Vulkan/GTest). Some other header included earlier in a given TU's include order drags in `<windows.h>` before `SdfRecipes.h`/the generated kernel file are parsed, and nothing undoes the macros in between.
-
-**Impact:** `VIXEN.exe` itself builds fine on Windows/MSVC (confirmed clean, `vixen-ninja` preset) — the failure is isolated to specific SVO test translation units (`test_gpu_parity.cpp`, `test_tier_crossing_construction.cpp`, and likely others that pull in `ShellOctreeGpu.h`/`SdfBake.h`/`SdfRecipes.h` without their own `#undef` guard already in scope before those headers). Reproduced independently on a clean, unmodified `4db93715` (pre-Tiered-ESVO-Inc2-M3) checkout via `git stash` — confirmed pre-existing and unrelated to any single increment's own changes; likely never previously exercised on this worktree's Windows/MSVC toolchain until M3 needed the WSL-vs-Windows comparison this session.
-
-**Fix options:** (a) add `#undef min` / `#undef max` / `#undef abs` to `SdfRecipes.h` and `SdfBake.h` (the minimal, surgical fix, matching the pattern several other headers in this codebase already use); (b) audit every header under `libraries/SVO/include/` that calls `std::min`/`std::max`/`glm::min`/`glm::max`/`glm::abs` for the same missing guard, since this is likely not the only affected file; (c) define `NOMINMAX` globally in the Windows build's CMake config so `<windows.h>` never defines these macros in the first place (the most robust fix, but a wider-blast-radius change to verify).
-
-**Workaround used:** build/run the affected SVO test targets via the WSL/GCC path (`build/wsl` preset) instead, where GCC has no such macro-pollution issue — confirmed this compiles and passes cleanly (`test_gpu_parity` 4/4, `test_tier_crossing_construction` 5/5, etc.) on the same source.
-
-**Severity:** low-medium (does not block the live app or any Windows-side production build; blocks a subset of SVO test targets from being buildable/runnable on Windows/MSVC specifically, forcing a WSL fallback for those tests) · **Status:** OPEN · not a Tiered-ESVO Inc2 defect (pre-existing, surfaced by this milestone's Windows-build attempt).
-
-**Re-confirmed 2026-07-11 (Lazy-Procedural-Delta-Baseline Inc0 M6 Task 15 full sweep):** independently re-discovered the identical failure signature (`SdfRecipes.h:100` `std::max`/`glm::max`, cascading into `SdfCoreKernels.g.hpp`) doing a from-scratch full-solution `vixen-ninja` build, expanding the known-affected-target list — `test_octree_config_sdi_parity`, `test_soa_sdf_serialize`, `test_soa_mip_serialize`, `test_tier_ref_table`, `test_tier_crossing_construction`, `test_tier_crossing_mirror_parity`, `test_channel_format`, `test_mip_sample_bake`, `test_stored_sdf_march_mirror`, `test_shell_derive`, `test_sdf_bake`, `test_recipe_bake`, `test_recipe_bake_center`, `test_octree_pool`, `test_generation_cost_benchmark`, `test_recipe_boot_ingest`, `test_recipe_baker`, `test_residency_default`, `test_gpu_parity`, `test_shell_octree_gpu` — 20 SVO test targets total, all via the same transitive `SdfRecipes.h`/`SdfBake.h` chain. Tried fix option (a) scoped to `SdfRecipes.h` alone (a `glm::max` swap + a local `NOMINMAX` guard) — insufficient, because in several of these TUs `<windows.h>` is already poisoned by an EARLIER header (often via `gtest.h`'s own transitive includes) before `SdfRecipes.h` is even reached, so a guard local to that one file can't help; **fix option (c) (global `NOMINMAX`) is the only fix that can work for every affected TU**, confirming the original note's assessment. Left unfixed this session (out of M6's scope; a build-system-wide change deserves its own verification pass, not a drive-by inside an unrelated milestone). **Also this session: could NOT re-confirm "`VIXEN.exe` itself builds fine"** — the attempted full-solution build ran the local disk (`C:`, 931GB) to 0 bytes free partway through (a SEPARATE, unrelated capacity issue — see the disk-note added to this doc's own section below) before reaching `VIXEN.exe`'s own compile step, so that specific claim is UNVERIFIED as of this note, not falsified.
-
----
-
 ## Disk capacity note (2026-07-11, observed during Inc0 M6 Task 15's full sweep)
 
 Not a code defect — recording because it silently corrupted 21 test binaries (0-byte `.exe` files from linker writes that ran out of disk mid-write) and could mislead a future sweep into reporting false compile/link failures. The `lazy-baseline-inc0` worktree's OWN `build/ninja` directory alone is ~56GB; the shared `C:` drive (931GB total) was at 930GB used / <1GB free when a from-scratch `cmake --build --preset vixen-ninja` (no target filter — every target across ~15 sibling worktrees' worth of accumulated build output sharing the same physical drive) was attempted. Symptoms if this recurs: `LINK : fatal error LNK1116: cannot grow ilk file` (mid-link disk-full) and `LINK : fatal error LNK1140: limit exceeded for program database` (a 4GB PDB size cap, hit by `VIXEN.exe`/`vixen_editor.exe`'s large debug PDBs specifically, independent of free space). **Recovery:** `find <build-dir> -iname "*.exe" -type f -printf "%s %p\n" | awk '$1==0{print $2}'` finds the 0-byte casualties; delete them so `ctest -N`'s `gtest_discover_tests` probe (which otherwise hard-errors on the FIRST corrupt binary it tries to list, blocking test discovery for the ENTIRE suite) can proceed — the removed binaries correctly show as `<name>_NOT_BUILT` placeholders in the resulting test list, an honest reflection of "never successfully linked this run," not a new failure category. No fix suggested here (freeing disk across sibling worktrees is a cross-agent/user decision, not a single milestone's call) — just the recovery recipe and the failure signature, so the next person who hits `LNK1116`/`LNK1140` mid-sweep checks `df -h` before assuming a code regression.
@@ -231,6 +189,66 @@ Running any SINGLE `FailScenarioSweep*` test that does a live resize+recompile (
 ---
 
 ## Resolved (see below)
+
+### KI-020 — Two pre-existing MSVC-portability compile failures break the all-targets Windows build (`build.bat build`)
+
+**Discovered:** 2026-07-10, by the `validate-gaia-sync` Opus validator during the Gaia v0.9.2 sync (both files are byte-identical to base `ab40cb97`; unrelated to that sync — pre-existing app-rot). Surfaced because the validator ran a full `build.bat build`, which halts with `ninja: build stopped` on these two.
+
+**Symptom:** a full Windows all-targets build (`build.bat build`) does NOT go fully green — `ninja: build stopped` on two independent compile errors in non-Gaia test code. The Gaia libraries + all three Gaia test exes, and the individual targets people usually build, compile fine; only the aggregate all-targets Windows build is affected.
+
+**The two failures:**
+1. `libraries/RenderGraph/tests/.../test_body_instance_raymarch_render.cpp` — uses POSIX `setenv`/`unsetenv`, which do not exist on MSVC → `C3861: 'setenv': identifier not found` (and `unsetenv`). MSVC provides `_putenv_s` (and `_putenv("VAR=")` to clear) instead.
+2. `libraries/RenderGraph/tests/.../test_octree_config_sdi_parity.cpp` — includes SVO's `SdfRecipes.h` → generated `SdfCoreKernels.g.hpp`, which uses bare `min`/`max` that collide with the Windows `<windows.h>` `min`/`max` macros → `C2589: '(' : illegal token on right side of '::'` (the classic macro-expansion collision). Same root cause as KI-017 below.
+
+**Root cause:** both are Windows/MSVC-portability gaps in test/generated code that presumably compiled or were only exercised under WSL/GCC. Neither is a logic bug; both are include/identifier portability.
+
+**FIXED 2026-07-12** (commit `f3f25e35`, branch `fix/ki-020-ki-017-windows-portability`):
+1. Added a portable `SetTestEnv`/`UnsetTestEnv` shim to `test_body_instance_raymarch_render.cpp` (`_putenv_s`/`_putenv("NAME=")` on `_WIN32`, `setenv`/`unsetenv` elsewhere) — matches the existing convention already used in `ScenarioHarness.cpp`'s `AppHarness` ctor. Grepped for other `setenv`/`unsetenv` call sites first: `ScenarioHarness.cpp` was already guarded, `VulkanGlobalNames.h`'s calls are inside `#if defined(__linux__)` blocks (never compiled on Windows) — this file was the only genuine gap, so a local shim (not a shared cross-file helper) was the right scope.
+2. Fixed via KI-017's root-cause fix below (the `#undef min`/`max`/`abs` guard) — confirmed by rebuild that `test_octree_config_sdi_parity` now compiles and passes (1/1).
+
+**Verification:** full Windows/MSVC `build.bat all` — both named targets now compile+link. `test_body_instance_raymarch_render` builds and runs (3/6 subtests pass; the other 3 fail at runtime on an unrelated pre-existing device-verification gate — this machine's real AMD GPU isn't in the test's verified-device allowlist (lavapipe/Dozen only), so it refuses to submit rather than a portability defect). `test_octree_config_sdi_parity` 1/1 pass.
+
+**Severity:** Medium (blocked the aggregate Windows build; per-target builds unaffected) · **Status:** RESOLVED
+
+---
+
+### KI-017 — `SdfRecipes.h`/`SdfBake.h`'s transitive include chain fails to compile on Windows/MSVC (Windows-macro `min`/`max` pollution, no `#undef` guard)
+
+**Discovered:** 2026-07-08, during Tiered-ESVO Inc2 M3 (GPU traversal-restart), when building `test_gpu_parity`/`test_tier_crossing_construction`/related SVO test targets via the `vixen-ninja` (Windows/MSVC) preset for the first time in the `tiered-esvo-inc2` worktree.
+
+**Symptom:** any test TU that includes `SdfRecipes.h` or `SdfBake.h` (directly or transitively, e.g. via `ShellOctreeGpu.h` → `SdfBake.h` → `SdfRecipes.h`) fails to compile with a cascade of `error C2589: '(': illegal token on right side of '::'` / `error C2059: syntax error` / `error C2672: 'glm::length': no matching overloaded function found` starting in `SdfRecipes.h:85` (`std::max(-b - sq, 0.0f)`) and continuing into `Recipe/generated/SdfCoreKernels.g.hpp` (`glm::min`/`glm::max`/`glm::abs` calls) — the classic signature of `<windows.h>`'s `min`/`max` (and here, apparently `abs`) function-like macros clobbering `std::max(`/`glm::min(` call syntax.
+
+**Root cause:** `SdfRecipes.h` and `SdfBake.h` have NO `#undef min`/`#undef max`/`#undef abs` guard at all (unlike `GpuTraversalMirror.h`, `test_tier_crossing_construction.cpp`, and several other files in this codebase, which DO carry this guard specifically because `<windows.h>` gets pulled in transitively on the Windows build via Vulkan/GTest). Some other header included earlier in a given TU's include order drags in `<windows.h>` before `SdfRecipes.h`/the generated kernel file are parsed, and nothing undoes the macros in between.
+
+**Impact:** `VIXEN.exe` itself builds fine on Windows/MSVC (confirmed clean, `vixen-ninja` preset) — the failure is isolated to specific SVO test translation units (`test_gpu_parity.cpp`, `test_tier_crossing_construction.cpp`, and likely others that pull in `ShellOctreeGpu.h`/`SdfBake.h`/`SdfRecipes.h` without their own `#undef` guard already in scope before those headers). Reproduced independently on a clean, unmodified `4db93715` (pre-Tiered-ESVO-Inc2-M3) checkout via `git stash` — confirmed pre-existing and unrelated to any single increment's own changes; likely never previously exercised on this worktree's Windows/MSVC toolchain until M3 needed the WSL-vs-Windows comparison this session.
+
+**Re-confirmed 2026-07-11 (Lazy-Procedural-Delta-Baseline Inc0 M6 Task 15 full sweep, before the fix below landed):** independently re-discovered the identical failure signature doing a from-scratch full-solution `vixen-ninja` build, expanding the known-affected-target list to 20 SVO test targets (`test_octree_config_sdi_parity`, `test_soa_sdf_serialize`, `test_soa_mip_serialize`, `test_tier_ref_table`, `test_tier_crossing_construction`, `test_tier_crossing_mirror_parity`, `test_channel_format`, `test_mip_sample_bake`, `test_stored_sdf_march_mirror`, `test_shell_derive`, `test_sdf_bake`, `test_recipe_bake`, `test_recipe_bake_center`, `test_octree_pool`, `test_generation_cost_benchmark`, `test_recipe_boot_ingest`, `test_recipe_baker`, `test_residency_default`, `test_gpu_parity`, `test_shell_octree_gpu`). That session tried fix option (a) scoped to `SdfRecipes.h` alone and found it insufficient in several TUs where `<windows.h>` was already poisoned by an earlier header before `SdfRecipes.h` was even reached — concluding global `NOMINMAX` (option (c)) was the only fix that could work for every affected TU. The fix actually applied below (2026-07-12) resolves this differently: rather than a single global `NOMINMAX`, it places the `#undef` guard at the SPECIFIC includer of the generated header (`Recipe/SdfRecipeEval.h`, not just `SdfBake.h`) — closing the exact gap the 2026-07-11 session's option-(a) attempt hit, without the wider blast radius of a global `NOMINMAX`. Also from that session: a separate, unrelated disk-capacity incident (see the standalone note further down this doc) meant "`VIXEN.exe` itself builds fine" could not be re-confirmed at the time — re-confirmed clean by the fix below.
+
+**FIXED 2026-07-12** (commit `f3f25e35`, branch `fix/ki-020-ki-017-windows-portability`) — applied fix option (a): added `#undef min`/`#undef max`/`#undef abs` to `SdfRecipes.h` and `SdfBake.h`, matching the exact convention already used by `GpuTraversalMirror.h` (root-cause fix, not the `NOMINMAX`-global option (c), which stays out of scope per the wider-blast-radius caveat already on this entry). One additional wrinkle beyond the originally diagnosed shape: the actual includer of the generated kernel header is `Recipe/SdfRecipeEval.h` (reached via `SdfBake.h → Recipe/SdfRecipeEval.h → Recipe/generated/SdfCoreKernels.g.hpp`), and it pulled in the generated header **before** `SdfBake.h`'s own `#undef` block ran (that block sits after `SdfBake.h`'s `#include` list, per the existing convention's placement) — so the first rebuild attempt still failed with the identical error. Fixed by moving the guard into `Recipe/SdfRecipeEval.h` itself, immediately before its `#include "Recipe/generated/SdfCoreKernels.g.hpp"` line — the guard must precede the specific include it protects, not just live "after this header's own includes" when the header in question re-exports a further include at its very top. The generated file itself (`SdfCoreKernels.g.hpp`, confirmed genuinely generated via its own `// GENERATED from SdfCoreKernels.cs ... Do not edit` banner) was never touched, per the "fix at the includer, not the generated output" guidance already on this entry.
+
+As due diligence per fix option (b), swept `libraries/SVO/include/` for other headers with the same missing-guard shape (bare `std::min`/`std::max`/`std::abs`/`glm::min`/`glm::max`/`glm::abs`, no `#undef` guard, included by a GTest/Vulkan-adjacent TU) and found + fixed four more: `TierAddress.h`, `TierDirection.h`, `TierMagnitude.h` (all included by `SkyProjectionNode.cpp` — a live RenderGraph node — plus their own dedicated test files), and `Recipe/SdfRecipeCodegen.h` (included by `test_procedural_recipe_render.cpp` and `test_recipe_codegen.cpp`).
+
+**Verification:** full Windows/MSVC `build.bat all` rebuild — all 17 SVO test targets that share the `SdfRecipes.h`/`SdfBake.h` transitive include (the bulk of the original 19-target failure baseline) now compile and link. Spot-ran a representative sample: `test_soa_sdf_serialize` 11/11, `test_soa_mip_serialize` 6/6, `test_tier_ref_table` 5/5, `test_tier_crossing_construction` 5/5, `test_tier_crossing_mirror_parity` 6/6, `test_channel_format` 2/2, `test_mip_sample_bake` 5/5, `test_recipe_bake_center` 1/1, `test_recipe_boot_ingest` 5/5, `test_octree_pool` 5/5, `test_shell_octree_gpu` 9/9, `test_gpu_parity` 6/6 — all PASS. `test_shell_derive`/`test_recipe_bake`/`test_recipe_baker` compile+link and start running cleanly but were not run to completion in this session (compute-heavy SDF bake loops taking multiple minutes each); no assertion failures observed before the verification's time budget was spent elsewhere. `VIXEN.exe` and `vixen_editor.exe` both build clean with zero regressions.
+
+**Severity:** low-medium (did not block the live app or any Windows-side production build; blocked a subset of SVO test targets from being buildable/runnable on Windows/MSVC specifically) · **Status:** RESOLVED (root-cause `#undef` guard applied at the correct include site + due-diligence sweep of the rest of `libraries/SVO/include/`)
+
+---
+
+### KI-026 — `test_recipe_boot_ingest.cpp` missing `<algorithm>` include for `std::is_sorted` (MSVC)
+
+**Discovered:** 2026-07-12, while re-verifying the aggregate Windows build after the KI-020/KI-017 fix (commit `f3f25e35`) — this was the last of the original 19-target failure baseline still failing, and turned out to be an unrelated, separate MSVC-portability gap (not a `min`/`max`/`setenv` issue).
+
+**Symptom:** `error C2039: 'is_sorted': is not a member of 'std'` / `error C3861: 'is_sorted': identifier not found` at `test_recipe_boot_ingest.cpp:69`. Compiled fine on GCC/WSL (`<algorithm>` transitively pulled in via another standard header there) but not on MSVC, which does not guarantee that transitive availability.
+
+**Root cause:** the file used `std::is_sorted` without including `<algorithm>` directly.
+
+**FIXED 2026-07-12** (commit `a82b8210`, branch `fix/ki-020-ki-017-windows-portability`) — added `#include <algorithm>`.
+
+**Verification:** `test_recipe_boot_ingest` now compiles, links, and passes 5/5. Full aggregate Windows `build.bat all` rebuild: 0 failed targets (down from the 19-target pre-existing baseline, all cleared across this KI + KI-020 + KI-017).
+
+**Severity:** low (single test target, single missing include) · **Status:** RESOLVED
+
+---
 
 ### KI-013 — `FailScenarioSweep_FrameSync.DeviceLostRecovery` segfaults inside Dozen's swapchain-image destroy path (regression against KI-004's documented-fixed state)
 
