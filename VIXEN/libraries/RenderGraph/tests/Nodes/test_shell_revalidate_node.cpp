@@ -21,8 +21,9 @@
  *      Resource* pointer identity, not by binding number).
  *
  * DEVICE SELECTION: identical contract to test_body_octree_lifetime.cpp / test_recipe_
- * pool_render.cpp — prefers Mesa-Dozen via VixenSelectWslGpuIcd(), falls back to
- * lavapipe. An unrecognized device is hard-asserted against before any vkQueueSubmit.
+ * pool_render.cpp — via VixenSelectWslGpuIcd(), a real discrete/integrated GPU is
+ * PREFERRED, with software (lavapipe/llvmpipe) or Dozen used only as a fallback when no
+ * real GPU is visible. Some usable device is still hard-asserted before any vkQueueSubmit.
  */
 
 #include <gtest/gtest.h>
@@ -80,6 +81,13 @@ protected:
     std::string      selectedDeviceName_;
     std::unique_ptr<VulkanDevice> deviceShell_;
 
+    // Real discrete/integrated GPUs are now PREFERRED; software/Dozen is only a
+    // fallback when no real GPU is visible.
+    static bool IsRealGpu(const VkPhysicalDeviceProperties& p) {
+        return p.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU ||
+               p.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU;
+    }
+
     static bool IsAcceptableDevice(const VkPhysicalDeviceProperties& p) {
         std::string n(p.deviceName);
         for (char& c : n) c = static_cast<char>(::tolower(c));
@@ -105,8 +113,8 @@ protected:
         ASSERT_EQ(vkCreateInstance(&ci, nullptr, &instance_), VK_SUCCESS);
         ASSERT_NO_FATAL_FAILURE(PickPhysicalDevice());
         ASSERT_TRUE(deviceConfirmed_)
-            << "Refusing to run: selected device '" << selectedDeviceName_
-            << "' is not a verified device (software rasterizer or Dozen).";
+            << "Refusing to run: no usable Vulkan device found (real GPU, software "
+               "rasterizer, or Dozen); nearest was '" << selectedDeviceName_ << "'.";
         ASSERT_NO_FATAL_FAILURE(CreateLogicalDevice());
         ASSERT_NO_FATAL_FAILURE(CreateCommandPool());
         deviceShell_ = std::make_unique<VulkanDevice>(&physicalDevice_);
@@ -131,6 +139,18 @@ protected:
         ASSERT_GT(count, 0u) << "No Vulkan physical devices visible.";
         std::vector<VkPhysicalDevice> devices(count);
         ASSERT_EQ(vkEnumeratePhysicalDevices(instance_, &count, devices.data()), VK_SUCCESS);
+        // Prefer a real discrete/integrated GPU; fall back to software/Dozen only
+        // when no real GPU is visible.
+        for (VkPhysicalDevice dev : devices) {
+            VkPhysicalDeviceProperties props{};
+            vkGetPhysicalDeviceProperties(dev, &props);
+            if (IsRealGpu(props)) {
+                physicalDevice_ = dev;
+                selectedDeviceName_ = props.deviceName;
+                deviceConfirmed_ = true;
+                return;
+            }
+        }
         for (VkPhysicalDevice dev : devices) {
             VkPhysicalDeviceProperties props{};
             vkGetPhysicalDeviceProperties(dev, &props);

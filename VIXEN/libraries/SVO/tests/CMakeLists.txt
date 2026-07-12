@@ -594,6 +594,86 @@ endif()
 gtest_discover_tests(test_recipe_codegen)
 
 # ===========================================================================
+# SdfCore GLSL name-set drift-guard (Lazy-Procedural-Delta-Baseline Inc1 M4 Task 7)
+# ===========================================================================
+add_executable(test_sdf_core_glsl test_sdf_core_glsl.cpp)
+target_link_libraries(test_sdf_core_glsl PRIVATE GTest::gtest_main)
+target_compile_definitions(test_sdf_core_glsl PRIVATE
+    SDF_CORE_KERNELS_HLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.hlsl"
+    SDF_CORE_KERNELS_GLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/SdfCoreKernels.glsl"
+)
+set_target_properties(test_sdf_core_glsl PROPERTIES FOLDER "Tests/SVO Tests")
+gtest_discover_tests(test_sdf_core_glsl)
+
+# ===========================================================================
+# GLSL field-function emitter smoke tests (Inc1 M4 Task 8)
+# ===========================================================================
+add_executable(test_recipe_codegen_glsl test_recipe_codegen_glsl.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_recipe_codegen_glsl PRIVATE GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_recipe_codegen_glsl PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_recipe_codegen_glsl PROPERTIES FOLDER "Tests/SVO Tests")
+gtest_discover_tests(test_recipe_codegen_glsl)
+
+# ===========================================================================
+# Recipe GLSL Numerical Parity Tests (Lazy-Procedural-Delta-Baseline Inc1 M4
+# Task 9 — GLSL field-function emitter vs CPU evalRecipe, across the full
+# ParityCorpus. CPU-eval + glslang-compile run on every machine; the actual
+# GPU dispatch+compare only runs on a REAL (non-lavapipe, non-Dozen) GPU —
+# the fixture SetUp() GTEST_SKIPs otherwise. See file header for the
+# Windows-native hand-off command.)
+# ===========================================================================
+add_executable(test_recipe_glsl_numerical_parity test_recipe_glsl_numerical_parity.cpp)
+if(TARGET SVO AND TARGET ShaderManagement AND TARGET VulkanResources)
+    target_link_libraries(test_recipe_glsl_numerical_parity PRIVATE
+        GTest::gtest_main SVO ShaderManagement VulkanResources)
+elseif(TARGET SVO AND TARGET ShaderManagement)
+    target_link_libraries(test_recipe_glsl_numerical_parity PRIVATE
+        GTest::gtest_main SVO ShaderManagement)
+else()
+    target_link_libraries(test_recipe_glsl_numerical_parity PRIVATE GTest::gtest_main)
+endif()
+target_compile_definitions(test_recipe_glsl_numerical_parity PRIVATE
+    SDF_CORE_KERNELS_GLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/SdfCoreKernels.glsl"
+)
+set_target_properties(test_recipe_glsl_numerical_parity PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_recipe_glsl_numerical_parity POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_recipe_glsl_numerical_parity>
+        COMMENT "Copying TBB DLL for test_recipe_glsl_numerical_parity")
+endif()
+gtest_discover_tests(test_recipe_glsl_numerical_parity)
+
+# ===========================================================================
+# Uber-Shader Splice Tests (Lazy-Procedural-Delta-Baseline Inc0 M5 Task 11 —
+# SpliceProceduralRecipesIntoSource compiles the REAL BodyInstanceRayMarch.comp
+# through the production ShaderBundleBuilder path, CPU-only / no GPU needed)
+# ===========================================================================
+add_executable(test_uber_shader_splice test_uber_shader_splice.cpp)
+if(TARGET SVO AND TARGET ShaderManagement)
+    target_link_libraries(test_uber_shader_splice PRIVATE
+        GTest::gtest_main SVO ShaderManagement)
+else()
+    target_link_libraries(test_uber_shader_splice PRIVATE GTest::gtest_main)
+endif()
+target_compile_definitions(test_uber_shader_splice PRIVATE
+    BODY_INSTANCE_RAYMARCH_COMP_PATH="${CMAKE_SOURCE_DIR}/shaders/BodyInstanceRayMarch.comp"
+    VIXEN_SHADERS_DIR="${CMAKE_SOURCE_DIR}/shaders"
+    VIXEN_SVO_SHADERS_DIR="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders"
+)
+set_target_properties(test_uber_shader_splice PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_uber_shader_splice POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_uber_shader_splice>
+        COMMENT "Copying TBB DLL for test_uber_shader_splice")
+endif()
+gtest_discover_tests(test_uber_shader_splice)
+
+# ===========================================================================
 # Recipe Bake Parity Tests (P2.1 M1 — recipe-sphere bake == analytic-sphere bake)
 # ===========================================================================
 add_executable(test_recipe_bake test_recipe_bake.cpp)
@@ -671,6 +751,34 @@ else()
 endif()
 set_target_properties(test_recipe_registry PROPERTIES FOLDER "Tests/SVO Tests")
 gtest_discover_tests(test_recipe_registry)
+
+# ===========================================================================
+# Recipe Bounds Tests (Lazy-Procedural-Delta-Baseline Inc0 M5 Task 10 —
+# whitelist-restricted bound derivation + RecipeEntry bounds-metadata validation)
+# ===========================================================================
+add_executable(test_recipe_bounds test_recipe_bounds.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_recipe_bounds PRIVATE GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_recipe_bounds PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_recipe_bounds PROPERTIES FOLDER "Tests/SVO Tests")
+gtest_discover_tests(test_recipe_bounds)
+
+# ===========================================================================
+# Recipe Occupancy Grid Tests (Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13 —
+# dense-eval + conservative-downsample coarse occupancy grid, random-probe
+# conservativeness gate: stored value never exceeds the true |sd| anywhere in
+# its cell)
+# ===========================================================================
+add_executable(test_recipe_occupancy test_recipe_occupancy.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_recipe_occupancy PRIVATE GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_recipe_occupancy PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_recipe_occupancy PROPERTIES FOLDER "Tests/SVO Tests")
+gtest_discover_tests(test_recipe_occupancy)
 
 # ===========================================================================
 # Recipe Manifest Tests (I2.3 — RecipeManifest model + validation)
@@ -791,6 +899,41 @@ if(TARGET TBB::tbb)
         COMMENT "Copying TBB DLL for test_recipe_baker")
 endif()
 gtest_discover_tests(test_recipe_baker)
+
+# ===========================================================================
+# Generation-Cost Benchmark (Lazy-Procedural-Delta-Baseline Inc0 M3, Task 6)
+# ===========================================================================
+add_executable(test_generation_cost_benchmark test_generation_cost_benchmark.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_generation_cost_benchmark PRIVATE
+        GTest::gtest_main SVO GaiaVoxelWorld VoxelComponents VoxelData)
+else()
+    target_link_libraries(test_generation_cost_benchmark PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_generation_cost_benchmark PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_generation_cost_benchmark POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_generation_cost_benchmark>
+        COMMENT "Copying TBB DLL for test_generation_cost_benchmark")
+endif()
+gtest_discover_tests(test_generation_cost_benchmark)
+
+add_executable(test_residency_default test_residency_default.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_residency_default PRIVATE
+        GTest::gtest_main SVO GaiaVoxelWorld VoxelComponents VoxelData)
+else()
+    target_link_libraries(test_residency_default PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_residency_default PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_residency_default POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_residency_default>
+        COMMENT "Copying TBB DLL for test_residency_default")
+endif()
+gtest_discover_tests(test_residency_default)
 
 # ===========================================================================
 # Sampler Tests

@@ -5,6 +5,8 @@
 #include "Data/Nodes/FrameSyncNodeConfig.h"
 #include "VulkanDevice.h"
 #include "Memory/BatchedUploader.h"  // Inc1 M2: ResourceManagement::InvalidUploadHandle
+#include "MipBake.h"  // Lazy-Procedural-Delta-Baseline Inc0 M1: ConcatenateSdfWithMips
+#include "ResidencyDefault.h"  // Lazy-Procedural-Delta-Baseline Inc0 M2: DeriveResidencyDefault
 
 #include <algorithm>
 #include <cstdlib>   // std::getenv
@@ -161,6 +163,13 @@ void BodyOctreeSceneNode::SetBakeRecipe(std::vector<Vixen::SVO::Recipe::SdfInstr
     bakeRecipe_  = std::move(prog);
     recipeDirty_ = true;   // P2.3: if already compiled, ExecuteImpl re-materializes on the next frame;
                            //       if pre-Compile, CompileImpl bakes fresh and clears this.
+    // Lazy-Procedural-Delta-Baseline Inc0 M2 Task 4: a genuinely new pool is being staged —
+    // any previous explicit residency grant applied to the OLD pool, not this one. Clearing
+    // the latch here (not inside Rematerialize) means DeriveResidencyDefaultIfUnset's
+    // "only on the node's first-ever Compile" guard still governs whether re-derivation
+    // actually happens; this just makes a pre-first-Compile SetBakeRecipe call behave like
+    // a fresh boot (see the latch's own doc comment on the header for the full hazard).
+    residencyExplicitlyRequested_ = false;
     NODE_LOG_INFO("[BodyOctreeSceneNode] SetBakeRecipe: " +
                   std::to_string(bakeRecipe_.size()) + " instructions — octree 0 will use recipe bake");
 }
@@ -170,8 +179,24 @@ void BodyOctreeSceneNode::SetRecipePool(Vixen::SVO::ConcatenatedOctrees pool) {
     poolProvided_ = true;
     octreesBuilt_ = false;   // force EnsureOctreesBuilt to pick up the new pool
     recipeDirty_  = true;    // post-Compile: triggers Rematerialize on next Execute
+    // Lazy-Procedural-Delta-Baseline Inc0 M2 Task 4: see SetBakeRecipe's comment above —
+    // same latch-clear reasoning, mirrored for the pool-provided path.
+    residencyExplicitlyRequested_ = false;
     NODE_LOG_INFO("[BodyOctreeSceneNode] SetRecipePool: " +
                   std::to_string(providedPool_.count) + " octrees staged");
+}
+
+void BodyOctreeSceneNode::SetOccupancyGrid(std::vector<float> concatenatedGrid) {
+    // Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13: stash the blob; CreateOctreeBuffers
+    // uploads it on the next (re)Compile. Does NOT set recipeDirty_ itself — the shader
+    // splice that produces this blob already forces a shader recompile through the normal
+    // registration-changed path (BuildRenderGraph.cpp's RegisterShaderBuilder re-runs), and
+    // a bare buffer swap with no shader change would leave the OLD spliced getRecipeOccupancyGrid
+    // switch's baked gridOffset literals pointing at the wrong blob layout — this setter is
+    // only ever called from that same shader-build callback, never independently.
+    occupancyGrid_ = std::move(concatenatedGrid);
+    NODE_LOG_INFO("[BodyOctreeSceneNode] SetOccupancyGrid: " +
+                  std::to_string(occupancyGrid_.size()) + " floats staged");
 }
 
 void BodyOctreeSceneNode::RequestBrickResidency(bool resident) {
@@ -179,9 +204,45 @@ void BodyOctreeSceneNode::RequestBrickResidency(bool resident) {
     // performs the actual BatchedUploader call next frame; never upload synchronously here.
     residencyRequested_  = resident;
     brickResidencyDirty_ = (resident != brickPoolUploaded_);
+    // Lazy-Procedural-Delta-Baseline Inc0 M2 Task 4: an explicit call always wins over the
+    // capability-derived default — latch it so DeriveResidencyDefaultIfUnset (first Compile
+    // only) and any later Rematerialize both leave this value alone.
+    residencyExplicitlyRequested_ = true;
     NODE_LOG_INFO(std::string("[BodyOctreeSceneNode] RequestBrickResidency: ") +
                   (resident ? "true" : "false") + " (dirty=" +
                   (brickResidencyDirty_ ? "true" : "false") + ")");
+}
+
+void BodyOctreeSceneNode::DeriveResidencyDefaultIfUnset() {
+    // Lazy-Procedural-Delta-Baseline Inc0 M2 Task 4: capability-derived residency default.
+    // Called exactly once — from CompileImpl, gated on "first Compile ever" (nodesBuffer_
+    // still null) — never from Rematerialize, so a live grant survives an editor-toggle
+    // rebuild with the camera unmoved (see the header's residencyExplicitlyRequested_ doc
+    // comment for the full hazard this avoids).
+    if (residencyExplicitlyRequested_) {
+        NODE_LOG_INFO("[BodyOctreeSceneNode] DeriveResidencyDefault: skipped (explicit request already set)");
+        return;
+    }
+
+    // Scope note (M2): this derivation gates only the binary concatenated_.bricks blob's
+    // boot-time population (CreateOctreeBuffers/UploadBrickPool). The channelPool, nodes,
+    // mips, lookup tables, and both shell-cache slots still upload whole at Compile — their
+    // laziness is a future increment's paged pool, not this milestone.
+    //
+    // Pure logic lives in ResidencyDefault.h (mirrors ResidencyTrigger.h's own
+    // dependency-free-function pattern) so it is unit-testable directly against a
+    // ConcatenatedOctrees with no device/node involved.
+    uint32_t mipCapableCount = 0;
+    for (uint32_t i = 0; i < concatenated_.count; ++i) {
+        if (Vixen::SVO::IsOctreeMipCapable(concatenated_, i)) {
+            ++mipCapableCount;
+        }
+    }
+    residencyRequested_ = Vixen::SVO::DeriveResidencyDefault(concatenated_);
+    NODE_LOG_INFO("[BodyOctreeSceneNode] DeriveResidencyDefault: " +
+                  std::to_string(mipCapableCount) + "/" + std::to_string(concatenated_.count) +
+                  " octrees mip-capable -> residencyRequested_=" +
+                  (residencyRequested_ ? "true (eager)" : "false (lazy)"));
 }
 
 void BodyOctreeSceneNode::SetupImpl(TypedSetupContext& /*ctx*/) {
@@ -210,6 +271,13 @@ void BodyOctreeSceneNode::CompileImpl(TypedCompileContext& ctx) {
 
     // 3a) Octree GPU buffers — persistent across recompile (create only once).
     if (nodesBuffer_ == VK_NULL_HANDLE) {
+        // Lazy-Procedural-Delta-Baseline Inc0 M2 Task 4: derive the capability-based
+        // residency default exactly once — the node's first-ever Compile, before
+        // CreateOctreeBuffers reads residencyRequested_ to decide whether to populate
+        // bricksBuffer_ at creation. Deliberately NOT called from Rematerialize (a later
+        // pool swap re-enters CompileImpl with nodesBuffer_ already valid, so this branch
+        // is skipped) — see DeriveResidencyDefaultIfUnset's own doc comment.
+        DeriveResidencyDefaultIfUnset();
         CreateOctreeBuffers(devicePtr);
     } else {
         NODE_LOG_INFO("[BodyOctreeSceneNode] Reusing persistent octree buffers across recompile");
@@ -250,6 +318,9 @@ void BodyOctreeSceneNode::CompileImpl(TypedCompileContext& ctx) {
     // Tiered-ESVO Inc2 M3: tier-ref table buffer (binding 15). Always emitted —
     // placeholder for a scene with no tier-crossing leaves, real data otherwise.
     ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_TIERREFTABLE_BUFFER,  tierRefTableBuffer_);
+    // Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13: occupancy grid buffer (binding 16).
+    // Always emitted — placeholder for a scene with no derivable procedural recipe grids.
+    ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_OCCUPANCYGRID_BUFFER, occupancyGridBuffer_);
     // Surface-Shell ESVO cache — publish slot 0 as the compile-time placeholder;
     // ExecuteImpl re-emits slot [frame&1] each frame (the last committed cache).
     ctx.Out(BodyOctreeSceneNodeConfig::SHELL_DATA_BUFFER,           shellDataBuffer_[0]);
@@ -382,6 +453,7 @@ void BodyOctreeSceneNode::ExecuteImpl(TypedExecuteContext& ctx) {
         ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_BRICKLOOKUP_BUFFER, brickLookupBuffer_);
         ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_MIPPOOL_BUFFER,     mipPoolBuffer_);
         ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_TIERREFTABLE_BUFFER, tierRefTableBuffer_);
+        ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_OCCUPANCYGRID_BUFFER, occupancyGridBuffer_);
         // Rematerialize re-derived + re-created the shell buffers (both slots) inside
         // CreateOctreeBuffers; re-emit slot 0 so the render re-binds the fresh cache.
         ctx.Out(BodyOctreeSceneNodeConfig::SHELL_DATA_BUFFER,         shellDataBuffer_[0]);
@@ -494,7 +566,12 @@ void BodyOctreeSceneNode::EnsureOctreesBuilt() {
             sdfPtrs.push_back(&s);
         }
 
-        concatenated_ = Vixen::SVO::ConcatenateSdf(sdfPtrs);
+        // Lazy-Procedural-Delta-Baseline Inc0 M1 Task 2: bake mips alongside the
+        // Stored-SDF concat so mip-fallback rendering is available for this demo
+        // path too (the default binary-shell branch below stays on plain
+        // Concatenate — binary trees have channelCount==0, mips are structurally
+        // impossible for them per MipFallback.glsl).
+        concatenated_ = Vixen::SVO::ConcatenateSdfWithMips(sdfPtrs);
         octreesBuilt_ = true;
 
         NODE_LOG_INFO("[BodyOctreeSceneNode] Stored-SDF: built " +
@@ -641,6 +718,19 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device) {
         concatenated_.tierRefTable.empty() ? nullptr : concatenated_.tierRefTable.data(),
         tierRefTableBuffer_, tierRefTableMemory_, "tier-ref table SSBO");
 
+    // Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13: occupancy grid buffer (binding 16).
+    // Pad to 1 byte when empty — a scene with no derivable procedural recipe occupancy
+    // grids (no procedural recipes, or all non-whitelisted-opcode) leaves occupancyGrid_
+    // empty; the shader's getRecipeOccupancyGrid switch only ever emits gridDim>0 cases
+    // for recipes that HAD a grid, and treats gridDim==0 as "skip the fast-path," so it
+    // never indexes into this buffer when it's the 1-byte placeholder.
+    const VkDeviceSize occupancyGridSize =
+        std::max<VkDeviceSize>(occupancyGrid_.size() * sizeof(float), 1);
+    CreateHostBuffer(device, occupancyGridSize,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        occupancyGrid_.empty() ? nullptr : occupancyGrid_.data(),
+        occupancyGridBuffer_, occupancyGridMemory_, "occupancy grid SSBO");
+
     NODE_LOG_INFO("[BodyOctreeSceneNode] Created octree buffers (nodes=" +
                   std::to_string(static_cast<uint64_t>(nodesSize)) + "B, bricks=" +
                   std::to_string(static_cast<uint64_t>(bricksSize)) + "B, materials=" +
@@ -649,7 +739,8 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device) {
                   std::to_string(static_cast<uint64_t>(sdfSize)) + "B, brickLookup=" +
                   std::to_string(static_cast<uint64_t>(brickLookupSize)) + "B, mipPool=" +
                   std::to_string(static_cast<uint64_t>(mipPoolSize)) + "B, tierRefTable=" +
-                  std::to_string(static_cast<uint64_t>(tierRefTableSize)) + "B)");
+                  std::to_string(static_cast<uint64_t>(tierRefTableSize)) + "B, occupancyGrid=" +
+                  std::to_string(static_cast<uint64_t>(occupancyGridSize)) + "B)");
 
     // Surface-Shell ESVO cache: derive the reachable shell of octree 0 from the
     // just-created full pool into BOTH CPU slots, then bootstrap both GPU slots.
@@ -869,6 +960,16 @@ void BodyOctreeSceneNode::UploadBrickPool() {
     device->FlushUploads();
     pendingBrickUploadHandle_ = handle;
 
+    // Inc1 M4 Task 6b: first-ever queue is "boot", every later one (a residency toggle) is
+    // "steady-state". brickPoolUploaded_ hasn't flipped true yet at this point (that happens
+    // in PollBrickUploadCompletion once the GPU-side copy lands), so bootBytesUploaded_==0
+    // is exactly "boot upload never queued".
+    if (bootBytesUploaded_ == 0) {
+        bootBytesUploaded_ = static_cast<uint64_t>(size);
+    } else {
+        steadyStateBytesUploaded_ += static_cast<uint64_t>(size);
+    }
+
     NODE_LOG_INFO("[BodyOctreeSceneNode] UploadBrickPool: queued " +
                   std::to_string(static_cast<uint64_t>(size)) + "B via BatchedUploader (async)");
 }
@@ -889,14 +990,23 @@ void BodyOctreeSceneNode::PollBrickUploadCompletion() {
         pendingBrickUploadHandle_ = ResourceManagement::InvalidUploadHandle;
         brickPoolUploaded_ = true;
 
-        for (auto& cfg : concatenated_.configs) {
-            Vixen::SVO::setBrickResident(cfg, true);
-        }
+        // Lazy-Procedural-Delta-Baseline Inc0 M2 Task 4b: binding-5 (OCTREE_CONFIG_BUFFER)
+        // holds whichever configs the live render actually samples. CreateShellBuffers
+        // rewrites it to the shell-COMPACT configs (re-packed per-octree poolBrickBase) at
+        // Compile whenever a shell cache was derived — re-uploading the SOURCE configs here
+        // unconditionally would clobber that rewrite at exactly the mip->brick transition,
+        // corrupting SDF addressing for octree index >=1 in any multi-octree pool.
+        // StampAndSelectActiveConfigs (ResidencyDefault.h) stamps brickResident=1 into the
+        // SAME view CreateShellBuffers last wrote and returns which vector to re-upload.
+        const bool haveShellCache = !shellCache_[0].compact.configs.empty();
+        std::vector<Vixen::SVO::OctreeConfig>* activeConfigs =
+            Vixen::SVO::StampAndSelectActiveConfigs(concatenated_, shellCache_);
+
         const VkDeviceSize configSize =
-            static_cast<VkDeviceSize>(concatenated_.configs.size()) *
+            static_cast<VkDeviceSize>(activeConfigs->size()) *
             static_cast<VkDeviceSize>(sizeof(Vixen::SVO::OctreeConfig));
         if (configSize > 0) {
-            const auto cfgHandle = device->Upload(concatenated_.configs.data(), configSize, configBuffer_, 0);
+            const auto cfgHandle = device->Upload(activeConfigs->data(), configSize, configBuffer_, 0);
             if (cfgHandle == ResourceManagement::InvalidUploadHandle) {
                 NODE_LOG_ERROR("[BodyOctreeSceneNode] PollBrickUploadCompletion: config re-upload failed ("
                               + std::to_string(static_cast<uint64_t>(configSize)) + "B)");
@@ -905,7 +1015,8 @@ void BodyOctreeSceneNode::PollBrickUploadCompletion() {
                 pendingConfigUploadHandle_ = cfgHandle;
             }
         }
-        NODE_LOG_INFO("[BodyOctreeSceneNode] PollBrickUploadCompletion: brick pool visible on GPU");
+        NODE_LOG_INFO("[BodyOctreeSceneNode] PollBrickUploadCompletion: brick pool visible on GPU ("
+                      + std::string(haveShellCache ? "compact" : "source") + " configs re-uploaded)");
         return;  // one phase transition per call, matches the queue-then-poll-next-frame pattern
     }
 
@@ -943,6 +1054,7 @@ void BodyOctreeSceneNode::DestroyOctreeBuffers() {
     }
     destroy(mipPoolBuffer_,       mipPoolMemory_);      // Inc1 M3
     destroy(tierRefTableBuffer_,  tierRefTableMemory_); // Tiered-ESVO Inc2 M3
+    destroy(occupancyGridBuffer_, occupancyGridMemory_); // Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13
 }
 
 void BodyOctreeSceneNode::DestroyBuffers() {

@@ -15,6 +15,7 @@
 #include "Recipe/SdfRecipeEval.h"
 
 #include <glm/glm.hpp>
+#include <array>
 #include <memory>
 #include <optional>
 #include <cmath>
@@ -165,6 +166,42 @@ inline SdfBakeResult BakeSdfWorld(EvalFn&& eval, const glm::vec3& center,
 
     // Pass 2 — fully populate every active brick with the TRUE signed distance
     // plus spatially-varying color and roughness (Inc3 M2 multi-channel bake).
+    //
+    // Batched via createVoxelsBatch (root-caused 2026-07-12): per-voxel createVoxel()
+    // calls tryAutoParentToChunk() per entity, an O(chunks) query over the WHOLE world
+    // per voxel -- for a fresh, chunk-free bake world (constructed above, never touched
+    // by chunk-management code) this query always finds zero ChunkOrigin entities and
+    // is a guaranteed no-op (GaiaVoxelWorld.cpp:108-146), so skipping it via the batch
+    // path changes nothing observable. createVoxelsBatch also defers cache invalidation
+    // to ONE call at the end (GaiaVoxelWorld.cpp:590) instead of per-entity -- since
+    // nothing reads the block cache mid-bake, this produces the identical final (empty)
+    // cache state, not a weaker one. Verified against every other production caller of
+    // BakeSdfWorld (all construct a fresh, chunk-free world the same way) and against
+    // LaineKarrasOctree::rebuild() (reads only Morton-keyed spatial queries, never
+    // chunk-parenting) before landing this change -- this is a genuine perf fix aligned
+    // with the Lazy-Procedural-Delta-Baseline program's "instructions-first, minimize
+    // eager materialization cost" direction, not a workaround.
+    //
+    // Requests reference their component arrays via non-owning std::span
+    // (VoxelCreationRequest::components, ComponentData.h:69) -- each active voxel's
+    // component array must outlive the single createVoxelsBatch call below, so both the
+    // owning component storage and the request vector are reserve()'d to the exact
+    // active-voxel count up front (computed from activeBrick, already built above) —
+    // with capacity fixed before any push_back, neither vector ever reallocates, so a
+    // request's span into compStorage[i] stays valid for the whole loop and the batch
+    // call after it.
+    size_t activeVoxelCount = 0;
+    for (int z = 0; z < n; ++z)
+      for (int y = 0; y < n; ++y)
+        for (int x = 0; x < n; ++x)
+            if (activeBrick[brickIndex(x / brickSide, y / brickSide, z / brickSide)])
+                ++activeVoxelCount;
+
+    std::vector<std::array<Vixen::GaiaVoxel::ComponentQueryRequest, 5>> compStorage;
+    std::vector<Vixen::GaiaVoxel::VoxelCreationRequest> requests;
+    compStorage.reserve(activeVoxelCount);
+    requests.reserve(activeVoxelCount);
+
     for (int z = 0; z < n; ++z)
       for (int y = 0; y < n; ++y)
         for (int x = 0; x < n; ++x) {
@@ -182,16 +219,17 @@ inline SdfBakeResult BakeSdfWorld(EvalFn&& eval, const glm::vec3& center,
             const float rough = glm::clamp(
                 0.2f + 0.6f * glm::fract(p.y * 0.0625f), 0.0f, 1.0f);
             const float emission = emit(p);
-            const Vixen::GaiaVoxel::ComponentQueryRequest comps[] = {
-                Vixen::GaiaVoxel::Density{sd},
-                Vixen::GaiaVoxel::Color{col},
-                Vixen::GaiaVoxel::Roughness{rough},
-                Vixen::GaiaVoxel::Material{1u},
-                Vixen::GaiaVoxel::EmissionIntensity{emission},
-            };
-            r.world->createVoxel(
-                Vixen::GaiaVoxel::VoxelCreationRequest{p, comps});
+            auto& comps = compStorage.emplace_back(std::array<Vixen::GaiaVoxel::ComponentQueryRequest, 5>{
+                Vixen::GaiaVoxel::ComponentQueryRequest{Vixen::GaiaVoxel::Density{sd}},
+                Vixen::GaiaVoxel::ComponentQueryRequest{Vixen::GaiaVoxel::Color{col}},
+                Vixen::GaiaVoxel::ComponentQueryRequest{Vixen::GaiaVoxel::Roughness{rough}},
+                Vixen::GaiaVoxel::ComponentQueryRequest{Vixen::GaiaVoxel::Material{1u}},
+                Vixen::GaiaVoxel::ComponentQueryRequest{Vixen::GaiaVoxel::EmissionIntensity{emission}},
+            });
+            requests.emplace_back(p, std::span<const Vixen::GaiaVoxel::ComponentQueryRequest>(
+                comps.data(), comps.size()));
         }
+    r.world->createVoxelsBatch(requests);
 
     return r;
 }

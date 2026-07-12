@@ -15,9 +15,12 @@
  * Uses VixenSelectWslGpuIcd() so this runs on Mesa-Dozen (the real GPU) when
  * provisioned on WSL2, falling back to lavapipe otherwise — see
  * test_body_octree_lifetime.cpp's file header for the 2026-07-04 re-verification
- * that both paths are safe. IsAcceptableDevice() still hard-asserts the selected
- * device is one of the two verified ones before ANY vkQueueSubmit; an unrecognized
- * device fails the test loud rather than risk it.
+ * that both paths are safe. A real discrete/integrated GPU is now PREFERRED, with
+ * software (lavapipe/llvmpipe) or Dozen used only as a fallback when no real GPU is
+ * visible — the earlier software/Dozen-only gate was a lavapipe-era artifact that
+ * made this test unable to run on real hardware. Either way the picker still
+ * hard-asserts it selected some usable device before ANY vkQueueSubmit; an
+ * environment with none fails the test loud rather than risk it.
  *
  * Run: ./test_body_instance_raymarch_render
  *   (set VK_ICD_FILENAMES explicitly to force a specific ICD, e.g. for comparison.)
@@ -55,10 +58,15 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
-#include <cstdlib>   // setenv / unsetenv (VIXEN_STORED_SDF_DEMO bake gate)
+#include <cstdlib>   // getenv + portable env set/unset (VIXEN_STORED_SDF_DEMO bake gate)
+
 #include <cstring>
 #include <fstream>
 #include <string>
+#include "Generated/LightingConfig.g.h"  // Sampled Lighting Inc0 M3: real default light content
+                                          // (a zeroed LightingConfig has lightCount=0 -> pure
+                                          // black shaded output -> this test's render assertions
+                                          // would see an empty/near-black image)
 #include <vector>
 
 using namespace Vixen::RenderGraph;
@@ -109,8 +117,16 @@ struct PushConstants {
     float   raySizeCoef;
     float   raySizeBias;
     int32_t instanceCount;
+    int32_t _pad0;  // std430 forces ivec2 to 8-byte alignment; explicit pad matches the
+                     // shader's real [76,80) gap (offset 76 is not 8-aligned) instead of
+                     // relying on glm::ivec2's own (looser) natural C++ alignment.
+    glm::ivec2 debugTargetPixel = glm::ivec2(-1, -1);  // Inc1 M4b (bytes 80-87); (-1,-1) disables
+    uint32_t   accumFrameCount = 1u;                    // Sampled Lighting Inc2 M2 (bytes 88-91)
+    uint32_t   _pad1 = 0u;  // std430 push-constant block rounds up to a 16-byte multiple
+                            // (leading vec3 forces 16-byte block alignment) -- SPIR-V
+                            // reflection reports 96 bytes total, not 92.
 };
-static_assert(sizeof(PushConstants) == 76, "PushConstants must be 76 bytes (matches shader std430 push block)");
+static_assert(sizeof(PushConstants) == 96, "PushConstants must be 96 bytes (std430 push block, 16-byte rounded)");
 
 // ---------------------------------------------------------------------------
 // Read a compiled SPIR-V file into a uint32 vector.
@@ -143,9 +159,15 @@ protected:
 
     std::unique_ptr<VulkanDevice> deviceShell_;
 
-    // Accepts the two devices this test has been verified against: the software
-    // rasterizer (llvmpipe/lavapipe, CPU) or Mesa-Dozen (Vulkan-over-D3D12). Rejects
-    // anything else — an untriaged device still fails loud rather than risk it.
+    // Real discrete/integrated GPUs are now PREFERRED; software/Dozen is only a
+    // fallback when no real GPU is visible.
+    static bool IsRealGpu(const VkPhysicalDeviceProperties& props) {
+        return props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU ||
+               props.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU;
+    }
+
+    // The software rasterizer (llvmpipe/lavapipe, CPU) or Mesa-Dozen (Vulkan-over-D3D12)
+    // — accepted as a fallback when no real GPU is visible.
     static bool LooksLikeSoftware(const VkPhysicalDeviceProperties& props) {
         std::string name(props.deviceName);
         for (char& c : name) c = static_cast<char>(::tolower(c));
@@ -187,8 +209,8 @@ protected:
 
         ASSERT_NO_FATAL_FAILURE(PickSoftwarePhysicalDevice());
         ASSERT_TRUE(softwareConfirmed_)
-            << "Refusing to run: selected device '" << selectedDeviceName_
-            << "' is not a verified device (software rasterizer or Dozen). "
+            << "Refusing to run: no usable Vulkan device found (real GPU, software "
+               "rasterizer, or Dozen); nearest was '" << selectedDeviceName_ << "'. "
                "Aborting before any vkQueueSubmit.";
 
         ASSERT_NO_FATAL_FAILURE(CreateLogicalDevice());
@@ -220,6 +242,18 @@ protected:
         ASSERT_GT(count, 0u) << "No Vulkan physical devices visible.";
         std::vector<VkPhysicalDevice> devices(count);
         ASSERT_EQ(vkEnumeratePhysicalDevices(instance_, &count, devices.data()), VK_SUCCESS);
+        // Prefer a real discrete/integrated GPU; fall back to software/Dozen only
+        // when no real GPU is visible.
+        for (VkPhysicalDevice dev : devices) {
+            VkPhysicalDeviceProperties props{};
+            vkGetPhysicalDeviceProperties(dev, &props);
+            if (IsRealGpu(props)) {
+                physicalDevice_     = dev;
+                selectedDeviceName_ = props.deviceName;
+                softwareConfirmed_  = true;
+                return;
+            }
+        }
         for (VkPhysicalDevice dev : devices) {
             VkPhysicalDeviceProperties props{};
             vkGetPhysicalDeviceProperties(dev, &props);
@@ -361,6 +395,34 @@ protected:
         }
     }
 
+    // Sampled Lighting Inc0 M3: the same directional-light default LightingConfigNode uploads
+    // in the real graph (MakeDefaultLightingConfig — direction normalize(1,1,-1), white
+    // radiance, ambientIntensity 0.3) — this harness bypasses LightingConfigNode entirely, so
+    // it must write this itself or the shaded output is pure black (lightCount=0).
+    static Vixen::Gpu::LightingConfig MakeTestDefaultLightingConfig() {
+        Vixen::Gpu::LightingConfig cfg{};
+        cfg.lightCount       = 1u;
+        cfg.ambientIntensity = 0.3f;
+        const float dx = 1.0f, dy = 1.0f, dz = -1.0f;
+        const float invLen = 1.0f / std::sqrt(dx*dx + dy*dy + dz*dz);
+        cfg.lights[0].direction_or_positionX = dx * invLen;
+        cfg.lights[0].direction_or_positionY = dy * invLen;
+        cfg.lights[0].direction_or_positionZ = dz * invLen;
+        cfg.lights[0].kind      = 0u;
+        cfg.lights[0].radianceX = 1.0f;
+        cfg.lights[0].radianceY = 1.0f;
+        cfg.lights[0].radianceZ = 1.0f;
+        cfg.lights[0].range     = 0.0f;
+        return cfg;
+    }
+
+    void UploadBufferContent(VkDeviceMemory mem, const void* data, size_t size) {
+        void* m = nullptr;
+        ASSERT_EQ(vkMapMemory(logicalDevice_, mem, 0, size, 0, &m), VK_SUCCESS);
+        std::memcpy(m, data, size);
+        vkUnmapMemory(logicalDevice_, mem);
+    }
+
     // -----------------------------------------------------------------------
     // Run the REAL shader against the node's 5 octree/instance buffers with the
     // given push constants, at w*h, and return the rendered RGBA8 bytes (+ render
@@ -412,17 +474,60 @@ protected:
         VkDeviceMemory dummyIterMem = VK_NULL_HANDLE;
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummyIter, dummyIterMem, true);
 
-        // Offscreen output images: rgba8 colour (0) + r32ui id (9).
+        // Tier-ref table (15, Tiered-ESVO Inc2 M3): none of this test's scenes register a
+        // tier-crossing leaf, so a 256-byte dummy satisfies the pipeline layout (the shader
+        // bounds-checks against tierRefTable.length() before ever reading it).
+        VkBuffer dummyTierRef = VK_NULL_HANDLE;
+        VkDeviceMemory dummyTierRefMem = VK_NULL_HANDLE;
+        CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummyTierRef, dummyTierRefMem, true);
+
+        // Occupancy grid (16, Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13): none of this
+        // test's scenes register a procedural recipe with a derivable grid, so a 256-byte
+        // dummy satisfies the pipeline layout (shader gates on gridDim>0 per-recipe before
+        // ever reading it).
+        VkBuffer dummyOccGrid = VK_NULL_HANDLE;
+        VkDeviceMemory dummyOccGridMem = VK_NULL_HANDLE;
+        CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummyOccGrid, dummyOccGridMem, true);
+
+        // Sampled Lighting Inc0-Inc2 bindings (17-22): this test only checks the raymarch
+        // geometry/color output, not shading — LightingConfig/ShadowConfig/AccumulationConfig
+        // are bound as zeroed placeholders (accumulationConfig.enabled==0 keeps the temporal
+        // accumulation seam a pure passthrough; shadowConfig with enabled==0 skips shadow
+        // rays), HitRecord is round-tripped internally but not read by this test's own
+        // pass/fail signal, and PrevCameraConfig/historyImage are unused this milestone scope.
+        VkBuffer dummyLighting = VK_NULL_HANDLE, dummyHitRecord = VK_NULL_HANDLE,
+                 dummyShadow = VK_NULL_HANDLE, dummyAccum = VK_NULL_HANDLE, dummyPrevCam = VK_NULL_HANDLE;
+        VkDeviceMemory dummyLightingMem = VK_NULL_HANDLE, dummyHitRecordMem = VK_NULL_HANDLE,
+                       dummyShadowMem = VK_NULL_HANDLE, dummyAccumMem = VK_NULL_HANDLE, dummyPrevCamMem = VK_NULL_HANDLE;
+        CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummyLighting, dummyLightingMem, true);
+        {
+            const Vixen::Gpu::LightingConfig defaultLighting = MakeTestDefaultLightingConfig();
+            ASSERT_NO_FATAL_FAILURE(UploadBufferContent(dummyLightingMem, &defaultLighting, sizeof(defaultLighting)));
+        }
+        // HitRecord.glsl's HitRecord struct is 64 bytes; the shader indexes it by the FULL
+        // flat pixel count (y*imgSize.x+x, up to w*h-1) every dispatch, so this buffer MUST be
+        // sized for the actual w*h being rendered here -- a fixed small guess writes out of
+        // bounds for any non-trivial w*h and silently corrupts/discards the round-trip.
+        const VkDeviceSize hitRecordBufSize = VkDeviceSize(w) * VkDeviceSize(h) * 64;
+        CreateHostBuffer(hitRecordBufSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummyHitRecord, dummyHitRecordMem, true);
+        CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummyShadow, dummyShadowMem, true);
+        CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummyAccum, dummyAccumMem, true);
+        CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummyPrevCam, dummyPrevCamMem, true);
+
+        // Offscreen output images: rgba8 colour (0) + r32ui id (9) + rgba8 history (21).
         const VkFormat kColorFmt = VK_FORMAT_R8G8B8A8_UNORM;
         const VkFormat kIdFmt    = VK_FORMAT_R32_UINT;
-        VkImage colorImg = VK_NULL_HANDLE, idImg = VK_NULL_HANDLE;
-        VkDeviceMemory colorMem = VK_NULL_HANDLE, idMem = VK_NULL_HANDLE;
+        VkImage colorImg = VK_NULL_HANDLE, idImg = VK_NULL_HANDLE, historyImg = VK_NULL_HANDLE;
+        VkDeviceMemory colorMem = VK_NULL_HANDLE, idMem = VK_NULL_HANDLE, historyMem = VK_NULL_HANDLE;
         ASSERT_NO_FATAL_FAILURE(CreateImage(w, h, kColorFmt, colorImg, colorMem));
         ASSERT_NO_FATAL_FAILURE(CreateImage(w, h, kIdFmt, idImg, idMem));
-        VkImageView colorView = CreateView(colorImg, kColorFmt);
-        VkImageView idView    = CreateView(idImg, kIdFmt);
+        ASSERT_NO_FATAL_FAILURE(CreateImage(w, h, kColorFmt, historyImg, historyMem));
+        VkImageView colorView   = CreateView(colorImg, kColorFmt);
+        VkImageView idView      = CreateView(idImg, kIdFmt);
+        VkImageView historyView = CreateView(historyImg, kColorFmt);
         ASSERT_NE(colorView, VK_NULL_HANDLE);
         ASSERT_NE(idView, VK_NULL_HANDLE);
+        ASSERT_NE(historyView, VK_NULL_HANDLE);
 
         // SPIR-V -> shader module.
         const std::vector<uint32_t> spirv = ReadSpirv(GLSL_RAYMARCH_SPV);
@@ -441,7 +546,7 @@ protected:
             lb.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
             return lb;
         };
-        const std::array<VkDescriptorSetLayoutBinding, 13> bindings = {
+        const std::array<VkDescriptorSetLayoutBinding, 21> bindings = {
             bind(0,  VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             bind(1,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(2,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
@@ -455,6 +560,14 @@ protected:
             bind(12, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Inc2: brick-grid lookup
             bind(13, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Inc1 M3: sparse-mip pool
             bind(14, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Inc1 M4b: per-instance iteration debug
+            bind(15, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Tiered-ESVO Inc2 M3: tier-ref table
+            bind(16, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Lazy-Procedural-Delta-Baseline Inc0 M6: occupancy grid
+            bind(17, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Sampled Lighting Inc0 M3: LightingConfigSSBO
+            bind(18, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Sampled Lighting Inc1 M3: HitRecordBuffer
+            bind(19, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Sampled Lighting Inc1 M4: ShadowConfigSSBO
+            bind(20, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Sampled Lighting Inc2 M1: AccumulationConfigSSBO
+            bind(21, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),   // Sampled Lighting Inc2 M1: historyImage
+            bind(22, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Sampled Lighting Inc2 M3: PrevCameraConfigSSBO
         };
         VkDescriptorSetLayoutCreateInfo dslci{};
         dslci.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -484,8 +597,8 @@ protected:
                   VK_SUCCESS);
 
         const std::array<VkDescriptorPoolSize, 2> poolSizes = {{
-            {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  2},
-            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 11},  // 1(nodes)+1(bricks)+1(mats)+1(trace)+1(config)+1(counter)+1(inst)+1(sdf)+1(lookup)+1(mipPool)+1(iterDebug)
+            {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  3},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 18},
         }};
         VkDescriptorPoolCreateInfo dpci{};
         dpci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -503,6 +616,7 @@ protected:
 
         VkDescriptorImageInfo colorInfo{VK_NULL_HANDLE, colorView, VK_IMAGE_LAYOUT_GENERAL};
         VkDescriptorImageInfo idInfo{VK_NULL_HANDLE, idView, VK_IMAGE_LAYOUT_GENERAL};
+        VkDescriptorImageInfo historyInfo{VK_NULL_HANDLE, historyView, VK_IMAGE_LAYOUT_GENERAL};
         VkDescriptorBufferInfo nodesInfo{nodesBuf, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo bricksInfo{bricksBuf, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo matsInfo{materialsBuf, 0, VK_WHOLE_SIZE};
@@ -514,6 +628,13 @@ protected:
         VkDescriptorBufferInfo lookupInfo{brickLookupBuf, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo mipInfo{dummyMip, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo iterInfo{dummyIter, 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo tierRefInfo{dummyTierRef, 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo occGridInfo{dummyOccGrid, 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo lightingInfo{dummyLighting, 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo hitRecordInfo{dummyHitRecord, 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo shadowInfo{dummyShadow, 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo accumInfo{dummyAccum, 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo prevCamInfo{dummyPrevCam, 0, VK_WHOLE_SIZE};
 
         auto wImg = [&](uint32_t b, VkDescriptorImageInfo* info) {
             VkWriteDescriptorSet w2{};
@@ -529,7 +650,7 @@ protected:
             w2.descriptorType = t; w2.pBufferInfo = info;
             return w2;
         };
-        const std::array<VkWriteDescriptorSet, 13> writes = {
+        const std::array<VkWriteDescriptorSet, 21> writes = {
             wImg(0, &colorInfo),
             wBuf(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &nodesInfo),
             wBuf(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &bricksInfo),
@@ -543,6 +664,14 @@ protected:
             wBuf(12, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &lookupInfo),
             wBuf(13, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &mipInfo),
             wBuf(14, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &iterInfo),  // Inc1 M4b
+            wBuf(15, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &tierRefInfo),   // Tiered-ESVO Inc2 M3
+            wBuf(16, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &occGridInfo),   // Lazy-Procedural-Delta-Baseline Inc0 M6
+            wBuf(17, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &lightingInfo),  // Sampled Lighting Inc0 M3
+            wBuf(18, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &hitRecordInfo), // Sampled Lighting Inc1 M3
+            wBuf(19, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &shadowInfo),    // Sampled Lighting Inc1 M4
+            wBuf(20, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &accumInfo),     // Sampled Lighting Inc2 M1
+            wImg(21, &historyInfo),                                     // Sampled Lighting Inc2 M1
+            wBuf(22, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &prevCamInfo),   // Sampled Lighting Inc2 M3
         };
         vkUpdateDescriptorSets(logicalDevice_, static_cast<uint32_t>(writes.size()),
                                writes.data(), 0, nullptr);
@@ -572,6 +701,7 @@ protected:
         };
         barrierToGeneral(colorImg);
         barrierToGeneral(idImg);
+        barrierToGeneral(historyImg);
 
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout, 0, 1, &descSet, 0, nullptr);
@@ -626,14 +756,23 @@ protected:
         vkDestroyShaderModule(logicalDevice_, shaderModule, nullptr);
         vkDestroyImageView(logicalDevice_, colorView, nullptr);
         vkDestroyImageView(logicalDevice_, idView, nullptr);
+        vkDestroyImageView(logicalDevice_, historyView, nullptr);
         vkDestroyImage(logicalDevice_, colorImg, nullptr); vkFreeMemory(logicalDevice_, colorMem, nullptr);
         vkDestroyImage(logicalDevice_, idImg, nullptr);    vkFreeMemory(logicalDevice_, idMem, nullptr);
+        vkDestroyImage(logicalDevice_, historyImg, nullptr); vkFreeMemory(logicalDevice_, historyMem, nullptr);
         vkDestroyBuffer(logicalDevice_, traceBuf, nullptr);   vkFreeMemory(logicalDevice_, traceMem, nullptr);
         vkDestroyBuffer(logicalDevice_, counterBuf, nullptr); vkFreeMemory(logicalDevice_, counterMem, nullptr);
         if (dummySdf != VK_NULL_HANDLE)    { vkDestroyBuffer(logicalDevice_, dummySdf, nullptr);    vkFreeMemory(logicalDevice_, dummySdfMem, nullptr); }
         if (dummyLookup != VK_NULL_HANDLE) { vkDestroyBuffer(logicalDevice_, dummyLookup, nullptr); vkFreeMemory(logicalDevice_, dummyLookupMem, nullptr); }
         vkDestroyBuffer(logicalDevice_, dummyMip, nullptr); vkFreeMemory(logicalDevice_, dummyMipMem, nullptr);
         vkDestroyBuffer(logicalDevice_, dummyIter, nullptr); vkFreeMemory(logicalDevice_, dummyIterMem, nullptr);
+        vkDestroyBuffer(logicalDevice_, dummyTierRef, nullptr); vkFreeMemory(logicalDevice_, dummyTierRefMem, nullptr);
+        vkDestroyBuffer(logicalDevice_, dummyOccGrid, nullptr); vkFreeMemory(logicalDevice_, dummyOccGridMem, nullptr);
+        vkDestroyBuffer(logicalDevice_, dummyLighting, nullptr);   vkFreeMemory(logicalDevice_, dummyLightingMem, nullptr);
+        vkDestroyBuffer(logicalDevice_, dummyHitRecord, nullptr);  vkFreeMemory(logicalDevice_, dummyHitRecordMem, nullptr);
+        vkDestroyBuffer(logicalDevice_, dummyShadow, nullptr);     vkFreeMemory(logicalDevice_, dummyShadowMem, nullptr);
+        vkDestroyBuffer(logicalDevice_, dummyAccum, nullptr);      vkFreeMemory(logicalDevice_, dummyAccumMem, nullptr);
+        vkDestroyBuffer(logicalDevice_, dummyPrevCam, nullptr);    vkFreeMemory(logicalDevice_, dummyPrevCamMem, nullptr);
     }
 };
 

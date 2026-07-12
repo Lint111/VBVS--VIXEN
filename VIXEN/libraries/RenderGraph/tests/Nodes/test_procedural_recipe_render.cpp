@@ -12,9 +12,10 @@
  *   push constant range 0..76 = cbuffer PC (76 bytes)
  *
  * DEVICE SELECTION (identical contract to test_body_instance_raymarch_render.cpp):
- * uses VixenSelectWslGpuIcd() to prefer Mesa-Dozen (the real GPU) on WSL2, falling
- * back to lavapipe otherwise. The fixture hard-asserts softwareConfirmed_ names one
- * of the two verified devices before any vkQueueSubmit.
+ * uses VixenSelectWslGpuIcd(); a real discrete/integrated GPU is PREFERRED, with
+ * software (lavapipe/llvmpipe) or Dozen used only as a fallback when no real GPU is
+ * visible — the earlier software/Dozen-only gate was a lavapipe-era artifact. The
+ * fixture still hard-asserts it selected some usable device before any vkQueueSubmit.
  *
  * Storage-image gotcha (applies to both devices): writes silently no-op unless the
  * device is created with Vulkan 1.3 instance API + shaderStorageImageWriteWithoutFormat
@@ -155,6 +156,13 @@ protected:
     bool             softwareConfirmed_ = false;
     std::string      selectedDeviceName_;
 
+    // Real discrete/integrated GPUs are now PREFERRED; software/Dozen is only a
+    // fallback when no real GPU is visible.
+    static bool IsRealGpu(const VkPhysicalDeviceProperties& props) {
+        return props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU ||
+               props.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU;
+    }
+
     static bool LooksLikeSoftware(const VkPhysicalDeviceProperties& props) {
         std::string name(props.deviceName);
         for (char& c : name) c = static_cast<char>(::tolower(c));
@@ -192,8 +200,8 @@ protected:
 
         ASSERT_NO_FATAL_FAILURE(PickSoftwarePhysicalDevice());
         ASSERT_TRUE(softwareConfirmed_)
-            << "Refusing to run: device '" << selectedDeviceName_
-            << "' is not a verified device (software rasterizer or Dozen). "
+            << "Refusing to run: no usable Vulkan device found (real GPU, software "
+               "rasterizer, or Dozen); nearest was '" << selectedDeviceName_ << "'. "
                "Aborting before vkQueueSubmit.";
 
         ASSERT_NO_FATAL_FAILURE(CreateLogicalDevice());
@@ -221,6 +229,18 @@ protected:
         ASSERT_GT(count, 0u) << "No Vulkan physical devices visible.";
         std::vector<VkPhysicalDevice> devices(count);
         ASSERT_EQ(vkEnumeratePhysicalDevices(instance_, &count, devices.data()), VK_SUCCESS);
+        // Prefer a real discrete/integrated GPU; fall back to software/Dozen only
+        // when no real GPU is visible.
+        for (VkPhysicalDevice dev : devices) {
+            VkPhysicalDeviceProperties props{};
+            vkGetPhysicalDeviceProperties(dev, &props);
+            if (IsRealGpu(props)) {
+                physicalDevice_     = dev;
+                selectedDeviceName_ = props.deviceName;
+                softwareConfirmed_  = true;
+                return;
+            }
+        }
         for (VkPhysicalDevice dev : devices) {
             VkPhysicalDeviceProperties props{};
             vkGetPhysicalDeviceProperties(dev, &props);

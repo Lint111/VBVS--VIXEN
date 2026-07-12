@@ -29,6 +29,7 @@
 #include "Nodes/WindowNode.h"
 #include "Nodes/InputNode.h"
 #include "Nodes/BodyOctreeSceneNode.h"        // M-wire: SetBodyInstances() downcast target (gaia — before UIRenderNode.h)
+#include "Nodes/ComputeDispatchNode.h"         // Inc1 M4 Task 6b: GetGPUPerformanceLogger() for the perf-CSV writer
 #include "Nodes/CameraNode.h"                 // Sparse-Mip ESVO LOD Inc1 M4c: GetCurrentCameraData() downcast target
 #include "Nodes/UIRenderNode.h"               // GetUiRenderNode() downcast target (RmlUi — after BodyOctreeSceneNode.h)
 #include "Nodes/UISelectionProviderNode.h"    // GetUiSelectionProviderNode() downcast target
@@ -37,6 +38,8 @@
 #include "Nodes/DeviceNode.h"                 // View Contract Inc-2 Task 5: VulkanDevice* for CaptureHudFrameToPng
 #include "Debug/RenderTargetReadback.h"       // View Contract Inc-2 Task 5: IRenderTarget -> PNG readback
 #include <sstream>                            // View Contract Inc-2 Task 5: VIXEN_HUD_SCRIPT/_CAPTURE_FRAMES parsing
+#include "Recipe/RecipeBounds.h"              // Lazy-Procedural-Delta-Baseline Inc0 M5: ApplyRecipeBoundsDefaults
+#include "Recipe/RecipeOccupancy.h"           // Lazy-Procedural-Delta-Baseline Inc0 M6: DeriveOccupancyGrid
 #include "Nodes/StorageBufferNode.h"          // Sampled Lighting Inc3 M4: reservoirRecordsA/B readback for the ReSTIR gate
 #include "Nodes/ReservoirConfigNode.h"        // Sampled Lighting Inc3 M4: GetLastFrameParity() for the readback's buffer selector
 #include "Generated/ReservoirRecord.g.h"      // Sampled Lighting Inc3 M4: Vixen::Gpu::ReservoirRecord layout for the readback
@@ -440,6 +443,32 @@ void VulkanGraphApplication::PreTick() {
         lastError_ = "PreTick failed: unknown (non-std) exception";
         if (mainLogger) mainLogger->Error("[VulkanGraphApplication::PreTick] " + lastError_);
     }
+}
+
+void VulkanGraphApplication::PostTick() {
+    if (!perfCsvWriter_.IsEnabled() || !renderGraph) {
+        return;
+    }
+
+    const auto now = std::chrono::steady_clock::now();
+    const double cpuFrameTimeMs = std::chrono::duration<double, std::milli>(now - lastPostTickTime_).count();
+    lastPostTickTime_ = now;
+
+    // Today's only GPU-timed pass is the single ESVO-traverse+shade compute dispatch
+    // ("test_dispatch" — see BuildRenderGraph.cpp). A future split traverse/shade or
+    // recipe-eval pass adds another {name, node} pair here.
+    std::vector<PerfCsvWriter::PassSource> passes;
+    if (auto* dispatch = static_cast<ComputeDispatchNode*>(renderGraph->GetNodeByName("test_dispatch"))) {
+        passes.push_back({"esvo_traverse_shade", dispatch->GetGPUPerformanceLogger()});
+    }
+
+    uint64_t bootBytes = 0, steadyBytes = 0;
+    if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode_))) {
+        bootBytes = bodyScene->BootBytesUploaded();
+        steadyBytes = bodyScene->SteadyStateBytesUploaded();
+    }
+
+    perfCsvWriter_.RecordFrame(cpuFrameTimeMs, passes, bootBytes, steadyBytes);
 }
 
 void VulkanGraphApplication::Update() {
@@ -882,6 +911,96 @@ void VulkanGraphApplication::Update() {
             }
             if (zoomTick % 20 == 0 && mainLogger) {
                 mainLogger->Info("[TierZoomDemo] tick " + std::to_string(zoomTick));
+            }
+        }
+
+        // Lazy-Procedural-Delta-Baseline Inc0 M2 Task 5 live gate: env-gated scripted
+        // boot-away/fly-in schedule for the VIXEN_STORED_SDF_DEMO scene (mirrors
+        // VIXEN_RESIDENCY_GATE_DEMO/VIXEN_TIER_ZOOM_DEMO's shape directly above — same
+        // SetOrbitDistanceForTest/SetYawForTest live-write pattern, no InputNode injector).
+        //
+        // Feasibility (see the milestone's own math, kept here so a future reader doesn't
+        // have to re-derive it): CameraNode::kOrbitDistanceMax=120 is a hard clamp well
+        // under the residency trigger's farDist=500, so a distance-only sweep (like
+        // VIXEN_RESIDENCY_GATE_DEMO's) can NEVER push this scene's bodies (~236 units out
+        // at the default pose) far enough to deny — the trigger's resolvability term alone
+        // never denies inside a >=614px-tall window either (0.815*screenHeightPx exceeds
+        // farDist first). Denial here can ONLY come from the frustum CONTAINMENT term, so
+        // this schedule boots the camera facing AWAY (yaw=pi, bodies behind the camera —
+        // SphereIntersectsFrustum fails) instead of far away, then sweeps yaw back to 0 to
+        // bring the body cluster into frustum and let UpdateBodySceneResidency's per-tick
+        // trigger (below, unconditionally) grant residency itself — this demo scripts ONLY
+        // the camera; it deliberately does NOT call RequestBrickResidency directly (unlike
+        // VIXEN_TIER_ZOOM_DEMO), so the live grant is genuinely trigger-driven, the same
+        // path a real flythrough exercises.
+        if (renderGraph && std::getenv("VIXEN_STORED_SDF_DEMO") && std::getenv("VIXEN_BOOT_LAZY_GATE_DEMO")) {
+            static long bootLazyTick = 0;
+            ++bootLazyTick;
+            constexpr long  kAwayHoldEnd     = 60;    // 1) hold facing away — proves boot-lazy (mip-shaded, no brick upload)
+            constexpr long  kApproachEnd     = 180;   // 2) sweep yaw pi -> 0 — brings bodies into frustum, triggers the grant
+            constexpr long  kGrantSettleEnd  = 240;   // 3) hold facing the bodies — lets the async upload land
+            constexpr long  kEditTick        = 260;   // 4) edit-after-approach: Rematerialize while close + resident
+            constexpr float kPi              = 3.14159265358979323846f;
+
+            if (auto* camera = static_cast<CameraNode*>(renderGraph->GetInstance(cameraNode_))) {
+                if (bootLazyTick == 1) {
+                    // orbitCenter must match the Stored-SDF demo's body cluster centre
+                    // (64,64,64) BEFORE the first SetYawForTest engages orbit — mirrors
+                    // VIXEN_TIER_ZOOM_DEMO's own fix for the exact same stale-(5,5,5)-
+                    // orbitCenter trap (see that block's comment above).
+                    camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_X, 64.0f);
+                    camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_Y, 64.0f);
+                    camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_Z, 64.0f);
+                    // Engage orbit at yaw=pi (facing +Z, away from the bodies at -Z from the
+                    // boot pose (64,64,300)) — EngageOrbit's own re-seed keeps orbitDistance
+                    // at the current ~236 (matching the boot fixed pose), only yaw changes.
+                    camera->SetYawForTest(kPi);
+                    if (mainLogger) {
+                        mainLogger->Info("[BootLazyGateDemo] tick 1: camera engaged orbit, "
+                                          "yaw=pi (facing away) — expect mip-shaded boot, no brick upload");
+                    }
+                } else if (bootLazyTick <= kAwayHoldEnd) {
+                    // Hold — no-op tick, gives the boot-frame evidence capture a stable window.
+                } else if (bootLazyTick <= kApproachEnd) {
+                    const float t = static_cast<float>(bootLazyTick - kAwayHoldEnd) /
+                                    static_cast<float>(kApproachEnd - kAwayHoldEnd);
+                    camera->SetYawForTest(kPi * (1.0f - t));  // pi -> 0
+                } else if (bootLazyTick == kApproachEnd + 1) {
+                    camera->SetYawForTest(0.0f);  // land exactly on-axis, facing the bodies
+                    if (mainLogger) {
+                        mainLogger->Info("[BootLazyGateDemo] tick " + std::to_string(bootLazyTick) +
+                                          ": yaw=0 (facing bodies) — expect the frustum trigger to grant residency");
+                    }
+                }
+                // kGrantSettleEnd..kEditTick: hold yaw=0, no further camera writes — lets
+                // UpdateBodySceneResidency's per-tick trigger (unconditional, runs every
+                // tick regardless of this block) observe the now-in-frustum bodies and
+                // grant residency on its own, and lets the async brick upload settle.
+            }
+
+            if (bootLazyTick == kEditTick) {
+                // Task 4's Rematerialize hazard, exercised LIVE: while close + brick-resident
+                // (settled since kGrantSettleEnd, kEditTick-kGrantSettleEnd=20 ticks earlier),
+                // trigger a genuine Rematerialize via SetBakeRecipe — an EMPTY program is a
+                // no-op edit for the analytic bake path (EnsureOctreesBuilt only takes the
+                // recipe branch when bakeRecipe_ is non-empty), so the geometry is byte-
+                // identical before/after; only the rebuild-triggered code path runs. Per M2's
+                // fix, residencyRequested_ must NOT be reset to lazy by this — bricks must
+                // stay resident with NO further camera motion (assert this on the
+                // real-GPU checklist: no re-fade to mip-shaded, no brick re-upload log line).
+                if (auto* bodyScene = static_cast<Vixen::RenderGraph::BodyOctreeSceneNode*>(
+                        renderGraph->GetInstance(bodyOctreeSceneNode_))) {
+                    bodyScene->SetBakeRecipe({});
+                    if (mainLogger) {
+                        mainLogger->Info("[BootLazyGateDemo] tick " + std::to_string(bootLazyTick) +
+                                          ": SetBakeRecipe({}) -- no-op edit triggering Rematerialize "
+                                          "while close + resident (Task 4 Rematerialize-hazard live exercise)");
+                    }
+                }
+            }
+
+            if (bootLazyTick % 30 == 0 && mainLogger) {
+                mainLogger->Info("[BootLazyGateDemo] tick " + std::to_string(bootLazyTick));
             }
         }
 
@@ -1354,6 +1473,11 @@ void VulkanGraphApplication::DeInitialize() {
     }
     deinitialized = true;
 
+    // Inc1 M4 Task 6b: flush the perf CSV before any teardown — RecordFrame already copied
+    // every value it needs out of the nodes each tick, so this has no ordering dependency on
+    // renderGraph/engine_ below; no-op unless VIXEN_PERF_CSV was set.
+    perfCsvWriter_.Flush();
+
     // Sprint 6.3: Publish shutdown event BEFORE any cleanup
     // CalibrationStore subscribes and saves automatically
     if (messageBus) {
@@ -1585,6 +1709,73 @@ void VulkanGraphApplication::SetRecipePool(Vixen::SVO::ConcatenatedOctrees pool)
         node->SetRecipePool(std::move(pool));
     } else if (mainLogger) {
         mainLogger->Warning("[VulkanGraphApplication::SetRecipePool] bodyOctreeSceneNode_ not found — recipe pool not applied");
+    }
+}
+
+Vixen::SVO::RecipeRegistry::RegisterResult VulkanGraphApplication::RegisterProceduralRecipe(
+    uint32_t recipeId, Vixen::SVO::RecipeRegistry::RecipeEntry entry) {
+    // kDefaultProceduralBoundRadius mirrors this file's own kResidencyBoundingRadius (defined
+    // further down, in the anonymous namespace above UpdateBodySceneResidency -- forward
+    // reference isn't possible here, so the value is duplicated with this comment as the
+    // cross-check) so an authored-bound-free procedural recipe gets the SAME "reasonable
+    // default sphere" the Stored path already uses, not a second independent magic number.
+    // If that constant ever changes, update this one to match.
+    constexpr float kDefaultProceduralBoundRadius = 24.0f;
+    auto boundsResult = Vixen::SVO::Recipe::ApplyRecipeBoundsDefaults(
+        entry, kDefaultProceduralBoundRadius, /*defaultStepRelaxation=*/0.9f);
+
+    if (mainLogger && mainLogger->IsEnabled()) {
+        auto sourceName = [](Vixen::SVO::Recipe::RecipeBoundsSource s) {
+            switch (s) {
+                case Vixen::SVO::Recipe::RecipeBoundsSource::Authored:      return "authored";
+                case Vixen::SVO::Recipe::RecipeBoundsSource::Derived:       return "derived";
+                case Vixen::SVO::Recipe::RecipeBoundsSource::EngineDefault: return "engine-default";
+            }
+            return "?";
+        };
+        mainLogger->Info("[VulkanGraphApplication::RegisterProceduralRecipe] recipeId=" +
+                         std::to_string(recipeId) + " boundRadius=" + std::to_string(entry.boundRadius) +
+                         " (" + sourceName(boundsResult.boundSource) + ") stepRelaxation=" +
+                         std::to_string(entry.stepRelaxation) + " (" + sourceName(boundsResult.relaxationSource) + ")");
+    }
+
+    // M6 Task 13 — derive the coarse occupancy grid from the SAME (now-finalized)
+    // boundCenter/boundRadius ApplyRecipeBoundsDefaults just established, whether that came
+    // from derivation or the engine-default fallback. A non-Lipschitz-whitelisted program
+    // (IsLipschitzSafeForOccupancyGrid declines) leaves occupancyGridDim==0 — the splice's
+    // getRecipeOccupancyGrid switch then emits a gridDim=0u case for this recipe and the
+    // shader skips the occupancy fast-path for it, exactly as if this call never ran.
+    auto occGrid = Vixen::SVO::Recipe::DeriveOccupancyGrid(
+        entry.bytecode.data(), static_cast<uint32_t>(entry.bytecode.size()),
+        entry.boundCenter, entry.boundRadius);
+    if (occGrid.ok) {
+        entry.occupancyGridValues    = std::move(occGrid.values);
+        entry.occupancyGridDim       = occGrid.dim;
+        entry.occupancyGridAabbMin   = occGrid.aabbMin;
+        entry.occupancyGridCellSize  = occGrid.cellSize;
+    }
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info("[VulkanGraphApplication::RegisterProceduralRecipe] recipeId=" +
+                         std::to_string(recipeId) + " occupancyGrid=" +
+                         (occGrid.ok ? (std::to_string(occGrid.dim) + "^3") : std::string("none (non-whitelisted opcode)")));
+    }
+
+    return proceduralRecipes_.Register(recipeId, std::move(entry));
+}
+
+void VulkanGraphApplication::RecompileProceduralShader() {
+    if (!graphCompiled) {
+        // Nothing to mark dirty yet -- the first Compile() will read proceduralRecipes_'s
+        // current contents when the shader builder lambda runs (BuildRenderGraph.cpp).
+        return;
+    }
+    if (computeShaderLibNode_.IsValid()) {
+        renderGraph->MarkNodeNeedsRecompile(computeShaderLibNode_);
+        if (mainLogger && mainLogger->IsEnabled()) {
+            mainLogger->Info("[VulkanGraphApplication::RecompileProceduralShader] marked compute_shader_lib dirty");
+        }
+    } else if (mainLogger) {
+        mainLogger->Warning("[VulkanGraphApplication::RecompileProceduralShader] computeShaderLibNode_ not found — cannot re-apply");
     }
 }
 

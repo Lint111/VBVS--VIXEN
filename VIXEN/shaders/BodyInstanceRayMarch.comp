@@ -44,10 +44,83 @@ layout(binding = 0) uniform writeonly image2D outputImage;
 // Per-pixel hit identity: packed (brickIndex<<10)|voxelLinearIdx, 0xFFFFFFFF on miss
 layout(binding = 9) uniform writeonly uimage2D idOutputImage;
 
+// ============================================================================
+// PROCEDURAL RECIPE OCCUPANCY GRID (Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13 — binding 16)
+// ============================================================================
+// One concatenated blob of dim^3 conservative min-|sd| floats per registered procedural
+// recipe that had a derivable grid (RecipeOccupancy.h::DeriveOccupancyGrid), laid out
+// x-fastest within each recipe's own [gridOffset, gridOffset+dim^3) slice — offsets/dims/
+// AABB per recipe come from the SPLICED getRecipeOccupancyGrid(...) switch (see the splice
+// marker below), not from any per-element metadata here. Bound as a 1-byte placeholder when
+// no recipe in the scene has a grid (occupancyGrid_ empty CPU-side); traceUberRecipeBody
+// only samples this when getRecipeOccupancyGrid reports gridDim>0 for the current recipeId,
+// and bounds-checks the computed flat index against occupancyGrid.length() before reading —
+// exactly like TierRefTableBuffer/MipPoolBuffer. NOT moved into the shared SceneBindings.glsl
+// (Sampled Lighting Inc3 M1, KI-018) — this binding is specific to the procedural ray-march
+// path here, not shared with DirectLighting.comp.
+//
+// ORDERING (Inc0 M6 × KI-018 reconciliation): this binding, the SdfCoreKernels include, and
+// the VIXEN_UBER_RECIPE_SPLICE_MARKER below ALL precede #include "SceneBindings.glsl" on
+// purpose. SceneBindings.glsl #includes SdfRecipes.glsl AND TraceWorld.glsl, both of which
+// reference occupancyGrid[], evalRecipeField/getRecipeBoundSphere/getRecipeOccupancyGrid, and
+// the VIXEN_UBER_RECIPE_SPLICED macro — every such reference is #ifdef VIXEN_UBER_RECIPE_SPLICED
+// guarded, so the macro (defined by the splice at the marker) MUST already be set, and the
+// occupancyGrid symbol MUST already be declared, by the time SceneBindings.glsl processes those
+// includes. Placing SceneBindings.glsl before the splice would silently compile the uber-recipe
+// path OUT (macro undefined at that point) — the feature would vanish at runtime, not fail loudly.
+layout(std430, binding = 16) readonly buffer OccupancyGridBuffer { float occupancyGrid[]; };
+
+// ============================================================================
+// UBER-SHADER RECIPE SPLICE POINT (Lazy-Procedural-Delta-Baseline Inc0 M5 Task 11)
+// ============================================================================
+// UberShaderSplice.h::SpliceProceduralRecipesIntoSource injects the registered recipes'
+// emitted sdfRecipe_<id>(vec3) field functions + an evalRecipeField(uint recipeId, vec3 p)
+// switch dispatcher (plus getRecipeBoundSphere / getRecipeOccupancyGrid and the
+// VIXEN_UBER_RECIPE_SPLICED define) HERE (textually, right after this marker line) at
+// shader-build time — registration forces a recompile of this whole .comp anyway (v1: no
+// metadata SSBO), so the splice happens once per Compile(), not per frame. When NO recipes are
+// registered (the zero-registration case, e.g. a build that never calls RegisterProceduralRecipe)
+// the marker is left in place with nothing appended after it — evalRecipeField then doesn't exist,
+// and neither does anything reachable that would call it (the recipeId>=2 branch in TraceWorld.glsl
+// / SdfRecipes.glsl is #ifdef VIXEN_UBER_RECIPE_SPLICED-guarded, and PROVIDER_PROCEDURAL otherwise
+// falls through to the legacy traceProceduralBody path at v1's two hardcoded ids), so an unspliced
+// source with zero registrations still compiles clean.
+//
+// MUST precede the "#include SceneBindings.glsl" line below: SceneBindings.glsl pulls in
+// SdfRecipes.glsl (traceUberRecipeBody) and TraceWorld.glsl (the recipeId>=2 dispatch), both of
+// which reference evalRecipeField/getRecipeBoundSphere/getRecipeOccupancyGrid — so the spliced
+// symbols (and the VIXEN_UBER_RECIPE_SPLICED define) must already be declared (GLSL has no
+// forward declaration/hoisting) by the time SceneBindings.glsl is processed.
+//
+// recipe/SdfCoreKernels.glsl (the SdfCore_* kernel set EmitProceduralFieldFunctionGlsl's output
+// calls — Sphere/Box/Union/Round/... ) is included here too, for the SAME before-first-use
+// reason: the spliced sdfRecipe_<id> bodies call SdfCore_* helpers, so they must already exist.
+#include "recipe/SdfCoreKernels.glsl"
+// VIXEN_UBER_RECIPE_SPLICE_MARKER
+
 #include "SceneBindings.glsl"   // Sampled Lighting Inc3 M1: scene SSBOs + traversal (KI-018)
 
 // ============================================================================
-// HIT RECORD BUFFER (Sampled Lighting Inc1 M3 — binding 17)
+// LIGHTING CONFIG (Sampled Lighting Inc0 M3 — binding 17)
+// ============================================================================
+// Single LightingConfig record (kernel-codegen-generated struct, std430 —
+// see Generated/LightingConfig.glsl / LightingConfig.g.h). Bound as an SSBO
+// (not a UBO) because the framework emits std430 only; a std140 UBO would
+// restride Light's nested array and desync from the generated C++ layout
+// (see test_lightingconfig_sdi_parity.cpp). Uploaded per-frame from a ring
+// buffer (LightingConfigNode). Declared here (plumbing-only) because
+// BuildRenderGraph.cpp wires it into this pass's descriptor gatherer at
+// binding 17 — this traversal pass no longer READS it (shading, which consumed
+// it, moved to DirectLighting.comp per KI-018); a declared-but-unread SSBO
+// keeps the shader's reflected binding set aligned with the CPU wiring.
+#include "Generated/LightingConfig.glsl"
+
+layout(std430, binding = 17) readonly buffer LightingConfigSSBO {
+    LightingConfig lightingConfig;
+};
+
+// ============================================================================
+// HIT RECORD BUFFER (Sampled Lighting Inc1 M3 — binding 18)
 // ============================================================================
 // Per-pixel G-buffer-equivalent, one HitRecord per dispatched pixel, indexed
 // by the same flat row-major (y*width+x) addressing every full-screen compute
@@ -59,8 +132,60 @@ layout(binding = 9) uniform writeonly uimage2D idOutputImage;
 // match (see BuildRenderGraph.cpp M3).
 #include "HitRecord.glsl"
 
-layout(std430, binding = 17) buffer HitRecordBuffer {
+layout(std430, binding = 18) buffer HitRecordBuffer {
     HitRecord hitRecords[];
+};
+
+// ============================================================================
+// SHADOW CONFIG (Sampled Lighting Inc1 M4 — binding 19)
+// ============================================================================
+// Single ShadowConfig record (kernel-codegen-generated struct, std430 — see
+// Generated/ShadowConfig.glsl / ShadowConfig.g.h). Bound as an SSBO, mirroring
+// LightingConfigSSBO's own std430-not-std140 rationale (the framework emits
+// std430 only). Uploaded per-frame from a ring buffer (ShadowConfigNode).
+// Declared here (plumbing-only, unread) to keep this pass's reflected binding
+// set aligned with BuildRenderGraph.cpp's descriptor wiring at binding 19 — the
+// shadow test it fed moved to DirectLighting.comp with the rest of shading (KI-018).
+#include "Generated/ShadowConfig.glsl"
+
+layout(std430, binding = 19) readonly buffer ShadowConfigSSBO {
+    ShadowConfig shadowConfig;
+};
+
+// ============================================================================
+// TEMPORAL ACCUMULATION (Sampled Lighting Inc2 M1/M2/M4 — bindings 20/21)
+// ============================================================================
+// Single AccumulationConfig record (kernel-codegen-generated struct, std430 — see
+// Generated/AccumulationConfig.glsl / AccumulationConfig.g.h) plus the persistent
+// history storage image (AccumulationHistoryNode — NOT the RenderTargetNode ring,
+// which rotates every frame per KI-009; this image survives across frames by
+// design). Declared here (plumbing-only, unread) to keep this pass's reflected
+// binding set aligned with BuildRenderGraph.cpp's descriptor wiring at bindings
+// 20/21 — the accumulate seam that consumed them moved to DirectLighting.comp (KI-018).
+#include "Generated/AccumulationConfig.glsl"
+
+layout(std430, binding = 20) readonly buffer AccumulationConfigSSBO {
+    AccumulationConfig accumulationConfig;
+};
+
+// Format matches outputImage (R8G8B8A8_UNORM — AccumulationHistoryNode's own default,
+// confirmed from RenderTargetNode's format). Declared but not read/written here.
+layout(rgba8, binding = 21) uniform image2D historyImage;
+
+// ============================================================================
+// PREV-FRAME CAMERA MATRIX (Sampled Lighting Inc2 M3 — binding 22)
+// ============================================================================
+// Single PrevCameraConfig record (kernel-codegen-generated struct, std430 —
+// see Generated/PrevCameraConfig.glsl / PrevCameraConfig.g.h): LAST frame's
+// view*projection matrix (world -> prev-frame clip space), retained by
+// CameraNode and uploaded per-frame from a ring buffer (PrevCameraConfigNode).
+// Declared here (plumbing-only, unread) to keep this pass's reflected binding
+// set aligned with BuildRenderGraph.cpp's descriptor wiring at binding 22 — the
+// reprojection that consumes it lives in DirectLighting.comp (KI-018).
+#include "Generated/PrevCameraConfig.glsl"
+
+layout(std430, binding = 22) readonly buffer PrevCameraConfigSSBO {
+    PrevCameraConfig prevCameraConfig;
 };
 
 // ============================================================================
@@ -72,12 +197,13 @@ layout(std430, binding = 17) buffer HitRecordBuffer {
 // the pick-ID image, plus its own trace-metrics. DirectLighting.comp reads
 // HitRecord back and owns everything downstream of "what did the ray hit."
 // LightingConfig/ShadowConfig/AccumulationConfig/historyImage/PrevCameraConfig
-// (bindings 16/18/19/20/21) are NO LONGER declared here — this pass never
-// touched them for anything but shading, which now lives in DirectLighting.comp
-// (see BuildRenderGraph.cpp: those bindings move to DirectLighting's own
-// descriptor gatherer). outputImage (binding 0) stays declared — still used
-// for imageSize(outputImage) to derive the dispatch's pixel bounds — but is
-// no longer written here.
+// (bindings 17/19/20/21/22) are still DECLARED here (plumbing-only, unread) so
+// this pass's reflected binding set stays aligned with BuildRenderGraph.cpp's
+// descriptor wiring — but this pass never reads them for anything but shading,
+// which now lives in DirectLighting.comp (see BuildRenderGraph.cpp: those
+// bindings are ALSO gathered into DirectLighting's own descriptor gatherer).
+// outputImage (binding 0) stays declared — still used for imageSize(outputImage)
+// to derive the dispatch's pixel bounds — but is no longer written here.
 
 void main() {
     ivec2 pixelCoords = ivec2(gl_GlobalInvocationID.xy);

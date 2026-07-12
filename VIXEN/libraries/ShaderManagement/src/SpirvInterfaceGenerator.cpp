@@ -161,14 +161,29 @@ std::string SpirvInterfaceGenerator::Generate(
     try {
         std::filesystem::path filePath = GetSdiPath(uuid);
 
-        // Skip generation if SDI file already exists for this UUID (same descriptor hash)
-        if (std::filesystem::exists(filePath)) {
-            LOG_INFO("Reusing existing SDI file: " + filePath.string());
-            return filePath.string();
-        }
-
         // Generate code to string
         std::string code = GenerateToString(uuid, reflectionData);
+
+        // Skip the WRITE (not generation) if existing file content is byte-identical --
+        // preserves mtime and avoids spurious rebuilds when nothing changed. The prior
+        // existence-only guard (root-caused 2026-07-12, SdiLifecycleTest.UpdateShaderAnd
+        // RegenerateSdi) skipped on UUID presence alone with no content comparison despite
+        // its own comment claiming "same descriptor hash" -- so SDI regeneration silently
+        // no-op'd whenever a UUID was reused with CHANGED shader source, breaking shader
+        // hot-reload/SDI-update. Comparing content (not just existence) fixes that while
+        // keeping the original perf intent for the genuinely-unchanged case.
+        if (std::filesystem::exists(filePath)) {
+            std::ifstream existing(filePath, std::ios::binary);
+            std::string current((std::istreambuf_iterator<char>(existing)),
+                                 std::istreambuf_iterator<char>());
+            LOG_INFO("DIAG current.size()=" + std::to_string(current.size()) +
+                     " code.size()=" + std::to_string(code.size()) +
+                     " equal=" + std::string(current == code ? "true" : "false"));
+            if (current == code) {
+                LOG_INFO("Reusing existing SDI file (content unchanged): " + filePath.string());
+                return filePath.string();
+            }
+        }
 
         // Write to file
         std::ofstream file(filePath);

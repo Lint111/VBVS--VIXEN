@@ -30,7 +30,8 @@
  *     surface within the baked domain → black pixels.
  *
  * DEVICE SELECTION: identical contract to test_body_instance_raymarch_render.cpp —
- * prefers Mesa-Dozen (the real GPU) via VixenSelectWslGpuIcd(), falls back to lavapipe.
+ * via VixenSelectWslGpuIcd(), a real discrete/integrated GPU is PREFERRED, with software
+ * (lavapipe/llvmpipe) or Dozen used only as a fallback when no real GPU is visible.
  *
  * Run: ./test_recipe_authoring_gate
  *   (set VK_ICD_FILENAMES explicitly to force a specific ICD, e.g. for comparison.)
@@ -146,6 +147,13 @@ protected:
     std::string      selectedDeviceName_;
     std::unique_ptr<VulkanDevice> deviceShell_;
 
+    // Real discrete/integrated GPUs are now PREFERRED; software/Dozen is only a
+    // fallback when no real GPU is visible.
+    static bool IsRealGpu(const VkPhysicalDeviceProperties& p) {
+        return p.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU ||
+               p.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU;
+    }
+
     static bool IsSoftware(const VkPhysicalDeviceProperties& p) {
         std::string n(p.deviceName); for (char& c : n) c = char(::tolower(c));
         const bool isSoftware =
@@ -170,8 +178,8 @@ protected:
         ASSERT_EQ(vkCreateInstance(&ci, nullptr, &instance_), VK_SUCCESS);
         ASSERT_NO_FATAL_FAILURE(PickSoftwareDevice());
         ASSERT_TRUE(softwareConfirmed_)
-            << "Refusing: '" << selectedDeviceName_ << "' is not a verified device "
-               "(software rasterizer or Dozen).";
+            << "Refusing to run: no usable Vulkan device found (real GPU, software "
+               "rasterizer, or Dozen); nearest was '" << selectedDeviceName_ << "'.";
         ASSERT_NO_FATAL_FAILURE(CreateLogicalDevice());
         ASSERT_NO_FATAL_FAILURE(CreateCmdPool());
         deviceShell_ = std::make_unique<VulkanDevice>(&physicalDevice_);
@@ -190,6 +198,12 @@ protected:
         ASSERT_GT(cnt, 0u) << "No Vulkan devices visible.";
         std::vector<VkPhysicalDevice> devs(cnt);
         ASSERT_EQ(vkEnumeratePhysicalDevices(instance_, &cnt, devs.data()), VK_SUCCESS);
+        // Prefer a real discrete/integrated GPU; fall back to software/Dozen only
+        // when no real GPU is visible.
+        for (auto dev : devs) {
+            VkPhysicalDeviceProperties p{}; vkGetPhysicalDeviceProperties(dev, &p);
+            if (IsRealGpu(p)) { physicalDevice_ = dev; selectedDeviceName_ = p.deviceName; softwareConfirmed_ = true; return; }
+        }
         for (auto dev : devs) {
             VkPhysicalDeviceProperties p{}; vkGetPhysicalDeviceProperties(dev, &p);
             if (IsSoftware(p)) { physicalDevice_ = dev; selectedDeviceName_ = p.deviceName; softwareConfirmed_ = true; return; }
@@ -552,6 +566,11 @@ TEST_F(RecipeAuthoringGateTest, CsgSubtractRendersNonTrivial) {
         auto* nd = dynamic_cast<BodyOctreeSceneNode*>(nb.get());
         ASSERT_NE(nd, nullptr);
         nd->SetRecipePool(std::move(boxResult.pool));
+        // Lazy-Procedural-Delta-Baseline Inc0 M1: pin eager residency so this test's
+        // pixel gates (ablation-delta) keep exercising the full brick march once
+        // mip-capable pools default to lazy (a later milestone) — currently a
+        // no-op (default is eager).
+        nd->RequestBrickResidency(true);
 
         ASSERT_NO_FATAL_FAILURE(RunNode(nd, nb, instances,
             [&](VkBuffer ns, VkBuffer br, VkBuffer mt, VkBuffer cfg,
@@ -581,6 +600,11 @@ TEST_F(RecipeAuthoringGateTest, CsgSubtractRendersNonTrivial) {
         auto* nd = dynamic_cast<BodyOctreeSceneNode*>(nb.get());
         ASSERT_NE(nd, nullptr);
         nd->SetRecipePool(std::move(csgResult.pool));
+        // Lazy-Procedural-Delta-Baseline Inc0 M1: pin eager residency so this test's
+        // pixel gates (CSG cut-through) keep exercising the full brick march once
+        // mip-capable pools default to lazy (a later milestone) — currently a
+        // no-op (default is eager).
+        nd->RequestBrickResidency(true);
 
         ASSERT_NO_FATAL_FAILURE(RunNode(nd, nb, instances,
             [&](VkBuffer ns, VkBuffer br, VkBuffer mt, VkBuffer cfg,

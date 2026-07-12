@@ -126,6 +126,18 @@ public:
     void SetRecipePool(Vixen::SVO::ConcatenatedOctrees pool);
 
     /**
+     * @brief Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13 — upload the concatenated
+     * per-recipe coarse occupancy grid blob (binding 16) built by
+     * UberShaderSplice.h::SpliceProceduralRecipesIntoSource's out-param. Mirrors
+     * SetRecipePool's pre/post-Compile duality: called pre-Compile → included in the
+     * first CreateOctreeBuffers pass; called post-Compile → the buffer is recreated on
+     * the next Rematerialize (recipeDirty_ already forces one whenever the shader itself
+     * was re-spliced, which is the ONLY time this blob can change — no independent dirty
+     * flag needed).
+     */
+    void SetOccupancyGrid(std::vector<float> concatenatedGrid);
+
+    /**
      * @brief Surface-Shell ESVO cache — brick-layer dilation of the SURFACE set.
      *
      * Clamped to [1,3]; default 1 (minimal sound 26-neighbour invariant). Sizes
@@ -146,6 +158,28 @@ public:
         return shellCache_[i & 1u];
     }
     [[nodiscard]] uint32_t ShellDilation() const { return shellDilation_; }
+
+    /// Lazy-Procedural-Delta-Baseline Inc0 M2 Task 4: current residency state (CPU-observable,
+    /// no GPU needed) — reflects the capability-derived default once EnsureOctreesBuilt has run,
+    /// or whatever RequestBrickResidency last explicitly set.
+    [[nodiscard]] bool IsResidencyRequested() const { return residencyRequested_; }
+
+    /// Lazy-Procedural-Delta-Baseline Inc1 M4 Task 6b: cumulative bytes pushed into GPU
+    /// buffers via UploadBrickPool/PollBrickUploadCompletion, split boot (first residency
+    /// grant) vs steady-state (any later re-upload, e.g. a residency toggle). Feeds the
+    /// perf-CSV writer's byte-uploaded columns; CPU-observable, no GPU readback needed.
+    [[nodiscard]] uint64_t BootBytesUploaded() const { return bootBytesUploaded_; }
+    [[nodiscard]] uint64_t SteadyStateBytesUploaded() const { return steadyStateBytesUploaded_; }
+
+    /// True once PollBrickUploadCompletion has observed the GPU-side brick copy actually
+    /// complete (BodyOctreeSceneNode.cpp:991) -- NOT the same moment as BootBytesUploaded()
+    /// going non-zero, which reflects only that the upload was QUEUED (UploadBrickPool,
+    /// same file ~967-968), not that it finished. A caller polling for "is the resident
+    /// brick data actually visible to the shader yet" must check THIS, not BootBytesUploaded
+    /// (root-caused 2026-07-12: a test that polled BootBytesUploaded() alone stopped
+    /// polling the instant the upload was queued, before the GPU copy had landed, then
+    /// rendered against still-stale brick data with no error).
+    [[nodiscard]] bool IsBrickPoolUploaded() const { return brickPoolUploaded_; }
 
     /**
      * @brief Request (or release) brick-pool residency (Sparse-Mip ESVO LOD Inc1 M2).
@@ -184,6 +218,7 @@ private:
     void Rematerialize();          // P2.3: re-bake octree 0 + recreate octree buffers (behind vkDeviceWaitIdle)
     void UploadBrickPool();        // Inc1 M2: BatchedUploader-driven brick population (ExecuteImpl-only)
     void PollBrickUploadCompletion();  // Inc1 M4c: non-blocking completion check (replaces WaitAllUploads)
+    void DeriveResidencyDefaultIfUnset();  // Lazy-Procedural-Delta-Baseline Inc0 M2 Task 4
 
     // --- Surface-Shell ESVO cache ---
     // Derive the reachable shell of octree 0 from concatenated_ into BOTH CPU
@@ -226,6 +261,20 @@ private:
     bool                                    brickPoolUploaded_   = false;
     bool                                    brickResidencyDirty_ = false;
 
+    // Lazy-Procedural-Delta-Baseline Inc0 M2 Task 4: latch marking that residencyRequested_
+    // was set EXPLICITLY (a real RequestBrickResidency call), as opposed to still holding its
+    // constructor default. Set by RequestBrickResidency; cleared by SetRecipePool/SetBakeRecipe
+    // (a genuinely new pool is staged — any previous explicit grant no longer applies to it).
+    // DeriveResidencyDefaultIfUnset (called once, on the node's first-ever CompileImpl) skips
+    // the capability derivation entirely whenever this is set, so a pre-Compile
+    // RequestBrickResidency(false)/(true) call (VIXEN_TIER_CROSSING_NONRESIDENT,
+    // VIXEN_TIER_ZOOM_DEMO, VIXEN_TIER_CROSSING_DEMO's eager pin) always wins. Deliberately
+    // NOT re-evaluated on Rematerialize (SetBakeRecipe/SetRecipePool post-Compile) — Rematerialize
+    // never touches residencyRequested_ itself, so a live grant from the app's per-frame
+    // residency trigger (UpdateBodySceneResidency) survives an editor-toggle rebuild with the
+    // camera unmoved, instead of being silently reset to lazy.
+    bool                                    residencyExplicitlyRequested_ = false;
+
     // Inc1 M4c: async completion-tracking for the brick-pool upload. M2's UploadBrickPool
     // originally blocked on device->WaitAllUploads() every toggle — fine for a "rare,
     // explicit" residency change, but M4c's per-frame camera-driven re-check turns toggles
@@ -236,6 +285,13 @@ private:
     ResourceManagement::UploadHandle       pendingBrickUploadHandle_  = ResourceManagement::InvalidUploadHandle;
     ResourceManagement::UploadHandle       pendingConfigUploadHandle_ = ResourceManagement::InvalidUploadHandle;
 
+    // Inc1 M4 Task 6b: cumulative brick-pool bytes uploaded, split by whether the FIRST
+    // (boot) upload has completed yet. bootBytesUploaded_ latches the size of that first
+    // UploadBrickPool call; every subsequent one (a later residency toggle) accumulates
+    // into steadyStateBytesUploaded_ instead.
+    uint64_t                                bootBytesUploaded_        = 0;
+    uint64_t                                steadyStateBytesUploaded_ = 0;
+
     // Optional recipe for octree 0 (P2.1 materialization). Empty = analytic path.
     std::vector<Vixen::SVO::Recipe::SdfInstruction> bakeRecipe_;
 
@@ -243,6 +299,11 @@ private:
     // skips the hardcoded shell/SDF archetypes and uses this pool directly.
     Vixen::SVO::ConcatenatedOctrees providedPool_;
     bool                             poolProvided_ = false;
+
+    // Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13: concatenated per-recipe occupancy
+    // grid, set by SetOccupancyGrid. CPU source of truth for CreateOctreeBuffers' upload —
+    // mirrors providedPool_'s "stashed here, consumed at (re)Compile" shape.
+    std::vector<float> occupancyGrid_;
 
     // Current instance list (set by SetInstances; uploaded in ExecuteImpl).
     std::vector<Vixen::SVO::BodyInstanceGpu> instances_;
@@ -277,6 +338,12 @@ private:
     // (the common case — no tree in the scene has any tier-crossing leaves).
     VkBuffer       tierRefTableBuffer_   = VK_NULL_HANDLE;
     VkDeviceMemory tierRefTableMemory_   = VK_NULL_HANDLE;
+    // Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13: occupancy grid buffer (shader binding
+    // 16). Created with a 1-byte placeholder when occupancyGrid_ is empty (no procedural
+    // recipe with a derivable grid registered — the common case for a scene with no
+    // recipes, or one with only non-whitelisted-opcode recipes).
+    VkBuffer       occupancyGridBuffer_  = VK_NULL_HANDLE;
+    VkDeviceMemory occupancyGridMemory_  = VK_NULL_HANDLE;
 
     // --- Surface-Shell ESVO cache GPU buffers (double-buffered by DISTINCT object
     //     identity). Render reads slot [N&1] (last committed); the ShellRevalidate

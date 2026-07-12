@@ -131,6 +131,13 @@ protected:
     std::string      selectedDeviceName_;
     std::unique_ptr<VulkanDevice> deviceShell_;
 
+    // Real discrete/integrated GPUs are preferred; software/Dozen is only a fallback
+    // when no real GPU is visible (the software-only gate was a lavapipe-era artifact).
+    static bool IsRealGpu(const VkPhysicalDeviceProperties& p) {
+        return p.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU ||
+               p.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU;
+    }
+
     static bool LooksLikeSoftware(const VkPhysicalDeviceProperties& p) {
         std::string n(p.deviceName); for (char& c : n) c = char(::tolower(c));
         const bool isSoftware =
@@ -172,6 +179,10 @@ protected:
         ASSERT_GT(cnt, 0u) << "No Vulkan devices visible.";
         std::vector<VkPhysicalDevice> devs(cnt);
         ASSERT_EQ(vkEnumeratePhysicalDevices(instance_, &cnt, devs.data()), VK_SUCCESS);
+        for (auto dev : devs) {
+            VkPhysicalDeviceProperties p{}; vkGetPhysicalDeviceProperties(dev, &p);
+            if (IsRealGpu(p)) { physicalDevice_ = dev; selectedDeviceName_ = p.deviceName; softwareConfirmed_ = true; return; }
+        }
         for (auto dev : devs) {
             VkPhysicalDeviceProperties p{}; vkGetPhysicalDeviceProperties(dev, &p);
             if (LooksLikeSoftware(p)) { physicalDevice_ = dev; selectedDeviceName_ = p.deviceName; softwareConfirmed_ = true; return; }
@@ -475,6 +486,10 @@ TEST_F(RecipePoolRenderTest, FourRecipesAllRender) {
     node->SetInput(C::CURRENT_FRAME_INDEX_Slot::index, 0, &frRes);
 
     node->SetRecipePool(std::move(result.pool));
+    // Lazy-Procedural-Delta-Baseline Inc0 M1: pin eager residency so this test's
+    // pixel gates keep exercising the full brick march once mip-capable pools
+    // default to lazy (a later milestone) — currently a no-op (default is eager).
+    node->RequestBrickResidency(true);
 
     // 4) Place 4 bodies side by side; each references its pool slot.
     constexpr float kRS  = 0.10f;

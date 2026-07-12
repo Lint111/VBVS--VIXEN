@@ -12,6 +12,11 @@
 #include <filesystem>
 #include <fstream>
 #include <vector>
+#ifdef _WIN32
+#include <process.h>
+#else
+#include <unistd.h>
+#endif
 
 namespace {
 
@@ -19,8 +24,20 @@ struct CompileProbe : CashSystem::ShaderModuleCacher {
     using CashSystem::ShaderModuleCacher::CompileShader;
 };
 
+// Per-test + per-process filename: a fixed "spirv_loader_test_<name>" path made concurrent
+// runs of this suite (two build trees / parallel agents) collide on the same file, yielding
+// "the process cannot access the file because it is being used by another process" (same class
+// of bug fixed in test_cache_codec.cpp's TempPath). The process id disambiguates concurrent
+// runs; the scenario name disambiguates cases within one run.
 std::filesystem::path TempPath(const char* name) {
-    return std::filesystem::temp_directory_path() / (std::string("spirv_loader_test_") + name);
+    const auto pid =
+#ifdef _WIN32
+        static_cast<unsigned long>(::_getpid());
+#else
+        static_cast<unsigned long>(::getpid());
+#endif
+    return std::filesystem::temp_directory_path() /
+           (std::string("spirv_loader_test_") + std::to_string(pid) + "_" + name);
 }
 
 void WriteFile(const std::filesystem::path& path, const std::vector<char>& bytes) {

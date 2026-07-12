@@ -31,6 +31,7 @@ add_library(VixenApp STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/HudView.cpp                # View Contract Inc-2: native IView consumer
     ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/HudViewBridge.cpp          # View Contract Inc-2: gaia-free seam for HudView.h (robin_hood ABI isolation)
     ${CMAKE_CURRENT_SOURCE_DIR}/source/StbImageWriteImpl.cpp            # View Contract Inc-2 Task 5: PNG-capture harness's stb_image_write TU
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/PerfCsvWriter.cpp                # Lazy-Procedural-Delta-Baseline Inc1 M4 Task 6b: perf-CSV writer
     ${CMAKE_CURRENT_SOURCE_DIR}/source/FrameCapture.cpp                 # M4b: headless GPU-frame snapshot (CaptureFrameToPng); moved in-tree from the deleted Profiler library, was its only real (non-benchmark) consumer
     ${HPP_FILES}
 )
@@ -106,6 +107,11 @@ target_compile_definitions(VixenApp PRIVATE
     VIXEN_SHADER_SOURCE_DIR="${VIXEN_SHADER_SOURCE_DIR}"
     VIXEN_SHADER_OUTPUT_DIR="${APP_SHADER_OUTPUT_DIR}"
     VIXEN_SDI_OUTPUT_DIR="${APP_SDI_OUTPUT_DIR}"
+    # Inc0 M5: BodyInstanceRayMarch.comp's #include "recipe/SdfCoreKernels.glsl" resolves
+    # under libraries/SVO/shaders (a DIFFERENT tree than VIXEN_SHADER_SOURCE_DIR above, which
+    # points at the top-level shaders/ directory) — its own absolute compile-time define,
+    # same convention.
+    VIXEN_SVO_SHADER_SOURCE_DIR="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders"
 )
 
 # WSL2 GPU Vulkan: pass the provisioned Mesa Dozen ICD path (set by cmake/ProvisionWslVulkan.cmake at

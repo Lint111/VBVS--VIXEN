@@ -12,8 +12,8 @@ namespace BodyOctreeSceneNodeCounts {
     static constexpr size_t INPUTS  = 3;  // VULKAN_DEVICE_IN, COMMAND_POOL, CURRENT_FRAME_INDEX
     // 4 octree buffers + 2 SDF buffers + instance buffer + instance count + mip pool buffer (Inc1 M3)
     // + 2 shell buffers (Surface-Shell ESVO cache, main) + tier-ref table buffer (Tiered-ESVO Inc2 M3)
-    // — merge of parallel features.
-    static constexpr size_t OUTPUTS = 12;
+    // + occupancy grid buffer (Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13) — merge of parallel features.
+    static constexpr size_t OUTPUTS = 13;
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -135,6 +135,15 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
+    // Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13: concatenated per-recipe coarse
+    // occupancy grid SSBO (binding 16) — dim^3 conservative min-|sd| floats per registered
+    // procedural recipe, concatenated in registry Ids() order. Placeholder (1-byte pad)
+    // when no procedural recipe has a derivable grid (non-whitelisted opcode, or no
+    // recipes registered at all); populated via BodyOctreeSceneNode::SetOccupancyGrid.
+    OUTPUT_SLOT(OCTREE_OCCUPANCYGRID_BUFFER, VkBuffer, 12,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
     // Constructor: runtime descriptor initialization
     BodyOctreeSceneNodeConfig() {
         // ----- Inputs -----
@@ -205,6 +214,11 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
         BufferDescriptor tierRefTableDesc{};
         tierRefTableDesc.usage = ResourceUsage::StorageBuffer | ResourceUsage::TransferDst;
         INIT_OUTPUT_DESC(OCTREE_TIERREFTABLE_BUFFER, "octree_tierreftable_buffer", ResourceLifetime::Persistent, tierRefTableDesc);
+
+        // Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13: occupancy grid buffer — persistent.
+        BufferDescriptor occupancyGridDesc{};
+        occupancyGridDesc.usage = ResourceUsage::StorageBuffer | ResourceUsage::TransferDst;
+        INIT_OUTPUT_DESC(OCTREE_OCCUPANCYGRID_BUFFER, "octree_occupancygrid_buffer", ResourceLifetime::Persistent, occupancyGridDesc);
     }
 
     // Automated config validation
@@ -229,6 +243,7 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
     static_assert(SHELL_DATA_BUFFER_Slot::index == 9, "SHELL_DATA_BUFFER must be at index 9");
     static_assert(SHELL_LOOKUP_BUFFER_Slot::index == 10, "SHELL_LOOKUP_BUFFER must be at index 10");
     static_assert(OCTREE_TIERREFTABLE_BUFFER_Slot::index == 11, "OCTREE_TIERREFTABLE_BUFFER must be at index 11");
+    static_assert(OCTREE_OCCUPANCYGRID_BUFFER_Slot::index == 12, "OCTREE_OCCUPANCYGRID_BUFFER must be at index 12");
 
     // ----- Type validations -----
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
@@ -245,6 +260,7 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
     static_assert(std::is_same_v<SHELL_DATA_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<SHELL_LOOKUP_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<OCTREE_TIERREFTABLE_BUFFER_Slot::Type, VkBuffer>);
+    static_assert(std::is_same_v<OCTREE_OCCUPANCYGRID_BUFFER_Slot::Type, VkBuffer>);
 };
 
 } // namespace Vixen::RenderGraph

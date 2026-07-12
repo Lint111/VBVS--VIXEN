@@ -10,6 +10,8 @@
 #include "Time/EngineTime.h"
 #include "MessageBus.h"
 #include "graph/HudViewBridge.h"  // HudFactionIn/HudEventIn (gaia-free) + Make/Wire/PushHudView seam
+#include "PerfCsvWriter.h"  // Inc1 M4 Task 6b: always-available perf-CSV recorder (no-op unless VIXEN_PERF_CSV set)
+#include <chrono>
 #include <memory>
 #include <string>
 #include <utility>
@@ -27,6 +29,12 @@ namespace Vixen::RenderGraph { class BodyOctreeSceneNode; }  // M-wire: sparse s
 namespace Vixen::RenderGraph { class CameraNode; }  // Sparse-Mip ESVO LOD Inc1 M4c: live camera-state readback for the residency trigger
 namespace Vixen::SVO { struct BodyInstanceGpu; }  // M-wire: per-body GPU instance record (64 bytes)
 namespace Vixen::SVO { struct ConcatenatedOctrees; }  // Spec B I3: boot-baked recipe pool (SetRecipePool)
+#include "Recipe/RecipeRegistry.h"  // Lazy-Procedural-Delta-Baseline Inc0 M5: zero-bake uber-shader recipes.
+// Real include (not forward-declared like the two lines above) -- RecipeEntry is a NESTED type of
+// RecipeRegistry, and RegisterProceduralRecipe below takes one by value; a forward-declared class
+// cannot name its own nested type. Safe here: RecipeRegistry.h's own include chain (SdfInstruction.h,
+// RecipeStack.h, glm) never touches gaia.h/robin_hood.h, so it doesn't trip this file's documented
+// HudView ODR hazard (see the comment above HudView's own forward declaration).
 // View Contract Inc-2: HudView.h's real include lives ONLY in HudViewBridge.cpp (gaia-free) and
 // HudView.cpp itself -- NEVER in this header or in VulkanGraphApplication.cpp/BuildRenderGraph.cpp,
 // both of which transitively include BodyOctreeSceneNode.h's gaia.h. Root cause (not a style
@@ -75,6 +83,11 @@ public:
     // harness attaches here directly). Capture itself happens at the end of Update() (below the
     // dirty_-equivalent point where the frame's render target is guaranteed populated).
     void PreTick() override;
+    // Inc1 M4 Task 6b: records this tick's perf-CSV row (CPU frame time, per-pass GPU
+    // dispatch ms, cumulative bytes-uploaded). Runs AFTER Render() (VulkanApplicationBase::
+    // Tick(): PreTick -> Update -> Render -> PostTick), so GetLastDispatchMs() reflects the
+    // frame that just completed. No-op unless VIXEN_PERF_CSV is set.
+    void PostTick() override;
 
     // ====== Graph Management ======
 
@@ -249,6 +262,16 @@ private:
     // tested against trees resident BEFORE this frame's own re-decision, not against
     // whatever this frame is about to decide). Starts false (nothing resident pre-first-check).
     bool      lastResidencyGranted_ = false;
+    // Lazy-Procedural-Delta-Baseline Inc0 M5: zero-bake procedural recipes, spliced into
+    // BodyInstanceRayMarch.comp's evalRecipeField() switch by the compute-shader builder
+    // lambda (BuildRenderGraph.cpp) every time it runs. Registration is independent of graph
+    // compile state (v1: register-before-Compile, OR register-then-RecompileProceduralShader
+    // for a live re-apply — see that method). NOT a NodeHandle-owned resource: the registry
+    // itself has no GPU footprint; only its SPLICED TEXT (baked into the compute shader
+    // source at build time) does. Kept as a real (not pointer) member for the same reason
+    // perfCsvWriter_ above is -- always-valid, no null-check needed at any call site.
+    Vixen::SVO::RecipeRegistry proceduralRecipes_;
+    NodeHandle computeShaderLibNode_{};              // stored so RecompileProceduralShader can MarkNodeNeedsRecompile
     NodeHandle windowNode_{};                        // stored so GetWindowHandle() can query the WindowNode live
     NodeHandle inputNode_{};                         // stored so Update() can drain InputNode's event queue live (input-rework slice 1)
     NodeHandle uiRenderNode_{};                      // stored so GetUiRenderNode() can query the composite UI node live
@@ -264,6 +287,13 @@ private:
     // MakeHudView() (ctor) and destroyed via DestroyHudView() (dtor), both HudViewBridge.h seams
     // whose bodies live in HudViewBridge.cpp, the one gaia-free TU where HudView is complete.
     Vixen::App::HudView* hudView_ = nullptr;
+
+    // Inc1 M4 Task 6b: perf-CSV recorder + the steady_clock timestamp of the previous
+    // PostTick call (for measuring this tick's CPU frame time). No-op object when
+    // VIXEN_PERF_CSV is unset (IsEnabled()==false), so construction/RecordFrame/Flush are
+    // all cheap no-ops on every run that doesn't opt in.
+    PerfCsvWriter perfCsvWriter_;
+    std::chrono::steady_clock::time_point lastPostTickTime_ = std::chrono::steady_clock::now();
 
     // Task 5: scripted HUD-inject + byte-exact capture harness (mirrors EditorApplication's
     // VIXEN_EDITOR_SCRIPT/_CAPTURE_FRAMES/_CAPTURE_DIR harness — this app has no subclass, so it
@@ -299,6 +329,22 @@ public:
     // null-guard; a host that owns document/recipe authoring (e.g. vixen_editor) uses this to
     // swap the render source without hand-rolling a NodeTypeRegistry lookup.
     void SetRecipePool(Vixen::SVO::ConcatenatedOctrees pool);
+    // Lazy-Procedural-Delta-Baseline Inc0 M5 Task 11: register a zero-bake procedural recipe
+    // by id. Fills any unset bounds-metadata field via Recipe::ApplyRecipeBoundsDefaults
+    // (Recipe/RecipeBounds.h) before registering. Safe to call BEFORE the graph's first
+    // Compile() (the common case -- the shader builder lambda reads proceduralRecipes_ live
+    // when it runs) OR AFTER (a live scene addition) -- in the latter case the caller MUST
+    // also call RecompileProceduralShader() to force the spliced source to regenerate and the
+    // pipeline to rebuild; registering alone does not retroactively touch an already-built
+    // pipeline. Returns the registry's own RegisterResult (Ok / DuplicateId / BadOpCode / ...).
+    Vixen::SVO::RecipeRegistry::RegisterResult RegisterProceduralRecipe(
+        uint32_t recipeId, Vixen::SVO::RecipeRegistry::RecipeEntry entry);
+    // Forces BodyInstanceRayMarch.comp to be re-spliced from the CURRENT proceduralRecipes_
+    // contents and recompiled (MarkNodeNeedsRecompile on the stored compute_shader_lib node
+    // handle). No-op (logs a warning) if the graph hasn't been compiled yet -- there is
+    // nothing to mark dirty before the first Compile(), which will pick up whatever is
+    // registered at that point anyway.
+    void RecompileProceduralShader();
     // Editor Brick-Residency Fix: forwards to BodyOctreeSceneNode::RequestBrickResidency (stash-only,
     // dirty-flag pattern -- safe to call any time, including right after SetRecipePool/SetBodyInstances;
     // ExecuteImpl performs the actual upload next frame). Mirrors SetRecipePool's passthrough above --

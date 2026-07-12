@@ -71,21 +71,96 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
         BodyInstance inst = bodyInstances[instIdx];
 
         // --- Procedural provider: analytic SDF sphere-trace (no octree) ---
+        // Lazy-Procedural-Delta-Baseline Inc0 M5/M6 Task 11/12/13: recipeId < 2 stays on
+        // the hand-written legacy analytic path (byte-identical formula); recipeId >= 2 is
+        // registry-driven (uber-shader splice) with a bound-sphere front-to-back early-reject
+        // (Task 12) and a far-subpixel flat-shade early-out (Task 13) before paying for the
+        // full traceUberRecipeBody march. See BodyInstanceRayMarch.comp's pre-extraction
+        // main() (git history) for the original inline version this was ported from when
+        // TraceWorld.glsl (Sampled Lighting Inc1 M1) was merged with this branch's Inc0 M5/M6.
         if (inst.providerKind == PROVIDER_PROCEDURAL) {
-            vec3 pCenter = inst.worldPos;
-            vec3 pParams = vec3(inst.recipeParams[0], inst.recipeParams[1], inst.recipeParams[2]);
             vec3 pNormal;
             float pT;
-            if (traceProceduralBody(inst.recipeId, pCenter, pParams, rayOrigin, rayDir,
-                                    pNormal, pT)) {
-                if (pT < bestT) {
-                    bestT          = pT;
-                    bestColor      = inst.color;   // procedural base colour = instance tint
-                    bestNormal     = pNormal;      // smooth SDF-gradient normal
-                    bestBrickIndex = 0u;
-                    bestVoxelIdx   = 0u;
-                    anyHit         = true;
+            bool pHit = false;
+
+            // recipeId 0/1 stay on the hand-written legacy analytic path (RECIPE_SPHERE /
+            // RECIPE_DISPLACED_SPHERE) — byte-identical formula, unchanged by the M5 splice.
+            // recipeId >= 2 is registry-driven: only reachable when at least one recipe was
+            // registered (the ONLY way a BodyInstance can carry such an id), which is also
+            // the only condition under which evalRecipeField/getRecipeBoundSphere exist in
+            // this translation unit (see BodyInstanceRayMarch.comp's splice-marker comment) —
+            // so this branch never references an undeclared identifier in an unspliced build.
+            if (inst.recipeId < 2u) {
+                vec3 pCenter = inst.worldPos;
+                vec3 pParams = vec3(inst.recipeParams[0], inst.recipeParams[1], inst.recipeParams[2]);
+                pHit = traceProceduralBody(inst.recipeId, pCenter, pParams, rayOrigin, rayDir,
+                                           pNormal, pT);
+            }
+#ifdef VIXEN_UBER_RECIPE_SPLICED
+            else {
+                vec3  boundCenter; float boundRadius; float relaxation;
+                getRecipeBoundSphere(inst.recipeId, boundCenter, boundRadius, relaxation);
+
+                // Front-to-back early-reject (Task 12): mirrors the ESVO branch's own
+                // entryTWorld > bestT discipline below — skip the march entirely when this
+                // instance's bound-sphere entry point is already farther than a hit some
+                // OTHER instance already recorded this pixel. instanceIterCount stays 0u for
+                // a rejected instance (same "zero traversal iterations, not just a discarded
+                // result" proof the ESVO branch relies on for its own gate test).
+                vec3  oc   = rayOrigin - boundCenter;
+                float b    = dot(oc, rayDir);
+                float c    = dot(oc, oc) - boundRadius * boundRadius;
+                float disc = b * b - c;
+                if (disc < 0.0) {
+                    instanceIterCount[instIdx] = 0u;
+                    continue;  // ray misses this instance's bound sphere entirely
                 }
+                float entryT = max(-b - sqrt(disc), 0.0);
+                if (entryT > bestT) {
+                    instanceIterCount[instIdx] = 0u;
+                    continue;  // nearest possible hit is already farther than bestT
+                }
+
+                // Task 13 far early-out: once the WHOLE bound sphere's projected footprint
+                // at entryT has sub-resolved to under one screen pixel (same cone-spread
+                // formula the ESVO branch's screen-space LOD cutoff uses — raySizeCoef is
+                // 2*tan(halfFovPerPixel)), further marching can't resolve any more surface
+                // detail than a flat shade already gives. Deliberately coarse: color/normal
+                // fidelity at this distance is out of scope for Task 13 (plan's own note),
+                // this only saves the march's per-step cost once it can no longer matter.
+                // Gated on raySizeCoef>0.0 so LOD-disabled builds/tests (raySizeCoef==0,
+                // e.g. the M4/M5 offscreen harnesses) never take this path.
+                bool farSubPixel = false;
+                if (pc.raySizeCoef > 0.0) {
+                    float footprint = entryT * pc.raySizeCoef + pc.raySizeBias;
+                    farSubPixel = footprint >= 2.0 * boundRadius;
+                }
+
+                if (farSubPixel) {
+                    instanceIterCount[instIdx] = 1u;  // flat-shaded, not a full march — nonzero proves it wasn't rejected
+                    pHit    = true;
+                    pT      = entryT;
+                    pNormal = normalize(-rayDir);  // face the camera — cheapest plausible normal for a sub-pixel blob
+                } else {
+                    uint pSteps;
+                    pHit = traceUberRecipeBody(inst.recipeId, boundCenter, boundRadius, relaxation,
+                                               rayOrigin, rayDir, pNormal, pT, pSteps);
+                    // Task 12 evidence (c): a non-rejected instance always writes its real march
+                    // step count (>=1, even on a miss that exhausted MAX_STEPS or exited tFar) —
+                    // only the two continue-above paths leave this 0u, so "0 here" means "the
+                    // early-reject fired," matching the ESVO branch's own convention exactly.
+                    instanceIterCount[instIdx] = pSteps;
+                }
+            }
+#endif
+
+            if (pHit && pT < bestT) {
+                bestT          = pT;
+                bestColor      = inst.color;   // procedural base colour = instance tint
+                bestNormal     = pNormal;      // smooth SDF-gradient normal
+                bestBrickIndex = 0u;
+                bestVoxelIdx   = 0u;
+                anyHit         = true;
             }
             continue;  // procedural body fully handled; skip the ESVO path
         }
@@ -293,16 +368,33 @@ bool TraceWorldShadow(vec3 origin, vec3 dir, float tmin, float tmax) {
         BodyInstance inst = bodyInstances[instIdx];
 
         // --- Procedural provider: analytic SDF sphere-trace (no octree) ---
+        // Mirrors TraceWorld's recipeId dispatch (Task 11/12/13): recipeId<2 stays on the
+        // legacy analytic path; recipeId>=2 is registry-driven via the uber-shader splice.
+        // Any-hit semantics mean no bound-sphere/far-subpixel early-outs are needed here —
+        // this is already cheaper than TraceWorld's nearest-hit accumulation.
         if (inst.providerKind == PROVIDER_PROCEDURAL) {
-            vec3 pCenter = inst.worldPos;
-            vec3 pParams = vec3(inst.recipeParams[0], inst.recipeParams[1], inst.recipeParams[2]);
             vec3 pNormal;
             float pT;
-            if (traceProceduralBody(inst.recipeId, pCenter, pParams, rayOrigin, rayDir,
-                                    pNormal, pT)) {
-                if (pT >= tmin && pT <= tmax) {
-                    return true;  // any-hit: no need to keep looking
-                }
+            bool pHit = false;
+
+            if (inst.recipeId < 2u) {
+                vec3 pCenter = inst.worldPos;
+                vec3 pParams = vec3(inst.recipeParams[0], inst.recipeParams[1], inst.recipeParams[2]);
+                pHit = traceProceduralBody(inst.recipeId, pCenter, pParams, rayOrigin, rayDir,
+                                           pNormal, pT);
+            }
+#ifdef VIXEN_UBER_RECIPE_SPLICED
+            else {
+                vec3  boundCenter; float boundRadius; float relaxation;
+                getRecipeBoundSphere(inst.recipeId, boundCenter, boundRadius, relaxation);
+                uint pSteps;
+                pHit = traceUberRecipeBody(inst.recipeId, boundCenter, boundRadius, relaxation,
+                                           rayOrigin, rayDir, pNormal, pT, pSteps);
+            }
+#endif
+
+            if (pHit && pT >= tmin && pT <= tmax) {
+                return true;  // any-hit: no need to keep looking
             }
             continue;  // procedural body fully handled; skip the ESVO path
         }

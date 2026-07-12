@@ -11,6 +11,38 @@ Living log of confirmed-but-unfixed issues. Each entry: symptom, root cause, imp
 
 ---
 
+## KI-027 — `VoxelInjectionQueue`/`VoxelInjector` concurrent voxel creation is unsound (heap corruption, ECS assertion mismatch)
+
+**Discovered:** 2026-07-12, in a broad ctest sweep audit — 7 tests fail: `VoxelInjectionQueueTest.ProcessMultipleVoxels` (SEGFAULT: `_CrtIsValidHeapPointer`/`is_block_type_valid` debug-heap assertions — real heap corruption, not a benign crash), `.ProcessBatchCreation` (Gaia ECS internal assertion `entityExpected == entityPresent` at `gaia.h:30565`), `.ConcurrentEnqueue`, `.StopDuringProcessing`, `VoxelInjectorTest.InsertEntities_SingleEntity` (`Exit code 0xc0000409`, a Windows stack-buffer-overrun/security-cookie trap), `.InsertEntities_MultipleEntities`, `.InsertEntitiesBatched_SingleBrick`, `.InsertEntitiesBatched_MultipleBricks`, `.CompactOctree`, `.InsertEntities_MixValidAndInvalid`, `.LargeBatchInsertion`.
+
+**Confirmed pre-existing, not introduced by any 2026-07-12 session work:** the failing machinery (`VoxelInjectionQueue`'s parallel voxel creation, `createVoxelsBatch`'s "optimize for speed" path) was added by commit `25eb5989` ("feat: Implement parallel voxel creation using VoxelInjectionQueue and optimize createVoxelsBatch"), which predates this session's changes and is an ancestor of the branch tip before today's work started. An independent stale sweep log (`/tmp/ctest_final.log`, from a prior, unrelated session) already shows `VoxelInjectionQueueTest.ProcessMultipleVoxels` failing with the same interleaved/racing `"Batch progress:"` log output pattern — direct evidence of two threads concurrently and unsafely writing through the same non-thread-safe path, confirming this is a genuine, long-standing data race, not a new regression from today's `SdfBake.h`/`createVoxelsBatch` caller change (that change only added a new *single-threaded* call site; `VoxelInjectionQueue`'s existing *concurrent* call sites are untouched by it).
+
+**Symptom shape:** interleaved log output from concurrent threads (`"[GaiaVoxelWorld] Batch progress: [GaiaVoxelWorld] Batch progress: 0%0%"` — two threads' `std::cout` calls torn mid-line), heap corruption, and Gaia ECS-internal invariant violations — consistent with `GaiaVoxelWorld`/`createVoxelsBatch`/the Gaia ECS `world` object being mutated from multiple threads without adequate synchronization somewhere in `VoxelInjectionQueue`'s worker/enqueue path.
+
+**Root cause:** not yet investigated in depth — this entry documents the discovery and evidence for pre-existing status, not a diagnosis. Likely candidates for a future investigation: `GaiaVoxelWorld`'s underlying `gaia::ecs::World` may not be safe for concurrent `add()`/entity-creation calls at all (ECS libraries frequently assume single-threaded mutation with external synchronization left to the caller), and `VoxelInjectionQueue`'s worker-thread dispatch may be missing a mutex/lock around its calls into the shared `GaiaVoxelWorld` instance.
+
+**Impact:** `VoxelInjectionQueue`/`VoxelInjector`'s parallel voxel-creation path is currently unsound — heap corruption and ECS state corruption under concurrent use. Any production caller of this path (if one exists — not yet audited) is at risk; any future caller should not be added until this is fixed.
+
+**Fix options:** (a) add proper synchronization (a mutex around the shared `GaiaVoxelWorld` mutation, or per-worker private ECS staging + a single-threaded merge step) in `VoxelInjectionQueue`'s worker path; (b) confirm/document whether Gaia ECS itself is fundamentally single-threaded and restructure `VoxelInjectionQueue` to serialize all `GaiaVoxelWorld` mutation onto one thread regardless of how work is parallelized elsewhere (e.g. parallel voxel *computation*, serial *insertion*).
+
+**Severity:** High (heap corruption is a real memory-safety bug, not just a failing assertion) · **Status:** OPEN, pre-existing, out of scope for the 2026-07-12 sweep audit that discovered it (that audit's scope was fixing/triaging failures surfaced by its own session's changes, not auditing unrelated pre-existing concurrency bugs)
+
+---
+
+## KI-026 — SDI regeneration silently no-ops on a reused UUID with changed shader source
+
+**Discovered:** 2026-07-12, via `SdiLifecycleTest.UpdateShaderAndRegenerateSdi` failing deterministically (100%, 5/5 reproductions) in a broad ctest sweep audit.
+
+**Symptom:** `SpirvInterfaceGenerator::Generate()` (`libraries/ShaderManagement/src/SpirvInterfaceGenerator.cpp:157`) skipped regeneration whenever the target SDI file already existed on disk, keyed only on UUID (`GetSdiPath`, `:243`) — the skip guard's own comment claimed "same descriptor hash" but no hash was ever computed or compared. Rebuilding a shader under the same UUID with genuinely different reflection data (e.g. a new binding) silently returned the stale file: `last_write_time` never changed and the new binding never appeared in the generated header. This breaks shader hot-reload / SDI-update whenever a UUID is reused across a shader edit.
+
+**Root cause:** existence-only skip guard (`:164-168`, pre-fix) instead of a content/hash comparison, most likely a build-time perf shortcut whose promised hash check was never implemented.
+
+**Fix (commit this session, 2026-07-12):** `Generate()` now always computes the code string first, then skips only the **write** if on-disk content is byte-identical to the newly generated code — preserving the original perf intent (no spurious rewrite/mtime bump when nothing changed) while fixing the correctness bug (a changed shader always produces different code, so it's always rewritten).
+
+**Severity:** Medium (silent data-staleness — no error, no log distinguishing "reused, unchanged" from "reused, would-have-changed") · **Status:** RESOLVED
+
+---
+
 ## KI-025 — Frame-1 accumulation artifact: a small patch renders sky-colored for ~5 frames before self-converging
 
 **Discovered:** 2026-07-11, during Sampled Lighting Inc3 M2 (geometric reprojection reject) gate testing — surfaced incidentally, not caused by M2's change.

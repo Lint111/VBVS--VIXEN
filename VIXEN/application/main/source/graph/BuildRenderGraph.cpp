@@ -10,8 +10,12 @@
 // LaineKarrasOctree -> ISVOStructure), whose std::hash<> specialisations must be visible before
 // RmlUi's bundled robin_hood.h wraps them.
 #include "VulkanGraphApplication.h"
+#include <algorithm>  // std::clamp for the VIXEN_PROCEDURAL_UBER_DEMO N clamp
 #include <cmath>    // std::tan for the LOD ray-cone (raySizeCoef) computation
 #include <cstdlib>  // std::strtof for the VIXEN_RENDER_SCALE env parse (M4)
+#include <fstream>  // Inc0 M5: read BodyInstanceRayMarch.comp's raw source for the recipe splice
+#include <sstream>  // Inc0 M5: rdbuf() into a string for the splice
+#include "Recipe/UberShaderSplice.h"  // Inc0 M5: SpliceProceduralRecipesIntoSource
 #include "Connection/ConnectionModifier.h"
 #include "Connection/Modifiers/FieldExtractionModifier.h"
 #include "Connection/Modifiers/AccumulationSortConfig.h"  // SEL-P3: accumulation-connect sort key (provider fan-in)
@@ -176,6 +180,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     // --- Phase G: Compute Pipeline Nodes ---
     NodeHandle computeShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("compute_shader_lib");
+    computeShaderLibNode_ = computeShaderLib;  // stored so RecompileProceduralShader can MarkNodeNeedsRecompile (Inc0 M5)
     NodeHandle descriptorGatherer = renderGraph->AddNode<DescriptorResourceGathererNodeType>("compute_desc_gatherer");  // Phase H
     NodeHandle pushConstantGatherer = renderGraph->AddNode<PushConstantGathererNodeType>("push_constant_gatherer");  // Phase H
     NodeHandle computeDescriptorSet = renderGraph->AddNode<DescriptorSetNodeType>("compute_descriptors");
@@ -599,6 +604,39 @@ void VulkanGraphApplication::BuildRenderGraph() {
             throw std::runtime_error(std::string(shaderName) + " not found - check shader search paths");
         }
 
+        // Lazy-Procedural-Delta-Baseline Inc0 M5 Task 11: read the raw source and splice in
+        // every registered procedural recipe's emitted field function + the evalRecipeField/
+        // getRecipeBoundSphere switches, BEFORE handing the source to the builder. Uses
+        // AddStage (source text), NOT AddStageFromFile — the file is still the origin of the
+        // #include-relative-path text, but the text itself is no longer the file's own bytes
+        // verbatim. #include resolution is unaffected: it goes through the explicit
+        // AddIncludePath calls below (preprocessor-driven), not sourcePath (AddStageFromFile's
+        // OWN #include convenience, which this path deliberately bypasses).
+        std::ifstream compFile(compPath);
+        std::ostringstream compBuf;
+        compBuf << compFile.rdbuf();
+        const std::string rawSource = compBuf.str();
+
+        std::string splicedSource;
+        // M6 Task 13: collect the concatenated per-recipe occupancy-grid blob alongside the
+        // splice, then push it to BodyOctreeSceneNode's new SSBO (binding 16) — same "derived
+        // once at shader-build time, forces a recompile like everything else the splice
+        // touches" discipline as the bound-sphere/relaxation literals already baked in.
+        std::vector<float> occupancyGridBlob;
+        try {
+            splicedSource = Vixen::SVO::Recipe::SpliceProceduralRecipesIntoSource(
+                rawSource, proceduralRecipes_, &occupancyGridBlob);
+        } catch (const std::exception& e) {
+            if (mainLogger && mainLogger->IsEnabled()) {
+                mainLogger->Error(std::string("[BuildRenderGraph] procedural recipe splice failed: ") + e.what());
+            }
+            throw;
+        }
+        if (auto* bodyScene = static_cast<Vixen::RenderGraph::BodyOctreeSceneNode*>(
+                renderGraph->GetInstance(bodyOctreeSceneNode_))) {
+            bodyScene->SetOccupancyGrid(std::move(occupancyGridBlob));
+        }
+
         builder.SetProgramName(programName)
                .SetPipelineType(ShaderManagement::PipelineTypeConstraint::Compute)
                .SetTargetVulkanVersion(vulkanVer)
@@ -608,7 +646,15 @@ void VulkanGraphApplication::BuildRenderGraph() {
 #ifdef VIXEN_SHADER_SOURCE_DIR
                .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
 #endif
-               .AddStageFromFile(ShaderManagement::ShaderStage::Compute, compPath, "main");
+               // Inc0 M5: BodyInstanceRayMarch.comp now #includes "recipe/SdfCoreKernels.glsl"
+               // (the SdfCore_* kernel set the spliced recipe field functions call), which
+               // lives under libraries/SVO/shaders — a different tree than the paths above.
+               .AddIncludePath("libraries/SVO/shaders")
+               .AddIncludePath("../libraries/SVO/shaders")
+#ifdef VIXEN_SVO_SHADER_SOURCE_DIR
+               .AddIncludePath(VIXEN_SVO_SHADER_SOURCE_DIR)
+#endif
+               .AddStage(ShaderManagement::ShaderStage::Compute, splicedSource, "main");
 
         // Shader counters (perf sweep rank 2) are compiled OUT unconditionally: the live
         // app has no consumer for them, and every pixel was paying 3-4 unread atomic RMWs
@@ -619,7 +665,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
         // a glslang compile error). Re-enable by hand-editing this .comp's #define if needed.
 
         if (mainLogger && mainLogger->IsEnabled()) {
-            mainLogger->Info("[BuildRenderGraph] Using BodyInstanceRayMarch shader: " + compPath.string());
+            mainLogger->Info("[BuildRenderGraph] Using BodyInstanceRayMarch shader: " + compPath.string() +
+                             " (" + std::to_string(proceduralRecipes_.Ids().size()) + " procedural recipes spliced)");
             mainLogger->Info("[BuildRenderGraph] Octree buffers at bindings 1/2/3/5 (BodyOctreeSceneNode); instances at binding 10");
         }
 
@@ -1178,6 +1225,18 @@ void VulkanGraphApplication::BuildRenderGraph() {
                         bodyScene->RequestBrickResidency(false);
                         mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_CROSSING_NONRESIDENT/VIXEN_TIER_ZOOM_DEMO: "
                                           "RequestBrickResidency(false) -- both octrees mip-only at start");
+                    } else {
+                        // Lazy-Procedural-Delta-Baseline Inc0 M2 Task 4 demo-knob audit: both
+                        // trees here are mip-baked (BakeAndAttachMipPool above), so this pool
+                        // is mip-capable and M2's capability-derived default would flip it
+                        // LAZY at boot -- a real behavior change for this demo, which existed
+                        // to prove the tier-crossing MECHANISM (not residency laziness) and has
+                        // always booted with real bricks resident. Pin eager explicitly so
+                        // plain VIXEN_TIER_CROSSING_DEMO (no _NONRESIDENT/_ZOOM_DEMO) keeps its
+                        // pre-M2 boot behavior byte-for-byte.
+                        bodyScene->RequestBrickResidency(true);
+                        mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_CROSSING_DEMO: "
+                                          "RequestBrickResidency(true) -- pinned eager (M2 demo-knob audit)");
                     }
 
                     // ONE instance, pointing at octree 0 (the parent). Placed at the
@@ -1217,6 +1276,168 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 }
             } else {
                 mainLogger->Error("[BuildRenderGraph] VIXEN_TIER_CROSSING_DEMO: no leaf found in parent octree — demo scene not built");
+            }
+        } else if (const char* uberDemoEnv = std::getenv("VIXEN_PROCEDURAL_UBER_DEMO")) {
+            // VIXEN_PROCEDURAL_UBER_DEMO — Lazy-Procedural-Delta-Baseline Inc0 M5 Task 12 zero-bake
+            // live gate, generalized (perf-scaling measurement handoff) to an ARBITRARY recipe
+            // count N. Registers N registry-driven recipes (recipeId >= 2) and positions them
+            // OVERLAPPING along the default camera's Z sight line (bodies at increasing world-Z,
+            // same X/Y so each ray that hits the nearer body's bound sphere would ALSO have hit a
+            // farther one's, giving the entryT>bestT early-reject in main() something real to
+            // reject). Value selects the recipe count via std::atoi, clamped to [1, kMaxUberN] —
+            // the clamp exists only to keep a garbage/huge env value from producing an unbounded
+            // allocation/splice, not because the switch itself is known to have a ceiling at that
+            // size (finding out where the switch DOES break is the point of this measurement).
+            // NO octree bake occurs for these bodies (RegisterProceduralRecipe never touches
+            // BakeSdfWorld/BuildSdfBodyOctree) — the (a) proof for the live gate.
+            constexpr int kMaxUberN = 2000;
+            const int requestedN = std::atoi(uberDemoEnv);
+            const int n = std::clamp(requestedN <= 0 ? 3 : requestedN, 1, kMaxUberN);
+            mainLogger->Info("[BuildRenderGraph] VIXEN_PROCEDURAL_UBER_DEMO: registering " +
+                             std::to_string(n) + " zero-bake procedural recipes");
+
+            // Recipe programs must grow STRUCTURALLY distinct with N (not N clones of the same
+            // opcodes with different numbers) so the switch's real cost -- shader size, register
+            // pressure, warp divergence, compile time -- grows honestly. Programs 0/1/2 (index
+            // i%3==0/1/2) reproduce the ORIGINAL 3 legacy programs byte-for-byte (plain sphere;
+            // box+sphere SmoothUnion; sphere+Round-box SmoothSubtract) so N=3 and N=10 stay
+            // comparable to pre-generalization measurements. Beyond that, the generator cycles a
+            // {leaf prim} x {CSG op} x {modifier} product so each subsequent id gets a genuinely
+            // different opcode program.
+            using Vixen::SVO::Recipe::SdfOpCode;
+            using Vixen::SVO::Recipe::SdfInstruction;
+            auto sphereInstr = [](glm::vec3 c, float r) {
+                SdfInstruction in{}; in.opCode = (uint8_t)SdfOpCode::Sphere;
+                in.data[0] = c.x; in.data[1] = c.y; in.data[2] = c.z; in.data[3] = r;
+                return in;
+            };
+            auto boxInstr = [](glm::vec3 he) {
+                SdfInstruction in{}; in.opCode = (uint8_t)SdfOpCode::Box;
+                in.data[0] = he.x; in.data[1] = he.y; in.data[2] = he.z;
+                return in;
+            };
+            auto torusInstr = [](float majorR, float minorR) {
+                SdfInstruction in{}; in.opCode = (uint8_t)SdfOpCode::Torus;
+                in.data[0] = majorR; in.data[1] = minorR;
+                return in;
+            };
+            auto roundInstr = [](float r) {
+                SdfInstruction in{}; in.opCode = (uint8_t)SdfOpCode::Round; in.data[0] = r;
+                return in;
+            };
+            auto onionInstr = [](float thickness) {
+                SdfInstruction in{}; in.opCode = (uint8_t)SdfOpCode::Onion; in.data[0] = thickness;
+                return in;
+            };
+            auto combineInstr = [](SdfOpCode op, float k) {
+                SdfInstruction in{}; in.opCode = (uint8_t)op; in.data[2] = k;
+                return in;
+            };
+            // CSG ops beyond the legacy 2 (SmoothUnion/SmoothSubtract), cycled for i>=3.
+            const SdfOpCode kExtraCsgOps[] = {
+                SdfOpCode::Union, SdfOpCode::Subtract, SdfOpCode::Intersect,
+                SdfOpCode::SmoothIntersect, SdfOpCode::Xor, SdfOpCode::SmoothMax,
+            };
+
+            std::vector<Vixen::SVO::BodyInstanceGpu> uberBodies;
+            uberBodies.reserve(static_cast<size_t>(n));
+            constexpr float kSpacingZ = 40.0f;  // overlapping bound spheres along +Z sight line
+            constexpr float kBaseZ    = 30.0f;
+            const glm::vec3 kColors[3] = {
+                glm::vec3(1.00f, 0.55f, 0.55f),
+                glm::vec3(0.55f, 1.00f, 0.55f),
+                glm::vec3(0.55f, 0.70f, 1.00f),
+            };
+            for (int i = 0; i < n; ++i) {
+                const uint32_t recipeId = static_cast<uint32_t>(2 + i);
+                const float instZ = kBaseZ + kSpacingZ * static_cast<float>(i);
+                const glm::vec3 center(64.0f, 64.0f, instZ);
+
+                std::vector<SdfInstruction> prog;
+                const int shape = i % 3;
+                if (i < 3) {
+                    // The original 3 legacy programs, byte-for-byte, so N=3/N=10 measurement
+                    // points stay comparable to pre-generalization runs.
+                    if (shape == 0) {
+                        prog = { sphereInstr(center, 8.0f) };
+                    } else if (shape == 1) {
+                        prog = { boxInstr(glm::vec3(6.0f, 6.0f, 6.0f)),
+                                 sphereInstr(center + glm::vec3(4.0f, 0.0f, 0.0f), 5.0f),
+                                 combineInstr(SdfOpCode::SmoothUnion, 1.5f) };
+                    } else {
+                        prog = { sphereInstr(glm::vec3(0.0f), 9.0f),
+                                 boxInstr(glm::vec3(5.0f, 5.0f, 5.0f)),
+                                 roundInstr(1.0f),
+                                 combineInstr(SdfOpCode::SmoothSubtract, 1.0f) };
+                    }
+                } else {
+                    // Structurally-varied extension: cycles {sphere/box/torus} x {6 extra CSG
+                    // ops} x {none/Round/Onion modifier}, with varied radii/thicknesses so no
+                    // two programs beyond the legacy 3 are opcode-for-opcode identical.
+                    const int leaf = (i / 3) % 3;             // 0=sphere-pair,1=box-pair,2=torus-pair
+                    const SdfOpCode csgOp = kExtraCsgOps[i % 6];
+                    const int modSel = (i / 6) % 3;           // 0=none,1=Round,2=Onion
+                    const float k = 0.5f + 0.1f * static_cast<float>(i % 7);
+                    const float r1 = 6.0f + 0.05f * static_cast<float>(i % 40);
+                    const float r2 = 3.0f + 0.03f * static_cast<float>(i % 30);
+
+                    if (leaf == 0) {
+                        prog = { sphereInstr(glm::vec3(0.0f), r1),
+                                 sphereInstr(glm::vec3(r2 * 0.4f, 0.0f, 0.0f), r2),
+                                 combineInstr(csgOp, k) };
+                    } else if (leaf == 1) {
+                        prog = { boxInstr(glm::vec3(r1, r1 * 0.8f, r1 * 0.6f)),
+                                 sphereInstr(glm::vec3(r2 * 0.3f, 0.0f, 0.0f), r2),
+                                 combineInstr(csgOp, k) };
+                    } else {
+                        prog = { torusInstr(r1, r2 * 0.4f),
+                                 boxInstr(glm::vec3(r2, r2, r2)),
+                                 combineInstr(csgOp, k) };
+                    }
+                    if (modSel == 1) {
+                        prog.push_back(roundInstr(0.3f + 0.02f * static_cast<float>(i % 10)));
+                    } else if (modSel == 2) {
+                        prog.push_back(onionInstr(0.2f + 0.02f * static_cast<float>(i % 10)));
+                    }
+                }
+
+                Vixen::SVO::RecipeRegistry::RecipeEntry entry{};
+                entry.bytecode = std::move(prog);
+                // Every program beyond shape==0 (i<3) samples in body-local / non-absolute space
+                // (Box/Torus carry no position offset of their own) -- for this demo, authoring
+                // boundCenter/boundRadius explicitly sidesteps relying on
+                // DeriveConservativeBounds's local-origin-relative result matching a body's
+                // actual world placement (recipeParams/worldPos are NOT read for recipeId>=2;
+                // the field function samples WORLD p directly, unlike the legacy analytic path).
+                if (!(i < 3 && shape == 0)) {
+                    entry.boundCenter = center;
+                    entry.boundRadius = 12.0f;
+                }
+
+                auto regResult = RegisterProceduralRecipe(recipeId, entry);
+                if (regResult != Vixen::SVO::RecipeRegistry::RegisterResult::Ok) {
+                    mainLogger->Error("[BuildRenderGraph] VIXEN_PROCEDURAL_UBER_DEMO: "
+                                     "RegisterProceduralRecipe(" + std::to_string(recipeId) +
+                                     ") failed, code " + std::to_string(static_cast<int>(regResult)));
+                    continue;
+                }
+
+                Vixen::SVO::BodyInstanceGpu inst{};
+                inst.worldPos[0] = 0.0f; inst.worldPos[1] = 0.0f; inst.worldPos[2] = 0.0f;  // unused: field samples world p directly
+                inst.renderScale = 1.0f;   // unused by Procedural
+                const glm::vec3& tint = kColors[shape];
+                inst.color[0] = tint.x; inst.color[1] = tint.y; inst.color[2] = tint.z;
+                inst.octreeIndex = 0u;    // unused by Procedural
+                inst.providerKind = 1u;   // PROVIDER_PROCEDURAL
+                inst.recipeId = recipeId; // >=2 -> routes through the spliced uber path
+                uberBodies.push_back(inst);
+            }
+
+            if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))) {
+                bodyScene->SetInstances(std::move(uberBodies));
+                mainLogger->Info("[BuildRenderGraph] VIXEN_PROCEDURAL_UBER_DEMO: seeded " +
+                                 std::to_string(n) + " zero-bake procedural body instances "
+                                 "(0 BakeSdfWorld/BuildSdfBodyOctree calls for these bodies)");
             }
         } else if (std::getenv("VIXEN_TIER_CHAIN_DEMO")) {
             // Tiered-ESVO Inc3 M3 Task 5 live gate: a THREE-tree chain, T0 -> T1 -> T2,
@@ -3082,18 +3303,31 @@ void VulkanGraphApplication::BuildRenderGraph() {
         mainLogger->Info("[BuildRenderGraph] Connected tier-ref table at binding 15 (Tiered-ESVO Inc2 M3)");
     }
 
-    // Sampled Lighting Inc0 M3: Binding 16: LightingConfig SSBO (single record, re-uploaded
-    // per-frame from LightingConfigNode's ring). Default content = one directional light
-    // matching Lighting.glsl's previous hardcoded default (zero-visual-delta gate).
-    batch.Connect(lightingConfigNode, LightingConfigNodeConfig::LIGHTING_CONFIG_BUFFER,
-                          descriptorGatherer, 16,  // Binding 16: LightingConfigSSBO
+    // Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13: Binding 16: coarse occupancy grid
+    // SSBO (concatenated per-recipe min-|sd| grids for empty-space skip / far early-out
+    // in traceUberRecipeBody). Placeholder 1-byte buffer for a scene where no registered
+    // recipe has a derivable grid; read by the shader only when getRecipeOccupancyGrid
+    // reports gridDim>0 for the current recipeId (see SdfRecipes.glsl).
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_OCCUPANCYGRID_BUFFER,
+                          descriptorGatherer, 16,  // Binding 16: OccupancyGridBuffer
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
     if (mainLogger && mainLogger->IsEnabled()) {
-        mainLogger->Info("[BuildRenderGraph] Connected lighting config at binding 16 (Sampled Lighting Inc0 M3)");
+        mainLogger->Info("[BuildRenderGraph] Connected recipe occupancy grid at binding 16 (Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13)");
     }
 
-    // Sampled Lighting Inc1 M3: Binding 17: HitRecord SSBO. Device input + extent-driven sizing
+    // Sampled Lighting Inc0 M3: Binding 17: LightingConfig SSBO (single record, re-uploaded
+    // per-frame from LightingConfigNode's ring). Default content = one directional light
+    // matching Lighting.glsl's previous hardcoded default (zero-visual-delta gate).
+    batch.Connect(lightingConfigNode, LightingConfigNodeConfig::LIGHTING_CONFIG_BUFFER,
+                          descriptorGatherer, 17,  // Binding 17: LightingConfigSSBO
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info("[BuildRenderGraph] Connected lighting config at binding 17 (Sampled Lighting Inc0 M3)");
+    }
+
+    // Sampled Lighting Inc1 M3: Binding 18: HitRecord SSBO. Device input + extent-driven sizing
     // from renderTargetNode's own RENDER_TARGET output (NOT the raw swapchain) — so this buffer
     // always matches outputImage's real per-dispatch extent (including under render-scale <1.0),
     // same as descriptorGatherer binding 0 below. This makes hitRecordBufferNode a transitive
@@ -3104,58 +3338,58 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   hitRecordBufferNode, StorageBufferNodeConfig::SWAPCHAIN_INFO);
 
     batch.Connect(hitRecordBufferNode, StorageBufferNodeConfig::STORAGE_BUFFER,
-                          descriptorGatherer, 17,  // Binding 17: HitRecordBuffer
+                          descriptorGatherer, 18,  // Binding 18: HitRecordBuffer
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
     if (mainLogger && mainLogger->IsEnabled()) {
-        mainLogger->Info("[BuildRenderGraph] Connected HitRecord SSBO at binding 17 (Sampled Lighting Inc1 M3)");
+        mainLogger->Info("[BuildRenderGraph] Connected HitRecord SSBO at binding 18 (Sampled Lighting Inc1 M3)");
     }
 
-    // Sampled Lighting Inc1 M4: Binding 18: ShadowConfig SSBO (single record, re-uploaded
+    // Sampled Lighting Inc1 M4: Binding 19: ShadowConfig SSBO (single record, re-uploaded
     // per-frame from ShadowConfigNode's ring). Default content = enabled hard shadows,
     // whole-scene reach, tuned bias (see ShadowConfigNode.cpp's MakeDefaultShadowConfig).
     batch.Connect(shadowConfigNode, ShadowConfigNodeConfig::SHADOW_CONFIG_BUFFER,
-                          descriptorGatherer, 18,  // Binding 18: ShadowConfigSSBO
+                          descriptorGatherer, 19,  // Binding 19: ShadowConfigSSBO
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
     if (mainLogger && mainLogger->IsEnabled()) {
-        mainLogger->Info("[BuildRenderGraph] Connected shadow config at binding 18 (Sampled Lighting Inc1 M4)");
+        mainLogger->Info("[BuildRenderGraph] Connected shadow config at binding 19 (Sampled Lighting Inc1 M4)");
     }
 
-    // Sampled Lighting Inc2 M1: Binding 19: AccumulationConfig SSBO (single record, re-uploaded
+    // Sampled Lighting Inc2 M1: Binding 20: AccumulationConfig SSBO (single record, re-uploaded
     // per-frame from AccumulationConfigNode's ring). Default content = enabled=0 (pure
     // passthrough — this milestone's byte-identity gate vs Inc1).
     batch.Connect(accumulationConfigNode, AccumulationConfigNodeConfig::ACCUMULATION_CONFIG_BUFFER,
-                          descriptorGatherer, 19,  // Binding 19: AccumulationConfigSSBO
+                          descriptorGatherer, 20,  // Binding 20: AccumulationConfigSSBO
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
     if (mainLogger && mainLogger->IsEnabled()) {
-        mainLogger->Info("[BuildRenderGraph] Connected accumulation config at binding 19 (Sampled Lighting Inc2 M1)");
+        mainLogger->Info("[BuildRenderGraph] Connected accumulation config at binding 20 (Sampled Lighting Inc2 M1)");
     }
 
-    // Sampled Lighting Inc2 M1: Binding 20: historyImage (persistent R8G8B8A8_UNORM storage
+    // Sampled Lighting Inc2 M1: Binding 21: historyImage (persistent R8G8B8A8_UNORM storage
     // image, AccumulationHistoryNode). Declared in the shader but not yet read/written this
     // milestone (M2 consumes it) — a pure plumbing wire. Execute-only, mirroring
     // pickIdTargetNode's own binding-9 storage-image wiring above (re-emitted each frame; no
     // compile-time dependency edge needed beyond the initial Compile-time publish).
     batch.Connect(accumulationHistoryNode, AccumulationHistoryNodeConfig::HISTORY_IMAGE_VIEW,
-                          descriptorGatherer, 20,  // Binding 20: historyImage
+                          descriptorGatherer, 21,  // Binding 21: historyImage
                           SlotRoleModifier(SlotRole::Execute));
 
     if (mainLogger && mainLogger->IsEnabled()) {
-        mainLogger->Info("[BuildRenderGraph] Connected accumulation history image at binding 20 (Sampled Lighting Inc2 M1)");
+        mainLogger->Info("[BuildRenderGraph] Connected accumulation history image at binding 21 (Sampled Lighting Inc2 M1)");
     }
 
-    // Sampled Lighting Inc2 M3: Binding 21: PrevCameraConfig SSBO (single record, re-uploaded
+    // Sampled Lighting Inc2 M3: Binding 22: PrevCameraConfig SSBO (single record, re-uploaded
     // per-frame from PrevCameraConfigNode's ring). Declared in the shader but not yet read
     // this milestone (M4 consumes it for reprojection) — a pure plumbing wire, mirroring
-    // binding 19/20's own M1 plumbing-only precedent.
+    // binding 20/21's own M1 plumbing-only precedent.
     batch.Connect(prevCameraConfigNode, PrevCameraConfigNodeConfig::PREV_CAMERA_CONFIG_BUFFER,
-                          descriptorGatherer, 21,  // Binding 21: PrevCameraConfigSSBO
+                          descriptorGatherer, 22,  // Binding 22: PrevCameraConfigSSBO
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
     if (mainLogger && mainLogger->IsEnabled()) {
-        mainLogger->Info("[BuildRenderGraph] Connected prev-camera config at binding 21 (Sampled Lighting Inc2 M3)");
+        mainLogger->Info("[BuildRenderGraph] Connected prev-camera config at binding 22 (Sampled Lighting Inc2 M3)");
     }
 
     // Swapchain connections to descriptor set and dispatch
