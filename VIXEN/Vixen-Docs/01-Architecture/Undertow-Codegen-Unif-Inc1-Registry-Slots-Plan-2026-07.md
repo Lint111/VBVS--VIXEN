@@ -120,14 +120,42 @@ these kinds," vs. reusing schema-JSON directly) is Task 1's decision to make, no
 
 ## Milestone Map
 
-- [ ] **Milestone 1 (Task 1):** ground the shape, decide merge-vs-new-mechanism (report-back gate, no
+- [x] **Milestone 1 (Task 1):** ground the shape, decide merge-vs-new-mechanism (report-back gate, no
   building until confirmed). One Sonnet implementer + one Opus validator.
 - [ ] **Milestone 2 (Task 2-3):** build (scope per Milestone 1's decision) + equivalence proof. One Sonnet
   implementer + one Opus validator.
 
 ## Progress Log
 
-*(none yet — plan authored, not yet dispatched)*
+- Milestone 1 (Task 1, research-only): DONE · 2026-07-12 · no files modified in either repo
+  - **Finding: NEW Yeroket mechanism work needed — no existing mechanism merges this feature.**
+    Confirmed `RegistrySlotGenerator.cs` (sole caller of `EmitRegistrySlots.All`) branches on
+    `context.CompilationProvider`'s `AssemblyName`, calling it exactly twice: `("Authored",
+    "Undertow.Authoring", "AuthoringRegistries", emitMerge: true, emitOverridableIds: false, ...)` and
+    `("Baked", "Undertow.Content", "BakedRegistries", emitMerge: false, emitOverridableIds: true, ...)`.
+    Read `schemas.json`'s real heterogeneous kind gating (`data`/`codec`/`simRegister` flags vary
+    independently per kind — confirmed via `composition_profile`/`tag`/`planet` as representative
+    examples). Read `GpuStructCppEmitter.Emit(StructModel m)` — confirmed single-model signature, no
+    path for injecting properties for a LIST of unrelated external models into a third, undecorated
+    host class. Read `RmlDataModelEmitter.Emit(ViewStruct v)` (closest "generated method body over a
+    dynamic list" precedent) — confirmed it always iterates ONE schema's own declared fields, never a
+    computed cross-cutting slot list gated by an external file.
+  - **Root cause of the mismatch**: every existing Yeroket attribute reflects the DECORATED type's own
+    fields (`[GpuStruct]`, `[View]`, etc.). `EmitRegistrySlots` inverts this — it populates an
+    UNDECORATED class (`AuthoringRegistries`/`BakedRegistries`) with properties/methods derived from an
+    EXTERNAL JSON file's gated kind list. No existing mechanism's reflection axis matches this shape;
+    retrofitting `[GpuStruct]` would require inventing an alien "populate me from an external file"
+    semantic, or making all ~15 schema.json kinds their own `[GpuStruct]`-tagged types plus a NEW
+    aggregator — which is new mechanism work just relocated, not an actual merge.
+  - **Sketch for Milestone 2 (not implemented, pending Opus validation)**: a new class attribute (e.g.
+    `[RegistrySlots(schemaPath, gate: RegistryGate.Data, emitMerge:true, emitOverridableIds:false)]`) on
+    `AuthoringRegistries`/`BakedRegistries` themselves — self-describing the target vs. today's hardcoded
+    assembly-name branch — paired with a new emitter reusing the existing kind-gate parsing logic
+    (`OptsIntoData`/`OptsIntoCodec`/`ReadFields`-equivalents) to inject one `List<T>` property per gated
+    kind plus the two conditional method bodies.
+  - No plan-doc assumption disproven — the Ground Truth and calibration risks all held up under direct
+    inspection. Controller independently verified both call sites and the `GpuStructCppEmitter.Emit`
+    signature against real source before accepting this finding.
 
 ## Follow-ups (explicitly out of scope, note for later increments)
 
