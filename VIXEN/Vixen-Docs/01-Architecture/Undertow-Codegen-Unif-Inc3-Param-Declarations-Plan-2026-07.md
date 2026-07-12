@@ -76,8 +76,8 @@ also merge/migrate cleanly, before tackling logic-transplant features (`[Action]
 ## Milestone Map
 - [x] **Milestone 1 (Task 1):** ground the shape, decide mechanism (report-back gate). One Sonnet
   implementer + one Opus validator.
-- [ ] **Milestone 2 (Task 2):** build + equivalence proof + retire (if safe). One Sonnet implementer + one
-  Opus validator.
+- [x] **Milestone 2 (Task 2):** build + equivalence proof + retire. Implementer DONE 2026-07-13;
+  pending Opus validator sign-off.
 
 ## Progress Log
 
@@ -131,3 +131,71 @@ also merge/migrate cleanly, before tackling logic-transplant features (`[Action]
     it, but the new Yeroket-side `[Param]`-equivalent attribute MUST preserve the exact
     Id/Base/Scope/SeedOnApply property shape the reflection reads, or `CodeModLoader` breaks. **APPROVED
     — Milestone 2 may proceed, carrying this constraint forward.**
+
+- Milestone 2 (Task 2, build + equivalence proof + retire): DONE · 2026-07-13
+  - **Attribute-ownership decision: DISCOVER undertow's real, pre-existing `Undertow.Sim.ParamAttribute`
+    by syntax name, do NOT introduce a new Yeroket-owned attribute.** This is the opposite of Inc-1/
+    Inc-2 ([RegistrySlots]/[SharedMapElements], both NEW Yeroket attributes undertow's code migrated
+    to use) — here the attribute already exists in undertow and IS the source of truth, and
+    `CodeModLoader.cs:164`'s runtime reflection on it (`FieldsWith<ParamAttribute>` →
+    `sim.Params.Declare(a.Id, a.Base, a.Scope, a.SeedOnApply)`) means its shape cannot change or be
+    replaced. Verified this against `--callable-cpp`'s existing precedent (confirmed via a dedicated
+    Explore-agent read of `CodegenTool~/Program.cs`/`CompilationLoader.cs`): that mechanism ALREADY
+    discovers an attribute by syntax-node name match (`a.Name.ToString() is "KernelCallable" or
+    "KernelCallableAttribute"`, no `AttributeClass` symbol binding, no assembly reference to the
+    attribute's defining assembly) rather than requiring the attribute's own assembly loadable into the
+    CLI's Roslyn `Compilation` — the exact shape `[Param]` needs. `CompilationLoader.LoadParamFields`
+    mirrors `LoadKernelCallables`'s whole-Compilation-return shape (attribute lands on FIELDS, so the
+    CLI branch scans `VariableDeclaratorSyntax` nodes directly, matching `IFieldSymbol.GetAttributes()`
+    by `AttributeClass.Name is "Param" or "ParamAttribute"` — one step past syntax-only matching since
+    fields (unlike --callable-cpp's methods) need the resolved `IFieldSymbol` to read the attribute's
+    typed constructor/named arguments cleanly).
+  - **New mechanism** (Yeroket `feat/codegen-unif-inc3-param`, branched off Inc-2's
+    `feat/codegen-unif-inc2-mapelem`, commit `91a297d6`): `ParamRegistrationEmitter.cs` +
+    `EnumExprHelper.cs` (`SourceGenerator~/Transpiler/`, both ported line-for-line from undertow's
+    `EmitRegisterParams.Emit`/`EnumExprHelper.EnumExpr` — identical id-sort via
+    `OrderBy(Id, StringComparer.Ordinal)`, identical dup-id diagnostic via `HashSet.Add` BEFORE sorting
+    that adds a diagnostic but does NOT dedupe), `CompilationLoader.LoadParamFields` (whole-Compilation
+    return), `--param-cs` CLI flag in `CodegenTool~/Program.cs` (mirrors `--callable-cpp`'s
+    `--schema`/`--out-cs`/`[--check]` shape; discovers fields by attribute name, extracts
+    Id/Base/Scope/SeedOnApply the same way `ParamRegistrationGenerator.Extract` does). 3 new NUnit
+    tests (`ParamRegistrationCliTests.cs`) plus the full existing 52-test `CodegenTool.Tests` suite —
+    all 52 pass (49 pre-existing + 3 new).
+  - **Equivalence proof, all 37 real sites + dup-id diagnostic exercised**:
+    1. Ran `--param-cs` against undertow's REAL `Undertow.Sim` source tree (not a curated mirror —
+       the attribute lives in real production files spread across 8 files/175 `.cs` files scanned):
+       output is 37 `reg.Declare` calls, id-sorted, `seedOnApply: true` on exactly
+       `extract:efficiency`/`refine:efficiency` (both in `EconomyAttrs.cs`), matching Milestone 1's
+       finding exactly.
+    2. Diffed the new mechanism's output body against the REAL Roslyn generator's actual emitted file
+       (`core/src/Undertow.Sim/obj/.../ParamRegistrationGenerator/DeclareParams.g.cs`, from a fresh
+       `dotnet build`): **byte-identical body** (banner line differs by design, same as Inc-2's
+       precedent).
+    3. Dup-id diagnostic exercised with a deliberately-malformed 3-field scenario (`dup:id` declared
+       twice with different Base/SeedOnApply, plus one clean `aaa:solo`): CLI run reports
+       `error: [Param] duplicate id 'dup:id'.`, exits 1, does NOT write the output file (mirrors the
+       real generator's `UTPARAM001` compile-error diagnostic). A direct `Emit()`-level probe confirms
+       the non-dedupe behavior precisely: BOTH `dup:id` entries (Base=1/seedOnApply=false and
+       Base=2/seedOnApply=true) remain in the id-sorted output alongside the diagnostic — exactly
+       `Emit_RejectsDuplicateId`'s locked-in contract, now covered by
+       `Emit_DuplicateId_KeepsBothEntriesSorted_DiagnosticNotDedupe`.
+  - **Retirement executed** (undertow `feat/codegen-unif-inc3-param`, commit `966c37b0`, branched off
+    `master` in a fresh isolated worktree): `EmitRegisterParams.cs`, `ParamRegistrationGenerator.cs`,
+    and the old `EmitRegisterParamsTests.cs` (which tested the retired mechanism, not a downstream
+    dependent) deleted; `DeclareParams.g.cs` (the new mechanism's real output against
+    `Undertow.Sim`) checked in as an ordinary compiled source file — same "no existing CLI
+    build-invocation wiring in undertow" pragmatic choice Inc-2 made. Updated `UndertowSim.cs:461`'s
+    stale comment (predated later `[Param]` additions beyond `KnowledgeAttrs`/`EconomyAttrs`) to
+    reflect the new provenance. **Note**: this worktree branched off `master`, which does NOT yet
+    include Inc-1/Inc-2's own retirements (`feat/codegen-unif-inc1-slots`/`feat/codegen-unif-inc2-mapelem`
+    were never merged to master) — `EmitRegistrySlots.cs`/`EmitSharedMapElement.cs`/etc. are still
+    present in this worktree; out of scope for Inc-3, unrelated to this retirement's safety.
+  - **Consumer verification**: full `dotnet build` of `core/Undertow.sln` — 0 errors, 0 warnings. Full
+    `dotnet test` — **2953 tests pass, 0 failures** (2932 `Undertow.Core.Tests` + 21
+    `Undertow.Vixen.Host.Tests`; 2955 Inc-2 baseline minus the 2 retired `EmitRegisterParamsTests.cs`
+    tests = 2953, consistent). Confirmed zero remaining functional references to the deleted
+    `EmitRegisterParams`/`ParamRegistrationGenerator` symbols (2 residual hits are both harmless
+    doc-comment cross-references in unrelated files — `EmitRegisterSystems.cs`'s summary comment and
+    `EmitRegisterSystemsTests.cs`'s doc comment — no code coupling).
+  - No plan-doc assumption disproven.
+  - Not yet independently re-verified by an Opus validator as of this write-up — pending dispatch.
